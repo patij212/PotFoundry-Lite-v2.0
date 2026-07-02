@@ -64,7 +64,7 @@ export const StyleTab: React.FC = () => {
       <select
         id="pf3-style-select"
         aria-label="Style"
-        className="pf3-style-tab__select pf3-mono"
+        className="pf3-input pf3-mono"
         value={style.name}
         onChange={(e) => setStyle(e.target.value as StyleName)}
         data-pf3-focusable=""

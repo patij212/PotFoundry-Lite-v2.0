@@ -68,7 +68,7 @@ export const ExportTab: React.FC = () => {
       <input
         id="pf3-filename"
         aria-label="Filename"
-        className="pf3-style-tab__select pf3-mono"
+        className="pf3-input pf3-mono"
         value={exportFilename ?? ''}
         placeholder={deriveDefaultFilename(styleName, H)}
         onChange={(e) => setExportFilename(e.target.value || null)}

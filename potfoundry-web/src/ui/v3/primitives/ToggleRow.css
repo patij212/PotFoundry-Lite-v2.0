@@ -2,6 +2,11 @@
   display: flex; justify-content: space-between; align-items: center;
   margin-bottom: var(--pf3-space-md);
 }
+.pf3-toggle__label {
+  font: 500 12.5px var(--pf3-font-body);
+  color: var(--pf3-text-primary);
+  white-space: nowrap; /* labels never truncate — reserve space instead */
+}
 .pf3-toggle__track {
   width: 34px; height: 18px; border-radius: var(--pf3-radius-pill);
   background: rgba(245, 240, 232, 0.14); position: relative;

@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { safeStorage } from '../utils/safeStorage';
 import './DisclosureSeam.css';
 
 export interface DisclosureSeamProps {
@@ -12,17 +13,13 @@ const key = (id: string) => `pf3-seam-${id}`;
 
 export const DisclosureSeam: React.FC<DisclosureSeamProps> = ({ id, summary, children, defaultOpen }) => {
   const [open, setOpen] = useState<boolean>(() => {
-    try {
-      const stored = localStorage.getItem(key(id));
-      return stored === null ? Boolean(defaultOpen) : stored === '1';
-    } catch {
-      return Boolean(defaultOpen);
-    }
+    const stored = safeStorage.get(key(id));
+    return stored === null ? Boolean(defaultOpen) : stored === '1';
   });
 
   const toggle = useCallback(() => {
     setOpen((prev) => {
-      try { localStorage.setItem(key(id), prev ? '0' : '1'); } catch { /* private mode */ }
+      safeStorage.set(key(id), prev ? '0' : '1');
       return !prev;
     });
   }, [id]);

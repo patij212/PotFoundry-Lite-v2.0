@@ -10,7 +10,7 @@ export interface ToggleRowProps {
 
 export const ToggleRow: React.FC<ToggleRowProps> = ({ label, checked, onChange, 'data-testid': testId }) => (
   <div className="pf3-toggle" data-testid={testId}>
-    <span className="pf3-param__label">{label}</span>
+    <span className="pf3-toggle__label">{label}</span>
     <button
       type="button"
       role="switch"

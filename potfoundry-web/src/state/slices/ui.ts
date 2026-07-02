@@ -1,13 +1,14 @@
 /**
  * UI state slice for Zustand store.
- * 
+ *
  * Manages UI-related state including panel visibility, active tabs,
  * modals, and fullscreen mode.
- * 
+ *
  * @module state/slices/ui
  */
 
 import { StateCreator } from 'zustand';
+import { safeStorage } from '../../ui/v3/utils/safeStorage';
 import {
   UIState,
   UITheme,
@@ -90,29 +91,21 @@ function appendSnapshot(
 }
 
 function readStoredTheme(): UITheme {
-  try {
-    const v = localStorage.getItem(THEME_KEY);
-    if (v === 'v2' || v === 'v3') return v;
-  } catch { /* SSR / private mode */ }
+  const v = safeStorage.get(THEME_KEY);
+  if (v === 'v2' || v === 'v3') return v;
   return 'classic';
 }
 
 function readStoredDensity(): UIDensity {
-  try {
-    const v = localStorage.getItem(DENSITY_KEY);
-    if (v === 'compact' || v === 'comfortable' || v === 'spacious') return v;
-  } catch { /* SSR / private mode */ }
+  const v = safeStorage.get(DENSITY_KEY);
+  if (v === 'compact' || v === 'comfortable' || v === 'spacious') return v;
   return 'comfortable';
 }
 
 function readStoredHaptics(): boolean {
-  try {
-    const v = localStorage.getItem(HAPTICS_KEY);
-    if (v === 'false') return false;
-    if (v === 'true') return true;
-  } catch {
-    // SSR / private mode
-  }
+  const v = safeStorage.get(HAPTICS_KEY);
+  if (v === 'false') return false;
+  if (v === 'true') return true;
   return true;
 }
 
@@ -408,7 +401,7 @@ export const createUISlice: StateCreator<
   },
 
   setUITheme: (theme) => {
-    try { localStorage.setItem(THEME_KEY, theme); } catch { /* noop */ }
+    safeStorage.set(THEME_KEY, theme);
     set((state) => ({
       ui: { ...state.ui, uiTheme: theme },
     }));
@@ -433,14 +426,14 @@ export const createUISlice: StateCreator<
   },
 
   setDensity: (density) => {
-    try { localStorage.setItem(DENSITY_KEY, density); } catch { /* noop */ }
+    safeStorage.set(DENSITY_KEY, density);
     set((state) => ({
       ui: { ...state.ui, density },
     }));
   },
 
   setHapticsEnabled: (enabled) => {
-    try { localStorage.setItem(HAPTICS_KEY, String(enabled)); } catch { /* noop */ }
+    safeStorage.set(HAPTICS_KEY, String(enabled));
     set((state) => ({
       ui: { ...state.ui, hapticsEnabled: enabled },
     }));

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { GlassSurface } from '../primitives/GlassSurface';
 import { SegmentedControl } from '../primitives/SegmentedControl';
+import { safeStorage } from '../utils/safeStorage';
 import { useAppStore } from '../../../state';
 import type { V3Tab } from '../../../state/types';
 import './PanelShell.css';
@@ -26,12 +27,8 @@ export const PanelShell: React.FC<PanelShellProps> = ({ children, footer }) => {
   const setV3ActiveTab = useAppStore((s) => s.setV3ActiveTab);
 
   const [width, setWidth] = useState<number>(() => {
-    try {
-      const stored = Number(localStorage.getItem(WIDTH_KEY));
-      return stored >= MIN_W && stored <= MAX_W ? stored : DEFAULT_W;
-    } catch {
-      return DEFAULT_W;
-    }
+    const stored = Number(safeStorage.get(WIDTH_KEY));
+    return stored >= MIN_W && stored <= MAX_W ? stored : DEFAULT_W;
   });
   const panelRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ startX: number; startW: number } | null>(null);
@@ -52,7 +49,7 @@ export const PanelShell: React.FC<PanelShellProps> = ({ children, footer }) => {
     drag.current = null;
     const w = Math.max(MIN_W, Math.min(MAX_W, panelRef.current.offsetWidth || DEFAULT_W));
     setWidth(w);
-    try { localStorage.setItem(WIDTH_KEY, String(w)); } catch { /* private mode */ }
+    safeStorage.set(WIDTH_KEY, String(w));
   }, []);
 
   useEffect(() => {

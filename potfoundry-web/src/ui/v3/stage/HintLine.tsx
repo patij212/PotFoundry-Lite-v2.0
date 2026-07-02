@@ -1,18 +1,19 @@
 import React, { useEffect, useState } from 'react';
 import { GlassSurface } from '../primitives/GlassSurface';
+import { safeStorage } from '../utils/safeStorage';
 import './HintLine.css';
 
 const KEY = 'pf3-hint-dismissed';
 
 export const HintLine: React.FC = () => {
   const [visible, setVisible] = useState<boolean>(() => {
-    try { return localStorage.getItem(KEY) !== '1'; } catch { return true; }
+    return safeStorage.get(KEY) !== '1';
   });
 
   useEffect(() => {
     if (!visible) return;
     const dismiss = () => {
-      try { localStorage.setItem(KEY, '1'); } catch { /* private mode */ }
+      safeStorage.set(KEY, '1');
       setVisible(false);
     };
     window.addEventListener('pointerdown', dismiss, { once: true });
