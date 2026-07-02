@@ -92,7 +92,7 @@ function appendSnapshot(
 function readStoredTheme(): UITheme {
   try {
     const v = localStorage.getItem(THEME_KEY);
-    if (v === 'v2') return 'v2';
+    if (v === 'v2' || v === 'v3') return v;
   } catch { /* SSR / private mode */ }
   return 'classic';
 }
@@ -187,7 +187,7 @@ export interface UISlice {
   // --- v2 actions ---
 
   /**
-   * Set the UI theme (classic / v2). Persisted to localStorage.
+   * Set the UI theme (classic / v2 / v3). Persisted to localStorage.
    */
   setUITheme: (theme: UITheme) => void;
 
