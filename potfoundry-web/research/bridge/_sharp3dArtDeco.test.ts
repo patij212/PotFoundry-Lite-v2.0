@@ -1355,4 +1355,70 @@ describe('E-2026-07-01-SHARP3D-ARTDECO', () => {
     // eslint-disable-next-line no-console
     console.log(`[stage15] VERDICT: ${nearRingRefMax > 0.01 ? 'REFERENCE-FLOOR (near-ring ref chord dominates) → refine ref' : 'GENUINE (ref faithful; residual is a real sheet↔tread corner)'}`);
   }, 1_200_000);
+
+  // ─────────────── STAGE 16: PERSIST the DEFINITIVE 2.23M-tri build (== stage15 z120_fineRef) as STL + heatmap ────
+  // Deliverable: rebuild the EXACT stage15 config (nCol=960, nZband=120, treadSub=10; faithful ref refDth=0.0007
+  // nZperBand=130), re-measure the genuine BVH metric, colour per-vertex by faceErr @ scale 0.01mm, and dump
+  // `artdeco_sharp3d_definitive.{xyz,idx,col}.bin + .stl + .meta.json` for handoff. Re-measured numbers MUST match
+  // stage15_result.json (worst 0.014 / p99 0.001 / 99.98% ≤0.01). Isolated (_sharp3d* only).
+  it.skipIf(process.env.PF_SHARP3D !== '1')('stage16: persist the definitive 2.23M-tri build (STL + 0.01mm heatmap)', () => {
+    const rA = buildRadiusFn('ArtDeco', {}, DIMS);
+    const rings = artDecoStepRings(DIMS.H, STEP_COUNT);
+    const ringZs = rings.map(r => r.z);
+    const zEps = 5e-4;
+    const shear = (4 * Math.PI) / 6;
+
+    // EXACT stage15 faithful reference.
+    const refDth = 0.0007;
+    const ref = buildStepReference(rA, DIMS.H, rings, { nTheta: 0, nZperBand: 130, zEps, thetasFor: (rz) => conformingThetas(kinkThetas(rz / DIMS.H), refDth) });
+    const loc = buildRefLocator(ref, 1.2);
+
+    // EXACT stage15 export: nCol=960, treadSub=10, nZband=120.
+    const nCol = 12 * 80, treadSub = 10, nZband = 120;
+    const th = (r: number): Float64Array => shearedThetas(r / DIMS.H, nCol, shear);
+    const rows: RowSpec[] = [];
+    const sorted = [...rings].sort((a, b) => a.z - b.z);
+    const pushSheetBand = (z0: number, z1: number, nrows: number): void => { for (let i = 1; i < nrows; i++) { const z = z0 + (z1 - z0) * (i / nrows); rows.push({ z, rz: z, thetas: th(z), kind: 'sheet' }); } };
+    rows.push({ z: 0, rz: zEps, thetas: th(zEps), kind: 'sheet' });
+    let cursor = 0;
+    for (const ring of sorted) {
+      pushSheetBand(cursor, ring.z, nZband);
+      const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+      rows.push({ z: ring.z, rz: rzIn, thetas: th(rzIn), kind: 'ringBelow' });
+      for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(ring.z), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+      rows.push({ z: ring.z, rz: rzOut, thetas: th(rzOut), kind: 'ringAbove' });
+      cursor = ring.z;
+    }
+    pushSheetBand(cursor, DIMS.H, nZband);
+    rows.push({ z: DIMS.H, rz: DIMS.H - zEps, thetas: th(DIMS.H - zEps), kind: 'sheet' });
+    const mesh = buildStructuredWall(rA, DIMS.H, rows);
+    const mh = metric3DHybrid(mesh, loc, rA, ringZs, 0.25);
+    const nm = auditNonManByIndex(mesh.xyz, mesh.idx);
+
+    // per-vertex color @ scale 0.01mm using the reference-metric faceErr.
+    const vertErr = new Float64Array(mesh.nV);
+    for (let f = 0; f < mesh.nF; f++) { const e = mh.faceErr[f]; for (let k = 0; k < 3; k++) { const v = mesh.idx[3 * f + k]; if (e > vertErr[v]) vertErr[v] = e; } }
+    const colors = vertErrColors(vertErr, 0.01);
+    const p99 = Float64Array.from(mh.faceErr).sort()[Math.floor(0.99 * mesh.nF)];
+    const pctOver0_01 = 100 * mh.over01 / mesh.nF;
+
+    // PERSIST: xyz/idx/col bins + STL + meta.
+    dumpRenderBins(DIR, 'artdeco_sharp3d_definitive', mesh.xyz, mesh.idx, {
+      colors,
+      meta: { ruler: 'true3d-reference', label: 'ArtDeco DEFINITIVE — sheared-φ conforming + treads vs closed 3D object (scale 0.01mm)',
+        worstMm: mh.worst, p99Mm: p99, pctOver0_01, scaleMm: 0.01, tris: mesh.nF, refTris: ref.nF, nonMan: nm },
+      stl: true,
+    });
+
+    const rec = { tag: 'definitive_c960_z120_ts10', tris: mesh.nF, verts: mesh.nV, refTris: ref.nF,
+      worst: mh.worst, p99, over01: mh.over01, pctOver01: pctOver0_01, nonMan: nm };
+    save('stage16_definitive', rec);
+    // eslint-disable-next-line no-console
+    console.log(`[stage16] PERSISTED artdeco_sharp3d_definitive: tris=${mesh.nF} worst=${mh.worst.toFixed(4)} p99=${p99.toFixed(4)} over01=${mh.over01}(${pctOver0_01.toFixed(4)}%) nonMan=${nm}`);
+    // MUST match stage15_result.json (tris 2,227,200; worst ~0.014; p99 ~0.001).
+    expect(mesh.nF).toBe(2227200);
+    expect(nm).toBe(0);
+    expect(mh.worst).toBeLessThan(0.02);
+    expect(p99).toBeLessThan(0.005);
+  }, 1_200_000);
 });
