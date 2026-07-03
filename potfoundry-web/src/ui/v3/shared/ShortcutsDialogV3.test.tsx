@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ShortcutsDialogV3 } from './ShortcutsDialogV3';
 
@@ -20,13 +20,13 @@ describe('ShortcutsDialogV3', () => {
   });
 
   it('calls onOpenChange(false) when Escape is pressed (Radix Dialog built-in)', () => {
-    const onOpenChange = (open: boolean) => {
-      expect(open).toBe(false);
-    };
+    const onOpenChange = vi.fn();
     render(<ShortcutsDialogV3 open onOpenChange={onOpenChange} />);
 
     const dialog = screen.getByRole('dialog');
     fireEvent.keyDown(dialog, { key: 'Escape' });
+
+    expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('does not render when open is false', () => {

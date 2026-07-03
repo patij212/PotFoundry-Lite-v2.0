@@ -46,7 +46,7 @@ interface ShortcutsDialogV3Props {
 export function ShortcutsDialogV3({ open, onOpenChange }: ShortcutsDialogV3Props) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
+      <Dialog.Portal container={typeof document !== 'undefined' ? (document.querySelector('.pf3-root') as HTMLElement | null) ?? undefined : undefined}>
         <Dialog.Overlay className="pf3-shortcuts-overlay" />
         <Dialog.Content className="pf3-shortcuts-content" aria-describedby={undefined}>
           <div className="pf3-shortcuts-header">
