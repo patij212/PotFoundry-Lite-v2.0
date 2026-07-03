@@ -116,18 +116,38 @@ export const ParamRow: React.FC<ParamRowProps> = ({
     [apply, step, onInteractionStart],
   );
 
-  // Scrub — pointerup: commit if scrub was active; always suppress the following click
-  const handleChipPointerUp = useCallback(
-    () => {
+  // Scrub — shared end logic: clear scrubRef, suppress next click if active, optionally restore/commit
+  const endScrub = useCallback(
+    (action: 'commit' | 'cancel') => {
       const state = scrubRef.current;
       scrubRef.current = null;
-      if (!state) return;
-      if (state.active) {
+      if (!state?.active) return;
+      suppressClickRef.current = true;
+      if (action === 'cancel') {
+        // Pointer cancelled mid-scrub: restore startValue and commit
+        apply(state.startValue, true);
+      } else {
+        // Normal pointerup: commit current value
         onValueCommit?.();
-        suppressClickRef.current = true;
       }
     },
-    [onValueCommit],
+    [apply, onValueCommit],
+  );
+
+  // Scrub — pointerup: commit current value if scrub was active, suppress next click
+  const handleChipPointerUp = useCallback(
+    () => {
+      endScrub('commit');
+    },
+    [endScrub],
+  );
+
+  // Scrub — pointercancel: restore startValue if scrub was active, suppress next click
+  const handleChipPointerCancel = useCallback(
+    () => {
+      endScrub('cancel');
+    },
+    [endScrub],
   );
 
   // F3: first click arms a 250 ms timer; second click within that window resets instead
@@ -164,12 +184,7 @@ export const ParamRow: React.FC<ParamRowProps> = ({
     (e: React.KeyboardEvent) => {
       // Escape mid-scrub: restore startValue, commit once, suppress the following click
       if (e.key === 'Escape') {
-        const state = scrubRef.current;
-        scrubRef.current = null;
-        if (state?.active) {
-          suppressClickRef.current = true;
-          apply(state.startValue, true);
-        }
+        endScrub('cancel');
         return;
       }
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
@@ -179,7 +194,7 @@ export const ParamRow: React.FC<ParamRowProps> = ({
       onInteractionStart?.();
       apply(value + dir * step * mult, true);
     },
-    [value, step, apply, onInteractionStart],
+    [value, step, apply, onInteractionStart, endScrub],
   );
 
   const dec = (String(step).split('.')[1] ?? '').length;
@@ -215,6 +230,7 @@ export const ParamRow: React.FC<ParamRowProps> = ({
             onPointerDown={handleChipPointerDown}
             onPointerMove={handleChipPointerMove}
             onPointerUp={handleChipPointerUp}
+            onPointerCancel={handleChipPointerCancel}
             onKeyDown={handleChipKeyDown}
           >
             {value.toFixed(dec)}{unit ? ` ${unit}` : ''}

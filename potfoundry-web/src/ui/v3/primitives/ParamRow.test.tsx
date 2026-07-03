@@ -121,7 +121,9 @@ describe('ParamRow', () => {
       fireEvent.click(chip); // browser fires click after pointerup — must be suppressed
       act(() => { vi.advanceTimersByTime(300); });
       expect(onInteractionStart).toHaveBeenCalledOnce();
-      // startValue=120, dx=30 → Math.round(30/3)*step*1 = 10 → 130
+      // startValue=120, dx changes over three moves: 10/20/30 → onChange called 3 times
+      expect(onChange).toHaveBeenCalledTimes(3);
+      // Final value: dx=30 → Math.round(30/3)*step*1 = 10 → 130
       expect(onChange).toHaveBeenLastCalledWith(130);
       expect(onValueCommit).toHaveBeenCalledOnce();
       expect(screen.queryByRole('textbox')).toBeNull();
@@ -175,6 +177,42 @@ describe('ParamRow', () => {
       expect(onChange).toHaveBeenLastCalledWith(120); // restored to startValue
       expect(onValueCommit).toHaveBeenCalledOnce();
       expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('pointerCancel mid-scrub → restores startValue, commits once, suppresses click, re-arms on next drag', () => {
+      vi.useFakeTimers();
+      const { onChange, onInteractionStart, onValueCommit } = setup();
+      const chip = screen.getByTestId('row-h-value');
+
+      // First scrub: down → move 30px → cancel
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerMove(chip, { clientX: 30, pointerId: 1 }); // enters scrub, onChange fires
+      fireEvent.pointerCancel(chip, { pointerId: 1 }); // restore startValue + commit
+
+      // Verify cancel restored value and set suppressClickRef
+      expect(onChange).toHaveBeenLastCalledWith(120); // restored to startValue
+      expect(onValueCommit).toHaveBeenCalledOnce();
+      expect(onInteractionStart).toHaveBeenCalledOnce();
+
+      // Suppress the following click (if browser fires one)
+      fireEvent.click(chip);
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(screen.queryByRole('textbox')).toBeNull();
+
+      // Reset mocks to verify re-arming works
+      onChange.mockClear();
+      onInteractionStart.mockClear();
+      onValueCommit.mockClear();
+
+      // Second scrub: verify the component re-arms and works normally
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 2 });
+      fireEvent.pointerMove(chip, { clientX: 30, pointerId: 2 }); // enters scrub again
+      fireEvent.pointerUp(chip, { pointerId: 2 });
+
+      // onInteractionStart fires on the first move across threshold
+      expect(onInteractionStart).toHaveBeenCalledOnce();
+      expect(onChange).toHaveBeenLastCalledWith(130);
+      expect(onValueCommit).toHaveBeenCalledOnce();
     });
   });
 });
