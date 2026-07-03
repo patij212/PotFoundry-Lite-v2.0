@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { deriveDefaultFilename, estimateExport, formatBytes } from './exportName';
 
 const exportSTL = vi.fn();
@@ -32,10 +32,15 @@ const defaultMockStats = {
   },
 };
 
+// Mutable variable: starts null before each test; exportSTL mock sets it when the
+// export "completes". The hook factory reads currentStats on every render call, so
+// the component sees the update on the re-render triggered by setDone().
+let currentStats: typeof defaultMockStats | null = null;
+
 vi.mock('../../../hooks/useParametricExport', () => ({
   useParametricExport: () => ({
     progress: { status: 'idle', progress: 0, message: '' },
-    stats: defaultMockStats,
+    stats: currentStats,
     isAvailable: true,
     exportSTL,
   }),
@@ -72,13 +77,22 @@ describe('exportName utils', () => {
 
 describe('ExportFooter', () => {
   beforeEach(() => {
-    exportSTL.mockClear();
+    // Start each test with stats null; exportSTL sets it to a fresh spread so
+    // the component's useEffect([stats]) sees a reference change on re-render.
+    currentStats = null;
+    exportSTL.mockReset();
+    exportSTL.mockImplementation(async () => {
+      currentStats = { ...defaultMockStats };
+    });
     recordExport.mockClear();
     canExport = true;
   });
 
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('fires the parametric export with a derived filename and records it', async () => {
-    exportSTL.mockResolvedValueOnce(undefined);
     render(<ExportFooter />);
     fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
     await waitFor(() => expect(exportSTL).toHaveBeenCalled());
@@ -109,7 +123,6 @@ describe('ExportFooter', () => {
   });
 
   it('hides certificate text and restores button label after export', async () => {
-    exportSTL.mockResolvedValueOnce(undefined);
     render(<ExportFooter />);
     fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
     await waitFor(() => expect(exportSTL).toHaveBeenCalled());
@@ -120,6 +133,47 @@ describe('ExportFooter', () => {
     });
 
     // Button label should remain "Export STL" (not "Exported ✓")
+    expect(screen.getByRole('button', { name: /Export STL/ })).toBeInTheDocument();
+  });
+
+  // F1: verifies the closure-timing fix — stats is null on first mount; the hook's
+  // setStats fires inside exportSTL (before promise resolution) but the re-render is
+  // batched by React 18 until after the await continuation. awaitingStatsRef + the
+  // [stats] effect capture the fresh value once the batch flushes.
+  it('F1: certificate renders on the very first export when stats starts null', async () => {
+    // currentStats is already null from beforeEach; exportSTL sets it on resolve
+    render(<ExportFooter />);
+    fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
+    await waitFor(() => {
+      expect(screen.getByText(/watertight/)).toBeInTheDocument();
+    });
+  });
+
+  // F2: uses fake timers to verify the 12 s collapse timeout.
+  // Fake timers are installed before render so the useEffect([done]) setTimeout
+  // is registered against the fake clock; vi.advanceTimersByTime then fires it.
+  it('F2: certificate collapses after 12 seconds', async () => {
+    vi.useFakeTimers();
+
+    render(<ExportFooter />);
+    fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
+
+    // Flush all pending microtasks (exportSTL → recordExport → setDone →
+    // useEffect([stats]) → setCapturedStats) and the resulting React renders.
+    // act() drives React's work loop until stable; no fake-timer calls needed here
+    // because the entire path to certificate visibility is microtask-driven.
+    await act(async () => {});
+
+    // Certificate must be visible before we advance the clock
+    expect(screen.getByText(/watertight/)).toBeInTheDocument();
+
+    // Advance clock by 12 s — fires the useEffect([done]) setTimeout
+    act(() => {
+      vi.advanceTimersByTime(12000);
+    });
+
+    // Certificate gone, button still present
+    expect(screen.queryByText(/watertight/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Export STL/ })).toBeInTheDocument();
   });
 });

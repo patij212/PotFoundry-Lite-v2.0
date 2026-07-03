@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Button } from '../primitives/Button';
 import { Certificate } from './Certificate';
 import { useAppStore } from '../../../state';
@@ -21,28 +21,46 @@ export const ExportFooter: React.FC = () => {
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [capturedStats, setCapturedStats] = useState<ParametricExportStats | null>(null);
+
+  // Set to true after exportSTL resolves; the [stats] effect below clears it once
+  // the hook's batched setStats re-render has landed.
+  const awaitingStatsRef = useRef(false);
+
   const firing = progress.status === 'initializing' || progress.status === 'generating';
   const { tris, bytes } = estimateExport(nTheta, nZ);
   const filename = exportFilename ?? deriveDefaultFilename(styleName, H);
   const tier = checkExportAllowed();
+
+  // Capture stats when they arrive after an export resolves.
+  // React 18 batches the hook's setStats re-render until after the microtask that
+  // resolves exportSTL, so statsRef.current is still stale right after "await exportSTL".
+  // This effect fires on the render where the hook's batched update lands, at which
+  // point stats is guaranteed fresh — proving the capture is batching-safe.
+  useEffect(() => {
+    if (awaitingStatsRef.current && stats !== null) {
+      awaitingStatsRef.current = false;
+      setCapturedStats(stats);
+    }
+  }, [stats]);
 
   const fire = useCallback(async () => {
     if (firing || !tier.canExport) return;
     setDone(null);
     setError(null);
     setCapturedStats(null);
+    awaitingStatsRef.current = false; // cancel any stale wait from a prior export
     try {
       await exportSTL(filename);
       await recordExport();
       setDone(filename);
-      // Capture stats snapshot at fire-resolution time so late store changes can't swap it
-      if (stats) {
-        setCapturedStats(stats);
-      }
+      // Mark awaiting: the [stats] effect above will capture once the hook's
+      // batched setStats re-render fires (React 18 flushes it in the same batch
+      // as the setDone update, so the certificate appears in the very next paint).
+      awaitingStatsRef.current = true;
     } catch {
       setError('Export failed — check the console, then try again');
     }
-  }, [firing, tier.canExport, exportSTL, filename, recordExport, stats]);
+  }, [firing, tier.canExport, exportSTL, filename, recordExport]);
 
   useEffect(() => {
     const onShortcut = () => void fire();

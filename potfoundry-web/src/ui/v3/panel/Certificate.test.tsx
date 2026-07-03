@@ -146,6 +146,21 @@ describe('Certificate', () => {
     expect(screen.queryByText(/mesh valid/)).not.toBeInTheDocument();
   });
 
+  // F3: when both primary checks fail, each row should display a DISTINCT warning
+  // string — watertight uses warnings[0], mesh-valid uses warnings[1] ?? warnings[0].
+  it('F3: two failing checks with two warnings show different repair strings', () => {
+    const stats = mockStats({
+      validationSummary: mockValidationSummary({
+        manifoldOk: false,
+        valid: false,
+        warnings: ['2 boundary edges at rim seam', 'degenerate triangle at base'],
+      }),
+    });
+    render(<Certificate filename="test" stats={stats} />);
+    expect(screen.getByText('2 boundary edges at rim seam')).toBeInTheDocument();
+    expect(screen.getByText('degenerate triangle at base')).toBeInTheDocument();
+  });
+
   it('renders full report disclosure seam with validation summary fields', () => {
     const stats = mockStats({
       validationSummary: mockValidationSummary(),

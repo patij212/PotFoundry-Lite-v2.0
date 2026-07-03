@@ -30,7 +30,8 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, stats }) => 
     checks.push({
       label: 'mesh valid',
       pass: vs.valid,
-      warning: vs.valid ? undefined : vs.warnings[0],
+      // Use a distinct warning for the second failing check so both rows are informative
+      warning: vs.valid ? undefined : (vs.warnings[1] ?? vs.warnings[0]),
     });
   }
 
@@ -79,8 +80,7 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, stats }) => 
           <DisclosureSeam id="certificate-report" summary="full report ⌄">
             <div className="pf3-certificate__report">
               {Object.entries({
-                valid: vs.valid,
-                manifoldOk: vs.manifoldOk,
+                // valid and manifoldOk are already shown as prominent checklist rows above
                 degeneratesOk: vs.degeneratesOk,
                 normalsOk: vs.normalsOk,
                 triangleQualityOk: vs.triangleQualityOk,
