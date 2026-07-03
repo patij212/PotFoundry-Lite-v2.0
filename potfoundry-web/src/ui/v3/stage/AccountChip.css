@@ -6,10 +6,11 @@
   top: var(--pf3-space-lg);
   right: var(--pf3-space-lg);
   z-index: var(--pf3-z-toolbar);
+  /* same tier as PillToolbar; panel (z-100) doesn't spatially overlap the chip today */
   pointer-events: auto;
 }
 
-.pf3-account .pf3-glass-surface {
+.pf3-account .pf3-account__pill {
   display: flex;
   align-items: center;
   gap: var(--pf3-space-sm);
