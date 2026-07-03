@@ -29,6 +29,33 @@ import './entrance.css';
 
 const TAB_KEYS: Record<string, 'shape' | 'style' | 'export'> = { '1': 'shape', '2': 'style', '3': 'export' };
 
+/**
+ * Hook to track device orientation (landscape vs portrait) using matchMedia.
+ * Returns true if the device is in landscape orientation, false otherwise.
+ * Cleans up the media query listener on unmount.
+ */
+function useIsLandscape(): boolean {
+  const [isLandscape, setIsLandscape] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.matchMedia('(orientation: landscape)').matches;
+  });
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(orientation: landscape)');
+    const handleOrientationChange = (e: MediaQueryListEvent) => {
+      setIsLandscape(e.matches);
+    };
+
+    // Modern addEventListener API (preferred)
+    mediaQuery.addEventListener('change', handleOrientationChange);
+    return () => {
+      mediaQuery.removeEventListener('change', handleOrientationChange);
+    };
+  }, []);
+
+  return isLandscape;
+}
+
 export const AppUIv3: React.FC = () => {
   const uiTheme = useAppStore((s) => s.ui.uiTheme);
   const zenMode = useAppStore((s) => s.ui.zenMode);
@@ -40,6 +67,7 @@ export const AppUIv3: React.FC = () => {
   const toggleFullscreen = useAppStore((s) => s.toggleFullscreen);
 
   const { isMobile } = useMobile();
+  const isLandscape = useIsLandscape();
   const sheetContentRef = React.useRef<HTMLDivElement>(null);
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -132,6 +160,9 @@ export const AppUIv3: React.FC = () => {
     return () => document.removeEventListener('keydown', onKeyDown);
   }, [uiTheme, zenMode, undo, redo, setV3ActiveTab, toggleZenMode, toggleFullscreen]);
 
+  // Mobile landscape: treat as desktop layout with mobile controls
+  const isMobileLandscape = isMobile && isLandscape;
+
   return (
     <ErrorBoundary name="AppUIv3">
       <TouchModeProvider value={isMobile}>
@@ -140,7 +171,7 @@ export const AppUIv3: React.FC = () => {
           data-theme="dark"
           data-zen={zenMode || undefined}
           data-entrance={showEntrance ? '' : undefined}
-          data-layout={isMobile ? 'mobile' : 'desktop'}
+          data-layout={isMobileLandscape ? 'mobile-landscape' : (isMobile ? 'mobile' : 'desktop')}
           data-testid="pf3-root"
         >
           {/* PillToolbar — desktop only; Task 8 wires mobile nav */}
@@ -149,8 +180,28 @@ export const AppUIv3: React.FC = () => {
           {/* AccountChip — always visible (both desktop and mobile) */}
           <ErrorBoundary name="AccountChip"><AccountChip /></ErrorBoundary>
 
-          {isMobile ? (
-            /* Mobile shell: three-stop bottom sheet replaces panel+status+hint.
+          {isMobileLandscape ? (
+            /* Mobile landscape: desktop panel layout with mobile controls (no sheet).
+               Zen mode = pot only, so the panel is hidden in zen.
+               TouchModeProvider value=isMobile → touch controls inside desktop panel;
+               MobileStageControls rendered for camera/undo controls;
+               PillToolbar stays hidden (stage width is precious). */
+            !zenMode && (
+              <>
+                <ErrorBoundary name="PanelShell">
+                  <PanelShell footer={<ExportFooter />}>
+                    {v3ActiveTab === 'shape' && <ShapeTab />}
+                    {v3ActiveTab === 'style' && <StyleTab />}
+                    {v3ActiveTab === 'export' && <ExportTab />}
+                  </PanelShell>
+                </ErrorBoundary>
+                <StatusLine />
+                <MobileStageControls />
+                <HintLine />
+              </>
+            )
+          ) : isMobile ? (
+            /* Mobile portrait shell: three-stop bottom sheet replaces panel+status+hint.
                Zen mode = pot only, so the sheet is hidden in zen.
                Footer = MobileTabBar only (its CTA replaces ExportFooter's);
                ExportFooter renders inside the Export tab content. */

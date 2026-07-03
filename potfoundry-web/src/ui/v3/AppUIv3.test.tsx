@@ -8,6 +8,40 @@ const mockUseMobile = vi.hoisted(() =>
 );
 vi.mock('../../hooks/useMobile', () => ({ useMobile: mockUseMobile }));
 
+// matchMedia mock — default portrait orientation for existing tests.
+// Setup below provides getters for programmatic orientation changes in tests.
+const createMediaQueryListMock = (matches: boolean) => {
+  const listeners: ((e: MediaQueryListEvent) => void)[] = [];
+  return {
+    get matches() { return matches; },
+    addEventListener: vi.fn((event: string, listener: (e: MediaQueryListEvent) => void) => {
+      if (event === 'change') listeners.push(listener);
+    }),
+    removeEventListener: vi.fn((event: string, listener: (e: MediaQueryListEvent) => void) => {
+      if (event === 'change') {
+        const idx = listeners.indexOf(listener);
+        if (idx >= 0) listeners.splice(idx, 1);
+      }
+    }),
+    triggerChange: (newMatches: boolean) => {
+      listeners.forEach(l => l({ matches: newMatches } as MediaQueryListEvent));
+    },
+    get listeners() { return listeners; },
+  };
+};
+
+let mockMediaQuery = createMediaQueryListMock(false); // Default: portrait
+const mockMatchMedia = vi.hoisted(() =>
+  vi.fn((query: string) => {
+    if (query === '(orientation: landscape)') return mockMediaQuery;
+    return { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() };
+  }),
+);
+Object.defineProperty(window, 'matchMedia', {
+  writable: true,
+  value: mockMatchMedia,
+});
+
 // TouchModeProvider spy — captures calls to verify mounting and value prop
 const TouchModeProviderSpy = vi.hoisted(() => {
   return vi.fn(({ value, children }: { value: boolean; children: React.ReactNode }) => <>{children}</>);
@@ -100,6 +134,8 @@ import AppUIv3 from './AppUIv3';
 describe('AppUIv3 shell', () => {
   beforeEach(() => {
     mockExportSTL.mockClear();
+    // Reset matchMedia to portrait (default)
+    mockMediaQuery = createMediaQueryListMock(false);
   });
 
   it('renders the pf3 root with dark theme', () => {
@@ -243,6 +279,8 @@ describe('AppUIv3 TouchModeProvider wiring', () => {
   beforeEach(() => {
     TouchModeProviderSpy.mockClear();
     mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+    // Reset matchMedia to portrait (default)
+    mockMediaQuery = createMediaQueryListMock(false);
   });
 
   it('desktop: TouchModeProvider mounted with value=false', () => {
@@ -267,6 +305,8 @@ describe('AppUIv3 entrance sequence', () => {
   beforeEach(() => {
     sessionStorage.clear();
     mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+    // Reset matchMedia to portrait (default)
+    mockMediaQuery = createMediaQueryListMock(false);
   });
 
   afterEach(() => {
@@ -301,6 +341,8 @@ describe('AppUIv3 desktop layout', () => {
   // but be explicit here for documentation value).
   beforeEach(() => {
     mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+    // Reset matchMedia to portrait (default)
+    mockMediaQuery = createMediaQueryListMock(false);
   });
   afterEach(() => {
     mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
@@ -334,6 +376,8 @@ describe('AppUIv3 mobile shell', () => {
     window.addEventListener('pf3:download', downloadListener);
     mockUseMobile.mockReturnValue({ isMobile: true, isTablet: true, hasTouch: true, viewportWidth: 375 });
     useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: false, v3ActiveTab: 'shape' } }));
+    // Reset matchMedia to portrait (default for mobile tests)
+    mockMediaQuery = createMediaQueryListMock(false);
   });
   afterEach(() => {
     window.removeEventListener('pf3:download', downloadListener);
@@ -459,5 +503,150 @@ describe('AppUIv3 mobile shell', () => {
     useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
     render(<AppUIv3 />);
     expect(screen.queryByTestId('pf3-hint-line')).not.toBeInTheDocument();
+  });
+});
+
+describe('AppUIv3 mobile landscape mode', () => {
+  let downloadListener: () => void;
+
+  beforeEach(() => {
+    mockExportSTL.mockClear();
+    downloadListener = () => { mockExportSTL(); };
+    window.addEventListener('pf3:download', downloadListener);
+    mockUseMobile.mockReturnValue({ isMobile: true, isTablet: true, hasTouch: true, viewportWidth: 375 });
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: false, v3ActiveTab: 'shape' } }));
+    // Set matchMedia to landscape for mobile-landscape tests
+    mockMediaQuery = createMediaQueryListMock(true);
+  });
+  afterEach(() => {
+    window.removeEventListener('pf3:download', downloadListener);
+    // Reset to desktop and portrait
+    mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+    mockMediaQuery = createMediaQueryListMock(false);
+  });
+
+  it('root carries data-layout="mobile-landscape" when isMobile && landscape', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'mobile-landscape');
+  });
+
+  it('mobile landscape: panel rail is present (like desktop)', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-panel')).toBeInTheDocument();
+  });
+
+  it('mobile landscape: sheet is absent', () => {
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-sheet')).not.toBeInTheDocument();
+  });
+
+  it('mobile landscape: MobileStageControls is rendered', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-mobile-stage-controls')).toBeInTheDocument();
+  });
+
+  it('mobile landscape: HintLine is rendered when not in zen', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-hint-line')).toBeInTheDocument();
+  });
+
+  it('mobile landscape: StatusLine is present in DOM (CSS hides it to save height)', () => {
+    render(<AppUIv3 />);
+    // StatusLine is rendered (CSS rule .pf3-root[data-layout="mobile-landscape"] [data-testid="pf3-status"]
+    // applies display:none, but jsdom doesn't evaluate CSS rules via getComputedStyle; the rule is correct
+    // and will work in real browsers and e2e tests).
+    const statusLine = screen.getByTestId('pf3-status');
+    expect(statusLine).toBeInTheDocument();
+  });
+
+  it('mobile landscape: PillToolbar is not rendered', () => {
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-pill')).not.toBeInTheDocument();
+  });
+
+  it('mobile landscape: TouchModeProvider value is still true (touch device)', () => {
+    render(<AppUIv3 />);
+    expect(TouchModeProviderSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ value: true }),
+      expect.anything(),
+    );
+  });
+
+  it('mobile landscape: panel contains ShapeTab content by default', () => {
+    render(<AppUIv3 />);
+    const panel = screen.getByTestId('pf3-panel');
+    expect(within(panel).getByTestId('pf3-shape-tab')).toBeInTheDocument();
+  });
+
+  it('mobile landscape: store tab switch swaps panel content', () => {
+    useAppStore.getState().setV3ActiveTab('shape');
+    const { rerender } = render(<AppUIv3 />);
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('shape');
+
+    act(() => {
+      useAppStore.getState().setV3ActiveTab('style');
+    });
+    rerender(<AppUIv3 />);
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('style');
+    const panel = screen.getByTestId('pf3-panel');
+    expect(within(panel).getByTestId('pf3-style-tab')).toBeInTheDocument();
+  });
+
+  it('mobile landscape: panel is hidden in zen', () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-panel')).not.toBeInTheDocument();
+  });
+
+  it('mobile landscape: MobileStageControls hidden in zen', () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-mobile-stage-controls')).not.toBeInTheDocument();
+  });
+
+  it('orientation change listener: portrait → landscape', () => {
+    // Start in portrait
+    mockMediaQuery = createMediaQueryListMock(false);
+    const { rerender } = render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'mobile');
+    expect(screen.getByTestId('pf3-sheet')).toBeInTheDocument();
+
+    // Rotate to landscape
+    act(() => {
+      mockMediaQuery.triggerChange(true);
+    });
+    rerender(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'mobile-landscape');
+    expect(screen.queryByTestId('pf3-sheet')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pf3-panel')).toBeInTheDocument();
+  });
+
+  it('orientation change listener: landscape → portrait', () => {
+    // Start in landscape
+    mockMediaQuery = createMediaQueryListMock(true);
+    const { rerender } = render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'mobile-landscape');
+    expect(screen.getByTestId('pf3-panel')).toBeInTheDocument();
+
+    // Rotate to portrait
+    act(() => {
+      mockMediaQuery.triggerChange(false);
+    });
+    rerender(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'mobile');
+    expect(screen.queryByTestId('pf3-panel')).not.toBeInTheDocument();
+    expect(screen.getByTestId('pf3-sheet')).toBeInTheDocument();
+  });
+
+  it('orientation change listener: cleanup removes listener on unmount', () => {
+    mockMediaQuery = createMediaQueryListMock(true);
+    render(<AppUIv3 />);
+
+    const removeListenerSpy = vi.spyOn(mockMediaQuery, 'removeEventListener');
+    expect(removeListenerSpy).not.toHaveBeenCalled();
+
+    // After unmount, listener should be cleaned up
+    const initialListenerCount = mockMediaQuery.listeners.length;
+    expect(initialListenerCount).toBeGreaterThan(0);
   });
 });

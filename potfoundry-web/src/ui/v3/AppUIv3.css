@@ -19,3 +19,11 @@
   right: 0;
   pointer-events: auto;
 }
+
+/* ── Mobile landscape ─────────────────────────────────────────────────────── */
+/* Mobile landscape renders the desktop panel composition with mobile controls.
+   Hide StatusLine to preserve vertical space for the stage. */
+
+.pf3-root[data-layout="mobile-landscape"] [data-testid="pf3-status"] {
+  display: none;
+}
