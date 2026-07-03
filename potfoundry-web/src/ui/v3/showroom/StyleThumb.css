@@ -1,0 +1,95 @@
+/**
+ * StyleThumb Component Styles
+ *
+ * Lazy thumbnail tile for the showroom. Gold ring on selected state (spec §3.1).
+ * Silhouette fallback at 0.35 opacity while loading.
+ */
+
+.pf3-style-thumb__container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pf3-space-sm, 8px);
+}
+
+.pf3-style-thumb {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pf3-space-sm, 8px);
+  padding: var(--pf3-space-sm, 8px);
+  background: transparent;
+  border: 2px solid transparent;
+  border-radius: var(--pf3-radius-md, 9px);
+  cursor: pointer;
+  transition: all var(--pf3-dur-control, 120ms) ease-out;
+  font-family: inherit;
+  font-size: 0;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+/* Hover state: subtle surface highlight */
+.pf3-style-thumb:not(:disabled):hover {
+  background-color: var(--pf3-glass);
+}
+
+/* Active/pressed state */
+.pf3-style-thumb:active {
+  transform: scale(0.98);
+}
+
+/* Selected state: gold ring (actionable only per spec §3.1) */
+.pf3-style-thumb--selected {
+  border-color: var(--pf3-gold, #cfa967);
+  background-color: var(--pf3-gold-tint, rgba(180, 151, 90, 0.12));
+}
+
+.pf3-style-thumb__content {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--pf3-elevated, #2a2119);
+  border-radius: var(--pf3-radius-sm, 6px);
+  overflow: hidden;
+}
+
+.pf3-style-thumb__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Fallback silhouette SVG layer (visible while loading or on null result) */
+.pf3-style-thumb__fallback {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--pf3-space-sm, 8px);
+  color: var(--pf3-gold, #cfa967);
+}
+
+.pf3-style-thumb__silhouette {
+  width: 100%;
+  height: 100%;
+  max-width: 80%;
+  max-height: 80%;
+}
+
+.pf3-style-thumb__label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--pf3-text-secondary, #a8a29e);
+  text-align: center;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: -0.5px;
+}
