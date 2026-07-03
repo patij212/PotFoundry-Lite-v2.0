@@ -169,3 +169,166 @@ under-shoot on near-vertical crests/lips (density-invariant floors at 0.06 Gothi
 single highest-leverage next experiment — pre-register it on Gothic (cleanest target), expect it to also close HexHive
 and DragonScales-lip. No representational wall remains; every open item is a guard-metric swap, a density/tile-boundary
 push, a builder finish, or an accept-as-designed-sharp classification.
+
+---
+
+## PERP-GUARD EXPERIMENT (2026-07-03c)
+
+Built and ran the true-3D-PERPENDICULAR-driven refinement guard proposed as the "single highest-leverage next
+experiment" above. Pre-registered on GothicArches (the cleanest crest-under-shoot target). Ledger: registry section
+`E-2026-07-03-PERP-GUARD`; probe `research/bridge/_perp_guard.test.ts` (`PF_PERP_GUARD=1`, one env-gated `it` per unit,
+checkpointed ndjson, resumable); scorecard `research/exchange/_perp_guard/pg_rows.ndjson` (8 rows); render
+`research/exchange/_perp_guard/pg_gothic_floor.png`; commit `ba4fb37` (refactor/core-migration). Dev-only; no `src/` or
+shared-kernel edit; concurrent-workstream untracked files NOT swept (staged only the 3 probe files).
+
+### (1) Pre-registered kill-criterion + Gothic verdict
+
+**The lever.** A perp guard built as an OUTER LOOP (no kernel edit), reusing `buildInhouseMetricMesh`'s committed
+byte-identical-off `injectedPoints`/`pinInjected` hooks. Recipe = the confirmed tangled recipe (chordSteiner +
+chordTolMm + guardManifoldAlways + optimizeSweeps:2). Each iteration: select facets whose perpendicular exceeds
+`perpTolMm` using the same-(u,t) radial `perFaceChordSag` faceErr as a CONSERVATIVE upper-bound selector (radial ≥
+true-3D perp always ⇒ never misses a red facet, cheap, no whole-mesh projection); project each red facet's centroid to
+the true surface (`projectPointToRadialSurface`) and inject the FOOT (u,t) as a pinned point; re-mesh; stop when the
+honest `bruteAnchoredRedPerp.trustedP99` ≤ `perpTolMm` or a tri/iteration budget hits.
+
+**Pre-registered kill-criterion:** the perp guard CONFIRMS chord-guard-blindness (i.e. it is the missing lever) IFF,
+holding the tri budget fixed, injecting perp-driven surface feet drives Gothic `bruteAnchoredRedPerp.trustedP99` from
+its ~0.057 chord-floor to ≤ 0.02 (and ideally ≤ 0.012). If the guard fails to move the floor below 0.02 — or moves it
+the WRONG way at fixed budget — then chord-guard-blindness is REFUTED as the cause and the residual is a genuine
+steep-EXCLUDE cliff.
+
+**Gothic verdict: REFUTED — genuine steep-EXCLUDE rib-crest cliff.** The perp guard did NOT reach the bar and the
+residual is genuinely near-vertical (not a metric or guard artifact):
+
+- **The guard moved the floor the WRONG way at fixed budget.** Injecting 6000 then 12000 perp-driven surface feet added
+  only **+924 net tris** (the kernel absorbs them — the mesh is chordTol-bound, not point-budget-bound) and made
+  `trustedP99` WORSE: **0.1575 → 0.1814 → 0.1877** (%<20 0.5 → 3.4). No-op-to-harmful. A perp criterion CANNOT inject
+  its way to density because refinement size is chordTol-bound.
+- **The only floor movement came from chordTol DEPTH, and it FLOORS.** chordTol sweep 0.03 → **0.0573**, 0.015 →
+  **0.0421**, 0.008 → 0.0424 (STOPPED): true-3D perp floors at **~0.042mm** while `flChord` keeps dropping (0.037 →
+  0.030 → 0.018) and nRed collapses (836 → 544 → 81). Best `trustedP99` = **0.0421**, ~3.5× above the 0.012 bar, ~2×
+  above 0.02. A 1.36× gain (0.057 → 0.042), <2× — not a close.
+- **gnOver = 0 on EVERY row** ⇒ the brute-twin AGREES with GN: the residual is genuine near-vertical geometry, NOT GN
+  steep-overstatement. rawNonMan 0 throughout; %<20 ≤ 1.1% on the depth runs.
+- **Surprise finding:** chordSteiner size is **chordTol-bound, NOT point-budget-bound** — @2.5M budget `trustedP99`
+  0.0573 == @6M budget (IDENTICAL 2.19M-tri mesh). This is WHY a perpendicular selector cannot drive density.
+- **Render `pg_gothic_floor.png` confirms:** mesh is GREEN (CAD-grade) everywhere EXCEPT thin vertical red/orange
+  streaks running exactly along the near-vertical Gothic arch-RIB CREST lines = the steep-EXCLUDE signature (radial
+  overstates: radialMax 0.40 vs true-3D floor 0.042).
+
+⇒ **RECLASSIFY GothicArches as steep-EXCLUDE + accept** — same class as BambooSegments / LowPolyFacet / DragonScales:
+faces are CAD-grade, the p99 tail is the genuine near-vertical designed rib-crest cliff. If a hard ≤0.012-everywhere on
+Gothic is later mandated it needs a crest-EXCLUSION field (creaseStraddle class), NOT more refinement.
+
+### (2) The 4 styles — perp-guard results
+
+Note: the perp guard was **MEASURED on Gothic only** this pass; the apply-batch for HexHive / DragonScales /
+GeometricStar returned empty (not run). Their rows below carry forward the GAP-CLOSE-pass (2026-07-03b) measured
+numbers as the current best-known state, with the perp-guard's Gothic finding applied to the classification column.
+
+| style | trustedP99 before → after | tris | %<20 | rawNonMan | NOW ≤0.01? | classification |
+|---|---|---|---|---|---|---|
+| **GothicArches** | 0.0573 → **0.0421** (chordTol depth; perp-inject made it WORSE 0.1575→0.1877) | 2.60M (2.19M chord-bound plateau) | 1.1 | 0 | ❌ NO (floors ~0.042, ~3.5× bar) | **steep-EXCLUDE** (rib-crest cliff, faces CAD-grade; gnOver=0) — RECLASSIFIED |
+| **HexagonalHive** | 0.0115 (GAP-close; perp guard NOT re-run) | ~910k (chord-saturated) | 0 | 0 | 🔶 NEAR (~2× off, no red facets) | tangled CDT-under-M; perp guard UNTESTED here — but same chordTol-bound kernel ⇒ perp-inject likely no-op; needs chordTol depth or crest-exclusion |
+| **DragonScales** | 0.0136 (GAP-close; perp guard NOT re-run) | — | 0.4 | 0 | 🔶 NO (density-INVARIANT floor) | **steep-EXCLUDE** tread-LIP (near-vertical C0 riser; radial overstates) — same class as Gothic |
+| **GeometricStar** | 0.0362 (GAP-close; perp guard NOT re-run) | — | 1.1 | 0 | 🔶 NO (density-responsive) | genuine crease (C1 strapwork chevron + ~0.024 C0 tile-boundary); tile-boundary doubled-rings, NOT perp guard |
+
+### (3) Updated count: 13/20 MEASURED ≤0.01 (UNCHANGED)
+
+The perp guard did **not** promote any style. Count stays **13/20** (#1–11 + SpiralRidges + ArtDeco). Gothic did not
+cross the bar (0.0421 best); HexHive/DragonScales/GeometricStar were not re-measured this pass. The experiment's value
+is diagnostic: it **REFUTED** the "chord-guard-blindness is a closable metric gap on Gothic" hypothesis and
+RECLASSIFIED Gothic (and, by the same chordTol-bound mechanism + measured density-invariance, DragonScales-lip) as
+genuine **steep-EXCLUDE**.
+
+### (4) Genuine steep-EXCLUDE (designed cliffs, faces CAD-grade) vs still-open engineering
+
+**Genuine steep-EXCLUDE — accept as designed-sharp (faces exact/CAD-grade; the p99 tail is real near-vertical geometry,
+radial ruler overstates it, true-3D floors):**
+- **LowPolyFacet** — 12 designed convex-polygon edges (density-INVARIANT).
+- **GothicArches** — rib-crest cliff (NEW this pass: floors 0.042, gnOver=0, render-confirmed vertical streaks).
+- **DragonScales** — tread-lip C0 riser (density-invariant 0.013, characterized irreducible).
+- **BambooSegments** — segment-ring C0 cliff (0.058 doubled-ring; ±1.38mm zero-width radius step).
+
+**Still-open ENGINEERING (not a representational wall — a builder finish, a tile-boundary/density push, or worst-facet
+polish):**
+- **SuperformulaBlossom** — seam-cliff LADDER degeneracy + rawNonMan 8 (body already 0.0033 CAD-grade). Explicit
+  seam-cliff builder finish. UNTOUCHED since first pass.
+- **CelticKnot / CelticTriquetra** — braid swept-grid: p99 already ≤0.01, residual is the density-INVARIANT swept-crease
+  straddle worst-FACET; cell boundaries must FOLLOW `localU=0.4·sin(v+phase)`. Worst-facet polish only.
+- **HexagonalHive** — PARTIAL-NEAR 0.0115 (~2× off, no red facets, chord-saturated). Genuinely near; likely needs a
+  chordTol-depth push or a light hex-rim crest-exclusion (perp guard untested but expected no-op by the Gothic
+  mechanism).
+- **GeometricStar** — PARTIAL 0.0362, density-responsive genuine crease; closable via tile-boundary doubled-rings at
+  z=k·30 + strapwork chevron density. Not a perp-guard target.
+
+### (5) Is "0.01 on all 20" complete? — STEEP-EXCLUDE-ACCEPT-nearly-complete; NOT literal-measured-complete
+
+- **Literal MEASURED ≤0.01 on all 20: NO** — 13/20 measured; 7 remain above 0.01.
+- **Steep-EXCLUDE-accept-complete: NEARLY.** Of the 7, **4 are now genuine steep-EXCLUDE** (LowPoly already accepted;
+  Gothic + DragonScales + BambooSegments reclassified/characterized as designed near-vertical cliffs with CAD-grade
+  faces, true-3D floors, gnOver=0, radial-overstated). Under a steep-EXCLUDE-accept standard those 4 are DONE (faces
+  CAD-grade, tail = designed sharp geometry). That leaves **3 genuine engineering items**: SFB (seam-ladder builder +
+  watertight-8), CK/CT (braid worst-facet polish, p99 already met), and the two closable density/tile pushes
+  (HexHive ~2×, GeometricStar).
+- **Single next lever, if any:** for a hard literal-0.01-everywhere mandate on the steep-EXCLUDE styles, the lever is a
+  **crest/riser EXCLUSION field (creaseStraddle class)** — NOT more refinement and NOT a perp-driven injector (proven
+  no-op-to-harmful, chordTol-bound). For the genuinely-open engineering, the highest-leverage single item is the **SFB
+  seam-cliff builder finish + rawNonMan-8 fix** (the only style with a watertightness defect and an unfinished builder;
+  everything else is polish or accept-as-designed).
+
+**Net:** the perp guard is REFUTED as a general steep-style lever. Its diagnostic payoff is decisive: refinement size is
+chordTol-bound (a perp criterion cannot inject its way to density), and even at chordTol depth the near-vertical
+component FLOORS (gnOver=0 ⇒ genuine). The theta-ridge steep styles (Gothic, DragonScales, Bamboo, LowPoly) are
+steep-EXCLUDE by construction, faces CAD-grade — the correct disposition is ACCEPT + document, reserving a
+crest-exclusion field only if a literal-0.01-on-the-cliff is ever mandated.
+
+## CONTAINED-WINS PASS (2026-07-03d) — HexHive CLOSED → 14/20; SFB watertight-8 FIXED; GeoStar reclassified
+
+Workflow `wqcmv0g3w` (interrupted mid-synth by a process exit; recovered from the on-disk `_ct_*` checkpoints —
+all 3 close agents had finished). Probes `research/bridge/_ct_{hexhive,sfbwater*,gs}.test.ts`; rows
+`research/exchange/_ct_*/scorecard.ndjson`.
+
+| style | recipe | honest true-3D p99 (2 densities) | %<20 | rawNonMan | serration | reaches ≤0.01? | classification |
+|---|---|---|---|---|---|---|---|
+| **HexagonalHive** | CDT-under-M steiner0.010 / 0.008 | **0.0093** / 0.0086 (fl-chord; nRed **0**) | 0 | **0** | ~0 | **YES — CLOSED** | pure-density, no steep tail |
+| **SuperformulaBlossom** | CDT-reroute + seam constraintEdges (FIXB) | body **0.0052** CAD; seam 0.0574 | 0.2 | **0** (was 8) | **9.5** (seam) | no (seam) | watertight-8 FIXED; non-2π seam not yet a clean feature edge (constraint rec 73/200) |
+| **GeometricStar** | feature-conforming (strap-crease loci + wall picket columns) | faces **0.0096** CAD; chevron **0.065** (0.08→0.065) | 7.7 | 0 | 0.025 | no (chevron) | RECLASSIFIED **steep-EXCLUDE** (designed C1 chevron + C0 tile-boundary crease; faces CAD-grade) |
+
+### Updated count: **14/20 MEASURED ≤0.01** (+HexagonalHive)
+
+#1–11 + SpiralRidges + ArtDeco + **HexHive**. HexHive was the cleanest remaining target (no red facets, chord-saturated)
+and closed exactly as predicted by pure chordTol depth.
+
+### The remaining 6, precisely characterized (NO representational wall)
+
+**5 genuine steep-EXCLUDE — designed near-vertical cliffs/creases, faces CAD-grade** (the p99 tail is real geometry the
+radial ruler overstates; true-3D floors; gnOver≈0): **LowPolyFacet** (12 polygon edges), **GothicArches** (rib crest),
+**DragonScales** (tread lip), **BambooSegments** (segment ring), **GeometricStar** (strapwork chevron — NEW this pass).
+
+**1 watertight-now, seam-open: SuperformulaBlossom** — the CDT-reroute FIXED the rawNonMan-8 (now 0) and the body is
+CAD-grade (0.0052), but the non-2π θ-seam is a genuine radius-discontinuity cliff that neither variant closed to
+zero-serration ≤0.01 (FIXB: serration 9.5 @ true-3D 0.057; wrap: serration 0 @ true-3D 1.9). Constraint recovery on the
+seam is lossy (73/200).
+
+**Plus the braids CK/CT** — p99 already ≤0.01; residual is the swept-crease straddle worst-FACET (needs swept-curve grid).
+
+### The unifying lever for the last 6 (the standard-compliant finish)
+
+All 6 non-measured styles share ONE need: the **designed cliff/crest/seam must become a zero-serration FEATURE EDGE**.
+The STRUCTURED primitives (doubled-rings ArtDeco/DragonScales, doubled-grid BasketWeave) already achieve this by
+construction (serration ~0). The CDT+constraintEdge / picket-column approaches tried this pass REDUCED serration
+(GeoStar 0.036→0.025, SFB body→0) but did NOT reach zero, because **CDT constraint-recovery is lossy** (SFB seam
+73/200). ⇒ the general lever is a **structured doubled-crest/rung feature-conforming primitive** — generalize
+doubled-rings/doubled-grid to arbitrary feature curves (extract crest/cliff/seam loci via the existing `featureGraph`
+detector; build explicit DOUBLED feature-edge pairs + a rung strip on the vertical wall; M-square the smooth regions
+between). This is the "whole-wall per-cell feature-conforming mesher" the campaign has been circling. It applies to all
+6 at once (Gothic ribs, GeoStar chevrons, Bamboo rings, LowPoly polygon edges, DragonScales lip, SFB seam), and the
+prior feature-conforming spike (Gothic 0.24→0.11, 20/20 watertight) is a reusable base.
+
+### Verdict
+
+**14/20 literal-measured ≤0.01 + 5 steep-EXCLUDE designed-cliffs (faces CAD-grade) + SFB (watertight, seam-open).** No
+representational wall. Under a steep-EXCLUDE-accept standard, 19/20 are done (14 measured + 5 designed-sharp with
+CAD-grade faces), with SFB's seam the lone genuine builder-finish. Under a LITERAL zero-serration-on-every-cliff mandate,
+the single remaining lever is the structured doubled-crest feature-conforming primitive above (one build, all 6).
