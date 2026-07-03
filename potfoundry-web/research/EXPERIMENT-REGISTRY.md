@@ -2467,3 +2467,32 @@ independently on all 5 at the stated density. Caveats: HarmonicRipple needs full
 **RECOMMENDATION:** accept BasketWeave = the crease-conforming doubled-grid brick at cliffChord≈0.08 SQUARE cells (productionize behind the default-off flag; residual %<20 tail = optional `buildWeaveBrick` vertical-strip+corner-post pass). For the braids, build the swept-curve doubled-grid in `_braidLib` (extract ribbon centerlines via the existing `celticKnotAnalyticCenterlines` oracle) — expected to close CK/CT to literal ≤0.01-worst like BasketWeave.
 
 **LEDGER:** scorecard `research/exchange/_close_weave/SCORECARD.md`; rows `research/exchange/_close_weave/scorecard.ndjson` (6 rows); probe `research/bridge/_close_weave.test.ts` (PF_CLOSE_WEAVE=1, config `vitest.close_weave.config.ts`). Reuses `_weaveLib` + `_braidLib` + labkit rulers READ-ONLY. NO src/ or kernel edit.
+
+---
+
+## E-2026-07-03-VERIFY-THETA — ADVERSARIAL re-measure of the θ-RIDGE close-partner scorecard
+
+**Role:** independent verifier (default REFUTED). Re-meshed the partner's ONE `reaches001=true` claim with THEIR recipe (`buildScaleColMesh`, DIMS {H:120,Rb:40,Rt:50}) and re-measured with the HONEST labkit rulers. Probe `research/bridge/_verify_theta.test.ts` (PF_VERIFY_THETA=1); rows `research/exchange/_verify_theta/verify.ndjson`.
+
+**The vulnerability in the claim:** the partner's `honest` field FELL BACK to `p99(radial.faceErr)` over ALL faces because `bruteAnchoredRedPerp` uses `redMm=0.1` and SpiralRidges has radialMax 0.0152 < 0.1 ⇒ the brute anchor NEVER FIRED. So their "true-3D 0.0046" is a whole-mesh RADIAL percentile diluted by the flat body — it was never cross-checked against the true-3D projector NOR against the honest worst-red tail.
+
+**SpiralRidges — REFUTED (reaches001=true is FALSE on the honest tail; also DENSITY-FRAGILE):**
+| density | tris | radial p99 | TRUE-3D p99 (perFaceTrue3DSag) | brute-anchor trusted p99 (redMm 0.01, gnOver 0) | %<20 | rawNM |
+|---|---|---|---|---|---|---|
+| h=0.20 (partner finest) | 3.29M | 0.0046 (reproduces partner) | 0.0048 (ratio 0.96 — NOT a ruler artifact) | **0.013** (nRed 3402) | 0.1% | 0 |
+| h=0.40 (HALF) | 0.82M | 0.0181 | 0.018 | **0.0408** | 0% | 0 |
+
+- **Ruler cross-check PASSES** (radial≈true-3D, ratio 0.96, gnOver 0) — SpiralRidges relief is genuinely smooth/near-CAD; the partner did NOT hide a 3D gap behind a lenient radial. Watertight independently confirmed (rawNM 0 both densities).
+- **BUT the ≤0.01 verdict FAILS the honest worst-red tail:** brute-anchored trusted p99 of the worst red facets is **0.013mm > 0.010** at the finest density. The partner's 0.0046 is the whole-mesh radial percentile (body-diluted), NOT the honest tail the kill-criterion asks for.
+- **DENSITY-FRAGILE:** halving density blows the honest tail to 0.0408 (~3.1×) — the (approximate) sub-0.01 whole-mesh number is over-fit to h=0.20.
+
+**Partner's 3 REFUTED/PARTIAL diagnoses — SANITY-CHECKED, sound:**
+- **HexagonalHive** REFUTED-AXIS: 33.5mm bridge with `gnOver=0` (brute AGREES it is a genuine bridge, not GN overstatement) ⇒ ridge-graph mis-chains a staggered 2D hex grid. Diagnosis backed by the gnOver=0 receipt. SOUND.
+- **GothicArches** REFUTED-AXIS: 29.9mm / 30.7% slivers, drift 39.7mm, 144 spurious births ⇒ z-localized 2D rib lattice, worse than prod feature-conforming (0.199). SOUND.
+- **SuperformulaBlossom** PARTIAL: worst-60 localized 100% to the seam-cliff ladder (`fold.ndjson`: worst60_bridge=60/tiny=0, u=[0,0.5], maxEdge 108mm). CAVEAT: the "interior CAD-grade" rests on RADIAL own-region 0.0033; the diag.ndjson interior TRUE-3D p99 is 35.6mm (ladder-dominated) and the claimed interior 0.0106 @h=0.15 was **never scored** (h=0.15 row absent from scorecard.ndjson — prose-only). The seam-ladder localization itself is measured and sound; the interior-true-3D claim is unverified. reaches001=false is correct regardless.
+
+**VERDICT:** SpiralRidges reaches001=true **REFUTED** (honest brute-anchored worst-red p99 0.013 > 0.01 at finest; density-fragile to 0.041 at half). Not a ruler artifact and watertight — a genuinely near-CAD smooth style, but it does NOT clear the ≤0.01 bar on the honest tail. The other 3 non-reaching diagnoses stand (2 REFUTED-AXIS with gnOver=0 receipts, 1 PARTIAL with a measured seam-ladder localization + one unverified interior sub-claim).
+
+**RECOMMENDATION:** correct the θ-axis scorecard — SpiralRidges is ACCEPT-near-CAD (0.013 worst-red, density-responsive) NOT reaches001. The partner's `reaches001` gate is unreliable when `bruteAnchoredRedPerp` never fires (radialMax<redMm): the honest tail should always be measured with a redMm at/below the target (0.01), not left to the body-diluted whole-mesh radial p99. Re-score SuperformulaBlossom interior with the TRUE-3D projector at h=0.15 before granting it "interior CAD-grade".
+
+**LEDGER:** `research/exchange/_verify_theta/verify.ndjson`; probe `research/bridge/_verify_theta.test.ts` (PF_VERIFY_THETA=1). Reuses `_scaleColDriver` + labkit rulers READ-ONLY. NO src/ or kernel edit.
