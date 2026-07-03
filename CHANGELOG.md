@@ -12,6 +12,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **Export-grade mesh quality (Rhino / Grasshopper):** New
+  `potfoundry.core.mesh_quality` module with dependency-free diagnostics
+  (`signed_volume`, `winding_defects`, `manifold_report`) and a deterministic
+  `orient_outward` repair pass (the equivalent of Rhino's *Unify Mesh Normals*).
+  New `tests/test_mesh_quality.py` asserts every style (plain and twisted)
+  exports as a closed manifold with globally-consistent, outward-facing normals.
+
+### Fixed
+- **Mesh normals were inside-out (root cause):** `build_pot_mesh` emitted a mesh
+  with *negative* signed volume (inward-facing normals) and 240 inconsistently
+  wound edges at the drain/bottom-slab junction rings. The mesh was
+  index-watertight, so this was invisible to the existing watertight test, but
+  Rhino/Grasshopper flagged flipped faces and slicers reported inverted normals.
+  Winding of the outer wall, inner wall, rim cap and bottom underside is now
+  fixed at construction so exported STLs are unified and outward-facing (proven
+  end-to-end: exported binary STL normals give positive divergence-theorem
+  volume across all styles). Applied to both `potfoundry/core/geometry.py` and
+  the legacy `potfoundry/geometry.py`.
 
 ### Fixed
 - **Critical Bug Fixes:**
