@@ -51,26 +51,28 @@ function renderSilhouetteSVG(
   const viewBoxWidth = maxR * 2 + 10;
   const viewBoxHeight = H + 10;
 
-  // Path data for outer profile (left half, mirrored to right)
-  const outerPath = samples
+  // Symmetric silhouette: left outer edge (−rOuter from center) descending,
+  // right outer edge (+rOuter from center) ascending — mirrors the generatrix.
+  const centerX = maxR + 5;
+
+  const leftPath = samples
     .map((sample, i) => {
-      const x = maxR + 5 - sample.rOuter; // Left half: x decreases
+      const x = centerX - sample.rOuter;
       const y = sample.z + 5;
       return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
     })
     .join(' ');
 
-  // Continue with inner profile back (right half, ascending)
-  const innerPath = [...samples]
+  const rightPath = [...samples]
     .reverse()
-    .map((sample, i) => {
-      const x = maxR + 5 - sample.rInner; // Inner: slightly inset
+    .map((sample) => {
+      const x = centerX + sample.rOuter;
       const y = sample.z + 5;
-      return i === 0 ? `L ${x} ${y}` : `L ${x} ${y}`;
+      return `L ${x} ${y}`;
     })
     .join(' ');
 
-  const fullPath = outerPath + ' ' + innerPath + ' Z';
+  const fullPath = leftPath + ' ' + rightPath + ' Z';
 
   return (
     <svg
@@ -105,6 +107,7 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const hoverFiredRef = useRef(false);
     const mountedRef = useRef(true);
 
     const [isVisible, setIsVisible] = useState(false);
@@ -173,10 +176,12 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
 
     // Hover timer management
     const handleMouseEnter = useCallback(() => {
+      hoverFiredRef.current = false; // reset on each enter
       if (!onHoverIntent) return;
 
       hoverTimerRef.current = setTimeout(() => {
         if (mountedRef.current) {
+          hoverFiredRef.current = true;
           onHoverIntent();
         }
       }, 150);
@@ -187,7 +192,9 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
         clearTimeout(hoverTimerRef.current);
         hoverTimerRef.current = null;
       }
-      if (onHoverEnd && mountedRef.current) {
+      const didFire = hoverFiredRef.current;
+      hoverFiredRef.current = false;
+      if (onHoverEnd && mountedRef.current && didFire) {
         onHoverEnd();
       }
     }, [onHoverEnd]);
@@ -222,6 +229,7 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
           data-testid={dataTestId}
           type="button"
           aria-label={`Select ${displayName} style`}
+          aria-pressed={selected}
         >
           <div className="pf3-style-thumb__content">
             <canvas

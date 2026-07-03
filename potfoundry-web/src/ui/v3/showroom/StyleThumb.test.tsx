@@ -102,6 +102,78 @@ describe('StyleThumb', () => {
     expect(canvas).toHaveAttribute('height', '100');
   });
 
+  it('lazy chain: IO→getStyleThumbnail→putImageData when element becomes visible', async () => {
+    // Use real timers so waitFor polling works without manual timer advancement
+    vi.useRealTimers();
+
+    // Local IO override: observe() immediately fires isIntersecting: true
+    const originalIO = global.IntersectionObserver;
+    class ImmediateIO {
+      private cb: IntersectionObserverCallback;
+      constructor(cb: IntersectionObserverCallback) { this.cb = cb; }
+      observe(target: Element) {
+        this.cb(
+          [{ isIntersecting: true, target, intersectionRatio: 1 } as unknown as IntersectionObserverEntry],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    global.IntersectionObserver = ImmediateIO as unknown as typeof IntersectionObserver;
+
+    try {
+      const imageData = { width: 4, height: 4, data: new Uint8ClampedArray(64) } as unknown as ImageData;
+      (styleThumbnails.getStyleThumbnail as MockedFunction<typeof styleThumbnails.getStyleThumbnail>)
+        .mockResolvedValue(imageData);
+
+      (profileSampler.sampleProfile as MockedFunction<typeof profileSampler.sampleProfile>)
+        .mockReturnValue({
+          samples: [{ z: 0, rOuter: 25, rInner: 20 }],
+          maxR: 30,
+          H: mockGeometry.H,
+          topOD: mockGeometry.top_od,
+          bottomOD: mockGeometry.bottom_od,
+        });
+
+      render(<StyleThumb styleName={styleName} size={100} data-testid="style-thumb" />);
+
+      // IO fires synchronously on observe → isVisible=true → fetch triggered
+      expect(styleThumbnails.getStyleThumbnail).toHaveBeenCalledWith(styleName, mockGeometry, 100);
+
+      // Wait for promise resolution → imageData state → putImageData on canvas
+      const button = screen.getByRole('button');
+      const canvas = button.querySelector('canvas') as HTMLCanvasElement;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+
+      await waitFor(() => {
+        expect(ctx.putImageData).toHaveBeenCalledWith(imageData, 0, 0);
+      });
+    } finally {
+      global.IntersectionObserver = originalIO;
+    }
+  });
+
+  it('lazy chain: getStyleThumbnail NOT called when element never becomes visible', () => {
+    // Default IO mock from setup.ts has a no-op observe() — callback never fires
+    (styleThumbnails.getStyleThumbnail as MockedFunction<typeof styleThumbnails.getStyleThumbnail>)
+      .mockReturnValue(new Promise(() => {}));
+
+    (profileSampler.sampleProfile as MockedFunction<typeof profileSampler.sampleProfile>)
+      .mockReturnValue({
+        samples: [{ z: 0, rOuter: 25, rInner: 20 }],
+        maxR: 30,
+        H: mockGeometry.H,
+        topOD: mockGeometry.top_od,
+        bottomOD: mockGeometry.bottom_od,
+      });
+
+    render(<StyleThumb styleName={styleName} size={100} data-testid="style-thumb" />);
+
+    // isVisible stays false → fetch gate never crossed
+    expect(styleThumbnails.getStyleThumbnail).not.toHaveBeenCalled();
+  });
+
   it('applies gold ring class when selected is true', () => {
     (styleThumbnails.getStyleThumbnail as MockedFunction<typeof styleThumbnails.getStyleThumbnail>)
       .mockReturnValue(new Promise(() => {}));
@@ -137,6 +209,7 @@ describe('StyleThumb', () => {
     );
 
     expect(button).toHaveClass('pf3-style-thumb--selected');
+    expect(button).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('fires onHoverIntent after 150ms hover', () => {
@@ -177,8 +250,9 @@ describe('StyleThumb', () => {
     expect(onHoverIntent).toHaveBeenCalledTimes(1);
   });
 
-  it('does not fire onHoverIntent if hover ends before 150ms', () => {
+  it('early leave (<150ms) fires neither onHoverIntent nor onHoverEnd', () => {
     const onHoverIntent = vi.fn();
+    const onHoverEnd = vi.fn();
 
     (styleThumbnails.getStyleThumbnail as MockedFunction<typeof styleThumbnails.getStyleThumbnail>)
       .mockReturnValue(new Promise(() => {}));
@@ -197,6 +271,7 @@ describe('StyleThumb', () => {
         styleName={styleName}
         size={100}
         onHoverIntent={onHoverIntent}
+        onHoverEnd={onHoverEnd}
         data-testid="style-thumb"
       />
     );
@@ -204,13 +279,14 @@ describe('StyleThumb', () => {
     const button = screen.getByRole('button');
 
     fireEvent.mouseEnter(button);
-    vi.advanceTimersByTime(100); // Only 100ms
+    vi.advanceTimersByTime(100); // Only 100ms — timer has not fired
 
     fireEvent.mouseLeave(button);
 
-    // Even if we advance more time after leave, should not fire
+    // Even if we advance more time after leave, neither callback fires
     vi.advanceTimersByTime(100);
     expect(onHoverIntent).not.toHaveBeenCalled();
+    expect(onHoverEnd).not.toHaveBeenCalled();
   });
 
   it('fires onHoverEnd when leaving after onHoverIntent fired', () => {
