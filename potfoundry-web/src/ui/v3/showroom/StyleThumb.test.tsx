@@ -554,7 +554,7 @@ describe('StyleThumb', () => {
       expect(onHoverEnd).not.toHaveBeenCalled();
     });
 
-    it('touchcancel during active preview: onHoverEnd reverts; synthetic click suppressed', () => {
+    it('touchcancel during active preview: onHoverEnd reverts; next genuine tap fires onClick (F1 regression pin)', () => {
       const onHoverIntent = vi.fn();
       const onHoverEnd = vi.fn();
       const onClick = vi.fn();
@@ -571,16 +571,47 @@ describe('StyleThumb', () => {
       );
       const button = screen.getByRole('button');
 
+      // Trigger long-press preview
       touch(button, 'touchstart');
       vi.advanceTimersByTime(350);
       expect(onHoverIntent).toHaveBeenCalledTimes(1);
 
+      // System cancels the touch — preview must revert
       touch(button, 'touchcancel');
       expect(onHoverEnd).toHaveBeenCalledTimes(1);
 
-      // Suppression flag is set defensively even for touchcancel
+      // The NEXT genuine quick tap must NOT be swallowed — this was the field failure
+      touch(button, 'touchstart');
+      vi.advanceTimersByTime(100); // quick tap — under 350ms
+      touch(button, 'touchend');
       fireEvent.click(button);
-      expect(onClick).not.toHaveBeenCalled();
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('hybrid device: mouseenter during touchstart is blocked — onHoverIntent fires via touch path only (F2)', () => {
+      const onHoverIntent = vi.fn();
+
+      render(
+        <StyleThumb
+          styleName={styleName}
+          size={100}
+          onHoverIntent={onHoverIntent}
+          data-testid="style-thumb"
+        />
+      );
+      const button = screen.getByRole('button');
+
+      // Touch begins — hybrid browser may fire mouseenter immediately
+      touch(button, 'touchstart');
+      fireEvent.mouseEnter(button);
+
+      // 150ms hover timer must NOT fire (touch in progress)
+      vi.advanceTimersByTime(150);
+      expect(onHoverIntent).not.toHaveBeenCalled();
+
+      // 350ms touch timer fires — called exactly once
+      vi.advanceTimersByTime(200); // total 350ms from touchstart
+      expect(onHoverIntent).toHaveBeenCalledTimes(1);
     });
   });
 });

@@ -119,6 +119,8 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
     // Suppression flags: block the synthetic mouse events browsers fire after touchend
     const suppressNextClickRef = useRef(false);
     const suppressNextMouseEnterRef = useRef(false);
+    // F2: true while a touch gesture is in progress — blocks hybrid-device mouseenter
+    const touchInProgressRef = useRef(false);
 
     const [isVisible, setIsVisible] = useState(false);
     const [imageData, setImageData] = useState<ImageData | null>(null);
@@ -191,6 +193,8 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
         suppressNextMouseEnterRef.current = false;
         return;
       }
+      // F2: hybrid devices fire mouseenter on touchstart — block while touch is in progress
+      if (touchInProgressRef.current) return;
       hoverFiredRef.current = false; // reset on each enter
       if (!onHoverIntent) return;
 
@@ -232,6 +236,12 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
 
     const handleTouchStart = useCallback(
       (e: React.TouchEvent<HTMLButtonElement>) => {
+        // F1: reset any stale suppression flags from a previous gesture (e.g. after touchcancel)
+        suppressNextClickRef.current = false;
+        suppressNextMouseEnterRef.current = false;
+        // F2: mark touch in progress to block hybrid-device mouseenter
+        touchInProgressRef.current = true;
+
         const touch = e.touches[0];
         touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
         touchPreviewActiveRef.current = false;
@@ -267,6 +277,7 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
         clearTimeout(touchTimerRef.current);
         touchTimerRef.current = null;
       }
+      touchInProgressRef.current = false; // F2: touch gesture ended
       if (touchPreviewActiveRef.current) {
         // Long-press path: revert the preview and suppress the synthetic events
         touchPreviewActiveRef.current = false;
@@ -282,12 +293,13 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
         clearTimeout(touchTimerRef.current);
         touchTimerRef.current = null;
       }
+      // F1: do NOT set suppression flags here — touchcancel emits no synthetic click/mouseenter,
+      // so stale flags would swallow the NEXT genuine tap.
+      // F2: touch gesture ended (cancel counts as end)
+      touchInProgressRef.current = false;
       if (touchPreviewActiveRef.current) {
         touchPreviewActiveRef.current = false;
         onHoverEnd?.();
-        // touchcancel does not emit synthetic click, but set flag defensively
-        suppressNextClickRef.current = true;
-        suppressNextMouseEnterRef.current = true;
       }
     }, [onHoverEnd]);
 
