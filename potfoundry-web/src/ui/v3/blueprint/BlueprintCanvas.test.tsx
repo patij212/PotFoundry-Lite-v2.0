@@ -345,6 +345,26 @@ describe('BlueprintCanvas strip mode (touch)', () => {
     expect(handle).toHaveAttribute('r', '6');
   });
 
+  it('strip mode handle has transparent stroke with width 36 for widened hit area (≥28px)', () => {
+    render(
+      <TouchModeProvider value={true}>
+        <BlueprintCanvas />
+      </TouchModeProvider>,
+    );
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    expect(handle).toHaveAttribute('stroke', 'transparent');
+    expect(handle.getAttribute('stroke-width')).toBe('36');
+    // Effective hit radius = r + strokeWidth/2 = 12 + 36/2 = 30 SVU
+    // At 0.49 px/unit: 30 * 0.49 ≈ 14.7px radius ≈ 29.4px diameter ≥ 28px ✓
+  });
+
+  it('desktop mode handle has stroke width 0 (no visible transparent stroke)', () => {
+    render(<BlueprintCanvas />);
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    expect(handle).toHaveAttribute('stroke', 'transparent');
+    expect(handle.getAttribute('stroke-width')).toBe('0');
+  });
+
   it('strip mode drag still writes to store (rim handle with scaled mocked rect)', () => {
     // Mock getBoundingClientRect for strip container (64px height, ~98px width)
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({

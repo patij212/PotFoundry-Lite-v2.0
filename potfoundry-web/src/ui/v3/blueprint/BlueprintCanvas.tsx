@@ -333,6 +333,9 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           cx={xOf(profile.topOD / 2, 1)}
           cy={rimY}
           r={handleRadius}
+          stroke="transparent"
+          strokeWidth={isStrip ? 36 : 0}
+          style={{ pointerEvents: 'all' }}
           onPointerDown={(e) => onHandlePointerDown(e, 'rim', geometry.top_od)}
           onKeyDown={(e) => onHandleKeyDown(e, 'rim', geometry.top_od)}
         />
@@ -351,6 +354,9 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           cx={xOf(profile.bottomOD / 2, 1)}
           cy={baseY}
           r={handleRadius}
+          stroke="transparent"
+          strokeWidth={isStrip ? 36 : 0}
+          style={{ pointerEvents: 'all' }}
           onPointerDown={(e) => onHandlePointerDown(e, 'base', geometry.bottom_od)}
           onKeyDown={(e) => onHandleKeyDown(e, 'base', geometry.bottom_od)}
         />
@@ -369,6 +375,9 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           cx={CENTER_X}
           cy={rimY}
           r={handleRadius}
+          stroke="transparent"
+          strokeWidth={isStrip ? 36 : 0}
+          style={{ pointerEvents: 'all' }}
           onPointerDown={(e) => onHandlePointerDown(e, 'height', geometry.H)}
           onKeyDown={(e) => onHandleKeyDown(e, 'height', geometry.H)}
         />
@@ -387,6 +396,9 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           cx={xOf(bellySample.rOuter, 1)}
           cy={yOf(bellySample.z)}
           r={handleRadius}
+          stroke="transparent"
+          strokeWidth={isStrip ? 36 : 0}
+          style={{ pointerEvents: 'all' }}
           onPointerDown={(e) => onHandlePointerDown(e, 'belly', geometry.bellAmp)}
           onKeyDown={(e) => onHandleKeyDown(e, 'belly', geometry.bellAmp)}
         />
