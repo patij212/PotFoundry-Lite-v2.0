@@ -31,3 +31,13 @@
 .pf3-mobile-btn:active {
   color: var(--pf3-gold);
 }
+
+/* Stage controls belong to a visible stage: when the bottom sheet expands
+   beyond peek (half/full) it covers the stage, so hide the controls instead
+   of leaving them occluded behind the sheet edge. body[data-mobile-sheet-state]
+   only exists while the mobile sheet is mounted — desktop and mobile-landscape
+   (no sheet) are unaffected. */
+body[data-mobile-sheet-state='half'] .pf3-mobile-stage-controls,
+body[data-mobile-sheet-state='full'] .pf3-mobile-stage-controls {
+  display: none;
+}

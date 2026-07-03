@@ -238,7 +238,36 @@ describe('ShowroomOverlay', () => {
     }
   });
 
-  // ── 11. Footer hint respects touch mode ──────────────────────────────────────
+  // ── 11. Header close button: close-without-apply (F1 mobile touch exit) ──────
+  it('close button closes the overlay, restores an active preview snapshot, and does not apply', () => {
+    vi.useFakeTimers();
+    try {
+      const customOpts = { ...INITIAL_STYLE.opts, hr_petals: 12 };
+      useAppStore.setState({ style: { name: 'HarmonicRipple', opts: customOpts } });
+
+      render(<ShowroomOverlay />);
+      openShowroom();
+
+      // Activate a hover preview so close must revert it (no mouseLeave first)
+      fireEvent.mouseEnter(screen.getByTestId('style-thumb-ArtDeco'));
+      act(() => {
+        vi.advanceTimersByTime(150);
+      });
+      expect(useAppStore.getState().style.name).toBe('ArtDeco');
+
+      // Tap the header close button — same close-without-apply path as Escape
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+      expect(useAppStore.getState().style.name).toBe('HarmonicRipple');
+      expect(useAppStore.getState().style.opts).toEqual(customOpts);
+      // The tile-click apply path must NOT have fired
+      expect(workingSet.pushRecent).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  // ── 12. Footer hint respects touch mode ──────────────────────────────────────
   it('footer shows desktop copy by default (hover/click)', () => {
     render(<ShowroomOverlay />);
     openShowroom();

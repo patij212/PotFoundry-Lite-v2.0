@@ -15,3 +15,12 @@
   left: var(--pf3-space-md);
   transform: none;
 }
+
+/* Hide the hint when the bottom sheet expands beyond peek (half/full) — the
+   sheet covers the stage the hint annotates. body[data-mobile-sheet-state]
+   only exists while the mobile sheet is mounted, so this never fires on
+   desktop or mobile-landscape. */
+body[data-mobile-sheet-state="half"] .pf3-hint,
+body[data-mobile-sheet-state="full"] .pf3-hint {
+  display: none;
+}

@@ -152,13 +152,22 @@ export const AppUIv3: React.FC = () => {
         // Gate: D mid-showroom hover would export the transient preview style, not the user's selection
         if (isShowroomOpen()) return;
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent('pf3:download'));
+        if (isMobile && !isLandscape) {
+          // Mobile portrait: ExportFooter only mounts inside the Export tab, so a
+          // direct dispatch is dead on Shape/Style. Route through the same
+          // deferred-fire path as the MobileTabBar CTA (tab switch → pendingFire
+          // effect dispatches pf3:download after ExportFooter's listener exists).
+          setV3ActiveTab('export');
+          setPendingFire(true);
+        } else {
+          window.dispatchEvent(new CustomEvent('pf3:download'));
+        }
       }
       if (k === 'r') { e.preventDefault(); window.dispatchEvent(new CustomEvent('pf3:reset-camera')); }
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [uiTheme, zenMode, undo, redo, setV3ActiveTab, toggleZenMode, toggleFullscreen]);
+  }, [uiTheme, zenMode, isMobile, isLandscape, undo, redo, setV3ActiveTab, toggleZenMode, toggleFullscreen]);
 
   // Mobile landscape: treat as desktop layout with mobile controls
   const isMobileLandscape = isMobile && isLandscape;

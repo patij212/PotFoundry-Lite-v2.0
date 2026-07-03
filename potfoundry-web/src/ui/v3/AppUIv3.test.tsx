@@ -472,6 +472,20 @@ describe('AppUIv3 mobile shell', () => {
     expect(useAppStore.getState().ui.v3ActiveTab).toBe('export');
   });
 
+  // F6: D key on mobile portrait routes through the same deferred-fire path as
+  // the CTA — a direct dispatch would be dead on Shape/Style (ExportFooter only
+  // mounts inside the Export tab content).
+  it('D key on mobile portrait switches to Export tab and fires the deferred download', async () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('shape');
+    await act(async () => {
+      fireEvent.keyDown(document, { key: 'd' });
+    });
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('export');
+    expect(mockExportSTL).toHaveBeenCalledTimes(1);
+  });
+
   it('mobile mode: Export tab renders ExportTab + ExportFooter', () => {
     act(() => {
       useAppStore.getState().setV3ActiveTab('export');

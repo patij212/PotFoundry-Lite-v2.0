@@ -48,6 +48,8 @@ export interface SheetDragResult {
     onTouchStart: (e: React.TouchEvent) => void;
     onTouchMove: (e: React.TouchEvent) => void;
     onTouchEnd: () => void;
+    /** Same snap path as onTouchEnd — a cancelled touch must not leave the sheet mid-drag. */
+    onTouchCancel: () => void;
     onMouseDown: (e: React.MouseEvent) => void;
   };
   /** Cycle through states: collapsed → half → full → collapsed */
@@ -301,6 +303,12 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
       onTouchStart,
       onTouchMove,
       onTouchEnd,
+      // Touchcancel (system gesture, incoming call, browser interception mid-drag)
+      // must land exactly like touchend: snap to the nearest state and drop the
+      // dragging class — otherwise the sheet sticks mid-drag with a stale inline
+      // height. onTouchEnd already guards on isDragging, so a stray cancel is a
+      // no-op. Additive: v2 consumers spread dragHandlers and gain it harmlessly.
+      onTouchCancel: onTouchEnd,
       onMouseDown,
     },
     toggle,

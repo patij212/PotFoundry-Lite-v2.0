@@ -19,6 +19,7 @@ import { useAppStore, useStyle } from '../../../state';
 import { type StyleName, type StyleOpts, type StyleCategory } from '../../../state/types';
 import { STYLE_REGISTRY, STYLE_CATEGORIES } from '../../../styles/registry';
 import { GlassSurface } from '../primitives/GlassSurface';
+import { IconClose } from '../icons';
 import StyleThumb from './StyleThumb';
 import { getFavorites, pushRecent } from '../panel/workingSet';
 import { useTouchMode } from '../mobile/TouchModeContext';
@@ -116,6 +117,12 @@ export const ShowroomOverlay: React.FC = () => {
     e.stopPropagation();
   }, []);
 
+  // ── header close button: same close-without-apply path as Escape/backdrop.
+  //    Critical on mobile, where the full-screen panel leaves no tappable backdrop.
+  const handleCloseClick = useCallback(() => {
+    closeOverlay(true);
+  }, [closeOverlay]);
+
   // ── hover preview (LIVE_PREVIEW) ────────────────────────────────────────────
   const handleHoverIntent = useCallback(
     (styleName: StyleName) => {
@@ -198,6 +205,14 @@ export const ShowroomOverlay: React.FC = () => {
               onChange={(e) => setSearch(e.target.value)}
               aria-label="Search styles"
             />
+            <button
+              type="button"
+              className="pf3-showroom__close"
+              aria-label="Close"
+              onClick={handleCloseClick}
+            >
+              <IconClose />
+            </button>
           </div>
 
           {/* Category chips */}

@@ -152,4 +152,36 @@ describe('useSheetDrag', () => {
       );
     });
   });
+
+  describe('touchcancel (F5)', () => {
+    it('touchstart → touchmove → touchcancel snaps to nearest state and removes the dragging class', () => {
+      const sheetRef = makeRef(400);
+      const onStateChange = vi.fn();
+      const { result } = renderHook(() =>
+        useSheetDrag({ sheetRef, initialState: 'full', onStateChange }),
+      );
+
+      act(() => {
+        result.current.dragHandlers.onTouchStart({
+          touches: [{ clientY: 200 }],
+        } as unknown as React.TouchEvent);
+      });
+      act(() => {
+        result.current.dragHandlers.onTouchMove({
+          touches: [{ clientY: 250 }],
+        } as unknown as React.TouchEvent);
+      });
+      act(() => {
+        result.current.dragHandlers.onTouchCancel();
+      });
+
+      // Stub height 400 on the 768px jsdom viewport → nearest snap is 'half':
+      // the cancelled drag must snap (not stick mid-drag) exactly like touchend.
+      expect(result.current.state).toBe('half');
+      expect(onStateChange).toHaveBeenCalledWith('half');
+      expect(sheetRef.current!.classList.remove).toHaveBeenCalledWith(
+        'pf2-mobile-sheet--dragging',
+      );
+    });
+  });
 });

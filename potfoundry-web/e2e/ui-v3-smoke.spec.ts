@@ -347,7 +347,10 @@ test.describe('UI v3 mobile', () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
       localStorage.setItem('pf2-ui-theme', 'v3');
+      // F7: seed BOTH hint keys — the touch hint reads pf3-hint-dismissed-touch
+      //     (HintLine keys the storage per input mode), not pf3-hint-dismissed.
       localStorage.setItem('pf3-hint-dismissed', '1');
+      localStorage.setItem('pf3-hint-dismissed-touch', '1');
     });
     await page.goto('/');
     await page.evaluate(() => {
@@ -487,6 +490,17 @@ test.describe('UI v3 mobile', () => {
   test('PillToolbar absent; MobileStageControls present', async ({ page }) => {
     // AppUIv3: {!isMobile && <PillToolbar />} → zero .pf3-pillbtn in mobile DOM
     await expect(page.locator('.pf3-pillbtn')).toHaveCount(0);
+    // F3: stage controls belong to a visible stage — hidden (display:none) while
+    //     the sheet is at half/full (the sheet covers the stage). Default mount
+    //     state is 'half', so the controls are attached but hidden here.
+    await expect(page.locator('.pf3-mobile-stage-controls')).toBeAttached();
+    await expect(page.locator('.pf3-mobile-stage-controls')).toBeHidden();
+    // Collapse the sheet (Escape → SheetShell collapse()) → controls reappear.
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(
+      () => document.body.dataset.mobileSheetState === 'collapsed',
+      { timeout: 5_000 },
+    );
     await expect(page.locator('.pf3-mobile-stage-controls')).toBeVisible();
   });
 

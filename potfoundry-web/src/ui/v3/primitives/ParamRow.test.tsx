@@ -254,6 +254,11 @@ describe('ParamRow', () => {
       expect(screen.getByTestId('row-h')).toHaveClass('pf3-param--touch');
     });
 
+    it('touch row root carries data-swipe-ignore (row scrub must not double as tab swipe)', () => {
+      setupTouch();
+      expect(screen.getByTestId('row-h')).toHaveAttribute('data-swipe-ignore');
+    });
+
     it('+ stepper increments by step with one begin/commit per tap', () => {
       const { onChange, onInteractionStart, onValueCommit } = setupTouch();
       fireEvent.click(screen.getByTestId('row-h-inc'));

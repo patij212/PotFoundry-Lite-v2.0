@@ -51,6 +51,29 @@
   flex: 1;
 }
 
+/* Header close button — quiet tertiary affordance. The only touch exit on
+   mobile (the full-screen panel leaves no tappable backdrop); kept on desktop
+   as good UX. 44×44px minimum touch target. */
+.pf3-showroom__close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  border-radius: var(--pf3-radius-pill);
+  background: transparent;
+  color: var(--pf3-text-muted);
+  cursor: pointer;
+  transition: color var(--pf3-dur-control), background var(--pf3-dur-control);
+}
+
+.pf3-showroom__close:hover {
+  color: var(--pf3-text-primary);
+  background: var(--pf3-gold-tint);
+}
+
 .pf3-showroom__chips {
   display: flex;
   flex-wrap: wrap;

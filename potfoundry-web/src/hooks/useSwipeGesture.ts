@@ -15,6 +15,11 @@ const INTERACTIVE_SELECTOR = [
   '[data-radix-collection-item]',
   "[contenteditable='true']",
   "input[type='color']",
+  // Opt-out hook: elements that own their own horizontal pointer gestures
+  // (e.g. the ParamRow touch row-scrub surface) mark themselves with
+  // data-swipe-ignore so a scrub never doubles as a tab swipe. Additive —
+  // v2 consumers simply never match it and only benefit if they adopt it.
+  '[data-swipe-ignore]',
 ].join(', ');
 
 function isTouchViewport(): boolean {

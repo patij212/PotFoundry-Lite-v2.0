@@ -429,6 +429,10 @@ export const ParamRow: React.FC<ParamRowProps> = ({
       <div
         className="pf3-param pf3-param--touch"
         data-testid={testId}
+        // The row root is the scrub surface — it owns horizontal pointer
+        // movement, so ancestor swipe gestures (tab swipe) must ignore
+        // touches starting anywhere inside it (see useSwipeGesture).
+        data-swipe-ignore=""
         onPointerDown={handleScrubPointerDown}
         onPointerMove={handleScrubPointerMove}
         onPointerUp={handleScrubPointerUp}

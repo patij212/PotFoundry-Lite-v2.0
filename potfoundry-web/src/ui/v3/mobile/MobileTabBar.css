@@ -14,6 +14,12 @@
   flex: 1;
 }
 
+/* Tab segments must meet the 44px minimum touch target inside the bar
+   (the shared .pf3-seg__item desktop sizing is shorter). */
+.pf3-mobile-tab-bar .pf3-seg__item {
+  min-height: 44px;
+}
+
 /* Compact gold CTA — 44×44px minimum touch target. */
 .pf3-mobile-tab-bar__cta {
   flex-shrink: 0;
