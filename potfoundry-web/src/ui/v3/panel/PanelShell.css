@@ -38,3 +38,54 @@
   border: 1px solid var(--pf3-glass-border); border-radius: var(--pf3-radius-sm);
   padding: 6px 8px; font-size: 12px;
 }
+
+/* ── Working set strip (Task 9) ────────────────────────────────────── */
+.pf3-working-set__fav-btn-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--pf3-space-xs);
+}
+.pf3-working-set__fav-btn {
+  flex-shrink: 0;
+  color: var(--pf3-text-muted);
+  font-size: 16px;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color var(--pf3-dur-control) var(--pf3-ease-move);
+}
+.pf3-working-set__fav-btn[aria-pressed='true'] { color: var(--pf3-gold); }
+.pf3-working-set__fav-btn:hover { color: var(--pf3-gold); }
+
+.pf3-working-set {
+  margin: var(--pf3-space-sm) 0;
+}
+.pf3-working-set__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--pf3-space-xs);
+}
+.pf3-working-set__strip {
+  display: flex;
+  flex-direction: row;
+  gap: var(--pf3-space-xs);
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(245, 240, 232, 0.15) transparent;
+}
+.pf3-working-set__thumb-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+.pf3-working-set__fav-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 9px;
+  line-height: 1;
+  color: var(--pf3-gold);
+  z-index: 1;
+  pointer-events: none;
+}
