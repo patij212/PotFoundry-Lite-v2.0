@@ -40,5 +40,26 @@ describe('HintLine', () => {
       render(<HintLine />);
       expect(screen.getByText('Drag to orbit · pick a starting point on the left')).toBeInTheDocument();
     });
+
+    it('shows touch hint even when desktop key is dismissed', () => {
+      // Desktop hint already dismissed
+      localStorage.setItem('pf3-hint-dismissed', '1');
+      // Switch to touch mode
+      vi.mocked(useTouchMode).mockReturnValue(true);
+      render(<HintLine />);
+      // Touch hint should still be visible because it uses a different key
+      expect(screen.getByText('Drag to orbit · pull up for controls')).toBeInTheDocument();
+    });
+
+    it('dismisses touch hint to its own storage key', () => {
+      vi.mocked(useTouchMode).mockReturnValue(true);
+      render(<HintLine />);
+      expect(screen.getByText('Drag to orbit · pull up for controls')).toBeInTheDocument();
+      fireEvent.pointerDown(document.body);
+      expect(screen.queryByText('Drag to orbit · pull up for controls')).not.toBeInTheDocument();
+      // Verify touch key is set, desktop key remains unset
+      expect(localStorage.getItem('pf3-hint-dismissed-touch')).toBe('1');
+      expect(localStorage.getItem('pf3-hint-dismissed')).toBeNull();
+    });
   });
 });

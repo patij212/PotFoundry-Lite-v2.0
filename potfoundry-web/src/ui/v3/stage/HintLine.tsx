@@ -4,23 +4,24 @@ import { safeStorage } from '../utils/safeStorage';
 import { useTouchMode } from '../mobile/TouchModeContext';
 import './HintLine.css';
 
-const KEY = 'pf3-hint-dismissed';
-
 export const HintLine: React.FC = () => {
   const touchMode = useTouchMode();
+  // Touch hint teaches a different gesture; use separate storage key so desktop dismissal
+  // does not suppress the touch hint, and vice versa.
+  const storageKey = touchMode ? 'pf3-hint-dismissed-touch' : 'pf3-hint-dismissed';
   const [visible, setVisible] = useState<boolean>(() => {
-    return safeStorage.get(KEY) !== '1';
+    return safeStorage.get(storageKey) !== '1';
   });
 
   useEffect(() => {
     if (!visible) return;
     const dismiss = () => {
-      safeStorage.set(KEY, '1');
+      safeStorage.set(storageKey, '1');
       setVisible(false);
     };
     window.addEventListener('pointerdown', dismiss, { once: true });
     return () => window.removeEventListener('pointerdown', dismiss);
-  }, [visible]);
+  }, [visible, storageKey]);
 
   if (!visible) return null;
 

@@ -58,11 +58,16 @@ describe('MobileStageControls', () => {
 
   describe('undo button', () => {
     it('calls store undo when clicked', () => {
+      const undoSpy = vi.fn();
+      const originalState = useAppStore.getState();
+      useAppStore.setState({ undo: undoSpy } as never);
+
       render(<MobileStageControls />);
-      const before = useAppStore.getState();
       fireEvent.click(screen.getByRole('button', { name: 'Undo' }));
-      // Verify undo was called by checking store had an undo method
-      expect(useAppStore.getState()).toBeDefined();
+      expect(undoSpy).toHaveBeenCalledOnce();
+
+      // Restore original undo function
+      useAppStore.setState({ undo: originalState.undo } as never);
     });
   });
 });
