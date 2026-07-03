@@ -24,6 +24,13 @@ function snap(v: number, step: number, min: number): number {
   return Number(snapped.toFixed(dec));
 }
 
+interface ScrubState {
+  startX: number;
+  startValue: number;
+  /** True once the pointer has moved more than 4px from startX. */
+  active: boolean;
+}
+
 export const ParamRow: React.FC<ParamRowProps> = ({
   label, value, min, max, step, unit, defaultValue,
   onChange, onInteractionStart, onValueCommit, 'data-testid': testId,
@@ -35,6 +42,10 @@ export const ParamRow: React.FC<ParamRowProps> = ({
   const skipBlurRef = useRef(false);
   // F3: holds the pending single-click timer; second click cancels it and resets
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Scrub: tracks pointer-drag gesture state
+  const scrubRef = useRef<ScrubState | null>(null);
+  // Scrub: set on pointerup after a scrub so the following click is suppressed
+  const suppressClickRef = useRef(false);
 
   // F4: snap then clamp — rounding cannot push the value past bounds
   const apply = useCallback(
@@ -77,8 +88,56 @@ export const ParamRow: React.FC<ParamRowProps> = ({
     applyDraft();
   }, [applyDraft]);
 
+  // Scrub — pointerdown: arm the scrub state and capture the pointer
+  const handleChipPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      // setPointerCapture may be absent in jsdom; guard with ?.
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      scrubRef.current = { startX: e.clientX, startValue: value, active: false };
+    },
+    [value],
+  );
+
+  // Scrub — pointermove: enter scrub once |dx|>4px, then apply live value
+  const handleChipPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLButtonElement>) => {
+      const state = scrubRef.current;
+      if (!state) return;
+      const dx = e.clientX - state.startX;
+      if (!state.active) {
+        if (Math.abs(dx) <= 4) return;
+        // Cross the threshold: enter scrub mode and fire onInteractionStart exactly once
+        state.active = true;
+        onInteractionStart?.();
+      }
+      const mult = e.shiftKey ? 10 : 1;
+      apply(state.startValue + Math.round(dx / 3) * step * mult, false);
+    },
+    [apply, step, onInteractionStart],
+  );
+
+  // Scrub — pointerup: commit if scrub was active; always suppress the following click
+  const handleChipPointerUp = useCallback(
+    () => {
+      const state = scrubRef.current;
+      scrubRef.current = null;
+      if (!state) return;
+      if (state.active) {
+        onValueCommit?.();
+        suppressClickRef.current = true;
+      }
+    },
+    [onValueCommit],
+  );
+
   // F3: first click arms a 250 ms timer; second click within that window resets instead
   const handleChipClick = useCallback(() => {
+    // Scrub-then-click suppression: the pointerup after a scrub sets this flag;
+    // consume it exactly once so the edit timer never fires.
+    if (suppressClickRef.current) {
+      suppressClickRef.current = false;
+      return;
+    }
     if (clickTimerRef.current !== null) {
       clearTimeout(clickTimerRef.current);
       clickTimerRef.current = null;
@@ -103,6 +162,16 @@ export const ParamRow: React.FC<ParamRowProps> = ({
 
   const handleChipKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // Escape mid-scrub: restore startValue, commit once, suppress the following click
+      if (e.key === 'Escape') {
+        const state = scrubRef.current;
+        scrubRef.current = null;
+        if (state?.active) {
+          suppressClickRef.current = true;
+          apply(state.startValue, true);
+        }
+        return;
+      }
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
       const dir = e.key === 'ArrowUp' ? 1 : -1;
@@ -141,8 +210,11 @@ export const ParamRow: React.FC<ParamRowProps> = ({
             className="pf3-param__value pf3-mono"
             data-testid={testId ? `${testId}-value` : undefined}
             data-pf3-focusable=""
-            title="Click to type · double-click to reset"
+            title="Drag to scrub · click to type · double-click to reset"
             onClick={handleChipClick}
+            onPointerDown={handleChipPointerDown}
+            onPointerMove={handleChipPointerMove}
+            onPointerUp={handleChipPointerUp}
             onKeyDown={handleChipKeyDown}
           >
             {value.toFixed(dec)}{unit ? ` ${unit}` : ''}

@@ -105,4 +105,76 @@ describe('ParamRow', () => {
     fireEvent.keyDown(chip, { key: 'ArrowDown', shiftKey: true });
     expect(onChange).toHaveBeenCalledWith(110);
   });
+
+  describe('chip scrub (pointer drag)', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('30px drag → onInteractionStart once, live onChange, onValueCommit once, no editor', () => {
+      vi.useFakeTimers();
+      const { onChange, onInteractionStart, onValueCommit } = setup();
+      const chip = screen.getByTestId('row-h-value');
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerMove(chip, { clientX: 10, pointerId: 1 }); // crosses 4px threshold
+      fireEvent.pointerMove(chip, { clientX: 20, pointerId: 1 });
+      fireEvent.pointerMove(chip, { clientX: 30, pointerId: 1 });
+      fireEvent.pointerUp(chip, { pointerId: 1 });
+      fireEvent.click(chip); // browser fires click after pointerup — must be suppressed
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(onInteractionStart).toHaveBeenCalledOnce();
+      // startValue=120, dx=30 → Math.round(30/3)*step*1 = 10 → 130
+      expect(onChange).toHaveBeenLastCalledWith(130);
+      expect(onValueCommit).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('textbox')).toBeNull();
+    });
+
+    it('move <4px then pointerup → click timer logic untouched (editor opens)', () => {
+      vi.useFakeTimers();
+      setup();
+      const chip = screen.getByTestId('row-h-value');
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerMove(chip, { clientX: 3, pointerId: 1 }); // below 4px threshold
+      fireEvent.pointerUp(chip, { pointerId: 1 });
+      fireEvent.click(chip); // no suppression — timer should arm
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(screen.getByRole('textbox')).toBeInTheDocument();
+    });
+
+    it('Shift-scrub applies ×10 multiplier', () => {
+      vi.useFakeTimers();
+      const { onChange } = setup();
+      const chip = screen.getByTestId('row-h-value');
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 1 });
+      // dx=30, Shift → Math.round(30/3)*step*10 = 100 → 120+100 = 220
+      fireEvent.pointerMove(chip, { clientX: 30, pointerId: 1, shiftKey: true });
+      fireEvent.pointerUp(chip, { pointerId: 1 });
+      expect(onChange).toHaveBeenLastCalledWith(220);
+    });
+
+    it('scrub clamps at max', () => {
+      vi.useFakeTimers();
+      const { onChange } = setup({ value: 490 });
+      const chip = screen.getByTestId('row-h-value');
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 1 });
+      // dx=60, step=1 → Math.round(60/3)*1 = 20 → 490+20=510, clamped to 500
+      fireEvent.pointerMove(chip, { clientX: 60, pointerId: 1 });
+      fireEvent.pointerUp(chip, { pointerId: 1 });
+      expect(onChange).toHaveBeenLastCalledWith(500);
+    });
+
+    it('Escape mid-scrub → restores startValue, commits once, suppresses click', () => {
+      vi.useFakeTimers();
+      const { onChange, onInteractionStart, onValueCommit } = setup();
+      const chip = screen.getByTestId('row-h-value');
+      fireEvent.pointerDown(chip, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerMove(chip, { clientX: 20, pointerId: 1 }); // enters scrub
+      fireEvent.keyDown(chip, { key: 'Escape' }); // restore startValue + commit
+      fireEvent.pointerUp(chip, { pointerId: 1 }); // click should still be suppressed
+      fireEvent.click(chip);
+      act(() => { vi.advanceTimersByTime(300); });
+      expect(onInteractionStart).toHaveBeenCalledOnce();
+      expect(onChange).toHaveBeenLastCalledWith(120); // restored to startValue
+      expect(onValueCommit).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('textbox')).toBeNull();
+    });
+  });
 });
