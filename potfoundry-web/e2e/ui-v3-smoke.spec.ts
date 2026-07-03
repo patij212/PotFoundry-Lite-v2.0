@@ -35,6 +35,27 @@
  *  A16 — screenshot test sets per-test timeout to 60 000 ms (8-worker parallel GPU load
  *        can push beforeEach alone past 30 s); showroom closed via Escape after explicit
  *        search-input focus (keyboard events bypass pointer-events CSS)
+ *
+ * Mobile describe adaptations (A17–A23):
+ *  A17 — 390×844 viewport + hasTouch + isMobile; useMobile derives isMobile=true from
+ *        window.innerWidth (390 ≤ 768) synchronously in useState init, selecting the
+ *        SheetShell / MobileTabBar path on first render instead of the desktop panel rail
+ *  A18 — mobile beforeEach waits for [data-layout="mobile"] set by AppUIv3 directly in
+ *        JSX from useMobile state (no useEffect delay); confirms mobile shell is active
+ *  A19 — grabber drag uses page.mouse (onMouseDown path in useSheetDrag supports mouse);
+ *        up 200 px from half (422 px) exceeds half→full threshold (~570 px) and snaps to
+ *        full; canvas computed transform polled after 400 ms CSS-transition settle
+ *  A20 — MobileTabBar SegmentedControl renders role="tab" buttons; same getByRole
+ *        selector as desktop tests (PanelShell absent in mobile shell)
+ *  A21 — ParamRow renders touch layout with +/− steppers when TouchModeProvider
+ *        value=isMobile=true; increment testid = pf3-param-H-inc
+ *  A22 — T6 CTA seam: window.__pf3DownloadFired sentinel installed before tap; deferred-
+ *        fire (setV3ActiveTab + setPendingFire → next-render effect dispatches pf3:download
+ *        after ExportFooter's useEffect is registered); observable = pf3-export-cta
+ *        visible + sentinel true (WebGPU-independent)
+ *  A23 — screenshot M8: shape at half-stop first; sheet snapped to full via grabber drag
+ *        for pf3-mobile-sheet-full.png; showroom accessed via store.setV3ActiveTab (avoids
+ *        re-expanding the sheet); ≥3 thumb canvases polled before pf3-mobile-showroom.png
  */
 
 import { test, expect } from '@playwright/test';
@@ -309,5 +330,234 @@ test.describe('UI v3 desktop smoke', () => {
     // Export tab
     await page.getByRole('tab', { name: 'Export' }).click();
     await page.screenshot({ path: 'test-results/pf3-export.png' });
+  });
+});
+
+test.describe('UI v3 mobile', () => {
+  // A17: 390×844 phone viewport, touch flags; useMobile derives isMobile=true
+  //      from window.innerWidth synchronously → SheetShell path on first render.
+  test.use({
+    viewport: { width: 390, height: 844 },
+    hasTouch: true,
+    isMobile: true,
+    baseURL: 'http://127.0.0.1:3000',
+  });
+  test.setTimeout(60_000);
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript(() => {
+      localStorage.setItem('pf2-ui-theme', 'v3');
+      localStorage.setItem('pf3-hint-dismissed', '1');
+    });
+    await page.goto('/');
+    await page.evaluate(() => {
+      window.__POTFOUNDRY_STORE__?.getState().setUITheme('v3');
+    });
+    // A18: data-layout="mobile" is set synchronously in AppUIv3 JSX from useMobile
+    //      useState init (not a useEffect); confirms the mobile shell is active.
+    await page.waitForSelector('[data-layout="mobile"]', { timeout: 15_000 });
+  });
+
+  // ── M1. Sheet renders; body attr initial value ────────────────────────────
+
+  test('sheet renders; body data-mobile-sheet-state = half on mount', async ({ page }) => {
+    await expect(page.getByTestId('pf3-sheet')).toBeVisible();
+    // SheetShell sets document.body.dataset.mobileSheetState in useEffect;
+    // useSheetDrag default initialState = 'half'.
+    await page.waitForFunction(
+      () => document.body.dataset.mobileSheetState === 'half',
+      { timeout: 5_000 },
+    );
+    const state = await page.evaluate(() => document.body.dataset.mobileSheetState);
+    expect(state).toBe('half');
+  });
+
+  // ── M2. Grabber drag: body attr flips + canvas transform changes ──────────
+
+  test('grabber drag snaps sheet to full; body attr and canvas transform update', async ({ page }) => {
+    // A19: onMouseDown path in useSheetDrag supports mouse drag.
+    //      Dragging up 200 px from half (422 px on 844-px viewport) exceeds the
+    //      half→full threshold ((422+717)/2 ≈ 570 px) and snaps to 'full'.
+    //      CSS then applies translateY(-35%) to .pf-wgpu-preview__canvas.
+    await page.waitForFunction(
+      () => document.body.dataset.mobileSheetState !== undefined,
+      { timeout: 5_000 },
+    );
+
+    const grabber = page.locator('.pf3-sheet__grabber');
+    await expect(grabber).toBeVisible();
+    const box = await grabber.boundingBox();
+    if (!box) throw new Error('pf3-sheet__grabber bounding box not found');
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+
+    const transformBefore = await page.evaluate(() => {
+      const canvas = document.querySelector('.pf-wgpu-preview__canvas') as HTMLElement | null;
+      return canvas ? getComputedStyle(canvas).transform : null;
+    });
+
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx, cy - 200, { steps: 10 });
+    await page.mouse.up();
+
+    // Primary gate: body attr must change to 'full'
+    await page.waitForFunction(
+      () => document.body.dataset.mobileSheetState === 'full',
+      { timeout: 5_000 },
+    );
+
+    // Allow CSS transition (0.25 s) to settle before reading computed transform
+    await page.waitForTimeout(400);
+    const transformAfter = await page.evaluate(() => {
+      const canvas = document.querySelector('.pf-wgpu-preview__canvas') as HTMLElement | null;
+      return canvas ? getComputedStyle(canvas).transform : null;
+    });
+
+    // Secondary: when canvas is initialized the translateY rule must have applied.
+    // Both null = GPU not yet initialized; body-attr assertion above is sufficient.
+    if (transformBefore !== null && transformAfter !== null) {
+      expect(transformAfter).not.toBe(transformBefore);
+    }
+  });
+
+  // ── M3. MobileTabBar tab tap → Style content visible ─────────────────────
+
+  test('MobileTabBar tab tap switches to Style content', async ({ page }) => {
+    // A20: SegmentedControl role="tab" buttons in the mobile footer bar;
+    //      same getByRole selector as desktop (PanelShell absent in mobile shell).
+    await page.getByRole('tab', { name: 'Style' }).click();
+    await expect(page.getByTestId('pf3-style-current')).toBeVisible({ timeout: 5_000 });
+  });
+
+  // ── M4. Touch ParamRow stepper tap writes store (+1 step) ─────────────────
+
+  test('ParamRow touch stepper increment writes store', async ({ page }) => {
+    // A21: TouchModeProvider value=isMobile=true → ParamRow renders touch layout
+    //      with +/− steppers; pf3-param-H-inc is the increment testid.
+    const hBefore = await page.evaluate(() => {
+      const raw = localStorage.getItem('potfoundry-store');
+      if (!raw) return 120;
+      return JSON.parse(raw)?.state?.geometry?.H ?? 120;
+    });
+
+    const incBtn = page.getByTestId('pf3-param-H-inc');
+    await expect(incBtn).toBeVisible({ timeout: 5_000 });
+    await incBtn.click();
+
+    await page.waitForFunction(
+      (initial) => {
+        const raw = localStorage.getItem('potfoundry-store');
+        if (!raw) return false;
+        const h = JSON.parse(raw)?.state?.geometry?.H;
+        return typeof h === 'number' && h > initial;
+      },
+      hBefore,
+      { timeout: 5_000 },
+    );
+
+    const hAfter = await page.evaluate(() => {
+      const raw = localStorage.getItem('potfoundry-store');
+      if (!raw) return null;
+      return JSON.parse(raw)?.state?.geometry?.H ?? null;
+    });
+    expect(hAfter).toBeGreaterThan(hBefore);
+  });
+
+  // ── M5. Showroom: "all →" opens; tile tap applies style + closes ──────────
+
+  test('"all →" opens showroom; tile tap applies style and closes', async ({ page }) => {
+    await page.getByRole('tab', { name: 'Style' }).click();
+    await expect(page.getByTestId('pf3-style-current')).toBeVisible();
+
+    await page.getByTestId('pf3-open-showroom').click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible({ timeout: 5_000 });
+
+    const firstTile = page.locator('.pf3-showroom__grid button').first();
+    await expect(firstTile).toBeVisible({ timeout: 10_000 });
+    await firstTile.click();
+
+    await expect(dialog).not.toBeVisible({ timeout: 5_000 });
+    await expect(page.getByTestId('pf3-style-current')).toBeVisible();
+  });
+
+  // ── M6. No PillToolbar; MobileStageControls present ──────────────────────
+
+  test('PillToolbar absent; MobileStageControls present', async ({ page }) => {
+    // AppUIv3: {!isMobile && <PillToolbar />} → zero .pf3-pillbtn in mobile DOM
+    await expect(page.locator('.pf3-pillbtn')).toHaveCount(0);
+    await expect(page.locator('.pf3-mobile-stage-controls')).toBeVisible();
+  });
+
+  // ── M7. Export CTA seam (T6): tap fires pf3:download; ExportFooter mounts ─
+
+  test('MobileTabBar Export CTA fires pf3:download and mounts ExportFooter', async ({ page }) => {
+    // A22: sentinel installed before tap. Deferred-fire in AppUIv3: onExport →
+    //      setV3ActiveTab('export') + setPendingFire(true); on the next render React
+    //      runs child effects (ExportFooter registers pf3:download listener) before
+    //      the parent pendingFire effect dispatches pf3:download. Observable =
+    //      pf3-export-cta visible (tab switch + ExportFooter mounted) + sentinel.
+    //      WebGPU-independent: button renders even when isAvailable=false (disabled).
+    await page.evaluate(() => {
+      (window as any).__pf3DownloadFired = false;
+      window.addEventListener('pf3:download', () => {
+        (window as any).__pf3DownloadFired = true;
+      });
+    });
+
+    // Click MobileTabBar's Export CTA (class-scoped; avoids ExportFooter's button)
+    await page.locator('.pf3-mobile-tab-bar__cta').click();
+
+    // pf3-export-cta renders in ExportFooter on the Export tab (free-tier dev mode)
+    await expect(page.getByTestId('pf3-export-cta')).toBeVisible({ timeout: 10_000 });
+
+    // Confirm pf3:download was dispatched (export was triggered)
+    const fired = await page.evaluate(() => (window as any).__pf3DownloadFired);
+    expect(fired).toBe(true);
+  });
+
+  // ── M8. Screenshots ───────────────────────────────────────────────────────
+
+  test('capture mobile critique screenshots', async ({ page }) => {
+    // A23: shape at half first; drag to full; switch to Style via store (sheet
+    //      stays at full — content area ~617 px); open showroom and poll ≥3 canvases.
+
+    // pf3-mobile-shape.png — Shape tab, sheet at half-stop
+    await page.screenshot({ path: 'test-results/pf3-mobile-shape.png' });
+
+    // Drag sheet to full for pf3-mobile-sheet-full.png
+    const grabber = page.locator('.pf3-sheet__grabber');
+    const box = await grabber.boundingBox();
+    if (!box) throw new Error('pf3-sheet__grabber bounding box not found for screenshot');
+    const cx = box.x + box.width / 2;
+    const cy = box.y + box.height / 2;
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx, cy - 200, { steps: 10 });
+    await page.mouse.up();
+    await page.waitForFunction(
+      () => document.body.dataset.mobileSheetState === 'full',
+      { timeout: 5_000 },
+    );
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: 'test-results/pf3-mobile-sheet-full.png' });
+
+    // Switch to Style tab via store (avoids re-expanding sheet to reach tab bar)
+    await page.evaluate(() => {
+      window.__POTFOUNDRY_STORE__?.getState().setV3ActiveTab('style');
+    });
+    await expect(page.getByTestId('pf3-style-current')).toBeVisible({ timeout: 5_000 });
+
+    // Open showroom for pf3-mobile-showroom.png
+    await page.getByTestId('pf3-open-showroom').click();
+    await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
+    // A23: poll ≥3 thumbnail canvases (same heuristic as desktop F4 / A16)
+    await page.waitForFunction(
+      () => document.querySelectorAll('.pf3-showroom-backdrop canvas').length >= 3,
+      { timeout: 20_000 },
+    );
+    await page.waitForTimeout(2_000);
+    await page.screenshot({ path: 'test-results/pf3-mobile-showroom.png' });
   });
 });
