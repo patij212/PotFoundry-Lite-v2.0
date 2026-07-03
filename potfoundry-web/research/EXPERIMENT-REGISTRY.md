@@ -2627,6 +2627,35 @@ GothicArches (density-response then FLOOR; worst-red plateaus ~0.057–0.067 onc
 
 ---
 
+## E-2026-07-03-CT-HEXHIVE — HexagonalHive CROSSES ≤0.01: the "0.0115 floor" was the SWEEP endpoint, not a floor — CONFIRMED
+
+**Q:** In E-GAP-GOTHHEX, HexHive under CDT-under-M (chordSteiner) was PARTIAL-NEAR — fl-chord 0.0171→0.0139→0.0115 as chordTolMm tightened 0.03→0.02→0.015, then the sweep STOPPED, reading "~2× off the 0.01 bar, mesh saturates ~910k". Was 0.0115 a genuine per-style FLOOR, or just the last point sampled? Does EXTENDING chordTolMm past 0.015 (→0.012→0.010→0.008) keep the monotone descent and cross honest true-3D fl-chord p99 ≤0.010 (with %<20 <5%, rawNonMan 0)?
+
+**DISCRIMINATOR (cheapest):** EXACT recipe reuse — `buildInhouseMetricMesh(rA,H,{...BASE, optimizeSweeps:2, guardManifoldAlways:true, chordTolMm:<0.015→0.012→0.010→0.008>, chordSteiner:true})`; budget raised to 12M (vs prior 6M) and run at BOTH 6M+12M per chordTol to prove the crossing is a chordTol effect, not a budget clip. Honest rulers (labkit READ-ONLY): fl-chord `featureLineChord3D` (interior loci, true-3D nearest-surface) + STEEP brute-anchor `bruteAnchoredRedPerp` → trustedP99; %<20 `triangleQualityDistribution`; watertight `auditNonManRaw` + `auditNonManByIndex`.
+
+**KILL-CRITERION (pre-registered):** REACHES iff honest true-3D fl-chord p99 ≤0.010 AND %<20 <5% AND rawNonMan 0 at some chordTol, density-responsive across the extended sweep. REFUTED-FLOOR iff fl-chord stalls ≥0.011 as chordTolMm tightens below 0.015 (a real floor with no lever).
+
+**VERDICT: CONFIRMED — REACHES ≤0.01. Crosses at chordTolMm 0.010 → fl-chord p99 0.0093, ~944,608 tris, ZERO red facets, %<20 0.0%, rawNonMan 0, watertight. The prior "0.0115 floor" was simply the last swept point; the chordTolMm lever is still density-responsive below 0.015.**
+
+**EVIDENCE (real vitest run, `vitest.ct_hexhive.config.ts`, PF_CT_HEXHIVE; nRed 0 everywhere ⇒ true-3D verdict == fl-chord, gnOver 0):**
+
+| chordTol | budget | tris | fl-chord p99 | flMax | worst-red◆ | %<20 | minA | rawNM/weldNM |
+|---|---|---|---|---|---|---|---|---|
+| 0.015 | 6M | 910,413 | 0.0115 | 0.029 | 0 | 0.0 | 10.7 | 0/0 |
+| 0.012 | 6M / 12M | 927,284 | 0.0102 | 0.026 | 0 | 0.0 | 10.0 | 0/0 |
+| **0.010** | **6M / 12M** | **944,608** | **0.0093** ✓ | 0.025 | **0** | **0.0** | 10.1 | **0/0** |
+| 0.008 | 12M | 971,114 | 0.0086 | 0.024 | 0 | 0.0 | 9.9 | 0/0 |
+
+- **Density-response is clean and monotone, NOT a floor:** 0.0171→0.0139→0.0115→0.0102→**0.0093**→0.0086. Each chordTol tightening both grows the mesh (910k→971k) and shrinks fl-chord. The "saturation" is PER-chordTol (6M vs 12M budget give IDENTICAL tris/p99 at every tier ⇒ chordSteiner meets its tol before the budget binds), so the crossing is a robust chordTol effect, not a budget artifact.
+- **No steep tail to fight:** nRed 0, trustedP99 0, gnOver 0 at every density — the whole residual is pure hex-cell-rim under-density that chordSteiner directly refines. Watertight (rawNM/weldNM 0) throughout; %<20 held at 0.0% (minAngle floats ~10° but the p5 is 37–39° — a handful of obtuse rim facets, not a sliver population).
+- **Cost of crossing:** cheap — ~944k tris (barely above the 910k @0.015), +3.4% tris to move fl-chord 0.0115→0.0093. Going to 0.008 buys 0.0086 for +2.8% more tris (diminishing but still responsive).
+
+**RECOMMENDATION:** ACCEPT HexagonalHive as **REACHES ≤0.01** under the CDT-under-M + chordSteiner recipe at chordTolMm 0.010 (~944k tris) — supersedes the E-GAP-GOTHHEX "PARTIAL-NEAR ~2× off" classification, which was a sweep-truncation artifact, NOT a floor. Ship-tier recipe for HexHive = `chordTolMm:0.010, chordSteiner:true, guardManifoldAlways:true` (0.008 if margin wanted; both watertight/sliver-free). Note this contrasts with GothicArches (same recipe FLOORS at ~0.06 worst-red because it HAS a genuine steep-rib-crest tail nRed>0 that chord-sag is blind to) — HexHive has NO such tail, so pure density closes it. No perp-guard needed.
+
+**LEDGER:** scorecard `research/exchange/_ct_hexhive/scorecard.ndjson` (6 rows) + render `hexhive_ct010.png` (GREEN, true-3d-anchored, worst 0.041, 0.00% >0.03) + heatmap bins; probe `research/bridge/_ct_hexhive.test.ts` (PF_CT_HEXHIVE, env-gated, resumable) + config `vitest.ct_hexhive.config.ts`. Reuses labkit rulers + byte-identical-off kernel hooks READ-ONLY. NO src/ or kernel/labkit edit.
+
+---
+
 ## E-2026-07-03-GAP-TREADSQ — ArtDeco + DragonScales %<20 tail: kill the tread/sheet aspect slivers (dev-only, research/)
 
 **HYPOTHESIS:** The %<20° sliver tail on the two z-riser styles (ArtDeco 51.7%, DragonScales 7.6%) that already
