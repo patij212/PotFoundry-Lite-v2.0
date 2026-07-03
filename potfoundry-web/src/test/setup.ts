@@ -3,6 +3,7 @@
  * This file runs before each test file to set up the testing environment.
  */
 import '@testing-library/jest-dom';
+import { vi } from 'vitest';
 import { setupWebGPUMock } from './webgpu-mock';
 
 // Mock ResizeObserver (needed for Radix UI components)
@@ -11,6 +12,17 @@ global.ResizeObserver = class ResizeObserver {
     unobserve() { }
     disconnect() { }
 };
+
+// Mock IntersectionObserver (needed for lazy-loading components)
+global.IntersectionObserver = class IntersectionObserver {
+    constructor(callback: IntersectionObserverCallback) {
+        this.callback = callback;
+    }
+    callback: IntersectionObserverCallback;
+    observe() { }
+    unobserve() { }
+    disconnect() { }
+} as any;
 
 // Mock canvas getContext for JSDOM (which doesn't support canvas 2D rendering)
 const mockContext = {
@@ -35,6 +47,7 @@ const mockContext = {
     scale: () => {},
     setTransform: () => {},
     getTransform: () => new DOMMatrix(),
+    putImageData: vi.fn(),
 } as unknown as CanvasRenderingContext2D;
 
 const originalGetContext = HTMLCanvasElement.prototype.getContext;
