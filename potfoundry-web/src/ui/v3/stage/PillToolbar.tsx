@@ -3,7 +3,7 @@ import { GlassSurface } from '../primitives/GlassSurface';
 import { useAppStore } from '../../../state';
 import { useControllerMaybe } from '../../../context';
 import {
-  IconUndo, IconRedo, IconCameraReset, IconRotate, IconZen, IconFullscreen,
+  IconUndo, IconRedo, IconCameraReset, IconRotate, IconZen, IconFullscreen, IconOrtho, IconGrid,
 } from '../icons';
 import './PillToolbar.css';
 
@@ -30,6 +30,8 @@ export const PillToolbar: React.FC = () => {
   const zenMode = useAppStore((s) => s.ui.zenMode);
   const controller = useControllerMaybe();
   const autoRotate = controller?.cameraState.autoRotate ?? false;
+  const isOrtho = (controller?.cameraState.projection ?? 'perspective') === 'ortho';
+  const showGrid = controller?.cameraState.showGrid ?? false;
 
   const resetCamera = useCallback(() => {
     if (controller?.isReady) controller.resetCamera();
@@ -45,6 +47,14 @@ export const PillToolbar: React.FC = () => {
     if (controller?.isReady) controller.toggleAutoRotate();
   }, [controller]);
 
+  const toggleProjection = useCallback(() => {
+    if (controller?.isReady) controller.toggleProjection();
+  }, [controller]);
+
+  const toggleGrid = useCallback(() => {
+    if (controller?.isReady) controller.toggleGrid();
+  }, [controller]);
+
   return (
     <div className="pf3-toolbar" data-zen={zenMode || undefined}>
       <GlassSurface className="pf3-toolbar__pill"><span data-testid="pf3-pill" className="pf3-toolbar__group">
@@ -54,6 +64,8 @@ export const PillToolbar: React.FC = () => {
       <GlassSurface className="pf3-toolbar__pill"><span data-testid="pf3-pill" className="pf3-toolbar__group">
         <PillButton label="Reset camera" onClick={resetCamera}><IconCameraReset /></PillButton>
         <PillButton label="Auto-rotate" onClick={toggleAutoRotate} active={autoRotate}><IconRotate /></PillButton>
+        <PillButton label="Orthographic view" onClick={toggleProjection} active={isOrtho}><IconOrtho /></PillButton>
+        <PillButton label="Grid" onClick={toggleGrid} active={showGrid}><IconGrid /></PillButton>
       </span></GlassSurface>
       <GlassSurface className="pf3-toolbar__pill"><span data-testid="pf3-pill" className="pf3-toolbar__group">
         <PillButton label="Zen mode" onClick={toggleZenMode} active={zenMode}><IconZen /></PillButton>

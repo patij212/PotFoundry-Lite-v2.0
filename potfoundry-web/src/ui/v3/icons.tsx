@@ -24,3 +24,9 @@ export const IconZen: React.FC = () => (
 export const IconFullscreen: React.FC = () => (
   <svg {...base} aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" /></svg>
 );
+export const IconOrtho: React.FC = () => (
+  <svg {...base} aria-hidden="true"><rect x="3" y="4" width="10" height="8" /><path d="M5 9h6" /></svg>
+);
+export const IconGrid: React.FC = () => (
+  <svg {...base} aria-hidden="true"><line x1="3" y1="5" x2="13" y2="5" /><line x1="3" y1="8" x2="13" y2="8" /><line x1="3" y1="11" x2="13" y2="11" /><line x1="6" y1="2" x2="6" y2="14" /><line x1="10" y1="2" x2="10" y2="14" /></svg>
+);
