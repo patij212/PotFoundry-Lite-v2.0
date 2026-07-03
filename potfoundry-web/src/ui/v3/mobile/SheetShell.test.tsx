@@ -154,6 +154,28 @@ describe('SheetShell — touch-mode context pass-through', () => {
   });
 });
 
+describe('SheetShell — contentRef attachment', () => {
+  afterEach(() => {
+    delete document.body.dataset.mobileSheetState;
+  });
+
+  it('attaches contentRef to the scrollable content div', () => {
+    const contentRef = React.createRef<HTMLDivElement>();
+    render(
+      <SheetShell contentRef={contentRef}>
+        <div data-testid="sheet-child">content</div>
+      </SheetShell>,
+    );
+    expect(contentRef.current).toBeDefined();
+    expect(contentRef.current?.className).toBe('pf3-sheet__content');
+  });
+
+  it('works correctly when contentRef is not provided', () => {
+    renderSheet();
+    expect(document.querySelector('.pf3-sheet__content')).toBeInTheDocument();
+  });
+});
+
 describe('SheetShell — Escape key', () => {
   beforeEach(() => {
     mockState = 'half';

@@ -19,6 +19,7 @@ import { PricingModal } from '../pricing/PricingModal';
 import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
 import { TouchModeProvider } from './mobile/TouchModeContext';
 import { SheetShell } from './mobile/SheetShell';
+import { MobileTabBar } from './mobile/MobileTabBar';
 import { useMobile } from '../../hooks/useMobile';
 import { safeStorage } from './utils/safeStorage';
 import './tokens.css';
@@ -38,6 +39,7 @@ export const AppUIv3: React.FC = () => {
   const toggleFullscreen = useAppStore((s) => s.toggleFullscreen);
 
   const { isMobile } = useMobile();
+  const sheetContentRef = React.useRef<HTMLDivElement>(null);
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [showEntrance, setShowEntrance] = useState(false);
@@ -133,12 +135,22 @@ export const AppUIv3: React.FC = () => {
 
           {isMobile ? (
             /* Mobile shell: three-stop bottom sheet replaces panel+status+hint.
-               Zen mode = pot only, so the sheet is hidden in zen. */
+               Zen mode = pot only, so the sheet is hidden in zen.
+               Footer = MobileTabBar only (its CTA replaces ExportFooter's);
+               ExportFooter renders inside the Export tab content. */
             !zenMode && (
-              <SheetShell footer={<ExportFooter />}>
+              <SheetShell
+                contentRef={sheetContentRef}
+                footer={<MobileTabBar contentRef={sheetContentRef} />}
+              >
                 {v3ActiveTab === 'shape' && <ShapeTab />}
                 {v3ActiveTab === 'style' && <StyleTab />}
-                {v3ActiveTab === 'export' && <ExportTab />}
+                {v3ActiveTab === 'export' && (
+                  <>
+                    <ExportTab />
+                    <ExportFooter />
+                  </>
+                )}
               </SheetShell>
             )
           ) : (

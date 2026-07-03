@@ -25,6 +25,8 @@ export interface SheetShellProps {
   children: React.ReactNode;
   /** Optional footer slot — rendered above the safe-area padding. */
   footer?: React.ReactNode;
+  /** Optional ref to the scrollable content div (for swipe gesture detection). */
+  contentRef?: React.RefObject<HTMLDivElement>;
 }
 
 // ============================================================================
@@ -34,9 +36,10 @@ export interface SheetShellProps {
 /**
  * Fixed bottom sheet with three snap stops (collapsed / half / full).
  * Accepts children in a scrollable content area and an optional footer
- * pinned above the device safe-area inset.
+ * pinned above the device safe-area inset. Optional contentRef attaches
+ * to the scrollable content div for gesture detection (e.g., swipe navigation).
  */
-export const SheetShell: React.FC<SheetShellProps> = ({ children, footer }) => {
+export const SheetShell: React.FC<SheetShellProps> = ({ children, footer, contentRef }) => {
   const sheetRef = useRef<HTMLDivElement>(null);
 
   const { state, dragHandlers, collapse } = useSheetDrag({
@@ -101,7 +104,7 @@ export const SheetShell: React.FC<SheetShellProps> = ({ children, footer }) => {
       </div>
 
       {/* Scrollable content — touch-action: pan-y allows vertical scroll */}
-      <div className="pf3-sheet__content">
+      <div className="pf3-sheet__content" ref={contentRef}>
         {children}
       </div>
 
