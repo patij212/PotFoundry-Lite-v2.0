@@ -2,8 +2,8 @@
  * BlueprintCanvas — live SVG vessel cross-section (spec §6).
  *
  * Renders a technical cross-section drawing: gold outer generatrix mirrored
- * around x=100, fainter inner wall, dashed centerline, and dimension ticks.
- * Re-renders live from the geometry store. Static only — drag handles in Task 5.
+ * around x=100, fainter inner wall, dashed centerline, dimension ticks, and
+ * 4 interactive drag handles (Task 5: rim, base, height, belly).
  *
  * Layout constants (deterministic, tested):
  *   viewBox  0 0 200 130
@@ -12,8 +12,8 @@
  *   centered at x=100; base at y=116
  */
 
-import React from 'react';
-import { useAppStore } from '../../../state';
+import React, { useRef } from 'react';
+import { useAppStore, GEOMETRY_BOUNDS } from '../../../state';
 import { sampleProfile, type ProfileGeometry } from './profileSampler';
 import './BlueprintCanvas.css';
 
@@ -44,7 +44,7 @@ export interface LayoutHelpers {
 }
 
 /**
- * Pure layout math consumed by BlueprintCanvas and (Task 5) drag handles.
+ * Pure layout math consumed by BlueprintCanvas and drag handles.
  *
  * scale = min(76 / maxR, 102 / H)
  * xOf(r,  1) = 100 + r * scale   (right side)
@@ -77,6 +77,36 @@ function buildPolyline(
     .join(' ');
 }
 
+// ── Drag handle helpers ──────────────────────────────────────────────────────
+
+type HandleId = 'rim' | 'base' | 'height' | 'belly';
+
+interface DragState {
+  handle: HandleId;
+  startClientX: number;
+  startClientY: number;
+  startValue: number;
+  layoutScale: number;
+  vbScale: number;
+}
+
+/**
+ * Snap `v` to the nearest multiple of `step` above `min`, then round to the
+ * number of decimal places implied by `step`.
+ */
+function snap(v: number, step: number, min: number): number {
+  const snapped = min + Math.round((v - min) / step) * step;
+  const dec = (String(step).split('.')[1] ?? '').length;
+  return Number(snapped.toFixed(dec));
+}
+
+function applyBounds(
+  v: number,
+  bounds: { min: number; max: number; step: number },
+): number {
+  return Math.min(bounds.max, Math.max(bounds.min, snap(v, bounds.step, bounds.min)));
+}
+
 // ── Component ────────────────────────────────────────────────────────────────
 
 export interface BlueprintCanvasProps {
@@ -86,6 +116,13 @@ export interface BlueprintCanvasProps {
 
 export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }) => {
   const geometry = useAppStore((s) => s.geometry);
+  const setGeometryParam = useAppStore((s) => s.setGeometryParam);
+  const beginHistoryTransaction = useAppStore((s) => s.beginHistoryTransaction);
+  const commitHistoryTransaction = useAppStore((s) => s.commitHistoryTransaction);
+
+  const svgRef = useRef<SVGSVGElement>(null);
+  const dragRef = useRef<DragState | null>(null);
+
   const profile = sampleProfile(geometry);
   const layout = computeLayout(profile);
   const { xOf, yOf } = layout;
@@ -102,15 +139,110 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
   // H tick: vertically centred beside the pot
   const hTickY = (rimY + baseY) / 2;
 
+  // Belly handle position — right generatrix at bellCenter height
+  const bellyIdx = Math.min(
+    Math.round(geometry.bellCenter * (profile.samples.length - 1)),
+    profile.samples.length - 1,
+  );
+  const bellySample = profile.samples[bellyIdx];
+
+  // ── Event handlers ─────────────────────────────────────────────────────────
+
+  function onHandlePointerDown(
+    e: React.PointerEvent<SVGCircleElement>,
+    handle: HandleId,
+    startValue: number,
+  ) {
+    // Once per gesture: ignore stray extra pointers while a drag is live —
+    // a second begin without a commit would unbalance the history transaction.
+    if (dragRef.current) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    const svgRect = svgRef.current?.getBoundingClientRect() ?? { width: VB_W };
+    const vbScale = VB_W / svgRect.width;
+    beginHistoryTransaction();
+    dragRef.current = {
+      handle,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startValue,
+      layoutScale: layout.scale,
+      vbScale,
+    };
+  }
+
+  function onSvgPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    const drag = dragRef.current;
+    if (!drag) return;
+
+    const dx = e.clientX - drag.startClientX;
+    const dy = e.clientY - drag.startClientY;
+
+    if (drag.handle === 'rim') {
+      const newOD = drag.startValue + (dx * drag.vbScale / drag.layoutScale) * 2;
+      setGeometryParam('top_od', applyBounds(newOD, GEOMETRY_BOUNDS.top_od));
+    } else if (drag.handle === 'base') {
+      const newOD = drag.startValue + (dx * drag.vbScale / drag.layoutScale) * 2;
+      setGeometryParam('bottom_od', applyBounds(newOD, GEOMETRY_BOUNDS.bottom_od));
+    } else if (drag.handle === 'height') {
+      const newH = drag.startValue - (dy * drag.vbScale / drag.layoutScale);
+      setGeometryParam('H', applyBounds(newH, GEOMETRY_BOUNDS.H));
+    } else {
+      // belly
+      const newAmp = drag.startValue + dx * 0.01;
+      setGeometryParam('bellAmp', applyBounds(newAmp, GEOMETRY_BOUNDS.bellAmp));
+    }
+  }
+
+  function onSvgPointerUp() {
+    if (dragRef.current) {
+      commitHistoryTransaction();
+      dragRef.current = null;
+    }
+  }
+
+  function onHandleKeyDown(
+    e: React.KeyboardEvent<SVGCircleElement>,
+    handle: HandleId,
+    currentValue: number,
+  ) {
+    if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+    e.preventDefault();
+    const multiplier = e.shiftKey ? 10 : 1;
+    const sign = e.key === 'ArrowUp' ? 1 : -1;
+
+    beginHistoryTransaction();
+
+    if (handle === 'rim') {
+      const b = GEOMETRY_BOUNDS.top_od;
+      setGeometryParam('top_od', applyBounds(currentValue + sign * b.step * multiplier, b));
+    } else if (handle === 'base') {
+      const b = GEOMETRY_BOUNDS.bottom_od;
+      setGeometryParam('bottom_od', applyBounds(currentValue + sign * b.step * multiplier, b));
+    } else if (handle === 'height') {
+      const b = GEOMETRY_BOUNDS.H;
+      setGeometryParam('H', applyBounds(currentValue + sign * b.step * multiplier, b));
+    } else {
+      // belly
+      const b = GEOMETRY_BOUNDS.bellAmp;
+      setGeometryParam('bellAmp', applyBounds(currentValue + sign * b.step * multiplier, b));
+    }
+
+    commitHistoryTransaction();
+  }
+
   return (
     <div className="pf3-blueprint" style={{ height }}>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${VB_W} ${VB_H}`}
         width="100%"
         height="100%"
         data-testid="pf3-blueprint"
-        aria-hidden="true"
+        role="group"
+        aria-label="Vessel cross-section — drag handles adjust dimensions"
         preserveAspectRatio="xMidYMid meet"
+        onPointerMove={onSvgPointerMove}
+        onPointerUp={onSvgPointerUp}
       >
         {/* Dashed centerline at x=100 */}
         <line
@@ -159,6 +291,72 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
         >
           {hText}
         </text>
+
+        {/* ── Drag handles ─────────────────────────────────────────────────── */}
+
+        {/* rim — horizontal drag, controls top_od */}
+        <circle
+          className="pf3-bp__handle"
+          data-testid="pf3-bp-handle-rim"
+          data-pf3-focusable=""
+          role="slider"
+          aria-label="Rim diameter"
+          aria-valuenow={geometry.top_od}
+          tabIndex={0}
+          cx={xOf(profile.topOD / 2, 1)}
+          cy={rimY}
+          r={6}
+          onPointerDown={(e) => onHandlePointerDown(e, 'rim', geometry.top_od)}
+          onKeyDown={(e) => onHandleKeyDown(e, 'rim', geometry.top_od)}
+        />
+
+        {/* base — horizontal drag, controls bottom_od */}
+        <circle
+          className="pf3-bp__handle"
+          data-testid="pf3-bp-handle-base"
+          data-pf3-focusable=""
+          role="slider"
+          aria-label="Base diameter"
+          aria-valuenow={geometry.bottom_od}
+          tabIndex={0}
+          cx={xOf(profile.bottomOD / 2, 1)}
+          cy={baseY}
+          r={6}
+          onPointerDown={(e) => onHandlePointerDown(e, 'base', geometry.bottom_od)}
+          onKeyDown={(e) => onHandleKeyDown(e, 'base', geometry.bottom_od)}
+        />
+
+        {/* height — vertical drag, controls H */}
+        <circle
+          className="pf3-bp__handle"
+          data-testid="pf3-bp-handle-height"
+          data-pf3-focusable=""
+          role="slider"
+          aria-label="Height"
+          aria-valuenow={geometry.H}
+          tabIndex={0}
+          cx={CENTER_X}
+          cy={rimY}
+          r={6}
+          onPointerDown={(e) => onHandlePointerDown(e, 'height', geometry.H)}
+          onKeyDown={(e) => onHandleKeyDown(e, 'height', geometry.H)}
+        />
+
+        {/* belly — horizontal drag, controls bellAmp */}
+        <circle
+          className="pf3-bp__handle"
+          data-testid="pf3-bp-handle-belly"
+          data-pf3-focusable=""
+          role="slider"
+          aria-label="Belly amplitude"
+          aria-valuenow={geometry.bellAmp}
+          tabIndex={0}
+          cx={xOf(bellySample.rOuter, 1)}
+          cy={yOf(bellySample.z)}
+          r={6}
+          onPointerDown={(e) => onHandlePointerDown(e, 'belly', geometry.bellAmp)}
+          onKeyDown={(e) => onHandleKeyDown(e, 'belly', geometry.bellAmp)}
+        />
       </svg>
     </div>
   );

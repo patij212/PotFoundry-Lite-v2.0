@@ -35,3 +35,27 @@
   fill: var(--pf3-text-secondary);
   font-size: 9px;
 }
+
+/* Drag handles — gold circles, interactive */
+.pf3-bp__handle {
+  fill: var(--pf3-gold, #b4975a);
+  fill-opacity: 0.85;
+  stroke: rgba(0, 0, 0, 0.4);
+  stroke-width: 1;
+  cursor: grab;
+  outline: none;
+  transition: fill-opacity 0.15s ease;
+}
+
+.pf3-bp__handle:hover {
+  fill-opacity: 1;
+}
+
+.pf3-bp__handle:focus-visible {
+  outline: 2px solid var(--pf3-gold, #b4975a);
+  outline-offset: 2px;
+}
+
+.pf3-bp__handle:active {
+  cursor: grabbing;
+}

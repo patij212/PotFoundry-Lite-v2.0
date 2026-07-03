@@ -1,8 +1,8 @@
-import { describe, it, expect, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { BlueprintCanvas, computeLayout } from './BlueprintCanvas';
 import { useAppStore } from '../../../state';
-import { DEFAULT_GEOMETRY } from '../../../state/types';
+import { DEFAULT_GEOMETRY, GEOMETRY_BOUNDS } from '../../../state/types';
 import { sampleProfile } from './profileSampler';
 
 // ── computeLayout math ────────────────────────────────────────────────────────
@@ -126,5 +126,122 @@ describe('BlueprintCanvas', () => {
 
     expect(screen.getByText('⌀ 160')).toBeInTheDocument();
     expect(screen.queryByText('⌀ 140')).not.toBeInTheDocument();
+  });
+});
+
+// ── BlueprintCanvas drag handles ──────────────────────────────────────────────
+
+describe('BlueprintCanvas drag handles', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.setState(() => ({ geometry: { ...DEFAULT_GEOMETRY } }));
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 200, bottom: 130,
+      width: 200, height: 130, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('rim handle has role=slider, aria-label, and aria-valuenow', () => {
+    render(<BlueprintCanvas />);
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    expect(handle).toHaveAttribute('role', 'slider');
+    expect(handle).toHaveAttribute('aria-label');
+    expect(handle).toHaveAttribute('aria-valuenow');
+  });
+
+  it('handles are NOT inside an aria-hidden ancestor (sliders must reach AT)', () => {
+    render(<BlueprintCanvas />);
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    expect(handle.closest('[aria-hidden="true"]')).toBeNull();
+  });
+
+  it('aria-valuenow tracks the store value live', () => {
+    render(<BlueprintCanvas />);
+    expect(screen.getByTestId('pf3-bp-handle-height')).toHaveAttribute(
+      'aria-valuenow', String(DEFAULT_GEOMETRY.H),
+    );
+    act(() => {
+      useAppStore.setState(() => ({ geometry: { ...DEFAULT_GEOMETRY, H: 200 } }));
+    });
+    expect(screen.getByTestId('pf3-bp-handle-height')).toHaveAttribute('aria-valuenow', '200');
+  });
+
+  it('a second pointerdown during a live drag does not re-begin history (once per gesture)', () => {
+    useAppStore.setState({
+      beginHistoryTransaction: vi.fn(),
+      commitHistoryTransaction: vi.fn(),
+    });
+    const { beginHistoryTransaction, commitHistoryTransaction } = useAppStore.getState();
+
+    render(<BlueprintCanvas />);
+
+    const rim = screen.getByTestId('pf3-bp-handle-rim');
+    const base = screen.getByTestId('pf3-bp-handle-base');
+    fireEvent.pointerDown(rim, { clientX: 150, clientY: 50 });
+    fireEvent.pointerDown(base, { clientX: 140, clientY: 110 }); // stray 2nd touch mid-gesture
+    fireEvent.pointerMove(rim, { clientX: 169, clientY: 50 });
+    fireEvent.pointerUp(rim, { clientX: 169, clientY: 50 });
+
+    expect(beginHistoryTransaction).toHaveBeenCalledTimes(1);
+    expect(commitHistoryTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rim drag increases top_od and wraps a history transaction', () => {
+    useAppStore.setState({
+      beginHistoryTransaction: vi.fn(),
+      commitHistoryTransaction: vi.fn(),
+    });
+    const { beginHistoryTransaction, commitHistoryTransaction } = useAppStore.getState();
+
+    render(<BlueprintCanvas />);
+
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    fireEvent.pointerDown(handle, { clientX: 150, clientY: 50 });
+    fireEvent.pointerMove(handle, { clientX: 169, clientY: 50 });
+    fireEvent.pointerUp(handle, { clientX: 169, clientY: 50 });
+
+    expect(useAppStore.getState().geometry.top_od).toBeGreaterThan(DEFAULT_GEOMETRY.top_od);
+    expect(beginHistoryTransaction).toHaveBeenCalledTimes(1);
+    expect(commitHistoryTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('height drag upward increases H', () => {
+    render(<BlueprintCanvas />);
+
+    const handle = screen.getByTestId('pf3-bp-handle-height');
+    fireEvent.pointerDown(handle, { clientX: 100, clientY: 20 });
+    fireEvent.pointerMove(handle, { clientX: 100, clientY: 1 });
+
+    expect(useAppStore.getState().geometry.H).toBeGreaterThan(DEFAULT_GEOMETRY.H);
+  });
+
+  it('ArrowUp on height handle nudges H by one step', () => {
+    render(<BlueprintCanvas />);
+
+    const handle = screen.getByTestId('pf3-bp-handle-height');
+    fireEvent.keyDown(handle, { key: 'ArrowUp' });
+
+    expect(useAppStore.getState().geometry.H).toBe(DEFAULT_GEOMETRY.H + GEOMETRY_BOUNDS.H.step);
+  });
+
+  it('rim drag clamped at min: top_od never drops below bounds.min', () => {
+    useAppStore.setState(() => ({
+      geometry: { ...DEFAULT_GEOMETRY, top_od: GEOMETRY_BOUNDS.top_od.min },
+    }));
+
+    render(<BlueprintCanvas />);
+
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    // Drag far left — large negative dx
+    fireEvent.pointerDown(handle, { clientX: 150, clientY: 50 });
+    fireEvent.pointerMove(handle, { clientX: -500, clientY: 50 });
+
+    expect(useAppStore.getState().geometry.top_od).toBeGreaterThanOrEqual(
+      GEOMETRY_BOUNDS.top_od.min,
+    );
   });
 });
