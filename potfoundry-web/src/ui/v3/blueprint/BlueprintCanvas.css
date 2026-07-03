@@ -9,6 +9,16 @@
   overflow: hidden;
 }
 
+/* Strip mode (touch) — smaller container at 64px height */
+.pf3-blueprint--strip {
+  height: 64px;
+}
+
+/* Strip mode — tick font size increased for readability at smaller scale */
+.pf3-blueprint--strip .pf3-bp__tick {
+  font-size: 10px;
+}
+
 /* Outer generatrix — gold, primary weight (spec §6) */
 .pf3-bp__outer {
   stroke: var(--pf3-gold);

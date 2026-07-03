@@ -4,6 +4,7 @@ import { BlueprintCanvas, computeLayout } from './BlueprintCanvas';
 import { useAppStore } from '../../../state';
 import { DEFAULT_GEOMETRY, GEOMETRY_BOUNDS } from '../../../state/types';
 import { sampleProfile } from './profileSampler';
+import { TouchModeProvider } from '../mobile/TouchModeContext';
 
 // ── computeLayout math ────────────────────────────────────────────────────────
 
@@ -301,5 +302,76 @@ describe('BlueprintCanvas drag handles', () => {
     expect(useAppStore.getState().geometry.top_od).toBeGreaterThanOrEqual(
       GEOMETRY_BOUNDS.top_od.min,
     );
+  });
+});
+
+// ── BlueprintCanvas strip mode (touch) ───────────────────────────────────────
+
+describe('BlueprintCanvas strip mode (touch)', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useAppStore.setState(() => ({ geometry: { ...DEFAULT_GEOMETRY } }));
+  });
+
+  it('renders pf3-blueprint--strip class when useTouchMode is true', () => {
+    render(
+      <TouchModeProvider value={true}>
+        <BlueprintCanvas />
+      </TouchModeProvider>,
+    );
+    const container = screen.getByTestId('pf3-blueprint').parentElement;
+    expect(container).toHaveClass('pf3-blueprint--strip');
+  });
+
+  it('does NOT render pf3-blueprint--strip class when useTouchMode is false (default)', () => {
+    render(<BlueprintCanvas />);
+    const container = screen.getByTestId('pf3-blueprint').parentElement;
+    expect(container).not.toHaveClass('pf3-blueprint--strip');
+  });
+
+  it('handle radius is 12 in strip mode (doubled from 6)', () => {
+    render(
+      <TouchModeProvider value={true}>
+        <BlueprintCanvas />
+      </TouchModeProvider>,
+    );
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    expect(handle).toHaveAttribute('r', '12');
+  });
+
+  it('handle radius is 6 in desktop mode (default)', () => {
+    render(<BlueprintCanvas />);
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    expect(handle).toHaveAttribute('r', '6');
+  });
+
+  it('strip mode drag still writes to store (rim handle with scaled mocked rect)', () => {
+    // Mock getBoundingClientRect for strip container (64px height, ~98px width)
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockReturnValue({
+      left: 0, top: 0, right: 98, bottom: 64,
+      width: 98, height: 64, x: 0, y: 0, toJSON: () => ({}),
+    } as DOMRect);
+
+    useAppStore.setState({
+      beginHistoryTransaction: vi.fn(),
+      commitHistoryTransaction: vi.fn(),
+    });
+
+    render(
+      <TouchModeProvider value={true}>
+        <BlueprintCanvas />
+      </TouchModeProvider>,
+    );
+
+    const handle = screen.getByTestId('pf3-bp-handle-rim');
+    fireEvent.pointerDown(handle, { clientX: 50, clientY: 32 });
+    fireEvent.pointerMove(handle, { clientX: 70, clientY: 32 });
+    fireEvent.pointerUp(handle, { clientX: 70, clientY: 32 });
+
+    expect(useAppStore.getState().geometry.top_od).toBeGreaterThan(DEFAULT_GEOMETRY.top_od);
+    expect(useAppStore.getState().beginHistoryTransaction).toHaveBeenCalledTimes(1);
+    expect(useAppStore.getState().commitHistoryTransaction).toHaveBeenCalledTimes(1);
+
+    vi.restoreAllMocks();
   });
 });

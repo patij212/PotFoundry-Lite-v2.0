@@ -15,6 +15,7 @@
 import React, { useRef } from 'react';
 import { useAppStore, GEOMETRY_BOUNDS } from '../../../state';
 import { sampleProfile, type ProfileGeometry } from './profileSampler';
+import { useTouchMode } from '../mobile/TouchModeContext';
 import './BlueprintCanvas.css';
 
 // ── ViewBox / drawing-area constants ────────────────────────────────────────
@@ -119,6 +120,11 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
   const setGeometryParam = useAppStore((s) => s.setGeometryParam);
   const beginHistoryTransaction = useAppStore((s) => s.beginHistoryTransaction);
   const commitHistoryTransaction = useAppStore((s) => s.commitHistoryTransaction);
+
+  const isStrip = useTouchMode();
+  const containerHeight = isStrip ? 64 : height;
+  const containerClass = `pf3-blueprint${isStrip ? ' pf3-blueprint--strip' : ''}`;
+  const handleRadius = isStrip ? 12 : 6;
 
   const svgRef = useRef<SVGSVGElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -231,7 +237,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
   }
 
   return (
-    <div className="pf3-blueprint" style={{ height }}>
+    <div className={containerClass} style={{ height: containerHeight }}>
       <svg
         ref={svgRef}
         viewBox={`0 0 ${VB_W} ${VB_H}`}
@@ -326,7 +332,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           tabIndex={0}
           cx={xOf(profile.topOD / 2, 1)}
           cy={rimY}
-          r={6}
+          r={handleRadius}
           onPointerDown={(e) => onHandlePointerDown(e, 'rim', geometry.top_od)}
           onKeyDown={(e) => onHandleKeyDown(e, 'rim', geometry.top_od)}
         />
@@ -344,7 +350,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           tabIndex={0}
           cx={xOf(profile.bottomOD / 2, 1)}
           cy={baseY}
-          r={6}
+          r={handleRadius}
           onPointerDown={(e) => onHandlePointerDown(e, 'base', geometry.bottom_od)}
           onKeyDown={(e) => onHandleKeyDown(e, 'base', geometry.bottom_od)}
         />
@@ -362,7 +368,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           tabIndex={0}
           cx={CENTER_X}
           cy={rimY}
-          r={6}
+          r={handleRadius}
           onPointerDown={(e) => onHandlePointerDown(e, 'height', geometry.H)}
           onKeyDown={(e) => onHandleKeyDown(e, 'height', geometry.H)}
         />
@@ -380,7 +386,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           tabIndex={0}
           cx={xOf(bellySample.rOuter, 1)}
           cy={yOf(bellySample.z)}
-          r={6}
+          r={handleRadius}
           onPointerDown={(e) => onHandlePointerDown(e, 'belly', geometry.bellAmp)}
           onKeyDown={(e) => onHandleKeyDown(e, 'belly', geometry.bellAmp)}
         />
