@@ -2402,3 +2402,43 @@ NOT a fidelity or watertight failure; addressable with more optimizeSweeps if a 
 **Recommendation:** accept + document. No productionization action needed beyond the settled uniform
 M-square recipe. If a strict min-angle>=20 gate is later imposed, run a cheap optimizeSweeps sweep on
 FourierBloom only. Scorecard bins (heatmaps) in `research/exchange/_close_smooth/` (gitignored).
+
+---
+
+## E-2026-07-03-VERIFY-SMOOTH — Adversarial re-measure of the SMOOTH-axis <=0.01 claims
+
+**Verifier** (default verdict REFUTED). INDEPENDENTLY re-meshed all 5 wavy-field styles with the close-partner's
+EXACT RECIPE (`_close_smooth` M-square+chordSteiner0.03@0.8M) and re-measured with the honest labkit rulers, then
+attacked on 4 axes. Probe: `research/bridge/_verify_smooth.test.ts` (PF_VSMOOTH=1). Ledger:
+`research/exchange/_verify_smooth/scorecard.ndjson`.
+
+Independent numbers (full density; brute-anchor = worst-40 facets by true-3D error, full-azimuth 4096x800
+`bruteNearestOnRadialSurface`, min(GN,brute) — fires regardless of the radial>0.1 gate the close probe used, whose
+anchor was VACUOUS for all 5):
+
+| Style | claim p99 | MY true-3D p99 | anchor worst (gn->trusted) | HALF-density p99 | rawNM | %<20 / minAng | VERDICT |
+|---|---|---|---|---|---|---|---|
+| HarmonicRipple    | 0.0089 | **0.0089** (match) | 0.0176->0.0117 | **0.017** (blows past 0.01) | 0 | 0 / 21.2 | PARTIAL |
+| RippleInterference| 0.0068 | **0.0068** (match) | 0.0193->0.0152 | 0.0068 (stable) | 0 | 0 / 27.3 | CONFIRMED |
+| WaveInterference  | 0.0068 | **0.0068** (match) | 0.0106->0.0094 | 0.0068 (stable) | 0 | 0 / 27.7 | CONFIRMED |
+| SuperellipseMorph | 0.0085 | 0.0085; anchor **0.0066** (better) | 0.0129->0.0066 | 0.0085 (stable) | 0 | 0 / 25.4 | CONFIRMED |
+| FourierBloom      | 0.0081 | **0.0081** (match) | 0.0199->0.0093 | 0.0081 (stable) | 0 | **0.3 / 16.2** | PARTIAL |
+
+**Findings:**
+1. **NO ruler artifact — all 5 verified true-3D, not radial-masked.** radialP99 ~= true3dP99 for every style
+   (smooth single-valued fields => radial does NOT overstate). My independent worst-40 brute-anchor found GN
+   OVERSTATES the worst facet (conservative direction: trusted <= gn on all 5, e.g. Superellipse 0.0129->0.0066),
+   so the truth is EQUAL-OR-SMALLER than their claim. The close-partner's <=0.01 is REAL true-3D.
+2. **Watertight independently 0 on RAW literal index** for all 5, full AND half density (auditor non-vacuous:
+   injected fold moves 0->1, guarded).
+3. **DENSITY-FRAGILE only on HarmonicRipple.** At HALF budget (1.1M->798k tris) HarmonicRipple true-3D p99
+   0.0089 -> **0.017** (max 0.038), ~2x over the bar => its <=0.01 REQUIRES the full ~1.1M-tri budget; it is a
+   BUDGET-CAPPED style. The other 4 are tol-driven (metric sizing already fits under 400k), so halving the CAP did
+   not change their mesh — for them tolMm=0.004 is the density lever, and they hold at their claimed number.
+4. **FourierBloom quality-tail residual CONFIRMED** exactly as the close-partner disclosed: %<20=0.3%, minAng=16.2
+   (fidelity/watertight both PASS). Their honest self-flag stands.
+
+**VERDICTS:** 3 CONFIRMED (Ripple/Wave/Superellipse), 2 PARTIAL (HarmonicRipple = density-fragile caveat;
+FourierBloom = quality-tail caveat). NONE fully REFUTED — the true-3D <=0.01 headline is real and reproduces
+independently on all 5 at the stated density. Caveats: HarmonicRipple needs full budget; FourierBloom carries a
+0.3% min-angle tail.
