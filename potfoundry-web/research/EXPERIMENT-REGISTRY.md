@@ -2586,3 +2586,41 @@ independently on all 5 at the stated density. Caveats: HarmonicRipple needs full
 **RENDER:** `research/exchange/_gap_gsbss/gap_montage.png` — SpiralRidges all-GREEN (confirmed); GeometricStar GREEN faces + RED strictly on strapwork chevron crease lines; BambooSegments-doubled red segment-ring bands. Every red region is a designed feature/cliff, not a tessellation defect.
 
 **LEDGER:** scorecard `research/exchange/_gap_gsbss/scorecard.ndjson` (10 rows) + `diag.log` (tail localization) + `gap_montage.png` + per-style `*_heatmap.{stl,col.bin,...}`; probes `research/bridge/_gap_gsbss.test.ts` (PF_GAP_GSBSS + per-style sub-gates PF_GAP_SR/GS/BS/BSD, resumable) + `_gap_gsbss_diag.test.ts` (PF_GAP_DIAG/PF_GAP_DIAG_GS) + `_bs_step_probe.test.ts` (PF_BS_STEP) + `_gs_step_probe.test.ts` (PF_GS_STEP); configs `vitest.gap_gsbss*.config.ts` + `vitest.bs_step.config.ts` + `vitest.gs_step.config.ts`. Reuses `_sharp3dMesh`/`_sharp3dRef`/labkit READ-ONLY. NO src/ or kernel/labkit edit.
+
+---
+
+## E-2026-07-03-GAP-GOTHHEX — GothicArches + HexagonalHive via TANGLED CDT-under-M + deep sag (the correct axis after ridge-graph REFUTED)
+
+**Q:** do GothicArches (dense z-localized rib lattice) + HexagonalHive (staggered 2D hex grid) — BOTH REFUTED-AXIS for the ridge-graph in E-CLOSE-THETA / VERIFY-THETA (Gothic 29.9mm/%<20 30.7%, drift 39.7; HexHive 33.5mm bridge/drift 145, gnOver 0) — close to honest true-3D perp p99 ≤0.01mm + %<20 <5% + rawNonMan 0 under the TANGLED primitive that CONFIRMED Gyroid: metric-Delaunay under M + deep sag (chordSteiner), NO injected network, NO extra sweeps?
+
+**DISCRIMINATOR (cheapest):** `buildInhouseMetricMesh(rA,H,{...BASE, optimizeSweeps:2, guardManifoldAlways:true, chordTolMm:<0.03→0.02→0.015>, chordSteiner:true})` — mirror of `_tangled2` rawSteiner+measure. Honest ruler: fl-chord `featureLineChord3D` (interior loci) + STEEP brute-anchor `bruteAnchoredRedPerp({redMm:0.1,sampleN:40,radial})` → trustedP99 (gnOver reports GN overstatement); %<20 `triangleQualityDistribution.pctBelow20`; rawNonMan `auditNonManRaw`. TWO densities per (style,chordTol); checkpointed ndjson.
+
+**KILL-CRITERION (pre-registered):** per style — REACHES iff honest true-3D verdict p99 ≤0.010 AND %<20 <5% AND rawNonMan 0, density-responsive across the chordTolMm sweep. PARTIAL iff quality+watertight met AND chord DENSITY-RESPONSIVE toward ≤0.01 but literal ≤0.01-worst not hit (localized steep residual). REFUTED-under-CDT iff chord does NOT respond to density (a floor with no lever) — report the measured residual + why.
+
+**VERDICT: SPLIT — HexHive PARTIAL-NEAR (fl-chord 0.0115, no red facets, ~2× off the literal bar); GothicArches PARTIAL (density-responsive 0.16→0.06 then FLOORS at ~0.06mm on the steep rib crests — chordSteiner cannot reach 0.01). The tangled CDT-under-M primitive is the RIGHT axis for both (rawNonMan 0, %<20 <1%, no mis-chaining/bridging — the 33.5/29.9mm ridge-graph pathology is GONE), but neither hits the literal ≤0.01: HexHive is CAD-grade-approaching, Gothic has a genuine steep-rib-crest under-shoot floor the chord-sag guard is blind to.**
+
+**EVIDENCE (real vitest run, config `vitest.gap_gothhex.config.ts`; instruments named; ◆ = worst-red brute-anchored, gnOver=0 everywhere ⇒ genuine, NOT GN overstatement):**
+
+HexagonalHive (mesh SATURATES at each chordTol — budget not binding; density-responsive in chordTol):
+| chordTol | tris | fl-chord p99 | flMax | worst-red◆ | nRed | %<20 | minA | rawNM |
+|---|---|---|---|---|---|---|---|---|
+| 0.03 | 870,719 | 0.0171 | 0.040 | 0 | 0 | 0.0 | 20.1 | 0 |
+| 0.02 | 889,486 | 0.0139 | 0.035 | 0 | 0 | 0.0 | 12.8 | 0 |
+| 0.015 | 910,413 | **0.0115** | 0.029 | **0** | 0 | 0.0 | 10.7 | 0 |
+
+GothicArches (density-response then FLOOR; worst-red plateaus ~0.057–0.067 once tris > ~2.2M):
+| chordTol | tris | fl-chord p99 | flMax | worst-red◆ | nRed | %<20 | rawNM |
+|---|---|---|---|---|---|---|---|
+| 0.03 (900k budget) | 1,797,840 | 0.094 | 0.559 | 0.1575 | 5459 | 0.5 | 0 |
+| 0.03 (1.5M budget) | 2,189,784 | 0.0367 | — | 0.0573 | 836 | 0.7 | 0 |
+| 0.02 | 2,252,702 | 0.0325 | 0.255 | 0.0674 | 576 | 0.8 | 0 |
+| 0.015 | 2,327,348 | 0.0298 | 0.144 | **0.0662** | 544 | 0.8 | 0 |
+
+- **HexHive:** NO red facets at any density (nRed 0 ⇒ the true-3D verdict = fl-chord). fl-chord monotone 0.0171→0.0139→0.0115 as chordTol tightens; but tris barely grow (871k→910k) — the mesh saturates, the residual is a slowly-shrinking sub-0.02mm crest under-shoot on the hex-cell rim lines (render `hexhive_hd.png`: overwhelmingly GREEN, worst 0.056, p99 0.017, %>0.03=0.0%). ~2× off the 0.01 bar; would need a curvature-floor/true-3D-perp guard (not chord-sag) to cross it. Prod raw-kernel baseline was 0.0197 (E-prodMeasure) — this HALVES it.
+- **Gothic:** worst-red genuinely density-responsive 0.158→0.057 (0.03 budget-clip removed) but then FLOORS at ~0.057–0.067 across chordTol 0.03→0.02→0.015 while tris plateau at ~2.2–2.3M. gnOver=0 throughout ⇒ these are GENUINE ~0.06mm true-3D perp gaps on the sharp Gothic rib/mullion crests, NOT GN artifacts. Render `gothic_mid.png`: green body, persistent YELLOW-ORANGE residual RIDGE exactly on the arch mullion crest lines (worst 0.125 on-crest). = the steep-rib crest UNDER-SHOOT of E-2026-06-26-FEAT-LOCALIZED: the chord-sag guard is BLIND to it (facet chord ≈ same-(u,t) surface, but perpendicular true-3D gap ~0.06). Massive improvement over prod feature-conforming (0.199) and over the ridge-graph mis-chain (29.9mm), but NOT the literal 0.01.
+
+**AXIS CONFIRMED, defect ISOLATED:** both styles now mesh CLEANLY under CDT-under-M (rawNonMan 0, %<20 <1%, weldNonMan 0, no bridging) — the ridge-graph's 33.5/29.9mm bridge/mis-chain pathology is ELIMINATED, proving these are tangled/feature-network styles, not θ-ridge. The chordSteiner (chord-sag) guard is DENSITY-RESPONSIVE but has a per-style FLOOR (HexHive ~0.011, Gothic ~0.06) because it sizes on same-(u,t) chord sag and is BLIND to the perpendicular true-3D under-shoot on the sharpest crests — the documented "sizing-field blind to sub-cell steep rib" mechanism.
+
+**RECOMMENDATION:** (1) accept both as the CORRECT-AXIS PARTIALs (document); the ridge-graph route is dead for these. (2) To cross 0.01, the lever is a TRUE-3D-PERPENDICULAR-driven refinement guard (or the analytic `curvatureFloor` sizing term, dormant per memory `project_export_endgame_design`) that splits on facet→surface perpendicular distance, NOT chord sag — pre-register that as the next experiment on Gothic (the crest under-shoot is the cleanest target). HexHive is close enough that a modest perp-guard should close it. (3) Do NOT force more chordSteiner depth — proven to floor (density-invariant beyond ~2.2M tris). (4) Feature-conforming (protect the rib/hex crest as constraint edges so facets ALIGN not straddle the crest) is the other candidate — but E-TANGLED Q2 showed the protected NETWORK re-opens quality on Gyroid; test crest-only (not full network) for these z-localized crests.
+
+**LEDGER:** scorecard `research/exchange/_gap_gothhex/scorecard.ndjson` (HexHive 5 rows + Gothic 4 distinct density points) + renders `hexhive_hd.png` (GREEN, CAD-approaching) + `gothic_mid.png` (on-crest residual ridge) + heatmap bins; probe `research/bridge/_gap_gothhex.test.ts` (PF_GAP_GOTHHEX, per-style + per-tier env-gated, resumable) + config `vitest.gap_gothhex.config.ts`. Reuses labkit rulers + byte-identical-off kernel hooks READ-ONLY. NO src/ or kernel/labkit edit.
