@@ -2694,3 +2694,76 @@ experiment. (4) The shear-aware serration sampler should replace the θ-bucket o
 DragonScales heatmap bins/STL (`DragonScales_chord_heatmap.*`, `DragonScales_hd_heatmap.*`); probe
 `research/bridge/_gap_treadsq.test.ts` (PF_GAP_TSQ + per-style PF_TSQ_DS/PF_TSQ_AD, skip-if-key-exists, resumable) +
 config `vitest.gap_treadsq.config.ts`. Reuses `_sharp3dMesh`/`_sharp3dRef`/labkit READ-ONLY. NO src/ or shared-kernel edit.
+
+---
+
+## E-2026-07-03-PERP-GUARD (true-3D-perpendicular-driven refinement guard, GothicArches) — REFUTED (genuine steep-EXCLUDE rib-crest cliff)
+
+**Q:** does a TRUE-3D-perpendicular-driven refinement guard — an OUTER LOOP reusing `buildInhouseMetricMesh`'s
+`injectedPoints` hook (mesh with the confirmed tangled recipe → per-facet true-3D perp field → for every facet whose
+perp > perpTolMm, project its worst point to the surface and inject the FOOT → re-mesh, repeat) — drive GothicArches
+below the chordSteiner FLOOR? chordSteiner splits by CHORD sag (facet→same-(u,t) plane), which is BLIND to the true-3D
+perpendicular under-shoot on the near-vertical rib crests.
+
+**HYPOTHESIS:** the perp-guard (refinement criterion = true-3D perpendicular, not chord sag) drives Gothic
+brute-anchored `bruteAnchoredRedPerp.trustedP99` ≤0.012mm at ≤6M tris, rawNonMan 0, %<20 <5%. leverMovesFloor=true.
+
+**KILL-CRITERION (pre-registered):** CONFIRMED iff trustedP99 ≤0.012 at ≤6M tris + rawNonMan 0 + %<20 <5%
+(leverMovesFloor=true). REFUTED iff the guard CANNOT drive trustedP99 below 0.02 even when every high-perp facet is
+refined ⇒ genuine near-vertical designed cliff (steep-EXCLUDE like Bamboo/LowPoly), leverMovesFloor=false. PARTIAL iff
+it moves the floor (e.g. 0.06→0.02) but not to ≤0.012. leverMovesFloor=true iff AFTER ≥2× better than BEFORE.
+
+**VERDICT: REFUTED. The GothicArches rib crest is a genuine near-vertical designed cliff — the honest true-3D
+perpendicular FLOORS at ~0.042mm and no chord-based refinement (chordSteiner OR perp-injection) can cross it.
+leverMovesFloor=false.** gnOver=0 on EVERY row (brute-twin AGREES with GN — the residual is genuine, not GN
+steep-overstatement). rawNonMan 0 throughout. Render `pg_gothic_floor.png`: the mesh is GREEN everywhere except thin
+vertical red streaks running exactly along the near-vertical Gothic arch-RIB CREST lines — the steep-EXCLUDE signature.
+
+**EVIDENCE (real vitest, honest brute-anchored true-3D `bruteAnchoredRedPerp.trustedP99`; `_perp_guard.test.ts`, PF_PERP_GUARD):**
+| recipe | tris | flChordP99 | trustedP99 | gnOver | nRed | %<20 | nonMan |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| BEFORE plain chordSteiner @0.9M | 1.80M | 0.094 | **0.1575** | 0 | 5459 | 0.5 | 0 |
+| AFTER perp-guard tol0.02 it1 (+6000 inj) | 1.80M | 0.120 | **0.1814** | 0 | 8331 | 2.9 | 0 |
+| AFTER perp-guard tol0.02 it2 (+12000 inj) | 1.80M | 0.096 | **0.1877** | 0 | 5411 | 3.4 | 0 |
+| BEFORE @2.5M budget (chordTol 0.03) | 2.19M | 0.037 | **0.0573** | 0 | 836 | 0.7 | 0 |
+| BEFORE @6M budget (chordTol 0.03) | 2.19M | 0.037 | **0.0573** | 0 | 836 | 0.7 | 0 |
+| chordTol depth 0.015 | 2.33M | 0.030 | **0.0421** | 0 | 544 | 0.8 | 0 |
+| chordTol depth 0.008 | 2.60M | 0.018 | **0.0424** | 0 | 81 | 1.1 | 0 |
+
+**MECHANISM (three findings, the second is the load-bearing surprise):**
+1. **Perp-injection at fixed budget is a NO-OP-to-HARMFUL.** it0→it1→it2 injected 0→6000→12000 perp-driven surface
+   feet but tri count moved 1797840→1798569→1798764 (+924 net for 12000 injected!) and trustedP99 got WORSE
+   0.1575→0.1814→0.1877 (%<20 0.5→3.4). The injected pinned points DISPLACE seed/steiner points rather than adding
+   crest density, and slightly degrade quality.
+2. **chordSteiner mesh SIZE is set by `chordTolMm`, NOT the point budget.** @2.5M and @6M `maxPoints` give the
+   BYTE-SAME 2.19M-tri mesh (trustedP99 0.0573) — chordTol=0.03 stops splitting once every facet's chord sag <0.03.
+   ⇒ the guard's premise ("inject + re-mesh adds density") is false: at fixed chordTol the mesh cannot grow, so the
+   perp criterion has no lever. The ONLY way to add crest density is to LOWER chordTolMm (deep sag).
+3. **chordTol depth reveals a FLOOR at ~0.042mm the true-3D perp cannot cross.** chordTol 0.03→0.057, 0.015→0.042,
+   0.008→**0.042 (STOPPED)** — halving chordTol from 0.015 to 0.008 added 270k tris and cut flChord 0.030→0.018 (chord
+   IS reducible) but left true-3D perp pinned at 0.042 and `nRed` collapsing 836→544→81 (a small localized residual).
+   Fitting perp ≈ 0.027 + 1.0·chordTol early, then floor — the intercept/floor ~0.042 is the near-vertical rib-crest
+   component. This is the density-INVARIANT steep-cliff signature (cf. E-endgame DragonScales density-invariant chord).
+
+**INTERPRETATION vs kill-criterion:** trustedP99 never reaches ≤0.012 (best 0.042, ~3.5× above bar); it never even
+reaches ≤0.02; the perp-guard LEVER itself moved the floor the WRONG way (0.158→0.188). The floor movement 0.057→0.042
+came entirely from chordTol DEPTH (a 1.36× gain, <2×), and it FLOORS — not density-responsive past 0.042. ⇒ **REFUTED:
+GothicArches rib crest = genuine near-vertical designed cliff (steep-EXCLUDE class). Reclassify Gothic steep-EXCLUDE +
+accept** (radial overstates — radialMax 0.40 vs true-3D floor 0.042; the mesh is CAD-grade off the crest, green render).
+
+**RECOMMENDATION:** accept + document GothicArches as steep-EXCLUDE (rib-crest near-vertical cliff), same class as
+BambooSegments / LowPolyFacet / DragonScales. Do NOT productionize the perp-guard for Gothic — the guard cannot add
+crest density at fixed chordTol and floors at 0.042 anyway. The generic true-3D-perp-driven guard is NOT a general
+lever for the θ-ridge steep styles: the refinement size is chord-tol-bound, so a perp criterion needs to DRIVE
+chordTolMm down (not inject points), and even then the near-vertical component floors. For the export standard, ship
+the tangled recipe at chordTol≈0.015 (Gothic true-3D 0.042 off-crest CAD-grade, ~0.018 flChord) and CLASSIFY the
+rib-crest residual as the designed near-vertical feature (radial-overstated, brute-confirmed genuine, %<20 <1.1%,
+watertight). If a hard ≤0.012-everywhere is later mandated on Gothic, it requires a crest-EXCLUSION field (creaseStraddle
+class), NOT more refinement — that is the open follow-up.
+
+**LEDGER:** scorecard `research/exchange/_perp_guard/pg_rows.ndjson` (8 rows: BEFORE 0.9/2.5/6M + guard it0-2 + chordTol
+depth 0.015/0.008); render `research/exchange/_perp_guard/pg_gothic_floor.png` (green surface + red rib-crest streaks) +
+heatmap bins `pg_before_2.5M_it0_chord.*` / `pg_before_6.0M_it0_chord.*`. Probe `research/bridge/_perp_guard.test.ts`
+(PF_PERP_GUARD=1, one env-gated `it` per unit, checkpointed ndjson, resumable), config `vitest.perp_guard.config.ts`.
+Reuses committed byte-identical-off kernel hooks (`injectedPoints`/`pinInjected`/`guardManifoldAlways`/`chordSteiner`)
++ labkit rulers READ-ONLY. NO src/ or shared-kernel edit. NOT committed to production; dev-only research artifact.
