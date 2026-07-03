@@ -1,0 +1,54 @@
+/**
+ * entrance.css — once-per-session entry stagger (spec §3.3).
+ *
+ * Activated by `.pf3-root[data-entrance]` which AppUIv3 sets on first mount
+ * when the `pf3-entered` session flag is absent.  The attribute is omitted on
+ * every subsequent load within the same session so animations never replay.
+ *
+ * Duration tokens (from tokens.css):
+ *   --pf3-dur-overlay : 320 ms  (all entrance animations)
+ *   --pf3-ease-enter  : cubic-bezier(0.16, 1, 0.3, 1)
+ *
+ * Total stagger: 400 ms delay + 320 ms duration = ~720 ms ≈ 700 ms target.
+ *
+ * prefers-reduced-motion: tokens.css already overrides
+ *   animation-duration: 0.01ms !important  inside the @media block,
+ *   so no additional override is required here — all animations collapse
+ *   automatically regardless of the delay.
+ */
+
+@keyframes pf3-enter-panel {
+  from { opacity: 0; transform: translateX(-16px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes pf3-enter-toolbar {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pf3-enter-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* Panel — slide in from left + fade; delay 0 */
+.pf3-root[data-entrance] .pf3-panel {
+  animation: pf3-enter-panel var(--pf3-dur-overlay) var(--pf3-ease-enter) both;
+}
+
+/* Toolbar — drop down + fade; delay 120 ms */
+.pf3-root[data-entrance] .pf3-toolbar {
+  animation: pf3-enter-toolbar var(--pf3-dur-overlay) var(--pf3-ease-enter) 120ms both;
+}
+
+/* AccountChip — fade in; delay 200 ms */
+.pf3-root[data-entrance] .pf3-account {
+  animation: pf3-enter-fade var(--pf3-dur-overlay) var(--pf3-ease-enter) 200ms both;
+}
+
+/* Status + hint — fade in last; delay 400 ms */
+.pf3-root[data-entrance] .pf3-status,
+.pf3-root[data-entrance] .pf3-hint {
+  animation: pf3-enter-fade var(--pf3-dur-overlay) var(--pf3-ease-enter) 400ms both;
+}

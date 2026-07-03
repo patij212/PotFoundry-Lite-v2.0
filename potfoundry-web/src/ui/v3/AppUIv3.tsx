@@ -16,8 +16,10 @@ import { useStudioBackdrop } from './stage/useStudioBackdrop';
 import { ShowroomOverlay } from './showroom/ShowroomOverlay';
 import { AccountChip } from './stage/AccountChip';
 import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
+import { safeStorage } from './utils/safeStorage';
 import './tokens.css';
 import './AppUIv3.css';
+import './entrance.css';
 
 const TAB_KEYS: Record<string, 'shape' | 'style' | 'export'> = { '1': 'shape', '2': 'style', '3': 'export' };
 
@@ -32,8 +34,17 @@ export const AppUIv3: React.FC = () => {
   const toggleFullscreen = useAppStore((s) => s.toggleFullscreen);
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [showEntrance, setShowEntrance] = useState(false);
 
   useStudioBackdrop();
+
+  // Once-per-session entrance: set data-entrance on first mount, never replay.
+  useEffect(() => {
+    if (!safeStorage.getSession('pf3-entered')) {
+      setShowEntrance(true);
+      safeStorage.setSession('pf3-entered', '1');
+    }
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.theme = 'dark';
@@ -89,7 +100,7 @@ export const AppUIv3: React.FC = () => {
 
   return (
     <ErrorBoundary name="AppUIv3">
-      <div className="pf3-root pf3-layout" data-theme="dark" data-zen={zenMode || undefined} data-testid="pf3-root">
+      <div className="pf3-root pf3-layout" data-theme="dark" data-zen={zenMode || undefined} data-entrance={showEntrance ? '' : undefined} data-testid="pf3-root">
         <ErrorBoundary name="PillToolbar"><PillToolbar /></ErrorBoundary>
         <ErrorBoundary name="AccountChip"><AccountChip /></ErrorBoundary>
         {!zenMode && (

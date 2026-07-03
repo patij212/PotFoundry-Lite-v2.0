@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useAppStore } from '../../state';
 
@@ -145,5 +145,29 @@ describe('AppUIv3 shell', () => {
     render(<AppUIv3 />);
     fireEvent.keyDown(document, { key: 'F11' });
     expect(useAppStore.getState().ui.fullscreen).toBe(true);
+  });
+});
+
+describe('AppUIv3 entrance sequence', () => {
+  beforeEach(() => {
+    sessionStorage.clear();
+  });
+
+  afterEach(() => {
+    sessionStorage.clear();
+  });
+
+  it('first mount: root gains data-entrance and session flag is set', () => {
+    // Session flag absent → first-ever mount within this session
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-entrance');
+    expect(sessionStorage.getItem('pf3-entered')).toBe('1');
+  });
+
+  it('second mount: no data-entrance when session flag already set', () => {
+    // Pre-set the flag as if the component has mounted before
+    sessionStorage.setItem('pf3-entered', '1');
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).not.toHaveAttribute('data-entrance');
   });
 });
