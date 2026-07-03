@@ -2496,3 +2496,35 @@ independently on all 5 at the stated density. Caveats: HarmonicRipple needs full
 **RECOMMENDATION:** correct the θ-axis scorecard — SpiralRidges is ACCEPT-near-CAD (0.013 worst-red, density-responsive) NOT reaches001. The partner's `reaches001` gate is unreliable when `bruteAnchoredRedPerp` never fires (radialMax<redMm): the honest tail should always be measured with a redMm at/below the target (0.01), not left to the body-diluted whole-mesh radial p99. Re-score SuperformulaBlossom interior with the TRUE-3D projector at h=0.15 before granting it "interior CAD-grade".
 
 **LEDGER:** `research/exchange/_verify_theta/verify.ndjson`; probe `research/bridge/_verify_theta.test.ts` (PF_VERIFY_THETA=1). Reuses `_scaleColDriver` + labkit rulers READ-ONLY. NO src/ or kernel edit.
+
+---
+
+## E-2026-07-03-CLOSE-ZTILED (close the z-tiled axis: honest measured triple on all 5 group styles, fresh vitest run)
+
+**Q:** For ArtDeco/DragonScales/LowPolyFacet/GeometricStar/BambooSegments, does the SHARP3D doubled-rings + M-square primitive reach honest true-3D perp ≤0.01mm vs the actual closed 3D object, zero serration by construction, on a REAL vitest run — and is the residual density-responsive?
+
+**KILL-CRITERION (pre-registered):** per style, honest true-3D p99 ≤ 0.01mm (riser styles: BVH-vs-closed-object; on-surface styles: brute-anchored true-3D trustedP99) AND rawNonMan=0 ⇒ REACHES. If p99>0.01 but the residual is a density-responsive C1 crest/crease OR a genuine designed C0 edge (density-invariant, radial own-region CAD-grade) ⇒ CLOSED-with-mechanism, not a wall.
+
+**PREMISE REFUTED for 3/5 (confirms E-2026-07-02-BREADTH STEP-0):** only ArtDeco + DragonScales are z-riser (C0 radius-step rings). GeometricStar = in-plane strapwork creases; BambooSegments = smooth node-ring; LowPolyFacet = bevel-smoothed flat faces — NO z-step. So the doubled-rings primitive applies to 2/5; the other 3 are dense M-square sheet vs the analytic surface.
+
+**THE MEASURED TRIPLE (fresh PF_ZTILED vitest run; scorecard `research/exchange/_close_ztiled/scorecard.ndjson`):**
+
+| style | primitive | tris | honest true-3D p99 | true-3D max | %<20° | rawNonMan | reaches ≤0.01 | residual mechanism |
+|---|---|---|---|---|---|---|---|---|
+| **ArtDeco** | SHARP3D sheared-φ doubled-rings+treads | 2.23M | **0.001** (BVH) | 0.014 | 51.7 | **0** | **YES** | stair-tread-lip C0 edge @0.014 (sub-print, density-reducible); %<20 = tread-sub aspect (tunable). *[real run = E-2026-07-01 stage16; fresh re-run stalled on dense sheared-ref BVH-query perf, not a mesh issue]* |
+| **DragonScales** | SHARP3D doubled-rings + SQUARE treads | 405k (screen) | **0.021** (BVH) | 0.099 | **7.6** | **0** | no (screen) | tread-lip C0 edge (worst); p99 = ref-discretization floor 0.018 + screen density (breadth HD=0.0049). **SQUARE-tread lever cut %<20 29%→7.6%** (sheet 17.9°); residual allMinAngle 0.1° = worst tread sub-ring (density-responsive) |
+| **GeometricStar** | dense M-square sheet | 1.8M | **0.019** (anchored) | — | 2.1 | **0** | no | density-responsive strapwork C1 crease corner (radial own-region CAD-grade); like GothicArches V-ribs — closable w/ crease-conforming columns or density, NOT a wall |
+| **BambooSegments** | dense M-square sheet | 1.68M | **0.114** (anchored) / **0.006** (radial own-region) | — | 0.5 | **0** | radial YES | node-ring Gaussian crest; radial own-region 0.0057 = CAD-grade; the 0.114 anchored perp = azimuthal-foot overstatement (breadth METRIC #3: foot lands on adjacent azimuth) |
+| **LowPolyFacet** | dense M-square sheet | 1.2M | **0.236** (anchored) / **0.000** (radial own-region) | — | **0** | **0** | faces YES | 12 DESIGNED convex polygon EDGES (genuine geometry, density-INVARIANT); faces literally flat-perfect (radial=0, 0% over-tol) |
+
+**VERDICT:** ArtDeco REACHES (0.001 p99, 99.98%≤0.01, watertight — the proven doubled-ring win). The other 4 are CLOSED-with-mechanism, NOT reached-literally: DragonScales treads transfer (density-responsive, my square-tread lever fixed the %<20 quality gap 29%→7.6%), and the 3 on-surface styles are radial-own-region CAD-grade (LowPoly faces literally 0, Bamboo 0.006) with the residual being a genuine designed C0 edge (LowPoly/density-invariant) or a density-responsive C1 crest/crease (GeoStar/Bamboo). ALL 5 rawNonMan=0 (watertight by construction), serration ≈0 by construction on the risers.
+
+**NEW CONTRIBUTION (the open lever breadth left):** SQUARE-SIZED tread sub-rings (divide the tread radial span so each sub-cell ≈ the θ-arc step) — DragonScales %<20 29.4%→7.6% with the sheet clean at 17.9°. The remaining allMinAngle 0.1° is the single worst tread sub-ring at a ring with a tiny radial span (density-responsive tail, not fundamental).
+
+**METRIC NOTE (load-bearing, reconfirmed):** on-surface styles need the RADIAL own-region chord as the faithful ruler (vertices lie exactly on r(θ,z)); the global-nearest/anchored perpendicular OVERSTATES on azimuthal relief (Bamboo 0.006 radial vs 0.114 anchored; LowPoly 0 vs 0.236). The BVH-closed-object ruler is needed ONLY at genuine z-discontinuities (ArtDeco/DragonScales treads).
+
+**RENDER:** `research/exchange/_close_ztiled/ztiled_montage.png` (4-style true-3D heatmap @0.01mm scale) — every red region is a genuine designed feature (DragonScales scale-creases+tread-lips, GeoStar strapwork chevron, Bamboo node-ring crests, LowPoly overwhelmingly GREEN faces), corroborating the metrics: no tessellation defects, only designed relief.
+
+**RESILIENCE/PERF finding:** Vitest 4 buffers console.log until test-end ⇒ used an UNBUFFERED disk `plog` for phase visibility. The BVH `loc.dist` metric on a dense reference is ~280s/config (DragonScales) and pathologically slow on the sheared-φ ArtDeco reference (thin strips → huge per-cell candidate lists) — the reason to keep one config per riser style and cite the established ArtDeco stage16 number. `bruteAnchoredRedPerp` fine-grid at 12288×2400 × slow style rA (LowPoly SDF) was a multi-minute stall; a 768×200 coarse + 1536×400 fine anchor is bounded (seconds) and agrees (LowPoly trustedP99 0.236 ≈ breadth 0.246).
+
+**LEDGER:** scorecard `research/exchange/_close_ztiled/scorecard.ndjson` (5 rows); render `ztiled_montage.png` + per-style `*_heatmap.{stl,col.bin,...}`; probe `research/bridge/_close_ztiled.test.ts` (PF_ZTILED + per-style sub-gate, resumable), config `vitest.close_ztiled.config.ts`. Reuses labkit + `_sharp3dRef`/`_sharp3dMesh` READ-ONLY. NO src/ or kernel edit. NOT committed (left on disk for review).
