@@ -2334,3 +2334,71 @@ Honest chord DENSITY-RESPONSIVE, near-linear in cliffChord (slope ~0.37) ⇒ **c
 **RECOMMENDATION:** accept the tangled primitive = raw kernel `{chordTolMm, chordSteiner:true, guardManifoldAlways:true, optimizeSweeps:2}` (NO injected network, NO extra sweeps). Do NOT add the crest/valley network for tangled styles (refuted). Residual near-vertical crystal/cell cliffs on Crystalline/Voronoi are the same steep-EXCLUDE class already documented (radial overstates; true-3D fl-chord CAD-grade) — accept+document, or push chordSteiner depth to trim the last ~13-facet count. Productionization = wire chordSteiner deep-sag into the export sizing for the tangled class (behind the default-off flag), no kernel change.
 
 **LEDGER:** scorecard `research/exchange/_tangled/SCORECARD.md`; rows `research/exchange/_tangled/t2_rows.ndjson` (9 rows); renders `t2_Gyroid_chord_montage.png` (winner vs 2 refuted levers) + `t2_tangled3_chord.png` (all-3 green). Probe `research/bridge/_tangled2.test.ts` (PF_TANGLED2, config `vitest.tangled.config.ts`), reuses `_tangledRecon` setup + labkit rulers + committed byte-identical-off kernel hooks READ-ONLY. NO src/ or kernel edit. NOT committed (left on disk for review).
+
+---
+
+## E-2026-07-03-CLOSE-THETA (close the θ-RIDGE axis: SFB / GothicArches / SpiralRidges / HexagonalHive → honest true-3D ≤0.01)
+
+**Q:** does the proven structured-column / M-square recipe (`buildScaleColMesh`: feature-loci → ridge-graph → M-square columns → explicit seam-cliff iff non-2π; or uniform-M-square for smooth) drive EVERY style in the θ-ridge group to honest true-3D perp p99 ≤0.01mm with %<20 low + rawNonMan 0 (feature edges = mesh edges ⇒ ~zero serration)? Production baseline (E-prodMeasure): SFB verdictP99 0.130 / %<20 0 / (thin petals), GothicArches 0.199 / %<20 4 (steep ribs), SpiralRidges 0.0069 / %<20 0.8 (helix warp, already CAD), HexagonalHive 0.0197 / %<20 2 (hex lattice — MEASURE axis first).
+
+**HYPOTHESIS:** each style reaches honest true-3D worst-red `bruteAnchoredRedPerp` (or interior true-3D on the structured mesh) ≤0.01 (density-responsive) with %<20 <~5% and rawNonMan 0 via the M-square structured recipe on the CORRECT axis; residuals are the STRUCTCOL2-characterised localized steep near-seam/knife-edge class (radial-overstated, true-3D CAD-grade).
+
+**KILL-CRITERION (pre-registered), per style:** REACHES iff honest true-3D verdict p99 ≤0.010mm AND %<20 <5% AND rawNonMan 0 at a tractable budget (screen ≤1M, HD-confirm winner). PARTIAL iff quality+watertight gate met AND chord DENSITY-RESPONSIVE toward ≤0.01 but the literal-simultaneous ≤0.01-worst not fully hit (localized steep residual). REFUTED-axis iff the ridge-graph mis-chains the style (report correct axis, do NOT force). ACCEPT-CAD iff raw production already ≤0.01 true-3D + %<20 low (no-op / document).
+
+**DISCRIMINATOR (cheapest):** for HexagonalHive — measure `buildScaleColMesh` structure (measureKinkiness / measureSeamStep / ridge-graph births + maxDrift) BEFORE forcing; if the graph mis-chains (drift/discontinuity) report axis. For SpiralRidges — confirm rA(θ,z) captures the helix warp (loci move with z) and the recipe holds. For SFB/Gothic — density sweep hRowMm on the structured mesh, honest brute-anchored true-3D.
+
+**STATUS:** PRE-REGISTERED. Probe `research/bridge/_close_theta.test.ts` (PF_CLOSE_THETA=1; sub PF_CT_STYLE), config `vitest.close_theta.config.ts`, dir `research/exchange/_close_theta/`, checkpoint `scorecard.ndjson` per style. Reuses `_scaleColDriver` (buildScaleColMesh) + `_structColLib` + `_qcolMsquare` + labkit rulers READ-ONLY. NO src/ or kernel edit.
+
+---
+
+## E-2026-07-03-CLOSE-WEAVE (close the WEAVE/BRAID axis: BasketWeave / CelticKnot / CelticTriquetra → honest true-3D ≤0.01)
+
+**Q:** does the proven crease-conforming doubled-grid brick primitive (`buildWeaveDoubledGrid`: M-square platforms + doubled grid lines with explicit radial cliff rungs, SQUARE cliff cells to kill the sliver tail) drive every style in the weave/braid group to honest true-3D perp p99 ≤0.01mm with %<20 low + rawNonMan 0 (creases = mesh edges ⇒ ~zero serration)? SCORECARD (E-weave): BasketWeave honest true-3D p99 density-responsive 0.0566@cliff0.15 → 0.0291@cliff0.08 (slope ~0.37 ⇒ cliff~0.027 predicts ≤0.01), %<20 4.3%, rawNonMan 0. CelticKnot/CelticTriquetra = same single-valued cliff class but SWEPT (curved) crease ribbons (`localU=0.4·sin(v+phase)`), needing a curvilinear (swept-curve) grid — `celticKnotGrid` is a ring-crease-only placeholder.
+
+**HYPOTHESIS:** (1) BasketWeave literally reaches honest true-3D worst-red `bruteAnchoredRedPerp` ≤0.01 at cliffChord~0.025 with rawNonMan 0; the %<20≈4.3% cliff-wall/corner tail is a characterized engineering tail. (2/3) CelticKnot + CelticTriquetra with the axis-aligned/ring-only doubled-grid do NOT reach ≤0.01 because their creases are SWEPT (a constant-u/ring grid STRADDLES the swept ribbons) ⇒ residual mechanism = needs-swept-curve-grid, NOT a fundamental wall.
+
+**KILL-CRITERION (pre-registered), per style:** REACHES iff honest true-3D verdict p99 ≤0.010mm AND rawNonMan 0 at a tractable budget (screen ≤1M). PARTIAL iff watertight + chord DENSITY-RESPONSIVE toward ≤0.01 but not literally hit. REFUTED-primitive iff the grid mis-conforms (report correct axis = swept-curve grid, do NOT force). Residual classes: density-responsive-need-more / steep-EXCLUDE-radial-overstate / %<20-tail / watertight / needs-swept-grid.
+
+**DISCRIMINATOR (cheapest):** BasketWeave — cliffChord density sweep (0.08→0.04→0.025) on `buildWeaveDoubledGrid`, honest brute-anchored true-3D; screen at ≤1M platform tris. CelticKnot/CelticTriquetra — score the ring-only doubled-grid baseline; if honest true-3D stays high with rawNonMan≠0 or a straddle chord, that MEASURES the swept-grid need without building it.
+
+**STATUS:** PRE-REGISTERED. Probe `research/bridge/_close_weave.test.ts` (PF_CLOSE_WEAVE=1), config `vitest.close_weave.config.ts`, dir `research/exchange/_close_weave/`, checkpoint `scorecard.ndjson` per recipe (resumable). Reuses `_weaveLib` (buildWeaveDoubledGrid, basketWeaveGrid) + `_braidLib` (celticKnotGrid) + labkit rulers READ-ONLY. NO src/ or kernel edit.
+
+---
+
+## E-2026-07-03-CLOSE-SMOOTH — SMOOTH axis: 5/5 honest true-3D <=0.01mm (CONFIRMED)
+
+**Hypothesis:** the 5 single-valued wavy-height-field styles (HarmonicRipple, RippleInterference,
+WaveInterference, SuperellipseMorph, FourierBloom) reach the PotFoundry export standard — honest
+true-3D perpendicular p99 <= 0.01mm, %<20 low, rawNonMan 0 — under the uniform metric-square
+primitive (`buildInhouseMetricMesh`, M=g/h², chordSteiner 0.03) at <=0.8M tris, no feature graph.
+
+**Discriminator/recipe:** `buildInhouseMetricMesh(rA, H, {tolMm:0.004, hMin:0.006, hMax:8,
+sizeRes:256, gradeBeta:0.2, seedN:14, maxPoints:800_000, splitThresh:1.5, optimizeSweeps:2,
+guardManifoldAlways:true, chordTolMm:0.03, chordSteiner:true})`. Probe `research/bridge/_close_smooth.test.ts`
+(PF_SMOOTH=1, config `vitest.close_smooth.config.ts`); one env-gated `it` per style, resumable ndjson.
+
+**Kill-criterion (pre-registered):** verdict true-3D p99 (brute-anchored worst-red if any red facet,
+else whole-mesh `perFaceTrue3DSag` p99) <= 0.01mm on ALL 5. Any style > 0.01 = surprise → diagnose.
+
+**Evidence (measured, real vitest run, DIMS {H:120,Rb:40,Rt:50,expn:1}):**
+
+| style              |    tris | verdict true-3D p99 | true-3D max | radial max | red facets | %<20 | minAng | rawNonMan | <=0.01 |
+|--------------------|--------:|--------------------:|------------:|-----------:|-----------:|-----:|-------:|----------:|:------:|
+| HarmonicRipple     | 1116499 |              0.0089 |      0.0176 |     0.0171 |          0 |  0.0 |   21.2 |         0 |  yes   |
+| RippleInterference |  177046 |              0.0068 |      0.0193 |     0.0192 |          0 |  0.0 |   27.3 |         0 |  yes   |
+| WaveInterference   |  137011 |              0.0068 |      0.0106 |     0.0106 |          0 |  0.0 |   27.7 |         0 |  yes   |
+| SuperellipseMorph  |   96304 |              0.0085 |      0.0129 |     0.0099 |          0 |  0.0 |   25.4 |         0 |  yes   |
+| FourierBloom       |  632855 |              0.0081 |      0.0199 |     0.0113 |          0 |  0.3 |   16.2 |         0 |  yes   |
+
+Verdict number = whole-mesh `perFaceTrue3DSag` p99 (anchoring VACUOUS: zero facets exceed radial
+0.1mm, so the metric-gotcha does not apply — radial and true-3D nearly coincide, radialMax<=0.0192
+everywhere). Serration ~0 by construction (uniform M-square, no feature-graph, no straddle).
+
+**Verdict: CONFIRMED** — 5/5 reach the honest true-3D <=0.01mm standard, rawNonMan 0, serration-free.
+The smooth axis is CLOSED. Residual notes: chord is far below the bar (not density-limited); only
+wrinkle is FourierBloom's lone min-angle tail (16.2°, %<20 = 0.3%) — a quality-tail micro-residual,
+NOT a fidelity or watertight failure; addressable with more optimizeSweeps if a hard %<20=0 is wanted.
+
+**Recommendation:** accept + document. No productionization action needed beyond the settled uniform
+M-square recipe. If a strict min-angle>=20 gate is later imposed, run a cheap optimizeSweeps sweep on
+FourierBloom only. Scorecard bins (heatmaps) in `research/exchange/_close_smooth/` (gitignored).
