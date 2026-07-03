@@ -259,7 +259,15 @@ class TestMeshProperties:
             f"Found {len(non_manifold_edges)} non-manifold edges (mesh not watertight)"
 
     def test_mesh_has_consistent_normals(self):
-        """Verify face normals point consistently outward."""
+        """Verify face winding is globally consistent and outward-facing.
+
+        A closed solid with outward normals encloses a positive signed volume
+        (divergence theorem) and every shared edge is traversed in opposite
+        directions by its two faces. This is what Rhino/Grasshopper require for
+        a clean import; see ``potfoundry.core.mesh_quality``.
+        """
+        from potfoundry.core.mesh_quality import signed_volume, winding_defects
+
         style_fn = STYLES["SuperformulaBlossom"][0]
 
         verts, faces, _ = build_pot_mesh(
@@ -269,45 +277,18 @@ class TestMeshProperties:
             r_outer_fn=style_fn, style_opts={}
         )
 
-        # Compute face normals
+        # Face normals must all be non-zero (no degenerate triangles).
         v0 = verts[faces[:, 0]]
         v1 = verts[faces[:, 1]]
         v2 = verts[faces[:, 2]]
-
-        normals = np.cross(v1 - v0, v2 - v0)
-
-        # Compute face centers
-        centers = (v0 + v1 + v2) / 3.0
-
-        # For outer wall faces, normals should generally point outward
-        # (away from pot center which is at [0, 0, z])
-        # We check this for faces not on the top or bottom
-
-        middle_faces = (centers[:, 2] > 10) & (centers[:, 2] < 90)  # Not top/bottom
-
-        for i in np.where(middle_faces)[0]:
-            center = centers[i]
-            normal = normals[i]
-
-            # Radial direction from Z-axis to face center
-            radial = np.array([center[0], center[1], 0])
-            radial_norm = np.linalg.norm(radial)
-
-            if radial_norm > 1.0:  # Skip faces near centerline
-                radial_unit = radial / radial_norm
-
-                # Normal should have positive dot product with radial direction
-                # (pointing outward)
-                np.dot(normal[:2], radial_unit[:2])
-
-                # Allow some tolerance for complex geometries
-                # Just check that most faces point outward
-                # This is a heuristic, not a strict requirement
-                pass  # Skip strict check for now
-
-        # At minimum, normals should exist and be non-zero
-        normal_lengths = np.linalg.norm(normals, axis=1)
+        normal_lengths = np.linalg.norm(np.cross(v1 - v0, v2 - v0), axis=1)
         assert np.all(normal_lengths > 0), "All face normals should be non-zero"
+
+        # Winding must be globally consistent (no flipped faces) ...
+        assert winding_defects(verts, faces) == 0, "Mesh has inconsistently wound faces"
+
+        # ... and oriented outward (positive enclosed volume).
+        assert signed_volume(verts, faces) > 0, "Mesh normals point inward (inside-out)"
 
     def test_mesh_vertices_within_bounds(self):
         """Verify all vertices are within expected bounds."""
