@@ -2767,3 +2767,50 @@ heatmap bins `pg_before_2.5M_it0_chord.*` / `pg_before_6.0M_it0_chord.*`. Probe 
 (PF_PERP_GUARD=1, one env-gated `it` per unit, checkpointed ndjson, resumable), config `vitest.perp_guard.config.ts`.
 Reuses committed byte-identical-off kernel hooks (`injectedPoints`/`pinInjected`/`guardManifoldAlways`/`chordSteiner`)
 + labkit rulers READ-ONLY. NO src/ or shared-kernel edit. NOT committed to production; dev-only research artifact.
+
+---
+
+## E-2026-07-03-SFB-WATER (SuperformulaBlossom: fix rawNonMan 8 at the θ=0 seam-cliff ladder → watertight)
+
+**Q:** SFB is the ONLY style with a watertightness defect: whole-mesh rawNonMan **8** at the m=6+4·t^1.2 non-2π θ-seam + a 35.7mm seam-cliff LADDER degeneracy (worst-60 red = 100% seam-cliff ladder cells, NOT a body defect; body radial own-region p99 0.0033, interior %<20 0.8-1.1%). Close the 8 non-manifold edges to rawNonMan **0** with whole-mesh honest true-3D p99 ≤0.01 (or steep-EXCLUDE-but-watertight if the seam floors with gnOver≈0) + %<20 <~5% + serration ~0.
+
+**HYPOTHESIS:** the 8 rawNonMan edges live at the seam-cliff ladder COUNT-TRANSITION rows of `buildStructWallSeamSquare` (`SM:i` positional ladder keys mis-align in `keyAwareStrip` when the per-row interior count ladNi changes: the newborn/dying rung block is NOT contiguous vs the shared SL:0/SR:0 anchors ⇒ the fan double-covers an edge). Fix A = finish the ladder builder (make the count-transition watertight by construction). Fix B = re-route SFB to CDT-under-M + deep sag (`buildInhouseMetricMesh {chordTolMm, chordSteiner, guardManifoldAlways}`) with the θ=0 seam locus fed as constraintEdges. Report the winner.
+
+**KILL-CRITERION (pre-registered):** CONFIRMED iff a fix reaches whole-mesh **rawNonMan 0** AND %<20 <~5% AND serration ~0 on the seam AND honest true-3D verdict p99 (bruteAnchoredRedPerp trustedP99) ≤0.01 at a tractable budget (screen ≤1M, HD-confirm winner) — OR steep-EXCLUDE-but-watertight (rawNonMan 0 + clean zero-serration feature edge, chord floored with gnOver≈0 = genuine near-vertical cliff, faces CAD-grade) with the chord density-responsive. REFUTED iff no fix drives rawNonMan to 0 without wrecking chord/quality. NON-NEGOTIABLE: rawNonMan 0.
+
+**DISCRIMINATOR (cheapest):** LOCALIZE first (reuse `_qcolNmLoc` logic at the EXACT close-theta recipe) — print the (u,t)+key of each of the 8 nm edges to confirm they are the SM ladder count-transition, BEFORE building either fix. Then Fix A (cheaper; body already CAD-grade via the structured builder) at 2 densities; Fix B only if A cannot close them.
+
+**STATUS:** PRE-REGISTERED. Probe `research/bridge/_ct_sfbwater.test.ts` (PF_CT_SFBWATER=1), config `vitest.ct_sfbwater.config.ts`, dir `research/exchange/_ct_sfbwater/`, checkpoint `scorecard.ndjson` per (recipe,density) the instant scored (resumable). Reuses committed libs READ-ONLY (_scaleColDriver/_structColLib/_qcolMsquare/_sfbPushLib/inhouseMetricMesh hooks) + labkit rulers. NO src/ or shared-kernel edit.
+
+---
+
+## E-2026-07-03-CT-GEOMETRICSTAR — chevron/strap residual: density-CLOSABLE or steep-EXCLUDE? (crease-conform A/B)
+
+**Q:** GeometricStar faces are CAD-grade (radial own-region ~0.009, gnWholeMeshP99 0.0087) but the honest brute-anchored `bruteAnchoredRedPerp.trustedP99` (redMm=0.008 worst-red tail) FLOORS at ~0.036 on the strapwork chevron `|dLine|` C1 crease. Is that residual DENSITY-CLOSABLE or a genuine steep-EXCLUDE cliff? And does embedding the chevron loci as feature-conforming mesh edges (zero serration) drive it down?
+
+**HYPOTHESIS:** the worst-red trustedP99 tail is density-responsive (per E-BREADTH radial 0.018→0.0073); if uniform stalls, per-row crease-CONFORMING makes the crease a mesh edge (serration~0) and closes it ≤0.01.
+
+**KILL-CRITERION (pre-registered):** DENSITY-CLOSABLE iff trustedP99 falls ≥20% across the 2 densities AND reaches ≤0.015 (push→≤0.01). STEEP-EXCLUDE iff trustedP99 density-INVARIANT (change <20%, FLAT) AND gnOver≈0 AND own-region faces CAD-grade (<0.01). Conforming CLOSE iff constraint-edge recipe drives trustedP99 ≤0.01 with serration ~0.
+
+**DISCRIMINATOR:** D1 = existing `_gap_gsbss` GS gate uniform M-square at 2 densities (READ-ONLY re-run). D2 = new `_ct_gs` probe placing the strap-crease loci (`a=0` fold, sector bnds, `|dLine|∈{gap, gap+edge}` walls + picket) as per-row structured columns, 2 densities. Same honest ruler both.
+
+**EVIDENCE (`bruteAnchoredRedPerp.trustedP99`, redMm=0.008; gnOver / gnSelAdv independent-selection twin; RAW-index nonMan):**
+
+| recipe | tris | trustedP99 | radialP99 | gnWholeP99 | gnOver | serration | %<20 | rawNonMan |
+|---|---|---|---|---|---|---|---|---|
+| D1 uniform M-square | 5.72M | **0.0430** | 0.0168 | 0.0152 | 0 | — | 1.1% | 0 |
+| D1 uniform M-square | 9.79M | **0.0362** | 0.0092 | 0.0087 | 0 | — | 1.1% | 0 |
+| D2 per-row conform | 2.49M | 0.0800 | 0.0203 | 0.0194 | 0 | 0.0363 | 8.7% | 0 |
+| D2 per-row conform | 5.07M | 0.0651 | 0.0107 | 0.0096 | 0 | 0.0253 | 7.7% | 0 |
+
+- **trustedP99 worst-red tail is density-INVARIANT/steep**: uniform 0.0430→0.0362 = **−16% for +71% tris** (BELOW the 20% closable threshold; does NOT approach 0.015). gnOver=0 throughout (brute AGREES ⇒ genuine geometry, NOT a GN overstatement). gnSelAdv independent-selection twin agrees (stayHi=120). ⇒ per the pre-reg rule this is **STEEP-EXCLUDE** for the worst crease facets.
+- **on-surface + whole-mesh true-3D IS density-responsive and CAD-grade**: radialP99 0.017→0.009, gnWholeP99 0.015→**0.0087** (<0.01). The export is geometrically faithful whole-mesh; the 0.036 is the thin near-vertical strapwork-crease tail (worst ~0.01% of facets).
+- **naive per-row feature-conforming HURTS, does NOT close it**: trustedP99 0.065–0.080 (WORSE than uniform 0.036); serration stays **0.025–0.036, NOT ~0** ⇒ the crease is NOT a mesh edge. Root cause (visual + geometric): the strap crease is DIAGONAL (chevron — the `|dLine|=D` locus `absA` moves with v/z), so per-row θ-placed loci don't connect into edges FOLLOWING the crease; the inter-row merge-strip facets straddle the near-vertical wall and make slivers (%<20 8.7%, minAngle 0). This empirically reconfirms the ArtDeco block's "LOGICAL-COLUMN structured strip TWISTS; the SHEAR is the fix" — GeoStar needs SHEARED-φ diagonal columns, which per-row loci are NOT.
+
+**RENDER (visual, trusted over metric):** `research/exchange/_ct_gs/gs_conform.png` — broad-GREEN (whole-mesh p99 0.010) with red confined to the DIAGONAL chevron strapwork edges; the red band has WIDTH (facets bridge the near-vertical wall) ⇒ the crease is not embedded. Matches the metric exactly.
+
+**VERDICT: STEEP-EXCLUDE (genuine designed near-vertical strapwork-chevron cliff).** The honest brute-anchored worst-red trustedP99 does NOT close with density (−16%/+71% tris, gnOver=0, faces CAD-grade whole-mesh gnP99 0.0087) — same class as ArtDeco/DragonScales/Gothic-V-ribs. The standard-compliant conforming path (zero-serration mesh edge on the crease) is NOT the naive per-row loci tested here — it REQUIRES the **sheared-φ diagonal column** construction (the ArtDeco chevron fix, serration 0.0036 there), which was flagged-but-unbuilt for GeoStar in E-BREADTH and is the ONE remaining lever.
+
+**RECOMMENDATION:** classify GeometricStar steep-EXCLUDE for the worst-red gate (accept+document; whole-mesh true-3D 0.0087 is CAD-grade, radial overstates the strap cliff). ONE follow-up to attempt the ≤0.01 conforming CLOSE: build the sheared coordinate `φ = a·(N/4) + slope·v` so the diagonal `|dLine|=const` strap walls become FIXED φ-columns (z-independent), then a structured column-on-crease strip — the exact ArtDeco chevron mechanism — to embed the crease as a zero-serration mesh edge. Do NOT ship the per-row conform (A/B-refuted: hurts + slivers).
+
+**LEDGER:** prereg `research/exchange/_ct_gs/PREREG.md`; probe `research/bridge/_ct_gs.test.ts` (PF_CT_GS=1) + `vitest.ct_gs.config.ts`; scorecard `research/exchange/_ct_gs/scorecard.ndjson` (2 rows) + reused `research/exchange/_gap_gsbss/scorecard.ndjson` (D1 GS 2 rows); render `research/exchange/_ct_gs/gs_conform.png`; heatmap bins `research/exchange/_ct_gs/GeometricStar_conform_heatmap.*`.
