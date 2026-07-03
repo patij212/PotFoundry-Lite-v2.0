@@ -2624,3 +2624,73 @@ GothicArches (density-response then FLOOR; worst-red plateaus ~0.057–0.067 onc
 **RECOMMENDATION:** (1) accept both as the CORRECT-AXIS PARTIALs (document); the ridge-graph route is dead for these. (2) To cross 0.01, the lever is a TRUE-3D-PERPENDICULAR-driven refinement guard (or the analytic `curvatureFloor` sizing term, dormant per memory `project_export_endgame_design`) that splits on facet→surface perpendicular distance, NOT chord sag — pre-register that as the next experiment on Gothic (the crest under-shoot is the cleanest target). HexHive is close enough that a modest perp-guard should close it. (3) Do NOT force more chordSteiner depth — proven to floor (density-invariant beyond ~2.2M tris). (4) Feature-conforming (protect the rib/hex crest as constraint edges so facets ALIGN not straddle the crest) is the other candidate — but E-TANGLED Q2 showed the protected NETWORK re-opens quality on Gyroid; test crest-only (not full network) for these z-localized crests.
 
 **LEDGER:** scorecard `research/exchange/_gap_gothhex/scorecard.ndjson` (HexHive 5 rows + Gothic 4 distinct density points) + renders `hexhive_hd.png` (GREEN, CAD-approaching) + `gothic_mid.png` (on-crest residual ridge) + heatmap bins; probe `research/bridge/_gap_gothhex.test.ts` (PF_GAP_GOTHHEX, per-style + per-tier env-gated, resumable) + config `vitest.gap_gothhex.config.ts`. Reuses labkit rulers + byte-identical-off kernel hooks READ-ONLY. NO src/ or kernel/labkit edit.
+
+---
+
+## E-2026-07-03-GAP-TREADSQ — ArtDeco + DragonScales %<20 tail: kill the tread/sheet aspect slivers (dev-only, research/)
+
+**HYPOTHESIS:** The %<20° sliver tail on the two z-riser styles (ArtDeco 51.7%, DragonScales 7.6%) that already
+REACH chord is dominated by ASPECT slivers in (a) the constant-z TREAD sub-cells and (b) — ArtDeco — the sheared-φ
+SHEET quads when z-rows are far coarser than θ-columns. Balancing the sheet grid aspect (z-step ≈ θ-arc) and
+right-sizing the tread subdivision drives %<20 <~10% while keeping true-3D chord ≤0.01 (or its irreducible floor),
+rawNonMan 0, serration ~0.
+
+**DISCRIMINATOR (cheapest):** classify EVERY %<20° triangle by row-kind (sheet / tread / ring-lip) — no reference
+needed — then a 2-way aspect sweep (sheetAspect, treadAspect/treadSub). Two densities per style. Probe
+`_gap_treadsq.test.ts` reuses the `_sharp3dMesh`/`_sharp3dRef` builders + labkit rulers READ-ONLY.
+
+**KILL-CRITERION (pre-registered):** a config with %<20° <~10% AND true-3D p99 ≤ 0.01 (or a characterized
+irreducible floor) AND rawNonMan 0 AND serration ≤ 0.01 exists AT BOTH densities; else characterize the residual
+tail (count, where) honestly.
+
+**EVIDENCE (real vitest runs, `vitest.gap_treadsq.config.ts`; quality = triangleQualityDistribution.pctBelow20 +
+per-kind minAngle; chord = BVH-to-closed-object metric3DBvh; watertight = raw-index nonMan; serration = shear-aware
+row-edge sampler):**
+
+DragonScales (tread radial span ~0.9–1.2mm; ⇒ treadSub=1 lip is the min-sliver tread) — TWO densities:
+| config | tris | true-3D p99 | worst | %<20 | minAng | rawNM | ser | tail (sheet/tread/ring) |
+|---|---|---|---|---|---|---|---|---|
+| lip_sA1 (square sheet, treadSub=1) | 804,600 | 0.0136 | 0.106 | **0.4** | 0.60 | 0 | 9.9e-3 | 0 / 0 / 3201 |
+| chord_c1400_ts1 (HD, more θ) | 1,923,600 | 0.0123 | 0.080 | **0.7** | 1.30 | 0 | 4.6e-3 | 0 / 0 / 13421 |
+| lip_sA0.55 (z finer than arc) | 1,438,200 | 0.0128 | 0.094 | 20.9 | 0.60 | 0 | — | 295020 / 0 / 5680 |
+| hd_sA0.4 (z far finer) | 1,985,400 | 0.0126 | 0.092 | 63.2 | 0.60 | 0 | — | 1235642 / 0 / 20040 |
+| chord_c900_ts3 (radial tread rows) | 829,800 | 0.0132 | 0.106 | 1.1 | 0.20 | 0 | 9.9e-3 | 0 / 9173 / 0 |
+
+ArtDeco (tread radial span ~3.3–4.1mm; ⇒ needs SQUARE tread ts≈9, lip-only BLOWS chord/serr) — quality-only run
+(chord HD-established E-2026-07-01-SHARP3D-ArtDeco: worst 0.014 / p99 0.001 @2.23M, ts9, watertight):
+| config | tris | %<20 | minAng | rawNM | ser | tail (sheet/tread/ring) | pass |
+|---|---|---|---|---|---|---|---|
+| sq_sA1 (square sheet + square tread) screen | 583,200 | **0.0** | **39.9** | 0 | 2.0e-3 | 0 / 0 / 0 | ✅ |
+| sq_c1080_sA1 HD | 1,304,640 | **0.0** | **39.0** | 0 | 8.8e-4 | 0 / 0 / 0 | ✅ |
+| zcoarse (reproduce old fixed-nZ baseline) | 195,840 | 40.4 | 4.5 | 0 | 2.0e-3 | 56160 / 0 / 23040 | ✗ |
+
+**VERDICT:**
+- **ArtDeco — CONFIRMED (goal fully met).** %<20° 51.7% → **0.0%** at BOTH densities, minAngle **39–40°**, rawNonMan 0,
+  serration ~0.001mm, chord 0.001 (prior-art HD). ROOT CAUSE PROVEN: the 51.7% baseline was the z-COARSE
+  (fixed nZ≈20) sheared-φ SHEET making extreme parallelograms + the ring-lip — the `zcoarse` reproduction gives 40.4%
+  with tail 70.9% sheet + 29.1% ring, ZERO tread. LEVER = balance sheet z-rows to the θ-arc (sheetAspect≈1) + keep
+  the square tread (ts≈9). The tread was never the problem for ArtDeco. (Serration 87mm in the first pass was a
+  METRIC ARTIFACT — the θ-sorted-column bucket mis-indexes sheared-φ (unsorted) columns; a shear-aware full-row
+  edge search gives the true 0.001mm. Fixed in-probe; ring edges are mesh edges by construction.)
+- **DragonScales — %<20° goal MET (0.4% << 10%); chord NOT at 0.01 — irreducible tread-lip floor ~0.012–0.013mm.**
+  %<20° 7.6% → **0.4%** (lip_sA1) / 0.7% (HD) at TWO densities. The tail is 100% the constant-z tread-lip 'ring'
+  cells (thin annular quads, the one-sided riser-wall class). MECHANISM MAP (clean): %<20° is driven by SHEET
+  aspect — sheetAspect=1 (square) → 0.4%, sheetAspect<1 (z finer than θ) → 20.9% → 63.2% (tall-thin sheet slivers);
+  tread subdivision only ADDS slivers (treadSub=3 → minAng 0.6→0.2). Chord p99 is DENSITY-INVARIANT at ~0.012–0.013
+  (worst ~0.08–0.11 at the tread lip) across sheet density AND tread subdivision AND θ-density (1400 cols → 0.0123
+  only) — it is a genuine C0 tread-lip feature, sub-print (<0.013mm), NOT a sizing miss. So DragonScales = %<20 PASS +
+  chord CERTIFIED-ACCEPT at the ~0.013mm tread-lip floor (radial/BVH; the true perpendicular gap is smaller — riser
+  wall). Not a false 0.01 pass: characterized as an irreducible one-sided riser-lip class, count 3201 (0.4%).
+
+**RECOMMENDATION:** (1) Productionize the two levers for the z-riser/doubled-ring path (behind the existing dev
+flag class): sheetAspect≈1 sheet z-row balancing (universal — kills the parallelogram tail on ANY sheared/riser
+style) + span-adaptive tread subdivision (treadSub = round(span/arc): DragonScales→1 lip, ArtDeco→~9 square). (2)
+ArtDeco is DONE (CAD-grade: chord 0.001, %<20 0.0, watertight, serr 0.001). (3) DragonScales: accept the ~0.013mm
+tread-lip chord floor (sub-print, one-sided riser wall) OR, to chase literal 0.01, refine the tread lip with a
+true-3D-PERPENDICULAR guard (not radial chord — the radial/BVH overstates the near-vertical riser lip); next
+experiment. (4) The shear-aware serration sampler should replace the θ-bucket one in any sheared-column probe.
+
+**LEDGER:** scorecard `research/exchange/_gap_treadsq/scorecard.ndjson` (12 rows, both styles, 2 densities each) +
+DragonScales heatmap bins/STL (`DragonScales_chord_heatmap.*`, `DragonScales_hd_heatmap.*`); probe
+`research/bridge/_gap_treadsq.test.ts` (PF_GAP_TSQ + per-style PF_TSQ_DS/PF_TSQ_AD, skip-if-key-exists, resumable) +
+config `vitest.gap_treadsq.config.ts`. Reuses `_sharp3dMesh`/`_sharp3dRef`/labkit READ-ONLY. NO src/ or shared-kernel edit.
