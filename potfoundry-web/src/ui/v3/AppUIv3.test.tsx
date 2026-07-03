@@ -2,6 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useAppStore } from '../../state';
 
+// useMobile mock — default desktop so all existing tests run unchanged.
+const mockUseMobile = vi.hoisted(() =>
+  vi.fn(() => ({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 })),
+);
+vi.mock('../../hooks/useMobile', () => ({ useMobile: mockUseMobile }));
+
 const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('./stage/AccountChip', () => ({
@@ -199,5 +205,72 @@ describe('AppUIv3 entrance sequence', () => {
     sessionStorage.setItem('pf3-entered', '1');
     render(<AppUIv3 />);
     expect(screen.getByTestId('pf3-root')).not.toHaveAttribute('data-entrance');
+  });
+});
+
+describe('AppUIv3 desktop layout', () => {
+  // Explicit desktop assertions (isMobile: false is the module-level default,
+  // but be explicit here for documentation value).
+  beforeEach(() => {
+    mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+  });
+  afterEach(() => {
+    mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+  });
+
+  it('root carries data-layout="desktop"', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'desktop');
+  });
+});
+
+describe('AppUIv3 mobile shell', () => {
+  beforeEach(() => {
+    mockUseMobile.mockReturnValue({ isMobile: true, isTablet: true, hasTouch: true, viewportWidth: 375 });
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: false } }));
+  });
+  afterEach(() => {
+    // Reset to desktop so subsequent describe blocks start clean.
+    mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+  });
+
+  it('root carries data-layout="mobile"', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'mobile');
+  });
+
+  it('panel rail is absent in mobile mode', () => {
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-panel')).not.toBeInTheDocument();
+  });
+
+  it('pill toolbar is absent in mobile mode', () => {
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-pill')).not.toBeInTheDocument();
+  });
+
+  it('sheet placeholder is present when not in zen', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-sheet')).toBeInTheDocument();
+  });
+
+  it('sheet placeholder is hidden in zen (zen = pot only)', () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-sheet')).not.toBeInTheDocument();
+  });
+
+  it('account chip is present in mobile mode', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-account-chip')).toBeInTheDocument();
+  });
+
+  it('pf3:upgrade event opens PricingModal in mobile mode', () => {
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-pricing-modal')).not.toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pf3:upgrade'));
+    });
+    expect(screen.getByTestId('pf3-pricing-modal')).toBeInTheDocument();
   });
 });

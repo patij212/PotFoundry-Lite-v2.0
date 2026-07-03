@@ -3,3 +3,19 @@
   pointer-events: none; /* children opt in — the canvas below stays orbit-able */
   z-index: 10;
 }
+
+/* ── Mobile shell ─────────────────────────────────────────────────────────── */
+/* The panel rail and pill toolbar are hidden in mobile; the sheet placeholder
+   (data-testid="pf3-sheet") fills the bottom of the viewport once Task 3 lands. */
+
+.pf3-root[data-layout="mobile"] {
+  /* Sheet placeholder anchored to viewport bottom; Task 3 will style it fully. */
+}
+
+.pf3-root[data-layout="mobile"] [data-testid="pf3-sheet"] {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  pointer-events: auto;
+}
