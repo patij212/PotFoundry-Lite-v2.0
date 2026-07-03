@@ -13,6 +13,7 @@ import { PillToolbar } from './stage/PillToolbar';
 import { StatusLine } from './stage/StatusLine';
 import { HintLine } from './stage/HintLine';
 import { useStudioBackdrop } from './stage/useStudioBackdrop';
+import { ShowroomOverlay } from './showroom/ShowroomOverlay';
 import './tokens.css';
 import './AppUIv3.css';
 
@@ -81,6 +82,7 @@ export const AppUIv3: React.FC = () => {
             <HintLine />
           </>
         )}
+        <ShowroomOverlay />
       </div>
     </ErrorBoundary>
   );

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useAppStore } from '../../state';
 
 const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
@@ -79,5 +79,15 @@ describe('AppUIv3 shell', () => {
     render(<AppUIv3 />);
     expect(() => fireEvent.keyDown(document, { key: 'd' })).not.toThrow();
     expect(mockExportSTL).not.toHaveBeenCalled();
+  });
+
+  it('dispatching pf3:showroom opens the showroom overlay dialog', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pf3:showroom'));
+    });
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
 });

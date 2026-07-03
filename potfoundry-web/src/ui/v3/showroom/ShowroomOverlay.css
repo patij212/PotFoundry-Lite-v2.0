@@ -1,0 +1,108 @@
+/* PotFoundry UI v3 — ShowroomOverlay styles */
+
+.pf3-showroom-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: var(--pf3-z-overlay);
+  background: rgba(10, 8, 6, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pf3-showroom-panel {
+  width: min(720px, 90vw);
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--pf3-shadow-overlay);
+  border-radius: var(--pf3-radius-lg);
+  overflow: hidden;
+}
+
+.pf3-showroom__glass {
+  display: flex;
+  flex-direction: column;
+  gap: var(--pf3-space-md);
+  padding: var(--pf3-space-xl);
+  height: 100%;
+  overflow: hidden;
+}
+
+.pf3-showroom__header {
+  display: flex;
+  align-items: center;
+  gap: var(--pf3-space-md);
+  flex-shrink: 0;
+}
+
+.pf3-showroom__title {
+  font-family: var(--pf3-font-display);
+  font-style: italic;
+  font-weight: 400;
+  font-size: 18px;
+  color: var(--pf3-text-secondary);
+  margin: 0;
+  white-space: nowrap;
+}
+
+.pf3-showroom__search {
+  flex: 1;
+}
+
+.pf3-showroom__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--pf3-space-sm);
+  flex-shrink: 0;
+}
+
+.pf3-showroom__chip {
+  padding: 4px var(--pf3-space-md);
+  border-radius: var(--pf3-radius-pill);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--pf3-glass-border);
+  color: var(--pf3-text-secondary);
+  cursor: pointer;
+  transition: background var(--pf3-dur-control), color var(--pf3-dur-control);
+  background: transparent;
+}
+
+.pf3-showroom__chip:hover {
+  background: var(--pf3-gold-tint);
+  color: var(--pf3-text-primary);
+}
+
+.pf3-showroom__chip--active {
+  background: var(--pf3-gold-tint);
+  border-color: var(--pf3-gold-deep);
+  color: var(--pf3-gold);
+}
+
+.pf3-showroom__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: var(--pf3-space-md);
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+}
+
+.pf3-showroom__empty {
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: var(--pf3-space-xl);
+  color: var(--pf3-text-muted);
+  font-size: 13px;
+}
+
+.pf3-showroom__footer {
+  font-size: 11px;
+  color: var(--pf3-text-muted);
+  text-align: center;
+  flex-shrink: 0;
+  padding-top: var(--pf3-space-sm);
+  border-top: 1px solid var(--pf3-hairline);
+}
