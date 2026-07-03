@@ -28,7 +28,7 @@ const setupTouch = (over: Partial<Parameters<typeof ParamRow>[0]> = {}) => {
   const onChange = vi.fn();
   const onInteractionStart = vi.fn();
   const onValueCommit = vi.fn();
-  render(
+  const { unmount } = render(
     <TouchModeProvider value={true}>
       <ParamRow
         label="Height" value={120} min={20} max={500} step={1} unit="mm"
@@ -38,7 +38,7 @@ const setupTouch = (over: Partial<Parameters<typeof ParamRow>[0]> = {}) => {
       />
     </TouchModeProvider>,
   );
-  return { onChange, onInteractionStart, onValueCommit };
+  return { onChange, onInteractionStart, onValueCommit, unmount };
 };
 
 /**
@@ -361,11 +361,12 @@ describe('ParamRow', () => {
       setupTouch({ value: 499 });
       const inc = screen.getByTestId('row-h-inc');
       fireEvent.pointerDown(inc);
-      act(() => { vi.advanceTimersByTime(400); }); // step 1: 499→500 (clamp boundary hit)
+      act(() => { vi.advanceTimersByTime(400); }); // step 1: 499→500 (clamp arrival)
+      expect(mockTap).toHaveBeenCalledOnce();      // haptic fires at the arrival step (F3)
       act(() => { vi.advanceTimersByTime(80); });  // step 2: already at max
       act(() => { vi.advanceTimersByTime(80); });  // step 3: still at max
       fireEvent.pointerUp(inc);
-      // tap() fires once (on first clamp), not on subsequent pinned-at-max steps
+      // tap() fires once total — at arrival, not one repeat later
       expect(mockTap).toHaveBeenCalledOnce();
     });
 
@@ -376,6 +377,34 @@ describe('ParamRow', () => {
       act(() => { vi.advanceTimersByTime(300); });
       const input = screen.getByRole('textbox');
       expect(input).toHaveAttribute('inputMode', 'decimal');
+    });
+
+    it('unmount during long-press commits the open transaction once (F1)', () => {
+      vi.useFakeTimers();
+      const { onInteractionStart, onValueCommit, unmount } = setupTouch();
+      const inc = screen.getByTestId('row-h-inc');
+      fireEvent.pointerDown(inc);
+      act(() => { vi.advanceTimersByTime(400); }); // first step fires (count = 1)
+      act(() => { vi.advanceTimersByTime(80); });  // second step fires (count = 2)
+      expect(onInteractionStart).toHaveBeenCalledOnce();
+      expect(onValueCommit).not.toHaveBeenCalled();
+      act(() => { unmount(); });
+      expect(onValueCommit).toHaveBeenCalledOnce();
+      expect(onInteractionStart).toHaveBeenCalledOnce(); // no extra begins on unmount
+    });
+
+    it('touch slider pointerCancel resets interacting and commits; re-armed for next gesture (F2)', () => {
+      const { onInteractionStart, onValueCommit } = setupTouch();
+      const slider = screen.getByRole('slider');
+      // First gesture: down → change → cancel
+      fireEvent.pointerDown(slider);
+      fireEvent.change(slider, { target: { value: '200' } });
+      fireEvent.pointerCancel(slider);
+      expect(onValueCommit).toHaveBeenCalledOnce();
+      expect(onInteractionStart).toHaveBeenCalledOnce();
+      // Second gesture: interacting flag re-armed — onInteractionStart fires again
+      fireEvent.pointerDown(slider);
+      expect(onInteractionStart).toHaveBeenCalledTimes(2);
     });
   });
 });

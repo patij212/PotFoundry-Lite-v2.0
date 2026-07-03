@@ -66,6 +66,9 @@ export const ParamRow: React.FC<ParamRowProps> = ({
   const suppressStepperClickRef = useRef(false);
   // Clamp haptic: fire only on the first step that hits the boundary, not on every repeat
   const clampHapticFiredRef = useRef(false);
+  // F1: stable ref so unmount cleanup can call the latest onValueCommit
+  const onValueCommitRef = useRef(onValueCommit);
+  onValueCommitRef.current = onValueCommit;
 
   // F4: snap then clamp — rounding cannot push the value past bounds
   const apply = useCallback(
@@ -88,11 +91,15 @@ export const ParamRow: React.FC<ParamRowProps> = ({
       const snapped = snap(currentValue + dir * step, step, min);
       const next = clamp(snapped, min, max);
       if (snapped !== next) {
-        // Hit the boundary — fire tap only once per gesture
+        // Pushed past the boundary — fire tap only once per gesture
         if (!clampHapticFiredRef.current) {
           tap();
           clampHapticFiredRef.current = true;
         }
+      } else if ((next === min || next === max) && !clampHapticFiredRef.current) {
+        // Arrived exactly at boundary this step (snap landed on bound, no over-shoot)
+        tap();
+        clampHapticFiredRef.current = true;
       } else {
         clampHapticFiredRef.current = false;
         // Crossing defaultValue detent
@@ -205,6 +212,12 @@ export const ParamRow: React.FC<ParamRowProps> = ({
     [endScrub],
   );
 
+  // Slider — shared pointercancel for both touch and desktop slider inputs (F2)
+  const handleSliderPointerCancel = useCallback(() => {
+    interacting.current = false;
+    onValueCommit?.();
+  }, [onValueCommit]);
+
   // ---------------------------------------------------------------------------
   // Desktop chip-specific click and keyboard handlers (desktop path only)
   // ---------------------------------------------------------------------------
@@ -280,13 +293,16 @@ export const ParamRow: React.FC<ParamRowProps> = ({
     [onValueCommit],
   );
 
-  // Clean up any outstanding long-press timer on unmount
+  // Clean up any outstanding long-press timer on unmount; commit if a gesture was active
   useEffect(() => {
     return () => {
       const lp = longPressRef.current;
       if (!lp) return;
       if (lp.delayTimer !== null) clearTimeout(lp.delayTimer);
       if (lp.repeatInterval !== null) clearInterval(lp.repeatInterval);
+      if (lp.count > 0) {
+        onValueCommitRef.current?.();
+      }
     };
   }, []);
 
@@ -470,6 +486,7 @@ export const ParamRow: React.FC<ParamRowProps> = ({
             interacting.current = false;
             onValueCommit?.();
           }}
+          onPointerCancel={handleSliderPointerCancel}
           data-pf3-focusable=""
         />
       </div>
@@ -522,6 +539,7 @@ export const ParamRow: React.FC<ParamRowProps> = ({
           interacting.current = false;
           onValueCommit?.();
         }}
+        onPointerCancel={handleSliderPointerCancel}
         data-pf3-focusable=""
       />
     </div>
