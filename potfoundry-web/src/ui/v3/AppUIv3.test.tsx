@@ -640,13 +640,14 @@ describe('AppUIv3 mobile landscape mode', () => {
 
   it('orientation change listener: cleanup removes listener on unmount', () => {
     mockMediaQuery = createMediaQueryListMock(true);
-    render(<AppUIv3 />);
+    const { unmount } = render(<AppUIv3 />);
 
-    const removeListenerSpy = vi.spyOn(mockMediaQuery, 'removeEventListener');
-    expect(removeListenerSpy).not.toHaveBeenCalled();
-
-    // After unmount, listener should be cleaned up
+    // Verify listener was added on mount
     const initialListenerCount = mockMediaQuery.listeners.length;
     expect(initialListenerCount).toBeGreaterThan(0);
+
+    // After unmount, listener should be cleaned up
+    unmount();
+    expect(mockMediaQuery.listeners.length).toBe(0);
   });
 });
