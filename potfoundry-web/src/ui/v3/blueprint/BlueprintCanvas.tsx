@@ -243,6 +243,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
         preserveAspectRatio="xMidYMid meet"
         onPointerMove={onSvgPointerMove}
         onPointerUp={onSvgPointerUp}
+        onPointerCancel={onSvgPointerUp}
       >
         {/* Dashed centerline at x=100 */}
         <line
@@ -302,6 +303,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           role="slider"
           aria-label="Rim diameter"
           aria-valuenow={geometry.top_od}
+          aria-valuemin={GEOMETRY_BOUNDS.top_od.min}
+          aria-valuemax={GEOMETRY_BOUNDS.top_od.max}
           tabIndex={0}
           cx={xOf(profile.topOD / 2, 1)}
           cy={rimY}
@@ -318,6 +321,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           role="slider"
           aria-label="Base diameter"
           aria-valuenow={geometry.bottom_od}
+          aria-valuemin={GEOMETRY_BOUNDS.bottom_od.min}
+          aria-valuemax={GEOMETRY_BOUNDS.bottom_od.max}
           tabIndex={0}
           cx={xOf(profile.bottomOD / 2, 1)}
           cy={baseY}
@@ -334,6 +339,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           role="slider"
           aria-label="Height"
           aria-valuenow={geometry.H}
+          aria-valuemin={GEOMETRY_BOUNDS.H.min}
+          aria-valuemax={GEOMETRY_BOUNDS.H.max}
           tabIndex={0}
           cx={CENTER_X}
           cy={rimY}
@@ -350,6 +357,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           role="slider"
           aria-label="Belly amplitude"
           aria-valuenow={geometry.bellAmp}
+          aria-valuemin={GEOMETRY_BOUNDS.bellAmp.min}
+          aria-valuemax={GEOMETRY_BOUNDS.bellAmp.max}
           tabIndex={0}
           cx={xOf(bellySample.rOuter, 1)}
           cy={yOf(bellySample.z)}

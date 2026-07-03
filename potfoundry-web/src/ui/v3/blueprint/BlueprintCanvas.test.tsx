@@ -145,12 +145,14 @@ describe('BlueprintCanvas drag handles', () => {
     vi.restoreAllMocks();
   });
 
-  it('rim handle has role=slider, aria-label, and aria-valuenow', () => {
+  it('rim handle has role=slider, aria-label, aria-valuenow, and ARIA range bounds', () => {
     render(<BlueprintCanvas />);
     const handle = screen.getByTestId('pf3-bp-handle-rim');
     expect(handle).toHaveAttribute('role', 'slider');
     expect(handle).toHaveAttribute('aria-label');
     expect(handle).toHaveAttribute('aria-valuenow');
+    expect(handle).toHaveAttribute('aria-valuemin', String(GEOMETRY_BOUNDS.top_od.min));
+    expect(handle).toHaveAttribute('aria-valuemax', String(GEOMETRY_BOUNDS.top_od.max));
   });
 
   it('handles are NOT inside an aria-hidden ancestor (sliders must reach AT)', () => {
@@ -186,8 +188,38 @@ describe('BlueprintCanvas drag handles', () => {
     fireEvent.pointerMove(rim, { clientX: 169, clientY: 50 });
     fireEvent.pointerUp(rim, { clientX: 169, clientY: 50 });
 
+    expect(useAppStore.getState().geometry.top_od).toBeGreaterThan(DEFAULT_GEOMETRY.top_od);
     expect(beginHistoryTransaction).toHaveBeenCalledTimes(1);
     expect(commitHistoryTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('pointercancel closes a drag gesture and allows a subsequent gesture to begin', () => {
+    useAppStore.setState({
+      beginHistoryTransaction: vi.fn(),
+      commitHistoryTransaction: vi.fn(),
+    });
+    const { beginHistoryTransaction, commitHistoryTransaction } = useAppStore.getState();
+
+    render(<BlueprintCanvas />);
+
+    const rim = screen.getByTestId('pf3-bp-handle-rim');
+    const svg = screen.getByTestId('pf3-blueprint');
+
+    // First gesture: pointerdown → pointermove → pointercancel
+    fireEvent.pointerDown(rim, { clientX: 150, clientY: 50 });
+    fireEvent.pointerMove(svg, { clientX: 160, clientY: 50 });
+    fireEvent.pointerCancel(svg);
+
+    // After cancel, commitHistoryTransaction should have been called once
+    expect(commitHistoryTransaction).toHaveBeenCalledTimes(1);
+
+    // Second gesture should be able to begin (beginHistoryTransaction called again)
+    fireEvent.pointerDown(rim, { clientX: 150, clientY: 50 });
+    fireEvent.pointerMove(svg, { clientX: 170, clientY: 50 });
+    fireEvent.pointerUp(svg, { clientX: 170, clientY: 50 });
+
+    expect(beginHistoryTransaction).toHaveBeenCalledTimes(2);
+    expect(commitHistoryTransaction).toHaveBeenCalledTimes(2);
   });
 
   it('rim drag increases top_od and wraps a history transaction', () => {
@@ -215,8 +247,28 @@ describe('BlueprintCanvas drag handles', () => {
     const handle = screen.getByTestId('pf3-bp-handle-height');
     fireEvent.pointerDown(handle, { clientX: 100, clientY: 20 });
     fireEvent.pointerMove(handle, { clientX: 100, clientY: 1 });
+    fireEvent.pointerUp(handle, { clientX: 100, clientY: 1 });
 
     expect(useAppStore.getState().geometry.H).toBeGreaterThan(DEFAULT_GEOMETRY.H);
+  });
+
+  it('belly drag increases bellAmp and wraps a history transaction', () => {
+    useAppStore.setState({
+      beginHistoryTransaction: vi.fn(),
+      commitHistoryTransaction: vi.fn(),
+    });
+    const { beginHistoryTransaction, commitHistoryTransaction } = useAppStore.getState();
+
+    render(<BlueprintCanvas />);
+
+    const handle = screen.getByTestId('pf3-bp-handle-belly');
+    fireEvent.pointerDown(handle, { clientX: 100, clientY: 50 });
+    fireEvent.pointerMove(handle, { clientX: 120, clientY: 50 });
+    fireEvent.pointerUp(handle, { clientX: 120, clientY: 50 });
+
+    expect(useAppStore.getState().geometry.bellAmp).toBeGreaterThan(DEFAULT_GEOMETRY.bellAmp);
+    expect(beginHistoryTransaction).toHaveBeenCalledTimes(1);
+    expect(commitHistoryTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('ArrowUp on height handle nudges H by one step', () => {
