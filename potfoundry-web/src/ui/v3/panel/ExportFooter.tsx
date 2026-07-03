@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Button } from '../primitives/Button';
+import { Certificate } from './Certificate';
 import { useAppStore } from '../../../state';
 import { useParametricExport } from '../../../hooks/useParametricExport';
 import { useExportTier } from '../../../hooks/useExportTier';
 import { deriveDefaultFilename, estimateExport, formatBytes } from './exportName';
+import type { ParametricExportStats } from '../../../hooks/useParametricExport';
 import './ExportFooter.css';
 
 export const ExportFooter: React.FC = () => {
@@ -13,11 +15,12 @@ export const ExportFooter: React.FC = () => {
   const nZ = useAppStore((s) => s.mesh.export_n_z);
   const exportFilename = useAppStore((s) => s.ui.exportFilename);
 
-  const { progress, isAvailable, exportSTL } = useParametricExport();
+  const { progress, stats, isAvailable, exportSTL } = useParametricExport();
   const { checkExportAllowed, recordExport } = useExportTier();
 
   const [done, setDone] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [capturedStats, setCapturedStats] = useState<ParametricExportStats | null>(null);
   const firing = progress.status === 'initializing' || progress.status === 'generating';
   const { tris, bytes } = estimateExport(nTheta, nZ);
   const filename = exportFilename ?? deriveDefaultFilename(styleName, H);
@@ -27,14 +30,19 @@ export const ExportFooter: React.FC = () => {
     if (firing || !tier.canExport) return;
     setDone(null);
     setError(null);
+    setCapturedStats(null);
     try {
       await exportSTL(filename);
       await recordExport();
       setDone(filename);
+      // Capture stats snapshot at fire-resolution time so late store changes can't swap it
+      if (stats) {
+        setCapturedStats(stats);
+      }
     } catch {
       setError('Export failed — check the console, then try again');
     }
-  }, [firing, tier.canExport, exportSTL, filename, recordExport]);
+  }, [firing, tier.canExport, exportSTL, filename, recordExport, stats]);
 
   useEffect(() => {
     const onShortcut = () => void fire();
@@ -44,7 +52,10 @@ export const ExportFooter: React.FC = () => {
 
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => setDone(null), 4000);
+    const t = setTimeout(() => {
+      setDone(null);
+      setCapturedStats(null);
+    }, 12000);
     return () => clearTimeout(t);
   }, [done]);
 
@@ -71,8 +82,11 @@ export const ExportFooter: React.FC = () => {
         </div>
       ) : tier.canExport ? (
         <>
+          {capturedStats && done && (
+            <Certificate filename={done} stats={capturedStats} />
+          )}
           <Button variant="primary" onClick={() => void fire()} disabled={!isAvailable} data-testid="pf3-export-cta">
-            {done ? `Exported ✓ ${done}.stl` : 'Export STL'}
+            Export STL
           </Button>
           {error && (
             <span className="pf3-export-footer__error" role="alert">
