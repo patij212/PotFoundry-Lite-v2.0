@@ -1,0 +1,24 @@
+/* MobileTabBar — thumb-zone navigation row for the v3 mobile layout. */
+
+.pf3-mobile-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--pf3-space-sm);
+  padding: var(--pf3-space-sm) var(--pf3-space-md);
+  background: var(--pf3-glass);
+  border-top: 1px solid var(--pf3-glass-border);
+}
+
+/* SegmentedControl fills the remaining width. */
+.pf3-mobile-tab-bar .pf3-seg {
+  flex: 1;
+}
+
+/* Compact gold CTA — 44×44px minimum touch target. */
+.pf3-mobile-tab-bar__cta {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  height: 44px;
+  padding: 0 var(--pf3-space-md);
+}
