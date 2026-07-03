@@ -101,4 +101,49 @@ describe('AppUIv3 shell', () => {
     });
     expect(screen.getByRole('dialog')).toBeInTheDocument();
   });
+
+  it('? opens the shortcuts dialog', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    fireEvent.keyDown(document, { key: '?' });
+    expect(screen.getByRole('heading')).toHaveTextContent('Shortcuts');
+  });
+
+  it('? closes the shortcuts dialog if already open', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    fireEvent.keyDown(document, { key: '?' });
+    expect(screen.getByRole('heading')).toHaveTextContent('Shortcuts');
+    fireEvent.keyDown(document, { key: '?' });
+    expect(screen.queryByRole('heading')).not.toBeInTheDocument();
+  });
+
+  it('? does not open the shortcuts dialog when typing in an input field', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    const input = document.createElement('input');
+    document.body.appendChild(input);
+    input.focus();
+    fireEvent.keyDown(input, { key: '?' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    document.body.removeChild(input);
+  });
+
+  it('F11 prevents default', () => {
+    useAppStore.getState().setUITheme('v3');
+    useAppStore.setState((s) => ({ ui: { ...s.ui, fullscreen: false } }));
+    render(<AppUIv3 />);
+    const event = new KeyboardEvent('keydown', { key: 'F11' });
+    const preventDefaultSpy = vi.spyOn(event, 'preventDefault');
+    document.dispatchEvent(event);
+    expect(preventDefaultSpy).toHaveBeenCalled();
+  });
+
+  it('F11 toggles fullscreen state', () => {
+    useAppStore.getState().setUITheme('v3');
+    useAppStore.setState((s) => ({ ui: { ...s.ui, fullscreen: false } }));
+    render(<AppUIv3 />);
+    fireEvent.keyDown(document, { key: 'F11' });
+    expect(useAppStore.getState().ui.fullscreen).toBe(true);
+  });
 });

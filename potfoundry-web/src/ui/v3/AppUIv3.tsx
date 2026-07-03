@@ -1,7 +1,7 @@
 /**
  * PotFoundry UI v3 — "Studio at Dusk" root shell (spec §4, §12).
  */
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { ErrorBoundary } from '../shared';
 import { useAppStore } from '../../state';
 import { PanelShell } from './panel/PanelShell';
@@ -15,6 +15,7 @@ import { HintLine } from './stage/HintLine';
 import { useStudioBackdrop } from './stage/useStudioBackdrop';
 import { ShowroomOverlay } from './showroom/ShowroomOverlay';
 import { AccountChip } from './stage/AccountChip';
+import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
 import './tokens.css';
 import './AppUIv3.css';
 
@@ -28,6 +29,9 @@ export const AppUIv3: React.FC = () => {
   const toggleZenMode = useAppStore((s) => s.toggleZenMode);
   const undo = useAppStore((s) => s.undo);
   const redo = useAppStore((s) => s.redo);
+  const toggleFullscreen = useAppStore((s) => s.toggleFullscreen);
+
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
 
   useStudioBackdrop();
 
@@ -40,7 +44,24 @@ export const AppUIv3: React.FC = () => {
     if (uiTheme !== 'v3') return;
     const onKeyDown = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement;
-      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable) return;
+      const isInput = t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable;
+
+      // F11 always works regardless of input guard or zen mode
+      if (e.key === 'F11') {
+        e.preventDefault();
+        toggleFullscreen();
+        return;
+      }
+
+      // ? (Shift+/) opens/closes shortcuts dialog — input guard applies
+      if (e.key === '?') {
+        if (isInput) return;
+        e.preventDefault();
+        setShortcutsOpen((prev) => !prev);
+        return;
+      }
+
+      if (isInput) return;
 
       if ((e.ctrlKey || e.metaKey) && !e.altKey) {
         const k = e.key.toLowerCase();
@@ -64,7 +85,7 @@ export const AppUIv3: React.FC = () => {
     };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [uiTheme, zenMode, undo, redo, setV3ActiveTab, toggleZenMode]);
+  }, [uiTheme, zenMode, undo, redo, setV3ActiveTab, toggleZenMode, toggleFullscreen]);
 
   return (
     <ErrorBoundary name="AppUIv3">
@@ -85,6 +106,7 @@ export const AppUIv3: React.FC = () => {
           </>
         )}
         <ShowroomOverlay />
+        <ShortcutsDialogV3 open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
       </div>
     </ErrorBoundary>
   );
