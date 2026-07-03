@@ -301,6 +301,9 @@ test.describe('UI v3 desktop smoke', () => {
     // A16: close via Escape with explicit search focus (keyboard bypasses pointer-events).
     await page.getByTestId('pf3-open-showroom').click();
     await expect(page.getByRole('dialog')).toBeVisible({ timeout: 5_000 });
+    // F4: wait for thumbnail canvases to paint before screenshot
+    await page.waitForFunction(() => document.querySelectorAll('.pf3-showroom-backdrop canvas').length >= 5, { timeout: 20_000 });
+    await page.waitForTimeout(3_000);
     await page.screenshot({ path: 'test-results/pf3-showroom.png' });
     // Focus the search input (it gets rAF focus on open) then Escape to close.
     await page.locator('.pf3-showroom__search').focus();

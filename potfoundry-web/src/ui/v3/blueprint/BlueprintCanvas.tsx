@@ -134,8 +134,8 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
   const topODText = `⌀ ${Math.round(profile.topOD)}`;
   const hText = `${Math.round(profile.H)}`;
 
-  // ⌀ tick: above the rim, clamped inside viewBox
-  const odTickY = Math.max(rimY - 3, 9);
+  // ⌀ tick: fixed above drawing area to avoid collision with height handle
+  const odTickY = 8;
   // H tick: vertically centred beside the pot
   const hTickY = (rimY + baseY) / 2;
 
@@ -273,12 +273,30 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           d={buildPolyline(profile.samples, 'rInner', -1, layout)}
         />
 
-        {/* ⌀ top-OD tick — above rim, centered */}
+        {/* Rim closure — horizontal line connecting outer paths at the top */}
+        <line
+          className="pf3-bp__edge"
+          x1={xOf(profile.topOD / 2, -1)}
+          y1={rimY}
+          x2={xOf(profile.topOD / 2, 1)}
+          y2={rimY}
+        />
+
+        {/* Base closure — horizontal line connecting outer paths at the bottom */}
+        <line
+          className="pf3-bp__edge"
+          x1={xOf(profile.bottomOD / 2, -1)}
+          y1={baseY}
+          x2={xOf(profile.bottomOD / 2, 1)}
+          y2={baseY}
+        />
+
+        {/* ⌀ top-OD tick — above drawing area, offset right to avoid height handle */}
         <text
           className="pf3-mono pf3-bp__tick"
-          x={CENTER_X}
+          x={104}
           y={odTickY}
-          textAnchor="middle"
+          textAnchor="start"
         >
           {topODText}
         </text>

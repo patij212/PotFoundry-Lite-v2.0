@@ -88,6 +88,12 @@ describe('BlueprintCanvas', () => {
     expect(centerline).not.toBeNull();
   });
 
+  it('renders rim and base edge closures with class pf3-bp__edge', () => {
+    render(<BlueprintCanvas />);
+    const svg = screen.getByTestId('pf3-blueprint');
+    expect(svg.querySelectorAll('.pf3-bp__edge')).toHaveLength(2);
+  });
+
   it('renders ⌀ 140 tick with pf3-mono class for DEFAULT_GEOMETRY (top_od=140)', () => {
     render(<BlueprintCanvas />);
     const tick = screen.getByText('⌀ 140');

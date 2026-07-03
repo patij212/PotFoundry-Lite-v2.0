@@ -30,6 +30,14 @@
   stroke-width: 0.5;
 }
 
+/* Edge closures (rim and base) — quiet gold lines to close the profile */
+.pf3-bp__edge {
+  stroke: var(--pf3-gold);
+  stroke-width: 1.2;
+  stroke-opacity: 0.7;
+  fill: none;
+}
+
 /* Dimension tick labels — informational, not actionable */
 .pf3-bp__tick {
   fill: var(--pf3-text-secondary);
