@@ -14,6 +14,7 @@ import { StatusLine } from './stage/StatusLine';
 import { HintLine } from './stage/HintLine';
 import { useStudioBackdrop } from './stage/useStudioBackdrop';
 import { ShowroomOverlay } from './showroom/ShowroomOverlay';
+import { AccountChip } from './stage/AccountChip';
 import './tokens.css';
 import './AppUIv3.css';
 
@@ -69,6 +70,7 @@ export const AppUIv3: React.FC = () => {
     <ErrorBoundary name="AppUIv3">
       <div className="pf3-root pf3-layout" data-theme="dark" data-zen={zenMode || undefined} data-testid="pf3-root">
         <ErrorBoundary name="PillToolbar"><PillToolbar /></ErrorBoundary>
+        <ErrorBoundary name="AccountChip"><AccountChip /></ErrorBoundary>
         {!zenMode && (
           <>
             <ErrorBoundary name="PanelShell">

@@ -417,11 +417,13 @@ Protocol: ${protocol}`}
         <ToastProvider>
             <AuthProvider>
                 <div className="pf-app">
-                    {/* User Menu - Top Right */}
-                    <div className="pf-app__header">
-                        <AppSettingsButton />
-                        <UserMenu />
-                    </div>
+                    {/* User Menu - Top Right (v1/v2 only; v3 renders AccountChip inside AppUIv3) */}
+                    {uiTheme !== 'v3' && (
+                        <div className="pf-app__header">
+                            <AppSettingsButton />
+                            <UserMenu />
+                        </div>
+                    )}
 
                     <div
                         className="pf-wgpu-preview pf-wgpu-preview--fullscreen"

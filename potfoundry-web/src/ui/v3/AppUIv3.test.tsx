@@ -4,6 +4,10 @@ import { useAppStore } from '../../state';
 
 const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
+vi.mock('./stage/AccountChip', () => ({
+  AccountChip: () => <div data-testid="pf3-account-chip" />,
+}));
+
 vi.mock('../../hooks/useParametricExport', () => ({
   useParametricExport: () => ({
     progress: { status: 'idle', progress: 0, message: '' },
@@ -79,6 +83,13 @@ describe('AppUIv3 shell', () => {
     render(<AppUIv3 />);
     expect(() => fireEvent.keyDown(document, { key: 'd' })).not.toThrow();
     expect(mockExportSTL).not.toHaveBeenCalled();
+  });
+
+  it('account chip is present in zen mode (not gated by !zenMode)', () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-account-chip')).toBeInTheDocument();
+    expect(screen.queryByTestId('pf3-panel')).not.toBeInTheDocument();
   });
 
   it('dispatching pf3:showroom opens the showroom overlay dialog', () => {
