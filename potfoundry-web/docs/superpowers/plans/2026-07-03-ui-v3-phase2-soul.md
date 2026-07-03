@@ -14,6 +14,9 @@
 - **Showroom hover live-apply:** attempted with revert-on-leave behind a module flag; falls back to thumbnail-only preview if style-switch cost proves janky (spec §15 sanctioned fallback). Task 10 verifies `setStyle`'s opts behavior first.
 - **Entrance:** CSS-orchestrated chrome entrance (~700ms staggered, once per session). The pot-rise moment needs renderer animation hooks that don't exist — deferred to Phase 4 polish.
 - **Grid:** default-off under v3 via one-time migration (same pattern as the backdrop); warm grid *restyle* is WGSL work, deferred.
+- *(Recorded post-final-review, 2026-07-03)* Spec §7 Surface-1's in-panel search field + current-card category subline deferred to Phase 3 (showroom search covers the intent; category data ships in the registry).
+- *(Recorded post-final-review)* Spec §8.3 certificate secondary actions "one-tap re-export as 3MF" and "Save design" deferred to Phase 3 (3MF needs the format work; kiln re-fire covers "Download again").
+- *(Recorded post-final-review)* Spec §8.1 "est. time" per fidelity row still deferred (needs telemetry — carried from Phase 1).
 
 ## Global Constraints
 
