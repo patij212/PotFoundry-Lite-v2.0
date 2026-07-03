@@ -10,6 +10,7 @@ import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import StyleThumb from './StyleThumb';
 import * as styleThumbnails from './styleThumbnails';
 import * as profileSampler from '../blueprint/profileSampler';
+import { useHaptics } from '../../../hooks/useHaptics';
 import { DEFAULT_GEOMETRY } from '../../../state/types';
 import { STYLE_REGISTRY } from '../../../styles/registry';
 
@@ -25,6 +26,11 @@ vi.mock('../blueprint/profileSampler', () => ({
 // Mock the state
 vi.mock('../../../state', () => ({
   useGeometry: () => DEFAULT_GEOMETRY,
+}));
+
+// Mock useHaptics — avoids pulling in the full Zustand store
+vi.mock('../../../hooks/useHaptics', () => ({
+  useHaptics: vi.fn(() => ({ tap: vi.fn(), success: vi.fn() })),
 }));
 
 describe('StyleThumb', () => {
@@ -380,5 +386,201 @@ describe('StyleThumb', () => {
 
     // Unmount should not cause issues
     expect(() => unmount()).not.toThrow();
+  });
+
+  // ── Touch press-to-preview ─────────────────────────────────────────────────
+
+  describe('touch press-to-preview', () => {
+    // Stable tap mock — cleared by the outer beforeEach's vi.clearAllMocks()
+    const tapMock = vi.fn();
+
+    beforeEach(() => {
+      // Re-wire the haptics mock so tapMock is the tap function for each test
+      vi.mocked(useHaptics).mockReturnValue({ tap: tapMock, success: vi.fn() });
+
+      // Common profile + thumbnail stubs
+      (styleThumbnails.getStyleThumbnail as MockedFunction<typeof styleThumbnails.getStyleThumbnail>)
+        .mockReturnValue(new Promise(() => {}));
+      (profileSampler.sampleProfile as MockedFunction<typeof profileSampler.sampleProfile>)
+        .mockReturnValue({
+          samples: [{ z: 0, rOuter: 25, rInner: 20 }],
+          maxR: 30,
+          H: mockGeometry.H,
+          topOD: mockGeometry.top_od,
+          bottomOD: mockGeometry.bottom_od,
+        });
+    });
+
+    /** Fire a synthetic touch event carrying a single touch point */
+    function touch(
+      el: HTMLElement,
+      type: 'touchstart' | 'touchmove' | 'touchend' | 'touchcancel',
+      x = 50,
+      y = 50
+    ) {
+      const hasPoint = type === 'touchstart' || type === 'touchmove';
+      fireEvent(
+        el,
+        new TouchEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          touches: hasPoint
+            ? ([{
+                identifier: 0,
+                target: el,
+                clientX: x,
+                clientY: y,
+                pageX: x,
+                pageY: y,
+                screenX: 0,
+                screenY: 0,
+                radiusX: 0,
+                radiusY: 0,
+                rotationAngle: 0,
+                force: 0,
+              }] as unknown as Touch[])
+            : [],
+        })
+      );
+    }
+
+    it('long-press (350ms): onHoverIntent + tap fired; touchend → onHoverEnd reverts; synthetic click suppressed', () => {
+      const onHoverIntent = vi.fn();
+      const onHoverEnd = vi.fn();
+      const onClick = vi.fn();
+
+      render(
+        <StyleThumb
+          styleName={styleName}
+          size={100}
+          onHoverIntent={onHoverIntent}
+          onHoverEnd={onHoverEnd}
+          onClick={onClick}
+          data-testid="style-thumb"
+        />
+      );
+      const button = screen.getByRole('button');
+
+      touch(button, 'touchstart');
+      expect(onHoverIntent).not.toHaveBeenCalled();
+
+      vi.advanceTimersByTime(350);
+      expect(onHoverIntent).toHaveBeenCalledTimes(1);
+      expect(tapMock).toHaveBeenCalledTimes(1);
+
+      touch(button, 'touchend');
+      expect(onHoverEnd).toHaveBeenCalledTimes(1);
+
+      // Synthetic click that the browser fires after touchend must be suppressed
+      fireEvent.click(button);
+      expect(onClick).not.toHaveBeenCalled();
+    });
+
+    it('synthetic mouseenter after long-press touchend is suppressed (no second preview)', () => {
+      const onHoverIntent = vi.fn();
+      const onHoverEnd = vi.fn();
+
+      render(
+        <StyleThumb
+          styleName={styleName}
+          size={100}
+          onHoverIntent={onHoverIntent}
+          onHoverEnd={onHoverEnd}
+          data-testid="style-thumb"
+        />
+      );
+      const button = screen.getByRole('button');
+
+      touch(button, 'touchstart');
+      vi.advanceTimersByTime(350);
+      touch(button, 'touchend');
+
+      // Browser fires synthetic mouseenter after touchend — must not restart the hover timer
+      fireEvent.mouseEnter(button);
+      vi.advanceTimersByTime(150);
+
+      // onHoverIntent was called exactly once (from touch), not again from the spurious mouseenter
+      expect(onHoverIntent).toHaveBeenCalledTimes(1);
+    });
+
+    it('quick tap (<350ms): onClick fires, onHoverIntent never fires', () => {
+      const onHoverIntent = vi.fn();
+      const onClick = vi.fn();
+
+      render(
+        <StyleThumb
+          styleName={styleName}
+          size={100}
+          onHoverIntent={onHoverIntent}
+          onClick={onClick}
+          data-testid="style-thumb"
+        />
+      );
+      const button = screen.getByRole('button');
+
+      touch(button, 'touchstart');
+      vi.advanceTimersByTime(100); // less than 350ms — timer has not fired
+      touch(button, 'touchend');
+
+      expect(onHoverIntent).not.toHaveBeenCalled();
+
+      // Synthetic click is NOT suppressed for a quick tap
+      fireEvent.click(button);
+      expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('move >8px cancels timer: onHoverIntent and onHoverEnd never fire', () => {
+      const onHoverIntent = vi.fn();
+      const onHoverEnd = vi.fn();
+
+      render(
+        <StyleThumb
+          styleName={styleName}
+          size={100}
+          onHoverIntent={onHoverIntent}
+          onHoverEnd={onHoverEnd}
+          data-testid="style-thumb"
+        />
+      );
+      const button = screen.getByRole('button');
+
+      touch(button, 'touchstart', 50, 50);
+      touch(button, 'touchmove', 60, 50); // 10px dx — exceeds 8px threshold
+
+      vi.advanceTimersByTime(350); // timer was cancelled — should not fire
+      expect(onHoverIntent).not.toHaveBeenCalled();
+
+      touch(button, 'touchend');
+      expect(onHoverEnd).not.toHaveBeenCalled();
+    });
+
+    it('touchcancel during active preview: onHoverEnd reverts; synthetic click suppressed', () => {
+      const onHoverIntent = vi.fn();
+      const onHoverEnd = vi.fn();
+      const onClick = vi.fn();
+
+      render(
+        <StyleThumb
+          styleName={styleName}
+          size={100}
+          onHoverIntent={onHoverIntent}
+          onHoverEnd={onHoverEnd}
+          onClick={onClick}
+          data-testid="style-thumb"
+        />
+      );
+      const button = screen.getByRole('button');
+
+      touch(button, 'touchstart');
+      vi.advanceTimersByTime(350);
+      expect(onHoverIntent).toHaveBeenCalledTimes(1);
+
+      touch(button, 'touchcancel');
+      expect(onHoverEnd).toHaveBeenCalledTimes(1);
+
+      // Suppression flag is set defensively even for touchcancel
+      fireEvent.click(button);
+      expect(onClick).not.toHaveBeenCalled();
+    });
   });
 });

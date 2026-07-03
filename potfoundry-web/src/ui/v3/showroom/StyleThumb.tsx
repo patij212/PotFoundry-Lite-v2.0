@@ -18,6 +18,7 @@ import { useGeometry, type GeometryParams } from '../../../state';
 import { STYLE_REGISTRY } from '../../../styles/registry';
 import { getStyleThumbnail } from './styleThumbnails';
 import { sampleProfile } from '../blueprint/profileSampler';
+import { useHaptics } from '../../../hooks/useHaptics';
 import clsx from 'clsx';
 import './StyleThumb.css';
 
@@ -104,11 +105,20 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
     ref
   ) => {
     const geometry = useGeometry();
+    const { tap } = useHaptics();
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const hoverTimerRef = useRef<NodeJS.Timeout | null>(null);
     const hoverFiredRef = useRef(false);
     const mountedRef = useRef(true);
+
+    // Touch-press-to-preview state
+    const touchTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+    const touchPreviewActiveRef = useRef(false);
+    // Suppression flags: block the synthetic mouse events browsers fire after touchend
+    const suppressNextClickRef = useRef(false);
+    const suppressNextMouseEnterRef = useRef(false);
 
     const [isVisible, setIsVisible] = useState(false);
     const [imageData, setImageData] = useState<ImageData | null>(null);
@@ -176,6 +186,11 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
 
     // Hover timer management
     const handleMouseEnter = useCallback(() => {
+      // Suppress the synthetic mouseenter that browsers fire after touchend
+      if (suppressNextMouseEnterRef.current) {
+        suppressNextMouseEnterRef.current = false;
+        return;
+      }
       hoverFiredRef.current = false; // reset on each enter
       if (!onHoverIntent) return;
 
@@ -199,12 +214,92 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
       }
     }, [onHoverEnd]);
 
+    // Wrapped click that the browser also fires synthetically after touchend
+    const handleClick = useCallback(() => {
+      if (suppressNextClickRef.current) {
+        suppressNextClickRef.current = false;
+        return;
+      }
+      onClick?.();
+    }, [onClick]);
+
+    // ── Touch press-to-preview ───────────────────────────────────────────────
+    // 350 ms long-press → onHoverIntent (preview) + haptic tap
+    // touchend before timer → quick tap → let synthetic click through (apply)
+    // touchend after preview → onHoverEnd (revert) + suppress synthetic click/enter
+    // move >8 px → cancel timer (no preview, no suppression)
+    // touchcancel → same as cancel; reverts if preview was already active
+
+    const handleTouchStart = useCallback(
+      (e: React.TouchEvent<HTMLButtonElement>) => {
+        const touch = e.touches[0];
+        touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+        touchPreviewActiveRef.current = false;
+
+        touchTimerRef.current = setTimeout(() => {
+          if (mountedRef.current) {
+            touchPreviewActiveRef.current = true;
+            onHoverIntent?.();
+            tap();
+          }
+        }, 350);
+      },
+      [onHoverIntent, tap]
+    );
+
+    const handleTouchMove = useCallback(
+      (e: React.TouchEvent<HTMLButtonElement>) => {
+        if (!touchTimerRef.current || !touchStartPosRef.current) return;
+        const touch = e.touches[0];
+        const dx = touch.clientX - touchStartPosRef.current.x;
+        const dy = touch.clientY - touchStartPosRef.current.y;
+        if (dx * dx + dy * dy > 64) {
+          // > 8 px movement — cancel
+          clearTimeout(touchTimerRef.current);
+          touchTimerRef.current = null;
+        }
+      },
+      []
+    );
+
+    const handleTouchEnd = useCallback(() => {
+      if (touchTimerRef.current) {
+        clearTimeout(touchTimerRef.current);
+        touchTimerRef.current = null;
+      }
+      if (touchPreviewActiveRef.current) {
+        // Long-press path: revert the preview and suppress the synthetic events
+        touchPreviewActiveRef.current = false;
+        onHoverEnd?.();
+        suppressNextClickRef.current = true;
+        suppressNextMouseEnterRef.current = true;
+      }
+      // Quick-tap path: preview never started → synthetic click fires → onClick applies
+    }, [onHoverEnd]);
+
+    const handleTouchCancel = useCallback(() => {
+      if (touchTimerRef.current) {
+        clearTimeout(touchTimerRef.current);
+        touchTimerRef.current = null;
+      }
+      if (touchPreviewActiveRef.current) {
+        touchPreviewActiveRef.current = false;
+        onHoverEnd?.();
+        // touchcancel does not emit synthetic click, but set flag defensively
+        suppressNextClickRef.current = true;
+        suppressNextMouseEnterRef.current = true;
+      }
+    }, [onHoverEnd]);
+
     // Cleanup on unmount
     useEffect(() => {
       return () => {
         mountedRef.current = false;
         if (hoverTimerRef.current) {
           clearTimeout(hoverTimerRef.current);
+        }
+        if (touchTimerRef.current) {
+          clearTimeout(touchTimerRef.current);
         }
       };
     }, []);
@@ -222,9 +317,13 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
             'pf3-style-thumb',
             selected && 'pf3-style-thumb--selected'
           )}
-          onClick={onClick}
+          onClick={handleClick}
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchCancel}
           data-pf3-focusable
           data-testid={dataTestId}
           type="button"

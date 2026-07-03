@@ -107,3 +107,51 @@
   padding-top: var(--pf3-space-sm);
   border-top: 1px solid var(--pf3-hairline);
 }
+
+/* ── Mobile: full-screen showroom ──────────────────────────────────────────── */
+@media (max-width: 768px) {
+  .pf3-showroom-panel {
+    width: 100%;
+    max-height: 100%;
+    border-radius: 0;
+  }
+
+  .pf3-showroom-backdrop {
+    align-items: stretch;
+    justify-content: stretch;
+  }
+
+  .pf3-showroom__glass {
+    padding: var(--pf3-space-md);
+  }
+
+  /* 3-column grid on mobile */
+  .pf3-showroom__grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  /* Search field tall enough for comfortable touch (≥ 44px) */
+  .pf3-showroom__search input,
+  .pf3-showroom__search [role='searchbox'],
+  .pf3-showroom__search input[type='search'] {
+    min-height: 44px;
+  }
+
+  /* Category chips row: single horizontal scroll strip */
+  .pf3-showroom__chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;         /* Firefox */
+    padding-bottom: var(--pf3-space-xs, 4px); /* room for momentum scroll */
+  }
+
+  .pf3-showroom__chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Footer: hint + safe-area bottom padding for notched devices */
+  .pf3-showroom__footer {
+    padding-bottom: max(var(--pf3-space-sm), env(safe-area-inset-bottom));
+  }
+}
