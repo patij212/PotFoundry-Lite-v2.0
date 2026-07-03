@@ -174,10 +174,31 @@ describe('StyleTab', () => {
     const listener = vi.fn();
     window.addEventListener('pf3:showroom', listener);
 
-    render(<StyleTab />);
-    fireEvent.click(screen.getByTestId('pf3-open-showroom'));
+    try {
+      render(<StyleTab />);
+      fireEvent.click(screen.getByTestId('pf3-open-showroom'));
 
-    expect(listener).toHaveBeenCalledTimes(1);
-    window.removeEventListener('pf3:showroom', listener);
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      window.removeEventListener('pf3:showroom', listener);
+    }
+  });
+
+  it('strip dedupes: favorite + recent → single tile (favorites slot wins)', () => {
+    // Pre-populate recents with HarmonicRipple
+    pushRecent('HarmonicRipple');
+
+    render(<StyleTab />);
+
+    // At this point, HarmonicRipple is in recents, should show one tile
+    let tiles = screen.getAllByTestId('pf3-strip-thumb-HarmonicRipple');
+    expect(tiles).toHaveLength(1);
+
+    // Now favorite it (adds to favorites while already in recents)
+    fireEvent.click(screen.getByTestId('pf3-fav-toggle'));
+
+    // Still exactly one tile (dedupe ensures it doesn't show twice)
+    tiles = screen.getAllByTestId('pf3-strip-thumb-HarmonicRipple');
+    expect(tiles).toHaveLength(1);
   });
 });
