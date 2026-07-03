@@ -259,3 +259,18 @@
     color: #6e7681;
     margin: 16px 0 0;
 }
+
+/* Small Screen Safety */
+@media (max-width: 480px) {
+    .pricing-modal__content {
+        width: 100%;
+        max-width: calc(100vw - 24px);
+        max-height: 85dvh;
+        padding-bottom: max(16px, env(safe-area-inset-bottom, 0px));
+    }
+
+    .pricing-modal__close {
+        top: 8px;
+        right: 8px;
+    }
+}
