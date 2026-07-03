@@ -99,8 +99,8 @@ export const QUALITY_PRESETS: Record<QualityPreset, MeshQuality> = {
   ultra: {
     preview_n_theta: 2048,
     preview_n_z: 1024,
-    export_n_theta: 2048,
-    export_n_z: 1024,
+    export_n_theta: 4096,
+    export_n_z: 2048,
     seamAngle: 0,
     optimize: true,
   },

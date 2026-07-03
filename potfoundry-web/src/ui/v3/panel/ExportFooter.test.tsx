@@ -79,7 +79,7 @@ describe('exportName utils', () => {
     expect(deriveFidelityKey({ export_n_theta: 512,  export_n_z: 256,  preview_n_theta: 256,  preview_n_z: 128  })).toBe('draft');
     expect(deriveFidelityKey({ export_n_theta: 1024, export_n_z: 512,  preview_n_theta: 512,  preview_n_z: 256  })).toBe('standard');
     expect(deriveFidelityKey({ export_n_theta: 2048, export_n_z: 1024, preview_n_theta: 1024, preview_n_z: 512  })).toBe('high');
-    expect(deriveFidelityKey({ export_n_theta: 2048, export_n_z: 1024, preview_n_theta: 2048, preview_n_z: 1024 })).toBe('ultra');
+    expect(deriveFidelityKey({ export_n_theta: 4096, export_n_z: 2048, preview_n_theta: 2048, preview_n_z: 1024 })).toBe('ultra');
   });
   it('deriveFidelityKey returns custom for non-preset resolutions', () => {
     expect(deriveFidelityKey({ export_n_theta: 336, export_n_z: 168, preview_n_theta: 168, preview_n_z: 84 })).toBe('custom');

@@ -26,7 +26,7 @@ export const FIDELITIES = [
   { key: 'draft',    name: 'Draft',    purpose: 'quick look',            nTheta: 512,  nZ: 256,  previewNTheta: 256,  previewNZ: 128  },
   { key: 'standard', name: 'Standard', purpose: 'everyday prints',       nTheta: 1024, nZ: 512,  previewNTheta: 512,  previewNZ: 256  },
   { key: 'high',     name: 'High',     purpose: 'print-ready · 0.20 mm', nTheta: 2048, nZ: 1024, previewNTheta: 1024, previewNZ: 512  },
-  { key: 'ultra',    name: 'Ultra',    purpose: 'exhibition · 0.05 mm',  nTheta: 2048, nZ: 1024, previewNTheta: 2048, previewNZ: 1024 },
+  { key: 'ultra',    name: 'Ultra',    purpose: 'exhibition · 0.05 mm',  nTheta: 4096, nZ: 2048, previewNTheta: 2048, previewNZ: 1024 },
 ] as const;
 
 /** Minimal mesh resolution shape needed to identify a fidelity preset. */

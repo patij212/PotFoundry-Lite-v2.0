@@ -28,6 +28,8 @@ describe('QUALITY_PRESETS', () => {
         expect(QUALITY_PRESETS.ultra).toBeDefined();
         expect(QUALITY_PRESETS.ultra.preview_n_theta).toBe(2048);
         expect(QUALITY_PRESETS.ultra.preview_n_z).toBe(1024);
+        expect(QUALITY_PRESETS.ultra.export_n_theta).toBe(4096);
+        expect(QUALITY_PRESETS.ultra.export_n_z).toBe(2048);
     });
 
     it('should have 4 presets', () => {

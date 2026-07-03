@@ -25,24 +25,30 @@ export const ExportTab: React.FC = () => {
           const { tris, bytes } = estimateExport(f.nTheta, f.nZ);
           const selected = activeKey === f.key;
           return (
-            <button
-              key={f.key}
-              type="button"
-              role="radio"
-              aria-checked={selected}
-              className={`pf3-fidelity${selected ? ' pf3-fidelity--on' : ''}`}
-              onClick={() => setQualityPreset(f.key)}
-              data-pf3-focusable=""
-            >
-              <span className="pf3-fidelity__name">
-                {f.name}
-                {f.key === 'ultra' && <span className="pf3-prochip">PRO</span>}
-              </span>
-              <span className="pf3-fidelity__purpose">{f.purpose}</span>
-              <span className="pf3-mono pf3-fidelity__est">
-                ≈ {tris.toLocaleString('en-US')} · {formatBytes(bytes)}
-              </span>
-            </button>
+            <div key={f.key}>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                className={`pf3-fidelity${selected ? ' pf3-fidelity--on' : ''}`}
+                onClick={() => setQualityPreset(f.key)}
+                data-pf3-focusable=""
+              >
+                <span className="pf3-fidelity__name">
+                  {f.name}
+                  {f.key === 'ultra' && <span className="pf3-prochip">PRO</span>}
+                </span>
+                <span className="pf3-fidelity__purpose">{f.purpose}</span>
+                <span className="pf3-mono pf3-fidelity__est">
+                  ≈ {tris.toLocaleString('en-US')} · {formatBytes(bytes)}
+                </span>
+              </button>
+              {f.key === 'ultra' && selected && (
+                <div className="pf3-label" style={{ marginTop: '4px', marginLeft: '10px' }}>
+                  capped by the mesh budget on most pots
+                </div>
+              )}
+            </div>
           );
         })}
       </div>

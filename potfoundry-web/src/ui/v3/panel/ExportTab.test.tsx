@@ -72,6 +72,42 @@ describe('ExportTab', () => {
     }
   });
 
+  it('Ultra export resolution is distinct from High (4096 vs 2048)', () => {
+    render(<ExportTab />);
+    const ultraButton = screen.getByRole('radio', { name: /Ultra/ });
+    const highButton = screen.getByRole('radio', { name: /High/ });
+    const ultraEstimate = ultraButton.querySelector('.pf3-fidelity__est')?.textContent ?? '';
+    const highEstimate = highButton.querySelector('.pf3-fidelity__est')?.textContent ?? '';
+    // Ultra should have ~4× more triangles (4096×2048 vs 2048×1024)
+    expect(ultraEstimate).not.toBe(highEstimate);
+    expect(ultraEstimate).toContain('16');  // Expect 16M+ triangles for 4096×2048
+  });
+
+  it('selecting Ultra applies export_n_theta=4096 and export_n_z=2048', () => {
+    render(<ExportTab />);
+    fireEvent.click(screen.getByRole('radio', { name: /Ultra/ }));
+    const { export_n_theta, export_n_z } = useAppStore.getState().mesh;
+    expect(export_n_theta).toBe(4096);
+    expect(export_n_z).toBe(2048);
+  });
+
+  it('Ultra row displays budget-cap note when selected', () => {
+    render(<ExportTab />);
+    const ultraButton = screen.getByRole('radio', { name: /Ultra/ });
+    // Before click, note should not be visible
+    expect(screen.queryByText(/capped by the mesh budget/)).not.toBeInTheDocument();
+    // Click Ultra
+    fireEvent.click(ultraButton);
+    // After click, note should appear
+    expect(screen.getByText(/capped by the mesh budget on most pots/)).toBeInTheDocument();
+  });
+
+  it('budget-cap note does not appear when Ultra is not selected', () => {
+    render(<ExportTab />);
+    fireEvent.click(screen.getByRole('radio', { name: /High/ }));
+    expect(screen.queryByText(/capped by the mesh budget/)).not.toBeInTheDocument();
+  });
+
   it('renders the kiln log section with empty state', () => {
     render(<ExportTab />);
     expect(
