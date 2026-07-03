@@ -32,6 +32,12 @@ export interface SheetDragConfig {
   initialState?: SheetState;
   /** Called when state changes after a snap */
   onStateChange?: (state: SheetState) => void;
+  /**
+   * CSS class applied to the sheet element during a drag gesture.
+   * Defaults to `'pf2-mobile-sheet--dragging'` for backward compatibility.
+   * Pass a different value (e.g. `'pf3-sheet--dragging'`) for v3 consumers.
+   */
+  draggingClassName?: string;
 }
 
 export interface SheetDragResult {
@@ -46,6 +52,8 @@ export interface SheetDragResult {
   };
   /** Cycle through states: collapsed → half → full → collapsed */
   toggle: () => void;
+  /** Directly snap to the collapsed state from any current state. */
+  collapse: () => void;
 }
 
 // ============================================================================
@@ -91,6 +99,7 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
     maxPercent = DEFAULT_MAX_PERCENT,
     initialState = 'half',
     onStateChange,
+    draggingClassName = 'pf2-mobile-sheet--dragging',
   } = config;
 
   const [state, setState] = useState<SheetState>(initialState);
@@ -141,7 +150,7 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
       // Remove the dragging class so CSS transitions kick in
       const el = sheetRef.current;
       if (el) {
-        el.classList.remove('pf2-mobile-sheet--dragging');
+        el.classList.remove(draggingClassName);
         // Set final height via style so the transition animates to it,
         // then clear inline style once the transition completes
         el.style.height = `${getStateHeight(newState)}px`;
@@ -187,9 +196,9 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
         : getStateHeight(state);
       isDragging.current = true;
 
-      el?.classList.add('pf2-mobile-sheet--dragging');
+      el?.classList.add(draggingClassName);
     },
-    [sheetRef, state, getStateHeight]
+    [sheetRef, state, getStateHeight, draggingClassName]
   );
 
   const onTouchMove = useCallback(
@@ -227,7 +236,7 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
         : getStateHeight(state);
       isDragging.current = true;
 
-      el?.classList.add('pf2-mobile-sheet--dragging');
+      el?.classList.add(draggingClassName);
 
       const handleMouseMove = (ev: MouseEvent) => {
         if (!isDragging.current) return;
@@ -249,7 +258,7 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
     },
-    [sheetRef, state, getStateHeight, applyDragHeight, snapToNearest]
+    [sheetRef, state, getStateHeight, applyDragHeight, snapToNearest, draggingClassName]
   );
 
   // --------------------------------------------------------------------------
@@ -272,6 +281,19 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
     });
   }, [sheetRef, getStateHeight, onStateChange]);
 
+  // --------------------------------------------------------------------------
+  // Collapse: snap directly to collapsed from any state
+  // --------------------------------------------------------------------------
+
+  const collapse = useCallback(() => {
+    const el = sheetRef.current;
+    if (el) {
+      el.style.height = `${handleHeight}px`;
+    }
+    setState('collapsed');
+    onStateChange?.('collapsed');
+  }, [sheetRef, handleHeight, onStateChange]);
+
   return {
     state,
     dragHandlers: {
@@ -281,5 +303,6 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
       onMouseDown,
     },
     toggle,
+    collapse,
   };
 }

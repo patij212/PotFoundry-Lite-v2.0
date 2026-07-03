@@ -1,0 +1,102 @@
+/**
+ * SheetShell — three-stop bottom sheet (v3 mobile).
+ *
+ * Glass surface with top-only radius (bottom corners square against the
+ * viewport edge). Snap transitions use --pf3-ease-enter (no overshoot).
+ * During drag the pf3-sheet--dragging class is applied by useSheetDrag,
+ * which suspends the transition so height follows the finger.
+ */
+
+.pf3-sheet {
+  /* Positioning */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--pf3-z-overlay);
+
+  /* Initial height: half stop (50 vh). The hook writes inline style.height
+     directly, so this serves as the fallback before the hook hydrates. */
+  height: 50vh;
+
+  /* Glass surface — top-only border-radius per spec §4 */
+  background: var(--pf3-glass);
+  border: 1px solid var(--pf3-glass-border);
+  border-bottom: none;
+  border-radius: var(--pf3-radius-lg) var(--pf3-radius-lg) 0 0;
+  box-shadow: var(--pf3-shadow-overlay);
+  backdrop-filter: blur(var(--pf3-blur));
+  -webkit-backdrop-filter: blur(var(--pf3-blur));
+
+  /* Snap transition — ease-enter only (no spring/overshoot) */
+  transition: height 300ms var(--pf3-ease-enter);
+
+  /* Layout: stack grabber / content / footer */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* During an active drag the hook adds this class — disable the transition
+   so height follows the pointer frame-for-frame. */
+.pf3-sheet.pf3-sheet--dragging {
+  transition: none;
+}
+
+/* --------------------------------------------------------------------------
+   Grabber
+   ≥44px tap area (spec §11 a11y). role="slider" + aria-valuetext handled
+   in JSX. The visible grip bar is a child element.
+   -------------------------------------------------------------------------- */
+
+.pf3-sheet__grabber {
+  /* Enforce ≥44px hit area */
+  min-height: 44px;
+  flex-shrink: 0;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  cursor: ns-resize;
+  /* Prevent browser pull-to-refresh on the grabber row */
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.pf3-sheet__grabber:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--pf3-glass), 0 0 0 4px var(--pf3-gold);
+}
+
+.pf3-sheet__grip {
+  width: 36px;
+  height: 4px;
+  border-radius: var(--pf3-radius-pill);
+  background: var(--pf3-text-muted);
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+/* --------------------------------------------------------------------------
+   Scrollable content area
+   touch-action: pan-y allows normal vertical scroll inside the sheet.
+   -------------------------------------------------------------------------- */
+
+.pf3-sheet__content {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+
+/* --------------------------------------------------------------------------
+   Footer — pinned above the safe-area inset
+   -------------------------------------------------------------------------- */
+
+.pf3-sheet__footer {
+  flex-shrink: 0;
+  padding-bottom: max(var(--pf3-space-sm), env(safe-area-inset-bottom, 0px));
+}

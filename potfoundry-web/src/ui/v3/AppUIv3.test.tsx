@@ -19,6 +19,12 @@ vi.mock('./mobile/TouchModeContext', () => ({
 
 const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
+vi.mock('./mobile/SheetShell', () => ({
+  SheetShell: ({ children, footer }: { children: React.ReactNode; footer?: React.ReactNode }) => (
+    <div data-testid="pf3-sheet">{children}{footer}</div>
+  ),
+}));
+
 vi.mock('./stage/AccountChip', () => ({
   AccountChip: () => <div data-testid="pf3-account-chip" />,
 }));

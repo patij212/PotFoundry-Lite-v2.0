@@ -18,6 +18,7 @@ import { AccountChip } from './stage/AccountChip';
 import { PricingModal } from '../pricing/PricingModal';
 import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
 import { TouchModeProvider } from './mobile/TouchModeContext';
+import { SheetShell } from './mobile/SheetShell';
 import { useMobile } from '../../hooks/useMobile';
 import { safeStorage } from './utils/safeStorage';
 import './tokens.css';
@@ -131,9 +132,15 @@ export const AppUIv3: React.FC = () => {
           <ErrorBoundary name="AccountChip"><AccountChip /></ErrorBoundary>
 
           {isMobile ? (
-            /* Mobile shell: sheet placeholder replaces panel+status+hint.
+            /* Mobile shell: three-stop bottom sheet replaces panel+status+hint.
                Zen mode = pot only, so the sheet is hidden in zen. */
-            !zenMode && <div data-testid="pf3-sheet" />
+            !zenMode && (
+              <SheetShell footer={<ExportFooter />}>
+                {v3ActiveTab === 'shape' && <ShapeTab />}
+                {v3ActiveTab === 'style' && <StyleTab />}
+                {v3ActiveTab === 'export' && <ExportTab />}
+              </SheetShell>
+            )
           ) : (
             /* Desktop shell: panel rail + status chrome, gated by zen. */
             !zenMode && (
