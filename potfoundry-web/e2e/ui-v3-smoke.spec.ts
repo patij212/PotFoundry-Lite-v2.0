@@ -26,11 +26,10 @@
  *  A12 — height slider selector narrowed to getByTestId('pf3-param-H').getByRole('slider');
  *        BlueprintCanvas handle (phase-1) also has role=slider + aria-label="Height",
  *        causing a strict-mode violation with the original unscoped selector
- *  A13 — showroom chip + tile use locator.dispatchEvent('click') instead of .click();
- *        pf3-root has pointer-events:none so children without explicit pointer-events:auto
- *        are invisible to Playwright's pointer hit-test even with force:true; dispatchEvent
- *        calls element.dispatchEvent() in JS which bypasses CSS pointer-events entirely
- *        and lets React's event delegation at the root fire the synthetic onClick
+ *  A13 — showroom chip + tile now use real .click() calls (F1 fix: pointer-events:auto
+ *        added to .pf3-showroom-backdrop in ShowroomOverlay.css so Playwright's pointer
+ *        hit-test reaches the children; previously used dispatchEvent('click') to bypass
+ *        the pointer-events:none on pf3-root, but that masked the production bug)
  *  A14 — v1/v2 test sets per-test timeout to 60 000 ms (theme switch to classic needs
  *        >15 s when 10 tests run in parallel under WebGPU pressure)
  *  A15 — entrance test sets per-test timeout to 60 000 ms (beforeEach + reload = two
@@ -206,18 +205,17 @@ test.describe('UI v3 desktop smoke', () => {
     await expect(chips.first()).toBeVisible();
     const chipCount = await chips.count();
     expect(chipCount).toBeGreaterThan(1);
-    // A13: pf3-root has pointer-events:none; chips may not have explicit auto; use
-    // dispatchEvent which calls element.dispatchEvent() in JS and bypasses CSS.
-    await chips.nth(1).dispatchEvent('click'); // "Organic"
+    // A13 fixed: F1 added pointer-events:auto to .pf3-showroom-backdrop — real clicks work now.
+    await chips.nth(1).click(); // "Organic"
     // Grid should still show tiles for the filtered category
     await expect(page.locator('.pf3-showroom__grid button').first()).toBeVisible({ timeout: 3_000 });
 
     // Click the first tile in the grid to apply the style.
     // A10: StyleThumb renders a <button> with aria-label="Select {name} style".
-    // A13: same dispatchEvent approach for pointer-events bypass.
+    // A13 fixed: real click works now that backdrop has pointer-events:auto.
     const firstTile = page.locator('.pf3-showroom__grid button').first();
     const tileLabelAttr = await firstTile.getAttribute('aria-label');
-    await firstTile.dispatchEvent('click');
+    await firstTile.click();
 
     // Dialog should close after tile click
     await expect(dialog).not.toBeVisible({ timeout: 5_000 });
@@ -234,6 +232,10 @@ test.describe('UI v3 desktop smoke', () => {
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible({ timeout: 3_000 });
     await expect(page.getByRole('heading', { name: 'Shortcuts' })).toBeVisible();
+    // Click inside the dialog to anchor Radix focus-trap before pressing Escape.
+    // F2 fix (pointer-events:auto on pf3-shortcuts-content) makes this real click
+    // work — before the fix this would have passed through to the canvas below.
+    await dialog.click();
     // Escape should close it
     await page.keyboard.press('Escape');
     await expect(dialog).not.toBeVisible({ timeout: 3_000 });
