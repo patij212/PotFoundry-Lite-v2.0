@@ -70,5 +70,6 @@ describe('AccountChip (real composition)', () => {
 
     // Assert: Real AppSettingsButton gear icon/button is present with correct aria-label
     expect(screen.getByLabelText('App settings')).toBeInTheDocument();
-  });
+    // Generous timeout: resetModules + real dynamic provider imports are slow under full-suite worker load
+  }, 15000);
 });
