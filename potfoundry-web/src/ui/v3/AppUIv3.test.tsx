@@ -8,6 +8,11 @@ vi.mock('./stage/AccountChip', () => ({
   AccountChip: () => <div data-testid="pf3-account-chip" />,
 }));
 
+vi.mock('../pricing/PricingModal', () => ({
+  PricingModal: ({ open }: { open: boolean }) =>
+    open ? <div data-testid="pf3-pricing-modal" role="dialog" aria-label="Upgrade to Pro" /> : null,
+}));
+
 vi.mock('../../hooks/useParametricExport', () => ({
   useParametricExport: () => ({
     progress: { status: 'idle', progress: 0, message: '' },
@@ -145,6 +150,31 @@ describe('AppUIv3 shell', () => {
     render(<AppUIv3 />);
     fireEvent.keyDown(document, { key: 'F11' });
     expect(useAppStore.getState().ui.fullscreen).toBe(true);
+  });
+
+  it('pf3:upgrade event opens the PricingModal (mock rendered with open=true)', () => {
+    useAppStore.getState().setUITheme('v3');
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-pricing-modal')).not.toBeInTheDocument();
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pf3:upgrade'));
+    });
+    expect(screen.getByTestId('pf3-pricing-modal')).toBeInTheDocument();
+  });
+
+  it('D with showroom open does not dispatch pf3:download', () => {
+    useAppStore.getState().setUITheme('v3');
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: false } }));
+    render(<AppUIv3 />);
+    act(() => {
+      window.dispatchEvent(new CustomEvent('pf3:showroom'));
+    });
+    let fired = false;
+    const guard = () => { fired = true; };
+    window.addEventListener('pf3:download', guard);
+    fireEvent.keyDown(document, { key: 'd' });
+    window.removeEventListener('pf3:download', guard);
+    expect(fired).toBe(false);
   });
 });
 

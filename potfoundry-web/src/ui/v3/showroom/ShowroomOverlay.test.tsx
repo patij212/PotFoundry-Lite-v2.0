@@ -8,7 +8,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useAppStore } from '../../../state';
-import { ShowroomOverlay } from './ShowroomOverlay';
+import { ShowroomOverlay, isShowroomOpen } from './ShowroomOverlay';
 import * as workingSet from '../panel/workingSet';
 
 // ─── Mock StyleThumb ───────────────────────────────────────────────────────────
@@ -200,7 +200,17 @@ describe('ShowroomOverlay', () => {
     }
   });
 
-  // ── 9. Close-without-click reverts an active preview ──────────────────────────
+  // ── 9. isShowroomOpen flag tracks open/close ──────────────────────────────────
+  it('isShowroomOpen() is false by default, true when open, false after Escape close', () => {
+    render(<ShowroomOverlay />);
+    expect(isShowroomOpen()).toBe(false);
+    openShowroom();
+    expect(isShowroomOpen()).toBe(true);
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
+    expect(isShowroomOpen()).toBe(false);
+  });
+
+  // ── 10. Close-without-click reverts an active preview ─────────────────────────
   it('Escape during an active hover preview restores the snapshot (close-without-click)', () => {
     vi.useFakeTimers();
     try {

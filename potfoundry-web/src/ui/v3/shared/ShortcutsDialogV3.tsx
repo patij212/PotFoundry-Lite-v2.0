@@ -8,7 +8,7 @@
  */
 
 import * as Dialog from '@radix-ui/react-dialog';
-import { X } from 'lucide-react';
+import { IconClose } from '../icons';
 import './ShortcutsDialogV3.css';
 
 // ============================================================================
@@ -53,7 +53,7 @@ export function ShortcutsDialogV3({ open, onOpenChange }: ShortcutsDialogV3Props
             <Dialog.Title className="pf3-shortcuts-title">Shortcuts</Dialog.Title>
             <Dialog.Close asChild>
               <button className="pf3-shortcuts-close" aria-label="Close shortcuts">
-                <X size={16} />
+                <IconClose />
               </button>
             </Dialog.Close>
           </div>

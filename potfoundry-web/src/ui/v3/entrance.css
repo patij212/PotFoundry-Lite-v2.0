@@ -11,10 +11,9 @@
  *
  * Total stagger: 400 ms delay + 320 ms duration = ~720 ms ≈ 700 ms target.
  *
- * prefers-reduced-motion: tokens.css already overrides
- *   animation-duration: 0.01ms !important  inside the @media block,
- *   so no additional override is required here — all animations collapse
- *   automatically regardless of the delay.
+ * prefers-reduced-motion: tokens.css overrides both animation-duration and
+ *   animation-delay to 0.01ms !important inside the @media block, so all
+ *   entrance animations (including stagger delays) collapse to instant.
  */
 
 @keyframes pf3-enter-panel {

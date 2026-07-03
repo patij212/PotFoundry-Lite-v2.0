@@ -30,3 +30,6 @@ export const IconOrtho: React.FC = () => (
 export const IconGrid: React.FC = () => (
   <svg {...base} aria-hidden="true"><line x1="3" y1="5" x2="13" y2="5" /><line x1="3" y1="8" x2="13" y2="8" /><line x1="3" y1="11" x2="13" y2="11" /><line x1="6" y1="2" x2="6" y2="14" /><line x1="10" y1="2" x2="10" y2="14" /></svg>
 );
+export const IconClose: React.FC = () => (
+  <svg {...base} aria-hidden="true"><path d="M4 4L12 12M12 4L4 12" /></svg>
+);

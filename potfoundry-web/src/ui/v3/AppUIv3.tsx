@@ -13,8 +13,9 @@ import { PillToolbar } from './stage/PillToolbar';
 import { StatusLine } from './stage/StatusLine';
 import { HintLine } from './stage/HintLine';
 import { useStudioBackdrop } from './stage/useStudioBackdrop';
-import { ShowroomOverlay } from './showroom/ShowroomOverlay';
+import { ShowroomOverlay, isShowroomOpen } from './showroom/ShowroomOverlay';
 import { AccountChip } from './stage/AccountChip';
+import { PricingModal } from '../pricing/PricingModal';
 import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
 import { safeStorage } from './utils/safeStorage';
 import './tokens.css';
@@ -35,8 +36,16 @@ export const AppUIv3: React.FC = () => {
 
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [showEntrance, setShowEntrance] = useState(false);
+  const [pricingOpen, setPricingOpen] = useState(false);
 
   useStudioBackdrop();
+
+  // pf3:upgrade → open PricingModal
+  useEffect(() => {
+    const handler = () => setPricingOpen(true);
+    window.addEventListener('pf3:upgrade', handler);
+    return () => window.removeEventListener('pf3:upgrade', handler);
+  }, []);
 
   // Once-per-session entrance: set data-entrance on first mount, never replay.
   useEffect(() => {
@@ -89,6 +98,8 @@ export const AppUIv3: React.FC = () => {
       if (k === 'd') {
         // D targets the panel's ExportFooter — unmounted in zen; zen download ships with Phase-2 export orchestration
         if (zenMode) return;
+        // Gate: D mid-showroom hover would export the transient preview style, not the user's selection
+        if (isShowroomOpen()) return;
         e.preventDefault();
         window.dispatchEvent(new CustomEvent('pf3:download'));
       }
@@ -118,6 +129,8 @@ export const AppUIv3: React.FC = () => {
         )}
         <ShowroomOverlay />
         <ShortcutsDialogV3 open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+        {/* PricingModal — v1-styled; pf3 restyling deferred to Phase-3 */}
+        <PricingModal open={pricingOpen} onOpenChange={setPricingOpen} />
       </div>
     </ErrorBoundary>
   );

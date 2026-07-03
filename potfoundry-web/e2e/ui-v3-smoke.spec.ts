@@ -26,10 +26,8 @@
  *  A12 — height slider selector narrowed to getByTestId('pf3-param-H').getByRole('slider');
  *        BlueprintCanvas handle (phase-1) also has role=slider + aria-label="Height",
  *        causing a strict-mode violation with the original unscoped selector
- *  A13 — showroom chip + tile now use real .click() calls (F1 fix: pointer-events:auto
- *        added to .pf3-showroom-backdrop in ShowroomOverlay.css so Playwright's pointer
- *        hit-test reaches the children; previously used dispatchEvent('click') to bypass
- *        the pointer-events:none on pf3-root, but that masked the production bug)
+ *  A13 — showroom chip + tile use real .click() calls; pointer-events:auto was added to
+ *        .pf3-showroom-backdrop so Playwright's pointer hit-test reaches the children.
  *  A14 — v1/v2 test sets per-test timeout to 60 000 ms (theme switch to classic needs
  *        >15 s when 10 tests run in parallel under WebGPU pressure)
  *  A15 — entrance test sets per-test timeout to 60 000 ms (beforeEach + reload = two
@@ -199,13 +197,11 @@ test.describe('UI v3 desktop smoke', () => {
     await expect(dialog).toBeVisible({ timeout: 5_000 });
 
     // Category chip: click "Organic" (second chip after "All").
-    // A13: pf3-panel__resize overlaps the chip in Playwright's hit-test even though
-    // z-index is correct; use force to bypass the interceptor check.
+    // A13: pointer-events:auto on .pf3-showroom-backdrop lets real clicks reach the chip.
     const chips = page.locator('.pf3-showroom__chip');
     await expect(chips.first()).toBeVisible();
     const chipCount = await chips.count();
     expect(chipCount).toBeGreaterThan(1);
-    // A13 fixed: F1 added pointer-events:auto to .pf3-showroom-backdrop — real clicks work now.
     await chips.nth(1).click(); // "Organic"
     // Grid should still show tiles for the filtered category
     await expect(page.locator('.pf3-showroom__grid button').first()).toBeVisible({ timeout: 3_000 });

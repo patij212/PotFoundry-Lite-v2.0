@@ -26,6 +26,11 @@ import './ShowroomOverlay.css';
 // ─── module flag ──────────────────────────────────────────────────────────────
 const LIVE_PREVIEW = true;
 
+// ─── showroom-open flag ────────────────────────────────────────────────────────
+let _showroomOpen = false;
+/** Returns true while the showroom overlay is open. Consumed by AppUIv3 to gate the D shortcut. */
+export function isShowroomOpen(): boolean { return _showroomOpen; }
+
 // ─── helper: all style keys with their display info ──────────────────────────
 const ALL_STYLE_KEYS = Object.keys(STYLE_REGISTRY) as StyleName[];
 
@@ -51,12 +56,16 @@ export const ShowroomOverlay: React.FC = () => {
   useEffect(() => {
     const handler = () => {
       launcherRef.current = document.activeElement;
+      _showroomOpen = true;
       setOpen(true);
       setSearch('');
       setActiveCategory('all');
     };
     window.addEventListener('pf3:showroom', handler);
-    return () => window.removeEventListener('pf3:showroom', handler);
+    return () => {
+      window.removeEventListener('pf3:showroom', handler);
+      _showroomOpen = false; // reset on unmount for test isolation
+    };
   }, []);
 
   // ── autofocus search on open ────────────────────────────────────────────────
@@ -77,6 +86,7 @@ export const ShowroomOverlay: React.FC = () => {
     } else {
       snapshotRef.current = null;
     }
+    _showroomOpen = false;
     setOpen(false);
     const launcher = launcherRef.current;
     if (launcher && 'focus' in launcher) {

@@ -4,7 +4,8 @@
  * Phase-2 deviation: no IndexedDB. Thumbnails are transient GPU renders;
  * serialising ImageData to storage is expensive and unnecessary for the
  * showroom. The in-memory cache covers the common case (20 styles × 1 size =
- * 20 entries per session, cleared whenever the user changes pot geometry).
+ * 20 entries per geometry hash per session; geometry changes produce new
+ * cache keys rather than clearing old entries).
  *
  * Concurrency: the cache stores the Promise, not the settled ImageData.
  * Two concurrent getStyleThumbnail() calls for the same key share one
@@ -13,8 +14,9 @@
  * unavailability (jsdom / device not yet injected) and may be retried.
  *
  * Memory: the cache is unbounded across geometry changes.
- * clearThumbnailCache() is the pressure valve — the caller (showroom) must
- * call it whenever the user's geometry hash changes.
+ * clearThumbnailCache() is a memory pressure valve — currently unused in
+ * production (intended for the 100-style expansion). Geometry changes
+ * produce new cache keys rather than requiring an explicit clear.
  */
 
 import ThumbnailRenderer from '../../../services/ThumbnailRenderer';

@@ -109,6 +109,7 @@
   .pf3-root { --pf3-dur-control: 0.01ms; --pf3-dur-panel: 0.01ms; --pf3-dur-overlay: 0.01ms; }
   .pf3-root *, .pf3-root *::before, .pf3-root *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }
 }
