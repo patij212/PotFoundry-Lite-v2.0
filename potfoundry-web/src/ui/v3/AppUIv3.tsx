@@ -20,6 +20,7 @@ import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
 import { TouchModeProvider } from './mobile/TouchModeContext';
 import { SheetShell } from './mobile/SheetShell';
 import { MobileTabBar } from './mobile/MobileTabBar';
+import { MobileStageControls } from './mobile/MobileStageControls';
 import { useMobile } from '../../hooks/useMobile';
 import { safeStorage } from './utils/safeStorage';
 import './tokens.css';
@@ -154,19 +155,23 @@ export const AppUIv3: React.FC = () => {
                Footer = MobileTabBar only (its CTA replaces ExportFooter's);
                ExportFooter renders inside the Export tab content. */
             !zenMode && (
-              <SheetShell
-                contentRef={sheetContentRef}
-                footer={<MobileTabBar contentRef={sheetContentRef} onExport={() => { setV3ActiveTab('export'); setPendingFire(true); }} />}
-              >
-                {v3ActiveTab === 'shape' && <ShapeTab />}
-                {v3ActiveTab === 'style' && <StyleTab />}
-                {v3ActiveTab === 'export' && (
-                  <>
-                    <ExportTab />
-                    <ExportFooter />
-                  </>
-                )}
-              </SheetShell>
+              <>
+                <SheetShell
+                  contentRef={sheetContentRef}
+                  footer={<MobileTabBar contentRef={sheetContentRef} onExport={() => { setV3ActiveTab('export'); setPendingFire(true); }} />}
+                >
+                  {v3ActiveTab === 'shape' && <ShapeTab />}
+                  {v3ActiveTab === 'style' && <StyleTab />}
+                  {v3ActiveTab === 'export' && (
+                    <>
+                      <ExportTab />
+                      <ExportFooter />
+                    </>
+                  )}
+                </SheetShell>
+                <MobileStageControls />
+                <HintLine />
+              </>
             )
           ) : (
             /* Desktop shell: panel rail + status chrome, gated by zen. */

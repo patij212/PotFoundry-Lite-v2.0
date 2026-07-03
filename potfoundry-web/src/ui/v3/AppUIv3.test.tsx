@@ -61,6 +61,14 @@ vi.mock('./stage/AccountChip', () => ({
   AccountChip: () => <div data-testid="pf3-account-chip" />,
 }));
 
+vi.mock('./mobile/MobileStageControls', () => ({
+  MobileStageControls: () => <div data-testid="pf3-mobile-stage-controls" />,
+}));
+
+vi.mock('./stage/HintLine', () => ({
+  HintLine: () => <div data-testid="pf3-hint-line" />,
+}));
+
 vi.mock('../pricing/PricingModal', () => ({
   PricingModal: ({ open }: { open: boolean }) =>
     open ? <div data-testid="pf3-pricing-modal" role="dialog" aria-label="Upgrade to Pro" /> : null,
@@ -302,6 +310,16 @@ describe('AppUIv3 desktop layout', () => {
     render(<AppUIv3 />);
     expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-layout', 'desktop');
   });
+
+  it('desktop: HintLine is rendered', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-hint-line')).toBeInTheDocument();
+  });
+
+  it('desktop: MobileStageControls is not rendered', () => {
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-mobile-stage-controls')).not.toBeInTheDocument();
+  });
 });
 
 describe('AppUIv3 mobile shell', () => {
@@ -419,5 +437,27 @@ describe('AppUIv3 mobile shell', () => {
     expect(within(sheet).getByTestId('pf3-export-tab')).toBeInTheDocument();
     expect(within(sheet).getByTestId('pf3-export-footer')).toBeInTheDocument();
     expect(screen.queryByTestId('pf3-shape-tab')).not.toBeInTheDocument();
+  });
+
+  it('mobile mode: MobileStageControls is rendered when not in zen', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-mobile-stage-controls')).toBeInTheDocument();
+  });
+
+  it('mobile mode: MobileStageControls is hidden in zen', () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-mobile-stage-controls')).not.toBeInTheDocument();
+  });
+
+  it('mobile mode: HintLine is rendered when not in zen', () => {
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-hint-line')).toBeInTheDocument();
+  });
+
+  it('mobile mode: HintLine is hidden in zen', () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: true } }));
+    render(<AppUIv3 />);
+    expect(screen.queryByTestId('pf3-hint-line')).not.toBeInTheDocument();
   });
 });
