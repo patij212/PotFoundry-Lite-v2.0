@@ -2266,3 +2266,17 @@ metric). Commits 17b7659 (pre-reg), df67c68 (best-diag+faithful-ref), d9aa343 (l
 **RECOMMENDATION:** productionize the M-square column sizing (the sliver-kill) as the structured-mesh quality template; finish the seam cliff (fix the 6 nm edges at the ladder count-transition) + local z-refinement at the jump-peak t for the last near-seam-petal chord/slivers (sub-print). NO kernel/src edit needed (pure structured builder).
 
 **FILES:** lib `research/bridge/_qcolMsquare.ts` (msquareRows / rasterizeColumnsSquare / buildStructWallSquare / buildStructWallSeamSquare). Probes `_qcol{Diag,Diag2,Size,Wall,Loc,NmLoc,SeamQ,SeamDbg}.test.ts` (reuse `_structColLib` buildRidgeGraph read-only + `_sfbPushLib` rulers). Config `vitest.structcol2.config.ts`. Scorecard `research/exchange/_structcol2/SCORECARD.md`; renders `ms15_chord_qual.png` (deliverable, 12.8M), `ms25_chord_qual.png`. NO kernel edit, NO src/ touch. NOT committed (left on disk for review).
+
+---
+
+## E-2026-07-03-SCALECOL (does the structured-column recipe scale to 0.01 on all styles? — AXIS-AWARE DISPATCH, one wall)
+
+**Q:** is the SFB@1 recipe (feature loci -> ridge-graph -> M-square columns -> explicit seam cliff) style-agnostic -> <=0.01 + good quality + watertight on all 20?
+
+**VERDICT: refuted as a UNIVERSAL recipe (2/9 class reps pass the gates), but the map is clear — an AXIS-AWARE DISPATCH, one fundamental wall.** M-square sizing IS the universal QUALITY lever (both paths); the ridge-graph's continuous-VERTICAL-chain primitive is NARROWER than "single-valued sharp" — it breaks on z-tiled / staggered / tangled.
+
+**EVIDENCE (own-radial screen + analytic-brute min(GN,brute) true-3D worst-K; RAW-index nonMan; min-angle):** HarmonicRipple (smooth, UNIFORM M-square) int true-3D 0.0029mm, %<20 0.1%, nonMan 0 -> REACHES (uniform M-square = CAD-grade on the ~13 smooth styles). SFB (theta-ridge+cliff) 0.011-0.032, p5 30, %<20 2.7% -> PARTIAL. z-tiled DragonScales (density-INVARIANT riser 1.06 across 6.2x tris; ridge-graph mis-chains 18mm), LowPolyFacet 0.52, GeometricStar (graph broken 34mm) -> NO via ridge-graph but SHARP3D doubled-rings is the KNOWN fix (ArtDeco-proven, not a wall). GyroidManifold (tangled) ridge-graph 38mm -> needs transition-free CDT-under-M. weave/braid WALL: BasketWeave chord density-responsive 0.62->0.34 but %<20 pinned ~21.5% (50mm seam, RED every strand boundary), CelticKnot 23mm / %<20 44% / nonMan 272.
+
+**DISPATCH MAP (0.01 on ~17/20 via KNOWN mechanisms):** smooth -> uniform M-square; theta-ridge -> ridge-graph; z-tiled -> SHARP3D doubled-rings + M-square; tangled -> CDT-under-M. THE ONE WALL = multi-valued weave/braid: rA(theta,z) flattens the over/under -> a single-valued (u,t) column sheet BRIDGES every strand-crossing -> needs cut-to-single-valued CHARTS (per-strand patches + explicit occlusion seams) or a 2-valued-height primitive = a different representation. 2 generalization bugs fixed dev-side (axis/sharpness gate; de-flickered ridge graph).
+
+**LEDGER:** scorecard `research/exchange/_scalecol/SCORECARD.md`; libs `research/bridge/_scaleColDriver.ts` + `_scaleColGraph.ts`; probes `_scaleCol{Recon,Axis,Diag,Validate,Density,Render}.test.ts`; config `vitest.scalecol.config.ts`; renders `hm_HarmonicRipple.png` (success) + `hm_BasketWeave.png` (wall).
