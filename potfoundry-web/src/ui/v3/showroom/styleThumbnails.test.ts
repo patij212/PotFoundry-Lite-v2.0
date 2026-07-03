@@ -137,6 +137,28 @@ describe('getStyleThumbnail', () => {
     expect(r2).toBe(img);
     expect(mockRenderThumbnail).toHaveBeenCalledTimes(1);
   });
+
+  it('rejection is not cached — cache is evicted and retry succeeds', async () => {
+    const img = make1x1ImageData();
+    const testError = new Error('GPU render failed');
+    mockRenderThumbnail
+      .mockRejectedValueOnce(testError)
+      .mockResolvedValueOnce(img);
+
+    // First call should reject
+    await expect(getStyleThumbnail('HarmonicRipple', DEFAULT_GEOMETRY)).rejects.toThrow(testError);
+
+    // Cache should be empty after rejection
+    expect(__cacheSize()).toBe(0);
+
+    // Reset mock to succeed
+    mockRenderThumbnail.mockResolvedValue(img);
+
+    // Second call should re-render and succeed (render called again)
+    const result = await getStyleThumbnail('HarmonicRipple', DEFAULT_GEOMETRY);
+    expect(result).toBe(img);
+    expect(mockRenderThumbnail).toHaveBeenCalledTimes(2);
+  });
 });
 
 // ---------------------------------------------------------------------------

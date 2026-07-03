@@ -143,12 +143,18 @@ export function getStyleThumbnail(
   const design = buildDesign(styleName, geometry);
   const renderer = ThumbnailRenderer.getInstance();
 
-  const promise = renderer.renderThumbnail(design, size, size).then((result) => {
-    // Do not persist null — GPU may not be ready yet (jsdom / device pending).
-    // The next call will attempt a fresh render.
-    if (result === null) cache.delete(key);
-    return result;
-  });
+  const promise = renderer.renderThumbnail(design, size, size)
+    .then((result) => {
+      // Do not persist null — GPU may not be ready yet (jsdom / device pending).
+      // The next call will attempt a fresh render.
+      if (result === null) cache.delete(key);
+      return result;
+    })
+    .catch((err) => {
+      // Evict on rejection so callers can retry.
+      cache.delete(key);
+      throw err;
+    });
 
   cache.set(key, promise);
   return promise;
