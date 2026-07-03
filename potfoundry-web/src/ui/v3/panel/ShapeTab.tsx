@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { BlueprintCanvas } from '../blueprint/BlueprintCanvas';
 import { ParamRow } from '../primitives/ParamRow';
 import { DisclosureSeam } from '../primitives/DisclosureSeam';
 import { useAppStore } from '../../../state';
@@ -43,6 +44,7 @@ export const ShapeTab: React.FC = () => {
 
   return (
     <div className="pf3-shape-tab">
+      <BlueprintCanvas />
       <div className="pf3-section-voice">Size</div>
       {SIZE_KEYS.map(row)}
       <DisclosureSeam id="shape-structure" summary="advanced — walls, drain & flare">

@@ -27,10 +27,21 @@ describe('ShapeTab', () => {
 
   it('slider edit writes to the store', () => {
     render(<ShapeTab />);
-    const slider = screen.getByRole('slider', { name: 'Height' });
+    const slider = screen.getByTestId('pf3-param-H').querySelector('input[type="range"]') as HTMLInputElement;
     fireEvent.pointerDown(slider);
     fireEvent.change(slider, { target: { value: '200' } });
     fireEvent.pointerUp(slider);
     expect(useAppStore.getState().geometry.H).toBe(200);
+  });
+
+  it('renders BlueprintCanvas before the Size section', () => {
+    render(<ShapeTab />);
+    const blueprint = screen.getByTestId('pf3-blueprint');
+    const sizeHeading = screen.getByText('Size');
+    expect(blueprint).toBeInTheDocument();
+    // Blueprint appears before Size in DOM order
+    expect(blueprint.compareDocumentPosition(sizeHeading) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
   });
 });
