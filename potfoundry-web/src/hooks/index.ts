@@ -30,4 +30,6 @@ export {
   type UseMobileOptions,
   type UseMobileResult,
 } from './useMobile';
+export { useSwipeGesture, type SwipeGestureOptions } from './useSwipeGesture';
+export { useHaptics } from './useHaptics';
 
