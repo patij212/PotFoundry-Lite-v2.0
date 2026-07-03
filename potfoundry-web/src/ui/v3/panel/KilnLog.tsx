@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useAppStore } from '../../../state';
-import { getKilnLog } from './kilnLog';
-import type { KilnEntry } from './kilnLog';
+import { getKilnLog } from './kilnLogStore';
+import type { KilnEntry } from './kilnLogStore';
 import type { QualityPreset } from '../../../state/slices/mesh';
 
 /**
@@ -23,9 +23,16 @@ interface KilnLogProps {
 }
 
 export const KilnLog: React.FC<KilnLogProps> = ({ now = Date.now() }) => {
-  const [entries] = useState<KilnEntry[]>(() => getKilnLog());
+  const [entries, setEntries] = useState<KilnEntry[]>(() => getKilnLog());
   const setExportFilename = useAppStore((s) => s.setExportFilename);
   const setQualityPreset = useAppStore((s) => s.setQualityPreset);
+
+  // Refresh the list whenever a new firing is recorded (F3: live log refresh).
+  useEffect(() => {
+    const handler = () => setEntries(getKilnLog());
+    window.addEventListener('pf3:kiln-updated', handler);
+    return () => window.removeEventListener('pf3:kiln-updated', handler);
+  }, []);
 
   const refire = (entry: KilnEntry) => {
     setExportFilename(entry.filename);
@@ -44,9 +51,9 @@ export const KilnLog: React.FC<KilnLogProps> = ({ now = Date.now() }) => {
         </p>
       ) : (
         <ul className="pf3-kiln-log__list">
-          {entries.map((entry, i) => (
+          {entries.map((entry) => (
             <li
-              key={i}
+              key={`${entry.firedAt}-${entry.filename}`}
               className={`pf3-kiln-log__row pf3-kiln-log__row--${entry.ok ? 'ok' : 'fail'}`}
             >
               <span className="pf3-mono pf3-kiln-log__label">

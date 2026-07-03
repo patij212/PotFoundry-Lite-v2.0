@@ -4,7 +4,7 @@
  * Storage key: `pf3-kiln-log` (localStorage via safeStorage).
  * Corrupted or non-array JSON silently returns an empty list.
  *
- * @module ui/v3/panel/kilnLog
+ * @module ui/v3/panel/kilnLogStore
  */
 
 import { safeStorage } from '../utils/safeStorage';
@@ -44,5 +44,8 @@ export function getKilnLog(): KilnEntry[] {
 export function recordFiring(entry: KilnEntry): KilnEntry[] {
   const next = [entry, ...getKilnLog()].slice(0, MAX_ENTRIES);
   safeStorage.set(LOG_KEY, JSON.stringify(next));
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('pf3:kiln-updated'));
+  }
   return next;
 }

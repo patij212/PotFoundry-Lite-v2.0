@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { recordFiring, getKilnLog } from './kilnLog';
-import type { KilnEntry } from './kilnLog';
+import { recordFiring, getKilnLog } from './kilnLogStore';
+import type { KilnEntry } from './kilnLogStore';
 
 function makeEntry(n: number): KilnEntry {
   return {
@@ -13,7 +13,7 @@ function makeEntry(n: number): KilnEntry {
   };
 }
 
-describe('kilnLog', () => {
+describe('kilnLogStore', () => {
   beforeEach(() => {
     localStorage.clear();
   });
@@ -61,5 +61,17 @@ describe('kilnLog', () => {
     const [top, second] = getKilnLog();
     expect(top.ok).toBe(false);   // failEntry was recorded last (prepend)
     expect(second.ok).toBe(true);
+  });
+
+  it('recordFiring dispatches pf3:kiln-updated on window', () => {
+    const events: Event[] = [];
+    const handler = (e: Event) => events.push(e);
+    window.addEventListener('pf3:kiln-updated', handler);
+
+    recordFiring(makeEntry(1));
+
+    window.removeEventListener('pf3:kiln-updated', handler);
+    expect(events).toHaveLength(1);
+    expect(events[0].type).toBe('pf3:kiln-updated');
   });
 });

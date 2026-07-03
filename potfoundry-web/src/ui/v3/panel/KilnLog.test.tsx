@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
-import { KilnLog } from './KilnLog.tsx';
+import { render, screen, fireEvent, act } from '@testing-library/react';
+import { KilnLog } from './KilnLog';
 import { useAppStore } from '../../../state';
 import { DEFAULT_MESH_QUALITY } from '../../../state/types';
-import type { KilnEntry } from './kilnLog';
+import { recordFiring } from './kilnLogStore';
+import type { KilnEntry } from './kilnLogStore';
 
 const LOG_KEY = 'pf3-kiln-log';
 
@@ -93,5 +94,18 @@ describe('KilnLog', () => {
 
     expect(useAppStore.getState().ui.exportFilename).toBe('wave-120');
     expect(useAppStore.getState().mesh).toEqual(initialMesh);
+  });
+
+  // F3: live refresh — new entry added via recordFiring appears without remount.
+  it('F3: new entry appears after recordFiring without remount', async () => {
+    render(<KilnLog now={FIXED_NOW} />);
+    expect(screen.getByText('Nothing fired yet — your exports will appear here.')).toBeInTheDocument();
+
+    await act(async () => {
+      recordFiring(entry1);
+    });
+
+    expect(screen.getByText(/spiral-pot\.stl/)).toBeInTheDocument();
+    expect(screen.queryByText('Nothing fired yet — your exports will appear here.')).not.toBeInTheDocument();
   });
 });

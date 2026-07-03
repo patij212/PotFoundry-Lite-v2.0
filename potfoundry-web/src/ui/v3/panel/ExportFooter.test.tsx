@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { deriveDefaultFilename, estimateExport, formatBytes, deriveFidelityKey } from './exportName';
-import { getKilnLog } from './kilnLog';
+import { getKilnLog } from './kilnLogStore';
 
 const exportSTL = vi.fn();
 const recordExport = vi.fn().mockResolvedValue(undefined);
@@ -60,6 +60,7 @@ vi.mock('../../../hooks/useExportTier', () => ({
 }));
 
 import { ExportFooter } from './ExportFooter';
+import { useAppStore } from '../../../state';
 
 describe('exportName utils', () => {
   it('derives kebab filenames', () => {
@@ -196,5 +197,21 @@ describe('ExportFooter', () => {
     // Certificate gone, button still present
     expect(screen.queryByText(/watertight/)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Export STL/ })).toBeInTheDocument();
+  });
+
+  // F1 (stale-closure): KilnLog's refire calls setExportFilename then dispatches
+  // pf3:download in the same synchronous tick — no React re-render in between.
+  // fire() must read the fresh filename from the store, not the closure snapshot.
+  it('F1: re-fire uses fresh filename from store set in the same tick', async () => {
+    render(<ExportFooter />);
+
+    // Simulate KilnLog's refire: set a new filename, then immediately dispatch
+    // pf3:download — no re-render between the two calls.
+    act(() => {
+      useAppStore.getState().setExportFilename('fresh-refire-name');
+      window.dispatchEvent(new CustomEvent('pf3:download'));
+    });
+
+    await waitFor(() => expect(exportSTL).toHaveBeenCalledWith('fresh-refire-name'));
   });
 });

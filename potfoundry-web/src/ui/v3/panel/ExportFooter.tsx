@@ -5,16 +5,13 @@ import { useAppStore } from '../../../state';
 import { useParametricExport } from '../../../hooks/useParametricExport';
 import { useExportTier } from '../../../hooks/useExportTier';
 import { deriveDefaultFilename, estimateExport, formatBytes, deriveFidelityKey } from './exportName';
-import { recordFiring } from './kilnLog';
+import { recordFiring } from './kilnLogStore';
 import type { ParametricExportStats } from '../../../hooks/useParametricExport';
 import './ExportFooter.css';
 
 export const ExportFooter: React.FC = () => {
-  const styleName = useAppStore((s) => s.style.name);
-  const H = useAppStore((s) => s.geometry.H);
   const nTheta = useAppStore((s) => s.mesh.export_n_theta);
   const nZ = useAppStore((s) => s.mesh.export_n_z);
-  const exportFilename = useAppStore((s) => s.ui.exportFilename);
 
   const { progress, stats, isAvailable, exportSTL } = useParametricExport();
   const { checkExportAllowed, recordExport } = useExportTier();
@@ -34,7 +31,6 @@ export const ExportFooter: React.FC = () => {
 
   const firing = progress.status === 'initializing' || progress.status === 'generating';
   const { tris, bytes } = estimateExport(nTheta, nZ);
-  const filename = exportFilename ?? deriveDefaultFilename(styleName, H);
   const tier = checkExportAllowed();
 
   // Capture stats when they arrive after an export resolves.
@@ -65,13 +61,19 @@ export const ExportFooter: React.FC = () => {
     setError(null);
     setCapturedStats(null);
     awaitingStatsRef.current = false; // cancel any stale wait from a prior export
-    // Snapshot fire-time metadata before the async pipeline begins.
-    filenameAtFireRef.current = filename;
-    fidelityAtFireRef.current = deriveFidelityKey(useAppStore.getState().mesh);
+    // Read store state fresh at fire time — avoids a stale-closure bug where
+    // KilnLog's refire calls setExportFilename then dispatches pf3:download before
+    // React re-renders, so the closure's filename would still hold the old value.
+    const freshState = useAppStore.getState();
+    const freshFilename =
+      freshState.ui.exportFilename ??
+      deriveDefaultFilename(freshState.style.name, freshState.geometry.H);
+    filenameAtFireRef.current = freshFilename;
+    fidelityAtFireRef.current = deriveFidelityKey(freshState.mesh);
     try {
-      await exportSTL(filename);
+      await exportSTL(freshFilename);
       await recordExport();
-      setDone(filename);
+      setDone(freshFilename);
       // Mark awaiting: the [stats] effect above will capture once the hook's
       // batched setStats re-render fires (React 18 flushes it in the same batch
       // as the setDone update, so the certificate appears in the very next paint).
@@ -79,7 +81,7 @@ export const ExportFooter: React.FC = () => {
     } catch {
       setError('Export failed — check the console, then try again');
     }
-  }, [firing, tier.canExport, exportSTL, filename, recordExport]);
+  }, [firing, tier.canExport, exportSTL, recordExport]);
 
   useEffect(() => {
     const onShortcut = () => void fire();

@@ -2,7 +2,7 @@ import React from 'react';
 import { useAppStore } from '../../../state';
 import { useExportTier } from '../../../hooks/useExportTier';
 import { estimateExport, formatBytes, deriveDefaultFilename, FIDELITIES, deriveFidelityKey } from './exportName';
-import { KilnLog } from './KilnLog.tsx';
+import { KilnLog } from './KilnLog';
 import './ExportFooter.css';
 
 export const ExportTab: React.FC = () => {
