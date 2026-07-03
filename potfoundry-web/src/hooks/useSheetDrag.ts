@@ -159,7 +159,7 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
       setState(newState);
       onStateChange?.(newState);
     },
-    [handleHeight, getStateHeight, sheetRef, onStateChange]
+    [handleHeight, getStateHeight, sheetRef, onStateChange, draggingClassName]
   );
 
   /**
@@ -288,11 +288,12 @@ export function useSheetDrag(config: SheetDragConfig): SheetDragResult {
   const collapse = useCallback(() => {
     const el = sheetRef.current;
     if (el) {
+      el.classList.remove(draggingClassName);
       el.style.height = `${handleHeight}px`;
     }
     setState('collapsed');
     onStateChange?.('collapsed');
-  }, [sheetRef, handleHeight, onStateChange]);
+  }, [sheetRef, handleHeight, onStateChange, draggingClassName]);
 
   return {
     state,

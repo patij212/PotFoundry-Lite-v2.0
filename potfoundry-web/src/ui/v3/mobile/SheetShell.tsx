@@ -91,6 +91,9 @@ export const SheetShell: React.FC<SheetShellProps> = ({ children, footer }) => {
         aria-label="Resize sheet"
         aria-orientation="vertical"
         aria-valuetext={state}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={state === 'collapsed' ? 0 : state === 'half' ? 50 : 100}
         tabIndex={0}
         data-pf3-focusable=""
       >

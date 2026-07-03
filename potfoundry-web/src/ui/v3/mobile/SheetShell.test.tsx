@@ -81,6 +81,14 @@ describe('SheetShell — rendering', () => {
     expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', 'half');
   });
 
+  it('grabber has aria-valuemin, aria-valuemax, and aria-valuenow attributes for half state', () => {
+    renderSheet();
+    const slider = screen.getByRole('slider');
+    expect(slider).toHaveAttribute('aria-valuemin', '0');
+    expect(slider).toHaveAttribute('aria-valuemax', '100');
+    expect(slider).toHaveAttribute('aria-valuenow', '50');
+  });
+
   it('renders children inside the content area', () => {
     renderSheet();
     expect(screen.getByTestId('sheet-child')).toBeInTheDocument();
