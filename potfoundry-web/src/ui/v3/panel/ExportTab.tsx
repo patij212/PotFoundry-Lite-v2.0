@@ -1,18 +1,9 @@
 import React from 'react';
 import { useAppStore } from '../../../state';
 import { useExportTier } from '../../../hooks/useExportTier';
-import { estimateExport, formatBytes, deriveDefaultFilename } from './exportName';
+import { estimateExport, formatBytes, deriveDefaultFilename, FIDELITIES, deriveFidelityKey } from './exportName';
+import { KilnLog } from './KilnLog.tsx';
 import './ExportFooter.css';
-
-// Real preset resolutions from QUALITY_PRESETS in src/state/slices/mesh.ts.
-// preview_* values are included to distinguish high (preview 1024×512) from
-// ultra (preview 2048×1024) — both share the same export_n_theta/export_n_z.
-const FIDELITIES = [
-  { key: 'draft',    name: 'Draft',    purpose: 'quick look',            nTheta: 512,  nZ: 256,  previewNTheta: 256,  previewNZ: 128  },
-  { key: 'standard', name: 'Standard', purpose: 'everyday prints',       nTheta: 1024, nZ: 512,  previewNTheta: 512,  previewNZ: 256  },
-  { key: 'high',     name: 'High',     purpose: 'print-ready · 0.20 mm', nTheta: 2048, nZ: 1024, previewNTheta: 1024, previewNZ: 512  },
-  { key: 'ultra',    name: 'Ultra',    purpose: 'exhibition · 0.05 mm',  nTheta: 2048, nZ: 1024, previewNTheta: 2048, previewNZ: 1024 },
-] as const;
 
 export const ExportTab: React.FC = () => {
   const mesh             = useAppStore((s) => s.mesh);
@@ -24,14 +15,7 @@ export const ExportTab: React.FC = () => {
   const { checkExportAllowed, isPro, isAuthConfigured } = useExportTier();
   const tier = checkExportAllowed();
 
-  const activeKey =
-    FIDELITIES.find(
-      (f) =>
-        f.nTheta === mesh.export_n_theta &&
-        f.nZ     === mesh.export_n_z     &&
-        f.previewNTheta === mesh.preview_n_theta &&
-        f.previewNZ     === mesh.preview_n_z
-    )?.key ?? 'custom';
+  const activeKey = deriveFidelityKey(mesh);
 
   return (
     <div className="pf3-export-tab">
@@ -105,6 +89,8 @@ export const ExportTab: React.FC = () => {
           </p>
         </div>
       )}
+
+      <KilnLog />
     </div>
   );
 };

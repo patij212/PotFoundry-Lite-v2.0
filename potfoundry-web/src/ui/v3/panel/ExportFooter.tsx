@@ -4,7 +4,8 @@ import { Certificate } from './Certificate';
 import { useAppStore } from '../../../state';
 import { useParametricExport } from '../../../hooks/useParametricExport';
 import { useExportTier } from '../../../hooks/useExportTier';
-import { deriveDefaultFilename, estimateExport, formatBytes } from './exportName';
+import { deriveDefaultFilename, estimateExport, formatBytes, deriveFidelityKey } from './exportName';
+import { recordFiring } from './kilnLog';
 import type { ParametricExportStats } from '../../../hooks/useParametricExport';
 import './ExportFooter.css';
 
@@ -26,6 +27,11 @@ export const ExportFooter: React.FC = () => {
   // the hook's batched setStats re-render has landed.
   const awaitingStatsRef = useRef(false);
 
+  // Capture fire-time metadata so the [stats] effect can record the kiln entry
+  // without needing reactive deps (refs are snapshot-stable across async boundaries).
+  const filenameAtFireRef = useRef<string>('');
+  const fidelityAtFireRef = useRef<string>('custom');
+
   const firing = progress.status === 'initializing' || progress.status === 'generating';
   const { tris, bytes } = estimateExport(nTheta, nZ);
   const filename = exportFilename ?? deriveDefaultFilename(styleName, H);
@@ -40,6 +46,16 @@ export const ExportFooter: React.FC = () => {
     if (awaitingStatsRef.current && stats !== null) {
       awaitingStatsRef.current = false;
       setCapturedStats(stats);
+      // Record kiln log entry using fire-time snapshots (refs) so we never re-run
+      // this effect for reasons other than a fresh stats arrival.
+      recordFiring({
+        filename: filenameAtFireRef.current,
+        sizeLabel: stats.fileSize,
+        triangles: stats.triangleCount,
+        fidelity: fidelityAtFireRef.current,
+        firedAt: Date.now(),
+        ok: stats.validationSummary?.valid !== false,
+      });
     }
   }, [stats]);
 
@@ -49,6 +65,9 @@ export const ExportFooter: React.FC = () => {
     setError(null);
     setCapturedStats(null);
     awaitingStatsRef.current = false; // cancel any stale wait from a prior export
+    // Snapshot fire-time metadata before the async pipeline begins.
+    filenameAtFireRef.current = filename;
+    fidelityAtFireRef.current = deriveFidelityKey(useAppStore.getState().mesh);
     try {
       await exportSTL(filename);
       await recordExport();

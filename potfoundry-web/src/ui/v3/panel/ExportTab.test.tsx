@@ -72,6 +72,13 @@ describe('ExportTab', () => {
     }
   });
 
+  it('renders the kiln log section with empty state', () => {
+    render(<ExportTab />);
+    expect(
+      screen.getByText('Nothing fired yet — your exports will appear here.')
+    ).toBeInTheDocument();
+  });
+
   it('test order independence: Draft-click mutation does not leak', () => {
     // First render: click Draft
     const { unmount: unmount1 } = render(<ExportTab />);

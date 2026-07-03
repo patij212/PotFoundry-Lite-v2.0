@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
-import { deriveDefaultFilename, estimateExport, formatBytes } from './exportName';
+import { deriveDefaultFilename, estimateExport, formatBytes, deriveFidelityKey } from './exportName';
+import { getKilnLog } from './kilnLog';
 
 const exportSTL = vi.fn();
 const recordExport = vi.fn().mockResolvedValue(undefined);
@@ -73,6 +74,15 @@ describe('exportName utils', () => {
     expect(formatBytes(4_322_132)).toBe('4.1 MB');
     expect(formatBytes(512_000)).toBe('500 KB');
   });
+  it('deriveFidelityKey identifies known presets', () => {
+    expect(deriveFidelityKey({ export_n_theta: 512,  export_n_z: 256,  preview_n_theta: 256,  preview_n_z: 128  })).toBe('draft');
+    expect(deriveFidelityKey({ export_n_theta: 1024, export_n_z: 512,  preview_n_theta: 512,  preview_n_z: 256  })).toBe('standard');
+    expect(deriveFidelityKey({ export_n_theta: 2048, export_n_z: 1024, preview_n_theta: 1024, preview_n_z: 512  })).toBe('high');
+    expect(deriveFidelityKey({ export_n_theta: 2048, export_n_z: 1024, preview_n_theta: 2048, preview_n_z: 1024 })).toBe('ultra');
+  });
+  it('deriveFidelityKey returns custom for non-preset resolutions', () => {
+    expect(deriveFidelityKey({ export_n_theta: 336, export_n_z: 168, preview_n_theta: 168, preview_n_z: 84 })).toBe('custom');
+  });
 });
 
 describe('ExportFooter', () => {
@@ -86,6 +96,7 @@ describe('ExportFooter', () => {
     });
     recordExport.mockClear();
     canExport = true;
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -146,6 +157,16 @@ describe('ExportFooter', () => {
     fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
     await waitFor(() => {
       expect(screen.getByText(/watertight/)).toBeInTheDocument();
+    });
+  });
+
+  it('records the firing in the kiln log on success', async () => {
+    render(<ExportFooter />);
+    fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
+    await waitFor(() => {
+      const log = getKilnLog();
+      expect(log).toHaveLength(1);
+      expect(log[0].filename).toMatch(/^[a-z0-9-]+$/);
     });
   });
 
