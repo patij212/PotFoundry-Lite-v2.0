@@ -21,6 +21,7 @@ import { STYLE_REGISTRY, STYLE_CATEGORIES } from '../../../styles/registry';
 import { GlassSurface } from '../primitives/GlassSurface';
 import StyleThumb from './StyleThumb';
 import { getFavorites, pushRecent } from '../panel/workingSet';
+import { useTouchMode } from '../mobile/TouchModeContext';
 import './ShowroomOverlay.css';
 
 // ─── module flag ──────────────────────────────────────────────────────────────
@@ -51,6 +52,7 @@ export const ShowroomOverlay: React.FC = () => {
   const searchInputRef = useRef<HTMLInputElement | null>(null);
 
   const currentStyle = useStyle();
+  const touchMode = useTouchMode();
 
   // ── open on pf3:showroom event ──────────────────────────────────────────────
   useEffect(() => {
@@ -242,7 +244,9 @@ export const ShowroomOverlay: React.FC = () => {
 
           {/* Footer */}
           <div className="pf3-showroom__footer">
-            hover to preview on your pot · click to apply
+            {touchMode
+              ? 'press and hold to preview · tap to apply'
+              : 'hover to preview on your pot · click to apply'}
           </div>
         </GlassSurface>
       </div>

@@ -27,3 +27,10 @@
 .pf3-root[data-layout="mobile-landscape"] [data-testid="pf3-status"] {
   display: none;
 }
+
+/* The renderer's axis gizmo (z-index 9998) predates v3 layering — hide it wherever it collides:
+   any mobile layout (space is precious) and whenever the showroom overlay is open. */
+body:has(.pf3-root[data-layout^="mobile"]) #wgpu-axis-overlay,
+body:has(.pf3-showroom-backdrop) #wgpu-axis-overlay {
+  display: none;
+}

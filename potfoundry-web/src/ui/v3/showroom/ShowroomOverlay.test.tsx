@@ -10,6 +10,7 @@ import { render, screen, fireEvent, act } from '@testing-library/react';
 import { useAppStore } from '../../../state';
 import { ShowroomOverlay, isShowroomOpen } from './ShowroomOverlay';
 import * as workingSet from '../panel/workingSet';
+import { TouchModeProvider } from '../mobile/TouchModeContext';
 
 // ─── Mock StyleThumb ───────────────────────────────────────────────────────────
 // Avoids IntersectionObserver / canvas / GPU deps.
@@ -235,5 +236,22 @@ describe('ShowroomOverlay', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  // ── 11. Footer hint respects touch mode ──────────────────────────────────────
+  it('footer shows desktop copy by default (hover/click)', () => {
+    render(<ShowroomOverlay />);
+    openShowroom();
+    expect(screen.getByText('hover to preview on your pot · click to apply')).toBeInTheDocument();
+  });
+
+  it('footer shows touch copy when TouchModeProvider wraps with true', () => {
+    render(
+      <TouchModeProvider value={true}>
+        <ShowroomOverlay />
+      </TouchModeProvider>
+    );
+    openShowroom();
+    expect(screen.getByText('press and hold to preview · tap to apply')).toBeInTheDocument();
   });
 });
