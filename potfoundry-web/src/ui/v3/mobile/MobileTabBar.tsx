@@ -39,13 +39,21 @@ const TAB_ORDER: ReadonlyArray<V3Tab> = ['shape', 'style', 'export'];
 export interface MobileTabBarProps {
   /** Ref of the scrollable content area where swipe gestures are detected. */
   contentRef: RefObject<HTMLElement>;
+  /**
+   * Called when the Export CTA is tapped. When provided, AppUIv3 uses the
+   * deferred-fire pattern (switch tab → setPendingFire) so ExportFooter's
+   * pf3:download listener is mounted before the event fires. Falls back to
+   * dispatching pf3:download directly when omitted — keeps the component
+   * standalone and existing tests green.
+   */
+  onExport?: () => void;
 }
 
 // ============================================================================
 // Component
 // ============================================================================
 
-export const MobileTabBar: React.FC<MobileTabBarProps> = ({ contentRef }) => {
+export const MobileTabBar: React.FC<MobileTabBarProps> = ({ contentRef, onExport }) => {
   const activeTab = useAppStore((s) => s.ui.v3ActiveTab);
   const setV3ActiveTab = useAppStore((s) => s.setV3ActiveTab);
   const { tap } = useHaptics();
@@ -82,8 +90,12 @@ export const MobileTabBar: React.FC<MobileTabBarProps> = ({ contentRef }) => {
   });
 
   const handleExport = useCallback(() => {
-    window.dispatchEvent(new CustomEvent('pf3:download'));
-  }, []);
+    if (onExport) {
+      onExport();
+    } else {
+      window.dispatchEvent(new CustomEvent('pf3:download'));
+    }
+  }, [onExport]);
 
   return (
     <div className="pf3-mobile-tab-bar">

@@ -44,6 +44,9 @@ export const AppUIv3: React.FC = () => {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [showEntrance, setShowEntrance] = useState(false);
   const [pricingOpen, setPricingOpen] = useState(false);
+  // Deferred-fire flag: set by the mobile Export CTA to fire pf3:download after
+  // ExportFooter has mounted. See the pendingFire effect below.
+  const [pendingFire, setPendingFire] = useState(false);
 
   useStudioBackdrop();
 
@@ -53,6 +56,18 @@ export const AppUIv3: React.FC = () => {
     window.addEventListener('pf3:upgrade', handler);
     return () => window.removeEventListener('pf3:upgrade', handler);
   }, []);
+
+  // Deferred export fire (mobile one-tap path): onExport switches to the export
+  // tab and sets pendingFire. React runs child effects before parent effects on
+  // the same commit, so ExportFooter's pf3:download listener is registered before
+  // this dispatch fires. When already on the export tab the tab-set is a no-op
+  // and the effect fires immediately on the next commit.
+  useEffect(() => {
+    if (pendingFire && v3ActiveTab === 'export') {
+      window.dispatchEvent(new CustomEvent('pf3:download'));
+      setPendingFire(false);
+    }
+  }, [pendingFire, v3ActiveTab]);
 
   // Once-per-session entrance (desktop only): set data-entrance on first mount, never replay.
   useEffect(() => {
@@ -141,7 +156,7 @@ export const AppUIv3: React.FC = () => {
             !zenMode && (
               <SheetShell
                 contentRef={sheetContentRef}
-                footer={<MobileTabBar contentRef={sheetContentRef} />}
+                footer={<MobileTabBar contentRef={sheetContentRef} onExport={() => { setV3ActiveTab('export'); setPendingFire(true); }} />}
               >
                 {v3ActiveTab === 'shape' && <ShapeTab />}
                 {v3ActiveTab === 'style' && <StyleTab />}

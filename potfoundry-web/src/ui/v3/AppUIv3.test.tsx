@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, within } from '@testing-library/react';
 import { useAppStore } from '../../state';
 
 // useMobile mock — default desktop so all existing tests run unchanged.
@@ -20,6 +20,9 @@ vi.mock('./mobile/TouchModeContext', () => ({
 const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('./mobile/SheetShell', () => ({
+  // Note: production SheetShell attaches contentRef to the inner content div,
+  // not the outer wrapper. The mock attaches to the outer div for simplicity —
+  // swipe gesture behaviour is already tested in MobileTabBar.test.tsx.
   SheetShell: ({ children, footer, contentRef }: { children: React.ReactNode; footer?: React.ReactNode; contentRef?: React.RefObject<HTMLDivElement> }) => (
     <div data-testid="pf3-sheet" ref={contentRef}>
       {children}
@@ -29,9 +32,29 @@ vi.mock('./mobile/SheetShell', () => ({
 }));
 
 vi.mock('./mobile/MobileTabBar', () => ({
-  MobileTabBar: ({ contentRef }: { contentRef: React.RefObject<HTMLElement> }) => (
-    <div data-testid="pf3-mobile-tab-bar" ref={contentRef} />
+  // Exposes onExport so AppUIv3 integration tests can exercise the full
+  // one-tap CTA path without needing to unmock and configure swipe/haptics.
+  MobileTabBar: ({ contentRef, onExport }: { contentRef: React.RefObject<HTMLElement>; onExport?: () => void }) => (
+    <div data-testid="pf3-mobile-tab-bar" ref={contentRef}>
+      <button type="button" aria-label="Export STL" onClick={() => onExport?.()}>Export</button>
+    </div>
   ),
+}));
+
+vi.mock('./panel/ShapeTab', () => ({
+  ShapeTab: () => <div data-testid="pf3-shape-tab" />,
+}));
+
+vi.mock('./panel/StyleTab', () => ({
+  StyleTab: () => <div data-testid="pf3-style-tab" />,
+}));
+
+vi.mock('./panel/ExportTab', () => ({
+  ExportTab: () => <div data-testid="pf3-export-tab" />,
+}));
+
+vi.mock('./panel/ExportFooter', () => ({
+  ExportFooter: () => <div data-testid="pf3-export-footer" />,
 }));
 
 vi.mock('./stage/AccountChip', () => ({
@@ -282,11 +305,20 @@ describe('AppUIv3 desktop layout', () => {
 });
 
 describe('AppUIv3 mobile shell', () => {
+  // Proxy pf3:download → mockExportSTL so F1 tests can verify the full
+  // one-tap path. The ExportFooter mock is a plain div (no event listener);
+  // this listener stands in for it without needing hooks in the mock factory.
+  let downloadListener: () => void;
+
   beforeEach(() => {
+    mockExportSTL.mockClear();
+    downloadListener = () => { mockExportSTL(); };
+    window.addEventListener('pf3:download', downloadListener);
     mockUseMobile.mockReturnValue({ isMobile: true, isTablet: true, hasTouch: true, viewportWidth: 375 });
     useAppStore.setState((s) => ({ ui: { ...s.ui, zenMode: false, v3ActiveTab: 'shape' } }));
   });
   afterEach(() => {
+    window.removeEventListener('pf3:download', downloadListener);
     // Reset to desktop so subsequent describe blocks start clean.
     mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
   });
@@ -333,9 +365,8 @@ describe('AppUIv3 mobile shell', () => {
 
   it('mobile mode: sheet contains ShapeTab content by default', () => {
     render(<AppUIv3 />);
-    expect(screen.getByTestId('pf3-sheet')).toBeInTheDocument();
-    // Default tab is 'shape' — verify ShapeTab would be rendered by checking the store
-    expect(useAppStore.getState().ui.v3ActiveTab).toBe('shape');
+    // pf3-shape-tab must be a descendant of pf3-sheet (not just present in DOM)
+    expect(within(screen.getByTestId('pf3-sheet')).getByTestId('pf3-shape-tab')).toBeInTheDocument();
   });
 
   it('mobile mode: store tab switch swaps sheet content', () => {
@@ -357,15 +388,36 @@ describe('AppUIv3 mobile shell', () => {
     expect(tabBars).toHaveLength(1);
   });
 
+  // F1: one-tap export CTA from any tab
+  it('mobile CTA from Shape tab: switches to Export tab and fires exportSTL', async () => {
+    // Store starts at 'shape' (set in beforeEach)
+    render(<AppUIv3 />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export STL' }));
+    });
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('export');
+    expect(mockExportSTL).toHaveBeenCalledTimes(1);
+  });
+
+  it('mobile CTA from Export tab: fires exportSTL without tab churn', async () => {
+    useAppStore.setState((s) => ({ ui: { ...s.ui, v3ActiveTab: 'export' } }));
+    render(<AppUIv3 />);
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: 'Export STL' }));
+    });
+    expect(mockExportSTL).toHaveBeenCalledTimes(1);
+    // Tab must remain on export — no accidental navigation
+    expect(useAppStore.getState().ui.v3ActiveTab).toBe('export');
+  });
+
   it('mobile mode: Export tab renders ExportTab + ExportFooter', () => {
     act(() => {
       useAppStore.getState().setV3ActiveTab('export');
     });
     render(<AppUIv3 />);
-    expect(useAppStore.getState().ui.v3ActiveTab).toBe('export');
-    // Both ExportTab and ExportFooter should be in the DOM
-    // Note: they are mocked at the vi.mock level, so we verify their presence
-    // via their exports being invoked in the render tree
-    expect(screen.getByTestId('pf3-sheet')).toBeInTheDocument();
+    const sheet = screen.getByTestId('pf3-sheet');
+    expect(within(sheet).getByTestId('pf3-export-tab')).toBeInTheDocument();
+    expect(within(sheet).getByTestId('pf3-export-footer')).toBeInTheDocument();
+    expect(screen.queryByTestId('pf3-shape-tab')).not.toBeInTheDocument();
   });
 });
