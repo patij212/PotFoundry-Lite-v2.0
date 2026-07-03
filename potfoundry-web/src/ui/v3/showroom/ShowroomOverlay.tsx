@@ -110,11 +110,12 @@ export const ShowroomOverlay: React.FC = () => {
       if (!LIVE_PREVIEW) return;
       // Snapshot once — guard prevents overwriting the original snapshot
       if (!snapshotRef.current) {
-        snapshotRef.current = { name: currentStyle.name, opts: { ...currentStyle.opts } };
+        const current = useAppStore.getState().style;
+        snapshotRef.current = { name: current.name, opts: { ...current.opts } };
       }
       useAppStore.getState().setStyle(styleName);
     },
-    [currentStyle]
+    []
   );
 
   const handleHoverEnd = useCallback(() => {
@@ -168,6 +169,7 @@ export const ShowroomOverlay: React.FC = () => {
         role="dialog"
         aria-modal="true"
         aria-label="Style library"
+        tabIndex={-1}
         onKeyDown={handleKeyDown}
         onClick={handlePanelClick}
       >
@@ -210,7 +212,7 @@ export const ShowroomOverlay: React.FC = () => {
           </div>
 
           {/* Grid */}
-          <div className="pf3-showroom__grid" role="list" aria-label="Style tiles">
+          <div className="pf3-showroom__grid" aria-label="Style tiles">
             {filteredStyles.length === 0 && (
               <div className="pf3-showroom__empty">No styles match</div>
             )}
