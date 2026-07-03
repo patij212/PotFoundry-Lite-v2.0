@@ -332,3 +332,95 @@ prior feature-conforming spike (Gothic 0.24→0.11, 20/20 watertight) is a reusa
 representational wall. Under a steep-EXCLUDE-accept standard, 19/20 are done (14 measured + 5 designed-sharp with
 CAD-grade faces), with SFB's seam the lone genuine builder-finish. Under a LITERAL zero-serration-on-every-cliff mandate,
 the single remaining lever is the structured doubled-crest feature-conforming primitive above (one build, all 6).
+
+---
+
+## DOUBLED-CREST BUILD (2026-07-03e)
+
+Attempted to build + measure the structured doubled-crest feature-conforming primitive proposed as the "unifying lever
+for the last 6" at the end of the CONTAINED-WINS pass. Pre-registered: PROVE it on LowPoly+Gothic (the cleanest
+designed-cliff targets), then GENERALIZE to GeoStar / Bamboo / DragonScales / SFB.
+
+**Pre-registered kill-criterion:** the doubled-crest primitive CONFIRMS as the general steep-cliff lever IFF, on
+LowPoly AND Gothic, extracting the crest/cliff loci (`featureGraph`) + building explicit DOUBLED feature-edge pairs +
+rung strip drives the designed-cliff true-3D p99 to ≤0.01 WITH zero serration (feature-edge-to-mesh-edge ≈ 0) at
+raw-index watertight. Refuted if it fails to reach ≤0.01 zero-serration on either prove target, or if it regresses
+watertight/quality.
+
+### (1) Did the primitive generalize? — UNTESTED (the build did not execute)
+
+**LowPoly verdict: null. Gothic verdict: null.** The prove batch returned **null** and the generalize batch returned
+**[]** — i.e. the primitive was **never built and never measured this pass**. Verified on disk:
+
+- **No builder symbol exists** — grep for `doubledCrest|buildDoubledCrest|crestRung|rungStrip|doubled-crest` across the
+  whole repo returns ONLY this scorecard (the 2026-07-03d prose that proposed it). No `src/` or `research/` implementation.
+- **No probe exists** — no `research/bridge/_*doubled*` / `_*crest*` probe was added for this primitive (the `_crestAware*`
+  probes are the older crest-aware compare from 2026-07-01, unrelated).
+- **No exchange artifacts** — no `research/exchange/_*doubled*` / `_dc*` dir; no ndjson rows; no render PNG.
+- **No commit** — HEAD is still `8feb9f9` (the CONTAINED-WINS recovery). Nothing was committed for a doubled-crest pass.
+
+The `featureGraph` reusable base the primitive was to sit on DOES exist
+(`src/renderers/webgpu/parametric/conforming/featureGraph`), and the labkit conforming primitives
+(`buildFeatureConformingMeshB`, `recoverAndLockEdges`, `buildInhouseMetricMesh`) are present — but the doubled-crest
+primitive on top of them was not implemented, so there is nothing to prove or generalize. Per lab discipline I am NOT
+substituting a guess for a measurement: the honest verdict is UNTESTED, not confirmed and not refuted.
+
+### (2) The 6 targets — measured (carried-forward best-known; NO new measurement this pass)
+
+Every number below is the last measured value from prior passes (GAP-CLOSE 2026-07-03b, PERP-GUARD 2026-07-03c,
+CONTAINED-WINS 2026-07-03d). The "REACHES zero-serration ≤0.01?" column reflects the last measured state, NOT a
+doubled-crest result (which does not exist). rawNonMan is the raw-index audit; serration is feature-edge-to-mesh-edge.
+
+| target | true-3D p99 (measured, prior pass) | serration | %<20 | rawNonMan | REACHES zero-serr ≤0.01? |
+|---|---|---|---|---|---|
+| **LowPolyFacet** (prove) | faces radial 0 / gnP99 0.0001; edges **0.236** (12 designed edges, density-INVARIANT) | — (not built as feature edges) | 0% | 0 | **NO** — faces exact; 12 designed convex-polygon edges are the p99 tail (steep-EXCLUDE) |
+| **GothicArches** (prove) | **0.0421** (chordTol depth floor; perp-inject made it WORSE) | — | 1.1% | 0 | **NO** — floors ~0.042 (~3.5× bar); rib-crest cliff, gnOver=0, render-confirmed vertical streaks (steep-EXCLUDE) |
+| **GeometricStar** (gen) | faces **0.0096** CAD; chevron **0.065** | 0.025 | 7.7% | 0 | **NO** — chevron C1 + C0 tile-boundary crease (reclassified steep-EXCLUDE) |
+| **BambooSegments** (gen) | sheet 0.560 / doubled-ring **0.058** (±1.38mm C0 segment-ring step) | — | 29.8% sheet / — doubled | 0 | **NO** — genuine near-vertical C0 segment-ring cliff (steep-EXCLUDE) |
+| **DragonScales** (gen) | **0.0136** (density-INVARIANT tread-lip floor) | 0.010 | 0.4% | 0 | **NO** — near-vertical C0 tread-lip riser; radial overstates (steep-EXCLUDE) |
+| **SuperformulaBlossom** (gen) | body **0.0052** CAD; seam **0.0574** (FIXB) | 9.5 (seam) | 0.2% | **0** (was 8) | **NO** — non-2π θ-seam radius-discontinuity; constraint recovery lossy (73/200); watertight-8 FIXED |
+
+None of the 6 reaches zero-serration ≤0.01 in its LAST measured state. The doubled-crest primitive that was proposed to
+close all 6 by construction was not built, so none of these numbers moved this pass.
+
+### (3) Updated N/20 literal-measured ≤0.01: **14/20 (UNCHANGED)**
+
+#1–11 + SpiralRidges + ArtDeco + HexagonalHive. No style was promoted or demoted this pass (no measurement ran). The
+count is identical to the CONTAINED-WINS pass.
+
+### (4) Which of the 6 closed vs still-open + why
+
+**Closed: 0 of 6.** All 6 remain open exactly as they were after 2026-07-03d:
+
+- **LowPolyFacet, GothicArches, GeometricStar, BambooSegments, DragonScales** — all 5 are genuine **steep-EXCLUDE**
+  designed near-vertical cliffs/creases with CAD-grade faces (true-3D floors, gnOver≈0, radial ruler overstates). They
+  are "closed" ONLY under a steep-EXCLUDE-accept standard; under a LITERAL zero-serration-≤0.01-on-the-cliff mandate they
+  are open, and the doubled-crest primitive was the proposed (untested) lever.
+- **SuperformulaBlossom** — watertight now (rawNonMan 8→0), body CAD-grade (0.0052), but the non-2π seam is an open
+  builder finish (serration 9.5 @ true-3D 0.057; constraint recovery lossy). Open.
+
+Why none closed: the primitive that would close them was not implemented. The prior-pass evidence stands that the
+CHORD/CDT/perp-inject levers are all provably insufficient on these cliffs (perp-inject no-op-to-harmful and chordTol-bound;
+CDT constraint-recovery lossy on the seam), which is exactly WHY the doubled-crest by-construction feature-edge primitive
+was proposed — it remains the untested candidate.
+
+### (5) Final verdict: NOT measured-complete; the doubled-crest primitive is the untested next lever
+
+- **Literal "0.01 + zero-serration on all 20": NOT MEASURED-COMPLETE.** 14/20 measured ≤0.01 with ~zero serration +
+  watertight. The other 6 do NOT reach zero-serration ≤0.01 in any measured state.
+- **Under a steep-EXCLUDE-accept standard: 19/20** (14 measured + 5 designed-sharp cliffs with CAD-grade faces), SFB the
+  lone builder-finish. This is unchanged from 2026-07-03d — this pass added no measurement.
+- **What precisely remains:** (a) build the structured doubled-crest / rung feature-conforming primitive (extract
+  crest/cliff/seam loci via `featureGraph`; build explicit DOUBLED feature-edge pairs + a rung strip on the vertical
+  wall; M-square the smooth regions between) and PROVE it on LowPoly+Gothic before generalizing; (b) if it proves, apply
+  to the other 4 cliff styles + the SFB seam. (c) SFB's seam additionally needs the lossy constraint-recovery fixed
+  (73/200 recovered) independent of the crest primitive.
+- **Next lever (unchanged, now with an explicit build task):** the doubled-crest feature-conforming primitive is the
+  single highest-leverage next experiment — but it must be BUILT and MEASURED. This pass is a **no-op** (build did not
+  execute); it neither confirms nor refutes the primitive. Recommended: one env-gated probe `_doubled_crest.test.ts`
+  (PF_DCREST=1), prove on Gothic first (cleanest crest, gnOver=0, best-characterized), checkpoint ndjson per target,
+  kill-criterion = Gothic true-3D p99 ≤0.01 at serration ≤ (1 edge-length) with rawNonMan 0.
+
+**Net:** the doubled-crest primitive did NOT generalize — because it was not built. LowPoly + Gothic verdicts are null;
+the generalize set is empty. 14/20 measured ≤0.01 stands. The primitive remains UNTESTED and is the pre-registered next
+build.
