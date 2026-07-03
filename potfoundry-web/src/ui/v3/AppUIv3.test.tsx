@@ -8,6 +8,15 @@ const mockUseMobile = vi.hoisted(() =>
 );
 vi.mock('../../hooks/useMobile', () => ({ useMobile: mockUseMobile }));
 
+// TouchModeProvider spy — captures calls to verify mounting and value prop
+const TouchModeProviderSpy = vi.hoisted(() => {
+  return vi.fn(({ value, children }: { value: boolean; children: React.ReactNode }) => <>{children}</>);
+});
+vi.mock('./mobile/TouchModeContext', () => ({
+  TouchModeProvider: TouchModeProviderSpy,
+  useTouchMode: () => false,
+}));
+
 const mockExportSTL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
 
 vi.mock('./stage/AccountChip', () => ({
@@ -184,27 +193,60 @@ describe('AppUIv3 shell', () => {
   });
 });
 
+describe('AppUIv3 TouchModeProvider wiring', () => {
+  beforeEach(() => {
+    TouchModeProviderSpy.mockClear();
+    mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
+  });
+
+  it('desktop: TouchModeProvider mounted with value=false', () => {
+    render(<AppUIv3 />);
+    expect(TouchModeProviderSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ value: false }),
+      expect.anything(),
+    );
+  });
+
+  it('mobile: TouchModeProvider mounted with value=true', () => {
+    mockUseMobile.mockReturnValue({ isMobile: true, isTablet: true, hasTouch: true, viewportWidth: 375 });
+    render(<AppUIv3 />);
+    expect(TouchModeProviderSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ value: true }),
+      expect.anything(),
+    );
+  });
+});
+
 describe('AppUIv3 entrance sequence', () => {
   beforeEach(() => {
     sessionStorage.clear();
+    mockUseMobile.mockReturnValue({ isMobile: false, isTablet: false, hasTouch: false, viewportWidth: 1024 });
   });
 
   afterEach(() => {
     sessionStorage.clear();
   });
 
-  it('first mount: root gains data-entrance and session flag is set', () => {
-    // Session flag absent → first-ever mount within this session
+  it('desktop first mount: root gains data-entrance and session flag is set', () => {
+    // Session flag absent + desktop → should set entrance
     render(<AppUIv3 />);
     expect(screen.getByTestId('pf3-root')).toHaveAttribute('data-entrance');
     expect(sessionStorage.getItem('pf3-entered')).toBe('1');
   });
 
-  it('second mount: no data-entrance when session flag already set', () => {
+  it('desktop second mount: no data-entrance when session flag already set', () => {
     // Pre-set the flag as if the component has mounted before
     sessionStorage.setItem('pf3-entered', '1');
     render(<AppUIv3 />);
     expect(screen.getByTestId('pf3-root')).not.toHaveAttribute('data-entrance');
+  });
+
+  it('mobile first mount: no data-entrance and session flag is NOT set', () => {
+    // Session flag absent + mobile → entrance effect should NOT run
+    mockUseMobile.mockReturnValue({ isMobile: true, isTablet: true, hasTouch: true, viewportWidth: 375 });
+    render(<AppUIv3 />);
+    expect(screen.getByTestId('pf3-root')).not.toHaveAttribute('data-entrance');
+    expect(sessionStorage.getItem('pf3-entered')).toBeNull();
   });
 });
 

@@ -17,6 +17,7 @@ import { ShowroomOverlay, isShowroomOpen } from './showroom/ShowroomOverlay';
 import { AccountChip } from './stage/AccountChip';
 import { PricingModal } from '../pricing/PricingModal';
 import { ShortcutsDialogV3 } from './shared/ShortcutsDialogV3';
+import { TouchModeProvider } from './mobile/TouchModeContext';
 import { useMobile } from '../../hooks/useMobile';
 import { safeStorage } from './utils/safeStorage';
 import './tokens.css';
@@ -50,13 +51,13 @@ export const AppUIv3: React.FC = () => {
     return () => window.removeEventListener('pf3:upgrade', handler);
   }, []);
 
-  // Once-per-session entrance: set data-entrance on first mount, never replay.
+  // Once-per-session entrance (desktop only): set data-entrance on first mount, never replay.
   useEffect(() => {
-    if (!safeStorage.getSession('pf3-entered')) {
+    if (!isMobile && !safeStorage.getSession('pf3-entered')) {
       setShowEntrance(true);
       safeStorage.setSession('pf3-entered', '1');
     }
-  }, []);
+  }, [isMobile]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = 'dark';
@@ -114,47 +115,49 @@ export const AppUIv3: React.FC = () => {
 
   return (
     <ErrorBoundary name="AppUIv3">
-      <div
-        className="pf3-root pf3-layout"
-        data-theme="dark"
-        data-zen={zenMode || undefined}
-        data-entrance={showEntrance ? '' : undefined}
-        data-layout={isMobile ? 'mobile' : 'desktop'}
-        data-testid="pf3-root"
-      >
-        {/* PillToolbar — desktop only; Task 8 wires mobile nav */}
-        {!isMobile && <ErrorBoundary name="PillToolbar"><PillToolbar /></ErrorBoundary>}
+      <TouchModeProvider value={isMobile}>
+        <div
+          className="pf3-root pf3-layout"
+          data-theme="dark"
+          data-zen={zenMode || undefined}
+          data-entrance={showEntrance ? '' : undefined}
+          data-layout={isMobile ? 'mobile' : 'desktop'}
+          data-testid="pf3-root"
+        >
+          {/* PillToolbar — desktop only; Task 8 wires mobile nav */}
+          {!isMobile && <ErrorBoundary name="PillToolbar"><PillToolbar /></ErrorBoundary>}
 
-        {/* AccountChip — always visible (both desktop and mobile) */}
-        <ErrorBoundary name="AccountChip"><AccountChip /></ErrorBoundary>
+          {/* AccountChip — always visible (both desktop and mobile) */}
+          <ErrorBoundary name="AccountChip"><AccountChip /></ErrorBoundary>
 
-        {isMobile ? (
-          /* Mobile shell: sheet placeholder replaces panel+status+hint.
-             Zen mode = pot only, so the sheet is hidden in zen. */
-          !zenMode && <div data-testid="pf3-sheet" />
-        ) : (
-          /* Desktop shell: panel rail + status chrome, gated by zen. */
-          !zenMode && (
-            <>
-              <ErrorBoundary name="PanelShell">
-                <PanelShell footer={<ExportFooter />}>
-                  {v3ActiveTab === 'shape' && <ShapeTab />}
-                  {v3ActiveTab === 'style' && <StyleTab />}
-                  {v3ActiveTab === 'export' && <ExportTab />}
-                </PanelShell>
-              </ErrorBoundary>
-              <StatusLine />
-              <HintLine />
-            </>
-          )
-        )}
+          {isMobile ? (
+            /* Mobile shell: sheet placeholder replaces panel+status+hint.
+               Zen mode = pot only, so the sheet is hidden in zen. */
+            !zenMode && <div data-testid="pf3-sheet" />
+          ) : (
+            /* Desktop shell: panel rail + status chrome, gated by zen. */
+            !zenMode && (
+              <>
+                <ErrorBoundary name="PanelShell">
+                  <PanelShell footer={<ExportFooter />}>
+                    {v3ActiveTab === 'shape' && <ShapeTab />}
+                    {v3ActiveTab === 'style' && <StyleTab />}
+                    {v3ActiveTab === 'export' && <ExportTab />}
+                  </PanelShell>
+                </ErrorBoundary>
+                <StatusLine />
+                <HintLine />
+              </>
+            )
+          )}
 
-        {/* Overlays — always present regardless of layout or zen */}
-        <ShowroomOverlay />
-        <ShortcutsDialogV3 open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
-        {/* PricingModal — v1-styled; pf3 restyling deferred to Phase-3 */}
-        <PricingModal open={pricingOpen} onOpenChange={setPricingOpen} />
-      </div>
+          {/* Overlays — always present regardless of layout or zen */}
+          <ShowroomOverlay />
+          <ShortcutsDialogV3 open={shortcutsOpen} onOpenChange={setShortcutsOpen} />
+          {/* PricingModal — v1-styled; pf3 restyling deferred to Phase-3 */}
+          <PricingModal open={pricingOpen} onOpenChange={setPricingOpen} />
+        </div>
+      </TouchModeProvider>
     </ErrorBoundary>
   );
 };
