@@ -2872,3 +2872,35 @@ Reuses committed byte-identical-off kernel hooks (`injectedPoints`/`pinInjected`
 **RECOMMENDATION:** (1) Adopt the doubled-crest primitive for the FLAT-FACE / count-stable-crest tier (LowPoly proven; likely GeometricStar sectors, ArtDeco/weave already covered by their special cases) — serration 0 by construction unlocks these. (2) Gothic stays on the general engine (chordSteiner-under-M CDT, which E-CREASE-DENSITY-BREAKTHROUGH drove Gothic ribs to ~0.086 with depth) — the doubled-crest column model is the WRONG shape for it; do NOT pursue fixed-column Gothic. (3) A follow-up for the diagonal-network gap = per-tier SHEARED-φ columns (the ArtDeco chevron fix) applied to the diamond lattice ONLY where a single dominant diagonal family exists; the crossing lattice (two diagonal families) likely remains CDT-only.
 
 **LEDGER:** lib `research/bridge/_doubledCrestLib.ts`; probe `research/bridge/_doubledCrest.test.ts` (PF_DCREST=1) + `vitest.dcrest.config.ts`; scorecard `research/exchange/_dcrest/scorecard_final.ndjson`; recon in-log (count series); render `research/exchange/_dcrest/dcrest_LowPolyFacet_h07.png`; heatmap bins `research/exchange/_dcrest/dcrest_LowPolyFacet_h07_lip10_f2.*`.
+
+---
+
+## E-2026-07-04-DCREST-DRAGONSCALES (PHASE-2: apply the doubled-crest primitive to DragonScales)
+
+**Q:** The Phase-1 doubled-crest primitive REACHES on count-stable trackable curve families (LowPoly 0.0018, serr 0) and REFUTES on unstable 2D networks (Gothic). DragonScales' tread-lip C0 riser floors at true-3D p99 ~0.013 (density-invariant) via plain doubled-rings + serration ~0.0099. Can the doubled-crest primitive — embedding the scale crest/valley theta-curves as doubled feature-edge pairs + rung strips — drive serration→0 and true-3D→≤0.012?
+
+**HYPOTHESIS:** DragonScales' 12-per-row scale crests + valleys are a trackable slot family; embedding them as logical-column mesh-edge chains (per Phase-1 LowPoly) makes each crest zero-serration by construction and closes the 0.013 floor.
+
+**KILL-CRITERION (pre-registered):** REACHES iff `bruteAnchoredRedPerp.trustedP99` ≤0.012 AND `measureSerration.p99` ≤0.001 AND rawNonMan 0 AND %<20 <10, at ≥2 densities. REFUTED iff the primitive cannot embed the feature (serration high or true-3D floors/degenerates) ⇒ classify + evidence.
+
+**DISCRIMINATOR:** the Phase-1 lib `_doubledCrestLib.buildDoubledCrestMesh` REUSED VERBATIM, swept at 2 densities + a crests-only isolation. Cheap upstream discriminator FIRST: per-row/per-band feature-COUNT-stability recon (no mesh).
+
+**UPSTREAM RECON (the cheap kill, ran BEFORE any full mesh):** DragonScales field structure (analytic probe): seamStep 0 (2π-periodic), kinkiness 0.048mm (theta-SMOOTH), 12 crests + 12 valleys per row — BUT **7 horizontal C0 RISERS at t=m/8 (m=1..7), radius JUMP 2.6–3.1mm** caused by the `floor(t·8)%2` stagger toggle (odd rows shift theta by half a scale-cell → a genuine radius discontinuity at fixed z). Per-row crest COUNT is UNSTABLE: 13 at row-edges spiking to 14–18 mid-band (the `√(xDist²+yDist²)` scale shape splits/merges extrema as `rowLocal` crosses the scale center). Same precondition-violation class as Gothic. **Tracker detected 18 slots (not 12), countStable=FALSE.**
+
+**EVIDENCE (labkit rulers; brute-anchored true-3D):**
+
+| config | tris | trustedP99 | serrP99 | serrMax | %<20 | rawNonMan | count-stable | REACHES |
+|---|---|---|---|---|---|---|---|---|
+| ds_dc_screen (hRow0.22 crest+valley) | 5.10M | **15.52** | **0.027** | 0.101 | **48.2** | 0 | FALSE (18c+18v) | **NO** |
+| ds_dc_crestOnly (hRow0.22) | 2.94M | **16.25** | 0.033 | 0.106 | 21.3 | 0 | FALSE (18c) | **NO** |
+| — prior plain doubled-rings (E-GAP-TREADSQ, for reference) | 0.80M | 0.0136* | 0.0099 | 0.106 | 0.4 | 0 | n/a (z-riser) | NO (floor) |
+
+\*prior true-3D via closed-object BVH; both rulers agree the plain-riser recipe is the DragonScales optimum (~0.013 floor), NOT the doubled-crest column model.
+
+**ADVERSARIAL (is 15.5mm a floor or degeneracy?):** the doubled-crest mesh has **82,744 facets (1.6%) with an edge >5mm, maxEdge 99.15mm** (≈ full pot diameter). The 15.5mm true-3D is COLLAPSED/PINNED COLUMNS spanning across the ring (self-crossing degenerate strips from the lib's unstable-count guards), NOT a surface gap. serrP99=0.027 (max 0.101) ≠ 0 confirms the crest is NOT a clean mesh-edge chain — the by-construction zero-serration property FAILED because the tracker mis-chains slots across the count changes + the 7 stagger risers (crest theta jumps half a cell each riser).
+
+**VERDICT: REFUTED — DragonScales is doubled-crest-INELIGIBLE (structured-primitive-EXCLUDE), same class as Gothic.** The primitive's core precondition — a count-STABLE slot family trackable monotone in t — is violated two ways: (1) theta-crest count swings 13→18 within each band; (2) the 7 stagger risers jump every crest by half a scale-cell, breaking row-to-row slot identity. The fixed-column model degenerates (99mm edges, 15.5mm true-3D, serration 0.027 not 0) — FAR worse than the plain doubled-rings floor it was meant to beat. DragonScales' true feature is a Z-RISER (horizontal C0 tread), NOT a theta-crest curve; its correct primitive is the PROVEN doubled-RINGS (E-GAP-TREADSQ: true-3D ~0.013, serr 0.0099, %<20 0.4), whose ~0.013 residual is the density-invariant tread-lip C0 riser floor (accept-class).
+
+**RECOMMENDATION:** (1) ACCEPT DragonScales on the plain doubled-rings recipe (true-3D ~0.013 floor, serr ~0.0099, %<20 0.4) — the ~0.013 is the tread-lip riser lip-row chord, density-invariant, an ACCEPT-class residual just over the 0.012 bar; do NOT apply the doubled-crest column primitive (regresses 3 orders of magnitude). (2) The doubled-crest map now has THREE datapoints: REACHES on count-stable curve families (LowPoly), REFUTES on unstable 2D networks (Gothic) AND on staggered-riser theta-fields (DragonScales). The eligibility gate = "count-stable trackable monotone-in-t slot family with a stable seam-crossing identity" — add a countStable pre-check to the primitive (already reported as `countStableCrest/Valley`) to auto-EXCLUDE ineligible styles cheaply. (3) If DragonScales' last ~0.003 over 0.012 matters, the lever is the RISER lip-row (a doubled-ring z-conform with a finer lip-band), NOT theta-conforming.
+
+**LEDGER:** probe `research/bridge/_doubledCrestDragon.test.ts` (PF_DCREST_DS=1) + `vitest.dcrest_dragon.config.ts`; scorecard `research/exchange/_dcrest_dragon/scorecard.ndjson` (2 rows); recon + adversarial edge-length check in-log; reused prior `research/exchange/_gap_treadsq/scorecard.ndjson` (plain-doubled-rings baseline).
