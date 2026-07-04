@@ -33,11 +33,80 @@ finite-curv caps (apex-angle→180, bounded second-diff). REPORT the outlier cou
 split, the singularity split with apex-angle/second-diff numbers, and the junction census (nBirths/nMerges + the
 amplitude-vanishing smooth-vs-sharp birth split). Measure with the INTERIOR ruler (brute-anchored), the honest gate.
 
-**DISCRIMINATOR (cheapest):** operate on the ALREADY-BUILT current-best meshes (no re-meshing) with the fast labkit
-`perFaceTrue3DSag` stage-1 (recovered ut from xyz) + brute-anchor only the >0.006 candidates. Checkpoint each style
-the instant its scan finishes. Probe: `_pf_anatomy.test.ts` (PF_ANATOMY=1) + `_pf_anatomyLib.ts`.
+**DISCRIMINATOR (cheapest):** operate on the ALREADY-BUILT current-best meshes (no re-meshing). Stage-1 = cheap RADIAL
+per-face interior sag (recovered ut from xyz; radial ≥ true-3D ⇒ facets <0.01 are proven green) → 23.7k(Gothic)/54.6k
+(GeoStar) candidates. Stage-2 = LOCAL Gauss-Newton anchor (unique foot on a single-valued height field ⇒ GN==brute,
+per the standing "GN≡brute on unique-foot styles" fact) with a capped full-azimuth brute-CONFIRM on the worst 1.5k
+(brute can only lower). Probe: `_pf_anatomy.test.ts` (PF_ANATOMY=1) + `_pf_anatomyLib.ts`. Sanity: a mesh vertex
+projects to dist 0.00000 (on surface). Checkpoint each style the instant its scan finishes.
 
-**VERDICT: PENDING (measuring).**
+**VERDICT: CONFIRMED — decisive class (a) SHARP-EDGE on BOTH styles; the residual is a genuine designed C1 singularity
+(a mesh EDGE, not density/curved-elements), with a measured HARDNESS GRADIENT Gothic (knife-edge) ≫ GeoStar (kink).**
+
+**EVIDENCE — INTERIOR OUTLIER RULER (max over centroid + 3 edge-midpoints, GN-anchored + brute-confirmed; the honest
+gate; whole-mesh; `_pf_anatomy`):**
+| style | mesh | nF | interior OUTLIERS (>0.01) | outlier frac | interior dev med / p99 / max (mm) |
+|---|---|---|---|---|---|
+| GothicArches | gf_flank (crest-embedded flank-strip, current best) | 4.97M | **17,432** | 0.35% | 0.055 / 0.058 / **0.129** |
+| GeometricStar | conform (strap-crease loci + picket, current best) | 5.07M | **45,388** | 0.90% | 0.034 / 0.034 / **0.068** |
+
+⇒ The current-best primitive on each style leaves TENS OF THOUSANDS of triangles whose 3 vertices sit on the surface
+but whose INTERIOR sags 3.4–13× over the 0.01 tol. This is the exact object the frontier target must eliminate.
+
+**SINGULARITY vs KINK vs FINITE-CURVATURE (crest cross-section apex-angle + second-difference, worst-600 sample; a
+`ridge(d,w,sharp)`=pow(max(0,1−|d|/w),sharp) apex is C1-singular ⇒ apex-angle≪180° + huge second-diff):**
+| style | cusp-or-kink frac | C1-cusp / kink / finite-curv | median apex-angle | median second-diff | median crest-amp |
+|---|---|---|---|---|---|
+| GothicArches | **0.965** | 565 / 14 / 21 | **26° (worst pop 23°)** | **155–195** | 0.7–1.2 mm (live sharp ridge) |
+| GeometricStar | 0.773 | 132 / 332 / 136 | **136°** | 17.6 | 2.35 mm |
+
+⇒ **GothicArches = pure ZERO-WIDTH KNIFE-EDGE C1 cusp** (apex 23–53°, second-diff 80–195 — infinite curvature at the
+`ridge(sharp)`/`mullion pow(...,sharp)` apex): a flat triangle interior CAN NEVER be ≤0.01 across it — the fix REQUIRES
+the cusp to be a mesh EDGE. **GeometricStar = FINITE-WIDTH KINK** (apex 130–137°, second-diff ~18, plus a real 23%
+finite-curvature tail at apex→173°): softer — a C0/C1 chevron strap-fold, still an edge but with more of a
+density-reducible component than Gothic. THE HARDNESS GRADIENT (Gothic knife-edge ≫ GeoStar kink) is the key nuance.
+
+**WHERE (the classifier probes the single nearest u-aligned apex; cross-tabbed with singularity):** Gothic 30%
+labelled crest-cusp + 70% "other", BUT the "other" are 388/419 C1-cusps at apex **23.2°** / second-diff **194.7** on a
+LIVE ridge (crest-amp 1.16mm) — i.e. the SHARPEST cusps of all, sitting on the DIAGONAL diamond-lattice ridge network
+(off the u-aligned apex line the probe walks), NOT genuinely "other". So ~94% of Gothic outliers are knife-edge cusps
+on a live sharp ridge. GeoStar "other" = 216 kink + 136 finite-curv + 32 cusp (apex 137°). **flank-wall = 0% on BOTH**
+⇒ the residual is NOT a near-vertical flat wall a facet fails to hug (class (c) REFUTED); it is the RIDGE-LINE itself.
+
+**JUNCTION CENSUS (Gothic, from the crest extract + amplitude probe):** **96 births, 72 merges**, 16,460 crest
+segments, 16,556 peaks. Crest amplitude median 0.712mm, p10 0.395mm; **0% of crest points have amp<0.03** ⇒ NO
+amplitude-vanishing smooth births — the ridges are SHARP right up to their birth/merge ends (a Y-junction / X-crossing
+of two sharp ridges, NOT a smooth amplitude swell). ⇒ the feature GRAPH the fix must resolve has ~168 sharp junction
+NODES plus 16.5k sharp segment arcs; junctions are sharp-birth, so they too need edge treatment (not density).
+
+**VISUAL (corroborates + I trust it over any metric):** `research/exchange/_gf_gothic/gf_flank.png` (true-3D heatmap
+of the analyzed Gothic mesh) — residual is a THIN yellow line running EXACTLY along each rib/mullion crest, panels
+deep green, V-junctions (arch springs) slightly hotter. `research/exchange/_ct_gs/gs_conform.png` (GeoStar) — residual
+a THICKER yellow-red band along the chevron strap-crease (consistent with the finite-width kink vs Gothic's zero-width
+knife-edge). Both localize the outliers ON the sharp feature lines — the metric and the render AGREE.
+
+**DECISIVE ANSWER (the whole-session question): (a) a genuine sharp EDGE that MUST be a mesh edge.** NOT (b)
+smooth-high-curvature (apex-angle would be →180 with bounded curvature — only 3.5% of Gothic / 23% of GeoStar), NOT (c)
+a near-vertical WALL a facet can't hug (flank-wall = 0% on both; the residual is on the RIDGE, not the flank). ⇒ the
+ONLY mechanism that can drive interior outliers → 0 is to resolve the FEATURE GRAPH — every sharp ridge segment AND
+every birth/merge junction NODE embedded as a zero-serration mesh edge, so no triangle interior ever bridges the cusp.
+Density and curved (higher-order) elements are futile against a zero-width C1 apex (Gothic) though they could shave the
+finite-curvature tail (GeoStar). This directly corroborates E-GF-GOTHIC's steep-EXCLUDE refutation from the INTERIOR
+side and gives the frontier its exact target: a junction-aware feature-graph mesher (not a per-cell tessellation).
+
+**RECOMMENDATION → NEXT EXPERIMENT (hands to `meshing-frontier`):** the current-best primitive already embeds the
+crest LINE as an edge (serration≈0 in `_cu_gothicseg`/`_ct_gs`) yet still leaves 17k–45k interior outliers ⇒ the
+line-embedding is INCOMPLETE at (1) the birth/merge JUNCTION NODES (96+72 on Gothic — the CDT recovery ceiling
+90.6%→65.7% at density is exactly here) and (2) the DIAGONAL diamond-lattice ridges (the "other" 388 sharpest cusps —
+a SECOND crest family the u-aligned extractor under-captures). Frontier target: a JUNCTION-AWARE feature-GRAPH
+embedding (planarize ALL crest families incl. the diagonal lattice into one non-crossing constraint graph with explicit
+Steiner junction nodes, lock every arc as a mesh edge) — test whether it drives interior outliers → 0 where the
+per-cell / single-family-line approaches floor. If even a perfect graph embedding cannot (the count-unstable network
+defeats clean junction recovery), Gothic is DEFINITIVELY steep-EXCLUDE from the interior side too (accept+document).
+
+**LEDGER:** scorecard `research/exchange/_pf_anatomy/scorecard.ndjson` (+ `{style}_outliers.json` /
+`{style}_classified.json`); instrument `research/bridge/_pf_anatomyLib.ts` + `_pf_anatomy.test.ts` (committed 94ff04e,
+pre-reg 17381d9). Renders: `_gf_gothic/gf_flank.png`, `_ct_gs/gs_conform.png`.
 
 ---
 
