@@ -27,6 +27,9 @@ from .core.io.stl import write_stl_binary
 # Wavefront OBJ writer (indexed mesh — best for Rhino / Grasshopper import)
 from .core.io.obj import write_obj
 
+# Mesh export-quality report (watertight / winding / outward / export-ready)
+from .core.quality import mesh_quality_report
+
 # ASCII STL writer (deprecated, kept for backward compatibility)
 from .core.geometry import write_ascii_stl
 
@@ -42,6 +45,8 @@ __all__ = [
     'write_ascii_stl',  # deprecated
     # OBJ export (indexed mesh — best for Rhino / Grasshopper)
     'write_obj',
+    # Mesh export-quality report
+    'mesh_quality_report',
     # Version
     '__version__',
 ]

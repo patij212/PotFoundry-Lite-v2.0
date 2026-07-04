@@ -40,6 +40,13 @@ def test_default_writes_stl_only(tmp_path):
     assert manifest["pots"][0]["stl"].endswith("pot_a.stl")
 
 
+def test_manifest_reports_export_ready_quality(tmp_path):
+    manifest = build_from_yaml(_cfg(), tmp_path, do_previews=False, do_zip=False)
+    quality = manifest["pots"][0]["quality"]
+    assert quality["export_ready"] is True
+    assert quality["watertight"] and quality["winding_consistent"] and quality["outward"]
+
+
 def test_obj_format(tmp_path):
     manifest = build_from_yaml(
         _cfg(), tmp_path, do_previews=False, do_zip=False, export_formats=("obj",)

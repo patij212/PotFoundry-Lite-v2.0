@@ -16,6 +16,8 @@ from .schema import ConfigV2, migrate_v1_to_v2, deep_merge
 from .core.io.stl import write_stl_binary, atomic_write_bytes
 # Wavefront OBJ writer (indexed mesh — best for Rhino / Grasshopper)
 from .core.io.obj import write_obj
+# Export-quality report (watertight / winding / outward / export-ready)
+from .core.quality import mesh_quality_report
 
 from .geometry import (
     MeshQuality,
@@ -191,6 +193,16 @@ def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True
             H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_fn, opts
         )
 
+        # Validate export-readiness (watertight / coherent / outward) before
+        # writing, so batch users know each mesh imports cleanly into CAD tools.
+        quality = mesh_quality_report(verts, faces)
+        if not quality["export_ready"]:
+            print(f"[WARN] '{name}': mesh is not export-ready — "
+                  f"non_manifold_edges={quality['non_manifold_edges']}, "
+                  f"inconsistent_edges={quality['inconsistent_edges']}, "
+                  f"degenerate_faces={quality['degenerate_faces']}, "
+                  f"outward={quality['outward']}.")
+
         # Write each requested mesh format (indexed OBJ imports into
         # Rhino/Grasshopper without any tolerance-based re-welding).
         files: dict[str, str] = {}
@@ -214,7 +226,7 @@ def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True
         pot_entry = {
             "name": name, "style": style, "description": desc, "size": size, "opts": opts,
             "vertices": int(len(verts)), "faces": int(len(faces)), "diagnostics": diag,
-            "files": files,
+            "quality": quality, "files": files,
         }
         # Keep the legacy top-level "stl" key when STL was written.
         if "stl" in files:
