@@ -3137,3 +3137,24 @@ Loci oracle (direct per-t rowExtrema crest scan → local nearest-neighbour segm
 **RECOMMENDATION:** DragonScales is now REACHED (the mandate's fallback "genuine sub-print steep-EXCLUDE" is NOT needed). The reusable, generalizable finding: for stepped styles whose surface curves in z BETWEEN the C0 rings (DragonScales; likely ArtDeco with height-varying steps), the true-3D lever is SHEET Z-DENSITY, not lip/rung refinement — localize by facet class before assuming the discontinuity is the culprit. Productionize path (dev-flag only): the structured doubled-ring builder is a research oracle, not the production kernel; the transferable production lever is a curvature-driven sheet z-row density (the kernel's `sizeRes`/curvature-grid must resolve the in-z scale curvature, not just the ring discontinuities). Fold the "localize-by-class-first / sheet-vs-lip" note + the RIM radial-ruler artifact into the class map.
 
 **LEDGER:** probes `research/bridge/_cu_dslip_diag.test.ts` (PF_CU_DSLIP_DIAG=1, localizer) + `_cu_dslip_chord.test.ts` (PF_CU_DSLIP_CHORD=1, fast sheet radial-chord sweep) + `_cu_dslip_topbvh.test.ts` (PF_CU_DSLIP_TOPBVH=1, rim-artifact settle) + `_cu_dslip_serr.test.ts` (PF_CU_DSLIP_SERR=1, serration-vs-nTh) + `_cu_dslip_qual.test.ts` (PF_CU_DSLIP_QUAL=1, sliver localize+tune) + `_cu_dslip_close.test.ts` (PF_CU_DSLIP_CLOSE=1, two-density BVH close-out); also `_cu_dslip_fix.test.ts` (PF_CU_DSLIP=1, the z30/z50 BVH anchor sweep). Config `vitest.cu_dslip.config.ts`. Scorecard `research/exchange/_cu_dslip/scorecard.ndjson` (z30/z50 anchors + close_lean + close_hd pass rows); logs diag/chord/topbvh/serr/qual/close.log; render `research/exchange/_cu_dslip/dslip_lean_close.png` (+ heatmap bins/STL). Reused READ-ONLY: labkit (buildRadiusFn/triangleQualityDistribution/auditNonManByIndex/vertErrColors/dumpRenderBins) + `_sharp3dMesh` (buildStructuredWall/evenThetas) + `_sharp3dRef` (buildStepReference/buildRefLocator). Read-only src oracle: styles.ts rOuterDragonScales + types.ts DEFAULT_DRAGON_SCALES (dsScaleRows=8, dsHeightGradient=1.2).
+
+---
+
+## E-2026-07-04-GD-GOTHIC — GothicArches true-3D floor: DENSITY-RESPONSIVE or DENSITY-INVARIANT? (settle a contradiction)
+
+**Question (settle, do NOT fix):** Two prior passes gave CONTRADICTORY attributions for Gothic's ~0.04–0.058 true-3D floor:
+- perp-guard pass: floor 0.042 is chordTol-BOUND / density-INVARIANT, on the near-vertical rib CREST (gnOver=0).
+- collinear-subdivision pass (`_cu_gothicseg`): floor 0.0581 is recovery-INVARIANT, attributed to the smooth inter-crest VALLEY/PANEL facets (a chordTol/density gap ⇒ WOULD be density-responsive).
+
+These can't both be right.
+
+**HYPOTHESIS:** the floor is one of {density-responsive-panel, density-invariant-crest}; a clean density sweep + facet-location split decides.
+
+**DISCRIMINATOR (cheapest):** take the EXACT contested `_cu_gothicseg` mesh (crest embedded as fixed constraint segments; extraction cached ⇒ crest-segment set HELD FIXED, peaks=16556/segments=16460), sweep ONLY the panel-density knob `chordTolMm` (chordSteiner split target) 0.030 → 0.015 → 0.008 with the base grid (tolMm/hMin) held CONSTANT and a GENEROUS fixed 7M budget so NO level hits budget (the prior screen-1.5M-hit-budget confound that made the 2-row 0.2065→0.0581 trend uninterpretable). Measure honest true-3D p99 = `bruteAnchoredRedPerp.trustedP99` (redMm=0.03, sampleN=64) at each level. TIEBREAKER = locate the worst 200 red facets at the finest level: CREST (near-vertical rib wall: high radial gradient in u / large radSpan-over-arc wall-ratio / near an embedded crest-u) vs PANEL (interior, low gradient). The p99 trend can be confounded by recovery drift; the location split cannot.
+
+**KILL-CRITERION (pre-registered, before results):**
+- **DENSITY-RESPONSIVE** iff true-3D p99 drops MONOTONICALLY toward ≤0.01 as chordTol tightens (report the chordTol that crosses 0.01) AND the worst red facets are majority PANEL (crestFrac < 0.5).
+- **DENSITY-INVARIANT** iff true-3D p99 floors FLAT (±10%) across the sweep (report the floor Y) AND the worst red facets are majority CREST (crestFrac ≥ 0.5) ⇒ genuine near-vertical steep-EXCLUDE geometry, NOT closable by panel density.
+- A clean invariant floor is a VALID result — not forced to a pass.
+
+**LEDGER:** probe `research/bridge/_gd_gothic.test.ts` (PF_GD_GOTHIC=1) + `_gd_gothic.config.ts`; extraction lib `_cu_gothicsegLib.ts` (READ-ONLY); scorecard `research/exchange/_gd_gothic/scorecard.ndjson`; per-facet location table `redfacets_L2-chord0.008.json`. EVIDENCE + VERDICT appended on completion.
