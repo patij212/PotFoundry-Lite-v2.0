@@ -10,6 +10,44 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-04-GF-GOTHIC — explicit rib-FLANK strip tessellation (the LAST distinct Gothic lever) — PRE-REGISTERED
+
+**Q (FRONTIER, LAST LEVER):** GothicArches' ~0.088 true-3D floor is DENSITY-INVARIANT under panel/chordTol density
+(E-2026-07-04-GD-GOTHIC: 0.1086→0.0881 flat) and 93.5% of the worst facets are ON the near-vertical rib CREST/flank
+(gradU_arc med 0.82 / p90 3.46 mm-radius per mm-arc; gradT med 0.40 / p90 3.15). chordTol is BLIND to the steep flank
+(the same-(u,t) radial chord is tiny along a near-vertical wall). Four prior Gothic passes never tried EXPLICIT
+structured tessellation of the flank WALL itself. DragonScales looked density-invariant at 0.0105 until the WALL's
+z-density (nZband 30→70) — NOT panel density — closed it to 0.0051. Apply that lesson: for each embedded crest
+segment, lay a strip of rows ACROSS the steep flank (perpendicular to the crest, both sides down to the adjacent
+valley) at a FINE, EXPLICIT flank pitch sized from the TRUE-3D perpendicular/radial gradient across the flank, NOT
+chord-sag. Does it drive Gothic true-3D p99 ≤0.012 (flank-pitch-RESPONSIVE), or does the near-vertical flank chord
+floor >0.02 (genuinely irreducible ⇒ Gothic DEFINITIVELY steep-EXCLUDE)?
+
+**HYPOTHESIS:** starting from the local-segment crest embedding (`_cu_gothicseg`: crest = zero-serration mesh edge,
+rawNonMan 0, but true-3D floored 0.0581 by the FLANK), adding explicit local FLANK strips at a fine u/t-pitch
+(sized from the flank true-3D gradient) drives Gothic true-3D p99 ≤0.012 AND keeps serration ≤0.001 + rawNonMan 0,
+flank-pitch-RESPONSIVELY.
+
+**KILL-CRITERION (pre-registered — this row committed BEFORE measuring):** CONFIRMED iff Gothic true-3D p99
+(bruteAnchoredRedPerp.trustedP99) ≤0.012 AND serration ≤0.001 (crest stays a mesh edge) AND rawNonMan 0 AND
+flank-pitch-RESPONSIVE (true-3D drops toward ≤0.01 as flank pitch tightens). REFUTED iff, even with explicit fine
+flank strips, the true-3D floors >0.02 (the near-vertical flank chord is irreducible without infinite rows / the
+count-unstable rib network cannot carry clean flank strips) ⇒ Gothic is DEFINITIVELY steep-EXCLUDE.
+
+**DISCRIMINATOR (cheapest, run FIRST — pure surface geometry, no meshing):** `_gf_gothic_recon` — for the steepest
+embedded crests, walk the flank (u and t, both sides, crest→adjacent valley) and measure the WORST true-3D chord of a
+flat strip facet vs nRows (flank sub-rows). If crest→valley chord is huge but collapses toward ≤0.01 as nRows grows,
+strips WILL help (DragonScales analog) and I build the strip mesher. If it FLOORS above 0.02 even at fine pitch (a
+knife-edge cusp the flat facet cannot follow), strips CANNOT help ⇒ REFUTED without a 90-min build.
+
+**STATUS:** PRE-REGISTERED. Probes `research/bridge/_gf_gothic_recon.test.ts` (recon) + `_gf_gothic.test.ts`
+(strip mesher, built iff recon says responsive) + `_gf_gothic_render.test.ts`. Config `vitest.gf_gothic.config.ts`.
+Env PF_GF_GOTHIC=1. Dir `research/exchange/_gf_gothic/`; checkpoint `recon.ndjson` + `scorecard.ndjson` per row
+(resumable). Reuses labkit rulers + `_cu_gothicsegLib` (crest extraction, serration) READ-ONLY; reuses GD's cached
+extraction. NO src/ or kernel edit.
+
+---
+
 ## Task 5 — Two-Style End-to-End Spike (2026-06-26)
 
 ### Style selection
