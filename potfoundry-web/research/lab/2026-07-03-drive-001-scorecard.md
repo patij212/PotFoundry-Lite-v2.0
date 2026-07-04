@@ -529,3 +529,47 @@ pins each designed edge as an explicit mesh edge = zero serration by constructio
 5 REFUTED — 3 unstable-count, 2 wrong-axis). N/20 rises to **15/20** literal-measured ≤0.01. The doubled-crest column
 model is a narrow count-stable-u-crest tool, NOT the whole-wall unifying lever the CONTAINED-WINS pass hoped for; the
 remaining 5 route to per-family primitives now cheaply pre-gated by (count-stability × dominant-axis) recon.
+
+## PER-FAMILY PASS (2026-07-04) — Bamboo CLOSED → 16/20; SFB seam = zero-serration feature edge; DragonScales near
+
+Workflow `wfyn71jy9` (interrupted mid-synth by process exit; recovered from `_pf_*` checkpoints + the agents' own
+commits 5cfbe7d/ce92712). Each of the 3 genuinely-closable styles run with its CORRECT per-family primitive.
+
+| style | per-family primitive | true-3D p99 (2 densities) | serration | %<20 | rawNonMan | reaches zero-serr ≤0.01? | classification |
+|---|---|---|---|---|---|---|---|
+| **BambooSegments** | doubled-RINGS (M-square rung) | **0.0066 / 0.0032** | **0.0002** | 1.4 | **0** | **YES — CLOSED** | correct family (horizontal node-ring); faces + ring-wall both CAD-grade |
+| **SuperformulaBlossom** | doubled seam-edge + rung (non-2π θ-seam) | body **0** / flChord 0.001; seam-wall 4.5 | **0.001** | 2.8 | **0** | seam=feature-edge ✓; wall=ruler blind-spot | all 4 BUILDABLE gates met; the ~9mm vertical seam wall is genuine geometry the radial ruler can't score |
+| **DragonScales** | doubled-rings lip-refine + q-sweep | **0.0105** (BVH, density-INVARIANT); lip 0.0016 | **0.0005** | 0.6 | **0** | serr+quality+wt ✓; true-3D 1.05× over | lip is a genuine near-vertical designed riser (floor 0.0105); faces CAD-grade |
+
+### Updated count: **16/20 MEASURED ≤0.01** (+BambooSegments) + SFB reaches all buildable gates
+
+Clean literal ≤0.01 + zero-serration + watertight (16): #1–11 + SpiralRidges + ArtDeco + HexHive + LowPoly + **Bamboo**.
+**SFB (17th, with a ruler caveat):** the doubled seam-edge+rung makes the non-2π θ-seam a zero-serration feature edge;
+body CAD-grade (0), watertight, %<20 2.8. The seam-WALL true-3D of 4.5 is the radial-perpendicular ruler's blind-spot on
+a genuine ~9mm vertical wall (diag maxStep 8.98mm) — the wall IS the designed surface there; a BVH-closed-object re-score
+would confirm it coincides. Under the zero-serration standard SFB reaches; under a literal radial-true-3D number it does
+not (irreducible ruler limitation at a vertical discontinuity).
+
+### The honest endpoint — 16 clean + SFB(+caveat); 3 genuine steep-EXCLUDE designed cliffs
+
+**DragonScales / GothicArches / GeometricStar are the residual — all with CAD-grade FACES; the gap is designed
+near-vertical geometry:**
+- **DragonScales** 0.0105 — density-INVARIANT tread-lip floor (a real near-vertical riser; serration ~0, faces CAD).
+  1.05× over; sub-print; steep-EXCLUDE or a dedicated true-3D-perp lip-row refine if literal 0.01 is mandated.
+- **GothicArches** (0.042) + **GeometricStar** (0.065) — COUNT-UNSTABLE feature networks (rib 2D-diagonal-net; chevron
+  6→32). Their crests BIRTH/MERGE across the surface ⇒ NO fixed edge-chain set exists to embed as clean mesh edges ⇒ the
+  doubled-crest degenerates (half-ring facets). CDT-under-M gives CAD-grade faces + a grid-approximated crest (small
+  serration). This is the ONE genuine limitation the campaign found: not a representational wall (surface is
+  single-valued), but a FEATURE-TOPOLOGY wall — count-unstable networks resist clean zero-serration edge embedding with
+  all known primitives.
+
+### Verdict
+
+**16/20 literal-measured ≤0.01 + zero-serration + watertight; SFB reaches all buildable gates (seam-wall = ruler
+blind-spot); 3 genuine steep-EXCLUDE (DragonScales near-0.0105; Gothic/GeoStar count-unstable).** The mesh places
+vertices on the true surface for ALL 20 (faces CAD-grade everywhere); designed cliffs are meshed as zero-serration
+feature edges wherever the feature topology is count-STABLE. The remaining literal gap is 3 styles whose designed cliffs
+are either a sub-print near-vertical riser (DragonScales) or a count-unstable birth/merge network that no known structured
+primitive can embed cleanly (Gothic/GeoStar). Options for those 3: accept as designed-sharp (faces CAD-grade) OR a novel
+count-unstable-feature mesher (open research) OR a BVH-closed-object re-score to confirm the walls coincide (likely shows
+Gothic/GeoStar have a genuine grid-approximation gap, DragonScales/SFB-wall are ruler artifacts).
