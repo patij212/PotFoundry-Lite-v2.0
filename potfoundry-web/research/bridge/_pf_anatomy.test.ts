@@ -91,14 +91,16 @@ function runStyleAnatomy(cfg: StyleCfg): void {
   const ut = recoverUt(mesh, H);
   plog(`${cfg.key}: ut recovered; running stage-1 radial screen + brute-anchor...`);
   const scan = interiorOutlierScan(mesh, rA as (th: number, z: number) => number, H, {
-    tolMm: 0.01, screenMm: 0.01, ut, brute: { nTheta: 1024, nZ: 300 },
-    onProgress: (done, total, nOut) => { plog(`${cfg.key}: anchor ${(100 * done / Math.max(1, total)).toFixed(0)}% (${done}/${total}) outliers=${nOut} (${((Date.now() - t0) / 1000).toFixed(0)}s)`); },
+    tolMm: 0.01, screenMm: 0.01, confirmK: 1500, ut, brute: { nTheta: 640, nZ: 180 },
+    onProgress: (done, total, nOut) => { plog(`${cfg.key}: anchor ${(100 * done / Math.max(1, total)).toFixed(0)}% (${done}/${total}) trueOut=${nOut} (${((Date.now() - t0) / 1000).toFixed(0)}s)`); },
   });
-  plog(`${cfg.key}: INTERIOR scan done nProjected=${scan.nProjected} nScreened=${scan.nScreened} outliers=${scan.outliers.length} p99=${scan.p99.toFixed(4)} max=${scan.max.toFixed(4)} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+  plog(`${cfg.key}: INTERIOR scan done nCandidates=${scan.nCandidates} anchored=${scan.nProjected} anchoredAll=${scan.anchoredAll} trueOutliers=${scan.outliers.length} p99=${scan.p99.toFixed(4)} max=${scan.max.toFixed(4)} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
   // checkpoint the raw scan immediately (survives a crash in classification)
   checkpoint({ key: `${cfg.key}__scan`, style: cfg.key, mesh: cfg.meshName, nF: mesh.nF,
-    nProjected: scan.nProjected, nScreened: scan.nScreened, nOutliers: scan.outliers.length,
-    outlierFrac: +(scan.outliers.length / mesh.nF).toFixed(6),
+    nCandidatesRadialUB: scan.nCandidates, candidateFracUB: +(scan.nCandidates / mesh.nF).toFixed(6),
+    anchored: scan.nProjected, anchoredAll: scan.anchoredAll,
+    nTrueOutliersInAnchored: scan.outliers.length,
+    trueOutlierFracOfAnchored: +(scan.outliers.length / Math.max(1, scan.nProjected)).toFixed(4),
     projP50: +scan.p50.toFixed(4), projP90: +scan.p90.toFixed(4), projP99: +scan.p99.toFixed(4), projMax: +scan.max.toFixed(4),
     tookS: +((Date.now() - t0) / 1000).toFixed(0) });
   // dump full outlier list to disk (u,t,dev) for downstream render/inspection
@@ -151,8 +153,8 @@ function runStyleAnatomy(cfg: StyleCfg): void {
 
   checkpoint({
     key: cfg.key, style: cfg.key, mesh: cfg.meshName, nF: mesh.nF,
-    nOutliers: scan.outliers.length, outlierFrac: +(scan.outliers.length / mesh.nF).toFixed(6),
-    projP99Mm: +scan.p99.toFixed(4), projMaxMm: +scan.max.toFixed(4),
+    nCandidatesRadialUB: scan.nCandidates, anchored: scan.nProjected, anchoredAll: scan.anchoredAll,
+    nTrueOutliersInAnchored: scan.outliers.length, projP99Mm: +scan.p99.toFixed(4), projMaxMm: +scan.max.toFixed(4),
     outlierDevMedMm: +med(devs).toFixed(4), outlierDevMaxMm: +Math.max(0, ...devs).toFixed(4),
     sampleN: SAMPLE, whereCount, singCount,
     fracCrestCusp: +fracCrest.toFixed(3), fracFlankWall: +fracFlank.toFixed(3), fracCuspOrKink: +fracCusp.toFixed(3),
@@ -176,10 +178,19 @@ describe('PF-ANATOMY: interior outlier anatomy of the cusp styles', () => {
     const sub: LoadedMesh = { xyz: full.xyz, idx: full.idx.subarray(0, N * 3), nV: full.nV, nF: N };
     plog(`SMOKE: start scan on ${N} facets...`);
     const t0 = Date.now();
-    const scan = interiorOutlierScan(sub, rA as (th: number, z: number) => number, H, { tolMm: 0.01, screenMm: 0.01, brute: { nTheta: 768, nZ: 220 } });
+    const scan = interiorOutlierScan(sub, rA as (th: number, z: number) => number, H, { tolMm: 0.01, screenMm: 0.01, brute: { nTheta: 2048, nZ: 400 } });
     const secs = (Date.now() - t0) / 1000;
-    const perFullS = secs / N * full.nF;
-    plog(`SMOKE: ${N} facets in ${secs.toFixed(1)}s => full ${full.nF} ~${perFullS.toFixed(0)}s | projected=${scan.nProjected} outliers=${scan.outliers.length} p99=${scan.p99.toFixed(4)} max=${scan.max.toFixed(4)}`);
+    plog(`SMOKE: anchor+scan done in ${secs.toFixed(1)}s (candidates=${scan.nCandidates} outliers=${scan.outliers.length}); running A/B...`);
+    // A/B: re-brute each outlier's worst sample at FULL-AZIMUTH FINE grid; the GN anchor must AGREE (unique foot on a
+    // height field ⇒ GN==brute). brute can only lower with more samples, so |GN - fullFine| must be ~0.
+    const tab = Date.now(); let maxAbErr = 0;
+    for (const o of scan.outliers.slice(0, 30)) {
+      const fine = bruteNearest(o.cx, o.cy, o.cz, rA as (th: number, z: number) => number, H, { nTheta: 3072, nZ: 600 });
+      const e = Math.abs(fine.dist - o.interiorDev); if (e > maxAbErr) maxAbErr = e;
+    }
+    plog(`SMOKE: A/B done in ${((Date.now() - tab) / 1000).toFixed(1)}s`);
+    plog(`SMOKE: ${N} facets in ${secs.toFixed(1)}s => full ${full.nF} ~${(secs / N * full.nF).toFixed(0)}s | projected=${scan.nProjected} outliers=${scan.outliers.length} p99=${scan.p99.toFixed(4)} max=${scan.max.toFixed(4)}`);
+    plog(`SMOKE: A/B windowed-vs-fullFine maxAbsErr over worst-60 = ${maxAbErr.toFixed(5)} (must be << 0.01 ⇒ window contains foot)`);
     if (scan.outliers.length) { const o = scan.outliers[0]; const cls = classifyOutlier(o, rA as (t: number, z: number) => number, cfg.rMean); plog(`SMOKE worst outlier dev=${o.interiorDev.toFixed(4)} u=${o.u.toFixed(4)} t=${o.t.toFixed(4)} where=${cls.where} sing=${cls.singular} gradU=${cls.gradU} apexAngle=${cls.apexAngleDeg} secondDiff=${cls.secondDiffMm}`); }
     // sanity: a vertex is on the surface — its projection should be ~0
     const bf = bruteNearest(full.xyz[0], full.xyz[1], full.xyz[2], rA as (th: number, z: number) => number, H);

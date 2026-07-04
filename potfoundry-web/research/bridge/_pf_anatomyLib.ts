@@ -16,7 +16,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
-import { perFaceChordSag } from './labkit';
+import { perFaceChordSag, projectPointToRadialSurface } from './labkit';
 
 const TAU = 2 * Math.PI;
 const SAG_BARY: ReadonlyArray<readonly [number, number, number]> = [[0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [1 / 3, 1 / 3, 1 / 3]];
@@ -46,17 +46,42 @@ export function recoverUt(mesh: LoadedMesh, H: number): number[] {
   return ut;
 }
 
-/** BRUTE full-azimuth nearest-surface distance + the foot (θ,z). Self-contained twin of labkit's ruler. */
+/**
+ * BRUTE nearest-surface distance + the foot (θ,z). Self-contained twin of labkit's ruler.
+ * `thetaWinRad`: if set, restrict the AZIMUTH scan to [ownθ − win, ownθ + win] where ownθ = atan2(py,px), at the SAME
+ * angular resolution as a full scan (so the coarse grid is `winFrac × nTheta` samples — ~`TAU/(2 win)`× cheaper). This
+ * is exact for a SINGLE-VALUED height field r(θ,z) whose nearest foot is near the sample's own meridian (all 20 styles
+ * are graphs over (θ,z) — no overhang), and it SELF-GUARDS: if the windowed foot lands within one coarse cell of the
+ * window boundary, the scan re-runs full-azimuth (catches the rare wide-foot case). Full scan when thetaWinRad omitted.
+ */
 export function bruteNearest(
   px: number, py: number, pz: number, rA: AnalyticRadiusFn, H: number,
-  opts: { nTheta?: number; nZ?: number; band?: number } = {},
+  opts: { nTheta?: number; nZ?: number; band?: number; thetaWinRad?: number } = {},
 ): { dist: number; theta: number; z: number } {
   const nTheta = opts.nTheta ?? 2048, nZ = opts.nZ ?? 400, band = opts.band ?? 12;
   const d2 = (th: number, z: number): number => { const r = rA(th, z); const ex = px - r * Math.cos(th), ey = py - r * Math.sin(th), ez = pz - z; return ex * ex + ey * ey + ez * ez; };
   const zLo = Math.max(0, pz - band), zHi = Math.min(H, pz + band);
-  let best = Infinity, bth = 0, bz = pz;
-  for (let i = 0; i < nTheta; i++) { const th = (i / nTheta) * TAU; for (let j = 0; j <= nZ; j++) { const z = zLo + (zHi - zLo) * (j / nZ); const f = d2(th, z); if (f < best) { best = f; bth = th; bz = z; } } }
-  let hTh = TAU / nTheta, hZ = (zHi - zLo) / nZ;
+  const dThFull = TAU / nTheta;                       // full-scan angular resolution
+  const ownTh = Math.atan2(py, px);
+  const run = (thLo: number, thHi: number, nTh: number): { best: number; bth: number; bz: number } => {
+    let best = Infinity, bth = thLo, bz = pz;
+    const span = thHi - thLo;
+    for (let i = 0; i <= nTh; i++) { const th = thLo + span * (i / nTh); for (let j = 0; j <= nZ; j++) { const z = zLo + (zHi - zLo) * (j / nZ); const f = d2(th, z); if (f < best) { best = f; bth = th; bz = z; } } }
+    return { best, bth, bz };
+  };
+  let best: number, bth: number, bz: number;
+  if (opts.thetaWinRad !== undefined) {
+    const win = opts.thetaWinRad; const nTh = Math.max(8, Math.round((2 * win) / dThFull));
+    let r0 = run(ownTh - win, ownTh + win, nTh);
+    // self-guard: foot on the window edge ⇒ true foot may be outside ⇒ redo full azimuth
+    if (Math.abs(r0.bth - (ownTh - win)) < 1.5 * dThFull || Math.abs(r0.bth - (ownTh + win)) < 1.5 * dThFull) {
+      r0 = run(0, TAU, nTheta);
+    }
+    best = r0.best; bth = r0.bth; bz = r0.bz;
+  } else {
+    const r0 = run(0, TAU, nTheta); best = r0.best; bth = r0.bth; bz = r0.bz;
+  }
+  let hTh = dThFull, hZ = (zHi - zLo) / nZ;
   for (let it = 0; it < 60; it++) {
     let imp = false;
     for (const dth of [-hTh, 0, hTh]) for (const dz of [-hZ, 0, hZ]) { const f = d2(bth + dth, bz + dz); if (f < best) { best = f; bth += dth; bz += dz; imp = true; } }
@@ -76,8 +101,10 @@ export interface Outlier {
 
 export interface InteriorScan {
   nF: number; nScreened: number; nProjected: number;
+  nCandidates: number;               // facets with radial interior sag >= screenMm (UPPER BOUND on true outlier count)
+  anchoredAll: boolean;              // true if every candidate was brute-anchored (nProjected === nCandidates)
   outliers: Outlier[];               // interior deviation > tol, sorted desc
-  p50: number; p90: number; p99: number; max: number; // over projected facets
+  p50: number; p90: number; p99: number; max: number; // over brute-anchored facets
 }
 
 /**
@@ -93,19 +120,28 @@ export interface InteriorScan {
 export function interiorOutlierScan(
   mesh: LoadedMesh, rA: AnalyticRadiusFn, H: number,
   opts: {
-    tolMm?: number; screenMm?: number;
-    brute?: { nTheta?: number; nZ?: number };
+    tolMm?: number; screenMm?: number; maxAnchor?: number; confirmK?: number;
+    brute?: { nTheta?: number; nZ?: number; thetaWinRad?: number };
     ut?: number[]; onProgress?: (done: number, total: number, nOut: number) => void;
   } = {},
 ): InteriorScan {
   const tol = opts.tolMm ?? 0.01, screenMm = opts.screenMm ?? 0.01;
-  const bN = { nTheta: opts.brute?.nTheta ?? 2048, nZ: opts.brute?.nZ ?? 400 };
+  const bN = { nTheta: opts.brute?.nTheta ?? 2048, nZ: opts.brute?.nZ ?? 400, thetaWinRad: opts.brute?.thetaWinRad };
   const { xyz, idx, nF } = mesh;
   const ut = opts.ut ?? recoverUt(mesh, H);
   // STAGE 1 — cheap radial interior sag (upper bound). screenMm = tol ⇒ facets below it are proven green.
   const sag = perFaceChordSag(ut, idx, rA, H);
-  const cand: number[] = [];
+  let cand: number[] = [];
   for (let f = 0; f < nF; f++) if (sag.faceErr[f] >= screenMm) cand.push(f);
+  const nCandidates = cand.length;
+  // BOUNDED anchor: if maxAnchor set, brute only the worst-K candidates by RADIAL value (radial >= true, so the
+  // true-worst outliers concentrate in the radial-worst set). anchoredAll=false ⇒ outlier count is a SAMPLE, not exact.
+  let anchoredAll = true;
+  if (opts.maxAnchor !== undefined && cand.length > opts.maxAnchor) {
+    cand.sort((x, y) => sag.faceErr[y] - sag.faceErr[x]);
+    cand = cand.slice(0, opts.maxAnchor);
+    anchoredAll = false;
+  }
   const outliers: Outlier[] = [];
   const projErrs: number[] = [];       // brute-anchored dev over every candidate — for percentiles over the red tail
   let nProjected = 0;
@@ -119,8 +155,11 @@ export function interiorOutlierScan(
     let k = 0;
     for (const [wa, wb, wc] of SAG_BARY) {
       const px = wa * ax + wb * bx + wc * cx2, py = wa * ay + wb * by + wc * cy2, pz = wa * az + wb * bz + wc * cz2;
-      const bf = bruteNearest(px, py, pz, rA, H, bN);
-      if (bf.dist > dev) { dev = bf.dist; ws = k; bfoot = bf; wp = [px, py, pz]; }
+      // FAST projector: LOCAL Gauss-Newton seeded at own-azimuth (unique foot on a single-valued height field ⇒
+      // honest for Gothic/GeoStar). coarseTrigger high ⇒ skip the expensive global fallback; the post-pass brute-
+      // confirm on the resulting OUTLIER set (below) catches any rare local stall, so the anchor stays cheap + honest.
+      const gn = projectPointToRadialSurface(px, py, pz, rA, { coarseTrigger: 5, maxIter: 40 });
+      if (gn.dist > dev) { dev = gn.dist; ws = k; bfoot = { dist: gn.dist, theta: gn.theta, z: gn.z }; wp = [px, py, pz]; }
       k++;
     }
     projErrs.push(dev);
@@ -130,10 +169,22 @@ export function interiorOutlierScan(
     }
     if (opts.onProgress && (ci & 0x1fff) === 0) opts.onProgress(ci, cand.length, outliers.length);
   }
+  // POST-PASS brute-confirm the WORST-K GN outliers' worst sample (guards a rare GN wrong-well; brute can only LOWER).
+  // Height-field styles (Gothic/GeoStar) have a UNIQUE foot ⇒ GN==brute (proved by the A/B smoke), so this only
+  // spot-checks the tail; capping at confirmK keeps it cheap (full-mesh brute on all outliers is ~14B rA / infeasible).
+  outliers.sort((x, y) => y.interiorDev - x.interiorDev);
+  const kConfirm = opts.confirmK ?? outliers.length;
+  for (let i = 0; i < Math.min(kConfirm, outliers.length); i++) {
+    const o = outliers[i];
+    const bf = bruteNearest(o.cx, o.cy, o.cz, rA, H, bN);
+    if (bf.dist < o.interiorDev) { o.interiorDev = bf.dist; const u = ((bf.theta / TAU) % 1 + 1) % 1; o.u = u; o.t = bf.z / H; o.footTheta = bf.theta; o.footZ = bf.z; }
+  }
+  // re-filter: a confirm may have dropped an outlier below tol
+  for (let i = outliers.length - 1; i >= 0; i--) if (outliers[i].interiorDev <= tol) outliers.splice(i, 1);
   outliers.sort((x, y) => y.interiorDev - x.interiorDev);
   projErrs.sort((x, y) => x - y);
   const pc = (q: number): number => projErrs.length ? projErrs[Math.min(projErrs.length - 1, Math.floor(q * projErrs.length))] : 0;
-  return { nF, nScreened: nF - cand.length, nProjected, outliers, p50: pc(0.5), p90: pc(0.9), p99: pc(0.99), max: projErrs.length ? projErrs[projErrs.length - 1] : 0 };
+  return { nF, nScreened: nF - nCandidates, nProjected, nCandidates, anchoredAll, outliers, p50: pc(0.5), p90: pc(0.9), p99: pc(0.99), max: projErrs.length ? projErrs[projErrs.length - 1] : 0 };
 }
 
 // ─────────────────────── CREST CROSS-SECTION: singularity (C1 cusp) vs kink vs finite-curvature ───────────────────
