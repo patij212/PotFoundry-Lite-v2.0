@@ -3080,6 +3080,35 @@ Loci oracle (direct per-t rowExtrema crest scan → local nearest-neighbour segm
 
 ---
 
+## E-2026-07-04-COL-SUBDIV — subdivide-collinear constraint recovery (the CU-GOTHICSEG Phase-2 lever)
+
+**Status:** REFUTED on the Gothic gates (recovery lifted but not to 98%; true-3D floor unchanged). The recovery MECHANISM is a real, byte-identical-off advance and is BANKED for reuse.
+
+**HYPOTHESIS (as briefed):** the CU-GOTHICSEG REFUTED result (recovery 90.1%@3M → 65.7%@5.87M, true-3D floored 0.058) was caused by kernel interior/Steiner vertices landing collinear ON constraint segments and BLOCKING crossing-chain recovery (density → more on-segment vertices → worse recovery). A textbook constrained-Delaunay SUBDIVIDE — when a→b is blocked by a vertex v collinear on it, split into a→v and v→b (recurse) so v becomes a shared endpoint, not a block — should lift recovery to ~100% regardless of density, clearing all four Gothic gates.
+
+**DISCRIMINATOR:** opt-in `recoverySubdivideCollinear` in `constraintRecovery.ts` (threaded via `InhouseMeshOpts.recoverySubdivideCollinear` + `recoveryCollinearEps`), BYTE-IDENTICAL when off. `collectCrossings` now reports its on-segment blocker vertex (apex-through OR fan-collinear, both non-p corners of every incident triangle — a boundary picket is reachable only as an INCOMING halfedge, so scanning `nextHE` alone missed it); the recovery loop runs a subdivide worklist that splits at the blocker. Same loci oracle (`_cu_gothicsegLib` extractGothicCrestSegments, 16460 segments) + SAME two densities + SAME kernel levers as CU-GOTHICSEG — the A/B isolates the recovery change only. Rulers = labkit (bruteAnchoredRedPerp.trustedP99 true-3D, crest→mesh-edge serration, auditNonManRaw, triangleQualityDistribution).
+
+**KILL-CRITERION (pre-registered):** CONFIRMED iff recovery ≥98% AND true-3D p99 ≤0.012 AND serration ≤0.001 AND rawNonMan 0, at ≤6M tris, buildS not worse than the 948s baseline. REFUTED iff subdivision still leaves recovery <95% (deeper block) OR true-3D floors >0.02 even at ~100% recovery.
+
+**RESULT (real vitest, two densities; A/B vs the CU-GOTHICSEG refuted rows):**
+
+| recipe | tris | recovery% BEFORE→AFTER | fail BEFORE→AFTER | splits (subSegs) | true-3D p99 BEFORE→AFTER | serr | rawNonMan | %<20 | buildS |
+|---|---|---|---|---|---|---|---|---|---|
+| screen | 3.00M | **90.1 → 95.8** | 1625 → 693 | 961 (2702) | 0.2065 → **0.1876** | 0 | 0 | 3.7 | 95 |
+| HD | 5.87M | **65.7 → 74.5** | 5645 → 4203 | 1628 (5467) | 0.0581 → **0.0581** | 0 | 0 | 3.4 | 963 |
+
+**Diagnostic (fast screen build, failure classification):** the 693 remaining screen failures are **694 subdivFailNonCollinear, 0 subdivFailBudget** — and a LOOSER collinear eps (1e-9 → 1e-6) catches ZERO more (identical 693/961). ⇒ the residual failures are NOT on-segment blocks (the class the fix targets) and NOT budget-limited — they are genuine NON-collinear crossing-chain give-ups (a sub-segment's chain blocked by an ALREADY-LOCKED neighbouring constraint, which recovery never breaks — manifold-safe by design). Density packs the count-unstable network so tightly that locked-edge cross-blocks dominate at HD (why recovery still worsens 95.8 → 74.5).
+
+**VERDICT: REFUTED.** Both confirm clauses fail: recovery did not reach 98% (95.8 screen / 74.5 HD, still density-worsening from a DIFFERENT block), and true-3D floored at 0.0581 — UNCHANGED between 65.7% and 74.5% recovery, and > the 0.02 refute threshold. This CONFIRMS the CU-GOTHICSEG conclusion from a new angle: the Gothic true-3D floor is set by the un-refined smooth valley/panel facets BETWEEN the locked crests (serr=0, the crests ARE embedded), NOT by recovery completeness — closing the last third of the recovery does not move the floor because those segments' crests are not where the residual lives. The subdivide fix cannot rescue Gothic. **GothicArches upper-tier lattice stays steep-EXCLUDE** (consistent with the standing 5-ACCEPT classification).
+
+**WHAT IS BANKED (real, reusable, proven):** `recoverySubdivideCollinear` is a correct textbook CDT segment-subdivision. (1) BYTE-IDENTICAL-OFF proven: `_col_byteid` runs the CURRENT module (opt off) vs the git-HEAD pristine `recoverAndLockEdges` over 5 deterministic forced-crossing pickets × guardManifold {off,on} → identical fingerprints (locked keys + stats + triangle-checksum) all 10 cases; diagnostics inert (0) when off. (2) NON-VACUOUS positive control: a local-u-span constraint with 3 interior vertices collinear on it FAILS with the opt off (recoveryFailed=1) and RECOVERS with it on (recovered=1, split into 4 sub-segments, failed=0). (3) On the real Gothic network it split 961 (screen) / 1628 (HD) genuinely-blocked constraints and lifted recovery by ~+5.7 / +8.8 points with serration still 0, watertight, %<20 unchanged, and NO build-time regression (95s / 963s vs the 948s baseline). It is the right tool for any count-stable feature network whose recovery is on-segment-blocked (SFB petal ladders, weave grids) — it just is not the lever for Gothic, whose residual is smooth-facet density, not recovery.
+
+**RECOMMENDATION:** accept GothicArches as steep-EXCLUDE (do NOT fund further recovery work for it). Reuse `recoverySubdivideCollinear` where the recovery failure IS on-segment-collinear (re-classify with subdivFailNonCollinear/subdivFailBudget before assuming subdivide helps). If Gothic is ever re-attempted, the lever must be VALLEY/PANEL facet density (chordTolMm↓ on the smooth inter-crest facets) — a chord-guard sweep, orthogonal to recovery — but the standing EXCLUDE call makes that low-priority.
+
+**LEDGER:** kernel `research/bridge/constraintRecovery.ts` (opt-in `RecoveryRobustOpts.subdivideCollinear/collinearEps/maxSubdiv` + `collectCrossings` blocker reporting + subdivide worklist + subdivSplits/subdivSubSegments/subdivFailNonCollinear/subdivFailBudget diagnostics) + `research/bridge/inhouseMetricMesh.ts` (`InhouseMeshOpts.recoverySubdivideCollinear/recoveryCollinearEps` thread-through, no-op when off). Probes: `_col_byteid.test.ts` (PF_COL_BYTEID=1, byte-id-off proof + positive control) with pristine `_colByteIdPristineCR.ts`; `_col_gothicseg.test.ts` (PF_COL_GOTHICSEG=1, two-density A/B close); `_col_gothicdiag.test.ts` (PF_COL_GOTHICDIAG=1, failure classification). Configs `vitest.col_byteid.config.ts` / `vitest.col_gothicseg.config.ts` / `vitest.col_gothicdiag.config.ts`. Scorecard `research/exchange/_col_gothicseg/scorecard.ndjson` (sub-screen + sub-hd rows) + `diag.ndjson` (eps1e9 + eps1e6). Reused READ-ONLY: labkit + `_cu_gothicsegLib` + inhouse kernel.
+
+---
+
 ## E-2026-07-04-CU-DSLIP — DragonScales 0.0105 → ≤0.01: the residual is the CURVED SHEET, not the lip rung (Track A)
 
 **Status:** CONFIRMED — REACHES all four gates at two densities, real vitest, BVH-closed-object ruler.

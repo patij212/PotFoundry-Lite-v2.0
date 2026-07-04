@@ -109,6 +109,21 @@ export interface InhouseMeshOpts {
    *  sliver-attributed fold. Only used with recoveryRobust. */
   recoverySliverEps?: number;
   /**
+   * OPT-IN SUBDIVIDE-COLLINEAR recovery (E-2026-07-04-COL-SUBDIV). The DOMINANT recovery failure on the
+   * count-unstable Gothic crest network (E-2026-07-04-CU-GOTHICSEG: recovery 90.1%@3M → 65.7%@5.87M, true-3D
+   * floored 0.058 = the un-embedded ~1/3) is a kernel interior/Steiner vertex landing (near-)collinear ON a
+   * constraint segment a→b — the crossing-chain walk hits it as an on-segment apex and gives up, failing the
+   * whole a→b. This is the TEXTBOOK CDT case: the on-segment vertex must SUBDIVIDE the constraint into a→v and
+   * v→b (recursively), each of which recovers as an ordinary edge. When true, recoverAndLockEdges detects the
+   * blocking on-segment vertex and splits there instead of failing — lifting recovery toward ~100% REGARDLESS of
+   * density (finer sizing inserts MORE on-segment vertices, which USED to make recovery worse). STRICT NO-OP when
+   * absent/false (the byte-identical recovery path; verified by the no-op fingerprint). Only meaningful with
+   * constraintEdges. Independent of recoveryRobust — may combine. */
+  recoverySubdivideCollinear?: boolean;
+  /** local-u-frame perp distance under which a vertex counts as ON a constraint segment. Default 1e-9 (tight).
+   *  Only used with recoverySubdivideCollinear. */
+  recoveryCollinearEps?: number;
+  /**
    * OPT-IN recovery HOOK (E-2026-07-02-SFB-CHAIN, DEV/LAB only). When present AND constraintEdges is non-empty,
    * this callback is invoked on the FINAL triangulation IN PLACE OF the internal recoverAndLockEdges — it
    * receives the live (triangles, halfedges, uv, cverts) and MUST recover+lock the constraints in-place, then
@@ -408,13 +423,21 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
       isLocked = lockedPredicate(hooked.locked, uv.length / 2);
       constraintStats = hooked.stats;
     } else {
-      // OPT-IN robust recovery (E-2026-07-02-KERNEL-HARDEN): threads recoveryRobust/recoverySliverEps to the
-      // recovery flip guards. STRICT NO-OP when recoveryRobust is absent/false (robustOpts.robust is false →
-      // the extra sliver/manifold checks never run → byte-identical recovery).
-      const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true,
-        opts.recoveryRobust === true ? { robust: true, sliverEps: opts.recoverySliverEps } : undefined);
+      // OPT-IN robust recovery (E-2026-07-02-KERNEL-HARDEN) + OPT-IN subdivide-collinear (E-2026-07-04-COL-SUBDIV):
+      // threads recoveryRobust/recoverySliverEps + recoverySubdivideCollinear/recoveryCollinearEps to the recovery
+      // path. STRICT NO-OP when BOTH switches are absent/false → robustOpts is undefined → the extra checks / the
+      // subdivide worklist never run → byte-identical recovery.
+      const wantRobust = opts.recoveryRobust === true;
+      const wantSubdiv = opts.recoverySubdivideCollinear === true;
+      const robustOpts = (wantRobust || wantSubdiv)
+        ? {
+            ...(wantRobust ? { robust: true, sliverEps: opts.recoverySliverEps } : {}),
+            ...(wantSubdiv ? { subdivideCollinear: true, ...(opts.recoveryCollinearEps !== undefined ? { collinearEps: opts.recoveryCollinearEps } : {}) } : {}),
+          }
+        : undefined;
+      const rec = recoverAndLockEdges(tris, heF, uv, cverts, 64, opts.guardRecoveryManifold === true, robustOpts);
       isLocked = lockedPredicate(rec.locked, uv.length / 2);
-      constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips, robustSliverRejects: rec.robustSliverRejects, robustManifoldRejects: rec.robustManifoldRejects };
+      constraintStats = { requested: cverts.length / 2, alreadyPresent: rec.alreadyPresent, recovered: rec.recovered, failed: rec.recoveryFailed, flips: rec.flips, robustSliverRejects: rec.robustSliverRejects, robustManifoldRejects: rec.robustManifoldRejects, subdivSplits: rec.subdivSplits, subdivSubSegments: rec.subdivSubSegments, subdivFailNonCollinear: rec.subdivFailNonCollinear, subdivFailBudget: rec.subdivFailBudget };
     }
     tFlip += now() - z;
     if (prof) {

@@ -79,14 +79,6 @@ export interface RecoveryResult {
   /** ROBUST-only diagnostics (0 when robust is off): flips rejected by the sliver guard / drift-free manifold guard. */
   robustSliverRejects?: number;
   robustManifoldRejects?: number;
-  /** SUBDIVIDE-COLLINEAR-only diagnostics (0 when subdivideCollinear is off): number of constraints that were
-   *  split at an on-segment vertex, and total sub-segments emitted by those splits. subdivFailNonCollinear =
-   *  sub-segments that failed for a NON-collinear reason (a genuine crossing-chain give-up, not an on-segment
-   *  block); subdivFailBudget = blocked sub-segments abandoned because the per-constraint split budget ran out. */
-  subdivSplits?: number;
-  subdivSubSegments?: number;
-  subdivFailNonCollinear?: number;
-  subdivFailBudget?: number;
 }
 
 /** OPT-IN robustness for DENSE near-collinear pickets (E-2026-07-02-KERNEL-HARDEN). See recoverAndLockEdges. */
@@ -99,28 +91,6 @@ export interface RecoveryRobustOpts {
    *  the mesh is already index-manifold, so slivers are NOT the fold source. Set >0 only to probe a specific
    *  sliver-attributed fold. Only used when robust is true. */
   sliverEps?: number;
-  /**
-   * OPT-IN SUBDIVIDE-COLLINEAR recovery (E-2026-07-04-COL-SUBDIV). The DOMINANT Gothic recovery failure
-   * (E-2026-07-04-CU-GOTHICSEG: 90.1%@3M → 65.7%@5.87M, true-3D floored 0.058) is NOT a crossing-chain block —
-   * it is a kernel interior/Steiner vertex `v` lying (near-)collinear ON a constraint segment a→b, strictly
-   * between a and b. The crossing-chain walk `collectCrossings` hits `v` as the apex it "passes through" and
-   * returns null (manifold-safe give-up) → the whole a→b is counted failed. That is the TEXTBOOK constrained-
-   * Delaunay case: `v` is a legitimate point ON the constraint, so the constraint must be SUBDIVIDED at `v` into
-   * a→v and v→b (recursively — several collinear vertices may lie on a→b), each of which recovers as an ordinary
-   * segment (the edges a–v and v–b are what the CDT actually wants). This lifts recovery toward ~100% regardless
-   * of density (finer sizing inserts MORE on-segment vertices, which used to make recovery WORSE — this turns each
-   * into a legitimate shared endpoint instead of a block). STRICT NO-OP when absent/false: `collectCrossings`
-   * never reports its blocker, the subdivide branch never runs, and the recovery path is byte-identical (verified
-   * by the no-op fingerprint). Independent of `robust` — may be combined with it. */
-  subdivideCollinear?: boolean;
-  /** |perp distance| in local u-frame units under which a vertex counts as ON the constraint segment (collinear).
-   *  Only used when subdivideCollinear is true. Default 1e-9 (tight — the kernel's Steiner/interior vertices that
-   *  BLOCK the walk are EXACTLY collinear by construction of the give-up test, so a tight eps is correct and avoids
-   *  false-splitting a merely-nearby vertex). */
-  collinearEps?: number;
-  /** cap on subdivision recursion depth per original constraint (guards a pathological pile-up of on-segment
-   *  vertices). Default 64. Only used when subdivideCollinear is true. */
-  maxSubdiv?: number;
 }
 
 /**
@@ -142,7 +112,7 @@ export interface RecoveryRobustOpts {
  *   failure — so the mesh stays MANIFOLD-SAFE BY CONSTRUCTION. STRICT NO-OP when robust is absent/false: the extra
  *   checks never run and the recovery path is byte-identical (verified by the no-op fingerprint).
  */
-export function recoverAndLockEdges(
+export function recoverAndLockEdgesPristine(
   triangles: Uint32Array, halfedges: Int32Array, uv: number[], constraints: number[],
   maxFlipsPerEdge = 64,
   guardManifold = false,
@@ -150,12 +120,7 @@ export function recoverAndLockEdges(
 ): RecoveryResult {
   const robust = robustOpts?.robust === true;
   const sliverEps = robustOpts?.sliverEps ?? 0; // default OFF (sliver-rejection starves recovery — see A/B)
-  const subdivideCollinear = robustOpts?.subdivideCollinear === true; // default OFF → byte-identical recovery
-  const collinearEps = robustOpts?.collinearEps ?? 1e-9; // local u-frame perp distance for on-segment test
-  const maxSubdiv = robustOpts?.maxSubdiv ?? 64;
   let robustSliverRejects = 0, robustManifoldRejects = 0; // diagnostics (returned in stats; 0 when off)
-  let subdivSplits = 0, subdivSubSegments = 0; // subdivideCollinear diagnostics (0 when off)
-  let subdivFailNonCollinear = 0, subdivFailBudget = 0; // classified remaining failures (0 when off)
   const nVerts = uv.length / 2;
   const N = nVerts + 1;
   const locked = new Set<number>();
@@ -287,11 +252,7 @@ export function recoverAndLockEdges(
   // Collect the ORDERED chain of halfedges (each the LOWER-id representative of an undirected edge) that the
   // segment p→q crosses, by walking the triangle strip from p toward q. Returns null if the walk is blocked
   // by a vertex lying ON the segment (collinear) or runs off a boundary (manifold-safe give-up).
-  //
-  // `blockOut` (opt-in, subdivideCollinear): when the walk gives up because a vertex lies ON the segment p→q
-  // (collinear apex), the blocking vertex index is written to blockOut.v (else -1). Pure diagnostic write —
-  // STRICT NO-OP when blockOut is undefined (the byte-identical default path never allocates or writes it).
-  const collectCrossings = (p: number, q: number, uRef: number, blockOut?: { v: number }): number[] | null => {
+  const collectCrossings = (p: number, q: number, uRef: number): number[] | null => {
     const px = wx(p, uRef), py = wy(p), qx = wx(q, uRef), qy = wy(q);
     // 1) starting triangle: the one in p's fan whose FAR edge (b,c) the segment p→q crosses.
     let startFar = -1;
@@ -302,12 +263,7 @@ export function recoverAndLockEdges(
       if (segCross(px, py, qx, qy, wx(b, uRef), wy(b), wx(c, uRef), wy(c))) { startFar = farE; return true; }
       return false;
     });
-    if (startFar < 0) {
-      // No clean entry crossing from p's fan. This includes a vertex in p's fan lying ON p→q. When subdividing,
-      // find the fan vertex that is collinear-on-segment and closest to p, and report it as the blocker.
-      if (blockOut !== undefined) blockOut.v = fanCollinearBlocker(p, q, uRef);
-      return null;
-    }
+    if (startFar < 0) return null; // q collinear with a fan edge, or no clean entry → give up
     const chain: number[] = [];
     let cur = startFar;
     for (let guard = 0; guard < maxFlipsPerEdge * 4; guard++) {
@@ -328,64 +284,30 @@ export function recoverAndLockEdges(
       const exitC = prevHE(apexE);     // prev → apex
       const vc = triangles[exitC], vd = triangles[nextHE(exitC)];
       if (segCross(px, py, qx, qy, wx(vc, uRef), wy(vc), wx(vd, uRef), wy(vd))) { cur = exitC; continue; }
-      // Neither apex-incident edge is crossed ⇒ the segment passes THROUGH the apex vertex (collinear) → give up.
-      // The apex is exactly the on-segment blocking vertex the subdivide path needs.
-      if (blockOut !== undefined) blockOut.v = apex;
-      return null; // manifold-safe give-up
+      return null; // segment passes through the apex vertex (collinear) → give up, manifold-safe
     }
     return null; // guard tripped (degenerate) → give up
   };
 
-  // subdivideCollinear helper: is vertex v collinear-ON the open segment p→q (strictly between, |perp| < eps)?
-  // Uses the local u-frame anchored at uRef. Returns the parameter t∈(0,1) along p→q, or -1 if not on-segment.
-  const onSegT = (v: number, p: number, q: number, uRef: number, eps: number): number => {
-    if (v === p || v === q) return -1;
-    const px = wx(p, uRef), py = wy(p), qx = wx(q, uRef), qy = wy(q);
-    const vx = wx(v, uRef), vy = wy(v);
-    const dx = qx - px, dy = qy - py; const L2 = dx * dx + dy * dy;
-    if (L2 <= 0) return -1;
-    const cross = dx * (vy - py) - dy * (vx - px); // 2·signed area = perp·|pq|
-    if (Math.abs(cross) > eps * Math.sqrt(L2)) return -1; // perp distance = |cross|/|pq| ≥ eps → not on-segment
-    const t = ((vx - px) * dx + (vy - py) * dy) / L2;
-    return t > 1e-6 && t < 1 - 1e-6 ? t : -1; // strictly between
-  };
+  for (let ci = 0; ci + 1 < constraints.length; ci += 2) {
+    const p = constraints[ci], q = constraints[ci + 1];
+    if (p === q || p < 0 || q < 0 || p >= nVerts || q >= nVerts) continue;
+    if (edgeExists(p, q)) { locked.add(lockKey(p, q)); alreadyPresent++; continue; }
 
-  // subdivideCollinear helper: among the vertices of every triangle INCIDENT to p, the on-segment vertex
-  // closest to p (used when the walk finds NO clean entry crossing because a neighbour vertex sits on p→q —
-  // e.g. the next collinear picket vertex, which on a boundary edge is reachable only as an INCOMING halfedge,
-  // so scanning `nextHE(e)` alone misses it). We check BOTH other corners of each incident triangle. Returns -1.
-  const fanCollinearBlocker = (p: number, q: number, uRef: number): number => {
-    let best = -1, bestT = Infinity;
-    const consider = (w: number): void => {
-      if (w === p) return;
-      const t = onSegT(w, p, q, uRef, collinearEps);
-      if (t >= 0 && t < bestT) { bestT = t; best = w; }
-    };
-    forEachOutgoing(p, (e) => {
-      // triangle of `e` = (p, nextHE(e), prevHE(e) origins); check its two non-p corners.
-      consider(triangles[nextHE(e)]);
-      consider(triangles[prevHE(e)]);
-      return false;
-    });
-    return best;
-  };
-
-  // Recover a SINGLE sub-segment p→q by the crossing-chain walk. Returns:
-  //   'present'   — the edge already exists (locked, no flips).
-  //   'recovered' — recovered via flips (locked).
-  //   'blocked'   — a vertex lies collinear ON the segment (blockOut.v set) — the subdivide path splits here.
-  //   'failed'    — could not recover for another reason (no clean chain / degenerate), NOT collinear-blocked.
-  // Locks the edge on success. Pure with respect to the caller's counters (they read the return value).
-  const recoverSegment = (p: number, q: number, blockOut?: { v: number }): 'present' | 'recovered' | 'blocked' | 'failed' => {
-    if (edgeExists(p, q)) { locked.add(lockKey(p, q)); return 'present'; }
     const uRef = uv[2 * p]; // local u-frame anchored at p (shortest-image across the seam)
+
     // CROSSING-CHAIN recovery (Sloan): re-collect the crossing chain, flip ONE convex crossing edge, repeat.
-    let ok = false;
+    // We scan the live chain and flip the first CONVEX crossing edge; flipping any convex crossing edge is
+    // always safe (no inversion). To guarantee termination we require the crossing COUNT to make net
+    // progress: we allow a flip that does not immediately shrink the chain (a convex flip whose new diagonal
+    // still crosses), but if the chain length fails to reach a new minimum within `stallCap` flips we give up
+    // (manifold-safe). On a convex crossing region the chain provably drains to 0; the guard only trips on a
+    // pathological/degenerate locus (e.g. a vertex ON the segment), which is left un-recovered + counted.
+    let ok = edgeExists(p, q);
     let bestLen = Infinity, sinceImprove = 0;
     const stallCap = 4;
-    if (blockOut !== undefined) blockOut.v = -1;
     for (let outer = 0; outer < maxFlipsPerEdge * 8 && !ok; outer++) {
-      const chain = collectCrossings(p, q, uRef, blockOut);
+      const chain = collectCrossings(p, q, uRef);
       if (chain === null || chain.length === 0) break; // blocked / collinear / done → give up cleanly
       if (chain.length < bestLen) { bestLen = chain.length; sinceImprove = 0; } else if (++sinceImprove > stallCap) break;
       let flippedAny = false;
@@ -395,66 +317,16 @@ export function recoverAndLockEdges(
       if (edgeExists(p, q)) { ok = true; break; }
       if (!flippedAny) break; // no convex crossing edge anywhere → give up cleanly (degenerate)
     }
-    if (ok || edgeExists(p, q)) { locked.add(lockKey(p, q)); return 'recovered'; }
-    if (blockOut !== undefined && blockOut.v >= 0) return 'blocked';
-    return 'failed';
-  };
 
-  const blockOut = subdivideCollinear ? { v: -1 } : undefined;
-
-  for (let ci = 0; ci + 1 < constraints.length; ci += 2) {
-    const p0 = constraints[ci], q0 = constraints[ci + 1];
-    if (p0 === q0 || p0 < 0 || q0 < 0 || p0 >= nVerts || q0 >= nVerts) continue;
-
-    if (!subdivideCollinear) {
-      // BYTE-IDENTICAL default path: recover the segment once; blocked/failed both count as failed.
-      const res = recoverSegment(p0, q0);
-      if (res === 'present') alreadyPresent++;
-      else if (res === 'recovered') recovered++;
-      else recoveryFailed++;
-      continue;
-    }
-
-    // SUBDIVIDE-COLLINEAR path (opt-in): a worklist of sub-segments. When a segment is BLOCKED by an on-segment
-    // vertex v, split it into a→v and v→b and re-enqueue both (v is a legitimate shared endpoint — textbook CDT
-    // segment subdivision). Recurse up to maxSubdiv times (several collinear vertices may lie on the original).
-    // ACCOUNTING: recovery% is reported over ORIGINAL constraints (present/recovered/failed each count the
-    // original ONCE) — a fully-embedded original (every sub-segment present-or-recovered) is `recovered` (or
-    // `alreadyPresent` if it never split and was already an edge); if ANY sub-segment genuinely fails the
-    // original is `recoveryFailed`. subdivSubSegments tracks the extra sub-segments for diagnostics only.
-    let didSplit = false, subCount = 0, anyFail = false, anyFlip = false;
-    const stack: Array<[number, number]> = [[p0, q0]];
-    let subdivBudget = maxSubdiv;
-    while (stack.length) {
-      const [a, b] = stack.pop()!;
-      if (a === b) continue;
-      const res = recoverSegment(a, b, blockOut);
-      if (res === 'present') { /* sub-segment already an edge */ }
-      else if (res === 'recovered') { anyFlip = true; }
-      else if (res === 'blocked' && subdivBudget > 0) {
-        // split at the reported on-segment vertex; the two sub-segments recover as ordinary edges.
-        const v = blockOut!.v;
-        subdivBudget--;
-        didSplit = true; subCount++;
-        stack.push([a, v], [v, b]);
-      } else {
-        anyFail = true; // genuine failure (non-collinear give-up, or budget exhausted)
-        if (res === 'blocked') subdivFailBudget++; else subdivFailNonCollinear++;
-      }
-    }
-    if (didSplit) { subdivSplits++; subdivSubSegments += subCount + 1; }
-    // Classify the ORIGINAL constraint: failed if any sub-segment failed; else recovered if any work happened
-    // (a flip or a split), else alreadyPresent (the whole original was already an edge, no split, no flip).
-    if (anyFail) recoveryFailed++;
-    else if (didSplit || anyFlip) recovered++;
-    else alreadyPresent++;
+    if (ok || edgeExists(p, q)) { locked.add(lockKey(p, q)); recovered++; }
+    else recoveryFailed++;
   }
 
-  return { locked, alreadyPresent, recovered, recoveryFailed, flips: totalFlips, robustSliverRejects, robustManifoldRejects, subdivSplits, subdivSubSegments, subdivFailNonCollinear, subdivFailBudget };
+  return { locked, alreadyPresent, recovered, recoveryFailed, flips: totalFlips, robustSliverRejects, robustManifoldRejects };
 }
 
 /** Helper to convert a locked-edge Set into the isLocked predicate flipHE expects. */
-export function lockedPredicate(locked: Set<number>, nVerts: number): (a: number, b: number) => boolean {
+export function lockedPredicatePristine(locked: Set<number>, nVerts: number): (a: number, b: number) => boolean {
   const N = nVerts + 1;
   return (a: number, b: number): boolean => locked.has(a < b ? a * N + b : b * N + a);
 }
