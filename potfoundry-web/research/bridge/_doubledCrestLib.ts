@@ -181,6 +181,10 @@ export interface DoubledCrestOpts {
   reliefFloorMm?: number;
   speedBlend?: number;
   includeValleys?: boolean;
+  /** ADDITIVE (Phase-2 GeometricStar): mandatory t rows forced into the M-square row set — for HORIZONTAL C0
+   *  creases (tile boundaries at z=k*30) that must be exact mesh-edge rings by construction (serration->0). When
+   *  unset the row placement is byte-identical to Phase-1. */
+  mandatoryT?: number[];
 }
 
 export interface DoubledCrestBuild {
@@ -220,8 +224,9 @@ export function buildDoubledCrestMesh(rA: AnalyticRadiusFn, H: number, opts: Dou
   const b = opts.speedBlend ?? 0.5;
   const includeValleys = opts.includeValleys ?? true;
 
-  // 1) rows.
-  const ts = msquareRowsDC(rA, H, hRowMm, [], b);
+  // 1) rows. mandatoryT (Phase-2) forces exact rows at horizontal C0 creases (tile boundaries) so they are
+  //    mesh-edge rings by construction; empty => byte-identical to Phase-1.
+  const ts = msquareRowsDC(rA, H, hRowMm, opts.mandatoryT ?? [], b);
   const nRow = ts.length;
 
   // 2) feature slots (crest + optional valley), tracked to per-row curves.
