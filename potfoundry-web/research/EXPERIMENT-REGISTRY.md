@@ -2989,3 +2989,32 @@ Reuses committed byte-identical-off kernel hooks (`injectedPoints`/`pinInjected`
 **RECOMMENDATION:** accept+document — do NOT pursue the doubled-crest primitive for SFB. The seam-serration gap is better closed on SFB's existing near-CAD general-engine mesh by a TARGETED seam-cliff embedding (explicit non-wrap θ=0 doubled edge + rung on the general mesh), independent of the whole-wall column model. Route SFB to: general engine (body 0.0033, already CAD-grade) + seam-cliff ladder for the θ=0 discontinuity. The doubled-crest eligibility map: count-stable u-crest ⇒ eligible (LowPoly); horizontal-ring-dominant count-stable ⇒ structured-only floor (Bamboo/DragonScales); **unstable u-crest count (oscillating OR monotone) ⇒ EXCLUDE (Gothic, GeometricStar, SFB)**.
 
 **LEDGER:** probe `research/bridge/_doubledCrestSfb.test.ts` (PF_DCREST_SFB=1: recon / V1 / V2 / V3 / V4) + `vitest.dcrestSfb.config.ts`; scorecard `research/exchange/_dcrest_sfb/scorecard.ndjson` (h012 + h024 rows). Reused VERBATIM: `_doubledCrestLib.ts` (buildDoubledCrestMesh + measureSerration). Read-only src oracle: `src/geometry/styles.ts` rOuterSuperformulaBlossom.
+
+---
+
+## E-2026-07-04-PF-BAMBOO-RINGS — doubled-RINGS (Phase-3) on BambooSegments: REACHES CAD-grade
+
+**HYPOTHESIS (Phase-3, recommended by E-2026-07-04-DCREST-BAMBOO):** BambooSegments' dominant relief is a HORIZONTAL node-RING feature at each segment boundary t=k/5 (k=1..4). The PROVEN doubled-RINGS z-riser primitive (ArtDeco/DragonScales class) — DOUBLE the ring at each boundary (ringBelow r(θ,z⁻)+ringAbove r(θ,z⁺) at the SAME z ⇒ the step is an explicit vertical RUNG = a mesh-edge chain) + M-square/square-cell platform rows — REACHES: true-3D p99 ≤0.01 AND serration ≤0.001 AND rawNonMan 0 AND %<20 <10, at ≤6M tris, density-responsive across two densities.
+
+**UPSTREAM RECON (analytic, real defaults nodeWidth=0.06 prominence=0.08 striationDepth=0.015 taper=0.05 asymmetry=0.1):** at each boundary t=k/5 there are TWO co-located features: (a) a SMOOTH steep Gaussian bulge (peak at the boundary, ~4.5mm, |dr/dz| very large but finite) AND (b) a TRUE C0 radius STEP of **~1.47–1.68mm (θ-modulated)** from `asymVar=sin(floor(t·5)·7 + θ·3)` which JUMPS when the segment integer increments (verified: fine-sampled r(0,t) jumps 45.360→46.740 across t=0.2⁻→0.2⁺). The brief's "±1.38mm C0 step" is CONFIRMED — a horizontal ring cliff, the RIGHT axis for doubled-RINGS (the doubled-CREST u-column primitive was wrong-axis, floored 0.026 in Phase-2).
+
+**DISCRIMINATOR:** native-3D structured wall (buildStructuredWall) with doubled rings + SQUARE-CELL row placement (dtFloor=θ-arc/H ⇒ flank dz bounded at θ-arc ⇒ aspect≈1, no slivers — the fix for the cosine-clustered attempt that hit 51% <20). HYBRID ruler: radial own-(u,t) chord on the smooth single-valued body (faithful+cheap) + BVH-vs-CLOSED-OBJECT on the prefiltered (radial sag>0.008) flank+rung facets (own-(u,t) is BLIND at the genuine z-step). Reference = SAME construction, finer flank floor (dtFloorMul 0.3) ⇒ **refOnSurf 0.0006 « CAD_TOL (trustworthy)**. Two densities. KILL-CRITERION as above.
+
+**EVIDENCE (fresh PF_BAMBOO vitest run; scorecard `research/exchange/_pf_bamboo/scorecard.ndjson`):**
+
+| config | tris | true-3D p99 | worst | serration | %<20 | rawNonMan | refOnSurf | REACHES |
+|---|---|---|---|---|---|---|---|---|
+| bs_c1400_sq | 1.71M | **0.0066** | 0.0080 | **4.5e-4** | **2.6%** | **0** | 0.0006 | **YES** |
+| bs_c2000_sq | 3.46M | **0.0032** | 0.0079 | **2.2e-4** | **1.4%** | **0** | 0.0006 | **YES** |
+
+Density-responsive: true-3D 0.0066→0.0032, serration 4.5e-4→2.2e-4, both densities clear ALL four gates at ≤3.5M tris. (minAngleDeg 0.0/0.1 = a couple of degenerate seam/rim tris, but the DISTRIBUTION is clean: %<20 = 1.4–2.6%.)
+
+**VISUAL (`research/exchange/_pf_bamboo/bamboo_heat.png`, BVH true-3D vs closed object, scale 0→0.15mm):** body deep-GREEN (faithful), thin yellow bands strictly on the node-ring flanks (t≈0.2,0.4,…), NO red (worst 0.008). Render AGREES with the metric — the only residual is the resolved steep flank chord.
+
+**VERDICT: CONFIRMED — REACHES CAD-grade on all four gates at two densities, ≤3.5M tris.** OVERTURNS the Phase-2 REFUTED (E-2026-07-04-DCREST-BAMBOO, doubled-CREST u-column floored 0.026): the doubled-crest doubled the WRONG axis (u-columns); the doubled-RINGS (right axis, z-riser rung at the node boundary) embeds the horizontal C0 step as a mesh edge (serration ≤5e-4 = the step IS a mesh edge) and the smooth Gaussian flank is density-responsive to CAD-grade. Bamboo is thus the 3rd doubled-RINGS win (ArtDeco 0.001 sheared, DragonScales tread class, Bamboo θ-modulated-step class).
+
+**KEY MECHANISM (bankable):** the sliver-vs-fidelity tension on a steep horizontal feature is resolved by a SQUARE-CELL row floor `dtFloor = θ-arc/H` — the flank concentrates rows down to dz≈θ-arc (resolves the Gaussian flank) but NO finer (finer dz than dθ makes tall-thin slivers). Raw msquareRows drove dt→0 on the near-vertical flank (17.8M rows / 51% <20); the square-cell floor bounds it (~600–860 rows, aspect≈1). The doubled RUNG (not a tread annulus — the θ-modulated step has no radius-range at fixed z) carries the C0 step as one vertical mesh edge per column.
+
+**RECOMMENDATION:** productionize-with-flag — the doubled-RINGS primitive is Bamboo's correct true-3D solution. Add a "dominant-feature axis" pre-check (u-crest vs horizontal-ring) to route horizontal-C0-ring styles (Bamboo, DragonScales) to doubled-RINGS and count-stable u-crest styles (LowPoly) to doubled-crest. Bamboo eligibility map datapoint: horizontal-C0-ring-dominant ⇒ REACHES via doubled-RINGS + square-cell rows (was "structured-only floor" under the wrong u-column primitive).
+
+**LEDGER:** probe `research/bridge/_pf_bamboo.test.ts` (PF_BAMBOO=1) + `vitest.pf_bamboo.config.ts`; scorecard `research/exchange/_pf_bamboo/scorecard.ndjson` (2 rows); heatmap `research/exchange/_pf_bamboo/bamboo_heat.png`. Reused READ-ONLY: labkit (perFaceChordSag/triangleQualityDistribution/auditNonManByIndex/vertErrColors/dumpRenderBins) + `_sharp3dRef` (buildRefLocator/RefMesh) + `_sharp3dMesh` (buildStructuredWall/evenThetas). Read-only src oracle: `src/geometry/styles.ts` rOuterBambooSegments + `types.ts` DEFAULT_BAMBOO_SEGMENTS.
