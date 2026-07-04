@@ -10,6 +10,97 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-04-RACE-CRESTRIBBON — CREST-RIBBON P2-oracle: change the ELEMENT ORDER at the cusp (frontier proxy)
+
+**Q (experimentalist / idea tournament):** every prior Gothic lever (5 refuted: doubled-crest, local-segment,
+collinear-subdivide, panel-density, flank-tessellation) left ONE assumption intact — the mesh ELEMENT is a P1 FLAT
+triangle in (u,t), so the only free variable is WHERE its vertices sit. E-PF-ANATOMY proved that on a zero-width
+`ridge(sharp)` cusp no vertex placement helps: a flat facet must BRIDGE the apex and its INTERIOR chords the cusp
+(worst-200 interior p50 ~0.047; 56% zero-width; floor flank-pitch-INVARIANT). This proxy changes the ELEMENT ORDER at
+the feature: P1 → one-sided PN (Vlachos normal-offset) + flatten-to-tol. The apex becomes a shared C0 crease EDGE (two
+one-sided sub-elements), and each sub-element's interior rides ONE smooth flank instead of chording across the ridge.
+
+**HYPOTHESIS (to falsify):** replacing the flat P1 flank facets with two one-sided curved elements sharing the crest
+geodesic drops the interior true-3D to ≤0.01 on the Gothic zero-width cusps AT EQUAL primary-vertex count, with the
+crest-edge serration staying 0 — a signature the flat-UV paradigm structurally cannot produce.
+
+**KILL-CRITERION (pre-registered):** on the worst Gothic zero-width cusps (P1 interior p50 ~0.047): CONFIRMED iff
+one-sided curved-element interior true-3D p50 ≤ 0.012 AND p99 ≤ 0.015 at EQUAL primary-vertex count AND serration ≤
+0.001. REFUTED iff curved interior floors > 0.02 on ≥ 30% (one-sided normal ill-defined / apex has sub-element
+structure). NO-OP iff 0.012 < p50 ≤ 0.02 → re-run the flatten-to-tol emitter one level, re-judge against 0.01.
+
+**DISCRIMINATOR (cheapest — single-patch bench, NO 18-min kernel rebuild):** on the REAL GothicArches surface
+(`buildRadiusFn` defaults) take 192 REAL ridge-apex (u,t) from the on-disk `_gd_gothic/extract.cache` crestUt (all 192
+gated as knife-edge, flankDrop>0.02). Per cusp: reconstruct the SAME bridging facet the flat kernel emits (2 base
+verts straddling the ridge at facet-scale du=0.181mm-arc, apex vert dt=0.095mm-z, all 3 lifted EXACTLY on-surface),
+measure its interior true-3D; then split at the ridge into two one-sided PN patches sharing the ridge geodesic and
+measure the SAME interior locations. Ruler = a bounded LOCAL (theta,z) brute (Gothic ribs are single-valued height
+fields, not tangled) CROSS-CHECKED against the full-2π `bruteNearestOnRadialSurface` on a 24-sample: xcheck
+max(local−full)=0.0000, meanAbsDiff 0.0008 ⇒ local projector trusted (no aliasing-high). Probe
+`_pf_race_crestribbon.test.ts` (PF_RACE_RIBBON=1). Reuses labkit rulers + the extract cache READ-ONLY; no src/kernel edit.
+
+**VERDICT: CONFIRMED (as NO-OP→CONFIRMED via the pre-registered one-refinement-level branch) — the ELEMENT-ORDER change
+is the cusp closer; the flat-UV paradigm's structural blind spot is real and removable.**
+
+**EVIDENCE — bench-main (192 real knife cusps, EQUAL primary-vertex count, interior true-3D via local brute):**
+
+| sample class | FLAT P1 (BEFORE) | one-sided PN (AFTER) |
+|---|---|---|
+| apex-side straddle mid (MID01, the bridge) | p50 **0.1379** / p99 0.1625 | ridge split vertex → p50 **0.0000** / p99 0.0000 |
+| centroid | p50 0.0789 / p99 0.0937 | p50 0.0177 / p99 0.0242 |
+| flank half-edge mids | — | p50 0.0186 / p99 0.0325 / **max 0.0482** |
+| ALL interior | p50 0.0299 / p99 0.162 | p50 0.0183 / p99 0.032 |
+| ridge-edge SERRATION | (flat cannot lower w/o moving verts) | **p50 0.0000 / p99 0.0000** |
+
+⇒ The predicted NOVEL FACT is CONFIRMED: the apex-side bridge sample collapses **0.1379 → 0.0000** and the crest-edge
+serration stays **0** — interior-collapse AND zero-serration at FIXED vertex count, which the flat paradigm cannot
+produce (it can only lower interior by moving/adding vertices, perturbing serration). Mode B (the zero-width apex
+bridge, 56% of E-PF-ANATOMY's worst) is eliminated BY CONSTRUCTION. RESIDUAL = mode A only (the 0.18mm flank itself
+curves): pnAll p50 0.0183 > 0.012, 34.2% > 0.02 ⇒ the raw ONE-level PN patch is the pre-registered NO-OP branch.
+
+**EVIDENCE — emit-flatten (113 cusps, flatten-to-tol emitter on the one-sided flank strip: recursive 4-split, every new
+edge-midpoint's (u,t) lifted EXACTLY onto the true surface so each emitted flat sub-facet lies wholly on ONE flank —
+Boissonnat-Oudot restricted-Delaunay convergence off the cusp):**
+
+| level | flat sub-facet interior true-3D | frac ≤0.01 |
+|---|---|---|
+| L0 (no split, raw flank) | p50 0.0166 / p99 0.030 / max 0.0571 | 11.5% |
+| L1 (1 split) | p50 0.0051 / p99 0.0331 | 98.2% |
+| **L2 (2 splits)** | p50 0.0051 / p99 **0.0096** / **max 0.0098** | **100%** |
+| adaptive (early-stop ≤0.01, cap L4) | worst-p99 0.0096 / max 0.0098 | **100%; REACHES_tol=TRUE** |
+
+**COST: median 4 leaf sub-facets / flank, p99 7** — bounded, O(crest-length × ≤2 levels) THIN-STRIP, NOT the
+0.4M→2.2M chevron-insertion explosion the flat-UV chevron general-curve insertion suffered (E-GEOSTAR). ⇒ the FULL
+mechanism (ridge-split → one-sided element → flatten-to-tol) reaches **0 outlier triangles** on the Gothic zero-width
+cusps: every emitted flat sub-facet interior ≤ 0.0098 true-3D, serration 0, at ~4-7 sub-facets per flank.
+
+**INTERPRETATION / what this DOES and does NOT establish.** DOES: falsifies E-GF-GOTHIC's element-side corollary
+("curved/higher-order elements cannot help a zero-width apex"). The cusp is closable to ≤0.01 by an element-ORDER
+change — the load-bearing flat-P1-in-UV assumption is the wall, not the surface. The winning primitive is the SAME
+proven feature-edge-embedding win (SFB seam / BasketWeave / LowPoly / Bamboo reach 0 outliers) extended one order up
+to the zero-WIDTH limit: the designed cliff becomes a zero-serration crease EDGE and the flanks flatten to tol on ONE
+side each. DOES NOT (single-patch proxy scope, honestly bounded): (1) the JUNCTION fans (96 births / 72 merges) are
+NOT tested — the proxy is per-cusp on the dominant 96.5% crest-line class; variable-valence one-sided fan
+watertightness is a SEPARATE second experiment. (2) The bench synthesizes the bridging facet at the recorded facet
+SCALE (medFacetArc 0.181 / medFacetZ 0.095) on real crest apexes — it exercises the exact mechanism on the exact worst
+OBJECT class but is not the literal kernel facet-by-index (rebuilding the 4.49M mesh = 18min, out of proxy budget).
+(3) It is a Tier-C CLOSER bolted onto the existing extractor, NOT a retirement of the 6 primitives.
+
+**RECOMMENDATION: PROMOTE to a `meshing-research` validation experiment — build the crest-ribbon on a SMALL real Gothic
+kernel PATCH (few bays × short z-band, ~0.3M tris) end-to-end and (a) re-measure 0-outliers on the real mesh facets,
+(b) DE-RISK the junction fan watertightness (the one untested failure mode), (c) confirm tri-count stays tractable at
+whole-mesh scale (crest-length × ≤2 levels ≈ +2 ribbon rows per crest segment).** This is the first mechanism in the
+campaign to close a zero-width cusp to ≤0.01; it changes the REPRESENTATION (P1→PN element), the one degree of freedom
+5 flat-UV levers structurally lacked. Grounded in Vlachos-Peters PN triangles (I3D 2001) + Boissonnat-Oudot restricted-
+Delaunay Hausdorff (2005) + MMG curved-mesh `hausd` adaptation.
+
+**LEDGER:** scorecard `research/exchange/_pf_race_crestribbon/scorecard.ndjson` (bench-main + emit-flatten) +
+`bench_detail.json` + `emit_detail.json` + `cusp_diag.json` (worst-PN per cusp) + `progress.log`. Probe
+`research/bridge/_pf_race_crestribbon.test.ts`; config `vitest.pf_race_ribbon.config.ts`. Env PF_RACE_RIBBON=1.
+Reuses labkit rulers + `_gd_gothic/extract.cache.json` READ-ONLY. NO src/ or kernel edit. Commit 9e4033e.
+
+---
+
 ## E-2026-07-04-PF-ANATOMY — INTERIOR-ruler outlier anatomy of the cusp styles (Gothic + GeoStar) — PRE-REGISTERED
 
 **Q (metrologist / measurement-first):** the prior Gothic diags anchored the facet CENTROID only. The exact object
