@@ -3158,3 +3158,28 @@ These can't both be right.
 - A clean invariant floor is a VALID result — not forced to a pass.
 
 **LEDGER:** probe `research/bridge/_gd_gothic.test.ts` (PF_GD_GOTHIC=1) + `_gd_gothic.config.ts`; extraction lib `_cu_gothicsegLib.ts` (READ-ONLY); scorecard `research/exchange/_gd_gothic/scorecard.ndjson`; per-facet location table `redfacets_L2-chord0.008.json`. EVIDENCE + VERDICT appended on completion.
+
+### EVIDENCE (measured — crest-segment set FIXED, budget NEVER hit at any level)
+
+| level | chordTolMm | tris | recovery% | radialP99 | **true3dP99** (trusted) | nRed | rawNonMan | serrP99 | %<20 |
+|---|---|---|---|---|---|---|---|---|---|
+| L0 | 0.030 | 3.60M | 87.2 | 0.0132 | **0.1086** | 4896 | 0 | 0 | 3.4 |
+| L1 | 0.015 | 3.86M | 82.1 | 0.0101 | **0.1024** | 2696 | 0 | 0 | 3.3 |
+| L2 | 0.008 | 4.30M | 71.4 | 0.0071 | **0.0881** | 1876 | 0 | 0 | 3.4 |
+
+**True-3D p99 floors FLAT** across a 3.75× chordTol tightening: 0.1086 → 0.1024 → 0.0881 (total drop only 19%, NOT monotone-toward-≤0.01; it never approaches 0.01). Meanwhile the RADIAL gap closes cleanly (0.0132→0.0071, nRed 4896→1876) — panel facets ARE being split, but that does not move the true-3D floor. The modest true-3D drift is further CONFOUNDED by a monotonic recovery COLLAPSE (87.2%→71.4%: tighter chordTol inserts Steiner points that break crest-segment recovery), so even the 19% is partly an artifact of losing crest edges, not panel closure.
+
+**DECISIVE facet-location split (worst 200 red facets at L2, cross-validated by 3 independent rules):**
+- **nCrest = 187, nPanel = 13 → crestFrac = 0.935.**
+- CREST facets: gradU median **39.1 mm/rad** (min 0, max 328), crestDu median **0.00012** (essentially ON an embedded crest line), radSpan med 0.056. Independent-rule hits: steepGradU>8 flags 160/200, nearCrest&gradU>3 flags 156/200, wallRatio>0.6 flags 97/200 — the union is 187, so the classification is not a single over-eager rule.
+- PANEL facets (n=13): gradU 0.1–7.7 (mostly ~0.1–3, flat), radialSag 0.066–0.090 (comparable to crest facets, NOT a distinct closable population). At most 6.5% of the worst red facets are on smooth panels.
+
+The 187 worst facets are the near-vertical rib CREST wall (radial gradient ~39 mm/rad = a rib flank that rises ~2mm over a fraction of a bay); their true-3D residual is irreducible by panel/chordTol density because the flat facet chord across a near-vertical wall carries a fixed geometric deviation regardless of in-panel subdivision.
+
+### VERDICT: **DENSITY-INVARIANT — steep-EXCLUDE at floor ≈ 0.088–0.109 true-3D** (near-vertical rib CREST)
+
+This **REFUTES the collinear-subdivision pass's attribution** (that the 0.0581 floor was on smooth inter-crest VALLEY/PANEL facets ⇒ density-responsive) and **CONFIRMS the perp-guard pass's attribution** (near-vertical rib CREST, chordTol-BOUND / density-invariant). The prior collinear pass's apparent 0.2065→0.0581 "drop" was the BUDGET-HIT confound: its screen-1.5M ran hitBudget=true (a starved mesh reads a high 0.2065), while its hd-4.5M didn't — that is a budget effect, NOT panel-density response. On a clean fixed-7M-budget sweep (no level hits budget) the true-3D p99 floors at ~0.09–0.11 and the worst facets are 93.5% CREST.
+
+**RECOMMENDATION:** ACCEPT + DOCUMENT — GothicArches' true-3D floor is genuine near-vertical rib-crest geometry (steep-EXCLUDE class), NOT closable by panel/chordTol density. Do NOT spend further density budget on the panels. The residual is the flat-facet chord across the designed near-vertical rib wall; closing it below ~0.01 would require either (a) embedding the crest wall itself with vertices ON the wall face at sub-mm z-pitch (a wall-tessellation problem, not a panel-density one — analogous to the DragonScales sheet-z-density finding but on a NEAR-VERTICAL wall where the chord is dominated by the radial cliff), or (b) accepting the crest as steep-EXCLUDE (consistent with the settled feature-conforming map: GothicArches upper-lattice is ACCEPT broad-steep). Note recovery also degrades under chordTol tightening (87.2%→71.4%) — a secondary reason not to over-refine. Fold into the class map: "Gothic true-3D floor = crest-wall chord, density-INVARIANT (settled E-2026-07-04-GD-GOTHIC); the two contradictory prior attributions are resolved in favour of steep-crest, the panel attribution was a budget-hit artifact."
+
+**LEDGER:** scorecard `research/exchange/_gd_gothic/scorecard.ndjson` (3 rows L0/L1/L2); per-facet location table `research/exchange/_gd_gothic/redfacets_L2-chord0.008.json` (200 facets, classCrest flag + gradU/radSpan/crestDu); render `research/exchange/_gd_gothic/gd_L2.png` (true-3D anchored heatmap, scale 0.03mm — residual color on the near-vertical rib crest). Probes `_gd_gothic.test.ts` (PF_GD_GOTHIC=1) + `_gd_gothic_render.test.ts` (PF_GD_GOTHIC_RENDER=1); config `vitest.gd_gothic.config.ts`.
