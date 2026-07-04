@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [Unreleased]
+
+### Added
+- **Rhino / Grasshopper export quality:**
+  - Wavefront **OBJ export** (`potfoundry.write_obj`): an indexed mesh writer
+    that preserves PotFoundry's shared vertex table (no de-indexing), so
+    Rhino/Grasshopper import it as a guaranteed-closed mesh without
+    tolerance-based re-welding. Optional smooth per-vertex normals.
+  - `build_from_yaml(..., export_formats=("stl", "obj"))` to emit OBJ alongside
+    or instead of STL in batch builds; each pot's manifest entry gains a
+    `files` map.
+  - `potfoundry.mesh_quality_report()`: a fast, vectorized export-readiness
+    report (watertight, winding-consistent, outward, degenerate-face count,
+    `export_ready`). Recorded per pot in the YAML manifest with a fail-fast
+    warning.
+
+### Fixed
+- **Export meshes were wound inside-out with an inconsistent drain sub-assembly.**
+  `build_pot_mesh` now produces coherently wound, outward-facing normals for
+  every style and parameter regime (the top-slab and drain-cylinder patches
+  were re-wound to agree with the shell, and a vectorized signed-volume
+  orientation guarantee is applied). Rhino/Grasshopper and slicers previously
+  flagged these as invalid closed solids.
+- **Duplicate geometry modules.** `potfoundry/geometry.py` was a stale copy of
+  `potfoundry/core/geometry.py`; the orientation fix had reached only the core
+  copy, so the YAML/batch export path still built bad meshes. The top-level
+  module is now a thin re-export of the core module (single source of truth).
+
 ## [2.1.0] - 2024-12 (In Development)
 
 ### Added

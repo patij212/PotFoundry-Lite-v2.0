@@ -46,7 +46,7 @@ This document tracks planned features, improvements, and technical debt for futu
 - [ ] Add performance metrics dashboard
 
 #### Export & Integration
-- [ ] Add OBJ export format
+- [x] Add OBJ export format (indexed mesh for Rhino/Grasshopper — `potfoundry.write_obj`)
 - [ ] Add 3MF export format (with metadata)
 - [ ] Add STEP/IGES export (if feasible)
 - [ ] Slicer integration (PrusaSlicer, Cura)
@@ -226,7 +226,9 @@ See [ROADMAP.md](ROADMAP.md) for detailed Qt migration plan.
 
 ### High Priority
 - [ ] Investigate occasional cache invalidation issues
-- [ ] Fix edge cases in mesh watertightness validation
+- [x] Fix edge cases in mesh watertightness validation (coherent outward
+      winding guaranteed; `mesh_quality_report` validates watertight/coherent/
+      outward/degenerate across all styles + regimes)
 - [ ] Improve error handling for invalid parameter combinations
 
 ### Medium Priority
