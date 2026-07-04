@@ -14,6 +14,8 @@ import yaml
 from .schema import ConfigV2, migrate_v1_to_v2, deep_merge
 # Binary STL writer (recommended for all exports)
 from .core.io.stl import write_stl_binary, atomic_write_bytes
+# Wavefront OBJ writer (indexed mesh — best for Rhino / Grasshopper)
+from .core.io.obj import write_obj
 
 from .geometry import (
     MeshQuality,
@@ -22,6 +24,9 @@ from .geometry import (
     build_pot_mesh,
     save_preview_png,
 )
+
+# Mesh export formats supported by build_from_yaml.
+SUPPORTED_EXPORT_FORMATS = ("stl", "obj")
 
 @dataclass
 class Config:
@@ -137,10 +142,22 @@ def realize_recipe(recipe: dict, cfg: Config) -> tuple[str, str, dict, dict]:
 
 
 def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True, do_zip: bool = True,
-                    only_names: list[str] | None = None, write_manifest: bool = False) -> dict:
+                    only_names: list[str] | None = None, write_manifest: bool = False,
+                    export_formats: tuple[str, ...] | list[str] = ("stl",)) -> dict:
     cfg = _normalize_cfg(cfg)
     if not cfg.recipes:
         raise SystemExit("No recipes found.")
+
+    # Normalize and validate requested mesh export formats.
+    formats = tuple(str(f).lower() for f in export_formats)
+    if not formats:
+        raise ValueError("export_formats must not be empty.")
+    unknown = [f for f in formats if f not in SUPPORTED_EXPORT_FORMATS]
+    if unknown:
+        raise ValueError(
+            f"Unknown export format(s): {unknown}. "
+            f"Supported: {list(SUPPORTED_EXPORT_FORMATS)}."
+        )
     errs = []
     for r in cfg.recipes:
         r_dict = r if isinstance(r, dict) else getattr(r, 'model_dump', lambda: r)()
@@ -174,8 +191,16 @@ def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True
             H, Rt, Rb, t_wall, t_bottom, r_drain, expn, n_theta, n_z, r_fn, opts
         )
 
-        stl_path = outdir / f"{name}.stl"
-        write_stl_binary(stl_path, name, verts, faces)
+        # Write each requested mesh format (indexed OBJ imports into
+        # Rhino/Grasshopper without any tolerance-based re-welding).
+        files: dict[str, str] = {}
+        for fmt in formats:
+            fpath = outdir / f"{name}.{fmt}"
+            if fmt == "stl":
+                write_stl_binary(fpath, name, verts, faces)
+            elif fmt == "obj":
+                write_obj(fpath, name, verts, faces)
+            files[fmt] = str(fpath.resolve())
 
         if diag["clamp_ratio_at_bottom"] > 0.02:
             print(f"[WARN] '{name}': inner radius near drain was clamped in "
@@ -186,18 +211,26 @@ def build_from_yaml(cfg: Config | object, outdir: Path, do_previews: bool = True
             png_path = outdir / f"preview_{name}.png"
             save_preview_png(png_path, H, Rt, Rb, expn, n_theta, n_z, r_fn, opts)
 
-        manifest["pots"].append({
+        pot_entry = {
             "name": name, "style": style, "description": desc, "size": size, "opts": opts,
             "vertices": int(len(verts)), "faces": int(len(faces)), "diagnostics": diag,
-            "stl": str(stl_path.resolve())
-        })
-        print(f"[OK] Wrote {stl_path.name}  (V={len(verts)} F={len(faces)})")
+            "files": files,
+        }
+        # Keep the legacy top-level "stl" key when STL was written.
+        if "stl" in files:
+            pot_entry["stl"] = files["stl"]
+        manifest["pots"].append(pot_entry)
+        print(f"[OK] Wrote {name} ({'+'.join(formats)})  (V={len(verts)} F={len(faces)})")
 
     if do_zip and manifest["pots"]:
-        zip_path = outdir / "pot_gallery_STLs.zip"
+        # Preserve the historical name for STL-only builds; use a generic name
+        # when other mesh formats are included too.
+        zip_name = "pot_gallery_STLs.zip" if formats == ("stl",) else "pot_gallery_meshes.zip"
+        zip_path = outdir / zip_name
         with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
             for p in manifest["pots"]:
-                zf.write(p["stl"], Path(p["stl"]).name)
+                for fpath in p["files"].values():
+                    zf.write(fpath, Path(fpath).name)
         print(f"[OK] Wrote {zip_path.name}")
         manifest["zip"] = str(zip_path.resolve())
 
