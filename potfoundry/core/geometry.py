@@ -12,6 +12,7 @@ from functools import lru_cache
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
     "r_base_out", "build_pot_mesh",
+    "signed_volume", "orient_faces_outward",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -85,6 +86,42 @@ def r_base_out(z: float, H: float, Rb: float, Rt: float, expn: float) -> float:
     """Unmodulated outer radius vs height z (0..H), with flare exponent."""
     t = 0.0 if H <= 0 else z / H
     return Rb + (Rt - Rb) * (t ** expn)
+
+def signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume of a triangle mesh via the divergence theorem.
+
+    Positive when face normals point *outward* from the enclosed material,
+    negative when the mesh is wound inside-out. O(F) and fully vectorized.
+    """
+    if faces.shape[0] == 0:
+        return 0.0
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0)
+
+
+def orient_faces_outward(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return faces guaranteed to be wound with outward-facing normals.
+
+    This is the pipeline's export-quality guarantee: CAD tools (Rhino,
+    Grasshopper) and slicers require a closed manifold whose normals point
+    consistently outward to treat it as a valid solid. If the mesh's signed
+    volume is negative the whole shell is inside-out, so every triangle's
+    winding is reversed (O(F), vectorized).
+
+    Note:
+        This corrects the *global* orientation of an already coherently-wound
+        mesh; it does not repair locally flipped patches (which must be built
+        consistently in the first place).
+    """
+    if faces.shape[0] == 0:
+        return faces
+    if signed_volume(verts, faces) < 0.0:
+        # Reverse winding of every triangle by swapping the last two indices.
+        faces = faces[:, [0, 2, 1]]
+    return np.ascontiguousarray(faces, dtype=int)
+
 
 def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     n = np.cross(b - a, c - a)
@@ -414,19 +451,25 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
 
-    # Top of bottom slab (inner bottom ring -> drain top ring)
+    # Top of bottom slab (inner bottom ring -> drain top ring).
+    # Wound to share each edge in the opposite direction to its neighbours
+    # (the inner wall along inner_bottom, the drain cylinder along drain_top)
+    # so the whole shell stays coherently oriented. Winding this patch the
+    # other way flips its normals relative to the walls and shows up in Rhino /
+    # Grasshopper as inconsistent normals on the inner_bottom ring.
     vi0 = inner_bottom[j]; vi1 = inner_bottom[jn]
     vd0 = drain_top[j];    vd1 = drain_top[jn]
-    tri_top1 = np.stack([inner_bottom[j], inner_bottom[jn], drain_top[jn]], axis=1)
-    tri_top2 = np.stack([inner_bottom[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_top1 = np.stack([inner_bottom[j], drain_top[jn], inner_bottom[jn]], axis=1)
+    tri_top2 = np.stack([inner_bottom[j], drain_top[j], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_top1)
     faces_out_parts.append(tri_top2)
 
-    # Drain cylinder wall
+    # Drain cylinder wall. Wound coherently with the slab (drain_top ring) and
+    # the underside (drain_under ring); its outward normal points into the hole.
     v0b = drain_under[j]; v1b = drain_under[jn]
     v0t = drain_top[j];   v1t = drain_top[jn]
-    tri_cyl1 = np.stack([drain_under[j], drain_top[j], drain_top[jn]], axis=1)
-    tri_cyl2 = np.stack([drain_under[j], drain_top[jn], drain_under[jn]], axis=1)
+    tri_cyl1 = np.stack([drain_under[j], drain_top[jn], drain_top[j]], axis=1)
+    tri_cyl2 = np.stack([drain_under[j], drain_under[jn], drain_top[jn]], axis=1)
     faces_out_parts.append(tri_cyl1)
     faces_out_parts.append(tri_cyl2)
 
@@ -445,7 +488,12 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_bottom_od_mm=float(est_bottom_od),
     )
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    # Export-quality guarantee: ensure normals point consistently outward so
+    # the mesh imports into Rhino/Grasshopper/slicers as a valid closed solid.
+    faces_arr = orient_faces_outward(verts_arr, faces_arr)
+    diagnostics["signed_volume_mm3"] = signed_volume(verts_arr, faces_arr)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
