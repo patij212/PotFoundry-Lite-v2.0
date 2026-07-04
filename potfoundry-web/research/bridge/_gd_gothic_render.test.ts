@@ -39,9 +39,11 @@ describe('gd-gothic-render: true-3D anchored heatmap of the L2 mesh', () => {
     const mesh = buildInhouseMetricMesh(rA, H, opts);
     const m = buildMeshUt(mesh.ut, mesh.indices, rA, H);
     // TRUE-3D anchored heatmap (brute-anchor the worst 400 red facets so the reddest facets show their TRUE colour).
+    // Plain true-3D GN heatmap (NO brute anchor): the render is CONFIRMATORY — the numeric facet-location split
+    // already decided the verdict — so keep it FAST. GothicArches is a thin-ridge style (not a tangled lattice), so
+    // single-seed GN is close to trusted; the reds cluster on the rib crest either way, which is all the render shows.
     const sag = dumpHeatmap(DIR, 'gd_L2', m.xyz, mesh.ut, mesh.indices, rA, H, {
       ruler: 'true3d', scaleMm: 0.03, stl: false,
-      anchorSteep: { redMm: 0.03, topK: 400 },
       meta: { note: 'GothicArches L2 chordTol=0.008; residual on near-vertical rib crest (density-invariant)', tris: mesh.indices.length / 3 },
     });
     /* eslint-disable-next-line no-console */ console.log(`[RENDER] gd_L2 dumped worstMm=${sag.worstMm.toFixed(4)} tris=${mesh.indices.length / 3}`);
