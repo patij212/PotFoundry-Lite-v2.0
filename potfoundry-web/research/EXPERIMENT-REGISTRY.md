@@ -10,6 +10,25 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-04-VERIFY-INTRINSIC-APEX — ADVERSARIAL re-check of the RACE-INTRINSIC-APEX reconcile CONFIRM (SKEPTIC/metrologist)
+
+**Q:** Does the RACE-INTRINSIC-APEX `reconcile` CONFIRM ("112/113 cusps 0-outlier, apex-leaf p99 0.0096, on-surface-Steiner flank recursion is the closer") survive (a) the WORST-cusp population the REFUTED sweeps used, and (b) an HONEST denser interior sampler?
+
+**Method (independent probe `_verify_intrinsicApex.test.ts` + `_quick_verify.mjs`, worst-gradU population, dense 36-pt barycentric sampler, ruler cross-checked):**
+- **reallyRan = CONFIRMED.** Real vitest v4.0.17 output (ISO timestamps 19:11–21:21), disk checkpoints (scorecard.ndjson / summary.json / reconcile.json / apex_geom.json), row-exists resumable, 6 env-gated tests. Not fabricated.
+- **rulerHonest = CONFIRMED.** The `ruler-xcheck` row matches the full-2π `bruteNearestOnRadialSurface` to maxDiff 0.000813mm; ruler is per-triangle INTERIOR true-3D (centroid+edge-mids+barycentric lattice), not radial/vertex-only. My cheaper 24×24 projector cross-checks to 0.000000mm vs 96×96 on 20 near-crest interior pts (not inflating).
+- **The REFUTED sub-results reproduce and are genuine:** N1 K-sweep slope +0.006 (no-op), N2 M-sweep 400/400 outliers, N3 apex-geom SINGULAR-FLOOR (slope +0.643, p99 frozen 0.052, 88/150 outliers). Correct.
+
+**THE CONFIRM DOES NOT SURVIVE — two independent breaks:**
+1. **POPULATION MISMATCH.** The reconcile selects 113 cusps by UNIFORM STRIDE + `flankDrop>=0.02` filter — NOT the top-400 gradU-sorted worst zero-width cusps the REFUTED sweeps used. Re-running the EXACT ribbon flatten recursion (L5, on-surface Steiner, 10-pt early-stop) on the WORST cusps + dense36 re-measure: **top-12 → 12/12 outliers (frac 1.0)**; **top-30 → 24/30 outliers (frac 0.80)**; p99/maxLeaf36 = **0.061mm** (matches the apex-geom SINGULAR-FLOOR, NOT 0.0096). The CONFIRM held only on an easier subset.
+2. **SAMPLER ARTIFACT + CAP.** The reconcile's 10-pt early-stop ACCEPTS leaves whose true interior exceeds 0.01: **60 (top-12) / 132 (top-30) accepted leaves leak >0.01 under dense36.** And **6 leaves hit the L5 cap UNCONVERGED (self>0.01)** on the worst cusps — the recursion did NOT terminate at 0-outlier, it was capped. The reconcile's own `ribbonHoldsUnderDense` flag was already FALSE (worstLeafMax 0.0131 > 0.013).
+
+**VERDICT: the RACE-INTRINSIC-APEX reconcile CONFIRM is REFUTED as stated.** It really ran and the ruler is honest, but "112/113 cusps 0-outlier" is an artifact of (a) an easier uniform-strided population and (b) a coarse 10-pt sampler with an L5 cap. On the WORST Gothic zero-width cusps with an honest dense sampler, on-surface-Steiner flank recursion still leaves 80–100% of cusps as interior outliers, floored at ~0.06mm — CONSISTENT with the frontier thesis (a P1 flat triangle cannot follow a zero-width `pow(sharp)` cusp to ≤0.01; the near-apex leaf inherits the singularity). The mechanism DIRECTION (apex-as-edge + on-surface Steiner drives most leaves down) is real and useful, but it is NOT a 0-outlier closer at tractable depth. **zeroOutlierReal = FALSE.**
+
+**RECOMMENDATION:** Do NOT ledger RACE-INTRINSIC-APEX as a Gothic 0-outlier CONFIRM. Downgrade to "direction-confirmed, not-a-closer": Steiner recursion reduces but does not eliminate the near-apex outlier; the apex leaf floors at the `pow(sharp)` singularity. Any future acceptance gate MUST (1) use the WORST-gradU population, not uniform stride, (2) use a ≥36-pt interior sampler, (3) treat L5-capped self>0.01 leaves as outliers. The true frontier remains open: reaching ≤0.01 interior at the zero-width apex needs a genuinely intrinsic (curved P2/PN) element at the apex leaf OR an accept-tiny-residual policy at ~0.06mm — NOT flat-Steiner-recursion-as-closer. Ledger: scorecard `research/exchange/_verify_intrinsicApex/` + probe `_verify_intrinsicApex.test.ts` (PF_VERIFY_IA=1) + `_quick_verify.mjs` top-12/top-30 results.
+
+---
+
 ## E-2026-07-04-RACE-INTRINSIC-APEX — intrinsic apex-edge frontier proxy: WHICH intrinsic variant closes the Gothic cusp (corroborates + sharpens E-RACE-CRESTRIBBON)
 
 **Q (experimentalist / idea tournament):** the champion architecture "DIRECT OUTLIER-ELIMINATION via an apex-on-surface intrinsic crest edge" claims: place a vertex EXACTLY on the `pow(sharp)` apex + share it between the two flanking facets so each facet interior "rides ONE smooth flank instead of chording the apex", and the residual becomes bounded-curvature flank sag that Case-A closes. Test the CHEAPEST proxy of exactly this element change on the REAL Gothic worst-cusp cross-sections (400 steepest crest apexes from the on-disk `_gd_gothic/extract.cache`, gradU up to 248 mm/rad), interior ruler = a fast LOCAL true-3D nearest-surface projector (validated vs full-2π `bruteNearestOnRadialSurface`: maxΔ 0.0008mm on 40 worst apex-bridge midpoints ⇒ honest), interior d_int = max over {centroid + 3 edge-mids}.
