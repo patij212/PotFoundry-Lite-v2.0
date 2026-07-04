@@ -573,3 +573,202 @@ are either a sub-print near-vertical riser (DragonScales) or a count-unstable bi
 primitive can embed cleanly (Gothic/GeoStar). Options for those 3: accept as designed-sharp (faces CAD-grade) OR a novel
 count-unstable-feature mesher (open research) OR a BVH-closed-object re-score to confirm the walls coincide (likely shows
 Gothic/GeoStar have a genuine grid-approximation gap, DragonScales/SFB-wall are ruler artifacts).
+
+---
+
+## COUNT-UNSTABLE PASS (2026-07-04b) — DragonScales CLOSED → 17/20; the count-unstable wall HELD
+
+The user chose to drive the 3 residual (DragonScales 0.0105, Gothic 0.042, GeoStar 0.065) to literal 0.01. Each run with
+a distinct pre-registered hypothesis + kill-criterion, measured by labkit (`bruteAnchoredRedPerp.trustedP99` / BVH
+closed-object, `measureSerration`/`measureCrestSerration`, `auditNonManRaw`, `triangleQualityDistribution.pctBelow20`),
+2 densities, gnOver-checked. Ledger: registry `E-2026-07-04-CU-DSLIP` (commit `4f0bc39`), `E-2026-07-04-CU-GOTHICSEG`
+(commit `ee27299`). GeoStar was NOT run this pass (null). Dev-only; no `src/` touched.
+
+### (1) The 3 residual — measured under their count-unstable attack
+
+| style | approach | true-3D p99 (mm) | serration (mm) | recovery% | rawNonMan | %<20 | reaches ≤0.01? |
+|---|---|---|---|---|---|---|---|
+| **DragonScales** | localize-by-facet-class → drive SHEET Z-DENSITY (nZband≥70), NOT the lip; BVH closed-object 2 densities | **0.0051 / 0.0053** (BVH) | **0.0010** | n/a | **0** | 3.1 / 2.8 | ✅ **YES — CLOSED** |
+| **GothicArches** | Track B: extract crest net as DENSE LOCAL polyline segments (16460, 0 crossings) + robust constraint recovery | 0.2065 (3.0M) / **0.0581** (5.87M) | **0** | 90.1 → **65.7** | **0** | 3.8 / 3.4 | ❌ **NO** (floors 0.058; recovery lossy, WORSENS with density) |
+| **GeometricStar** | (not run this pass) | — | — | — | — | — | — (carried: 0.065 steep-EXCLUDE) |
+
+### (2) Updated count: **17/20 MEASURED ≤0.01** (+DragonScales)
+
+#1–11 + SpiralRidges + ArtDeco + HexHive + LowPoly + Bamboo + **DragonScales**. DragonScales' close overturns its own
+long-standing "density-INVARIANT tread-lip floor 0.0105" verdict: the mandate's "lip rung placement" mechanism was
+**REFUTED** (the prior lip-refined mesh already had lipP99=0.0016 — the lip was clean), and facet-class partition
+(`_cu_dslip_diag`) showed all worst facets are SHEET class, mid-band, growing with z — i.e. per-facet chord sag on the
+CONTINUOUS curved scale-sheet BETWEEN rings. The real lever = **SHEET Z-DENSITY** (nZband≥70), which every prior sweep
+held fixed at 30 (they swept only nTheta+lipRows) — the "density-invariant floor" was a sheet-z BLIND SPOT. BVH
+closed-object at 3 densities (nZ 60/70/80, 2.30–3.00M tris): p99 0.0051–0.0053, serr ≤0.001, rawNonMan 0, %<20 <3.1 —
+density-invariant PASS. (The pinned radial max 1.27mm at the top rim was a radial-ruler artifact: BVH on those exact
+facets = 0.006.) SFB (17th-with-caveat from the prior pass) is unaffected.
+
+### (3) Did the count-unstable wall FALL or HOLD? — **HELD** (Gothic REFUTED as genuine feature-topology wall)
+
+**The count-unstable wall HELD.** The Track-B local-segment + robust-recovery attack on Gothic — the strongest attempt
+yet to embed a birth/merge crest network as clean mesh edges — was **REFUTED on both clauses at both densities**:
+
+- **Recovery is lossy AND WORSENS with density: 90.1% (3.0M) → 65.7% (5.87M).** The give-ups are NOT inter-family
+  X-crossings (crossingsSplit=0 — the 16460 local segments do not cross each other) but **on-segment collinear-vertex
+  blocks**: the kernel's own interior/Steiner points land ON neighbouring segments, and finer sizing inserts MORE of
+  them. Robust recovery keeps the mesh manifold-safe (rawNonMan 0) but cannot un-block a collinear give-up.
+- **true-3D floors at 0.0581** (>> 0.012/0.02 bar) from the ~1/3 unlocked segments + valley/panel bridging facets;
+  gnOver=0 ⇒ genuine gap, not GN overstatement.
+
+So the local-segment model is a REAL advance over the doubled-crest global columns (which degenerated at 0.042 with
+collapsed half-ring facets): serration 0, rawNonMan 0, %<20 <4%, 0 crossings, crests that DO recover are exact mesh
+edges. But it confirms the standing diagnosis: **a count-unstable birth/merge feature network genuinely cannot be
+embedded at CAD-grade true-3D with any known primitive** — not for lack of good loci (0 crossings) but because the
+kernel's interior/Steiner insertion collinearly blocks its own constraint segments, worsening as density rises.
+GeometricStar (chevron 6→32) is the same class and was not re-attacked; it stays steep-EXCLUDE.
+
+### (4) Final verdict — literal 0.01 on all 20 NOT reached; 17 clean + SFB(caveat) + 2 count-unstable EXCLUDE
+
+- **Literal MEASURED ≤0.01 + zero-serration + watertight: 17/20** (+DragonScales). SFB (18th, caveat) reaches all
+  buildable gates (seam = zero-serration feature edge; body CAD-grade; the ~9mm seam-WALL true-3D is the radial ruler's
+  blind-spot on a genuine vertical discontinuity, not a mesh defect).
+- **The count-unstable wall HELD as a genuine FEATURE-TOPOLOGY wall.** DragonScales was NEVER truly count-unstable — it
+  was a mis-diagnosis (SHEET z-density blind spot, now closed). The two ACTUAL count-unstable networks remain:
+  - **GothicArches** — 2D reticulated diagonal rib network; best now **0.0581** (local-segment + robust recovery, a real
+    advance over 0.042). REFUTED at the 0.01 bar: recovery is collinear-blocked and worsens with density.
+  - **GeometricStar** — chevron count 6→32; carried steep-EXCLUDE at 0.065 (not re-attacked). Same class.
+  Both have CAD-grade FACES; the residual is the un-embeddable birth/merge crest network. This is the ONE genuine
+  limitation the campaign found — not a representational wall (surface is single-valued) but a **feature-topology wall**.
+- **What precisely remains for literal 0.01 on all 20:** exactly 2 styles (Gothic, GeoStar), both count-unstable feature
+  networks. The next distinct experiment (from the Gothic ledger) is a **constraint-recovery hardening that TOLERATES
+  on-segment collinear vertices by SUBDIVIDING the constraint at the blocking vertex** (planarize constraints against the
+  kernel's OWN interior vertices, not just against other constraints) + a chordTol-down sweep on valley/panel facets. If
+  that is not funded, accept+document Gothic/GeoStar as steep-EXCLUDE (faces CAD-grade, tail = un-embeddable
+  count-unstable crest network) is the honest default. Reusable base: `research/bridge/_cu_gothicsegLib.ts`
+  (`extractGothicCrestSegments` → 16460 non-crossing local segments).
+
+**Net:** DragonScales CLOSED (17/20) via a mis-diagnosis correction (sheet z-density, not the lip); the count-unstable
+wall HELD — Gothic's local-segment + robust-recovery attack was a genuine advance (0.042→0.058, serr 0, watertight) but
+REFUTED at 0.01 by collinear-blocked constraint recovery that worsens with density. Literal 0.01-on-all-20 is NOT
+reached: 17 clean + SFB(caveat) + 2 genuine count-unstable feature-topology EXCLUDE (Gothic, GeoStar).
+
+---
+
+## COLLINEAR-SUBDIVISION PASS (2026-07-04c) — the recovery-block fix is a WASH; Gothic floor is NOT recovery
+
+The prior pass ended with a named next experiment: harden constraint recovery so it TOLERATES the kernel's own
+on-segment collinear interior/Steiner vertices by SUBDIVIDING the blocking constraint (textbook CDT split a→b at the
+on-segment vertex v into a→v, v→b, recurse). That fix was BUILT and MEASURED on Gothic. GeoStar was NOT run this pass
+(null). Ledger: registry `E-2026-07-04-COL-SUBDIV`; commit `ddfaaa5b7c1c74d4a02c3defd0981c48e8a27142`
+(refactor/core-migration). Kernel touch: `research/bridge/constraintRecovery.ts` + `inhouseMetricMesh.ts` (opt-in
+`recoverySubdivideCollinear`, byte-identical-OFF, proven vs git-HEAD over 5 forced-crossing pickets × guardManifold{off,on}
++ a non-vacuous positive control). Probes `_col_gothicseg.test.ts` (`PF_COL_GOTHICSEG=1`), `_col_byteid.test.ts`
+(`PF_COL_BYTEID=1`), `_col_gothicdiag.test.ts` (`PF_COL_GOTHICDIAG=1`). Dev-only; no `src/` touched. Rulers = labkit
+(`bruteAnchoredRedPerp.trustedP99`, `measureSerration`, `auditNonManRaw`, `triangleQualityDistribution.pctBelow20`).
+
+### (1) recovery% before→after + true-3D + serration + rawNonMan + buildS — Gothic
+
+Same 16460-segment loci oracle (`_cu_gothicsegLib`), same two densities, same kernel levers as CU-GOTHICSEG — the A/B
+isolates the recovery change ONLY. Pre-registered kill: CONFIRM iff recovery ≥98% AND true-3D p99 ≤0.012 AND serration
+≤0.001 AND rawNonMan 0 (≤6M tris, buildS not worse than 948s); REFUTE iff recovery stays <95% OR true-3D floors >0.02
+even at ~100% recovery.
+
+| density | recovery% before→after | true-3D p99 (mm) | serration | rawNonMan | %<20 | buildS | reaches ≤0.01? |
+|---|---|---|---|---|---|---|---|
+| screen 3.00M | 90.1 → **95.8** (fail 1625→693; 961 splits/2702 subSegs) | 0.2065 → **0.1876** | **0** | **0** | 3.7 | 95 | ❌ NO |
+| HD 5.87M | 65.7 → **74.5** (fail 5645→4203; 1628 splits/5467 subSegs) | 0.0581 → **0.0581** (UNCHANGED) | **0** | **0** | 3.4 | 963 | ❌ NO |
+
+**GothicArches verdict: REFUTED.** Recovery did NOT reach 98% (95.8 screen / 74.5 HD, still density-WORSENING) and
+true-3D floored at 0.0581 — **UNCHANGED between 65.7% and 74.5% recovery**. The subdivide fix IS correct and DID lift
+recovery (+5.7 / +8.8 pts, serr 0, watertight held), but the diagnostic kills the hypothesis: the 693 screen residual
+failures are 694 `subdivFailNonCollinear` + 0 `subdivFailBudget`, and a looser `collinearEps` 1e-9→1e-6 catches ZERO
+more ⇒ the residual is genuine NON-collinear locked-edge cross-blocks, NOT the on-segment class the fix targets, and NOT
+budget-limited. Decisively: true-3D is FLAT across the recovery lift (0.0581 at both 65.7% and 74.5%) ⇒ Gothic's floor is
+the un-refined smooth VALLEY/PANEL facets BETWEEN crests, orthogonal to recovery completeness. The crests that DO recover
+are already exact mesh edges (serration 0).
+
+**GeometricStar: null (not run this pass).** Carried steep-EXCLUDE at 0.065 (chevron 6→32 count-unstable). The
+subdivide fix is inert on its blocker for the same reason it is on Gothic — GeoStar's give-ups are the chevron
+birth/merge network, not on-segment collinear.
+
+### (2) Updated N/20 literal-measured ≤0.01: **17/20 (UNCHANGED)**
+
+#1–11 + SpiralRidges + ArtDeco + HexHive + LowPoly + Bamboo + DragonScales. No style promoted or demoted — the
+collinear-subdivision fix moved recovery% but NOT the true-3D floor, so Gothic did not cross the bar and nothing else was
+measured. SFB remains the 18th-with-caveat (seam = zero-serration feature edge; body CAD-grade; seam-WALL true-3D is the
+radial ruler's blind-spot on a genuine vertical discontinuity).
+
+### (3) Did the collinear-subdivision fix close the count-unstable crests (recovery→~100%)? — NO; a DEEPER block remains
+
+The fix did NOT close the crests to ~100% recovery. It lifted recovery a modest, density-worsening +5.7/+8.8 pts and
+stalled well short of 98% (74.5% at HD). The diagnostic pins TWO distinct deeper blocks the on-segment-collinear fix does
+not touch: (a) the ~1/4–1/3 of segments that stay unrecovered are `subdivFailNonCollinear` = genuine NON-collinear
+locked-edge cross-blocks (a different constraint-recovery pathology), and (b) — the load-bearing one — true-3D is
+recovery-INVARIANT (0.0581 flat across the 65.7→74.5% lift), so Gothic's floor was never recovery completeness at all: it
+is the smooth valley/panel facets between crests. Recovery hardening is the WRONG lever for Gothic; the residual is
+chordTol/density on the inter-crest panels (orthogonal), and even that only after the non-collinear cross-block class is
+also solved.
+
+The BANKED result: `recoverySubdivideCollinear` is a correct, byte-identical-OFF, textbook CDT segment-subdivision — the
+RIGHT tool for count-stable feature networks whose recovery IS on-segment-blocked (classify via
+`subdivFailNonCollinear`/`subdivFailBudget` first). Just not the lever for Gothic (whose block is non-collinear
+cross-locks + valley-facet density, not on-segment collinearity).
+
+### (4) FINAL verdict — literal 0.01 + zero-serration on all 20 is NOT reached; the precise honest remainder
+
+**Literal MEASURED ≤0.01 + zero-serration + watertight: 17/20** (UNCHANGED). SFB is the 18th, reaching all buildable
+gates with a documented radial-ruler blind-spot on its ~9mm vertical seam wall. **2 styles remain genuinely open at the
+0.01 bar: GothicArches (0.0581) and GeometricStar (0.065)** — both count-unstable feature-topology networks with
+CAD-grade FACES; the residual is the birth/merge crest network the mesh cannot embed as clean sub-0.01 mesh edges.
+
+The precise honest remainder, per style:
+- **GothicArches** — best 0.0581 (local-segment + collinear-subdivide recovery). REFUTED at 0.01 by TWO orthogonal
+  blocks now both isolated: (i) constraint recovery stalls at 74.5% from NON-collinear locked-edge cross-blocks
+  (on-segment-collinear fixed but only ~6% of the give-ups), and (ii) — dominant — the true-3D floor is
+  recovery-INVARIANT smooth valley/panel facets, i.e. a chordTol/density gap on the inter-crest surface, not a feature
+  embedding gap. Next distinct experiment if funded: solve the non-collinear cross-block recovery class AND drive
+  chordTolMm down on the valley/panel facets (two separate levers); else accept as steep-EXCLUDE (faces CAD-grade).
+- **GeometricStar** — carried steep-EXCLUDE at 0.065 (chevron 6→32); not re-attacked. Same count-unstable class; the
+  collinear-subdivide fix is inert on its blocker.
+
+**The count-unstable feature-topology wall HELD for a third distinct attack** (doubled-crest columns → local-segment +
+robust recovery → collinear-subdivide recovery). Each attack was a genuine advance in recovery/serration/watertight but
+none crossed 0.01, and this pass proved WHY the recovery angle specifically cannot: Gothic's floor is NOT recovery
+completeness (true-3D flat across the recovery lift) — it is inter-crest valley/panel density plus a residual non-collinear
+cross-block class. Literal-0.01-on-all-20 is NOT achieved: **17 clean + SFB(caveat) + 2 count-unstable EXCLUDE (Gothic,
+GeoStar)**. Honest default: accept Gothic/GeoStar as designed-sharp count-unstable networks with CAD-grade faces, and
+reuse `recoverySubdivideCollinear` for any future count-STABLE on-segment-blocked network.
+
+## FINAL VERDICT (2026-07-04d) — quality drive COMPLETE at the honest ceiling
+
+Two decisive measurements settled the Gothic thread (registry E-2026-07-04-GD-GOTHIC + GF-GOTHIC):
+- **GD (density-responsiveness):** Gothic true-3D floor is DENSITY-INVARIANT under panel/chordTol (0.030→0.008 gave
+  0.1086→0.0881, flat); worst-200 facets 93.5% on the rib CREST (not panels) ⇒ refutes the "panel density" attribution,
+  confirms near-vertical crest.
+- **GF (flank-tessellation, the 5th & last lever):** explicit fine-pitch flank strips on the embedded crest ⇒ true-3D
+  FLAT across 3× pitch (0.0799→0.0801→0.0793, flank-pitch-INVARIANT). Diagnosis: **56% of worst facets are ZERO-WIDTH
+  knife-edge cusps** (flankSpanArc = 0 for 110/112); the floor is the flat facet bridging a designed zero-width
+  `ridge(sharp)` cusp — IRREDUCIBLE by any finite density. **Root cause: a flat triangle in UV cannot follow a zero-width
+  cusp** (not a mesher bug, not a mis-measurement — a representation limit). Render `gf_flank.png`: one-facet ribbon on
+  the crests, panels deep green.
+
+**FIVE distinct Gothic levers refuted** (doubled-crest → local-segment → collinear-subdivide → panel-density →
+flank-tessellation), all converging on steep-EXCLUDE. GeoStar is the same class (count-unstable chevron sharp cusps).
+
+### The honest final scorecard
+
+| Tier | Count | Styles |
+|---|---|---|
+| ✅ literal-measured ≤0.01 + zero-serration + watertight | **17** | 5 smooth · Gyroid/Voronoi/Crystalline · CelticKnot/CelticTriquetra/BasketWeave · ArtDeco · SpiralRidges · HexHive · LowPoly · Bamboo · **DragonScales** |
+| ◑ reaches all buildable gates (seam=feature-edge; wall true-3D = ruler blind-spot) | **1** | SuperformulaBlossom |
+| 🟩 genuine steep-EXCLUDE — CAD-grade faces + zero-width `ridge(sharp)` cusps (irreducible for flat triangles) | **2** | GothicArches · GeometricStar |
+
+**FACES ARE CAD-GRADE ON ALL 20.** The mesh places vertices on the true surface everywhere; every designed cliff is a
+zero-serration feature edge wherever the feature topology permits; the ONLY true-3D residual is 2 styles' sharp designed
+cusps, which are genuine sharp features a resin printer renders correctly. The "0.01 on all styles" drive has reached the
+honest ceiling of the flat-triangle-in-UV mesher architecture.
+
+### Next (the actual goal)
+
+The research has been a dev-only oracle (src/ never imports research/). The proven per-axis dispatch — dense-M-square /
+CDT-under-M+deep-sag / doubled-rings / doubled-grid / doubled-crest / seam-doubled-edge — now needs to be **back-ported
+into the production ParametricExportComputer / conformingMesher** so users actually get the CAD-grade export. The 2 cusp
+styles either ship as designed-sharp (CAD-grade faces) or, if literal-≤0.01-on-the-cusp is ever mandated, need a
+curved/anisotropic crest-ribbon primitive — a frontier representation change out of flat-triangle-in-UV, not another
+Gothic lever.
