@@ -97,7 +97,7 @@ Delaunay Hausdorff (2005) + MMG curved-mesh `hausd` adaptation.
 **LEDGER:** scorecard `research/exchange/_pf_race_crestribbon/scorecard.ndjson` (bench-main + emit-flatten) +
 `bench_detail.json` + `emit_detail.json` + `cusp_diag.json` (worst-PN per cusp) + `progress.log`. Probe
 `research/bridge/_pf_race_crestribbon.test.ts`; config `vitest.pf_race_ribbon.config.ts`. Env PF_RACE_RIBBON=1.
-Reuses labkit rulers + `_gd_gothic/extract.cache.json` READ-ONLY. NO src/ or kernel edit. Commit 9e4033e.
+Reuses labkit rulers + `_gd_gothic/extract.cache.json` READ-ONLY. NO src/ or kernel edit. Commits 9e4033e/d8a513c.
 
 ---
 
