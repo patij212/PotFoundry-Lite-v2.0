@@ -424,3 +424,108 @@ was proposed — it remains the untested candidate.
 **Net:** the doubled-crest primitive did NOT generalize — because it was not built. LowPoly + Gothic verdicts are null;
 the generalize set is empty. 14/20 measured ≤0.01 stands. The primitive remains UNTESTED and is the pre-registered next
 build.
+
+---
+
+## DOUBLED-CREST BUILD — EXECUTED + MEASURED (2026-07-03e, corrected)
+
+The 2026-07-03e section above ("build did not execute") is SUPERSEDED: the structured doubled-crest primitive was
+actually BUILT (`research/bridge/_doubledCrestLib.ts`, `buildDoubledCrestMesh` + `measureSerration`) and MEASURED on all
+6 targets. Ledger: registry sections `E-2026-07-04-DCREST` (LowPoly+Gothic prove), `E-2026-07-04-DCGS` (GeoStar),
+`E-2026-07-04-DCREST-BAMBOO`, `E-2026-07-04-DCREST-DRAGONSCALES`, `E-2026-07-04-DCREST-SFB`. Commits bf8f69e / 06f3620 /
+af2e540 / b1b74ae / 2b09620 (refactor/core-migration). Dev-only; no `src/` touched; `_doubledCrestLib.ts` reused
+verbatim across all 6. Rulers = labkit (`bruteAnchoredRedPerp.trustedP99`, `measureSerration`, `auditNonManRaw`,
+`triangleQualityDistribution.pctBelow20`).
+
+**Mechanism.** Per-row LOGICAL CREST SLOTS: track each feature crest/valley as a curve u_s(t) with a FIXED slot count
+(equal-count strips ⇒ watertight by construction), pin the crest as an explicit mesh-edge column (zero serration),
+surround it with a DOUBLED lip triple [u_s−lip, u_s, u_s+lip] + nFlank sub-columns, M-square smooth-fill the gaps.
+Generalizes doubled-rings (horizontal) + doubled-grid (axis-aligned) to arbitrary curves — for the count-STABLE
+monotone-in-t family ONLY.
+
+### (1) Did the primitive generalize? — NO. It REACHES on ONE style (LowPoly); REFUTED on the other 5.
+
+- **LowPolyFacet — REACHES (CONFIRMED).** true-3D p99 **0.0018**, serration **exactly 0** (41,256 crest samples),
+  %<20 **0.1**, rawNonMan **0**, count-stable 12c+12v across all 302 rows @11.3M tris. Render uniformly GREEN. The
+  flat-face / count-stable-trackable-curve family is where the primitive works, and it hits zero-serration ≤0.01 BY
+  CONSTRUCTION — the campaign's first literal zero-serration close on a designed-cliff style.
+- **GothicArches — REFUTED.** Per-row u-crest count UNSTABLE (recon flickers 0→12→36→24→48→60→72), true-3D p99 **1.74**
+  / MAX 49.4mm, %<20 **59.2**. Gothic is a 2D reticulated DIAGONAL-crossing network (ribs born at various t + diamond
+  lattice) — not representable as fixed vertical columns. (Gothic serrP99=0 is a measurement ARTIFACT: measureSerration
+  samples the mesh's OWN pinned columns, not the un-embedded true diagonal crests.)
+
+The primitive did NOT generalize: it is architecturally tied to the count-stable monotone-in-t u-crest family, which
+only LowPoly satisfies among the 6.
+
+### (2) The 6 targets — MEASURED under the doubled-crest primitive
+
+| target | true-3D p99 (mm) | serration (mm) | %<20 | rawNonMan | REACHES zero-serr ≤0.01? |
+|---|---|---|---|---|---|
+| **LowPolyFacet** | **0.0018** @11.3M | **0** (41,256 samples) | **0.1** | **0** | ✅ **YES** — count-stable u-crest, zero-serr by construction |
+| **GothicArches** | **1.74** (MAX 49.4) @12.2M | 0 (artifact*) | 59.2 | 0 | ❌ NO — unstable-count 2D diagonal network |
+| **GeometricStar** | **26.72** @9.96M | 0.0001 | 65.5 | 0 | ❌ NO — unstable-count chevron (6→8→16→32→…) collapsed half-ring facets |
+| **BambooSegments** | **0.0263** @13.96M | **0** | 7.1 | 0 | ❌ NO — HORIZONTAL node-ring cliff; column primitive is wrong axis (k≈0.38 ⇒ ~140M tris to reach) |
+| **DragonScales** | **15.52** @5.10M | 0.027 (max 0.101) | 48.2 | 0 | ❌ NO — staggered Z-RISER θ-field; unstable count 13→18, self-crossing pinned columns (maxEdge 99mm) |
+| **SuperformulaBlossom** | **28.10** @13.44M | **0** | 28.7 | 0 | ❌ NO — unstable count 6→10 + non-2π θ=0 seam radius jump; density-INVARIANT (35.6 coarser) |
+
+*Gothic/GeoStar/SFB serr≈0 is by-construction on the mesh's OWN pinned columns; it does NOT mean the DESIGNED crests are
+embedded (they are not — the count is unstable so the pinned columns are the wrong curves). DragonScales serr 0.027 ≠ 0
+⇒ even the by-construction zero-serration property FAILED there (collapsed self-crossing columns).
+
+### (3) Updated N/20 literal-measured ≤0.01: **15/20** (+LowPolyFacet)
+
+#1–11 + SpiralRidges + ArtDeco + HexagonalHive + **LowPolyFacet**. LowPoly moves from "steep-EXCLUDE (accept)" to a
+literal MEASURED close: true-3D p99 0.0018 with serration EXACTLY 0 and watertight — the doubled-crest primitive
+embedded its 12 designed convex-polygon edges as mesh-edge chains by construction, which is precisely the
+zero-serration-on-the-cliff the standard demands. This is the first designed-cliff style promoted to a literal close.
+
+### (4) Which of the 6 closed vs still-open + why
+
+**Closed: 1 of 6 — LowPolyFacet** (true-3D 0.0018, serration 0, watertight, %<20 0.1). Its 12 corner crests are C1
+dihedral kinks with a STABLE trackable slot count (12c+12v every row) ⇒ eligible for the fixed-column model, which then
+pins each designed edge as an explicit mesh edge = zero serration by construction.
+
+**Still-open: 5 of 6 — all REFUTED as doubled-crest-INELIGIBLE, for two distinct precondition violations:**
+
+- **Unstable-count families (route to their proven per-style path):**
+  - **GothicArches** — 2D reticulated diagonal-crossing NETWORK (count flickers wildly). Stays on CDT-under-M + deep sag
+    (E-CREASE-DENSITY-BREAKTHROUGH reached ~0.086 rib depth); PERP-GUARD already classified the residual steep-EXCLUDE.
+  - **GeometricStar** — chevron strap count 6→8→16→32 (vFade births/kills straps). Catastrophic 26.7mm from collapsed
+    half-ring facets. Stays on `analyticSurfaceGate.creaseStraddle` EXCLUDE + CAD-grade faces (0.0096; prior CERTIFIED 0.0066).
+  - **SuperformulaBlossom** — petal count 6→10 + genuine non-2π θ=0 seam radius discontinuity. Density-INVARIANT 28mm
+    (worse coarser) ⇒ structural. Needs a TARGETED seam-cliff embedding on the general (already-CAD 0.0033/0.0052 body) mesh,
+    NOT the whole-wall column mesher.
+- **Wrong-AXIS families (horizontal cliff, not u-crest):**
+  - **BambooSegments** — dominant relief is the HORIZONTAL node RING (t-extremum), which the u-column primitive never
+    doubles-edges (floors at 0.0263, k≈0.38 ⇒ ~140M tris infeasible). Correct primitive = doubled-RINGS (the ArtDeco 0.001
+    recipe applied to the t=k/5 node boundaries; predict ~0.013 riser-floor).
+  - **DragonScales** — Z-RISER staggered θ-field (C0 tread at t=m/8), not a θ-crest curve. Fixed-column theta model
+    degenerates 3 orders worse (15.52mm vs the plain doubled-rings 0.0136 floor). Accept on plain doubled-rings.
+
+### (5) Final verdict — NOT measured-complete; the primitive is a NARROW win, not the unifying lever
+
+- **Literal "0.01 + zero-serration on all 20": NOT MEASURED-COMPLETE.** Now **15/20** measured ≤0.01 with ~zero
+  serration + watertight (LowPoly is the new close). 5 remain above the bar under the literal standard.
+- **The doubled-crest primitive did NOT generalize.** It is a NARROW win for the count-stable monotone-in-t u-crest
+  family (LowPoly only among these 6). It REFUTED on 5/6 for two precondition violations now HARD-gated by cheap recon:
+  (a) **count-stability** (unstable ⇒ Gothic/GeoStar/SFB collapse), and (b) **dominant-feature-AXIS** (horizontal-cliff
+  ⇒ Bamboo/DragonScales are wrong-axis). Both are recon-cheap pre-gates (no mesh needed) that auto-route.
+- **What precisely remains (the 5 open, with the CORRECT lever each):**
+  1. **BambooSegments** → doubled-RINGS at node-ring t-boundaries (predict ~0.013 riser-floor; MED).
+  2. **DragonScales** → accept on plain doubled-rings (0.0136 density-invariant tread-lip, sub-print steep-EXCLUDE), or
+     a true-3D-perp lip-row refine if literal 0.01 mandated (LOW leverage — proven near-irreducible).
+  3. **GeometricStar** → accept on creaseStraddle EXCLUDE + CAD-grade faces (0.0096), designed C1 chevron cliff.
+  4. **GothicArches** → accept as steep-EXCLUDE (rib-crest, faces CAD-grade), or crest-EXCLUSION field if literal-0.01 mandated.
+  5. **SuperformulaBlossom** → targeted non-wrap θ=0 seam-cliff doubled edge + rung on the general (body-CAD) mesh; fix
+     the lossy CDT constraint recovery (73/200). The lone genuine builder-finish.
+- **Next lever:** the doubled-crest primitive is BANKED for the count-stable u-crest tier (LowPoly proven; test on any
+  future flat-face style). The unifying "one primitive closes all 6" hypothesis is REFUTED — the last 5 need
+  their per-family primitives (doubled-RINGS for horizontal cliffs, creaseStraddle EXCLUDE for unstable chevron networks,
+  a targeted seam-cliff for SFB). Highest-leverage single next build = **doubled-RINGS on BambooSegments** (a proven
+  primitive on a newly-correctly-classified style, predicted ~0.013) + the **SFB seam-cliff finish** (only watertight-clean
+  builder gap left).
+
+**Net (corrected):** the primitive generalized to exactly ONE of six (LowPoly REACHES 0.0018 / zero-serration; the other
+5 REFUTED — 3 unstable-count, 2 wrong-axis). N/20 rises to **15/20** literal-measured ≤0.01. The doubled-crest column
+model is a narrow count-stable-u-crest tool, NOT the whole-wall unifying lever the CONTAINED-WINS pass hoped for; the
+remaining 5 route to per-family primitives now cheaply pre-gated by (count-stability × dominant-axis) recon.
