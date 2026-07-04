@@ -1,0 +1,14 @@
+// vitest.pf_anatomy.config.ts — DEV-ONLY config for E-2026-07-04-PF-ANATOMY. dev-only.
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    globals: true,
+    environment: 'node',
+    include: ['research/bridge/_pf_anatomy.test.ts'],
+    testTimeout: 10_800_000,
+    hookTimeout: 600_000,
+    pool: 'forks',
+    forks: { singleFork: true, execArgv: ['--max-old-space-size=16384'] },
+  },
+});

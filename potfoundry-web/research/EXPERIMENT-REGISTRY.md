@@ -10,6 +10,37 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-04-PF-ANATOMY — INTERIOR-ruler outlier anatomy of the cusp styles (Gothic + GeoStar) — PRE-REGISTERED
+
+**Q (metrologist / measurement-first):** the prior Gothic diags anchored the facet CENTROID only. The exact object
+the campaign must count is a triangle whose 3 VERTICES lie on the surface but whose INTERIOR sags >0.01. Using a
+per-triangle INTERIOR true-3D ruler (max over centroid + 3 edge-midpoints, brute-anchored to remove GN wrong-well),
+on the CURRENT-BEST dumped meshes (Gothic `_gf_gothic/gf_flank`, GeoStar `_ct_gs/GeometricStar_conform_heatmap`):
+COUNT the outliers (interior dev >0.01), locate them (crest-cusp / flank-wall / junction / other), classify the
+underlying feature as a genuine C1 SINGULARITY (zero-width `ridge(sharp)` cusp — a flat facet interior can NEVER be
+≤0.01) vs a KINK vs a finite-curvature cap (via crest cross-section apex-angle + second-difference), census the
+births/merges, and deliver the DECISIVE (a) sharp-EDGE / (b) high-curvature / (c) near-vertical-WALL classification.
+
+**HYPOTHESIS (to falsify):** the interior outliers on both styles are dominated (≥50%) by C1-cusp/kink features ON a
+live crest apex (crest-cusp WHERE), i.e. the residual is a genuine designed sharp EDGE (decisive class (a)) — NOT a
+smooth high-curvature cap (b) NOR a merely near-vertical flat wall (c). If (a), the ONLY fix is resolving the feature
+GRAPH incl. junction nodes (make the cusp a mesh edge); density/curved-elements cannot help a zero-width apex.
+
+**KILL-CRITERION (pre-registered — this row committed BEFORE measuring):** the decisive class is (a) iff ≥50% of the
+sampled worst outliers are `where=crest-cusp` AND ≥50% are `singular∈{C1-cusp,kink}` with median apex-angle <172°.
+It is (c) iff ≥50% are `flank-wall` (near-vertical, NOT on a live apex, finite-curv apex). It is (b) iff ≥50% are
+finite-curv caps (apex-angle→180, bounded second-diff). REPORT the outlier count + fraction-of-mesh, the location
+split, the singularity split with apex-angle/second-diff numbers, and the junction census (nBirths/nMerges + the
+amplitude-vanishing smooth-vs-sharp birth split). Measure with the INTERIOR ruler (brute-anchored), the honest gate.
+
+**DISCRIMINATOR (cheapest):** operate on the ALREADY-BUILT current-best meshes (no re-meshing) with the fast labkit
+`perFaceTrue3DSag` stage-1 (recovered ut from xyz) + brute-anchor only the >0.006 candidates. Checkpoint each style
+the instant its scan finishes. Probe: `_pf_anatomy.test.ts` (PF_ANATOMY=1) + `_pf_anatomyLib.ts`.
+
+**VERDICT: PENDING (measuring).**
+
+---
+
 ## E-2026-07-04-GF-GOTHIC — explicit rib-FLANK strip tessellation (the LAST distinct Gothic lever) — PRE-REGISTERED
 
 **Q (FRONTIER, LAST LEVER):** GothicArches' ~0.088 true-3D floor is DENSITY-INVARIANT under panel/chordTol density
