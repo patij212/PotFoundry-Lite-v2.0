@@ -10,6 +10,22 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-04-PERFECT-MESHER-GOTHIC — END-TO-END assembly (FGJ junction graph + SURFNATIVE interior-criterion refine) on a REAL single-arch Gothic patch [PRE-REGISTERED]
+
+**Q:** Does the perfect-mesher kernel (blueprint `research/lab/2026-07-04-perfect-mesher-spec.md` §4), assembled END-TO-END on a REAL single-arch GothicArches patch (few bays × short z-band, ~0.3–0.8M tris, dims {H:120,Rb:40,Rt:50,expn:1}) — Morse ridge graph (FGJ) as protected no-bridge 1-complex + metric-Delaunay seed with graph LOCKED + SURFNATIVE interior-criterion arc-length-graded refine loop — reach 0 interior true-3D outliers while staying watertight + manifold across the junction network?
+
+**Kernel wiring (probe `_pf_perfect_gothic.test.ts`, PF_PERFECT=1):** (1) extract u+t Morse ridge graph over the patch → `planarizeConstraintGraph` → protected 1-complex incl. junction 0-cells; (2) seed CDT (cdt2d) with the graph LOCKED as constraint edges, no-bridge split (two flank facets meet at each crest edge); (3) INTERIOR-CRITERION refine loop: while a triangle's measured true-3D interior deviation >0.01, insert a surface-projected node placed by 3D ARC-LENGTH on the near-vertical flank, local cavity re-triangulate, recurse; (4) acceptance guard = ≥36-pt barycentric sampler on the worst-gradU population, full-azimuth `bruteNearestOnRadialSurface`, cap-hit leaves = outliers.
+
+**KILL-CRITERION (pre-registered BEFORE measuring):**
+- **CONFIRM** iff **0 triangles have interior true-3D >0.01** (≥36-pt sampler, worst-gradU population, full-azimuth brute) AND watertight (`auditNonManByIndex`=0 by index, non-vacuous control confirmed) AND manifold across the junction network, at ≤6M-equivalent density.
+- **REFUTE** iff any facet floors >0.02 after the interior loop terminates, OR the junction network can't be split non-manifold-free (residualCrossings>0 / fan gaps).
+- **NO-OP** iff it matches the `_cu_gothicseg` embedded-crest floor (0.058) within 10%.
+- ALSO REPORT (non-gating): tri-count + arc-length fat-tail leaf distribution (cost risk); minAngle/%<20 (known sliver regression — separate gate).
+
+**EVIDENCE + VERDICT:** appended on completion below.
+
+---
+
 ## E-2026-07-04-VERIFY-INTRINSIC-APEX — ADVERSARIAL re-check of the RACE-INTRINSIC-APEX reconcile CONFIRM (SKEPTIC/metrologist)
 
 **Q:** Does the RACE-INTRINSIC-APEX `reconcile` CONFIRM ("112/113 cusps 0-outlier, apex-leaf p99 0.0096, on-surface-Steiner flank recursion is the closer") survive (a) the WORST-cusp population the REFUTED sweeps used, and (b) an HONEST denser interior sampler?
