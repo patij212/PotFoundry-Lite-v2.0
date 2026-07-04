@@ -40,11 +40,75 @@ flat strip facet vs nRows (flank sub-rows). If crest→valley chord is huge but 
 strips WILL help (DragonScales analog) and I build the strip mesher. If it FLOORS above 0.02 even at fine pitch (a
 knife-edge cusp the flat facet cannot follow), strips CANNOT help ⇒ REFUTED without a 90-min build.
 
-**STATUS:** PRE-REGISTERED. Probes `research/bridge/_gf_gothic_recon.test.ts` (recon) + `_gf_gothic.test.ts`
-(strip mesher, built iff recon says responsive) + `_gf_gothic_render.test.ts`. Config `vitest.gf_gothic.config.ts`.
-Env PF_GF_GOTHIC=1. Dir `research/exchange/_gf_gothic/`; checkpoint `recon.ndjson` + `scorecard.ndjson` per row
-(resumable). Reuses labkit rulers + `_cu_gothicsegLib` (crest extraction, serration) READ-ONLY; reuses GD's cached
-extraction. NO src/ or kernel edit.
+**VERDICT: REFUTED — Gothic is DEFINITIVELY steep-EXCLUDE.** The explicit rib-flank strip lever does NOT close the
+true-3D floor; it FLOORS FLAT at ~0.080mm across a 3× flank-pitch tightening while %<20 REGRESSES 3.9→15.6%. The
+dominant worst facets are ZERO-WIDTH knife-edge rib-crest cusps a flat facet fundamentally cannot follow (a designed
+sharp feature, NOT a density gap). This is the LAST distinct Gothic lever and it is cleanly refuted.
+
+**EVIDENCE — RECON (the cheap discriminator, pure surface geom, `_gf_gothic_recon`, SECONDS):** on the steepest-400
+crests the u-flank crest→valley true-3D chord IS pitch-responsive in PRINCIPLE (0.968@N1 → 0.249@N4 → 0.0625@N8 →
+0.0187@N16; ratio→4.0 = curved-surface quadratic; crosses 0.012 at pitch ~0.126mm-arc, ~N20). t-flank falls slower
+(0.996@N1 → 0.0747@N16, needs ~N32). ⇒ the recon said "responsive, build it." IT WAS MISLEADING: it averaged over
+the steepest-400 including WIDE walls whose chord IS reducible; the RESIDUAL worst facets after chordSteiner are a
+DIFFERENT, irreducible sub-pitch-cusp population (see diag).
+
+**EVIDENCE — REAL-MESH FLANK-PITCH SWEEP (`_gf_gothic`, crest = zero-serration locked edge; flank rows injected as
+PINNED points, NOT constraint segments, so no crossing-constraint cost; brute-anchored true-3D `bruteAnchoredRedPerp`,
+sampleN 64; RAW-index nonMan; serration = crest→nearest MESH EDGE; ≤6M tris, generous fixed budget so no level hits
+budget):**
+| config | u-pitch (mm-arc) | t-pitch (mm-z) | flank pts (u/t) | tris | true-3D p99 | nRed | %<20 | serration | rawNonMan | recovery |
+|---|---|---|---|---|---|---|---|---|---|---|
+| GD baseline (no strips) | chordTol only | — | — | 4.30M | 0.0881 | 1876 | 3.4 | 0 | 0 | 71.4% |
+| P0 | 0.30 | 0.25 | 564 / 4116 | 4.06M | **0.0799** | 2232 | 3.9 | 0 | 0 | 74.2% |
+| P1 | 0.16 | 0.14 | 1292 / 11972 | 4.49M | **0.0801** | 2210 | 9.5 | 0 | 0 | 73.7% |
+| P2 | 0.10 | 0.09 | 1900 / 18684 | 4.97M | **0.0793** | 2214 | 15.6 | 0 | 0 | 73.7% |
+
+**⇒ true-3D FLAT 0.0799 → 0.0801 → 0.0793 across a 3× u-pitch tightening (flank-pitch-INVARIANT), while %<20
+regresses 3.9 → 9.5 → 15.6 (the dense flank points buy slivers, not fidelity).** serration stays 0 + rawNonMan 0
+throughout (the pinned-point design keeps the crest a mesh edge and never breaks watertightness — that part WORKED).
+gnOver=0 every row (brute AGREES with GN — real geometry, not a metric artifact). radialP99 already ~0.008 (the
+same-(u,t) chord is tiny — chordTol's steep-flank blindness confirmed) yet true-3D is 10× that. The pre-registered
+REFUTED condition (true-3D floors >0.02, flank-pitch-invariant) is MET.
+
+**EVIDENCE — DIAGNOSIS (the tiebreaker, `_gf_gothic_diag`, worst-200 red facets ranked by brute true-3D perp, each
+probed for local flank span + crest→valley chord + nearest pinned flank point):** worst-200 perp p50 0.0467 / max
+0.1387. Splits into TWO populations: **(1) KNIFE-EDGE 112/200 (56%)** — `flankSpanArc p50 = 0.0000` (110 of 112 have
+EXACTLY zero flank width — a designed zero-width `ridge(d,w,sharp)` cusp), gradU p50 43.5 mm/rad (near-vertical
+mullion/rib apex), crest→valley chord p50 0.098mm = the irreducible bridge sag; the nearest pinned flank point is
+12.5mm away and IRRELEVANT (a flat facet cannot place a vertex "on the flank" when the flank has zero width). **(2)
+NON-KNIFE 88/200 (44%)** — the arch-rib t-flanks (gradU p50 0.8, gradT-driven) that carry crest→valley chord p50
+0.086 near those cusps. **The decisive number: median worst-facet crest→valley bridge chord = 0.0908mm (p90 0.237) ≈
+the measured floor 0.080** ⇒ the floor IS the flat-facet bridge across the zero-width rib-crest cusp, irreducible by
+any finite flank pitch. Visual: `gf_flank.png` (true-3D heatmap of the u-pitch-0.10 mesh) — residual red localizes to
+the rib-crest knife-edges, panels green.
+
+**CLASS: steep-EXCLUDE (radial-overstated designed sharp cusp), same family as ArtDeco riser / GeometricStar
+strapwork / DragonScales rim.** GothicArches' rib crests are `ridge(t−archZ, w, sharp≥1)` + `colEdge`/`mullion`
+`pow(...,sharp)` — SHARP by construction (zero-width apex). radial chord "0.088–1.12" ≙ true-3D ~0.08 that is the flat
+facet bridging a zero-width cusp; it is NOT a density/under-tessellation gap and is NOT closable below ~0.02 by ANY
+in-UV structured tessellation (pinned flank strips, doubled crest, or chordTol). Contrast DragonScales, which LOOKED
+density-invariant but whose worst facets had FINITE-WIDTH sheet-z walls (closed by nZband) — Gothic's are ZERO-WIDTH.
+
+**RECOMMENDATION: ACCEPT + DOCUMENT — GothicArches is steep-EXCLUDE; STOP spending density budget on it.** All 4 prior
+passes + this one converge: the ~0.08 true-3D floor is genuine designed near-vertical zero-width rib-crest cusp
+geometry, radial-overstated, true-3D already sub-print-adjacent on the panels (crest = zero serration, watertight).
+The 3 remaining levers that could touch it are all EITHER refuted here (flank strips) OR known-refuted (doubled-crest
+count-unstable E-DCGS/E-DCREST-SFB; ridge-graph mis-chains E-CLOSE-THETA) OR out-of-representation (a
+crest-conforming ANISOTROPIC sliver along the knife-edge would need a non-flat/curved primitive — the only untried
+idea, but it changes the facet primitive, not a Gothic-specific tessellation). Fold into the class map:
+"GothicArches = steep-EXCLUDE (SETTLED, E-GF-GOTHIC): true-3D floor 0.08 = flat-facet bridge across zero-width
+`ridge(sharp)` crest cusp, flank-pitch-INVARIANT (P0-P2 flat 0.079-0.080), 56% of worst facets zero-width; NOT
+density, NOT closable in-UV; radial overstates; crest embeds zero-serration + watertight. The recon 'responsiveness'
+was a wide-wall average masking the sub-pitch-cusp residual." If a literal ≤0.01 on Gothic is ever mandated, the ONLY
+path is a curved/anisotropic crest-ribbon primitive (out of the flat-triangle-in-UV paradigm) — a FRONTIER
+representation change, not a lever.
+
+**LEDGER:** scorecard `research/exchange/_gf_gothic/scorecard.ndjson` (P0/P1/P2 + diag-P1-true3d) + `recon.ndjson`
+(uflank/tflank N1–N16) + `diag.ndjson` (worst-200 knife/non-knife summary) + `diag_worst200.json` (per-facet table) +
+render `gf_flank.png`. Probes `research/bridge/_gf_gothic_recon.test.ts` + `_gf_gothic.test.ts` + `_gf_gothic_diag.test.ts`
++ `_gf_gothic_render.test.ts`; lib `_gf_gothicFlankLib.ts` (flank-point generator). Config `vitest.gf_gothic.config.ts`.
+Env PF_GF_GOTHIC=1. Reuses labkit rulers + `_cu_gothicsegLib` + GD's cached extraction READ-ONLY. NO src/ or kernel
+edit. Commits cfb530e (pre-register) / 0db24a3 (probes).
 
 ---
 
