@@ -7,7 +7,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
-    include: ['research/bridge/_gf_gothic_recon.test.ts', 'research/bridge/_gf_gothic.test.ts', 'research/bridge/_gf_gothic_render.test.ts'],
+    include: ['research/bridge/_gf_gothic_recon.test.ts', 'research/bridge/_gf_gothic.test.ts', 'research/bridge/_gf_gothic_diag.test.ts', 'research/bridge/_gf_gothic_render.test.ts'],
     testTimeout: 7_200_000,
     hookTimeout: 600_000,
     pool: 'forks',
