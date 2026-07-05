@@ -4075,3 +4075,30 @@ config `vitest.pf_wholemesh.config.ts`; render `_pf_wholemesh_render.test.ts` + 
 Scorecard `research/exchange/_pf_perfect_gothic_wholemesh_smoke/{wholemesh.json,wholeguard.json,
 refine_passes.ndjson,gothic_wholemesh_true3d.png}`. Kernel/probe commit e1d3639, pre-reg dce21de. DEV-ONLY;
 no src/ edit.
+
+### FULL-DENSITY CORROBORATION (2026-07-05) — CONFIRM reproduced at 1024×120 brute, denser seed
+
+The background full run COMPLETED IN-WINDOW and REPRODUCES the CONFIRM at higher fidelity (2-bay, 8mm z-band,
+BG 0.14mm seed → 20068-tri seed, **1024×120 box-refined brute**, honest 45-pt whole-mesh guard over EVERY free
+facet):
+
+| gate | full-density | (smoke 512×120) |
+|---|---|---|
+| **wholeMeshOutliers** | **0** | 0 |
+| **wholeMeshMax** (mm) | **0.01000** | 0.00996 |
+| wholeGuard p50/p90/p99 | 0.00006 / 0.00585 / 0.00824 | 0.00454/0.00597/0.00927 |
+| worst-facet gradU (residual) | 45.2 (moderate; outlierGradU EMPTY) | 55.1 (empty) |
+| **watertight** (non-vac inj 0→1) | **0** ✓ | 0 ✓ |
+| converged / capped | true / false | true / false |
+| tris | 30,323 | 16,904 |
+| passes | 7 (4 bulk 7pt → 3 dense) | 7 (4→3) |
+| **slivers pctBelow20 / median** | **19.0% / 43°** | 63.3% / 8° |
+| top-400 A/B (gradU pop) | 0 out (213.9-244.0) | 0 out (217.8-239.5) |
+
+Full-density DENSE-phase trace REPRODUCES the artifact + fix EXACTLY: 7pt bulk pass-4 said "0 out / worst
+0.01000" → DENSE pass-5 REVEALED **32 residual outliers worst 0.216** → 8 (0.115) → **0 (0.01000)**. The
+moderate-gradU residuals are real at every fidelity; the dense driver closes them. Denser seed also HALVED
+slivers (63%→19%) — a bonus, still the open gate. Visual: `research/exchange/_pf_perfect_gothic_wholemesh/
+gothic_wholemesh_true3d.png` (whole patch GREEN, 0.00% >0.03). Refine wall time 3882s (well in-window).
+**Both fidelities independently reach literal 0 whole-mesh outliers ⇒ the CONFIRM is robust, not a
+brute-grid/seed artifact.**
