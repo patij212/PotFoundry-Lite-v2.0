@@ -37,6 +37,7 @@ export type {
   ConformingOuterWallResult,
 } from './ConformingOuterWall';
 export { buildConformingOuterWall } from './ConformingOuterWall';
+export { buildTierCOuterWall, isPerfectMesherEnabled } from './tierC';
 export type {
   ConformingWallOptions,
   ConformingWallResult,

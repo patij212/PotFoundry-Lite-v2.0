@@ -51,7 +51,7 @@ import {
 } from '../../fidelity/metrics';
 import { WELD_TOL_MM } from '../../fidelity/types';
 import {
-    buildConformingOuterWall,
+    buildTierCOuterWall,
     assembleWatertight,
     GpuSurfaceSampler,
     extractAnalyticFeatures,
@@ -2201,8 +2201,10 @@ export class ParametricExportComputer {
                 // 3. GPU-backed sampler (bilinear interp over the dense grid).
                 const sampler = new GpuSurfaceSampler(densePos, SAMP_RES_U, SAMP_RES_T);
 
-                // 4. Build the conforming outer wall in (u,t) space.
-                const ow = buildConformingOuterWall(sampler, {
+                // 4. Build the conforming outer wall in (u,t) space. Routed
+                // through the Tier-C entry: with __pfPerfectMesher unset
+                // (always, in production) this IS buildConformingOuterWall.
+                const ow = buildTierCOuterWall(sampler, {
                     maxSagMm: 0.1,
                     maxEdgeMm: 8,
                     minEdgeMm: 0.2,
