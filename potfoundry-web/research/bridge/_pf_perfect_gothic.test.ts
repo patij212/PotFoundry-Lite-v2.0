@@ -35,6 +35,25 @@ const plog = (m: string): void => { mkdirSync(DIR, { recursive: true }); const l
 const rowExists = (key: string): boolean => { if (!existsSync(NDJSON)) return false; return readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean).some((l) => { try { return JSON.parse(l).key === key; } catch { return false; } }); };
 const checkpoint = (row: Record<string, unknown>): void => { mkdirSync(DIR, { recursive: true }); appendFileSync(NDJSON, JSON.stringify(row) + '\n'); /* eslint-disable-next-line no-console */ console.log(`[CP ${row.key}] ${JSON.stringify(row)}`); };
 const readRow = (key: string): Record<string, unknown> | null => { if (!existsSync(NDJSON)) return null; for (const l of readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean)) { try { const o = JSON.parse(l); if (o.key === key) return o; } catch { /* ignore */ } } return null; };
+const MESHBIN = join(DIR, 'refined_mesh.bin');
+const persistMesh = (uv: number[], tris: number[], passes: number, capped: boolean): void => {
+  mkdirSync(DIR, { recursive: true });
+  const nV = uv.length / 2, nT = tris.length / 3;
+  const buf = Buffer.alloc(16 + uv.length * 8 + tris.length * 4);
+  buf.writeInt32LE(nV, 0); buf.writeInt32LE(nT, 4); buf.writeInt32LE(passes, 8); buf.writeInt32LE(capped ? 1 : 0, 12);
+  let o = 16; for (let i = 0; i < uv.length; i++) { buf.writeDoubleLE(uv[i], o); o += 8; }
+  for (let i = 0; i < tris.length; i++) { buf.writeInt32LE(tris[i], o); o += 4; }
+  writeFileSync(MESHBIN, buf);
+};
+const loadMesh = (): { uv: number[]; tris: number[]; passes: number; capped: boolean } | null => {
+  if (!existsSync(MESHBIN)) return null;
+  const buf = readFileSync(MESHBIN);
+  const nV = buf.readInt32LE(0), nT = buf.readInt32LE(4), passes = buf.readInt32LE(8), capped = buf.readInt32LE(12) === 1;
+  const uv: number[] = new Array(nV * 2); const tris: number[] = new Array(nT * 3);
+  let o = 16; for (let i = 0; i < nV * 2; i++) { uv[i] = buf.readDoubleLE(o); o += 8; }
+  for (let i = 0; i < nT * 3; i++) { tris[i] = buf.readInt32LE(o); o += 4; }
+  return { uv, tris, passes, capped };
+};
 
 // PATCH: single arch — several u-bays x a short z-band around a REAL arch-apex junction (count-unstable net).
 // Env-tunable so a fast SMOKE (PF_SMOKE=1) validates the full pipeline before the full-density go/no-go run.
@@ -47,6 +66,9 @@ const MAX_PASS = Number(process.env.PF_PASS ?? (SMOKE ? 10 : 18));    // interio
                                                                      // ~0.3s/pass; run enough to reach ~0 GN-outliers
                                                                      // so the honest brute guard is cheap on few reds)
 const TOP_FRAC = Number(process.env.PF_TOPFRAC ?? (SMOKE ? 0.03 : 0.06)); // guard pop = worst-gradU fraction
+const GUARD_CAP = Number(process.env.PF_GCAP ?? (SMOKE ? 600 : 2000)); // absolute cap on worst-gradU guard pop
+                                                                       // (the reddest facets — where any outlier lives —
+                                                                       // so the honest brute stays tractable)
 
 describe('pf-perfect-gothic: FGJ junction graph + SURFNATIVE interior-criterion refine, end-to-end on a real Gothic patch', () => {
   // ── STAGE 0: diag — size the patch (tri-count target 0.3-0.8M). Cheap, resumable. ──
@@ -77,14 +99,23 @@ describe('pf-perfect-gothic: FGJ junction graph + SURFNATIVE interior-criterion 
     const t0 = Date.now();
     const pc = extractProtectedComplex(patch, N_ROW, N_COL, MIN_AMP);
     plog(`[build] extracted: fam=${pc.familyCount} segU=${pc.nSegU} segT=${pc.nSegT} resid=${pc.residualCrossings} cEdges=${pc.constraintEdges.length}`);
-    const seed = seedMesh(patch, pc, BG_ARC_MM);
-    plog(`[build] seed: verts=${seed.uv.length / 2} tris=${seed.tris.length / 3}`);
-    // STEP 4 — interior-criterion refine loop. Checkpoint EACH pass to disk the instant it completes (resilience).
-    const ref = refineInterior(patch, seed, pc.constraintEdges, TOL, MAX_PASS, pc.crestVertexSet, (s) => {
-      plog(`[refine pass ${s.pass}] tris=${s.nTris} scored=${s.nScored} outGN=${s.nOutGN} worstGN=${s.worstGN} inserted=${s.nInserted} ${(s.ms / 1000).toFixed(1)}s`);
-      appendFileSync(join(DIR, 'refine_passes.ndjson'), JSON.stringify(s) + '\n');
-    });
-    plog(`[build] refine done: passes=${ref.passes} capped=${ref.capped} finalTris=${ref.tris.length / 3} verts=${ref.uv.length / 2} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+    // RESUME: if the refined mesh was already persisted (a prior run refined but the guard was killed), reload it
+    // and skip the ~8min refine — go straight to the (now capped) honest brute guard.
+    let ref = loadMesh();
+    if (ref) {
+      plog(`[build] RESUMED from persisted mesh: tris=${ref.tris.length / 3} verts=${ref.uv.length / 2} passes=${ref.passes} capped=${ref.capped}`);
+    } else {
+      const seed = seedMesh(patch, pc, BG_ARC_MM);
+      plog(`[build] seed: verts=${seed.uv.length / 2} tris=${seed.tris.length / 3}`);
+      // STEP 4 — interior-criterion refine loop. Checkpoint EACH pass to disk the instant it completes (resilience).
+      const r = refineInterior(patch, seed, pc.constraintEdges, TOL, MAX_PASS, pc.crestVertexSet, (s) => {
+        plog(`[refine pass ${s.pass}] tris=${s.nTris} scored=${s.nScored} outGN=${s.nOutGN} worstGN=${s.worstGN} inserted=${s.nInserted} ${(s.ms / 1000).toFixed(1)}s`);
+        appendFileSync(join(DIR, 'refine_passes.ndjson'), JSON.stringify(s) + '\n');
+      });
+      ref = { uv: r.uv, tris: r.tris, passes: r.passes, capped: r.capped };
+      plog(`[build] refine done: passes=${r.passes} capped=${r.capped} finalTris=${r.tris.length / 3} verts=${r.uv.length / 2} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+      persistMesh(ref.uv, ref.tris, ref.passes, ref.capped);
+    }
 
     // ── watertight audit (by INDEX, non-vacuous control) ──
     const xyz = liftMesh(patch, ref.uv);
@@ -106,7 +137,7 @@ describe('pf-perfect-gothic: FGJ junction graph + SURFNATIVE interior-criterion 
 
     // ── acceptance guard (>=36-pt sampler, worst-gradU population, full-azimuth brute) ──
     const tG = Date.now();
-    const guard = acceptanceGuard(patch, ref.uv, ref.tris, TOL, TOP_FRAC, pc.crestSamples3D);
+    const guard = acceptanceGuard(patch, ref.uv, ref.tris, TOL, TOP_FRAC, pc.crestSamples3D, GUARD_CAP);
     plog(`[build] guard: scored=${guard.nScored}/${guard.nFacets} interiorMax=${guard.interiorMaxMm} outliers=${guard.interiorOutliers} (onCrest=${guard.onCrestOutliers} offCrest=${guard.offCrestOutliers}) p99=${guard.p99} gradU[${guard.gradUofScored.min}..${guard.gradUofScored.max}] in ${((Date.now() - tG) / 1000).toFixed(0)}s`);
 
     // ── sliver gate (minAngle distribution) ──

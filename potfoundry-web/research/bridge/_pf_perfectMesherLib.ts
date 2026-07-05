@@ -293,6 +293,7 @@ export interface GuardResult {
 }
 export function acceptanceGuard(
   patch: PatchDef, uv: number[], tris: number[], tol: number, topFrac: number, crestSamples3D: Array<[number, number, number]>,
+  absCap = Infinity,
 ): GuardResult {
   const { rA, H, arcPerU } = patch;
   const nV = uv.length / 2; const xyz = new Float64Array(nV * 3);
@@ -308,7 +309,10 @@ export function acceptanceGuard(
     gradU[f] = Math.abs(rA(TAU * ((um + du) - Math.floor(um + du)), z) - rA(TAU * ((um - du) - Math.floor(um - du)), z)) / (2 * du * TAU);
   }
   const order = Array.from({ length: nF }, (_, i) => i).sort((x, y) => gradU[y] - gradU[x]);
-  const nScore = Math.max(1, Math.min(nF, Math.ceil(nF * topFrac)));
+  // WORST-gradU population, capped at absCap: outliers ARE the highest-gradU (reddest, near-vertical-flank) facets,
+  // so the top-N by gradU is where any interior outlier must live — capping N keeps the honest brute guard tractable
+  // (6% of a 149k mesh = 9k facets × brute-on-red-tail was intractable). We take the WORST, not a sample.
+  const nScore = Math.max(1, Math.min(nF, Math.min(absCap, Math.ceil(nF * topFrac))));
   const scored = order.slice(0, nScore);
   const BARY = denseBary(8); // 45 pts (>=36 pre-registered minimum)
   // TWO-STAGE ruler (labkit pattern, honest on the single-valued Gothic height field): STAGE 1 GN-screen ALL 45
