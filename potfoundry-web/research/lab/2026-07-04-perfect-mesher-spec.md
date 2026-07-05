@@ -632,3 +632,106 @@ Trust only these measured numbers (registry E-2026-07-05-PERFECT-MESHER-RELAX, c
 Scorecard `research/exchange/_pf_perfect_gothic_relax/` {before,after,graded}.json + scorecard/after_sweeps/
 graded_passes ndjson + *_mesh.bin. Probe `_pf_perfect_gothic_relax.test.ts` (PF_RELAX=1 / PF_GRADED=1); lib
 `_pf_relaxLib.ts`; config `vitest.pf_relax.config.ts`. DEV-ONLY; no src/ edit.
+
+---
+
+## VALIDATION 4 — SLIVER CLOSE (2026-07-05) — PI SYNTHESIS
+
+This is the PI roll-up of the sliver-close arm (the E-RELAX experiment above) into the DEFINITIVE
+perfect-mesher state + the productionization go/no-go. Trust ONLY the measured numbers already banked in the
+sections above and the registry; nothing new was run here — this section adjudicates.
+
+### (1) Did Laplacian-under-M relaxation + smoother grading CLOSE slivers (holding 0-outlier + watertight)?
+
+**NO on Gothic (measured, multi-bay); NOT RUN on GeoStar.** Both pre-registered levers HELD the fidelity and
+watertight gates but did NOT close slivers.
+
+Gothic 4-bay, before→after (from the E-RELAX table above):
+
+| lever | tris | interiorOutliers (true-3D >0.01) | interiorMax mm | minAngle° before→after | pctBelow20 before→after | watertight |
+|---|---|---|---|---|---|---|
+| Lever#1 smooth GRADED seed + M-square | 67256 | 0 (HELD) | 0.006 (HELD) | 0 → **0** | 56.2% → **56.5%** | 0 nonVac ✓ (inj 0→1) |
+| Lever#2 Laplacian-under-M relax (3 sweeps) | 58365 | 0 (HELD) | 0.006 (HELD) | 0 → **0.6** | 56.2% → **55.0%** (median 16→17°) | 0 nonVac ✓ (inj 0→1) |
+
+Pre-registered CONFIRM (pctBelow20 → single digits AND minAngle sane) is UNMET on both arms ⇒ **REFUTE**.
+Neither lever reopened an outlier (the fidelity guard held throughout) — the two gates are NOT in destructive
+tension via these levers, but they ALSO do not co-resolve. GeoStar was NOT run under either lever (no
+`_pf_perfect_geostar_relax` probe exists) ⇒ GeoStar's sliver state is still the VALIDATION-2 edge-mode figure
+(pctBelow20 21.3%, minAngle 0), and any "both styles closed" claim is UNMEASURED.
+
+**Sliver levers now REFUTED (5): Lawson flips (V2-§3b), M-square insertion spacing (V3), smooth graded seed,
+Laplacian-under-M relaxation (V4), and — implied by all four — every DENSITY / PLACEMENT / CONNECTIVITY-only
+move on the current flat-P1 point set.** The measured root cause is a STRUCTURAL fidelity-vs-min-angle tension
+at the near-vertical crest flank: a near-equilateral cell there must chord across the concave cusp (forbidden
+by the fidelity guard), so the fidelity-holding cells are FORCED long-along-crest needles. This is a
+representation/element property, not a placement bug.
+
+### (2) DEFINITIVE PERFECT-MESHER GATE TABLE (measured status per gate)
+
+| Gate | Measured status | Best measured numbers | Scope proven | Source |
+|---|---|---|---|---|
+| **0-outlier fidelity** (interior true-3D ≤0.01, honest full-azimuth brute) | **PROVEN** (flat-P1, usedPnAtApex=FALSE) | Gothic 4-bay outliers=0 max 0.006mm converged; GeoStar 1-bay outliers=0 max 0.006mm converged | whole-PATCH, BOTH count-unstable styles | V2 §1/§2, V3 §1 |
+| **Watertight / manifold** (auditNonManByIndex by index, non-vacuous) | **PROVEN** | =0 non-vacuous (inject crack 0→1) throughout; residualCrossings=0, 100% recovery, manifold across FGJ junction net | whole-PATCH, both styles, Gothic 4-bay | V2/V3/V4 |
+| **Cost < 6M budget** | **PROVEN (partial)** | Gothic 4-bay 58,365 tris → projectedFullMeshTris 1,050,570 < 6M (5.7× headroom) | 4-bay projection only; full z-height UNMEASURED | V3 §2 |
+| **Multi-bay** | **PROVEN (Gothic only)** | Gothic 4-bay fidelity+watertight+cost all HELD | Gothic 4-bay; GeoStar multi-bay UNMEASURED | V3 |
+| **Both count-unstable styles** (fidelity) | **PROVEN** | Gothic (zero-width apex) + GeoStar (finite-width chevron 0→7→16→32→8 oscillation) both outliers=0 | 1-bay GeoStar / 4-bay Gothic | V2 §2, V3 §1 |
+| **Slivers** (minAngle, pctBelow20) | **OPEN — the ONE blocking gate** | Gothic best 56.2% <20° minAngle 0 (down from 81.4%); GeoStar 21.3% minAngle 0. 5 levers refuted | — | V2 §3b, V3, V4 |
+| **Tier-A/B byte-identical** (zero-regression) | **REFUTED as implemented** (design claim, not measured) | seedMesh uniform grid ≠ adaptive buildInhouseMetricMesh (hash mismatch both styles) — needs explicit delegation (INTEGRATION) | — | V2 §3a |
+| **Full-mesh scale** (>4 bay / full z-height) | **UNMEASURED** | 5-bay edge-mode killed the window; 4-bay M-square is the only converged multi-bay | — | V2 §4, V3 |
+| **20-style whole-mesh re-baseline** | **NOT RUN** | — | — | all |
+
+### (3) IS THE PERFECT MESHER FULLY PROVEN WHOLE-PATCH? — and what EXACTLY remains
+
+**The perfect mesher is FIDELITY-PROVEN + WATERTIGHT-PROVEN + COST-CLEARED whole-PATCH on both count-unstable
+styles by a FLAT-P1 element (no curved element needed) — the campaign's deepest fidelity result. It is NOT
+print-usable and NOT whole-MESH proven. EXACTLY ONE gate blocks print-usability: SLIVERS.**
+
+The representation question ("can a flat-P1 mesh follow the zero-width `ridge(sharp)` apex on a count-unstable
+network to CAD-grade true-3D") is definitively answered YES. The remaining opens are, in order:
+
+1. **SLIVERS (the single blocker).** Density/placement/connectivity are EXHAUSTED (5 levers refuted). The
+   measured tension is structural at the crest flank. Only two moves remain, both PRIMITIVE-level, NOT more
+   density: (a) **re-measure min-angle UNDER M=g/h²** — the long-along-crest cells may be
+   anisotropy-appropriate (the surface is near-flat ALONG the crest); if they vanish under the metric where the
+   flank is isotropic, this is an ACCEPT+DOCUMENT close, not a defect (CHEAPEST discriminator — run FIRST);
+   (b) else a **curved/one-sided PN element AT the crest flank** (E-CRESTRIBBON graft — benched-but-unnecessary
+   for FIDELITY, may be necessary for QUALITY). Both on Gothic AND GeoStar.
+2. **Byte-identical Tier-A/B delegation** (INTEGRATION, not topology): wire closer-off to
+   `buildInhouseMetricMesh`, byte-audit.
+3. **Full whole-MESH scale** (>4 bay / full z) + GeoStar multi-bay + the 20-style re-baseline (the final gate).
+
+### (4) PRODUCTIONIZATION GO/NO-GO + BACK-PORT PLAN
+
+**GO/NO-GO: NO-GO to ship; GO to STAGE the back-port behind a default-off flag.** The sliver gate BLOCKS a
+production flag-flip (56.2% <20° on Gothic would degrade printability). But the fidelity + topology half is
+proven and stable enough to begin the flag-gated integration in parallel with closing slivers — nothing ships
+until slivers close (via the §(3)-1 discriminator) AND the 20-style re-baseline passes.
+
+Back-port plan (dev-only until the two gates close; GitNexus `impact({direction:'upstream'})` before ANY src/
+edit, `detect_changes()` before commit, warn on HIGH/CRITICAL, byte-identical when the flag is off):
+
+1. **Closer-OFF delegation (fixes V2-§3a):** wire the flag-off path to delegate to `buildInhouseMetricMesh`
+   (adaptive M=g/h² mesh), NOT the style-blind uniform seedMesh. Byte-audit (hash-match) across ALL Tier-A/B
+   styles. This is the actual zero-regression guarantee — currently UNIMPLEMENTED. Integration wiring, not
+   topology.
+2. **Tier-C protected-complex builder (the 6 primitives = restriction):** port the topology half VERBATIM —
+   FGJ Morse graph (all ridge families) → `planarizeMM` (mm-space crossing/T-junction split → residualCrossings=0)
+   → no-bridge locked-constraint CDT seed. Proven style-agnostic + count-agnostic. The feature-graph closer is
+   the Tier-C dispatch selector; the 6 proven primitives are this kernel's count-stable / empty-or-single-family
+   restriction (§4 dispatch table).
+3. **Tier-C fidelity loop:** port the honest full-azimuth brute STOP-driver + edge/M-square interior refine,
+   fired ONLY on count-unstable/high-relief protected-complex styles (Gothic, GeoStar) so Tier-A/B stays on the
+   byte-identical adaptive M-mesh (empty protected complex ⇒ no Tier-C code path ⇒ byte-identical delegation
+   off-feature).
+4. **BLOCK on the sliver gate:** do NOT ship until §(3)-1 closes slivers while holding 0-outlier fidelity on
+   both styles (or the M-metric ACCEPT+DOCUMENT close is proven).
+5. **Final gate before flag-flip:** full whole-MESH (>4 bay / full z) + tri-count-vs-6M cost gate + the full
+   20-style whole-mesh re-baseline (Tier-A/B byte-identical, Tier-C 0-outlier). 4-bay 1.05M<6M is an encouraging
+   first data point, not the whole-mesh proof.
+
+**LEDGER:** this file §VALIDATION 4 (PI SYNTHESIS). Underlying: E-2026-07-05-PERFECT-MESHER-RELAX (commit
+01d9535, pre-reg a29e1a4); E-2026-07-05-PERFECT-MESHER-MSQUARE (7812fc8); E-2026-07-05-PERFECT-MESHER-GOTHIC-BRUTE
+(0a95b99); E-2026-07-05-PERFECT-MESHER-GEOSTAR (01f56c2); E-2026-07-05-PERFECT-MESHER-TIERAB-SLIVERS (05751ad).
+DEV-ONLY; no src/ edit; exchange scorecards gitignored, numbers inlined. Reusable: `gradedSeed` +
+`relaxLaplacianUnderM` (guarded, LOCK-clean, hold 0 outliers), the FGJ→planarizeMM→no-bridge-CDT topology half,
+and the honest full-azimuth brute STOP-driver.
