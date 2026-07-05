@@ -485,3 +485,109 @@ default-off flag, byte-identical when off, GitNexus impact-checked before any sr
 registry entries: E-2026-07-05-PERFECT-MESHER-GOTHIC-BRUTE (0a95b99), E-2026-07-05-PERFECT-MESHER-GEOSTAR
 (01f56c2), E-2026-07-05-PERFECT-MESHER-TIERAB-SLIVERS (05751ad). DEV-ONLY; no src/ edit; research/exchange
 scorecards gitignored (numbers inlined above and in the registry).
+
+---
+
+## VALIDATION 3 — QUALITY + SCALE (2026-07-05)
+
+The §(5) single-next-experiment RAN on Gothic: replace the unconditioned 1→4 edge-mode red-refine with
+**M=g/h² square refine-time spacing** (metric row-pitch dt=hF/st along-crest companion + locked-crest-edge
+subdivision + RED 1→4), honest full-azimuth brute STOP driver reused VERBATIM from the CONFIRMED kernel.
+Trust ONLY these measured numbers (`research/exchange/_pf_perfect_gothic_msquare/{before,after}.json`,
+`after_passes.ndjson`; registry E-2026-07-05-PERFECT-MESHER-MSQUARE, commit 7812fc8, pre-reg c6e4fec).
+
+### (1) Did M-square spacing close slivers while HOLDING 0 outliers? — Gothic YES-fidelity / NO-slivers (REFUTE); GeoStar NOT RUN
+
+Gothic multi-bay (**4 bays**, patch zBand=8, before = the CONFIRMED edge-mode 1-bay mesh reloaded, refined under M-square):
+
+| gate | before (edge-arclen) | after (M-square, 6 passes) | verdict |
+|---|---|---|---|
+| interiorOutliers (true-3D >0.01) | 0 | **0** | HELD ✓ |
+| interiorMax (mm) | 0.006 | **0.006** (guardP99 0.00599) | HELD ✓ |
+| converged (brute STOP) | — | **true** (worstBrute 0.270→0.260→0.235→0.022→0.131→0.006 over 6 passes; capped=false) | ✓ |
+| watertight auditNonManByIndex | 0 (nonVac, inj 0→1) | **0** (nonVac, inj 0→1) | HELD ✓ |
+| **minAngleDeg** | 0 | **0** | **FAIL** ✗ |
+| **pctBelow20** | 81.4% | **56.2%** (median minAngle 3°→16°) | **FAIL** (real −25.2pt, but 56% ≫ single-digit target) ✗ |
+
+- **Fidelity + watertight HELD** — the pre-registered REFUTE-by-outlier-REOPENING branch is AVOIDED: 0-outlier
+  CAD-grade true-3D and squarer cells CO-EXIST. The two gates are NOT in hard tension (unlike the a-posteriori
+  Lawson flips of VALIDATION-2 §3b, which REOPENED 0→57). M-square is a genuine PARTIAL sliver reducer.
+- **Sliver CONFIRM UNMET → REFUTE.** pct<20 dropped a real 25pt but minAngle is still **0°** and 56.2% ≫ the
+  single-digit CONFIRM bar. M=g/h² refine-time spacing is a partial reducer, NOT a closer, for the Gothic
+  zero-width apex.
+- **ROOT CAUSE (diag):** worst slivers are NOT the apex — worst-20 minAngle facets mean gradU=43.8 (moderate),
+  37.6% of <20° facets sit on the LOW-gradU smooth panel ⇒ dense↔coarse GRADING-TRANSITION needles, and RED 1→4
+  PRESERVES parent needle shape. The residual lever is graded-seed + surface-preserving Laplacian-under-M
+  relaxation (move free verts to metric-equilateral, re-project on-surface, REJECT if it reopens an outlier),
+  NOT more insertion spacing (this arm) nor a-posteriori flips (already refuted V2-§3b).
+- **GeoStar M-square: NOT RUN.** No `_pf_perfect_geostar_msquare` probe/result exists (grep + exchange dir
+  verified). GeoStar's sliver state remains the VALIDATION-2 edge-mode figure (pctBelow20 21.3%, minAngle 0,
+  density-invariant). The "both styles" claim for the sliver close is therefore UNMEASURED on GeoStar and
+  cannot be inferred — do not claim it.
+
+### (2) Tri-count / projected full-mesh cost vs 6M budget
+
+- **Gothic 4-bay M-square: tris = 58,365** (trisPerBay 14,591), refine 6 passes, capped=FALSE.
+- **projectedFullMeshTris = 1,050,570 (< 6M budget → PASS).** This is the FIRST measured multi-bay whole-patch
+  tri-count and it clears the cost gate with 5.7× headroom. (Supersedes the VALIDATION-2 "5-bay edge-mode killed
+  the window / UNMEASURED" caveat — M-square 4-bay converged in-window at 1542s wall.)
+- Cost caveat: the interior-refine node budget is fat early (pass1+2 insert 8771+20745 flank nodes; worst
+  0.270→0.260 barely moving) before the sharp convergence tail (pass3–6 collapse 1119→34→6→0). ~4.4 nodes per
+  outlier resolved. Still tractable at 4 bays; a per-outlier node-budget cut (drop companions OR anisotropic RED
+  splitting ONLY the across-crest edge) is advisable before pushing to full 20+ bay whole-mesh.
+
+### (3) DEFINITIVE state of the perfect mesher — 0-outlier + watertight, whole-PATCH, both styles; sliver gate OPEN; whole-MESH still unmeasured
+
+Partitioned by GATE (measured, not inferred):
+
+- **FIDELITY (0-outlier true-3D ≤0.01) — PROVEN whole-PATCH, flat-P1, both count-unstable styles.** Gothic
+  (zero-width apex; 1-bay edge-mode V2 AND now **4-bay M-square**) and GeoStar (finite-width chevron; 1-bay
+  edge-mode V2) all reach interiorOutliers=0, max 0.006mm, converged under the honest brute. usedPnAtApex=FALSE
+  throughout — flat-P1 suffices. This is the campaign's deepest fidelity result and it is now shown to HOLD
+  through a multi-bay M-square refine.
+- **WATERTIGHT / MANIFOLD — PROVEN whole-PATCH, both styles, multi-bay** (auditNonManByIndex=0 non-vacuous,
+  residualCrossings=0, 100% recovery; Gothic verified at 4 bays).
+- **SLIVER — OPEN (the ONE gate blocking print-usability).** Gothic best measured = 56.2% <20°, minAngle 0
+  (M-square, down from 81.4% but not closed); GeoStar 21.3%, minAngle 0 (edge-mode, M-square untested).
+  Density-invariant. NOT closable by a-posteriori flips (V2-§3b) NOR by M-square insertion spacing alone (this).
+  Next lever = graded-seed + surface-preserving Laplacian-under-M vertex relaxation with an outlier-reopening
+  reject guard.
+- **TIER-A/B byte-identical (zero-regression) — REFUTED as implemented** (V2-§3a): the uniform-grid seedMesh is
+  a DIFFERENT generator from the adaptive `buildInhouseMetricMesh`; delegation is an INTEGRATION task.
+- **SCALE — PARTIALLY closed.** 4-bay whole-patch tri-count + cost-vs-6M now MEASURED (1.05M < 6M). Still
+  UNMEASURED: full multi-bay whole-MESH (>4 bays / full z-height), the 20-style Tier-A/B re-baseline, and the
+  M-square arm on GeoStar.
+
+**Is the perfect mesher 0-outlier + quality-clean + watertight whole-patch on both count-unstable styles?**
+NO — it is **0-outlier + watertight whole-patch on both** (Gothic multi-bay, GeoStar 1-bay) but NOT
+quality-clean on either (slivers open). What EXACTLY remains before productionization: (i) close slivers while
+holding 0-outlier (metric-aware relaxation, on Gothic AND GeoStar); (ii) the byte-identical M-mesh delegation
+(V2-§3a); (iii) the full 20-style re-baseline; (iv) full whole-MESH scale + GeoStar M-square.
+
+### (4) Productionization plan — back-port the kernel into ParametricExportComputer/conformingMesher
+
+Gated behind a default-off flag, byte-identical when off, GitNexus impact-checked before any src/ edit
+(`impact({target, direction:'upstream'})` on the touched export symbol; `detect_changes()` before commit).
+The 6 proven primitives are this kernel's count-stable / empty-or-single-family restriction (§4 dispatch table).
+
+1. **Closer-off delegation (fixes the V2-§3a refute) —** wire the flag-off path to delegate to
+   `buildInhouseMetricMesh` (the adaptive M=g/h² mesh), NOT the style-blind uniform seedMesh. Byte-audit the
+   delegation across all Tier-A/B styles (hash-match). This is what actually delivers the zero-regression
+   guarantee; it is an integration wiring, not a topology change.
+2. **Tier-C protected-complex builder —** port the topology half VERBATIM: FGJ Morse graph (all ridge families)
+   → `planarizeMM` (mm-space crossing/T-junction split → residualCrossings=0) → no-bridge locked-constraint CDT
+   seed. Proven style-agnostic + count-agnostic (Gothic 96-birth net AND GeoStar 0→7→16→32→8 oscillation both
+   clean). Feature-graph closer = the Tier-C dispatch selector.
+3. **Tier-C fidelity loop —** port the honest full-azimuth brute STOP-driver + edge/M-square interior refine,
+   fired ONLY on the count-unstable/high-relief protected-complex styles (Gothic, GeoStar) so Tier-A/B stays on
+   the byte-identical adaptive M-mesh (empty protected complex ⇒ no Tier-C code path).
+4. **BLOCK on the sliver gate —** do NOT ship the current sliver-dirty apex refine (56.2% <20° on Gothic would
+   degrade printability). Ship only after the metric-aware relaxation experiment closes slivers while holding
+   0-outlier fidelity, on both styles.
+5. **Final go/no-go —** full whole-MESH (>4 bay / full z) + tri-count-vs-6M cost gate + 20-style re-baseline
+   before flag-flip. 4-bay 1.05M<6M is an encouraging first data point, not the whole-mesh proof.
+
+**LEDGER:** this file §VALIDATION 3. Registry: E-2026-07-05-PERFECT-MESHER-MSQUARE (commit 7812fc8, pre-reg
+c6e4fec). Scorecard: `research/exchange/_pf_perfect_gothic_msquare/` {before.json, after.json,
+after_passes.ndjson, progress.log, after_mesh.bin}. Probe `_pf_perfect_gothic_msquare.test.ts`
+(PF_MSQUARE=1); diag `_pf_msq_diag.test.ts`; render `_pf_msq_render.test.ts`. DEV-ONLY; no src/ edit.
