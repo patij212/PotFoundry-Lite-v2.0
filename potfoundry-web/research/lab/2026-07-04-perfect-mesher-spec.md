@@ -984,3 +984,130 @@ for QUALITY. Either way the direct strip is the correct STRUCTURED substrate to 
 **BANKED reusable:** `buildDirectCrestStrip` (cdt2d-free, watertight, zeroArea=0 structured crest-strip mesher);
 `_pf_direct_gnguard` (fast exact-on-single-valued whole-mesh outlier count); `_pf_direct_svg`/`_slivdiag` (needle
 localization). **LEDGER:** registry E-2026-07-05-CRESTSTRIP-DIRECT (e0ff73c + 3648af2). DEV-ONLY; no src/ edit.
+
+---
+
+## VALIDATION 7 — LITERAL PERFECTION (PI SYNTHESIS, 2026-07-05)
+
+This is the honest whole-mesh consolidation of the two GATE-1 (fidelity-to-literal-0) results and the two GATE-2
+(sliver) refutations. **The load-bearing correction over ALL prior "0 outliers" claims in this document: every
+0-outlier number BEFORE this section was scored by a top-N-worst-gradU guard population — proven BLIND to
+moderate-gradU residual facets. The numbers below are scored over the WHOLE MESH (EVERY free facet, no gradU cap),
+45-pt denseBary two-stage utBound→GN-screen→full-azimuth `bruteNearestOnRadialSurface` ruler.** Trust ONLY these.
+
+### (1) Did the whole-mesh guard drive BOTH count-unstable styles to LITERAL 0 interior outliers? — YES (both)
+
+The V6-flagged "0 outliers = GUARD-POPULATION ARTIFACT" hypothesis was CONFIRMED, then CLOSED, on both styles: the
+top-400-gradU guard was blind to a real residual set the honest whole-mesh brute exposed, and those residuals were
+UNDER-REFINEMENT (not a new wall) — refining every facet >0.01 with the honest brute STOP drove them all to 0.
+
+| style | guard-artifact exposed (whole-mesh, on the mesh whose top-N guard read 0) | AFTER whole-mesh refine | verdict |
+|---|---|---|---|
+| **GothicArches** (zero-width `pow(sharp)` apex) | dense phase-5 revealed **32** residuals, worst **0.216mm**, at gradU 81–135 — ENTIRELY below the top-400 floor (7-pt loop STOP read 0.00996 on the SAME mesh) | **wholeMeshOutliers = 0**, wholeMeshMax **0.01000** (p99 0.00824, worstGradU 45.2, outlierGradU EMPTY), converged, **30,323 tris** | **CONFIRMED** — LITERAL 0 |
+| **GeometricStar** (finite-width chevron kink) | **791** residuals (NOT the spec's ~3–4), worst **0.02954**, onCrest 289/off 502, gradU 0.41–207 — ALL below the top-400 guard floor gradUmin 232.94 | **wholeMeshOutliers = 0** (raw max 0.01 = worst facet AT tolerance, 0 strictly >0.01; p99 0.00875, p50 0.00003), converged, **116,889 tris** | **CONFIRMED** — LITERAL 0 |
+
+- **No REFUTE branch triggered on either** (pre-registered REFUTE = a facet floors >0.02 after termination): the
+  residuals were UNDER-REFINED, driven to 0 in 2 (Gothic) / 5 (GeoStar) dense passes. Pass traces show the sharp
+  convergence tail, NOT a floor: Gothic 32→0; GeoStar 0.0295/791 → 0.0111/6 → 0.0115/2 → 0.0110/10 (a periodic
+  whole-scan caught 10 facets a distant re-triangulation reshaped — proving the whole-mesh scan is NECESSARY) →
+  0.0060/0.
+- **Watertight non-vacuous on both:** `auditNonManByIndex = 0` by index, injected-crack control moves 0→1.
+  Manifold across the FGJ junction network.
+- **Both by FLAT P1** (`usedPnAtApex = FALSE`) — the scoped apex PN/P2 element was benched and PROVED UNNECESSARY.
+- **Render agrees with metric on both:** `_pf_perfect_gothic_wholemesh/gothic_wholemesh_true3d.png` and
+  `_pf_perfect_geostar_wholemesh/geostar_wholemesh_true3d.png` — whole patch GREEN under the true-3D perpendicular
+  ruler, 0.00% >0.03, no red on crest/chevron flanks.
+
+**Root-cause decisiveness (Gothic, the sharpest case):** on the SAME mesh, the loop's 7-pt STOP driver read worst
+0.00996 (⇒ "0") while the 45-pt guard read worst 0.224 / 17 outliers at gradU 81–135. The driver was BLIND to the
+moderate-gradU residuals. The whole-mesh 45-pt guard both SEES and CLOSES them. **Mandate banked: no future
+0-outlier claim on any style may use a top-N-gradU population — it is proven blind by 791 (GeoStar) and 32 (Gothic)
+missed facets.**
+
+### (2) Did the structured-quad strip close slivers holding literal-0 + slicer-safe? — NO (REFUTE, both styles, distinct mechanisms)
+
+Two independent direct-emission structured-quad strip experiments (Gothic-primary CRESTSTRIP-DIRECT + GeoStar
+STRUCTSTRIP) both REFUTED — but they ELIMINATED the V6 cdt2d re-chord failure mode (bgTris=0, zeroArea 36→0) and
+advanced the method. The two refutations are from OPPOSITE sides of the same fidelity↔angle tension:
+
+| style | strip result | closes slivers? | holds literal-0? | slicer-safe / watertight? | refuting mechanism |
+|---|---|---|---|---|---|
+| **GothicArches** | direct-emit crest-strip, hCrest=0.15 (single-digit config) | **YES — pctBelow20 0.4%** (median 25°) | **NO — 236 outliers, max 0.220mm** | zeroArea 0 ✓, watertight 0 non-vac ✓ | at the coarse pitch that makes squares, the near-vertical flank's FIRST facet chords the `pow(sharp)` apex to 0.22mm; finer pitch INCREASES outliers (0.15→236, 0.02→3821) AND worsens angles (0.4→89%) |
+| **GeometricStar** | direct-emission valley-clamped strip | NO (best 15.7%) | moot (−1, guard skipped) | **NO — nonMan 219,536** ✗ | chevron spacing p50 **0.088mm** < one square column (0.044mm half-width) ⇒ adjacent strips place DIFFERENT (u,t) midline verts → INTERPENETRATE, non-watertight |
+
+**The decisive cross-style finding (11 sliver levers now refuted):** connectivity was NEVER the blocker. The
+structured strip and the CONFIRMED brute-driven adaptive edge-mode refine (§1 above) INVERT the SAME structural
+tension — Gothic: strip = 0.4% slivers / 236 outliers@0.22mm vs edge-mode = 0 outliers / 19% slivers. Holding
+single-digit min-angle REQUIRES a coarse across-crest pitch, at which a FLAT structured facet chords the
+zero-width cusp; holding 0-outlier REQUIRES apex-fine facets, which are needles. **A flat non-adaptive structured
+facet cannot BOTH stay near-equilateral AND chord the zero-width `pow(sharp)` apex to ≤0.01.** On GeoStar the
+strip fails EARLIER (sub-pitch overlap → non-watertight). This UPHOLDS the GENUINE-cross-curvature-needle
+conclusion from BOTH sides.
+
+### (3) DEFINITIVE GATE TABLE — HONEST WHOLE-MESH NUMBERS (no guard-population caveat; every gate over ALL facets)
+
+| GATE | GothicArches (zero-width apex) | GeometricStar (finite-width chevron) | status |
+|---|---|---|---|
+| **FIDELITY** — interiorOutliers (true-3D >0.01), WHOLE-MESH honest brute, EVERY facet | **0** (max 0.01000, p99 0.00824) | **0** (max 0.01, p99 0.00875) | **LITERAL 0 ✓ both** |
+| **WATERTIGHT** — auditNonManByIndex, non-vacuous | **0** (inj 0→1) | **0** (inj 0→1) | **✓ both** |
+| **MANIFOLD** — across FGJ junction net | ✓ (residualCrossings=0, 100% recovery) | ✓ (fam=2, residualCrossings=0) | **✓ both** |
+| **ELEMENT** — usedPnAtApex | FALSE (flat-P1) | FALSE (flat-P1) | **flat-P1 suffices ✓ both** |
+| **SLIVERS** — pctBelow20 / minAngle (best measured, holding fidelity) | 19.0% / 0° (edge-mode); M-square 56.2%; strip 0.4% but 236 outliers | 21.7% / 0° (whole-mesh); strip non-watertight | **OPEN — FAIL both** |
+| **tri-count** (patch) | 30,323 (2-bay) | 116,889 | within 6M patch budget |
+| **TIER-A/B byte-identical** (zero-regression) | — | — | **REFUTED as implemented (V2-§3a) — integration task** |
+
+### (4) IS THE PERFECT MESHER LITERALLY COMPLETE? — NO. Precise honest remainder: ONE gate (slivers) + scale/integration.
+
+**Three of the four print-critical gates are LITERALLY CLOSED whole-mesh on BOTH count-unstable styles by flat-P1:**
+FIDELITY (literal whole-mesh 0-outlier, not a guard-population 0), WATERTIGHT (non-vacuous), MANIFOLD. This is the
+campaign's deepest result: **the last REPRESENTATION wall (zero-width `pow(sharp)` on count-unstable networks) is
+closed to CAD-grade true-3D with a FLAT simplex + honest-brute-driven interior refinement — no curved element.**
+The prior GN-driver REFUTE and the guard-population "0" are both now superseded by an HONEST whole-mesh 0.
+
+**The mesher is NOT literally complete. The precise, honest remainder:**
+
+1. **SLIVERS (the ONE open print-usability gate).** minAngle=0°, best pctBelow20 = 19–21% under fidelity;
+   density-INVARIANT. **Refuted levers (11):** a-posteriori Lawson flips (REOPEN outliers 0→57, V2-§3b),
+   M=g/h² insertion spacing (partial, 81→56% Gothic, V3), direct-emit structured strip (0.4% BUT 236 outliers /
+   or non-watertight, this section), + 8 prior. The tension is GENUINE (metrology-confirmed cross-curvature
+   needles), NOT an instrument artifact. The strip PROVED connectivity is not the blocker; the flat element at
+   apex-fine density is. **The ONE untried move = HYBRID: graft the honest-brute-driven adaptive apex refine
+   (reaches 0-outlier) onto the clean direct strip (reaches 0.4% angles), splitting ONLY outlier apex quads with
+   direct connectivity emission.** If that re-introduces apex needles (likely), the E-CRESTRIBBON one-sided PN/P2
+   element AT the apex leaf — benched UNNECESSARY for fidelity — becomes NECESSARY for QUALITY. This is the single
+   next experiment. Alternative: ACCEPT+DOCUMENT finite-area needles + degenerate-collapse as the print-usable
+   concession (GeoStar-class already qualifies; Gothic post-collapse).
+2. **WHOLE-MESH SCALE (integration, not representation).** CONFIRMs are 2-bay (Gothic 30,323t) / patch-band
+   (GeoStar 116,889t). >4-bay / full-z whole-MESH tri-count vs 6M budget under the DENSE whole-mesh guard is
+   UNMEASURED (M-square 4-bay projected 1.05M < 6M is the closest datum, V3). No 20-style whole-mesh re-baseline.
+3. **TIER-A/B byte-identical delegation (integration).** The seedMesh uniform grid ≠ `buildInhouseMetricMesh`
+   adaptive M-mesh; the zero-regression guarantee is an UNIMPLEMENTED design claim (V2-§3a). Explicit delegation
+   + byte-audit is required before any productionization claim.
+
+### (5) PRODUCTIONIZATION BACK-PORT READINESS — BLOCKED on the sliver gate; topology + fidelity halves are port-ready
+
+**Do NOT flag-flip yet.** The fidelity + topology halves of the kernel are proven and port-ready; the sliver gate
+blocks print-usability. Readiness by component (all DEV-ONLY today; GitNexus `impact({direction:'upstream'})`
+before ANY src/ edit, `detect_changes()` before commit, warn on HIGH/CRITICAL):
+
+- **READY to port (proven, style-/count-agnostic):** (a) topology half — FGJ Morse graph (all ridge families) →
+  `planarizeMM` (mm-space crossing/T-junction split → residualCrossings=0) → no-bridge locked-constraint CDT seed
+  (Gothic 96-birth net AND GeoStar 0→7→16→32 oscillation both clean); (b) fidelity loop — honest full-azimuth
+  brute STOP-driver + edge/M-square interior refine + the WHOLE-MESH acceptance guard (`refineInteriorBruteWhole`
+  + `acceptanceGuardWhole`, banked — MANDATORY so production 0-outlier claims are honest); (c) degenerate-face
+  collapse post-pass (slicer-safety, holds 0-outlier + watertight).
+- **INTEGRATION prerequisite (not topology):** wire the closer-OFF path to delegate to `buildInhouseMetricMesh`
+  (byte-audit all Tier-A/B) — this is the actual zero-regression guarantee that V2-§3a proved is unimplemented.
+- **HARD BLOCKER:** ship only after slivers close (hybrid strip+brute-apex, or PN apex leaf) OR an explicit
+  ACCEPT+DOCUMENT concession — the current sliver-dirty apex refine (19–21% <20°, minAngle 0) would degrade
+  printability.
+- **FINAL go/no-go:** whole-MESH (>4 bay / full z) + tri-count-vs-6M cost gate + full 20-style whole-mesh
+  re-baseline (Tier-A/B byte-identical, Tier-C literal-0 under the FIXED whole-mesh guard).
+
+**BANKED reusable (this section):** `refineInteriorBruteWhole` + `acceptanceGuardWhole` + `facetInteriorGuardDense`
+(`_pf_perfectMesherBruteLib.ts` / `_pf_wholeMeshGuardLib.ts`), `wholeMeshGuard`, `buildDirectCrestStrip` +
+`buildStructStrips` (cdt2d-free structured strip meshers), the crest-spacing discriminators. **LEDGER:** this file
+§VALIDATION 7 — LITERAL PERFECTION. Registry rows: E-2026-07-05-PERFECT-MESHER-WHOLEMESH-GOTHIC (pre-reg dce21de,
+CONFIRM b928169, full-density 6c8b97f), E-2026-07-05-PERFECT-MESHER-GEOSTAR-WHOLEMESH (pre-reg 1bf283e, CONFIRM
+f2dc55b), E-2026-07-05-PERFECT-MESHER-GEOSTAR-STRUCTSTRIP (fe8906e), E-2026-07-05-CRESTSTRIP-DIRECT (e0ff73c +
+3648af2). DEV-ONLY; no src/ edit; exchange scorecards gitignored (numbers inlined).
