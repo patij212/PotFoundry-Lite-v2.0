@@ -10,6 +10,21 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-HYBRID-APEX — GATE-2 SLIVERS: clean direct-emit crest strip EVERYWHERE + LOCALIZED honest-brute apex refine on ONLY the outlier triangles (red-green, no cdt2d re-chord) [PRE-REGISTERED — kill-criterion committed BEFORE measuring]
+
+**HYPOTHESIS (falsifiable):** The fidelity↔quality tension on GothicArches is resolved by COMBINING the two halves that each already worked: (1) the CLEAN explicit-connectivity direct-emit structured-quad crest strip (`buildDirectCrestStrip`, hCrest=dtRow=0.15 = the single-digit config that gave 0.4% <20° but REOPENED 236 apex outliers @0.22mm; E-…-CRESTSTRIP-DIRECT), THEN (2) a LOCALIZED honest-brute apex refine on ONLY the triangles whose interior true-3D deviation >0.01 (the near-apex leaves where the strip left the outliers) — RED-GREEN 1→4 subdivision with edge-midpoints placed in the (u,t) chart, DIRECT connectivity emission, NEVER re-CDT the whole point set (the cdt2d re-chord was the V6 failure mode that re-needled every prior strip). The clean flank triangles NOT adjacent to any apex outlier are never touched ⇒ they keep 0.4% angles; only the thin apex band recurses.
+
+**KILL-CRITERION (committed BEFORE measuring):**
+- CONFIRM iff wholeMeshOutliers = 0 (EVERY free facet, honest 45-pt full-azimuth brute `acceptanceGuardWhole`) AND pctBelow20 SINGLE-DIGIT (<~10%) AND zeroAreaFaces=0 AND watertight (auditNonManByIndex=0 by index, non-vacuous).
+- PARTIAL iff wholeMeshOutliers=0 + watertight + zeroArea=0 held but pctBelow20 stays >~10% (report the honest %<20 at 0-outlier — the tradeoff frontier).
+- REFUTE iff the localized apex refine cannot restore 0-outlier without re-needling back above ~15% (the tension is irreducible for flat-P1 ⇒ the honest final answer is print-usable-with-needles).
+
+**MECHANISM (`_pf_hybridApexLib.buildHybridApex`):** build the clean strip; edge→incident-tri adjacency; 7-pt honest-brute STOP-score every facet; RED-split outliers 1→4 at shared edge-midpoints (on-surface via analytic lift), GREEN-close neighbours with 1 hanging node (bisect), 2 hanging nodes → split-into-3, 3 → promote to RED; iterate re-scoring ONLY the changed cavity until 0 outliers or pass cap. No cdt2d.
+
+**LEDGER:** probe `research/bridge/_pf_hybrid_apex.test.ts` (PF_HYBRID=1, PF_STYLE=gothic|geostar), lib `_pf_hybridApexLib.ts`, config `vitest.pf_hybrid.config.ts`. Scorecard `research/exchange/_pf_hybrid_apex_<style>/`. RESULT below (appended after measuring).
+
+---
+
 ## E-2026-07-05-PERFECT-MESHER-GEOSTAR-STRUCTSTRIP — GATE-2 SLIVERS: direct-emission structured-quad flank strip (bypasses free cdt2d — the V6 failure mode) on GeometricStar [PRE-REGISTERED — kill-criterion committed BEFORE measuring]
 
 **FRAME:** The perfect mesher is FIDELITY-PROVEN whole-mesh 0-outlier on GeoStar (E-…-GEOSTAR-WHOLEMESH gate1: wholeMeshOutliers=0, max 0.01mm, watertight non-vacuous, 116889 tris) but SLIVERY (pctBelow20=21.7%, minAngle=0). Nine sliver levers refuted. The V6 structured crest-strip FAILED for ONE banked reason: it inserted structured POINTS then re-CDT'd them with FREE cdt2d, whose Delaunay reconnects the dense strip points into cross-flank chords. This experiment makes the spec's ONE mandated different move: build a STRUCTURED-QUAD FLANK STRIP per crest segment and **EMIT THE STRIP'S CONNECTIVITY DIRECTLY** (each quad → 2 tris, consistent diagonal); strip-interior points NEVER enter cdt2d (cdt2d fills only the smooth-panel complement, seeing only the strip's locked outer-boundary ring). Strip rows follow flank arc-length (on-surface, 0-outlier); columns run along the crest (square cells).
