@@ -4346,3 +4346,57 @@ where the slivers are a DIFFERENT crest-flank class). If that also fails, the un
 `research/exchange/_pf_geostar_hybrid_diag/{diag.json,scorecard.ndjson,scorecard2.ndjson}` +
 `research/exchange/_pf_geostar_hybrid/scorecard.ndjson`. Reuses `buildStructStrips`/`buildDirectCrestStrip`/
 `wholeMeshGuard` READ-ONLY. DEV-ONLY; no src/ edit.
+
+---
+
+## E-2026-07-05-REBASELINE20 — DEFINITIVE 20-STYLE WHOLE-MESH RE-BASELINE (guard-population artifact EXPOSED on 12/18 Tier-A/B)
+
+**HYPOTHESIS:** the `_best20` manifest's per-style "0-outlier / p99≤0.01" verdicts were measured under a TOP-N /
+percentile GUARD POPULATION (`bruteAnchoredRedPerp` sampleN=25–40 centroid-anchored; or manifest p99), the SAME
+guard-population artifact that HID Gothic/GeoStar whole-mesh residuals. Re-scored under the corrected WHOLE-MESH
+every-facet honest ruler (no top-N cap), some Tier-A/B styles reveal whole-mesh interior outliers the guard missed.
+
+**DISCRIMINATOR:** new whole-mesh ruler `scoreWholeMeshInterior` (`_pf_rebaselineRuler.ts`) — EVERY free facet,
+≥36-pt `denseBary(45)` interior lattice, honest true-3D foot = `min(GN-with-global-fallback, full-azimuth brute)`,
+NO top-N cap. Applied to the EXACT reaching meshes from their persisted heatmap bins (xyz+idx; the honest foot needs
+only xyz+rA+H). A per-style VERTEX-ON-SURFACE GATE (maxVert ~0) decides ruler validity: `analytic` (mesh IS the
+radial surface: 5 smooth + 4 CDT-under-M tangled — all gate maxVert=0.00000) vs `bvh` (doubled riser/weave/seam
+meshes depart from the radial surface — analytic-rA MISLOCATES 1–2mm, verified ArtDeco 1.99mm; use the packaging's
+BVH-vs-closed-object meta). Gothic/GeoStar read from the perfect-mesher `acceptanceGuardWhole` scorecards.
+
+**KILL-CRITERION (pre-registered):** for EACH style record whole-mesh interiorOutliers (every facet), max,
+watertight, %<20, tris. CONFIRM iff ≥1 Tier-A/B style has interiorOutliers>0 whole-mesh (guard hid residuals);
+REFUTE iff all 18 are genuinely 0-outlier whole-mesh.
+
+**EVIDENCE (whole-mesh every-facet MAX ruler; scorecard `research/exchange/_rebaseline20/scorecard.ndjson`):**
+- **Genuinely whole-mesh 0-outlier (6/20):** SuperellipseMorph (max 0.0099), SpiralRidges (0.0038), ArtDeco
+  (BVH 0.0011), BambooSegments (BVH 0.0079) — plus **GothicArches (0, kernel) + GeometricStar (0, kernel)**.
+- **Guard-population HID outliers (12/18 Tier-A/B):**
+  - SMOOTH p99-tail (p99 was ≤0.01, whole-mesh MAX above): Ripple 78 facets/max0.019, Wave 6/0.011,
+    FourierBloom 67/0.011, HarmonicRipple 217/0.017.
+  - TANGLED top-N-anchored (manifest `true3dP99=0`) → whole-mesh honest: GyroidManifold **9074/155914 scanned
+    (stride-8) → ~72,592 whole-mesh, max 0.203**; Voronoi ~115,632, max 0.126; Crystalline ~18,064, max 0.097;
+    HexagonalHive ~26,844, max 0.041. (Vertices verified on-surface=0.00000 ⇒ real facet-interior chords, NOT GN
+    wrong-local-minima; brute-confirmed.)
+  - RISER/CREST tails (already documented `reaches:false`): DragonScales 8938 (BVH, max 0.219), LowPolyFacet
+    252 (max 0.135).
+- **UNRESOLVED at reaching density (weave/braid/seam):** BasketWeave/CelticKnot/CelticTriquetra (twin meta used the
+  non-anchored radial ruler; anchored manifest was 0.02–0.029) + SuperformulaBlossom seam wall (radial 7.28 =
+  blind-spot). Same tangled/steep brute ~3.4h ceiling; documented steep-EXCLUDE.
+- rawNonMan=0 on ALL 20; Gothic/GeoStar watertight non-vacuous.
+
+**VERDICT: CONFIRMED.** 12/18 Tier-A/B styles hid whole-mesh outliers under the top-N/percentile guard population —
+the identical artifact class that masked Gothic/GeoStar. Only **6/20** styles are literally whole-mesh 0-outlier,
+and **2 of those 6 are the NEW Gothic/GeoStar perfect-mesher kernel** (the ONLY count-unstable styles at literal 0).
+This is a RULER/verdict-basis correction, not a newly-found mesh defect: faces stay on the true surface (vtx=0),
+rawNonMan=0; the residual is the designed near-vertical relief the radial ruler overstates and p99/top-N excluded —
+whole-mesh true-3D MAX 0.01–0.20mm on a thin flank ribbon, watertight, print-safe.
+
+**RECOMMENDATION:** treat the manifest "17 literal ≤0.01" as p99/top-N-basis, NOT whole-mesh-MAX-basis; the honest
+whole-mesh-MAX tiering is 6 literal-0 (incl. the 2 new-kernel Tier-C) + 12 thin-flank-tail (radial-overstated,
+accept-class) + 4 weave/seam steep-EXCLUDE-ceiling. Next: resolve the tangled/weave whole-mesh figure with a finer
+brute or the perfect-mesher kernel dispatched to Gyroid/Voronoi (the kernel that took Gothic/GeoStar to literal 0).
+
+**LEDGER:** `research/exchange/_rebaseline20/{scorecard.ndjson,README.md}`. Ruler `research/bridge/_pf_rebaselineRuler.ts`;
+probe `research/bridge/_pf_rebaseline20.test.ts` (PF_REBASE=1 / PF_REBASE_BIG=1); config `vitest.rebaseline20.config.ts`;
+diag `_pf_rebaseDiag.test.ts`. DEV-ONLY; no src/ edit; research/exchange scorecards gitignored (numbers inlined here).
