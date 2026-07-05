@@ -4123,3 +4123,91 @@ slivers (63%→19%) — a bonus, still the open gate. Visual: `research/exchange
 gothic_wholemesh_true3d.png` (whole patch GREEN, 0.00% >0.03). Refine wall time 3882s (well in-window).
 **Both fidelities independently reach literal 0 whole-mesh outliers ⇒ the CONFIRM is robust, not a
 brute-grid/seed artifact.**
+
+---
+
+## E-2026-07-05-CRESTSTRIP-DIRECT — direct-emit structured crest-strip (no cdt2d): closes slivers, CANNOT hold 0-outlier ⇒ REFUTE
+
+**Pre-reg (probe header IS the pre-registration):** CONFIRM iff pctBelow20 → single-digit (<~10%) AND minAngle sane
+WHILE wholeMeshOutliers HOLD 0 (EVERY free facet, honest ≥36-pt full-azimuth brute `acceptanceGuardWhole`) AND
+zeroAreaFaces=0 AND watertight (auditNonManByIndex=0 by index, non-vacuous). REFUTE iff the structured strip cannot
+HOLD 0-outlier OR cannot reach single-digit %<20.
+
+**HYPOTHESIS:** Replacing the V6 greedy flat-P1 flank refinement (forced into cross-curvature needles) with an
+EXPLICIT structured-quad flank strip whose connectivity is EMITTED DIRECTLY (each quad → 2 tris, NOT handed to free
+cdt2d — the V6 CRESTSTRIP re-chord failure) closes Gothic/GeoStar slivers to single-digit %<20 WHILE holding the
+whole-mesh 0-outlier fidelity gate.
+
+**MECHANISM built (`_pf_crestStripDirectLib.buildDirectCrestStrip`):** whole-patch STRUCTURED mesh — rows at uniform
+along-CREST 3D arc length (crests are DIAGONAL ribs drifting ~2.57mm/8mm in u, measured `_pf_direct_diag`; vertical-t
+rows make the crest edge 3× the flank pitch → needles; crest-arc rows fix it), columns crest-TRACKED (nearest-u
+linked, metric-graded offset fan fine-near-crest→coarse-panel), row→row stitched by a MONOTONE u-ZIPPER that emits
+tris DIRECTLY. No cdt2d anywhere. Crest = shared mesh-edge chain (no-bridge). Watertight by shared valley/edge node
+ids + monotone front.
+
+**KILL-CRITERION MET → REFUTE.** The strip closes slivers + zero-area + watertight but CANNOT hold 0-outlier:
+
+Gothic (trusted full-azimuth brute whole-mesh guard, 1-bay/4mm, hCrest=dtRow=0.15 = the single-digit-sliver config):
+
+| gate | measured | verdict |
+|---|---|---|
+| **pctBelow20** | **0.4%** (median minAngle 25°, minAngle 11.1°) | single-digit ✓ (CLOSES slivers) |
+| **zeroAreaFaces** | **0** (subMicro 0; minArea 2.3e-3 mm²) | ✓ (slicer-safe, vs V6 crest-strip's 36) |
+| **watertight** (auditNonManByIndex, non-vac inj 0→1) | **0** ✓ | ✓ |
+| **wholeMeshOutliers** (true-3D >0.01, honest brute, EVERY facet) | **236** (max **0.220mm**, p99 0.186, worstGradU 124.5) | ✗ FAILS 0-outlier ⇒ REFUTE |
+
+**Density does NOT rescue fidelity (fast GN whole-mesh guard, 2-bay/6mm smoke — GN is EXACT on the single-valued
+Gothic radius field; trusted brute reads WORSE not better, so GN under-states if anything):**
+
+| hCrest (mm) | pctBelow20 | GN outliers (>0.01) | GN max (mm) |
+|---|---|---|---|
+| 0.15 | 0.9% | 750 | 0.046 |
+| 0.08 | 82% | 1234 | 0.033 |
+| 0.05 | 85% | 1187 | 0.028 |
+| 0.03 | 87% | 2472 | 0.022 |
+| 0.02 | 89% | 3821 | 0.026 |
+
+Finer across-crest INCREASES outliers AND worsens slivers — the residual is the `pow(sharp)` apex chord (the crest
+column edge chords the concave cusp), NOT reducible by uniform structured density. Finer ALONG-crest rows (hCrest 0.08
+/ dtRow 0.02–0.04): outliers 2400–4900, slivers 96–99% — also worse both. The structured strip's FIXED (non-adaptive)
+layout cannot resolve the apex the way the CONFIRMED brute-DRIVEN adaptive edge-mode refine (E-…-WHOLEMESH-GOTHIC)
+did — that path reaches 0 outliers but at **19% slivers** (median 43°). So the two mechanisms INVERT the same
+structural fidelity-vs-min-angle tension; NEITHER closes both.
+
+**GeoStar (finite-width chevron, count-oscillating 45–65 crests/row → crest-arc tracking noisy, more zipper
+transitions):** best pctBelow20 = 76.5% @hCrest 0.15 (never single-digit; the single-crest arc tracker fails on the
+birth/merge oscillation), GN outliers 588–1474, max ~0.25mm. WORSE than Gothic on BOTH gates — the direct strip does
+NOT even close slivers on GeoStar.
+
+**ROOT CAUSE (measured, render-confirmed `research/exchange/_pf_creststrip_direct_gothic_smoke/window.png` +
+`/tmp/gothic_direct_heat.png`):** the crest-arc-row + crest-track fix produced a genuinely clean structured grid
+(the render is uniform quads, needles ONLY in a thin band AT each crest rib) — a real METHOD advance that KILLS the
+zero-area faces and holds watertight without cdt2d. But holding min-angle single-digit REQUIRES a coarse across-crest
+pitch (hCrest≥0.15), and at that pitch the near-vertical flank's FIRST facet chords the concave `pow(sharp)` apex to
+0.22mm true-3D. A structured (non-adaptive) strip cannot both (a) keep the apex facet coarse enough to be
+near-equilateral and (b) chord the apex to ≤0.01 — the two are mutually exclusive for a flat facet at a zero-width
+cusp. This is the SAME structural tension 8 prior sliver levers hit (V6 §2), now confirmed from the OTHER side (the
+direct strip proves CONNECTIVITY was never the blocker — the V6 cdt2d re-chord was a real bug I fixed, and slivers
+STILL don't co-resolve with fidelity).
+
+**BANKED (reusable, correct):** `buildDirectCrestStrip` = a watertight, zero-area-free, cdt2d-free structured
+crest-strip mesher with crest-arc rows + crest-track columns + direct-emit monotone zipper. On its own it gives
+0.4–0.9% slivers + zeroArea=0 + watertight (a genuine slicer-safety + angle win) at the cost of ~0.22mm true-3D at
+the crest ribs. It is the correct mesher for a Gothic-class patch WHERE 0.22mm true-3D is acceptable (it is NOT, per
+the 0.01mm export standard). The apex fidelity needs the brute-DRIVEN adaptive refine on TOP of the strip (subdivide
+only the outlier apex quads, emitting connectivity directly) — the untried hybrid.
+
+**NEXT (the one remaining move):** graft — run the honest-brute-DRIVEN adaptive apex refine (E-…-WHOLEMESH edge-mode)
+ON the direct strip, splitting ONLY the outlier apex quads with DIRECT connectivity emission (no cdt2d), so the
+structured panel keeps its clean angles while the apex facets alone are recursively resolved to ≤0.01. Kill-criterion:
+wholeMeshOutliers=0 AND pctBelow20 single-digit AND zeroArea=0 AND watertight, both styles. If that also fails (the
+apex subdivision re-introduces needles), the fidelity-vs-angle tension at the zero-width `pow(sharp)` cusp is a
+PROVEN flat-P1 wall requiring a curved element AT the apex leaf — accept the E-CRESTRIBBON PN graft as necessary for
+QUALITY (it was benched unnecessary for FIDELITY only).
+
+**LEDGER:** `research/lab/2026-07-04-perfect-mesher-spec.md` §VALIDATION 7. Kernel `_pf_crestStripDirectLib.ts`;
+probe `_pf_creststrip_direct.test.ts` (PF_DIRECT=1, PF_STYLE=gothic|geostar); diags `_pf_direct_diag`/`_slivdiag`/
+`_svg`/`_gnguard`/`_heatmap`. Scorecard `research/exchange/_pf_creststrip_direct_gothic/{scorecard.ndjson,
+wholeguard.json,direct.json}`. Renders `_pf_creststrip_direct_gothic_smoke/window.png` (wireframe, clean structured
+grid) + `/tmp/gothic_direct_heat.png` (true-3D, green panel + crest-rib band). DEV-ONLY; no src/ edit; commit e0ff73c
+(kernel+probes) + this row.
