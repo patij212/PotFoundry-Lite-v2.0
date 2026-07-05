@@ -1111,3 +1111,29 @@ before ANY src/ edit, `detect_changes()` before commit, warn on HIGH/CRITICAL):
 CONFIRM b928169, full-density 6c8b97f), E-2026-07-05-PERFECT-MESHER-GEOSTAR-WHOLEMESH (pre-reg 1bf283e, CONFIRM
 f2dc55b), E-2026-07-05-PERFECT-MESHER-GEOSTAR-STRUCTSTRIP (fe8906e), E-2026-07-05-CRESTSTRIP-DIRECT (e0ff73c +
 3648af2). DEV-ONLY; no src/ edit; exchange scorecards gitignored (numbers inlined).
+
+---
+
+## VALIDATION 8 — GeoStar HYBRID (strip + apex refine) REFUTED; slivers re-localized to the OFF-crest panel (2026-07-05)
+
+The VALIDATION-7 §(3) "ONE remaining move = HYBRID" RAN on GeometricStar with the mandated prerequisite (fix the
+strip pitch to respect the chevron sub-pitch → watertight → THEN localized apex refine). **REFUTED**, and the cheap
+discriminator overturned the task's premise before any expensive build.
+
+- **Strip prerequisite FAILS at sub-pitch (measured):** `buildStructStrips` valley-clamped at every sub-pitch config
+  (h=0.03/w=0.12/0.06, h=0.02/w=0.04) stays NON-watertight (nonMan 246→737, never 0) and makes slivers WORSE
+  (pct<20 24–26% vs 21.7%). Adjacent narrow per-crest strips place non-shared midline verts (architectural, not a
+  pitch bug) + collapse to ~2 columns at sub-pitch. `buildDirectCrestStrip` (shares valley nodes) was already refuted
+  on GeoStar (87% <20°) — its offset fan overshoots the 0.044mm valley at 45–65 crests/row.
+- **DECISIVE re-localization (`_pf_geostar_hybrid_diag`):** of the 21.7% <20° facets, **91% are OFF-crest**
+  grading-transition needles (edge-ratio p50 6.3, spread 1–2mm across the smooth panel), only 9% on-crest. IDENTICAL
+  on the pre-refine brute mesh ⇒ baked into the seed+free-cdt2d, NOT the refine. The crest-strip+apex HYBRID targets
+  only the 9% minority ⇒ cannot reach single-digit even if it perfectly closed the crest.
+- **Re-scope:** GeoStar slivers are a DIFFERENT class than Gothic's (Gothic = crest-flank cross-curvature; GeoStar =
+  off-crest panel grading-transition). Lever#1/#2 (graded seed + Laplacian-under-M relax) were refuted only on
+  GOTHIC, NEVER run on GeoStar — and they target EXACTLY the off-crest grading class. **That is the correct next
+  experiment on GeoStar, not the strip.** 12th refuted sliver lever. The gate table is unchanged (SLIVERS still the
+  ONE open gate); only the GeoStar sliver ATTACK is re-pointed.
+
+**LEDGER:** registry E-2026-07-05-PERFECT-MESHER-GEOSTAR-HYBRID. Probes `_pf_geostar_hybrid_diag[2].test.ts` +
+`_pf_geostar_hybrid.test.ts`; config `vitest.pf_gshybrid.config.ts`. DEV-ONLY; no src/ edit.

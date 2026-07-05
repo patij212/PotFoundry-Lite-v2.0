@@ -4226,3 +4226,69 @@ probe `_pf_creststrip_direct.test.ts` (PF_DIRECT=1, PF_STYLE=gothic|geostar); di
 wholeguard.json,direct.json}`. Renders `_pf_creststrip_direct_gothic_smoke/window.png` (wireframe, clean structured
 grid) + `/tmp/gothic_direct_heat.png` (true-3D, green panel + crest-rib band). DEV-ONLY; no src/ edit; commit e0ff73c
 (kernel+probes) + this row.
+
+---
+
+## E-2026-07-05-PERFECT-MESHER-GEOSTAR-HYBRID — REFUTED (strip prerequisite unachievable; 91% of slivers are OFF-crest)
+
+**HYPOTHESIS:** On GeometricStar the fidelity↔quality tension resolves by a HYBRID — the CLEAN cdt2d-free structured
+strip on the crest flank EVERYWHERE (fixed to respect the 0.088mm chevron sub-pitch so it stays watertight) + a
+LOCALIZED honest-brute apex refine on ONLY the residual outlier tris — reaching wholeMeshOutliers=0 AND single-digit
+pctBelow20 AND zeroArea=0 AND watertight.
+
+**KILL-CRITERION (pre-registered, `_pf_geostar_hybrid.test.ts` + `_pf_geostar_hybrid_diag.test.ts` headers):**
+CONFIRM iff wholeMeshOutliers=0 AND pctBelow20 <~10% AND zeroArea=0 AND watertight non-vacuous. PARTIAL iff
+0-outlier+watertight+slicer-safe but pctBelow20 >~10%. REFUTE iff the localized apex refine cannot restore 0-outlier
+without re-needling >~15% OR **the strip cannot be made watertight at sub-pitch**.
+
+**DISCRIMINATOR (cheapest-first, no long guard):** (1) crest sub-pitch on the CONFIRMED whole-mesh mesh; (2)
+sliver localization — for each <20° facet, on-crest vs off-crest + longest-edge angle to the local crest tangent;
+(3) STAGE-A watertightness sweep of `buildStructStrips` at sub-pitch h/width.
+
+**EVIDENCE (measured on the CONFIRMED E-…-GEOSTAR-WHOLEMESH mesh, 116,889t, wholeMeshOutliers=0, pctBelow20=21.7%):**
+- **Q1 crest sub-pitch (nearest-other-crest 3D):** min 0.021 / **p50 0.068** / mean 0.089 mm ⇒ max non-overlapping
+  square strip half-width ≈ **0.034mm** (confirms VALIDATION-7's ~0.088; the flank between straps is SUB-pitch).
+- **Q2 sliver localization — THE DECISIVE FINDING:** of the 25,369 <20° facets, **23,087 (91%) are OFF-crest** and
+  only 2,282 (9%) on-crest. The off-crest slivers are **grading-transition needles** (per-vertex incident
+  edge-length ratio **p50 6.3 / p90 10 / max 66**) spread across the **whole smooth panel (offCrestDist p50 1.03mm /
+  p90 2.0mm)** — NOT at the near-vertical crest flank. IDENTICAL on the pre-whole-mesh brute mesh (21.3%, offFrac
+  0.912) ⇒ the off-crest slivers are baked into the seed/`triangulateMM` free-cdt2d architecture, not created by the
+  refine. **The HYBRID's crest-flank strip + apex refine attacks only the 9% on-crest population** — even a perfect
+  on-crest close leaves ~19.7% <20° (FAR from single-digit).
+- **STAGE-A strip-watertightness sweep (the task's explicit prerequisite) — FAILS at every sub-pitch config:**
+  `buildStructStrips` valley-clamped h=0.03/w=0.12 → nonMan **246**, pct<20 **24.1%** (WORSE), stripTris only 1042
+  (meanColDepth 4); h=0.03/w=0.06 → nonMan 246, 24.2%; h=0.02/w=0.04 → nonMan **737**, 26.5%, zeroArea 2. Prior
+  wide-strip (h=0.06/w=0.9) → nonMan 219,536. **No sub-pitch config reaches watertight** — adjacent narrow strips
+  march from DIFFERENT crests with DIFFERENT metric-scaled steps ⇒ place non-shared midline verts ⇒ interpenetrate
+  (an ARCHITECTURAL non-sharing property of independent per-crest strips, NOT a pitch bug h can tune away). At
+  sub-pitch the strip also collapses to ~2 columns (nothing), and the 99%-cdt2d background panel is slivery, so
+  pct<20 gets WORSE not better.
+
+**VERDICT: REFUTED** (pre-registered REFUTE branch: the strip cannot be made watertight at sub-pitch — AND, more
+fundamentally, the crest-flank strip cannot touch the 91%-dominant off-crest panel slivers). The
+`buildDirectCrestStrip` variant (which DOES share valley nodes ⇒ watertight) was already REFUTED on GeoStar
+(V7 smoke: 87% <20°, nonVacuous=false) because at 45–65 crests/row the offset fan overshoots the 0.044mm valley and
+the crest cells collapse to needles.
+
+**ROOT-CAUSE REFRAME (corrects the task premise + the ANISO-RULER narrative for GeoStar):** the GeoStar 21.7%
+sliver defect is DOMINATED (91%) by OFF-crest grading-transition needles in the smooth panel from the
+seed+brute-refine free-cdt2d over an adaptive point set — NOT the on-crest cross-curvature crest-flank needles the
+ANISO-RULER measured on the worst-60 population (those exist but are only ~9% of the count). The crest-strip/apex
+HYBRID is the wrong lever for GeoStar; it targets the minority. **The correct lever = a well-graded / structured
+PANEL** (the whole-band structured mesh, or a graded seed with bounded size-ratio + surface-preserving relaxation
+run on GeoStar — Lever#1/#2 were refuted only on GOTHIC, NEVER run on GeoStar, and GeoStar's slivers are a DIFFERENT
+class: grading-transition, not crest-flank). This is the 12th refuted sliver lever and it re-localizes the GeoStar
+sliver source.
+
+**NEXT (re-scoped by the diagnosis):** run the graded-seed + Laplacian-under-M relaxation arm (`gradedSeed` +
+`relaxLaplacianUnderM`, banked, guarded, hold-0-outlier) on GeoStar specifically — the off-crest grading-transition
+class is exactly what a bounded-size-ratio graded seed targets, and it was never measured on GeoStar (only Gothic,
+where the slivers are a DIFFERENT crest-flank class). If that also fails, the untried whole-band structured mesh
+(VALIDATION-7 §2: valley-partitioned shared-boundary bands) replaces the whole panel cdt2d, not just the crest.
+
+**LEDGER:** `research/lab/2026-07-04-perfect-mesher-spec.md` §VALIDATION 7. Probes `_pf_geostar_hybrid_diag.test.ts`
+(PF_GSHYBDIAG=1) + `_pf_geostar_hybrid_diag2.test.ts` (PF_GSHYBDIAG2=1) + `_pf_geostar_hybrid.test.ts`
+(PF_GSHYBRID=1, PF_HMM/PF_WIDTH/PF_VALLEY); config `vitest.pf_gshybrid.config.ts`. Scorecard
+`research/exchange/_pf_geostar_hybrid_diag/{diag.json,scorecard.ndjson,scorecard2.ndjson}` +
+`research/exchange/_pf_geostar_hybrid/scorecard.ndjson`. Reuses `buildStructStrips`/`buildDirectCrestStrip`/
+`wholeMeshGuard` READ-ONLY. DEV-ONLY; no src/ edit.
