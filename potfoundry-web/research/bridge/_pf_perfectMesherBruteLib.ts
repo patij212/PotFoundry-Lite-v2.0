@@ -83,10 +83,17 @@ export interface BrutePassStat {
 export interface BruteRefineResult {
   uv: number[]; tris: number[]; passes: number; capped: boolean; histPerPass: BrutePassStat[];
 }
+// mode='point' (default): insert ONE node at the worst interior sample (u,t) of each outlier facet — the original
+//   arc-length-graded mechanism. Slow at a persistent apex (the worst sample can sit near a vertex, barely shrinking
+//   the facet), so it can hit the pass cap with a few residual apex facets.
+// mode='edge': RED-refine each outlier facet at all 3 EDGE MIDPOINTS (1->4 split) — halves every edge each pass, so
+//   a persistent apex facet converges geometrically (Boissonnat-Oudot). Places midpoints in the (u,t) chart (lifted
+//   on-surface); constraint edges are re-passed so crest edges stay shared (the midpoint of a crest edge is ITSELF
+//   on the crest). This is the density the point-mode loop under-delivered at the zero-width apex.
 export function refineInteriorBrute(
   patch: PatchDef, seed: { uv: number[]; tris: number[] }, cEdges: Array<[number, number]>, tol: number, maxPass: number,
   ruler: { gnScreen: number; preFilter: number; nTheta: number; nZ: number; zBandMm: number; refineIters: number },
-  onPass?: (s: BrutePassStat) => void,
+  onPass?: (s: BrutePassStat) => void, mode: 'point' | 'edge' = 'point',
 ): BruteRefineResult {
   const { rA, H, arcPerU } = patch;
   let uv = seed.uv.slice(); let tris = seed.tris.slice();
@@ -116,10 +123,19 @@ export function refineInteriorBrute(
       if (g.dev > worst) worst = g.dev;
       if (g.dev > tol) {
         nOut++;
-        const uu = g.uWorst, tt = g.tWorst;
-        const kU = Math.round(((uu % 1) + 1) % 1 * arcPerU / cellMm);
-        const key = kU * 100000 + Math.round(tt * H / cellMm);
-        if (!inserted.has(key)) { inserted.add(key); const id = addPt(uu, tt); insertedVerts.add(id); }
+        const insertOne = (uu: number, tt: number): void => {
+          const kU = Math.round(((uu % 1) + 1) % 1 * arcPerU / cellMm);
+          const key = kU * 100000 + Math.round(tt * H / cellMm);
+          if (!inserted.has(key)) { inserted.add(key); const id = addPt(uu, tt); insertedVerts.add(id); }
+        };
+        if (mode === 'edge') {
+          // seam-consistent u for the 3 corners (so the midpoint is not a seam-spanning average)
+          let ua = uv[2 * a], ub = uv[2 * b], uc = uv[2 * c]; const ta = uv[2 * a + 1], tb = uv[2 * b + 1], tc = uv[2 * c + 1];
+          while (ub - ua > 0.5) ub -= 1; while (ua - ub > 0.5) ub += 1; while (uc - ua > 0.5) uc -= 1; while (ua - uc > 0.5) uc += 1;
+          insertOne((ua + ub) / 2, (ta + tb) / 2); insertOne((ub + uc) / 2, (tb + tc) / 2); insertOne((uc + ua) / 2, (tc + ta) / 2);
+        } else {
+          insertOne(g.uWorst, g.tWorst);
+        }
       }
     }
     const stat: BrutePassStat = { pass, nTris: nF, nScored: active.length, nOutBrute: nOut, worstBrute: +worst.toFixed(5), nInserted: inserted.size, bruteCalls, ms: Date.now() - t0 };

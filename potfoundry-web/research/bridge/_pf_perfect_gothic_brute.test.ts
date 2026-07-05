@@ -28,7 +28,7 @@ import { mkdirSync, existsSync, appendFileSync, readFileSync, writeFileSync } fr
 import { join } from 'node:path';
 import { auditNonManByIndex, triangleQualityDistribution } from './labkit';
 import {
-  makeGothicPatch, extractProtectedComplex, seedMesh, acceptanceGuard, liftMesh, lift, type PatchDef,
+  makeGothicPatch, extractProtectedComplex, seedMesh, acceptanceGuard, liftMesh, lift, rowCrests, type PatchDef,
 } from './_pf_perfectMesherLib';
 import { refineInteriorBrute, apexLeafPN } from './_pf_perfectMesherBruteLib';
 
@@ -71,10 +71,48 @@ const MAX_PASS = Number(process.env.PF_PASS ?? (SMOKE ? 12 : 40)); // GENEROUS c
 const TOP_FRAC = Number(process.env.PF_TOPFRAC ?? (SMOKE ? 0.03 : 0.06));
 const GUARD_CAP = Number(process.env.PF_GCAP ?? (SMOKE ? 400 : 400)); // worst-gradU top-400 (per the task spec)
 
-// two-stage honest ruler config (SAME as acceptanceGuard's — brute grid 1024x120 +-3mm z-band + box-refine)
-const RULER = { gnScreen: 0.006, preFilter: 0.006, nTheta: SMOKE ? 512 : 1024, nZ: 120, zBandMm: 3, refineIters: 60 };
+// two-stage honest LOOP ruler: a lighter brute grid than the final GUARD (512x80 +box-refine still converges to the
+// true near-crest foot to <1e-4 — box-refine is grid-independent for a smooth local basin; the calibration note
+// proved 2048x120 == 4096x600 to 2e-5 on this cusp). The FINAL verdict uses acceptanceGuard's full 1024x120 grid.
+const LOOP_NTH = Number(process.env.PF_LNTH ?? (SMOKE ? 384 : 512));
+const RULER = { gnScreen: 0.006, preFilter: 0.006, nTheta: LOOP_NTH, nZ: 80, zBandMm: 3, refineIters: 40 };
+// REFINE MODE: 'point' = original one-node-at-worst-sample (arc-length-graded); 'edge' = RED-refine each outlier
+// facet at all 3 edge midpoints (1->4), which halves every edge each pass => geometric convergence at the apex.
+const REFINE_MODE: 'point' | 'edge' = (process.env.PF_MODE === 'edge' ? 'edge' : 'point');
 
 describe('pf-perfect-gothic-BRUTE: refine-loop TERMINATION driven by the HONEST full-azimuth brute (the crux)', () => {
+  // ── PN-MECH (cheap, standalone): reconstruct the worst Gothic bridging apex facet at facet-scale and compare
+  //    flat-P1 interior true-3D vs one-sided Vlachos PN interior true-3D under the SAME honest brute. This isolates
+  //    the Step-2 question — CAN a curved element ride the two flanks and close the floored leaf? — WITHOUT the
+  //    full mesh. Gated separately (PF_PNMECH=1) so it runs in seconds. ──
+  it.skipIf(process.env.PF_PNMECH !== '1')('pn-mech: flat vs one-sided PN on a reconstructed apex bridging facet', () => {
+    const patch = makeGothicPatch(BAYS, ZBAND_MM);
+    const { rA, H } = patch;
+    const uMid = (patch.uLo + patch.uHi) / 2, tMid = (patch.tLo + patch.tHi) / 2;
+    const uc = rowCrests(rA, tMid, H, patch.uLo, patch.uHi, 8000, 0.03);
+    if (!uc.length) { plog('[pn-mech] no crest'); expect(true).toBe(true); return; }
+    let uCrest = uc[0]; for (const u of uc) if (Math.abs(u - uMid) < Math.abs(uCrest - uMid)) uCrest = u;
+    const R = { gnScreen: 0.006, preFilter: 0.006, nTheta: 1024, nZ: 120, zBandMm: 3, refineIters: 60 };
+    // WELL-SHAPED apex facet: the base spans ±du across the u-cusp; the apex vertex is offset in t by dt chosen so
+    // the facet z-height ≈ its u-width (aspect ~1) — otherwise a large dt makes the facet a z-ridge SLIVER that
+    // measures crest-in-z curvature, not the zero-width u-cusp (a construction artifact that inflates the error and
+    // masks whether PN closes the actual u-cusp). dt = (du*arcPerU)/H keeps arc-width == z-height.
+    const rows: Array<Record<string, unknown>> = [];
+    for (const du of [0.001, 0.0005, 0.00025, 0.000125, 0.0000625]) {
+      const dt = (du * patch.arcPerU) / H; // z-height == arc-width => aspect ~1
+      const P0 = lift(rA, uCrest - du, tMid - dt / 2, H) as [number, number, number];
+      const P1 = lift(rA, uCrest + du, tMid - dt / 2, H) as [number, number, number];
+      const P2 = lift(rA, uCrest, tMid + dt / 2, H) as [number, number, number];
+      const r = apexLeafPN(rA, H, P0, P1, P2, [uCrest - du, tMid - dt / 2, 0], [uCrest + du, tMid - dt / 2, 0], [uCrest, tMid + dt / 2, 0], R);
+      const facetArcMm = +(du * patch.arcPerU * 2).toFixed(4);
+      rows.push({ du, facetArcMm, dtZmm: +(dt * H).toFixed(4), devFlat: +r.devFlat.toFixed(5), devPN: +r.devPN.toFixed(5) });
+      plog(`[pn-mech] du=${du} arc=${facetArcMm}mm zH=${(dt * H).toFixed(3)}mm devFlat=${r.devFlat.toFixed(5)} devPN=${r.devPN.toFixed(5)}`);
+    }
+    writeFileSync(join(DIR, 'pn_mech.json'), JSON.stringify({ uCrest, tMid, rows }, null, 2));
+    checkpoint({ key: 'pn-mech', uCrest: +uCrest.toFixed(5), rows });
+    expect(rows.length).toBeGreaterThan(0);
+  }, 30 * 60 * 1000);
+
   // ── STEP 1: build END-TO-END with the BRUTE-DRIVEN refine loop + honest guard. ──
   it.skipIf(process.env.PF_PERFECTBRUTE !== '1')('step1: brute-driven flat-P1 refine -> honest guard', () => {
     if (rowExists('step1')) { plog('step1 exists, skip'); return; }
@@ -93,8 +131,7 @@ describe('pf-perfect-gothic-BRUTE: refine-loop TERMINATION driven by the HONEST 
       const r = refineInteriorBrute(patch, seed, pc.constraintEdges, TOL, MAX_PASS, RULER, (s) => {
         plog(`[brute-refine pass ${s.pass}] tris=${s.nTris} scored=${s.nScored} outBRUTE=${s.nOutBrute} worstBRUTE=${s.worstBrute} inserted=${s.nInserted} bruteCalls=${s.bruteCalls} ${(s.ms / 1000).toFixed(1)}s`);
         appendFileSync(join(DIR, 'refine_passes.ndjson'), JSON.stringify(s) + '\n');
-        // CHECKPOINT the mesh EACH pass so a kill mid-loop resumes from the latest (cost: cheap disk write).
-      });
+      }, REFINE_MODE);
       ref = { uv: r.uv, tris: r.tris, passes: r.passes, capped: r.capped };
       plog(`[step1] brute-refine done: passes=${r.passes} capped=${r.capped} finalTris=${r.tris.length / 3} verts=${r.uv.length / 2} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
       persistMesh(ref.uv, ref.tris, ref.passes, ref.capped);
