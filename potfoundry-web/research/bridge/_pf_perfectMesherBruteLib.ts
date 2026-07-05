@@ -78,7 +78,7 @@ function triangulateMM(uv: number[], patch: PatchDef, cEdges: Array<[number, num
 // A facet keeps refining while its brute-confirmed interior dev > tol. Cap-hit facets remain outliers (honest).
 export interface BrutePassStat {
   pass: number; nTris: number; nScored: number; nOutBrute: number; worstBrute: number; nInserted: number;
-  bruteCalls: number; ms: number;
+  bruteCalls: number; ms: number; dense?: boolean;
 }
 export interface BruteRefineResult {
   uv: number[]; tris: number[]; passes: number; capped: boolean; histPerPass: BrutePassStat[];
@@ -146,6 +146,160 @@ export function refineInteriorBrute(
     if (pass === maxPass && nOut > 0) capped = true;
   }
   return { uv, tris, passes: pass, capped, histPerPass: hist };
+}
+
+// ── GATE-1 (E-2026-07-05-WHOLEMESH): WHOLE-MESH brute-driven refine + WHOLE-MESH acceptance guard ────────────────
+// The V6 metrology banked a GUARD-POPULATION ARTIFACT: the top-400-worst-gradU acceptanceGuard + the
+// active-cavity-only refine loop of refineInteriorBrute never SCORE ~3 residual MODERATE-gradU facets (gradU
+// 110-182, <=0.21mm). This changes ONE thing in each: SCORE EVERY FREE FACET each pass / in the guard, using the
+// SAME honest two-stage utBound->GN-screen->full-azimuth-brute ruler. The utBound preFilter keeps smooth-panel
+// facets deep-green (never reach the brute stage), so whole-mesh scoring is tractable at ~60-150k tris.
+//
+// refineInteriorBruteWhole: identical Steiner mechanism to refineInteriorBrute (edge-mode RED 1->4 or point), but
+//   the ACTIVE SET is ALL facets EVERY pass (never the active-cavity restriction) => any moderate-gradU facet that
+//   emerges/persists in an "unchanged" cavity is caught + refined. Loop until whole-mesh worst-brute <= tol.
+export function refineInteriorBruteWhole(
+  patch: PatchDef, seed: { uv: number[]; tris: number[] }, cEdges: Array<[number, number]>, tol: number, maxPass: number,
+  ruler: { gnScreen: number; preFilter: number; nTheta: number; nZ: number; zBandMm: number; refineIters: number },
+  onPass?: (s: BrutePassStat) => void, mode: 'point' | 'edge' = 'edge',
+  bulkPasses7pt = 0,
+): BruteRefineResult {
+  const { rA, H, arcPerU } = patch;
+  let uv = seed.uv.slice(); let tris = seed.tris.slice();
+  const pmap = new Map<number, number>(); const cellMm = 0.004;
+  const rehash = (): void => { pmap.clear(); for (let i = 0; i < uv.length / 2; i++) { const k = Math.round(uv[2 * i] * arcPerU / cellMm) * 100000 + Math.round(uv[2 * i + 1] * H / cellMm); if (!pmap.has(k)) pmap.set(k, i); } };
+  const addPt = (u: number, t: number): number => { const k = Math.round(u * arcPerU / cellMm) * 100000 + Math.round(t * H / cellMm); const hit = pmap.get(k); if (hit !== undefined) return hit; const id = uv.length / 2; uv.push(u, t); pmap.set(k, id); return id; };
+  const hist: BrutePassStat[] = [];
+  let capped = false; let pass = 0;
+  for (pass = 1; pass <= maxPass; pass++) {
+    const t0 = Date.now();
+    const nV = uv.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const [x, y, z] = lift(rA, uv[2 * i], uv[2 * i + 1], H); xyz[3 * i] = x; xyz[3 * i + 1] = y; xyz[3 * i + 2] = z; }
+    const nF = tris.length / 3;
+    // WHOLE-MESH: score EVERY facet every pass (the GATE-1 change). The two-stage ruler makes this tractable — a
+    // deep-green smooth-panel facet stops at the utBound preFilter (never runs GN or brute).
+    // PHASED for tractability (identical CONVERGED result, faster path): PHASE A (pass <= bulkPasses7pt) uses the
+    // cheap 7-pt BARY_STOP driver to converge the DENSE near-crest steep tail (the bulk of the work — the same fast
+    // path the proven kernel used); PHASE B (pass > bulkPasses7pt) switches to the DENSE 45-pt driver == the guard,
+    // which now touches only the residual MODERATE-gradU facets the 7-pt missed (the near-crest is already fine, so
+    // dense scoring hits the cheap preFilter/GN-green path there). Both phases score EVERY facet every pass.
+    const useDense = pass > bulkPasses7pt;
+    rehash();
+    let nOut = 0, worst = 0, bruteCalls = 0; const inserted = new Set<number>();
+    for (let f = 0; f < nF; f++) {
+      const a = tris[3 * f], b = tris[3 * f + 1], c = tris[3 * f + 2];
+      // STOP DRIVER (PHASE B) = the SAME dense 45-pt denseBary(8) ruler the acceptance guard uses. The 7-pt BARY_STOP
+      // of facetInteriorBrute was BLIND to interior outliers the 45-pt guard caught (measured: loop-7pt worst 0.00996
+      // => 0, guard-45pt worst 0.224 => 17 outliers on the same mesh). A loop that cannot SEE what the guard measures
+      // cannot refine against it — so the FINAL driver MUST use the guard's dense sampler.
+      const g = useDense ? facetInteriorGuardDense(rA, H, xyz, uv, a, b, c, ruler)
+        : facetInteriorBrute(rA, H, xyz, uv, a, b, c, ruler);
+      bruteCalls += g.bruteCalls;
+      if (g.dev > worst) worst = g.dev;
+      if (g.dev > tol) {
+        nOut++;
+        const insertOne = (uu: number, tt: number): void => {
+          const kU = Math.round(((uu % 1) + 1) % 1 * arcPerU / cellMm);
+          const key = kU * 100000 + Math.round(tt * H / cellMm);
+          if (!inserted.has(key)) { inserted.add(key); addPt(uu, tt); }
+        };
+        if (mode === 'edge') {
+          let ua = uv[2 * a], ub = uv[2 * b], uc = uv[2 * c]; const ta = uv[2 * a + 1], tb = uv[2 * b + 1], tc = uv[2 * c + 1];
+          while (ub - ua > 0.5) ub -= 1; while (ua - ub > 0.5) ub += 1; while (uc - ua > 0.5) uc -= 1; while (ua - uc > 0.5) uc += 1;
+          insertOne((ua + ub) / 2, (ta + tb) / 2); insertOne((ub + uc) / 2, (tb + tc) / 2); insertOne((uc + ua) / 2, (tc + ta) / 2);
+        } else {
+          // point-mode needs the worst-sample (u,t); the dense ruler returns it via facetInteriorGuardDense's uW/tW.
+          insertOne(g.uWorst, g.tWorst);
+        }
+      }
+    }
+    const stat: BrutePassStat = { pass, nTris: nF, nScored: nF, nOutBrute: nOut, worstBrute: +worst.toFixed(5), nInserted: inserted.size, bruteCalls, ms: Date.now() - t0, dense: useDense };
+    hist.push(stat); if (onPass) onPass(stat);
+    // In PHASE A, 0 outliers under the CHEAP 7-pt ruler does NOT mean converged — the dense driver may still find
+    // residuals. Only break when the DENSE driver reports 0 (or we're past the bulk phase).
+    if (nOut === 0 && useDense) break;
+    if (nOut === 0 && !useDense) { bulkPasses7pt = pass; continue; } // bulk 7-pt done early => switch to dense next pass
+    tris = triangulateMM(uv, patch, cEdges);
+    if (pass === maxPass && nOut > 0) capped = true;
+  }
+  return { uv, tris, passes: pass, capped, histPerPass: hist };
+}
+
+// acceptanceGuardWhole: the HONEST WHOLE-MESH guard — scores EVERY free facet with the two-stage utBound->GN->brute
+// ruler (>=36-pt denseBary), NOT the top-400-gradU population. Returns wholeMeshOutliers + wholeMeshMax + the
+// worst-facet's centroid gradU (to characterize any residual: is it a NEW moderate-gradU sub-class?).
+export interface WholeGuardResult {
+  nFacets: number; nScored: number; wholeMeshMaxMm: number; wholeMeshOutliers: number;
+  p50: number; p90: number; p99: number; bruteCalls: number;
+  worstGradU: number; worstUtWorst: [number, number]; outlierGradU: number[];
+}
+export function acceptanceGuardWhole(
+  patch: PatchDef, uv: number[], tris: number[], tol: number,
+  ruler: { gnScreen: number; preFilter: number; nTheta: number; nZ: number; zBandMm: number; refineIters: number },
+): WholeGuardResult {
+  const { rA, H } = patch;
+  const nV = uv.length / 2; const xyz = new Float64Array(nV * 3);
+  for (let i = 0; i < nV; i++) { const [x, y, z] = lift(rA, uv[2 * i], uv[2 * i + 1], H); xyz[3 * i] = x; xyz[3 * i + 1] = y; xyz[3 * i + 2] = z; }
+  const nF = tris.length / 3;
+  const du = 1 / 8192;
+  const gradUof = (f: number): number => {
+    const a = tris[3 * f], b = tris[3 * f + 1], c = tris[3 * f + 2];
+    const um = (uv[2 * a] + uv[2 * b] + uv[2 * c]) / 3, tm = (uv[2 * a + 1] + uv[2 * b + 1] + uv[2 * c + 1]) / 3;
+    const z = tm * H;
+    return Math.abs(rA(TAU * ((um + du) - Math.floor(um + du)), z) - rA(TAU * ((um - du) - Math.floor(um - du)), z)) / (2 * du * TAU);
+  };
+  const dev = new Float64Array(nF); let bruteCalls = 0;
+  for (let f = 0; f < nF; f++) {
+    const a = tris[3 * f], b = tris[3 * f + 1], c = tris[3 * f + 2];
+    // reuse the SAME honest two-stage per-facet ruler used by the loop STOP driver (denseBary via facetInteriorBrute
+    // uses BARY_STOP=7pts; here we use the FULL denseBary(8)=45pts for the acceptance verdict as the task requires).
+    const g = facetInteriorGuardDense(rA, H, xyz, uv, a, b, c, ruler);
+    bruteCalls += g.bruteCalls;
+    dev[f] = g.dev;
+  }
+  let maxMm = 0, nOut = 0, worstF = -1; const outlierGradU: number[] = [];
+  for (let f = 0; f < nF; f++) { const d = dev[f]; if (d > maxMm) { maxMm = d; worstF = f; } if (d > tol) { nOut++; outlierGradU.push(+gradUof(f).toFixed(1)); } }
+  const sorted = Float64Array.from(dev).sort();
+  const pc = (q: number): number => sorted.length ? sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))] : 0;
+  let wUt: [number, number] = [0, 0];
+  if (worstF >= 0) { const a = tris[3 * worstF], b = tris[3 * worstF + 1], c = tris[3 * worstF + 2]; wUt = [+((uv[2 * a] + uv[2 * b] + uv[2 * c]) / 3).toFixed(4), +((uv[2 * a + 1] + uv[2 * b + 1] + uv[2 * c + 1]) / 3).toFixed(4)]; }
+  return {
+    nFacets: nF, nScored: nF, wholeMeshMaxMm: +maxMm.toFixed(5), wholeMeshOutliers: nOut,
+    p50: +pc(0.5).toFixed(5), p90: +pc(0.9).toFixed(5), p99: +pc(0.99).toFixed(5), bruteCalls,
+    worstGradU: worstF >= 0 ? +gradUof(worstF).toFixed(1) : 0, worstUtWorst: wUt, outlierGradU: outlierGradU.slice(0, 40),
+  };
+}
+
+// full-denseBary(45pt) variant of facetInteriorBrute for the acceptance verdict (the loop STOP driver uses the
+// 7pt BARY_STOP for speed; the guard uses the full >=36-pt lattice the task mandates).
+function facetInteriorGuardDense(
+  rA: AnalyticRadiusFn, H: number, xyz: Float64Array, uv: number[], a: number, b: number, c: number,
+  opts: { gnScreen: number; preFilter: number; nTheta: number; nZ: number; zBandMm: number; refineIters: number },
+): { dev: number; bruteCalls: number; uWorst: number; tWorst: number } {
+  const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+  const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+  const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+  let ua = uv[2 * a], ub = uv[2 * b], uc = uv[2 * c]; const ta = uv[2 * a + 1], tb = uv[2 * b + 1], tc = uv[2 * c + 1];
+  while (ub - ua > 0.5) ub -= 1; while (ua - ub > 0.5) ub += 1; while (uc - ua > 0.5) uc -= 1; while (ua - uc > 0.5) uc += 1;
+  const utBound = (px: number, py: number, pz: number, um: number, tm: number): number => {
+    const th = TAU * (um - Math.floor(um)), z = tm * H, r = rA(th, z);
+    return Math.hypot(r * Math.cos(th) - px, r * Math.sin(th) - py, z - pz);
+  };
+  let dev = 0; let bruteCalls = 0; let uW = (ua + ub + uc) / 3, tW = (ta + tb + tc) / 3;
+  for (const [wa, wb, wc] of denseBary(8)) {
+    const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
+    const um = wa * ua + wb * ub + wc * uc, tm = wa * ta + wb * tb + wc * tc;
+    const bound = utBound(px, py, pz, um, tm);
+    let d: number;
+    if (bound <= opts.preFilter) d = bound;
+    else {
+      const gn = projectPointToRadialSurface(px, py, pz, rA, { coarseTrigger: 1e9, maxIter: 40 }).dist;
+      if (gn <= opts.gnScreen) d = gn;
+      else { d = bruteNearestOnRadialSurface(px, py, pz, rA, H, { nTheta: opts.nTheta, nZ: opts.nZ, zBandMm: opts.zBandMm, refineIters: opts.refineIters }).dist; bruteCalls++; }
+    }
+    if (d > dev) { dev = d; uW = um; tW = tm; }
+  }
+  return { dev, bruteCalls, uWorst: uW, tWorst: tW };
 }
 
 // ── STEP 2: scoped near-apex one-sided PN (Vlachos) element, ONLY on the last-ring leaves at each cusp apex ───────
