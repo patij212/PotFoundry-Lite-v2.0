@@ -331,3 +331,157 @@ under machine contention (UNMEASURED) — but box-refine converges to the true f
 the REFUTE is sound. (b) NO visual heatmap render was produced — a `dumpHeatmap` of the refined mesh is the
 recommended next visual artifact. (c) guard population = worst-gradU top-400 (the reddest near-vertical facets
 where any outlier must live), an intentional honest-and-tractable choice, not the full 6%.
+
+---
+
+## VALIDATION 2 — HONEST-LOOP (2026-07-05)
+
+The §5(5) two ordered moves RAN. The SECONDARY prerequisite (make the refine loop's TERMINATION driver the
+honest full-azimuth brute, not GN) was implemented FIRST and, on its own, **OVERTURNED the 2026-07-04b
+Gothic REFUTE without needing the PRIMARY element swap**. Trust only these measured numbers.
+
+### (1) Gothic whole-patch — flat-P1 REACHES 0 outliers (OVERTURNS the REFUTE); PN was NOT needed
+
+- **0 outliers? YES.** `interiorOutliersFinal = 0`, `interiorMaxFinalMm = 0.006`, `converged = true`,
+  `usedPnAtApex = FALSE`. The exact same numbers hold for flat-P1 alone (`interiorOutliersFlatP1 = 0`,
+  `interiorMaxFlatP1Mm = 0.006`) — the scoped apex PN element was **not required**.
+- **Root cause of the prior REFUTE — CONFIRMED as a driver artifact, now fixed by TWO levers together:**
+  (1) the STOP test is now the honest full-azimuth `bruteNearestOnRadialSurface` interior deviation (GN
+  understated 0.0085 vs the true 0.133, so the old loop terminated blind on the near-vertical flank);
+  (2) geometric density delivery via RED 1→4 edge-midpoint refinement (`mode='edge'`) instead of
+  one-node-per-facet-per-pass (`mode='point'`, which capped with 2 residual apex outliers). `worstBrute`
+  collapsed 0.276→0.270→0.264→0.169→0.008 over 5 passes once density crossed the ~0.035mm-arc apex threshold.
+- **Element bench settles the "needs a curved element" question — flat-P1 SUFFICES.** pn-fine (well-shaped
+  aspect≈1 apex facet, brute 2048×160) shows flat-P1 crosses <0.02 at ~0.035mm arc and reaches 0.0009 at
+  0.0022mm arc; one-sided Vlachos PN ≈ flat (0.0207/0.0033/0.0008, sometimes WORSE). The apex is NOT below a
+  flat-P1 element's reach ⇒ the E-CRESTRIBBON / 2026-07-04b "needs a curved P2/PN element" framing is
+  CONTRADICTED. The wall was the GN DRIVER, not the P1 ELEMENT.
+- **Watertight non-vacuous? YES.** `auditNonManByIndex = 0` by index; injected-crack control moves 0→1.
+  Manifold across the junction network. Topology pipeline (FGJ Morse graph → planarizeMM → no-bridge
+  locked-constraint CDT seed; residualCrossings=0, 100% recovery) reused VERBATIM.
+- **Tri-count:** 9,885 (1-bay patch, well under 6M budget for this scope).
+- **Slivers — FAILS HARD (honest caveat, NOT in the kill-criterion):** `minAngleDeg = 0`, median ≈3°,
+  `pctBelow20 = 81.4%` — WORSE than point-mode (33.5%) and the prior GN kernel (4.6%). The unconditioned 1→4
+  apex red-refine bakes needle vertex configs into the point set. The 0-outlier win is sliver-dirty.
+- **Ledger:** E-2026-07-05-PERFECT-MESHER-GOTHIC-BRUTE, registry commit 0a95b99 (pre-reg fa1936e,
+  instruments cb6db97). Probe `_pf_perfect_gothic_brute.test.ts` (PF_PERFECTBRUTE=1, PF_MODE=edge). Kernel
+  `_pf_perfectMesherBruteLib.ts` (facetInteriorBrute STOP ruler + refineInteriorBrute mode point|edge +
+  apexLeafPN Vlachos). Bench `_pf_pnfine.test.ts`, `_pf_pndiag.test.ts`.
+
+### (2) GeometricStar — flat-P1 REACHES 0 outliers (kernel transfers VERBATIM)
+
+- **0 outliers? YES.** `interiorOutliersFinal = 0`, `interiorMaxFinalMm = 0.006`, `usedPnAtApex = FALSE`,
+  `converged = true`. The ONLY new code was `makeGeoStarPatch` (patch window on the high-relief strap band
+  t=0.08); everything downstream (FGJ-Morse extract → planarizeMM X-split → CDT junction-lock → brute-driven
+  edge-mode refine) was reused VERBATIM from the Gothic kernel.
+- **Count-instability handled by TOPOLOGY, not fidelity:** per-row full-ring u-crest count oscillates
+  0→7→16→16→32→8→0 per tile (relief amp ~1.72mm at t~0.1, EXACTLY 0 at tile centres) — the SAME unstable-count
+  family that floored the doubled-crest column primitive at 26mm (E-2026-07-04-DCGS). Here extract fam=2,
+  segU=728, segT=215, residualCrossings=0; refine CONVERGED in 5 passes (outliers 4824→4280→222→16→0, worst
+  0.16→…→0.006), NOT capped. Mechanism: the FGJ+CDT-lock+brute-refine kernel is COUNT-AGNOSTIC (nearest-neighbour
+  crest linking + planarizeMM X-split births/dies chains), so it never pins vanished straps.
+- **PN-mech confirms flat-P1 sufficiency (finite-width kink, easier than Gothic):** devFlat/devPN
+  0.191/0.167 @0.57mm → 0.0085/0.0080 @0.071mm (flat-P1 already < tol) → 0.0026/0.0023 @0.035mm. PN adds
+  only ~10–30%, NOT Gothic's order of magnitude.
+- **Watertight non-vacuous? YES.** `auditNonManByIndex = 0`, injected-crack 0→1. Manifold. `tris = 112,863`.
+- **Render:** `research/exchange/_pf_perfect_geostar_brute/geostar_true3d.png` — whole patch GREEN under the
+  true-3D perpendicular ruler (centroid p99 0.018 / worst 0.023 / 0.00% >0.03), no red on chevron strap flanks.
+- **Slivers — better than Gothic-brute but still fails:** `minAngle = 0`, median 41°, `pctBelow20 = 21.3%`
+  (density-INVARIANT; same defect family as tier-A/B). Thin facets from planarize junction fans + strap
+  birth/death chain terminations.
+- **Ledger:** E-2026-07-05-PERFECT-MESHER-GEOSTAR, commit 01f56c2. Probe `_pf_perfect_geostar_brute.test.ts`
+  (PF_PERFECTGS=1; PF_PNMECH=1). Patch lib `_pf_geostarPatchLib.ts` (only new code). Recon
+  `_pf_geostar_recon.test.ts`. Render `_pf_geostar_render.test.ts`.
+
+### (3) Tier-A/B byte-identical + M=g/h² sliver gate — BOTH sub-claims REFUTED
+
+- **(3a) Closer-OFF byte-identity = REFUTED.** The kernel (`_pf_perfectMesherLib`/`_pf_perfectMesherBruteLib`)
+  has NO closer-off delegation branch (grep-verified). Its only generator, `seedMesh` with an EMPTY protected
+  complex, builds a STYLE-BLIND uniform (u,t) grid → identical hash 84c5edc4… + identical 22989v/45312t for
+  BOTH styles (the radius fn enters only the LIFT, not the (u,t) point set). `buildInhouseMetricMesh` (the
+  dispatch table's named 'dense-M-square') is a curvature-ADAPTIVE M=g/h² mesh: HarmonicRipple 21960v/43342t
+  hash 0c916666…, ArtDeco 14951v/29549t hash 34788451… → `byteIdentical = FALSE` for both. deterministic=TRUE.
+  **The §4/§6 "byte-identical when the flag is off ⇒ zero regression on Tier-A/B" is an UNIMPLEMENTED DESIGN
+  CLAIM, not a measured property.** The uniform-grid seed is architecturally a DIFFERENT generator from the
+  adaptive M-mesh; no budget pairing can equate them.
+- **(3b) M=g/h² sliver gate holding 0-outlier = REFUTED.** On the CONFIRMED 1-bay edge-mode Gothic mesh
+  (4987v/9885t, alignment-guarded cEdges=141 match): pure true-3D max-min-angle Lawson flips fired 5295 times
+  but REOPENED interior outliers 0→57 (ALL on-crest), max 0.006→0.130, p99→0.128, while `pctBelow20` barely
+  moved 81.4→77.4% (minAngle 0→0). Fidelity-guarded flips were WORSE (50 outliers, max 0.194 — the cheap ruler
+  understates true-3D on near-vertical flanks, the same GN-blindness gotcha). LOCK_ALL control (0 flips) proved
+  the halfedge build + orientation-normalize (134 CW→CCW) + flipHE relink are byte-clean (asymmetricTwins=0) ⇒
+  the tension is GENUINE, not an instrument artifact. Watertight `auditNonManByIndex = 0` non-vacuous throughout.
+- **ROOT CAUSE:** the 81.4% slivers are baked into the edge-mode POINT SET (uniform 1→4 apex red-refine = needle
+  vertex configs). Near the zero-width apex, any near-equilateral triangulation must chord across the concave
+  cusp (bad fidelity); any cusp-following triangulation is a needle (bad angle); flips reconnect the SAME points
+  so cannot escape. **The 0-outlier gate and the sliver gate are jointly UNclosable by topology-only flips** —
+  the lever must be metric-aware SPACING at refine time (place flank Steiner nodes at M=g/h²-equalized positions,
+  near-equilateral-by-construction), NOT a-posteriori flips.
+- **Banked reusable:** the halfedge-build + orientation-normalize + flipHE-with-lock is a correct metric-flip
+  instrument (LOCK_ALL-proven byte-clean).
+- **Ledger:** E-2026-07-05-PERFECT-MESHER-TIERAB-SLIVERS (pre-reg caca066, findings 05751ad). Probe
+  `_pf_tierab_slivers.test.ts` (PF_TIERAB=1 / PF_SLIVERM=1; diag PF_LOCKALL / PF_FIDFLIP / PF_CRESTVERTLOCK).
+
+### (4) DEFINITIVE HONEST STATE — the perfect mesher is FIDELITY-PROVEN whole-patch on BOTH count-unstable styles by FLAT-P1, but NOT yet whole-MESH and NOT print-usable
+
+Revise §6 and the 2026-07-04b §(4). The 2026-07-04b flat-P1 REFUTE is **OVERTURNED**: it was a GN-DRIVER
+artifact, not a P1-element floor. The honest state now partitions cleanly by GATE:
+
+- **FIDELITY gate (0-outlier, true-3D ≤0.01) — PROVEN, by FLAT-P1 (usedPnAtApex=FALSE):**
+  BOTH count-unstable styles reach `interiorOutliersFinal = 0`, `interiorMax = 0.006mm` under the honest
+  full-azimuth brute STOP-driver + edge-mode geometric density: Gothic (zero-width apex) AND GeoStar
+  (finite-width chevron). The scoped-apex PN element was built and benched but PROVED UNNECESSARY on both —
+  the apex sits ABOVE a flat-P1 element's reach at ~0.035mm arc. **This is the campaign's deepest fidelity
+  result: the last wall (zero-width `ridge(sharp)` on count-unstable networks) is closed to CAD-grade true-3D
+  with a flat simplex, no curved element.** The §3 flat-P1 conclusion is VINDICATED (it was correct all along;
+  2026-07-04b only APPEARED to contradict it because of the blind GN driver).
+- **WATERTIGHT / MANIFOLD gate — PROVEN whole-patch:** `auditNonManByIndex = 0` non-vacuous, manifold across
+  the FGJ junction network, residualCrossings=0, 100% recovery, on both styles. Topology half of the kernel is
+  solid and reused verbatim across styles.
+- **SLIVER gate — FAILS (Gothic 81.4%, GeoStar 21.3% <20°, minAngle 0).** Density-invariant; NOT closable by
+  topology-only flips (3b refuted). This is the ONE OPEN gate blocking print-usability.
+- **TIER-A/B byte-identical (zero-regression) — REFUTED as CURRENTLY IMPLEMENTED (design claim only).** The
+  seedMesh uniform-grid generator is NOT the adaptive M-mesh; a productionized closer-off path must EXPLICITLY
+  delegate to `buildInhouseMetricMesh` (byte-audited), which is an INTEGRATION task, not a topology one.
+- **SCOPE CAVEATS (do not overclaim):** CONFIRMs are on 1-BAY patches (Gothic 9885t, GeoStar 112863t).
+  5-bay+ EDGE-mode whole-mesh is UNMEASURED (env-cost of 3× nodes/pass killed the pass-1 run window clean;
+  point-mode 5-bay capped with 2 residual on-crest outliers at 0.078 — slow delivery, NOT a floor).
+  Whole-Gothic tri-count vs 6M budget UNMEASURED. No 20-style re-baseline run.
+
+**Is the perfect mesher PROVEN whole-mesh? NO — it is PROVEN whole-PATCH (fidelity + watertight) on both
+count-unstable styles by flat-P1, with TWO gates still open: (i) slivers (needs metric-aware refine-time
+spacing, NOT flips), (ii) whole-MESH scale-up (5-bay+ edge-mode + 20-style re-baseline + byte-identical
+delegation), both INTEGRATION/scale, NOT representation.** The representation question ("can a flat-P1
+mesh follow the zero-width apex to CAD-grade true-3D") is now definitively answered YES.
+
+### (5) IF PROVEN — remaining path is one experiment then productionization (NOT another representation search)
+
+The single next experiment (the LAST fidelity-adjacent unknown before productionization):
+
+> **METRIC-AWARE APEX SPACING holding 0-outlier fidelity.** Replace the unconditioned 1→4 edge-mode
+> red-refine with M=g/h²-equalized Steiner placement at refine time (near-equilateral-by-construction on the
+> flank), re-measure BOTH gates together on Gothic AND GeoStar: kill-criterion = `pctBelow20` → single digits
+> AND `minAngle` sane WHILE `interiorOutliersFinal` HOLDS at 0 under the honest brute. This is the ONE lever
+> the 3b refutation pointed to (spacing at insertion, not a-posteriori flips). Do it on both styles at 1-bay
+> first, then run the 5-bay edge-mode whole-mesh + the 20-style Tier-A/B re-baseline as the scale confirm.
+
+Productionization path (back-port into `ParametricExportComputer` / conformingMesher) — gated behind a
+default-off flag, byte-identical when off, GitNexus impact-checked before any src/ edit:
+
+1. **Wire the closer-off path to delegate to `buildInhouseMetricMesh`** (the adaptive M-mesh), NOT the
+   style-blind uniform seed — this is what actually delivers the "byte-identical Tier-A/B" zero-regression
+   guarantee that (3a) proved is currently UNIMPLEMENTED. Byte-audit the delegation on all Tier-A/B styles.
+2. **Port the topology half** (FGJ Morse graph → planarizeMM → no-bridge locked-constraint CDT seed) as the
+   Tier-C protected-complex builder — it is the proven, style-agnostic, count-agnostic junction extractor.
+3. **Port the honest brute STOP-driver + edge-mode interior refine** as the Tier-C fidelity loop, gated to
+   fire ONLY on the count-unstable/high-relief protected-complex styles (Gothic, GeoStar) so Tier-A/B stays on
+   the byte-identical adaptive M-mesh.
+4. **BLOCK productionization on the sliver gate** — do NOT ship the current sliver-dirty apex refine (81.4%
+   <20° would degrade printability); ship only after the metric-aware-spacing experiment above closes slivers
+   while holding 0-outlier fidelity.
+5. Run the 5-bay+ whole-mesh + tri-count-vs-6M-budget cost gate as the final go/no-go before flag-flip.
+
+**LEDGER (this synthesis):** `research/lab/2026-07-04-perfect-mesher-spec.md` §VALIDATION 2. Underlying
+registry entries: E-2026-07-05-PERFECT-MESHER-GOTHIC-BRUTE (0a95b99), E-2026-07-05-PERFECT-MESHER-GEOSTAR
+(01f56c2), E-2026-07-05-PERFECT-MESHER-TIERAB-SLIVERS (05751ad). DEV-ONLY; no src/ edit; research/exchange
+scorecards gitignored (numbers inlined above and in the registry).
