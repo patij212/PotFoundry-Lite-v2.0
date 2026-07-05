@@ -30,7 +30,35 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **LEDGER (this pre-reg):** probe `research/bridge/_pf_perfect_gothic_creststrip.test.ts` (PF_CRESTSTRIP=1; PF_SMOKE=1 1-bay); lib `research/bridge/_pf_crestStripLib.ts`; config `vitest.pf_creststrip.config.ts`; scorecard `research/exchange/_pf_perfect_gothic_creststrip/`. DEV-ONLY; no src/ edit; reuses the M-square complex/seed + brute STOP driver READ-ONLY.
 
-**STATUS: PENDING (measuring).**
+**STATUS: STEP-1 (strip) REFUTED; FALLBACK (collapse) CONFIRMED slicer-safe. + a load-bearing metrology catch.**
+
+**EVIDENCE (1-bay smoke go/no-go, apples-to-apples under the HONEST WHOLE-MESH brute — the top-400-gradU acceptanceGuard reports 0 for BOTH meshes, a POPULATION artifact caught this experiment; plus the 4-bay collapse on the REAL 36-zeroArea artifact):**
+
+| gate (ruler) | CONFIRMED baseline (brute-smoke 9885t) | crest-strip AFTER (14550t) | collapse fallback on 4-bay M-square (58365t, the REAL 36-zeroArea mesh) |
+|---|---|---|---|
+| interiorOutliers — **top-400-gradU guard** | 0 | 0 | 0 → **0** (HELD) |
+| interiorOutliers — **WHOLE-MESH brute (honest)** | **3** (worst 0.199) | **14** (worst 0.211) | n/a (guard only) |
+| interiorOutliers — whole-population guard | 2 (max 0.224) | 7 (max 0.223) | — |
+| residual-outlier gradU | 110–182 (moderate) | 101–165 (moderate) | — |
+| loop convergence | **converged** (out→0) | **CAPPED** (out=7 @0.152, pass 11) | — |
+| zeroAreaFaces | 3 | **0** | **36 → 0** (subMicro 41→0; 77 faces collapsed, 77 verts merged) |
+| subMicroFaces (<1e-6 mm²) | 436 | 4 (→0 after collapse) | 41 → **0** |
+| minAngleDeg / pctBelow20 | 0 / 81.4% | 0.1 / **64.3%** | 0.2 / 56.2→**56.1%** (unchanged) |
+| watertight nonMan (non-vacuous inj 0→1) | 0 ✓ | 0 ✓ | 0 ✓ |
+
+**WHY STEP-1 REFUTED (decisive, two lines):**
+1. **The strip did NOT hold 0-outlier on the HONEST whole-mesh ruler — it reopened outliers 3→14** (worst 0.199→0.211). Its loop CAPPED (out=7 @0.152) rather than converging, because it inserts structured POINTS then re-CDTs the WHOLE strip with cdt2d — a FREE Delaunay reconnects the points, so the intended "structured square cells that follow the flank" are NOT preserved as connectivity; near the near-vertical flank the free Delaunay-in-mm-chart still chords ACROSS the flank at moderate-gradU column-boundary / RED-fallback facets. The CONFIRMED edge-mode RED 1→4 loop converges (halves every edge) where the strip's fixed nCol=4 + free CDT does not. The pre-registered "interiorOutliers HOLD 0" FAILS on the honest ruler.
+2. **pctBelow20 = 64.3% ≫ single-digit** (WORSE than M-square's 56.2% at 4-bay) — free-CDT-over-strip-points does not produce well-shaped cells; the structured-quad INTENT needs explicit quad→2-tri connectivity (bypass cdt2d in the flank band), a larger build the smoke does not justify.
+
+**THE METROLOGY CATCH (load-bearing, banked):** the whole-mesh brute reconciliation PROVED the campaign's "0-outlier whole-patch" is a **top-400-worst-gradU guard POPULATION artifact** — the CONFIRMED brute baseline itself has **3 whole-mesh outliers (worst 0.199mm) at gradU 110–182** that the top-400 (all gradU >~208) never scores. The residual outliers live on the MODERATE-gradU flank, NOT the steepest apex the guard targets. This does NOT overturn the fidelity result's DIRECTION (the strip is still worse: 14 vs 3) but it corrects the absolute claim: whole-patch fidelity is ~3 residual moderate-gradU facets, not literally 0. Future guards must widen the gradU population OR score whole-mesh (tractable at ≤15k tris).
+
+**FALLBACK CONFIRMED — Gothic is now SLICER-SAFE without the strip:** the degenerate-face COLLAPSE post-pass on the REAL 4-bay M-square mesh drives `zeroAreaFaces 36→0` + `subMicro 41→0` (welds 77 UV-collinear coincident vertices) while HOLDING interiorOutliers=0 (top-400, max 0.006) + watertight non-vacuous. `pctBelow20` unchanged 56.2→56.1 (collapse fixes only the degenerates, not the needles — as designed). `usedCollapseFallback=true`.
+
+**VERDICT: REFUTED (the curved-element structured strip as the sliver closer) — it neither closes slivers to single digits (64% ≫ 10%) NOR holds 0-outlier on the honest whole-mesh ruler (reopened 3→14, non-convergent). PARTIAL slicer-safe close via the COLLAPSE fallback: Gothic zeroArea 36→0, 0-outlier(top-400) + watertight held. Slivers remain OPEN (the pct<20 gate is UNMET by every lever tried — 7 now: flips, M-square, grading, relax, ruler-escape, structured-strip, and collapse-doesn't-touch-them).**
+
+**RECOMMENDATION:** (1) do NOT pursue the points-to-CDT strip further — the free re-triangulation defeats the structured intent; a genuine close needs EITHER explicit structured quad-strip connectivity in the flank band (bypass cdt2d — a real build) OR accept the needles as anisotropy-tolerated + collapse-for-slicer-safety. (2) SHIP-PATH for print-usability: the COLLAPSE fallback is a cheap, proven, correct post-pass that makes Gothic slicer-safe (zeroArea=0) holding fidelity+watertight — pair it with an ACCEPT+DOCUMENT of the 56% needles (which E-…-ANISO-RULER showed are finite-area on GeoStar / degenerate-only-on-Gothic-and-now-collapsed). (3) FIX THE GUARD before any further 0-outlier claim: widen the acceptanceGuard population (whole-mesh at ≤15k tris, or gradU-stratified sampling) — the top-400 is blind to the moderate-gradU residual on BOTH the baseline and any candidate. BANKED reusable: `refineCrestStrip` (arc-length column march, PN-tangent-driven — correct but CDT-defeated), `countZeroAreaFaces` + `collapseDegenerateFaces` (the slicer-safety instruments, collapse-proven on the real 36-zeroArea mesh), and the whole-mesh-brute diag (`_pf_creststrip_diag`) that caught the guard artifact.
+
+**LEDGER:** this row. Scorecard `research/exchange/_pf_perfect_gothic_creststrip{,_smoke}/` {before,after,collapse,collapse4bay,diag_after,diag_before}.json + HONEST_SUMMARY.json + after_passes.ndjson + *_mesh.bin. Probe `_pf_perfect_gothic_creststrip.test.ts` (PF_CRESTSTRIP=1), diag `_pf_creststrip_diag.test.ts` (PF_CSDIAG=1, PF_DIAGMESH=before|after), collapse `_pf_creststrip_collapse4bay.test.ts` (PF_COLLAPSE4=1); lib `_pf_crestStripLib.ts`; configs `vitest.pf_creststrip.config.ts` / `vitest.pf_csdiag.config.ts` / `vitest.pf_collapse4.config.ts`. Pre-reg commit 0d8b91b. DEV-ONLY; no src/ edit.
 
 ---
 
