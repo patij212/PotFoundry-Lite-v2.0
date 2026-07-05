@@ -24,22 +24,14 @@ import {
 } from '../ConformingOuterWall';
 import { detectFeatures } from '../featureGraph/detectFeatures';
 import { isCountUnstableStyle } from './countUnstable';
+import { TIER_C_DETECT_OPTS } from './detectOpts';
 
 export { countJunctionNodes, isCountUnstableStyle } from './countUnstable';
-
-/**
- * Canonical detector options (mirrors the production call in
- * fidelity/bandRemesh/assembleWithFeatures.ts, minus its reliefIndicator —
- * the component-boundary detector is not needed to sense count-instability,
- * which lives in the ridge/crease network's junctions).
- */
-const TIER_C_DETECT_OPTS = {
-  coarseRes: 40,
-  fineRes: 120,
-  minStrength: 1.0,
-  minAngleDeg: 28,
-  creaseContrast: { windowRadius: 5, factor: 0.6, absFloorDeg: 8 },
-} as const;
+export { TIER_C_DETECT_OPTS } from './detectOpts';
+export {
+  buildProtectedComplex,
+  type ProtectedComplex,
+} from './morseComplex';
 
 /**
  * Dev-only lever, mirroring the `__pfConforming*` convention: unset/false in
