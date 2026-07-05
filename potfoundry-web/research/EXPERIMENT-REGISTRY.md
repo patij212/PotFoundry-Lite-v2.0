@@ -10,6 +10,42 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-GOTHIC-APEXPN — SLIVER LEVER 13a: scoped one-sided PN curved element AT the apex, re-tessellating the near-apex NEEDLE leaves into a FEW well-shaped on-surface flat sub-triangles (Gothic) [PRE-REGISTERED — kill-criterion committed BEFORE measuring]
+
+**FRAME:** The perfect mesher is FIDELITY-PROVEN whole-mesh 0-outlier on GothicArches (E-…-WHOLEMESH-GOTHIC: `refined_mesh.bin` 30,323t, wholeMeshOutliers=0, wholeMeshMax=0.01, watertight nonMan=0 non-vacuous, minAngle 0°, median 43°, **pctBelow20=19%**). 12 sliver levers refuted — ALL of them move/reconnect the SAME flat-P1 point set (density / placement / connectivity / flips / free-CDT strips / red-green refine). The measured root cause (E-ANISO-RULER + V8 §1): the near-vertical `pow(sharp)` crest flank forces the fidelity-holding cells to be NEEDLES long-along-crest — a REPRESENTATION property of the flat P1 element at the zero-width apex, not a placement bug. V8 §(1) names the SOLE untried representation move: **a scoped one-sided PN/P2 curved element AT the apex-straddling leaf** (the `apexLeafPN` Vlachos element was BENCHED for FIDELITY — usedPnAtApex=FALSE, PN not needed there — but NEVER used to re-TESSELLATE the needle leaves for QUALITY). This lever is that move, scoped to SLIVERS.
+
+**HYPOTHESIS (falsifiable):** The Gothic 19% <20° needles are concentrated in the last 1-2 rings touching each cusp/junction apex (the red 1→4 apex refine baked them in). Replacing ONLY those near-apex needle leaves — as a LOCAL fan cluster with a fixed shared boundary — by re-tessellating them over the one-sided Vlachos PN curved element (interior nodes placed at well-shaped fan positions, LIFTED onto the PN patch so they ride the cusp WITHOUT chording it, then emitted as a FEW near-equilateral flat sub-triangles) drops pctBelow20 toward single digits WHILE holding whole-mesh 0-outlier (the PN nodes sit on-surface ⇒ sub-facet chords stay ≤tol) + watertight (shared boundary ⇒ index-welded), because the PN patch lets the interior connectivity break free of the needle wedge the flat point-set was locked into.
+
+**KILL-CRITERION (committed BEFORE measuring):**
+- CONFIRM iff pctBelow20 drops toward SINGLE DIGIT (materially below 19%, ideally <~10%) WHILE wholeMeshOutliers HOLD 0 (honest full-azimuth 45-pt `acceptanceGuardWhole`, EVERY free facet — per the banked MANDATE, NOT a top-N-gradU population) AND watertight (auditNonManByIndex=0 by index, non-vacuous — inject-crack moves count).
+- REFUTE iff the apex-PN re-tessellation CANNOT hold whole-mesh 0-outlier (PN sub-facets reopen an outlier) OR pctBelow20 barely moves (needles survive the re-tessellation) — report the HONEST pctBelow20 at 0-outlier (the tradeoff frontier).
+
+**MECHANISM (`_pf_apexPnLib.buildApexPnTess`):** reload the CONFIRMED wholemesh Gothic mesh READ-ONLY; localize near-apex needle leaves (minAngle<20° facets all-near-crest / high-gradU touching an apex vertex) into fan clusters around each apex vertex; for each cluster keep its boundary polygon fixed, evaluate the Vlachos PN patch to place a FEW interior nodes on-surface, re-triangulate the cluster into near-equilateral sub-tris with PN-lifted interior nodes (direct emission, NO cdt2d); re-score whole-mesh with `acceptanceGuardWhole` + `triangleQualityDistribution` minAngle + `auditNonManByIndex` non-vacuous. Render true-3D heatmap for the visual gate.
+
+**VERDICT: [PENDING RUN]**
+
+**LEDGER:** probe `research/bridge/_pf_apex_pn.test.ts` (PF_APEXPN=1), lib `_pf_apexPnLib.ts` (buildApexPnTess, reuses apexLeafPN PN math + acceptanceGuardWhole READ-ONLY), config `vitest.pf_apexpn.config.ts`. Base mesh `research/exchange/_pf_perfect_gothic_wholemesh/refined_mesh.bin`. Scorecard `research/exchange/_pf_apex_pn/`. DEV-ONLY; no src/ edit. Pre-reg commit BELOW.
+
+---
+
+## E-2026-07-05-PERFECT-MESHER-GEOSTAR-RELAX — SLIVER LEVER 13b: graded-seed + surface-preserving Laplacian-under-M relaxation on GeometricStar's OFF-crest PANEL (the correct class — target the RIGHT slivers) [PRE-REGISTERED — kill-criterion committed BEFORE measuring]
+
+**FRAME:** The perfect mesher is FIDELITY-PROVEN whole-mesh 0-outlier on GeoStar (E-…-GEOSTAR-WHOLEMESH gate1: wholeMeshOutliers=0, max 0.01mm, watertight non-vacuous, 116889 tris, minAngle 0, **pctBelow20=21.7%**). 12 sliver levers refuted. DECISIVE re-localization (`_pf_geostar_hybrid_diag`): of the 21.7% <20° facets, **91% are OFF-crest** grading-transition needles on the smooth panel (offCrestSliv 23087 / nSliv 25369; edge-ratio p50 6.3), only 9% on-crest. EVERY prior GeoStar sliver lever (strips, hybrid) mis-targeted this — it attacked the 9% on-crest minority. Lever#1 (smooth graded seed) + Lever#2 (Laplacian-under-M relaxation) were refuted ONLY on GOTHIC (whose slivers are the DIFFERENT crest-flank cross-curvature class, structurally guard-locked); they were NEVER run on GeoStar, and they target EXACTLY the off-crest free-vertex panel grading class. This experiment runs them on the RIGHT class for the first time.
+
+**HYPOTHESIS (falsifiable):** GeoStar's 91%-off-crest panel grading-transition needles are FREE (non-crest, non-boundary) vertices that surface-preserving Laplacian-under-M relaxation (move free panel verts toward M-metric-equilateral in the mm chart, re-lift on-surface, REJECT if any incident facet's honest brute interior dev >tol) can fatten to single-digit %<20 WHILE holding whole-mesh 0-outlier + watertight, because — unlike Gothic's crest-flank needles (guard-rejected, structural) — panel needles sit where the surface is near-isotropic so a metric-equilateral move is NOT fidelity-forbidden. Optional graded-seed arm removes the dense↔coarse transition at insertion.
+
+**KILL-CRITERION (committed BEFORE measuring):**
+- CONFIRM iff pctBelow20 → SINGLE DIGIT (<~10%) AND minAngle sane (>~10° or median >~35° w/ small tail) WHILE wholeMeshOutliers HOLD 0 (honest full-azimuth `wholeMeshGuard`, EVERY free facet — NOT a top-N-gradU population, per the banked MANDATE) AND watertight (auditNonManByIndex=0 by index, non-vacuous, inject-crack moves count).
+- REFUTE iff the panel needles persist (report honest pctBelow20 at 0-outlier — the tradeoff frontier) OR relaxation cannot get below ~15% without reopening a whole-mesh outlier.
+
+**MECHANISM:** reload the CONFIRMED GeoStar wholemesh mesh (116889t) READ-ONLY; `relaxLaplacianUnderM` (quality-directed smart-Laplacian, guarded by `facetInteriorBrute` reject) on the free panel verts (crest+junction+boundary LOCKED via `pc.crestVertexSet` + welded-boundary detection); score before/after with `wholeMeshGuard` (whole-mesh, every facet) + `triangleQualityDistribution` minAngle + `auditNonManByIndex` non-vacuous. Optional `gradedSeed` re-seed arm (PF_GSGRADED).
+
+**VERDICT: [PENDING RUN]**
+
+**LEDGER:** probe `research/bridge/_pf_perfect_geostar_relax.test.ts` (PF_GSRELAX=1; graded PF_GSGRADED=1), lib `_pf_relaxLib.ts` (relaxLaplacianUnderM + gradedSeed, banked) + `_pf_wholeMeshGuardLib.ts` (wholeMeshGuard), config `vitest.pf_gsrelax.config.ts`. Scorecard `research/exchange/_pf_perfect_geostar_relax/`. DEV-ONLY; no src/ edit.
+
+---
+
 ## E-2026-07-05-HYBRID-APEX — GATE-2 SLIVERS: clean direct-emit crest strip EVERYWHERE + LOCALIZED honest-brute apex refine on ONLY the outlier triangles (red-green, no cdt2d re-chord) [PRE-REGISTERED — kill-criterion committed BEFORE measuring]
 
 **HYPOTHESIS (falsifiable):** The fidelity↔quality tension on GothicArches is resolved by COMBINING the two halves that each already worked: (1) the CLEAN explicit-connectivity direct-emit structured-quad crest strip (`buildDirectCrestStrip`, hCrest=dtRow=0.15 = the single-digit config that gave 0.4% <20° but REOPENED 236 apex outliers @0.22mm; E-…-CRESTSTRIP-DIRECT), THEN (2) a LOCALIZED honest-brute apex refine on ONLY the triangles whose interior true-3D deviation >0.01 (the near-apex leaves where the strip left the outliers) — RED-GREEN 1→4 subdivision with edge-midpoints placed in the (u,t) chart, DIRECT connectivity emission, NEVER re-CDT the whole point set (the cdt2d re-chord was the V6 failure mode that re-needled every prior strip). The clean flank triangles NOT adjacent to any apex outlier are never touched ⇒ they keep 0.4% angles; only the thin apex band recurses.
