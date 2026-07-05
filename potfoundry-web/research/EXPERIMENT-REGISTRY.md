@@ -10,6 +10,25 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-PERFECT-MESHER-GEOSTAR-WHOLEMESH — GATE 1 FIDELITY-TO-LITERAL-0: whole-mesh (EVERY free facet) honest brute guard + whole-mesh refine loop on GeometricStar [PRE-REGISTERED — this row committed BEFORE measuring]
+
+**FRAME:** The CONFIRMED GeoStar brute-refine mesh (E-2026-07-05-PERFECT-MESHER-GEOSTAR, commit 01f56c2: interiorOutliersFlatP1=0, max 0.006, watertight, 112863 tris) reported "0 outliers" via the acceptanceGuard scoring ONLY the top-400-worst-gradU facets (guardScored=400, gradUmin=232.94). The GEOSTAR-CRESTSTRIP metrology catch (E-2026-07-05-…-GEOSTAR-CRESTSTRIP) RECONFIRMED the guard-population artifact: the brute-refine STOP driver's OWN active-set is only changed-cavities in later passes, and ~4 residual MODERATE-gradU flank facets (≤~0.082mm on-crest, gradU below even the wide-2000 guard population, min 190.8) were NEVER re-checked by the top-gradU guard. This experiment makes ONE change: the acceptance guard AND the refine-loop iteration cover the WHOLE MESH — compute the honest ≥36-pt (denseBary(8)=45-pt) full-azimuth-brute interior deviation for EVERY free triangle, and keep edge-mode refining ANY facet whose whole-mesh interior deviation >0.01 (surface-projected 1→4 Steiner) until MAX over ALL facets ≤0.01.
+
+**HYPOTHESIS (falsifiable):** Driving the acceptance guard AND the refine-loop STOP over the WHOLE MESH (every free facet, 45-pt brute) — not the top-400-gradU subset — the CONFIRMED GeoStar kernel reaches LITERAL whole-mesh 0 interior outliers (max ≤0.01) while staying watertight, because the ~3-4 residual moderate-gradU facets are UNDER-refined (a guard blind-spot), NOT a new representation wall.
+
+**DISCRIMINATOR (cheapest that can refute):** reload the persisted CONFIRMED mesh (`_pf_perfect_geostar_brute/refined_mesh.bin`), run `wholeMeshGuard` (45-pt brute over EVERY free facet, no gradU cap) to expose the true residual count/max, then continue `refineInteriorBruteWhole` (active=ALL facets every pass, edge-mode 1→4, STOP = whole-mesh 45-pt brute) until max ≤0.01, then re-run the whole-mesh guard.
+
+**KILL-CRITERION (pre-registered, committed BEFORE measuring):**
+- CONFIRM iff the honest WHOLE-MESH brute (EVERY free facet, 45-pt) shows **0 interior outliers (max ≤0.01)** AND watertight (`auditNonManByIndex`=0 NON-VACUOUS: injected crack moves the count). Report wholeMeshOutliers (must be 0) + wholeMeshMax + tris + residualFloorMm.
+- REFUTE iff a residual facet FLOORS >0.02 after the whole-mesh refine loop TERMINATES (a new moderate-gradU hard sub-class — characterize it: where, what geometry, another cusp form?).
+- NO-OP iff the whole-mesh guard on the reloaded mesh already reads 0 (the top-400 was NOT a blind-spot on GeoStar — the "artifact" claim was wrong for this style).
+
+**INSTRUMENTS (honest):** interior ruler = 45-pt barycentric `denseBary(8)`, two-stage own-azimuth GN-screen → full-azimuth `bruteNearestOnRadialSurface` confirm on non-green samples (1024×120 z-band + box-refine, surfnative-calibrated). Whole-mesh = every free facet (NO gradU cap). Watertight = `auditNonManByIndex` NON-VACUOUS. Slivers = `triangleQualityDistribution` minAngle (reported as honest caveat, NOT in kill-criterion — the sliver gate is a SEPARATE open gate per E-…-ANISO-RULER).
+
+**LEDGER (this pre-reg):** probe `research/bridge/_pf_perfect_geostar_wholemesh.test.ts` (PF_GSWHOLE=1); lib `research/bridge/_pf_wholeMeshGuardLib.ts` (wholeMeshGuard + refineInteriorBruteWhole); config `vitest.pf_gswhole.config.ts`; reuses `_pf_perfectMesherLib` + `_pf_perfectMesherBruteLib` + `_pf_geostarPatchLib` + labkit READ-ONLY; scorecard `research/exchange/_pf_perfect_geostar_wholemesh/`. DEV-ONLY; no src/ edit.
+
+---
+
 ## E-2026-07-05-PERFECT-MESHER-GEOSTAR-CRESTSTRIP — does the curved-element STRUCTURED SQUARE flank strip bring GeometricStar to single-digit %<20 while HOLDING 0-outlier + watertight + zeroArea 0? [PRE-REGISTERED — this row committed BEFORE measuring]
 
 **FRAME:** The crest-strip kernel (`refineCrestStrip`, `_pf_crestStripLib.ts`) was REFUTED as the Gothic sliver closer (E-2026-07-05-PERFECT-MESHER-CRESTSTRIP): on Gothic (zero-width apex) the free-CDT-over-strip-points reopened outliers 3→14 on the honest whole-mesh ruler and left pctBelow20=64% ≫ single-digit; COLLAPSE made it slicer-safe. GeoStar is the OTHER count-unstable style but its cusp is a FINITE-WIDTH chevron kink (130–137°), NOT a zero-width knife-edge — the PN-MECH bench (E-…-GEOSTAR) showed flat-P1 alone crosses <tol at facet arc ~0.07mm (Gothic needed an order-of-magnitude finer). GeoStar was already print-usable (zeroArea=0) but angle-ugly (pctBelow20=21.3% at the CONFIRMED brute-refine mesh, minAngle 0°). The finite-width kink may let the structured strip's square cells actually land square where they could NOT on Gothic's knife-edge. Apply the SAME kernel VERBATIM (only makeGothicPatch→makeGeoStarPatch) on a multi-bay patch. Same kill-criterion as CRESTSTRIP.
