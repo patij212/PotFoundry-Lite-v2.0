@@ -10,6 +10,21 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-PERFECT-MESHER-RELAX — Gothic SLIVER gate: SMOOTH grading + surface-preserving Laplacian-under-M relaxation, outlier-hold guarded [PRE-REGISTERED — this row committed BEFORE measuring]
+
+**HYPOTHESIS (falsifiable):** On the 4-bay Gothic M-square patch (the CONFIRMED 0-outlier baseline: 58365t, interiorOutliers=0, max 0.006mm, minAngle 0°, pctBelow20 56.2%, watertight non-vacuous), the residual slivers (root-caused by `_pf_msq_diag`: 37.6% of <20° facets on the LOW-gradU smooth panel at the dense↔coarse GRADING-TRANSITION, RED 1→4 preserving parent needle shape) CLOSE via TWO levers the prior refutations point to — (1) SMOOTHER GRADING (gradeBeta-limited size-ratio between neighbours so the transition zone has no needle parents) + (2) SURFACE-PRESERVING LAPLACIAN-UNDER-M relaxation (iterate FREE non-crest/non-boundary verts toward their M-metric-equilateral position, re-project onto the true analytic surface via `lift`, and REJECT the move if it makes any incident triangle's honest interior deviation exceed 0.01) — WITHOUT reopening an outlier.
+
+**DISCRIMINATOR (cheapest lever):** reload the persisted CONFIRMED 4-bay M-square mesh (`research/exchange/_pf_perfect_gothic_msquare/after_mesh.bin`) as BEFORE; apply relaxation a-posteriori (this MOVES the points, unlike the a-posteriori Lawson flips of E-…-TIERAB-SLIVERS §3b which cannot escape the point set and REOPENED outliers 0→57). Free-vertex classification = NOT a crest-constraint endpoint AND NOT on the patch (u,t) boundary. Metric-equilateral target = area/angle-optimal neighbour centroid in the M-scaled (u,t) chart (weight u by su=arcPerU-class, t by st≈H). Outlier-hold guard = per-incident-facet `facetInteriorBrute` (the SAME honest full-azimuth-brute ruler that held fidelity through the M-square refine) must stay ≤0.01 for every incident triangle post-move, else the move is rejected. Iterate to convergence.
+
+**KILL-CRITERION (pre-registered):**
+- CONFIRM iff on the 4-bay Gothic patch: pctBelow20 → SINGLE DIGITS (< ~10%) AND minAngle > ~15° (or median > ~30° with a small tail) WHILE interiorOutliers HOLD 0 (honest ≥36-pt brute, worst-gradU) AND watertight (auditNonManByIndex=0 non-vacuous).
+- REFUTE iff relaxation+grading cannot get pctBelow20 below ~15% without reopening an outlier (report the best achievable %<20 at outliers=0 — the honest tradeoff frontier).
+- Report pctBelow20 + minAngle + median BEFORE vs AFTER, outliers, watertight, tris.
+
+**LEDGER (this pre-reg):** probe `research/bridge/_pf_perfect_gothic_relax.test.ts` (PF_RELAX=1); lib `research/bridge/_pf_relaxLib.ts`; scorecard `research/exchange/_pf_perfect_gothic_relax/`. DEV-ONLY; no src/ edit. RESULT below (this row updated post-run).
+
+---
+
 ## E-2026-07-05-PERFECT-MESHER-MSQUARE — Gothic SLIVER + SCALE gates: metric-aware M=g/h² refine-time spacing (PRE-REGISTERED)
 
 **Status:** RESOLVED — the strong CONFIRM is REFUTED (sliver bar unmet: 58%/minAngle 0 vs <10%/>10°), BUT the pre-registered REFUTE-by-outlier-reopening branch is AVOIDED (M-square HELD 0 outliers ⇒ the two gates are NOT in hard tension). PARTIAL sliver win (81.4%→58%, median 3°→15°); 4-bay SCALE fails on insertion-cost blowup. See RESULT below.
