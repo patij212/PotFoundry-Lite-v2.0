@@ -116,8 +116,14 @@ export function refineInteriorMsquare(
     let nOut = 0, worst = 0, bruteCalls = 0, nInsF = 0, nInsC = 0, nCrestSplit = 0;
     const insertedVerts = new Set<number>();
     const dedupe = new Set<number>();
-    // collect crest edges to split THIS pass (edge index -> target 3D pitch); applied after facet loop
+    // collect crest edges to split THIS pass (edge key -> target 3D pitch); applied after facet loop
     const crestSplitReq = new Map<string, number>();
+    // crest-vertex -> incident locked crest edges (built ONCE per pass; O(1) lookup in the facet loop)
+    const crestAdj = new Map<number, Array<[number, number]>>();
+    for (const [x, y] of cEdges) {
+      if (!crestAdj.has(x)) crestAdj.set(x, []); (crestAdj.get(x) as Array<[number, number]>).push([x, y]);
+      if (!crestAdj.has(y)) crestAdj.set(y, []); (crestAdj.get(y) as Array<[number, number]>).push([x, y]);
+    }
 
     const insertNode = (u: number, t: number): void => {
       const kk = keyOf(u, t); if (dedupe.has(kk)) return; dedupe.add(kk); const id = addPt(u, t); insertedVerts.add(id);
@@ -139,43 +145,45 @@ export function refineInteriorMsquare(
       // local metric at the facet centroid — su across-crest (u), st along-crest (t)
       const { su, st } = metricScales(rA, H, ((um % 1) + 1) % 1, tm);
 
-      // facet 3D min edge (the current local pitch); target = half it (geometric convergence)
+      // facet 3D edge lengths + min/max (aspect under the true metric)
       const P = (vu: number, vt: number): [number, number, number] => lift(rA, ((vu % 1) + 1) % 1, vt, H);
       const Pa = P(ua, ta), Pb = P(ub, tb), Pc = P(uc, tc);
-      const e0 = Math.hypot(Pb[0] - Pa[0], Pb[1] - Pa[1], Pb[2] - Pa[2]);
-      const e1 = Math.hypot(Pc[0] - Pb[0], Pc[1] - Pb[1], Pc[2] - Pb[2]);
-      const e2 = Math.hypot(Pa[0] - Pc[0], Pa[1] - Pc[1], Pa[2] - Pc[2]);
+      const e0 = Math.hypot(Pb[0] - Pa[0], Pb[1] - Pa[1], Pb[2] - Pa[2]); // a-b
+      const e1 = Math.hypot(Pc[0] - Pb[0], Pc[1] - Pb[1], Pc[2] - Pb[2]); // b-c
+      const e2 = Math.hypot(Pa[0] - Pc[0], Pa[1] - Pc[1], Pa[2] - Pc[2]); // c-a
       const emin = Math.min(e0, e1, e2), emax = Math.max(e0, e1, e2);
       const hF = Math.max(cellMm, emin / 2); // target 3D pitch this pass
 
-      // du, dt so the M-square cell has 3D extent hF × hF
-      const duStep = hF / su;   // uunit
-      const dtStep = hF / st;   // tunit
+      // FIDELITY DELIVERY = edge-mode RED 1->4 (the CONFIRMED convergent mechanism): split all 3 edges at their
+      // (u,t) midpoints. This halves every edge each pass ⇒ geometric convergence at the near-vertical apex (the
+      // point-insertion the minimal move used FLOORED at 0.256 — the worst sample sits near a vertex). A crest edge's
+      // midpoint is ITSELF on the crest, so no-bridge is preserved.
+      insertNode((ua + ub) / 2, (ta + tb) / 2);
+      insertNode((ub + uc) / 2, (tb + tc) / 2);
+      insertNode((uc + ua) / 2, (tc + ta) / 2);
+      nInsF += 3;
 
-      // M-SQUARE LATTICE: place a small 2x2 (u,t) node cluster at the facet centroid so BOTH directions get hF pitch.
-      // This replaces the edge-mode 1->4 (which only added perpendicular density) — it adds the ALONG-crest node the
-      // edge-mode loop skipped, so the local cells become square. Clamp to the facet's (u,t) span so we densify IN
-      // the facet, not outside it.
-      const uMin = Math.min(ua, ub, uc), uMax = Math.max(ua, ub, uc);
-      const tMin = Math.min(ta, tb, tc), tMax = Math.max(ta, tb, tc);
-      // centroid node (always) + the four M-square neighbours (clamped into the facet)
-      insertNode(um, tm); nInsF++;
-      const cand: Array<[number, number]> = [
-        [um + duStep, tm], [um - duStep, tm], [um, tm + dtStep], [um, tm - dtStep],
-      ];
-      for (const [cu, ct] of cand) {
-        if (cu < uMin - 1e-9 || cu > uMax + 1e-9 || ct < tMin - 1e-9 || ct > tMax + 1e-9) continue;
-        insertNode(cu, ct); nInsF++;
+      // M-SQUARE ALONG-CREST COMPANION (the NEW density that squares the cells): if the facet is ANISOTROPIC under
+      // M (emax/emin > aspectCap) — i.e. a needle that is long ALONG the crest and thin across it — add a node that
+      // splits its LONGEST edge's midpoint region in the along-crest direction at M-square pitch. The edge-mode RED
+      // above already added along-crest midpoints, so the residual anisotropy comes from the LOCKED crest chain
+      // being coarse ⇒ the real lever is the crest-edge subdivision below. Here we additionally place one companion
+      // at the centroid offset by ±dt in t so a very long flank cell gets an interior along-crest node.
+      if (emax / Math.max(emin, 1e-9) > aspectCap) {
+        const dtStep = hF / st; void su;
+        const tMin = Math.min(ta, tb, tc), tMax = Math.max(ta, tb, tc);
+        for (const ct of [tm + dtStep, tm - dtStep]) {
+          if (ct < tMin - 1e-9 || ct > tMax + 1e-9) continue;
+          insertNode(um, ct); nInsF++;
+        }
       }
 
-      // NEEDLE-ROW KILLER: if this outlier facet is a FLANK facet touching the crest (>=1 crest vertex), request
-      // that its incident LOCKED crest edges be subdivided to the same along-crest 3D pitch hF. A coarse crest edge
-      // opposite a fine flank is exactly the needle; densifying it squares those cells.
-      const hasCrest = crestV.has(a) || crestV.has(b) || crestV.has(c);
-      if (hasCrest && emax / Math.max(emin, 1e-9) > aspectCap) {
-        for (const [x, y] of cEdges) {
-          const touchesFacet = (x === a || x === b || x === c) && (y === a || y === b || y === c);
-          if (!touchesFacet) continue;
+      // NEEDLE-ROW KILLER: a FLANK outlier facet touching the crest (>=1 crest vertex) with a coarse crest edge
+      // opposite a fine flank IS the needle. Request its incident LOCKED crest edges be subdivided to along-crest 3D
+      // pitch hF, so the crest chain densifies WITH the flank (the along-crest density the spec calls for).
+      for (const v of [a, b, c]) {
+        const inc = crestAdj.get(v); if (!inc) continue;
+        for (const [x, y] of inc) {
           const key = `${Math.min(x, y)}_${Math.max(x, y)}`;
           const prev = crestSplitReq.get(key);
           if (prev === undefined || hF < prev) crestSplitReq.set(key, hF);

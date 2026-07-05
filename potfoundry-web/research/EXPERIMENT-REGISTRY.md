@@ -12,7 +12,7 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ## E-2026-07-05-PERFECT-MESHER-MSQUARE — Gothic SLIVER + SCALE gates: metric-aware M=g/h² refine-time spacing (PRE-REGISTERED)
 
-**Status:** PRE-REGISTERED (kill-criterion committed BEFORE measuring). Result appended below after the run.
+**Status:** RESOLVED — the strong CONFIRM is REFUTED (sliver bar unmet: 58%/minAngle 0 vs <10%/>10°), BUT the pre-registered REFUTE-by-outlier-reopening branch is AVOIDED (M-square HELD 0 outliers ⇒ the two gates are NOT in hard tension). PARTIAL sliver win (81.4%→58%, median 3°→15°); 4-bay SCALE fails on insertion-cost blowup. See RESULT below.
 
 **HYPOTHESIS (falsifiable):** On a 3-5 bay Gothic patch, replacing the CONFIRMED kernel's blind edge-mode (arc-length) refine DELIVERY with METRIC-AWARE M=g/h² SQUARE spacing at refine time — when a flank node is inserted to hold the 0-outlier fidelity gate, add matching ALONG-crest density (dt=h/st, du=h/su → square 3D cells) AND subdivide the locked crest constraint edges to the same 3D pitch — closes the sliver gate (Gothic 81.4% <20°, minAngle 0) WHILE holding interior outliers at 0 under the honest full-azimuth brute. The along-crest density (not the perpendicular density) is what kills the needle rows; the perpendicular density stays high enough to hold 0 outliers.
 
@@ -25,9 +25,35 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **INSTRUMENTS (honest, non-negotiable):** interior ruler = acceptanceGuard ≥36-pt denseBary(8) barycentric lattice back-projected via full-azimuth bruteNearestOnRadialSurface, worst-gradU top-400 population; watertight = auditNonManByIndex NON-VACUOUS (injected-crack control must move the count); slivers = triangleQualityDistribution.minAngle (NOT %<20 dilution as the pass/fail — reported alongside).
 
-**LEDGER:** probe `research/bridge/_pf_perfect_gothic_msquare.test.ts` (PF_MSQ=1); lib `research/bridge/_pf_perfectMesherMsquareLib.ts`; config `vitest.pf_msquare.config.ts`. Scorecard `research/exchange/_pf_perfect_gothic_msquare/`. DEV-ONLY; no src/ edit.
+**LEDGER:** probe `research/bridge/_pf_perfect_gothic_msquare.test.ts` (PF_MSQ=1); lib `research/bridge/_pf_perfectMesherMsquareLib.ts`; config `vitest.pf_msquare.config.ts`. Scorecard `research/exchange/_pf_perfect_gothic_msquare[_smoke]/`. Diag `_pf_msq_diag.test.ts` (PF_MSQDIAG=1). DEV-ONLY; no src/ edit.
 
-<!-- RESULT-APPENDED-BELOW -->
+### RESULT (measured, honest instruments) — the strong CONFIRM is REFUTED; the two gates are NOT in hard tension
+
+The M-square arm reuses the CONFIRMED topology pipeline VERBATIM (extract fam=2, planarizeMM residualCrossings=0, locked-constraint CDT) and the honest full-azimuth brute STOP driver; the ONLY change is the refine DELIVERY: RED 1→4 (holds fidelity) + M=g/h² along-crest COMPANION nodes (dt=hF/st) + LOCKED-crest-edge subdivision to the same along-crest 3D pitch (all 141 crest edges split on the 1-bay patch). Measured on the SAME 1-bay Gothic patch the CONFIRMED edge-mode `refined_mesh.bin` was built on (before = that exact mesh, loaded).
+
+**EVIDENCE (1-bay Gothic; interior ruler = acceptanceGuard ≥36-pt denseBary(8) full-azimuth brute worst-gradU top-400; slivers = triangleQualityDistribution; watertight = auditNonManByIndex NON-VACUOUS w/ interior-edge crack control):**
+
+| metric | BEFORE (edge-mode arc-length) | AFTER (M-square) |
+|---|---|---|
+| interiorOutliers | 0 | **0 (HELD)** |
+| interiorMaxMm | 0.006 | 0.006 |
+| minAngleDeg | 0 | **0** |
+| median minAngle | 3° | **15°** |
+| pct<20° | 81.4% | **58.0%** |
+| watertight nonMan (non-vacuous) | 0 (true) | **0 (true)** |
+| tris | 9885 | 9960 |
+| refine convergence | 5 passes | 5 passes (worst 0.266→0.247→0.155→0.011→0.0067) |
+| projected full-mesh tris | — | 717k (< 6M budget) |
+
+**VERDICT: REFUTED (the strong CONFIRM), with a PARTIAL win + a genuine SCALE-cost failure.**
+- **Fidelity HELD (the REFUTE-by-reopening branch is AVOIDED):** M-square does NOT reopen outliers — `interiorOutliers` stays 0, max 0.006mm, CONVERGENT. This **DISPROVES the "square cells cannot hold near-vertical-flank fidelity" tension hypothesis** (the pre-registered REFUTE branch): 0-outlier and squarer cells CO-EXIST. Watertight non-vacuous throughout.
+- **Sliver CONFIRM bar NOT met:** the pre-registered CONFIRM required %<20 <~10% AND minAngle >~10°. Got **58.0% and minAngle 0°.** A real improvement (median 3°→15°, %<20 81.4%→58%, a −29pt drop) but far from the bar ⇒ the M-square SPACING lever as implemented is a PARTIAL sliver reducer, NOT a sliver closer.
+- **ROOT-CAUSE of the residual (diag, `_pf_msq_diag`):** the WORST slivers are NOT at the zero-width apex — worst-20 minAngle facets have mean gradU **43.8** (moderate), 37.6% of all <20° facets sit on the LOW-gradU smooth panel. They are **dense↔coarse GRADING-TRANSITION needles** (RED-refined region abutting the unrefined uniform background) + RED 1→4 preserving parent needle SHAPE. The crest densification + companions removed the WORST near-crest needles (median 3→15) but the transition-zone and shape-preserving needles remain. This localizes the residual to a DIFFERENT lever than M-square spacing: a graded background + surface-preserving relaxation (Laplacian-under-M with on-surface re-projection, guarded to not reopen outliers), NOT the a-posteriori flips (already refuted) NOR the insertion-time spacing (this experiment).
+- **SCALE FAILS at 4-bay (cost, not topology):** the topology half stayed clean at 4-bay (fam=2, residualCrossings=0, 814 crest edges split), but the M-square insertion is TOO AGGRESSIVE at scale — pass 1 inserted 8771 flank + 1435 crest nodes (2000 outliers), pass 2 EXPLODED to 20745 flank + 1971 crest (worst barely moving 0.270→0.260, 842s/pass), the mesh ballooning 7848→21300+ tris/pass with the honest-brute active-set cost compounding. The 4-bay run did NOT converge in the window (>40min, env-cost). This is the #4 fat-tail cost risk the spec flagged, now MEASURED: the per-outlier node budget (RED-3 + 2 companions + crest splits ≈ 4.4 nodes/outlier) must be cut before whole-mesh scale is feasible.
+
+**RECOMMENDATION:** NEXT EXPERIMENT (not productionization — a gate is unmet). The lever the diag points to is NOT more insertion-time spacing (this refuted it as sufficient) and NOT flips (already refuted). It is (1) a GRADED background seed (so no dense↔coarse transition needles) + (2) a SURFACE-PRESERVING Laplacian relaxation under M=g/h² (move free non-crest/non-boundary vertices toward metric-equilateral positions, re-project to the true surface, REJECT any move that raises interior true-3D >tol or reopens an outlier) — the guarded relaxation the TIER-AB refutation actually pointed to ("place at M-equalized positions, near-equilateral-by-construction"), applied a-posteriori but position-on-surface-preserving (unlike flips, which cannot escape the point set, this MOVES the points). Also CUT the per-outlier node budget (drop the companion nodes OR make RED anisotropic — split only the across-crest edge) to fix the 4-bay scale blowup, THEN re-run the multi-bay confirm. BANKED reusable: the M-square metric (`metricScales` su/st) + crest-constraint subdivision are correct and reused; the honest-brute STOP driver holds fidelity through all of it.
+
+**LEDGER:** registry commit (this entry). Scorecards `research/exchange/_pf_perfect_gothic_msquare_smoke/{scorecard.ndjson,after.json,after_passes.ndjson,diag_after.json}` (1-bay), `research/exchange/_pf_perfect_gothic_msquare/after_passes.ndjson` (4-bay pass1+2, non-converged scale evidence). Pre-reg commit c6e4fec.
 
 ---
 
