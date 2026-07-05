@@ -28,6 +28,36 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **LEDGER (this pre-reg):** probe `research/bridge/_pf_perfect_geostar_creststrip.test.ts` (PF_GSCREST=1; PF_SMOKE=1 1-bay); config `vitest.pf_gscrest.config.ts`; reuses `_pf_crestStripLib.ts` + `_pf_geostarPatchLib.ts` + `_pf_perfectMesherLib` + `_pf_perfectMesherBruteLib` READ-ONLY; scorecard `research/exchange/_pf_perfect_geostar_creststrip/`. DEV-ONLY; no src/ edit.
 
+**STATUS: FULL CONFIRM REFUTED (slivers REGRESSED, not closed); PARTIAL slicer-safe was ALREADY the CONFIRMED baseline — the strip adds nothing on GeoStar. The finite-width chevron kink did NOT rescue the strip (same failure mode as Gothic).**
+
+**EVIDENCE (3-bay smoke go/no-go, apples-to-apples on the AFTER arm — the strip builds + refines its own 3-bay seed; the CONFIRMED brute baseline mesh loaded for BEFORE):**
+
+| gate (ruler) | CONFIRMED baseline (brute-refine, `_pf_perfect_geostar_brute/refined_mesh.bin`) | crest-strip AFTER (26700t) |
+|---|---|---|
+| **pctBelow20** (iso minAngle) | **21.3%** | **50.4%** ✗ (+29.1pt REGRESSION) |
+| minAngleDeg / medianMinAngle | 0 / 41° | 0 / **19°** ✗ (median HALVED) |
+| interiorOutliers — **top-400-gradU guard** | 0 (max 0.006) | 0 (max 0.006) |
+| interiorOutliers — **wide-2000 guard** | 1 (max 0.01005, borderline) | 0 (max 0.006) |
+| interiorOutliers — **strip loop's OWN honest brute STOP** | (converged, 0) | **CAPPED, out=4 @0.082mm** (stuck passes 6→13) ✗ |
+| loop convergence | converged | **CAPPED** (out=4 frozen from pass 6) |
+| zeroAreaFaces / subMicro | 0 / 204 | **0** / 11 (→0 after collapse) |
+| watertight nonMan (non-vac inj 0→1) | 0 ✓ | 0 ✓ |
+| tris | 112,863 | 26,700 (projectedFull 284,800 < 6M) |
+
+**WHY REFUTED (decisive, mirrors the Gothic CRESTSTRIP refute):**
+1. **Slivers went the WRONG WAY: pctBelow20 21.3% → 50.4%, median minAngle 41° → 19°.** The strip's structured-square INTENT is DEFEATED by the free cdt2d re-triangulation over the inserted strip points (the exact mechanism CRESTSTRIP identified): a free Delaunay reconnects the dense column points into needles instead of the intended quads. On GeoStar this is a NET REGRESSION (the baseline was already the best), not just a failure to improve.
+2. **The strip did NOT truly hold 0-outlier — its OWN honest full-azimuth brute STOP driver CAPPED with out=4 @0.082mm** (frozen passes 6→13), i.e. 4 residual moderate-gradU flank outliers it could not clear. The acceptanceGuard reads 0 at BOTH top-400 AND wide-2000 ONLY because those 4 stuck facets sit at a gradU below even the wide guard's population (wide gradU min 190.8) — **the CRESTSTRIP top-N-gradU population artifact, RECONFIRMED on GeoStar**. So the pre-registered "interiorOutliers HOLD 0 on the honest ruler" FAILS (4, not 0), just as it did on Gothic (14).
+
+**PARTIAL is moot on GeoStar:** zeroArea was ALREADY 0 on the CONFIRMED baseline (GeoStar has no degenerate faces; only Gothic did, per E-…-ANISO-RULER). The COLLAPSE fallback trivially holds (0→0, collapsed 10 sub-µm faces, 0-outlier + watertight held, pctBelow20 unchanged 50.4). So the strip delivers NO slicer-safety GeoStar didn't already have, and REGRESSES angles.
+
+**5-bay confirm (in-flight, resumable, checkpointed per-pass):** pass-1 outlier trajectory 4824 (matching the smoke's shape); seed 38003v/75013t, BEFORE 5-bay apples-to-apples = pctBelow20 21.3% / guardWide 1 outlier @0.01005. Not required for the verdict (the smoke is the pre-registered cheap discriminator and is decisive); the 5-bay pass-2 honest-brute re-score is a multi-ten-minute single unit (the resilience risk the protocol warns against), so the verdict rests on the checkpointed smoke.
+
+**VERDICT: REFUTED** (the curved-element structured strip as the GeoStar sliver closer) — it neither closes slivers to single digits (50.4% ≫ 10%, a REGRESSION from the 21.3% baseline) NOR holds 0-outlier on the honest ruler (its own brute STOP capped at 4 residual @0.082). The finite-width chevron kink — easier for FIDELITY (E-…-GEOSTAR: flat-P1 rides it) — did NOT make the strip's square-cell intent survivable; the free-CDT-defeats-structure failure is style-agnostic. This is the 8th refuted sliver lever; the pctBelow20 gate remains OPEN on BOTH count-unstable styles.
+
+**RECOMMENDATION:** (1) do NOT pursue the points-to-CDT strip on ANY style — GeoStar CONFIRMS the Gothic diagnosis that the free re-triangulation defeats the structured intent (it is not a Gothic-knife-edge-specific failure). A genuine close needs EXPLICIT structured quad-strip connectivity in the flank band (bypass cdt2d — a real build) OR metric-aware refine-time SPACING (M=g/h²-equilateral Steiner at insertion, the V4-flagged lever), NOT more density and NOT a-posteriori flips (both refuted). (2) GeoStar's CONFIRMED brute-refine mesh (21.3% <20°, minAngle 0, zeroArea 0) remains the best GeoStar mesh — print-usable as-is (no degenerates); ACCEPT+DOCUMENT the 21.3% needles or attack them with the quad-strip-or-metric-spacing lever, NOT the strip. (3) FIX THE GUARD before any further 0-outlier claim: widen the acceptanceGuard beyond top-N-gradU (whole-mesh at ≤120k tris is tractable in minutes, or gradU-stratified) — RECONFIRMED here that the top-N is blind to the moderate-gradU residual (the strip loop saw 4, both guards saw 0). BANKED: the GeoStar crest-strip probe + the wide-guard A/B (top-400 vs 2000 vs loop-STOP disagreement) as a reusable guard-population diagnostic.
+
+**LEDGER:** this row. Scorecard `research/exchange/_pf_perfect_geostar_creststrip{,_smoke}/` {before,after,collapse}.json + scorecard.ndjson + after_passes.ndjson + *_mesh.bin. Probe `_pf_perfect_geostar_creststrip.test.ts` (PF_GSCREST=1; PF_SMOKE=1 3-bay), config `vitest.pf_gscrest.config.ts`. Pre-reg commit 910d7d0. DEV-ONLY; no src/ edit; reuses `_pf_crestStripLib` + `_pf_geostarPatchLib` + the CONFIRMED brute baseline READ-ONLY.
+
 ---
 
 ## E-2026-07-05-PERFECT-MESHER-CRESTSTRIP — does a CURVED-element-guided STRUCTURED SQUARE flank strip close the Gothic sliver gate while HOLDING 0 outliers + watertight, or at least make it slicer-safe (zeroArea=0)? [PRE-REGISTERED — committed BEFORE measuring]
