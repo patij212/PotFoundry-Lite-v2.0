@@ -10,6 +10,27 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-PERFECT-MESHER-MSQUARE — Gothic SLIVER + SCALE gates: metric-aware M=g/h² refine-time spacing (PRE-REGISTERED)
+
+**Status:** PRE-REGISTERED (kill-criterion committed BEFORE measuring). Result appended below after the run.
+
+**HYPOTHESIS (falsifiable):** On a 3-5 bay Gothic patch, replacing the CONFIRMED kernel's blind edge-mode (arc-length) refine DELIVERY with METRIC-AWARE M=g/h² SQUARE spacing at refine time — when a flank node is inserted to hold the 0-outlier fidelity gate, add matching ALONG-crest density (dt=h/st, du=h/su → square 3D cells) AND subdivide the locked crest constraint edges to the same 3D pitch — closes the sliver gate (Gothic 81.4% <20°, minAngle 0) WHILE holding interior outliers at 0 under the honest full-azimuth brute. The along-crest density (not the perpendicular density) is what kills the needle rows; the perpendicular density stays high enough to hold 0 outliers.
+
+**DISCRIMINATOR (cheapest):** ONE new lib (`_pf_perfectMesherMsquareLib.refineInteriorMsquare`) swaps ONLY the refine delivery; the honest-brute STOP driver, FGJ Morse junction complex, planarizeMM, and locked-constraint CDT are reused VERBATIM from the CONFIRMED kernel. BEFORE arm = the CONFIRMED edge-mode arc-length refine on the SAME multi-bay patch/seed/complex; AFTER arm = M-square. Same instruments both arms.
+
+**KILL-CRITERION (pre-registered, committed BEFORE measuring):**
+- CONFIRM iff, on a 3-5 bay Gothic patch: interior outliers STAY 0 (honest ≥36-pt brute, worst-gradU top-400 pop) AND minAngle rises to a usable bar (target %<20 < ~10% AND minAngle > ~10°) AND watertight (auditNonManByIndex=0 non-vacuous) AND manifold. Report minAngle/%<20 BEFORE vs AFTER.
+- REFUTE iff M-square spacing REOPENS outliers (>0) — square cells cannot hold the near-vertical-flank fidelity (0-outlier and sliver gates in genuine tension; report the tradeoff curve).
+- Also REPORT tris + tris-per-bay + PROJECTED full-mesh tri-count (extrapolate to Gothic's ~72-bay ring) vs the 6M budget — the cost gate.
+
+**INSTRUMENTS (honest, non-negotiable):** interior ruler = acceptanceGuard ≥36-pt denseBary(8) barycentric lattice back-projected via full-azimuth bruteNearestOnRadialSurface, worst-gradU top-400 population; watertight = auditNonManByIndex NON-VACUOUS (injected-crack control must move the count); slivers = triangleQualityDistribution.minAngle (NOT %<20 dilution as the pass/fail — reported alongside).
+
+**LEDGER:** probe `research/bridge/_pf_perfect_gothic_msquare.test.ts` (PF_MSQ=1); lib `research/bridge/_pf_perfectMesherMsquareLib.ts`; config `vitest.pf_msquare.config.ts`. Scorecard `research/exchange/_pf_perfect_gothic_msquare/`. DEV-ONLY; no src/ edit.
+
+<!-- RESULT-APPENDED-BELOW -->
+
+---
+
 ## E-2026-07-05-PERFECT-MESHER-GEOSTAR — honest-brute-driven kernel TRANSFERS from Gothic to GeometricStar's chevron cusp: CONFIRMED
 
 **HYPOTHESIS (falsifiable):** The honest-full-azimuth-brute-driven perfect-mesher kernel that PASSED on Gothic (E-2026-07-04-PERFECT-MESHER, topology; E-2026-07-05-…-BRUTE, fidelity) transfers VERBATIM (only `makeGothicPatch`→`makeGeoStarPatch`) to GeometricStar — the OTHER count-unstable cusp (chevron strapwork, per-row u-crest count oscillates 0→7→16→32→8→0 per tile) — and reaches **0 interior outliers (honest ≥36-pt brute, worst-gradU pop) AND watertight (auditNonManByIndex NON-VACUOUS) AND manifold**. Spec expects GeoStar's finite-width 130-137° kink to be EASIER than Gothic's zero-width knife-edge.
