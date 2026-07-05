@@ -25,7 +25,39 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **INSTRUMENTS (honest):** isotropic min-angle = `triangleQualityDistribution` on lifted xyz (the reported 56%/21.3% ruler — 3D Euclidean angle). M-metric angle = NEW `_pf_anisoRulerLib` (edge pair M-inner-product at centroid; M = `buildCreaseAlignedMetric` sampled at centroid), CONTROL-validated against the isotropic via M=I. Area = lifted-3D cross-product /2. Watertight = `auditNonManByIndex` NON-VACUOUS (injected-crack must move the count). Zero-area = area < 1e-9 mm² (the metrics degenerate floor) + a printer-area floor sweep. Free = NOT in the kernel `crestVertexSet` and not incident to a constraint edge.
 
-**LEDGER (this pre-reg):** probe `research/bridge/_pf_anisoRuler.test.ts` (PF_ANISO=1); lib `research/bridge/_pf_anisoRulerLib.ts`; config `vitest.pf_aniso.config.ts`; scorecard `research/exchange/_pf_anisoRuler/`. DEV-ONLY; no src/ edit; NO new mesh (reuses the two 0-outlier bins).
+**LEDGER (this pre-reg):** probe `research/bridge/_pf_anisoRuler.test.ts` (PF_ANISO=1 metrology; PF_ANISORENDER=1 sliver-map + worst-sliver geometry); lib `research/bridge/_pf_anisoRulerLib.ts`; config `vitest.pf_aniso.config.ts`; scorecard `research/exchange/_pf_anisoRuler/`. DEV-ONLY; no src/ edit; NO new mesh (reuses the two 0-outlier bins).
+
+**STATUS: REFUTED (the artifact hypothesis) — the 0-outlier free-cell slivers are a GENUINE cross-curvature-needle defect, not an isotropic-ruler artifact on anisotropy-appropriate cells. The pre-registered ACCEPT+DOCUMENT branch is UNMET on BOTH metrics; the REAL-DEFECT branch is MET. NUANCE on the slicer half: GeoStar's needles are finite-area + slicer-safe (would print), Gothic has 36 zero-area degenerate faces (a real slicer risk) — so "accept for print" is a PARTIAL pass on GeoStar only, NOT a clean close.**
+
+**EVIDENCE (FREE = non-crest-incident triangles, classified by (u,t) proximity to a locked crest edge on the bounds-matched rebuilt complex; instruments below. Gothic patch reconstructed as `makeGothicPatch(4,8)` — the persisted `after_mesh.bin` has an 8mm z-band, NOT the probe's 12mm default; verified crest-prefix aligned):**
+
+| metric (FREE cells) | Gothic (43645/58365 free) | GeoStar (102194/112863 free) |
+|---|---|---|
+| ISO 3D min-angle (the reported ruler) pct<20 / median | **43.3% / 24.3°** | **19.0% / 42.0°** |
+| CONTROL first-form (M=g) angle pct<20 / median | 43.7% / 24.2° | 18.7% / 42.0° |
+| TEST creaseAligned (II,I) angle pct<20 / median | **99.1% / 2.6°** | **84.2% / 2.3°** |
+| free-cell first-form (parametrization) anisotropy median / p95 | 4.28 / 10.1 | 2.14 / 7.6 |
+| free-cell creaseAligned (chord) anisotropy median / p95 | **38.8 / 111** | **58.6 / 63.8** |
+| worst-60 free-sliver iso min-angle (best..worst of the 60) | 0.26–~4° (aspect ≤190) | 0.91–~4° (aspect ≤55) |
+| worst-60 median longest-edge angle to crest tangent | **76.4°** (0=along-crest) | **75.5°** |
+| worst free-sliver edge triple (one micro-edge) | [0.227, 0.227, **0.001**] mm | [0.357, **0.006**, 0.354] mm |
+| iso<20 free N with M-angle ≥20° (anisotropy-appropriate) | 93 / 18888 (0.5%) | 86 / 19390 (0.4%) |
+| free-cell min area / zero-area free (<1e-9 mm²) | 5.4e-6 mm² / **0** | 8.5e-5 mm² / **0** |
+| whole-mesh zero-area faces / dup-vertex faces | **36** / 0 (all UV-collinear degenerates; +77 tiny <1e-6) | **0** / 0 |
+| watertight nonMan (non-vacuous inj 0→1) | 0 ✓ | 0 ✓ |
+
+**WHY REFUTED (decisive, three independent lines):**
+1. **Literal M=g/h² gives the SAME angle as isotropic** (control: 43.7%≈43.3%, 18.7%≈19.0%). The angle is scale-free, so dividing g by any scalar h² cannot change it — under the metric the surface-metric project (`project_surface_metric_quality`) actually names ("even in the metric = even in 3D"), the cells ARE 43–56% <20°. Not an artifact.
+2. **The curvature-ALIGNED (II,I) metric scores them WORSE, not better** (99.1% / 84.2% <20°). The free cells sit on the arch/chevron FLANKS where the across-flank chord-anisotropy is high (median 38.8:1 / 58.6:1), but the mesh cells are only ~6:1 — UNDER-stretched relative to the chord-optimal anisotropy, so still needles in the metric that is supposed to reward them.
+3. **The needles are MIS-ORIENTED cross-curvature needles, the opposite of anisotropy-appropriate.** Worst-60 median longest-edge angle to the crest = 76° (near-perpendicular): the cells are LONG ACROSS the high-curvature flank (should be SHORT there) and micro-thin (1–6µm) ALONG the crest (where they could be long). Edge triples confirm the classic chord-across-the-concave-cusp needle ([…,…,0.001mm] base). This is EXACTLY the "any near-equilateral cell must chord the cusp ⇒ the fidelity-holding cells are forced needles" connectivity tension the RELAX + TIER-AB refutations root-caused — now measured to be geometrically real, not a ruler artifact. The along-crest-flat premise of the hypothesis is FALSE for these cells: their thin axis is along-crest, their long axis is across-curvature.
+
+**SLICER-SAFETY (the print-use-case half — the ONE place the picture is partly favourable):** GeoStar's free needles are FINITE-area (min 8.5e-5 mm²), 0 zero-area, 0 dup-vertex, watertight non-vacuous ⇒ they would PRINT (an elongated-but-finite facet is slicer-benign) — so on GeoStar the isotropic %<20 over-penalises for the print use case even though the cells are genuine needles. Gothic, however, has **36 zero-area degenerate faces** (all three vertices UV-collinear → undefined normal) + 77 sub-µm²-area faces — a genuine slicer/watertight risk, NOT print-safe as-is. So the slicer verdict SPLITS by style; it does not rescue a clean ACCEPT.
+
+**VERDICT: REFUTED (artifact hypothesis) ⇒ REAL DEFECT.** The surviving 0-outlier slivers are genuine mis-oriented cross-curvature needles at the crest flank (worse under the anisotropic metric, not better; long across the high-curvature direction). The isotropic min-angle ruler is telling the truth here — this is NOT the "radial overstates near-vertical" class. The remaining lever is therefore the SCOPED ONE-SIDED PN CREST-FLANK ELEMENT (E-CRESTRIBBON graft, benched, proved unnecessary for FIDELITY — necessary for QUALITY): a curved element that follows the cusp WITHOUT chording it, so the flank cells need not be needles. Position/connectivity-flip/grading/M-square-spacing are all refuted (6 levers total); the primitive change is the only untried path.
+
+**RECOMMENDATION:** (1) Do NOT close the sliver gate as an accept — it is a genuine defect (this experiment kills the "wrong-ruler" escape). (2) PARTIAL, honest concession for the print use case: on styles whose 0-outlier needles are FINITE-area + slicer-safe (GeoStar-class: 0 zero-area, watertight), the mesh is PRINT-USABLE despite the angle-metric ugliness — the needles are a cosmetic mesh-quality issue, not a slicer failure. This does NOT hold for Gothic (36 zero-area faces must be repaired — degenerate-face collapse/removal, a cheap post-pass — before it is print-safe). (3) NEXT EXPERIMENT = the scoped one-sided PN crest-flank element (E-CRESTRIBBON), validated the same way: does it drop pctBelow20 to single digits WHILE holding 0 interior outliers + watertight, on Gothic + GeoStar together. (4) BANKED reusable instruments: `_pf_anisoRulerLib` (M-metric angle via edge-pair M-inner-product; control-validated M=I≡iso 3D to 0.4pt; creaseAligned per-centroid analytic eval; unit-det + anisotropy + worst-sliver orientation) — the honest anisotropic-quality ruler for any future "is this an artifact" question.
+
+**LEDGER:** this row. Scorecard `research/exchange/_pf_anisoRuler/{scorecard.ndjson, gothic.json, geostar.json, gothic_worstslivers.json, geostar_worstslivers.json, slivermaps.png, *_slivermap.{xyz,idx,col}.bin}`. Probe `_pf_anisoRuler.test.ts`; lib `_pf_anisoRulerLib.ts`; config `vitest.pf_aniso.config.ts`. Pre-reg commit 99ef82d. DEV-ONLY; no src/ edit; no new mesh.
 
 ---
 
