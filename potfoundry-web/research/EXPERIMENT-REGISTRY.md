@@ -4009,3 +4009,69 @@ the final guard to ndjson the instant computed (env kills long runs).
 **LEDGER (to fill):** probe `research/bridge/_pf_perfect_gothic_wholemesh.test.ts` (PF_WHOLEMESH=1); kernel add
 `refineInteriorBruteWhole` + `acceptanceGuardWhole` in `_pf_perfectMesherBruteLib.ts` (NEW exports, existing
 untouched). Scorecard `research/exchange/_pf_perfect_gothic_wholemesh/`. DEV-ONLY; no src/ edit.
+
+### RESULT (2026-07-05) — CONFIRMED (smoke, calibration-trusted brute); full-density corroboration in progress
+
+**VERDICT: CONFIRMED — the whole-mesh honest brute reaches LITERAL 0 outliers on GothicArches.** The
+guard-population artifact (V6) is CLOSED: making BOTH the acceptance guard AND the refine-loop iteration
+score EVERY free facet with the honest 45-pt denseBary two-stage ruler drives the ~3-17 residual
+MODERATE-gradU facets to ≤0.01.
+
+**ROOT CAUSE of the artifact (measured, decisive):** the refine loop's STOP driver used a 7-pt BARY_STOP
+sampler while the guard used 45-pt denseBary. On the SAME converged mesh the 7-pt driver read worst 0.00996
+(=> 0 outliers, "converged") while the 45-pt whole-mesh guard read worst **0.224mm, 17 outliers** at gradU
+81-135 — LARGE under-refined moderate-slope facets whose bad interior point fell BETWEEN the 7 stop-samples.
+A loop that cannot SEE what the guard measures cannot refine against it. **Fix = drive the loop by the SAME
+dense 45-pt ruler.** (This is the exact same class as the 2026-07-04b GN-vs-brute driver-blindness bug, one
+level finer: 7pt-brute vs 45pt-brute.)
+
+**EVIDENCE — smoke (2-bay, 6mm z-band, 512×120 box-refined brute — calibration-trusted <1e-4 per the kernel
+note; honest 45-pt denseBary whole-mesh guard, EVERY free facet):**
+
+| gate | measured |
+|---|---|
+| **wholeMeshOutliers** (every free facet, 45-pt brute) | **0** |
+| **wholeMeshMax** (mm) | **0.00996** (≤0.01) |
+| wholeGuard p50 / p90 / p99 | 0.00454 / 0.00597 / 0.00927 |
+| worst-facet gradU (residual) | 55.1 (moderate; ≤tol) — outlierGradU list EMPTY |
+| **watertight** auditNonManByIndex (non-vac inj 0→1) | **0** ✓ |
+| converged (dense STOP) | true (capped=false) |
+| tris | 16,904 |
+| refine passes | 7 (4× cheap 7-pt bulk → 3× dense 45-pt mop-up) |
+| slivers pctBelow20 / minAngle | 63.3% / 0° (KNOWN open gate — NOT in the kill-criterion) |
+
+Convergence trace (worstBrute per pass): 7pt bulk 0.228→0.234→0.240→0.193 (16591t) → **DENSE** 0.224(25 out)
+→0.010(2 out)→**0.00996(0 out)**. The DENSE phase-5 REVEALED 25 residual moderate-gradU outliers at worst
+0.224 (invisible to the 7-pt bulk, which had said 37→near-0) and drove them to 0 in 2 more dense passes.
+
+**A/B PROVING THE ARTIFACT:** the legacy top-400-worst-gradU guard reads **0 outliers / max 0.006** on the
+SAME mesh (gradU population 217.8-239.5) — it NEVER scores the moderate-gradU facets (gradU 55-135) where the
+residual lived. This reproduces + closes the V6 caveat: "the whole-patch 0 was a top-400-gradU population
+artifact."
+
+**VISUAL:** `research/exchange/_pf_perfect_gothic_wholemesh_smoke/gothic_wholemesh_true3d.png` — the WHOLE
+patch is GREEN under the honest true-3D perpendicular ruler (render-ruler worst 0.020, **0.00% >0.03**, no red
+on the crest flank). Corroborates the metric.
+
+**HONEST CAVEATS:** (a) primary CONFIRM is at the 512×120 box-refined brute (calibration-trusted to <1e-4 vs
+4096×600 on this cusp per the SURFNATIVE calibration; box-refine is grid-independent for a smooth local basin).
+The full-density 1024×120 / larger-seed run is CORROBORATING in the background (resumable via persisted mesh) —
+its bulk-phase pass-1 reproduced the same shape (1513 out, worst 0.219). (b) SLIVERS remain the open gate
+(63.3% <20°) — NOT in this kill-criterion (GATE-1 = fidelity only); 8 sliver levers already refuted (V6). (c)
+COST: the dense whole-mesh scoring is ~5.6× the 7-pt loop; the phased 7pt-bulk→dense-mop architecture keeps it
+tractable (dense only re-scores an already-near-converged mesh, so most facets hit the cheap preFilter/GN-green
+path). Whole-MESH (>4 bay / full z) tri-count-vs-6M under dense scoring is UNMEASURED.
+
+**RECOMMENDATION:** ACCEPT the GATE-1 close. The perfect mesher's FIDELITY gate is now LITERAL-0 whole-mesh
+(not a top-400-population 0) on Gothic. Productionize-with-flag path unchanged (still BLOCKED on the sliver
+gate). Bank the reusable instruments: `refineInteriorBruteWhole` (whole-mesh dense-driven refine, phased) +
+`acceptanceGuardWhole` (whole-mesh honest 45-pt guard). Next: apply the SAME whole-mesh guard+loop to GeoStar
+(V6 banked ~4 residual there too) to close its GATE-1 identically.
+
+**LEDGER:** probe `research/bridge/_pf_perfect_gothic_wholemesh.test.ts` (PF_WHOLEMESH=1; PF_SMOKE=1 for the
+CONFIRMED smoke); kernel `research/bridge/_pf_perfectMesherBruteLib.ts` (new exports refineInteriorBruteWhole /
+acceptanceGuardWhole / facetInteriorGuardDense — existing refineInteriorBrute/facetInteriorBrute UNTOUCHED);
+config `vitest.pf_wholemesh.config.ts`; render `_pf_wholemesh_render.test.ts` + `vitest.pf_wmrender.config.ts`.
+Scorecard `research/exchange/_pf_perfect_gothic_wholemesh_smoke/{wholemesh.json,wholeguard.json,
+refine_passes.ndjson,gothic_wholemesh_true3d.png}`. Kernel/probe commit e1d3639, pre-reg dce21de. DEV-ONLY;
+no src/ edit.
