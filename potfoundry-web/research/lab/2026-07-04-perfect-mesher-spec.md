@@ -923,3 +923,64 @@ the direct-emission-strip lever (10 sliver levers now refuted).
 **BANKED reusable:** `buildStructStrips` (direct-emission structured strip + valley-clamp, `_pf_structStripLib.ts`)
 and the crest-spacing discriminator. **LEDGER:** this file §VALIDATION 7; registry
 E-2026-07-05-PERFECT-MESHER-GEOSTAR-STRUCTSTRIP. DEV-ONLY; no src/ edit.
+
+---
+
+## VALIDATION 7 — DIRECT-EMIT STRUCTURED CREST-STRIP (GATE-2 slivers, no cdt2d) — REFUTE (2026-07-05)
+
+The GATE-2 task RAN: replace the greedy flat-P1 flank refinement (forced into cross-curvature needles) with an
+EXPLICIT STRUCTURED-QUAD FLANK STRIP whose connectivity is EMITTED DIRECTLY — each quad → 2 tris, NOT handed to free
+cdt2d (the V6 §2 CRESTSTRIP re-chord failure mode: it inserted structured points then re-CDT'd → needles). Trust ONLY
+the measured numbers (registry E-2026-07-05-CRESTSTRIP-DIRECT, commits e0ff73c + 3648af2).
+
+### (1) Did the direct-emit structured strip close slivers WHILE holding 0-outlier + watertight? — NO (REFUTE)
+
+**A genuine method advance (kills two prior failure modes) but the pre-registered CONFIRM is UNMET.** Gothic, trusted
+full-azimuth whole-mesh brute guard (`acceptanceGuardWhole`, EVERY free facet, 45-pt denseBary, 1-bay/4mm,
+hCrest=dtRow=0.15 = the single-digit-sliver config):
+
+| gate | measured | vs kill-criterion |
+|---|---|---|
+| pctBelow20 | **0.4%** (median 25°, minAngle 11.1°) | CLOSES slivers ✓ |
+| zeroAreaFaces | **0** (vs V6 crest-strip's 36) | ✓ |
+| watertight (non-vac inj 0→1) | **0** ✓ | ✓ |
+| **wholeMeshOutliers** (true-3D >0.01, honest brute) | **236 (max 0.220mm)** | ✗ FAILS 0-outlier ⇒ **REFUTE** |
+
+Density does NOT rescue fidelity (fast GN whole-mesh guard, GN EXACT on the single-valued Gothic field): hCrest
+0.15→750 / 0.08→1234 / 0.05→1187 / 0.03→2472 / 0.02→3821 outliers — FINER across-crest INCREASES outliers AND
+worsens slivers (0.9%→89%). The residual is the `pow(sharp)` apex chord, NOT reducible by uniform structured density.
+GeoStar is WORSE on both gates (best 76.5% <20°; count-oscillating 45–65 crests/row breaks the single-crest arc
+tracker) — the direct strip does not even close GeoStar slivers.
+
+### (2) THE DECISIVE FINDING — connectivity was never the blocker; the fidelity↔angle tension is the wall
+
+Two things are now PROVEN that were open in V6:
+1. **The V6 cdt2d re-chord WAS a real bug and IS fixed.** `buildDirectCrestStrip` (crest-arc rows + crest-track
+   columns + direct-emit monotone zipper, NO cdt2d) produces a genuinely clean STRUCTURED grid (render
+   `_pf_creststrip_direct_gothic_smoke/window.png`: uniform quads, needles ONLY in a thin band AT each crest rib),
+   watertight by construction, zeroArea=0. The diagonal-crest geometry (crests drift ~2.57mm/8mm in u, an
+   X-junction) demanded rows spaced by along-CREST 3D arc length, not vertical t — the missing lever that took
+   pctBelow20 92%→0.4%.
+2. **Slivers STILL do not co-resolve with fidelity.** The structured strip and the CONFIRMED brute-driven adaptive
+   edge-mode refine (§V2/WHOLEMESH) INVERT the SAME tension: direct-strip = 0.4% slivers / 236 outliers@0.22mm;
+   edge-mode = 0 outliers / 19% slivers. Holding min-angle single-digit REQUIRES a coarse across-crest pitch
+   (hCrest≥0.15), at which the near-vertical flank's first facet chords the concave `pow(sharp)` apex to 0.22mm. A
+   FLAT non-adaptive structured facet cannot both stay near-equilateral AND chord the zero-width cusp to ≤0.01.
+
+This UPHOLDS the V6 §(3) conclusion (the slivers are a GENUINE structural fidelity-vs-min-angle tension at the
+near-vertical crest flank), now confirmed from the OTHER side: **9 sliver levers refuted; the direct-emit
+structured strip is the 9th — it removes the cdt2d re-chord AND the zero-area faces, but not the tension.**
+
+### (3) THE ONE REMAINING MOVE (a HYBRID, not more density)
+
+Graft the honest-brute-DRIVEN adaptive apex refine (the §WHOLEMESH edge-mode that reaches 0 outliers) ON TOP of the
+clean direct strip, splitting ONLY the outlier apex quads with DIRECT connectivity emission (no cdt2d), so the
+structured panel keeps its 0.4% angles while the apex quads alone recurse to ≤0.01. Kill-criterion: wholeMeshOutliers
+=0 AND pctBelow20 single-digit AND zeroArea=0 AND watertight, BOTH styles. If the apex subdivision re-introduces
+needles (likely — the apex chord requires needle-fine cells), the zero-width `pow(sharp)` cusp is a PROVEN flat-P1
+wall: the E-CRESTRIBBON one-sided PN/P2 element AT the apex leaf (benched unnecessary for FIDELITY) becomes NECESSARY
+for QUALITY. Either way the direct strip is the correct STRUCTURED substrate to graft onto.
+
+**BANKED reusable:** `buildDirectCrestStrip` (cdt2d-free, watertight, zeroArea=0 structured crest-strip mesher);
+`_pf_direct_gnguard` (fast exact-on-single-valued whole-mesh outlier count); `_pf_direct_svg`/`_slivdiag` (needle
+localization). **LEDGER:** registry E-2026-07-05-CRESTSTRIP-DIRECT (e0ff73c + 3648af2). DEV-ONLY; no src/ edit.
