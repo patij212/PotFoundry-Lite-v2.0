@@ -231,3 +231,103 @@ What REMAINS WALLED / UNMEASURED (the follow-up must close):
 REAL single-arch Gothic patch end-to-end (Morse junction graph as protected complex, chordSteiner driven by
 TRUE-3D facet-interior deviation), and measure 0 outliers + watertight + tri-count + sliver quality across the
 count-unstable junction network with the honest instrument on the worst-gradU population.
+
+---
+
+## VALIDATION (2026-07-04b) — END-TO-END GOTHIC WHOLE-PATCH GO/NO-GO
+
+The §5 experiment RAN. Verdict on the go/no-go: **REFUTE.** The perfect-mesher kernel, assembled end-to-end
+(FGJ Morse junction graph as protected no-bridge 1-complex + metric-Delaunay seed with graph LOCKED +
+SURFNATIVE arc-length-graded interior-criterion refine loop) on a real single-arch Gothic patch, does **NOT**
+reach 0 interior true-3D outliers under the honest instrument. Trust only these measured numbers.
+
+### (1) Gothic whole-patch — REFUTE
+
+- **0 outliers? NO.** `interiorMaxMm = 0.13279`, `interiorOutliers = 113` (all 113 ON-CREST, 0 off-crest),
+  `guardP99 = 0.12964`, `guardP50 = 0.00542`. Kill-criterion (0 tris >0.01) FAILED; REFUTE criterion (facet
+  floors >0.02 after loop termination) MET. Reproduced identically twice.
+- **Watertight non-vacuous? YES.** `auditNonManByIndex = 0` by index; non-vacuous control CONFIRMED
+  (inject 3rd-tri-on-edge → count 0→1). Manifold across the junction network.
+- **Tri-count:** 149,051 (well under the 6M budget). Seed 138,485 → refine +10,566 over 4 passes (capped=false).
+- **Slivers:** `minAngle = 0.10°`, `pctBelow20 = 4.6%`, medianMinAngle 43°, p5 21°. (Better than the proxy's
+  13.8°/96.3% because the whole-patch metric-Delaunay seed is squarer than the single hand-split cusp.)
+- **All non-fidelity gates PASSED:** familyCount=2, residualCrossings=0, 100% constraint recovery (1320 edges),
+  no-bridge CDT clean, refine CONVERGED (worstGN 0.031→0.0085, GN-outliers 6932→0). Only the FIDELITY gate failed.
+
+**ROOT CAUSE (measured, not inferred):** the GN loop-driver UNDERSTATES true-3D on near-vertical flanks
+(gradU 230–253 mm/rad, the documented steep-lattice gotcha), so the loop terminated at worstGN=0.0085 while the
+honest full-azimuth brute reveals a 0.133mm floor ON the crest. A flat P1 element cannot follow the zero-width
+`pow(sharp)` apex to ≤0.01 even WITH (a) a junction-complete graph, (b) a protected no-bridge crest, AND
+(c) arc-length grading driven to GN-convergence. **The E-RACE-SURFNATIVE 0.006mm single-cusp proxy did NOT
+survive the whole-network honest brute guard** — the proxy's win was one hand-split cusp, not the count-unstable
+network. This UPHOLDS E-VERIFY-INTRINSIC-APEX: the `pow(sharp)` singularity is the flat-P1 floor.
+
+**Two bugs found + fixed + banked (both reusable, both raise the shared kernel's robustness):**
+1. cdt2d 'upperIds' crash = 840 real mm crossings the seam-aware `planarizeConstraintGraph` missed → new robust
+   mm-space `planarizeMM` (splits every crossing + T-junction → 0 crossings, cdt2d clean).
+2. seam-normalization flipping u=−0.02→0.98 into a 248mm seam-spanning facet (3.4mm) → keep native patch u.
+
+### (2) GeometricStar — NOT RUN (UNMEASURED)
+
+The GeoStar arm of the §5 sweep was **not executed** (no `_pf_perfect_geo*` probe exists; result set empty).
+Its go/no-go is UNMEASURED. Do not infer a verdict. Given the Gothic REFUTE is a REPRESENTATION floor
+(flat-P1 vs zero-width apex), GeoStar — a FINITE-WIDTH kink (130–137°), not a zero-width knife-edge — is
+plausibly easier, but this is a hypothesis, not a result.
+
+### (3) Tier-A/B byte-identical + sliver gate — NOT RUN (UNMEASURED)
+
+No 20-style re-baseline was run; **Tier-A/B byte-identical is UNCONFIRMED by measurement** here (the
+empty/single-family-complex argument in §4 is a design claim, not a measured one). The sliver gate is likewise
+un-adjudicated as a closable-with-outliers-still-0 question — moot on Gothic, since outliers are NOT 0 (the
+0-outlier gate failed first, so "close slivers while holding outliers at 0" has no valid Gothic baseline).
+
+### (4) UPDATED HONEST STATE — Gothic is (c) NEWLY WALLED for flat-P1; all-20 remains (b) PROMISING elsewhere
+
+Revise §6. The whole-mesh feasibility question the follow-up was meant to close is now **answered NO for the
+assembled flat-P1 kernel on Gothic:**
+
+- **(c) NEWLY WALLED (Gothic, flat-P1):** the two SURFNATIVE mechanisms (no-bridge + arc-length grading),
+  even ASSEMBLED end-to-end with the complete FGJ junction graph and driven to convergence, floor at **0.133mm
+  on-crest** under the honest whole-network brute. This is NOT the uniform-density chart-lift artifact §1/§6
+  celebrated removing — it is the residual `pow(sharp)` singularity the single-cusp proxy masked. The
+  "0-outlier feasible whole-mesh" claim of §6 is REFUTED for flat P1 on Gothic.
+- **What is STILL PROVEN and banked (watertight side):** `planarizeMM` + no-bridge junction complex is
+  watertight-proven at whole-patch scale (residualCrossings=0, nonMan=0 non-vacuous, manifold across junctions,
+  149k tris). The graph/topology half of the kernel WORKS. The fidelity half does not close Gothic.
+- **(b) PROMISING elsewhere:** Tier-A/B (14/20 + the smooth/single-family styles) is untouched by this refute
+  and remains PROMISING-pending-measurement. GeoStar is untested and open.
+
+Net: **0-outlier-on-all-20 is NOT proven whole-mesh feasible. It is newly WALLED on Gothic for the flat-P1
+element** — closing it requires changing the ELEMENT (a genuine curved/one-sided PN or P2 at the near-apex
+leaf), not more density/placement. The tournament's flat-P1 "no curved element needed" conclusion (§3) is
+CONTRADICTED by the whole-patch guard: it held for one cusp, not the network.
+
+### (5) THE SINGLE NEXT EXPERIMENT (a gate failed → not productionization)
+
+Do NOT back-port into `ParametricExportComputer`/conformingMesher as a Gothic ≤0.01 solution — it does not
+reach it. Two ordered next moves, both on THIS exact end-to-end kernel (reuse `_pf_perfectMesherLib.ts` +
+`_pf_planarizeMM.ts`, resumable via the persisted refined mesh):
+
+1. **PRIMARY — swap the near-apex leaf's flat element for a one-sided PN/P2 element** (the E-CRESTRIBBON graft
+   #2, correctly scoped this time to the near-apex leaf only) and re-measure the SAME worst-gradU brute guard.
+   This directly attacks the measured root cause (flat-P1 cannot follow `pow(sharp)`). Kill-criterion: 0 tris
+   interior-true3D >0.01 on the top-400 worst-gradU population, watertight non-vacuous, minAngle sane.
+2. **SECONDARY (prerequisite fix, do first) — make the refine loop's termination driver the HONEST BRUTE, not
+   GN.** GN understated 0.0085 vs the true 0.133; a loop that cannot SEE the floor cannot refine against it.
+   Any element swap must be driven by the true-3D interior deviation or it will terminate blind again.
+
+Also open (independent): RUN the GeoStar arm (finite-width kink — may CONFIRM where Gothic refuted, which would
+localize the wall to zero-width apices specifically), and RUN the Tier-A/B byte-identical re-baseline before any
+productionization claim.
+
+**LEDGER:** `research/EXPERIMENT-REGISTRY.md` E-2026-07-04-PERFECT-MESHER-GOTHIC, commit 94c7e04
+(pre-reg 8c4467a, assembly cd2e162, guard 34ea04f). Scorecard: `research/exchange/_pf_perfect_gothic/`
+{build.json, scorecard.ndjson, refine_passes.ndjson, refined_mesh.bin}. Kernel:
+`research/bridge/_pf_perfectMesherLib.ts` + `_pf_planarizeMM.ts`; probe: `research/bridge/_pf_perfect_gothic.test.ts`.
+
+**HONESTY CAVEATS carried forward:** (a) interiorMax=0.133 uses a 1024×120 box-refined brute (refineIters=60,
+trusted-class per SURFNATIVE calibration); the independent 4096×600 top-30 cross-check was KILLED at ~34min
+under machine contention (UNMEASURED) — but box-refine converges to the true foot independent of grid res, so
+the REFUTE is sound. (b) NO visual heatmap render was produced — a `dumpHeatmap` of the refined mesh is the
+recommended next visual artifact. (c) guard population = worst-gradU top-400 (the reddest near-vertical facets
+where any outlier must live), an intentional honest-and-tractable choice, not the full 6%.
