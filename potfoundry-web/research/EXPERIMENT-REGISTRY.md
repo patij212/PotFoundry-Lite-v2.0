@@ -4415,3 +4415,61 @@ brute or the perfect-mesher kernel dispatched to Gyroid/Voronoi (the kernel that
 **LEDGER:** `research/exchange/_rebaseline20/{scorecard.ndjson,README.md}`. Ruler `research/bridge/_pf_rebaselineRuler.ts`;
 probe `research/bridge/_pf_rebaseline20.test.ts` (PF_REBASE=1 / PF_REBASE_BIG=1); config `vitest.rebaseline20.config.ts`;
 diag `_pf_rebaseDiag.test.ts`. DEV-ONLY; no src/ edit; research/exchange scorecards gitignored (numbers inlined here).
+
+---
+
+## E-2026-07-06-BVH-RULER — IS THE WHOLE-MESH INTERIOR RULER HONEST ON STEEP FACETS? BVH-truth-twin ratio study + scalable ruler + 14-style re-score [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME:** E-2026-07-05-REBASELINE20 found only 6/20 styles genuinely whole-mesh 0-outlier at 0.01mm. The 14 gap
+styles ALL have vertices exactly on-surface (vertex-on-surface gate 0.00000), rawNonMan=0, watertight; their
+residuals sit on DESIGNED STEEP RELIEF (near-vertical channel/cell walls, flank ribbons). The whole-mesh ruler
+(`scoreWholeMeshInterior`) scores each facet-interior sample as `min(GN-fallback, full-azimuth bruteNearestOnRadial
+Surface)` against the RADIAL surface graph S(θ,z)=(rA·cosθ, rA·sinθ, z). This campaign has TWICE hit the
+"radial/single-seed-GN OVERSTATES near-vertical relief 2–370×" artifact (cheatsheet; E-2026-07-02-STEEP-HETEROGENEITY
+Gyroid GN 0.644 vs brute-trusted 0.092). The unresolved DECISIVE question: does the whole-mesh ruler's true-3D foot
+OVERSTATE on near-vertical facets, or are the tens-of-thousands of outliers genuine interior chord gaps? This decides
+how much of the "all 20 ≤0.01 whole-mesh" campaign actually exists.
+
+**HYPOTHESIS (falsifiable):** On the worst-N outlier facets of the tangled gap styles, the whole-mesh ruler's
+per-sample distance is an OVERSTATEMENT of the true both-sided 3D distance to the actual object surface — i.e. an
+independent BVH-over-ultra-dense-triangulated-truth-twin (Ericson point-to-triangle, adversarially == brute) reads
+materially SMALLER, revealing a steep-overstatement RULER ARTIFACT rather than genuine interior gaps.
+
+**DISCRIMINATOR (cheapest):** For the analytic-ruler styles the object surface IS the single-valued radial surface
+S(θ,z) — so an ULTRA-DENSE triangulated twin of S (θ×z grid lifted by rA, `buildRefLocator` flat-CSR BVH) is an
+INDEPENDENT second implementation of "nearest point on the object surface". Q1 = on the worst-N (top-2000) outlier
+facets of Gyroid / Voronoi / HexHive, sample the facet interior (denseBary ≥36 pt) and score BOTH: (a) the whole-mesh
+ruler distance (`min(GN, radial-brute)`), (b) the BVH-truth distance to the dense twin. Report the per-facet ratio
+distribution r = BVH / ruler. DENSITY-STABILITY (the 9th-audit band-limit catch, MANDATORY): re-score the SAME worst
+facets against a DOUBLED-resolution twin; the BVH distance must change <10% (a too-coarse twin UNDER-states → would
+FAKE a "ruler artifact" verdict). BVH twin cross-checked vs `bruteDist` on a worst-facet subset (== to ~1e-6).
+
+**KILL-CRITERION (committed BEFORE measuring):**
+- **RULER ARTIFACT (steep-overstatement class)** iff, on the worst facets, ratio r = BVH/ruler is broadly < 0.3
+  (BVH ≪ ruler) AND the density-stability check passes (doubled-twin BVH distance changes <10%) — then the ruler
+  OVERSTATES and the style may already be ≤0.01; RE-SCORE the style whole-mesh under the BVH basis.
+- **OUTLIERS GENUINE (mesher work stands)** iff ratio r > 0.7 (BVH ≈ ruler) on the worst facets AND density-stable —
+  the interior chord gaps are real designed-relief tessellation deficits, GENUINE-GAP class.
+- **INCONCLUSIVE / mixed** iff 0.3 ≤ r ≤ 0.7 or the density-stability check FAILS (>10% change) — report the ratio
+  distribution honestly and state the twin-resolution ceiling; do NOT issue a false artifact/genuine verdict.
+- Report the FULL ratio DISTRIBUTION (p10/p50/p90 + fraction<0.3 + fraction>0.7), not just the mean.
+
+**Q2 (scalable ruler):** productize the Q1 BVH instrument as `scoreWholeMeshBVH` (`research/bridge/_pf_bvhRuler.ts`):
+build the dense twin ONCE, BVH over it, batched ≥36-pt denseBary per facet, checkpointed, stride-capable — able to
+score up to ~22M-tri weave/braid/seam meshes tractably. This is the ruler the 4 UNRESOLVED weave/braid/seam styles
+NEED (existing brute cannot reach their density). SFB's ~9mm seam wall is a genuine near-vertical geometry the radial
+ruler is blind to; the closed-object BVH twin (with the seam annulus) settles it.
+
+**Q3 (re-score):** re-score all 14 gap styles (10 scored: Ripple/Wave/FourierBloom/HarmonicRipple/Gyroid/Voronoi/
+Crystalline/HexHive/DragonScales/LowPoly + 4 unresolved: BasketWeave/CelticKnot/CelticTriquetra/SFB) under the BVH
+honest basis. Output the corrected scorecard: per style whole-mesh BVH max (mm), outlier count at 0.01, and
+classification GENUINE-GAP vs RULER-OVERSTATED vs CLOSED. NO top-N guard for any 0-outlier claim (BANKED MANDATE);
+top-N allowed ONLY for the Q1 worst-facet ratio diagnostic (labeled as such).
+
+**MECHANISM:** `_pf_bvhRuler.ts` (`buildRadialTwin` dense θ×z grid → `buildRefLocator` BVH; `scoreWholeMeshBVH`
+batched-facet interior BVH; `ratioStudy` worst-N ruler-vs-BVH + doubled-twin density-stability). Probe
+`_pf_bvhRuler.test.ts` (PF_BVH_Q1=1 ratio study, PF_BVH_Q3=1 / PF_BVH_Q3_BIG=1 re-score), one env-gated `it` per
+style, CHECKPOINT one ndjson row per style. Reuses `buildRefLocator`/`buildStepReference` (READ-ONLY) +
+`bruteNearestOnRadialSurface`/`projectPointToRadialSurface` (labkit). DEV-ONLY; no src/ edit.
+
+**VERDICT: [PENDING — pre-registration committed before measurement]**
