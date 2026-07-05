@@ -59,6 +59,10 @@ const N_RAMP = Number(process.env.PF_NRAMP ?? 6);
 const MAX_PASS = Number(process.env.PF_MAXPASS ?? 10);
 const LOOP_NTH = Number(process.env.PF_LNTH ?? (SMOKE ? 512 : 1024));
 const RULER = { gnScreen: 0.006, preFilter: 0.006, nTheta: LOOP_NTH, nZ: 120, zBandMm: 3, refineIters: 60 };
+// STOP-driver ruler: a COARSER nTheta (box-refine converges to the SAME foot independent of grid res — spec
+// SURFNATIVE calibration) so the in-loop brute is tractable; the post-loop guard uses the full 1024 RULER.
+const STOP_NTH = Number(process.env.PF_SNTH ?? (SMOKE ? 192 : 320));
+const STOP_RULER = { gnScreen: 0.006, preFilter: 0.006, nTheta: STOP_NTH, nZ: 80, zBandMm: 3, refineIters: 60 };
 
 function makePatch(): PatchDef {
   return STYLE === 'geostar' ? makeGeoStarPatch(BAYS, ZBAND_MM) : makeGothicPatch(BAYS, ZBAND_MM);
@@ -75,6 +79,7 @@ describe(`pf-hybrid-apex [${STYLE}]: clean direct strip + LOCAL brute apex refin
       { dtRowMm: DT_ROW, hCrestMm: H_CREST, hPanelMm: H_PANEL, nRamp: N_RAMP, minAmp: MIN_AMP },
       TOL, RULER, MAX_PASS,
       (h) => { plog(`  pass${h.pass}: tris=${h.nTris} outliers=${h.nOutlier} worst=${h.worst} red=${h.nRed} green=${h.nGreen} ${h.ms}ms`); appendFileSync(join(DIR, 'passes.ndjson'), JSON.stringify(h) + '\n'); },
+      STOP_RULER,
     );
     plog(`[hybrid] built: baseStripTris=${res.strip.tris.length / 3} baselineOutliers(7pt)=${res.baselineOutliers} baselineWorst=${res.baselineWorst} -> finalTris=${res.tris.length / 3} passes=${res.passes} capped=${res.capped} in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     persistMesh('hybrid_mesh.bin', res.uv, res.tris);
@@ -83,7 +88,14 @@ describe(`pf-hybrid-apex [${STYLE}]: clean direct strip + LOCAL brute apex refin
 
     // ── watertight (by INDEX, non-vacuous control) ──
     const nonMan = auditNonManByIndex(xyz, res.tris, 1e-4);
-    const a0 = res.tris[0], b0 = res.tris[1]; const vNew = res.uv.length / 2;
+    // non-vacuity control: inject a 3rd triangle on a GENUINELY INTERIOR (2-face) edge so the count MUST move
+    // 0->1 (tri[0]'s first edge can be a domain-boundary edge with only 1 face → injection wouldn't move it).
+    const edgeCount = new Map<string, number>();
+    const ek = (a: number, b: number): string => (a < b ? `${a}_${b}` : `${b}_${a}`);
+    for (let k = 0; k < res.tris.length; k += 3) { const a = res.tris[k], b = res.tris[k + 1], c = res.tris[k + 2]; for (const [p, q] of [[a, b], [b, c], [c, a]]) edgeCount.set(ek(p, q), (edgeCount.get(ek(p, q)) ?? 0) + 1); }
+    let a0 = res.tris[0], b0 = res.tris[1];
+    for (let k = 0; k < res.tris.length; k += 3) { const a = res.tris[k], b = res.tris[k + 1], c = res.tris[k + 2]; const cand: Array<[number, number]> = [[a, b], [b, c], [c, a]]; const f = cand.find(([p, q]) => edgeCount.get(ek(p, q)) === 2); if (f) { a0 = f[0]; b0 = f[1]; break; } }
+    const vNew = res.uv.length / 2;
     const xyz2 = new Float64Array(xyz.length + 3); xyz2.set(xyz);
     xyz2[3 * vNew] = xyz[3 * a0] + 3; xyz2[3 * vNew + 1] = xyz[3 * a0 + 1] + 3; xyz2[3 * vNew + 2] = xyz[3 * a0 + 2];
     const crackTris = res.tris.slice(); crackTris.push(a0, b0, vNew);
