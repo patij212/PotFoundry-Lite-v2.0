@@ -22,6 +22,24 @@ import {
   type ConformingOuterWallOptions,
   type ConformingOuterWallResult,
 } from '../ConformingOuterWall';
+import { detectFeatures } from '../featureGraph/detectFeatures';
+import { isCountUnstableStyle } from './countUnstable';
+
+export { countJunctionNodes, isCountUnstableStyle } from './countUnstable';
+
+/**
+ * Canonical detector options (mirrors the production call in
+ * fidelity/bandRemesh/assembleWithFeatures.ts, minus its reliefIndicator —
+ * the component-boundary detector is not needed to sense count-instability,
+ * which lives in the ridge/crease network's junctions).
+ */
+const TIER_C_DETECT_OPTS = {
+  coarseRes: 40,
+  fineRes: 120,
+  minStrength: 1.0,
+  minAngleDeg: 28,
+  creaseContrast: { windowRadius: 5, factor: 0.6, absFloorDeg: 8 },
+} as const;
 
 /**
  * Dev-only lever, mirroring the `__pfConforming*` convention: unset/false in
@@ -42,6 +60,12 @@ export function buildTierCOuterWall(
   opts: ConformingOuterWallOptions,
 ): ConformingOuterWallResult {
   if (!isPerfectMesherEnabled()) {
+    return buildConformingOuterWall(sampler, opts);
+  }
+  // Flag ON (dev-only): Tier-C fires only for count-unstable feature
+  // networks; Tier-A/B styles take the production path unchanged.
+  const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
+  if (!isCountUnstableStyle('', graph)) {
     return buildConformingOuterWall(sampler, opts);
   }
   throw new Error('tierC not yet wired');
