@@ -1261,3 +1261,38 @@ E-2026-07-05-PERFECT-MESHER-RELAX (01d9535). Probes `_pf_hybrid_apex.test.ts` + 
 **BANKED MANDATE (load-bearing):** no future 0-outlier claim may use a top-N-gradU guard population — proven
 blind by 791 (GeoStar) / 32 (Gothic) missed moderate-gradU facets; use `acceptanceGuardWhole` (every facet).
 DEV-ONLY; no src/ edit; exchange scorecards gitignored, numbers inlined.
+
+---
+
+## VALIDATION 9 — SLIVER LEVER 13a: scoped apex Vlachos-PN element REFUTED (Gothic, 2026-07-05)
+
+The V8 §(1) "SOLE untried representation move = a scoped one-sided PN/P2 curved element AT the apex-straddling
+leaf" RAN on the CONFIRMED whole-mesh Gothic mesh (`refined_mesh.bin`, 30,323t, whole-mesh 0-outlier, 19% <20°).
+**REFUTED (13th sliver lever)** — and the diagnosis overturned the task's premise + benched the specific element.
+Trust ONLY these measured numbers (registry E-2026-07-05-GOTHIC-APEXPN, pre-reg d6b2cf1).
+
+- **Localization refutes "apex rings":** the 5757 needles (19%) are NOT a thin apex ring — **5123 (89%) are
+  high-gradU crest-flank** (centroid gradU p50 133.8) forming **6 large connected clusters** (~850 facets each),
+  + 634 low-gradU panel needles. There is no thin apex ring to scope to; the needles are the whole near-vertical
+  crest-flank BAND.
+- **The re-tessellation is a NO-OP on slivers** (19.0→19.0) — only 5/5757 facets touched (large clusters have
+  non-simple/pinched boundaries → safe-skip) — while HOLDING whole-mesh 0-outlier (max 0.01, full 45-pt
+  `acceptanceGuardWhole`) + watertight non-vacuous. The mechanism cannot even engage the population.
+- **DECISIVE element-level discriminator (`pnFlipDiscriminator`): the Vlachos PN element is WORSE than the flat
+  chord at riding the concave Gothic cusp.** Over 6069 near-apex-needle internal edges, 1801 flips are rounder
+  (min-angle p50 7.0°→18.4°), but the flipped facets' true-3D dev is **flatDev p50/p90 0.0023/0.1287 vs pnDev
+  0.0285/0.2602** — the PN cubic is ~12× worse at p50; it rides within-tol where flat fails in only 3/200 cases.
+  ROOT CAUSE: the one-sided Vlachos PN is built from the near-vertical flank normals and OVERSHOOTS the concave
+  `pow(sharp)` knife-edge instead of following it — a convex-biased element cannot represent a concave cusp.
+
+**This UPHOLDS the V8 structural-tension conclusion from the ELEMENT side.** The gate table is UNCHANGED: SLIVERS
+remains the ONE open gate (Gothic 19% / GeoStar 21.7%, minAngle 0, print-usable-with-finite-area-needles +
+collapse concession). The "needs a curved P2/PN at the apex" hope named in V8 §(1) is now SPECIFICALLY refuted for
+the Vlachos PN element; the genuinely untried move is a CONCAVE-aware element (normal-sign-corrected / subdivision
+surface), NOT the convex PN — but density/placement/connectivity/flips/PN are all exhausted, so this is a distant
+option and the ACCEPT+DOCUMENT concession stands. **Reusable banked:** `_pf_apexPnLib` (buildApexPnTess cluster
+re-tessellator + pnFlipDiscriminator element-level curved-vs-flat ruler + diagnoseNeedles localizer).
+
+**LEDGER:** this file §VALIDATION 9. Registry E-2026-07-05-GOTHIC-APEXPN. Probe `_pf_apex_pn.test.ts`
+(PF_APEXPN=1), lib `_pf_apexPnLib.ts`, config `vitest.pf_apexpn.config.ts`. Render
+`research/exchange/_pf_apex_pn/apexpn_true3d.png`. DEV-ONLY; no src/ edit.
