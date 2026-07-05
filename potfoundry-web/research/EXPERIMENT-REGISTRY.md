@@ -10,6 +10,30 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-PERFECT-MESHER-CRESTSTRIP — does a CURVED-element-guided STRUCTURED SQUARE flank strip close the Gothic sliver gate while HOLDING 0 outliers + watertight, or at least make it slicer-safe (zeroArea=0)? [PRE-REGISTERED — committed BEFORE measuring]
+
+**FRAME (the last sliver lever — a PRIMITIVE change, not more density):** 6 sliver levers are refuted (Lawson flips V2-§3b; M-square spacing V3; smooth graded seed + Laplacian-under-M relax V4; the isotropic-ruler-artifact escape E-…-ANISO-RULER). ANISO-RULER PROVED the surviving 0-outlier slivers are a GENUINE defect: mis-oriented cross-curvature needles LONG ACROSS the high-curvature flank (worst-60 median 76° to crest), micro-thin ALONG the crest, WORSE under the anisotropic (II,I) metric (99.1% <20° vs 43.3% iso), + Gothic has **36 ZERO-AREA UV-collinear degenerate faces** (real slicer risk) while GeoStar has 0 (print-usable). ROOT: the flat-P1 greedy interior-refine loop (RED 1→4 to hold 0-outlier on the near-vertical apex) is FORCED into cross-curvature needles. This experiment replaces that greedy flank refinement with a CURVED-element-GUIDED STRUCTURED SQUARE flank strip: a one-sided Vlachos-PN element defines the flank SURFACE (the E-CRESTRIBBON graft, benched for fidelity, now indicated for QUALITY), and it is TESSELLATED at export into STRUCTURED square flat cells that FOLLOW the flank curvature — rows ALONG the crest, columns marching OUT into the flank, each cell sized square under M — so the export triangles are BOTH on-surface (0-outlier) AND well-shaped (no needles/zero-area), instead of the greedy loop's needles. Crest stays a no-bridge shared edge; honest full-azimuth brute STOP driver reused VERBATIM.
+
+**HYPOTHESIS (falsifiable):** On a multi-bay Gothic patch, replacing the greedy flat-P1 crest-flank refinement with a PN-guided structured square strip drops `pctBelow20` to single digits + a sane minAngle + `zeroAreaFaces`=0 WHILE `interiorOutliers` HOLD 0 (honest ≥36-pt full-azimuth brute) + watertight non-vacuous.
+
+**DISCRIMINATOR (cheapest that can refute):** reuse the CONFIRMED 4-bay M-square complex/seed VERBATIM (`makeGothicPatch(4,12)`, same extractProtectedComplex/seedMesh); the ONLY change is the interior-refine flank DELIVERY = structured PN-guided strip (new `_pf_crestStripLib`) instead of `refineInteriorMsquare`. Score with the SAME `acceptanceGuard` (≥36-pt brute, worst-gradU top-400) + `triangleQualityDistribution` (iso minAngle/pctBelow20) + a NEW zero-area/degenerate-face counter (area<1e-9 mm² lifted, + a sub-µm² tally). SMOKE at 1-bay first for a cheap direction read, then the 4-bay confirm.
+
+**KILL-CRITERION (pre-registered, committed BEFORE measuring):**
+- FULL CONFIRM iff `pctBelow20` → single digits (<~10%) AND minAngle sane (>~15° OR median >~30°) AND `zeroAreaFaces`=0 AND `interiorOutliers` HOLD 0 AND watertight non-vacuous.
+- PARTIAL (slicer-safe) iff `zeroAreaFaces`→0 + `interiorOutliers` HOLD 0 + watertight held but `pctBelow20` stays >single-digit (mesh PRINT-USABLE but not angle-clean). Report `usedCollapseFallback`.
+- REFUTE iff the curved-element strip cannot hold 0-outlier (reopens outliers) OR cannot kill the zero-area faces without reopening outliers.
+- Report per style: pctBelow20 before/after, minAngle, zeroAreaFaces before/after, interiorOutliers, watertight, tris. Gothic is the go/no-go (has the 36 zero-area faces); GeoStar if the window allows.
+
+**FALLBACK (if step 1 partial):** degenerate-face-COLLAPSE post-pass — collapse the zero-area / sub-µm² faces by merging their coincident (UV-collinear) vertices → make Gothic SLICER-SAFE (`zeroAreaFacesAfter`=0) even if `pctBelow20` stays high. Report `usedCollapseFallback` + whether watertight / 0-outlier survive the collapse.
+
+**INSTRUMENTS (honest):** interior ruler = `acceptanceGuard` (≥36-pt barycentric, full-azimuth `bruteNearestOnRadialSurface`, worst-gradU top-400) — the CONFIRMED-kernel guard VERBATIM. Slivers = `triangleQualityDistribution` minAngle (iso 3D). Zero-area = lifted-3D cross-product area < 1e-9 mm² (+ <1e-6 tally). Watertight = `auditNonManByIndex` NON-VACUOUS (injected-crack must move the count). PN element = `apexLeafPN`/`surfaceNormal` from `_pf_perfectMesherBruteLib` (Vlachos control net), reused for the strip column placement.
+
+**LEDGER (this pre-reg):** probe `research/bridge/_pf_perfect_gothic_creststrip.test.ts` (PF_CRESTSTRIP=1; PF_SMOKE=1 1-bay); lib `research/bridge/_pf_crestStripLib.ts`; config `vitest.pf_creststrip.config.ts`; scorecard `research/exchange/_pf_perfect_gothic_creststrip/`. DEV-ONLY; no src/ edit; reuses the M-square complex/seed + brute STOP driver READ-ONLY.
+
+**STATUS: PENDING (measuring).**
+
+---
+
 ## E-2026-07-05-PERFECT-MESHER-ANISO-RULER — are the 0-outlier "slivers" a GENUINE defect or an ISOTROPIC-ruler ARTIFACT on anisotropy-appropriate cells? [PRE-REGISTERED — this row committed BEFORE measuring]
 
 **FRAME (metrology, NOT a new mesher lever):** 5 sliver-reduction levers are EXHAUSTED (E-…-TIERAB-SLIVERS Lawson flips; E-…-MSQUARE M-square spacing; E-…-RELAX smooth graded seed + Laplacian-under-M relax) — all HELD 0-outlier + watertight but left pctBelow20 ~56% (Gothic 4-bay) / 21.3% (GeoStar). This experiment does NOT build a 6th lever. It asks whether the surviving "slivers" are a REAL defect or an ISOTROPIC-min-angle RULER ARTIFACT on ANISOTROPY-APPROPRIATE cells — the same class as "radial overstates near-vertical" (a ruler that lies). The 0-outlier needles are elongated ALONG the crest where the surface is near-flat-along-crest ⇒ under the curvature-adapted anisotropic metric M they may be CORRECTLY shaped (long where the surface doesn't curve). The export use-case is an STL for RESIN PRINTING: an elongated-but-finite-area triangle prints FINE; only a near-ZERO-AREA degenerate face is a real slicer/watertight risk.
