@@ -10,6 +10,27 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-05-PERFECT-MESHER-TIERAB-SLIVERS — (1) closer-OFF byte-identity claim + (2) M=g/h² sliver gate holding 0-outlier [PRE-REGISTERED, this row committed BEFORE measuring]
+
+**Q:** The perfect-mesher spec (§4 dispatch table, §6) claims (A) "everything OFF the protected complex is byte-identical to today's kernel output ⇒ zero regression on Tier-A/B", and (B) the CONFIRMED 1-bay edge-mode Gothic mesh (E-2026-07-05-…-BRUTE: interiorOutliersFlatP1=0, max=0.006) has a SEPARATE sliver gate that FAILS (minAngle 0°, pctBelow20=81.4%) which "a metric-aware / Delaunay-quality apex spacing is REQUIRED before this is usable". This experiment MEASURES both claims (neither was measured before).
+
+**Sub-question (1) — CLOSER-OFF BYTE-IDENTITY:** With the feature-graph closer OFF (EMPTY protected complex: constraintEdges=[], crestVertexSet=∅), is the kernel output byte-identical (hash of ut+indices) to "today's proven primitive" for a smooth style (HarmonicRipple) and a Tier-B style (ArtDeco / BasketWeave)? The spec's dispatch table maps smooth→"dense-M-square" = `buildInhouseMetricMesh` (M=g/h²), and Tier-B→"doubled-crest/grid" over the same base. Test path: run the kernel's own generation path (`seedMesh` with empty complex, i.e. the pure background CDT with no locked edges) and hash ut+indices; compare to (a) the kernel-closer-off path re-run (determinism) AND (b) `buildInhouseMetricMesh` at matched budget (the ACTUAL primitive the spec names).
+
+**Sub-question (2) — M=g/h² SLIVER GATE holding 0-outlier:** On the CONFIRMED 1-bay edge-mode Gothic mesh (loaded from the persisted refined point set), apply a metric-aware quality pass — true-3D max-min-angle Lawson flips (`flipHE`, the surface-metric M=g/h² quality criterion since true-3D angle == the pullback metric angle) with crest constraint edges LOCKED (never flip a crest edge, so no-bridge is preserved and vertices do NOT move) — and re-measure: does minAngle rise / pctBelow20 fall WHILE the acceptance guard interior outliers STAY 0? Flips move NO vertices (topology-only) so the surface-fidelity of each remaining facet is unchanged in position; the only risk to the 0-outlier gate is a flip that creates a longer-chord diagonal, which the guard re-measures honestly.
+
+**KILL-CRITERION (pre-registered, committed BEFORE measuring):**
+- (1) CONFIRM byte-identity iff the SHA-256 of (ut ++ indices) closer-OFF == the SHA-256 of the named primitive's (ut ++ indices) for BOTH a smooth (HarmonicRipple) AND a Tier-B (ArtDeco or BasketWeave) style. REFUTE iff they differ (and report WHY: which code paths diverge — this is the honest zero-regression audit).
+- (2) CONFIRM the slivers-closable-with-0-outliers claim iff, after the metric-aware flip pass, (minAngle rises meaningfully AND pctBelow20 drops meaningfully) AND acceptance-guard interiorOutliers STAYS 0 (still ≤0.006 max, worst-gradU top-N, honest full-azimuth brute) AND watertight (auditNonManByIndex=0 non-vacuous). REFUTE-partial iff flips cannot raise minAngle above the sliver floor (the sliver is intrinsic to the point SET, not the connectivity ⇒ needs metric-aware SPACING not just flips) OR flips reopen interior outliers.
+- reaches0outlier (the returned flag) = byte-identity-holds(1) AND slivers-closable-with-0-outliers(2).
+
+**HONEST INSTRUMENT (non-negotiable):** ut+indices hash = deterministic canonical serialization (round to 1e-9, JSON, sha256). Interior guard = the SAME `acceptanceGuard` (≥45-pt barycentric, worst-gradU top-N, two-stage GN→full-azimuth `bruteNearestOnRadialSurface` box-refined). Slivers = `triangleQualityDistribution` minAngle (NOT %<20° alone). Watertight = `auditNonManByIndex` by index, non-vacuous control (inject a 3rd tri on an edge, verify the count moves). Checkpoint each unit to ndjson the instant it is computed.
+
+**EVIDENCE:** _pending — this row pre-registers; results appended below after the run._
+
+**LEDGER (pre-reg):** probe `research/bridge/_pf_tierab_slivers.test.ts` (PF_TIERAB=1 byte-identity; PF_SLIVERM=1 sliver-M-pass); kernel-reuse `_pf_perfectMesherLib` + `_pf_perfectMesherBruteLib` + `inhouseMetricMesh.flipHE`/`buildInhouseMetricMesh` READ-ONLY; scorecard `research/exchange/_pf_tierab_slivers/`. DEV-ONLY, no src/ edit.
+
+---
+
 ## E-2026-07-05-PERFECT-MESHER-GOTHIC-BRUTE — THE CRUX: drive the refine-loop TERMINATION by the HONEST full-azimuth brute (not GN) [PRE-REGISTERED fa1936e]
 
 **Q:** E-2026-07-04-PERFECT-MESHER-GOTHIC REFUTED, but for a MEASURED CONFOUND: the refine loop's TERMINATION was driven by the GN ruler, which UNDERSTATES true-3D on near-vertical Gothic flanks (gradU 230–253) — it stopped at worstGN=0.0085 while the honest full-azimuth brute revealed a 0.133mm on-crest floor, so the loop never ran to HONEST convergence. This experiment reuses the PROVEN topology pipeline (extract→seed→guard: residualCrossings=0, watertight non-vacuous, manifold, all passed whole-mesh) and changes ONE thing: the refine-loop STOP test is the HONEST full-azimuth brute interior deviation, NOT GN (GN still PROPOSES the split site cheaply; a facet keeps refining iff its brute-confirmed ≥7-pt interior dev >0.01). STEP 2: if flat-P1 still floors at the sharpest apex, swap ONLY the near-apex leaf for a one-sided Vlachos PN element and re-measure under the SAME brute.
