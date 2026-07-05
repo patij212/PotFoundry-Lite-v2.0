@@ -1293,6 +1293,101 @@ surface), NOT the convex PN — but density/placement/connectivity/flips/PN are 
 option and the ACCEPT+DOCUMENT concession stands. **Reusable banked:** `_pf_apexPnLib` (buildApexPnTess cluster
 re-tessellator + pnFlipDiscriminator element-level curved-vs-flat ruler + diagnoseNeedles localizer).
 
-**LEDGER:** this file §VALIDATION 9. Registry E-2026-07-05-GOTHIC-APEXPN. Probe `_pf_apex_pn.test.ts`
+**LEDGER:** this file §VALIDATION 9 (13a). Registry E-2026-07-05-GOTHIC-APEXPN. Probe `_pf_apex_pn.test.ts`
 (PF_APEXPN=1), lib `_pf_apexPnLib.ts`, config `vitest.pf_apexpn.config.ts`. Render
 `research/exchange/_pf_apex_pn/apexpn_true3d.png`. DEV-ONLY; no src/ edit.
+
+---
+
+## VALIDATION 9 — 13TH SLIVER LEVER (BOTH CLASSES) + 20-STYLE WHOLE-MESH RE-BASELINE (2026-07-05)
+
+The definitive roll-up. Two better-targeted 13th sliver levers RAN — one per sliver CLASS (Gothic apex-PN
+above §13a; GeoStar OFF-crest panel-relax below §13b) — AND the first HONEST WHOLE-MESH 20-style re-baseline
+scored every free facet with NO top-N guard cap. This section adjudicates the FINAL all-styles gate. Trust
+ONLY the measured whole-mesh numbers in the registry rows cited.
+
+### (1) Did the 13th sliver lever close Gothic (apex-PN) and/or GeoStar (panel-relax)? — NO on BOTH (13th refuted lever, each class)
+
+**REFUTED on both count-unstable styles, from OPPOSITE mechanisms — confirming the classes are DISTINCT.**
+
+| style | 13th lever (targeted to its OWN sliver class) | pctBelow20 before→after | outliers held? | verdict + refuting mechanism (MEASURED, whole-mesh brute) |
+|---|---|---|---|---|
+| **GothicArches** (crest-flank BAND, 89% high-gradU) | scoped one-sided **Vlachos-PN** re-tess at the apex-straddling leaf (§13a) | 19.0 → **19.0** (minAngle 0→0) | **YES** (max 0.01, `acceptanceGuardWhole` full 45-pt, watertight non-vac) | **REFUTE** — (a) NO thin apex ring: 5757 needles = 6 large connected crest-flank clusters (non-simple boundaries → 5/5757 touched → NO-OP on slivers); (b) DECISIVE `pnFlipDiscriminator`: PN true-3D dev p50 0.0285 vs flat 0.0023 (**~12× WORSE**) — a convex-biased Vlachos PN OVERSHOOTS the concave `pow(sharp)` cusp. |
+| **GeometricStar** (91% OFF-crest PANEL grading needles) | surface-preserving **Laplacian-under-M relaxation** (quality-directed, honest-brute reject-guard), targeting the panel class (§13b) | 21.7 → **20.0** (minAngle 0→2.5°) | **NO — REOPENED 0→427** (max 0.0123, 236 on-crest/191 off; watertight held 0) | **REFUTE (both branches)** — quality snapshot PLATEAUS 19.7/19.7/19.99% over 3 sweeps (43% of 56972 moves guard-REJECTED → panel is NOT near-isotropic), AND the honest 1024-θ verdict ruler reopened 427 outliers on drifted verts. ROOT CAUSE: the OFF-crest panel needles are a **CONNECTIVITY floor of the seed+free-cdt2d** (identical set on the pre-refine brute mesh); relaxation moves points but connectivity-locked needles persist. |
+
+Both fail: Gothic's is a REPRESENTATION floor at the zero-width apex (element cannot follow the concave cusp);
+GeoStar's is a CONNECTIVITY floor in the smooth panel (free-cdt2d bakes the grading-transition needles). These
+are **two genuinely different sliver classes** — the prior crest-focused levers mis-targeted GeoStar's 91%
+OFF-crest population. **13 sliver levers now refuted, spanning both classes.** SLIVERS remains the single open
+gate; the print-usable finite-area-needle + degenerate-collapse concession stands.
+
+### (2) THE DEFINITIVE 20-STYLE WHOLE-MESH SCORECARD — 6/20 genuinely whole-mesh 0-outlier; 12/18 Tier-A/B HID guard-population residuals
+
+**CONFIRMED: the _best20 manifest "17 literal ≤0.01" verdicts were a top-N/percentile guard-population
+artifact — the SAME artifact class that masked Gothic/GeoStar.** A new whole-mesh ruler
+(`scoreWholeMeshInterior`, EVERY free facet, ≥36-pt denseBary(45), honest true-3D foot = min(GN-global-fallback,
+full-azimuth brute), NO top-N cap), gated by a per-style vertex-on-surface check (analytic where mesh IS the
+radial surface; packaging BVH-vs-closed-object meta where riser/weave/seam meshes depart it), scored the EXACT
+reaching meshes. Honest whole-mesh MAX-basis result:
+
+| whole-mesh tier | count | styles (whole-mesh true-3D MAX, mm) |
+|---|---|---|
+| **GENUINELY 0-outlier** (literal, watertight) | **6/20** | SuperellipseMorph (0.0099), SpiralRidges (0.0038), ArtDeco (0.0011), BambooSegments (0.0079), **GothicArches (0)**, **GeometricStar (0)** — the last two are the NEW perfect-mesher kernel, the only count-unstable styles at literal 0 |
+| **HID smooth p99-tail outliers** | 4 | RippleInterference (78 facets, 0.019), WaveInterference (6, 0.011), FourierBloom (67), HarmonicRipple (217) |
+| **HID tangled top-N-anchored outliers** (vtx on-surface=0.00000 → real facet-interior chords, brute-confirmed) | 4 | Gyroid (~72592, 0.203), Voronoi (~115632, 0.126), Crystalline (~18064, 0.097), HexHive (~26844, 0.041) |
+| **HID riser/crest-tail outliers** (documented) | 2 | DragonScales (8938, 0.219), LowPolyFacet (252, 0.135) |
+| **UNRESOLVED at reaching density** (tangled/steep brute ceiling; NOT re-scored) | 4 | BasketWeave, CelticKnot, CelticTriquetra, SuperformulaBlossom-seam |
+
+- **`tierABall0Outlier` = FALSE.** Only **4/18** Tier-A/B are genuinely whole-mesh 0 (SuperellipseMorph,
+  SpiralRidges, ArtDeco, BambooSegments). **12/18 Tier-A/B HID whole-mesh outliers** under the manifest's
+  top-N/percentile guard — call-out: Gyroid/Voronoi/Crystalline/HexHive read `true3dP99=0` in the manifest but
+  carry tens of thousands of real facet-interior chord outliers whole-mesh (max 0.04–0.20mm on thin near-vertical
+  flank ribbons). `rawNonMan=0` on all 20.
+- **`tierCGothicGeostar0Outlier` = TRUE.** Both new-kernel count-unstable styles are literal whole-mesh 0,
+  watertight non-vacuous — the ONLY count-unstable styles at literal 0.
+- **NATURE of the correction: a RULER/verdict-basis fix, NOT a new mesh defect.** Faces stay ON the true surface
+  (vertex-on-surface gate = 0.00000 for all 9 analytic-gate styles; `rawNonMan=0`); the residual is the designed
+  near-vertical relief the radial ruler overstates and p99/top-N excluded. It is watertight and print-safe. But
+  the honest whole-mesh-MAX basis is 6 literal-0, NOT 17.
+
+### (3) UPDATED PERFECT-MESHER STATE + PRODUCTIONIZATION READINESS — the whole-mesh re-baseline does NOT clear the final all-styles gate
+
+Revise the V8 §(2) gate table with the whole-mesh-honest 20-style basis:
+
+- **Gothic + GeoStar (the two hardest count-unstable styles) are the STRONGEST result in the campaign:** LITERAL
+  whole-mesh 0-outlier + watertight + manifold + slicer-safe by flat-P1. Four of five print gates closed on the
+  worst styles.
+- **BUT the all-styles final gate is NOT cleared.** Only 6/20 are genuinely whole-mesh 0-outlier; 12/18 Tier-A/B
+  hid outliers under the old guard, and 4 tangled/weave/seam styles are UNRESOLVED at reaching density. The
+  perfect-mesher kernel that took Gothic/GeoStar to literal 0 has NOT been dispatched to the 12 hidden-residual
+  Tier-A/B styles (Gyroid/Voronoi/Crystalline/HexHive tens-of-thousands of outliers whole-mesh). So the "0-outlier
+  on all 20" claim is REFUTED at the honest whole-mesh basis — it holds for 6/20, not 17-20/20.
+- **SLIVERS still the one open QUALITY gate** on the 2 closed count-unstable styles (13 levers refuted, both
+  classes), plus the fidelity-tail on the 12 hidden Tier-A/B and the 4 unresolved tangled styles.
+- **NO NEW MESH DEFECT surfaced** — the re-baseline is a verdict-basis correction: vertices on-surface, watertight,
+  the residuals are the designed steep relief the radial guard overstated. The meshes did not get worse; the RULER
+  got honest.
+
+**PRODUCTIONIZATION READINESS: NO-GO to a "0-outlier all-20" flag-flip; GO to STAGE the dev-only flag-gated
+back-port scoped to Gothic/GeoStar Tier-C.** The whole-mesh re-baseline BLOCKS any all-styles literal-0 claim
+(6/20, not 17-20). Two ordered next experiments before the all-styles gate can be honestly claimed:
+1. **Dispatch the perfect-mesher whole-mesh kernel** (the honest-brute STOP-driver + interior refine that took
+   Gothic/GeoStar to literal 0) to the 12 hidden-residual Tier-A/B styles — START with Gyroid/Voronoi (largest
+   whole-mesh outlier counts) — and re-score under `acceptanceGuardWhole`.
+2. **Resolve the 4 tangled/weave/seam styles** (BasketWeave/CelticKnot/CelticTriquetra/SFB-seam) with a finer
+   brute or the BVH-vs-closed-object meta (radial-twin OVERSTATES; manifest anchored 0.02–0.029).
+The V8 back-port plan (closer-off delegation to `buildInhouseMetricMesh`, FGJ topology half, honest-brute
+fidelity loop, collapse post-pass, sliver HARD BLOCKER, final whole-mesh cost gate) stands — but its step-6
+"20-style whole-mesh re-baseline (Tier-C literal-0 under the FIXED whole-mesh guard)" is now RUN and its answer
+is: only 6/20 literal-0 today, so the flag-flip go/no-go is NO-GO until the kernel is dispatched to the 12 hidden
+Tier-A/B styles.
+
+**LEDGER:** this file §VALIDATION 9. Registry rows: E-2026-07-05-GOTHIC-APEXPN (13a, pre-reg d6b2cf1, result
+12aa3bf), E-2026-07-05-PERFECT-MESHER-GEOSTAR-RELAX (13b, commit 6154105),
+E-2026-07-05-REBASELINE20 (commit 124af7e). Whole-mesh ruler `_pf_rebaselineRuler.ts`
+(`scoreWholeMeshInterior`), probe `_pf_rebaseline20.test.ts` (PF_REBASE/PF_REBASE_BIG), scorecard
+`research/exchange/_rebaseline20/{scorecard.ndjson,README.md}` (20/20 rows). GeoStar relax probe
+`_pf_perfect_geostar_relax.test.ts` (PF_SLIVERM=1), scorecards `research/exchange/_pf_perfect_geostar_relax/`.
+**BANKED MANDATE (reaffirmed):** no 0-outlier claim may use a top-N-gradU/percentile guard population — proven
+blind here on 12/18 Tier-A/B styles; use `acceptanceGuardWhole` / `scoreWholeMeshInterior` (every facet).
+DEV-ONLY; no src/ edit; exchange scorecards gitignored, numbers inlined.
