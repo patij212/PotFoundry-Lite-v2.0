@@ -12,6 +12,7 @@ from functools import lru_cache
 __all__ = [
     "MeshQuality", "PotDefaults", "STYLES",
     "r_base_out", "build_pot_mesh",
+    "orient_mesh_coherently", "mesh_signed_volume",
     "save_preview_png",
     "write_ascii_stl",  # deprecated - use write_stl_binary instead
 ]
@@ -92,6 +93,95 @@ def _compute_normal(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> np.ndarray:
     if norm == 0:
         return np.array([0.0, 0.0, 0.0], dtype=float)
     return n / norm
+
+
+def mesh_signed_volume(verts: np.ndarray, faces: np.ndarray) -> float:
+    """Signed volume of a closed triangle mesh via the divergence theorem.
+
+    Positive when faces are wound counter-clockwise as seen from outside the
+    solid (i.e. normals point outward). Used to decide global orientation so
+    exported STL/mesh solids import into Rhino/Grasshopper right-side out.
+    """
+    if len(faces) == 0:
+        return 0.0
+    v0 = verts[faces[:, 0]]
+    v1 = verts[faces[:, 1]]
+    v2 = verts[faces[:, 2]]
+    return float(np.sum(np.einsum("ij,ij->i", v0, np.cross(v1, v2))) / 6.0)
+
+
+def orient_mesh_coherently(verts: np.ndarray, faces: np.ndarray) -> np.ndarray:
+    """Return faces re-wound so the mesh is coherently, outward-oriented.
+
+    The pot mesh is assembled from several independently-wound patches (outer
+    wall, inner wall, rim cap, bottom slab, drain cylinder). Although the
+    result is a watertight 2-manifold, neighbouring patches can disagree on
+    winding at their shared seams, and the global convention can be inverted.
+    CAD tools (Rhino, Grasshopper) and slicers then report "inconsistent
+    normals" or treat the solid as inside-out, degrading export quality.
+
+    This performs a breadth-first flood-fill over the edge-adjacency graph,
+    flipping any face whose winding conflicts with an already-oriented
+    neighbour, then flips the whole (single-solid) mesh if its signed volume
+    is negative so that normals point outward.
+
+    Assumes a closed 2-manifold (each interior edge shared by exactly two
+    faces). Non-manifold edges are tolerated but their extra faces are left as
+    encountered.
+
+    Args:
+        verts: Vertex array (N, 3) - returned unchanged.
+        faces: Face index array (M, 3).
+
+    Returns:
+        New (M, 3) int face array with coherent, outward winding.
+    """
+    from collections import deque, defaultdict
+
+    f = [[int(a), int(b), int(c)] for a, b, c in faces]
+    n = len(f)
+    if n == 0:
+        return np.asarray(faces, dtype=int).reshape(-1, 3)
+
+    # Map each undirected edge -> list of incident face indices.
+    edge_faces: dict[tuple[int, int], list[int]] = defaultdict(list)
+    for fi, (a, b, c) in enumerate(f):
+        for u, v in ((a, b), (b, c), (c, a)):
+            edge_faces[(u, v) if u < v else (v, u)].append(fi)
+
+    def traverses(face: list[int], u: int, v: int) -> bool:
+        """True if `face` contains the directed edge (u -> v)."""
+        a, b, c = face
+        return (a, b) == (u, v) or (b, c) == (u, v) or (c, a) == (u, v)
+
+    visited = [False] * n
+    for seed in range(n):
+        if visited[seed]:
+            continue
+        visited[seed] = True
+        dq = deque([seed])
+        while dq:
+            fi = dq.popleft()
+            a, b, c = f[fi]
+            for u, v in ((a, b), (b, c), (c, a)):
+                key = (u, v) if u < v else (v, u)
+                for fj in edge_faces[key]:
+                    if fj == fi or visited[fj]:
+                        continue
+                    # `fi` traverses this shared edge as (u -> v). A coherent
+                    # neighbour must traverse it as (v -> u); if `fj` also has
+                    # (u -> v) it is wound the same way and must be flipped.
+                    if traverses(f[fj], u, v):
+                        f[fj] = [f[fj][0], f[fj][2], f[fj][1]]
+                    visited[fj] = True
+                    dq.append(fj)
+
+    out = np.asarray(f, dtype=int)
+    # Ensure outward-facing normals for the assembled solid.
+    if mesh_signed_volume(verts, out) < 0.0:
+        out = out[:, [0, 2, 1]]
+    return out
+
 
 def write_ascii_stl(path, name: str, verts: np.ndarray, faces: np.ndarray) -> None:
     """Write triangles to ASCII STL (portable, human-readable).
@@ -356,8 +446,10 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     v01 = outer_idx[:-1, :][:, jn]
     v10 = outer_idx[1:, :][:, j]
     v11 = outer_idx[1:, :][:, jn]
-    tri1 = np.stack([v00, v10, v11], axis=2).reshape(-1, 3)
-    tri2 = np.stack([v00, v11, v01], axis=2).reshape(-1, 3)
+    # Wind CCW-as-seen-from-outside so normals point outward (coherent, CAD-grade
+    # orientation; see orient_mesh_coherently / tests/test_mesh_orientation.py).
+    tri1 = np.stack([v00, v11, v10], axis=2).reshape(-1, 3)
+    tri2 = np.stack([v00, v01, v11], axis=2).reshape(-1, 3)
     faces_out_parts.append(tri1)
     faces_out_parts.append(tri2)
 
@@ -376,14 +468,15 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         r_in_vals[clamped] = min_allowed
         inner_idx[i] = add_ring_xy(r_in_vals, z, cTw, sTw)
 
-    # Vectorized faces for inner wall (reverse winding)
+    # Vectorized faces for inner wall. Wound so normals face the cavity (into
+    # the bore), which is the outward direction of the solid's inner surface.
     rows_in = len(z_inner) - 1
     vi00 = inner_idx[:-1, :][:, j]
     vi01 = inner_idx[:-1, :][:, jn]
     vi10 = inner_idx[1:, :][:, j]
     vi11 = inner_idx[1:, :][:, jn]
-    tri_in1 = np.stack([vi00, vi11, vi10], axis=2).reshape(-1, 3)
-    tri_in2 = np.stack([vi00, vi01, vi11], axis=2).reshape(-1, 3)
+    tri_in1 = np.stack([vi00, vi10, vi11], axis=2).reshape(-1, 3)
+    tri_in2 = np.stack([vi00, vi11, vi01], axis=2).reshape(-1, 3)
     faces_out_parts.append(tri_in1)
     faces_out_parts.append(tri_in2)
 
@@ -391,8 +484,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     outer_top = outer_idx[-1]; inner_top = inner_idx[-1]
     v00 = outer_top[j]; v01 = outer_top[jn]
     vi0 = inner_top[j]; vi1 = inner_top[jn]
-    tri_rim1 = np.stack([outer_top[j], inner_top[j], inner_top[jn]], axis=1)
-    tri_rim2 = np.stack([outer_top[j], inner_top[jn], outer_top[jn]], axis=1)
+    tri_rim1 = np.stack([outer_top[j], inner_top[jn], inner_top[j]], axis=1)
+    tri_rim2 = np.stack([outer_top[j], outer_top[jn], inner_top[jn]], axis=1)
     faces_out_parts.append(tri_rim1)
     faces_out_parts.append(tri_rim2)
 
@@ -409,8 +502,8 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
     # Bottom underside (outer bottom ring -> drain under ring)
     v00 = outer_bottom[j]; v01 = outer_bottom[jn]
     vd0 = drain_under[j];  vd1 = drain_under[jn]
-    tri_bot1 = np.stack([outer_bottom[j], drain_under[jn], drain_under[j]], axis=1)
-    tri_bot2 = np.stack([outer_bottom[j], outer_bottom[jn], drain_under[jn]], axis=1)
+    tri_bot1 = np.stack([outer_bottom[j], drain_under[j], drain_under[jn]], axis=1)
+    tri_bot2 = np.stack([outer_bottom[j], drain_under[jn], outer_bottom[jn]], axis=1)
     faces_out_parts.append(tri_bot1)
     faces_out_parts.append(tri_bot2)
 
@@ -444,8 +537,13 @@ def build_pot_mesh(H: float, Rt: float, Rb: float, t_wall: float, t_bottom: floa
         estimated_top_od_mm=float(est_top_od),
         estimated_bottom_od_mm=float(est_bottom_od),
     )
+    # Each patch above is wound for a coherent, outward-facing solid, so the
+    # assembled mesh needs no post-hoc orientation repair (kept out of the hot
+    # path for performance). orient_mesh_coherently remains available as a
+    # public utility to validate/repair externally-sourced meshes.
     faces_arr = np.vstack(faces_out_parts).astype(int, copy=False)
-    return np.array(verts, dtype=float), faces_arr, diagnostics
+    verts_arr = np.array(verts, dtype=float)
+    return verts_arr, faces_arr, diagnostics
 try:
     import matplotlib.pyplot as plt
     from mpl_toolkits.mplot3d import Axes3D  # noqa: F401

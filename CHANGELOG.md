@@ -12,8 +12,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Version management: Added `__version__` to `potfoundry/__init__.py`
 - Test fixtures: Added `conftest.py` for library tests to properly load fixtures
+- **CAD-grade mesh orientation** for Rhino/Grasshopper export:
+  - `orient_mesh_coherently()` and `mesh_signed_volume()` public utilities in
+    `potfoundry.core.geometry`
+  - `tests/test_mesh_orientation.py` regression suite (coherent orientation +
+    outward normals across all styles, plus repair-path unit tests)
+  - ADR 0002 documenting the decision
 
 ### Fixed
+- **Mesh export was inside-out with inconsistent normals.** `build_pot_mesh`
+  produced solids with negative signed volume (all normals pointing inward) and
+  `2 × n_theta` incoherently-wound edges at the drain seams for every style.
+  Rhino/Grasshopper flagged these as "inconsistent normals" and slicers could
+  mis-fill the solid. Patch winding is now baked to yield a coherent,
+  outward-facing solid at zero runtime cost (mesh generation stays within its
+  performance budget).
 - **Critical Bug Fixes:**
   - Removed unreachable dead code in `yaml_api.py` causing undefined name errors
   - Removed duplicate `deep_merge` function definition in `yaml_api.py`
