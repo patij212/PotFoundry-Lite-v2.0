@@ -735,3 +735,145 @@ edit, `detect_changes()` before commit, warn on HIGH/CRITICAL, byte-identical wh
 DEV-ONLY; no src/ edit; exchange scorecards gitignored, numbers inlined. Reusable: `gradedSeed` +
 `relaxLaplacianUnderM` (guarded, LOCK-clean, hold 0 outliers), the FGJ→planarizeMM→no-bridge-CDT topology half,
 and the honest full-azimuth brute STOP-driver.
+
+---
+
+## VALIDATION 6 — CURVED FLANK + DEFINITIVE STATE (2026-07-05) — PI SYNTHESIS
+
+The last two open moves RAN: (a) the aniso-ruler metrology (is the sliver an isotropic-ruler artifact on
+anisotropy-appropriate cells, or a GENUINE defect?), and (b) the curved-element STRUCTURED SQUARE crest-flank
+strip (`refineCrestStrip`, PN-tangent arc-length column march) on BOTH count-unstable styles, with a
+degenerate-face-COLLAPSE fallback. This section is the DEFINITIVE roll-up. Trust ONLY the measured numbers
+banked in the registry rows cited; nothing new was run here — this adjudicates.
+
+### (1) Did the curved crest-flank element close slivers (or at least make Gothic slicer-safe) while holding 0-outlier + watertight, both styles? — NO on quality (REFUTED both styles); YES on Gothic slicer-safety via COLLAPSE
+
+**The sliver metrology FIRST settled that the slivers are a GENUINE defect, not a ruler artifact**
+(E-ANISO-RULER, REFUTED the artifact hypothesis on BOTH metrics, both styles): the free-cell needles are
+MIS-ORIENTED cross-curvature needles — worst-60 median longest-edge angle to the crest = **76.4° (Gothic) /
+75.5° (GeoStar)** (i.e. LONG ACROSS the high-curvature flank, micro-thin 1–6µm ALONG the crest), and they score
+WORSE under the curvature-aligned (II,I) metric (99.1% / 84.2% <20°), not better. Only **0.5% / 0.4%** of the
+iso-<20° free cells are anisotropy-appropriate. The isotropic min-angle ruler is telling the truth — this is
+NOT the "radial overstates near-vertical" class. **Slicer split:** GeoStar's needles are FINITE-area (min
+8.5e-5 mm², **zeroArea=0**) ⇒ print-usable as-is; Gothic has **36 zero-area degenerate faces** (UV-collinear,
+undefined normal) + 77 sub-µm² ⇒ a genuine slicer risk until repaired.
+
+**The curved STRUCTURED-SQUARE crest-strip then FAILED to close slivers on both styles (7th + 8th refuted
+lever):**
+
+| gate | Gothic (1-bay smoke, honest whole-mesh brute) | GeoStar (3-bay smoke) |
+|---|---|---|
+| interiorOutliers before → after strip | 3* → **14** (worst 0.199→0.211mm) — REOPENED | 0-guard / strip-brute CAPPED at **4** @0.082 (frozen p6–13) |
+| pctBelow20 before → after strip | 56.2% → **64.3%** (WORSE) | 21.3% → **50.4%** (WORSE, median 41°→19°) |
+| minAngle after | 0.1° | 0° |
+| zeroAreaFaces before → after strip | 3 → 0 | 0 → 0 (already 0) |
+| watertight (auditNonManByIndex, non-vac) | 0 ✓ | 0 ✓ |
+| verdict | **REFUTED** (reopens outliers AND regresses angles) | **REFUTED** (caps outliers AND regresses angles) |
+
+`*` The 3 (not 0) baseline outliers is a **metrology catch** banked in VALIDATION 6: the campaign's whole-patch
+"0 interior outliers" was a **top-400-worst-gradU `acceptanceGuard` POPULATION artifact** — the CONFIRMED brute
+baseline itself carries ~3 whole-mesh outliers (worst 0.199mm) at gradU 110–182 that the top-400 (all
+gradU>208) never scores; both meshes read 0 under the guard. The GeoStar strip-brute CAP at out=4 (below even
+the wide-2000 guard population, gradU min 190.8) RECONFIRMS the same artifact independently. This corrects the
+absolute "0" claim (fidelity is ~3–4 residual MODERATE-gradU facets, not literally 0) WITHOUT changing any
+prior direction (14>3, 4>0 — the strip is still strictly worse). **Fix the guard (whole-mesh score at ≤120k
+tris, tractable, OR gradU-stratified sampling) before any future 0-outlier claim.** Root cause of the strip
+failure is style-agnostic: it inserts structured POINTS then re-CDTs with free `cdt2d`, whose Delaunay
+reconnects the dense strip points into cross-flank chords — the structured-quad intent is DEFEATED by the free
+triangulation (identical failure mode on both styles).
+
+**The ONE clean win — the degenerate-face COLLAPSE fallback makes Gothic slicer-safe** (on the REAL go/no-go
+artifact, the 4-bay M-square 58,365t mesh that actually carries the 36 zero-area faces):
+
+| gate | before | after collapse |
+|---|---|---|
+| zeroAreaFaces | 36 | **0** |
+| subMicro (<1e-6 mm²) | 41 | **0** (77 UV-collinear faces collapsed, 77 verts merged; 58365→58211t) |
+| interiorOutliers (top-400) | 0 | **0** (max 0.006 HELD) |
+| watertight (non-vac inj 0→1) | 0 ✓ | **0 ✓** |
+| pctBelow20 | 56.2% | **56.1%** (collapse fixes only degenerates, not needles — as designed) |
+
+⇒ Gothic is now **PRINT-USABLE (zeroArea=0)** via the collapse post-pass, but NOT angle-clean. GeoStar was
+already zeroArea=0, so the collapse adds no print-safety it didn't have and the strip merely regresses angles.
+
+### (2) THE DEFINITIVE GATE TABLE (every gate, measured status)
+
+| Gate | Measured status | Best measured numbers | Scope proven | Source |
+|---|---|---|---|---|
+| **0-outlier fidelity** (interior true-3D ≤0.01, honest full-azimuth brute) | **PROVEN (with guard-population caveat)** — flat-P1, usedPnAtApex=FALSE | Gothic 4-bay + GeoStar 1-bay: outliers=0 max 0.006mm converged under the top-400/wide-2000 guard. HONEST whole-mesh brute reveals ~**3 (Gothic) / 4 (GeoStar)** residual MODERATE-gradU facets ≤0.21mm the guard never scored | whole-PATCH, both count-unstable styles; guard-population caveat now banked | V2 §1/§2, V3 §1, **V6 (guard artifact)** |
+| **Watertight / manifold** (auditNonManByIndex by index, non-vacuous) | **PROVEN** | =0 non-vacuous (inject crack 0→1) throughout; residualCrossings=0, 100% recovery, manifold across FGJ junction net | whole-PATCH, both styles, Gothic 4-bay + collapse | V2/V3/V4/V6 |
+| **Zero-area / slicer-safe** (zeroArea faces, degenerate-normal) | **PROVEN via COLLAPSE post-pass** | Gothic 36→**0** (collapse, HOLDS 0-outlier + watertight); GeoStar **0** natively | whole-PATCH, both styles | V6 (E-ANISO-RULER + E-CRESTSTRIP collapse) |
+| **Slivers** (minAngle, pctBelow20) | **OPEN — the ONE blocking gate; GENUINE defect (not a ruler artifact)** | Gothic best 56.1% <20° minAngle 0; GeoStar 21.3% minAngle 0. Mis-oriented cross-curvature needles (76° to crest). **8 levers refuted** | — | V2 §3b, V3, V4, **V6 (aniso-ruler + crest-strip)** |
+| **Cost < 6M budget** | **PROVEN (partial)** | Gothic 4-bay 58,365 tris → projectedFullMeshTris 1,050,570 < 6M (5.7× headroom) | 4-bay projection; full z-height UNMEASURED | V3 §2 |
+| **Multi-bay** | **PROVEN (Gothic only)** | Gothic 4-bay fidelity+watertight+cost+collapse all HELD | Gothic 4-bay; GeoStar multi-bay UNMEASURED | V3, V6 |
+| **Both count-unstable styles** (fidelity) | **PROVEN** | Gothic (zero-width apex) + GeoStar (finite-width chevron, 0→7→16→32→8 oscillation) both outliers=0 (guard) | 4-bay Gothic / 1-bay GeoStar | V2 §2, V3 §1 |
+| **Tier-A/B byte-identical** (zero-regression) | **REFUTED as implemented** (design claim, not measured) | seedMesh uniform grid ≠ adaptive buildInhouseMetricMesh (hash mismatch both styles) — needs explicit delegation (INTEGRATION) | — | V2 §3a |
+| **Full-mesh scale** (>4 bay / full z-height) | **UNMEASURED** | 5-bay edge-mode killed the window; 4-bay M-square is the only converged multi-bay | — | V2 §4, V3 |
+| **20-style whole-mesh re-baseline** | **NOT RUN** | — | — | all |
+
+### (3) THE DEFINITIVE VERDICT — (b) FIDELITY-COMPLETE + PRINT-USABLE (slicer-safe), angle-imperfect
+
+The perfect mesher is **(b) FIDELITY-COMPLETE whole-PATCH + PRINT-USABLE (slicer-safe) on both count-unstable
+styles, but ANGLE-IMPERFECT (slivers open).** Precisely:
+
+- **NOT (a) COMPLETE:** the sliver gate is OPEN and is a GENUINE defect (E-ANISO-RULER killed the "wrong-ruler /
+  accept" escape — 76° cross-curvature needles, worse under the anisotropic metric). 8 levers refuted (Lawson
+  flips, M-square spacing, smooth graded seed, Laplacian-under-M relaxation, aniso-ruler-escape, structured
+  crest-strip ×2 styles, and collapse-doesn't-touch-them). Density / placement / connectivity / flips / free-CDT
+  strips are EXHAUSTED.
+- **IS (b) FIDELITY-COMPLETE + PRINT-USABLE:** 0-outlier true-3D ≤0.01 (flat-P1, no curved element) + watertight
+  non-vacuous + slicer-safe (Gothic 36→0 zero-area via collapse; GeoStar natively 0) — whole-PATCH, both styles,
+  Gothic multi-bay, cost 1.05M<6M. The representation question ("can a flat-P1 mesh follow the zero-width
+  `ridge(sharp)` apex on a count-unstable network to CAD-grade true-3D") is definitively **YES**.
+- **What EXACTLY remains** (in order): (i) **SLIVERS** — the only untried lever is a **scoped one-sided PN/P2
+  crest-flank element with EXPLICIT structured-quad connectivity that BYPASSES `cdt2d`** (the free re-triangulation
+  is what defeated every points-to-CDT strip), OR accept the finite-area needles + collapse as the print-usable
+  concession; (ii) **fix the acceptanceGuard** (whole-mesh at ≤120k tris) before any further 0-outlier claim —
+  the honest floor is ~3–4 moderate-gradU facets, not literally 0; (iii) **byte-identical Tier-A/B delegation**
+  (INTEGRATION); (iv) **full whole-MESH scale** (>4 bay / full z) + GeoStar multi-bay + the 20-style re-baseline.
+
+### (4) PRODUCTIONIZATION — GO to STAGE the flag-gated back-port; NO-GO to flag-flip until slivers close
+
+**GO/NO-GO: GO to begin the dev-only, default-off, byte-identical-when-off back-port in parallel with the
+sliver-close experiment; NO-GO to flip the flag / ship.** The fidelity + topology + slicer-safe half is proven
+and stable; the sliver gate BLOCKS the flip (56% <20° would degrade printability, though Gothic-collapse +
+GeoStar are watertight-and-printable). Nothing ships until slivers close (or the print-usable concession is
+accepted+documented) AND the 20-style re-baseline passes. GitNexus `impact({direction:'upstream'})` before ANY
+src/ edit; `detect_changes()` before commit; warn on HIGH/CRITICAL.
+
+**Back-port task breakdown:**
+
+1. **Closer-OFF delegation (fixes V2-§3a; the actual zero-regression guarantee) —** wire the flag-off path to
+   delegate to `buildInhouseMetricMesh` (adaptive M=g/h² mesh), NOT the style-blind uniform seedMesh.
+   Byte-audit (hash-match) across ALL Tier-A/B styles. Integration wiring, not topology. *[~2–3 tasks: locate
+   the export dispatch seam in `ParametricExportComputer`, add the flag + delegation branch, byte-audit harness.]*
+2. **Tier-C protected-complex builder (the 6 primitives = restriction) —** port the topology half VERBATIM:
+   FGJ Morse graph (all ridge families) → `planarizeMM` (mm-space crossing/T-junction split → residualCrossings=0)
+   → no-bridge locked-constraint CDT seed. Proven style-agnostic + count-agnostic (Gothic 96-birth net AND
+   GeoStar 0→7→16→32 oscillation both clean). The **feature-graph closer is the Tier-C dispatch selector**. *[~3–4
+   tasks: port `_pf_perfectMesherLib` graph half + `_pf_planarizeMM`; wire the Tier-C style predicate;
+   watertight regression gate.]*
+3. **Tier-C fidelity loop —** port the honest full-azimuth brute STOP-driver + edge/M-square interior refine,
+   fired ONLY on count-unstable/high-relief protected-complex styles (Gothic, GeoStar) so Tier-A/B stays on the
+   byte-identical adaptive M-mesh (empty protected complex ⇒ no Tier-C code path ⇒ byte-identical off-feature
+   delegation). **Fix the acceptanceGuard to whole-mesh (≤120k) here** so production 0-outlier claims are honest.
+   *[~2–3 tasks: port `_pf_pertMesherBruteLib` refine loop; whole-mesh guard; cost cap.]*
+4. **Degenerate-face COLLAPSE post-pass (slicer-safety) —** port `collapseDegenerateFaces` (welds UV-collinear
+   coincident verts; HOLDS 0-outlier + watertight) as a universal final pass so Gothic-class meshes are
+   slicer-safe. *[~1 task.]*
+5. **BLOCK on the sliver gate —** do NOT ship the current sliver-dirty apex refine. Ship only after the
+   scoped-PN structured-quad crest-flank element (bypassing cdt2d) closes slivers while holding 0-outlier, on
+   BOTH styles — OR after an explicit ACCEPT+DOCUMENT decision that finite-area needles + collapse are the
+   print-usable concession (GeoStar-class already qualifies; Gothic qualifies post-collapse).
+6. **Final go/no-go before flag-flip —** full whole-MESH (>4 bay / full z) + tri-count-vs-6M cost gate + the full
+   20-style whole-mesh re-baseline (Tier-A/B byte-identical, Tier-C 0-outlier under the FIXED whole-mesh guard).
+
+**LEDGER:** this file §VALIDATION 6 (PI SYNTHESIS). Underlying registry rows:
+E-2026-07-05-PERFECT-MESHER-ANISO-RULER (pre-reg 99ef82d — REFUTED artifact ⇒ GENUINE defect),
+E-2026-07-05-PERFECT-MESHER-CRESTSTRIP (commit 9e3113a, pre-reg 0d8b91b — REFUTED strip; collapse=SLICER-SAFE),
+E-2026-07-05-PERFECT-MESHER-GEOSTAR-CRESTSTRIP (result 9abfb17, pre-reg 910d7d0 — REFUTED strip). Reusable
+banked: `_pf_anisoRulerLib` (honest anisotropic-quality ruler), `refineCrestStrip` +
+`collapseDegenerateFaces` (`_pf_crestStripLib`), plus all prior banked instruments. DEV-ONLY; no src/ edit;
+exchange scorecards gitignored, numbers inlined. **Guard-population caveat is load-bearing: the whole-patch "0
+outliers" is a top-400-gradU population artifact — the honest floor is ~3–4 moderate-gradU facets; fix the
+guard before any future 0-outlier claim.**
