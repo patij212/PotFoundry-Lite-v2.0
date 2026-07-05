@@ -340,7 +340,10 @@ export function acceptanceGuard(
       // trusted anchor (it finds the true global-nearest foot; GN may over- OR under-state near a steep flank, so
       // brute — not min — is the honest value). Green GN samples (≪ tol) keep the GN value; they cannot be outliers.
       const gn = projectPointToRadialSurface(px, py, pz, rA, { coarseTrigger: 1e9, maxIter: 40 }).dist;
-      const d = gn <= gnScreen ? gn : bruteNearestOnRadialSurface(px, py, pz, rA, H, { nTheta: 1536, nZ: 160, zBandMm: 4, refineIters: 60 }).dist;
+      // brute grid 1024×120 over a ±3mm z-band + box-refine: the surfnative calibration proved 2048×120 agrees with
+      // the trusted 4096×600 to 2e-5mm on this cusp; 1024×120 + refine keeps the near-crest foot to <1e-4mm at ~4×
+      // the throughput (the full-scale guard tractability lever).
+      const d = gn <= gnScreen ? gn : bruteNearestOnRadialSurface(px, py, pz, rA, H, { nTheta: 1024, nZ: 120, zBandMm: 3, refineIters: 60 }).dist;
       if (d > mx) mx = d;
     }
     dev[s] = mx;

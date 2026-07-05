@@ -161,7 +161,6 @@ describe('pf-perfect-gothic: FGJ junction graph + SURFNATIVE interior-criterion 
       gradUmin: guard.gradUofScored.min, gradUmax: guard.gradUofScored.max,
       watertightNonMan: nonMan, nonManInjected: nonManCracked, nonVacuousControl: nonVacuous,
       minAngleDeg: +q.minAngleDeg.toFixed(2), p5MinAngle: +q.p5MinAngleDeg.toFixed(2), medianMinAngle: +q.medianMinAngleDeg.toFixed(2), pctBelow20: +q.pctBelow20.toFixed(1),
-      seedTris: seed.tris.length / 3,
     };
     writeFileSync(join(DIR, 'build.json'), JSON.stringify({ row, refineHist: ref.histPerPass }, null, 2));
     checkpoint(row);
