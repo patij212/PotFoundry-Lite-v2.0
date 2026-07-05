@@ -877,3 +877,49 @@ banked: `_pf_anisoRulerLib` (honest anisotropic-quality ruler), `refineCrestStri
 exchange scorecards gitignored, numbers inlined. **Guard-population caveat is load-bearing: the whole-patch "0
 outliers" is a top-400-gradU population artifact — the honest floor is ~3–4 moderate-gradU facets; fix the
 guard before any future 0-outlier claim.**
+
+---
+
+## VALIDATION 7 — GATE-2 SLIVERS via DIRECT-EMISSION STRUCTURED-QUAD STRIP (GeometricStar, 2026-07-05)
+
+The V6 §(1) recommended "the only untried lever = a scoped structured-quad crest-flank element with EXPLICIT
+connectivity that BYPASSES `cdt2d`" RAN on GeometricStar (which is already whole-mesh FIDELITY-PROVEN 0-outlier
+by E-…-GEOSTAR-WHOLEMESH gate1: outliers=0, max 0.01mm, watertight non-vacuous, but SLIVERY pctBelow20=21.7%).
+Trust ONLY these measured numbers (registry E-2026-07-05-PERFECT-MESHER-GEOSTAR-STRUCTSTRIP).
+
+### (1) Did the direct-emission structured-quad strip close slivers holding whole-mesh 0-outlier? — REFUTED (new mechanism)
+
+The strip DOES bypass cdt2d (bgTris=0 — no Delaunay re-chording of strip interiors ⇒ the V6 defeat mode is
+ELIMINATED). But it is REFUTED by a DIFFERENT, measured mechanism: **the strips OVERLAP on GeoStar's dense
+count-unstable chevron field.**
+
+- **Cheap discriminator FIRST (`_pf_gsstrip_spacing.test.ts`):** nearest-OTHER-crest 3D distance on the band =
+  min 0.010 / p50 **0.088** / mean 0.117 mm ⇒ max non-overlapping strip half-width ≈ **0.044mm = 0.7 columns**
+  at h=0.06mm. The flank between adjacent straps is SUB-PITCH — no square column fits.
+- **Measured builds (base = the CONFIRMED whole-mesh 0-outlier mesh):** width 0.9mm no-clamp → 1.06M tris,
+  **nonMan 284,102**, pct<20 17.3%, zeroArea 99. Valley-clamped at the Voronoi midline → 738k tris, **nonMan
+  219,536**, pct<20 **15.7%** (from 21.7%), minAngle 0, zeroArea 0. Both massively non-manifold: clamping stops
+  each strip at the midline but adjacent strips place DIFFERENT (u,t) boundary vertices (their perpendicular
+  marches originate from different crests), so faces INTERPENETRATE instead of sharing edges. The guard was not
+  run (a non-watertight mesh cannot CONFIRM; FAST-REFUTE short-circuit).
+
+**ROOT CAUSE (style-agnostic for dense count-unstable fields):** direct-emission strips assume feature spacing ≫
+strip width. GeoStar's chevron spacing (0.088mm) is FINER than one square column ⇒ any strip wide enough to be
+square overlaps its neighbour. The needles are INTRINSIC at this spacing: crest-a-mesh-edge + sub-pitch flank ⇒
+every crest-to-crest triangle is a chord (fidelity-forbidden) or a needle (long-along-crest) — the same tension
+E-…-ANISO-RULER measured (76° cross-curvature needles). pct<20 improved 21.7→15.7% (squarer where it fits) but
+never watertight, never single-digit ⇒ REFUTE on all three counts.
+
+### (2) NEXT PRIMITIVE (the strip is exhausted; a band-parametrization is the untried move)
+
+Independent per-crest strips over a fixed crest-graph are refuted (they overlap). The next primitive is a
+**VALLEY-PARTITIONED SHARED-BOUNDARY band mesh**: build ONE warped structured quad grid per flank BAND between
+two consecutive crests, whose two u-edge columns ARE the two bounding crest chains — so adjacent bands SHARE the
+crest columns → watertight by construction, no overlap. This replaces "strips over a graph" with "bands between
+graph edges", and must handle the count-unstable birth/death per band (a band terminates where a strap dies —
+the 0→7→16→32→8→0 oscillation). Substantial build; deferred. The overlap refutation is the closing result for
+the direct-emission-strip lever (10 sliver levers now refuted).
+
+**BANKED reusable:** `buildStructStrips` (direct-emission structured strip + valley-clamp, `_pf_structStripLib.ts`)
+and the crest-spacing discriminator. **LEDGER:** this file §VALIDATION 7; registry
+E-2026-07-05-PERFECT-MESHER-GEOSTAR-STRUCTSTRIP. DEV-ONLY; no src/ edit.
