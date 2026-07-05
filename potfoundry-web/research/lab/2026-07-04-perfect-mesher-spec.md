@@ -591,3 +591,44 @@ The 6 proven primitives are this kernel's count-stable / empty-or-single-family 
 c6e4fec). Scorecard: `research/exchange/_pf_perfect_gothic_msquare/` {before.json, after.json,
 after_passes.ndjson, progress.log, after_mesh.bin}. Probe `_pf_perfect_gothic_msquare.test.ts`
 (PF_MSQUARE=1); diag `_pf_msq_diag.test.ts`; render `_pf_msq_render.test.ts`. DEV-ONLY; no src/ edit.
+
+---
+
+## VALIDATION 4 — SLIVER GATE: BOTH §VALIDATION-3 RECOMMENDED LEVERS REFUTED (2026-07-05)
+
+The §VALIDATION-3(3) "next lever" (graded-seed + surface-preserving Laplacian-under-M relaxation) RAN on the
+4-bay Gothic patch. **BOTH levers HOLD 0-outlier fidelity + watertight non-vacuous but FAIL to close slivers.**
+Trust only these measured numbers (registry E-2026-07-05-PERFECT-MESHER-RELAX, commit 01d9535, pre-reg a29e1a4).
+
+| arm | tris | interiorOutliers | interiorMax | minAngle° | median° | pctBelow20 | watertight |
+|---|---|---|---|---|---|---|---|
+| BEFORE = CONFIRMED M-square | 58365 | 0 | 0.006 | 0 | 16 | **56.2%** | 0 nonVac ✓ |
+| Lever#1 smooth GRADED seed + M-square | 67256 | 0 | 0.006 | 0 | 16 | **56.5%** | 0 nonVac ✓ |
+| Lever#2 Laplacian-under-M relax (3 sweeps, quality-directed) | 58365 | 0 | 0.006 | 0.6 | 17 | **55.0%** | 0 nonVac ✓ |
+
+- **Lever #1 REFUTED — the slivers are NOT a grading-transition artifact.** A smoothly-graded background seed
+  (bounded size-ratio, NO abrupt dense↔coarse RED transition) refined through the SAME honest-brute loop gives
+  pctBelow20 56.5% — IDENTICAL to the abrupt-RED M-square (56.2%). The `_pf_msq_diag` "37.6% on the transition"
+  was a correlation, not the cause. ⇒ **This CORRECTS the §VALIDATION-3 root-cause inference.**
+- **Lever #2 REFUTED — position-only relaxation cannot reshape these needles.** A guarded quality-directed
+  smart-Laplacian moves 22224/28064 free verts (21% guard-rejected) yet pctBelow20 only creeps 56.2→55.0% over
+  3 sweeps (minAngle 0→0.6°, median 16→17°). Same point-set the Lawson flips couldn't escape; relaxation MOVES
+  the points but the CONNECTIVITY-locked needles persist. Not the guard blocking (only 21% rejected).
+- **ROOT-CAUSE REFRAME:** the Gothic sliver floor is a fidelity-vs-min-angle STRUCTURAL tension at the
+  near-vertical crest flank — any near-equilateral cell there must chord across the concave cusp (forbidden by
+  the fidelity guard), so the fidelity-holding cells are FORCED to be needles LONG-ALONG the crest. This
+  CONTRADICTS the §VALIDATION-3 "not in hard tension" reading: they co-exist only because the needles are
+  TOLERATED, not resolved. **4 sliver levers now refuted** (M-square spacing, smooth grading, Laplacian
+  relaxation, Lawson flips). Density/grading/placement/flips are EXHAUSTED.
+- **NEXT (the only remaining moves — a PRIMITIVE change, not more density):** (1) re-examine the QUALITY METRIC —
+  the long-along-crest cells may be ANISOTROPY-appropriate (min-angle penalizes them but the surface is near-flat
+  along the crest); measure min-angle UNDER M=g/h² — if they vanish under the metric where the flank is isotropic,
+  this is an ACCEPT+DOCUMENT close, not a defect. (2) If genuine 3D needles under the anisotropic metric, a
+  curved/one-sided PN element AT the crest flank (E-CRESTRIBBON graft, benched-but-unnecessary for FIDELITY, may
+  be necessary for QUALITY) is the last primitive. BANKED: `gradedSeed` + `relaxLaplacianUnderM` (guarded,
+  LOCK-clean, holds 0 outliers) are correct reusable instruments.
+
+**LEDGER:** this file §VALIDATION 4. Registry E-2026-07-05-PERFECT-MESHER-RELAX (commit 01d9535, pre-reg a29e1a4).
+Scorecard `research/exchange/_pf_perfect_gothic_relax/` {before,after,graded}.json + scorecard/after_sweeps/
+graded_passes ndjson + *_mesh.bin. Probe `_pf_perfect_gothic_relax.test.ts` (PF_RELAX=1 / PF_GRADED=1); lib
+`_pf_relaxLib.ts`; config `vitest.pf_relax.config.ts`. DEV-ONLY; no src/ edit.
