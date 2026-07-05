@@ -3937,3 +3937,39 @@ This **REFUTES the collinear-subdivision pass's attribution** (that the 0.0581 f
 **ADVERSARIAL CHECK (graded G-K4):** the 0-outlier is REAL, not a sampler/degeneracy artifact. Re-built the graded G-K4 mesh, checked: **nDegen=0** (no collapsed/inverted facets), **crestEdgesPresent=47/47** (the crest polyline is a COMPLETE chain of mesh edges — the no-bridge property holds by construction), and re-scored EVERY triangle with a DENSE 15-pt barycentric stencil (vs the sweep's 4-pt) under the TRUSTED 4096×600 brute → **nOutliers=0, worst=0.006mm** — identical to the 4-pt sweep, so the 0-outlier result is not a sparse-sampler artifact (denser sampling can only find a ≥ point the sparse one missed; it found none over 0.01). **HONEST QUALITY CAVEAT:** the arc-length grading clusters columns tightly near the crest, producing SLIVERS — minAngle 13.8°, %<20° = 96.3%. The frontier target (0 interior outliers) is MET, but triangle quality is a SEPARATE gate the full-mesh follow-up must fix (e.g. anisotropic/metric-aware flank spacing under M=g/h² instead of pure arc-length, or a bounded aspect cap). Do NOT read the 0-outlier win as sliver-free.
 
 **LEDGER:** scorecard `research/exchange/_pf_race_surfnative/scorecard.ndjson` (K1/K2/K4 flat+uniform-SN, G-K1/K2/K4 graded); SN-outlier location `research/exchange/_pf_race_surfnative/sn_diag_K48.json` (worst-40: 40/40 flankNearCrest, 0 apex-straddle); cusp cross-section `research/exchange/_pf_race_surfnative/probe.json`; adversarial `sn_verify_GK4.json`. Probes `research/bridge/_pf_race_surfnative.test.ts` (PF_SN_RACE=1) + `_pf_race_surfnative_probe.test.ts` (PF_SN_PROBE=1) + `_pf_race_sn_diag.test.ts` (PF_SN_DIAG=1) + `_pf_race_sn_verify.test.ts` (PF_SN_VERIFY=1) + `_pf_race_sn_time.test.ts` (PF_SN_TIME=1, ruler calibration); lib `research/bridge/_pf_race_surfnativeLib.ts`; config `vitest.pf_race_sn.config.ts`. Reuses labkit (`bruteNearestOnRadialSurface`, `buildRadiusFn`, `triangleQualityDistribution`) READ-ONLY. NO src/ or kernel edit.
+
+
+## E-2026-07-05-PERFECT-MESHER-WHOLEMESH-GOTHIC — GATE-1: drive the WHOLE-MESH honest brute to LITERAL 0 outliers on GothicArches
+
+**Status:** PRE-REGISTERED (kill-criterion committed BEFORE measuring).
+
+**HYPOTHESIS:** the whole-patch Gothic "0 interior outliers" was a GUARD-POPULATION ARTIFACT (V6): the
+top-400-worst-gradU `acceptanceGuard` + the active-cavity-only refine loop never scored ~3 residual
+MODERATE-gradU facets (gradU 110-182, ≤0.21mm true-3D). If the acceptance guard AND the refine-loop iteration
+BOTH score the WHOLE MESH (every free triangle, honest ≥36-pt barycentric brute), and refinement continues on
+ANY facet whose whole-mesh interior deviation >0.01 (surface-projected RED 1→4 Steiner, the proven kernel
+mechanism), the max over ALL facets reaches ≤0.01 — the residual moderate-gradU facets are UNDER-REFINED (they
+were never checked), NOT a new representation wall.
+
+**DISCRIMINATOR (cheapest lever):** reuse the PROVEN brute kernel VERBATIM (makeGothicPatch / extractProtectedComplex
+/ seedMesh / planarizeMM topology + refineInteriorBrute edge-mode + the honest two-stage utBound→GN→brute ruler)
+and make ONE change: (1) the refine loop scores EVERY facet each pass (not active-cavity-only) with the honest
+brute STOP ruler; (2) a WHOLE-MESH acceptance guard scores EVERY free facet (not top-400-gradU). The utBound
+preFilter keeps smooth-panel facets cheap, so whole-mesh scoring is tractable at ~60-150k tris.
+
+**KILL-CRITERION (pre-registered):**
+- CONFIRM iff the honest WHOLE-MESH brute (EVERY free facet, ≥36-pt barycentric) shows **wholeMeshOutliers = 0**
+  (max over ALL facets ≤0.01) AND watertight (auditNonManByIndex = 0 by index, non-vacuous — inject crack moves
+  the count). Report wholeMeshOutliers (must be 0), wholeMeshMax, tris.
+- REFUTE iff a residual facet FLOORS >0.02 after the whole-mesh refine loop terminates — a new MODERATE-gradU
+  hard sub-class (characterize it: where, what geometry, another cusp form?).
+- NO-OP iff it matches the current top-400-guard floor (the ~3 facets ≤0.21) within 10% without moving toward 0.
+
+**HONEST INSTRUMENT:** interior ruler = ≥36-pt barycentric (denseBary(8)=45pts) two-stage utBound→GN-screen→
+full-azimuth bruteNearestOnRadialSurface (1024×120 box-refined, calibration-trusted to <1e-4 vs 4096×600) over
+the WHOLE MESH (every free facet). Watertight = auditNonManByIndex by index, non-vacuous. Checkpoint each pass +
+the final guard to ndjson the instant computed (env kills long runs).
+
+**LEDGER (to fill):** probe `research/bridge/_pf_perfect_gothic_wholemesh.test.ts` (PF_WHOLEMESH=1); kernel add
+`refineInteriorBruteWhole` + `acceptanceGuardWhole` in `_pf_perfectMesherBruteLib.ts` (NEW exports, existing
+untouched). Scorecard `research/exchange/_pf_perfect_gothic_wholemesh/`. DEV-ONLY; no src/ edit.
