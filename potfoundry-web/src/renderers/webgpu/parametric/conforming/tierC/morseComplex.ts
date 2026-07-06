@@ -21,6 +21,7 @@
  */
 
 import type { SurfaceSampler } from '../SurfaceSampler';
+import type { FeatureGraph } from '../featureGraph/types';
 import { detectFeatures } from '../featureGraph/detectFeatures';
 import { conditionGraph } from '../featureGraph/conditionGraph';
 import { TIER_C_DETECT_OPTS } from './detectOpts';
@@ -457,15 +458,18 @@ function coveragePct(
  * @param sampler  The surface sampler (style-agnostic).
  * @param _styleId Accepted for future explicit overrides only; the extraction
  *                 is graph-driven (spec §1 Tier-C definition).
+ * @param prebuilt Optional already-detected feature graph (the dispatch
+ *                 predicate runs the same detector; avoids a second pass).
  */
 export function buildProtectedComplex(
   sampler: SurfaceSampler,
   _styleId: string,
+  prebuilt?: FeatureGraph,
 ): ProtectedComplex {
   const uToMm = measureUCircumference(sampler);
   const tToMm = measureTHeight(sampler);
 
-  const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
+  const graph = prebuilt ?? detectFeatures(sampler, TIER_C_DETECT_OPTS);
   // simplify: false — the u-seam unwrap below picks each sample's periodic
   // representative nearest its predecessor, which is only sound on DENSE
   // chains (raw ridge samples are ~0.1mm apart, so genuine consecutive du is

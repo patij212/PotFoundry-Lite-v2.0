@@ -25,6 +25,9 @@ import {
 import { detectFeatures } from '../featureGraph/detectFeatures';
 import { isCountUnstableStyle } from './countUnstable';
 import { TIER_C_DETECT_OPTS } from './detectOpts';
+import { buildProtectedComplex } from './morseComplex';
+import { DEFAULT_RULER } from './interiorRuler';
+import { refineToZeroOutliers, type RefineResult } from './noBridgeRefine';
 
 export { countJunctionNodes, isCountUnstableStyle } from './countUnstable';
 export { TIER_C_DETECT_OPTS } from './detectOpts';
@@ -32,6 +35,68 @@ export {
   buildProtectedComplex,
   type ProtectedComplex,
 } from './morseComplex';
+export {
+  assertWholeMeshZero,
+  countInteriorOutliers,
+  scoreWholeMesh,
+  radialSurfaceFromSampler,
+  DEFAULT_RULER,
+  type RulerOptions,
+  type WholeMeshScore,
+} from './interiorRuler';
+export {
+  refineToZeroOutliers,
+  seedFromComplex,
+  type ChartDomain,
+  type RefineOptions,
+  type RefineResult,
+} from './noBridgeRefine';
+
+/**
+ * Map a refined chart mesh onto the ConformingOuterWallResult contract.
+ * Seam-wrap flags are derived per-facet (corner u's straddling the wrap);
+ * boundary rings are the ordered t=0 / t=1 vertex rows. NOTE (staging
+ * honesty): unlike the quadtree path, cdt2d over [0,1] does not SHARE seam
+ * vertex indices — full-wall seam closure is Task-6/integration scope and
+ * one reason the flag stays default-OFF.
+ */
+function toOuterWallResult(refined: RefineResult): ConformingOuterWallResult {
+  const nV = refined.uv.length / 2;
+  const vertices = new Float32Array(nV * 3);
+  for (let i = 0; i < nV; i++) {
+    const u = refined.uv[2 * i];
+    vertices[3 * i] = ((u % 1) + 1) % 1;
+    vertices[3 * i + 1] = refined.uv[2 * i + 1];
+    vertices[3 * i + 2] = 0;
+  }
+  const indices = Uint32Array.from(refined.tris);
+  const nF = indices.length / 3;
+  const seamTriangles = new Uint8Array(nF);
+  for (let f = 0; f < nF; f++) {
+    const ua = vertices[3 * indices[3 * f]];
+    const ub = vertices[3 * indices[3 * f + 1]];
+    const uc = vertices[3 * indices[3 * f + 2]];
+    const span =
+      Math.max(ua, ub, uc) - Math.min(ua, ub, uc);
+    if (span > 0.5) seamTriangles[f] = 1;
+  }
+  const ringOf = (t: number): number[] => {
+    const ring: number[] = [];
+    for (let i = 0; i < nV; i++) {
+      if (Math.abs(refined.uv[2 * i + 1] - t) < 1e-9) ring.push(i);
+    }
+    ring.sort((a, b) => vertices[3 * a] - vertices[3 * b]);
+    return ring;
+  };
+  return {
+    vertices,
+    indices,
+    seamTriangles,
+    gridVertexCount: nV,
+    bottomRing: ringOf(0),
+    topRing: ringOf(1),
+  };
+}
 
 /**
  * Dev-only lever, mirroring the `__pfConforming*` convention: unset/false in
@@ -60,5 +125,29 @@ export function buildTierCOuterWall(
   if (!isCountUnstableStyle('', graph)) {
     return buildConformingOuterWall(sampler, opts);
   }
-  throw new Error('tierC not yet wired');
+  // The perfect-mesher pipeline: protected complex → no-bridge locked CDT →
+  // whole-mesh honest-brute refine to literal 0 interior outliers. PROVEN at
+  // patch scale (Gothic/GeoStar, VALIDATION 7); the full-wall domain below is
+  // integration scope validated by the Task-6 re-baseline gate — the flag
+  // stays default-OFF until that gate and the sliver question resolve.
+  const complex = buildProtectedComplex(sampler, '', graph);
+  const refined = refineToZeroOutliers(
+    sampler,
+    complex,
+    { uLo: 0, uHi: 1, tLo: 0, tHi: 1 },
+    {
+      tolMm: 0.01,
+      maxPass: 16,
+      bulkPasses7pt: 4,
+      bgArcMm: 0.35,
+      ruler: DEFAULT_RULER,
+    },
+  );
+  if (refined.capped) {
+    // Honest failure — never emit a mesh the guard rejected.
+    throw new Error(
+      'tierC: refine pass budget exhausted with interior outliers remaining',
+    );
+  }
+  return toOuterWallResult(refined);
 }
