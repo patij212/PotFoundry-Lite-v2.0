@@ -108,21 +108,36 @@ const Q3BIG: Q3Spec[] = [
   { style: 'SuperformulaBlossom' as StyleId, twinRes: { nTheta: 3072, nZ: 3072 }, stride: 2, note: 'seam-ladder (13M)' },
 ];
 
+// Parallel sharding: PF_BVH_SHARD="k/N" scores facet ordinals ≡ k (mod N) —
+// launch N processes; each rebuilds its own twin (cheap), shard 0 carries the
+// full twin band-limit gate, others subsample it. PF_BVH_STYLES="A,B" filters.
+// Merge: outliers/scanned sum across shards, max of maxes; percentiles are
+// per-shard (uniform interleave ⇒ each shard is an unbiased facet sample).
+const SHARD = ((): { k: number; n: number } | null => {
+  const s = process.env.PF_BVH_SHARD; if (!s) return null;
+  const mm = /^(\d+)\/(\d+)$/.exec(s); return mm ? { k: +mm[1], n: +mm[2] } : null;
+})();
+const STYLE_FILTER = (process.env.PF_BVH_STYLES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+
 function scoreQ3(spec: Q3Spec): void {
   const file = join(OUT, 'q3.ndjson');
-  if (rowExists(file, spec.style)) { plog(`[skip Q3] ${spec.style} row exists`); return; }
+  if (STYLE_FILTER.length && !STYLE_FILTER.includes(spec.style)) return;
+  const rowKey = SHARD ? `${spec.style}#${SHARD.k}of${SHARD.n}` : spec.style;
+  if (rowExists(file, rowKey)) { plog(`[skip Q3] ${rowKey} row exists`); return; }
   const m = loadStyle(spec.style, spec.binDir); if (!m) return;
   const rA = buildRadiusFn(spec.style, {}, DIMS);
   const tris = m.idx.length / 3;
-  plog(`[Q3 ${spec.style}] tris=${tris} twin=${spec.twinRes.nTheta}x${spec.twinRes.nZ} stride=${spec.stride} — scoring...`);
+  plog(`[Q3 ${rowKey}] tris=${tris} twin=${spec.twinRes.nTheta}x${spec.twinRes.nZ} stride=${spec.stride} — scoring...`);
   const t0 = Date.now();
   const r = scoreWholeMeshBVH(m.xyz, m.idx, rA, H, spec.twinRes, {
     tol: TOL, stride: spec.stride,
-    onProgress: (d, t, no, w) => { if (Math.floor(d / t * 20) !== Math.floor((d - 1) / t * 20)) plog(`[Q3 ${spec.style}] ${Math.floor(d / t * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
+    shard: SHARD ?? undefined,
+    twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
+    onProgress: (d, t, no, w) => { if (Math.floor(d / t * 20) !== Math.floor((d - 1) / t * 20)) plog(`[Q3 ${rowKey}] ${Math.floor(d / t * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
   });
   const scoreMs = Date.now() - t0;
   const row = {
-    style: spec.style, note: spec.note, tris, twinTris: r.twinTris, twinOnSurfMaxMm: r.twinOnSurfMaxMm,
+    style: rowKey, baseStyle: spec.style, note: spec.note, tris, twinTris: r.twinTris, twinOnSurfMaxMm: r.twinOnSurfMaxMm,
     scannedFacets: r.scannedFacets, stride: r.stride,
     interiorOutliers: r.interiorOutliers, scaledOutlierEstimate: r.scaledOutlierEstimate,
     wholeMeshMaxMm: r.wholeMeshMaxMm, p50: r.p50, p90: r.p90, p99: r.p99,
@@ -130,7 +145,7 @@ function scoreQ3(spec: Q3Spec): void {
     ruler: `whole-mesh BVH-truth-twin ${r.stride > 1 ? `stride-${r.stride}` : 'every-facet'} denseBary(45pt) point-to-triangle, no top-N cap`,
   };
   checkpoint(file, row);
-  plog(`[Q3 ${spec.style}] SCORED out=${r.interiorOutliers}/${r.scannedFacets} (×${r.stride}=${r.scaledOutlierEstimate}) max=${r.wholeMeshMaxMm} p99=${r.p99} twinOnSurf=${r.twinOnSurfMaxMm} in ${(scoreMs / 1000).toFixed(0)}s`);
+  plog(`[Q3 ${rowKey}] SCORED out=${r.interiorOutliers}/${r.scannedFacets} (×${r.stride}=${r.scaledOutlierEstimate}) max=${r.wholeMeshMaxMm} p99=${r.p99} twinOnSurf=${r.twinOnSurfMaxMm} in ${(scoreMs / 1000).toFixed(0)}s`);
 }
 
 describe('BVH-RULER Q3 — whole-mesh BVH re-score of the gap styles', () => {

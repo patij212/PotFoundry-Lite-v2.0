@@ -71,9 +71,10 @@ export function buildRadialTwin(rA: AnalyticRadiusFn, H: number, nTheta: number,
  */
 export function twinOnSurfaceResidual(
   loc: RefLocator, rA: AnalyticRadiusFn, H: number, nTheta: number, nZ: number,
+  zStride = 1,
 ): { maxMm: number; p99Mm: number; p50Mm: number } {
   const ds: number[] = [];
-  for (let iz = 0; iz < nZ; iz++) {
+  for (let iz = 0; iz < nZ; iz += Math.max(1, zStride)) {
     const z = ((iz + 0.5) / nZ) * H;
     for (let it = 0; it < nTheta; it += Math.max(1, Math.floor(nTheta / 400))) {
       const th = ((it + 0.5) / nTheta) * TAU;
@@ -215,25 +216,65 @@ export interface BvhRulerResult {
 export function scoreWholeMeshBVH(
   xyz: Float32Array | Float64Array, idx: Uint32Array | Int32Array, rA: AnalyticRadiusFn, H: number,
   twinRes: { nTheta: number; nZ: number },
-  opts: { tol?: number; stride?: number; onProgress?: (done: number, total: number, nOut: number, worst: number) => void; progressEvery?: number; cell?: number } = {},
+  opts: {
+    tol?: number; stride?: number; onProgress?: (done: number, total: number, nOut: number, worst: number) => void; progressEvery?: number; cell?: number;
+    /** Facet shard k of n (parallel processes; each rebuilds its own twin). */
+    shard?: { k: number; n: number };
+    /** Twin band-limit gate: 'full' (default), 'sub' (z-stride 8, for shards >0), 'skip'. */
+    twinValidate?: 'full' | 'sub' | 'skip';
+    /** Radial same-azimuth upper-bound prefilter (default true): |hypot(x,y) − rA(atan2,z)| is a strict upper bound on the true distance for z∈[0,H], so a green bound skips ALL BVH queries for the sample. Overstates only sub-margin percentile values (never outlier counts / max). */
+    radialPrefilter?: boolean;
+  } = {},
 ): BvhRulerResult {
   const tol = opts.tol ?? 0.01;
   const stride = Math.max(1, Math.floor(opts.stride ?? 1));
+  const shardK = opts.shard?.k ?? 0;
+  const shardN = Math.max(1, opts.shard?.n ?? 1);
+  const usePrefilter = opts.radialPrefilter !== false;
   const twinMesh = buildRadialTwin(rA, H, twinRes.nTheta, twinRes.nZ);
   const loc = buildRefLocator(twinMesh, opts.cell ?? 3.0);
-  const onSurf = twinOnSurfaceResidual(loc, rA, H, twinRes.nTheta, twinRes.nZ);
+  const tv = opts.twinValidate ?? 'full';
+  const onSurf = tv === 'skip'
+    ? { maxMm: -1, p99Mm: -1, p50Mm: -1 }
+    : twinOnSurfaceResidual(loc, rA, H, twinRes.nTheta, twinRes.nZ, tv === 'sub' ? 8 : 1);
   const nF = idx.length / 3;
   const BARY_FAST: ReadonlyArray<readonly [number, number, number]> = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1 / 3, 1 / 3, 1 / 3]];
   const advMargin = 0.7 * tol;
+  // Radial upper bound at a point (strict for z within [0,H]; returns Infinity
+  // outside so rim points always fall through to the exact BVH path).
+  const radialBound = (px: number, py: number, pz: number): number => {
+    if (pz < 0 || pz > H) return Infinity;
+    const th = Math.atan2(py, px);
+    return Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + TAU : th, pz));
+  };
   const devS: number[] = [];
   let worst = 0, worstFacet = -1, scanned = 0;
-  const progEvery = opts.progressEvery ?? Math.max(1, Math.floor((nF / stride) / 200));
-  for (let f = 0; f < nF; f += stride) {
+  const progEvery = opts.progressEvery ?? Math.max(1, Math.floor((nF / (stride * shardN)) / 200));
+  for (let f = shardK * stride; f < nF; f += stride * shardN) {
     scanned++;
     const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
     const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
     const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
     const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+    // Stage 0 (cheap, no BVH): radial upper bound over the DENSE lattice —
+    // if even the bound's max is sub-margin the facet cannot be an outlier.
+    if (usePrefilter) {
+      let bMax = 0;
+      for (const [wa, wb, wc] of DENSE) {
+        const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
+        const bd = radialBound(px, py, pz);
+        if (bd > bMax) { bMax = bd; if (bMax > advMargin) break; }
+      }
+      if (bMax <= advMargin) {
+        devS.push(bMax);
+        if (bMax > worst) { worst = bMax; worstFacet = f; }
+        if (opts.onProgress && (scanned % progEvery === 0)) {
+          let no = 0; for (const d of devS) if (d > tol) no++;
+          opts.onProgress(f + 1, nF, no, worst);
+        }
+        continue;
+      }
+    }
     // fast screen: 3 verts + centroid
     let screen = 0;
     for (const [wa, wb, wc] of BARY_FAST) {
