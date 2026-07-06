@@ -28,6 +28,7 @@ import { TIER_C_DETECT_OPTS } from './detectOpts';
 import { buildProtectedComplex } from './morseComplex';
 import { DEFAULT_RULER } from './interiorRuler';
 import { refineToZeroOutliers, type RefineResult } from './noBridgeRefine';
+import { collapseDegenerateFaces } from './collapseDegenerate';
 
 export { countJunctionNodes, isCountUnstableStyle } from './countUnstable';
 export { TIER_C_DETECT_OPTS } from './detectOpts';
@@ -51,6 +52,11 @@ export {
   type RefineOptions,
   type RefineResult,
 } from './noBridgeRefine';
+export {
+  collapseDegenerateFaces,
+  countZeroAreaFaces,
+  type CollapseResult,
+} from './collapseDegenerate';
 
 /**
  * Map a refined chart mesh onto the ConformingOuterWallResult contract.
@@ -149,5 +155,8 @@ export function buildTierCOuterWall(
       'tierC: refine pass budget exhausted with interior outliers remaining',
     );
   }
-  return toOuterWallResult(refined);
+  // Universal slicer-safety post-pass (VALIDATION 6: holds fidelity +
+  // watertightness while welding UV-collinear zero-area faces to 0).
+  const clean = collapseDegenerateFaces(sampler, refined);
+  return toOuterWallResult({ ...refined, uv: clean.uv, tris: clean.tris });
 }
