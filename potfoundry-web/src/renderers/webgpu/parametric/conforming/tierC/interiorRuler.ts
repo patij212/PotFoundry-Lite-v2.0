@@ -119,6 +119,15 @@ export interface RulerOptions {
   zBandMm: number;
   /** Brute local box-refine iterations. */
   refineIters: number;
+  /**
+   * θ half-window (rad) around the query's own azimuth to scan, at the SAME
+   * angular resolution as a full scan (exact, just fewer samples). Valid ONLY
+   * for single-valued radial surfaces (Gothic/GeoStar ribs): the nearest foot
+   * of a near-surface point lies within a few ribs of its own azimuth, so a
+   * generous window is exact while skipping the far-azimuth ~90% of the scan.
+   * Omit/undefined ⇒ full azimuth (unchanged). 0.35rad ≈ ±20° ≈ ±3 ribs.
+   */
+  thetaWindowRad?: number;
 }
 
 /** The trusted config (surfnative calibration: box-refine <1e-4mm). */
@@ -160,8 +169,22 @@ export function bruteNearestOnRadialSurface(
   let best = Infinity;
   let bth = 0;
   let bz = pz;
-  for (let i = 0; i < opts.nTheta; i++) {
-    const th = (i / opts.nTheta) * TAU;
+  // Angular step = full-scan resolution (TAU/nTheta), preserved whether we
+  // scan the full circle or a window around the query azimuth.
+  const dth = TAU / opts.nTheta;
+  const w = opts.thetaWindowRad;
+  const th0 =
+    w !== undefined && w > 0
+      ? (() => {
+          const a = Math.atan2(py, px);
+          return a < 0 ? a + TAU : a;
+        })()
+      : 0;
+  const iLo = w !== undefined && w > 0 ? -Math.ceil(w / dth) : 0;
+  const iHi =
+    w !== undefined && w > 0 ? Math.ceil(w / dth) : opts.nTheta - 1;
+  for (let i = iLo; i <= iHi; i++) {
+    const th = th0 + i * dth; // d2 uses cos/sin — no need to wrap into [0,TAU)
     for (let j = 0; j <= opts.nZ; j++) {
       const z = zLo + (zHi - zLo) * (j / opts.nZ);
       const f = d2(th, z);

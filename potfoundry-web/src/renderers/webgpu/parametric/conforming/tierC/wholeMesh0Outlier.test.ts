@@ -55,7 +55,13 @@ function runPatchGate(
   const complex = buildProtectedComplex(sampler, styleId);
   expect(complex.residualCrossings).toBe(0);
 
-  const ruler = { ...DEFAULT_RULER, nTheta };
+  // Loop driver uses the θ-windowed brute (exact resolution, ~10× fewer
+  // evals): it can only OVERSTATE if the window ever missed the foot, so the
+  // loop stays conservative and, when it converges, the exact full-azimuth
+  // guard below is guaranteed to pass. The guard is the trusted full-azimuth
+  // verdict (runs once).
+  const loopRuler = { ...DEFAULT_RULER, nTheta, thetaWindowRad: 0.5 };
+  const guardRuler = { ...DEFAULT_RULER, nTheta };
   const refined = refineToZeroOutliers(
     sampler,
     complex,
@@ -65,7 +71,7 @@ function runPatchGate(
       maxPass: 16,
       bulkPasses7pt: 4,
       bgArcMm,
-      ruler,
+      ruler: loopRuler,
     },
     (s) => {
       // Liveness + resumable diagnostics for the multi-hour full gates.
@@ -79,9 +85,10 @@ function runPatchGate(
   );
   expect(refined.capped).toBe(false);
 
-  // MANDATORY whole-mesh guard: EVERY facet, dense 45-pt honest ruler.
+  // MANDATORY whole-mesh guard: EVERY facet, dense 45-pt honest ruler at
+  // FULL azimuth (the trusted verdict — not windowed).
   const surface = radialSurfaceFromSampler(sampler);
-  const score = scoreWholeMesh(sampler, surface, refined, 0.01, ruler);
+  const score = scoreWholeMesh(sampler, surface, refined, 0.01, guardRuler);
   expect(score.nFacets).toBe(refined.tris.length / 3); // no population cap
   expect(score.outliers).toBe(0);
   expect(score.maxMm).toBeLessThanOrEqual(0.0101);
