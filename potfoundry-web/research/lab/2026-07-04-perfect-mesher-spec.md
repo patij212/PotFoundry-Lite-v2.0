@@ -1455,3 +1455,55 @@ Literal-0 today: 6/20 (V9 four + Gothic/GeoStar Tier-C patch kernel). Path per c
 **LEDGER:** registry E-2026-07-06-BVH-RULER → RESOLVED (this section). Data research/exchange/_pf_bvh/{q1,q3}.ndjson
 (gitignored; numbers inlined above). Perf commit 66cf1e0. Shard cross-validation: smooth-style shard sums == sequential
 rows exactly.
+
+---
+
+## VALIDATION 10b — INSTRUMENT CORRECTIONS + FINAL dense-basis re-baseline + WEAVE VERDICTS (2026-07-07)
+
+**THREE instrument effects were found, separated, and MEASURED after V10 (each discovered by a cross-basis
+disagreement — the reason every basis change gets its own arm):**
+1. **UNSOUND 4-pt SCREEN (removed, 3ea8b2c):** the verts+centroid BVH screen (skip dense ≤0.7·tol) missed
+   between-point deviations. Measured undercount: BW +1.4%, CK +7%, Gyroid +5.6%, Voronoi +7%, **HexHive +58%**,
+   DragonScales +0.2%, LowPoly 0. BANKED: never screen an acceptance ruler with a sparser lattice than the verdict
+   lattice unless the screen is a per-sample strict bound.
+2. **RADIAL PREFILTER IS SOUND and load-bearing:** |hypot(x,y)−rA(atan2,z)| ≥ true analytic distance — a green bound
+   is anchored to the ANALYTIC surface, immune to twin band-limit.
+3. **TWIN BAND-LIMIT INFLATION (no-prefilter basis only):** without the prefilter, samples ON the analytic surface
+   read up to twinOnSurf from the coarse twin → spurious outliers. Measured: BW +6% (997k vs 940k), **CK +41%**
+   (106k vs 62k; twinOnSurf 0.074). The FINAL numbers below are dense+prefilter (analytic-anchored, no screen).
+
+### FINAL whole-mesh dense-basis scorecard (tol 0.01mm, every facet, shard-summed)
+| style | outliers | max mm | p99 | class |
+|---|---|---|---|---|
+| WaveInterference | 2 | 0.0102 | 0.0068 | smooth tail — NEARLY CLOSED |
+| FourierBloom | 20 | 0.0103 | 0.0069 | smooth tail |
+| RippleInterference | 82 | 0.0191 | 0.0068 | smooth tail |
+| HarmonicRipple | 93 | 0.0151 | 0.0073 | smooth tail |
+| HexagonalHive | 15,098 | 0.1287 | 0.0110 | tangled GENUINE (screen hid 37%) |
+| Crystalline | 20,788 (×2) | 0.1343 | 0.0059 | tangled genuine (twin-marginal 0.065) |
+| GyroidManifold | 113,767 | 0.0889 | 0.0379 | tangled GENUINE |
+| Voronoi | 105,154 | 0.1374 | 0.0252 | tangled GENUINE |
+| DragonScales | 263,536 | 0.0463 | 0.0395 | riser broad-shallow |
+| LowPolyFacet | 6,464 (×2) | 0.3946 | ~0 | designed smin-crease (excluded-by-design) |
+| CelticKnot | 62,340 | 0.1075 | 0.0228 | weave GENUINE |
+| CelticTriquetra | 186,400 | 0.0905 | 0.0257 | weave (upper bound — no predicate) |
+| BasketWeave | 939,938 | 0.3424 | 0.2395 | weave GENUINE (worst gap in the fleet) |
+| SuperformulaBlossom | 92,398 (×2) | ~7.0 | 0.0020 | seam twin-blind-spot (excluded-by-design) |
+
+### E-2026-07-07-WEAVE-CREASE-EXCLUDED — VERDICT (one basis, pre-registered criteria)
+- **BasketWeave: GENUINE.** band-0 baseline 996,570 → excluded 773,929 (band 1e-3, 77.7% survive) / 668,552
+  (band 2e-3, 67%). exclFrac 8–13% (> the 6% collapse cap). Max unchanged 0.342 (worst facet OFF-crease).
+- **CelticKnot: GENUINE.** band-0 106,265 → 105,914 / ~105k (99.7% / ~99% survive; exclFrac 0.7–1.4%). Creases
+  contribute ~nothing — the braid gap is body geometry.
+- CelticTriquetra: NOT adjudicated (no crease predicate exists) — carried as upper bound.
+⇒ The weave gaps are REAL off-crease geometry → BasketWeave/CelticKnot JOIN THE TANGLED CLASS for whole-mesh
+kernel dispatch. Registry row RESOLVED.
+
+### Campaign arithmetic (drive-all-20-to-0.01)
+6/20 literal-0 (V9 four + Gothic/GeoStar Tier-C) + 2 excluded-by-design w/ zero-serration feature-edge proofs
+(LowPoly, SFB-seam) = **8/20 settled**. Remaining 12 = 4 smooth tails (197 facets total — one local-refine pass) +
+7 tangled/weave/riser (kernel dispatch / z-density) + CelticTriquetra (predicate first). TIER-C FULL GATE (same
+session): full Gothic patch CONVERGED whole-mesh 0 in 7 passes/6min/10,181 tris — the adaptive kernel is far
+cheaper at production scale than uniform-seed estimates; GeoStar arm + rebaseline20 pending.
+
+**LEDGER:** data _pf_bvh/{q3_dense,q3_excl}.ndjson (gitignored, numbers inlined). Commits 3ea8b2c/8330577 + this.

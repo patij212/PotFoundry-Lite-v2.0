@@ -4498,4 +4498,4 @@ stays an upper bound — building one is separate work).
 - GENUINE iff outliers ≥ 50% of unexcluded at both bands.
 - MIXED otherwise — characterize the residual population (where, how deep) without a class verdict.
 
-**VERDICT: [PENDING — pre-registration committed before measurement]**
+**VERDICT: MEASURED 2026-07-07 — BOTH GENUINE on the pre-registered one-basis criteria: BasketWeave 77.7%/67% of outliers survive exclusion (bands 1e-3/2e-3; exclFrac 8-13% > the 6% collapse cap; worst facet OFF-crest, max 0.342 unchanged); CelticKnot 99.7%/~99% survive (exclFrac 0.7-1.4% — creases contribute ~nothing). Weave gaps = real off-crease geometry → both join the tangled class for kernel dispatch. Bonus instrument findings (spec §V10b): unsound 4-pt screen removed (HexHive +58% undercount); twin band-limit inflation measured on the no-prefilter basis (CK +41%); final numbers = dense+radial-prefilter basis. CelticTriquetra NOT adjudicated (no predicate).**
