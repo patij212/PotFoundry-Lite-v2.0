@@ -96,28 +96,56 @@ export function seedFromComplex(
     u <= domain.uHi + 1e-9 &&
     t >= domain.tLo - 1e-9 &&
     t <= domain.tHi + 1e-9;
+  // Border-crossing constraint segments are CLIPPED AT the boundary (an
+  // interpolated boundary vertex; interior portion kept + locked), NEVER
+  // dropped. Dropping them leaves an UNPROTECTED crest stub inside the
+  // domain — facets bridge the unlocked cusp and the refine loop stalls at
+  // an irreducible ~0.4mm floor (MEASURED: full Gothic gate capped at pass
+  // 16 with ~295 outliers, worst 0.40, insertions a no-op).
+  const clipToDomain = (
+    pu: number,
+    pt: number,
+    qu: number,
+    qt: number,
+  ): [number, number] | null => {
+    // p is inside; slide q toward p until inside (param clip per axis).
+    let s = 1;
+    if (qu < domain.uLo) s = Math.min(s, (domain.uLo - pu) / (qu - pu));
+    if (qu > domain.uHi) s = Math.min(s, (domain.uHi - pu) / (qu - pu));
+    if (qt < domain.tLo) s = Math.min(s, (domain.tLo - pt) / (qt - pt));
+    if (qt > domain.tHi) s = Math.min(s, (domain.tHi - pt) / (qt - pt));
+    if (!(s > 1e-6)) return null; // degenerate sliver at the border
+    return [pu + s * (qu - pu), pt + s * (qt - pt)];
+  };
+  const addVert = (u: number, t: number, complexId?: number): number => {
+    if (complexId !== undefined) {
+      const hit = idMap.get(complexId);
+      if (hit !== undefined) return hit;
+    }
+    const id = uv.length / 2;
+    uv.push(u, t);
+    if (complexId !== undefined) idMap.set(complexId, id);
+    return id;
+  };
   for (const [a, b] of complex.edges) {
     const ua = complex.vertices[2 * a] / uToMm;
     const ta = complex.vertices[2 * a + 1] / tToMm;
     const ub = complex.vertices[2 * b] / uToMm;
     const tb = complex.vertices[2 * b + 1] / tToMm;
-    // Keep only constraint segments fully inside the domain (patch scope:
-    // border-crossing chains end at the last interior vertex — the domain is
-    // chosen to contain whole bays, so no protected geometry is cut mid-bay).
-    if (!inDomain(ua, ta) || !inDomain(ub, tb)) continue;
-    let ia = idMap.get(a);
-    if (ia === undefined) {
-      ia = uv.length / 2;
-      uv.push(ua, ta);
-      idMap.set(a, ia);
+    const aIn = inDomain(ua, ta);
+    const bIn = inDomain(ub, tb);
+    if (!aIn && !bIn) continue; // fully outside (border-to-border spans are rare noise)
+    if (aIn && bIn) {
+      cEdges.push([addVert(ua, ta, a), addVert(ub, tb, b)]);
+      continue;
     }
-    let ib = idMap.get(b);
-    if (ib === undefined) {
-      ib = uv.length / 2;
-      uv.push(ub, tb);
-      idMap.set(b, ib);
-    }
-    cEdges.push([ia, ib]);
+    // One endpoint outside: keep the interior portion up to the boundary.
+    const [pu, pt, pid, qu, qt] = aIn
+      ? ([ua, ta, a, ub, tb] as const)
+      : ([ub, tb, b, ua, ta] as const);
+    const clipped = clipToDomain(pu, pt, qu, qt);
+    if (clipped === null) continue;
+    cEdges.push([addVert(pu, pt, pid), addVert(clipped[0], clipped[1])]);
   }
   // Background grid (dedupe against existing points on a fine mm lattice).
   const pmap = new Map<number, number>();
