@@ -1507,3 +1507,28 @@ session): full Gothic patch CONVERGED whole-mesh 0 in 7 passes/6min/10,181 tris 
 cheaper at production scale than uniform-seed estimates; GeoStar arm + rebaseline20 pending.
 
 **LEDGER:** data _pf_bvh/{q3_dense,q3_excl}.ndjson (gitignored, numbers inlined). Commits 3ea8b2c/8330577 + this.
+
+---
+
+## V10c — FULL-GATE STALL: root cause OPEN after two refuted fixes (2026-07-07, honest status)
+
+The full Gothic Tier-C gate stalls at the pass-16 cap (~430 outliers, worst ~0.404, insertions no-op from pass 7;
+IDENTICAL worst values across runs ⇒ the same facets). TWO fixes attempted, BOTH insufficient:
+1. **Border-clip fix (70eb8ba): REFUTED as the (sole) cause** — clipping constraints at the domain boundary instead
+   of dropping them changed nothing measurable (same plateau, same worst).
+2. **Chain-placement: PARTIALLY IMPLICATED, snaps did NOT close it.** Probe `_tierc_crestOffset` MEASURED the
+   detected constraint chains p50 1.02mm / p90 1.86mm of arc off the true u-ridge (detector cell 2.36mm at fineRes
+   120) — vs the research kernel's ~0.1mm analytic crest sampling. Axis-aligned ridge snap → p50 0.55/p90 1.77;
+   chain-normal snap → p50 0.61/p90 1.73. CAVEAT discovered: the probe conflates chain TYPES — crease/boundary
+   chains legitimately sit off the r-max, so the tail is partly measurement confusion; the snap may even corrupt
+   crease chains (amp filter does not distinguish). Smoke gate still passes with the snap (0 outliers, watertight).
+
+**NEXT DIAGNOSTIC (the decisive one, not yet run):** persist the stalled full-gate mesh (add checkpointing to the
+gate first), then for the ~430 floor facets measure per-facet (a) chart distance to the nearest constraint edge and
+(b) local ridge amplitude at the centroid. Discriminates: MISSING/misplaced ridge chains (fix = detector recall /
+exact placement — likely needs dense analytic-style crest sampling à la research rowCrests/colCrests, not snapping)
+vs something else entirely (e.g. the seam-consistent midpoint insertion failing near u-wrap, or dedupe swallowing
+insertions — "inserted ~850/pass but tris +~120/pass" is ALSO unexplained and suspicious).
+
+STATE: smoke gate GREEN (proven config); FULL gate RED (stall, cause OPEN); rebaseline20 BLOCKED on this. The flag
+stays default-OFF (nothing ships); the byte-identical-off guarantee is unaffected (10/10 fast tierC tests green).

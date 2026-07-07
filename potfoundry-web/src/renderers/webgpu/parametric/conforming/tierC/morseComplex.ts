@@ -487,11 +487,78 @@ export function buildProtectedComplex(
     mergeJunctions: true,
   });
 
+  // RIDGE SNAP (load-bearing, measured): detectFeatures places chains within
+  // ~1 fine cell of the true ridge — at fineRes 120 that is p50 1.02mm /
+  // p90 1.86mm of arc OFF the cusp (probe _tierc_crestOffset). Locking the
+  // raw chains protects the WRONG line and facets bridge the real cusp
+  // beside it (the full-Gothic-gate ~0.4mm insertion-invariant floor). The
+  // detector supplies TOPOLOGY; placement comes from snapping each chain
+  // vertex to the local radius maximum along u OR t (whichever direction
+  // shows the stronger ridge amplitude) within ±1.2 cells. Low-amplitude
+  // points (component boundaries, flat creases) stay unsnapped.
+  const rAt = (u: number, t: number): number => {
+    const [x, y] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
+    return Math.hypot(x, y);
+  };
+  const goldenMax = (f: (s: number) => number, lo: number, hi: number): number => {
+    const gr = (Math.sqrt(5) - 1) / 2;
+    let a = lo;
+    let b = hi;
+    let c = b - gr * (b - a);
+    let d = a + gr * (b - a);
+    for (let i = 0; i < 48; i++) {
+      if (f(c) > f(d)) b = d;
+      else a = c;
+      c = b - gr * (b - a);
+      d = a + gr * (b - a);
+    }
+    return (a + b) / 2;
+  };
+  // Snap along the chain's local NORMAL (mm-scaled): a small normal window
+  // crosses exactly ONE rib (unimodal — an axis-aligned window on a DIAGONAL
+  // rib is bimodal and can land in the neighbouring rib's basin; measured:
+  // axis snap left p90 1.77mm) and cannot drift along the chain.
+  const SNAP_WIN_MM = 2.5;
+  const SNAP_MIN_AMP_MM = 0.05;
+  const snapChain = (
+    poly: ReadonlyArray<{ u: number; t: number }>,
+  ): Array<{ u: number; t: number }> => {
+    const n = poly.length;
+    return poly.map((p, i) => {
+      const prev = poly[Math.max(0, i - 1)];
+      const next = poly[Math.min(n - 1, i + 1)];
+      // Seam-consistent tangent in mm.
+      let du = next.u - prev.u;
+      while (du > 0.5) du -= 1;
+      while (du < -0.5) du += 1;
+      const txMm = du * uToMm;
+      const tyMm = (next.t - prev.t) * tToMm;
+      const L = Math.hypot(txMm, tyMm);
+      if (L < 1e-9) return p;
+      // Unit normal in mm space → step in (u,t).
+      const nxMm = -tyMm / L;
+      const nyMm = txMm / L;
+      const at = (s: number): [number, number] => [
+        p.u + (s * nxMm) / uToMm,
+        p.t + (s * nyMm) / tToMm,
+      ];
+      const f = (s: number): number => {
+        const [uu, tt] = at(s);
+        return rAt(uu, tt);
+      };
+      const sStar = goldenMax(f, -SNAP_WIN_MM, SNAP_WIN_MM);
+      const amp = f(sStar) - Math.max(f(-SNAP_WIN_MM), f(SNAP_WIN_MM));
+      if (amp < SNAP_MIN_AMP_MM) return p;
+      const [su, st] = at(sStar);
+      return { u: su, t: Math.min(1, Math.max(0, st)) };
+    });
+  };
+
   // Polylines → flat mm segment soup, unwrapping u continuously per chain.
   const pts: number[] = [];
   const rawEdges: Array<[number, number]> = [];
   for (const edge of conditioned.edges) {
-    const poly = edge.polyline;
+    const poly = snapChain(edge.polyline);
     if (poly.length < 2) continue;
     let uPrev = poly[0].u;
     let prevIdx = pts.length / 2;
