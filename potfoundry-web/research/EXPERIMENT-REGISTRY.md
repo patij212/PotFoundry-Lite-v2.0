@@ -4473,3 +4473,29 @@ style, CHECKPOINT one ndjson row per style. Reuses `buildRefLocator`/`buildStepR
 `bruteNearestOnRadialSurface`/`projectPointToRadialSurface` (labkit). DEV-ONLY; no src/ edit.
 
 **VERDICT: MEASURED 2026-07-07 — MIXED (per-style, NOT a blanket artifact): Q1 ratios Gyroid 0.54 (ruler OVERSTATES ~2×, genuine gap remains), Voronoi 0.97 (ruler HONEST), HexHive 0.92 ratio but bvhMax 0.113 vs rulerMax 0.041 (ruler UNDERSTATES the worst facets ~2.7×). Q3 all-14 whole-mesh BVH re-score complete. Full adjudication + consolidated scorecard + caveats (weave crease-locus upper bounds, SFB seam twin-blind-spot, LowPoly designed-crease class, per-style twin band-limits): spec §VALIDATION 10 (2026-07-04-perfect-mesher-spec.md).**
+
+---
+
+## E-2026-07-07-WEAVE-CREASE-EXCLUDED — do the weave Q3-BVH upper bounds collapse under crease-locus exclusion? [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME:** V10 Q3 scored BasketWeave 924k@0.342 / CelticKnot 58k@0.107 whole-mesh-BVH — flagged UPPER BOUNDS: the
+over-under strand flips are C0 radius-jump WALLS that (a) the single-valued radial twin SMEARS across ~1 twin cell
+and (b) the B5 program already proved to be the f32/f64 strand-flip metric-discontinuity class (basketWeave creaseU/T
+exclusion → vtx 1.89→0.0000, commit a431776; celticKnotCreasePredicate → CK residual isolated). HYPOTHESIS: under
+sample-level crease-locus exclusion the outlier population collapses toward the smooth-body tail; the walls
+themselves are zero-serration feature edges by construction (doubled-grid).
+
+**METHOD:** `scoreWholeMeshBVH` gains `exclude?: (u,t)=>boolean` (sample (u,t) = (wrap(atan2/2π), clamp(z/H)) —
+valid: unwarped radial styles). BasketWeave: within bandU of any creaseU (periodic) OR bandT of any creaseT
+(`basketWeaveCreaseLoci` at DEFAULT_STYLE_PARAMS). CelticKnot: `celticKnotCreasePredicate` (its own localU band).
+Report excludedSampleFrac + facetsAllExcluded EXPLICITLY (no silent loss). SENSITIVITY: bands 1e-3 AND 2e-3
+(normalized u/t) — any verdict requires stability across both. CelticTriquetra OUT OF SCOPE (no predicate exists;
+stays an upper bound — building one is separate work).
+
+**KILL CRITERIA:**
+- COLLAPSE (crease-class confirmed) iff excluded-basis outliers ≤ 10% of the unexcluded count AND
+  excludedSampleFrac ≤ 6% AND stable across both bands.
+- GENUINE iff outliers ≥ 50% of unexcluded at both bands.
+- MIXED otherwise — characterize the residual population (where, how deep) without a class verdict.
+
+**VERDICT: [PENDING — pre-registration committed before measurement]**
