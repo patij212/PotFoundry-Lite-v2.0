@@ -54,6 +54,8 @@ export interface RefineOptions {
   bulkPasses7pt: number;
   /** Background seed grid pitch (mm of 3D arc). */
   bgArcMm: number;
+  /** Max 3D pitch (mm) constraint chains are densified to (default 0.15). */
+  maxConstraintMm?: number;
   ruler: RulerOptions;
 }
 
@@ -78,14 +80,79 @@ export interface RefineResult extends ChartMesh {
 const DEDUPE_CELL_MM = 0.004;
 
 /**
+ * Default constraint-chain 3D pitch (mm). Detector chains arrive at fine-cell
+ * pitch (Gothic p50 0.99mm / p90 3.36mm / max 59mm — probe _tierc_constraintLen);
+ * cdt2d cannot split a locked edge, so a long constraint edge floors every
+ * crest-adjacent facet at ~L²κ/8 (a 1mm chord on a rib ≈ 0.4mm — the measured
+ * plateau). Densifying to this pitch matches the research kernel's ~0.1mm
+ * analytic crest chains and lets the crest refine along its length.
+ */
+const MAX_CONSTRAINT_MM = 0.15;
+
+/** Golden-section max of r along the (duMm,dtMm) NORMAL; ridge-snaps a point. */
+type RidgeSnap = (
+  u: number,
+  t: number,
+  duMm: number,
+  dtMm: number,
+  winMm: number,
+) => [number, number];
+
+function makeRidgeSnapper(
+  sampler: SurfaceSampler,
+  uToMm: number,
+  tToMm: number,
+): RidgeSnap {
+  const rAt = (u: number, t: number): number => {
+    const [x, y] = sampler.position(
+      ((u % 1) + 1) % 1,
+      Math.min(1, Math.max(0, t)),
+    );
+    return Math.hypot(x, y);
+  };
+  return (u, t, duMm, dtMm, winMm) => {
+    const L = Math.hypot(duMm, dtMm);
+    if (L < 1e-9) return [u, t];
+    const nx = -dtMm / L;
+    const ny = duMm / L;
+    const at = (s: number): [number, number] => [
+      u + (s * nx) / uToMm,
+      t + (s * ny) / tToMm,
+    ];
+    const f = (s: number): number => {
+      const [uu, tt] = at(s);
+      return rAt(uu, tt);
+    };
+    const gr = (Math.sqrt(5) - 1) / 2;
+    let lo = -winMm;
+    let hi = winMm;
+    let c1 = hi - gr * (hi - lo);
+    let d1 = lo + gr * (hi - lo);
+    for (let i = 0; i < 40; i++) {
+      if (f(c1) > f(d1)) hi = d1;
+      else lo = c1;
+      c1 = hi - gr * (hi - lo);
+      d1 = lo + gr * (hi - lo);
+    }
+    const sStar = (lo + hi) / 2;
+    if (f(sStar) - Math.max(f(-winMm), f(winMm)) < 0.02) return [u, t];
+    const [su, st] = at(sStar);
+    return [su, Math.min(1, Math.max(0, st))];
+  };
+}
+
+/**
  * Seed the chart mesh: protected-complex vertices (converted mm → chart) with
- * their constraint edges LOCKED, plus a uniform background grid at bgArcMm
- * pitch over the domain, CDT'd in mm space (isotropic predicates).
+ * their constraint edges LOCKED and densified to `maxConstraintMm` 3D pitch
+ * (ridge-snapped so the crest hugs the true cusp), plus a uniform background
+ * grid at bgArcMm pitch over the domain, CDT'd in mm space (isotropic).
  */
 export function seedFromComplex(
   complex: ProtectedComplex,
   domain: ChartDomain,
   bgArcMm: number,
+  sampler?: SurfaceSampler,
+  maxConstraintMm = MAX_CONSTRAINT_MM,
 ): { uv: number[]; cEdges: Array<[number, number]> } {
   const { uToMm, tToMm } = complex;
   const uv: number[] = [];
@@ -127,6 +194,39 @@ export function seedFromComplex(
     if (complexId !== undefined) idMap.set(complexId, id);
     return id;
   };
+  const snap: RidgeSnap | null = sampler
+    ? makeRidgeSnapper(sampler, uToMm, tToMm)
+    : null;
+  const pos3D = (u: number, t: number): [number, number, number] =>
+    sampler
+      ? sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)))
+      : [u * uToMm, t * tToMm, 0];
+  // Densify one constraint segment to ≤ maxConstraintMm 3D pitch, ridge-
+  // snapping each interior point along the segment normal so the locked chain
+  // hugs the true cusp. Endpoints keep their ids (shared at junctions).
+  const pushConstraint = (ia: number, ib: number): void => {
+    const au = uv[2 * ia];
+    const at = uv[2 * ia + 1];
+    const bu = uv[2 * ib];
+    const bt = uv[2 * ib + 1];
+    const A = pos3D(au, at);
+    const B = pos3D(bu, bt);
+    const len3 = Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+    const nSeg = Math.max(1, Math.ceil(len3 / maxConstraintMm));
+    const duMm = (bu - au) * uToMm;
+    const dtMm = (bt - at) * tToMm;
+    let prev = ia;
+    for (let s = 1; s < nSeg; s++) {
+      const f = s / nSeg;
+      let mu = au + f * (bu - au);
+      let mt = at + f * (bt - at);
+      if (snap) [mu, mt] = snap(mu, mt, duMm, dtMm, maxConstraintMm * 2);
+      const mid = addVert(mu, mt);
+      if (mid !== prev) cEdges.push([prev, mid]);
+      prev = mid;
+    }
+    if (prev !== ib) cEdges.push([prev, ib]);
+  };
   for (const [a, b] of complex.edges) {
     const ua = complex.vertices[2 * a] / uToMm;
     const ta = complex.vertices[2 * a + 1] / tToMm;
@@ -136,7 +236,7 @@ export function seedFromComplex(
     const bIn = inDomain(ub, tb);
     if (!aIn && !bIn) continue; // fully outside (border-to-border spans are rare noise)
     if (aIn && bIn) {
-      cEdges.push([addVert(ua, ta, a), addVert(ub, tb, b)]);
+      pushConstraint(addVert(ua, ta, a), addVert(ub, tb, b));
       continue;
     }
     // One endpoint outside: keep the interior portion up to the boundary.
@@ -145,7 +245,7 @@ export function seedFromComplex(
       : ([ub, tb, b, ua, ta] as const);
     const clipped = clipToDomain(pu, pt, qu, qt);
     if (clipped === null) continue;
-    cEdges.push([addVert(pu, pt, pid), addVert(clipped[0], clipped[1])]);
+    pushConstraint(addVert(pu, pt, pid), addVert(clipped[0], clipped[1]));
   }
   // Background grid (dedupe against existing points on a fine mm lattice).
   const pmap = new Map<number, number>();
@@ -203,7 +303,13 @@ export function refineToZeroOutliers(
 ): RefineResult {
   const surface = radialSurfaceFromSampler(sampler);
   const { uToMm, tToMm } = complex;
-  const seed = seedFromComplex(complex, domain, opts.bgArcMm);
+  const seed = seedFromComplex(
+    complex,
+    domain,
+    opts.bgArcMm,
+    sampler,
+    opts.maxConstraintMm,
+  );
   let uv = seed.uv.slice();
   const cEdges = seed.cEdges;
   let tris = triangulateMM(uv, uToMm, tToMm, cEdges);
@@ -219,12 +325,33 @@ export function refineToZeroOutliers(
       if (!pmap.has(k)) pmap.set(k, i);
     }
   };
-  const addPt = (u: number, t: number): void => {
+  const addPt = (u: number, t: number): number => {
     const k = keyOf(u, t);
-    if (pmap.has(k)) return;
-    pmap.set(k, uv.length / 2);
+    const hit = pmap.get(k);
+    if (hit !== undefined) return hit;
+    const id = uv.length / 2;
+    pmap.set(k, id);
     uv.push(u, t);
+    return id;
   };
+
+  // CONSTRAINT SUBDIVISION (the full-gate stall fix — the campaign's
+  // recoverySubdivideCollinear lesson resurfacing in this port): cdt2d
+  // cannot split a locked edge through a vertex collinear-on it, so a
+  // crest-adjacent facet bounded by a LONG constraint edge (detector-pitch
+  // ~2.4mm vs the ~0.1mm research crest chains) can NEVER refine along the
+  // crest — midpoint insertions dedupe-no-op forever (measured: inserted
+  // ~850/pass, tris +~120/pass, worst pinned at 0.404). When refinement
+  // wants a constraint edge's midpoint, SUBDIVIDE THE CONSTRAINT itself
+  // ([a,b] → [a,m],[m,b]) with m RIDGE-SNAPPED along the edge normal so the
+  // refined crest follows the true cusp, not the chain's chord.
+  const cKey = (a: number, b: number): number =>
+    a < b ? a * 1e7 + b : b * 1e7 + a;
+  const cMap = new Map<number, number>(); // canonical pair → cEdges index
+  for (let i = 0; i < cEdges.length; i++) {
+    cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
+  }
+  const snapNormal = makeRidgeSnapper(sampler, uToMm, tToMm);
 
   const dense = denseBary(8);
   const history: RefinePassStat[] = [];
@@ -271,15 +398,46 @@ export function refineToZeroOutliers(
         while (ua - ub > 0.5) ub += 1;
         while (uc - ua > 0.5) uc -= 1;
         while (ua - uc > 0.5) uc += 1;
-        for (const [mu, mt] of [
-          [(ua + ub) / 2, (ta + tb) / 2],
-          [(ub + uc) / 2, (tb + tc) / 2],
-          [(uc + ua) / 2, (tc + ta) / 2],
-        ] as const) {
-          const k = keyOf(mu, mt);
-          if (!inserted.has(k)) {
+        const edges: Array<[number, number, number, number, number, number]> = [
+          [a, b, ua, ta, ub, tb],
+          [b, c, ub, tb, uc, tc],
+          [c, a, uc, tc, ua, ta],
+        ];
+        for (const [va, vb, eua, eta, eub, etb] of edges) {
+          const ck = cKey(va, vb);
+          const ci = cMap.get(ck);
+          const mu = (eua + eub) / 2;
+          const mt = (eta + etb) / 2;
+          if (ci !== undefined) {
+            // Locked crest edge: cdt2d cannot split it through a collinear
+            // point. SUBDIVIDE THE CONSTRAINT with a RIDGE-SNAPPED midpoint
+            // so the crest follows the true cusp along its length.
+            const k = keyOf(mu, mt);
+            if (inserted.has(k)) continue;
             inserted.add(k);
-            addPt(mu, mt);
+            const [smu, smt] = snapNormal(
+              mu,
+              mt,
+              (eub - eua) * uToMm,
+              (etb - eta) * tToMm,
+              1.5,
+            );
+            const mid = addPt(smu, smt);
+            if (mid !== va && mid !== vb) {
+              // Replace [va,vb] with [va,mid]; append [mid,vb].
+              cEdges[ci] = [va, mid];
+              cMap.delete(ck);
+              cMap.set(cKey(va, mid), ci);
+              const ni = cEdges.length;
+              cEdges.push([mid, vb]);
+              cMap.set(cKey(mid, vb), ni);
+            }
+          } else {
+            const k = keyOf(mu, mt);
+            if (!inserted.has(k)) {
+              inserted.add(k);
+              addPt(mu, mt);
+            }
           }
         }
       }
