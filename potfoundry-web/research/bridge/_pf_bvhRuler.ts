@@ -202,6 +202,10 @@ export interface BvhRulerResult {
   worstXyz: [number, number, number];
   twinTris: number;
   twinOnSurfMaxMm: number;
+  /** Present only when opts.exclude was passed (crease-locus exclusion). */
+  excludedSamples?: number;
+  totalSamples?: number;
+  facetsAllExcluded?: number;
 }
 
 /**
@@ -224,6 +228,8 @@ export function scoreWholeMeshBVH(
     twinValidate?: 'full' | 'sub' | 'skip';
     /** Radial same-azimuth upper-bound prefilter (default true): |hypot(x,y) − rA(atan2,z)| is a strict upper bound on the true distance for z∈[0,H], so a green bound skips ALL BVH queries for the sample. Overstates only sub-margin percentile values (never outlier counts / max). */
     radialPrefilter?: boolean;
+    /** Sample-level crease-locus exclusion (E-2026-07-07-WEAVE-CREASE-EXCLUDED): samples whose (u,t)=(wrap(atan2/2π), clamp(z/H)) satisfy the predicate are SKIPPED. Excluded counts are reported (excludedSamples / totalSamples / facetsAllExcluded) — never silent. */
+    exclude?: (u: number, t: number) => boolean;
   } = {},
 ): BvhRulerResult {
   const tol = opts.tol ?? 0.01;
@@ -247,6 +253,17 @@ export function scoreWholeMeshBVH(
     const th = Math.atan2(py, px);
     return Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + TAU : th, pz));
   };
+  const exclude = opts.exclude;
+  let excludedSamples = 0, totalSamples = 0, facetsAllExcluded = 0;
+  const isExcluded = (px: number, py: number, pz: number): boolean => {
+    if (!exclude) return false;
+    totalSamples++;
+    const th = Math.atan2(py, px);
+    const u = (th < 0 ? th + TAU : th) / TAU;
+    const t = Math.min(1, Math.max(0, pz / H));
+    if (exclude(u, t)) { excludedSamples++; return true; }
+    return false;
+  };
   const devS: number[] = [];
   let worst = 0, worstFacet = -1, scanned = 0;
   const progEvery = opts.progressEvery ?? Math.max(1, Math.floor((nF / (stride * shardN)) / 200));
@@ -256,6 +273,28 @@ export function scoreWholeMeshBVH(
     const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
     const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
     const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+    // EXCLUSION MODE: no screen shortcuts (a facet whose screen points are
+    // all excluded must not read false-green) — full dense lattice, excluded
+    // samples skipped, all-excluded facets counted separately (never silent).
+    if (exclude) {
+      let dv = 0; let kept = 0;
+      for (const [wa, wb, wc] of DENSE) {
+        const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
+        if (isExcluded(px, py, pz)) continue;
+        kept++;
+        const d = loc.dist(px, py, pz); if (d > dv) dv = d;
+      }
+      if (kept === 0) { facetsAllExcluded++; }
+      else {
+        devS.push(dv);
+        if (dv > worst) { worst = dv; worstFacet = f; }
+      }
+      if (opts.onProgress && (scanned % progEvery === 0)) {
+        let no = 0; for (const d of devS) if (d > tol) no++;
+        opts.onProgress(f + 1, nF, no, worst);
+      }
+      continue;
+    }
     // Stage 0 (cheap, no BVH): radial upper bound over the DENSE lattice —
     // if even the bound's max is sub-margin the facet cannot be an outlier.
     if (usePrefilter) {
@@ -310,6 +349,7 @@ export function scoreWholeMeshBVH(
     wholeMeshMaxMm: +worst.toFixed(6), p50: pc(0.5), p90: pc(0.9), p99: pc(0.99),
     worstFacet, worstXyz: wXyz.map((v) => +v.toFixed(3)) as [number, number, number],
     twinTris: twinMesh.nF, twinOnSurfMaxMm: onSurf.maxMm,
+    ...(exclude ? { excludedSamples, totalSamples, facetsAllExcluded } : {}),
   };
 }
 

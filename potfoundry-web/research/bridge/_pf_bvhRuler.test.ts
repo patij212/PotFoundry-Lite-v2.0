@@ -11,6 +11,11 @@ import { mkdirSync, existsSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRadiusFn, bruteNearestOnRadialSurface, type StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
+import { DEFAULT_STYLE_PARAMS } from '../../src/geometry/types';
+import {
+  basketWeaveCreaseLoci,
+  celticKnotCreasePredicate,
+} from '../../src/fidelity/analyticSurfaceGate';
 import {
   buildRadialTwin, twinOnSurfaceResidual, ratioStudy, scoreWholeMeshBVH, pickWorstFacetsByRuler, loadBinMesh,
 } from './_pf_bvhRuler';
@@ -161,5 +166,69 @@ describe('BVH-RULER Q3 — whole-mesh BVH re-score of the gap styles', () => {
   }
   for (const spec of Q3BIG) {
     it.skipIf(process.env.PF_BVH_Q3_BIG !== '1')(`Q3-BIG ${spec.style}`, () => { scoreQ3(spec); expect(true).toBe(true); }, 5 * 60 * 60 * 1000);
+  }
+});
+
+// ── E-2026-07-07-WEAVE-CREASE-EXCLUDED: re-adjudicate the weave upper bounds
+// under the B5-proven crease-locus exclusion (BasketWeave loci / CelticKnot
+// predicate), TWO bands for stability. CelticTriquetra out of scope (no
+// predicate exists — stays an upper bound). Kill criteria in the registry.
+function weaveExclude(style: StyleId, band: number): (u: number, t: number) => boolean {
+  const P = DEFAULT_STYLE_PARAMS[style] as Record<string, number>;
+  if (style === 'BasketWeave') {
+    const loci = basketWeaveCreaseLoci(P.strands ?? 8, P.layers ?? 8, P.phase ?? 0);
+    return (u: number, t: number): boolean => {
+      for (const cu of loci.creaseU) {
+        let d = Math.abs(u - cu); if (d > 0.5) d = 1 - d;
+        if (d < band) return true;
+      }
+      for (const ct of loci.creaseT) if (Math.abs(t - ct) < band) return true;
+      return false;
+    };
+  }
+  // CelticKnot: the predicate carries its OWN localU band; scale ours onto it.
+  return celticKnotCreasePredicate(
+    P.scale ?? 6, P.width ?? 1, P.twist ?? 1, P.strands ?? 3, band,
+  );
+}
+
+describe('BVH-RULER Q3-EXCL — weave re-adjudication under crease exclusion', () => {
+  const EXCL: Array<{ style: StyleId; binDir?: string; band: number }> = [
+    { style: 'BasketWeave' as StyleId, binDir: 'BasketWeave_bins', band: 1e-3 },
+    { style: 'BasketWeave' as StyleId, binDir: 'BasketWeave_bins', band: 2e-3 },
+    { style: 'CelticKnot' as StyleId, binDir: 'CelticKnot_bins', band: 1e-3 },
+    { style: 'CelticKnot' as StyleId, binDir: 'CelticKnot_bins', band: 2e-3 },
+  ];
+  for (const e of EXCL) {
+    it.skipIf(process.env.PF_BVH_Q3_EXCL !== '1')(`Q3-EXCL ${e.style} band=${e.band}`, () => {
+      const file = join(OUT, 'q3_excl.ndjson');
+      const rowKey = `${e.style}@${e.band}${SHARD ? `#${SHARD.k}of${SHARD.n}` : ''}`;
+      if (rowExists(file, rowKey)) { plog(`[skip Q3-EXCL] ${rowKey} row exists`); return; }
+      const m = loadStyle(e.style, e.binDir); if (!m) return;
+      const rA = buildRadiusFn(e.style, {}, DIMS);
+      const circ = 2 * Math.PI * ((DIMS.Rb + DIMS.Rt) / 2);
+      const cell = Math.max(0.35, 4 * (circ / 3072));
+      plog(`[Q3-EXCL ${rowKey}] tris=${m.idx.length / 3} — scoring with exclusion...`);
+      const t0 = Date.now();
+      const r = scoreWholeMeshBVH(m.xyz, m.idx, rA, H, { nTheta: 3072, nZ: 3072 }, {
+        tol: TOL, stride: 1, cell,
+        shard: SHARD ?? undefined,
+        twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
+        exclude: weaveExclude(e.style, e.band),
+      });
+      const row = {
+        style: rowKey, baseStyle: e.style, band: e.band,
+        tris: m.idx.length / 3, scannedFacets: r.scannedFacets,
+        interiorOutliers: r.interiorOutliers, wholeMeshMaxMm: r.wholeMeshMaxMm,
+        p50: r.p50, p99: r.p99, twinOnSurfMaxMm: r.twinOnSurfMaxMm,
+        excludedSamples: r.excludedSamples, totalSamples: r.totalSamples,
+        excludedFrac: r.totalSamples ? +((r.excludedSamples ?? 0) / r.totalSamples).toFixed(4) : 0,
+        facetsAllExcluded: r.facetsAllExcluded,
+        scoreMs: Date.now() - t0,
+      };
+      checkpoint(file, row);
+      plog(`[Q3-EXCL ${rowKey}] SCORED out=${r.interiorOutliers} max=${r.wholeMeshMaxMm} exclFrac=${row.excludedFrac} allExcl=${r.facetsAllExcluded} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
+      expect(true).toBe(true);
+    }, 3 * 60 * 60 * 1000);
   }
 });
