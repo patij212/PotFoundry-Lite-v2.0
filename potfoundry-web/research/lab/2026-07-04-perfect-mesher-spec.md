@@ -1532,3 +1532,31 @@ insertions — "inserted ~850/pass but tris +~120/pass" is ALSO unexplained and 
 
 STATE: smoke gate GREEN (proven config); FULL gate RED (stall, cause OPEN); rebaseline20 BLOCKED on this. The flag
 stays default-OFF (nothing ships); the byte-identical-off guarantee is unaffected (10/10 fast tierC tests green).
+
+---
+
+## V10d — FULL-GATE STALL RESOLVED (fidelity) + PERF WALL IDENTIFIED (2026-07-08)
+
+**FIDELITY ROOT CAUSE (found + fixed):** detector constraint chains arrived at fine-CELL pitch (Gothic p50 0.99mm /
+p90 3.36mm / MAX 59mm, probe _tierc_constraintLen) — cdt2d cannot split a LOCKED edge, so a crest-adjacent facet on
+a ~1mm locked edge floors at ~L²κ/8 ≈ 0.4mm (the exact plateau). FIX (a90cdbd): densify each chain to ≤0.15mm 3D
+pitch + ridge-snap along the segment normal INSIDE morseComplex BEFORE planarizeMM (snapping AFTER planarize =
+cdt2d upperIds crash, learned the hard way in 0c463ce). Post-fix: edges p50 0.147/p90 0.288/max 3.3mm,
+residualCrossings 0, recovery ≥99. **SMOKE GATE (multi-bay z-band, = the research kernel's validation scale)
+CONVERGES to literal whole-mesh 0 outliers, watertight, no crash, ~5min** — the Tier-C fidelity mechanism is PROVEN
+at patch scale.
+
+**PERF WALL (identified, NOT fidelity):** the ≤0.15mm ridge-snapped crest makes near-crest facets ~7× denser; every
+one hits the O(nTheta·nZ)=1024·120 full-azimuth analytic brute (`bruteNearestOnRadialSurface`) per non-green sample
+× 45 samples/facet × many passes. A LARGER-than-research domain (u 0–0.25, then even u 0–0.1 t 0.38–0.62) cannot
+finish pass 1 single-threaded (measured: 50–240min/pass, never converged). This is the SAME O(nTheta·nZ) analytic
+brute the LAB replaced with a BVH-twin locator for **100×** (V10b) — but that optimization was never ported into the
+PRODUCTION tierC/interiorRuler (it lives in research/_pf_bvhRuler). **⇒ the full-multi-bay/full-pot gate is PERF-
+BOUND on an un-ported ruler optimization, a documented INTEGRATION item — NOT a fidelity gap.**
+
+**STATE:** Tier-C back-port Tasks 1-5 CODE-COMPLETE + patch-fidelity PROVEN (smoke). Task 6 rebaseline20 + the
+full-multi-bay gate are BLOCKED on the ruler perf port (BVH-twin into tierC/interiorRuler, ~100× — or a θ-windowed
+brute for single-valued radial surfaces). Flag stays default-OFF; byte-identical-off unaffected; fast tierC suite
+green. NEXT (perf, then unblock): port the BVH-twin locator into the production interior ruler; re-run the multi-bay
+gate; then rebaseline20. The DRIVE-ALL-20 campaign is NOT blocked on this — the tangled-6 kernel dispatch + smooth-
+tail close (spec V10b §3) proceed on the research meshers independently.
