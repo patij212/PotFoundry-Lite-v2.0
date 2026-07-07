@@ -244,7 +244,6 @@ export function scoreWholeMeshBVH(
     ? { maxMm: -1, p99Mm: -1, p50Mm: -1 }
     : twinOnSurfaceResidual(loc, rA, H, twinRes.nTheta, twinRes.nZ, tv === 'sub' ? 8 : 1);
   const nF = idx.length / 3;
-  const BARY_FAST: ReadonlyArray<readonly [number, number, number]> = [[1, 0, 0], [0, 1, 0], [0, 0, 1], [1 / 3, 1 / 3, 1 / 3]];
   const advMargin = 0.7 * tol;
   // Radial upper bound at a point (strict for z within [0,H]; returns Infinity
   // outside so rim points always fall through to the exact BVH path).
@@ -314,19 +313,17 @@ export function scoreWholeMeshBVH(
         continue;
       }
     }
-    // fast screen: 3 verts + centroid
-    let screen = 0;
-    for (const [wa, wb, wc] of BARY_FAST) {
+    // UNSOUND 4-PT SCREEN REMOVED (E-2026-07-07 instrument catch): the old
+    // verts+centroid BVH screen (skip dense when ≤ 0.7·tol) MISSED facets
+    // whose deviation lives BETWEEN the screen points — measured on
+    // CelticKnot: dense-basis outliers ≈ 1.8× the screened count on
+    // sub-facet-scale weave relief. The radial Stage-0 prefilter above IS
+    // sound (per-sample strict upper bound over the FULL dense lattice);
+    // any facet reaching here gets the full dense evaluation.
+    let dv = 0;
+    for (const [wa, wb, wc] of DENSE) {
       const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
-      const d = loc.dist(px, py, pz); if (d > screen) screen = d;
-    }
-    let dv: number;
-    if (screen <= advMargin) { dv = screen; } else {
-      dv = 0;
-      for (const [wa, wb, wc] of DENSE) {
-        const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
-        const d = loc.dist(px, py, pz); if (d > dv) dv = d;
-      }
+      const d = loc.dist(px, py, pz); if (d > dv) dv = d;
     }
     devS.push(dv);
     if (dv > worst) { worst = dv; worstFacet = f; }

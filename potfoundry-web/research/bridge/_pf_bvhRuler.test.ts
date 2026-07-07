@@ -125,7 +125,10 @@ const SHARD = ((): { k: number; n: number } | null => {
 const STYLE_FILTER = (process.env.PF_BVH_STYLES ?? '').split(',').map((s) => s.trim()).filter(Boolean);
 
 function scoreQ3(spec: Q3Spec): void {
-  const file = join(OUT, 'q3.ndjson');
+  // PF_BVH_OUTFILE routes re-scores to a fresh ndjson (the original q3.ndjson
+  // rows used the since-removed unsound 4-pt screen — dense-basis re-scores
+  // must not be blocked by their rowExists keys).
+  const file = join(OUT, process.env.PF_BVH_OUTFILE ?? 'q3.ndjson');
   if (STYLE_FILTER.length && !STYLE_FILTER.includes(spec.style)) return;
   const rowKey = SHARD ? `${spec.style}#${SHARD.k}of${SHARD.n}` : spec.style;
   if (rowExists(file, rowKey)) { plog(`[skip Q3] ${rowKey} row exists`); return; }
@@ -193,7 +196,12 @@ function weaveExclude(style: StyleId, band: number): (u: number, t: number) => b
 }
 
 describe('BVH-RULER Q3-EXCL — weave re-adjudication under crease exclusion', () => {
+  // band=0 arms = DENSE-BASIS UNEXCLUDED BASELINES (the predicate never
+  // fires): required because the original Q3 rows used the (since-removed)
+  // unsound 4-pt screen — excluded-vs-unexcluded must compare on one basis.
   const EXCL: Array<{ style: StyleId; binDir?: string; band: number }> = [
+    { style: 'BasketWeave' as StyleId, binDir: 'BasketWeave_bins', band: 0 },
+    { style: 'CelticKnot' as StyleId, binDir: 'CelticKnot_bins', band: 0 },
     { style: 'BasketWeave' as StyleId, binDir: 'BasketWeave_bins', band: 1e-3 },
     { style: 'BasketWeave' as StyleId, binDir: 'BasketWeave_bins', band: 2e-3 },
     { style: 'CelticKnot' as StyleId, binDir: 'CelticKnot_bins', band: 1e-3 },
