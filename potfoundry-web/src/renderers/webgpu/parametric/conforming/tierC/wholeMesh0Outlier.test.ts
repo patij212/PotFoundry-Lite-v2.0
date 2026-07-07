@@ -37,7 +37,12 @@ function nonManifoldByIndex(tris: number[]): number {
 }
 
 const SMOKE_TIMEOUT_MS = 10 * 60 * 1000;
-const FULL_TIMEOUT_MS = 60 * 60 * 1000;
+// A SYNCHRONOUS vitest test cannot be interrupted mid-run — the timeout only
+// fires when the fn yields. Size it to the honest job (the full Gothic gate
+// is a multi-hour single-thread brute grind), or the whole run is wasted:
+// the work completes and is then retroactively marked failed. Measured the
+// hard way (5h run discarded at a 1h timeout).
+const FULL_TIMEOUT_MS = 8 * 60 * 60 * 1000;
 const FULL = process.env.PF_TIERC_WHOLEMESH === '1';
 
 function runPatchGate(
@@ -51,13 +56,27 @@ function runPatchGate(
   expect(complex.residualCrossings).toBe(0);
 
   const ruler = { ...DEFAULT_RULER, nTheta };
-  const refined = refineToZeroOutliers(sampler, complex, domain, {
-    tolMm: 0.01,
-    maxPass: 16,
-    bulkPasses7pt: 4,
-    bgArcMm,
-    ruler,
-  });
+  const refined = refineToZeroOutliers(
+    sampler,
+    complex,
+    domain,
+    {
+      tolMm: 0.01,
+      maxPass: 16,
+      bulkPasses7pt: 4,
+      bgArcMm,
+      ruler,
+    },
+    (s) => {
+      // Liveness + resumable diagnostics for the multi-hour full gates.
+      // eslint-disable-next-line no-console
+      console.log(
+        `[tierC ${styleId} pass ${s.pass}${s.dense ? ' DENSE' : ' 7pt'}] ` +
+          `tris=${s.nTris} out=${s.outliers} worst=${s.worstMm.toFixed(5)} ` +
+          `inserted=${s.inserted} brute=${s.bruteCalls} ${(s.ms / 1000).toFixed(0)}s`,
+      );
+    },
+  );
   expect(refined.capped).toBe(false);
 
   // MANDATORY whole-mesh guard: EVERY facet, dense 45-pt honest ruler.
