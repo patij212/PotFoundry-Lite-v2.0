@@ -302,7 +302,25 @@ export function facetInteriorHonest(
       if (gn <= opts.gnScreen) {
         d = gn; // green GN cannot be an outlier; keep the cheap value
       } else {
-        d = bruteNearestOnRadialSurface(px, py, pz, rA, H, opts);
+        // PER-SAMPLE θ-window: the same-azimuth `bound` upper-bounds the true
+        // distance, so the foot lies within `bound` Euclidean of P, hence
+        // within asin(bound/r_foot) of P's azimuth. r_foot ≥ r_local for a
+        // point OUTSIDE the surface but can be smaller for one inside — so
+        // use HALF the local radius as a conservative r_foot floor (covers
+        // relief up to 50% of the radius, generous for the rib/chevron
+        // styles) plus a 12-cell margin for the z-band box refine. Scans at
+        // full angular resolution ⇒ exact where the window holds the foot;
+        // it can only OVERSTATE otherwise (safe). Fixed windows understate —
+        // a big early-pass facet's foot can be many ribs away (measured 57
+        // false-0s at a fixed 0.5rad).
+        const rho = Math.hypot(px, py);
+        const win =
+          Math.asin(Math.min(1, (2 * bound) / Math.max(1e-6, rho))) +
+          12 * (TAU / opts.nTheta);
+        d = bruteNearestOnRadialSurface(px, py, pz, rA, H, {
+          ...opts,
+          thetaWindowRad: Math.min(Math.PI, win),
+        });
         bruteCalls++;
       }
     }
