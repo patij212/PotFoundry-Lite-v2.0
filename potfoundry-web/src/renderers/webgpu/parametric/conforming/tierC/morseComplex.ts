@@ -487,19 +487,31 @@ export function buildProtectedComplex(
     mergeJunctions: true,
   });
 
-  // RIDGE SNAP (load-bearing, measured): detectFeatures places chains within
-  // ~1 fine cell of the true ridge — at fineRes 120 that is p50 1.02mm /
-  // p90 1.86mm of arc OFF the cusp (probe _tierc_crestOffset). Locking the
-  // raw chains protects the WRONG line and facets bridge the real cusp
-  // beside it (the full-Gothic-gate ~0.4mm insertion-invariant floor). The
-  // detector supplies TOPOLOGY; placement comes from snapping each chain
-  // vertex to the local radius maximum along u OR t (whichever direction
-  // shows the stronger ridge amplitude) within ±1.2 cells. Low-amplitude
-  // points (component boundaries, flat creases) stay unsnapped.
+  // DENSIFY + RIDGE-SNAP the chains BEFORE planarizing (load-bearing, and it
+  // MUST happen here so planarizeMM sees the final geometry — snapping AFTER
+  // planarization re-introduces crossings and cdt2d throws `upperIds`,
+  // project memory cdt_planarization). Two measured facts drive this:
+  //  (1) detectFeatures places chain vertices ~1 fine cell off the true ridge
+  //      (p50 1.02mm at fineRes 120, probe _tierc_crestOffset) → snap each
+  //      point to the local radius max along the segment NORMAL;
+  //  (2) detector chains arrive at ~2.4mm pitch, but cdt2d cannot split a
+  //      LOCKED edge, so a long constraint edge floors every crest-adjacent
+  //      facet at ~L²κ/8 (~0.4mm for a 1mm chord — the full-gate plateau,
+  //      probe _tierc_constraintLen) → densify to DENSIFY_MM 3D pitch so the
+  //      locked crest can refine along its length (matches the research
+  //      kernel's ~0.1mm analytic crest chains).
+  // Normal-direction snap: a small window crosses exactly ONE rib (an
+  // axis-aligned window on a diagonal rib is bimodal); amp-gated so
+  // component-boundary / flat-crease chains stay put.
+  const DENSIFY_MM = 0.15;
+  const SNAP_WIN_MM = 2.5;
+  const SNAP_MIN_AMP_MM = 0.05;
   const rAt = (u: number, t: number): number => {
     const [x, y] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
     return Math.hypot(x, y);
   };
+  const pos3D = (u: number, t: number): [number, number, number] =>
+    sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
   const goldenMax = (f: (s: number) => number, lo: number, hi: number): number => {
     const gr = (Math.sqrt(5) - 1) / 2;
     let a = lo;
@@ -514,51 +526,63 @@ export function buildProtectedComplex(
     }
     return (a + b) / 2;
   };
-  // Snap along the chain's local NORMAL (mm-scaled): a small normal window
-  // crosses exactly ONE rib (unimodal — an axis-aligned window on a DIAGONAL
-  // rib is bimodal and can land in the neighbouring rib's basin; measured:
-  // axis snap left p90 1.77mm) and cannot drift along the chain.
-  const SNAP_WIN_MM = 2.5;
-  const SNAP_MIN_AMP_MM = 0.05;
-  const snapChain = (
+  const snapAlongNormal = (
+    u: number,
+    t: number,
+    txMm: number,
+    tyMm: number,
+  ): { u: number; t: number } => {
+    const L = Math.hypot(txMm, tyMm);
+    if (L < 1e-9) return { u, t };
+    const nxMm = -tyMm / L;
+    const nyMm = txMm / L;
+    const at = (s: number): [number, number] => [
+      u + (s * nxMm) / uToMm,
+      t + (s * nyMm) / tToMm,
+    ];
+    const f = (s: number): number => {
+      const [uu, tt] = at(s);
+      return rAt(uu, tt);
+    };
+    const sStar = goldenMax(f, -SNAP_WIN_MM, SNAP_WIN_MM);
+    if (f(sStar) - Math.max(f(-SNAP_WIN_MM), f(SNAP_WIN_MM)) < SNAP_MIN_AMP_MM) {
+      return { u, t };
+    }
+    const [su, st] = at(sStar);
+    return { u: su, t: Math.min(1, Math.max(0, st)) };
+  };
+  const densifyAndSnap = (
     poly: ReadonlyArray<{ u: number; t: number }>,
   ): Array<{ u: number; t: number }> => {
-    const n = poly.length;
-    return poly.map((p, i) => {
-      const prev = poly[Math.max(0, i - 1)];
-      const next = poly[Math.min(n - 1, i + 1)];
-      // Seam-consistent tangent in mm.
-      let du = next.u - prev.u;
+    if (poly.length < 2) return poly.map((p) => ({ u: p.u, t: p.t }));
+    const out: Array<{ u: number; t: number }> = [];
+    for (let i = 0; i < poly.length - 1; i++) {
+      const a = poly[i];
+      const b = poly[i + 1];
+      let du = b.u - a.u;
       while (du > 0.5) du -= 1;
       while (du < -0.5) du += 1;
+      const A = pos3D(a.u, a.t);
+      const B = pos3D(a.u + du, b.t);
+      const len3 = Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+      const nSeg = Math.max(1, Math.ceil(len3 / DENSIFY_MM));
       const txMm = du * uToMm;
-      const tyMm = (next.t - prev.t) * tToMm;
-      const L = Math.hypot(txMm, tyMm);
-      if (L < 1e-9) return p;
-      // Unit normal in mm space → step in (u,t).
-      const nxMm = -tyMm / L;
-      const nyMm = txMm / L;
-      const at = (s: number): [number, number] => [
-        p.u + (s * nxMm) / uToMm,
-        p.t + (s * nyMm) / tToMm,
-      ];
-      const f = (s: number): number => {
-        const [uu, tt] = at(s);
-        return rAt(uu, tt);
-      };
-      const sStar = goldenMax(f, -SNAP_WIN_MM, SNAP_WIN_MM);
-      const amp = f(sStar) - Math.max(f(-SNAP_WIN_MM), f(SNAP_WIN_MM));
-      if (amp < SNAP_MIN_AMP_MM) return p;
-      const [su, st] = at(sStar);
-      return { u: su, t: Math.min(1, Math.max(0, st)) };
-    });
+      const tyMm = (b.t - a.t) * tToMm;
+      for (let s = 0; s < nSeg; s++) {
+        const fr = s / nSeg; // include start, exclude end (next seg / final)
+        out.push(snapAlongNormal(a.u + fr * du, a.t + fr * (b.t - a.t), txMm, tyMm));
+      }
+    }
+    const last = poly[poly.length - 1];
+    out.push({ u: last.u, t: Math.min(1, Math.max(0, last.t)) });
+    return out;
   };
 
   // Polylines → flat mm segment soup, unwrapping u continuously per chain.
   const pts: number[] = [];
   const rawEdges: Array<[number, number]> = [];
   for (const edge of conditioned.edges) {
-    const poly = snapChain(edge.polyline);
+    const poly = densifyAndSnap(edge.polyline);
     if (poly.length < 2) continue;
     let uPrev = poly[0].u;
     let prevIdx = pts.length / 2;

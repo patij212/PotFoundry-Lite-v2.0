@@ -89,63 +89,13 @@ const DEDUPE_CELL_MM = 0.004;
  */
 const MAX_CONSTRAINT_MM = 0.15;
 
-/** Golden-section max of r along the (duMm,dtMm) NORMAL; ridge-snaps a point. */
-type RidgeSnap = (
-  u: number,
-  t: number,
-  duMm: number,
-  dtMm: number,
-  winMm: number,
-) => [number, number];
-
-function makeRidgeSnapper(
-  sampler: SurfaceSampler,
-  uToMm: number,
-  tToMm: number,
-): RidgeSnap {
-  const rAt = (u: number, t: number): number => {
-    const [x, y] = sampler.position(
-      ((u % 1) + 1) % 1,
-      Math.min(1, Math.max(0, t)),
-    );
-    return Math.hypot(x, y);
-  };
-  return (u, t, duMm, dtMm, winMm) => {
-    const L = Math.hypot(duMm, dtMm);
-    if (L < 1e-9) return [u, t];
-    const nx = -dtMm / L;
-    const ny = duMm / L;
-    const at = (s: number): [number, number] => [
-      u + (s * nx) / uToMm,
-      t + (s * ny) / tToMm,
-    ];
-    const f = (s: number): number => {
-      const [uu, tt] = at(s);
-      return rAt(uu, tt);
-    };
-    const gr = (Math.sqrt(5) - 1) / 2;
-    let lo = -winMm;
-    let hi = winMm;
-    let c1 = hi - gr * (hi - lo);
-    let d1 = lo + gr * (hi - lo);
-    for (let i = 0; i < 40; i++) {
-      if (f(c1) > f(d1)) hi = d1;
-      else lo = c1;
-      c1 = hi - gr * (hi - lo);
-      d1 = lo + gr * (hi - lo);
-    }
-    const sStar = (lo + hi) / 2;
-    if (f(sStar) - Math.max(f(-winMm), f(winMm)) < 0.02) return [u, t];
-    const [su, st] = at(sStar);
-    return [su, Math.min(1, Math.max(0, st))];
-  };
-}
-
 /**
  * Seed the chart mesh: protected-complex vertices (converted mm → chart) with
- * their constraint edges LOCKED and densified to `maxConstraintMm` 3D pitch
- * (ridge-snapped so the crest hugs the true cusp), plus a uniform background
- * grid at bgArcMm pitch over the domain, CDT'd in mm space (isotropic).
+ * their constraint edges LOCKED (the complex is already dense + on-ridge +
+ * planar from morseComplex; a straight belt-and-suspenders densification to
+ * `maxConstraintMm` only splits any coarse chain — never re-snaps, which
+ * would break planarity), plus a uniform background grid at bgArcMm pitch
+ * over the domain, CDT'd in mm space (isotropic predicates).
  */
 export function seedFromComplex(
   complex: ProtectedComplex,
@@ -194,34 +144,29 @@ export function seedFromComplex(
     if (complexId !== undefined) idMap.set(complexId, id);
     return id;
   };
-  const snap: RidgeSnap | null = sampler
-    ? makeRidgeSnapper(sampler, uToMm, tToMm)
-    : null;
   const pos3D = (u: number, t: number): [number, number, number] =>
     sampler
       ? sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)))
       : [u * uToMm, t * tToMm, 0];
-  // Densify one constraint segment to ≤ maxConstraintMm 3D pitch, ridge-
-  // snapping each interior point along the segment normal so the locked chain
-  // hugs the true cusp. Endpoints keep their ids (shared at junctions).
+  // The complex is already dense (≤0.15mm) + on-ridge + planar (morseComplex
+  // densifies+snaps BEFORE planarizeMM — snapping HERE, post-planarization,
+  // re-introduces crossings and cdt2d throws `upperIds`). This is a STRAIGHT,
+  // collinear densification only (planarity-safe — collinear points on a
+  // non-crossing segment add no crossings): a belt-and-suspenders splitter in
+  // case a chain arrives coarse. NEVER snap here.
   const pushConstraint = (ia: number, ib: number): void => {
     const au = uv[2 * ia];
-    const at = uv[2 * ia + 1];
+    const atv = uv[2 * ia + 1];
     const bu = uv[2 * ib];
     const bt = uv[2 * ib + 1];
-    const A = pos3D(au, at);
+    const A = pos3D(au, atv);
     const B = pos3D(bu, bt);
     const len3 = Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
     const nSeg = Math.max(1, Math.ceil(len3 / maxConstraintMm));
-    const duMm = (bu - au) * uToMm;
-    const dtMm = (bt - at) * tToMm;
     let prev = ia;
     for (let s = 1; s < nSeg; s++) {
       const f = s / nSeg;
-      let mu = au + f * (bu - au);
-      let mt = at + f * (bt - at);
-      if (snap) [mu, mt] = snap(mu, mt, duMm, dtMm, maxConstraintMm * 2);
-      const mid = addVert(mu, mt);
+      const mid = addVert(au + f * (bu - au), atv + f * (bt - atv));
       if (mid !== prev) cEdges.push([prev, mid]);
       prev = mid;
     }
@@ -351,8 +296,6 @@ export function refineToZeroOutliers(
   for (let i = 0; i < cEdges.length; i++) {
     cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
   }
-  const snapNormal = makeRidgeSnapper(sampler, uToMm, tToMm);
-
   const dense = denseBary(8);
   const history: RefinePassStat[] = [];
   let capped = false;
@@ -410,19 +353,15 @@ export function refineToZeroOutliers(
           const mt = (eta + etb) / 2;
           if (ci !== undefined) {
             // Locked crest edge: cdt2d cannot split it through a collinear
-            // point. SUBDIVIDE THE CONSTRAINT with a RIDGE-SNAPPED midpoint
-            // so the crest follows the true cusp along its length.
+            // point. SUBDIVIDE THE CONSTRAINT at its STRAIGHT midpoint (never
+            // snapped — a snapped midpoint moves off the line and can cross a
+            // neighbour → cdt2d `upperIds` crash mid-refine; the complex is
+            // already on-ridge from morseComplex). Backstop only: the seed is
+            // already dense so this rarely fires.
             const k = keyOf(mu, mt);
             if (inserted.has(k)) continue;
             inserted.add(k);
-            const [smu, smt] = snapNormal(
-              mu,
-              mt,
-              (eub - eua) * uToMm,
-              (etb - eta) * tToMm,
-              1.5,
-            );
-            const mid = addPt(smu, smt);
+            const mid = addPt(mu, mt);
             if (mid !== va && mid !== vb) {
               // Replace [va,vb] with [va,mid]; append [mid,vb].
               cEdges[ci] = [va, mid];
