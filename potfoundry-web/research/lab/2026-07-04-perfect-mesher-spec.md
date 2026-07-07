@@ -1391,3 +1391,67 @@ E-2026-07-05-REBASELINE20 (commit 124af7e). Whole-mesh ruler `_pf_rebaselineRule
 **BANKED MANDATE (reaffirmed):** no 0-outlier claim may use a top-N-gradU/percentile guard population — proven
 blind here on 12/18 Tier-A/B styles; use `acceptanceGuardWhole` / `scoreWholeMeshInterior` (every facet).
 DEV-ONLY; no src/ edit; exchange scorecards gitignored, numbers inlined.
+
+---
+
+## VALIDATION 10 — E-2026-07-06-BVH-RULER RESOLVED: the ruler question adjudicated per-style + the first honest
+## 14-style whole-mesh BVH re-baseline (2026-07-07)
+
+**INSTRUMENT (validated before use, smoke on SuperellipseMorph):** BVH-truth-twin ruler (`_pf_bvhRuler.ts`) — dense
+radial twin + flat-CSR BVH point-to-triangle. Twin residual density-converges 0.0026→0.00065→0.00016mm at
+768/1536/3072²; |BVH − analytic-brute| max 0.000136mm ≪ 0.01 on the smooth control. PERF: the 3.0mm default locator
+cell packed 1000+ twin tris/cell → on tangled twins every query scanned thousands of tris (Gyroid <5% in 8h,
+measured). Fixes (commit 66cf1e0): cell≈4× twin edge + radial same-azimuth upper-bound prefilter (strict bound for
+z∈[0,H]; outlier counts/max unaffected) + PF_BVH_SHARD facet sharding (6 procs) + subsampled twin gate on shards>0.
+Result ~100×: full 14-style re-score in ~40min total; shard sums reproduce sequential rows EXACTLY (Ripple 64@
+0.019083, Wave 2@0.010244, Fourier 19, Harmonic 62 — bytewise agreement on max).
+
+### (1) Q1 — the ruler question: MIXED per-style, blanket-artifact hypothesis REFUTED
+Worst-2000-facet ratio study (BVH-truth / ruler), doubled-twin density gate:
+| style | ratioP50 | frac<0.3 | frac>0.7 | densityStable | verdict |
+|---|---|---|---|---|---|
+| GyroidManifold | 0.538 | 0.089 | 0.234 | NO (2× twin +14-22%) | GENUINE gap; ruler OVERSTATES ~2× (max 0.215→~0.098) |
+| Voronoi | 0.974 | 0 | 0.972 | YES (xcheck 0.004) | GENUINE gap; ruler HONEST |
+| HexagonalHive | 0.924 | 0 | 1.0 | ~(p90 14%) | GENUINE gap; ruler UNDERSTATES worst facets ~2.7× (0.041→0.113) |
+⇒ NO blanket steep-overstatement artifact: the ruler errs BOTH directions by style. The V9 "6/20" verdict stands
+directionally; magnitudes shift per style. The 0.01 campaign CANNOT be closed by metrology alone.
+
+### (2) Q3 — consolidated whole-mesh BVH scorecard (every facet, shard-summed, tol 0.01mm)
+| style | outliers (whole-mesh) | max mm | p99 | twinOnSurf | class |
+|---|---|---|---|---|---|
+| WaveInterference | 2 | 0.0102 | 0.0064 | 0.0017 | smooth tail — NEARLY CLOSED |
+| FourierBloom | 19 | 0.0103 | 0.0065 | 0.0055 | smooth tail — nearly closed |
+| RippleInterference | 64 | 0.0191 | 0.0065 | 0.0052 | smooth tail — genuine small |
+| HarmonicRipple | 62 | 0.0151 | 0.0063 | 0.0048 | smooth tail — genuine small |
+| HexagonalHive | 9,479 | 0.1287 | 0.0100 | 0.0045 | tangled — GENUINE (deeper than ruler knew) |
+| Crystalline | ~19,564 (×2 scaled) | 0.134 | 0.0057 | 0.065 ⚠ | tangled — genuine, twin band-limit caveat |
+| GyroidManifold | 107,642 | 0.0889 | 0.0378 | 0.049 ⚠ | tangled — GENUINE (max halves vs V9, count grows) |
+| Voronoi | 97,948 | 0.1374 | 0.0250 | 0.021-0.029 | tangled — GENUINE (ruler was honest) |
+| DragonScales | 263,071 | 0.0460 | 0.0394 | 0.010 | riser — BROAD SHALLOW (old max 0.219 ≈5× overstated; count 30× up) |
+| LowPolyFacet | ~6,464 (×2) | 0.3946 | ~0.000002 | 0.012-0.033 | DESIGNED smin-rounded crease class (body exact; interpret as designed feature, not defect) |
+| CelticKnot | 58,250 | 0.1075 | 0.0215 | 0.074-0.076 ⚠ | weave — UPPER BOUND (crease-locus + twin band-limit) |
+| CelticTriquetra | 166,991 | 0.0905 | 0.0252 | 0.050-0.051 ⚠ | weave — UPPER BOUND |
+| BasketWeave | 924,210 | 0.3424 | 0.222-0.239 | 0.060 ⚠ | weave — UPPER BOUND (worst; scored on moderate-density twin stand-in mesh) |
+| SuperformulaBlossom | ~92,388 (×2) | 6.91-7.04 | 0.0019 | 0.209 ⚠⚠ | SEAM-WALL TWIN-BLIND-SPOT: body p99 0.0019 = CAD-grade; the non-2π seam radius-discontinuity is genuine geometry the single-valued radial twin CANNOT represent — measurement-excluded class (matches the doubled-seam-edge zero-serration proof) |
+NOTES: weave/braid rows measured against single-valued radial rA with the known C0 over-under crease loci (the B5
+program excluded that class as f32/f64 strand-flip metric discontinuity) — treat as UPPER BOUNDS pending crease-locus
+exclusion. Crystalline/Gyroid twins are density-marginal at 3072² (Q1 gate) — their maxes are lower bounds.
+
+### (3) CAMPAIGN DISPATCH (drive-all-20-to-0.01, updated)
+Literal-0 today: 6/20 (V9 four + Gothic/GeoStar Tier-C patch kernel). Path per class:
+1. SMOOTH TAILS (4): 2-64 facets, ≤0.019 — cheapest wins; local honest-ruler-driven refinement (deep-sag on flagged
+   facets). Wave/Fourier are a hair over.
+2. TANGLED (4: Gyroid/Voronoi/HexHive/Crystalline): GENUINE, tens-of-thousands of facets at 0.09-0.14 — dispatch the
+   whole-mesh kernel (honest-brute STOP driver + interior refine); targets are ~2× nearer than V9 claimed for Gyroid.
+3. RISER (DragonScales): broad-shallow 0.046 — the proven z-density lever at moderate boost, re-gate under BVH.
+4. WEAVE (3): build the crease-locus-excluded BVH basis FIRST (extend basketWeaveCreaseLoci exclusion to the twin
+   scorer), then re-adjudicate — the 0.09-0.34 numbers are not yet actionable.
+5. EXCLUDED-BY-DESIGN: LowPolyFacet (designed smin creases; body exact) + SFB seam wall (genuine geometry, twin-blind)
+   — document, per [[feedback_export_standard]] these need the feature-edge argument, both already have it (LowPoly
+   doubled-crest zero-serration; SFB doubled seam-edge zero-serration).
+6. GOTHIC/GEOSTAR: Tier-C back-port CODE-COMPLETE (Tasks 1-6, d38150a..233a25b) — full patch gates + rebaseline20 run
+   pending (machine was busy with this measurement).
+
+**LEDGER:** registry E-2026-07-06-BVH-RULER → RESOLVED (this section). Data research/exchange/_pf_bvh/{q1,q3}.ndjson
+(gitignored; numbers inlined above). Perf commit 66cf1e0. Shard cross-validation: smooth-style shard sums == sequential
+rows exactly.

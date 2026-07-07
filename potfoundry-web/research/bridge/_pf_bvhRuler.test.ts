@@ -127,10 +127,17 @@ function scoreQ3(spec: Q3Spec): void {
   const m = loadStyle(spec.style, spec.binDir); if (!m) return;
   const rA = buildRadiusFn(spec.style, {}, DIMS);
   const tris = m.idx.length / 3;
-  plog(`[Q3 ${rowKey}] tris=${tris} twin=${spec.twinRes.nTheta}x${spec.twinRes.nZ} stride=${spec.stride} — scoring...`);
+  // Locator cell ≈ 4× the twin's θ-edge (~0.37mm at 3072 on a ~283mm
+  // circumference). The old 3.0mm default packed ~1000+ twin tris per cell —
+  // on TANGLED twins every query scanned thousands of triangles (measured:
+  // Gyroid <5% in 8h). Cell size only affects speed/memory, never the result
+  // (expanding-shell query is exact).
+  const circ = 2 * Math.PI * ((DIMS.Rb + DIMS.Rt) / 2);
+  const cell = Math.max(0.35, 4 * (circ / spec.twinRes.nTheta));
+  plog(`[Q3 ${rowKey}] tris=${tris} twin=${spec.twinRes.nTheta}x${spec.twinRes.nZ} stride=${spec.stride} cell=${cell.toFixed(2)} — scoring...`);
   const t0 = Date.now();
   const r = scoreWholeMeshBVH(m.xyz, m.idx, rA, H, spec.twinRes, {
-    tol: TOL, stride: spec.stride,
+    tol: TOL, stride: spec.stride, cell,
     shard: SHARD ?? undefined,
     twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
     onProgress: (d, t, no, w) => { if (Math.floor(d / t * 20) !== Math.floor((d - 1) / t * 20)) plog(`[Q3 ${rowKey}] ${Math.floor(d / t * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
