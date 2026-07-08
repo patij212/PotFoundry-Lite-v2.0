@@ -1708,6 +1708,58 @@ Data: research/exchange/_tierc_junction/{gate_pass_FINAL.ndjson, seam_static.jso
 
 ---
 
+## V11h — MULTI-BAY PIN ROOT-CAUSED (a CDT t-NEEDLE, not a density/seam/locked-edge floor); ADAPTIVE SEED breaks it but only OVER 6M — the honest fidelity-vs-budget frontier (2026-07-08)
+
+**E-2026-07-08-TIERC-ADAPTIVE-SEED** (ROUND 3, follow-up to V11e). The V11e recommendation was an ADAPTIVE
+chord-sag seed + a worst-sample Steiner split for the "RED-1→4-unreducible" pin. Both diagnosed + measured.
+
+**PIN DIAGNOSIS — DECISIVE (full facet-state dump, `pin_diag.json`).** The ~1.05918988549241mm pin is a **LONG
+t-SPANNING NEEDLE**, NOT a locked edge / seam / smooth-arc RED-density floor (all three V10b/V11e hypotheses REFUTED):
+- Geometry: edges **AB=CA≈8.9mm, BC≈0.02mm**, **uSpan≈0.0002, tSpan≈0.075** — a hair-thin needle running from t≈0.464
+  to t≈0.538 at fixed u≈0.0585, worst sample at (0.0585, 0.482) in the arch dead zone. **No edge is locked.**
+- Mechanism: RED-1→4 **DOES** reduce it (1.059 → 0.622 worst child) but slowly (~7 halvings for a 9mm needle);
+  the CDT **REGENERATES a similar needle every pass** because the UNIFORM bgArcMm seed has NO interior points inside
+  the dead-zone t-band, so the "pin across passes" is a re-forming needle, not one frozen facet. Steiner-at-worst is a
+  **NO-OP** (1.059 → 1.059 — the worst sample sits ON the 9mm edge ⇒ 2 of 3 children are still needles). ⇒ the fix is
+  INTERIOR POINTS that force the CDT to break the span, i.e. LEVER A; a surgical single-facet Steiner cannot fix a
+  symptom that regenerates from global under-seeding.
+
+**LEVER A (2D curvature-adaptive seed, `adaptiveSeedPoints`) — MECHANISM CONFIRMED, but REFUTED on the 6M budget.**
+A recursive cell-subdivision seed keyed on local P1 chord sag (u and t), opt-in via `RefineOptions.adaptiveSeed`
+(default OFF ⇒ uniform seed byte-identical, guarded). Two parameterizations (the pre-registered cap):
+- **A1 (hMin 0.09, maxLevel 5):** BREAKS the pin — worst monotone-down **1.052 → 0.783 → 0.753 → 0.863 → 1.045(dense) →
+  0.900 → 0.734** (the uniform gate PINS at 1.0592 forever). Outliers 6399→…→2350 and dropping. BUT tris **49k → 197k by
+  pass 7 ⇒ full-pot projection 197k×42 ≈ 8.3M, OVER the 6M budget** and still climbing.
+- **A2 (hMin 0.18, maxLevel 3):** coarser seed ⇒ ~6.2M-ish tris but the **pin REFORMS at EXACTLY 1.05918988549241** at
+  the first dense pass — identical to the uniform gate. Too coarse to break the CDT needle.
+- **The decisive frontier:** the needle requires ≤0.09mm interior t-pitch to break; at that density the RIB-DENSE wall
+  triggers the sag field EVERYWHERE (measured `adaptiveSeedPoints` density ≈ **86,000 pts/unit-t UNIFORMLY across ALL
+  t-bands** 0→1, not just the arch — the "dead zone" is NOT sparse, the whole wall is relief-dense). The seed floors at
+  ~18-22k pts regardless of hMin(0.09-0.2)/maxLevel(3-5)/uSplit (level-1 split fires on every rib-covered cell; t-only
+  barely helps, 22k→19.5k). ⇒ **NO config both breaks the pin AND stays under 6M.**
+
+**LEVER B (worst-sample Steiner) — SUBSUMED/REFUTED by the diagnosis.** The pin_diag Steiner-at-worst no-op + the
+"needle regenerates from global under-seeding" mechanism show a single-facet Steiner cannot fix it; the only fix is
+interior density = LEVER A = over budget. Not separately run (the diagnosis pre-empts it per the STOP criterion).
+
+**NET — the multi-bay Gothic gate does NOT converge to literal 0 under 6M; the residual is a fidelity-vs-budget
+frontier, not a mechanism wall.** The pin is fully root-caused (a re-forming CDT t-needle across the smooth arch bump)
+and its fix is known (interior seed density) but UNAFFORDABLE at patch scale under the 6M full-pot cap because the
+Gothic wall is uniformly relief-dense. The uniform gate's ~1800-outlier/6.1M plateau and LEVER A's lower-outlier/8.3M
+both miss the (0 outliers, <6M) target. **T5 (GeoStar patch + rebaseline20) is GATED on convergence ⇒ NOT launched.**
+The next genuinely-different lever (future work): a RIB-AWARE seed that EXCLUDES the locked-edge-carried rib curvature
+from the sag field (so it densifies ONLY the smooth dead-zone residual, not every rib) — this could shrink the seed
+back toward budget; OR accept the multi-bay Gothic arch band as a documented density-vs-budget concession.
+
+**GUARANTEES:** only flag-gated Tier-C touched (noBridgeRefine.ts + dev-only PF_TIERC_PINDIAG / PF_TIERC_GATEA /
+PF_ADIAG probes + adaptiveSeed.test.ts); index.ts's parallelScorer-re-export removal is the CONCURRENT agent's
+browser-bundle fix (left unstaged, not mine). byte-identical-OFF GREEN (flagOff.byteIdentical); fast tierC suite GREEN
+(11 tests incl. dirtyCache byte-identical — proves the uniform-seed path is unchanged); flag default-OFF. Commits
+f0584de (pre-reg) / [LEVER-A] / [uSplit+finding]. Data: research/exchange/_tierc_junction/{pin_diag.json,
+adaptive_seed_finding.json, gateA_A1_OVERBUDGET.ndjson, gateA_A2_PINNED.ndjson} (gitignored).
+
+---
+
 ## V11c — DRAGONSCALES Z-DENSITY + CT ADJUDICATION (2026-07-08)
 
 Two independent arms, both measured under the EXACT V10b dense radial-twin BVH ruler (scoreWholeMeshBVH: dense 45-pt
