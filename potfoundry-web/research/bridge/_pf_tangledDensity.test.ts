@@ -236,7 +236,14 @@ describe('E-2026-07-08-TANGLED-DENSITY-CLOSE — Newton-verdict density sweep (�
   }, 6 * HRS);
 
   it.skipIf(process.env.PF_TDC !== 'Voronoi')('Voronoi', () => {
-    runDensitySweep('Voronoi' as StyleId, [0.02, 0.01, 0.005, 0.0025], [900_000, 1_600_000, 2_400_000, 3_000_000]);
+    // Voronoi is the largest floor (V11i ~115,816 @ 1.8M tris; BVH-twin-sound 0.0077 ⇒ REAL). Like Crystalline its
+    // cell-wall relief is intrinsically dense; establish the density DIRECTION via a BASE-field coarse→fine sweep at
+    // fixed loose chord + generous budget (hitBudget=false = valid density points), staying under 6M proj.
+    runDensitySweep('Voronoi' as StyleId, [0.02, 0.02, 0.02], [3_000_000, 3_000_000, 3_000_000], 1500, 1500, 0.01, [
+      { tolMm: 0.02, sizeRes: 96 },
+      { tolMm: 0.012, sizeRes: 160 },
+      { tolMm: 0.008, sizeRes: 224 },
+    ]);
     expect(true).toBe(true);
   }, 6 * HRS);
 
