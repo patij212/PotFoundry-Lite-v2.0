@@ -84,7 +84,13 @@ export function bruteTruth(
 // z-scale set by zTpms), then polish EACH seed with damped Gauss-Newton on the analytic (FD) gradient/Hessian of D².
 // Keeping the global min over all polished seeds is grid-free (the answer is a continuous optimum, not a grid node)
 // and defeats the wrong-local-min trap because every well within the window gets its own descent.
-export interface NewtonOpts { seedTheta: number; seedZ: number; nThetaSeeds: number; nZSeeds: number; maxIter: number; }
+// E-2026-07-08 DIAG2 fix: the true foot on a Gyroid channel-wall point is θ-NARROW (within the radial-bound window
+// asin(2·bound/ρ)) and z-SHARP (the smoothstep relief well is steep in z). A ±45° θ-window with 5 z-seeds WANDERS
+// and OVERSTATES (facet-max read ~the radial bound). Seeding at the RADIAL-ANCHOR azimuth (θ=atan2(py,px)) with a
+// window sized to the radial bound + DENSE z-seeds nails the well: newtonSeeded == windowed brute8192 == FULL
+// brute8192 to machine precision on the 3 worst facets (0.0128/0.0113/0.0147). `windowMode:'radialAnchor'` is the
+// validated default; the legacy wide-window mode is kept for A/B.
+export interface NewtonOpts { seedTheta: number; seedZ: number; nThetaSeeds: number; nZSeeds: number; maxIter: number; windowMode?: 'radialAnchor' | 'wide'; }
 // gradient of D² w.r.t (θ,z) by central FD on rA (rA is smooth except at the smoothstep clamp edges; FD h chosen
 // small enough to be exact away from a clamp and the multi-start + brute cross-check covers the clamp kinks).
 function gradD2(rA: AnalyticRadiusFn, px: number, py: number, pz: number, th: number, z: number): [number, number, number] {
@@ -97,9 +103,16 @@ function gradD2(rA: AnalyticRadiusFn, px: number, py: number, pz: number, th: nu
 export function newtonNearest(
   rA: AnalyticRadiusFn, H: number, px: number, py: number, pz: number, opts: NewtonOpts,
 ): { dist: number; theta: number; z: number; iters: number } {
-  // seed window: ± a fraction of a turn around the query azimuth, ± z-band; sized to cover >1 well each way.
+  // seed window around the RADIAL-ANCHOR azimuth (validated: the true foot is θ-narrow within the radial-bound
+  // window). radialAnchor mode sizes the θ-half-window from the radial bound (asin(2·bound/ρ)+margin) so seeds
+  // cluster where the foot actually is; wide mode is the legacy ±45° (kept for A/B).
   const a0 = (() => { const a = Math.atan2(py, px); return a < 0 ? a + TAU : a; })();
-  const thHalf = Math.PI / 4;         // ±45° window (Gyroid θ-well ≈ 2π/8; 45° covers ≈1 well each side)
+  const mode = opts.windowMode ?? 'radialAnchor';
+  const rho = Math.hypot(px, py);
+  const bnd = Math.abs(rho - rA(a0, Math.min(H, Math.max(0, pz))));
+  const thHalf = mode === 'wide'
+    ? Math.PI / 4
+    : Math.min(Math.PI, Math.asin(Math.min(1, (2 * Math.max(bnd, 0.02)) / Math.max(1e-6, rho))) + 0.1);
   const zHalf = Math.min(H * 0.5, 4); // ±4mm z-band (relief ~0-1.5mm, feet stay local)
   let gBest = Infinity, gTh = a0, gZ = pz, totIter = 0;
   for (let si = 0; si < opts.nThetaSeeds; si++) {
@@ -141,6 +154,45 @@ export function newtonNearest(
       }
       if (cur < gBest) { gBest = cur; gTh = th; gZ = z; }
     }
+  }
+  // ── COARSE-GRID SEED (basin insurance) ──────────────────────────────────────────────────────────────────────
+  // E-2026-07-08 VALIDATE residual: on ~1/60 hard points, EVERY seed-lattice start falls outside the true well's
+  // basin so descent stalls at ~the radial upper bound (f=1678065: newton 0.0785 vs truth8192 0.0091). A cheap
+  // COARSE windowed grid scan lands a seed INSIDE whatever well the grid can see; polishing its best cell with the
+  // same GN descent recovers the well. This is min(seed-lattice, coarse-grid-polished) — grid-free in spirit (the
+  // final value is a continuous optimum) but immune to the seed-basin miss. Coarse grid = 256 θ (window) × 400 z.
+  {
+    const win = thHalf;
+    const nT = 256, nZg = 400;
+    let cbf = Infinity, cbt = a0, cbz = pz;
+    for (let i = 0; i <= nT; i++) {
+      const th = a0 + (i / nT - 0.5) * 2 * win;
+      for (let j = 0; j <= nZg; j++) { const z = Math.min(H, Math.max(0, pz + (j / nZg - 0.5) * 2 * zHalf)); const f = d2(rA, px, py, pz, th, z); if (f < cbf) { cbf = f; cbt = th; cbz = z; } }
+    }
+    // FINE 1D z-line scan at the best coarse θ — the Gyroid well is z-SHARP (validated f=1678065: true foot at
+    // dz≈-0.009mm; a 0.02mm coarse z-grid + GN misses it, but a fine z-scan finds it). ±2 coarse z-cells, 800 steps.
+    const zCell = (2 * zHalf) / nZg; const zc0 = Math.max(0, cbz - 2 * zCell), zc1 = Math.min(H, cbz + 2 * zCell);
+    for (let j = 0; j <= 800; j++) { const z = zc0 + (zc1 - zc0) * (j / 800); const f = d2(rA, px, py, pz, cbt, z); if (f < cbf) { cbf = f; cbz = z; } }
+    // polish the best coarse cell with GN descent
+    let th = cbt, z = cbz, cur = cbf;
+    for (let it = 0; it < opts.maxIter; it++) {
+      totIter++;
+      const [, gTheta, gZv] = gradD2(rA, px, py, pz, th, z);
+      if (Math.hypot(gTheta, gZv) < 1e-9) break;
+      const hT = 1e-5, hZ = 1e-5;
+      const gp_t = gradD2(rA, px, py, pz, th + hT, z), gm_t = gradD2(rA, px, py, pz, th - hT, z);
+      const gp_z = gradD2(rA, px, py, pz, th, z + hZ), gm_z = gradD2(rA, px, py, pz, th, z - hZ);
+      const Htt = (gp_t[1] - gm_t[1]) / (2 * hT), Htz = (gp_t[2] - gm_t[2]) / (2 * hT);
+      const Hzt = (gp_z[1] - gm_z[1]) / (2 * hZ), Hzz = (gp_z[2] - gm_z[2]) / (2 * hZ);
+      const Hsym_tz = 0.5 * (Htz + Hzt); const det = Htt * Hzz - Hsym_tz * Hsym_tz;
+      let dth: number, dz: number;
+      if (Math.abs(det) > 1e-12 && Htt > 0) { dth = -(Hzz * gTheta - Hsym_tz * gZv) / det; dz = -(-Hsym_tz * gTheta + Htt * gZv) / det; }
+      else { const s = 1e-3; dth = -s * gTheta; dz = -s * gZv; }
+      let step = 1, accepted = false;
+      for (let ls = 0; ls < 30; ls++) { const nth = th + step * dth; const nz = Math.min(H, Math.max(0, z + step * dz)); const nf = d2(rA, px, py, pz, nth, nz); if (nf < cur - 1e-14) { th = nth; z = nz; cur = nf; accepted = true; break; } step *= 0.5; }
+      if (!accepted) break;
+    }
+    if (cur < gBest) { gBest = cur; gTh = th; gZ = z; }
   }
   return { dist: Math.sqrt(gBest), theta: gTh, z: gZ, iters: totIter };
 }

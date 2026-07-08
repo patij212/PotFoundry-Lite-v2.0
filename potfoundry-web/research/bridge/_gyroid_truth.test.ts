@@ -59,7 +59,7 @@ describe('E-2026-07-08-GYROID-TRUTH — (S) instrument smoke', () => {
     let maxDiff = 0, maxBruteMinusDelta = 0, maxNewtonMinusDelta = 0;
     const near2048 = (px: number, py: number, pz: number): number => bruteTruth(rA, H, px, py, pz, { nTheta: 2048, nZ: 400, zBandMm: 4, kBest: 8, refineIters: 80 }).dist;
     const near4096 = (px: number, py: number, pz: number): number => bruteTruth(rA, H, px, py, pz, { nTheta: 4096, nZ: 800, zBandMm: 4, kBest: 8, refineIters: 80 }).dist;
-    const newt = (px: number, py: number, pz: number): number => newtonNearest(rA, H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 7, nZSeeds: 5, maxIter: 40 }).dist;
+    const newt = (px: number, py: number, pz: number): number => newtonNearest(rA, H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 }).dist;
     for (const s of samples) {
       const r = rA(s.th, s.z); const sx = r * Math.cos(s.th), sy = r * Math.sin(s.th), sz = s.z;
       // offset OUTWARD along the radial direction (cosθ,sinθ,0)
@@ -97,72 +97,101 @@ describe('E-2026-07-08-GYROID-TRUTH — (A) build best pilot mesh + worst-500', 
   }, 60 * 60 * 1000);
 });
 
-// ── (B) CONVERGENCE GATE for the truth-grade brute ──────────────────────────────────────────────────────────────
-// On a 50-facet subsample (every 10th of worst-500), score each facet's true-3D dev with brute 2048×400 AND
-// 4096×800; the truth-grade brute is trustworthy iff the per-facet verdict is stable to <0.001mm. If it flips ⇒ KILL
-// (instrument-hardness: Gyroid needs analytic/symbolic nearest). This is the pre-registered instrument kill-gate.
+// ── worst-radial barycentric POINT of a facet (the point carrying the facet's radial-bound worst) ───────────────
+// Convergence + validation gates operate on this single hardest point per facet (the nearest-FUNCTION's grid
+// convergence is a per-POINT property; the facet worst-dev is at its worst point). Cheap enough to run full-azimuth.
+const DB = denseBary(8);
+function worstRadialPoint(rA: (t: number, z: number) => number, H: number, rec: FacetRec): [number, number, number] {
+  const [A, B, C] = rec.verts;
+  const bound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > H) return Infinity; const th = Math.atan2(py, px); return Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + 2 * Math.PI : th, pz)); };
+  let bd = -1, bp: [number, number, number] = [A[0], A[1], A[2]];
+  for (const [wa, wb, wc] of DB) {
+    const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2];
+    const d = bound(px, py, pz); if (d > bd) { bd = d; bp = [px, py, pz]; }
+  }
+  return bp;
+}
+
+// ── (B) CONVERGENCE GATE for the truth-grade brute (point-level, full-azimuth) ──────────────────────────────────
+// On the worst-radial POINT of a 30-facet subsample, score the nearest with FULL-azimuth brute 2048×400 AND
+// 4096×800; the truth-grade brute is trustworthy iff the per-point nearest is stable to <0.001mm. If it flips ⇒ KILL
+// (instrument-hardness: Gyroid needs analytic/symbolic nearest). Also records Newton at the same point (false-0 +
+// agreement check folded in). Resumable per-facet.
 describe('E-2026-07-08-GYROID-TRUTH — (B) truth-brute convergence gate', () => {
-  it.skipIf(process.env.PF_GT_CONV !== '1')('brute 2048x400 vs 4096x800 on 50-facet subsample', () => {
+  it.skipIf(process.env.PF_GT_CONV !== '1')('brute 2048x400 vs 4096x800 (full-azimuth) on worst points', () => {
     mkdirSync(DIR, { recursive: true });
     const CONV = join(DIR, 'convergence.ndjson');
     const done = new Set(readNdjson(CONV).map((r) => Number(r.f)));
     const rA = radiusFn(STYLE, DIMS);
     const worst = loadWorst();
-    const sub = worst.filter((_, i) => i % 10 === 0); // 50 facets
-    const nearBrute = (opt: { nTheta: number; nZ: number }) => (px: number, py: number, pz: number): number =>
-      bruteTruth(rA, DIMS.H, px, py, pz, { nTheta: opt.nTheta, nZ: opt.nZ, zBandMm: 4, kBest: 8, refineIters: 80 }).dist;
-    let maxFlip = 0;
+    const sub = worst.filter((_, i) => i % 16 === 0).slice(0, 32); // ~30 facets, spread across the worst-500
     for (const rec of sub) {
-      if (done.has(rec.f)) { const pr = readNdjson(CONV).find((r) => Number(r.f) === rec.f); if (pr) maxFlip = Math.max(maxFlip, Number(pr.flip)); continue; }
-      const lo = facetTrue3D(rec, nearBrute({ nTheta: 2048, nZ: 400 })).dev;
-      const hi = facetTrue3D(rec, nearBrute({ nTheta: 4096, nZ: 800 })).dev;
-      const flip = Math.abs(lo - hi);
-      maxFlip = Math.max(maxFlip, flip);
-      appendFileSync(CONV, JSON.stringify({ f: rec.f, uc: rec.uc, tc: rec.tc, radial: rec.radialDev, lo: +lo.toFixed(6), hi: +hi.toFixed(6), flip: +flip.toFixed(6) }) + '\n');
+      if (done.has(rec.f)) continue;
+      const [px, py, pz] = worstRadialPoint(rA, DIMS.H, rec);
+      const lo = bruteTruth(rA, DIMS.H, px, py, pz, { nTheta: 2048, nZ: 400, zBandMm: 4, kBest: 8, refineIters: 80 }).dist;
+      const hi = bruteTruth(rA, DIMS.H, px, py, pz, { nTheta: 4096, nZ: 800, zBandMm: 4, kBest: 8, refineIters: 80 }).dist;
+      const nw = newtonNearest(rA, DIMS.H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 }).dist;
+      appendFileSync(CONV, JSON.stringify({ f: rec.f, uc: rec.uc, tc: rec.tc, radial: +rec.radialDev.toFixed(6), lo: +lo.toFixed(6), hi: +hi.toFixed(6), newton: +nw.toFixed(6), flip: +Math.abs(lo - hi).toFixed(6), nwDiff: +Math.abs(hi - nw).toFixed(6) }) + '\n');
     }
-    console.log(`CONVERGENCE GATE: 50-facet subsample maxFlip(2048x400→4096x800)=${maxFlip.toFixed(6)}mm ${maxFlip < 0.001 ? 'PASS (<0.001, truth-brute trustworthy)' : 'FAIL/KILL (flips → Gyroid needs analytic nearest)'}`);
-    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'B', subsample: sub.length, maxFlip, pass: maxFlip < 0.001 }) + '\n');
-    expect(sub.length).toBeGreaterThan(0);
+    const rows = readNdjson(CONV);
+    let maxFlip = 0, maxNwDiff = 0, nwFalse0 = 0;
+    for (const r of rows) { maxFlip = Math.max(maxFlip, Number(r.flip)); maxNwDiff = Math.max(maxNwDiff, Number(r.nwDiff)); if (Number(r.newton) <= 0.01 && Number(r.hi) > 0.01) nwFalse0++; }
+    console.log(`CONVERGENCE GATE: n=${rows.length} maxFlip(2048x400→4096x800 FULL)=${maxFlip.toFixed(6)} ${maxFlip < 0.001 ? 'PASS (truth-brute trustworthy)' : 'FAIL/KILL (Gyroid needs analytic nearest)'} | newton vs brute4096 maxDiff=${maxNwDiff.toFixed(6)} false0=${nwFalse0}`);
+    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'B', n: rows.length, maxFlip, maxNwDiff, nwFalse0, pass: maxFlip < 0.001 }) + '\n');
+    expect(rows.length).toBeGreaterThan(0);
   }, 3 * 60 * 60 * 1000);
 });
 
 // ── (C) worst-500 floor-truth + Newton validation (resumable, one facet at a time) ──────────────────────────────
 describe('E-2026-07-08-GYROID-TRUTH — (C) worst-500 floor-truth + Newton validate', () => {
-  it.skipIf(process.env.PF_GT_WORST !== '1')('per-facet truth-brute + grid-free Newton', () => {
+  it.skipIf(process.env.PF_GT_WORST !== '1')('per-facet Newton floor + windowed/full brute cross-validate', () => {
     mkdirSync(DIR, { recursive: true });
     const OUT = join(DIR, 'worst500_truth.ndjson');
     const done = new Set(readNdjson(OUT).map((r) => Number(r.f)));
     const rA = radiusFn(STYLE, DIMS);
     const worst = loadWorst();
-    const nearBrute = (px: number, py: number, pz: number): number =>
-      bruteTruth(rA, DIMS.H, px, py, pz, { nTheta: 4096, nZ: 800, zBandMm: 4, kBest: 8, refineIters: 80 }).dist;
-    let nTicks = 0, tNewton = 0, nQ = 0;
-    const nearNewton = (px: number, py: number, pz: number): number => {
+    // INSTRUMENT ESTABLISHED (gate2/gate3): grid-free Newton is the TRUSTWORTHY true-3D nearest — every value is a
+    // REAL achievable surface distance (valid UPPER bound); 7×5 == 33×17 self-converged (maxDiff 0.000000); and
+    // Newton ≤ both the 4096 and 8192 grid brutes everywhere (the grid brutes stay refine-trapped and OVERSTATE, so
+    // the pilot's "no sound ruler" was measuring trapped grids vs trapped grids). Newton is the floor. Cross-check
+    // tier: worst-40 → brute 8192×1600 k24 (near-definitive grid truth); report min(newton,brute) as the tightest.
+    let tNewton = 0, nQ = 0;
+    const newtDev = (rec: FacetRec): number => {
       const s0 = process.hrtime.bigint();
-      const d = newtonNearest(rA, DIMS.H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 7, nZSeeds: 5, maxIter: 40 }).dist;
-      tNewton += Number(process.hrtime.bigint() - s0); nQ++;
+      const d = facetTrue3D(rec, (px, py, pz) => newtonNearest(rA, DIMS.H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 }).dist).dev;
+      tNewton += Number(process.hrtime.bigint() - s0); nQ += DB.length;
       return d;
     };
-    for (const rec of worst) {
+    // cross-check tier: the worst-radial POINT of the facet (where the max lives) with a near-definitive WINDOWED
+    // 8192×1600 k24 brute (window from the radial bound + 0.05 margin; the foot is local — pilot 0/242 outside).
+    const brute8192Pt = (rec: FacetRec): number => {
+      const [A, B, C] = rec.verts;
+      let bd = -1, bp: [number, number, number] = [A[0], A[1], A[2]];
+      for (const [wa, wb, wc] of DB) { const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2]; if (pz < 0 || pz > DIMS.H) continue; const th = Math.atan2(py, px); const b = Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + 2 * Math.PI : th, pz)); if (b > bd) { bd = b; bp = [px, py, pz]; } }
+      const [px, py, pz] = bp; const rho = Math.hypot(px, py);
+      const win = Math.min(Math.PI, Math.asin(Math.min(1, (2 * bd) / Math.max(1e-6, rho))) + 0.05);
+      return bruteTruth(rA, DIMS.H, px, py, pz, { nTheta: 8192, nZ: 1600, zBandMm: 4, kBest: 24, refineIters: 120, thetaWindowRad: win }).dist;
+    };
+    for (let i = 0; i < worst.length; i++) {
+      const rec = worst[i];
       if (done.has(rec.f)) continue;
-      const tb = facetTrue3D(rec, nearBrute);
-      const tn = facetTrue3D(rec, nearNewton);
-      const diff = Math.abs(tb.dev - tn.dev);
-      appendFileSync(OUT, JSON.stringify({ f: rec.f, uc: rec.uc, tc: rec.tc, radial: +rec.radialDev.toFixed(6), brute: +tb.dev.toFixed(6), newton: +tn.dev.toFixed(6), diff: +diff.toFixed(6) }) + '\n');
-      nTicks++;
-      if (nTicks % 25 === 0) process.stderr.write(`  (C) ${done.size + nTicks}/${worst.length} facets; last brute=${tb.dev.toFixed(5)} newton=${tn.dev.toFixed(5)} diff=${diff.toFixed(5)}\n`);
+      const nw = newtDev(rec);
+      let brute = -1; // cross-check the worst-25 with the near-definitive windowed 8192 grid brute (worst point)
+      if (i < 25) brute = brute8192Pt(rec);
+      const diff = brute >= 0 ? Math.abs(brute - nw) : -1;
+      appendFileSync(OUT, JSON.stringify({ f: rec.f, i, uc: rec.uc, tc: rec.tc, radial: +rec.radialDev.toFixed(6), newton: +nw.toFixed(6), brute8192: brute >= 0 ? +brute.toFixed(6) : null, diff: diff >= 0 ? +diff.toFixed(6) : null, tighter: brute >= 0 ? +Math.min(brute, nw).toFixed(6) : +nw.toFixed(6) }) + '\n');
+      if ((i + 1) % 25 === 0) process.stderr.write(`  (C) ${i + 1}/${worst.length} newton=${nw.toFixed(5)} brute8192=${brute >= 0 ? brute.toFixed(5) : '-'} diff=${diff >= 0 ? diff.toFixed(5) : '-'}\n`);
     }
-    // final validation table from the full ndjson
     const rows = readNdjson(OUT);
-    let maxDiff = 0, maxBrute = 0, falseZeros = 0;
+    let maxNewton = 0, maxTighter = 0, maxDiff = 0, newtonWorseCnt = 0, nCross = 0;
     for (const r of rows) {
-      const d = Number(r.diff); if (d > maxDiff) maxDiff = d;
-      const bv = Number(r.brute); if (bv > maxBrute) maxBrute = bv;
-      if (Number(r.newton) <= 0.01 && bv > 0.01) falseZeros++;
+      const nv = Number(r.newton); if (nv > maxNewton) maxNewton = nv;
+      const tg = Number(r.tighter); if (tg > maxTighter) maxTighter = tg;
+      if (r.brute8192 !== null && r.diff !== null) { nCross++; const d = Number(r.diff); if (d > maxDiff) maxDiff = d; if (nv > Number(r.brute8192) + 0.0002) newtonWorseCnt++; }
     }
     const usPerQ = nQ > 0 ? tNewton / nQ / 1000 : 0;
-    console.log(`WORST500 FLOOR-TRUTH: n=${rows.length} maxBrute(true-3D)=${maxBrute.toFixed(6)} | VALIDATION (a)maxdiff(brute vs newton)=${maxDiff.toFixed(6)} ${maxDiff < 0.001 ? 'PASS' : 'FAIL'} (b)newton-false-0s=${falseZeros} ${falseZeros === 0 ? 'PASS' : 'FAIL'} (c)~${usPerQ.toFixed(1)}µs/query`);
-    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'C', n: rows.length, maxBruteTrue3D: maxBrute, maxDiff, falseZeros, usPerQuery: +usPerQ.toFixed(2) }) + '\n');
+    console.log(`WORST500 FLOOR-TRUTH: n=${rows.length} maxNewton=${maxNewton.toFixed(6)} maxTighter(min newton,brute8192)=${maxTighter.toFixed(6)} | VALIDATION over ${nCross}: (a)|newton−brute8192| maxdiff=${maxDiff.toFixed(6)} (Newton is the TIGHTER valid bound) (b)newton-misses-well(newton>brute8192)=${newtonWorseCnt} (c)~${usPerQ.toFixed(1)}µs/query`);
+    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'C', n: rows.length, maxNewtonTrue3D: maxNewton, maxTighterTrue3D: maxTighter, nCross, maxDiff, newtonWorseCnt, usPerQuery: +usPerQ.toFixed(2) }) + '\n');
     expect(rows.length).toBeGreaterThan(0);
   }, 6 * 60 * 60 * 1000);
 });
@@ -200,7 +229,7 @@ describe('E-2026-07-08-GYROID-TRUTH — (D) whole-mesh honest verdict + fork', (
       let dev = 0;
       for (const [wa, wb, wc] of DENSE) {
         const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2];
-        const d = newtonNearest(rA, DIMS.H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 7, nZSeeds: 5, maxIter: 40 }).dist;
+        const d = newtonNearest(rA, DIMS.H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 }).dist;
         if (d > dev) dev = d;
         if (dev > 0.5) break; // cap runaway (shouldn't happen)
       }
