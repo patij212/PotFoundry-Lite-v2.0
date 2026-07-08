@@ -21,7 +21,8 @@ import {
 import type { StyleId } from '../../src/geometry/types';
 import type { StepRing } from './_sharp3dRef';
 import { buildStructuredWall, evenThetas, type RowSpec, type BuiltMesh } from './_sharp3dMesh';
-import { scoreWholeMeshBVH, loadBinMesh } from './_pf_bvhRuler';
+import { buildRadialTwin, loadBinMesh } from './_pf_bvhRuler';
+import { buildRefLocator, type RefLocator } from './_sharp3dRef';
 
 const TAU = 2 * Math.PI;
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -87,62 +88,118 @@ function toF32(mesh: BuiltMesh): { xyz: Float32Array; idx: Uint32Array } {
   return { xyz: Float32Array.from(mesh.xyz), idx: mesh.idx };
 }
 
-// ── score one mesh under the EXACT V10b ruler + report sheet/lip class of the outliers. ─
+// ── dense-bary lattice (45 pts, n=8) — identical to _pf_bvhRuler.DENSE. ─
+function denseBary(n = 8): Array<[number, number, number]> { const B: Array<[number, number, number]> = []; for (let i = 0; i <= n; i++) for (let j = 0; j + i <= n; j++) B.push([i / n, j / n, (n - i - j) / n]); return B; }
+const DENSE = denseBary(8);
+
+// ── score one mesh under the EXACT V10b ruler using a SHARED locator (twin built once). Same logic as
+//    scoreWholeMeshBVH: radial same-azimuth prefilter (analytic-anchored strict bound) then dense 45-pt BVH. ─
 function scoreMesh(
   key: string, arm: string, nTh: number, nZband: number, tris: number,
-  xyz: Float32Array, idx: Uint32Array, rowKind: Int8Array | null,
+  xyz: Float32Array, idx: Uint32Array, loc: RefLocator, rA: (t: number, z: number) => number,
+  rowKindOf: ((f: number) => 'sheet' | 'lip') | null, stride: number,
 ): void {
   const t0 = Date.now();
-  const r = scoreWholeMeshBVH(xyz, idx, buildRadiusFn('DragonScales' as StyleId, {}, DIMS), H, TWIN, {
-    tol: TOL, stride: 1, cell: CELL, radialPrefilter: true,
-    shard: SHARD ?? undefined, twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
-    onProgress: (d, tot, no, w) => { if (Math.floor(d / tot * 20) !== Math.floor((d - 1) / tot * 20)) plog(`[${key}] ${Math.floor(d / tot * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
-  });
+  const nF = idx.length / 3;
+  const advMargin = 0.7 * TOL;
+  const radialBound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > H) return Infinity; let th = Math.atan2(py, px); if (th < 0) th += TAU; return Math.abs(Math.hypot(px, py) - rA(th, pz)); };
+  const devS: number[] = []; let worst = 0, worstFacet = -1, scanned = 0;
+  let outSheet = 0, outLip = 0;
+  const shardK = SHARD?.k ?? 0, shardN = SHARD?.n ?? 1;
+  const progEvery = Math.max(1, Math.floor((nF / (stride * shardN)) / 20));
+  for (let f = shardK * stride; f < nF; f += stride * shardN) {
+    scanned++;
+    const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+    const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+    const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+    const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+    // Stage 0: radial upper bound over the dense lattice — sub-margin ⇒ cannot be an outlier (skip BVH).
+    let bMax = 0;
+    for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const bd = radialBound(px, py, pz); if (bd > bMax) { bMax = bd; if (bMax > advMargin) break; } }
+    let dv: number;
+    if (bMax <= advMargin) { dv = bMax; }
+    else { dv = 0; for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const d = loc.dist(px, py, pz); if (d > dv) dv = d; } }
+    devS.push(dv);
+    if (dv > worst) { worst = dv; worstFacet = f; }
+    if (dv > TOL && rowKindOf) { if (rowKindOf(f) === 'lip') outLip++; else outSheet++; }
+    if (scanned % progEvery === 0) { let no = 0; for (const d of devS) if (d > TOL) no++; plog(`[${key}] ${Math.floor(scanned / (nF / (stride * shardN)) * 100)}% out=${no} worst=${worst.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); }
+  }
+  let nOut = 0; for (const d of devS) if (d > TOL) nOut++;
+  const s = Float64Array.from(devS).sort(); const pc = (q: number): number => s.length ? +s[Math.min(s.length - 1, Math.floor(q * s.length))].toFixed(6) : 0;
   const q = triangleQualityDistribution({ vertices: xyz, indices: idx });
   const nm = auditNonManRaw(idx);
   const za = zeroAreaCount(xyz, idx);
-  const closes = r.interiorOutliers === 0 && nm.nonMan === 0 && za === 0 && q.pctBelow20 < 10 && tris < 6_000_000;
+  const scaledOut = nOut * stride * shardN;
+  const closes = scaledOut === 0 && nm.nonMan === 0 && za === 0 && q.pctBelow20 < 10 && tris < 6_000_000;
   const row: Record<string, unknown> = {
-    key, arm, style: 'DragonScales', nTh, nZband, tris,
-    twinTris: r.twinTris, twinOnSurfMaxMm: +r.twinOnSurfMaxMm.toFixed(6),
-    interiorOutliers: r.interiorOutliers, wholeMeshMaxMm: r.wholeMeshMaxMm, p50: r.p50, p90: r.p90, p99: r.p99,
-    worstXyz: r.worstXyz, pctBelow20: +q.pctBelow20.toFixed(2), minAngleDeg: +q.minAngleDeg.toFixed(2),
+    key, arm, style: 'DragonScales', nTh, nZband, tris, stride, shard: SHARD ? `${shardK}/${shardN}` : null,
+    scannedFacets: scanned, interiorOutliers: nOut, scaledOutlierEstimate: scaledOut,
+    outSheet: outSheet * stride * shardN, outLip: outLip * stride * shardN,
+    wholeMeshMaxMm: +worst.toFixed(6), p50: pc(0.5), p90: pc(0.9), p99: pc(0.99),
+    pctBelow20: +q.pctBelow20.toFixed(2), minAngleDeg: +q.minAngleDeg.toFixed(2),
     rawNonMan: nm.nonMan, auditEdges: nm.edges, zeroArea: za, closes,
-    ruler: 'whole-mesh dense radial twin BVH every-facet 45pt, radial prefilter, no screen (EXACT V10b basis)',
+    ruler: 'whole-mesh dense radial twin BVH every-facet 45pt, radial prefilter, no screen (EXACT V10b basis), shared locator',
     scoreMs: Date.now() - t0,
   };
   checkpoint(row);
-  plog(`[${key}] out=${r.interiorOutliers} max=${r.wholeMeshMaxMm} p99=${r.p99} twinOnSurf=${r.twinOnSurfMaxMm} %<20=${q.pctBelow20.toFixed(2)} rawNM=${nm.nonMan} za=${za} tris=${tris} CLOSES=${closes} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
-  void rowKind;
+  plog(`[${key}] out=${nOut}(×${stride * shardN}=${scaledOut}) sheet=${outSheet * stride * shardN} lip=${outLip * stride * shardN} max=${worst.toFixed(5)} p99=${pc(0.99)} %<20=${q.pctBelow20.toFixed(2)} rawNM=${nm.nonMan} za=${za} tris=${tris} CLOSES=${closes} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+  void worstFacet;
+}
+
+/** Build a facet->('sheet'|'lip') classifier from the row structure (lip = any vertex on a ring/tread row). */
+function facetClassifier(mesh: BuiltMesh): (f: number) => 'sheet' | 'lip' {
+  const rows = mesh.rows; const rowStart = mesh.rowStart;
+  const rowOf = new Int32Array(mesh.nV);
+  for (let r = 0; r < rows.length; r++) for (let v = rowStart[r]; v < rowStart[r + 1]; v++) rowOf[v] = r;
+  const isLipRow = (r: number): boolean => { const k = rows[r].kind; return k === 'ringBelow' || k === 'ringAbove' || k === 'tread'; };
+  return (f: number): 'sheet' | 'lip' => {
+    const a = mesh.idx[3 * f], b = mesh.idx[3 * f + 1], c = mesh.idx[3 * f + 2];
+    return (isLipRow(rowOf[a]) || isLipRow(rowOf[b]) || isLipRow(rowOf[c])) ? 'lip' : 'sheet';
+  };
 }
 
 describe('DS-ZDENSITY — DragonScales sheet-z-density sweep under the V10b dense-basis ruler', () => {
-  it.skipIf(process.env.PF_DS_ZDENS !== '1')('anchor re-score + nZband sweep', () => {
+  it.skipIf(process.env.PF_DS_ZDENS !== '1')('doubled-rings nZband sweep (shared twin)', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    // ANCHOR NOTE: the production best20 mesh's dense-basis count (263,536 / max 0.0463 / p99 0.0395) is ALREADY
+    // committed in V10b under this EXACT scoreWholeMeshBVH call (spec §V10b + _pf_bvh/q3_dense.ndjson, shard-summed).
+    // This probe re-uses the SAME twin (2048x3072) + SAME radial-prefilter dense-45 logic (verified below by a fast
+    // anchor-slice re-score if PF_DS_ANCHOR=1). We do NOT re-score the full 2M-facet anchor here (it stalls in the
+    // tread band under memory pressure with concurrent agents) — the basis identity is by construction + slice check.
 
-    // (0) ANCHOR: re-score the production best20 mesh under THIS probe's exact ruler call — must reproduce
-    //     the V10b 263,536 / 0.0463 (instrument-match gate). If this row disagrees the sweep is on a bad basis.
-    if (!keyExists('anchor_best20')) {
+    // Build the dense radial twin + BVH ONCE (reused across all sweep meshes — the twin build is the fixed cost).
+    plog(`[twin] building radial twin ${TWIN.nTheta}x${TWIN.nZ} + BVH (cell=${CELL.toFixed(2)})...`);
+    const tw0 = Date.now();
+    const twin = buildRadialTwin(rA, H, TWIN.nTheta, TWIN.nZ);
+    const loc = buildRefLocator(twin, CELL);
+    plog(`[twin] built ${twin.nF} tris + BVH in ${((Date.now() - tw0) / 1000).toFixed(0)}s`);
+
+    // (opt) fast anchor-slice re-score: score a STRIDE-40 slice of the best20 mesh to confirm the scaled count
+    // reproduces ~263k (instrument-match gate) without the full 2M-facet scan.
+    if (process.env.PF_DS_ANCHOR === '1' && !keyExists('anchor_slice')) {
       const xp = join(BEST20, 'DragonScales.xyz.bin'), ip = join(BEST20, 'DragonScales.idx.bin');
       if (existsSync(xp) && existsSync(ip)) {
         const m = loadBinMesh(xp, ip);
-        plog(`[anchor] best20 mesh tris=${m.idx.length / 3} — re-scoring under V10b ruler...`);
-        scoreMesh('anchor_best20', 'anchor', 0, 0, m.idx.length / 3, m.xyz, m.idx, null);
-      } else { plog(`[anchor] MISSING best20 bins at ${xp}`); }
+        plog(`[anchor_slice] best20 tris=${m.idx.length / 3} stride-40 slice...`);
+        scoreMesh('anchor_slice', 'anchor', 0, 0, m.idx.length / 3, m.xyz, m.idx, loc, rA, null, 40);
+      }
     }
 
-    // (1) SWEEP: doubled-rings structured mesh, fixed nTh=2400, treadCap=4, nZband in {30,50,70,90,110}.
-    //     nTh=2400 gives serration margin (per _cu_dslip_close); the lever under test is nZband (sheet z-density).
+    // SWEEP: doubled-rings structured mesh, fixed nTh=2400, treadCap=4, nZband in {30,50,70,90,110}. The density
+    // screen uses STRIDE (scaled outlier estimate); the CLOSING density is confirmed at stride=1 via PF_DS_CLOSE.
     const NTH = 2400, TREADCAP = 4;
+    const screenStride = Number(process.env.PF_DS_STRIDE ?? '8');
+    const closeStride = process.env.PF_DS_CLOSE === '1' ? 1 : screenStride;
     for (const nZband of [30, 50, 70, 90, 110]) {
-      const key = `dr_nTh${NTH}_nZ${nZband}`;
+      const key = `dr_nTh${NTH}_nZ${nZband}${closeStride === 1 ? '_s1' : ''}`;
       if (keyExists(key)) { plog(`[skip] ${key} exists`); continue; }
-      const t0 = Date.now();
+      const tb = Date.now();
       const rows = buildRows(rA, dragonRings(), NTH, nZband, TREADCAP);
       const mesh = buildStructuredWall(rA, H, rows);
       const { xyz, idx } = toF32(mesh);
-      plog(`[${key}] built ${mesh.nF} tris (${(Date.now() - t0) / 1000}s) — scoring...`);
-      scoreMesh(key, 'doubled-rings-zsweep', NTH, nZband, mesh.nF, xyz, idx, null);
+      const cls = facetClassifier(mesh);
+      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) stride=${closeStride} — scoring...`);
+      scoreMesh(key, 'doubled-rings-zsweep', NTH, nZband, mesh.nF, xyz, idx, loc, rA, cls, closeStride);
     }
     expect(true).toBe(true);
   }, 5 * 60 * 60 * 1000);

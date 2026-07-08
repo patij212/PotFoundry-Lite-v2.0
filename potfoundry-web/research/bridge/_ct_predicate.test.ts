@@ -16,7 +16,8 @@ import { mkdirSync, existsSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRadiusFn, type StyleDims, dumpRenderBins } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
-import { scoreWholeMeshBVH, loadBinMesh } from './_pf_bvhRuler';
+import { buildRadialTwin, loadBinMesh } from './_pf_bvhRuler';
+import { buildRefLocator, type RefLocator } from './_sharp3dRef';
 import { celticTriquetraCreasePredicate, celticTriquetraC0Predicate, ctReliefField, bandTileId, ctParams } from './_ct_creaseLib';
 
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -240,38 +241,87 @@ function renderMaskOverK(K: Float64Array, nu: number, nt: number, du: number, dt
   plog(`[validate] rendered CT_crease_maskOverK (${OUT})`);
 }
 
-// ── Exclusion scoring: mirror the weave arm. band 0 = unexcluded dense baseline. ─
-describe('CT-PREDICATE exclusion re-score — dense-basis whole-mesh BVH with crease exclusion', () => {
-  for (const band of [0, 1e-3, 2e-3]) {
-    it.skipIf(process.env.PF_CT_PRED !== '1')(`Q3-EXCL CelticTriquetra band=${band}`, () => {
-      const key = `excl_band${band}${SHARD ? `#${SHARD.k}of${SHARD.n}` : ''}`;
-      if (keyExists(key)) { plog(`[skip] ${key} exists`); return; }
-      const xp = join(CT_BINS, 'CelticTriquetra.xyz.bin'), ip = join(CT_BINS, 'CelticTriquetra.idx.bin');
-      if (!existsSync(xp) || !existsSync(ip)) { plog(`[MISSING] CT bins at ${CT_BINS}`); return; }
-      const m = loadBinMesh(xp, ip);
-      const rA = buildRadiusFn('CelticTriquetra' as StyleId, {}, DIMS);
-      // Use the DIRECT C0 predicate (validated by recall) — the tile-edge predicate was refuted (10% recall).
-      const exclude = band > 0 ? celticTriquetraC0Predicate(band) : undefined;
-      plog(`[${key}] tris=${m.idx.length / 3} cell=${CELL.toFixed(2)} — scoring with exclude=${!!exclude}...`);
-      const t0 = Date.now();
-      const r = scoreWholeMeshBVH(m.xyz, m.idx, rA, H, TWIN, {
-        tol: TOL, stride: 1, cell: CELL, radialPrefilter: true, exclude,
-        shard: SHARD ?? undefined, twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
-        onProgress: (d, tot, no, w) => { if (Math.floor(d / tot * 20) !== Math.floor((d - 1) / tot * 20)) plog(`[${key}] ${Math.floor(d / tot * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
-      });
-      const row = {
-        key, style: 'CelticTriquetra', band, tris: m.idx.length / 3,
-        interiorOutliers: r.interiorOutliers, wholeMeshMaxMm: r.wholeMeshMaxMm, p50: r.p50, p90: r.p90, p99: r.p99,
-        twinOnSurfMaxMm: r.twinOnSurfMaxMm, worstXyz: r.worstXyz,
-        excludedSamples: r.excludedSamples ?? 0, totalSamples: r.totalSamples ?? 0,
-        excludedFrac: r.totalSamples ? +((r.excludedSamples ?? 0) / r.totalSamples).toFixed(4) : 0,
-        facetsAllExcluded: r.facetsAllExcluded ?? 0,
-        ruler: 'whole-mesh dense radial twin BVH every-facet 45pt, radial prefilter, no screen (EXACT V10b basis)',
-        scoreMs: Date.now() - t0,
-      };
-      checkpoint(row);
-      plog(`[${key}] out=${r.interiorOutliers} max=${r.wholeMeshMaxMm} exclFrac=${row.excludedFrac} allExcl=${r.facetsAllExcluded} in ${((Date.now() - t0) / 1000).toFixed(0)}s`);
-      expect(true).toBe(true);
-    }, 4 * 60 * 60 * 1000);
+// ── Exclusion scoring: mirror the weave arm. band 0 = unexcluded dense baseline. SHARED twin across bands. ─
+const TAU = 2 * Math.PI;
+function denseBary(n = 8): Array<[number, number, number]> { const B: Array<[number, number, number]> = []; for (let i = 0; i <= n; i++) for (let j = 0; j + i <= n; j++) B.push([i / n, j / n, (n - i - j) / n]); return B; }
+const DENSE = denseBary(8);
+
+/** Whole-mesh dense-basis BVH score with a SHARED locator + optional sample-level exclusion. Same logic as
+ *  scoreWholeMeshBVH (radial prefilter -> dense 45-pt BVH; exclusion mode = full dense, excluded samples skipped). */
+function scoreCT(
+  key: string, band: number, xyz: Float32Array, idx: Uint32Array, loc: RefLocator,
+  rA: (t: number, z: number) => number, exclude: ((u: number, t: number) => boolean) | undefined, stride: number,
+): void {
+  const t0 = Date.now();
+  const nF = idx.length / 3;
+  const advMargin = 0.7 * TOL;
+  const shardK = SHARD?.k ?? 0, shardN = SHARD?.n ?? 1;
+  const radialBound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > H) return Infinity; let th = Math.atan2(py, px); if (th < 0) th += TAU; return Math.abs(Math.hypot(px, py) - rA(th, pz)); };
+  let excludedSamples = 0, totalSamples = 0, facetsAllExcluded = 0;
+  const isExcluded = (px: number, py: number, pz: number): boolean => {
+    if (!exclude) return false;
+    totalSamples++;
+    let th = Math.atan2(py, px); if (th < 0) th += TAU;
+    const u = th / TAU; const t = Math.min(1, Math.max(0, pz / H));
+    if (exclude(u, t)) { excludedSamples++; return true; }
+    return false;
+  };
+  const devS: number[] = []; let worst = 0, scanned = 0;
+  const progEvery = Math.max(1, Math.floor((nF / (stride * shardN)) / 20));
+  for (let f = shardK * stride; f < nF; f += stride * shardN) {
+    scanned++;
+    const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+    const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+    const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+    const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+    if (exclude) {
+      let dv = 0, kept = 0;
+      for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; if (isExcluded(px, py, pz)) continue; kept++; const d = loc.dist(px, py, pz); if (d > dv) dv = d; }
+      if (kept === 0) { facetsAllExcluded++; } else { devS.push(dv); if (dv > worst) worst = dv; }
+    } else {
+      let bMax = 0;
+      for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const bd = radialBound(px, py, pz); if (bd > bMax) { bMax = bd; if (bMax > advMargin) break; } }
+      let dv: number;
+      if (bMax <= advMargin) dv = bMax; else { dv = 0; for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const d = loc.dist(px, py, pz); if (d > dv) dv = d; } }
+      devS.push(dv); if (dv > worst) worst = dv;
+    }
+    if (scanned % progEvery === 0) { let no = 0; for (const d of devS) if (d > TOL) no++; plog(`[${key}] ${Math.floor(scanned / (nF / (stride * shardN)) * 100)}% out=${no} worst=${worst.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); }
   }
+  let nOut = 0; for (const d of devS) if (d > TOL) nOut++;
+  const s = Float64Array.from(devS).sort(); const pc = (q: number): number => s.length ? +s[Math.min(s.length - 1, Math.floor(q * s.length))].toFixed(6) : 0;
+  const scaled = nOut * stride * shardN;
+  const row = {
+    key, style: 'CelticTriquetra', band, tris: nF, stride, shard: SHARD ? `${shardK}/${shardN}` : null,
+    scannedFacets: scanned, interiorOutliers: nOut, scaledOutlierEstimate: scaled,
+    wholeMeshMaxMm: +worst.toFixed(6), p50: pc(0.5), p90: pc(0.9), p99: pc(0.99),
+    excludedSamples, totalSamples, excludedFrac: totalSamples ? +(excludedSamples / totalSamples).toFixed(4) : 0,
+    facetsAllExcluded: facetsAllExcluded * stride * shardN,
+    ruler: 'whole-mesh dense radial twin BVH every-facet 45pt, radial prefilter, no screen (EXACT V10b basis), shared locator',
+    scoreMs: Date.now() - t0,
+  };
+  checkpoint(row);
+  plog(`[${key}] out=${nOut}(×${stride * shardN}=${scaled}) max=${worst.toFixed(5)} p99=${pc(0.99)} exclFrac=${row.excludedFrac} allExcl=${row.facetsAllExcluded} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+}
+
+describe('CT-PREDICATE exclusion re-score — dense-basis whole-mesh BVH with crease exclusion (shared twin)', () => {
+  it.skipIf(process.env.PF_CT_PRED !== '1')('band 0 / 1e-3 / 2e-3 (shared twin+locator)', () => {
+    const xp = join(CT_BINS, 'CelticTriquetra.xyz.bin'), ip = join(CT_BINS, 'CelticTriquetra.idx.bin');
+    if (!existsSync(xp) || !existsSync(ip)) { plog(`[MISSING] CT bins at ${CT_BINS}`); return; }
+    const m = loadBinMesh(xp, ip);
+    const rA = buildRadiusFn('CelticTriquetra' as StyleId, {}, DIMS);
+    plog(`[twin] building CT radial twin ${TWIN.nTheta}x${TWIN.nZ} + BVH (cell=${CELL.toFixed(2)})...`);
+    const tw0 = Date.now();
+    const twin = buildRadialTwin(rA, H, TWIN.nTheta, TWIN.nZ);
+    const loc = buildRefLocator(twin, CELL);
+    plog(`[twin] built ${twin.nF} tris + BVH in ${((Date.now() - tw0) / 1000).toFixed(0)}s`);
+    const stride = Number(process.env.PF_CT_STRIDE ?? '1');
+    for (const band of [0, 1e-3, 2e-3]) {
+      const key = `excl_band${band}${stride > 1 ? `_s${stride}` : ''}${SHARD ? `#${SHARD.k}of${SHARD.n}` : ''}`;
+      if (keyExists(key)) { plog(`[skip] ${key} exists`); continue; }
+      const exclude = band > 0 ? celticTriquetraC0Predicate(band) : undefined;
+      plog(`[${key}] tris=${m.idx.length / 3} cell=${CELL.toFixed(2)} stride=${stride} exclude=${!!exclude} — scoring...`);
+      scoreCT(key, band, m.xyz, m.idx, loc, rA, exclude, stride);
+    }
+    expect(true).toBe(true);
+  }, 5 * 60 * 60 * 1000);
 });
