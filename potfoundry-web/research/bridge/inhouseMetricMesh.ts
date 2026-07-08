@@ -34,6 +34,14 @@ export interface InhouseMeshOpts {
    *  longest-edge midpoint — an edge split can never converge a vertex onto an interior apex, a Steiner point can.
    *  Opt-in → STRICT NO-OP when false/absent (the longest-edge branch runs exactly as before). */
   chordSteiner?: boolean;
+  /** OPT-IN: sample the deep-sag chord guard (chordSag / chordWorstBary) at a DENSE denseBary(chordSampleN) lattice
+   *  ((n+1)(n+2)/2 samples) instead of the default 4 (3 edge-midpoints + centroid). The 4-pt sampler UNDER-reports a
+   *  facet whose sag PEAKS between its edge-midpoints (measured E-2026-07-08-SMOOTH-TAILS: Ripple/Harmonic residual
+   *  crest facets read 4-pt 0.0101 vs 45-pt 0.0126 = the acceptance ruler) → the guard declares a still-bulged facet
+   *  "done" and floors at ~6 outliers. A dense guard sampler matches the 45-pt true-3D acceptance ruler so the guard
+   *  keeps splitting until the honest sag is under tol. STRICT NO-OP when absent/<=2 (the BARY 4-pt path is unchanged
+   *  → byte-identical default). n=8 ⇒ 45 samples (the acceptance-ruler lattice). */
+  chordSampleN?: number;
   /** OPT-IN: size the metric with FINE-step, sub-cell-window-max curvature (resolves sharp sub-cell ridges the
    *  sizeRes grid aliases 5-10× → crest facets born small, killing crest-straddle chord sag). Passed straight to
    *  buildSurfaceMetricField. Absent ⇒ byte-identical default. */
@@ -267,7 +275,16 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
   // centroid, return the max |deviation| from the facet plane. Robust to grid aliasing of sharp relief.
   const chordTolMm = opts.chordTolMm;
   const liftP = (u: number, t: number): [number, number, number] => { const th = TAU * u, z = t * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
-  const BARY: [number, number, number][] = [[0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [1 / 3, 1 / 3, 1 / 3]];
+  // Deep-sag chord sampler lattice. Default = 4 pts (3 edge-mids + centroid) → byte-identical. chordSampleN>2 opts
+  // into a dense denseBary(n) lattice matching the acceptance ruler (E-2026-07-08-SMOOTH-TAILS): a facet whose sag
+  // peaks BETWEEN the 4 coarse samples is invisible to the 4-pt guard but caught by the dense one.
+  const BARY: [number, number, number][] = (() => {
+    const n = opts.chordSampleN ?? 0;
+    if (n <= 2) return [[0.5, 0.5, 0], [0, 0.5, 0.5], [0.5, 0, 0.5], [1 / 3, 1 / 3, 1 / 3]];
+    const B: [number, number, number][] = [];
+    for (let i = 0; i <= n; i++) for (let j = 0; j + i <= n; j++) B.push([i / n, j / n, (n - i - j) / n]);
+    return B;
+  })();
   const chordSag = (va: number, vb: number, vc: number): number => {
     const A = liftP(uv[2 * va], uv[2 * va + 1]), B = liftP(uv[2 * vb], uv[2 * vb + 1]), C = liftP(uv[2 * vc], uv[2 * vc + 1]);
     let nx = (B[1] - A[1]) * (C[2] - A[2]) - (B[2] - A[2]) * (C[1] - A[1]);

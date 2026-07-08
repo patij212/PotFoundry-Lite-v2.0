@@ -1827,7 +1827,7 @@ grid corners do not fix corner-aliasing; sub-cell sampling does.
 |---|---|---|---|---|---|---|---|---|---|
 | WaveInterference | 137k→166k (+21%) | 0 | 0.0091 | 0.0061 | 0 outliers, max 0.0091 (CONFIRMED) | 0 (249,730) | 0 | 0 | YES |
 | FourierBloom | 633k→771k (+22%) | 0 | 0.0091 | 0.0060 | — (analytic basis) | 0 (1,158,005) | 0 | 0.4 | YES |
-| RippleInterference | 177k→208k (+17%) | 0 | 0.0087 | 0.0062 | RIPPLE_BVH_PLACEHOLDER | 0 (311,903) | 0 | 0 | YES |
+| RippleInterference | 177k→208k (+17%) | 0 | 0.0087 | 0.0062 | 0 outliers, max 0.0087 (CONFIRMED — the worst original residual, 82→0) | 0 (311,903) | 0 | 0 | YES |
 | HarmonicRipple | 1,116k→1,416k (+27%) | 0 | 0.0084 | 0.0049 | — (analytic basis) | 0 (2,125,518) | 0 | 0 | YES |
 
 BASIS NOTE: the analytic-brute whole-mesh ruler (`scoreWholeMeshInterior`, the rebaseline20 basis — dense 45-pt
