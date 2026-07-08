@@ -3586,22 +3586,33 @@ export const mount = async ({
             }
           });
         }
-        // Optimization: Do NOT render this frame if we are mismatched style/pipeline.
-        // Rendering style A parameters with style B pipeline produces "jumbled geometry".
-        // Just return and wait for next frame (or show loading spinner overlay if needed).
-        if (!activePipeline) {
-          // Throttle loop if no pipeline is ready to avoid 100% CPU/GPU usage
-          // FIX: Do NOT schedule a new frame here; the main frame loop handles it.
-          // Just return early.
+        // Raycast path: the raycast pass has ALREADY encoded a complete frame for
+        // reqStyleId into `encoder` above (its own per-style pipeline, independent
+        // of the mesh render pipeline managed here). The mesh pipeline compile was
+        // still kicked off above so style switching stays correct, but we must NOT
+        // early-return — that would drop the encoder unsubmitted and starve the
+        // raycast frame. This matters because the mesh render pipeline for some
+        // complex styles (e.g. CelticKnot/Triquetra/LowPolyFacet) can hang the Dawn
+        // compiler for 30s+; without this bypass the raycast preview would render
+        // black on exactly those styles even though its own pipeline is ready.
+        if (!raycastDrewFrame) {
+          // Optimization: Do NOT render this frame if we are mismatched style/pipeline.
+          // Rendering style A parameters with style B pipeline produces "jumbled geometry".
+          // Just return and wait for next frame (or show loading spinner overlay if needed).
+          if (!activePipeline) {
+            // Throttle loop if no pipeline is ready to avoid 100% CPU/GPU usage
+            // FIX: Do NOT schedule a new frame here; the main frame loop handles it.
+            // Just return early.
+            return;
+          }
+          // Optionally, one could continue rendering the OLD style (to avoid flickering black)
+          // BUT if the parameters have already updated to the NEW style, it will look broken.
+          // Current behavior: State parameters update instantly, pipeline updates async.
+          // Fix: Use the ACTIVE pipeline style for parameter synchronization, or skip draw.
+          // Here we choose to skip the draw pass to avoid the "broken cylinder" flash.
+          // FIX: Do NOT schedule a new frame here.
           return;
         }
-        // Optionally, one could continue rendering the OLD style (to avoid flickering black)
-        // BUT if the parameters have already updated to the NEW style, it will look broken.
-        // Current behavior: State parameters update instantly, pipeline updates async.
-        // Fix: Use the ACTIVE pipeline style for parameter synchronization, or skip draw.
-        // Here we choose to skip the draw pass to avoid the "broken cylinder" flash.
-        // FIX: Do NOT schedule a new frame here.
-        return;
       }
 
       const pass = encoder.beginRenderPass(renderPassDesc);
