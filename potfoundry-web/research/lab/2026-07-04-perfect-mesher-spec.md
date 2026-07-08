@@ -1648,6 +1648,66 @@ focus_results.json, focus.ndjson, lever1_pass.ndjson, radius_field.svg, scatter.
 
 ---
 
+## V11e — TIER-C PERF WALL SOLVED (byte-identical parallel scorer + dirty cache) + the multi-bay pin RE-DIAGNOSED (t-band density floor, NOT the u-seam) (2026-07-08)
+
+**E-2026-07-08-TIERC-PERF-SEAM.** The V11d integration wall (dense whole-mesh brute 60-96s/pass, single-threaded)
+is the true multi-bay blocker. It is now SOLVED for metrology; and the "pinned seam facet" is re-diagnosed.
+
+**T1 — PARALLEL SCORER (CONFIRMED, byte-identical + speedup).** `parallelScorer.ts` + `_parallelScorerWorker.ts`:
+a ≤4-worker `worker_threads` pool shards the embarrassingly-parallel dense per-facet loop. Each worker reconstructs
+the `GpuSurfaceSampler` from the SERIALIZED f32 grid (`{positions,resU,resT}`) — deterministic bilinear interp ⇒
+bit-identical `rA`. The worker is esbuild-bundled from `_parallelScorerWorker.ts` (native `@esbuild/*/esbuild.exe`,
+NOT the `.cmd` shim nor the JS API — both break under Node24/jsdom: EINVAL / `TextEncoder instanceof Uint8Array`) so
+`facetInteriorHonest` has ONE source of truth. The caller reassembles dev[] by GLOBAL facet index and runs the
+IDENTICAL reduction (`reduceDevArray`).
+- BYTE-IDENTICAL gate (`parallelScorer.test.ts`, GREEN): per-facet dev[] bit-identical EVERY facet, exact aggregate
+  (outliers/max/p50/p99/bruteCalls), worker-count-invariant (1/3/4 give identical dev[]).
+- SPEEDUP (`_parallelPerf.test.ts`): 45,285 facets, seq 25.78s → par 8.78s = **2.94x** on a quiet machine (284==284
+  outliers, max 0.42159==0.42159). Under 4-agent contention the dense-pass gain is ~1.6x (96s→60s, 83k-tri pass).
+  HONEST: speedup is core-availability-bound (under full saturation vitest couldn't even fork a probe worker);
+  CORRECTNESS is unconditional.
+- `refineToZeroOutliersParallel` (dense passes via the pool, 7-pt sequential; shared `applyScoredPass` insertion)
+  proven bit-identical to the sequential loop (`parallelRefine.test.ts`, GREEN).
+
+**T2 — DIRTY-FACET CACHE (CONFIRMED, byte-identical).** Opt-in `dirtyFacetCache`: a facet whose sorted (a,b,c) triple
+is unchanged since a prior pass (uv only GROWS ⇒ indices stable) reuses its cached dev under the same lattice phase.
+`dirtyCache.test.ts` (GREEN): cached==uncached final uv/tris + per-pass trajectory bit-identical; hitRate 0.374 on a
+7-pass fixture. STOP-SHIP catch banked: the first numeric facetKey overflowed `Number.MAX_SAFE_INTEGER` → collisions
+→ divergence; the byte-identical gate CAUGHT it; fixed to a string key.
+
+**T3 — SEAM RE-DIAGNOSED: the pin is a t-BAND DENSITY floor, NOT the u=0 seam.** The V11d "pinned u=0 seam∩boundary
+facet" hypothesis is REFUTED by measurement. The pin at EXACTLY **1.05918988549241mm** appears IDENTICALLY on-seam
+(u[0,0.1]), off-seam (u[0.05,0.15]) AND LEVER1 — all three share the t-band [0.38,0.62]. It SURVIVES the off-seam
+shift ⇒ it is NOT a u-seam artifact. (Static seed probe still shows the u=0 chart-discontinuity splits wrapping crest
+chains — on-seam 1675 crest edges vs off-seam 3026, clips 10 vs 5 — so a seam-avoiding domain is still the right gate
+choice, but that is a SECONDARY effect; it does not create the pin.) The pin is a facet in the shared t-band where the
+smooth ~1.5mm arch arc's chord sag exceeds tol and RED-1→4 midpoint splitting has diminishing returns (the diagnostic's
+own smooth-low-κ prediction).
+
+**T4 — GATE DOES NOT CONVERGE (STOP; density floor characterized).** Full multi-bay gate, SEAM-AVOIDING domain
+u[0.05,0.15] × t[0.38,0.62], bgArcMm 0.3, parallel refine + parallel full-azimuth guard. Trajectory (dense passes 5-9):
+outliers 5553 → 2595 → 1836 → 1805 → **1908** (worst pinned ~1.0546-1.0592), tris 111k → 145k, ms/pass 74→40s (parallel).
+The BULK smooth-arc tail closes 5553→~1800 (the diagnostic's density mechanism CONFIRMED), then **PLATEAUS/OSCILLATES
+at ~1800-1900** (same signature as LEVER1's 1644→1772→1897) — NOT literal 0. bgArcMm 0.3 is dense enough for the small
+FOCUSED domain (V11d: literal 0) but NOT for the full multi-bay t-band: ~1800 outliers / 145k tris = 1.3% residual tail.
+TRI PROJECTION: the domain is ~1/42 of the full pot (u 0.1×t 0.24); 145k tris ⇒ ~6.1M full-pot (right at the ~6M cap).
+A uniform denser seed (0.2) would ~2x that (~13M) — OVER budget. Per the pre-registered STOP criterion (density+seam
+fixes applied, no lever-grinding past 2), STOP: the residual is a **DENSITY FLOOR requiring an ADAPTIVE chord-sag-driven
+seed** (uniform tighten explodes tris), NOT a junction/seam wall. **T5 (rebaseline20) is GATED on T4 convergence ⇒ NOT
+launched.**
+
+**NET:** the PERF wall is solved (byte-identical parallel scorer + refine + dirty cache; 2.94x quiet / core-bound under
+load). The multi-bay residual is fully re-diagnosed: a t-band smooth-arc DENSITY floor (bgArcMm 0.3 insufficient at full
+scale) + an unreducible ~1.05mm facet — the u-seam is exonerated. The remaining lever is an ADAPTIVE seed (local
+chord-sag pitch) + a Steiner/centroid split for the unreducible facet, both future work.
+
+**GUARANTEES:** only flag-gated Tier-C files touched (parallelScorer.ts, _parallelScorerWorker.ts, interiorRuler.ts,
+noBridgeRefine.ts, index.ts + dev-only PF_TIERC_* probes); byte-identical-OFF GREEN (flagOff.byteIdentical); fast tierC
+suite GREEN; flag stays default-OFF. Commits 1f33663 / 3e98e99 / 7b58e49 / 22b746d / ee556a3 / 52fa687 / 101fdd3.
+Data: research/exchange/_tierc_junction/{gate_pass_FINAL.ndjson, seam_static.json, perf_result.json} (gitignored).
+
+---
+
 ## V11c — DRAGONSCALES Z-DENSITY + CT ADJUDICATION (2026-07-08)
 
 Two independent arms, both measured under the EXACT V10b dense radial-twin BVH ruler (scoreWholeMeshBVH: dense 45-pt
@@ -1729,3 +1789,64 @@ density (ruler tread-blind by construction). Flag stays OFF; dev-only; no src/ e
 
 **LEDGER:** registry E-2026-07-08-DS-STEPTWIN-CLOSE (verdict). Probes `_pf_dssteptwin.test.ts` (PF_DS_STEP=1) +
 `_pf_dssteptwin_diag.test.ts` (PF_DS_DIAG=1); configs `vitest.ds_steptwin{,_diag}.config.ts`; data `_ds_steptwin/scorecard.ndjson`.
+
+---
+
+## V11a — SMOOTH-TAIL CLOSE: all 4 smooth-tail styles CLOSED to literal whole-mesh EVERY-FACET 0-outlier (2026-07-08)
+
+**E-2026-07-08-SMOOTH-TAILS — CONFIRMED (all 4 CLOSE).** The 4 smooth single-valued-field styles that the §V10b FINAL
+dense-basis scorecard left a hair over 0 (Wave 2/0.0102, Fourier 20/0.0103, Ripple 82/0.0191, Harmonic 93/0.0151;
+197 facets total) are now literal whole-mesh EVERY-FACET 0-outlier at tol 0.01mm, watertight, zero-area-free, within
+budget. These were the campaign's cheapest wins (spec §V10b(3) item-1).
+
+### ROOT CAUSE (found by the sweep discriminator, `_smoothtail_diag.test.ts`) — NOT what the pre-registered lever assumed
+The pre-registered lever was "tighten the deep-sag chordTolMm guard." Measurement REFUTED that as sufficient: at
+chordTolMm 0.006 AND 0.004 the Ripple count was STUCK at exactly 6 (max 0.0126), unchanged. TWO real mechanisms,
+both isolated by a 5-variant discriminator (45-pt outliers):
+1. **The kernel deep-sag chord guard sampled at only 4 points** (3 edge-midpoints + centroid) — it UNDER-reads a
+   facet whose sag PEAKS between those points (Ripple residual facets: 4-pt reads 0.0101, the 45-pt true-3D
+   acceptance ruler reads 0.0126 — they AGREE with each other, so it is genuine geometry the 4-pt guard is blind to).
+2. **The DOMINANT cause: the post-refinement optimization SMOOTHING sweeps re-introduce sag AFTER the deep-sag guard
+   has run.** `sweeps:0` → 0 outliers (max 0.0000) on both Ripple AND Harmonic; `sweeps:1/2` → the residual returns.
+   The chord guard fires DURING the metric-refine loop but is never re-checked after the final smooth+flip. The
+   underlying reason those facets can be lifted over tol at all: the curvature sizing grid (sizeRes) ALIASES the
+   gentle near-rim ripple crest → sizes those facets ~0.9mm → tol-marginal, so a small smoothing displacement tips
+   them over.
+
+### THE FIX (measured, cross-style): curvatureFineStep sub-cell curvature sizing
+`curvatureFineStep: 0.002, curvatureSubsamples: 5` resolves the aliased sub-cell crest curvature → the metric sizes
+those facets small enough that the quality-improving smoothing CANNOT lift them over tol (fidelity by construction),
+so the smoothing sweeps are RETAINED (unlike `sweeps:0`, which closes fidelity but sacrifices triangle quality).
+Discriminator: Ripple fineStep → 0 outliers @ 207k tris (retains sweeps); Harmonic fineStep → 0 @ 1.42M. Belt-and-
+suspenders: an OPT-IN kernel `chordSampleN=8` dense deep-sag guard lattice (byte-identical default; no-op fingerprint
+GREEN, GothicArches idxHash 948740756 unchanged) + chordSteiner. `sizeRes:512` was WORSE (Ripple 18 outliers) — finer
+grid corners do not fix corner-aliasing; sub-cell sampling does.
+
+### FINAL SCORECARD (dense-basis every-facet, tol 0.01mm) — the CLOSE recipe: M-square + curvatureFineStep + chordSampleN8 + chordSteiner
+| style | reaching→closed tris | analytic-brute outliers | max mm | p99 | BVH-twin (§V10b instrument) | rawNonMan (edges) | zeroArea | %<20° | CLOSED |
+|---|---|---|---|---|---|---|---|---|---|
+| WaveInterference | 137k→166k (+21%) | 0 | 0.0091 | 0.0061 | 0 outliers, max 0.0091 (CONFIRMED) | 0 (249,730) | 0 | 0 | YES |
+| FourierBloom | 633k→771k (+22%) | 0 | 0.0091 | 0.0060 | — (analytic basis) | 0 (1,158,005) | 0 | 0.4 | YES |
+| RippleInterference | 177k→208k (+17%) | 0 | 0.0087 | 0.0062 | RIPPLE_BVH_PLACEHOLDER | 0 (311,903) | 0 | 0 | YES |
+| HarmonicRipple | 1,116k→1,416k (+27%) | 0 | 0.0084 | 0.0049 | — (analytic basis) | 0 (2,125,518) | 0 | 0 | YES |
+
+BASIS NOTE: the analytic-brute whole-mesh ruler (`scoreWholeMeshInterior`, the rebaseline20 basis — dense 45-pt
+denseBary, every facet, full-azimuth `bruteNearestOnRadialSurface`, no top-N cap) is the PRIMARY gate; the §V10b BVH
+twin (`scoreWholeMeshBVH`, 3072²) is an independent second dense basis. On WaveInterference BOTH read 0 on the closed
+mesh (analytic max 0.0091 = BVH max 0.0091) — the two dense bases AGREE on a closed mesh, so the analytic gate is
+trustworthy for the other three. (The BVH twin build ~16min + large-mesh score is why it is a spot-confirm, not the
+per-iteration gate — the analytic ruler is seconds.) Budget gate: all 4 closed at +17–27% tris over their reaching
+mesh — LOCAL refinement (curvatureFineStep + deep-sag), NOT a blunt global tighten (which the banked mandate forbids).
+
+### CAMPAIGN ARITHMETIC UPDATE
+Prior settled: 8/20 (V9 four + Gothic/GeoStar Tier-C + 2 excluded-by-design). **+4 smooth tails → 12/20 literal
+whole-mesh 0-outlier** (or excluded-by-design). Remaining 8 = tangled/weave (Gyroid/Voronoi/HexHive/Crystalline/
+BasketWeave/CelticKnot) + riser (DragonScales, ruler-class per V11 DS-STEPTWIN) + CelticTriquetra (predicate first).
+
+**LEDGER:** registry E-2026-07-08-SMOOTH-TAILS (verdict CONFIRMED). Probes `research/bridge/_pf_smoothtail.test.ts`
+(PF_SMOOTHTAIL=1; PF_SMOOTHTAIL_BVH=1 for the twin confirm), `_smoothtail_diag.test.ts` (PF_SMOOTHDIAG=1, the
+discriminator), `_smoothtail_anchor.test.ts` (PF_SMOOTHANCHOR=1, the V10b-baseline instrument-match). Kernel opt-in
+`chordSampleN` in `inhouseMetricMesh.ts` (byte-identical default, no-op fingerprint GREEN). Data
+`research/exchange/_smoothtail/scorecard.ndjson`. Anchor note: my dense-basis re-score of the persisted _best20 Wave
+bin read 6 outliers (not V10b's 2 — a twin-config-level count difference; max 0.0105 ≈ V10b 0.0102). The CLOSE gate is
+0 outliers, unambiguous across bases.
