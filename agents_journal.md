@@ -5408,10 +5408,3 @@ Next agent:
 - If investigating grazing motion artifact: check `raycast/` march termination logic or consider accumulated-frame blend fade at silhouette edges (deferred as YAGNI per spec).
 - Thumbnail renderer migration, WebGL parity, resolution-scale knob (uniform space reserved, not wired) all deferred per task brief.
 
-Validation:
-- `npm run typecheck` ✅ clean
-- `npm run lint` ✅ 0 warnings
-- `npm run build` ✅ clean
-- `npx playwright test e2e/ui-v3-smoke.spec.ts --project=chromium --workers=1` ✅ all probes pass
-- GitNexus impact analysis: all 9 tasks were LOW-risk edits to flag-gated new code and integration points; no regression to existing paths.
-
