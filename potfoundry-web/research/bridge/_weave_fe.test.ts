@@ -146,11 +146,16 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     const contours = variant === 'single' ? asC(raw.single) : asC(raw.doubled);
 
     // PLANARIZE the (u,t) PSLG (vertical × horizontal walls CROSS → cdt2d upperIds crash without shared crossing verts).
+    // planarizeMM is mm-TUNED (WELD_MM 3e-4, MICRO_MM 5e-3, EPS_ON 3e-3): (u,t) segments are ~6e-4 in u — BELOW
+    // MICRO_MM ⇒ ALL pickets get culled (MEASURED: addedVerts=0, edges 13650→5184). Scale (u,t) by SCALE=100 into a
+    // pseudo-mm space where the epsilons resolve the ~0.06 segments + crossings, planarize, then unscale.
     const flat = contoursToConstraints(contours);
+    const SCALE = Number(process.env.PF_WFEPSCALE ?? '100');
+    const scaled = flat.injectedPoints.map((v) => v * SCALE);
     const edgePairs: Array<[number, number]> = [];
     for (let i = 0; i < flat.constraintEdges.length; i += 2) edgePairs.push([flat.constraintEdges[i], flat.constraintEdges[i + 1]]);
-    const pl = planarizeMM(flat.injectedPoints, edgePairs);
-    const injectedPoints = pl.pts;
+    const pl = planarizeMM(scaled, edgePairs);
+    const injectedPoints = pl.pts.map((v) => v / SCALE);
     const constraintEdges: number[] = [];
     for (const e of pl.edges) constraintEdges.push(e[0], e[1]);
     const nConstraintVerts = injectedPoints.length / 2, nConstraintEdges = constraintEdges.length / 2;
