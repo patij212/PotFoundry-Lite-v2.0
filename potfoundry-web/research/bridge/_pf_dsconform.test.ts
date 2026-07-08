@@ -107,6 +107,44 @@ function buildRows(rA: (t: number, z: number) => number, rings: StepRing[], nTh:
   pushSheetBand(cursor, H, nZband); rows.push({ z: H, rz: H - zEps, thetas: th(), kind: 'sheet' });
   return rows;
 }
+// TRANSITION builder (E-2026-07-08-DS-LITERAL-CLOSE, H1): the CLEAN near-ring z-refinement lever, distinct from the
+// REFUTED buildRowsRefined (which raised treadCap AND ran under a mis-aligned wall). This builder:
+//   - keeps global nZband + treadCap FIXED (treadCap 4 as in buildRows — the tread annulus is NOT touched);
+//   - SHRINKS the ±0.6mm nearRing skip-band to ±transBand (so the ordinary sheet rows come CLOSER to the ring);
+//   - FILLS the remaining [ring.z ∓ transBand, ring.z ∓ zEps] gap with `transRows` finely-spaced SHEET rows,
+//     geometrically clustered TOWARD the ring (quadratic ⇒ dense next to the ring where the curving sheet chords
+//     the wall). These are pure SHEET rows (rz=z, kind 'sheet') ⇒ they refine the transition strip WITHOUT adding
+//     tread facets (the buildRowsRefined defect). The last transition row sits at ring.z − transStop (default zEps),
+//     so the ringBelow strip it feeds spans only ~transStop of curving sheet.
+// scoreMesh's facetClassifier keys off the row KIND, so these transition rows count as 'sheet' facets (correct —
+// they are sheet geometry). Only ringBelow/ringAbove/tread stay 'lip'.
+function buildRowsTransition(
+  rA: (t: number, z: number) => number, rings: StepRing[], nTh: number, nZband: number, treadCap: number,
+  transBand: number, transRows: number,
+): RowSpec[] {
+  const zEps = 5e-4; const rows: RowSpec[] = []; const sorted = [...rings].sort((a, b) => a.z - b.z); const th = (): Float64Array => evenThetas(nTh);
+  rows.push({ z: 0, rz: zEps, thetas: th(), kind: 'sheet' }); let cursor = 0;
+  const nearRing = (z: number): boolean => sorted.some(rg => Math.abs(z - rg.z) < transBand + 1e-6);
+  const pushSheetBand = (z0: number, z1: number, n: number): void => { for (let i = 1; i < n; i++) { const z = z0 + (z1 - z0) * (i / n); if (nearRing(z)) continue; rows.push({ z, rz: z, thetas: th(), kind: 'sheet' }); } };
+  // finely-spaced sheet rows filling [ring.z − transBand, ring.z − zEps] (clustered toward the ring), then the
+  // symmetric band above [ring.z + zEps, ring.z + transBand].
+  const fillBelow = (rz: number): void => { for (let s = 1; s <= transRows; s++) { const frac = s / (transRows + 1); const z = rz - transBand * (1 - frac * frac); if (z <= cursor) continue; rows.push({ z, rz: z, thetas: th(), kind: 'sheet' }); } };
+  const fillAbove = (rz: number): void => { for (let s = transRows; s >= 1; s--) { const frac = s / (transRows + 1); const z = rz + transBand * (1 - frac * frac); rows.push({ z, rz: z, thetas: th(), kind: 'sheet' }); } };
+  for (const ring of sorted) {
+    pushSheetBand(cursor, ring.z, nZband);
+    fillBelow(ring.z);
+    const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+    rows.push({ z: ring.z, rz: rzIn, thetas: th(), kind: 'ringBelow' });
+    const rIn = rA(0, rzIn), rOut = rA(0, rzOut); const span = Math.abs(rOut - rIn); const rMean = 0.5 * (rIn + rOut); const arc = (TAU * rMean) / nTh;
+    const treadSub = Math.max(2, Math.min(treadCap, Math.round(span / Math.max(arc, 1e-4)) + 1));
+    for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+    rows.push({ z: ring.z, rz: rzOut, thetas: th(), kind: 'ringAbove' });
+    fillAbove(ring.z);
+    cursor = ring.z;
+  }
+  pushSheetBand(cursor, H, nZband); rows.push({ z: H, rz: H - zEps, thetas: th(), kind: 'sheet' });
+  return rows;
+}
 // REFINED builder: same as buildRows but adds `skirtRows` finely-spaced SHEET rows inside each ±skirtBand near-ring
 // gap (approaching ringBelow from below and departing ringAbove above), so the transition strip that chords the
 // ~1mm near-vertical wall is z-refined. Closes the lipdiag winWall residual (mesh strips chording the wall at
@@ -158,6 +196,16 @@ function scoreMesh(
   xyz: Float32Array, idx: Uint32Array, loc: RefLocator,
   rowKindOf: ((f: number) => 'sheet' | 'lip') | null, stride: number,
   rA: (t: number, z: number) => number,
+): void { scoreMeshTo(checkpoint, key, arm, nZband, tris, xyz, idx, loc, rowKindOf, stride, rA, {}); }
+
+// scoreMeshTo — the generalized scorer: writes its checkpoint row via `cp` (checkpoint or checkpoint2) and merges
+// `extra` fields (e.g. the transition-row params) into the row. IDENTICAL metrology to the original scoreMesh.
+function scoreMeshTo(
+  cp: (row: Record<string, unknown>) => void,
+  key: string, arm: string, nZband: number, tris: number,
+  xyz: Float32Array, idx: Uint32Array, loc: RefLocator,
+  rowKindOf: ((f: number) => 'sheet' | 'lip') | null, stride: number,
+  rA: (t: number, z: number) => number, extra: Record<string, unknown>,
 ): void {
   const t0 = Date.now();
   const nF = idx.length / 3;
@@ -196,8 +244,8 @@ function scoreMesh(
   const za = zeroAreaCount(xyz, idx);
   const scaledOut = nOut * stride;
   const closes = scaledOut === 0 && nm.nonMan === 0 && za === 0 && q.pctBelow20 < 10 && tris < 6_000_000;
-  checkpoint({
-    key, arm, style: 'DragonScales', twin: 'conforming-open', nZband, tris, stride,
+  cp({
+    key, arm, style: 'DragonScales', twin: 'conforming-open', nZband, tris, stride, ...extra,
     scannedFacets: scanned, interiorOutliers: nOut, scaledOutlierEstimate: scaledOut,
     outSheet: outSheet * stride, outLip: outLip * stride,
     wholeMeshMaxMm: +worst.toFixed(6), p50: pc(0.5), p90: pc(0.9), p99: pc(0.99),
@@ -416,6 +464,94 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
       const cls = facetClassifier(mesh);
       plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) stride=${closeStride} — scoring...`);
       scoreMesh(key, 'close-skirtlever', NZ, mesh.nF, xyz, idx, confLoc, cls, closeStride, rA);
+    }
+    expect(true).toBe(true);
+  }, 6 * 60 * 60 * 1000);
+
+  // ══════════════════════════ E-2026-07-08-DS-LITERAL-CLOSE (ROUND 4) — separate ledger _ds_close/ ══════════════════
+  // These units read the DS-CONFORMING 1a-1d PASS back from _ds_conforming/scorecard.ndjson (readPass) but write
+  // their OWN checkpoints to _ds_close/scorecard.ndjson so the two arcs' data never tangle.
+  const OUT2 = join('research', 'exchange', '_ds_close');
+  const NDJSON2 = join(OUT2, 'scorecard.ndjson');
+  const keyExists2 = (k: string): boolean => { if (!existsSync(NDJSON2)) return false; return readFileSync(NDJSON2, 'utf8').split('\n').filter(Boolean).some((l) => { try { return JSON.parse(l).key === k; } catch { return false; } }); };
+  const checkpoint2 = (row: Record<string, unknown>): void => { mkdirSync(OUT2, { recursive: true }); appendFileSync(NDJSON2, JSON.stringify(row) + '\n'); /* eslint-disable-next-line no-console */ console.log(`[CP2 ${row.key}] ${JSON.stringify(row)}`); };
+  const gatesValidated = (): boolean => readPass('t1a_construction') === true && readPass('t1b_smoothctrl') === true && readPass('t1c_density') === true && readPass('t1d_onesided') === true;
+
+  // ── SHEETLOC (PF_DS_SHEETLOC=1): localize the 5,552 sheet + 3,200 lip outliers by z-DISTANCE-to-nearest-ring on the
+  //    BASELINE nZ110 mesh under the validated conforming ruler. Decides whether the transition-row lever can reach the
+  //    sheet residual: if the sheet outliers are concentrated in the near-ring band (|z−z_k| small), the lever hits
+  //    them; if spread across the whole body, H1 is limited and the deliverable is the density curve. Also splits
+  //    sheet-vs-lip by kind and buckets the z-to-ring distance. Cheap discriminator BEFORE building the sweep.
+  it.skipIf(process.env.PF_DS_SHEETLOC !== '1')('SHEETLOC — localize sheet+lip outliers by z-to-ring', () => {
+    if (!gatesValidated()) { plog(`[SHEETLOC] 1a-1d not all validated — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
+    if (keyExists2('sheetloc_nZ110')) { plog(`[skip] sheetloc_nZ110`); expect(true).toBe(true); return; }
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    const NTH = 2400, NZ = 110;
+    const rows = buildRows(rA, rings, NTH, NZ, 4);
+    const mesh = buildStructuredWall(rA, H, rows);
+    const { xyz, idx } = toF32(mesh);
+    const cls = facetClassifier(mesh);
+    const confLoc = buildConformRuler(rA);
+    const zs = rings.map(r => r.z);
+    const distToRing = (z: number): number => Math.min(...zs.map(rz => Math.abs(z - rz)));
+    // z-to-ring buckets (mm): [0,.05),[.05,.1),[.1,.2),[.2,.4),[.4,.6),[.6,1),[1,2),[2,+)
+    const edges = [0.05, 0.1, 0.2, 0.4, 0.6, 1.0, 2.0, Infinity];
+    const mkHist = (): number[] => new Array(edges.length).fill(0);
+    const bucket = (h: number[], d: number): void => { for (let i = 0; i < edges.length; i++) if (d < edges[i]) { h[i]++; break; } };
+    const sheetHist = mkHist(), lipHist = mkHist();
+    let outSheet = 0, outLip = 0, worst = 0;
+    const advMargin = 0.7 * TOL;
+    const radialBound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > H) return Infinity; let th = Math.atan2(py, px); if (th < 0) th += TAU; return Math.abs(Math.hypot(px, py) - rA(th, pz)); };
+    const nF = mesh.nF; const stride = 8;
+    const t0 = Date.now();
+    for (let f = 0; f < nF; f += stride) {
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2], bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2], cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+      const kind = cls(f); let dv = 0;
+      if (kind === 'sheet') { let bMax = 0; for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const bd = radialBound(px, py, pz); if (bd > bMax) { bMax = bd; if (bMax > advMargin) break; } } if (bMax <= advMargin) dv = bMax; else for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const d = confLoc.dist(px, py, pz); if (d > dv) dv = d; } }
+      else for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const d = confLoc.dist(px, py, pz); if (d > dv) dv = d; }
+      if (dv > worst) worst = dv;
+      if (dv > TOL) { const zc = (az + bz + cz) / 3; const d2r = distToRing(zc); if (kind === 'sheet') { outSheet++; bucket(sheetHist, d2r); } else { outLip++; bucket(lipHist, d2r); } }
+    }
+    checkpoint2({ key: 'sheetloc_nZ110', task: 'localize-outliers-by-z-to-ring', nZband: NZ, tris: mesh.nF, stride,
+      outSheetScaled: outSheet * stride, outLipScaled: outLip * stride, worstMm: +worst.toFixed(6),
+      zToRingEdges: edges.map(e => e === Infinity ? -1 : e), sheetHistScaled: sheetHist.map(x => x * stride), lipHistScaled: lipHist.map(x => x * stride),
+      note: 'if sheet+lip outliers concentrate in z-to-ring < ~0.6mm ⇒ the transition-row lever can reach them (H1 targetable); if spread across body ⇒ H1 limited, deliverable is the density curve.', scoreMs: Date.now() - t0 });
+    plog(`[SHEETLOC] outSheet=${outSheet * stride} outLip=${outLip * stride} worst=${worst.toFixed(5)} sheetHist=${JSON.stringify(sheetHist.map(x => x * stride))} lipHist=${JSON.stringify(lipHist.map(x => x * stride))}`);
+    expect(true).toBe(true);
+  }, 60 * 60 * 1000);
+
+  // ── TRANS (PF_DS_TRANS=1): the transition-row z-refinement SWEEP (H1). Global nZband=110, treadCap=4 FIXED. Sweep
+  //    (transBand, transRows) at stride 8 to SCREEN the outlier trajectory + tri cost. PF_DS_CLOSE=1 confirms the
+  //    screened winner EVERY-FACET (stride 1). Scores under the VALIDATED aligned conforming ruler. Reads 1a-1d PASS.
+  it.skipIf(process.env.PF_DS_TRANS !== '1')('TRANS — transition-row z-refinement sweep (H1)', () => {
+    if (!gatesValidated()) { plog(`[TRANS] 1a-1d not all validated — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    plog(`[TRANS] building validated composite conforming ruler...`);
+    const confLoc = buildConformRuler(rA);
+    const NTH = 2400, NZ = 110, TREADCAP = 4;
+    const closeStride = process.env.PF_DS_CLOSE === '1' ? 1 : Number(process.env.PF_DS_STRIDE ?? '8');
+    // sweep (transBand mm, transRows). Band-shrink × fill-density = the two parameterizations the kill-criterion counts.
+    // Baseline (buildRows) = transBand 0.6 / transRows 0 → the FLOOR (8,752). P1: shrink band + moderate fill.
+    // P2: shrink band harder + dense fill. Env PF_DS_TRANS_CFG overrides for a floor sweep.
+    const defScreen: Array<[number, number]> = [[0.3, 4], [0.15, 8]];
+    const defClose: Array<[number, number]> = [[0.15, 8]]; // the screened winner, confirmed every-facet
+    const envCfg = process.env.PF_DS_TRANS_CFG; // "band:rows,band:rows"
+    const configs: Array<[number, number]> = envCfg
+      ? envCfg.split(',').map(s => { const [b, r] = s.split(':').map(Number); return [b, r] as [number, number]; })
+      : (process.env.PF_DS_CLOSE === '1' ? defClose : defScreen);
+    for (const [transBand, transRows] of configs) {
+      const key = `trans_tb${transBand}_tr${transRows}${closeStride === 1 ? '_s1' : ''}`;
+      if (keyExists2(key)) { plog(`[skip] ${key}`); continue; }
+      const tb = Date.now();
+      const rows = buildRowsTransition(rA, rings, NTH, NZ, TREADCAP, transBand, transRows);
+      const mesh = buildStructuredWall(rA, H, rows);
+      const { xyz, idx } = toF32(mesh);
+      const cls = facetClassifier(mesh);
+      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) stride=${closeStride} transBand=${transBand} transRows=${transRows} — scoring under conforming ruler...`);
+      scoreMeshTo(checkpoint2, key, 'trans-zrefine', NZ, mesh.nF, xyz, idx, confLoc, cls, closeStride, rA, { transBand, transRows });
     }
     expect(true).toBe(true);
   }, 6 * 60 * 60 * 1000);
