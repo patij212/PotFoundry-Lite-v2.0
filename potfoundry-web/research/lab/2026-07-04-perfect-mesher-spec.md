@@ -2215,6 +2215,37 @@ battery. Flag OFF; dev-only; no src/ edit.
 
 ---
 
+## V11i — TANGLED-CONTINUATION: Voronoi + HexHive adjudicated via the VALIDATED Newton true-3D ruler (V11j instrument) — both GENUINE distributed density FLOORS, NOT cliff-class, NOT twin-inflated (2026-07-08)
+
+Continuation of the tangled class after the Gyroid pilot (§V11b, REFUTED-for-Gyroid). Per §V11j §(2) the validated
+grid-free multi-start Newton (`newtonNearest`, `_gyroid_truthLib.ts`) is the tangled-class true-3D VERDICT instrument;
+re-adjudicated the remaining styles with it. Instrument recipe (§V11j §3): rank all facets by the SOUND radial bound →
+Newton-score the worst-radial SAMPLE POINT of the fat tail + a stratified sample of the rest → honest true-3D count +
+wall-slope + (u,t) scatter. Cost-controlled to 1 Newton/facet (`facetTrue3DWorstPoint`, ~200ms/call) ⇒ ~1.5min/style.
+Registry E-2026-07-08-TANGLED-CONTINUATION (full numbers). All on the persisted `_best20` reaching meshes, tol 0.01.
+
+| style | tris | radial-out (sound upper) | honest true-3D (Newton) | worst true mm | slope med / p90 | scatter | VERDICT |
+|---|---|---|---|---|---|---|---|
+| **Voronoi** | 1,798,605 | 202,217 | **~115,816** (57% of radial, 1.75× inflated) | 0.137 @(0.70,0.25) | 0.635 / 2.50 | full (u,t) domain; 42% slope<0.5 | **FLOOR — genuine distributed density gap** |
+| **HexagonalHive** | 944,608 | 45,891 | **~26,262** (57% of radial) | 0.041 @(0.00,0.24) | 0.093 / 0.273 | full domain; 93.5% slope<0.3 (flat) | **FLOOR — pure under-density, cleanest target** |
+
+**Key finding — these are NOT Gyroid.** Gyroid was 8-9× radial-inflated (206k→~12k true, 5.7%) with 94% on steep channel
+walls (slope p50 1.9) ⇒ CLIFF-class (feature-edge embedding). By contrast Voronoi is only 1.75× inflated with 42% of true
+outliers on FLAT/moderate surface (slope<0.5) spanning the whole domain, and HexHive is 93.5% flat (slope<0.3, worst only
+0.041). Both are GENUINE broadly-distributed true-3D DENSITY floors, not cliffs — density is the right tool (unlike Gyroid),
+but the pilot's deep-sag build STALLS under contention and the radial-driven sweep grows the count on the steep fraction, so
+literal 0 was not reached this session. HexHive is the cheapest fleet target (flat, worst 0.041). BVH-twin soundness for
+Voronoi (0.0077@2048² pilot-prior) confirms the V10b ~105k count is REAL (Newton honest ~116k agrees). watertight/zeroArea
+clean on the reaching meshes. The instrument wall is BROKEN for the whole tangled class: Newton is the sound, tractable
+true-3D verdict — no style here is Gyroid-class-unmeasurable.
+
+**LEDGER:** registry E-2026-07-08-TANGLED-CONTINUATION; probe `research/bridge/_pf_tangledCont.test.ts`
+(PF_TC_TWIN/PF_TC_GATE/PF_TC_SWEEP/PF_TC_TRUTH); instrument `_gyroid_truthLib.ts` (read-only) + `_pf_tangledKernelLib.ts`
++ `_ct_creaseLib.ts`; data `research/exchange/_tangled_cont/<style>/` (gitignored, numbers inlined). Commits 83cf12d→
+(this session). DEV-ONLY; no src/ edit.
+
+---
+
 ## V11a — SMOOTH-TAIL CLOSE: all 4 smooth-tail styles CLOSED to literal whole-mesh EVERY-FACET 0-outlier (2026-07-08)
 
 **E-2026-07-08-SMOOTH-TAILS — CONFIRMED (all 4 CLOSE).** The 4 smooth single-valued-field styles that the §V10b FINAL
