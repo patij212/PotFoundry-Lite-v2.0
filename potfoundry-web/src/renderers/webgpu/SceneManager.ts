@@ -27,7 +27,14 @@ export class SceneManager {
         this.renderer = renderer;
     }
 
-    public async init(initialStyleId: number = 0) {
+    /**
+     * @param warmup background-compile all remaining styles after the initial
+     *        one (desktop only). Pass false in ray-cast preview sessions: the
+     *        mesh pipelines are unused there, and the warmup blast (20 styles,
+     *        including two known ~30s Dawn-compiler hangs) starves the raycast
+     *        pipeline compiles queued behind it.
+     */
+    public async init(initialStyleId: number = 0, warmup: boolean = true) {
         try {
             if (!this.renderer.device) return false;
 
@@ -58,7 +65,9 @@ export class SceneManager {
 
             // 2. Start background compilation of remaining styles (desktop only).
             // On mobile, skip warmup to avoid overloading the GPU shader compiler.
-            if (!isMobileDevice()) {
+            if (!warmup) {
+                console.log('[WebGPU] [SceneManager] Warmup disabled by caller (ray-cast session) — styles compile on demand');
+            } else if (!isMobileDevice()) {
                 this.warmupPipelines(initialStyleId);
             } else {
                 console.log('[WebGPU] [SceneManager] Mobile device — skipping background shader warmup');

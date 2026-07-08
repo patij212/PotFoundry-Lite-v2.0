@@ -1005,11 +1005,17 @@ export const mount = async ({
   await new Promise(resolve => setTimeout(resolve, 200));
   if (import.meta.env.DEV) console.log('[WebGPU] Device stabilization complete, proceeding with initialization...');
 
-  // Initialize SceneManager
+  // Initialize SceneManager. In ray-cast sessions the mesh pipelines are
+  // unused (wireframe compiles on demand), so skip the 20-style warmup blast —
+  // it starves the raycast pipeline compiles behind two known ~30s Dawn hangs.
+  const previewMode = resolvePreviewMode(
+    typeof window !== 'undefined' ? window.location.search : '',
+    (k) => { try { return localStorage.getItem(k); } catch { return null; } }
+  );
   const sceneManager = new SceneManager(renderer);
   const reqInitStyleId = typeof initialParams.style === 'number' ? initialParams.style : 0;
   try {
-    if (!await sceneManager.init(reqInitStyleId)) {
+    if (!await sceneManager.init(reqInitStyleId, previewMode !== 'raycast')) {
       console.error('[WebGPU] SceneManager.init returned false');
       ThumbnailRenderer.getInstance().rejectDevice();
       return fail('webgpu:pipeline-failed', 'SceneManager initialization failed');
@@ -1633,10 +1639,7 @@ export const mount = async ({
   });
 
   // --- Exact ray-cast preview (flag-gated; spec 2026-07-08) ---
-  const previewMode = resolvePreviewMode(
-    typeof window !== 'undefined' ? window.location.search : '',
-    (k) => { try { return localStorage.getItem(k); } catch { return null; } }
-  );
+  // previewMode is resolved above, before SceneManager.init (warmup gating).
   let raycastController: RaycastController | null = null;
   let lastStyleParamsF32: Float32Array | null = null;
   if (previewMode === 'raycast') {

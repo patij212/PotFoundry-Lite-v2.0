@@ -21,7 +21,7 @@ struct BoundOut {
 @group(0) @binding(9) var<storage, read_write> BOUND : BoundOut;
 
 const BOUND_NU : u32 = 256u;  // theta samples
-const BOUND_NT : u32 = 128u;  // t samples
+const BOUND_NT : u32 = 512u;  // t samples (8 per z-bin; the extra density is cheap one-off safety margin for z-spiky relief — verified NOT load-bearing for DragonScales lips, whose side-on seams are real occlusion boundaries)
 const BOUND_BINS : u32 = 64u; // z bins (2 t-samples per bin)
 
 @compute @workgroup_size(256)

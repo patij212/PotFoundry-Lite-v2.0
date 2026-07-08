@@ -37,6 +37,7 @@ const RC_LUT_BINS : f32 = 64.0;
 const RC_BAND_PAD_MM : f32 = 2.0;   // covers the 256x128 kernel sampling gaps + bin quantization
 const RC_PAD_Z_MM : f32 = 1.0;      // fine-march window around the flat faces (rim/floor/underside)
 const RC_COARSE_RESERVE : f32 = 48.0; // evals reserved to coarse-finish a budget-exhausted ray (no holes)
+const RC_MAX_SKIP_MM : f32 = 12.0;    // hard cap per analytic skip — bounds any degenerate blind jump
 
 // ---------------------------------------------------------------------------
 // Implicit solid. Continuous scalar, negative inside the pot. This is the
@@ -243,12 +244,24 @@ fn skip_to_band(ro: vec3<f32>, rd: vec3<f32>, t_cur: f32, t_end: f32, H: f32, bo
     let c0 = dot(ro.xy, ro.xy);
     let rho2 = dot(p.xy, p.xy);
     if (rho2 > band.y * band.y) {
-      // outside the band: entry where rho falls to band.y (smaller root)
       let disc = b2 * b2 - a * (c0 - band.y * band.y);
       if (disc >= 0.0) {
-        let t_in = (-b2 - sqrt(disc)) / a;
+        let sq = sqrt(disc);
+        let t_in = (-b2 - sq) / a;
+        let t_out = (-b2 + sq) / a;
         if (t_in > t_cur) {
+          // outside the band: entry where rho falls to band.y (smaller root)
           t_best = min(t_best, t_in);
+        } else if (t_out > t_cur) {
+          // Degenerate band-edge landing: rho reads a hair ABOVE band.y while
+          // the quadratic says the cursor is already at/inside the entry
+          // (t_in behind, t_out ahead). Without this, no radial candidate
+          // fires and the skip falls to the bin-boundary candidate — which
+          // for a near-horizontal ray is ~meters away, producing a blind
+          // jump straight through the wall (measured: 28mm skips through the
+          // pot face at rd.z ~= 0.011 — the "straight-on view" dash misses).
+          // Just fine-step through the numerical noise.
+          return t_cur + dt_fine;
         }
       }
     } else if (rho2 < band.x * band.x) {
@@ -262,6 +275,11 @@ fn skip_to_band(ro: vec3<f32>, rd: vec3<f32>, t_cur: f32, t_end: f32, H: f32, bo
       }
     }
   }
+
+  // Belt-and-braces: cap any skip so no degenerate candidate rejection can
+  // ever blind-jump through geometry — a capped skip only costs one extra
+  // landing per RC_MAX_SKIP_MM of empty travel.
+  t_best = min(t_best, t_cur + RC_MAX_SKIP_MM);
 
   // always make progress; a skip is never shorter than a fine step
   return max(t_best, t_cur + dt_fine);
