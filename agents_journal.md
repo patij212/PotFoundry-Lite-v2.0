@@ -5408,3 +5408,70 @@ Next agent:
 - If investigating grazing motion artifact: check `raycast/` march termination logic or consider accumulated-frame blend fade at silhouette edges (deferred as YAGNI per spec).
 - Thumbnail renderer migration, WebGL parity, resolution-scale knob (uniform space reserved, not wired) all deferred per task brief.
 
+## 2026-07-08 - Claude - Raycast preview quality: banded march closes the grazing tail
+
+**Trigger**: Patryk reported "gaps and holes everywhere, glitchy and fuzzy at the edges" in the ray-cast preview.
+
+**Root cause (systematic-debugging, measured)**: the uniform march spent its step budget across the whole
+bound-clipped segment — mostly empty air and cavity interior — so the effective step near the surface was
+segLen/cap ≈ 1.25–3.3mm, 5–13× the 0.25mm feature floor the spec designed. Visible as moiré striping in
+1-spp interactive frames and fuzz/translucent scales in the converged mean (the gate's honest DragonScales
+p90=7mm tail was this same mechanism).
+
+**Fix (banded march)**: `raycast_bound.wgsl` now also reduces per-z-bin min/max radius (64 bins, 256×128
+samples, atomicMin/Max on positive-f32 bit patterns; min slots seeded 0x7F7FFFFF). The march skips
+analytically (exact cylinder/plane intersections — bands are θ-independent) while outside every fine band,
+fine-steps at min(pixel footprint, feature floor) inside the per-z-bin radial band [minR−wall−pad, maxR+pad],
+and z-scales its step in flat-face pad windows (rim/floor/underside/drain). Bisection on the true field is
+unchanged — exactness preserved by construction. Step caps now bound FIELD EVALS. Also fixed: the march
+footprint was evaluated at the NEAR PLANE (µm-scale → dt always clamped to 0.02mm); now interpolated to the
+marched segment. New shipped defaults: eval caps 224/768 (desktop), floors 0.6/0.25mm; mobile 160/512, 1.0/0.4.
+
+**Measured (e2e gate, tightened bounds committed)**:
+- Production convergence (shipped vs 0.1mm-floor reference, same 16 Halton rays): median/p90/p95/p99 = 0.0000mm
+  on styles 0/5/9; max 0.5mm (DragonScales, one grazing ray, 4 f16 quanta); signFlip 0. Was: p90 7mm / max 11.5mm.
+- Kernel convergence (floor 0.2 vs 0.1): bit-exact (p99 0, max 0, disagree 0) on all three probe styles.
+- Interactive perf: 9.8–13.0ms on DragonScales — FASTER than the pre-fix 19.6ms (skips pay for the fine steps).
+- Visual: interacting frame is now artifact-free (was moiré-striped); converged scales crisp.
+
+**Measurement traps found (recorded in CLAUDE.md gotchas)**:
+1. Camera INERTIA after a probe mouse-drag keeps drifting between readbacks → phantom 32–89% "wrong surface"
+   rates from comparing different views. Hit-field probes must use a stationary camera.
+2. `isReady(styleId)` never goes true for unselected styles (the app default is not id 0) — probes must
+   select-then-wait.
+
+**Files**: preview_raycast.wgsl (banded march + debug modes), raycast_bound.wgsl (bin LUT), RaycastController
+(LUT plumbing, floors, eval-cap semantics, debugMode 0|1|2), raycast-preview.spec.ts (A8/A10 reworked to
+floor-convergence + new defaults, bounds tightened ~20×), probes _raycast_quality_diag/_dbg2/_disagree/
+_wgsl_compile/_perf_check.
+
+**Default-flip inputs updated**: the former grazing-tail objection is CLOSED (p90 0.0000 vs 7mm). Remaining:
+style 19 Dawn hang (pre-existing, mesh path worse), e2e --workers=1. A/B packet regenerated post-fix.
+## 2026-07-08 - Claude - Raycast banded-march hardening: holes + motion break-up eliminated (d85223f)
+
+Follow-up to the banded-march entry above after Patryk reported persistent holes + rendering breaking during
+rotation. Three further root causes found by instrumented forensics (debug modes 2-7 added to the shader,
+JS replay of a hole ray's march decisions):
+1. **Degenerate bin-boundary landing** (THE persistent-hole bug, proven by replay): a skip landing exactly on
+   a z-bin boundary made the next bin-candidate reject (t_bin == t_cur), letting a cavity radial skip validated
+   against ONE bin's band leap ~23mm across 12 bins straight past the surface. Fix: the bin candidate always
+   advances; every skip now capped at <= one bin of z-travel.
+2. **Razor-tangent silhouette grazes** (17 converged holes on Gothic flanks): sub-0.01mm-deep crossings that all
+   16 jittered phases provably miss. Fix: tangent-graze detector — ternary-search local field minima between
+   fine samples, bisect sub-zero dips. Deterministic, not stochastic.
+3. **View-dependent striping on wavy walls** (Gyroid at slant views, survived 16-phase accumulation): fixed
+   0.23mm comb aliasing against ~1mm surface waves at grazing incidence. Fix: proximity-adaptive stepping
+   (dt shrinks toward |f|, floor dt/8) — detection is a strict superset, so it can only add hits.
+Plus: coarse-finish reserve (budget-exhausted rays finish coarse instead of reporting a miss — a hole is worse
+than a coarse hit); the interactive "cost floor" (max(fp, 0.6)) was tried and REVERTED (strode over thin Gothic
+lattice bars while dragging).
+
+Verified: spec gate 7/7 green with bounds tightened to the floor — production-vs-reference convergence
+median/p90/p95/p99/MAX = 0.0000mm on styles 0/5/9, signFlip 0, kernel bit-exact; perf 9.1ms interactive
+(DragonScales); DragonScales mid-drag frame visually flawless; converged-hole census 0 across styles 0/5/9/12.
+
+MEASUREMENT TRAPS (now in potfoundry-web/CLAUDE.md gotchas — probes MUST respect these):
+- Post-drag camera INERTIA between readbacks fabricates phantom wrong-surface rates (32%/89% readings were this).
+- Full-canvas no-skip truth marches (~1e9 field evals/draw) trip the Windows GPU watchdog (TDR) → flaky frames,
+  browser kills, degraded GPU. Use the banded march at ultra settings (floor 0.05) as truth.
+- isReady(styleId) never goes true for unselected styles — select-then-wait.
