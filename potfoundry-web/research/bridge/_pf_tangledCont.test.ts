@@ -22,6 +22,7 @@ import {
 } from './_pf_tangledKernelLib';
 import { celticTriquetraC0Predicate } from './_ct_creaseLib';
 import { scoreWholeMeshBVH } from './_pf_bvhRuler';
+import { worstFacetsByRadial, newtonNearest } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 
@@ -184,7 +185,107 @@ function runSweep(
   console.log(`FINAL ${style} (driver=${driver}): converged=${converged} trajectory=[${traj.join(',')}] finalTris=${lastBuild?.tris ?? 0}`);
 }
 
+// ── NEWTON TRUTH-FLOOR (V11j §3 adjudication, the SOUND grid-free true-3D verdict) ───────────────────────────────
+// The radial bound is a SOUND UPPER bound but OVERSTATES ~2-9× on near-vertical walls (Gyroid: 206k radial → ~12k
+// true-3D, 8-9× inflated). The grid-free multi-start Newton (newtonNearest, VALIDATED truth-grade in §V11j) is the
+// honest true-3D nearest. Recipe: extract the worst-N radial-flagged facets (the sound upper-bound population) + a
+// stratified random sample of the radial-outlier facets, Newton-score each → honest true-3D dev per facet → (a) worst
+// true-3D max, (b) TRUE-outlier fraction of the radial population (→ scaled honest count), (c) wall-slope + (u,t)
+// scatter to classify CLIFF-CLASS (designed near-vertical walls) vs distributed body gap. Newton ≈ a few ms/facet ⇒
+// worst-3000 + 3000 stratified is tractable (~minutes) even under contention. CHECKPOINT the row + scatter ndjson.
+function newtonN(rA: (th: number, z: number) => number, H: number): (px: number, py: number, pz: number) => number {
+  return (px, py, pz) => newtonNearest(rA, H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 5, nZSeeds: 5, maxIter: 40 }).dist;
+}
+// Cost control: newtonNearest is ~200ms/call (coarse-grid seed insurance). facetTrue3D does 45 calls/facet ⇒ too
+// expensive at scale. Instead score ONLY the facet's WORST-radial-bound sample point (1 Newton/facet) — the true-3D
+// worst is at/near the radial worst on near-vertical walls (radial is a per-sample upper bound), and this is the V11j
+// worst-POINT recipe. Returns the true-3D dev at the worst-radial sample. `bary` = the DENSE lattice from the lib.
+const DENSE_TF = ((): Array<[number, number, number]> => { const B: Array<[number, number, number]> = []; const n = 8; for (let i = 0; i <= n; i++) for (let j = 0; j + i <= n; j++) B.push([i / n, j / n, (n - i - j) / n]); return B; })();
+function facetTrue3DWorstPoint(
+  rec: { verts: [number, number, number][] }, rA: (th: number, z: number) => number, H: number,
+  nearest: (px: number, py: number, pz: number) => number,
+): number {
+  const [A, B, C] = rec.verts;
+  const TAU2 = 2 * Math.PI;
+  const radBound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > H) return Infinity; const th = Math.atan2(py, px); return Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + TAU2 : th, pz)); };
+  // pick the sample with the max radial bound (cheap), then Newton it (expensive, once)
+  let bwa = 1, bwb = 0, bwc = 0, bB = -1;
+  for (const [wa, wb, wc] of DENSE_TF) {
+    const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2];
+    const b = radBound(px, py, pz); if (b > bB) { bB = b; bwa = wa; bwb = wb; bwc = wc; }
+  }
+  const px = bwa * A[0] + bwb * B[0] + bwc * C[0], py = bwa * A[1] + bwb * B[1] + bwc * C[1], pz = bwa * A[2] + bwb * B[2] + bwc * C[2];
+  return nearest(px, py, pz);
+}
+function runTruthFloor(style: StyleId, meshSource: 'best20', topWorst: number, nStrat: number, tol = 0.01): void {
+  mkdirSync(join(DIR, style), { recursive: true });
+  const fp = join(DIR, style, 'truthfloor.ndjson');
+  if (labelDone(style, 'truthfloor.ndjson', 'truthfloor')) { process.stderr.write(`  SKIP truthfloor ${style} (done)\n`); return; }
+  const rA = radiusFn(style, DIMS);
+  const { ut, idx, tris } = loadReaching(style); void meshSource;
+  const t0 = Date.now();
+  // 1) all facets ranked by radial bound → the radial-outlier population (sound upper bound). Take worst-N for the
+  //    max/wall-slope + a stratified sample across the rest of the radial-outlier tail for the honest fraction.
+  const big = worstFacetsByRadial(rA, DIMS.H, ut, idx, tris); // topN=tris ⇒ full ranked list
+  const radialOutliers = big.recs.filter((r) => r.radialDev > tol);
+  const nRadial = radialOutliers.length;
+  const nearest = newtonN(rA, DIMS.H);
+  // worst-N (the fat tail) — full Newton
+  const worstSet = radialOutliers.slice(0, Math.min(topWorst, nRadial));
+  // stratified sample of the REST (uniform over the remaining radial-outlier ranks) for the true-outlier fraction
+  const rest = radialOutliers.slice(worstSet.length);
+  const stratIdx: number[] = [];
+  if (rest.length > 0) { const step = Math.max(1, Math.floor(rest.length / Math.max(1, nStrat))); for (let i = 0; i < rest.length; i += step) stratIdx.push(i); }
+  const scatter: Array<{ u: number; t: number; rad: number; tru: number; slope: number }> = [];
+  let worstTrue = 0, worstU = 0, worstT = 0;
+  const scoreOne = (rec: (typeof radialOutliers)[number]): { tru: number; slope: number } => {
+    const tru = facetTrue3DWorstPoint(rec, rA, DIMS.H, nearest);
+    // wall-slope proxy: local |d rA/dz| at the worst sample chart coords (near-vertical relief ⇒ large)
+    const th = 2 * Math.PI * rec.uc, z = rec.tc * DIMS.H;
+    const dz = 0.02; const slope = Math.abs((rA(th, Math.min(DIMS.H, z + dz)) - rA(th, Math.max(0, z - dz))) / (2 * dz));
+    if (tru > worstTrue) { worstTrue = tru; worstU = rec.uc; worstT = rec.tc; }
+    return { tru, slope };
+  };
+  // worst-N: every one, record scatter
+  let worstTrueOut = 0;
+  for (const rec of worstSet) { const { tru, slope } = scoreOne(rec); if (tru > tol) worstTrueOut++; if (scatter.length < 4000) scatter.push({ u: +rec.uc.toFixed(5), t: +rec.tc.toFixed(5), rad: +rec.radialDev.toFixed(5), tru: +tru.toFixed(5), slope: +slope.toFixed(3) }); }
+  // stratified: fraction of the rest-tail that is TRUE-outlier
+  let stratTrueOut = 0, stratScored = 0; let stratSlopeSum = 0;
+  for (const i of stratIdx) { const { tru, slope } = scoreOne(rest[i]); stratScored++; if (tru > tol) stratTrueOut++; stratSlopeSum += slope; if (scatter.length < 4000 && tru > tol) scatter.push({ u: +rest[i].uc.toFixed(5), t: +rest[i].tc.toFixed(5), rad: +rest[i].radialDev.toFixed(5), tru: +tru.toFixed(5), slope: +slope.toFixed(3) }); }
+  const worstFrac = worstSet.length ? worstTrueOut / worstSet.length : 0;
+  const stratFrac = stratScored ? stratTrueOut / stratScored : 0;
+  // honest whole-mesh true-3D outlier estimate: worst-N contributes worstTrueOut exactly; the rest-tail contributes
+  // rest.length × stratFrac. (Facets with radialDev ≤ tol are PROVABLY ≤ tol — not counted.)
+  const honestTrueOutliers = Math.round(worstTrueOut + rest.length * stratFrac);
+  // wall-slope of the TRUE outliers (cliff signature): median slope over the scored true-outliers
+  const trueSlopes = scatter.filter((s) => s.tru > tol).map((s) => s.slope).sort((a, b) => a - b);
+  const slopeMed = trueSlopes.length ? trueSlopes[Math.floor(trueSlopes.length / 2)] : 0;
+  const slopeP90 = trueSlopes.length ? trueSlopes[Math.floor(trueSlopes.length * 0.9)] : 0;
+  const row = {
+    label: 'truthfloor', style, tris, tol, nRadialOutliers: nRadial,
+    worstNscored: worstSet.length, worstTrueOutliers: worstTrueOut, worstFrac: +worstFrac.toFixed(4),
+    stratScored, stratTrueOutliers: stratTrueOut, stratFrac: +stratFrac.toFixed(4),
+    honestTrueOutliers, honestFracOfRadial: nRadial ? +(honestTrueOutliers / nRadial).toFixed(4) : 0,
+    worstTrueMax: +worstTrue.toFixed(5), worstTrueUt: [+worstU.toFixed(5), +worstT.toFixed(5)],
+    slopeMed: +slopeMed.toFixed(3), slopeP90: +slopeP90.toFixed(3),
+    ms: Date.now() - t0,
+  };
+  appendFileSync(fp, JSON.stringify(row) + '\n');
+  appendFileSync(join(DIR, style, 'truthfloor_scatter.ndjson'), scatter.map((s) => JSON.stringify(s)).join('\n') + '\n');
+  // eslint-disable-next-line no-console
+  console.log(`TRUTHFLOOR ${style}: tris=${tris} nRadialOut=${nRadial} → honestTrue=${honestTrueOutliers} (${row.honestFracOfRadial} of radial) worstTrueMax=${row.worstTrueMax}@${JSON.stringify(row.worstTrueUt)} | worstFrac=${row.worstFrac} stratFrac=${row.stratFrac} slopeMed=${row.slopeMed} slopeP90=${row.slopeP90} | ${row.ms}ms`);
+}
+
 const HRS = 60 * 60 * 1000;
+
+describe('E-2026-07-08-TANGLED-CONTINUATION — Newton truth-floor (V11j sound true-3D)', () => {
+  for (const style of ['Voronoi', 'HexagonalHive', 'CelticTriquetra', 'CelticKnot', 'Crystalline', 'BasketWeave'] as const) {
+    it.skipIf(process.env.PF_TC_TRUTH !== style)(`truthfloor ${style}`, () => {
+      runTruthFloor(style as StyleId, 'best20', 1500, 1500);
+      expect(true).toBe(true);
+    }, 6 * HRS);
+  }
+});
 
 // PF_TC_TWIN=1 → cheap twin-soundness triage for ALL six styles in one run (no mesh scoring). Resumable per style.
 describe('E-2026-07-08-TANGLED-CONTINUATION — twin soundness triage', () => {
