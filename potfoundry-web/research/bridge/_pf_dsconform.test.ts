@@ -556,6 +556,81 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     expect(true).toBe(true);
   }, 6 * 60 * 60 * 1000);
 
+  // ── C0TAIL (PF_DS_C0TAIL=1): adjudicate the <90 C0-straddle tail (the max~0.0461 facets). On a given mesh (baseline
+  //    nZ110 by default; PF_DS_C0TAIL_TB/TR to test a transition mesh), find every facet whose dv exceeds C0_HI (0.02),
+  //    then decide a/b/c:
+  //    (a) VERTEX-SNAP: are the tail facets' 3 vertices already on a ring circle (z==z_k within zEps, r==rA(θ,z_k∓zEps))?
+  //        If YES ⇒ the mesh already ends AT the feature edge; the straddle is in the RULER's sampling, not the mesh ⇒ (a)
+  //        cannot help, go to (b). If NO ⇒ the facet spans the discontinuity in the mesh ⇒ (a) is applicable (snap needed).
+  //    (b) WIDER-WALL: re-score the SAME tail facets under a ruler whose riser wall is z-WIDENED (wallEps swept up), z-gate
+  //        band raised to match. If the widened wall's coverage drops the tail dv ≤ tol ⇒ (b) applies (document the wall
+  //        z-width needed + verify 1d one-sidedness still holds at that width — a wider wall must NOT start catching
+  //        off-wall probes). If the tail dv is INVARIANT to wall width ⇒ the straddle is genuine sheet-side geometry ⇒ (c).
+  it.skipIf(process.env.PF_DS_C0TAIL !== '1')('C0TAIL — adjudicate the C0-straddle tail (a vertex-snap / b wider-wall / c exclude)', () => {
+    if (!gatesValidated()) { plog(`[C0TAIL] 1a-1d not all validated — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    const zEps = 5e-4; const C0_HI = 0.02;
+    const NTH = 2400, NZ = 110;
+    const tb = process.env.PF_DS_C0TAIL_TB ? Number(process.env.PF_DS_C0TAIL_TB) : 0;
+    const tr = process.env.PF_DS_C0TAIL_TR ? Number(process.env.PF_DS_C0TAIL_TR) : 0;
+    const key = `c0tail_nZ${NZ}${tb ? `_tb${tb}_tr${tr}` : '_baseline'}`;
+    if (keyExists2(key)) { plog(`[skip] ${key}`); expect(true).toBe(true); return; }
+    const rows = (tb > 0) ? buildRowsTransition(rA, rings, NTH, NZ, 4, tb, tr) : buildRows(rA, rings, NTH, NZ, 4);
+    const mesh = buildStructuredWall(rA, H, rows);
+    const { xyz, idx } = toF32(mesh);
+    const cls = facetClassifier(mesh);
+    // sub-locators to re-score under a WIDENED wall on demand.
+    const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
+    const sheetLoc = buildRefLocator(radTwin, RAD_CELL);
+    const zs = rings.map(r => r.z);
+    const mkWallLoc = (weps: number): RefLocator => buildRefLocator(buildWallOnlyReference(rA, rings, WALL_NTHETA, weps), WALL_CELL);
+    const nearZ = (z: number, band: number): boolean => zs.some(rz => Math.abs(z - rz) <= band);
+    const scoreFacetDv = (f: number, wallLoc: RefLocator, weps: number, zBand: number): number => {
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2], bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2], cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+      let dv = 0;
+      for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const ds = sheetLoc.dist(px, py, pz); const dw = nearZ(pz, zBand) ? wallLoc.dist(px, py, pz) : Infinity; const d = Math.min(ds, dw); if (d > dv) dv = d; }
+      void weps; return dv;
+    };
+    // pass 1: locate the C0 tail (dv > C0_HI) under the OPERATING ruler (aligned wall 5e-4).
+    const opWall = mkWallLoc(WALLEPS);
+    const onRingCircle = (v: number): boolean => { const vz = xyz[3 * v + 2]; const near = zs.find(rz => Math.abs(vz - rz) <= 1e-3); if (near === undefined) return false; const th = Math.atan2(xyz[3 * v + 1], xyz[3 * v]); const r = Math.hypot(xyz[3 * v], xyz[3 * v + 1]); const rBelow = rA(th < 0 ? th + TAU : th, near - zEps), rAbove = rA(th < 0 ? th + TAU : th, near + zEps); return Math.abs(r - rBelow) < 5e-3 || Math.abs(r - rAbove) < 5e-3; };
+    const tail: number[] = []; let maxDv = 0; const stride = 8;
+    for (let f = 0; f < mesh.nF; f += stride) { const dv = scoreFacetDv(f, opWall, WALLEPS, 3.0); if (dv > maxDv) maxDv = dv; if (dv > C0_HI) tail.push(f); }
+    // (a) vertex-snap: of the tail facets, how many have ALL 3 vertices on a ring circle vs how many span (a mix).
+    let allOnRing = 0, someOnRing = 0, noneOnRing = 0; const tailSamples: Array<Record<string, number | string>> = [];
+    const tailKind: Record<string, number> = {};
+    for (const f of tail) {
+      const vs = [idx[3 * f], idx[3 * f + 1], idx[3 * f + 2]]; const onR = vs.filter(onRingCircle).length;
+      if (onR === 3) allOnRing++; else if (onR === 0) noneOnRing++; else someOnRing++;
+      const k = cls(f); tailKind[k] = (tailKind[k] ?? 0) + 1;
+      if (tailSamples.length < 15) { const zc = (xyz[3 * vs[0] + 2] + xyz[3 * vs[1] + 2] + xyz[3 * vs[2] + 2]) / 3; const zSpan = Math.max(xyz[3 * vs[0] + 2], xyz[3 * vs[1] + 2], xyz[3 * vs[2] + 2]) - Math.min(xyz[3 * vs[0] + 2], xyz[3 * vs[1] + 2], xyz[3 * vs[2] + 2]); tailSamples.push({ kind: k, zc: +zc.toFixed(4), zSpan: +zSpan.toFixed(4), onRingVerts: onR, dv: +scoreFacetDv(f, opWall, WALLEPS, 3.0).toFixed(5) }); }
+    }
+    // (b) wider-wall sweep on the SAME tail facets: does a z-wider wall catch them?
+    const widths = [0.001, 0.003, 0.01, 0.03];
+    const widerResults = widths.map(w => {
+      const wl = mkWallLoc(w); let stillOut = 0, newMax = 0;
+      for (const f of tail) { const dv = scoreFacetDv(f, wl, w, Math.max(3.0, w + 0.5)); if (dv > TOL) stillOut++; if (dv > newMax) newMax = dv; }
+      // 1d one-sidedness re-check at this wall width: a NORMAL-push probe delta=0.2 near a ring must still read ~0.2.
+      let maxUnder = 0;
+      for (const ring of rings) for (const dz of [-0.5, 0.5]) { const z = ring.z + dz; if (z <= 0 || z >= H) continue; for (let it = 0; it < 60; it++) { const th = TAU * (it / 60); const r0 = rA(th, z); const eTh = 1e-4, eZ = 1e-3; const P = (t: number, zz: number): [number, number, number] => { const rr = rA(t, zz); return [rr * Math.cos(t), rr * Math.sin(t), zz]; }; const p0 = P(th, z), pT = P(th + eTh, z), pZ = P(th, z + eZ); const tvx = pT[0] - p0[0], tvy = pT[1] - p0[1], tvz = pT[2] - p0[2]; const zvx = pZ[0] - p0[0], zvy = pZ[1] - p0[1], zvz = pZ[2] - p0[2]; let nx = tvy * zvz - tvz * zvy, ny = tvz * zvx - tvx * zvz, nz = tvx * zvy - tvy * zvx; const nl = Math.hypot(nx, ny, nz); nx /= nl; ny /= nl; nz /= nl; const rd = Math.hypot(p0[0], p0[1]); const sgn = (nx * p0[0] + ny * p0[1]) / rd >= 0 ? 1 : -1; nx *= sgn; ny *= sgn; nz *= sgn; const npx = p0[0] + 0.2 * nx, npy = p0[1] + 0.2 * ny, npz = z + 0.2 * nz; const ds = sheetLoc.dist(npx, npy, npz); const dw = nearZ(npz, Math.max(3.0, w + 0.5)) ? wl.dist(npx, npy, npz) : Infinity; const dd = Math.min(ds, dw); const u = 0.2 - dd; if (u > maxUnder) maxUnder = u; void r0; } }
+      return { wallEps: w, tailStillOut: stillOut, tailNewMax: +newMax.toFixed(5), onesidedUnderstate: +maxUnder.toFixed(5), onesidedOK: maxUnder < 0.05 };
+    });
+    // adjudicate
+    const tailScaled = tail.length * stride;
+    const bWins = widerResults.find(r => r.tailStillOut === 0 && r.onesidedOK);
+    const verdict = tailScaled === 0 ? 'NO C0 TAIL on this mesh (transition rows closed it — option a-by-construction)'
+      : (allOnRing === tail.length ? 'a-inapplicable(all tail verts already on ring circles ⇒ mesh ends AT the feature edge; straddle is ruler-sampling)'
+        : `a-applicable(${noneOnRing + someOnRing}/${tail.length} tail facets span the discontinuity in the mesh)`)
+      + (bWins ? ` | b APPLIES: wall z-width ${bWins.wallEps}mm catches the tail (tailOut→0, 1d one-sided OK ${bWins.onesidedUnderstate})` : ` | b: no swept wall width catches the tail while staying one-sided (widest ${widths[widths.length - 1]}: still ${widerResults[widerResults.length - 1].tailStillOut}, understate ${widerResults[widerResults.length - 1].onesidedUnderstate}) ⇒ candidate for (c) exclusion`);
+    checkpoint2({ key, task: 'c0-straddle-tail-adjudication', mesh: tb ? `transition tb${tb} tr${tr}` : 'baseline', tris: mesh.nF, C0_HI, stride,
+      tailFacetsScaled: tailScaled, maxDvMm: +maxDv.toFixed(6), tailKindScaled: Object.fromEntries(Object.entries(tailKind).map(([k, v]) => [k, v * stride])),
+      vertexSnap: { allOnRing, someOnRing, noneOnRing }, widerWallSweep: widerResults, tailSamples, verdict });
+    plog(`[C0TAIL] ${key}: tail=${tailScaled} maxDv=${maxDv.toFixed(5)} snap(all/some/none)=${allOnRing}/${someOnRing}/${noneOnRing} | ${verdict}`);
+    expect(true).toBe(true);
+  }, 2 * 60 * 60 * 1000);
+
   it.skipIf(process.env.PF_DS_CONF !== '1')('validate conforming ruler (1a-1d) + re-score + close', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
