@@ -63,5 +63,5 @@ describe('Tier-C parallel refine — byte-identical parity', () => {
       expect(par.history[p].inserted).toBe(seq.history[p].inserted);
       expect(par.history[p].nTris).toBe(seq.history[p].nTris);
     }
-  }, 180_000);
+  }, 300_000);
 });

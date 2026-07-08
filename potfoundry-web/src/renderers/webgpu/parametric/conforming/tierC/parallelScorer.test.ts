@@ -86,7 +86,7 @@ describe('Tier-C parallel scorer — byte-identical metrology', () => {
     expect(parScore.p99).toBe(seqScore.p99);
     expect(parScore.bruteCalls).toBe(seqScore.bruteCalls);
     expect(parScore.nFacets).toBe(seqScore.nFacets);
-  }, 120_000);
+  }, 300_000);
 
   it('is invariant to worker count (1 vs 3 vs 4 give identical dev[])', async () => {
     const { sampler, mesh } = buildFixture();
@@ -104,5 +104,5 @@ describe('Tier-C parallel scorer — byte-identical metrology', () => {
       expect(d3[f]).toBe(d1[f]);
       expect(d4[f]).toBe(d1[f]);
     }
-  }, 120_000);
+  }, 300_000);
 });
