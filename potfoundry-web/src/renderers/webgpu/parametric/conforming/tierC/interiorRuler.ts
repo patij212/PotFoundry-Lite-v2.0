@@ -371,36 +371,18 @@ export function liftChartMesh(
 }
 
 /**
- * Score EVERY free facet with the dense 45-pt honest ruler. There is
- * deliberately NO population parameter: the whole mesh is the only honest
- * acceptance population (top-N-gradU was measured blind — banked mandate).
+ * Reduce a per-facet dev[] array to the whole-mesh score. Extracted so the
+ * sequential {@link scoreWholeMesh} and the worker-pool parallel scorer
+ * (parallelScorer.ts) share ONE reduction ⇒ byte-identical aggregates from a
+ * byte-identical dev[] (the parallel path produces the same dev[] because the
+ * per-facet ruler is bit-identical across the serialized grid).
  */
-export function scoreWholeMesh(
-  sampler: SurfaceSampler,
-  surface: RadialSurface,
-  mesh: ChartMesh,
+export function reduceDevArray(
+  dev: Float64Array,
   tolMm: number,
-  opts: RulerOptions = DEFAULT_RULER,
+  bruteCalls: number,
 ): WholeMeshScore {
-  const xyz = liftChartMesh(sampler, mesh.uv);
-  const nF = mesh.tris.length / 3;
-  const dense = denseBary(8);
-  const dev = new Float64Array(nF);
-  let bruteCalls = 0;
-  for (let f = 0; f < nF; f++) {
-    const g = facetInteriorHonest(
-      surface,
-      xyz,
-      mesh.uv,
-      mesh.tris[3 * f],
-      mesh.tris[3 * f + 1],
-      mesh.tris[3 * f + 2],
-      dense,
-      opts,
-    );
-    dev[f] = g.dev;
-    bruteCalls += g.bruteCalls;
-  }
+  const nF = dev.length;
   let maxMm = 0;
   let outliers = 0;
   for (let f = 0; f < nF; f++) {
@@ -420,6 +402,55 @@ export function scoreWholeMesh(
     p99: pc(0.99),
     bruteCalls,
   };
+}
+
+/**
+ * Compute the dense per-facet dev[] array (sequential). Shared by
+ * {@link scoreWholeMesh} and available to the parallel scorer's byte-identical
+ * regression test as the ground truth.
+ */
+export function computeDevArraySeq(
+  surface: RadialSurface,
+  xyz: Float64Array,
+  mesh: ChartMesh,
+  opts: RulerOptions,
+): { dev: Float64Array; bruteCalls: number } {
+  const nF = mesh.tris.length / 3;
+  const dense = denseBary(8);
+  const dev = new Float64Array(nF);
+  let bruteCalls = 0;
+  for (let f = 0; f < nF; f++) {
+    const g = facetInteriorHonest(
+      surface,
+      xyz,
+      mesh.uv,
+      mesh.tris[3 * f],
+      mesh.tris[3 * f + 1],
+      mesh.tris[3 * f + 2],
+      dense,
+      opts,
+    );
+    dev[f] = g.dev;
+    bruteCalls += g.bruteCalls;
+  }
+  return { dev, bruteCalls };
+}
+
+/**
+ * Score EVERY free facet with the dense 45-pt honest ruler. There is
+ * deliberately NO population parameter: the whole mesh is the only honest
+ * acceptance population (top-N-gradU was measured blind — banked mandate).
+ */
+export function scoreWholeMesh(
+  sampler: SurfaceSampler,
+  surface: RadialSurface,
+  mesh: ChartMesh,
+  tolMm: number,
+  opts: RulerOptions = DEFAULT_RULER,
+): WholeMeshScore {
+  const xyz = liftChartMesh(sampler, mesh.uv);
+  const { dev, bruteCalls } = computeDevArraySeq(surface, xyz, mesh, opts);
+  return reduceDevArray(dev, tolMm, bruteCalls);
 }
 
 /** Convenience count for the go/no-go assertions. */

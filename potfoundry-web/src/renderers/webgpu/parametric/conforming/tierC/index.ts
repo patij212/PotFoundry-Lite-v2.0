@@ -40,11 +40,18 @@ export {
   assertWholeMeshZero,
   countInteriorOutliers,
   scoreWholeMesh,
+  computeDevArraySeq,
+  reduceDevArray,
   radialSurfaceFromSampler,
   DEFAULT_RULER,
   type RulerOptions,
   type WholeMeshScore,
 } from './interiorRuler';
+export {
+  ParallelScorerPool,
+  scoreWholeMeshParallel,
+  samplerGrid,
+} from './parallelScorer';
 export {
   refineToZeroOutliers,
   seedFromComplex,
