@@ -1972,7 +1972,48 @@ worst, tris, projFullPot (×42), wall-clock. Baseline = the V11k on-disk traject
   budget for literal 0 (error bars stated).
 
 Probe: `tierC/anisoSplit.test.ts` (fast guard) + `tierC/_anisoGate.test.ts` (PF_TIERC_ANISOGATE=1). Data →
-`research/exchange/_tierc_aniso/`. Registry: E-2026-07-08-TIERC-ANISO-RED. Pre-reg commit: [this].
+`research/exchange/_tierc_aniso/`. Registry: E-2026-07-08-TIERC-ANISO-RED. Pre-reg commit: ce9a01c.
+
+### VERDICT (2026-07-08) — KILL CRITERION MET (converges only ABOVE 6M); the anisotropic split is a strictly BETTER refine mechanism but does NOT open the gate. The full-relief Gothic wall STANDS; RED-family refinement is now EXHAUSTED (iso + M-square + aniso).
+
+**MECHANISM CONFIRMED (the lever works, edgeSag is the right signal).** Byte-identical-off re-verified (parallelRefine +
+dirtyCache + the new anisoSplit guard all GREEN; splitMode undefined ⇒ isotropic, uv/tris hash-identical). Fast guard:
+edgeSag **1.30 inserts/outlier vs iso 2.01 = 1.52× tri savings**; longEdge 0.70 = 2.18×; zeroArea 0. Full multi-bay
+gate, first DENSE pass (5), head-to-head vs the V11k baseline (bit-identical pass-1 outlier population 5709, worst
+1.0522062713658533 ⇒ aniso targets the SAME outliers, fewer inserts):
+
+| pass | ISO (V11k) | ANISO edgeSag | ANISO longEdge |
+|---|---|---|---|
+| 5 (1st dense) | 8306 / worst 1.056 / 144369 tris = **6.06M** | **7142 / 0.726 / 122660 = 5.15M** | 8562 / 1.056 / 139960 = 5.88M |
+| plateau | (V11k explosion, no conv) | ~2794 / **1.05919 pinned** / 166503 ≈ **6.99M** (p9-13) | capped: **2251 / 1.01889 / p99 0.019 / 186776 = 7.84M**, nonMan 0 (crack→3) |
+
+edgeSag = **1.18× fewer tris AND better fidelity** than iso at the first dense pass (beats the 1.3× bar per split).
+longEdge under-performs (tracks iso — the longest CHART edge is NOT the sag axis under the t-only anisotropic seed;
+tall thin cells' long edge runs along-t). **edgeSag is the correct direction signal; longEdge is refuted.**
+
+**NON-CONVERGENCE (the wall stands).** BOTH designs PLATEAU — worst PINNED at **1.05918988549241mm** (the EXACT
+V11h/V11k re-forming CDT t-needle) for 5 consecutive dense passes; outliers flat/rising (~2251-2794) while tris
+flatten (edgeSag +340/pass from 161k, longEdge +300/pass from 185k — SATURATED). Both OVER 6M. This is a geometric
+FLOOR (full-relief rib flanks + the re-forming apex needle), not a monotone-shrinking residual ⇒ **a finite tri budget
+for literal 0 is NOT honestly extrapolatable**: the re-forming needle survives EVERY midpoint insertion (V11h root
+cause — the whole-domain re-CDT re-creates it), so more passes add tris WITHOUT removing the floor. This CONFIRMS
+V11m's GENUINE-COST-FRONTIER adjudication on a THIRD, genuinely-different downstream mechanism — the wall is the DOMAIN
+(ampMean 1.217mm over a 0.24-wide t-band), not the split isotropy. RED-family refinement (isotropic + M-square graded +
+anisotropic single-edge) is now exhausted; none converges the full-relief Gothic mid-body under 6M.
+
+**RECOMMENDATION (per user standard — NO per-region tol accept-band).** (1) BANK the anisotropic split (flag-gated,
+default-off byte-identical, edgeSag the correct signal): it re-prices the wall ~1.18-1.5× cheaper per pass — worth
+keeping for any future budget-raise — but does not open the gate alone. (2) The ONE remaining un-falsified direction
+is a SEED/TOPOLOGY lever that FORBIDS the re-forming needle (a locked short t-edge across the apex bump so cdt2d cannot
+span it, OR a LOCAL Bowyer-Watson insertion that does not re-CDT the whole domain — breaking the re-formation mechanism
+V11h identified), NOT another refine-split isotropy. That is the standing next experiment.
+
+**GUARANTEES:** only flag-gated Tier-C touched (`noBridgeRefine.ts` aniso opt-in branch + `insertOutlierSplit` shared
+by sync + parallel paths; new dev-only `anisoSplit.test.ts` / `_anisoGate.test.ts`). splitMode default undefined ⇒
+BYTE-IDENTICAL-OFF (regression GREEN). No src/ non-tierC edit; production consumer (`index.ts`) passes no splitMode ⇒
+unchanged. GeoStar/rebaseline20 NOT launched (gate not converged). Commits ce9a01c (pre-reg) / 739be09 (code+guard) /
+[this verdict]. Data: research/exchange/_tierc_aniso/{DECISION_ARTIFACT.md, anisogate_edgeSag_pass.ndjson,
+anisogate_longEdge_pass.ndjson, anisogate_longEdge_result.json} (gitignored).
 
 ---
 
