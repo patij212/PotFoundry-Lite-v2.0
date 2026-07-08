@@ -1854,7 +1854,75 @@ tris + projectedFullMeshTris? wall-clock? per-pass trajectory (checkpoint ndjson
   handled). Report exactly what breaks — that itself locates the gap. STOP after discriminator + one ablation.
 
 Probe: `research/bridge/_pf_costgap_prod_domain.test.ts` (PF_TIERC_COSTGAP=1). Data → `research/exchange/_tierc_costgap/`.
-Registry: E-2026-07-08-TIERC-COSTGAP. Pre-reg commit: [this].
+Registry: E-2026-07-08-TIERC-COSTGAP. Pre-reg commit: 91a8980 (spec) / c240187 (probe+row).
+
+### VERDICT (2026-07-08) — GENUINE-COST FRONTIER; the discrepancy is DOMAIN (hypothesis b), NOT a mechanism gap
+
+**STRUCTURAL-BREAK REFUTED.** The research M-square kernel RUNS cleanly on the production domain — no junction
+topology it can't handle. `extractProtectedComplex` on u[0.05,0.15]×t[0.38,0.62]: fam=2, segU 867, segT 380,
+residualCrossings=0, cEdges 1328, crest3D 1260, seed 10537v/20682t. (planarizeMM/no-bridge came FROM research; the
+domain flows through unmodified.)
+
+**DISCRIMINATOR — the research M-square kernel EXPLODES on the production band too** (BG=0.6 smoke trajectory,
+LOOP_NTH 256, projected via the V3 rule trisPerBay×72, nBays=7.20):
+
+| pass | tris | proj full-pot | outliers | worstMm | insFlank | insCrest |
+|---|---|---|---|---|---|---|
+| 1 | 6,126 | 61,260 | 2,288 | 0.507 | 8,426 | 1,908 |
+| 2 | 19,568 | 195,680 | **8,196** | **0.585** | 32,203 | 3,415 |
+
+Outliers GROW 3.6× (2288→8196), worst WORSENS (0.507→0.585), tris 3.2×/pass — the SAME monotone explosion as the
+production gate (V11k: 144k tris @ pass-5 = 6.06M, thousands of outliers, worst bounced up). The M-square graded
+seed + locked-crest subdivision does NOT rescue the production dead-zone/full-relief band. (A V3-density BG=0.16-0.3
+confirm arm is running but is contention-slowed; the BG=0.6 explosion + the analytic mechanism below are jointly
+decisive — the trajectory DIRECTION is density-invariant.)
+
+**ROOT CAUSE — DOMAIN (hypothesis b), quantified analytically (cheap, decisive).** V3's "1.05M converged" and the
+production explosion are the SAME mechanism on DIFFERENT-DIFFICULTY t-bands:
+- Crest coverage is NOT the difference: both bands are fully crest-covered by the research extractor (0/8 empty
+  t-bins). The V11d "dead zone has no ridge" was a raw-κ-DETECTOR artifact (production's detector), not the research
+  extractor's view.
+- **RELIEF is the difference. GothicArches TAPER; V3's `findApexJunction` landed on the SHALLOW arch TIP (t≈0.75).**
+  Measured relief amplitude (max−min r over u), analytic:
+
+  | band | ampMean | ampMax | max\|dr/du\| | t-width |
+  |---|---|---|---|---|
+  | **PROD t[0.38,0.62]** | **1.217mm** | **1.797mm** | 8.75 | 0.24 |
+  | V3 t[0.70,0.80] | 0.541mm | 0.712mm | 6.32 | 0.10 |
+
+  The relief profile over t (u∈[0,0.2]) is a monotone taper with a cliff at t≈0.52: ~1.75mm for t∈[0.30,0.50] →
+  1.10 @0.525 → ~0.60 for t≥0.55. **The production band has 2.25× the mean relief / 2.52× the peak relief / 1.4×
+  the flank steepness / 2.4× the t-width of the V3 band.**
+- P1 chord-sag ~ amplitude × (facet size)² ⇒ resolving 2.25× relief to the same tol 0.01 needs ~1.5× finer facets
+  per axis ≈ 2.25× more tris; × 2.4× wider band ⇒ **~5.4× more tris — matching the observed 6-8× research↔production
+  gap.** The junction/dead-zone band is GENUINELY ~2.25× more expensive at tol 0.01, irrespective of mesher mechanism.
+
+**ADJUDICATION: GENUINE-COST FRONTIER (the pre-registered branch ii).** Not a mechanism-gap the M-square seed can
+close — the M-square kernel is the SAME generative engine as V3 and it explodes here identically to production. The
+ABLATION (uniform-seed edge-RED) is therefore SUBSUMED: both mechanisms explode because the outliers are genuine
+full-relief rib-flank facets exceeding tol=0.01, not seed artifacts (confirms + generalizes V11k's refine-loop-floor
+finding to the research engine). The V3 1.05M datum is REAL but was measured on an EASIER (shallow-tip) band; it does
+NOT establish the full-relief mid-body converges under 6M.
+
+**FORK (per user standard — NO per-region tol accept-bands):**
+1. **BUDGET-RAISE for feature-dense styles.** Projected full-relief Gothic mid-band ≈ 2.25× the V3 trisPerBay ≈
+   32,800/bay × 72 ≈ 2.4M IF it converged — but it does NOT converge under isotropic/M-square RED (outliers grow).
+   The genuinely-different downstream lever (V11k's standing recommendation, UNCHANGED): an ANISOTROPIC / flank-aware
+   RED that splits a rib-flank facet along its short axis only (≈halves tri growth vs isotropic 1→4) — the ONE
+   untested mechanism that could bring the full-relief band under budget. This is a REFINE-LOOP lever, not a seed one.
+2. **Frontier-documentation:** accept the full-relief Gothic arch mid-body as a documented density-vs-budget concession
+   at tol 0.01 — the honest cost of resolving every 1.8mm arch flank to 0.01mm on a 0.24-wide t-band.
+
+**NET.** The research-vs-production "6-8× cost discrepancy" is FULLY EXPLAINED and is NOT a portable win being left on
+the table: V3 measured the shallow arch tip, production measures the full-relief arch body. Porting the M-square seed
+into tierC would NOT close the production gate (proven: the research M-square kernel explodes on the exact production
+domain). The open lever is DOWNSTREAM (anisotropic/flank-aware RED), exactly as V11k concluded — this round CONFIRMS
+that verdict on the research engine and removes "just port the research seed" from the option set.
+
+**GUARANTEES:** research-only (NEW `_pf_costgap_prod_domain.test.ts` + PF_TIERC_COSTGAP probe; research kernel libs
+imported READ-ONLY, UNMODIFIED). NO src/ or tierC/ edit. Fast tierC suite untouched (byte-identical-off unaffected).
+Commits 91a8980 (pre-reg) / c240187 (probe+row) / [this verdict]. Data: research/exchange/_tierc_costgap/
+{INTERIM_FRONTIER.md, msquare_passes_SMOKE_bg0.6.ndjson, progress.log, msquare_passes.ndjson (BG=0.3 confirm)} (gitignored).
 
 ---
 
