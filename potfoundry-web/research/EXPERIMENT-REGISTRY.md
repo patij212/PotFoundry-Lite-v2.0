@@ -10,6 +10,29 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-08-TANGLED-CONTINUATION — drive the remaining tangled/weave styles (Voronoi → HexHive → CelticTriquetra → CelticKnot → Crystalline → BasketWeave) to per-style verdicts under a PER-STYLE-GATED instrument (BVH twin trustworthy ONLY if its own twinOnSurf ≪ tol; else Gyroid-class) [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (follow-up to E-2026-07-08-TANGLED-KERNEL / spec §V11b).** ESTABLISHED (not re-derived): the pilot did NOT close Gyroid — neither tractable true-3D ruler is trustworthy there (θ-window grid brute UNDERSTATES ±0.0225mm grid-trapped; BVH twin BAND-LIMITS, twinOnSurf 0.075@2048²/0.05@3072² >> tol; the SOUND grid-free radial same-(u,t) bound OVERSTATES ~2-3× on near-vertical channel walls, count GREW 112k→206k as density rose = density-invariant floor). MANDATE inherited: **before ANY style verdict, gate the instrument** — the BVH twin is trustworthy on a style ONLY if `twinOnSurfaceResidual` ≪ tol (measured: Voronoi 0.0077@2048² SOUND; Gyroid 0.05-0.075 UNSOUND). The radial bound is always a SOUND upper bound (0 ⇒ PROVABLY ≤tol) but overstates on near-vertical walls. Reuse the pilot kernel `buildTangled` (seam-safe `buildInhouseMetricMesh` chordSteiner) + `_pf_tangledKernelLib` guards + the validated `celticTriquetraC0Predicate` (V11c) for CT crease exclusion.
+
+**HYPOTHESES (falsifiable, per style):**
+- (VORONOI) BVH twin is SOUND (twinOnSurf ≪ tol) ⇒ the deep-sag kernel driven by BVH `interiorOutliers` CLOSES Voronoi to 0 (or a characterized density/representation floor) under 6M full-pot tris — the tractable guard-mechanism target the pilot never reached.
+- (HEXHIVE) instrument-gate first (V10 Q1: old ruler UNDERSTATES worst facets ~2.7×). If BVH sound ⇒ pure under-density (meta: "zero red facets, no steep tail") closes with density; if unsound ⇒ Gyroid-class.
+- (CT) BVH + `celticTriquetraC0Predicate` exclusion (creases are designed features) ⇒ the small off-crease body gap (V11c: ~11-35k @max 0.05-0.07) closes with density OR is a characterized floor; exclFrac reported honestly.
+- (CELTICKNOT/CRYSTALLINE/BASKETWEAVE) instrument-gate → mechanism if sound → characterize the floor / mark Gyroid-class if not.
+
+**KILL CRITERIA (committed BEFORE measuring, per style):**
+- **INSTRUMENT GATE (each style, FIRST):** the BVH twin is the verdict driver ONLY if `twinOnSurfaceResidual.maxMm ≪ tol` (report the number). If twinOnSurf > ~0.5·tol AND the radial bound also overstates (near-vertical relief, count grows with density) ⇒ NO sound tractable ruler ⇒ **STOP that style, mark GYROID-CLASS**, move to next. The SOUND radial bound (0 ⇒ provably ≤tol) is always available as an upper-bound verdict.
+- **CLOSE iff:** whole-mesh outliers == 0 under the VALIDATED instrument (every-facet dense 45-pt + radial prefilter, tol 0.01) AND rawNonMan == 0 non-vacuous (inject-crack moves count) AND zeroArea == 0 AND projFullPot ≤ 6M.
+- **FLOOR iff:** outliers monotone-decrease with density but do not reach 0 within 6M tris ⇒ report the density-vs-outlier curve + plateau population classified (localize outlier (u,t)); if density-INVARIANT ⇒ characterize the floor class, do NOT grind.
+- **KILL (per style):** plateau > 1000 outliers for 4 passes / projFullPot > 6M / instrument unsound-with-no-alternative.
+- **§V11a LESSON:** score the FINAL emitted mesh (post-optimization-sweeps); if a residual tail is stubborn try fidelity-constrained smoothing/sweeps:0 (MEASURE, don't assume — the pilot measured the OPPOSITE sign on Gyroid's radial instrument).
+
+**METHOD:** DEV-ONLY. New probe `research/bridge/_pf_tangledCont.test.ts` (env-gated per style, resumable, ndjson checkpoint the INSTANT computed to `research/exchange/_tangled_cont/<style>/`); reuses `_pf_tangledKernelLib` + `_pf_bvhRuler` + `_ct_creaseLib` READ-ONLY; NO src/ edit; NO edit to `_ds_conforming*`, tierC/**, or the Gyroid instrument work (`_gyroid_truth/` is another agent's). NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs; explicit file staging (NEVER git add -A). Ledger §V11i appended per style-close/kill (not batched). Priority order sequential: Voronoi → HexHive → CT → CelticKnot → Crystalline → BasketWeave (partial coverage with clean per-style verdicts beats shallow coverage of all).
+
+**VERDICT:** _pending — result below._
+
+---
+
 ## E-2026-07-08-TIERC-ADAPTIVE-SEED — DIAGNOSE the RED-unreducible ~1.0592mm pin (full facet-state dump), then LEVER A (adaptive chord-sag-driven seed pitch) + LEVER B (worst-sample Steiner split for RED-unreducible facets) on the multi-bay Gothic gate; converge to whole-mesh 0 UNDER 6M full-pot tri projection [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
 
 **FRAME (ROUND 3, follow-up to E-2026-07-08-TIERC-PERF-SEAM / spec §V11e).** ESTABLISHED (not re-derived): perf is SOLVED byte-identically (`refineToZeroOutliersParallel` + dirty cache = bit-identical to sequential, 2.94x quiet). The multi-bay gate (seam-avoiding u[0.05,0.15] × t[0.38,0.62], uniform bgArcMm 0.3) PLATEAUS at ~1800-1900 outliers with tris → ~6.1M full-pot projection (at/over the 6M budget) ⇒ uniform-tighten REFUTED as the lever (0.2 seed ≈ 13M, over budget). The plateau population = the smooth low-κ high-amplitude (~1.5mm) horizontal arch arc at t≈0.465 (no ridge to detect — correctly unprotected by the κ-detector) + ≥1 RED-1→4-UNREDUCIBLE facet pinned at EXACTLY 1.05918988549241mm across ALL domains sharing the t-band (on-seam, off-seam, lever1 — deterministic, NOT a seam artifact). Mechanism read from the code: RED 1→4 splits only the 3 EDGE MIDPOINTS (no interior Steiner at the worst sample), and the seed is UNIFORM bgArcMm.
