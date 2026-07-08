@@ -74,4 +74,14 @@ describe('ShaderManager', () => {
             expect(wgsl.match(/fn shade_color\(/g)?.length).toBe(1);
         });
     });
+
+    describe('getRaycastBoundWGSL', () => {
+        it('assembles the bound kernel with style dispatch and storage output', () => {
+            const wgsl = ShaderManager.getInstance().getRaycastBoundWGSL(0);
+            expect(wgsl).toContain('fn cs_bound(');
+            expect(wgsl).toContain('@binding(9)');
+            expect(wgsl).toContain('atomicMax');
+            expect(wgsl).toContain('fn style_radius(');
+        });
+    });
 });

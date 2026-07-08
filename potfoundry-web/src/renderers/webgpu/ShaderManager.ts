@@ -8,6 +8,7 @@ import previewMainWgsl from '../../assets/shaders/preview_main.wgsl?raw';
 import previewMainMobileWgsl from '../../assets/shaders/preview_main_mobile.wgsl?raw';
 import previewFullMobileWgsl from '../../assets/shaders/preview_full_mobile.wgsl?raw';
 import errorEstimationWgsl from '../../assets/shaders/error_estimation.wgsl?raw';
+import raycastBoundWgsl from '../../assets/shaders/raycast_bound.wgsl?raw';
 import { generateStyleConstants } from '../../utils/shaderGenerator';
 
 import { STYLE_FUNCTION_MAP } from '../../styles/registry';
@@ -22,6 +23,7 @@ export class ShaderManager {
     private stylesWgsl: string = '';
     private lightingWgsl: string = '';
     private raycastWgsl: string = '';
+    private boundWgsl: string = '';
     private mainWgsl: string = '';
     private mainMobileWgsl: string = '';
     private fullMobileWgsl: string = '';
@@ -36,6 +38,7 @@ export class ShaderManager {
         this.stylesWgsl = this.getShaderContent(stylesWgsl);
         this.lightingWgsl = this.getShaderContent(previewLightingWgsl);
         this.raycastWgsl = this.getShaderContent(previewRaycastWgsl);
+        this.boundWgsl = this.getShaderContent(raycastBoundWgsl);
         this.mainWgsl = this.getShaderContent(previewMainWgsl);
         this.mainMobileWgsl = this.getShaderContent(previewMainMobileWgsl);
         this.fullMobileWgsl = this.getShaderContent(previewFullMobileWgsl);
@@ -285,6 +288,39 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
             dispatchCode,
             this.lightingWgsl,
             this.raycastWgsl,
+        ].join('\n');
+    }
+
+    /**
+     * Assembles the bounding-radius compute kernel (entry point cs_bound).
+     * Only bindings 0 (uniforms), 4 (style params) and 9 (output) are statically
+     * referenced, so 'auto' pipeline layout needs only those three in the bind group.
+     */
+    public getRaycastBoundWGSL(styleId: number): string {
+        const functionName = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
+        const dispatchCode = `
+// DYNAMICALLY GENERATED DISPATCH FOR STYLE ID ${styleId} (${functionName})
+fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+    let th = theta - floor(theta / TAU) * TAU;
+    return ${functionName}(th, t, r0);
+}
+
+fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(0.0, t, r0);
+}
+
+fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(TAU, t, r0);
+}
+`;
+        const optimizedStylesWgsl = stripShaderCode(this.stylesWgsl, functionName);
+        return [
+            this.constantsWgsl,
+            this.commonWgsl,
+            this.uniformsWgsl,
+            optimizedStylesWgsl,
+            dispatchCode,
+            this.boundWgsl,
         ].join('\n');
     }
 
