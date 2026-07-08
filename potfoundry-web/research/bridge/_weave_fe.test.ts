@@ -10,7 +10,7 @@ import { writeFileSync, appendFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path';
 import {
   bwParams, bwReliefField, verticalWallLines, horizontalWallLines, bwDoubledPickets, bwSinglePickets,
-  centrelineOnCliff, contoursToConstraints, type Contour,
+  centrelineOnCliff, contoursToConstraints, BW_RAMP_LADDER_U, BW_RAMP_LADDER_T, type Contour,
 } from './_bwFieldLib';
 import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
 import { planarizeMM } from './_pf_planarizeMM';
@@ -91,8 +91,13 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     const p = bwParams();
     const vlines = verticalWallLines(p), hlines = horizontalWallLines(p);
     const step = centrelineOnCliff(p, rA, DIMS.H, 80);
-    const offU = Number(process.env.PF_WFEOFFU ?? '0.0012'), offT = Number(process.env.PF_WFEOFFT ?? '0.0025'), stepMm = Number(process.env.PF_WFESTEP ?? '0.15');
-    const doubled = bwDoubledPickets(p, rA, DIMS.H, { offU, offT, stepMm });
+    const stepMm = Number(process.env.PF_WFESTEP ?? '0.15');
+    // RAMP LADDER (measured): a multi-picket fan across the plateau ramp + boundary + floor lip. A single tight
+    // bracket left ~0.13mm chord sag; the ladder resolves the ramp to sub-0.01 by construction. Scale via PF_WFELADSC.
+    const ladSc = Number(process.env.PF_WFELADSC ?? '1');
+    const offsetsU = BW_RAMP_LADDER_U.map((o) => o * ladSc);
+    const offsetsT = BW_RAMP_LADDER_T.map((o) => o * ladSc);
+    const doubled = bwDoubledPickets(p, rA, DIMS.H, { offsetsU, offsetsT, stepMm });
     const single = bwSinglePickets(p, rA, DIMS.H, stepMm);
     const nPtsDoubled = doubled.contours.reduce((a, c) => a + c.pts.length, 0);
     const nPtsSingle = single.contours.reduce((a, c) => a + c.pts.length, 0);
@@ -101,9 +106,10 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     // pickets at matched t (proves they straddle the ~2mm wall). Sample the relief on each side.
     const h = bwReliefField();
     let plateauMean = 0, floorMean = 0, nS = 0;
+    const probeOff = Math.max(...offsetsU.map(Math.abs));
     for (const L of vlines) for (let s = 0; s < 20; s++) {
       const [u, t] = L.pts[Math.floor((s / 20) * L.pts.length)];
-      const hL = h(((u - offU) % 1 + 1) % 1, t), hR = h(((u + offU) % 1 + 1) % 1, t);
+      const hL = h(((u - probeOff) % 1 + 1) % 1, t), hR = h(((u + probeOff) % 1 + 1) % 1, t);
       plateauMean += Math.max(hL, hR); floorMean += Math.min(hL, hR); nS++;
     }
     plateauMean /= Math.max(1, nS); floorMean /= Math.max(1, nS);
@@ -111,7 +117,7 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     const rec = {
       stage: 'BW-Q1-EXTRACT', params: p,
       nVertWalls: vlines.length, nHorizWalls: hlines.length, maxStepJump: +step.maxStepJump.toFixed(4), nWalls: step.nWalls,
-      offU, offT, stepMm,
+      offsetsU, offsetsT, stepMm,
       doubled: { nContours: doubled.contours.length, nVert: doubled.nVert, nHoriz: doubled.nHoriz, nPts: nPtsDoubled },
       single: { nContours: single.contours.length, nPts: nPtsSingle },
       flanking: { plateauMean: +plateauMean.toFixed(4), floorMean: +floorMean.toFixed(4), radialGapMm: +((plateauMean - floorMean) * p.depth).toFixed(4) },

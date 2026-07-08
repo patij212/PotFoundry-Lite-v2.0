@@ -103,7 +103,15 @@ export function horizontalWallLines(p: BWParams, nU = 400): Array<{ k: number; t
 // plateau/floor sides of the cliff (small — a fraction of the cell). We also decimate along the wall to a target 3D
 // arc-length stepMm (fine picket; the Gyroid lesson — count-stable recovery needs a dense-ENOUGH but not over-dense
 // picket). Returns the doubled contours (2× the walls).
-export interface DoubledOpts { offU: number; offT: number; stepMm: number; }
+// offsets: the MULTI-PICKET offset ladder (in u for vertical / t for horizontal), a FAN across the ramp+cliff.
+// MEASURED cliff cross-section (/tmp/cliff_geom): the C0 boundary has a smoothstep RAMP on the plateau side (h
+// 0.57→0 over ~0.003 in u) + a flat floor on the other. A single ±0.0012 bracket leaves a ~0.13mm chord sag (the
+// observed residual). Bracketing TIGHT (±0.0002) + a MID picket AT the boundary drops the single-facet sag to
+// ~0.0026; the ramp still needs a few plateau-side pickets. `offsets` is the signed ladder emitted on EACH wall
+// (0 = the exact boundary/mid picket). Default ladder resolves ramp+cliff to sub-0.01 by construction.
+export interface DoubledOpts { offsetsU: number[]; offsetsT: number[]; stepMm: number; }
+export const BW_RAMP_LADDER_U = [-0.003, -0.0016, -0.0008, -0.0003, 0, 0.0003]; // plateau ramp + boundary + floor lip
+export const BW_RAMP_LADDER_T = [-0.006, -0.0032, -0.0016, -0.0006, 0, 0.0006];
 export function bwDoubledPickets(
   p: BWParams, rA: AnalyticRadiusFn, H: number, opts: DoubledOpts,
 ): { contours: Contour[]; nVert: number; nHoriz: number } {
@@ -123,19 +131,23 @@ export function bwDoubledPickets(
   const vlines = verticalWallLines(p);
   let nVert = 0;
   for (const L of vlines) {
-    for (const s of [-1, 1] as const) {
-      const off = L.pts.map(([u, t]) => [((u + s * opts.offU) % 1 + 1) % 1, t] as [number, number]);
-      const dec = decimate(off);
+    // the ramp is on the PLATEAU side; the ladder is signed but the plateau side alternates per checker. Emit BOTH
+    // signs of the whole ladder so the ramp is caught regardless of which side is plateau at a given t.
+    const signedLadder = Array.from(new Set(opts.offsetsU.flatMap((o) => [o, -o]))).sort((a, b) => a - b);
+    for (const off of signedLadder) {
+      const line = L.pts.map(([u, t]) => [((u + off) % 1 + 1) % 1, t] as [number, number]);
+      const dec = decimate(line);
       if (dec.length >= 2) { out.push({ pts: dec }); nVert++; }
     }
   }
   const hlines = horizontalWallLines(p);
   let nHoriz = 0;
   for (const L of hlines) {
-    for (const s of [-1, 1] as const) {
-      const tt = Math.min(1 - 1e-4, Math.max(1e-4, L.t + s * opts.offT));
-      const off = L.pts.map(([u]) => [u, tt] as [number, number]);
-      const dec = decimate(off);
+    const signedLadder = Array.from(new Set(opts.offsetsT.flatMap((o) => [o, -o]))).sort((a, b) => a - b);
+    for (const off of signedLadder) {
+      const tt = Math.min(1 - 1e-4, Math.max(1e-4, L.t + off));
+      const line = L.pts.map(([u]) => [u, tt] as [number, number]);
+      const dec = decimate(line);
       if (dec.length >= 2) { out.push({ pts: dec }); nHoriz++; }
     }
   }
