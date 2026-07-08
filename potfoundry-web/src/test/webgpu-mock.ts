@@ -207,6 +207,14 @@ class MockGPUDevice {
         } as unknown as GPUComputePipeline;
     }
 
+    async createRenderPipelineAsync(descriptor: GPURenderPipelineDescriptor): Promise<GPURenderPipeline> {
+        return this.createRenderPipeline(descriptor);
+    }
+
+    async createComputePipelineAsync(descriptor: GPUComputePipelineDescriptor): Promise<GPUComputePipeline> {
+        return this.createComputePipeline(descriptor);
+    }
+
     createCommandEncoder(_descriptor?: GPUCommandEncoderDescriptor): GPUCommandEncoder {
         if (isDeviceLost) throw new Error('Device is lost');
         return new MockGPUCommandEncoder() as unknown as GPUCommandEncoder;
@@ -291,7 +299,7 @@ class MockGPUCommandEncoder {
     }
 
     beginComputePass(_descriptor?: GPUComputePassDescriptor): GPUComputePassEncoder {
-        return {} as GPUComputePassEncoder;
+        return new MockGPUComputePassEncoder() as unknown as GPUComputePassEncoder;
     }
 
     copyBufferToBuffer(
@@ -360,6 +368,20 @@ class MockGPURenderPassEncoder {
     insertDebugMarker(_markerLabel: string) { }
     beginOcclusionQuery(_queryIndex: number) { }
     endOcclusionQuery() { }
+}
+
+/**
+ * Mock GPUComputePassEncoder implementation
+ */
+class MockGPUComputePassEncoder {
+    setPipeline(_pipeline: GPUComputePipeline) { }
+    setBindGroup(_index: number, _bindGroup: GPUBindGroup | null, _dynamicOffsets?: Uint32Array | number[]) { }
+    dispatchWorkgroups(_x: number, _y?: number, _z?: number) { }
+    dispatchWorkgroupsIndirect(_indirectBuffer: GPUBuffer, _indirectOffset: number) { }
+    end() { }
+    pushDebugGroup(_groupLabel: string) { }
+    popDebugGroup() { }
+    insertDebugMarker(_markerLabel: string) { }
 }
 
 /**
