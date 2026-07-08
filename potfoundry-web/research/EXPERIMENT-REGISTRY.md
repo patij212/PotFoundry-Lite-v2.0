@@ -4558,7 +4558,25 @@ whole-mesh 0 outliers + watertight non-vacuous + no crash, loop-convergence AND 
 the measured floor population + classification — do NOT lever-grind past 2 attempts. An honest characterization of
 the junction wall is then the deliverable.
 
-**VERDICT: PENDING — diagnostic running.**
+**DIAGNOSTIC MEASURED 2026-07-08 (run1, capped pass-16, full-azimuth guard): (a) DETECTOR RECALL GAP — decisive.**
+- 388 whole-mesh outliers, devMax 0.677, devP50 0.026 (most marginal); worst cluster u≈0.058-0.062, t≈0.40-0.49.
+- fracTedge1 = 0.003 ⇒ (c) T-EDGE-CLIP-STUB DEAD.
+- fracJunction3 = 0.402 (< 0.6) and the 12 WORST are only 17% near junctions ⇒ NOT junction-clustered ⇒ (b) and
+  junction-local (a) ruled out as the DOMINANT class. Junction correlation is incidental (junctions sit at the
+  detector-band edges).
+- 59.5% of outliers are FAR from junctions (>3mm) AND far from any constraint edge (>1mm); dConstraint p50 = 5.4mm;
+  amp p50 = 0.759mm, 81% amp>0.5 ⇒ outliers bridge HIGH-relief ribs with NO protecting constraint nearby.
+- ROOT CAUSE (fix_probe.json): the protected complex covers ONLY t∈[0.12,0.18] ∪ [0.48,0.57] ∪ [0.96,0.99]. The raw
+  detector (detectFeatures, TIER_C_DETECT_OPTS: coarseRes40/fineRes120/minStrength1.0/minAngleDeg28) emits **ZERO
+  feature samples in t∈[0.38,0.48]** (and across t∈[0.18,0.48]∪[0.57,0.96] — the whole mid-wall). All 1534 detected
+  samples cluster in the three high-κ arch apex/spring-line bands. The multi-bay domain (t 0.38-0.62) straddles a
+  DEAD zone; its rib crests (peakD2_u≤0.75, ampU/T 1.0-1.6mm — genuine ribs) get NO locked chain, so facets floor at
+  ~L²κ/8. The smoke gate (t 0.48-0.52) sat entirely inside a protected band ⇒ converged to 0.
+- Data: research/exchange/_tierc_junction/run1/{capped_mesh.json,outliers.ndjson,summary.json}, fix_probe.json,
+  scatter.svg. Dev-only probes _junctionDiag.test.ts / _junctionProbe.test.ts (PF_TIERC_JUNCTION=1).
+
+**VERDICT: confirmed (a) RECALL GAP. FIX = extend detector recall so mid-wall rib crests are protected. Lever
+attempts recorded in spec V11d.**
 
 ---
 
