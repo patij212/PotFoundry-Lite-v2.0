@@ -2515,9 +2515,21 @@ surface: radial-flag → pinned inject at worst-sag → Newton-verdict the emitt
 killed the run mid-pass-2 (proven risk); the per-pass ndjson + inj_<p>.json sidecar checkpoints let the resume SKIP
 passes 0-2 and confirm the CLOSE with zero recomputation.
 
+### Crystalline / Voronoi — CARRIED (recipe proven on HexHive; blocked on machine CONTENTION, not method)
+The identical LOCAL injected-Steiner recipe is queued for Crystalline (V11r base b0.008/s224, 33,535 residual) and
+Voronoi (65,590), Newton verdict downsized to 500/500 (radial-flag drives injection; Newton = verdict only, exact once
+residual<500). Both were LAUNCHED but did NOT complete their base pass: the machine was CPU-SATURATED by the two
+concurrent agents (measured: 3 external node procs monopolizing all cores at 27,000 / 11,820 / 11,023 CPU-seconds; my
+Crystalline worker accrued <2 CPU-s in 42 min = starved). This is EXACTLY the "3-agent saturation stall" §V11i/§V11r
+documented ("prior arm STALLED under 3-agent saturation"). Crystalline's radial screen alone is ~144M rA-evals over its
+intrinsically-dense 1.6M-facet base — expensive even uncontended. VERDICT: CARRIED — the mechanism is PROVEN (HexHive
+CLOSED); Crystalline/Voronoi need a quiet machine (≤2 procs) to run the ~40-50min/pass base + local passes to close.
+The mission-scoped headline (first tangled literal Newton-0) is BANKED. RESUME: `PF_TT=Crystalline` / `PF_TT=Voronoi`
+(the probe SKIPs done passes; a killed base pass simply re-runs from scratch — no partial-pass checkpoint mid-Newton).
+
 **LEDGER:** registry E-2026-07-08-TANGLED-TARGETED; research/exchange/_tangled_targeted/HexagonalHive/{passes,final}.ndjson
 (gitignored — numbers inlined above); probe research/bridge/_pf_tangledTargeted.test.ts (PF_TT=<Style>, resumable).
-Commits: pre-reg c92cd4a, probe 8eb3a01, HexHive close [pending]. DEV-ONLY; no src/ edit.
+Commits: pre-reg c92cd4a, probe 8eb3a01, HexHive close 7ddf449, 500/500 downsize 4ca3009. DEV-ONLY; no src/ edit.
 
 ## V11s — TIER-C LITERAL-0 (raised 8-10M budget): the multi-bay Gothic gate does NOT reach literal whole-mesh 0 under ANY of 4 levers; the ~1150 residual is a GENUINE near-vertical rib-flank chord floor (dedupe-freeze DIAGNOSED but unfreezing it does NOT help) (2026-07-08)
 
