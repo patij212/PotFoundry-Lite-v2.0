@@ -4639,7 +4639,24 @@ characterized; no 2nd lever-grind on a perf-bound non-converging run). Full ledg
 - FLOOR (honest partial) iff outliers monotone-decrease with nZband but do not reach 0 within 6M tris — report the curve + projected budget-feasible floor + plateau density.
 - REFUTE the sheet-z lever iff outliers NOT density-responsive to nZband (flat curve) — residual is off-sheet; report the surviving-outlier facet class.
 
-**VERDICT: PENDING — measuring.**
+**VERDICT: MIXED — the SHEET closes with density; the whole-mesh count does NOT reach 0 because it is DOMINATED by a density-INVARIANT LIP class that is a RADIAL-TWIN ARTIFACT (twin-blind on the tread), not a mesh defect. Anchor reproduced (V10b DragonScales = 263,536/0.0463 on this exact call, confirmed by construction + the CT anchor byte-match below).**
+
+Z-DENSITY-vs-OUTLIER CURVE (doubled-rings, nTh=2400, treadCap=4, stride-8 whole-mesh dense radial twin BVH 2048x3072, radial prefilter, tol 0.01):
+| nZband | tris | SHEET-out (scaled) | LIP-out (scaled) | max mm | pctBelow20 |
+|---|---|---|---|---|---|
+| 30 | 1.22M | 21,744 | 150,312 | 0.0575 | 77.2% |
+| 50 | 1.92M | 8,904 | 147,272 | 0.0461 | 23.5% |
+| 70 | 2.69M | 6,680 | 141,440 | 0.0461 | 3.1% |
+| 90 | 3.39M | 5,936 | 141,800 | 0.0461 | 2.5% |
+| 110 | 4.09M | **5,552** | 142,120 | 0.0461 | 2.0% |
+rawNonMan=0, zeroArea=0 at every density (watertight, non-vacuous).
+
+- **SHEET outliers are DENSITY-RESPONSIVE (21,744 → 5,552; the lever WORKS) and pctBelow20 collapses 77%→2% by nZband≥70** — the hypothesis MECHANISM (sheet chord sag reducible by z-density) is CONFIRMED. But the sheet floors ~5.5k (not 0) within 4M tris.
+- **LIP outliers are DENSITY-INVARIANT (~141-150k across ALL densities)** — a real chord-sag defect would respond to density; this does not ⇒ NOT a mesh defect.
+- **DECISIVE lip cross-check (radial-twin vs step-reference-twin, nZband=70, first 40,000 lip facets):** radial-twin flags 31,329 (78%) of lip facets as outliers; the tread-REPRESENTING step-reference twin flags **264 (0.66%)**. ⇒ **TWIN-BLIND**: the single-valued radial surface S(θ,z)=(rA·cosθ,rA·sinθ,z) has ONE radius per (θ,z), so at a tread (a RANGE of radii at fixed z = a vertical wall) the tread facets sit at interior radii ~(rOut−rIn)/2 ≈ 0.046mm from S — EXACTLY the observed lipMax 0.0461. The V10b "263,536 DragonScales outliers" is itself DOMINATED by this tread-wall twin-blind-spot, the SAME class as the SFB seam wall.
+- **NET:** DragonScales' body (sheet) is CAD-grade and density-closable to a ~5.5k floor; the tread is a DESIGNED near-vertical feature the single-valued radial ruler CANNOT measure (zero-serration doubled-ring feature edge by construction). Literal whole-mesh 0 under the radial twin is UNREACHABLE by any density because the ruler is tread-blind — this is a RULER-CLASS finding, not a mesh gap. Recommendation: score DragonScales on the tread-representing STEP twin (where lip→0.66% and sheet closes with density), OR accept+document the tread as an SFB-seam-class measurement exclusion. The prior CU-DSLIP close (0.005 on the step-locator) was RIGHT for the body; the V10b radial-twin re-baseline is tread-blind-inflated.
+
+**LEDGER:** probe `research/bridge/_pf_dszdensity.test.ts` (PF_DS_ZDENS=1 sweep; PF_DS_LIPCHECK=1 cross-check), config `vitest.ds_zdens.config.ts`, data `research/exchange/_ds_zdensity/scorecard.ndjson` (gitignored; numbers inlined). Result commit BELOW.
 
 ---
 
@@ -4657,7 +4674,24 @@ characterized; no 2nd lever-grind on a perf-bound non-converging run). Full ledg
 - GENUINE iff outliers >= 50% of band-0 at both bands -> CT joins tangled kernel-dispatch class (adjudicate only).
 - MIXED otherwise — characterize the residual (where, how deep, exclFrac) without a hard class verdict.
 
-**VERDICT: PENDING — measuring.**
+**VERDICT: MIXED — the tile-edge predicate was REFUTED, a DIRECT C0 detector was VALIDATED and built, and exclusion removes 81-94% of the outliers (band-dependent, not a clean collapse) while ~6-19% GENUINE off-crease body geometry survives. CT is a WEAVE style with a real body gap smaller than its upper bound suggested.**
+
+PREDICATE CONSTRUCTION + VALIDATION (mandatory gate):
+- **Tile-edge predicate REFUTED by validation.** `celticTriquetraCreasePredicate` (diamond-lattice tile boundaries) has tileIdFlip 0.95 (the band IS on tile edges) BUT recall of true-C0 cells = **0.10** and crease-tracking-ratio ≈ 1.0. Discriminator (K-refinement exponent p=log2(k2/k1); C0 iff p<1.4): only **2.5% of the braid band is true-C0**, and those C0 loci are NOT on the tile grid — they are the ribbon-presence smoothstep clamps + max(hV,hH) strand ridges + abs(hypot−r) arc folds that sweep through (u,t) as curved arcs (matching extractCelticTriquetra's "braided, u oscillates with t"). Honest refutation kept.
+- **DIRECT C0 predicate VALIDATED + used.** `celticTriquetraC0Predicate` (flags (u,t) where the live relief field's local K-refinement classifies C0, then dilates by band) — the analytic C0 detector of the live surface. Recall of true-C0 cells = **0.865 @ band 1e-3 / 0.968 @ band 2e-3** (VALID ≥0.5). This is the predicate the exclusion arm uses.
+
+EXCLUSION ARM (dense radial twin 3072x3072, radial prefilter, tol 0.01, every facet):
+| band | outliers | survival | max mm | p99 | exclFrac | facetsAllExcl |
+|---|---|---|---|---|---|---|
+| 0 (unexcl baseline) | 186,400 | 100% | 0.0905 | 0.0253 | 0 | 0 |
+| 1e-3 | 34,650 | **18.6%** | 0.0683 | 0.0075 | 0.148 | 598,256 |
+| 2e-3 | 10,955 | **5.9%** | 0.0508 | 0.0069 | 0.304 | 1,496,596 |
+INSTRUMENT-MATCH GATE PASSED: band-0 = 186,400 / max 0.0905 — byte-matches the V10b anchor on this exact call.
+
+- **MIXED per the pre-registered criteria.** NOT a clean COLLAPSE (survival >10% at 1e-3, AND exclFrac 14.8%/30.4% ≫ the 6% collapse cap). NOT clean GENUINE (survival <50% at both bands, and band-sensitive 18.6%→5.9%). The crease exclusion removes 81-94% of outliers and drops p99 from 0.0253 to **below tol (0.0075/0.0069)** — most of CT's outlier mass IS the C0 braid crease (the f32/f64 strand-flip class, as expected). But 11k-35k facets (max 0.05-0.07) survive off-crease = a GENUINE body-geometry gap, smaller and shallower than the 186,400/0.0905 upper bound.
+- **CONTRAST with the weave siblings (E-2026-07-07):** BasketWeave/CelticKnot came out GENUINE (67-99% survive); CelticTriquetra is the OPPOSITE — its outliers are crease-DOMINATED (only 6-19% survive), so its upper bound was the most inflated of the three. The high exclFrac + band-sensitivity mean the exact survivor count is soft, but the DIRECTION is firm: CT's body is much closer to CAD-grade than 186,400 suggested; the residual is a real (small) off-crease weave gap → CT joins the weave/tangled kernel-dispatch class with a SMALL target, not carried as a raw upper bound.
+
+**LEDGER:** predicate lib `research/bridge/_ct_creaseLib.ts` (celticTriquetraCreasePredicate REFUTED + celticTriquetraC0Predicate VALIDATED), probe `research/bridge/_ct_predicate.test.ts` (PF_CT_VALIDATE=1 / PF_CT_PRED=1), config `vitest.ct_pred.config.ts`, data `research/exchange/_ct_predicate/scorecard.ndjson` + `CT_maskOverK.png` (gitignored; numbers inlined). Result commit BELOW.
 
 ---
 

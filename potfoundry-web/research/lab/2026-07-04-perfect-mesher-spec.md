@@ -1645,3 +1645,43 @@ perf-bound run):**
 fast tierC suite 9/9 green (incl. flagOff.byteIdentical + θ-window exactness). Flag stays default-OFF. Commit 4853a16
 (diagnostic + probes). Data: research/exchange/_tierc_junction/{run1/*, fix_probe.json, field_profiles.json,
 focus_results.json, focus.ndjson, lever1_pass.ndjson, radius_field.svg, scatter.svg} (gitignored; numbers inlined).
+
+---
+
+## V11c — DRAGONSCALES Z-DENSITY + CT ADJUDICATION (2026-07-08)
+
+Two independent arms, both measured under the EXACT V10b dense radial-twin BVH ruler (scoreWholeMeshBVH: dense 45-pt
+denseBary + radial same-azimuth prefilter, no screen, tol 0.01), shared-twin architecture (build twin once, reuse).
+
+### ARM 1 — E-2026-07-08-DRAGONSCALES-ZDENSITY: SHEET closes, whole-mesh count is TREAD-TWIN-BLIND (MIXED)
+Doubled-rings structured mesh (buildStructuredWall + dragonRings, treadCap=4), nZband sweep, per-facet sheet/lip class:
+- **SHEET outliers DENSITY-RESPONSIVE**: 21,744 (nZ30) → 5,552 (nZ110); **pctBelow20 77%→2%** by nZ≥70. The z-density
+  lever WORKS on the sheet (hypothesis mechanism CONFIRMED) but floors ~5.5k within 4M tris.
+- **LIP outliers DENSITY-INVARIANT** ~141-150k across ALL densities. Decisive cross-check (radial-twin vs
+  tread-representing step-reference twin, 40k lip facets): radial flags 78%, step-twin flags **0.66%** ⇒ the lip is a
+  RADIAL-TWIN ARTIFACT. The single-valued S(θ,z) can't represent the tread (range of radii at one z); tread facets sit
+  ~(rOut−rIn)/2 ≈ 0.046mm from S = exactly the observed lipMax 0.0461 ⇒ **SFB-seam-class twin-blind-spot.**
+- **⇒ the V10b "263,536 DragonScales outliers" is DOMINATED by the tread twin-blind-spot, not a mesh gap.** DragonScales
+  body is CAD-grade + density-closable; the tread is a designed near-vertical zero-serration doubled-ring feature the
+  radial ruler cannot measure. Literal 0 under the radial twin is unreachable by density (ruler-class limitation).
+  Recommend: score on the step twin (lip→0.66%, sheet closes) OR accept+document the tread as an SFB-seam exclusion.
+  The prior CU-DSLIP 0.005 close (step-locator) was RIGHT for the body; the V10b radial re-baseline is tread-blind-inflated.
+
+### ARM 2 — E-2026-07-08-CT-PREDICATE: tile-edge predicate REFUTED; direct-C0 predicate VALIDATED; exclusion MIXED
+- **Tile-edge predicate REFUTED** (recall of true-C0 cells 0.10; the C0 loci are NOT on the diamond tile grid — they
+  are ribbon-presence clamps + max(hV,hH) ridges + arc folds sweeping through (u,t)). K-refinement discriminator: only
+  2.5% of the braid band is true-C0.
+- **Direct-C0 predicate VALIDATED** (celticTriquetraC0Predicate flags where the live relief field's local
+  K-refinement classifies C0; recall 0.865/0.968 at band 1e-3/2e-3) and used for exclusion.
+- **Exclusion (dense radial twin 3072², EXACT V10b basis; band-0 = 186,400/0.0905 BYTE-MATCHES the V10b anchor):**
+  band 1e-3 → 34,650 (18.6% survive, exclFrac 14.8%, p99 0.0253→0.0075); band 2e-3 → 10,955 (5.9%, exclFrac 30.4%).
+- **MIXED**: NOT a clean COLLAPSE (exclFrac ≫6% cap, survival band-sensitive) NOR GENUINE (survival <50%). 81-94% of
+  CT's outliers ARE the C0 braid crease (f32/f64 strand-flip class); ~6-19% survive off-crease = a GENUINE but SMALL
+  body gap (max 0.05-0.07), far below the 186,400/0.0905 upper bound. UNLIKE BasketWeave/CelticKnot (GENUINE, 67-99%
+  survive), CT is crease-DOMINATED — its upper bound was the most inflated of the three. CT joins the weave/tangled
+  kernel-dispatch class with a SMALL target, no longer a raw upper bound.
+
+**STATE:** two fleet residuals adjudicated. DragonScales = tread-twin-blind ruler-class finding (body CAD-grade); CT =
+crease-dominated weave with a small genuine body gap. Neither is a representational wall. Flag stays OFF; dev-only; no
+src/ edit. **LEDGER:** registry E-2026-07-08-DRAGONSCALES-ZDENSITY + E-2026-07-08-CT-PREDICATE (verdicts). Probes
+_pf_dszdensity.test.ts / _ct_predicate.test.ts + lib _ct_creaseLib.ts; data _ds_zdensity/ + _ct_predicate/ (gitignored).
