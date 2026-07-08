@@ -191,15 +191,36 @@ describe('E-2026-07-08-CK-CLOSE', () => {
     const chordTolMm = Number(process.env.PF_CKCHORD ?? '0.004');
     const raw = JSON.parse(readFileSync(join(DIR, 'contours.json'), 'utf8')) as { doubled: number[][][] };
     const contours: Contour[] = raw.doubled.map((pts) => ({ pts: pts as [number, number][] }));
-    const flat = contoursToConstraints(contours);
     const SCALE = Number(process.env.PF_CKPSCALE ?? '100');
-    const scaled = flat.injectedPoints.map((v) => v * SCALE);
-    const edgePairs: Array<[number, number]> = [];
-    for (let i = 0; i < flat.constraintEdges.length; i += 2) edgePairs.push([flat.constraintEdges[i], flat.constraintEdges[i + 1]]);
-    const pl = planarizeMM(scaled, edgePairs);
-    const injectedPoints = pl.pts.map((v) => v / SCALE);
-    const constraintEdges: number[] = [];
-    for (const e of pl.edges) constraintEdges.push(e[0], e[1]);
+    // PER-COLUMN TILED planarization: the CK braid loci cross DENSELY (every strand×every strand within a column,
+    // ×6-offset ladders) — a SINGLE planarizeMM overflows JS's ~16.7M Set at 119k pickets (the §V11t-1 banked
+    // instrument ceiling). The columns are DISJOINT u-bands (u∈[j/nCol,(j+1)/nCol]) and strand curves stay in their
+    // column (|localU|≤1.02 clamp) ⇒ NO cross-column crossings. So planarize each column's braid INDEPENDENTLY
+    // (pair-Set ÷ numColumns) and concatenate with offset indices. Mesh-equivalent; avoids editing the shared instrument.
+    const nCol = ckParams().numColumns;
+    const colOf = (pts: Array<[number, number]>): number => {
+      // assign by the MEDIAN u of the contour (robust to the ±δ picket spill near a boundary)
+      const us = pts.map((q) => ((q[0] % 1) + 1) % 1).sort((a, b) => a - b);
+      const um = us[Math.floor(us.length / 2)];
+      return Math.min(nCol - 1, Math.floor(um * nCol));
+    };
+    const tiles: Contour[][] = Array.from({ length: nCol }, () => []);
+    for (const c of contours) tiles[colOf(c.pts)].push(c);
+    const injectedPoints: number[] = []; const constraintEdges: number[] = [];
+    let plAddedVerts = 0, plResidual = 0;
+    for (const tile of tiles) {
+      if (!tile.length) continue;
+      const flat = contoursToConstraints(tile);
+      const scaled = flat.injectedPoints.map((v) => v * SCALE);
+      const edgePairs: Array<[number, number]> = [];
+      for (let i = 0; i < flat.constraintEdges.length; i += 2) edgePairs.push([flat.constraintEdges[i], flat.constraintEdges[i + 1]]);
+      const pl = planarizeMM(scaled, edgePairs);
+      const vBase = injectedPoints.length / 2;
+      for (const v of pl.pts) injectedPoints.push(v / SCALE);
+      for (const e of pl.edges) constraintEdges.push(e[0] + vBase, e[1] + vBase);
+      plAddedVerts += pl.addedVerts; plResidual += pl.residual;
+    }
+    const pl = { addedVerts: plAddedVerts, residual: plResidual };
     const nConstraintVerts = injectedPoints.length / 2, nConstraintEdges = constraintEdges.length / 2;
 
     const t0 = Date.now();
