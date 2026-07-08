@@ -251,7 +251,16 @@ describe('E-2026-07-08-TANGLED-DENSITY-CLOSE — Newton-verdict density sweep (�
   }, 6 * HRS);
 
   it.skipIf(process.env.PF_TDC !== 'CelticKnot')('CelticKnot', () => {
-    runDensitySweep('CelticKnot' as StyleId, [0.02, 0.01, 0.005, 0.0025], [900_000, 1_600_000, 2_400_000, 3_000_000]);
+    // CelticKnot V11i ~61,551 @ 0.300, slopeMed 0.224 (flat bulk) BUT slopeP90 15.555 (a BIMODAL population — a steep
+    // crossing tail on top of a flat bulk). Density DIRECTION via BASE-field coarse→fine sweep + downsized Newton
+    // (700/700, braid radiusFn is expensive) staying under 6M. WATCH: if the count is flat/rising while worstTrue
+    // stays pinned high at the crossings ⇒ the steep tail is cliff-class (feature-edge, not density) even though the
+    // flat bulk closes — report the split honestly.
+    runDensitySweep('CelticKnot' as StyleId, [0.02, 0.02, 0.02], [3_000_000, 3_000_000, 3_000_000], 700, 700, 0.01, [
+      { tolMm: 0.02, sizeRes: 96 },
+      { tolMm: 0.012, sizeRes: 160 },
+      { tolMm: 0.008, sizeRes: 224 },
+    ]);
     expect(true).toBe(true);
   }, 6 * HRS);
 });
