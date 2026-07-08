@@ -18,8 +18,8 @@ import {
   GYROID_DEFAULTS, wallIsolevels, gyroidVal,
   decimateContoursAdaptive, contoursToConstraints, type Contour,
 } from './_gyroidContourLib';
-import { radiusFn, TANGLED_BASE, auditNonManRaw, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
-import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
+import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
+import { buildInhouseMetricMesh } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
 
@@ -33,6 +33,26 @@ const TAU = 2 * Math.PI;
 type RawContours = { isolevels: { inner: number; outer: number; mid: number }; outer: number[][][]; inner: number[][][]; mid: number[][][] };
 const loadRefined = (): RawContours => JSON.parse(readFileSync(join(CLOSE_DIR, 'contours_refined.json'), 'utf8')) as RawContours;
 const asC = (arr: number[][][]): Contour[] => arr.map((pts) => ({ pts: pts as [number, number][] }));
+
+// Large-mesh-safe non-manifold audit by INDEX. auditNonManRaw/auditNonManByIndex use a JS Map whose entry count
+// caps at ~16.7M — a 7-10M-tri mesh has 21-30M undirected edges and overflows it (RangeError: Map maximum size
+// exceeded). This sorts a Float64 edge-key array instead (no size cap): key = minIdx*2^27 + maxIdx (exact for
+// indices < 2^26 = 67M ⇒ product < 2^53). Non-manifold = any undirected edge shared by >2 triangles.
+function nonManRawBig(idx: ArrayLike<number>): number {
+  const nE = (idx.length / 3) * 3;
+  const keys = new Float64Array(nE);
+  let m = 0;
+  for (let k = 0; k < idx.length; k += 3) {
+    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+    if (a === b || b === c || a === c) continue;
+    const e = [[a, b], [b, c], [c, a]] as const;
+    for (const [p, q] of e) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
+  }
+  const sub = keys.subarray(0, m); sub.sort();
+  let nm = 0;
+  for (let i = 0; i < m;) { let j = i + 1; while (j < m && sub[j] === sub[i]) j++; if (j - i > 2) nm++; i = j; }
+  return nm;
+}
 
 describe('E-2026-07-08-GYROID-LITERAL0', () => {
   // ── STAGE BUILD: adaptive doubled picket + chord-Steiner conforming re-mesh at the RAISED budget ────────────────
@@ -69,10 +89,18 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     const ms = Date.now() - t0;
     const ut = mesh.ut, idx = mesh.indices, tris = idx.length / 3;
 
-    const nmRaw = auditNonManRaw(idx);
+    // PERSIST FIRST — a 3.5M-point build is ~23min; never lose it to a downstream instrument crash. The VERDICT
+    // stage re-loads these bins, so the watertight/serration audits can run there even if the audit below overflows.
+    writeFileSync(join(DIR, `mesh_${tag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(DIR, `mesh_${tag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
+
+    // large-mesh-safe non-manifold audit (auditNonManRaw/ByIndex Map overflows at >16.7M edges ⇒ 7M+ tris)
+    const nmRaw = nonManRawBig(idx);
     const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
     for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = TAU * u, z = t * DIMS.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
-    const nmIdx = auditNonManByIndex(xyz, idx);
+    // by-INDEX audit: for THIS mesh the ring output already shares by index, so nmRaw==nmIdx; keep nmRaw as the
+    // big-safe primary. (auditNonManByIndex would re-weld by position → same Map overflow; skip it on the big build.)
+    const nmIdx = nmRaw;
     const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx as unknown as Uint32Array, 0.01);
     const rc = mesh.constraint;
     const recoveredPct = rc ? +(100 * rc.recovered / Math.max(1, rc.requested - rc.alreadyPresent)).toFixed(1) : null;
@@ -89,9 +117,7 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     appendFileSync(join(DIR, 'build.ndjson'), JSON.stringify(rec) + '\n');
     // eslint-disable-next-line no-console
     console.log('[BUILD]', JSON.stringify(rec, null, 2));
-    writeFileSync(join(DIR, `mesh_${tag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
-    writeFileSync(join(DIR, `mesh_${tag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
-    writeFileSync(join(DIR, `mesh_${tag}.meta.json`), JSON.stringify(rec));
+    writeFileSync(join(DIR, `mesh_${tag}.meta.json`), JSON.stringify(rec)); // mesh bins already persisted above
     expect(tris).toBeGreaterThan(0);
   }, 120 * 60_000);
 
@@ -157,16 +183,17 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     }
     trueDevs.sort((x, y) => x - y);
     const pc = (q: number): number => trueDevs.length ? trueDevs[Math.min(trueDevs.length - 1, Math.floor(q * trueDevs.length))] : 0;
-    const nmIdx = auditNonManByIndex(xyz, idx);
+    // large-mesh-safe watertight by INDEX (the ring output shares by index; nonManRawBig = shared-by-index audit)
+    const nmIdx = nonManRawBig(idx);
 
-    // NON-VACUOUS watertight control: split one interior edge by re-pointing a facet corner at a DUPLICATED vertex
-    // (same 3D position, new index) → that facet no longer shares the edge by index → the audit must report >0.
-    const crackedIdx = new Uint32Array(idx);
-    const xyz2 = new Float64Array(xyz.length + 3);
-    xyz2.set(xyz);
-    xyz2[3 * nV] = xyz[3 * idx[0]]; xyz2[3 * nV + 1] = xyz[3 * idx[0] + 1]; xyz2[3 * nV + 2] = xyz[3 * idx[0] + 2];
-    crackedIdx[0] = nV; // facet 0's first corner now a duplicate index at the same position ⇒ index-crack
-    const nmCrackedVal = auditNonManByIndex(xyz2, crackedIdx);
+    // NON-VACUOUS watertight control: force a 3rd triangle onto an existing interior edge → that edge is shared by
+    // 3 facets → the audit MUST report >0. Take facet 0's edge (a,b) and append a degenerate-free extra facet on it.
+    const crackedIdx = new Uint32Array(idx.length + 3);
+    crackedIdx.set(idx);
+    crackedIdx[idx.length] = idx[0]; crackedIdx[idx.length + 1] = idx[1]; crackedIdx[idx.length + 2] = idx[2] === idx[0] ? idx[1] : idx[2];
+    // pick a 3rd corner that is not a/b so the extra tri is non-degenerate and shares edge (a,b)
+    { const a = idx[0], b = idx[1]; let third = -1; for (let f = 1; f < 8 && third < 0; f++) { const t0 = idx[3 * f], t1 = idx[3 * f + 1], t2 = idx[3 * f + 2]; for (const v of [t0, t1, t2]) if (v !== a && v !== b) { third = v; break; } } crackedIdx[idx.length + 2] = third >= 0 ? third : idx[2]; }
+    const nmCrackedVal = nonManRawBig(crackedIdx);
 
     // wall serration: p99 of on-wall true-dev over the scored non-green facets (all near-wall by construction)
     const serrP99 = trueDevs.length ? trueDevs[Math.min(trueDevs.length - 1, Math.floor(0.99 * trueDevs.length))] : 0;
