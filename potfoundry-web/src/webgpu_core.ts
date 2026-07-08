@@ -4394,6 +4394,10 @@ export const mount = async ({
     // Clean up ray-cast controller (flag-gated; no-op when never constructed)
     try {
       raycastController?.dispose();
+      if (raycastController) {
+        // Drop the dev/e2e hook — it would otherwise keep referencing a disposed controller
+        delete (window as unknown as { __pfRaycast?: unknown }).__pfRaycast;
+      }
     } catch (e) { /* ignore cleanup errors */ }
 
     // Clean up CameraCommandRouter (Phase 18)

@@ -417,12 +417,23 @@ Protocol: ${protocol}`}
         <ToastProvider>
             <AuthProvider>
                 <div className="pf-app">
-                    {/* User Menu - Top Right (v1/v2 only; v3 renders AccountChip inside AppUIv3) */}
+                    {/* User Menu - Top Right (v1/v2 only; v3 renders AccountChip inside AppUIv3).
+                        Wrapped in its own ControllerProvider (same refs as the main one below)
+                        so the settings modal can read the ACTIVE rendererType — PreviewModeSelect
+                        gates the ray-cast option on it. Without this, useControllerMaybe() is
+                        null here and the WebGL gate silently fails open in v1/v2. */}
                     {uiTheme !== 'v3' && (
-                        <div className="pf-app__header">
-                            <AppSettingsButton />
-                            <UserMenu />
-                        </div>
+                        <ControllerProvider
+                            controllerRef={controllerRef}
+                            isReady={controllerReady}
+                            canvasRef={canvasRef}
+                            localParamsLockRef={localParamsLockUntilRef}
+                        >
+                            <div className="pf-app__header">
+                                <AppSettingsButton />
+                                <UserMenu />
+                            </div>
+                        </ControllerProvider>
                     )}
 
                     <div
