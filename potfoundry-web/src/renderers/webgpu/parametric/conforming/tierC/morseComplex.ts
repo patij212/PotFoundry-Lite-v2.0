@@ -48,6 +48,34 @@ export interface ProtectedComplex {
   tToMm: number;
 }
 
+/**
+ * NEEDLE-FORBIDDING PICKET (E-2026-07-08-TIERC-TOPOLOGY, DESIGN A, opt-in).
+ *
+ * A short LOCKED t-aligned constraint segment injected at a constant u-column
+ * across a t-band. Its purpose: the whole-domain re-CDT re-forms a long
+ * t-spanning needle (pin 1.0592mm, pin_diag.json: 3 verts at u≈0.0585, edges
+ * ≈8.9mm spanning t≈0.464-0.538) across the smooth apex bump because no
+ * interior LOCKED structure forbids a facet from bridging that t-gap. A picket
+ * places a chain of vertices along the needle's own u-column, LOCKED between
+ * consecutive vertices at `maxChordMm` 3D pitch, so cdt2d cannot form any facet
+ * whose edge spans more than the local chord across the bump — the long needle
+ * edge would have to cross a locked picket edge (forbidden).
+ *
+ * Planarity-safe by construction: pickets are appended to the raw mm segment
+ * soup BEFORE `planarizeMM`, which splits any picket-vs-rib crossing into a
+ * T-junction and drives `residualCrossings` to 0 with the proven machinery.
+ */
+export interface PicketSpec {
+  /** Constant chart-u column (fraction) the picket runs along. */
+  u: number;
+  /** t-band start (fraction). */
+  tLo: number;
+  /** t-band end (fraction). */
+  tHi: number;
+  /** Max 3D chord (mm) between consecutive locked picket vertices. Default 0.09. */
+  maxChordMm?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Physical scale measurement (same 128-pt chord sums detectFeatures uses
 // internally; module-private there, so re-measured locally).
@@ -465,6 +493,7 @@ export function buildProtectedComplex(
   sampler: SurfaceSampler,
   _styleId: string,
   prebuilt?: FeatureGraph,
+  pickets?: readonly PicketSpec[],
 ): ProtectedComplex {
   const uToMm = measureUCircumference(sampler);
   const tToMm = measureTHeight(sampler);
@@ -598,6 +627,32 @@ export function buildProtectedComplex(
       rawEdges.push([prevIdx, idx]);
       prevIdx = idx;
       uPrev = u;
+    }
+  }
+
+  // NEEDLE-FORBIDDING PICKETS (E-2026-07-08-TIERC-TOPOLOGY DESIGN A, opt-in).
+  // Append each picket as a chain of vertices along its constant-u column,
+  // spaced at maxChordMm 3D pitch, with LOCKED edges between consecutive
+  // vertices. Injected into the raw mm soup BEFORE planarizeMM so any crossing
+  // with a rib chain is split into a T-junction (residualCrossings stays 0 by
+  // the proven planarizer). Off ⇒ byte-identical to the prior complex.
+  if (pickets && pickets.length > 0) {
+    for (const pk of pickets) {
+      const maxChordMm = pk.maxChordMm ?? 0.09;
+      const A = pos3D(pk.u, pk.tLo);
+      const B = pos3D(pk.u, pk.tHi);
+      const len3 = Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+      const nSeg = Math.max(1, Math.ceil(len3 / maxChordMm));
+      let prevIdx = pts.length / 2;
+      pts.push(pk.u * uToMm, pk.tLo * tToMm);
+      for (let s = 1; s <= nSeg; s++) {
+        const fr = s / nSeg;
+        const t = pk.tLo + fr * (pk.tHi - pk.tLo);
+        const idx = pts.length / 2;
+        pts.push(pk.u * uToMm, t * tToMm);
+        rawEdges.push([prevIdx, idx]);
+        prevIdx = idx;
+      }
     }
   }
 
