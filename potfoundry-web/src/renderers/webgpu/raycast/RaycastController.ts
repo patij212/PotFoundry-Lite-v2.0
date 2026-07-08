@@ -18,6 +18,8 @@ export interface RaycastSharedBuffers {
 }
 
 const RC_UNIFORM_BYTES = 112;
+// bound kernel output: [0] global max, [1..64] per-bin max, [65..128] per-bin min
+const BOUND_RESULT_BYTES = 129 * 4;
 const RC_RMAX_BYTE_OFFSET = 80;
 const ACCUM_FORMAT: GPUTextureFormat = 'rgba16float';
 
@@ -60,7 +62,8 @@ export class RaycastController {
 
   private rcUniform: GPUBuffer;
   private boundResult: GPUBuffer;
-  private boundZero: GPUBuffer;
+  private boundInit: GPUBuffer;
+  private lutUniform: GPUBuffer;
 
   private accumTex: GPUTexture | null = null;
   private width = 0;
@@ -73,11 +76,16 @@ export class RaycastController {
   private lastF32: Float32Array | null = null;
 
   private mobile = isMobileDevice();
-  private stepCapInteractive = this.mobile ? 24 : 48;
-  private stepCapAccum = this.mobile ? 64 : 128;
-  private featureFloor = 0.25;
+  // step caps bound FIELD EVALS of the banded march (see preview_raycast.wgsl);
+  // the effective sampling density is set by the feature floors — fine steps
+  // only occur inside the per-z-bin surface band, so the caps are generous
+  // ceilings for pathological (grazing) rays, not the effective step size.
+  private stepCapInteractive = this.mobile ? 160 : 224;
+  private stepCapAccum = this.mobile ? 512 : 768;
+  private featureFloorInteractive = this.mobile ? 1.0 : 0.6;
+  private featureFloor = this.mobile ? 0.4 : 0.25; // accumulation floor (mm)
   private maxSamples = this.mobile ? 8 : 16;
-  private debugMode: 0 | 1 = 0;
+  private debugMode = 0;
 
   constructor(device: GPUDevice, format: GPUTextureFormat, buffers: RaycastSharedBuffers) {
     this.device = device;
@@ -88,15 +96,28 @@ export class RaycastController {
       size: 128,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    // 129 u32: [0] global max, [1..64] per-bin max, [65..128] per-bin min
     this.boundResult = device.createBuffer({
       label: 'raycast:bound-result',
-      size: 4,
+      size: BOUND_RESULT_BYTES,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
     });
-    this.boundZero = device.createBuffer({
-      label: 'raycast:bound-zero',
-      size: 4,
-      usage: GPUBufferUsage.COPY_SRC,
+    // init pattern: max slots -> 0, min slots -> +f32max bits (atomicMin identity)
+    this.boundInit = device.createBuffer({
+      label: 'raycast:bound-init',
+      size: BOUND_RESULT_BYTES,
+      usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST,
+    });
+    const initBits = new Uint32Array(BOUND_RESULT_BYTES / 4);
+    for (let i = 65; i <= 128; i++) initBits[i] = 0x7f7fffff;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Uint32Array<ArrayBufferLike> vs GPUAllowSharedBufferSource strict mode mismatch
+    device.queue.writeBuffer(this.boundInit, 0, initBits.buffer as any);
+    // per-z-bin [min,max] band LUT, uniform so it works on fragment stages
+    // without storage-buffer support (mirrors the RC uniform pattern)
+    this.lutUniform = device.createBuffer({
+      label: 'raycast:band-lut',
+      size: 512,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.resolveUniform = device.createBuffer({
       label: 'raycast:resolve-uniforms',
@@ -105,15 +126,19 @@ export class RaycastController {
     });
   }
 
-  public setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; featureFloor?: number; maxSamples?: number }): void {
+  public setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; featureFloor?: number; featureFloorInteractive?: number; maxSamples?: number }): void {
     if (q.stepCapInteractive !== undefined) this.stepCapInteractive = q.stepCapInteractive;
     if (q.stepCapAccum !== undefined) this.stepCapAccum = q.stepCapAccum;
     if (q.featureFloor !== undefined) this.featureFloor = q.featureFloor;
+    if (q.featureFloorInteractive !== undefined) this.featureFloorInteractive = q.featureFloorInteractive;
     if (q.maxSamples !== undefined) this.maxSamples = q.maxSamples;
     this.lastSig = null; // force reset so new quality takes effect
   }
 
-  public setDebugMode(mode: 0 | 1): void {
+  /** 0 = shaded, 1 = hit-data readback (t, z, rho), 2 = march diagnostics
+   *  (fp_near, fp_far, band-hi at mid-height, feature floor as seen by WGSL),
+   *  3 = march forensics (hit.t or -1, evals spent, capped/coarse flag). */
+  public setDebugMode(mode: number): void {
     this.debugMode = mode;
     this.lastSig = null;
   }
@@ -216,6 +241,7 @@ export class RaycastController {
         { binding: 6, resource: { buffer: this.buffers.bg2 } },
         { binding: 7, resource: { buffer: this.buffers.bg3 } },
         { binding: 8, resource: { buffer: this.rcUniform } },
+        { binding: 10, resource: { buffer: this.lutUniform } },
       ],
     });
   }
@@ -274,7 +300,7 @@ export class RaycastController {
     data[19] = s;                                 // sample_index
     // data[20] = r_max — written by the bound-pass buffer copy, keep 0 here
     data[21] = s === 0 ? this.stepCapInteractive : this.stepCapAccum;
-    data[22] = this.featureFloor;
+    data[22] = s === 0 ? this.featureFloorInteractive : this.featureFloor;
     data[23] = this.debugMode;
     data[24] = this.width;
     data[25] = this.height;
@@ -301,13 +327,15 @@ export class RaycastController {
     if (!this.writeRcUniforms()) return false;
 
     if (this.boundDirty) {
-      encoder.copyBufferToBuffer(this.boundZero, 0, this.boundResult, 0, 4);
+      encoder.copyBufferToBuffer(this.boundInit, 0, this.boundResult, 0, BOUND_RESULT_BYTES);
       const cp = encoder.beginComputePass({ label: 'raycast:bound-pass' });
       cp.setPipeline(boundPipeline);
       cp.setBindGroup(0, boundBindGroup);
       cp.dispatchWorkgroups(1);
       cp.end();
+      // [0] global max -> RC.r_max; [1..128] per-bin max/min -> the band LUT
       encoder.copyBufferToBuffer(this.boundResult, 0, this.rcUniform, RC_RMAX_BYTE_OFFSET, 4);
+      encoder.copyBufferToBuffer(this.boundResult, 4, this.lutUniform, 0, 512);
       this.boundDirty = false;
     }
 
@@ -400,7 +428,8 @@ export class RaycastController {
     this.accumTex?.destroy();
     this.rcUniform.destroy();
     this.boundResult.destroy();
-    this.boundZero.destroy();
+    this.boundInit.destroy();
+    this.lutUniform.destroy();
     this.resolveUniform.destroy();
   }
 }

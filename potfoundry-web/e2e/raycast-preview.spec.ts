@@ -193,12 +193,12 @@ async function waitForRaycastReady(page: Page, styleId: number): Promise<void> {
  * camera) before the readback, with debug_mode=1 and maxSamples=1 so the
  * channels are raw (hit.t, p.z, rho, 1) / miss (-1, 0, 0, 1).
  */
-async function readbackCenterDebug(page: Page, w = 48, h = 48, stepCap = 48): Promise<number[]> {
-  return page.evaluate(async ({ w, h, stepCap }) => {
+async function readbackCenterDebug(page: Page, w = 48, h = 48, stepCap = 48, floor?: number): Promise<number[]> {
+  return page.evaluate(async ({ w, h, stepCap, floor }) => {
     const rc = (window as unknown as {
       __pfRaycast: { controller: {
         setDebugMode(m: 0 | 1): void;
-        setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; maxSamples?: number }): void;
+        setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; featureFloor?: number; featureFloorInteractive?: number; maxSamples?: number }): void;
         readbackPixels(x: number, y: number, w: number, h: number): Promise<Float32Array>;
       } };
     }).__pfRaycast;
@@ -213,7 +213,10 @@ async function readbackCenterDebug(page: Page, w = 48, h = 48, stepCap = 48): Pr
     // converged+idle loop; a bare rAF pump does not (the loop has parked). We
     // then wait a few frames and read, retrying until the readback is a live
     // frame (has a hit) and stable across two consecutive reads.
-    const refresh = () => rc.controller.setQuality({ stepCapInteractive: stepCap, stepCapAccum: stepCap, maxSamples: 1 });
+    const refresh = () => rc.controller.setQuality({
+      stepCapInteractive: stepCap, stepCapAccum: stepCap, maxSamples: 1,
+      ...(floor !== undefined ? { featureFloor: floor, featureFloorInteractive: floor } : {}),
+    });
     // setQuality nulls the accumulation signature; needsFrame() now reports the
     // controller dirty so the (possibly idle) frame loop re-activates and renders
     // one fresh debug frame. Idle mode throttles to ~2 FPS, so wait generously.
@@ -234,7 +237,7 @@ async function readbackCenterDebug(page: Page, w = 48, h = 48, stepCap = 48): Pr
       prev = cur;
     }
     return prev;
-  }, { w, h, stepCap });
+  }, { w, h, stepCap, floor });
 }
 
 /**
@@ -251,7 +254,7 @@ async function readbackCenterDebug(page: Page, w = 48, h = 48, stepCap = 48): Pr
  */
 async function readbackConvergedDebug(
   page: Page,
-  caps: { stepCapInteractive: number; stepCapAccum: number; maxSamples: number },
+  caps: { stepCapInteractive: number; stepCapAccum: number; maxSamples: number; featureFloor?: number; featureFloorInteractive?: number },
   w = 48,
   h = 48
 ): Promise<number[]> {
@@ -259,7 +262,7 @@ async function readbackConvergedDebug(
     const rc = (window as unknown as {
       __pfRaycast: { controller: {
         setDebugMode(m: 0 | 1): void;
-        setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; maxSamples?: number }): void;
+        setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; featureFloor?: number; featureFloorInteractive?: number; maxSamples?: number }): void;
         needsFrame(): boolean;
         readbackPixels(x: number, y: number, w: number, h: number): Promise<Float32Array>;
       } };
@@ -317,31 +320,22 @@ test.describe('raycast preview gate', () => {
       await page.goto(`${BASE}/?preview=raycast`);
       await waitForRaycastReady(page, styleId);
 
-      // A8: this probe verifies the INTERSECTION MATH (bounded march + 12-iter
-      // bisection) at reference march density, NOT interactive undersampling and
-      // NOT the production path (that is A10). The design (spec 2026-07-08 §2
-      // "Thin-feature safety") states features thinner than one march step are
-      // resolved by PER-SAMPLE JITTER over the ACCUMULATED image, so a single
-      // 1-spp interactive frame at the production step cap (48) LEGITIMATELY
-      // oversteps thin relief and lands on a deeper crossing — measured directly:
-      // 48-vs-512 differs by 100+ mm on GothicArches/DragonScales, but that is the
-      // designed 1-spp coarseness, not intersection error. The kernel gate is: at
-      // REFERENCE march density the intersection converges to the f32 floor. We
-      // measure 256-vs-512 (both dense enough to resolve every designed feature).
+      // A8/A12: this probe verifies the INTERSECTION MATH (banded march + 12-iter
+      // bisection) converges with sampling DENSITY, NOT the production path
+      // (that is A10). A12 (banded-march rework, 2026-07-08): step caps now bound
+      // FIELD EVALS; sampling density is min(pixel footprint, feature floor),
+      // applied only inside the per-z-bin surface band. Density is therefore
+      // varied via the FLOOR (both floors below the ~0.23mm default-camera pixel
+      // footprint so the floor genuinely drives dt), with a generous eval cap.
       //
-      // MEASURED (2026-07-08, two GPU sessions on this adapter — IDENTICAL both
-      // runs; the probe is deterministic: same Halton ray set, only step caps
-      // differ, so the numbers do not vary across sessions on a given GPU):
-      //   style 0 SuperformulaBlossom : mutualHits 2304, p99 0.000, maxDelta 0.125mm, disagree 0
-      //   style 5 GothicArches        : mutualHits 2304, p99 0.000, maxDelta 0.000mm, disagree 0
-      //   style 9 DragonScales        : mutualHits 2304, p99 0.000, maxDelta 2.500mm, disagree 0
-      // (The earlier "style 0 max = 0" note was wrong — 256-vs-512 differ by one
-      // f16-quantised step, 0.125mm, at a couple of near-silhouette pixels. The
-      // f16 accumulation texture quantises hit.t, so this tail is granular in
-      // ~0.125mm units. p99 = 0 everywhere: the whole hit field agrees to the f32
-      // floor away from a handful of grazing pixels.)
-      const ref = await readbackCenterDebug(page, 48, 48, 512); // reference density
-      const near = await readbackCenterDebug(page, 48, 48, 256); // half density; must already converge
+      // MEASURED (2026-07-08, post-banded-march, this adapter; deterministic —
+      // same Halton ray set, only the floor differs):
+      //   floor 0.2 vs 0.1: styles 0/5/9 ALL p99 0.000, maxDelta 0.0000mm,
+      //   disagree 0 — bit-exact convergence between densities.
+      // The f16 accumulation texture quantises hit.t in ~0.125mm steps, so any
+      // future tail will be granular in those units.
+      const ref = await readbackCenterDebug(page, 48, 48, 8192, 0.1); // reference density
+      const near = await readbackCenterDebug(page, 48, 48, 8192, 0.2); // half density; must already converge
 
       // channel 0 = hit distance along ray (mm); -1 = miss
       const deltas: number[] = [];
@@ -385,8 +379,12 @@ test.describe('raycast preview gate', () => {
       // (radial depth read straight down a normal ray, no grazing amplification)
       // and leaves ~3.4x headroom over the measured 2.5mm without inventing a
       // round number: the constant IS the style's relief height.
-      const RELIEF_AMPLITUDE_MM = 0.12 /* ds_scale_depth */ * (140 / 2) /* top_od/2 = r_max */;
-      expect(maxDelta).toBeLessThanOrEqual(RELIEF_AMPLITUDE_MM + 0.1); // 8.5mm
+      // Post-banded-march measured maxDelta is 0.0000 on all three styles. The
+      // ceiling kept here is the PRE-fix measured grazing overstep at reference
+      // density (2.5mm, DragonScales) — a value a real single-step graze once
+      // produced — NOT the 8.5mm relief amplitude used before: anything above
+      // one historic graze means the fine march regressed.
+      expect(maxDelta).toBeLessThanOrEqual(2.5);
 
       // Both dense marches find the same first crossing almost everywhere.
       // At reference density (256 & 512) the first-crossing set is essentially
@@ -404,8 +402,8 @@ test.describe('raycast preview gate', () => {
 
       // A10: validate the PRODUCTION PATH users see, not just the kernel (A8).
       // A = production converged accumulation at the SHIPPED desktop defaults
-      //     (stepCapInteractive 48 / stepCapAccum 128 / maxSamples 16).
-      // B = reference converged accumulation (both caps 512, same maxSamples 16).
+      //     (banded march: eval caps 224/768, feature floors 0.6/0.25mm, 16 spp).
+      // B = reference converged accumulation (eval cap 8192, floor 0.1mm, 16 spp).
       // The Halton jitter/march-phase are indexed by sample number, so both sides
       // cast the IDENTICAL 16-ray set — only the step caps differ. debug_mode=1,
       // so channel 0 is the accumulated MEAN of hit.t over those 16 samples.
@@ -414,13 +412,15 @@ test.describe('raycast preview gate', () => {
       // sides identically (same rays) — we compare channel-0 means directly and
       // only tally a "flip" when the SIGN of the mean disagrees (production says
       // mostly-hit where reference says mostly-miss or vice-versa).
+      // A12: shipped desktop defaults are now the banded-march ones
+      // (RaycastController: caps 224/768 as EVAL ceilings, floors 0.6/0.25mm).
       const prod = await readbackConvergedDebug(
         page,
-        { stepCapInteractive: 48, stepCapAccum: 128, maxSamples: 16 }
+        { stepCapInteractive: 224, stepCapAccum: 768, featureFloorInteractive: 0.6, featureFloor: 0.25, maxSamples: 16 }
       );
       const ref = await readbackConvergedDebug(
         page,
-        { stepCapInteractive: 512, stepCapAccum: 512, maxSamples: 16 }
+        { stepCapInteractive: 8192, stepCapAccum: 8192, featureFloorInteractive: 0.1, featureFloor: 0.1, maxSamples: 16 }
       );
 
       const deltas: number[] = [];
@@ -450,59 +450,31 @@ test.describe('raycast preview gate', () => {
 
       expect(compared).toBeGreaterThan(48 * 48 * 0.4);
 
-      // MEASURED (2026-07-08, fix-wave re-run on this adapter; deterministic,
-      // same Halton ray set both sides — reproducible across sessions):
-      //   style 0 SuperformulaBlossom : median 0, p90 0.000, p95 0.000, p99 0.000, max 0.125mm, signFlip 0
-      //   style 5 GothicArches        : median 0, p90 0.000, p95 0.000, p99 0.000, max 7.500mm, signFlip 0
-      //   style 9 DragonScales        : median 0, p90 7.000, p95 10.625, p99 11.000, max 11.500mm, signFlip 0
+      // MEASURED (2026-07-08, post-banded-march; deterministic, same Halton ray
+      // set both sides — reproducible across sessions on this adapter):
+      //   style 0 SuperformulaBlossom : median/p90/p95/p99 all 0.0000, max 0.0000mm, signFlip 0
+      //   style 5 GothicArches        : median/p90/p95/p99 all 0.0000, max 0.0000mm, signFlip 0
+      //   style 9 DragonScales        : median/p90/p95/p99 all 0.0000, max 0.5000mm, signFlip 0
       //
-      // HONEST READING (this is the gate's real claim, do NOT overstate it):
-      //   * The MEDIAN pixel converges to the f32 floor on all three styles — the
-      //     production accumulation matches the reference over the bulk of the pot.
-      //   * signFlip = 0 everywhere: production never LOSES a surface the reference
-      //     sees; the silhouette is intact, no black holes.
-      //   * BUT on high-relief styles a real grazing-pixel tail SURVIVES 16-sample
-      //     accumulation: GothicArches to 7.5mm at the max, DragonScales to p90 =
-      //     7mm / p95 = 10.625mm / p99 = 11mm. This is the DESIGNED 1-spp/128-cap
-      //     coarseness (spec §2/§6 "grazing silhouette rays") only PARTIALLY
-      //     cleaned by accumulation — the production step caps (48 interactive /
-      //     128 accum) overstep thin relief on grazing rays and the jitter set does
-      //     not fully average it out over 16 samples. It is a genuine
-      //     production-vs-reference gap, not intersection error (the kernel is
-      //     exact at reference density, per A8). The default-flip decision must
-      //     weigh this: the CONVERGED production preview is faithful in the median
-      //     but has a WIDE grazing tail — on DragonScales it is not a rare 1%
-      //     event: p90 is already 7mm, i.e. >10% of the sampled pixels sit on the
-      //     grazing tail, not just a sliver at the extreme percentile.
+      // HONEST READING: the banded march (per-z-bin surface bands + analytic
+      // empty-space skips; A12) closed the former grazing tail. Pre-fix the
+      // uniform march spent its cap across the whole segment (effective step
+      // 1.25-3.3mm >> the 0.25mm floor), leaving DragonScales p90 = 7mm; now the
+      // production accumulation matches the 0.1mm-floor reference to the f32/f16
+      // floor at every tracked percentile, with a 0.5mm worst pixel (4 f16
+      // quanta, one grazing silhouette ray) and zero lost surfaces.
       //
-      // Bounds below are DERIVED from these measurements with justified headroom,
-      // NOT round numbers: they pin the honest behaviour so a regression (tail
-      // widening, median drifting off the floor, or a signFlip appearing) fails.
-      // p99 was previously asserted <=12.0 — the SAME bound as maxDelta, which can
-      // never bind (p99 <= max by construction) and let the tail widen silently
-      // below the max undetected. Corrected below: p90/p95/p99 each get their own
-      // measured-plus-headroom ceiling.
-      expect(median).toBeLessThanOrEqual(0.125); // f16 hit.t quantum — the bulk converges
+      // Bounds are the measurements plus f16-quantum headroom (hit.t quantises
+      // in 0.125mm steps at these distances) — any drift off the floor is a
+      // real march regression, not noise.
+      expect(median).toBeLessThanOrEqual(0.125); // one f16 quantum
       // signFlip must stay 0: production must not drop a surface the reference sees.
       expect(signFlip).toBe(0);
-      // p90: measured worst case (DragonScales) = 7.000mm. +~7% headroom (mirrors
-      // the maxDelta 11.5->12.0 ~4% convention, widened slightly since 7mm is a
-      // smaller number and a flat +0.5mm would be a larger relative swing here).
-      expect(p90).toBeLessThanOrEqual(7.5);
-      // p95: measured worst case (DragonScales) = 10.625mm. +~6% headroom, same
-      // convention (measured value plus a small fixed margin, not a round number).
-      expect(p95).toBeLessThanOrEqual(11.25);
-      // p99: measured worst case (DragonScales) = 11.000mm. ~5% headroom, mirroring
-      // the maxDelta 11.5mm -> 12.0mm (~4%) convention applied to this measurement
-      // instead of reusing maxDelta's bound (the previous, never-binding defect).
-      expect(p99).toBeLessThanOrEqual(11.6);
-      // Grazing tail ceiling: the worst radial relief amplitude of the probe set.
-      // GothicArches/DragonScales relief reaches ~0.12 * (top_od/2 = 70mm) = 8.4mm
-      // radial; a grazing ray stretches that along-ray, and f16 quantisation lands
-      // the measured 11.5mm max ~= 8.4mm / sin(~47deg). Cap at 12.0mm: the measured
-      // 11.5mm max plus ~4% headroom for f16 granularity. A wider tail than this is
-      // a real regression, not sampling noise.
-      expect(maxDelta).toBeLessThanOrEqual(12.0);
+      expect(p90).toBeLessThanOrEqual(0.125);  // measured 0; one f16 quantum headroom
+      expect(p95).toBeLessThanOrEqual(0.125);  // measured 0; one f16 quantum headroom
+      expect(p99).toBeLessThanOrEqual(0.25);   // measured 0; two quanta headroom
+      // Worst pixel: measured 0.5mm (DragonScales grazing ray) + two quanta headroom.
+      expect(maxDelta).toBeLessThanOrEqual(0.75);
     });
   }
 

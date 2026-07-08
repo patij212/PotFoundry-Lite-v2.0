@@ -146,6 +146,18 @@ path is desktop+mobile WebGPU only; wireframe mode always uses the mesh path. Th
 uniform layout (112 bytes, r_max at byte 80 written by a GPU buffer copy) is shared between
 `preview_raycast.wgsl` and `RaycastController.writeRcUniforms` — change both together.
 
+**Ray-cast banded march (2026-07-08):** the march skips empty air/cavity analytically and
+fine-steps (at `min(pixel footprint, feature floor)`) only inside a per-z-bin radial band
+`[minR−wall−pad, maxR+pad]` computed by `raycast_bound.wgsl` (129-u32 layout: global max,
+64× bin-max, 64× bin-min — atomicMin slots pre-seeded 0x7F7FFFFF by `boundInit`). Three
+artifacts must change together: the kernel's output layout, `RaycastController` (BOUND_RESULT_BYTES,
+boundInit pattern, the two copyBufferToBuffer calls, binding 10 lutUniform) and the WGSL
+`RcLut`/`band_for_z` in `preview_raycast.wgsl`. Step caps bound FIELD EVALS (not step size);
+quality levers: `setQuality({stepCapInteractive, stepCapAccum, featureFloorInteractive, featureFloor, maxSamples})`.
+**Probe trap:** never take hit-field readbacks after a mouse drag — camera INERTIA keeps
+drifting between reads and fabricates huge phantom "wrong surface" rates; measure with a
+stationary camera (see `e2e/_raycast_quality_diag.mjs`).
+
 **Supabase null safety:** `supabase` client in `services/supabase.ts` can be `null`.
 Always call `isSupabaseConfigured()` before any `supabase.*` call.
 
