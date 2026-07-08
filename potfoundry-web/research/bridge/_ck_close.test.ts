@@ -159,7 +159,9 @@ describe('E-2026-07-08-CK-CLOSE', () => {
     const stepMm = Number(process.env.PF_CKSTEP ?? '0.12');
     const fine = process.env.PF_CKFINE === '1';
     const ladSc = Number(process.env.PF_CKLADSC ?? '1');
-    const offsetsU = (fine ? CK_FINE_LADDER_U : CK_LADDER_U).map((o) => o * ladSc);
+    // PF_CKLADDER=0,0.0009,0.003 overrides the ladder (the 2-point picket-DENSITY study: coarse vs default).
+    const custom = process.env.PF_CKLADDER ? process.env.PF_CKLADDER.split(',').map(Number) : null;
+    const offsetsU = (custom ?? (fine ? CK_FINE_LADDER_U : CK_LADDER_U)).map((o) => o * ladSc);
     const includeColumns = process.env.PF_CKNOCOL !== '1';
     const includeCenters = process.env.PF_CKNOCENTER !== '1';
     const includeBorders = process.env.PF_CKNOBORDER !== '1';
