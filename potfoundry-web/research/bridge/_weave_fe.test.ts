@@ -12,7 +12,7 @@ import {
   bwParams, bwReliefField, verticalWallLines, horizontalWallLines, bwDoubledPickets, bwSinglePickets,
   centrelineOnCliff, contoursToConstraints, type Contour,
 } from './_bwFieldLib';
-import { radiusFn, TANGLED_BASE, auditNonManRaw, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
+import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
 import { planarizeMM } from './_pf_planarizeMM';
 import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
@@ -160,7 +160,8 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     const ms = Date.now() - t0;
     const ut = mesh.ut, idx = mesh.indices as Uint32Array, tris = idx.length / 3;
 
-    const nmRaw = auditNonManRaw(idx);
+    // auditNonManByIndex is SHARDED (large-mesh safe); auditNonManRaw's single Map overflows at ≥~6M tris. Use the
+    // sound by-index audit only (the mission's watertight gate).
     const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
     for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = TAU * u, z = t * DIMS.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
     const nmIdx = auditNonManByIndex(xyz, idx);
@@ -171,7 +172,7 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     const rec = {
       stage: 'BW-Q2-BUILD', variant, maxPoints, chordTolMm, ms, tris, points: mesh.points, hitBudget: mesh.hitBudget,
       planarize: { addedVerts: pl.addedVerts, residual: pl.residual }, nConstraintVerts, nConstraintEdges,
-      recovery: mesh.constraint, nonManRaw: nmRaw, nonManIdx: nmIdx, zeroArea: sound.zeroArea, projFullPot,
+      recovery: mesh.constraint, nonManIdx: nmIdx, zeroArea: sound.zeroArea, projFullPot,
       soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
     };
     appendFileSync(join(DIR, 'build.ndjson'), JSON.stringify(rec) + '\n');
