@@ -27,7 +27,36 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **METHOD:** DEV-ONLY. Extend `research/bridge/_pf_dsconform.test.ts` with env-gated resumable units (PF_DS_FINAL=1): a SHEET unit (build nZ220, score every-facet under the aligned `buildConformRuler`) + a LIP-θ unit (last-strip θ-densify builder + §V11u-style local injection). ndjson CHECKPOINT one row per unit the INSTANT computed to `research/exchange/_ds_final/` (keyExists ⇒ SKIP). Reuses VALIDATED `buildConformRuler`/`buildStructuredWall`/`buildRows`/`dragonRings` READ-ONLY; reads back 1a-1d PASS. NODE_OPTIONS=--max-old-space-size=8192; ONE build at a time; explicit staging (NEVER git add -A/-u); do NOT touch other agents' files (_gyroid_literal0/_tangled_targeted/tierC/_ds_conforming/_ds_close). Ledger §V11x + this row.
 
-**VERDICT: [PENDING MEASUREMENT]**
+**VERDICT: LITERAL-0 NOT REACHED under ≤10M — BOTH H-SHEET and H-LIP-θ REFUTED (kill criteria hit). The §V11l "nZ220≈8M→sheet 0" projection is REFUTED: the sheet is a RELIEF-CHORD CLIFF (density-invariant floor), not a slow-converging smooth chord. FINAL = CLOSED-with-adjudicated-cliff-floor (fidelity-vs-budget FRONTIER). The §V11l honest-floor verdict STANDS and is now mechanistically nailed on BOTH axes.** (§V11x)
+
+**H-SHEET — REFUTED (stride-4, aligned conforming ruler, every-4th facet; audit fixed for 8M+ tris):**
+| nZ | tris | sheet | lip | TOTAL | max | p99 | %<20 | rawNM | bd | za |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 110 | 4.09M | 5,580 | 3,164 | 8,744 | 0.0461 | 0.0043 | 2.0 | 0 | 4800 | 0 |
+| 160 | 5.88M | 5,104 | 2,272 | 7,376 | 0.0461 | 0.0032 | 1.4 | 0 | 4800 | 0 |
+| 220 | 8.04M | **5,020** | 1,192 | 6,212 | 0.0461 | 0.0025 | 8.1 | 0 | 4800 | 0 |
+
+The SHEET is PINNED: 5,580→5,104→5,020 across nZ110→160→220 (only **−10% for +97% tris**). The nZ50..220 power-law exponent FLATTENED to −0.37 ⇒ CORRECTED projection: literal-0 needs ~nZ5000 ≈ **180M tris** — unreachable at any tractable density (the §V11l −0.60 fit on coarse data over-projected; nZ220 measured 5,020, NOT the 0 the "8M→0" claim implied). **The max is FROZEN at 0.04612 across ALL nZ** (the same worst facet = the C0-straddle tail) ⇒ density-invariant.
+
+**θ-DISCRIMINATOR (nZ110, nTheta 2400→4800, PF_DS_FINAL_NTH):** doubling θ-density made the sheet WORSE (5,580→**9,876** @ 8.18M tris), NOT better. ⇒ the body-wide sheet residual is NOT smooth z-chord OR θ-arc chord-sag — it is the θ-PERIODIC SCALE RELIEF (the "dragon scales") being chorded: finer θ resolves MORE scale-flank facets each straddling a steep bump, so the count GROWS with density (the Gyroid/Voronoi CLIFF signature, §V11b/§V11r-3). **The sheet floor is a RELIEF-CHORD CLIFF, not a density-closable smooth sag.**
+
+**H-LIP-θ — REFUTED (θ-densify near-ring rows, z-rows FIXED ⇒ no new transition strip; stride-8):**
+| thMult | tris | sheet | lip | max | p99 | %<20 | za |
+|---|---|---|---|---|---|---|---|
+| 1 (baseline echo) | 4.09M | 5,552 | 3,200 | 0.0461 | 0.0043 | **2.0** | 0 |
+| 2 | 4.46M | 5,552 | 2,312 | 0.0461 | 0.0050 | 7.5 | 7 |
+| 4 | 5.20M | 5,552 | 1,992 | 0.0461 | 0.0057 | **26.3** | 8 |
+
+θ-densify (the pre-registered DIFFERENT axis from the refuted z-rows) bends the lip DECELERATINGLY (3,200→2,312→1,992: Δ −888 then −320) and does NOT reach 0 — it ASYMPTOTES ~1,900 while **%<20 EXPLODES to 26.3 (fails the <10 gate) and zeroArea appears (7-8 slivers)** because the merge-strip between a 2400-col and a 4800-col row spawns needles. The max is FROZEN at 0.04612. ⇒ θ is a partial, QUALITY-DESTROYING lever, not a close. The lip chord is MERIDIONAL (the near-vertical riser curve) — CLIFF-class, consistent with the §V11l z-row refutation. (Global nZ density DID shave the lip 3,164→1,192 across nZ110→220, but the sheet-relief cliff stays pinned ⇒ no joint close.)
+
+**§V11q TOL-BOUNDARY-NOISE CHECK (is the residual distinguishable from ruler precision?):** the ruler's own on-surface residual is 0.00031-0.00315mm (1c, well below tol 0.01), so outliers >0.01 ARE genuine geometry, NOT ruler noise. BUT the floor is TOL-MARGINAL: p99 across every config is 0.0025-0.0057mm (< tol) ⇒ **99% of every facet is under tol**; the ~6-9k "outliers" are a <1% tail whose bulk sits in [0.010,0.012) (established LIPDIAG), only the frozen <90-facet C0-tail (0.0461) is materially deep. The whole-mesh p99 IS CAD-grade at every density; literal every-facet-0 is a relief-chord cliff.
+
+**FINAL GATE TABLE (best-quality operating point = nZ110 baseline; nZ220 shaves the count but degrades %<20 and doubles tris for a −29% count that never reaches 0):**
+outliers 8,744 (NOT 0; nZ220 6,212) · tris 4.09M (nZ220 8.04M ≤ 10M) · projFullPot = 4.09M/8.04M (this IS the full outer wall, 2400θ×full-H) · rawNonMan 0 (audit non-vacuous, fixed for 24M edges; bd 4800 = designed open-riser boundary) · zeroArea 0 · %<20 2.0 · p99 0.0043 (CAD-grade) · riser serration ~0.001 (§V11f/g, feature edges embedded, on-surface 0.00029mm). **Literal every-facet-0 GATE NOT met on any axis within ≤10M.**
+
+**RECOMMENDATION: accept + document the cliff floor (DragonScales is DENSITY-INVARIANT relief-cliff class on the body scale-relief AND the near-ring riser).** The export is geometrically faithful (p99 CAD-grade at every density; vertices on-surface; feature edges embedded). Literal whole-mesh 0 is a fidelity-vs-budget FRONTIER for a doubled-ring style with θ-periodic near-vertical scale relief — the SAME class the settled feature-conforming map assigns weave/braid/lattice to EXCLUDE. Do NOT invest further z/θ density (both refuted). The only paths that could move it are (a) a relief-conforming per-scale feature-edge embedding (steep; the cheatsheet predicts it trades slivers for the same true-3D chord regression) or (b) accepting the p99-CAD-grade floor as the DragonScales verdict.
+
+**LEDGER:** §V11x; probe `research/bridge/_pf_dsconform.test.ts` (PF_DS_FINAL nZ/nTheta sweep + PF_DS_FINAL_LIP θ-densify + buildRowsThetaDensifyNearRing + auditNonManRaw 8M-tri fix); data `research/exchange/_ds_final/scorecard.ndjson`; commits 2128f96(pre-reg)→6392e52(scaffold)→15c24c1(audit fix)→859991a(nTheta lever)→ this row.
 
 ---
 
