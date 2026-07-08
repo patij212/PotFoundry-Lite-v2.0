@@ -196,57 +196,91 @@ describe('E-2026-07-08-GYROID-TRUTH — (C) worst-500 floor-truth + Newton valid
   }, 6 * 60 * 60 * 1000);
 });
 
-// ── (D) whole-mesh honest verdict + fork adjudication (VALIDATED Newton, every facet) ───────────────────────────
-// Only run after (C) validates Newton. Every facet, honest true-3D Newton nearest, tol 0.01. Classify outliers by
-// (u,t): channel-wall (cliff) vs body. Checkpoint progress + outlier ndjson.
-describe('E-2026-07-08-GYROID-TRUTH — (D) whole-mesh honest verdict + fork', () => {
-  it.skipIf(process.env.PF_GT_WHOLE !== '1')('whole-mesh Newton every-facet + outlier scatter', () => {
+// ── (D1) whole-mesh radial-outlier ENUMERATION (cheap, full-mesh, resumable) ─────────────────────────────────────
+// The radial same-(u,t) bound is a SOUND UPPER bound on true-3D nearest (0 ⇒ provably ≤tol). Enumerate EVERY facet
+// whose radial-bound worst > tol: this is the SOUND-UPPER outlier population (over-counts true-3D by the near-vertical
+// overstatement) and gives the (u,t) scatter + radial dev for FREE (no Newton). Robust true-3D is applied to a
+// stratified sample in D2. Whole-mesh, ~seconds (rebuild done once). Checkpoint by facet block.
+describe('E-2026-07-08-GYROID-TRUTH — (D1) whole-mesh radial-outlier enumeration', () => {
+  it.skipIf(process.env.PF_GT_WHOLE !== '1')('enumerate radial-outlier facets (sound upper) + u,t scatter', () => {
     mkdirSync(DIR, { recursive: true });
-    const PROG = join(DIR, 'whole_progress.ndjson');
-    const OUTL = join(DIR, 'whole_outliers.ndjson');
+    const OUTL = join(DIR, 'radial_outliers.ndjson');
     const { ut, idx } = loadMesh();
     const rA = radiusFn(STYLE, DIMS);
     const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
     for (let i = 0; i < nV; i++) { const th = 2 * Math.PI * ut[2 * i], z = ut[2 * i + 1] * DIMS.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
-    const nF = idx.length / 3;
-    const DENSE = denseBary(8);
-    // resume: last completed facet block (checkpoint every 20000 facets)
-    const CKPT = join(DIR, 'whole_ckpt.json');
-    let startF = 0; let nOut = 0; let maxMm = 0;
-    if (existsSync(CKPT)) { const c = JSON.parse(readFileSync(CKPT, 'utf8')); startF = c.f; nOut = c.nOut; maxMm = c.maxMm; }
-    const tol = 0.01;
-    // radial-bound prefilter (SOUND upper bound): if a facet's radial dev ≤ tol it is PROVABLY ≤tol → skip Newton.
+    const nF = idx.length / 3; const DENSE = denseBary(8); const tol = 0.01;
+    const CKPT = join(DIR, 'd1_ckpt.json');
+    let startF = 0, nRadOut = 0, maxRad = 0;
+    if (existsSync(CKPT)) { const c = JSON.parse(readFileSync(CKPT, 'utf8')); startF = c.f; nRadOut = c.nRadOut; maxRad = c.maxRad; }
     const bound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > DIMS.H) return Infinity; const th = Math.atan2(py, px); return Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + 2 * Math.PI : th, pz)); };
     const t0 = Date.now();
     for (let f = startF; f < nF; f++) {
       const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
       const A = [xyz[3 * a], xyz[3 * a + 1], xyz[3 * a + 2]], B = [xyz[3 * b], xyz[3 * b + 1], xyz[3 * b + 2]], C = [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]];
-      // radial-bound screen over denseBary — if all ≤ tol, PROVABLY fine, skip Newton
       let rmax = 0;
       for (const [wa, wb, wc] of DENSE) { const d = bound(wa * A[0] + wb * B[0] + wc * C[0], wa * A[1] + wb * B[1] + wc * C[1], wa * A[2] + wb * B[2] + wc * C[2]); if (d > rmax) rmax = d; }
-      if (rmax <= tol) continue; // provably ≤tol
-      // else Newton true-3D on the facet
+      if (rmax > maxRad) maxRad = rmax;
+      if (rmax > tol) {
+        nRadOut++;
+        const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
+        appendFileSync(OUTL, JSON.stringify({ f, uc: +uc.toFixed(5), tc: +tc.toFixed(5), radial: +rmax.toFixed(5) }) + '\n');
+      }
+      if (f % 100000 === 0 || f === nF - 1) { writeFileSync(CKPT, JSON.stringify({ f: f + 1, nRadOut, maxRad })); process.stderr.write(`  (D1) ${f + 1}/${nF} nRadOut=${nRadOut} maxRad=${maxRad.toFixed(4)} ${((Date.now() - t0) / 1000).toFixed(0)}s\n`); }
+    }
+    console.log(`D1 RADIAL-OUTLIER ENUM: nFacets=${nF} radialOutliers(sound-upper,tol0.01)=${nRadOut} maxRadial=${maxRad.toFixed(6)}`);
+    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'D1', nFacets: nF, radialOutliers: nRadOut, maxRadial: maxRad }) + '\n');
+    expect(nF).toBeGreaterThan(0);
+  }, 6 * 60 * 60 * 1000);
+});
+
+// ── (D2) stratified-sample robust true-3D fraction + geometric cliff/body classification ─────────────────────────
+// Score a stratified random sample of the D1 radial-outlier population with the VALIDATED full-facet robust Newton
+// (≡ full-facet brute8192). Report: (i) the TRUE-3D outlier fraction (→ scaled whole-mesh honest count), (ii) the
+// true-3D dev distribution, (iii) cliff-vs-body geometric classification of the true outliers via the radial gradient
+// (near-vertical channel wall ‖∂S/∂z‖-dominated ⇒ CLIFF; else body). Resumable per-facet.
+describe('E-2026-07-08-GYROID-TRUTH — (D2) stratified robust true-3D fraction + cliff/body', () => {
+  it.skipIf(process.env.PF_GT_D2 !== '1')('robust true-3D on a stratified sample + wall classification', () => {
+    mkdirSync(DIR, { recursive: true });
+    const SAMP = Number(process.env.PF_GT_D2_N ?? 3000);
+    const { ut, idx } = loadMesh();
+    const rA = radiusFn(STYLE, DIMS); const H = DIMS.H; const tol = 0.01;
+    const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const th = 2 * Math.PI * ut[2 * i], z = ut[2 * i + 1] * H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+    const radOut = readNdjson(join(DIR, 'radial_outliers.ndjson'));
+    // deterministic stratified sample: every k-th of the radial-outlier list (already whole-mesh order)
+    const k = Math.max(1, Math.floor(radOut.length / SAMP));
+    const sample = radOut.filter((_, i) => i % k === 0).slice(0, SAMP);
+    const OUT = join(DIR, 'd2_sample.ndjson');
+    const done = new Set(readNdjson(OUT).map((r) => Number(r.f)));
+    const DENSE = denseBary(8);
+    // near-vertical wall test: at the facet centroid, compare radial slope |∂r/∂z| (steep = channel wall) — a wall
+    // facet has the true foot reachable by a small z-shift (radial OVERSTATES); a body facet sits on a shallow patch.
+    const wallSteep = (uc: number, tc: number): number => { const th = 2 * Math.PI * uc, z = tc * H; const dz = 0.05; const r1 = rA(th, Math.max(0, z - dz)), r2 = rA(th, Math.min(H, z + dz)); return Math.abs(r2 - r1) / (2 * dz); };
+    for (const rec of sample) {
+      const f = Number(rec.f);
+      if (done.has(f)) continue;
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const A = [xyz[3 * a], xyz[3 * a + 1], xyz[3 * a + 2]], B = [xyz[3 * b], xyz[3 * b + 1], xyz[3 * b + 2]], C = [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]];
       let dev = 0;
       for (const [wa, wb, wc] of DENSE) {
         const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2];
-        const d = newtonNearest(rA, DIMS.H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 }).dist;
+        const d = newtonNearest(rA, H, px, py, pz, { seedTheta: 0, seedZ: pz, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 }).dist;
         if (d > dev) dev = d;
-        if (dev > 0.5) break; // cap runaway (shouldn't happen)
       }
-      if (dev > maxMm) maxMm = dev;
-      if (dev > tol) {
-        nOut++;
-        const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
-        appendFileSync(OUTL, JSON.stringify({ f, uc: +uc.toFixed(5), tc: +tc.toFixed(5), dev: +dev.toFixed(5), radial: +rmax.toFixed(5) }) + '\n');
-      }
-      if (f % 20000 === 0 || f === nF - 1) {
-        writeFileSync(CKPT, JSON.stringify({ f: f + 1, nOut, maxMm }));
-        appendFileSync(PROG, JSON.stringify({ f: f + 1, total: nF, nOut, maxMm: +maxMm.toFixed(5), ms: Date.now() - t0 }) + '\n');
-        process.stderr.write(`  (D) ${f + 1}/${nF} nOut=${nOut} maxMm=${maxMm.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s\n`);
-      }
+      const steep = wallSteep(Number(rec.uc), Number(rec.tc));
+      appendFileSync(OUT, JSON.stringify({ f, uc: rec.uc, tc: rec.tc, radial: rec.radial, trueDev: +dev.toFixed(6), wallSlope: +steep.toFixed(4), outlier: dev > tol ? 1 : 0 }) + '\n');
     }
-    console.log(`WHOLE-MESH HONEST GYROID: nFacets=${nF} honestOutliers(tol0.01)=${nOut} honestMaxMm=${maxMm.toFixed(6)}`);
-    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'D', nFacets: nF, honestOutliers: nOut, honestMaxMm: maxMm }) + '\n');
-    expect(nF).toBeGreaterThan(0);
-  }, 12 * 60 * 60 * 1000);
+    const rows = readNdjson(OUT);
+    const nSamp = rows.length; const nTrue = rows.filter((r) => Number(r.outlier) === 1).length;
+    const frac = nSamp ? nTrue / nSamp : 0;
+    const devs = rows.map((r) => Number(r.trueDev)).sort((x, y) => y - x);
+    const scaled = Math.round(frac * radOut.length);
+    // cliff vs body among TRUE outliers: wallSlope high (>0.5 mm/mm ≈ steep channel wall) ⇒ cliff
+    const trueRows = rows.filter((r) => Number(r.outlier) === 1);
+    const nCliff = trueRows.filter((r) => Number(r.wallSlope) > 0.5).length;
+    console.log(`D2 STRATIFIED (n=${nSamp} of ${radOut.length} radial-outliers, k=${k}): true-3D-outlier frac=${(frac * 100).toFixed(1)}% (${nTrue}/${nSamp}) ⇒ scaled whole-mesh honest outliers≈${scaled} | trueDev max=${devs[0]?.toFixed(5)} p50=${devs[Math.floor(devs.length / 2)]?.toFixed(5)} | cliff(wallSlope>0.5)=${nCliff}/${nTrue} (${nTrue ? (100 * nCliff / nTrue).toFixed(0) : 0}%)`);
+    appendFileSync(join(DIR, 'meta.ndjson'), JSON.stringify({ stage: 'D2', nSamp, nTrue, frac, scaledWholeMesh: scaled, trueDevMax: devs[0] ?? 0, cliffFrac: nTrue ? nCliff / nTrue : 0 }) + '\n');
+    expect(nSamp).toBeGreaterThan(0);
+  }, 6 * 60 * 60 * 1000);
 });
