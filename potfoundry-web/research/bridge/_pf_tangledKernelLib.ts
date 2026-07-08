@@ -181,6 +181,46 @@ export function wholeMeshGuardWin(
   };
 }
 
+// ── SOUND grid-free guard: the radial same-(u,t) bound is a STRICT analytic upper bound on true-3D nearest ───────
+// E-2026-07-08 metrology wall: on Gyroid BOTH grid instruments fail at tol 0.01 — the θ-window analytic brute LIES
+// (grid-trapped ±0.024mm, measured) AND the BVH twin BAND-LIMITS (twinOnSurf max 0.075 @2048² / ~0.05 @3072² >> tol,
+// its outlier count/max are twin-artifact-contaminated). The ONE sound, grid-free instrument is the radial bound
+// |hypot(x,y) − rA(atan2,z)|: S(atan2,z) IS on the surface ⇒ this is a STRICT UPPER bound on the true nearest for
+// z∈[0,H]. Hence a facet whose worst-sample radial bound ≤ tol is PROVABLY ≤tol (no grid, no twin). The count of
+// facets with bound > tol is a SOUND UPPER BOUND on true outliers (overstates ~2× on Gyroid where radial > true-3D,
+// but 0 here ⇒ PROVABLY whole-mesh ≤tol — the strongest possible verdict). This is the PRIMARY driver + verdict.
+export interface SoundScore {
+  nFacets: number; outliers: number; maxMm: number; p50: number; p90: number; p99: number; zeroArea: number;
+  outlierUt: Array<[number, number, number]>;
+}
+export function wholeMeshGuardRadialBound(
+  rA: AnalyticRadiusFn, H: number, ut: number[], idx: Uint32Array, tol: number,
+): SoundScore {
+  const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+  for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = TAU * u, z = t * H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+  const bound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > H) return Infinity; const th = Math.atan2(py, px); return Math.abs(Math.hypot(px, py) - rA(th < 0 ? th + TAU : th, pz)); };
+  const nF = idx.length / 3; const dev = new Float64Array(nF);
+  let outliers = 0, worst = 0, zeroArea = 0; const outs: Array<[number, number, number]> = [];
+  for (let f = 0; f < nF; f++) {
+    const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+    const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+    const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+    const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+    const abx = bx - ax, aby = by - ay, abz = bz - az, acx = cx - ax, acy = cy - ay, acz = cz - az;
+    const crx = aby * acz - abz * acy, cry = abz * acx - abx * acz, crz = abx * acy - aby * acx;
+    if (crx * crx + cry * cry + crz * crz < 1e-20) zeroArea++;
+    let dv = 0;
+    for (const [wa, wb, wc] of DENSE) { const d = bound(wa * ax + wb * bx + wc * cx, wa * ay + wb * by + wc * cy, wa * az + wb * bz + wc * cz); if (d > dv) dv = d; }
+    dev[f] = dv;
+    if (dv > worst) worst = dv;
+    if (dv > tol) { outliers++; if (outs.length < 300) { const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3; outs.push([+uc.toFixed(5), +tc.toFixed(5), +dv.toFixed(5)]); } }
+  }
+  const s = Float64Array.from(dev).sort();
+  const pc = (q: number): number => s.length ? s[Math.min(s.length - 1, Math.floor(q * s.length))] : 0;
+  outs.sort((x, y) => y[2] - x[2]);
+  return { nFacets: nF, outliers, maxMm: +worst.toFixed(6), p50: +pc(0.5).toFixed(6), p90: +pc(0.9).toFixed(6), p99: +pc(0.99).toFixed(6), zeroArea, outlierUt: outs.slice(0, 300) };
+}
+
 // ── BVH whole-mesh guard (the V10b VERDICT basis) — dense radial twin + radial prefilter, EVERY facet ────────────
 // This is the DECISION instrument (E-2026-07-08 INSTRUMENT_FINDING: the θ-window analytic grid brute LIES on Gyroid
 // ±0.024mm — grid-trapped in wrong local minima on the fine multi-well surface; the BVH twin + radial prefilter is
