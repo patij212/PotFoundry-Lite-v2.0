@@ -1685,3 +1685,47 @@ Doubled-rings structured mesh (buildStructuredWall + dragonRings, treadCap=4), n
 crease-dominated weave with a small genuine body gap. Neither is a representational wall. Flag stays OFF; dev-only; no
 src/ edit. **LEDGER:** registry E-2026-07-08-DRAGONSCALES-ZDENSITY + E-2026-07-08-CT-PREDICATE (verdicts). Probes
 _pf_dszdensity.test.ts / _ct_predicate.test.ts + lib _ct_creaseLib.ts; data _ds_zdensity/ + _ct_predicate/ (gitignored).
+
+## V11f — DRAGONSCALES STEP-TWIN ADJUDICATION: the tread-representing STEP twin is REFUTED as the honest whole-mesh ruler; V11c's 0.046mm riser figure CORRECTED to ~1mm (2026-07-08)
+
+Follow-up to V11c ARM 1. The V11c recommendation was "score DragonScales on the tread-representing STEP twin (lip→0.66%, sheet
+closes)". That rested on an UNGRADED 40k-facet slice. This arm metrologist-grades the step twin (1a–1d) BEFORE trusting it.
+
+### STEP TWIN VALIDATION (probe `_pf_dssteptwin.test.ts`, self-KILLed at the gate + diag `_pf_dssteptwin_diag.test.ts`)
+- **1a construction PASS** — analytic tread-annulus points sit on the step-twin surface, maxDist **0.00035mm**; the ring
+  jump magnitudes are **0.88–1.21mm** (mean 1.04) — the tread is real.
+- **1b smooth-control FAIL (marginal→genuine)** — vs the radial twin on 60k smooth sheet facets, agree 0.9988 / deltaP99
+  0.0017mm, but **72 disagreers**. D2 diagnostic: **71 are DEEP-body (>5mm from any ring, median 7.36mm)** — NOT near-ring
+  leaks. Cause: the operating step twin (3840×48) is COARSER on the sheet (own on-surface residual 0.0116mm > tol, from
+  1c) ⇒ it inflates borderline sheet verdicts vs the finer radial twin.
+- **1c density-convergence PASS** — step-twin on-surface residual sheetMax 0.0568→0.0116→0.0053mm as nTheta/nZband climbs
+  {2560/24, 3840/48, 5120/96}; tread residual 0.
+- **1d one-sidedness FAIL (decisive)** — off-surface probes near rings: max UNDERSTATE **0.116mm** (thr 0.05). D1 diagnostic:
+  at θ=1.117, z=105.8 (0.8mm above ring z=105), the step twin's added near-ring geometry (ring skirts + tread strip at
+  z=105) provides a face **0.116mm nearer than the true single-valued sheet** ⇒ the step twin CAN HIDE a genuine mesh gap
+  in the near-tread region. This is precisely the "a twin that represents the riser could also hide genuine gaps" failure.
+
+**⇒ STEP TWIN REFUTED as the whole-mesh instrument** (2 independent gates fail, both root-caused). NEITHER twin cleanly
+scores the whole mesh: RADIAL is one-sided-safe + fine-on-sheet but TREAD-BLIND; STEP represents the tread but is a filled-
+annulus SPURIOUS CATCHER (1d) + coarse-on-sheet (1b/D2). The sound whole-mesh ruler for a doubled-valued tread is a per-
+facet tread-CONFORMING OPEN SURFACE (two ring skirts + connecting wall), NOT a filled disk — build + re-run 1a–1d on THAT
+before trusting it.
+
+### MATERIAL CORRECTION to V11c
+V11c stated "tread facets sit ~(rOut−rIn)/2 ≈ 0.046mm from S = exactly the observed lipMax 0.0461." That is **WRONG by ~10–27×.**
+The DragonScales riser is a genuine **C0 discontinuity from the brick-STAGGER PARITY FLIP**: at each integer rowPhase (t=k/8),
+`Math.floor(row)` increments, flipping the stagger offset `0.5·TAU/scalesPerRow` ⇒ `scaleTheta` jumps ⇒ a real **0.88–1.21mm**
+radius jump at z=k/8·H (verified analytically with `DEFAULT_DRAGON_SCALES` AND via 1a ringJumpMax). Direct analytic tread-vert
+deviation (no twin): `|r_tread − r(θ,ring)|` = **0.88mm (ring 1) → 1.21mm (ring 7)**. The prior 0.046 used stale params. The
+~141k lip outliers thus reflect a ~1mm designed feature (LARGER twin-blind inflation than V11c stated), unambiguously real per
+[[feedback_export_standard]] — and already correctly meshed (doubled rings + tread strip + embedded feature edges, serr ~0.001).
+
+### HONEST DRAGONSCALES NUMBER (surviving RADIAL twin, V10b basis) — unchanged, now correctly decomposed
+263,536 whole-mesh outliers = (i) a density-closable smooth SHEET body flooring **~5,552 @ nZband 110 / 4.09M tris** (radial
+twin CORRECT here) + (ii) **~141k TREAD/lip facets** = the real ~1mm stagger-flip riser measured as "error" by the single-valued
+twin (NOT a mesh gap; tread is ON the designed annulus to 0.00035mm). **CLASSIFICATION: RULER-CLASS finding** (body CAD-grade +
+density-closable; tread = designed ~1mm zero-serration riser). Literal whole-mesh 0 under the radial twin is unreachable by
+density (ruler tread-blind by construction). Flag stays OFF; dev-only; no src/ edit.
+
+**LEDGER:** registry E-2026-07-08-DS-STEPTWIN-CLOSE (verdict). Probes `_pf_dssteptwin.test.ts` (PF_DS_STEP=1) +
+`_pf_dssteptwin_diag.test.ts` (PF_DS_DIAG=1); configs `vitest.ds_steptwin{,_diag}.config.ts`; data `_ds_steptwin/scorecard.ndjson`.

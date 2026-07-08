@@ -4668,6 +4668,42 @@ rawNonMan=0, zeroArea=0 at every density (watertight, non-vacuous).
 
 ---
 
+## E-2026-07-08-DS-STEPTWIN-CLOSE — metrologist-grade the tread-representing STEP twin BEFORE trusting it, then re-score DragonScales whole-mesh under the validated instrument + close the residual [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (follow-up to E-2026-07-08-DRAGONSCALES-ZDENSITY / spec V11c):** the prior arm found the V10b radial twin reads 263,536 DragonScales outliers but is single-valued r(θ,z) that CANNOT represent the designed tread riser; a `buildStepReference` STEP twin (doubled ring radii) dropped lip outliers 78%→0.66% on a 40k-facet slice. That slice was NEVER metrologist-graded (one-sidedness / smooth-parity / density-convergence unverified). This experiment grades the step twin, then scores under whichever instrument survives.
+
+**HYPOTHESIS:** the step twin is a sound whole-mesh ruler (represents the tread AND does not hide gaps); under it DragonScales closes to whole-mesh 0 outliers with sheet z-density.
+
+**KILL CRITERIA (pre-registered):** Task-1 instrument — STOP if the step twin fails ANY of 1a (riser faces off the analytic jump geometry >tol) / 1b (disagrees with radial twin on a SMOOTH control) / 1c (residual does not shrink with twin density) / 1d (faces extend BEYOND the designed wall ⇒ can UNDERSTATE a genuine gap); score DragonScales under the surviving reference + report the instrument defect. Task-3 close — CLOSE iff whole-mesh outliers==0 under the *validated* step twin + rawNonMan 0 (non-vacuous) + zeroArea 0 + %<20<10 + tris<6M.
+
+**VERDICT: STEP TWIN REFUTED as the honest whole-mesh instrument (2 independent gates fail, both characterized). Scored under the surviving RADIAL twin. + MATERIAL CORRECTION to the V11c ledger: the DragonScales riser is a ~1mm stagger-flip C0 discontinuity, NOT 0.046mm.**
+
+Step-twin validation (probe `_pf_dssteptwin.test.ts`, self-KILLED at the gate; diag `_pf_dssteptwin_diag.test.ts`):
+| gate | result | pass |
+|---|---|---|
+| **1a construction** | analytic tread-annulus points sit on the step-twin surface, maxDist **0.00035mm**; ringJumpMax **0.88–1.21mm** (mean 1.04) | **PASS** |
+| **1b smooth-control** | vs radial twin on 60k smooth sheet facets: agree 59,928/60,000 = 0.9988, deltaP99 0.0017mm — but **72 disagreers** (thr >0.999) | **FAIL (marginal)** |
+| **1c density-converge** | step-twin on-surface residual sheetMax 0.0568→0.0116→0.0053mm across nTheta/nZband {2560/24, 3840/48, 5120/96}; tread 0 | **PASS** |
+| **1d one-sidedness** | off-surface probes near rings: max UNDERSTATE **0.116mm** (thr 0.05) — the step twin reads 0.116mm CLOSER than the true off-surface distance | **FAIL (decisive)** |
+
+DIAGNOSTIC (both failures are genuine, not probe artifacts):
+- **D1 (1d root cause):** worst understate at θ=1.117, z=105.8 (0.8mm ABOVE ring z=105), off-surface probe at r=43.2 vs true sheet 43.0. The step twin's added near-ring geometry (ring skirts + tread strip at z=105, r∈[41.2,42.0]) creates faces in the near-ring wedge that read **0.116mm nearer than the true single-valued sheet** ⇒ the step twin CAN HIDE a genuine mesh gap in the near-tread region. This is exactly the "a twin that represents the riser could also hide genuine gaps" failure mode.
+- **D2 (1b root cause):** of the 72 smooth disagreers, **71 are DEEP-body (>5mm from any ring; ring-dist median 7.36mm, max 9.36mm)** — NOT near-ring transition leaks. 65 step-flags/radial-passes + 7 radial-flags/step-passes. Cause: the *operating* step twin (3840×48) is COARSER on the sheet than the radial twin (2048×3072) — its own sheet on-surface residual is 0.0116mm > tol (1c) ⇒ it inflates borderline sheet verdicts. The step twin as-built is not a sound whole-mesh ruler on the smooth body.
+
+**⇒ NEITHER twin cleanly scores the whole mesh:** the RADIAL twin is one-sided-safe + fine-on-sheet but TREAD-BLIND (over-states the real ~1mm riser as ~141k "lip" outliers); the STEP twin represents the tread but is a filled-annulus SPURIOUS CATCHER near rings (1d) + coarse-on-sheet (1b/D2). The prior arm's step-twin 0.66% recommendation is REFUTED (it rested on an ungraded 40k slice).
+
+**HONEST DRAGONSCALES NUMBER (surviving RADIAL twin, the V10b basis):** unchanged from the prior arm — whole-mesh 263,536 outliers DECOMPOSES into (i) a density-closable smooth SHEET body flooring **~5,552 @ nZband 110 / 4.09M tris** (density-responsive, radial twin is CORRECT here) + (ii) **~141k TREAD/lip facets** that sit up to the full jump from the single-valued twin. Direct analytic check (no twin, `radDev = |r_tread − r(θ,ring)|`): tread verts sit **0.88mm (ring 1) → 1.21mm (ring 7)** from the radial twin — this is the REAL designed stagger-flip riser being measured as "error", NOT a mesh gap. The tread is meshed ON the designed annulus (1a: 0.00035mm) with feature edges (zero serration by construction, serr ~0.001 from the 2026-07-04 per-family pass).
+
+**MATERIAL CORRECTION to V11c:** the V11c ledger's "tread facets sit ~(rOut−rIn)/2 ≈ 0.046mm from S = exactly the observed lipMax 0.0461" is WRONG by ~10–27×. The DragonScales riser is NOT a shallow radial step — it is a genuine **C0 discontinuity from the brick-stagger PARITY FLIP**: at each integer rowPhase (t=k/8), `Math.floor(row)` increments, flipping the stagger offset `0.5·TAU/scalesPerRow` ⇒ `scaleTheta` jumps ⇒ a real **0.88–1.21mm radius jump** at z=k/8·H (verified analytically AND via 1a ringJumpMax with the true `DEFAULT_DRAGON_SCALES`). The prior 0.046 figure used stale/wrong params. So the ~141k lip outliers reflect a ~1mm feature, not a 0.046mm one — the tread-blind inflation is LARGER than V11c stated, and the tread is unambiguously a real 3D feature per [[feedback_export_standard]] (already correctly meshed as doubled rings + tread strip + feature edges).
+
+**CLASSIFICATION:** DragonScales = **RULER-CLASS finding (body CAD-grade + density-closable; tread = designed ~1mm zero-serration riser the single-valued radial twin cannot measure).** NOT a representational wall, NOT a mesh defect. Literal whole-mesh 0 under the radial twin is unreachable by density (ruler is tread-blind by construction); the sound whole-mesh instrument for a doubled-valued tread is a per-facet tread-CONFORMING SURFACE ruler (two ring skirts + the connecting wall as an open surface, NOT a filled disk) — the filled-disk step twin is the wrong shape (1d). Flag stays OFF; dev-only; no src/ edit.
+
+**RECOMMENDATION:** (1) score DragonScales' body on the radial twin (sheet, density-closable) and CERTIFY the tread separately as a zero-serration doubled-ring feature (serr ~0.001, feature edges embedded) — do NOT use the filled-annulus step twin as the whole-mesh ruler; (2) if a single whole-mesh number is required, build a tread-CONFORMING open-surface ruler (skirts+wall, one-sided) and re-run 1a-1d on it before trusting it; (3) fix the V11c 0.046mm → 0.88–1.21mm error in the spec.
+
+**LEDGER:** probes `research/bridge/_pf_dssteptwin.test.ts` (PF_DS_STEP=1; self-KILLs at the gate) + `_pf_dssteptwin_diag.test.ts` (PF_DS_DIAG=1), configs `vitest.ds_steptwin.config.ts` / `vitest.ds_steptwin_diag.config.ts`, data `research/exchange/_ds_steptwin/scorecard.ndjson` (gitignored; numbers inlined). Result commit BELOW.
+
+---
+
 ## E-2026-07-08-CT-PREDICATE — build + validate a CelticTriquetra braid-crease predicate, then re-adjudicate its 186,400-outlier upper bound under crease-locus exclusion [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
 
 **FRAME:** CelticTriquetra is the LAST un-adjudicated fleet style: V10b read **186,400 outliers @ max 0.0905 / p99 0.0257** as an UPPER BOUND because NO crease predicate exists — the braid's over-under strand-flip C0 loci (from `ctCrossingHeight`'s carve + the `max(hV,hH)` strand switch on the diamond `q=(x+y,-x+y)` lattice) inflate the score, the same f32/f64 strand-flip metric-discontinuity class the B5 program excluded for BasketWeave/CelticKnot. The E-2026-07-07-WEAVE-CREASE-EXCLUDED verdict (BasketWeave/CelticKnot BOTH GENUINE off-crease) sets the method + criteria. `extractCelticTriquetra` (FeatureLineGraph) confirms the braid bands sweep through (u,t) and decompose into NO constant-u/t family — so the predicate must be reconstructed from the diamond-lattice crossing structure directly (like `celticKnotCreasePredicate` reconstructs strand distances).
