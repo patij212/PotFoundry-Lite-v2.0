@@ -631,6 +631,94 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     expect(true).toBe(true);
   }, 2 * 60 * 60 * 1000);
 
+  // ══════════════════════════ E-2026-07-08-DS-FINAL (ROUND 5) — separate ledger _ds_final/ ═══════════════════════════
+  // FINAL CLOSE under the RAISED budget (≤10M, prefer ≤8M). Reads 1a-1d PASS from _ds_conforming; writes its OWN
+  // checkpoints to _ds_final/scorecard.ndjson. Two units:
+  //   PF_DS_FINAL=1        — SHEET: build nZ220 (≈8M, now in budget), score every-facet under the aligned conforming
+  //                          ruler. env PF_DS_FINAL_NZ overrides (default 220). Confirms/refutes the §V11l nZ220→0
+  //                          projection against the log-log fit (nZ^−0.60 ⇒ ~3,533 predicted, NOT 0).
+  //   PF_DS_FINAL_LIP=1    — LIP-θ: the DIFFERENT-AXIS attack on the 3,200 near-ring lip. z-rows are REFUTED (each new
+  //                          z-row spawns a new transition strip). This unit tests the θ AXIS: θ-densify ONLY the
+  //                          near-ring rows (last-sheet + ringBelow/ringAbove/tread) — the merge-strip absorbs the
+  //                          differing θ counts WITHOUT adding a single z-row (⇒ no new transition strip, the
+  //                          pre-registered distinguishing mechanism). If the lip count is INVARIANT to θ-density, the
+  //                          lip chord is MERIDIONAL (z-r direction) ⇒ θ is the wrong axis ⇒ CLIFF (irreducible for
+  //                          flat facets chording the near-vertical riser curve). env PF_DS_LIP_THMULT="2,4,8".
+  const OUTF = join('research', 'exchange', '_ds_final');
+  const NDJSONF = join(OUTF, 'scorecard.ndjson');
+  const keyExistsF = (k: string): boolean => { if (!existsSync(NDJSONF)) return false; return readFileSync(NDJSONF, 'utf8').split('\n').filter(Boolean).some((l) => { try { return JSON.parse(l).key === k; } catch { return false; } }); };
+  const checkpointF = (row: Record<string, unknown>): void => { mkdirSync(OUTF, { recursive: true }); appendFileSync(NDJSONF, JSON.stringify(row) + '\n'); /* eslint-disable-next-line no-console */ console.log(`[CPF ${row.key}] ${JSON.stringify(row)}`); };
+
+  it.skipIf(process.env.PF_DS_FINAL !== '1')('FINAL-SHEET — rebuild at nZ220 (raised budget) + score under the aligned conforming ruler', () => {
+    if (!gatesValidated()) { plog(`[FINAL-SHEET] 1a-1d not all validated — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    const NTH = 2400, TREADCAP = 4;
+    // Default nZ220 (the mission target). env PF_DS_FINAL_NZ="220" or a sweep "160,220" for a corrected-curve pass.
+    const nzList = (process.env.PF_DS_FINAL_NZ ?? '220').split(',').map(Number);
+    const stride = process.env.PF_DS_CLOSE === '1' ? 1 : Number(process.env.PF_DS_STRIDE ?? '4');
+    plog(`[FINAL-SHEET] building aligned composite conforming ruler...`);
+    const confLoc = buildConformRuler(rA);
+    plog(`[FINAL-SHEET] ruler built. nzList=${nzList} stride=${stride}`);
+    for (const nZband of nzList) {
+      const key = `final_sheet_nZ${nZband}${stride === 1 ? '_s1' : `_s${stride}`}`;
+      if (keyExistsF(key)) { plog(`[skip] ${key}`); continue; }
+      const tb = Date.now();
+      const rows = buildRows(rA, rings, NTH, nZband, TREADCAP);
+      const mesh = buildStructuredWall(rA, H, rows);
+      const { xyz, idx } = toF32(mesh);
+      const cls = facetClassifier(mesh);
+      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) stride=${stride} — scoring under aligned conforming ruler...`);
+      scoreMeshTo(checkpointF, key, 'final-sheet-nZ', nZband, mesh.nF, xyz, idx, confLoc, cls, stride, rA, { nZband, note: 'H-SHEET: does nZ220 drive the 5,552 body-wide sheet outliers to 0? (fit predicts ~3,533, NOT 0)' });
+    }
+    expect(true).toBe(true);
+  }, 6 * 60 * 60 * 1000);
+
+  // θ-DENSIFY near-ring rows: same buildRows structure (identical z-rows, ringBelow/ringAbove/tread, treadCap) but the
+  // rows within ±thBand of a ring get thMult× the θ samples. Merge-strip (stripBetween) absorbs the differing counts
+  // ⇒ NO new z-row / transition strip. This isolates the θ axis for the lip residual.
+  function buildRowsThetaDensifyNearRing(
+    rA: (t: number, z: number) => number, rings: StepRing[], nTh: number, nZband: number, treadCap: number,
+    thMult: number, thBand: number,
+  ): RowSpec[] {
+    const base = buildRows(rA, rings, nTh, nZband, treadCap);
+    const zs = [...rings].map(r => r.z);
+    const nearRing = (z: number): boolean => zs.some(rz => Math.abs(z - rz) <= thBand + 1e-6);
+    return base.map((row) => {
+      // ringBelow/ringAbove/tread rows are AT a ring z (nearRing true); the last sheet row before a ring is within
+      // thBand. Densify θ on any row whose z is within thBand of a ring (this is where the lip strip lives).
+      if (nearRing(row.z) && thMult > 1) {
+        const n2 = Math.round(nTh * thMult);
+        return { ...row, thetas: evenThetas(n2) };
+      }
+      return row;
+    });
+  }
+
+  it.skipIf(process.env.PF_DS_FINAL_LIP !== '1')('FINAL-LIP — θ-axis attack on the near-ring lip (z-rows refuted; is the lip chord meridional=CLIFF?)', () => {
+    if (!gatesValidated()) { plog(`[FINAL-LIP] 1a-1d not all validated — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    const NTH = 2400, NZ = 110, TREADCAP = 4, THBAND = 1.0;
+    const stride = process.env.PF_DS_CLOSE === '1' ? 1 : Number(process.env.PF_DS_STRIDE ?? '8');
+    plog(`[FINAL-LIP] building aligned composite conforming ruler...`);
+    const confLoc = buildConformRuler(rA);
+    // thMult sweep: 1 (baseline echo) → 2 → 4. If lipOut is INVARIANT ⇒ θ is the wrong axis ⇒ meridional CLIFF.
+    const mults = (process.env.PF_DS_LIP_THMULT ?? '1,2,4').split(',').map(Number);
+    for (const thMult of mults) {
+      const key = `final_lip_thm${thMult}${stride === 1 ? '_s1' : `_s${stride}`}`;
+      if (keyExistsF(key)) { plog(`[skip] ${key}`); continue; }
+      const tb = Date.now();
+      const rows = thMult <= 1 ? buildRows(rA, rings, NTH, NZ, TREADCAP) : buildRowsThetaDensifyNearRing(rA, rings, NTH, NZ, TREADCAP, thMult, THBAND);
+      const mesh = buildStructuredWall(rA, H, rows);
+      const { xyz, idx } = toF32(mesh);
+      const cls = facetClassifier(mesh);
+      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) thMult=${thMult} thBand=${THBAND} stride=${stride} — scoring...`);
+      scoreMeshTo(checkpointF, key, 'final-lip-thetadensify', NZ, mesh.nF, xyz, idx, confLoc, cls, stride, rA, { thMult, thBand: THBAND, note: 'H-LIP-θ: θ-densify near-ring rows (NO new z-row). Invariant lipOut ⇒ meridional CLIFF (θ wrong axis).' });
+    }
+    expect(true).toBe(true);
+  }, 6 * 60 * 60 * 1000);
+
   it.skipIf(process.env.PF_DS_CONF !== '1')('validate conforming ruler (1a-1d) + re-score + close', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
