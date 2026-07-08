@@ -1760,6 +1760,53 @@ adaptive_seed_finding.json, gateA_A1_OVERBUDGET.ndjson, gateA_A2_PINNED.ndjson} 
 
 ---
 
+## V11k — RIB-AWARE SEED REFUTED: the 6M-budget wall is a REFINE-LOOP floor (every rib flank > tol), NOT a seed dead-zone — no seed strategy converges the multi-bay Gothic gate under 6M (2026-07-08)
+
+**E-2026-07-08-TIERC-RIBAWARE-SEED** (ROUND 4, follow-up to V11h). V11h's recommendation was a RIB-AWARE seed that
+excludes constraint-chain-carried rib curvature from the sag field so seeding densifies ONLY the smooth dead-zone arch
+arc. Built two designs (opt-in `RefineOptions.ribAwareMode`, default undefined ⇒ plain LEVER-A byte-identical):
+- **(a) chain-distance MASK** — a cell only sag-splits if its center is >`ribBandMm` (3D-mm) from any locked constraint
+  chain point (spatial hash over lifted chain points). Rib flanks are masked out; the smooth bump still seeds.
+- **(c) θ-averaged residual** — t-sag from the θ-AVERAGED profile r̄(t) (mean r over the domain u-range), rib-immune by
+  construction (ribs average out along θ); the horizontal arch arc alone.
+
+**CHEAP DISCRIMINATOR (seed-level, `_ribAwareDiag`) — rib-aware masking barely changes the seed.** All designs land
+~21-25k seed pts; the **dead-zone t-band [0.44,0.49] seed count is IDENTICAL** (~3845 tOnly/mask, 3780 thetaAvg). The
+seed projects only **~1.8-2.1M full-pot** ⇒ the ROUND-3 8.3M did NOT come from the seed — it comes from the REFINE
+LOOP RED-1→4 growth. Prediction: a seed-only lever cannot change a budget consumed downstream.
+
+**GATE HEAD-TO-HEAD (`_ribAwareGate`, PF_TIERC_RIBGATE, parallel-scorer 4-worker + per-pass ndjson) — all three
+trajectories IDENTICAL within noise.** Pass 3 (7-pt driver): baseline `leverA_tOnly` **91018 tris / 5950 outliers /
+0.7938 worst**; (c) `thetaAvg` **90236 / 6373 / 0.7938**; (a) `mask b1.0` **91378 / 6181 / 0.7938**. The `worstMm` is
+BIT-IDENTICAL 0.793785701601064 across all three — the arch-arc needle is a shared geometric feature the seed does not
+move. Baseline's first DENSE pass (5) = **144369 tris = 6.06M full-pot, 8306 outliers, worst bounced to 1.056** ⇒ OVER
+6M with thousands remaining (the A1 explosion). Bonus: proves **uSplit on/off makes NO difference** (t-only baseline ≈
+A1's u-split-ON trajectory — the un-run V11h data point, now filled).
+
+**ROOT CAUSE — why rib-awareness cannot help.** The outliers driving RED tri-growth are **genuine rib-FLANK facets**
+whose P1 chord-sag exceeds tol=0.01mm on the relief-dense Gothic wall, NOT seed artifacts. The protected complex locks
+the ridge LINES but the flank SURFACE between chains must still refine to tol. Rib-aware seeding removes rib
+sag-splits from the SEED (2-4% fewer pts) but the refine loop RE-inserts them because the flanks genuinely exceed tol.
+**The 6M-budget wall is the honest cost of resolving every Gothic rib flank to 0.01mm — a REFINE-LOOP floor,
+independent of seed strategy.** KILL criterion MET (2 designs fail to break the budget). GATE not converged ⇒ T5
+(GeoStar + rebaseline20) NOT launched.
+
+**RECOMMENDATION — the lever must move DOWNSTREAM (the refine loop), not the seed.** Genuinely-different future
+directions: (1) an ANISOTROPIC / flank-aware RED that splits a rib-flank facet along its short axis only (≈halves tri
+growth vs isotropic 1→4), or a curvature-aligned metric split; (2) accept the multi-bay Gothic wall as a documented
+density-vs-budget concession at tol=0.01mm — raise the budget for feature-dense styles, or apply a per-region tol on
+the smooth (printer-resolvable) rib flanks rather than a global 0.01mm. The rib-aware seed machinery (`ribAwareMode`
+'mask'/'thetaAvg' + `ribBandMm`) is banked, flag-gated, byte-identical-off, to compose with a future refine-side lever.
+
+**GUARANTEES:** only flag-gated Tier-C touched (noBridgeRefine.ts rib-aware opt-in branch + dev-only PF_TIERC_RIBAWARE
+/ PF_TIERC_RIBGATE probes). Rib-aware modes default-off ⇒ byte-identical-OFF GREEN (re-verified) + adaptiveSeed guard
+GREEN (LEVER A unchanged). Removed a pre-existing unused `DEFAULT_RULER` import (failing tsc at HEAD). Flag
+default-OFF. Commits afa6ca0 (pre-reg) / c2c42d7 (code + probes) / [this verdict]. Data:
+research/exchange/_tierc_ribaware/{SEED_DIAG_SUMMARY.json, baseline_leverA_tOnly_frontier.json, thetaAvg_frontier.json,
+mask_b1.0_frontier.json, diag_*.json, ribgate_*_pass.ndjson} (gitignored).
+
+---
+
 ## V11c — DRAGONSCALES Z-DENSITY + CT ADJUDICATION (2026-07-08)
 
 Two independent arms, both measured under the EXACT V10b dense radial-twin BVH ruler (scoreWholeMeshBVH: dense 45-pt
