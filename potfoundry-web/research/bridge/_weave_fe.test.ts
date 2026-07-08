@@ -10,7 +10,8 @@ import { writeFileSync, appendFileSync, readFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path';
 import {
   bwParams, bwReliefField, verticalWallLines, horizontalWallLines, bwDoubledPickets, bwSinglePickets,
-  centrelineOnCliff, contoursToConstraints, BW_RAMP_LADDER_U, BW_RAMP_LADDER_T, type Contour,
+  centrelineOnCliff, contoursToConstraints, BW_RAMP_LADDER_U, BW_RAMP_LADDER_T,
+  BW_FINE_LADDER_U, BW_FINE_LADDER_T, type Contour,
 } from './_bwFieldLib';
 import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
 import { planarizeMM } from './_pf_planarizeMM';
@@ -95,8 +96,11 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     // RAMP LADDER (measured): a multi-picket fan across the plateau ramp + boundary + floor lip. A single tight
     // bracket left ~0.13mm chord sag; the ladder resolves the ramp to sub-0.01 by construction. Scale via PF_WFELADSC.
     const ladSc = Number(process.env.PF_WFELADSC ?? '1');
-    const offsetsU = BW_RAMP_LADDER_U.map((o) => o * ladSc);
-    const offsetsT = BW_RAMP_LADDER_T.map((o) => o * ladSc);
+    const fine = process.env.PF_WFEFINE === '1';
+    const baseU = fine ? BW_FINE_LADDER_U : BW_RAMP_LADDER_U;
+    const baseT = fine ? BW_FINE_LADDER_T : BW_RAMP_LADDER_T;
+    const offsetsU = baseU.map((o) => o * ladSc);
+    const offsetsT = baseT.map((o) => o * ladSc);
     const doubled = bwDoubledPickets(p, rA, DIMS.H, { offsetsU, offsetsT, stepMm });
     const single = bwSinglePickets(p, rA, DIMS.H, stepMm);
     const nPtsDoubled = doubled.contours.reduce((a, c) => a + c.pts.length, 0);

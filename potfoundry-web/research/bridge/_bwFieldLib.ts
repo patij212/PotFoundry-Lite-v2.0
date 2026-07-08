@@ -112,6 +112,10 @@ export function horizontalWallLines(p: BWParams, nU = 400): Array<{ k: number; t
 export interface DoubledOpts { offsetsU: number[]; offsetsT: number[]; stepMm: number; }
 export const BW_RAMP_LADDER_U = [-0.003, -0.0016, -0.0008, -0.0003, 0, 0.0003]; // plateau ramp + boundary + floor lip
 export const BW_RAMP_LADDER_T = [-0.006, -0.0032, -0.0016, -0.0006, 0, 0.0006];
+// FINE ladder: uniform 3e-4 spacing across the ramp so NO facet spans >5e-4 (the span-bucket study: du<5e-4 facets
+// are Newton-CLEAN 0.0, 5e-4-1e-3 facets are the p99 0.6 outliers). Emitted signed → mirrored covers both sides.
+export const BW_FINE_LADDER_U = [0, 0.0003, 0.0006, 0.0009, 0.0012, 0.0015, 0.0018, 0.0021, 0.0024, 0.0027, 0.003, 0.0033];
+export const BW_FINE_LADDER_T = [0, 0.0006, 0.0012, 0.0018, 0.0024, 0.003, 0.0036, 0.0042, 0.0048, 0.0054, 0.006, 0.0066];
 export function bwDoubledPickets(
   p: BWParams, rA: AnalyticRadiusFn, H: number, opts: DoubledOpts,
 ): { contours: Contour[]; nVert: number; nHoriz: number } {
