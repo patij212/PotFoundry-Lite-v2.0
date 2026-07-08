@@ -2611,13 +2611,51 @@ machinery). Fast guards GREEN: `bandContours` OFF byte-identical + ON planar (re
 locked edges); flagOff.byteIdentical + morseComplex both pass. Probe `_flankBand.test.ts` (PF_FLANKBAND=1,
 PF_FB=localize|localscore|extract|embed|gate) — split so a build-persist survives a scoring kill (resilience).
 
-**IN PROGRESS — STEP 1 LOCALIZE.** The §V11s p1 plateau mesh reproduced BIT-IDENTICAL (pass 1: 45150/1.0522, pass 16-17
-outliers 1151-1153 / worst FROZEN 0.4689 = the exact §V11s plateau; dTris collapsing = the dedupe-freeze). RESILIENCE
-NOTE: the env killed the mp25 build mid-run and a leftover mp25 worker tree survived and interleaved the shared ndjson
-with the mp18 restart (two 4-worker refine builds + the concurrent tangled agents = 68 node procs); reaped BOTH flankband
-trees by PID-tree taskkill (concurrent tangled runs untouched), lowered MAXPASS to 18 (plateau firm by pass 16), and
-split build-persist from scoring. [Localize verdict + extraction + embed + gate: pending — appended as each lands.]
+**STEP 1 LOCALIZE — STRADDLE confirmed (MID-PANEL kill does NOT fire).** The §V11s p1 plateau mesh reproduced
+BIT-IDENTICAL (pass 16-18 outliers 1151-1153 / worst FROZEN 0.4689 = the exact §V11s plateau). Scored EVERY facet +
+dumped each outlier's (u,t)+|∇r|+amplitude-fraction af=(r−r̄_panel)/(r_crest−r̄_panel)+crest-distance. Of 1158 outliers:
+dev-weighted af mass at **0.20-0.30**, 78% below af 0.45, gradRatio **2.70× global** (the steep shoulder), only **3%
+flat-panel** ⇒ the floor STRADDLES the rib TOE / lower flank (off-crest, off-panel), NOT mid-panel. z_ampfrac.png shows
+warm (low-af) columns flanking the ribs. RESILIENCE: env killed the mp25 build + a leftover worker tree interleaved the
+shared ndjson with the mp18 restart (68 node procs incl the concurrent tangled agents); reaped BOTH flankband trees by
+PID-tree taskkill (tangled runs untouched), split build-persist from scoring so a scoring-kill never loses the build.
 
-**LEDGER:** registry E-2026-07-08-TIERC-FLANKBAND; lib `flankBand.ts` + `morseComplex.ts` (BandContour) + probe
-`_flankBand.test.ts` + `vitest.flankband.config.ts`. Data: `research/exchange/_tierc_flankband/*` (gitignored). Commits:
-pre-reg 3ab3e43, mechanism c5d679e, [localize/gate pending].
+**STEP 2 EXTRACT — placement machine-precision.** Doubled toe band af=0.12/0.40 (marching-squares on af−c + root-polish
++ `filterByDisp3D` drops ~0.1% ridge-saddle strays): dispP90 **0**, dispMax 0/2e-5, sub-0.01 TRUE.
+
+**STEP 3 EMBED — recovery 100.00%, residualCrossings 0.** The arbitrary (u,t) `BandContour` locked chains planarized
+flawlessly (the generalized picket machinery). STEP-3 KILL does not fire.
+
+**STEP 4 GATE — frontier LOWERED 4×/8×; ladder-chase measured to a density floor (FRONTIER, not literal-0):**
+
+| config | worst mm | outliers (min) | p99 | proj | nonMan |
+|---|---|---|---|---|---|
+| §V11s baseline | 0.4689 | ~1150 | 0.00953 | 6.76M | 0 |
+| DOUBLED af{0.12,0.40} | 0.3955 | 815 (min **319**) | 0.00965 | 4.81M | 4 |
+| LADDER-4 af{0.03,0.08,0.18,0.40} | **0.1170** | 147 | 0.00907 | 5.02M | 2 |
+| LADDER-5 (+0.28) | 0.1170 | 124 | 0.00898 | 5.93M | 2 |
+| LADDER-4 NO-PICKET | 0.1170 | 138 | 0.00907 | 4.94M | 2 |
+
+The DOUBLED band bottomed outliers at **319** (3.6× below baseline) but the residual DESCENDED to the un-framed
+panel-to-toe strip (worst-200 median af **0.011**, 82% below af 0.12). LADDER-4 (rails across the whole lower flank) cut
+worst **4×** to 0.117 + outliers **~8×** to 147, at LOWER budget. But the 5th rail bought 0 on worst (pinned 0.117) +
+more tris ⇒ the residual concentrated in the widest inter-rail gap [0.18,0.40] (101/147) = a density-vs-outlier tradeoff.
+Removing PICKETS changed worst by 0 (rails forbid the needle themselves ⇒ pickets redundant), PROVING the pinned 0.117
+(one facet, u≈0.117/t≈0.525/af 0.085) is a GENUINE near-vertical rib-flank chord floor, NOT a picket×rail artifact.
+§V11s-2c confirmed here: finer dedupe (0.001)+framing RUNS AWAY (1894, rising) — dropped.
+
+**VERDICT: FRONTIER (CLOSED-with-floor; the FIRST mechanism to move the §V11s plateau — 4× on worst, 8× on outliers, at
+LOWER budget — but NOT literal-0 at ≤10M).** Best flank-band frontier: **guardMax 0.117 / ~124-147 outliers / p99 ~0.009
+(<tol) / proj ~5.0M** vs §V11s 0.469 / ~1150 / 6.76M. The residual is the irreducible near-vertical chord-sag on the
+steepest flank sections — CORROBORATED by the concurrent WEAVE arm (§V11t) hitting the IDENTICAL class on BasketWeave with
+the SAME Gyroid doubled-contour mechanism. The ladder-chase is the general lesson: framing pushes the residual to the
+widest un-framed strip; each rail cuts worst ~4× to a rail-density floor. GeoStar patch + rebaseline20 NOT launched
+(gate not literal-0, per acceptance). RECOMMENDATION: accept the ~5.0M/0.117/p99<tol frontier OR raise budget ≫10M for
+literal-0 — the flank-band mechanism is the correct close path for near-vertical relief; literal-0 is a fidelity-vs-budget
+frontier, not a defect any embedding/subdivision lever removes.
+
+**LEDGER:** registry E-2026-07-08-TIERC-FLANKBAND; lib `flankBand.ts` (buildAmplitudeField/marchAmpFrac/refineAndFilterFlank
+/filterByDisp3D/extractToeBand/extractLadder) + `morseComplex.ts` (BandContour generalization) + probe `_flankBand.test.ts`
+(PF_FLANKBAND=1, PF_FB=localize|localscore|extract|ladder|gate; PF_FB_LEVELS/DEDUPE/NOPICKET/TAG) + `vitest.flankband.config.ts`.
+Data: `research/exchange/_tierc_flankband/*` (gitignored — numbers inlined; renders z_ampfrac.png / z_final_dev.png).
+Commits: pre-reg 3ab3e43, mechanism c5d679e, STEP1-2 c6dfd23, gate-v1+disp-filter de41df8, ladder c19faa2, [this].

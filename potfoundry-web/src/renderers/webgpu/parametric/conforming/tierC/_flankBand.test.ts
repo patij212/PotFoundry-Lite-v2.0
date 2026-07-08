@@ -531,7 +531,10 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       const bandContours: BandContour[] = toe.rails
         ? toe.rails.flatMap((r) => toBand(r.polys))
         : [...toBand(toe.lo ?? []), ...toBand(toe.hi ?? [])];
-      const pickets = placementPickets();
+      // NO-PICKET toggle: the toe rails may forbid the needle themselves; a
+      // pinned worst near a picket column suggests a picket×rail locked-cell.
+      const usePickets = process.env.PF_FB_NOPICKET !== '1';
+      const pickets = usePickets ? placementPickets() : [];
       const complex = buildProtectedComplex(
         sampler,
         'GothicArches',
