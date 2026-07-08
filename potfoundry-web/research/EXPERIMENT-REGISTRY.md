@@ -10,6 +10,29 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-08-TIERC-PERF-SEAM — parallelize the whole-mesh brute scorer (worker pool, byte-identical metrology) + cross-pass dirty-facet cache + resolve the pinned seam∩domain-boundary facet, then re-run the multi-bay Gothic gate to convergence [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (follow-up to E-2026-07-08-TIERC-JUNCTION / spec V11d):** the multi-bay Gothic plateau is NOT a junction wall — it is (d) DENSITY (a smooth low-κ ~1.5mm horizontal arch arc at t≈0.465, no ridge to detect; bgArcMm 0.3 closes the seam-free focused domain to literal 0, guardMax 0.00996) stacked on ONE pinned facet at u=0 (periodic seam ∩ domain uLo boundary, 1.0592mm, RED-1→4 cannot reduce). The BLOCKER is PERF: dense passes run 60-96s on 100k+ tris because `scoreWholeMesh`/`refineToZeroOutliers` score every facet single-threaded (the un-parallelized whole-mesh brute — the V10d/V10e integration wall). Facet scoring is embarrassingly parallel: `facetInteriorHonest` depends only on the facet's 3 vertices + the analytic radial surface. The sampler is a `GpuSurfaceSampler` (pre-evaluated f32 grid + deterministic bilinear interp) ⇒ SERIALIZABLE to workers ⇒ byte-identical reconstruction of `rA`.
+
+**HYPOTHESES (falsifiable):**
+- (T1 perf) A worker_threads pool (≤4 workers) sharding facets, each reconstructing the sampler from the serialized f32 grid, reproduces the sequential scorer's (outliers, maxMm, p50, p99) BIT-IDENTICALLY and cuts wall-clock s/pass materially (target ≥2.5x on 4 workers).
+- (T2 perf) Cross-pass dirty-facet caching (a facet whose 3 vertex (u,t) are unchanged since last pass reuses its cached verdict) further cuts refine-loop cost with byte-identical results.
+- (T3 seam) The pinned 1.0592mm facet is the u=0 seam ∩ domain-uLo-boundary interaction; it either fixes with a seam-consistent RED split OR vanishes when the domain is shifted off the seam (u∈[0.05,0.15]) ⇒ patch-test-only artifact ⇒ make the gate domain seam-avoiding (the full pot has no domain boundary).
+- (T4 gate) With T1+T2 perf + T3 seam + the denser/adaptive seed, the full multi-bay gate converges to literal whole-mesh 0 outliers + watertight non-vacuous.
+
+**KILL CRITERIA (committed BEFORE measuring):**
+- **T1 STOP-SHIP:** if the parallel scorer's (outliers, maxMm, p50, p99) do NOT match the sequential scorer EXACTLY on a fixed checkpointed fixture, STOP Task 1 and report the divergence — do NOT ship approximate metrology. CONFIRM iff byte-identical AND s/pass drops ≥2.5x on 4 workers.
+- **T2 CONFIRM** iff the 2-pass cached refine is byte-identical to the uncached refine (same outlier trajectory) AND cuts time; REFUTE/no-op iff cache misses dominate (facet churn too high) — report the hit rate.
+- **T3 CONFIRM** iff the pinned facet either (a) reduces below tol with the seam-consistent split, or (b) provably vanishes off-seam (documented patch artifact, gate domain moved off-seam). REFUTE iff it survives BOTH on-seam-fix and off-seam-shift (a genuine seam-fidelity floor — characterize).
+- **T4 CONFIRM** iff guardOutliers==0, capped==false, watertight nonMan==0 non-vacuous (inject-crack moves count), at a reported tri count vs the ~6M full-pot projection.
+- **GATE STOP:** if the gate still fails to converge after density+seam fixes, STOP and report the new floor population classified (the V11d diagnostic playbook).
+
+**METHOD:** edit flag-gated Tier-C production (`interiorRuler.ts` parallel scorer + `noBridgeRefine.ts` cache) only; keep the fast tierC suite green + the byte-identical-off hashMesh gate; gitnexus impact before editing existing symbols + detect_changes before commit. Byte-identical regression tests on small fixtures. Checkpoint per-pass ndjson to `research/exchange/_tierc_junction/`. NODE_OPTIONS=--max-old-space-size=8192. Rebaseline20 (Task 5) only if the gate converges.
+
+**VERDICT: PENDING — measuring.**
+
+---
+
 ## E-2026-07-05-GOTHIC-APEXPN â€” SLIVER LEVER 13a: scoped one-sided PN curved element AT the apex, re-tessellating the near-apex NEEDLE leaves into a FEW well-shaped on-surface flat sub-triangles (Gothic) [PRE-REGISTERED â€” kill-criterion committed BEFORE measuring]
 
 **FRAME:** The perfect mesher is FIDELITY-PROVEN whole-mesh 0-outlier on GothicArches (E-â€¦-WHOLEMESH-GOTHIC: `refined_mesh.bin` 30,323t, wholeMeshOutliers=0, wholeMeshMax=0.01, watertight nonMan=0 non-vacuous, minAngle 0Â°, median 43Â°, **pctBelow20=19%**). 12 sliver levers refuted â€” ALL of them move/reconnect the SAME flat-P1 point set (density / placement / connectivity / flips / free-CDT strips / red-green refine). The measured root cause (E-ANISO-RULER + V8 Â§1): the near-vertical `pow(sharp)` crest flank forces the fidelity-holding cells to be NEEDLES long-along-crest â€” a REPRESENTATION property of the flat P1 element at the zero-width apex, not a placement bug. V8 Â§(1) names the SOLE untried representation move: **a scoped one-sided PN/P2 curved element AT the apex-straddling leaf** (the `apexLeafPN` Vlachos element was BENCHED for FIDELITY â€” usedPnAtApex=FALSE, PN not needed there â€” but NEVER used to re-TESSELLATE the needle leaves for QUALITY). This lever is that move, scoped to SLIVERS.
