@@ -56,10 +56,12 @@ export {
   refineToZeroOutliers,
   refineToZeroOutliersParallel,
   seedFromComplex,
+  adaptiveSeedPoints,
   type ChartDomain,
   type RefineOptions,
   type RefineResult,
   type DevScorer,
+  type AdaptiveSeedCfg,
 } from './noBridgeRefine';
 export {
   collapseDegenerateFaces,

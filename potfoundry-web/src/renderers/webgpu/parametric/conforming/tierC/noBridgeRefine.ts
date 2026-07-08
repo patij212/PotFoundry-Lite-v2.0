@@ -56,6 +56,25 @@ export interface RefineOptions {
   bgArcMm: number;
   /** Max 3D pitch (mm) constraint chains are densified to (default 0.15). */
   maxConstraintMm?: number;
+  /**
+   * ADAPTIVE SEED (LEVER A, opt-in, default off ⇒ uniform bgArcMm unchanged).
+   * When set, the background t-rows are placed CURVATURE-ADAPTIVELY: at each t
+   * level the local chord-sag over one row of pitch h is ≈ h²·|r''(z)|/8, so a
+   * uniform bgArcMm leaves a marginal-facet tail exactly where |r''| is high
+   * (the smooth low-κ HIGH-amplitude arch arc the κ-ridge detector correctly
+   * ignores — MEASURED at t≈0.465 |r''|≈2 ⇒ sag@0.3 = 0.022mm > tol). The
+   * field targets the pitch that makes sag == `tolMm` (clamped to
+   * [`hMinMm`, bgArcMm]), sampling |r''(z)| = max over the domain u-range so the
+   * density responds to the worst chord-sag at each t. Rows are placed at equal
+   * cumulative-density intervals ⇒ SUB-tol pitch ONLY on the high-|r''| bands,
+   * coarse elsewhere (uniform-tighten explodes tris past the 6M budget). u stays
+   * uniform (the u-ridges are already carried by locked constraint edges).
+   */
+  adaptiveSeed?: boolean;
+  /** Adaptive-seed floor pitch (mm 3D arc). Default 0.09 (measured need). */
+  hMinMm?: number;
+  /** Adaptive-seed recursion depth cap. Default 5. */
+  adaptiveMaxLevel?: number;
   ruler: RulerOptions;
   /**
    * Cross-pass DIRTY-FACET cache (default off; opt-in perf lever). A facet
@@ -105,6 +124,138 @@ const DEDUPE_CELL_MM = 0.004;
  */
 const MAX_CONSTRAINT_MM = 0.15;
 
+/** Build the AdaptiveSeedCfg from RefineOptions (undefined ⇒ uniform seed). */
+function adaptiveCfg(opts: RefineOptions): AdaptiveSeedCfg | undefined {
+  if (opts.adaptiveSeed !== true) return undefined;
+  return {
+    tolMm: opts.tolMm,
+    hMinMm: opts.hMinMm ?? 0.09,
+    maxLevel: opts.adaptiveMaxLevel ?? 5,
+  };
+}
+
+/**
+ * 2D curvature-adaptive background seed (LEVER A). Returns non-uniform (u,t)
+ * chart points whose local pitch tracks the chord-sag floor in BOTH directions.
+ *
+ * MEASURED CALIBRATION (E-2026-07-08-TIERC-ADAPTIVE-SEED, _adaptiveDiag):
+ * on the count-unstable Gothic gate the DEAD-ZONE relief the κ-ridge detector
+ * misses is a smooth 2D bump (max |d²r/dz²| ≈ 9 AND |d²r/du²| ≈ 2 at ≈(0.142,
+ * 0.589)) needing pitch ~0.094mm in t AND ~0.198mm in u — a UNIFORM bgArcMm 0.3
+ * seed leaves a chord-sag tail there, while a uniform hMin tighten explodes tris
+ * on the flat complement (u-ridges are carried by locked edges, not the bg grid).
+ *
+ * Method: start from the uniform bgArcMm cell grid; recursively split any cell
+ * (in u, t, or both) whose local chord sag (½·|Δ²r| across the cell span in that
+ * axis, the exact P1 midpoint chord error against the grid surface) exceeds
+ * `tolMm`, down to a floor pitch `hMinMm`. Emit the corner lattice of the final
+ * (non-uniform) cells. This packs points into the 2D bump and NOWHERE else, so
+ * the tri count stays near the uniform seed off the bump. `maxLevel` bounds it.
+ */
+export function adaptiveSeedPoints(
+  sampler: SurfaceSampler,
+  domain: ChartDomain,
+  uToMm: number,
+  tToMm: number,
+  bgArcMm: number,
+  tolMm: number,
+  hMinMm: number,
+  maxLevel = 5,
+): number[] {
+  const rAt = (u: number, t: number): number => {
+    const [x, y] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
+    return Math.hypot(x, y);
+  };
+  // Chord sag of the P1 midpoint of a straight cell edge vs the surface: the
+  // 3D distance from the interpolated midpoint of the two endpoints' lifted
+  // positions to the surface point at the parametric midpoint. For a radial
+  // surface this is dominated by the radial second difference; we compute it
+  // directly in 3D for both a u-edge (fixed t) and a t-edge (fixed u).
+  const P = (u: number, t: number): [number, number, number] => {
+    const [x, y, z] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
+    return [x, y, z];
+  };
+  const edgeSagU = (u0: number, u1: number, t: number): number => {
+    const A = P(u0, t);
+    const B = P(u1, t);
+    const M = P((u0 + u1) / 2, t);
+    return Math.hypot(
+      (A[0] + B[0]) / 2 - M[0],
+      (A[1] + B[1]) / 2 - M[1],
+      (A[2] + B[2]) / 2 - M[2],
+    );
+  };
+  const edgeSagT = (u: number, t0: number, t1: number): number => {
+    const A = P(u, t0);
+    const B = P(u, t1);
+    const Mm = P(u, (t0 + t1) / 2);
+    return Math.hypot(
+      (A[0] + B[0]) / 2 - Mm[0],
+      (A[1] + B[1]) / 2 - Mm[1],
+      (A[2] + B[2]) / 2 - Mm[2],
+    );
+  };
+  // The uniform cell size in fractions.
+  const nu0 = Math.max(8, Math.round(((domain.uHi - domain.uLo) * uToMm) / bgArcMm));
+  const nt0 = Math.max(8, Math.round(((domain.tHi - domain.tLo) * tToMm) / bgArcMm));
+  const du0 = (domain.uHi - domain.uLo) / nu0;
+  const dt0 = (domain.tHi - domain.tLo) / nt0;
+  // Floor pitch in fractions per axis.
+  const duMin = hMinMm / uToMm;
+  const dtMin = hMinMm / tToMm;
+  // Dedupe points on a fine lattice (hMin/4) so shared cell corners coincide.
+  const cell = Math.min(duMin, dtMin) / 4;
+  const seen = new Set<string>();
+  const out: number[] = [];
+  const emit = (u: number, t: number): void => {
+    const k = `${Math.round(u / cell)}_${Math.round(t / cell)}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    out.push(u, t);
+  };
+  // Recursive cell subdivision (split the axis whose edge sag is worst; both if
+  // both exceed tol). Emits the 4 corners of every leaf cell ⇒ a conforming
+  // non-uniform lattice (shared corners dedupe).
+  const stack: Array<[number, number, number, number, number]> = [];
+  for (let i = 0; i < nu0; i++) {
+    for (let j = 0; j < nt0; j++) {
+      stack.push([
+        domain.uLo + i * du0,
+        domain.uLo + (i + 1) * du0,
+        domain.tLo + j * dt0,
+        domain.tLo + (j + 1) * dt0,
+        0,
+      ]);
+    }
+  }
+  while (stack.length) {
+    const [u0, u1, t0, t1, lvl] = stack.pop() as [number, number, number, number, number];
+    const tMid = (t0 + t1) / 2;
+    const uMid = (u0 + u1) / 2;
+    // Worst chord sag across the cell in each axis (check both t-levels / u-levels).
+    const sagU = Math.max(edgeSagU(u0, u1, t0), edgeSagU(u0, u1, t1), edgeSagU(u0, u1, tMid));
+    const sagT = Math.max(edgeSagT(u0, t0, t1), edgeSagT(u1, t0, t1), edgeSagT(uMid, t0, t1));
+    const canU = u1 - u0 > 2 * duMin;
+    const canT = t1 - t0 > 2 * dtMin;
+    const splitU = sagU > tolMm && canU && lvl < maxLevel;
+    const splitT = sagT > tolMm && canT && lvl < maxLevel;
+    if (splitU && splitT) {
+      stack.push([u0, uMid, t0, tMid, lvl + 1], [uMid, u1, t0, tMid, lvl + 1], [u0, uMid, tMid, t1, lvl + 1], [uMid, u1, tMid, t1, lvl + 1]);
+    } else if (splitU) {
+      stack.push([u0, uMid, t0, t1, lvl + 1], [uMid, u1, t0, t1, lvl + 1]);
+    } else if (splitT) {
+      stack.push([u0, u1, t0, tMid, lvl + 1], [u0, u1, tMid, t1, lvl + 1]);
+    } else {
+      emit(u0, t0);
+      emit(u1, t0);
+      emit(u0, t1);
+      emit(u1, t1);
+      emit(uMid, tMid);
+    }
+  }
+  return out;
+}
+
 /**
  * Seed the chart mesh: protected-complex vertices (converted mm → chart) with
  * their constraint edges LOCKED (the complex is already dense + on-ridge +
@@ -113,12 +264,19 @@ const MAX_CONSTRAINT_MM = 0.15;
  * would break planarity), plus a uniform background grid at bgArcMm pitch
  * over the domain, CDT'd in mm space (isotropic predicates).
  */
+export interface AdaptiveSeedCfg {
+  tolMm: number;
+  hMinMm: number;
+  maxLevel: number;
+}
+
 export function seedFromComplex(
   complex: ProtectedComplex,
   domain: ChartDomain,
   bgArcMm: number,
   sampler?: SurfaceSampler,
   maxConstraintMm = MAX_CONSTRAINT_MM,
+  adaptive?: AdaptiveSeedCfg,
 ): { uv: number[]; cEdges: Array<[number, number]> } {
   const { uToMm, tToMm } = complex;
   const uv: number[] = [];
@@ -217,16 +375,39 @@ export function seedFromComplex(
     const k = keyOf(uv[2 * i], uv[2 * i + 1]);
     if (!pmap.has(k)) pmap.set(k, i);
   }
-  const nu = Math.max(8, Math.round(((domain.uHi - domain.uLo) * uToMm) / bgArcMm));
-  const nt = Math.max(8, Math.round(((domain.tHi - domain.tLo) * tToMm) / bgArcMm));
-  for (let i = 0; i <= nu; i++) {
-    for (let k = 0; k <= nt; k++) {
-      const u = domain.uLo + (domain.uHi - domain.uLo) * (i / nu);
-      const t = domain.tLo + (domain.tHi - domain.tLo) * (k / nt);
+  if (adaptive && sampler) {
+    // LEVER A: 2D curvature-adaptive background points (opt-in). Packs points
+    // into the smooth-arc bump the κ-detector misses, coarse elsewhere.
+    const pts = adaptiveSeedPoints(
+      sampler,
+      domain,
+      uToMm,
+      tToMm,
+      bgArcMm,
+      adaptive.tolMm,
+      adaptive.hMinMm,
+      adaptive.maxLevel,
+    );
+    for (let i = 0; i < pts.length / 2; i++) {
+      const u = pts[2 * i];
+      const t = pts[2 * i + 1];
       const key = keyOf(u, t);
       if (pmap.has(key)) continue;
       pmap.set(key, uv.length / 2);
       uv.push(u, t);
+    }
+  } else {
+    const nu = Math.max(8, Math.round(((domain.uHi - domain.uLo) * uToMm) / bgArcMm));
+    const nt = Math.max(8, Math.round(((domain.tHi - domain.tLo) * tToMm) / bgArcMm));
+    for (let i = 0; i <= nu; i++) {
+      for (let k = 0; k <= nt; k++) {
+        const u = domain.uLo + (domain.uHi - domain.uLo) * (i / nu);
+        const t = domain.tLo + (domain.tHi - domain.tLo) * (k / nt);
+        const key = keyOf(u, t);
+        if (pmap.has(key)) continue;
+        pmap.set(key, uv.length / 2);
+        uv.push(u, t);
+      }
     }
   }
   return { uv, cEdges };
@@ -270,6 +451,7 @@ export function refineToZeroOutliers(
     opts.bgArcMm,
     sampler,
     opts.maxConstraintMm,
+    adaptiveCfg(opts),
   );
   let uv = seed.uv.slice();
   const cEdges = seed.cEdges;
@@ -516,6 +698,7 @@ export async function refineToZeroOutliersParallel(
     opts.bgArcMm,
     sampler,
     opts.maxConstraintMm,
+    adaptiveCfg(opts),
   );
   const uv = seed.uv.slice();
   const cEdges = seed.cEdges;
