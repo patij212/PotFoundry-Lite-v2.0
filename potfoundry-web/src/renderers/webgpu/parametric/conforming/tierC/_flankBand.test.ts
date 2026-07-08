@@ -65,11 +65,14 @@ const TAU = 2 * Math.PI;
 const TOE_LO = process.env.PF_FB_TOELO ? +process.env.PF_FB_TOELO : 0.12;
 const TOE_HI = process.env.PF_FB_TOEHI ? +process.env.PF_FB_TOEHI : 0.4;
 const PICKET_MM = process.env.PF_FB_PICKET ? +process.env.PF_FB_PICKET : 0.1;
+const GTAG = process.env.PF_FB_TAG ?? 'v1';
 
 /** Round-7/8 PLACEMENT-1 pickets (banked needle-forbidding set). */
 function placementPickets(chord = 0.09): PicketSpec[] {
   return [0.058, 0.1, 0.14].map((u) => ({ u, tLo: 0.44, tHi: 0.58, maxChordMm: chord }));
 }
+
+const DEDUPE = process.env.PF_FB_DEDUPE ? +process.env.PF_FB_DEDUPE : undefined;
 
 /** The §V11s p1 refine options (all banked levers on). */
 function p1Opts(): RefineOptions {
@@ -87,6 +90,7 @@ function p1Opts(): RefineOptions {
     anisoDirection: 'edgeSag',
     anisoAspectTol: 0.15,
     dirtyFacetCache: true,
+    dedupeCellMm: DEDUPE,
     ruler: { ...DEFAULT_RULER, thetaWindowRad: 0.5 },
   };
 }
@@ -471,7 +475,7 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       );
 
       const pool = new ParallelScorerPool(samplerGrid(sampler), 4);
-      const passLog = `${OUT}/gate_pass.ndjson`;
+      const passLog = `${OUT}/gate_${GTAG}_pass.ndjson`;
       writeFileSync(passLog, '');
       let prevTris = 0;
       const t0 = Date.now();
@@ -521,6 +525,8 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       const projFull = Math.round(tris * PROJ);
       const result = {
         mode: 'gate',
+        tag: GTAG,
+        dedupeCellMm: DEDUPE ?? 0.004,
         toeLo: TOE_LO,
         toeHi: TOE_HI,
         picketMm: toe.picketMm,
@@ -548,7 +554,7 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       };
       // eslint-disable-next-line no-console
       console.log('[gate RESULT]', JSON.stringify(result, null, 2));
-      writeFileSync(`${OUT}/gate_result.json`, JSON.stringify(result, null, 2));
+      writeFileSync(`${OUT}/gate_${GTAG}_result.json`, JSON.stringify(result, null, 2));
     },
     6 * 60 * 60 * 1000,
   );

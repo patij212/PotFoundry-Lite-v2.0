@@ -398,6 +398,39 @@ export function decimateFlank(
  * [cLo, cHi] (the two flanking iso-lines that frame each rib flank strip). Each
  * level is marched → linked → polished → decimated. Returns both contour sets.
  */
+/**
+ * Drop vertices whose 3D placement residual exceeds `dispTolMm` (splits their
+ * polyline). The af-space polish (`refineAndFilterFlank`) leaves ~0.1% of
+ * vertices at ridge SADDLES where a tiny af error maps to a large 3D move (the
+ * documented _gyroidContourLib validator artifact). Those saddle strays are a
+ * locked-toe placement hazard (a slightly-off locked vertex spawns a
+ * non-manifold junction) — remove them so the embedded toe is 3D-faithful.
+ */
+export function filterByDisp3D(
+  contours: FlankContour[],
+  field: AmplitudeField,
+  c: number,
+  sampler: SurfaceSampler,
+  dispTolMm = 0.01,
+): { contours: FlankContour[]; dropped: number } {
+  const out: FlankContour[] = [];
+  let dropped = 0;
+  for (const cont of contours) {
+    let run: Array<[number, number]> = [];
+    for (const [u, t] of cont.pts) {
+      const r = flankIsoResidual3D(u, t, field, c, sampler);
+      if (r.disp3D <= dispTolMm) run.push([u, t]);
+      else {
+        dropped++;
+        if (run.length >= 2) out.push({ pts: run });
+        run = [];
+      }
+    }
+    if (run.length >= 2) out.push({ pts: run });
+  }
+  return { contours: out, dropped };
+}
+
 export function extractToeBand(
   sampler: SurfaceSampler,
   domain: FlankDomain,
@@ -419,8 +452,15 @@ export function extractToeBand(
     const segs = marchAmpFrac(field, domain, c, march);
     const linked = linkFlankSegments(segs);
     const filtered = refineAndFilterFlank(linked, field, c);
-    const deci = decimateFlank(filtered.contours, stepMm, sampler);
-    return { contours: deci, kept: filtered.kept, dropped: filtered.dropped };
+    // 3D-disp filter BEFORE decimation so a dropped saddle stray splits the
+    // polyline at the right place (the decimator would otherwise bridge it).
+    const dispClean = filterByDisp3D(filtered.contours, field, c, sampler);
+    const deci = decimateFlank(dispClean.contours, stepMm, sampler);
+    return {
+      contours: deci,
+      kept: filtered.kept - dispClean.dropped,
+      dropped: filtered.dropped + dispClean.dropped,
+    };
   };
   const lo = extract(cLo);
   const hi = extract(cHi);
