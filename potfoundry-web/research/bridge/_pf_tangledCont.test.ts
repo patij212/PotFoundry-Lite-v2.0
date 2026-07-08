@@ -217,17 +217,27 @@ function facetTrue3DWorstPoint(
   const px = bwa * A[0] + bwb * B[0] + bwc * C[0], py = bwa * A[1] + bwb * B[1] + bwc * C[1], pz = bwa * A[2] + bwb * B[2] + bwc * C[2];
   return nearest(px, py, pz);
 }
-function runTruthFloor(style: StyleId, meshSource: 'best20', topWorst: number, nStrat: number, tol = 0.01): void {
+function runTruthFloor(
+  style: StyleId, meshSource: 'best20', topWorst: number, nStrat: number, tol = 0.01,
+  excludePred?: (u: number, t: number) => boolean, exclLabel?: string,
+): void {
   mkdirSync(join(DIR, style), { recursive: true });
   const fp = join(DIR, style, 'truthfloor.ndjson');
-  if (labelDone(style, 'truthfloor.ndjson', 'truthfloor')) { process.stderr.write(`  SKIP truthfloor ${style} (done)\n`); return; }
+  const rowLabel = exclLabel ? `truthfloor_${exclLabel}` : 'truthfloor';
+  if (labelDone(style, 'truthfloor.ndjson', rowLabel)) { process.stderr.write(`  SKIP ${rowLabel} ${style} (done)\n`); return; }
   const rA = radiusFn(style, DIMS);
   const { ut, idx, tris } = loadReaching(style); void meshSource;
   const t0 = Date.now();
   // 1) all facets ranked by radial bound → the radial-outlier population (sound upper bound). Take worst-N for the
   //    max/wall-slope + a stratified sample across the rest of the radial-outlier tail for the honest fraction.
   const big = worstFacetsByRadial(rA, DIMS.H, ut, idx, tris); // topN=tris ⇒ full ranked list
-  const radialOutliers = big.recs.filter((r) => r.radialDev > tol);
+  const radialOutliersAll = big.recs.filter((r) => r.radialDev > tol);
+  // CREASE EXCLUSION (designed features): drop radial-outlier facets whose centroid (u,t) is on a crease locus. Report
+  // exclFrac honestly — the excluded facets are the designed C0 braid/medallion creases, adjudicated as feature edges.
+  const nRadialRaw = radialOutliersAll.length;
+  const radialOutliers = excludePred ? radialOutliersAll.filter((r) => !excludePred(r.uc, r.tc)) : radialOutliersAll;
+  const nExcluded = nRadialRaw - radialOutliers.length;
+  const exclFrac = nRadialRaw ? nExcluded / nRadialRaw : 0;
   const nRadial = radialOutliers.length;
   const nearest = newtonN(rA, DIMS.H);
   // worst-N (the fat tail) — full Newton
@@ -262,7 +272,8 @@ function runTruthFloor(style: StyleId, meshSource: 'best20', topWorst: number, n
   const slopeMed = trueSlopes.length ? trueSlopes[Math.floor(trueSlopes.length / 2)] : 0;
   const slopeP90 = trueSlopes.length ? trueSlopes[Math.floor(trueSlopes.length * 0.9)] : 0;
   const row = {
-    label: 'truthfloor', style, tris, tol, nRadialOutliers: nRadial,
+    label: rowLabel, style, tris, tol,
+    nRadialOutliersRaw: nRadialRaw, nExcluded, exclFrac: +exclFrac.toFixed(4), nRadialOutliers: nRadial,
     worstNscored: worstSet.length, worstTrueOutliers: worstTrueOut, worstFrac: +worstFrac.toFixed(4),
     stratScored, stratTrueOutliers: stratTrueOut, stratFrac: +stratFrac.toFixed(4),
     honestTrueOutliers, honestFracOfRadial: nRadial ? +(honestTrueOutliers / nRadial).toFixed(4) : 0,
@@ -270,21 +281,31 @@ function runTruthFloor(style: StyleId, meshSource: 'best20', topWorst: number, n
     slopeMed: +slopeMed.toFixed(3), slopeP90: +slopeP90.toFixed(3),
     ms: Date.now() - t0,
   };
+  void stratSlopeSum;
   appendFileSync(fp, JSON.stringify(row) + '\n');
-  appendFileSync(join(DIR, style, 'truthfloor_scatter.ndjson'), scatter.map((s) => JSON.stringify(s)).join('\n') + '\n');
+  appendFileSync(join(DIR, style, `${rowLabel}_scatter.ndjson`), scatter.map((s) => JSON.stringify(s)).join('\n') + '\n');
   // eslint-disable-next-line no-console
-  console.log(`TRUTHFLOOR ${style}: tris=${tris} nRadialOut=${nRadial} → honestTrue=${honestTrueOutliers} (${row.honestFracOfRadial} of radial) worstTrueMax=${row.worstTrueMax}@${JSON.stringify(row.worstTrueUt)} | worstFrac=${row.worstFrac} stratFrac=${row.stratFrac} slopeMed=${row.slopeMed} slopeP90=${row.slopeP90} | ${row.ms}ms`);
+  console.log(`TRUTHFLOOR ${style}${exclLabel ? '/' + exclLabel : ''}: tris=${tris} radialRaw=${nRadialRaw} excl=${nExcluded}(${row.exclFrac}) → nRadialOut=${nRadial} honestTrue=${honestTrueOutliers} (${row.honestFracOfRadial} of remaining) worstTrueMax=${row.worstTrueMax}@${JSON.stringify(row.worstTrueUt)} | slopeMed=${row.slopeMed} slopeP90=${row.slopeP90} | ${row.ms}ms`);
 }
 
 const HRS = 60 * 60 * 1000;
 
 describe('E-2026-07-08-TANGLED-CONTINUATION — Newton truth-floor (V11j sound true-3D)', () => {
-  for (const style of ['Voronoi', 'HexagonalHive', 'CelticTriquetra', 'CelticKnot', 'Crystalline', 'BasketWeave'] as const) {
+  for (const style of ['Voronoi', 'HexagonalHive', 'CelticKnot', 'Crystalline', 'BasketWeave'] as const) {
     it.skipIf(process.env.PF_TC_TRUTH !== style)(`truthfloor ${style}`, () => {
       runTruthFloor(style as StyleId, 'best20', 1500, 1500);
       expect(true).toBe(true);
     }, 6 * HRS);
   }
+  // CelticTriquetra: creases are designed features. Run BOTH the raw truth-floor AND the C0-crease-EXCLUDED floor
+  // (validated celticTriquetraC0Predicate, band 2e-3, V11c recall 0.968). The excluded row = the off-crease body gap.
+  it.skipIf(process.env.PF_TC_TRUTH !== 'CelticTriquetra')('truthfloor CelticTriquetra', () => {
+    runTruthFloor('CelticTriquetra' as StyleId, 'best20', 1500, 1500); // raw (all facets)
+    const band = 2e-3;
+    const pred = celticTriquetraC0Predicate(band, {}, { gridN: 3072, gridT: 2048 });
+    runTruthFloor('CelticTriquetra' as StyleId, 'best20', 1500, 1500, 0.01, pred, `exclB${band}`); // off-crease
+    expect(true).toBe(true);
+  }, 6 * HRS);
 });
 
 // PF_TC_TWIN=1 → cheap twin-soundness triage for ALL six styles in one run (no mesh scoring). Resumable per style.
