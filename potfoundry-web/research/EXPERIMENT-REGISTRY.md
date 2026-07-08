@@ -73,9 +73,22 @@ Two parameterizations (band-shrink × fill-density): `sheet` is EXACTLY INVARIAN
 - **GENUINE-COST FRONTIER** iff research ALSO exceeds 6M / fails 0 (matching V11k within ~1.5×) ⇒ the junction/dead-zone band is genuinely expensive at tol 0.01 irrespective of mechanism; produce the honest outliers/max-vs-projected-tris frontier. Fork = budget-raise vs frontier-doc (NOT tol-relaxation — user rejects per-region accept-bands).
 - **STRUCTURAL-BREAK** iff research cannot run without changes ⇒ report what breaks (locates the gap). STOP after discriminator + one ablation.
 
-**VERDICT: PENDING — pre-registered; discriminator running (BG=0.3 V3-rep config on the production domain), measuring next.**
+**VERDICT: GENUINE-COST FRONTIER — the discrepancy is DOMAIN (hypothesis b), NOT a mechanism-gap. "Port the research seed" REFUTED.**
 
-**METHOD:** DEV-ONLY. New probe `research/bridge/_pf_costgap_prod_domain.test.ts` (PF_TIERC_COSTGAP=1), env-gated resumable, ndjson checkpoint per pass to `research/exchange/_tierc_costgap/`. Reuses `_pf_perfectMesherLib`/`_pf_perfectMesherMsquareLib`/`_pf_perfectMesherBruteLib`/labkit READ-ONLY (research kernel UNMODIFIED — only the PatchDef domain differs). Touches NO src/ or tierC/. NODE_OPTIONS=--max-old-space-size=8192. Ledger §V11m + this row.
+**STRUCTURAL-BREAK REFUTED:** research kernel runs cleanly on the production domain (fam=2, resid=0, cEdges 1328, full crest coverage). **DISCRIMINATOR — research M-square kernel EXPLODES on the production band too:**
+| config | pass | tris | proj full-pot | outliers | worstMm | insFlank |
+|---|---|---|---|---|---|---|
+| smoke BG=0.6 | 1 | 6,126 | 61,260 | 2,288 | 0.507 | 8,426 |
+| smoke BG=0.6 | 2 | 19,568 | 195,680 | **8,196** | **0.585** | 32,203 |
+| V3-rep BG=0.3 | 1 | 20,682 | 206,820 | 4,370 | 0.382 | 15,847 |
+
+Outliers GROW, worst WORSENS, tris ~3.2×/pass — the SAME monotone explosion as production (V11k: 6.06M @ pass-5, thousands remaining). The M-square graded seed + locked-crest subdivision does NOT rescue the production band.
+
+**ROOT CAUSE — DOMAIN, quantified analytically (decisive, cheap):** crest coverage is NOT the difference (both bands fully covered, 0/8 empty t-bins). **RELIEF is:** GothicArches TAPER, and V3's `findApexJunction` landed on the SHALLOW arch TIP (t≈0.75). Production t[0.38,0.62] has **ampMean 1.217mm (V3 0.541), ampMax 1.797 (V3 0.712), max|dr/du| 8.75 (V3 6.32), t-width 0.24 (V3 0.10)** — a monotone relief taper with a cliff at t≈0.52. P1 chord-sag ~ amp × h² ⇒ 2.25× relief × 2.4× width ≈ **~5.4× more tris — matches the 6-8× gap.** V3's 1.05M is REAL but on an EASIER band. The junction/full-relief band is genuinely ~2.25× more expensive at tol 0.01, irrespective of mesher mechanism.
+
+**ABLATION SUBSUMED:** both M-square and uniform-edge-RED explode because the outliers are genuine full-relief rib-flank facets exceeding tol=0.01, not seed artifacts (generalizes V11k's refine-loop-floor to the research engine). **FORK (no per-region tol per user standard):** (1) the untested DOWNSTREAM lever — anisotropic/flank-aware RED (splits rib-flank short-axis only, ≈halves growth), exactly V11k's standing recommendation; or (2) accept the full-relief arch body as a documented density-vs-budget concession at tol 0.01. Porting the research seed into tierC would NOT close the gate (proven).
+
+**METHOD:** DEV-ONLY. New probe `research/bridge/_pf_costgap_prod_domain.test.ts` (PF_TIERC_COSTGAP=1), env-gated resumable, ndjson checkpoint per pass to `research/exchange/_tierc_costgap/`. Reuses `_pf_perfectMesherLib`/`_pf_perfectMesherMsquareLib`/`_pf_perfectMesherBruteLib`/labkit READ-ONLY (research kernel UNMODIFIED — only the PatchDef domain differs). Touches NO src/ or tierC/. NODE_OPTIONS=--max-old-space-size=8192. Commits 91a8980 (pre-reg) / c240187 (probe+row) / 93abe0b (verdict). Ledger §V11m + this row.
 
 ---
 
