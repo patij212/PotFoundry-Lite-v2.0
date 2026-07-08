@@ -37,6 +37,14 @@ import {
 } from './interiorRuler';
 import { GpuSurfaceSampler } from '../SurfaceSampler';
 import { ParallelScorerPool, samplerGrid } from './parallelScorer';
+import {
+  extractToeBand,
+  flankIsoResidual3D,
+  type FlankContour,
+  type FlankDomain,
+} from './flankBand';
+import { reduceDevArray } from './interiorRuler';
+import type { BandContour } from './morseComplex';
 
 const RUN = process.env.PF_FLANKBAND === '1';
 const MODE = process.env.PF_FB ?? 'localize';
@@ -45,7 +53,18 @@ const MAXPASS = process.env.PF_FB_MAXPASS ? +process.env.PF_FB_MAXPASS : 25;
 const PROJ = 42;
 
 const DOMAIN: ChartDomain = { uLo: 0.05, uHi: 0.15, tLo: 0.38, tHi: 0.62 };
+const FDOMAIN: FlankDomain = { uLo: 0.05, uHi: 0.15, tLo: 0.38, tHi: 0.62 };
 const TAU = 2 * Math.PI;
+
+// Toe-band iso-values (amplitude fraction 0=panel, 1=crest), chosen from the
+// STEP-1 dev-weighted histogram: the error mass concentrates at ampFrac 0.10-0.40
+// (sumDev peak at 0.20-0.30). A DOUBLED/laddered band brackets that strip so the
+// steep lower flank is FRAMED between the toe (below) and the mid-flank rail
+// (above); the locked crest chain frames the top. Overridable via env for the
+// design sweep.
+const TOE_LO = process.env.PF_FB_TOELO ? +process.env.PF_FB_TOELO : 0.12;
+const TOE_HI = process.env.PF_FB_TOEHI ? +process.env.PF_FB_TOEHI : 0.4;
+const PICKET_MM = process.env.PF_FB_PICKET ? +process.env.PF_FB_PICKET : 0.1;
 
 /** Round-7/8 PLACEMENT-1 pickets (banked needle-forbidding set). */
 function placementPickets(chord = 0.09): PicketSpec[] {
@@ -330,6 +349,206 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       // eslint-disable-next-line no-console
       console.log('[localize VERDICT]', JSON.stringify(verdict, null, 2));
       writeFileSync(`${OUT}/localize_verdict.json`, JSON.stringify(verdict, null, 2));
+    },
+    6 * 60 * 60 * 1000,
+  );
+
+  // STEP 2: extract the doubled toe band + validate placement sub-0.01 (3D).
+  it.skipIf(!RUN || MODE !== 'extract')(
+    'STEP 2: extract the doubled toe-band contours + validate 3D placement',
+    () => {
+      mkdirSync(OUT, { recursive: true });
+      const sampler = styleSampler(
+        'GothicArches',
+        {},
+        { H: 120, Rt: 50, Rb: 40 },
+      ) as GpuSurfaceSampler;
+      const t0 = Date.now();
+      const band = extractToeBand(
+        sampler,
+        FDOMAIN,
+        TOE_LO,
+        TOE_HI,
+        { nu: 640, nt: 640, polishIters: 24 },
+        PICKET_MM,
+      );
+      // Validate 3D placement: bounded 2D nearest-isolevel disp on every vertex.
+      const validate = (
+        contours: FlankContour[],
+        c: number,
+      ): { n: number; dispP50: number; dispP90: number; dispMax: number; afMax: number } => {
+        const disps: number[] = [];
+        const afs: number[] = [];
+        for (const cont of contours)
+          for (const [u, t] of cont.pts) {
+            const r = flankIsoResidual3D(u, t, band.field, c, sampler);
+            disps.push(r.disp3D);
+            afs.push(r.afErr);
+          }
+        const q = (a: number[], p: number): number => {
+          const s = [...a].sort((x, y) => x - y);
+          return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0;
+        };
+        return {
+          n: disps.length,
+          dispP50: +q(disps, 0.5).toFixed(5),
+          dispP90: +q(disps, 0.9).toFixed(5),
+          dispMax: +Math.max(0, ...disps).toFixed(5),
+          afMax: +Math.max(0, ...afs).toFixed(6),
+        };
+      };
+      const vLo = validate(band.lo, TOE_LO);
+      const vHi = validate(band.hi, TOE_HI);
+      // Persist the contours (as (u,t) polylines) for the embed step.
+      const dump = (cs: FlankContour[]): Array<Array<[number, number]>> => cs.map((c) => c.pts);
+      writeFileSync(
+        `${OUT}/toe_contours.json`,
+        JSON.stringify({
+          toeLo: TOE_LO,
+          toeHi: TOE_HI,
+          picketMm: PICKET_MM,
+          lo: dump(band.lo),
+          hi: dump(band.hi),
+        }),
+      );
+      const verdict = {
+        mode: 'extract',
+        toeLo: TOE_LO,
+        toeHi: TOE_HI,
+        picketMm: PICKET_MM,
+        loContours: band.lo.length,
+        hiContours: band.hi.length,
+        loKept: band.loKept,
+        loDropped: band.loDropped,
+        hiKept: band.hiKept,
+        hiDropped: band.hiDropped,
+        loVerts: band.lo.reduce((s, c) => s + c.pts.length, 0),
+        hiVerts: band.hi.reduce((s, c) => s + c.pts.length, 0),
+        placeLo: vLo,
+        placeHi: vHi,
+        placementSub0p01:
+          vLo.dispP90 < 0.01 && vHi.dispP90 < 0.01 && vLo.dispMax < 0.02 && vHi.dispMax < 0.02,
+        sec: +((Date.now() - t0) / 1000).toFixed(0),
+      };
+      // eslint-disable-next-line no-console
+      console.log('[extract VERDICT]', JSON.stringify(verdict, null, 2));
+      writeFileSync(`${OUT}/extract_verdict.json`, JSON.stringify(verdict, null, 2));
+    },
+    30 * 60 * 1000,
+  );
+
+  // STEP 3+4: embed the doubled toe band as BandContours + run the gate.
+  it.skipIf(!RUN || MODE !== 'gate')(
+    'STEP 3+4: embed the doubled toe band + gate to whole-mesh 0',
+    async () => {
+      mkdirSync(OUT, { recursive: true });
+      const sampler = styleSampler(
+        'GothicArches',
+        {},
+        { H: 120, Rt: 50, Rb: 40 },
+      ) as GpuSurfaceSampler;
+      const toe = JSON.parse(readFileSync(`${OUT}/toe_contours.json`, 'utf8')) as {
+        picketMm: number;
+        lo: Array<Array<[number, number]>>;
+        hi: Array<Array<[number, number]>>;
+      };
+      const toBand = (polys: Array<Array<[number, number]>>): BandContour[] =>
+        polys
+          .filter((p) => p.length >= 2)
+          .map((pts) => ({ pts, maxChordMm: toe.picketMm }));
+      const bandContours: BandContour[] = [...toBand(toe.lo), ...toBand(toe.hi)];
+      const pickets = placementPickets();
+      const complex = buildProtectedComplex(
+        sampler,
+        'GothicArches',
+        undefined,
+        pickets,
+        bandContours,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `[gate COMPLEX] bandContours=${bandContours.length} recovery=${complex.recoveryPct.toFixed(2)} residualCrossings=${complex.residualCrossings} edges=${complex.edges.length}`,
+      );
+
+      const pool = new ParallelScorerPool(samplerGrid(sampler), 4);
+      const passLog = `${OUT}/gate_pass.ndjson`;
+      writeFileSync(passLog, '');
+      let prevTris = 0;
+      const t0 = Date.now();
+      const refined = await refineToZeroOutliersParallel(
+        sampler,
+        complex,
+        DOMAIN,
+        p1Opts(),
+        pool,
+        (s) => {
+          const dTris = s.nTris - prevTris;
+          prevTris = s.nTris;
+          appendFileSync(
+            passLog,
+            JSON.stringify({ ...s, projFullPot: Math.round(s.nTris * PROJ), dTris }) + '\n',
+          );
+        },
+      );
+
+      const xyz = liftChartMesh(sampler, refined.uv);
+      const g = await pool.scoreDev(xyz, refined.uv, refined.tris, DEFAULT_RULER);
+      await pool.close();
+      const score = reduceDevArray(g.dev, 0.01, g.bruteCalls);
+
+      // non-manifold by index (non-vacuous: cracked control must move the count).
+      const nonMan = (tris: number[]): number => {
+        const use = new Map<string, number>();
+        for (let f = 0; f < tris.length / 3; f++) {
+          const a = tris[3 * f];
+          const b = tris[3 * f + 1];
+          const c = tris[3 * f + 2];
+          for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
+            const k = i < j ? `${i}_${j}` : `${j}_${i}`;
+            use.set(k, (use.get(k) ?? 0) + 1);
+          }
+        }
+        let bad = 0;
+        for (const n of use.values()) if (n > 2) bad++;
+        return bad;
+      };
+      const nm = nonMan(refined.tris);
+      const cracked = refined.tris.slice();
+      cracked.push(refined.tris[0], refined.tris[1], refined.tris[2]);
+      const nmCracked = nonMan(cracked);
+
+      const tris = refined.tris.length / 3;
+      const projFull = Math.round(tris * PROJ);
+      const result = {
+        mode: 'gate',
+        toeLo: TOE_LO,
+        toeHi: TOE_HI,
+        picketMm: toe.picketMm,
+        bandContours: bandContours.length,
+        recoveryPct: +complex.recoveryPct.toFixed(2),
+        residualCrossings: complex.residualCrossings,
+        capped: refined.capped,
+        passes: refined.passes,
+        tris,
+        projFullPot: projFull,
+        underBudget8M: projFull < 8_000_000,
+        underBudget10M: projFull < 10_000_000,
+        guardOutliers: score.outliers,
+        guardMax: +score.maxMm.toFixed(5),
+        guardP99: +score.p99.toFixed(5),
+        nonManifold: nm,
+        nonManCrackedControl: nmCracked,
+        literal0:
+          score.outliers === 0 &&
+          !refined.capped &&
+          nm === 0 &&
+          nmCracked > nm &&
+          projFull <= 10_000_000,
+        sec: +((Date.now() - t0) / 1000).toFixed(0),
+      };
+      // eslint-disable-next-line no-console
+      console.log('[gate RESULT]', JSON.stringify(result, null, 2));
+      writeFileSync(`${OUT}/gate_result.json`, JSON.stringify(result, null, 2));
     },
     6 * 60 * 60 * 1000,
   );
