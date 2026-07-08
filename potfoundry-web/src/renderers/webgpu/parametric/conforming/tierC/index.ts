@@ -54,10 +54,12 @@ export {
 } from './parallelScorer';
 export {
   refineToZeroOutliers,
+  refineToZeroOutliersParallel,
   seedFromComplex,
   type ChartDomain,
   type RefineOptions,
   type RefineResult,
+  type DevScorer,
 } from './noBridgeRefine';
 export {
   collapseDegenerateFaces,

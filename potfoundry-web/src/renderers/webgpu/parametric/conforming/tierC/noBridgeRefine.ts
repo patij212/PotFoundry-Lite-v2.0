@@ -476,3 +476,218 @@ export function refineToZeroOutliers(
   }
   return { uv, tris, passes: pass, capped, history, constraintEdges: cEdges };
 }
+
+/**
+ * Minimal parallel-scorer contract (a {@link ParallelScorerPool}). Kept as a
+ * structural interface so this module does not import worker_threads at load —
+ * the sync production path (index.ts) never touches the pool.
+ */
+export interface DevScorer {
+  scoreDev(
+    xyz: Float64Array,
+    uv: number[],
+    tris: number[],
+    opts: RulerOptions,
+  ): Promise<{ dev: Float64Array; bruteCalls: number }>;
+}
+
+/**
+ * Parallel variant of {@link refineToZeroOutliers}: DENSE passes score every
+ * facet via the injected worker pool (`scorer`), 7-pt PHASE-A passes stay
+ * sequential (already cheap). The insertion + convergence logic is IDENTICAL
+ * (shared {@link applyScoredPass}), so the refined mesh is byte-identical to
+ * the sequential loop given a byte-identical dev[] (which the pool guarantees).
+ * The dirty-facet cache is NOT applied here (the pool already elides the
+ * sequential cost); pass `dirtyFacetCache` to the sync path instead.
+ */
+export async function refineToZeroOutliersParallel(
+  sampler: SurfaceSampler,
+  complex: ProtectedComplex,
+  domain: ChartDomain,
+  opts: RefineOptions,
+  scorer: DevScorer,
+  onPass?: (s: RefinePassStat) => void,
+): Promise<RefineResult> {
+  const surface = radialSurfaceFromSampler(sampler);
+  const { uToMm, tToMm } = complex;
+  const seed = seedFromComplex(
+    complex,
+    domain,
+    opts.bgArcMm,
+    sampler,
+    opts.maxConstraintMm,
+  );
+  const uv = seed.uv.slice();
+  const cEdges = seed.cEdges;
+  let tris = triangulateMM(uv, uToMm, tToMm, cEdges);
+
+  const pmap = new Map<number, number>();
+  const keyOf = (u: number, t: number): number =>
+    Math.round(((((u % 1) + 1) % 1) * uToMm) / DEDUPE_CELL_MM) * 100000 +
+    Math.round((t * tToMm) / DEDUPE_CELL_MM);
+  const addPt = (u: number, t: number): number => {
+    const k = keyOf(u, t);
+    const hit = pmap.get(k);
+    if (hit !== undefined) return hit;
+    const id = uv.length / 2;
+    pmap.set(k, id);
+    uv.push(u, t);
+    return id;
+  };
+  const rehash = (): void => {
+    pmap.clear();
+    for (let i = 0; i < uv.length / 2; i++) {
+      const k = keyOf(uv[2 * i], uv[2 * i + 1]);
+      if (!pmap.has(k)) pmap.set(k, i);
+    }
+  };
+  const cKey = (a: number, b: number): number =>
+    a < b ? a * 1e7 + b : b * 1e7 + a;
+  const cMap = new Map<number, number>();
+  for (let i = 0; i < cEdges.length; i++) {
+    cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
+  }
+  const history: RefinePassStat[] = [];
+  let capped = false;
+  let pass = 0;
+  let bulk = opts.bulkPasses7pt;
+  for (pass = 1; pass <= opts.maxPass; pass++) {
+    const t0 = Date.now();
+    const xyz = liftChartMesh(sampler, uv);
+    const nF = tris.length / 3;
+    const useDense = pass > bulk;
+    rehash();
+
+    let dev: Float64Array;
+    let bruteCalls = 0;
+    if (useDense) {
+      const r = await scorer.scoreDev(xyz, uv, tris, opts.ruler);
+      dev = r.dev;
+      bruteCalls = r.bruteCalls;
+    } else {
+      // 7-pt PHASE-A: sequential (cheap; the pool worker is dense-only).
+      dev = new Float64Array(nF);
+      for (let f = 0; f < nF; f++) {
+        const g = facetInteriorHonest(
+          surface,
+          xyz,
+          uv,
+          tris[3 * f],
+          tris[3 * f + 1],
+          tris[3 * f + 2],
+          BARY_STOP,
+          opts.ruler,
+        );
+        dev[f] = g.dev;
+        bruteCalls += g.bruteCalls;
+      }
+    }
+
+    const applied = applyScoredPass(
+      dev,
+      tris,
+      uv,
+      opts.tolMm,
+      cEdges,
+      cMap,
+      cKey,
+      keyOf,
+      addPt,
+    );
+    const stat: RefinePassStat = {
+      pass,
+      nTris: nF,
+      outliers: applied.outliers,
+      worstMm: applied.worst,
+      inserted: applied.inserted,
+      bruteCalls,
+      dense: useDense,
+      ms: Date.now() - t0,
+    };
+    history.push(stat);
+    if (onPass) onPass(stat);
+    if (applied.outliers === 0 && useDense) break;
+    if (applied.outliers === 0 && !useDense) {
+      bulk = pass;
+      continue;
+    }
+    tris = triangulateMM(uv, uToMm, tToMm, cEdges);
+    if (pass === opts.maxPass && applied.outliers > 0) capped = true;
+  }
+  return { uv, tris, passes: pass, capped, history, constraintEdges: cEdges };
+}
+
+/**
+ * Apply an already-scored pass: given the per-facet dev[] for the CURRENT
+ * `tris`, count outliers/worst and perform the edge-mode RED 1→4 insertions
+ * (mutating `uv`, `cEdges`, `cMap`, `pmap` in place via the passed helpers).
+ * Returns the pass's outlier/worst/inserted counts. Extracted so the sync loop
+ * and the parallel loop share IDENTICAL insertion logic ⇒ byte-identical mesh.
+ */
+function applyScoredPass(
+  dev: Float64Array,
+  tris: number[],
+  uv: number[],
+  tolMm: number,
+  cEdges: Array<[number, number]>,
+  cMap: Map<number, number>,
+  cKey: (a: number, b: number) => number,
+  keyOf: (u: number, t: number) => number,
+  addPt: (u: number, t: number) => number,
+): { outliers: number; worst: number; inserted: number } {
+  const nF = tris.length / 3;
+  let outliers = 0;
+  let worst = 0;
+  const inserted = new Set<number>();
+  for (let f = 0; f < nF; f++) {
+    const d = dev[f];
+    if (d > worst) worst = d;
+    if (d <= tolMm) continue;
+    outliers++;
+    const a = tris[3 * f];
+    const b = tris[3 * f + 1];
+    const c = tris[3 * f + 2];
+    let ua = uv[2 * a];
+    let ub = uv[2 * b];
+    let uc = uv[2 * c];
+    const ta = uv[2 * a + 1];
+    const tb = uv[2 * b + 1];
+    const tc = uv[2 * c + 1];
+    while (ub - ua > 0.5) ub -= 1;
+    while (ua - ub > 0.5) ub += 1;
+    while (uc - ua > 0.5) uc -= 1;
+    while (ua - uc > 0.5) uc += 1;
+    const edges: Array<[number, number, number, number, number, number]> = [
+      [a, b, ua, ta, ub, tb],
+      [b, c, ub, tb, uc, tc],
+      [c, a, uc, tc, ua, ta],
+    ];
+    for (const [va, vb, eua, eta, eub, etb] of edges) {
+      const ck = cKey(va, vb);
+      const ci = cMap.get(ck);
+      const mu = (eua + eub) / 2;
+      const mt = (eta + etb) / 2;
+      if (ci !== undefined) {
+        const k = keyOf(mu, mt);
+        if (inserted.has(k)) continue;
+        inserted.add(k);
+        const mid = addPt(mu, mt);
+        if (mid !== va && mid !== vb) {
+          cEdges[ci] = [va, mid];
+          cMap.delete(ck);
+          cMap.set(cKey(va, mid), ci);
+          const ni = cEdges.length;
+          cEdges.push([mid, vb]);
+          cMap.set(cKey(mid, vb), ni);
+        }
+      } else {
+        const k = keyOf(mu, mt);
+        if (!inserted.has(k)) {
+          inserted.add(k);
+          addPt(mu, mt);
+        }
+      }
+    }
+  }
+  return { outliers, worst, inserted: inserted.size };
+}
