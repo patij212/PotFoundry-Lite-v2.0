@@ -22,7 +22,7 @@ import type { StyleId } from '../../src/geometry/types';
 import type { StepRing } from './_sharp3dRef';
 import { buildStructuredWall, evenThetas, type RowSpec, type BuiltMesh } from './_sharp3dMesh';
 import { buildRadialTwin, loadBinMesh } from './_pf_bvhRuler';
-import { buildRefLocator, type RefLocator } from './_sharp3dRef';
+import { buildRefLocator, buildStepReference, type RefLocator } from './_sharp3dRef';
 
 const TAU = 2 * Math.PI;
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -203,4 +203,60 @@ describe('DS-ZDENSITY — DragonScales sheet-z-density sweep under the V10b dens
     }
     expect(true).toBe(true);
   }, 5 * 60 * 60 * 1000);
+
+  // ── DECISIVE lip cross-check: are the density-INVARIANT ~141k "lip" outliers a REAL defect or a TWIN-BLIND-SPOT
+  //    (the single-valued radial twin cannot represent the tread — a range of radii at one z = a vertical wall)?
+  //    Score the SAME nZband=70 lip facets against BOTH (a) the radial twin (V10b ruler) and (b) the STEP-reference
+  //    twin (buildStepReference, which DOUBLES the ring radii ⇒ represents the tread). If lip reads ~0 under the
+  //    step-twin but ~large under the radial twin ⇒ TWIN-BLIND artifact (DragonScales body CAD-grade; tread is a
+  //    designed near-vertical feature the radial twin can't measure = SFB-seam class). Verdict-deciding.
+  it.skipIf(process.env.PF_DS_LIPCHECK !== '1')('lip cross-check: radial-twin vs step-twin on nZband=70 lip facets', () => {
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const NTH = 2400, TREADCAP = 4, NZ = 70;
+    const rows = buildRows(rA, dragonRings(), NTH, NZ, TREADCAP);
+    const mesh = buildStructuredWall(rA, H, rows);
+    const { xyz, idx } = toF32(mesh);
+    const cls = facetClassifier(mesh);
+    plog(`[lipcheck] mesh ${mesh.nF} tris — building BOTH twins...`);
+    // radial twin (V10b) + step-reference twin (tread-representing)
+    const radTwin = buildRadialTwin(rA, H, TWIN.nTheta, TWIN.nZ);
+    const radLoc = buildRefLocator(radTwin, CELL);
+    const stepRef = buildStepReference(rA, H, dragonRings(), { nTheta: 3840, nZperBand: 48, zEps: 5e-4 });
+    const stepLoc = buildRefLocator(stepRef, 2.0);
+    plog(`[lipcheck] radTwin ${radTwin.nF} tris, stepRef ${stepRef.nF} tris — scoring lip facets...`);
+    // score EVERY lip facet (stride 1, they are a minority) under both locators, dense 45-pt.
+    let lipN = 0, lipOutRad = 0, lipOutStep = 0; let radMax = 0, stepMax = 0;
+    const t0 = Date.now();
+    for (let f = 0; f < mesh.nF; f++) {
+      if (cls(f) !== 'lip') continue;
+      lipN++;
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+      const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+      const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+      let dr = 0, dstp = 0;
+      for (const [wa, wb, wc] of DENSE) {
+        const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
+        const a1 = radLoc.dist(px, py, pz); if (a1 > dr) dr = a1;
+        const a2 = stepLoc.dist(px, py, pz); if (a2 > dstp) dstp = a2;
+      }
+      if (dr > TOL) lipOutRad++;
+      if (dstp > TOL) lipOutStep++;
+      if (dr > radMax) radMax = dr;
+      if (dstp > stepMax) stepMax = dstp;
+      if (lipN % 20000 === 0) plog(`[lipcheck] ${lipN} lip facets, radOut=${lipOutRad} stepOut=${lipOutStep} (${((Date.now() - t0) / 1000).toFixed(0)}s)`);
+    }
+    const row = {
+      key: 'lipcheck_nZ70', style: 'DragonScales', nZband: NZ, lipFacets: lipN,
+      lipOut_radialTwin: lipOutRad, lipOut_stepTwin: lipOutStep,
+      lipMax_radialTwin: +radMax.toFixed(6), lipMax_stepTwin: +stepMax.toFixed(6),
+      verdict: (lipOutStep < 0.1 * Math.max(1, lipOutRad))
+        ? 'TWIN-BLIND: lip is a radial-twin artifact (tread wall); step-twin reads clean — DragonScales body CAD-grade'
+        : 'REAL: lip outliers survive the tread-representing step-twin',
+      note: 'radial twin cannot represent the tread (range of radii at one z); step-twin doubles ring radii',
+    };
+    checkpoint(row);
+    plog(`[lipcheck] VERDICT ${row.verdict} | lipFacets=${lipN} radOut=${lipOutRad}(max ${radMax.toFixed(4)}) stepOut=${lipOutStep}(max ${stepMax.toFixed(4)})`);
+    expect(true).toBe(true);
+  }, 2 * 60 * 60 * 1000);
 });
