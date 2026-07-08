@@ -24,7 +24,7 @@
 // Anchored to the analytic rA in f64 (rIn/rOut evaluated at z_k ∓ wallEps). COPIES nothing from src/. No kernel edits.
 
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
-import type { RefMesh } from './_sharp3dRef';
+import type { RefMesh, RefLocator } from './_sharp3dRef';
 import type { StepRing } from './_sharp3dRef';
 
 const TAU = 2 * Math.PI;
@@ -97,6 +97,56 @@ export function buildConformingReference(rA: AnalyticRadiusFn, H: number, rings:
     }
   }
   return { xyz, idx: Uint32Array.from(idx), nV: total, nF: idx.length / 3 };
+}
+
+/**
+ * WALL-ONLY reference: JUST the near-vertical riser strips (skirt-below → skirt-above), NO sheet. Tiny
+ * (nRings × nTheta × 2 tris). Composed with the radial twin via `compositeLocator` to make the OPEN-surface
+ * conforming ruler cheaply: the radial twin (proven fast, fine-on-sheet) supplies the sheet; this supplies the
+ * riser. `min(radial, wall)` is the distance to the union = the conforming open surface.
+ */
+export function buildWallOnlyReference(rA: AnalyticRadiusFn, rings: StepRing[], nTheta: number, wallEps: number): RefMesh {
+  const sorted = [...rings].sort((a, b) => a.z - b.z);
+  const nLev = sorted.length * 2; // skirtBelow + skirtAbove per ring
+  const xyz = new Float64Array(nLev * nTheta * 3);
+  let lv = 0;
+  const ringOfLevel: number[] = [];
+  for (const ring of sorted) {
+    for (const [z, rz] of [[ring.z - wallEps, ring.z - wallEps], [ring.z + wallEps, ring.z + wallEps]] as const) {
+      const base = lv * nTheta;
+      for (let j = 0; j < nTheta; j++) { const th = TAU * (j / nTheta); const r = rA(th, rz); const o = (base + j) * 3; xyz[o] = r * Math.cos(th); xyz[o + 1] = r * Math.sin(th); xyz[o + 2] = z; }
+      ringOfLevel.push(lv); lv++;
+    }
+  }
+  // strip ONLY skirtBelow(2k) → skirtAbove(2k+1) for each ring (the riser); NO strip across rings.
+  const idx: number[] = [];
+  for (let r = 0; r < sorted.length; r++) {
+    const tb = (2 * r) * nTheta, bb = (2 * r + 1) * nTheta;
+    for (let c = 0; c < nTheta; c++) { const cn = (c + 1) % nTheta; const a = tb + c, an = tb + cn, b = bb + c, bn = bb + cn; idx.push(a, b, bn); idx.push(a, bn, an); }
+  }
+  return { xyz, idx: Uint32Array.from(idx), nV: nLev * nTheta, nF: idx.length / 3 };
+}
+
+/**
+ * Composite OPEN-surface conforming ruler = min(radial-sheet twin, riser wall-only). Distance to the union.
+ *
+ * PERF: the wall-only ref is a SPARSE set of thin strips at the ring z's. Querying it from a point FAR from every
+ * ring makes the expanding-shell BVH search expand across the whole z-range before finding any wall tri (~2ms/query,
+ * vs 175µs for the radial twin). But a point far from all rings has a large true wall distance ⇒ the SHEET always
+ * wins the min there. So we z-GATE the wall query: only consult the wall BVH when the point's z is within `wallZBand`
+ * of some ring z; otherwise wallDist = +∞ (the sheet is the answer). This is EXACT (never changes the min) as long as
+ * wallZBand ≥ the largest wall-distance a point could have while still being the nearest-to-wall — the wall spans
+ * radius rIn→rOut over z∈[z_k∓wallEps], so any point whose wall-distance could beat the sheet is within ~(jump+tol) of
+ * z_k; wallZBand=3mm ≫ the ~1.2mm max jump ⇒ safe. `ringZs` sorted ascending.
+ */
+export function compositeLocator(sheetLoc: RefLocator, wallLoc: RefLocator, ringZs: number[], wallZBand = 3.0): RefLocator {
+  const zs = [...ringZs].sort((a, b) => a - b);
+  const nearRingZ = (z: number): boolean => { for (const rz of zs) { if (Math.abs(z - rz) <= wallZBand) return true; if (rz - z > wallZBand) break; } return false; };
+  return {
+    dist: (x, y, z) => { const s = sheetLoc.dist(x, y, z); if (!nearRingZ(z)) return s; return Math.min(s, wallLoc.dist(x, y, z)); },
+    distTri: (x, y, z) => { const s = sheetLoc.distTri(x, y, z); if (!nearRingZ(z)) return s; const w = wallLoc.distTri(x, y, z); return s.dist <= w.dist ? s : { dist: w.dist, tri: -1 - w.tri }; },
+    bruteDist: (x, y, z) => { const s = sheetLoc.bruteDist(x, y, z); if (!nearRingZ(z)) return s; return Math.min(s, wallLoc.bruteDist(x, y, z)); },
+  };
 }
 
 /**

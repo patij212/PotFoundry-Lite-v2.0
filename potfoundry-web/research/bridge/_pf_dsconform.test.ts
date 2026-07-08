@@ -27,7 +27,7 @@ import type { StepRing } from './_sharp3dRef';
 import { buildStructuredWall, evenThetas, type RowSpec, type BuiltMesh } from './_sharp3dMesh';
 import { buildRadialTwin } from './_pf_bvhRuler';
 import { buildRefLocator, type RefLocator } from './_sharp3dRef';
-import { buildConformingReference, riserWallPoints, type ConformOpts } from './_ds_conformRef';
+import { buildWallOnlyReference, compositeLocator, riserWallPoints } from './_ds_conformRef';
 
 const TAU = 2 * Math.PI;
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -39,10 +39,22 @@ const NDJSON = join(OUT, 'scorecard.ndjson');
 const RAD_TWIN = { nTheta: 2048, nZ: 3072 };
 const CIRC = 2 * Math.PI * ((DIMS.Rb + DIMS.Rt) / 2);
 const RAD_CELL = Math.max(0.35, 4 * (CIRC / RAD_TWIN.nTheta));
-// Conforming ruler: radial-twin-density sheet (nTheta matches radial twin for smooth parity), fine z bands, THIN wall.
-const CONF: ConformOpts = { nTheta: 2048, nZperBand: 240, wallEps: 0.01 };
-const CONF_CELL = 1.0;
-const WALLEPS = CONF.wallEps;
+// COMPOSITE OPEN-SURFACE conforming ruler = min(radial-sheet twin, riser wall-only). The radial twin (2048×3072,
+// proven fast + fine-on-sheet) supplies the SHEET (⇒ 1b passes by construction — same surface as the radial twin);
+// a tiny wall-only ref (7 rings × wallNTheta × 2 tris) supplies the RISER. This is the V11f "radial sheet + explicit
+// riser wall quads, OPEN surface" cure, built cheaply (the full dense conforming ref's 8M-tri BVH stalled 1b >15min).
+const WALLEPS = 0.01;
+const WALL_NTHETA = 4096; // dense riser so the wall's own on-surface residual ≪ tol (1c). Tiny mesh (~57k tris).
+const WALL_CELL = 0.3;
+// Build the composite OPEN-surface conforming ruler (radial-sheet twin + riser wall-only).
+function buildConformRuler(rA: (t: number, z: number) => number): ReturnType<typeof compositeLocator> {
+  const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
+  const sheetLoc = buildRefLocator(radTwin, RAD_CELL);
+  const dr = dragonRings();
+  const wallRef = buildWallOnlyReference(rA, dr, WALL_NTHETA, WALLEPS);
+  const wallLoc = buildRefLocator(wallRef, WALL_CELL);
+  return compositeLocator(sheetLoc, wallLoc, dr.map(r => r.z));
+}
 
 const plog = (m: string): void => { mkdirSync(OUT, { recursive: true }); const l = `[${new Date().toISOString()}] ${m}`; appendFileSync(join(OUT, 'run.log'), l + '\n'); /* eslint-disable-next-line no-console */ console.log(l); };
 const keyExists = (k: string): boolean => { if (!existsSync(NDJSON)) return false; return readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean).some((l) => { try { return JSON.parse(l).key === k; } catch { return false; } }); };
@@ -170,11 +182,24 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
   it.skipIf(process.env.PF_DS_CONF_SMOKE !== '1')('SMOKE — tiny conforming ref anchors + is one-sided', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
-    const nT = Number(process.env.PF_SMOKE_NT ?? '256');
-    const nZ = Number(process.env.PF_SMOKE_NZ ?? '20');
-    const smallCONF: ConformOpts = { nTheta: nT, nZperBand: nZ, wallEps: 0.01 };
-    const ref = buildConformingReference(rA, H, rings, smallCONF);
-    const loc = buildRefLocator(ref, 1.0);
+    // TIMING isolation: radial twin BVH vs wall-only BVH vs composite.
+    const tR0 = Date.now(); const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ); const sheetLoc = buildRefLocator(radTwin, RAD_CELL); const tRbuild = Date.now() - tR0;
+    const tW0 = Date.now(); const wallRef = buildWallOnlyReference(rA, rings, WALL_NTHETA, WALLEPS); const wallLoc = buildRefLocator(wallRef, WALL_CELL); const tWbuild = Date.now() - tW0;
+    const qN = 20000;
+    const tRq = Date.now(); let aR = 0; for (let i = 0; i < qN; i++) { const th = TAU * (i / qN); const z = 3 + (i % 100); const r = rA(th, z); aR += sheetLoc.dist(r * Math.cos(th) + 0.01, r * Math.sin(th), z); } const tRquery = Date.now() - tRq;
+    const tWq = Date.now(); let aW = 0; for (let i = 0; i < qN; i++) { const th = TAU * (i / qN); const z = 3 + (i % 100); const r = rA(th, z); aW += wallLoc.dist(r * Math.cos(th) + 0.01, r * Math.sin(th), z); } const tWquery = Date.now() - tWq;
+    // eslint-disable-next-line no-console
+    console.log(`[SMOKE-TIMING] radialTwin(${radTwin.nF}t) build=${tRbuild}ms ${qN}q=${tRquery}ms (${(tRquery/qN*1000).toFixed(0)}us/q) | wall(${wallRef.nF}t) build=${tWbuild}ms ${qN}q=${tWquery}ms (${(tWquery/qN*1000).toFixed(0)}us/q) | aR=${aR.toFixed(0)} aW=${aW.toFixed(0)}`);
+    const loc = compositeLocator(sheetLoc, wallLoc, rings.map(r => r.z));
+    const ref = { nF: -1 }; // composite (no single tri count)
+    // timing of the Z-GATED composite from a far point (should now be ~radial-twin speed):
+    const tCq = Date.now(); let aC = 0; for (let i = 0; i < qN; i++) { const th = TAU * (i / qN); const z = 3 + (i % 100); const r = rA(th, z); aC += loc.dist(r * Math.cos(th) + 0.01, r * Math.sin(th), z); }
+    // eslint-disable-next-line no-console
+    console.log(`[SMOKE-TIMING] z-gated composite ${qN}q=${Date.now() - tCq}ms aC=${aC.toFixed(0)}`);
+    // NEAR-RING query timing (the lip-facet case the scorer always dense-scores):
+    const tNq = Date.now(); let aN = 0; const rz0 = rings[0].z; for (let i = 0; i < qN; i++) { const th = TAU * (i / qN); const z = rz0 + ((i % 21) - 10) * 0.05; const r = rA(th, z); aN += loc.dist(r * Math.cos(th), r * Math.sin(th), z); }
+    // eslint-disable-next-line no-console
+    console.log(`[SMOKE-TIMING] NEAR-ring composite ${qN}q=${Date.now() - tNq}ms (${((Date.now() - tNq)/qN*1000).toFixed(0)}us/q) aN=${aN.toFixed(2)}`);
     // 1a-style: skirt + wall anchors on-surface
     let maxSkirt = 0, maxWall = 0;
     for (const ring of rings) for (let it = 0; it < 90; it++) {
@@ -183,20 +208,24 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
       maxSkirt = Math.max(maxSkirt, loc.dist(rIn * Math.cos(th), rIn * Math.sin(th), ring.z - WALLEPS), loc.dist(rOut * Math.cos(th), rOut * Math.sin(th), ring.z + WALLEPS));
     }
     for (const p of riserWallPoints(rA, rings, WALLEPS, 90, 4)) maxWall = Math.max(maxWall, loc.dist(p[0], p[1], p[2]));
+    // timing probe: how fast are 20k sheet-region queries under this cell?
+    const tq = Date.now(); let acc = 0; for (let i = 0; i < 20000; i++) { const th = TAU * (i / 20000); const z = 3 + (i % 100); const r = rA(th, z); acc += loc.dist(r * Math.cos(th) + 0.01, r * Math.sin(th), z); }
+    // eslint-disable-next-line no-console
+    console.log(`[SMOKE] 20k queries in ${Date.now() - tq}ms (acc=${acc.toFixed(1)})`);
     // 1d-style: outward off-surface probe near a ring — LOCALIZE the worst understate (diagnose 1d before full run)
     let maxUnder = 0; let wc: Record<string, number> = {};
     for (const ring of rings) for (const dz of [-0.8, -0.5, -0.3, 0.3, 0.5, 0.8]) { const z = ring.z + dz; if (z <= 0 || z >= H) continue; for (let it = 0; it < 120; it++) { const th = TAU * (it / 120); const rTrue = rA(th, z); for (const delta of [0.05, 0.2]) { const d = loc.dist((rTrue + delta) * Math.cos(th), (rTrue + delta) * Math.sin(th), z); const u = delta - d; if (u > maxUnder) { maxUnder = u; wc = { th: +th.toFixed(3), z: +z.toFixed(2), delta, ringZ: ring.z, dz, rTrue: +rTrue.toFixed(3), read: +d.toFixed(5) }; } } } }
     // eslint-disable-next-line no-console
-    console.log(`[SMOKE] tris=${ref.nF} maxSkirt=${maxSkirt.toFixed(5)} maxWall=${maxWall.toFixed(5)} maxUnderstate=${maxUnder.toFixed(5)} case=${JSON.stringify(wc)}`);
-    expect(ref.nF).toBeGreaterThan(0);
+    console.log(`[SMOKE] composite maxSkirt=${maxSkirt.toFixed(5)} maxWall=${maxWall.toFixed(5)} maxUnderstate(radialPush)=${maxUnder.toFixed(5)} case=${JSON.stringify(wc)}`);
+    void ref;
+    expect(maxSkirt).toBeLessThan(TOL);
   }, 5 * 60 * 1000);
 
   // DIAG (PF_DS_CONF_DIAG=1): why does the outward off-surface probe at θ≈1.1,z=105.8 read ~0.085 not 0.2?
   it.skipIf(process.env.PF_DS_CONF_DIAG !== '1')('DIAG — localize the 1d understate winner triangle', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
-    const ref = buildConformingReference(rA, H, rings, { nTheta: 2048, nZperBand: 240, wallEps: WALLEPS });
-    const loc = buildRefLocator(ref, CONF_CELL);
+    const loc = buildConformRuler(rA);
     const th = 1.1, z = 105.8, delta = 0.2;
     const rTrue = rA(th, z);
     const px = (rTrue + delta) * Math.cos(th), py = (rTrue + delta) * Math.sin(th), pz = z;
@@ -224,20 +253,8 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     console.log(`[DIAG] radialPush read: conforming=${dist.toFixed(5)} radialTwin=${radRead.toFixed(5)} (should MATCH ⇒ honest 3D distance, not a wall artifact)`);
     // eslint-disable-next-line no-console
     console.log(`[DIAG] normalPush(0.2) read: conforming=${normRead.toFixed(5)} radialTwin=${normReadRad.toFixed(5)} (should ≈0.2 for a sound one-sided ruler)`);
-    // winner triangle vertices
-    const a = ref.idx[3 * tri], b = ref.idx[3 * tri + 1], c = ref.idx[3 * tri + 2];
-    const vtx = (v: number): [number, number, number, number, number] => { const x = ref.xyz[3 * v], y = ref.xyz[3 * v + 1], zz = ref.xyz[3 * v + 2]; return [+x.toFixed(3), +y.toFixed(3), +zz.toFixed(3), +Math.hypot(x, y).toFixed(3), +(Math.atan2(y, x) < 0 ? Math.atan2(y, x) + TAU : Math.atan2(y, x)).toFixed(3)]; };
-    // sample the radial field around (th,z): does rA vary strongly in theta at fixed z (relief), so a neighbor-θ sheet point is nearest?
-    const rrow: number[] = []; for (let d = -6; d <= 6; d++) rrow.push(+rA(th + d * 0.01, z).toFixed(3));
-    const rcol: number[] = []; for (let d = -6; d <= 6; d++) rcol.push(+rA(th, z + d * 0.15).toFixed(3));
     // eslint-disable-next-line no-console
-    console.log(`[DIAG] probe(th=${th},z=${z},r=${(rTrue + delta).toFixed(3)}) read=${dist.toFixed(5)} winTri=${tri} zRange=[${Math.min(ref.xyz[3*a+2],ref.xyz[3*b+2],ref.xyz[3*c+2]).toFixed(3)},${Math.max(ref.xyz[3*a+2],ref.xyz[3*b+2],ref.xyz[3*c+2]).toFixed(3)}]`);
-    // eslint-disable-next-line no-console
-    console.log(`[DIAG] winVerts A=${JSON.stringify(vtx(a))} B=${JSON.stringify(vtx(b))} C=${JSON.stringify(vtx(c))}  [x,y,z,r,theta]`);
-    // eslint-disable-next-line no-console
-    console.log(`[DIAG] rA vs theta (±0.06 step .01) @z=${z}: ${rrow.join(' ')}`);
-    // eslint-disable-next-line no-console
-    console.log(`[DIAG] rA vs z (±0.9 step .15) @th=${th}: ${rcol.join(' ')}`);
+    console.log(`[DIAG] probe(th=${th},z=${z},r=${(rTrue + delta).toFixed(3)}) read=${dist.toFixed(5)} winTri(neg=wall)=${tri}`);
     expect(dist).toBeGreaterThan(0);
   }, 10 * 60 * 1000);
 
@@ -245,11 +262,10 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
 
-    // ═══════════════ TASK 1a — CONSTRUCTION AUDIT: skirt + riser-wall points sit on the conforming surface. ═════════
+    // ═══════════════ TASK 1a — CONSTRUCTION AUDIT: skirt + riser-wall points sit on the COMPOSITE conforming surface.
     if (!keyExists('t1a_construction')) {
-      const ref = buildConformingReference(rA, H, rings, CONF);
-      const loc = buildRefLocator(ref, CONF_CELL);
-      plog(`[t1a] conformRef ${ref.nF} tris — anchoring skirt + riser-wall points...`);
+      const loc = buildConformRuler(rA);
+      plog(`[t1a] composite conforming ruler built — anchoring skirt + riser-wall points...`);
       // Skirt anchors: the two one-sided ring radii at z_k ∓ wallEps must lie on the surface.
       let maxSkirt = 0; const jumps: number[] = [];
       const nTh = 360;
@@ -270,7 +286,7 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
       for (const p of riserWallPoints(rA, rings, WALLEPS, 360, 8)) { const d = loc.dist(p[0], p[1], p[2]); if (d > maxWall) maxWall = d; }
       const meanJump = jumps.reduce((a, b) => a + b, 0) / jumps.length;
       const pass1a = maxSkirt <= TOL && maxWall <= TOL;
-      checkpoint({ key: 't1a_construction', task: '1a-construction-audit', conformTris: ref.nF,
+      checkpoint({ key: 't1a_construction', task: '1a-construction-audit', ruler: 'composite (radial-sheet twin + riser wall-only)',
         maxSkirtDistMm: +maxSkirt.toFixed(6), maxWallDistMm: +maxWall.toFixed(6), ringJumpMaxMm: jumps, meanRingJumpMm: +meanJump.toFixed(4),
         pass: pass1a, note: 'skirt (z∓wallEps ring radii) AND riser-wall interior points must lie on the conforming surface within tol; ringJump = the real stagger-flip discontinuity',
         verdict: pass1a ? '1a PASS: conforming ruler represents both skirts and the open riser wall' : '1a FAIL: conforming ruler does not cover the skirt/wall geometry' });
@@ -285,8 +301,7 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
       const mesh = buildStructuredWall(rA, H, rows);
       const { xyz, idx } = toF32(mesh);
       const cls = facetClassifier(mesh);
-      const confRef = buildConformingReference(rA, H, rings, CONF);
-      const confLoc = buildRefLocator(confRef, CONF_CELL);
+      const confLoc = buildConformRuler(rA);
       const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
       const radLoc = buildRefLocator(radTwin, RAD_CELL);
       const centZ = (f: number): number => { const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2]; return (xyz[3 * a + 2] + xyz[3 * b + 2] + xyz[3 * c + 2]) / 3; };
@@ -322,27 +337,29 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     // ═══════════════ TASK 1c — DENSITY CONVERGENCE: the conforming ruler's OWN on-surface residual (sheet + wall)
     //    must SHRINK as the ruler densifies AND the operating ruler must be sub-tol on-surface. ═══════════════════
     if (!keyExists('t1c_density')) {
-      const onSurfResid = (nTheta: number, nZperBand: number): { sheetMax: number; wallMax: number } => {
-        const ref = buildConformingReference(rA, H, rings, { nTheta, nZperBand, wallEps: WALLEPS });
-        const loc = buildRefLocator(ref, CONF_CELL);
-        let sheetMax = 0, wallMax = 0;
-        for (let iz = 0; iz < 240; iz++) {
-          const z = ((iz + 0.5) / 240) * H; if (rings.some(rg => Math.abs(z - rg.z) < 1.0)) continue;
-          for (let it = 0; it < 200; it++) { const th = TAU * ((it + 0.5) / 200); const r = rA(th, z); const d = loc.dist(r * Math.cos(th), r * Math.sin(th), z); if (d > sheetMax) sheetMax = d; }
-        }
-        for (const p of riserWallPoints(rA, rings, WALLEPS, 200, 7)) { const d = loc.dist(p[0], p[1], p[2]); if (d > wallMax) wallMax = d; }
-        return { sheetMax, wallMax };
+      // COMPOSITE ruler = radial-sheet twin (fixed at the proven 2048×3072) + riser wall-only (swept nTheta). The
+      // sheet residual is the radial twin's own residual (established); the wall residual converges with WALL_NTHETA.
+      const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
+      const sheetLoc = buildRefLocator(radTwin, RAD_CELL);
+      // sheet residual (radial twin) — one measurement, the operating sheet ruler.
+      let sheetMax = 0;
+      for (let iz = 0; iz < 240; iz++) { const z = ((iz + 0.5) / 240) * H; if (rings.some(rg => Math.abs(z - rg.z) < 1.0)) continue; for (let it = 0; it < 200; it++) { const th = TAU * ((it + 0.5) / 200); const r = rA(th, z); const d = sheetLoc.dist(r * Math.cos(th), r * Math.sin(th), z); if (d > sheetMax) sheetMax = d; } }
+      const wallResid = (nTheta: number): number => {
+        const wallRef = buildWallOnlyReference(rA, rings, nTheta, WALLEPS);
+        const wallLoc = buildRefLocator(wallRef, WALL_CELL);
+        let wallMax = 0;
+        for (const p of riserWallPoints(rA, rings, WALLEPS, 400, 9)) { const d = wallLoc.dist(p[0], p[1], p[2]); if (d > wallMax) wallMax = d; }
+        return wallMax;
       };
-      plog(`[t1c] density-convergence sweep...`);
-      const configs: Array<[number, number]> = [[1024, 120], [2048, 240], [3072, 360]];
-      const results = configs.map(([nt, nz]) => { const r = onSurfResid(nt, nz); plog(`[t1c] nTheta=${nt} nZperBand=${nz}: sheetMax=${r.sheetMax.toFixed(6)} wallMax=${r.wallMax.toFixed(6)}`); return { nTheta: nt, nZperBand: nz, sheetMaxMm: +r.sheetMax.toFixed(6), wallMaxMm: +r.wallMax.toFixed(6) }; });
-      const shrinkSheet = results[2].sheetMaxMm <= results[0].sheetMaxMm + 1e-6;
-      const shrinkWall = results[2].wallMaxMm <= results[0].wallMaxMm + 1e-6;
-      const fineBelowTol = results[1].sheetMaxMm < TOL && results[1].wallMaxMm < TOL; // OPERATING ruler = configs[1] (2048/240)
-      const pass1c = shrinkSheet && shrinkWall && fineBelowTol;
-      checkpoint({ key: 't1c_density', task: '1c-density-convergence', sweep: results, shrinkSheet, shrinkWall, fineBelowTol, operatingRuler: '2048x240', pass: pass1c,
-        verdict: pass1c ? '1c PASS: conforming-ruler residual shrinks with density and the operating ruler is sub-tol on-surface (sheet+wall)' : '1c FAIL: conforming-ruler residual does not converge / operating ruler not sub-tol' });
-      plog(`[t1c] shrinkSheet=${shrinkSheet} shrinkWall=${shrinkWall} fineBelowTol=${fineBelowTol} PASS=${pass1c}`);
+      plog(`[t1c] density-convergence: sheet(radial twin)=${sheetMax.toFixed(6)}; wall sweep...`);
+      const wallCfgs = [1024, 2048, 4096];
+      const wallResults = wallCfgs.map((nt) => { const w = wallResid(nt); plog(`[t1c] wall nTheta=${nt}: wallMax=${w.toFixed(6)}`); return { nTheta: nt, wallMaxMm: +w.toFixed(6) }; });
+      const shrinkWall = wallResults[2].wallMaxMm <= wallResults[0].wallMaxMm + 1e-6;
+      const fineBelowTol = sheetMax < TOL && wallResults[2].wallMaxMm < TOL; // operating: sheet=radial twin, wall=4096
+      const pass1c = shrinkWall && fineBelowTol;
+      checkpoint({ key: 't1c_density', task: '1c-density-convergence', sheetMaxMm: +sheetMax.toFixed(6), wallSweep: wallResults, shrinkWall, fineBelowTol, operatingRuler: 'sheet=radial2048x3072, wall=4096', pass: pass1c,
+        verdict: pass1c ? '1c PASS: composite-ruler residual sub-tol on-surface (sheet=radial twin, wall converges with density)' : '1c FAIL: composite-ruler residual not sub-tol / wall not converging' });
+      plog(`[t1c] sheetMax=${sheetMax.toFixed(6)} shrinkWall=${shrinkWall} fineBelowTol=${fineBelowTol} PASS=${pass1c}`);
     }
 
     // ═══════════════ TASK 1d — ONE-SIDEDNESS (SOUND, normal-push): the conforming ruler must NOT extend BEYOND the
@@ -355,8 +372,7 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     //    (ii) the conforming ruler must NOT read materially LESS than the RADIAL twin on ANY off-surface probe
     //    (a genuine spurious catcher — like the step twin's filled disk — makes conforming ≪ radial). ═══════════════
     if (!keyExists('t1d_onesided')) {
-      const ref = buildConformingReference(rA, H, rings, CONF);
-      const loc = buildRefLocator(ref, CONF_CELL);
+      const loc = buildConformRuler(rA);
       const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
       const radLoc = buildRefLocator(radTwin, RAD_CELL);
       plog(`[t1d] one-sidedness (normal-push + vs-radial-twin): off-surface probes near rings...`);
@@ -419,11 +435,10 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     }
 
     // ═══════════════ TASK 2/3 — HONEST WHOLE-MESH RE-SCORE + DENSITY CLOSE under the VALIDATED conforming ruler. ════
-    plog(`[score] building VALIDATED conforming ruler ${CONF.nTheta}x(bands*${CONF.nZperBand}) + BVH...`);
+    plog(`[score] building VALIDATED composite conforming ruler (radial-sheet twin + riser wall-only) + BVH...`);
     const tw0 = Date.now();
-    const confRef = buildConformingReference(rA, H, rings, CONF);
-    const confLoc = buildRefLocator(confRef, CONF_CELL);
-    plog(`[score] conforming ruler ${confRef.nF} tris + BVH in ${((Date.now() - tw0) / 1000).toFixed(0)}s`);
+    const confLoc = buildConformRuler(rA);
+    plog(`[score] composite conforming ruler + BVH in ${((Date.now() - tw0) / 1000).toFixed(0)}s`);
 
     const NTH = 2400, TREADCAP = 4;
     const screenStride = Number(process.env.PF_DS_STRIDE ?? '8');
