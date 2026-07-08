@@ -27,7 +27,30 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **METHOD:** DEV-ONLY. Extend `research/bridge/_pf_dsconform.test.ts` with env-gated resumable units (PF_DS_CLOSE=1 close + new PF_DS_SHEETLOC=1 localization DIAG + PF_DS_TRANS=1 transition-row sweep + PF_DS_C0TAIL=1 tail adjudication); ndjson CHECKPOINT one row per unit the INSTANT computed to `research/exchange/_ds_close/` (keyExists ⇒ SKIP). New builder `buildRowsTransition` (band-shrink + fill sheet rows, treadCap fixed) in the probe or `_ds_conformRef.ts`; reuses the VALIDATED `buildConformRuler`/`buildStructuredWall`/`dragonRings` READ-ONLY. Reads back 1a-1d PASS from the DS-CONFORMING ledger before scoring. NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs; explicit file staging (NEVER git add -A); do NOT touch _tangled_cont/_gyroid_truth/_ds_conforming or tierC/ (other agents). Ledger §V11l + this row.
 
-**VERDICT:** _pending — result below._
+**VERDICT: LITERAL-0 NOT REACHED — H1 (transition-row lever) REFUTED (kill criterion hit); the ~8.7k floor is CONFIRMED as TWO irreducible density classes. FINAL: CLOSED-with-documented-floor. The DS-CONFORMING §V11g FLOOR verdict STANDS and is now mechanistically nailed down.**
+
+**DECISIVE LOCALIZATION (SHEETLOC, PF_DS_SHEETLOC=1, nZ110 baseline, z-to-nearest-ring buckets [.05,.1,.2,.4,.6,1,2,∞]):**
+- **5,552 SHEET outliers → ALL ≥ 2.0mm from any ring** (`sheetHist=[0,0,0,0,0,0,0,5552]`). Body-wide smooth-sheet chord-sag, NOT near-ring. The transition-row lever cannot reach them.
+- **3,200 LIP outliers → ALL in [0.2, 0.6mm]** of a ring (`lipHist=[0,0,0,1448,1752,0,0,0]`). The last-strip-before-a-ring chording the ~1mm C0 relief. Near-ring.
+
+**H1 TRANSITION-ROW SWEEP (PF_DS_TRANS=1, ALIGNED wall 5e-4, treadCap 4 fixed, global nZ110 fixed) — REFUTED, count went UP not down:**
+| config | tris | TOTAL | sheet | lip | max | p99 | %<20 |
+|---|---|---|---|---|---|---|---|
+| baseline (buildRows) | 4.09M | **8,752** | 5,552 | 3,200 | 0.0461 | 0.0043 | 2.0 |
+| tb0.3 / tr4 | 4.49M | 38,752 | **5,552** | **33,200** | 0.0461 | 0.0054 | 1.7 |
+| tb0.15 / tr8 | 4.83M | 38,816 | **5,552** | **33,264** | 0.0461 | 0.0048 | 11.4 |
+
+Two parameterizations (band-shrink × fill-density): `sheet` is EXACTLY INVARIANT (5,552 — confirms body-wide, untouched), `lip` ~10× WORSE (3,200→33,200), %<20 blows to 11.4 at tb0.15. **Kill criterion hit: the lever fails to bend the count after 2 parameterizations — it INCREASES it.** MECHANISM (identical to the refuted skirt lever, now confirmed under the ALIGNED wall — removes the §V11g "mis-aligned skirt test polluted it" caveat): every added near-ring sheet row spawns a new `ringBelow`/`ringAbove` transition strip, and each strip chords the steep near-ring sheet curve → new lip outliers. The last strip before a ring ALWAYS chords the ~1mm C0 relief regardless of z-refinement (its endpoints are a sheet radius and a ring radius separated by the jump). Near-ring z-refinement is COUNTERPRODUCTIVE.
+
+**THE TWO IRREDUCIBLE CLASSES (both density-characterized, NOT mesh defects):**
+1. **5,552 body-wide sheet chord-sag** — density-responsive (§V11g: 21,744@nZ30 → 5,552@nZ110) but a GLOBAL nZband floor: nZ110=4.09M within budget, nZ160≈5.9M, nZ220≈8M (over 6M) — does NOT reach 0 within the 6M full-pot budget. Fidelity-vs-budget FRONTIER (raise nZ within budget shaves the sheet; literal 0 requires >6M).
+2. **3,200 near-ring lip** — the last-strip-before-a-ring chording the designed ~1mm C0 riser (max 0.0208). IRREDUCIBLE to z-refinement (H1 worsens it). A representation floor of a single-valued sheet meeting a C0 jump, tol-marginal (90% in [0.010,0.012)).
+
+**C0-TAIL (<90 max~0.0461 facets) adjudication:** _[C0TAIL PF_DS_C0TAIL=1 result appended below on completion — a/b/c]_. Preliminary: these are the deepest members of class-2 (near-ring last-strip); option (a) is moot because H1 shows near-ring rows worsen the strip, and the strip endpoints are already ON the ring circles (ringBelow at z_k−5e-4).
+
+**GATE TABLE (FINAL, baseline nZ110 = the operating mesh):** outliers 8,752 (NOT 0) · tris 4.09M < 6M · full-pot projection ≈ 4.09M (this IS the full outer wall: 2400θ×full-H) · rawNonMan 0 (bd 4800 designed open-riser boundary ⇒ audit non-vacuous) · zeroArea 0 · %<20 2.0 · riser serration ~0.001 (§V11f/g, feature edges embedded, ringJump 0.88–1.21mm on-surface to 0.00029mm). Literal-0 GATE NOT met; the honest floor STANDS.
+
+**LEDGER:** §V11l; probe `research/bridge/_pf_dsconform.test.ts` (PF_DS_SHEETLOC/TRANS/C0TAIL + buildRowsTransition + scoreMeshTo); data `research/exchange/_ds_close/scorecard.ndjson`; commits 06aefb2(pre-reg)→ac4fad1(scaffold)→5188409(C0TAIL unit)→ this row.
 
 ---
 
