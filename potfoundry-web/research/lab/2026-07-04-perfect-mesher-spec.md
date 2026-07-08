@@ -2298,6 +2298,22 @@ battery. Flag OFF; dev-only; no src/ edit.
 
 ---
 
+## V11q — GYROID POLISH: whole-mesh p99 DRIVEN BELOW tol (0.0092) via chord-refine; saddle & mid-rung hypotheses REFUTED; residual = irreducible near-vertical ramp chord-Steiner floor (2026-07-08)
+
+Round-3 follow-up to §V11o (CONFORMING-CLOSE). §V11o CLOSED Gyroid as a DOUBLED-edge feature-edge style (off-wall→0, ~2,133 on-wall outliers, p99 0.0114 just over tol) and hypothesised the residual was at wall JUNCTIONS/saddles where the two isolevels nearly touch. This arc drove for whole-mesh literal <0.01. Registry E-2026-07-08-GYROID-POLISH (full decision table).
+
+**(1) The saddle hypothesis is REFUTED analytically (no build needed).** `gyroidGradMag` on the mid isolevel: `|∇val|` ∈ [4.8, 38.3], p50 24.0 — NEVER near zero, so the gyroid field has NO low-gradient saddles on the wall; the inner/outer band is UNIFORMLY thin (0.0006–0.0015 in u,t everywhere). The §V11o outliers' `|∇val|` distribution is statistically IDENTICAL to the global (median ratio 1.08), and 100% of them sit INSIDE the ramp band. ⇒ the residual is RAMP chord-sag on the near-vertical facets between the two embedded edges, worst where the band is thinnest (steepest wall) — NOT a saddle recovery-fail.
+
+**(2) The mid-rung lever is REFUTED (same class as SINGLE-midline).** Adding an explicit |val|=0.1425 constraint edge between the doubled pair — predicted analytically to quarter the chord-sag (span-halving) — instead REGRESSED to trueMax 0.312, p99 0.161, **69% OFF-wall**: the band is only ~0.001 wide in (u,t), so a third near-coincident parallel constraint line over-constrains the triangulation and the mesher bridges facets ACROSS to the wrong wall. ⇒ the ramp midpoint must be anchored by a FREE chord-Steiner point, NOT a constraint edge.
+
+**(3) Chord-refine (free Steiner) drives whole-mesh p99 below tol.** Tightening chordTolMm + budget (NO mid-rung) makes the free chord-Steiner insert unconstrained ramp-anchor points where the near-vertical wall chord-sag exceeds tol. Recovery-preserving picket (step 0.10→0.04 adaptive, 2M budget, chordTol 0.003) → whole-mesh **p99 0.00918 (<0.01), trueMax 0.0206, ~583 on-wall outliers (3.7× fewer than the honest baseline), 0 off-wall, watertight, zeroArea 0, wall serr p99 0.0092, 4.4min build**. The finer picket keeps constraint-recovery high (17.3% fail vs 26.7% at chordTol 0.002) so every wall edge stays embedded — that halves trueMax vs the aggressive-chord variant (0.045→0.021). All tractable (≤4.4min, far under the 45min frontier).
+
+**VERDICT: CLOSED-with-floor (near-CAD-grade).** Whole-mesh 99th percentile IS below tol; the residual is a thin ~583-facet ON-wall boundary tail (36/58 sampled in [0.010,0.012]) = the irreducible near-vertical ramp chord-Steiner floor (wall rises ~0.4mm over a ~0.001-wide band; the free chord-Steiner can't get every facet within 0.01 of the smoothstep S-curve without the recovery-breaking / tractability-ceiling density). Literal whole-mesh 0 NOT reached, but this is a density/kernel knob on the PROVEN doubled-band mechanism, NOT a defect class. Mid-rung is a DEAD END. Recommend accept+document, matching the DragonScales CLOSED-with-certified-tread precedent (§V11o).
+
+**LEDGER:** registry E-2026-07-08-GYROID-POLISH; research/exchange/_gyroid_polish/ (gitignored — build/verdict/saddle.ndjson, mesh_{adaptA,adaptC,adaptD,midrungB}.*, scatter_*.png); instrument `_gyroidContourLib.ts` (+gyroidGradMag +decimateContoursAdaptive +buildMidRung) + probe `_gyroid_polish.test.ts` (PF_GYROID_POLISH=1 PF_GP=saddle|build|verdict) + vitest.gyroid_polish.config.ts; commits b4069f8→4375de1→(verdict). DEV-ONLY; no src/ edit; kernel/truth libs read-only.
+
+---
+
 ## V11i — TANGLED-CONTINUATION: all 6 remaining tangled/weave styles adjudicated via the VALIDATED Newton true-3D ruler (V11j instrument) — 3 density FLOORS + 1 crease-dominated + 1 small floor + 1 cliff-class; NO style is Gyroid-class-unmeasurable (2026-07-08)
 
 Continuation of the tangled class after the Gyroid pilot (§V11b, REFUTED-for-Gyroid). Per §V11j §(2) the validated
