@@ -290,6 +290,10 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     const nearRingZ = (z: number): boolean => zs.some(rz => Math.abs(z - rz) <= 3.0);
     const kindCount: Record<string, number> = {}; const kindOut: Record<string, number> = {};
     const samples: Array<Record<string, number | string>> = [];
+    // dv histogram of survivors (tol..): buckets [0.010,0.011),[0.011,0.012),[0.012,0.015),[0.015,0.02),[0.02,0.03),[0.03,)
+    const buckets = [0.011, 0.012, 0.015, 0.02, 0.03, Infinity]; const hist = new Array(buckets.length).fill(0);
+    // winner attribution: how many survivors read via WALL vs via SHEET
+    let winWall = 0, winSheet = 0; let maxDv = 0;
     const nF = mesh.nF; const stride = 8;
     for (let f = 0; f < nF; f += stride) {
       const kind = kindOfFacet(f); if (kind === 'sheet') continue;
@@ -306,14 +310,16 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
       }
       if (dv > TOL) {
         kindOut[kind] = (kindOut[kind] ?? 0) + 1;
-        if (samples.length < 30) { const cz2 = (az + bz + cz) / 3; const cr = (Math.hypot(ax, ay) + Math.hypot(bx, by) + Math.hypot(cx, cy)) / 3; samples.push({ kind, z: +cz2.toFixed(3), r: +cr.toFixed(3), dv: +dv.toFixed(5), dSheet: +dvSheet.toFixed(5), dWall: +(dvWall === Infinity ? -1 : dvWall).toFixed(5) }); }
+        if (dv > maxDv) maxDv = dv;
+        for (let bi = 0; bi < buckets.length; bi++) { if (dv < buckets[bi]) { hist[bi]++; break; } }
+        if (dvWall <= dvSheet) winWall++; else winSheet++;
+        if (samples.length < 20) { const cz2 = (az + bz + cz) / 3; const cr = (Math.hypot(ax, ay) + Math.hypot(bx, by) + Math.hypot(cx, cy)) / 3; samples.push({ kind, z: +cz2.toFixed(3), r: +cr.toFixed(3), dv: +dv.toFixed(5), dSheet: +dvSheet.toFixed(5), dWall: +(dvWall === Infinity ? -1 : dvWall).toFixed(5), win: dvWall <= dvSheet ? 'wall' : 'sheet' }); }
       }
     }
+    const histScaled = hist.map((h) => h * stride);
     // eslint-disable-next-line no-console
-    console.log(`[LIPDIAG] kindCount=${JSON.stringify(kindCount)} kindOut=${JSON.stringify(kindOut)} (×${stride} scaled)`);
-    // eslint-disable-next-line no-console
-    console.log(`[LIPDIAG] samples=${JSON.stringify(samples, null, 0)}`);
-    checkpoint({ key: 'lipdiag_nZ110', task: 'lip-outlier-classify', kindCount, kindOut, kindOutScaled: Object.fromEntries(Object.entries(kindOut).map(([k, v]) => [k, v * stride])), stride, samples });
+    console.log(`[LIPDIAG] kindOutScaled=${JSON.stringify(Object.fromEntries(Object.entries(kindOut).map(([k, v]) => [k, v * stride])))} maxDv=${maxDv.toFixed(5)} winWall=${winWall * stride} winSheet=${winSheet * stride} hist[<.011,.012,.015,.02,.03,+]=${JSON.stringify(histScaled)}`);
+    checkpoint({ key: 'lipdiag_nZ110', task: 'lip-outlier-classify', kindCount, kindOut, kindOutScaled: Object.fromEntries(Object.entries(kindOut).map(([k, v]) => [k, v * stride])), maxDvMm: +maxDv.toFixed(6), winWallScaled: winWall * stride, winSheetScaled: winSheet * stride, dvHistScaled: histScaled, histBuckets: ['<.011', '<.012', '<.015', '<.02', '<.03', '>=.03'], stride, samples });
     expect(true).toBe(true);
   }, 30 * 60 * 1000);
 
