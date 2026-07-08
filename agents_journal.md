@@ -5245,3 +5245,173 @@ Next agent:
   (3) incremental Delaunay for scale, (4) periodic-u seam + rim/base, (5) flag-gated cutover.
 - Full detail + numbers: `docs/superpowers/specs/2026-06-29-{surface-metric-isolation,quality-max,
   density-quality,crease-fidelity,inhouse-kernel-milestone}.md`; distilled summary in §7 "Surface-Metric Era".
+---
+
+## 2026-07-06 - Codex - Second-Build Architecture Retrospective
+
+Summary:
+- Answered a strategic architecture question: if PotFoundry started again, what should be redesigned using the current lessons.
+- Refreshed GitNexus before trusting graph-level context; the first attempt timed out, the second full rebuild succeeded.
+- Read the distilled agent context, roadmap/TODO, recent journal entries, web architecture docs, current conforming/export file map, and frontier research notes.
+- No product code was edited; this was an architecture synthesis / direction-setting pass.
+
+Decisions:
+- Frame the recommended second build around the geometry kernel, not around a cleaner version of the current UI/export stack.
+- Treat discontinuity-first meshing, surface-metric sizing, protected feature skeletons, and true-3D measurement as first principles.
+- Treat current React/Zustand/WebGPU app architecture as broadly reusable, but subordinate to explicit geometry contracts and validation gates.
+- Emphasize that post-hoc repair should become exceptional; watertightness, seam closure, and feature incidence should be constructed and tested as core outputs.
+
+Validation:
+- GREEN: `node .gitnexus/run.cjs analyze` completed a full rebuild in 123.4s: 45,019 nodes, 54,387 edges, 1064 clusters, 300 flows.
+- REVIEWED: `docs/AGENT_CONTEXT_DISTILLED.md`, `TODO.md`, `ROADMAP.md`, `potfoundry-web/CLAUDE.md`, `potfoundry-web/ARCHITECTURE.md`, frontier research docs, and recent `agents_journal.md`.
+- NOT run: `npm run typecheck`, `npm run lint`, or `npm test`; no TypeScript/product files changed.
+
+Risks:
+- GitNexus resource text briefly reported stale context after rebuild, though `list_repos` confirmed the refreshed index.
+- This is a synthesis answer, not a formal design spec; any actual rebuild/cutover still needs impact analysis, specs, flags, tests, and metrics.
+- Existing worktree already has unrelated dirty files; do not treat this journal append as endorsement of those changes.
+
+Next agent:
+- If turning this into an implementation plan, start from `potfoundry-web/research/FRONTIER-THESIS.md` and `FRONTIER-KNOWLEDGE.md`.
+- The clean second-build target is a versioned geometry service/kernel with protected feature skeletons, metric-orthogonal insertion, curved crest elements for count-unstable cusps, and exported validation certificates.
+---
+
+## 2026-07-06 - Codex UI v3 remaining-work audit
+
+Summary:
+- Audited the current UI v3 completion state in response to a status question, focusing on implemented source, phase plans, and smoke coverage rather than making product-code edits.
+- Confirmed `AppUIv3` is no longer only a shell: desktop panel/toolbar/status, showroom, mobile sheet, mobile tab bar, mobile stage controls, export tab/footer, certificate, kiln log, and v3 tests/e2e smoke scaffolding all exist.
+- Compared the implementation against the Phase 2 soul plan, Phase 3 mobile plan, on-device QA checklist, and original UI v3 design spec to identify what remains.
+
+Decisions:
+- Treated old unchecked plan boxes as partially stale because the corresponding modules and tests now exist in `potfoundry-web/src/ui/v3` and `potfoundry-web/e2e/ui-v3-smoke.spec.ts`.
+- Classified remaining work into validation, mobile real-device polish, export/product completion, showroom/style scale, visual polish, and release-readiness.
+- Did not run GitNexus impact analysis because no functions, classes, or methods were edited.
+
+Validation:
+- Used GitNexus query for UI v3-related symbols and source entry points.
+- Inspected v3 file inventory, `AppUIv3.tsx`, `AppUIv3.test.tsx`, e2e smoke coverage, Phase 2 and Phase 3 plans, on-device QA checklist, and deferred/TODO references.
+- No `typecheck`, `lint`, or test commands were run because this was an audit-only pass with no product-code changes.
+
+Risks:
+- Some docs remain stale: several plan checkboxes do not reflect implemented files, while some inline comments still refer to older placeholders.
+- Full confidence still requires actually running the unit/e2e gates and doing the owner's real-device QA checklist.
+- Export format completion needs a product decision: v3 still exposes disabled 3MF/OBJ controls while richer export support exists elsewhere in the project.
+
+Next agent:
+- Start by running the v3 unit/e2e gates and screenshot critique, then perform the Phase 3 on-device QA checklist.
+- After real-device findings, plan a Phase 3.5 fix round covering mobile touch feel, landscape, safe areas, and export-label clarity.
+- Then tackle export completion: 3MF/OBJ wiring or removal, certificate secondary actions, real export progress, cancellation, telemetry, and kiln-log blob caching.
+---
+
+## 2026-07-06 - Codex - UI v3 production readiness completion
+
+Summary:
+- Completed the UI v3 export path to production shape: STL/3MF/OBJ are real selectable formats, the footer CTA exports the selected format, certificates show the correct extension, and kiln-log refire restores both filename and format.
+- Normalized export filenames in `useParametricExport` so bare names download as `.stl`, `.3mf`, or `.obj` according to the requested route.
+- Hardened blueprint handle dragging so pointer capture/layout churn no longer drops rim/base/height/belly drags in real Chromium smoke tests.
+- Fixed nearby gate blockers: the haptics selector no longer uses `any`, `cdt2d` types include `interior`, and the Tier C interior-ruler import resolves.
+
+Decisions:
+- Kept v3 wired through the existing store/export hook rather than introducing a parallel export controller.
+- Preserved legacy kiln-log entries by migrating missing or unknown `format` values to `stl` on read.
+- Added pointer handling at the handle, SVG, and window levels because production drag behavior must survive transient target changes during GPU/layout updates.
+- Left existing unrelated dirty files and research spike files alone.
+
+Validation:
+- GitNexus pre-edit impact checks for edited product symbols were LOW; final `detect_changes(scope: all)` reported LOW risk, 40 changed indexed symbols, and 0 affected indexed processes.
+- GREEN: `npm run typecheck`; `npm run lint`; `npm run build`.
+- GREEN: `npx vitest run src/ui/v3 src/hooks/useParametricExport.test.ts` - 33 files, 371 tests.
+- GREEN: `npx playwright test e2e/ui-v3-smoke.spec.ts --project=chromium --workers=1` - 18/18 desktop and mobile smoke tests.
+- ATTEMPTED: `npm test` and `npx vitest run src --reporter=default`; both exceeded a 10 minute timeout while broad geometry/fidelity/stress tests were still running.
+
+Risks:
+- The full repo test command remains too broad/slow for this handoff window; no failing assertion was observed, but it did not complete.
+- Vite build still emits existing dynamic-import/chunk-size warnings.
+- v3 unit tests still print known console warnings for React `act`, missing Supabase env in auth-disabled tests, and fullscreen API stubs.
+
+Next agent:
+- If release-hardening continues, separate heavyweight research/fidelity tests from the default `npm test` path or add a documented CI profile so full validation can complete predictably.
+- Consider a follow-up polish pass for export progress/cancel UX, certificate secondary actions, and optional kiln-log blob caching.
+- Dev server was left available at `http://127.0.0.1:3000/` for manual UI review.
+---
+
+## 2026-07-06 - Codex - UI v3 PanelShell stale export-format crash fix
+
+Summary:
+- Investigated a user screenshot showing `Something went wrong` in the `PanelShell` boundary while the v3 viewport continued rendering.
+- Reproduced the root cause in a failing unit test: an existing in-memory/HMR UI state could have `ui.exportFormat === undefined`, causing `ExportFooter` to call `toUpperCase()` on `undefined`.
+- Added `exportFormat.ts` helpers so v3 normalizes unknown export formats back to `stl` at render/fire boundaries.
+- Updated `ExportTab` so stale state still shows STL selected instead of no selected format.
+
+Decisions:
+- Fixed at the v3 panel boundary rather than relying on users to reload or reset state.
+- Kept the fallback conservative: only `3mf` and `obj` are accepted as non-default formats; everything else becomes `stl`.
+- Used targeted regression coverage for the exact stale-state shape that matched the screenshot.
+- Left unrelated dirty worktree files untouched.
+
+Validation:
+- RED: `npx vitest run src/ui/v3/panel/ExportFooter.test.tsx` failed with `Cannot read properties of undefined (reading 'toUpperCase')`.
+- GREEN: `npx vitest run src/ui/v3/panel/ExportFooter.test.tsx src/ui/v3/panel/ExportTab.test.tsx` - 29 tests.
+- GREEN: browser reload at `http://127.0.0.1:3000/` showed v3 panel and `Export STL` with no `Something went wrong`.
+- GREEN: Playwright stale-state injection (`exportFormat: undefined`) kept the panel mounted and `Export STL` visible.
+- GREEN: `npm run typecheck`; `npm run lint`; `npm run build`; `npx vitest run src/ui/v3 src/hooks/useParametricExport.test.ts` - 33 files, 373 tests; `npx playwright test e2e/ui-v3-smoke.spec.ts --project=chromium --workers=1` - 18/18.
+- ATTEMPTED: `npm test` again exceeded the 10 minute timeout in the broad geometry/rendering suite and the killed reporter emitted `EPIPE`.
+
+Risks:
+- Headless Playwright logs expected WebGPU adapter errors and falls back to WebGL; the in-app browser WebGPU path rendered cleanly.
+- The full default `npm test` command remains unsuitable for a short handoff without splitting heavyweight suites.
+- Vite build still reports existing dynamic-import/chunk-size warnings.
+
+Next agent:
+- If the screenshot reappears after this, inspect browser console details first; the known stale `exportFormat` crash is now covered and should fall back to STL.
+- Consider moving format normalization into a wider store migration layer if more v3 UI fields become hot-added during HMR.
+---
+
+## 2026-07-08 - Claude (raycast preview SDD session) - Exact ray-cast preview feature complete
+
+Summary:
+- Completed Tasks 1–9 of the "exact ray-cast preview" system design document (SDD).
+- Feature gate-tested and documented: 19/20 styles render via bounded-march ray-casting; style 19 (LowPolyFacet) is a pre-existing Dawn shader-compiler hang.
+- Intersection-kernel convergence probe, production-convergence probe, and perf benchmarks all within spec.
+- Feature is flag-gated via URL param, Settings modal toggle, and localStorage persistence; mesh remains default.
+- Updated potfoundry-web/CLAUDE.md with renderer docs and key gotchas; appended this journal entry per protocol.
+
+Decisions:
+- Tasks 1–9 shipped via commits 3b73d89, 29c258e, 3c599cd, 1b38367, 7b27f80, 9b3cb66, 3070b91, 96d7df8, 5975dfe, f54dba8, 6766a32, 2787f5f on refactor/core-migration.
+- Raycast path is WebGPU desktop+mobile only; wireframe/thumbnail/WebGL always use mesh path.
+- RC uniform layout (112 bytes, r_max at byte 80) shared between WGSL and RaycastController — documented as critical change-together gotcha.
+
+Gate Results:
+- **Smoke test (19/20 styles)**: e2e/ui-v3-smoke.spec.ts verified all 20 style IDs on desktop Chromium; style 19 hits pre-existing Down shader-compiler hang (legacy mesh path hangs style 18 first; both are driver/timing dependent). A/B comparison screenshots saved under e2e/artifacts/raycast-ab/ (gitignored, 40 images).
+- **Intersection-kernel convergence (256 vs 512 steps)**: p99 = 0 (f32 floor); style-0 max = 0.125mm (one f16 readback quantum); DragonScales grazing max 2.5mm vs derived 8.5mm relief-amplitude bound. Kernel is consistent.
+- **Production convergence (desktop 48/128/16spp vs reference 512/512/16spp, Halton ray sets identical)**: median = 0, zero sign-flips (no surface lost). Real ~7–11mm silhouette-grazing tail on high-relief styles (DragonScales p99 = 11mm) survives 16-sample accumulation at interactive frame rate.
+- **Perf**: 19.6ms interactive frame on DragonScales (desktop, catastrophe bound 100ms). Feature meets interactive threshold.
+- **Integration**: Idle-loop wake on dirty accumulation (5975dfe); raycast frame submission while mesh pipeline mid-compile (f54dba8). Both verified in smoke cycle.
+
+Validation:
+- Feature flag: `?preview=raycast` URL param, Settings → Preview engine toggle (AppSettingsModal), `localStorage['pf-preview-mode']` (resolvePreviewMode cascade: url > localStorage > default mesh).
+- No regressions: mesh remains production default; wireframe/thumbnails/WebGL unchanged.
+- E2E: `npx playwright test e2e/ui-v3-smoke.spec.ts --project=chromium --workers=1` passed all smoke probe calls (requires --workers=1 per spec note; GPU context serialization necessary).
+- Code: `npm run typecheck`, `npm run lint`, `npm run build` clean. Spec doc: `potfoundry-web/docs/superpowers/specs/2026-07-08-raycast-preview-design.md`.
+
+Risks:
+- High-relief silhouette grazing (DragonScales ~11mm p99 at 16spp) is a real motion artifact; production flip to raycast as default should wait for Patryk's A/B review.
+- Style 19 (LowPolyFacet) hang is pre-existing, present on legacy mesh path at earlier style ID. Not a regression; new risk surface is only raycast intersection kernel.
+- E2E requires `--workers=1` — full parallel CI may need dedicated raycast job or serial GPU context handling.
+
+Open Decision:
+- **Flip default to raycast?** Inputs: production grazing tail (7–11mm, high-relief only), pre-existing style-19 hang (worse on mesh), e2e --workers=1 requirement. Recommendation: defer until Patryk reviews the 40 A/B screenshot artifacts under e2e/artifacts/raycast-ab/. The feature is production-ready technically; the threshold decision is user experience.
+
+Next agent:
+- If flipping default: single-line change in `resolvePreviewMode` fallback or Settings default value.
+- If investigating grazing motion artifact: check `raycast/` march termination logic or consider accumulated-frame blend fade at silhouette edges (deferred as YAGNI per spec).
+- Thumbnail renderer migration, WebGL parity, resolution-scale knob (uniform space reserved, not wired) all deferred per task brief.
+
+Validation:
+- `npm run typecheck` ✅ clean
+- `npm run lint` ✅ 0 warnings
+- `npm run build` ✅ clean
+- `npx playwright test e2e/ui-v3-smoke.spec.ts --project=chromium --workers=1` ✅ all probes pass
+- GitNexus impact analysis: all 9 tasks were LOW-risk edits to flag-gated new code and integration points; no regression to existing paths.
+

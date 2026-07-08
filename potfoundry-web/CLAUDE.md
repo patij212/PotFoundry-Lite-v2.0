@@ -102,6 +102,7 @@ src/
 | `ImportanceMapComputer.ts` | Adaptive pipeline stage 2. GPU compute that samples style curvature across a 64×64 UV grid to produce an importance map. Output drives adaptive background point density in `ConstrainedTriangulator`. |
 | `AdaptiveExportComputer.ts` | Adaptive pipeline stage 4. GPU triangle subdivision using feature proximity importance. Uses `weldMesh` post-GPU to merge seam vertices. Known issue: T-junctions where neighbour triangles split independently at the importance threshold. |
 | `ParametricExportComputer.ts` | Parametric pipeline orchestrator (pipeline 4, current best path). ~1400 lines — delegates to modular `parametric/` sub-modules for curvature analysis, feature detection, chain linking, grid building, tessellation, optimization, and subdivision. See `parametric/` directory for individual module docs. |
+| `raycast/RaycastController.ts` | Exact ray-cast preview (flag-gated: `?preview=raycast` / Settings → Preview engine / `localStorage['pf-preview-mode']`). Fullscreen bounded-march+bisection against the true style_radius solid; progressive accumulation AA (16 spp desktop / 8 mobile). Mesh preview remains the default and the wireframe/thumbnail/WebGL path. Dev API: `window.__pfRaycast.controller` (setQuality/setDebugMode/readbackPixels). Spec: `../docs/superpowers/specs/2026-07-08-raycast-preview-design.md`. |
 
 ## Dev Hooks (`.claude/hooks/`)
 
@@ -139,6 +140,11 @@ Only `geometry`, `style`, `mesh`, `appearance` are persisted to localStorage.
 4. Auto-detect (WebGPU preferred, WebGL fallback)
 
 Auto-recovery on GPU crash: `sessionStorage['pf-gpu-recovery']` prevents reload loops.
+
+**Ray-cast preview flag:** `resolvePreviewMode` (url > localStorage > mesh). The ray-cast
+path is desktop+mobile WebGPU only; wireframe mode always uses the mesh path. The RC
+uniform layout (112 bytes, r_max at byte 80 written by a GPU buffer copy) is shared between
+`preview_raycast.wgsl` and `RaycastController.writeRcUniforms` — change both together.
 
 **Supabase null safety:** `supabase` client in `services/supabase.ts` can be `null`.
 Always call `isSupabaseConfigured()` before any `supabase.*` call.
