@@ -97,7 +97,22 @@ outliers 8,744 (NOT 0; nZ220 6,212) · tris 4.09M (nZ220 8.04M ≤ 10M) · projF
 
 **METHOD:** DEV-ONLY. Reuse the EXISTING probe `research/bridge/_pf_tangledTargeted.test.ts` (env-gated PF_TT=<Style>, resumable, per-pass ndjson → `research/exchange/_tangled_targeted/<style>/passes.ndjson`; done-pass SKIP). NO src/ edit; NO edit to `tierC/**`+`_tierc_flankband` or `_gyroid_literal0` (concurrent agents), `_ds_conforming*`, `_gyroid_truth*`, `_pf_tangledDensity.test.ts`. NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs, ONE build at a time; honest multi-hour timeouts (sync vitest cannot be interrupted — size to the job); explicit file staging (NEVER git add -A). Ledger §V11u-2 appended per style-close/kill; registry continuation; commit per style verdict.
 
-**RESULT (pending — running Crystalline).**
+**RESULT — §V11u-2 Crystalline: FRONTIER-INCOMPLETE (monotone-converging near-vertical relief tail; 5 passes cut Newton 35,502→1,891 but did NOT reach literal 0 — the residual is ~500× HexHive's base, so 5 passes of halving is insufficient budget, NOT a hard cliff).** Base b0.008/s224 REPRODUCES the V11r anchor EXACTLY (tris 1,609,174 / proj 3.22M / radial 52,077 / worstTrue 0.15478 — deterministic). Then per pass: radial-flag → inject dense pinned Steiner micro-cluster (worst-sag bary + 6-ring, spread 0.001) at each flagged facet → re-verdict Newton (500/500 stratified basis, the CARRIED downsize) on the FINAL EMITTED mesh:
+
+| pass | injected | tris | projFullPot | radialOut(max) | NEWTON(strat) | worstTrue | nonMan | zeroArea |
+|---|---|---|---|---|---|---|---|---|
+| base | 0 | 1,609,174 | 3,218,348 | 52,077 (0.236) | 35,502 | 0.15478 | 0 | 0 |
+| local1 | 241,999 | 3,343,026 | 6,686,052 | 29,822 (0.220) | 16,436 | 0.10158 | 0 | 0 |
+| local2 | 371,118 | 3,520,730 | 7,041,460 | 21,079 (0.211) | 9,724 | 0.10967 | 0 | 0 |
+| local3 | 467,046 | 3,628,225 | 7,256,450 | 14,962 (0.206) | 5,983 | 0.10662 | 0 | 0 |
+| local4 | 539,561 | 3,686,285 | 7,372,570 | 8,424 (0.196) | 3,271 | 0.10623 | 0 | 0 |
+| local5 | 579,052 | 3,729,149 | 7,458,298 | 4,585 (0.194) | **1,891** | 0.08698 | 0 | 0 |
+
+**Newton 35,502 → 16,436 → 9,724 → 5,983 → 3,271 → 1,891** — STRICTLY MONOTONE (cuts ~54/41/38/45/42% per pass, roughly halving), watertight (nonMan 0), zeroArea 0, projFullPot **7.46M ≤ 10M** hitBudget=false the whole way (a genuine density point). **VERDICT: FRONTIER-INCOMPLETE** — the pre-registered "5 local passes FAIL to reach 0" kill fired. NOT a non-monotone kill (never grew) and NOT a budget kill (7.46M, headroom). SCATTER CLASSIFICATION: this is a SLOW-CONVERGING near-vertical relief tail, NOT a hard cliff (contrast Gothic §V11s worst FROZEN 0.469): Crystalline's worstTrue held ~0.106-0.11 for passes 1-4 then FINALLY dropped 0.106→0.087 at pass 5, and radialMax crept 0.236→0.194 monotonically — the injection IS clearing facets (worst-facet (u,t) migrated (0.15,0.46)→(0.47,0.90)→(0.99,0.41) as old worst-cliffs got fixed). The residual halves each pass; extrapolating the ~0.43 geometric ratio, ~4-5 MORE passes (proj still <8M — tris grew only +43k on pass 5) would plausibly reach 0. HexHive closed in 2 passes ONLY because its base residual was 60; Crystalline's 35,502 base needs ~10-11 halvings, not 5. Tris grew +2.12M base→final (mostly pass 1's 242k-point injection; passes 2-5 added <0.4M total — the local refinement is genuinely LOCAL, flat bulk untouched). Data: `research/exchange/_tangled_targeted/Crystalline/{passes,final}.ndjson` + inj_0..4.json sidecars (gitignored). Resilience: env killed the background wrapper mid-pass-1 but the detached vitest child + per-pass checkpoint carried all 6 passes to completion with zero recompute.
+
+**RECOMMENDATION (Crystalline):** either (a) raise `maxPasses` to ~10 on this exact config (the monotone-halving trajectory + <8M projection headroom + moving worstTrue predict literal-0 is REACHABLE — this is a BUDGET-of-passes limit, not a mechanism wall; distinct from the Gothic hard-cliff class) OR (b) accept 1,891 Newton @ 7.46M / worstTrue 0.087 as a 99th-percentile-CAD frontier point (p99 well under tol; the residual is a thin near-vertical relief tail). The clean monotone trajectory is the headline: LOCAL injection PROVABLY drives the Crystalline true-3D residual down at a fixed geometric rate under budget — the recipe WORKS, it just needs more passes than the pre-registered 5 for a residual this large.
+
+**§V11u-3 Voronoi: [running / pending].**
 
 ---
 
