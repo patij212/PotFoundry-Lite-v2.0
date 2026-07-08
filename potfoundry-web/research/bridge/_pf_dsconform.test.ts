@@ -43,7 +43,10 @@ const RAD_CELL = Math.max(0.35, 4 * (CIRC / RAD_TWIN.nTheta));
 // proven fast + fine-on-sheet) supplies the SHEET (⇒ 1b passes by construction — same surface as the radial twin);
 // a tiny wall-only ref (7 rings × wallNTheta × 2 tris) supplies the RISER. This is the V11f "radial sheet + explicit
 // riser wall quads, OPEN surface" cure, built cheaply (the full dense conforming ref's 8M-tri BVH stalled 1b >15min).
-const WALLEPS = 0.01;
+// WALLEPS: half-z-thickness of the ruler's riser wall. The MESH's ring rows use zEps=5e-4; if the ruler's wall
+// skirts sit at z_k±0.01 (a 0.0095mm z-mismatch), a mesh ring vertex reads ~0.0095mm to the wall as an ALIGNMENT
+// artifact. Matching WALLEPS to the mesh zEps removes that. Env-overridable to A/B the two.
+const WALLEPS = Number(process.env.PF_DS_WALLEPS ?? '0.0005');
 const WALL_NTHETA = 4096; // dense riser so the wall's own on-surface residual ≪ tol (1c). Tiny mesh (~57k tris).
 const WALL_CELL = 0.3;
 // Build the composite OPEN-surface conforming ruler (radial-sheet twin + riser wall-only).
@@ -99,6 +102,32 @@ function buildRows(rA: (t: number, z: number) => number, rings: StepRing[], nTh:
     const treadSub = Math.max(2, Math.min(treadCap, Math.round(span / Math.max(arc, 1e-4)) + 1));
     for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
     rows.push({ z: ring.z, rz: rzOut, thetas: th(), kind: 'ringAbove' });
+    cursor = ring.z;
+  }
+  pushSheetBand(cursor, H, nZband); rows.push({ z: H, rz: H - zEps, thetas: th(), kind: 'sheet' });
+  return rows;
+}
+// REFINED builder: same as buildRows but adds `skirtRows` finely-spaced SHEET rows inside each ±skirtBand near-ring
+// gap (approaching ringBelow from below and departing ringAbove above), so the transition strip that chords the
+// ~1mm near-vertical wall is z-refined. Closes the lipdiag winWall residual (mesh strips chording the wall at
+// ~0.0104mm). treadCapR raises the tread annulus radial sub-count.
+function buildRowsRefined(rA: (t: number, z: number) => number, rings: StepRing[], nTh: number, nZband: number, treadCapR: number, skirtRows: number, skirtBand: number): RowSpec[] {
+  const zEps = 5e-4; const rows: RowSpec[] = []; const sorted = [...rings].sort((a, b) => a.z - b.z); const th = (): Float64Array => evenThetas(nTh);
+  rows.push({ z: 0, rz: zEps, thetas: th(), kind: 'sheet' }); let cursor = 0;
+  const nearRing = (z: number): boolean => sorted.some(rg => Math.abs(z - rg.z) < skirtBand + 1e-6);
+  const pushSheetBand = (z0: number, z1: number, n: number): void => { for (let i = 1; i < n; i++) { const z = z0 + (z1 - z0) * (i / n); if (nearRing(z)) continue; rows.push({ z, rz: z, thetas: th(), kind: 'sheet' }); } };
+  for (const ring of sorted) {
+    pushSheetBand(cursor, ring.z, nZband);
+    // skirt-below: finely-spaced sheet rows from (ring.z - skirtBand) up to ringBelow, geometrically clustered toward the ring.
+    for (let s = 1; s <= skirtRows; s++) { const frac = s / (skirtRows + 1); const z = ring.z - skirtBand * (1 - frac * frac); rows.push({ z, rz: z, thetas: th(), kind: 'sheet' }); }
+    const rzIn = ring.z - zEps, rzOut = ring.z + zEps;
+    rows.push({ z: ring.z, rz: rzIn, thetas: th(), kind: 'ringBelow' });
+    const rIn = rA(0, rzIn), rOut = rA(0, rzOut); const span = Math.abs(rOut - rIn); const rMean = 0.5 * (rIn + rOut); const arc = (TAU * rMean) / nTh;
+    const treadSub = Math.max(2, Math.min(treadCapR, Math.round(span / Math.max(arc, 1e-4)) + 1));
+    for (let s = 1; s < treadSub; s++) rows.push({ z: ring.z, rz: ring.z, thetas: th(), kind: 'tread', treadBlend: { s: s / treadSub, rzInner: rzIn, rzOuter: rzOut } });
+    rows.push({ z: ring.z, rz: rzOut, thetas: th(), kind: 'ringAbove' });
+    // skirt-above: finely-spaced sheet rows from ringAbove up to (ring.z + skirtBand), clustered toward the ring.
+    for (let s = skirtRows; s >= 1; s--) { const frac = s / (skirtRows + 1); const z = ring.z + skirtBand * (1 - frac * frac); rows.push({ z, rz: z, thetas: th(), kind: 'sheet' }); }
     cursor = ring.z;
   }
   pushSheetBand(cursor, H, nZband); rows.push({ z: H, rz: H - zEps, thetas: th(), kind: 'sheet' });
@@ -265,6 +294,43 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
 
   // LIPDIAG (PF_DS_CONF_LIPDIAG=1): classify the ~30k lip facets that SURVIVE the conforming ruler — which row-kind,
   // their (r,z), and whether the wall-only ref covers them (dist-to-wall) vs the sheet (dist-to-radial-twin).
+  // WALLEPS A/B (PF_DS_WALLEPS_AB=1): is the ~0.0104 lip residual a wallEps-vs-meshZeps ALIGNMENT artifact? Score
+  // the SAME nZ110 lip facets under wall-only refs at wallEps ∈ {0.01, 0.0005} (mesh zEps). If it collapses at
+  // 0.0005, the residual was ruler-alignment (not a mesh defect) ⇒ closes; if it persists, genuine mesh chord.
+  it.skipIf(process.env.PF_DS_WALLEPS_AB !== '1')('WALLEPS-AB — align ruler wall to mesh ring rows', () => {
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    const rows = buildRows(rA, rings, 2400, 110, 4);
+    const mesh = buildStructuredWall(rA, H, rows);
+    const { xyz, idx } = toF32(mesh);
+    const cls = facetClassifier(mesh);
+    const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
+    const sheetLoc = buildRefLocator(radTwin, RAD_CELL);
+    const zs = rings.map(r => r.z); const nearRingZ = (z: number): boolean => zs.some(rz => Math.abs(z - rz) <= 3.0);
+    const scoreLip = (weps: number): { lipOut: number; max: number; hist: number[] } => {
+      const wallRef = buildWallOnlyReference(rA, rings, WALL_NTHETA, weps);
+      const wallLoc = buildRefLocator(wallRef, WALL_CELL);
+      let lipOut = 0, max = 0; const buckets = [0.011, 0.012, 0.015, 0.02, Infinity]; const hist = new Array(buckets.length).fill(0);
+      const nF = mesh.nF; const stride = 8;
+      for (let f = 0; f < nF; f += stride) {
+        if (cls(f) !== 'lip') continue;
+        const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+        const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2], bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2], cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+        let dv = 0;
+        for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; const ds = sheetLoc.dist(px, py, pz); const dw = nearRingZ(pz) ? wallLoc.dist(px, py, pz) : Infinity; const d = Math.min(ds, dw); if (d > dv) dv = d; }
+        if (dv > TOL) { lipOut++; if (dv > max) max = dv; for (let bi = 0; bi < buckets.length; bi++) if (dv < buckets[bi]) { hist[bi]++; break; } }
+      }
+      return { lipOut: lipOut * stride, max, hist: hist.map(h => h * 8) };
+    };
+    const a01 = scoreLip(0.01); const a005 = scoreLip(0.0005);
+    // eslint-disable-next-line no-console
+    console.log(`[WALLEPS-AB] wallEps=0.01 lipOut=${a01.lipOut} max=${a01.max.toFixed(5)} hist=${JSON.stringify(a01.hist)}`);
+    // eslint-disable-next-line no-console
+    console.log(`[WALLEPS-AB] wallEps=0.0005 lipOut=${a005.lipOut} max=${a005.max.toFixed(5)} hist=${JSON.stringify(a005.hist)}`);
+    checkpoint({ key: 'walleps_ab', task: 'walleps-alignment-ab', wallEps01: a01, wallEps0005: a005, verdict: a005.lipOut < a01.lipOut * 0.3 ? 'ALIGNMENT ARTIFACT: aligning the ruler wall to mesh ring rows collapses the residual' : 'GENUINE: residual persists under aligned wall' });
+    expect(true).toBe(true);
+  }, 30 * 60 * 1000);
+
   it.skipIf(process.env.PF_DS_CONF_LIPDIAG !== '1')('LIPDIAG — classify surviving lip outliers', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
@@ -322,6 +388,37 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     checkpoint({ key: 'lipdiag_nZ110', task: 'lip-outlier-classify', kindCount, kindOut, kindOutScaled: Object.fromEntries(Object.entries(kindOut).map(([k, v]) => [k, v * stride])), maxDvMm: +maxDv.toFixed(6), winWallScaled: winWall * stride, winSheetScaled: winSheet * stride, dvHistScaled: histScaled, histBuckets: ['<.011', '<.012', '<.015', '<.02', '<.03', '>=.03'], stride, samples });
     expect(true).toBe(true);
   }, 30 * 60 * 1000);
+
+  // CLOSE LEVER (PF_DS_CONF_CLOSE=1): the lipdiag residual = mesh ring-transition strips chording the ~1mm wall at
+  // ~0.0104mm (90% in [0.010,0.011), winWall 90%). Lever = skirt-row densification near each ring (buildRowsRefined).
+  // Screen a skirtRows sweep at stride 8; the winner (0 outliers) is confirmed every-facet by a separate stride-1 run
+  // (PF_DS_CLOSE=1). Reads the VALIDATED-gate ledger; refuses to run if gates absent.
+  it.skipIf(process.env.PF_DS_CONF_CLOSE !== '1')('CLOSE — skirt-densification lever under the validated conforming ruler', () => {
+    const v1a = readPass('t1a_construction'), v1b = readPass('t1b_smoothctrl'), v1c = readPass('t1c_density'), v1d = readPass('t1d_onesided');
+    if (!(v1a && v1b && v1c && v1d)) { plog(`[CLOSE] gates not all validated (${v1a}/${v1b}/${v1c}/${v1d}) — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    plog(`[CLOSE] building composite conforming ruler...`);
+    const confLoc = buildConformRuler(rA);
+    const NTH = 2400, NZ = 110;
+    const closeStride = process.env.PF_DS_CLOSE === '1' ? 1 : Number(process.env.PF_DS_STRIDE ?? '8');
+    // sweep: (treadCapR, skirtRows, skirtBand). Baseline treadCap=4/skirt=0 already scored (lip~31k).
+    const configs = (process.env.PF_DS_CLOSE === '1')
+      ? [[8, 6, 0.6]]  // confirm the screened winner every-facet
+      : [[6, 3, 0.6], [8, 6, 0.6], [10, 10, 0.8]] as Array<[number, number, number]>;
+    for (const [treadCapR, skirtRows, skirtBand] of configs as Array<[number, number, number]>) {
+      const key = `close_tc${treadCapR}_sk${skirtRows}_sb${skirtBand}${closeStride === 1 ? '_s1' : ''}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const tb = Date.now();
+      const rows = buildRowsRefined(rA, rings, NTH, NZ, treadCapR, skirtRows, skirtBand);
+      const mesh = buildStructuredWall(rA, H, rows);
+      const { xyz, idx } = toF32(mesh);
+      const cls = facetClassifier(mesh);
+      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) stride=${closeStride} — scoring...`);
+      scoreMesh(key, 'close-skirtlever', NZ, mesh.nF, xyz, idx, confLoc, cls, closeStride, rA);
+    }
+    expect(true).toBe(true);
+  }, 6 * 60 * 60 * 1000);
 
   it.skipIf(process.env.PF_DS_CONF !== '1')('validate conforming ruler (1a-1d) + re-score + close', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
