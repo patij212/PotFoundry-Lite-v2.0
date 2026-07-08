@@ -4,6 +4,7 @@ import { X, Palette, Monitor, Sun, Moon, SunMoon, Smartphone, Terminal } from 'l
 import { useAppStore, useUIActions } from '../../state';
 import { useColorMode, type ColorMode } from '../v2/hooks/useColorMode';
 import { useConsoleStore } from '../debug/hooks/useConsoleStore';
+import { PreviewModeSelect } from '../controls/PreviewModeSelect';
 import './AppSettings.css';
 
 interface AppSettingsModalProps {
@@ -102,6 +103,15 @@ export function AppSettingsModal({ open, onOpenChange }: AppSettingsModalProps) 
             <p className="app-settings-hint">
               Page will reload when changed.
             </p>
+          </section>
+
+          {/* Preview Engine Section */}
+          <section className="app-settings-section">
+            <h3 className="app-settings-section-title">
+              <Monitor size={15} />
+              Preview Engine
+            </h3>
+            <PreviewModeSelect />
           </section>
 
           {/* Color Mode Section — v2 only */}
