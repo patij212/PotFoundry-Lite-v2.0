@@ -1807,6 +1807,57 @@ mask_b1.0_frontier.json, diag_*.json, ribgate_*_pass.ndjson} (gitignored).
 
 ---
 
+## V11m — RESEARCH-vs-PRODUCTION COST DISCREPANCY (ROUND 5, E-2026-07-08-TIERC-COSTGAP) — PRE-REGISTRATION (2026-07-08)
+
+**THE DISCREPANCY.** The RESEARCH kernel (VALIDATION 3, `_pf_perfect_gothic_msquare`) closed a "4-bay Gothic"
+multi-bay patch to LITERAL 0 outliers @ 58,365 tris, projectedFullMeshTris **1.05M < 6M** (5.7× headroom). The
+PRODUCTION multi-bay gate (V11d/e/h/k, `_junctionGate` + adaptive/rib-aware seeds on `noBridgeRefine.ts`) EXPLODES
+past 6M (144k tris @ pass-5 = 6.06M full-pot) with ~1800-8300 outliers remaining, no seed strategy converging under
+budget. Same style, ~6-8× cost gap. This round runs the RESEARCH kernel VERBATIM on the EXACT PRODUCTION domain to
+adjudicate MECHANISM-GAP vs DOMAIN-mismatch.
+
+**STEP 1 — DOMAINS PINNED (measured, `makeGothicPatch` instantiated + `_junctionGate.test.ts` read; NOT guessed):**
+
+| axis | RESEARCH V3 (`makeGothicPatch(4,12)`) | PRODUCTION gate (`_junctionGate`) |
+|---|---|---|
+| u-domain | **u[−0.0576, 0.1091]** (width **0.1667**, spans u=0 seam) | u[0.05, 0.15] (width 0.10, seam-avoiding) |
+| t-domain | **t[0.70, 0.80]** (width 0.10, centered apex j.t≈0.75) | **t[0.38, 0.62]** (width 0.24) |
+| tol | 0.01 | 0.01 |
+| guard basis | full-azimuth honest brute (LOOP_NTH 512, dense ≥36-pt bary) | full-azimuth brute (parallelScorer, 7-pt driver) |
+| seed | M-square graded + locked-crest subdiv, bgArcMm 0.16 | uniform bgArcMm (+ adaptive/rib-aware opt-in) |
+| refine | M-square Steiner + honest-brute STOP | isotropic RED 1→4 + honest-brute STOP |
+
+**⇒ THE t-BANDS ARE DISJOINT.** V3's t[0.70,0.80] and production's t[0.38,0.62] do NOT overlap. V3 centered on the
+apex junction `findApexJunction` returns (t≈0.75) — a PROTECTED-κ arch tier. Production targets t≈0.40-0.49, which
+V11d localized as the raw-κ-detector DEAD ZONE (protected complex covers only t∈[0.12,0.18]∪[0.48,0.57]∪[0.96,0.99];
+the worst production outliers sit on a SMOOTH LOW-κ HIGH-amplitude horizontal arch arc r(t) 44.4→45.9→45.1 over ~5mm).
+So candidate (b) DOMAIN is a-priori LIVE: V3's "1.05M" was measured on a different, protected t-band, NOT the
+junction-dense/dead-zone band the production gate covers. The u-width also differs (0.167 vs 0.10) + V3 straddles the
+seam. This pre-registration does NOT pre-judge; it sets up the direct discriminator.
+
+**STEP 2 — THE DISCRIMINATOR (pre-registered).** Run the RESEARCH M-square kernel VERBATIM (its own
+`extractProtectedComplex` + graded `seedMesh` + `refineInteriorMsquare` honest-brute loop) on a PatchDef built with
+the EXACT PRODUCTION domain u[0.05,0.15]×t[0.38,0.62], tol 0.01, whole-mesh full-azimuth guard. Measure: converged-to-0?
+tris + projectedFullMeshTris? wall-clock? per-pass trajectory (checkpoint ndjson). Probe env-gated PF_TIERC_COSTGAP=1.
+
+**KILL CRITERIA (committed BEFORE measuring):**
+- **MECHANISM-GAP CONFIRMED** iff the research kernel reaches **interiorOutliers=0 (honest guard) at projectedFullMeshTris ≤ 6M**
+  on the production domain. Then ABLATE (one, cheap): swap the M-square graded seed/refine for a UNIFORM seed +
+  isotropic RED (the production mechanism) on the SAME research harness — if THAT explodes, the load-bearing delta is
+  isolated (M-square seed and/or graded flank). Spec the port into tierC.
+- **GENUINE-COST FRONTIER** iff the research kernel ALSO exceeds 6M and/or fails to reach 0 outliers on this domain
+  (matching V11k's production explosion within ~1.5×). Then the junction/dead-zone band is genuinely expensive at
+  tol 0.01 irrespective of mechanism ⇒ produce the honest outliers/max-vs-projected-tris frontier for both kernels as
+  the decision artifact. Fork = budget-raise vs frontier-documentation (NOT tol-relaxation — user standard rejects
+  per-region accept-bands).
+- **STRUCTURAL-BREAK** iff the research kernel cannot run on this domain without changes (junction topology it never
+  handled). Report exactly what breaks — that itself locates the gap. STOP after discriminator + one ablation.
+
+Probe: `research/bridge/_pf_costgap_prod_domain.test.ts` (PF_TIERC_COSTGAP=1). Data → `research/exchange/_tierc_costgap/`.
+Registry: E-2026-07-08-TIERC-COSTGAP. Pre-reg commit: [this].
+
+---
+
 ## V11c — DRAGONSCALES Z-DENSITY + CT ADJUDICATION (2026-07-08)
 
 Two independent arms, both measured under the EXACT V10b dense radial-twin BVH ruler (scoreWholeMeshBVH: dense 45-pt
