@@ -76,6 +76,26 @@ export interface PicketSpec {
   maxChordMm?: number;
 }
 
+/**
+ * FLANK-BAND CONTOUR (E-2026-07-08-TIERC-FLANKBAND, DESIGN, opt-in) — the general
+ * form of a picket: an ARBITRARY (u,t) polyline locked as a chain of constraint
+ * edges. Where a PicketSpec forbids a needle along a constant-u column, a
+ * BandContour frames a rib FLANK by locking its TOE contour (the af=c level set
+ * where the steep flank meets the smooth panel) so facets end AT the flank
+ * boundary instead of straddling crest→flank→panel and subdividing forever.
+ *
+ * Same planarity-safe machinery as pickets: the polyline is appended to the raw
+ * mm segment soup BEFORE `planarizeMM`, densified to `maxChordMm` 3D pitch, and
+ * any crossing with a rib chain is split into a T-junction (residualCrossings 0).
+ * Off ⇒ byte-identical to the prior complex.
+ */
+export interface BandContour {
+  /** Ordered (u,t) polyline (fractions). */
+  pts: ReadonlyArray<readonly [number, number]>;
+  /** Max 3D chord (mm) between consecutive locked vertices. Default 0.12. */
+  maxChordMm?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Physical scale measurement (same 128-pt chord sums detectFeatures uses
 // internally; module-private there, so re-measured locally).
@@ -494,6 +514,7 @@ export function buildProtectedComplex(
   _styleId: string,
   prebuilt?: FeatureGraph,
   pickets?: readonly PicketSpec[],
+  bandContours?: readonly BandContour[],
 ): ProtectedComplex {
   const uToMm = measureUCircumference(sampler);
   const tToMm = measureTHeight(sampler);
@@ -652,6 +673,46 @@ export function buildProtectedComplex(
         pts.push(pk.u * uToMm, t * tToMm);
         rawEdges.push([prevIdx, idx]);
         prevIdx = idx;
+      }
+    }
+  }
+
+  // FLANK-BAND CONTOURS (E-2026-07-08-TIERC-FLANKBAND DESIGN, opt-in). Append
+  // each toe contour as a chain of vertices along its (u,t) polyline, spaced at
+  // maxChordMm 3D pitch (densified per segment so the locked toe can refine along
+  // its length like the rib chains), with LOCKED edges between consecutive
+  // vertices. Injected into the raw mm soup BEFORE planarizeMM so any crossing
+  // with a rib chain / picket splits to a T-junction (residualCrossings stays 0).
+  // The u-seam unwrap uses the same nearest-predecessor convention as the rib
+  // chains. Off ⇒ byte-identical to the prior complex.
+  if (bandContours && bandContours.length > 0) {
+    for (const bc of bandContours) {
+      if (bc.pts.length < 2) continue;
+      const maxChordMm = bc.maxChordMm ?? 0.12;
+      let uPrev = bc.pts[0][0];
+      let prevIdx = pts.length / 2;
+      pts.push(uPrev * uToMm, Math.min(1, Math.max(0, bc.pts[0][1])) * tToMm);
+      for (let i = 1; i < bc.pts.length; i++) {
+        let u = bc.pts[i][0];
+        // Periodic representative nearest the predecessor (seam-safe).
+        while (u - uPrev > 0.5) u -= 1;
+        while (u - uPrev < -0.5) u += 1;
+        const tCur = Math.min(1, Math.max(0, bc.pts[i][1]));
+        const A = pos3D(uPrev, pts[2 * prevIdx + 1] / tToMm);
+        const B = pos3D(u, tCur);
+        const len3 = Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+        const nSeg = Math.max(1, Math.ceil(len3 / maxChordMm));
+        const tPrev = pts[2 * prevIdx + 1] / tToMm;
+        for (let s = 1; s <= nSeg; s++) {
+          const fr = s / nSeg;
+          const su = uPrev + fr * (u - uPrev);
+          const st = tPrev + fr * (tCur - tPrev);
+          const idx = pts.length / 2;
+          pts.push(su * uToMm, st * tToMm);
+          rawEdges.push([prevIdx, idx]);
+          prevIdx = idx;
+        }
+        uPrev = u;
       }
     }
   }
