@@ -14,13 +14,29 @@ import {
   VORONOI_DEFAULTS, wallIsolevels, cellSdf, webValue, marchSdfIso, linkSegments, refineAndFilterContours,
   decimateContours, contoursToConstraints, isoResidual3D, type Contour, type FoldProbe,
 } from './_voronoiFieldLib';
-import { radiusFn, TANGLED_BASE, buildTangled, auditNonManRaw, wholeMeshGuardRadialBound, worstFacetsByRadial } from './_pf_tangledKernelLib';
+import { radiusFn, TANGLED_BASE, buildTangled, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
 import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
 
 const RUN = process.env.PF_VOR === '1';
 const DIR = join(process.cwd(), 'research/exchange/_voronoi_embed');
+
+// LARGE-MESH-SAFE watertight audit (sorted-Float64-edge-key, no JS-Map ceiling). Ported from the §V11w recipe
+// (nonManRawBig lives in a concurrent agent's file we must not import). Exact for vertex indices < 2^26.
+function nonManRawBig(idx: ArrayLike<number>): number {
+  const keys = new Float64Array(idx.length);
+  let m = 0;
+  for (let k = 0; k < idx.length; k += 3) {
+    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+    if (a === b || b === c || a === c) continue;
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
+  }
+  const sub = keys.subarray(0, m); sub.sort();
+  let nm = 0;
+  for (let i = 0; i < m;) { let j = i + 1; while (j < m && sub[j] === sub[i]) j++; if (j - i > 2) nm++; i = j; }
+  return nm;
+}
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
 const P = VORONOI_DEFAULTS;
 const TAU = 2 * Math.PI;
@@ -233,12 +249,17 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     });
     const ms = Date.now() - t0;
     const ut = mesh.ut, idx = mesh.indices, tris = idx.length / 3;
-    const nmRaw = auditNonManRaw(idx);
+    const tag = process.env.PF_VORTAG ?? variant;
+    // PERSIST-BEFORE-AUDIT (§V11w resilience): a multi-min build must survive a downstream instrument crash.
+    writeFileSync(join(DIR, `mesh_${tag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(DIR, `mesh_${tag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
+    // LARGE-MESH-SAFE watertight (nonManRawBig: sorted-Float64-edge-key, no JS-Map ceiling; §V11w — auditNonManRaw's
+    // Map overflows at >16.7M edges = ~5.6M+ tris). auditNonManByIndex also 3D-welds; run only when tractable.
+    const nmRaw = nonManRawBig(idx);
     const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
     for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = TAU * u, z = t * DIMS.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
-    const nmIdx = auditNonManByIndex(xyz, idx);
+    let nmIdx = -1; try { nmIdx = auditNonManByIndex(xyz, idx); } catch { nmIdx = -1; /* Map ceiling on very large mesh; nmRaw is the sound audit */ }
     const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx as unknown as Uint32Array, 0.01);
-    const tag = process.env.PF_VORTAG ?? variant;
     const rec = {
       stage: 'build', variant, tag, stepMm, chordTolMm, maxPoints, ms, tris, points: mesh.points, hitBudget: mesh.hitBudget,
       projFullPot: tris, nConstraintVerts, nConstraintEdges, recovery: mesh.constraint,
@@ -246,8 +267,6 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
       soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
     };
     appendFileSync(join(DIR, 'build.ndjson'), JSON.stringify(rec) + '\n');
-    writeFileSync(join(DIR, `mesh_${tag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
-    writeFileSync(join(DIR, `mesh_${tag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
     writeFileSync(join(DIR, `mesh_${tag}.meta.json`), JSON.stringify(rec));
     // eslint-disable-next-line no-console
     console.log('[build]', JSON.stringify(rec, null, 2));
@@ -309,9 +328,11 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     const scaledTrueOut = literal ? nTrueOut : Math.round(trueOutFrac * nRadOut);
     trueDevs.sort((x, y) => x - y);
     const pc = (q: number): number => trueDevs.length ? trueDevs[Math.min(trueDevs.length - 1, Math.floor(q * trueDevs.length))] : 0;
-    const nmIdx = auditNonManByIndex(xyz, idx);
+    let nmIdx = -1; try { nmIdx = auditNonManByIndex(xyz, idx); } catch { nmIdx = -1; }
+    const nmRawBig = nonManRawBig(idx);
     const rec = {
       stage: 'verdict', tag, tol, tris, basis: literal ? 'LITERAL (every non-green)' : `stratified ${sampled.length}`,
+      nonManRawBig: nmRawBig,
       soundRadialOutliers: sound.outliers, soundRadialMax: sound.maxMm, nRadOutliers: nRadOut, newtonCalls,
       nTrueOutInSample: nTrueOut, scaledTrueOutliers: scaledTrueOut, trueMax: +maxTrue.toFixed(5),
       truep50: +pc(0.5).toFixed(5), truep90: +pc(0.9).toFixed(5), truep99: +pc(0.99).toFixed(5),
