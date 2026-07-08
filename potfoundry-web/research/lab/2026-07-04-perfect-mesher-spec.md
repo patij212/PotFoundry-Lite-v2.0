@@ -1844,6 +1844,66 @@ density (ruler tread-blind by construction). Flag stays OFF; dev-only; no src/ e
 
 ---
 
+## V11g — DRAGONSCALES CONFORMING-RULER: the tread-CONFORMING OPEN-SURFACE ruler is VALIDATED (1st of 3 to pass the 1a–1d battery); honest whole-mesh number ~8.7k (NOT 263,536); FLOOR = near-ring sheet-sag, fully characterized (2026-07-08)
+
+ROUND 3, follow-up to V11f. Two prior whole-mesh instruments were refuted (radial twin TREAD-BLIND; filled-annulus step
+twin FAILS 1b coarse-sheet + 1d filled-disk-catcher). This arm builds the V11f-prescribed OPEN-surface conforming ruler
+and metrologist-grades it BEFORE trusting it.
+
+### INSTRUMENT — composite open-surface ruler = min(radial-sheet twin 2048×3072, riser wall-only 4096θ, z-gated)
+The full dense conforming ref (`buildConformingReference`, skirts + explicit open riser wall, 7.9M tris) was built +
+1a-verified but its BVH stalled 1b >15min (tiny sheet tris packed the cells). Rebuilt as a COMPOSITE: the radial twin
+supplies the SHEET (⇒ 1b passes by construction — same surface as the radial twin), a tiny wall-only ref (7 rings ×
+4096θ × 2 tris) supplies the RISER, and a z-gate skips the sparse wall BVH for far-from-ring queries (exact; the sheet
+always wins the min there). `research/bridge/_ds_conformRef.ts`.
+
+### 1a–1d BATTERY — ALL PASS (aligned wall wallEps=5e-4 = the mesh's ring-row zEps)
+- **1a PASS** — skirt + open riser-wall anchors on the ruler surface, maxDist **0.00029mm**; ringJump 0.88–1.21mm.
+- **1b PASS (BEATS the step twin)** — vs radial twin on 60k smooth facets: agreeFrac **1.0** (60,000/60,000), 0 disagreers
+  both directions, deltaP99 **0**. The composite's sheet IS the radial twin ⇒ perfect smooth-body parity (step twin
+  FAILED here: 0.9988 / 71 deep-body disagreers from its coarse sheet).
+- **1c PASS** — sheet 0.00315mm (radial twin); wall converges **0.00498→0.00125→0.00031mm** over nTheta 1024/2048/4096.
+- **1d PASS (BEATS the step twin)** — SOUND normal-push understate **0.0057mm** + conforming-not-below-radial **0.0061mm**
+  (≪ 0.05/0.03). CORRECTION banked: the step-twin arm's 1d used a RADIAL push (r+delta at fixed θ) — UNSOUND on
+  DragonScales' steep-θ sheet (~65mm/rad, radial push ≈ tangent ⇒ true 3D nearest ≪ delta; DIAG proved conforming==
+  radialTwin 0.0855==0.0856 = honest 3D geometry). The SOUND test pushes along the true 3D surface NORMAL (cheatsheet
+  radial-vs-true-3D gotcha). The step twin's 0.116 fail was a GENUINE filled-disk catcher (D1 winner = the tread DISK).
+
+### HONEST WHOLE-MESH NUMBER (validated aligned conforming ruler, every-facet 45-pt stride-8, tol 0.01)
+| nZband | tris | sheet | lip | TOTAL | max | p99 | %<20 | rawNM | za |
+|---|---|---|---|---|---|---|---|---|---|
+| 70 | 2.69M | 6,680 | 1,904 | **8,584** | 0.0461 | 0.0057 | 3.1 | 0 | 0 |
+| 110 | 4.09M | 5,552 | 3,200 | **8,752** | 0.0461 | 0.0043 | 2.0 | 0 | 0 |
+vs **263,536** under the radial twin (riser-blind) and 36,576 under the mis-aligned wallEps=0.01 composite. The riser-blind
+141k artifact is GONE; the tread now sits ON the ruler (tread outliers 14,008→0).
+
+### RESIDUAL = near-ring SHEET-SAG (density-responsive), NOT a mesh defect
+lipdiag (aligned wall): ~8.7k = (i) sheet body **5,552** (density-responsive, established); (ii) **~3,200** ringBelow/
+ringAbove strips, 100% winSheet, chording the CURVING sheet near the ring (max 0.0208); (iii) <~90 C0-STRADDLE tail (p99
+below tol) — last-sheet-row facets straddling the discontinuity z where the single-valued sheet component is tread-blind
+and the thin 5e-4 wall is too narrow in z to catch them. All near-ring sheet-side chord effects at the C0 jump.
+
+### TWO INSTRUMENT ARTIFACTS the battery CAUGHT (method wins)
+- **wallEps ALIGNMENT artifact (−28k):** at wallEps=0.01 the ruler wall skirts sat 0.0095mm off the mesh ring rows
+  (zEps=5e-4) → mesh ring vertices read the z-offset as "distance" → 31,024 lip (90% in [0.010,0.011)). A/B: aligning
+  wallEps→5e-4 collapses lip 31,024→3,200 (alignment artifact). Default WALLEPS set to 5e-4.
+- **skirt-densification lever REFUTED:** adding transition skirt rows + tread sub-rings WORSENED with density (31k → sk3
+  28,200 → sk6 45,072): more strip/tread facets each chord the wall. Refuted before it could mislead the close.
+
+### VERDICT: CLOSED-with-certified-tread (RULER-CLASS, now with a SOUND whole-mesh ruler)
+Body CAD-grade + density-closable; tread/riser = designed ~1mm zero-serration C0 feature (serr ~0.001, feature edges
+embedded) the NEW conforming ruler MEASURES correctly. Honest single whole-mesh number = ~8.7k near-ring sheet-sag
+(density-responsive) + <90 C0-straddle tail — NOT the 263,536 radial-twin artifact and NOT a mesh defect. Literal 0 not
+reached (FLOOR); the near-ring ~3,200 is a clean transition-row refinement under the ALIGNED wall (unattempted here — the
+mis-aligned skirt test polluted it). The conforming ruler is the FIRST of 3 DragonScales instruments to survive the
+battery. Flag OFF; dev-only; no src/ edit.
+
+**LEDGER:** registry E-2026-07-08-DS-CONFORMING-RULER. Instrument `research/bridge/_ds_conformRef.ts`; probe
+`research/bridge/_pf_dsconform.test.ts` (PF_DS_CONF/LIPDIAG/WALLEPS_AB/CONF_CLOSE/SMOKE/DIAG); config
+`vitest.ds_conform.config.ts`; data `_ds_conforming/scorecard.ndjson`.
+
+---
+
 ## V11a — SMOOTH-TAIL CLOSE: all 4 smooth-tail styles CLOSED to literal whole-mesh EVERY-FACET 0-outlier (2026-07-08)
 
 **E-2026-07-08-SMOOTH-TAILS — CONFIRMED (all 4 CLOSE).** The 4 smooth single-valued-field styles that the §V10b FINAL

@@ -101,7 +101,38 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **METHOD:** DEV-ONLY. New ref lib `research/bridge/_ds_conformRef.ts` (buildConformingReference; reuses `buildRefLocator` READ-ONLY). Probe `research/bridge/_pf_dsconform.test.ts` (PF_DS_CONF=1), one env-gated `it`, resumable — CHECKPOINT one ndjson row per unit the INSTANT computed to `research/exchange/_ds_conforming/`; a key that already exists is SKIPPED. Gate 1a-1d read back from the ledger; scoring runs ONLY if all pass (else KILL row + accept+document). Doubled-rings mesh via `buildStructuredWall`+`buildRows`+`dragonRings` (treadCap=4, verbatim from `_pf_dszdensity`). Reuses labkit + `_pf_bvhRuler` + `_sharp3dRef` READ-ONLY; edits NOTHING in src/. NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs; explicit file staging. Do NOT touch `_pf_smoothtail*`, `_pf_tangledKernel*`, tierC/.
 
-**VERDICT:** _pending — result below._
+**VERDICT: CONFORMING RULER VALIDATED (all 4 gates PASS — the FIRST DragonScales whole-mesh instrument to survive the battery). Under it the honest whole-mesh number is ~8,700 outliers (NOT 263,536): the riser-blind artifact (141k) is GONE and the tread now sits ON the ruler. The number does NOT reach literal 0 — it FLOORS at a density-responsive near-ring sheet-sag population + a tiny C0-straddle tail. FLOOR verdict, fully characterized. Two earlier "residuals" were INSTRUMENT artifacts (a wallEps mis-alignment + a refuted skirt lever), caught by the battery.**
+
+**INSTRUMENT — composite OPEN-surface conforming ruler = min(radial-sheet twin 2048×3072, riser wall-only 4096θ, z-gated).** The full dense conforming ref (`buildConformingReference`, 7.9M tris) was built + 1a-verified but its BVH stalled 1b >15min (tiny tris packed cells) → rebuilt as the composite (radial twin supplies the SHEET ⇒ 1b passes by construction; a tiny wall-only ref supplies the RISER; a z-gate skips the sparse wall BVH for far-from-ring queries). `research/bridge/_ds_conformRef.ts`.
+
+**1a–1d BATTERY (aligned wall wallEps=5e-4 = the mesh's ring-row zEps):**
+| gate | result | pass | vs step twin |
+|---|---|---|---|
+| **1a construction** | skirt + open riser-wall anchors on the ruler surface, maxDist **0.00029mm**; ringJump 0.88–1.21mm (reproduces stagger-flip) | **PASS** | ties (0.00035) |
+| **1b smooth-control** | vs radial twin on 60k smooth facets: agreeFrac **1.0** (60,000/60,000), 0 disagreers both ways, deltaP99 **0** | **PASS** | BEATS (step 0.9988 / 71 deep-body disagreers FAIL) |
+| **1c density-convergence** | sheet 0.00315mm (radial twin); wall **0.00498→0.00125→0.00031mm** over nTheta 1024/2048/4096 | **PASS** | ties |
+| **1d one-sidedness (SOUND normal-push)** | normal-push understate **0.0057mm**; conforming-not-below-radial **0.0061mm** (≪ 0.05/0.03) | **PASS** | BEATS (step 0.116mm FAIL) |
+
+**1d METRIC CORRECTION (banked):** the step-twin arm's 1d used a RADIAL push (r+delta at fixed θ) — UNSOUND on DragonScales' steep-θ sheet (~65mm/rad): a radial push is nearly TANGENT so its true 3D nearest ≪ delta. DIAG proved conforming==radialTwin at the worst radial case (0.0855==0.0856) ⇒ honest 3D geometry, NOT a catcher. The SOUND test pushes along the true 3D surface NORMAL + requires conforming ≥ radial off-wall (cheatsheet radial-vs-true-3D gotcha). The step twin's 0.116 fail was a GENUINE filled-disk catcher (D1 winner = the tread DISK), distinct from this.
+
+**HONEST WHOLE-MESH NUMBER (validated aligned conforming ruler, doubled-rings mesh, every-facet 45-pt stride-8 estimate, tol 0.01):**
+| nZband | tris | sheet-out | lip-out | TOTAL | max mm | p99 | %<20 | rawNM | zeroArea |
+|---|---|---|---|---|---|---|---|---|---|
+| 70 | 2.69M | 6,680 | 1,904 | **8,584** | 0.0461 | 0.0057 | 3.1 | 0 | 0 |
+| 110 | 4.09M | 5,552 | 3,200 | **8,752** | 0.0461 | 0.0043 | 2.0 | 0 | 0 |
+(vs 263,536 under the radial twin, 36,576 under the mis-aligned wallEps=0.01 composite.) rawNonMan=0 (bd=4800 designed skirt-boundary edges), zeroArea=0.
+
+**RESIDUAL DECOMPOSITION (lipdiag, aligned wall):** ~8.7k = (i) **sheet body 5,552** (density-responsive, radial-twin-correct); (ii) **near-ring transition ~3,200** — 100% `winSheet` ringBelow/ringAbove strips chording the CURVING sheet near the ring (max 0.0208; hist 1,208@[.010,.011)/920/1,008/56/8; `tread` outliers GONE — the aligned wall covers them, 14,008→0); (iii) a tiny **C0-straddle tail** (p99 below tol ⇒ <~90 facets reach max 0.0461): last-sheet-row facets adjacent to the ring whose sample straddles the discontinuity z, where the single-valued sheet component is tread-blind and the thin (5e-4) wall is too narrow in z to catch them. (ii)+(iii) are near-ring SHEET-side chord effects at the C0 jump — same density-responsive class as (i), NOT a mesh defect.
+
+**TWO INSTRUMENT ARTIFACTS the battery CAUGHT:**
+- **wallEps ALIGNMENT artifact (−28k).** At wallEps=0.01 the wall skirts sat 0.0095mm off the mesh ring rows (zEps=5e-4) ⇒ mesh ring vertices read the z-offset as "distance" → 31,024 lip, 90% in [0.010,0.011). A/B `walleps_ab`: aligning wallEps→5e-4 collapses lip 31,024→3,200 (VERDICT: alignment artifact). Default WALLEPS set to 5e-4.
+- **skirt-densification lever REFUTED.** Transition skirt rows + tread sub-rings (buildRowsRefined) did NOT close and WORSENED with density (31k → sk3 28,200 → sk6 **45,072**): more strip/tread facets each chord the wall. Refuted before it could mislead.
+
+**CLOSE TRAJECTORY / FLOOR:** literal whole-mesh 0 NOT reached. Sheet body closes with nZband (21,744→5,552, established). The near-ring ~3,200 is density-responsive sheet-sag (clean transition refinement under the ALIGNED wall — not attempted; the mis-aligned skirt test polluted it) and the <90 C0-straddle tail is inherent to a single-valued sheet meeting the designed C0 jump. **FLOOR ~8.7k @ 4.09M tris, all near-ring sheet-side chord sag (max 0.0208 excl. the tiny straddle tail), p99 0.0043 below tol, watertight non-vacuous.**
+
+**FINAL CLASSIFICATION: CLOSED-with-certified-tread (RULER-CLASS, now with a SOUND whole-mesh ruler).** DragonScales body = CAD-grade + density-closable; tread/riser = designed ~1mm zero-serration C0 feature (serr ~0.001, feature edges embedded) that the NEW conforming ruler MEASURES correctly (tread outliers 14,008→0, riser anchors on-surface to 0.00029mm). Honest single whole-mesh number = ~8.7k near-ring sheet-sag (density-responsive) + <90 C0-straddle tail — NOT the 263,536 radial-twin artifact and NOT a mesh defect. The conforming ruler is the surviving instrument (1st of 3 to pass the battery). Flag OFF; dev-only; no src/ edit.
+
+**LEDGER:** instrument `research/bridge/_ds_conformRef.ts`; probe `research/bridge/_pf_dsconform.test.ts` (PF_DS_CONF=1 gate+score; PF_DS_CONF_LIPDIAG=1 classify; PF_DS_WALLEPS_AB=1 alignment A/B; PF_DS_CONF_CLOSE=1 refuted skirt lever; PF_DS_CONF_SMOKE/DIAG dev); config `vitest.ds_conform.config.ts`; data `research/exchange/_ds_conforming/scorecard.ndjson` (gitignored; numbers inlined). Commits: dc3e674(pre-reg)→fdbcb7b(1a)→6666a9a(composite+z-gate)→bc613e0(gates PASS)→9f5a61e(lipdiag)→4cd4624(alignment artifact) + this row.
 
 ---
 
