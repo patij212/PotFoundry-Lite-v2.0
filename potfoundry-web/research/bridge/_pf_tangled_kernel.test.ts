@@ -133,6 +133,35 @@ function runStyleSweep(style: StyleId, chordSweep: number[], maxPointsSweep: num
   console.log(`FINAL ${style}: converged=${converged} trajectory=[${traj.join(',')}] finalTris=${lastBuild?.tris ?? 0}`);
 }
 
+// ── SWEEP-FIX A/B (PI relay §V11a): does sweeps:0 + chordSampleN:8 collapse the sound-upper tail? ────────────────
+// The DOMINANT smooth-tail residual was the post-refine Laplacian sweeps re-introducing chord sag. Test at ONE
+// moderate density on Gyroid + Voronoi: baseline (sweeps:2, chordN default) vs fixed (sweeps:0, chordSampleN:8).
+describe('E-2026-07-08-TANGLED-KERNEL — sweep-fix A/B', () => {
+  for (const style of ['GyroidManifold', 'Voronoi'] as const) {
+    it.skipIf(process.env.PF_TK_SWEEPFIX !== '1')(`sweep-fix ${style}`, () => {
+      mkdirSync(join(DIR, style), { recursive: true });
+      const rA = radiusFn(style as StyleId, DIMS);
+      const chordTolMm = 0.008; const maxPoints = style === 'Voronoi' ? 1_200_000 : 1_800_000;
+      const arms: Array<{ label: string; sweeps: number; chordN?: number }> = [
+        { label: 'base_sw2', sweeps: 2 },
+        { label: 'fix_sw0_cn8', sweeps: 0, chordN: 8 },
+        { label: 'sw0_cn4', sweeps: 0 },
+      ];
+      for (const arm of arms) {
+        if (labelDone(style, 'sweepfix.ndjson', `${style}_${arm.label}`)) { process.stderr.write(`  SKIP ${style}/${arm.label}\n`); continue; }
+        const b = buildTangled(style as StyleId, DIMS, { chordTolMm, maxPoints, optimizeSweeps: arm.sweeps, chordSampleN: arm.chordN });
+        const s: SoundScore = wholeMeshGuardRadialBound(rA, DIMS.H, b.ut, b.idx, 0.01);
+        const nonMan = auditNonManRaw(b.idx);
+        const row = { label: `${style}_${arm.label}`, style, arm: arm.label, sweeps: arm.sweeps, chordN: arm.chordN ?? 4, tris: b.tris, soundOutliers: s.outliers, soundMax: s.maxMm, p99: s.p99, zeroArea: s.zeroArea, nonMan, buildMs: b.ms };
+        appendFileSync(join(DIR, style, 'sweepfix.ndjson'), JSON.stringify(row) + '\n');
+        // eslint-disable-next-line no-console
+        console.log(`SWEEPFIX ${style}/${arm.label}: tris=${b.tris} soundUpperOutliers=${s.outliers} soundMax=${s.maxMm} p99=${s.p99} zeroArea=${s.zeroArea} nonMan=${nonMan} ${b.ms}ms`);
+      }
+      expect(true).toBe(true);
+    }, 3 * 60 * 60 * 1000);
+  }
+});
+
 describe('E-2026-07-08-TANGLED-KERNEL — per-style honest-driven refine', () => {
   it.skipIf(process.env.PF_TANGLED_KERNEL !== '1')('GyroidManifold', () => {
     if (labelDone('GyroidManifold', 'final.ndjson', 'final')) { const f = readNdjson(join(DIR, 'GyroidManifold', 'final.ndjson')).find((r) => r.label === 'final'); if (f && f.converged) { console.log('SKIP Gyroid (converged)'); return; } }

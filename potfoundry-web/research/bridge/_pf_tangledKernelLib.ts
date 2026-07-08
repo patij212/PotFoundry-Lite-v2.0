@@ -294,7 +294,12 @@ export function auditNonManRaw(idx: ArrayLike<number>): number {
 export interface TangledOpts {
   chordTolMm: number;   // deep-sag chord tolerance (the density lever)
   maxPoints: number;    // budget cap for THIS build
-  tolMm?: number; hMin?: number; hMax?: number; sizeRes?: number; gradeBeta?: number; seedN?: number; splitThresh?: number; optimizeSweeps?: number;
+  tolMm?: number; hMin?: number; hMax?: number; sizeRes?: number; gradeBeta?: number; seedN?: number; splitThresh?: number;
+  // E-2026-07-08 PI relay (smooth-tail §V11a): the post-refinement Laplacian smoothing SWEEPS re-introduce chord sag
+  // AFTER the deep-sag guard runs (they slide vertices off the crest/valley). sweeps:0 was the fix on the two hardest
+  // smooth styles. And the default 4-pt chord guard is BLIND between samples → chordSampleN:8 (opt-in, byte-identical
+  // default) makes the deep-sag guard see the interior. Both are load-bearing for the tangled close.
+  optimizeSweeps?: number; chordSampleN?: number;
 }
 export const TANGLED_BASE = { tolMm: 0.004, hMin: 0.008, hMax: 8, sizeRes: 256, gradeBeta: 0.2, seedN: 14, splitThresh: 1.5 } as const;
 
@@ -309,6 +314,7 @@ export function buildTangled(style: StyleId, dims: StyleDims, opts: TangledOpts)
     seedN: opts.seedN ?? TANGLED_BASE.seedN, splitThresh: opts.splitThresh ?? TANGLED_BASE.splitThresh,
     maxPoints: opts.maxPoints, optimizeSweeps: opts.optimizeSweeps ?? 2,
     guardManifoldAlways: true, chordTolMm: opts.chordTolMm, chordSteiner: true,
+    ...(opts.chordSampleN !== undefined ? { chordSampleN: opts.chordSampleN } : {}),
   });
   return { ut: mesh.ut, idx: mesh.indices, tris: mesh.indices.length / 3, points: mesh.points, hitBudget: mesh.hitBudget, ms: Date.now() - t0 };
 }
