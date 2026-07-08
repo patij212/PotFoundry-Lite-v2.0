@@ -38,6 +38,8 @@ import {
 import { GpuSurfaceSampler } from '../SurfaceSampler';
 import { ParallelScorerPool, samplerGrid } from './parallelScorer';
 import {
+  buildAmplitudeField,
+  extractLadder,
   extractToeBand,
   flankIsoResidual3D,
   type FlankContour,
@@ -66,6 +68,13 @@ const TOE_LO = process.env.PF_FB_TOELO ? +process.env.PF_FB_TOELO : 0.12;
 const TOE_HI = process.env.PF_FB_TOEHI ? +process.env.PF_FB_TOEHI : 0.4;
 const PICKET_MM = process.env.PF_FB_PICKET ? +process.env.PF_FB_PICKET : 0.1;
 const GTAG = process.env.PF_FB_TAG ?? 'v1';
+// LADDER levels (amplitude fractions), comma-separated. After a doubled band
+// frames the mid-flank the worst residual descends to ampFrac ~0.01-0.12 (the
+// panel-meets-wall toe) — a ladder frames every lower sub-strip.
+const LEVELS = (process.env.PF_FB_LEVELS ?? '0.03,0.08,0.18,0.4')
+  .split(',')
+  .map((x) => +x)
+  .filter((x) => x > 0 && x < 1);
 
 /** Round-7/8 PLACEMENT-1 pickets (banked needle-forbidding set). */
 function placementPickets(chord = 0.09): PicketSpec[] {
@@ -441,6 +450,63 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
     30 * 60 * 1000,
   );
 
+  // STEP 2b: extract a LADDER of toe rails (the mid-flank-descent fix).
+  it.skipIf(!RUN || MODE !== 'ladder')(
+    'STEP 2b: extract a ladder of toe rails across the lower flank',
+    () => {
+      mkdirSync(OUT, { recursive: true });
+      const sampler = styleSampler(
+        'GothicArches',
+        {},
+        { H: 120, Rt: 50, Rb: 40 },
+      ) as GpuSurfaceSampler;
+      const t0 = Date.now();
+      const { field, rails } = extractLadder(
+        sampler,
+        FDOMAIN,
+        LEVELS,
+        { nu: 640, nt: 640, polishIters: 24 },
+        PICKET_MM,
+      );
+      const q = (a: number[], p: number): number => {
+        const s = [...a].sort((x, y) => x - y);
+        return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0;
+      };
+      const railStats = rails.map((r) => {
+        const disps: number[] = [];
+        for (const cont of r.contours)
+          for (const [u, t] of cont.pts) disps.push(flankIsoResidual3D(u, t, field, r.level, sampler).disp3D);
+        return {
+          level: r.level,
+          contours: r.contours.length,
+          verts: r.contours.reduce((s, c) => s + c.pts.length, 0),
+          dropped: r.dropped,
+          dispP90: +q(disps, 0.9).toFixed(5),
+          dispMax: +Math.max(0, ...disps).toFixed(5),
+        };
+      });
+      writeFileSync(
+        `${OUT}/toe_contours.json`,
+        JSON.stringify({
+          picketMm: PICKET_MM,
+          rails: rails.map((r) => ({ level: r.level, polys: r.contours.map((c) => c.pts) })),
+        }),
+      );
+      const verdict = {
+        mode: 'ladder',
+        levels: LEVELS,
+        picketMm: PICKET_MM,
+        railStats,
+        placementSub0p01: railStats.every((r) => r.dispP90 < 0.01 && r.dispMax < 0.02),
+        sec: +((Date.now() - t0) / 1000).toFixed(0),
+      };
+      // eslint-disable-next-line no-console
+      console.log('[ladder VERDICT]', JSON.stringify(verdict, null, 2));
+      writeFileSync(`${OUT}/ladder_verdict.json`, JSON.stringify(verdict, null, 2));
+    },
+    30 * 60 * 1000,
+  );
+
   // STEP 3+4: embed the doubled toe band as BandContours + run the gate.
   it.skipIf(!RUN || MODE !== 'gate')(
     'STEP 3+4: embed the doubled toe band + gate to whole-mesh 0',
@@ -453,14 +519,18 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       ) as GpuSurfaceSampler;
       const toe = JSON.parse(readFileSync(`${OUT}/toe_contours.json`, 'utf8')) as {
         picketMm: number;
-        lo: Array<Array<[number, number]>>;
-        hi: Array<Array<[number, number]>>;
+        lo?: Array<Array<[number, number]>>;
+        hi?: Array<Array<[number, number]>>;
+        rails?: Array<{ level: number; polys: Array<Array<[number, number]>> }>;
       };
       const toBand = (polys: Array<Array<[number, number]>>): BandContour[] =>
         polys
           .filter((p) => p.length >= 2)
           .map((pts) => ({ pts, maxChordMm: toe.picketMm }));
-      const bandContours: BandContour[] = [...toBand(toe.lo), ...toBand(toe.hi)];
+      // Support BOTH the doubled {lo,hi} format and the LADDER {rails} format.
+      const bandContours: BandContour[] = toe.rails
+        ? toe.rails.flatMap((r) => toBand(r.polys))
+        : [...toBand(toe.lo ?? []), ...toBand(toe.hi ?? [])];
       const pickets = placementPickets();
       const complex = buildProtectedComplex(
         sampler,
@@ -499,6 +569,45 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       const g = await pool.scoreDev(xyz, refined.uv, refined.tris, DEFAULT_RULER);
       await pool.close();
       const score = reduceDevArray(g.dev, 0.01, g.bruteCalls);
+
+      // WORST-RESIDUAL DIAGNOSTIC: dump the worst-N outlier facets' worst-sample
+      // (u,t) + ampFrac + toe/crest distance so we can localize the FROZEN worst
+      // (is it a rib flank the toe band should have covered, or a DIFFERENT steep
+      // sub-feature — column edge / mullion / arch-apex — the band missed?).
+      {
+        const surface = radialSurfaceFromSampler(sampler);
+        const field = buildAmplitudeField(sampler, FDOMAIN);
+        const idx = Array.from({ length: g.dev.length }, (_, i) => i)
+          .filter((i) => g.dev[i] > 0.01)
+          .sort((a, b) => g.dev[b] - g.dev[a])
+          .slice(0, 200);
+        const dense8 = (() => {
+          const B: Array<[number, number, number]> = [];
+          for (let i = 0; i <= 8; i++) for (let j = 0; j + i <= 8; j++) B.push([i / 8, j / 8, (8 - i - j) / 8]);
+          return B;
+        })();
+        const rows = idx.map((f) => {
+          const gg = facetInteriorHonest(
+            surface,
+            xyz,
+            refined.uv,
+            refined.tris[3 * f],
+            refined.tris[3 * f + 1],
+            refined.tris[3 * f + 2],
+            dense8,
+            DEFAULT_RULER,
+          );
+          const u = ((gg.uWorst % 1) + 1) % 1;
+          const t = gg.tWorst;
+          return {
+            u: +u.toFixed(6),
+            t: +t.toFixed(6),
+            dev: +gg.dev.toFixed(5),
+            ampFrac: +field.ampFrac(u, t).toFixed(4),
+          };
+        });
+        writeFileSync(`${OUT}/gate_${GTAG}_worst.ndjson`, rows.map((r) => JSON.stringify(r)).join('\n'));
+      }
 
       // non-manifold by index (non-vacuous: cracked control must move the count).
       const nonMan = (tris: number[]): number => {

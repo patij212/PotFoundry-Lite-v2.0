@@ -431,6 +431,37 @@ export function filterByDisp3D(
   return { contours: out, dropped };
 }
 
+/**
+ * Extract a LADDER of toe rails at several amplitude-fraction levels. After a
+ * doubled band frames the mid-flank, the residual DESCENDS to the panel-meets-
+ * wall toe (measured: the worst-200 sit at ampFrac ~0.01-0.12, below a 0.12
+ * rail). A ladder of rails across the whole lower flank frames every sub-strip.
+ * Each level is marched → linked → af-polished → 3D-disp-cleaned → decimated.
+ */
+export function extractLadder(
+  sampler: SurfaceSampler,
+  domain: FlankDomain,
+  levels: number[],
+  march: FlankMarchOpts,
+  stepMm: number,
+): { field: AmplitudeField; rails: Array<{ level: number; contours: FlankContour[]; kept: number; dropped: number }> } {
+  const field = buildAmplitudeField(sampler, domain);
+  const rails = levels.map((c) => {
+    const segs = marchAmpFrac(field, domain, c, march);
+    const linked = linkFlankSegments(segs);
+    const filtered = refineAndFilterFlank(linked, field, c);
+    const dispClean = filterByDisp3D(filtered.contours, field, c, sampler);
+    const deci = decimateFlank(dispClean.contours, stepMm, sampler);
+    return {
+      level: c,
+      contours: deci,
+      kept: filtered.kept - dispClean.dropped,
+      dropped: filtered.dropped + dispClean.dropped,
+    };
+  });
+  return { field, rails };
+}
+
 export function extractToeBand(
   sampler: SurfaceSampler,
   domain: FlankDomain,
