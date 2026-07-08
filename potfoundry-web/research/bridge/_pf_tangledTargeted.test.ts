@@ -205,7 +205,8 @@ function runTargeted(
   const rA = tangledRadiusFn(style, DIMS); const H = DIMS.H;
   const injPath = (p: number): string => join(DIR, style, `inj_${p}.json`);
   const traj: number[] = [];
-  let converged = false, killedNonMono = false, killedBudget = false, prevNewton = Infinity, last: Pass | null = null;
+  let converged = false, killedNonMono = false, killedBudget = false, killedAsymptote = false, prevNewton = Infinity, last: Pass | null = null;
+  let lowDecayStreak = 0; // consecutive passes with <15% Newton decay (asymptote kill after 3, E-2026-07-09)
   let accInjected: number[] = []; // cumulative injected points across passes (each pass adds the new residual's cluster)
 
   for (let p = 0; p <= maxPasses; p++) {
@@ -216,7 +217,24 @@ function runTargeted(
       process.stderr.write(`  SKIP ${style}/${label} (done newton=${prior.newtonOutliers} radial=${prior.radialOutliers} proj=${prior.projFullPot})\n`);
       if (prior.newtonOutliers === 0 && prior.projFullPot <= 10_000_000) { converged = true; break; }
       // RESUME: reload this pass's persisted cumulative injection so the NEXT pass continues from the right state.
-      if (existsSync(injPath(p))) { accInjected = JSON.parse(readFileSync(injPath(p), 'utf8')) as number[]; }
+      if (existsSync(injPath(p))) { accInjected = JSON.parse(readFileSync(injPath(p), 'utf8')) as number[]; continue; }
+      // RESUME-GAP RECONSTRUCTION (E-2026-07-09): if a done pass has NO inj_{p}.json (it hit the OLD maxPasses cap
+      // before line "writeFileSync(injPath(p))" ran), and the NEXT pass p+1 is NOT done, we must reconstruct this
+      // pass's cumulative injection deterministically so the raised-cap continuation starts from the RIGHT state.
+      // The build is deterministic from accInjected (= inj_{p-1}), so rebuild pass p's mesh, radial-flag it, and
+      // recompute+persist its cluster — EXACTLY what the original pass-p→p+1 transition would have written. The
+      // expensive Newton verdict is NOT re-run (the pass's verdict is already recorded); only the cheap radial flag.
+      if (!done.has(p + 1) && p < maxPasses) {
+        process.stderr.write(`  RECONSTRUCT ${style}/${label}: inj_${p}.json MISSING (old-cap gap) — rebuilding to recompute cluster\n`);
+        const rb = buildLocal(style, { ...base, maxPoints: maxPointsCap }, accInjected);
+        const rbNear = tangledRadiusFn(style, DIMS);
+        const rbBig = worstFacetsByRadial(rbNear, H, rb.ut, rb.idx, rb.tris);
+        const rbFlagged = rbBig.recs.filter((r) => r.radialDev > TOL).map((r) => r.f);
+        const cluster = buildInjectionCluster(rbNear, H, rb.ut, rb.idx, rbFlagged, spread, nRing);
+        accInjected = accInjected.concat(cluster);
+        writeFileSync(injPath(p), JSON.stringify(accInjected));
+        process.stderr.write(`  RECONSTRUCT ${style}/${label}: radialFlagged=${rbFlagged.length} injectedPts=${accInjected.length / 2} (persisted inj_${p}.json)\n`);
+      }
       continue;
     }
     // BUILD (base = no injection; local = cumulative injected cluster). ONE build at a time.
@@ -244,6 +262,14 @@ function runTargeted(
     // small-residual grow trips immediately (the state where the literal-0 claim lives).
     const grew = nv.newtonExact ? nv.newtonOutliers > prevNewton : nv.newtonOutliers > prevNewton * 1.10;
     if (p > 0 && grew) { killedNonMono = true; process.stderr.write(`  KILL ${style}: Newton GREW ${prevNewton}→${nv.newtonOutliers} at a LOCAL pass — hidden cliff sub-population (CelticKnot §V11r-4 lesson), RECLASSIFY\n`); break; }
+    // ASYMPTOTE kill (E-2026-07-09): if the decay rate collapses (<15%/pass for 3 CONSECUTIVE passes) report the
+    // asymptote honestly instead of grinding to pass 12. Only counts when the residual is still positive.
+    if (p > 0 && Number.isFinite(prevNewton) && prevNewton > 0) {
+      const decay = (prevNewton - nv.newtonOutliers) / prevNewton;
+      lowDecayStreak = decay < 0.15 ? lowDecayStreak + 1 : 0;
+      process.stderr.write(`  DECAY ${style}/${label}: ${prevNewton}→${nv.newtonOutliers} (${(100 * decay).toFixed(1)}%/pass) lowStreak=${lowDecayStreak}\n`);
+      if (lowDecayStreak >= 3 && nv.newtonOutliers > 0) { killedAsymptote = true; process.stderr.write(`  KILL ${style}: decay <15%/pass for 3 consecutive passes — ASYMPTOTE at ~${nv.newtonOutliers}, reporting honestly\n`); prevNewton = nv.newtonOutliers; break; }
+    }
     prevNewton = nv.newtonOutliers;
     if (p === maxPasses) { process.stderr.write(`  ${style}: ${maxPasses} local passes did NOT reach 0 (newton ${nv.newtonOutliers}) — trajectory + scatter\n`); break; }
     // ── prepare the NEXT local pass: inject a cluster around THIS pass's radial-flagged residual (cheap superset) ──
@@ -252,9 +278,9 @@ function runTargeted(
     // CHECKPOINT the cumulative injection state keyed to THIS pass, so a resumed run reloads it for the next pass.
     writeFileSync(injPath(p), JSON.stringify(accInjected));
   }
-  const verdict = converged ? 'CLOSED' : killedNonMono ? 'RECLASSIFY' : killedBudget ? 'FRONTIER' : 'FRONTIER-INCOMPLETE';
+  const verdict = converged ? 'CLOSED' : killedNonMono ? 'RECLASSIFY' : killedBudget ? 'FRONTIER' : killedAsymptote ? 'ASYMPTOTE' : 'FRONTIER-INCOMPLETE';
   appendFileSync(finalPath, JSON.stringify({
-    label: 'final', style, verdict, converged, killedNonMono, killedBudget, trajectory: traj,
+    label: 'final', style, verdict, converged, killedNonMono, killedBudget, killedAsymptote, trajectory: traj,
     finalTris: last?.tris ?? 0, finalProjFullPot: last?.projFullPot ?? 0, finalNewton: last?.newtonOutliers ?? -1,
     finalWorstTrue: last?.worstTrue ?? -1, finalNonMan: last?.nonMan ?? -1, finalZeroArea: last?.zeroArea ?? -1,
     finalPctBelow20: last?.pctBelow20 ?? -1, finalInjectedPts: last?.injectedPts ?? 0,
@@ -279,7 +305,12 @@ describe('E-2026-07-08-TANGLED-TARGETED — LOCAL injected-Steiner refinement to
     // Newton is ONLY the verdict, and the stratified fraction estimate stays sound while keeping each pass a tractable
     // checkpoint under the kill-cycle — a 1500/1500 base Newton on 33k residual is a ~2.5hr uninterruptible unit).
     // Once the residual shrinks below 500 the count becomes EXACT automatically (the CLOSE basis).
-    runTargeted('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 5, 4_500_000, 500, 500);
+    // E-2026-07-09-CRYSTALLINE-LITERAL0: maxPasses raised 5→12 (continue the exact run — RESUME carries pass 0-5
+    // state; the RESUME-GAP RECONSTRUCTION rebuilds the missing inj_5.json deterministically). Trajectory at pass 5:
+    // Newton 35502→16436→9724→5983→3271→1891 (strictly monotone ~halving/pass) @ 7.46M proj, watertight. Predict
+    // ~10-11 total halvings to literal 0. Newton verdict downsized 500/500 stays valid; once residual <500 it goes
+    // EXACT automatically (the literal-0 CLOSE basis). Kill: non-monotone / proj>10M / decay<15% for 3 passes.
+    runTargeted('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 12, 4_500_000, 500, 500);
     expect(true).toBe(true);
   }, 6 * HRS);
 
