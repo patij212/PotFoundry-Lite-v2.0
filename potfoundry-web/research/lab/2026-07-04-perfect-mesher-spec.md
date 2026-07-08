@@ -2715,3 +2715,56 @@ concluded. Best-measured Gothic frontier stands at **LADDER-4: worst 0.117 / ~14
 **LEDGER:** registry E-2026-07-08-TIERC-TAPERRAIL; `flankBand.ts` +`taperedLevels`, `taperRail.test.ts`, `taper` mode in
 `_flankBand.test.ts` (PF_FB=taper, PF_FB_NRAILS/AFLO/AFHI, PF_FB_OUT). Data: `research/exchange/_tierc_taperrail/*`
 (gitignored — numbers inlined). Commits: mechanism+TDD 6bbb580, verdict [this].
+
+## V11z — CELTICKNOT CLOSE: the last un-attempted tangled/weave arm — EXCLUDE-CLASS CONFIRMED (strand OVER/UNDER OCCLUSION FOLD); the doubled-picket mechanism confines the residual on-wall (off-wall 0%) + watertight, but literal Newton-0 is UNREACHABLE at ANY budget (the priced picket-density curve has POSITIVE slope 73,963→83,753) (2026-07-08)
+
+E-2026-07-08-CK-CLOSE. CelticKnot was §V11r-4 RE-CLASSIFIED CLIFF-CLASS (Newton NON-monotone UP 58,403→70,143, worstTrue
+pinned ~0.295, bimodal 37% steep crossing tail). Sibling of §V11t-1 BasketWeave. Mission (USER MANDATE): ≤10M projection,
+goal literal whole-mesh Newton-0; if BW-class-expensive, a MEASURED frontier with a priced budget-to-0 estimate.
+
+**LOCALIZE (KILL-1 NOT triggered — loci closed-form + on-cliff).** Reproduced the §V11r-4 b0.008 anchor EXACTLY (Newton
+70,820 ≈ 70,143, worst 0.30). The CK relief field (from `rOuterCelticKnot`, defaults ckScale=3/ckStrands=3/ckWidth=0.15/
+ckTwist=0) has THREE C0 families, resolved by closed-form derivation + step-jump validation (`lociOnCliff`): (A) COLUMN
+boundaries u=j/3 are NOT cliffs (maxStepJump 0, jumpFrac 0 — a strand phase-shuffle, DROPPED); (B) strand BORDERS
+localU=x_i(t)±strandW ARE cliffs at 99.7% of samples (maxStepJump 1.14) — the background transition, the picket workhorse;
+(C) strand CENTERLINES x_i(t)=0.4·sin(3π·t + j·π·0.333 + (2π/3)·i) step ONLY at crossings (jumpFrac 0.022, maxStepJump 0.76) —
+ISOLATED POINT-folds (the over/under occlusion switch), NOT a linear wall. The derived loci CONTAIN 95.4% of the true
+outliers (offWallFrac 0.046). RENDER `z_outliers.png`: three braided columns, blue (0.30mm) outliers concentrate at the
+strand-crossing Xs.
+
+**BUILD (planarize 0-residual via per-column tiling; KILL-2 FIRED — recovery ~83%, density-invariant).** The braid loci cross
+densely ⇒ a single `planarizeMM` OVERFLOWS JS's ~16.7M pair-Set at 119k pickets (the §V11t-1 banked ceiling). FIX
+(mesh-equivalent, no shared-instrument edit): PER-COLUMN tiled planarize (disjoint u-bands ⇒ no cross-column crossings) →
+residual 0. The 8-offset fine ladder (162k) overflows even per-column ⇒ un-runnable (instrument ceiling). Recovery
+82.75%/83.28% DENSITY-INVARIANT, all `subdivFailNonCollinear` — the OBLIQUE braid crossings defeat the kernel's flip
+edge-recovery (unlike BasketWeave's clean ORTHOGONAL grid ≥86.8%). Watertight NON-VACUOUS (clean 0, cracked-control 3).
+
+**VERDICT — 2-POINT PICKET-DENSITY STUDY (the priced deliverable, honest Newton):**
+
+| ladder | pickets | tris | proj | recovery | offWall% | Newton scaledTrue | worstTrue | p99 |
+|---|---|---|---|---|---|---|---|---|
+| §V11r-4 (no embed) | 0 | 1.30M | 2.61M | — | (95.4% loci) | 70,143 | 0.294 | 0.290 |
+| coarse3 (54k) | 54k | 3.89M | 7.78M | 83.28% | **0** | **73,963** | 0.304 | 0.295 |
+| default6 (119k) | 119k | 4.80M | 9.60M | 82.75% | **0** | **83,753** | 0.299 | 0.296 |
+
+MECHANISM VALIDATED — off-wall 0% at BOTH densities (RENDER `z_doubled3M.png`: residual identical to pre-embed, nothing
+between braids; KILL-3 NOT triggered). BUT doubling the picket ladder (54k→119k) INCREASED the Newton count 73,963→83,753,
+worst PINNED ~0.30, p99 PINNED ~0.295 — a POSITIVE density slope ⇒ **budget-to-0 is NEGATIVE (unreachable at ANY budget).**
+Mechanistic why: the over/under occlusion is a POINT-fold at each braid crossing (centerline jumpFrac 0.022 = isolated
+points) that no (u,t)-line embedding separates — a doubled contour frames a LINEAR cliff (the borders, well-confined) but
+cannot separate over-strand from under-strand where the two strands' relief physically interleaves. This is WORSE than
+BasketWeave (whose finer picket at least DECREASED 0.66→0.59) and is the settled weave/braid EXCLUDE ruling DEMONSTRATED
+(conforming traded slivers minAngle 0 / %<20° 8.8 for a WORSE true-3D count).
+
+**VERDICT: FRONTIER / EXCLUDE-CLASS CONFIRMED.** CelticKnot = strand-OCCLUSION-FOLD cliff; literal Newton-0 UNREACHABLE by
+doubled-picket embedding at ANY budget (positive density slope), off-crossing = §V11r-4 density-invariant floor (worst pinned
+0.30). Honest export figure = the §V11i geometrically-faithful floor ~62k @ worst 0.30 true-3D on the over/under crossing
+walls (radial≈true ⇒ a designed occlusion feature, not a ruler artifact). This RESOLVES the last weave/braid arm: all three
+(BasketWeave FRONTIER-above-10M, CelticTriquetra CREASE-EXCLUDE, CelticKnot EXCLUDE-occlusion-fold) are now MEASURED-EXCLUDE,
+matching the settled map. Campaign arithmetic UNCHANGED (CK stays in the tangled/weave EXCLUDE bucket, now with a measured
+priced verdict instead of an inference). Do NOT invest further picket/density budget — the study PROVES divergence.
+
+**LEDGER:** registry E-2026-07-08-CK-CLOSE; probe `research/bridge/_ck_close.test.ts` (PF_CK=1, PF_CKSTAGE=localize|extract|
+build|verdict|gate, PF_CKLADDER override, resumable) + lib `research/bridge/_ckFieldLib.ts` + `vitest.ck_close.config.ts`.
+Data `research/exchange/_ck_close/CelticKnot/*` (gitignored — numbers inlined; renders z_outliers.png/z_doubled3M.png).
+Commits: pre-reg 417a336, tiled-planarize 88054ac, ladder-override ea8f697, gate+verdict [this]. DEV-ONLY; no src/ edit.

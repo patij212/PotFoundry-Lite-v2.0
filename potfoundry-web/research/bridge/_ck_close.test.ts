@@ -282,4 +282,33 @@ describe('E-2026-07-08-CK-CLOSE', () => {
     console.log('[CK-VERDICT]', JSON.stringify(rec, null, 2));
     expect(idx.length).toBeGreaterThan(0);
   }, 180 * 60_000);
+
+  // ── STAGE gate: %<20° quality + NON-VACUOUS watertight control (inject a crack ⇒ count must move) ────────────────
+  it.skipIf(!RUN || process.env.PF_CKSTAGE !== 'gate')('CK quality + non-vacuous watertight gate', async () => {
+    ensureDir(DIR);
+    const { triangleQualityDistribution } = await import('./labkit');
+    const rA = radiusFn('CelticKnot', DIMS);
+    const tag = process.env.PF_CKTAG ?? 'coarse3';
+    const utBuf = readFileSync(join(DIR, `mesh_${tag}.ut.bin`));
+    const idxBuf = readFileSync(join(DIR, `mesh_${tag}.idx.bin`));
+    const ut = Array.from(new Float64Array(utBuf.buffer, utBuf.byteOffset, utBuf.byteLength / 8));
+    const idx = new Uint32Array(idxBuf.buffer, idxBuf.byteOffset, idxBuf.byteLength / 4);
+    const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const [x, y, z] = lift(rA, ut[2 * i], ut[2 * i + 1]); xyz[3 * i] = x; xyz[3 * i + 1] = y; xyz[3 * i + 2] = z; }
+    const nmClean = auditNonManByIndex(xyz, idx);
+    // non-vacuous control: inject a 3rd triangle on an existing edge (idx[0],idx[1]) ⇒ non-manifold count MUST rise.
+    const cracked = new Uint32Array(idx.length + 3);
+    cracked.set(idx); cracked[idx.length] = idx[0]; cracked[idx.length + 1] = idx[1]; cracked[idx.length + 2] = idx[2 % nV];
+    const nmCracked = auditNonManByIndex(xyz, cracked);
+    const q = triangleQualityDistribution({ vertices: xyz, indices: idx });
+    const rec = {
+      stage: 'CK-GATE', tag, tris: idx.length / 3,
+      nonManIdxClean: nmClean, nonManIdxCracked: nmCracked, auditNonVacuous: nmCracked > nmClean,
+      minAngleDeg: q.minAngleDeg, p5MinAngleDeg: q.p5MinAngleDeg, pctBelow20: q.pctBelow20, degenerateCount: q.degenerateCount,
+    };
+    appendFileSync(join(DIR, 'gate.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[CK-GATE]', JSON.stringify(rec, null, 2));
+    expect(nmCracked).toBeGreaterThan(nmClean); // audit is non-vacuous
+  }, 30 * 60_000);
 });
