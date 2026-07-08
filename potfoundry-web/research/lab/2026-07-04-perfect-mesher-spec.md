@@ -2153,6 +2153,54 @@ and the thin 5e-4 wall is too narrow in z to catch them. All near-ring sheet-sid
 - **skirt-densification lever REFUTED:** adding transition skirt rows + tread sub-rings WORSENED with density (31k → sk3
   28,200 → sk6 45,072): more strip/tread facets each chord the wall. Refuted before it could mislead the close.
 
+## V11j — GYROID INSTRUMENT WALL BROKEN: grid-free Newton IS the trustworthy true-3D nearest; fork = CLIFF-CLASS (V10b twin/radial 8-9× INFLATED) (2026-07-08)
+
+Metrology charter follow-up to §V11b. The pilot concluded "neither tractable true-3D ruler is trustworthy on Gyroid at
+tol 0.01" and left V10b's "GyroidManifold 113,767 outliers @max 0.0889 GENUINE" standing under the suspect twin. This
+arc produced a TRUSTWORTHY true-3D verdict and adjudicated the fork. Registry E-2026-07-08-GYROID-TRUTH (full numbers).
+
+**(1) The instrument wall was a GRID wall, not a metrology wall.** The pre-registered truth-grade brute (full-azimuth
+grid 2048×400 → 4096×800) FLIPPED 0.0189mm on the worst-facet points — firing the INSTRUMENT KILL. Diagnosis: the flip
+is the COARSER brute's k-best box-refine STALLING in a shallow well (OVERSTATING); the finer 8192×1600-k24 grid AND
+continuous multi-start Newton BOTH descend to the SAME deeper foot (f=942465: brute4096 0.0235 wrong → brute8192 0.00783
+== Newton 0.00694). Grids refine-trap and OVERSTATE; the BVH twin band-limits and UNDERSTATES. **The one sound tractable
+true-3D nearest = grid-free multi-start Newton on D(θ,z)=|P−S(θ,z)|²: every value it returns is a REAL achievable surface
+distance ⇒ a valid UPPER bound, and the tightest is truest.** Validated design (after 3 refinements the diagnostics
+forced): radial-anchor seeds + DENSE-z (the well is z-SHARP) + a coarse-grid seed + a fine z-line refine (the last hard
+1/60 point f=1678065 has its true foot at dz≈−0.009mm — missed by ±45°/5-z seeding, found by the fine z-line).
+
+**(2) Validation table (a/b/c) — Newton is truth-grade + guard-usable-offline.** Over the 60 hardest facet-worst-points
++ the worst-20 FULL-facet: (a) full-facet Newton == full-facet windowed-brute8192 to **0.000000** (worst-20); (b)
+self-converges 11×41 == 21×81 to **0.000000**, **0 missed wells**; (c) **~205ms/query** (offline whole-mesh via the
+radial prefilter skipping >99% of facets — NOT a live-guard driver at that cost). BANKED CORRECTION to §V11b's "no sound
+ruler / use the radial upper bound only": the sound true-3D nearest on a tangled multi-well surface IS tractable — it is a
+continuous descent, not a grid. Applies to the whole tangled class (Voronoi/CT/CelticKnot/…).
+
+**(3) The honest Gyroid floor (worst-500 floor-truth + D1 full-mesh + D2 stratified robust):** worst facet true-3D =
+**0.0628mm** (radial 0.1365 overstated ~2.2×; twin 0.0889 also overstated). Whole-mesh: 206,273 radial-outlier facets
+(sound upper) but only **~5.7% are TRUE-3D outliers** (trueDev p50 0.0034, p90 0.0093 — most are FINE) ⇒ ~**12,000**
+honest true-3D outliers, vs V10b's 113,767 (twin/radial 8-9× inflated). **~94-95% sit on steep channel walls** (wallSlope
+p50 1.9 / p90 5.8 mm/mm).
+
+**(4) FORK = CLIFF-CLASS.** Not twin-inflated-to-closed (worst 0.062 > 0.02) but far smaller + far more concentrated than
+believed. `scatter_radial.png`: the outlier (u,t) population traces the **gyroid TPMS channel-wall network exactly** —
+thin curvilinear double-line loci (the two near-vertical smoothstep-transition walls of each raised ridge), ~10% areal
+coverage, channel interiors clean. ⇒ Gyroid's residual = the DESIGNED near-vertical relief walls, a CLIFF/feature-edge
+class like the weave over-under walls / DragonScales riser ([[feedback_export_standard]]). Honest close = EMBED the
+relief-transition contours (|val|=thickness level set) as MESH EDGES with zero serration, NOT density (§V11b proved
+density floors: count grows with density on near-vertical walls). The whole-mesh-density-guard is the wrong tool here.
+
+**NEXT:** (a) build the channel-wall feature-edge extractor (the |val|=th·(1−smoothVal) contour on the (θ,z) domain →
+constraint polylines, style-agnostic via the featureGraph detector) and re-mesh Gyroid conforming to it; measure honest
+whole-mesh outliers → expect ≈0 off-wall + the walls as embedded edges. (b) The validated grid-free Newton is now the
+tangled-class true-3D verdict instrument — re-adjudicate the other tangled styles (E-2026-07-08-TANGLED-CONTINUATION) with
+it where their BVH twin was unsound.
+
+**LEDGER:** registry E-2026-07-08-GYROID-TRUTH; research/exchange/_gyroid_truth/ (gitignored, numbers inlined + scatter
+PNG); instruments research/bridge/_gyroid_truthLib.ts + probes _gyroid_truth.test.ts / _gt_validate.test.ts /
+_gt_facetfloor.test.ts + render research/render/utScatter.cjs; commits d49c7fc→fe4f089→f333d32→(D-split/scatter/verdict).
+DEV-ONLY; no src/ edit; _pf_tangledKernelLib.ts read-only.
+
 ### VERDICT: CLOSED-with-certified-tread (RULER-CLASS, now with a SOUND whole-mesh ruler)
 Body CAD-grade + density-closable; tread/riser = designed ~1mm zero-serration C0 feature (serr ~0.001, feature edges
 embedded) the NEW conforming ruler MEASURES correctly. Honest single whole-mesh number = ~8.7k near-ring sheet-sag
