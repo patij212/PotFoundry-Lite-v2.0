@@ -50,7 +50,18 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 | 0.008 / 224 | 1,609,174 | 3.22M | 52,077 (0.236) | **33,535** | 0.155 | 0.639 | 0 | 0 |
 | default 0.004 / 256 (chord0.03) | 3,434,728 | 6.87M | 21,542 (0.228) | **15,069** | 0.129 | 0.795 | 0 | 0 |
 
-**Newton MONOTONE 112,206 → 83,420 → 33,535 → 15,069** as density rises (base coarse→fine, then the default anchor) ⇒ density direction CONFIRMED (V11i inference demonstrated). slopeMed 0.58-0.80 (moderate-relief, steeper than HexHive's flat 0.1 but clearly NOT cliff-class). Literal 0 is FAR over 6M: the finest under-6M point (3.22M proj) still has **33,535** outliers and the default anchor at 6.87M still has 15,069 ⇒ reaching 0 would need many more tris beyond the cap. FRONTIER verdict — density-closable but the budget-to-0 is large (Crystalline's fine multi-facet crystal relief is intrinsically dense). watertight non-vacuous, zeroArea 0 all levels. Data: `research/exchange/_tangled_density/Crystalline/{passes,final}.ndjson` (+ archived invalid runs). Commit [pending].
+**Newton MONOTONE 112,206 → 83,420 → 33,535 → 15,069** as density rises (base coarse→fine, then the default anchor) ⇒ density direction CONFIRMED (V11i inference demonstrated). slopeMed 0.58-0.80 (moderate-relief, steeper than HexHive's flat 0.1 but clearly NOT cliff-class). Literal 0 is FAR over 6M: the finest under-6M point (3.22M proj) still has **33,535** outliers and the default anchor at 6.87M still has 15,069 ⇒ reaching 0 would need many more tris beyond the cap. FRONTIER verdict — density-closable but the budget-to-0 is large (Crystalline's fine multi-facet crystal relief is intrinsically dense). watertight non-vacuous, zeroArea 0 all levels. Data: `research/exchange/_tangled_density/Crystalline/{passes,final}.ndjson` (+ archived invalid runs). Commit 61f6fde.
+
+**§V11r-3 Voronoi — DENSITY CLASS DEMONSTRATED (Newton monotone; largest floor, literal 0 far over 6M ⇒ FRONTIER).** Voronoi is the largest V11i floor (~115,816 @ 1.8M tris, BVH-twin-sound 0.0077 ⇒ the outliers are REAL, not a ruler artifact). Its nearest-cell radiusFn makes build+Newton ~13-15 min/level; pass 1 stalled the initial run under 3-agent contention ⇒ checkpoint-resumed once + downsized the Newton sample to 700/700 (kill-criterion honored; fraction estimate still sound). BASE-field coarse→fine sweep at fixed chord0.02 + 3M-pt budget (all hitBudget=false):
+
+| base (tolMm/sizeRes) | tris | projFullPot | radial-out (max) | **NEWTON true-3D** | worstTrue mm | slopeMed | nonMan | zeroArea |
+|---|---|---|---|---|---|---|---|---|
+| 0.02 / 96 | 563,210 | 1.13M | 194,738 (0.335) | **125,505** | 0.138 | 0.916 | 0 | 0 |
+| 0.012 / 160 | 1,258,688 | 2.52M | 217,549 (0.191) | **115,303** | 0.093 | 0.831 | 0 | 0 |
+| 0.008 / 224 | 1,962,366 | 3.92M | 123,484 (0.141) | **65,590** | 0.074 | 0.685 | 0 | 0 |
+| (V11i anchor _best20) | 1.80M | 3.60M | 202,217 | **115,816** | 0.137 | 0.635 | 0 | 0 |
+
+**Newton MONOTONE 125,505 → 115,303 → 65,590** as density rises, worstTrue MONOTONE 0.138 → 0.093 → 0.074 (both count AND max fall with density) ⇒ density direction CONFIRMED (V11i inference demonstrated; the BVH-twin-sound floor is genuinely density-closable, not a ruler artifact and not cliff-class). slopeMed 0.69-0.92 (moderate). Largest floor of the four: at 3.92M proj still 65,590 outliers @ worst 0.074 ⇒ literal 0 is FAR over 6M. FRONTIER verdict — density-closable but the largest budget-to-0 (dense cell-wall network). watertight non-vacuous, zeroArea 0 all levels. Data: `research/exchange/_tangled_density/Voronoi/{passes,final}.ndjson`. Commit [pending].
 
 ---
 
