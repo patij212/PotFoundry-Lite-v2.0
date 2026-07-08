@@ -137,6 +137,21 @@ export interface RefineOptions {
    * A per-pass hit rate is reported via `cacheHits`/`cacheChecks` in the stat.
    */
   dirtyFacetCache?: boolean;
+  /**
+   * REFINE-LOOP DEDUPE CELL (mm, E-2026-07-08-TIERC-LITERAL0, opt-in; default
+   * undefined ⇒ `DEDUPE_CELL_MM` = 0.004 = BYTE-IDENTICAL to prior). The refine
+   * loop rejects any midpoint split whose (u,t) lands in an already-occupied
+   * `dedupeCellMm`-sized cell (a sub-cell edge midpoint collapses onto an
+   * endpoint under the hash). On NEAR-VERTICAL rib-flank facets — tiny (u,t)
+   * footprint, large 3D relief — the residual outlier population FREEZES against
+   * this 0.004mm lattice: the anisotropic split fires but ~99% of inserts are
+   * dedupe-rejected (MEASURED: round-7 plateau inserted≈1230/pass vs dTris≈20 ⇒
+   * outliers pinned ~1150, worst frozen 0.4689). Lowering the cell lets the loop
+   * subdivide those near-vertical facets further in (u,t) so their P1 chord-sag
+   * shrinks below tol. The key packs `round(u_mm/cell)*1e5 + round(t_mm/cell)`;
+   * SAFE while `round(t_mm/cell) < 1e5` (t-span ~29mm ⇒ cell ≥ ~0.0003mm).
+   */
+  dedupeCellMm?: number;
 }
 
 export interface RefinePassStat {
@@ -801,10 +816,11 @@ export function refineToZeroOutliers(
   const cEdges = seed.cEdges;
   let tris = triangulateMM(uv, uToMm, tToMm, cEdges);
 
+  const dedupeCell = opts.dedupeCellMm ?? DEDUPE_CELL_MM;
   const pmap = new Map<number, number>();
   const keyOf = (u: number, t: number): number =>
-    Math.round(((((u % 1) + 1) % 1) * uToMm) / DEDUPE_CELL_MM) * 100000 +
-    Math.round((t * tToMm) / DEDUPE_CELL_MM);
+    Math.round(((((u % 1) + 1) % 1) * uToMm) / dedupeCell) * 100000 +
+    Math.round((t * tToMm) / dedupeCell);
   const rehash = (): void => {
     pmap.clear();
     for (let i = 0; i < uv.length / 2; i++) {
@@ -1004,10 +1020,11 @@ export async function refineToZeroOutliersParallel(
   const cEdges = seed.cEdges;
   let tris = triangulateMM(uv, uToMm, tToMm, cEdges);
 
+  const dedupeCell = opts.dedupeCellMm ?? DEDUPE_CELL_MM;
   const pmap = new Map<number, number>();
   const keyOf = (u: number, t: number): number =>
-    Math.round(((((u % 1) + 1) % 1) * uToMm) / DEDUPE_CELL_MM) * 100000 +
-    Math.round((t * tToMm) / DEDUPE_CELL_MM);
+    Math.round(((((u % 1) + 1) % 1) * uToMm) / dedupeCell) * 100000 +
+    Math.round((t * tToMm) / dedupeCell);
   const addPt = (u: number, t: number): number => {
     const k = keyOf(u, t);
     const hit = pmap.get(k);
