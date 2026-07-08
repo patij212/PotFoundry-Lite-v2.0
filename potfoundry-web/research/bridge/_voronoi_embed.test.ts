@@ -108,6 +108,53 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     expect(nProbed).toBeGreaterThan(0);
   }, 30 * 60_000);
 
+  // ── STAGE foldcheck2 (KILL-1, DECISIVE) — chord-sag HALVING test: ramp (reducible) vs fold (pinned) ───────────
+  // The binary "monotone both sides" check conflates the wall NETWORK (a normal ray from one wall hits an adjacent
+  // wall/junction) with a genuine occlusion fold. The DECISIVE discriminator (mission's ask): march crest→band-edge
+  // cleanly into a cell interior (along +∇cellSdf), and measure whether the facet chord-sag across that span FALLS
+  // geometrically under subdivision (RAMP, Gyroid-embeddable) or is PINNED (FOLD, CK-exclude). Radial r(u,t) is
+  // single-valued so a literal occlusion fold is analytically impossible; this measures chord-REDUCIBILITY, the real
+  // embeddability property.
+  it.skipIf(!RUN || process.env.PF_VORSTAGE !== 'foldcheck2')('KILL-1 decisive — chord-sag halving (ramp vs fold)', () => {
+    const rA = radiusFn('Voronoi', DIMS);
+    const lift = (u: number, t: number): [number, number, number] => { const th = TAU * u, z = t * DIMS.H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
+    const gradSdf = (u: number, t: number): [number, number] => { const h = 5e-4; return [(cellSdf(u + h, t, P) - cellSdf(u - h, t, P)) / (2 * h), (cellSdf(u, Math.min(1, t + h), P) - cellSdf(u, Math.max(0, t - h), P)) / (2 * h)]; };
+    const spanSag = (u0: number, t0: number, u1: number, t1: number, nSub: number): number => {
+      let worst = 0;
+      for (let seg = 0; seg < nSub; seg++) {
+        const a0 = seg / nSub, a1 = (seg + 1) / nSub;
+        const A = lift(u0 + (u1 - u0) * a0, t0 + (t1 - t0) * a0), B = lift(u0 + (u1 - u0) * a1, t0 + (t1 - t0) * a1);
+        for (let k = 1; k < 16; k++) { const b = k / 16; const um = u0 + (u1 - u0) * (a0 + (a1 - a0) * b), tm = t0 + (t1 - t0) * (a0 + (a1 - a0) * b); const S = lift(um, tm); const Cx = A[0] + (B[0] - A[0]) * b, Cy = A[1] + (B[1] - A[1]) * b, Cz = A[2] + (B[2] - A[2]) * b; const d = Math.hypot(S[0] - Cx, S[1] - Cy, S[2] - Cz); if (d > worst) worst = d; }
+      }
+      return worst;
+    };
+    let seed = 999; const rnd = (): number => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+    const rows: Array<{ s1: number; s2: number; s4: number; s8: number }> = []; const ratios: number[] = [];
+    const target = Number(process.env.PF_VORNSPAN ?? '400');
+    for (let trial = 0; trial < 200000 && rows.length < target; trial++) {
+      const u = rnd(), t = 0.15 + 0.7 * rnd(); if (cellSdf(u, t, P) > 0.003) continue;
+      let [gu, gt] = gradSdf(u, t); const gn = Math.hypot(gu, gt) || 1e-9; gu /= gn; gt /= gn;
+      let found = false, us = u, ts = t;
+      for (let m = 1; m <= 300; m++) { const s = (0.9 / P.scale) * m / 300; const uu = u + gu * s, tt = Math.max(0, Math.min(1, t + gt * s)); if (cellSdf(uu, tt, P) >= P.thickness) { us = uu; ts = tt; found = true; break; } }
+      if (!found) continue;
+      const s1 = spanSag(u, t, us, ts, 1), s2 = spanSag(u, t, us, ts, 2), s4 = spanSag(u, t, us, ts, 4), s8 = spanSag(u, t, us, ts, 8);
+      rows.push({ s1, s2, s4, s8 }); if (s1 > 1e-4) ratios.push(s8 / s1);
+    }
+    const colStats = (k: 's1' | 's2' | 's4' | 's8'): { med: number; p90: number; max: number } => { const v = rows.map((r) => r[k]).sort((a, b) => a - b); return { med: +v[(v.length / 2) | 0].toFixed(4), p90: +v[Math.floor(v.length * 0.9)].toFixed(4), max: +v[v.length - 1].toFixed(4) }; };
+    ratios.sort((a, b) => a - b);
+    const ratioMed = ratios.length ? +ratios[(ratios.length / 2) | 0].toFixed(4) : 0;
+    const rec = {
+      stage: 'foldcheck2', nSpans: rows.length,
+      sag_nSub1: colStats('s1'), sag_nSub2: colStats('s2'), sag_nSub4: colStats('s4'), sag_nSub8: colStats('s8'),
+      ratio_s8_s1_med: ratioMed,
+      classification: ratioMed < 0.35 ? 'RAMP-embeddable (chord reduces geometrically)' : 'FOLD-pinned (chord density-invariant → CK-exclude)',
+    };
+    appendFileSync(join(DIR, 'foldcheck.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[foldcheck2]', JSON.stringify(rec, null, 2));
+    expect(rows.length).toBeGreaterThan(0);
+  }, 30 * 60_000);
+
   // ── STAGE extract — derive cell-wall loci FROM THE SAMPLER + validate placement sub-0.01 vs sampler ───────────
   it.skipIf(!RUN || process.env.PF_VORSTAGE !== 'extract')('extract cell-wall loci + validate placement', () => {
     const rA = radiusFn('Voronoi', DIMS);
