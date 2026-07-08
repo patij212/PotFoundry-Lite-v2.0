@@ -56,7 +56,15 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 - **A KILL:** after ≤2 distinct picket placements, the guardMax is STILL 1.059-class (>1.0mm, the re-forming needle survives) OR the gate converges only ABOVE 6M ⇒ DESIGN A refuted, move to DESIGN B.
 - **B KILL:** DESIGN B infeasible (cdt2d API forces whole-domain and a manual cavity insert is out of scope) OR also plateaus above 6M / >tol ⇒ STOP. Mechanism space EXHAUSTED. Finalize DECISION_ARTIFACT (round-7 rows): literal-0 multi-bay Gothic at tol 0.01 requires budget >6M; report the best-measured edgeSag frontier (V11n plateau ~2794 outliers, worst pinned 1.0592, proj ~7.0M). Decision to the user. NO further levers.
 
-**RESULT.** _(pending — measured numbers appended below after the gate runs)_
+**RESULT.**
+
+**DESIGN A plumbing sanity (_topologyPicketDiag, GREEN).** Pickets injected into the raw mm soup before `planarizeMM` ⇒ `residualCrossings==0`, recovery 100%, 1001 in-band locked vertical picket edges, off byte-identical. Planarity-safe by construction confirmed.
+
+**DESIGN A placement 1 (3 pickets: u∈{0.058,0.10,0.14}, t[0.44,0.58], chord 0.09mm; MAXPASS 30; 3326s).** THE NEEDLE IS KILLED: guardMax **0.46891** (was the V11n pin `1.05918988549241`), `needleKilled=true` — the pin never re-forms in ANY dense pass (worst bounces 0.47-0.78, never 1.05). Floor MASSIVELY lowered: guardOutliers **1157** (V11n aniso plateau ~2794), tris asymptote **161062** (V11n ~166160), guardP99 **0.00953 < 0.01** (99% of facets UNDER tol — the residual is a thin tail). BUT the SECOND acceptance clause fires: `capped=true`, projFullPot **6.76M > 6M**, `converged=false`. Watertight non-vacuous (nonManifold 0, cracked control 3). Trajectory: dense passes 6-7 worst 0.634/0.734 (V11n pin here was 1.021/1.059), plateau passes 18-28 worst 0.4689 pinned, outliers ~1151-1157, tris +~10/pass. Data: `_tierc_topology/topogate_p1_pass.ndjson` + `topogate_p1_result.json`.
+
+**DESIGN A placement 2 (6-column comb, wider band):** _(running — appended on completion)_
+
+**INTERPRETATION.** DESIGN A CONFIRMS the V11h/V11n root cause diagnosis (the pin WAS a re-forming CDT needle a locked-picket constraint forbids) and converts the ~1.06mm needle into a ~0.47mm rib-flank residual with HALF the outliers — a genuine, large fidelity win banked. But it does NOT open the gate to literal-0 under 6M: a NEW residual floor (0.47mm rib-flank tail, ~1150 outliers, ~6.76M) remains. The needle-kill LOWERS the frontier but the domain cost floor (V11k ampMean 1.217mm over 0.24-wide t-band) still exceeds 6M.
 
 ---
 
