@@ -5383,7 +5383,7 @@ Decisions:
 - RC uniform layout (112 bytes, r_max at byte 80) shared between WGSL and RaycastController — documented as critical change-together gotcha.
 
 Gate Results:
-- **Smoke test (19/20 styles)**: e2e/ui-v3-smoke.spec.ts verified all 20 style IDs on desktop Chromium; style 19 hits pre-existing Down shader-compiler hang (legacy mesh path hangs style 18 first; both are driver/timing dependent). A/B comparison screenshots saved under e2e/artifacts/raycast-ab/ (gitignored, 40 images).
+- **Smoke test (19/20 styles)**: e2e/raycast-preview.spec.ts verified all 20 style IDs on desktop Chromium; style 19 hits pre-existing Dawn shader-compiler hang (legacy mesh path hangs on style 18 first). A/B comparison screenshots saved under e2e/artifacts/raycast-ab/ (gitignored, 40 images).
 - **Intersection-kernel convergence (256 vs 512 steps)**: p99 = 0 (f32 floor); style-0 max = 0.125mm (one f16 readback quantum); DragonScales grazing max 2.5mm vs derived 8.5mm relief-amplitude bound. Kernel is consistent.
 - **Production convergence (desktop 48/128/16spp vs reference 512/512/16spp, Halton ray sets identical)**: median = 0, zero sign-flips (no surface lost). Real ~7–11mm silhouette-grazing tail on high-relief styles (DragonScales p99 = 11mm) survives 16-sample accumulation at interactive frame rate.
 - **Perf**: 19.6ms interactive frame on DragonScales (desktop, catastrophe bound 100ms). Feature meets interactive threshold.
@@ -5392,8 +5392,8 @@ Gate Results:
 Validation:
 - Feature flag: `?preview=raycast` URL param, Settings → Preview engine toggle (AppSettingsModal), `localStorage['pf-preview-mode']` (resolvePreviewMode cascade: url > localStorage > default mesh).
 - No regressions: mesh remains production default; wireframe/thumbnails/WebGL unchanged.
-- E2E: `npx playwright test e2e/ui-v3-smoke.spec.ts --project=chromium --workers=1` passed all smoke probe calls (requires --workers=1 per spec note; GPU context serialization necessary).
-- Code: `npm run typecheck`, `npm run lint`, `npm run build` clean. Spec doc: `potfoundry-web/docs/superpowers/specs/2026-07-08-raycast-preview-design.md`.
+- E2E: `npx playwright test e2e/raycast-preview.spec.ts --project=chromium --workers=1` green (requires --workers=1; parallel workers starve the single GPU).
+- Code: `npm run typecheck` clean (2 pre-existing tierC WIP errors excepted) + focused vitest suites green per task reports. Spec doc: `docs/superpowers/specs/2026-07-08-raycast-preview-design.md` (repo root).
 
 Risks:
 - High-relief silhouette grazing (DragonScales ~11mm p99 at 16spp) is a real motion artifact; production flip to raycast as default should wait for Patryk's A/B review.
@@ -5401,7 +5401,7 @@ Risks:
 - E2E requires `--workers=1` — full parallel CI may need dedicated raycast job or serial GPU context handling.
 
 Open Decision:
-- **Flip default to raycast?** Inputs: production grazing tail (7–11mm, high-relief only), pre-existing style-19 hang (worse on mesh), e2e --workers=1 requirement. Recommendation: defer until Patryk reviews the 40 A/B screenshot artifacts under e2e/artifacts/raycast-ab/. The feature is production-ready technically; the threshold decision is user experience.
+- **Flip default to raycast?** Inputs: production grazing tail (7–11mm, high-relief only), pre-existing style-19 hang (the legacy mesh path hangs on style 18 first), e2e --workers=1 requirement. Recommendation: defer until Patryk reviews the 40 A/B screenshot artifacts under e2e/artifacts/raycast-ab/. The feature is production-ready technically; the threshold decision is user experience.
 
 Next agent:
 - If flipping default: single-line change in `resolvePreviewMode` fallback or Settings default value.
