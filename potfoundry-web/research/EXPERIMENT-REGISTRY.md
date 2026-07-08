@@ -4597,3 +4597,56 @@ the junction wall is then the deliverable.
 - MIXED otherwise — characterize the residual (where, how deep, exclFrac) without a hard class verdict.
 
 **VERDICT: PENDING — measuring.**
+
+---
+
+## E-2026-07-08-TANGLED-KERNEL — dispatch the whole-mesh honest-brute perfect-mesher kernel to the tangled class (PILOT: Gyroid + Voronoi) [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME:** V10b FINAL dense-basis whole-mesh scorecard (tol 0.01, every facet, radial-prefilter, no screen) leaves the
+tangled class GENUINE and far from 0: GyroidManifold 113,767 outliers/max 0.0889 (Q1: old ruler OVERSTATES ~2× —
+BVH-truth max ~0.098 vs ruler 0.215; radial same-azimuth prefilter is the sound analytic anchor), Voronoi 105,154/
+max 0.1374 (ruler HONEST, xcheck 0.004). Stretch: HexHive 15,098/0.1287, Crystalline 20,788/0.1343, BasketWeave
+939,938/0.3424, CelticKnot 62,340/0.1075 (both weave-GENUINE off-crease body per E-2026-07-07-WEAVE; creases are
+designed C0 features → make them mesh edges, don't refine across). These currently mesh via CDT-under-M + deep-sag
+`chordSteiner` (research meshers) whose STOP driver is the SAME-(u,t) RADIAL chord sag — blind/overstating vs the
+honest true-3D nearest (the exact GN-blindness that floored Gothic until the honest-brute STOP driver overturned it,
+spec §V7/V10e).
+
+**HYPOTHESIS:** the proven whole-mesh perfect-mesher mechanism — refinement DRIVEN by the MEASURED whole-mesh
+EVERY-FACET honest true-3D interior deviation (θ-windowed provably-safe brute STOP driver, V10e) with an
+`acceptanceGuardWhole` — drives GyroidManifold and Voronoi to whole-mesh EVERY-FACET 0 interior outliers at tol
+0.01mm, watertight (non-vacuous), zeroArea 0, within the 6M full-pot tri budget. (Empty protected complex for the
+tangled class per the spec §4 dispatch table: "empty complex + interior chord-sag Steiner".)
+
+**RULER (the stop-driver + the verdict, IDENTICAL instrument):** the honest true-3D per-facet interior deviation over
+a ≥36-pt denseBary(45) lattice, two-stage same-(u,t) bound → GN screen → **θ-WINDOWED full-resolution brute** (ported
+from the production tierC interiorRuler, commits 47c5ceb/7098a30: per-sample window = asin(2·bound/ρ) + 12-cell
+margin, EXACT-safe = can only overstate, chosen OVER the BVH twin which band-limits/UNDERSTATES at high curvature =
+ruler-lied). Radial same-azimuth prefilter = the analytic anchor (a green bound is immune to twin band-limit).
+Whole-mesh EVERY facet, NO top-N/percentile/vert+centroid guard (banked mandate, proven blind twice).
+
+**METHOD:** research probe `research/bridge/_pf_tangled_kernel.test.ts` (PF_TANGLED_KERNEL=1), ONE env-gated `it` per
+style, run styles sequentially (concurrency courtesy). Kernel lib `research/bridge/_pf_tangledKernelLib.ts` (NEW):
+θ-windowed `facetInteriorWin` + whole-mesh honest guard `wholeMeshGuardWin` + honest-true-3D-driven deep-sag refine
+driver. Seed = the reaching `buildInhouseMetricMesh` (CDT-under-M + deep-sag) tangled mesh at a moderate screening
+budget (~0.3–0.8M pts); refine loop tightens toward honest ≤0.01; the seam-safe re-triangulation stays inside the
+inhouse mesher (NO flat-rectangle re-CDT of a full ring — that would crack the seam). CHECKPOINT per-pass ndjson to
+`research/exchange/_tangled_kernel/<style>/passes.ndjson` + final row the INSTANT computed (resume/env-kill safe);
+skip a style whose final row exists. NODE_OPTIONS=--max-old-space-size=8192 for detached runs. Reuses labkit +
+`_pf_wholeMeshGuardLib`/`_pf_rebaselineRuler`/inhouseMetricMesh READ-ONLY; edits NOTHING in src/.
+
+**KILL CRITERIA (per style, pre-registered):**
+- CLOSE iff (a) whole-mesh EVERY-FACET honest true-3D interior outliers == 0 at tol 0.01mm (θ-windowed brute, radial
+  prefilter, no guard-population) AND (b) watertight by index (auditNonManByIndex/auditNonManRaw == 0, non-vacuous —
+  injected crack moves the count) AND (c) zeroArea degenerate faces == 0 (collapse post-pass if needed) AND (d)
+  projected full-pot tri count ≤ 6M (report projected).
+- KILL the arm iff outliers PLATEAU > 1,000 for 4 consecutive passes OR tris exceed 6M-projected before reaching 0 —
+  then localize the floor population (crest / cell wall / junction / seam), report the measured floor + a render if
+  cheap. A REFUTED arm with clean floor-localization is a first-class result.
+- NO-OP iff the kernel matches the reaching mesh's whole-mesh outlier count within 10% (the honest driver adds
+  nothing over the radial deep-sag on this style).
+
+**PILOT-FIRST:** run Gyroid + Voronoi (the two largest gaps) to a verdict FIRST. Extend to the stretch styles ONLY
+if the pilot converges cheaply; otherwise report the pilot verdict + the stretch styles' state explicitly.
+
+**VERDICT: PENDING — building kernel + pre-registered, measuring next.**
