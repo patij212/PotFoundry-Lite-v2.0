@@ -8,9 +8,13 @@ import { writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   GYROID_DEFAULTS, wallIsolevels, gyroidVal, marchAbsIso, linkSegments, isoResidual3D, refineAndFilterContours,
+  decimateContours, contoursToConstraints, type Contour,
 } from './_gyroidContourLib';
-import { radiusFn } from './_pf_tangledKernelLib';
+import { radiusFn, TANGLED_BASE, auditNonManRaw, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
+import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
+import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
+import { readFileSync } from 'node:fs';
 
 const RUN = process.env.PF_GYROID_CLOSE === '1';
 const DIR = join(process.cwd(), 'research/exchange/_gyroid_close');
@@ -80,6 +84,136 @@ describe('E-2026-07-08-GYROID-CONFORMING-CLOSE', () => {
 
     expect(vMid.maxDisp).toBeLessThan(0.01); // KILL: extractor must reach sub-0.01 placement
   }, 20 * 60_000);
+
+  // ── Q2 BUILD: conforming re-mesh with the wall contours as constraint edges ──────────────────────────────────
+  // PF_GC=build PF_GCVARIANT=mid|both  PF_GCSTEP=<decimate mm>  PF_GCMAX=<maxPoints>
+  it.skipIf(!RUN || process.env.PF_GC !== 'build')('Q2 conforming build (single vs doubled)', () => {
+    const rA = radiusFn('GyroidManifold', DIMS);
+    const variant = process.env.PF_GCVARIANT ?? 'mid';
+    const stepMm = Number(process.env.PF_GCSTEP ?? '0.3');
+    const maxPoints = Number(process.env.PF_GCMAX ?? '3000000');
+    const chordTolMm = Number(process.env.PF_GCCHORD ?? '0.004');
+    // reload refined contours from Q1
+    const raw = JSON.parse(readFileSync(join(DIR, 'contours_refined.json'), 'utf8')) as {
+      isolevels: { inner: number; outer: number; mid: number }; outer: number[][][]; inner: number[][][]; mid: number[][][];
+    };
+    const asC = (arr: number[][][]): Contour[] => arr.map((pts) => ({ pts: pts as [number, number][] }));
+    let contours: Contour[];
+    if (variant === 'mid') contours = asC(raw.mid);
+    else if (variant === 'both') contours = [...asC(raw.inner), ...asC(raw.outer)];
+    else throw new Error('variant must be mid|both');
+    const dec = decimateContours(contours, stepMm, rA, DIMS.H);
+    const { injectedPoints, constraintEdges } = contoursToConstraints(dec);
+    const nConstraintVerts = injectedPoints.length / 2, nConstraintEdges = constraintEdges.length / 2;
+
+    const t0 = Date.now();
+    const mesh = buildInhouseMetricMesh(rA, DIMS.H, {
+      ...TANGLED_BASE, maxPoints, optimizeSweeps: 2,
+      guardManifoldAlways: true, chordTolMm, chordSteiner: true,
+      injectedPoints, constraintEdges, pinInjected: true,
+      guardRecoveryManifold: true, recoveryRobust: true, recoverySubdivideCollinear: true,
+      recoveryCollinearEps: Number(process.env.PF_GCEPS ?? '1e-9'),
+    });
+    const ms = Date.now() - t0;
+    const ut = mesh.ut, idx = mesh.indices, tris = idx.length / 3;
+
+    // watertight (index) + zeroArea via the sound radial guard
+    const nmRaw = auditNonManRaw(idx);
+    const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = 2 * Math.PI * u, z = t * DIMS.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+    const nmIdx = auditNonManByIndex(xyz, idx);
+    const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx as unknown as Uint32Array, 0.01);
+
+    const rec = {
+      stage: 'Q2-BUILD', variant, stepMm, chordTolMm, maxPoints, ms, tris, points: mesh.points, hitBudget: mesh.hitBudget,
+      nConstraintVerts, nConstraintEdges,
+      recovery: mesh.constraint,
+      nonManRaw: nmRaw, nonManIdx: nmIdx, zeroArea: sound.zeroArea,
+      soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
+    };
+    appendFileSync(join(DIR, 'build.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[Q2]', JSON.stringify(rec, null, 2));
+
+    // persist the mesh bins for Q3 (resumable): ut + idx
+    writeFileSync(join(DIR, `mesh_${variant}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(DIR, `mesh_${variant}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
+    writeFileSync(join(DIR, `mesh_${variant}.meta.json`), JSON.stringify(rec));
+
+    expect(mesh.constraint?.failed ?? 0).toBeLessThan(nConstraintEdges * 0.05); // KILL: recovery must not collapse
+  }, 120 * 60_000);
+
+  // ── Q3 VERDICT: whole-mesh Newton-ruler gate on the conforming mesh ──────────────────────────────────────────
+  // PF_GC=verdict PF_GCVARIANT=mid|both. Loads the persisted mesh, runs the SOUND radial guard whole-mesh (fast),
+  // then the VALIDATED Newton on the radial-outlier facet worst points (radial is a strict upper bound → green
+  // facets are PROVABLY ≤tol, only non-green need Newton). Classifies each true outlier as ON-wall vs OFF-wall.
+  it.skipIf(!RUN || process.env.PF_GC !== 'verdict')('Q3 Newton-ruler verdict (off-wall outliers, wall serration)', () => {
+    const rA = radiusFn('GyroidManifold', DIMS);
+    const variant = process.env.PF_GCVARIANT ?? 'mid';
+    const tol = Number(process.env.PF_GCTOL ?? '0.01');
+    const utBuf = readFileSync(join(DIR, `mesh_${variant}.ut.bin`));
+    const idxBuf = readFileSync(join(DIR, `mesh_${variant}.idx.bin`));
+    const ut = Array.from(new Float64Array(utBuf.buffer, utBuf.byteOffset, utBuf.byteLength / 8));
+    const idx = new Uint32Array(idxBuf.buffer, idxBuf.byteOffset, idxBuf.byteLength / 4);
+    const tris = idx.length / 3;
+
+    // whole-mesh SOUND radial bound (fast) — the prefilter. Every facet ≤tol here is PROVABLY faithful.
+    const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx, tol);
+    // dense bary for facet worst-point true-3D
+    const DENSE: Array<[number, number, number]> = [];
+    { const n = 8; for (let i = 0; i <= n; i++) for (let j = 0; j + i <= n; j++) DENSE.push([i / n, j / n, (n - i - j) / n]); }
+    const lift = (u: number, t: number): [number, number, number] => { const th = 2 * Math.PI * u, z = t * DIMS.H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
+    const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const [x, y, z] = lift(ut[2 * i], ut[2 * i + 1]); xyz[3 * i] = x; xyz[3 * i + 1] = y; xyz[3 * i + 2] = z; }
+    const radialBound = (px: number, py: number, pz: number): number => { if (pz < 0 || pz > DIMS.H) return Infinity; let th = Math.atan2(py, px); if (th < 0) th += 2 * Math.PI; return Math.abs(Math.hypot(px, py) - rA(th, pz)); };
+
+    // collect radial-outlier facets (sound upper bound > tol) and Newton-verify their worst point
+    const nF = idx.length / 3;
+    const trueDevs: number[] = []; let newtonCalls = 0;
+    const outRows: Array<{ uc: number; tc: number; trueDev: number; onWall: number }> = [];
+    // wall proximity: distance in (u,t) from the facet centroid to the nearest embedded contour vertex (mid isolevel)
+    const lv = wallIsolevels(P);
+    const wallVal = variant === 'both' ? [lv.inner, lv.outer] : [lv.mid];
+    const onWall = (uc: number, tc: number): boolean => { const av = Math.abs(gyroidVal(uc, tc, P)); return wallVal.some((c) => Math.abs(av - c) < 0.03); };
+    let maxTrue = 0, nTrueOut = 0, nOnWall = 0, nOffWall = 0;
+    const NW: NewtonOpts = { seedTheta: 0, seedZ: 0, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 };
+    for (let f = 0; f < nF; f++) {
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const A = [xyz[3 * a], xyz[3 * a + 1], xyz[3 * a + 2]] as const, B = [xyz[3 * b], xyz[3 * b + 1], xyz[3 * b + 2]] as const, C = [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]] as const;
+      // sound bound over dense bary — skip facet if all ≤ tol (provably faithful)
+      let bnd = 0;
+      for (const [wa, wb, wc] of DENSE) { const d = radialBound(wa * A[0] + wb * B[0] + wc * C[0], wa * A[1] + wb * B[1] + wc * C[1], wa * A[2] + wb * B[2] + wc * C[2]); if (d > bnd) bnd = d; }
+      if (bnd <= tol) continue;
+      // Newton the worst point (highest-bound sample) for honest true-3D
+      let wbnd = 0, wp: [number, number, number] = A as unknown as [number, number, number];
+      for (const [wa, wb, wc] of DENSE) { const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2]; const d = radialBound(px, py, pz); if (d > wbnd) { wbnd = d; wp = [px, py, pz]; } }
+      const nr = newtonNearest(rA, DIMS.H, wp[0], wp[1], wp[2], NW); newtonCalls++;
+      trueDevs.push(nr.dist);
+      if (nr.dist > tol) {
+        nTrueOut++; if (nr.dist > maxTrue) maxTrue = nr.dist;
+        const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
+        const ow = onWall(uc, tc); if (ow) nOnWall++; else nOffWall++;
+        if (outRows.length < 4000) outRows.push({ uc: +uc.toFixed(5), tc: +tc.toFixed(5), trueDev: +nr.dist.toFixed(5), onWall: ow ? 1 : 0 });
+      }
+    }
+    trueDevs.sort((x, y) => x - y);
+    const pc = (q: number): number => trueDevs.length ? trueDevs[Math.min(trueDevs.length - 1, Math.floor(q * trueDevs.length))] : 0;
+    const nmIdx = auditNonManByIndex(xyz, idx);
+    const rec = {
+      stage: 'Q3-VERDICT', variant, tol, tris,
+      soundRadialOutliers: sound.outliers, soundRadialMax: sound.maxMm,
+      newtonCalls, nTrueOutliers: nTrueOut, trueMax: +maxTrue.toFixed(5),
+      truep50: +pc(0.5).toFixed(5), truep90: +pc(0.9).toFixed(5), truep99: +pc(0.99).toFixed(5),
+      nOnWall, nOffWall, offWallFrac: nTrueOut ? +(nOffWall / nTrueOut).toFixed(4) : 0,
+      nonManIdx: nmIdx, zeroArea: sound.zeroArea,
+    };
+    appendFileSync(join(DIR, 'verdict.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[Q3]', JSON.stringify(rec, null, 2));
+    // dump outlier scatter for OFF-wall classification
+    writeFileSync(join(DIR, `verdict_outliers_${variant}.ndjson`), outRows.map((r) => JSON.stringify(r)).join('\n'));
+    expect(tris).toBeGreaterThan(0);
+  }, 180 * 60_000);
 
   it.skipIf(!RUN || process.env.PF_GC !== 'diag')('DIAG: distribution of placement disp + bad-point loci', () => {
     const rA = radiusFn('GyroidManifold', DIMS);

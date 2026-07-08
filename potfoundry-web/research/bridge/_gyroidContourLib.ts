@@ -194,6 +194,41 @@ export function refineAndFilterContours(contours: Contour[], c: number, p: Gyroi
   return { contours: out, dropped, kept };
 }
 
+// ── arc-length decimation (3D) — thin the dense marching-squares polyline to a mesher-friendly constraint ───────
+// The 1200-res marching squares yields ~25k vertices/isolevel (spacing ~0.0008 in u). That over-constrains the
+// mesher. Resample each polyline to a target 3D arc-length step `stepMm` (the walls are near-vertical so a modest
+// step keeps the constraint faithful; the mesher's chord-Steiner + recoverySubdivideCollinear insert more where
+// sag demands). Keeps endpoints + every vertex ≥ stepMm (3D) from the last kept one. Preserves order & junctions.
+export function decimateContours(contours: Contour[], stepMm: number, rA: AnalyticRadiusFn, H: number): Contour[] {
+  const lift = (u: number, t: number): [number, number, number] => { const th = TAU * u, z = t * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
+  const out: Contour[] = [];
+  for (const cont of contours) {
+    if (cont.pts.length < 2) continue;
+    const kept: Array<[number, number]> = [cont.pts[0]];
+    let [lx, ly, lz] = lift(cont.pts[0][0], cont.pts[0][1]);
+    for (let i = 1; i < cont.pts.length - 1; i++) {
+      const [x, y, z] = lift(cont.pts[i][0], cont.pts[i][1]);
+      if (Math.hypot(x - lx, y - ly, z - lz) >= stepMm) { kept.push(cont.pts[i]); lx = x; ly = y; lz = z; }
+    }
+    kept.push(cont.pts[cont.pts.length - 1]);
+    if (kept.length >= 2) out.push({ pts: kept });
+  }
+  return out;
+}
+
+// ── polylines → injectedPoints + constraintEdges (the kernel constraint format) ─────────────────────────────────
+// injectedPoints = flat [u0,t0, u1,t1, ...] over ALL polyline vertices (deduped by the kernel's addPoint).
+// constraintEdges = flat [posA,posB, ...] index-pairs into injectedPoints, one per consecutive polyline segment.
+export function contoursToConstraints(contours: Contour[]): { injectedPoints: number[]; constraintEdges: number[] } {
+  const injectedPoints: number[] = []; const constraintEdges: number[] = [];
+  for (const cont of contours) {
+    const base = injectedPoints.length / 2;
+    for (const [u, t] of cont.pts) injectedPoints.push(u, t);
+    for (let i = 0; i < cont.pts.length - 1; i++) constraintEdges.push(base + i, base + i + 1);
+  }
+  return { injectedPoints, constraintEdges };
+}
+
 // ── contour placement validation (3D) ───────────────────────────────────────────────────────────────────────────
 // For a set of points ON an extracted |val|=c polyline, verify they sit at the target isolevel: measure the 3D
 // displacement between the placed (u,t) and the true nearest (u,t) with |val|=c EXACTLY (a 1D Newton on |val|−c
