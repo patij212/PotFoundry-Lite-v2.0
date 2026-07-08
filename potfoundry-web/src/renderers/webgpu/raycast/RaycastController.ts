@@ -123,7 +123,15 @@ export class RaycastController {
   }
 
   public needsFrame(): boolean {
-    return this.sampleIndex < this.maxSamples;
+    // Re-render while the accumulation is still converging OR while it is dirty
+    // (lastSig === null). setQuality/setDebugMode/a param change null the sig to
+    // request a fresh accumulation; the sampleIndex is only reset later, inside
+    // notifyFrame, which the frame loop gates behind its idle-skip. Without the
+    // dirty term the loop parks after convergence and never runs notifyFrame
+    // again, so a post-convergence setQuality/setDebugMode can never take effect
+    // (e.g. the e2e debug readback saw a permanently black frame). Reporting
+    // "needs a frame" here keeps the loop active until the dirty frame lands.
+    return this.sampleIndex < this.maxSamples || this.lastSig === null;
   }
 
   public setStyle(styleId: number): void {
