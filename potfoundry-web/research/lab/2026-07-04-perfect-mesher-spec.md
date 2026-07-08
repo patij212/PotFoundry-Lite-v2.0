@@ -2228,16 +2228,22 @@ Registry E-2026-07-08-TANGLED-CONTINUATION (full numbers). All on the persisted 
 |---|---|---|---|---|---|---|---|
 | **Voronoi** | 1,798,605 | 202,217 | **~115,816** (57% of radial, 1.75× inflated) | 0.137 @(0.70,0.25) | 0.635 / 2.50 | full (u,t) domain; 42% slope<0.5 | **FLOOR — genuine distributed density gap** |
 | **HexagonalHive** | 944,608 | 45,891 | **~26,262** (57% of radial) | 0.041 @(0.00,0.24) | 0.093 / 0.273 | full domain; 93.5% slope<0.3 (flat) | **FLOOR — pure under-density, cleanest target** |
+| **CelticTriquetra** raw | 5,734,176 | 261,743 | ~189,460 (72%) | 0.818 (braid crossings) | 1.03 / 19.9 | crease-dominated | crease-inflated (see excl) |
+| **CelticTriquetra** C0-excl b2e-3 | 5,734,176 | 17,135 (excl 93.45%) | **~10,027** (58% of remaining) | 0.047 @(0.44,0.25) | 1.12 / 4.13 | off-crease body | **crease-DOMINATED; small genuine off-crease body ~10k@0.047** |
+| **CelticKnot** | 4,903,536 | 62,568 | **~61,551** (98.4% of radial — barely inflated) | 0.300 @(0.78,0.20) | 0.224 / 15.6 | flat bulk + steep crossing tail | **FLOOR — GENUINE (radial≈true), moderate-slope bulk + crossing tail** |
 
-**Key finding — these are NOT Gyroid.** Gyroid was 8-9× radial-inflated (206k→~12k true, 5.7%) with 94% on steep channel
-walls (slope p50 1.9) ⇒ CLIFF-class (feature-edge embedding). By contrast Voronoi is only 1.75× inflated with 42% of true
-outliers on FLAT/moderate surface (slope<0.5) spanning the whole domain, and HexHive is 93.5% flat (slope<0.3, worst only
-0.041). Both are GENUINE broadly-distributed true-3D DENSITY floors, not cliffs — density is the right tool (unlike Gyroid),
-but the pilot's deep-sag build STALLS under contention and the radial-driven sweep grows the count on the steep fraction, so
-literal 0 was not reached this session. HexHive is the cheapest fleet target (flat, worst 0.041). BVH-twin soundness for
-Voronoi (0.0077@2048² pilot-prior) confirms the V10b ~105k count is REAL (Newton honest ~116k agrees). watertight/zeroArea
-clean on the reaching meshes. The instrument wall is BROKEN for the whole tangled class: Newton is the sound, tractable
-true-3D verdict — no style here is Gyroid-class-unmeasurable.
+**Key finding — these are NOT Gyroid, and the radial/true-3D inflation ratio is STYLE-SPECIFIC (a diagnostic).** Gyroid was
+8-9× radial-inflated (206k→~12k true, 5.7%) with 94% on steep channel walls (slope p50 1.9) ⇒ CLIFF-class (feature-edge
+embedding). By contrast: Voronoi 1.75× inflated, 42% of true outliers on FLAT/moderate surface, full-domain ⇒ genuine
+distributed density gap. HexHive 93.5% flat (slope<0.3, worst 0.041) ⇒ purest under-density. CelticTriquetra is
+CREASE-DOMINATED (93.45% of outliers are the designed C0 braid/medallion creases per the validated `celticTriquetraC0Predicate`
+band 2e-3 — feature-edge class; off-crease body only ~10k@0.047 — matches V11c). CelticKnot is GENUINE and barely inflated
+(radial≈true, 98.4%) — a real ~62k@0.300 gap, moderate-slope bulk (density-addressable) + a steep over-under crossing tail.
+So density is the right tool for Voronoi/HexHive/CelticKnot; CT is feature-edge. The pilot's deep-sag build STALLS under
+3-agent contention and the radial-driven sweep grows the count on the steep fraction, so literal 0 was not reached this
+session. BVH-twin soundness for Voronoi (0.0077@2048² pilot-prior) confirms the V10b ~105k count is REAL (Newton ~116k agrees).
+watertight/zeroArea clean on the reaching meshes. **The instrument wall is BROKEN for the whole tangled class: the validated
+grid-free Newton is the sound tractable true-3D verdict — NO style here is Gyroid-class-unmeasurable.**
 
 **LEDGER:** registry E-2026-07-08-TANGLED-CONTINUATION; probe `research/bridge/_pf_tangledCont.test.ts`
 (PF_TC_TWIN/PF_TC_GATE/PF_TC_SWEEP/PF_TC_TRUTH); instrument `_gyroid_truthLib.ts` (read-only) + `_pf_tangledKernelLib.ts`
