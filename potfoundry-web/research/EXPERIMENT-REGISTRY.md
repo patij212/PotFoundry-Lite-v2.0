@@ -54,6 +54,31 @@ Two parameterizations (band-shrink × fill-density): `sheet` is EXACTLY INVARIAN
 
 ---
 
+## E-2026-07-08-TIERC-COSTGAP — RESEARCH-vs-PRODUCTION cost discrepancy: run the RESEARCH M-square kernel VERBATIM on the EXACT production multi-bay Gothic gate domain to adjudicate MECHANISM-GAP vs DOMAIN-mismatch vs GENUINE-COST [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (ROUND 5, follow-up to E-2026-07-08-TIERC-RIBAWARE-SEED / spec §V11k → §V11m).** THE DISCREPANCY: the RESEARCH kernel (VALIDATION 3, `_pf_perfect_gothic_msquare`) closed a "4-bay Gothic" patch to LITERAL 0 outliers @ 58,365 tris, projectedFullMeshTris **1.05M < 6M** (5.7× headroom); the PRODUCTION multi-bay gate (V11d/e/h/k) EXPLODES past 6M (144k tris @ pass-5 = 6.06M) with ~1800-8300 outliers, no seed strategy converging. Same style, ~6-8× cost gap.
+
+**STEP 1 — DOMAINS PINNED (measured `makeGothicPatch(4,12)` + `_junctionGate.test.ts` read, NOT guessed):**
+| axis | RESEARCH V3 `makeGothicPatch(4,12)` | PRODUCTION gate `_junctionGate` |
+|---|---|---|
+| u | u[−0.0576, 0.1091] (w 0.1667, spans seam) | u[0.05, 0.15] (w 0.10, seam-avoiding) |
+| t | **t[0.70, 0.80]** (w 0.10, apex j.t≈0.75) | **t[0.38, 0.62]** (w 0.24) |
+| tol | 0.01 | 0.01 |
+**⇒ THE t-BANDS ARE DISJOINT.** V3 centered on `findApexJunction` (t≈0.75, a PROTECTED-κ arch tier). Production covers the V11d raw-κ DEAD ZONE (t≈0.40-0.49 smooth arch arc; complex covers only t∈[0.12,0.18]∪[0.48,0.57]∪[0.96,0.99]). Candidate (b) DOMAIN a-priori LIVE.
+
+**DISCRIMINATOR (pre-registered):** run the research M-square kernel VERBATIM (its own `extractProtectedComplex`+graded `seedMesh`+`refineInteriorMsquare` honest-brute loop) on a PatchDef built with the EXACT production domain u[0.05,0.15]×t[0.38,0.62], tol 0.01, whole-mesh full-azimuth guard. Probe `research/bridge/_pf_costgap_prod_domain.test.ts` (PF_TIERC_COSTGAP=1).
+
+**KILL CRITERIA (committed BEFORE measuring):**
+- **MECHANISM-GAP CONFIRMED** iff research reaches interiorOutliers=0 at projectedFullMeshTris ≤ 6M on the production domain ⇒ ABLATE (uniform seed + edge RED on same harness); if that explodes, delta is isolated (M-square seed/graded flank); spec the port into tierC.
+- **GENUINE-COST FRONTIER** iff research ALSO exceeds 6M / fails 0 (matching V11k within ~1.5×) ⇒ the junction/dead-zone band is genuinely expensive at tol 0.01 irrespective of mechanism; produce the honest outliers/max-vs-projected-tris frontier. Fork = budget-raise vs frontier-doc (NOT tol-relaxation — user rejects per-region accept-bands).
+- **STRUCTURAL-BREAK** iff research cannot run without changes ⇒ report what breaks (locates the gap). STOP after discriminator + one ablation.
+
+**VERDICT: PENDING — pre-registered; discriminator running (BG=0.3 V3-rep config on the production domain), measuring next.**
+
+**METHOD:** DEV-ONLY. New probe `research/bridge/_pf_costgap_prod_domain.test.ts` (PF_TIERC_COSTGAP=1), env-gated resumable, ndjson checkpoint per pass to `research/exchange/_tierc_costgap/`. Reuses `_pf_perfectMesherLib`/`_pf_perfectMesherMsquareLib`/`_pf_perfectMesherBruteLib`/labkit READ-ONLY (research kernel UNMODIFIED — only the PatchDef domain differs). Touches NO src/ or tierC/. NODE_OPTIONS=--max-old-space-size=8192. Ledger §V11m + this row.
+
+---
+
 ## E-2026-07-08-TIERC-RIBAWARE-SEED — a RIB-AWARE adaptive seed field (subtract constraint-chain-carried rib curvature from the sag field so seeding densifies ONLY the smooth dead-zone arch arc, not every rib flank) on the multi-bay Gothic gate; converge to whole-mesh 0 UNDER 6M full-pot tri projection [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
 
 **FRAME (ROUND 4, follow-up to E-2026-07-08-TIERC-ADAPTIVE-SEED / spec §V11h).** ESTABLISHED (not re-derived): the 1.05919mm pin = a re-forming long t-spanning CDT needle from a seed dead-zone (uniform bgArcMm leaves no interior points in the t≈0.38-0.48 arch-arc t-band). LEVER A's 2D sag-driven seed BREAKS the pin (worst monotone 1.05→0.73, outliers 6399→2350 dropping) but projects **8.3M full-pot** (over 6M) because the sag field fires ~uniformly (≈86,000 pts/unit-t across ALL t-bands): **RIB curvature dominates the sag field everywhere, yet ribs are ALREADY handled by the locked protected-complex constraint chains + the refine loop** — so the seed pays for rib density twice. Coarser seeds (A2) re-form the pin exactly at 1.05918988549241. This is a fidelity-vs-budget frontier IF the sag field cannot be made rib-selective; the RIB-AWARE lever tests whether it can.
