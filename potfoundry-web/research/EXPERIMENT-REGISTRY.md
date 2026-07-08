@@ -4910,3 +4910,28 @@ is the tractable next target for the guard mechanism — its driver-floor was no
 _pf_tangledKernelLib.ts (wholeMeshGuardRadialBound sound primary + wholeMeshGuardBVH caveated x-ref + wholeMeshGuardWin
 [refuted θ-window]); probe _pf_tangled_kernel.test.ts (PF_TK_ANCHOR / PF_TK_SWEEPFIX / PF_TANGLED_KERNEL). Commits
 84760cc (pre-reg) → 5c1c081 → da6733a → 721bc28. DEV-ONLY; no src/ edit; byte-identical-off unaffected.
+
+---
+
+## E-2026-07-08-GYROID-TRUTH — resolve the GYROID INSTRUMENT WALL: produce a TRUSTWORTHY true-3D verdict for Gyroid, then adjudicate the fork (twin-inflated / cliff-class / body-mesher-work) [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (metrology charter, follow-up to E-2026-07-08-TANGLED-KERNEL §V11b INSTRUMENT_FINDING).** ESTABLISHED, not re-derived: on Gyroid (20% relief, fine multi-well r(θ,z), gmScale=4) at tol 0.01, (i) the V10e θ-window analytic grid brute UNDERSTATES true-3D by ≤0.0225mm (grid-trapped in wrong local minima, 2/500 false-0s vs a 4096×800 truth that is ITSELF grid-trapped in places), (ii) the V10b BVH twin BAND-LIMITS (twinOnSurf max 0.075@2048²/~0.05@3072² ≫ tol → understates), (iii) the SOUND radial same-(u,t) bound |hypot(x,y)−rA(atan2,z)| is a STRICT analytic upper bound but OVERSTATES on near-vertical channel walls (count GREW 112k→206k as density rose; soundMax 0.505→0.136; p99 0.127→0.031 across chord0.03→0.004). ⇒ V10b's "GyroidManifold 113,767 outliers @max 0.0889 GENUINE" is under the now-suspect twin: the COUNT is a LOWER bound, the MAX unreliable. The best pilot mesh = `buildTangled('GyroidManifold', {H:120,Rb:40,Rt:50,expn:1}, {chordTolMm:0.004, maxPoints:3_000_000})` (deterministic rebuild; 2.17M tris; radial soundMax 0.136, p99 0.031, 206,273 sound-upper outliers).
+
+**HYPOTHESIS (falsifiable):** a grid-free multi-start Newton nearest (seeded from the θ-window+z-band, polished to analytic-gradient convergence) can produce a TRUSTWORTHY true-3D per-facet nearest on Gyroid (agrees with a demonstrated-convergent truth-grade brute to <0.001mm on the worst-500, no false-0s on the 2 known grid-traps, ≤ guard-usable µs/query); and the resulting HONEST whole-mesh Gyroid floor is EITHER (H-inflated) well below the V10b twin's 0.0889 max (twin was inflated) OR (H-real) genuinely ~0.05-0.09 concentrated ON the designed near-vertical channel walls (⇒ cliff/feature-edge EXCLUDE class per [[feedback_export_standard]], NOT density-closable) rather than in the body.
+
+**RULER / INSTRUMENT (the deliverable itself):**
+- TRUTH-GRADE BRUTE (part 1): dense full-azimuth grid over the z-band + per-cell local box-refine, at 2048×400, cross-checked at 4096×800 — with a CONVERGENCE GATE (verdict on the worst-500 must be stable 2048×400 → 4096×800 to <0.001mm on a 50-facet subsample BEFORE the full run is trusted). If it flips ⇒ KILL (instrument-hardness finding = decisive: Gyroid needs analytic/symbolic nearest).
+- GRID-FREE NEWTON (part 2): multi-start Gauss-Newton/Newton on D(θ,z)=|P−S(θ,z)|² with analytic ∇/Hessian of rA, seeds = a coarse (θ-window × z-band) lattice sized to the well density (each seed polished to ‖∇‖<1e-9), keep the global min. VALIDATE: (a) maxdiff vs truth-grade brute on worst-500 < 0.001mm; (b) no false-0s on the pilot's 2/500 grid-trap cases; (c) µs/query reported (guard-usable ⇒ ≤ a few 100µs).
+- The worst-500 population = the worst-500 facets of the best pilot mesh BY THE SOUND RADIAL BOUND (`wholeMeshGuardRadialBound` per-facet dev over denseBary(8)); facet VERTICES are recovered from the deterministic rebuild, not the 300-row centroid ndjson.
+
+**METHOD:** research probes `research/bridge/_gyroid_truth*.test.ts` (env-gated), lib `research/bridge/_gyroid_truthLib.ts` (NEW). ONE env-gated probe per question, RESUMABLE: per-facet ndjson checkpoint (one facet at a time, restartable), detached with honest multi-hour timeout, NODE_OPTIONS=--max-old-space-size=8192. Reuses labkit + `_pf_tangledKernelLib` (`buildTangled`, `radiusFn`, `wholeMeshGuardRadialBound`) READ-ONLY; edits NOTHING in src/ and NOTHING in _pf_tangledKernelLib.ts / _tangled_cont / _ds_conforming / tierC. Workspace research/exchange/_gyroid_truth/.
+
+**KILL CRITERIA (pre-registered):**
+- INSTRUMENT KILL: if the truth-grade brute cannot demonstrate convergence (worst-500 verdict flips 2048→4096 on the 50-facet subsample beyond 0.001mm) ⇒ STOP, report the instrument-hardness finding (Gyroid needs an analytic/symbolic nearest — a frontier item). Decisive.
+- NEWTON KILL: if grid-free Newton+well-enumeration cannot reach (a)+(b)+(c) after 2 designs ⇒ STOP, report which validation failed + why.
+- FORK ADJUDICATION (with a validated instrument, whole-mesh every-facet on the best pilot mesh):
+  (i) TWIN-INFLATED iff the honest true-3D floor max < ~0.02 (V10b GENUINE was twin-inflated; Gyroid far closer to closed than believed) — quantify the honest outlier count @tol 0.01.
+  (ii) CLIFF-CLASS iff the honest floor is genuinely ~0.05-0.09 AND the outlier (u,t) population lies ON the designed near-vertical channel walls (⇒ EXCLUDE/feature-edge close path, like weave/DragonScales, NOT density) — render the (u,t) scatter.
+  (iii) BODY-MESHER-WORK iff the honest floor is real AND in the body (off-wall) ⇒ density/mesher work with an honest stop driver.
+
+**VERDICT: PENDING — building the truth-grade brute + grid-free Newton, pre-registered, measuring next.**
