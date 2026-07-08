@@ -1560,3 +1560,32 @@ brute for single-valued radial surfaces). Flag stays default-OFF; byte-identical
 green. NEXT (perf, then unblock): port the BVH-twin locator into the production interior ruler; re-run the multi-bay
 gate; then rebaseline20. The DRIVE-ALL-20 campaign is NOT blocked on this — the tangled-6 kernel dispatch + smooth-
 tail close (spec V10b §3) proceed on the research meshers independently.
+
+---
+
+## V10e — RULER PERF SOLVED (exact θ-window) + MULTI-BAY JUNCTION RESIDUAL SURFACED (2026-07-08)
+
+**PERF WALL BROKEN (exact, not approximate):** ported a θ-WINDOWED brute into the production tierC interior ruler
+(commits 47c5ceb, 7098a30) — chose it OVER the lab BVH twin deliberately (a triangulated twin band-limits at
+Gothic's κ≈657 apex and UNDERSTATES = the ruler-lied failure; the θ-window can only overstate = safe). Window is
+PER-SAMPLE and provably safe: the same-azimuth `bound` upper-bounds the true dist ⇒ foot within `bound` Euclidean ⇒
+within asin(bound/r_foot) azimuth (r_foot floor = ½ local radius + 12-cell margin). A first FIXED 0.5rad window
+UNDERSTATED (57 false-0s: loop converged, full guard found 57) — the per-sample bound-derived window fixed it.
+MEASURED: smoke gate PASSES (loop converges AND full-basis guard=0 ⇒ exact at the apex) in **45s vs ~5min; DENSE
+passes ~4s vs ~60s (~15×)**. Multi-bay passes now 24-58s (were 50min, never finished).
+
+**NEW FINDING — MULTI-BAY JUNCTION RESIDUAL (the next frontier, surfaced by the now-tractable gate):** the multi-bay
+Gothic gate (u 0-0.1, t 0.38-0.62, spanning arch junctions) does NOT converge — it plateaus at ~380 outliers with
+worst OSCILLATING 0.40-0.78 (pass 1 out=2080→pass16 out=381, tris 9.7k→75k, capped). The oscillating worst
+(refining the current-worst exposes a new ~equal one) = whack-a-mole on a hard POPULATION, not slow convergence; the
+recurring ~0.40 floor + 0.77 spikes localize to the count-unstable JUNCTION region (Gothic arches meeting at points)
+that the SMOKE (thin mid-band t 0.48-0.52) never exercised. Hypotheses (UNTESTED, next-session): (a) detector RECALL
+gap — ribs/junction-crests the fineRes-120 detector misses in this domain → facets bridge the unprotected cusp (0.77
+≈ rib amplitude); (b) ridge-snap misbehaves at junctions (ambiguous normal where ribs merge); (c) domain-boundary
+constraint-clip stubs. DECISIVE next diagnostic: persist the capped mesh, dump the ~380 outlier facet centroids
+(u,t) — clustered at junctions ⇒ (a)/(b); at t=0.38/0.62 edges ⇒ (c); spread ⇒ density.
+
+**STATE:** Tier-C fidelity PROVEN at patch/smoke scale (= research validation scale); ruler perf SOLVED (exact ~15×);
+multi-bay-with-junctions has a real residual (count-unstable junction frontier) = the honest next research problem.
+Flag stays OFF; fast tierC + smoke green; rebaseline20 still gated on multi-bay convergence. The DRIVE-ALL-20
+campaign (tangled-6 kernel + smooth tails) is independent and unblocked.
