@@ -26,6 +26,11 @@ const OUT = join('research', 'exchange', '_ct_predicate');
 const NDJSON = join(OUT, 'scorecard.ndjson');
 const CT_BINS = join('research', 'exchange', '_best20', 'heatmap', 'CelticTriquetra_bins');
 const TWIN = { nTheta: 3072, nZ: 3072 }; // EXACT V10b CT twin.
+// CRITICAL: locator cell ≈ 4× twin θ-edge (~0.37mm at 3072 on ~283mm circ). The 3.0mm default packs 1000+ twin
+// tris/cell ⇒ pathological BVH scans (V10b fix). Without this the whole-mesh score never finishes.
+const CIRC = 2 * Math.PI * ((DIMS.Rb + DIMS.Rt) / 2);
+const CELL = Math.max(0.35, 4 * (CIRC / TWIN.nTheta));
+const SHARD = ((): { k: number; n: number } | null => { const s = process.env.PF_CT_SHARD; if (!s) return null; const mm = /^(\d+)\/(\d+)$/.exec(s); return mm ? { k: +mm[1], n: +mm[2] } : null; })();
 
 const plog = (m: string): void => { mkdirSync(OUT, { recursive: true }); const l = `[${new Date().toISOString()}] ${m}`; appendFileSync(join(OUT, 'run.log'), l + '\n'); /* eslint-disable-next-line no-console */ console.log(l); };
 const keyExists = (k: string): boolean => { if (!existsSync(NDJSON)) return false; return readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean).some((l) => { try { return JSON.parse(l).key === k; } catch { return false; } }); };
@@ -239,7 +244,7 @@ function renderMaskOverK(K: Float64Array, nu: number, nt: number, du: number, dt
 describe('CT-PREDICATE exclusion re-score — dense-basis whole-mesh BVH with crease exclusion', () => {
   for (const band of [0, 1e-3, 2e-3]) {
     it.skipIf(process.env.PF_CT_PRED !== '1')(`Q3-EXCL CelticTriquetra band=${band}`, () => {
-      const key = `excl_band${band}`;
+      const key = `excl_band${band}${SHARD ? `#${SHARD.k}of${SHARD.n}` : ''}`;
       if (keyExists(key)) { plog(`[skip] ${key} exists`); return; }
       const xp = join(CT_BINS, 'CelticTriquetra.xyz.bin'), ip = join(CT_BINS, 'CelticTriquetra.idx.bin');
       if (!existsSync(xp) || !existsSync(ip)) { plog(`[MISSING] CT bins at ${CT_BINS}`); return; }
@@ -247,11 +252,12 @@ describe('CT-PREDICATE exclusion re-score — dense-basis whole-mesh BVH with cr
       const rA = buildRadiusFn('CelticTriquetra' as StyleId, {}, DIMS);
       // Use the DIRECT C0 predicate (validated by recall) — the tile-edge predicate was refuted (10% recall).
       const exclude = band > 0 ? celticTriquetraC0Predicate(band) : undefined;
-      plog(`[${key}] tris=${m.idx.length / 3} — scoring with exclude=${!!exclude}...`);
+      plog(`[${key}] tris=${m.idx.length / 3} cell=${CELL.toFixed(2)} — scoring with exclude=${!!exclude}...`);
       const t0 = Date.now();
       const r = scoreWholeMeshBVH(m.xyz, m.idx, rA, H, TWIN, {
-        tol: TOL, stride: 1, radialPrefilter: true, twinValidate: 'full', exclude,
-        onProgress: (d, tot, no, w) => { if (Math.floor(d / tot * 10) !== Math.floor((d - 1) / tot * 10)) plog(`[${key}] ${Math.floor(d / tot * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
+        tol: TOL, stride: 1, cell: CELL, radialPrefilter: true, exclude,
+        shard: SHARD ?? undefined, twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
+        onProgress: (d, tot, no, w) => { if (Math.floor(d / tot * 20) !== Math.floor((d - 1) / tot * 20)) plog(`[${key}] ${Math.floor(d / tot * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
       });
       const row = {
         key, style: 'CelticTriquetra', band, tris: m.idx.length / 3,

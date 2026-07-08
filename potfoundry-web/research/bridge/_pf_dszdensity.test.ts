@@ -32,6 +32,12 @@ const NDJSON = join(OUT, 'scorecard.ndjson');
 const BEST20 = join('research', 'exchange', '_best20', 'heatmap');
 // The EXACT V10b DragonScales twin: 2048 x 3072. (Anchor: 263,536 out / max 0.0463 / p99 0.0395 / twinOnSurf 0.0099.)
 const TWIN = { nTheta: 2048, nZ: 3072 };
+// CRITICAL: locator cell ≈ 4× twin θ-edge (~0.35mm at 2048 on ~283mm circ). The 3.0mm default packs 1000+ twin
+// tris/cell ⇒ every BVH query scans thousands (V10b: Gyroid <5% in 8h). This is the exact fix from _pf_bvhRuler.test.
+const CIRC = 2 * Math.PI * ((DIMS.Rb + DIMS.Rt) / 2);
+const CELL = Math.max(0.35, 4 * (CIRC / TWIN.nTheta));
+// Optional facet sharding for parallelism: PF_DS_SHARD="k/N".
+const SHARD = ((): { k: number; n: number } | null => { const s = process.env.PF_DS_SHARD; if (!s) return null; const mm = /^(\d+)\/(\d+)$/.exec(s); return mm ? { k: +mm[1], n: +mm[2] } : null; })();
 
 const plog = (m: string): void => { mkdirSync(OUT, { recursive: true }); const l = `[${new Date().toISOString()}] ${m}`; appendFileSync(join(OUT, 'run.log'), l + '\n'); /* eslint-disable-next-line no-console */ console.log(l); };
 const keyExists = (k: string): boolean => { if (!existsSync(NDJSON)) return false; return readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean).some((l) => { try { return JSON.parse(l).key === k; } catch { return false; } }); };
@@ -88,8 +94,9 @@ function scoreMesh(
 ): void {
   const t0 = Date.now();
   const r = scoreWholeMeshBVH(xyz, idx, buildRadiusFn('DragonScales' as StyleId, {}, DIMS), H, TWIN, {
-    tol: TOL, stride: 1, radialPrefilter: true, twinValidate: 'full',
-    onProgress: (d, tot, no, w) => { if (Math.floor(d / tot * 10) !== Math.floor((d - 1) / tot * 10)) plog(`[${key}] ${Math.floor(d / tot * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
+    tol: TOL, stride: 1, cell: CELL, radialPrefilter: true,
+    shard: SHARD ?? undefined, twinValidate: SHARD && SHARD.k > 0 ? 'sub' : 'full',
+    onProgress: (d, tot, no, w) => { if (Math.floor(d / tot * 20) !== Math.floor((d - 1) / tot * 20)) plog(`[${key}] ${Math.floor(d / tot * 100)}% out=${no} worst=${w.toFixed(5)} ${((Date.now() - t0) / 1000).toFixed(0)}s`); },
   });
   const q = triangleQualityDistribution({ vertices: xyz, indices: idx });
   const nm = auditNonManRaw(idx);
