@@ -181,8 +181,10 @@ function runDensitySweep(
     console.log(`PASS ${style}/${label}: tris=${b.tris} pts=${b.points} proj=${proj} hitBudget=${b.hitBudget} | radialOut=${sound.outliers}(max ${sound.maxMm}) → NEWTON=${nv.honestTrueOutliers}(worstTrue ${nv.worstTrueMax}@${JSON.stringify(nv.worstTrueUt)} slopeMed ${nv.slopeMed}) | zeroArea=${sound.zeroArea} nonMan=${nonMan}${pass.pctBelow20 !== undefined ? ` %<20=${pass.pctBelow20}` : ''} | build=${buildMs}ms score=${scoreMs}ms newton=${nv.newtonMs}ms`);
     // ── verdict logic ──
     if (nv.honestTrueOutliers === 0 && proj <= 6_000_000) { converged = true; break; }
-    // NON-MONOTONE = Gyroid §V11b signature: Newton count GROWS with density ⇒ re-classify (hidden cliff-class).
-    if (nv.honestTrueOutliers > prevNewton * 1.10 && k > 0) { killedNonMono = true; process.stderr.write(`  KILL ${style}: Newton NON-monotone (${prevNewton}→${nv.honestTrueOutliers}) — Gyroid §V11b density-invariant-floor signature, re-classify\n`); break; }
+    // NON-MONOTONE = Gyroid §V11b signature ONLY if the level GENUINELY converged its chord target (hitBudget=false)
+    // and STILL grew. A hitBudget=true level did NOT refine to its chordTolMm (the point cap saturated first) ⇒ it is
+    // NOT a valid density point and a rise there is a BUDGET ARTIFACT, not the density-invariant-floor signature.
+    if (!b.hitBudget && nv.honestTrueOutliers > prevNewton * 1.10 && k > 0) { killedNonMono = true; process.stderr.write(`  KILL ${style}: Newton NON-monotone (${prevNewton}→${nv.honestTrueOutliers}) at a CONVERGED (hitBudget=false) level — Gyroid §V11b density-invariant-floor signature, re-classify\n`); break; }
     prevNewton = nv.honestTrueOutliers;
     if (proj > 6_000_000) { killedBudget = true; process.stderr.write(`  KILL ${style}: projFullPot ${proj} > 6M before Newton 0 — FRONTIER (report density-vs-outlier curve)\n`); break; }
   }
@@ -207,7 +209,11 @@ describe('E-2026-07-08-TANGLED-DENSITY-CLOSE — Newton-verdict density sweep (�
   }, 6 * HRS);
 
   it.skipIf(process.env.PF_TDC !== 'Crystalline')('Crystalline', () => {
-    runDensitySweep('Crystalline' as StyleId, [0.02, 0.01, 0.005, 0.0025], [900_000, 1_400_000, 2_200_000, 3_000_000]);
+    // V11r NOTE: Crystalline needs far more points/chord level than HexHive — the first sweep hit the point cap at
+    // EVERY level (hitBudget=true, identical radialMax=0.275 ⇒ the same worst facets survived because refinement was
+    // budget-capped, NOT chord-converged). That rise was a BUDGET ARTIFACT, not the density-invariant floor. Re-run
+    // with a GENEROUS fixed 3M-pt budget so each chord level converges (hitBudget=false) ⇒ a valid density point.
+    runDensitySweep('Crystalline' as StyleId, [0.03, 0.02, 0.012, 0.008], [3_000_000, 3_000_000, 3_000_000, 3_000_000]);
     expect(true).toBe(true);
   }, 6 * HRS);
 
