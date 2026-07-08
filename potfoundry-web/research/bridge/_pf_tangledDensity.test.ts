@@ -134,8 +134,14 @@ interface Pass {
   honestTrueOutliers: number; worstTrueMax: number; worstTrueUt: [number, number]; slopeMed: number; slopeP90: number;
   stratFrac: number; nRadialOutliers: number; buildMs: number; scoreMs: number; newtonMs: number; pctBelow20?: number;
 }
+// baseSweep (optional, per-level): coarsen/refine the kernel's BASE curvature-sizing field (tolMm/sizeRes) alongside
+// chordTolMm. On Crystalline the base field intrinsically produces ~3.4M tris even at coarse chord (over 6M full-pot
+// at ANY chord) ⇒ the chord lever alone cannot reach a sub-anchor density point. Coarsening tolMm+sizeRes gives a
+// genuinely coarser mesh so the DENSITY DIRECTION (does finer → fewer Newton outliers?) can be established under 6M.
+interface BaseLevel { tolMm?: number; sizeRes?: number; hMin?: number }
 function runDensitySweep(
   style: StyleId, chordSweep: number[], maxPointsSweep: number[], topWorst = 1500, nStrat = 1500, tol = 0.01,
+  baseSweep?: BaseLevel[],
 ): void {
   mkdirSync(join(DIR, style), { recursive: true });
   const passPath = join(DIR, style, 'passes.ndjson');
@@ -145,7 +151,9 @@ function runDensitySweep(
   let prevNewton = Infinity; let lastPass: Pass | null = null; let closingLevelPct = -1;
   for (let k = 0; k < chordSweep.length; k++) {
     const chordTolMm = chordSweep[k]; const maxPoints = maxPointsSweep[k];
-    const label = `chord${chordTolMm}_mp${Math.round(maxPoints / 1000)}k`;
+    const base = baseSweep?.[k];
+    const baseSuffix = base ? `_b${base.tolMm ?? ''}s${base.sizeRes ?? ''}` : '';
+    const label = `chord${chordTolMm}_mp${Math.round(maxPoints / 1000)}k${baseSuffix}`;
     if (donePasses.has(label)) {
       const prior = donePasses.get(label)!;
       traj.push(prior.honestTrueOutliers); prevNewton = prior.honestTrueOutliers; lastPass = prior;
@@ -155,7 +163,12 @@ function runDensitySweep(
     }
     // ── build (ONE at a time; prior arm stalled under 3-agent saturation) ──
     const bT0 = Date.now();
-    const b: TangledBuild = buildTangled(style, DIMS, { chordTolMm, maxPoints });
+    const b: TangledBuild = buildTangled(style, DIMS, {
+      chordTolMm, maxPoints,
+      ...(base?.tolMm !== undefined ? { tolMm: base.tolMm } : {}),
+      ...(base?.sizeRes !== undefined ? { sizeRes: base.sizeRes } : {}),
+      ...(base?.hMin !== undefined ? { hMin: base.hMin } : {}),
+    });
     const buildMs = Date.now() - bT0;
     // ── radial screen (cheap, SOUND upper bound + zeroArea) ──
     const scoreT0 = Date.now();
@@ -209,11 +222,16 @@ describe('E-2026-07-08-TANGLED-DENSITY-CLOSE — Newton-verdict density sweep (�
   }, 6 * HRS);
 
   it.skipIf(process.env.PF_TDC !== 'Crystalline')('Crystalline', () => {
-    // V11r NOTE: Crystalline needs far more points/chord level than HexHive — the first sweep hit the point cap at
-    // EVERY level (hitBudget=true, identical radialMax=0.275 ⇒ the same worst facets survived because refinement was
-    // budget-capped, NOT chord-converged). That rise was a BUDGET ARTIFACT, not the density-invariant floor. Re-run
-    // with a GENEROUS fixed 3M-pt budget so each chord level converges (hitBudget=false) ⇒ a valid density point.
-    runDensitySweep('Crystalline' as StyleId, [0.03, 0.02, 0.012, 0.008], [3_000_000, 3_000_000, 3_000_000, 3_000_000]);
+    // V11r NOTE: Crystalline's BASE curvature-sizing field intrinsically produces ~3.4M tris even at coarse chord0.03
+    // (6.87M full-pot, over 6M at ANY chord) — the chord lever alone cannot reach a sub-anchor density point. So sweep
+    // the BASE field (tolMm/sizeRes) coarse→fine to establish the DENSITY DIRECTION under 6M: does finer → fewer Newton
+    // outliers (density class, confirms V11i) or flat/rising (hidden invariant floor)? Chord fixed loose (0.02) so the
+    // base field drives density. Levels sized to keep proj ≤ ~6M (≤3M outer tris).
+    runDensitySweep('Crystalline' as StyleId, [0.02, 0.02, 0.02], [3_000_000, 3_000_000, 3_000_000], 1500, 1500, 0.01, [
+      { tolMm: 0.02, sizeRes: 96 },   // coarse base anchor
+      { tolMm: 0.012, sizeRes: 160 }, // mid
+      { tolMm: 0.008, sizeRes: 224 }, // fine (near default 0.004/256 but capped under 6M)
+    ]);
     expect(true).toBe(true);
   }, 6 * HRS);
 
