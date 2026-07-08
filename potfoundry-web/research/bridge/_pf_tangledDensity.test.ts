@@ -139,6 +139,11 @@ interface Pass {
 // at ANY chord) ⇒ the chord lever alone cannot reach a sub-anchor density point. Coarsening tolMm+sizeRes gives a
 // genuinely coarser mesh so the DENSITY DIRECTION (does finer → fewer Newton outliers?) can be established under 6M.
 interface BaseLevel { tolMm?: number; sizeRes?: number; hMin?: number }
+// BUDGET_CAP: full-pot triangle projection ceiling for a CLOSED verdict. RAISED 6M→10M per USER DECISION 2026-07-08
+// (coordinator relay): the goal is literal whole-mesh Newton-0, not p99 frontiers; keep driving density to 0 as long
+// as projFullPot ≤ 10M (prefer ≤8M; report the projection at close). Only report a fidelity-vs-budget FRONTIER if a
+// style still can't reach 0 under 10M.
+const BUDGET_CAP = 10_000_000;
 function runDensitySweep(
   style: StyleId, chordSweep: number[], maxPointsSweep: number[], topWorst = 1500, nStrat = 1500, tol = 0.01,
   baseSweep?: BaseLevel[],
@@ -158,7 +163,7 @@ function runDensitySweep(
       const prior = donePasses.get(label)!;
       traj.push(prior.honestTrueOutliers); prevNewton = prior.honestTrueOutliers; lastPass = prior;
       process.stderr.write(`  SKIP ${style}/${label} (done newton=${prior.honestTrueOutliers} radial=${prior.radialOutliers})\n`);
-      if (prior.honestTrueOutliers === 0 && prior.projFullPot <= 6_000_000) { converged = true; break; }
+      if (prior.honestTrueOutliers === 0 && prior.projFullPot <= BUDGET_CAP) { converged = true; break; }
       continue;
     }
     // ── build (ONE at a time; prior arm stalled under 3-agent saturation) ──
@@ -193,13 +198,13 @@ function runDensitySweep(
     // eslint-disable-next-line no-console
     console.log(`PASS ${style}/${label}: tris=${b.tris} pts=${b.points} proj=${proj} hitBudget=${b.hitBudget} | radialOut=${sound.outliers}(max ${sound.maxMm}) → NEWTON=${nv.honestTrueOutliers}(worstTrue ${nv.worstTrueMax}@${JSON.stringify(nv.worstTrueUt)} slopeMed ${nv.slopeMed}) | zeroArea=${sound.zeroArea} nonMan=${nonMan}${pass.pctBelow20 !== undefined ? ` %<20=${pass.pctBelow20}` : ''} | build=${buildMs}ms score=${scoreMs}ms newton=${nv.newtonMs}ms`);
     // ── verdict logic ──
-    if (nv.honestTrueOutliers === 0 && proj <= 6_000_000) { converged = true; break; }
+    if (nv.honestTrueOutliers === 0 && proj <= BUDGET_CAP) { converged = true; break; }
     // NON-MONOTONE = Gyroid §V11b signature ONLY if the level GENUINELY converged its chord target (hitBudget=false)
     // and STILL grew. A hitBudget=true level did NOT refine to its chordTolMm (the point cap saturated first) ⇒ it is
     // NOT a valid density point and a rise there is a BUDGET ARTIFACT, not the density-invariant-floor signature.
     if (!b.hitBudget && nv.honestTrueOutliers > prevNewton * 1.10 && k > 0) { killedNonMono = true; process.stderr.write(`  KILL ${style}: Newton NON-monotone (${prevNewton}→${nv.honestTrueOutliers}) at a CONVERGED (hitBudget=false) level — Gyroid §V11b density-invariant-floor signature, re-classify\n`); break; }
     prevNewton = nv.honestTrueOutliers;
-    if (proj > 6_000_000) { killedBudget = true; process.stderr.write(`  KILL ${style}: projFullPot ${proj} > 6M before Newton 0 — FRONTIER (report density-vs-outlier curve)\n`); break; }
+    if (proj > BUDGET_CAP) { killedBudget = true; process.stderr.write(`  KILL ${style}: projFullPot ${proj} > 10M (raised) before Newton 0 — FRONTIER (report density-vs-outlier curve)\n`); break; }
   }
   const verdict = converged ? 'CLOSED' : killedNonMono ? 'RECLASSIFY' : killedBudget ? 'FRONTIER' : 'FRONTIER-INCOMPLETE';
   appendFileSync(finalPath, JSON.stringify({
