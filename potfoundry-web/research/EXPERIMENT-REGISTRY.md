@@ -26,7 +26,18 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **METHOD:** DEV-ONLY. New probe `research/bridge/_pf_tangledDensity.test.ts` (env-gated per style PF_TDC=<Style>, resumable, per-pass ndjson checkpoint the INSTANT computed → `research/exchange/_tangled_density/<style>/passes.ndjson`; a done label ⇒ SKIP). Reuses `_pf_tangledKernelLib` (buildTangled/wholeMeshGuardRadialBound/auditNonManRaw) + `_gyroid_truthLib` (worstFacetsByRadial/newtonNearest) + labkit READ-ONLY; NO src/ edit; NO edit to `_ds_conforming*`, tierC/**, `_gyroid_truth*`, or the concurrent agents' `_tierc_topology`/`_gyroid_polish` files. NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs, ONE build at a time (prior arm STALLED under 3-agent saturation); honest multi-hour timeouts; explicit file staging (NEVER git add -A). Priority sequential: HexHive → Crystalline → Voronoi → CelticKnot (partial coverage with clean per-style verdicts beats shallow breadth). Ledger §V11r appended per style-close/kill (NOT batched); commit per style verdict.
 
-**RESULT.** _(pending — per-style rows appended below as each style's sweep completes)_
+**RESULT (per-style, appended as each sweep completes).**
+
+**§V11r-1 HexagonalHive — DENSITY CLASS DEMONSTRATED (Newton monotone, still descending; extending to reach 0).** The V11i inference is now a MEASURED trajectory. Deep-sag `buildTangled` chordTolMm sweep 0.02→0.01→0.005→0.0025, honest-Newton verdict per level (worst-radial-sample-per-radial-flagged-facet, worst-1500 full + 1500 stratified tail):
+
+| chordTol | tris | projFullPot | radial-out (max) | **NEWTON true-3D** | worstTrue mm | slopeMed | nonMan | zeroArea |
+|---|---|---|---|---|---|---|---|---|
+| 0.02 | 889,486 | 1.78M | 71,494 (0.064) | **56,364** | 0.056 | 0.103 | 0 | 0 |
+| 0.01 | 944,608 | 1.89M | 45,891 (0.046) | **26,436** | 0.041 | 0.092 | 0 | 0 |
+| 0.005 | 1,183,914 | 2.37M | 7,552 (0.033) | **3,847** | 0.030 | 0.129 | 0 | 0 |
+| 0.0025 | 1,745,931 | 3.49M | 2,176 (0.022) | **1,429** | 0.020 | 0.142 | 0 | 0 |
+
+**Newton MONOTONE 56,364 → 26,436 → 3,847 → 1,429** (~14× reduction over 2 dyadic chord-tol halvings after the anchor), worstTrue 0.056 → 0.020, slopeMed flat 0.09-0.14 throughout (density signature CONFIRMED, NOT cliff). VALIDATION: chord0.01 reproduces the V11i `_best20` anchor EXACTLY (radial 45,891, Newton 26,436 ≈ V11i 26,262) ⇒ the in-memory sweep recipe == the persisted-mesh recipe. watertight non-vacuous (nonMan 0), zeroArea 0 all levels. NOT yet 0, but proj 3.49M << 6M with the trajectory still descending ~2.7×/level ⇒ EXTENDING finer (chord 0.00125, 0.0006 @ 3M-pt cap) to reach literal 0 or the density-vs-budget plateau. Data: `research/exchange/_tangled_density/HexagonalHive/{passes,final}.ndjson`. Commit [pending].
 
 ---
 

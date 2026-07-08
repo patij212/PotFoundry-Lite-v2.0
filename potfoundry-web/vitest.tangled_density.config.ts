@@ -11,11 +11,8 @@ export default defineConfig({
     testTimeout: 6 * 60 * 60 * 1000,
     hookTimeout: 600_000,
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        singleFork: true,
-        execArgv: ['--max-old-space-size=8192'],
-      },
-    },
+    fileParallelism: false,
+    maxWorkers: 1,
+    minWorkers: 1,
   },
 });

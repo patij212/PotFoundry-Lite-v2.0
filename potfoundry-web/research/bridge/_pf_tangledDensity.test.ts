@@ -201,7 +201,8 @@ function runDensitySweep(
 // Cheapest first: HexHive (0.94M @ V11i anchor, 93.5% flat, purest density case) → Crystalline → Voronoi → CelticKnot.
 describe('E-2026-07-08-TANGLED-DENSITY-CLOSE — Newton-verdict density sweep (§V11r)', () => {
   it.skipIf(process.env.PF_TDC !== 'HexagonalHive')('HexagonalHive', () => {
-    runDensitySweep('HexagonalHive' as StyleId, [0.02, 0.01, 0.005, 0.0025], [900_000, 1_400_000, 2_200_000, 3_000_000]);
+    // Newton 56364→26436→3847→1429 monotone at proj≤3.49M (V11r); headroom to 6M ⇒ extend finer to reach 0 / plateau.
+    runDensitySweep('HexagonalHive' as StyleId, [0.02, 0.01, 0.005, 0.0025, 0.00125, 0.0006], [900_000, 1_400_000, 2_200_000, 3_000_000, 3_000_000, 3_000_000]);
     expect(true).toBe(true);
   }, 6 * HRS);
 
