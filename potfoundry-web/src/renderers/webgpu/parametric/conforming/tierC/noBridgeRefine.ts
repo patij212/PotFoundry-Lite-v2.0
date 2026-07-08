@@ -57,6 +57,18 @@ export interface RefineOptions {
   /** Max 3D pitch (mm) constraint chains are densified to (default 0.15). */
   maxConstraintMm?: number;
   ruler: RulerOptions;
+  /**
+   * Cross-pass DIRTY-FACET cache (default off; opt-in perf lever). A facet
+   * whose canonical (u,t) signature (its 3 sorted vertex coords) is UNCHANGED
+   * since a prior pass under the SAME lattice reuses its cached dev verdict —
+   * the ruler is a pure function of the 3 (u,t) pairs + lattice + opts, so the
+   * cached verdict is EXACT. Only unchanged facets hit; every re-triangulated
+   * facet is re-scored. Byte-identical trajectory (outliers/worst/inserted/
+   * tris per pass identical); only the diagnostic `bruteCalls` counter drops
+   * (cached facets legitimately do no brute work — that IS the speedup).
+   * A per-pass hit rate is reported via `cacheHits`/`cacheChecks` in the stat.
+   */
+  dirtyFacetCache?: boolean;
 }
 
 export interface RefinePassStat {
@@ -68,6 +80,10 @@ export interface RefinePassStat {
   bruteCalls: number;
   dense: boolean;
   ms: number;
+  /** Dirty-cache: facets whose verdict was reused this pass (0 when off). */
+  cacheHits?: number;
+  /** Dirty-cache: facets checked against the cache this pass (0 when off). */
+  cacheChecks?: number;
 }
 
 export interface RefineResult extends ChartMesh {
@@ -301,33 +317,85 @@ export function refineToZeroOutliers(
   let capped = false;
   let pass = 0;
   let bulk = opts.bulkPasses7pt;
+  // Cross-pass dirty-facet cache (opt-in). The `uv` array only ever GROWS
+  // (addPt appends, never reorders), so a vertex index is STABLE across passes
+  // and a facet's identity is its sorted (a,b,c) triple. Combined with the
+  // lattice phase (dense vs 7-pt) the key uniquely determines the pure ruler
+  // verdict ⇒ a hit is EXACT. Cleared when the phase flips (a 7-pt verdict is
+  // not valid for a dense query).
+  const useCache = opts.dirtyFacetCache === true;
+  const devCache = new Map<string, number>();
+  let cachePhaseDense: boolean | null = null;
+  const facetKey = (a: number, b: number, c: number): string => {
+    let x = a;
+    let y = b;
+    let z = c;
+    if (x > y) [x, y] = [y, x];
+    if (y > z) [y, z] = [z, y];
+    if (x > y) [x, y] = [y, x];
+    // Distinct sorted index triple → collision-free (a numeric pack overflows
+    // Number.MAX_SAFE_INTEGER at >~10^5 vertices; a string is exact).
+    return `${x}_${y}_${z}`;
+  };
   for (pass = 1; pass <= opts.maxPass; pass++) {
     const t0 = Date.now();
     const xyz = liftChartMesh(sampler, uv);
     const nF = tris.length / 3;
     const useDense = pass > bulk;
     rehash();
+    if (useCache && cachePhaseDense !== useDense) {
+      devCache.clear();
+      cachePhaseDense = useDense;
+    }
     let outliers = 0;
     let worst = 0;
     let bruteCalls = 0;
+    let cacheHits = 0;
+    let cacheChecks = 0;
     const inserted = new Set<number>();
     for (let f = 0; f < nF; f++) {
       const a = tris[3 * f];
       const b = tris[3 * f + 1];
       const c = tris[3 * f + 2];
-      const g = facetInteriorHonest(
-        surface,
-        xyz,
-        uv,
-        a,
-        b,
-        c,
-        useDense ? dense : BARY_STOP,
-        opts.ruler,
-      );
-      bruteCalls += g.bruteCalls;
-      if (g.dev > worst) worst = g.dev;
-      if (g.dev > opts.tolMm) {
+      let dev: number;
+      if (useCache) {
+        cacheChecks++;
+        const fk = facetKey(a, b, c);
+        const cached = devCache.get(fk);
+        if (cached !== undefined) {
+          dev = cached;
+          cacheHits++;
+        } else {
+          const g = facetInteriorHonest(
+            surface,
+            xyz,
+            uv,
+            a,
+            b,
+            c,
+            useDense ? dense : BARY_STOP,
+            opts.ruler,
+          );
+          bruteCalls += g.bruteCalls;
+          dev = g.dev;
+          devCache.set(fk, dev);
+        }
+      } else {
+        const g = facetInteriorHonest(
+          surface,
+          xyz,
+          uv,
+          a,
+          b,
+          c,
+          useDense ? dense : BARY_STOP,
+          opts.ruler,
+        );
+        bruteCalls += g.bruteCalls;
+        dev = g.dev;
+      }
+      if (dev > worst) worst = dev;
+      if (dev > opts.tolMm) {
         outliers++;
         // Edge-mode RED 1→4: seam-consistent corner u's, then all three
         // edge midpoints (in-chart; crest midpoints stay on the crest).
@@ -390,6 +458,8 @@ export function refineToZeroOutliers(
       bruteCalls,
       dense: useDense,
       ms: Date.now() - t0,
+      cacheHits,
+      cacheChecks,
     };
     history.push(stat);
     if (onPass) onPass(stat);
