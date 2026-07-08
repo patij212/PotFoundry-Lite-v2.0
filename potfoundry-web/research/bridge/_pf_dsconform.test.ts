@@ -662,7 +662,10 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     if (!gatesValidated()) { plog(`[FINAL-SHEET] 1a-1d not all validated — run PF_DS_CONF=1 first`); expect(true).toBe(true); return; }
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
-    const NTH = 2400, TREADCAP = 4;
+    // NTH env-overridable (PF_DS_FINAL_NTH): the SHEET floor is pinned across nZ ⇒ discriminate whether the residual is
+    // θ-arc chord-sag (fixed at 2400θ across all nZ runs) vs z-chord. The ruler (radial twin 2048×3072 + wall) is
+    // INDEPENDENT of the mesh nTheta, so scoring a denser-θ mesh against it is valid.
+    const NTH = Number(process.env.PF_DS_FINAL_NTH ?? '2400'), TREADCAP = 4;
     // Default nZ220 (the mission target). env PF_DS_FINAL_NZ="220" or a sweep "160,220" for a corrected-curve pass.
     const nzList = (process.env.PF_DS_FINAL_NZ ?? '220').split(',').map(Number);
     const stride = process.env.PF_DS_CLOSE === '1' ? 1 : Number(process.env.PF_DS_STRIDE ?? '4');
@@ -670,15 +673,15 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     const confLoc = buildConformRuler(rA);
     plog(`[FINAL-SHEET] ruler built. nzList=${nzList} stride=${stride}`);
     for (const nZband of nzList) {
-      const key = `final_sheet_nZ${nZband}${stride === 1 ? '_s1' : `_s${stride}`}`;
+      const key = `final_sheet_nZ${nZband}${NTH !== 2400 ? `_th${NTH}` : ''}${stride === 1 ? '_s1' : `_s${stride}`}`;
       if (keyExistsF(key)) { plog(`[skip] ${key}`); continue; }
       const tb = Date.now();
       const rows = buildRows(rA, rings, NTH, nZband, TREADCAP);
       const mesh = buildStructuredWall(rA, H, rows);
       const { xyz, idx } = toF32(mesh);
       const cls = facetClassifier(mesh);
-      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) stride=${stride} — scoring under aligned conforming ruler...`);
-      scoreMeshTo(checkpointF, key, 'final-sheet-nZ', nZband, mesh.nF, xyz, idx, confLoc, cls, stride, rA, { nZband, note: 'H-SHEET: does nZ220 drive the 5,552 body-wide sheet outliers to 0? (fit predicts ~3,533, NOT 0)' });
+      plog(`[${key}] built ${mesh.nF} tris (${((Date.now() - tb) / 1000).toFixed(1)}s) nTh=${NTH} stride=${stride} — scoring under aligned conforming ruler...`);
+      scoreMeshTo(checkpointF, key, 'final-sheet-nZ', nZband, mesh.nF, xyz, idx, confLoc, cls, stride, rA, { nZband, nTheta: NTH, note: 'H-SHEET: is the body-wide sheet floor θ-arc chord-sag (nTheta) or z-chord (nZ)?' });
     }
     expect(true).toBe(true);
   }, 6 * 60 * 60 * 1000);
