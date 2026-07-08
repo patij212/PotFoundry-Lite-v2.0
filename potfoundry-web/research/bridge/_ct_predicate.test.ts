@@ -275,8 +275,18 @@ function scoreCT(
     const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
     const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
     if (exclude) {
+      // Radial prefilter still applies to KEPT samples (the same-azimuth bound is a strict analytic upper bound on
+      // the true distance, independent of exclusion). A kept sample whose bound is sub-margin cannot be an outlier
+      // ⇒ skip its BVH query. Only kept samples with bound>margin hit the BVH. Matches the band-0 (no-exclude) cost.
       let dv = 0, kept = 0;
-      for (const [wa, wb, wc] of DENSE) { const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz; if (isExcluded(px, py, pz)) continue; kept++; const d = loc.dist(px, py, pz); if (d > dv) dv = d; }
+      for (const [wa, wb, wc] of DENSE) {
+        const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
+        if (isExcluded(px, py, pz)) continue;
+        kept++;
+        const bd = radialBound(px, py, pz);
+        const d = bd <= advMargin ? bd : loc.dist(px, py, pz);
+        if (d > dv) dv = d;
+      }
       if (kept === 0) { facetsAllExcluded++; } else { devS.push(dv); if (dv > worst) worst = dv; }
     } else {
       let bMax = 0;
