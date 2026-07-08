@@ -117,6 +117,9 @@ import { createBufferWriter, type BufferWriteContext, hexToRgbNorm } from './Buf
 import { STYLE_PARAM_CAPACITY } from './utils/styleParams';
 import { type StyleId } from './geometry/types';
 import type {} from './webgpu_global';  // Activates global Window augmentation
+// --- Exact ray-cast preview (flag-gated; spec 2026-07-08) ---
+import { RaycastController } from './renderers/webgpu/raycast/RaycastController';
+import { resolvePreviewMode } from './renderers/webgpu/raycast/previewMode';
 
 
 try {
@@ -1629,6 +1632,30 @@ export const mount = async ({
     bgBuffers,
   });
 
+  // --- Exact ray-cast preview (flag-gated; spec 2026-07-08) ---
+  const previewMode = resolvePreviewMode(
+    typeof window !== 'undefined' ? window.location.search : '',
+    (k) => { try { return localStorage.getItem(k); } catch { return null; } }
+  );
+  let raycastController: RaycastController | null = null;
+  let lastStyleParamsF32: Float32Array | null = null;
+  if (previewMode === 'raycast') {
+    try {
+      raycastController = new RaycastController(device, format, {
+        uniform: uniformBuffer,
+        style: styleParamBuffer,
+        c1: colorBuffers.c1, c2: colorBuffers.c2, c3: colorBuffers.c3,
+        bg1: bgBuffers.c1, bg2: bgBuffers.c2, bg3: bgBuffers.c3,
+      });
+      // Dev/e2e hook (mirrors the __pfConforming* lever convention)
+      (window as unknown as { __pfRaycast?: { controller: RaycastController } }).__pfRaycast = { controller: raycastController };
+      console.log('[Raycast] Exact ray-cast preview ENABLED');
+    } catch (e) {
+      console.error('[Raycast] init failed — falling back to mesh preview', e);
+      raycastController = null;
+    }
+  }
+
   // Thin wrappers delegating to BindGroupFactory (Phase 11 extraction)
   const createMainBindGroup = (p: GPURenderPipeline) => {
     return bindGroupFactory.createMainBindGroup(p);
@@ -2851,6 +2878,11 @@ export const mount = async ({
 
       bufferWriter.syncStyleParams(styleParamBuffer, cfg.styleParams ?? current.styleParams);
       current.styleParams = cfg.styleParams;
+      // Raycast accumulation-reset signature input (mirrors the buffer just synced above).
+      if (raycastController) {
+        const rawStyleParams = cfg.styleParams ?? current.styleParams;
+        lastStyleParamsF32 = Array.isArray(rawStyleParams) ? Float32Array.from(rawStyleParams as number[]) : null;
+      }
 
       const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
       const sceneRadiusProvided = cfg.sceneRadius !== undefined && cfg.sceneRadius !== null;
@@ -3390,13 +3422,30 @@ export const mount = async ({
       if (shouldValidate) {
         device.pushErrorScope('validation');
       }
+
+      // Dynamic Pipeline Update logic
+      // CRITICAL FIX: Use current.styleId (updated by React) instead of cfg.style (stale initial config)
+      // NOTE: hoisted above renderPassDesc (was declared later) so the raycast branch below can read it.
+      const reqStyleId = typeof current.styleId === 'number' ? current.styleId : (Number(cfg.style) || 0);
+
+      // Exact ray-cast path: replaces background+ground+pot; debug overlays still
+      // draw on top via the main pass below with loadOp 'load'.
+      let raycastDrewFrame = false;
+      if (raycastController && cfg.showWireframe !== true) {
+        raycastController.setStyle(reqStyleId);
+        if (raycastController.isReady(reqStyleId)) {
+          raycastController.notifyFrame(f32, lastStyleParamsF32 ?? null, canvas.width, canvas.height);
+          raycastDrewFrame = raycastController.encode(encoder, textureView!, depthView!);
+        }
+      }
+
       const renderPassDesc: GPURenderPassDescriptor = {
         label: 'component:main-pass',
         colorAttachments: [
           {
             view: textureView,
             clearValue,
-            loadOp: 'clear',
+            loadOp: raycastDrewFrame ? 'load' : 'clear',
             storeOp: 'store',
           },
         ],
@@ -3404,7 +3453,7 @@ export const mount = async ({
           depthStencilAttachment: {
             view: depthView,
             depthClearValue: 1.0,
-            depthLoadOp: 'clear' as const,
+            depthLoadOp: raycastDrewFrame ? 'load' : 'clear',
             depthStoreOp: 'store' as const,
           },
         }),
@@ -3505,10 +3554,6 @@ export const mount = async ({
 
       lastOperation = 'begin-pass';
 
-      // Dynamic Pipeline Update logic
-      // CRITICAL FIX: Use current.styleId (updated by React) instead of cfg.style (stale initial config)
-      const reqStyleId = typeof current.styleId === 'number' ? current.styleId : (Number(cfg.style) || 0);
-
       // Debug log only when style changes or is pending
       if (import.meta.env.DEV && (reqStyleId !== activePipelineStyleId || pendingPipelineStyleId !== null)) {
         if (frameCounter % 60 === 0) {
@@ -3562,9 +3607,11 @@ export const mount = async ({
       const pass = encoder.beginRenderPass(renderPassDesc);
       pass.setPipeline(activePipeline || pipeline); // Fallback to initial pipeline if active is somehow null
       pass.setBindGroup(0, bindGroup);
-      lastOperation = 'draw-main';
-      pass.draw(safeDrawVerts);
-      totalDrawCalls += 1;
+      if (!raycastDrewFrame) {
+        lastOperation = 'draw-main';
+        pass.draw(safeDrawVerts);
+        totalDrawCalls += 1;
+      }
 
       // Draw wireframe overlay in the SAME render pass if enabled
       if (showWireframe) {
@@ -3964,7 +4011,7 @@ export const mount = async ({
       Math.abs(state.inertiaPanY) > 1e-4 ||
       Math.abs(state.inertiaArcSpeed as number || 0) > 1e-6;
 
-    idleDetector?.setForceActive(Boolean(hasActiveAnimations));
+    idleDetector?.setForceActive(Boolean(hasActiveAnimations) || (raycastController?.needsFrame() ?? false));
 
     // Skip frame if idle (throttles to ~2 FPS when user inactive)
     // Only check if idleDetector is initialized; before that, render at full rate
@@ -4311,6 +4358,11 @@ export const mount = async ({
       if (idleDetector) {
         idleDetector.dispose();
       }
+    } catch (e) { /* ignore cleanup errors */ }
+
+    // Clean up ray-cast controller (flag-gated; no-op when never constructed)
+    try {
+      raycastController?.dispose();
     } catch (e) { /* ignore cleanup errors */ }
 
     // Clean up CameraCommandRouter (Phase 18)
