@@ -304,6 +304,8 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
       radOut.push({ f, wbnd, wp, uc, tc });
     }
     const nRadOut = radOut.length;
+    // persist the prefilter (worst-sag 3D point per radial-outlier facet) so the knee stage can Newton-recover knees.
+    writeFileSync(join(DIR, `prefilter_${tag}.json`), JSON.stringify(radOut.map((r) => ({ wbnd: +r.wbnd.toFixed(5), wp: r.wp.map((v) => +v.toFixed(4)), uc: +r.uc.toFixed(5), tc: +r.tc.toFixed(5) }))));
     const literal = process.env.PF_VORLITERAL === '1';
     const sampleN = Number(process.env.PF_VORSAMPLE ?? '2500');
     radOut.sort((x, y) => y.wbnd - x.wbnd);
@@ -343,6 +345,71 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     writeFileSync(join(DIR, `verdict_outliers_${tag}.ndjson`), outRows.map((r) => JSON.stringify(r)).join('\n'));
     // eslint-disable-next-line no-console
     console.log('[verdict]', JSON.stringify(rec, null, 2));
+    expect(tris).toBeGreaterThan(0);
+  }, 300 * 60_000);
+
+  // ── STAGE kneebuild (§V11aa) — pinned knee-cluster injection on the surviving junction residual, rebuild ──────
+  // Reads the doubled build's meta (identical recipe) + its verdict prefilter. For each surviving outlier facet,
+  // Newton-recover the worst-sag 3D point onto the true surface → knee (u,t); de-dup; append a pinned micro-cluster
+  // (knee + nRing satellites) to the doubled-contour injectedPoints; rebuild. The pinned knee removes the plateau→
+  // junction chord by construction (§V11aa Gyroid CLOSE precedent, HexHive pinned-injection recipe).
+  it.skipIf(!RUN || process.env.PF_VORSTAGE !== 'kneebuild')('knee-cluster injection rebuild', () => {
+    const rA = radiusFn('Voronoi', DIMS);
+    const src = process.env.PF_VORKSRC ?? 'doubled_s18';
+    const outTag = process.env.PF_VORKOUT ?? 'knee';
+    const spread = Number(process.env.PF_VORKSPREAD ?? '0.0008');
+    const nRing = Number(process.env.PF_VORKRING ?? '6');
+    const maxAdd = Number(process.env.PF_VORKMAXADD ?? '400000');
+    const srcMeta = JSON.parse(readFileSync(join(DIR, `mesh_${src}.meta.json`), 'utf8')) as { stepMm: number; chordTolMm: number; maxPoints: number; variant: string };
+    const raw = JSON.parse(readFileSync(join(DIR, 'contours_refined.json'), 'utf8')) as { crest: number[][][]; flat: number[][][]; };
+    const asC = (arr: number[][][]): Contour[] => arr.map((pts) => ({ pts: pts as [number, number][] }));
+    const pair = [...asC(raw.crest), ...asC(raw.flat)];
+    const dec = decimateContours(pair, srcMeta.stepMm, rA, DIMS.H);
+    const { injectedPoints, constraintEdges } = contoursToConstraints(dec);
+    const nContourVerts = injectedPoints.length / 2, nContourEdges = constraintEdges.length / 2;
+    // knees from the prefilter (worst-sag 3D pts), Newton-recovered
+    const pre = JSON.parse(readFileSync(join(DIR, `prefilter_${src}.json`), 'utf8')) as Array<{ wbnd: number; wp: [number, number, number]; uc: number; tc: number }>;
+    const NW: NewtonOpts = { seedTheta: 0, seedZ: 0, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 };
+    const kneeSeen = new Set<string>();
+    const knees: Array<{ ku: number; kt: number }> = [];
+    // only recover the WORST prefilter entries (cap for tractability) — the surviving true outliers are the deepest
+    const worst = pre.slice().sort((a, b) => b.wbnd - a.wbnd).slice(0, Number(process.env.PF_VORKTOP ?? '40000'));
+    for (const p of worst) {
+      const nr = newtonNearest(rA, DIMS.H, p.wp[0], p.wp[1], p.wp[2], NW);
+      if (nr.dist <= 0.01) continue; // only knee facets that are TRUE outliers
+      let ku = (nr.theta / TAU) % 1; if (ku < 0) ku += 1; const kt = nr.z / DIMS.H;
+      const key = `${Math.round(ku / 5e-6)},${Math.round(kt / 5e-6)}`;
+      if (kneeSeen.has(key)) continue; kneeSeen.add(key); knees.push({ ku, kt });
+    }
+    const clusterSeen = new Set<string>(); const kneeInj: number[] = [];
+    const pushC = (u: number, t: number): void => { let cu = u - Math.floor(u); if (cu < 0) cu += 1; const ct = Math.min(1, Math.max(0, t)); const k = `${Math.round(cu / 5e-6)},${Math.round(ct / 5e-6)}`; if (clusterSeen.has(k)) return; clusterSeen.add(k); kneeInj.push(cu, ct); };
+    for (const kn of knees) { pushC(kn.ku, kn.kt); for (let r = 0; r < nRing; r++) { const a = (r / nRing) * TAU; pushC(kn.ku + spread * Math.cos(a), kn.kt + spread * Math.sin(a)); } }
+    const nKneePts = kneeInj.length / 2;
+    const injAll = injectedPoints.concat(kneeInj);
+    const t0 = Date.now();
+    const mesh = buildInhouseMetricMesh(rA, DIMS.H, {
+      ...TANGLED_BASE, maxPoints: srcMeta.maxPoints + maxAdd, optimizeSweeps: 2,
+      guardManifoldAlways: true, chordTolMm: srcMeta.chordTolMm, chordSteiner: true,
+      injectedPoints: injAll, constraintEdges, pinInjected: true,
+      guardRecoveryManifold: true, recoveryRobust: true, recoverySubdivideCollinear: true,
+      recoveryCollinearEps: Number(process.env.PF_VOREPS ?? '1e-9'),
+    });
+    const ms = Date.now() - t0;
+    const ut = mesh.ut, idx = mesh.indices, tris = idx.length / 3;
+    writeFileSync(join(DIR, `mesh_${outTag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(DIR, `mesh_${outTag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
+    const nmRaw = nonManRawBig(idx);
+    const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx as unknown as Uint32Array, 0.01);
+    const rec = {
+      stage: 'kneebuild', tag: outTag, src, stepMm: srcMeta.stepMm, chordTolMm: srcMeta.chordTolMm, maxPoints: srcMeta.maxPoints + maxAdd, ms, tris,
+      points: mesh.points, hitBudget: mesh.hitBudget, projFullPot: tris,
+      nContourVerts, nContourEdges, nKnees: knees.length, nKneePts, spread, nRing, recovery: mesh.constraint,
+      nonManRaw: nmRaw, zeroArea: sound.zeroArea, soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
+    };
+    appendFileSync(join(DIR, 'kneebuild.ndjson'), JSON.stringify(rec) + '\n');
+    writeFileSync(join(DIR, `mesh_${outTag}.meta.json`), JSON.stringify({ ...rec, variant: 'doubled' }));
+    // eslint-disable-next-line no-console
+    console.log('[kneebuild]', JSON.stringify(rec, null, 2));
     expect(tris).toBeGreaterThan(0);
   }, 300 * 60_000);
 
