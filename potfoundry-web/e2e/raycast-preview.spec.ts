@@ -441,18 +441,20 @@ test.describe('raycast preview gate', () => {
       deltas.sort((p, q) => p - q);
       const pct = (f: number) => (deltas.length ? deltas[Math.min(deltas.length - 1, Math.floor(f * deltas.length))] : 0);
       const median = pct(0.5);
+      const p90 = pct(0.9);
+      const p95 = pct(0.95);
       const p99 = pct(0.99);
       const maxDelta = deltas.length ? deltas[deltas.length - 1] : 0;
       // eslint-disable-next-line no-console
-      console.log(`[raycast prodconv ${styleId}] compared=${compared} median=${median.toFixed(4)}mm p99=${p99.toFixed(4)}mm maxDelta=${maxDelta.toFixed(4)}mm signFlip=${signFlip}`);
+      console.log(`[raycast prodconv ${styleId}] compared=${compared} median=${median.toFixed(4)}mm p90=${p90.toFixed(4)}mm p95=${p95.toFixed(4)}mm p99=${p99.toFixed(4)}mm maxDelta=${maxDelta.toFixed(4)}mm signFlip=${signFlip}`);
 
       expect(compared).toBeGreaterThan(48 * 48 * 0.4);
 
-      // MEASURED (2026-07-08, two GPU sessions on this adapter — IDENTICAL both
-      // runs; deterministic, same Halton ray set both sides):
-      //   style 0 SuperformulaBlossom : median 0, p99 0.000, max 0.125mm, signFlip 0
-      //   style 5 GothicArches        : median 0, p99 0.000, max 7.500mm, signFlip 0
-      //   style 9 DragonScales        : median 0, p99 11.000, max 11.500mm, signFlip 0
+      // MEASURED (2026-07-08, fix-wave re-run on this adapter; deterministic,
+      // same Halton ray set both sides — reproducible across sessions):
+      //   style 0 SuperformulaBlossom : median 0, p90 0.000, p95 0.000, p99 0.000, max 0.125mm, signFlip 0
+      //   style 5 GothicArches        : median 0, p90 0.000, p95 0.000, p99 0.000, max 7.500mm, signFlip 0
+      //   style 9 DragonScales        : median 0, p90 7.000, p95 10.625, p99 11.000, max 11.500mm, signFlip 0
       //
       // HONEST READING (this is the gate's real claim, do NOT overstate it):
       //   * The MEDIAN pixel converges to the f32 floor on all three styles — the
@@ -460,23 +462,40 @@ test.describe('raycast preview gate', () => {
       //   * signFlip = 0 everywhere: production never LOSES a surface the reference
       //     sees; the silhouette is intact, no black holes.
       //   * BUT on high-relief styles a real grazing-pixel tail SURVIVES 16-sample
-      //     accumulation: GothicArches to 7.5mm at the max, DragonScales all the
-      //     way out to p99 = 11mm. This is the DESIGNED 1-spp/128-cap coarseness
-      //     (spec §2/§6 "grazing silhouette rays") only PARTIALLY cleaned by
-      //     accumulation — the production step caps (48 interactive / 128 accum)
-      //     overstep thin relief on grazing rays and the jitter set does not fully
-      //     average it out over 16 samples. It is a genuine production-vs-reference
-      //     gap, not intersection error (the kernel is exact at reference density,
-      //     per A8). The default-flip decision must weigh this: the CONVERGED
-      //     production preview is faithful in the median but has an ~1cm grazing
-      //     tail on the highest-relief styles.
+      //     accumulation: GothicArches to 7.5mm at the max, DragonScales to p90 =
+      //     7mm / p95 = 10.625mm / p99 = 11mm. This is the DESIGNED 1-spp/128-cap
+      //     coarseness (spec §2/§6 "grazing silhouette rays") only PARTIALLY
+      //     cleaned by accumulation — the production step caps (48 interactive /
+      //     128 accum) overstep thin relief on grazing rays and the jitter set does
+      //     not fully average it out over 16 samples. It is a genuine
+      //     production-vs-reference gap, not intersection error (the kernel is
+      //     exact at reference density, per A8). The default-flip decision must
+      //     weigh this: the CONVERGED production preview is faithful in the median
+      //     but has a WIDE grazing tail — on DragonScales it is not a rare 1%
+      //     event: p90 is already 7mm, i.e. >10% of the sampled pixels sit on the
+      //     grazing tail, not just a sliver at the extreme percentile.
       //
       // Bounds below are DERIVED from these measurements with justified headroom,
       // NOT round numbers: they pin the honest behaviour so a regression (tail
       // widening, median drifting off the floor, or a signFlip appearing) fails.
+      // p99 was previously asserted <=12.0 — the SAME bound as maxDelta, which can
+      // never bind (p99 <= max by construction) and let the tail widen silently
+      // below the max undetected. Corrected below: p90/p95/p99 each get their own
+      // measured-plus-headroom ceiling.
       expect(median).toBeLessThanOrEqual(0.125); // f16 hit.t quantum — the bulk converges
       // signFlip must stay 0: production must not drop a surface the reference sees.
       expect(signFlip).toBe(0);
+      // p90: measured worst case (DragonScales) = 7.000mm. +~7% headroom (mirrors
+      // the maxDelta 11.5->12.0 ~4% convention, widened slightly since 7mm is a
+      // smaller number and a flat +0.5mm would be a larger relative swing here).
+      expect(p90).toBeLessThanOrEqual(7.5);
+      // p95: measured worst case (DragonScales) = 10.625mm. +~6% headroom, same
+      // convention (measured value plus a small fixed margin, not a round number).
+      expect(p95).toBeLessThanOrEqual(11.25);
+      // p99: measured worst case (DragonScales) = 11.000mm. ~5% headroom, mirroring
+      // the maxDelta 11.5mm -> 12.0mm (~4%) convention applied to this measurement
+      // instead of reusing maxDelta's bound (the previous, never-binding defect).
+      expect(p99).toBeLessThanOrEqual(11.6);
       // Grazing tail ceiling: the worst radial relief amplitude of the probe set.
       // GothicArches/DragonScales relief reaches ~0.12 * (top_od/2 = 70mm) = 8.4mm
       // radial; a grazing ray stretches that along-ray, and f16 quantisation lands
@@ -484,9 +503,6 @@ test.describe('raycast preview gate', () => {
       // 11.5mm max plus ~4% headroom for f16 granularity. A wider tail than this is
       // a real regression, not sampling noise.
       expect(maxDelta).toBeLessThanOrEqual(12.0);
-      // p99 sanity: the tail is RARE. Even DragonScales' 11mm is at p99 (the top
-      // 1% of pixels ~= 23 grazing pixels); the 98th percentile is on the floor.
-      expect(p99).toBeLessThanOrEqual(12.0);
     });
   }
 
@@ -510,14 +526,35 @@ test.describe('raycast preview gate', () => {
         await waitForRaycastReady(page, styleId);
         // ensure a fresh shaded frame is on screen before the shot
         await readbackCenterDebug(page, 8, 8, 128).catch(() => []);
+        // A/B evidence fidelity fix: readbackCenterDebug (above) leaves the
+        // controller at stepCapInteractive/stepCapAccum=128, maxSamples=1 (its own
+        // debug-readback config). Restore the FULL shipped desktop defaults
+        // (RaycastController.ts:76-79 — stepCapInteractive 48 / stepCapAccum 128 /
+        // maxSamples 16) before the screenshot, not just maxSamples, so sample 0
+        // marches at the production cap (48) instead of the debug-readback cap
+        // (128) — otherwise the owner's A/B packet is captured with a slightly
+        // denser-than-shipped first-sample march, flattering raycast vs what users
+        // actually see.
         await page.evaluate(() => {
           const rc = (window as unknown as { __pfRaycast: { controller: {
-            setDebugMode(m: 0 | 1): void; setQuality(q: { maxSamples?: number }): void;
+            setDebugMode(m: 0 | 1): void;
+            setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; maxSamples?: number }): void;
+            needsFrame(): boolean;
           } } }).__pfRaycast;
           rc.controller.setDebugMode(0);
-          rc.controller.setQuality({ maxSamples: 16 });
+          rc.controller.setQuality({ stepCapInteractive: 48, stepCapAccum: 128, maxSamples: 16 });
         });
-        await page.waitForTimeout(1500);
+        // Wait for convergence (needsFrame()===false) rather than a fixed delay,
+        // so the shot is the fully-accumulated shipped-config frame.
+        await page.waitForFunction(
+          () => {
+            const rc = (window as unknown as { __pfRaycast?: { controller?: { needsFrame(): boolean } } }).__pfRaycast;
+            return rc?.controller ? rc.controller.needsFrame() === false : true;
+          },
+          undefined,
+          { timeout: 15_000 }
+        ).catch(() => {});
+        await page.waitForTimeout(300); // settle after the last accumulated draw
       } catch {
         // style did not become ready (Dawn hang) — still capture the frame.
       }
