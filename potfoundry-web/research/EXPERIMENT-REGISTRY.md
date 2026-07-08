@@ -4575,8 +4575,28 @@ the junction wall is then the deliverable.
 - Data: research/exchange/_tierc_junction/run1/{capped_mesh.json,outliers.ndjson,summary.json}, fix_probe.json,
   scatter.svg. Dev-only probes _junctionDiag.test.ts / _junctionProbe.test.ts (PF_TIERC_JUNCTION=1).
 
-**VERDICT: confirmed (a) RECALL GAP. FIX = extend detector recall so mid-wall rib crests are protected. Lever
-attempts recorded in spec V11d.**
+**LEVER SCREEN (detector-only, cheap): (a) RECALL-GAP REFUTED.** minStrength 1.0→0.1, minAngleDeg 28→12, fineRes
+120→180 ALL recovered ZERO dead-zone (t∈[0.38,0.48]) recall. The relief there is a SMOOTH LOW-κ HIGH-amplitude
+(~1.5mm) HORIZONTAL arch arc (r(t) peak 44.43→45.89→45.12 over ~5mm z at t≈0.465; maxD2t 0.705) — correctly ignored
+by the κ-ridge detector; there is no ridge to detect.
+
+**FOCUSED DENSITY DISCRIMINATOR (the decider):** SAME loop, small seam-free dead-zone domain (u 0.03-0.09, t
+0.42-0.52), bgArcMm sweep — 0.5 → 1 facet @0.0104 (capped); **0.3 → 0 outliers guardMax 0.00996 (7 passes); 0.2 → 0
+@0.00995.** ⇒ (d) DENSITY: the plateau is a SEED-DENSITY + PASS-BUDGET asymptote (RED-1→4 midpoint splits have
+diminishing returns on smooth curvature). "Junction wall" was a MISLABEL.
+
+**LEVER 1 (denser seed 0.3, FULL multi-bay u 0-0.1 t 0.38-0.62, full-azimuth guard):** the BULK closes (out
+4288→2089→1676→1644) but then OSCILLATES (1644→1772) with the worst PINNED at 1.0592mm across passes 5-9 — a single
+facet RED-1→4 cannot reduce. u=0 is BOTH the periodic seam AND the domain uLo boundary; the pinned facet is a
+patch-domain artifact (seam∩boundary), NOT present in the seam-free focused domain (which reached literal 0). Full
+run is PERF-BOUND (dense passes 60-96s on the 100k+-tri denser mesh — the un-parallelized whole-mesh brute, the
+documented V10d/V10e integration wall).
+
+**VERDICT: (a) RECALL-GAP + (b) SNAP + (c) CLIP-STUB all REFUTED. (d) DENSITY confirmed (dominant, closes on the
+seam-free domain). The residual multi-bay wall is TWO stacked items: a smooth-arc density tail (closes with a denser/
+adaptive seed once the ruler is parallel/BVH — the perf integration item) + a pinned seam∩domain-boundary facet
+(patch-test artifact). NOT a count-unstable junction wall. STOP per pre-registered criterion (lever 1 applied +
+characterized; no 2nd lever-grind on a perf-bound non-converging run). Full ledger: spec V11d. Commit 4853a16.**
 
 ---
 

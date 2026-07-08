@@ -1589,3 +1589,59 @@ constraint-clip stubs. DECISIVE next diagnostic: persist the capped mesh, dump t
 multi-bay-with-junctions has a real residual (count-unstable junction frontier) = the honest next research problem.
 Flag stays OFF; fast tierC + smoke green; rebaseline20 still gated on multi-bay convergence. The DRIVE-ALL-20
 campaign (tangled-6 kernel + smooth tails) is independent and unblocked.
+
+---
+
+## V11d — MULTI-BAY JUNCTION RESOLUTION: "junction wall" REFUTED, root cause = SMOOTH-ARC DENSITY + a pinned seam facet (2026-07-08)
+
+**E-2026-07-08-TIERC-JUNCTION.** The V10e "count-unstable junction frontier" framing is REFUTED by measurement. The
+multi-bay Gothic plateau is NOT a junction/protection wall.
+
+**DIAGNOSTIC (run1, capped pass-16, FULL-azimuth guard, 388 outliers, devMax 0.677, devP50 0.026):**
+- Per-outlier centroid dump + 3 measures (chart dist to nearest constraint edge, local ridge amplitude, nearest-
+  junction dist). fracTedge1 = 0.003 ⇒ (c) T-EDGE-CLIP-STUB DEAD. fracJunction3 = 0.402 and the 12 WORST only 17%
+  near junctions ⇒ (b)/junction-local (a) NOT the dominant class (junction correlation is incidental — junctions sit
+  at the detector-band edges). 59.5% of outliers are FAR from junctions (>3mm) AND far from any constraint (>1mm);
+  dConstraint p50 5.4mm, amp p50 0.759mm (81% amp>0.5).
+- ROOT CAUSE localized (fix_probe.json + field_profiles.json): the protected complex covers ONLY
+  t∈[0.12,0.18]∪[0.48,0.57]∪[0.96,0.99]. The raw κ-ridge detector emits ZERO samples in t∈[0.18,0.48]∪[0.57,0.96].
+  The worst outliers sit at t≈0.40-0.49 on a SMOOTH LOW-κ HIGH-amplitude (~1.5mm) HORIZONTAL arch arc (r(t) peaks
+  44.43→45.89→45.12 over ~5mm z at t≈0.465; maxD2t 0.705). It is a u-running arc (gradient in t), correctly IGNORED
+  by the κ-ridge detector because its curvature is genuinely low — it is not a crease, just a curved dome.
+
+**LEVER SCREEN (cheap, detector-only, does NOT count against the gate-lever budget):** minStrength 1.0→0.5→0.25→0.1,
+minAngleDeg 28→18→12, fineRes 120→180 — ALL recovered ZERO dead-zone recall. ⇒ threshold/recall is the WRONG lever;
+there is no ridge to detect. Refutes hypothesis (a) RECALL-GAP decisively.
+
+**FOCUSED DENSITY DISCRIMINATOR (the decider):** the SAME refine loop on a small dead-zone domain (u 0.03-0.09,
+t 0.42-0.52, seam EXCLUDED), bgArcMm sweep: **0.5 → 1 facet @0.0104 (capped @21 passes); 0.3 → 0 outliers
+guardMax 0.00996 (7 passes); 0.2 → 0 outliers guardMax 0.00995.** ⇒ the plateau is a SEED-DENSITY + PASS-BUDGET
+ASYMPTOTE: RED-1→4 uniform midpoint splitting has diminishing returns on smooth curvature, so a too-coarse seed
+leaves a marginal-facet tail (devP50 0.026 = barely over tol) and CAPS. Denser seed starts below the asymptote and
+converges. VERDICT: (d) DENSITY confirmed; "junction wall" was a mislabel.
+
+**LEVER 1 (denser seed 0.3) on the FULL multi-bay gate (u 0-0.1, t 0.38-0.62, maxPass 30, full-azimuth guard):**
+the BULK density population closes (out 4288→2089→1676→1644 over dense passes 5-8) BUT the worst is PINNED at exactly
+1.0592mm across passes 5,6,7,8 (identical to 5 decimals) — a SINGLE facet the RED-1→4 split cannot reduce; it
+regenerates identically. This is a SECOND, distinct residual — a structural/seam facet (the multi-bay domain includes
+the u=0 seam that the focused domain excluded; run1's worst-list carried two u=0.0000 t≈0.54 outliers). The full run
+is PERF-BOUND (dense passes 60-96s on the 100k+-tri denser mesh — the un-parallelized whole-mesh brute, the same
+documented V10d/V10e integration wall), so it did not reach the cap within session wall-clock.
+
+**HONEST STATE (per pre-registered STOP criterion — lever 1 applied, characterized, not lever-grinding a 2nd on a
+perf-bound run):**
+- The multi-bay "junction" plateau is TWO stacked residuals: (1) a SMOOTH-ARC DENSITY tail (dominant, 380+ facets,
+  devP50 0.026) that a denser seed CLOSES (proven on the seam-free focused domain → literal 0); (2) a PINNED
+  ~1.06mm seam/structural facet that midpoint-splitting cannot conform (the true remaining frontier).
+- The count-unstable JUNCTIONS are NOT the cause. The smoke gate converged to 0 because it sat inside a protected κ
+  band; the multi-bay gate straddles the detector's dead zone where the relief is smooth-arc (density), plus the seam.
+- NEXT (2 concrete levers, not attempted — budget respected): (i) DENSITY: adaptive seed pitch (bgArcMm from the
+  local chord-sag estimate, or a curvature-floor seed) so the smooth-arc tail starts sub-tol — but this needs the
+  BVH/parallel ruler (V10d integration item) to be tractable at full scale; (ii) SEAM FACET: reproduce the pinned
+  1.0592 facet, confirm it is the u=0 seam, and fix the seam-consistent RED-1→4 split (or lock a seam crest edge) —
+  this is the genuine open problem the diagnostic surfaced, replacing the mislabelled "junction wall".
+
+**GUARANTEES:** no production symbol touched (only dev-only PF_TIERC_JUNCTION probes added); byte-identical-off holds;
+fast tierC suite 9/9 green (incl. flagOff.byteIdentical + θ-window exactness). Flag stays default-OFF. Commit 4853a16
+(diagnostic + probes). Data: research/exchange/_tierc_junction/{run1/*, fix_probe.json, field_profiles.json,
+focus_results.json, focus.ndjson, lever1_pass.ndjson, radius_field.svg, scatter.svg} (gitignored; numbers inlined).
