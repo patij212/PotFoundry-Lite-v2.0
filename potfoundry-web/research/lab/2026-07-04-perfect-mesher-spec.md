@@ -2578,3 +2578,46 @@ relief) is the true blocker.
 /PF_L0_HMIN/PF_L0_MAXCONSTRAINT/PF_L0_MAXPASS, resumable per-pass ndjson). Data:
 research/exchange/_tierc_literal0/l0_*_pass.ndjson (gitignored — numbers inlined). Commits: pre-reg b832d69,
 dedupeCellMm instrument be8f51b, ledger [this].
+
+---
+
+## V11v — TIER-C FLANK-BAND (ROUND 9, E-2026-07-08-TIERC-FLANKBAND) — the never-tried CLIFF-CLASS mechanism family on Gothic: embed the rib-flank TOE contours as DOUBLED fine-picket constraints (the PROVEN Gyroid doubled-contour close) so near-vertical flanks are FRAMED strips — PRE-REGISTRATION + IN-PROGRESS (2026-07-08)
+
+ROUND 9, follow-up to V11s / E-2026-07-08-TIERC-LITERAL0. §V11s EXHAUSTED subdivision/seed/constraint-pitch/dedupe-
+lattice — all plateau at ~1150 outliers / worst 0.469 / proj ~6.76M / guardP99 0.00953 (<tol), and the §V11s
+MECHANISTIC FINDING is that dedupe-UNFREEZE makes the residual WORSE (children are outliers) ⇒ a GENUINE near-vertical
+rib-flank chord floor. This is the SAME signature as the Gyroid channel wall (§V11o/q) and DragonScales riser (§V11l):
+a steep relief wall FOUGHT WITH SUBDIVISION instead of EMBEDDED.
+
+**THE HYPOTHESIS.** The Tier-C protected complex embeds rib CRESTS (the locked ridge-maxima chains) + needle pickets
+but NOT the flank-band TOE contours (where the steep flank meets the smooth panel). A facet straddling crest→flank→panel
+has irreducible chord-sag no matter how small its (u,t) footprint. THE MECHANISM (the Gyroid doubled-contour, applied to
+Gothic): extract the flank TOE contours analytically as (u,t) polylines — level sets of the relief-amplitude-fraction
+field af(u,t)=(r−r̄_panel)/(r_crest−r̄_panel) at the toe amplitude — and embed them as DOUBLED fine-picket LOCKED
+constraints (crest = the existing locked chains = the band's upper edge; add the toe pair flanking each rib) so each
+steep flank is a FRAMED strip and facets end AT its boundaries.
+
+**MISSION (kill-criteria in the registry row, committed BEFORE measuring):** (1) LOCALIZE the §V11s floor population's
+(u,t)+|∇r|+relief-amplitude — STRADDLE (toe) confirms; MID-PANEL kills; MID-FLANK ⇒ contour-ladder rails. (2) EXTRACT
+the toe level-sets, validate placement sub-0.01. (3) EMBED via buildProtectedComplex (raw mm soup pre-planarizeMM,
+fine picket 0.08-0.15, recovery ≥99 / crossings 0). (4) GATE at the §V11s best config + flank-band; ACCEPTANCE = literal
+whole-mesh 0 + watertight non-vacuous + capped false + projFullPot ≤10M (prefer ≤8M).
+
+**BUILT (mechanism, flag-gated default-OFF, byte-identical off — commit c5d679e):** `flankBand.ts` (toe-contour
+extraction: marching-squares on af − c, root-polish, decimate; mirrors `_gyroidContourLib`, on the numerically-sampled
+Gothic field, style-agnostic) + `morseComplex.ts` generalized the constant-u `PicketSpec` to arbitrary (u,t)
+`BandContour` polylines (locked constraint edges injected into the raw mm soup BEFORE planarizeMM — same planarity-safe
+machinery). Fast guards GREEN: `bandContours` OFF byte-identical + ON planar (residualCrossings 0, recovery ≥99, adds
+locked edges); flagOff.byteIdentical + morseComplex both pass. Probe `_flankBand.test.ts` (PF_FLANKBAND=1,
+PF_FB=localize|localscore|extract|embed|gate) — split so a build-persist survives a scoring kill (resilience).
+
+**IN PROGRESS — STEP 1 LOCALIZE.** The §V11s p1 plateau mesh reproduced BIT-IDENTICAL (pass 1: 45150/1.0522, pass 16-17
+outliers 1151-1153 / worst FROZEN 0.4689 = the exact §V11s plateau; dTris collapsing = the dedupe-freeze). RESILIENCE
+NOTE: the env killed the mp25 build mid-run and a leftover mp25 worker tree survived and interleaved the shared ndjson
+with the mp18 restart (two 4-worker refine builds + the concurrent tangled agents = 68 node procs); reaped BOTH flankband
+trees by PID-tree taskkill (concurrent tangled runs untouched), lowered MAXPASS to 18 (plateau firm by pass 16), and
+split build-persist from scoring. [Localize verdict + extraction + embed + gate: pending — appended as each lands.]
+
+**LEDGER:** registry E-2026-07-08-TIERC-FLANKBAND; lib `flankBand.ts` + `morseComplex.ts` (BandContour) + probe
+`_flankBand.test.ts` + `vitest.flankband.config.ts`. Data: `research/exchange/_tierc_flankband/*` (gitignored). Commits:
+pre-reg 3ab3e43, mechanism c5d679e, [localize/gate pending].
