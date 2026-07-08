@@ -50,6 +50,39 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-08-TIERC-TAPERRAIL — the LAST unrun Gothic flank-band lever: rail af-levels placed at equal cumulative STEEPNESS (|∇r|) intervals instead of fixed af values (finer rails exactly where the flank is steepest). Scoped completeness probe following §V11v LADDER-4 [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (small scoped probe, one mechanism variant, ≤2 gate runs).** ESTABLISHED (§V11v, not re-derived): the UNIFORM LADDER-4 af{0.03,0.08,0.18,0.40} = best Gothic config (worst **0.117**, ~138-147 outliers, **~5.0M**, p99 0.00907); LADDER-5 adds cost without cutting the worst ⇒ the 0.117 is rail-count-INDEPENDENT under UNIFORM rail spacing.
+
+**HYPOTHESIS (pre-registered).** Rail spacing tapered by local steepness (|∇r| — finer rails exactly where the flank is steepest, coarser where it eases) concentrates the framing where the 0.117-class facets live and drops the worst BELOW 0.117 at matched budget. The §V11v agent PREDICTED this floors too (under taper the widest un-framed strip is where the flank is GENTLEST, so the residual descends there — worst stays ~0.117 if right, drops if wrong).
+
+**DISCRIMINATOR (cheapest first).** `taperedLevels()` in flankBand.ts places nRails af-levels at equal cumulative-|∇r| intervals: S(af)=∫|∇r|(af')·daf', rails at S⁻¹(k/(nRails+1)·S_total). New `taper` mode in `_flankBand.test.ts` (PF_FB=taper, PF_FB_NRAILS). ONE gate at matched budget vs LADDER-4; ceiling run only if promising.
+
+**KILL-CRITERION (pre-registered).** GENUINE WIN = worst meaningfully BELOW 0.117 at matched budget (~5.0M). FLOOR-CONFIRMED (worst ~0.117, no gain) = equally valuable, completes the Gothic mechanism table. REGRESS (worst↑ / nonMan↑) ⇒ drop, note. Implementation >a few hours or destabilizes recovery/crossings ⇒ report why + stop.
+
+**RESULT (FLOOR-CONFIRMED + the taper REGRESSES — the win-hypothesis is KILLED; the Gothic flank-band mechanism table is now COMPLETE).**
+
+**MECHANISM (built, flag-gated default-OFF, byte-identical off — commit 6bbb580).** `taperedLevels(sampler,domain,nRails,afLo,afHi)`: steepness = |∇r| (radius gradient in mm PER mm of (u,t) footprint), integrated against **daf** (NOT the mm footprint — af≡(r−panel)/(crest−panel) makes r linear in af so ∫|dr| is trivially uniform; ∫|∇r|·daf crowds rails where the radius-per-parameter gradient is high = the steep shoulder). TDD unit guard `taperRail.test.ts` (analytic sqrt-skew flank ⇒ rails crowd at low af [0.035,0.066,0.125,0.237]; flat flank ⇒ uniform fallback; 3/3). Fast tierC suite GREEN (flagOff.byteIdentical + morseComplex + anisoSplit + dirtyCache + taperRail = 9/9). flankBand.ts imported ONLY by tierC tests ⇒ production byte-identical off by construction.
+
+**TAPER EXTRACTION (the decisive intermediate finding).** On the REAL Gothic flank, taperedLevels(nRails=4) → **af[0.186, 0.259, 0.323, 0.380]** — ALL four rails CROWDED at the mid-to-upper flank; NOT ONE rail below af 0.186. Placement sub-0.01 TRUE (dispP90 0, dispMax ≤0.0096). Mechanistic why: the Gothic flank's |∇r| is HIGHEST at the mid-flank (af 0.19-0.38) and gentlest at the low toe — the steepness-taper starves the low toe of rails, exactly where LADDER-4's two low rails {0.03,0.08} lived.
+
+**GATE (matched budget, §V11s p1 config + tapered-4 band, ×42 full-pot):**
+
+| config | worst mm | outliers | p99 | proj | nonMan (cracked) | recovery/crossings |
+|---|---|---|---|---|---|---|
+| LADDER-4 (uniform, §V11v best) | **0.1170** | 138-147 | 0.00907 | **5.0M** | 2 (5) | 100 / 0 |
+| TAPER-4 (steepness) | **0.39553** | 184 | 0.00870 | 7.19M | 2 (5) | 100 / 0 |
+
+The tapered variant REGRESSES on every axis — worst 0.396 vs 0.117 (**3.4× WORSE**), tris 7.19M vs 5.0M, outliers 184 vs ~140. The worst-facet ampFrac histogram is CONCLUSIVE: **178 of 184 outliers sit at af[0,0.15]** (85+69+24) — the low toe the taper left completely unframed. The frozen worst 0.39553 equals §V11v's DOUBLED-band worst (0.3955): with no rails below af 0.186 the residual reverts to the un-framed low-flank/toe strip. **The §V11v prediction is CONFIRMED EXACTLY** — the gentlest strip is the low toe, and the residual descended precisely there.
+
+**VERDICT: FLOOR-CONFIRMED (win-hypothesis KILLED; taper REGRESSES).** worst-below-0.117 did NOT fire; uniform LADDER-4 remains the best Gothic config. The chord-sag floor lives at the LOW toe (af<0.15, panel-meets-flank) where |∇r| is LOW — so a steepness-taper places rails in exactly the WRONG band; uniform low rails are load-bearing. **The Gothic flank-band mechanism table is COMPLETE:** DOUBLED (0.396) → uniform LADDER-4 (0.117, plateau) → LADDER-5 (0.117, +cost) → NO-PICKET (0.117) → TAPER-4 (0.396, regresses). No rail-placement family beats uniform LADDER-4's 0.117; the residual is the irreducible near-vertical rib-flank chord floor > the ≤10M cap. Best-measured Gothic frontier stands at **LADDER-4: worst 0.117 / ~140 outliers / p99 0.00907 (<tol) / ~5.0M**.
+
+**RECOMMENDATION:** accept the LADDER-4 ~5.0M / worst 0.117 / p99<tol frontier as the Gothic close (mechanism table exhausted — no rail-placement lever remains) OR raise budget ≫10M for literal-0. No further flank-band rail experiment is warranted.
+
+**LEDGER:** spec §V11y; ceiling run NOT launched (matched-budget REGRESSED ⇒ ceiling cannot rescue a lever that starves the residual band). `flankBand.ts`+`taperedLevels`, `taperRail.test.ts`, `taper` mode in `_flankBand.test.ts`. Data: `research/exchange/_tierc_taperrail/{taper_verdict.json, gate_taper4_result.json, gate_taper4_worst.ndjson, gate_taper4_pass.ndjson}` (gitignored — numbers inlined). Commits: mechanism+TDD 6bbb580, verdict [this].
+
+---
+
 ## E-2026-07-08-TIERC-FLANKBAND — CLIFF-CLASS FLANK-BAND EMBEDDING on the multi-bay Gothic gate: the never-tried mechanism family. Embed the rib-flank TOE contours (where the steep flank meets the smooth panel) as DOUBLED fine-picket constraints so each near-vertical flank is a FRAMED strip and facets end AT the flank boundaries — the PROVEN Gyroid doubled-contour close, applied to Gothic [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
 
 **FRAME (ROUND 9, follow-up to E-2026-07-08-TIERC-LITERAL0 §V11s).** ESTABLISHED (not re-derived): rounds 6-8 EXHAUSTED subdivision/seed/constraint-pitch/dedupe-lattice — RED iso+aniso+M-square (V11k/m/n), seed adaptive+rib-aware+hMin (V11h/V11s), topology needle-forbid pickets (V11p), refine-lattice dedupe (V11s). ALL plateau at ~1150 whole-mesh outliers / worst 0.469 / proj ~6.76M / guardP99 0.00953 (<tol). §V11s MECHANISTIC FINDING: the residual is a GENUINE near-vertical rib-flank chord floor — the outliers have tiny (u,t) footprint + large 3D relief, and dedupe-unfreeze (2c) makes it WORSE (children ARE outliers). This is the SAME signature as the Gyroid channel-wall floor (§V11o/q) and the DragonScales riser class (§V11l): near-vertical relief walls FOUGHT WITH SUBDIVISION instead of EMBEDDED. The Tier-C protected complex embeds rib CRESTS (ridge maxima, the locked chains) + needle pickets, but NOT the flank-band boundaries: the rib TOE contours where the steep flank meets the smooth panel. Without a locked toe, facets STRADDLE the flank-to-panel transition and subdivide forever (a facet spanning crest→flank→panel has irreducible chord-sag no matter how small its (u,t) footprint). Gyroid PROVED the fix: DOUBLED contour pair (both wall-band edges) → all outliers on-wall, off-wall→0, trueMax halved (single-midline was CATASTROPHIC 90% off-wall).
