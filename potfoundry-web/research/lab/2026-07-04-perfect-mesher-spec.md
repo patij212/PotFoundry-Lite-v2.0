@@ -2298,7 +2298,7 @@ battery. Flag OFF; dev-only; no src/ edit.
 
 ---
 
-## V11i — TANGLED-CONTINUATION: Voronoi + HexHive adjudicated via the VALIDATED Newton true-3D ruler (V11j instrument) — both GENUINE distributed density FLOORS, NOT cliff-class, NOT twin-inflated (2026-07-08)
+## V11i — TANGLED-CONTINUATION: all 6 remaining tangled/weave styles adjudicated via the VALIDATED Newton true-3D ruler (V11j instrument) — 3 density FLOORS + 1 crease-dominated + 1 small floor + 1 cliff-class; NO style is Gyroid-class-unmeasurable (2026-07-08)
 
 Continuation of the tangled class after the Gyroid pilot (§V11b, REFUTED-for-Gyroid). Per §V11j §(2) the validated
 grid-free multi-start Newton (`newtonNearest`, `_gyroid_truthLib.ts`) is the tangled-class true-3D VERDICT instrument;
@@ -2313,7 +2313,9 @@ Registry E-2026-07-08-TANGLED-CONTINUATION (full numbers). All on the persisted 
 | **HexagonalHive** | 944,608 | 45,891 | **~26,262** (57% of radial) | 0.041 @(0.00,0.24) | 0.093 / 0.273 | full domain; 93.5% slope<0.3 (flat) | **FLOOR — pure under-density, cleanest target** |
 | **CelticTriquetra** raw | 5,734,176 | 261,743 | ~189,460 (72%) | 0.818 (braid crossings) | 1.03 / 19.9 | crease-dominated | crease-inflated (see excl) |
 | **CelticTriquetra** C0-excl b2e-3 | 5,734,176 | 17,135 (excl 93.45%) | **~10,027** (58% of remaining) | 0.047 @(0.44,0.25) | 1.12 / 4.13 | off-crease body | **crease-DOMINATED; small genuine off-crease body ~10k@0.047** |
-| **CelticKnot** | 4,903,536 | 62,568 | **~61,551** (98.4% of radial — barely inflated) | 0.300 @(0.78,0.20) | 0.224 / 15.6 | flat bulk + steep crossing tail | **FLOOR — GENUINE (radial≈true), moderate-slope bulk + crossing tail** |
+| **CelticKnot** | 4,903,536 | 62,568 | **~61,551** (98.4% of radial — barely inflated) | 0.300 @(0.78,0.20) | 0.224 / 15.6 | 55% flat bulk + 31% steep crossing tail | **FLOOR — GENUINE (radial≈true), moderate-slope bulk + crossing tail** |
+| **Crystalline** | 3,456,411 | 25,986 | **~14,263** (55% of radial) | 0.134 @(0.99,0.41) | 0.805 / 1.34 | 0% steep, moderate distributed | **FLOOR — small genuine density gap; twin-marginal concern MOOT (Newton grid-free)** |
+| **BasketWeave** | 4,775,760 | 439,696 | **~370,799** (84.3% of radial) | 0.633 @(0.75,0.85) | **33.6 / 49.8** | 56% steep>2 (over-under weave walls) + 23% flat | **CLIFF-CLASS + genuine — worst fleet gap on near-vertical weave walls → feature-edge, not density** |
 
 **Key finding — these are NOT Gyroid, and the radial/true-3D inflation ratio is STYLE-SPECIFIC (a diagnostic).** Gyroid was
 8-9× radial-inflated (206k→~12k true, 5.7%) with 94% on steep channel walls (slope p50 1.9) ⇒ CLIFF-class (feature-edge
@@ -2327,6 +2329,22 @@ So density is the right tool for Voronoi/HexHive/CelticKnot; CT is feature-edge.
 session. BVH-twin soundness for Voronoi (0.0077@2048² pilot-prior) confirms the V10b ~105k count is REAL (Newton ~116k agrees).
 watertight/zeroArea clean on the reaching meshes. **The instrument wall is BROKEN for the whole tangled class: the validated
 grid-free Newton is the sound tractable true-3D verdict — NO style here is Gyroid-class-unmeasurable.**
+
+**FLEET CLASSIFICATION (all 6, sound Newton true-3D on the `_best20` reaching meshes):**
+- **DENSITY FLOORS (density is the right tool):** HexHive (~26k@0.041, 93.5% flat — cheapest), Crystalline (~14k@0.134,
+  moderate, 0% steep), Voronoi (~116k@0.137, 42% flat + moderate tail), CelticKnot (~62k@0.300, 55% flat bulk + steep
+  crossing tail). None reached literal 0 this session — the deep-sag mechanism BUILD stalls under 3-agent saturation (each
+  Voronoi build >950s CPU with no checkpoint), and the radial-driven sweep grows the count on the steep fraction (§V11b).
+  These are honest DENSITY floors, worst 0.04–0.30, watertight/zeroArea clean.
+- **FEATURE-EDGE / CLIFF-CLASS (density is the WRONG tool — embed as zero-serration mesh edges, per §V11j / [[feedback_export_standard]]):**
+  CelticTriquetra (93.45% of outliers ARE the designed C0 braid/medallion creases; off-crease body only ~10k@0.047),
+  BasketWeave (worst fleet gap ~371k@0.633 but slopeMed **33.6** — near-vertical over-under weave walls, the DragonScales-riser/
+  Gyroid-channel-wall analog). These need the feature-edge extractor (§V11j NEXT-a), NOT the density guard.
+
+**METHODOLOGICAL WIN:** the radial/true-3D INFLATION RATIO is itself a style classifier — 1.0–1.2× (CelticKnot/BasketWeave,
+radial≈true) = genuine gap; 1.75× (Voronoi/HexHive/Crystalline) = mild near-vertical overstatement; 8–9× (Gyroid) = pure
+cliff. And the median wall-SLOPE of the true outliers separates density (slope<1) from cliff (slope≫1) cleanly. Both are
+cheap byproducts of the Newton worst-point score (~1.5–7 min/style).
 
 **LEDGER:** registry E-2026-07-08-TANGLED-CONTINUATION; probe `research/bridge/_pf_tangledCont.test.ts`
 (PF_TC_TWIN/PF_TC_GATE/PF_TC_SWEEP/PF_TC_TRUTH); instrument `_gyroid_truthLib.ts` (read-only) + `_pf_tangledKernelLib.ts`
