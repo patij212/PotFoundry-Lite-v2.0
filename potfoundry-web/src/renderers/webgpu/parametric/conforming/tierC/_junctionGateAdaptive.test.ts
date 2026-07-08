@@ -27,6 +27,7 @@ const OUT = 'research/exchange/_tierc_junction';
 const HMIN = process.env.PF_GATEA_HMIN ? +process.env.PF_GATEA_HMIN : 0.09;
 const MAXLEVEL = process.env.PF_GATEA_MAXLEVEL ? +process.env.PF_GATEA_MAXLEVEL : 5;
 const BGARC = process.env.PF_GATEA_BGARC ? +process.env.PF_GATEA_BGARC : 0.3;
+const USPLIT = process.env.PF_GATEA_USPLIT !== '0';
 const TAG = process.env.PF_GATEA_TAG ?? 'A';
 
 function nonManifoldByIndex(tris: number[]): number {
@@ -75,6 +76,7 @@ describe('Tier-C multi-bay GATE — LEVER A adaptive seed', () => {
         adaptiveSeed: true,
         hMinMm: HMIN,
         adaptiveMaxLevel: MAXLEVEL,
+        adaptiveUSplit: USPLIT,
         ruler: { ...DEFAULT_RULER, thetaWindowRad: 0.5 },
       },
       pool,
@@ -98,6 +100,7 @@ describe('Tier-C multi-bay GATE — LEVER A adaptive seed', () => {
       tag: TAG,
       hMinMm: HMIN,
       maxLevel: MAXLEVEL,
+      uSplit: USPLIT,
       bgArcMm: BGARC,
       capped: refined.capped,
       passes: refined.passes,

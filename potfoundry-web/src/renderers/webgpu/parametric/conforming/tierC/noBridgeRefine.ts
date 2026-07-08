@@ -75,6 +75,8 @@ export interface RefineOptions {
   hMinMm?: number;
   /** Adaptive-seed recursion depth cap. Default 5. */
   adaptiveMaxLevel?: number;
+  /** Adaptive-seed: also split in u (default true). False ⇒ t-only rows. */
+  adaptiveUSplit?: boolean;
   ruler: RulerOptions;
   /**
    * Cross-pass DIRTY-FACET cache (default off; opt-in perf lever). A facet
@@ -131,6 +133,7 @@ function adaptiveCfg(opts: RefineOptions): AdaptiveSeedCfg | undefined {
     tolMm: opts.tolMm,
     hMinMm: opts.hMinMm ?? 0.09,
     maxLevel: opts.adaptiveMaxLevel ?? 5,
+    uSplit: opts.adaptiveUSplit ?? true,
   };
 }
 
@@ -161,6 +164,7 @@ export function adaptiveSeedPoints(
   tolMm: number,
   hMinMm: number,
   maxLevel = 5,
+  uSplit = true,
 ): number[] {
   const rAt = (u: number, t: number): number => {
     const [x, y] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
@@ -237,7 +241,12 @@ export function adaptiveSeedPoints(
     const sagT = Math.max(edgeSagT(u0, t0, t1), edgeSagT(u1, t0, t1), edgeSagT(uMid, t0, t1));
     const canU = u1 - u0 > 2 * duMin;
     const canT = t1 - t0 > 2 * dtMin;
-    const splitU = sagU > tolMm && canU && lvl < maxLevel;
+    // u-split is OPTIONAL (default on). Off ⇒ only t-rows densify: the u-ridges
+    // are carried by LOCKED constraint edges + the refine loop, and the pinned
+    // outlier is a t-SPANNING needle (pin_diag: uSpan≈0, tSpan≈0.075) — so
+    // t-only interior points break the needle without paying the rib-tracking
+    // u-refinement tri cost (MEASURED: u-split ⇒ 8.3M full-pot projection).
+    const splitU = uSplit && sagU > tolMm && canU && lvl < maxLevel;
     const splitT = sagT > tolMm && canT && lvl < maxLevel;
     if (splitU && splitT) {
       stack.push([u0, uMid, t0, tMid, lvl + 1], [uMid, u1, t0, tMid, lvl + 1], [u0, uMid, tMid, t1, lvl + 1], [uMid, u1, tMid, t1, lvl + 1]);
@@ -268,6 +277,7 @@ export interface AdaptiveSeedCfg {
   tolMm: number;
   hMinMm: number;
   maxLevel: number;
+  uSplit: boolean;
 }
 
 export function seedFromComplex(
@@ -387,6 +397,7 @@ export function seedFromComplex(
       adaptive.tolMm,
       adaptive.hMinMm,
       adaptive.maxLevel,
+      adaptive.uSplit,
     );
     for (let i = 0; i < pts.length / 2; i++) {
       const u = pts[2 * i];

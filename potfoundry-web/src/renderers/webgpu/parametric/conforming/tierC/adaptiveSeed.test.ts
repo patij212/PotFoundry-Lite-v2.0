@@ -80,5 +80,11 @@ describe('LEVER A adaptive seed', () => {
     // blanket uniform-hMin tighten (the budget claim).
     expect(nPts).toBeGreaterThan(uniform03N);
     expect(nPts).toBeLessThan(uniformFineN);
+    // t-ONLY variant (uSplit=false): far fewer points (ribs not chased in u).
+    const ptsT = adaptiveSeedPoints(sampler, domain, uToMm, tToMm, 0.3, 0.01, 0.09, 5, false);
+    const nPtsT = ptsT.length / 2;
+    // eslint-disable-next-line no-console
+    console.log('[adaptiveSeedPoints tOnly]', JSON.stringify({ nPtsT, ratio: +(nPts / nPtsT).toFixed(2) }));
+    expect(nPtsT).toBeLessThan(nPts);
   });
 });
