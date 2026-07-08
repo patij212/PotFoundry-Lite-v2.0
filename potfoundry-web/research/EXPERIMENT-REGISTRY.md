@@ -170,7 +170,20 @@ Outliers GROW, worst WORSENS, tris ~3.2×/pass — the SAME monotone explosion a
 
 **METHOD:** DEV-ONLY. New probe `research/bridge/_pf_tangledCont.test.ts` (env-gated per style, resumable, ndjson checkpoint the INSTANT computed to `research/exchange/_tangled_cont/<style>/`); reuses `_pf_tangledKernelLib` + `_pf_bvhRuler` + `_ct_creaseLib` READ-ONLY; NO src/ edit; NO edit to `_ds_conforming*`, tierC/**, or the Gyroid instrument work (`_gyroid_truth/` is another agent's). NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs; explicit file staging (NEVER git add -A). Ledger §V11i appended per style-close/kill (not batched). Priority order sequential: Voronoi → HexHive → CT → CelticKnot → Crystalline → BasketWeave (partial coverage with clean per-style verdicts beats shallow coverage of all).
 
-**VERDICT:** _pending — result below._
+**VERDICT (2026-07-08) — ALL 6 STYLES ADJUDICATED via the VALIDATED grid-free Newton true-3D ruler (`_gyroid_truthLib.ts` newtonNearest, §V11j).** MID-ARC PIVOT: the instrument-gate that used the BVH twin (3072²) AND the deep-sag mechanism build both STALLED under 3-agent machine saturation (each Voronoi build/score >950s CPU, no checkpoint). The coordinator relayed the newly-landed §V11j Newton ruler → switched the verdict instrument to Newton (grid-free, no twin, ~1.5–7 min/style via 1-Newton-per-facet worst-point scoring on the radial-flagged population). This BROKE the pilot's instrument wall for the whole class.
+
+Recipe (§V11j §3): rank all facets by the SOUND radial bound → Newton-score the worst-radial sample point of the fat tail (1500) + a stratified sample of the rest (1500) → honest true-3D count + wall-slope + (u,t) scatter. On the persisted `_best20` reaching meshes, tol 0.01:
+
+| style | tris | radial-out | honest true-3D | worst true mm | slopeMed | VERDICT |
+|---|---|---|---|---|---|---|
+| Voronoi | 1.80M | 202,217 | ~115,816 (57%) | 0.137 | 0.635 | **FLOOR** — genuine distributed density gap (BVH-twin sound 0.0077, confirms V10b ~105k REAL) |
+| HexagonalHive | 0.94M | 45,891 | ~26,262 (57%) | 0.041 | 0.093 | **FLOOR** — pure under-density, 93.5% flat, cheapest target |
+| CelticTriquetra | 5.73M | 261,743 raw / 17,135 off-crease | ~189,460 raw / **~10,027 off-crease** | 0.818 raw / **0.047 off-crease** | 1.03 | **CREASE-DOMINATED** — C0 exclusion (band 2e-3) removes 93.45%; small genuine off-crease body ~10k@0.047 (confirms V11c) |
+| CelticKnot | 4.90M | 62,568 | ~61,551 (98.4%) | 0.300 | 0.224 | **FLOOR** — GENUINE, radial≈true (barely inflated); flat bulk + steep crossing tail |
+| Crystalline | 3.46M | 25,986 | ~14,263 (55%) | 0.134 | 0.805 | **FLOOR** — small genuine density gap; twin-marginal (0.065) concern MOOT (Newton grid-free) |
+| BasketWeave | 4.78M | 439,696 | ~370,799 (84.3%) | 0.633 | **33.6** | **CLIFF-CLASS** — worst fleet gap on near-vertical over-under weave walls → feature-edge, NOT density |
+
+CLASSIFICATION: 4 DENSITY floors (HexHive/Crystalline/Voronoi/CelticKnot — density is the right tool; literal 0 NOT reached, mechanism build stalled under contention), CT CREASE-DOMINATED (feature-edge), BasketWeave CLIFF-CLASS (feature-edge, slopeMed 33.6). NONE is Gyroid-class-unmeasurable — Newton is the sound tangled-class verdict. Radial/true inflation ratio (1.0× CelticKnot/BasketWeave → 1.75× Voronoi/Hex/Crystalline → 8-9× Gyroid) + median outlier wall-slope are cheap style classifiers. watertight/zeroArea clean throughout. Data: `research/exchange/_tangled_cont/<style>/truthfloor.ndjson` (+ scatter). Commits 83cf12d→f2db9a9. Ledger §V11i.
 
 ---
 
