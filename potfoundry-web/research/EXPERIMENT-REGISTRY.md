@@ -4835,3 +4835,55 @@ skip a style whose final row exists. NODE_OPTIONS=--max-old-space-size=8192 for 
 if the pilot converges cheaply; otherwise report the pilot verdict + the stretch styles' state explicitly.
 
 **VERDICT: PENDING — building kernel + pre-registered, measuring next.**
+
+**VERDICT: MEASURED 2026-07-08 — GyroidManifold REFUTED (density floor + INSTRUMENT WALL); Voronoi partial (BVH sound, driver-floor). PILOT did NOT close either. Stretch styles NOT run. Key results:**
+
+**(1) INSTRUMENT WALL — neither grid ruler is trustworthy on Gyroid at tol 0.01 (research/exchange/_tangled_kernel/INSTRUMENT_FINDING.md):**
+- The V10e θ-window analytic grid brute UNDERSTATES Gyroid true-3D by up to 0.0225mm (measured vs 4096×800 truth;
+  16/242 advanced samples read BELOW truth, 2/500 TRUE >tol outliers false-zeroed) — grid-trapped in wrong local
+  minima on the fine multi-well r(θ,z) (20% relief). NOT the window cutting the foot (0/242 feet geometrically
+  outside the asin(2·bound/ρ) window — the window RANGE is proven valid); the coarse-grid box-refine is the culprit.
+  A denser 2048×200 + GN-fallback multi-start STILL lied (0.0225mm). REFUTES the mission's "θ-window is EXACT-safe"
+  premise for Gyroid (it holds for Gothic ribs — 5% relief — not Gyroid).
+- The V10b BVH twin ALSO fails: twinOnSurfaceResidual (the twin's own on-surface flat-facet error) max 0.075mm @2048²
+  / p99 0.016 @2048², ~0.05 @3072² — ALL >> tol 0.01, so the BVH UNDERSTATES (band-limits) and its outlier count/max
+  are twin-artifact-contaminated on Gyroid. (Voronoi twin is nearly-sound: max 0.028 / p99 0.0077 @2048² → the BVH
+  IS a usable Voronoi verdict, matching V10b "Voronoi ruler HONEST".)
+- ⇒ The ONE sound, grid-free instrument is the RADIAL same-(u,t) bound |hypot(x,y)−rA(atan2,z)| (a STRICT analytic
+  upper bound on true-3D nearest for z∈[0,H]): a facet green by it is PROVABLY ≤tol. Used as the primary driver+verdict.
+
+**(2) DENSITY FLOOR — the sound radial-bound driver does NOT converge on Gyroid (REFUTE):** chordTolMm sweep
+0.03→0.015→0.008→0.004 (tris 1.19M→1.31M→1.57M→2.17M): soundUpperOutliers 112,519→140,640→192,577→206,273 (COUNT
+GROWS with density) while soundMax 0.505→0.412→0.307→0.136 and p99 0.127→0.100→0.064→0.031 (max/p99 SHRINK). This is
+a density-invariant FLOOR + fat tail: near-vertical channel-wall facets carry a same-(u,t) radial bound that is ~2-3×
+true-3D (mission Q1: ruler OVERSTATES ~2×; my radial max 0.307 vs V10b BVH-truth ~0.098) and does NOT shrink
+proportionally to facet area on a near-vertical wall ⇒ driving the sound bound to 0 needs ~unbounded density on the
+walls. Kill-criterion (plateau >1000 for 4 passes) MET; projFullPot 4.34M < 6M (budget was NOT the blocker — the
+metric-floor was). watertight nonMan=0, zeroArea=0 throughout (topology is clean; only the fidelity-driver floors).
+
+**(3) PI-RELAY SWEEP-FIX (§V11a) — REFUTED for the tangled radial-bound case:** the smooth-tail fix (sweeps:0 +
+chordSampleN:8) did NOT help Gyroid at chord0.008: base(sw2,cn4) 192,577/max0.307 → fix(sw0,cn8) 212,847/max0.836
+→ sw0_cn4 244,325/max0.607. sweeps:0 made the sound-upper count WORSE (the Laplacian sweeps were HELPING the
+radial-bound facet shape here — OPPOSITE of the smooth-tail true-3D case, because the instrument differs: sweeps
+re-introduce facet-PLANE sag [smooth-tail BVH] but improve same-(u,t) vertex placement [tangled radial-bound]).
+p99 did drop (0.064→0.049) but the COUNT rose — confirming the floor is intrinsic to the steep channel walls, not a
+sweep artifact.
+
+**(4) CLASSIFICATION:** Gyroid's floor is a GENUINE true-3D gap (V10b: 113,767 whole-mesh BVH outliers, GENUINE),
+but it is NOT CLOSABLE by the whole-mesh-guard mechanism as dispatched — the mechanism needs a trustworthy true-3D
+STOP driver, and on Gyroid NO tractable true-3D ruler (analytic grid brute, BVH twin) is sound at tol 0.01; only the
+radial upper bound is sound, and it over-refines infinitely on the near-vertical designed channel walls. The
+Gothic/GeoStar close worked because their honest brute (Gothic ribs, 5% relief) WAS trustworthy — Gyroid's tangled
+20%-relief multi-well surface breaks that instrument premise.
+
+**NEXT (honest fork):** (a) a genuinely grid-free true-3D nearest (analytic Newton with EXHAUSTIVE well enumeration,
+or a curvature-adaptive twin whose band-limit is proven <tol — 6144²+ for Gyroid, expensive) to get an honest
+true-3D verdict; then (b) IF the honest true-3D floor is real, the designed near-vertical channel walls are a
+CLIFF/EXCLUDE-class feature (like the weave over-under walls) — the whole-mesh-guard density mechanism is the wrong
+tool; a feature-edge/exclusion argument (per [[feedback_export_standard]]) is the right frame. Voronoi (BVH sound)
+is the tractable next target for the guard mechanism — its driver-floor was not run to a verdict this session.
+
+**LEDGER:** research/exchange/_tangled_kernel/ (gitignored; numbers inlined). Kernel research/bridge/
+_pf_tangledKernelLib.ts (wholeMeshGuardRadialBound sound primary + wholeMeshGuardBVH caveated x-ref + wholeMeshGuardWin
+[refuted θ-window]); probe _pf_tangled_kernel.test.ts (PF_TK_ANCHOR / PF_TK_SWEEPFIX / PF_TANGLED_KERNEL). Commits
+84760cc (pre-reg) → 5c1c081 → da6733a → 721bc28. DEV-ONLY; no src/ edit; byte-identical-off unaffected.

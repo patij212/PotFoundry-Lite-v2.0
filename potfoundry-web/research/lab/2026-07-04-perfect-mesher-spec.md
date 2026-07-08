@@ -1850,3 +1850,48 @@ discriminator), `_smoothtail_anchor.test.ts` (PF_SMOOTHANCHOR=1, the V10b-baseli
 `research/exchange/_smoothtail/scorecard.ndjson`. Anchor note: my dense-basis re-score of the persisted _best20 Wave
 bin read 6 outliers (not V10b's 2 — a twin-config-level count difference; max 0.0105 ≈ V10b 0.0102). The CLOSE gate is
 0 outliers, unambiguous across bases.
+
+---
+
+## V11b — TANGLED KERNEL DISPATCH (Gyroid+Voronoi pilot) — INSTRUMENT WALL + DENSITY FLOOR (2026-07-08)
+
+Dispatched the proven whole-mesh honest-guard mechanism to the tangled class (spec §4 dispatch: empty protected
+complex + interior chord-sag Steiner). Seam-safe build = inhouse `buildInhouseMetricMesh` chordSteiner; driver+verdict
+intended = the honest true-3D whole-mesh guard. **The pilot did NOT close either style — but surfaced a load-bearing
+metrology finding.** Registry E-2026-07-08-TANGLED-KERNEL (full numbers); trust only these measured results.
+
+**(1) INSTRUMENT WALL (the headline): neither tractable true-3D ruler is trustworthy on Gyroid at tol 0.01.**
+- The V10e θ-window analytic grid brute (the ported production tierC ruler) UNDERSTATES Gyroid true-3D by up to
+  0.0225mm vs a 4096×800 dense-truth — grid-trapped in wrong local minima on the fine multi-well r(θ,z) (20% relief).
+  The window RANGE is proven valid (0/242 feet outside asin(2·bound/ρ)); it is the COARSE-GRID box-refine that traps.
+  Denser 2048×200 + GN-fallback multi-start still lied. ⇒ The mission's "θ-window is EXACT-safe" holds for Gothic
+  ribs (5% relief) but is REFUTED for Gyroid. The Gothic/GeoStar close worked because their honest brute WAS
+  trustworthy; Gyroid's tangled surface breaks that premise.
+- The V10b BVH twin ALSO band-limits > tol on Gyroid: twinOnSurfaceResidual max 0.075 @2048² / ~0.05 @3072² (>> tol);
+  its outlier count/max are twin-artifact-contaminated (it UNDERSTATES). Voronoi's twin is nearly-sound (max 0.028 /
+  p99 0.0077 @2048²) ⇒ BVH is a usable Voronoi verdict but NOT a Gyroid one.
+- The ONE sound, grid-free instrument = the RADIAL same-(u,t) bound (strict analytic upper bound; a green facet is
+  PROVABLY ≤tol). Banked: on a tangled multi-well radial surface, point→surface nearest is a global optimization no
+  grid+box-refine solves reliably at tol 0.01; certify green with the radial bound, not a grid brute or BVH twin.
+
+**(2) DENSITY FLOOR (the REFUTE): the sound radial-bound driver does NOT converge on Gyroid.** chordTolMm
+0.03→0.004 (tris 1.19M→2.17M): soundUpperOutliers 112,519→140,640→192,577→206,273 (COUNT GROWS) while max
+0.505→0.136 / p99 0.127→0.031 (SHRINK). Density-invariant floor + fat tail: near-vertical channel-wall facets carry a
+radial bound ~2-3× true-3D that doesn't shrink with facet area. Kill-criterion (plateau>1000/4 passes) MET; budget
+was NOT the blocker (projFullPot 4.34M < 6M). watertight nonMan=0, zeroArea=0 throughout (topology clean).
+
+**(3) PI-relay sweep-fix REFUTED for this case:** sweeps:0 + chordSampleN:8 made the sound-upper count WORSE
+(192,577→212,847→244,325) — the smooth-tail true-3D-sweep mechanism is the OPPOSITE sign for the tangled
+radial-bound instrument (sweeps improve same-(u,t) vertex placement here).
+
+**(4) Verdict + fork.** Gyroid's floor is a GENUINE true-3D gap (V10b 113,767 BVH outliers) but NOT closable by the
+density-guard mechanism as dispatched: the mechanism needs a trustworthy true-3D STOP driver, which Gyroid does not
+admit at tol 0.01. HONEST FORK: (a) a genuinely grid-free true-3D nearest (Newton with exhaustive well enumeration,
+or a curvature-adaptive twin proven <tol — ~6144²+ for Gyroid); (b) if the honest true-3D floor is real, the designed
+near-vertical channel walls are a CLIFF/EXCLUDE feature (like weave over-under walls) → the density-guard is the wrong
+tool, a feature-edge/exclusion argument is right (per [[feedback_export_standard]]). Voronoi (BVH sound) is the
+tractable next guard-mechanism target — its driver-floor was not run to a verdict. Stretch styles (HexHive/Crystalline/
+BasketWeave/CelticKnot) NOT run; carried at their V10b numbers.
+
+**LEDGER:** registry E-2026-07-08-TANGLED-KERNEL; research/exchange/_tangled_kernel/ (gitignored, numbers inlined);
+kernel research/bridge/_pf_tangledKernelLib.ts + probe _pf_tangled_kernel.test.ts; commits 84760cc→721bc28. DEV-ONLY.
