@@ -44,4 +44,17 @@ describe('ShaderManager', () => {
             expect(wgsl).toMatch(/p\.z\s*-\s*0\.5\s*\*\s*H/);
         });
     });
+
+    describe('lighting module extraction', () => {
+        it('desktop composition contains exactly one shade_color and one gradient_color', () => {
+            const wgsl = ShaderManager.getInstance().getStyleWGSL(0);
+            expect(wgsl.match(/fn shade_color\(/g)?.length).toBe(1);
+            expect(wgsl.match(/fn gradient_color\(/g)?.length).toBe(1);
+            expect(wgsl.match(/fn vs_main\(/g)?.length).toBe(1);
+        });
+        it('universal composition contains exactly one shade_color', () => {
+            const wgsl = ShaderManager.getInstance().getUniversalWGSL();
+            expect(wgsl.match(/fn shade_color\(/g)?.length).toBe(1);
+        });
+    });
 });

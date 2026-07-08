@@ -2,6 +2,7 @@
 import commonWgsl from '../../assets/shaders/common.wgsl?raw';
 import previewUniformsWgsl from '../../assets/shaders/preview_uniforms.wgsl?raw';
 import stylesWgsl from '../../assets/shaders/styles.wgsl?raw';
+import previewLightingWgsl from '../../assets/shaders/preview_lighting.wgsl?raw';
 import previewMainWgsl from '../../assets/shaders/preview_main.wgsl?raw';
 import previewMainMobileWgsl from '../../assets/shaders/preview_main_mobile.wgsl?raw';
 import previewFullMobileWgsl from '../../assets/shaders/preview_full_mobile.wgsl?raw';
@@ -18,6 +19,7 @@ export class ShaderManager {
     private commonWgsl: string = '';
     private uniformsWgsl: string = '';
     private stylesWgsl: string = '';
+    private lightingWgsl: string = '';
     private mainWgsl: string = '';
     private mainMobileWgsl: string = '';
     private fullMobileWgsl: string = '';
@@ -30,6 +32,7 @@ export class ShaderManager {
         this.commonWgsl = this.getShaderContent(commonWgsl);
         this.uniformsWgsl = this.getShaderContent(previewUniformsWgsl);
         this.stylesWgsl = this.getShaderContent(stylesWgsl);
+        this.lightingWgsl = this.getShaderContent(previewLightingWgsl);
         this.mainWgsl = this.getShaderContent(previewMainWgsl);
         this.mainMobileWgsl = this.getShaderContent(previewMainMobileWgsl);
         this.fullMobileWgsl = this.getShaderContent(previewFullMobileWgsl);
@@ -37,7 +40,7 @@ export class ShaderManager {
         this.errorEstimationWgsl = this.getShaderContent(errorEstimationWgsl);
         this.mobile = isMobileDevice();
 
-        if (!this.commonWgsl || !this.uniformsWgsl || !this.stylesWgsl || !this.mainWgsl) {
+        if (!this.commonWgsl || !this.uniformsWgsl || !this.stylesWgsl || !this.lightingWgsl || !this.mainWgsl) {
             console.error('[ShaderManager] Failed to load shader modules');
         }
         console.log(`[ShaderManager] Mobile detection: ${this.mobile} (UA: ${navigator.userAgent.substring(0, 80)}, touch: ${navigator.maxTouchPoints}, screen: ${window.screen.width}x${window.screen.height}, VITE_MOBILE: ${import.meta.env.VITE_MOBILE ?? 'unset'})`);
@@ -243,7 +246,8 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
             this.uniformsWgsl,     // 3. Uniforms & style_param Definition
             optimizedStylesWgsl,   // 4. Styles (uses style_param)
             dispatchCode,          // 5. Dispatcher
-            this.mainWgsl          // 6. Main (full desktop)
+            this.lightingWgsl,     // 6. Camera & lighting (shared with raycast)
+            this.mainWgsl          // 7. Mesh vertex/fragment entry points
         ].join('\n');
     }
 
@@ -301,7 +305,8 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
             this.uniformsWgsl,     // 3. Uniforms
             allStylesWgsl,         // 4. Styles (ALL of them)
             dispatchCode,          // 5. Dispatcher
-            this.mainWgsl          // 6. Main (desktop only — mobile early-returns)
+            this.lightingWgsl,     // 6. Camera & lighting (shared with raycast)
+            this.mainWgsl          // 7. Main (desktop only — mobile early-returns)
         ].join('\n');
     }
 
