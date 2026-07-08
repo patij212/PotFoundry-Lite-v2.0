@@ -4499,3 +4499,101 @@ stays an upper bound — building one is separate work).
 - MIXED otherwise — characterize the residual population (where, how deep) without a class verdict.
 
 **VERDICT: MEASURED 2026-07-07 — BOTH GENUINE on the pre-registered one-basis criteria: BasketWeave 77.7%/67% of outliers survive exclusion (bands 1e-3/2e-3; exclFrac 8-13% > the 6% collapse cap; worst facet OFF-crest, max 0.342 unchanged); CelticKnot 99.7%/~99% survive (exclFrac 0.7-1.4% — creases contribute ~nothing). Weave gaps = real off-crease geometry → both join the tangled class for kernel dispatch. Bonus instrument findings (spec §V10b): unsound 4-pt screen removed (HexHive +58% undercount); twin band-limit inflation measured on the no-prefilter basis (CK +41%); final numbers = dense+radial-prefilter basis. CelticTriquetra NOT adjudicated (no predicate).**
+
+---
+
+## E-2026-07-08-SMOOTH-TAILS — close the 4 smooth-tail styles to literal whole-mesh EVERY-FACET true-3D interior <= 0.01mm [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME:** V10b FINAL dense-basis whole-mesh BVH scorecard (tol 0.01, dense 45-pt denseBary + radial same-azimuth prefilter, no screen) left 4 smooth single-valued-field styles a hair over 0: WaveInterference 2 outliers/max 0.0102, FourierBloom 20/0.0103, RippleInterference 82/0.0191, HarmonicRipple 93/0.0151 (197 facets total). These are the campaign's cheapest wins. The reaching meshes are persisted at research/exchange/_best20/heatmap/<Style>.{xyz,idx}.bin. Their kernel deep-sag guard (buildInhouseMetricMesh chordTolMm=0.03, chordSteiner) uses a 4-point SAME-(u,t) chord sag ruler; the acceptance ruler is the 45-pt true-3D nearest (scoreWholeMeshBVH). The gap = (a) chordTolMm=0.03 is far looser than the 0.01 outliers, and (b) the 4-pt kernel sampler is blind between its samples.
+
+**HYPOTHESIS:** LOCAL honest-ruler-driven deep-sag refinement (tighten the kernel deep-sag guard to a sub-0.01 chord tolerance with the Steiner-at-worst-sag insertion, i.e. the pre-registered spec V10(3) item-1 lever — deep-sag refinement on the flagged facets in the Tier-A dense M-square path) drives all 4 smooth-tail styles to whole-mesh EVERY-FACET dense-basis 0 outliers at tol 0.01mm, WITHOUT a blunt global density tighten, within a sane tri budget.
+
+**METHOD:** research mesher rebuild via buildInhouseMetricMesh (Tier-A dense M-square) with a tightened deep-sag lever (chordTolMm sweep down to ~0.006-0.008, chordSteiner true). Score EVERY facet under the dense-basis whole-mesh BVH ruler scoreWholeMeshBVH (twin 3072^2, radial prefilter on, NO screen) — the exact §V10b basis. Anchor: FIRST re-score the persisted _best20 bins to reproduce the V10b 2/20/82/93 baseline (instrument-match gate) before trusting the close numbers. Probe research/bridge/_pf_smoothtail.test.ts (PF_SMOOTHTAIL=1), one env-gated it per style, CHECKPOINT one ndjson row per style to research/exchange/_smoothtail/ the INSTANT scored → killed run resumes on unfinished styles. Reuses labkit + _pf_bvhRuler READ-ONLY; edits NOTHING in src/.
+
+**KILL CRITERIA (per style, ALL must hold to CLOSE):**
+- (a) whole-mesh dense-basis interior outliers == 0 at tol 0.01mm (scoreWholeMeshBVH every facet, radial prefilter, no screen);
+- (b) watertight/manifold by RAW index (auditNonManRaw == 0, non-vacuous — audit ran on >0 edges);
+- (c) zero-area degenerate faces == 0 (slicer-safe);
+- (d) tri count sane vs the 6M budget (< ~2x the reaching mesh's tri count, i.e. NOT a blunt global tighten).
+- REFUTE a style iff local deep-sag refinement cannot reach 0 outliers within 2x the reaching-mesh tri count — report the measured floor + refuted lever (a REFUTED result with clean data is a success).
+
+**VERDICT: PENDING — measuring.**
+
+---
+
+## E-2026-07-08-TIERC-JUNCTION — where do the ~380 multi-bay Gothic floor outliers live? [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME (from spec V10e):** the multi-bay Gothic Tier-C gate (u 0-0.1, t 0.38-0.62, spans arch junctions) does NOT
+converge — plateaus ~380 outliers, worst OSCILLATING 0.40-0.78mm (pass1 out=2080→pass16 out=381, tris 9.7k→75k,
+capped). The smoke gate (thin mid-band t 0.48-0.52, no junctions) converges to literal 0 in 45s. Iteration is now
+cheap (24-58s/pass via the θ-window ruler).
+
+**HYPOTHESIS (3 pre-registered, mutually-exclusive on the diagnostic):**
+- (a) detector RECALL gap at junctions — fineRes-120 detector misses ribs/junction-crests → facets bridge the
+  UNPROTECTED cusp (worst 0.77 ≈ rib amplitude). Signature: outliers CLUSTER near junction 0-cells, with LARGE
+  chart-distance-to-nearest-constraint-edge and HIGH local ridge amplitude.
+- (b) ridge-snap misbehaves at junctions (ambiguous normal where ribs merge). Signature: outliers cluster AT
+  junctions but SMALL constraint-edge distance (a protected-but-mislocated edge nearby).
+- (c) domain-boundary constraint-clip stubs at t=0.38/0.62. Signature: outliers cluster at the t-edges, NOT at
+  junctions.
+- (d) plain density. Signature: outliers SPREAD, small amplitude, moderate constraint distance — no junction/edge
+  clustering.
+
+**DISCRIMINATOR (cheapest decisive):** persist the capped multi-bay mesh; for each of the ~380 floor facets dump the
+centroid (u,t) + (i) chart distance to nearest protected-complex constraint edge, (ii) local ridge amplitude at the
+centroid (golden-section radius-max minus flank over a ±2.5mm normal window), (iii) nearest-junction (degree≥3 node)
+distance. Classify by clustering. Render a (u,t) scatter (outliers vs junctions vs constraint edges).
+
+**KILL-CRITERION (committed BEFORE measuring):**
+- CLASSIFY (a)/(b) iff ≥60% of outlier centroids lie within 3mm (chart) of a junction node.
+- CLASSIFY (c) iff ≥60% lie within 1mm of a t-domain edge (t=0.38 or 0.62) AND <30% near junctions.
+- CLASSIFY (d) density iff neither clusters (both <60%) AND outlier amplitude p50 < 0.05mm.
+- (a) vs (b) split: among junction-clustered outliers, median constraint-edge distance > 1mm ⇒ (a) recall gap;
+  ≤ 1mm ⇒ (b) snap ambiguity.
+
+**FIX GATE (after diagnostic, ≤2 levers, one at a time, re-run multi-bay gate after each):** converge to literal
+whole-mesh 0 outliers + watertight non-vacuous + no crash, loop-convergence AND full-basis guard both green.
+
+**STOP CRITERION (pre-registered):** if after the diagnostic + 2 fix levers the gate still plateaus, STOP and report
+the measured floor population + classification — do NOT lever-grind past 2 attempts. An honest characterization of
+the junction wall is then the deliverable.
+
+**VERDICT: PENDING — diagnostic running.**
+
+---
+
+## E-2026-07-08-DRAGONSCALES-ZDENSITY — drive DragonScales to whole-mesh EVERY-FACET dense-basis true-3D <= 0.01mm via SHEET Z-DENSITY on the doubled-rings research mesh [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME:** V10b FINAL dense-basis whole-mesh BVH scorecard read **DragonScales 263,536 outliers @ max 0.0463 / p99 0.0395** (riser broad-shallow; the old radial "0.219" was ~5x ruler-overstated). CRUCIAL: that number was measured on the PRODUCTION `_best20/heatmap/DragonScales.bin` mesh under the honest dense radial twin (`scoreWholeMeshBVH`, twin 2048x3072, radial prefilter). The COUNT-UNSTABLE PASS 2026-07-04b close (`E-2026-07-04-CU-DSLIP`) drove a DIFFERENT mesh — the doubled-rings + SHEET-Z-DENSITY structured mesh (`buildStructuredWall` + `dragonRings`, nZband 30->70) — to BVH p99 0.0051-0.0053, but scored it against a `buildStepReference` STEP-locator twin (not the dense radial twin), and reported p99 not every-facet-outlier-count. So the two are NOT comparable; the honest basis must be RE-ESTABLISHED. The proven lever is SHEET Z-DENSITY (the sheet chord sag between the C0 scale-rings, held blindly at nZband=30 by every prior sweep — the "density-invariant floor" was a sheet-z blind spot).
+
+**HYPOTHESIS (falsifiable):** Rebuilding DragonScales as the doubled-rings structured mesh (`buildStructuredWall`, dragonRings, treadCap=4) and sweeping SHEET Z-DENSITY (nZband) at moderate boost drives the WHOLE-MESH EVERY-FACET dense-basis BVH outlier count (`scoreWholeMeshBVH`, dense radial twin 2048x3072, radial prefilter, NO screen, tol 0.01) to 0 (or a characterized budget-feasible floor), because the outliers are per-facet chord sag on the CONTINUOUS curved scale-SHEET between rings (density-RESPONSIVE), not the near-vertical lip (already clean).
+
+**METHOD:** research probe `research/bridge/_pf_dszdensity.test.ts` (PF_DS_ZDENS=1), one env-gated `it`, CHECKPOINT one ndjson row per (nTh,nZband) the INSTANT scored to `research/exchange/_ds_zdensity/`. Build via `buildStructuredWall`+`buildRows`+`dragonRings` (reuse `_cu_dslip_close` recipe: treadCap=4, lipRows=0). Score EVERY facet with `scoreWholeMeshBVH` (dense radial twin 2048x3072, radial prefilter, NO exclude, tol 0.01) — the EXACT V10b basis. FIRST re-score the `_best20/heatmap/DragonScales.bin` production mesh to reproduce the 263,536/0.0463 anchor (instrument-match gate). THEN sweep nZband in {30,50,70,90,110} at fixed nTh=2400 — the honest z-density-vs-outlier curve. NODE_OPTIONS=--max-old-space-size=8192. Reuses labkit + _pf_bvhRuler READ-ONLY; edits NOTHING in src/.
+
+**KILL CRITERIA (to CLOSE):**
+- (a) whole-mesh dense-basis EVERY-FACET interior outliers == 0 at tol 0.01mm (scoreWholeMeshBVH, radial prefilter, no screen) at SOME swept nZband;
+- (b) watertight by RAW index (auditNonManRaw == 0, non-vacuous) AND zeroArea degenerate faces == 0;
+- (c) %<20 sane (< ~10) at the closing density;
+- (d) closing mesh < ~6M tris.
+- FLOOR (honest partial) iff outliers monotone-decrease with nZband but do not reach 0 within 6M tris — report the curve + projected budget-feasible floor + plateau density.
+- REFUTE the sheet-z lever iff outliers NOT density-responsive to nZband (flat curve) — residual is off-sheet; report the surviving-outlier facet class.
+
+**VERDICT: PENDING — measuring.**
+
+---
+
+## E-2026-07-08-CT-PREDICATE — build + validate a CelticTriquetra braid-crease predicate, then re-adjudicate its 186,400-outlier upper bound under crease-locus exclusion [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME:** CelticTriquetra is the LAST un-adjudicated fleet style: V10b read **186,400 outliers @ max 0.0905 / p99 0.0257** as an UPPER BOUND because NO crease predicate exists — the braid's over-under strand-flip C0 loci (from `ctCrossingHeight`'s carve + the `max(hV,hH)` strand switch on the diamond `q=(x+y,-x+y)` lattice) inflate the score, the same f32/f64 strand-flip metric-discontinuity class the B5 program excluded for BasketWeave/CelticKnot. The E-2026-07-07-WEAVE-CREASE-EXCLUDED verdict (BasketWeave/CelticKnot BOTH GENUINE off-crease) sets the method + criteria. `extractCelticTriquetra` (FeatureLineGraph) confirms the braid bands sweep through (u,t) and decompose into NO constant-u/t family — so the predicate must be reconstructed from the diamond-lattice crossing structure directly (like `celticKnotCreasePredicate` reconstructs strand distances).
+
+**HYPOTHESIS (falsifiable):** A CT braid-crease predicate reconstructed from the live `rOuterCelticTriquetra` diamond-lattice structure — VALIDATED to track the actual C0 loci (excluded band sits where the relief field's C0 kink magnitude K(u,t)=max local |2nd-difference| of h is large; and the strand over/under / tileId flag flips across the band) — will, when excluded from `scoreWholeMeshBVH`, either COLLAPSE the outliers (crease-class artifact) or leave >=50% surviving (GENUINE off-crease body geometry, joining the tangled kernel-dispatch class). Predicate validation is MANDATORY and gates the adjudication.
+
+**METHOD:** (a) build `celticTriquetraCreasePredicate(band)` in `research/bridge/_ct_creaseLib.ts` (DEV-ONLY research lib) reconstructing the two braid bands' diamond-lattice tile boundaries + crossing carve loci + medallion arc boundary from live params. (b) VALIDATE: dense (u,t) grid, K(u,t)=max local |2nd-difference| of h; show mean K inside flagged band / mean K outside >> 1 (>= ~3x); show tileId/strand flag flips across the band. Render predicate mask over the K-heatmap. (c) re-score CT dense-basis (`scoreWholeMeshBVH`, twin 3072x3072, radial prefilter) at bands 0/1e-3/2e-3, mirroring E-2026-07-07-WEAVE-CREASE-EXCLUDED. Probe `research/bridge/_ct_predicate.test.ts` (PF_CT_PRED=1), CHECKPOINT one ndjson row per band to `research/exchange/_ct_predicate/`. CT bins = `_best20/heatmap/CelticTriquetra_bins/`.
+
+**KILL CRITERIA:**
+- PREDICATE VALID iff (i) crease-tracking ratio (mean K inside flagged band / mean K outside) >= ~3x, AND (ii) tileId/strand flag flips across the flagged band on a majority of sampled crease points. If un-validatable, report UNVALIDATED -> exclusion arm UNTRUSTED (honest).
+- COLLAPSE (crease-class artifact) iff excluded-basis outliers <= 10% of band-0 count AND excludedSampleFrac <= 6% AND stable across both bands.
+- GENUINE iff outliers >= 50% of band-0 at both bands -> CT joins tangled kernel-dispatch class (adjudicate only).
+- MIXED otherwise — characterize the residual (where, how deep, exclFrac) without a hard class verdict.
+
+**VERDICT: PENDING — measuring.**
