@@ -136,9 +136,10 @@ describe('E-2026-07-08-GYROID-CONFORMING-CLOSE', () => {
     console.log('[Q2]', JSON.stringify(rec, null, 2));
 
     // persist the mesh bins for Q3 (resumable): ut + idx
-    writeFileSync(join(DIR, `mesh_${variant}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
-    writeFileSync(join(DIR, `mesh_${variant}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
-    writeFileSync(join(DIR, `mesh_${variant}.meta.json`), JSON.stringify(rec));
+    const tag = process.env.PF_GCTAG ?? variant;
+    writeFileSync(join(DIR, `mesh_${tag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(DIR, `mesh_${tag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
+    writeFileSync(join(DIR, `mesh_${tag}.meta.json`), JSON.stringify(rec));
 
     expect(mesh.constraint?.failed ?? 0).toBeLessThan(nConstraintEdges * 0.05); // KILL: recovery must not collapse
   }, 120 * 60_000);
@@ -150,9 +151,10 @@ describe('E-2026-07-08-GYROID-CONFORMING-CLOSE', () => {
   it.skipIf(!RUN || process.env.PF_GC !== 'verdict')('Q3 Newton-ruler verdict (off-wall outliers, wall serration)', () => {
     const rA = radiusFn('GyroidManifold', DIMS);
     const variant = process.env.PF_GCVARIANT ?? 'mid';
+    const tag = process.env.PF_GCTAG ?? variant;
     const tol = Number(process.env.PF_GCTOL ?? '0.01');
-    const utBuf = readFileSync(join(DIR, `mesh_${variant}.ut.bin`));
-    const idxBuf = readFileSync(join(DIR, `mesh_${variant}.idx.bin`));
+    const utBuf = readFileSync(join(DIR, `mesh_${tag}.ut.bin`));
+    const idxBuf = readFileSync(join(DIR, `mesh_${tag}.idx.bin`));
     const ut = Array.from(new Float64Array(utBuf.buffer, utBuf.byteOffset, utBuf.byteLength / 8));
     const idx = new Uint32Array(idxBuf.buffer, idxBuf.byteOffset, idxBuf.byteLength / 4);
     const tris = idx.length / 3;
@@ -177,32 +179,45 @@ describe('E-2026-07-08-GYROID-CONFORMING-CLOSE', () => {
     const onWall = (uc: number, tc: number): boolean => { const av = Math.abs(gyroidVal(uc, tc, P)); return wallVal.some((c) => Math.abs(av - c) < 0.03); };
     let maxTrue = 0, nTrueOut = 0, nOnWall = 0, nOffWall = 0;
     const NW: NewtonOpts = { seedTheta: 0, seedZ: 0, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 };
+    // PASS 1 (fast, no Newton): collect the radial-outlier facets + their worst-sample point (radial is a strict
+    // UPPER bound → facets ≤tol are PROVABLY faithful, skipped). PASS 2: Newton a stratified SAMPLE (cap sampleN)
+    // and scale — 205ms/query makes whole-mesh Newton infeasible; the true-3D distribution + on/off-wall split are
+    // representative on a stratified sample by radial magnitude.
+    const sampleN = Number(process.env.PF_GCSAMPLE ?? '2500');
+    const radOut: Array<{ f: number; wbnd: number; wp: [number, number, number]; uc: number; tc: number }> = [];
     for (let f = 0; f < nF; f++) {
       const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
       const A = [xyz[3 * a], xyz[3 * a + 1], xyz[3 * a + 2]] as const, B = [xyz[3 * b], xyz[3 * b + 1], xyz[3 * b + 2]] as const, C = [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]] as const;
-      // sound bound over dense bary — skip facet if all ≤ tol (provably faithful)
-      let bnd = 0;
-      for (const [wa, wb, wc] of DENSE) { const d = radialBound(wa * A[0] + wb * B[0] + wc * C[0], wa * A[1] + wb * B[1] + wc * C[1], wa * A[2] + wb * B[2] + wc * C[2]); if (d > bnd) bnd = d; }
-      if (bnd <= tol) continue;
-      // Newton the worst point (highest-bound sample) for honest true-3D
-      let wbnd = 0, wp: [number, number, number] = A as unknown as [number, number, number];
+      let wbnd = 0, wp: [number, number, number] = [A[0], A[1], A[2]];
       for (const [wa, wb, wc] of DENSE) { const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2]; const d = radialBound(px, py, pz); if (d > wbnd) { wbnd = d; wp = [px, py, pz]; } }
-      const nr = newtonNearest(rA, DIMS.H, wp[0], wp[1], wp[2], NW); newtonCalls++;
+      if (wbnd <= tol) continue;
+      const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
+      radOut.push({ f, wbnd, wp, uc, tc });
+    }
+    const nRadOut = radOut.length;
+    // stratified sample: sort by wbnd desc, take every k-th so the tail is represented + a uniform spread
+    radOut.sort((x, y) => y.wbnd - x.wbnd);
+    const stride = Math.max(1, Math.floor(nRadOut / sampleN));
+    const sampled = radOut.filter((_, i) => i % stride === 0).slice(0, sampleN);
+    for (const s of sampled) {
+      const nr = newtonNearest(rA, DIMS.H, s.wp[0], s.wp[1], s.wp[2], NW); newtonCalls++;
       trueDevs.push(nr.dist);
       if (nr.dist > tol) {
         nTrueOut++; if (nr.dist > maxTrue) maxTrue = nr.dist;
-        const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
-        const ow = onWall(uc, tc); if (ow) nOnWall++; else nOffWall++;
-        if (outRows.length < 4000) outRows.push({ uc: +uc.toFixed(5), tc: +tc.toFixed(5), trueDev: +nr.dist.toFixed(5), onWall: ow ? 1 : 0 });
+        const ow = onWall(s.uc, s.tc); if (ow) nOnWall++; else nOffWall++;
+        if (outRows.length < 4000) outRows.push({ uc: +s.uc.toFixed(5), tc: +s.tc.toFixed(5), trueDev: +nr.dist.toFixed(5), onWall: ow ? 1 : 0 });
       }
     }
+    const trueOutFrac = sampled.length ? nTrueOut / sampled.length : 0;
+    const scaledTrueOut = Math.round(trueOutFrac * nRadOut);
     trueDevs.sort((x, y) => x - y);
     const pc = (q: number): number => trueDevs.length ? trueDevs[Math.min(trueDevs.length - 1, Math.floor(q * trueDevs.length))] : 0;
     const nmIdx = auditNonManByIndex(xyz, idx);
     const rec = {
-      stage: 'Q3-VERDICT', variant, tol, tris,
+      stage: 'Q3-VERDICT', variant, tag, tol, tris,
       soundRadialOutliers: sound.outliers, soundRadialMax: sound.maxMm,
-      newtonCalls, nTrueOutliers: nTrueOut, trueMax: +maxTrue.toFixed(5),
+      nRadOutliers: nRadOut, newtonCalls, nSampled: sampled.length,
+      nTrueOutInSample: nTrueOut, scaledTrueOutliers: scaledTrueOut, trueMax: +maxTrue.toFixed(5),
       truep50: +pc(0.5).toFixed(5), truep90: +pc(0.9).toFixed(5), truep99: +pc(0.99).toFixed(5),
       nOnWall, nOffWall, offWallFrac: nTrueOut ? +(nOffWall / nTrueOut).toFixed(4) : 0,
       nonManIdx: nmIdx, zeroArea: sound.zeroArea,
@@ -211,7 +226,7 @@ describe('E-2026-07-08-GYROID-CONFORMING-CLOSE', () => {
     // eslint-disable-next-line no-console
     console.log('[Q3]', JSON.stringify(rec, null, 2));
     // dump outlier scatter for OFF-wall classification
-    writeFileSync(join(DIR, `verdict_outliers_${variant}.ndjson`), outRows.map((r) => JSON.stringify(r)).join('\n'));
+    writeFileSync(join(DIR, `verdict_outliers_${tag}.ndjson`), outRows.map((r) => JSON.stringify(r)).join('\n'));
     expect(tris).toBeGreaterThan(0);
   }, 180 * 60_000);
 

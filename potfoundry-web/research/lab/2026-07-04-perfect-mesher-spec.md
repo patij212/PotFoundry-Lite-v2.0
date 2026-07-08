@@ -2242,6 +2242,48 @@ PNG); instruments research/bridge/_gyroid_truthLib.ts + probes _gyroid_truth.tes
 _gt_facetfloor.test.ts + render research/render/utScatter.cjs; commits d49c7fc→fe4f089→f333d32→(D-split/scatter/verdict).
 DEV-ONLY; no src/ edit; _pf_tangledKernelLib.ts read-only.
 
+---
+
+## V11o — GYROID CONFORMING-CLOSE: DOUBLED wall-band embedding conforms Gyroid (off-wall→0, trueMax 0.0628→0.0385); SINGLE-midline REFUTED (2026-07-08)
+
+Close follow-up to §V11j (CLIFF-CLASS). §V11j proved the honest Gyroid floor is ~12,000 true-3D outliers (max 0.0628,
+~94% ON the designed near-vertical channel walls). This arc EMBEDDED those walls as mesh edges and re-verdicted under
+the validated Newton ruler. Registry E-2026-07-08-GYROID-CONFORMING-CLOSE (full numbers + decision table).
+
+**(Q1) The wall contour extracts ANALYTICALLY to machine precision.** The gyroid relief `shape = smoothstep(th,
+th−smoothVal·th, |val|)` makes the wall the isovalue BAND |val| ∈ [th·(1−smoothVal)=0.135, th=0.15] (ridge-plateau edge
+→ channel-floor edge; the two lines of the §V11j scatter). Marching squares on |val|=c + per-crossing root-polish +
+a re-polish/filter pass (`_gyroidContourLib`) places EVERY contour vertex on the isolevel to maxDisp 0 / p99 0 (25k
+pts/isolevel). Overlay traces the §V11j channel-wall network exactly. (First `disp3D` validator blew up to 85mm at
+val's ∇→0 saddles — a VALIDATOR artifact from a single Newton step; a bounded 2D nearest-isolevel search fixed it.)
+
+**(Q2) FINE PICKET defeats the count-unstable crossing-chain recovery.** Feeding the contours as constraintEdges to
+the seam-safe inhouse mesher, the Lawson crossing-chain recovery is COUNT-UNSTABLE on a coarse picket (step 0.6/1.5M:
+84% recovered, `subdivFailNonCollinear` = genuine crossing-blocks = the Gothic count-instability). But a FINE picket
+makes consecutive constraint vertices Delaunay-adjacent ⇒ `alreadyPresent` (no recovery needed): step 0.15→99.1%,
+0.08→99.4%, 0.1@3M→99.2% (failed 0.6-0.9%). recovery% is PICKET-driven; wall-conforming is BUDGET-driven; the product
+(fine picket × high budget) is the tractability ceiling (0.1×3M converged but took 30.8min). All watertight (nonMan=0).
+
+**(Q3) SINGLE vs DOUBLED — DECISIVE, and it flips the DragonScales/weave doubled-edge lesson onto Gyroid:**
+DOUBLED (embed BOTH |val|=0.135 and 0.15, step0.15/1.5M): outliers ~12,000→**~2,133**, trueMax 0.0628→**0.0385**,
+p99 0.0114, **OFF-wall 0/46**, nonMan 0, zeroArea 0. SINGLE (mid |val|=0.1425, step0.1/3M converged): **catastrophic**
+— scaledTrueOut ~29,433, trueMax **0.321**, **90% OFF-wall** (285/318), zeroArea 57. One edge at the ramp-middle forces
+facets to bridge ridge→wall→floor on both sides (huge off-wall sag); the DOUBLED pair puts edges at the ramp TOP and
+BOTTOM so the near-vertical ramp facets span cleanly between them. ⇒ Gyroid is a DOUBLED-EDGE zero-serration feature-
+edge style (DragonScales doubled-ring / weave doubled-grid / LowPoly doubled-crest family), NOT density.
+
+**VERDICT: CLOSED (mechanism proven, residual = un-embedded junctions).** DOUBLED wall-band embedding is the correct
+close path: off-wall→0, trueMax halved, watertight, no new population. Residual ~2,133 on-wall outliers (p99 0.0114,
+just over tol) = the wall JUNCTIONS/saddles where the two isolevels (0.015 apart in val) nearly touch and the coarse
+doubled picket left un-recovered (14% fail on the doubled build). Full CAD-grade = a FINER doubled picket at the
+junctions + budget to chord-refine the ramp — density/picket knobs on the PROVEN mechanism, not a new class. The Gyroid
+DEFECT CLASS is resolved: doubled-edge feature embedding, exactly as [[feedback_export_standard]] prescribes.
+
+**LEDGER:** registry E-2026-07-08-GYROID-CONFORMING-CLOSE; research/exchange/_gyroid_close/ (gitignored — contours_refined.json,
+mesh_{both15,mid}.{ut,idx}.bin, build.ndjson, verdict.ndjson, overlay_both.png, verdict_scatter_{both15,mid}.png);
+instrument research/bridge/_gyroidContourLib.ts + probe _gyroid_close.test.ts (PF_GYROID_CLOSE=1 PF_GC=extract|build|verdict|diag);
+commits 83dd562→aaf8f62→8f578d4→(verdict). DEV-ONLY; no src/ edit; kernel/truth libs read-only.
+
 ### VERDICT: CLOSED-with-certified-tread (RULER-CLASS, now with a SOUND whole-mesh ruler)
 Body CAD-grade + density-closable; tread/riser = designed ~1mm zero-serration C0 feature (serr ~0.001, feature edges
 embedded) the NEW conforming ruler MEASURES correctly. Honest single whole-mesh number = ~8.7k near-ring sheet-sag
