@@ -149,38 +149,65 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     const wallVal = [lv.inner, lv.outer];
     const onWall = (uc: number, tc: number): boolean => { const av = Math.abs(gyroidVal(uc, tc, P)); return wallVal.some((c) => Math.abs(av - c) < 0.03); };
 
-    // radial-prefilter EVERY facet at the (possibly tightened) preBound → the non-green worst-sample set
+    // radial-prefilter EVERY facet at the (possibly tightened) preBound → the non-green worst-sample set.
+    // CACHE the prefilter output (radOut) to prefilter_<tag>_<preBound>.json so a resume skips the ~5-8min scan.
     const nF = idx.length / 3;
-    const radOut: Array<{ f: number; wbnd: number; wp: [number, number, number]; uc: number; tc: number }> = [];
-    for (let f = 0; f < nF; f++) {
-      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
-      const A = [xyz[3 * a], xyz[3 * a + 1], xyz[3 * a + 2]] as const, B = [xyz[3 * b], xyz[3 * b + 1], xyz[3 * b + 2]] as const, C = [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]] as const;
-      let wbnd = 0, wp: [number, number, number] = [A[0], A[1], A[2]];
-      for (const [wa, wb, wc] of DENSE) { const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2]; const d = radialBound(px, py, pz); if (d > wbnd) { wbnd = d; wp = [px, py, pz]; } }
-      if (wbnd <= preBound) continue;
-      const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
-      radOut.push({ f, wbnd, wp, uc, tc });
+    const preCachePath = join(DIR, `prefilter_${tag}_${preBound}.json`);
+    let radOut: Array<{ f: number; wbnd: number; wp: [number, number, number]; uc: number; tc: number }>;
+    try {
+      radOut = JSON.parse(readFileSync(preCachePath, 'utf8')) as typeof radOut;
+      // eslint-disable-next-line no-console
+      console.log(`[VERDICT] prefilter loaded from cache: ${radOut.length} radial-outliers`);
+    } catch {
+      radOut = [];
+      for (let f = 0; f < nF; f++) {
+        const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+        const A = [xyz[3 * a], xyz[3 * a + 1], xyz[3 * a + 2]] as const, B = [xyz[3 * b], xyz[3 * b + 1], xyz[3 * b + 2]] as const, C = [xyz[3 * c], xyz[3 * c + 1], xyz[3 * c + 2]] as const;
+        let wbnd = 0, wp: [number, number, number] = [A[0], A[1], A[2]];
+        for (const [wa, wb, wc] of DENSE) { const px = wa * A[0] + wb * B[0] + wc * C[0], py = wa * A[1] + wb * B[1] + wc * C[1], pz = wa * A[2] + wb * B[2] + wc * C[2]; const d = radialBound(px, py, pz); if (d > wbnd) { wbnd = d; wp = [px, py, pz]; } }
+        if (wbnd <= preBound) continue;
+        const uc = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3, tc = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
+        radOut.push({ f, wbnd, wp, uc, tc });
+      }
+      radOut.sort((x, y) => y.wbnd - x.wbnd);
+      writeFileSync(preCachePath, JSON.stringify(radOut));
     }
     const nRadOut = radOut.length;
     // LITERAL basis: Newton on EVERY non-green facet (no sample). If nRadOut > newtonCap ⇒ intractable, tighten bound.
+    // radOut is already sorted worst-first (by the cache builder), so a killed resume scores the hardest first.
     const intractable = nRadOut > newtonCap;
-    radOut.sort((x, y) => y.wbnd - x.wbnd);
     const toScore = intractable ? radOut.slice(0, newtonCap) : radOut;
 
     const NW: NewtonOpts = { seedTheta: 0, seedZ: 0, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 };
-    const trueDevs: number[] = []; const outRows: Array<{ uc: number; tc: number; trueDev: number; onWall: number }> = [];
+    // RESUMABLE: persist every scored {f,dev} to scored_<tag>.jsonl. On resume, load the already-scored facet set
+    // and SKIP them (the full Newton pass is ~1.5-2h at 44k+ outliers — a kill must not restart from 0).
+    const scoredPath = join(DIR, `scored_${tag}.jsonl`);
+    const done = new Set<number>(); const trueDevs: number[] = [];
     let maxTrue = 0, nTrueOut = 0, nOnWall = 0, nOffWall = 0, newtonCalls = 0;
+    const outRows: Array<{ uc: number; tc: number; trueDev: number; onWall: number }> = [];
+    try {
+      const prior = readFileSync(scoredPath, 'utf8').trim();
+      if (prior) for (const line of prior.split('\n')) {
+        const r = JSON.parse(line) as { f: number; d: number; uc: number; tc: number };
+        if (done.has(r.f)) continue; done.add(r.f); trueDevs.push(r.d);
+        if (r.d > tol) { nTrueOut++; if (r.d > maxTrue) maxTrue = r.d; const ow = onWall(r.uc, r.tc); if (ow) nOnWall++; else nOffWall++; if (outRows.length < 20000) outRows.push({ uc: +r.uc.toFixed(5), tc: +r.tc.toFixed(5), trueDev: +r.d.toFixed(5), onWall: ow ? 1 : 0 }); }
+      }
+    } catch { /* no prior scored file — fresh run */ }
+    let buf = '';
     for (const s of toScore) {
+      if (done.has(s.f)) continue;
       const nr = newtonNearest(rA, DIMS.H, s.wp[0], s.wp[1], s.wp[2], NW); newtonCalls++;
-      trueDevs.push(nr.dist);
+      trueDevs.push(nr.dist); done.add(s.f);
+      buf += JSON.stringify({ f: s.f, d: +nr.dist.toFixed(6), uc: +s.uc.toFixed(5), tc: +s.tc.toFixed(5) }) + '\n';
       if (nr.dist > tol) {
         nTrueOut++; if (nr.dist > maxTrue) maxTrue = nr.dist;
         const ow = onWall(s.uc, s.tc); if (ow) nOnWall++; else nOffWall++;
         if (outRows.length < 20000) outRows.push({ uc: +s.uc.toFixed(5), tc: +s.tc.toFixed(5), trueDev: +nr.dist.toFixed(5), onWall: ow ? 1 : 0 });
       }
-      // checkpoint every 20k Newton calls so a killed run leaves partial evidence
-      if (newtonCalls % 20000 === 0) appendFileSync(join(DIR, 'verdict_progress.ndjson'), JSON.stringify({ tag, newtonCalls, nTrueOutSoFar: nTrueOut, maxTrueSoFar: +maxTrue.toFixed(5) }) + '\n');
+      // flush the scored sidecar + a progress line every 5k Newton calls so a killed run resumes with ≤5k lost
+      if (newtonCalls % 5000 === 0) { appendFileSync(scoredPath, buf); buf = ''; appendFileSync(join(DIR, 'verdict_progress.ndjson'), JSON.stringify({ tag, scored: done.size, newtonCalls, nTrueOutSoFar: nTrueOut, maxTrueSoFar: +maxTrue.toFixed(5) }) + '\n'); }
     }
+    if (buf) appendFileSync(scoredPath, buf);
     trueDevs.sort((x, y) => x - y);
     const pc = (q: number): number => trueDevs.length ? trueDevs[Math.min(trueDevs.length - 1, Math.floor(q * trueDevs.length))] : 0;
     // large-mesh-safe watertight by INDEX (the ring output shares by index; nonManRawBig = shared-by-index audit)
