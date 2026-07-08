@@ -216,6 +216,64 @@ export function decimateContours(contours: Contour[], stepMm: number, rA: Analyt
   return out;
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════════════
+// E-2026-07-08-GYROID-POLISH additions (round 3): saddle/grad localizer + region-adaptive decimation.
+// The §V11o residual (~2,133 on-wall outliers, p99 0.0114) was hypothesised at wall JUNCTIONS/saddles. The cheap
+// analytic |∇val| scan (saddle_scan2.mjs) REFUTED that: |∇val| ∈ [5.3, 38.3] on the mid isolevel (NEVER near 0, so
+// NO low-grad saddles), and the outliers' |∇val| distribution matches the global one. The residual is RAMP chord-sag
+// on the near-vertical facets spanning between the two embedded edges, worst where the band is THINNEST (highest
+// |∇val| = steepest wall). ⇒ the lever is DENSITY where the ramp is steep, not a saddle picket. These helpers make the
+// contour picket FINER where |∇val| is high (steep ramp) so the between-edge facets are shorter and chord-sag drops.
+// ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** |∇val| in (u,t) at (u,t), central FD. Large = steep/near-vertical wall (thin band); small = shallow ramp. */
+export function gyroidGradMag(u: number, t: number, p: GyroidFieldParams = GYROID_DEFAULTS): number {
+  const h = 1e-5;
+  const gu = (gyroidVal(u + h, t, p) - gyroidVal(u - h, t, p)) / (2 * h);
+  const gt = (gyroidVal(u, t + h, p) - gyroidVal(u, t - h, p)) / (2 * h);
+  return Math.hypot(gu, gt);
+}
+
+// ── region-adaptive arc-length decimation: step scales DOWN where |∇val| is high (steep ramp) ────────────────────
+// stepMm is the BASE (shallow) step; where |∇val| ≥ gradHi the step shrinks to stepMm·fineFactor (finer picket only
+// on the steep segments, keeping the shallow segments coarse so build time stays sane — the LOCAL-lever requirement).
+// Linear ramp of the step between gradLo (base step) and gradHi (fine step). Preserves order + endpoints.
+export function decimateContoursAdaptive(
+  contours: Contour[], stepMm: number, fineFactor: number, gradLo: number, gradHi: number,
+  p: GyroidFieldParams, rA: AnalyticRadiusFn, H: number,
+): { contours: Contour[]; nFineSeg: number; nCoarseSeg: number } {
+  const lift = (u: number, t: number): [number, number, number] => { const th = TAU * u, z = t * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
+  const localStep = (u: number, t: number): number => {
+    const g = gyroidGradMag(u, t, p);
+    const f = g <= gradLo ? 1 : g >= gradHi ? fineFactor : 1 + (fineFactor - 1) * (g - gradLo) / (gradHi - gradLo);
+    return stepMm * f;
+  };
+  const out: Contour[] = []; let nFine = 0, nCoarse = 0;
+  for (const cont of contours) {
+    if (cont.pts.length < 2) continue;
+    const kept: Array<[number, number]> = [cont.pts[0]];
+    let [lx, ly, lz] = lift(cont.pts[0][0], cont.pts[0][1]);
+    for (let i = 1; i < cont.pts.length - 1; i++) {
+      const [x, y, z] = lift(cont.pts[i][0], cont.pts[i][1]);
+      const s = localStep(cont.pts[i][0], cont.pts[i][1]);
+      if (Math.hypot(x - lx, y - ly, z - lz) >= s) { kept.push(cont.pts[i]); lx = x; ly = y; lz = z; if (s < stepMm) nFine++; else nCoarse++; }
+    }
+    kept.push(cont.pts[cont.pts.length - 1]);
+    if (kept.length >= 2) out.push({ pts: kept });
+  }
+  return { contours: out, nFineSeg: nFine, nCoarseSeg: nCoarse };
+}
+
+// ── MID-RUNG generator: sample the band MIDLINE (|val|=mid=0.1425) as a THIRD constraint contour, decimated ───────
+// The ramp between inner (0.135) and outer (0.15) is spanned by facets whose chord cuts the near-vertical wall. A
+// mid-rung edge at |val|=0.1425 gives the mesher a vertex to anchor the ramp MIDPOINT, halving the free span each
+// facet bridges (the DragonScales tread-riser mid-rung analog). Unlike SINGLE-midline (which REPLACES the pair and
+// was REFUTED), this is ADDED to the doubled pair. Returns the mid contours decimated to stepMm (coarser ok — it is
+// an anchor, not a boundary). Reuses the already-extracted+refined mid contours from Q1.
+export function buildMidRung(midContours: Contour[], stepMm: number, rA: AnalyticRadiusFn, H: number): Contour[] {
+  return decimateContours(midContours, stepMm, rA, H);
+}
+
 // ── polylines → injectedPoints + constraintEdges (the kernel constraint format) ─────────────────────────────────
 // injectedPoints = flat [u0,t0, u1,t1, ...] over ALL polyline vertices (deduped by the kernel's addPoint).
 // constraintEdges = flat [posA,posB, ...] index-pairs into injectedPoints, one per consecutive polyline segment.
