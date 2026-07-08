@@ -13,7 +13,8 @@ import {
   centrelineOnCliff, contoursToConstraints, BW_RAMP_LADDER_U, BW_RAMP_LADDER_T,
   BW_FINE_LADDER_U, BW_FINE_LADDER_T, type Contour,
 } from './_bwFieldLib';
-import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
+import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound, buildTangled } from './_pf_tangledKernelLib';
+import { celticTriquetraC0Predicate } from './_ct_creaseLib';
 import { planarizeMM } from './_pf_planarizeMM';
 import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
@@ -240,6 +241,73 @@ describe('E-2026-07-08-WEAVE-FEATURE-EDGE', () => {
     appendFileSync(join(DIR, 'verdict.ndjson'), JSON.stringify(rec) + '\n');
     // eslint-disable-next-line no-console
     console.log('[BW-Q3]', JSON.stringify(rec, null, 2));
+    expect(idx.length).toBeGreaterThan(0);
+  }, 180 * 60_000);
+
+  // ── CelticTriquetra: density-class discriminator (is the off-crease residual density-closable, so the swept-crease
+  //    feature-edge treatment is unnecessary?). Plain conforming build (buildTangled) + Newton verdict with the
+  //    VALIDATED celticTriquetraC0Predicate as the on/off-CREASE classifier (the swept creases are curved arcs — no
+  //    closed-form lines like BasketWeave; feature-edge tracing is deferred pending this class check). ────────────
+  it.skipIf(!RUN || process.env.PF_WFE !== 'ct-build')('ct conforming build (density baseline)', () => {
+    const DIR = join(ROOT, 'CelticTriquetra'); ensureDir(DIR);
+    const dims: StyleDims = DIMS;
+    const chordTolMm = Number(process.env.PF_WFECHORD ?? '0.004');
+    const maxPoints = Number(process.env.PF_WFEMAX ?? '2500000');
+    const t0 = Date.now();
+    const b = buildTangled('CelticTriquetra', dims, { chordTolMm, maxPoints, optimizeSweeps: 2, chordSampleN: 8 });
+    const ms = Date.now() - t0;
+    const rA = radiusFn('CelticTriquetra', dims);
+    const ut = b.ut, idx = b.idx as Uint32Array;
+    const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = TAU * u, z = t * dims.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+    const nm = auditNonManByIndex(xyz, idx);
+    const sound = wholeMeshGuardRadialBound(rA, dims.H, ut, idx, 0.01);
+    const rec = {
+      stage: 'CT-BUILD', chordTolMm, maxPoints, ms, tris: b.tris, points: b.points, hitBudget: b.hitBudget,
+      projFullPot: b.tris * 2, nonManIdx: nm, zeroArea: sound.zeroArea,
+      soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
+    };
+    appendFileSync(join(DIR, 'build.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[CT-BUILD]', JSON.stringify(rec, null, 2));
+    const tag = process.env.PF_WFETAG ?? 'density';
+    writeFileSync(join(DIR, `mesh_${tag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(DIR, `mesh_${tag}.idx.bin`), Buffer.from(idx.buffer, idx.byteOffset, idx.byteLength));
+    expect(b.tris).toBeGreaterThan(0);
+  }, 120 * 60_000);
+
+  it.skipIf(!RUN || process.env.PF_WFE !== 'ct-verdict')('ct Newton verdict (on/off-crease split via C0 predicate)', () => {
+    const DIR = join(ROOT, 'CelticTriquetra'); ensureDir(DIR);
+    const dims: StyleDims = DIMS;
+    const rA = radiusFn('CelticTriquetra', dims);
+    const tag = process.env.PF_WFETAG ?? 'density';
+    const tol = Number(process.env.PF_WFETOL ?? '0.01');
+    const sampleN = Number(process.env.PF_WFESAMPLE ?? '2000');
+    const band = Number(process.env.PF_WFECREASEBAND ?? '2e-3');
+    const utBuf = readFileSync(join(DIR, `mesh_${tag}.ut.bin`));
+    const idxBuf = readFileSync(join(DIR, `mesh_${tag}.idx.bin`));
+    const ut = Array.from(new Float64Array(utBuf.buffer, utBuf.byteOffset, utBuf.byteLength / 8));
+    const idx = new Uint32Array(idxBuf.buffer, idxBuf.byteOffset, idxBuf.byteLength / 4);
+    // ON-crease = within the VALIDATED C0 predicate band (recall 0.87/0.97). offWall→onCrease semantics reused.
+    const creasePred = celticTriquetraC0Predicate(band);
+    const onCrease = (uc: number, tc: number): boolean => creasePred(uc, tc);
+    const nV = ut.length / 2; const xyz = new Float64Array(nV * 3);
+    for (let i = 0; i < nV; i++) { const u = ut[2 * i], t = ut[2 * i + 1], th = TAU * u, z = t * dims.H, r = rA(th, z); xyz[3 * i] = r * Math.cos(th); xyz[3 * i + 1] = r * Math.sin(th); xyz[3 * i + 2] = z; }
+    const sound = wholeMeshGuardRadialBound(rA, dims.H, ut, idx, tol);
+    const nm = auditNonManByIndex(xyz, idx);
+    // verdict: nOnWall = ON-CREASE (excluded class), nOffWall = OFF-CREASE (the genuine density residual)
+    const verdict = newtonVerdict(rA, ut, idx, tol, onCrease, sampleN);
+    const rec = {
+      stage: 'CT-VERDICT', tag, tol, band, tris: idx.length / 3,
+      soundRadialOutliers: sound.outliers, soundRadialP99: sound.p99,
+      nRadOutliers: verdict.nRadOutliers, scaledTrueOutliers: verdict.scaledTrueOutliers,
+      trueMax: verdict.trueMax, truep50: verdict.truep50, truep90: verdict.truep90, truep99: verdict.truep99,
+      nOnCrease: verdict.nOnWall, nOffCrease: verdict.nOffWall, offCreaseFrac: verdict.offWallFrac,
+      nonManIdx: nm, zeroArea: sound.zeroArea,
+    };
+    appendFileSync(join(DIR, 'verdict.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[CT-VERDICT]', JSON.stringify(rec, null, 2));
     expect(idx.length).toBeGreaterThan(0);
   }, 180 * 60_000);
 });
