@@ -62,9 +62,14 @@ const checkpoint = (row: Record<string, unknown>): void => { mkdirSync(OUT, { re
 const readPass = (k: string): boolean | null => { if (!existsSync(NDJSON)) return null; for (const l of readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean)) { try { const r = JSON.parse(l); if (r.key === k) return !!r.pass; } catch { /* */ } } return null; };
 
 // ── watertight (RAW index) + zero-area, both non-vacuous. ─────────────────────
+// Large-mesh-safe: a JS Map<string> blows its ~16.7M-entry cap on 5M+ tri meshes (RangeError). Use a BigInt numeric
+// key (v0*2^32+v1) in a Map<bigint>, which has no such small cap and no per-edge string allocation.
 function auditNonManRaw(idx: Uint32Array): { nonMan: number; edges: number; boundary: number } {
-  const ec = new Map<string, number>(); let edges = 0;
-  for (let k = 0; k < idx.length; k += 3) { const a = idx[k], b = idx[k + 1], c = idx[k + 2]; if (a === b || b === c || a === c) continue; for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const key = p < q ? `${p}_${q}` : `${q}_${p}`; ec.set(key, (ec.get(key) ?? 0) + 1); edges++; } }
+  const ec = new Map<bigint, number>(); let edges = 0;
+  for (let k = 0; k < idx.length; k += 3) {
+    const a = idx[k], b = idx[k + 1], c = idx[k + 2]; if (a === b || b === c || a === c) continue;
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const lo = p < q ? p : q, hi = p < q ? q : p; const key = (BigInt(lo) << 32n) | BigInt(hi); ec.set(key, (ec.get(key) ?? 0) + 1); edges++; }
+  }
   let nm = 0, bd = 0; for (const v of ec.values()) { if (v > 2) nm++; if (v === 1) bd++; } return { nonMan: nm, edges, boundary: bd };
 }
 function zeroAreaCount(xyz: Float64Array | Float32Array, idx: Uint32Array): number {
@@ -258,6 +263,60 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     expect(dist).toBeGreaterThan(0);
   }, 10 * 60 * 1000);
 
+  // LIPDIAG (PF_DS_CONF_LIPDIAG=1): classify the ~30k lip facets that SURVIVE the conforming ruler — which row-kind,
+  // their (r,z), and whether the wall-only ref covers them (dist-to-wall) vs the sheet (dist-to-radial-twin).
+  it.skipIf(process.env.PF_DS_CONF_LIPDIAG !== '1')('LIPDIAG — classify surviving lip outliers', () => {
+    const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
+    const rings = dragonRings();
+    const NTH = 2400, TREADCAP = 4, NZ = 110;
+    const rows = buildRows(rA, rings, NTH, NZ, TREADCAP);
+    const mesh = buildStructuredWall(rA, H, rows);
+    const { xyz, idx } = toF32(mesh);
+    // row-kind per facet (finer than sheet/lip): the dominant lip row-kind on the facet.
+    const rowStart = mesh.rowStart, meshRows = mesh.rows;
+    const rowOf = new Int32Array(mesh.nV);
+    for (let r = 0; r < meshRows.length; r++) for (let v = rowStart[r]; v < rowStart[r + 1]; v++) rowOf[v] = r;
+    const kindOfFacet = (f: number): string => {
+      const ks = [meshRows[rowOf[idx[3 * f]]].kind, meshRows[rowOf[idx[3 * f + 1]]].kind, meshRows[rowOf[idx[3 * f + 2]]].kind];
+      for (const want of ['tread', 'ringBelow', 'ringAbove'] as const) if (ks.includes(want)) return want;
+      return 'sheet';
+    };
+    // composite ruler + its sub-locators (to attribute the winning distance to sheet vs wall).
+    const radTwin = buildRadialTwin(rA, H, RAD_TWIN.nTheta, RAD_TWIN.nZ);
+    const sheetLoc = buildRefLocator(radTwin, RAD_CELL);
+    const wallRef = buildWallOnlyReference(rA, rings, WALL_NTHETA, WALLEPS);
+    const wallLoc = buildRefLocator(wallRef, WALL_CELL);
+    const zs = rings.map(r => r.z);
+    const nearRingZ = (z: number): boolean => zs.some(rz => Math.abs(z - rz) <= 3.0);
+    const kindCount: Record<string, number> = {}; const kindOut: Record<string, number> = {};
+    const samples: Array<Record<string, number | string>> = [];
+    const nF = mesh.nF; const stride = 8;
+    for (let f = 0; f < nF; f += stride) {
+      const kind = kindOfFacet(f); if (kind === 'sheet') continue;
+      kindCount[kind] = (kindCount[kind] ?? 0) + 1;
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const ax = xyz[3 * a], ay = xyz[3 * a + 1], az = xyz[3 * a + 2];
+      const bx = xyz[3 * b], by = xyz[3 * b + 1], bz = xyz[3 * b + 2];
+      const cx = xyz[3 * c], cy = xyz[3 * c + 1], cz = xyz[3 * c + 2];
+      let dv = 0, dvSheet = 0, dvWall = 0;
+      for (const [wa, wb, wc] of DENSE) {
+        const px = wa * ax + wb * bx + wc * cx, py = wa * ay + wb * by + wc * cy, pz = wa * az + wb * bz + wc * cz;
+        const ds = sheetLoc.dist(px, py, pz); const dw = nearRingZ(pz) ? wallLoc.dist(px, py, pz) : Infinity;
+        const d = Math.min(ds, dw); if (d > dv) { dv = d; dvSheet = ds; dvWall = dw; }
+      }
+      if (dv > TOL) {
+        kindOut[kind] = (kindOut[kind] ?? 0) + 1;
+        if (samples.length < 30) { const cz2 = (az + bz + cz) / 3; const cr = (Math.hypot(ax, ay) + Math.hypot(bx, by) + Math.hypot(cx, cy)) / 3; samples.push({ kind, z: +cz2.toFixed(3), r: +cr.toFixed(3), dv: +dv.toFixed(5), dSheet: +dvSheet.toFixed(5), dWall: +(dvWall === Infinity ? -1 : dvWall).toFixed(5) }); }
+      }
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[LIPDIAG] kindCount=${JSON.stringify(kindCount)} kindOut=${JSON.stringify(kindOut)} (×${stride} scaled)`);
+    // eslint-disable-next-line no-console
+    console.log(`[LIPDIAG] samples=${JSON.stringify(samples, null, 0)}`);
+    checkpoint({ key: 'lipdiag_nZ110', task: 'lip-outlier-classify', kindCount, kindOut, kindOutScaled: Object.fromEntries(Object.entries(kindOut).map(([k, v]) => [k, v * stride])), stride, samples });
+    expect(true).toBe(true);
+  }, 30 * 60 * 1000);
+
   it.skipIf(process.env.PF_DS_CONF !== '1')('validate conforming ruler (1a-1d) + re-score + close', () => {
     const rA = buildRadiusFn('DragonScales' as StyleId, {}, DIMS);
     const rings = dragonRings();
@@ -443,7 +502,11 @@ describe('DS-CONFORMING — validate the open-surface conforming ruler (1a-1d), 
     const NTH = 2400, TREADCAP = 4;
     const screenStride = Number(process.env.PF_DS_STRIDE ?? '8');
     const closeStride = process.env.PF_DS_CLOSE === '1' ? 1 : screenStride;
-    for (const nZband of [70, 110, 160, 220]) {
+    // Sweep capped at nZ110 (4.09M tris, within the 6M budget gate). nZ160/220 exceed budget (5.9M/8M) so cannot
+    // CLOSE regardless; the sheet lever already floors ~5.5k at nZ110 (the lip residual is density-invariant).
+    // An env override PF_DS_NZBANDS can extend for a floor-characterization sweep.
+    const nzList = (process.env.PF_DS_NZBANDS ?? '70,110').split(',').map(Number);
+    for (const nZband of nzList) {
       const key = `conf_nTh${NTH}_nZ${nZband}${closeStride === 1 ? '_s1' : ''}`;
       if (keyExists(key)) { plog(`[skip] ${key} exists`); continue; }
       const tb = Date.now();
