@@ -24,7 +24,12 @@ import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
 
 const RUN = process.env.PF_GL0 === '1';
+// E-2026-07-08-GYROID-KNEE (§V11aa): the KNEE-injection stage runs under its OWN env gate PF_GK=1 (so it never
+// disturbs the L0* build/verdict runs). It reuses the SAME VERDICT stage (which loads mesh_<tag>.{ut,idx}.bin) —
+// the knee build just writes mesh bins under a new tag, so `PF_GL0=1 PF_GL=verdict PF_GLTAG=<kneeTag>` re-verdicts it.
+const RUN_KNEE = process.env.PF_GK === '1';
 const DIR = join(process.cwd(), 'research/exchange/_gyroid_literal0');
+const KNEE_DIR = join(process.cwd(), 'research/exchange/_gyroid_knee');
 const CLOSE_DIR = join(process.cwd(), 'research/exchange/_gyroid_close');
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
 const P = GYROID_DEFAULTS;
@@ -121,18 +126,131 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     expect(tris).toBeGreaterThan(0);
   }, 120 * 60_000);
 
+  // ── STAGE KNEE-BUILD: rebuild the L0* recipe + PINNED knee-injection at each surviving outlier spot ─────────────
+  // E-2026-07-08-GYROID-KNEE (§V11aa, follow-up to §V11w). The L0c/L0d floor is 5 spots / 1 spot at the smoothstep
+  // KNEE (curvature-limited chord-sag, NOT slope). Recipe: for each Newton outlier facet, Newton-project its recorded
+  // worst-sag 3D point (from the prefilter cache) onto the TRUE surface → the knee (u,t); inject a MICRO-CLUSTER of
+  // PINNED points there (worst-sag (u,t) + a small ring of satellites, the §V11u recipe as replicated in
+  // _pf_tangledTargeted.buildInjectionCluster) so the CDT places vertices ON the knee and the chord no longer bridges
+  // plateau→knee. The knee cluster is APPENDED to injectedPoints AFTER the L0 contour points (NO extra constraintEdges
+  // → isolated pinned Steiner points; injPosToVert/constraintEdges reference only the contour prefix, unaffected).
+  // Levers: PF_GKSRC (source tag whose recipe+outliers to reuse, req, e.g. L0c/L0d)  PF_GKOUT (output mesh tag, req)
+  //         PF_GKSPREAD (ring radius in (u,t), def 0.0008)  PF_GKRING (satellites per knee, def 6)
+  //         PF_GKMAXADD (budget bump above the source maxPoints for the cluster room, def +200000).
+  it.skipIf(!RUN_KNEE || process.env.PF_GL !== 'kneebuild')('KNEE-BUILD pinned knee-injection rebuild', () => {
+    const rA = radiusFn('GyroidManifold', DIMS);
+    const src = process.env.PF_GKSRC ?? 'L0c';
+    const outTag = process.env.PF_GKOUT ?? 'K0c';
+    const spread = Number(process.env.PF_GKSPREAD ?? '0.0008');
+    const nRing = Number(process.env.PF_GKRING ?? '6');
+    const maxAdd = Number(process.env.PF_GKMAXADD ?? '200000');
+
+    // 1) reuse the SOURCE recipe (read its build meta so the rebuild is identical except the extra pinned cluster).
+    const srcMeta = JSON.parse(readFileSync(join(DIR, `mesh_${src}.meta.json`), 'utf8')) as {
+      stepMm: number; fineFactor: number; gradLo: number; gradHi: number; chordTolMm: number; maxPoints: number;
+    };
+    const stepMm = srcMeta.stepMm, fineFactor = srcMeta.fineFactor, gradLo = srcMeta.gradLo, gradHi = srcMeta.gradHi;
+    const chordTolMm = srcMeta.chordTolMm, maxPoints = srcMeta.maxPoints + maxAdd;
+
+    // 2) the L0 contour constraints (same doubled adaptive picket as the source build).
+    const raw = loadRefined();
+    const pair = [...asC(raw.inner), ...asC(raw.outer)];
+    const ad = decimateContoursAdaptive(pair, stepMm, fineFactor, gradLo, gradHi, P, rA, DIMS.H);
+    const { injectedPoints, constraintEdges } = contoursToConstraints(ad.contours);
+    const nContourVerts = injectedPoints.length / 2, nContourEdges = constraintEdges.length / 2;
+
+    // 3) the KNEE clusters. Load the source's Newton outliers + its prefilter cache; for each outlier facet, Newton-
+    //    project the recorded worst-sag 3D point onto the true surface → the knee (theta,z) → (u,t). Then push the
+    //    knee (u,t) + a ring of `nRing` satellites at radius `spread` (all pinned). De-dup mirror-pairs by (u,t) hash.
+    const outRows = readFileSync(join(DIR, `verdict_outliers_${src}.ndjson`), 'utf8').trim().split('\n')
+      .filter((l) => l.length).map((l) => JSON.parse(l) as { uc: number; tc: number; trueDev: number });
+    const pre = JSON.parse(readFileSync(join(DIR, `prefilter_${src}_0.01.json`), 'utf8')) as
+      Array<{ f: number; wbnd: number; wp: [number, number, number]; uc: number; tc: number }>;
+    const NW: NewtonOpts = { seedTheta: 0, seedZ: 0, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 };
+    const kneeSeen = new Set<string>();
+    const knees: Array<{ ku: number; kt: number; dev: number; wp: [number, number, number] }> = [];
+    for (const o of outRows) {
+      // find the prefilter entry nearest this outlier's centroid (uc,tc) → its worst-sag 3D point wp
+      let best: (typeof pre)[number] | null = null, bd = Infinity;
+      for (const p of pre) { const d = Math.abs(p.uc - o.uc) + Math.abs(p.tc - o.tc); if (d < bd) { bd = d; best = p; } }
+      if (!best) continue;
+      const nr = newtonNearest(rA, DIMS.H, best.wp[0], best.wp[1], best.wp[2], NW);
+      let ku = (nr.theta / TAU) % 1; if (ku < 0) ku += 1;
+      const kt = nr.z / DIMS.H;
+      const key = `${Math.round(ku / 5e-6)},${Math.round(kt / 5e-6)}`;
+      if (kneeSeen.has(key)) continue; // de-dup the mirror pair (both facets project to the same knee)
+      kneeSeen.add(key);
+      knees.push({ ku, kt, dev: o.trueDev, wp: best.wp });
+    }
+
+    // build the pinned cluster (worst-sag knee + ring), de-duped in (u,t)
+    const clusterSeen = new Set<string>();
+    const kneeInj: number[] = [];
+    const pushC = (u: number, t: number): void => {
+      let cu = u - Math.floor(u); if (cu < 0) cu += 1;
+      const ct = Math.min(1, Math.max(0, t));
+      const k = `${Math.round(cu / 5e-6)},${Math.round(ct / 5e-6)}`;
+      if (clusterSeen.has(k)) return; clusterSeen.add(k); kneeInj.push(cu, ct);
+    };
+    for (const kn of knees) {
+      pushC(kn.ku, kn.kt);
+      for (let r = 0; r < nRing; r++) { const a = (r / nRing) * TAU; pushC(kn.ku + spread * Math.cos(a), kn.kt + spread * Math.sin(a)); }
+    }
+    const nKneePts = kneeInj.length / 2;
+    // APPEND the knee cluster AFTER the contour points (no constraintEdges for them → isolated pinned Steiner points)
+    const injAll = injectedPoints.concat(kneeInj);
+
+    const t0 = Date.now();
+    const mesh = buildInhouseMetricMesh(rA, DIMS.H, {
+      ...TANGLED_BASE, maxPoints, optimizeSweeps: 2,
+      guardManifoldAlways: true, chordTolMm, chordSteiner: true,
+      injectedPoints: injAll, constraintEdges, pinInjected: true,
+      guardRecoveryManifold: true, recoveryRobust: true, recoverySubdivideCollinear: true,
+      recoveryCollinearEps: Number(process.env.PF_GLEPS ?? '1e-9'),
+    });
+    const ms = Date.now() - t0;
+    const ut = mesh.ut, idx = mesh.indices, tris = idx.length / 3;
+
+    // PERSIST FIRST — the VERDICT stage reloads these bins from KNEE_DIR (verdict DIR is env-switchable via PF_GKVDIR).
+    writeFileSync(join(KNEE_DIR, `mesh_${outTag}.ut.bin`), Buffer.from(Float64Array.from(ut).buffer));
+    writeFileSync(join(KNEE_DIR, `mesh_${outTag}.idx.bin`), Buffer.from((idx as Uint32Array).buffer, (idx as Uint32Array).byteOffset, (idx as Uint32Array).byteLength));
+
+    const nmRaw = nonManRawBig(idx);
+    const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx as unknown as Uint32Array, 0.01);
+    const rc = mesh.constraint;
+    const recoveredPct = rc ? +(100 * rc.recovered / Math.max(1, rc.requested - rc.alreadyPresent)).toFixed(1) : null;
+    const failPct = rc ? +(100 * rc.failed / Math.max(1, rc.requested)).toFixed(1) : null;
+
+    const rec = {
+      stage: 'KNEE-BUILD', tag: outTag, src, stepMm, fineFactor, gradLo, gradHi, chordTolMm, maxPoints, ms, tris,
+      points: mesh.points, hitBudget: mesh.hitBudget,
+      nContourVerts, nContourEdges, nKnees: knees.length, nKneePts, spread, nRing,
+      knees: knees.map((k) => ({ ku: +k.ku.toFixed(5), kt: +k.kt.toFixed(5), dev: k.dev })),
+      recovery: rc, recoveredPct, failPct,
+      nonManRaw: nmRaw, zeroArea: sound.zeroArea,
+      soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
+    };
+    appendFileSync(join(KNEE_DIR, 'kneebuild.ndjson'), JSON.stringify(rec) + '\n');
+    // eslint-disable-next-line no-console
+    console.log('[KNEE-BUILD]', JSON.stringify(rec, null, 2));
+    writeFileSync(join(KNEE_DIR, `mesh_${outTag}.meta.json`), JSON.stringify(rec));
+    expect(tris).toBeGreaterThan(0);
+  }, 120 * 60_000);
+
   // ── STAGE VERDICT: LITERAL whole-mesh Newton — radial-prefilter ALL facets + Newton on EVERY non-green ──────────
   // NO stratified sampling on the final mesh (the CLOSE basis). PF_GLPRE = radial prefilter bound (def = tol; TIGHTEN
   // below tol only if the non-green set is intractable, and the record states the bound used). PF_GLNEWTONCAP =
   // safety cap on Newton calls (def 200000) — if exceeded, the run tightens the report to state intractability.
-  it.skipIf(!RUN || process.env.PF_GL !== 'verdict')('VERDICT literal whole-mesh Newton + serration', () => {
+  it.skipIf(!(RUN || RUN_KNEE) || process.env.PF_GL !== 'verdict')('VERDICT literal whole-mesh Newton + serration', () => {
     const rA = radiusFn('GyroidManifold', DIMS);
     const tag = process.env.PF_GLTAG ?? 'L0';
     const tol = Number(process.env.PF_GLTOL ?? '0.01');
     const preBound = Number(process.env.PF_GLPRE ?? String(tol)); // radial prefilter bound (facets ≤ this are green)
     const newtonCap = Number(process.env.PF_GLNEWTONCAP ?? '200000');
-    const utBuf = readFileSync(join(DIR, `mesh_${tag}.ut.bin`));
-    const idxBuf = readFileSync(join(DIR, `mesh_${tag}.idx.bin`));
+    // PF_GKVDIR=1 → verdict the KNEE-built meshes (bins + all sidecars/caches live in KNEE_DIR). Otherwise L0* in DIR.
+    const VDIR = process.env.PF_GKVDIR === '1' ? KNEE_DIR : DIR;
+    const utBuf = readFileSync(join(VDIR, `mesh_${tag}.ut.bin`));
+    const idxBuf = readFileSync(join(VDIR, `mesh_${tag}.idx.bin`));
     const ut = Array.from(new Float64Array(utBuf.buffer, utBuf.byteOffset, utBuf.byteLength / 8));
     const idx = new Uint32Array(idxBuf.buffer, idxBuf.byteOffset, idxBuf.byteLength / 4);
     const tris = idx.length / 3;
@@ -152,7 +270,7 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     // radial-prefilter EVERY facet at the (possibly tightened) preBound → the non-green worst-sample set.
     // CACHE the prefilter output (radOut) to prefilter_<tag>_<preBound>.json so a resume skips the ~5-8min scan.
     const nF = idx.length / 3;
-    const preCachePath = join(DIR, `prefilter_${tag}_${preBound}.json`);
+    const preCachePath = join(VDIR, `prefilter_${tag}_${preBound}.json`);
     let radOut: Array<{ f: number; wbnd: number; wp: [number, number, number]; uc: number; tc: number }>;
     try {
       radOut = JSON.parse(readFileSync(preCachePath, 'utf8')) as typeof radOut;
@@ -181,7 +299,7 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
     const NW: NewtonOpts = { seedTheta: 0, seedZ: 0, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60 };
     // RESUMABLE: persist every scored {f,dev} to scored_<tag>.jsonl. On resume, load the already-scored facet set
     // and SKIP them (the full Newton pass is ~1.5-2h at 44k+ outliers — a kill must not restart from 0).
-    const scoredPath = join(DIR, `scored_${tag}.jsonl`);
+    const scoredPath = join(VDIR, `scored_${tag}.jsonl`);
     const done = new Set<number>(); const trueDevs: number[] = [];
     let maxTrue = 0, nTrueOut = 0, nOnWall = 0, nOffWall = 0, newtonCalls = 0;
     const outRows: Array<{ uc: number; tc: number; trueDev: number; onWall: number }> = [];
@@ -205,7 +323,7 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
         if (outRows.length < 20000) outRows.push({ uc: +s.uc.toFixed(5), tc: +s.tc.toFixed(5), trueDev: +nr.dist.toFixed(5), onWall: ow ? 1 : 0 });
       }
       // flush the scored sidecar + a progress line every 5k Newton calls so a killed run resumes with ≤5k lost
-      if (newtonCalls % 5000 === 0) { appendFileSync(scoredPath, buf); buf = ''; appendFileSync(join(DIR, 'verdict_progress.ndjson'), JSON.stringify({ tag, scored: done.size, newtonCalls, nTrueOutSoFar: nTrueOut, maxTrueSoFar: +maxTrue.toFixed(5) }) + '\n'); }
+      if (newtonCalls % 5000 === 0) { appendFileSync(scoredPath, buf); buf = ''; appendFileSync(join(VDIR, 'verdict_progress.ndjson'), JSON.stringify({ tag, scored: done.size, newtonCalls, nTrueOutSoFar: nTrueOut, maxTrueSoFar: +maxTrue.toFixed(5) }) + '\n'); }
     }
     if (buf) appendFileSync(scoredPath, buf);
     trueDevs.sort((x, y) => x - y);
@@ -238,10 +356,10 @@ describe('E-2026-07-08-GYROID-LITERAL0', () => {
       wallSerrP99: +serrP99.toFixed(5),
       nonManIdx: nmIdx, nonManCracked: nmCrackedVal, zeroArea: sound.zeroArea,
     };
-    appendFileSync(join(DIR, 'verdict.ndjson'), JSON.stringify(rec) + '\n');
+    appendFileSync(join(VDIR, 'verdict.ndjson'), JSON.stringify(rec) + '\n');
     // eslint-disable-next-line no-console
     console.log('[VERDICT]', JSON.stringify(rec, null, 2));
-    writeFileSync(join(DIR, `verdict_outliers_${tag}.ndjson`), outRows.map((r) => JSON.stringify(r)).join('\n'));
+    writeFileSync(join(VDIR, `verdict_outliers_${tag}.ndjson`), outRows.map((r) => JSON.stringify(r)).join('\n'));
     expect(tris).toBeGreaterThan(0);
   }, 300 * 60_000);
 });
