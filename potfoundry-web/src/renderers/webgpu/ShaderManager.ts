@@ -3,6 +3,7 @@ import commonWgsl from '../../assets/shaders/common.wgsl?raw';
 import previewUniformsWgsl from '../../assets/shaders/preview_uniforms.wgsl?raw';
 import stylesWgsl from '../../assets/shaders/styles.wgsl?raw';
 import previewLightingWgsl from '../../assets/shaders/preview_lighting.wgsl?raw';
+import previewRaycastWgsl from '../../assets/shaders/preview_raycast.wgsl?raw';
 import previewMainWgsl from '../../assets/shaders/preview_main.wgsl?raw';
 import previewMainMobileWgsl from '../../assets/shaders/preview_main_mobile.wgsl?raw';
 import previewFullMobileWgsl from '../../assets/shaders/preview_full_mobile.wgsl?raw';
@@ -20,6 +21,7 @@ export class ShaderManager {
     private uniformsWgsl: string = '';
     private stylesWgsl: string = '';
     private lightingWgsl: string = '';
+    private raycastWgsl: string = '';
     private mainWgsl: string = '';
     private mainMobileWgsl: string = '';
     private fullMobileWgsl: string = '';
@@ -33,6 +35,7 @@ export class ShaderManager {
         this.uniformsWgsl = this.getShaderContent(previewUniformsWgsl);
         this.stylesWgsl = this.getShaderContent(stylesWgsl);
         this.lightingWgsl = this.getShaderContent(previewLightingWgsl);
+        this.raycastWgsl = this.getShaderContent(previewRaycastWgsl);
         this.mainWgsl = this.getShaderContent(previewMainWgsl);
         this.mainMobileWgsl = this.getShaderContent(previewMainMobileWgsl);
         this.fullMobileWgsl = this.getShaderContent(previewFullMobileWgsl);
@@ -248,6 +251,40 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
             dispatchCode,          // 5. Dispatcher
             this.lightingWgsl,     // 6. Camera & lighting (shared with raycast)
             this.mainWgsl          // 7. Mesh vertex/fragment entry points
+        ].join('\n');
+    }
+
+    /**
+     * Assembles the exact ray-cast preview shader (fullscreen pass, entry points
+     * vs_raycast/fs_raycast). Same stripped per-style environment as getStyleWGSL,
+     * plus the shared lighting module; excludes the mesh entry points.
+     */
+    public getRaycastWGSL(styleId: number): string {
+        const functionName = STYLE_FUNCTION_MAP[styleId] || 'sf_radius';
+        const dispatchCode = `
+// DYNAMICALLY GENERATED DISPATCH FOR STYLE ID ${styleId} (${functionName})
+fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+    let th = theta - floor(theta / TAU) * TAU;
+    return ${functionName}(th, t, r0);
+}
+
+fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(0.0, t, r0);
+}
+
+fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
+    return ${functionName}(TAU, t, r0);
+}
+`;
+        const optimizedStylesWgsl = stripShaderCode(this.stylesWgsl, functionName);
+        return [
+            this.constantsWgsl,
+            this.commonWgsl,
+            this.uniformsWgsl,
+            optimizedStylesWgsl,
+            dispatchCode,
+            this.lightingWgsl,
+            this.raycastWgsl,
         ].join('\n');
     }
 

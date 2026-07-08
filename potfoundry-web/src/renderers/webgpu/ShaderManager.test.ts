@@ -57,4 +57,21 @@ describe('ShaderManager', () => {
             expect(wgsl.match(/fn shade_color\(/g)?.length).toBe(1);
         });
     });
+
+    describe('getRaycastWGSL', () => {
+        it('assembles raycast entry points with the style dispatch and lighting', () => {
+            const wgsl = ShaderManager.getInstance().getRaycastWGSL(0);
+            expect(wgsl).toContain('fn vs_raycast(');
+            expect(wgsl).toContain('fn fs_raycast(');
+            expect(wgsl).toContain('fn pot_field(');
+            expect(wgsl).toContain('fn style_radius(');   // dispatch injected
+            expect(wgsl).toContain('fn shade_color(');    // lighting module present
+            expect(wgsl).toContain('@binding(8)');        // RC uniforms
+            expect(wgsl).not.toContain('fn vs_main(');    // mesh entry points excluded
+        });
+        it('strips other styles (raycast for style 9 excludes gothic)', () => {
+            const wgsl = ShaderManager.getInstance().getRaycastWGSL(9); // DragonScales region only
+            expect(wgsl.match(/fn shade_color\(/g)?.length).toBe(1);
+        });
+    });
 });
