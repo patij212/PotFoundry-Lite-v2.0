@@ -2472,3 +2472,49 @@ BasketWeave/CelticKnot) NOT run; carried at their V10b numbers.
 
 **LEDGER:** registry E-2026-07-08-TANGLED-KERNEL; research/exchange/_tangled_kernel/ (gitignored, numbers inlined);
 kernel research/bridge/_pf_tangledKernelLib.ts + probe _pf_tangled_kernel.test.ts; commits 84760cc→721bc28. DEV-ONLY.
+
+## V11u — TANGLED-TARGETED: HexHive is the FIRST tangled style CLOSED to literal Newton-0 — LOCAL injected-Steiner refinement of ONLY the residual reached 0 @7.28M where the V11r GLOBAL sweep could not reach 0 even @9.99M (2026-07-08)
+
+**E-2026-07-08-TANGLED-TARGETED — HexagonalHive CONFIRMED (CLOSED, literal whole-mesh Newton-0).** Follow-up to the
+§V11r density sweep, which DEMONSTRATED a monotone Newton trajectory but hit the 10M budget before 0 because the
+uniform curvature-sizing field OVER-REFINES the flat bulk (HexHive is 93.5% flat, yet uniform chord0.0009 spent the
+whole 2.5M-pt cap = 9.99M full-pot and STILL left 21 Newton outliers). §V11r's STANDING RECOMMENDATION was: refine
+ONLY where the residual lives. This arm DID that and CLOSED it.
+
+### MECHANISM (the §V11r recommendation, realized): LOCAL injected-Steiner refinement, NOT another global density step
+The kernel's `injectedPoints` (forced (u,t) that participate in EVERY Delaunay/flip/split round) + `pinInjected`
+(hold them against the smoothing sweeps) are the scoped lever. Per pass: (1) rebuild the base coarse GLOBAL mesh at a
+loose chord (the flat bulk stays coarse); (2) radial-flag the residual facets (cheap SOUND upper bound — drives
+injection; over-injecting is a budget cost, not a correctness bug — the V11r "radial drives refinement" principle);
+(3) inject a dense (u,t) MICRO-CLUSTER (worst-sag bary point + a 6-satellite ring at spread 0.001, deduped) at each
+radial-flagged facet's worst-sag point, pinned; (4) re-verdict Newton on the FINAL EMITTED mesh (post optimizeSweeps —
+the §V11a "score the emitted mesh" trap avoided). Newton is the VERDICT only (facetTrue3D over a 45-pt denseBary(8)
+lattice, radial-anchor multi-start §V11j, ~3s/facet); when the flagged population is small (≤topWorst) every facet is
+scored EXHAUSTIVELY ⇒ EXACT count, not a stratified estimate.
+
+### SCORECARD (HexHive, base chord0.00125, tol 0.01mm, honest-Newton true-3D on EVERY radial-flagged facet — exact)
+| pass | injected | tris | projFullPot | radialOut (max) | NEWTON (exact) | worstTrue | nonMan | zeroArea | %<20° | build |
+|---|---|---|---|---|---|---|---|---|---|---|
+| base | 0 | 3,618,799 | 7,237,598 | 100 (0.0221) | **60** | 0.02017 | 0 | 0 | — | 711s |
+| local1 | 350 | 3,632,365 | 7,264,730 | 24 (0.0229) | **13** | 0.02091 | 0 | 0 | — | 953s |
+| local2 | 441 | 3,639,565 | 7,279,130 | 2 (0.0134) | **0** | **0.0098** | 0 | 0 | **0.044** | 942s |
+
+**Newton trajectory 60 → 13 → 0** in TWO local passes. Total injected = 441 pinned Steiner points; tris grew only
+3,618,799 → 3,639,565 (**+20,766, +0.57%**) — the refinement is genuinely LOCAL (the flat 93.5% bulk untouched).
+Final worstTrue **0.0098 < tol** on the FINAL EMITTED mesh (post-smoothing; the §V11a re-lift trap avoided).
+projFullPot **7.28M ≤ 10M** and this is a GENUINE density point (hitBudget=false — no point-cap hit), vs the V11r
+uniform sweep which spent 9.99M (cap hit) and still had 21. watertight non-vacuous (nonMan 0), zeroArea 0, %<20° 0.044
+(excellent quality). VALIDATION: the base rebuild reproduces the V11r chord0.00125 anchor EXACTLY (radial 100, Newton
+60, worst 0.02017) ⇒ the in-memory targeted recipe == the persisted-mesh recipe; deterministic.
+
+### VERDICT: HexHive CLOSED — the arm's headline (first tangled literal Newton-0). Method banked:
+The LOCAL injected-Steiner refinement reaches literal-0 at a LOWER budget (7.28M) than the GLOBAL density sweep could
+reach 0 at ALL (still 21 @9.99M) — PROVING the sizing field's over-refinement of the flat bulk was the barrier, not
+the true geometric cost. This is the general density-close recipe for a SPARSE residual on a mostly-flat tangled
+surface: radial-flag → pinned inject at worst-sag → Newton-verdict the emitted mesh. RESILIENCE: the environment
+killed the run mid-pass-2 (proven risk); the per-pass ndjson + inj_<p>.json sidecar checkpoints let the resume SKIP
+passes 0-2 and confirm the CLOSE with zero recomputation.
+
+**LEDGER:** registry E-2026-07-08-TANGLED-TARGETED; research/exchange/_tangled_targeted/HexagonalHive/{passes,final}.ndjson
+(gitignored — numbers inlined above); probe research/bridge/_pf_tangledTargeted.test.ts (PF_TT=<Style>, resumable).
+Commits: pre-reg c92cd4a, probe 8eb3a01, HexHive close [pending]. DEV-ONLY; no src/ edit.

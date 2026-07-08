@@ -44,7 +44,15 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 **METHOD:** DEV-ONLY. New probe `research/bridge/_pf_tangledTargeted.test.ts` (env-gated per style PF_TT=<Style>, resumable, per-pass ndjson checkpoint the INSTANT computed → `research/exchange/_tangled_targeted/<style>/passes.ndjson`; a done label ⇒ SKIP). Reuses `_pf_tangledKernelLib` (buildTangled/wholeMeshGuardRadialBound/auditNonManRaw) + `_gyroid_truthLib` (worstFacetsByRadial/newtonNearest/facetTrue3D) + labkit READ-ONLY; NO src/ edit; NO edit to `_ds_conforming*`, tierC/**, `_gyroid_truth*`, `_pf_tangledDensity.test.ts`, or the concurrent agents' files (`tierC/**`+`_tierc_literal0`, `_weave_fe`). NODE_OPTIONS=--max-old-space-size=8192; ≤2 procs, ONE build at a time; honest multi-hour timeouts; explicit file staging (NEVER git add -A). Ledger §V11u appended per style-close/kill (NOT batched); commit per style verdict.
 
-**RESULT:** _(pending — pre-registered; results appended after measurement)_
+**RESULT — §V11u-1 HexagonalHive: CLOSED (the FIRST tangled style at literal whole-mesh Newton-0).** LOCAL injected-Steiner refinement of ONLY the residual reached literal 0 @ 7.28M full-pot, where the §V11r GLOBAL uniform sweep could not reach 0 even @ 9.99M (still 21). Base chord0.00125 reproduces the V11r anchor EXACTLY (radial 100, Newton 60, worst 0.02017 — deterministic). Then per pass: radial-flag → inject a dense pinned Steiner micro-cluster (worst-sag bary + 6-satellite ring, spread 0.001) at each flagged facet's worst-sag point → re-verdict Newton on the FINAL EMITTED mesh (post-smoothing, §V11a trap avoided):
+
+| pass | injected | tris | projFullPot | radialOut(max) | NEWTON(exact) | worstTrue | nonMan | zeroArea | %<20° |
+|---|---|---|---|---|---|---|---|---|---|
+| base | 0 | 3,618,799 | 7,237,598 | 100 (0.0221) | **60** | 0.02017 | 0 | 0 | — |
+| local1 | 350 | 3,632,365 | 7,264,730 | 24 (0.0229) | **13** | 0.02091 | 0 | 0 | — |
+| local2 | 441 | 3,639,565 | 7,279,130 | 2 (0.0134) | **0** | **0.0098** | 0 | 0 | **0.044** |
+
+**Newton trajectory 60 → 13 → 0** in TWO local passes. Total 441 pinned Steiner; tris +20,766 (**+0.57%** — genuinely LOCAL, flat 93.5% bulk untouched). Final worstTrue **0.0098 < tol** on the emitted mesh; projFullPot **7.28M ≤ 10M** and hitBudget=false (a GENUINE density point, not a cap artifact). watertight non-vacuous (nonMan 0), zeroArea 0. Newton basis = facetTrue3D over a 45-pt denseBary(8) lattice per facet (radial-anchor multi-start §V11j), scored on EVERY radial-flagged facet (exact=true, not stratified) ⇒ the strong CLOSE basis. **VERDICT: CLOSED.** The LOCAL recipe reaching 0 at a LOWER budget than the GLOBAL sweep reaches 0 at all PROVES the §V11r sizing-field over-refinement of the flat bulk was the barrier. Resilience: env killed the run mid-pass-2; per-pass ndjson + inj_<p>.json sidecar let the resume SKIP passes 0-2 and confirm the close with zero recompute. Data: `research/exchange/_tangled_targeted/HexagonalHive/{passes,final}.ndjson` (gitignored). Commits: pre-reg c92cd4a, probe 8eb3a01, close [pending]. _(Crystalline/Voronoi pending — larger residuals, same recipe.)_
 
 ---
 
