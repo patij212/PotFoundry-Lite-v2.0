@@ -3437,6 +3437,7 @@ export const mount = async ({
 
       // Exact ray-cast path: replaces background+ground+pot; debug overlays still
       // draw on top via the main pass below with loadOp 'load'.
+      const raycastActive = raycastController !== null && cfg.showWireframe !== true;
       let raycastDrewFrame = false;
       if (raycastController && cfg.showWireframe !== true) {
         raycastController.setStyle(reqStyleId);
@@ -3569,8 +3570,17 @@ export const mount = async ({
       }
 
       if (reqStyleId !== activePipelineStyleId) {
-        // If we haven't requested this style yet, start compilation
-        if (reqStyleId !== pendingPipelineStyleId) {
+        // If we haven't requested this style yet, start compilation.
+        // Raycast mode never draws the mesh (wireframe off forces the mesh path),
+        // so kicking the mesh pipeline compile here is pure waste — and on the
+        // Dawn-hang styles it stalls the shared shader compiler ~30s, queueing
+        // the raycast pipeline compile behind unused work. If wireframe is later
+        // toggled on, raycastActive flips false and this branch compiles the
+        // mesh pipeline on demand. (Consequence: activePipelineStyleId stays
+        // stale while raycast is active — harmless for the main pass, which
+        // draws no pot, but debug line/point overlays key off it and keep the
+        // last mesh-compiled style until wireframe/mesh mode is used again.)
+        if (!raycastActive && reqStyleId !== pendingPipelineStyleId) {
           if (import.meta.env.DEV) console.log(`[WebGPU] Style change detected! ${activePipelineStyleId} -> ${reqStyleId}. Initiating compilation...`);
           pendingPipelineStyleId = reqStyleId;
           getOrCreatePipeline(reqStyleId).then((p) => {
@@ -3595,13 +3605,16 @@ export const mount = async ({
         }
         // Raycast path: the raycast pass has ALREADY encoded a complete frame for
         // reqStyleId into `encoder` above (its own per-style pipeline, independent
-        // of the mesh render pipeline managed here). The mesh pipeline compile was
-        // still kicked off above so style switching stays correct, but we must NOT
+        // of the mesh render pipeline managed here — which, in raycast mode, is
+        // deliberately NOT compiled; see the guard above). We must NOT
         // early-return — that would drop the encoder unsubmitted and starve the
         // raycast frame. This matters because the mesh render pipeline for some
         // complex styles (e.g. CelticKnot/Triquetra/LowPolyFacet) can hang the Dawn
         // compiler for 30s+; without this bypass the raycast preview would render
         // black on exactly those styles even though its own pipeline is ready.
+        // While the raycast pipeline is still compiling (raycastDrewFrame false),
+        // the returns below also protect raycast mode from drawing the mesh with
+        // a stale pipeline ("jumbled geometry").
         if (!raycastDrewFrame) {
           // Optimization: Do NOT render this frame if we are mismatched style/pipeline.
           // Rendering style A parameters with style B pipeline produces "jumbled geometry".
