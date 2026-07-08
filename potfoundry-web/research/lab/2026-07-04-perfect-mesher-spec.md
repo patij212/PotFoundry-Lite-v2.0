@@ -1926,6 +1926,56 @@ Commits 91a8980 (pre-reg) / c240187 (probe+row) / [this verdict]. Data: research
 
 ---
 
+## V11n — ANISOTROPIC FLANK-AWARE RED (ROUND 6, E-2026-07-08-TIERC-ANISO-RED) — PRE-REGISTRATION (2026-07-08)
+
+**THE LAST UNTESTED MECHANISM.** V11k+V11m both converged on ONE genuinely-different downstream lever for the
+full-relief multi-bay Gothic gate: an ANISOTROPIC / flank-aware RED that splits a rib-flank facet along its
+SHORT axis only (the across-crest, high-|r''| sag direction) — ≈halving tri growth vs isotropic 1→4. Every seed
+lever is exhausted (adaptive REFUTED as budget-neutral, rib-aware REFUTED — the outliers are genuine rib-flank
+facets re-inserted by the refine loop). The budget wall is a REFINE-LOOP floor, so the lever MUST be in the
+refine loop, not the seed.
+
+**MECHANISM (from the code + the sliver-campaign geometry).** Isotropic RED (`applyScoredPass` / the sync loop)
+inserts ALL THREE edge midpoints of an outlier facet — 1→4 tris under the subsequent whole-domain re-CDT. But a
+rib-flank facet's P1 chord-sag is dominated by ONE direction: ACROSS the crest (VALIDATION 5: the needle's
+longest edge sits median ~76° to the crest ⇒ the sag axis ⊥ crest). Inserting ONLY the sag-dominant edge's
+midpoint (a 1→2 point-count split; the per-pass re-CDT keeps the mesh conforming, so no T-junctions) buys the
+same across-crest sag reduction at ~half the point growth. Two direction signals, chosen by measurement:
+- **D1 edgeSag:** per outlier facet, the P1 midpoint 3D chord-sag of each of its 3 edges (3 surface evals); bisect
+  the MAX-sag edge. Sag-selective by construction.
+- **D2 longEdge:** bisect the longest CHART edge (mm) — the ~76°-to-crest cross-flank edge; cheapest (no eval).
+- **FALLBACK to isotropic** when the top-2 edge signals are within `anisoAspectTol` (ambiguous / aspect≈1) — an
+  anisotropic-only loop could stall (a near-equilateral apex facet has no dominant axis).
+
+Constraint-respecting: a locked constraint edge chosen as the split edge subdivides the CONSTRAINT
+([a,b]→[a,m],[m,b], m the straight midpoint, never snapped — the `upperIds`-crash rule); crest midpoints stay
+locked. Guard: reject a split producing a sub-`DEDUPE_CELL_MM` (0.004mm) edge; zeroArea stays 0.
+
+**IMPLEMENTATION.** Opt-in `RefineOptions.splitMode:'aniso'` (+ `anisoDirection:'edgeSag'|'longEdge'`,
+`anisoAspectTol`), default undefined ⇒ isotropic ⇒ BYTE-IDENTICAL (regression test hashes uv/tris off-flag).
+The aniso branch lives in BOTH the sync `refineToZeroOutliers` insertion block and `applyScoredPass` (parallel
+path) — the two share the split logic, so the aniso mesh is identical across sync/parallel given identical dev[].
+
+**GATE HEAD-TO-HEAD (pre-registered).** Multi-bay domain u[0.05,0.15]×t[0.38,0.62], tol 0.01, adaptiveSeed hMin
+0.09 t-only, bgArcMm 0.3, parallel scorer 4-worker + dirty cache, thetaWindow 0.5. Measure per pass: outliers,
+worst, tris, projFullPot (×42), wall-clock. Baseline = the V11k on-disk trajectory
+(`_tierc_ribaware/baseline_leverA_tOnly_frontier.json` + `ribgate_leverA_tOnly_pass.ndjson`; configs match).
+
+**KILL CRITERIA (committed BEFORE measuring):**
+- **CONVERGED-UNDER-6M (ACCEPTANCE) iff:** literal whole-mesh 0 (honest dense guard, every free facet) AND
+  watertight non-vacuous (inject-crack moves nonMan) AND capped==false AND projFullPot < 6,000,000. THEN GeoStar
+  patch gate → rebaseline20 detached.
+- **KILL (2-DESIGN) iff:** BOTH D1 and D2 fail to beat isotropic growth-per-sag meaningfully (< 1.3× tri savings
+  at an EQUAL outlier trajectory — matched pass outlier counts within ~15%) OR the gate converges only ABOVE 6M.
+  ⇒ STOP and produce the FINAL DECISION ARTIFACT: the consolidated outliers/max-vs-projected-tris frontier for
+  isotropic (V11k) vs aniso vs research (V11m), stated for a user budget decision, PLUS the honestly-extrapolated
+  budget for literal 0 (error bars stated).
+
+Probe: `tierC/anisoSplit.test.ts` (fast guard) + `tierC/_anisoGate.test.ts` (PF_TIERC_ANISOGATE=1). Data →
+`research/exchange/_tierc_aniso/`. Registry: E-2026-07-08-TIERC-ANISO-RED. Pre-reg commit: [this].
+
+---
+
 ## V11c — DRAGONSCALES Z-DENSITY + CT ADJUDICATION (2026-07-08)
 
 Two independent arms, both measured under the EXACT V10b dense radial-twin BVH ruler (scoreWholeMeshBVH: dense 45-pt
