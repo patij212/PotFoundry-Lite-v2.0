@@ -330,7 +330,7 @@ export function seedFromComplex(
   };
   const pos3D = (u: number, t: number): [number, number, number] =>
     sampler
-      ? sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)))
+      ? [...sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)))]
       : [u * uToMm, t * tToMm, 0];
   // The complex is already dense (≤0.15mm) + on-ridge + planar (morseComplex
   // densifies+snaps BEFORE planarizeMM — snapping HERE, post-planarization,

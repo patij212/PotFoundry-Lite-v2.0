@@ -510,8 +510,9 @@ export function buildProtectedComplex(
     const [x, y] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
     return Math.hypot(x, y);
   };
-  const pos3D = (u: number, t: number): [number, number, number] =>
-    sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
+  const pos3D = (u: number, t: number): [number, number, number] => [
+    ...sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t))),
+  ];
   const goldenMax = (f: (s: number) => number, lo: number, hi: number): number => {
     const gr = (Math.sqrt(5) - 1) / 2;
     let a = lo;

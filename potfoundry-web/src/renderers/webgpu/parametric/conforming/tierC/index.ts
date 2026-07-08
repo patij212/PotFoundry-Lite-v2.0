@@ -47,11 +47,17 @@ export {
   type RulerOptions,
   type WholeMeshScore,
 } from './interiorRuler';
-export {
-  ParallelScorerPool,
-  scoreWholeMeshParallel,
-  samplerGrid,
-} from './parallelScorer';
+// NOTE: parallelScorer.ts statically imports node:worker_threads / node:module /
+// node:child_process (dev/test-only parallel path). Re-exporting it from this
+// barrel pulled those Node built-ins into the BROWSER bundle via the
+// conforming/index → ParametricExportComputer static import chain, and Vite's
+// externalization made the module-eval throw ("Module node:worker_threads has
+// been externalized…") at app boot — which killed WebGPU init before any canvas
+// mounted (all preview modes, not just raycast). Tests import ParallelScorerPool
+// / scoreWholeMeshParallel / samplerGrid directly from './parallelScorer', and
+// no production code imports them through this barrel, so dropping the re-export
+// is safe and keeps the flag-off Tier-C path byte-identical. Import from
+// './parallelScorer' directly if a browser-safe consumer ever needs the pool.
 export {
   refineToZeroOutliers,
   refineToZeroOutliersParallel,
