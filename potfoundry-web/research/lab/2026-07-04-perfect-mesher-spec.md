@@ -1942,6 +1942,53 @@ density (ruler tread-blind by construction). Flag stays OFF; dev-only; no src/ e
 
 ---
 
+## V11l — DRAGONSCALES LITERAL-CLOSE: transition-row lever REFUTED (kill hit); the ~8.7k FLOOR is TWO irreducible density classes (5,552 body-wide sheet + 3,200 near-ring lip). FINAL = CLOSED-with-documented-floor (2026-07-08)
+
+ROUND 4, follow-up to V11g (which VALIDATED the conforming open-surface ruler + FLOORED at ~8.7k). Mission: drive
+DragonScales to LITERAL whole-mesh 0 under the validated ruler via TRANSITION-ROW z-refinement (the prescribed lever, now
+under the ALIGNED wallEps=5e-4 that removes V11g's mis-alignment caveat). Registry E-2026-07-08-DS-LITERAL-CLOSE.
+
+### DECISIVE LOCALIZATION (SHEETLOC) — the two residuals live in DIFFERENT places
+On the baseline nZ110 mesh under the validated conforming ruler, bucketing every outlier by z-distance-to-nearest-ring:
+- **5,552 SHEET outliers → ALL ≥ 2.0mm from any ring** (`sheetHist=[0,0,0,0,0,0,0,5552]`). BODY-WIDE smooth-sheet chord-sag.
+- **3,200 LIP outliers → ALL in [0.2, 0.6mm]** of a ring (`lipHist=[0,0,0,1448,1752,0,0,0]`). NEAR-RING last-strip.
+⇒ the transition-row lever (which only touches near-ring rows) CANNOT reach the dominant 5,552 sheet residual.
+
+### H1 TRANSITION-ROW SWEEP — REFUTED (count went UP, not down)
+`buildRowsTransition` = shrink the ±0.6mm nearRing skip-band to ±transBand + fill it with finely-spaced pure-SHEET rows
+(treadCap 4 fixed, global nZ110 fixed, scored under the ALIGNED 5e-4 wall). Two parameterizations:
+| config | tris | TOTAL | sheet | lip | max | %<20 |
+|---|---|---|---|---|---|---|
+| baseline | 4.09M | **8,752** | 5,552 | 3,200 | 0.0461 | 2.0 |
+| tb0.3/tr4 | 4.49M | 38,752 | **5,552** | **33,200** | 0.0461 | 1.7 |
+| tb0.15/tr8 | 4.83M | 38,816 | **5,552** | **33,264** | 0.0461 | 11.4 |
+`sheet` EXACTLY invariant (5,552 — body-wide, untouched); `lip` ~10× WORSE (each added near-ring sheet row spawns a new
+ringBelow/ringAbove transition strip that chords the steep near-ring C0 curve); %<20 blows to 11.4 at tb0.15.
+**Kill criterion HIT** (lever fails to bend the count after 2 params — it increases it). Same mechanism as the V11g refuted
+skirt lever, now confirmed under the ALIGNED wall ⇒ the "mis-aligned skirt test polluted it" caveat is RESOLVED: clean
+near-ring z-refinement is genuinely COUNTERPRODUCTIVE. The last strip before a ring ALWAYS chords the ~1mm C0 relief
+(its endpoints are a sheet radius and a ring radius separated by the jump), regardless of z-refinement.
+
+### THE FLOOR = TWO IRREDUCIBLE DENSITY CLASSES (both characterized, NEITHER a mesh defect)
+1. **5,552 body-wide sheet chord-sag** — density-responsive (V11c/g: 21,744@nZ30 → 5,552@nZ110) but a GLOBAL nZband floor.
+   nZ110=4.09M (in budget), nZ160≈5.9M, nZ220≈8M (over 6M) ⇒ does NOT reach 0 within the 6M full-pot budget. This mesh IS
+   the full outer wall (2400θ × full-H), so its tri count is the full-pot count. FIDELITY-vs-BUDGET FRONTIER.
+2. **3,200 near-ring lip** — the last-strip chording the designed ~1mm C0 riser (max 0.0208, 90% in [0.010,0.012)). A
+   representation floor of a single-valued sheet meeting a C0 jump. IRREDUCIBLE to z-refinement (H1 worsens it).
+
+### VERDICT: CLOSED-with-documented-floor
+Literal whole-mesh 0 is NOT reachable within the 6M budget by any z-density lever. The V11g FLOOR (~8.7k, max 0.0461,
+p99 0.0043, %<20 2.0, watertight non-vacuous bd=4800, zeroArea 0, riser serration ~0.001) STANDS and is now
+mechanistically nailed: two density classes, one budget-frontier-limited (sheet), one representation-floor (lip). The
+prescribed transition lever is REFUTED. DragonScales is CLOSED as RULER-CLASS: body CAD-grade + density-closable to a
+6M-budget frontier; tread/riser a designed zero-serration ~1mm C0 feature measured correctly. Flag OFF; dev-only.
+
+**LEDGER:** registry E-2026-07-08-DS-LITERAL-CLOSE. Probe `research/bridge/_pf_dsconform.test.ts` (PF_DS_SHEETLOC/TRANS/
+C0TAIL + buildRowsTransition + scoreMeshTo); data `research/exchange/_ds_close/scorecard.ndjson`; commits 06aefb2 →
+ac4fad1 → 5188409 → df3138c.
+
+---
+
 ## V11g — DRAGONSCALES CONFORMING-RULER: the tread-CONFORMING OPEN-SURFACE ruler is VALIDATED (1st of 3 to pass the 1a–1d battery); honest whole-mesh number ~8.7k (NOT 263,536); FLOOR = near-ring sheet-sag, fully characterized (2026-07-08)
 
 ROUND 3, follow-up to V11f. Two prior whole-mesh instruments were refuted (radial twin TREAD-BLIND; filled-annulus step
