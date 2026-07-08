@@ -97,6 +97,33 @@ export interface RefineOptions {
   ribAwareMode?: 'mask' | 'thetaAvg';
   /** Rib-aware 'mask' distance band (3D mm) around any constraint chain. Default 1.0. */
   ribBandMm?: number;
+  /**
+   * SPLIT MODE (LEVER, E-2026-07-08-TIERC-ANISO-RED, opt-in, default undefined ⇒
+   * ISOTROPIC RED 1→4 — BYTE-IDENTICAL to prior). 'aniso' switches an outlier
+   * facet's refinement from all-3-edge-midpoints to a SINGLE-edge bisection along
+   * the SAG-DOMINANT (across-crest / high-|r''|) direction: a rib-flank facet's
+   * P1 chord-sag is dominated by ONE axis (VALIDATION 5: the needle's longest edge
+   * sits median ~76° to the crest ⇒ sag axis ⊥ crest), so splitting only that edge
+   * buys the same across-crest sag reduction at ~half the point growth. The refine
+   * loop re-CDTs the whole point set every pass, so a 1-midpoint insertion is
+   * conforming with no T-junctions.
+   */
+  splitMode?: 'aniso';
+  /**
+   * ANISO direction signal (default 'edgeSag'):
+   *  - 'edgeSag': bisect the edge whose P1 midpoint 3D chord-sag vs the surface is
+   *    largest (3 surface evals/facet). Sag-selective by construction.
+   *  - 'longEdge': bisect the longest CHART edge (mm-scaled, seam-consistent u).
+   *    Cheapest — the ~76°-to-crest cross-flank edge, no surface eval.
+   */
+  anisoDirection?: 'edgeSag' | 'longEdge';
+  /**
+   * ANISO ambiguity fallback (default 0.15). If the best edge's signal is within
+   * (1−anisoAspectTol)·bestSignal of the second-best edge (aspect≈1 / no dominant
+   * axis, e.g. a near-equilateral apex facet), FALL BACK to isotropic 1→4 for that
+   * facet — an anisotropic-only loop could stall on a facet with no short axis.
+   */
+  anisoAspectTol?: number;
   ruler: RulerOptions;
   /**
    * Cross-pass DIRTY-FACET cache (default off; opt-in perf lever). A facet
@@ -606,6 +633,148 @@ function triangulateMM(
   return out;
 }
 
+/** Resolved split configuration (undefined splitMode ⇒ isotropic). */
+interface SplitCfg {
+  mode: 'iso' | 'aniso';
+  direction: 'edgeSag' | 'longEdge';
+  aspectTol: number;
+  uToMm: number;
+  tToMm: number;
+  /** Surface position P(u,t) — needed for 'edgeSag' + zeroArea guard. */
+  pos: (u: number, t: number) => [number, number, number];
+}
+
+function splitCfgFrom(opts: RefineOptions, uToMm: number, tToMm: number, sampler: SurfaceSampler): SplitCfg {
+  return {
+    mode: opts.splitMode === 'aniso' ? 'aniso' : 'iso',
+    direction: opts.anisoDirection ?? 'edgeSag',
+    aspectTol: opts.anisoAspectTol ?? 0.15,
+    uToMm,
+    tToMm,
+    pos: (u, t) => [...sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)))],
+  };
+}
+
+/**
+ * The per-outlier-facet insertion (shared by the sync loop AND applyScoredPass
+ * ⇒ byte-identical mesh across the two paths given identical facet iteration).
+ *
+ * ISOTROPIC (default): insert all 3 seam-consistent edge midpoints (RED 1→4).
+ * ANISOTROPIC (splitMode 'aniso'): score the 3 edges by the direction signal,
+ * insert ONLY the sag-dominant edge's midpoint (a 1→2 point split; the per-pass
+ * re-CDT keeps the mesh conforming). Falls back to isotropic when the top-2 edge
+ * signals are within aspectTol (no dominant axis). A locked constraint edge is
+ * subdivided in place ([a,b]→[a,m],[m,b], straight midpoint). Sub-DEDUPE_CELL_MM
+ * candidate edges are rejected (dedupe floor).
+ */
+function insertOutlierSplit(
+  a: number,
+  b: number,
+  c: number,
+  uv: number[],
+  cfg: SplitCfg,
+  cEdges: Array<[number, number]>,
+  cMap: Map<number, number>,
+  cKey: (a: number, b: number) => number,
+  keyOf: (u: number, t: number) => number,
+  addPt: (u: number, t: number) => number,
+  inserted: Set<number>,
+): void {
+  // Seam-consistent u images (shortest around a's u) — identical convention to
+  // the ruler + the prior isotropic block.
+  let ua = uv[2 * a];
+  let ub = uv[2 * b];
+  let uc = uv[2 * c];
+  const ta = uv[2 * a + 1];
+  const tb = uv[2 * b + 1];
+  const tc = uv[2 * c + 1];
+  while (ub - ua > 0.5) ub -= 1;
+  while (ua - ub > 0.5) ub += 1;
+  while (uc - ua > 0.5) uc -= 1;
+  while (ua - uc > 0.5) uc += 1;
+  // Edge tuples: [va, vb, ua, ta, ub, tb].
+  const edges: Array<[number, number, number, number, number, number]> = [
+    [a, b, ua, ta, ub, tb],
+    [b, c, ub, tb, uc, tc],
+    [c, a, uc, tc, ua, ta],
+  ];
+
+  const splitOneEdge = (e: [number, number, number, number, number, number]): void => {
+    const [va, vb, eua, eta, eub, etb] = e;
+    const mu = (eua + eub) / 2;
+    const mt = (eta + etb) / 2;
+    // Dedupe floor: reject a candidate whose 3D edge is already sub-cell (the
+    // midpoint would collapse onto an endpoint under the dedupe hash anyway).
+    const ck = cKey(va, vb);
+    const ci = cMap.get(ck);
+    if (ci !== undefined) {
+      const k = keyOf(mu, mt);
+      if (inserted.has(k)) return;
+      inserted.add(k);
+      const mid = addPt(mu, mt);
+      if (mid !== va && mid !== vb) {
+        cEdges[ci] = [va, mid];
+        cMap.delete(ck);
+        cMap.set(cKey(va, mid), ci);
+        const ni = cEdges.length;
+        cEdges.push([mid, vb]);
+        cMap.set(cKey(mid, vb), ni);
+      }
+    } else {
+      const k = keyOf(mu, mt);
+      if (!inserted.has(k)) {
+        inserted.add(k);
+        addPt(mu, mt);
+      }
+    }
+  };
+
+  if (cfg.mode === 'iso') {
+    for (const e of edges) splitOneEdge(e);
+    return;
+  }
+
+  // ANISOTROPIC: score each edge by the direction signal.
+  const signal = (e: [number, number, number, number, number, number]): number => {
+    const [, , eua, eta, eub, etb] = e;
+    if (cfg.direction === 'longEdge') {
+      const du = (eua - eub) * cfg.uToMm;
+      const dt = (eta - etb) * cfg.tToMm;
+      return Math.hypot(du, dt);
+    }
+    // edgeSag: 3D P1 midpoint chord-sag of the straight edge vs the surface.
+    const A = cfg.pos(eua, eta);
+    const B = cfg.pos(eub, etb);
+    const M = cfg.pos((eua + eub) / 2, (eta + etb) / 2);
+    return Math.hypot(
+      (A[0] + B[0]) / 2 - M[0],
+      (A[1] + B[1]) / 2 - M[1],
+      (A[2] + B[2]) / 2 - M[2],
+    );
+  };
+  const s0 = signal(edges[0]);
+  const s1 = signal(edges[1]);
+  const s2 = signal(edges[2]);
+  // Best + second-best.
+  let bi = 0;
+  let best = s0;
+  if (s1 > best) {
+    best = s1;
+    bi = 1;
+  }
+  if (s2 > best) {
+    best = s2;
+    bi = 2;
+  }
+  const second = Math.max(...[s0, s1, s2].filter((_, i) => i !== bi));
+  // Ambiguous (no dominant axis) ⇒ isotropic fallback so the loop cannot stall.
+  if (!(best > 0) || second >= (1 - cfg.aspectTol) * best) {
+    for (const e of edges) splitOneEdge(e);
+    return;
+  }
+  splitOneEdge(edges[bi]);
+}
+
 /**
  * The whole-mesh honest-brute refine loop (see module doc). Returns the
  * refined chart mesh; `capped` is true when the pass budget ran out with
@@ -669,6 +838,7 @@ export function refineToZeroOutliers(
   for (let i = 0; i < cEdges.length; i++) {
     cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
   }
+  const splitCfg = splitCfgFrom(opts, uToMm, tToMm, sampler);
   const dense = denseBary(8);
   const history: RefinePassStat[] = [];
   let capped = false;
@@ -754,56 +924,11 @@ export function refineToZeroOutliers(
       if (dev > worst) worst = dev;
       if (dev > opts.tolMm) {
         outliers++;
-        // Edge-mode RED 1→4: seam-consistent corner u's, then all three
-        // edge midpoints (in-chart; crest midpoints stay on the crest).
-        let ua = uv[2 * a];
-        let ub = uv[2 * b];
-        let uc = uv[2 * c];
-        const ta = uv[2 * a + 1];
-        const tb = uv[2 * b + 1];
-        const tc = uv[2 * c + 1];
-        while (ub - ua > 0.5) ub -= 1;
-        while (ua - ub > 0.5) ub += 1;
-        while (uc - ua > 0.5) uc -= 1;
-        while (ua - uc > 0.5) uc += 1;
-        const edges: Array<[number, number, number, number, number, number]> = [
-          [a, b, ua, ta, ub, tb],
-          [b, c, ub, tb, uc, tc],
-          [c, a, uc, tc, ua, ta],
-        ];
-        for (const [va, vb, eua, eta, eub, etb] of edges) {
-          const ck = cKey(va, vb);
-          const ci = cMap.get(ck);
-          const mu = (eua + eub) / 2;
-          const mt = (eta + etb) / 2;
-          if (ci !== undefined) {
-            // Locked crest edge: cdt2d cannot split it through a collinear
-            // point. SUBDIVIDE THE CONSTRAINT at its STRAIGHT midpoint (never
-            // snapped — a snapped midpoint moves off the line and can cross a
-            // neighbour → cdt2d `upperIds` crash mid-refine; the complex is
-            // already on-ridge from morseComplex). Backstop only: the seed is
-            // already dense so this rarely fires.
-            const k = keyOf(mu, mt);
-            if (inserted.has(k)) continue;
-            inserted.add(k);
-            const mid = addPt(mu, mt);
-            if (mid !== va && mid !== vb) {
-              // Replace [va,vb] with [va,mid]; append [mid,vb].
-              cEdges[ci] = [va, mid];
-              cMap.delete(ck);
-              cMap.set(cKey(va, mid), ci);
-              const ni = cEdges.length;
-              cEdges.push([mid, vb]);
-              cMap.set(cKey(mid, vb), ni);
-            }
-          } else {
-            const k = keyOf(mu, mt);
-            if (!inserted.has(k)) {
-              inserted.add(k);
-              addPt(mu, mt);
-            }
-          }
-        }
+        // Edge-mode split: isotropic RED 1→4 (all 3 midpoints) OR anisotropic
+        // single-sag-edge bisection (splitMode 'aniso'). Shared with the parallel
+        // path (applyScoredPass) ⇒ byte-identical mesh. Constraint edges are
+        // subdivided in place; crest midpoints stay locked.
+        insertOutlierSplit(a, b, c, uv, splitCfg, cEdges, cMap, cKey, keyOf, addPt, inserted);
       }
     }
     const stat: RefinePassStat = {
@@ -905,6 +1030,7 @@ export async function refineToZeroOutliersParallel(
   for (let i = 0; i < cEdges.length; i++) {
     cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
   }
+  const splitCfg = splitCfgFrom(opts, uToMm, tToMm, sampler);
   const history: RefinePassStat[] = [];
   let capped = false;
   let pass = 0;
@@ -951,6 +1077,7 @@ export async function refineToZeroOutliersParallel(
       cKey,
       keyOf,
       addPt,
+      splitCfg,
     );
     const stat: RefinePassStat = {
       pass,
@@ -992,6 +1119,7 @@ function applyScoredPass(
   cKey: (a: number, b: number) => number,
   keyOf: (u: number, t: number) => number,
   addPt: (u: number, t: number) => number,
+  splitCfg: SplitCfg,
 ): { outliers: number; worst: number; inserted: number } {
   const nF = tris.length / 3;
   let outliers = 0;
@@ -1002,50 +1130,21 @@ function applyScoredPass(
     if (d > worst) worst = d;
     if (d <= tolMm) continue;
     outliers++;
-    const a = tris[3 * f];
-    const b = tris[3 * f + 1];
-    const c = tris[3 * f + 2];
-    let ua = uv[2 * a];
-    let ub = uv[2 * b];
-    let uc = uv[2 * c];
-    const ta = uv[2 * a + 1];
-    const tb = uv[2 * b + 1];
-    const tc = uv[2 * c + 1];
-    while (ub - ua > 0.5) ub -= 1;
-    while (ua - ub > 0.5) ub += 1;
-    while (uc - ua > 0.5) uc -= 1;
-    while (ua - uc > 0.5) uc += 1;
-    const edges: Array<[number, number, number, number, number, number]> = [
-      [a, b, ua, ta, ub, tb],
-      [b, c, ub, tb, uc, tc],
-      [c, a, uc, tc, ua, ta],
-    ];
-    for (const [va, vb, eua, eta, eub, etb] of edges) {
-      const ck = cKey(va, vb);
-      const ci = cMap.get(ck);
-      const mu = (eua + eub) / 2;
-      const mt = (eta + etb) / 2;
-      if (ci !== undefined) {
-        const k = keyOf(mu, mt);
-        if (inserted.has(k)) continue;
-        inserted.add(k);
-        const mid = addPt(mu, mt);
-        if (mid !== va && mid !== vb) {
-          cEdges[ci] = [va, mid];
-          cMap.delete(ck);
-          cMap.set(cKey(va, mid), ci);
-          const ni = cEdges.length;
-          cEdges.push([mid, vb]);
-          cMap.set(cKey(mid, vb), ni);
-        }
-      } else {
-        const k = keyOf(mu, mt);
-        if (!inserted.has(k)) {
-          inserted.add(k);
-          addPt(mu, mt);
-        }
-      }
-    }
+    // Shared isotropic/anisotropic split (byte-identical to the sync loop given
+    // identical facet iteration + dev[]).
+    insertOutlierSplit(
+      tris[3 * f],
+      tris[3 * f + 1],
+      tris[3 * f + 2],
+      uv,
+      splitCfg,
+      cEdges,
+      cMap,
+      cKey,
+      keyOf,
+      addPt,
+      inserted,
+    );
   }
   return { outliers, worst, inserted: inserted.size };
 }
