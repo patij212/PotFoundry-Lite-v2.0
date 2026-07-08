@@ -2881,7 +2881,14 @@ export const mount = async ({
       // Raycast accumulation-reset signature input (mirrors the buffer just synced above).
       if (raycastController) {
         const rawStyleParams = cfg.styleParams ?? current.styleParams;
-        lastStyleParamsF32 = Array.isArray(rawStyleParams) ? Float32Array.from(rawStyleParams as number[]) : null;
+        // Accept both plain arrays and typed arrays (ArrayBuffer.isView) so a
+        // typed-array style-params source still feeds the accumulation-reset
+        // signature, rather than silently dropping to null (which would under-reset
+        // accumulation on a params-only change and ghost the converged image).
+        lastStyleParamsF32 =
+          Array.isArray(rawStyleParams) || ArrayBuffer.isView(rawStyleParams)
+            ? Float32Array.from(rawStyleParams as ArrayLike<number>)
+            : null;
       }
 
       const computedMaxWithHeight = Math.max(safeHeight, safeRadiusTop, safeRadiusBottom);
