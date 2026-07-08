@@ -2518,3 +2518,51 @@ passes 0-2 and confirm the CLOSE with zero recomputation.
 **LEDGER:** registry E-2026-07-08-TANGLED-TARGETED; research/exchange/_tangled_targeted/HexagonalHive/{passes,final}.ndjson
 (gitignored — numbers inlined above); probe research/bridge/_pf_tangledTargeted.test.ts (PF_TT=<Style>, resumable).
 Commits: pre-reg c92cd4a, probe 8eb3a01, HexHive close [pending]. DEV-ONLY; no src/ edit.
+
+## V11s — TIER-C LITERAL-0 (raised 8-10M budget): the multi-bay Gothic gate does NOT reach literal whole-mesh 0 under ANY of 4 levers; the ~1150 residual is a GENUINE near-vertical rib-flank chord floor (dedupe-freeze DIAGNOSED but unfreezing it does NOT help) (2026-07-08)
+
+ROUND 8, follow-up to V11p / E-2026-07-08-TIERC-TOPOLOGY DECISION_ARTIFACT. NEW USER MANDATE: raise the full-pot
+budget to 8-10M (prefer ≤8M), demonstrate LITERAL whole-mesh 0 (dense 45-pt guard, every free facet), not extrapolate.
+
+**THE KEY RE-READ (before any run):** the round-7 `topogate_p1_pass.ndjson` passes 16-30 are a HARD PLATEAU —
+outliers pinned 1151-1157, worst FROZEN 0.4689 for 15 passes, and although `inserted`≈1230/pass, `nTris` grows only
+~10-30/pass ⇒ **~99% of inserted midpoints are DEDUPE-REJECTED** (they collapse into occupied `DEDUPE_CELL_MM=0.004`
+cells → no-op). The refine loop SPINS against two hard floors: (i) the 0.004mm dedupe lattice, (ii) the locked
+constraint chains at `maxConstraintMm=0.15` (noBridgeRefine.ts:166-174 comment PREDICTS: "a long constraint edge
+floors every crest-adjacent facet at ~L²κ/8 (a 1mm chord on a rib ≈ 0.4mm — the measured plateau)"). ⇒ round-7's
+"needs budget >6M" was INCOMPLETE: the floor is CONSTRAINT-PITCH + DEDUPE, not budget.
+
+**MEASURED (pre-registered kill-criteria; probe `_topologyLiteral0.test.ts`, PF_TIERC_LITERAL0=1, per-pass ndjson):**
+1. **H1 EXTENDED (MAXPASS 120): REFUTED.** Re-ran p1 config BIT-IDENTICAL to round-7 (verified pass 1/5/9); the
+   asymptote is flat at ~1150 outliers / worst 0.469 / proj ~6.76M. Extended-run-alone never reaches 0.
+2. **2a hMinMm 0.05 (finer flank seed, mc=0.15 keeps needle killed): WASH** — same ~1150 plateau (pass 8: 1148,
+   worst 0.734) at ~6.72M. Residual NOT seed-density-limited.
+3. **2b maxConstraintMm 0.05 (denser rib constraint, the code-PREDICTED lever): REGRESSES → DROPPED.** The denser
+   chains re-form the V11h 1.0583 needle (picket chord 0.09 too coarse at the denser pitch): worst 0.469→1.0583,
+   outliers ~3-4k, proj 7.19M @pass 7, no convergence. Fidelity-regression kill clause fired.
+4. **2c dedupeCellMm 0.001 (4× finer refine lattice — the ONE floor 2a/2b don't touch): NO CONVERGENCE.** Confirmed
+   the freeze mechanism (finer lattice accepts inserts baseline rejected — pass 7 dTris 10154 vs 6711) BUT outliers
+   OSCILLATE 1200→1352→1569 (rising) at HIGHER proj (7.02→7.16M), worst BOUNCING UP to 0.903. Subdividing a
+   near-vertical rib-flank facet in (u,t) below 0.004mm produces NEW small facets that are themselves outliers —
+   the 3D chord-sag is intrinsic to the near-vertical relief, not the facet's (u,t) size.
+
+**MECHANISTIC FINDING:** the plateau IS a dedupe-floor freeze, but UNFREEZING it does not clear the residual ⇒ the
+~1150 residual is a GENUINE near-vertical rib-flank chord floor. No density/seed/constraint/lattice lever reduces its
+perpendicular-3D chord-sag below tol within ≤10M. This CONFIRMS + SHARPENS the round-7 "genuine domain cost" verdict
+with direct escalation-lever evidence.
+
+**VERDICT:** literal whole-mesh 0 for this gate is NOT achievable even under the raised 8-10M budget. Best-measured
+frontier UNCHANGED from round-7: **guardMax 0.469 / guardP99 0.00953 (<tol) / ~1150 outliers / projFullPot ~6.76M**
+(99th-percentile-CAD). Mechanism space now EXHAUSTED end-to-end: RED iso+aniso+M-square (V11k/m/n), seed
+adaptive+rib-aware+hMin (V11h/this), topology needle-forbid (V11p), refine-lattice dedupe (this). GeoStar patch +
+rebaseline20 NOT launched (gate not converged, per acceptance).
+
+**BANKED:** `dedupeCellMm` override on `RefineOptions` (flag-gated, default undefined ⇒ 0.004 = BYTE-IDENTICAL off;
+threaded into both refine-loop keyOf; fast tierC guard suite GREEN incl flagOff.byteIdentical + dirtyCache
+byte-identical trajectory). Kept as an instrument for any future gate where the dedupe floor (not near-vertical
+relief) is the true blocker.
+
+**LEDGER:** registry E-2026-07-08-TIERC-LITERAL0; probe `_topologyLiteral0.test.ts` (PF_TIERC_LITERAL0, PF_L0_DEDUPE
+/PF_L0_HMIN/PF_L0_MAXCONSTRAINT/PF_L0_MAXPASS, resumable per-pass ndjson). Data:
+research/exchange/_tierc_literal0/l0_*_pass.ndjson (gitignored — numbers inlined). Commits: pre-reg b832d69,
+dedupeCellMm instrument be8f51b, ledger [this].
