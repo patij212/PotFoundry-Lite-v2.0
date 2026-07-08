@@ -42,6 +42,7 @@ import {
   extractLadder,
   extractToeBand,
   flankIsoResidual3D,
+  taperedLevels,
   type FlankContour,
   type FlankDomain,
 } from './flankBand';
@@ -50,7 +51,7 @@ import type { BandContour } from './morseComplex';
 
 const RUN = process.env.PF_FLANKBAND === '1';
 const MODE = process.env.PF_FB ?? 'localize';
-const OUT = 'research/exchange/_tierc_flankband';
+const OUT = process.env.PF_FB_OUT ?? 'research/exchange/_tierc_flankband';
 const MAXPASS = process.env.PF_FB_MAXPASS ? +process.env.PF_FB_MAXPASS : 25;
 const PROJ = 42;
 
@@ -503,6 +504,77 @@ describe('Tier-C FLANK-BAND (round 9)', () => {
       // eslint-disable-next-line no-console
       console.log('[ladder VERDICT]', JSON.stringify(verdict, null, 2));
       writeFileSync(`${OUT}/ladder_verdict.json`, JSON.stringify(verdict, null, 2));
+    },
+    30 * 60 * 1000,
+  );
+
+  // STEP 2c: TAPERED rails — af-levels at equal-cumulative-STEEPNESS intervals
+  // (E-2026-07-08-TIERC-TAPERRAIL). The §V11v UNIFORM ladder residual sat in the
+  // widest inter-rail af-gap [0.08,0.18]; a steepness-tapered ladder concentrates
+  // the framing exactly where the flank is steepest. Writes the SAME rails-format
+  // toe_contours.json the gate consumes, so MODE=gate PF_FB_TAG=taper<N> runs it.
+  it.skipIf(!RUN || MODE !== 'taper')(
+    'STEP 2c: extract a STEEPNESS-TAPERED ladder of toe rails',
+    () => {
+      mkdirSync(OUT, { recursive: true });
+      const sampler = styleSampler(
+        'GothicArches',
+        {},
+        { H: 120, Rt: 50, Rb: 40 },
+      ) as GpuSurfaceSampler;
+      const t0 = Date.now();
+      const nRails = process.env.PF_FB_NRAILS ? +process.env.PF_FB_NRAILS : 4;
+      const afLo = process.env.PF_FB_AFLO ? +process.env.PF_FB_AFLO : 0.02;
+      const afHi = process.env.PF_FB_AFHI ? +process.env.PF_FB_AFHI : 0.45;
+      const levels = taperedLevels(sampler, FDOMAIN, nRails, afLo, afHi);
+      // eslint-disable-next-line no-console
+      console.log(`[taper LEVELS] nRails=${nRails} afLo=${afLo} afHi=${afHi} → ${JSON.stringify(levels)}`);
+      const { field, rails } = extractLadder(
+        sampler,
+        FDOMAIN,
+        levels,
+        { nu: 640, nt: 640, polishIters: 24 },
+        PICKET_MM,
+      );
+      const q = (a: number[], p: number): number => {
+        const s = [...a].sort((x, y) => x - y);
+        return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : 0;
+      };
+      const railStats = rails.map((r) => {
+        const disps: number[] = [];
+        for (const cont of r.contours)
+          for (const [u, t] of cont.pts) disps.push(flankIsoResidual3D(u, t, field, r.level, sampler).disp3D);
+        return {
+          level: r.level,
+          contours: r.contours.length,
+          verts: r.contours.reduce((s, c) => s + c.pts.length, 0),
+          dropped: r.dropped,
+          dispP90: +q(disps, 0.9).toFixed(5),
+          dispMax: +Math.max(0, ...disps).toFixed(5),
+        };
+      });
+      writeFileSync(
+        `${OUT}/toe_contours.json`,
+        JSON.stringify({
+          picketMm: PICKET_MM,
+          taper: { nRails, afLo, afHi, levels },
+          rails: rails.map((r) => ({ level: r.level, polys: r.contours.map((c) => c.pts) })),
+        }),
+      );
+      const verdict = {
+        mode: 'taper',
+        nRails,
+        afLo,
+        afHi,
+        levels,
+        picketMm: PICKET_MM,
+        railStats,
+        placementSub0p01: railStats.every((r) => r.dispP90 < 0.01 && r.dispMax < 0.02),
+        sec: +((Date.now() - t0) / 1000).toFixed(0),
+      };
+      // eslint-disable-next-line no-console
+      console.log('[taper VERDICT]', JSON.stringify(verdict, null, 2));
+      writeFileSync(`${OUT}/taper_verdict.json`, JSON.stringify(verdict, null, 2));
     },
     30 * 60 * 1000,
   );

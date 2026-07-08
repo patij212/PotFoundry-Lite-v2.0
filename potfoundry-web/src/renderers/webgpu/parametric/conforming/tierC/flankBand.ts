@@ -432,6 +432,115 @@ export function filterByDisp3D(
 }
 
 /**
+ * TAPERED rail levels (E-2026-07-08-TIERC-TAPERRAIL). Place `nRails` af-levels at
+ * equal-cumulative-STEEPNESS intervals instead of fixed af values: finer rails
+ * exactly where the flank is steepest, coarser where it eases. Steepness is |∇r|
+ * (radius gradient magnitude in mm PER mm of (u,t) footprint) — the driver of a
+ * facet's chord-sag: where |∇r| is high a fixed-(u,t)-size facet accrues more sag.
+ * We sweep af∈[afLo,afHi], invert af→u at a representative t-band (the residual
+ * concentrates near the arch mid-band t≈0.52), and integrate the cumulative
+ * |∇r|·d(mm-param) as (u,t) advances. Rails then sit at af_k where the cumulative
+ * steepness reaches k/(nRails+1) of its total — equal-|∇r| increments ⇒ denser
+ * af-rails on the steep shoulder. Under a UNIFORM ladder the §V11v residual sat in
+ * the widest inter-rail af-gap [0.08,0.18]; a taper concentrates the framing on the
+ * steep shoulder. Pure geometry — no mesh, no side effects.
+ *
+ * NB: steepness is |∇r| (radius rise per parameter footprint), NOT total 3D arc-
+ * length — the latter is dominated by the theta sweep (du/daf), which crowds rails
+ * at HIGH af regardless of where the radius actually turns.
+ *
+ * afLo/afHi bracket the flank band to rail (default the lower-flank residual band).
+ */
+export function taperedLevels(
+  sampler: SurfaceSampler,
+  domain: FlankDomain,
+  nRails: number,
+  afLo = 0.02,
+  afHi = 0.45,
+  nSample = 512,
+): number[] {
+  const field = buildAmplitudeField(sampler, domain);
+  // Representative t-band: the residual mid-band. Average steepness over a few t
+  // slices so a single quirky t doesn't dominate the taper.
+  const tSlices = [0.47, 0.5, 0.525, 0.55];
+  // For a given (af,t): invert ampFrac→u by bisection on u∈[uLo,uHi] (af is
+  // monotone in u along a single flank; the domain u-window is one flank side).
+  const uForAf = (af: number, t: number): number => {
+    let lo = domain.uLo;
+    let hi = domain.uHi;
+    const target = af;
+    // ampFrac is increasing from panel(uLo side) toward crest; ensure orientation.
+    const fLo = field.ampFrac(lo, t);
+    const fHi = field.ampFrac(hi, t);
+    const inc = fHi >= fLo;
+    for (let it = 0; it < 40; it++) {
+      const mid = 0.5 * (lo + hi);
+      const fm = field.ampFrac(mid, t);
+      if ((fm < target) === inc) lo = mid;
+      else hi = mid;
+    }
+    return 0.5 * (lo + hi);
+  };
+  // |∇r| in mm: dr/d(mm-u) and dr/d(mm-t) via central FD (step ~0.02mm in mm-space).
+  // uToMm/tToMm recovered from the domain span vs a mm probe (the flank is ~sub-mm
+  // in u; use a fixed small param step and divide by its mm length).
+  const rAt = (u: number, t: number): number => field.r(u, t);
+  // mm-per-param scale (probe at domain centre): convert the 0.02mm FD step to a
+  // param step so |∇r| is genuinely per-mm regardless of the u/t param scaling.
+  const uMid = 0.5 * (domain.uLo + domain.uHi);
+  const tMid = 0.5 * (domain.tLo + domain.tHi);
+  const [xo, yo, zo] = sampler.position(uMid, tMid);
+  const [xu1, yu1, zu1] = sampler.position(uMid + 1e-4, tMid);
+  const uMmPerParam = Math.hypot(xu1 - xo, yu1 - yo, zu1 - zo) / 1e-4 || 1;
+  const [xt1, yt1, zt1] = sampler.position(uMid, tMid + 1e-4);
+  const tMmPerParam = Math.hypot(xt1 - xo, yt1 - yo, zt1 - zo) / 1e-4 || 1;
+  const gradMag = (u: number, t: number): number => {
+    const hUparam = 0.02 / uMmPerParam;
+    const hTparam = 0.02 / tMmPerParam;
+    const dru = (rAt(u + hUparam, t) - rAt(u - hUparam, t)) / (2 * 0.02);
+    const drt = (rAt(u, t + hTparam) - rAt(u, t - hTparam)) / (2 * 0.02);
+    return Math.hypot(dru, drt);
+  };
+  // Build cumulative steepness S(af) = ∫ |∇r|(af') · daf' over [afLo,afHi], averaged
+  // over the t-slices. NB: weight against daf (NOT the mm footprint) — af is DEFINED
+  // as (r−panel)/(crest−panel) so r is linear in af and ∫|dr| would be trivially
+  // uniform; ∫|∇r|·daf instead crowds rails where the RADIUS-PER-PARAMETER gradient
+  // is high (the steep shoulder = small parameter footprint per daf = high chord-sag
+  // for a fixed-(u,t)-size facet).
+  const afGrid = new Float64Array(nSample + 1);
+  const Scum = new Float64Array(nSample + 1);
+  const dAf = (afHi - afLo) / nSample;
+  let gPrev = 0;
+  for (let i = 0; i <= nSample; i++) {
+    const af = afLo + (afHi - afLo) * (i / nSample);
+    afGrid[i] = af;
+    let g = 0;
+    for (const t of tSlices) g += gradMag(uForAf(af, t), t);
+    g /= tSlices.length;
+    Scum[i] = i === 0 ? 0 : Scum[i - 1] + 0.5 * (g + gPrev) * dAf;
+    gPrev = g;
+  }
+  const Stot = Scum[nSample];
+  if (!(Stot > 1e-9)) {
+    // Degenerate (flat) flank ⇒ fall back to uniform af spacing.
+    return Array.from({ length: nRails }, (_, k) => afLo + (afHi - afLo) * ((k + 1) / (nRails + 1)));
+  }
+  // Invert S(af) at equal S-fractions.
+  const levels: number[] = [];
+  for (let k = 1; k <= nRails; k++) {
+    const Starget = (Stot * k) / (nRails + 1);
+    // find grid interval containing Starget
+    let idx = 0;
+    while (idx < nSample && Scum[idx + 1] < Starget) idx++;
+    const s0 = Scum[idx];
+    const s1 = Scum[idx + 1];
+    const fr = s1 - s0 > 1e-12 ? (Starget - s0) / (s1 - s0) : 0;
+    levels.push(+(afGrid[idx] + (afGrid[idx + 1] - afGrid[idx]) * fr).toFixed(5));
+  }
+  return levels;
+}
+
+/**
  * Extract a LADDER of toe rails at several amplitude-fraction levels. After a
  * doubled band frames the mid-flank, the residual DESCENDS to the panel-meets-
  * wall toe (measured: the worst-200 sit at ampFrac ~0.01-0.12, below a 0.12
