@@ -274,15 +274,20 @@ describe('E-2026-07-08-TANGLED-TARGETED — LOCAL injected-Steiner refinement to
 
   it.skipIf(process.env.PF_TT !== 'Crystalline')('Crystalline', () => {
     // V11r: base field intrinsically ~3.4M tris; finest under-6M point (b0.008/s224, 3.22M proj) = 33,535 Newton.
-    // Start from that base config, inject clusters. Larger residual ⇒ may need all 5 passes / carry.
-    runTargeted('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 5, 4_500_000);
+    // Start from that base config, inject clusters. Larger residual ⇒ may need all 5 passes / carry. Newton DOWNSIZED
+    // to 500/500 (the V11r Voronoi precedent — the injection is driven by the CHEAP radial flag on ALL flagged facets;
+    // Newton is ONLY the verdict, and the stratified fraction estimate stays sound while keeping each pass a tractable
+    // checkpoint under the kill-cycle — a 1500/1500 base Newton on 33k residual is a ~2.5hr uninterruptible unit).
+    // Once the residual shrinks below 500 the count becomes EXACT automatically (the CLOSE basis).
+    runTargeted('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 5, 4_500_000, 500, 500);
     expect(true).toBe(true);
   }, 6 * HRS);
 
   it.skipIf(process.env.PF_TT !== 'Voronoi')('Voronoi', () => {
     // V11r: largest floor; b0.008/s224 @3.92M = 65,590 Newton. Nearest-cell radiusFn is expensive (~13min/level).
     // Start from that base config; the residual is large so this likely carries — trajectory + classification.
-    runTargeted('Voronoi' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 5, 4_500_000);
+    // Newton 500/500 (as Crystalline — cheap-radial-driven injection, Newton = verdict only, tractable checkpoints).
+    runTargeted('Voronoi' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 5, 4_500_000, 500, 500);
     expect(true).toBe(true);
   }, 6 * HRS);
 });
