@@ -30,7 +30,6 @@ import type { SurfaceSampler } from '../SurfaceSampler';
 import type { ProtectedComplex } from './morseComplex';
 import {
   BARY_STOP,
-  DEFAULT_RULER,
   denseBary,
   facetInteriorHonest,
   liftChartMesh,
@@ -77,6 +76,27 @@ export interface RefineOptions {
   adaptiveMaxLevel?: number;
   /** Adaptive-seed: also split in u (default true). False ⇒ t-only rows. */
   adaptiveUSplit?: boolean;
+  /**
+   * RIB-AWARE seed (LEVER, E-2026-07-08-TIERC-RIBAWARE-SEED, opt-in). The plain
+   * adaptive sag field (LEVER A) fires ~UNIFORMLY across all t-bands because RIB
+   * curvature dominates the local chord-sag everywhere — yet the ribs are ALREADY
+   * carried by the locked protected-complex constraint chains + the refine loop,
+   * so seeding them again wastes tris (measured 8.3M full-pot, over 6M). RIB-AWARE
+   * modes EXCLUDE constraint-chain-carried curvature from the sag field so seeding
+   * densifies ONLY the smooth residual (the dead-zone arch arc):
+   *  - 'mask' (design a): a cell only sag-splits if its center is FURTHER than
+   *    `ribBandMm` (3D mm) from ANY constraint-chain point. Rib flanks lie within
+   *    the band of a locked chain ⇒ ignored; the smooth arch bump is far from any
+   *    chain ⇒ still seeds. Cheapest; a spatial hash over chain points.
+   *  - 'thetaAvg' (design c): the t-axis sag is computed on the θ-AVERAGED profile
+   *    r̄(t) (mean r over the domain u-range at each t) instead of max-over-u. r̄(t)
+   *    captures the horizontal arch arc EXACTLY and is immune to rib content (ribs
+   *    average out along θ). The u-axis sag is left off (u-ridges = locked edges).
+   * Default undefined ⇒ plain LEVER-A behaviour (byte-identical to prior).
+   */
+  ribAwareMode?: 'mask' | 'thetaAvg';
+  /** Rib-aware 'mask' distance band (3D mm) around any constraint chain. Default 1.0. */
+  ribBandMm?: number;
   ruler: RulerOptions;
   /**
    * Cross-pass DIRTY-FACET cache (default off; opt-in perf lever). A facet
@@ -134,6 +154,8 @@ function adaptiveCfg(opts: RefineOptions): AdaptiveSeedCfg | undefined {
     hMinMm: opts.hMinMm ?? 0.09,
     maxLevel: opts.adaptiveMaxLevel ?? 5,
     uSplit: opts.adaptiveUSplit ?? true,
+    ribAwareMode: opts.ribAwareMode,
+    ribBandMm: opts.ribBandMm ?? 1.0,
   };
 }
 
@@ -155,6 +177,15 @@ function adaptiveCfg(opts: RefineOptions): AdaptiveSeedCfg | undefined {
  * (non-uniform) cells. This packs points into the 2D bump and NOWHERE else, so
  * the tri count stays near the uniform seed off the bump. `maxLevel` bounds it.
  */
+export interface RibAwareArgs {
+  /** 'mask' (chain-distance gate) or 'thetaAvg' (θ-averaged t-sag). */
+  mode: 'mask' | 'thetaAvg';
+  /** 'mask': flat 3D mm chain points [x0,y0,z0, x1,y1,z1, ...] to keep away from. */
+  chainPtsMm?: number[];
+  /** 'mask': distance band (3D mm). A cell only sag-splits if its center is >band from every chain point. */
+  bandMm?: number;
+}
+
 export function adaptiveSeedPoints(
   sampler: SurfaceSampler,
   domain: ChartDomain,
@@ -165,6 +196,7 @@ export function adaptiveSeedPoints(
   hMinMm: number,
   maxLevel = 5,
   uSplit = true,
+  ribAware?: RibAwareArgs,
 ): number[] {
   const rAt = (u: number, t: number): number => {
     const [x, y] = sampler.position(((u % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
@@ -199,6 +231,93 @@ export function adaptiveSeedPoints(
       (A[2] + B[2]) / 2 - Mm[2],
     );
   };
+  // RIB-AWARE (design c) θ-AVERAGED profile r̄(t): mean radius over the domain
+  // u-range at each t. Ribs (periodic in u) average out ⇒ r̄(t) is the smooth
+  // horizontal arch arc alone. Cached per t (quantized) since the recursion
+  // queries the same t-levels repeatedly. The t-edge sag on the θ-averaged
+  // profile is computed by lifting r̄ back onto a (u=domain-mid, r̄) point so the
+  // sag is in the same 3D-mm scale as the plain path.
+  const AVG_N = 24;
+  const uAvgLo = domain.uLo;
+  const uAvgHi = domain.uHi;
+  const rBarCache = new Map<number, number>();
+  const rBar = (t: number): number => {
+    const q = Math.round(t / 1e-5);
+    const hit = rBarCache.get(q);
+    if (hit !== undefined) return hit;
+    let s = 0;
+    for (let i = 0; i < AVG_N; i++) {
+      const u = uAvgLo + ((uAvgHi - uAvgLo) * (i + 0.5)) / AVG_N;
+      s += rAt(u, t);
+    }
+    const v = s / AVG_N;
+    rBarCache.set(q, v);
+    return v;
+  };
+  const zAt = (t: number): number => {
+    const [, , z] = sampler.position(((domain.uLo % 1) + 1) % 1, Math.min(1, Math.max(0, t)));
+    return z;
+  };
+  // t-edge sag of the θ-averaged profile: 1D chord error of the midpoint of a
+  // straight (r̄,z) segment vs r̄ at the parametric midpoint (radial component
+  // dominates; z is monotone in t so the (Δr̄,Δz) chord midpoint error ≈ the
+  // radial second difference — the exact horizontal-arch sag, rib-immune).
+  const edgeSagTBar = (t0: number, t1: number): number => {
+    const rA = rBar(t0);
+    const rB = rBar(t1);
+    const rM = rBar((t0 + t1) / 2);
+    const zA = zAt(t0);
+    const zB = zAt(t1);
+    const zM = zAt((t0 + t1) / 2);
+    return Math.hypot((rA + rB) / 2 - rM, (zA + zB) / 2 - zM);
+  };
+  // RIB-AWARE (design a) chain-distance MASK. Spatial hash of the constraint
+  // chain points (3D mm) on a bandMm grid; a cell center within bandMm of any
+  // chain point is rib-adjacent ⇒ its sag is IGNORED (the ribs are already
+  // carried by the locked chains + the refine loop). The smooth dead-zone bump
+  // is >bandMm from every chain ⇒ still seeds.
+  const maskMode = ribAware?.mode === 'mask';
+  const bandMm = ribAware?.bandMm ?? 1.0;
+  const chainHash = new Map<string, number[]>();
+  if (maskMode && ribAware?.chainPtsMm) {
+    const cp = ribAware.chainPtsMm;
+    for (let i = 0; i < cp.length / 3; i++) {
+      const gx = Math.floor(cp[3 * i] / bandMm);
+      const gy = Math.floor(cp[3 * i + 1] / bandMm);
+      const gz = Math.floor(cp[3 * i + 2] / bandMm);
+      const k = `${gx}_${gy}_${gz}`;
+      let arr = chainHash.get(k);
+      if (arr === undefined) {
+        arr = [];
+        chainHash.set(k, arr);
+      }
+      arr.push(cp[3 * i], cp[3 * i + 1], cp[3 * i + 2]);
+    }
+  }
+  const nearChain = (u: number, t: number): boolean => {
+    if (!maskMode) return false;
+    const [x, y, z] = P(u, t);
+    const gx = Math.floor(x / bandMm);
+    const gy = Math.floor(y / bandMm);
+    const gz = Math.floor(z / bandMm);
+    const b2 = bandMm * bandMm;
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        for (let dz = -1; dz <= 1; dz++) {
+          const arr = chainHash.get(`${gx + dx}_${gy + dy}_${gz + dz}`);
+          if (!arr) continue;
+          for (let i = 0; i < arr.length / 3; i++) {
+            const ddx = arr[3 * i] - x;
+            const ddy = arr[3 * i + 1] - y;
+            const ddz = arr[3 * i + 2] - z;
+            if (ddx * ddx + ddy * ddy + ddz * ddz < b2) return true;
+          }
+        }
+      }
+    }
+    return false;
+  };
+  const thetaAvgMode = ribAware?.mode === 'thetaAvg';
   // The uniform cell size in fractions.
   const nu0 = Math.max(8, Math.round(((domain.uHi - domain.uLo) * uToMm) / bgArcMm));
   const nt0 = Math.max(8, Math.round(((domain.tHi - domain.tLo) * tToMm) / bgArcMm));
@@ -237,8 +356,24 @@ export function adaptiveSeedPoints(
     const tMid = (t0 + t1) / 2;
     const uMid = (u0 + u1) / 2;
     // Worst chord sag across the cell in each axis (check both t-levels / u-levels).
-    const sagU = Math.max(edgeSagU(u0, u1, t0), edgeSagU(u0, u1, t1), edgeSagU(u0, u1, tMid));
-    const sagT = Math.max(edgeSagT(u0, t0, t1), edgeSagT(u1, t0, t1), edgeSagT(uMid, t0, t1));
+    // RIB-AWARE modes replace / gate the sag so ONLY the smooth residual splits:
+    //  - thetaAvg: t-sag from the θ-averaged profile (rib-immune); u-sag off
+    //    (u-ridges are locked-edge-carried, not a bg-grid concern here).
+    //  - mask: the plain sag, but ZEROED when the cell center is rib-adjacent
+    //    (within bandMm of a locked constraint chain) ⇒ only off-rib cells split.
+    let sagU: number;
+    let sagT: number;
+    if (thetaAvgMode) {
+      sagU = 0;
+      sagT = edgeSagTBar(t0, t1);
+    } else {
+      sagU = Math.max(edgeSagU(u0, u1, t0), edgeSagU(u0, u1, t1), edgeSagU(u0, u1, tMid));
+      sagT = Math.max(edgeSagT(u0, t0, t1), edgeSagT(u1, t0, t1), edgeSagT(uMid, t0, t1));
+      if (maskMode && nearChain(uMid, tMid)) {
+        sagU = 0;
+        sagT = 0;
+      }
+    }
     const canU = u1 - u0 > 2 * duMin;
     const canT = t1 - t0 > 2 * dtMin;
     // u-split is OPTIONAL (default on). Off ⇒ only t-rows densify: the u-ridges
@@ -278,6 +413,10 @@ export interface AdaptiveSeedCfg {
   hMinMm: number;
   maxLevel: number;
   uSplit: boolean;
+  /** RIB-AWARE mode (undefined ⇒ plain LEVER-A sag field). */
+  ribAwareMode?: 'mask' | 'thetaAvg';
+  /** 'mask' distance band (3D mm) around any constraint chain. */
+  ribBandMm?: number;
 }
 
 export function seedFromComplex(
@@ -388,6 +527,30 @@ export function seedFromComplex(
   if (adaptive && sampler) {
     // LEVER A: 2D curvature-adaptive background points (opt-in). Packs points
     // into the smooth-arc bump the κ-detector misses, coarse elsewhere.
+    // RIB-AWARE (opt-in): the 'mask' mode needs the constraint chain points as
+    // 3D-mm surface positions to keep the seed away from ribs. Lift each complex
+    // vertex (flat 2D mm = (u·uToMm, t·tToMm)) back to chart (u,t) then to 3D.
+    let ribAware: RibAwareArgs | undefined;
+    if (adaptive.ribAwareMode === 'thetaAvg') {
+      ribAware = { mode: 'thetaAvg' };
+    } else if (adaptive.ribAwareMode === 'mask') {
+      const chainPtsMm: number[] = [];
+      const nCV = complex.vertices.length / 2;
+      for (let i = 0; i < nCV; i++) {
+        const cu = complex.vertices[2 * i] / uToMm;
+        const ct = complex.vertices[2 * i + 1] / tToMm;
+        if (
+          cu < domain.uLo - 0.02 ||
+          cu > domain.uHi + 0.02 ||
+          ct < domain.tLo - 0.02 ||
+          ct > domain.tHi + 0.02
+        )
+          continue;
+        const [x, y, z] = sampler.position(((cu % 1) + 1) % 1, Math.min(1, Math.max(0, ct)));
+        chainPtsMm.push(x, y, z);
+      }
+      ribAware = { mode: 'mask', chainPtsMm, bandMm: adaptive.ribBandMm ?? 1.0 };
+    }
     const pts = adaptiveSeedPoints(
       sampler,
       domain,
@@ -398,6 +561,7 @@ export function seedFromComplex(
       adaptive.hMinMm,
       adaptive.maxLevel,
       adaptive.uSplit,
+      ribAware,
     );
     for (let i = 0; i < pts.length / 2; i++) {
       const u = pts[2 * i];
