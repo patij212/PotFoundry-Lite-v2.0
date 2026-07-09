@@ -15,6 +15,7 @@ import {
   decimateContours, contoursToConstraints, isoResidual3D, type Contour, type FoldProbe,
 } from './_voronoiFieldLib';
 import { radiusFn, TANGLED_BASE, buildTangled, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
+import { planarizeMM } from './_pf_planarizeMM';
 import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
@@ -240,8 +241,19 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     else if (variant === 'doubled') contours = [...asC(raw.crest), ...asC(raw.flat)];
     else throw new Error('variant must be doubled|crest|flat');
     const dec = decimateContours(contours, stepMm, rA, DIMS.H);
-    const { injectedPoints, constraintEdges } = contoursToConstraints(dec);
+    const rawC = contoursToConstraints(dec);
+    // PLANARIZE the constraint set (the Voronoi wall network CROSSES itself densely — 185k crossings raw; un-
+    // planarized crossing constraints defeat CDT recovery → giant bridging facets = the 47mm off-wall catastrophe,
+    // the §V11z CelticKnot / project_cdt_planarization lesson). Planarize in mm-space (scale u→arc, t→height) so the
+    // weld/crossing tolerances are metric; split every crossing into a T-junction; unscale back to (u,t).
+    const Ucirc = 2 * Math.PI * Math.max(DIMS.Rb, DIMS.Rt), Ht = DIMS.H;
+    const mm: number[] = []; for (let i = 0; i < rawC.injectedPoints.length / 2; i++) { mm.push(rawC.injectedPoints[2 * i] * Ucirc, rawC.injectedPoints[2 * i + 1] * Ht); }
+    const eArr: Array<[number, number]> = []; for (let i = 0; i < rawC.constraintEdges.length / 2; i++) eArr.push([rawC.constraintEdges[2 * i], rawC.constraintEdges[2 * i + 1]]);
+    const pl = planarizeMM(mm, eArr, 12);
+    const injectedPoints: number[] = []; for (let i = 0; i < pl.pts.length / 2; i++) { let u = pl.pts[2 * i] / Ucirc; u -= Math.floor(u); injectedPoints.push(u, Math.min(1, Math.max(0, pl.pts[2 * i + 1] / Ht))); }
+    const constraintEdges: number[] = []; for (const [a, b] of pl.edges) constraintEdges.push(a, b);
     const nConstraintVerts = injectedPoints.length / 2, nConstraintEdges = constraintEdges.length / 2;
+    const residualCrossings = pl.residual;
 
     const t0 = Date.now();
     const mesh = buildInhouseMetricMesh(rA, DIMS.H, {
@@ -266,7 +278,7 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     const sound = wholeMeshGuardRadialBound(rA, DIMS.H, ut, idx as unknown as Uint32Array, 0.01);
     const rec = {
       stage: 'build', variant, tag, stepMm, chordTolMm, maxPoints, ms, tris, points: mesh.points, hitBudget: mesh.hitBudget,
-      projFullPot: tris, nConstraintVerts, nConstraintEdges, recovery: mesh.constraint,
+      projFullPot: tris, nConstraintVerts, nConstraintEdges, residualCrossings, recovery: mesh.constraint,
       nonManRaw: nmRaw, nonManIdx: nmIdx, zeroArea: sound.zeroArea,
       soundRadial: { outliers: sound.outliers, max: sound.maxMm, p99: sound.p99 },
     };
@@ -369,7 +381,14 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     const asC = (arr: number[][][]): Contour[] => arr.map((pts) => ({ pts: pts as [number, number][] }));
     const pair = [...asC(raw.crest), ...asC(raw.flat)];
     const dec = decimateContours(pair, srcMeta.stepMm, rA, DIMS.H);
-    const { injectedPoints, constraintEdges } = contoursToConstraints(dec);
+    const rawC = contoursToConstraints(dec);
+    // planarize (same as the build stage — crossing constraints defeat CDT recovery)
+    const Ucirc = 2 * Math.PI * Math.max(DIMS.Rb, DIMS.Rt), Ht = DIMS.H;
+    const mmK: number[] = []; for (let i = 0; i < rawC.injectedPoints.length / 2; i++) { mmK.push(rawC.injectedPoints[2 * i] * Ucirc, rawC.injectedPoints[2 * i + 1] * Ht); }
+    const eK: Array<[number, number]> = []; for (let i = 0; i < rawC.constraintEdges.length / 2; i++) eK.push([rawC.constraintEdges[2 * i], rawC.constraintEdges[2 * i + 1]]);
+    const plK = planarizeMM(mmK, eK, 12);
+    const injectedPoints: number[] = []; for (let i = 0; i < plK.pts.length / 2; i++) { let u = plK.pts[2 * i] / Ucirc; u -= Math.floor(u); injectedPoints.push(u, Math.min(1, Math.max(0, plK.pts[2 * i + 1] / Ht))); }
+    const constraintEdges: number[] = []; for (const [a, b] of plK.edges) constraintEdges.push(a, b);
     const nContourVerts = injectedPoints.length / 2, nContourEdges = constraintEdges.length / 2;
     // knees from the prefilter (worst-sag 3D pts), Newton-recovered
     const pre = JSON.parse(readFileSync(join(DIR, `prefilter_${src}.json`), 'utf8')) as Array<{ wbnd: number; wp: [number, number, number]; uc: number; tc: number }>;
