@@ -5475,3 +5475,93 @@ MEASUREMENT TRAPS (now in potfoundry-web/CLAUDE.md gotchas — probes MUST respe
 - Full-canvas no-skip truth marches (~1e9 field evals/draw) trip the Windows GPU watchdog (TDR) → flaky frames,
   browser kills, degraded GPU. Use the banded march at ultra settings (floor 0.05) as truth.
 - isReady(styleId) never goes true for unselected styles — select-then-wait.
+
+---
+
+## 2026-07-09 - Codex - Claude Fable 5 export-fidelity audit prompt
+
+Summary:
+- Prepared a high-pressure prompt for Claude Fable 5 to review PotFoundry's research/export-pipeline evidence for whether literal 0.01mm precision is achievable across all styles and generated shapes.
+- Framed the prompt around measurement validity, style/shape coverage, production-vs-lab status, blockers, performance, and a clean path to tolerance.
+- Grounded the prompt in current frontier docs, all-20 sweep evidence, fidelity metrics, experiment registry results, and recent research findings rather than only distilled March context.
+
+Decisions:
+- Forced the target definition to be explicit: RMS, p99, max/outlier count, radial chord, perpendicular true-3D, feature-line drift, and export-solid watertightness are not interchangeable.
+- Required Claude to classify styles by mechanism: smooth, crease/near-C0, count-unstable cusp, step/cliff, and over-under/multi-valued weave/braid.
+- Required separation between lab-only outer-wall success, full-pot printable-solid requirements, and production-shipped pipeline status.
+
+Validation:
+- Reviewed `docs/AGENT_CONTEXT_DISTILLED.md`, `TODO.md`, `ROADMAP.md`, `archive/plans/INDEX.md`, recent `agents_journal.md`, `potfoundry-web/research/FRONTIER-THESIS.md`, `FRONTIER-KNOWLEDGE.md`, `EXPERIMENT-REGISTRY.md`, `docs/superpowers/specs/2026-06-29-inhouse-kernel-delivers-targets.md`, `2026-06-30-all20-sweep.md`, all20-hires JSON, and fidelity metric tests/source.
+- Used GitNexus for orientation; its PotFoundry index reported 72 commits behind HEAD, so live files were treated as source of truth.
+- No typecheck/lint/tests run; no product code changed.
+
+Risks:
+- This is a prompt-writing deliverable, not the audit itself.
+- The frontier registry is very large and fast-moving; Claude must inspect exact current rows/files before making a final claim.
+- Some recent research says literal 0.01 is closed for several styles but excludes or frontiers others, so the prompt intentionally discourages a single blanket yes/no.
+
+Next agent:
+- If the audit is run, insist on a source-cited matrix by style and shape class, with measurement ruler named for every claim.
+- Watch for false equivalence between "CAD-grade faces," "p99 <= 0.01," "literal zero outliers," and "full printable solid exported from production UI."
+
+---
+
+## 2026-07-09 - Claude Fable 5 - Export-fidelity audit + E-2026-07-09-PROD-ARTIFACT-TRUTH (first artifact-attached numbers)
+
+Summary:
+- Ran the commissioned audit (4 parallel investigations: pipeline map / research record / ruler trust / math representation), delivered the verdict, then executed the highest-leverage missing measurement it exposed: NO gate had ever scored what a real user's default export produces. Pre-registered E-2026-07-09-PROD-ARTIFACT-TRUTH (registry, commit 010fa593), built a real-WebGPU capture harness (e2e/_prod_truth_capture.mjs, window.__pfFidelity, production 'high'+CAD-floor path) + honest-ruler probe (research/bridge/_prod_truth.test.ts: non-vacuous watertight, vertexOnSurf gate, every-facet forward ruler, Newton worst-point, and the program's FIRST surface->mesh coverage ruler), commits 89f61b16/0192a6f2.
+- Pilot (5 styles spanning verdict classes) measured: HarmonicRipple = PRODUCTION LITERAL-0 PASS (two-sided <=0.0055mm on the real artifact). SpiralRidges = PRODUCTION-REGRESSION (3,145 facets over tol, Newton-confirmed 0.0239; lab Tier-1 was 0.0038). GyroidManifold = PRODUCTION-REGRESSION (coverage witness 0.0987mm ~10x tol at t~0.05; production emits 1.89M tris where the lab close needed 6.61M; forward-ruler worst 0.367 collapsed to 0.0097 by Newton = 38x grid-trap inflation measured on a production artifact). Voronoi = TRUTH-BRIDGE FAILURE (vertexOnSurf p99 0.065mm — GPU-f32 artifact vs CPU-f64 truth diverge at hash cell boundaries; pre-registered instrument gate fired; 0.01 certification vs f64 truth is ill-posed for hash styles). DragonScales capture ok (18.5min/generate, 8.73M tris ~ 437MB STL); its forward-ruler scoring was STOPPED at 130 CPU-min (intractable on the riser class — the honest DS instrument is the §V11g tread-conforming composite ruler; bins persist for that follow-up arm).
+
+Decisions:
+- Stride fallbacks (Gyroid 8, Voronoi/DS 4) labeled in-row per the REBASELINE20 precedent — stride-1 on Gyroid projected 4.5h+ vs the 90min ceiling.
+- Committed instruments BEFORE measuring; explicit staging only (concurrent session owns src/ui/v3 + useParametricExport; detect_changes confirmed my diff is dev-only).
+- Journal entry left uncommitted with the tree (shared file carries the concurrent session's entry).
+
+Validation: typecheck clean; eslint clean on new files (e2e .mjs outside the lint gate, same as raycast harnesses); probe self-gates (non-vacuous crack control, locator==brute <=1e-9 every style).
+
+Risks / gotchas banked:
+- auditNonManRaw Map cap hit AGAIN (SpiralRidges 5.69M-tri full pot) — nonManRawBig now has a 4TH in-tree copy (_prod_truth); promote to labkit (chip spawned).
+- Windows: TaskStop kills the shell pipeline, NOT the vitest fork child — tree-kill by PID (an orphaned stride-1 scorer burned ~68min CPU).
+- grep without --line-buffered hides live progress from piped vitest output — watch the ndjson file, not the pipe.
+- PRODUCT: default exports cost 4-19 MINUTES / 4-8.7M tris (silent CAD floor vs profile doc's "~1M, ~30s"); v3 silent-failure+quota-burn bug and cosmetic Fidelity selector documented in the audit (owned by the concurrent UI session's files — not touched here).
+
+Next agent:
+- Read the E-2026-07-09-PROD-ARTIFACT-TRUTH registry row for the ranked next steps: (1) Newton-basis production re-score (Gyroid-class tails), (2) branch-coherent truth for hash styles — BLOCKS any 0.01 claim on Voronoi/CelticKnot, (3) wire the analytic curvature floor into the production conforming path (SpiralRidges/Gyroid regressions are its measured justification), (4) extend to all 20 styles (~8-10h batch), (5) per-export certification loop (GPU radial-prefilter + Newton) feeding the Certificate.
+- The capture harness + probe are reusable as-is: `node e2e/_prod_truth_capture.mjs <Style...>` (dev server up) then `PF_PROD_TRUTH=1 PF_PT_STYLES=<Style> npx vitest run --config vitest.prod_truth.config.ts`.
+
+ADDENDUM (same day, perf mandate): E-2026-07-09-FAST-HONEST-RULER (registry) shipped a sound dense-radial pre-screen
++ facet sharding for the scoring probe — SpiralRidges equivalence EXACT (3,145 outliers / max 0.0358 reproduced,
+99.7% green-proven); SR speedup gate failed-as-written (fixed stages dominate on cheap-rA styles; reported verbatim);
+Gyroid stride-1 sharded x6 landed: LITERAL 105,107 outliers, max 0.3817 -> Newton-confirmed worst 0.0590 (6.5x
+grid-trap inflation, LITERAL basis). The stride-8 scaled estimate (~104,696) was 0.4% off the literal count -- the
+extrapolation method is confirmed sound; prescreen+shard graduates to the standing method for tangled-style
+whole-mesh verdicts (a "4.5h+ impossible" run became bounded+parallel). Gyroid production regression is now a
+resolved literal number, not a bounded range. E-2026-07-09-EXPORT-PERF (registry, commit 09216e5b) measured the
+production validation stage on real artifacts (topologyMetric 27.3s at 5.25M tris; CRASH at 8.73M — Map cap; DS has
+>16.7M unique post-weld edges) and shipped byte-identical numeric accounting (27.3->5.2s, crash class gone; 67/67
+semantics tests). PRODUCT FINDING: DS default artifact has 409 slivers => valid=false => hook throws => DS default
+export is BLOCKED in production today, hidden by the v3 silent-failure bug (chips spawned: gate-vs-warn decision +
+in-browser stage profile). f64-on-GPU question answered in-session: WGSL has no f64; emulation ~10-100x and does not
+remove branch flips; the aim = CPU-f64 final-vertex evaluation for exports (truth-by-construction) + integer-exact
+hashes (style-versioned) + f32-emulated truth as the measurement stopgap.
+
+---
+
+## 2026-07-09 - Claude Fable 5 - labkit promotion: nonManRawBig canonical (4 copies retired, kernel-lib raw audit un-capped)
+
+Summary:
+- Executed the flagged follow-up chip (PROD-ARTIFACT-TRUTH session): the large-mesh-safe RAW-index non-manifold audit now lives ONCE in research/bridge/labkit.ts — `nonManRawBigStats(idx)` ({nonMan, edges, boundary}) + `nonManRawBig(idx)` (plain count, the shape/name the registry rows cite), exported next to auditNonManByIndex.
+- Canonical implementation = sorted-key run-length scan (no Map ⇒ no ~16.7M-entry cap): Float64 lo*2^27+hi fast path (exact for indices < 2^26) with an AUTOMATIC BigUint64 lo<<32|hi fallback for larger indices (exact for all u32 — the §V11x DS-FINAL recipe). Strictly ≥ every copy it replaces: no silent key aliasing anywhere.
+- Retired all four in-tree copies: _gyroid_literal0 / _voronoi_embed / _prod_truth (identical f64 copies; import-swap only, zero call-site churn) and _pf_dsconform (BigUint64 stats variant → nonManRawBigStats; scorecard fields rawNonMan/boundaryEdges/auditEdges unchanged).
+- _pf_tangledKernelLib.auditNonManRaw now DELEGATES to labkit's nonManRawBig + @deprecated JSDoc (no no-deprecated eslint rule ⇒ zero warnings for the existing importers). Same verdict wherever the old Map body was correct; no more "Map maximum size exceeded" ≥~5.6M tris and no more p*2^25+q key aliasing ≥2^25 verts. Impact pre-checked: MEDIUM, 8 direct callers across 7 probes, all research/bridge, 0 execution flows.
+- LAB-CHEATSHEET: import example + watertight bullet now name nonManRawBig/Stats so a 5th copy never gets written.
+
+Decisions:
+- TDD, red first: labkit.test.ts gained 2 PF-ungated tests BEFORE the implementation (watched them fail: "nonManRawBig is not a function") — exact-stats pinning (quad {nonMan 0, edges 6, boundary 4}; injected 3rd tri on a shared edge → {1, 9, 6} = the non-vacuity control), degenerate-tri skip (repeated-index tris change nothing), and ≥2^26-index equivalence (shifted topology ⇒ identical stats, exercises the BigUint64 path).
+- NOT committed: tree is shared with the concurrent UI-v3 session; detect_changes confirms this diff is research/bridge + research docs only, 0 affected execution flows (the 2 flagged processes trace to the concurrent src/fidelity/metrics.ts edits).
+
+Validation: npx vitest run research/bridge/labkit.test.ts = 12/12 green; module-load smoke of all 4 migrated probes (env-gated ⇒ 26 skipped, imports executed) clean; eslint --max-warnings=0 clean on all 7 touched .ts files; npm run typecheck clean.
+
+Next agent:
+- The ~35 OTHER local auditNonManRaw copies live in CLOSED experiment probes — leave them verbatim (closed-probe discipline); only NEW probes must import from labkit.
+- _pf_rebaselineRuler.ts:185 still carries its own Map-based auditNonManRaw (kept for scorecard comparability; same p*2^25+q key) — if a rebaseline re-run ever hits the Map cap on a >5.6M-tri artifact, delegate it to labkit the same way.
