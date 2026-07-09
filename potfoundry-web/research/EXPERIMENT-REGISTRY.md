@@ -10,6 +10,20 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-09-DISPATCH-PREDICATE — fix the Tier-C dispatch predicate that §V12 killed (junction-count over-triggered 17/20); measure 4 graph signals for a clean separator, else ship the honest allow-list interim [PRE-REGISTERED: kill = signals (a)-(d) all fail to separate with a defensible margin AND allow-list rejected ⇒ report why]
+
+**HYPOTHESIS.** A graph signal (junction density / cross-scale count-instability / chain-weighting / conditioned-graph residual) separates the count-unstable pair {Gothic, GeoStar} from the 18 smooth/relief styles with a structural (order-of-magnitude) margin, replacing the refuted raw junction-count.
+
+**DISCRIMINATOR.** `_dispatchSignals.test.ts` (PF_DISPATCHSIG=1): detector-level signals on all 20 (no meshing). KILL-CRITERION (pre-registered): no single-signal clean cut AND only knife-edge (<~10% margin) 2-signal boxes ⇒ refute the general predicate, ship the allow-list.
+
+**EVIDENCE (data `research/exchange/_dispatch_predicate/signals.ndjson`).** All 4 signals REFUTED. Intended pair mid-rank in every one: (a) density Gothic 0.0507 #3 / GeoStar 0.0158 #8 of 20; (b) jRatio(240/120) Gothic 7.39 / GeoStar 2.97 mid-pack; (c) longFrac Gothic 0.847 / GeoStar 0.804 (lowest non-zero but 14 styles in 0.83–1.0); (d) condJ Gothic 28 / GeoStar 74 mid-range. No single-signal threshold isolates the 2 (brute-checked, 12 keys). 2-signal boxes fit (14 pairs) but all knife-edge: tightest face 0.5% margin (longFrac 0.847 vs Gyroid 0.851), density 2.5% (0.0158 vs Hex 0.0154) — 4-param overfits of 2/20.
+
+**VERDICT: refuted (general signal) → allow-list SHIPPED.** `COUNT_UNSTABLE_STYLES = {GothicArches, GeometricStar}` keyed on styleId (threaded from params.styleId). Confusion-matrix TDD 26/26 GREEN; **ship gate rebaseline20 (PF_REBASELINE20=1) GREEN** — dispatch = exactly the 2, 18 byte-identical fallback. Fast tierC 45/45 GREEN, flagOff byte-identical GREEN, eslint 0-warn. gitnexus IMPACT (hand-traced; MCP unavailable): predicate reachable ONLY flag-ON (default-OFF) ⇒ RISK LOW. Flag `__pfPerfectMesher` default-OFF. **RECOMMENDATION:** allow-list is terminal for the flip's dispatch gate; general graph-signal predicate = deferred open research (no defensible margin exists at this res).
+
+**LEDGER:** spec §V12b; commit 990065cd. Files: `tierC/{countUnstable.ts, countUnstable.test.ts, index.ts, rebaseline20.test.ts, _dispatchSignals.test.ts}` + `ParametricExportComputer.ts`.
+
+---
+
 ## E-2026-07-09-REBASELINE20 — PRODUCTION-INTEGRATION arm: run the GeoStar Tier-C PRODUCTION gate (the 2nd count-unstable style, never gated in production) + the 20-style production re-baseline under the ACCEPTED terminal per-style scorecard (NOT blanket literal-0) [PRE-REGISTERED — per-style kill table committed BEFORE measuring]
 
 **FRAME (production-integration, opens ledger §V12; USER DECISION 2026-07-09).** The Tier-2/3 certifications + the Gothic production frontier (§V11v/y: worst 0.117 / p99 0.00907 / 5.0M — no kernel closes the full-relief band under 10M) are ACCEPTED as TERMINAL per `research/lab/2026-07-09-drive-final-scorecard.md` (commit 83fe4c36). This arm runs the two remaining engineering items from the scorecard's "Remaining engineering" §1 with PER-STYLE acceptance from that scorecard, not blanket literal-0. Back-port plan: `docs/superpowers/plans/2026-07-05-perfect-mesher-backport.md` T6=rebaseline20. Flag `__pfPerfectMesher` stays default-OFF (byte-identical off — `flagOff.byteIdentical.test.ts` green).
