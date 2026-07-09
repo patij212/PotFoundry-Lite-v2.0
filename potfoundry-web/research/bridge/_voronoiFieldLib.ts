@@ -58,6 +58,27 @@ function periodicCellular(ux: number, vy: number, periodX: number, jitter: numbe
   return { f1, f2 };
 }
 
+/** The integer id of the NEAREST seed at grid point (ux,vy). The Voronoi ridge crest (cellSdf=0) is exactly the
+ * locus where this id changes — a clean 1D network (the Voronoi diagram edges). Id encodes the winning neighbor cell:
+ * (wrappedCellX * LARGE + cellY) with the winning +offset baked in via the seed's own (wrapX,nIdY). */
+export function nearestSeedId(ux: number, vy: number, periodX: number, jitter: number): number {
+  const cellX = Math.floor(ux), cellY = Math.floor(vy);
+  const cuX = ux - cellX, cuY = vy - cellY;
+  let f1 = 999.0, bestId = 0;
+  for (let y = -1; y <= 1; y++) {
+    for (let x = -1; x <= 1; x++) {
+      const wrapX = (((cellX + x) % periodX) + periodX) % periodX;
+      const nIdY = cellY + y;
+      const ph = hash22(wrapX, nIdY);
+      const cx = x + ph.x * jitter, cy = y + ph.y * jitter;
+      const dx = cx - cuX, dy = cy - cuY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < f1) { f1 = dist; bestId = wrapX * 1000003 + (nIdY + 100000); }
+    }
+  }
+  return bestId;
+}
+
 export interface VoronoiFieldParams {
   scale: number;    // vScale (default 8)
   jitter: number;   // vJitter (default 0.8)
@@ -87,6 +108,13 @@ export function cellSdf(u: number, t: number, p: VoronoiFieldParams = VORONOI_DE
   const sc = p.scale > 0 ? p.scale : 8.0;
   const { f1, f2 } = periodicCellular(ux, vy, sc, p.jitter);
   return f2 - f1;
+}
+
+/** The seed id at (u,t) — for extracting the ridge crest (cellSdf=0) as the id-change locus. */
+export function seedIdAt(u: number, t: number, p: VoronoiFieldParams = VORONOI_DEFAULTS): number {
+  const { ux, vy } = grid(u, t, p);
+  const sc = p.scale > 0 ? p.scale : 8.0;
+  return nearestSeedId(ux, vy, sc, p.jitter);
 }
 
 /** f1(u,t) = nearest-seed distance (for the bubble term; not used at morph=1 but kept for completeness). */
@@ -158,6 +186,52 @@ export function marchSdfIso(c: number, p: VoronoiFieldParams, opts: MarchOpts): 
       else if (cross.length === 4) { segs.push([cross[0], cross[1]]); segs.push([cross[2], cross[3]]); }
     }
   }
+  return segs;
+}
+
+// ── RIDGE-CREST extractor: the Voronoi diagram edges (cellSdf=0) as the seed-id-change locus ─────────────────────
+// cellSdf only TOUCHES 0 (a crease), so cellSdf-marching can't cross it. Instead extract where the NEAREST-SEED ID
+// changes between adjacent grid nodes — that edge straddles the exact boundary. Bisect on the id-change to place the
+// vertex where the two seeds are equidistant (cellSdf=0). This is the CLEAN 1D ridge network (the true crest crease),
+// the correct PRIMARY feature contour for the doubled embed (flanked by the cellSdf=th flat edges).
+export function marchSeedBoundary(p: VoronoiFieldParams, opts: MarchOpts): Array<[[number, number], [number, number]]> {
+  const { nu, nt } = opts;
+  const sc = p.scale > 0 ? p.scale : 8.0;
+  const idAt = (u: number, t: number): number => seedIdAt(u, t, p);
+  // bisect a grid edge (a→b) where the id changes, to the id-boundary (equidistance point, cellSdf min≈0)
+  const bisect = (ua: number, ta: number, ub: number, tb: number, ida: number): [number, number] => {
+    let a = 0, b = 1;
+    for (let it = 0; it < 40; it++) {
+      const s = 0.5 * (a + b); const us = ua + (ub - ua) * s, ts = ta + (tb - ta) * s;
+      if (idAt(us, ts) === ida) a = s; else b = s;
+    }
+    const sm = 0.5 * (a + b); return [ua + (ub - ua) * sm, ta + (tb - ta) * sm];
+  };
+  const ids = new Int32Array((nu + 1) * (nt + 1));
+  for (let i = 0; i <= nu; i++) for (let j = 0; j <= nt; j++) ids[i * (nt + 1) + j] = idAt(i / nu, j / nt) | 0;
+  const idA = (i: number, j: number): number => ids[i * (nt + 1) + j];
+  const segs: Array<[[number, number], [number, number]]> = [];
+  // per cell: place a boundary point on each of the 4 edges where the id changes, connect them pairwise. Multiple
+  // id regions in a cell (junction) → connect all crossings through the cell centroid (a fan) to keep the network
+  // connected without over-committing to a saddle case.
+  for (let i = 0; i < nu; i++) {
+    for (let j = 0; j < nt; j++) {
+      const u0 = i / nu, u1 = (i + 1) / nu, t0 = j / nt, t1 = (j + 1) / nt;
+      const c00 = idA(i, j), c10 = idA(i + 1, j), c11 = idA(i + 1, j + 1), c01 = idA(i, j + 1);
+      const cross: Array<[number, number]> = [];
+      if (c00 !== c10) cross.push(bisect(u0, t0, u1, t0, c00));
+      if (c10 !== c11) cross.push(bisect(u1, t0, u1, t1, c10));
+      if (c01 !== c11) cross.push(bisect(u0, t1, u1, t1, c01));
+      if (c00 !== c01) cross.push(bisect(u0, t0, u0, t1, c00));
+      if (cross.length === 2) segs.push([cross[0], cross[1]]);
+      else if (cross.length >= 3) {
+        // junction cell: fan to the centroid of the crossings
+        let cu = 0, ct = 0; for (const [a, b] of cross) { cu += a; ct += b; } cu /= cross.length; ct /= cross.length;
+        for (const cp of cross) segs.push([cp, [cu, ct]]);
+      }
+    }
+  }
+  void sc;
   return segs;
 }
 

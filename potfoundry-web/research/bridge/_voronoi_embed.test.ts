@@ -11,7 +11,7 @@ import { describe, it, expect } from 'vitest';
 import { writeFileSync, appendFileSync, readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  VORONOI_DEFAULTS, wallIsolevels, cellSdf, webValue, marchSdfIso, linkSegments, refineAndFilterContours,
+  VORONOI_DEFAULTS, wallIsolevels, cellSdf, webValue, marchSdfIso, marchSeedBoundary, linkSegments, refineAndFilterContours,
   decimateContours, contoursToConstraints, isoResidual3D, type Contour, type FoldProbe,
 } from './_voronoiFieldLib';
 import { radiusFn, TANGLED_BASE, buildTangled, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
@@ -175,18 +175,22 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
   it.skipIf(!RUN || process.env.PF_VORSTAGE !== 'extract')('extract cell-wall loci + validate placement', () => {
     const rA = radiusFn('Voronoi', DIMS);
     const lv = wallIsolevels(P);
-    // crest isolevel: cellSdf only TOUCHES 0 (a valley crease), so extract a small positive near-crest offset AND
-    // the flat-edge isolevel cellSdf=th. The DOUBLED pair brackets the ramp band.
-    const crestC = Number(process.env.PF_VORCREST ?? '0.02'); // inner (near-crest) — inside the band
+    // CREST = the Voronoi ridge centerline (cellSdf=0, the equidistance/seed-id-change locus) — extracted directly as
+    // the seed-id boundary (cellSdf only TOUCHES 0, so cellSdf-marching can't cross it; the 0.02-isolevel fragmented
+    // into 39k tiny pieces = the s18 49mm off-wall artifact). FLAT = the cellSdf=th band edge. The DOUBLED pair now
+    // brackets the ridge: flat-edge (cell side) → RIDGE CREST → flat-edge (other cell side).
+    const crestC = 0.0; // ridge crest = seed-id boundary
     const flatC = lv.flat; // outer band edge (cellSdf = th = 0.1)
     const nu = Number(process.env.PF_VORNU ?? '1600'), nt = Number(process.env.PF_VORNT ?? '1600');
     const opts = { nu, nt, polishIters: 40 };
     const t0 = Date.now();
-    const crestSegs = marchSdfIso(crestC, P, opts);
+    const crestSegs = marchSeedBoundary(P, opts);
     const flatSegs = marchSdfIso(flatC, P, opts);
-    const rfCrest = refineAndFilterContours(linkSegments(crestSegs), crestC, P);
+    // ridge crest: validate by cellSdf≈0 (equidistance); filter fragments < 2 pts. No isolevel polish (it IS the min).
+    const crestC_ = linkSegments(crestSegs).filter((c) => c.pts.length >= 2);
     const rfFlat = refineAndFilterContours(linkSegments(flatSegs), flatC, P);
-    const crestC_ = rfCrest.contours, flatC_ = rfFlat.contours;
+    const flatC_ = rfFlat.contours;
+    const rfCrest = { dropped: 0 };
     const ms = Date.now() - t0;
 
     // placement validation: sample vertices ON each polyline. The SAMPLER-ANCHORED placement metric is valErr =
