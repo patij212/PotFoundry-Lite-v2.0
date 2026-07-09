@@ -1021,7 +1021,112 @@ interface TopologyUse {
  *   (i.e. not one forward + one reverse) → inconsistent winding.
  */
 export function topologyMetric(mesh: MeshView, weldToleranceMm: number): TopologyResult {
-  return summarizeTopologyUses(collectTopologyUses(mesh, weldToleranceMm).uses);
+  // Numeric accounting (E-2026-07-09-EXPORT-PERF): the string-keyed Map version cost 27.3s on a
+  // real 5.25M-tri default export and crashed with `RangeError: Map maximum size exceeded` on an
+  // 8.7M-tri artifact in Node (JS Maps cap at 2^24 entries; a full pot can carry >16.7M unique
+  // post-weld edges because caps/rings pair by position, not index). Counts are exactly the
+  // documented semantics (see referenceTopology in metrics.topologyFast.test.ts): weld
+  // representative = first-seen index; boundary total==1; nonManifold total>2; orientation
+  // mismatch total==2 && not 1fwd+1rev; degenerate post-weld edges skipped.
+  const nV = mesh.vertices.length / 3;
+  if (nV >= 1 << 26) {
+    // Packed 64-bit edge keys need lo < 2^26 for f64 exactness. 67M+ vertices is far beyond any
+    // export budget; keep the legacy path as the documented fallback rather than mis-counting.
+    return summarizeTopologyUses(collectTopologyUses(mesh, weldToleranceMm).uses);
+  }
+  const remap = buildWeldRemapFast(mesh.vertices, weldToleranceMm);
+  const { indices } = mesh;
+  const all = new Float64Array(indices.length);
+  const fwd = new Float64Array(indices.length);
+  let m = 0;
+  let mf = 0;
+  for (let t = 0; t < indices.length; t += 3) {
+    const v0 = remap[indices[t]];
+    const v1 = remap[indices[t + 1]];
+    const v2 = remap[indices[t + 2]];
+    // Directed edges v0->v1, v1->v2, v2->v0; key = lo*2^27 + hi (exact in f64 for lo < 2^26).
+    for (let e = 0; e < 3; e++) {
+      const a = e === 0 ? v0 : e === 1 ? v1 : v2;
+      const b = e === 0 ? v1 : e === 1 ? v2 : v0;
+      if (a === b) continue; // degenerate edge (post-weld)
+      const lo = a < b ? a : b;
+      const hi = a < b ? b : a;
+      const key = lo * 134217728 + hi;
+      all[m++] = key;
+      if (a === lo) fwd[mf++] = key;
+    }
+  }
+  const A = all.subarray(0, m);
+  A.sort();
+  const F = fwd.subarray(0, mf);
+  F.sort();
+  let boundary = 0;
+  let nonManifold = 0;
+  let mismatch = 0;
+  let fi = 0;
+  for (let i = 0; i < m; ) {
+    const k = A[i];
+    let j = i + 1;
+    while (j < m && A[j] === k) j++;
+    const total = j - i;
+    while (fi < mf && F[fi] < k) fi++;
+    let forward = 0;
+    while (fi < mf && F[fi] === k) {
+      forward++;
+      fi++;
+    }
+    if (total === 1) boundary++;
+    else if (total > 2) nonManifold++;
+    else if (total === 2 && forward !== 1) mismatch++;
+    i = j;
+  }
+  return { boundaryEdges: boundary, nonManifoldEdges: nonManifold, orientationMismatches: mismatch };
+}
+
+/**
+ * Weld remap without string keys: open-addressing hash over quantized cells, verified by exact
+ * quantized-coordinate comparison (no false merges), representative = first-seen index (ascending
+ * scan) — byte-identical to the Map<string> version's remap, at typed-array speed and no Map cap.
+ */
+function buildWeldRemapFast(vertices: Float32Array, toleranceMm: number): Uint32Array {
+  const n = vertices.length / 3;
+  const remap = new Uint32Array(n);
+  if (toleranceMm <= 0) {
+    for (let i = 0; i < n; i++) remap[i] = i;
+    return remap;
+  }
+  const inv = 1 / toleranceMm;
+  const qx = new Int32Array(n);
+  const qy = new Int32Array(n);
+  const qz = new Int32Array(n);
+  let cap = 1;
+  while (cap < n * 2) cap <<= 1;
+  const table = new Int32Array(cap).fill(-1);
+  const mask = cap - 1;
+  for (let i = 0; i < n; i++) {
+    qx[i] = Math.round(vertices[i * 3] * inv);
+    qy[i] = Math.round(vertices[i * 3 + 1] * inv);
+    qz[i] = Math.round(vertices[i * 3 + 2] * inv);
+    let h = Math.imul(qx[i], 0x9e3779b1) ^ Math.imul(qy[i], 0x85ebca77) ^ Math.imul(qz[i], 0xc2b2ae3d);
+    h ^= h >>> 15;
+    h = Math.imul(h, 0x2c1b3c6d);
+    h ^= h >>> 12;
+    let slot = h & mask;
+    for (;;) {
+      const j = table[slot];
+      if (j === -1) {
+        table[slot] = i;
+        remap[i] = i;
+        break;
+      }
+      if (qx[j] === qx[i] && qy[j] === qy[i] && qz[j] === qz[i]) {
+        remap[i] = j;
+        break;
+      }
+      slot = (slot + 1) & mask;
+    }
+  }
+  return remap;
 }
 
 export function topologyDiagnostics(

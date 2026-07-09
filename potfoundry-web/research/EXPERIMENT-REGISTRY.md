@@ -5935,6 +5935,26 @@ INSTRUMENT NOTES (banked): (a) auditNonManRaw Map cap hit AGAIN at 5.69M tris (S
 - DELIVERABLE: GyroidManifold stride-1 LITERAL dense-basis row (the previously-impossible run) in ≤60min wall via shards; report outliers/max + Newton-worst; compare against the stride-8 scaled estimate (~105k) — a materially different stride-1 count adjudicates the stride-8 extrapolation.
 - Any equivalence mismatch ⇒ STOP, report the divergence verbatim, do NOT ship the fast path.
 
-**VERDICT: PENDING — instruments next, committed before running.**
+**VERDICT (equivalence arm, 2026-07-09): EQUIVALENCE PASSED where it decides (SpiralRidges reproduces EXACTLY 3,145 outliers / max 0.0358 with 99.7% of facets green-proven by the sound screen; HarmonicRipple proves 100% green, 0 outliers ✓ — its sub-tol max is no longer *measured*, a reporting-semantics note, not a verdict change). SPEEDUP GATE ON SR FAILED AS WRITTEN (101s vs banked 96s): on cheap-rA smooth styles the fixed stages (coverage/audits/vertexOnSurf) dominate, so the lever shows ~nothing there — reported verbatim; the lever's value is where GN/brute dominates (Gyroid interior was 3,338s of 3,372s). Gyroid stride-1 sharded run = the decisive deliverable (in flight).**
 
 **LEDGER:** probe edits `research/bridge/_prod_truth.test.ts` (PF_PT_PRESCREEN/PF_PT_SHARD/PF_PT_NSHARDS), merger `research/bridge/_prod_truth_merge.mjs`, data `research/exchange/_prod_truth/` (same tree; shard rows carry `shard` field). Pre-reg commit [this].
+
+---
+
+## E-2026-07-09-EXPORT-PERF — production validation stage: 27.3s measured on a real default export + a REPRODUCED Map-cap crash; numeric accounting ships (byte-identical counts, 5.3×, no cap) [MEASURED → FIXED]
+
+**FRAME (user mandate 2026-07-09: export times are the pain, no quality sacrifice).** Audit-first: before touching the mesher, measure the one stage whose cost is provable in Node against the captured artifacts — `summarizeConformingValidation`'s `topologyMetric` (string-keyed weld Map + string-keyed directed-edge Map, `src/fidelity/metrics.ts`), which runs inside EVERY production export.
+
+**MEASURED (probe `research/bridge/_export_perf.test.ts`, PF_EXPORT_PERF=1, on the captured production artifacts):**
+- HarmonicRipple full pot (5.25M tris): `topologyMetric` **27.3s** (of a 377s generate); `triangleQuality3D` 1.4s.
+- DragonScales full pot (8.73M tris): `topologyMetric` **CRASHES in Node** — `RangeError: Map maximum size exceeded` (metrics.ts:1088). ⇒ the DS artifact carries **>16.7M unique post-weld edges** (caps/rings pair by POSITION, not index — far more unique edges than the 1.5×tris manifold estimate). Browser behavior at this size unverified (our capture succeeded ⇒ Chrome's cap apparently higher/not hit); Node-side tooling (e2e/CI validation) breaks at DS scale regardless.
+- Crash-demo (doubled DS, 17.5M tris ≈ the 16M CAD-cap class): CRASH confirmed pre-fix.
+- **PRODUCT FINDING (post-fix numbers exposed it):** DragonScales' default artifact contains **409 slivers** (triangleQuality3D, aspect>100 or degenerate) ⇒ `valid=false` ⇒ `useParametricExport` THROWS ⇒ **DragonScales default export is BLOCKED for real users today** — and the v3 silent-failure bug (audit §7.1) hides the error while burning free-tier quota. The "validation is REPORTING, not gating" comment at the call site (PEC:3044) is contradicted by the hook's guard.
+
+**FIX (shipped, TDD, byte-identical semantics):** `topologyMetric` rewritten to numeric accounting — open-addressing hash weld remap over quantized cells (verify-by-coords, first-seen representative = identical remap) + packed `lo*2^27+hi` f64 edge keys, two native sorts, run-length classification (identical boundary/nonManifold/orientationMismatch rules; degenerate-edge skip preserved; ≥2^26-vertex fallback to the legacy path). `topologyDiagnostics` (needs per-edge samples) keeps the legacy path. TESTS: new `src/fidelity/metrics.topologyFast.test.ts` — independent reference oracle + crafted cases (boundary/dup-tri/flip/weld-merge/degenerate/zero-tol) + 150-mesh deterministic fuzz + an 11.5M-tri >2^24-edge no-crash gate; existing pinned suites green (metrics.test.ts, conformingTopologyGate.test.ts — 67/67).
+
+**AFTER (same artifacts):** HarmonicRipple **27.3s → 5.2s (5.3×)**; DragonScales **crash → 8.3s**; 17.5M-tri demo **no crash**. Impact per gitnexus: 5 direct callers (summarizeConformingValidation production + fidelity/windowHook + tests), MEDIUM — contained by identical output contract. Every default export saves ~22-50s+ immediately; the CAD-cap crash class is gone.
+
+**REMAINING export-time hotspots (NOT yet measured stage-by-stage — the honest next step):** the generate breakdown (sizing/quadtree/budget-search/per-cell CDT/GPU waits) needs an in-browser stage profile before further optimization; candidate levers ranked: budget-scale binary search rebuild reuse, worker-parallel per-cell CDT (bit-identical precedent: tierC parallelScorer), moving validation off the UI thread. The DS 409-sliver export-blocker needs a product decision (gate vs warn — the mesh is watertight and zeroArea-clean; slivers are finite-area needles, the documented print-usable concession class).
+
+**LEDGER:** probe `research/bridge/_export_perf.test.ts` + `vitest.export_perf.config.ts`; fix `src/fidelity/metrics.ts` (topologyMetric + buildWeldRemapFast); tests `src/fidelity/metrics.topologyFast.test.ts`. Commit [this].
