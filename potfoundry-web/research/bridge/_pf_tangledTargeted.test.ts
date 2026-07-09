@@ -289,6 +289,65 @@ function runTargeted(
   console.log(`FINAL ${style}: verdict=${verdict} newtonTrajectory=[${traj.join(',')}] finalTris=${last?.tris ?? 0} proj=${last?.projFullPot ?? 0}`);
 }
 
+// ── §V11ad TAIL CLASSIFICATION (env-gate PF_TT_CLASSIFY) ─────────────────────────────────────────────────────────
+// After the pass loop stops with a residual, rebuild the FINAL mesh (from the highest inj_*.json), score EVERY
+// radial-flagged facet EXACTLY with Newton, and DUMP each confirmed survivor (dev>tol) with: centroid (u,t), worst-
+// sag (u,t), true dev, |∇r| (finite-diff of the radiusFn in θ,z), and — the Crystalline field-specific classifier —
+// the distance to the nearest triangle-wave CREST line (facetPhase → the C0 kink locus). This decides knee-vs-cliff-
+// vs-scatter. Read-only: reuses buildLocal/newtonNearest/facetWorstSagUt; writes survivors_<n>.ndjson only.
+function gradR(rA: AnalyticRadiusFn, th: number, z: number): number {
+  const dTh = 1e-4, dZ = 1e-3; // θ in rad, z in mm
+  const rt = (rA(th + dTh, z) - rA(th - dTh, z)) / (2 * dTh);
+  const rz = (rA(th, z + dZ) - rA(th, z - dZ)) / (2 * dZ);
+  return Math.hypot(rt / Math.max(1e-6, rA(th, z)), rz); // normalized-ish steepness (θ-grad relative to r + z-grad)
+}
+// Crystalline crest locus: triangleWave = |facetPhase/π − 1| = 0 at facetPhase = π, and the %TAU wrap kink at
+// facetPhase = 0/TAU. crestDist = min over the two loci of |facetPhase − {0, π}| mapped to θ-fraction of one facet.
+function crystallineCrestFrac(th: number, z: number, H: number): { crestFrac: number; nearest: 'crest' | 'valley' } {
+  const facetCount = 12, heightPhase = 0.4; // DEFAULT_CRYSTALLINE (crFacetCount 12, crHeightPhase 0.4) — matches buildRadiusFn({}) sampler
+  const t = H > 0 ? z / H : 0;
+  const adjTheta = th + t * heightPhase * TAU / facetCount;
+  const facetPhase = ((adjTheta * facetCount) % TAU + TAU) % TAU; // [0,TAU)
+  const dCrest = Math.abs(facetPhase - Math.PI);            // triangleWave=0 crest (pow→0, the sharpest cliff base)
+  const dValley = Math.min(facetPhase, TAU - facetPhase);    // %TAU wrap kink (triangleWave=1, the C0 valley kink)
+  const facetPeriod = TAU; // in facetPhase units
+  if (dCrest < dValley) return { crestFrac: dCrest / facetPeriod, nearest: 'crest' };
+  return { crestFrac: dValley / facetPeriod, nearest: 'valley' };
+}
+function runClassify(style: StyleId, base: BaseCfg, spread: number, nRing: number, maxPointsCap: number): void {
+  const dir = join(DIR, style);
+  // find the highest inj_*.json (the cumulative injection of the final built pass)
+  let hi = -1; for (let p = 0; p <= 40; p++) if (existsSync(join(dir, `inj_${p}.json`))) hi = p;
+  const rA = tangledRadiusFn(style, DIMS); const H = DIMS.H;
+  const acc = hi >= 0 ? (JSON.parse(readFileSync(join(dir, `inj_${hi}.json`), 'utf8')) as number[]) : [];
+  process.stderr.write(`  CLASSIFY ${style}: rebuilding final mesh from inj_${hi}.json (${acc.length / 2} injected pts)\n`);
+  const build = buildLocal(style, { ...base, maxPoints: maxPointsCap }, acc);
+  const big = worstFacetsByRadial(rA, H, build.ut, build.idx, build.tris);
+  const flagged = big.recs.filter((r) => r.radialDev > TOL);
+  process.stderr.write(`  CLASSIFY ${style}: tris=${build.tris} radialFlagged=${flagged.length} — Newton-scoring ALL (exact)\n`);
+  const nearest = makeNearest(rA, H);
+  const outPath = join(dir, `survivors_${hi}.ndjson`);
+  writeFileSync(outPath, ''); // fresh
+  let nOut = 0, worst = 0;
+  for (const rec of flagged) {
+    const t3 = facetTrue3D(rec, nearest);
+    if (t3.dev <= TOL) continue;
+    nOut++; if (t3.dev > worst) worst = t3.dev;
+    const a = build.idx[3 * rec.f], b = build.idx[3 * rec.f + 1], c = build.idx[3 * rec.f + 2];
+    const w = facetWorstSagUt(rA, H, build.ut, a, b, c);
+    const th = TAU * (w.su - Math.floor(w.su)), z = w.st * H;
+    const g = gradR(rA, th, z);
+    const cr = crystallineCrestFrac(th, z, H);
+    appendFileSync(outPath, JSON.stringify({
+      f: rec.f, uc: +rec.uc.toFixed(6), tc: +rec.tc.toFixed(6), su: +w.su.toFixed(6), st: +w.st.toFixed(6),
+      dev: +t3.dev.toFixed(6), gradR: +g.toFixed(4), crestFrac: +cr.crestFrac.toFixed(5), nearest: cr.nearest,
+    }) + '\n');
+  }
+  process.stderr.write(`  CLASSIFY ${style}: survivors=${nOut} worst=${worst.toFixed(6)} → ${outPath}\n`);
+  // eslint-disable-next-line no-console
+  console.log(`CLASSIFY ${style}: EXACT survivors=${nOut} worstTrue=${worst.toFixed(6)} dumped (u,t)+|∇r|+crestFrac → survivors_${hi}.ndjson`);
+}
+
 describe('E-2026-07-08-TANGLED-TARGETED — LOCAL injected-Steiner refinement to Newton-0 (§V11u)', () => {
   it.skipIf(process.env.PF_TT !== 'HexagonalHive')('HexagonalHive', () => {
     // V11r: chord0.00125 = 100 radial / 60 Newton @ 7.24M proj (well under 10M, headroom for local injection). Start
@@ -298,7 +357,7 @@ describe('E-2026-07-08-TANGLED-TARGETED — LOCAL injected-Steiner refinement to
     expect(true).toBe(true);
   }, 6 * HRS);
 
-  it.skipIf(process.env.PF_TT !== 'Crystalline')('Crystalline', () => {
+  it.skipIf(process.env.PF_TT !== 'Crystalline' || process.env.PF_TT_CLASSIFY === '1')('Crystalline', () => {
     // V11r: base field intrinsically ~3.4M tris; finest under-6M point (b0.008/s224, 3.22M proj) = 33,535 Newton.
     // Start from that base config, inject clusters. Larger residual ⇒ may need all 5 passes / carry. Newton DOWNSIZED
     // to 500/500 (the V11r Voronoi precedent — the injection is driven by the CHEAP radial flag on ALL flagged facets;
@@ -310,7 +369,19 @@ describe('E-2026-07-08-TANGLED-TARGETED — LOCAL injected-Steiner refinement to
     // Newton 35502→16436→9724→5983→3271→1891 (strictly monotone ~halving/pass) @ 7.46M proj, watertight. Predict
     // ~10-11 total halvings to literal 0. Newton verdict downsized 500/500 stays valid; once residual <500 it goes
     // EXACT automatically (the literal-0 CLOSE basis). Kill: non-monotone / proj>10M / decay<15% for 3 passes.
-    runTargeted('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 12, 4_500_000, 500, 500);
+    // §V11ad CONTINUATION (E-2026-07-09): the 12-pass run reached 49 (stratified) but the decay DECELERATED
+    // 50%→25.8%/pass and worstTrue PINNED [0.076,0.082] (hard-tail signature). Continue 13→20; RAISE topWorst/nStrat
+    // 500→2000 so the FINAL verdict scores EVERY radial-flagged facet EXACTLY (radialOut@12=519, falling ⇒ exact) —
+    // the CLOSE basis the stratified 500/500 lacked. RESUME skips 0-12, RESUME-GAP reconstructs inj_12. ASYMPTOTE-kill
+    // (<15%/pass×3) armed. On stop, the SURVIVOR DUMP (PF_TT_DUMP) classifies the tail's (u,t)+|∇r| vs the crest loci.
+    runTargeted('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 20, 4_500_000, 2000, 2000);
+    expect(true).toBe(true);
+  }, 6 * HRS);
+
+  // §V11ad TAIL CLASSIFICATION — rebuild the final Crystalline mesh, Newton-score ALL flagged facets exactly, dump
+  // each survivor's (u,t)+|∇r|+crestFrac. Env-gate PF_TT=Crystalline PF_TT_CLASSIFY=1 (separate from the pass run).
+  it.skipIf(process.env.PF_TT !== 'Crystalline' || process.env.PF_TT_CLASSIFY !== '1')('Crystalline-classify', () => {
+    runClassify('Crystalline' as StyleId, { chordTolMm: 0.02, maxPoints: 3_000_000, tolMm: 0.008, sizeRes: 224 }, 0.001, 6, 4_500_000);
     expect(true).toBe(true);
   }, 6 * HRS);
 
