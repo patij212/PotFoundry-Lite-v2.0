@@ -71,6 +71,7 @@ import {
     type HelixWarp,
 } from './parametric/conforming';
 import { resolveUniformLevelOverride } from './parametric/conforming/uniformLevelOverride';
+import { buildAnalyticCurvatureFloor } from './parametric/conforming/AnalyticCurvatureFloor';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
@@ -2795,6 +2796,26 @@ export class ParametricExportComputer {
                 if (!creaseTChoice.warp.isIdentity) {
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         const surfaceId = asm.vertices[i + 2];
+                // E-2026-07-09-ANALYTIC-FLOOR dev lever (default OFF ⇒ byte-identical):
+                // per-style CLOSED-FORM curvature floor on the OUTER wall's sizing field
+                // (cell-supremum over each sizing cell — the 128² grid samples the κ field
+                // at ~4.7 nodes per SpiralRidges groove cycle, so a nodal read would alias
+                // exactly like the band-limited sampler it corrects; FRONTIER-BET2 is the
+                // measured mechanism, the PROD-ARTIFACT-TRUTH SpiralRidges regression the
+                // measured effect). Styles without a closed form return null ⇒ no floor.
+                // Mirrors the __pfConformingUBias lever convention.
+                const analyticFloor = (globalThis as unknown as { __pfConformingAnalyticFloor?: boolean })
+                    .__pfConformingAnalyticFloor === true
+                    ? buildAnalyticCurvatureFloor(
+                          params.styleId,
+                          params.styleOpts,
+                          { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb, expn: dimensions.expn },
+                          // Keep in sync with assemblyOpts below (resU/resT) and the
+                          // resolved sag/minEdge the sizing field actually runs with.
+                          { resU: 128, resT: 128, maxSagMm: qMaxSag, minEdgeMm: qMinEdge },
+                      )
+                    : null;
+
                         if (surfaceId < 1.5) {
                             asm.vertices[i + 1] = applyTWarp(creaseTChoice.warp, asm.vertices[i + 1]);
                         }
@@ -2855,6 +2876,10 @@ export class ParametricExportComputer {
                     dummyWrite9, dummyWrite10, dummyReadOnly,
                 );
                 const buildMs = performance.now() - conformingStart;
+                    // Analytic curvature floor (dev lever above; undefined ⇒ absent,
+                    // byte-identical). OUTER wall only — see AssemblyWallOptions.
+                    outerCurvatureFloor: analyticFloor?.curvatureFloor,
+                    outerMaxKappa: analyticFloor?.maxKappa,
                 const vCount = pos3D.length / 3;
                 const triCount = asm.indices.length / 3;
 

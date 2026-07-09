@@ -214,6 +214,16 @@ export interface AssemblyWallOptions {
    */
   cellSamples?: number;
   /**
+   * Optional ANALYTIC curvature floor for the OUTER wall's sizing field ONLY
+   * (E-2026-07-09-ANALYTIC-FLOOR; see conforming/AnalyticCurvatureFloor and
+   * {@link ConformingWallOptions.curvatureFloor}). The inner wall keeps the pure
+   * sampler estimate — its offset field's κ differs, and an outer-derived floor
+   * there could only mis-spend budget. Omit ⇒ byte-identical assembly.
+   */
+  outerCurvatureFloor?: (u: number, t: number) => number;
+  /** κ cap paired with `outerCurvatureFloor` (see {@link SizingOptions.maxKappa}). */
+  outerMaxKappa?: number;
+  /**
    * Optional whole-pot triangle budget. Split evenly across the two walls (the
    * caps add only a small fixed amount), then each wall's sizing field is scaled
    * to approach its share — bounded so neither wall coarsens below the
@@ -525,6 +535,9 @@ export function assembleWatertight(
   const nRingActual = outer.bottomRing.length;
   if (inner.bottomRing.length !== nRingActual) {
     throw new Error(
+    // Analytic curvature floor — OUTER wall only (see AssemblyWallOptions doc).
+    curvatureFloor: opts.outerCurvatureFloor,
+    maxKappa: opts.outerMaxKappa,
       `assembleWatertight: wall ring mismatch (outer ${nRingActual}, inner ${inner.bottomRing.length})`,
     );
   }

@@ -43,6 +43,17 @@ export interface ConformingWallOptions {
   /** Sizing-field grid resolution in t. */
   resT: number;
   /**
+   * Optional ANALYTIC curvature floor κ(u,t) (mm⁻¹), threaded verbatim to
+   * {@link SizingOptions.curvatureFloor}: a style that knows its ridge curvature
+   * closed-form (see conforming/AnalyticCurvatureFloor) corrects the band-limited
+   * sampler's sub-cell under-read (E-2026-07-09-ANALYTIC-FLOOR). Also seen by the
+   * budget-scale search, so 'cap' coarsening prices the floored field coherently.
+   * Omit ⇒ byte-identical sizing.
+   */
+  curvatureFloor?: (u: number, t: number) => number;
+  /** Optional κ cap paired with the floor (see {@link SizingOptions.maxKappa}). */
+  maxKappa?: number;
+  /**
    * Uniform boundary-ring sample count. When set it MUST be a power of two; the
    * t=0 and t=1 rows are then pinned to exactly `nRing` cells (pinBoundaryLevel
    * = log2(nRing)). Omit to disable pinning (legacy unpinned behaviour).
@@ -309,6 +320,8 @@ function buildQuadtreeAtScale(
 function searchBudgetScale(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
+    curvatureFloor: opts.curvatureFloor,
+    maxKappa: opts.maxKappa,
   pinBoundaryLevel: number,
   targetTriangles: number,
   mode: 'target' | 'cap',
