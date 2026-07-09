@@ -5989,3 +5989,24 @@ INSTRUMENT NOTES (banked): (a) auditNonManRaw Map cap hit AGAIN at 5.69M tris (S
 **VERDICT: PENDING — this row committed before instruments ran.**
 
 **LEDGER:** probe `research/bridge/_analytic_floor.test.ts` (PF_ANALYTIC_FLOOR=1; PF_AF_STAGE=twin|on), lib `research/bridge/_analytic_floor_lib.ts`, config `vitest.analytic_floor.config.ts`; src wiring `conforming/ConformingWall.ts` + `conforming/WatertightAssembly.ts` + `ParametricExportComputer.ts` + `conforming/AnalyticCurvatureFloor.ts` (+ `.test.ts`); baseline `research/exchange/_prod_truth/SpiralRidges/` (capture 2026-07-09, meta inlined above). Pre-reg commit [this].
+
+---
+
+## E-2026-07-09-VORONOI-TRUTHBRIDGE — f32-emulated CPU truth vs the f64 truth on the captured Voronoi production artifact [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**FRAME.** E-2026-07-09-PROD-ARTIFACT-TRUTH measured `vertexOnSurf p99=0.065mm / max=0.140mm` on the real production Voronoi export vs the CPU-f64 analytic truth — the pre-registered instrument-validity gate FIRED, blocking any 0.01mm certification for hash/branch styles. Mechanism hypothesis (from reading `style_voronoi`/`periodic_cellular` in `styles.wgsl` and its CPU mirror `rOuterVoronoi`/`periodicCellular` in `src/geometry/styles.ts`, both algorithmically identical): `periodic_cellular`'s 9-neighbor-cell `if (dist < f1) { f2=f1; f1=dist }` argmin is a DISCONTINUOUS function of its inputs at Voronoi cell boundaries (by construction). f64 (CPU) and f32 (GPU) accumulate the hash+distance chain to different precision, so near a boundary the two can select a DIFFERENT winning cell — an O(cell-size) radius jump, not a rounding error. Note: this project's `hash22` is a fract/dot-product scramble (`fract(p*0.1031...)`, no `sin`), not the sin-hash pattern from generic WebGL folklore — corrects an earlier draft assumption in this thread.
+
+**HYPOTHESIS (falsifiable):** an f32-EMULATED CPU evaluation (every arithmetic op rounded via `Math.fround`, replicating IEEE-754 f32 per-operation, r0 kept f64 from the existing `baseRadius` since it is smooth/continuous and not a source of argmin divergence) reproduces the GPU's cell-argmin decisions closely enough that `vertexOnSurf` against it collapses to near-f32-ULP levels (≪0.01mm) on the SAME captured artifact vertices that read p99=0.065/max=0.140 against f64 truth.
+
+**METHOD.** NEW module `research/bridge/_voronoi_truthbridge_lib.ts` (self-contained f32-emulated `hash22F32`/`periodicCellularF32`/`rOuterVoronoiF32` port; does NOT modify `src/geometry/styles.ts` or `styles.wgsl`). Probe `research/bridge/_voronoi_truthbridge.test.ts` (PF_VTB=1): load the ALREADY-CAPTURED `research/exchange/_prod_truth/Voronoi/outer.{xyz,idx}.bin` (no new capture needed), compute `vertexOnSurf` for every outer-wall vertex against (a) the existing f64 `buildRadiusFn` truth (reproduce the banked 0.065/0.140 as an instrument-match gate) and (b) `rOuterVoronoiF32`, report both side by side + the divergence-locus classification (fraction of vertices where f1/f2 cell-argmin differs between an f64 reference eval and the f32-emulated eval, independent of position — a direct mechanism check, not just an outcome check).
+
+**KILL CRITERIA (committed BEFORE measuring):**
+- INSTRUMENT-MATCH GATE: re-scored f64 vertexOnSurf must reproduce the banked row (p99 0.065±0.005, max 0.140±0.01) — else the artifact/rA pairing is wrong, STOP.
+- CONFIRMED (truth-bridge closed) iff f32-emulated vertexOnSurf p99 ≤ 0.001mm (near f32-ULP-at-scale, ~5e-6–1e-4mm class) AND max ≤ 0.01mm.
+- PARTIAL iff f32-emulated p99 drops materially (>5×) but does not clear 0.001mm — report the residual mechanism (report whether residual vertices correlate with the divergence-locus classification).
+- REFUTED iff f32-emulated p99 is NOT materially better than f64 (<2× improvement) — the mechanism hypothesis is wrong; report the divergence-locus classification anyway (it stands alone as a diagnostic) and escalate to integer-exact hashing as the next candidate (per the audit's ranked list) instead of f32-emulation.
+- Scope: DEV-ONLY, read-only against src/; no production code touched in this arm regardless of outcome — a CONFIRMED result only justifies a FOLLOW-UP arm (wiring an f32-consistent CPU truth or the GPU function itself as the certification reference), not an immediate src edit.
+
+**VERDICT: PENDING — instruments next, committed before running.**
+
+**LEDGER:** lib `research/bridge/_voronoi_truthbridge_lib.ts`, probe `research/bridge/_voronoi_truthbridge.test.ts` (PF_VTB=1), config `vitest.voronoi_truthbridge.config.ts`. Reuses `research/exchange/_prod_truth/Voronoi/` (already captured 2026-07-09) + `runStyle.buildRadiusFn` + `_pf_bvhRuler.loadBinMesh` READ-ONLY. Pre-reg commit [this].
