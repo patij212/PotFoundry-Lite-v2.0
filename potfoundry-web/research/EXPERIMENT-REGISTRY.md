@@ -10,6 +10,34 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-09-REBASELINE20 — PRODUCTION-INTEGRATION arm: run the GeoStar Tier-C PRODUCTION gate (the 2nd count-unstable style, never gated in production) + the 20-style production re-baseline under the ACCEPTED terminal per-style scorecard (NOT blanket literal-0) [PRE-REGISTERED — per-style kill table committed BEFORE measuring]
+
+**FRAME (production-integration, opens ledger §V12; USER DECISION 2026-07-09).** The Tier-2/3 certifications + the Gothic production frontier (§V11v/y: worst 0.117 / p99 0.00907 / 5.0M — no kernel closes the full-relief band under 10M) are ACCEPTED as TERMINAL per `research/lab/2026-07-09-drive-final-scorecard.md` (commit 83fe4c36). This arm runs the two remaining engineering items from the scorecard's "Remaining engineering" §1 with PER-STYLE acceptance from that scorecard, not blanket literal-0. Back-port plan: `docs/superpowers/plans/2026-07-05-perfect-mesher-backport.md` T6=rebaseline20. Flag `__pfPerfectMesher` stays default-OFF (byte-identical off — `flagOff.byteIdentical.test.ts` green).
+
+**ESTABLISHED (not re-derived):** (i) production Tier-C fast suite GREEN (11 files/21 tests) + Gothic smoke gate (`wholeMesh0Outlier.test.ts`, unconditional) reaches LITERAL whole-mesh 0 in 7 passes @9917 tris, watertight non-vacuous (re-measured this arc). (ii) GeoStar RESEARCH-kernel whole-mesh literal-0 is PROVEN (E-…-GEOSTAR-WHOLEMESH gate1: wholeMeshOutliers=0, max 0.01, watertight non-vacuous, 116889 tris, pctBelow20=21.7%) — but the PRODUCTION Tier-C gate (`wholeMesh0Outlier.test.ts` FULL GeoStar branch, env `PF_TIERC_WHOLEMESH=1`) has NEVER run. GeoStar's cusp is a FINITE-WIDTH chevron kink (130–137°) that flat-P1 rides to <tol (E-…-GEOSTAR-CRESTSTRIP) — fundamentally easier for FIDELITY than Gothic's zero-width apex; the flankBand toe-embed lever (Gothic §V11v/y) is NOT expected necessary for GeoStar fidelity (its residual is SLIVERS, off-crest panel grading, not a chord floor).
+
+**HYPOTHESIS (item 1, falsifiable):** the PRODUCTION Tier-C kernel (buildProtectedComplex → refineToZeroOutliers, the base isotropic-RED + 7pt-bulk path exercised by `runPatchGate`) reaches LITERAL whole-mesh 0 interior outliers on the GeoStar production patch (u[0,0.1]×t[0.4,0.6], nTheta 1024), watertight non-vacuous by index — REFUTE iff it plateaus with residual >0.01 after maxPass (⇒ escalate to the Gothic-frontier config: adaptiveSeed + aniso + pickets + flankBand, report the frontier pattern p99<tol + classified designed-feature residual + ≤10M).
+
+**KILL CRITERIA (item 1, GeoStar production gate — pre-registered):**
+- CLOSE (literal-0, PREFERRED): whole-mesh `scoreWholeMesh` outliers == 0 (every free facet, dense 45-pt full-azimuth), maxMm ≤ 0.0101, `nonManifoldByIndex` == 0 non-vacuous (injected 3rd tri moves the count). This is the pass/fail assertion in `runPatchGate`.
+- FRONTIER-PATTERN (accepted fallback, Gothic §V11y precedent): if base plateaus, escalate config; ACCEPT iff p99 < 0.01 + residual classified as designed near-vertical chevron-flank facets + projFullPot ≤ 10M. Report which pattern fired.
+- NEW-MECHANISM kill: if the GeoStar gate reveals a mechanism class NOT matching Gothic-frontier (e.g. a non-flank outlier population, a topology/recovery failure, residualCrossings>0) ⇒ CLASSIFY + report BEFORE rebaseline (do not absorb silently).
+
+**HYPOTHESIS (item 2/3, falsifiable):** with `__pfPerfectMesher` ON, the 20-style production re-baseline (`tierC/rebaseline20.test.ts`, env `PF_REBASELINE20=1`) shows all 18 count-STABLE styles byte-identical to flag-OFF (Tier-C dispatch falls back) AND Gothic+GeoStar meet their ACCEPTED scorecard verdicts — REFUTE (a FINDING) iff any style regresses below its banked scorecard verdict.
+
+**KILL CRITERIA (item 2/3, rebaseline20 — pre-registered per-style table = the scorecard, committed in the test header):**
+- Tier-1 (12 styles): the count-STABLE ones are byte-identical to flag-OFF (dispatch fallback). Gothic/GeoStar (count-unstable, Tier-C fires): GeoStar → item-1 verdict; Gothic → the ACCEPTED frontier verdict for the gated patch (production full-relief band is >10M terminal, NOT asserted literal-0 at full-pot in this gate — the gate patch is the tractable smoke/multi-bay per `wholeMesh0Outlier.test.ts`).
+- Tier-2/3 (8 styles): all count-STABLE ⇒ byte-identical fallback is the gate; their certified floors are the research-arm verdicts (not re-measured by the production dispatch, which falls back for them).
+- Watertight (nonManByIndex==0 non-vacuous) + zeroArea==0 gates EVERYWHERE.
+- >2 styles regressing below banked verdict ⇒ STOP, report the PATTERN (shared config/instrument drift, not 20 separate problems).
+
+**PRE-REGISTRATION (committed BEFORE the gates run):**
+- Item 1 probe: `src/renderers/webgpu/parametric/conforming/tierC/wholeMesh0Outlier.test.ts` FULL GeoStar branch (env `PF_TIERC_WHOLEMESH=1`), production kernel, READ-ONLY of the sampler. Escalation config (if base plateaus) = the banked levers already in `noBridgeRefine.ts` (adaptiveSeed/anisoSplit) + `flankBand.ts` bandContours, all flag-gated.
+- Item 2/3 probe: `src/renderers/webgpu/parametric/conforming/tierC/rebaseline20.test.ts` (env `PF_REBASELINE20=1`), acceptance UPDATED to the scorecard per-style table (this arm's edit), ndjson checkpoints to `research/exchange/_rebaseline20_final/`.
+- KILL armed as above. Flag default-OFF throughout; DEV/test-gated edits only; `git add` explicit files only.
+
+---
+
 ## E-2026-07-09-CRYSTALLINE-VALLEY-EMBED — CLOSE the 49-facet C0 valley-kink tail (§V11ad floor) by EMBEDDING the 12 closed-form helical valley loci as LOCKED constraint chains (the Gyroid §V11o/q/aa / LowPoly doubled-crest mechanism), then Newton-verdict vs the pass-14 no-embed control [PRE-REGISTERED — kill-criteria committed BEFORE building]
 
 **FRAME (final style arm of DRIVE-ALL-20; follow-up to §V11ab/ad which FLOORED Crystalline at 49 injection-irreducible outliers).** ESTABLISHED (not re-derived): §V11ad drove Crystalline's LOCAL injection to an EXACT floor of **49 outliers @7.55M** (worst 0.0759, all ON the C0 triangle-wave VALLEY-KINK loci, 24 tol-boundary / 8 mid / 17 MATERIAL ≥0.03), watertight, `newtonExact=true`. Injection is REFUTED for this tail (a facet straddling the C0 kink LINE still straddles after subdivision — pinning a worst-sag POINT cannot clear it; ASYMPTOTE kill fired 49→49→49). The pre-registered "survivors ON the C0 locus ⇒ needs an EDGE not points" fork FIRED. This arm executes that EDGE embed.
