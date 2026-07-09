@@ -18,6 +18,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRadiusFn } from './runStyle';
 import { scoreWholeMeshInterior } from './_pf_rebaselineRuler';
+import { denseBary } from './_pf_tangledKernelLib';
 import { loadBinMesh } from './_pf_bvhRuler';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 import { newtonNearest } from './_gyroid_truthLib';
@@ -35,6 +36,14 @@ const ROOT = join('research', 'exchange', '_prod_truth');
 const OUT = join(ROOT, 'scorecard.ndjson');
 const STRIDE_OVER = 6_000_000; // facets above this: stride 4 (LABELED in the row), per pre-registration
 const TAU = Math.PI * 2;
+// E-2026-07-09-FAST-HONEST-RULER levers (pre-registered): sound dense radial pre-screen (a facet
+// whose 45-pt lattice is radially <= tol is green ON THE SAME dense basis — radial is a strict
+// upper bound on nearest, so skipping it cannot change outlier count or max) + facet-shard
+// parallelism (V10b precedent: shard sums reproduce sequential rows exactly).
+const PRESCREEN = process.env.PF_PT_PRESCREEN === '1';
+const SHARD = Math.max(0, Number(process.env.PF_PT_SHARD ?? 0));
+const NSHARDS = Math.max(1, Number(process.env.PF_PT_NSHARDS ?? 1));
+const SHARD0 = SHARD === 0;
 
 interface PctStats { max: number; p99: number; p50: number; n: number; over: number }
 
@@ -117,41 +126,83 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
       const outer = loadBinMesh(join(dir, 'outer.xyz.bin'), join(dir, 'outer.idx.bin'));
       row.fullTris = full.idx.length / 3;
       row.outerTris = outer.idx.length / 3;
+      row.shard = SHARD;
+      row.nShards = NSHARDS;
 
-      // (1) Watertight on the FULL-POT artifact — non-vacuous (injected extra tri on an existing
-      // edge must move the count, else the audit is vacuous and the row says so).
-      const nonMan = nonManRawBig(full.idx);
-      const cracked = new Uint32Array(full.idx.length + 3);
-      cracked.set(full.idx);
-      cracked.set([full.idx[0], full.idx[1], full.idx[2]], full.idx.length);
-      const crackedCount = nonManRawBig(cracked);
-      row.nonManRaw = nonMan;
-      row.nonManControlMoved = crackedCount > nonMan;
-      row.zeroArea = zeroAreaCount(full.xyz, full.idx);
-
-      // (2) vertexOnSurf on the OUTER wall — the interior ruler's premise + the CPU(f64)<->GPU(f32)
-      // truth-bridge quantification (spin=0 => a surface vertex satisfies rho == rA(theta, z) exactly).
       const nV = outer.xyz.length / 3;
-      const vDev = new Float64Array(nV);
-      for (let v = 0; v < nV; v++) {
-        const x = outer.xyz[v * 3], y = outer.xyz[v * 3 + 1];
-        const z = Math.min(H, Math.max(0, outer.xyz[v * 3 + 2]));
-        let th = Math.atan2(y, x);
-        if (th < 0) th += TAU;
-        vDev[v] = Math.abs(Math.hypot(x, y) - rA(th, z));
+      let rulerPremiseOk = true;
+      if (SHARD0) {
+        // (1) Watertight on the FULL-POT artifact — non-vacuous (injected extra tri on an existing
+        // edge must move the count, else the audit is vacuous and the row says so).
+        const nonMan = nonManRawBig(full.idx);
+        const cracked = new Uint32Array(full.idx.length + 3);
+        cracked.set(full.idx);
+        cracked.set([full.idx[0], full.idx[1], full.idx[2]], full.idx.length);
+        const crackedCount = nonManRawBig(cracked);
+        row.nonManRaw = nonMan;
+        row.nonManControlMoved = crackedCount > nonMan;
+        row.zeroArea = zeroAreaCount(full.xyz, full.idx);
+
+        // (2) vertexOnSurf on the OUTER wall — the interior ruler's premise + the CPU(f64)<->GPU(f32)
+        // truth-bridge quantification (spin=0 => a surface vertex satisfies rho == rA(theta, z) exactly).
+        const vDev = new Float64Array(nV);
+        for (let v = 0; v < nV; v++) {
+          const x = outer.xyz[v * 3], y = outer.xyz[v * 3 + 1];
+          const z = Math.min(H, Math.max(0, outer.xyz[v * 3 + 2]));
+          let th = Math.atan2(y, x);
+          if (th < 0) th += TAU;
+          vDev[v] = Math.abs(Math.hypot(x, y) - rA(th, z));
+        }
+        const vStats = pctStats(vDev, nV, TOL);
+        row.vertexOnSurf = vStats;
+        rulerPremiseOk = vStats.p99 <= TOL;
+        row.interiorRulerPremiseOk = rulerPremiseOk; // pre-registered instrument-validity gate
       }
-      const vStats = pctStats(vDev, nV, TOL);
-      row.vertexOnSurf = vStats;
-      const rulerPremiseOk = vStats.p99 <= TOL;
-      row.interiorRulerPremiseOk = rulerPremiseOk; // pre-registered instrument-validity gate
 
       // (3) mesh->surface every-facet interior (upper-bound basis: min(GN, full-azimuth brute)).
+      // With PRESCREEN: sound dense-45 radial screen first — greens are proven on the SAME dense
+      // basis (radial >= true pointwise, and min(GN,brute) <= radial), so outlier count and max are
+      // EXACT-equivalent to the unscreened run; only the cost changes. Survivors are shard-split.
       const nF = outer.idx.length / 3;
       const stride = process.env.PF_PT_STRIDE
         ? Math.max(1, Number(process.env.PF_PT_STRIDE))
-        : nF > STRIDE_OVER ? 4 : 1;
+        : nF > STRIDE_OVER && !PRESCREEN ? 4 : 1;
       const tI0 = Date.now();
-      const interior = scoreWholeMeshInterior(outer.xyz, outer.idx, rA, H, {
+      let scoreIdx: Uint32Array = outer.idx;
+      let survivorsTotal = nF;
+      if (PRESCREEN) {
+        const bary = denseBary(8); // 45-pt lattice — the acceptance basis of the whole campaign
+        const survivors: number[] = [];
+        for (let f = 0; f < nF; f++) {
+          const a = outer.idx[f * 3] * 3, b = outer.idx[f * 3 + 1] * 3, c = outer.idx[f * 3 + 2] * 3;
+          let green = true;
+          for (const [wa, wb, wc] of bary) {
+            const x = wa * outer.xyz[a] + wb * outer.xyz[b] + wc * outer.xyz[c];
+            const y = wa * outer.xyz[a + 1] + wb * outer.xyz[b + 1] + wc * outer.xyz[c + 1];
+            const z = wa * outer.xyz[a + 2] + wb * outer.xyz[b + 2] + wc * outer.xyz[c + 2];
+            let th = Math.atan2(y, x);
+            if (th < 0) th += TAU;
+            if (Math.abs(Math.hypot(x, y) - rA(th, Math.min(H, Math.max(0, z)))) > TOL) {
+              green = false;
+              break;
+            }
+          }
+          if (!green) survivors.push(f);
+        }
+        survivorsTotal = survivors.length;
+        const mine = NSHARDS > 1 ? survivors.filter((f) => f % NSHARDS === SHARD) : survivors;
+        scoreIdx = new Uint32Array(mine.length * 3);
+        for (let i = 0; i < mine.length; i++) {
+          scoreIdx[i * 3] = outer.idx[mine[i] * 3];
+          scoreIdx[i * 3 + 1] = outer.idx[mine[i] * 3 + 1];
+          scoreIdx[i * 3 + 2] = outer.idx[mine[i] * 3 + 2];
+        }
+        console.log(
+          `[prod-truth] ${style}: prescreen ${nF} facets -> ${survivorsTotal} survivors ` +
+            `(${((1 - survivorsTotal / nF) * 100).toFixed(1)}% green-proven), shard ${SHARD}/${NSHARDS} scores ${mine.length} (${((Date.now() - tI0) / 1000).toFixed(0)}s)`,
+        );
+      }
+      const interior = scoreWholeMeshInterior(outer.xyz, scoreIdx, rA, H, {
         tol: TOL,
         stride,
         onProgress: (done, total, nOut, worst) => {
@@ -161,10 +212,13 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         },
       });
       row.interior = {
-        basis: `upperBound(min(GN,brute)) stride=${interior.stride}`,
+        basis:
+          `upperBound(min(GN,brute)) stride=${interior.stride}` +
+          (PRESCREEN ? ` prescreen45(greens proven, pStats=survivor-population) shard=${SHARD}/${NSHARDS}` : ''),
         outliers: interior.interiorOutliers,
         scannedFacets: interior.scannedFacets,
-        nFacets: interior.nFacets,
+        nFacets: nF,
+        survivors: PRESCREEN ? survivorsTotal : undefined,
         maxMm: interior.wholeMeshMaxMm,
         p50: interior.p50,
         p90: interior.p90,
@@ -183,6 +237,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
       }
 
       // (5) surface->mesh COVERAGE on the OUTER wall (reverse ruler; boundary band separated).
+      if (SHARD0) {
       const refXyz = new Float64Array(outer.xyz.length);
       for (let i = 0; i < outer.xyz.length; i++) refXyz[i] = outer.xyz[i];
       const ref: RefMesh = { xyz: refXyz, idx: outer.idx, nV, nF };
@@ -258,21 +313,25 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         locSelfCheckMax,
         ms: Date.now() - tC0,
       };
-
-      row.totalMs = Date.now() - t0;
-      appendFileSync(OUT, JSON.stringify(row) + '\n');
-      console.log(
-        `[prod-truth] ${style}: vtxOnSurf max=${vStats.max.toFixed(5)} p99=${vStats.p99.toFixed(5)} ` +
-          `(premise ${rulerPremiseOk ? 'OK' : 'FAILED'}) | interior out=${interior.interiorOutliers}` +
-          `${interior.stride > 1 ? `(stride ${interior.stride})` : ''} max=${interior.wholeMeshMaxMm.toFixed(4)} ` +
-          `p99=${interior.p99.toFixed(4)} | coverage max=${refinedMax.toFixed(4)} p99=${covStats.p99.toFixed(4)} ` +
-          `| nonMan=${nonMan} zeroArea=${row.zeroArea} | ${(((row.totalMs as number)) / 1000).toFixed(0)}s`,
-      );
-
       // The probe never asserts fidelity (pre-registered: per-style REPORT, no blanket verdicts) —
       // it asserts only its own instrument hygiene.
       expect(row.nonManControlMoved).toBe(true);
       expect(locSelfCheckMax).toBeLessThan(1e-9);
+      } // SHARD0
+
+      row.totalMs = Date.now() - t0;
+      appendFileSync(OUT, JSON.stringify(row) + '\n');
+      const vs = row.vertexOnSurf as PctStats | undefined;
+      const cov = row.coverage as { max: number; p99: number } | undefined;
+      console.log(
+        `[prod-truth] ${style}${NSHARDS > 1 ? ` [shard ${SHARD}/${NSHARDS}]` : ''}: ` +
+          (vs ? `vtxOnSurf max=${vs.max.toFixed(5)} p99=${vs.p99.toFixed(5)} (premise ${rulerPremiseOk ? 'OK' : 'FAILED'}) | ` : '') +
+          `interior out=${interior.interiorOutliers}` +
+          `${interior.stride > 1 ? `(stride ${interior.stride})` : ''} max=${interior.wholeMeshMaxMm.toFixed(4)} ` +
+          `p99=${interior.p99.toFixed(4)}` +
+          (cov ? ` | coverage max=${cov.max.toFixed(4)} p99=${cov.p99.toFixed(4)}` : '') +
+          ` | ${(((row.totalMs as number)) / 1000).toFixed(0)}s`,
+      );
     }, 5_400_000);
   }
 });

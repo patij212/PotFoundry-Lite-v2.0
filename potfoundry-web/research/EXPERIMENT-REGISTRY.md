@@ -5920,3 +5920,21 @@ INSTRUMENT NOTES (banked): (a) auditNonManRaw Map cap hit AGAIN at 5.69M tris (S
 **NET (pilot):** the production default export today ships genuine literal-0 on (at least one) smooth style, 2–10×-over-tolerance artifacts on helix/tangled styles whose lab verdicts were literal-0 on research meshes, and hash styles whose artifact is measurably a DIFFERENT SURFACE than the CPU truth (0.065mm p99). The lab→production transfer gap and the truth-bridge gap are now MEASURED, style-classed, and reproducible (capture harness + probe committed). NEXT (ranked): (1) Newton-basis production re-score for Gyroid-class tails; (2) branch-coherent truth for hash styles (f32-consistent CPU eval or certify against the GPU function) — blocks ANY 0.01 claim on Voronoi/CelticKnot/etc; (3) wire the analytic curvature floor + feature-graph density into the production conforming path (the SpiralRidges/Gyroid regressions are its measured justification); (4) extend capture+score to all 20 (batch, ~8–10h wall at current costs); (5) the per-export certification loop (radial-prefilter+Newton on GPU) so the Certificate displays measured numbers.
 
 **LEDGER:** probe `research/bridge/_prod_truth.test.ts` (PF_PROD_TRUTH=1, PF_PT_STYLES=csv override, PF_PT_STRIDE), capture `e2e/_prod_truth_capture.mjs` (node; dev server + real WebGPU; Blob-download persistence), config `vitest.prod_truth.config.ts`, data `research/exchange/_prod_truth/<style>/{full,outer}.{xyz,idx}.bin + meta.json` (gitignored — numbers inlined). Pre-reg commit [this].
+
+---
+
+## E-2026-07-09-FAST-HONEST-RULER — make production-artifact scoring tractable WITHOUT changing the verdict basis (sound radial pre-screen + shard parallelism) [PRE-REGISTERED — equivalence gates committed BEFORE running]
+
+**FRAME.** The PROD-ARTIFACT-TRUTH pilot's scoring costs are the new wall: 36–56min/style (Voronoi/Gyroid, strided), DragonScales INTRACTABLE (130 CPU-min stopped), Gyroid stride-1 projected 4.5h+ — user mandate 2026-07-09: implement the KNOWN-STABLE performance levers properly. Two levers, both with in-repo proof: (1) **sound dense radial pre-screen** — for any 3D point P, |hypot(Px,Py) − rA(atan2(Py,Px), Pz)| is the distance to a REAL surface point ⇒ a STRICT upper bound on nearest-distance (1 rA eval ≈ 10–50× cheaper than a GN projection). A facet whose 45-pt dense lattice is radially ≤ tol is green ON THE SAME dense acceptance basis; scoreWholeMeshInterior's min(GN,brute) ≤ radial pointwise ⇒ skipping such facets CANNOT change the outlier count or max ⇒ **exact-count equivalence by construction**. (2) **facet-shard parallelism** — V10b banked: "6-way facet sharding … shard sums reproduce sequential rows EXACTLY".
+
+**METHOD.** Probe gains PF_PT_PRESCREEN=1 (dense-45 radial screen → survivors scored via a filtered sub-index; row records greenProvenFrac + screened basis; percentile fields switch to survivor-population and are LABELED) and PF_PT_SHARD=i, PF_PT_NSHARDS=N (survivor facets ≡ i mod N; vertexOnSurf/coverage/watertight run on shard 0 only; per-shard partial rows merged by `research/bridge/_prod_truth_merge.mjs`: outliers/scanned summed, max/newtonWorst maxed).
+
+**KILL CRITERIA (pre-registered):**
+- EQUIVALENCE GATE (must pass BEFORE any new number is trusted): re-scored HarmonicRipple row == banked row (0 outliers, max 0.0055±1e-6) AND SpiralRidges == banked (outliers EXACTLY 3,145, max 0.0358±1e-6, stride 1).
+- SPEEDUP GATE: SpiralRidges wall time ≤ 1/5 of the banked 96s single-thread run at equal fidelity.
+- DELIVERABLE: GyroidManifold stride-1 LITERAL dense-basis row (the previously-impossible run) in ≤60min wall via shards; report outliers/max + Newton-worst; compare against the stride-8 scaled estimate (~105k) — a materially different stride-1 count adjudicates the stride-8 extrapolation.
+- Any equivalence mismatch ⇒ STOP, report the divergence verbatim, do NOT ship the fast path.
+
+**VERDICT: PENDING — instruments next, committed before running.**
+
+**LEDGER:** probe edits `research/bridge/_prod_truth.test.ts` (PF_PT_PRESCREEN/PF_PT_SHARD/PF_PT_NSHARDS), merger `research/bridge/_prod_truth_merge.mjs`, data `research/exchange/_prod_truth/` (same tree; shard rows carry `shard` field). Pre-reg commit [this].
