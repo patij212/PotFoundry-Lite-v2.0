@@ -1,21 +1,37 @@
 // _pf_rebaseline20.test.ts — DEV-ONLY (PF_REBASE=1, huge tier PF_REBASE_BIG=1). THE DEFINITIVE 20-STYLE
-// WHOLE-MESH RE-BASELINE (E-2026-07-05-REBASELINE20).
+// WHOLE-MESH RE-BASELINE (E-2026-07-05-REBASELINE20; ACCEPTANCE UPDATED under E-2026-07-09-REBASELINE20).
 //
-// HYPOTHESIS: the _best20 manifest's per-style "0-outlier" verdicts were measured under a TOP-N guard population
-//   (bruteAnchoredRedPerp sampleN=25-40, centroid-only) — the SAME guard-population artifact that hid Gothic/GeoStar
-//   whole-mesh residuals until the corrected every-facet ruler. Re-scored under the WHOLE-MESH honest ruler (EVERY
-//   free facet, >=36-pt denseBary, two-stage GN-screen -> full-azimuth brute-confirm, NO top-N cap), some Tier-A/B
-//   styles will reveal whole-mesh interior outliers (true-3D interior > 0.01) that the guard population missed.
+// ⚠️ ACCEPTANCE UPDATE (2026-07-09): this probe was ORIGINALLY written under a BLANKET literal-0 assumption
+//   (`tierABall0Outlier` = ALL 18 Tier-A/B styles interiorOutliers==0). That assumption is SUPERSEDED. Per the
+//   ACCEPTED TERMINAL SCORECARD `research/lab/2026-07-09-drive-final-scorecard.md` (commit 83fe4c36; USER DECISION
+//   2026-07-09) the 20 styles are TERMINALLY adjudicated with PER-STYLE verdicts, NOT blanket literal-0:
+//     • Tier-1 (12): LITERAL whole-mesh 0 at tol 0.01 — the blanket-0 gate is CORRECT for these.
+//     • Tier-2 CERTIFIED (4: LowPolyFacet, SuperformulaBlossom, Crystalline, DragonScales): body ≤ tol; the residual
+//       IS a designed feature edge (zero-serration cliff/kink certification). Their honest figure is a CERTIFIED
+//       floor (e.g. Crystalline 49 designed valley-kink facets @0.076; DragonScales p99 0.0025–0.0057 ≪ tol), NOT 0.
+//     • Tier-3 MEASURED-EXCLUDE (4: Voronoi, BasketWeave, CelticKnot, CelticTriquetra): the free-adaptive mesh is the
+//       honest best representation (embedding proven regressive/divergent by control). Honest figures: Voronoi ~10.5k
+//       @0.058/p99 0.027; BasketWeave p99 ~0.6 on-wall @10M; CelticKnot ~62k @0.30; CelticTriquetra ~10k off-crease
+//       @0.047 (93.6% on-crease designed occlusion folds). These are ACCEPTED floors, NOT literal-0.
+//   This probe RE-SCORES the persisted _best20 reaching meshes to CONFIRM each style still matches its banked
+//   scorecard verdict (a NON-REGRESSION check) — it is NOT a blanket every-facet-0 gate. Watertight (non-vacuous) +
+//   the honest per-style figure are the acceptance; a style reading WORSE than its scorecard row is a FINDING.
+//   The PRODUCTION dispatch gate is the sibling `src/.../tierC/rebaseline20.test.ts` (PF_REBASELINE20=1): Tier-C fires
+//   only for the 2 count-unstable styles, 18 fall back byte-identical, GeoStar literal-0 @patch / Gothic frontier.
 //
-// PRE-REGISTERED KILL-CRITERION (committed BEFORE measuring — see registry E-2026-07-05-REBASELINE20):
-//   For EACH style record whole-mesh interiorOutliers (EVERY facet), wholeMeshMax, watertight (auditNonManRaw,
-//   non-vacuous by construction of the audit — an injected 3rd-tri-on-edge moves the count), pctBelow20, tris.
-//   - tierABall0Outlier = TRUE iff ALL 18 Tier-A/B styles have interiorOutliers == 0 whole-mesh.
-//   - tierCGothicGeostar0Outlier = TRUE iff BOTH Gothic and GeoStar have wholeMeshOutliers == 0 (from their
-//     _pf_perfect_*_wholemesh scorecards, the perfect-mesher kernel).
-//   - anyStyleWithOutliers = the list of styles with interiorOutliers > 0 (the guard-population hiders exposed).
-//   CONFIRM the hypothesis iff anyStyleWithOutliers is NON-EMPTY (>=1 Tier-A/B style hid whole-mesh residuals).
-//   REFUTE iff all 18 Tier-A/B are genuinely 0-outlier whole-mesh (the guard population was faithful).
+// HYPOTHESIS (original, still measured): the _best20 manifest's per-style verdicts were measured under a TOP-N guard
+//   population (centroid-only) — the guard-population artifact that hid Gothic/GeoStar whole-mesh residuals until the
+//   corrected every-facet ruler. Re-scored under the WHOLE-MESH honest ruler (EVERY free facet, >=36-pt denseBary,
+//   two-stage GN-screen -> full-azimuth brute-confirm, NO top-N cap), each style's whole-mesh figure is recorded and
+//   checked against its scorecard verdict.
+//
+// PER-STYLE KILL-CRITERION (updated — record whole-mesh interiorOutliers/max/watertight/pctBelow20/tris per style):
+//   - Tier-1 (12 styles): interiorOutliers == 0 whole-mesh (the literal-0 verdict holds).
+//   - Tier-2/3 (8 styles): the whole-mesh figure matches the CERTIFIED/EXCLUDE floor in the scorecard (within honest
+//     reproduction tolerance — the bvh-ruler styles read their banked meta figure). NOT required to be 0.
+//   - watertight (auditNonManRaw, non-vacuous) EVERYWHERE.
+//   - anyStyleRegressed = the list of styles whose whole-mesh figure is WORSE than its scorecard row ⇒ a FINDING.
+//   CONFIRM the ship-gate iff anyStyleRegressed is EMPTY (every style still matches its accepted terminal verdict).
 //
 // SCORING SOURCE: the EXACT reaching meshes' persisted heatmap bins (research/exchange/_best20/heatmap/<Style>.{xyz,
 //   idx}.bin) — f32 lifted-on-surface xyz + u32 idx. The honest ruler needs ONLY xyz + rA + H (full-azimuth brute),
