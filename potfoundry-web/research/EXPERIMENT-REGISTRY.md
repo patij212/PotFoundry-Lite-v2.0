@@ -32,9 +32,21 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 - Instruments (imported READ-ONLY, never re-coded): `buildInhouseMetricMesh` (constraintEdges path), `newtonNearest`/`worstFacetsByRadial`/`facetTrue3D` (_gyroid_truthLib), `wholeMeshGuardRadialBound`/`auditNonManRaw`/`radiusFn`/`TANGLED_BASE` (_pf_tangledKernelLib), `planarizeMM` (_pf_planarizeMM). The exact base config = §V11ad: `chordTolMm:0.02, maxPoints:3M(cap 4.5M), tolMm:0.008, sizeRes:224`, injectedPoints = inj_14.json.
 - KILL armed as above. DEV-ONLY; no src/ edit.
 
-**RESULT:** [pending run]
+**RESULT — VERDICT: REFUTED. The valley-kink EDGE embed (single AND doubled) makes Crystalline's true-3D WORSE than the no-embed base. Crystalline is CLOSED-with-49-facet-DESIGNED-EDGE-FLOOR — the LowPoly-class certification (radial≈true on the designed sharp valley edges).**
 
-**LEDGER:** spec §V11ae (pending); probe `research/bridge/_crystalline_valley_embed.test.ts` + `vitest.crystalline_embed.config.ts`. Pre-reg commit [this]. Data `research/exchange/_crystalline_embed/*.ndjson` + mesh bins (gitignored — numbers inlined). DEV-ONLY; no src/ edit.
+LOCI DERIVED + SAMPLER-VALIDATED (loci stage): the 12 helical valley chains u_k(t)=(k−0.4·t)/12 sit on the C0 kink (facetPhase=0 to machine eps, argmax dr/du-jump offset 0, jump 728 mm/u); the 49 §V11ad survivors overlay them within worst |Δu|=0.000039 (0.05% of the facet period). CONTROL reproduced the §V11ad floor EXACTLY (Newton 49 @7.55M, worst 0.0759, nonMan 0). APPLES-TO-APPLES (EXACT Newton, every radial-flagged facet):
+
+| variant | Newton (EXACT) | worstTrue | projFullPot | %<20° | serr p99/mean | recovery% | nonMan | off-valley |
+|---|---|---|---|---|---|---|---|---|
+| **control (no embed)** | **49** | 0.0759 | 7.55M | — | — | — | 0 | 0 |
+| single-chain (pitch 0.12) | **139** ❌ | 0.0826 | 7.63M | 11.87 | 0.0032 / 0.00018 | 94.9 | 0 | 0 |
+| doubled-pair (dOff 0.0015) | **136** ❌ | 0.221 | **10.45M** ❌ | 11.59 | 0.0104 / 0.0030 | 99.9 | 0 | 63 |
+
+Both variants REGRESS: single Newton +184% (all 139 still on-valley — the locked kink-edge cannot stop flanking facets straddling the V shoulder); doubled triples the worst chord (kink now BETWEEN the two chains), busts the 10M budget, and adds 63 NEW off-valley outliers. Recovery is CLEAN (94.9%/99.9%) and residualCrossings 0 — the embed is well-built and STILL regresses, the strong refutation. This is the Voronoi §V11ac / CelticKnot single-midline pattern: a sharp designed V-corner is tessellated BETTER by the free-adaptive base mesher than by any pinned-contour embed. ZERO-SERRATION achieved on single (edges ON the kink, mean 0.00018mm) — the export CAN place an edge on the feature line; it just does not reduce the sag (V-shoulder geometry, irreducible). Both pre-registered kills (SINGLE-AND-DOUBLED-BOTH-FAIL + REGRESSION-vs-control) FIRED.
+
+RECOMMENDATION: accept the §V11ad 49-facet designed-edge floor as the Crystalline export figure (base mesher, watertight, whole non-kink mesh ≤tol, 49 designed sharp edges radial≈true). Crystalline JOINS the MEASURED-EXCLUDE designed-edge family (BasketWeave/CelticKnot/CelticTriquetra/Voronoi). Do NOT invest more embed/injection budget — proven asymptote-frozen (§V11ad) AND embed-regressing (§V11ae). DISTINCT from Gyroid §V11aa (smooth TPMS level-set → literal-0 embeddable); Crystalline's non-smooth V-corner is not.
+
+**LEDGER:** spec §V11ae; probe `research/bridge/_crystalline_valley_embed.test.ts` (PF_CVE=1; stages loci/control/build/verdict; PF_CVEVARIANT=single|doubled) + `vitest.crystalline_embed.config.ts`. Pre-reg commit ee503830, loci-fix cb171407 (BOTH BEFORE the build/verdict runs). Finish commit [this]. Data `research/exchange/_crystalline_embed/{loci,control,build,verdict}.ndjson + verdict_survivors_{single,doubled}.ndjson + mesh_{control,single,doubled}.{ut,idx}.bin + run_*.log` (gitignored — numbers inlined). DEV-ONLY; no src/ edit.
 
 ---
 
