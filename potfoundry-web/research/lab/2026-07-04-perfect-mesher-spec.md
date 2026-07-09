@@ -2816,4 +2816,67 @@ smoothstep-KNEE population (as Gyroid §V11w/aa) rather than pure density — th
 **LEDGER:** registry E-2026-07-09-CRYSTALLINE-LITERAL0; probe `research/bridge/_pf_tangledTargeted.test.ts` (PF_TT=Crystalline,
 `maxPasses` 5→12 + RESUME-GAP RECONSTRUCTION + ASYMPTOTE-kill machinery, committed d9b9819 BEFORE the run). Data
 `research/exchange/_tangled_targeted/Crystalline/{passes,final}.ndjson + inj_0..11.json + run_v11ab.log` (gitignored —
-numbers inlined). Recovery commit [this]; the probe was already committed at d9b9819. DEV-ONLY; no src/ edit.
+numbers inlined). Recovery commit d361c2b; the probe was already committed at d9b9819. DEV-ONLY; no src/ edit.
+
+## V11ad — CRYSTALLINE-LITERAL0 FINISH (E-2026-07-09-CRYSTALLINE-LITERAL0, cont.) — continue 13→20 with the EXACT-basis verdict; the residual FROZE at an EXACT 49 (0% decay ×3 ⇒ ASYMPTOTE kill) and the 49 survivors ALL sit ON the triangle-wave C0 VALLEY-KINK loci (11/12 facet edges) — a CLIFF-CLASS floor, NOT a smoothstep knee; the pinned-injection recipe is REFUTED for this tail (2026-07-09)
+
+CONTINUATION of §V11ab. The §V11ab 12-pass run reached 49 (stratified 500/500) with decelerating decay + pinned worst
+~0.076 — a hard-tail signature. This arm continued 13→20 with two pre-registered changes (committed 6364d13 BEFORE running):
+(1) `maxPasses` 12→20 (RESUME skipped 0-12, RESUME-GAP deterministically reconstructed inj_12 = 633,769 pts / radialFlagged
+519, matching the pass-12 record); (2) verdict `topWorst`/`nStrat` 500→2000 so EVERY radial-flagged facet is Newton-scored
+EXACTLY (`newtonExact=true`) — the CLOSE basis the §V11ab stratified verdict lacked.
+
+**RESULT — passes 13→15 (EXACT verdict) then ASYMPTOTE kill:**
+
+| pass | injected | tris | projFullPot | radialOut(max) | NEWTON(**EXACT**) | decay | worstTrue @ (u,t) | nonMan | zeroArea |
+|---|---|---|---|---|---|---|---|---|---|
+| local12 (anchor, strat) | 631,306 | 3,777,328 | 7,554,656 | 519 (0.181) | 49 (strat) | — | 0.0759 @ (0.487,0.384) | 0 | 0 |
+| local13 | 633,769 | 3,777,308 | 7,554,616 | 508 (0.181) | **49 (exact)** | 0.0% | 0.0759 @ (0.487,0.384) | 0 | 0 |
+| local14 | 636,169 | 3,777,308 | 7,554,616 | 508 (0.181) | **49 (exact)** | 0.0% | 0.0759 @ (0.487,0.384) | 0 | 0 |
+| local15 | 638,569 | 3,777,308 | 7,554,616 | 508 (0.181) | **49 (exact)** | 0.0% | 0.0759 @ (0.487,0.384) | 0 | 0 |
+
+**FULL TRAJECTORY (base+15): 35502→16436→9724→5983→3271→1891→946→493→259→159→100→66→49→49→49→49.** The EXACT verdict
+CONFIRMS the §V11ab stratified 49 (no correction). The count then FROZE: passes 13/14/15 all EXACTLY 49, worst PINNED
+0.0759 @ the SAME (u,t), radialOut frozen 508, tris static — injection (adding ~2,400 pinned pts/pass around the worst-sag
+points) moved NOTHING. Decay 0%/pass ×3 ⇒ the pre-registered ASYMPTOTE kill FIRED at pass 15 (lowStreak=3). verdict=ASYMPTOTE,
+watertight (nonMan 0) + zeroArea 0 throughout, projFullPot 7.55M ≤10M hitBudget=false. Resilience: the env killed the
+foreground wrapper mid-pass-15 build TWICE; the detached vitest child survived both (per the mandate — proven a 3rd time)
+and per-pass checkpoints carried 13→15 to the kill with zero recompute.
+
+**TAIL CLASSIFICATION (§V11ad classify stage, PF_TT_CLASSIFY=1 — EXACT Newton on all 508 flagged, dumped 49 survivors'
+(u,t)+|∇r|+crestFrac to survivors_14.ndjson): ALL 49 sit ON the C0 VALLEY-KINK loci — a CLIFF-CLASS floor, NOT a
+smoothstep knee.** The Crystalline field (styles.ts rOuterCrystalline, defaults crFacetCount 12 / crEdgeSharpness 2.5 /
+crHeightPhase 0.4) is `modulation = 1 − facetDepth·pow(triangleWave, edgeSharpness) − …`, triangleWave = |facetPhase/π − 1|
+with a `%TAU` WRAP — a C0/C1 DERIVATIVE DISCONTINUITY at the facet-edge (valley) line, NOT a smooth Gyroid S-curve. The dump:
+crestFrac max **0.00048** (all 49 within 0.05% of a valley locus, median 0.00015), **nearest=VALLEY for all 49** (zero on the
+smooth crest), spread across **11 of the 12** facet-edge lines and the full height (t 0.082→0.946). dev range 0.01036→0.07590:
+**24/49 tol-boundary [0.010,0.015), 8 mid, 17 MATERIAL ≥0.03 (up to 0.0759)** — a GENUINE population above tol, distinct
+from ruler noise (the 17 material ones are 3-7.6× tol). This is the SAME mechanism as Voronoi §V11u-3 (children-are-outliers
+on the C0 cell-wall) and CelticKnot §V11z — a facet straddling a C0 kink LINE still straddles after subdivision, because the
+chord-sag is intrinsic to the derivative discontinuity, not the facet's (u,t) size. The pinned-injection recipe pins a vertex
+at the worst-SAG interior POINT, which cannot remove a kink LINE ⇒ it stalls (49→49→49, proven, not inferred).
+
+**KILL-CRITERIA STATUS (§V11ad):** CLOSE ACCEPTANCE (literal-0 exact) — did NOT fire (floor 49, not 0). ASYMPTOTE (decay
+<15%×3) — FIRED at pass 15 (49→49→49, 0%). NON-MONOTONE — did NOT fire (never grew; a frozen exact count is the asymptote,
+not a regression). proj>10M — did NOT fire (7.55M). KNEE-RECIPE — the pre-registered "survivors ON the C0 locus ⇒ needs an
+EDGE not points" fork FIRED: all 49 are ON the valley kink, and the injection (which pins POINTS at worst-sag) already
+stalled ⇒ the §V11aa pinned-POINT recipe is REFUTED for this tail; closing it would need the CLIFF-class EMBED (doubled-picket
+along the facet-edge line), a DIFFERENT mechanism out of this injection arm's scope.
+
+**VERDICT (§V11ad): FRONTIER / FLOOR — Crystalline LITERAL Newton-0 is NOT reached by LOCAL pinned-injection; the floor is an
+EXACT 49 outliers @ 7.55M tris, all on the C0 triangle-wave valley-kink loci (11/12 facet edges), watertight, worst 0.0759.**
+The recipe drove 35,502→49 (a 725× reduction, monotone through pass 12) but the last population is a CLIFF-class C0 residual
+that injection CANNOT clear (asymptote-frozen). Whole-mesh: the flat bulk + every non-kink facet is ≤tol; the residual is the
+sharp faceted design's own edges. This RECLASSIFIES Crystalline's TAIL as CLIFF-class (like Voronoi/CelticKnot) even though
+its BULK is density-class (§V11u-2) — a MIXED style: density-responsive down to the C0 edges, then an irreducible-to-injection
+kink floor. RECOMMENDATION: for a literal-0 close, embed the 12 facet-edge (valley) loci as DOUBLED fine-picket LOCKED
+constraints (the Gyroid §V11o/q / Voronoi-embed mechanism) — the loci are closed-form (facetPhase = 0 mod TAU under the
+height-phase shear); OR accept the 49-facet CLIFF floor as the designed-feature-edge residual (matching the settled
+EXCLUDE/EMBED map: sharp faceted edges are near-vertical cliffs, radial≈true). Do NOT invest more injection passes — proven
+asymptote-frozen.
+
+**LEDGER:** registry E-2026-07-09-CRYSTALLINE-LITERAL0 (§V11ad rows); probe `research/bridge/_pf_tangledTargeted.test.ts`
+(PF_TT=Crystalline `maxPasses` 20 + topWorst 2000; PF_TT_CLASSIFY=1 tail-dump stage) + `vitest.tangled_targeted.config.ts`,
+pre-registered/committed 6364d13. Data `research/exchange/_tangled_targeted/Crystalline/{passes,final}.ndjson (base+15) +
+inj_0..14.json + survivors_14.ndjson (49) + run_v11ad.log + run_classify.log` (gitignored — numbers inlined). Finish
+commit [this]. DEV-ONLY; no src/ edit.
