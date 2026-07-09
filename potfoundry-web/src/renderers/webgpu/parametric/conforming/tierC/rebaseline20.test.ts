@@ -7,9 +7,12 @@ import {
   type ConformingOuterWallOptions,
 } from '../ConformingOuterWall';
 import { buildTierCOuterWall, isCountUnstableStyle } from './index';
-import { detectFeatures } from '../featureGraph/detectFeatures';
-import { TIER_C_DETECT_OPTS } from './detectOpts';
+import type { FeatureGraph } from '../featureGraph/types';
 import { hashMesh } from './__testutil';
+
+// The dispatch predicate is now a per-style allow-list; it never consults the
+// graph (E-2026-07-09-DISPATCH-PREDICATE). Pass an empty graph.
+const EMPTY_GRAPH: FeatureGraph = { nodes: [], edges: [] };
 
 // ── Task-6 FINAL PRODUCTION RE-BASELINE GATE (env-gated: PF_REBASELINE20=1).
 //
@@ -114,17 +117,22 @@ describe.skipIf(!GATE)('Tier-C 20-style whole-mesh re-baseline gate', () => {
       for (const styleId of styleIds) {
         const sampler = styleSampler(styleId, {}, DIMS);
 
-        // Dispatch predicate (graph-driven, the production routing signal).
-        const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
-        const unstable = isCountUnstableStyle('', graph);
+        // Dispatch predicate (E-2026-07-09-DISPATCH-PREDICATE): a per-style
+        // allow-list keyed on styleId. The graph-junction signal it replaced
+        // over-triggered 17/20 (§V12) and no measured graph signal separates
+        // the intended pair with a defensible margin (see countUnstable.ts).
+        // The graph is no longer consulted for the decision.
+        const unstable = isCountUnstableStyle(styleId, EMPTY_GRAPH);
         if (unstable) dispatchedUnstable.push(styleId);
 
         if (!unstable) {
-          // (a) count-STABLE: flag-ON MUST fall back byte-identical.
+          // (a) count-STABLE: flag-ON MUST fall back byte-identical. The
+          // styleId is passed through so the predicate can route (it won't,
+          // for these 18) — proving the fallback holds WITH the real id.
           setFlag(false);
           const off = buildConformingOuterWall(sampler, OPTS);
           setFlag(true);
-          const on = buildTierCOuterWall(sampler, OPTS);
+          const on = buildTierCOuterWall(sampler, OPTS, styleId);
           setFlag(false);
           const byteIdentical = hashMesh(on) === hashMesh(off);
           expect(byteIdentical, `${styleId} flag-on must fall back`).toBe(true);

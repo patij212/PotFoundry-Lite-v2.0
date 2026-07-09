@@ -2212,7 +2212,7 @@ export class ParametricExportComputer {
                     maxLevel: 10,
                     resU: 128,
                     resT: 128,
-                });
+                }, params.styleId); // styleId = the Tier-C dispatch signal (allow-list)
 
                 // 5. Evaluate the conforming (u,t) vertices to real 3D positions.
                 const owUv = new Float32Array(ow.vertices.length);

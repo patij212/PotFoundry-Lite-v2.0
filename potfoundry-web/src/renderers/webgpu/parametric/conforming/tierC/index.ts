@@ -17,6 +17,7 @@
  */
 
 import type { SurfaceSampler } from '../SurfaceSampler';
+import type { StyleId } from '../../../../../geometry/types';
 import {
   buildConformingOuterWall,
   type ConformingOuterWallOptions,
@@ -30,7 +31,11 @@ import { DEFAULT_RULER } from './interiorRuler';
 import { refineToZeroOutliers, type RefineResult } from './noBridgeRefine';
 import { collapseDegenerateFaces } from './collapseDegenerate';
 
-export { countJunctionNodes, isCountUnstableStyle } from './countUnstable';
+export {
+  countJunctionNodes,
+  isCountUnstableStyle,
+  COUNT_UNSTABLE_STYLES,
+} from './countUnstable';
 export { TIER_C_DETECT_OPTS } from './detectOpts';
 export {
   buildProtectedComplex,
@@ -131,23 +136,34 @@ export function isPerfectMesherEnabled(): boolean {
 }
 
 /**
- * Drop-in for {@link buildConformingOuterWall}: identical signature and
- * result. Flag off → pure delegation (byte-identical). Flag on → the Tier-C
- * perfect-mesher path (not yet wired; throws until plan Task 4).
+ * Drop-in for {@link buildConformingOuterWall}: identical result contract.
+ * Flag off → pure delegation (byte-identical, regardless of `styleId`). Flag on
+ * → the Tier-C perfect-mesher path, but ONLY for the count-unstable styles the
+ * dispatch predicate allow-lists (Gothic/GeoStar); every other style still
+ * delegates byte-identical.
+ *
+ * @param styleId The style being meshed — the dispatch signal (an explicit
+ *   allow-list, E-2026-07-09-DISPATCH-PREDICATE; see countUnstable.ts for why
+ *   no graph signal separates cleanly). Omit / pass undefined ⇒ never routed to
+ *   Tier-C (safe fallback); flag-off ignores it entirely.
  */
 export function buildTierCOuterWall(
   sampler: SurfaceSampler,
   opts: ConformingOuterWallOptions,
+  styleId?: StyleId,
 ): ConformingOuterWallResult {
   if (!isPerfectMesherEnabled()) {
     return buildConformingOuterWall(sampler, opts);
   }
   // Flag ON (dev-only): Tier-C fires only for count-unstable feature
-  // networks; Tier-A/B styles take the production path unchanged.
-  const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
-  if (!isCountUnstableStyle('', graph)) {
+  // networks (allow-listed); Tier-A/B styles take the production path
+  // unchanged. The graph is not needed for the dispatch decision (the
+  // count-instability signal that would derive it is refuted — allow-list),
+  // so build it only when we DO dispatch, for the protected complex below.
+  if (!isCountUnstableStyle(styleId ?? '', { nodes: [], edges: [] })) {
     return buildConformingOuterWall(sampler, opts);
   }
+  const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
   // The perfect-mesher pipeline: protected complex → no-bridge locked CDT →
   // whole-mesh honest-brute refine to literal 0 interior outliers. PROVEN at
   // patch scale (Gothic/GeoStar, VALIDATION 7); the full-wall domain below is
