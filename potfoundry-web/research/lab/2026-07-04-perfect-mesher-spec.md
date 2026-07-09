@@ -2768,3 +2768,52 @@ priced verdict instead of an inference). Do NOT invest further picket/density bu
 build|verdict|gate, PF_CKLADDER override, resumable) + lib `research/bridge/_ckFieldLib.ts` + `vitest.ck_close.config.ts`.
 Data `research/exchange/_ck_close/CelticKnot/*` (gitignored — numbers inlined; renders z_outliers.png/z_doubled3M.png).
 Commits: pre-reg 417a336, tiled-planarize 88054ac, ladder-override ea8f697, gate+verdict [this]. DEV-ONLY; no src/ edit.
+
+## V11ab — CRYSTALLINE-LITERAL0 CONTINUATION (E-2026-07-09-CRYSTALLINE-LITERAL0) — extend the §V11u-2 Crystalline monotone-halving LOCAL-injection run from 5 passes to 12; the residual keeps halving (1,891→49) but the worstTrue PINS at ~0.076-0.082 and the per-pass decay DECELERATES (50%→25.8%) — a HARD TAIL is emerging, NOT clean convergence to 0 (RECOVERED run, 2026-07-09)
+
+CONTINUATION of §V11u-2. ESTABLISHED (not re-derived): §V11u-2 drove Crystalline's LOCAL injected-Steiner residual 35,502→1,891
+over 5 passes (strictly monotone ~halving), watertight, proj 7.46M ≤10M with headroom, and RECOMMENDED raising maxPasses to
+~10 (the trajectory + <8M projection + moving worst-facet (u,t) predicted literal-0 was a BUDGET-of-passes limit, not a
+mechanism wall). This arm CONTINUED the EXACT same config (probe `maxPasses` 5→12, RESUME carries passes 0-5, RESUME-GAP
+RECONSTRUCTION deterministically rebuilds the missing inj_5.json — the old-cap run never persisted it). The run COMPLETED
+CLEANLY (vitest exit 0, 13,913s wall ≈ 3.9h for passes 6-12); the ledger below is RECOVERED from the on-disk ndjson (the
+original agent died on an API 529 before writing it).
+
+**RESULT — passes 6→12 (Newton 500/500 stratified verdict, the CARRIED downsize; NOT the exact literal basis):**
+
+| pass | injected | tris | projFullPot | radialOut(max) | NEWTON(strat) | decay | worstTrue @ (u,t) | nonMan | zeroArea |
+|---|---|---|---|---|---|---|---|---|---|
+| local5 (anchor) | 579,052 | 3,729,149 | 7,458,298 | 4,585 (0.194) | 1,891 | — | 0.08698 @ (0.986,0.409) | 0 | 0 |
+| local6 | 599,873 | 3,756,066 | 7,512,132 | 2,555 (0.194) | 946 | 50.0% | 0.07995 @ (0.981,0.563) | 0 | 0 |
+| local7 | 611,197 | 3,767,378 | 7,534,756 | 1,516 (0.182) | 493 | 47.9% | 0.07668 @ (0.893,0.724) | 0 | 0 |
+| local8 | 617,958 | 3,772,674 | 7,545,348 | 981 (0.182) | 259 | 47.5% | 0.07668 @ (0.893,0.724) | 0 | 0 |
+| local9 | 622,388 | 3,774,826 | 7,549,652 | 784 (0.189) | 159 | 38.6% | 0.08221 @ (0.217,0.996) | 0 | 0 |
+| local10 | 625,945 | 3,775,858 | 7,551,716 | 602 (0.189) | 100 | 37.1% | 0.08221 @ (0.217,0.996) | 0 | 0 |
+| local11 | 628,724 | 3,776,972 | 7,553,944 | 552 (0.181) | 66 | 34.0% | 0.07590 @ (0.487,0.384) | 0 | 0 |
+| local12 | 631,306 | 3,777,328 | 7,554,656 | 519 (0.181) | **49** | 25.8% | 0.07590 @ (0.487,0.384) | 0 | 0 |
+
+**FULL TRAJECTORY (base + 12 passes): 35502 → 16436 → 9724 → 5983 → 3271 → 1891 → 946 → 493 → 259 → 159 → 100 → 66 → 49.**
+Still STRICTLY MONOTONE, watertight (nonMan 0) + zeroArea 0 every pass, projFullPot 7.55M ≤10M (hitBudget=false throughout —
+a genuine density point). Tris grew only +48k over passes 6-12 (631,306 total injected vs 579,052 at pass 5 — the refinement
+stayed genuinely LOCAL; the flat bulk is untouched).
+
+**TWO NEW SIGNALS (not present in the §V11u-2 5-pass window):** (1) the per-pass DECAY DECELERATES monotonically:
+50.0% → 47.9% → 47.5% → 38.6% → 37.1% → 34.0% → 25.8%. It never crossed the 15% asymptote-kill (lowStreak stayed 0), so
+the run did not trip the kill — but the deceleration is real and the last pass only removed 17 facets. (2) worstTrue is
+PINNED in [0.0759, 0.0822] across passes 7-12 while the count keeps falling. The worst FACET moves (worstUt changed each
+pass: (0.893,0.724)→(0.217,0.996)→(0.487,0.384)) — so injection IS clearing the current-worst spot each pass — but the
+MAGNITUDE of the next-worst is pinned. This is the signature of a HARD TAIL: a population of ~tens of near-vertical spots
+all at the same ~0.076-0.082 depth that injection clears one-cluster-at-a-time but does not shrink in magnitude. Contrast
+§V11u-2's optimistic read (worst was still dropping 0.106→0.087 at pass 5); the extended window shows the drop STALLING.
+
+**VERDICT (§V11ab, interim): FRONTIER-INCOMPLETE — 49 Newton (stratified) @ 7.55M, watertight, monotone but DECELERATING
+with a PINNED worst ~0.076.** The §V11u-2 "~10 passes → literal-0" extrapolation is now in DOUBT: 12 passes reached 49, not
+0, and the decay is decelerating toward (not yet at) the asymptote. The pinned-worst signal suggests the tail is a
+smoothstep-KNEE population (as Gyroid §V11w/aa) rather than pure density — the §V11ad continuation tests exactly this
+(continue 13→20 with the asymptote-kill armed; if a hard tail survives, classify the survivors' (u,t)+|∇r| and apply the
+§V11aa PINNED-KNEE recipe that closed Gyroid's identical tail with 35 points).
+
+**LEDGER:** registry E-2026-07-09-CRYSTALLINE-LITERAL0; probe `research/bridge/_pf_tangledTargeted.test.ts` (PF_TT=Crystalline,
+`maxPasses` 5→12 + RESUME-GAP RECONSTRUCTION + ASYMPTOTE-kill machinery, committed d9b9819 BEFORE the run). Data
+`research/exchange/_tangled_targeted/Crystalline/{passes,final}.ndjson + inj_0..11.json + run_v11ab.log` (gitignored —
+numbers inlined). Recovery commit [this]; the probe was already committed at d9b9819. DEV-ONLY; no src/ edit.
