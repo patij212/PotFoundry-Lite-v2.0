@@ -441,6 +441,9 @@ describe('E-2026-07-09-VORONOI-EMBED', () => {
     const b = buildTangled('Voronoi', DIMS, { chordTolMm: Number(process.env.PF_VORB ?? '0.008'), maxPoints: 2_000_000, sizeRes: Number(process.env.PF_VORS ?? '224'), chordSampleN: 8 });
     const rA = radiusFn('Voronoi', DIMS);
     const sound = wholeMeshGuardRadialBound(rA, DIMS.H, b.ut, b.idx, 0.01);
+    // persist the base mesh as tag 'anchor' so the SAME Newton verdict runs on it (apples-to-apples control).
+    writeFileSync(join(DIR, `mesh_anchor.ut.bin`), Buffer.from(Float64Array.from(b.ut).buffer));
+    writeFileSync(join(DIR, `mesh_anchor.idx.bin`), Buffer.from((b.idx as Uint32Array).buffer, (b.idx as Uint32Array).byteOffset, (b.idx as Uint32Array).byteLength));
     const rec = { stage: 'anchor', tris: b.tris, points: b.points, projFullPot: 2 * b.tris, radialOut: sound.outliers, radialMax: +sound.maxMm.toFixed(5), zeroArea: sound.zeroArea };
     appendFileSync(join(DIR, 'anchor.ndjson'), JSON.stringify(rec) + '\n');
     // eslint-disable-next-line no-console
