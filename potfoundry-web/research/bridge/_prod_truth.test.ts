@@ -18,7 +18,6 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRadiusFn } from './runStyle';
 import { scoreWholeMeshInterior } from './_pf_rebaselineRuler';
-import { auditNonManRaw } from './_pf_tangledKernelLib';
 import { loadBinMesh } from './_pf_bvhRuler';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 import { newtonNearest } from './_gyroid_truthLib';
@@ -51,6 +50,27 @@ function pctStats(devs: Float64Array, n: number, tol: number): PctStats {
     n,
     over,
   };
+}
+
+// Large-mesh-safe raw-index non-manifold audit. auditNonManRaw's JS Map overflows at >16.7M edge
+// keys (>~5.6M tris — hit by SpiralRidges full pot 5.69M on this arm's first run, the SAME wall as
+// §V11w/§V11x). Sorted-key run-length scan, no cap. NOTE: 4th in-tree copy (_gyroid_literal0 /
+// _voronoi_embed / _pf_dsconform) — promote to labkit (follow-up flagged in the journal).
+function nonManRawBig(idx: ArrayLike<number>): number {
+  const nE = (idx.length / 3) * 3;
+  const keys = new Float64Array(nE);
+  let m = 0;
+  for (let k = 0; k < idx.length; k += 3) {
+    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+    if (a === b || b === c || a === c) continue;
+    const e = [[a, b], [b, c], [c, a]] as const;
+    for (const [p, q] of e) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
+  }
+  const sub = keys.subarray(0, m);
+  sub.sort();
+  let nm = 0;
+  for (let i = 0; i < m;) { let j = i + 1; while (j < m && sub[j] === sub[i]) j++; if (j - i > 2) nm++; i = j; }
+  return nm;
 }
 
 function zeroAreaCount(xyz: Float32Array, idx: Uint32Array): number {
@@ -100,11 +120,11 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
 
       // (1) Watertight on the FULL-POT artifact — non-vacuous (injected extra tri on an existing
       // edge must move the count, else the audit is vacuous and the row says so).
-      const nonMan = auditNonManRaw(full.idx);
+      const nonMan = nonManRawBig(full.idx);
       const cracked = new Uint32Array(full.idx.length + 3);
       cracked.set(full.idx);
       cracked.set([full.idx[0], full.idx[1], full.idx[2]], full.idx.length);
-      const crackedCount = auditNonManRaw(cracked);
+      const crackedCount = nonManRawBig(cracked);
       row.nonManRaw = nonMan;
       row.nonManControlMoved = crackedCount > nonMan;
       row.zeroArea = zeroAreaCount(full.xyz, full.idx);
