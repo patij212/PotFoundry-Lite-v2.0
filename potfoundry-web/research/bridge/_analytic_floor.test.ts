@@ -20,16 +20,21 @@ import {
   AF_PROD_OPTS,
   AF_STYLE,
   auditWatertight,
+  buildMiniAssemblyHash,
   buildProductionTwin,
   scoreCoverage,
   scoreForward,
+  wallsDiag,
   zeroAreaCount,
   type FloorSpec,
 } from './_analytic_floor_lib';
 import { buildAnalyticCurvatureFloor } from '../../src/renderers/webgpu/parametric/conforming/AnalyticCurvatureFloor';
 
 const ON = process.env.PF_ANALYTIC_FLOOR === '1';
-const STAGE = process.env.PF_AF_STAGE === 'on' ? 'on' : 'twin';
+const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'twin' => {
+  const s = process.env.PF_AF_STAGE;
+  return s === 'on' || s === 'walls' || s === 'orient-mini' ? s : 'twin';
+})();
 const TOL = 0.01;
 const ROOT = join('research', 'exchange', '_analytic_floor');
 const BASELINE = join(ROOT, 'twin_baseline.json');
@@ -62,6 +67,36 @@ describe('E-2026-07-09-ANALYTIC-FLOOR — production twin, flag-off/flag-on', ()
     mkdirSync(ROOT, { recursive: true });
     const rA = buildRadiusFn(AF_STYLE, {}, AF_DIMS);
     const row: Record<string, unknown> = { stage: STAGE, at: new Date().toISOString(), tol: TOL };
+
+    if (STAGE === 'orient-mini') {
+      // Byte-identity gate for internal WatertightAssembly refactors: run once
+      // BEFORE the refactor (banks the mini hash), and after (must match).
+      const mini = buildMiniAssemblyHash();
+      const miniPath = join(ROOT, 'orient_mini_baseline.json');
+      Object.assign(row, mini);
+      appendFileSync(ROWS, JSON.stringify(row) + '\n');
+      console.log(`[analytic-floor] orient-mini: hash=${mini.hash} tris=${mini.tris} verts=${mini.verts}`);
+      if (existsSync(miniPath)) {
+        const banked = JSON.parse(readFileSync(miniPath, 'utf8')) as { hash: string; tris: number };
+        expect(mini.hash, 'mini-assembly BYTE-IDENTITY vs banked').toBe(banked.hash);
+        expect(mini.tris).toBe(banked.tris);
+        console.log(`[analytic-floor] orient-mini BYTE-IDENTITY OK vs ${banked.hash}`);
+      } else {
+        writeFileSync(miniPath, JSON.stringify(mini, null, 2));
+        console.log('[analytic-floor] orient-mini baseline BANKED');
+      }
+      return;
+    }
+
+    if (STAGE === 'walls') {
+      // Twin-divergence localizer (no caps / no orientOutward): per-wall counts +
+      // uBias A/B leaves vs the captured artifact. Report-only.
+      const diag = wallsDiag();
+      Object.assign(row, diag);
+      appendFileSync(ROWS, JSON.stringify(row) + '\n');
+      console.log(`[analytic-floor] walls diag:\n${JSON.stringify(diag, null, 2)}`);
+      return;
+    }
 
     let floor: FloorSpec | null = null;
     if (STAGE === 'on') {

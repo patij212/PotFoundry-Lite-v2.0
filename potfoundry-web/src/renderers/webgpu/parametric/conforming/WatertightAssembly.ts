@@ -773,7 +773,13 @@ function orientOutward(
   const triCount = indices.length / 3;
   if (triCount === 0) return;
 
-  // Weld vertices by 3D position so shared-ring edges are identified.
+  // Weld vertices by 3D position so shared-ring edges are identified. Sorted
+  // group scan, NOT a keyed Map: V8 Maps cap at ~16.7M entries, and the string-
+  // keyed weld/edge maps this replaces crashed real 5-6M-tri assemblies run in
+  // Node (the §V11w/§V11x Map-cap wall, reproduced 2026-07-09 — same class as
+  // the metrics.ts topologyMetric fix). Group key = quantized (x,y,z); weld id
+  // = the group's smallest vertex index, identical to the old Map's
+  // first-occurrence-wins id (ties in the sort break on index).
   const n = packed.length / 3;
   const pos = new Float32Array(n * 3);
   for (let i = 0; i < n; i++) {
@@ -783,30 +789,78 @@ function orientOutward(
     pos[i * 3 + 2] = p[2];
   }
   const inv = 1 / 1e-4;
-  const weld = new Uint32Array(n);
-  const buckets = new Map<string, number>();
+  const qx = new Float64Array(n);
+  const qy = new Float64Array(n);
+  const qz = new Float64Array(n);
   for (let i = 0; i < n; i++) {
-    const key = `${Math.round(pos[i * 3] * inv)},${Math.round(pos[i * 3 + 1] * inv)},${Math.round(pos[i * 3 + 2] * inv)}`;
-    const ex = buckets.get(key);
-    if (ex === undefined) { buckets.set(key, i); weld[i] = i; }
-    else weld[i] = ex;
+    qx[i] = Math.round(pos[i * 3] * inv);
+    qy[i] = Math.round(pos[i * 3 + 1] * inv);
+    qz[i] = Math.round(pos[i * 3 + 2] * inv);
+  }
+  const order = new Uint32Array(n);
+  for (let i = 0; i < n; i++) order[i] = i;
+  order.sort((a, b) => qx[a] - qx[b] || qy[a] - qy[b] || qz[a] - qz[b] || a - b);
+  const weld = new Uint32Array(n);
+  for (let s = 0; s < n; ) {
+    const r = order[s];
+    let e = s + 1;
+    while (e < n && qx[order[e]] === qx[r] && qy[order[e]] === qy[r] && qz[order[e]] === qz[r]) e++;
+    for (let k = s; k < e; k++) weld[order[k]] = r;
+    s = e;
   }
 
-  // Map each undirected welded edge to the (up to two) triangles using it.
-  const edgeTris = new Map<string, number[]>();
-  const edgeKey = (a: number, b: number): string =>
-    a < b ? `${a}:${b}` : `${b}:${a}`;
+  // Undirected welded edge → adjacent triangles, as a sorted-key CSR (capless).
+  // Key = lo·2^26 + hi is exact in a double (weld ids ≪ 2^26); entries are
+  // emitted in ascending-triangle order and the CSR fill preserves that order,
+  // so each edge's triangle list matches the old Map's push order exactly —
+  // the flood fill below visits identical neighbours in identical order.
+  const EK = 1 << 26;
+  if (n >= EK) throw new Error(`orientOutward: vertex count ${n} exceeds edge-key range`);
+  const mMax = triCount * 3;
+  const eKeys = new Float64Array(mMax);
+  const eTriIds = new Uint32Array(mMax);
+  let m = 0;
   for (let t = 0; t < triCount; t++) {
     const a = weld[indices[t * 3]];
     const b = weld[indices[t * 3 + 1]];
     const c = weld[indices[t * 3 + 2]];
     for (const [i, j] of [[a, b], [b, c], [c, a]] as const) {
       if (i === j) continue;
-      const k = edgeKey(i, j);
-      let list = edgeTris.get(k);
-      if (!list) { list = []; edgeTris.set(k, list); }
-      list.push(t);
+      eKeys[m] = (i < j ? i : j) * EK + (i < j ? j : i);
+      eTriIds[m] = t;
+      m++;
     }
+  }
+  const sorted = eKeys.slice(0, m);
+  sorted.sort();
+  const uKeys = new Float64Array(m);
+  const uOff = new Uint32Array(m + 1);
+  let nEdges = 0;
+  for (let s = 0; s < m; ) {
+    let e = s + 1;
+    while (e < m && sorted[e] === sorted[s]) e++;
+    uKeys[nEdges] = sorted[s];
+    uOff[nEdges + 1] = uOff[nEdges] + (e - s);
+    nEdges++;
+    s = e;
+  }
+  const findEdge = (key: number): number => {
+    let lo = 0;
+    let hi = nEdges - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const v = uKeys[mid];
+      if (v === key) return mid;
+      if (v < key) lo = mid + 1;
+      else hi = mid - 1;
+    }
+    return -1;
+  };
+  const csrTris = new Uint32Array(m);
+  const cursor = new Uint32Array(nEdges);
+  for (let k = 0; k < m; k++) {
+    const slot = findEdge(eKeys[k]);
+    csrTris[uOff[slot] + cursor[slot]++] = eTriIds[k];
   }
 
   // Flood-fill: neighbours across a shared edge must traverse it in opposite
@@ -840,9 +894,10 @@ function orientOutward(
       const dirEdges: Array<[number, number]> = [[a, b], [b, c], [c, a]];
       for (const [i, j] of dirEdges) {
         if (i === j) continue;
-        const list = edgeTris.get(edgeKey(i, j));
-        if (!list) continue;
-        for (const nb of list) {
+        const slot = findEdge((i < j ? i : j) * EK + (i < j ? j : i));
+        if (slot < 0) continue;
+        for (let li = uOff[slot]; li < uOff[slot + 1]; li++) {
+          const nb = csrTris[li];
           if (nb === t || oriented[nb]) continue;
           // Consistent if the neighbour traverses (i,j) as (j,i). If it has the
           // SAME directed edge, flip it.

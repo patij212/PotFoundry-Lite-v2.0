@@ -23,9 +23,13 @@ import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 import { GpuSurfaceSampler } from '../../src/renderers/webgpu/parametric/conforming/SurfaceSampler';
 import {
   assembleWatertight,
+  computeUBias,
   type AssemblyWallOptions,
   type WatertightAssemblyResult,
 } from '../../src/renderers/webgpu/parametric/conforming/WatertightAssembly';
+import { buildConformingWall } from '../../src/renderers/webgpu/parametric/conforming/ConformingWall';
+import { MetricSizingField } from '../../src/renderers/webgpu/parametric/conforming/MetricSizingField';
+import { PeriodicBalancedQuadtree } from '../../src/renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree';
 import {
   extractAnalyticFeatures,
   buildCreaseRefineLines,
@@ -133,12 +137,25 @@ export interface TwinBuild {
   outerIdx: Uint32Array;
 }
 
-/**
- * Build the full-pot production twin (assembleWatertight + PEC warp application),
- * optionally with the analytic curvature floor on the OUTER wall (flag-ON arm).
- */
-export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
-  const t0 = Date.now();
+/** Everything the assembly consumes, prepared once (PEC conforming branch, verbatim logic). */
+export interface TwinInputs {
+  rA: ReturnType<typeof buildRadiusFn>;
+  outerSampler: GpuSurfaceSampler;
+  innerSampler: GpuSurfaceSampler;
+  creaseChoice: ReturnType<typeof chooseCreaseGrid>;
+  creaseTChoice: ReturnType<typeof chooseCreaseTGrid>;
+  helixChoice: ReturnType<typeof chooseHelixGrid>;
+  helixK: number;
+  helixTurns: number;
+  generalCurves: ReturnType<typeof buildCreaseRefineLines>;
+  creaseLines: ReturnType<typeof buildCreaseRefineLines>;
+  outerEfgSampler: ReturnType<typeof composedWallSampler>;
+  innerEfgSampler: ReturnType<typeof composedWallSampler>;
+  minUniformLevel: number | undefined;
+}
+
+/** Samplers + feature graph + warp choices — the pre-assembly production steps. */
+export function prepareTwinInputs(): TwinInputs {
   const { H, Rt, Rb } = AF_DIMS;
   const rA = buildRadiusFn(AF_STYLE, {}, AF_DIMS);
   const outer = buildWallGridCPU(rA, 0);
@@ -214,6 +231,153 @@ export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
     helix: helixChoice.warp,
   });
 
+  return {
+    rA,
+    outerSampler: outer.sampler,
+    innerSampler: inner.sampler,
+    creaseChoice,
+    creaseTChoice,
+    helixChoice,
+    helixK,
+    helixTurns,
+    generalCurves,
+    creaseLines,
+    outerEfgSampler,
+    innerEfgSampler,
+    minUniformLevel: resolveUniformLevelOverride(
+      Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level),
+      0,
+    ),
+  };
+}
+
+/**
+ * WALLS DIAGNOSTIC (twin-divergence localizer): per-wall leaf counts at the computed
+ * uBias vs B=0 (plain quadtree, no crease/feature refine) + the TRUE per-wall
+ * buildConformingWall counts with the production wallOpts (assembleWatertight
+ * internals :486-520 mirrored). Localizes where a twin/artifact triangle-count
+ * divergence comes from WITHOUT running caps/orientOutward (which Map-caps ≥~11.2M
+ * tris — the crash that motivated this probe).
+ */
+export function wallsDiag(): Record<string, unknown> {
+  const t0 = Date.now();
+  const inp = prepareTwinInputs();
+  const uBias = computeUBias(inp.outerSampler, false);
+  const pin = Math.round(Math.log2(AF_PROD_OPTS.nRing));
+
+  const plainLeaves = (sampler: GpuSurfaceSampler, bias: number): number => {
+    const field = new MetricSizingField(sampler, {
+      maxSagMm: AF_PROD_OPTS.maxSagMm,
+      minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+      maxEdgeMm: AF_PROD_OPTS.maxEdgeMm,
+      gradeRatio: AF_PROD_OPTS.gradeRatio,
+      resU: AF_PROD_OPTS.resU,
+      resT: AF_PROD_OPTS.resT,
+    });
+    return new PeriodicBalancedQuadtree(field, sampler, {
+      maxLevel: AF_PROD_OPTS.maxLevel,
+      pinBoundaryLevel: pin,
+      minUniformLevel: inp.minUniformLevel,
+      uBias: bias,
+    }).leafCount();
+  };
+
+  const outerLeavesAtB = plainLeaves(inp.outerSampler, uBias);
+  const outerLeavesAt0 = uBias > 0 ? plainLeaves(inp.outerSampler, 0) : outerLeavesAtB;
+  const innerLeavesAtB = plainLeaves(inp.innerSampler, uBias);
+
+  // TRUE production wall builds (mirrors assembleWatertight's wallOpts verbatim).
+  const wallOpts = {
+    maxSagMm: AF_PROD_OPTS.maxSagMm,
+    maxEdgeMm: AF_PROD_OPTS.maxEdgeMm,
+    minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+    gradeRatio: AF_PROD_OPTS.gradeRatio,
+    maxLevel: AF_PROD_OPTS.maxLevel,
+    resU: AF_PROD_OPTS.resU,
+    resT: AF_PROD_OPTS.resT,
+    nRing: AF_PROD_OPTS.nRing,
+    targetTriangles: Math.floor(AF_PROD_OPTS.targetTriangles / 2),
+    budgetMode: AF_PROD_OPTS.budgetMode,
+    minUniformLevel: inp.minUniformLevel,
+    uBias,
+    directionalRefine: false,
+  };
+  const outerWall = buildConformingWall(inp.outerSampler, {
+    ...wallOpts,
+    surfaceId: 0,
+    featureLines: inp.generalCurves.length > 0 ? inp.generalCurves : undefined,
+    featureLevel: AF_PROD_OPTS.featureLevel,
+    creaseLines: inp.creaseLines.length > 0 ? inp.creaseLines : undefined,
+    efgSampler: inp.outerEfgSampler,
+  });
+  const outerTris = outerWall.indices.length / 3;
+  const innerWall = buildConformingWall(inp.innerSampler, {
+    ...wallOpts,
+    surfaceId: 1,
+    efgSampler: inp.innerEfgSampler,
+  });
+  const innerTris = innerWall.indices.length / 3;
+
+  return {
+    uBias,
+    helix: { k: inp.helixK, turns: inp.helixTurns, level: inp.helixChoice.level },
+    minUniformLevel: inp.minUniformLevel ?? 0,
+    creaseLineCount: inp.creaseLines.length,
+    generalCurveCount: inp.generalCurves.length,
+    plainLeaves: { outerAtB: outerLeavesAtB, outerAt0: outerLeavesAt0, innerAtB: innerLeavesAtB },
+    outer: { tris: outerTris, verts: outerWall.gridVertexCount, budget: outerWall.budget ?? null },
+    inner: { tris: innerTris, verts: innerWall.gridVertexCount, budget: innerWall.budget ?? null },
+    projWallsTris: outerTris + innerTris,
+    capturedOuterTris: 2_680_400,
+    capturedFullTris: 5_686_826,
+    ms: Date.now() - t0,
+  };
+}
+
+/**
+ * MINI assembly fingerprint — a small, seconds-scale assembleWatertight build used
+ * as the byte-identity gate for internal WatertightAssembly refactors (e.g. the
+ * capless orientOutward rewrite): the hash must be identical before/after.
+ */
+export function buildMiniAssemblyHash(): { hash: string; tris: number; verts: number } {
+  const { H } = AF_DIMS;
+  const rA = buildRadiusFn(AF_STYLE, {}, AF_DIMS);
+  const outer = buildWallGridCPU(rA, 0);
+  const inner = buildWallGridCPU(rA, 1);
+  const asm = assembleWatertight(
+    outer.sampler,
+    inner.sampler,
+    { H, tBottom: AF_TBOTTOM, rDrain: AF_RDRAIN },
+    {
+      maxSagMm: 0.05,
+      maxEdgeMm: 4,
+      minEdgeMm: 0.5,
+      gradeRatio: 2,
+      maxLevel: 8,
+      resU: 65,
+      resT: 17,
+      nRing: 128,
+      targetTriangles: 200_000,
+      budgetMode: 'cap',
+    },
+  );
+  return {
+    hash: fnvHash(asm.vertices, asm.indices),
+    tris: asm.indices.length / 3,
+    verts: asm.vertices.length / 3,
+  };
+}
+
+/**
+ * Build the full-pot production twin (assembleWatertight + PEC warp application),
+ * optionally with the analytic curvature floor on the OUTER wall (flag-ON arm).
+ */
+export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
+  const t0 = Date.now();
+  const { H } = AF_DIMS;
+  const inp = prepareTwinInputs();
+  const { rA, creaseChoice, creaseTChoice, helixChoice, generalCurves, creaseLines } = inp;
+
   const assemblyOpts: AssemblyWallOptions = {
     maxSagMm: AF_PROD_OPTS.maxSagMm,
     maxEdgeMm: AF_PROD_OPTS.maxEdgeMm,
@@ -225,15 +389,12 @@ export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
     nRing: AF_PROD_OPTS.nRing,
     targetTriangles: AF_PROD_OPTS.targetTriangles,
     budgetMode: AF_PROD_OPTS.budgetMode,
-    minUniformLevel: resolveUniformLevelOverride(
-      Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level),
-      0,
-    ),
+    minUniformLevel: inp.minUniformLevel,
     outerFeatureLines: generalCurves.length > 0 ? generalCurves : undefined,
     featureLevel: AF_PROD_OPTS.featureLevel,
     outerCreaseLines: creaseLines.length > 0 ? creaseLines : undefined,
-    outerEfgSampler,
-    innerEfgSampler,
+    outerEfgSampler: inp.outerEfgSampler,
+    innerEfgSampler: inp.innerEfgSampler,
   };
   if (floor) {
     // outerCurvatureFloor/outerMaxKappa land on AssemblyWallOptions with the wiring
@@ -245,8 +406,8 @@ export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
   }
 
   const asm: WatertightAssemblyResult = assembleWatertight(
-    outer.sampler,
-    inner.sampler,
+    inp.outerSampler,
+    inp.innerSampler,
     { H, tBottom: AF_TBOTTOM, rDrain: AF_RDRAIN },
     assemblyOpts,
   );
@@ -300,7 +461,7 @@ export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
     outerVerts: sub.vertices.length / 3,
     outerTris: sub.indices.length / 3,
     hash,
-    helix: { k: helixK, turns: helixTurns, level: helixChoice.level, identity: helixChoice.warp.isIdentity },
+    helix: { k: inp.helixK, turns: inp.helixTurns, level: helixChoice.level, identity: helixChoice.warp.isIdentity },
     generalCurveCount: generalCurves.length,
     creaseLineCount: creaseLines.length,
     buildMs: Date.now() - t0,
