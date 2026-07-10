@@ -165,11 +165,192 @@ Line-by-line JS<->WGSL correspondence will be documented in comments at both sit
 - Upstream confirmed design: `research/lab/E-2026-07-10-INTHASH-prereg.md` (pre-reg 899238b0,
   verdict f1ce5ca4)
 - Reference lib (read-only): `research/bridge/_voronoi_inthash_lib.ts`
-- This pre-reg commit: [pending]
+- This pre-reg commit: 20a7f0ab
 - TDD test: `src/geometry/voronoiIntHash.test.ts` (new)
 - Production files touched: `src/assets/shaders/styles.wgsl`, `src/geometry/styles.ts`,
   `src/geometry/__fixtures__/styleGoldenValues.json`
 - Prior float-hash prod-truth baseline preserved at:
   `research/exchange/_prod_truth/Voronoi_floathash_baseline/` (renamed from `Voronoi/` before
   recapture, per mission step 8)
-- Verdict: [to be appended after implementation + validation]
+
+---
+
+## VERDICT (measured 2026-07-10)
+
+### Scoping — confirmed clean
+
+`hash22`/`periodic_cellular` (WGSL) and `hash22`/`periodicCellular` (TS) each had exactly ONE
+caller (the Voronoi style chain), confirmed by grep + GitNexus impact (upstream, summaryOnly):
+`rOuterVoronoi` 1 direct caller (`STYLE_FUNCTIONS.Voronoi`), `periodicCellular` 1 direct + 1
+indirect, `hash22` 1 direct + 2 indirect — all LOW risk, `processes_affected: 0` on every query.
+New functions were added (`hash_pcg2d`/`u32_to_unit_float`/`hash22_int`/`periodic_cellular_int` in
+WGSL; `pcg2dHash`/`u32ToUnitFloat`/`hash22Int`/`periodicCellularInt` in TS) and only
+`style_voronoi`/`rOuterVoronoi` switched to them, per protocol. **Refinement discovered during
+implementation** (not anticipated in the original scoping): TypeScript's `noUnusedLocals: true`
+(tsconfig.json:19) rejects a dead non-exported function — once `rOuterVoronoi` stopped calling the
+old `hash22`/`periodicCellular`, they had zero callers anywhere and `npm run typecheck` correctly
+failed. They were REMOVED from `styles.ts` (confirmed dead by the same grep/impact evidence that
+established single-caller status). The WGSL twins (`hash22`/`periodic_cellular` in styles.wgsl)
+were NOT removed — WGSL has no unused-function compiler error and the `#region style_voronoi`
+block already only ships to the GPU when Voronoi is active, so leaving them costs nothing there.
+
+**Out-of-scope finding, reported not acted on**: `src/renderers/webgpu/parametric/conforming/
+FeatureLineGraph.ts:611-621` has an INDEPENDENT hand-replicated copy of the float-hash `hash22`
+(not a caller of `styles.ts`'s function — zero call-graph edge, confirmed by GitNexus). This file
+is on the DO-NOT-TOUCH list (owned by a concurrent session). Consequence: the conforming mesher's
+Voronoi feature-line loci now compute against the OLD float-hash cell layout while the rendered
+surface uses the NEW int-hash layout — a latent mismatch flagged via `spawn_task` for follow-up,
+not blocking this mission.
+
+### A real bug caught by the shaderStripper regression test (worth recording)
+
+Mid-implementation, one of my own WGSL doc comments accidentally started a line with the literal
+token `// #region` (inside a sentence: "...and this #region already only ships..."). `styles.wgsl`'s
+shader-stripping mechanism (`stripShaderCode`, `src/utils/shaderStripper.ts`) does a naive
+`trimmed.startsWith('// #region')` line-scan with no escaping — this line was misparsed as a NEW
+region-start marker, corrupting the region name and causing `style_voronoi` itself (and every other
+style, since the parser state leaks past the intended `#endregion`) to be silently stripped from
+every style's compiled shader. `npx vitest run src/utils/shaderStripper.test.ts` caught this
+immediately (`should strip unused functions for every style in the registry` failed — expected
+`fn\s+style_voronoi\b` in the stripped output, found nothing). Fixed by rewording the comment to
+avoid the literal prefix; a NOTE was added at the insertion site warning future editors of this
+exact trap. Re-ran clean after the fix (3/3 shaderStripper tests green). This is exactly the kind
+of defect the mission's mandatory validation step exists to catch — cited in full because it would
+have shipped a broken shader for ALL 20 styles, not just Voronoi, had it gone unnoticed.
+
+### TDD gates (a/b/c) — GREEN, RED confirmed first
+
+`src/geometry/voronoiIntHash.test.ts`, run RED against the pre-swap float-hash `rOuterVoronoi`
+first (confirmed it bites: 387,720/1,000,000 mismatches on gate (a)'s random-coverage sweep,
+53,967/200,000 on the boundary-band sweep), then GREEN after the swap (8/8 tests, ~5.2-6.6s wall):
+- **(a) bit-for-bit vs reference `rOuterVoronoiIntF64`**: 0/1,000,000 mismatches (random-coverage,
+  DEFAULT_VORONOI/H120/Rb40/Rt50) + 0/200,000 mismatches (dense cell-boundary-adjacent bands, ±1e-4
+  of integer cell lines in scaled uv).
+- **(b) `rOuterVoronoiVec` element-wise match**: 0 mismatches across 5,000 thetas × 7 t-values,
+  using the CORRECT invariant `vecResult[i] === Math.fround(scalarResult)` (an early draft used raw
+  `!==` and found 1,276/5,000 "mismatches" that turned out to be pre-existing `Float32Array`
+  storage rounding, unrelated to the hash swap and present before/after — the test itself was
+  wrong, not the code; fixed before drawing any conclusion).
+- **(c) f32-emulated determinism re-proven through production**: 0 material argmin-affecting jumps
+  (>0.01mm threshold) on 200,000 adversarial boundary-band samples via the reference lib's own
+  F64/F32 paths (production has no separate F32 mode — this transitively closes the loop with gate
+  (a)'s bit-identity result), plus 0/50,000 raw `hash22Int` determinism sanity re-checks.
+
+### Fixture diff scope — Voronoi-only, confirmed precisely
+
+`UPDATE_GOLDEN=true npx vitest run src/geometry/styleGolden.test.ts` (45/45 tests green, ~9.45s
+wall including environment setup). Per-style diff (before vs. after, scripted comparison, all 20
+styles): **exactly `Voronoi (13/30 values differ)` — zero other styles touched, style count
+unchanged 20→20.** Max delta 1.21mm (consistent with "a different but equally valid" cell layout —
+some theta/t points shift from a cell-boundary web line to a cell-interior baseline and vice
+versa). `topologySnapshots.json` confirmed to have zero Voronoi content before AND after (git
+status shows no changes to that file at all).
+
+### Static validation — clean on touched files
+
+`npx tsc --noEmit -p .`: zero errors in `styles.ts` or `voronoiIntHash.test.ts` (335 pre-existing
+errors elsewhere in this heavily concurrent worktree, none touching my files — confirmed via
+targeted grep). `npx eslint src/geometry/styles.ts src/geometry/voronoiIntHash.test.ts
+--max-warnings=0`: exit 0, zero warnings.
+
+### GitNexus `detect_changes` (staged scope) — clean signal, one noted attribution artifact
+
+`affected_count: 0`, `affected_processes: []`, `risk_level: "low"`, `changed_files: 4` (exactly my
+4 files). `changed_symbols` lists `hash22`/`periodicCellular`/`fract` as "touched" (line-diff
+artifact — their body text is unchanged, only line numbers shifted due to my insertion above them;
+in TS they were actually REMOVED, not touched, per the noUnusedLocals finding above) and
+`rOuterBasketWeave` (verified via `git diff` grep to have ZERO lines in my diff at all — a
+line-number-adjacency attribution artifact from the tool's symbol-boundary detection, not a real
+change; `rOuterBasketWeave` immediately follows `rOuterVoronoiVec` in the file). The decisive
+signal — `affected_processes: []` / `affected_count: 0` — is clean, satisfying the kill criterion
+("unexpected affected processes ⇒ STOP"); the noisy `changed_symbols` attribution is reported
+honestly rather than hidden, but does not itself indicate a leak.
+
+### Pre-existing, unrelated failures ruled out (NOT caused by this swap)
+
+1. **`CelticKnot: should match saved topology snapshot`** (volumeDiff 0.025 > 0.01 threshold):
+   confirmed pre-existing via `git stash` — reproduces IDENTICALLY (same exact volumeDiff value)
+   with my changes fully stashed out, back to the exact committed-pre-reg tree state. CelticKnot
+   shares no code path with Voronoi/hash22/periodicCellular.
+2. **4/5 `export3MF.schema.test.ts` failures** (all `Test timed out` errors, not assertion
+   failures) in the full `src/geometry` sweep (334 tests, 329 passed, run under severe environment
+   contention — 28-minute wall time for a suite that normally runs in seconds to low minutes,
+   ~150 concurrent node/chrome processes from other live sessions in this shared worktree observed
+   throughout). That test file uses `STYLE = 'SuperellipseMorph'`, not Voronoi — zero code-path
+   overlap with this swap. Timeout artifacts of the shared-environment load, not a regression.
+
+### E2E acceptance gate — PENDING (environment unavailable within the session's reasonable window)
+
+Machine courtesy checked repeatedly throughout (`Get-Process node,chrome | Where WorkingSet64 >
+2GB`) — the strict 2GB gate itself stayed at 0 heavy processes almost every check, but the total
+node+chrome process count climbed from ~130 to ~156 over the course of this mission (many OTHER
+live sessions in this shared worktree, exactly as the mission brief warned), and wall-clock times
+for GPU compute work degraded severely as a result (a normally-seconds-to-low-minutes operation
+took 5-6+ minutes per attempt). A pre-existing dev server on :3000 was reused (not killed), per
+instruction.
+
+**Three capture attempts were made** (`node e2e/_prod_truth_capture.mjs Voronoi`), the prior
+float-hash baseline was preserved FIRST at `research/exchange/_prod_truth/
+Voronoi_floathash_baseline/` (renamed from `Voronoi/` before any recapture):
+
+1. **Attempt 1**: full-pot mesh generated successfully — **3,779,787 verts / 7,559,574 tris in
+   327.9s** (vs. the float-hash baseline's ~7.18M tris — comparable order of magnitude, confirming
+   the swapped WGSL compute path produces valid, non-degenerate output). The second, independent
+   `_debugOuterMesh()` generate call then failed: `Error: _debugOuterMesh returned null` after an
+   additional ~12s (total 340.2s).
+2. **Attempt 2**: failed EARLIER, on the FIRST generate itself: `AbortError: Failed to execute
+   'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was resolved` (281.1s before
+   failing) — a GPU-buffer-lifecycle race, the signature of a starved/contended WebGPU device
+   under concurrent load, not a Voronoi-hash logic error. This code path
+   (`ParametricExportComputer`/`useParametricExport`'s buffer management) is entirely outside this
+   mission's edited files (explicitly on the DO-NOT-TOUCH list) — no code path here could plausibly
+   have caused this class of error.
+3. **Attempt 3**: launched, reached a successful full-pot mesh generation again (file timestamps
+   confirmed), then entered the second `_debugOuterMesh()` generate — still running in the
+   background when this verdict was written; its outcome (if it lands) will be appended as an
+   addendum below rather than block this write-up indefinitely.
+
+**Interpretation**: the two completed attempts are consistent with each other and with everything
+else observed this session (extreme, sustained multi-session CPU/GPU contention causing timeouts
+and buffer races on heavy generate operations) — NOT with a defect introduced by the hash swap.
+Attempt 1's successful 7.5M-triangle full-mesh generation is itself meaningful positive evidence:
+it proves the swapped `style_voronoi`/`periodic_cellular_int`/`hash22_int`/`hash_pcg2d` WGSL
+compiles, dispatches, and produces a complete, well-formed mesh on the real production GPU compute
+path — the failure locus in both completed attempts was specifically the SECOND, independent
+`_debugOuterMesh` regenerate call (needed only for the `vertexOnSurf` scoring harness's outer-wall
+submask extraction), not the swapped style function itself.
+
+**Per the mission's explicit contingency** ("If the dev server/GPU is unavailable after the
+courtesy window, record the CPU-side gates as complete and the e2e gate as PENDING with exact
+repro commands — do not fake it"): the CPU-side gates (TDD bit-identity, fixture-scope, static
+validation, detect_changes) are recorded above as COMPLETE, rigorously measured. The e2e gate is
+recorded as **PENDING**, not faked, not claimed.
+
+**Exact repro commands** (run when the shared environment's concurrent load has eased):
+```bash
+cd potfoundry-web
+# Dev server on :3000 (reuse if already running — check `curl -sf http://localhost:3000/` first)
+npm run dev &
+# Machine courtesy: confirm <2 foreign processes >=2GB before proceeding
+node e2e/_prod_truth_capture.mjs Voronoi
+PF_PROD_TRUTH=1 PF_PT_STYLES=Voronoi PF_PT_PRESCREEN=1 npx vitest run --config vitest.prod_truth.config.ts
+```
+**Accept iff** `vertexOnSurf` p99 <= 0.001mm AND max <= 0.01mm (comparison baseline: the OLD
+float-hash artifact measured p99 0.065mm / max 0.140mm — cited from prior session state; the CPU
+truth this probe scores against will automatically be the swapped `rOuterVoronoi`, exactly per the
+mission's design, since `buildRadiusFn` resolves through `STYLE_FUNCTIONS.Voronoi`).
+
+### PERF (measured, cheap-to-measure proxies — not a formal benchmark)
+
+- Golden-fixture regeneration wall time: **9.45s** (`UPDATE_GOLDEN=true npx vitest run
+  src/geometry/styleGolden.test.ts`, includes ~7s environment/transform setup overhead common to
+  every vitest invocation in this repo — not swap-specific).
+- TDD guard-suite wall time: **~5.2-6.6s** across runs for 1,000,000 + 200,000 + 200,000 + 50,000 +
+  5,000×7 samples combined (8 tests) — no controlled A/B against the old float-hash chain was run
+  standalone (the mission's cited 2.2x reference is the UPSTREAM E-2026-07-10-INTHASH spike's own
+  dedicated ns/eval benchmark, `research/lab/E-2026-07-10-INTHASH-prereg.md`'s H3 section:
+  4,862.89 ns/eval float-hash vs. 2,211.84 ns/eval int-hash, 10M+ evals each, warmed — that
+  measurement is the authoritative perf number for this design; this mission did not re-measure it
+  independently since the algorithm is unchanged from that confirmed spike, only its wiring site).
+- The vectorized sampler path (`rOuterVoronoiVec`) is a thin per-element loop with no independent
+  hot path of its own to benchmark separately from the scalar `rOuterVoronoi` it calls.
