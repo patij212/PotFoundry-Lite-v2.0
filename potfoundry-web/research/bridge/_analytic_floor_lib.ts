@@ -22,6 +22,10 @@ import { newtonNearest } from './_gyroid_truthLib';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 import { GpuSurfaceSampler } from '../../src/renderers/webgpu/parametric/conforming/SurfaceSampler';
 import {
+  principalCurvatureMax,
+  metricStepsForSampler,
+} from '../../src/renderers/webgpu/parametric/conforming/SurfaceMetricTensor';
+import {
   assembleWatertight,
   computeUBias,
   type AssemblyWallOptions,
@@ -716,6 +720,51 @@ export function scoreCoverage(
     locSelfCheckMax,
     ms: Date.now() - t0,
   };
+}
+
+export interface FloorGridStats {
+  /** Fraction of lattice nodes where the floor exceeds the sampler κ (pre-registered tell). */
+  liftedFrac: number;
+  /** As liftedFrac, but only counting nodes where the floor also demands h < maxEdge
+   *  (i.e. it actually changes the mesh, not just the κ ordering on flat wall). */
+  liftedEffectiveFrac: number;
+  /** Max floor κ over the lattice (mm⁻¹). */
+  floorMax: number;
+}
+
+/**
+ * Compare the analytic floor against the sampler-FD κ on the (resU × resT) sizing
+ * lattice — the pre-registered MASKED-arm early tell (§E-2026-07-10-ANALYTIC-FLOOR-
+ * MASKED: lifted fraction ≈0.15–0.35 expected at 512; ≳0.6 predicts KILL-B early).
+ */
+export function floorGridStats(
+  spec: FloorSpec,
+  sampler: GpuSurfaceSampler,
+  resU: number,
+  resT: number,
+  maxSagMm: number,
+  maxEdgeMm: number,
+): FloorGridStats {
+  const { hu, ht } = metricStepsForSampler(sampler);
+  const kappaAtMaxEdge = (8 * maxSagMm) / (maxEdgeMm * maxEdgeMm);
+  let lifted = 0;
+  let effective = 0;
+  let floorMax = 0;
+  for (let j = 0; j < resT; j++) {
+    const t = resT > 1 ? j / (resT - 1) : 0;
+    for (let i = 0; i < resU; i++) {
+      const u = i / resU;
+      const kSampler = Math.max(principalCurvatureMax(sampler, u, t, hu, ht), 1e-6);
+      const kFloor = spec.curvatureFloor(u, t);
+      if (kFloor > floorMax) floorMax = kFloor;
+      if (kFloor > kSampler) {
+        lifted++;
+        if (kFloor > kappaAtMaxEdge) effective++;
+      }
+    }
+  }
+  const n = resU * resT;
+  return { liftedFrac: lifted / n, liftedEffectiveFrac: effective / n, floorMax };
 }
 
 /** Full-pot watertight audit with the NON-VACUOUS injected-crack control. */

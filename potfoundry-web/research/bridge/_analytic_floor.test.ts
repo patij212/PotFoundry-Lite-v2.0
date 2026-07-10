@@ -22,6 +22,8 @@ import {
   auditWatertight,
   buildMiniAssemblyHash,
   buildProductionTwin,
+  buildWallGridCPU,
+  floorGridStats,
   scoreCoverage,
   scoreForward,
   wallsDiag,
@@ -31,12 +33,22 @@ import {
 import { buildAnalyticCurvatureFloor } from '../../src/renderers/webgpu/parametric/conforming/AnalyticCurvatureFloor';
 
 const ON = process.env.PF_ANALYTIC_FLOOR === '1';
-const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'twin' => {
+const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'masked' | 'twin' => {
   const s = process.env.PF_AF_STAGE;
-  return s === 'on' || s === 'walls' || s === 'orient-mini' || s === 'lever-cs2' || s === 'lever-res256'
+  return s === 'on' ||
+    s === 'walls' ||
+    s === 'orient-mini' ||
+    s === 'lever-cs2' ||
+    s === 'lever-res256' ||
+    s === 'masked'
     ? s
     : 'twin';
 })();
+
+// E-2026-07-10-ANALYTIC-FLOOR-MASKED config ladder (pre-registered; C1b/C2 only per gates).
+const MASKED_RES = { resU: Number(process.env.PF_AF_MASKED_RESU ?? 512), resT: 128 };
+// Blanket-arm banked point for the 3-point curve (E-2026-07-09-ANALYTIC-FLOOR flag-ON).
+const BLANKET = { fullTris: 11_004_336, newtonAllMax: 0.009985, coverageMax: 0.00877 };
 const TOL = 0.01;
 const ROOT = join('research', 'exchange', '_analytic_floor');
 const BASELINE = join(ROOT, 'twin_baseline.json');
@@ -87,6 +99,99 @@ describe('E-2026-07-09-ANALYTIC-FLOOR — production twin, flag-off/flag-on', ()
         writeFileSync(miniPath, JSON.stringify(mini, null, 2));
         console.log('[analytic-floor] orient-mini baseline BANKED');
       }
+      return;
+    }
+
+    if (STAGE === 'masked') {
+      // E-2026-07-10-ANALYTIC-FLOOR-MASKED — C1 (or PF_AF_MASKED_RESU override for the
+      // pre-authorized C2=1024): the SAME analytic floor evaluated on a FINER sizing
+      // lattice, bundled with the matching field res (res-only is ANTI-helpful:
+      // lever-res256 measured −7.5% tris / +142% outliers). Acceptance asserted
+      // AFTER the row checkpoint.
+      expect(existsSync(BASELINE), 'twin baseline must exist before the masked arm').toBe(true);
+      const banked = JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline;
+      row.maskedRes = MASKED_RES;
+      const mFloor = buildAnalyticCurvatureFloor(
+        AF_STYLE,
+        {},
+        { H: AF_DIMS.H, Rt: AF_DIMS.Rt, Rb: AF_DIMS.Rb, expn: AF_DIMS.expn },
+        {
+          resU: MASKED_RES.resU,
+          resT: MASKED_RES.resT,
+          maxSagMm: AF_PROD_OPTS.maxSagMm,
+          minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+        },
+      );
+      if (!mFloor) throw new Error('buildAnalyticCurvatureFloor returned null for SpiralRidges');
+      row.maxKappa = mFloor.maxKappa;
+      // Pre-registered early tell: lifted-node fraction on the C1 lattice.
+      const statsSampler = buildWallGridCPU(rA, 0);
+      const fStats = floorGridStats(
+        mFloor,
+        statsSampler.sampler,
+        MASKED_RES.resU,
+        MASKED_RES.resT,
+        AF_PROD_OPTS.maxSagMm,
+        AF_PROD_OPTS.maxEdgeMm,
+      );
+      row.floorGrid = fStats as unknown as Record<string, unknown>;
+      console.log(
+        `[analytic-floor] masked: floorGrid liftedFrac=${fStats.liftedFrac.toFixed(3)} ` +
+          `effectiveFrac=${fStats.liftedEffectiveFrac.toFixed(3)} floorMax=${fStats.floorMax.toFixed(3)} ` +
+          `(pre-reg: ~0.15-0.35 expected; >=0.6 predicts KILL-B)`,
+      );
+
+      const twin = buildProductionTwin(mFloor, { resU: MASKED_RES.resU, resT: MASKED_RES.resT });
+      row.build = {
+        fullTris: twin.fullTris,
+        outerTris: twin.outerTris,
+        hash: twin.hash,
+        buildMs: twin.buildMs,
+      };
+      const audit = auditWatertight(twin.fullIdx);
+      row.nonManRaw = audit.nonMan;
+      row.nonManControlMoved = audit.controlMoved;
+      row.zeroArea = zeroAreaCount(twin.outerXyz, twin.outerIdx);
+      const fwd = scoreForward(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, {
+        tol: TOL,
+        newtonAll: true,
+      });
+      row.forward = fwd as unknown as Record<string, unknown>;
+      const cov = scoreCoverage(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, TOL);
+      row.coverage = cov as unknown as Record<string, unknown>;
+      appendFileSync(ROWS, JSON.stringify(row) + '\n');
+
+      // CONFOUND RULE (pre-registered): shared field res also touches the INNER wall.
+      const innerPlusCaps = twin.fullTris - twin.outerTris;
+      const innerPlusCapsBase = banked.fullTris - banked.outerTris;
+      const innerDrift = (innerPlusCaps - innerPlusCapsBase) / innerPlusCapsBase;
+      const ratio = twin.fullTris / banked.fullTris;
+      const nAll = fwd.newtonAll;
+      console.log(
+        `[analytic-floor] masked C1(${MASKED_RES.resU}x${MASKED_RES.resT}): ` +
+          `fullTris ${banked.fullTris} -> ${twin.fullTris} (${ratio.toFixed(3)}x; gate <=1.5x=${Math.floor(1.5 * banked.fullTris)}) | ` +
+          `outer ${banked.outerTris} -> ${twin.outerTris} | inner+caps drift ${(innerDrift * 100).toFixed(1)}% | ` +
+          `newtonALL pts=${nAll?.pointsScored} over=${nAll?.pointsOver} facetsOver=${nAll?.facetsOver} max=${nAll?.max.toFixed(4)} | ` +
+          `coverage max=${cov.max.toFixed(4)} (blanket ${BLANKET.coverageMax}) | ` +
+          `3-point curve: {${banked.fullTris} => 3140 over/0.0239} -> {${BLANKET.fullTris} blanket => 0 over/${BLANKET.newtonAllMax}} -> {${twin.fullTris} masked => ${nAll?.facetsOver} facetsOver/${nAll?.max.toFixed(4)}}`,
+      );
+
+      // Instrument hygiene.
+      expect(audit.controlMoved, 'nonManRawBig control must move (non-vacuous)').toBe(true);
+      expect(cov.locSelfCheckMax).toBeLessThan(1e-9);
+      if (Math.abs(innerDrift) > 0.1) {
+        console.log('[analytic-floor] masked: |inner drift| > 10% — walls-diag split REQUIRED before any KILL-B claim (pre-registered confound rule)');
+      }
+      // ── ACCEPTANCE (pre-registered) ──
+      expect(fwd.newtonAll, 'masked arm must run the every-point Newton basis').toBeDefined();
+      const nA = fwd.newtonAll as NonNullable<typeof fwd.newtonAll>;
+      expect(nA.facetsOver, 'every-facet <=0.01 (Newton basis)').toBe(0);
+      expect(nA.max, 'worst Newton point <= tol').toBeLessThanOrEqual(TOL);
+      expect(twin.fullTris, 'fullTris <= 1.5x flag-off (KILL-B)').toBeLessThanOrEqual(1.5 * banked.fullTris);
+      expect(cov.max, 'coverage interior max <= tol').toBeLessThanOrEqual(TOL);
+      expect(cov.max, 'coverage must not exceed the flag-off baseline').toBeLessThanOrEqual(banked.coverageMax);
+      expect(audit.nonMan, 'watertight (masked)').toBe(0);
+      expect(row.zeroArea, 'zeroArea (masked)').toBe(0);
       return;
     }
 
