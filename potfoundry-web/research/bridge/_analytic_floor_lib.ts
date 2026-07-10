@@ -887,6 +887,85 @@ export function maskedWallDiag(resU: number, resT: number, floor: FloorSpec): Re
   };
 }
 
+/**
+ * C1-residual classifier (pre-KILL-A diagnostic): rebuild the masked twin, find
+ * every dense-45 point whose Newton distance exceeds tol, and dump its locus
+ * with the floor / closed-form-pointwise / sampler κ readings — adjudicates
+ * u-aliasing (C2-fixable) vs a model-miss class (C2-futile) from data.
+ */
+export function classifyMaskedResidual(
+  floor: FloorSpec,
+  overrides: TwinOverrides,
+  rA: AnalyticRadiusFn,
+  tol: number,
+  outPath: string,
+): Record<string, unknown> {
+  const { H } = AF_DIMS;
+  const twin = buildProductionTwin(floor, overrides);
+  twinProgress(`classify: twin built full=${twin.fullTris} outer=${twin.outerTris}`);
+  const statsSampler = buildWallGridCPU(rA, 0).sampler;
+  const { hu, ht } = metricStepsForSampler(statsSampler);
+  const TAU2 = Math.PI * 2;
+  const xyz = twin.outerXyz;
+  const idx = twin.outerIdx;
+  const nF = idx.length / 3;
+  const bary = denseBary(8);
+  let over = 0;
+  const tHist = new Array(20).fill(0) as number[];
+  let worst = 0;
+  let dumped = 0;
+  const lines: string[] = [];
+  for (let f = 0; f < nF; f++) {
+    const a = idx[f * 3] * 3, b = idx[f * 3 + 1] * 3, c = idx[f * 3 + 2] * 3;
+    for (const [wa, wb, wc] of bary) {
+      const x = wa * xyz[a] + wb * xyz[b] + wc * xyz[c];
+      const y = wa * xyz[a + 1] + wb * xyz[b + 1] + wc * xyz[c + 1];
+      const z = wa * xyz[a + 2] + wb * xyz[b + 2] + wc * xyz[c + 2];
+      const zc = Math.min(H, Math.max(0, z));
+      let th = Math.atan2(y, x);
+      if (th < 0) th += TAU2;
+      const radial = Math.abs(Math.hypot(x, y) - rA(th, zc));
+      if (radial <= tol) continue;
+      const nd = Math.min(
+        radial,
+        newtonNearest(rA, H, x, y, z, {
+          seedTheta: 11, seedZ: 41, nThetaSeeds: 11, nZSeeds: 41, maxIter: 60,
+        }).dist,
+      );
+      if (nd <= tol) continue;
+      over++;
+      if (nd > worst) worst = nd;
+      const u = th / TAU2;
+      const t = zc / H;
+      tHist[Math.min(19, Math.floor(t * 20))]++;
+      if (dumped < 4000) {
+        // κ readings at the locus: the floor's (cell-sup) value, the pointwise
+        // FD of the true polar section (+ main-helix Euler), and the sampler FD.
+        const kFloor = floor.curvatureFloor(u, t);
+        const h = 1e-4;
+        const rm = rA(th - h, zc), r0 = rA(th, zc), rp = rA(th + h, zc);
+        const d1 = (rp - rm) / (2 * h);
+        const d2 = (rp - 2 * r0 + rm) / (h * h);
+        const kPolar = Math.abs(r0 * r0 + 2 * d1 * d1 - r0 * d2) / Math.pow(r0 * r0 + d1 * d1, 1.5);
+        const tanB = (r0 * TAU2 * 1.15) / (9 * H);
+        const kTrue = kPolar * (1 + tanB * tanB);
+        const kSampler = principalCurvatureMax(statsSampler, u, t, hu, ht);
+        lines.push(JSON.stringify({ f, u, t, nd, kFloor, kTrue, kSampler }));
+        dumped++;
+      }
+    }
+  }
+  appendFileSync(outPath, lines.join('\n') + '\n');
+  return {
+    fullTris: twin.fullTris,
+    outerTris: twin.outerTris,
+    pointsOver: over,
+    worst,
+    dumped,
+    tHist,
+  };
+}
+
 /** Full-pot watertight audit with the NON-VACUOUS injected-crack control. */
 export function auditWatertight(fullIdx: Uint32Array): { nonMan: number; controlMoved: boolean } {
   const nonMan = nonManRawBig(fullIdx);

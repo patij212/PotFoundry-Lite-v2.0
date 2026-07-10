@@ -23,6 +23,7 @@ import {
   buildMiniAssemblyHash,
   buildProductionTwin,
   buildWallGridCPU,
+  classifyMaskedResidual,
   floorGridStats,
   maskedWallDiag,
   scoreCoverage,
@@ -34,7 +35,7 @@ import {
 import { buildAnalyticCurvatureFloor } from '../../src/renderers/webgpu/parametric/conforming/AnalyticCurvatureFloor';
 
 const ON = process.env.PF_ANALYTIC_FLOOR === '1';
-const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'masked' | 'masked-diag' | 'twin' => {
+const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'masked' | 'masked-diag' | 'masked-classify' | 'twin' => {
   const s = process.env.PF_AF_STAGE;
   return s === 'on' ||
     s === 'walls' ||
@@ -42,7 +43,8 @@ const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256'
     s === 'lever-cs2' ||
     s === 'lever-res256' ||
     s === 'masked' ||
-    s === 'masked-diag'
+    s === 'masked-diag' ||
+    s === 'masked-classify'
     ? s
     : 'twin';
 })();
@@ -101,6 +103,37 @@ describe('E-2026-07-09-ANALYTIC-FLOOR — production twin, flag-off/flag-on', ()
         writeFileSync(miniPath, JSON.stringify(mini, null, 2));
         console.log('[analytic-floor] orient-mini baseline BANKED');
       }
+      return;
+    }
+
+    if (STAGE === 'masked-classify') {
+      // C1-residual classification (between C1 and the pre-authorized C2 — an
+      // INSTRUMENT pass, not a lever change, recorded transparently): dumps every
+      // failing point's locus + floor/true/sampler κ to adjudicate u-aliasing
+      // (C2-fixable) vs model-miss (C2-futile).
+      const cFloor = buildAnalyticCurvatureFloor(
+        AF_STYLE,
+        {},
+        { H: AF_DIMS.H, Rt: AF_DIMS.Rt, Rb: AF_DIMS.Rb, expn: AF_DIMS.expn },
+        {
+          resU: MASKED_RES.resU,
+          resT: MASKED_RES.resT,
+          maxSagMm: AF_PROD_OPTS.maxSagMm,
+          minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+        },
+      );
+      if (!cFloor) throw new Error('null floor');
+      const out = join(ROOT, 'c1_residual_loci.ndjson');
+      const cls = classifyMaskedResidual(
+        cFloor,
+        { resU: MASKED_RES.resU, resT: MASKED_RES.resT },
+        rA,
+        TOL,
+        out,
+      );
+      Object.assign(row, { maskedRes: MASKED_RES }, cls);
+      appendFileSync(ROWS, JSON.stringify(row) + '\n');
+      console.log(`[analytic-floor] masked-classify:\n${JSON.stringify(cls, null, 2)}\nloci -> ${out}`);
       return;
     }
 
