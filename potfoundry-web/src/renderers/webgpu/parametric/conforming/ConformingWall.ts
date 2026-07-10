@@ -54,6 +54,15 @@ export interface ConformingWallOptions {
   /** Optional κ cap paired with the floor (see {@link SizingOptions.maxKappa}). */
   maxKappa?: number;
   /**
+   * Metric samples per axis for the quadtree refinement size test (threads to
+   * {@link PeriodicBalancedQuadtree}'s `cellSamples`). 1/absent = centre-only,
+   * byte-identical legacy; k>1 lets shouldRefine SEE a steep crease that crosses
+   * a cell OFF-centre. Accepted by AssemblyWallOptions since 92fca543 but never
+   * threaded through this interface — completed by E-2026-07-10-CAD-LEVER-
+   * COMPLETION Stage A with the default unchanged.
+   */
+  cellSamples?: number;
+  /**
    * Uniform boundary-ring sample count. When set it MUST be a power of two; the
    * t=0 and t=1 rows are then pinned to exactly `nRing` cells (pinBoundaryLevel
    * = log2(nRing)). Omit to disable pinning (legacy unpinned behaviour).
@@ -341,6 +350,9 @@ function searchBudgetScale(
       return {
         scale: 1,
         telemetry: { floorLeaves, chosenScale: 1, leavesAtChosen: floorLeaves, capSaturated: false },
+    // Crease-seeing refiner (92fca543's declared-but-unthreaded lever; Stage A of
+    // E-2026-07-10-CAD-LEVER-COMPLETION). Absent ⇒ 1 ⇒ byte-identical centre-only.
+    cellSamples: opts.cellSamples,
       };
     }
     const coarsestLeaves = leavesAt(MAX_BUDGET_SCALE);

@@ -2514,10 +2514,17 @@ export class ParametricExportComputer {
                         : 0;
                 // Crease-seeing refiner: k×k metric samples in the quadtree size test.
                 // 1 (default/unset) = centre-only, byte-identical to the legacy refiner.
+                // DEFAULT IS 1, NOT the CAD_CELL_SAMPLES=2 that 92fca543 intended: that
+                // commit shipped this lever computed-but-unthreaded ("WIP / NOT YET
+                // COMPLETE"), so flipping the default 11 days later inside the wiring
+                // completion would be a silent re-baseline. The CAD=2 flip stays behind
+                // 92fca543's own named ship gate (a 20-style re-baseline), priced first
+                // by E-2026-07-10-CAD-LEVER-COMPLETION Stage B. Dev lever wins as always.
                 const qCellSamples =
                     typeof qOv.__pfConformingCellSamples === 'number' && qOv.__pfConformingCellSamples >= 1
                         ? Math.floor(qOv.__pfConformingCellSamples)
-                        : (cadFidelity ? CAD_CELL_SAMPLES : 1);
+                        : 1;
+                void CAD_CELL_SAMPLES; // intent preserved (see deferral note above)
                 // Sizing-field curvature-grid resolution. Default 128 is too coarse to
                 // resolve a steep relief crease between nodes (the κ estimate smears →
                 // the sag target under-asks for density there → staircased crease). A
@@ -2705,8 +2712,13 @@ export class ParametricExportComputer {
                     minEdgeMm: qMinEdge,
                     gradeRatio: 2,
                     maxLevel: qMaxLevel,
-                    resU: 128,
-                    resT: 128,
+                    // qSizingRes/qCellSamples were computed-but-dead since 92fca543
+                    // ("WIP / NOT YET COMPLETE") — wired by E-2026-07-10-CAD-LEVER-
+                    // COMPLETION Stage A. Defaults (128 / 1) are byte-identical to the
+                    // old hardcoded path; only the dev levers change behavior.
+                    resU: qSizingRes,
+                    resT: qSizingRes,
+                    cellSamples: qCellSamples,
                     nRing: qNRing,
                     targetTriangles: conformingBudget,
                     // Budget is an UPPER CAP, not a target: a SMOOTH pot keeps
