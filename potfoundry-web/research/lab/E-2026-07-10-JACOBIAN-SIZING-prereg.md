@@ -263,7 +263,102 @@ stage results appended to this file's VERDICT section below as they complete.
 
 ---
 
-## VERDICT
+## VERDICT (2026-07-10, all three mesh stages complete, pinned worktree at 875f9089)
 
-*(pending — mesh-build stages h0 / c1match / jdesign not yet executed as of the pre-registration commit;
-appended here when the detached sequence completes)*
+**CLASS: PARTIAL — TOLERANCE-BOUNDARY residual; MECHANISM CONFIRMED CAUSAL.** The literal acceptance gate
+(facetsOver = 0) was NOT met: 34 facets read over 0.01mm on the exact Newton-ALL basis. But the J²-composed
+floor did exactly what the WARP-JACOBIAN SAG DILUTION classification predicted a J-correction would do:
+**2,764 → 34 facets over (−98.8%, 81×), worst 0.035754 → 0.010203 (pulled to the tol line), INSIDE the
+budget gate (8,131,784 = 1.430× ≤ 1.5×)** — where the same floor WITHOUT the J² composition (c1match, same
+config, same day, exact KILL-A reproduction) left fidelity completely unchanged. The masked arm's verdict
+("the sizing was right, the delivered mesh does not obey it") is closed causally: composing the warp
+Jacobian into the demand side makes the delivered mesh obey it.
+
+### Instrument chain (all gates PASSED, in order, before the J-number was read)
+
+| gate | result |
+|---|---|
+| `fd` — analytic Ju vs FD of the composed warp map | maxRelErrJu **6.84e-11** over 100k probes (gate <1e-6) |
+| `h0` — flag-off byte-identity, pinned worktree | hash **f707898e-02e3bea1 EXACT**, fullTris 5,686,834 exact, build 616s |
+| `c1match` — non-J masked-C1 instrument match | fullTris **6,956,244 bit-identical**, facetsOver **2,764 exact**, max 0.035754 (banked 0.03575), vertexOnSurf max 7.6e-6, nonMan 0 non-vacuous, zeroArea 0 — Newton-ALL scored 110,474 points in 94.4 min |
+
+### A/B/C table (config family frozen: sag 0.003 / minEdge 0.1 / maxEdge 1 / maxKappa 2.4; all fidelity
+numbers on the reported-deviation basis — dense-45 lattice, min(radial, Newton) upper bounds — the
+identical ruler across rows)
+
+| arm | sizing | fullTris (× flag-off) | facets over 0.01 | worst (mm) |
+|---|---|---|---|---|
+| flag-off (h0-hashed twin; fidelity per the §E-2026-07-09 banked baseline) | plain sampler @128² | 5,686,834 (1.000×) | ~3,140 | 0.0239 Newton / 0.0358 grid |
+| blanket floor (parent arm, banked, context row) | cell-sup κ-floor @128² | 11,004,336 (1.935×) | 0 | 0.009985 |
+| masked-C1 == `c1match` (re-measured, exact) | same floor @512×128 | 6,956,244 (1.223×) | 2,764 | 0.035754 |
+| **`jdesign` (this arm)** | **same floor @512×128 × max(1, Ju²)** | **8,131,784 (1.430×)** | **34** | **0.010203** |
+
+Budget: PASSED with 4.7% headroom (gate 8,530,251). Coverage interior max 0.009951 ≤ 0.01 PASSED (p99
+0.00368; worst locus (u 0.847, t 0.979) = the same near-rim band as the forward residual; well under the
+parent arm's KILL-C threshold 2×blanket = 0.0175). Watertight nonMan 0 NON-VACUOUS (injected-crack control
+moved), zeroArea 0, vertexOnSurf max 7.6e-6 (twin on truth). jdesign build 775s; prescreen survivors
+collapsed **5,605 → 80 (70×)**; forward scoring wall collapsed **5,664s → 101s (56×)** — the pre-named soft
+tell corroborating the population collapse (the flagged set shrank to the boundary class before any Newton
+query ran).
+
+### The 34 residuals — TOLERANCE-BOUNDARY class (dump: `research/exchange/_jacobian_sizing/jdesign_worst50.json`)
+
+Every residual sits in **[0.010015, 0.010203]** — the entire population is within 0.0002mm of tol, i.e.
+inside the **~0.001mm Newton-resolution class** the registry's §V11w adjudication language established
+(there, an exceedance was ruled GENUINE because it cleared tol by >10× that resolution; here the worst
+clears it by **~0.2×** that resolution). Since every reported deviation is an upper bound (Newton returns
+the distance to the best FOUND surface point; min(radial, Newton) likewise), the true worst may sit
+marginally under tol — but the pre-registered gate reads the reported basis, so the literal acceptance
+stands NOT MET; no gate motion. Stratified-vs-exact cross-check: survivors (80) < topExhaustive (400), so
+the stratified tier degenerated to a fully-exhaustive head stratum — estOutliers 34 EXACT == the exact
+tier's 34; single stratum, radial bounds [0.010037, 0.010858].
+
+Loci-vs-J² correlation (per the dump): all 34 are helix-branch, all in the near-rim attachment band
+**t ∈ [0.917, 0.979]** (the cross-style attachment-zone cluster, program consolidation §A), in 4 u-clusters
+(≈0.237–0.241, ≈0.735–0.736, 0.847, ≈0.904–0.905), split **16/34 on the J²=3.16 compression plateau**
+(kBase 0.72 raised to kJFloor 2.26 — just under the 2.4 κ-cap) and **18/34 on J²=0.79 expansion segments**
+where raise-only is a designed no-op and the base floor alone reads 2.01–2.28 (also near-cap); demanded h
+0.103–0.183mm across all 34. The whole residual class sits at the κ-cap/minEdge-clamp frontier of the
+sizing law, one resolution-unit from tol.
+
+### Field-semantics reconciliation (coordinator ask: state precisely what each field measures)
+
+`forward.newtonWorst` = **0.008447** is the Newton refinement of exactly ONE point: the argmax point of
+`scoreWholeMeshInterior`'s min(GN, brute-seeded) scorer over survivor facets, reported as min(gridMax,
+Newton-at-that-point) — a single-point diagnostic whose ranking metric (the GN class) can put a different
+point on top than the true worst (registry precedent: it appears only in WIDE fallback bands, never as an
+acceptance leg). `forward.newtonAll.max` = **0.010203** is the max Newton distance over EVERY dense-45
+lattice point whose sound radial bound exceeds tol (167 points scored; radial ≥ true distance, so this
+population provably contains every candidate >tol point on the dense-45 basis) — **the pre-registered
+acceptance basis and the verdict number**. They differ because they take argmaxes over different
+populations; newtonAll's population is exhaustive, newtonWorst's is not.
+
+### Fleet J-diagnostic (mandatory deliverable — banked pre-verdict, full table in the instrument section)
+
+SpiralRidges (helix branch): maxJ² = p99J² = **3.16** on a single 12.5%-area plateau, meanJ² 1.09.
+GyroidManifold and DragonScales: **branch = identity, J ≡ 1 everywhere** at default params — their sharp
+features route through general-curve embedding (band-edge contours / rings), not the CreaseU/T/Helix warp
+family. **Scope note:** WARP-JACOBIAN SAG DILUTION is a warp-family-style mechanism, not a universal
+sharp-feature mechanism — "fleet-wide" = every style whose recipe uses the crease/helix warp layer.
+
+### NAMED FOLLOW-UPS (not iterated now — design 1 delivered a 98.8% reduction; per discipline the boundary
+residual goes to a NEW pre-registration, not a same-arm retry. KILL-J1's 2-design allowance is unspent.)
+
+1. **Micro-arm (predicted to clear the final 34):** one pre-registered run applying a small raise-only
+   safety margin to the COMPOSED floor — `kappa = baseFloor · max(1, Ju²) · (1+ε)`, ε ≈ 5% — NOT to the J²
+   term alone: the worst-34 dump shows 18/34 sit at J² < 1 where a J²-side margin is a no-op, while a
+   whole-floor margin lifts both residual classes (2.26 → 2.37 and 2.01–2.28 → 2.11–2.39, both still under
+   the 2.4 κ-cap, so the cap does not saturate it). Budget headroom exists: 8.13M → 8.53M allows ~4.9%
+   globally, and the margin binds only where the floor binds (crest bands), so realized cost ≪ 4.9%.
+2. **Production wiring (the manifest sizing-layer item):** compose Ju² into the production sizing field for
+   warp-family styles — a pure wrapper around the already-threaded `outerCurvatureFloor` hook using the
+   warp-choice objects `ParametricExportComputer`'s conforming branch already computes; separately-scoped
+   experiment (this arm's file scope excludes `src/`).
+
+### Ledger (verdict)
+
+Pre-reg + instruments: **875f9089**. All three mesh stages executed in the pinned worktree at exactly
+875f9089 (node_modules junctioned). Stage rows + worst-34 dump under `research/exchange/_jacobian_sizing/`
+(gitignored; worktree copies synced to the main tree). Timings: h0 build 616s · c1match build 743s +
+Newton-ALL 5,664s · jdesign build 775s + forward 101s + coverage 69s + classify 97s. jdesign full-assembly
+hash 4ac7475d-5a4c96f0 (flag-on — expected ≠ H0).
