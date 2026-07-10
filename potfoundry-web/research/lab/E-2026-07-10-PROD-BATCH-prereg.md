@@ -659,3 +659,56 @@ heartbeats to `drain_progress.ndjson`; committed-merger + synth-partial + scorec
 fleet. **STRIDE-8 BASIS (pre-registered here):** ArtDeco/BasketWeave/CelticKnot run at labeled
 stride 8 (ETA >90min/shard at stride 4; pilot's stride-extrapolation soundness: 0.4% off literal
 on Gyroid at stride 8). Worst-case wall ≈ 6.5h; expected ≈ 4-5h.
+
+## INTERIM STATUS (checkpoint 8 — v2 watchdog FALSE-KILL post-mortem; probe+runner v3)
+
+**FALSE-KILL (coordinator-verified):** v2's watchdog stall-killed all four HEALTHY GothicArches
+shards at stage `prescreen-done`, age ~926-934s — one quarter into their ~67-min ETA. ROOT
+CAUSE in my v2 instrumentation: the interior-stage crumb was emitted inside the probe's
+EXISTING modulo progress filter (`done % floor(total/10) < stride`), whose cadence is
+WORKLOAD-DEPENDENT — at GothicArches' measured 0.384s/survivor-facet it fires every ~13-26
+minutes, straddling the 15-min threshold. The heavy stages were healthy and silent.
+ArtDeco/BasketWeave/CelticKnot (~85-97 min/shard) would have died identically. Coordinator
+stopped the runner; BambooSegments' in-flight fleet (fits under the old threshold) was left
+alive under coordinator watch and is EXCLUDED from v3.
+
+**v3 PROBE INSTRUMENTATION (`research/bridge/_prod_truth.test.ts`) — approach: TIME-GATED
+OBSERVATION, NO CHUNKING.** `scoreWholeMeshInterior`'s `onProgress` callback already fires once
+per scanned facet; v3 adds a >=30s-spaced crumb check inside it (`interior-start` +
+`interior-tick`), plus `newton-start`, `coverage-start`, and a >=30s-gated `coverage-tick` in
+the 1024x1024 lattice outer loop. The scored point set, iteration order, and reduction are
+UNTOUCHED — basis-neutral by construction (pure wall-clock observation on existing code paths),
+so no chunking equivalence proof is needed. Guaranteed crumb cadence during compute: <=~60s
+(30s gate + per-facet check granularity; worst observed per-facet cost 2.6s [SFB class]).
+
+**v3 RUNNER: `research/exchange/_prod_batch/drain_runner_v3.sh`** (v2 kept on disk for the
+record). Changes: stall threshold 600s (meaningful against a <=60s tick cadence), no-crumb
+spawn grace 600s, per-shard `timeout` backstops unchanged; fleet list GothicArches(stride 4,
+REDO) → ArtDeco(8) → BasketWeave(8) → CelticKnot(8); BambooSegments excluded (in-flight).
+**Supersede semantics (coordinator question answered):** the committed merger takes the LATEST
+row per shard and APPENDS a fresh `merged:true` row; the aggregator prefers merged rows sorted
+by `at` DESC, and `all20_scorecard.{ndjson,md}` are REGENERATED from scratch (writeFileSync)
+on every assemble — any polluted synth-partial disappears the moment the redo fleet's merged
+row lands. No fix needed beyond the redo itself.
+
+**v3 SMOKE (the process-note requirement — exercising a REAL heavy stage):** GothicArches
+unsharded at stride 256 (≈638 scored survivor-facets ≈ 4 min of real interior compute + real
+coverage lattice) with crumbs on; the check asserts the MAX inter-crumb gap across the whole
+run stays <=90s (i.e., the watchdog's 600s threshold carries >=6x margin against the real
+heavy-stage cadence). Result recorded below when the run completes.
+
+**v3 SMOKE RESULT (MEASURED — real heavy stages, GothicArches unsharded stride 256, full
+pipeline 375.7s, exit 0):** crumb trail complete end-to-end (meta-ok → bins-loaded →
+watertight-done → vertexOnSurf-done → 10× prescreen-tick [6s cadence] → prescreen-done
+[162,937 survivors — cost model projected 163,439, 0.3% off, model VALIDATED] →
+interior-start [+1ms after prescreen-done — the exact v2 death-window, now instrumented] →
+8× interior-tick [30-35s cadence through 4.5 min of real GN/brute compute] → interior-done →
+newton-start/done → coverage-start → coverage-tick → coverage-done → row-append).
+**MAX INTER-CRUMB GAP: 35s** ⇒ the 600s stall threshold carries ~17× margin against measured
+heavy-stage cadence. Note: this smoke appended a GothicArches stride-256 single row to the
+probe scorecard — transient by design; the v3 fleet's merged row out-ranks it in the
+aggregator (merged-first), and all20 is regenerated from scratch each assemble. Early
+substance signal from the smoke row (fleet will confirm): GA interior outliers 530/637
+scanned at stride 256, grid max 0.3045 → Newton-worst 0.0979; coverage interior max 1.232mm
+(!!) — if the fleet's shard-0 coverage reproduces that, GothicArches carries the largest
+coverage gap of the batch (tracery groove under-tessellation class).

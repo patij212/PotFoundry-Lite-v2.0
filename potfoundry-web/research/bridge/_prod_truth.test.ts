@@ -206,12 +206,23 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         );
         crumb(style, 'prescreen-done', { survivors: survivorsTotal, mine: mine.length, ms: Date.now() - tI0 });
       }
+      // v3 watchdog contract (post-GothicArches-false-kill): crumbs during heavy stages are
+      // TIME-GATED (>=30s spacing, workload-independent) — the previous modulo-cadence tick
+      // fired every ~13-26min at GothicArches' per-facet cost and straddled the 15-min stall
+      // threshold. onProgress is invoked once per scanned facet, so the gate is checked at
+      // per-facet granularity; this is pure OBSERVATION — no chunking, the scored point set
+      // and reduction are unchanged (basis-neutral by construction).
+      let lastTickAt = Date.now();
+      crumb(style, 'interior-start', { toScore: scoreIdx.length / 3, stride });
       const interior = scoreWholeMeshInterior(outer.xyz, scoreIdx, rA, H, {
         tol: TOL,
         stride,
         onProgress: (done, total, nOut, worst) => {
           if (done % Math.max(1, Math.floor(total / 10)) < stride) {
             console.log(`[prod-truth] ${style}: interior ${done}/${total} out=${nOut} worst=${worst.toFixed(4)}`);
+          }
+          if (Date.now() - lastTickAt > 30_000) {
+            lastTickAt = Date.now();
             crumb(style, 'interior-tick', { done, total, out: nOut, worst: +worst.toFixed(4) });
           }
         },
@@ -234,6 +245,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
 
       // (4) Newton re-score of the worst point (grid-brute overstatement guard — a tighter valid
       // upper bound; §V11j: every Newton value is a real achievable surface distance).
+      crumb(style, 'newton-start', {});
       if (interior.worstFacet >= 0 && interior.wholeMeshMaxMm > 0) {
         const [wx, wy, wz] = interior.worstXyz;
         const nw = newtonNearest(rA, H, wx, wy, wz, {
@@ -266,7 +278,12 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
       let covN = 0;
       let worstU = 0, worstT = 0, worstD = -1;
       const tC0 = Date.now();
+      crumb(style, 'coverage-start', { lattice: `${NU}x${NT}`, cellMm: +cell.toFixed(3) });
       for (let j = 0; j < NT; j++) {
+        if (Date.now() - lastTickAt > 30_000) {
+          lastTickAt = Date.now();
+          crumb(style, 'coverage-tick', { row: j, of: NT });
+        }
         const z = bandMm + ((H - 2 * bandMm) * j) / (NT - 1);
         for (let i = 0; i < NU; i++) {
           const th = (TAU * i) / NU;
