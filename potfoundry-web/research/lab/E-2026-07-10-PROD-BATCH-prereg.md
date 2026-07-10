@@ -445,3 +445,38 @@ CelticKnot carries its own float sin-hash (`src/geometry/styles.ts:1912`, NOT th
 Voronoi chain) — its vertexOnSurf gate is the next TRUTH-BRIDGE-FAILURE candidate; if it fires,
 the row records the gate verdict and interior numbers are marked UNTRUSTED per the pilot's
 pre-registered rule (row never skipped).
+
+## INTERIM STATUS (checkpoint 4 — Batch C: Voronoi OK, DragonScales CAPTURE FAILED — priority diagnostic opened)
+
+**Batch C result:** Voronoi OK — full 7,559,574 tris / **123.6s** generate, outer 4,170,518 /
+117.9s (three-basis comparison: 533.6s at the 2026-07-09 pilot [float-hash tree] → 301.9s at the
+02:48Z intermediate capture [post-INTHASH] → 123.6s now [post-INTHASH + reuse fix, quieter
+machine]; the pilot→now delta conflates the int-hash swap's banked 2.2× eval speedup with the
+reuse fix — only the 02:48→now leg (−59%) isolates reuse+load, contention caveats apply).
+
+**DragonScales FAILED (first capture failure of the batch, recorded verbatim per pre-reg):**
+`meta.error = "Error: getMeshForRender returned null (generate failed)"` at 118.5s; page error
+`AbortError: Failed to execute 'mapAsync' on 'GPUBuffer': Buffer was unmapped before mapping was
+resolved.` via `useParametricExport` with `safelyCallDestroy` in the stack. Voronoi succeeded
+SECONDS LATER in the same browser ⇒ not a device wedge. **Precedent match:** identical
+AbortError string banked on the OLD tree (E-2026-07-09-EXPORT-PERF e2e attempt 1, "unrelated
+WebGPU race... during the prior style's device teardown") ⇒ a PRE-EXISTING race class is the
+null hypothesis; DS (longest generate = widest race window, heaviest buffers) is its most likely
+victim. Failure meta preserved: `research/exchange/_prod_batch/DragonScales_fail1_meta.json`.
+
+**Diagnostic ladder (coordinator-directed, in flight):** (1) verbatim log pulled DONE; (2) single
+retry launched 15:01Z (log `capture_DS_retry1.log`, 40-min guard) — batch D continues in
+parallel per coordinator (retry is binary works/fails, not a timing measurement; conditions
+recorded: SFB cert fork still computing, batch D browser sharing the GPU); (3) if reproduced ⇒
+pinned-worktree-at-HEAD capture (worktree at `da6b423a`, own vite on :3002 via `--strictPort`,
+worktree-local COPY of the harness with only the port constant changed — the shared tree's
+committed harness is never edited): HEAD-succeeds + tree-fails = TREE REGRESSION CONFIRMED;
+HEAD-fails-too = pre-existing race re-confirmed; (4) finding posted to
+`research/CROSS-WORKSTREAM-NOTES.md` (update 4) for the reuse-fix/gate-fix owners BEFORE they
+commit DONE. Not attempting any fix in owned files regardless of outcome.
+
+**Batch D meanwhile (rolling):** SuperellipseMorph + GothicArches OK (full 3,128,634t/53.7s) +
+WaveInterference OK (1,306,488t/10.4s) at last poll — the never-before-captured mid-roster
+styles are FAST (10-54s class, not the 4-19min pilot class). Recurring benign page-load artifact
+each fresh browser: "createRenderPipelineAsync failed for Style 18 ... possible Dawn compiler
+hang" ~30-35s — logged by SceneManager for the LIVE PREVIEW pipeline, does not affect capture.
