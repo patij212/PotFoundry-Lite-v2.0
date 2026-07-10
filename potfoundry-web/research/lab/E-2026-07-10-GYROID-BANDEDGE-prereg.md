@@ -319,7 +319,205 @@ Committed BEFORE any measurement. Only this file is staged for the pre-registrat
 
 ---
 
-## VERDICT
+## VERDICT (2026-07-10, measurement complete)
 
-_(to be appended after measurement, before the final commit — not yet run as of this
-pre-registration)_
+**VERDICT CLASS: MECHANISM-CONFIRMED on production machinery, with a priced knee residual and a
+classified 2-locus topology defect.** Feeding the CORRECT doubled band-edge contours through
+production's EXISTING general-curve machinery collapses the true-outlier population **~96,012 →
+~31,114 (−67.6%, 3.1×)** and Newton-worst **0.0576 → 0.0249 (−56.8%, 2.3×)** at only **+18.5%
+outer tris** — DOMINATING the parent arm's curvature-floor lever on BOTH fidelity axes at ~21% of
+its added-triangle cost (floor: −19% outliers, −51% worst, at +87% tris). Coverage max improved
+**0.0987 → 0.0253 (−74%)**, p99 0.0036 → 0.0009. The remaining population is **100%
+knee-adjacent** (410/410 and 445/445 Newton-confirmed outliers within ±0.005 of the band edges,
+ZERO off-band, ZERO wall-band in both configs) — K3 clean: the single-midline catastrophic trap
+(§V11o: 90% off-wall) did NOT fire. Acceptance (every-facet ≤0.01) was NOT reached — the residual
+~31k knee facets are the pin-pass target, exactly the population class the lab's §V11aa closed
+LAST with pinned knee clusters (35 points, but only AFTER the contour+chord ladder); production
+has no pin mechanism — the named engineering item. Sub-finding (KILL-B, classified): the
+general-curve path leaves **3 (step 0.15) / 2 (step 0.08) non-manifold edges**, and the locus
+classifier proves **two loci are step-INVARIANT (bit-identical (u,t) across a near-doubling of
+picket density)** — a deterministic per-cell-CDT defect where BOTH band edges pass within ~1
+featureLevel-11 cell of each other, NOT a picket-density problem.
+
+### STAGE E — extract: PASSED cleanly, machine-precision placement, zero drops
+
+Design: `nu=nt=1200`, `stepMm=0.15`, `polishIters=40`, `valTol=1e-4` (the pre-registered
+design point, matching the lab's own §V11o extraction grid). Both isolevels extracted in
+10.4s total:
+
+| isolevel | raw pts (marched+linked) | dropped (valErr>1e-4) | kept | decimated (stepMm=0.15) | placement max `disp3D` | placement p99 |
+|---|---|---|---|---|---|---|
+| inner `\|val\|=0.135` | 25,381 | 0 | 25,381 | 14,480 | **0.000000mm** | 0.000000mm |
+| outer `\|val\|=0.15` | 25,274 | 0 | 25,274 | 14,305 | **0.000000mm** | 0.000000mm |
+
+**KILL-E did not fire** — placement is machine-precision (0.000000mm, sampled 2,069 /
+2,044 points respectively, far under the 0.001mm gate), zero drops at either isolevel.
+Total doubled band-edge contour set: **28,785 points across ~2,045 polylines** — this
+is the exact set that overrides production's 14-line val=0 centerline in Stage B.
+
+### STAGE B — build: production's per-cell constrained CDT did NOT choke, but left 3 non-manifold edges (KILL-B fired, near-miss class)
+
+`assembleWatertight` was fed **2,045 general-curve polylines / 28,785 points**
+(vs. production's native 14 lines) at unmodified production config (128² sizing,
+`featureLevel=11`, no curvature floor) and **completed without throwing** in 92.5s:
+
+| metric | value |
+|---|---|
+| full tris | 4,365,677 |
+| outer tris | 2,242,987 (well under the 7.0M budget gate) |
+| generalCurves fed | 2,045 lines / 28,785 pts (vs. production's 14 lines / ~hundreds of pts) |
+| `hasFeatures` / `uBias` | true / 1 (same GATE-B-capped anisotropy path Gyroid already exercises) |
+| `nonManRawBig` | **3** (control non-vacuous: `controlMoved=true`) |
+| `zeroAreaCount` | 0 |
+| build wall time | 92.5s assembly + 4.8s audit |
+
+**KILL-B fired by the pre-registered gate** (`nonManRawBig` non-zero) — but this is a
+**near-miss, not a wholesale machinery choke**: 3 non-manifold edges out of 4,365,677
+triangles (≈6.9e-7 fraction) against a feature-line input ~150× denser than production
+has ever fed this path. The mesh is watertight except for 3 edges, `zeroArea`-clean, and
+built in under 2 minutes at production sizing. This matches the qualitative mechanism
+the lab's own §V11o Q2 already documented and named — coarse-relative-to-picket
+Lawson crossing-chain recovery is COUNT-UNSTABLE at a handful of loci even when the
+bulk of the picket is fine enough to recover cleanly (`alreadyPresent`, no recovery
+needed, for the vast majority of the ~28,785 points) — rather than a novel defect
+class specific to production's kernel. (Initially only counted; per coordinator directive the
+loci were subsequently classified in full — see the LOCUS section below, which REVISES the
+"recovery instability" hypothesis: the persistent loci are step-INVARIANT, i.e. deterministic,
+not picket-noise.)
+
+**Decision:** proceeded to Stage V regardless — my own KILL-B text commits to
+"report... the arm's primary deliverable," not to abort scoring; a 3-edge crack does
+not prevent measuring whether the doubled-edge embed closes the ~96,012-outlier
+population, which is this arm's actual mission question. Both findings (the 3-edge
+near-miss AND the fidelity outcome) are reported together below.
+
+### STAGE V — verdict (stratified V11i two-tier basis, 2,000 Newton queries per config,
+`topExhaustive:200, strata:8, perStratum:225`, deterministic mulberry32 0xC0FFEE)
+
+### BOUNDED RETRY (coordinator-authorized, exactly one): step 0.15 → 0.08
+
+Per the §V11o recovery lesson (finer picket ⇒ consecutive constraint vertices Delaunay-adjacent).
+Extraction at 0.08: 39,849 total pts (20,001 + 19,848), zero drops, placement again 0.000000mm.
+Retry gates: outer ≤7.0M **PASS** (2,259,855); stratified no-regress **PASS vs baseline**
+(est 36,610 ≪ 96,012; worst bit-identical to step-0.15's — see below); **nonMan=0 FAIL: 3 → 2**.
+Per the pre-committed rule, STOPPED — no further iteration; loci classified instead.
+
+### THE A/B TABLE (all four configs; baseline + floor rows from the parent arm's banked verdict)
+
+| config | outer tris (Δ vs base) | radial survivors¹ | est. true outliers (stratified) | Newton-worst | knee-class of confirmed outliers | coverage max / p99 | nonMan / zeroArea |
+|---|---|---|---|---|---|---|---|
+| baseline (128², prod val=0 curves) | 1,892,112 | 141,147 (7.46%) | **~96,012** (artifact literal 105,107) | **0.0576** (literal 0.0590) | 372/372 knee-adj, 0 off | 0.0987 / 0.0036 | 0 / 0 |
+| floor (parent arm: 512² + κ-floor 2.4) | 3,545,856 (**+87%**) | 351,698 (9.92%) | ~78,124 (−19%) | 0.0284 (−51%) | 754/754 knee-adj, 0 off | not measured (KILL-C untested) | 0 / 0 |
+| **band-edge step 0.15 (this arm)** | 2,242,987 (**+18.5%**) | 236,185 (10.53%) | **~31,114 (−67.6%)** | **0.024917 (−56.8%)** | **410/410 knee-adj, 0 off, 0 wall** | **0.0253 / 0.0009 (−74%)** | **3** / 0 |
+| **band-edge step 0.08 (retry)** | 2,259,855 (+19.4%) | 242,214 (10.72%) | ~36,610² | 0.024917 (bit-identical²) | 445/445 knee-adj, 0 off, 0 wall | 0.0253 / 0.0009 | **2** / 0 |
+
+¹ Report-only per the V11b saturation caveat (count grows with density while true deviation
+shrinks — the survivor count is NOT a verdict signal on this wall-dominated style; both this
+arm's configs and the parent's floor config show survivor-count INCREASES alongside massive
+true-outlier DECREASES, the caveat's textbook signature).
+² The two steps are fidelity-EQUIVALENT: Newton-worst is bit-identical (0.02491654414922634 —
+the same physical worst locus survives both pickets), coverage identical to 4 decimals, and the
+est. difference (31,114 vs 36,610, ±8-9%) is within the stratified estimator's own validated
+noise band (±9% vs literals, parent arm). Picket density in [0.08, 0.15] is NOT a fidelity lever
+at production 128²/featureLevel-11 — the residual is knee-population-bound, not picket-bound.
+
+### LOCUS CLASSIFICATION (the KILL-B residual, coordinator-directed, `nonman_loci.json`)
+
+New instrument: `classifyNonManLoci` (Map-free packed-key sort + run-length — the 2^23 Map-cap
+lesson applied; a Map at 13.1M edges would crash). Every non-manifold edge resolved to (u,t),
+`|val|`, distance-to-contour, and constraint-vertex/seam flags:
+
+| step | edge (u, t) | mid `\|val\|` | dEdgeIso | d(inner ctr) | d(outer ctr) | on-contour endpoints | near u-seam |
+|---|---|---|---|---|---|---|---|
+| 0.15 | (0.6448, 0.8931) | 0.13504 | 4e-5 | 0.000227 | 0.000820 | no/no | no |
+| 0.15 | (0.5231, 0.4162) | 0.15005 | 5e-5 | 0.000502 | 0.000304 | no/no | no |
+| 0.15 | (0.4384, 0.4421) | 0.13500 | 0 | 0.000126 | 0.000753 | no/no | no |
+| 0.08 | **(0.6448, 0.8931)** | 0.13502 | 2e-5 | 0.000237 | 0.000658 | no/no | no |
+| 0.08 | **(0.4384, 0.4421)** | 0.13500 | 0 | 0.000126 | 0.000591 | no/no | no |
+
+**The classified defect:** all cracks are mult=3 (one extra triangle on an edge), all on the
+OUTER wall (sid=0), all sit ON an embedded isolevel curve (mid `|val|` within 5e-5 of
+0.135/0.15), all within ~0.0001–0.0008 (u,t) of BOTH contour sets — i.e. at loci where the
+doubled band edges converge to ≲1–1.7 featureLevel-11 cells apart (cell = 1/2048 ≈ 4.88e-4) —
+and none touch a constraint vertex or the u-seam. **Two of the three loci are STEP-INVARIANT:
+(0.6448, 0.8931) and (0.4384, 0.4421) reproduce at bit-identical endpoint (u,t) across a
+near-doubling of picket density** (the third, the only outer-isolevel locus, was fixed by the
+finer step). ⇒ This is a **deterministic per-cell constrained-CDT topology defect at
+near-tangent doubled-curve passes** — the §V11q over-constraint hazard class ("the band is only
+~0.001 wide... near-coincident parallel constraint lines over-constrain the triangulation") —
+NOT the picket-density recovery instability initially hypothesized, and NOT fixable by step
+laddering (proven). Candidate kernel remedies (named, not implemented — out of this arm's
+scope): force-refine feature cells crossed by ≥2 distinct general-curves to featureLevel+1
+(production already has band/rail force-refine machinery), or a fan-consistency post-pass on
+cells emitting an edge already claimed by a neighbor.
+
+### ACCEPTANCE / KILLS ADJUDICATION
+
+- **ACCEPTANCE (every-facet ≤0.01 at ≤7.0M): NOT reached** — the honest measured fork applies:
+  contours alone reach est ~31k outliers / worst 0.0249 (from ~96k / 0.0576); the remainder is
+  100% knee-class; pins are the priced next mechanism (below).
+- **K1 (placement): did not fire** (0.000000mm both isolevels, both steps).
+- **K2 (machinery chokes): fired as a NEAR-MISS and is now CLASSIFIED** (above): no throw, no
+  cdt2d crash, zeroArea 0, budget fine — residual = 2 deterministic mult-3 edges at
+  doubled-curve near-tangencies (production kernel item, small and actionable).
+- **K3 (regression): did not fire** — est/worst/coverage all massively better than baseline;
+  off-band population ZERO in both configs (the single-midline trap explicitly checked, absent).
+- **K4 (budget): did not fire** — 2.24-2.26M ≪ 7.0M.
+
+### RECOMMENDATION
+
+1. **The production Gyroid close mechanism is CONFIRMED: doubled band-edge contours through the
+   EXISTING general-curve machinery.** Swap `extractGyroidManifold`'s val=0 centerline trace for
+   the two `|val| ∈ {0.135, 0.15}` band-edge traces (both derived from the style's own
+   `thickness`/`sharpness` params — `th·(1−smoothVal)` and `th` — so the production extractor
+   can compute the isolevels for ANY Gyroid parameterization, not just defaults). Step 0.15 and
+   0.08 are fidelity-equivalent; **prefer ~0.15** (fewer points, one extra crack of the same
+   deterministic class — and the crack fix is the kernel item, not the step).
+2. **Knee-pin mechanism second (the priced residual):** est ~31k knee-adjacent facets remain
+   (worst 0.0249, p99-class 0.010–0.025). The lab's §V11aa literal-0 needed pinned knee clusters
+   ONLY for its final tail AFTER the contour+chord ladder; production's analog needs both a chord
+   lever near embedded curves (the lab's chordTol drove 2,133→583 before pins, §V11q) and a pin
+   mechanism (production has neither exposed). This is the named engineering item for the next
+   arm — its target population and loci are banked in `verdict_strat*.json`'s scatters.
+3. **Curvature floor: NOT needed — dominated.** The floor buys −19%/−51% at +87% tris; contours
+   buy −67.6%/−56.8% at +18.5%. Do not couple them (parent recommendation #3 confirmed by
+   measurement).
+4. **Kernel item (small):** the deterministic mult-3 edge at doubled-curve near-tangent cells
+   (2 loci at default params, locus-stable, `nonman_loci.json`) — fix in
+   `triangulateQuadtreeWithFeatures`'s cell-fan emission or by local featureLevel+1 force-refine.
+
+### PERF NOTES (program ledger)
+
+- **HEADLINE: production's per-cell constrained CDT ingested 146-150× its native general-curve
+  point density at NO meaningful build-time cost** — 92.5s (28,785 pts) / 94.8s (39,849 pts)
+  assembleWatertight at 4.37-4.38M full tris, vs the parent arm's 115-229s for the PLAIN
+  128²-baseline twin at 4.01M. featureLevel-11 cell refinement + CDT absorbs ~29-40k constraint
+  points essentially free at this scale.
+- Extraction end-to-end (march 1200² + link + polish-filter + decimate + 2×~2k-pt placement
+  validation): 10.4s per full doubled set, both steps.
+- Stage V wall (bumped, healthy): rebuild 95-98s, prescreen detail 49-52s @2.24-2.26M facets,
+  stratified 2,000 Newton 159-162s (~80ms/query), coverage (1024²+4×refine) 32-33s. Total ~5.7min
+  per config.
+- Locus classifier: full 13.1M-edge Map-free scan + classification in seconds (packed-key
+  Float64Array sort dominates); the 2^23 Map-cap lesson held (a naive Map scan would have
+  crashed at this mesh size).
+- EcoQoS priority-bump by CreationDate applied to every fork child (parent-arm lesson reused);
+  machine-courtesy checks run before each heavy stage (one foreign ~2.4GB node process active
+  throughout — steady-state, coordinated around, no contention incidents).
+
+### LEDGER
+
+Files: `research/bridge/_gyroid_bandedge_lib.ts` (Stage-E orchestration over the read-only
+`_gyroidContourLib` extractors + Stage-B twin with overridden generalCurves + Map-free
+`classifyNonManLoci`; scoring re-exported READ-ONLY from `_gyroid_prodclose_lib`),
+`research/bridge/_gyroid_bandedge.test.ts` (stages extract|build|verdict|locus; PF_GBE_STEP
+step lever; PF_GBE_SHARD/NSHARDS literal-shard levers implemented, unused — the stratified
+classification decided the fork without the 10-20 CPU-h literal), this prereg. NO
+vitest.*.config.ts, NO src/ edits (the override lives entirely at the twin's
+`outerFeatureLines` seam). Data (gitignored):
+`research/exchange/_gyroid_bandedge/{run.log, rows.ndjson, contours_bandedge*.json,
+build_meta*.json, verdict_strat*.json, nonman_loci.json, *stdout.log}`. Commits: pre-reg
+3c996af8 → verdict [this]. Concurrent-session notes: shared-tree discipline held (only this
+arm's three files + gitignored exchange data touched; explicit staging throughout); the
+coordinator-directed mid-arm additions (step lever, locus stage/classifier) are annotated
+inline at each site with the directive timestamp.
