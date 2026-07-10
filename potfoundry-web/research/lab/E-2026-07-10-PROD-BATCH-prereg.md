@@ -587,3 +587,75 @@ the pilot-confirmed extrapolation soundness (0.4% off literal on Gyroid) is the 
 alternative. Tree-basis label re-verified post-reset: `git diff da6b423a..HEAD -- src/` is EMPTY
 (only research commits landed on top) and the 44 uncommitted src files are still in place —
 `da6b423a+uncommitted` remains the correct basis for artifacts and the upcoming stage-timing pass.
+
+## INTERIM STATUS (checkpoint 7 — drain post-mortem: ROOT CAUSE = reset-corrupted node_modules; TWO gate-fail styles unmasked by the cost model; runner handed to the coordinator)
+
+**DRAIN POST-MORTEM (coordinator questions answered in order):**
+- **(a) PF_PT_PRESCREEN=1 WAS set** — verbatim in the fleet env (`env PF_PROD_TRUTH=1
+  PF_PT_STYLES=$style PF_PT_PRESCREEN=1 PF_PT_STRIDE=4 PF_PT_SHARD=$i PF_PT_NSHARDS=4 ...`).
+  Missing-flag hypothesis REFUTED.
+- **(b) The 6 lost CPU-hours were NOT the pathological-compute class:** every drain shard's log
+  shows `import ~987ms, tests 0ms` + `[vitest-pool]: Worker forks emitted error / Worker exited
+  unexpectedly` — the fork WORKERS crashed ~1s in and the vitest MAINS then HUNG for the full
+  90-min cap doing nothing. **ROOT CAUSE (proven by control): the hard reset corrupted
+  node_modules — a known-fast PF-ungated control test failed with `Cannot find module
+  '@asamuzakjp/css-color'`; `npm install` restored 37 MISSING packages (+27 changed); the
+  control then passed 12/12 in 4.25s.** package.json/package-lock.json untouched.
+- **(c) Memory/paging: not implicated in the drain** — workers died pre-allocation; mains idled
+  at ~200MB. (The earlier machine stall itself remains plausibly saturation — unproven; the
+  stability policy stands regardless.)
+
+**COST MODEL (measured, `research/exchange/_prod_batch/diag_cost_model.ndjson`, probe
+`research/bridge/_prod_batch_diag.test.ts`):** per-style rA cost, prescreen survivor fraction
+(24k-facet systematic sample), and per-survivor-facet dense-scoring cost (two-stage, bounded):
+
+| style | nF outer | survivorFrac | perSurvivorFacet | ETA/shard (4-shard, stride 4) |
+|---|---|---|---|---|
+| SuperformulaBlossom | 289,792 | **1.000 (!)** | 2,616ms | 47,411s — INTRACTABLE |
+| WaveInterference | 394,806 | **0.928 (!)** | 719ms | 16,501s — intractable |
+| GothicArches | 1,415,270 | 0.115 | 384ms | 4,004s |
+| BambooSegments | 1,698,792 | 0.035 | 186ms | 752s |
+| ArtDeco | 3,149,176 | 0.034 | 1,513ms | 10,128s → stride 8 ⇒ ~5,070s |
+| BasketWeave | 4,218,044 | 0.064 | 678ms | 11,563s → stride 8 ⇒ ~5,800s |
+| CelticKnot | 1,924,526 | 0.044 | 2,019ms | 10,839s → stride 8 ⇒ ~5,450s |
+
+**GATE-FAIL DISCOVERY (the cost model's anomaly, resolved by a vertexOnSurf discriminator —
+this is what the pathological single-fork class actually WAS for 2 of the 7):**
+- **SuperformulaBlossom: vertexOnSurf p99 = 11.70mm, max 12.5mm** vs the `buildRadiusFn({})`
+  truth — the artifact is a DIFFERENT SURFACE. Mechanism FOUND: `DEFAULT_SUPERFORMULA`
+  (`src/geometry/types.ts:548`) **has no strength field** — the CPU truth layer never received
+  the registry's `sf_strength` param (registry default 0.0 = plain base pot), so the CPU truth
+  always renders the FULL blossom. The capture (app defaults, strength 0) vs truth (full
+  blossom) explains 11.7mm exactly. PRODUCT FINDING for the owners: the CPU export-only param
+  struct is missing the style's FIRST registry param.
+- **WaveInterference: vertexOnSurf p99 = 0.937mm, max 1.186mm** — `DEFAULT_WAVE_INTERFERENCE`
+  matches the registry value-for-value, so this is a REAL CPU↔GPU implementation divergence
+  (pre-INTHASH-Voronoi class, but 14× larger). Needs its own arm; certification against the
+  CPU truth is ill-posed meanwhile.
+- GothicArches control: p99 0.000049 OK — its 11.5% survivors are genuine feature density.
+- Both gate-fail styles' earlier single-fork burns are thereby explained: the probe was
+  grinding ~100% survivor populations against the WRONG surface (SFB projected 210 CPU-h).
+  The cost model + discriminator prevented repeating that at fleet scale.
+
+**INSTRUMENTATION SHIPPED (coordinator-authorized committed-harness edit):**
+`research/bridge/_prod_truth.test.ts` now emits env-gated stage breadcrumbs
+(`PF_PT_BREADCRUMB=<file>`: meta-ok / bins-loaded / watertight-done / vertexOnSurf-done /
+prescreen-tick(10%) / prescreen-done / interior-tick(10%) / interior-done / newton-done /
+coverage-done / row-append, each with the worker `pid` for precise watchdog kills). Default
+(unset) writes nothing — committed behavior unchanged. END-TO-END SMOKE PASSED: SuperellipseMorph
+gate-row shape (stride 100000 placeholder) completed in 39.6s with all 12 crumbs in order.
+
+**RUNNER (handed off, NOT launched — standing protocol: experiment sessions no longer host
+multi-fleet watchers):** `research/exchange/_prod_batch/drain_runner.sh` (bash — all machinery
+already proven in-session; PowerShell would re-risk new quoting footguns). Phase 1: SFB + WI as
+cheap GATE-ROWS (unsharded, prescreen off, placeholder stride 100000, cap 900s — banks
+watertight + full vertexOnSurf + coverage + gate verdict; interior against a known-wrong truth
+is ill-posed and is NOT ground). Phase 2: GothicArches(stride 4, cap 7200s) →
+BambooSegments(4, 3600s) → ArtDeco(8, 7200s) → BasketWeave(8, 7200s) → CelticKnot(8, 7200s),
+4-shard fleets, strictly sequential. Stage-aware watchdog: no-crumb ≥10min ⇒ kill; stage-stall
+≥15min ⇒ kill worker (crumb pid) + its PARENT vitest main (which provably hangs after worker
+death) + record the stage; per-shard `timeout` backstops kept; AboveNormal-only self-bumps;
+heartbeats to `drain_progress.ndjson`; committed-merger + synth-partial + scorecard refresh per
+fleet. **STRIDE-8 BASIS (pre-registered here):** ArtDeco/BasketWeave/CelticKnot run at labeled
+stride 8 (ETA >90min/shard at stride 4; pilot's stride-extrapolation soundness: 0.4% off literal
+on Gyroid at stride 8). Worst-case wall ≈ 6.5h; expected ≈ 4-5h.

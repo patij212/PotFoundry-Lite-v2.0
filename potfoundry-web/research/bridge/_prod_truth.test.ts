@@ -22,6 +22,7 @@ import { denseBary } from './_pf_tangledKernelLib';
 import { loadBinMesh } from './_pf_bvhRuler';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 import { newtonNearest } from './_gyroid_truthLib';
+import { nonManRawBig } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 
 const ON = process.env.PF_PROD_TRUTH === '1';
@@ -44,6 +45,23 @@ const PRESCREEN = process.env.PF_PT_PRESCREEN === '1';
 const SHARD = Math.max(0, Number(process.env.PF_PT_SHARD ?? 0));
 const NSHARDS = Math.max(1, Number(process.env.PF_PT_NSHARDS ?? 1));
 const SHARD0 = SHARD === 0;
+// E-2026-07-10-PROD-BATCH stage breadcrumbs (coordinator-mandated after the 2026-07-10 drain
+// post-mortem): when PF_PT_BREADCRUMB names a file, append one ndjson row at every stage
+// boundary so an external watchdog can distinguish STUCK from SLOW (that ambiguity cost 6
+// CPU-hours). Includes process.pid so the watchdog can kill a stalled WORKER precisely.
+// Env-gated: unset (the default) writes nothing — committed behavior unchanged.
+const CRUMB_PATH = process.env.PF_PT_BREADCRUMB ?? '';
+function crumb(style: string, stage: string, extra?: Record<string, unknown>): void {
+  if (!CRUMB_PATH) return;
+  try {
+    appendFileSync(
+      CRUMB_PATH,
+      JSON.stringify({ style, shard: SHARD, nShards: NSHARDS, stage, pid: process.pid, at: new Date().toISOString(), ...extra }) + '\n',
+    );
+  } catch {
+    /* breadcrumbs must never kill the run */
+  }
+}
 
 interface PctStats { max: number; p99: number; p50: number; n: number; over: number }
 
@@ -59,27 +77,6 @@ function pctStats(devs: Float64Array, n: number, tol: number): PctStats {
     n,
     over,
   };
-}
-
-// Large-mesh-safe raw-index non-manifold audit. auditNonManRaw's JS Map overflows at >16.7M edge
-// keys (>~5.6M tris — hit by SpiralRidges full pot 5.69M on this arm's first run, the SAME wall as
-// §V11w/§V11x). Sorted-key run-length scan, no cap. NOTE: 4th in-tree copy (_gyroid_literal0 /
-// _voronoi_embed / _pf_dsconform) — promote to labkit (follow-up flagged in the journal).
-function nonManRawBig(idx: ArrayLike<number>): number {
-  const nE = (idx.length / 3) * 3;
-  const keys = new Float64Array(nE);
-  let m = 0;
-  for (let k = 0; k < idx.length; k += 3) {
-    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
-    if (a === b || b === c || a === c) continue;
-    const e = [[a, b], [b, c], [c, a]] as const;
-    for (const [p, q] of e) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
-  }
-  const sub = keys.subarray(0, m);
-  sub.sort();
-  let nm = 0;
-  for (let i = 0; i < m;) { let j = i + 1; while (j < m && sub[j] === sub[i]) j++; if (j - i > 2) nm++; i = j; }
-  return nm;
 }
 
 function zeroAreaCount(xyz: Float32Array, idx: Uint32Array): number {
@@ -120,6 +117,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         return;
       }
 
+      crumb(style, 'meta-ok');
       const rA = buildRadiusFn(style as StyleId, {}, DIMS);
       const H = DIMS.H;
       const full = loadBinMesh(join(dir, 'full.xyz.bin'), join(dir, 'full.idx.bin'));
@@ -128,6 +126,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
       row.outerTris = outer.idx.length / 3;
       row.shard = SHARD;
       row.nShards = NSHARDS;
+      crumb(style, 'bins-loaded', { fullTris: row.fullTris, outerTris: row.outerTris });
 
       const nV = outer.xyz.length / 3;
       let rulerPremiseOk = true;
@@ -142,6 +141,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         row.nonManRaw = nonMan;
         row.nonManControlMoved = crackedCount > nonMan;
         row.zeroArea = zeroAreaCount(full.xyz, full.idx);
+        crumb(style, 'watertight-done', { nonMan, zeroArea: row.zeroArea });
 
         // (2) vertexOnSurf on the OUTER wall — the interior ruler's premise + the CPU(f64)<->GPU(f32)
         // truth-bridge quantification (spin=0 => a surface vertex satisfies rho == rA(theta, z) exactly).
@@ -157,6 +157,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         row.vertexOnSurf = vStats;
         rulerPremiseOk = vStats.p99 <= TOL;
         row.interiorRulerPremiseOk = rulerPremiseOk; // pre-registered instrument-validity gate
+        crumb(style, 'vertexOnSurf-done', { p99: vStats.p99, premiseOk: rulerPremiseOk });
       }
 
       // (3) mesh->surface every-facet interior (upper-bound basis: min(GN, full-azimuth brute)).
@@ -173,7 +174,9 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
       if (PRESCREEN) {
         const bary = denseBary(8); // 45-pt lattice — the acceptance basis of the whole campaign
         const survivors: number[] = [];
+        const crumbTick = Math.max(1, Math.floor(nF / 10));
         for (let f = 0; f < nF; f++) {
+          if (f % crumbTick === 0) crumb(style, 'prescreen-tick', { pct: Math.round((f / nF) * 100), survivorsSoFar: survivors.length });
           const a = outer.idx[f * 3] * 3, b = outer.idx[f * 3 + 1] * 3, c = outer.idx[f * 3 + 2] * 3;
           let green = true;
           for (const [wa, wb, wc] of bary) {
@@ -201,6 +204,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
           `[prod-truth] ${style}: prescreen ${nF} facets -> ${survivorsTotal} survivors ` +
             `(${((1 - survivorsTotal / nF) * 100).toFixed(1)}% green-proven), shard ${SHARD}/${NSHARDS} scores ${mine.length} (${((Date.now() - tI0) / 1000).toFixed(0)}s)`,
         );
+        crumb(style, 'prescreen-done', { survivors: survivorsTotal, mine: mine.length, ms: Date.now() - tI0 });
       }
       const interior = scoreWholeMeshInterior(outer.xyz, scoreIdx, rA, H, {
         tol: TOL,
@@ -208,6 +212,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         onProgress: (done, total, nOut, worst) => {
           if (done % Math.max(1, Math.floor(total / 10)) < stride) {
             console.log(`[prod-truth] ${style}: interior ${done}/${total} out=${nOut} worst=${worst.toFixed(4)}`);
+            crumb(style, 'interior-tick', { done, total, out: nOut, worst: +worst.toFixed(4) });
           }
         },
       });
@@ -225,6 +230,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         p99: interior.p99,
         ms: Date.now() - tI0,
       };
+      crumb(style, 'interior-done', { outliers: interior.interiorOutliers, max: +interior.wholeMeshMaxMm.toFixed(6) });
 
       // (4) Newton re-score of the worst point (grid-brute overstatement guard — a tighter valid
       // upper bound; §V11j: every Newton value is a real achievable surface distance).
@@ -235,6 +241,7 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
         });
         row.newtonWorst = Math.min(interior.wholeMeshMaxMm, nw.dist);
       }
+      crumb(style, 'newton-done', { newtonWorst: row.newtonWorst ?? null });
 
       // (5) surface->mesh COVERAGE on the OUTER wall (reverse ruler; boundary band separated).
       if (SHARD0) {
@@ -317,10 +324,12 @@ describe('E-2026-07-09-PROD-ARTIFACT-TRUTH — production default export under t
       // it asserts only its own instrument hygiene.
       expect(row.nonManControlMoved).toBe(true);
       expect(locSelfCheckMax).toBeLessThan(1e-9);
+      crumb(style, 'coverage-done', { max: (row.coverage as { max: number }).max });
       } // SHARD0
 
       row.totalMs = Date.now() - t0;
       appendFileSync(OUT, JSON.stringify(row) + '\n');
+      crumb(style, 'row-append', { totalMs: row.totalMs });
       const vs = row.vertexOnSurf as PctStats | undefined;
       const cov = row.coverage as { max: number; p99: number } | undefined;
       console.log(
