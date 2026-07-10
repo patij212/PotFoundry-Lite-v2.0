@@ -108,3 +108,33 @@ fleet-wide sizing correctness for all warped styles); (2) re-run stage capture t
 then subprofile triangulation (48.3% — now the dominant bucket); (3) Gyroid completion chip (pins +
 2-locus CDT fix); (4) commit/review the DS-gate work (owner); (5) all-20 artifact batch + the per-export
 certification loop.
+
+## F. UPDATE 2 (2026-07-10 evening — Jacobian arm CLOSED, all-20 captures COMPLETE)
+
+**E-2026-07-10-JACOBIAN-SIZING (875f9089→51d8a301→5776b079→2f3c6e9b): MECHANISM CONFIRMED CAUSAL,
+sizing lever driven to its measured saturation.** The completed sizing ladder (SpiralRidges, identical
+frozen config family, exact Newton-ALL basis — the manifest's sizing-layer case study):
+baseline 3,140@0.0239 (1.000×) → blanket floor 0@0.0100 (1.935×, over budget) → masked floor
+2,764@0.0358 (1.223×, warp-dilution KILL) → **J-composed (×max(1,Ju²)) 34@0.0102 (1.430×, 81×
+collapse, budget-legal)** → J+5%-margin 28@0.0102 (1.487×, KILL). The margin KILL is MECHANISTIC,
+proven three ways: 28/28 surviving loci have BIT-IDENTICAL Newton deviations across a 2.4% sizing
+change (request moved, delivery zero); level arithmetic shows the entire reachable request band sits
+inside one quadtree level interval (L12→L13 needs κ>3.4–4.4 vs the frozen 2.4 cap) ⇒ the sizing
+derivative at these loci is EXACTLY ZERO for any raise-only floor change; the 6 cleared loci are
+level-boundary-adjacency beneficiaries. **⇒ QUADTREE LEVEL QUANTIZATION is the sizing lever's hard
+floor** — a new named mechanism for the ledger.
+
+**PROGRAM-LEVEL UNIFICATION:** the final residuals of SpiralRidges (28 facet-points / 14 (u,t) loci,
+all within 0.0002 of tol, near-rim) and Gyroid (~31k knee population) are the SAME lever class:
+LOCAL treatment (pinned points per §V11aa/HexHive, or forced level-split at named cells). ONE
+production mechanism closes both styles' endgames — the pins/level-split item absorbs the Gyroid
+completion chip's second half. Instrument bonus: fd 6.8e-11 / h0 hash-exact / c1match facet-exact —
+the pinned-worktree twin chain is now the standing verification pattern.
+
+**ALL-20 CAPTURES COMPLETE (E-2026-07-10-PROD-BATCH), ZERO FAILURES:** every batch sentinel done.
+LowPolyFacet captured clean in 36s (the Dawn hang did NOT reproduce on the export path — it is
+raycast-pipeline-specific); CelticTriquetra is the fleet heavyweight (13.6M full tris / 243s);
+mid-roster styles generate in 36–77s on the new tree. DS transient resolved (sha1-identical retry,
+131.3s vs 1,113s pilot = −88%). Certification: 8/20 adjudicated (3 SHIPPED-CLEAN, 4 REGRESSION incl.
+1 borderline grid-basis, 1 special-ruler DS), remainder draining in parallel waves; quiet-GPU stage
+timing and the final scorecard close the batch.
