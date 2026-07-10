@@ -282,3 +282,142 @@ EXPLICITLY to `buildStyleParamPayload`, not an empty object.
 5. `research/exchange/_gyroid_prodclose/` — gitignored data (rows.ndjson + any binary mesh dumps).
 
 Committed BEFORE any measurement. Only this file is staged for the pre-registration commit.
+
+---
+
+## VERDICT (2026-07-10, measurement complete)
+
+**VERDICT CLASS: KILLED-with-classification (KILL-A, fired exactly per the 05:12:22Z pre-committed
+interpretation rule) — the analytic curvature floor is NOT the lever for the Gyroid production
+regression. The floor genuinely halves the worst mid-ramp deviation, but the residual outlier
+population is 100% SMOOTHSTEP-KNEE-localized (|val| within ±0.005 of the band edges 0.135/0.15 for
+every single Newton-confirmed outlier sampled, in BOTH configs), and the knee is structurally
+unreachable by ANY density floor at production minEdge: knee κ ≈ 10³ mm⁻¹ (FD-measured up to 1049.9)
+demands h ≈ 0.005mm ≪ minEdge 0.1, and h(κ≥2.4)=minEdge exactly, so no cap escalation can change the
+sizing output. This is the lab's needs-EDGES class (§V11o/q/aa), re-derived independently on a
+Δ2-exact production twin.**
+
+### STAGE T — twin instrument gate: STRICT PASS (all three pre-registered legs)
+
+| leg | banked artifact | twin | Δ |
+|---|---|---|---|
+| outer tris | 1,892,114 | 1,892,112 | **2** (1.1e-6) |
+| prescreen survivors | 141,146 | 141,147 | **1** |
+| coverage max | 0.0987 | 0.098741 | 0.00004 |
+
+Full tris 4,014,802 vs captured 4,014,814 (Δ12); nonMan 0 (non-vacuous), zeroArea 0; uBias=1 (the
+`hasFeatures`-capped GATE-B path — Gyroid's 14 `general-curve` lines from the production
+`extractGyroidManifold` val=0 marching squares, verified live); coverage p99 0.0036 == banked.
+Tighter than the SpiralRidges Δ8 twin precedent on every leg. `twin_gate.json` banked.
+
+### STAGE F1 — floorval (resU 512, SUB 24): VALIDATION GATE PASSED, with the decisive knee finding
+
+Floor ≥ FD-sampled κ at **99.896%** of 1,000,000 probes (gate ≥99%). The 1,044 violations are ALL
+knee-class BY CONSTRUCTION: the independent deep-ladder FD cross-check observes smoothstep-knee κ up
+to **1049.9 mm⁻¹** (worst at (u,t)=(0.1177,0.7925)) against the cap maxKappa=2.4. fracInBand 7.69% ≈
+the 7.46% survivor fraction (consistent). CAP PROVENANCE: maxKappa = 8·maxSag/minEdge² =
+8·0.003/0.1² = 2.4 = the κ at which production minEdge 0.1 BINDS — a style-independent formula given
+production knobs (the same formula `AnalyticCurvatureFloor.ts` ships; the SpiralRidges crest-κ
+2.0-2.4 coincidence is observational, not the derivation). SHARPENING (pre-committed before the
+floor verdict): since h(κ≥2.4)=minEdge exactly, NO cap escalation changes anything at production
+minEdge — the knee was mechanically out of reach of this arm's lever BEFORE the A/B ran.
+
+### STAGE F2 — floor A/B (stratified V11i two-tier interim basis, labeled)
+
+REFRAME (banked to run.log BEFORE any Newton results existed): the radial survivor count SATURATES
+on near-vertical walls (V11b: count GROWS with density while true deviation SHRINKS) ⇒ survivor
+count is NOT a verdict signal on this wall-dominated style; only the Newton basis adjudicates.
+
+| config | outer tris | radial survivors | est. true outliers (stratified) | Newton-worst (sampled) | knee-class of Newton-confirmed outliers |
+|---|---|---|---|---|---|
+| baseline (128², no floor) | 1,892,112 | 141,147 (7.46%) | **~96,012** | **0.0576** | 372/372 knee-adjacent (0 wall-band, 0 off-band) |
+| floor (512², κ-floor cap 2.4) | 3,545,856 (**+87%**) | 351,698 (9.92%) | **~78,124 (−19%)** | **0.0284 (−51%)** | **754/754 knee-adjacent (0 wall-band, 0 off-band)** |
+
+ESTIMATOR VALIDATION: the baseline stratified estimate (96,012 / 0.0576) reconciles with the
+artifact LITERAL row (105,107 / 0.0590, E-2026-07-09-FAST-HONEST-RULER) within −8.7% / −2.4% on a
+Δ2-exact twin — the stratified instrument is sound. Sampling: deterministic (mulberry32 0xC0FFEE),
+worst-radial head exhaustive (100/400) + 8 equal-count strata (50/200 each); 500 + 2,000 Newton
+queries; per-stratum table + ≤400-pt (u,t)/|val| scatter banked to `floor_strat.json`.
+
+THE PRICED FORK (the arm's honest deliverable): **+87% outer tris buys −19% estimated true outliers
+and −51% Newton-worst — and 100% of what remains sits ON the smoothstep knees**, exactly where no
+density can go (h-demand ~0.005mm < minEdge 0.1). Acceptance (every-facet ≤0.01) is unreachable on
+the density-floor lever: KILL-A. KILL-B did NOT fire (3.55M ≤ 7.0M outer gate — budget was not the
+binding constraint; the mechanism was). KILL-C untested (floor-config coverage unmeasured — the
+blind literal was redirected at the prescreen tell; flagged for any future floor use, irrelevant to
+this classification).
+
+### BASIS HONESTY
+
+- Twin gate: pre-registered instruments verbatim (unbundled from the scoring into the `twingate`
+  stage — same build fn, same prescreen lattice, same coverage ruler; the strict gate's three legs
+  never required the stride-1 scoring).
+- F2: stratified V11i two-tier (LABELED interim basis — a coordinator-directed tractability
+  redirect, banked to run.log before results). The literal every-facet basis was NOT run for the
+  floor config: per pre-registration, KILL-A is adjudicable from classification data, and the
+  351,698-survivor blind literal (~10-20 CPU-h) would not have changed the classification.
+  FAST-HONEST-RULER shard levers (PF_GPC_SHARD/PF_GPC_NSHARDS, survivors mod-split) are IMPLEMENTED
+  in the probe and unused — ready for any future literal acceptance run.
+- Baseline own-basis literal scan: killed at 163 CPU-min (est 92-358 min remaining) once the
+  stratified baseline reconciled to the artifact literals — the artifact literals stand as the
+  baseline fidelity numbers (the twin being Δ2/Δ1-exact makes them the same mesh's numbers to
+  within the gate tolerance). First-run post-mortem: 2.2h "stall" was Windows EcoQoS throttling of
+  the detached fork child (~23% of a core), NOT heap — in-child heapLimitMB=16576 proved
+  NODE_OPTIONS propagated; killed for undiagnosability before breadcrumbs existed.
+
+### RECOMMENDATION (the arm's deliverable)
+
+The production Gyroid close is **wall-band contour EMBEDDING + knee treatment, NOT density**:
+
+1. **Doubled band-edge contours through the EXISTING production machinery.** Production already
+   embeds a Gyroid level set as `general-curve` CDT constraints with featureLevel-11 refinement
+   (extractGyroidManifold → outerFeatureLines → per-cell constrained CDT) — but it traces **val=0**,
+   the ridge-plateau CENTERLINE, where shape is saturated flat (κ≈0) and no outliers live. The
+   measured knee population sits at **|val| ∈ {0.135, 0.15}** — the band edges
+   `research/bridge/_gyroidContourLib.ts` (committed, read-only) already extracts at machine
+   precision. The natural next arm: feed the DOUBLED band-edge contours through the same
+   general-curve path on this Δ2-exact twin. The lab proved the mechanism: doubled edges → off-wall
+   0, trueMax 0.0628→0.0385 (§V11o); NOTE single RAMP-midline (|val|=0.1425) was REFUTED
+   (catastrophic, §V11o) — val=0 plateau-centerline is a different, harmless locus, but it is not
+   doing the work either.
+2. **Knee treatment second**: the lab's literal-0 needed pinned knee clusters on top of the doubled
+   embed (§V11aa closed the final tail with 35 points; terminal scorecard row 12: literal Newton-0
+   at 6.61M via "doubled wall-band + knee clusters"). Production has no exposed pinned-point
+   mechanism — candidate: dense polyline vertices along the knee loci as degenerate general-curves,
+   or the band mesher; an open engineering question for that arm.
+3. **Floor optional, decoupled**: the lab reached literal-0 WITHOUT a curvature floor; the floor's
+   real −51% mid-ramp improvement is largely mooted by an edge-conforming mesh. Do not couple the
+   arms.
+4. Ready-made instruments for that arm: this Δ2-exact twin + gates (`twin_gate.json`), the validated
+   stratified estimator (±9%), shard levers, breadcrumb/heap-gate/EcoQoS patterns.
+
+### PERF NOTES (program ledger)
+
+- **Windows EcoQoS throttling of detached node children: AboveNormal priority = ~4× measured**
+  (23%→88-94% of a core; corroborated by build times 229s→109-133s). Bump the fork child
+  immediately after spawn; the `tinypool` CommandLine filter matches nothing on vitest-4 Windows
+  forks — select by CreationDate instead.
+- Vitest 4: `poolOptions.forks.execArgv` silently ignored; `NODE_OPTIONS` env var DOES propagate to
+  fork children (proven in-child: heapLimitMB=16576). Heap fail-fast gate (assert
+  `v8.getHeapStatistics().heap_size_limit` ≥ 8192MB at test start) turns a silent misconfig into a
+  30s diagnosis. Fork-child console is buffered until test end — `appendFileSync` breadcrumbs are
+  the ONLY live telemetry; sync bodies outlive testTimeout (row-append-before-assert held).
+- Phase wall-times (healthy/bumped): assembleWatertight 115-229s @4.01M full tris (128²), 109-133s
+  @5.75M (512²+floor); submesh+eval 3-6s; nonManRawBig full-pot audit 5-8s; prescreen count 48s
+  @1.89M facets / ~96s @3.55M; prescreen detail ~117s @3.55M; coverage (1024²+4× refine) 38s @1.89M
+  tris; floor grid 512²×SUB24 642.6s (projection 494s, +30%); floor validation 13.8s/1M probes;
+  stratified Newton ~71ms/query (2,000 in 142.8s — 3× faster than the banked 205ms figure,
+  radial-anchor seeds + healthy priority).
+
+### LEDGER
+
+Files: `research/bridge/_gyroid_prodclose_lib.ts` (twin + exact-partials curvature floor +
+validation + stratified instruments), `research/bridge/_gyroid_prodclose.test.ts` (stages
+twin|twingate|floorval|floor|floorstrat; heap gate; shard levers), this prereg. NO
+vitest.*.config.ts (CLI flags only — file-glob scope). NO src/ edits (the floor was injected via the
+already-shipped `AssemblyWallOptions.outerCurvatureFloor` hooks, twin-side only). Data (gitignored):
+`research/exchange/_gyroid_prodclose/{rows.ndjson, twin_gate.json, floor_strat.json, run.log}` —
+run.log carries the full timestamped breadcrumb/pre-commit/decision trail. Commits: pre-reg
+2285fd02 → verdict [this]. Concurrent-session notes: shared-tree discipline held (only the three
+files above + gitignored exchange data touched); machine-courtesy deviation (two own processes
+briefly concurrent during the lane-2 parallelization) coordinator-authorized and documented.
