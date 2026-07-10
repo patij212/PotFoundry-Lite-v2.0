@@ -916,6 +916,93 @@ fn periodic_cellular(uv: vec2<f32>, period: vec2<f32>, jitter: f32) -> vec3<f32>
   return vec3<f32>(f1, f2, 0.0);
 }
 
+// ----------------------------------------------------------------------------------------------
+// Integer-exact hash chain (E-2026-07-10-INTHASH-SWAP). hash22/periodic_cellular above are now
+// DEAD for style_voronoi (kept in place — WGSL has no unused-function compiler error, and this
+// region block already only ships to the GPU when Voronoi is the active style, so leaving them
+// costs nothing). Text below is copied VERBATIM from the CONFIRMED WGSL port in
+// research/lab/E-2026-07-10-INTHASH-prereg.md (verdict f1ce5ca4), which was itself hand-verified
+// line-for-line against research/bridge/_voronoi_inthash_lib.ts's pcg2d/u32ToUnitFloat/
+// hash22Int/periodicCellularInt (WGSL u32 arithmetic is exact/wrapping per spec, matching JS's
+// Math.imul+>>>0 idiom bit-for-bit — no additional translation risk). Mirrors
+// src/geometry/styles.ts's pcg2dHash/u32ToUnitFloat/hash22Int/periodicCellularInt 1:1.
+// NOTE: comment lines in this file must never start with the literal token "// #region" or
+// "// #endregion" (even mid-sentence) — stripShaderCode() (src/utils/shaderStripper.ts) does a
+// naive startsWith() match with no escaping, so such a line is misparsed as a real region marker.
+// ----------------------------------------------------------------------------------------------
+
+// hash_pcg2d — PCG2D integer hash, pure u32 arithmetic. Mirrors styles.ts's pcg2dHash().
+fn hash_pcg2d(vx: u32, vy: u32) -> vec2<u32> {
+  var x = vx;
+  var y = vy;
+
+  x = x * 1664525u + 1013904223u;
+  y = y * 1664525u + 1013904223u;
+
+  x = x + y * 1664525u;
+  y = y + x * 1664525u;
+
+  x = x ^ (x >> 16u);
+  y = y ^ (y >> 16u);
+
+  x = x + y * 1664525u;
+  y = y + x * 1664525u;
+
+  x = x ^ (x >> 16u);
+  y = y ^ (y >> 16u);
+
+  return vec2<u32>(x, y);
+}
+
+// u32_to_unit_float — dyadic-rational conversion, exact in f32 (24-bit mantissa). Mirrors
+// styles.ts's u32ToUnitFloat(): (h >>> 8) * 2**-24.
+fn u32_to_unit_float(h: u32) -> f32 {
+  return f32(h >> 8u) * 5.9604644775390625e-08; // 2^-24, spelled as a literal for WGSL const-eval
+}
+
+// hash22_int — INTEGER-EXACT hash22 analog. cx/cy must already be integer cell coordinates
+// (post floor + periodic wrap). Bias constants match styles.ts's hash22Int() 0x9e3779b1/0x85ebca77.
+fn hash22_int(cx: i32, cy: i32) -> vec2<f32> {
+  let seeded = hash_pcg2d(u32(cx) + 0x9e3779b1u, u32(cy) + 0x85ebca77u);
+  return vec2<f32>(u32_to_unit_float(seeded.x), u32_to_unit_float(seeded.y));
+}
+
+// periodic_cellular_int — INTEGER-HASH periodic Worley/Voronoi. Structurally identical to
+// periodic_cellular() above EXCEPT the hash call: hash22_int() on the INTEGER neighbor cell id
+// (periodic-wrapped in integer space) instead of hash22() on a float wrapped_id. Returns
+// vec3(F1, F2, 0.0) — same shape as periodic_cellular() for call-site compatibility.
+fn periodic_cellular_int(uv: vec2<f32>, period_x: i32, jitter: f32) -> vec3<f32> {
+  let cell_id = vec2<i32>(floor(uv));
+  let cell_uv = fract(uv);
+
+  var f1 = 999.0;
+  var f2 = 999.0;
+
+  for (var y = -1; y <= 1; y = y + 1) {
+    for (var x = -1; x <= 1; x = x + 1) {
+      let neighbor_id = cell_id + vec2<i32>(x, y);
+      // periodic wrap ONLY for the hash lookup (cylinder periodicity) — matches
+      // styles.ts's periodicCellularInt()'s wrappedX (Euclidean modulo, not WGSL's truncating %).
+      let wrapped_x = ((neighbor_id.x % period_x) + period_x) % period_x;
+
+      let point_hash = hash22_int(wrapped_x, neighbor_id.y);
+
+      let center = vec2<f32>(f32(x), f32(y)) + point_hash * jitter;
+      let diff = center - cell_uv;
+      let dist = length(diff);
+
+      if (dist < f1) {
+        f2 = f1;
+        f1 = dist;
+      } else if (dist < f2) {
+        f2 = dist;
+      }
+    }
+  }
+
+  return vec3<f32>(f1, f2, 0.0);
+}
+
 fn style_voronoi(theta: f32, t: f32, r0: f32) -> f32 {
   // Params:
   // 0: Scale
@@ -949,9 +1036,14 @@ fn style_voronoi(theta: f32, t: f32, r0: f32) -> f32 {
   
   let v = t * scale_val * stretch_val;
   
-  let period = vec2<f32>(scale_val, 0.0); // Y is not periodic 0 means infinite/ignore in helper
-  
-  let noise = periodic_cellular(vec2<f32>(u_anim, v), period, jitter);
+  // E-2026-07-10-INTHASH-SWAP: integer-exact hash chain (periodic_cellular_int) replaces the
+  // float-hash periodic_cellular. period_x is i32(round(scale_val)) — periodic_cellular_int's
+  // wrap happens in exact integer space, matching styles.ts's periodicCellularInt() JS-side
+  // Math.round(periodX) rounding (the old vec2<f32> period's unused .y=0.0 component — Y was
+  // never periodic — is dropped along with the float period entirely).
+  let period_x_int = i32(round(scale_val));
+
+  let noise = periodic_cellular_int(vec2<f32>(u_anim, v), period_x_int, jitter);
   let f1 = noise.x;
   let f2 = noise.y;
   

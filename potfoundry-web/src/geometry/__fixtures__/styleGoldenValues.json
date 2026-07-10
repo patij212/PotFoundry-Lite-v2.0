@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-06-14T16:32:26.090Z",
+  "generatedAt": "2026-07-10T02:15:59.785Z",
   "version": "1.0.0",
   "tolerance": 0.001,
   "styles": {
@@ -2765,14 +2765,14 @@
         "theta": 0,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 48.110233306884766
       },
       {
         "styleId": "Voronoi",
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.686744689941406
+        "expectedRadius": 47.5
       },
       {
         "styleId": "Voronoi",
@@ -2786,7 +2786,7 @@
         "theta": 3.141592653589793,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 48.472896575927734
       },
       {
         "styleId": "Voronoi",
@@ -2800,7 +2800,7 @@
         "theta": 6.2731853071795864,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.5
+        "expectedRadius": 47.7696418762207
       },
       {
         "styleId": "Voronoi",
@@ -2814,14 +2814,14 @@
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.29936599731445
+        "expectedRadius": 51.25
       },
       {
         "styleId": "Voronoi",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.691810607910156
+        "expectedRadius": 51.25
       },
       {
         "styleId": "Voronoi",
@@ -2863,7 +2863,7 @@
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.51390838623047
+        "expectedRadius": 57.5
       },
       {
         "styleId": "Voronoi",
@@ -2877,7 +2877,7 @@
         "theta": 4.71238898038469,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.5
+        "expectedRadius": 57.848960876464844
       },
       {
         "styleId": "Voronoi",
@@ -2891,14 +2891,14 @@
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.28618621826172
+        "expectedRadius": 65.54998779296875
       },
       {
         "styleId": "Voronoi",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.5401382446289
+        "expectedRadius": 65.74920654296875
       },
       {
         "styleId": "Voronoi",
@@ -2912,7 +2912,7 @@
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.75
+        "expectedRadius": 64.13825225830078
       },
       {
         "styleId": "Voronoi",
@@ -2926,7 +2926,7 @@
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.4764633178711
+        "expectedRadius": 65.67195129394531
       },
       {
         "styleId": "Voronoi",
@@ -2954,7 +2954,7 @@
         "theta": 3.141592653589793,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.50213623046875
+        "expectedRadius": 67.5
       },
       {
         "styleId": "Voronoi",

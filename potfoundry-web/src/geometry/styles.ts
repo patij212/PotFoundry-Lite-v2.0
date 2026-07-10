@@ -1432,61 +1432,112 @@ export function rOuterLowPolyFacetVec(
   return rs;
 }
 
+// ============================================================================
+// Voronoi — integer-exact hash (E-2026-07-10-INTHASH-SWAP)
+// ============================================================================
+// The old float-hash hash22()/periodicCellular() (matching styles.wgsl's now-superseded
+// hash22/periodic_cellular) were REMOVED here: scoping confirmed (GitNexus impact + grep) their
+// ONLY caller each was the other, terminating at rOuterVoronoi below — once rOuterVoronoi is
+// rewired to periodicCellularInt, they have zero callers anywhere in the codebase, and
+// tsconfig's `noUnusedLocals: true` correctly rejects dead non-exported functions. The WGSL
+// twins (hash22/periodic_cellular in styles.wgsl) are NOT removed — WGSL has no equivalent
+// unused-function compiler error, and leaving them costs nothing there; this file's removal is a
+// TypeScript-compiler-forced consequence of the swap, not a broader "clean up shared infra" pass.
+// pcg2dHash/u32ToUnitFloat/hash22Int/periodicCellularInt below are direct ports of the CONFIRMED
+// design in research/lab/E-2026-07-10-INTHASH-prereg.md (verdict f1ce5ca4), reference
+// implementation research/bridge/_voronoi_inthash_lib.ts (pcg2d/u32ToUnitFloat/hash22Int/
+// periodicCellularInt with the Round-parameterization stripped — production always runs at
+// native JS f64, the reference lib's Round machinery existed only to prove the F64-vs-F32
+// determinism property in the research spike; that property transfers here unchanged since the
+// hash chain itself never had a Round-dependent path in the first place).
+// USER-APPROVED (Patryk, 2026-07-10): swaps the Voronoi hash chain in place. Saved Voronoi
+// designs render a DIFFERENT (but equally valid, non-degenerate) cell layout after this change —
+// accepted, not a regression. WGSL mirror: src/assets/shaders/styles.wgsl hash_pcg2d/
+// u32_to_unit_float/hash22_int/periodic_cellular_int (same style_voronoi shader-stripping block).
+
 /**
- * 2D Hash for periodic noise (matches WGSL)
+ * PCG2D — Jarzynski/Olano-style integer hash, pure u32 arithmetic. Every intermediate is coerced
+ * to an exact u32 via `>>>0` (or is already u32-typed from a prior `>>>0`/imul result) — bit-
+ * identical to a WGSL u32 port by construction: WGSL's `u32` arithmetic is exact modulo-2^32
+ * (wrapping), same as JS's `Math.imul`/`>>>0` idiom. No floating point appears in this function.
+ * Mirrors WGSL `hash_pcg2d` (styles.wgsl) line-for-line: each `x = ...` / `y = ...` pair below
+ * corresponds 1:1 to the same-numbered statement pair in the WGSL fn body.
  */
-function hash22(p: { x: number; y: number }): { x: number; y: number } {
-  // WGSL fract (x - floor(x)), NOT JS '%' (truncated → wrong sign for negatives).
-  const fract = (x: number): number => x - Math.floor(x);
-  let p3 = {
-    x: fract(p.x * 0.1031),
-    y: fract(p.y * 0.1030),
-    z: fract(p.x * 0.0973),
-  };
-  // matrix equivalent: p3 = fract(vec3(p.xyx) * ...)
-  // p3 = p3 + dot(p3, p3.yzx + 33.33)
-  const dot = p3.x * (p3.y + 33.33) + p3.y * (p3.z + 33.33) + p3.z * (p3.x + 33.33);
-  p3.x += dot;
-  p3.y += dot;
-  p3.z += dot;
-  // return fract((p3.xx + p3.yz) * p3.zy) — JS '%' truncates (wrong sign for
-  // negatives, e.g. p.y=-1 → %1=-0.103 vs fract=0.897, off by exactly 1.0).
-  return {
-    x: fract((p3.x + p3.y) * p3.z),
-    y: fract((p3.x + p3.z) * p3.y),
-  };
+function pcg2dHash(vx: number, vy: number): { x: number; y: number } {
+  let x = vx >>> 0;
+  let y = vy >>> 0;
+
+  x = (Math.imul(x, 1664525) + 1013904223) >>> 0; // WGSL: x = x * 1664525u + 1013904223u;
+  y = (Math.imul(y, 1664525) + 1013904223) >>> 0; // WGSL: y = y * 1664525u + 1013904223u;
+
+  x = (x + Math.imul(y, 1664525)) >>> 0; // WGSL: x = x + y * 1664525u;
+  y = (y + Math.imul(x, 1664525)) >>> 0; // WGSL: y = y + x * 1664525u;
+
+  x = (x ^ (x >>> 16)) >>> 0; // WGSL: x = x ^ (x >> 16u);
+  y = (y ^ (y >>> 16)) >>> 0; // WGSL: y = y ^ (y >> 16u);
+
+  x = (x + Math.imul(y, 1664525)) >>> 0; // WGSL: x = x + y * 1664525u;
+  y = (y + Math.imul(x, 1664525)) >>> 0; // WGSL: y = y + x * 1664525u;
+
+  x = (x ^ (x >>> 16)) >>> 0; // WGSL: x = x ^ (x >> 16u);
+  y = (y ^ (y >>> 16)) >>> 0; // WGSL: y = y ^ (y >> 16u);
+
+  return { x: x >>> 0, y: y >>> 0 };
 }
 
 /**
- * Periodic Cellular Noise (matches WGSL)
+ * Convert a u32 hash lane to [0,1) via a dyadic rational: (h >>> 8) is a 24-bit integer in
+ * [0, 2^24), and multiplying by 2**-24 (an exact power of two) is EXACT in both f32 and f64 — the
+ * result always has <=24 significant mantissa bits, fitting f32's 24-bit mantissa (23 explicit +
+ * 1 implicit) precisely. Zero rounding divergence between precisions at this boundary, by
+ * construction. Mirrors WGSL `u32_to_unit_float`.
  */
-function periodicCellular(
+function u32ToUnitFloat(h: number): number {
+  return (h >>> 8) * 2 ** -24;
+}
+
+/**
+ * hash22 analog, INTEGER-EXACT cell coordinates in, [0,1)^2 float out. cx/cy must already be
+ * integers (post floor + periodic wrap). Mirrors WGSL `hash22_int`.
+ */
+function hash22Int(cx: number, cy: number): { x: number; y: number } {
+  // JS's >>>0 on a negative number performs two's-complement wrapping (same as a WGSL
+  // i32->u32 bitcast), so negative cell ids are handled correctly without a branch — the fixed
+  // odd bias just avoids a (0,0)-degenerate seed pair at the origin cell.
+  const seeded = pcg2dHash((cx + 0x9e3779b1) >>> 0, (cy + 0x85ebca77) >>> 0);
+  return { x: u32ToUnitFloat(seeded.x), y: u32ToUnitFloat(seeded.y) };
+}
+
+/**
+ * periodicCellular analog using the integer-exact hash. Structurally IDENTICAL to
+ * periodicCellular() above (same 3x3 neighbor search, same distance/argmin logic) — only the
+ * hash primitive changes (hash22Int on integer neighbor coords instead of hash22 on a float
+ * wrapped id), isolating the swap to exactly the mechanism under test in E-2026-07-10-INTHASH.
+ * Mirrors WGSL `periodic_cellular_int`.
+ */
+function periodicCellularInt(
   uv: { x: number; y: number },
-  period: { x: number; y: number },
+  periodX: number,
   jitter: number
 ): { x: number; y: number; z: number } {
   const cellId = { x: Math.floor(uv.x), y: Math.floor(uv.y) };
   const cellUv = { x: uv.x - cellId.x, y: uv.y - cellId.y };
+
+  // periodX arrives as a float (style param); round once to the nearest integer for the
+  // integer-space wrap, matching the algorithmic intent of the original modulo wrap without
+  // smuggling float rounding back into the hash's integer domain.
+  const periodXInt = Math.max(1, Math.round(periodX));
 
   let f1 = 999.0;
   let f2 = 999.0;
 
   for (let y = -1; y <= 1; y++) {
     for (let x = -1; x <= 1; x++) {
-      const neighbor = { x, y };
       const neighborId = { x: cellId.x + x, y: cellId.y + y };
+      const wrappedX = ((neighborId.x % periodXInt) + periodXInt) % periodXInt;
 
-      // Periodic wrapping for neighbor cell ID (X only for cylinder)
-      const wrappedHashId = {
-        x: ((neighborId.x % period.x) + period.x) % period.x,
-        y: neighborId.y,
-      };
-
-      const pointHash = hash22(wrappedHashId);
-      const center = {
-        x: neighbor.x + pointHash.x * jitter,
-        y: neighbor.y + pointHash.y * jitter,
-      };
+      const pointHash = hash22Int(wrappedX, neighborId.y);
+      const center = { x: x + pointHash.x * jitter, y: y + pointHash.y * jitter };
 
       const diff = { x: center.x - cellUv.x, y: center.y - cellUv.y };
       const dist = Math.sqrt(diff.x * diff.x + diff.y * diff.y);
@@ -1527,8 +1578,11 @@ export function rOuterVoronoi(
   const uAnim = u + pulse * scaleVal;
   const v = t * scaleVal * stretchVal;
 
-  const period = { x: scaleVal, y: 0.0 };
-  const noise = periodicCellular({ x: uAnim, y: v }, period, jitter);
+  // E-2026-07-10-INTHASH-SWAP: integer-exact hash chain (periodicCellularInt) replaces the
+  // float-hash periodicCellular. periodX is passed directly (periodicCellularInt itself rounds
+  // to the nearest integer internally) — the old `period.y=0.0` (unused, Y is never periodic)
+  // is dropped since periodicCellularInt's signature only takes the X period.
+  const noise = periodicCellularInt({ x: uAnim, y: v }, scaleVal, jitter);
   const f1 = noise.x;
   const f2 = noise.y;
 
