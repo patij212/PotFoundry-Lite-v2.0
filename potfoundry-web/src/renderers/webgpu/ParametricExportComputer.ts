@@ -2715,9 +2715,11 @@ export class ParametricExportComputer {
                     // qSizingRes/qCellSamples were computed-but-dead since 92fca543
                     // ("WIP / NOT YET COMPLETE") — wired by E-2026-07-10-CAD-LEVER-
                     // COMPLETION Stage A. Defaults (128 / 1) are byte-identical to the
-                    // old hardcoded path; only the dev levers change behavior.
-                    resU: qSizingRes,
-                    resT: qSizingRes,
+                    // old hardcoded path; only the dev levers change behavior. With the
+                    // analytic floor ON, the field runs at the MASKED res bundle (must
+                    // equal the floor's lattice — see the block above).
+                    resU: analyticFloor ? MASKED_FLOOR_RES_U : qSizingRes,
+                    resT: analyticFloor ? MASKED_FLOOR_RES_T : qSizingRes,
                     cellSamples: qCellSamples,
                     nRing: qNRing,
                     targetTriangles: conformingBudget,
@@ -2816,15 +2818,31 @@ export class ParametricExportComputer {
                 // measured mechanism, the PROD-ARTIFACT-TRUTH SpiralRidges regression the
                 // measured effect). Styles without a closed form return null ⇒ no floor.
                 // Mirrors the __pfConformingUBias lever convention.
+                // E-2026-07-10-ANALYTIC-FLOOR-MASKED (C1): the floor is evaluated on a
+                // FINER sizing lattice so its natural |f″| support emerges instead of
+                // being sup-smeared — the ±1-node window scales as 1/resU, and at 128
+                // the 2.7mm node pitch vs 9.6mm crest spacing lifted ~the whole
+                // circumference (the measured 1.935× blanket cost). The fine res is
+                // BUNDLED with the floor, never applied alone: finer res WITHOUT the
+                // floor is ANTI-helpful (lever-res256 measured −7.5% tris / +142%
+                // outliers — the coarse grid's grading smear was an accidental partial
+                // floor). Flag OFF ⇒ qSizingRes (default 128) ⇒ byte-identical.
+                const MASKED_FLOOR_RES_U = 512;
+                const MASKED_FLOOR_RES_T = 128;
                 const analyticFloor = (globalThis as unknown as { __pfConformingAnalyticFloor?: boolean })
                     .__pfConformingAnalyticFloor === true
                     ? buildAnalyticCurvatureFloor(
                           params.styleId,
                           params.styleOpts,
                           { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb, expn: dimensions.expn },
-                          // Keep in sync with assemblyOpts below (resU/resT) and the
-                          // resolved sag/minEdge the sizing field actually runs with.
-                          { resU: 128, resT: 128, maxSagMm: qMaxSag, minEdgeMm: qMinEdge },
+                          // The floor's lattice MUST equal the field res it will run at
+                          // (assemblyOpts below) and the resolved sag/minEdge.
+                          {
+                              resU: MASKED_FLOOR_RES_U,
+                              resT: MASKED_FLOOR_RES_T,
+                              maxSagMm: qMaxSag,
+                              minEdgeMm: qMinEdge,
+                          },
                       )
                     : null;
 
