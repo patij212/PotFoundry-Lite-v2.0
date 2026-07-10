@@ -386,3 +386,62 @@ SuperformulaBlossom certification finish —
 No `src/` file was read for editing purposes and none was modified. No `git add -A`/`-u` was run.
 Every capture/certification result that HAS landed is durable (on disk, several independently
 checkpointed formats) — nothing measured so far is at risk from this checkpoint.
+
+## INTERIM STATUS (checkpoint 3 — Batch B complete; reuse-delta table banked; byte-identity carry-over; full chain launched)
+
+**Batch B complete (3/3 OK, batch wall 1,968.6s). The reuse-fix generate-time delta table
+(tree-basis da6b423a+uncommitted vs the 2026-07-09 pilot metas, exact `generateMs` from
+`meta.json` both sides):**
+
+| style | full generateMs pilot → tree (Δ) | outer generateMs pilot → tree (Δ) |
+|---|---|---|
+| HarmonicRipple | 377,429 → 321,257 (**−14.9%**) | 368,696 → 277,509 (**−24.7%**) |
+| SpiralRidges | 455,272 → 297,849 (**−34.6%**) | 449,151 → 572,015 (**+27.4%** — see caveat) |
+| GyroidManifold | 250,377 → 221,167 (**−11.7%**) | 273,888 → 256,640 (**−6.3%**) |
+
+**CONTENTION CAVEAT (recorded before interpreting):** from 13:18:49Z this arm's own
+SuperformulaBlossom certification fork (1 full core, AboveNormal) ran concurrently, a
+`gitnexus analyze` process (475+ CPU-s observed) ran from ~13:12Z, and the Jacobian arm's
+pinned-worktree sequence runs throughout (coordinator-confirmed, owns one core). HR's FULL
+generate (13:12→13:17Z) is the cleanest window; SR and Gyroid overlapped contention on both
+generates. The SR outer **+27.4%** is therefore most plausibly load contention, not a real
+regression — and Gyroid's small deltas may be understated for the same reason. ADJUDICATION
+DEFERRED to the stage-timing phase (quiet GPU, `assembleWatertightMs` directly attributable);
+these wall numbers are banked as measured, caveat attached, not silently averaged.
+
+**BYTE-IDENTITY CARRY-OVER (major basis result):** all 12 recaptured pilot bins
+(HR/SR/Gyroid × full/outer × xyz/idx) are **sha1-IDENTICAL** to their `*_pre_reuse_baseline`
+counterparts. The reuse fix + the rest of the uncommitted tree changed generate TIME only for
+these styles — the artifacts are bit-for-bit the pilot artifacts. Consequence (carry-over by
+proven equivalence): the pilot's certification rows transfer to the tree basis VERBATIM —
+HarmonicRipple literal-0 (max 0.0055), SpiralRidges 3,145 over / Newton-worst 0.0239,
+GyroidManifold 105,107 LITERAL / Newton-worst 0.0590 — no redundant re-certification. The same
+check will be applied to DragonScales/Voronoi when Batch C lands (DS vs the 2026-07-09 pilot
+baseline; Voronoi vs the 02:48 intermediate capture whose scorecard row is the post-INTHASH
+2026-07-10T03:09 stride-4 row).
+
+**DS SCORECARD RESET EXECUTED (pre-reg SS0.1):** `research/exchange/_ds_prodtruth/` →
+`_ds_prodtruth_pre_reuse_baseline/` (preserved). The DS composite-ruler probe now starts from a
+clean keyspace against the Batch C re-capture.
+
+**LAUNCHED (detached, sentinel-chained, each with wall-cap guard + EcoQoS bump + per-style
+breadcrumbs via the new `research/bridge/_prod_batch_progress.mjs`):** capture batches
+C (DragonScales+Voronoi, 60-min guard, RUNNING) → D (SuperellipseMorph GothicArches
+WaveInterference Crystalline, 90-min guard) → E (ArtDeco BambooSegments RippleInterference
+BasketWeave) → F (GeometricStar HexagonalHive CelticKnot CelticTriquetra) → G (LowPolyFacet
+SOLO, **600s pre-registered hang cap**, orphan report on exit). Certification queue task:
+waits for the in-flight SuperformulaBlossom row → courtesy gate (≥2 heavy foreign nodes ⇒
+sleep-poll ≤45min) → FourierBloom certification (stride 1, prescreen) → aggregator refresh.
+Breadcrumbs backfilled for batches A/B (`capture_progress.ndjson`, 5 rows).
+
+**Stage-timing ordering deviation (recorded):** prereg SS3 said "after Batch C"; execution
+defers it to after ALL capture batches — a timing instrument must not share the GPU with
+concurrent captures (measurement-quality rationale, not scope change).
+
+**Certification plan restated after the byte-identity result:** styles still needing scoring =
+FourierBloom (queued) + Batch D/E/F styles as captured + LowPolyFacet if G succeeds + DS
+composite-ruler run + Voronoi/DS only if their Batch C hashes DIFFER from their baselines.
+CelticKnot carries its own float sin-hash (`src/geometry/styles.ts:1912`, NOT the swapped
+Voronoi chain) — its vertexOnSurf gate is the next TRUTH-BRIDGE-FAILURE candidate; if it fires,
+the row records the gate verdict and interior numbers are marked UNTRUSTED per the pilot's
+pre-registered rule (row never skipped).
