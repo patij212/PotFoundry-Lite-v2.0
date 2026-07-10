@@ -24,6 +24,7 @@ import {
   buildProductionTwin,
   buildWallGridCPU,
   floorGridStats,
+  maskedWallDiag,
   scoreCoverage,
   scoreForward,
   wallsDiag,
@@ -33,14 +34,15 @@ import {
 import { buildAnalyticCurvatureFloor } from '../../src/renderers/webgpu/parametric/conforming/AnalyticCurvatureFloor';
 
 const ON = process.env.PF_ANALYTIC_FLOOR === '1';
-const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'masked' | 'twin' => {
+const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'masked' | 'masked-diag' | 'twin' => {
   const s = process.env.PF_AF_STAGE;
   return s === 'on' ||
     s === 'walls' ||
     s === 'orient-mini' ||
     s === 'lever-cs2' ||
     s === 'lever-res256' ||
-    s === 'masked'
+    s === 'masked' ||
+    s === 'masked-diag'
     ? s
     : 'twin';
 })();
@@ -99,6 +101,30 @@ describe('E-2026-07-09-ANALYTIC-FLOOR — production twin, flag-off/flag-on', ()
         writeFileSync(miniPath, JSON.stringify(mini, null, 2));
         console.log('[analytic-floor] orient-mini baseline BANKED');
       }
+      return;
+    }
+
+    if (STAGE === 'masked-diag') {
+      // Build-phase localizer for the C1 grind (tractability clause: the first C1
+      // attempt was stopped at ~125min wall / 58 CPU-min with a 0.16GB working set
+      // — a pre-triangulation loop). Times floored field + plain quadtree in
+      // isolation, then the FULL outer wall; live marks in progress.log.
+      const dFloor = buildAnalyticCurvatureFloor(
+        AF_STYLE,
+        {},
+        { H: AF_DIMS.H, Rt: AF_DIMS.Rt, Rb: AF_DIMS.Rb, expn: AF_DIMS.expn },
+        {
+          resU: MASKED_RES.resU,
+          resT: MASKED_RES.resT,
+          maxSagMm: AF_PROD_OPTS.maxSagMm,
+          minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+        },
+      );
+      if (!dFloor) throw new Error('null floor');
+      const diag = maskedWallDiag(MASKED_RES.resU, MASKED_RES.resT, dFloor);
+      Object.assign(row, { maskedRes: MASKED_RES }, diag);
+      appendFileSync(ROWS, JSON.stringify(row) + '\n');
+      console.log(`[analytic-floor] masked-diag:\n${JSON.stringify(diag, null, 2)}`);
       return;
     }
 

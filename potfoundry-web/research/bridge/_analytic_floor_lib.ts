@@ -15,6 +15,7 @@
 // read — see the pre-registered TWIN-VALIDITY gate.
 //
 // DEV-ONLY. src/ never imports research/.
+import { appendFileSync } from 'node:fs';
 import { buildRadiusFn } from './runStyle';
 import { nonManRawBig, type AnalyticRadiusFn } from './labkit';
 import { scoreWholeMeshInterior, denseBary } from './_pf_rebaselineRuler';
@@ -722,6 +723,18 @@ export function scoreCoverage(
   };
 }
 
+/** Live progress side-channel (vitest buffers stdout until the test ends). */
+export function twinProgress(msg: string): void {
+  try {
+    appendFileSync(
+      'research/exchange/_analytic_floor/progress.log',
+      `${new Date().toISOString()} ${msg}\n`,
+    );
+  } catch {
+    /* progress is best-effort */
+  }
+}
+
 export interface FloorGridStats {
   /** Fraction of lattice nodes where the floor exceeds the sampler κ (pre-registered tell). */
   liftedFrac: number;
@@ -765,6 +778,81 @@ export function floorGridStats(
   }
   const n = resU * resT;
   return { liftedFrac: lifted / n, liftedEffectiveFrac: effective / n, floorMax };
+}
+
+/**
+ * MASKED-arm build-phase localizer (tractability instrument): times the floored
+ * field + plain quadtree in isolation, then the FULL outer wall (creases + budget
+ * search + triangulation), with live marks to progress.log. No caps/orient.
+ */
+export function maskedWallDiag(resU: number, resT: number, floor: FloorSpec): Record<string, unknown> {
+  const t0 = Date.now();
+  twinProgress(`masked-diag start ${resU}x${resT}`);
+  const inp = prepareTwinInputs();
+  const uBias = computeUBias(inp.outerSampler, false);
+  twinProgress(`inputs ready uBias=${uBias} (+${Date.now() - t0}ms)`);
+
+  const probe = (withFloor: boolean): { fieldMs: number; qtMs: number; leaves: number } => {
+    const s1 = Date.now();
+    const field = new MetricSizingField(inp.outerSampler, {
+      maxSagMm: AF_PROD_OPTS.maxSagMm,
+      minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+      maxEdgeMm: AF_PROD_OPTS.maxEdgeMm,
+      gradeRatio: AF_PROD_OPTS.gradeRatio,
+      resU,
+      resT,
+      curvatureFloor: withFloor ? floor.curvatureFloor : undefined,
+      maxKappa: withFloor ? floor.maxKappa : undefined,
+    });
+    const fieldMs = Date.now() - s1;
+    twinProgress(`field(${withFloor ? 'floored' : 'plain'}) ${fieldMs}ms`);
+    const s2 = Date.now();
+    const leaves = new PeriodicBalancedQuadtree(field, inp.outerSampler, {
+      maxLevel: AF_PROD_OPTS.maxLevel,
+      pinBoundaryLevel: Math.round(Math.log2(AF_PROD_OPTS.nRing)),
+      minUniformLevel: inp.minUniformLevel,
+      uBias,
+    }).leafCount();
+    const qtMs = Date.now() - s2;
+    twinProgress(`quadtree(${withFloor ? 'floored' : 'plain'}) leaves=${leaves} ${qtMs}ms`);
+    return { fieldMs, qtMs, leaves };
+  };
+  const plain = probe(false);
+  const floored = probe(true);
+
+  twinProgress('buildConformingWall(outer, floored, FULL opts incl. creases/budget) start');
+  const s3 = Date.now();
+  const outer = buildConformingWall(inp.outerSampler, {
+    maxSagMm: AF_PROD_OPTS.maxSagMm,
+    maxEdgeMm: AF_PROD_OPTS.maxEdgeMm,
+    minEdgeMm: AF_PROD_OPTS.minEdgeMm,
+    gradeRatio: AF_PROD_OPTS.gradeRatio,
+    maxLevel: AF_PROD_OPTS.maxLevel,
+    resU,
+    resT,
+    nRing: AF_PROD_OPTS.nRing,
+    targetTriangles: Math.floor(AF_PROD_OPTS.targetTriangles / 2),
+    budgetMode: AF_PROD_OPTS.budgetMode,
+    minUniformLevel: inp.minUniformLevel,
+    uBias,
+    directionalRefine: false,
+    surfaceId: 0,
+    featureLevel: AF_PROD_OPTS.featureLevel,
+    creaseLines: inp.creaseLines.length > 0 ? inp.creaseLines : undefined,
+    efgSampler: inp.outerEfgSampler,
+    curvatureFloor: floor.curvatureFloor,
+    maxKappa: floor.maxKappa,
+  });
+  const wallMs = Date.now() - s3;
+  const outerTris = outer.indices.length / 3;
+  twinProgress(`outer wall DONE tris=${outerTris} budget=${JSON.stringify(outer.budget ?? null)} ${wallMs}ms`);
+  return {
+    uBias,
+    plain,
+    floored,
+    outer: { tris: outerTris, wallMs, budget: outer.budget ?? null },
+    totalMs: Date.now() - t0,
+  };
 }
 
 /** Full-pot watertight audit with the NON-VACUOUS injected-crack control. */
