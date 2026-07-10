@@ -17,7 +17,7 @@
 // DEV-ONLY. src/ never imports research/.
 import { appendFileSync } from 'node:fs';
 import { buildRadiusFn } from './runStyle';
-import { nonManRawBig, type AnalyticRadiusFn } from './labkit';
+import type { AnalyticRadiusFn } from './labkit';
 import { scoreWholeMeshInterior, denseBary } from './_pf_rebaselineRuler';
 import { newtonNearest } from './_gyroid_truthLib';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
@@ -778,6 +778,38 @@ export function floorGridStats(
   }
   const n = resU * resT;
   return { liftedFrac: lifted / n, liftedEffectiveFrac: effective / n, floorMax };
+}
+
+/**
+ * Large-mesh-safe raw-index non-manifold audit (sorted-key run-length scan, no
+ * Map cap). LOCAL COPY: the labkit promotion of nonManRawBig exists only in the
+ * concurrent arm's UNCOMMITTED worktree — importing it broke this lib at every
+ * COMMIT (masked by the shared tree; caught by the pinned-worktree verification,
+ * E-2026-07-10-ANALYTIC-FLOOR-MASKED). Re-point to labkit once that lands.
+ */
+function nonManRawBig(idx: ArrayLike<number>): number {
+  const nE = (idx.length / 3) * 3;
+  const keys = new Float64Array(nE);
+  let m = 0;
+  for (let k = 0; k < idx.length; k += 3) {
+    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+    if (a === b || b === c || a === c) continue;
+    const e = [[a, b], [b, c], [c, a]] as const;
+    for (const [p, q] of e) {
+      const lo = p < q ? p : q, hi = p < q ? q : p;
+      keys[m++] = lo * 134217728 + hi;
+    }
+  }
+  const sub = keys.subarray(0, m);
+  sub.sort();
+  let nm = 0;
+  for (let i = 0; i < m; ) {
+    let j = i + 1;
+    while (j < m && sub[j] === sub[i]) j++;
+    if (j - i > 2) nm++;
+    i = j;
+  }
+  return nm;
 }
 
 /**

@@ -2696,6 +2696,42 @@ export class ParametricExportComputer {
                       })
                     : undefined;
 
+                // E-2026-07-09-ANALYTIC-FLOOR dev lever (default OFF ⇒ byte-identical):
+                // per-style CLOSED-FORM curvature floor on the OUTER wall's sizing field
+                // (cell-supremum over each sizing cell — the 128² grid samples the κ field
+                // at ~4.7 nodes per SpiralRidges groove cycle, so a nodal read would alias
+                // exactly like the band-limited sampler it corrects; FRONTIER-BET2 is the
+                // measured mechanism, the PROD-ARTIFACT-TRUTH SpiralRidges regression the
+                // measured effect). Styles without a closed form return null ⇒ no floor.
+                // Mirrors the __pfConformingUBias lever convention.
+                // E-2026-07-10-ANALYTIC-FLOOR-MASKED (C1): the floor is evaluated on a
+                // FINER sizing lattice so its natural |f″| support emerges instead of
+                // being sup-smeared — the ±1-node window scales as 1/resU, and at 128
+                // the 2.7mm node pitch vs 9.6mm crest spacing lifted ~the whole
+                // circumference (the measured 1.935× blanket cost). The fine res is
+                // BUNDLED with the floor, never applied alone: finer res WITHOUT the
+                // floor is ANTI-helpful (lever-res256 measured −7.5% tris / +142%
+                // outliers — the coarse grid's grading smear was an accidental partial
+                // floor). Flag OFF ⇒ qSizingRes (default 128) ⇒ byte-identical.
+                const MASKED_FLOOR_RES_U = 512;
+                const MASKED_FLOOR_RES_T = 128;
+                const analyticFloor = (globalThis as unknown as { __pfConformingAnalyticFloor?: boolean })
+                    .__pfConformingAnalyticFloor === true
+                    ? buildAnalyticCurvatureFloor(
+                          params.styleId,
+                          params.styleOpts,
+                          { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb, expn: dimensions.expn },
+                          // The floor's lattice MUST equal the field res it will run at
+                          // (assemblyOpts below) and the resolved sag/minEdge.
+                          {
+                              resU: MASKED_FLOOR_RES_U,
+                              resT: MASKED_FLOOR_RES_T,
+                              maxSagMm: qMaxSag,
+                              minEdgeMm: qMinEdge,
+                          },
+                      )
+                    : null;
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
                 // With curvature de-noising (grid-scaled finite differences) the
                 // sag-driven mesh is already far coarser on smooth styles, so a
@@ -2814,42 +2850,6 @@ export class ParametricExportComputer {
                 if (!creaseTChoice.warp.isIdentity) {
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         const surfaceId = asm.vertices[i + 2];
-                // E-2026-07-09-ANALYTIC-FLOOR dev lever (default OFF ⇒ byte-identical):
-                // per-style CLOSED-FORM curvature floor on the OUTER wall's sizing field
-                // (cell-supremum over each sizing cell — the 128² grid samples the κ field
-                // at ~4.7 nodes per SpiralRidges groove cycle, so a nodal read would alias
-                // exactly like the band-limited sampler it corrects; FRONTIER-BET2 is the
-                // measured mechanism, the PROD-ARTIFACT-TRUTH SpiralRidges regression the
-                // measured effect). Styles without a closed form return null ⇒ no floor.
-                // Mirrors the __pfConformingUBias lever convention.
-                // E-2026-07-10-ANALYTIC-FLOOR-MASKED (C1): the floor is evaluated on a
-                // FINER sizing lattice so its natural |f″| support emerges instead of
-                // being sup-smeared — the ±1-node window scales as 1/resU, and at 128
-                // the 2.7mm node pitch vs 9.6mm crest spacing lifted ~the whole
-                // circumference (the measured 1.935× blanket cost). The fine res is
-                // BUNDLED with the floor, never applied alone: finer res WITHOUT the
-                // floor is ANTI-helpful (lever-res256 measured −7.5% tris / +142%
-                // outliers — the coarse grid's grading smear was an accidental partial
-                // floor). Flag OFF ⇒ qSizingRes (default 128) ⇒ byte-identical.
-                const MASKED_FLOOR_RES_U = 512;
-                const MASKED_FLOOR_RES_T = 128;
-                const analyticFloor = (globalThis as unknown as { __pfConformingAnalyticFloor?: boolean })
-                    .__pfConformingAnalyticFloor === true
-                    ? buildAnalyticCurvatureFloor(
-                          params.styleId,
-                          params.styleOpts,
-                          { H: dimensions.H, Rt: dimensions.Rt, Rb: dimensions.Rb, expn: dimensions.expn },
-                          // The floor's lattice MUST equal the field res it will run at
-                          // (assemblyOpts below) and the resolved sag/minEdge.
-                          {
-                              resU: MASKED_FLOOR_RES_U,
-                              resT: MASKED_FLOOR_RES_T,
-                              maxSagMm: qMaxSag,
-                              minEdgeMm: qMinEdge,
-                          },
-                      )
-                    : null;
-
                         if (surfaceId < 1.5) {
                             asm.vertices[i + 1] = applyTWarp(creaseTChoice.warp, asm.vertices[i + 1]);
                         }
