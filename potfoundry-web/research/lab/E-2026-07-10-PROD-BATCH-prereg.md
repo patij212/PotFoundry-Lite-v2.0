@@ -480,3 +480,52 @@ WaveInterference OK (1,306,488t/10.4s) at last poll — the never-before-capture
 styles are FAST (10-54s class, not the 4-19min pilot class). Recurring benign page-load artifact
 each fresh browser: "createRenderPipelineAsync failed for Style 18 ... possible Dawn compiler
 hang" ~30-35s — logged by SceneManager for the LIVE PREVIEW pipeline, does not affect capture.
+
+## INTERIM STATUS (checkpoint 5 — DS retry SUCCESS; all-5 pilot carry-over; policy update; certification waves rolling)
+
+**POLICY UPDATE (user directive via coordinator, 2026-07-10):** machine dedicated to this work.
+Standing priority enforcer active (node forks auto-bumped to High). One-heavy-Node courtesy cap
+LIFTED — certifications now run CONCURRENTLY (up to ~cores−4 = 12); two browser sessions
+permitted. Quiet-GPU stage-timing pass at the end remains the clean-conditions measurement;
+everything else stays labeled contended (as already practiced).
+
+**DS DIAGNOSTIC RESOLVED — TRANSIENT, NOT A TREE REGRESSION:** the single pre-registered retry
+(15:01Z) captured DragonScales cleanly — full 8,734,682t/**131.3s**, outer 4,549,600t/104.7s —
+and all 4 bins hash sha1-IDENTICAL to the 2026-07-09 pilot artifact. The 13:51Z failure is
+classified as the pre-existing mapAsync/style-switch-teardown race (OLD-tree precedent,
+E-2026-07-09-EXPORT-PERF e2e attempt 1) firing under heavy concurrent load. Ladder step 3
+(pinned-worktree-at-HEAD) NOT NEEDED. CROSS-WORKSTREAM-NOTES update 4 amended with the
+resolution. The race itself remains a real pre-existing load-sensitive flake — flagged for a
+future item, not this arm's scope.
+
+**ALL FIVE pilot styles now carry over certification by proven byte-identity (20/20 bins
+sha1-identical):** HR, SR, Gyroid (checkpoint 3) + DragonScales vs the pilot artifact and
+Voronoi vs the 02:48Z post-INTHASH intermediate artifact (this checkpoint). Consequences:
+(a) the DS composite-ruler re-run (BATTERY→FWD→REV, the single most expensive certification)
+is ELIMINATED — the E-2026-07-10-DS-PRODTRUTH verdict transfers verbatim (body 6,158 literal /
+max 0.158 rim-class; ring 71,355@8/16 = 6.35% / max 0.0700; battery ALL PASS; wall coverage
+0.0703); (b) Voronoi's post-INTHASH rows transfer (stride-1 row preferred: 64,327 over / max
+0.1094 / Newton-worst 0.0739 / coverage 0.1403, vtxOnSurf p99 0.00002 OK).
+
+**Aggregator extended (carry-over aware):** `_prod_batch_assemble.mjs` now (1) falls back to
+pre-SINCE scorecard rows ONLY for the byte-identity-proven CARRIED set, labeling every such row
+`carried:true` + basis string; (2) reads the DS baseline ndjson (moved aside by the reset) as
+the DS carry-over source; (3) prefers stride=1 over stride>1 among candidate rows (Voronoi has
+both); (4) surfaces `[carried: byte-identical]` in the md verdict column.
+
+**Fresh certifications landing (wave 1, 9 styles concurrent; instrument note: first launch hit
+the bash assignment-prefix-after-empty-expansion footgun — `$extra` expanding empty made
+`NODE_OPTIONS=...` the command word, exit 127 ×9; relaunched with `env`, all healthy):**
+FourierBloom **SHIPPED-CLEAN** (0 outliers stride-1, vtxOnSurf p99 0.00004 OK, coverage max
+0.0037); SuperellipseMorph **SHIPPED-CLEAN** (0 outliers, coverage 0.0032); RippleInterference
+**REGRESSION-borderline** (16 over / max 0.0104 grid-basis, Newton-worst **0.0065 < tol** —
+likely §V11j grid-trap inflation of a sub-tol worst; noted for the verdict). Batch F captures
+GeometricStar (4,770,450t/68.2s) + HexagonalHive (4,056,158t/70.3s) OK; wave 2 (GS+HH certs)
+launched. SFB cert fork survived its wrapper task's kill (banked lesson re-confirmed) — CPU
+3,160s+, still computing; left to finish (nothing blocks on it under the lifted cap).
+
+**Attribution correction (supersedes checkpoint 2/3 phrasing):** generate-time deltas measure
+the WHOLE uncommitted tree delta set — final-quadtree reuse + the integer-key quadtree codec
+(`QuadtreeCellKeyCodec.ts`, untracked-new, per the Codex journal entry) + gate/validation
+changes — NOT the reuse fix alone. DS −88.2% and Voronoi −76.9% vs pilot make this unmistakable
+(reuse fix alone was ~23% of export time). Per-bucket attribution = the stage-timing pass.

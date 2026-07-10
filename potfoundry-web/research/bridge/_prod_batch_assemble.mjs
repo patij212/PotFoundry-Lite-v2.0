@@ -32,6 +32,14 @@ const PILOT_BASELINE_S = {
 const ROOT = join('research', 'exchange', '_prod_truth');
 const NDJSON = join(ROOT, 'scorecard.ndjson');
 const DS_NDJSON = join('research', 'exchange', '_ds_prodtruth', 'scorecard.ndjson');
+// Pre-reuse DS composite scorecard (moved aside by the pre-registered reset). Read as a
+// FALLBACK only — legitimate solely because the re-captured DS artifact hashed sha1-IDENTICAL
+// (4/4 bins) to the artifact that arm scored (carry-over by proven equivalence, labeled).
+const DS_NDJSON_BASELINE = join('research', 'exchange', '_ds_prodtruth_pre_reuse_baseline', 'scorecard.ndjson');
+// Styles whose tree-basis re-captures hashed byte-identical to an already-certified artifact
+// (E-2026-07-10-PROD-BATCH checkpoints 3/5): pre-SINCE certification rows CARRY OVER for these
+// styles only. Every carried row is labeled carried:true in the output.
+const CARRIED = new Set(['HarmonicRipple', 'SpiralRidges', 'GyroidManifold', 'Voronoi', 'DragonScales']);
 const OUT_DIR = join('research', 'exchange', '_prod_batch');
 const sinceArgIdx = process.argv.indexOf('--since');
 let SINCE = sinceArgIdx >= 0 ? process.argv[sinceArgIdx + 1] : null;
@@ -54,26 +62,51 @@ function loadMeta(style) {
   try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return null; }
 }
 
-const allRows = readJsonl(NDJSON).filter((r) => !r.merged || true); // keep all; pick canonical below
-const byStyleRows = new Map();
+const allRows = readJsonl(NDJSON);
+const byStyleRows = new Map();      // fresh rows (at >= SINCE) — the default basis
+const byStyleRowsAll = new Map();   // every row — used ONLY for CARRIED styles
 for (const r of allRows) {
   if (!r.style) continue;
+  if (!byStyleRowsAll.has(r.style)) byStyleRowsAll.set(r.style, []);
+  byStyleRowsAll.get(r.style).push(r);
   if (sinceMs && r.at && Date.parse(r.at) < sinceMs) continue;
   if (!byStyleRows.has(r.style)) byStyleRows.set(r.style, []);
   byStyleRows.get(r.style).push(r);
 }
-function canonicalRow(style) {
-  const rows = byStyleRows.get(style) || [];
-  if (rows.length === 0) return null;
+function pickCanonical(rows) {
+  if (!rows || rows.length === 0) return null;
   const merged = rows.filter((r) => r.merged === true).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   if (merged.length) return merged[0];
-  const shard0 = rows.filter((r) => (r.shard ?? 0) === 0).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
-  if (shard0.length) return shard0[0];
+  const shard0 = rows.filter((r) => (r.shard ?? 0) === 0 && r.interior);
+  if (shard0.length) {
+    // Prefer the strongest basis: stride=1 over stride>1, then latest.
+    shard0.sort((a, b) => {
+      const sa = /stride=1\b/.test(a.interior?.basis ?? '') ? 0 : 1;
+      const sb = /stride=1\b/.test(b.interior?.basis ?? '') ? 0 : 1;
+      if (sa !== sb) return sa - sb;
+      return Date.parse(b.at) - Date.parse(a.at);
+    });
+    return shard0[0];
+  }
   // only non-zero shard rows present => sharded run not yet merged.
   return { ...rows[rows.length - 1], _unmergedShardsOnly: true };
 }
+function canonicalRow(style) {
+  const fresh = pickCanonical(byStyleRows.get(style));
+  if (fresh) return fresh;
+  if (CARRIED.has(style)) {
+    const carried = pickCanonical(byStyleRowsAll.get(style));
+    if (carried) return { ...carried, carried: true };
+  }
+  return null;
+}
 
-const dsRows = readJsonl(DS_NDJSON);
+let dsRows = readJsonl(DS_NDJSON);
+let dsCarried = false;
+if (dsRows.length === 0 && CARRIED.has('DragonScales')) {
+  dsRows = readJsonl(DS_NDJSON_BASELINE);
+  dsCarried = dsRows.length > 0;
+}
 function dsRow(key) { return dsRows.find((r) => r.key === key) || null; }
 function dsRowPrefix(prefix) {
   const cands = dsRows.filter((r) => typeof r.key === 'string' && r.key.startsWith(prefix));
@@ -108,7 +141,9 @@ for (const style of STYLES) {
     const fwdUnsharded = dsRows.filter((r) => r.task === 'forward-score' && (r.nShards ?? 1) <= 1).pop();
     const fwd = fwdMerged || fwdUnsharded || null;
     const rev = dsRow('rev_coverage');
-    ds = { battery, fwd, rev };
+    // Literal whole-population body upgrade (BODYWORST task), when present.
+    const bodyWorst = dsRowPrefix('fwd_bodyworst_band');
+    ds = { battery, fwd, rev, bodyWorst: bodyWorst ?? undefined, carried: dsCarried || undefined };
   }
   const pilotS = PILOT_BASELINE_S[style];
   const generateMsFull = meta?.full?.generateMs ?? null;
@@ -116,9 +151,14 @@ for (const style of STYLES) {
     ? +(((generateMsFull / 1000 - pilotS) / pilotS) * 100).toFixed(1)
     : null;
 
+  const carriedFlag = (row?.carried === true) || (style === 'DragonScales' && dsCarried);
   const entry = {
     style,
     treeBasisNote: 'tree-basis: da6b423a+uncommitted (see prereg BASIS LABELING)',
+    carried: carriedFlag || undefined,
+    carriedBasis: carriedFlag
+      ? 'certification carried over: tree-basis re-capture hashed sha1-IDENTICAL (4/4 bins) to the already-certified artifact (prereg checkpoints 3/5)'
+      : undefined,
     capture: meta ? {
       ok: meta.ok, error: meta.error ?? null,
       fullTris: meta.full?.tris ?? null, outerTris: meta.outer?.tris ?? null,
@@ -158,7 +198,8 @@ for (const e of scorecard) {
   const newton = e.newtonWorst != null ? e.newtonWorst.toFixed(4) : '-';
   const cov = e.coverage ? `${e.coverage.max?.toFixed(4)}/${e.coverage.p99?.toFixed(4)}` : (e.ds?.rev ? `sheet ${e.ds.rev.sheet?.interior?.max?.toFixed(4)} wall ${e.ds.rev.wall?.max?.toFixed(4)}` : '-');
   const nm = e.nonManRaw != null ? `${e.nonManRaw}/${e.zeroArea}` : '-';
-  md.push(`| ${e.style} | ${tris} | ${gen} | ${vtx} | ${fwd} | ${newton} | ${cov} | ${nm} | ${e.verdictClass} |`);
+  const verdict = `${e.verdictClass}${e.carried ? ' [carried: byte-identical]' : ''}`;
+  md.push(`| ${e.style} | ${tris} | ${gen} | ${vtx} | ${fwd} | ${newton} | ${cov} | ${nm} | ${verdict} |`);
 }
 writeFileSync(join(OUT_DIR, 'all20_scorecard.md'), md.join('\n') + '\n');
 console.log(`Wrote ${scorecard.length} rows. Verdict tally:`, scorecard.reduce((acc, e) => { acc[e.verdictClass] = (acc[e.verdictClass] || 0) + 1; return acc; }, {}));
