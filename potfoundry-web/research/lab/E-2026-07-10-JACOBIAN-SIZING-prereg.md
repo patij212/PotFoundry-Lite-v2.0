@@ -409,6 +409,64 @@ those bands); with the jdesign outer wall at 5,393,272 and the inner wall un-flo
 chain ran). Same detached single-command launch; same exchange-dir rows/breadcrumbs; coordinator polls.
 Expected cost ~13min build + ~2min scoring on the collapsed population.
 
-## VERDICT (MARGIN)
+## VERDICT (MARGIN) — KILL fired (one-shot, no ε-iteration), and the failure mode is the finding: THE SIZING LEVER IS LEVEL-QUANTIZED DEAD AT THE RESIDUAL LOCI
 
-*(pending — appended when the margin row lands)*
+**RESULTS (pinned worktree at 5776b079, stage `margin`, ε=0.05):** fullTris **8,456,484 = 1.487×** (99.1%
+of the 8,530,251 gate; build 865s) · prescreen survivors 76 · exact Newton-ALL **facetsOver 28 / max
+0.010191** (jdesign: 34 / 0.010203) · coverage max 0.009951 · watertight non-vacuous, zeroArea 0,
+vertexOnSurf max 7.6e-6. The pre-registered quantitative hypothesis (all 34 clear via sag × 1/(1+ε))
+is REFUTED: +324,700 tris (+4.0%) bought a 34→28 count change and a ~0.1% max shift. KILL stands —
+no ε-iteration, per the one-shot clause.
+
+**QUANTIZATION HYPOTHESIS — PROVEN (the close-out diagnostic, three independent lines):**
+
+1. **Bit-identity at the surviving loci.** All 28 margin residuals match a jdesign residual at the same
+   (u,t) with **bit-identical Newton deviations (max |Δ| = 0.0, exact float equality, 28/28)** — including
+   the new max 0.010191445631178223, which is byte-for-byte jdesign's locus at (u 0.2394, t 0.9287).
+   Meanwhile the REQUEST at those loci moved exactly as designed: demanded-h ratio margin/jdesign =
+   1/√1.05 to 2.2e-16. The demand changed 2.4%; the delivered local mesh did not change AT ALL. Coverage
+   corroborates: max AND worst-locus (u 0.8467, t 0.9794) bit-identical between the two runs.
+2. **Level arithmetic.** At the residual band's radii (~48–55mm), both request bands (jdesign 0.101–0.109
+   / margin ≥ minEdge 0.1) sit strictly inside ONE quadtree level interval: the L11 cell is 0.147–0.169mm
+   > request > L12 cell 0.074–0.084mm ⇒ both runs deliver L12 cells. Crossing to L13 would need
+   h_request < 0.074–0.084 ⇒ κ > 3.4–4.4, **impossible under the frozen maxKappa = 2.4** (which pins the
+   minimum request at √(8·0.003/2.4) = 0.100 = minEdge, by construction). Under this config the sizing
+   derivative at the residual loci is EXACTLY ZERO for any raise-only floor change of ANY size — the
+   one-shot KILL is not merely procedural; the sizing lever is provably exhausted.
+3. **The 6 that cleared are boundary-adjacency beneficiaries, not sizing responders.** 3 distinct (u,t)
+   loci × 2 facet-points each — (0.736, 0.966–0.970) [including the former WORST, 0.010203] and (0.905,
+   0.937) — dropped out entirely (gone from the >tol set, not reduced) while every remaining locus is
+   bit-identical. The +4.0% tris landed where NEIGHBORING bands' requests did straddle a level boundary;
+   cells adjacent to newly-split neighbors get template/vertex changes, which is what cleared these 6.
+   Sizing-insensitive band interiors (the 28) saw nothing.
+
+**COMPLETED SIZING LADDER (SpiralRidges, frozen config family, identical ruler):**
+
+| rung | fullTris (×) | facets over 0.01 | worst | note |
+|---|---|---|---|---|
+| baseline (plain 128²) | 5,686,834 (1.000×) | ~3,140 | 0.0239 N | production regression |
+| blanket κ-floor | 11,004,336 (1.935×) | 0 | 0.009985 | closed by ~8× over-delivery |
+| masked floor 512×128 | 6,956,244 (1.223×) | 2,764 | 0.035754 | KILL-A: warp-dilution |
+| + Ju² composition | 8,131,784 (1.430×) | 34 | 0.010203 | **mechanism confirmed, 81×** |
+| + ε=0.05 margin | 8,456,484 (1.487×) | 28 | 0.010191 | KILL: sizing saturated, level-quantized |
+
+**CONCLUSION (plain).** Warp-Jacobian-aware sizing is the CORRECT and CONFIRMED sizing-layer mechanism for
+warp-family styles: composing Ju² into the curvature floor delivers the 81× outlier collapse and pulls the
+worst deviation to the tolerance line within budget — closing the mechanism gap ANALYTIC-FLOOR-MASKED
+diagnosed. The FINAL ~28 facet-points at the tolerance line (all within 0.0002mm of tol, all in the
+near-rim attachment band) are **sizing-dead**: their requested h is pinned between the minEdge/κ-cap bound
+and a quadtree level boundary no floor change can cross, so any further sizing spend buys zero local
+refinement (budget is equally dead: 99.1% consumed for no movement at the target loci). They need a
+**LOCAL lever** — pinned points at the loci (the §V11aa/HexHive recipe class; production lacks pins — the
+known design item) or a forced level-split on the specific cells — the same endgame pattern as Gyroid's
+knee (§E-2026-07-08-GYROID-KNEE closed its last 5 spots with pinned knee-injection after its field-level
+levers saturated).
+
+**FOLLOW-UPS (named, NOT run):** (1) the local-lever micro-arm for the 28 (pins or forced level-split at
+the 14 distinct (u,t) loci; new prereg); (2) the production-wiring recommendation for Ju²-composed sizing
+STANDS UNCHANGED — it is the fleet lever for warp-family styles and does not depend on the 28-residual
+endgame.
+
+**Ledger (margin):** margin prereg + stage: **5776b079** · row + `margin_worst50.json` under
+`research/exchange/_jacobian_sizing/` (gitignored, synced to the main tree) · margin full-assembly hash
+b5716eed-ce0aa540 · timings: build 865s / forward 90s / coverage ~69s / classify ~160s.
