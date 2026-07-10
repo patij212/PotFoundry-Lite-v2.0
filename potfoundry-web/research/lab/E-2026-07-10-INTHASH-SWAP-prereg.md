@@ -354,3 +354,28 @@ mission's design, since `buildRadiusFn` resolves through `STYLE_FUNCTIONS.Vorono
   independently since the algorithm is unchanged from that confirmed spike, only its wiring site).
 - The vectorized sampler path (`rOuterVoronoiVec`) is a thin per-element loop with no independent
   hot path of its own to benchmark separately from the scalar `rOuterVoronoi` it calls.
+
+---
+
+## E2E ACCEPTANCE ADDENDUM (orchestrator, 2026-07-10) — GATE PASSED, TRUTH BRIDGE CLOSED
+
+The pending end-to-end gate (the implementation agent's scoring probe died with its session) was re-run by the
+orchestrator on the freshly captured post-swap artifact (7,559,574 full / 4,170,518 outer tris, capture attempt 3):
+
+`NODE_OPTIONS=--max-old-space-size=16384 PF_PROD_TRUTH=1 PF_PT_STYLES=Voronoi PF_PT_PRESCREEN=1 PF_PT_STRIDE=4 npx vitest run --config vitest.prod_truth.config.ts`
+
+**vertexOnSurf: max 0.00004mm / p99 0.00002mm — instrument-premise gate OK.**
+Acceptance required p99 ≤ 0.001 and max ≤ 0.01: PASSED with 25–50× margin. Baseline (float hash, preserved at
+research/exchange/_prod_truth/Voronoi_floathash_baseline/): p99 0.065 / max 0.140 ⇒ a >3000× collapse. This also
+validates FMA-immunity ON REAL GPU HARDWARE: the integer cell/jitter path is bit-stable through the actual driver —
+the E-2026-07-09-VORONOI-TRUTHBRIDGE mechanism (unpredictable GPU float fusion) is eliminated at the source, not
+out-predicted.
+
+**First-ever TRUSTWORTHY Voronoi interior numbers** (premise holds for the first time): prescreen 4,170,518 facets →
+102,969 survivors (97.5% green-proven, 160s); interior out=15,989 @stride 4 ≈ ~64k scaled whole-mesh, max 0.1021,
+p99(survivor-pop) 0.0437; coverage max 0.1403 / p99 0.0088. Voronoi now joins SpiralRidges/Gyroid as an honestly
+MEASURABLE production regression (consistent with the Tier-3 free-adaptive floor class) — fixable by the same
+sizing/density program, no longer blocked on an ill-posed ruler. Scoring wall time 382s with the fast ruler (vs 36min
+pre-prescreen on the old artifact).
+
+VERDICT: E-2026-07-10-INTHASH-SWAP **ACCEPTED end-to-end**. Swap-in-place complete per the user decision.
