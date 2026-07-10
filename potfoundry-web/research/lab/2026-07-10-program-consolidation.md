@@ -70,3 +70,41 @@ feature embedding is not a cost center; (4) STL scalar writer (claimed by anothe
    EcoQoS-suspect and must be re-judged).
 5. Registry merge: the day's prereg/verdict files (`E-2026-07-10-*`) fold into EXPERIMENT-REGISTRY.md
    when the shared tree quiets (multiple sessions hold uncommitted registry rows).
+
+## E. UPDATE (all parallel sessions completed — absorbed 2026-07-10)
+
+**PROFILER (Codex, E-2026-07-09-EXPORT-STAGE-TIMING + E-2026-07-10-ASSEMBLEWATERTIGHT-SUBTIMING):**
+`assembleWatertight` = 94.1–98.8% of generate time (97.4% aggregate; Gyroid 244/250s … DS 1054/1068s);
+GPU eval only 0.1–3.4% (GPU-port explicitly deprioritized — CPU topology dominates); post-fix validation
+4.6–10.8s. Assembly split: **triangulation 48.3% / budget-search 24.9% / DUPLICATE final quadtree rebuild
+23.8%**. **SHIPPED: guaranteed final-quadtree reuse** (ConformingWall.ts — searchBudgetScale retains the
+terminal tree; byte-identity FNV fixture + 17/17+38/38 green; impact CRITICAL handled) ⇒ ~23% of export
+time removed structurally at production defaults, re-capture pending. Also found: `orientMeshForSTL`
+duplicates orientation work post-`orientOutward` at STL write (needs end-to-end serializer profile +
+certificate-gated design before bypassing). Byte-preserving STL scalar writer done (separate entry).
+
+**MASKED-FLOOR (E-2026-07-10-ANALYTIC-FLOOR-MASKED, fa7e8c48): KILL-A with a NEW MECHANISM —
+WARP-JACOBIAN SAG DILUTION.** Budget passed 1.223× but fidelity unchanged: the sizing was RIGHT (floor
+≥0.8× true-κ at 100% of failing loci) — the u/helix warps compress the chart AFTER triangulation so
+realized sag runs ~J² over plain-domain sizing. The original 1.94× close over-delivered enough to mask
+this. NAMED LEVER (fleet-wide — applies to EVERY warped style): warp-Jacobian-aware sizing (extend
+composedWallSampler composition to the SIZING field). Also banked: verdict runs now execute in PINNED
+git worktrees (shared tree is compile-hazardous under concurrent arms); index staging via constructed
+blobs only (a -U0 staging corruption was found and repaired, d0c85706 — committed==measured re-proven).
+
+**CAD-LEVER Stage B (a2173a11):** cellSamples=2 on SpiralRidges: outliers −9.4% at +2.19% tris, worst
+UNMOVED ⇒ no CAD=2 default flip for helix-ridge styles. BONUS: sizingRes 256 WITHOUT the floor is
+ANTI-helpful (+142% outliers at −7.5% tris — the coarse grid was an accidental partial floor) ⇒ res and
+floor must ship BUNDLED; res-raise alone is refuted as a free win.
+
+**DS-GATE + SILENT-FAILURE (in-tree, uncommitted, awaiting owner commit/review):** production gate
+changed to `valid = manifold && normals && degenerates` — finite-area needles (the print-usable
+concession class) demoted to warnings ⇒ **DragonScales default export UNBLOCKED**; `exportSTL` returns
+success and v3 `fire()` no longer records/bills no-op exports; error state renders. `degenerateCount`
+added to triangleQuality3D. Verify harness: `e2e/_v3_export_gate_verify.mjs`.
+
+**REVISED TOP PRIORITIES:** (1) warp-Jacobian-aware sizing arm (closes SpiralRidges within budget;
+fleet-wide sizing correctness for all warped styles); (2) re-run stage capture to bank the reuse win,
+then subprofile triangulation (48.3% — now the dominant bucket); (3) Gyroid completion chip (pins +
+2-locus CDT fix); (4) commit/review the DS-gate work (owner); (5) all-20 artifact batch + the per-export
+certification loop.
