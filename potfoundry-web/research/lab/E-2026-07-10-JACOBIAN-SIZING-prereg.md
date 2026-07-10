@@ -1,0 +1,269 @@
+# E-2026-07-10-JACOBIAN-SIZING — warp-Jacobian-aware sizing for the SpiralRidges masked floor [PRE-REGISTERED — kill-criteria committed BEFORE measuring]
+
+**Scope discipline.** This experiment may only create/modify files matching `research/bridge/_jacobian_sizing*`
+and `research/lab/E-2026-07-10-JACOBIAN-SIZING*`. Data lives under `research/exchange/_jacobian_sizing/`
+(gitignored). `research/bridge/_analytic_floor_lib.ts`, `_gyroid_prodclose_lib.ts`, `_gyroid_truthLib.ts`,
+`_pf_rebaselineRuler.ts`, and all `src/` production files are READ-ONLY imports — nothing in them is edited.
+Verdict-run measurements execute in a **pinned git worktree at the exact HEAD commit** (node_modules
+junctioned, no gitignored baselines needed — H0 and the C1-match numbers are hardcoded literals below, not
+read from another experiment's gitignored state file), per the standing practice banked in
+`agents_journal.md` (2026-07-10, E-2026-07-10-ANALYTIC-FLOOR-MASKED entry): the shared tree carries
+concurrent uncommitted edits to the conforming core (confirmed dirty at pre-reg time: `ConformingWall.ts`,
+`WatertightAssembly.ts`, `PeriodicBalancedQuadtree.ts`, `QuadtreeTriangulator.ts`,
+`FeatureConformingTriangulator.ts`, `conforming/index.ts`) and is compile-hazardous for a multi-million-tri
+build.
+
+## FRAME
+
+`E-2026-07-10-ANALYTIC-FLOOR-MASKED` (commit `fa7e8c48`) fired **KILL-A with a NEW-MECHANISM classification**
+on the crest-band-masked analytic curvature floor for SpiralRidges: at resU512/resT128 the budget closed to
+1.223x (6,956,244 tris, gate <=8,530,251) but fidelity was **unchanged** — 2,764 facets still over 0.01mm,
+worst == the flag-off baseline's 0.03575, despite the floor demanding >=0.8x true-kappa at **100%** of the
+failing loci (median kTrue/kFloor=0.39 — the floor over-reads pointwise-true as designed). The verdict's own
+words: "the sizing demand was RIGHT and the delivered mesh does not obey it — a REFINEMENT-DELIVERY class,
+not a floor/grid class." Named mechanism: **WARP-JACOBIAN SAG DILUTION** — `MetricSizingField` reads the
+PLAIN (unwarped) `GpuSurfaceSampler` by construction (`ConformingWall.ts` ~line 325, `buildQuadtreeAtScale`
+constructs `new MetricSizingField(sampler, ...)` where `sampler` is the plain wall grid — confirmed by
+reading the file directly at HEAD, not the dirty tree); only the **efg** sampler
+(`composedWallSampler(plain, {uWarp,tWarp,helix})`, `PullbackMetric.ts:160-179`) sees the post-triangulation
+domain warp, and it only arms shaped-template triangulation, never sizing (`ConformingWall.ts` comment,
+verbatim: "the per-wall efg samplers (warp-composed maps) arm the shaped templates; sizing stays on the
+plain samplers"). SpiralRidges' helical ridges are pinned onto mesh columns by a **post-triangulation**
+u-remap (`CreaseHelixWarp.applyHelixWarp`); realized 3D chord sag over plain-domain sizing runs ~J^2, where
+`J = d(uFinal)/du` is the local derivative of that remap. NAMED FOLLOW-UP (not run, this experiment's
+mandate): "warp-Jacobian-aware sizing... extending [efg] composition to the SIZING field... predicted to
+close within the C1 budget since compensation applies only in compression zones" (journal, commit `fa7e8c48`).
+
+## THE WARP CHAIN (verified against HEAD, not the dirty tree)
+
+`composedWallSampler`'s exact branch order (`PullbackMetric.ts:160-179`, doc-verified against
+`ParametricExportComputer.ts`'s post-assembly warp-application loops):
+
+```
+tEff   = tWarp active ? applyTWarp(tWarp, t) : t
+uEff   = uWarp active ? applyUWarp(uWarp, u) : u
+uFinal = (helix active AND uWarp NOT active) ? applyHelixWarp(helix, uEff, tEff) : uEff
+```
+
+For SpiralRidges specifically (confirmed empirically below, stage `fd`): `creaseChoice.warp.isIdentity ===
+true` (no vertical creases — SpiralRidges is a smooth sinusoid, not a faceted style) and
+`helixChoice.warp.isIdentity === false` (k=9 helical ridges pinned). `CreaseHelixWarp.applyHelixWarp`:
+
+```
+u_final(u,t) = phi0(u) - shearRate*t + offset,   phi0 = applyUWarp(helix.base, u)
+```
+
+`phi0` is a **periodic, piecewise-LINEAR** circle homeomorphism (the k=9 seam-avoiding anchor pins, snapped
+onto a coarse dyadic column lattice by `chooseCreaseGrid`); the shear term is a pure per-row translation.
+Because both `applyUWarp` and `applyTWarp` are piecewise-linear, `d(uFinal)/du` and `d(uFinal)/dt` are
+piecewise-**constant**, discontinuous only at the anchor kinks (dyadic by construction) — no finite
+differences are needed at runtime; `PullbackMetric.ts` already exports the exact segment-slope readers
+`uWarpDerivative(warp, u)` / `tWarpDerivative(warp, t)` used below.
+
+## J DERIVATION (chain rule; verify-then-use per the mission brief)
+
+Within one linear segment (away from a kink), `W: (u,t) -> (uFinal, tEff)` is **exactly affine** — both
+warps have zero second derivative there, so no curvature-of-the-warp correction term exists (this is why
+the analytic Jacobian below is compared against FD of the actual warp map for validation, not derived from
+first principles alone — see `research/bridge/_jacobian_sizing_lib.ts`'s `domainWarpJacobian` doc comment
+for the full derivation written into the code):
+
+- **helix branch** (`uWarp` identity, so `uEff = u` exactly):
+  `dUfinal/du = phi0'(u) = uWarpDerivative(helix.base, u)` **(this experiment's `Ju`)**
+  `dUfinal/dt = -shearRate * tWarpDerivative(tWarp, t)` (0 if no t-warp active) — the shear cross-term
+  `dTeff/dt   = tWarpDerivative(tWarp, t)` (or 1)
+- **uwarp branch** (helix inactive, u-warp active): `Ju = uWarpDerivative(uWarp, u)`, shear = 0.
+- **identity branch**: `Ju = Jt = 1`, shear = 0.
+
+**DESIGN DECISION (pre-registered): only `Ju` composes into the sizing correction; the shear cross-term is
+NOT folded in.** Rationale: (1) the task's own hint names "du'/du" specifically; (2) `Ju` is the direct,
+row-local measure of how densely plain-domain columns cover the TRUE (post-warp) angular domain — the
+dominant axis for a cross-ridge (radial) curvature floor; (3) the shear's contribution to triangle SHAPE
+(not sizing) is already handled by the existing efg/shaped-template mechanism; (4) folding shear into a
+*scalar* kappa multiplier is not well-posed (shear is a directional/off-diagonal distortion, not a
+length-scale) — a sound treatment would need the full tensor pullback `I_Q = M^T I_P M` (M = the warp's 2x2
+Jacobian), which is NOT expressible through the `curvatureFloor(u,t): number` hook (a scalar function) —
+out of reach without new production wiring. This is flagged as the first candidate follow-up if KILL-J1
+fires.
+
+**Composition into the existing hook (pre-registered, no new production wiring):**
+
+```
+kappa_jFloor(u,t) = baseFloor.curvatureFloor(u,t) * ( Ju(u,t)^2 > 1 ? Ju(u,t)^2 : 1 )
+```
+
+where `baseFloor` is the existing, KILL-A-validated `buildAnalyticCurvatureFloor` (unmodified, read-only
+import). **DESIGN DECISION: raise-only (never lower).** `MetricSizingField` combines
+`kappa = max(kappa_sampler_plain, curvatureFloor(u,t))` (max, not multiply) — a "lower kappa when `Ju<1`"
+design is not expressible through this hook without also touching the sampler's own reading (which would
+require editing `MetricSizingField.ts`, out of scope), AND the base floor is independently validated at
+100% of the FAILING loci (`kFloor >= 0.8*kTrue`) — multiplying it down anywhere risks regressing loci that
+were never part of the diagnosed failure class. This is the same "smooth regions where the floor <= the
+sampler are unaffected" philosophy the original floor hook was built on (`SizingOptions` doc comment).
+
+## INSTRUMENT VALIDATION (run BEFORE this pre-registration measures the mesh hypothesis — pure math, no
+mesh; the same "ANALYTIC PRIOR" pattern the parent arms used)
+
+**Stage `fd` (2026-07-10, this machine):** `validateJacobianFD` against 100,000 random `(u,t)` probes on
+SpiralRidges' real `prepareTwinInputs()` warp choice (imported read-only from `_analytic_floor_lib.ts`),
+excluding a 1e-4 margin around the 9 anchor kinks (209 probes excluded, 0.2%) where the derivative is
+genuinely discontinuous (right-segment-slope convention, not a bug). Central FD step `h=1e-6`.
+
+```
+nProbes=100000  maxAbsErrJu=1.005e-10  maxRelErrJu=6.839e-11  maxRelErrShear=3.576e-10
+```
+
+**PASSES the pre-registered gate (`max rel-err < 1e-6`) by four orders of magnitude.** The analytic `Ju` is
+correct against the actual composed warp map, not merely self-consistent.
+
+**Stage `fleet` (mandatory diagnostic, run now regardless of the mesh verdict below):** dense
+2048x512 `J^2` field over `(u,t)` for three styles at the SpiralRidges body dims (H120/Rb40/Rt50) and
+default style options:
+
+| style | branch | maxJ2 | p99J2 | meanJ2 | area J2>1 | area J2>1.5 |
+|---|---|---|---|---|---|---|
+| SpiralRidges | helix | 3.1605 | 3.1605 | 1.0864 | 12.50% | 12.50% |
+| GyroidManifold | **identity** | 1.0 | 1.0 | 1.0 | 0% | 0% |
+| DragonScales | **identity** | 1.0 | 1.0 | 1.0 | 0% | 0% |
+
+**FINDING (narrows the "fleet-wide" framing from the KILL-A verdict):** at default parameters, GyroidManifold
+and DragonScales currently route their sharp features through `general-curve` feature-line embedding
+(band-edge contours / ring embeddings, per `2026-07-10-program-consolidation.md` §A — a mechanism that
+inserts constrained edges into the triangulation directly), NOT through `CreaseUWarp`/`CreaseTWarp`/
+`CreaseHelixWarp` post-triangulation domain remapping. `extractWarpChoices` (which filters
+`featureGraph.lines` by `kind==='vertical-crease'|'horizontal-band'|'helical-crease'`, exactly mirroring
+`prepareTwinInputs`) finds none for either style — `J===1` everywhere, i.e. **zero exposure to THIS specific
+mechanism** for these two styles at these settings. WARP-JACOBIAN SAG DILUTION is confirmed to affect styles
+that pin ridges via the crease/helix warp family (SpiralRidges); it is not shown to affect Gyroid/DragonScales
+by this measurement — their own conforming recipes (band-edge/ring embedding) are a structurally different
+mechanism and outside this experiment's scope. "Fleet-wide" should be read as "every warp-family style," a
+narrower set than "every style with sharp features."
+
+SpiralRidges' own field: exactly 12.50% of the `(u,t)` domain sits on a single `J^2=3.16` plateau (`Ju
+~1.778`, one of the k=9 anchor-pin segments where the coarse dyadic source column is stretched over a wider
+true-angle span); the rest of the domain has `Ju<=1` (no correction applied, per the raise-only design).
+
+## HYPOTHESIS (falsifiable)
+
+Composing `Ju^2` into the SpiralRidges analytic floor at the SAME masked-C1 sizing-grid resolution
+(resU=512/resT=128) that KILL-A measured — no other knob moved — closes the every-facet <=0.01mm Newton
+acceptance (0 facets over) while holding full-pot tris <=1.5x the flag-off twin (<=8,530,251), because the
+correction applies only in the 12.5%-area compression zone the KILL-A classification located (median
+`kTrue/kFloor=0.39` there is consistent with needing a multiplicative boost in roughly the 2-3x range that
+`maxJ2=3.16` supplies).
+
+## METHOD (ordered; instruments below are committed in this same file BEFORE the mesh-build stages run)
+
+1. **IMPACT (repo mandate):** this experiment touches ZERO production symbols (no `src/` edits at all — the
+   correction is expressed entirely as a wrapped `curvatureFloor` closure passed into the EXISTING,
+   already-threaded `outerCurvatureFloor` hook via the research-only twin). `gitnexus impact` is therefore
+   run informationally on the hook's consumers (`MetricSizingField`, `buildQuadtreeAtScale`,
+   `buildConformingWall`, `assembleWatertight`) to confirm no NEW blast radius is introduced beyond what
+   `E-2026-07-09-ANALYTIC-FLOOR` already cleared and shipped dev-flag-OFF.
+2. **INSTRUMENT (this file, done above, PRE-mesh-measurement):** `research/bridge/_jacobian_sizing_lib.ts` —
+   `domainWarpJacobian` (analytic Ju/Jt/shear), `evalDomainWarp` (FD reference, built from the SAME
+   `applyUWarp`/`applyTWarp`/`applyHelixWarp` primitives `composedWallSampler` uses), `validateJacobianFD`,
+   `buildJacobianAwareFloor` (the composition), `jFieldStats` (fleet diagnostic), `extractWarpChoices`
+   (generic per-style warp extraction for the fleet arm), `stratifiedNewtonEstimate` (two-tier estimator,
+   the GYROID-arm method reused generically — head-exhaustive + equal-count stratified remainder,
+   deterministic `mulberry32` sampling, ratio extrapolation), `classifyJacobianResidual` (KILL-J1 worst-N
+   locus dump with local J). Driver: `research/bridge/_jacobian_sizing.test.ts`, stages
+   `fd|fleet|h0|c1match|jdesign`. Heap fail-fast gate ported from `_gyroid_prodclose_lib.ts`'s
+   `gpcHeapLimitMB` pattern (`jsHeapLimitMB`, asserted >=8192MB at every heavy stage). Breadcrumbs via
+   `jsBreadcrumb` -> `research/exchange/_jacobian_sizing/run.log` (vitest buffers sync-test stdout).
+3. **NO DEDICATED VITEST CONFIG (deliberate, file-scope-compliant, and matches the MORE RECENT precedent):**
+   a root-level `vitest.jacobian_sizing.config.ts` would sit outside this experiment's allowed glob. Verified
+   empirically that (a) the root `vite.config.ts`'s `test.include` already covers
+   `research/**/*.test.ts`; (b) `test.poolOptions` is a Vitest-4 no-op regardless (confirmed live:
+   `DEPRECATED test.poolOptions was removed in Vitest 4`), which is WHY `_gyroid_prodclose.test.ts` /
+   `_gyroid_bandedge.test.ts` (same day, later than `vitest.analytic_floor.config.ts`) already dropped the
+   per-experiment config file in favor of CLI flags + `NODE_OPTIONS` — this experiment follows that more
+   recent pattern, not the older config-file one; (c) the root environment (`jsdom`, via `setupFiles:
+   ['./src/test/setup.ts']`) is functionally inert for this pure-numeric/mesh workload (`setupFiles` cannot
+   be bypassed per-file even with the `// @vitest-environment node` docblock override — verified empirically,
+   the override crashes on `HTMLCanvasElement` from `setup.ts`; running under the default jsdom instead
+   passes cleanly, costing a fixed ~13s jsdom-init tax per invocation, accepted). Run command:
+   ```
+   NODE_OPTIONS=--max-old-space-size=16384 PF_JS=1 PF_JS_STAGE=<stage> \
+     npx vitest run research/bridge/_jacobian_sizing.test.ts \
+     --testTimeout=5400000 --hookTimeout=600000 --pool=forks --no-file-parallelism
+   ```
+4. **H0 GATE (stage `h0`):** pinned-worktree flag-off twin must reproduce **H0 = f707898e-02e3bea1** EXACTLY
+   (the same standing hash from `E-2026-07-09-ANALYTIC-FLOOR`, re-verified post-repair by the MASKED arm) —
+   proves committed-HEAD == what this experiment measures, independent of any other session's gitignored
+   state files (H0 is a hardcoded literal in the driver, not read from `_analytic_floor`'s baseline JSON).
+5. **C1 INSTRUMENT-MATCH (stage `c1match`):** rebuild the ORIGINAL (non-J) masked-C1 floor
+   (`buildAnalyticCurvatureFloor` directly, resU512/resT128) and confirm it reproduces the KILL-A verdict's
+   class: fullTris ~6,956,244 (within 1%), facets-over ~2,764 (within +-10%), worst ~0.03575mm (within
+   +-0.003mm). This MUST pass before the J-arm's number is trusted (a mismatch means the conforming pipeline
+   drifted since `fa7e8c48` and invalidates the baseline this hypothesis is measured against).
+6. **J-DESIGN RUN (stage `jdesign`):** `buildJacobianAwareFloor(baseFloor, spiralRidgesWarpChoices())` at
+   the SAME resU512/resT128 config, no other knob moved. Acceptance basis: dense-45 radial PRESCREEN over
+   every outer facet -> **stratified estimate** (`stratifiedNewtonEstimate`, plan `{topExhaustive:400,
+   strata:8, perStratum:200}` = 2,000 Newton queries, matching the GYROID F2-floor-config plan scale) logged
+   as an early signal via breadcrumb -> **exact literal** Newton-ALL over every flagged point
+   (`scoreForward(...,{newtonAll:true})`, the same non-sharded exhaustive machinery the precursor C1 already
+   proved tractable at this exact survivor scale). ADAPTATION NOTE (documented, not a deviation from intent):
+   unlike the GYROID arms (~350K survivors, where the sharded-literal tier was theoretical and never
+   exercised), SpiralRidges' survivor population is the same order the C1/c1match arms already scored
+   exhaustively in a single process — so the exact tier is always run here (not conditionally skipped) to
+   CERTIFY the final verdict number, while the stratified tier still runs first and is logged immediately for
+   an early wall-clock signal and as a cross-check on the exact pass. No shard levers are built (out of
+   scope; not needed at this survivor scale).
+
+## GATES (committed BEFORE the mesh-build stages run)
+
+- **ACCEPTANCE (all, stage `jdesign`):** (a) every dense-45-flagged point Newton-re-scored <=0.01mm, EXACT
+  population — 0 facets over; (b) full-pot tris <= 1.5x flag-off = **8,530,251**; (c) coverage interior max
+  <=0.01mm; (d) watertight `nonManRawBig`=0 NON-VACUOUS (injected-crack control must move the count) +
+  zeroArea=0.
+- **INSTRUMENT (must pass before `jdesign` is trusted):** H0 byte-identity (step 4) + C1 instrument-match
+  (step 5) — both are hard gates, not advisory.
+- **KILL-J1 (fidelity unchanged / attribution wrong):** `jdesign`'s exact facets-over is not materially
+  reduced from the c1match baseline (2,764) — i.e. the J-attribution is wrong or incomplete. On this kill:
+  dump worst-50 loci via `classifyJacobianResidual` (local `Ju`, branch, base-vs-J-composed floor kappa,
+  demanded h) — already wired to fire automatically whenever `facetsOver>0` in stage `jdesign`, written to
+  `research/exchange/_jacobian_sizing/jdesign_worst50.json`. STOP after at most 2 designs total (this
+  raise-only `Ju^2` design, and if it kills, ONE follow-up design informed by the worst-50 classification —
+  e.g. folding the shear term via a directional/anisotropic floor, or reconsidering the raise-only clamp).
+  No third design without a new pre-registration.
+- **KILL-J2 (budget):** `jdesign`'s fullTris > 8,530,251 even though fidelity closed ⇒ FRONTIER, priced at
+  the new number (report alongside the existing 3-point curve: {5.687M tris => 3,140 over/0.0239} ->
+  {11.004M blanket => 0 over/0.0100} -> {6.956M masked-C1 => 2,764 over/0.0358} -> {X J-design => ...}).
+- **FLEET DIAGNOSTIC (mandatory, run — see above, already complete and reported regardless of the mesh
+  verdict):** SpiralRidges maxJ2=3.16/p99J2=3.16/meanJ2=1.09/area>1=12.5%/area>1.5=12.5%; GyroidManifold and
+  DragonScales both J===1 everywhere (branch identity) at default params on the shared body dims — no
+  exposure to this specific mechanism measured for those two styles.
+
+## OPS (mandatory for the mesh-build stages)
+
+- `NODE_OPTIONS=--max-old-space-size=16384` on the CLI (config-level heap is a Vitest-4 no-op — confirmed
+  live, see step 3).
+- Heap fail-fast gate (`jsHeapLimitMB() >= 8192`) asserted at the top of every heavy stage.
+- EcoQoS: bump the fork child to `AboveNormal` immediately after spawn, selected by CreationDate (<2min-old
+  `node.exe`) per `CROSS-WORKSTREAM-NOTES.md`'s banked fix (`PriorityClass` CommandLine filtering matches
+  nothing on this vitest-4/Windows stack) — `powershell -NoProfile -Command "(Get-Process -Id <pid>).
+  PriorityClass='AboveNormal'"`.
+- `jsBreadcrumb` writes to `research/exchange/_jacobian_sizing/run.log` at every phase transition (field
+  build, twin build, prescreen, stratified, exact-Newton, coverage) — vitest buffers sync-test stdout
+  entirely.
+- Machine courtesy: check for a foreign node.exe >2GB working set before launching (another arm may be
+  running a browser capture — Node-vs-browser coexistence is fine per the standing note; two heavy Node
+  builds are not). Stages run SEQUENTIALLY (h0 -> c1match -> jdesign), never concurrently with each other or
+  with another heavy detached build.
+- Per the mission brief: END TURN after launching the detached mesh-build sequence — no cross-turn watcher
+  is armed; progress is polled via `research/exchange/_jacobian_sizing/run.log` /
+  `research/exchange/_jacobian_sizing/rows.ndjson`.
+
+## LEDGER
+
+Pre-reg (this file) + instrument lib/driver: commit pending (staged explicitly, this file +
+`research/bridge/_jacobian_sizing_lib.ts` + `research/bridge/_jacobian_sizing.test.ts` only). Mesh-build
+stage results appended to this file's VERDICT section below as they complete.
+
+---
+
+## VERDICT
+
+*(pending — mesh-build stages h0 / c1match / jdesign not yet executed as of the pre-registration commit;
+appended here when the detached sequence completes)*
