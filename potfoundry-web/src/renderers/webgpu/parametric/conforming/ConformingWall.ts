@@ -294,6 +294,8 @@ function buildQuadtreeAtScale(
     resU: opts.resU,
     resT: opts.resT,
     targetScale,
+    curvatureFloor: opts.curvatureFloor,
+    maxKappa: opts.maxKappa,
   });
   return new PeriodicBalancedQuadtree(field, sampler, {
     maxLevel: opts.maxLevel,
@@ -303,6 +305,9 @@ function buildQuadtreeAtScale(
     creaseRefine,
     uBias: opts.uBias,
     directionalRefine,
+    // Crease-seeing refiner (92fca543's declared-but-unthreaded lever; Stage A of
+    // E-2026-07-10-CAD-LEVER-COMPLETION). Absent ⇒ 1 ⇒ byte-identical centre-only.
+    cellSamples: opts.cellSamples,
     // Per-leaf efg tagging (shaped templates). Lazy: the quadtree only computes
     // efg inside `leaves()`, and the budget search above calls `leafCount()`
     // alone — so threading it here costs the search nothing.
@@ -329,8 +334,6 @@ function buildQuadtreeAtScale(
 function searchBudgetScale(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
-    curvatureFloor: opts.curvatureFloor,
-    maxKappa: opts.maxKappa,
   pinBoundaryLevel: number,
   targetTriangles: number,
   mode: 'target' | 'cap',
@@ -350,9 +353,6 @@ function searchBudgetScale(
       return {
         scale: 1,
         telemetry: { floorLeaves, chosenScale: 1, leavesAtChosen: floorLeaves, capSaturated: false },
-    // Crease-seeing refiner (92fca543's declared-but-unthreaded lever; Stage A of
-    // E-2026-07-10-CAD-LEVER-COMPLETION). Absent ⇒ 1 ⇒ byte-identical centre-only.
-    cellSamples: opts.cellSamples,
       };
     }
     const coarsestLeaves = leavesAt(MAX_BUDGET_SCALE);

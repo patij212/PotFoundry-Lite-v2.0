@@ -522,6 +522,9 @@ export function assembleWatertight(
     efgSampler: opts.outerEfgSampler,
     bandRegions: opts.bandRegions,
     railLines: opts.railLines,
+    // Analytic curvature floor — OUTER wall only (see AssemblyWallOptions doc).
+    curvatureFloor: opts.outerCurvatureFloor,
+    maxKappa: opts.outerMaxKappa,
   });
   const inner = buildConformingWall(innerSampler, {
     ...wallOpts,
@@ -535,9 +538,6 @@ export function assembleWatertight(
   const nRingActual = outer.bottomRing.length;
   if (inner.bottomRing.length !== nRingActual) {
     throw new Error(
-    // Analytic curvature floor — OUTER wall only (see AssemblyWallOptions doc).
-    curvatureFloor: opts.outerCurvatureFloor,
-    maxKappa: opts.outerMaxKappa,
       `assembleWatertight: wall ring mismatch (outer ${nRingActual}, inner ${inner.bottomRing.length})`,
     );
   }

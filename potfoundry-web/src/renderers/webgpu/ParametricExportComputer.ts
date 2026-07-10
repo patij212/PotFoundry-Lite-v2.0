@@ -2763,6 +2763,10 @@ export class ParametricExportComputer {
                     // templates with the post-warp metric (see block above).
                     outerEfgSampler,
                     innerEfgSampler,
+                    // Analytic curvature floor (dev lever above; undefined ⇒ absent,
+                    // byte-identical). OUTER wall only — see AssemblyWallOptions.
+                    outerCurvatureFloor: analyticFloor?.curvatureFloor,
+                    outerMaxKappa: analyticFloor?.maxKappa,
                 };
                 // Feature graft must precede the u/t/helix warps so corridor
                 // surfaceId-0 vertices warp with the outer wall. For Voronoi the
@@ -2906,10 +2910,6 @@ export class ParametricExportComputer {
                     dummyWrite9, dummyWrite10, dummyReadOnly,
                 );
                 const buildMs = performance.now() - conformingStart;
-                    // Analytic curvature floor (dev lever above; undefined ⇒ absent,
-                    // byte-identical). OUTER wall only — see AssemblyWallOptions.
-                    outerCurvatureFloor: analyticFloor?.curvatureFloor,
-                    outerMaxKappa: analyticFloor?.maxKappa,
                 const vCount = pos3D.length / 3;
                 const triCount = asm.indices.length / 3;
 
