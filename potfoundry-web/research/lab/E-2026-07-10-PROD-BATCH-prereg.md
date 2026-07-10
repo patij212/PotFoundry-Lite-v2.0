@@ -277,3 +277,112 @@ file paths + commit SHAs. Not user-facing prose.
 *(VERDICT appended below as phases complete — this arm checkpoints its own prereg file with
 interim status rather than holding everything for one final write, consistent with the "no single
 multi-hour unit" resilience rule.)*
+
+## INTERIM STATUS (checkpoint 1 — capture phase in flight)
+
+**Server:** `npm run dev` up on :3000 (PID 10276, bumped AboveNormal) at commit basis
+`da6b423a+uncommitted` (re-confirmed unchanged at capture-phase start).
+
+**Provenance finding (pre-registered handling applied):** three existing pilot capture dirs
+predate this arm cleanly (`DragonScales`, `HarmonicRipple`, `SpiralRidges`, `GyroidManifold`, all
+2026-07-09) and were moved to `*_pre_reuse_baseline/` as designed. **`Voronoi`'s existing dir was
+NOT the 2026-07-09 pilot capture** — its `meta.json` shows `startedAt: 2026-07-10T02:48:43Z`,
+`full.generateMs=301,865` (302s, already well under the banked 534s pilot figure), i.e. an
+ambiguous **intermediate-tree** capture from earlier today (most likely the INTHASH-SWAP session's
+own e2e verification run — tree state at that exact moment not reconstructable). Moved to
+`Voronoi_intermediate_20260710T0248_baseline/` (distinct name, not `_pre_reuse_baseline`, so it is
+never confused with the true 2026-07-09/534s pilot number) — the true pre-reuse pilot baseline for
+Voronoi remains only the banked 534s figure from the registry row, not a locally-preserved artifact.
+
+**Batch A (smoke, 2/2 OK):** SuperformulaBlossom full=1,059,840t/17.6s outer=289,792t/18.8s
+total=61.4s; FourierBloom full=3,143,106t/103.6s outer=1,278,510t/109.8s total=218.2s. Batch wall
+286.3s. Harness confirmed working end-to-end on the reuse-fixed tree. One recurring benign
+artifact: a ~35s "Style 18 createRenderPipelineAsync... possible Dawn compiler hang" console error
+fires once per fresh browser launch (page-load-time shader warmup, not per-style, not fatal) —
+noted for LowPolyFacet-hazard interpretation (the hang risk may not be exclusive to style 19).
+
+**Batch B (pilot recapture 1/2: HarmonicRipple, SpiralRidges, GyroidManifold) — IN FLIGHT**, dirs
+pre-backed-up. EcoQoS bump applied to new node/chrome children. Machine courtesy check at launch:
+0 foreign node processes >2GB WS.
+
+Aggregator `research/bridge/_prod_batch_assemble.mjs` drafted; dry-run against partial data
+confirmed it runs clean (20/20 rows, no crash) and — usefully — surfaced the exact DS staleness
+hazard pre-registered in SS0.1 in practice (it showed the OLD `_ds_prodtruth` rows next to
+DragonScales' correctly-PENDING capture status), confirming the reset-before-rerun rule is load-
+bearing, not theoretical.
+
+Second dev server up on :3001 (PID 28564, bumped) ahead of need, to remove a step from the
+stage-timing phase's critical path.
+
+**Parallel work started** (courtesy-checked: 0 foreign >2GB node processes at launch; one browser
++ one light capture-orchestrator + one heavy certification fork is within the "one heavy Node
+build at a time" budget): certification of `SuperformulaBlossom` (Batch A, already captured)
+launched concurrently with Batch B's still-running capture, to use wall time productively rather
+than idling.
+
+**First reuse-fix delta point (HarmonicRipple, Batch B):** OLD tree (2026-07-09 pilot,
+`HarmonicRipple_pre_reuse_baseline/meta.json`) full.generateMs=**377,429** / outer.generateMs=
+**368,696** / totalMs=751,608. THIS tree (tree-basis da6b423a+uncommitted): full.generateMs=
+**321,300 (−14.9%)** / outer.generateMs=**277,500 (−24.7%)** / totalMs=605,500 (−19.4%), tris
+identical class (full 5,253,860 — matches banked byte-identity target exactly; outer 2,304,454 vs
+banked 2,304,454 exactly). Directionally consistent with the banked ~23% assembly-time removal
+(profiler arm), with the OUTER wall's solo generate (no cap/inner-wall competing work) showing the
+larger of the two deltas.
+
+**Second reuse-fix delta point (SpiralRidges FULL generate, Batch B, in flight):** OLD tree
+full.generateMs=**455,272**. THIS tree full.generateMs ≈ **317,000 (≈−30.4%)** (derived from
+`full.{xyz,idx}.bin` mtimes: capture started 14:21:43+01:00, full-pot bins written 14:26 — the
+outer-wall generate for this style is still running at the time of this checkpoint; the harness's
+own precise `generateMs` will supersede this mtime-derived estimate once `meta.json` lands). The
+SpiralRidges full-generate delta (−30.4%) is larger than HarmonicRipple's (−14.9%) — directionally
+sensible if SpiralRidges' helix/analytic-floor-adjacent sizing does more budget-search/quadtree
+rebuild work per the profiler's "budget-search 24.9% + duplicate final-quadtree-rebuild 23.8%"
+breakdown that the reuse fix specifically targets.
+
+## INTERIM STATUS (checkpoint 2 — session time-budget checkpoint, work left running)
+
+This session invested substantial wall-clock time proving the pipeline end-to-end and banking the
+mission's second deliverable (reuse-fix delta) with real numbers on 1.4 of 5 pilot styles, while
+capture and certification continued running. Given the mission's own ~5h capture budget plus a
+full certification pass is far larger than one session can responsibly narrate turn-by-turn, and
+per the mission's explicit "END YOUR TURN after launching each long detached phase" +
+"a partial batch is a valid deliverable" guidance, this checkpoint hands off a clean, resumable
+state rather than continuing to narrate silent waiting.
+
+**Left RUNNING (detached, will keep producing durable checkpointed output on disk regardless of
+this session's lifetime):**
+- Dev server :3000 (PID 10276, AboveNormal) — keep alive for all remaining capture batches.
+- Dev server :3001 (PID 28564, AboveNormal) — keep alive for the stage-timing phase.
+- Batch B capture (`node e2e/_prod_truth_capture.mjs HarmonicRipple SpiralRidges GyroidManifold`,
+  log `research/exchange/_prod_batch/capture_batchB.log`): HarmonicRipple DONE; SpiralRidges full
+  DONE (outer in flight); GyroidManifold not yet started. Will self-checkpoint `meta.json` per
+  style and print `CAPTURE TOTAL` on completion; exits cleanly on its own.
+- SuperformulaBlossom certification (PID 27484, AboveNormal, CPU 632s+ and still climbing —
+  genuinely computing, not hung; log `research/exchange/_prod_batch/certify_SuperformulaBlossom.log`,
+  stdout is BUFFERED by vitest until the row is appended to `research/exchange/_prod_truth/
+  scorecard.ndjson` — check that file's line count, not the log, for real completion signal).
+
+**Exact resumption checklist** (also duplicated to the scratchpad for the executing session's own
+convenience; reproduced here since scratchpad is not part of the deliverable): once Batch B and the
+SuperformulaBlossom certification finish —
+1. Certify FourierBloom, HarmonicRipple, SpiralRidges, GyroidManifold with the standard probe
+   (command template in SS4 DESIGN above); GyroidManifold's outer tris were 1,892,114-class at the
+   OLD tree (banked) — expect it to need `PF_PT_STRIDE` and/or sharding per the FAST-HONEST-RULER
+   precedent if the reuse-fixed tree's count is similar.
+2. Launch Batch C (`DragonScales Voronoi`) — dirs already backed up
+   (`DragonScales_pre_reuse_baseline/`, `Voronoi_intermediate_20260710T0248_baseline/`).
+3. Run the stage-timing capture against :3001 for the 5 pilots (SS3 DESIGN).
+4. **Before any DS certification**: `mv research/exchange/_ds_prodtruth research/exchange/
+   _ds_prodtruth_pre_reuse_baseline` (mandatory reset, SS0.1) — then BATTERY → FWD (sharded) →
+   merge → REV, per SS4 DESIGN.
+5. Batches D, E, F (4 styles each), then G (LowPolyFacet solo, 10-min cap) — commands pre-written
+   in SS2 DESIGN.
+6. Certify each as captured; re-run `node research/bridge/_prod_batch_assemble.mjs` at any time to
+   regenerate the current-state scorecard (it is idempotent and safe to run repeatedly against
+   partial data).
+7. Final verdict + scorecard table appended to this file; journal sign-off; both committed/left
+   uncommitted per the rules already stated above.
+
+No `src/` file was read for editing purposes and none was modified. No `git add -A`/`-u` was run.
+Every capture/certification result that HAS landed is durable (on disk, several independently
+checkpointed formats) — nothing measured so far is at risk from this checkpoint.
