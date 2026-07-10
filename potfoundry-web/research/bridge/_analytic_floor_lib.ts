@@ -368,11 +368,24 @@ export function buildMiniAssemblyHash(): { hash: string; tris: number; verts: nu
   };
 }
 
+/** Twin knob overrides for lever arms (E-2026-07-10-CAD-LEVER-COMPLETION Stage B). */
+export interface TwinOverrides {
+  /** Sizing-field grid res (the qSizingRes wiring's target; default 128 = production). */
+  resU?: number;
+  resT?: number;
+  /**
+   * Crease-seeing refiner samples/axis (AssemblyWallOptions.cellSamples — threads to
+   * the quadtree only once Stage A lands; absent/1 = centre-only production default).
+   */
+  cellSamples?: number;
+}
+
 /**
  * Build the full-pot production twin (assembleWatertight + PEC warp application),
- * optionally with the analytic curvature floor on the OUTER wall (flag-ON arm).
+ * optionally with the analytic curvature floor on the OUTER wall (flag-ON arm)
+ * and/or lever overrides (Stage-B A/B arms).
  */
-export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
+export function buildProductionTwin(floor?: FloorSpec, overrides?: TwinOverrides): TwinBuild {
   const t0 = Date.now();
   const { H } = AF_DIMS;
   const inp = prepareTwinInputs();
@@ -384,8 +397,9 @@ export function buildProductionTwin(floor?: FloorSpec): TwinBuild {
     minEdgeMm: AF_PROD_OPTS.minEdgeMm,
     gradeRatio: AF_PROD_OPTS.gradeRatio,
     maxLevel: AF_PROD_OPTS.maxLevel,
-    resU: AF_PROD_OPTS.resU,
-    resT: AF_PROD_OPTS.resT,
+    resU: overrides?.resU ?? AF_PROD_OPTS.resU,
+    resT: overrides?.resT ?? AF_PROD_OPTS.resT,
+    cellSamples: overrides?.cellSamples,
     nRing: AF_PROD_OPTS.nRing,
     targetTriangles: AF_PROD_OPTS.targetTriangles,
     budgetMode: AF_PROD_OPTS.budgetMode,

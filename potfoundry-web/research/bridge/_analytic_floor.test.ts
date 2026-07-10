@@ -31,9 +31,11 @@ import {
 import { buildAnalyticCurvatureFloor } from '../../src/renderers/webgpu/parametric/conforming/AnalyticCurvatureFloor';
 
 const ON = process.env.PF_ANALYTIC_FLOOR === '1';
-const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'twin' => {
+const STAGE = ((): 'on' | 'walls' | 'orient-mini' | 'lever-cs2' | 'lever-res256' | 'twin' => {
   const s = process.env.PF_AF_STAGE;
-  return s === 'on' || s === 'walls' || s === 'orient-mini' ? s : 'twin';
+  return s === 'on' || s === 'walls' || s === 'orient-mini' || s === 'lever-cs2' || s === 'lever-res256'
+    ? s
+    : 'twin';
 })();
 const TOL = 0.01;
 const ROOT = join('research', 'exchange', '_analytic_floor');
@@ -85,6 +87,47 @@ describe('E-2026-07-09-ANALYTIC-FLOOR — production twin, flag-off/flag-on', ()
         writeFileSync(miniPath, JSON.stringify(mini, null, 2));
         console.log('[analytic-floor] orient-mini baseline BANKED');
       }
+      return;
+    }
+
+    if (STAGE === 'lever-cs2' || STAGE === 'lever-res256') {
+      // E-2026-07-10-CAD-LEVER-COMPLETION Stage B — REPORT-shaped A/B vs the banked
+      // flag-off baseline (pre-committed NO-DEFAULT-FLIP: these arms never change
+      // production defaults; they price the restored levers). Hygiene asserts only.
+      expect(existsSync(BASELINE), 'twin baseline must exist before lever arms').toBe(true);
+      const banked = JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline;
+      const overrides =
+        STAGE === 'lever-cs2' ? { cellSamples: 2 } : { resU: 256, resT: 256 };
+      row.overrides = overrides;
+      const twin = buildProductionTwin(undefined, overrides);
+      row.build = {
+        fullTris: twin.fullTris,
+        outerTris: twin.outerTris,
+        hash: twin.hash,
+        buildMs: twin.buildMs,
+      };
+      const audit = auditWatertight(twin.fullIdx);
+      row.nonManRaw = audit.nonMan;
+      row.nonManControlMoved = audit.controlMoved;
+      row.zeroArea = zeroAreaCount(twin.outerXyz, twin.outerIdx);
+      const fwd = scoreForward(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, {
+        tol: TOL,
+        newtonAll: false,
+      });
+      row.forward = fwd as unknown as Record<string, unknown>;
+      const cov = scoreCoverage(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, TOL);
+      row.coverage = cov as unknown as Record<string, unknown>;
+      appendFileSync(ROWS, JSON.stringify(row) + '\n');
+      const dTris = ((twin.fullTris - banked.fullTris) / banked.fullTris) * 100;
+      const dOut = banked.outliers > 0 ? ((banked.outliers - fwd.outliers) / banked.outliers) * 100 : 0;
+      console.log(
+        `[analytic-floor] ${STAGE}: fullTris ${banked.fullTris} -> ${twin.fullTris} (${dTris >= 0 ? '+' : ''}${dTris.toFixed(2)}%) | ` +
+          `outliers ${banked.outliers} -> ${fwd.outliers} (-${dOut.toFixed(1)}%) | ` +
+          `gridMax ${banked.gridMax.toFixed(4)} -> ${fwd.gridMax.toFixed(4)} | newtonWorst ${banked.newtonWorst.toFixed(4)} -> ${fwd.newtonWorst.toFixed(4)} | ` +
+          `coverage ${banked.coverageMax.toFixed(4)} -> ${cov.max.toFixed(4)} | nonMan=${audit.nonMan} zeroArea=${row.zeroArea as number}`,
+      );
+      expect(audit.controlMoved, 'nonManRawBig control must move (non-vacuous)').toBe(true);
+      expect(cov.locSelfCheckMax).toBeLessThan(1e-9);
       return;
     }
 
