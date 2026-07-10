@@ -15,6 +15,12 @@
 //   jdesign — the J-composed floor (buildJacobianAwareFloor) at the SAME C1
 //             config; two-tier acceptance (prescreen -> stratified estimate ->
 //             exact literal) + budget/coverage/watertight gates.
+//   margin  — E-2026-07-10-JACOBIAN-SIZING-MARGIN (authorized micro-arm, ONE
+//             design, no eps-iteration): identical to jdesign but the WHOLE
+//             composed floor is scaled x(1+eps), eps=0.05 (raise-only; the
+//             frozen maxKappa=2.4 cap still truncates inside MetricSizingField).
+//             Predicted to clear jdesign's 34 tolerance-boundary residuals
+//             (sag ~ h^2 ~ 1/(1+eps): worst 0.010203 -> ~0.00972).
 //
 // Run (no dedicated vitest config — file-scope restriction; matches the more
 // recent _gyroid_prodclose/_gyroid_bandedge precedent, which also dropped the
@@ -56,12 +62,16 @@ import {
 import { buildAnalyticCurvatureFloor } from '../../src/renderers/webgpu/parametric/conforming/AnalyticCurvatureFloor';
 
 const ON = process.env.PF_JS === '1';
-const STAGE = ((): 'fd' | 'fleet' | 'h0' | 'c1match' | 'jdesign' => {
+const STAGE = ((): 'fd' | 'fleet' | 'h0' | 'c1match' | 'jdesign' | 'margin' => {
   const s = process.env.PF_JS_STAGE;
-  return s === 'fd' || s === 'fleet' || s === 'h0' || s === 'c1match' || s === 'jdesign' ? s : 'fd';
+  return s === 'fd' || s === 'fleet' || s === 'h0' || s === 'c1match' || s === 'jdesign' || s === 'margin'
+    ? s
+    : 'fd';
 })();
 
 const TOL = 0.01;
+/** E-2026-07-10-JACOBIAN-SIZING-MARGIN: raise-only whole-floor safety margin (ONE design). */
+const MARGIN_EPS = 0.05;
 const H0_EXPECTED = 'f707898e-02e3bea1';
 const FLAG_OFF_FULLTRIS = 5_686_834; // TWIN-VALIDITY re-measurement, E-2026-07-09-ANALYTIC-FLOOR
 const BUDGET_GATE = Math.floor(1.5 * FLAG_OFF_FULLTRIS); // 8,530,251
@@ -178,8 +188,11 @@ describe('E-2026-07-10-JACOBIAN-SIZING', () => {
       return;
     }
 
-    // ── jdesign: the J-composed floor — the mission measurement ──
-    if (STAGE === 'jdesign') {
+    // ── jdesign / margin: the J-composed floor — the mission measurement.
+    // margin (E-2026-07-10-JACOBIAN-SIZING-MARGIN, ONE design): identical path,
+    // WHOLE composed floor ×(1+MARGIN_EPS), raise-only; frozen maxKappa=2.4
+    // still caps inside MetricSizingField exactly as in every prior arm. ──
+    if (STAGE === 'jdesign' || STAGE === 'margin') {
       const rA = buildRadiusFn(AF_STYLE, {}, AF_DIMS);
       const w = spiralRidgesWarpChoices();
       const baseFloor = buildAnalyticCurvatureFloor(
@@ -188,9 +201,18 @@ describe('E-2026-07-10-JACOBIAN-SIZING', () => {
       );
       if (!baseFloor) throw new Error('buildAnalyticCurvatureFloor returned null for SpiralRidges');
       const jFloor = buildJacobianAwareFloor(baseFloor, w);
-      jsBreadcrumb('jdesign: J-composed floor built, starting twin build');
-      const twin = buildProductionTwin(jFloor, { resU: MASKED_RES.resU, resT: MASKED_RES.resT });
-      jsBreadcrumb(`jdesign: twin built fullTris=${twin.fullTris} buildMs=${twin.buildMs}`);
+      const eps = STAGE === 'margin' ? MARGIN_EPS : 0;
+      const runFloor =
+        STAGE === 'margin'
+          ? {
+              curvatureFloor: (u: number, t: number) => jFloor.curvatureFloor(u, t) * (1 + MARGIN_EPS),
+              maxKappa: jFloor.maxKappa,
+            }
+          : jFloor;
+      row.marginEps = eps;
+      jsBreadcrumb(`${STAGE}: J-composed floor built (eps=${eps}), starting twin build`);
+      const twin = buildProductionTwin(runFloor, { resU: MASKED_RES.resU, resT: MASKED_RES.resT });
+      jsBreadcrumb(`${STAGE}: twin built fullTris=${twin.fullTris} buildMs=${twin.buildMs}`);
       row.build = { fullTris: twin.fullTris, outerTris: twin.outerTris, hash: twin.hash, buildMs: twin.buildMs };
       const audit = auditWatertight(twin.fullIdx);
       row.nonManRaw = audit.nonMan;
@@ -199,16 +221,16 @@ describe('E-2026-07-10-JACOBIAN-SIZING', () => {
       appendFileSync(ROWS, JSON.stringify(row) + '\n');
 
       // ── TIER 1: sound radial prescreen ──
-      jsBreadcrumb('jdesign: prescreen start');
+      jsBreadcrumb(`${STAGE}: prescreen start`);
       const { recs } = prescreenDetail(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, TOL);
-      jsBreadcrumb(`jdesign: prescreen done survivors=${recs.length}`);
+      jsBreadcrumb(`${STAGE}: prescreen done survivors=${recs.length}`);
 
       // ── TIER 2: cheap stratified estimate (early signal, logged before the exact pass) ──
       const strat = stratifiedNewtonEstimate(recs, rA, AF_DIMS.H, TOL, { topExhaustive: 400, strata: 8, perStratum: 200 });
       row.stratified = strat as unknown as Record<string, unknown>;
       appendFileSync(ROWS, JSON.stringify(row) + '\n');
       jsBreadcrumb(
-        `jdesign STRATIFIED (early signal): estOutliers=${strat.estOutliers.toFixed(1)} newtonWorst(sampled)=${strat.newtonWorst.toFixed(5)} ` +
+        `${STAGE} STRATIFIED (early signal): estOutliers=${strat.estOutliers.toFixed(1)} newtonWorst(sampled)=${strat.newtonWorst.toFixed(5)} ` +
           `sampled=${strat.sampled}/${recs.length}`,
       );
 
@@ -216,33 +238,34 @@ describe('E-2026-07-10-JACOBIAN-SIZING', () => {
       // certifying acceptance basis. (Not sharded: at this style's survivor scale
       // the single-process exact pass is the same cost class the C1/c1match arms
       // already ran successfully — see prereg for why full sharding is not built.) ──
-      jsBreadcrumb('jdesign: exact Newton-ALL scoring start');
+      jsBreadcrumb(`${STAGE}: exact Newton-ALL scoring start`);
       const fwd = scoreForward(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, { tol: TOL, newtonAll: true });
       row.forward = fwd as unknown as Record<string, unknown>;
       appendFileSync(ROWS, JSON.stringify(row) + '\n');
       const nAll = fwd.newtonAll!;
-      jsBreadcrumb(`jdesign: exact Newton-ALL done facetsOver=${nAll.facetsOver} max=${nAll.max.toFixed(5)}`);
+      jsBreadcrumb(`${STAGE}: exact Newton-ALL done facetsOver=${nAll.facetsOver} max=${nAll.max.toFixed(5)}`);
 
       const cov = scoreCoverage(twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, TOL);
       row.coverage = cov as unknown as Record<string, unknown>;
       appendFileSync(ROWS, JSON.stringify(row) + '\n');
 
       console.log(
-        `[jacobian-sizing] jdesign RESULT: fullTris ${twin.fullTris} (gate <=${BUDGET_GATE}, ${(twin.fullTris / FLAG_OFF_FULLTRIS).toFixed(3)}x) | ` +
+        `[jacobian-sizing] ${STAGE} RESULT (eps=${eps}): fullTris ${twin.fullTris} (gate <=${BUDGET_GATE}, ${(twin.fullTris / FLAG_OFF_FULLTRIS).toFixed(3)}x) | ` +
           `stratified estOutliers=${strat.estOutliers.toFixed(1)} | exact facetsOver=${nAll.facetsOver} max=${nAll.max.toFixed(5)} | ` +
           `coverage max=${cov.max.toFixed(5)} | nonMan=${audit.nonMan} zeroArea=${row.zeroArea as number} | ` +
           `c1match baseline was facetsOver=${C1_MATCH.facetsOver} worst=${C1_MATCH.worst}`,
       );
 
-      // ── KILL-J1 diagnostic dump (runs regardless of pass/fail — cheap relative to
-      // the exact pass already paid for; worst-50 loci with local J for the verdict) ──
+      // ── Residual diagnostic dump (runs regardless of pass/fail — cheap relative to
+      // the exact pass already paid for; worst-50 loci with local J for the verdict).
+      // classify uses the RUN floor so kJFloor/demandedHmm reflect the actual demand. ──
       if (nAll.facetsOver > 0) {
         const cls = classifyJacobianResidual(
-          twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, TOL, w, jFloor, AF_PROD_OPTS.maxSagMm, 50,
+          twin.outerXyz, twin.outerIdx, rA, AF_DIMS.H, TOL, w, runFloor, AF_PROD_OPTS.maxSagMm, 50,
         );
-        writeFileSync(join(ROOT, 'jdesign_worst50.json'), JSON.stringify(cls, null, 2));
-        jsBreadcrumb(`jdesign: KILL-J1 dump pointsOver=${cls.pointsOver} facetsOver=${cls.facetsOver} -> jdesign_worst50.json`);
-        console.log(`[jacobian-sizing] jdesign worst-50 loci dumped -> ${join(ROOT, 'jdesign_worst50.json')}`);
+        writeFileSync(join(ROOT, `${STAGE}_worst50.json`), JSON.stringify(cls, null, 2));
+        jsBreadcrumb(`${STAGE}: residual dump pointsOver=${cls.pointsOver} facetsOver=${cls.facetsOver} -> ${STAGE}_worst50.json`);
+        console.log(`[jacobian-sizing] ${STAGE} worst-50 loci dumped -> ${join(ROOT, `${STAGE}_worst50.json`)}`);
       }
 
       // Instrument hygiene.

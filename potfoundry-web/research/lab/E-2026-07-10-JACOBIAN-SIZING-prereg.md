@@ -362,3 +362,53 @@ Pre-reg + instruments: **875f9089**. All three mesh stages executed in the pinne
 (gitignored; worktree copies synced to the main tree). Timings: h0 build 616s · c1match build 743s +
 Newton-ALL 5,664s · jdesign build 775s + forward 101s + coverage 69s + classify 97s. jdesign full-assembly
 hash 4ac7475d-5a4c96f0 (flag-on — expected ≠ H0).
+
+---
+
+# E-2026-07-10-JACOBIAN-SIZING-MARGIN — the authorized ε-margin micro-arm [PRE-REGISTERED — committed BEFORE running; ONE design, no ε-iteration]
+
+**AUTHORIZATION.** Orchestrator-authorized follow-up to the PARTIAL verdict above, run while the pinned
+worktree and validated instrument chain are warm. Named in the verdict's follow-up #1; the worst-34
+classification (18/34 residuals at J² < 1, where a J²-side margin is a no-op) is what redirects the margin
+to the WHOLE composed floor.
+
+**DESIGN (one, frozen).** Stage `margin` in `_jacobian_sizing.test.ts` — byte-for-byte the `jdesign` path
+with exactly one change:
+
+```
+kappa_margin(u,t) = jFloor.curvatureFloor(u,t) · (1 + ε),   ε = 0.05  (raise-only)
+```
+
+where `jFloor` is the identical `buildJacobianAwareFloor(baseFloor, w)` composition the jdesign arm
+measured. The frozen `maxKappa = 2.4` cap still applies INSIDE `MetricSizingField` (after the floor max),
+exactly as in every prior arm — wherever the margined floor exceeds 2.4 it truncates to the cap, which per
+the worst-34 dump does NOT saturate the residual class (compression plateau 2.26 → 2.37 < 2.4; expansion
+segments 2.01–2.28 → 2.11–2.39 < 2.4). No other knob moves (512×128 grid, sag 0.003, minEdge 0.1, maxEdge
+1, budget 16M 'cap', uBias auto, nRing 2048 — all frozen).
+
+**HYPOTHESIS (falsifiable, quantitative).** Realized chord sag scales ~h² and the sagitta law gives
+h ∝ 1/√κ, so a uniform (1+ε) κ-raise where the floor binds contracts sag by ≈ 1/(1+ε): the jdesign
+residual population [0.010015, 0.010203] maps to ≈ [0.00954, 0.00972] — ALL 34 clear tol with ~3–5%
+margin. Predicted budget: the margin densifies only floor-bound bands (h × 1/√1.05 ≈ −2.4% ⇒ ~+5% tris in
+those bands); with the jdesign outer wall at 5,393,272 and the inner wall un-floored, predicted full-pot ∈
+**[8.2M, 8.45M]** vs the gate 8,530,251 — PASS with reduced headroom.
+
+**GATES (committed BEFORE the run):**
+- **ACCEPTANCE (all):** exact Newton-ALL facetsOver **0** AND fullTris ≤ **8,530,251** AND coverage
+  interior max ≤ 0.01 AND watertight nonMan 0 NON-VACUOUS + zeroArea 0.
+- **KILL (one-shot):** ANY facet still over tol OR budget exceeded ⇒ **STOP after this ONE design — no
+  ε-iteration.** Report the surviving loci against the jdesign worst-34 dump (the stage auto-dumps
+  `margin_worst50.json` with the ACTUAL margined-floor demand at each locus) and the honest floor; the
+  ladder then stands at jdesign's 34-residual point as the measured frontier.
+- If ACCEPTED: SpiralRidges is the program's first warp-family LITERAL close within budget — state it
+  plainly, with the full ladder (baseline → blanket 1.935× → masked 1.223× fidelity-failed → J 1.430× @ 34
+  → J+margin) as the manifest sizing-layer case study.
+
+**METHOD.** Same pinned-worktree discipline: the worktree is re-pinned (`git checkout`) to THIS commit
+(driver gains the `margin` stage; the lib is untouched — its committed state is the one the validated
+chain ran). Same detached single-command launch; same exchange-dir rows/breadcrumbs; coordinator polls.
+Expected cost ~13min build + ~2min scoring on the collapsed population.
+
+## VERDICT (MARGIN)
+
+*(pending — appended when the margin row lands)*
