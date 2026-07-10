@@ -529,3 +529,61 @@ the WHOLE uncommitted tree delta set — final-quadtree reuse + the integer-key 
 (`QuadtreeCellKeyCodec.ts`, untracked-new, per the Codex journal entry) + gate/validation
 changes — NOT the reuse fix alone. DS −88.2% and Voronoi −76.9% vs pilot make this unmistakable
 (reuse fix alone was ~23% of export time). Per-bucket attribution = the stage-timing pass.
+
+## INTERIM STATUS (checkpoint 6 — capture 20/20 COMPLETE; 13/20 adjudicated; machine hard-reset mid-drain; instrument findings banked)
+
+*(This checkpoint was first written just before a machine stall+hard-reset killed the session;
+re-appended post-reset with the recovery state. All data below survived on disk.)*
+
+**CAPTURE PHASE COMPLETE: 20/20 styles OK, ZERO capture failures** (the single DS transient was
+retried successfully, checkpoint 5). LowPolyFacet — the pre-registered hang hazard — cleared in
+**36.0s** (744,356 outer tris). For the record: the recurring "possible Dawn compiler hang"
+console error names **Style 18's (CelticTriquetra) LIVE-PREVIEW pipeline** at page load
+(~30-35s SceneManager createRenderPipelineAsync timeout) — a preview/raycast-pipeline artifact,
+benign for export capture; the LowPolyFacet (style 19) hazard never manifested on the capture path.
+
+**Fresh certification rows (8 styles; all watertight nonMan=0/zeroArea=0; all truth-bridge
+premise OK incl. CelticTriquetra p99 2.2e-5):**
+| style | outliers (basis) | grid max → Newton-worst | coverage max | class |
+|---|---|---|---|---|
+| FourierBloom | 0 (stride 1) | 0 | 0.0037 | SHIPPED-CLEAN |
+| SuperellipseMorph | 0 (stride 1) | 0 | 0.0032 | SHIPPED-CLEAN |
+| RippleInterference | 16 (stride 1) | 0.0104 → **0.0065 < tol** | 0.0097 | borderline (§V11j grid-inflation likely) |
+| Crystalline | 3,124/4,533 scanned (stride 4; 18,130 surv) | 0.1245 → 0.0369 | 0.0331 | REGRESSION |
+| GeometricStar | 78,998 (stride 1) | 0.0597 → 0.0397 | 0.0371 | REGRESSION |
+| HexagonalHive | 56,766 (stride 1) | 0.4096 → **0.2733** | 0.1009 | REGRESSION (large) |
+| LowPolyFacet | 4,040 (stride 1; 99.8% of surv) | 0.3914 → **0.2609** | **0.000017** | REGRESSION, forward-only: coverage CLEAN ⇒ bevel-edge-bridging signature |
+| CelticTriquetra | 58,005/82,448 scanned (stride 4; 329,790 surv) | 0.8457 → **0.5648** | 0.3234 | REGRESSION (largest) — no hash issue, braid geometry |
+
+**INSTRUMENT FOOTGUNS (banked):** (1) bash assignment-prefix-after-empty-expansion — `$extra`
+expanding empty makes `NODE_OPTIONS=...` the command word (exit 127); fix = `env`. (2) `npx
+vitest` under a `timeout`+`env` prefix chain resolved a STALE npx-cache **vitest 1.6.1** (no
+global; local is 4.0.17) — v1.6.1's CLI loaded v4's worker, every shard died in 1.2s ("No handler
+function exported from .../vitest/dist/worker.js"). Fix = invoke the local binary directly:
+`node node_modules/vitest/vitest.mjs run` — npx-resolution-immune. Recommended repo-wide for
+research harnesses.
+
+**PATHOLOGICAL SINGLE-FORK CLASS (main instrument finding):** 7 styles' single-fork
+certifications ran multi-CPU-hours without landing rows — SuperformulaBlossom (killed at 4.7
+CPU-h on a 290k-facet mesh), GothicArches, WaveInterference, ArtDeco, BambooSegments,
+BasketWeave, CelticKnot (two orphaned forks reached ~4 CPU-h each before the reset). Mechanism
+hypothesis (DS-2026-07-09 INSTRUMENT-TRACTABILITY precedent): expensive-rA styles whose GN
+screen rejects broadly ⇒ full-azimuth windowed brute per survivor point ⇒ tens of CPU-hours.
+The completed set shows the discriminator is NOT mesh size (Crystalline 5.06M outer completed;
+WaveInterference 395k stalled) — it is per-point brute cost × survivor count.
+
+**MACHINE STALL + HARD RESET (recorded verbatim):** during the 6-shard fleet drain the machine
+stalled and was hard-reset. Plausibly our own saturation (up to ~15 heavy forks + enforcer High
+priorities). All checkpointed data survived (meta.json, scorecard rows, logs, commits).
+**STABILITY POLICY (coordinator, post-reset): max 4 concurrent certification forks; AboveNormal
+only (gentler enforcer running); ≥2 cores headroom; heaviest styles sequenced not parallel.**
+
+**BASIS EXTENSION (pre-registered here BEFORE the drain resumes):** the 7 remaining styles run
+as 4-shard fleets at **PF_PT_STRIDE=4 (LABELED)** even where outer <3M — extending the pilot's
+stride rule from a mesh-size trigger to the pathological-tractability class. Rationale: rows
+append only at fleet completion; at stride 1 these styles' measured CPU appetite (4+ CPU-h
+single-fork, unfinished) would blow the 90-min-per-shard cap and produce NOTHING — stride 4 with
+the pilot-confirmed extrapolation soundness (0.4% off literal on Gyroid) is the honest bounded
+alternative. Tree-basis label re-verified post-reset: `git diff da6b423a..HEAD -- src/` is EMPTY
+(only research commits landed on top) and the 44 uncommitted src files are still in place —
+`da6b423a+uncommitted` remains the correct basis for artifacts and the upcoming stage-timing pass.

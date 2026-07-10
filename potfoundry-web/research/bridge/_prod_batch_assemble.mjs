@@ -77,19 +77,66 @@ function pickCanonical(rows) {
   if (!rows || rows.length === 0) return null;
   const merged = rows.filter((r) => r.merged === true).sort((a, b) => Date.parse(b.at) - Date.parse(a.at));
   if (merged.length) return merged[0];
-  const shard0 = rows.filter((r) => (r.shard ?? 0) === 0 && r.interior);
-  if (shard0.length) {
-    // Prefer the strongest basis: stride=1 over stride>1, then latest.
-    shard0.sort((a, b) => {
+  // Complete single-fork runs (nShards<=1): prefer stride=1 basis, then latest.
+  const single = rows.filter((r) => (r.shard ?? 0) === 0 && (r.nShards ?? 1) <= 1 && r.interior);
+  if (single.length) {
+    single.sort((a, b) => {
       const sa = /stride=1\b/.test(a.interior?.basis ?? '') ? 0 : 1;
       const sb = /stride=1\b/.test(b.interior?.basis ?? '') ? 0 : 1;
       if (sa !== sb) return sa - sb;
       return Date.parse(b.at) - Date.parse(a.at);
     });
-    return shard0[0];
+    return single[0];
   }
-  // only non-zero shard rows present => sharded run not yet merged.
-  return { ...rows[rows.length - 1], _unmergedShardsOnly: true };
+  // Sharded rows without a committed-merger row: synthesize a merge here (counts summed, max
+  // maxed — the exact-equivalence reducer). PARTIAL fleets are LOUDLY labeled (DS-merger
+  // partial semantics); percentiles are per-shard populations and are never merged.
+  const shardRows = rows.filter((r) => (r.nShards ?? 1) > 1 && r.interior);
+  if (shardRows.length) {
+    const nShards = shardRows[0].nShards;
+    const byShard = new Map();
+    for (const r of shardRows) byShard.set(r.shard, r); // latest row per shard wins
+    const parts = [...byShard.values()];
+    const shardsPresent = [...byShard.keys()].sort((a, b) => a - b);
+    const partial = byShard.size !== nShards;
+    let outliers = 0, scanned = 0, maxMm = -1, newtonWorst;
+    for (const p of parts) {
+      outliers += p.interior.outliers;
+      scanned += p.interior.scannedFacets;
+      if (p.interior.maxMm > maxMm) { maxMm = p.interior.maxMm; newtonWorst = p.newtonWorst; }
+    }
+    const shard0 = byShard.get(0);
+    return {
+      style: shardRows[0].style,
+      at: parts.map((p) => p.at).sort().pop(),
+      synthPartialMerge: true,
+      partial,
+      shardsPresent,
+      nShards,
+      fullTris: shard0?.fullTris ?? shardRows[0].fullTris,
+      outerTris: shard0?.outerTris ?? shardRows[0].outerTris,
+      nonManRaw: shard0?.nonManRaw ?? null,
+      nonManControlMoved: shard0?.nonManControlMoved ?? null,
+      zeroArea: shard0?.zeroArea ?? null,
+      vertexOnSurf: shard0?.vertexOnSurf ?? null,
+      interiorRulerPremiseOk: shard0?.interiorRulerPremiseOk ?? null,
+      interior: {
+        basis: shardRows[0].interior.basis.replace(
+          /shard=\d+\/\d+/,
+          `SYNTH-MERGE ${shardsPresent.length}/${nShards} shards${partial ? ' PARTIAL' : ''}`,
+        ),
+        outliers,
+        scannedFacets: scanned,
+        nFacets: shardRows[0].interior.nFacets,
+        survivors: shardRows[0].interior.survivors,
+        maxMm,
+        p50: null, p90: null, p99: null,
+      },
+      newtonWorst,
+      coverage: shard0?.coverage ?? null,
+    };
+  }
+  return null;
 }
 function canonicalRow(style) {
   const fresh = pickCanonical(byStyleRows.get(style));
