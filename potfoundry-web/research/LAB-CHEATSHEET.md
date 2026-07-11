@@ -11,7 +11,7 @@ import {
   buildRadiusFn, buildInhouseMetricMesh, buildFeatureConformingMeshB, computeMeasuredGate, recoverAndLockEdges,
   buildMeshUt, buildLocator, buildFeatureTruth,
   featureLineChord3D, crestValleyRetention, featureAdjacentSlivers, perpendicular3DDeviation, triangleQualityDistribution,
-  auditNonManByIndex, perFaceChordSag, perFaceTrue3DSag, vertErrColors, writeBinarySTL, dumpRenderBins, dumpHeatmap,
+  auditNonManByIndex, nonManRawBig, nonManRawBigStats, perFaceChordSag, perFaceTrue3DSag, vertErrColors, writeBinarySTL, dumpRenderBins, dumpHeatmap,
   bruteNearestOnRadialSurface, bruteAnchoredRedPerp,
 } from './labkit';
 ```
@@ -42,6 +42,9 @@ import {
   (`buildFeatureTruth` → `featureLineChord3D`), not uniformly.
 - **Slivers by minAngle** (`triangleQualityDistribution`, depth-invariant) — `%<20°` DILUTES under refinement.
 - **Watertight by INDEX** (`auditNonManByIndex`, 3D-weld) — non-vacuous: an injected crack must move the count.
+  **RAW-index / large meshes:** every Map-based audit dies at V8's ~16.7M-entry cap (≥~5.6M tris, "Map maximum size
+  exceeded") — use `nonManRawBig` (count) / `nonManRawBigStats` (+edges/boundary): sorted-key run-length scan, no cap,
+  exact for all u32 indices. `_pf_tangledKernelLib.auditNonManRaw` now delegates to it (deprecated alias).
 - **Two different defects, don't conflate:** crest UNDER-shoot (vertex placement, ~density-INVARIANT) vs per-face
   chord SAG (facet bridging, density-RESPONSIVE, reducible by `chordTolMm`).
 

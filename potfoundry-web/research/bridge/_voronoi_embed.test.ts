@@ -16,28 +16,13 @@ import {
 } from './_voronoiFieldLib';
 import { radiusFn, TANGLED_BASE, buildTangled, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
 import { planarizeMM } from './_pf_planarizeMM';
-import { buildInhouseMetricMesh, auditNonManByIndex } from './labkit';
+import { buildInhouseMetricMesh, auditNonManByIndex, nonManRawBig } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
 
 const RUN = process.env.PF_VOR === '1';
 const DIR = join(process.cwd(), 'research/exchange/_voronoi_embed');
 
-// LARGE-MESH-SAFE watertight audit (sorted-Float64-edge-key, no JS-Map ceiling). Ported from the §V11w recipe
-// (nonManRawBig lives in a concurrent agent's file we must not import). Exact for vertex indices < 2^26.
-function nonManRawBig(idx: ArrayLike<number>): number {
-  const keys = new Float64Array(idx.length);
-  let m = 0;
-  for (let k = 0; k < idx.length; k += 3) {
-    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
-    if (a === b || b === c || a === c) continue;
-    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
-  }
-  const sub = keys.subarray(0, m); sub.sort();
-  let nm = 0;
-  for (let i = 0; i < m;) { let j = i + 1; while (j < m && sub[j] === sub[i]) j++; if (j - i > 2) nm++; i = j; }
-  return nm;
-}
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
 const P = VORONOI_DEFAULTS;
 const TAU = 2 * Math.PI;

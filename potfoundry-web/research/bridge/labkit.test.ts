@@ -7,7 +7,7 @@ import { readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  auditNonManByIndex, perFaceChordSag, perFaceTrue3DSag, chordSagColor, vertErrColors, writeBinarySTL, dumpHeatmap,
+  auditNonManByIndex, nonManRawBig, nonManRawBigStats, perFaceChordSag, perFaceTrue3DSag, chordSagColor, vertErrColors, writeBinarySTL, dumpHeatmap,
   buildInhouseMetricMesh, featureLineChord3D, computeMeasuredGate, recoverAndLockEdges, perpendicular3DDeviation, projectPointToRadialSurface,
   bruteNearestOnRadialSurface, bruteAnchoredRedPerp, perFaceTrue3DSagAnchored,
   // these three were mis-routed in the barrel (caught by verification) — import them so the guard is non-vacuous:
@@ -22,6 +22,34 @@ describe('labkit helpers', () => {
     // add a 3rd triangle on the SAME edge 0-2 (with a new out-of-plane vertex) → edge shared by 3 → non-manifold.
     const xyz3 = [...xyz, 0.5, 0.5, 1];
     expect(auditNonManByIndex(xyz3, [0, 1, 2, 0, 2, 3, 0, 2, 4])).toBeGreaterThanOrEqual(1);
+  });
+
+  it('nonManRawBig/Stats: raw-index audit counts >2-incidence, skips degenerate tris, and is non-vacuous', () => {
+    // clean quad (2 tris sharing edge 0-2) → manifold. Exact stats pin the semantics: 6 edge records audited
+    // (edges > 0 = the non-vacuity witness that the audit genuinely ran), 4 boundary (multiplicity-1) edges.
+    const quad = [0, 1, 2, 0, 2, 3];
+    expect(nonManRawBig(quad)).toBe(0);
+    const clean = nonManRawBigStats(quad);
+    expect(clean).toEqual({ nonMan: 0, edges: 6, boundary: 4 });
+    // >2-incidence: a 3rd triangle on the SAME edge 0-2 (via a new vertex 4) → exactly that edge goes non-manifold.
+    // This is the injected-crack control every probe relies on: the count MUST move.
+    const cracked = [...quad, 0, 2, 4];
+    expect(nonManRawBig(cracked)).toBe(1);
+    expect(nonManRawBigStats(cracked)).toEqual({ nonMan: 1, edges: 9, boundary: 6 });
+    // degenerate tris (any repeated index) are SKIPPED — they add no edge records, so they can neither fake a
+    // non-manifold edge (0,2,2 touches the shared edge but is ignored) nor inflate the edges/boundary figures.
+    const withDegen = [...quad, 0, 0, 1, 2, 2, 2, 0, 2, 2];
+    expect(nonManRawBigStats(withDegen)).toEqual(clean);
+  });
+
+  it('nonManRawBig: indices ≥ 2^26 (past the Float64-key exactness domain) still audit exactly', () => {
+    // same topology at small indices vs shifted past 2^26 (where the f64 lo*2^27+hi packing stops being exact
+    // and the audit must switch key representation) → the verdict and all stats must be IDENTICAL.
+    const BASE = 1 << 26; // 67,108,864
+    const small = [0, 1, 2, 0, 2, 3, 0, 2, 4];
+    const shifted = small.map((v) => v + BASE);
+    expect(nonManRawBigStats(shifted)).toEqual(nonManRawBigStats(small));
+    expect(nonManRawBig(shifted)).toBe(1);
   });
 
   it('writeBinarySTL header + size are correct', () => {

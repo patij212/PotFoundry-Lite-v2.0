@@ -21,7 +21,7 @@
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, existsSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildRadiusFn, type StyleDims, triangleQualityDistribution } from './labkit';
+import { buildRadiusFn, type StyleDims, triangleQualityDistribution, nonManRawBigStats } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 import type { StepRing } from './_sharp3dRef';
 import { buildStructuredWall, evenThetas, type RowSpec, type BuiltMesh } from './_sharp3dMesh';
@@ -65,25 +65,8 @@ const checkpoint = (row: Record<string, unknown>): void => { mkdirSync(OUT, { re
 const readPass = (k: string): boolean | null => { if (!existsSync(NDJSON)) return null; for (const l of readFileSync(NDJSON, 'utf8').split('\n').filter(Boolean)) { try { const r = JSON.parse(l); if (r.key === k) return !!r.pass; } catch { /* */ } } return null; };
 
 // ── watertight (RAW index) + zero-area, both non-vacuous. ─────────────────────
-// SCALE-SAFE (E-2026-07-08-DS-FINAL fix): a JS Map<string> blows at ~16.7M entries; a Map<bigint> ALSO blows at V8's
-// ~2^24 (16.7M) entry cap regardless of key type (the prior comment's "no such small cap" was WRONG — it crashed with
-// "Map maximum size exceeded" on the 8.04M-tri nZ220 mesh = 24M edges). Fix = NO Map: pack each undirected edge into a
-// single f64-safe number key (lo*2^32+hi, ≤ 2^53 for indices < 2^21 ≈ 2.1M verts — nZ220 has ~19.3M verts so use
-// BigUint64Array), SORT, then a single linear run-length scan counts multiplicity. No per-edge allocation, no Map cap.
-function auditNonManRaw(idx: Uint32Array): { nonMan: number; edges: number; boundary: number } {
-  const nF = (idx.length / 3) | 0;
-  const keys = new BigUint64Array(nF * 3); // 3 edges/face upper bound (degenerates overwritten by compaction)
-  let edges = 0;
-  for (let k = 0; k < idx.length; k += 3) {
-    const a = idx[k], b = idx[k + 1], c = idx[k + 2]; if (a === b || b === c || a === c) continue;
-    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[edges++] = (BigInt(lo) << 32n) | BigInt(hi); }
-  }
-  const arr = keys.subarray(0, edges);
-  arr.sort(); // BigUint64Array.sort is numeric (typed-array sort), not lexicographic
-  let nm = 0, bd = 0, i = 0;
-  while (i < edges) { let j = i + 1; while (j < edges && arr[j] === arr[i]) j++; const mult = j - i; if (mult > 2) nm++; else if (mult === 1) bd++; i = j; }
-  return { nonMan: nm, edges, boundary: bd };
-}
+// watertight = labkit's nonManRawBigStats (sorted-key run-length scan, no Map cap — the E-2026-07-08-DS-FINAL fix
+// first proven here on the 8.04M-tri nZ220 mesh, since promoted to labkit as the canonical raw-index audit).
 function zeroAreaCount(xyz: Float64Array | Float32Array, idx: Uint32Array): number {
   let n = 0;
   for (let f = 0; f < idx.length / 3; f++) {
@@ -249,7 +232,7 @@ function scoreMeshTo(
   let nOut = 0; for (const d of devS) if (d > TOL) nOut++;
   const s = Float64Array.from(devS).sort(); const pc = (q: number): number => s.length ? +s[Math.min(s.length - 1, Math.floor(q * s.length))].toFixed(6) : 0;
   const q = triangleQualityDistribution({ vertices: xyz, indices: idx });
-  const nm = auditNonManRaw(idx);
+  const nm = nonManRawBigStats(idx);
   const za = zeroAreaCount(xyz, idx);
   const scaledOut = nOut * stride;
   const closes = scaledOut === 0 && nm.nonMan === 0 && za === 0 && q.pctBelow20 < 10 && tris < 6_000_000;

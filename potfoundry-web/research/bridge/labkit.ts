@@ -88,6 +88,64 @@ export function auditNonManByIndex(xyz: ArrayLike<number>, indices: ArrayLike<nu
   let nm = 0; for (const m of ecs) for (const v of m.values()) if (v > 2) nm++; return nm;
 }
 
+// ───────────────────────── manifold audit (RAW index, large-mesh-safe, non-vacuous) ─────────────────────────
+export interface NonManRawBigStats {
+  /** undirected raw-index edges shared by >2 triangles — the non-manifold verdict. */
+  nonMan: number;
+  /** edge records audited = 3 × non-degenerate tris (>0 is the non-vacuity witness that the audit ran). */
+  edges: number;
+  /** edges with multiplicity 1 (open/boundary edges — a closed watertight ring has 0). */
+  boundary: number;
+}
+
+/**
+ * Large-mesh-safe RAW-INDEX non-manifold audit (no vertex weld — `auditNonManByIndex` is the 3D-weld verdict).
+ * Counts undirected index-pair edges shared by >2 triangles; degenerate tris (any repeated index) are skipped.
+ * Map-free by construction: a JS Map caps at ~2^24 (16.7M) entries regardless of key type, so every Map-based
+ * audit dies with "Map maximum size exceeded" above ~5.6M tris (the §V11w/§V11x wall). Here each edge packs into
+ * ONE sortable key, the key array is sorted, and a linear run-length scan counts multiplicity — no entry cap,
+ * no per-edge allocation. Fast path = Float64 keys lo*2^27+hi (exact for indices < 2^26 ≈ 67M); larger indices
+ * automatically fall back to BigUint64 keys lo<<32|hi (exact for ALL u32 indices — the §V11x DS-FINAL recipe).
+ */
+export function nonManRawBigStats(idx: ArrayLike<number>): NonManRawBigStats {
+  const n = idx.length - (idx.length % 3);
+  let maxIdx = 0;
+  for (let k = 0; k < n; k++) { const v = idx[k]; if (v > maxIdx) maxIdx = v; }
+  let m = 0;
+  let sorted: Float64Array | BigUint64Array;
+  if (maxIdx < 67108864) { // 2^26 — the Float64 lo*2^27+hi exactness domain
+    const keys = new Float64Array(n);
+    for (let k = 0; k < n; k += 3) {
+      const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+      if (a === b || b === c || a === c) continue;
+      for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
+    }
+    sorted = keys.subarray(0, m); sorted.sort();
+  } else {
+    const keys = new BigUint64Array(n);
+    for (let k = 0; k < n; k += 3) {
+      const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+      if (a === b || b === c || a === c) continue;
+      for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = (BigInt(lo) << 32n) | BigInt(hi); }
+    }
+    sorted = keys.subarray(0, m); sorted.sort(); // typed-array sort is numeric for BigUint64Array too
+  }
+  let nm = 0, bd = 0;
+  for (let i = 0; i < m;) {
+    let j = i + 1;
+    while (j < m && sorted[j] === sorted[i]) j++;
+    const mult = j - i;
+    if (mult > 2) nm++; else if (mult === 1) bd++;
+    i = j;
+  }
+  return { nonMan: nm, edges: m, boundary: bd };
+}
+
+/** The plain non-manifold COUNT (the probes' `nonManRawBig(idx)` shape); `nonManRawBigStats` adds edges/boundary. */
+export function nonManRawBig(idx: ArrayLike<number>): number {
+  return nonManRawBigStats(idx).nonMan;
+}
+
 // ───────────────────────── per-face chord sag (what the heatmap shows) ─────────────────────────
 export interface ChordSagResult {
   /** per-face max chord sag (mm) = max over SAG_BARY of |P_true − facet-plane| (perpendicular). */

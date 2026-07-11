@@ -21,7 +21,7 @@
 // ISOLATION: NEW file. Imports labkit + inhouseMetricMesh READ-ONLY. NO src/ edit, NO edit to the proven kernel libs.
 import {
   type AnalyticRadiusFn, buildRadiusFn, buildInhouseMetricMesh, projectPointToRadialSurface,
-  type StyleDims,
+  type StyleDims, nonManRawBig,
 } from './labkit';
 import { scoreWholeMeshBVH, buildRadialTwin, twinOnSurfaceResidual, type BvhRulerResult } from './_pf_bvhRuler';
 import { buildRefLocator } from './_sharp3dRef';
@@ -277,17 +277,14 @@ export function twinBandLimit(rA: AnalyticRadiusFn, H: number, twinRes: { nTheta
   return { maxMm: r.maxMm, p99Mm: r.p99Mm };
 }
 
-// ── watertight by INDEX (3D-weld: shared-vertex-by-position, non-vacuous) ───────────────────────────────────────
-// The inhouse ring output shares vertices by INDEX already (single vertex list). Raw-index non-manifold = an
-// undirected edge shared by >2 triangles. Non-vacuous: an injected 3rd-tri-on-edge must move the count.
+// ── watertight by RAW INDEX (undirected edge shared by >2 triangles; degenerate tris skipped) ──────────────────
+// Delegates to labkit's nonManRawBig (sorted-key run-length scan): the old single-Map body here died with "Map
+// maximum size exceeded" above ~16.7M edges (≥~5.6M tris — the §V11w/§V11x wall) and its p*2^25+q key aliased
+// above 2^25 verts. Identical verdict on every mesh the Map version audited correctly; kept as an alias so the
+// existing tangled/gyroid/crystalline probes keep importing it unchanged. Non-vacuity is pinned in labkit.test.ts.
+/** @deprecated new probes: import `nonManRawBig` (or `nonManRawBigStats`) from './labkit'. */
 export function auditNonManRaw(idx: ArrayLike<number>): number {
-  const ec = new Map<number, number>();
-  for (let k = 0; k < idx.length; k += 3) {
-    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
-    if (a === b || b === c || a === c) continue;
-    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) { const key = p < q ? p * 33554432 + q : q * 33554432 + p; ec.set(key, (ec.get(key) ?? 0) + 1); }
-  }
-  let nm = 0; for (const v of ec.values()) if (v > 2) nm++; return nm;
+  return nonManRawBig(idx);
 }
 
 // ── the tangled-kernel build: seam-safe inhouse deep-sag mesher, driven toward honest ≤tol ──────────────────────

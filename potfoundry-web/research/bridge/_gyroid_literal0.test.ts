@@ -19,7 +19,7 @@ import {
   decimateContoursAdaptive, contoursToConstraints, type Contour,
 } from './_gyroidContourLib';
 import { radiusFn, TANGLED_BASE, wholeMeshGuardRadialBound } from './_pf_tangledKernelLib';
-import { buildInhouseMetricMesh } from './labkit';
+import { buildInhouseMetricMesh, nonManRawBig } from './labkit';
 import { newtonNearest, type NewtonOpts } from './_gyroid_truthLib';
 import type { StyleDims } from './labkit';
 
@@ -38,26 +38,6 @@ const TAU = 2 * Math.PI;
 type RawContours = { isolevels: { inner: number; outer: number; mid: number }; outer: number[][][]; inner: number[][][]; mid: number[][][] };
 const loadRefined = (): RawContours => JSON.parse(readFileSync(join(CLOSE_DIR, 'contours_refined.json'), 'utf8')) as RawContours;
 const asC = (arr: number[][][]): Contour[] => arr.map((pts) => ({ pts: pts as [number, number][] }));
-
-// Large-mesh-safe non-manifold audit by INDEX. auditNonManRaw/auditNonManByIndex use a JS Map whose entry count
-// caps at ~16.7M — a 7-10M-tri mesh has 21-30M undirected edges and overflows it (RangeError: Map maximum size
-// exceeded). This sorts a Float64 edge-key array instead (no size cap): key = minIdx*2^27 + maxIdx (exact for
-// indices < 2^26 = 67M ⇒ product < 2^53). Non-manifold = any undirected edge shared by >2 triangles.
-function nonManRawBig(idx: ArrayLike<number>): number {
-  const nE = (idx.length / 3) * 3;
-  const keys = new Float64Array(nE);
-  let m = 0;
-  for (let k = 0; k < idx.length; k += 3) {
-    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
-    if (a === b || b === c || a === c) continue;
-    const e = [[a, b], [b, c], [c, a]] as const;
-    for (const [p, q] of e) { const lo = p < q ? p : q, hi = p < q ? q : p; keys[m++] = lo * 134217728 + hi; }
-  }
-  const sub = keys.subarray(0, m); sub.sort();
-  let nm = 0;
-  for (let i = 0; i < m;) { let j = i + 1; while (j < m && sub[j] === sub[i]) j++; if (j - i > 2) nm++; i = j; }
-  return nm;
-}
 
 describe('E-2026-07-08-GYROID-LITERAL0', () => {
   // ── STAGE BUILD: adaptive doubled picket + chord-Steiner conforming re-mesh at the RAISED budget ────────────────
