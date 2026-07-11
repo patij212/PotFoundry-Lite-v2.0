@@ -232,3 +232,35 @@ before the Gyroid kernel-watertightness batch, because (a) the decision rule nee
 champions reproduced, and (b) the harness's G3/G7 coverage on B1/C1 will reveal whether the
 seam/boundary defect class is Gyroid-specific or shared kernel behavior — which informs the kernel
 fix's scope. A4-orient + A4b run as one focused kernel batch after the breadth pass.
+
+---
+
+## ADDENDUM 6 (2026-07-11, after C1) — Gothic reproduction PASS; two findings; C2 sampler-fidelity sub-target
+
+C1 (Gothic patch, K2/R-REFINE via the region layer) — see `research/lab/tierc/C1-gothic-verdict.md`:
+
+- **Reproduction PASS.** Region-layer R-REFINE dispatch native, bit-identical to K2-direct,
+  reproduces the live CI gate exactly (9917 tris / 7 passes / 0 outliers / max 0.0099 @sampler).
+- **Finding 1 — seam/boundary defect is GYROID-BAND-EDGE-SPECIFIC.** Gothic K2 patch is clean
+  (orient 0, nonMan 0, 239 boundary edges ALL on the patch rim, 0 interior). The Gyroid A4 kernel
+  seam-fix is therefore narrow (band-edge CDT only), NOT shared-machinery. Cross-style question closed.
+- **Finding 2 — Gothic "literal-0" is faithful-to-the-512²-sampler, not analytic (CAUSE B).** The K2
+  kernel meshes+scores against a 512² styleSampler grid that chords the knife-edge crests; the mesh
+  is ≤tol on that grid but ~0.17mm off the exact analytic `rA` at crests (3 independent confirmations;
+  the sampler grid itself is up to 1.35mm off analytic at 512², shrinking with resolution). The live
+  `wholeMesh0Outlier.test.ts` gate asserts faithful-to-grid, not faithful-to-analytic — invisible to
+  every prior Gothic verdict.
+
+NEW SUB-TARGET **C2 (Gothic sampler-fidelity):** make the K2 mesh faithful-to-analytic so it meets
+the true-analytic 0.01mm standard at the crests. Options (design in the verdict): (a) raise
+styleSampler gridRes for knife-edge styles until sampler≈analytic; (b) lift refine-inserted vertices
+via analytic `rA` instead of `sampler.position` (elegant, faithful-by-construction). Plus a harness
+basis fix: for R-REFINE regions, score G1 against `radialSurfaceFromSampler` OR carry both bases
+labeled, never conflated. **Gothic "reproduced" = C1 (done) ∧ C2 (analytic-faithful, new).**
+
+RUNNING TALLY — architecture reproduction is proven across all three kernels (Gyroid K1 bit-exact,
+Gothic K2 CI-exact, DS boundary contract confirmed); but the composite harness (true-analytic +
+G3/G7) has exposed that each champion carried a previously-unmeasured gap vs the shippable standard:
+Gyroid = band-edge holes/orientation (kernel A4-orient + A4b), Gothic = sampler-fidelity at crests
+(kernel C2). B1 (DS full wall) remains, then the kernel-fix batch. The audit-first ruler keeps
+finding the honest floor below the celebrated wins — exactly its job.
