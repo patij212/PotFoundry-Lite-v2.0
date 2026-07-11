@@ -196,6 +196,15 @@ export interface ConformingWallOptions {
    * Omit / empty ⇒ byte-identical default mesh (the load-bearing flag-OFF rule).
    */
   railLines?: FeatureLine[];
+  /**
+   * OPT-IN remedy for the 2-locus deterministic non-manifold defect at
+   * near-tangent doubled general-curve passes (E-2026-07-11-TIERC-HEADTOHEAD
+   * Arm A2). Threaded verbatim to {@link triangulateQuadtreeWithFeatures}'s
+   * same-named option — see that option's doc for the mechanism. Default
+   * `'off'` (or omitted) ⇒ byte-identical default mesh (the load-bearing
+   * flag-OFF guarantee). Only effective when `featureLines` are present.
+   */
+  multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair';
 }
 
 /**
@@ -747,6 +756,7 @@ function buildWallMeshAtScale(
     sampler: refineEnabled ? (u, t) => sampler.position(u, t) : undefined,
     bandRegions: opts.bandRegions,
     railLines,
+    multiCurveCellPolicy: opts.multiCurveCellPolicy,
   });
   if (stageTiming) {
     stageTiming.triangulationMs = performance.now() - triStart;
