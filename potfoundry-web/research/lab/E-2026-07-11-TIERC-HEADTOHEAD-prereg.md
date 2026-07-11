@@ -296,3 +296,23 @@ fix set to meet the true 0.01mm-analytic-watertight-oriented standard. NEXT PHAS
 batches (task #16 + DS Findings 2/3), each with GitNexus impact + default-off byte-identity +
 fidelity-Δ0 discipline. The audit-first ruler kept finding the honest floor below the celebrated wins
 — across all four arms — which is exactly its job.
+
+---
+
+## ADDENDUM 8 (2026-07-11, after A4b) — snapMerge REFUTED (measured-negative); Gyroid watertightness both blockers open
+
+A4b ('snapMerge' weld-widen for the 360 band-edge holes) — see `research/lab/tierc/A4b-snapmerge-verdict.md`.
+FAIL: boundaryEdges 360→426 (WRONG direction, +66). Default-off byte-identical + fidelity bit-identical
+(gating correct, merge geometrically harmless where it fires) but the target regressed. Root cause:
+`regAddResolve`'s widen search is bounded in absolute (u,t) but not scoped to the flagged leaf's edge
+extent — on Gyroid's long near-parallel doubled contours it merges onto topologically-unrelated nearby
+points, relocating holes instead of closing them. Committed default-off as a labeled measured-negative
+(preserves detectMultiCurveLeaves factoring + the result). **A4b-v2 (untried):** scope the merge
+candidate to points registered while processing the SAME flagged leaf (provenance-tagged), not merely
+nearby on the grid line. Possibly the same root as A4-orient (cross-cell registry disagreement) —
+check during A4-orient.
+
+GYROID WATERTIGHTNESS STATE: 360 boundary holes (A4b-v2 open) + 652 orientation (A4-orient open) — both
+remain. Fidelity (A1) + non-manifold (A2 fanRepair) are the only closed pieces. FIX-PHASE TALLY: Gothic
+C2 PASS (analytic lever, mechanism-proven, full-patch scale deferred); Gyroid A4b REFUTED-v1;
+A4-orient + DS-Finding-2 (winding, may share root) + A4b-v2 + DS-Finding-1/3 remain.

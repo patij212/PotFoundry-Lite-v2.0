@@ -304,14 +304,14 @@ export interface AssemblyWallOptions {
   /**
    * OPT-IN remedy for the 2-locus deterministic non-manifold defect at
    * near-tangent doubled general-curve passes (E-2026-07-11-TIERC-HEADTOHEAD
-   * Arm A2 — `research/lab/tierc/champion-spec-gyroid.md` §1.5). Threaded to
-   * the OUTER wall only (features are outer-only, see `outerFeatureLines`).
-   * Default `'off'` (or omitted) ⇒ byte-identical default assembly (the
-   * load-bearing flag-OFF guarantee). See
+   * Arm A2 — `research/lab/tierc/champion-spec-gyroid.md` §1.5; `'snapMerge'`
+   * is Arm A4b). Threaded to the OUTER wall only (features are outer-only,
+   * see `outerFeatureLines`). Default `'off'` (or omitted) ⇒ byte-identical
+   * default assembly (the load-bearing flag-OFF guarantee). See
    * `FeatureConformingTriangulator.ts`'s `multiCurveCellPolicy` doc for the
    * mechanism.
    */
-  multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair';
+  multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair' | 'snapMerge';
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */

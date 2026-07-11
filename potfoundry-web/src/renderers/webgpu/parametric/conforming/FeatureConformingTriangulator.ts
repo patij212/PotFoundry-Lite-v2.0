@@ -156,8 +156,53 @@ export interface FeatureTriangulationOptions {
    * edge ONLY when it is a confidently-degenerate sliver (area ratio gated), run
    * once on the fully-assembled mesh. See that function's doc for the measured
    * result.
+   *
+   * `'snapMerge'` (E-2026-07-11-TIERC-HEADTOHEAD Arm A4b; `research/lab/tierc/
+   * A4-diagnosis.md` §2.1/§4.1) targets a DIFFERENT symptom of the SAME
+   * near-tangent doubled-curve root cause: not the 3 known mult=3 SLIVERS
+   * `'fanRepair'` fixes, but the ~65-spot, 329-edge population of mult=1
+   * boundary HOLES the diagnosis found `'fanRepair'` structurally cannot reach
+   * (its edge-selection is scoped to mult>2 edges only; a hole has no excess
+   * triangle to drop). Reuses the EXACT same leaf-flagging test {@link
+   * forceRefineMultiCurveLeaves} uses (factored into {@link
+   * detectMultiCurveLeaves}) but, instead of splitting the flagged leaf, WIDENS
+   * the grid-line REGISTRY's merge tolerance (see `SNAP_MERGE_WELD`) — ONLY for
+   * boundary points registered while processing a flagged leaf — so a
+   * near-coincident registry point from the OTHER curve label (measured gap
+   * ≈0.000178 in the one dumped example, ~6× production `cornerSnap`) is
+   * UNIFIED onto the already-registered point instead of creating a second,
+   * near-duplicate vertex. Both cells sharing that grid line read the SAME
+   * (now-merged) registry entry in PASS B, so the merge is symmetric by
+   * construction. Adds NO new constraint line/curve (the §V11q over-constraint
+   * hazard `'forceRefine'`'s own doc names) — it only relabels which
+   * already-present vertex a near-tangent crossing resolves to. Default `'off'`
+   * never computes the flagged set or reaches the widened path — byte-identical.
+   *
+   * MEASURED (E-2026-07-11-TIERC-HEADTOHEAD Arm A4b, full band-edge twin,
+   * `research/bridge/_tierc_a4b.test.ts`, `SNAP_MERGE_WELD=4e-4`): a
+   * documented NEGATIVE result, in the same spirit as `'forceRefine'`'s own
+   * measured 0/3 above. `'off'` byte-identity holds exactly (hash + topology
+   * reproduce the banked baseline) and fidelity is untouched (outer tris
+   * +0.038%, Newton-worst and coverage-max BIT-IDENTICAL to banked) — but
+   * boundaryEdges REGRESSED 360→426 (+66, worse, not the targeted ≤31) and
+   * nonManifold stayed at 3 (unchanged — does not supersede `'fanRepair'`).
+   * The registry-level widen search is correctly gated (only a flagged leaf's
+   * OWN `registerBoundary` calls widen) and correctly bounded in raw (u,t)
+   * distance, but it is NOT scoped to the flagged leaf's own edge extent — it
+   * searches every already-registered point on the SAME exact grid line
+   * (shared by every leaf whose edge lies on that line, not just the flagged
+   * one) within `SNAP_MERGE_WELD`, so on Gyroid's long near-parallel doubled
+   * band-edge run (A2's own measurement: ~0.00058 mean curve separation) it
+   * can merge onto a coincidentally-nearby but topologically-UNRELATED point
+   * rather than the intended near-tangent twin — moving, not net-resolving,
+   * the cross-cell shared-vertex disagreement A4 diagnosed. Left in place
+   * (default `'off'`, byte-identical, zero production risk) as a proven-safe,
+   * honestly-negative starting point; a fix would need to scope the merge
+   * candidate search to points ALSO registered while processing a flagged
+   * leaf (provenance-tracked), not merely to absolute (u,t) proximity on a
+   * shared grid line — untried, next-arm work.
    */
-  multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair';
+  multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair' | 'snapMerge';
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
@@ -177,6 +222,21 @@ const MAX_U_EXTRA = MAX_U_EXTRA_FOR_CODEC;
 const ON_EDGE_EPS = 1e-9;
 /** Hard cap on retained CDT incidents per wall — totals stay exact past it. */
 const MAX_CDT_INCIDENTS = 500;
+/**
+ * OPT-IN widened registry-merge radius for `multiCurveCellPolicy: 'snapMerge'`
+ * (Arm A4b, E-2026-07-11-TIERC-HEADTOHEAD Addendum 4/5). A boundary point
+ * registered while processing a leaf {@link detectMultiCurveLeaves} flagged is
+ * unified onto an EXISTING grid-line registry entry within this Chebyshev
+ * (u,t) distance instead of creating a new near-duplicate entry — see {@link
+ * regAddResolve}. Sized above the one measured example gap (0.000178, ~6×
+ * production `cornerSnap≈2.93e-5` at featureLevel 11) with ~2.2× margin, and
+ * kept under one featureLevel-11 t-cell (1/2048≈0.000488) / ~1.6 effective
+ * u-cells at uBias=1 (1/4096≈0.000244) so the merge cannot reach past the
+ * immediate near-tangent neighbourhood into an unrelated feature crossing
+ * elsewhere on the same grid line. Read ONLY by the `'snapMerge'` path; every
+ * other policy value never references it.
+ */
+const SNAP_MERGE_WELD = 4e-4;
 
 interface Seg {
   /** start (u,t) of the original feature segment. */
@@ -360,59 +420,33 @@ function worstMin3D(result: ConstrainedCellResult, sampler: FeatureSampler3D): n
 }
 
 /**
- * OPT-IN multi-curve cell force-refine — `multiCurveCellPolicy: 'forceRefine'`
- * (E-2026-07-11-TIERC-HEADTOHEAD Arm A2; named remedy #1 in
- * `research/lab/tierc/champion-spec-gyroid.md` §1.5, the 2-locus deterministic
- * non-manifold defect at near-tangent doubled general-curve passes). A leaf
- * crossed by >=2 DISTINCT `kind:'general-curve'` FeatureLines (by `label`) is
- * split into 4 quadrant leaves at level+1 BEFORE any other processing in
- * {@link triangulateQuadtreeWithFeatures}, so every downstream mechanism (grid-
- * line registry, 2:1 transition templates, spatial bucketing) treats it exactly
- * as if the quadtree itself had refined there — refining the CELL, never
- * inserting new constraint geometry (the over-constraint hazard the champion
- * spec's §V11q names: a THIRD near-coincident CONSTRAINT line regressed badly;
- * this lever adds zero new curve points, only smaller cells).
- *
- * SAFETY GUARD: a flagged leaf is left UNSPLIT if it has an existing neighbour
- * exactly one level COARSER than itself on any side. Splitting it would then
- * create a 2-level gap on that side; the transition-template system (splitS/E/
- * N/W in the caller) only ever adds ONE mid-edge point per side and assumes at
- * most a one-level finer-neighbour gap — the invariant
- * `PeriodicBalancedQuadtree.balance()` normally guarantees for every REAL
- * quadtree build. Violating it here would manufacture a NEW T-junction/crack —
- * exactly the class of defect this policy exists to remove. Skipping is a
- * conservative, measurable degrade (that one cell is simply not force-refined),
- * never a new crack. Also skipped: any leaf with `uExtra !== 0` (directional
- * refinement is disabled on every feature wall in production, so this never
- * fires there; the guard exists so a hand-built test/edge-case fixture can never
- * hit the ambiguous effective-u-level arithmetic a directional split implies).
- *
- * Called ONLY when `options.multiCurveCellPolicy === 'forceRefine'` — default
- * `'off'` never reaches this function, so it has zero effect on the byte-
- * identical default export path.
+ * Shared same-cell/2-distinct-general-curve-label detection — factored out of
+ * {@link forceRefineMultiCurveLeaves}'s step (a) so `multiCurveCellPolicy:
+ * 'snapMerge'` (Arm A4b) can reuse the EXACT same precise geometric test
+ * without duplicating it. Returns the set of LEAF INDICES (into `leaves`, its
+ * original unmodified order) crossed by >=2 DISTINCT `kind:'general-curve'`
+ * FeatureLine labels. Pure / side-effect-free — never mutates `leaves`.
  */
-export function forceRefineMultiCurveLeaves(
+function detectMultiCurveLeaves(
   leaves: readonly QuadLeaf[],
   features: readonly FeatureLine[],
   uBias: number,
-): QuadLeaf[] {
+): Set<number> {
   const generalCurves = features.filter((f) => f.kind === 'general-curve');
-  if (generalCurves.length < 2) return leaves.slice();
+  if (generalCurves.length < 2) return new Set();
 
   const eULof = (l: { level: number; uExtra?: number }): number => l.level + uBias + (l.uExtra ?? 0);
-  const iuOf = (l: QuadLeaf): number => l.iu ?? Math.round(l.u0 * (1 << eULof(l)));
-  const itOf = (l: QuadLeaf): number => l.it ?? Math.round(l.t0 * (1 << l.level));
 
-  // ── (a) which leaves are crossed by >=2 distinct general-curve labels? ──
   // Bucketed bbox pre-filter (candidate narrowing only) + a PRECISE geometric
   // test (clipToBox proper-interior-clip OR edgeCrossingsInto tangent touch —
-  // the SAME two tests PASS A below uses to decide a segment is present in a
-  // cell) for cell membership. A pure bbox-overlap test was tried first and
-  // measured too coarse: two long near-parallel curves have overlapping
-  // bounding boxes across a wide swath of cells they don't actually both
-  // cross, over-flagging ~200 cells in the window-repro fixture and (empirically)
-  // relocating rather than clearing the defect. The precise test narrows the
-  // flagged set to cells the curves ACTUALLY pass through.
+  // the SAME two tests PASS A in {@link triangulateQuadtreeWithFeatures} uses
+  // to decide a segment is present in a cell) for cell membership. A pure
+  // bbox-overlap test was tried first and measured too coarse: two long
+  // near-parallel curves have overlapping bounding boxes across a wide swath
+  // of cells they don't actually both cross, over-flagging ~200 cells in the
+  // window-repro fixture and (empirically) relocating rather than clearing
+  // the defect. The precise test narrows the flagged set to cells the curves
+  // ACTUALLY pass through.
   const BUCKET = 64;
   const bKey = (bu: number, bt: number): number => bt * BUCKET + bu;
   const clampB = (x: number): number => Math.max(0, Math.min(BUCKET - 1, Math.floor(x * BUCKET)));
@@ -467,7 +501,7 @@ export function forceRefineMultiCurveLeaves(
   // named, zeroed constant (not a magic 0 inlined below) so this rejection is
   // legible at the call site, not just in the comment.
   const PROXIMITY_CELLS = 0;
-  const flagged: number[] = [];
+  const flagged = new Set<number>();
   for (let li = 0; li < leaves.length; li++) {
     const l = leaves[li];
     const sizeU = 1 / (1 << eULof(l));
@@ -504,9 +538,54 @@ export function forceRefineMultiCurveLeaves(
         }
       }
     }
-    if (labels.size >= 2) flagged.push(li);
+    if (labels.size >= 2) flagged.add(li);
   }
-  if (flagged.length === 0) return leaves.slice();
+  return flagged;
+}
+
+/**
+ * OPT-IN multi-curve cell force-refine — `multiCurveCellPolicy: 'forceRefine'`
+ * (E-2026-07-11-TIERC-HEADTOHEAD Arm A2; named remedy #1 in
+ * `research/lab/tierc/champion-spec-gyroid.md` §1.5, the 2-locus deterministic
+ * non-manifold defect at near-tangent doubled general-curve passes). A leaf
+ * crossed by >=2 DISTINCT `kind:'general-curve'` FeatureLines (by `label`) is
+ * split into 4 quadrant leaves at level+1 BEFORE any other processing in
+ * {@link triangulateQuadtreeWithFeatures}, so every downstream mechanism (grid-
+ * line registry, 2:1 transition templates, spatial bucketing) treats it exactly
+ * as if the quadtree itself had refined there — refining the CELL, never
+ * inserting new constraint geometry (the over-constraint hazard the champion
+ * spec's §V11q names: a THIRD near-coincident CONSTRAINT line regressed badly;
+ * this lever adds zero new curve points, only smaller cells).
+ *
+ * SAFETY GUARD: a flagged leaf is left UNSPLIT if it has an existing neighbour
+ * exactly one level COARSER than itself on any side. Splitting it would then
+ * create a 2-level gap on that side; the transition-template system (splitS/E/
+ * N/W in the caller) only ever adds ONE mid-edge point per side and assumes at
+ * most a one-level finer-neighbour gap — the invariant
+ * `PeriodicBalancedQuadtree.balance()` normally guarantees for every REAL
+ * quadtree build. Violating it here would manufacture a NEW T-junction/crack —
+ * exactly the class of defect this policy exists to remove. Skipping is a
+ * conservative, measurable degrade (that one cell is simply not force-refined),
+ * never a new crack. Also skipped: any leaf with `uExtra !== 0` (directional
+ * refinement is disabled on every feature wall in production, so this never
+ * fires there; the guard exists so a hand-built test/edge-case fixture can never
+ * hit the ambiguous effective-u-level arithmetic a directional split implies).
+ *
+ * Called ONLY when `options.multiCurveCellPolicy === 'forceRefine'` — default
+ * `'off'` never reaches this function, so it has zero effect on the byte-
+ * identical default export path.
+ */
+export function forceRefineMultiCurveLeaves(
+  leaves: readonly QuadLeaf[],
+  features: readonly FeatureLine[],
+  uBias: number,
+): QuadLeaf[] {
+  const flagged = detectMultiCurveLeaves(leaves, features, uBias);
+  if (flagged.size === 0) return leaves.slice();
+
+  const eULof = (l: { level: number; uExtra?: number }): number => l.level + uBias + (l.uExtra ?? 0);
+  const iuOf = (l: QuadLeaf): number => l.iu ?? Math.round(l.u0 * (1 << eULof(l)));
+  const itOf = (l: QuadLeaf): number => l.it ?? Math.round(l.t0 * (1 << l.level));
 
   // ── (b) safety guard: skip a flagged leaf that already has an existing
   //    neighbour exactly one level COARSER (would create a 2-level gap). ──
@@ -571,11 +650,10 @@ export function forceRefineMultiCurveLeaves(
   };
 
   // ── (c) split each safe flagged leaf into 4 quadrant children at level+1. ──
-  const flaggedSet = new Set(flagged);
   const out: QuadLeaf[] = [];
   for (let li = 0; li < leaves.length; li++) {
     const l = leaves[li];
-    if (!flaggedSet.has(li) || (l.uExtra ?? 0) !== 0 || touchesPinnedBoundary(l) || hasCoarserNeighbour(l)) {
+    if (!flagged.has(li) || (l.uExtra ?? 0) !== 0 || touchesPinnedBoundary(l) || hasCoarserNeighbour(l)) {
       out.push(l);
       continue;
     }
@@ -804,6 +882,16 @@ export function triangulateQuadtreeWithFeatures(
   // 'fanRepair' does not touch the leaf set — it is a POST-PASS applied to the
   // fully-assembled triangle list, near the end of this function (see the call
   // to fanConsistencyRepair below).
+  // 'snapMerge' (Arm A4b) ALSO does not touch the leaf set — it widens the
+  // grid-line registry's merge tolerance for boundary points registered while
+  // processing one of these flagged leaves (PASS A below), so the SAME set is
+  // computed here (once, on the ORIGINAL unmodified `leaves`) and threaded
+  // through as `snapMergeFlagged`. `null` for every other policy value ⇒ the
+  // per-leaf `registerBoundary` widen check below is always false ⇒ the
+  // default/forceRefine/fanRepair paths never evaluate `detectMultiCurveLeaves`
+  // at all — byte-identical.
+  const snapMergeFlagged: Set<number> | null =
+    multiCurveCellPolicy === 'snapMerge' ? detectMultiCurveLeaves(leaves, features, uBias) : null;
   const topology = options.legacyTopology === true ? undefined : buildQuadtreeTopology(leaves, uBias);
 
   // Integer-cell existence set keyed on the EFFECTIVE u-level (`${level}:${it}:
@@ -1091,6 +1179,39 @@ export function triangulateQuadtreeWithFeatures(
     if (!inner) { inner = new Map(); m.set(k, inner); }
     if (!inner.has(sub)) inner.set(sub, p);
   };
+  /**
+   * OPT-IN widened registry merge for `multiCurveCellPolicy: 'snapMerge'` (Arm
+   * A4b). Identical to `regAdd` (first-writer-wins on the EXACT quantized
+   * sub-key, caller keeps using its own `p`) UNLESS `widen` is true (the
+   * calling leaf was flagged by {@link detectMultiCurveLeaves}, the SAME
+   * same-cell/2-distinct-general-curve-label test `forceRefineMultiCurveLeaves`
+   * uses) AND no exact sub-key match exists — in that case, search the SAME
+   * grid line's already-registered points for one within `SNAP_MERGE_WELD`
+   * (u,t) and, if found, return IT so the caller adopts the EXISTING point
+   * instead of registering a new near-duplicate. Both cells sharing this grid
+   * line read the SAME (now-merged) entry in PASS B, so the merge is symmetric
+   * by construction — no new asymmetry can result. `widen=false` (every policy
+   * other than 'snapMerge', or an unflagged leaf under 'snapMerge') is
+   * BYTE-IDENTICAL to `regAdd` + the caller's pre-existing "keep my own p"
+   * behaviour (this function always returns `p`, never `exact`, on an exact-key
+   * hit — the no-op side effect matches `regAdd` precisely).
+   */
+  const regAddResolve = (
+    m: Map<number, Map<number, CellPoint>>, k: number, sub: number, p: CellPoint, widen: boolean,
+  ): CellPoint => {
+    let inner = m.get(k);
+    if (!inner) { inner = new Map(); m.set(k, inner); }
+    if (inner.has(sub)) return p;
+    if (widen) {
+      for (const cand of inner.values()) {
+        if (Math.abs(cand.u - p.u) <= SNAP_MERGE_WELD && Math.abs(cand.t - p.t) <= SNAP_MERGE_WELD) {
+          return cand;
+        }
+      }
+    }
+    inner.set(sub, p);
+    return p;
+  };
 
   // ── Rail force-register (Task 3) ────────────────────────────────────────────
   // Admit EVERY (snapped) rail-line vertex into the grid-line registry keyed by
@@ -1194,20 +1315,29 @@ export function triangulateQuadtreeWithFeatures(
     const interiorKey = new Map<number, number>();
     const constraints: Array<[CellPoint, CellPoint]> = [];
 
+    // OPT-IN 'snapMerge' widen check (Arm A4b) — true only when this EXACT
+    // leaf was flagged by detectMultiCurveLeaves (same test forceRefine uses).
+    // `snapMergeFlagged` is null for every other policy, so this is always
+    // false off the opt-in path — zero effect on the default/forceRefine/
+    // fanRepair behaviour below.
+    const widenThisLeaf = snapMergeFlagged !== null && snapMergeFlagged.has(li);
+
     // Register a boundary feature point onto its grid line (skip corners).
-    const registerBoundary = (p: CellPoint): boolean => {
+    // Returns the RESOLVED point to use (== p unless 'snapMerge' widen-merged
+    // it onto an already-registered near-coincident point from the OTHER
+    // curve label), or null when p is not on this leaf's edge at all.
+    const registerBoundary = (p: CellPoint): CellPoint | null => {
       const onS = Math.abs(p.t - t0) <= ON_EDGE_EPS;
       const onN = Math.abs(p.t - t1) <= ON_EDGE_EPS;
       const onW = Math.abs(p.u - u0) <= ON_EDGE_EPS;
       const onE = Math.abs(p.u - u1) <= ON_EDGE_EPS;
-      if (!(onS || onN || onW || onE)) return false;
+      if (!(onS || onN || onW || onE)) return null;
       const atCorner = (onS || onN) && (onW || onE);
-      if (atCorner) return true;
-      if (onS) regAdd(regH, tKey(t0), uKey(p.u), { u: p.u, t: t0 });
-      else if (onN) regAdd(regH, tKey(t1), uKey(p.u), { u: p.u, t: t1 });
-      else if (onW) regAdd(regV, uKey(u0), tKey(p.t), { u: u0, t: p.t });
-      else regAdd(regV, uKey(u1), tKey(p.t), { u: u1, t: p.t });
-      return true;
+      if (atCorner) return p;
+      if (onS) return regAddResolve(regH, tKey(t0), uKey(p.u), { u: p.u, t: t0 }, widenThisLeaf);
+      if (onN) return regAddResolve(regH, tKey(t1), uKey(p.u), { u: p.u, t: t1 }, widenThisLeaf);
+      if (onW) return regAddResolve(regV, uKey(u0), tKey(p.t), { u: u0, t: p.t }, widenThisLeaf);
+      return regAddResolve(regV, uKey(u1), tKey(p.t), { u: u1, t: p.t }, widenThisLeaf);
     };
     const registerInterior = (p: CellPoint): void => {
       const k = qk(p);
@@ -1232,11 +1362,17 @@ export function triangulateQuadtreeWithFeatures(
     };
 
     for (const piece of pieces) {
-      const pa = snapToAnchor(piece.a);
-      const pb = snapToAnchor(piece.b);
+      let pa = snapToAnchor(piece.a);
+      let pb = snapToAnchor(piece.b);
       if (qk(pa) === qk(pb)) continue;
-      if (!registerBoundary(pa)) registerInterior(pa);
-      if (!registerBoundary(pb)) registerInterior(pb);
+      const rpa = registerBoundary(pa);
+      if (rpa !== null) pa = rpa; else registerInterior(pa);
+      const rpb = registerBoundary(pb);
+      if (rpb !== null) pb = rpb; else registerInterior(pb);
+      // Re-check after a possible 'snapMerge' widen-merge unified pa and pb
+      // onto the same existing point (default path: pa/pb are byte-identical
+      // to their pre-register values here, so this can never newly trigger).
+      if (qk(pa) === qk(pb)) continue;
       constraints.push([pa, pb]);
     }
     // Per-edge boundary crossings (incl. tangent touches the box clip misses).
