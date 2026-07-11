@@ -423,3 +423,33 @@ potentially ZERO added triangles (same 28,785-point budget, better placement).**
 A3-add: a third curve bounded to the ~166 hot arcs only (~1-3% tris, §V11q over-constraint hazard —
 test 5-10 arcs first). NOT the refuted single-midline (§1.2) — the curvature peaks are near the band
 EDGES, not the midline.
+
+---
+
+## ADDENDUM 14 (2026-07-11) — A3 FIDELITY REFUTED: Gyroid knee is a density-invariant flat-P1 FRONTIER (~0.0247)
+
+A3-relocate (probes `_tierc_a3_reloc.test.ts` + `_tierc_a3_reloc_lib.ts`; data `armA3_reloc_*.json`).
+The decisive Gyroid-fidelity experiment. VERDICT: **FAIL — genuinely characterized frontier, all
+pre-registered + follow-up levers refuted.**
+- **Knee locus = AT-EDGE (not offset).** Closed-form curvature (shapeDerivs): shapeRaw=s²(3−2s) →
+  d²/ds²=6−12s, affine, zero at midline (why single-midline was refuted), MAXIMAL at the ramp
+  endpoints s=0/1 = the embedded edges 0.135/0.15. Median |peak−nominal| = 8.47e-6 (≪ the extraction's
+  valTol 1e-4). The champion ALREADY embeds at exactly the right locus — relocation is a no-op (proven,
+  not built). (Agent caught+fixed a scan-window bug that had faked an "OFFSET" first pass.)
+- **Local densification REFUTED.** 166 hot arcs @ 0.02mm (7.5× finer): outer tris +1.57%, bandedge pts
+  +59.4%, but Newton-worst UNCHANGED (0.024917→0.024705, −0.85%), est. outliers WORSE (+10.4%).
+  knee-class clean (424/424 knee-adjacent, 0 off-band — no K3 signature).
+- **MECHANISM (precise):** featureLevel=11 fixes the CROSS-BAND quadtree cell size independent of
+  along-curve point placement. A vertex sits exactly on the analytic C1-not-C2 knee, but the flat facet
+  spanning AWAY from it chords the curvature spike (min 0.004 / max 1350 mm⁻¹ across the population,
+  only the ~166 highest-curvature arcs are hot). Cross-band cell refinement makes it WORSE (relief-chord-
+  cliff, +134% survivors at fL 11→12 global). Along-curve refinement no-effect. **DENSITY-INVARIANT.**
+
+**GYROID FIDELITY = a characterized flat-P1 FRONTIER at Newton-worst ~0.0247** (~31-34k facets, at
+2.24M outer tris ≪ 7.0M budget). Reaching true-0.01 needs a NEW production-kernel primitive that
+neither the champion nor this arc has: (a) a CURVED element (PN) that follows the knee curvature, or
+(b) a cell-scoped level-override at just the 166 hot cells (mechanistically DOUBTFUL — global level
+escalation made it worse; same relief-chord-cliff). This is the SAME flat-P1 limitation as DS's 0.046mm
+sheet cliff and Gothic's 19% sliver concession — a UNIFIED frontier: flat-P1 elements cannot follow
+high-curvature features at cell-bound facet sizes. The unifying true-0.01 path for all three is a
+curved-element (PN) treatment — Phase-2 research, priced as its own program.
