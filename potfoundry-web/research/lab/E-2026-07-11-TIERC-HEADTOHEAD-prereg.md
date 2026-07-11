@@ -124,3 +124,28 @@ production kernels either way. The A2 fan-fix `multiCurveCellPolicy` option (def
 byte-identical off) is unaffected: it is a kernel bug fix, not the region-layer seam. Recorded
 before the first scored run per the honesty rails; no scored configuration is altered by this
 addendum.
+
+---
+
+## ADDENDUM 2 (2026-07-11, after Arm D run 1 FAIL, BEFORE Arm D run 2) — quality-parity criterion corrected
+
+Arm D run 1 (committed 80b2a3fb) FAILED on "quality distribution not worse than production's on
+p5MinAngle/%<20°" by a displayed +0.1pp. Mechanism-level diagnosis
+(research/lab/tierc/armD-quality-diagnosis.md): (1) round1 display quantization amplified a
+0.0101pp unrounded gap 10x across the 16.75 display boundary; (2) the SCORING-PATH evaluator
+(evaluatePackedAssemblyToXyz) double-applied the inner-wall z-mapping on INNER/BOTTOM-TOP vertices
+— an instrument bug tainting quality/signedVolume fields only (topology, G1, G2, G6, watertight
+provably untainted; the mesher itself was never at fault); (3) true float-provenance noise on the
+corrected basis = ONE triangle crossing 20°, worst matched-pair Δangle 0.0117°, below-1° counts
+exactly equal. The run-1 FAIL row stands as recorded.
+
+AMENDED QUALITY-PARITY CRITERION (applies to Arm D run 2 and all subsequent arms):
+- PRIMARY (same-provenance): for the smooth control, packed-assembly HASH IDENTITY vs a direct
+  twin build (no tolerance; already asserted twice, passes). Champion arms baseline quality on
+  their same-provenance twins so deltas attribute to region-layer mechanisms, not float pipelines.
+- FALLBACK (capture-only baselines): compare UNROUNDED percentages; pctBelow20 ≤ +0.1pp,
+  pctBelow10 ≤ +0.05pp, no-new-mass-below-5° ≤ +0.01pp of population — each grounded against the
+  measured 0.0002–0.0007pp provenance floor (~150–500x headroom).
+- The evaluator one-line fix (validated by the diagnosis probe's evalPackedCorrected reference,
+  hash-asserted against the scored mesh) is applied before run 2; run 2 is labeled run=2 in its
+  row. Recorded before the re-run per the honesty rails.
