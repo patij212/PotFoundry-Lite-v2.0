@@ -316,3 +316,25 @@ GYROID WATERTIGHTNESS STATE: 360 boundary holes (A4b-v2 open) + 652 orientation 
 remain. Fidelity (A1) + non-manifold (A2 fanRepair) are the only closed pieces. FIX-PHASE TALLY: Gothic
 C2 PASS (analytic lever, mechanism-proven, full-patch scale deferred); Gyroid A4b REFUTED-v1;
 A4-orient + DS-Finding-2 (winding, may share root) + A4b-v2 + DS-Finding-1/3 remain.
+
+---
+
+## ADDENDUM 9 (2026-07-11) — winding-root DISTINCT; DS fix is cheap/zero-blast, Gyroid is local-kernel
+
+Winding-root diagnosis (`research/lab/tierc/WINDING-ROOT-diagnosis.md`): the Gyroid u-seam (652) and
+DS adoption-seam (7168) winding defects are **DISTINCT mechanisms** (shared-root hypothesis REFUTED —
+avoids a fragile forced unification):
+- **DS Finding 2 = missing cross-triangulator winding CONTRACT.** `buildStructuredWall`
+  (`_sharp3dMesh.ts:96-116`) emits CW-in-(θ,z); `ConformingWall`/quadtree emits CCW. 100% systematic,
+  feature-independent. **Fix: flip the two `idx.push` orders in `_sharp3dMesh.ts` — ZERO production
+  blast radius** (`src/` never imports it; consumers are `_tierc_b0/b1` libs + `_sharp3dArtDeco`/
+  `_pf_dsconform` tests, re-verifiable). Must land WITH Finding 1 (domain-overlap): overlap hid the
+  winding inside nonManifold=3584; fixing overlap exposes it as orientation=7168; neither subsumes.
+- **Gyroid A4-orient = LOCAL registry-read inconsistency** between two wrapsSeam+feature-registered
+  leaves in `FeatureConformingTriangulator.ts` PASS A/B, gated by feature-curve proximity (near-even
+  flip {2f0r:314,0f2r:338}, confined to the one t≈0.31-0.33 band; >99.99% of the seam is correct).
+  Fix is kernel-scoped to the regH/regV/featS..featE read for wrapsSeam-flagged leaf pairs — NOT a
+  global flip. Fixture-first + real GitNexus impact (wrapsSeam is shared kernel machinery).
+
+DS fix arm (Findings 1+2 together) = next; Gyroid A4-orient = a careful kernel arm after; A4b-v2 +
+DS Finding 3 remain.
