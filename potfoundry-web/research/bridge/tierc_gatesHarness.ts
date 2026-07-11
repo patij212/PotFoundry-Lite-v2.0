@@ -27,6 +27,16 @@
 // DEV-ONLY. research/ never imported by src/. Node-only (uses node:fs for the optional breadcrumb /
 // ndjson-append side effects; both are opt-in — scoreAllGates is a pure function of its inputs unless
 // opts.breadcrumbPath / opts.outputPath are supplied).
+//
+// v1.1 (post gates-harness-bench.md, 7507c19f): adds `opts.stride` — threaded VERBATIM to
+// scoreWholeMeshInterior's own stride parameter (the probe's exact composition; the scorecard's own
+// GothicArches shard rows carry "stride=4 ... shard=k/4" with scannedFacets = ceil(slice/4)) and echoed
+// in the basis string like the probe does; adds `opts.survivorsIn` + returned `survivorsOut` +
+// exported `prescreenOuterFacets` (prescreen-once for fleets); adds `g1_forward.scannedFacets` (the
+// merge-precedent sum field, _prod_truth_merge.mjs). Scored semantics at default opts are UNCHANGED
+// vs v1.0 — stride=1 scans the identical facet set with identical numbers; the only row-format deltas
+// are the ` stride=N` basis label (probe convention — semantics-bearing, so unconditional) and the
+// additive scannedFacets field.
 import { appendFileSync } from 'node:fs';
 import { denseBary } from './_pf_tangledKernelLib';
 import { scoreWholeMeshInterior } from './_pf_rebaselineRuler';
@@ -117,6 +127,43 @@ export interface ScoreAllGatesOpts {
    * populates g7_assembly.outerWallSeamTriangleCount; otherwise that field stays null (spec §3.3).
    */
   outerWallSeamTriangles?: ArrayLike<number>;
+  /**
+   * G1 interior stride (default 1): threaded VERBATIM to `scoreWholeMeshInterior`'s own `stride`
+   * parameter — score every stride-th facet of THIS shard's stage-2 population (survivor-ordinal
+   * striding, exactly the probe's PF_PT_STRIDE composition; see the GothicArches scorecard rows whose
+   * basis reads "stride=4 ... shard=k/4" with scannedFacets = ceil(sliceSize/4)). Echoed in
+   * `g1_forward.basis` as ` stride=N` (unconditional, probe convention). stride=1 is byte-identical
+   * to the unstrided path. stride>1 rows are labeled SUBSAMPLE rows: outliers/max are exact over the
+   * scanned subsample (`scannedFacets`), same semantics as the probe's own stride>1 rows — never an
+   * acceptance basis (prereg honesty rail: "stratified estimates never serve as acceptance bases").
+   * NOTE (deliberate deviation from a literal reading of the v1.1 mission item 3): the PRESCREEN stage
+   * is NOT strided. (1) The prescreen population defines the survivor set — striding it would create a
+   * NEW sampling basis no proven run has used (the probe strides survivors, never the screen), breaking
+   * "exactly like the probe does". (2) Raw-facet-id striding collides with the raw-id shard filter when
+   * gcd(stride, nShards) > 1 (the fleet's own 4/4 config would starve shards 1-3). (3) The prescreen
+   * cost motive is served by survivorsIn/prescreenOuterFacets (prescreen ONCE per fleet, not per shard).
+   */
+  stride?: number;
+  /**
+   * PRESCREEN-ONCE (fleet lever): a precomputed prescreen45 survivor list (GLOBAL outer-facet ids,
+   * ascending) — e.g. a prior run's `survivorsOut` or a direct `prescreenOuterFacets()` call over the
+   * SAME outer bins / rA / H / tolMm. When supplied, the prescreen stage is SKIPPED entirely and this
+   * list is the stage-2 population (then shard-filtered by raw id + strided by the ruler, exactly as a
+   * fresh prescreen's survivors would be). The basis string is unchanged (same prescreen45 population
+   * definition — reuse is an execution detail, not a semantics change); the caller owns the contract
+   * that the list actually came from the same screen. Takes precedence over `prescreen`.
+   */
+  survivorsIn?: Uint32Array | ArrayLike<number>;
+}
+
+/**
+ * scoreAllGates' return: the ndjson row PLUS (when a prescreen ran fresh, or echoing survivorsIn) the
+ * full unsharded survivor list, so a fleet coordinator can prescreen once and fan out shards with
+ * `survivorsIn`. `survivorsOut` is attached AFTER the optional `opts.outputPath` append — it never
+ * appears in the ndjson file, only on the in-memory return value.
+ */
+export interface ScoreAllGatesResult extends GatesRow {
+  survivorsOut?: Uint32Array;
 }
 
 // ─────────────────────────────────────── row schema (spec §3.3) ──────────────────────────────────
@@ -125,6 +172,12 @@ export interface GatesRowG1Forward {
   basis: string;
   nFacets: number;
   survivors: number;
+  /**
+   * Facets actually scored by stage 2 (= this shard's survivor slice reduced by stride) — the probe's
+   * own `interior.scannedFacets` field; SUMS across shards in a merge (_prod_truth_merge.mjs
+   * precedent: "outlier counts and scanned-facet counts sum").
+   */
+  scannedFacets: number;
   outliers: number;
   maxMm: number;
   p50Mm: number;
@@ -327,6 +380,47 @@ function countNonZero(a: ArrayLike<number>): number {
   return n;
 }
 
+/**
+ * The FAST-HONEST-RULER prescreen45 as a standalone, reusable pass: dense 45-pt (denseBary(8))
+ * same-(u,t) RADIAL upper bound per facet — a facet whose whole lattice is radially <= tolMm is
+ * proven green on the same dense basis the acceptance guard uses (radial >= true nearest), so
+ * outlier count and max over the returned SURVIVORS are exact-equivalent to scoring every facet
+ * (_prod_truth.test.ts:40-43 / :174-208, reproduced verbatim; loop-local aliases hoisted, a pure
+ * refactor). Returns the survivor facet ids (ascending, GLOBAL outer-facet indices) — feed to
+ * `scoreAllGates` via `opts.survivorsIn` to prescreen ONCE for a whole shard fleet.
+ */
+export function prescreenOuterFacets(
+  outer: BinMesh,
+  rA: AnalyticRadiusFn,
+  H: number,
+  tolMm = 0.01,
+  onTick?: (scanned: number, of: number, survivorsSoFar: number) => void,
+): Uint32Array {
+  const oXyz = outer.xyz, oIdx = outer.idx;
+  const nF = oIdx.length / 3;
+  const bary = denseBary(8); // the 45-pt acceptance lattice (>=36 mandated)
+  const survivors: number[] = [];
+  const tick = Math.max(1, Math.floor(nF / 10));
+  for (let f = 0; f < nF; f++) {
+    if (onTick && f % tick === 0) onTick(f, nF, survivors.length);
+    const a = oIdx[f * 3] * 3, b = oIdx[f * 3 + 1] * 3, c = oIdx[f * 3 + 2] * 3;
+    let green = true;
+    for (const [wa, wb, wc] of bary) {
+      const x = wa * oXyz[a] + wb * oXyz[b] + wc * oXyz[c];
+      const y = wa * oXyz[a + 1] + wb * oXyz[b + 1] + wc * oXyz[c + 1];
+      const z = wa * oXyz[a + 2] + wb * oXyz[b + 2] + wc * oXyz[c + 2];
+      let th = Math.atan2(y, x);
+      if (th < 0) th += TAU;
+      if (Math.abs(Math.hypot(x, y) - rA(th, Math.min(H, Math.max(0, z)))) > tolMm) {
+        green = false;
+        break;
+      }
+    }
+    if (!green) survivors.push(f);
+  }
+  return Uint32Array.from(survivors);
+}
+
 // ─────────────────────────────────────── entry point ─────────────────────────────────────────────
 
 /**
@@ -345,7 +439,7 @@ export function scoreAllGates(
   styleTruth: StyleTruth,
   manifestRow: StyleManifest | undefined,
   opts: ScoreAllGatesOpts = {},
-): GatesRow {
+): ScoreAllGatesResult {
   const t0 = Date.now();
   const tolMm = opts.tolMm ?? 0.01;
   const shard = Math.max(0, opts.shard ?? Number(process.env.PF_PT_SHARD ?? 0));
@@ -372,48 +466,59 @@ export function scoreAllGates(
   }
   crumb('start');
 
-  // ── G1 forward: prescreen45 -> scoreWholeMeshInterior -> newtonNearest (worst point) ────────────
+  // ── G1 forward: prescreen45 -> scoreWholeMeshInterior(stride) -> newtonNearest (worst point) ────
   const tG1 = Date.now();
   const nFOuter = bins.outer.idx.length / 3;
-  let survivorsTotal = nFOuter;
-  let g1Basis = 'scoreWholeMeshInterior(GNscreen+bruteConfirm-if-gn>5x) -> newtonNearest(worstPointOnly)';
-  let mineFacetIds: number[];
-  if (prescreen) {
-    const bary = denseBary(8); // the 45-pt acceptance lattice (>=36 mandated)
-    const survivors: number[] = [];
-    const crumbTick = Math.max(1, Math.floor(nFOuter / 10));
-    for (let f = 0; f < nFOuter; f++) {
-      if (f % crumbTick === 0) crumb('prescreen-tick', { pct: Math.round((f / nFOuter) * 100) });
-      const a = bins.outer.idx[f * 3] * 3, b = bins.outer.idx[f * 3 + 1] * 3, c = bins.outer.idx[f * 3 + 2] * 3;
-      let green = true;
-      for (const [wa, wb, wc] of bary) {
-        const x = wa * bins.outer.xyz[a] + wb * bins.outer.xyz[b] + wc * bins.outer.xyz[c];
-        const y = wa * bins.outer.xyz[a + 1] + wb * bins.outer.xyz[b + 1] + wc * bins.outer.xyz[c + 1];
-        const z = wa * bins.outer.xyz[a + 2] + wb * bins.outer.xyz[b + 2] + wc * bins.outer.xyz[c + 2];
-        let th = Math.atan2(y, x);
-        if (th < 0) th += TAU;
-        if (Math.abs(Math.hypot(x, y) - rA(th, Math.min(H, Math.max(0, z)))) > tolMm) {
-          green = false;
-          break;
-        }
-      }
-      if (!green) survivors.push(f);
+  const stride = Math.max(1, Math.floor(opts.stride ?? 1));
+  let survivorsTotal: number;
+  let survivorsFresh: Uint32Array | undefined; // full unsharded survivor list, when computed here
+  let scoreIdx: Uint32Array;
+  let prescreenBasis: boolean;
+  if (opts.survivorsIn !== undefined) {
+    // PRESCREEN-ONCE reuse: the caller supplies the survivor population (same prescreen45 basis,
+    // computed elsewhere — e.g. prescreenOuterFacets or a prior run's survivorsOut). Shard-filter by
+    // raw facet id exactly as the fresh path does.
+    prescreenBasis = true;
+    const sIn = opts.survivorsIn;
+    survivorsTotal = sIn.length;
+    const mine: number[] = [];
+    for (let i = 0; i < sIn.length; i++) {
+      const f = sIn[i];
+      if (nShards === 1 || f % nShards === shard) mine.push(f);
     }
-    survivorsTotal = survivors.length;
-    mineFacetIds = nShards > 1 ? survivors.filter((f) => f % nShards === shard) : survivors;
-    g1Basis = `prescreen45(dense-radial-upperBound) -> ${g1Basis}`;
-    crumb('prescreen-done', { survivors: survivorsTotal, mine: mineFacetIds.length });
+    scoreIdx = buildFacetSubset(bins.outer.idx, mine);
+    crumb('prescreen-reused', { survivors: survivorsTotal, mine: mine.length });
+  } else if (prescreen) {
+    prescreenBasis = true;
+    survivorsFresh = prescreenOuterFacets(bins.outer, rA, H, tolMm, (f, of, sSoFar) => {
+      crumb('prescreen-tick', { pct: Math.round((f / of) * 100), survivorsSoFar: sSoFar });
+    });
+    survivorsTotal = survivorsFresh.length;
+    const mine: number[] = [];
+    for (let i = 0; i < survivorsFresh.length; i++) {
+      const f = survivorsFresh[i];
+      if (nShards === 1 || f % nShards === shard) mine.push(f);
+    }
+    scoreIdx = buildFacetSubset(bins.outer.idx, mine);
+    crumb('prescreen-done', { survivors: survivorsTotal, mine: mine.length });
   } else {
-    const all: number[] = [];
-    for (let f = 0; f < nFOuter; f++) all.push(f);
-    mineFacetIds = nShards > 1 ? all.filter((f) => f % nShards === shard) : all;
+    prescreenBasis = false;
+    survivorsTotal = nFOuter;
+    if (nShards === 1) {
+      // Zero-copy fast path (probe parity for the unscreened, unsharded case: _prod_truth.test.ts
+      // passes outer.idx directly). The ruler's own stride handles any stride>1.
+      scoreIdx = bins.outer.idx;
+    } else {
+      const mine: number[] = [];
+      for (let f = 0; f < nFOuter; f++) if (f % nShards === shard) mine.push(f);
+      scoreIdx = buildFacetSubset(bins.outer.idx, mine);
+    }
   }
-  if (nShards > 1) g1Basis += ` shard=${shard}/${nShards}`;
 
-  const scoreIdx = buildFacetSubset(bins.outer.idx, mineFacetIds);
-  crumb('interior-start', { toScore: scoreIdx.length / 3 });
+  crumb('interior-start', { toScore: Math.ceil(scoreIdx.length / 3 / stride), stride });
   const interior = scoreWholeMeshInterior(bins.outer.xyz, scoreIdx, rA, H, {
     tol: tolMm,
+    stride,
     brute: opts.g1Brute,
     onProgress: (done, total, nOut, worst) => {
       if (Date.now() - lastTickAt > 30_000) {
@@ -422,6 +527,13 @@ export function scoreAllGates(
       }
     },
   });
+  // Basis assembled AFTER the ruler so the stride label is the ruler's own echo (probe convention:
+  // "upperBound(min(GN,brute)) stride=N ..." — the number the run actually used, not the request).
+  let g1Basis =
+    (prescreenBasis ? 'prescreen45(dense-radial-upperBound) -> ' : '') +
+    `scoreWholeMeshInterior(GNscreen+bruteConfirm-if-gn>5x) stride=${interior.stride}` +
+    ' -> newtonNearest(worstPointOnly)';
+  if (nShards > 1) g1Basis += ` shard=${shard}/${nShards}`;
   crumb('interior-done', { outliers: interior.interiorOutliers, max: +interior.wholeMeshMaxMm.toFixed(6) });
 
   let newtonWorstMm: number | null = null;
@@ -457,6 +569,7 @@ export function scoreAllGates(
     basis: g1Basis,
     nFacets: nFOuter,
     survivors: survivorsTotal,
+    scannedFacets: interior.scannedFacets,
     outliers: interior.interiorOutliers,
     maxMm: interior.wholeMeshMaxMm,
     p50Mm: interior.p50,
@@ -725,5 +838,15 @@ export function scoreAllGates(
     appendFileSync(opts.outputPath, JSON.stringify(row) + '\n');
   }
   crumb('row-append', { totalMs: row.totalMs });
-  return row;
+  // survivorsOut attached AFTER the ndjson append — never serialized into the file. Fresh list when
+  // the prescreen ran here; echo (as Uint32Array) when survivorsIn was supplied; absent otherwise
+  // (prescreen:false has no survivor basis to hand out).
+  const result: ScoreAllGatesResult = row;
+  if (survivorsFresh) {
+    result.survivorsOut = survivorsFresh;
+  } else if (opts.survivorsIn !== undefined) {
+    result.survivorsOut =
+      opts.survivorsIn instanceof Uint32Array ? opts.survivorsIn : Uint32Array.from(opts.survivorsIn);
+  }
+  return result;
 }

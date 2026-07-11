@@ -182,3 +182,19 @@ kill; `bench_crumbs.ndjson` contains the full 38-line stage trail for both style
 - `research/exchange/tierc/bench_crumbs.ndjson` (NEW, full stage-boundary trail for both styles)
 
 `research/bridge/tierc_gatesHarness.ts` was NOT modified (hard rule). Nothing committed (hard rule).
+
+---
+
+## CORRECTION (2026-07-11, v1.1 follow-up — supersedes the per-facet comparison above)
+
+The "3.4-3.9x slower than the probe (385-440 vs 112 ms/facet)" comparison in this report was a
+**stride-denominator misread**: the historical GothicArches shard-0/4 probe row is itself
+`stride=4` with `scannedFacets=10,185` (its own basis string says so), giving a true probe rate of
+**440.0 ms per SCANNED facet** (4 shards: 448.6/441.1/428.0/442.1). The harness's 385-440 ms/facet
+was therefore **0.86-0.98x parity**, not a slowdown. Confirmed dynamically (v1.1 micro-bench, same
+shard-0 slice, same process, warmed): probe-equivalent 388.2 vs harness 380.0 ms/scanned-facet
+(0.98x), identical 449 outliers, survivor lists elementwise-identical (162,937). The genuine v1.0
+gap was the MISSING STRIDE LEVER (the bench ran de-facto stride 1 = legitimately ~4x the probe's
+stride-4 wall time). v1.1 adds `opts.stride` (probe-exact survivor-ordinal, interior-only) +
+`survivorsIn/survivorsOut` prescreen-once: full-shard projection 258 min -> ~64 min at the batch's
+stride-4 basis (probe: 76.2 min). Composition was never at fault.

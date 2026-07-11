@@ -107,3 +107,20 @@ Stratified estimates never serve as acceptance bases (literal shard runs for ver
 config/tolerance change after first scored run = a new labeled arm, never an edit. Every
 kill names its mechanism. Control-arm regressions outrank champion wins — a champion "win" that
 degrades D is an architecture failure. All rows carry tree-basis labels.
+
+---
+
+## ADDENDUM 1 (2026-07-11, BEFORE any scored run) — integration seam moved research-side for Phase 1
+
+The "Common configuration" bullet "the region layer replaces the OUTER-WALL build only, behind a
+NEW dev flag (default OFF); flag-off byte-identity proven by the rebaseline pattern BEFORE any
+scored arm" is amended: Phase-1 arms run the region layer ENTIRELY RESEARCH-SIDE, driving the
+production kernels through the proven twin-injection seam (AssemblyWallOptions — the same
+mechanism as the Delta-2-exact Gyroid twins and Arm B0). No src/ dev flag, no production edit for
+the scored arms; byte-identity of production is satisfied trivially (nothing changes). The src
+integration seam moves to Phase 2/3 (production wiring of a PROVEN region layer). Rationale:
+strict risk reduction with identical evidentiary value — the kernels exercised are the real
+production kernels either way. The A2 fan-fix `multiCurveCellPolicy` option (default 'off',
+byte-identical off) is unaffected: it is a kernel bug fix, not the region-layer seam. Recorded
+before the first scored run per the honesty rails; no scored configuration is altered by this
+addendum.

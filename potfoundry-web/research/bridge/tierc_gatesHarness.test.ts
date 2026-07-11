@@ -21,13 +21,21 @@
 // research/bridge tests" config exists in this repo — see vitest.tierc_gates.config.ts header):
 //   node node_modules/vitest/vitest.mjs run --config vitest.tierc_gates.config.ts research/bridge/tierc_gatesHarness.test.ts
 import { describe, it, expect } from 'vitest';
-import { readFileSync, mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { readFileSync, mkdtempSync, rmSync, existsSync } from 'node:fs';
+import * as os from 'node:os';
 import { join } from 'node:path';
+const { tmpdir } = os;
 import {
-  scoreAllGates, zeroAreaCount, needleCount,
+  scoreAllGates, zeroAreaCount, needleCount, prescreenOuterFacets,
   type BinMesh, type StyleTruth,
 } from './tierc_gatesHarness';
+// Bench-only imports (env-gated test at the bottom): the probe-equivalent arm is re-derived from the
+// same instruments the probe composes, read-only (_prod_truth.test.ts's own imports, verbatim).
+import { scoreWholeMeshInterior } from './_pf_rebaselineRuler';
+import { denseBary } from './_pf_tangledKernelLib';
+import { loadBinMesh } from './_pf_bvhRuler';
+import { buildRadiusFn } from './runStyle';
+import type { StyleId } from '../../src/geometry/types';
 
 const TAU = Math.PI * 2;
 
@@ -120,11 +128,12 @@ describe('tierc_gatesHarness — scoreAllGates', () => {
 
     expect(row.g1_forward.nFacets).toBe(mesh.idx.length / 3);
     expect(row.g1_forward.outliers).toBe(0);
+    expect(row.g1_forward.scannedFacets).toBe(0); // clean cone: 0 survivors -> stage 2 scans nothing
     expect(row.g1_forward.maxMm).toBeLessThan(2e-3); // flat-facet chord sag floor (~0.00043mm), far below tol
     expect(row.g1_forward.newtonWorstMm).toBeNull();
     expect(row.g1_forward.rulerPremiseOk).toBe(true);
     expect(row.g1_forward.basis).toBe(
-      'prescreen45(dense-radial-upperBound) -> scoreWholeMeshInterior(GNscreen+bruteConfirm-if-gn>5x) -> newtonNearest(worstPointOnly)',
+      'prescreen45(dense-radial-upperBound) -> scoreWholeMeshInterior(GNscreen+bruteConfirm-if-gn>5x) stride=1 -> newtonNearest(worstPointOnly)',
     );
   });
 
@@ -358,6 +367,9 @@ describe('tierc_gatesHarness — scoreAllGates', () => {
       expect(saved.style).toBe(row.style);
       expect(saved.totalMs).toBe(row.totalMs);
       expect(saved.g1_forward.outliers).toBe(row.g1_forward.outliers);
+      // survivorsOut is an in-memory fleet lever, never serialized into the ndjson row.
+      expect(row.survivorsOut).toBeDefined();
+      expect(saved.survivorsOut).toBeUndefined();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -398,4 +410,232 @@ describe('tierc_gatesHarness — scoreAllGates', () => {
     }, FAST);
     expect(rowExact.truthBridge).toEqual({ ok: true, note: null });
   });
+
+  // ── v1.1: stride (mission item 3 — probe-exact ruler-level striding) ───────────────────────────
+  it('stride=1 produces identical scored G1 numbers to the default (unstrided) path', () => {
+    const dirty = cloneBin(buildCone(N_THETA, N_Z));
+    for (let i = 40; i < 56; i++) displaceRadially(dirty, 4 * N_THETA + i, 0.3);
+    const common = { full: dirty, outer: dirty };
+    const a = scoreAllGates(common, TRUTH, undefined, FAST);
+    const b = scoreAllGates(common, TRUTH, undefined, { ...FAST, stride: 1 });
+    expect(a.g1_forward.outliers).toBeGreaterThan(0); // non-vacuous comparison
+    expect(b.g1_forward.outliers).toBe(a.g1_forward.outliers);
+    expect(b.g1_forward.maxMm).toBe(a.g1_forward.maxMm);
+    expect(b.g1_forward.scannedFacets).toBe(a.g1_forward.scannedFacets);
+    expect(b.g1_forward.survivors).toBe(a.g1_forward.survivors);
+    expect(b.g1_forward.basis).toBe(a.g1_forward.basis);
+    expect(a.g1_forward.basis).toContain('stride=1'); // labeled unconditionally, probe convention
+  });
+
+  it('stride=4 with prescreen:false scores exactly ceil(n/4) facets and labels the basis', () => {
+    const mesh = buildCone(N_THETA, N_Z); // clean cone: unscreened facets all stop at the cheap GN stage
+    const nF = mesh.idx.length / 3;
+    const row = scoreAllGates({ full: mesh, outer: mesh }, TRUTH, undefined, {
+      ...FAST, prescreen: false, stride: 4,
+    });
+    expect(row.g1_forward.scannedFacets).toBe(Math.ceil(nF / 4));
+    expect(row.g1_forward.basis).toContain('stride=4');
+    expect(row.g1_forward.basis).not.toContain('prescreen45');
+    // stride=1 sanity on the same path: scans everything.
+    const row1 = scoreAllGates({ full: mesh, outer: mesh }, TRUTH, undefined, {
+      ...FAST, prescreen: false, stride: 1,
+    });
+    expect(row1.g1_forward.scannedFacets).toBe(nF);
+  });
+
+  it('stride composes with prescreen: ruler scans ceil(survivorSlice/stride), survivors unchanged', () => {
+    const dirty = cloneBin(buildCone(N_THETA, N_Z));
+    for (let i = 40; i < 56; i++) displaceRadially(dirty, 4 * N_THETA + i, 0.3);
+    const common = { full: dirty, outer: dirty };
+    const s1 = scoreAllGates(common, TRUTH, undefined, FAST);
+    const s4 = scoreAllGates(common, TRUTH, undefined, { ...FAST, stride: 4 });
+    expect(s4.g1_forward.survivors).toBe(s1.g1_forward.survivors); // the prescreen basis is stride-independent
+    expect(s4.g1_forward.scannedFacets).toBe(Math.ceil(s1.g1_forward.scannedFacets / 4));
+    expect(s4.g1_forward.basis).toContain('stride=4');
+  });
+
+  // ── v1.1: prescreen-once (mission item 4 — survivorsIn / survivorsOut) ─────────────────────────
+  it('survivorsOut round-trips through survivorsIn with identical G1 numbers and no re-prescreen', () => {
+    const dirty = cloneBin(buildCone(N_THETA, N_Z));
+    for (let i = 40; i < 56; i++) displaceRadially(dirty, 4 * N_THETA + i, 0.3);
+    const common = { full: dirty, outer: dirty };
+    const fresh = scoreAllGates(common, TRUTH, undefined, FAST);
+    expect(fresh.survivorsOut).toBeDefined();
+    expect(fresh.survivorsOut!.length).toBe(fresh.g1_forward.survivors);
+    // The standalone helper produces the same survivor set the harness's fresh path used.
+    const helper = prescreenOuterFacets(dirty, TRUTH.rA, TRUTH.H);
+    expect(Array.from(helper)).toEqual(Array.from(fresh.survivorsOut!));
+
+    const reused = scoreAllGates(common, TRUTH, undefined, { ...FAST, survivorsIn: fresh.survivorsOut });
+    expect(reused.g1_forward.outliers).toBe(fresh.g1_forward.outliers);
+    expect(reused.g1_forward.maxMm).toBe(fresh.g1_forward.maxMm);
+    expect(reused.g1_forward.scannedFacets).toBe(fresh.g1_forward.scannedFacets);
+    expect(reused.g1_forward.survivors).toBe(fresh.g1_forward.survivors);
+    expect(reused.g1_forward.basis).toBe(fresh.g1_forward.basis); // same prescreen45 population basis
+    expect(reused.survivorsOut).toBeDefined(); // echoed for further fan-out
+
+    // Proof the reuse path does NOT recompute the screen: an (intentionally wrong) empty list is
+    // honored verbatim — a re-prescreen would have found the real survivors on this dirty mesh.
+    const empty = scoreAllGates(common, TRUTH, undefined, { ...FAST, survivorsIn: new Uint32Array(0) });
+    expect(empty.g1_forward.survivors).toBe(0);
+    expect(empty.g1_forward.scannedFacets).toBe(0);
+    expect(empty.g1_forward.outliers).toBe(0);
+  });
+
+  it('a 2-shard fleet sharing survivorsIn unions to the fresh unsharded result', () => {
+    const dirty = cloneBin(buildCone(N_THETA, N_Z));
+    for (let i = 40; i < 56; i++) displaceRadially(dirty, 4 * N_THETA + i, 0.3);
+    const common = { full: dirty, outer: dirty };
+    const fresh = scoreAllGates(common, TRUTH, undefined, FAST);
+    const s0 = scoreAllGates(common, TRUTH, undefined, {
+      ...FAST, survivorsIn: fresh.survivorsOut, shard: 0, nShards: 2,
+    });
+    const s1 = scoreAllGates(common, TRUTH, undefined, {
+      ...FAST, survivorsIn: fresh.survivorsOut, shard: 1, nShards: 2,
+    });
+    expect(s0.g1_forward.outliers + s1.g1_forward.outliers).toBe(fresh.g1_forward.outliers);
+    expect(s0.g1_forward.scannedFacets + s1.g1_forward.scannedFacets).toBe(fresh.g1_forward.scannedFacets);
+    expect(Math.max(s0.g1_forward.maxMm, s1.g1_forward.maxMm)).toBeCloseTo(fresh.g1_forward.maxMm, 6);
+  });
+});
+
+// ─────────────────────────── GothicArches per-facet micro-bench (env-gated) ─────────────────────────
+// PF_TIERC_GATESBENCH=1 — the v1.1 diagnosis evidence run (gates-harness-bench.md "Instrument
+// surprises" #2: harness live ticks 385-440 ms/facet vs a quoted probe rate of 112 ms/facet).
+// Static evidence first (research/exchange/_prod_truth/scorecard.ndjson, GothicArches shard=0/4 row):
+// its basis says "stride=4", scannedFacets=10,185 = ceil(40,738/4), interior.ms=4,569,249 —
+//   4,569,249 / 10,185 scanned  = 448.6 ms/facet   (the probe's true per-SCANNED-facet rate)
+//   4,569,249 / 40,734 slice    = 112   ms/facet   (the bench report's number — counts facets stride SKIPPED)
+// i.e. the "3.4-3.9x gap" is the stride-4 factor, not a composition defect. This bench confirms
+// dynamically on the SAME shard-0 slice: (P1) probe-equivalent direct ruler call vs (H1) the harness
+// G1 path on identical facets — parity criterion H1/P1 <= 1.3x (the v1.1 mission's fix bar); plus
+// (P4/H4) the stride-4 arms reproducing the probe row's per-RAW-facet economics, and a MID-slice arm
+// showing the survivor-prefix cost heterogeneity that made the killed run's early ticks read high.
+// Cost: ~6-12 min at N=500 (early-slice facets average ~0.4s each — that expense is the finding
+// itself). Self-bumps to AboveNormal (EcoQoS mitigation, CROSS-WORKSTREAM-NOTES.md).
+const BENCH = process.env.PF_TIERC_GATESBENCH === '1';
+const BENCH_N = Math.max(50, Number(process.env.PF_TIERC_GATESBENCH_N ?? 500));
+
+describe.skipIf(!BENCH)('tierc_gatesHarness — GothicArches per-facet micro-bench (PF_TIERC_GATESBENCH=1)', () => {
+  it('G1 stage-2 parity vs probe-equivalent on the same shard-0 slice, + stride/prefix pricing', () => {
+    const dir = join('research', 'exchange', '_prod_truth', 'GothicArches');
+    if (!existsSync(join(dir, 'meta.json'))) {
+      console.log('[gatesbench] SKIP — no GothicArches capture at', dir);
+      return;
+    }
+    try {
+      os.setPriority(process.pid, os.constants.priority.PRIORITY_ABOVE_NORMAL);
+    } catch {
+      console.log('[gatesbench] note: could not self-bump priority (ratios remain valid; absolutes may read slow)');
+    }
+    const outer = loadBinMesh(join(dir, 'outer.xyz.bin'), join(dir, 'outer.idx.bin'));
+    const full = loadBinMesh(join(dir, 'full.xyz.bin'), join(dir, 'full.idx.bin'));
+    const DIMS = { H: 120, Rb: 40, Rt: 50, expn: 1 }; // capture dims, _prod_truth.test.ts:34
+    const rA = buildRadiusFn('GothicArches' as StyleId, {}, DIMS);
+    const H = DIMS.H;
+    const TOL = 0.01;
+    const truth: StyleTruth = { styleId: 'GothicArches', rA, H, Rb: DIMS.Rb, Rt: DIMS.Rt, expn: DIMS.expn };
+
+    // ── suspect (d): survivor-set parity — inline probe prescreen (re-derived verbatim from
+    // _prod_truth.test.ts:174-208) vs the harness's prescreenOuterFacets, full outer mesh. ──
+    const nF = outer.idx.length / 3;
+    let t = performance.now();
+    const helperSurv = prescreenOuterFacets(outer, rA, H, TOL);
+    const helperMs = performance.now() - t;
+    t = performance.now();
+    const bary = denseBary(8);
+    const probeSurv: number[] = [];
+    for (let f = 0; f < nF; f++) {
+      const a = outer.idx[f * 3] * 3, b = outer.idx[f * 3 + 1] * 3, c = outer.idx[f * 3 + 2] * 3;
+      let green = true;
+      for (const [wa, wb, wc] of bary) {
+        const x = wa * outer.xyz[a] + wb * outer.xyz[b] + wc * outer.xyz[c];
+        const y = wa * outer.xyz[a + 1] + wb * outer.xyz[b + 1] + wc * outer.xyz[c + 1];
+        const z = wa * outer.xyz[a + 2] + wb * outer.xyz[b + 2] + wc * outer.xyz[c + 2];
+        let th = Math.atan2(y, x);
+        if (th < 0) th += TAU;
+        if (Math.abs(Math.hypot(x, y) - rA(th, Math.min(H, Math.max(0, z)))) > TOL) { green = false; break; }
+      }
+      if (!green) probeSurv.push(f);
+    }
+    const probePreMs = performance.now() - t;
+    expect(helperSurv.length).toBe(probeSurv.length);
+    let setMismatch = 0;
+    for (let i = 0; i < probeSurv.length; i++) if (helperSurv[i] !== probeSurv[i]) setMismatch++;
+    expect(setMismatch).toBe(0);
+    console.log(
+      `[gatesbench] prescreen parity: ${helperSurv.length} survivors identical elementwise ` +
+        `(harness ${(helperMs / 1000).toFixed(1)}s, probe-inline ${(probePreMs / 1000).toFixed(1)}s; ` +
+        `banked batch figure was 162,937)`,
+    );
+
+    // ── slices: shard-0 membership = survivor raw id % 4 === 0 (probe convention). EARLY = the
+    // killed run's own prefix; MID = the same-size window at the slice midpoint. ──
+    const shard0: number[] = [];
+    for (let i = 0; i < helperSurv.length; i++) if (helperSurv[i] % 4 === 0) shard0.push(helperSurv[i]);
+    const early = shard0.slice(0, BENCH_N);
+    const mid = shard0.slice(Math.floor(shard0.length / 2), Math.floor(shard0.length / 2) + BENCH_N);
+    console.log(`[gatesbench] shard-0 slice ${shard0.length} facets (coordinator's run: 40,738); N=${BENCH_N}/slice`);
+
+    const subset = (ids: number[]): Uint32Array => {
+      const out = new Uint32Array(ids.length * 3);
+      for (let i = 0; i < ids.length; i++) {
+        out[i * 3] = outer.idx[ids[i] * 3];
+        out[i * 3 + 1] = outer.idx[ids[i] * 3 + 1];
+        out[i * 3 + 2] = outer.idx[ids[i] * 3 + 2];
+      }
+      return out;
+    };
+    // Probe-equivalent arm: the ruler exactly as _prod_truth.test.ts:217-229 invokes it (same opts
+    // incl. its onProgress closure shape), on a given slice.
+    const probeArm = (ids: number[], stride: number): { msPerScanned: number; scanned: number; out: number; brute: number } => {
+      const idx = subset(ids);
+      const t0 = performance.now();
+      const r = scoreWholeMeshInterior(outer.xyz, idx, rA, H, {
+        tol: TOL,
+        stride,
+        onProgress: (done, total) => {
+          if (done % Math.max(1, Math.floor(total / 10)) < stride) { /* probe logs here; cost-parity no-op */ }
+        },
+      });
+      const ms = performance.now() - t0;
+      return { msPerScanned: ms / r.scannedFacets, scanned: r.scannedFacets, out: r.interiorOutliers, brute: r.bruteCalls };
+    };
+
+    // Warmup (JIT/IC) on a small mid sample before any timed arm.
+    probeArm(mid.slice(0, 40), 1);
+
+    const P1 = probeArm(early, 1);
+    // Harness arm H1: the real scoreAllGates G1 path on the identical slice (survivorsIn pins the
+    // population; nShards=1 keeps every id; FAST G2 keeps the non-G1 gates cheap; g1.ms isolates G1).
+    const h1Row = scoreAllGates({ full, outer }, truth, undefined, {
+      survivorsIn: Uint32Array.from(early), g2Lattice: { nu: 8, nt: 8 },
+    });
+    const H1 = { msPerScanned: h1Row.g1_forward.ms / h1Row.g1_forward.scannedFacets, scanned: h1Row.g1_forward.scannedFacets, out: h1Row.g1_forward.outliers };
+    const P4 = probeArm(early, 4);
+    const h4Row = scoreAllGates({ full, outer }, truth, undefined, {
+      survivorsIn: Uint32Array.from(early), stride: 4, g2Lattice: { nu: 8, nt: 8 },
+    });
+    const H4 = { msPerScanned: h4Row.g1_forward.ms / h4Row.g1_forward.scannedFacets, scanned: h4Row.g1_forward.scannedFacets, perRaw: h4Row.g1_forward.ms / early.length };
+    const M1 = probeArm(mid, 1);
+
+    const parity1 = H1.msPerScanned / P1.msPerScanned;
+    const parity4 = H4.msPerScanned / P4.msPerScanned;
+    console.log('[gatesbench] ── results (ms per SCANNED facet) ──');
+    console.log(`[gatesbench] P1 probe-equiv  early stride=1: ${P1.msPerScanned.toFixed(1)} ms/facet (${P1.scanned} scanned, ${P1.out} out, ${(P1.brute / P1.scanned).toFixed(1)} brute/facet)`);
+    console.log(`[gatesbench] H1 harness      early stride=1: ${H1.msPerScanned.toFixed(1)} ms/facet (${H1.scanned} scanned, ${H1.out} out) — parity ${parity1.toFixed(2)}x`);
+    console.log(`[gatesbench] P4 probe-equiv  early stride=4: ${P4.msPerScanned.toFixed(1)} ms/facet (${P4.scanned} scanned)`);
+    console.log(`[gatesbench] H4 harness      early stride=4: ${H4.msPerScanned.toFixed(1)} ms/facet (${H4.scanned} scanned) — parity ${parity4.toFixed(2)}x; per-RAW-slice-facet ${H4.perRaw.toFixed(1)} ms`);
+    console.log(`[gatesbench] M1 probe-equiv  MID   stride=1: ${M1.msPerScanned.toFixed(1)} ms/facet (${M1.out} out, ${(M1.brute / M1.scanned).toFixed(1)} brute/facet) — early/mid cost ratio ${(P1.msPerScanned / M1.msPerScanned).toFixed(2)}x`);
+    console.log(`[gatesbench] scorecard anchors: probe shard-0/4 row = 4,569,249ms / 10,185 scanned = 448.6 ms/facet; /40,734 slice = 112 ms (the stride-skipped denominator)`);
+    console.log(`[gatesbench] projected full shard-0 (40,738 facets): stride=1 ${(40_738 * H1.msPerScanned / 60000).toFixed(0)} min -> stride=4 ${(Math.ceil(40_738 / 4) * H4.msPerScanned / 60000).toFixed(0)} min`);
+
+    // The v1.1 mission's fix criterion: harness per-facet within ~1.3x of the probe on the same sample.
+    expect(parity1).toBeLessThan(1.3);
+    expect(parity4).toBeLessThan(1.3);
+    // Stride accounting: identical facet subsets scanned by both compositions.
+    expect(H1.scanned).toBe(P1.scanned);
+    expect(H4.scanned).toBe(P4.scanned);
+    expect(H4.scanned).toBe(Math.ceil(early.length / 4));
+  }, 1_800_000);
 });
