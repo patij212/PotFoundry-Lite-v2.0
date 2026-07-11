@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "potfoundry-web", "run", "dev", "--", "--port", "3001", "--strictPort"],
+      "port": 3001,
+      "autoPort": false
+    }
+  ]
+}

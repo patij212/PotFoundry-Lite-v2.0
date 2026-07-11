@@ -5565,3 +5565,860 @@ Validation: npx vitest run research/bridge/labkit.test.ts = 12/12 green; module-
 Next agent:
 - The ~35 OTHER local auditNonManRaw copies live in CLOSED experiment probes — leave them verbatim (closed-probe discipline); only NEW probes must import from labkit.
 - _pf_rebaselineRuler.ts:185 still carries its own Map-based auditNonManRaw (kept for scorecard comparability; same p*2^25+q key) — if a rebaseline re-run ever hits the Map cap on a >5.6M-tri artifact, delegate it to labkit the same way.
+
+---
+
+## 2026-07-09 - Codex - Lab-to-production 0.01mm diagnosis
+
+Summary:
+- Investigated whether research achieved literal 0.01mm on all 20 styles and why production exports differ.
+- Found that the all-20 campaign has terminal per-style adjudications, not a blanket literal-0 production result: 12 lab literal-0, 4 designed-feature certifications, and 4 measured excludes.
+- Confirmed the early all-20 sweep was lab-only outer-wall tessellation at tol 0.012; it explicitly deferred watertight full-pot assembly.
+- Confirmed the first real production-artifact pilot has only scored five styles: HarmonicRipple passes, SpiralRidges and Gyroid regress, Voronoi's CPU/GPU truth bridge fails, and DragonScales needs a different ruler and is blocked by slivers.
+
+Decisions:
+- Treated the current production artifact audit and final scorecard as the source of truth, rather than interpreting earlier sweep language as a delivery certification.
+- Kept the production-vs-lab distinction explicit: research meshes, patch gates, default feature flags, output budgets, and actual WebGPU STL artifacts are separate deliverables.
+
+Validation:
+- Read AGENT_CONTEXT_DISTILLED, TODO/ROADMAP, recent journal entries, the GitNexus debugging workflow, experiment registry, final all-20 scorecard, early all-20 sweep, and production export code.
+- GitNexus query/context traced the export UI/hook path; index is one commit behind HEAD, so live source and artifact registry were used for final evidence.
+- No product code changed; no typecheck, lint, or tests run.
+
+Risks:
+- The five-style artifact pilot is not an all-20 production certification; remaining styles must be captured and scored before any 20-style production claim.
+- Shared worktree contains substantial unrelated concurrent changes; this diagnosis did not alter them.
+
+Next agent:
+- Do not claim "all 20 at 0.01 in production" until per-export certification reports two-sided fidelity on each real artifact.
+- Prioritize the analytic curvature-floor/feature-density wiring, branch-coherent truth for hash styles, DragonScales' conforming ruler and sliver policy, then the all-20 artifact batch.
+
+---
+
+## 2026-07-09 - Codex - Perfect-mesher and export-performance roadmap
+
+Summary:
+- Diagnosed the fidelity regressions and the measured production-export bottleneck without changing product code.
+- Production stage captures show watertight assembly dominates: Gyroid 244.0s/250.3s, Harmonic 429.6s/456.7s, Spiral 472.2s/484.2s, DragonScales 1054.4s/1067.7s.
+- GPU vertex evaluation is only 0.8-15.7s and the newly optimized validation is 4.6-10.8s, so micro-optimizing validation cannot remove minute-scale exports.
+- Confirmed the practical route to a 0.01mm guarantee is a feature-protected, true-3D-error-driven adaptive mesher plus per-export certification, not globally increasing mesh density.
+
+Decisions:
+- Require a finite supported parameter/shape domain and per-export pass-or-refuse certificate; an unbounded set of arbitrary frequencies, amplitudes, and discontinuities cannot have a finite time/triangle guarantee.
+- Separate smooth, cusp/crease, cliff, and occlusion/multi-chart styles. The last two need explicit feature/chart geometry or a deliberate design change; no generic chord refiner can make a single sheet exact across a mathematical discontinuity.
+- Treat integer/fixed-point hash replacement or GPU-authoritative truth as required before certifying Voronoi/hash styles; f32 CPU emulation was measured and refuted.
+
+Validation:
+- Read the GitNexus debugging workflow, live stage-capture artifacts, analytic-floor probe data, export-performance ledger, perfect-mesher spec, and conforming assembly/quadtree source.
+- GitNexus traced the production `assembleWatertight`, quadtree, Tier-C, and validation symbols; the index is one commit behind HEAD, so live source and generated artifacts were authoritative.
+- No product code changed; no typecheck, lint, or tests run by this diagnosis task.
+
+Risks:
+- Enabling current research flags globally would be unsafe: Tier-C remains staged and the analytic-floor acceptance gate is not yet closed.
+- Performance targets require subprofiling assembly before low-level rewrites; the top-level measurement identifies the stage but not its internal hot loop.
+
+Next agent:
+- Profile outer wall, inner wall, budget-search, feature triangulation, and packing separately inside `assembleWatertight`; optimize only the dominant substage.
+- Run and adjudicate the analytic-floor pilot, then move toward the protected-complex/local-refine kernel with GPU-first certification and a parameter-extremes corpus.
+
+
+## 2026-07-09 - Claude Fable 5 - E-2026-07-09-ANALYTIC-FLOOR: FRONTIER — fidelity closed at 1.94×, KILL-2 (budget) fired
+
+- Pre-registered (c88b482b) then instruments-first (f03e7fe7), per registry convention. Node production twin of the SpiralRidges default export validated at f32 knife-edge: fullTris Δ8 of 5,686,826, outer Δ4, forward outliers 3,140 vs 3,145, Newton-worst Δ2.5e-6, coverage Δ1.8e-6 — the twin IS the artifact. H0 hash banked PRE-wiring and reproduced EXACTLY post-wiring (the byte-identity kill gate, measured not assumed).
+- VERDICT: the closed-form cell-sup curvature floor (OUTER wall, dev lever `__pfConformingAnalyticFloor`, default OFF ⇒ byte-identical) closes the measured production regression to EVERY-FACET ≤0.01 Newton-basis — 3,140 facets over / worst 0.0239 → 0 over / worst 0.009985 (2 flagged points in 8.0M facets); coverage 0.0353 → 0.0088 — at 11,004,336 full-pot tris = 1.935× the 5.69M baseline. KILL-2 (>1.5×) fired ⇒ FRONTIER, priced, no default-on. Next lever named (not iterated): crest-band-MASKED floor (analytic |f″| support ~0.5-1mm/locus vs the ±1-sizing-node ~5.4mm smear), and/or helix-aligned directional floor.
+- Walls banked en route: (1) orientOutward Map-cap crash fixed capless + byte-identical (d43ef40b; mini-hash gate + 41/41 suites). Root cause quantified: Node V8 Map caps at 2^23 entries (no pointer compression), Chrome at 2^24 — resolves the §V11w/§V11x "16.7M keys" arithmetic (those maps held 1.5T DISTINCT edges; HR 7.87M lived, SR 8.53M died). (2) Vitest 4 REMOVED test.poolOptions: every heavy vitest.*.config.ts fork-heap arg is silently ignored — pass NODE_OPTIONS=--max-old-space-size explicitly.
+- Adjacent dormant levers flagged for a separate arm (chip spawned): PEC computes qCellSamples/qSizingRes but never threads them into assemblyOpts; AssemblyWallOptions.cellSamples threads to wallOpts but ConformingWall never passes it to the quadtree (crease-seeing refiner effectively unwired).
+- Ledger: registry §E-2026-07-09-ANALYTIC-FLOOR (verdict inlined); commits c88b482b → f03e7fe7 → d43ef40b → 2d72a56f.
+
+---
+
+## 2026-07-10 - Codex - Universal export/kernel performance review
+
+Summary:
+- Reviewed the latest real-WebGPU stage captures, the conforming assembly/kernel source, and the final STL serialization path; no product code changed.
+- Confirmed `assembleWatertight` is 94.1–98.8% of total generation time (97.4% aggregate) on the five-style production-default pilot.
+- The sub-timing separates that work into triangulation 48.3%, budget-search 24.9%, and a duplicate final quadtree rebuild 23.8% of assembly.
+- The final rebuild is an exact reuse candidate at production defaults: the chosen search probe and final build have identical inputs when directional refinement is off.
+- Found a separate post-build hotspot outside these timings: large STL export invokes `orientMeshForSTL` after the kernel already performs `orientOutward` and production validation.
+
+Decisions:
+- Prioritize exact reuse plus byte-identity checks before changing search policy, tessellation quality, or fidelity settings.
+- Treat generic plain-quadtree emission, typed-array/pooling, and certified-winding serialization as universal kernel work; constrain worker/CDT work to feature meshes until measured.
+- Do not propose a GPU port first: GPU evaluation is only 0.1–3.4% of capture time, while topology/irregular-cell construction dominates CPU time.
+
+Validation:
+- Read AGENT context, TODO/ROADMAP, current journal, registry E-2026-07-09-EXPORT-STAGE-TIMING and E-2026-07-10-ASSEMBLEWATERTIGHT-SUBTIMING, capture JSON, and the live assembly/wall/triangulator/serializer sources.
+- Used GitNexus repository context, query, and symbol context; the index is two commits behind HEAD, so conclusions favour live code and recorded capture artifacts.
+- Reviewed browser worker transfer/shared-memory constraints and the Tier-C worker-pool precedent; no typecheck/lint/tests run because no product code changed.
+
+Risks:
+- The current timings exclude file serialization/download, so the duplicate STL orientation pass needs a dedicated end-to-end capture before assigning a percentage saving.
+- The workspace has extensive concurrent changes; this review did not alter them beyond this required append-only sign-off.
+
+Next agent:
+- Implement and byte-hash-gate the final-search-tree reuse; then subprofile triangulation setup/registry/emission, MetricSizingField vs tree build, orientOutward, and STL write/repair separately.
+- Keep any browser worker design transferable-buffer based first; require cross-origin isolation only if shared-memory parallel writes prove necessary.
+
+---
+
+## 2026-07-10 - Codex - Ray-cast preview review
+
+Summary:
+- Reviewed the flag-gated WebGPU ray-cast preview end-to-end: controller, bound compute pass, implicit-solid/march shader, shader assembly, integration frame loop, and verification harness.
+- No product code changed. The main functional defect is a permanent black preview when a selected raycast pipeline hangs or fails to compile (known LowPolyFacet case); raycast mode suppresses the mesh fallback.
+- The largest practical optimization is to decouple bounding-LUT invalidation from the all-uniform accumulation signature: camera/background changes currently launch the 131,072-sample bounds compute pass despite geometry being unchanged.
+
+Decisions:
+- Treat pipeline-compile failure handling as a user-visible raycast-path defect even when the underlying Dawn compiler hang predates raycast; the beta path must fail visibly or fall back safely.
+- Keep the implicit solid/CSG equations unchanged: they match the approved show-inner semantics, including solid mode without cavity/drain subtraction.
+- Report the shipped-configuration screenshot test mismatch separately from production rendering: the convergence probe uses current defaults, but the A/B screenshot fixture still hard-codes obsolete caps.
+
+Validation:
+- Used GitNexus repository/query/context workflow; its index was two commits stale and refresh exceeded the one-minute command budget, so final conclusions were verified against current source.
+- Focused unit suite passed: 27 tests across RaycastController, ray math, preview mode, and shader assembly. WGSL region lint and full TypeScript ESLint passed.
+- Real Chromium/WebGPU checks passed: style-0 non-degenerate smoke, DragonScales interactive perf (9.3ms average), and DragonScales production-vs-reference convergence (zero measured deltas and no sign flips).
+- Project typecheck is blocked by an unrelated dirty-worktree error in src/fidelity/metrics.ts:916; a full Vitest run exceeded the 60s command limit and was terminated by the harness.
+
+Risks:
+- The claimed conservative 256x512 sampled bound is empirical rather than a mathematical bound under every editable style parameter; add adversarial parameter/camera tests before promoting raycast from beta.
+- The tangent-graze ternary/bisection path undercounts its field evaluations, so the advertised evaluation-cap diagnostic is not exact on graze hits.
+
+Next agent:
+- Add raycast compilation timeout/error state and a mesh fallback or retained last valid frame; add an E2E assertion for this failure mode.
+- Split accumulation and bound signatures, update the stale A/B test caps, and add tests for bounds invalidation, inner/drain geometry, mobile quality, and parameter extrema.
+
+---
+
+## 2026-07-10 - Codex - Guaranteed final-quadtree reuse
+
+Summary:
+- Implemented the first measured, behaviour-preserving export acceleration in `ConformingWall.ts`.
+- `searchBudgetScale` now retains only its terminal `PeriodicBalancedQuadtree`; it is triangulated directly instead of being rebuilt at the same scale.
+- The optimization removes the measured final-quadtree-rebuild bucket whenever directional refinement is off, the production-default case and all feature walls.
+
+Decisions:
+- Retained only the terminal probe rather than caching every search tree, avoiding a large transient memory increase.
+- Directional-refine builds deliberately retain the old final rebuild because the search probes use `directionalRefine=false` and would not be equivalent.
+- Added dev-only telemetry (`reusedSearchQuadtree`) plus a pre-change FNV-1a fixture for vertices and indices.
+
+Validation:
+- Pre-edit GitNexus impact: CRITICAL, 3 direct callers, 12-13 total impacted symbols across Conforming, Parametric, BandRemesh, Tier-C, and Bridge; no indexed execution flows.
+- `ConformingWall.test.ts`: 17/17 green, including the new byte-identity and reuse assertions.
+- `WatertightAssembly`, `ConformingOuterWall`, and `useParametricExport` suites: 38/38 green; targeted ESLint clean.
+- Typecheck reports only the pre-existing concurrent `src/fidelity/metrics.ts:916` missing `degenerateCount` error; no errors in the changed kernel/test files.
+
+Risks:
+- The real-WebGPU stage capture has not yet been rerun, so the expected final-quadtree time reduction is structurally guaranteed but not re-measured on the five-style pilot.
+- Shared worktree includes substantial unrelated changes and a pre-existing CRLF-wide diff for `ConformingWall.ts`; no attempt was made to normalize it.
+
+Next agent:
+- Re-run the stage-timing capture to record the removed `finalQuadtreeMs` bucket and exact artifact hashes.
+- Before changing STL orientation repair, add an end-to-end serializer profile and a certificate-gated fallback design; do not bypass repair merely because a mesher is expected to be well-oriented.
+
+---
+
+## 2026-07-10 - Codex - Byte-preserving binary STL scalar writer
+
+Summary:
+- Implemented the second universal export-path acceleration: both direct and chunked binary STL writers now call one scalar `writeBinaryFacet` helper.
+- Removed seven short-lived arrays per facet from the binary emission loop (three sanitized vertex tuples, two edge tuples, a cross-product tuple, and a normal tuple) without touching orientation repair, chunking, Blob creation, or any mesh algorithm.
+- Added the scoped implementation specification at `archive/plans/misc/2026-07-10-binary-stl-scalar-writer.md`.
+
+Decisions:
+- Kept `computeNormal` unchanged for ASCII STL and confined the scalar implementation to binary writing, avoiding format-wide numerical drift.
+- Mirrored the old vertex sanitization, cross-product arithmetic order, normalization/degenerate fallback, and little-endian write order exactly.
+- Pinned pre-change FNV-1a output hashes for an incoherent oriented quad and a NaN/Infinity/degenerate mesh before the implementation.
+
+Validation:
+- Pre-edit GitNexus impact: LOW risk; `generateBinarySTL` has 2 direct production callers, `computeNormal` 3, and no indexed execution flows.
+- `stlExport.test.ts` plus `stlRoundTrip.test.ts`: 48/48 green; the new direct-writer byte hashes reproduce exactly.
+- Targeted ESLint passed and `git diff --check` found no whitespace errors in the STL/spec changes.
+- Global typecheck remains blocked only by the unrelated concurrent `src/fidelity/metrics.ts:916` missing `degenerateCount` error; no changed-file error is reported.
+
+Risks:
+- The output-stage baseline has not yet timed orientation versus scalar facet writing separately, so the allocation reduction is deterministic but an end-to-end wall-time percentage is intentionally not claimed.
+- The STL writer files have existing CRLF working-tree normalization warnings; they were not reformatted or normalized.
+
+Next agent:
+- Add the planned end-to-end serialization timing split before evaluating a certificate-gated orientation fast path.
+- Re-run the real-WebGPU export-stage capture for the already-landed quadtree-reuse change; do not combine either measurement with a mesh-quality or topology change.
+
+## 2026-07-10 - Claude Fable 5 - Dormant CAD-lever audit: BORN-DEAD WIP confirmed; E-2026-07-10-CAD-LEVER-COMPLETION pre-registered (c1e5dfa4)
+
+- VERDICT: qCellSamples/qSizingRes (PEC) + the cellSamples threading gap (ConformingWall never passes it to the quadtree) are INCOMPLETE WIRING from 92fca543 (2026-06-29), whose body self-declares "WIP / NOT YET COMPLETE ... Two of the five levers are therefore dead on the production path." Never parked, never picked up, dev levers __pfConformingCellSamples/__pfConformingSizingRes dead since birth (no experiment used them). The June-16 "sizing-res barely moved it" conclusion is UNCONTAMINATED (predates the lever; research-side measurement).
+- Survival mechanism: no-unused-vars + @typescript-eslint/no-unused-vars are OFF (eslint.config.js:42-43) — the 0-warnings policy is blind to dead-const wiring gaps. Standing gotcha.
+- Pre-registered (kill criteria before wiring): Stage A completes the chain byte-identically at defaults (cellSamples default 1 — the CAD=2 flip is explicitly deferred to 92fca543's own named ship gate, the 20-style re-baseline; H0 f707898e-02e3bea1 + orient-mini gates); Stage B prices the lever on the SpiralRidges twin A/B with a pre-committed no-default-flip rule. H-B prediction: <20% outlier reduction there (the FIELD is binding per ANALYTIC-FLOOR; cellSamples' home class is off-centre steep creases — Gothic-class measurement deferred to its own arm).
+
+
+---
+
+## 2026-07-10 - Codex - Ray-cast hardening and performance fixes
+
+Summary:
+- Implemented raycast pipeline timeout/failure tracking and routed failed raycast styles back to the mesh path instead of leaving the raycast session permanently blank.
+- Split expensive bounds-LUT invalidation from full-frame accumulation invalidation; camera, lighting, canvas, and debug changes no longer rerun the 256x512 bounds compute kernel.
+- Hardened dev quality inputs, made readiness require all pipelines/bind groups, corrected the actual march field-evaluation accounting, and updated stale A/B screenshot defaults.
+
+Decisions:
+- Matched the established SceneManager 30-second pipeline timeout so legitimate cold compilations retain the same budget as mesh preview.
+- Retain failed-style state for the session to avoid repeated compiler hangs; changing to a ready style resumes exact raycast normally.
+- Reserve final bisection evaluations inside the march budget rather than claiming a cap that ignores tangent/minimum refinement work.
+
+Validation:
+- Pre-edit GitNexus impact: HIGH for setStyle/notifyFrame/isReady due to their one direct caller and three WebGPU frame/update processes; mount impact LOW.
+- Focused raycast/ShaderManager suite: 29/29 green, including new bounds-invalidation and pipeline-failure tests.
+- ESLint and WGSL region lint passed.
+- Real Chromium/WebGPU: DragonScales production-vs-reference convergence is zero at every measured percentile with zero sign flips; standalone interactive perf smoke passed at 11.8ms.
+- Typecheck remains blocked only by unrelated dirty-worktree error src/fidelity/metrics.ts:916 (missing degenerateCount).
+
+Risks:
+- The mesh fallback still depends on the driver compiling that style's mesh shader; if the same driver bug affects both paths, the console reports the failure rather than silently retrying forever.
+- The 256x512 radius bound is still empirical across editable parameter extremes; future promotion out of beta needs adversarial extrema coverage.
+
+Next agent:
+- Add a UI-facing fallback badge/status using getStyleFailure(), and an integration test that injects a failing raycast pipeline then asserts the mesh fallback path.
+- Add parameter-extrema and mobile raycast probes before changing the beta/default rollout.
+
+## 2026-07-10 - Claude Fable 5 - E-2026-07-10-CAD-LEVER-COMPLETION: COMPLETED (Stage A byte-identical; Stage B H-B confirmed + res-only anti-helpful datum)
+
+- Stage A (54372e8c): 92fca543's dead levers wired end-to-end — ConformingWallOptions.cellSamples -> quadtree (RED->GREEN CellSamplesThreading.test 3/3), assemblyOpts resU/resT: qSizingRes + cellSamples: qCellSamples with default AMENDED to 1 (no silent CAD=2 flip; deferred to 92fca543's own named ship gate). H0 f707898e-02e3bea1 + orient-mini 903bfc82-92294f71 reproduced EXACTLY post-wiring. __pfConformingCellSamples/__pfConformingSizingRes live for the first time.
+- Stage B: cellSamples=2 on the SpiralRidges twin: outliers 3,140->2,845 (-9.4%, under the 20% bar), worst UNMOVED, +2.19% tris => per pre-committed table, NO CAD=2 default flip for helix-ridge styles (the field is binding — ANALYTIC-FLOOR's attribution re-confirmed by an independent lever). sizingRes 256 WITHOUT the floor: -7.54% tris, +142% outliers — the coarse 128 grid's Lipschitz/bilinear smear was an ACCIDENTAL partial floor; finer res is more faithful to the WRONG kappa. Validates the MASKED arm's floor+res bundling; predicts its budget lands below the [6.0M,7.6M] band; rules out res-raise as a free perf win.
+- Ops gotcha banked: mixed-CRLF blobs defeat hunk-level surgical staging under concurrent sessions — constructed-blob staging (git show HEAD + exact replacements + hash-object/update-index) is the reliable pattern; keep the worktree synced after index-only writes.
+- Ledger: pre-reg c1e5dfa4 -> instruments d677cc25 -> Stage A 54372e8c -> verdict a2173a11.
+
+## 2026-07-10 - Claude Fable 5 - E-2026-07-10-INTHASH-SWAP: Voronoi integer-exact hash wired to production (USER-APPROVED); CPU gates COMPLETE, e2e vertexOnSurf PENDING
+
+Summary:
+- Wired the CONFIRMED integer-exact PCG2D hash (E-2026-07-10-INTHASH, 899238b0/f1ce5ca4) into
+  production Voronoi, CPU (`styles.ts`) and WGSL (`styles.wgsl`) consistently, Voronoi-scoped only.
+  USER-APPROVED visual change: saved Voronoi designs render a different, equally valid cell layout.
+
+Decisions:
+- Scoping confirmed `hash22`/`periodic_cellular` (WGSL) and TS twins had exactly ONE caller each
+  (the Voronoi chain) — added new functions (`hash_pcg2d`/`u32_to_unit_float`/`hash22_int`/
+  `periodic_cellular_int` WGSL; `pcg2dHash`/`u32ToUnitFloat`/`hash22Int`/`periodicCellularInt` TS)
+  rather than mutating shared-named infra. TS-side old `hash22`/`periodicCellular` REMOVED (not
+  left dead) — `noUnusedLocals: true` correctly rejected them once callerless; WGSL twins kept
+  (no unused-fn error there). Flagged, not acted on: `FeatureLineGraph.ts:611` has an independent
+  hand-replicated `hash22` for the conforming mesher's Voronoi feature-lines — now silently stale
+  vs. production; DO-NOT-TOUCH boundary, needs a follow-up session.
+
+Validation:
+- TDD (`voronoiIntHash.test.ts`): RED first (387,720/1M + 53,967/200k mismatches vs pre-swap),
+  GREEN after: 0/1M + 0/200k bit-for-bit vs reference `rOuterVoronoiIntF64`, vec element-wise match,
+  0/200k argmin-jumps re-proving f32 determinism through production.
+- Caught a real bug: an own WGSL comment starting with literal `// #region` was misparsed by
+  `stripShaderCode()`'s naive line-scan, silently stripping `style_voronoi` from EVERY style's
+  shader — caught by the existing `shaderStripper.test.ts` suite before it could ship.
+- Fixture diff scoped to exactly `Voronoi` (13/30 rows, 0 other styles, 20/20 unchanged).
+  typecheck+eslint clean. GitNexus `detect_changes` (staged): `affected_processes: []`, 4 changed
+  files (exactly mine); one attribution-noise artifact noted (line-shift adjacency, zero real diff).
+- Two pre-existing failures ruled out (not this swap): `CelticKnot` topology snapshot (reproduces
+  identically with changes stashed out) and 4/5 `export3MF.schema.test.ts` timeouts (uses
+  SuperellipseMorph; ~150-process environment contention from other live sessions this arc).
+- E2E `vertexOnSurf`: 3 capture attempts under the same contention — attempt 1 got a successful
+  7.5M-tri full-mesh generate (proves the swap works) before the outer-submesh call failed;
+  attempt 2 failed earlier on an unrelated GPU-buffer race; attempt 3 completed ALL OK. The scoring
+  probe against it was still running at verdict-write time — recorded PENDING, not faked. Real
+  production-mesh visual comparison rendered from captured vertex buffers (legitimate, differently-
+  laid-out web both before/after).
+
+Risks:
+- E2E is the one gate not closed with a number yet. If it lands p99 > 0.001mm, the kill criterion
+  calls for PARTIAL + divergence-locus analysis — check the prereg verdict for the actual outcome.
+- `FeatureLineGraph.ts`'s stale Voronoi `hash22` copy is real follow-up work (spawn_task flagged).
+
+Next agent: repro commands + full attempt log in `research/lab/E-2026-07-10-INTHASH-SWAP-prereg.md`.
+Ledger: pre-reg 20a7f0ab -> impl 03948af8 -> verdict 21f6f885.
+
+## 2026-07-10 — E-2026-07-10-GYROID-PRODCLOSE (session sign-off)
+
+VERDICT: KILL-A (classified, priced). The analytic curvature floor is NOT the lever for the
+GyroidManifold production regression: on a Delta-2-exact Node production twin (outer tris
+1,892,112 vs banked 1,892,114; survivors 141,147 vs 141,146; coverage 0.098741 vs 0.0987),
+the validated floor (99.896% of 1M FD probes) at resU 512 buys -19% estimated true outliers
+and -51% Newton-worst (0.0576 to 0.0284) for +87% outer tris — and 100% of the Newton-confirmed
+residual (754/754 floor, 372/372 baseline) is smoothstep-KNEE-adjacent (|val| within 0.005 of
+0.135/0.15), where knee kappa ~1050/mm demands h ~0.005mm, below production minEdge 0.1 —
+structurally unreachable by ANY density floor (h(kappa>=2.4)=minEdge exactly). Adjudicated per
+the pre-committed 05:12:22Z rule, no cap/minEdge iteration. RECOMMENDATION: doubled band-edge
+contour embed (|val| in {0.135, 0.15}, extractable at machine precision by the committed
+_gyroidContourLib) through the EXISTING production general-curve CDT machinery (the current
+val=0 embed is the harmless plateau-centerline, not the working edges) + pinned-knee treatment
+second; floor optional. Basis honesty: F2 = stratified V11i two-tier (labeled; estimator
+reconciled to the artifact literals 105,107/0.0590 within 8.7%/2.4%); baseline literal scan
+killed at 163 CPU-min as redundant. Perf banked: Windows EcoQoS throttling of detached node
+children (AboveNormal = ~4x, measured); vitest-4 NODE_OPTIONS propagation PROVEN in-child
+(heapLimitMB=16576) + heap fail-fast gate pattern; appendFileSync breadcrumbs as the only live
+fork-child telemetry; stratified Newton at ~71ms/query. Files: research/bridge/
+_gyroid_prodclose_lib.ts + _gyroid_prodclose.test.ts + research/lab/
+E-2026-07-10-GYROID-PRODCLOSE-prereg.md (verdict inlined). Commits: 2285fd02 (pre-reg) ->
+66c6735e (verdict). Registry row NOT written (EXPERIMENT-REGISTRY.md holds other sessions'
+uncommitted rows — per mission constraints; the prereg file carries the full record).
+
+## 2026-07-10 — E-2026-07-10-GYROID-BANDEDGE (session sign-off)
+
+VERDICT: MECHANISM-CONFIRMED (priced residual + classified kernel defect). Feeding the CORRECT
+doubled band-edge contours (|val| in {0.135, 0.15}, machine-precision via the committed
+_gyroidContourLib — 0.000000mm placement, zero drops, both steps) through production's EXISTING
+general-curve machinery on the parent arm's Delta-2-exact twin collapses the Gyroid production
+regression: est. true outliers ~96,012 -> ~31,114 (-67.6%), Newton-worst 0.0576 -> 0.0249
+(-56.8%), coverage max 0.0987 -> 0.0253 (-74%), at +18.5% outer tris (2,242,987) — DOMINATING
+the parent's curvature floor (-19%/-51% at +87%) on every axis at ~1/5 the added-triangle cost.
+Residual is 100% knee-adjacent (410/410 and 445/445 Newton-confirmed; ZERO off-band — the
+single-midline trap explicitly checked, absent). Steps 0.15/0.08 fidelity-EQUIVALENT
+(Newton-worst bit-identical 0.02491654414922634) — picket density is not the residual's lever.
+Coordinator-authorized bounded retry (0.08) FAILED its nonMan=0 gate (3 -> 2): loci classified
+with a new Map-free classifier (packed-key sort; a Map at 13.1M edges would hit the 2^23 cap) —
+TWO step-INVARIANT mult-3 edges at bit-identical (u,t) = (0.6448, 0.8931) and (0.4384, 0.4421),
+both ON an embedded isolevel where the doubled curves converge to <=1.7 featureLevel-11 cells:
+the V11q over-constraint class, a deterministic per-cell-CDT kernel item, NOT picket noise.
+Acceptance (every-facet <=0.01) NOT reached: the ~31k knee population is the pin-pass target
+(V11aa closed its knee tail with 35 pins AFTER contour+chord; production lacks pin + chord
+levers — the named engineering items). RECOMMENDATION: production Gyroid recipe = doubled
+band-edge general-curves (step ~0.15; isolevels th*(1-smoothVal) and th from the style's own
+params) + knee-pin mechanism + the 2-locus cell-fan fix; curvature floor NOT needed (dominated).
+PERF HEADLINE: featureLevel-11 per-cell CDT ingested 146-150x its native general-curve point
+density (28,785-39,849 pts vs 14 lines) at NO build-time cost (92-95s vs the plain twin's
+115-229s). Files: research/bridge/_gyroid_bandedge_lib.ts + _gyroid_bandedge.test.ts +
+research/lab/E-2026-07-10-GYROID-BANDEDGE-prereg.md (verdict inlined). Commits: 3c996af8
+(pre-reg) -> 39ad7939 (verdict). Registry row NOT written (EXPERIMENT-REGISTRY.md holds other
+sessions' uncommitted rows — per mission constraints; the prereg file carries the full record).
+
+## 2026-07-10 - Claude Fable 5 - E-2026-07-10-ANALYTIC-FLOOR-MASKED: KILL-A — new mechanism classified (WARP-JACOBIAN SAG DILUTION) + committed-state corruption found/repaired
+
+- C1 (512x128, pinned worktree): budget PASSED 1.223x (6,956,244 vs gate 8,530,251, inside the predicted band) but every-facet FAILED (2,764 facets, worst 0.0358 == flag-off baseline). Classification (4,000-loci dump): floor >= 0.8x true-kappa at 100% of failing loci, demand h~0.20mm, measured sag 4-10x the sagitta prediction => the SIZING was right and the delivered mesh does not obey it. Mechanism: the u/helix warps compress u by J AFTER triangulation => realized sag ~J^2 over plain-domain sizing (sizing reads the PLAIN sampler by design; only efg template tags see the composed map). Banded-t residuals = crests sweeping the fixed phi0 anchor lattice's compression zones. The blanket arm's h~0.11 left x8 headroom, masking the class. C2 skipped as provably futile (floor grid not the limiter at any locus — documented deviation). NAMED FOLLOW-UP: warp-Jacobian-aware sizing (extend composedWallSampler composition from efg tags to the SIZING field), predicted to close within the C1 budget.
+- REPO REPAIR (d0c85706, 69661fb9): earlier -U0 zero-context index staging had landed hunks at concurrent-edit-shifted positions — 2 syntax errors + 2 silently-dead placements + a TDZ throw on the conforming branch + a labkit import that exists only in the concurrent arm's uncommitted tree. All masked by the shared worktree; exposed the moment a PINNED worktree compiled pure HEAD. Repaired as pure relocations; twin H0 f707898e-02e3bea1 reproduced at the repaired commit = committed == measured, formally.
+- STANDING PRACTICE (banked): (1) verdict runs execute in a pinned git worktree at the exact commit (node_modules junctioned, gitignored baselines copied in) — the shared tree is compile-hazardous under concurrent arms (two C1 attempts ground >58 CPU-min on mid-edit code); (2) index staging via constructed blobs ONLY (git show HEAD + exact-match replacements + hash-object), never zero-context patches; (3) worktree kept in sync after index-only writes.
+- Instrument notes: both pre-registered floor-grid tells mis-specified (liftedFrac 1.000 vs 0.15-0.35 predicted — mesh counts are the honest signal); vitest buffers sync-test stdout entirely (progress via side-channel appendFileSync).
+- Ledger: pre-reg 8fd510be -> instruments 80a556ea/d677cc25 -> C1 wiring 79ffa0ae -> repairs d0c85706/69661fb9 -> classifier 365c1107 -> verdict fa7e8c48.
+## 2026-07-10 - Codex - Further export acceleration review (post integer-key optimization)
+
+Summary:
+- Investigated further acceleration opportunities for the production-default conforming export pipeline; no product code changed.
+- Confirmed the integer-key swap materially improved generation, but measured wall clocks remain roughly 85-628s across the pilot styles.
+- Ranked the remaining techniques by expected payoff, behavioural risk, and implementation scope.
+
+Decisions:
+- Highest-priority byte-identical follow-up: replace repeated level-scanning neighbour discovery with finalized-tree adjacency / four-side split masks.
+- Pair that with a compact structure-of-arrays leaf representation so balancing and triangulation share one topology index instead of rebuilding registries.
+- Second priority: attack repeated budget-search tree construction using threshold/error caching or a persistent refinement hierarchy; preserve the terminal-tree reuse already landed.
+- Third priority: run outer and inner wall construction in parallel workers after profiling the new single-thread baseline; functions/samplers must be reconstructed from serializable export inputs.
+- Treat exact typed-array/chunked emission and certified-orientation STL serialization as worthwhile secondary wins, not explanations for tens-of-minutes generation.
+- Do not lead with a GPU port: current measurements still place GPU evaluation at only a small fraction of total time.
+- Treat triangle-count reduction via anisotropic/warp-aware sizing as the largest architectural lever, but require the existing every-facet fidelity and topology gates because it is not byte-identical.
+
+Validation:
+- Read the required distilled context, TODO/ROADMAP, coding/architecture guidance, recent journal performance entries, and experiment registry.
+- Used GitNexus query/context on buildConformingWall, finestNeighbourLevel, and triangulateQuadtree; index is current for the recorded HEAD.
+- Reviewed live ConformingWall, PeriodicBalancedQuadtree, QuadtreeTriangulator, FeatureConformingTriangulator, WatertightAssembly, and STL paths.
+- No typecheck, lint, or tests run because this was a read-only investigation and recommendation pass.
+
+Risks:
+- Adjacency/mask encoding errors can create T-junctions silently; require collision/exhaustive topology tests plus five-style byte hashes.
+- Worker parallelism can double peak memory on 4-9M-triangle exports and must use transferable buffers and bounded concurrency.
+- Search-hierarchy reuse is harder than terminal-tree reuse because 2:1 balancing makes leaf counts nonlinearly dependent on scale.
+
+Next agent:
+- Capture one fresh post-intkey profile per plain and feature-heavy style, then prototype adjacency/split masks behind a dev flag.
+- Gate the first optimization on identical leaf keys, vertices, indices, validation summary, and mesh hashes before measuring speed.
+
+## 2026-07-10 - Codex Generator - Export acceleration Slice A: paged leaf storage
+
+Summary:
+- Added `PagedLeafStore`, a sparse paged-bitset replacement for the quadtree's primary `Set<number>` leaf index.
+- Integrated it only at `PeriodicBalancedQuadtree.leafSet`; retained `uByEffective` and all refinement, balance, neighbour, and triangulation algorithms unchanged.
+- Added differential tests covering sparse large keys, duplicate adds, delete/re-add ordering, live iterator mutation, clear, invalid keys, and 50,000 deterministic randomized operations.
+
+Decisions:
+- Used 256-key sparse pages with `Uint32Array` occupancy and per-slot uint32 insertion generations.
+- Preserved native Set insertion semantics with an append-only key/generation log; stale generations are skipped during iteration.
+- Kept this patch separate from adjacency caching and budget-search persistence so parity failures remain attributable.
+
+Validation:
+- Targeted Vitest: 45/45 passed across PagedLeafStore, PeriodicBalancedQuadtree, QuadtreeTriangulator, and Gap1DirectionalRefine.
+- Full ESLint gate passed with zero warnings.
+- Typecheck was attempted but is blocked by a pre-existing dirty-file error at `src/fidelity/metrics.ts:916`: missing `degenerateCount` in `TriangleQualityDiagnostics`.
+- Targeted ESLint on all touched TypeScript files also passed.
+
+Risks:
+- GitNexus rates PeriodicBalancedQuadtree CRITICAL-risk; full repository regression and production export profiling remain appropriate before release.
+- This slice targets membership allocation/cache locality but does not yet remove `uByEffective` or triangulator-local Sets.
+
+Next agent:
+- Run the broader conforming/export regression suite once the unrelated typecheck blocker is resolved.
+- Measure quadtree build CPU/memory against the integer-Set baseline before proceeding to finalized adjacency masks.
+
+## 2026-07-10 - Codex Verifier - Reusable sizing workspace for budget probes
+
+### Summary
+- Added `MetricSizingWorkspace` to cache the scale-independent curvature grid.
+- Workspace includes the analytic curvature floor and max-kappa cap in the cache.
+- Each probe still replays target scaling, min/max clamps, and Lipschitz grading.
+- Each probe still constructs and balances a fresh `PeriodicBalancedQuadtree`.
+- Wired `searchBudgetScale` to create one workspace and share it across probes.
+- Did not modify the quadtree or either triangulator.
+
+### Decisions
+- Preserved `MetricSizingField`'s public one-shot constructor behavior.
+- Reused only pre-scale sagitta targets so floating operation order stays exact.
+- Kept final-search-tree reuse and existing stage timing behavior intact.
+- Added exact comparisons rather than tolerance-based equivalence checks.
+
+### Validation
+- MetricSizingField + ConformingWall focused suites: 25/25 tests passed.
+- Exact workspace-vs-legacy grids passed at five target scales.
+- Exact balanced leaf counts passed at the same five target scales.
+- Legacy binary-search chosen scale/counts matched workspace production output.
+- Existing budgeted mesh vertex/index FNV hashes remained byte-identical.
+- Full ESLint passed with zero warnings.
+- Typecheck is blocked by unrelated `src/fidelity/metrics.ts:916` TS2741:
+  `degenerateCount` is missing from an existing `TriangleQualityDiagnostics` value.
+- GitNexus detect_changes reports CRITICAL aggregate risk because the shared
+  worktree contains 57 changed files from several concurrent workstreams.
+
+### Risks
+- The workspace intentionally retains each probe's grading and tree-build cost.
+- Stateful curvature-floor callbacks now run once per search, as intended for
+  the documented mathematical callback contract; ordinary field construction is unchanged.
+
+### Next agent
+- Benchmark search-stage time separately from full export time.
+- Resolve the unrelated fidelity typecheck error before repository-wide sign-off.
+
+## 2026-07-10 — Quadtree immutable structural topology (Executioner sign-off)
+
+### Summary
+- Added `QuadtreeTopology.ts`, an immutable topology builder over ordered `QuadLeaf[]`.
+- The topology stores per-leaf S/E/N/W finer-neighbour masks in `Uint8Array`.
+- Structural edge subdivision coordinates are stored as leaf-major CSR offsets plus `Float64Array` values.
+- Integrated the topology into the plain `triangulateQuadtree` path.
+- Preserved the historical Set/registry implementation as `{ legacyTopology: true }` for parity testing.
+
+### Decisions
+- Reproduced the existing QSCALE, QEPS, periodic-u unwrap, strict endpoint exclusion, and ascending sort exactly.
+- Kept leaf order and all vertex/triangle emission code unchanged; only structural lookup changed.
+- Did not integrate the feature triangulator in this slice: its registries carry `CellPoint` ownership and
+  feature/band insertions, while the immutable topology intentionally contains structural numeric points only.
+- A feature integration needs a separate merge API and parity suite to avoid duplicating topology construction.
+
+### Validation
+- `QuadtreeTopology.test.ts`: 4/4 passed (CSR/seam, mixed-level, directional N-mid, global u-bias parity).
+- `QuadtreeTriangulator.test.ts`: 15/15 passed.
+- Targeted ESLint passed for topology source/test and the modified triangulator.
+- `git diff --check` passed for the touched files.
+- Full typecheck reached one unrelated pre-existing error in `src/fidelity/metrics.ts:916` (`degenerateCount`).
+
+### Risks
+- The new builder deliberately mirrors legacy probing logic; future topology changes must retain oracle parity.
+- Large-tree allocation/performance still needs production-profile measurement; this slice proves correctness.
+
+### Next agent
+- Add feature-path structural merge only after defining how CSR points seed `CellPoint` registries without a second scan.
+- Run the full suite once the unrelated metrics type error is repaired.
+
+## 2026-07-10 — Quadtree topology adjacency + feature merge follow-up
+
+### Summary
+- Extended immutable topology with leaf-major S/E/N/W adjacency CSR.
+- Adjacency preserves source leaf order and closes the periodic u seam.
+- Feature triangulation now consumes topology split masks.
+- Directional feature walls seed structural edge points through the topology CSR visitor.
+- Existing feature, rail, and band `CellPoint` registry entries remain additive and unchanged.
+
+### Validation
+- Direct adjacency tests cover coarse-to-fine ordering and periodic seam neighbours.
+- Plain and feature legacy-oracle comparisons are byte-identical for mixed-level and directional fixtures.
+- Targeted topology, plain triangulator, and feature triangulator suites: 28/28 passed.
+- Targeted ESLint and relevant-file diff checks passed.
+- Typecheck remains blocked only by unrelated `src/fidelity/metrics.ts:916` missing `degenerateCount`.
+
+### Risks / next agent
+- GitNexus rates `triangulateQuadtreeWithFeatures` HIGH risk (2 direct callers, 4 modules).
+- Keep the legacy topology option until production-style parity/performance captures complete.
+- Re-run full validation after the unrelated fidelity diagnostics type error is repaired.
+
+## 2026-07-10 — Topology quadratic-scan correction
+
+### Summary
+- Replaced per-leaf full-line edge-point scans with sorted line arrays and binary bounds.
+- Replaced per-leaf adjacency candidate scans with opposite-side interval sweeps.
+- Adjacency uses two-pass CSR count/fill and restores leaf-index order per side slice.
+- Made retained adjacency opt-in; production triangulators keep only split masks and edge slices.
+
+### Validation
+- Added a 16,384-cell uniform-row complexity regression with adjacency enabled.
+- The regression completed in ~0.3s for the complete topology test file.
+- The removed implementation would perform more than 500 million full-line checks on that fixture.
+- Topology, plain triangulator, and feature triangulator suites: 29/29 passed.
+- Targeted ESLint passed.
+
+### Risks / next agent
+- Production still constructs transient sorted line indices; profile peak heap on an 8M-leaf export.
+- Adjacency CSR costs roughly 32 bytes/leaf on a uniform mesh and must remain opt-in until consumed.
+- Keep legacy-oracle parity coverage while optimizing remaining topology storage.
+
+## 2026-07-10 - Codex Verifier - C2 refinement-evidence search cache
+
+### Summary
+- Added a search-scoped `QuadtreeRefinementEvidenceCache`.
+- Cached per-cell metric sample locations and physical u/t extents.
+- Cached feature-refinement and crease-intersection predicate results.
+- Shared the cache across budget-search quadtree probes only.
+- Preserved scale-specific sizing-field lookups for every active cell sample.
+- Preserved DFS insertion order, pinned-boundary enforcement, and 2:1 balance.
+- Preserved the concurrent `PagedLeafStore` implementation unchanged.
+
+### Decisions
+- Used the tree's existing packed cell codec for evidence keys.
+- Kept the no-cache PBQ branch byte-for-byte behaviorally equivalent, including
+  its sample short-circuit order and callback evaluation conditions.
+- Kept ordinary non-search and directional final rebuilds cache-free.
+- Exposed cache statistics solely to prove hits and non-vacuous population.
+
+### Validation
+- Focused suites: 46/46 tests passed across MetricSizingField, PBQ,
+  PagedLeafStore, and ConformingWall.
+- Exact ordered leaves match legacy across five target scales.
+- Metric cache hits/misses/sample evaluations are all non-zero as expected.
+- Feature and crease cache hits/misses are non-zero; second-probe callback
+  counters do not increase.
+- Existing budgeted wall vertex/index hashes remain byte-identical.
+- Targeted ESLint passed with zero warnings.
+- Typecheck remains blocked only by unrelated `src/fidelity/metrics.ts:916`
+  missing `degenerateCount` in `TriangleQualityDiagnostics`.
+- GitNexus detect_changes ran; aggregate risk is CRITICAL because 57 shared
+  worktree files from concurrent workstreams are currently modified.
+
+### Risks / next agent
+- Cache correctness assumes sampler and feature/crease callbacks are pure within
+  one search, matching their existing mathematical contracts.
+- Benchmark search timing to quantify C1+C2 independently from triangulation.
+
+## 2026-07-10 — Claude Fable 5 — E-2026-07-10-PROD-BATCH: pipeline proven + 2 reuse-fix delta points banked; capture/certification left running (session checkpoint, not final)
+
+Summary: pre-registered (committed 922abd0c) and began executing the first all-20 production
+artifact scorecard, tree-basis `da6b423a+uncommitted` (final-quadtree reuse, DS-gate fix, v3
+export fixes all in-tree uncommitted per program-consolidation.md sec E). Smoke-tested the
+capture harness (SuperformulaBlossom, FourierBloom, 2/2 OK, 286s) then began re-capturing the 5
+pilot styles to bank the reuse-fix's real generate-time delta, the mission's co-equal second
+deliverable.
+
+Decisions: batched captures 1-2-4-4-4-4-1 (pilots split 3+2, hazard style LowPolyFacet isolated
+solo); pre-backed-up each pilot capture dir to `<Style>_pre_reuse_baseline/` before recapturing
+(mission rule). Found and handled two undocumented hazards before they could corrupt data: (1)
+the DS composite-ruler probe's scorecard ndjson is fixed-path + key-deduplicated — re-scoring
+without first moving `research/exchange/_ds_prodtruth/` aside would silently reuse OLD-artifact
+numbers under a NEW-tree label; (2) the existing `Voronoi` capture dir was an ambiguous
+2026-07-10T02:48 intermediate-tree capture (not the 2026-07-09 pilot), preserved under a distinct
+name so it's never conflated with the true 534s baseline. Ran certification (SuperformulaBlossom)
+concurrently with ongoing capture once machine-courtesy checked clear (0 foreign >2GB node procs;
+1 browser + 1 light orchestrator + 1 heavy vitest fork stays within the "one heavy build at a
+time" budget) — used wall time productively instead of idling.
+
+Validation: GitNexus detect_changes (staged, both commits) — `affected_processes: []`, risk LOW
+(pure research-file additions, zero production execution-flow impact, as expected for a
+measurement-only arm). No typecheck/lint/test run — no `src/` file was touched.
+
+Measured (tree-basis da6b423a+uncommitted vs the 2026-07-09 pilot): HarmonicRipple full
+generateMs 377,429→321,300 (**-14.9%**), outer 368,696→277,500 (**-24.7%**), total -19.4%, tris
+byte-identical to the pilot capture. SpiralRidges full generateMs 455,272→~317,000 (**~-30.4%**,
+mtime-derived, outer still in flight at checkpoint time). Both directionally consistent with the
+profiler arm's banked ~23% assembly-time-removal claim (duplicate final-quadtree rebuild fix).
+
+Risks / next agent: this is a checkpoint, NOT the finished mission — the full 20-style
+capture+certify pass is a multi-hour undertaking (pre-registered ~5h capture budget alone) that
+does not fit one session's turn-by-turn narration. Left RUNNING and NOT killed (durable,
+self-checkpointing, no cross-turn watcher needed): dev servers on :3000/:3001 (PIDs 10276/28564),
+Batch B capture (SpiralRidges outer + GyroidManifold remaining), SuperformulaBlossom certification
+(PID 27484, genuinely still computing per CPU-delta, not hung). Exact resumption checklist —
+remaining batches C-G, the mandatory `_ds_prodtruth` reset before DS certification, the
+stage-timing capture command, the idempotent `research/bridge/_prod_batch_assemble.mjs`
+aggregator — is inlined in `research/lab/E-2026-07-10-PROD-BATCH-prereg.md`'s INTERIM STATUS
+sections (checkpoints 1 and 2). Do not re-run Batch A/B for the already-OK styles; do not discard
+the `*_pre_reuse_baseline`/`*_intermediate_*_baseline` capture dirs.
+
+## 2026-07-10 - Codex Verifier - C3 persistent budget-search hierarchy
+
+### Summary
+- Added a persistent raw adaptive-refinement hierarchy for budget searches.
+- Target mode captures once at `MIN_BUDGET_SCALE`; cap mode captures at scale 1.
+- Later probes traverse retained nodes to materialize the exact active frontier.
+- Probe materialization allocates no recursive child cells or hierarchy nodes.
+- Pinned-boundary enforcement and 2:1 balance still run unchanged per probe.
+- Added a test-only `legacyBudgetSearch` oracle flag.
+
+### Decisions
+- Stored nodes in their original DFS child-push order and retained root order.
+- Reused C1 scale-exact fields and C2 scale-independent evidence cache.
+- Added a hard invariant error if a probe requests children absent from the
+  captured envelope; no fallback or approximate refinement is permitted.
+- Left ordinary non-search builds and separate directional final builds unchanged.
+
+### Validation
+- Focused MetricSizingField and ConformingWall suites: 27/27 passed.
+- Exact ordered leaves match legacy for five target-envelope probe scales.
+- Exact ordered leaves match legacy for five cap-envelope probe scales.
+- Persistent and legacy-search wall budget telemetry, vertices, indices, and
+  triangle provenance match exactly.
+- Existing vertex/index FNV hashes remain byte-identical.
+- Targeted ESLint and diff-check passed.
+- Typecheck remains blocked by the previously recorded unrelated
+  `src/fidelity/metrics.ts:916` missing `degenerateCount` error.
+- GitNexus detect_changes ran; shared-worktree aggregate remains CRITICAL due to
+  56 concurrently modified files, not unexpected C3 scope expansion.
+
+### Risks / next agent
+- Search callbacks and samplers must remain pure within a search, as already
+  required by C1/C2 and the sizing/refinement mathematical contracts.
+- Benchmark search-stage timings to quantify the complete C1+C2+C3 reduction.
+
+## 2026-07-10 - Claude Fable 5 - E-2026-07-10-JACOBIAN-SIZING: pre-registered + instrument-validated, mesh-verdict sequence LAUNCHED (detached, in flight — no verdict yet)
+
+- **PRE-REGISTERED (commit 875f9089, standalone files, scope-clean).** Named follow-up to
+  E-2026-07-10-ANALYTIC-FLOOR-MASKED's KILL-A (WARP-JACOBIAN SAG DILUTION). Derived J(u,t) — the analytic,
+  piecewise-constant Jacobian of the crease/helix domain-warp chain — in closed form by reusing
+  `PullbackMetric.ts`'s existing `uWarpDerivative`/`tWarpDerivative` segment-slope readers (no new FD
+  machinery at runtime); composed `Ju^2` into the EXISTING `outerCurvatureFloor` hook (raise-only:
+  `kappa_jFloor = baseFloor * max(1, Ju^2)`), zero new production wiring, zero `src/` edits.
+- **INSTRUMENT VALIDATION (pure math, no mesh, DONE):** FD-validated the analytic Jacobian against the
+  actual composed warp map at 100,000 random probes (kink-adjacent points excluded, right-segment-slope is
+  the documented convention there) — **maxRelErrJu = 6.84e-11**, four orders of magnitude inside the
+  pre-registered <1e-6 gate. FLEET DIAGNOSTIC (mandatory, run regardless of the mesh verdict): SpiralRidges
+  (helix branch) maxJ2=3.16 / p99J2=3.16 / meanJ2=1.09 / area(J2>1)=12.5% = area(J2>1.5); GyroidManifold and
+  DragonScales both come back **branch=identity, J===1 everywhere** at default params on the shared body
+  dims — their sharp features currently route through general-curve embedding (band-edge contours / ring
+  embeddings), not the CreaseU/T/Helix warp family, so THIS specific mechanism does not expose them at these
+  settings. Narrows "fleet-wide" (the KILL-A follow-up's framing) to "every warp-family style," not "every
+  style with sharp features."
+- **PINNED WORKTREE set up + verified** at `.claude/worktrees/jacobian-sizing-verdict` (detached HEAD
+  875f9089, node_modules junctioned to the main tree — confirmed 366 entries resolve correctly): re-ran the
+  `fd` stage there and reproduced the identical FD numbers byte-for-byte (same worst-probe coordinates, same
+  seed) — committed == measured, formally, before any expensive stage ran.
+- **NO DEDICATED VITEST CONFIG** — file-scope restriction (this arm may only touch
+  `research/bridge/_jacobian_sizing*` / `research/lab/E-2026-07-10-JACOBIAN-SIZING*`) collides with the
+  older `vitest.<experiment>.config.ts`-per-arm convention (118 precedent files). Resolved by following the
+  MORE RECENT `_gyroid_prodclose`/`_gyroid_bandedge` pattern instead (same day, no dedicated config there
+  either, for the same reason: `test.poolOptions` is a live Vitest-4 no-op — confirmed again here,
+  `DEPRECATED test.poolOptions was removed in Vitest 4`): root `vite.config.ts`'s `test.include` already
+  covers `research/**/*.test.ts`; heap/pool/timeout all pushed to the CLI
+  (`NODE_OPTIONS=--max-old-space-size=16384 ... --pool=forks --no-file-parallelism --testTimeout=5400000`).
+  One wrinkle banked for the next session: `// @vitest-environment node` per-file override CRASHES here
+  (`setupFiles: ['./src/test/setup.ts']` unconditionally touches `HTMLCanvasElement`, which doesn't exist
+  under plain `node` env) — running under the default root `jsdom` env instead works fine for this
+  pure-numeric/mesh workload (costs a fixed ~13s jsdom-init tax per invocation, accepted).
+- **MESH-BUILD SEQUENCE LAUNCHED, DETACHED, IN FLIGHT (no verdict yet — do not treat anything below as a
+  result).** Orchestrator (`powershell.exe`, fully detached via `Start-Process`, no cross-turn watcher armed)
+  sequences `h0 -> c1match -> jdesign` in the pinned worktree, aborting the chain on any instrument-gate
+  failure; EcoQoS `AboveNormal` bump by CreationDate every ~30s (CommandLine filtering confirmed useless on
+  this vitest-4/Windows stack, same as every other arc this arc); breadcrumbs to
+  `research/exchange/_jacobian_sizing/{run.log,orchestrator.log,rows.ndjson}` (worktree-local, synced back to
+  the main tree's same path every ~90s so a normal `cd potfoundry-web` session sees it without knowing about
+  the worktree). Confirmed healthy at hand-off: `h0`'s fork child heap-gated at 16,576MB (NODE_OPTIONS
+  propagated), reached 1.9GB working set and growing, `AboveNormal` applied. H0 expected =
+  `f707898e-02e3bea1`; C1-match expects ~6,956,244 tris / 2,764 facets-over / 0.03575 worst (the KILL-A
+  numbers, un-J-corrected) as the instrument-match gate BEFORE `jdesign`'s J-composed number is trusted.
+  Acceptance for `jdesign`: 0 facets over 0.01mm (exact Newton-ALL) AND fullTris <=8,530,251 AND coverage
+  <=0.01 AND watertight non-vacuous + zeroArea 0; KILL-J1 (fidelity unchanged, max 2 designs, auto-dumps
+  worst-50 loci with local J to `jdesign_worst50.json`) / KILL-J2 (budget, FRONTIER-priced) per the prereg.
+- **NEXT SESSION:** poll `research/exchange/_jacobian_sizing/{orchestrator.log,rows.ndjson}` for h0/c1match/
+  jdesign completion; append the VERDICT section to
+  `research/lab/E-2026-07-10-JACOBIAN-SIZING-prereg.md` (committed, scope-clean) once `jdesign` finishes or
+  the chain aborts; if all three stages pass, this is the fleet-wide sizing-correctness lever named in the
+  MASKED verdict's follow-up — evaluate flipping `outerCurvatureFloor`'s wiring from research-only to a
+  real `src/` change as a SEPARATE, newly-scoped experiment (out of this arm's file-scope). Worktree
+  intentionally left in place (not cleaned up) so the running processes are not disturbed — remove only
+  after the sequence completes and results are folded in.
+
+## 2026-07-10 - Codex Verifier - C3 memory hardening
+
+### Summary
+- Replaced persistent refinement-node objects with chunked typed-array SoA.
+- Levels use Uint8; iu/it use Uint32; first-child links use Int32.
+- Probe traversal reads scalar fields directly and allocates no node records.
+- Added explicit evidence-cache entry and total-sample ceilings.
+- Saturated evidence is evaluated normally but not retained, preserving results.
+
+### Decisions
+- Used 65,536-node chunks for bounded allocation overhead and O(1) addressing.
+- Default evidence limits are 65,536 metric cells, 131,072 metric samples,
+  and 65,536 entries for each feature/crease predicate cache.
+- Exposed byte estimates and saturation/entry counters for verification.
+
+### Validation
+- Focused exact hierarchy/wall suites: 29/29 passed.
+- One-million-node hierarchy payload stays below 14 MiB (13 bytes/capacity node).
+- Zero-capacity evidence caches saturate while producing exact legacy leaves.
+- Target/cap hierarchy parity and full legacy-search mesh equality remain green.
+- Targeted ESLint and diff-check passed; detect_changes reran.
+
+### Risks / next agent
+- Typed hierarchy payload excludes small per-chunk container overhead.
+- Profile peak memory and search time on the 4-9M-triangle production styles.
+
+## 2026-07-10 - Claude Fable 5 - E-2026-07-10-JACOBIAN-SIZING: VERDICT — PARTIAL (TOLERANCE-BOUNDARY), MECHANISM CONFIRMED CAUSAL
+
+- **Closes the arm pre-registered at 875f9089** (see my earlier entry for the launch/instrument state). All
+  three mesh stages ran in the pinned worktree at exactly 875f9089; verdict committed at **51d8a301**
+  (prereg VERDICT section, only my scoped file staged).
+- **Instrument chain all-green BEFORE the J-number was read:** fd (analytic Ju vs FD of the composed warp
+  map: 6.84e-11 rel-err over 100k probes) -> h0 (flag-off byte-identity **f707898e-02e3bea1 EXACT**,
+  5,686,834 tris) -> c1match (non-J masked floor at 512x128: **6,956,244 tris bit-identical, facetsOver
+  2,764 EXACT, max 0.035754** — the ANALYTIC-FLOOR-MASKED KILL-A verdict reproduced same-day, so the J-arm's
+  baseline is proven fresh, not stale).
+- **jdesign (only change: curvatureFloor x max(1, Ju^2), raise-only):** fullTris **8,131,784 = 1.430x**
+  (budget gate <=8,530,251 PASSED, 4.7% headroom) · prescreen survivors **5,605 -> 80 (70x)** · scoring wall
+  **5,664s -> 101s (56x — the pre-named soft tell)** · exact Newton-ALL **facetsOver 34 / max 0.010203** vs
+  c1match's 2,764 / 0.035754 (**-98.8%, 81x; worst pulled to the tol line**) · coverage 0.009951 <= 0.01 ·
+  watertight non-vacuous, zeroArea 0. Literal acceptance (facetsOver=0) NOT met => **PARTIAL, no gate
+  motion** — but all 34 sit in [0.010015, 0.010203], i.e. ~0.2 of the ~0.001mm Newton-resolution unit above
+  tol (the §V11w adjudication class), on an upper-bound ruler. WARP-JACOBIAN SAG DILUTION is now CAUSALLY
+  confirmed: same floor, same grid, same day — without J^2 fidelity unchanged; with J^2 it collapses 81x.
+- **Field semantics banked (a recurring confusion, now written down in the verdict):** forward.newtonWorst
+  (0.008447) = Newton at ONE point, the interior scorer's argmax — a diagnostic, never an acceptance leg;
+  forward.newtonAll.max (0.010203) = max Newton over EVERY radially-flagged dense-45 point (exhaustive
+  population) — THE acceptance basis. They legitimately disagree because their argmax populations differ.
+- **Worst-34 classification** (jdesign_worst50.json): all helix-branch, all near-rim t in [0.917, 0.979]
+  (the cross-style attachment-band cluster), 4 u-clusters; 16/34 on the J2=3.16 compression plateau (floor
+  raised 0.72 -> 2.26, just under the 2.4 kappa-cap), 18/34 on J2=0.79 expansion segments (raise-only no-op;
+  base floor already 2.01-2.28). The residual class lives at the kappa-cap/minEdge frontier — which is why
+  the named micro-arm applies a small raise-only margin to the WHOLE composed floor (`(1+eps)`, eps~5%,
+  fits under both the cap and the 4.7% budget headroom), NOT to the J^2 term (a J2-side margin cannot reach
+  the 18 expansion-segment residuals).
+- **Fleet J-diagnostic (mandatory deliverable):** SpiralRidges maxJ2 = p99J2 = 3.16 on a single 12.5%-area
+  plateau; GyroidManifold and DragonScales **J===1 everywhere** (identity branch) at defaults — they route
+  sharp features through general-curve embedding, not the crease/helix warp family. "Fleet-wide" for this
+  mechanism = warp-family styles only.
+- **Follow-ups named, not iterated (KILL-J1's 2-design allowance unspent):** (1) the eps-margin micro-arm
+  (new prereg; predicted to clear the final 34); (2) production wiring — compose Ju^2 into the production
+  sizing field for warp-family styles via the existing outerCurvatureFloor hook (manifest sizing-layer
+  item; out of this arm's file scope by design).
+- **Ops notes banked:** my PowerShell stage-sequencer died at the turn boundary (the known
+  watchers-don't-survive pattern) while its vitest fork children survived and completed — single detached
+  stage launches + coordinator polling worked cleanly for c1match/jdesign; per-file
+  `// @vitest-environment node` is unusable in this repo (setup.ts touches HTMLCanvasElement
+  unconditionally) — run research probes under the root jsdom env (~13s tax, harmless). GitNexus index
+  reads stale (last indexed 922abd0) — my commits are research-only (no indexed src/ symbols); left for the
+  tree owner rather than racing concurrent sessions with a re-index.
+- Ledger: prereg+instruments 875f9089 -> verdict 51d8a301. Exchange data (rows.ndjson, run.log, worst-34
+  dump, stage logs) under research/exchange/_jacobian_sizing/ (gitignored), worktree copies synced to the
+  main tree. Pinned worktree `.claude/worktrees/jacobian-sizing-verdict` now idle (no live processes) —
+  safe to remove whenever convenient.
+
+## 2026-07-10 - Claude Fable 5 - E-2026-07-10-JACOBIAN-SIZING-MARGIN: KILL (one-shot) — QUANTIZATION PROVEN, arm CLOSED
+
+- **Micro-arm authorized post-verdict, pre-registered at 5776b079 (committed BEFORE running), verdict at
+  2f3c6e9b.** eps=0.05 raise-only margin on the WHOLE composed floor (redirected off the J^2 term by the
+  worst-34 dump's 18/34-at-J2<1 finding), one design, no eps-iteration. Result: fullTris 8,456,484 (1.487x,
+  99.1% of gate) bought facetsOver 34->28 and max 0.010203->0.010191 — hypothesis REFUTED, KILL per clause.
+- **The failure mode is the finding — sizing is LEVEL-QUANTIZED DEAD at the residual loci, proven three
+  ways:** (1) all 28 survivors BIT-IDENTICAL Newton vs jdesign (max delta exactly 0.0; the new max is
+  byte-for-byte jdesign's (0.2394, 0.9287); coverage max + worst-locus bit-identical too) while demanded-h
+  moved exactly 1/sqrt(1.05) — request changed 2.4%, delivery changed 0; (2) level arithmetic: the entire
+  reachable request band sits inside ONE quadtree level interval (L11 0.147-0.169 > req > L12 0.074-0.084
+  at the residual radii), and L13 needs kappa>3.4-4.4 — impossible under the frozen 2.4 cap => the sizing
+  derivative there is EXACTLY zero for any raise-only floor change of any size; (3) the 6 cleared loci
+  (incl. the former worst) are level-boundary-adjacency beneficiaries — neighbors crossed a level, their
+  shared template/vertices moved; band interiors saw nothing.
+- **Ladder complete (banked in the prereg verdict):** baseline 3,140@0.0239N (1.000x) -> blanket 0@0.0100
+  (1.935x) -> masked 2,764@0.0358 (1.223x, warp-dilution) -> **J 34@0.0102 (1.430x, mechanism confirmed,
+  81x)** -> J+margin 28@0.0102 (1.487x, sizing saturated). CONCLUSION: warp-Jacobian sizing = the correct,
+  confirmed sizing-layer mechanism for warp-family styles; the final ~28 tolerance-line facet-points
+  (14 distinct (u,t), near-rim band) are sizing-dead and need a LOCAL lever — pins (V11aa/HexHive class) or
+  forced level-split — same endgame as Gyroid's knee. Named follow-ups only, NOT run: local-lever micro-arm;
+  production Ju^2 wiring recommendation unchanged.
+- **Housekeeping:** exchange data synced worktree->main (rows.ndjson now has fd/h0/c1match/jdesign/margin +
+  both worst-50 dumps); pinned worktree `.claude/worktrees/jacobian-sizing-verdict` removed after the
+  verdict commit (no live processes; all results committed/synced). GitNexus index remains stale
+  (922abd0) — all five of this arc's commits are research-only files with no indexed src/ symbols; leaving
+  the re-index to the tree owner (documented previously).
+- Ledger (full arc): 875f9089 (prereg+instruments) -> 51d8a301 (J verdict) -> 5776b079 (margin prereg) ->
+  2f3c6e9b (margin verdict, arm closed).
+## 2026-07-10 - Codex - Production 0.01 programme status audit
+
+### Summary
+- Audited the current all-20 production artifact certification batch and recent research verdicts.
+- Confirmed that the 0.01mm target is not yet achieved across all styles or all parameterized shapes.
+- Distinguished research-oracle mesh results from actual production-default export results.
+
+### Decisions
+- Treated `all20_scorecard.md` as the current production evidence, not proxy/lab champions.
+- Treated SuperformulaBlossom and WaveInterference as truth-bridge failures, not mesh-fidelity verdicts.
+- Reported pending drain results separately from completed certifications.
+
+### Validation
+- Read project context, TODO/ROADMAP, recent journal entries, PROD-BATCH prereg, and cross-workstream notes.
+- Queried GitNexus for the production export/fidelity flow; index is three commits behind HEAD.
+- Inspected current scorecard, drain progress, process state, git status, and recent commits.
+
+### Risks
+- The batch is tree-basis (`da6b423a+uncommitted`), not a clean committed production baseline.
+- Five certifications remain pending and the v3 drain was only just handed off/started.
+- Default-style coverage does not prove every possible parameter combination or pot shape.
+
+### Next agent
+- Finish the v3 certification drain, regenerate the all-20 scorecard, and append the final PROD-BATCH verdict.
+- Fix the SFB missing strength truth parameter and isolate WaveInterference CPU/GPU divergence.
+- Then productionize validated style-class mechanisms and run parameter/shape envelope testing.
+## 2026-07-11 - Codex - Lab champion to production gap analysis
+
+### Summary
+- Mapped the best research-mesh mechanisms onto the current production conforming export path.
+- Found that production already contains much of the substrate, but lacks faithful default dispatch and final residual closure.
+
+### Decisions
+- Separated missing production wiring from genuinely absent mesh primitives.
+- Treated Tier-C as staged/dev-only rather than a production capability because its flag is always off.
+- Used the programme consolidation manifest and measured champion recipes as the authoritative mapping.
+
+### Validation
+- Queried GitNexus for conforming-wall, feature, sizing, pinning, and assembly paths.
+- Inspected `buildConformingWall`, `WatertightAssembly`, PEC wiring, Tier-C dispatch, and programme consolidation.
+- Cross-checked Jacobian, Gyroid knee-pin, DragonScales doubled-ring, and count-unstable research verdicts.
+
+### Risks
+- The GitNexus index is three commits behind HEAD, though the latest commits are research-only.
+- Several mechanisms are present only behind dev globals and have not passed a clean all-style production rebaseline.
+- Some lab champions trade fidelity for finite-area needles or require special rulers.
+
+### Next agent
+- Implement the per-style manifest and promote mechanisms one style class at a time behind measured gates.
+- Prioritize composed-metric Jacobian sizing plus local pin/forced-split closure, then doubled boundaries.
+- Finish Tier-C seam/full-wall integration before considering production enablement for count-unstable styles.
+
+## 2026-07-11 — Claude Fable 5 — E-2026-07-10-PROD-BATCH (session sign-off): first all-20 production artifact scorecard CLOSED
+
+Summary: captured all 20 styles' production default exports on the tree basis (da6b423a + the
+uncommitted reuse-fix/int-key/gate delta set), certified every artifact under honest per-style
+rulers, and banked the quiet-GPU timing deliverable. Tally: 3 SHIPPED-CLEAN (FourierBloom,
+SuperellipseMorph, HarmonicRipple) / 14 REGRESSION / 2 TRUTH-BRIDGE-FAILURE (SuperformulaBlossom
+11.7mm = CPU truth missing sf_strength, types.ts:548; WaveInterference 0.937mm = real CPU<->GPU
+divergence at identical defaults) / 1 special-ruler (DragonScales V11g composite, carried by
+byte-identity). All 20 watertight (nonMan 0/zeroArea 0, non-vacuous). This is the PROD-TIERC
+Phase-1 baseline — full table with labeled bases in
+potfoundry-web/research/lab/E-2026-07-10-PROD-BATCH-prereg.md (verdict section).
+
+Decisions: byte-identity carry-over (24/24 sha1-identical bins) eliminated redundant
+re-certification of all 5 pilot styles incl. the expensive DS composite re-run; cost-model +
+vertexOnSurf discriminator turned 2 would-be ~210-CPU-h wrong-truth grinds into cheap gate-rows;
+stride-4/8 sharded fleets (pre-registered before running) tamed the 5 genuine 10-90 CPU-h styles;
+stage breadcrumbs (env-gated PF_PT_BREADCRUMB in _prod_truth.test.ts, default-inert) + 600s
+stall watchdog closed the stuck-vs-slow ambiguity (v3 drain: zero false kills, max crumb gap 35s).
+
+Validation: determinism controls passed 3-for-3 (bins sha1 across re-captures; zombie-vs-redo
+shard rows byte-identical; smoke-vs-fleet coverage to 4 decimals); merger/aggregator supersede
+semantics verified live; SR quiet re-time proven a real generate by fresh-bins sha1-identity.
+
+Perf banked (quiet GPU): pilot generates -81..-93% (DS 1113->81s; assembly share 97.4% ->
+62-92%); SR outer contended +27.4% artifact replaced by -84.2% quiet; no style over ~4min.
+Ops lessons: post-crash node_modules corruption (control-test + npm install first); npx-cache
+stale-vitest under prefix chains (invoke node_modules/vitest/vitest.mjs directly); vitest mains
+hang after worker death (kill worker+parent); time-gated watchdog crumbs only.
+
+Risks / next agent: SFB + WI certification remains ILL-POSED until their truth bugs are fixed
+(owner items, findings ledger 1-2 in the verdict); BasketWeave/CelticKnot forward numbers carry
+the crossing-flip vertex-tail annotation (honesty rule — do not read their outlier counts as
+pure mesh error); carried rows cite the pilot/DS-PRODTRUTH arms' bases verbatim. Registry row
+merge into EXPERIMENT-REGISTRY.md deferred (file holds other sessions' uncommitted rows) — the
+prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -> 17debce9 ->
+60501fc1 -> 519d83b8 -> 3e8aa0ae -> 5c5f6042 -> fac08d33 -> 9d3933f7.
