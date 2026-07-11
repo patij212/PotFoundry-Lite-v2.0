@@ -24,6 +24,7 @@ import {
   buildRegionOuterWall,
   toHarnessManifest,
   buildRegionWallGridCPU,
+  evaluatePackedAssemblyToXyz,
   type RegionBuildResult,
 } from './tierc_regionLayer';
 import type { StyleManifest, FeatureAnatomy, RegionPlan } from './tierc_manifest';
@@ -235,5 +236,85 @@ describe('tierc_regionLayer — R-REFINE dispatch (validation only, no kernel in
       birthDeathNotes: 'missing domain',
     });
     expect(() => buildRegionOuterWall(manifest, TINY_DIMS)).toThrow(/missing uLo\/uHi\/tLo\/tHi/i);
+  });
+});
+
+// ── REGRESSION: the Arm D run-1 evaluator bug (armD-quality-diagnosis.md §3) ─────────────────────
+// evaluatePackedAssemblyToXyz's INNER/BOTTOM-TOP branches double-applied the inner-wall z-mapping
+// (radius evaluated at z' = tBottom + (zHeight/H)·(H−tBottom) instead of zHeight) — displacing
+// 795,088 of 1,571,574 vertices by up to 0.787mm in the scored Arm D run-1 full mesh (measured,
+// research/exchange/tierc/armD_qualdiag.json). The WGSL reference applies the mapping ONCE
+// (adaptive_mesh.wgsl:790-800 INNER: compute_inner_radius(θ, t_radius) evaluates rA at
+// z = t_radius·H = zHeight; :830-847 BOTTOM-TOP: at t_radius_bot·H = tBottom). This block pins the
+// single-application contract per surfaceId with a STRONGLY z-dependent rA — under the run-1 bug the
+// two discriminator cases below read r=9.775 instead of 8.5 (Δ=1.275mm), so any regression is loud.
+describe('tierc_regionLayer — evaluatePackedAssemblyToXyz single z-mapping (run-1 bug regression)', () => {
+  // rA(θ,z) = 10 + 0.5·z — θ-free (exact xy expectations) and strongly z-dependent (the double
+  // mapping cannot hide). H=20, tWall=3, tBottom=3, rDrain=5.
+  const rA = (_theta: number, z: number): number => 10 + 0.5 * z;
+  const H = 20;
+  const T_WALL = 3;
+  const T_BOTTOM = 3;
+  const R_DRAIN = 5;
+
+  /** One packed (u,t,surfaceId) vertex -> evaluated [x,y,z]. */
+  function evalOne(u: number, t: number, sid: number): [number, number, number] {
+    const packed = Float32Array.from([u, t, sid]);
+    const out = evaluatePackedAssemblyToXyz(packed, rA, H, T_WALL, T_BOTTOM, R_DRAIN);
+    return [out[0], out[1], out[2]];
+  }
+
+  it('INNER (sid 1) at t=0: radius from rA at zHeight=tBottom — the run-1 discriminator', () => {
+    // zHeight = 3; correct r = max(rA(θ,3) − 3, 0.5) = 11.5 − 3 = 8.5.
+    // Run-1 bug evaluated rA at z' = 3 + (3/20)·17 = 5.55 → r = 9.775 (Δ = 1.275mm).
+    const [x, y, z] = evalOne(0, 0, 1);
+    expect(x).toBeCloseTo(8.5, 4);
+    expect(y).toBeCloseTo(0, 6);
+    expect(z).toBeCloseTo(3, 5);
+  });
+
+  it('INNER (sid 1) at t=1 with u=0.25: z-mapping fixed point + xy convention', () => {
+    // zHeight = H (the double-map's fixed point — same value either way; pins the contract anyway).
+    // r = max(rA(θ,20) − 3, 0.5) = 20 − 3 = 17; θ = π/2 → (0, 17, 20).
+    const [x, y, z] = evalOne(0.25, 1, 1);
+    expect(x).toBeCloseTo(0, 4);
+    expect(y).toBeCloseTo(17, 4);
+    expect(z).toBeCloseTo(20, 5);
+  });
+
+  it('BOTTOM-TOP (sid 4) at t=0: inner-edge radius from rA at z=tBottom — the run-1 discriminator', () => {
+    // WGSL: r_inner at t_radius_bot·H = tBottom = 3 → r = 8.5 (run-1 bug: 9.775), z = tBottom.
+    const [x, y, z] = evalOne(0, 0, 4);
+    expect(x).toBeCloseTo(8.5, 4);
+    expect(y).toBeCloseTo(0, 6);
+    expect(z).toBeCloseTo(3, 5);
+  });
+
+  it('BOTTOM-TOP (sid 4) at t=1: drain edge (rInner-independent)', () => {
+    const [x, y, z] = evalOne(0, 1, 4);
+    expect(x).toBeCloseTo(R_DRAIN, 4);
+    expect(z).toBeCloseTo(3, 5);
+    expect(y).toBeCloseTo(0, 6);
+  });
+
+  it('RIM (sid 2) at t=0: inner-top radius at z=H (accidentally correct under the run-1 bug — pinned)', () => {
+    // r = max(rA(θ,20) − 3, 0.5) = 17, z = H.
+    const [x, y, z] = evalOne(0, 0, 2);
+    expect(x).toBeCloseTo(17, 4);
+    expect(y).toBeCloseTo(0, 6);
+    expect(z).toBeCloseTo(20, 5);
+  });
+
+  it('OUTER (sid 0), BOTTOM-UNDER (sid 3), DRAIN (sid 5): unaffected branches pinned', () => {
+    const [ox, oy, oz] = evalOne(0, 0.5, 0); // r = rA(θ,10) = 15, z = 10
+    expect(ox).toBeCloseTo(15, 4);
+    expect(oy).toBeCloseTo(0, 6);
+    expect(oz).toBeCloseTo(10, 5);
+    const [bx, , bz] = evalOne(0, 1, 3); // t=1 → drain ring, z=0
+    expect(bx).toBeCloseTo(R_DRAIN, 4);
+    expect(bz).toBeCloseTo(0, 6);
+    const [dx, , dz] = evalOne(0, 0.5, 5); // r = rDrain, z = t·tBottom = 1.5
+    expect(dx).toBeCloseTo(R_DRAIN, 4);
+    expect(dz).toBeCloseTo(1.5, 5);
   });
 });

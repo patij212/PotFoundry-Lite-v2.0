@@ -462,15 +462,18 @@ describe.skipIf(!ON)('Arm D quality-miss diagnosis — captured vs scored-twin v
         JSON.stringify(
           {
             at: new Date().toISOString(),
-            version: 2,
+            version: 3,
             twinHash: hash,
             evaluatorBug: {
               movedVerts,
               totalVerts: scoredXyz.length / 3,
               maxDispMm,
               note:
-                'scoredTwin = evaluatePackedAssemblyToXyz (tierc_regionLayer.ts) with the double z-mapping ' +
-                'bug on INNER/BOTTOM-TOP; fixedTwin = corrected single-mapping evaluator (this file).',
+                'scoredTwin = evaluatePackedAssemblyToXyz (tierc_regionLayer.ts) AS CURRENTLY CHECKED OUT; ' +
+                'fixedTwin = the corrected single-mapping reference evaluator (this file). Before the run-1 ' +
+                'fix landed these differed (movedVerts=795088, maxDispMm=0.787 — preserved in ' +
+                'armD_qualdiag.run1.json); after the fix movedVerts must read 0 (the imported evaluator now ' +
+                'IS the corrected mapping).',
             },
             counts: {
               capturedTris: captured.idx.length / 3,

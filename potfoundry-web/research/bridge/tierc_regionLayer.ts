@@ -217,8 +217,16 @@ export function evaluatePackedAssemblyToXyz(
   const nV = vertices.length / 3;
   const out = new Float32Array(nV * 3);
   const outerR = (theta: number, t: number): number => rA(theta, t * H);
-  const innerR = (theta: number, t: number): number =>
-    Math.max(rA(theta, tBottomMm + t * (H - tBottomMm)) - tWallMm, MIN_INNER_R_MM);
+  // Inner radius takes z DIRECTLY — a SINGLE application of the inner-wall z-mapping, matching the
+  // WGSL exactly (compute_inner_radius(theta,t) = compute_outer_radius(theta,t) - tWall, evaluated at
+  // z = t*H; adaptive_mesh.wgsl:126-136, :790-800, :830-847). RUN-1 BUG FIXED HERE
+  // (armD-quality-diagnosis.md §3, coordinator-directed): the original helper took a t parameter and
+  // re-applied tBottom + t*(H - tBottom) internally while the INNER/BOTTOM-TOP branches passed it
+  // zHeight/H — a DOUBLE mapping that displaced 795,088/1,571,574 vertices by up to 0.787mm in the
+  // scored Arm D run-1 full mesh (measured: research/exchange/tierc/armD_qualdiag.json). Regression
+  // tests: tierc_regionLayer.test.ts "single z-mapping (run-1 bug regression)".
+  const innerRAtZ = (theta: number, z: number): number =>
+    Math.max(rA(theta, z) - tWallMm, MIN_INNER_R_MM);
   for (let v = 0; v < nV; v++) {
     const base = v * 3;
     const uRaw = vertices[base];
@@ -236,16 +244,15 @@ export function evaluatePackedAssemblyToXyz(
       x = r * Math.cos(theta);
       y = r * Math.sin(theta);
     } else if (surface < 1.5) {
-      // INNER (1): z = tBottom + t*(H-tBottom)
+      // INNER (1): z = tBottom + t*(H-tBottom); radius from rA AT zHeight (single mapping)
       const zHeight = tBottomMm + t * (H - tBottomMm);
-      const tRadius = zHeight / H;
-      const r = innerR(theta, tRadius);
+      const r = innerRAtZ(theta, zHeight);
       z = zHeight;
       x = r * Math.cos(theta);
       y = r * Math.sin(theta);
     } else if (surface < 2.5) {
-      // RIM (2): t=0 inner-top .. t=1 outer-top, both evaluated at t_top=1, z=H
-      const rInner = innerR(theta, 1);
+      // RIM (2): t=0 inner-top .. t=1 outer-top, both evaluated at z=H
+      const rInner = innerRAtZ(theta, H);
       const rOuter = outerR(theta, 1);
       const r = rInner + (rOuter - rInner) * t;
       z = H;
@@ -259,9 +266,9 @@ export function evaluatePackedAssemblyToXyz(
       x = r * Math.cos(theta);
       y = r * Math.sin(theta);
     } else if (surface < 4.5) {
-      // BOTTOM-TOP (4): t=0 inner-bottom .. t=1 drain, z=tBottom
-      const tRadiusBot = tBottomMm / H;
-      const rInner = innerR(theta, tRadiusBot);
+      // BOTTOM-TOP (4): t=0 inner-bottom .. t=1 drain, z=tBottom; inner radius from rA AT
+      // z = t_radius_bot*H = tBottom (single mapping)
+      const rInner = innerRAtZ(theta, tBottomMm);
       const r = rInner + (rDrainMm - rInner) * t;
       z = tBottomMm;
       x = r * Math.cos(theta);
