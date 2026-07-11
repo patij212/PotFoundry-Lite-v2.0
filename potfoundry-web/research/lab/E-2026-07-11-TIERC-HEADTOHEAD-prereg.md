@@ -453,3 +453,28 @@ escalation made it worse; same relief-chord-cliff). This is the SAME flat-P1 lim
 sheet cliff and Gothic's 19% sliver concession — a UNIFIED frontier: flat-P1 elements cannot follow
 high-curvature features at cell-bound facet sizes. The unifying true-0.01 path for all three is a
 curved-element (PN) treatment — Phase-2 research, priced as its own program.
+
+---
+
+## ADDENDUM 15 (2026-07-12) — DS Finding 3 = STRUCTURAL (flat-P1, not config); champion characterization COMPLETE
+
+DS Finding 3 (probe `_tierc_ds_f3.test.ts`). VERDICT: STRUCTURAL — tight sizing REFUTED as the fix
+(makes it worse). At AF_PROD_OPTS body sizing: %<20° 73%→**96%**, tris 1.09M→10.7M (2.35× over the
+4.55M budget), slivers grew 12.9× vs mesh 9.8× (faster than the mesh — opposite of dilution). minAngle
+0.9° both (depth-invariant structural defect). Topology SURVIVES: nonMan 0 / orient 0 / +395,083mm³
+outward, non-vacuous.
+- **Body slivers (88% tris, 99.2% <20°, NEW/density-induced):** K1 adaptive quadtree chasing DS's
+  designed relief toward maxLevel 16 without converging = the relief-chord-cliff / flat-P1 frontier
+  (Decision A6's density-invariant warning), now as needles.
+- **Ring-band slivers (12% tris, 73.8% <20°, SIZING-INVARIANT):** near-vertical riser facets, thin by
+  geometry (doubled-ring construction, fixed nTheta 2400) — B1's original 73% driver, untouched by density.
+- **Region-layer gaps (real engineering TODOs):** body-region sizing (maxSag/maxEdge/minEdge/maxLevel/
+  nRing) not threaded from the manifest → silently K1_TOY loose; RegionBuildOpts has NO sizing field;
+  the N-region path threads NO targetTriangles/budgetMode → no tri-budget cap.
+
+**CHAMPION CHARACTERIZATION COMPLETE. The flat-P1 frontier limits BOTH fidelity AND quality for
+high-curvature relief:** fidelity (Gyroid knee 0.0247, DS sheet cliff 0.046) + quality (Gothic sliver
+19%, DS body-relief + ring-riser slivers). All density-invariant; all one root (flat-P1 can't follow
+high-curvature at cell-bound facet sizes). Curved-element (PN) = the unified Phase-2 path.
+REMAINING CLOSEABLE (engineering, not frontier): Gyroid A4-orient/A4b-v2 watertightness (band-edge
+future-path); DS region-layer sizing/budget threading; DS body maxLevel knee-sweep (mitigation).
