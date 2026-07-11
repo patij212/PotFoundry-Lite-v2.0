@@ -232,3 +232,30 @@ well below the 20° boundary), and this run shows its natural false-positive rat
 - Inputs: `research/exchange/_prod_truth/FourierBloom/{full.xyz.bin,full.idx.bin}` (captured);
   packed assembly rebuilt deterministically (hash-asserted) via the exported region-layer/twin
   building blocks; scored-basis evaluation via the UNMODIFIED `evaluatePackedAssemblyToXyz` import.
+
+---
+
+## ADDENDUM (post-fix verification, coordinator-directed — Prereg Addendum 2 / 5f4a959e)
+
+The §3 fix has now LANDED in `tierc_regionLayer.ts` (`innerRAtZ(θ,z)` single-mapping helper; INNER
+evaluates at `zHeight`, BOTTOM-TOP at `tBottom`, RIM at `H`), coordinator-directed. Verification
+chain, in TDD order:
+
+1. **Regression tests RED-then-GREEN** (`tierc_regionLayer.test.ts`, new block "single z-mapping
+   (run-1 bug regression)": 6 tests pinning all six surfaceIds against a strongly z-dependent
+   `rA(θ,z)=10+0.5z`). Against the pre-fix evaluator, the two discriminators failed with EXACTLY the
+   predicted buggy value (x=9.7750 vs expected 8.5, the double-mapped z'=5.55 evaluation — Δ=1.275mm);
+   post-fix the full suite is 12/12 green.
+2. **Qualdiag re-run post-fix** (JSON v3; run-1 buggy-basis record preserved as
+   `research/exchange/tierc/armD_qualdiag.run1.json`): `movedVerts=0/1,571,574, maxDispMm=0.0000`
+   (the production evaluator now IS the corrected mapping), and the imported-evaluator arm reproduces
+   §2's corrected numbers verbatim — pctBelow10/20/30 = 9.6337/16.7443/36.8373% (Δ vs captured
+   −0.0001/−0.0002/+0.0007pp), correspondence matched=3,142,982, straddle@20 = 1/0, worst matched
+   Δangle 0.0117°.
+3. **Arm D RUN 2** (`research/bridge/_tierc_armD_run2.test.ts` — a NEW labeled arm per the honesty
+   rail, run 1 untouched; run=2 encoded in the runId `armD-run2-FourierBloom-<ts>`, GatesRow schema
+   untouched) — scored under Addendum 2: PRIMARY same-provenance packed-assembly hash identity
+   (region layer vs in-run direct twin, both asserted, plus identity with run 1's fingerprint
+   `bf78f51f-693eeace` since the evaluator fix must not change the assembly), hard gates, and the
+   unrounded fallback numbers computed fresh in-run for the record. Row appended to
+   `research/exchange/tierc/gates.ndjson`; verdict in the run log/crumbs and the session report.
