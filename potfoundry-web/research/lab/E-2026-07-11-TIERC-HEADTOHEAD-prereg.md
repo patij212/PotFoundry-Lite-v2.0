@@ -376,3 +376,24 @@ FIX-PHASE TALLY: Gothic C2 FULL PASS (true-0.01 confirmed). DS topology CLOSED. 
 REFUTED-v1. REMAINING: GeoStar C2-repeat (cheap, same lever); Gyroid A3 pins (fidelity 0.0249→0.01) +
 A4-orient + A4b-v2; DS Finding 3 quality + tight-sizing + sheet-cliff frontier; Gothic sliver
 concession + 8.1×-build-cost profile before any default flip.
+
+---
+
+## ADDENDUM 12 (2026-07-11) — GEOSTAR also TRUE-0.01 via the C2 lever; C2 generalizes to the K2 class
+
+GeoStar C2-repeat (probe `_tierc_geostar_c2.test.ts`, patch u∈[0,0.05]×t∈[0.35,0.40] bracketing one
+strapwork crease). VERDICT: GeoStar is a true-0.01 style ONLY via the C2 analytic lever (REFUTED
+"already", CONFIRMED "via-lever") — structurally identical to Gothic:
+- sampler-built: 4205 tris, reads 0-outliers/0.00996 vs its OWN sampler target BUT **45.5% outlier /
+  max 0.199mm (~20× tol) vs EXACT analytic** — the same sampler-chord trap. Every prior GeoStar
+  "rides to tolerance" claim was measured vs the sampler, never the true surface.
+- analytic-built (C2 lever): 5071 tris / 7 passes / 13.8s, LITERAL stride=1 all 5071 facets = **0
+  outliers, max 0.009952mm** (p99 0.00649). G3 orient 0, G7 boundary all-rim, watertight non-vacuous
+  both builds. Cost 1.21× tris (even lower than Gothic's 1.82× — finite kink easier than knife-edge).
+
+**BOTH K2 count-unstable knife-edge styles (Gothic + GeoStar) are now confirmed true-0.01 via the
+committed C2 lever** — it generalizes to the class, not just Gothic. Sampler-trap confirmed on 2
+independent styles. Larger GeoStar FULL-band analytic confirm (u[0,0.1]×t[0.4,0.6], nTheta 1024) is
+the natural scale follow-up (registry notes it plateaus at 2 outliers @0.028 in SAMPLER mode). No
+production change implied (C2 lever already committed default-off; a default-flip needs the 8.1×
+build-cost profile + the standing sliver-concession product decision).
