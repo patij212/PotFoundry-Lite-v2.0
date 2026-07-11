@@ -354,3 +354,25 @@ orientationMismatches catches this class). Remaining DS: Finding 3 (quality ≈7
 FIX-PHASE TALLY: Gothic C2 PASS (analytic lever). DS topology CLOSED (Findings 1+2). Gyroid A4b
 REFUTED-v1 (measured-negative). REMAINING: Gyroid A4-orient (local kernel seam-registry, fixture-first),
 A4b-v2 (provenance-scoped holes), DS Finding 3 (quality) + tight-sizing rerun.
+
+---
+
+## ADDENDUM 11 (2026-07-11) — GOTHIC CONFIRMED TRUE-0.01mm AT FULL PATCH SCALE (C2 CLOSED)
+
+The deferred C2 full-patch confirm PASSED — see `research/lab/tierc/C2-full-patch-verdict.md`. Full
+Gothic CI patch built with `surfaceSource:'analytic'`: 18,045 tris / 8 passes, scored LITERAL
+stride=1 against the exact analytic rA = **0 outliers, max 0.009952mm** (every one of 18,045 facets
+≤0.01). Sampler-built baseline scored vs analytic = 70.2% over tol / max 0.230mm (the before).
+Watertight nonMan 0 non-vacuous, orient 0, boundary all-rim. Honest cost: 1.82× tris, 8.1× build
+wall-time (LOWER proportional cost than the 3.43× worst-crest sub-patch — full patch averages crests
+vs smoother arches). The literal 18,045-facet scan took 1.2s (converged analytic mesh screens green
+cheaply — the "expensive scoring" was only ever non-converged meshes).
+
+**GOTHIC = the program's FIRST confirmed true-0.01mm style, end-to-end against the real analytic
+surface (not the 512² sampler, not one crest — the whole patch, watertight, literal scan).** The
+"can we achieve true 0.01" question is answered YES, demonstrated, for Gothic.
+
+FIX-PHASE TALLY: Gothic C2 FULL PASS (true-0.01 confirmed). DS topology CLOSED. Gyroid A4b
+REFUTED-v1. REMAINING: GeoStar C2-repeat (cheap, same lever); Gyroid A3 pins (fidelity 0.0249→0.01) +
+A4-orient + A4b-v2; DS Finding 3 quality + tight-sizing + sheet-cliff frontier; Gothic sliver
+concession + 8.1×-build-cost profile before any default flip.
