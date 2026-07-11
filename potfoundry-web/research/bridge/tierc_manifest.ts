@@ -375,13 +375,28 @@ export function dragonScalesAnatomy(_params: StyleOptions, dims: StyleDims): Fea
     };
   });
 
-  const boundaries = [0, ...rings.map((r) => r.t * dims.H), dims.H];
+  // Body-region z-boundaries stop at ringZ∓DS_RING_HALF_BAND_MM (the ring half-band) so body and
+  // ring regions are STRICTLY DISJOINT (B0's own proven contract; matches _tierc_b1_lib.ts's
+  // buildDsChainCorrected's already-proven `bodyBoundaries` construction exactly). PRIOR BUG
+  // (WINDING-ROOT-diagnosis.md §3 / B1-dragonscales-verdict.md Finding 1): this used to be
+  // `boundaries = [0, ...rings.map(r => r.t*dims.H), dims.H]` — the RAW ring z, unoffset — which
+  // OVERLAPPED every R-STRUCT ring band ([ringZ-0.6,ringZ+0.6]) by 0.6mm on each side (measured
+  // nonManifoldEdges=3584=7*512, one coincident double-loop per ring). True domain edges (z=0,
+  // z=H) are NOT ring bands and stay un-offset.
+  const bodyLo: number[] = [0];
+  const bodyHi: number[] = [];
+  for (const r of rings) {
+    const z = r.t * dims.H;
+    bodyHi.push(z - DS_RING_HALF_BAND_MM);
+    bodyLo.push(z + DS_RING_HALF_BAND_MM);
+  }
+  bodyHi.push(dims.H);
   const bodyRegions: RegionPlan[] = [];
-  for (let i = 0; i < boundaries.length - 1; i++) {
+  for (let i = 0; i < bodyLo.length; i++) {
     bodyRegions.push({
       id: `body-${i}`,
       type: 'R-CDT',
-      domain: { uLo: 0, uHi: 1, zLo: boundaries[i], zHi: boundaries[i + 1] },
+      domain: { uLo: 0, uHi: 1, zLo: bodyLo[i], zHi: bodyHi[i] },
       boundaryChains: [dsBodyChain(i, 'lo'), dsBodyChain(i, 'hi')],
       // Decision A6: stays on K1 adaptive (matches production, measured CONSISTENT-to-better than the
       // champion's own uniform sheet). CAUTION carried forward, not enforced here: a generic

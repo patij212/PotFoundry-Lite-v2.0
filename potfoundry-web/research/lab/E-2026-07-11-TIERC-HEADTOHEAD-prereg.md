@@ -338,3 +338,19 @@ avoids a fragile forced unification):
 
 DS fix arm (Findings 1+2 together) = next; Gyroid A4-orient = a careful kernel arm after; A4b-v2 +
 DS Finding 3 remain.
+
+---
+
+## ADDENDUM 10 (2026-07-11) — DS TOPOLOGY CLOSED (Findings 1+2)
+
+DS assembled topology is CLOSED — see `research/lab/tierc/DS-topofix-verdict.md`. Two research-lib
+edits (zero src/ blast): manifest disjoint body domains (Finding 1, nonMan 3584→0) + buildStructuredWall
+winding flip CW→CCW (Finding 2, orient 7168→0). Gate re-confirmed by coordinator: nonMan 0 / orient 0 /
+boundary all-rim / zeroArea 0 / signedVolume +395,052mm³ OUTWARD, non-vacuous. Direction-correctness
+proven via signed volume (Finding-1-only was already +343,871mm³ WITH all 7168 mismatches — only local
+orientationMismatches catches this class). Remaining DS: Finding 3 (quality ≈73% %<20°) + tight-sizing
+(AF_PROD_OPTS) fidelity rerun.
+
+FIX-PHASE TALLY: Gothic C2 PASS (analytic lever). DS topology CLOSED (Findings 1+2). Gyroid A4b
+REFUTED-v1 (measured-negative). REMAINING: Gyroid A4-orient (local kernel seam-registry, fixture-first),
+A4b-v2 (provenance-scoped holes), DS Finding 3 (quality) + tight-sizing rerun.

@@ -192,8 +192,20 @@ describe.skipIf(!ON)('WINDING-ROOT diagnosis — DS z-adoption-seam small toy (r
       // eslint-disable-next-line no-console
       console.log(`[winding-diag] first 5 mismatch edges: ${JSON.stringify(dump.slice(0, 5), null, 2)}`);
 
-      // Non-vacuity: the defect must actually exist in this toy for the diagnosis to mean anything.
-      expect(orientationMismatch, 'toy must reproduce SOME orientation mismatch (else the toy is not representative)').toBeGreaterThan(0);
+      // POST-FIX UPDATE (E-2026-07-11-TIERC-HEADTOHEAD DS-topology-fix arm, Addenda 7/9): this
+      // assertion originally read `expect(orientationMismatch, '...').toBeGreaterThan(0)` — a
+      // non-vacuity check written when this file was DIAGNOSIS-ONLY (no fix existed yet), asserting
+      // the toy faithfully REPRODUCED the then-unfixed defect. That is now the WRONG expectation:
+      // `buildStructuredWall` (_sharp3dMesh.ts) has since been fixed (winding flipped to
+      // CCW-in-(theta,z), matching ConformingWall/QuadtreeTriangulator) exactly per this file's own
+      // recommendation §2.a, and this toy is the mission's own named acceptance check for that fix
+      // ("The winding probe's DS toy should now show orientationMismatch 0, was 32"). Flipped to
+      // assert the FIX: 0 mismatches, plus the per-source tally now agrees in SIGN across all three
+      // sources (ringStruct flipped from 100% CW {pos:0,neg:176} to 100% CCW {pos:176,neg:0} on this
+      // toy, measured — matching lowerK1/upperK1's unchanged {pos:416,neg:0} CCW convention).
+      expect(orientationMismatch, 'DS winding fix: orientationMismatch must be 0 (was 32 pre-fix)').toBe(0);
+      expect(tally.ringStruct.neg, 'ringStruct must carry zero CW triangles post-fix (was 176 pre-fix)').toBe(0);
+      expect(tally.ringStruct.pos, 'ringStruct must now agree in sign with lowerK1/upperK1 (CCW)').toBeGreaterThan(0);
     },
     5 * 60 * 1000,
   );

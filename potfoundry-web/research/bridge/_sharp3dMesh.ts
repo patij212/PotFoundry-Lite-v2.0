@@ -62,12 +62,16 @@ function stripBetween(
   for (let s = 0; s < steps; s++) {
     const tn = topNext(i), bn = botNext(j);
     if (tn <= bn) {
-      // advance top: triangle (topV(i), botV(j), topV(i+1))
-      idx.push(topV(i), botV(j), topV(i + 1));
+      // advance top: triangle (topV(i), topV(i+1), botV(j)) — CCW-in-(theta,z), matching
+      // ConformingWall/QuadtreeTriangulator's convention (WINDING-ROOT-diagnosis.md: this branch
+      // was CW-in-(theta,z) unconditionally, the DS Finding-2 winding defect's mechanism — last
+      // two vertices swapped from the original (topV(i), botV(j), topV(i+1)) to flip the sign).
+      idx.push(topV(i), topV(i + 1), botV(j));
       i++;
     } else {
-      // advance bot: triangle (topV(i), botV(j), botV(j+1))
-      idx.push(topV(i), botV(j), botV(j + 1));
+      // advance bot: triangle (topV(i), botV(j+1), botV(j)) — CCW-in-(theta,z), same flip (last
+      // two vertices swapped from the original (topV(i), botV(j), botV(j+1))).
+      idx.push(topV(i), botV(j + 1), botV(j));
       j++;
     }
   }
@@ -107,8 +111,12 @@ export function buildStructuredWall(rA: AnalyticRadiusFn, H: number, rows: RowSp
         const a = tb + c, an = tb + cn, b = bb + c, bn = bb + cn;
         // quad corners a(top,c) an(top,c+1) b(bot,c) bn(bot,c+1). Diagonal option1 = a-bn, option2 = an-b.
         // choose the SHORTER diagonal (well-known heuristic ≈ max-min-angle on a convex quad).
-        if (d2(a, bn) <= d2(an, b)) { idx.push(a, b, bn); idx.push(a, bn, an); }
-        else { idx.push(a, b, an); idx.push(an, b, bn); }
+        // WINDING (WINDING-ROOT-diagnosis.md): each triangle's LAST TWO vertices are swapped vs the
+        // original (idx.push(a,b,bn); idx.push(a,bn,an) / idx.push(a,b,an); idx.push(an,b,bn)) to flip
+        // this branch from CW-in-(theta,z) to CCW-in-(theta,z), matching ConformingWall/
+        // QuadtreeTriangulator's convention (a single transposition negates signed area unconditionally).
+        if (d2(a, bn) <= d2(an, b)) { idx.push(a, bn, b); idx.push(a, an, bn); }
+        else { idx.push(a, an, b); idx.push(an, bn, b); }
       }
     } else {
       stripBetween(idx, rowStart[r], nTop, rows[r].thetas, rowStart[r + 1], nBot, rows[r + 1].thetas);
