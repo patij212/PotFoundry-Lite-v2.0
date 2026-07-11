@@ -264,3 +264,35 @@ G3/G7) has exposed that each champion carried a previously-unmeasured gap vs the
 Gyroid = band-edge holes/orientation (kernel A4-orient + A4b), Gothic = sampler-fidelity at crests
 (kernel C2). B1 (DS full wall) remains, then the kernel-fix batch. The audit-first ruler keeps
 finding the honest floor below the celebrated wins — exactly its job.
+
+---
+
+## ADDENDUM 7 (2026-07-11, after B1) — DS chain mechanism works; NOT-REPRODUCED (config-explained) + 3 findings; reproduction phase CLOSED
+
+B1 (DragonScales full wall) — see `research/lab/tierc/B1-dragonscales-verdict.md`:
+- **Chain mechanism WORKS** — native N=15 R-STRUCT/R-CDT dispatch built end-to-end (first time), 0
+  interior boundary holes (DS does NOT carry Gyroid's band-edge hole defect — 4th style confirming
+  that defect is band-edge-CDT-specific).
+- **NOT REPRODUCED (T1∧T4∧T5 fail)** — but T1/T2/T3 are CONFIG-EXPLAINED (built at K1_TOY_DEFAULTS
+  loose sag, no relief-conforming — not a real DS-champion fidelity reading). T4 PASSES.
+- **Finding 1 (fix proven, applied):** manifest domain-overlap bug — body regions must stop at
+  ringZ∓DS_RING_HALF_BAND_MM, not at ringZ (drives nonManifoldEdges 3584→0).
+- **Finding 2:** per-seam winding defect (orientationMismatches 7168 = 7×2×512) at the R-STRUCT↔R-CDT
+  adoption boundary — B0's gates never checked winding. Kin to Gyroid A4-orient; needs diagnosis.
+- **Finding 3:** undiagnosed 73%+ %<20° quality collapse (both configs — not the overlap bug).
+
+**REPRODUCTION PHASE CLOSED. Head-to-head architecture verdict:** the region-orchestration
+architecture is PROVEN to reproduce all three champion kernels through one general path (Gyroid K1
+bit-exact, Gothic K2 CI-exact, DS R-STRUCT/R-CDT chain builds + 0 interior holes) + the smooth
+control is clean. BUT full "reproduced-to-the-shippable-standard" is achieved by NONE yet — the
+composite harness (true-analytic + G3/G7, measuring what no prior gate did) exposed a
+characterized gap per champion:
+- Gyroid: band-edge 360 holes + 652 orientation (kernel A4-orient + A4b).
+- Gothic: 0.17mm off analytic at crests, faithful-to-512²-sampler not analytic (kernel C2).
+- DS: manifest overlap (fixed) + seam winding 7168 + 73% quality collapse + needs tight-sizing rerun.
+
+The architecture bet holds; the champions are mechanism-reproducible but each needs its characterized
+fix set to meet the true 0.01mm-analytic-watertight-oriented standard. NEXT PHASE = the per-style fix
+batches (task #16 + DS Findings 2/3), each with GitNexus impact + default-off byte-identity +
+fidelity-Δ0 discipline. The audit-first ruler kept finding the honest floor below the celebrated wins
+— across all four arms — which is exactly its job.
