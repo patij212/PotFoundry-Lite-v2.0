@@ -752,3 +752,135 @@ re-index for exactly this window): both dev servers restarted, `e2e/_export_stag
 on the 5 pilots (:3001), then the SpiralRidges re-capture (:3000) replacing the contended
 +27.4% outer artifact (contended meta preserved at `_prod_batch/SpiralRidges_contended_meta.json`;
 bins byte-identical, proven). Heartbeats: `_prod_batch/timing_progress.ndjson`.
+
+---
+
+# VERDICT (2026-07-11, measured) — E-2026-07-10-PROD-BATCH CLOSED
+
+**The first all-20 production-artifact scorecard EXISTS: 20/20 styles captured (zero capture
+failures; one transient retried), 20/20 adjudicated under honest per-style rulers, all 20
+watertight (nonMan 0 / zeroArea 0, non-vacuous controls). Tally: 3 SHIPPED-CLEAN / 14 REGRESSION
+/ 2 TRUTH-BRIDGE-FAILURE / 1 special-ruler. The reuse-fix + integer-key tree delta is banked on
+a quiet GPU: pilot-set generate times collapsed 81-93% with byte-identical artifacts (proven by
+sha1 on every re-captured style). This scorecard is the PROD-TIERC PHASE-1 BASELINE (charter
+65f85bbe, Phase-0 specs a17ee380, architecture v1 5120d1f4): the per-style rows below, with
+their labeled bases, are the numbers the head-to-head arms must beat — cite verbatim.**
+
+## The all-20 scorecard (tree-basis da6b423a+uncommitted; tol 0.01mm; every row watertight 0/0)
+
+Column notes: `outliers` = facets over tol on the stated basis; `est` = survivor-population
+extrapolation (pilot-confirmed methodology, 0.4% off literal on Gyroid); `Newton` = max
+Newton-confirmed real distance across shards (where it differs from the merged-row field —
+which carries the global-grid-max point's Newton per the banked FAST-HONEST-RULER semantic —
+both are given as max/field); carried = byte-identical artifact, certification transfers.
+
+| style | basis | outliers (scanned) -> est | grid max -> Newton mm | coverage max | verdict |
+|---|---|---|---|---|---|
+| SuperformulaBlossom | GATE-ROW (interior ill-posed) | vtxOnSurf p99 **11.70** max 12.5 | — | — (vs wrong truth) | **TRUTH-PARAMS-MISMATCH**: `DEFAULT_SUPERFORMULA` (types.ts:548) lacks the registry's `sf_strength` param — CPU truth always renders the FULL blossom vs the strength-0 artifact |
+| FourierBloom | stride 1, full pop | **0** | 0 | 0.0037 | **SHIPPED-CLEAN** |
+| SpiralRidges | carried (pilot literal) | 3,145 | 0.0358 -> **0.0239** | 0.0353 | REGRESSION (kappa-floor class; closed at 1.94x in lab; J-sizing 81x arm banked) |
+| SuperellipseMorph | stride 1, full pop | **0** | 0 | 0.0032 | **SHIPPED-CLEAN** |
+| HarmonicRipple | carried (pilot literal) | **0** | 0.0055 | 0.0033 | **SHIPPED-CLEAN** (two-sided <=0.0055) |
+| GothicArches | stride 4, 4-shard merged | 33,345/40,736 (81.9%) -> ~133,400 of 162,937 surv | 0.3567 -> **0.3460**/0.3045 | **1.2318** (batch-largest; tracery grooves) | REGRESSION |
+| WaveInterference | GATE-ROW (interior ill-posed) | vtxOnSurf p99 **0.937** max 1.186 | — | — (vs wrong truth) | **TRUTH-IMPL-DIVERGENCE**: defaults match value-for-value => real CPU<->GPU divergence (pre-INTHASH-Voronoi class, 14x larger) — needs its own arm |
+| Crystalline | stride 4, single | 3,124/4,533 of 18,130 surv -> ~12,500 | 0.1245 -> 0.0369 | 0.0331 | REGRESSION |
+| ArtDeco | stride 8, 4-shard merged | 13,700/13,732 (**99.8%**) -> ~109,600 of 109,842 surv | 2.0847 -> **1.3912** (batch-largest forward) | 0.0539 | REGRESSION (stepped-riser chording — the settled-map "EXCLUDE—risers" class, now priced in production) |
+| DragonScales | carried; V11g composite (special ruler) | body **6,158 LITERAL** (0.267%); ring 71,355@8/16 (6.35%) -> ~142,710 est | body max 0.158 (rim class); ring max 0.0700 | sheet 0.0403 / **wall 0.0703** | special-ruler REGRESSION (ring-chording ~96%; battery ALL PASS) |
+| BambooSegments | stride 4, 4-shard merged | 10,053/14,947 (67.3%) -> ~40,200 of 59,779 surv | 0.8299 -> 0.3471 | 0.5710 | REGRESSION (node-ring class; zombie/redo shard rows byte-identical — determinism control PASSED) |
+| RippleInterference | stride 1, full pop | 16 | 0.0104 -> **0.0065 < tol** | 0.0097 | REGRESSION-borderline (grid-inflation likely, sec V11j; Newton-basis this style is <=tol) |
+| GyroidManifold | carried (pilot LITERAL via prescreen+shard) | **105,107 LITERAL** | 0.3817 -> **0.0590** | 0.0987 | REGRESSION (band-edge recipe banked: -67.6% at +18.5% tris) |
+| Voronoi | carried (post-INTHASH stride-1) | 64,327 | 0.1094 -> 0.0739 | 0.1403 | REGRESSION (truth TRUSTED post-swap; density/sizing arm next) |
+| BasketWeave | stride 8, 4-shard merged | 24,045/32,297 (74.4%) -> ~192,300 of 258,352 surv | 0.9967 -> 0.6646 | 0.8810 | REGRESSION **[vtx-tail honesty rule: 20,011 verts (0.95%) over tol, max exactly 2.000mm = bw_depth — over/under crossing flips; forward outliers near crossings carry truth-tail uncertainty]** |
+| GeometricStar | stride 1, full pop | 78,998 | 0.0597 -> 0.0397 | 0.0371 | REGRESSION (tierC patch-scale literal-0 exists flag-OFF — the flip's value now priced) |
+| HexagonalHive | stride 1, full pop | 56,766 | 0.4096 -> **0.2733** | 0.1009 | REGRESSION (hex cell-wall class) |
+| CelticKnot | stride 8, 4-shard merged | 9,083/10,177 (89.3%) -> ~72,600 of 81,392 surv | 0.4093 -> **0.2164**/0.1995 | 0.2435 | REGRESSION [vtx-tail: 8 verts, max 0.600mm — crossing-flip class, bridge effectively held] |
+| CelticTriquetra | stride 4, single | 58,005/82,448 of 329,790 surv -> ~232,000 | 0.8457 -> **0.5648** | 0.3234 | REGRESSION (13.6M-tri heavyweight; largest est. population) |
+| LowPolyFacet | stride 1, full pop | 4,040 (99.8% of 4,048 surv) | 0.3914 -> **0.2609** | **0.000017** | REGRESSION, forward-only — coverage CLEAN => bevel-edge-bridging (facets float across creases; surface fully covered) |
+
+## Quiet-GPU stage-timing table (2026-07-11 05:23-05:33Z, machine idle, tree-basis; per-style one production-default generate via diagnoseStageTimings; byte-identity vs banked counts exact)
+
+| style | total s (vs pilot) | assembleWatertight s (share) | gpuVertexEval | summarizeValidation | other buckets |
+|---|---|---|---|---|---|
+| HarmonicRipple | **66.3 (-82.4%** vs 377) | 41.4 (62.4%) | 18.0 (first-style Dawn warmup, banked pattern) | 5.8 | <=1.0 |
+| SpiralRidges | **72.6 (-84.0%** vs 455) | 63.7 (87.7%) | 0.4 | 5.7 | warps 2.0 |
+| GyroidManifold | **43.1 (-82.8%** vs 250) | 38.3 (88.9%) | 0.3 | 3.8 | <=0.6 |
+| DragonScales | **81.3 (-92.7%** vs 1113) | 70.4 (86.6%) | 0.6 | 8.9 | <=1.4 |
+| Voronoi | **101.3 (-81.0%** vs 534) | 92.8 (91.6%) | 0.3 | 7.2 | <=0.9 |
+
+Assembly share dropped from the OLD tree's 94.1-98.8% (97.4% aggregate) to 62-92% — the whole
+uncommitted delta set (final-quadtree reuse + integer-key codec + gate changes) removed most of
+the assembly-dominated cost; validation (3.8-8.9s) and the HR warmup are now visible slices.
+decimation 0 everywhere; otherMs 0 everywhere (buckets fully account).
+
+**SpiralRidges outer re-time (the contended-artifact replacement):** pilot outer 449.2s ->
+contended tree 572.0s (**+27.4%, now formally attributed to load**: this arm's SFB cert fork +
+gitnexus analyze + the Jacobian arm) -> **quiet tree 70.9s (-84.2% vs pilot)**. Full
+455.3->88.8s (-80.5%). Proof the quiet number is a REAL full generate, not a cache: fresh bins
+written 06:31-06:33Z and sha1-IDENTICAL to the pre-reuse pilot baseline (deterministic mesher),
+with the independent stage-timing measurement (72.6s) agreeing. Contended meta preserved at
+`_prod_batch/SpiralRidges_contended_meta.json`.
+
+**Generate-time ledger, all 20 (tree-basis capture `full.generateMs`, contended-window flag
+where applicable):** SuperformulaBlossom 17.6s / FourierBloom 103.6s / SpiralRidges 88.8s(quiet)
+/ SuperellipseMorph 10.0s / HarmonicRipple 321.3s(contended; quiet stage-timing 66.3s) /
+GothicArches 53.7s / WaveInterference 10.4s / Crystalline 119.6s / ArtDeco 79.0s / DragonScales
+131.3s(-88.2% vs pilot) / BambooSegments 43.0s / RippleInterference 13.5s / GyroidManifold
+221.2s(contended; quiet 43.1s) / Voronoi 123.6s(-76.9% vs pilot) / BasketWeave 113.1s /
+GeometricStar 68.2s / HexagonalHive 70.3s / CelticKnot 76.7s / CelticTriquetra 243.4s /
+LowPolyFacet 36.0s. NO style exceeds ~4 minutes on the quiet tree — the "4-19 minute default
+export" product finding from the pilot is RESOLVED by the uncommitted tree (per-bucket
+attribution: the stage-timing table above).
+
+## Findings ledger (beyond the scorecard)
+
+1. **PRODUCT — SuperformulaBlossom CPU truth lacks `sf_strength`** (types.ts:548 vs registry
+   id-0 first param): any CPU-side consumer of DEFAULT_STYLE_PARAMS renders a different surface
+   than the GPU default. Owner fix required before SFB can be certified at all.
+2. **PRODUCT — WaveInterference CPU<->GPU divergence p99 0.937mm** at value-identical defaults:
+   a real implementation divergence (needs its own truth-bridge arm; interior certification
+   ill-posed until then).
+3. **INSTRUMENT — weave/knot crossing-flip vertex tails**: BasketWeave 20,011 verts @ <=2.000mm
+   (=bw_depth exactly), CelticKnot 8 @ <=0.600mm — f64-truth branch selection flips at
+   over/under crossings; p99-gate correctly passes; annotation required on forward numbers.
+4. **INSTRUMENT — LowPolyFacet forward/coverage split**: 99.8% of survivors over tol while
+   coverage reads 0.000017mm — bevel-edge bridging (facets span bevel creases the truth models);
+   the honest close lever is crease embedding, not density.
+5. **INSTRUMENT — pathological single-fork class decomposed**: 2 of 7 were truth-mismatch grinds
+   (SFB/WI, would have burned ~210 CPU-h against wrong surfaces — the cost-model + vertexOnSurf
+   discriminator prevented it); the other 5 were genuine 10-90 CPU-h workloads, tamed by
+   stride-4/8 sharded fleets with measured ETAs (all landed, zero watchdog kills).
+6. **OPS (banked for every future arm)**: hard reset corrupted node_modules (37 packages
+   missing — control-test + `npm install` before ANY post-crash debugging); `npx` under
+   timeout/env prefix chains can resolve a stale npx-cache vitest (invoke
+   `node node_modules/vitest/vitest.mjs` directly); bash assignment-prefixes die after empty
+   expansions (use `env`); vitest mains HANG after worker death (watchdogs must kill
+   worker+parent); watchdog crumbs must be TIME-GATED (<=60s cadence measured, 35s max gap) —
+   modulo-cadence ticks false-killed 4 healthy shards; fork children survive wrapper kills and
+   keep checkpointing (exploited deliberately throughout).
+7. **DETERMINISM — three independent controls passed on real data**: all 24 re-captured pilot
+   bins sha1-identical (20 tree-basis + 4 quiet SR); BambooSegments zombie-vs-redo shard rows
+   byte-identical; GothicArches smoke coverage = fleet coverage to 4 decimals.
+
+## Kill-criteria adjudication (vs the pre-registration)
+
+Capture failures: 1 transient (DS mapAsync race, OLD-tree precedent class, retry OK) — under
+the >6 threshold; LowPolyFacet hazard never manifested (Dawn hang is Style-18-preview/raycast-
+pipeline-specific, per the page-load artifact reproducing in every fresh browser). Certification
+>90min: handled by the pre-registered stride/shard/partial ladder (stride-8 pre-registered at
+checkpoint 8 BEFORE those fleets ran); DS composite re-run eliminated by byte-identity
+carry-over. No kill fired terminally. The 5h capture budget held (batches A-G ~1.6h wall).
+
+## Ledger
+
+Prereg+verdict: this file (commits 922abd0c -> 2d1e82bf -> 10b02de1 -> 17debce9 -> 60501fc1 ->
+519d83b8 -> 3e8aa0ae -> 5c5f6042 -> fac08d33 -> [this]). Instruments: `research/bridge/
+_prod_batch_assemble.mjs` (aggregator: carry-over, synth-partial, honesty annotations),
+`_prod_batch_progress.mjs` (breadcrumbs), `_prod_batch_diag.test.ts` (cost model + vertexOnSurf
+discriminator), `_prod_truth.test.ts` (stage breadcrumbs, env-gated, default-inert). Runners
+(gitignored, coordinator-hosted): `research/exchange/_prod_batch/drain_runner{,_v3}.sh`. Data
+(gitignored, numbers inlined here): `research/exchange/_prod_truth/**` (20 capture dirs + 5
+baselines), `research/exchange/_prod_batch/**` (all20_scorecard.{ndjson,md}, cost model, crumbs,
+heartbeats, logs), `research/exchange/_export_stage_timing/**`, `_ds_prodtruth_pre_reuse_baseline/`.
+Tree-basis: `da6b423a` + 44 uncommitted src files (verified unchanged through close: research-only
+commits landed on top). Scored against: capture dims H120/top_od100/bottom_od80/expn1/spin0,
+DEFAULT style params, tol 0.01mm.
