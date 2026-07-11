@@ -27,6 +27,7 @@
 
 import cdt2d from 'cdt2d';
 import type { SurfaceSampler } from '../SurfaceSampler';
+import type { AnalyticRadiusFn } from '../../../../../fidelity/analyticSurfaceGate';
 import type { ProtectedComplex } from './morseComplex';
 import {
   BARY_STOP,
@@ -34,7 +35,10 @@ import {
   facetInteriorHonest,
   liftChartMesh,
   radialSurfaceFromSampler,
+  analyticSurfaceSampler,
+  radialSurfaceFromAnalytic,
   type ChartMesh,
+  type RadialSurface,
   type RulerOptions,
 } from './interiorRuler';
 
@@ -125,6 +129,32 @@ export interface RefineOptions {
    */
   anisoAspectTol?: number;
   ruler: RulerOptions;
+  /**
+   * SURFACE SOURCE (LEVER, Arm C2, E-2026-07-11-TIERC-HEADTOHEAD, opt-in;
+   * default undefined ⇒ 'sampler' — BYTE-IDENTICAL to prior). The K2 kernel is
+   * parametrized purely over a `SurfaceSampler`; today every call site passes
+   * a `styleSampler` `GpuSurfaceSampler` — a pre-evaluated bilinear grid
+   * (default 512²) that CHORDS across sub-mm knife-edge crests (C1 finding:
+   * ~0.17mm off analytic at Gothic's crests, sampler grid itself up to 1.35mm
+   * off analytic at 512², shrinking with resolution — C1-gothic-verdict.md).
+   * 'analytic' swaps the effective sampler for {@link analyticSurfaceSampler}
+   * (built from `analyticRA`/`analyticH`) for BOTH placement (seed/lift/
+   * insertion — every vertex then sits exactly on the analytic surface) AND
+   * ruling ({@link radialSurfaceFromAnalytic} replaces
+   * {@link radialSurfaceFromSampler} for `facetInteriorHonest`/
+   * `scoreWholeMesh`), so the refine loop converges the mesh to the TRUE
+   * surface instead of the discretized grid it otherwise targets. Requires
+   * `analyticRA` when set (throws otherwise); `analyticH` defaults to the
+   * height measured off the ORIGINAL `sampler` argument (z1−z0 at u=0),
+   * cheap and exact since z is unaffected by radial bilinear error. Evaluating
+   * `analyticRA` per query is genuinely more expensive than the grid lookup —
+   * accepted; that cost IS the fidelity this buys.
+   */
+  surfaceSource?: 'sampler' | 'analytic';
+  /** Exact analytic radius function r(theta,z); required when `surfaceSource` is 'analytic'. */
+  analyticRA?: AnalyticRadiusFn;
+  /** Override the analytic surface's wall height (mm); default = measured off `sampler`. */
+  analyticH?: number;
   /**
    * Cross-pass DIRTY-FACET cache (default off; opt-in perf lever). A facet
    * whose canonical (u,t) signature (its 3 sorted vertex coords) is UNCHANGED
@@ -791,6 +821,38 @@ function insertOutlierSplit(
 }
 
 /**
+ * Resolve the effective placement sampler + ruling surface from
+ * `opts.surfaceSource` (see {@link RefineOptions.surfaceSource}). Undefined/
+ * 'sampler' returns `sampler` BY REFERENCE (unchanged) and the existing
+ * `radialSurfaceFromSampler(sampler)` construction — BYTE-IDENTICAL to the
+ * pre-Arm-C2 behaviour for every caller that doesn't set the new option.
+ * 'analytic' builds both halves from the SAME `analyticRA`/H so placement and
+ * ruling agree by construction.
+ */
+function resolveSurfaceSource(
+  sampler: SurfaceSampler,
+  opts: RefineOptions,
+): { effSampler: SurfaceSampler; surface: RadialSurface } {
+  if (opts.surfaceSource !== 'analytic') {
+    return { effSampler: sampler, surface: radialSurfaceFromSampler(sampler) };
+  }
+  if (!opts.analyticRA) {
+    throw new Error(
+      "refineToZeroOutliers: surfaceSource:'analytic' requires opts.analyticRA",
+    );
+  }
+  // Height is unaffected by radial bilinear error (t=0/t=1 rows are exact grid
+  // rows, no interpolation) — measuring it off the ORIGINAL sampler is cheap
+  // and exact, mirroring radialSurfaceFromSampler's own z0/z1 probe.
+  const H =
+    opts.analyticH ?? sampler.position(0, 1)[2] - sampler.position(0, 0)[2];
+  return {
+    effSampler: analyticSurfaceSampler(opts.analyticRA, H),
+    surface: radialSurfaceFromAnalytic(opts.analyticRA, H),
+  };
+}
+
+/**
  * The whole-mesh honest-brute refine loop (see module doc). Returns the
  * refined chart mesh; `capped` is true when the pass budget ran out with
  * outliers remaining (the caller's mandatory guard then fails, honestly).
@@ -802,13 +864,13 @@ export function refineToZeroOutliers(
   opts: RefineOptions,
   onPass?: (s: RefinePassStat) => void,
 ): RefineResult {
-  const surface = radialSurfaceFromSampler(sampler);
+  const { effSampler, surface } = resolveSurfaceSource(sampler, opts);
   const { uToMm, tToMm } = complex;
   const seed = seedFromComplex(
     complex,
     domain,
     opts.bgArcMm,
-    sampler,
+    effSampler,
     opts.maxConstraintMm,
     adaptiveCfg(opts),
   );
@@ -854,7 +916,7 @@ export function refineToZeroOutliers(
   for (let i = 0; i < cEdges.length; i++) {
     cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
   }
-  const splitCfg = splitCfgFrom(opts, uToMm, tToMm, sampler);
+  const splitCfg = splitCfgFrom(opts, uToMm, tToMm, effSampler);
   const dense = denseBary(8);
   const history: RefinePassStat[] = [];
   let capped = false;
@@ -882,7 +944,7 @@ export function refineToZeroOutliers(
   };
   for (pass = 1; pass <= opts.maxPass; pass++) {
     const t0 = Date.now();
-    const xyz = liftChartMesh(sampler, uv);
+    const xyz = liftChartMesh(effSampler, uv);
     const nF = tris.length / 3;
     const useDense = pass > bulk;
     rehash();

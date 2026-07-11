@@ -20,7 +20,7 @@
  * @module conforming/tierC/interiorRuler
  */
 
-import type { SurfaceSampler } from '../SurfaceSampler';
+import type { SurfaceSampler, Vec3 } from '../SurfaceSampler';
 import {
   projectPointToRadialSurface,
   type AnalyticRadiusFn,
@@ -78,6 +78,52 @@ export function radialSurfaceFromSampler(sampler: SurfaceSampler): RadialSurface
     const [x, y] = sampler.position(u < 0 ? u + 1 : u, t);
     return Math.hypot(x, y);
   };
+  return { rA, H };
+}
+
+/**
+ * Analytic-backed drop-in {@link SurfaceSampler} (Arm C2,
+ * E-2026-07-11-TIERC-HEADTOHEAD, `surfaceSource:'analytic'`). `position(u,t)`
+ * evaluates `rA(theta,z)` EXACTLY — a real per-query analytic call, NOT a
+ * bilinear lookup on a pre-evaluated grid — so `[r·cosθ, r·sinθ, z]` sits
+ * precisely on the true surface for ANY (u,t): vertex-faithful BY
+ * CONSTRUCTION, at the cost of a genuine analytic eval per query (accepted —
+ * this is exactly what makes it faithful to the sub-mm crests a discretized
+ * `styleSampler` grid chords across; C1 finding, C1-gothic-verdict.md).
+ * Swapping this in for the sampler-grid `SurfaceSampler` at a K2 call site
+ * makes every downstream `.position()` consumer (seed background grid,
+ * constraint-chain densification, per-pass `liftChartMesh`, outlier-split
+ * insertion) analytic-faithful with NO other code change — the K2 kernel is
+ * already parametrized purely over `SurfaceSampler`.
+ */
+export function analyticSurfaceSampler(
+  rA: AnalyticRadiusFn,
+  H: number,
+): SurfaceSampler {
+  return {
+    position(u: number, t: number): Vec3 {
+      const uu = ((u % 1) + 1) % 1;
+      const theta = TAU * uu;
+      const z = Math.min(1, Math.max(0, t)) * H;
+      const r = rA(theta, z);
+      return [r * Math.cos(theta), r * Math.sin(theta), z];
+    },
+  };
+}
+
+/**
+ * Build a {@link RadialSurface} directly from an exact analytic radius
+ * function — the SAME return shape {@link radialSurfaceFromSampler} produces
+ * (so it drops into `facetInteriorHonest`/`scoreWholeMesh` unchanged), but
+ * sourced straight from the style's true radius formula instead of a
+ * `SurfaceSampler` grid wrapper. This is the "ruling" half of the analytic
+ * surface-source swap; pair with {@link analyticSurfaceSampler} (same
+ * `rA`,`H`) for the "placement" half.
+ */
+export function radialSurfaceFromAnalytic(
+  rA: AnalyticRadiusFn,
+  H: number,
+): RadialSurface {
   return { rA, H };
 }
 
