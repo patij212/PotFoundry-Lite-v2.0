@@ -149,3 +149,30 @@ AMENDED QUALITY-PARITY CRITERION (applies to Arm D run 2 and all subsequent arms
 - The evaluator one-line fix (validated by the diagnosis probe's evalPackedCorrected reference,
   hash-asserted against the scored mesh) is applied before run 2; run 2 is labeled run=2 in its
   row. Recorded before the re-run per the honesty rails.
+
+---
+
+## ADDENDUM 3 (2026-07-11, after Arm A1) — band-edge SOLID-WATERTIGHTNESS sub-target
+
+Arm A1 reproduced the Gyroid band-edge champion bit-for-bit (3-way hash identity; every fidelity
+number Δ0% vs banked). But the composite gates harness's G3 (orientation) + G7 (boundary) coverage
+— which no prior Gyroid verdict measured (`_prod_truth` probe and A2 acceptance check only
+`nonManRawBig` + `zeroArea`) — revealed that the doubled band-edge construction carries **360
+boundary (hole) edges + ~652 orientation-mismatched facets**, PRE-EXISTING at policy OFF, real by
+index (weld=0 == weld=1e-4), and ABSENT from the val=0 shipping export (0/0/0). See
+`research/lab/tierc/A1-gyroid-reproduction-verdict.md`.
+
+CONSEQUENCE: "Arm A reproduced = A1 ∧ A2" is amended. A1 (fidelity) and A2 (non-manifold) both
+PASS, but the band-edge champion mesh is **not yet a watertight, consistently-oriented solid** —
+360 holes make it unprintable regardless of fidelity. A new named sub-target A4 is added:
+
+**A4 (band-edge solid watertightness):** close the 360 boundary edges + ~652 orientation
+mismatches in the doubled band-edge general-curve CDT. Gate: on the band-edge full assembly,
+boundaryEdges 0, orientationMismatches 0, nonManifold 0 (with fanRepair), zeroArea 0 — all
+by-index non-vacuous — WITHOUT regressing the A1 fidelity numbers (outer tris ±0.5%, Newton-worst
+±5%, coverage ±10%, knee-class 100%). Diagnosis first (why does the per-cell CDT emit open/mis-wound
+facets when fed 28,785 doubled-curve points — cell-tiling gaps at near-tangent passes? seam/clip?
+sliver drops?), then the minimal fix. **Arm A is NOT "reproduced" until A1 ∧ A2 ∧ A4.**
+
+This does not alter any prior scored row; it names a defect the broader gate coverage exposed.
+Recorded per the honesty rails — the harness earned its keep on its first champion run.
