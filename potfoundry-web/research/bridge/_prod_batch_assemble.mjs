@@ -245,7 +245,12 @@ for (const e of scorecard) {
   const newton = e.newtonWorst != null ? e.newtonWorst.toFixed(4) : '-';
   const cov = e.coverage ? `${e.coverage.max?.toFixed(4)}/${e.coverage.p99?.toFixed(4)}` : (e.ds?.rev ? `sheet ${e.ds.rev.sheet?.interior?.max?.toFixed(4)} wall ${e.ds.rev.wall?.max?.toFixed(4)}` : '-');
   const nm = e.nonManRaw != null ? `${e.nonManRaw}/${e.zeroArea}` : '-';
-  const verdict = `${e.verdictClass}${e.carried ? ' [carried: byte-identical]' : ''}`;
+  // Honesty-rule annotation: the gate passes on p99, but a nonzero vertex tail over tol means
+  // forward outliers near branch loci may be truth-tail artifacts (weave/knot crossing flips).
+  const vtxTail = e.vertexOnSurf && e.vertexOnSurf.over > 0 && e.vertexOnSurf.p99 <= 0.01
+    ? ` [vtx-tail: ${e.vertexOnSurf.over} verts over tol, max ${e.vertexOnSurf.max?.toFixed(3)}mm — crossing-flip class; forward outliers near those loci carry truth-tail uncertainty]`
+    : '';
+  const verdict = `${e.verdictClass}${e.carried ? ' [carried: byte-identical]' : ''}${vtxTail}`;
   md.push(`| ${e.style} | ${tris} | ${gen} | ${vtx} | ${fwd} | ${newton} | ${cov} | ${nm} | ${verdict} |`);
 }
 writeFileSync(join(OUT_DIR, 'all20_scorecard.md'), md.join('\n') + '\n');

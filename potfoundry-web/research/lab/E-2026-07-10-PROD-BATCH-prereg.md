@@ -712,3 +712,43 @@ substance signal from the smoke row (fleet will confirm): GA interior outliers 5
 scanned at stride 256, grid max 0.3045 → Newton-worst 0.0979; coverage interior max 1.232mm
 (!!) — if the fleet's shard-0 coverage reproduces that, GothicArches carries the largest
 coverage gap of the batch (tracery groove under-tessellation class).
+
+## INTERIM STATUS (checkpoint 9 — drain COMPLETE zero watchdog kills; adjudication review; quiet-GPU timing pass launched)
+
+**DRAIN v3 COMPLETE (05:18:16Z, runner exit 0, hosted by the coordinator):** GothicArches 77min,
+ArtDeco 89min, BasketWeave 86min, CelticKnot 105min, BambooSegments redo 17.5min — **zero
+watchdog kills across the entire run** (the 30s-tick instrumentation held; max measured gap 35s
+vs the 600s threshold). All-20 tally: **3 SHIPPED-CLEAN / 14 REGRESSION / 2 TRUTH-BRIDGE-FAILURE
+/ 1 special-ruler.**
+
+**ADJUDICATION REVIEW (merged rows sanity-checked):**
+- BambooSegments redo fully superseded the zombie-era partial — and the zombie shard-1 row and
+  the redo's shard-1 row are **byte-identical** (out 2,567 / max 0.826375 / Newton 0.3456):
+  an unplanned determinism control PASSING on real fleet data.
+- MERGER SEMANTIC NUANCE (recorded for the final table): the merged `newtonWorst` is the Newton
+  of the GLOBAL-grid-max point (banked FAST-HONEST-RULER semantic). For two styles a different
+  shard's Newton-confirmed value is LARGER and is the honest style-level Newton-worst:
+  GothicArches **0.3460** (shard 1; merged field 0.3045), CelticKnot **0.2164** (shard 0; merged
+  field 0.1995). Both figures are real achievable distances; the final table carries the max.
+- BasketWeave honesty-rule annotation ACTIVE: gate passes on p99 (3.77e-5) but **20,011 vertices
+  (0.95%) sit over tol with max exactly 2.000mm = the bw_depth default** — the weave's
+  over/under branch flip at strand crossings makes the CPU truth pick the OTHER strand. Forward
+  outliers near crossings carry truth-tail uncertainty (annotated in the aggregator + table).
+  CelticKnot: same class, only 8 vertices, max 0.600mm — bridge effectively held.
+- GothicArches coverage interior max **1.2318mm** — fleet shard-0 reproduces the smoke's
+  prediction to 4 decimals; the batch's largest coverage gap (tracery-groove under-tessellation).
+- ArtDeco: Newton-worst **1.3912mm** (largest forward magnitude in the batch; stepped-riser
+  chording class — the settled-map "EXCLUDE — risers" prediction now has a production number).
+- All five drained styles watertight-clean (nonMan 0 / zeroArea 0; non-vacuous control moved).
+
+**Scaled survivor-population estimates (stride-labeled; scanned→survivors extrapolation, the
+pilot-confirmed methodology):** GothicArches 33,345/40,736 scanned (81.9%) ⇒ ~133,400 est over
+of 162,937 survivors; ArtDeco 13,700/13,732 (**99.8%**) ⇒ ~109,600 of 109,842; BasketWeave
+24,045/32,297 (74.4%) ⇒ ~192,300 of 258,352; CelticKnot 9,083/10,177 (89.3%) ⇒ ~72,600 of
+81,392; BambooSegments 10,053/14,947 (67.3%) ⇒ ~40,200 of 59,779.
+
+**LAUNCHED (detached): quiet-GPU timing pass** — machine free (coordinator defers GitNexus
+re-index for exactly this window): both dev servers restarted, `e2e/_export_stage_timing_capture.mjs`
+on the 5 pilots (:3001), then the SpiralRidges re-capture (:3000) replacing the contended
++27.4% outer artifact (contended meta preserved at `_prod_batch/SpiralRidges_contended_meta.json`;
+bins byte-identical, proven). Heartbeats: `_prod_batch/timing_progress.ndjson`.
