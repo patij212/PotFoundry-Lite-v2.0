@@ -176,3 +176,33 @@ sliver drops?), then the minimal fix. **Arm A is NOT "reproduced" until A1 ∧ A
 
 This does not alter any prior scored row; it names a defect the broader gate coverage exposed.
 Recorded per the honesty rails — the harness earned its keep on its first champion run.
+
+---
+
+## ADDENDUM 4 (2026-07-11, after A4 diagnosis) — A4 SPLIT into two pre-registered fix arms
+
+A4 diagnosis (`research/lab/tierc/A4-diagnosis.md`) reproduced the 360/652/3 exactly and SPLIT the
+defect: boundary holes 91.4% (329/360) = the near-tangent doubled-curve registry mechanism (A2's
+root cause, ~20x wider extent than the 2 known loci, ~65 spots); orientation 98.9% (645/652) = a
+DISTINCT u=0/1 seam wrap-stitch defect (one t~0.31-0.33 band, forward/forward seam edge). CdtStats.outer
+{inversions:0, drops:0} rules out per-cell CDT drops for both. fanRepair (mult>2 only) structurally
+cannot reach mult=1 holes or mult=2 mis-wound edges — hence A1's 360→360 / 652→651.
+
+**A4a (orientation seam — CHEAPEST FIRST, research-side).** Hypothesis: making
+`_gyroidContourLib.ts` `linkSegments` periodic-u-aware (stop tearing contours at u=0/1) collapses
+the 645-member seam cluster. GATE: orientationMismatches 652 → ≤15 (allow the ~7 genuine
+cross-isolevel ones), boundaryEdges UNCHANGED (different mechanism — a drop here would mean
+mis-diagnosis, HALT+reclassify), nonMan unchanged, fidelity Δ0% (outer tris, Newton-worst,
+coverage, knee-class all unmoved — hash the outer wall). If `linkSegments` is already periodic-aware,
+the tear is elsewhere (report where). Verify blast radius before editing the shared lib; prefer an
+option/wrapper if wide.
+
+**A4b (boundary holes — kernel, after A4a).** Hypothesis: a `multiCurveCellPolicy: 'snapMerge'`
+variant (reuse forceRefineMultiCurveLeaves's same-cell/2-distinct-label detection; WIDEN the
+boundary-vertex weld radius in flagged cells; add NO new constraint line — V11q-safe) closes the
+329 near-tangent holes. GATE: boundaryEdges 360 → ≤31 (the non-near-tangent remainder), nonMan 0
+non-vacuous, zeroArea 0, fidelity Δ0%, default 'off' byte-identical (the A2 hard rule). Impact
+analysis on every touched kernel symbol; default-off proven byte-identical before acceptance.
+
+**Arm A "reproduced" = A1 ∧ A2 ∧ A4a ∧ A4b.** Each fix is its own experiment with the kill-criteria
+above; a fix that regresses fidelity or the other mechanism's count is a FAIL, reported not tuned.
