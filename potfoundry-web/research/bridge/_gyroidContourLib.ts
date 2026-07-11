@@ -119,12 +119,33 @@ export function marchAbsIso(
 /**
  * Link unordered segments into ordered polylines by welding shared endpoints (quantized). u is periodic so a
  * polyline may wrap; we DON'T force closure, just chain. Returns polylines (each an ordered (u,t) list).
+ *
+ * `periodicU` (E-2026-07-11-TIERC-HEADTOHEAD Arm A4a, opt-in, default false ⇒ byte-identical to every existing
+ * caller): the weld key is computed on RAW (u,t) — a segment ending at u=1.0 (marchAbsIso's right edge of the
+ * last u-column) and one starting at u=0.0 (left edge of the first column) are the SAME physical seam crossing
+ * (gyroidVal is exactly TAU-periodic in u, so g(0,t)==g(1,t) to float64 rounding — both edges' bisection runs on
+ * effectively identical g-values, so their crossing t's agree far inside weldEps) but get DIFFERENT quantized
+ * keys (round(0*q)=0 vs round(1*q)=q) and are never chained — every contour that physically crosses u=1<->0 is
+ * torn into two pieces with dangling ends at the raw domain edge. When `periodicU` is true, the weld key wraps u
+ * through `((u%1)+1)%1` before quantizing, so u=1.0 and u=0.0 (and any near-int drift) collapse to the SAME key
+ * and weld. NOTE (verified by direct read, ConformingWall.ts:588-606,809-814): `clipFeaturesToBox`'s uMargin
+ * clip independently re-truncates each output FeatureLine at `[uMargin, 1-uMargin]` in u regardless of upstream
+ * linking — since the raw seam endpoints (u=0/1) sit outside that margin on BOTH sides, `clipLineToInterval`
+ * closes a run at the SAME interpolated margin boundary whether the two pieces were pre-welded into one Contour
+ * or left separate (a run cannot straddle two consecutive out-of-range points either way). This weld therefore
+ * changes which vertices EXIST in the merged Contour object and how `decimateContours` steps across the former
+ * tear (a small, local perturbation), but does NOT by itself deliver a connected constraint edge through the
+ * kernel's uMargin dead zone — that gate lives in ConformingWall.ts (src/, out of this file's edit scope). Kept
+ * as an opt-in primitive regardless: it is a real, narrowly-scoped extraction-side correctness fix (production's
+ * own linkSegments fragments closed loops generally; periodic-aware welding is strictly more correct at the
+ * physical seam) and the mechanism-verification target for A4a.
  */
 export function linkSegments(
-  segs: Array<[[number, number], [number, number]]>, weldEps = 1e-6,
+  segs: Array<[[number, number], [number, number]]>, weldEps = 1e-6, periodicU = false,
 ): Contour[] {
   const q = 1 / weldEps;
-  const key = (pt: [number, number]): string => `${Math.round(pt[0] * q)}_${Math.round(pt[1] * q)}`;
+  const wrapU = (u: number): number => (periodicU ? (((u % 1) + 1) % 1) : u);
+  const key = (pt: [number, number]): string => `${Math.round(wrapU(pt[0]) * q)}_${Math.round(pt[1] * q)}`;
   // adjacency: endpoint-key → list of {segIdx, end}
   const adj = new Map<string, Array<{ s: number; e: 0 | 1 }>>();
   segs.forEach((s, i) => {

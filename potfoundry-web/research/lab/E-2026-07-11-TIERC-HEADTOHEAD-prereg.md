@@ -206,3 +206,29 @@ analysis on every touched kernel symbol; default-off proven byte-identical befor
 
 **Arm A "reproduced" = A1 ∧ A2 ∧ A4a ∧ A4b.** Each fix is its own experiment with the kill-criteria
 above; a fix that regresses fidelity or the other mechanism's count is a FAIL, reported not tuned.
+
+---
+
+## ADDENDUM 5 (2026-07-11, after A4a) — A4a refuted research-side; both A4 fixes are kernel-layer
+
+A4a (research-side periodic-u contour link) FAILED with proof: `linkSegments` is non-periodic but
+NOT the binding gate — `ConformingWall.ts`'s `uMargin` clip (`clipFeaturesToBox`/`clipLineToInterval`)
+closes each contour at the seam boundary unconditionally downstream, so a research-side weld can't
+help (orientation 652→654; boundary drifted 360→345, tripping the HALT). See A4a-verdict.md. The
+proven-safe opt-in `linkSegments(…, periodicU=false)` param is retained as a prerequisite the kernel
+fix may consume.
+
+REVISED A4 plan — both remedies are KERNEL-LAYER, on the same conforming region, best batched:
+- **A4-orient (was A4a):** `ConformingWall.ts` `clipFeaturesToBox`/`uMargin` + `wrapsSeam` must
+  become periodic-aware (mirror constraint points across u±1 / seam-aware winding). Fixture-first
+  (synthetic seam-wrapping curve), GitNexus impact (shared by every feature-carrying style),
+  default-off/opt-in, byte-identical when off.
+- **A4b (holes):** `multiCurveCellPolicy:'snapMerge'` weld-widen in near-tangent multi-curve cells.
+
+SEQUENCING DECISION (coordinator): Gyroid is banked at **fidelity-proven (A1 bit-exact) +
+non-manifold-fixed (A2) + watertightness precisely localized to 2 pre-registered kernel fixes**. The
+program pivots to BREADTH — C1 (Gothic patch, K2 kernel, cheap CI-scale) then B1 (DS full wall) —
+before the Gyroid kernel-watertightness batch, because (a) the decision rule needs all three
+champions reproduced, and (b) the harness's G3/G7 coverage on B1/C1 will reveal whether the
+seam/boundary defect class is Gyroid-specific or shared kernel behavior — which informs the kernel
+fix's scope. A4-orient + A4b run as one focused kernel batch after the breadth pass.
