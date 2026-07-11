@@ -149,3 +149,66 @@ describe('summarizeConformingValidation — conforming output (CPU assembly)', (
     expect(joined).toMatch(/boundary|non-manifold|orientation|sliver/i);
   });
 });
+
+/**
+ * Sliver (finite-area) vs degenerate (zero-area) gating (E-2026-07-09-EXPORT-PERF).
+ *
+ * A closed tetrahedron is the minimal watertight/manifold/oriented triangle
+ * mesh — perturbing ONE vertex changes triangle quality without touching the
+ * index-based topology, isolating the sliver/degenerate axis from
+ * manifold/orientation. Face winding verified analytically (positively-
+ * oriented ABCD ⇒ outward faces BCD/ADC/ABD/ACB); the control test below
+ * pins that the fixture itself is manifold+oriented before trusting the
+ * perturbed variants.
+ */
+describe('summarizeConformingValidation — sliver vs degenerate gating', () => {
+  const A: [number, number, number] = [0, 0, 0];
+  const B: [number, number, number] = [1, 0, 0];
+  const C: [number, number, number] = [0, 1, 0];
+  const D: [number, number, number] = [0, 0, 1];
+  const FACES = [
+    [1, 2, 3], // B,C,D — opposite A
+    [0, 3, 2], // A,D,C — opposite B
+    [0, 1, 3], // A,B,D — opposite C
+    [0, 2, 1], // A,C,B — opposite D
+  ];
+  const idx = new Uint32Array(FACES.flat());
+  const verts = (pts: Array<[number, number, number]>): Float32Array =>
+    new Float32Array(pts.flat());
+
+  it('control: the closed tetrahedron fixture is manifold, oriented, and sliver-free', () => {
+    const s = summarizeConformingValidation(verts([A, B, C, D]), idx);
+    expect(s.manifoldOk).toBe(true);
+    expect(s.normalsOk).toBe(true);
+    expect(s.degeneratesOk).toBe(true);
+    expect(s.triangleQualityOk).toBe(true);
+    expect(s.valid).toBe(true);
+    expect(s.warnings).toEqual([]);
+  });
+
+  it('a finite-area sliver (one vertex stretched far away) stays valid — non-blocking warning only', () => {
+    // D stretched far along its own ray from the ABC plane: same side (z>0)
+    // throughout, so the tetrahedron's combinatorial orientation is
+    // preserved — only shape (aspect ratio), not topology, changes.
+    const Dfar: [number, number, number] = [0.001, 0.001, 1000];
+    const s = summarizeConformingValidation(verts([A, B, C, Dfar]), idx);
+    expect(s.manifoldOk).toBe(true);
+    expect(s.normalsOk).toBe(true);
+    expect(s.triangleQualityOk).toBe(false); // sliver(s) present
+    expect(s.degeneratesOk).toBe(true); // finite area — NOT degenerate
+    expect(s.valid).toBe(true); // finite-area slivers do not gate export
+    expect(s.warnings.join(' ')).toMatch(/sliver/i);
+    expect(s.warnings.join(' ')).not.toMatch(/degenerate/i);
+  });
+
+  it('a true zero-area (collinear) triangle DOES gate valid=false', () => {
+    // D collapsed onto segment AB (z=0, midpoint) — face ABD (A,B,D) is
+    // exactly collinear ⇒ zero area, a genuine defect, not a print-usable
+    // needle.
+    const Dflat: [number, number, number] = [0.5, 0, 0];
+    const s = summarizeConformingValidation(verts([A, B, C, Dflat]), idx);
+    expect(s.degeneratesOk).toBe(false);
+    expect(s.valid).toBe(false);
+    expect(s.warnings.join(' ')).toMatch(/degenerate/i);
+  });
+});

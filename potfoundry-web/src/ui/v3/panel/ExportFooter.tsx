@@ -6,12 +6,15 @@ import { useParametricExport } from '../../../hooks/useParametricExport';
 import { useExportTier } from '../../../hooks/useExportTier';
 import { deriveDefaultFilename, estimateExport, formatBytes, deriveFidelityKey } from './exportName';
 import { recordFiring } from './kilnLogStore';
+import { formatExportLabel, normalizeExportFormat } from './exportFormat';
 import type { ParametricExportStats } from '../../../hooks/useParametricExport';
+import type { ExportFormat } from '../../../geometry/stlExport';
 import './ExportFooter.css';
 
 export const ExportFooter: React.FC = () => {
   const nTheta = useAppStore((s) => s.mesh.export_n_theta);
   const nZ = useAppStore((s) => s.mesh.export_n_z);
+  const exportFormat = useAppStore((s) => normalizeExportFormat(s.ui.exportFormat));
 
   const { progress, stats, isAvailable, exportSTL } = useParametricExport();
   const { checkExportAllowed, recordExport } = useExportTier();
@@ -28,10 +31,12 @@ export const ExportFooter: React.FC = () => {
   // without needing reactive deps (refs are snapshot-stable across async boundaries).
   const filenameAtFireRef = useRef<string>('');
   const fidelityAtFireRef = useRef<string>('custom');
+  const formatAtFireRef = useRef<ExportFormat>('stl');
 
   const firing = progress.status === 'initializing' || progress.status === 'generating';
   const { tris, bytes } = estimateExport(nTheta, nZ);
   const tier = checkExportAllowed();
+  const activeFormatLabel = formatExportLabel(exportFormat);
 
   // Capture stats when they arrive after an export resolves.
   // React 18 batches the hook's setStats re-render until after the microtask that
@@ -46,6 +51,7 @@ export const ExportFooter: React.FC = () => {
       // this effect for reasons other than a fresh stats arrival.
       recordFiring({
         filename: filenameAtFireRef.current,
+        format: formatAtFireRef.current,
         sizeLabel: stats.fileSize,
         triangles: stats.triangleCount,
         fidelity: fidelityAtFireRef.current,
@@ -68,10 +74,20 @@ export const ExportFooter: React.FC = () => {
     const freshFilename =
       freshState.ui.exportFilename ??
       deriveDefaultFilename(freshState.style.name, freshState.geometry.H);
+    const freshFormat = normalizeExportFormat(freshState.ui.exportFormat);
     filenameAtFireRef.current = freshFilename;
     fidelityAtFireRef.current = deriveFidelityKey(freshState.mesh);
+    formatAtFireRef.current = freshFormat;
     try {
-      await exportSTL(freshFilename);
+      const exported = await exportSTL(freshFilename, undefined, { format: freshFormat });
+      if (!exported) {
+        // generateMesh's validation/availability guard produced no mesh (e.g.
+        // a genuine watertight/degenerate defect) — nothing was downloaded,
+        // so nothing should be billed or logged. The hook already set
+        // progress.status to 'error' with the specific reason; that renders
+        // below regardless of what this callback does next.
+        return;
+      }
       await recordExport();
       setDone(freshFilename);
       // Mark awaiting: the [stats] effect above will capture once the hook's
@@ -122,14 +138,17 @@ export const ExportFooter: React.FC = () => {
       ) : tier.canExport ? (
         <>
           {capturedStats && done && (
-            <Certificate filename={done} stats={capturedStats} />
+            <Certificate filename={done} format={formatAtFireRef.current} stats={capturedStats} />
           )}
           <Button variant="primary" onClick={() => void fire()} disabled={!isAvailable} data-testid="pf3-export-cta">
-            Export STL
+            Export {activeFormatLabel}
           </Button>
-          {error && (
+          {(error || progress.status === 'error') && (
             <span className="pf3-export-footer__error" role="alert">
-              {error}
+              {/* progress.message carries the specific reason (e.g. a
+                  validation-failure warning) set by the hook's own error
+                  handling; prefer it over the generic local fallback. */}
+              {progress.status === 'error' && progress.message ? progress.message : error}
             </span>
           )}
         </>

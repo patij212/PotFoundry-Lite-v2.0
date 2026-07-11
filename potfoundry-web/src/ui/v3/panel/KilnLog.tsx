@@ -25,6 +25,7 @@ interface KilnLogProps {
 export const KilnLog: React.FC<KilnLogProps> = ({ now = Date.now() }) => {
   const [entries, setEntries] = useState<KilnEntry[]>(() => getKilnLog());
   const setExportFilename = useAppStore((s) => s.setExportFilename);
+  const setExportFormat = useAppStore((s) => s.setExportFormat);
   const setQualityPreset = useAppStore((s) => s.setQualityPreset);
 
   // Refresh the list whenever a new firing is recorded (F3: live log refresh).
@@ -36,6 +37,7 @@ export const KilnLog: React.FC<KilnLogProps> = ({ now = Date.now() }) => {
 
   const refire = (entry: KilnEntry) => {
     setExportFilename(entry.filename);
+    setExportFormat(entry.format);
     if (entry.fidelity !== 'custom') {
       setQualityPreset(entry.fidelity as QualityPreset);
     }
@@ -57,7 +59,7 @@ export const KilnLog: React.FC<KilnLogProps> = ({ now = Date.now() }) => {
               className={`pf3-kiln-log__row pf3-kiln-log__row--${entry.ok ? 'ok' : 'fail'}`}
             >
               <span className="pf3-mono pf3-kiln-log__label">
-                {entry.filename}.stl · {entry.sizeLabel} · {relativeTime(entry.firedAt, now)}
+                {entry.filename}.{entry.format} · {entry.sizeLabel} · {relativeTime(entry.firedAt, now)}
               </span>
               <button
                 type="button"

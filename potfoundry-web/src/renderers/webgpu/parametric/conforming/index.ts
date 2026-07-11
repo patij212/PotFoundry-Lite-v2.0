@@ -42,6 +42,7 @@ export type {
   ConformingWallOptions,
   ConformingWallResult,
   WallBudgetTelemetry,
+  WallStageTiming,
 } from './ConformingWall';
 export { buildConformingWall } from './ConformingWall';
 export { annulusStrip, discFan } from './RingStrip';

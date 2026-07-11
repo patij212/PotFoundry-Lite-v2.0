@@ -8,6 +8,7 @@
  */
 
 import { safeStorage } from '../utils/safeStorage';
+import type { ExportFormat } from '../../../geometry/stlExport';
 
 const LOG_KEY = 'pf3-kiln-log';
 const MAX_ENTRIES = 10;
@@ -15,6 +16,8 @@ const MAX_ENTRIES = 10;
 /** One entry in the kiln log, recorded at the moment of a successful export. */
 export interface KilnEntry {
   filename: string;
+  /** Export format used for this firing. Legacy entries without a format read as STL. */
+  format: ExportFormat;
   sizeLabel: string;
   triangles: number;
   /** Active fidelity preset key at fire time; 'custom' if no preset matched. */
@@ -25,13 +28,24 @@ export interface KilnEntry {
   ok: boolean;
 }
 
+function normalizeFormat(format: unknown): ExportFormat {
+  return format === '3mf' || format === 'obj' || format === 'stl' ? format : 'stl';
+}
+
+function normalizeEntry(entry: KilnEntry): KilnEntry {
+  return {
+    ...entry,
+    format: normalizeFormat(entry.format),
+  };
+}
+
 /** Returns the stored kiln log, most recent first. Returns `[]` on error or empty storage. */
 export function getKilnLog(): KilnEntry[] {
   const raw = safeStorage.get(LOG_KEY);
   if (!raw) return [];
   try {
     const parsed: unknown = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as KilnEntry[]) : [];
+    return Array.isArray(parsed) ? (parsed as KilnEntry[]).map(normalizeEntry) : [];
   } catch {
     return [];
   }

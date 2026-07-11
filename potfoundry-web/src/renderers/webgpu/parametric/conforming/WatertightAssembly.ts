@@ -29,7 +29,9 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
-import { buildConformingWall, type ConformingWallResult, type WallBudgetTelemetry } from './ConformingWall';
+import {
+  buildConformingWall, type ConformingWallResult, type WallBudgetTelemetry, type WallStageTiming,
+} from './ConformingWall';
 import type { BandRegion } from './FeatureConformingTriangulator';
 export type { BandRegion } from './FeatureConformingTriangulator';
 import type { CdtStats } from './ConstrainedCellTriangulator';
@@ -346,6 +348,21 @@ export interface WatertightAssemblyResult {
     outer?: WallBudgetTelemetry;
     inner?: WallBudgetTelemetry;
   };
+  /**
+   * DEV-ONLY per-wall search/final-build/triangulation sub-timing, kept
+   * SEPARATE per wall (E-2026-07-10 follow-up to E-2026-07-09-EXPORT-STAGE-TIMING,
+   * which summed outer+inner — hiding that features, and therefore the CDT
+   * path, only ever land on the outer wall), plus the array-packing time this
+   * function spends outside either wall build (rim/drain-or-disc emission,
+   * vertex/index array growth, orientOutward). Present only when both walls
+   * carried `stageTiming` (dev builds only). Metadata only — the mesh is
+   * unchanged.
+   */
+  stageTiming?: {
+    outer: WallStageTiming;
+    inner: WallStageTiming;
+    arrayPackingMs: number;
+  };
 }
 
 /** Append a wall's packed vertices to `verts`, returning the index offset. */
@@ -532,6 +549,16 @@ export function assembleWatertight(
     efgSampler: opts.innerEfgSampler,
   });
 
+  // DEV-ONLY "array packing" timer (E-2026-07-10 follow-up): everything from
+  // here through orientOutward — rim/drain-or-disc emission, vertex/index
+  // array growth, the Float32Array/Uint32Array conversion, and the
+  // orientation-consistency pass. Gated on both walls actually carrying
+  // stageTiming (same dev-build condition they were computed under) rather
+  // than a second isDevWallStageTimingEnabled() call, so this can never
+  // disagree with the walls about whether timing is on.
+  const timingOn = Boolean(outer.stageTiming) && Boolean(inner.stageTiming);
+  const packStart = timingOn ? performance.now() : 0;
+
   // The shared ring vertex count grows with the bias: 2^(log2(nRing)+B). Both
   // walls pin the SAME (pinBoundaryLevel + uBias), so their rings match; the caps
   // reference this actual count (not the input nRing) so index-sharing holds.
@@ -690,6 +717,7 @@ export function assembleWatertight(
 
   // --- 5. Orientation: make the closed solid consistently outward -----------
   orientOutward(vertices, indexArr, evalPos.bind(null, dims, outerSampler, innerSampler));
+  const arrayPackingMs = timingOn ? performance.now() - packStart : 0;
 
   // Stage-0 instrument: surface the per-wall CDT masking-channel counters where
   // present (feature walls only). Metadata only — the mesh is unchanged.
@@ -710,6 +738,16 @@ export function assembleWatertight(
         }
       : undefined;
 
+  // DEV-ONLY: the two walls' search/final-build/triangulation sub-timing kept
+  // SEPARATE (E-2026-07-10 follow-up — the prior E-2026-07-09-EXPORT-STAGE-TIMING
+  // arm summed them; features only ever land on the outer wall, so summing hid
+  // that asymmetry) + the array-packing time this function spends outside
+  // either wall build. Metadata only — the mesh is unchanged.
+  const stageTiming =
+    outer.stageTiming && inner.stageTiming
+      ? { outer: outer.stageTiming, inner: inner.stageTiming, arrayPackingMs }
+      : undefined;
+
   return {
     vertices,
     indices: indexArr,
@@ -717,6 +755,7 @@ export function assembleWatertight(
     cdtStats,
     triangleSource: Uint8Array.from(sourceTags),
     budgetReport,
+    stageTiming,
   };
 }
 

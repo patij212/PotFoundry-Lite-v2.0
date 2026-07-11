@@ -69,6 +69,7 @@ import {
     type FeatureUTVertex,
     type FeatureResolutionResult,
     type HelixWarp,
+    type WallStageTiming,
 } from './parametric/conforming';
 import { resolveUniformLevelOverride } from './parametric/conforming/uniformLevelOverride';
 import { buildAnalyticCurvatureFloor } from './parametric/conforming/AnalyticCurvatureFloor';
@@ -339,6 +340,68 @@ let LAST_CONFORMING_BUDGET_REPORT: ExportBudgetReport | null = null;
  */
 let LAST_CONFORMING_DECIMATION_REPORT: DecimationReport | null = null;
 
+/**
+ * Per-stage wall-clock breakdown of the most recent CONFORMING whole-mesh
+ * build, or null (legacy path, or a build where dev-stage-timing is off).
+ * DEV-ONLY (see {@link isDevStageTimingEnabled}) — the timing calls and this
+ * stash never run in a production build, so there is no steady-state cost or
+ * behavior change. `buildMs`/`computeTimeMs` stops BEFORE feature accounting,
+ * the decimation gate, and validation run — `totalMs` here is the honest
+ * conformingStart-to-return span; `otherMs` is the residual not attributed to
+ * a named bucket (quality/budget knob resolution + small gaps between marks).
+ * E-2026-07-09-EXPORT-STAGE-TIMING.
+ */
+export interface ConformingStageTimings {
+    samplerGridsMs: number;
+    extractFeaturesMs: number;
+    assembleWatertightMs: number;
+    /**
+     * Per-WALL sub-breakdown of assembleWatertightMs (E-2026-07-10 follow-up —
+     * the original E-2026-07-09-EXPORT-STAGE-TIMING arm summed outer+inner,
+     * which hides that general-curve features — and therefore the constrained-
+     * CDT path, see {@link WallStageTiming.usedCdt} — only ever land on the
+     * outer wall; the inner wall is always a smooth offset). Each is the
+     * budget-scale binary search (quadtree-only probes, no triangulation), the
+     * FINAL kept quadtree rebuild at the chosen scale, and the triangulation
+     * pass. Undefined when the split wasn't captured (legacy path,
+     * assembleWatertightWithFeatures, or dev-stage-timing off) —
+     * `assembleWatertightMs` above is still the reliable whole-bucket total
+     * either way.
+     */
+    assembleWatertightOuter?: WallStageTiming;
+    assembleWatertightInner?: WallStageTiming;
+    /**
+     * Time `assembleWatertight` spends OUTSIDE either wall's `buildConformingWall`
+     * call: rim/drain-or-solid-disc emission, vertex/index array growth, the
+     * Float32Array/Uint32Array conversion, and the orientOutward consistency
+     * pass. The previously-unmeasured residual between `assembleWatertightMs`
+     * and (outer+inner)'s own totals — see the E-2026-07-10 registry entry.
+     */
+    assembleWatertightArrayPackingMs: number;
+    warpsMs: number;
+    gpuVertexEvalMs: number;
+    measureFeatureResolutionMs: number;
+    decimationMs: number;
+    summarizeValidationMs: number;
+    otherMs: number;
+    totalMs: number;
+}
+let LAST_CONFORMING_STAGE_TIMINGS: ConformingStageTimings | null = null;
+
+/**
+ * Dev-build detector for the stage-timing instrument. Mirrors
+ * `shouldEnableFidelityHook` (windowHook.ts): `import.meta.env` can be
+ * undefined in some bundling/test contexts, so the read is guarded — any
+ * failure means "not a dev build", never a thrown error out of compute().
+ */
+function isDevStageTimingEnabled(): boolean {
+    try {
+        return Boolean(import.meta.env?.DEV);
+    } catch {
+        return false;
+    }
+}
+
 export function getLastChainDebugData(): ChainDebugData | null {
     return LAST_CHAIN_DEBUG_DATA;
 }
@@ -351,6 +414,13 @@ export function getLastConformingBudgetReport(): ExportBudgetReport | null {
 /** Most recent conforming-branch decimation ladder report, or null. */
 export function getLastConformingDecimationReport(): DecimationReport | null {
     return LAST_CONFORMING_DECIMATION_REPORT;
+}
+
+/** Dev-only per-stage timing breakdown of the most recent conforming build, or
+ *  null off the conforming path or when dev-stage-timing is disabled (always
+ *  null in production). See {@link ConformingStageTimings}. */
+export function getLastConformingStageTimings(): ConformingStageTimings | null {
+    return LAST_CONFORMING_STAGE_TIMINGS;
 }
 
 /** Most recent conforming-branch feature-resolution result, or null. */
@@ -443,11 +513,16 @@ export function summarizeConformingValidation(
     const manifoldOk = topo.boundaryEdges === 0 && topo.nonManifoldEdges === 0;
     const normalsOk = topo.orientationMismatches === 0;
     // The conforming path carries no UV-distortion / non-degenerate-quality pass;
-    // a sliver here is the only triangle-quality defect that can survive
-    // by-construction, and a degenerate triangle is counted as a sliver.
+    // triangleQuality3D's sliverCount is the only defect signal that can survive
+    // by-construction, and it lumps two distinct classes together (aspect > 100
+    // finite-area needles, and zero-area degenerate triangles). Per
+    // E-2026-07-09-EXPORT-PERF: finite-area needles are the documented
+    // print-usable concession class (watertight mesh, positive area — slicers
+    // handle them) and must NOT block export; a true zero-area triangle is a
+    // genuine defect and still gates `valid`.
     const triangleQualityOk = quality.sliverCount === 0;
-    const degeneratesOk = quality.sliverCount === 0;
-    const valid = manifoldOk && normalsOk && triangleQualityOk;
+    const degeneratesOk = quality.degenerateCount === 0;
+    const valid = manifoldOk && normalsOk && degeneratesOk;
 
     const warnings: string[] = [];
     if (topo.boundaryEdges > 0) {
@@ -459,8 +534,14 @@ export function summarizeConformingValidation(
     if (topo.orientationMismatches > 0) {
         warnings.push(`${topo.orientationMismatches} orientation mismatch(es) (inconsistent winding)`);
     }
-    if (quality.sliverCount > 0) {
-        warnings.push(`${quality.sliverCount} sliver triangle(s) (aspect > 100 or degenerate)`);
+    if (quality.degenerateCount > 0) {
+        warnings.push(`${quality.degenerateCount} degenerate (zero-area) triangle(s)`);
+    }
+    const finiteSliverCount = quality.sliverCount - quality.degenerateCount;
+    if (finiteSliverCount > 0) {
+        warnings.push(
+            `${finiteSliverCount} sliver triangle(s) (aspect > 100, finite-area — print-usable, non-blocking)`,
+        );
     }
 
     return {
@@ -2344,6 +2425,35 @@ export class ParametricExportComputer {
             // ─────────────────────────────────────────────────────────────────
             if (flags.conformingMesher) {
                 const conformingStart = performance.now();
+                // DEV-ONLY stage timing (E-2026-07-09-EXPORT-STAGE-TIMING):
+                // measurement only, never changes what is computed. `mark`
+                // advances through the pipeline; each bucket is the delta
+                // since the previous mark. Zero cost in production (the
+                // performance.now() calls below are skipped entirely).
+                const devStageTiming = isDevStageTimingEnabled();
+                let stageMark = conformingStart;
+                const stageTimings: ConformingStageTimings = {
+                    samplerGridsMs: 0, extractFeaturesMs: 0, assembleWatertightMs: 0,
+                    assembleWatertightArrayPackingMs: 0,
+                    warpsMs: 0, gpuVertexEvalMs: 0, measureFeatureResolutionMs: 0,
+                    decimationMs: 0, summarizeValidationMs: 0, otherMs: 0, totalMs: 0,
+                };
+                // markStage only advances the simple sequential-timer buckets (the
+                // sub-fields below are populated separately from asm.stageTiming, a
+                // per-wall breakdown reported directly by assembleWatertight — not a
+                // "time since the last mark").
+                type SequentialStageKey = keyof Omit<
+                    ConformingStageTimings,
+                    | 'otherMs' | 'totalMs'
+                    | 'assembleWatertightOuter' | 'assembleWatertightInner'
+                    | 'assembleWatertightArrayPackingMs'
+                >;
+                const markStage = (key: SequentialStageKey): void => {
+                    if (!devStageTiming) return;
+                    const now = performance.now();
+                    stageTimings[key] = now - stageMark;
+                    stageMark = now;
+                };
 
                 // Dense GPU sampler grid per wall surfaceId. surfaceId in slot 2
                 // selects the wall geometry in evaluate_vertices (0 outer / 1 inner).
@@ -2397,6 +2507,7 @@ export class ParametricExportComputer {
                 LAST_CONFORMING_OUTER_REFERENCE_GRID = REF_RES > 0
                     ? { positions: (await buildWallSampler(0, REF_RES, REF_RES)).positions, resU: REF_RES, resT: REF_RES }
                     : null;
+                markStage('samplerGridsMs');
 
                 // Dev quality-sweep overrides (never set in production; mirror
                 // __pfConformingNRing). Let a probe push fidelity well below printer
@@ -2623,6 +2734,7 @@ export class ParametricExportComputer {
                     featureGraph = null;
                     console.warn(`[CONFORMING-FULL] crease grid selection skipped: ${String(err)}`);
                 }
+                markStage('extractFeaturesMs');
 
                 // General-curve features (closed loops / braids / sampled level
                 // sets — e.g. HexagonalHive honeycomb) cannot be pinned by the
@@ -2816,6 +2928,16 @@ export class ParametricExportComputer {
                           corridorWidthMm: 3,
                       })
                     : assembleWatertight(outerSampler, innerSampler, asmDims, assemblyOpts);
+                markStage('assembleWatertightMs');
+                // Sub-breakdown reported directly by assembleWatertight (summed
+                // outer+inner) — not from markStage's since-last-mark delta, since
+                // it needs to attribute wall-clock WITHIN the assembleWatertight
+                // call, not across it. undefined ⇒ legacy defaults (0/false) stand.
+                if (asm.stageTiming) {
+                    stageTimings.assembleWatertightOuter = asm.stageTiming.outer;
+                    stageTimings.assembleWatertightInner = asm.stageTiming.inner;
+                    stageTimings.assembleWatertightArrayPackingMs = asm.stageTiming.arrayPackingMs;
+                }
 
                 // PRE-WARP (u,t,surfaceId) copy for the seam/cap-band instrument — must be taken
                 // BEFORE the domain-warp loops below mutate asm.vertices in place (the registry's
@@ -2895,6 +3017,7 @@ export class ParametricExportComputer {
                         );
                     }
                 }
+                markStage('warpsMs');
 
                 // POST-WARP (u,t,surfaceId) copy — the EXACT placement parameter the GPU
                 // is about to evaluate (after all domain warps, before evaluatePoints
@@ -2946,6 +3069,7 @@ export class ParametricExportComputer {
                 LAST_CONFORMING_HELIX_WARP = creaseChoice.warp.isIdentity
                     ? helixChoice.warp
                     : { isIdentity: true, base: { isIdentity: true, anchors: [] }, shearRate: 0, offset: 0 };
+                markStage('gpuVertexEvalMs');
 
                 // ── Feature-completeness accounting (meaningful featuresDropped) ──
                 // Measure how many of the style's closed-form sharp feature lines
@@ -2985,6 +3109,7 @@ export class ParametricExportComputer {
                     LAST_CONFORMING_FEATURE_RESULT = null;
                     console.warn(`[CONFORMING-FULL] feature accounting failed: ${String(err)}`);
                 }
+                markStage('measureFeatureResolutionMs');
 
                 // ── Budget honesty: HARD ceiling via QUALITY-BOUNDED decimation ──
                 // The pre-triangulation CAP (searchBudgetScale 'cap') is the primary
@@ -3096,6 +3221,7 @@ export class ParametricExportComputer {
                     }
                 }
                 LAST_CONFORMING_BUDGET_REPORT = budgetReport;
+                markStage('decimationMs');
 
                 // Validation here is REPORTING, not gating: the mesh is watertight-
                 // by-construction (shared rings, no repair). An O(N) manifold/
@@ -3134,6 +3260,18 @@ export class ParametricExportComputer {
                     `featPres=${LAST_CONFORMING_FEATURE_RESULT?.present ?? 0} ` +
                     `featDrop=${LAST_CONFORMING_FEATURE_RESULT?.dropped ?? 0}`,
                 );
+                markStage('summarizeValidationMs');
+                if (devStageTiming) {
+                    stageTimings.totalMs = performance.now() - conformingStart;
+                    const accounted = stageTimings.samplerGridsMs + stageTimings.extractFeaturesMs
+                        + stageTimings.assembleWatertightMs + stageTimings.warpsMs
+                        + stageTimings.gpuVertexEvalMs + stageTimings.measureFeatureResolutionMs
+                        + stageTimings.decimationMs + stageTimings.summarizeValidationMs;
+                    stageTimings.otherMs = stageTimings.totalMs - accounted;
+                    LAST_CONFORMING_STAGE_TIMINGS = stageTimings;
+                } else {
+                    LAST_CONFORMING_STAGE_TIMINGS = null;
+                }
 
                 // Valid result; the finally block runs the buffer cleanup.
                 return {

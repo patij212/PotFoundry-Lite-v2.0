@@ -157,6 +157,30 @@ describe('triangleQuality3D', () => {
     expect(out.maxAspect3D).toBeGreaterThan(100);
     expect(out.minAngleDeg).toBeLessThan(1);
     expect(out.sliverCount).toBe(1);
+    // Finite-area needle — distinct from a true zero-area degenerate triangle.
+    expect(out.degenerateCount).toBe(0);
+  });
+
+  it('counts a zero-area (collinear) triangle as degenerate, separately from finite slivers', () => {
+    const vertices = new Float32Array([0, 0, 0, 1, 0, 0, 2, 0, 0]);
+    const indices = new Uint32Array([0, 1, 2]);
+    const out = triangleQuality3D({ vertices, indices });
+    expect(out.sliverCount).toBe(1);
+    expect(out.degenerateCount).toBe(1);
+  });
+
+  it('sums degenerateCount across multiple degenerate triangles without over/under-counting finite slivers', () => {
+    // Triangle 0: equilateral (good). Triangle 1: collinear (degenerate).
+    // Triangle 2: finite-area needle sharing vertex 0 (sliver, not degenerate).
+    const vertices = new Float32Array([
+      0, 0, 0, 1, 0, 0, 0.5, Math.sqrt(3) / 2, 0, // 0,1,2: equilateral
+      10, 0, 0, 11, 0, 0, 12, 0, 0, // 3,4,5: collinear
+      100, 0, 0, 50, 0.05, 0, // 6,7: needle's other two corners
+    ]);
+    const indices = new Uint32Array([0, 1, 2, 3, 4, 5, 0, 6, 7]);
+    const out = triangleQuality3D({ vertices, indices });
+    expect(out.sliverCount).toBe(2);
+    expect(out.degenerateCount).toBe(1);
   });
 });
 

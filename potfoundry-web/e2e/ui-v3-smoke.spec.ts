@@ -162,6 +162,7 @@ test.describe('UI v3 desktop smoke', () => {
     // Blueprint SVG is visible on the default Shape tab
     const blueprint = page.getByTestId('pf3-blueprint');
     await expect(blueprint).toBeVisible();
+    await expect(page.getByText(/shaping/i)).not.toBeVisible({ timeout: 20_000 });
 
     // Read current top_od from localStorage (default 100)
     const topOdBefore = await page.evaluate(() => {

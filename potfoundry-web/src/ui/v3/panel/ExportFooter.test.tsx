@@ -38,9 +38,18 @@ const defaultMockStats = {
 // the component sees the update on the re-render triggered by setDone().
 let currentStats: typeof defaultMockStats | null = null;
 
+// Mutable, like currentStats above. The real hook updates `progress` (incl. on a
+// validation failure, BEFORE exportSTL resolves false) via its own useState, which
+// re-renders any consuming component regardless of what that component's own
+// callback does afterward. This mock has no such backing state, so tests that need
+// an error-status render set this BEFORE calling render() rather than relying on a
+// mid-flight mutation to trigger a re-render on its own.
+const IDLE_PROGRESS = { status: 'idle' as const, progress: 0, message: '' };
+let currentProgress: { status: string; progress: number; message: string } = IDLE_PROGRESS;
+
 vi.mock('../../../hooks/useParametricExport', () => ({
   useParametricExport: () => ({
-    progress: { status: 'idle', progress: 0, message: '' },
+    progress: currentProgress,
     stats: currentStats,
     isAvailable: true,
     exportSTL,
@@ -91,13 +100,18 @@ describe('ExportFooter', () => {
     // Start each test with stats null; exportSTL sets it to a fresh spread so
     // the component's useEffect([stats]) sees a reference change on re-render.
     currentStats = null;
+    currentProgress = IDLE_PROGRESS;
     exportSTL.mockReset();
     exportSTL.mockImplementation(async () => {
       currentStats = { ...defaultMockStats };
+      return true;
     });
     recordExport.mockClear();
     canExport = true;
     localStorage.clear();
+    useAppStore.setState((state) => ({
+      ui: { ...state.ui, exportFormat: 'stl', exportFilename: null },
+    }));
   });
 
   afterEach(() => {
@@ -109,6 +123,8 @@ describe('ExportFooter', () => {
     fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
     await waitFor(() => expect(exportSTL).toHaveBeenCalled());
     expect(String(exportSTL.mock.calls[0][0])).toMatch(/^[a-z0-9-]+$/);
+    expect(exportSTL.mock.calls[0][1]).toBeUndefined();
+    expect(exportSTL.mock.calls[0][2]).toEqual({ format: 'stl' });
     await waitFor(() => expect(recordExport).toHaveBeenCalledOnce());
     // Certificate should be visible after export
     await waitFor(() => {
@@ -125,6 +141,44 @@ describe('ExportFooter', () => {
       expect(screen.getByRole('alert')).toHaveTextContent('Export failed — check the console, then try again');
     });
     expect(recordExport).not.toHaveBeenCalled();
+  });
+
+  // E-2026-07-09-EXPORT-PERF: exportSTL resolving `false` (generateMesh's
+  // validation guard produced no mesh — e.g. DragonScales' 409-sliver
+  // default export before the summarizeConformingValidation fix) used to be
+  // indistinguishable from success: exportSTL returned void either way, so
+  // fire() always fell through to recordExport(), burning free-tier quota
+  // on an export that never happened.
+  it('does not record the export or log a firing when exportSTL resolves false', async () => {
+    exportSTL.mockResolvedValue(false);
+    render(<ExportFooter />);
+    fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
+
+    await waitFor(() => expect(exportSTL).toHaveBeenCalled());
+    // Give any (incorrect) async recordExport call a tick to have fired.
+    await act(async () => {});
+
+    expect(recordExport).not.toHaveBeenCalled();
+    expect(getKilnLog()).toHaveLength(0);
+    expect(screen.queryByText(/watertight/)).not.toBeInTheDocument();
+  });
+
+  // The other half of the same fix: the hook's progress.message carries the
+  // SPECIFIC failure reason (e.g. the sliver-count validation warning), but
+  // it was only ever rendered while progress.status was 'generating' —
+  // once generateMesh's own catch flipped status to 'error', `firing`
+  // became false and the message vanished with no replacement shown.
+  it('surfaces the specific reason from progress.message once status is error', async () => {
+    currentProgress = {
+      status: 'error',
+      progress: 0,
+      message: 'Parametric export failed: Export validation failed: 409 sliver triangle(s) (aspect > 100, finite-area — print-usable, non-blocking)',
+    };
+    render(<ExportFooter />);
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert')).toHaveTextContent(/409 sliver triangle/);
+    });
   });
 
   it('shows the upgrade CTA when gated', () => {
@@ -146,6 +200,35 @@ describe('ExportFooter', () => {
 
     // Button label should remain "Export STL" (not "Exported ✓")
     expect(screen.getByRole('button', { name: /Export STL/ })).toBeInTheDocument();
+  });
+
+  it('uses the selected 3MF format for the CTA label, export route, certificate, and kiln log', async () => {
+    useAppStore.setState((state) => ({
+      ui: { ...state.ui, exportFormat: '3mf' },
+    }));
+    render(<ExportFooter />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Export 3MF/ }));
+
+    await waitFor(() => expect(exportSTL).toHaveBeenCalled());
+    expect(exportSTL.mock.calls[0][2]).toEqual({ format: '3mf' });
+    await waitFor(() => expect(screen.getByText(/\.3mf/)).toBeInTheDocument());
+    await waitFor(() => {
+      const log = getKilnLog();
+      expect(log[0].format).toBe('3mf');
+    });
+  });
+
+  it('falls back to STL when an existing in-memory UI state is missing exportFormat', async () => {
+    useAppStore.setState((state) => ({
+      ui: { ...state.ui, exportFormat: undefined as never },
+    }));
+    render(<ExportFooter />);
+
+    fireEvent.click(screen.getByRole('button', { name: /Export STL/ }));
+
+    await waitFor(() => expect(exportSTL).toHaveBeenCalled());
+    expect(exportSTL.mock.calls[0][2]).toEqual({ format: 'stl' });
   });
 
   // F1: verifies the closure-timing fix — stats is null on first mount; the hook's
@@ -212,6 +295,6 @@ describe('ExportFooter', () => {
       window.dispatchEvent(new CustomEvent('pf3:download'));
     });
 
-    await waitFor(() => expect(exportSTL).toHaveBeenCalledWith('fresh-refire-name'));
+    await waitFor(() => expect(exportSTL).toHaveBeenCalledWith('fresh-refire-name', undefined, { format: 'stl' }));
   });
 });

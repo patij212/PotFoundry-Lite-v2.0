@@ -19,8 +19,10 @@ import {
   getLastConformingOuterGrid,
   getLastConformingOuterReferenceGrid,
   getLastConformingOuterWallMask,
+  getLastConformingStageTimings,
   getLastConformingTriangleSource,
 } from '../renderers/webgpu/ParametricExportComputer';
+import type { ConformingStageTimings } from '../renderers/webgpu/ParametricExportComputer';
 import type { ExportBudgetReport } from '../renderers/webgpu/parametric/types';
 import type { DecimationAttempt } from '../renderers/webgpu/parametric/conforming';
 import { applyHelixWarp, type FeatureResolutionResult } from '../renderers/webgpu/parametric/conforming';
@@ -380,6 +382,17 @@ export interface PfFidelityApi {
    * Null when the conforming branch did not run.
    */
   diagnoseBudget(opts?: FidelityBudgetDiagnosticOptions): Promise<FidelityBudgetDiagnostics | null>;
+  /**
+   * Dev-only per-stage wall-clock breakdown of ONE conforming build: sampler
+   * grids, extractAnalyticFeatures, assembleWatertight, warps, GPU vertex
+   * eval, measureFeatureResolution, the decimation gate, and
+   * summarizeConformingValidation — plus the honest total (buildMs/
+   * computeTimeMs stops before feature accounting/decimation/validation)
+   * and an `otherMs` residual for anything not attributed to a named
+   * bucket. Null on the legacy/parametric path, or in a production build.
+   * E-2026-07-09-EXPORT-STAGE-TIMING.
+   */
+  diagnoseStageTimings(opts?: FidelityStageTimingDiagnosticOptions): Promise<FidelityStageTimingDiagnostics | null>;
   /** TEMP debug (revert): the OUTER-wall sub-mesh for off-DOM wireframe rendering. */
   _debugOuterMesh(targetTriangles?: number): Promise<{ vertices: Float32Array; indices: Uint32Array } | null>;
   /**
@@ -618,6 +631,27 @@ export interface FidelityBudgetDiagnostics {
   /** Per-attempt ladder telemetry (which gate stage rejected each rung), or
    *  null when the decimation branch did not run. Pure numbers — small. */
   decimationAttempts: DecimationAttempt[] | null;
+}
+
+export interface FidelityStageTimingDiagnosticOptions {
+  targetTriangles?: number;
+}
+
+/**
+ * Dev-only per-stage wall-clock breakdown of ONE conforming build (see
+ * {@link ConformingStageTimings} in ParametricExportComputer.ts). Null on the
+ * legacy/parametric path, or in a production build (the instrument is
+ * import.meta.env.DEV-gated in compute() itself, never active there).
+ */
+export interface FidelityStageTimingDiagnostics extends ConformingStageTimings {
+  styleId: string;
+  vertexCount: number;
+  triangleCount: number;
+  /** Same fingerprint as `_debugMeshHash`, read from THIS build (no second
+   *  generate) — a forward reference hash for a future optimization
+   *  experiment's byte-identical gate. */
+  vertexHash: string;
+  indexHash: string;
 }
 
 declare global {
@@ -1312,6 +1346,22 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         quality: { sliverCount: q.sliverCount, maxAspect3D: q.maxAspect3D },
         featDrop: getLastConformingFeatureResult()?.dropped ?? null,
         decimationAttempts: getLastConformingDecimationReport()?.attempts ?? null,
+      };
+    },
+    async diagnoseStageTimings(opts: FidelityStageTimingDiagnosticOptions = {}): Promise<FidelityStageTimingDiagnostics | null> {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const timings = getLastConformingStageTimings();
+      if (!timings) return null;
+      const h = meshHash(mesh.vertices, mesh.indices);
+      return {
+        styleId,
+        ...timings,
+        vertexCount: Math.floor(mesh.vertices.length / 3),
+        triangleCount: Math.floor(mesh.indices.length / 3),
+        vertexHash: h.vertexHash,
+        indexHash: h.indexHash,
       };
     },
     async _debugOuterMesh(targetTriangles?: number) {

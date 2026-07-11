@@ -45,6 +45,12 @@ describe('Certificate', () => {
     expect(screen.getByText(/my-pot-120\.stl · 2\.5 MB/)).toBeInTheDocument();
   });
 
+  it('renders the selected export extension in the header', () => {
+    const stats = mockStats();
+    render(<Certificate filename="my-pot-120" format="3mf" stats={stats} />);
+    expect(screen.getByText(/my-pot-120\.3mf · 2\.5 MB/)).toBeInTheDocument();
+  });
+
   it('renders triangles count check', () => {
     const stats = mockStats();
     stats.validationSummary = mockValidationSummary();

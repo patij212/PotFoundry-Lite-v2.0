@@ -22,7 +22,10 @@ describe('ExportTab', () => {
   beforeEach(() => {
     localStorage.clear();
     // Reset store to initial state for test hermiticity
-    useAppStore.setState({ mesh: { ...DEFAULT_MESH_QUALITY } });
+    useAppStore.setState((state) => ({
+      mesh: { ...DEFAULT_MESH_QUALITY },
+      ui: { ...state.ui, exportFormat: 'stl', exportFilename: null },
+    }));
   });
 
   it('renders four fidelity rows with honest numbers', () => {
@@ -40,10 +43,26 @@ describe('ExportTab', () => {
     expect(export_n_theta).toBeLessThan(1024); // draft (512) is coarser than standard (1024)
   });
 
-  it('3MF and OBJ are visible but disabled', () => {
+  it('selects STL, 3MF, and OBJ formats in the store', () => {
     render(<ExportTab />);
-    expect(screen.getByRole('tab', { name: '3MF' })).toBeDisabled();
-    expect(screen.getByRole('tab', { name: 'OBJ' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'STL' })).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('radio', { name: '3MF' }));
+    expect(useAppStore.getState().ui.exportFormat).toBe('3mf');
+    expect(screen.getByRole('radio', { name: '3MF' })).toHaveAttribute('aria-checked', 'true');
+
+    fireEvent.click(screen.getByRole('radio', { name: 'OBJ' }));
+    expect(useAppStore.getState().ui.exportFormat).toBe('obj');
+    expect(screen.getByRole('radio', { name: 'OBJ' })).toHaveAttribute('aria-checked', 'true');
+  });
+
+  it('shows STL selected when an existing in-memory UI state is missing exportFormat', () => {
+    useAppStore.setState((state) => ({
+      ui: { ...state.ui, exportFormat: undefined as never },
+    }));
+    render(<ExportTab />);
+
+    expect(screen.getByRole('radio', { name: 'STL' })).toHaveAttribute('aria-checked', 'true');
   });
 
   it('filename input writes to the store', () => {

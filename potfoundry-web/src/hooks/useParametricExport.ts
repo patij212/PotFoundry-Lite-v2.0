@@ -123,7 +123,15 @@ export interface UseParametricExportResult {
     progress: ParametricExportProgress;
     stats: ParametricExportStats | null;
     isAvailable: boolean;
-    exportSTL: (filename?: string, targetTriangles?: number, options?: ExportRouteOptions) => Promise<void>;
+    /**
+     * Resolves `true` when a file was actually generated and downloaded,
+     * `false` when generateMesh's validation/availability guard produced no
+     * mesh (a no-op — see ParametricExportOverrides.returnInvalidMesh doc).
+     * Callers must check this before billing/recording the export as used
+     * (E-2026-07-09-EXPORT-PERF: a silently-swallowed `false` here is what let
+     * the v3 UI burn free-tier quota on exports that never happened).
+     */
+    exportSTL: (filename?: string, targetTriangles?: number, options?: ExportRouteOptions) => Promise<boolean>;
     generateMesh: (targetTriangles?: number, overrides?: ParametricExportOverrides) => Promise<MeshData | null>;
     /**
      * Budget-honesty report from the most recent generateMesh, set SYNCHRONOUSLY
@@ -167,6 +175,11 @@ const DEFAULT_PROGRESS: ParametricExportProgress = {
     progress: 0,
     message: '',
 };
+
+function withExportExtension(filename: string, format: ExportFormat): string {
+    const base = filename.replace(/\.(stl|3mf|obj)$/i, '');
+    return `${base}.${format}`;
+}
 
 export function useParametricExport(): UseParametricExportResult {
     const [progress, setProgress] = useState<ParametricExportProgress>(DEFAULT_PROGRESS);
@@ -522,7 +535,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         filename: string = 'pot.stl',
         targetTriangles?: number,
         options?: ExportRouteOptions
-    ): Promise<void> => {
+    ): Promise<boolean> => {
         // Forward BOTH the profile and any explicit tolerance overrides —
         // the quick path previously forwarded only qualityProfile, so the
         // dialog's surface-error slider was dead on this route (QW2).
@@ -534,7 +547,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 }
                 : undefined;
         const meshData = await generateMesh(targetTriangles, overrides);
-        if (!meshData) return;
+        if (!meshData) return false;
 
         setProgress({
             status: 'generating',
@@ -544,9 +557,10 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
         const format = options?.format ?? 'stl';
         const styleName = style.name ?? 'Pot';
-        const finalFilename = filename === 'pot.stl'
+        const requestedFilename = filename === 'pot.stl'
             ? `PotFoundry_${styleName}_Parametric_${Date.now()}.${format}`
             : filename;
+        const finalFilename = withExportExtension(requestedFilename, format);
 
         const meshName = `PotFoundry ${style.name} (Parametric v4.1 Adaptive)`;
 
@@ -571,6 +585,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             progress: 100,
             message: `Downloaded ${finalFilename}`,
         });
+        return true;
     }, [generateMesh, style.name]);
 
     const reset = useCallback(() => {

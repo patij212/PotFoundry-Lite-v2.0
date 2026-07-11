@@ -156,6 +156,17 @@ function createEdgeCaseMesh(): MeshData {
     };
 }
 
+function fnv1a64(buffer: ArrayBuffer): string {
+    const bytes = new Uint8Array(buffer);
+    const mask = (1n << 64n) - 1n;
+    let hash = 0xcbf29ce484222325n;
+    for (const byte of bytes) {
+        hash ^= BigInt(byte);
+        hash = (hash * 0x100000001b3n) & mask;
+    }
+    return hash.toString(16).padStart(16, '0');
+}
+
 // ============================================================================
 // generateBinarySTL Tests
 // ============================================================================
@@ -263,6 +274,13 @@ describe('generateBinarySTL', () => {
 
         expect(firstNz).toBeCloseTo(1, 5);
         expect(secondNz).toBeCloseTo(1, 5);
+    });
+
+    it('preserves the exact binary artifact for oriented and sanitized inputs', () => {
+        expect(fnv1a64(generateBinarySTL(createIncoherentQuadMesh(), 'scalar-baseline')))
+            .toBe('15456a9ac4edf600');
+        expect(fnv1a64(generateBinarySTL(createEdgeCaseMesh(), 'scalar-baseline')))
+            .toBe('fe602439aed4297d');
     });
 });
 

@@ -1642,6 +1642,7 @@ export const mount = async ({
   // previewMode is resolved above, before SceneManager.init (warmup gating).
   let raycastController: RaycastController | null = null;
   let lastStyleParamsF32: Float32Array | null = null;
+  let raycastFallbackStyleId = -1;
   if (previewMode === 'raycast') {
     try {
       raycastController = new RaycastController(device, format, {
@@ -3440,9 +3441,18 @@ export const mount = async ({
 
       // Exact ray-cast path: replaces background+ground+pot; debug overlays still
       // draw on top via the main pass below with loadOp 'load'.
-      const raycastActive = raycastController !== null && cfg.showWireframe !== true;
+      const raycastFailed = raycastController?.hasStyleFailure(reqStyleId) ?? false;
+      if (raycastFailed && raycastFallbackStyleId !== reqStyleId) {
+        raycastFallbackStyleId = reqStyleId;
+        console.warn(
+          `[Raycast] style ${reqStyleId} failed to compile; using mesh fallback: ${raycastController?.getStyleFailure(reqStyleId) ?? 'unknown error'}`
+        );
+      } else if (!raycastFailed) {
+        raycastFallbackStyleId = -1;
+      }
+      const raycastActive = raycastController !== null && cfg.showWireframe !== true && !raycastFailed;
       let raycastDrewFrame = false;
-      if (raycastController && cfg.showWireframe !== true) {
+      if (raycastController && cfg.showWireframe !== true && !raycastFailed) {
         raycastController.setStyle(reqStyleId);
         if (raycastController.isReady(reqStyleId)) {
           raycastController.notifyFrame(f32, lastStyleParamsF32 ?? null, canvas.width, canvas.height);
@@ -3604,6 +3614,9 @@ export const mount = async ({
               // Failed? Reset pending so we can retry or fallback
               pendingPipelineStyleId = null;
             }
+          }).catch((error: unknown) => {
+            pendingPipelineStyleId = null;
+            console.error(`[WebGPU] Mesh fallback pipeline failed for style ${reqStyleId}:`, error);
           });
         }
         // Raycast path: the raycast pass has ALREADY encoded a complete frame for

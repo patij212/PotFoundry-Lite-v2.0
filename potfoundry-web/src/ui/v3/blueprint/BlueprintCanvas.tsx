@@ -12,7 +12,7 @@
  *   centered at x=100; base at y=116
  */
 
-import React, { useRef } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useAppStore, GEOMETRY_BOUNDS } from '../../../state';
 import { sampleProfile, type ProfileGeometry } from './profileSampler';
 import { useTouchMode } from '../mobile/TouchModeContext';
@@ -176,12 +176,12 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
     };
   }
 
-  function onSvgPointerMove(e: React.PointerEvent<SVGSVGElement>) {
+  function applyDragDelta(clientX: number, clientY: number) {
     const drag = dragRef.current;
     if (!drag) return;
 
-    const dx = e.clientX - drag.startClientX;
-    const dy = e.clientY - drag.startClientY;
+    const dx = clientX - drag.startClientX;
+    const dy = clientY - drag.startClientY;
 
     if (drag.handle === 'rim') {
       const newOD = drag.startValue + (dx * drag.vbScale / drag.layoutScale) * 2;
@@ -199,11 +199,40 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
     }
   }
 
+  function onSvgPointerMove(e: React.PointerEvent<SVGElement>) {
+    applyDragDelta(e.clientX, e.clientY);
+  }
+
   function onSvgPointerUp() {
     if (dragRef.current) {
       commitHistoryTransaction();
       dragRef.current = null;
     }
+  }
+
+  useEffect(() => {
+    const onWindowPointerMove = (e: PointerEvent) => {
+      applyDragDelta(e.clientX, e.clientY);
+    };
+    const onWindowPointerEnd = () => onSvgPointerUp();
+
+    window.addEventListener('pointermove', onWindowPointerMove);
+    window.addEventListener('pointerup', onWindowPointerEnd);
+    window.addEventListener('pointercancel', onWindowPointerEnd);
+    return () => {
+      window.removeEventListener('pointermove', onWindowPointerMove);
+      window.removeEventListener('pointerup', onWindowPointerEnd);
+      window.removeEventListener('pointercancel', onWindowPointerEnd);
+    };
+  });
+
+  function dragHandleEvents(handle: HandleId, startValue: number) {
+    return {
+      onPointerDown: (e: React.PointerEvent<SVGCircleElement>) => onHandlePointerDown(e, handle, startValue),
+      onPointerMove: (e: React.PointerEvent<SVGCircleElement>) => onSvgPointerMove(e),
+      onPointerUp: onSvgPointerUp,
+      onPointerCancel: onSvgPointerUp,
+    };
   }
 
   function onHandleKeyDown(
@@ -336,7 +365,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           stroke="transparent"
           strokeWidth={isStrip ? 36 : 0}
           style={{ pointerEvents: 'all' }}
-          onPointerDown={(e) => onHandlePointerDown(e, 'rim', geometry.top_od)}
+          {...dragHandleEvents('rim', geometry.top_od)}
           onKeyDown={(e) => onHandleKeyDown(e, 'rim', geometry.top_od)}
         />
 
@@ -357,7 +386,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           stroke="transparent"
           strokeWidth={isStrip ? 36 : 0}
           style={{ pointerEvents: 'all' }}
-          onPointerDown={(e) => onHandlePointerDown(e, 'base', geometry.bottom_od)}
+          {...dragHandleEvents('base', geometry.bottom_od)}
           onKeyDown={(e) => onHandleKeyDown(e, 'base', geometry.bottom_od)}
         />
 
@@ -378,7 +407,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           stroke="transparent"
           strokeWidth={isStrip ? 36 : 0}
           style={{ pointerEvents: 'all' }}
-          onPointerDown={(e) => onHandlePointerDown(e, 'height', geometry.H)}
+          {...dragHandleEvents('height', geometry.H)}
           onKeyDown={(e) => onHandleKeyDown(e, 'height', geometry.H)}
         />
 
@@ -399,7 +428,7 @@ export const BlueprintCanvas: React.FC<BlueprintCanvasProps> = ({ height = 150 }
           stroke="transparent"
           strokeWidth={isStrip ? 36 : 0}
           style={{ pointerEvents: 'all' }}
-          onPointerDown={(e) => onHandlePointerDown(e, 'belly', geometry.bellAmp)}
+          {...dragHandleEvents('belly', geometry.bellAmp)}
           onKeyDown={(e) => onHandleKeyDown(e, 'belly', geometry.bellAmp)}
         />
       </svg>

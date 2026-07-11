@@ -22,22 +22,33 @@ struct RaycastUniforms {
 @group(0) @binding(8) var<uniform> RC : RaycastUniforms;
 
 // Per-z-bin conservative radius bounds from raycast_bound.wgsl:
-// u32 bits [0..63] = per-bin MAX radius, [64..127] = per-bin MIN radius
-// (positive-f32 bit patterns; see cs_bound). Drives the banded march below.
+// u32 bits [0..63] = per-bin MAX radius, [64..127] = per-bin MIN radius,
+// [128/129] = global max |dr/dtheta| (mm/rad) / max |dr/dt|,
+// [130..193] = per-bin max |dr/dtheta|, [194..257] = per-bin max |dr/dt|
+// (positive-f32 bit patterns; see cs_bound). Drives the banded march's skips
+// and the certified Lipschitz step size below.
 struct RcLut {
-  bins: array<vec4<u32>, 32>,
+  bins: array<vec4<u32>, 65>,
 };
 @group(0) @binding(10) var<uniform> RCLUT : RcLut;
 
 const RC_BISECT_ITERS : u32 = 12u;
+const RC_TANGENT_TERNARY_ITERS : u32 = 14u;
 const RC_BOUND_MARGIN : f32 = 1.10; // safety on the sampled global r_max
 const RC_BOUND_PAD_MM : f32 = 1.0;
 const RC_NORMAL_EPS : f32 = 0.002;  // mm — numerical-precision-scale differencing
 const RC_LUT_BINS : f32 = 64.0;
 const RC_BAND_PAD_MM : f32 = 2.0;   // covers the 256x128 kernel sampling gaps + bin quantization
 const RC_PAD_Z_MM : f32 = 1.0;      // fine-march window around the flat faces (rim/floor/underside)
-const RC_COARSE_RESERVE : f32 = 48.0; // evals reserved to coarse-finish a budget-exhausted ray (no holes)
-const RC_MAX_SKIP_MM : f32 = 12.0;    // hard cap per analytic skip — bounds any degenerate blind jump
+const RC_MAX_SKIP_MM : f32 = 12.0;  // hard cap per analytic skip — bounds any degenerate blind jump
+const RC_L_HEADROOM : f32 = 2.0;    // safety on the grid-sampled Lipschitz slope bounds (see cs_bound)
+const RC_MIN_STEP_MM : f32 = 0.02;  // certified-step floor: converts the sphere-trace asymptote into a bracketed crossing
+// March-phase offset / skip minimum-progress scale. A CONSTANT, deliberately
+// NOT the feature floor: when it scaled with the floor, production and the
+// high-budget reference walked slightly different trajectories and disagreed
+// on ~0.2% razor-graze pixels (A15). With a constant, quality tiers differ by
+// eval budget ONLY — the certified march needs no comb for the floor to tune.
+const RC_PHASE_STEP_MM : f32 = 0.25;
 
 // ---------------------------------------------------------------------------
 // Implicit solid. Continuous scalar, negative inside the pot. This is the
@@ -296,20 +307,11 @@ fn march_pot(ro: vec3<f32>, rd: vec3<f32>, fp01: vec2<f32>, ray_len: f32) -> Ray
   }
   let H = max(getf(0u), 1e-4);
   let bottom = clamp(getf(26u), 0.0, H);
-  // conservative drain band ceiling: r_drain <= drain_raw by its clamp
-  let drain_hi = max(getf(DRAIN_RADIUS_OFFSET), 0.25) + RC_BAND_PAD_MM;
-  let fp_seg = mix(fp01.x, fp01.y, clamp(0.5 * (seg.t0 + seg.t1) / max(ray_len, 1e-6), 0.0, 1.0));
-  // Fine step = pixel footprint, ceilinged by the mode's feature floor (the
-  // controller feeds a larger ceiling for interactive samples). A coarser
-  // "cost floor" for interactive frames was tried and REJECTED: at 0.6mm it
-  // strides over thin lattice bars (GothicArches) near grazing, so whole bars
-  // flicker out while dragging — and the banded march makes footprint-fine
-  // stepping cheap enough (~13ms interactive on DragonScales) not to need it.
-  let dt_fine = clamp(min(max(fp_seg, 1e-4), RC.feature_floor), 0.02, 8.0);
   let rdz_abs = abs(rd.z);
 
-  var t = min(seg.t0 + RC.march_phase * dt_fine, seg.t1);
-  if (pot_field(ro + rd * t) < 0.0) {
+  var t = min(seg.t0 + RC.march_phase * RC_PHASE_STEP_MM, seg.t1);
+  let f_start = pot_field(ro + rd * t);
+  if (f_start < 0.0) {
     return RayHit(true, t, 1.0, 0.0); // camera starts inside the solid
   }
   var evals = 1.0;
@@ -327,66 +329,79 @@ fn march_pot(ro: vec3<f32>, rd: vec3<f32>, fp01: vec2<f32>, ray_len: f32) -> Ray
   var t_b = t;
   var f_b = 1e9;
   var contig = 0u; // consecutive fine-sample count in the current run
-  // Field value at the current cursor — drives proximity-adaptive stepping:
-  // when a ray runs nearly parallel to a wavy wall (grazing incidence), the
-  // field stays SMALL over long stretches and a FIXED fine comb aliases
-  // against the surface waves — view-dependent stripe artifacts that survive
-  // even 16 jittered phases (measured on GyroidManifold at slant views).
-  // Shrinking the step toward |f| densifies sampling exactly where the
-  // surface is close; steps only ever SHRINK below dt_fine, so detection is
-  // a strict superset of the fixed comb.
-  var f_cur = 1e9;
+  // Field value at the current cursor — loop invariant f_cur = f(t) >= 0.
+  var f_cur = f_start;
 
-  // Eval budget with a coarse-finish reserve: when the banded fine march
-  // exhausts its budget (long grazing chords), it must NEVER report a miss —
-  // a hole is worse than a coarse hit. The reserve finishes the remaining
-  // segment as a uniform coarse march; accumulation samples land at different
-  // phases, so residual coarse error averages toward truth instead of
-  // flickering to background.
+  // CERTIFIED LIPSCHITZ MARCH (2026-07-10). Every sampling comb tried before
+  // (fixed, proximity-shrunk, escalated) aliased against high-frequency
+  // relief at grazing incidence — the field oscillates along the ray at a
+  // period near the comb, so misses come and go in view-angle-dependent
+  // bands (user round 3: inner-wall hole bands), and the 3-point tangent
+  // detector fired on every groove dip (29-41 evals each = the few-FPS
+  // detector storm). Replacement: a certified step. The bound kernel reduces
+  // grid max |dr/dtheta| and |dr/dt|; along a ray,
+  //   |df/dt| <= |rd.xy|                                   (radial term)
+  //            + L_th * (|rd.xy|/rho + |ddelta/dz|*|rd.z|)  (theta sweep + twist shear)
+  //            + L_tz * |rd.z|/H                            (height term)
+  //            + |rd.z|                                     (plane terms)
+  // so a step of f/L can NEVER skip a crossing — at ANY size, phase, or
+  // angle. Steps grow to whatever the local safety margin allows (perf) and
+  // the march stays exact by construction (correctness). The RC_MIN_STEP_MM
+  // floor turns the sphere-trace tangency asymptote into an ordinary
+  // bracketed crossing (f goes negative on a floored step -> bisect); only
+  // dips shallower than ~floor*L can be floored over, a sub-pixel class.
   let cap = max(RC.step_cap, 64.0);
-  let soft_cap = cap - RC_COARSE_RESERVE;
-  var coarse = false;
-  var dt_coarse = dt_fine;
+  let hard_cap = cap * 4.0; // TDR ceiling — the only budget break
+  let rdxy_len = length(rd.xy);
+  let turns_abs = abs(getf(4u));
+  let tw_curve = max(getf(6u), 1e-4);
+  let tw_k = TAU * turns_abs * tw_curve / H; // * pow(t_h, curve-1) per sample
 
   loop {
-    if (t >= seg.t1 || evals >= cap) {
+    if (t >= seg.t1 || evals >= hard_cap) {
       break;
-    }
-    if (!coarse && evals >= soft_cap) {
-      coarse = true;
-      dt_coarse = max((seg.t1 - t) / (RC_COARSE_RESERVE - 8.0), dt_fine);
     }
 
     var t_next: f32;
     var fine_step = false;
-    if (coarse) {
-      t_next = t + dt_coarse;
-    } else {
+    {
       let p = ro + rd * t;
       let z = p.z + 0.5 * H;
       let rho = length(p.xy);
       let band = band_for_z(z, H);
       let in_z_window = (z < bottom + RC_PAD_Z_MM) || (abs(z - H) < RC_PAD_Z_MM);
 
-      // proximity-adaptive fine step: full dt_fine when the field is safely
-      // positive, shrinking to dt_fine/8 as the surface approaches
-      let dt_adapt = clamp(0.5 * f_cur, 0.125 * dt_fine, dt_fine);
-      if (rho >= band.x && rho <= band.y) {
-        // wall band: fine stepping at the (proximity-adapted) feature floor
-        t_next = t + dt_adapt;
-        fine_step = true;
-      } else if (in_z_window && rho <= band.y) {
-        if (rho < drain_hi && z < bottom + RC_PAD_Z_MM) {
-          // near the drain wall: radial feature, fine
-          t_next = t + dt_adapt;
-          fine_step = true;
-        } else {
-          // flat-face window: only the plane can be crossed here — fineness is
-          // needed in z, so scale the step by the ray's z-slope (capped 12.5x)
-          t_next = t + dt_fine / clamp(rdz_abs, 0.08, 1.0);
+      if ((rho >= band.x && rho <= band.y) || (in_z_window && rho <= band.y)) {
+        // a crossing is possible here — take the certified Lipschitz step.
+        // The step floor escalates quadratically with spent budget: near a
+        // tangency the global L is wildly pessimistic (true along-ray slope
+        // ~0), pinning f/L at the base floor for tens of mm and truncating
+        // the ray at hard_cap (measured: 93 stall-truncated misses, all at
+        // exactly evals=896). An escalated floor trades bounded blindness
+        // (<= ~1.6mm chords, only in the extreme budget tail, still watched
+        // by the graze detector) for guaranteed segment completion.
+        let bp = evals / cap;
+        let floor_eff = RC_MIN_STEP_MM + 0.10 * bp * bp;
+        let rho_safe = max(rho, 1.0);
+        // pow() only when twist is actually on — it runs on every in-band step
+        var tw_shear = 0.0;
+        if (tw_k > 0.0) {
+          tw_shear = tw_k * pow(clamp(z / H, 1e-3, 1.0), tw_curve - 1.0);
         }
+        // per-z-bin slope bounds (union with neighbours, band_for_z pattern):
+        // relief varies with height, so the local L is far below the global
+        // one over most of the pot — bigger certified steps, less budget
+        let lb = u32(clamp(z / H, 0.0, 0.999) * RC_LUT_BINS);
+        let lb0 = select(lb - 1u, 0u, lb == 0u);
+        let lb1 = min(lb + 1u, 63u);
+        let L_th = RC_L_HEADROOM * max(rc_lut(130u + lb), max(rc_lut(130u + lb0), rc_lut(130u + lb1)));
+        let L_tz = RC_L_HEADROOM * max(rc_lut(194u + lb), max(rc_lut(194u + lb0), rc_lut(194u + lb1)));
+        let L = rdxy_len * (1.0 + L_th / rho_safe)
+              + rdz_abs * (1.0 + L_th * tw_shear + L_tz / H);
+        t_next = t + clamp(f_cur / max(L, 1e-3), floor_eff, 12.0);
+        fine_step = true;
       } else {
-        t_next = skip_to_band(ro, rd, t, seg.t1, H, bottom, dt_fine);
+        t_next = skip_to_band(ro, rd, t, seg.t1, H, bottom, RC_PHASE_STEP_MM);
       }
     }
     t_next = min(t_next, seg.t1);
@@ -396,11 +411,17 @@ fn march_pot(ro: vec3<f32>, rd: vec3<f32>, fp01: vec2<f32>, ray_len: f32) -> Ray
     f_cur = f;
 
     // Tangent-graze check: field dipped to a small local minimum at (t_a, f_a)
-    // between fine samples — locate the true minimum; a sub-zero dip is a hit.
-    if (fine_step && contig >= 2u && f_b > f_a && f_a < f && f_a < 1.0 && f >= 0.0) {
+    // between contiguous samples — locate the true minimum; a sub-zero dip is
+    // a hit. This detector is the correctness net for silhouette/tangent
+    // chords thinner than any stride, so it must never be budget-disabled
+    // below the hard TDR ceiling (gating it on `cap` created a detector-dead
+    // zone right where exhausted rays needed it most — the inner-wall dash
+    // rows). Reserve its worst case against hard_cap only.
+    let tangent_cost = 2.0 * f32(RC_TANGENT_TERNARY_ITERS) + 1.0 + f32(RC_BISECT_ITERS);
+    if (fine_step && contig >= 2u && f_b > f_a && f_a < f && f_a < 1.0 && f >= 0.0 && evals + tangent_cost <= hard_cap) {
       var lo_m = t_b;
       var hi_m = t_next;
-      for (var k = 0u; k < 14u; k += 1u) {
+      for (var k = 0u; k < RC_TANGENT_TERNARY_ITERS; k += 1u) {
         let m1 = lo_m + (hi_m - lo_m) / 3.0;
         let m2 = hi_m - (hi_m - lo_m) / 3.0;
         if (pot_field(ro + rd * m1) < pot_field(ro + rd * m2)) {
@@ -411,7 +432,9 @@ fn march_pot(ro: vec3<f32>, rd: vec3<f32>, fp01: vec2<f32>, ray_len: f32) -> Ray
       }
       evals += 28.0;
       let tm = 0.5 * (lo_m + hi_m);
-      if (pot_field(ro + rd * tm) < 0.0) {
+      let f_min = pot_field(ro + rd * tm);
+      evals += 1.0;
+      if (f_min < 0.0) {
         var lo = t_b;
         var hi = tm;
         for (var k = 0u; k < RC_BISECT_ITERS; k += 1u) {
@@ -422,6 +445,7 @@ fn march_pot(ro: vec3<f32>, rd: vec3<f32>, fp01: vec2<f32>, ray_len: f32) -> Ray
             lo = mid;
           }
         }
+        evals += f32(RC_BISECT_ITERS);
         return RayHit(true, 0.5 * (lo + hi), evals, 0.0);
       }
     }
@@ -449,11 +473,12 @@ fn march_pot(ro: vec3<f32>, rd: vec3<f32>, fp01: vec2<f32>, ray_len: f32) -> Ray
           lo = mid;
         }
       }
-      return RayHit(true, 0.5 * (lo + hi), evals, select(0.0, 1.0, coarse));
+      evals += f32(RC_BISECT_ITERS);
+      return RayHit(true, 0.5 * (lo + hi), evals, select(0.0, 1.0, evals >= cap));
     }
     t = t_next;
   }
-  return RayHit(false, 0.0, evals, select(0.0, 1.0, evals >= cap || coarse));
+  return RayHit(false, 0.0, evals, select(0.0, 1.0, evals >= cap));
 }
 
 // ---------------------------------------------------------------------------

@@ -5,6 +5,7 @@ import type { KilnEntry } from './kilnLogStore';
 function makeEntry(n: number): KilnEntry {
   return {
     filename: `pot-${n}`,
+    format: 'stl',
     sizeLabel: `${n}.0 MB`,
     triangles: n * 1000,
     fidelity: 'high',

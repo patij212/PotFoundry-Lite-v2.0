@@ -76,6 +76,17 @@ function vget(p: Float64Array, i: number): [number, number, number] {
   return [p[i * 3], p[i * 3 + 1], p[i * 3 + 2]];
 }
 
+function fnv1a64(view: ArrayBufferView): string {
+  const bytes = new Uint8Array(view.buffer, view.byteOffset, view.byteLength);
+  const mask = (1n << 64n) - 1n;
+  let hash = 0xcbf29ce484222325n;
+  for (const byte of bytes) {
+    hash ^= BigInt(byte);
+    hash = (hash * 0x100000001b3n) & mask;
+  }
+  return hash.toString(16).padStart(16, '0');
+}
+
 describe('buildConformingWall — uniform shared rings (nRing=64, surfaceId=1)', () => {
   const NRING = 64;
   const s = new SyntheticCylinderSampler(50, 120, 3, 8);
@@ -318,4 +329,26 @@ describe('buildConformingWall — triangle-budget control', () => {
     });
     expect(refinedSag).toBeLessThanOrEqual(floorSag + 1e-6);
   }, HEAVY_BUILD_TIMEOUT_MS);
+
+  it('keeps the budgeted plain-wall artifact byte-identical', () => {
+    const targetTriangles = floorTris * 4;
+    const legacyWall = buildConformingWall(s, {
+      ...BUDGET_OPTS,
+      surfaceId: 0,
+      targetTriangles,
+      legacyBudgetSearch: true,
+    });
+    const wall = buildConformingWall(s, {
+      ...BUDGET_OPTS,
+      surfaceId: 0,
+      targetTriangles,
+    });
+    expect(wall.budget).toEqual(legacyWall.budget);
+    expect(wall.vertices).toEqual(legacyWall.vertices);
+    expect(wall.indices).toEqual(legacyWall.indices);
+    expect(wall.triangleSource).toEqual(legacyWall.triangleSource);
+    expect(wall.stageTiming?.reusedSearchQuadtree).toBe(true);
+    expect(fnv1a64(wall.vertices)).toBe('781b3ec8925cadbb');
+    expect(fnv1a64(wall.indices)).toBe('20051b439a6560a7');
+  }, HEAVY_BUILD_TIMEOUT_MS * 2);
 });

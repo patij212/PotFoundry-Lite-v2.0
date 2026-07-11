@@ -47,6 +47,8 @@ const MAXCONSTRAINT = process.env.PF_L0_MAXCONSTRAINT ? +process.env.PF_L0_MAXCO
 const HMIN = process.env.PF_L0_HMIN ? +process.env.PF_L0_HMIN : 0.09;
 const MAXLEVEL = process.env.PF_L0_MAXLEVEL ? +process.env.PF_L0_MAXLEVEL : 5;
 const PICKETCHORD = process.env.PF_L0_PICKETCHORD ? +process.env.PF_L0_PICKETCHORD : 0.09;
+// Refine-loop dedupe cell (mm). Undefined ⇒ kernel default 0.004 (byte-identical).
+const DEDUPE = process.env.PF_L0_DEDUPE ? +process.env.PF_L0_DEDUPE : undefined;
 const TAG =
   process.env.PF_L0_TAG ??
   `mc${MAXCONSTRAINT}_hm${HMIN}_ml${MAXLEVEL}`;
@@ -101,6 +103,7 @@ describe('Tier-C multi-bay GATE — LITERAL-0 extended/escalation (round 8)', ()
       anisoDirection: 'edgeSag',
       anisoAspectTol: 0.15,
       dirtyFacetCache: true,
+      dedupeCellMm: DEDUPE,
       ruler: { ...DEFAULT_RULER, thetaWindowRad: 0.5 },
     };
 
@@ -108,7 +111,7 @@ describe('Tier-C multi-bay GATE — LITERAL-0 extended/escalation (round 8)', ()
     writeFileSync(log, '');
     // eslint-disable-next-line no-console
     console.log(
-      `[literal0 START] tag=${TAG} maxPass=${MAXPASS} maxConstraintMm=${MAXCONSTRAINT} hMin=${HMIN} maxLevel=${MAXLEVEL} picketChord=${PICKETCHORD}`,
+      `[literal0 START] tag=${TAG} maxPass=${MAXPASS} maxConstraintMm=${MAXCONSTRAINT} hMin=${HMIN} maxLevel=${MAXLEVEL} picketChord=${PICKETCHORD} dedupeCellMm=${DEDUPE ?? 'default(0.004)'}`,
     );
     const t0 = Date.now();
     let prevTris = 0;
@@ -160,6 +163,7 @@ describe('Tier-C multi-bay GATE — LITERAL-0 extended/escalation (round 8)', ()
       hMinMm: HMIN,
       adaptiveMaxLevel: MAXLEVEL,
       picketChordMm: PICKETCHORD,
+      dedupeCellMm: DEDUPE ?? 0.004,
       capped: refined.capped,
       passes: refined.passes,
       tris,

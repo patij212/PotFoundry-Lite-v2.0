@@ -8,7 +8,7 @@
  * mesh-stat helpers are mocked; only the download-routing branch is exercised.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
 
 // ---- Mock the heavy GPU computer so generateMesh() can produce a mesh ----
@@ -21,8 +21,13 @@ const fakeMesh = {
 
 // Captures every params object passed to compute() so tests can pin the
 // budget/profile plumbing (what the hook actually forwards to the pipeline).
-const { computeParamsSpy } = vi.hoisted(() => ({
+// computeResultRef lets a test override compute()'s resolved value (e.g. to
+// simulate a validation failure) without touching the mock factory itself.
+const { computeParamsSpy, computeResultRef } = vi.hoisted(() => ({
     computeParamsSpy: vi.fn(),
+    computeResultRef: {
+        current: null as null | { mesh: unknown; computeTimeMs: number; validationSummary: unknown },
+    },
 }));
 
 vi.mock('../renderers/webgpu/ParametricExportComputer', () => {
@@ -34,7 +39,7 @@ vi.mock('../renderers/webgpu/ParametricExportComputer', () => {
         }
         async compute(params: unknown) {
             computeParamsSpy(params);
-            return { mesh: fakeMesh, computeTimeMs: 1, validationSummary: undefined };
+            return computeResultRef.current ?? { mesh: fakeMesh, computeTimeMs: 1, validationSummary: undefined };
         }
         destroy(): void {}
     }
@@ -91,6 +96,16 @@ describe('useParametricExport.exportSTL format routing', () => {
         expect(downloadSTLMock).not.toHaveBeenCalled();
     });
 
+    it('appends .3mf when a bare filename is exported as 3MF', async () => {
+        const { result } = await renderReadyHook();
+
+        await act(async () => {
+            await result.current.exportSTL('my-pot', undefined, { format: '3mf' });
+        });
+
+        expect(downloadMeshMock.mock.calls[0][1]).toBe('my-pot.3mf');
+    });
+
     it('forwards colors for 3mf through downloadMesh', async () => {
         const { result } = await renderReadyHook();
 
@@ -126,6 +141,81 @@ describe('useParametricExport.exportSTL format routing', () => {
         const [, , opts] = downloadSTLMock.mock.calls[0];
         expect(opts).toMatchObject({ binary: true });
         expect(downloadMeshMock).not.toHaveBeenCalled();
+    });
+
+    it('appends .stl when a bare filename is exported as STL', async () => {
+        const { result } = await renderReadyHook();
+
+        await act(async () => {
+            await result.current.exportSTL('my-pot', undefined, { format: 'stl' });
+        });
+
+        expect(downloadSTLMock.mock.calls[0][1]).toBe('my-pot.stl');
+    });
+});
+
+// E-2026-07-09-EXPORT-PERF: exportSTL used to return void and silently no-op
+// when generateMesh's validation guard returned null (see generateMesh's
+// `Export validation failed` throw, caught internally). That swallowed the
+// failure past exportSTL's caller (ExportFooter.fire) with no way to detect
+// it short of re-deriving the reason from the pipeline. exportSTL now
+// resolves to a success boolean so a caller can skip billing/UI-success side
+// effects for a no-op export.
+describe('useParametricExport.exportSTL success signalling', () => {
+    beforeEach(() => {
+        computeResultRef.current = null;
+        downloadMeshMock.mockClear();
+        downloadSTLMock.mockClear();
+    });
+
+    // computeResultRef is module-scoped mutable mock state (see vi.hoisted
+    // above) — reset it on the way out too, or a failure override set here
+    // leaks into sibling describe blocks that run afterward in file order.
+    afterEach(() => {
+        computeResultRef.current = null;
+    });
+
+    it('resolves true and downloads when generation succeeds', async () => {
+        const { result } = await renderReadyHook();
+
+        let ok: boolean | undefined;
+        await act(async () => {
+            ok = await result.current.exportSTL('pot.stl');
+        });
+
+        expect(ok).toBe(true);
+        expect(downloadSTLMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('resolves false and downloads nothing when export validation fails', async () => {
+        computeResultRef.current = {
+            mesh: fakeMesh,
+            computeTimeMs: 1,
+            validationSummary: {
+                valid: false,
+                manifoldOk: true,
+                degeneratesOk: true,
+                normalsOk: true,
+                triangleQualityOk: false,
+                warnings: ['409 sliver triangle(s) (aspect > 100, finite-area — print-usable, non-blocking)'],
+                minAngleDeg: 0.02,
+                maxAspectRatio: 483.1,
+            },
+        };
+        const { result } = await renderReadyHook();
+
+        let ok: boolean | undefined;
+        await act(async () => {
+            ok = await result.current.exportSTL('pot.stl');
+        });
+
+        expect(ok).toBe(false);
+        expect(downloadSTLMock).not.toHaveBeenCalled();
+        expect(downloadMeshMock).not.toHaveBeenCalled();
+        // The specific reason survives into progress.message — the hook's
+        // established channel for surfacing a failure to a rendering caller.
+        expect(result.current.progress.status).toBe('error');
+        expect(result.current.progress.message).toMatch(/sliver/i);
     });
 });
 

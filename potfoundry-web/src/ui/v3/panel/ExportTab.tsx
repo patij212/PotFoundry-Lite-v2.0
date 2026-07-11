@@ -2,16 +2,19 @@ import React from 'react';
 import { useAppStore } from '../../../state';
 import { useExportTier } from '../../../hooks/useExportTier';
 import { estimateExport, formatBytes, deriveDefaultFilename, FIDELITIES, deriveFidelityKey } from './exportName';
+import { FORMAT_OPTIONS, normalizeExportFormat } from './exportFormat';
 import { KilnLog } from './KilnLog';
 import './ExportFooter.css';
 
 export const ExportTab: React.FC = () => {
-  const mesh             = useAppStore((s) => s.mesh);
+  const mesh = useAppStore((s) => s.mesh);
   const setQualityPreset = useAppStore((s) => s.setQualityPreset);
-  const exportFilename   = useAppStore((s) => s.ui.exportFilename);
+  const exportFilename = useAppStore((s) => s.ui.exportFilename);
   const setExportFilename = useAppStore((s) => s.setExportFilename);
-  const styleName        = useAppStore((s) => s.style.name);
-  const H                = useAppStore((s) => s.geometry.H);
+  const exportFormat = useAppStore((s) => normalizeExportFormat(s.ui.exportFormat));
+  const setExportFormat = useAppStore((s) => s.setExportFormat);
+  const styleName = useAppStore((s) => s.style.name);
+  const H = useAppStore((s) => s.geometry.H);
   const { checkExportAllowed, isPro, isAuthConfigured } = useExportTier();
   const tier = checkExportAllowed();
 
@@ -65,12 +68,23 @@ export const ExportTab: React.FC = () => {
         data-pf3-focusable=""
       />
 
-      <div className="pf3-format" role="tablist" aria-label="Format">
-        <button type="button" role="tab" aria-selected="true"  className="pf3-seg__item pf3-seg__item--on">STL</button>
-        <button type="button" role="tab" aria-selected="false" className="pf3-seg__item" disabled
-          title="Coming with the certificate — Phase 2">3MF</button>
-        <button type="button" role="tab" aria-selected="false" className="pf3-seg__item" disabled
-          title="Coming with the certificate — Phase 2">OBJ</button>
+      <div className="pf3-format" role="radiogroup" aria-label="Format">
+        {FORMAT_OPTIONS.map((format) => {
+          const selected = exportFormat === format.value;
+          return (
+            <button
+              key={format.value}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              className={`pf3-seg__item${selected ? ' pf3-seg__item--on' : ''}`}
+              onClick={() => setExportFormat(format.value)}
+              data-pf3-focusable=""
+            >
+              {format.label}
+            </button>
+          );
+        })}
       </div>
 
       {!isPro && isAuthConfigured && tier.exportsRemaining !== null && (

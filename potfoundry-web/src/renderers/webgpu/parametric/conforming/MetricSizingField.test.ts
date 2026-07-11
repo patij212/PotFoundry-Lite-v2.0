@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { SyntheticCylinderSampler } from './SurfaceSampler';
-import { MetricSizingField, type SizingOptions } from './MetricSizingField';
+import {
+  MetricSizingField,
+  MetricSizingWorkspace,
+  type SizingOptions,
+} from './MetricSizingField';
+import {
+  PeriodicBalancedQuadtree,
+  QuadtreeRefinementEvidenceCache,
+  QuadtreeRefinementHierarchy,
+} from './PeriodicBalancedQuadtree';
 
 const baseOpts: SizingOptions = {
   maxSagMm: 0.1,
@@ -92,5 +101,209 @@ describe('MetricSizingField — curvatureFloor + maxKappa (STAGE-4 analytic floo
     expect(minOf(capped)).toBeGreaterThan(minOf(uncapped));
     // κ capped at 0.02 → h floored at sqrt(8·0.1/0.02) ≈ 6.32 (before grading/clamp).
     expect(minOf(capped)).toBeGreaterThan(0.9 * Math.sqrt((8 * 0.1) / 0.02));
+  });
+});
+
+describe('MetricSizingWorkspace — exact scale-probe reuse', () => {
+  const sampler = new SyntheticCylinderSampler(50, 120, 8, 12);
+  const opts: SizingOptions = {
+    maxSagMm: 0.075,
+    minEdgeMm: 0.2,
+    maxEdgeMm: 9,
+    gradeRatio: 1.35,
+    resU: 33,
+    resT: 11,
+    curvatureFloor: (u, t) => 0.01 + 0.2 * u * t,
+    maxKappa: 0.45,
+  };
+  const scales = [1 / 64, 0.125, 1, Math.SQRT2, 4];
+
+  it('reproduces every legacy grid value exactly after scale, clamps, and grading', () => {
+    const workspace = new MetricSizingWorkspace(sampler, opts);
+    for (const targetScale of scales) {
+      const legacy = new MetricSizingField(sampler, { ...opts, targetScale }).debugGrid();
+      const reused = workspace.fieldAtScale(targetScale).debugGrid();
+      expect(reused).toEqual(legacy);
+    }
+  });
+
+  it('reproduces legacy balanced-quadtree leaf counts at every probe scale', () => {
+    const workspace = new MetricSizingWorkspace(sampler, opts);
+    const evidence = new QuadtreeRefinementEvidenceCache();
+    const hierarchy = new QuadtreeRefinementHierarchy();
+    const envelopeScale = 1 / 64;
+    const envelopeTree = new PeriodicBalancedQuadtree(
+      workspace.fieldAtScale(envelopeScale),
+      sampler,
+      {
+        maxLevel: 7,
+        pinBoundaryLevel: 4,
+        refinementEvidenceCache: evidence,
+        captureRefinementHierarchy: hierarchy,
+      },
+    );
+    expect(hierarchy.nodeCount()).toBeGreaterThan(0);
+    for (const targetScale of scales) {
+      const legacyField = new MetricSizingField(sampler, { ...opts, targetScale });
+      const legacyTree = new PeriodicBalancedQuadtree(legacyField, sampler, {
+        maxLevel: 7,
+        pinBoundaryLevel: 4,
+      });
+      const reusedTree = targetScale === envelopeScale
+        ? envelopeTree
+        : new PeriodicBalancedQuadtree(
+            workspace.fieldAtScale(targetScale),
+            sampler,
+            {
+              maxLevel: 7,
+              pinBoundaryLevel: 4,
+              refinementEvidenceCache: evidence,
+              refinementHierarchy: hierarchy,
+            },
+          );
+      expect(reusedTree.leafCount()).toBe(legacyTree.leafCount());
+      expect(reusedTree.leaves()).toEqual(legacyTree.leaves());
+    }
+    const stats = evidence.stats();
+    expect(stats.metricMisses).toBeGreaterThan(0);
+    expect(stats.metricHits).toBeGreaterThan(0);
+    expect(stats.metricSampleEvaluations).toBeGreaterThanOrEqual(stats.metricMisses);
+  });
+
+  it('materializes exact cap-mode probe frontiers from the scale=1 envelope', () => {
+    const workspace = new MetricSizingWorkspace(sampler, opts);
+    const evidence = new QuadtreeRefinementEvidenceCache();
+    const hierarchy = new QuadtreeRefinementHierarchy();
+    const envelope = new PeriodicBalancedQuadtree(workspace.fieldAtScale(1), sampler, {
+      maxLevel: 7,
+      pinBoundaryLevel: 4,
+      refinementEvidenceCache: evidence,
+      captureRefinementHierarchy: hierarchy,
+    });
+    for (const targetScale of [1, Math.sqrt(2), 2, 2 * Math.sqrt(2), 4]) {
+      const legacy = new PeriodicBalancedQuadtree(
+        new MetricSizingField(sampler, { ...opts, targetScale }),
+        sampler,
+        { maxLevel: 7, pinBoundaryLevel: 4 },
+      );
+      const materialized = targetScale === 1
+        ? envelope
+        : new PeriodicBalancedQuadtree(workspace.fieldAtScale(targetScale), sampler, {
+            maxLevel: 7,
+            pinBoundaryLevel: 4,
+            refinementEvidenceCache: evidence,
+            refinementHierarchy: hierarchy,
+          });
+      expect(materialized.leaves()).toEqual(legacy.leaves());
+    }
+  });
+
+  it('reuses feature and crease predicates without changing exact leaf order', () => {
+    const field = new MetricSizingField(sampler, { ...opts, targetScale: 0.5 });
+    let featureCalls = 0;
+    let creaseCalls = 0;
+    const featureRefine = {
+      level: 4,
+      intersects: (u0: number, t0: number, size: number): boolean => {
+        featureCalls++;
+        return u0 <= 0.42 && u0 + size >= 0.42 && t0 < 0.8;
+      },
+    };
+    const creaseRefine = {
+      intersects: (u0: number, t0: number, size: number): boolean => {
+        creaseCalls++;
+        return t0 <= 0.55 && t0 + size >= 0.55 && u0 < 0.75;
+      },
+    };
+    const treeOpts = {
+      maxLevel: 6,
+      pinBoundaryLevel: 4,
+      uBias: 1,
+      cellSamples: 2,
+      featureRefine,
+      creaseRefine,
+    };
+    const legacy = new PeriodicBalancedQuadtree(field, sampler, treeOpts);
+    const evidence = new QuadtreeRefinementEvidenceCache();
+    const first = new PeriodicBalancedQuadtree(field, sampler, {
+      ...treeOpts,
+      refinementEvidenceCache: evidence,
+    });
+    expect(first.leaves()).toEqual(legacy.leaves());
+
+    const featureAfterFirst = featureCalls;
+    const creaseAfterFirst = creaseCalls;
+    const second = new PeriodicBalancedQuadtree(field, sampler, {
+      ...treeOpts,
+      refinementEvidenceCache: evidence,
+    });
+    expect(second.leaves()).toEqual(legacy.leaves());
+    expect(featureCalls).toBe(featureAfterFirst);
+    expect(creaseCalls).toBe(creaseAfterFirst);
+
+    const stats = evidence.stats();
+    expect(stats.featureMisses).toBeGreaterThan(0);
+    expect(stats.featureHits).toBeGreaterThan(0);
+    expect(stats.creaseMisses).toBeGreaterThan(0);
+    expect(stats.creaseHits).toBeGreaterThan(0);
+    expect(stats.metricMisses).toBeGreaterThan(0);
+    expect(stats.metricHits).toBeGreaterThan(0);
+  });
+
+  it('preserves exact refinement when every evidence cache is saturated', () => {
+    const field = new MetricSizingField(sampler, { ...opts, targetScale: 0.5 });
+    const featureRefine = {
+      level: 3,
+      intersects: (u0: number, _t0: number, size: number): boolean =>
+        u0 <= 0.42 && u0 + size >= 0.42,
+    };
+    const creaseRefine = {
+      intersects: (_u0: number, t0: number, size: number): boolean =>
+        t0 <= 0.55 && t0 + size >= 0.55,
+    };
+    const treeOpts = {
+      maxLevel: 5,
+      pinBoundaryLevel: 3,
+      uBias: 1,
+      cellSamples: 2,
+      featureRefine,
+      creaseRefine,
+    };
+    const legacy = new PeriodicBalancedQuadtree(field, sampler, treeOpts);
+    const bounded = new QuadtreeRefinementEvidenceCache({
+      maxMetricEntries: 0,
+      maxMetricSamples: 0,
+      maxPredicateEntries: 0,
+    });
+    const saturated = new PeriodicBalancedQuadtree(field, sampler, {
+      ...treeOpts,
+      refinementEvidenceCache: bounded,
+    });
+    expect(saturated.leaves()).toEqual(legacy.leaves());
+    const stats = bounded.stats();
+    expect(stats.metricSaturated).toBeGreaterThan(0);
+    expect(stats.featureSaturated).toBeGreaterThan(0);
+    expect(stats.creaseSaturated).toBeGreaterThan(0);
+    expect(stats.metricEntries).toBe(0);
+    expect(stats.metricSamplesStored).toBe(0);
+    expect(stats.featureEntries).toBe(0);
+    expect(stats.creaseEntries).toBe(0);
+  });
+});
+
+describe('QuadtreeRefinementHierarchy — compact high-count storage', () => {
+  it('stores one million nodes in bounded typed-array payloads', () => {
+    const hierarchy = new QuadtreeRefinementHierarchy();
+    const count = 1_000_000;
+    for (let i = 0; i < count; i++) hierarchy.addNode(i % 25, i, i >>> 1);
+    hierarchy.setFirstChild(123, 456);
+
+    expect(hierarchy.nodeCount()).toBe(count);
+    expect(hierarchy.level(count - 1)).toBe((count - 1) % 25);
+    expect(hierarchy.iu(count - 1)).toBe(count - 1);
+    expect(hierarchy.it(count - 1)).toBe((count - 1) >>> 1);
+    expect(hierarchy.firstChild(123)).toBe(456);
+    // 16 chunks × 65,536 capacity nodes × 13 typed-array bytes/node.
+    expect(hierarchy.estimatedBytes()).toBeLessThan(14 * 1024 * 1024);
   });
 });

@@ -27,13 +27,14 @@
  */
 
 import type { QuadLeaf } from './PeriodicBalancedQuadtree';
-import type { Efg, QuadtreeLike, QuadtreeMesh } from './QuadtreeTriangulator';
+import type { Efg, QuadtreeLike, QuadtreeMesh, TriangulationStageTiming } from './QuadtreeTriangulator';
 import {
   triangulateQuadtree,
   TRI_SOURCE,
   metricLen2,
   shapedTemplate,
   emitShapedTransition,
+  isDevTriangulationTimingEnabled,
 } from './QuadtreeTriangulator';
 import type { FeatureLine } from './FeatureLineGraph';
 import {
@@ -43,6 +44,13 @@ import {
   type ConstrainedCellResult,
 } from './ConstrainedCellTriangulator';
 import { triangulateFeatureAlignedCell, type Sampler3D as FeatureSampler3D } from './featureAlignedCell';
+import { makeQuadtreeCellKeyCodec, MAX_U_EXTRA_FOR_CODEC } from './QuadtreeCellKeyCodec';
+import {
+  buildQuadtreeTopology,
+  forEachTopologyEdgePoint,
+  QUAD_SIDE,
+  quadSideBit,
+} from './QuadtreeTopology';
 import {
   refineCellInterior,
   type Sampler3D,
@@ -66,6 +74,8 @@ export interface BandRegion {
 }
 
 export interface FeatureTriangulationOptions {
+  /** Use the historical structural split/edge registry as a parity oracle. */
+  legacyTopology?: boolean;
   /** Quantization scale for vertex dedup (must match the plain triangulator). */
   quantScale?: number;
   /**
@@ -135,8 +145,9 @@ const QSCALE = 1 << 24;
  * across the shared edge) → no manufactured T-junction.
  */
 const STEINER_MIN_EDGE_DIST = 2e-6;
-/** Cap on per-leaf directional u-refinement (mirrors PeriodicBalancedQuadtree). */
-const MAX_U_EXTRA = 4;
+/** Cap on per-leaf directional u-refinement (mirrors PeriodicBalancedQuadtree).
+ *  Sourced from the key codec so the packed-key uExtra field can't drift. */
+const MAX_U_EXTRA = MAX_U_EXTRA_FOR_CODEC;
 /** Geometric tolerance for "on a cell boundary" classification (in u,t). */
 const ON_EDGE_EPS = 1e-9;
 /** Hard cap on retained CDT incidents per wall — totals stay exact past it. */
@@ -328,6 +339,11 @@ export function triangulateQuadtreeWithFeatures(
   features: FeatureLine[],
   options: FeatureTriangulationOptions = {},
 ): QuadtreeMesh {
+  // DEV-ONLY stage timing (E-2026-07-10 follow-up). Measurement only. Started
+  // here (before the empty-features fast-out) so that fast-out simply returns
+  // triangulateQuadtree(qt)'s OWN stageTiming — no double-timing needed.
+  const devTriTiming = isDevTriangulationTimingEnabled();
+  const prepStart = devTriTiming ? performance.now() : 0;
   // Rail lines (Task 3) are ADDITIVE feature constraints that are ALSO force-
   // registered. They run through the same feature path, so the plain fast-out is
   // taken only when BOTH inputs are empty. Read ONCE per build (mirroring the
@@ -336,7 +352,9 @@ export function triangulateQuadtreeWithFeatures(
   // ordinary feature path is byte-identical to the pre-Task-3 output.
   const railLines = options.railLines ?? [];
   const hasRails = railLines.length > 0;
-  if (features.length === 0 && !hasRails) return triangulateQuadtree(qt);
+  if (features.length === 0 && !hasRails) {
+    return triangulateQuadtree(qt, { legacyTopology: options.legacyTopology });
+  }
   const cornerSnap = Math.max(0, options.cornerSnap ?? 0);
   const sampler = options.sampler;
   // Opt-in per-cell feature-aligned strip-pave (the FCT_FEATURE_CDT sliver fix).
@@ -383,28 +401,43 @@ export function triangulateQuadtreeWithFeatures(
     Math.abs(du) <= cornerSnapU && Math.abs(dt) <= cornerSnapT;
 
   const leaves = qt.leaves();
+  const topology = options.legacyTopology === true ? undefined : buildQuadtreeTopology(leaves, uBias);
 
   // Integer-cell existence set keyed on the EFFECTIVE u-level (`${level}:${it}:
   // ${eUL}:${iu}`) so a uExtra=0 and a uExtra=1 cell never collide (GAP 1 H1).
   // A secondary effective-u set (`${eUL}:${it}:${iu}`) supports the per-(eUL,it)
   // containing-cell lookup the feature-point snap needs. At uExtra=0 both reduce
   // to the original level-keyed sets → byte-identical.
-  const cellSet = new Set<string>();
   let maxLevel = 0;
   let maxEUL = 0;
   for (const l of leaves) {
     const eUL = eULof(l);
-    const iu = iuOf(l);
-    const it = itOf(l);
-    cellSet.add(`${l.level}:${it}:${eUL}:${iu}`);
     if (l.level > maxLevel) maxLevel = l.level;
     if (eUL > maxEUL) maxEUL = eUL;
   }
+  // Packed-INTEGER cell keys (E-2026-07-10-EMIT-CPU-PROFILE: the string-key
+  // `Set<string>` here + `hasCell` was a profiled hotspot). Collision-free over
+  // the (level,it,uExtra,iu) domain — see QuadtreeCellKeyCodec.test.ts. NOTE the
+  // guard in hasCell: snapToCellEdge below probes with an UNBOUNDED uExtra (it
+  // walks every coarser level under a fixed eUL), so unlike the plain path this
+  // MUST short-circuit out-of-band (level,eUL) before packing.
+  const codec = makeQuadtreeCellKeyCodec(maxLevel, uBias);
+  const cellSet = new Set<number>();
+  for (const l of leaves) {
+    cellSet.add(codec.packCell(l.level, itOf(l), l.uExtra ?? 0, iuOf(l)));
+  }
   /** Existence of a (level,iu,it,eUL) leaf (iu wraps mod 2^eUL). */
   const hasCell = (level: number, iu: number, it: number, eUL: number): boolean => {
+    // A real leaf always has uExtra ∈ [0, MAX_U_EXTRA]; snapToCellEdge probes
+    // arbitrary (level,eUL) pairs whose uExtra can exceed that — those never
+    // matched a real leaf's string key either, so return false BEFORE packing
+    // (an over-range uExtra would overflow the packed field and alias a
+    // different cell). Exactly the old `Set<string>.has` result.
+    const uExtra = eUL - uBias - level;
+    if (uExtra < 0 || uExtra > MAX_U_EXTRA) return false;
     const span = uMod(eUL);
     const wu = ((iu % span) + span) % span;
-    return cellSet.has(`${level}:${it}:${eUL}:${wu}`);
+    return cellSet.has(codec.packCell(level, it, uExtra, wu));
   };
 
   // ── Snap feature points onto a nearby cell edge ────────────────────────────
@@ -617,14 +650,23 @@ export function triangulateQuadtreeWithFeatures(
     const sizeT = 1 / tSpan;
     const u0 = leaf.u0;
     const t0 = leaf.t0;
+    const splitMask = topology?.splitMasks[li];
     return {
       leaf, eUL, uSpan, tSpan, iu, it, sizeU, sizeT, u0, t0,
       u1: u0 + sizeU, t1: t0 + sizeT, um: u0 + sizeU / 2, tm: t0 + sizeT / 2,
       wrapsSeam: Math.round((u0 + sizeU) * QSCALE) === QSCALE ? 1 : 0,
-      splitS: sideHasFiner(leaf.level, iu, it, eUL, 'tMinus'),
-      splitE: sideHasFiner(leaf.level, iu, it, eUL, 'uPlus'),
-      splitN: sideHasFiner(leaf.level, iu, it, eUL, 'tPlus'),
-      splitW: sideHasFiner(leaf.level, iu, it, eUL, 'uMinus'),
+      splitS: splitMask === undefined
+        ? sideHasFiner(leaf.level, iu, it, eUL, 'tMinus')
+        : (splitMask & quadSideBit(QUAD_SIDE.SOUTH)) !== 0,
+      splitE: splitMask === undefined
+        ? sideHasFiner(leaf.level, iu, it, eUL, 'uPlus')
+        : (splitMask & quadSideBit(QUAD_SIDE.EAST)) !== 0,
+      splitN: splitMask === undefined
+        ? sideHasFiner(leaf.level, iu, it, eUL, 'tPlus')
+        : (splitMask & quadSideBit(QUAD_SIDE.NORTH)) !== 0,
+      splitW: splitMask === undefined
+        ? sideHasFiner(leaf.level, iu, it, eUL, 'uMinus')
+        : (splitMask & quadSideBit(QUAD_SIDE.WEST)) !== 0,
     };
   };
 
@@ -674,6 +716,9 @@ export function triangulateQuadtreeWithFeatures(
     }
   }
 
+  const registryStart = devTriTiming ? performance.now() : 0;
+  const prepMs = devTriTiming ? registryStart - prepStart : 0;
+
   // ── PASS A0 (directional only): register every leaf's 4 CORNERS onto the grid-
   //    line registry so a coarse cell whose edge is subdivided by a SAME-LEVEL
   //    u-finer (directional uExtra) neighbour — which `sideHasFiner`'s level+1
@@ -687,7 +732,18 @@ export function triangulateQuadtreeWithFeatures(
   //    byte-identical to the pre-GAP1 triangulator (the delicate honeycomb /
   //    braid transition templates are untouched). ──
   const hasDirectional = leaves.some((l) => (l.uExtra ?? 0) > 0);
-  if (hasDirectional) {
+  if (hasDirectional && topology) {
+    forEachTopologyEdgePoint(topology, (leafIndex, side, coordinate) => {
+      const g = geomOf(leafIndex);
+      if (side === QUAD_SIDE.SOUTH || side === QUAD_SIDE.NORTH) {
+        const t = side === QUAD_SIDE.SOUTH ? g.t0 : g.t1;
+        regAdd(regH, tKey(t), uKey(coordinate), { u: coordinate, t });
+      } else {
+        const u = side === QUAD_SIDE.EAST ? g.u1 : g.u0;
+        regAdd(regV, uKey(u), tKey(coordinate), { u, t: coordinate });
+      }
+    });
+  } else if (hasDirectional) {
     for (let li = 0; li < leaves.length; li++) {
       const g = geomOf(li);
       regAdd(regH, tKey(g.t0), uKey(g.u0), { u: g.u0, t: g.t0 });
@@ -791,6 +847,9 @@ export function triangulateQuadtreeWithFeatures(
 
     leafData[li] = { feature: true, interior, constraints };
   }
+
+  const emitStart = devTriTiming ? performance.now() : 0;
+  const registryMs = devTriTiming ? emitStart - registryStart : 0;
 
   // ── PASS B: triangulate each leaf, reading the UNION of feature edge points
   //    from the registry so both adjacent cells carry the identical edge-vertex
@@ -1116,6 +1175,9 @@ export function triangulateQuadtreeWithFeatures(
   const remap = new Int32Array(n);
   for (let i = 0; i < n; i++) remap[i] = i;
 
+  const weldStart = devTriTiming ? performance.now() : 0;
+  const emitMs = devTriTiming ? weldStart - emitStart : 0;
+
   // ── Tolerance weld of float-jitter duplicates (NOT a crash/crack repair) ──
   // A feature sample that lands within float-epsilon of a cell edge can be
   // represented two ways across the two cells (a snapped sample vs a clip
@@ -1154,6 +1216,9 @@ export function triangulateQuadtreeWithFeatures(
       arr.push(i);
     }
   }
+
+  const seamCloseStart = devTriTiming ? performance.now() : 0;
+  const weldMs = devTriTiming ? seamCloseStart - weldStart : 0;
 
   // ── Close the seam: merge the u=1 column into the u=0 column (as plain) ──
   // Operate on welded canonicals so the seam twin lookup is jitter-free.
@@ -1206,11 +1271,16 @@ export function triangulateQuadtreeWithFeatures(
     vertices[i * 3 + 1] = keptT[i];
     vertices[i * 3 + 2] = 0;
   }
+  const seamCloseMs = devTriTiming ? performance.now() - seamCloseStart : 0;
+
   return {
     vertices,
     indices: Uint32Array.from(outIndices),
     seamTriangles: Uint8Array.from(outSeam),
     cdtStats,
     triangleSource: Uint8Array.from(outSource),
+    stageTiming: devTriTiming
+      ? { prepMs, registryMs, emitMs, weldMs, seamCloseMs }
+      : undefined,
   };
 }

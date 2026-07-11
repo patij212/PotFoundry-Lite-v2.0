@@ -64,10 +64,10 @@ export class MetricSizingField {
   private readonly resU: number;
   private readonly resT: number;
 
-  constructor(s: SurfaceSampler, opts: SizingOptions) {
+  constructor(s: SurfaceSampler, opts: SizingOptions, rawTargets?: Float64Array) {
     this.resU = opts.resU;
     this.resT = opts.resT;
-    this.grid = this.buildGrid(s, opts);
+    this.grid = this.buildGrid(s, opts, rawTargets);
   }
 
   /** Index into the row-major grid (i = u node, j = t node). */
@@ -76,9 +76,19 @@ export class MetricSizingField {
   }
 
   /** Compute raw sagitta-law targets, then grade to a Lipschitz fixpoint. */
-  private buildGrid(s: SurfaceSampler, opts: SizingOptions): Float64Array {
+  private buildGrid(
+    s: SurfaceSampler,
+    opts: SizingOptions,
+    rawTargets?: Float64Array,
+  ): Float64Array {
     const { resU, resT } = opts;
     const grid = new Float64Array(resU * resT);
+
+    if (rawTargets && rawTargets.length !== grid.length) {
+      throw new Error(
+        `MetricSizingField: rawTargets length ${rawTargets.length} does not match ${resU}x${resT}`,
+      );
+    }
 
     // De-noised curvature: size the finite-difference steps to ~one grid cell of
     // the (possibly discrete) sampler, not a fixed sub-quantization gap.
@@ -90,14 +100,19 @@ export class MetricSizingField {
       const t = resT > 1 ? j / (resT - 1) : 0;
       for (let i = 0; i < resU; i++) {
         const u = i / resU; // u is periodic: node resU coincides with node 0
-        let kappa = Math.max(principalCurvatureMax(s, u, t, hu, ht), 1e-6);
-        // Analytic curvature lower bound (the sampler κ is band-limited on steep
-        // flanks). max() so smooth regions are unchanged.
-        if (opts.curvatureFloor) kappa = Math.max(kappa, opts.curvatureFloor(u, t));
-        // Cap κ so an unbounded-curvature cusp (n1<1 tip) can't force minEdge.
-        if (opts.maxKappa && opts.maxKappa > 0) kappa = Math.min(kappa, opts.maxKappa);
-        // sagitta: sag ≈ h^2·κ/8 ⇒ h = sqrt(8·maxSag/κ)
-        let h = Math.sqrt((8 * opts.maxSagMm) / kappa);
+        let h: number;
+        if (rawTargets) {
+          h = rawTargets[this.idx(i, j)];
+        } else {
+          let kappa = Math.max(principalCurvatureMax(s, u, t, hu, ht), 1e-6);
+          // Analytic curvature lower bound (the sampler κ is band-limited on steep
+          // flanks). max() so smooth regions are unchanged.
+          if (opts.curvatureFloor) kappa = Math.max(kappa, opts.curvatureFloor(u, t));
+          // Cap κ so an unbounded-curvature cusp (n1<1 tip) can't force minEdge.
+          if (opts.maxKappa && opts.maxKappa > 0) kappa = Math.min(kappa, opts.maxKappa);
+          // sagitta: sag ≈ h^2·κ/8 ⇒ h = sqrt(8·maxSag/κ)
+          h = Math.sqrt((8 * opts.maxSagMm) / kappa);
+        }
         // Budget scale coarsens uniformly; the clamp below still enforces the
         // sag floor (minEdgeMm) so a large scale can never violate sag.
         h *= scale;
@@ -174,5 +189,43 @@ export class MetricSizingField {
   /** Test-only accessor: the graded grid (row-major, length resU·resT). */
   debugGrid(): Float64Array {
     return this.grid;
+  }
+}
+
+/**
+ * Reusable scale-search workspace. It evaluates the sampler curvature grid,
+ * optional analytic floor, and optional curvature cap exactly once, then lets
+ * each budget probe replay the original scale → clamp → grade sequence.
+ * Quadtree construction and balancing remain per-probe and unchanged.
+ */
+export class MetricSizingWorkspace {
+  private readonly rawTargets: Float64Array;
+
+  constructor(
+    private readonly sampler: SurfaceSampler,
+    private readonly opts: SizingOptions,
+  ) {
+    const { resU, resT } = opts;
+    this.rawTargets = new Float64Array(resU * resT);
+    const { hu, ht } = metricStepsForSampler(sampler);
+    for (let j = 0; j < resT; j++) {
+      const t = resT > 1 ? j / (resT - 1) : 0;
+      for (let i = 0; i < resU; i++) {
+        const u = i / resU;
+        let kappa = Math.max(principalCurvatureMax(sampler, u, t, hu, ht), 1e-6);
+        if (opts.curvatureFloor) kappa = Math.max(kappa, opts.curvatureFloor(u, t));
+        if (opts.maxKappa && opts.maxKappa > 0) kappa = Math.min(kappa, opts.maxKappa);
+        this.rawTargets[j * resU + i] = Math.sqrt((8 * opts.maxSagMm) / kappa);
+      }
+    }
+  }
+
+  /** Materialize one exact legacy-equivalent field at `targetScale`. */
+  fieldAtScale(targetScale: number): MetricSizingField {
+    return new MetricSizingField(
+      this.sampler,
+      { ...this.opts, targetScale },
+      this.rawTargets,
+    );
   }
 }

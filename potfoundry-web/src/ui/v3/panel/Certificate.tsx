@@ -1,11 +1,12 @@
 import React from 'react';
 import { DisclosureSeam } from '../primitives/DisclosureSeam';
 import type { ParametricExportStats } from '../../../hooks/useParametricExport';
-import type { ValidationSummary } from '../../../renderers/webgpu/parametric/types';
+import type { ExportFormat } from '../../../geometry/stlExport';
 import './Certificate.css';
 
 export interface CertificateProps {
   filename: string;
+  format?: ExportFormat;
   stats: ParametricExportStats;
 }
 
@@ -16,7 +17,7 @@ interface CheckItem {
   warning?: string;
 }
 
-export const Certificate: React.FC<CertificateProps> = ({ filename, stats }) => {
+export const Certificate: React.FC<CertificateProps> = ({ filename, format = 'stl', stats }) => {
   const vs = stats.validationSummary;
 
   // Build check items from validation summary
@@ -54,7 +55,7 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, stats }) => 
   return (
     <div className="pf3-certificate">
       <div className="pf3-certificate__header">
-        <span className="pf3-mono">{filename}.stl · {stats.fileSize}</span>
+        <span className="pf3-mono">{filename}.{format} · {stats.fileSize}</span>
       </div>
 
       {vs && (

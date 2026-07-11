@@ -9,7 +9,7 @@ function canVibrate(): boolean {
 }
 
 export function useHaptics() {
-  const enabled = useAppStore((s: any) => s.ui.hapticsEnabled);
+  const enabled = useAppStore((s) => s.ui.hapticsEnabled);
 
   const vibrate = useCallback(
     (pattern: number | number[]) => {

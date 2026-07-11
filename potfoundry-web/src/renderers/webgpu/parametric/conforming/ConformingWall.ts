@@ -19,9 +19,17 @@
  */
 
 import type { SurfaceSampler } from './SurfaceSampler';
-import { MetricSizingField } from './MetricSizingField';
-import { PeriodicBalancedQuadtree } from './PeriodicBalancedQuadtree';
-import { triangulateQuadtree, type QuadtreeMesh } from './QuadtreeTriangulator';
+import {
+  MetricSizingField,
+  MetricSizingWorkspace,
+  type SizingOptions,
+} from './MetricSizingField';
+import {
+  PeriodicBalancedQuadtree,
+  QuadtreeRefinementEvidenceCache,
+  QuadtreeRefinementHierarchy,
+} from './PeriodicBalancedQuadtree';
+import { triangulateQuadtree, type QuadtreeMesh, type TriangulationStageTiming } from './QuadtreeTriangulator';
 import { triangulateQuadtreeWithFeatures, type BandRegion } from './FeatureConformingTriangulator';
 import type { FeatureLine, FeatureLinePoint } from './FeatureLineGraph';
 import type { CdtStats } from './ConstrainedCellTriangulator';
@@ -122,6 +130,8 @@ export interface ConformingWallOptions {
    *    a SMOOTH pot keeps its (small) sag-tight count instead of being inflated.
    */
   budgetMode?: 'target' | 'cap';
+  /** Test-only oracle: rebuild raw recursive refinement for every budget probe. */
+  legacyBudgetSearch?: boolean;
   /**
    * Anisotropy bias B (≥0) for the quadtree: a level-L leaf spans Δu=1/2^(L+B),
    * Δt=1/2^L, so cells stay 3D-near-square under extreme circumference/height
@@ -209,6 +219,49 @@ export interface WallBudgetTelemetry {
   capSaturated: boolean;
 }
 
+/**
+ * DEV-ONLY per-wall stage timing (E-2026-07-09-EXPORT-STAGE-TIMING follow-up).
+ * Sub-breakdown of ONE wall's build: the budget-scale binary search (up to
+ * `BUDGET_SEARCH_STEPS` quadtree-only rebuilds, no triangulation), the FINAL
+ * kept quadtree rebuild at the chosen scale, and the triangulation pass
+ * (`usedCdt`=true ⇒ the constrained-CDT feature path {@link triangulateQuadtreeWithFeatures}
+ * ran; false ⇒ the plain fast {@link triangulateQuadtree}). Present on
+ * {@link ConformingWallResult} only when dev-stage-timing is enabled; measurement
+ * only — never influences what is computed.
+ */
+export interface WallStageTiming {
+  searchMs: number;
+  finalQuadtreeMs: number;
+  triangulationMs: number;
+  usedCdt: boolean;
+  /** True when the final mesh triangulates the terminal budget-search tree. */
+  reusedSearchQuadtree: boolean;
+  /**
+   * DEV-ONLY sub-breakdown of `triangulationMs` itself (E-2026-07-10 follow-up):
+   * prep / grid-line registry / the main per-leaf emission loop (CDT calls live
+   * here when `usedCdt`) / tolerance weld (feature path only) / seam close. Read
+   * straight off the triangulator's own returned `QuadtreeMesh.stageTiming` — see
+   * {@link TriangulationStageTiming}. Undefined when not captured.
+   */
+  triangulationDetail?: TriangulationStageTiming;
+}
+
+/**
+ * Dev-build detector for the wall-level stage-timing instrument. Mirrors
+ * `isDevStageTimingEnabled` (ParametricExportComputer.ts) — duplicated rather
+ * than imported to avoid a circular import (ParametricExportComputer.ts →
+ * WatertightAssembly.ts → this module). `import.meta.env` can be undefined in
+ * some bundling/test contexts, so the read is guarded; any failure means "not
+ * a dev build", never a thrown error out of buildConformingWall().
+ */
+function isDevWallStageTimingEnabled(): boolean {
+  try {
+    return Boolean(import.meta.env?.DEV);
+  } catch {
+    return false;
+  }
+}
+
 /** Conforming wall mesh result with uniform shared boundary rings. */
 export interface ConformingWallResult {
   /** Packed (u, t, surfaceId) per vertex — exact positions, no interpolation. */
@@ -239,6 +292,8 @@ export interface ConformingWallResult {
    * ({@link searchBudgetScale}). Metadata only — the mesh is unchanged.
    */
   budget?: WallBudgetTelemetry;
+  /** DEV-ONLY search/final-build/triangulation sub-timing. See {@link WallStageTiming}. */
+  stageTiming?: WallStageTiming;
 }
 
 const RING_EPS = 1e-6;
@@ -269,6 +324,24 @@ const BUDGET_TOLERANCE = 0.1;
  */
 const TRIS_PER_LEAF = 2;
 
+/** Exact sizing options shared by legacy one-shot fields and search workspaces. */
+function sizingOptionsAtScale(
+  opts: ConformingWallOptions,
+  targetScale: number,
+): SizingOptions {
+  return {
+    maxSagMm: opts.maxSagMm,
+    minEdgeMm: opts.minEdgeMm,
+    maxEdgeMm: opts.maxEdgeMm,
+    gradeRatio: opts.gradeRatio,
+    resU: opts.resU,
+    resT: opts.resT,
+    targetScale,
+    curvatureFloor: opts.curvatureFloor,
+    maxKappa: opts.maxKappa,
+  };
+}
+
 /**
  * Build only the sizing field + quadtree at a target scale (no triangulation).
  *
@@ -285,18 +358,14 @@ function buildQuadtreeAtScale(
   featureRefine?: FeatureRefineSpec,
   directionalRefine = false,
   creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
+  sizingWorkspace?: MetricSizingWorkspace,
+  refinementEvidenceCache?: QuadtreeRefinementEvidenceCache,
+  captureRefinementHierarchy?: QuadtreeRefinementHierarchy,
+  refinementHierarchy?: QuadtreeRefinementHierarchy,
 ): PeriodicBalancedQuadtree {
-  const field = new MetricSizingField(sampler, {
-    maxSagMm: opts.maxSagMm,
-    minEdgeMm: opts.minEdgeMm,
-    maxEdgeMm: opts.maxEdgeMm,
-    gradeRatio: opts.gradeRatio,
-    resU: opts.resU,
-    resT: opts.resT,
-    targetScale,
-    curvatureFloor: opts.curvatureFloor,
-    maxKappa: opts.maxKappa,
-  });
+  const field = sizingWorkspace
+    ? sizingWorkspace.fieldAtScale(targetScale)
+    : new MetricSizingField(sampler, sizingOptionsAtScale(opts, targetScale));
   return new PeriodicBalancedQuadtree(field, sampler, {
     maxLevel: opts.maxLevel,
     pinBoundaryLevel,
@@ -312,6 +381,9 @@ function buildQuadtreeAtScale(
     // efg inside `leaves()`, and the budget search above calls `leafCount()`
     // alone — so threading it here costs the search nothing.
     efgSampler: opts.efgSampler,
+    refinementEvidenceCache,
+    captureRefinementHierarchy,
+    refinementHierarchy,
   });
 }
 
@@ -331,6 +403,19 @@ function buildQuadtreeAtScale(
  *    budget is coarsened toward it (bounded by MAX_BUDGET_SCALE so genuine
  *    sag-required detail is floored, not bulldozed).
  */
+interface BudgetSearchProbe {
+  scale: number;
+  leaves: number;
+  quadtree: PeriodicBalancedQuadtree;
+}
+
+interface BudgetSearchResult {
+  scale: number;
+  telemetry: WallBudgetTelemetry;
+  /** The terminal probe built with directional refinement disabled. */
+  quadtree: PeriodicBalancedQuadtree;
+}
+
 function searchBudgetScale(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
@@ -339,12 +424,41 @@ function searchBudgetScale(
   mode: 'target' | 'cap',
   featureRefine?: FeatureRefineSpec,
   creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
-): { scale: number; telemetry: WallBudgetTelemetry } {
+): BudgetSearchResult {
   const targetLeaves = targetTriangles / TRIS_PER_LEAF;
-  const leavesAt = (scale: number): number =>
-    buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, scale, featureRefine, false, creaseRefine).leafCount();
+  // Curvature/floor/cap sampling is invariant across target scales. Cache those
+  // raw sagitta targets once; each probe still replays scale/clamp/grading and
+  // reconstructs/balances its quadtree exactly as before.
+  const sizingWorkspace = new MetricSizingWorkspace(
+    sampler,
+    sizingOptionsAtScale(opts, 1),
+  );
+  const refinementEvidenceCache = new QuadtreeRefinementEvidenceCache();
+  const persistentSearch = opts.legacyBudgetSearch !== true;
+  const hierarchy = persistentSearch ? new QuadtreeRefinementHierarchy() : undefined;
+  const envelopeScale = mode === 'target' ? MIN_BUDGET_SCALE : 1;
+  const envelope = hierarchy
+    ? {
+        scale: envelopeScale,
+        quadtree: buildQuadtreeAtScale(
+          sampler, opts, pinBoundaryLevel, envelopeScale, featureRefine, false, creaseRefine,
+          sizingWorkspace, refinementEvidenceCache, hierarchy,
+        ),
+      }
+    : undefined;
+  const probeAt = (scale: number): BudgetSearchProbe => {
+    if (envelope && scale === envelope.scale) {
+      return { scale, leaves: envelope.quadtree.leafCount(), quadtree: envelope.quadtree };
+    }
+    const quadtree = buildQuadtreeAtScale(
+      sampler, opts, pinBoundaryLevel, scale, featureRefine, false, creaseRefine,
+      sizingWorkspace, refinementEvidenceCache, undefined, hierarchy,
+    );
+    return { scale, leaves: quadtree.leafCount(), quadtree };
+  };
 
-  const floorLeaves = leavesAt(1);
+  const floor = probeAt(1);
+  const floorLeaves = floor.leaves;
 
   if (mode === 'cap') {
     // Cap: never inflate. Floor already within budget ⇒ keep it (the de-noised
@@ -353,32 +467,36 @@ function searchBudgetScale(
       return {
         scale: 1,
         telemetry: { floorLeaves, chosenScale: 1, leavesAtChosen: floorLeaves, capSaturated: false },
+        quadtree: floor.quadtree,
       };
     }
-    const coarsestLeaves = leavesAt(MAX_BUDGET_SCALE);
-    if (coarsestLeaves >= targetLeaves) {
+    const coarsest = probeAt(MAX_BUDGET_SCALE);
+    if (coarsest.leaves >= targetLeaves) {
       // Can't reach the budget; coarsest allowed — coarsening is SATURATED.
       return {
         scale: MAX_BUDGET_SCALE,
-        telemetry: { floorLeaves, chosenScale: MAX_BUDGET_SCALE, leavesAtChosen: coarsestLeaves, capSaturated: true },
+        telemetry: { floorLeaves, chosenScale: MAX_BUDGET_SCALE, leavesAtChosen: coarsest.leaves, capSaturated: true },
+        quadtree: coarsest.quadtree,
       };
     }
     let lo = 1; // more leaves (floor)
     let hi = MAX_BUDGET_SCALE; // fewer leaves (coarsest allowed)
-    let best = 1;
+    let best = floor;
     let lastCount = floorLeaves;
     for (let i = 0; i < BUDGET_SEARCH_STEPS; i++) {
       const mid = Math.sqrt(lo * hi);
-      const c = leavesAt(mid);
-      best = mid;
+      const probe = probeAt(mid);
+      const c = probe.leaves;
+      best = probe;
       lastCount = c;
       if (Math.abs(c - targetLeaves) / targetLeaves <= BUDGET_TOLERANCE) break;
       if (c > targetLeaves) lo = mid; // still too many ⇒ coarsen more ⇒ raise scale
       else hi = mid;
     }
     return {
-      scale: best,
-      telemetry: { floorLeaves, chosenScale: best, leavesAtChosen: lastCount, capSaturated: false },
+      scale: best.scale,
+      telemetry: { floorLeaves, chosenScale: best.scale, leavesAtChosen: lastCount, capSaturated: false },
+      quadtree: best.quadtree,
     };
   }
 
@@ -388,33 +506,37 @@ function searchBudgetScale(
     return {
       scale: 1,
       telemetry: { floorLeaves, chosenScale: 1, leavesAtChosen: floorLeaves, capSaturated: false },
+      quadtree: floor.quadtree,
     };
   }
-  const finestLeaves = leavesAt(MIN_BUDGET_SCALE);
-  if (finestLeaves <= targetLeaves) {
+  const finest = probeAt(MIN_BUDGET_SCALE);
+  if (finest.leaves <= targetLeaves) {
     // maxLevel-capped; closest
     return {
       scale: MIN_BUDGET_SCALE,
-      telemetry: { floorLeaves, chosenScale: MIN_BUDGET_SCALE, leavesAtChosen: finestLeaves, capSaturated: false },
+      telemetry: { floorLeaves, chosenScale: MIN_BUDGET_SCALE, leavesAtChosen: finest.leaves, capSaturated: false },
+      quadtree: finest.quadtree,
     };
   }
 
   let lo = MIN_BUDGET_SCALE; // more leaves
   let hi = 1; // fewer leaves (floor)
-  let best = 1;
+  let best = floor;
   let lastCount = floorLeaves;
   for (let i = 0; i < BUDGET_SEARCH_STEPS; i++) {
     const mid = Math.sqrt(lo * hi); // geometric midpoint (scale is multiplicative)
-    const c = leavesAt(mid);
-    best = mid;
+    const probe = probeAt(mid);
+    const c = probe.leaves;
+    best = probe;
     lastCount = c;
     if (Math.abs(c - targetLeaves) / targetLeaves <= BUDGET_TOLERANCE) break;
     if (c > targetLeaves) lo = mid; // too many leaves ⇒ coarsen ⇒ raise scale
     else hi = mid;
   }
   return {
-    scale: best,
-    telemetry: { floorLeaves, chosenScale: best, leavesAtChosen: lastCount, capSaturated: false },
+    scale: best.scale,
+    telemetry: { floorLeaves, chosenScale: best.scale, leavesAtChosen: lastCount, capSaturated: false },
+    quadtree: best.quadtree,
   };
 }
 
@@ -572,6 +694,8 @@ function buildWallMeshAtScale(
   featureRefine?: FeatureRefineSpec,
   creaseRefine?: { intersects: FeatureRefineSpec['intersects'] },
   railLines?: FeatureLine[],
+  stageTiming?: WallStageTiming,
+  prebuiltQuadtree?: PeriodicBalancedQuadtree,
 ): QuadtreeMesh {
   // The feature triangulator runs when EITHER inserted features OR force-register
   // rail lines are present (Task 4). With neither, the plain fast-out is taken
@@ -583,8 +707,24 @@ function buildWallMeshAtScale(
   // a feature wall (clipped features or rail lines present). The pass is gated/no-op
   // at default dims; on a wide/flat smooth wall it removes residual short-WIDE slivers.
   const directionalRefine = (opts.directionalRefine ?? false) && !featurePath;
-  const qt = buildQuadtreeAtScale(sampler, opts, pinBoundaryLevel, targetScale, featureRefine, directionalRefine, creaseRefine);
-  if (!featurePath) return triangulateQuadtree(qt);
+  const qtStart = stageTiming ? performance.now() : 0;
+  const qt = prebuiltQuadtree ?? buildQuadtreeAtScale(
+    sampler, opts, pinBoundaryLevel, targetScale, featureRefine, directionalRefine, creaseRefine,
+  );
+  if (stageTiming) {
+    stageTiming.finalQuadtreeMs = performance.now() - qtStart;
+    stageTiming.reusedSearchQuadtree = prebuiltQuadtree !== undefined;
+  }
+  if (!featurePath) {
+    const triStart = stageTiming ? performance.now() : 0;
+    const fast = triangulateQuadtree(qt);
+    if (stageTiming) {
+      stageTiming.triangulationMs = performance.now() - triStart;
+      stageTiming.usedCdt = false;
+      stageTiming.triangulationDetail = fast.stageTiming;
+    }
+    return fast;
+  }
   // Corner-snap threshold: a small fraction of the feature cell size, made
   // ABSOLUTE (not per-cell) so both sides of every shared edge snap identically.
   const featureLevel = featureRefine ? featureRefine.level : opts.maxLevel;
@@ -601,12 +741,19 @@ function buildWallMeshAtScale(
   // passes NO sampler ⇒ byte-identical to before this change.
   const refineEnabled =
     (globalThis as unknown as { __pfConformingRefine?: boolean }).__pfConformingRefine === true;
-  return triangulateQuadtreeWithFeatures(qt, clippedFeatures, {
+  const triStart = stageTiming ? performance.now() : 0;
+  const withFeatures = triangulateQuadtreeWithFeatures(qt, clippedFeatures, {
     cornerSnap,
     sampler: refineEnabled ? (u, t) => sampler.position(u, t) : undefined,
     bandRegions: opts.bandRegions,
     railLines,
   });
+  if (stageTiming) {
+    stageTiming.triangulationMs = performance.now() - triStart;
+    stageTiming.usedCdt = true;
+    stageTiming.triangulationDetail = withFeatures.stageTiming;
+  }
+  return withFeatures;
 }
 
 /**
@@ -679,6 +826,21 @@ export function buildConformingWall(
     creaseRefine = { intersects: buildFeatureIntersector(opts.creaseLines as FeatureLine[]) };
   }
 
+  // DEV-ONLY per-wall stage timing (E-2026-07-09-EXPORT-STAGE-TIMING follow-up:
+  // sub-instrument assembleWatertight into search/final-build/triangulation).
+  // Measurement only — never changes what is computed; undefined ⇒ every timed
+  // branch below is skipped entirely (zero production cost).
+  const stageTiming: WallStageTiming | undefined = isDevWallStageTimingEnabled()
+    ? {
+        searchMs: 0,
+        finalQuadtreeMs: 0,
+        triangulationMs: 0,
+        usedCdt: false,
+        reusedSearchQuadtree: false,
+      }
+    : undefined;
+
+  const searchStart = stageTiming ? performance.now() : 0;
   const search =
     opts.targetTriangles !== undefined && opts.targetTriangles > 0
       ? searchBudgetScale(
@@ -691,11 +853,20 @@ export function buildConformingWall(
           creaseRefine,
         )
       : undefined;
+  if (stageTiming) stageTiming.searchMs = performance.now() - searchStart;
   const targetScale = search?.scale ?? 1;
+  // The search builds its terminal probe with directional refinement disabled.
+  // Reuse it only when the final build has the same setting; the directional
+  // path must retain its separate final rebuild because it changes the leaf set.
+  const finalUsesDirectionalRefine =
+    (opts.directionalRefine ?? false) && clippedFeatures.length === 0 && railLines.length === 0;
+  const reusableSearchQuadtree = finalUsesDirectionalRefine ? undefined : search?.quadtree;
 
   const mesh = buildWallMeshAtScale(
     sampler, opts, pinBoundaryLevel, targetScale, clippedFeatures, featureRefine, creaseRefine,
     railLines.length > 0 ? railLines : undefined,
+    stageTiming,
+    reusableSearchQuadtree,
   );
 
   // Stamp the surfaceId into each vertex's third slot (the triangulator packs 0
@@ -734,5 +905,6 @@ export function buildConformingWall(
     triangleSource: mesh.triangleSource,
     // Budget-honesty telemetry: present only when a budget drove the search.
     budget: search?.telemetry,
+    stageTiming,
   };
 }

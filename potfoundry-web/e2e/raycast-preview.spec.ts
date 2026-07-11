@@ -77,7 +77,7 @@
  *       proves the intersection math converges at reference density but tests
  *       nothing about the SHIPPED production configuration. A10 compares the
  *       production converged accumulation (shipped desktop defaults:
- *       stepCapInteractive 48 / stepCapAccum 128 / maxSamples 16) against a
+ *       stepCapInteractive 224 / stepCapAccum 768 / maxSamples 16) against a
  *       reference accumulation (both caps 512, same maxSamples 16). Because the
  *       per-sample jitter/march-phase come from a deterministic Halton sequence
  *       indexed by sample number, both sides cast the IDENTICAL 16-ray set — only
@@ -113,8 +113,10 @@ const ALL_STYLES = Array.from({ length: 20 }, (_, i) => i);
 const PROBE_STYLES = [0, 9, 5];
 
 // A9: PRE-EXISTING Dawn-compiler blocker, NOT a raycast defect. LowPolyFacet
-// (id 19) hangs the browser's WGSL pipeline compiler (>150s, never resolves) so
-// isReady(19) never flips and its canvas stays black.
+// (id 19) hangs the browser's WGSL pipeline compiler (>150s, never resolves), so
+// isReady(19) never flips. The controller times out after 30s and asks the frame
+// loop to try the mesh fallback, but this gate remains specifically about native
+// raycast readiness.
 //
 // F4 EVIDENCE (2026-07-08, adapter: NVIDIA Turing / Chromium, ?preview=mesh):
 // the SAME CLASS of Dawn compiler hang reproduces on the MESH preview path — the
@@ -172,8 +174,8 @@ async function waitForRaycastReady(page: Page, styleId: number): Promise<void> {
     { timeout: 60_000 }
   );
   await selectStyle(page, styleId);
-  // A9: known Dawn-hang styles never compile — fail fast so the test.fail()-pinned
-  // case doesn't burn the full 60s budget each run.
+  // A9: known native-raycast compiler hangs — fail fast so the test.fail()-pinned
+  // readiness case doesn't burn the full 60s budget each run.
   const readyTimeout = DAWN_HANG_STYLES.has(styleId) ? 15_000 : 60_000;
   await page.waitForFunction(
     (id) => {
@@ -416,7 +418,7 @@ test.describe('raycast preview gate', () => {
       // (RaycastController: caps 224/768 as EVAL ceilings, floors 0.6/0.25mm).
       const prod = await readbackConvergedDebug(
         page,
-        { stepCapInteractive: 224, stepCapAccum: 768, featureFloorInteractive: 0.6, featureFloor: 0.25, maxSamples: 16 }
+        { stepCapInteractive: 224, stepCapAccum: 1536, featureFloorInteractive: 0.6, featureFloor: 0.25, maxSamples: 16 }
       );
       const ref = await readbackConvergedDebug(
         page,
@@ -478,6 +480,247 @@ test.describe('raycast preview gate', () => {
     });
   }
 
+  // A13 (2026-07-10, user-reported breakup): every prior gate ran at the DEFAULT
+  // camera with DEFAULT params — no zoom, no twist — and stayed green while the
+  // real product broke apart when zoomed. Mechanism (measured,
+  // e2e/_raycast_interactive_probe.mjs): dt_fine = min(pixel footprint, floor)
+  // lets fp underride the floor without bound, so zooming in scales the eval
+  // cost of one band crossing as 1/fp while the eval caps stay fixed; 69% of
+  // rays exhausted the interactive cap and the coarse-finish stride
+  // (remaining/32 ≈ 3-9mm) punched through 3mm walls -> stripe holes/fuzz.
+  // This gate reproduces that exact condition: heavy-relief style + twist +
+  // wheel-zoom, then requires the INTERACTIVE-tier march (sample 0 config,
+  // what users see during/after camera motion) to hit every surface the
+  // banded-ultra truth march hits. Through-misses are march defects by
+  // definition (the truth mask excludes legitimate see-through openings).
+  test('style 9: zoomed interactive integrity (no through-wall misses)', async ({ page }) => {
+    await page.goto(`${BASE}/?preview=raycast`);
+    await waitForRaycastReady(page, 9);
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __POTFOUNDRY_STORE__?: { getState(): { setGeometryParams(p: { spinTurns: number }): void } };
+      }).__POTFOUNDRY_STORE__;
+      if (!store) throw new Error('__POTFOUNDRY_STORE__ not exposed');
+      store.getState().setGeometryParams({ spinTurns: 0.4 });
+      // Idle auto-rotate resumes mid-census (readbacks span minutes) and a
+      // rotating camera fabricates phantom misses vs the earlier truth mask.
+      const cc = (window as unknown as { __pf_webgpu_camera_controller?: { state?: { autoRotate?: boolean } } }).__pf_webgpu_camera_controller;
+      if (cc?.state) cc.state.autoRotate = false;
+    });
+    const canvas = page.locator('canvas').first();
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('canvas has no bounding box');
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(1500);
+    await page.mouse.wheel(0, -400);
+    // camera inertia settle — readbacks during drift fabricate phantom misses
+    await page.waitForTimeout(3000);
+
+    const region = 320;
+    // banded-ultra truth (memory-documented truth config; full no-skip TDRs the GPU)
+    const truth = await readbackConvergedDebug(
+      page,
+      { stepCapInteractive: 8192, stepCapAccum: 8192, featureFloorInteractive: 0.05, featureFloor: 0.05, maxSamples: 1 },
+      region, region
+    );
+    // the shipped INTERACTIVE tier: exactly what sample 0 / mid-drag frames use
+    const interactive = await readbackConvergedDebug(
+      page,
+      { stepCapInteractive: 224, stepCapAccum: 224, featureFloorInteractive: 0.6, featureFloor: 0.6, maxSamples: 1 },
+      region, region
+    );
+
+    let truthHits = 0;
+    let throughMiss = 0;
+    for (let i = 0; i < truth.length; i += 4) {
+      if (truth[i] <= -0.5) continue; // background / legitimate opening
+      truthHits++;
+      if (interactive[i] < 0) throughMiss++;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[raycast zoomint 9] truthHits=${truthHits} throughMiss=${throughMiss} (${(100 * throughMiss / Math.max(1, truthHits)).toFixed(2)}%)`);
+    expect(truthHits).toBeGreaterThan(region * region * 0.4);
+    // ZERO tolerance: the escalated march guarantees segment completion and
+    // the graze detector is never budget-disabled, so every truth-visible
+    // surface must be hit — a single through-miss is a march defect.
+    // (Pre-fix measured 8.4%; wall-guard alone left 8; escalation left 0.)
+    expect(throughMiss).toBe(0);
+  });
+
+  // A14 (2026-07-10, "100% stable even under movement"): every mid-drag frame
+  // is a sample-0 interactive frame, so surface stability under camera motion
+  // means the interactive tier must be complete at EVERY pose, not just the
+  // default one. Sweep an orbit path (elevation + azimuth + zoom changes) and
+  // require zero through-misses at every stop. Auto-rotate is disabled and
+  // each pose census only starts once the camera signature is static —
+  // readbacks during drift compare different poses and fabricate misses.
+  test('style 9: movement-sweep interactive stability', async ({ page }) => {
+    test.setTimeout(420_000);
+    await page.goto(`${BASE}/?preview=raycast`);
+    await waitForRaycastReady(page, 9);
+    await page.evaluate(() => {
+      const store = (window as unknown as {
+        __POTFOUNDRY_STORE__?: { getState(): { setGeometryParams(p: { spinTurns: number }): void } };
+      }).__POTFOUNDRY_STORE__;
+      if (!store) throw new Error('__POTFOUNDRY_STORE__ not exposed');
+      store.getState().setGeometryParams({ spinTurns: 0.4 });
+      const cc = (window as unknown as { __pf_webgpu_camera_controller?: { state?: { autoRotate?: boolean } } }).__pf_webgpu_camera_controller;
+      if (cc?.state) cc.state.autoRotate = false;
+    });
+    const canvas = page.locator('canvas').first();
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('canvas has no bounding box');
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+
+    const cameraSig = () => page.evaluate(async () => {
+      const rc = (window as unknown as { __pfRaycast: { controller: {
+        setDebugMode(m: number): void;
+        setQuality(q: { maxSamples?: number }): void;
+        needsFrame(): boolean;
+        readbackPixels(x: number, y: number, w: number, h: number): Promise<Float32Array>;
+      } } }).__pfRaycast;
+      rc.controller.setDebugMode(6);
+      rc.controller.setQuality({ maxSamples: 1 });
+      const t0 = Date.now();
+      while (rc.controller.needsFrame() && Date.now() - t0 < 20_000) await new Promise((r) => setTimeout(r, 30));
+      const px = await rc.controller.readbackPixels(4, 4, 1, 1);
+      return [px[0], px[1], px[2]] as [number, number, number];
+    });
+    const waitCameraStill = async () => {
+      let prev = await cameraSig();
+      for (let i = 0; i < 20; i++) {
+        await page.waitForTimeout(1500);
+        const cur = await cameraSig();
+        const d = Math.hypot(cur[0] - prev[0], cur[1] - prev[1], cur[2] - prev[2]);
+        prev = cur;
+        if (d < 0.01) return;
+      }
+      throw new Error('camera never stabilized between poses');
+    };
+
+    // orbit path: zoom in, then alternating azimuth/elevation stops
+    const MOVES: Array<{ wheel?: number; dx?: number; dy?: number }> = [
+      { wheel: -400 },
+      { dx: 60, dy: 0 },
+      { dx: 0, dy: -14 },   // elevate — the historical worst regime (bowl interior)
+      { dx: -90, dy: 0 },
+      { dx: 40, dy: 10 },
+    ];
+    const region = 224;
+    for (let pose = 0; pose < MOVES.length; pose++) {
+      const m = MOVES[pose];
+      await page.mouse.move(cx, cy);
+      if (m.wheel) {
+        await page.mouse.wheel(0, m.wheel);
+      } else {
+        await page.mouse.down();
+        await page.mouse.move(cx + (m.dx ?? 0), cy + (m.dy ?? 0), { steps: 3 });
+        await page.mouse.up();
+      }
+      await waitCameraStill();
+
+      const truth = await readbackConvergedDebug(
+        page,
+        { stepCapInteractive: 8192, stepCapAccum: 8192, featureFloorInteractive: 0.05, featureFloor: 0.05, maxSamples: 1 },
+        region, region
+      );
+      const interactive = await readbackConvergedDebug(
+        page,
+        { stepCapInteractive: 224, stepCapAccum: 224, featureFloorInteractive: 0.6, featureFloor: 0.6, maxSamples: 1 },
+        region, region
+      );
+      let truthHits = 0, throughMiss = 0;
+      for (let i = 0; i < truth.length; i += 4) {
+        if (truth[i] <= -0.5) continue;
+        truthHits++;
+        if (interactive[i] < 0) throughMiss++;
+      }
+      // eslint-disable-next-line no-console
+      console.log(`[raycast sweep 9] pose ${pose}: truthHits=${truthHits} throughMiss=${throughMiss}`);
+      expect(truthHits).toBeGreaterThan(region * region * 0.3);
+      expect(throughMiss).toBe(0);
+    }
+  });
+
+  // A15 (2026-07-10, "inner wall still glitchy... angle dependent... push for
+  // performance"): the user-perceived artifact was UNDER-CONVERGED
+  // accumulation — at low FPS the 16-sample accumulation takes seconds, and
+  // every camera nudge resets it, so the screen lives in sample-0/1/2 frames
+  // where grazing high-frequency relief aliases as large crawling moire bands
+  // (invisible to both hit-distance censuses and converged-image diffs).
+  // This gate asserts BOTH halves of the fix at a grazing inner-wall pose:
+  //   (a) the converged SHADED image matches a high-budget shaded reference
+  //       (identical Halton ray set; any visible defect = color diff), and
+  //   (b) convergence completes fast enough that the unconverged transient is
+  //       imperceptible (multi-sample-per-frame ring batching; one-sample-
+  //       per-rAF had a hard ~270ms floor and measured seconds at this pose).
+  test('style 2: grazing-pose shaded fidelity + convergence budget', async ({ page }) => {
+    test.setTimeout(300_000);
+    await page.goto(`${BASE}/?preview=raycast`);
+    await waitForRaycastReady(page, 2);
+    const canvas = page.locator('canvas').first();
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error('canvas has no bounding box');
+    const cx = box.x + box.width / 2, cy = box.y + box.height / 2;
+    // elevated grazing pose over the bowl interior (fixed drags; state-driven
+    // turntable rotX writes do NOT propagate to the rig — drags are the API)
+    await page.mouse.move(cx, cy);
+    await page.mouse.down();
+    await page.mouse.move(cx, cy - 12, { steps: 3 });
+    await page.mouse.up();
+    await page.waitForTimeout(1500);
+    await page.mouse.wheel(0, -400);
+    await page.waitForTimeout(1500);
+    await page.mouse.wheel(0, -300);
+    await page.waitForTimeout(6000); // inertia decay
+    const region = 320;
+
+    const shaded = (quality: { stepCapInteractive: number; stepCapAccum: number; featureFloorInteractive: number; featureFloor: number; maxSamples: number }) =>
+      page.evaluate(async ({ quality, region }) => {
+        const cc = (window as unknown as { __pf_webgpu_camera_controller?: { state?: { autoRotate?: boolean } } }).__pf_webgpu_camera_controller;
+        if (cc?.state) cc.state.autoRotate = false;
+        const rc = (window as unknown as { __pfRaycast: { controller: {
+          setDebugMode(m: number): void;
+          setQuality(q: object): void;
+          needsFrame(): boolean;
+          readbackPixels(x: number, y: number, w: number, h: number): Promise<Float32Array>;
+        } } }).__pfRaycast;
+        rc.controller.setDebugMode(0);
+        rc.controller.setQuality(quality);
+        const t0 = performance.now();
+        while (rc.controller.needsFrame() && performance.now() - t0 < 120_000) {
+          await new Promise((r) => requestAnimationFrame(r));
+        }
+        const ms = performance.now() - t0;
+        const canvasEl = document.querySelector('canvas')!;
+        const x0 = Math.floor(canvasEl.width / 2 - region / 2);
+        const y0 = Math.floor(canvasEl.height / 2 - region / 2);
+        const px = Array.from(await rc.controller.readbackPixels(x0, y0, region, region));
+        return { px, ms };
+      }, { quality, region });
+
+    const prod = await shaded({ stepCapInteractive: 224, stepCapAccum: 1536, featureFloorInteractive: 0.6, featureFloor: 0.25, maxSamples: 16 });
+    const ref = await shaded({ stepCapInteractive: 8192, stepCapAccum: 8192, featureFloorInteractive: 0.05, featureFloor: 0.05, maxSamples: 16 });
+    let defects = 0, n = 0;
+    for (let i = 0; i < prod.px.length; i += 4) {
+      n++;
+      const d = Math.max(
+        Math.abs(prod.px[i] - ref.px[i]),
+        Math.abs(prod.px[i + 1] - ref.px[i + 1]),
+        Math.abs(prod.px[i + 2] - ref.px[i + 2])
+      );
+      if (d > 0.06) defects++;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`[raycast shaded 2] defects=${defects}/${n} (${(100 * defects / n).toFixed(3)}%) prodConvergeMs=${prod.ms.toFixed(0)}`);
+    // (a) visible fidelity: <0.1% of pixels may differ from the reference
+    expect(defects).toBeLessThanOrEqual(Math.ceil(n * 0.001));
+    // (b) convergence budget: measured 132ms with ring batching (was 877ms
+    // one-per-rAF); generous 2.5x headroom for slower adapters/CI noise.
+    expect(prod.ms).toBeLessThanOrEqual(350);
+  });
+
   for (const styleId of ALL_STYLES) {
     test(`style ${styleId}: A/B screenshots`, async ({ page }) => {
       await page.goto(`${BASE}/?preview=mesh`);
@@ -501,20 +744,26 @@ test.describe('raycast preview gate', () => {
         // A/B evidence fidelity fix: readbackCenterDebug (above) leaves the
         // controller at stepCapInteractive/stepCapAccum=128, maxSamples=1 (its own
         // debug-readback config). Restore the FULL shipped desktop defaults
-        // (RaycastController.ts:76-79 — stepCapInteractive 48 / stepCapAccum 128 /
+        // (RaycastController.ts:83-87 — stepCapInteractive 224 / stepCapAccum 768 /
         // maxSamples 16) before the screenshot, not just maxSamples, so sample 0
-        // marches at the production cap (48) instead of the debug-readback cap
+        // marches at the production cap (224) instead of the debug-readback cap
         // (128) — otherwise the owner's A/B packet is captured with a slightly
         // denser-than-shipped first-sample march, flattering raycast vs what users
         // actually see.
         await page.evaluate(() => {
           const rc = (window as unknown as { __pfRaycast: { controller: {
             setDebugMode(m: 0 | 1): void;
-            setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; maxSamples?: number }): void;
+            setQuality(q: { stepCapInteractive?: number; stepCapAccum?: number; featureFloor?: number; featureFloorInteractive?: number; maxSamples?: number }): void;
             needsFrame(): boolean;
           } } }).__pfRaycast;
           rc.controller.setDebugMode(0);
-          rc.controller.setQuality({ stepCapInteractive: 48, stepCapAccum: 128, maxSamples: 16 });
+          rc.controller.setQuality({
+            stepCapInteractive: 224,
+            stepCapAccum: 1536,
+            featureFloorInteractive: 0.6,
+            featureFloor: 0.25,
+            maxSamples: 16,
+          });
         });
         // Wait for convergence (needsFrame()===false) rather than a fixed delay,
         // so the shot is the fully-accumulated shipped-config frame.

@@ -637,6 +637,13 @@ export interface TriangleQualityResult {
   maxAspect3D: number;
   minAngleDeg: number;
   sliverCount: number;
+  /**
+   * Zero-area (collinear / duplicate-vertex) triangles within sliverCount —
+   * a genuine mesh defect. `sliverCount - degenerateCount` is the finite-area
+   * high-aspect-needle count, the documented print-usable concession class
+   * (E-2026-07-09-EXPORT-PERF): positive area, watertight, slicer-safe.
+   */
+  degenerateCount: number;
 }
 
 export interface TriangleQualityDiagnosticSample {
@@ -671,6 +678,7 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
   let maxAspect = 0;
   let minAngle = 180;
   let slivers = 0;
+  let degenerates = 0;
   let goodCount = 0;
 
   for (let t = 0; t < indices.length; t += 3) {
@@ -699,6 +707,7 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
       // contributes no interior angle (would otherwise pin minAngle to 0).
       if (DEGENERATE_ASPECT > maxAspect) maxAspect = DEGENERATE_ASPECT;
       slivers++;
+      degenerates++;
       continue;
     }
 
@@ -721,6 +730,7 @@ export function triangleQuality3D(mesh: MeshView): TriangleQualityResult {
     maxAspect3D: maxAspect,
     minAngleDeg: goodCount > 0 ? minAngle : 0,
     sliverCount: slivers,
+    degenerateCount: degenerates,
   };
 }
 
@@ -831,6 +841,7 @@ export function triangleQualityDiagnostics(mesh: MeshView, sampleLimit = 16): Tr
   let maxAspect = 0;
   let minAngle = 180;
   let slivers = 0;
+  let degenerates = 0;
   let goodCount = 0;
   const worst: TriangleQualityDiagnosticSample[] = [];
   const limit = Math.max(0, Math.floor(sampleLimit));
@@ -882,6 +893,8 @@ export function triangleQualityDiagnostics(mesh: MeshView, sampleLimit = 16): Tr
       triMin = Math.min(angA, angB, angC);
       if (triMin < minAngle) minAngle = triMin;
       goodCount++;
+    } else {
+      degenerates++;
     }
 
     if (aspect > maxAspect) maxAspect = aspect;
@@ -907,6 +920,7 @@ export function triangleQualityDiagnostics(mesh: MeshView, sampleLimit = 16): Tr
     maxAspect3D: maxAspect,
     minAngleDeg: goodCount > 0 ? minAngle : 0,
     sliverCount: slivers,
+    degenerateCount: degenerates,
     worst,
   };
 }

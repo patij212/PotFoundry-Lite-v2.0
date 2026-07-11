@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { RaycastController } from './RaycastController';
 import { VP_MATRIX_OFFSET } from '../../../camera_constants';
 import { setupWebGPUMock } from '../../../test/webgpu-mock';
@@ -70,5 +70,48 @@ describe('RaycastController accumulation state', () => {
 
   it('isReady is false before setStyle compilation resolves', () => {
     expect(ctrl.isReady(0)).toBe(false);
+  });
+
+  it('only recomputes bounds when outer geometry or style parameters change', async () => {
+    const f = makeUniforms();
+    ctrl.setStyle(0);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    ctrl.notifyFrame(f, null, 640, 480);
+    const first = device.createCommandEncoder();
+    const firstCompute = vi.spyOn(first, 'beginComputePass');
+    ctrl.encode(first, {} as GPUTextureView, {} as GPUTextureView);
+    expect(firstCompute).toHaveBeenCalledTimes(1);
+
+    const cameraOnly = f.slice();
+    cameraOnly[VP_MATRIX_OFFSET] = 2;
+    ctrl.notifyFrame(cameraOnly, null, 640, 480);
+    const cameraEncoder = device.createCommandEncoder();
+    const cameraCompute = vi.spyOn(cameraEncoder, 'beginComputePass');
+    ctrl.encode(cameraEncoder, {} as GPUTextureView, {} as GPUTextureView);
+    expect(cameraCompute).not.toHaveBeenCalled();
+
+    const geometry = cameraOnly.slice();
+    geometry[1] = 71;
+    ctrl.notifyFrame(geometry, null, 640, 480);
+    const geometryEncoder = device.createCommandEncoder();
+    const geometryCompute = vi.spyOn(geometryEncoder, 'beginComputePass');
+    ctrl.encode(geometryEncoder, {} as GPUTextureView, {} as GPUTextureView);
+    expect(geometryCompute).toHaveBeenCalledTimes(1);
+
+    ctrl.notifyFrame(geometry, new Float32Array([0.25]), 640, 480);
+    const styleEncoder = device.createCommandEncoder();
+    const styleCompute = vi.spyOn(styleEncoder, 'beginComputePass');
+    ctrl.encode(styleEncoder, {} as GPUTextureView, {} as GPUTextureView);
+    expect(styleCompute).toHaveBeenCalledTimes(1);
+  });
+
+  it('records a pipeline failure so the frame loop can use its mesh fallback', async () => {
+    vi.spyOn(device, 'createRenderPipelineAsync').mockRejectedValueOnce(new Error('synthetic raycast failure'));
+    ctrl.setStyle(7);
+    await vi.waitFor(() => expect(ctrl.hasStyleFailure(7)).toBe(true));
+    expect(ctrl.getStyleFailure(7)).toContain('synthetic raycast failure');
+    expect(ctrl.isReady(7)).toBe(false);
+    expect(ctrl.needsFrame()).toBe(false);
   });
 });

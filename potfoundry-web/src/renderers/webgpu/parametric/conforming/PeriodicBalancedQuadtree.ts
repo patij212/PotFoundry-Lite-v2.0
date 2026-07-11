@@ -24,6 +24,8 @@
 import type { SurfaceSampler } from './SurfaceSampler';
 import { firstFundamentalForm, metricStepsForSampler, type MetricSteps } from './SurfaceMetricTensor';
 import type { MetricSizingField } from './MetricSizingField';
+import { makeQuadtreeCellKeyCodec, MAX_U_EXTRA_FOR_CODEC, type QuadtreeCellKeyCodec } from './QuadtreeCellKeyCodec';
+import { PagedLeafStore } from './PagedLeafStore';
 
 /** A leaf cell, exposed in physical-parameter terms. */
 export interface QuadLeaf {
@@ -77,37 +79,250 @@ interface Cell {
   uExtra: number;
 }
 
+interface CellMetricSample {
+  uc: number;
+  tc: number;
+  physW: number;
+  physWBiasFree: number;
+  physH: number;
+}
+
+export interface QuadtreeRefinementEvidenceStats {
+  metricHits: number;
+  metricMisses: number;
+  metricSampleEvaluations: number;
+  featureHits: number;
+  featureMisses: number;
+  creaseHits: number;
+  creaseMisses: number;
+  metricSaturated: number;
+  featureSaturated: number;
+  creaseSaturated: number;
+  metricEntries: number;
+  metricSamplesStored: number;
+  featureEntries: number;
+  creaseEntries: number;
+}
+
+export interface QuadtreeRefinementEvidenceLimits {
+  /** Maximum retained metric cells. Default 65,536. */
+  maxMetricEntries: number;
+  /** Maximum retained metric sample records across all cells. Default 131,072. */
+  maxMetricSamples: number;
+  /** Maximum retained entries in each predicate cache. Default 65,536. */
+  maxPredicateEntries: number;
+}
+
 /**
- * Primary leaf key, keyed on the EFFECTIVE u-level so uExtra-distinguished cells
- * never collide: `${level}:${it}:${eUL}:${iu}`. `level` is retained (the t-axis
- * uses it directly); `eUL` and `iu` fix the u-position/modulus.
+ * Search-scoped cache for scale-independent quadtree refinement evidence.
+ * Scale-specific sizing-field reads are deliberately not cached.
  */
-function cellKey(level: number, it: number, eUL: number, iu: number): string {
-  return `${level}:${it}:${eUL}:${iu}`;
+export class QuadtreeRefinementEvidenceCache {
+  private readonly metric = new Map<number, readonly CellMetricSample[]>();
+  private readonly feature = new Map<number, boolean>();
+  private readonly crease = new Map<number, boolean>();
+  private metricSamplesStored = 0;
+  private readonly limits: QuadtreeRefinementEvidenceLimits;
+  private readonly counters: QuadtreeRefinementEvidenceStats = {
+    metricHits: 0,
+    metricMisses: 0,
+    metricSampleEvaluations: 0,
+    featureHits: 0,
+    featureMisses: 0,
+    creaseHits: 0,
+    creaseMisses: 0,
+    metricSaturated: 0,
+    featureSaturated: 0,
+    creaseSaturated: 0,
+    metricEntries: 0,
+    metricSamplesStored: 0,
+    featureEntries: 0,
+    creaseEntries: 0,
+  };
+
+  constructor(limits: Partial<QuadtreeRefinementEvidenceLimits> = {}) {
+    this.limits = {
+      maxMetricEntries: limits.maxMetricEntries ?? 65_536,
+      maxMetricSamples: limits.maxMetricSamples ?? 131_072,
+      maxPredicateEntries: limits.maxPredicateEntries ?? 65_536,
+    };
+  }
+
+  metricSamples(
+    key: number,
+    build: () => readonly CellMetricSample[],
+  ): readonly CellMetricSample[] {
+    const cached = this.metric.get(key);
+    if (cached !== undefined) {
+      this.counters.metricHits++;
+      return cached;
+    }
+    const samples = build();
+    this.counters.metricMisses++;
+    this.counters.metricSampleEvaluations += samples.length;
+    if (
+      this.metric.size < this.limits.maxMetricEntries &&
+      this.metricSamplesStored + samples.length <= this.limits.maxMetricSamples
+    ) {
+      this.metric.set(key, samples);
+      this.metricSamplesStored += samples.length;
+    } else {
+      this.counters.metricSaturated++;
+    }
+    return samples;
+  }
+
+  intersects(
+    kind: 'feature' | 'crease',
+    key: number,
+    evaluate: () => boolean,
+  ): boolean {
+    const store = kind === 'feature' ? this.feature : this.crease;
+    const cached = store.get(key);
+    if (cached !== undefined) {
+      if (kind === 'feature') this.counters.featureHits++;
+      else this.counters.creaseHits++;
+      return cached;
+    }
+    const result = evaluate();
+    if (kind === 'feature') this.counters.featureMisses++;
+    else this.counters.creaseMisses++;
+    if (store.size < this.limits.maxPredicateEntries) {
+      store.set(key, result);
+    } else if (kind === 'feature') {
+      this.counters.featureSaturated++;
+    } else {
+      this.counters.creaseSaturated++;
+    }
+    return result;
+  }
+
+  stats(): Readonly<QuadtreeRefinementEvidenceStats> {
+    return {
+      ...this.counters,
+      metricEntries: this.metric.size,
+      metricSamplesStored: this.metricSamplesStored,
+      featureEntries: this.feature.size,
+      creaseEntries: this.crease.size,
+    };
+  }
 }
 
-/** Secondary key indexing a leaf by its effective u-position only: `${eUL}:${it}:${iu}`. */
-function uEffKey(eUL: number, it: number, iu: number): string {
-  return `${eUL}:${it}:${iu}`;
+/** Persistent raw adaptive-refinement tree for one budget-search envelope. */
+export class QuadtreeRefinementHierarchy {
+  private static readonly CHUNK_BITS = 16;
+  private static readonly CHUNK_SIZE = 1 << QuadtreeRefinementHierarchy.CHUNK_BITS;
+  private static readonly CHUNK_MASK = QuadtreeRefinementHierarchy.CHUNK_SIZE - 1;
+  private readonly levelChunks: Uint8Array[] = [];
+  private readonly iuChunks: Uint32Array[] = [];
+  private readonly itChunks: Uint32Array[] = [];
+  private readonly firstChildChunks: Int32Array[] = [];
+  private rootNodes = new Uint32Array(0);
+  private count = 0;
+
+  private ensureChunk(chunkIndex: number): void {
+    if (this.levelChunks[chunkIndex]) return;
+    const size = QuadtreeRefinementHierarchy.CHUNK_SIZE;
+    this.levelChunks[chunkIndex] = new Uint8Array(size);
+    this.iuChunks[chunkIndex] = new Uint32Array(size);
+    this.itChunks[chunkIndex] = new Uint32Array(size);
+    const children = new Int32Array(size);
+    children.fill(-1);
+    this.firstChildChunks[chunkIndex] = children;
+  }
+
+  addNode(level: number, iu: number, it: number): number {
+    if (level < 0 || level > 255) {
+      throw new Error(`QuadtreeRefinementHierarchy: level ${level} exceeds Uint8 storage`);
+    }
+    const index = this.count++;
+    const chunk = index >>> QuadtreeRefinementHierarchy.CHUNK_BITS;
+    const offset = index & QuadtreeRefinementHierarchy.CHUNK_MASK;
+    this.ensureChunk(chunk);
+    this.levelChunks[chunk][offset] = level;
+    this.iuChunks[chunk][offset] = iu;
+    this.itChunks[chunk][offset] = it;
+    return index;
+  }
+
+  setRoots(indices: readonly number[]): void {
+    this.rootNodes = Uint32Array.from(indices);
+  }
+
+  setFirstChild(parent: number, firstChild: number): void {
+    const chunk = parent >>> QuadtreeRefinementHierarchy.CHUNK_BITS;
+    const offset = parent & QuadtreeRefinementHierarchy.CHUNK_MASK;
+    this.firstChildChunks[chunk][offset] = firstChild;
+  }
+
+  level(index: number): number {
+    const chunk = index >>> QuadtreeRefinementHierarchy.CHUNK_BITS;
+    const offset = index & QuadtreeRefinementHierarchy.CHUNK_MASK;
+    return this.levelChunks[chunk][offset];
+  }
+
+  iu(index: number): number {
+    const chunk = index >>> QuadtreeRefinementHierarchy.CHUNK_BITS;
+    const offset = index & QuadtreeRefinementHierarchy.CHUNK_MASK;
+    return this.iuChunks[chunk][offset];
+  }
+
+  it(index: number): number {
+    const chunk = index >>> QuadtreeRefinementHierarchy.CHUNK_BITS;
+    const offset = index & QuadtreeRefinementHierarchy.CHUNK_MASK;
+    return this.itChunks[chunk][offset];
+  }
+
+  firstChild(index: number): number {
+    const chunk = index >>> QuadtreeRefinementHierarchy.CHUNK_BITS;
+    const offset = index & QuadtreeRefinementHierarchy.CHUNK_MASK;
+    return this.firstChildChunks[chunk][offset];
+  }
+
+  roots(): Uint32Array {
+    return this.rootNodes;
+  }
+
+  nodeCount(): number {
+    return this.count;
+  }
+
+  /** Allocated typed-array payload bytes (13 bytes per capacity node + roots). */
+  estimatedBytes(): number {
+    const chunks = this.levelChunks.length;
+    const capacity = chunks * QuadtreeRefinementHierarchy.CHUNK_SIZE;
+    return capacity * (1 + 4 + 4 + 4) + this.rootNodes.byteLength;
+  }
 }
 
-/** Cap on per-leaf directional u-refinement (bounds tri inflation + probe depth). */
-const MAX_U_EXTRA = 4;
+// Leaf keys are packed INTEGERS via a per-tree {@link QuadtreeCellKeyCodec}
+// (`this.codec`), replacing the template-literal string keys this file used —
+// the E-2026-07-10-EMIT-CPU-PROFILE hotspot (string alloc + Set<string> was
+// ~50% of a production export's CPU). The codec is collision-free over the same
+// (level, it, uExtra, iu) domain the strings covered (proven in
+// QuadtreeCellKeyCodec.test.ts), so the tree is byte-identical.
+
+/** Cap on per-leaf directional u-refinement (bounds tri inflation + probe depth).
+ *  Sourced from the key codec so the packed-key uExtra field width can NEVER
+ *  drift out of sync with this bound (a wider uExtra than the field ⇒ collision). */
+const MAX_U_EXTRA = MAX_U_EXTRA_FOR_CODEC;
 /** Reference metric anisotropy at which the directional gate opens (matches computeUBias). */
 const UBIAS_AREF = 3;
 /** F-inclusive 3D aspect above which a short-wide leaf is directionally u-split. */
 const U_SPLIT_TRIGGER = 20;
 
 export class PeriodicBalancedQuadtree {
-  /** Set of primary leaf keys for O(1) existence checks. */
-  private readonly leafSet = new Set<string>();
+  /** Sparse paged-bitset store of primary packed-integer leaf keys. */
+  private readonly leafSet = new PagedLeafStore();
   /**
-   * Secondary index: effective-u key (`${eUL}:${it}:${iu}`) → primary key. Lets a
-   * u-side neighbour probe find a finer u-neighbour whether it arose from level+1
-   * (t-isotropic refinement) or uExtra+1 (directional refinement) — both raise
-   * eUL by 1. Maintained in lock-step with `leafSet`.
+   * Secondary index: effective-u key `packUEff(eUL,it,iu)` → primary leaf key.
+   * Lets a u-side neighbour probe find a finer u-neighbour whether it arose from
+   * level+1 (t-isotropic refinement) or uExtra+1 (directional refinement) — both
+   * raise eUL by 1. Maintained in lock-step with `leafSet`.
    */
-  private readonly uByEffective = new Map<string, string>();
+  private readonly uByEffective = new Map<number, number>();
+  /** Collision-free packed-integer cell-key codec (see QuadtreeCellKeyCodec). */
+  private readonly codec: QuadtreeCellKeyCodec;
   /** Leaf cells in insertion order (rebuilt on demand). */
   private cells: Cell[] = [];
   /** Deepest level allowed; bounds the finer-neighbour probes. */
@@ -192,6 +407,8 @@ export class PeriodicBalancedQuadtree {
    * k² metric evals per refinement decision; leaf geometry/efg are unchanged.
    */
   private readonly cellSamples: number;
+  /** Optional search-scoped cache; absent on ordinary/final one-shot builds. */
+  private readonly refinementEvidenceCache?: QuadtreeRefinementEvidenceCache;
 
   constructor(
     field: MetricSizingField,
@@ -224,6 +441,12 @@ export class PeriodicBalancedQuadtree {
        * PLAIN `metric` stays the sizing basis (spec: sizing stays plain).
        */
       efgSampler?: SurfaceSampler;
+      /** Reuse scale-independent cell evidence across budget-search probes. */
+      refinementEvidenceCache?: QuadtreeRefinementEvidenceCache;
+      /** Capture the raw adaptive tree for later scale-specific materialization. */
+      captureRefinementHierarchy?: QuadtreeRefinementHierarchy;
+      /** Materialize refinement from a previously captured search envelope. */
+      refinementHierarchy?: QuadtreeRefinementHierarchy;
     },
   ) {
     this.maxLevel = opts.maxLevel;
@@ -235,8 +458,25 @@ export class PeriodicBalancedQuadtree {
     this.directionalRefine = opts.directionalRefine ?? false;
     this.cellSamples = Math.max(1, Math.floor(opts.cellSamples ?? 1));
     this.efgSampler = opts.efgSampler;
+    this.refinementEvidenceCache = opts.refinementEvidenceCache;
+    // Codec sized to the tree's bounds — MUST precede any addLeaf (refine below).
+    // The DEEPEST level is max(maxLevel, pinBoundaryLevel): enforcePinnedBoundary
+    // splits the t=0/t=1 rows to EXACTLY pinBoundaryLevel, which CAN exceed
+    // maxLevel (a pinned boundary finer than the interior cap — e.g. the unit-test
+    // maxLevel 7 / pin 8 config; production's pin = log2(nRing)−uBias always sits
+    // below the CAD maxLevel, so this only matters for those configs). That level
+    // bounds `it` (⇒ IT field) and, via +uBias+MAX_U_EXTRA, `eUL` (⇒ iu field);
+    // sizing to opts.maxLevel alone overflows the it field for a level-8 boundary
+    // cell at maxLevel 7 (silent collision — the missing-column regression).
+    this.codec = makeQuadtreeCellKeyCodec(Math.max(opts.maxLevel, this.pinBoundaryLevel), this.uBiasLevel);
     this.steps = metricStepsForSampler(metric);
-    this.refine(field, metric);
+    if (opts.refinementHierarchy) {
+      this.materializeRefinementHierarchy(field, metric, opts.refinementHierarchy);
+    } else if (opts.captureRefinementHierarchy) {
+      this.refineAndCaptureHierarchy(field, metric, opts.captureRefinementHierarchy);
+    } else {
+      this.refine(field, metric);
+    }
     if (this.pinBoundaryLevel > 0) this.enforcePinnedBoundary();
     this.balance(opts.maxLevel);
     if (this.directionalRefine) this.localDirectionalRefine(metric);
@@ -307,31 +547,27 @@ export class PeriodicBalancedQuadtree {
 
   // ----- construction -----------------------------------------------------
 
-  /** Reconstruct a Cell from its primary key. */
-  private cellOfKey(key: string): Cell {
-    const [lvlS, itS, eULS, iuS] = key.split(':');
-    const level = Number(lvlS);
-    const it = Number(itS);
-    const eUL = Number(eULS);
-    const iu = Number(iuS);
-    return { level, iu, it, uExtra: eUL - this.uBiasLevel - level };
+  /** Reconstruct a Cell from its primary (packed-integer) key. */
+  private cellOfKey(key: number): Cell {
+    const { level, it, uExtra, iu } = this.codec.unpackCell(key);
+    return { level, iu, it, uExtra };
   }
 
   private addLeaf(level: number, iu: number, it: number, uExtra = 0): void {
     const eUL = this.effULevel(level, uExtra);
     const span = this.uModulus(eUL); // u-index wraps mod 2^eUL
     const wu = ((iu % span) + span) % span;
-    const key = cellKey(level, it, eUL, wu);
+    const key = this.codec.packCell(level, it, uExtra, wu);
     this.leafSet.add(key);
-    this.uByEffective.set(uEffKey(eUL, it, wu), key);
+    this.uByEffective.set(this.codec.packUEff(eUL, it, wu), key);
   }
 
   private removeLeaf(level: number, iu: number, it: number, uExtra = 0): void {
     const eUL = this.effULevel(level, uExtra);
     const span = this.uModulus(eUL);
     const wu = ((iu % span) + span) % span;
-    this.leafSet.delete(cellKey(level, it, eUL, wu));
-    this.uByEffective.delete(uEffKey(eUL, it, wu));
+    this.leafSet.delete(this.codec.packCell(level, it, uExtra, wu));
+    this.uByEffective.delete(this.codec.packUEff(eUL, it, wu));
   }
 
   /** Existence of a (level,iu,it,uExtra) leaf (iu wrapped mod 2^eUL). */
@@ -339,7 +575,22 @@ export class PeriodicBalancedQuadtree {
     const eUL = this.effULevel(level, uExtra);
     const span = this.uModulus(eUL);
     const wu = ((iu % span) + span) % span;
-    return this.leafSet.has(cellKey(level, it, eUL, wu));
+    return this.leafSet.has(this.codec.packCell(level, it, uExtra, wu));
+  }
+
+  /** Packed key for scale-independent evidence gathered during square refinement. */
+  private refinementEvidenceKey(level: number, iu: number, it: number): number {
+    const span = this.uSpanCell(level, 0);
+    const wu = ((iu % span) + span) % span;
+    return this.codec.packCell(level, it, 0, wu);
+  }
+
+  private refinementIntersection(
+    kind: 'feature' | 'crease',
+    key: number,
+    evaluate: () => boolean,
+  ): boolean {
+    return this.refinementEvidenceCache?.intersects(kind, key, evaluate) ?? evaluate();
   }
 
   /**
@@ -372,6 +623,34 @@ export class PeriodicBalancedQuadtree {
     // chord facets / "staircased" crease). Split if ANY sample's physical extent
     // exceeds the local target. Cost is k² metric evals per refinement decision.
     const k = this.cellSamples;
+    const cache = this.refinementEvidenceCache;
+    if (cache) {
+      const key = this.refinementEvidenceKey(level, iu, it);
+      const samples = cache.metricSamples(key, () => {
+        const built: CellMetricSample[] = [];
+        for (let p = 0; p < k; p++) {
+          for (let q = 0; q < k; q++) {
+            const uc = (iu + (p + 0.5) / k) * uSize;
+            const tc = (it + (q + 0.5) / k) * tSize;
+            const { E, G } = firstFundamentalForm(metric, uc, tc, this.steps.hu, this.steps.ht);
+            const rootE = Math.sqrt(Math.max(E, 0));
+            built.push({
+              uc,
+              tc,
+              physW: rootE * uSize,
+              physWBiasFree: rootE / (1 << level),
+              physH: Math.sqrt(Math.max(G, 0)) * tSize,
+            });
+          }
+        }
+        return built;
+      });
+      for (const sample of samples) {
+        const physW = biasFreeU ? sample.physWBiasFree : sample.physW;
+        if (Math.max(physW, sample.physH) > field.edgeLength(sample.uc, sample.tc)) return true;
+      }
+      return false;
+    }
     for (let p = 0; p < k; p++) {
       for (let q = 0; q < k; q++) {
         const uc = (iu + (p + 0.5) / k) * uSize;
@@ -383,6 +662,116 @@ export class PeriodicBalancedQuadtree {
       }
     }
     return false;
+  }
+
+  /** Exact raw-refinement decision shared by hierarchy capture/materialization. */
+  private shouldSplitHierarchyNode(
+    field: MetricSizingField,
+    metric: SurfaceSampler,
+    level: number,
+    iu: number,
+    it: number,
+  ): boolean {
+    const cap = this.levelCap(level, it);
+    const belowUniformFloor = level < Math.min(this.minUniformLevel, cap);
+    const uSize = 1 / this.uSpanCell(level, 0);
+    const tSize = 1 / (1 << level);
+    const featureRefine = this.featureRefine;
+    const evidenceKey = this.refinementEvidenceKey(level, iu, it);
+    const belowFeatureFloor =
+      featureRefine !== undefined &&
+      level < Math.min(featureRefine.level, cap) &&
+      this.refinementIntersection(
+        'feature',
+        evidenceKey,
+        () => featureRefine.intersects(iu * uSize, it * tSize, Math.max(uSize, tSize)),
+      );
+    const creaseRefine = this.creaseRefine;
+    const onCrease =
+      creaseRefine !== undefined &&
+      this.uBiasLevel > 0 &&
+      this.refinementIntersection(
+        'crease',
+        evidenceKey,
+        () => creaseRefine.intersects(iu * uSize, it * tSize, Math.max(uSize, tSize)),
+      );
+    return level < cap &&
+      (belowUniformFloor ||
+        belowFeatureFloor ||
+        this.shouldRefine(field, metric, level, iu, it, onCrease));
+  }
+
+  /** Build the envelope tree once while retaining its persistent DFS nodes. */
+  private refineAndCaptureHierarchy(
+    field: MetricSizingField,
+    metric: SurfaceSampler,
+    hierarchy: QuadtreeRefinementHierarchy,
+  ): void {
+    if (hierarchy.nodeCount() !== 0) {
+      throw new Error('PeriodicBalancedQuadtree: capture hierarchy must be empty');
+    }
+    const stack: number[] = [];
+    const roots: number[] = [];
+    const rootU = this.uSpanCell(0, 0);
+    for (let iu = 0; iu < rootU; iu++) {
+      const root = hierarchy.addNode(0, iu, 0);
+      roots.push(root);
+      stack.push(root);
+    }
+    hierarchy.setRoots(roots);
+    this.leafSet.clear();
+    this.uByEffective.clear();
+    while (stack.length > 0) {
+      const nodeIndex = stack.pop() as number;
+      const level = hierarchy.level(nodeIndex);
+      const iu = hierarchy.iu(nodeIndex);
+      const it = hierarchy.it(nodeIndex);
+      if (this.shouldSplitHierarchyNode(field, metric, level, iu, it)) {
+        const cl = level + 1;
+        const bu = iu * 2;
+        const bt = it * 2;
+        const firstChild = hierarchy.addNode(cl, bu, bt);
+        hierarchy.addNode(cl, bu + 1, bt);
+        hierarchy.addNode(cl, bu, bt + 1);
+        hierarchy.addNode(cl, bu + 1, bt + 1);
+        hierarchy.setFirstChild(nodeIndex, firstChild);
+        stack.push(firstChild, firstChild + 1, firstChild + 2, firstChild + 3);
+      } else {
+        this.addLeaf(level, iu, it, 0);
+      }
+    }
+  }
+
+  /** Replay an exact active frontier from persistent envelope nodes. */
+  private materializeRefinementHierarchy(
+    field: MetricSizingField,
+    metric: SurfaceSampler,
+    hierarchy: QuadtreeRefinementHierarchy,
+  ): void {
+    if (hierarchy.nodeCount() === 0) {
+      throw new Error('PeriodicBalancedQuadtree: refinement hierarchy is empty');
+    }
+    const stack = Array.from(hierarchy.roots());
+    this.leafSet.clear();
+    this.uByEffective.clear();
+    while (stack.length > 0) {
+      const nodeIndex = stack.pop() as number;
+      const level = hierarchy.level(nodeIndex);
+      const iu = hierarchy.iu(nodeIndex);
+      const it = hierarchy.it(nodeIndex);
+      if (this.shouldSplitHierarchyNode(field, metric, level, iu, it)) {
+        const firstChild = hierarchy.firstChild(nodeIndex);
+        if (firstChild < 0) {
+          throw new Error(
+            `PeriodicBalancedQuadtree: search envelope missing children for ` +
+            `level=${level}, iu=${iu}, it=${it}`,
+          );
+        }
+        stack.push(firstChild, firstChild + 1, firstChild + 2, firstChild + 3);
+      } else {
+        this.addLeaf(level, iu, it, 0);
+      }
+    }
   }
 
   /** Curvature/size-driven refinement from the root, capped by {@link levelCap}. */
@@ -408,22 +797,33 @@ export class PeriodicBalancedQuadtree {
       // feature level so the curve crosses each cell simply (sliver-free CDT).
       const uSize = 1 / this.uSpanCell(c.level, 0);
       const tSize = 1 / (1 << c.level);
+      const featureRefine = this.featureRefine;
+      const evidenceKey = this.refinementEvidenceKey(c.level, c.iu, c.it);
       const belowFeatureFloor =
-        this.featureRefine !== undefined &&
-        c.level < Math.min(this.featureRefine.level, cap) &&
+        featureRefine !== undefined &&
+        c.level < Math.min(featureRefine.level, cap) &&
         // Cell box is [iu·Δu, iu·Δu+Δu]×[it·Δt, it·Δt+Δt]; pass the larger extent
         // as `size` so an anisotropic (B>0) cell is still hit-tested over its full
         // span (the intersector treats `size` as a square edge; the larger extent
         // is a conservative superset → never misses a crossing).
-        this.featureRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize));
+        this.refinementIntersection(
+          'feature',
+          evidenceKey,
+          () => featureRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize)),
+        );
       // Crease-driven refinement: on cells a warp-pinned crease crosses, run the
       // size test with the BIAS-FREE u-width so the crease column keeps the B=0
       // t-rows the global bias would otherwise strip (restores feature coverage,
       // bias-invariantly). No-op at B=0 (bias-free width == biased width).
+      const creaseRefine = this.creaseRefine;
       const onCrease =
-        this.creaseRefine !== undefined &&
+        creaseRefine !== undefined &&
         this.uBiasLevel > 0 &&
-        this.creaseRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize));
+        this.refinementIntersection(
+          'crease',
+          evidenceKey,
+          () => creaseRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize)),
+        );
       if (
         c.level < cap &&
         (belowUniformFloor ||
@@ -452,9 +852,9 @@ export class PeriodicBalancedQuadtree {
    */
   private balance(maxLevel: number): void {
     this.maxLevel = maxLevel;
-    const queue: string[] = Array.from(this.leafSet);
+    const queue: number[] = Array.from(this.leafSet);
     while (queue.length > 0) {
-      const key = queue.pop() as string;
+      const key = queue.pop() as number;
       if (!this.leafSet.has(key)) continue; // already split
       const c = this.cellOfKey(key);
       if (c.uExtra !== 0) continue; // square balance predates directional refine
@@ -485,12 +885,12 @@ export class PeriodicBalancedQuadtree {
     this.rebuildCells();
   }
 
-  /** Primary key for a Cell. */
-  private keyOf(c: Cell): string {
+  /** Primary (packed-integer) key for a Cell. */
+  private keyOf(c: Cell): number {
     const eUL = this.effULevel(c.level, c.uExtra);
     const span = this.uModulus(eUL);
     const wu = ((c.iu % span) + span) % span;
-    return cellKey(c.level, c.it, eUL, wu);
+    return this.codec.packCell(c.level, c.it, c.uExtra, wu);
   }
 
   /** Does this cell border any leaf more than one level finer? */
@@ -731,7 +1131,7 @@ export class PeriodicBalancedQuadtree {
 
     // Same class (same level, same eUL)? Found directly via the secondary index.
     {
-      const k = this.uByEffective.get(uEffKey(ae, at, au));
+      const k = this.uByEffective.get(this.codec.packUEff(ae, at, au));
       if (k !== undefined) {
         const c = this.cellOfKey(k);
         if (c.level === level) return [c];
@@ -997,11 +1397,11 @@ export class PeriodicBalancedQuadtree {
    * are exempt (never split) — the N-mid registry covers their t-edge transition.
    */
   private balanceEffectiveU(): void {
-    const queue: string[] = Array.from(this.leafSet);
+    const queue: number[] = Array.from(this.leafSet);
     let guard = 0;
     const guardMax = (this.leafSet.size + 1) * (MAX_U_EXTRA + this.maxLevel + 2) + 16;
     while (queue.length > 0 && guard++ < guardMax * 8) {
-      const key = queue.pop() as string;
+      const key = queue.pop() as number;
       if (!this.leafSet.has(key)) continue; // already split
       const c = this.cellOfKey(key);
       if (this.touchesBoundary(c.level, c.it)) continue; // rings never split

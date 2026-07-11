@@ -12,6 +12,7 @@ const FIXED_NOW = 1_700_000_000_000;
 
 const entry1: KilnEntry = {
   filename: 'spiral-pot',
+  format: 'stl',
   sizeLabel: '2.5 MB',
   triangles: 50_000,
   fidelity: 'high',
@@ -21,6 +22,7 @@ const entry1: KilnEntry = {
 
 const entry2: KilnEntry = {
   filename: 'wave-120',
+  format: '3mf',
   sizeLabel: '1.2 MB',
   triangles: 25_000,
   fidelity: 'custom',
@@ -45,7 +47,7 @@ describe('KilnLog', () => {
     localStorage.setItem(LOG_KEY, JSON.stringify([entry1, entry2]));
     render(<KilnLog now={FIXED_NOW} />);
     expect(screen.getByText(/spiral-pot\.stl · 2\.5 MB · 5 min ago/)).toBeInTheDocument();
-    expect(screen.getByText(/wave-120\.stl · 1\.2 MB · 2h ago/)).toBeInTheDocument();
+    expect(screen.getByText(/wave-120\.3mf · 1\.2 MB · 2h ago/)).toBeInTheDocument();
   });
 
   it('renders an "Export again" button for each row with correct aria-label', () => {
@@ -67,6 +69,7 @@ describe('KilnLog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export spiral-pot again' }));
 
     expect(useAppStore.getState().ui.exportFilename).toBe('spiral-pot');
+    expect(useAppStore.getState().ui.exportFormat).toBe('stl');
     expect(dispatchSpy).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'pf3:download' })
     );
@@ -93,6 +96,7 @@ describe('KilnLog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export wave-120 again' }));
 
     expect(useAppStore.getState().ui.exportFilename).toBe('wave-120');
+    expect(useAppStore.getState().ui.exportFormat).toBe('3mf');
     expect(useAppStore.getState().mesh).toEqual(initialMesh);
   });
 
@@ -107,5 +111,15 @@ describe('KilnLog', () => {
 
     expect(screen.getByText(/spiral-pot\.stl/)).toBeInTheDocument();
     expect(screen.queryByText('Nothing fired yet — your exports will appear here.')).not.toBeInTheDocument();
+  });
+
+  it('migrates older kiln entries without a format as STL', () => {
+    const legacyEntry = { ...entry1 };
+    delete (legacyEntry as Partial<KilnEntry>).format;
+    localStorage.setItem(LOG_KEY, JSON.stringify([legacyEntry]));
+
+    render(<KilnLog now={FIXED_NOW} />);
+
+    expect(screen.getByText(/spiral-pot\.stl/)).toBeInTheDocument();
   });
 });

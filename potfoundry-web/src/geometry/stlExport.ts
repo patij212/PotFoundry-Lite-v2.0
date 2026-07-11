@@ -327,6 +327,92 @@ export function orientMeshForSTL(mesh: MeshData): MeshData {
   return { ...mesh, indices: oriented };
 }
 
+/**
+ * Write one binary STL facet without allocating temporary vertex or normal arrays.
+ *
+ * The arithmetic and sanitization intentionally mirror `getVert` plus
+ * {@link computeNormal}, which the binary writers previously repeated per facet.
+ */
+function writeBinaryFacet(
+  view: DataView,
+  offset: number,
+  vertices: Float32Array,
+  indices: Uint32Array,
+  triangleIndex: number,
+): number {
+  const indexOffset = triangleIndex * 3;
+  const i0 = indices[indexOffset];
+  const i1 = indices[indexOffset + 1];
+  const i2 = indices[indexOffset + 2];
+
+  let v0x = vertices[i0 * 3];
+  let v0y = vertices[i0 * 3 + 1];
+  let v0z = vertices[i0 * 3 + 2];
+  if (!Number.isFinite(v0x) || !Number.isFinite(v0y) || !Number.isFinite(v0z)) {
+    v0x = 0;
+    v0y = 0;
+    v0z = 0;
+  }
+
+  let v1x = vertices[i1 * 3];
+  let v1y = vertices[i1 * 3 + 1];
+  let v1z = vertices[i1 * 3 + 2];
+  if (!Number.isFinite(v1x) || !Number.isFinite(v1y) || !Number.isFinite(v1z)) {
+    v1x = 0;
+    v1y = 0;
+    v1z = 0;
+  }
+
+  let v2x = vertices[i2 * 3];
+  let v2y = vertices[i2 * 3 + 1];
+  let v2z = vertices[i2 * 3 + 2];
+  if (!Number.isFinite(v2x) || !Number.isFinite(v2y) || !Number.isFinite(v2z)) {
+    v2x = 0;
+    v2y = 0;
+    v2z = 0;
+  }
+
+  const e1x = v1x - v0x;
+  const e1y = v1y - v0y;
+  const e1z = v1z - v0z;
+  const e2x = v2x - v0x;
+  const e2y = v2y - v0y;
+  const e2z = v2z - v0z;
+  const rawNx = e1y * e2z - e1z * e2y;
+  const rawNy = e1z * e2x - e1x * e2z;
+  const rawNz = e1x * e2y - e1y * e2x;
+  const length = Math.sqrt(rawNx * rawNx + rawNy * rawNy + rawNz * rawNz);
+
+  let nx = 0;
+  let ny = 0;
+  let nz = 1;
+  if (Number.isFinite(length) && length >= 1e-9) {
+    nx = rawNx / length;
+    ny = rawNy / length;
+    nz = rawNz / length;
+  }
+  if (!Number.isFinite(nx) || !Number.isFinite(ny) || !Number.isFinite(nz)) {
+    nx = 0;
+    ny = 0;
+    nz = 0;
+  }
+
+  view.setFloat32(offset, nx, true); offset += 4;
+  view.setFloat32(offset, ny, true); offset += 4;
+  view.setFloat32(offset, nz, true); offset += 4;
+  view.setFloat32(offset, v0x, true); offset += 4;
+  view.setFloat32(offset, v0y, true); offset += 4;
+  view.setFloat32(offset, v0z, true); offset += 4;
+  view.setFloat32(offset, v1x, true); offset += 4;
+  view.setFloat32(offset, v1y, true); offset += 4;
+  view.setFloat32(offset, v1z, true); offset += 4;
+  view.setFloat32(offset, v2x, true); offset += 4;
+  view.setFloat32(offset, v2y, true); offset += 4;
+  view.setFloat32(offset, v2z, true); offset += 4;
+  view.setUint16(offset, 0, true);
+  return offset + 2;
+}
+
 // ============================================================================
 // Binary STL Export
 // ============================================================================
@@ -368,55 +454,7 @@ export function generateBinarySTL(mesh: MeshData, name: string = 'PotFoundry'): 
   let offset = 84;
 
   for (let i = 0; i < triangleCount; i++) {
-    const i0 = indices[i * 3];
-    const i1 = indices[i * 3 + 1];
-    const i2 = indices[i * 3 + 2];
-
-    // Get vertices with sanitization
-    const getVert = (idx: number): Vec3 => {
-      const x = vertices[idx * 3];
-      const y = vertices[idx * 3 + 1];
-      const z = vertices[idx * 3 + 2];
-      if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-        return [0, 0, 0];
-      }
-      return [x, y, z];
-    };
-
-    const v0 = getVert(i0);
-    const v1 = getVert(i1);
-    const v2 = getVert(i2);
-
-    // Compute normal
-    let n = computeNormal(v0, v1, v2);
-
-    // Sanitize normal
-    if (!Number.isFinite(n[0]) || !Number.isFinite(n[1]) || !Number.isFinite(n[2])) {
-      n = [0, 0, 0];
-    }
-
-    // Write normal (3 x float32)
-    view.setFloat32(offset, n[0], true); offset += 4;
-    view.setFloat32(offset, n[1], true); offset += 4;
-    view.setFloat32(offset, n[2], true); offset += 4;
-
-    // Write vertex 1
-    view.setFloat32(offset, v0[0], true); offset += 4;
-    view.setFloat32(offset, v0[1], true); offset += 4;
-    view.setFloat32(offset, v0[2], true); offset += 4;
-
-    // Write vertex 2
-    view.setFloat32(offset, v1[0], true); offset += 4;
-    view.setFloat32(offset, v1[1], true); offset += 4;
-    view.setFloat32(offset, v1[2], true); offset += 4;
-
-    // Write vertex 3
-    view.setFloat32(offset, v2[0], true); offset += 4;
-    view.setFloat32(offset, v2[1], true); offset += 4;
-    view.setFloat32(offset, v2[2], true); offset += 4;
-
-    // Write attribute byte count (2 bytes, usually 0)
-    view.setUint16(offset, 0, true); offset += 2;
+    offset = writeBinaryFacet(view, offset, vertices, indices, i);
   }
 
   return buffer;
@@ -473,49 +511,7 @@ export function generateStreamingSTLBlob(
     let offset = 0;
 
     for (let i = startTri; i < endTri; i++) {
-      const i0 = indices[i * 3];
-      const i1 = indices[i * 3 + 1];
-      const i2 = indices[i * 3 + 2];
-
-      // Get vertices with sanitization
-      const getVert = (idx: number): Vec3 => {
-        const x = vertices[idx * 3];
-        const y = vertices[idx * 3 + 1];
-        const z = vertices[idx * 3 + 2];
-        if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) {
-          return [0, 0, 0];
-        }
-        return [x, y, z];
-      };
-
-      const v0 = getVert(i0);
-      const v1 = getVert(i1);
-      const v2 = getVert(i2);
-
-      // Compute normal
-      let n = computeNormal(v0, v1, v2);
-      if (!Number.isFinite(n[0]) || !Number.isFinite(n[1]) || !Number.isFinite(n[2])) {
-        n = [0, 0, 0];
-      }
-
-      // Write normal (3 x float32)
-      view.setFloat32(offset, n[0], true); offset += 4;
-      view.setFloat32(offset, n[1], true); offset += 4;
-      view.setFloat32(offset, n[2], true); offset += 4;
-
-      // Write vertices
-      view.setFloat32(offset, v0[0], true); offset += 4;
-      view.setFloat32(offset, v0[1], true); offset += 4;
-      view.setFloat32(offset, v0[2], true); offset += 4;
-      view.setFloat32(offset, v1[0], true); offset += 4;
-      view.setFloat32(offset, v1[1], true); offset += 4;
-      view.setFloat32(offset, v1[2], true); offset += 4;
-      view.setFloat32(offset, v2[0], true); offset += 4;
-      view.setFloat32(offset, v2[1], true); offset += 4;
-      view.setFloat32(offset, v2[2], true); offset += 4;
-
-      // Write attribute byte count
-      view.setUint16(offset, 0, true); offset += 2;
+      offset = writeBinaryFacet(view, offset, vertices, indices, i);
     }
 
     chunks.push(chunkBuffer);
