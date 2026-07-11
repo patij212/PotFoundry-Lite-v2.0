@@ -397,3 +397,29 @@ independent styles. Larger GeoStar FULL-band analytic confirm (u[0,0.1]×t[0.4,0
 the natural scale follow-up (registry notes it plateaus at 2 outliers @0.028 in SAMPLER mode). No
 production change implied (C2 lever already committed default-off; a default-flip needs the 8.1×
 build-cost profile + the standing sliver-concession product decision).
+
+---
+
+## ADDENDUM 13 (2026-07-11) — A3 knee-population = EDGE-CLASS-LOCALIZED; both pre-registered levers REFUTED; redirect to locus relocation
+
+A3 characterization (probes `_tierc_a3_char.test.ts` + `_tierc_a3_flbump.test.ts`; data
+`armA3_char_summary.json`). The ~31k band-edge fidelity residual (Newton-worst 0.02491654414922634,
+bit-exact reproduced) is a THIRD category the point/edge binary didn't anticipate: an EDGE-CLASS
+CONTINUUM but geographically LOCALIZED.
+- 2,205 confirmed outliers → 1,786 distinct clusters @ r=0.001 (compaction 1.23 < 1.5 threshold), 85%
+  singletons, max cluster 9; rarefaction 91.1% of 2nd-half points open NEW clusters (zero saturation)
+  → **POINT-PINS (§V11aa) REFUTED at scale** (vs the champion's 5-spot/10-outlier case).
+- Only 166/2,045 (8.12%) contours carry outliers, but within a touched arc they span median 90.5% of
+  its length, uniformly → edge-class WITHIN ~166 hot arcs; heatmap shows periodic hot/cool diagonal
+  band arcs.
+- featureLevel 11→12 probe: +68.8% tris, survivors +134% WORSE → **naive density escalation REFUTED**
+  (2-for-2 dead: curvature-formula killed in PRODCLOSE, forced-level killed here).
+
+REDIRECT (the champion's own insight — embed the RIGHT curve, not more density): the residual sits at
+the smoothstep CURVATURE-PEAK locus, slightly offset from the nominal band edges (0.135/0.15), and
+computable closed-form (gyroidAnalyticCurvature/shapeDerivs, spec §2.5/§3.2). **A3-relocate (next,
+cheapest): relocate the two embedded isolevels from 0.135/0.15 to the analytic curvature-peak loci —
+potentially ZERO added triangles (same 28,785-point budget, better placement).** If insufficient,
+A3-add: a third curve bounded to the ~166 hot arcs only (~1-3% tris, §V11q over-constraint hazard —
+test 5-10 arcs first). NOT the refuted single-midline (§1.2) — the curvature peaks are near the band
+EDGES, not the midline.
