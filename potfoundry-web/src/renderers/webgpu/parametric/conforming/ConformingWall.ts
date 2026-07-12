@@ -38,6 +38,7 @@ import {
   scoreCandidateFacets,
   buildLevelAtFromTargets,
   type VerdictLiftSampler,
+  type VerdictScorableMesh,
 } from './verdictRefine';
 
 /** Tuning for a conforming wall. */
@@ -1053,6 +1054,88 @@ const VERDICT_MAX_PASS = 4;
  */
 const VERDICT_TOL_MM = 0.01;
 
+/** `d - round(d)`: shortest signed u-step across the periodic u=0/u=1 seam.
+ * Mirrors verdictRefine's (non-exported) `wrapDu` — kept local so the candidate-
+ * scope helpers below key facet centroids IDENTICALLY to `scoreCandidateFacets`. */
+function verdictWrapDu(d: number): number {
+  return d - Math.round(d);
+}
+
+/** Every facet index of a mesh (the pass-0 FULL-scan candidate set). */
+function allFacetIndices(mesh: VerdictScorableMesh): number[] {
+  const nF = Math.floor(mesh.indices.length / 3);
+  const out = new Array<number>(nF);
+  for (let f = 0; f < nF; f++) out[f] = f;
+  return out;
+}
+
+/**
+ * The 1-ring (iu,it) footprint of every accumulated escalation target — the
+ * SAME cells {@link buildLevelAtFromTargets} drives deeper — as a packed-key
+ * Set. Periodic-wrapped in u (`uCellRes = 1 << (featureLevel + uBias)`), clamped/
+ * dropped in t (`tCellRes = 1 << featureLevel`), matching the escalation ring.
+ */
+function targetFootprintKeys(
+  targets: Map<number, number>,
+  uCellRes: number,
+  tCellRes: number,
+): Set<number> {
+  const footprint = new Set<number>();
+  for (const coreKey of targets.keys()) {
+    const coreIu = coreKey % uCellRes;
+    const coreIt = (coreKey - coreIu) / uCellRes;
+    for (let dt = -1; dt <= 1; dt++) {
+      const it = coreIt + dt;
+      if (it < 0 || it >= tCellRes) continue; // t is NOT periodic
+      for (let du = -1; du <= 1; du++) {
+        const iu = ((coreIu + du) % uCellRes + uCellRes) % uCellRes; // periodic u
+        footprint.add(it * uCellRes + iu);
+      }
+    }
+  }
+  return footprint;
+}
+
+/**
+ * Leg #1 candidate scope for a LATER verdict pass (pass ≥ 1): the sparse near-
+ * band selector's output UNION every facet whose centroid cell lies in an
+ * already-escalated target's 1-ring footprint (deduped). The near-band selector
+ * (`selectCandidateFacets` with no `sizingField`) only reaches facets AROUND the
+ * band-edge contour, so an OFF-band survivor would otherwise stop being re-scored
+ * after its first escalation and could never climb further; re-scoring its
+ * footprint keeps it converging toward the 0.01 export standard. Centroid keying
+ * mirrors {@link scoreCandidateFacets} exactly (periodic-wrapped u).
+ */
+function widenedCandidates(
+  wall: VerdictScorableMesh,
+  nearBand: number[],
+  footprint: Set<number>,
+  featureLevel: number,
+  uBias: number,
+): number[] {
+  const uCellRes = 1 << (featureLevel + uBias);
+  const tCellRes = 1 << featureLevel;
+  const { vertices, indices } = wall;
+  const chosen = new Set<number>(nearBand);
+  const nF = Math.floor(indices.length / 3);
+  for (let f = 0; f < nF; f++) {
+    if (chosen.has(f)) continue;
+    const ia = indices[3 * f], ib = indices[3 * f + 1], ic = indices[3 * f + 2];
+    const ua = vertices[ia * 3], ub = vertices[ib * 3], uc = vertices[ic * 3];
+    const ta = vertices[ia * 3 + 1], tb = vertices[ib * 3 + 1], tc = vertices[ic * 3 + 1];
+    const uCentroidRaw = ua + (verdictWrapDu(ub - ua) + verdictWrapDu(uc - ua)) / 3;
+    const uCentroid = ((uCentroidRaw % 1) + 1) % 1;
+    const tCentroid = (ta + tb + tc) / 3;
+    const iu = Math.min(uCellRes - 1, Math.max(0, Math.floor(uCentroid * uCellRes)));
+    const it = Math.min(
+      tCellRes - 1,
+      Math.max(0, Math.floor(Math.min(1 - 1e-12, Math.max(0, tCentroid)) * tCellRes)),
+    );
+    if (footprint.has(it * uCellRes + iu)) chosen.add(f);
+  }
+  return Array.from(chosen);
+}
+
 /**
  * Build a conforming wall — production entry point (unchanged signature/return).
  *
@@ -1144,9 +1227,25 @@ export function buildConformingWall(
   // more than featureLevel+1 keep climbing (reaching L13+), (b) cells closed in
   // an earlier pass STAY escalated (never re-opened), and (c) the `changed` guard
   // terminates cleanly once every survivor has plateaued at maxLevel.
+  const tCellRes = 1 << featureLevel;
   const targets = new Map<number, number>();
   for (let pass = 0; pass < VERDICT_MAX_PASS; pass++) {
-    const candidates = selectCandidateFacets(wall, featureRefine);
+    // Leg #1 (E-2026-07-12-R2b): the export standard is 0.01mm EVERYWHERE, so the
+    // candidate scope must be COMPLETE — not just the sparse near-band around the
+    // contour (which misses genuine OFF-band background under-tessellation, the 2
+    // T6 residuals). Pass 0 scores the FULL mesh to seed the complete outlier set;
+    // later passes re-score the near-band UNION every already-escalated cell's
+    // 1-ring footprint so an off-band survivor keeps climbing until it closes.
+    // Full-mesh CPU scoring is minutes-scale — the price the GPU scorer offloads.
+    const candidates = pass === 0
+      ? allFacetIndices(wall)
+      : widenedCandidates(
+          wall,
+          selectCandidateFacets(wall, featureRefine),
+          targetFootprintKeys(targets, uCellRes, tCellRes),
+          featureLevel,
+          uBias,
+        );
     const outliers = scoreCandidateFacets(
       wall, liftSampler, candidates, VERDICT_TOL_MM, featureLevel, uBias,
     );
