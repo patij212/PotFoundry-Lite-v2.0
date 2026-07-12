@@ -35,3 +35,19 @@ Triangle counts are reported, not gated. Drift (CPU-vs-certified-GPU) certifies 
 - **Structural findings stand (drift-independent code facts):** verdict-refine escalates only `general-curve` featureLines → INERT for SpiralRidges (helical) + Gothic (crease/band); where it fires (Gyroid) it is NON-CONVERGENT (subdivision without feature-conforming edges).
 - **Answering the original question ("can raycast make a perfect 0.01mm mesh?"):** raycast-as-ORACLE is validated — the honest surface-fidelity gate correctly measured 4.7–72× and its parity check certified the surface. But reaching 0.01mm-EVERYWHERE needs **feature-conforming escalation or the raycast-derived remesher** for the CHORD_FLOOR styles; the incremental verdict-refine as-wired is under-scoped (general-curve only) AND subdivision-only-non-convergent where it fires. SpiralRidges shows the oracle+refine idea would nearly close a helical style IF extended to helical features.
 - **Findings banked for follow-up (out of spike scope, chips filed):** F1 CPU `styles.ts` sf_strength divergence; F2 unlined θ=0 seam cliff → SFB wall self-intersection; F3 `verdictRefine` production seam-unwrap bug (task_799e06b6); F4 `detectSelfIntersections` RangeError on 1M+ tri meshes (task_3f8bdd44).
+
+---
+
+## Lever re-gating — CERTIFIED deltas (2026-07-12, `__pfFidelity` diagnoseSurfaceFidelity, perpendicular)
+
+Analytic-surface lever = `__pfConformingAnalyticFloor` (ParametricExportComputer.ts:2849) — the ONLY live analytic lever on this path (`__pfTierCAnalyticSurface` / `__pfPerfectMesher` = dead code here, unreachable diagnostic branch).
+
+| Style | baseline max/p99 (tris) | analytic-floor ON | verdict-refine ON |
+|---|---|---|---|
+| SpiralRidges | 0.0469/0.0041 (2.70M) | 0.0370/0.0021 (−21% / −48%, +61% tris) | — |
+| GothicArches | 0.4401/0.1289 (1.86M) | no-op (byte-identical) | — |
+| GyroidManifold | 0.7241/0.1346 (2.17M) | no-op | 0.7241/0.0871 (max **0.0%**, p99 **−35%**, +130% tris) |
+
+- **Analytic-floor lever**: meaningful only for SpiralRidges; a NO-OP for the two CHORD_FLOOR styles (Gothic, Gyroid) that need help most.
+- **Verdict-refine (Gyroid, CERTIFIED)**: p99 −35% (real, substantial) — this CORRECTS the spike's CPU-proxy "non-convergent / made-it-worse" claim (that was a proxy artifact) — BUT max is UNCHANGED: the single worst facet is PINNED at the same (θ,z) across all 3 Gyroid conditions.
+- **Strategic**: neither existing lever cracks the worst-case MAX on the CHORD_FLOOR styles. The pinned worst facet IS the barrier to "0.01mm everywhere" — exactly the feature-conforming-escalation target. (Budget note: the nominal 500k targetTriangles never bound — the mesher's sag/quality floor produced ~2M tris regardless; on/off deltas remain valid.)

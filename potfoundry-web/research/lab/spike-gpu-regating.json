@@ -1,0 +1,306 @@
+{
+  "generatedAt": "2026-07-12T21:49:46.858Z",
+  "status": "done",
+  "baseUrl": "http://localhost:3000/?fidelity=1",
+  "targetTriangles": 500000,
+  "referenceDenseRes": 512,
+  "referenceBicubic": true,
+  "tolMm": 0.01,
+  "metric": "perpendicular",
+  "referenceSource": "auto",
+  "levers": {
+    "analyticSurface": "__pfConformingAnalyticFloor",
+    "verdictRefine": "__pfConformingVerdictRefine",
+    "deadFlags": [
+      "__pfTierCAnalyticSurface",
+      "__pfPerfectMesher"
+    ],
+    "deadFlagsReason": "buildTierCOuterWall's only non-test call site (ParametricExportComputer.ts:2306) is inside the __pfConformingProbe early-return block (line 2257) — diagnoseSurfaceFidelity/generateMesh never sets __pfConformingProbe, so that call site is unreachable on the measured path and these two flags are never even read. Not toggled in this run (see script header FLAG NOTES)."
+  },
+  "plan": [
+    {
+      "style": "SpiralRidges",
+      "condition": "baseline",
+      "flagsUsed": []
+    },
+    {
+      "style": "SpiralRidges",
+      "condition": "analytic",
+      "flagsUsed": [
+        "__pfConformingAnalyticFloor"
+      ]
+    },
+    {
+      "style": "GothicArches",
+      "condition": "baseline",
+      "flagsUsed": []
+    },
+    {
+      "style": "GothicArches",
+      "condition": "analytic",
+      "flagsUsed": [
+        "__pfConformingAnalyticFloor"
+      ]
+    },
+    {
+      "style": "GyroidManifold",
+      "condition": "baseline",
+      "flagsUsed": []
+    },
+    {
+      "style": "GyroidManifold",
+      "condition": "analytic",
+      "flagsUsed": [
+        "__pfConformingAnalyticFloor"
+      ]
+    },
+    {
+      "style": "GyroidManifold",
+      "condition": "verdict",
+      "flagsUsed": [
+        "__pfConformingVerdictRefine"
+      ]
+    }
+  ],
+  "conditions": [
+    {
+      "style": "SpiralRidges",
+      "condition": "baseline",
+      "flagsUsed": [],
+      "status": "done",
+      "startedAt": "2026-07-12T21:12:31.429Z",
+      "completedAt": "2026-07-12T21:14:49.319Z",
+      "ms": 132035,
+      "result": {
+        "styleId": "SpiralRidges",
+        "triangleCount": 2702544,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.04688316546657735,
+        "p99DevMm": 0.004132631624472083,
+        "rmsDevMm": 0.0009574998411065597,
+        "vertexMaxMm": 0.00021825054571422697,
+        "chordMaxMm": 0.04688316546657735,
+        "wallTriangles": 2702544,
+        "samples": 10811166,
+        "nAbove": 7842,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.010907048978403111,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.4495515305059333,
+          "z": 112.96875,
+          "mm": 0.04688316546657735
+        }
+      }
+    },
+    {
+      "style": "SpiralRidges",
+      "condition": "analytic",
+      "flagsUsed": [
+        "__pfConformingAnalyticFloor"
+      ],
+      "status": "done",
+      "startedAt": "2026-07-12T21:14:49.323Z",
+      "completedAt": "2026-07-12T21:17:56.730Z",
+      "ms": 182155,
+      "result": {
+        "styleId": "SpiralRidges",
+        "triangleCount": 4343815,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.03704974789839355,
+        "p99DevMm": 0.0021429932450018896,
+        "rmsDevMm": 0.0005817408262630009,
+        "vertexMaxMm": 0.0002292873755322944,
+        "chordMaxMm": 0.03704974789839355,
+        "wallTriangles": 4343815,
+        "samples": 17375260,
+        "nAbove": 3021,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.00800874196849577,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": -2.0289596077756884,
+          "z": 113.59375,
+          "mm": 0.03704974789839355
+        }
+      }
+    },
+    {
+      "style": "GothicArches",
+      "condition": "baseline",
+      "flagsUsed": [],
+      "status": "done",
+      "startedAt": "2026-07-12T21:17:56.732Z",
+      "completedAt": "2026-07-12T21:22:29.360Z",
+      "ms": 264663,
+      "result": {
+        "styleId": "GothicArches",
+        "triangleCount": 1862097,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.4400902437632869,
+        "p99DevMm": 0.12891537189724372,
+        "rmsDevMm": 0.031998853081442284,
+        "vertexMaxMm": 0.0003505809363844037,
+        "chordMaxMm": 0.4400902437632869,
+        "wallTriangles": 1862097,
+        "samples": 13614468,
+        "nAbove": 4753246,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.17345592951470223,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": -1.4289112483685842,
+          "z": 53.04599507649739,
+          "mm": 0.4400902437632869
+        }
+      }
+    },
+    {
+      "style": "GothicArches",
+      "condition": "analytic",
+      "flagsUsed": [
+        "__pfConformingAnalyticFloor"
+      ],
+      "status": "done",
+      "startedAt": "2026-07-12T21:22:29.363Z",
+      "completedAt": "2026-07-12T21:27:18.769Z",
+      "ms": 282273,
+      "result": {
+        "styleId": "GothicArches",
+        "triangleCount": 1862097,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.4400902437632869,
+        "p99DevMm": 0.12891537189724372,
+        "rmsDevMm": 0.031998853081442284,
+        "vertexMaxMm": 0.0003505809363844037,
+        "chordMaxMm": 0.4400902437632869,
+        "wallTriangles": 1862097,
+        "samples": 13614468,
+        "nAbove": 4753246,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.17345592951470223,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": -1.4289112483685842,
+          "z": 53.04599507649739,
+          "mm": 0.4400902437632869
+        }
+      }
+    },
+    {
+      "style": "GyroidManifold",
+      "condition": "baseline",
+      "flagsUsed": [],
+      "status": "done",
+      "startedAt": "2026-07-12T21:27:18.771Z",
+      "completedAt": "2026-07-12T21:31:56.534Z",
+      "ms": 271276,
+      "result": {
+        "styleId": "GyroidManifold",
+        "triangleCount": 2168881,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.7241304333507129,
+        "p99DevMm": 0.134552131298755,
+        "rmsDevMm": 0.029208457924368412,
+        "vertexMaxMm": 0.000459466353248672,
+        "chordMaxMm": 0.7241304333507129,
+        "wallTriangles": 2168881,
+        "samples": 17378614,
+        "nAbove": 3965074,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.14756323757528378,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.8697465415859585,
+          "z": 44.23828125,
+          "mm": 0.7241304333507129
+        }
+      }
+    },
+    {
+      "style": "GyroidManifold",
+      "condition": "analytic",
+      "flagsUsed": [
+        "__pfConformingAnalyticFloor"
+      ],
+      "status": "done",
+      "startedAt": "2026-07-12T21:31:56.537Z",
+      "completedAt": "2026-07-12T21:36:37.407Z",
+      "ms": 274328,
+      "result": {
+        "styleId": "GyroidManifold",
+        "triangleCount": 2168881,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.7241304333507129,
+        "p99DevMm": 0.134552131298755,
+        "rmsDevMm": 0.029208457924368412,
+        "vertexMaxMm": 0.000459466353248672,
+        "chordMaxMm": 0.7241304333507129,
+        "wallTriangles": 2168881,
+        "samples": 17378614,
+        "nAbove": 3965074,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.14756323757528378,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.8697465415859585,
+          "z": 44.23828125,
+          "mm": 0.7241304333507129
+        }
+      }
+    },
+    {
+      "style": "GyroidManifold",
+      "condition": "verdict",
+      "flagsUsed": [
+        "__pfConformingVerdictRefine"
+      ],
+      "status": "done",
+      "startedAt": "2026-07-12T21:36:37.409Z",
+      "completedAt": "2026-07-12T21:49:46.855Z",
+      "ms": 782627,
+      "result": {
+        "styleId": "GyroidManifold",
+        "triangleCount": 4993602,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.7241304333507129,
+        "p99DevMm": 0.08709198145598548,
+        "rmsDevMm": 0.01933441657083885,
+        "vertexMaxMm": 0.000503952251165174,
+        "chordMaxMm": 0.7241304333507129,
+        "wallTriangles": 4993602,
+        "samples": 30412968,
+        "nAbove": 3686416,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.14756323757528378,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.8697465415859585,
+          "z": 44.23828125,
+          "mm": 0.7241304333507129
+        }
+      }
+    }
+  ]
+}
