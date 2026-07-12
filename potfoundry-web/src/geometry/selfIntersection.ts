@@ -54,7 +54,9 @@ export interface SelfIntersectionOptions {
   weldToleranceMm?: number;
   /**
    * Stop scanning once this many crossing pairs have been found (keeps the
-   * worst case bounded on pathologically tangled meshes). Defaults to 10000.
+   * worst case bounded on pathologically tangled meshes). Also bounds the
+   * confirmed-crossing dedup set, so peak memory stays O(maxPairs) regardless
+   * of mesh size (see Pass 3). Defaults to 10000.
    */
   maxPairs?: number;
   /** How many example pairs to return in `samplePairs`. Defaults to 8. */
@@ -193,10 +195,19 @@ export function detectSelfIntersections(
   }
 
   // --- Pass 3: candidate pairs (same cell) → tolerant overlap test. --------
-  // A pair may share several cells; dedupe with a "seen" set keyed on the pair.
-  const tested = new Set<number>();
+  // A pair can be visited from more than one shared cell. We deliberately do
+  // NOT dedupe every candidate pair in a Set: a densely-populated cell (fine
+  // verdict-refined tessellation packs many triangles into one grid cell)
+  // yields O(cell²) pairs, and on a 1M+ triangle mesh the union across cells
+  // exceeds V8's per-Set element cap (2^23 on Node, 2^24 in Chrome), throwing
+  // `RangeError: Set maximum size exceeded` instead of completing. Deduping
+  // only CONFIRMED crossings is all `count` / `samplePairs` need, and bounds
+  // this set to `maxPairs`; the cost is that a non-crossing pair shared by K
+  // cells runs its cheap AABB/adjacency reject K times — bounded work, versus
+  // an unbounded Set.
   let count = 0;
   const samplePairs: Array<[number, number]> = [];
+  const foundPairs = new Set<number>();
 
   const pairKey = (a: number, b: number): number => a * triCount + b;
 
@@ -246,8 +257,10 @@ export function detectSelfIntersections(
         const lo = ta < tb ? ta : tb;
         const hi = ta < tb ? tb : ta;
         const pk = pairKey(lo, hi);
-        if (tested.has(pk)) continue;
-        tested.add(pk);
+        // Skip only pairs already CONFIRMED as crossings (reached again from
+        // another shared cell) so they are never counted twice; non-crossing
+        // pairs are intentionally not tracked — see the Pass 3 note above.
+        if (foundPairs.has(pk)) continue;
 
         // Cheap AABB reject (cell membership only proves AABB-cell overlap).
         if (
@@ -261,6 +274,7 @@ export function detectSelfIntersections(
         if (adjacentOrCoincident(lo, hi)) continue;
 
         if (trianglesIntersect(lo, hi, triA, triB, triC)) {
+          foundPairs.add(pk);
           count++;
           if (samplePairs.length < sampleLimit) samplePairs.push([lo, hi]);
           if (count >= maxPairs) break outer;
