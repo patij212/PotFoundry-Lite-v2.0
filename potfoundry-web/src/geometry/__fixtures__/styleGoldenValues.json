@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-10T02:15:59.785Z",
+  "generatedAt": "2026-07-12T19:40:51.346Z",
   "version": "1.0.0",
   "tolerance": 0.001,
   "styles": {
@@ -9,210 +9,210 @@
         "theta": 0,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 48.22298812866211
+        "expectedRadius": 47.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 49.30870819091797
+        "expectedRadius": 47.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 1.5707963267948966,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 54.0073356628418
+        "expectedRadius": 47.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 3.141592653589793,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 48.454345703125
+        "expectedRadius": 47.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 4.71238898038469,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 50.63977813720703
+        "expectedRadius": 47.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 6.2731853071795864,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 49.58293151855469
+        "expectedRadius": 47.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.677459716796875
+        "expectedRadius": 51.25
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.42707443237305
+        "expectedRadius": 51.25
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 54.66868591308594
+        "expectedRadius": 51.25
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 3.141592653589793,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 56.28024673461914
+        "expectedRadius": 51.25
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 4.71238898038469,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.679046630859375
+        "expectedRadius": 51.25
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 6.2731853071795864,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 54.596683502197266
+        "expectedRadius": 51.25
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 60.271087646484375
+        "expectedRadius": 57.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0.7853981633974483,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 60.400001525878906
+        "expectedRadius": 57.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 60.169986724853516
+        "expectedRadius": 57.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 3.141592653589793,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 60.28245544433594
+        "expectedRadius": 57.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 4.71238898038469,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 60.63495635986328
+        "expectedRadius": 57.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 6.2731853071795864,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 61.454681396484375
+        "expectedRadius": 57.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 68.05065155029297
+        "expectedRadius": 63.75
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 67.81634521484375
+        "expectedRadius": 63.75
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 1.5707963267948966,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.51380920410156
+        "expectedRadius": 63.75
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 76.56770324707031
+        "expectedRadius": 63.75
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 4.71238898038469,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 75.06222534179688
+        "expectedRadius": 63.75
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 70.03502655029297
+        "expectedRadius": 63.75
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 72.79594421386719
+        "expectedRadius": 67.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 0.7853981633974483,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 72.69783020019531
+        "expectedRadius": 67.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 1.5707963267948966,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 80.50320434570312
+        "expectedRadius": 67.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 3.141592653589793,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 76.27086639404297
+        "expectedRadius": 67.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 4.71238898038469,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 72.49243927001953
+        "expectedRadius": 67.5
       },
       {
         "styleId": "SuperformulaBlossom",
         "theta": 6.2731853071795864,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 82.7468490600586
+        "expectedRadius": 67.5
       }
     ],
     "FourierBloom": [

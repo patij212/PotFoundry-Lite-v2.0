@@ -26,8 +26,11 @@ describe('rOuterSuperformulaBlossom', () => {
     });
 
     it('should vary with theta', () => {
-        const r1 = rOuterSuperformulaBlossom(0, 50, r0, H, opts);
-        const r2 = rOuterSuperformulaBlossom(Math.PI / 4, 50, r0, H, opts);
+        // sf_strength defaults to 0 (smooth, BLOCKING-2 fix) so petal variation
+        // requires opting into full strength here.
+        const fullStrength = { sf_strength: 1 };
+        const r1 = rOuterSuperformulaBlossom(0, 50, r0, H, fullStrength);
+        const r2 = rOuterSuperformulaBlossom(Math.PI / 4, 50, r0, H, fullStrength);
         expect(Math.abs(r1 - r2)).toBeGreaterThan(0);
     });
 
@@ -200,7 +203,9 @@ describe('getStyleFunctionVec', () => {
     it('should return different values for different thetas', () => {
         const fn = getStyleFunctionVec('SuperformulaBlossom');
         const thetas = new Float32Array([0, Math.PI / 4, Math.PI / 2]);
-        const results = fn(thetas, 50, 50, 100, {});
+        // sf_strength defaults to 0 (smooth, BLOCKING-2 fix) so petal variation
+        // requires opting into full strength here.
+        const results = fn(thetas, 50, 50, 100, { sf_strength: 1 });
         // At least some values should differ
         expect(results[0]).not.toEqual(results[1]);
     });

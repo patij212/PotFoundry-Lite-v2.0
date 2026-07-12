@@ -121,13 +121,20 @@ const SFB_OPTS = {
   sfA: SFB1_PACKED[10],
   sfB: SFB1_PACKED[11],
   seamAngle: 0,
+  // SfbWallSampler.position (snapPlacementAudit.ts) always renders FULL
+  // PETALS unconditionally (r0*(0.9+0.35*rf), no strength gate) — it is the
+  // pinned "worst case" probe surface. rOuterSuperformulaBlossom now honors
+  // sf_strength (default 0 -> smooth; BLOCKING-2 fix), so this reference must
+  // pin strength=1 explicitly to stay at full-petal parity with the sampler.
+  sf_strength: 1,
 };
 function cpuOuterPosition(u: number, t: number): [number, number, number] {
   const z = t * SFB_DIMS.H;
   const theta = wrapU(u) * TAU;
   const r0 = rBaseOut(z, SFB_DIMS.H, SFB_DIMS.Rb, SFB_DIMS.Rt, SFB_DIMS.expn);
-  // styles.ts rf is independent of strength; rOuterSuperformulaBlossom already
-  // applies r0*(0.9+0.35*rf) at full strength (no strength blend in CPU fn).
+  // styles.ts rf is independent of strength; sf_strength:1 in SFB_OPTS makes
+  // rOuterSuperformulaBlossom apply r0*(0.9+0.35*rf) at full strength, matching
+  // SfbWallSampler's unconditional full-petal formula.
   const r = rOuterSuperformulaBlossom(theta, z, r0, SFB_DIMS.H, SFB_OPTS);
   const tw = spinTwistRadians(z, SFB_DIMS.H, {}); // spin 0 by default → 0
   const th = theta + tw;

@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-01-19T01:10:38.658Z",
+  "generatedAt": "2026-07-12T19:41:40.560Z",
   "version": "1.0.0",
   "dimensions": {
     "H": 100,
@@ -20,15 +20,15 @@
       "vertexCount": 2496,
       "triangleCount": 4992,
       "indexBufferHash": "9793e6e7c5bb6720452e0002e5df1de6",
-      "volumeMm3": 89094.89,
+      "volumeMm3": 80826.2,
       "boundsMin": [
-        -59.54100036621094,
-        -62.49996566772461,
+        -50,
+        -50,
         0
       ],
       "boundsMax": [
-        58.77091979980469,
-        62.5,
+        50,
+        50,
         100
       ]
     },

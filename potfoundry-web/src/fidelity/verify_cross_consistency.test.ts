@@ -262,6 +262,12 @@ describe('B) SfbWallSampler linchpin — divergence from independent + productio
 
   it('SfbWallSampler radius == production CPU rOuterSuperformulaBlossom (export pipeline) (mm)', () => {
     // styles.ts uses DEFAULT_SUPERFORMULA params; SFB1_PACKED MUST equal them.
+    // SfbWallSampler.position (snapPlacementAudit.ts) always renders FULL
+    // PETALS unconditionally, no strength gate. rOuterSuperformulaBlossom now
+    // honors sf_strength (default 0 -> smooth; BLOCKING-2 fix), so this
+    // production-CPU reference must pin strength=1 to stay at full-petal
+    // parity with the sampler being compared against.
+    const SFB_FULL_STRENGTH = { ...DEFAULT_SUPERFORMULA, sf_strength: 1 };
     let maxMm = 0;
     let worst = { theta: 0, t: 0 };
     const H = SFB_DIMS.H;
@@ -273,7 +279,7 @@ describe('B) SfbWallSampler linchpin — divergence from independent + productio
         const u = iu / 360;
         const theta = TAU * u;
         // production CPU radius at (theta, z)
-        const rCpu = rOuterSuperformulaBlossom(theta, z, r0, H, DEFAULT_SUPERFORMULA);
+        const rCpu = rOuterSuperformulaBlossom(theta, z, r0, H, SFB_FULL_STRENGTH);
         // SfbWallSampler radius at (u, t)
         const Pw = surf.position(u, t);
         const rW = Math.hypot(Pw[0], Pw[1]);

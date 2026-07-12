@@ -128,6 +128,13 @@ export function rOuterSuperformulaBlossom(
   const t = H > 0 ? z / H : 0.0;
   const params = opts as Partial<SuperformulaBlossomParams>;
 
+  // Blend strength: 0 = smooth base radius (unmodulated), 1 = full superformula
+  // petal modulation. Matches the GPU shader's mix(r0, sf_result, strength)
+  // (styles.wgsl sf_radius, param index 0). Read both spellings: production
+  // buildStyleOptions (useExport.ts) sets camelCase, fidelity tests and the
+  // registry use snake_case. Default 0.0 matches the registry default.
+  const strength = Math.max(0, Math.min(1, opts.sfStrength ?? opts.sf_strength ?? 0.0));
+
   // Interpolate parameters from base to top
   const mBase = params.sfMBase ?? DEFAULT_SUPERFORMULA.sfMBase;
   const mTop = params.sfMTop ?? DEFAULT_SUPERFORMULA.sfMTop;
@@ -165,11 +172,13 @@ export function rOuterSuperformulaBlossom(
       const x = distFromSeam / seamSpread;
       const alpha = x * x * (3 - 2 * x); // smoothstep
       const rfBlend = rf * alpha;
-      return r0 * (0.90 + 0.35 * rfBlend);
+      const sfResultSeam = r0 * (0.90 + 0.35 * rfBlend);
+      return r0 + (sfResultSeam - r0) * strength;
     }
   }
 
-  return r0 * (0.90 + 0.35 * rf);
+  const sfResult = r0 * (0.90 + 0.35 * rf);
+  return r0 + (sfResult - r0) * strength;
 }
 
 /**
@@ -186,6 +195,13 @@ export function rOuterSuperformulaBlossomVec(
   const result = new Float32Array(n);
   const t = H > 0 ? z / H : 0.0;
   const params = opts as Partial<SuperformulaBlossomParams>;
+
+  // Blend strength: 0 = smooth base radius (unmodulated), 1 = full superformula
+  // petal modulation. Matches the GPU shader's mix(r0, sf_result, strength)
+  // (styles.wgsl sf_radius, param index 0). Read both spellings: production
+  // buildStyleOptions (useExport.ts) sets camelCase, fidelity tests and the
+  // registry use snake_case. Default 0.0 matches the registry default.
+  const strength = Math.max(0, Math.min(1, opts.sfStrength ?? opts.sf_strength ?? 0.0));
 
   const mBase = params.sfMBase ?? DEFAULT_SUPERFORMULA.sfMBase;
   const mTop = params.sfMTop ?? DEFAULT_SUPERFORMULA.sfMTop;
@@ -220,12 +236,14 @@ export function rOuterSuperformulaBlossomVec(
         const x = distFromSeam / seamSpread;
         const alpha = x * x * (3 - 2 * x); // smoothstep
         const rfBlend = rf * alpha;
-        result[i] = r0 * (0.90 + 0.35 * rfBlend);
+        const sfResultSeam = r0 * (0.90 + 0.35 * rfBlend);
+        result[i] = r0 + (sfResultSeam - r0) * strength;
         continue;
       }
     }
 
-    result[i] = r0 * (0.90 + 0.35 * rf);
+    const sfResult = r0 * (0.90 + 0.35 * rf);
+    result[i] = r0 + (sfResult - r0) * strength;
   }
 
   return result;
