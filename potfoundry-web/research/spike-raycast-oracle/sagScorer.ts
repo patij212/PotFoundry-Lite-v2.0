@@ -5,6 +5,10 @@ function denseBary(n: number): Array<[number, number, number]> {
 }
 const DENSE8 = denseBary(8);
 
+/** `d - round(d)`: wraps a u-difference into (-0.5, 0.5], the shortest signed step
+ *  across the periodic u=0/u=1 seam. Mirrors verdictRefine.ts's `wrapDu`. */
+const wrapDu = (d: number): number => d - Math.round(d);
+
 function perpDistToPlane(
   p: [number, number, number], a: [number, number, number],
   b: [number, number, number], c: [number, number, number],
@@ -43,9 +47,21 @@ export function scoreOuterSag(
     const A = xyz(ia), B = xyz(ib), C = xyz(ic);
     const ua = uAt(ia), ta = tAt(ia), ub = uAt(ib), tb = tAt(ib), uc = uAt(ic), tc = tAt(ic);
     facets++;
+
+    // Unwrap u across the periodic seam before blending, using ua as the reference,
+    // so a facet straddling u=0/u=1 (e.g. ua=0.95, ub=0.05) interpolates across the
+    // short seam gap instead of the long way around the pot. Guarded to raw deltas
+    // strictly under one full period: real paramVerts u's live in [0,1), so a delta
+    // of exactly +/-1 never represents a genuine seam straddle — it only arises from
+    // the non-periodic planar/parabola fixtures below (ua=0, ub=1), where folding it
+    // would collapse a legitimate full-span triangle down to zero width.
+    const ubU = Math.abs(ub - ua) < 1 ? ua + wrapDu(ub - ua) : ub;
+    const ucU = Math.abs(uc - ua) < 1 ? ua + wrapDu(uc - ua) : uc;
+
     let facetWorst = 0, facetU = ua, facetT = ta;
     for (const [wa, wb, wc] of DENSE8) {
-      const u = wa*ua + wb*ub + wc*uc, t = wa*ta + wb*tb + wc*tc;
+      const uRaw = wa*ua + wb*ubU + wc*ucU;
+      const u = ((uRaw % 1) + 1) % 1, t = wa*ta + wb*tb + wc*tc;
       const P = lift(u, t);
       const d = perpDistToPlane(P, A, B, C);
       if (d > facetWorst) { facetWorst = d; facetU = u; facetT = t; }
