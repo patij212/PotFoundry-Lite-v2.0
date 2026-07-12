@@ -13,8 +13,16 @@ to **at most the K2 literal-0 residual sliver floor, "if at all."** The remainin
 
 ## Corrected per-frontier map
 
-### Gyroid knee fidelity (0.0247) — CLOSEABLE, seam designed, infra ships
-- **Proven close:** P2.0 cell-scoped local quadrisection → ≤0.01 at **+4.54% tris** (vs global bump
+### Gyroid knee fidelity (0.0247) — SEAM BUILT, production close NOT reproduced (⚠ P2.5)
+- **⚠ CORRECTION (P2.5, 2026-07-12):** the `levelAt` seam is now BUILT into the production kernel
+  (committed `f86b9521`, byte-identical-off, watertight) — but driving cell-scoped escalation on the
+  REAL 2:1-balanced quadtree did NOT close the knee: worst 0.02492→**0.01652** at **+113.8% tris**.
+  P2.0's "+4.54% close" was a transition-free proxy the production `balance()`+CDT path does not
+  reproduce; the mechanism is **unadjudicated** (anisotropic-B / straddle-sliver / coverage — the
+  pre-escalation histogram already had L12–L15 outliers), and the **curved-element question is
+  REOPENED** for this knee. Next = P2.5b (two-pass VERDICT-driven targeting + per-facet chord
+  decomposition to locate the K2/curved boundary). See `tierc/P2.5-verdict.md`. The pre-P2.5 optimism below is SUPERSEDED.
+- **Proven close (PROXY ONLY — see correction):** P2.0 cell-scoped local quadrisection → ≤0.01 at **+4.54% tris** (vs global bump
   +68.8%/worse). The `levelAt` seam (`P2.1-design.md`) is a ONE-field additive extension of shipped
   infra (`FeatureRefineSpec`, `intersects`, and `balance()` handles T-junctions FREE).
 - **The criterion is the only blocker, and P2.1–P2.4 chased a dead end:** a build-time closed-form
