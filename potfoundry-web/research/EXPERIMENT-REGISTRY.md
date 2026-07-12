@@ -10,6 +10,25 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-12-TIERC-FULLPOT-TRACTABILITY — is full-pot Gothic/GeoStar literal-0.01 via the C2 analytic lever tractable, and if not what must be parallelized? Re-measure the ANALYTIC path (prior "multi-day intractable" was the GRID sampler kernel) at increasing domains; derive a cost model + parallelizable fraction [PRE-REGISTERED: kill = converges at tractable tris+time single-thread ⇒ FULL-POT-FEASIBLE; converges but too slow ⇒ NEEDS-PARALLELIZATION with the quantified target; fails/intractable-even-parallel ⇒ BLOCKED]
+
+**VERDICT: NEEDS-PARALLELIZATION.** The analytic lever converges to LITERAL 0 outliers ≤0.01mm at every domain that finished — the wall is pure COMPUTE TIME, never fidelity. Prior "multi-day intractable" (sampler kernel) is REFUTED for the analytic path: it is multi-HOUR single-thread, an order below multi-day. Probe `research/bridge/_tierc_fullpot_scaling.test.ts` (+ `vitest.tierc_fullpot_scaling.config.ts`); raw `research/exchange/tierc/fullpot_*_verdict.json` + `fullpot_scaling_costmodel.json` + `fullpot_scaling_crumbs.ndjson`. Measured this machine, single-thread, AboveNormal.
+
+| domain | style | nθ | area | state | tris | passes | refine | tris/area | ms/tri | dense%refine | vs-analytic max |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| GS_CI | GeoStar | 256 | 0.0025 | CONVERGED | 5071 | 7 | 14.2s | 2.03M | 2.81 | 53% | 0.00995 / 0 out |
+| GS_BAND (c) | GeoStar | 1024 | 0.02 | CONVERGED | 41428 | 9 | 201s | 2.07M | 4.86 | 54% | 0.00995 / 0 out |
+| GS_BAY (b) | GeoStar | 256 | 0.125 | PARTIAL (pass5/~9, 14min) | ≥264509 | — | abort | ≥2.12M | — | 43% | 11518 out remain |
+| G_CI (cited) | Gothic | 512 | 0.005 | CONVERGED | 18045 | 8 | ~344s | 3.61M | ~19.1 | ~71% | 0.00995 / 0 out |
+| G_BAND (c) | Gothic | 1024 | 0.024 | PARTIAL (pass5/~9, 13min; 1 dense pass = 8.4min) | ≥66673 | — | abort | ≥2.78M | — | 53% | 5499 out remain |
+| G_BAY (b) | Gothic | 512 | 0.0833 | PARTIAL (pass4/~8, still PHASE-A at 21min, 0 dense reached) | ≥135766 | — | abort | ≥1.63M | — | — | 16856 out remain |
+
+**Cost model.** Tri-density is SCALE-INVARIANT (GeoStar 2.0–2.1M tris/unit-(u,t)-area across 3 independent domains within 4%; Gothic ~3.6M converged). ⇒ full-pot tris ≈ **GeoStar 2.1M / Gothic 3.3–3.6M**. Build-time single-thread, TILED (see hazard): **GeoStar ~1.6h (nθ256) / ~2.9h (nθ1024 production); Gothic ~18h**. MONOLITHIC HAZARD: the whole-set re-CDT every pass scales ~tris^1.35 (GeoStar CI→BAND: tris ×8.2 → CDT-remainder ×17.1) ⇒ a single 2–3M-point domain is superlinear + OOM-risky; full-pot MUST be tiled into bays/regions.
+
+**Parallelization.** Dense per-facet scoring is only 53–54% (GeoStar) / ~65–71% (Gothic) of refine ⇒ the committed `parallelScorer` 2.94× gives Amdahl total **1.55× (GeoStar) / 1.88× (Gothic)** — INSUFFICIENT alone. Two blockers: (1) `parallelScorer.samplerGrid()` THROWS on an analytic sampler — the worker reconstructs the 512² GRID (wrong surface, chords the crests), and `refineToZeroOutliersParallel` hardcodes `radialSurfaceFromSampler`+sampler-lift ⇒ the analytic lever has NO parallel path today; must serialize (styleId,params,dims)→rebuild `buildAnalyticRadiusFn` per worker + thread analytic placement/lift in. (2) PRIMARY lever = PER-BAY/REGION parallelism: full-pot = independent bays (Gothic 12 / GeoStar 8) or finer R-REFINE regions — embarrassingly parallel, near-linear to core count, and bounds each CDT (kills the superlinear blowup). With regions ≫ cores, full-pot ≈ serial_work / cores. BAR: interactive <5min unreachable on CPU; batch <30min reachable for GeoStar (~6–8 cores + regional tiling), Gothic needs ~32+ cores or GPU-offloaded analytic scoring.
+
+**LEDGER:** NEW `research/bridge/_tierc_fullpot_scaling.test.ts`, `vitest.tierc_fullpot_scaling.config.ts`; data `research/exchange/tierc/fullpot_{GS_CI,GS_BAND,GS_BAY,G_BAND,G_BAY}_verdict.json` + `fullpot_scaling_costmodel.json` + `fullpot_scaling_crumbs.ndjson`. ESLint 0-warn, typecheck clean. NOT committed (per task hard-constraint); new files staged.
+
 ## E-2026-07-09-DISPATCH-PREDICATE — fix the Tier-C dispatch predicate that §V12 killed (junction-count over-triggered 17/20); measure 4 graph signals for a clean separator, else ship the honest allow-list interim [PRE-REGISTERED: kill = signals (a)-(d) all fail to separate with a defensible margin AND allow-list rejected ⇒ report why]
 
 **HYPOTHESIS.** A graph signal (junction density / cross-scale count-instability / chain-weighting / conditioned-graph residual) separates the count-unstable pair {Gothic, GeoStar} from the 18 smooth/relief styles with a structural (order-of-magnitude) margin, replacing the refuted raw junction-count.
