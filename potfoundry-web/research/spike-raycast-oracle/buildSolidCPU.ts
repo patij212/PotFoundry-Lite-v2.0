@@ -38,20 +38,32 @@ const DIMS = {
 const MIN_R = 0.5;
 const EMPTY_OPTS: StyleOptions = {};
 
+/** Sentinel styleId for the Raycast-Oracle Fidelity Spike's smooth control: a
+ *  pure surface of revolution (base profile radius only, zero style
+ *  modulation). Not a registered StyleId — outerRadius routes it around
+ *  getStyleFunction entirely, and buildSolidCPU routes it around the analytic
+ *  feature extractor (see below). Deliberately a sentinel rather than a param
+ *  tweak: the CPU rOuterSuperformulaBlossom (src/geometry/styles.ts) ignores
+ *  sf_strength, so "SuperformulaBlossom at sf_strength=0" is NOT smooth on
+ *  this path (always full petals + a theta=0 seam cliff) even though the GPU
+ *  honors it. */
+type StyleIdOrSmoothControl = StyleId | '__SmoothControl__';
+
 /** CPU surrogate of WGSL compute_outer_radius (twist identity at default dims). */
-export function outerRadius(styleId: StyleId, theta: number, t: number): number {
+export function outerRadius(styleId: StyleIdOrSmoothControl, theta: number, t: number): number {
   const z = t * DIMS.H;
   const r0 = baseRadius(z, DIMS.H, DIMS.Rb, DIMS.Rt, DIMS.expn, EMPTY_OPTS);
+  if (styleId === '__SmoothControl__') return r0;
   return getStyleFunction(styleId)(theta, z, r0, DIMS.H, EMPTY_OPTS);
 }
-function innerRadius(styleId: StyleId, theta: number, t: number): number {
+function innerRadius(styleId: StyleIdOrSmoothControl, theta: number, t: number): number {
   return Math.max(outerRadius(styleId, theta, t) - DIMS.tWall, MIN_R);
 }
 
 /** CPU surrogate of WGSL evaluate_vertices — all 6 surface IDs. Exported so the
  *  sag scorer and condition-C task lift with the identical exact field. */
 export function evalSurface(
-  styleId: StyleId, u: number, t: number, surfaceId: number,
+  styleId: StyleIdOrSmoothControl, u: number, t: number, surfaceId: number,
 ): [number, number, number] {
   const theta = 2 * Math.PI * (u - Math.floor(u));
   const cos = Math.cos(theta), sin = Math.sin(theta);
@@ -70,7 +82,7 @@ export function evalSurface(
   return [r * cos, r * sin, z];
 }
 
-function denseWallSampler(styleId: StyleId, surfaceId: number, res: number): GpuSurfaceSampler {
+function denseWallSampler(styleId: StyleIdOrSmoothControl, surfaceId: number, res: number): GpuSurfaceSampler {
   const grid = new Float32Array(res * res * 3);
   let w = 0;
   for (let row = 0; row < res; row++) {
@@ -95,7 +107,7 @@ export interface SolidCPU {
 }
 
 export function buildSolidCPU(
-  styleId: StyleId,
+  styleId: StyleIdOrSmoothControl,
   opts: { maxSagMm: number; verdictRefine: boolean },
 ): SolidCPU {
   const DENSE_RES = 128;
@@ -104,18 +116,33 @@ export function buildSolidCPU(
   const dims: AssemblyDimensions = { H: DIMS.H, tBottom: DIMS.tBottom, rDrain: DIMS.rDrain };
   const nRing = 256;
 
-  const [, packedParams] = buildStyleParamPayload(styleId, EMPTY_OPTS as Record<string, unknown>);
-  const featureGraph = extractAnalyticFeatures(
-    styleId, Float32Array.from(packedParams), { H: DIMS.H, Rt: DIMS.Rt, Rb: DIMS.Rb },
-  );
+  // '__SmoothControl__' is not a registered StyleId — buildStyleParamPayload
+  // and extractAnalyticFeatures are keyed on the real style registry, so skip
+  // both for the sentinel and use an empty feature-line set instead (a pure
+  // surface of revolution has no creases / general curves to extract). Every
+  // downstream consumer below (featureKinds, creaseU/creaseT/helixLines,
+  // the three chooseXGrid warp choices, generalCurves, verdictRan,
+  // minUniformLevel/outerFeatureLines) already degrades to
+  // {}/identity/[]/false/undefined on an empty lines array — see
+  // CreaseUWarp.chooseCreaseGrid / CreaseTWarp.chooseCreaseTGrid /
+  // CreaseHelixWarp.chooseHelixGrid, each of which returns IDENTITY for
+  // empty/zero input — so nothing else in this function changes for real
+  // styles.
+  const featureLines: FeatureLine[] = styleId === '__SmoothControl__'
+    ? []
+    : extractAnalyticFeatures(
+        styleId,
+        Float32Array.from(buildStyleParamPayload(styleId, EMPTY_OPTS as Record<string, unknown>)[1]),
+        { H: DIMS.H, Rt: DIMS.Rt, Rb: DIMS.Rb },
+      ).lines;
 
   const featureKinds: Record<string, number> = {};
-  for (const l of featureGraph.lines) featureKinds[l.kind] = (featureKinds[l.kind] ?? 0) + 1;
+  for (const l of featureLines) featureKinds[l.kind] = (featureKinds[l.kind] ?? 0) + 1;
 
   const creaseUSet = new Set<number>(), creaseU: number[] = [];
   const creaseTSet = new Set<number>(), creaseT: number[] = [];
-  const helixLines = featureGraph.lines.filter((l) => l.kind === 'helical-crease');
-  for (const line of featureGraph.lines) {
+  const helixLines = featureLines.filter((l) => l.kind === 'helical-crease');
+  for (const line of featureLines) {
     if (line.kind === 'vertical-crease') {
       const u = line.points[0].u, key = Math.round(u * 1e7);
       if (!creaseUSet.has(key)) { creaseUSet.add(key); creaseU.push(u); }
@@ -136,7 +163,7 @@ export function buildSolidCPU(
     helixChoice = chooseHelixGrid(k, -slope * k, p0.u * k);
   }
 
-  const generalCurves: FeatureLine[] = featureGraph.lines.filter((l) => l.kind === 'general-curve');
+  const generalCurves: FeatureLine[] = featureLines.filter((l) => l.kind === 'general-curve');
   const minLevel = Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level);
 
   // Verdict-refine flag: eligible only when outer featureLines are non-empty
