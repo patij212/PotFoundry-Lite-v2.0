@@ -119,6 +119,21 @@ export interface ConformingWallOptions {
    */
   featureLevel?: number;
   /**
+   * OPT-IN per-cell feature-level ESCALATION (E-2026-07-12 P2.5; design
+   * P2.1-design §1). Returns the target quadtree level for a feature-crossed cell
+   * at lower-corner `(u0,t0)` with the given `size` (>= `featureLevel` ⇒ deeper
+   * local refinement; <= `featureLevel` ⇒ no change). Evaluated ONLY on cells
+   * that already pass the cheap feature `intersects` gate, so the cost is scoped
+   * to the (small) feature-crossed subset. Used to escalate the Newton-flagged
+   * residual knee cells directly (VERDICT-driven refinement) — the localized
+   * cure for the Gyroid band-edge knee that a global `featureLevel` bump could
+   * not deliver without a relief-chord-cliff blow-up. Threaded to
+   * {@link FeatureRefineSpec.levelAt} ONLY when `featureLines`/`railLines` are
+   * non-empty (mirrors how `featureLevel` itself is gated). Omit ⇒ byte-identical
+   * default mesh (the load-bearing flag-OFF guarantee).
+   */
+  featureLevelAt?: (u0: number, t0: number, size: number) => number;
+  /**
    * How `targetTriangles` is interpreted:
    *  - `'target'` (default): steer the count toward the budget in BOTH
    *    directions — refine a coarse sag mesh UP toward a larger budget, or
@@ -610,6 +625,17 @@ export function clipFeaturesToBox(features: FeatureLine[], uMargin: number, tMar
 type FeatureRefineSpec = {
   level: number;
   intersects: (u0: number, t0: number, size: number) => boolean;
+  /**
+   * OPTIONAL per-cell target level (>= `level`), evaluated ONLY on cells that
+   * already pass the cheap `intersects` gate (cost-gated). Returns the ESCALATED
+   * floor for THIS cell; absent, or a value <= `level`, leaves the cell at the
+   * uniform `level` floor. Absent ⇒ byte-identical to the pre-P2.5 behaviour.
+   * The escalation is a DISCRETE level integer with no continuous-sizing round
+   * trip and no grading pass — the quadtree already makes its own discrete
+   * decisions at exactly this point, and the existing 2:1 `balance()` propagates
+   * the resulting T-junctions for free (E-2026-07-12 P2.5; design P2.1-design §1).
+   */
+  levelAt?: (u0: number, t0: number, size: number) => number;
 };
 
 /** Does segment (au,at)→(bu,bt) meet the box [u0,u1]×[t0,t1]? (Liang–Barsky.) */
@@ -824,6 +850,10 @@ export function buildConformingWall(
     featureRefine = {
       level: featureLevel,
       intersects: buildFeatureIntersector(refineLines),
+      // Per-cell escalation (P2.5). Absent ⇒ `levelAt` undefined ⇒ the quadtree's
+      // legacy uniform `level` floor (byte-identical). Only wired here (feature
+      // walls) — features are outer-only, matching `featureLevel`'s own gating.
+      levelAt: opts.featureLevelAt,
     };
   }
 

@@ -351,7 +351,12 @@ export class PeriodicBalancedQuadtree {
    * inside one large coarse cell would otherwise fan into thin triangles.
    * `intersects(u0,t0,size)` returns true iff a feature segment meets that cell.
    */
-  private readonly featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
+  private readonly featureRefine?: {
+    level: number;
+    intersects: (u0: number, t0: number, size: number) => boolean;
+    /** Per-cell escalated target level (P2.5); absent ⇒ uniform `level` floor. */
+    levelAt?: (u0: number, t0: number, size: number) => number;
+  };
   /**
    * Optional CREASE-driven refinement: cells a warp-pinned crease locus crosses
    * are size-tested with the BIAS-FREE u-width (1/2^level instead of 1/2^(level+B))
@@ -417,7 +422,12 @@ export class PeriodicBalancedQuadtree {
       maxLevel: number;
       pinBoundaryLevel?: number;
       minUniformLevel?: number;
-      featureRefine?: { level: number; intersects: (u0: number, t0: number, size: number) => boolean };
+      featureRefine?: {
+        level: number;
+        intersects: (u0: number, t0: number, size: number) => boolean;
+        /** Per-cell escalated target level (P2.5); absent ⇒ uniform `level` floor. */
+        levelAt?: (u0: number, t0: number, size: number) => number;
+      };
       /**
        * CREASE-driven refinement: crease-crossed cells are size-tested with the
        * BIAS-FREE u-width so their t-subdivision matches the B=0 mesh (restores the
@@ -664,6 +674,56 @@ export class PeriodicBalancedQuadtree {
     return false;
   }
 
+  /**
+   * Feature-floor refinement test, shared by {@link refine} (fresh build) and
+   * {@link shouldSplitHierarchyNode} (budget-search capture/materialize) so the
+   * two paths CANNOT drift (P2.5, design P2.1-design §1.2).
+   *
+   * With no `featureRefine.levelAt` this is byte-identical to the pre-P2.5
+   * expression `level < min(featureRefine.level, cap) && intersects(...)`: the
+   * `intersects` predicate is short-circuited by the level gate exactly as before
+   * and evaluated through the same evidence cache.
+   *
+   * When `levelAt` is present the order flips — the cheap, bucketed, cached
+   * `intersects` gate runs FIRST, and only on a hit is the per-cell `levelAt`
+   * escalation consulted — so a cell already AT `featureRefine.level` can still be
+   * driven deeper toward its own escalated target (capped by the pin-graded `cap`,
+   * and never past `maxLevel`). The cell box is [iu·uSize, iu·uSize+uSize] ×
+   * [it·tSize, it·tSize+tSize]; the larger extent is passed as `size` so an
+   * anisotropic (B>0) cell is hit-tested over its full span (a conservative
+   * superset — never misses a crossing).
+   */
+  private belowFeatureFloorTest(
+    level: number,
+    iu: number,
+    it: number,
+    cap: number,
+    uSize: number,
+    tSize: number,
+    evidenceKey: number,
+  ): boolean {
+    const featureRefine = this.featureRefine;
+    if (featureRefine === undefined) return false;
+    const hitTest = (): boolean =>
+      this.refinementIntersection(
+        'feature',
+        evidenceKey,
+        () => featureRefine.intersects(iu * uSize, it * tSize, Math.max(uSize, tSize)),
+      );
+    if (featureRefine.levelAt === undefined) {
+      // Legacy uniform floor — byte-identical to the pre-P2.5 expression.
+      return level < Math.min(featureRefine.level, cap) && hitTest();
+    }
+    if (level >= cap) return false;
+    if (!hitTest()) return false;
+    const size = Math.max(uSize, tSize);
+    const target = Math.max(
+      featureRefine.level,
+      featureRefine.levelAt(iu * uSize, it * tSize, size),
+    );
+    return level < Math.min(target, cap);
+  }
+
   /** Exact raw-refinement decision shared by hierarchy capture/materialization. */
   private shouldSplitHierarchyNode(
     field: MetricSizingField,
@@ -676,16 +736,8 @@ export class PeriodicBalancedQuadtree {
     const belowUniformFloor = level < Math.min(this.minUniformLevel, cap);
     const uSize = 1 / this.uSpanCell(level, 0);
     const tSize = 1 / (1 << level);
-    const featureRefine = this.featureRefine;
     const evidenceKey = this.refinementEvidenceKey(level, iu, it);
-    const belowFeatureFloor =
-      featureRefine !== undefined &&
-      level < Math.min(featureRefine.level, cap) &&
-      this.refinementIntersection(
-        'feature',
-        evidenceKey,
-        () => featureRefine.intersects(iu * uSize, it * tSize, Math.max(uSize, tSize)),
-      );
+    const belowFeatureFloor = this.belowFeatureFloorTest(level, iu, it, cap, uSize, tSize, evidenceKey);
     const creaseRefine = this.creaseRefine;
     const onCrease =
       creaseRefine !== undefined &&
@@ -797,20 +849,10 @@ export class PeriodicBalancedQuadtree {
       // feature level so the curve crosses each cell simply (sliver-free CDT).
       const uSize = 1 / this.uSpanCell(c.level, 0);
       const tSize = 1 / (1 << c.level);
-      const featureRefine = this.featureRefine;
       const evidenceKey = this.refinementEvidenceKey(c.level, c.iu, c.it);
-      const belowFeatureFloor =
-        featureRefine !== undefined &&
-        c.level < Math.min(featureRefine.level, cap) &&
-        // Cell box is [iu·Δu, iu·Δu+Δu]×[it·Δt, it·Δt+Δt]; pass the larger extent
-        // as `size` so an anisotropic (B>0) cell is still hit-tested over its full
-        // span (the intersector treats `size` as a square edge; the larger extent
-        // is a conservative superset → never misses a crossing).
-        this.refinementIntersection(
-          'feature',
-          evidenceKey,
-          () => featureRefine.intersects(c.iu * uSize, c.it * tSize, Math.max(uSize, tSize)),
-        );
+      // Feature floor (+ optional per-cell P2.5 escalation) — shared with the
+      // budget-search path via belowFeatureFloorTest so the two cannot drift.
+      const belowFeatureFloor = this.belowFeatureFloorTest(c.level, c.iu, c.it, cap, uSize, tSize, evidenceKey);
       // Crease-driven refinement: on cells a warp-pinned crease crosses, run the
       // size test with the BIAS-FREE u-width so the crease column keeps the B=0
       // t-rows the global bias would otherwise strip (restores feature coverage,
