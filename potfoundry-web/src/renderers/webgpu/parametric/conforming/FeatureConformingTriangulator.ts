@@ -203,6 +203,16 @@ export interface FeatureTriangulationOptions {
    * shared grid line — untried, next-arm work.
    */
   multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair' | 'snapMerge';
+  /**
+   * Verdict-refine-ONLY (E-2026-07-12-R2b): shortest-altitude threshold (u,t) for
+   * {@link fanConsistencyRepair}'s scale-invariant degenerate-sliver drop. Set
+   * ONLY by the two-pass verdict loop's escalated rebuilds (see
+   * `ConformingWall.ts` `VERDICT_SLIVER_ALT_TAU`), so the flag-OFF production path
+   * (which never sets it) is BYTE-IDENTICAL. Omitted / undefined ⇒ `fanRepair`
+   * uses only its historical area-RATIO gate. No-op unless
+   * `multiCurveCellPolicy === 'fanRepair'`.
+   */
+  verdictSliverAltTau?: number;
 }
 
 /** Quantization scale for vertex dedup (exact for dyadic coords up to lvl 24). */
@@ -729,6 +739,7 @@ export function fanConsistencyRepair(
   source: readonly number[],
   vu: readonly number[],
   vt: readonly number[],
+  sliverAltTau?: number,
 ): { indices: number[]; seam: number[]; source: number[]; dropped: number; orphanedEdges: number } {
   const triCount = indices.length / 3;
   const area = (t: number): number => {
@@ -736,6 +747,16 @@ export function fanConsistencyRepair(
     const b = indices[t * 3 + 1];
     const c = indices[t * 3 + 2];
     return 0.5 * Math.abs((vu[b] - vu[a]) * (vt[c] - vt[a]) - (vu[c] - vu[a]) * (vt[b] - vt[a]));
+  };
+  // Longest squared (u,t) edge of triangle `t` — the base for its shortest
+  // altitude (`2·area / longestEdge`), used by the scale-INVARIANT sliver test.
+  const longestEdge2 = (t: number): number => {
+    const a = indices[t * 3], b = indices[t * 3 + 1], c = indices[t * 3 + 2];
+    const seg = (i: number, j: number): number => {
+      const du = vu[j] - vu[i], dt = vt[j] - vt[i];
+      return du * du + dt * dt;
+    };
+    return Math.max(seg(a, b), seg(b, c), seg(c, a));
   };
   const edgeTris = new Map<string, number[]>();
   for (let t = 0; t < triCount; t++) {
@@ -759,7 +780,29 @@ export function fanConsistencyRepair(
     for (let i = 0; i < excess; i++) {
       const smallest = withArea[i];
       const next = withArea[i + 1];
-      if (next && smallest.a < next.a * SLIVER_RATIO) dropSet.add(smallest.t);
+      if (!next) continue;
+      if (smallest.a < next.a * SLIVER_RATIO) { dropSet.add(smallest.t); continue; }
+      // SCALE-INVARIANT sliver criterion (E-2026-07-12-R2b; ONLY when the caller
+      // supplies `sliverAltTau` — the verdict-refine escalation path, so the
+      // flag-OFF production mesh is BYTE-IDENTICAL by construction). The area-
+      // RATIO test above mis-fires once a band-edge cell is ESCALATED: the sibling
+      // triangles shrink ~4× per level while a near-tangent doubled-curve sliver's
+      // area is fixed by the (level-independent) curve separation, so the ratio
+      // GROWS with depth and a genuine degenerate sliver at L13 sits above the
+      // 1e-3 gate calibrated at L11 (the surviving T6 nonManifold edge, shortest
+      // altitude ≈3.0e-7). The shortest altitude (2·area / longestEdge) is the
+      // perpendicular apex-to-base gap — SCALE-INVARIANT — so an apex closer than
+      // the tolerance-weld radius (`sliverAltTau` = `WELD_TAU` = 1e-6, two orders
+      // below the ~1e-4 minimum legitimate vertex spacing at the deepest level) is
+      // geometrically ON its opposite edge ⇒ the triangle carries ~zero surface
+      // area and dropping it cannot open a real hole (verified watertight by the
+      // T6 boundary-edge count). Only ever evaluated on an already-over-covered
+      // (mult>2) edge's smallest triangle, never a legitimate facet.
+      if (sliverAltTau !== undefined) {
+        const le2 = longestEdge2(smallest.t);
+        const alt = le2 > 0 ? (2 * smallest.a) / Math.sqrt(le2) : 0;
+        if (alt < sliverAltTau) dropSet.add(smallest.t);
+      }
       // else: not confidently a sliver — leave this edge's multiplicity as-is
       // rather than guess.
     }
@@ -1818,7 +1861,9 @@ export function triangulateQuadtreeWithFeatures(
   let finalSeam = outSeam;
   let finalSource = outSource;
   if (multiCurveCellPolicy === 'fanRepair') {
-    const repaired = fanConsistencyRepair(outIndices, outSeam, outSource, keptU, keptT);
+    const repaired = fanConsistencyRepair(
+      outIndices, outSeam, outSource, keptU, keptT, options.verdictSliverAltTau,
+    );
     finalIndices = repaired.indices;
     finalSeam = repaired.seam;
     finalSource = repaired.source;

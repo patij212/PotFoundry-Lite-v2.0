@@ -67,8 +67,9 @@ import { chooseHelixGrid } from '../../src/renderers/webgpu/parametric/conformin
 import { composedWallSampler } from '../../src/renderers/webgpu/parametric/conforming/PullbackMetric';
 import { resolveUniformLevelOverride } from '../../src/renderers/webgpu/parametric/conforming/uniformLevelOverride';
 import {
-  selectCandidateFacets, type CandidateFeatureRefineSpec,
+  selectCandidateFacets, scoreCandidateFacets, type CandidateFeatureRefineSpec,
 } from '../../src/renderers/webgpu/parametric/conforming/verdictRefine';
+import { buildAnalyticRadiusFn } from '../../src/geometry/analyticRadius';
 
 const TAU = Math.PI * 2;
 const ON = process.env.PF_GYROID_KNEE_SHIP === '1';
@@ -229,8 +230,17 @@ function scoreHotPoints(
 /** Build the OUTER wall via buildConformingWall DIRECTLY — mirrors EXACTLY the outer-wall opts
  * assembleWatertight feeds it (P2.5b/P2.5c buildOuterDirect, verbatim). NO featureLevelAt is ever
  * passed here: the SHIPPED two-pass loop owns featureLevelAt internally when the flag is ON, and the
- * flag-OFF arm is the byte-identical production baseline. `featureLines` = band-edge generalCurves. */
-function buildOuterDirect(rA: AnalyticRadiusFn, generalCurves: FeatureLine[]): OuterMesh {
+ * flag-OFF arm is the byte-identical production baseline. `featureLines` = band-edge generalCurves.
+ *
+ * `analytic` (flag-ON arm only) supplies the exact closed-form radius `analyticRA` + `analyticH` the
+ * committed verdict loop reads (fix 8745f656): the loop then scores its outlier verdict against the
+ * EXACT analytic surface instead of the 256² bilinear efgSampler grid that smoothed the band-edge
+ * cliff below tol (the T6 root cause). Omitted ⇒ the loop keeps the efgSampler lift (flag-OFF baseline
+ * is byte-identical production regardless). Read ONLY inside the flag-on branch. */
+function buildOuterDirect(
+  rA: AnalyticRadiusFn, generalCurves: FeatureLine[],
+  analytic?: { rA: (theta: number, z: number) => number; H: number },
+): OuterMesh {
   const { H } = TIERC_COMMON_DIMS;
   const outer = buildRegionWallGridCPU(rA, 0, TIERC_COMMON_DIMS, AF_TWALL, AF_TBOTTOM, 256);
   const creaseChoice = chooseCreaseGrid([]);
@@ -269,6 +279,10 @@ function buildOuterDirect(rA: AnalyticRadiusFn, generalCurves: FeatureLine[]): O
     efgSampler: outerEfgSampler,
     multiCurveCellPolicy: 'fanRepair',
     // NB: featureLevelAt intentionally OMITTED — the shipped flag-ON loop drives it internally.
+    // analyticRA/analyticH: flag-ON arm only — the loop scores its verdict against the EXACT
+    // analytic surface (fix 8745f656). Flag-OFF passes undefined ⇒ byte-identical baseline.
+    analyticRA: analytic?.rA,
+    analyticH: analytic?.H,
   });
   const xyz = liftUtVerts(res.vertices, rA, H);
   return { xyz, ut: res.vertices, idx: res.indices, tris: res.indices.length / 3 };
@@ -339,10 +353,16 @@ interface ArmBank {
   tris: number;
   triPct: number;
   nonMan: number;
+  /** mult-1 (open/boundary) edges. Both walls pin the SAME uniform nRing rings, so
+   * this is IDENTICAL across arms UNLESS a repair opened an interior hole — the
+   * watertight-safety witness for Leg #2's sliver drop. */
+  boundary: number;
   topOutliers: Array<{ u: number; t: number; worst: number; level: number; minAngleDeg: number }>;
 }
 
-function aggregateArm(arm: string, pts: PtScore[], tris: number, baseTris: number, nonMan: number): ArmBank {
+function aggregateArm(
+  arm: string, pts: PtScore[], tris: number, baseTris: number, nonMan: number, boundary: number,
+): ArmBank {
   let fleetWorst = -1, fleetWorstLevel = -1, fleetWorstMinAngle = NaN;
   const outliers: PtScore[] = [];
   for (const p of pts) {
@@ -365,10 +385,77 @@ function aggregateArm(arm: string, pts: PtScore[], tris: number, baseTris: numbe
     tris,
     triPct: baseTris > 0 ? 100 * (tris - baseTris) / baseTris : 0,
     nonMan,
+    boundary,
     topOutliers: outliers.slice(0, 25).map((p) => ({
       u: p.u, t: p.t, worst: p.worst, level: p.level, minAngleDeg: p.minAngleDeg,
     })),
   };
+}
+
+// ── LEG #2 diagnosis instrument (R2b): LOCATE the scale-triggered non-manifold
+//    edge(s) on the flag-ON escalated mesh. Two-pass + sorted-key like
+//    nonManRawBigStats (Map-free over the 13M edges; only the few offending keys
+//    are re-collected), then reports each offending edge's endpoints in BOTH
+//    (u,t) and (x,y,z), plus every incident facet's opposite vertex + inferred
+//    level — enough to trace the edge back to the escalation/2:1/seam config that
+//    produced the T-junction. Written to gyroid_knee_ship_nonman.json + crumbed. ──
+interface NonManEdgeReport {
+  a: number; b: number; mult: number;
+  aUt: [number, number]; bUt: [number, number];
+  aXyz: [number, number, number]; bXyz: [number, number, number];
+  incident: Array<{ f: number; third: number; thirdUt: [number, number]; level: number }>;
+}
+function locateNonManifoldEdges(m: OuterMesh, maxReport = 16): NonManEdgeReport[] {
+  const { ut, xyz, idx } = m;
+  const n = idx.length - (idx.length % 3);
+  // Pass 1: sorted Float64 packed keys (lo*2^27+hi, exact for indices < 2^26) →
+  // the offending keys (multiplicity > 2).
+  const keys = new Float64Array(n);
+  let mm = 0;
+  for (let k = 0; k < n; k += 3) {
+    const a = idx[k], b = idx[k + 1], c = idx[k + 2];
+    if (a === b || b === c || a === c) continue;
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
+      const lo = p < q ? p : q, hi = p < q ? q : p;
+      keys[mm++] = lo * 134217728 + hi;
+    }
+  }
+  const sorted = keys.subarray(0, mm); sorted.sort();
+  const bad = new Set<number>();
+  for (let i = 0; i < mm;) {
+    let j = i + 1; while (j < mm && sorted[j] === sorted[i]) j++;
+    if (j - i > 2) bad.add(sorted[i]);
+    i = j;
+  }
+  if (bad.size === 0) return [];
+  // Pass 2: collect incident facets for the (few) offending keys only.
+  const collect = new Map<number, Array<[number, number]>>();
+  const nF = n / 3;
+  for (let f = 0; f < nF; f++) {
+    const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+    if (a === b || b === c || a === c) continue;
+    for (const [p, q, third] of [[a, b, c], [b, c, a], [c, a, b]] as const) {
+      const lo = p < q ? p : q, hi = p < q ? q : p;
+      const key = lo * 134217728 + hi;
+      if (!bad.has(key)) continue;
+      const arr = collect.get(key); if (arr) arr.push([f, third]); else collect.set(key, [[f, third]]);
+    }
+  }
+  const out: NonManEdgeReport[] = [];
+  for (const [key, arr] of collect) {
+    const hi = key % 134217728; const lo = (key - hi) / 134217728;
+    out.push({
+      a: lo, b: hi, mult: arr.length,
+      aUt: [ut[3 * lo], ut[3 * lo + 1]], bUt: [ut[3 * hi], ut[3 * hi + 1]],
+      aXyz: [xyz[3 * lo], xyz[3 * lo + 1], xyz[3 * lo + 2]],
+      bXyz: [xyz[3 * hi], xyz[3 * hi + 1], xyz[3 * hi + 2]],
+      incident: arr.map(([f, third]) => ({
+        f, third, thirdUt: [ut[3 * third], ut[3 * third + 1]], level: facetLevel(m, f),
+      })),
+    });
+    if (out.length >= maxReport) break;
+  }
+  return out;
 }
 
 describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the REAL Gyroid knee (end-to-end)', () => {
@@ -393,7 +480,12 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
         buildRegionWallGridCPU(rA, 0, TIERC_COMMON_DIMS, AF_TWALL, AF_TBOTTOM, 256).sampler,
         generalCurves.length > 0,
       );
-      crumb('bandedge-extracted', { curves: generalCurves.length, uBias });
+      // EXACT closed-form radius the committed verdict loop scores against (fix 8745f656). Mirrors
+      // the SAME buildRadiusFn('GyroidManifold',{},TIERC_COMMON_DIMS) that getManifest().truth.rA
+      // (our acceptance surface) is built from ⇒ the loop's verdict lift == our acceptance lift.
+      const analyticRAFn = buildAnalyticRadiusFn('GyroidManifold', {}, TIERC_COMMON_DIMS);
+      const analytic = { rA: analyticRAFn, H: TIERC_COMMON_DIMS.H };
+      crumb('bandedge-extracted', { curves: generalCurves.length, uBias, analyticH: analytic.H });
 
       // ── BROAD hot population: armA3_char_confirmed.json → distinct hot (u,t) + the knee (~2105). ──
       expect(existsSync(HOT_POP_PATH), `banked hot population missing: ${HOT_POP_PATH}`).toBe(true);
@@ -412,16 +504,21 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
       // ── resumable arm bank ──
       const armBank: Record<string, ArmBank> = {};
       let kneeInT5CandidateSet: boolean | null = null;
+      let kneeIsT2OutlierAnalytic: boolean | null = null;
+      let kneeT2WorstAnalytic = NaN;
       let baseTris = 0;
       if (existsSync(SUMMARY_PATH)) {
         try {
           const prior = JSON.parse(readFileSync(SUMMARY_PATH, 'utf8')) as {
             arms?: Record<string, ArmBank>; kneeInT5CandidateSet?: boolean | null;
+            kneeIsT2OutlierAnalytic?: boolean | null; kneeT2WorstAnalytic?: number;
           };
           if (prior.arms) for (const [k, v] of Object.entries(prior.arms)) armBank[k] = v;
           if (armBank['flag-off']) baseTris = armBank['flag-off'].tris;
           if (typeof prior.kneeInT5CandidateSet === 'boolean') kneeInT5CandidateSet = prior.kneeInT5CandidateSet;
-          crumb('resumed', { banked: Object.keys(armBank), kneeInT5CandidateSet });
+          if (typeof prior.kneeIsT2OutlierAnalytic === 'boolean') kneeIsT2OutlierAnalytic = prior.kneeIsT2OutlierAnalytic;
+          if (typeof prior.kneeT2WorstAnalytic === 'number') kneeT2WorstAnalytic = prior.kneeT2WorstAnalytic;
+          crumb('resumed', { banked: Object.keys(armBank), kneeInT5CandidateSet, kneeIsT2OutlierAnalytic });
         } catch { /* corrupt/partial summary ⇒ start clean */ }
       }
 
@@ -435,6 +532,7 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
             triPctGate: TRI_PCT_GATE, hotPopulation: hot.length, bankedNewtonWorst: BANKED_NEWTON_WORST,
           },
           kneeCellKey: cellKeyOf(KNEE_U, KNEE_T, uBias), kneeInT5CandidateSet,
+          kneeIsT2OutlierAnalytic, kneeT2WorstAnalytic,
           arms: armBank, ...final, newtonCallCount, elapsedMs: Date.now() - t0,
         }, null, 2));
       };
@@ -447,10 +545,11 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
           const bstart = Date.now();
           const mesh = buildOuterDirect(rA, generalCurves);
           crumb('flag-off-built', { tris: mesh.tris, buildMs: Date.now() - bstart });
-          const nonMan = nonManRawBigStats(mesh.idx).nonMan;
+          const nmStats = nonManRawBigStats(mesh.idx);
+          const nonMan = nmStats.nonMan;
           const pts = scoreHotPoints(mesh, buildCentroidGrid(mesh, HG), HG, hot, rA, H);
           baseTris = mesh.tris;
-          const bank = aggregateArm('flag-off', pts, mesh.tris, baseTris, nonMan);
+          const bank = aggregateArm('flag-off', pts, mesh.tris, baseTris, nonMan, nmStats.boundary);
           armBank['flag-off'] = bank;
 
           // Instrument: is the knee cell in T5's candidate set on the production pass-0 mesh?
@@ -471,7 +570,31 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
               if (cellKeyOf(uCen, tCen, uBias) === kneeKey) { inSet = true; break; }
             }
             kneeInT5CandidateSet = inSet;
-            crumb('t5-candidate-probe', { candidateCount: cand.length, kneeInT5CandidateSet: inSet });
+
+            // Is the knee now a T2 OUTLIER under the ANALYTIC lift (the fix)? Run the exported
+            // production scoreCandidateFacets over the SAME candidate set with the exact analytic
+            // lift sampler (tolMm=-1 ⇒ returns every scored cell so we can read the knee's own
+            // worstMm even if below tol), then look up the knee's L11 cell. This is what the fix
+            // relies on: the analytic verdict lift must read the knee ≥0.01 so the loop escalates it.
+            const analyticLift = {
+              position: (u: number, t: number): [number, number, number] => {
+                const th = u * TAU; const z = t * analytic.H; const r = analytic.rA(th, z);
+                return [r * Math.cos(th), r * Math.sin(th), z];
+              },
+            };
+            const t2cells = scoreCandidateFacets(
+              { vertices: mesh.ut, indices: mesh.idx }, analyticLift, cand, -1, FEATURE_LEVEL, uBias,
+            );
+            const uCellRes = 1 << (FEATURE_LEVEL + uBias);
+            const kneeC = cellKeyOf(KNEE_U, KNEE_T, uBias);
+            for (const c of t2cells) {
+              if (c.it * uCellRes + c.iu === kneeC) { kneeT2WorstAnalytic = c.worstMm; break; }
+            }
+            kneeIsT2OutlierAnalytic = Number.isFinite(kneeT2WorstAnalytic) ? kneeT2WorstAnalytic > TOL : null;
+            crumb('t5-candidate-probe', {
+              candidateCount: cand.length, kneeInT5CandidateSet: inSet,
+              kneeT2WorstAnalytic, kneeIsT2OutlierAnalytic,
+            });
           } catch (e) {
             crumb('t5-candidate-probe-FAILED', { err: String(e) });
             kneeInT5CandidateSet = null;
@@ -499,15 +622,26 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
         try {
           (globalThis as Record<string, unknown>)[FLAG] = true;
           const bstart = Date.now();
-          const mesh = buildOuterDirect(rA, generalCurves);
+          const mesh = buildOuterDirect(rA, generalCurves, analytic);
           crumb('flag-on-built', { tris: mesh.tris, buildMs: Date.now() - bstart });
-          const nonMan = nonManRawBigStats(mesh.idx).nonMan;
+          const nmStats = nonManRawBigStats(mesh.idx);
+          const nonMan = nmStats.nonMan;
+          // LEG #2 diagnosis: if the escalated mesh is non-manifold, LOCATE the
+          // offending edge(s) and bank them for adjudication (does not affect the
+          // gate — the gate reads `nonMan` count as before).
+          if (nonMan > 0) {
+            const edges = locateNonManifoldEdges(mesh);
+            writeFileSync(join(OUT_DIR, 'gyroid_knee_ship_nonman.json'), JSON.stringify({
+              at: new Date().toISOString(), nonMan, tris: mesh.tris, edges,
+            }, null, 2));
+            crumb('flag-on-nonman-located', { nonMan, edgeCount: edges.length, firstEdge: edges[0] });
+          }
           const pts = scoreHotPoints(mesh, buildCentroidGrid(mesh, HG), HG, hot, rA, H);
-          const bank = aggregateArm('flag-on', pts, mesh.tris, baseTris, nonMan);
+          const bank = aggregateArm('flag-on', pts, mesh.tris, baseTris, nonMan, nmStats.boundary);
           armBank['flag-on'] = bank;
           crumb('flag-on-scored', {
             fleetWorst: bank.fleetWorst, kneeWorst: bank.kneeWorst, outliers: bank.outlierCount,
-            triPct: bank.triPct, nonMan, tris: mesh.tris, newtonCallCount,
+            triPct: bank.triPct, nonMan, boundary: nmStats.boundary, tris: mesh.tris, newtonCallCount,
           });
           writeSummary('flag-on-done');
         } finally {
@@ -536,23 +670,33 @@ describe.skipIf(!ON)('T6 — shipped __pfConformingVerdictRefine loop closes the
         gateLegs: { kneeOk, fleetOk, nonManOk, triOk, nonVacuityOk },
         flagOff: {
           fleetWorst: off.fleetWorst, kneeWorst: off.kneeWorst, outliers: off.outlierCount,
-          tris: off.tris, nonMan: off.nonMan, reproducesKnee: baseReproduces,
+          tris: off.tris, nonMan: off.nonMan, boundary: off.boundary, reproducesKnee: baseReproduces,
         },
         flagOn: {
           fleetWorst: on.fleetWorst, kneeWorst: on.kneeWorst, outliers: on.outlierCount,
           fleetWorstLevel: on.fleetWorstLevel, fleetWorstMinAngleDeg: on.fleetWorstMinAngleDeg,
           kneeLevel: on.kneeLevel, kneeMinAngleDeg: on.kneeMinAngleDeg,
-          tris: on.tris, triPct: on.triPct, nonMan: on.nonMan, topOutliers: on.topOutliers,
+          tris: on.tris, triPct: on.triPct, nonMan: on.nonMan, boundary: on.boundary,
+          // Watertight witness. `boundary` = 2·nRing pinned rings + the pre-existing
+          // interior mult-1 crack population (present on BOTH arms; closed downstream
+          // by WatertightAssembly). The escalated mesh legitimately has a DIFFERENT
+          // crack count than the un-escalated flag-off baseline, so equality is NOT
+          // expected. The watertight GATE is `nonMan === 0`; that `on.boundary` sits
+          // BELOW `off.boundary` (fewer cracks than the shipping production baseline)
+          // is the no-regression witness — dropping a ~zero-area sliver cannot add
+          // real 3D surface boundary.
+          boundaryDeltaVsOff: on.boundary - off.boundary,
+          topOutliers: on.topOutliers,
         },
         kneeInT5CandidateSet,
       });
       crumb('DONE', {
         gate, kneeWorstOff: off.kneeWorst, kneeWorstOn: on.kneeWorst, fleetWorstOn: on.fleetWorst,
         outliersOn: on.outlierCount, triPct: on.triPct, nonManOn: on.nonMan,
-        kneeInT5CandidateSet, elapsedMs: Date.now() - t0,
+        kneeInT5CandidateSet, kneeIsT2OutlierAnalytic, kneeT2WorstAnalytic, elapsedMs: Date.now() - t0,
       });
       // eslint-disable-next-line no-console
-      console.log(`[T6] GATE=${gate} off:knee=${off.kneeWorst.toFixed(6)}/fleet=${off.fleetWorst.toFixed(6)} on:knee=${on.kneeWorst.toFixed(6)}/fleet=${on.fleetWorst.toFixed(6)} outliersOn=${on.outlierCount} triPct=${on.triPct.toFixed(3)} nonMan=${on.nonMan} kneeInT5Cand=${kneeInT5CandidateSet}`);
+      console.log(`[T6] GATE=${gate} off:knee=${off.kneeWorst.toFixed(6)}/fleet=${off.fleetWorst.toFixed(6)} on:knee=${on.kneeWorst.toFixed(6)}/fleet=${on.fleetWorst.toFixed(6)} outliersOn=${on.outlierCount} triPct=${on.triPct.toFixed(3)} nonMan=${on.nonMan} kneeInT5Cand=${kneeInT5CandidateSet} kneeT2WorstAnalytic=${kneeT2WorstAnalytic} kneeIsT2Outlier=${kneeIsT2OutlierAnalytic}`);
 
       // Non-vacuity anchors (assertions guard the instrument's validity; the GATE verdict lives in the
       // summary/crumb per this lab's convention — a FAIL-to-close is a real finding, not a test error).

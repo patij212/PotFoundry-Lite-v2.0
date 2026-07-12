@@ -249,6 +249,15 @@ export interface ConformingWallOptions {
    * (verdict loop, flag-on). Should always accompany `analyticRA`.
    */
   analyticH?: number;
+  /**
+   * VERDICT-loop ONLY (E-2026-07-12-R2b): shortest-altitude threshold (u,t) handed
+   * to `fanConsistencyRepair` so it also drops the SCALE-INVARIANT degenerate
+   * sliver that escalation shrinks below its area-ratio gate (the surviving T6
+   * non-manifold band-edge edge). Set ONLY on the two-pass loop's escalated
+   * rebuilds; the flag-off / production path never sets it ⇒ the triangulator's
+   * `fanRepair` output is BYTE-IDENTICAL. Never read on the flag-off path.
+   */
+  verdictSliverAltTau?: number;
 }
 
 /**
@@ -829,6 +838,7 @@ function buildWallMeshAtScale(
     bandRegions: opts.bandRegions,
     railLines,
     multiCurveCellPolicy: opts.multiCurveCellPolicy,
+    verdictSliverAltTau: opts.verdictSliverAltTau,
   });
   if (stageTiming) {
     stageTiming.triangulationMs = performance.now() - triStart;
@@ -1053,6 +1063,17 @@ const VERDICT_MAX_PASS = 4;
  * P2.5c converged against.
  */
 const VERDICT_TOL_MM = 0.01;
+/**
+ * Shortest-altitude threshold (u,t) the verdict loop hands `fanConsistencyRepair`
+ * (via `opts.verdictSliverAltTau`) so it drops the SCALE-INVARIANT degenerate
+ * sliver that escalation shrinks below its area-ratio gate (Leg #2 / the T6
+ * band-edge non-manifold). = the triangulator's `WELD_TAU` (1e-6): an apex closer
+ * than the tolerance-weld radius to its opposite edge is geometrically ON that
+ * edge (two orders below the ~1e-4 minimum legitimate vertex spacing at the
+ * deepest level), so the triangle carries ~zero surface area and dropping it is
+ * watertight-safe. Applied ONLY inside the flag-on loop ⇒ flag-off byte-identical.
+ */
+const VERDICT_SLIVER_ALT_TAU = 1e-6;
 
 /** `d - round(d)`: shortest signed u-step across the periodic u=0/u=1 seam.
  * Mirrors verdictRefine's (non-exported) `wrapDu` — kept local so the candidate-
@@ -1174,7 +1195,12 @@ export function buildConformingWall(
   let resolvedScale = 1;
   let capturedRefine: FeatureRefineSpec | undefined;
   let featureLevel = opts.maxLevel;
-  let wall = buildConformingWallOnce(sampler, opts, {
+  // All flag-ON builds carry the scale-invariant sliver-drop threshold so the
+  // triangulator's fanRepair also clears the escalation-shrunk degenerate sliver
+  // (Leg #2). The flag-OFF `return buildConformingWallOnce(sampler, opts)` above
+  // never sets it ⇒ production is byte-identical.
+  const loopOpts: ConformingWallOptions = { ...opts, verdictSliverAltTau: VERDICT_SLIVER_ALT_TAU };
+  let wall = buildConformingWallOnce(sampler, loopOpts, {
     captureBuildInfo: (info) => {
       resolvedScale = info.resolvedScale;
       capturedRefine = info.featureRefine;
@@ -1264,7 +1290,7 @@ export function buildConformingWall(
     const levelAt = buildLevelAtFromTargets(targets, featureLevel, uBias, opts.maxLevel);
     wall = buildConformingWallOnce(
       sampler,
-      { ...opts, featureLevelAt: levelAt },
+      { ...loopOpts, featureLevelAt: levelAt },
       { fixedScale: resolvedScale },
     );
   }
