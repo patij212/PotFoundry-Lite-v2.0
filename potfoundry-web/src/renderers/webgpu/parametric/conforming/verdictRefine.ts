@@ -314,6 +314,103 @@ export function buildOneRingLevelAt(
 }
 
 /**
+ * `buildOneRingLevelAt` GENERALIZED from a single uniform `featureLevel + 1`
+ * command to a PER-CORE-CELL commanded level (T4 accumulating two-pass loop).
+ *
+ * `targets` maps a CORE outlier cell's key — the IDENTICAL key the T2 scorer and
+ * T3 builder use, `it * uCellRes + iu` with `uCellRes = 1 << (featureLevel +
+ * uBias)` — to the level it should be driven to. For each core cell this marks
+ * the cell AND its 8-neighbour 1-ring (periodic-wrapped in `iu`, clamped/dropped
+ * in `it` — the SAME ring geometry `buildOneRingLevelAt` uses, and for the same
+ * P2.5c reason: escalating only the single core leaves a 2:1-balance apron sliver
+ * on a neighbour) at that core's commanded level. Overlapping rings from adjacent
+ * cores take the MAX (the deeper command wins); everything off-target returns 0.
+ *
+ * This is what lets the two-pass loop ACCUMULATE across passes: each pass folds
+ * surviving outliers one level deeper into a persistent `targets` map and rebuilds
+ * the closure from the FULL map, so a cell closed in an earlier pass keeps its
+ * escalation (never re-opened) while survivors keep climbing toward `maxLevel`.
+ *
+ * `commandedLevel` per core is `min(target, maxLevel)`; a target already at/above
+ * `maxLevel` simply commands `maxLevel`. The sparse-lookup structure and the
+ * strict (zero-area-excluding) overlap predicate are identical to
+ * `buildOneRingLevelAt` — see that function's doc for the boundary-convention
+ * rationale; the two are kept in sync by hand (this module does not import from
+ * `research/**`).
+ */
+export function buildLevelAtFromTargets(
+  targets: Map<number, number>,
+  featureLevel: number,
+  uBias: number,
+  maxLevel: number,
+): (u0: number, t0: number, size: number) => number {
+  const uCellRes = 1 << (featureLevel + uBias);
+  const tCellRes = 1 << featureLevel;
+
+  // Mark each core cell + its 1-ring at the core's OWN commanded level (capped at
+  // maxLevel). Overlapping rings de-dup by (iu,it) taking the max target.
+  const marks = new Map<number, number>();
+  for (const [coreKey, level] of targets) {
+    const coreIu = coreKey % uCellRes;
+    const coreIt = (coreKey - coreIu) / uCellRes;
+    const commanded = Math.min(level, maxLevel);
+    for (let dt = -1; dt <= 1; dt++) {
+      const it = coreIt + dt;
+      if (it < 0 || it >= tCellRes) continue; // t is NOT periodic — clamp by dropping
+      for (let du = -1; du <= 1; du++) {
+        const iu = ((coreIu + du) % uCellRes + uCellRes) % uCellRes; // periodic wrap
+        const key = it * uCellRes + iu;
+        const existing = marks.get(key);
+        if (existing === undefined || commanded > existing) {
+          marks.set(key, commanded);
+        }
+      }
+    }
+  }
+
+  const flags: OneRingFlag[] = [];
+  for (const [key, target] of marks) {
+    const iu = key % uCellRes;
+    const it = (key - iu) / uCellRes;
+    const cu0 = iu / uCellRes, cu1 = (iu + 1) / uCellRes;
+    const ct0 = it / tCellRes, ct1 = (it + 1) / tCellRes;
+    flags.push({ target, cu0, cu1, ct0, ct1, tc: (ct0 + ct1) / 2 });
+  }
+
+  // Sparse lookup — IDENTICAL structure to buildOneRingLevelAt (sorted-by-tc +
+  // binary-search lower_bound t-prune, then a periodic-wrapped STRICT u-overlap).
+  const sorted = flags.slice().sort((a, b) => a.tc - b.tc);
+  const tcs = Float64Array.from(sorted.map((f) => f.tc));
+  const maxFlagT = 1 / tCellRes;
+  const EPS = 1e-9;
+  const lowerBound = (arr: Float64Array, x: number): number => {
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] < x) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
+  const uOverlap = (qu0: number, qu1: number, cu0: number, cu1: number): boolean => {
+    for (const s of [-1, 0, 1]) if (qu0 + s < cu1 - EPS && qu1 + s > cu0 + EPS) return true;
+    return false;
+  };
+
+  return (u0: number, t0: number, size: number): number => {
+    const qU0 = u0, qU1 = u0 + size / (1 << uBias);
+    const qT0 = t0, qT1 = t0 + size;
+    let best = 0;
+    for (let i = lowerBound(tcs, qT0 - maxFlagT - EPS); i < sorted.length && tcs[i] <= qT1 + EPS; i++) {
+      const fl = sorted[i];
+      if (fl.ct0 < qT1 - EPS && fl.ct1 > qT0 + EPS && uOverlap(qU0, qU1, fl.cu0, fl.cu1)) {
+        if (fl.target > best) best = fl.target;
+      }
+    }
+    return best;
+  };
+}
+
+/**
  * The feature-driven refinement spec the quadtree consumes — mirrors
  * `ConformingWall.ts`'s (non-exported) `type FeatureRefineSpec` byte-for-byte
  * (verified against that file directly; the real type is not exported, so

@@ -33,6 +33,12 @@ import { triangulateQuadtree, type QuadtreeMesh, type TriangulationStageTiming }
 import { triangulateQuadtreeWithFeatures, type BandRegion } from './FeatureConformingTriangulator';
 import type { FeatureLine, FeatureLinePoint } from './FeatureLineGraph';
 import type { CdtStats } from './ConstrainedCellTriangulator';
+import {
+  selectCandidateFacets,
+  scoreCandidateFacets,
+  buildLevelAtFromTargets,
+  type VerdictLiftSampler,
+} from './verdictRefine';
 
 /** Tuning for a conforming wall. */
 export interface ConformingWallOptions {
@@ -285,6 +291,23 @@ function isDevWallStageTimingEnabled(): boolean {
   } catch {
     return false;
   }
+}
+
+/**
+ * Dev/opt-in detector for the two-pass VERDICT-driven refinement loop
+ * (E-2026-07-12 Gyroid-knee ship, T4 — the integration keystone). Default OFF:
+ * when this returns false `buildConformingWall` is byte-identical to
+ * `buildConformingWallOnce` (today's production body), so the entire two-pass
+ * path is dead code in production until the flag is flipped. A `globalThis`
+ * read (not a new opt) because `WatertightAssembly` passes only named fields to
+ * `buildConformingWall` — there is no `...opts` spread to carry a new flag
+ * through (plan §T4 "Why the flag is a globalThis read").
+ */
+function isConformingVerdictRefineEnabled(): boolean {
+  return (
+    (globalThis as unknown as { __pfConformingVerdictRefine?: boolean })
+      .__pfConformingVerdictRefine === true
+  );
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -794,6 +817,41 @@ function buildWallMeshAtScale(
 }
 
 /**
+ * INTERNAL knobs for the single-pass build, used ONLY by the two-pass verdict
+ * loop in {@link buildConformingWall} (never on the public
+ * {@link ConformingWallOptions}; production callers never pass this). Keeps the
+ * flag-off path byte-identical: with `internal` absent, `buildConformingWallOnce`
+ * runs exactly today's production body.
+ */
+interface BuildOnceInternal {
+  /**
+   * Reuse this already-resolved budget scale INSTEAD of calling
+   * {@link searchBudgetScale}. The escalation rebuilds pass pass-0's chosen
+   * scale so (a) the budget re-search is skipped (cost — `searchBudgetScale` is
+   * CRITICAL and is NOT edited; this is a guarded early-return around the CALL)
+   * and (b) `budgetMode:'cap'` cannot re-coarsen the freshly escalated cells
+   * (plan §T4 risk #5). Absent ⇒ the production search path (byte-identical).
+   */
+  fixedScale?: number;
+  /**
+   * Called once with the resolved scale + the `FeatureRefineSpec` this build
+   * used, so the verdict loop can drive the scorer/selector with the SAME
+   * `intersects` predicate and fix the scale on escalation rebuilds.
+   */
+  captureBuildInfo?: (info: {
+    resolvedScale: number;
+    featureRefine?: FeatureRefineSpec;
+    featureLevel: number;
+  }) => void;
+}
+
+/**
+ * Single-pass conforming wall build — TODAY's `buildConformingWall` body,
+ * behaviourally unchanged. `buildConformingWall` is now a thin wrapper that, when
+ * the (default-OFF) verdict-refine flag is on, calls this repeatedly in a
+ * two-pass loop; when the flag is off it forwards straight to this function, so
+ * the production path is byte-identical.
+ *
  * Build a conforming wall with uniform `nRing` t=0/t=1 boundary rings.
  *
  * The quadtree pins the boundary rows to level `log2(nRing)` so each ring is
@@ -804,9 +862,10 @@ function buildWallMeshAtScale(
  * bounded so it never coarsens below the sag-required mesh (see
  * {@link searchBudgetScale}).
  */
-export function buildConformingWall(
+export function buildConformingWallOnce(
   sampler: SurfaceSampler,
   opts: ConformingWallOptions,
+  internal?: BuildOnceInternal,
 ): ConformingWallResult {
   let pinBoundaryLevel = 0;
   if (opts.nRing !== undefined) {
@@ -882,7 +941,12 @@ export function buildConformingWall(
     : undefined;
 
   const searchStart = stageTiming ? performance.now() : 0;
+  // `internal.fixedScale` (verdict-loop escalation rebuilds only) SKIPS the
+  // budget re-search: a guarded early-return around the CALL to the CRITICAL
+  // `searchBudgetScale` (which is itself never edited). Absent ⇒ the exact
+  // production condition `targetTriangles > 0` drives the search, byte-identical.
   const search =
+    internal?.fixedScale === undefined &&
     opts.targetTriangles !== undefined && opts.targetTriangles > 0
       ? searchBudgetScale(
           sampler,
@@ -895,7 +959,11 @@ export function buildConformingWall(
         )
       : undefined;
   if (stageTiming) stageTiming.searchMs = performance.now() - searchStart;
-  const targetScale = search?.scale ?? 1;
+  const targetScale = internal?.fixedScale ?? search?.scale ?? 1;
+  // Expose the resolved scale + the feature spec this build used to the two-pass
+  // verdict loop (buildConformingWall). No-op / zero cost when `internal` is
+  // absent (the production path).
+  internal?.captureBuildInfo?.({ resolvedScale: targetScale, featureRefine, featureLevel });
   // The search builds its terminal probe with directional refinement disabled.
   // Reuse it only when the final build has the same setting; the directional
   // path must retain its separate final rebuild because it changes the leaf set.
@@ -948,4 +1016,114 @@ export function buildConformingWall(
     budget: search?.telemetry,
     stageTiming,
   };
+}
+
+/**
+ * Max escalation passes for the two-pass verdict loop. Each pass scores the
+ * built wall against the LIFT sampler and escalates the outliers' 1-rings by one
+ * level; P2.5c converged the Gyroid band-edge knee by commanded L13 (worst
+ * 0.00711) within this bound.
+ */
+const VERDICT_MAX_PASS = 4;
+/**
+ * Verdict outlier tolerance (mm): a facet whose measured chord/max-sag against
+ * the LIFT sampler exceeds this is escalated. Matches the 0.01mm export standard
+ * P2.5c converged against.
+ */
+const VERDICT_TOL_MM = 0.01;
+
+/**
+ * Build a conforming wall — production entry point (unchanged signature/return).
+ *
+ * Default path (flag OFF, or any ineligible wall) forwards straight to
+ * {@link buildConformingWallOnce}, i.e. today's production build, BYTE-IDENTICAL.
+ *
+ * When the opt-in `__pfConformingVerdictRefine` flag is on AND this is an outer
+ * feature wall (`surfaceId === 0`, `featureLines` present) with no
+ * caller-supplied `featureLevelAt`, it runs the two-pass VERDICT loop
+ * (E-2026-07-12 Gyroid-knee ship, T4 keystone): build → score outlier facets
+ * against the LIFT sampler (the warp-composed surface the emitted triangles
+ * actually carry) → escalate their 1-rings via `featureLevelAt` → rebuild, up to
+ * {@link VERDICT_MAX_PASS} passes. The escalation is a build-time GEOMETRIC
+ * verdict, never the sizing-field curvature (which under-reads true curvature
+ * 1.2–20× — the exact mistake every prior build-time predictor made).
+ */
+export function buildConformingWall(
+  sampler: SurfaceSampler,
+  opts: ConformingWallOptions,
+): ConformingWallResult {
+  // Flag-OFF or ineligible ⇒ the byte-identical production path. Only the OUTER
+  // wall (features are outer-only), only with feature lines, and never when a
+  // caller already drives `featureLevelAt` itself (don't double-drive).
+  if (
+    !isConformingVerdictRefineEnabled() ||
+    opts.surfaceId !== 0 ||
+    (opts.featureLines?.length ?? 0) === 0 ||
+    opts.featureLevelAt !== undefined
+  ) {
+    return buildConformingWallOnce(sampler, opts);
+  }
+
+  // Pass 0: the production build. Capture its resolved budget scale + the
+  // feature spec it built so the loop drives the scorer/selector with the SAME
+  // `intersects` and reuses the scale on escalation rebuilds.
+  let resolvedScale = 1;
+  let capturedRefine: FeatureRefineSpec | undefined;
+  let featureLevel = opts.maxLevel;
+  let wall = buildConformingWallOnce(sampler, opts, {
+    captureBuildInfo: (info) => {
+      resolvedScale = info.resolvedScale;
+      capturedRefine = info.featureRefine;
+      featureLevel = info.featureLevel;
+    },
+  });
+  // No feature spec survived clipping ⇒ nothing to score/escalate against.
+  if (capturedRefine === undefined) return wall;
+  const featureRefine = capturedRefine;
+
+  const uBias = opts.uBias ?? 0;
+  const uCellRes = 1 << (featureLevel + uBias);
+  const lift = opts.efgSampler ?? sampler;
+  // Adapt the (readonly-tuple) SurfaceSampler to the scorer's lift interface —
+  // one fresh (mutable) triple per query (the scorer copies to XYZ anyway).
+  const liftSampler: VerdictLiftSampler = {
+    position: (u, t) => {
+      const p = lift.position(u, t);
+      return [p[0], p[1], p[2]];
+    },
+  };
+
+  // ACCUMULATE + INCREMENT (faithful P2.5c "iterate, fold survivors one level
+  // deeper"). `targets` persists across passes: coreCellKey → commanded level.
+  // Each pass folds the surviving outliers ONE level deeper and rebuilds the
+  // `featureLevelAt` closure from the FULL accumulated map, so (a) cells needing
+  // more than featureLevel+1 keep climbing (reaching L13+), (b) cells closed in
+  // an earlier pass STAY escalated (never re-opened), and (c) the `changed` guard
+  // terminates cleanly once every survivor has plateaued at maxLevel.
+  const targets = new Map<number, number>();
+  for (let pass = 0; pass < VERDICT_MAX_PASS; pass++) {
+    const candidates = selectCandidateFacets(wall, featureRefine);
+    const outliers = scoreCandidateFacets(
+      wall, liftSampler, candidates, VERDICT_TOL_MM, featureLevel, uBias,
+    );
+    if (outliers.length === 0) break;
+    let changed = false;
+    for (const o of outliers) {
+      const key = o.it * uCellRes + o.iu; // core cell key (matches T2/T3 keying)
+      const cur = targets.get(key) ?? featureLevel;
+      const next = Math.min(cur + 1, opts.maxLevel);
+      if (next !== cur) {
+        targets.set(key, next);
+        changed = true;
+      }
+    }
+    if (!changed) break; // every survivor already at maxLevel — converged/plateau
+    const levelAt = buildLevelAtFromTargets(targets, featureLevel, uBias, opts.maxLevel);
+    wall = buildConformingWallOnce(
+      sampler,
+      { ...opts, featureLevelAt: levelAt },
+      { fixedScale: resolvedScale },
+    );
+  }
+  return wall;
 }
