@@ -1,0 +1,158 @@
+{
+  "generatedAt": "2026-07-12T18:00:20.411Z",
+  "baseUrl": "http://localhost:3000/?fidelity=1",
+  "targetTriangles": 1500000,
+  "referenceDenseRes": 512,
+  "referenceBicubic": true,
+  "tolMm": 0.01,
+  "metric": "perpendicular",
+  "lastRunDenseN": 6,
+  "cpuSpineProvisionalMm": {
+    "SpiralRidges": 0.61,
+    "GothicArches": 1.49,
+    "GyroidManifold": 0.46
+  },
+  "results": [
+    {
+      "style": "SuperformulaBlossom",
+      "auto": {
+        "styleId": "SuperformulaBlossom",
+        "triangleCount": 2751535,
+        "referenceMode": "sfb-packed",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.13550554386735666,
+        "p99DevMm": 0.0000229053212521535,
+        "rmsDevMm": null,
+        "vertexMaxMm": 0.0011416263014183414,
+        "chordMaxMm": 0.30826861697131464,
+        "wallTriangles": 2751535,
+        "samples": 12740710,
+        "nAbove": 687513,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 7.881096386575322,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": -2.6179918813220517,
+          "z": 6.5052130349130266e-18,
+          "mm": 0.30826861697131464
+        }
+      },
+      "autoMs": 135908,
+      "gpuError": "SuperformulaBlossom diagnose-gpu timeout 1500000ms"
+    },
+    {
+      "style": "SpiralRidges",
+      "auto": {
+        "styleId": "SpiralRidges",
+        "triangleCount": 2702544,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.04688316546657735,
+        "p99DevMm": 0.004132631624472083,
+        "rmsDevMm": 0.0009574998411065597,
+        "vertexMaxMm": 0.00021825054571422697,
+        "chordMaxMm": 0.04688316546657735,
+        "wallTriangles": 2702544,
+        "samples": 10811166,
+        "nAbove": 7842,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.010907048978403111,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.4495515305059333,
+          "z": 112.96875,
+          "mm": 0.04688316546657735
+        }
+      },
+      "autoMs": 113840,
+      "gpu": {
+        "styleId": "SpiralRidges",
+        "triangleCount": 2702544,
+        "referenceMode": "gpu-grid",
+        "referenceRes": 512,
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.04559312691062482,
+        "p99DevMm": 0.003963394643108131,
+        "rmsDevMm": 0.001158624629719087,
+        "vertexMaxMm": 0.0024257657981152647,
+        "chordMaxMm": 0.04559312691062482,
+        "wallTriangles": 2702544,
+        "samples": 10810626,
+        "nAbove": 6499,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.010266547929276726,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.44327598326174533,
+          "z": 113.90625,
+          "mm": 0.04559312691062482
+        }
+      },
+      "gpuMs": 183909
+    },
+    {
+      "style": "GothicArches",
+      "auto": {
+        "styleId": "GothicArches",
+        "triangleCount": 1862097,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.4400902437632869,
+        "p99DevMm": 0.12891537189724372,
+        "rmsDevMm": 0.031998853081442284,
+        "vertexMaxMm": 0.0003505809363844037,
+        "chordMaxMm": 0.4400902437632869,
+        "wallTriangles": 1862097,
+        "samples": 13614468,
+        "nAbove": 4753246,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.17345592951470223,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": -1.4289112483685842,
+          "z": 53.04599507649739,
+          "mm": 0.4400902437632869
+        }
+      },
+      "autoMs": 264227,
+      "gpuError": "GothicArches diagnose-gpu timeout 1500000ms"
+    },
+    {
+      "style": "GyroidManifold",
+      "auto": {
+        "styleId": "GyroidManifold",
+        "triangleCount": 2168881,
+        "referenceMode": "analytic",
+        "referenceTrusted": true,
+        "metric": "perpendicular",
+        "maxDevMm": 0.7241304333507129,
+        "p99DevMm": 0.134552131298755,
+        "rmsDevMm": 0.029208457924368412,
+        "vertexMaxMm": 0.000459466353248672,
+        "chordMaxMm": 0.7241304333507129,
+        "wallTriangles": 2168881,
+        "samples": 17378614,
+        "nAbove": 3965074,
+        "nonFiniteCount": 0,
+        "seamBandMaxMm": 0.14756323757528378,
+        "riserBandMaxMm": 0,
+        "creaseBandMaxMm": 0,
+        "worst": {
+          "theta": 0.8697465415859585,
+          "z": 44.23828125,
+          "mm": 0.7241304333507129
+        }
+      },
+      "autoMs": 262305,
+      "gpuError": "GyroidManifold diagnose-gpu timeout 1500000ms"
+    }
+  ]
+}
