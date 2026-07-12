@@ -101,14 +101,24 @@ beats a burned hour").
 
 **Historical cross-check (independent corroboration, not a guess):** the ORIGINAL `_prod_truth.test.ts`
 probe (pre-existing, this arm did not run it) has its own completed GothicArches `shard=0/nShards=4` row
-in `research/exchange/_prod_truth/scorecard.ndjson` — same style, same shard config, no additional
-stride applied at the per-shard level: **`interior.ms=4,569,249` (~76.2 min)** scoring a matching
-~40,734-facet slice (162,937 survivors / 4), on this same machine. That run's per-facet rate was
-~112ms/facet — 2.9-3.5x cheaper than this arm's live 385-440ms/facet ticks. Both numbers agree on the
+in `research/exchange/_prod_truth/scorecard.ndjson` — same style, same shard config, ~~no additional
+stride applied at the per-shard level~~ → **SUPERSEDED: the row's own basis string is `stride=4
+prescreen45(...) shard=0/4` — it WAS stride-4**: **`interior.ms=4,569,249` (~76.2 min)** scoring ~~a
+matching ~40,734-facet slice (162,937 survivors / 4)~~ → **`scannedFacets=10,185`**, on this same
+machine. ~~That run's per-facet rate was ~112ms/facet — 2.9-3.5x cheaper than this arm's live
+385-440ms/facet ticks.~~ → **SUPERSEDED: the true per-scanned-facet rate is 448.6ms/facet (all 4
+shards: 448.6/441.1/428.0/442.1, aggregate 440.0) — the ~112ms figure divided `interior.ms` by the
+pre-stride survivor count (40,734) instead of the actually-scanned count (`scannedFacets`=10,185).
+This arm's live 385-440ms/facet ticks were at 0.86-0.98x parity with the probe, NOT 2.9-3.5x
+cheaper.** Both numbers agree on the
 conclusion (G1 interior confirm at this scale is a tens-of-minutes-to-hours cost, nowhere near the
-40-minute gate); they disagree substantially on the constant, which is itself a finding (see "Instrument
-surprises" below) rather than noise to paper over — this arm's honest number is the live 261-299 minute
-projection, NOT the historical 76 minutes, since they are not proven to be the same basis.
+40-minute gate); ~~they disagree substantially on the constant, which is itself a finding (see "Instrument
+surprises" below) rather than noise to paper over~~ → **SUPERSEDED: once correctly normalized they do
+NOT disagree (0.86-0.98x parity) — see "Instrument surprises" #2 below** — this arm's honest number is
+the live 261-299 minute projection, NOT the historical 76 minutes, since they are not proven to be the
+same basis (this part held up: v1.1 confirmed the harness ran de-facto stride-1 over the whole shard
+while the probe ran stride-4 — a real basis difference, not a rate difference). Full corrected analysis
++ confirming micro-benchmark: see "CORRECTION" section at the end of this file.
 
 **Process killed:** vitest CLI PID 11860 and fork-child PID 27096 (both bumped to AboveNormal priority
 at spawn) terminated by PID (`taskkill /F /T`) immediately after tick #2 was captured — fork-child
@@ -131,11 +141,21 @@ kill; `bench_crumbs.ndjson` contains the full 38-line stage trail for both style
    worst-point Newton re-score never ran. This is a genuinely stronger clean-bill than "0 outliers after
    scoring" — it means no facet was even AMBIGUOUS enough to need scoring. Consistent with, and slightly
    stronger evidence than, the batch's SHIPPED-CLEAN verdict.
-2. **GothicArches' live interior-confirm rate (385-440ms/facet across the two ticks, and worsening) ran
+2. ~~**GothicArches' live interior-confirm rate (385-440ms/facet across the two ticks, and worsening) ran
    ~3.4-3.9x slower than the same shard config's historical rate (112ms/facet) in the original
-   `_prod_truth.test.ts` probe.** Both this arm's harness
+   `_prod_truth.test.ts` probe.**~~ → **SUPERSEDED (2026-07-11, v1.1 follow-up): stride-denominator
+   misread, not a real slowdown.** The historical probe row is itself `stride=4` with
+   `scannedFacets=10,185` (its own basis string says so) — true probe rate is **440.0ms per SCANNED
+   facet** (4 shards: 448.6/441.1/428.0/442.1), not 112ms/facet (that figure divided `interior.ms` by
+   the pre-stride 40,734-survivor count). Correctly normalized, the harness's 385-440ms/facet was
+   **0.86-0.98x parity** with the probe — i.e. not slower at all. Confirmed dynamically by a
+   same-process micro-benchmark: probe-equivalent 388.2 vs harness 380.0 ms/scanned-facet (0.98x),
+   identical 449 outliers, elementwise-identical survivor lists (162,937). Full analysis: see
+   "CORRECTION" section at the end of this file. Both this arm's harness
    and the original probe call the identical `scoreWholeMeshInterior` (`_pf_rebaselineRuler.ts`) with
-   default GN/brute settings, on the same captured bins, same machine. Candidate explanations (not
+   default GN/brute settings, on the same captured bins, same machine. **The candidate explanations
+   below were investigating a discrepancy the correction above shows never existed — preserved for the
+   record per the lab's honesty conventions, not because they remain operative.** Candidate explanations (not
    adjudicated by this arm — flagging for whoever picks up the cost number next): (a) this specific
    killed sample (facets 0-406 in survivor-index order, ~91% flagged outlier vs the batch's eventual
    81.9% survivor-outlier rate) may be a locally harder-than-average region of the mesh (the batch's own
