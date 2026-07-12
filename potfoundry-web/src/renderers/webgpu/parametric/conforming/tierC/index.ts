@@ -28,7 +28,11 @@ import { isCountUnstableStyle } from './countUnstable';
 import { TIER_C_DETECT_OPTS } from './detectOpts';
 import { buildProtectedComplex } from './morseComplex';
 import { DEFAULT_RULER } from './interiorRuler';
-import { refineToZeroOutliers, type RefineResult } from './noBridgeRefine';
+import {
+  refineToZeroOutliers,
+  type RefineOptions,
+  type RefineResult,
+} from './noBridgeRefine';
 import { collapseDegenerateFaces } from './collapseDegenerate';
 
 export {
@@ -213,6 +217,40 @@ export function isPerfectMesherEnabled(): boolean {
 }
 
 /**
+ * SUB-FLAG for the C2 analytic-surface lever (T3.4), mirroring
+ * {@link isPerfectMesherEnabled}: unset/false in production. The analytic
+ * refine (score/place against the EXACT continuous surface instead of the 512²
+ * sampler grid — the mechanism that reaches LITERAL 0 outliers ≤0.01mm on
+ * Gothic/GeoStar, C2-full-patch-verdict.md) fires ONLY when BOTH this AND
+ * `__pfPerfectMesher` are on AND an `analyticRA` closure was supplied by the
+ * caller. Off ⇒ the sampler branch runs, byte-identical to today.
+ */
+export function isTierCAnalyticSurfaceEnabled(): boolean {
+  const g = globalThis as unknown as { __pfTierCAnalyticSurface?: boolean };
+  return g.__pfTierCAnalyticSurface === true;
+}
+
+/**
+ * {@link buildTierCOuterWall} options: the base conforming options plus the
+ * optional analytic-surface inputs the C2 lever consumes. The analytic fields
+ * are IGNORED unless BOTH flags ({@link isPerfectMesherEnabled} +
+ * {@link isTierCAnalyticSurfaceEnabled}) are on and the style is count-unstable;
+ * passing the closure is byte-identical flag-off (it is only INVOKED in the
+ * flag-on analytic branch, never constructed here).
+ */
+export interface TierCOuterWallOptions extends ConformingOuterWallOptions {
+  /**
+   * Exact analytic radius r(theta, z) for the style being meshed (built by
+   * `src/geometry/analyticRadius.ts#buildAnalyticRadiusFn` at the call site).
+   * Enables the C2 analytic-surface refine when `__pfTierCAnalyticSurface` is
+   * also on. Absent ⇒ the sampler branch (byte-identical).
+   */
+  analyticRA?: (theta: number, z: number) => number;
+  /** Optional analytic wall height (mm); default = measured off the sampler. */
+  analyticH?: number;
+}
+
+/**
  * Drop-in for {@link buildConformingOuterWall}: identical result contract.
  * Flag off → pure delegation (byte-identical, regardless of `styleId`). Flag on
  * → the Tier-C perfect-mesher path, but ONLY for the count-unstable styles the
@@ -226,7 +264,7 @@ export function isPerfectMesherEnabled(): boolean {
  */
 export function buildTierCOuterWall(
   sampler: SurfaceSampler,
-  opts: ConformingOuterWallOptions,
+  opts: TierCOuterWallOptions,
   styleId?: StyleId,
 ): ConformingOuterWallResult {
   if (!isPerfectMesherEnabled()) {
@@ -255,17 +293,35 @@ export function buildTierCOuterWall(
     tLo: 0,
     tHi: 1,
   });
+  // C2 analytic-surface lever (T3.4): the refine scores + places against the
+  // EXACT analytic surface (opts.analyticRA) instead of the sampler grid, the
+  // mechanism proven to reach LITERAL 0 outliers ≤0.01 (Gothic 18045/0, GeoStar
+  // 5071/0 — C2-full-patch-verdict.md). Fires ONLY when BOTH flags are on AND
+  // the caller supplied analyticRA; otherwise the sampler branch runs and the
+  // options object is byte-identical to the pre-T3.4 build.
+  // NOTE: refineToZeroOutliersParallel remains sampler-only — parallelizing the
+  // analytic refine is a separate perf task (documented follow-up, out of scope).
+  const useAnalytic =
+    isTierCAnalyticSurfaceEnabled() && opts.analyticRA !== undefined;
+  const refineOpts: RefineOptions = {
+    tolMm: 0.01,
+    maxPass: 16,
+    bulkPasses7pt: 4,
+    bgArcMm: 0.35,
+    ruler: DEFAULT_RULER,
+    ...(useAnalytic
+      ? {
+          surfaceSource: 'analytic',
+          analyticRA: opts.analyticRA,
+          analyticH: opts.analyticH,
+        }
+      : {}),
+  };
   const refined = refineToZeroOutliers(
     sampler,
     complex,
     { uLo: 0, uHi: 1, tLo: 0, tHi: 1 },
-    {
-      tolMm: 0.01,
-      maxPass: 16,
-      bulkPasses7pt: 4,
-      bgArcMm: 0.35,
-      ruler: DEFAULT_RULER,
-    },
+    refineOpts,
   );
   if (refined.capped) {
     // Honest failure — never emit a mesh the guard rejected.

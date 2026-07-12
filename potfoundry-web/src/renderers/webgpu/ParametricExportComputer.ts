@@ -190,6 +190,7 @@ import type { ValidationSummary, RefinementSummary, TDirectionFeature } from './
 import { solveRidgesBatch, type BatchEntry as RidgeBatchEntry } from './parametric/AnalyticRidgeSolver';
 import { gpuNewtonRidge, type GpuRidgeSeed } from './parametric/GpuRidgeSolver';
 import { baseRadius } from '../../geometry/profile';
+import { buildAnalyticRadiusFn } from '../../geometry/analyticRadius';
 import type { MeshData } from '../../geometry/types';
 import { assembleWatertightWithFeatures } from '../../fidelity/bandRemesh/assembleWithFeatures';
 import { makeReliefIndicator } from './parametric/conforming/featureGraph/groundTruth';
@@ -2286,6 +2287,22 @@ export class ParametricExportComputer {
                 // 4. Build the conforming outer wall in (u,t) space. Routed
                 // through the Tier-C entry: with __pfPerfectMesher unset
                 // (always, in production) this IS buildConformingOuterWall.
+                // C2 analytic-surface lever (T3.4): build the EXACT continuous
+                // analytic radius fn from src-only primitives (same surface as
+                // the research champion's getManifest().truth.rA). Passed as an
+                // opt; INVOKED only inside buildTierCOuterWall's flag-on analytic
+                // branch (both __pfPerfectMesher + __pfTierCAnalyticSurface on,
+                // count-unstable style) — so passing it is byte-identical flag-off.
+                const tierCAnalyticRA = buildAnalyticRadiusFn(
+                    params.styleId,
+                    params.styleOpts,
+                    {
+                        H: params.dimensions.H,
+                        Rb: params.dimensions.Rb,
+                        Rt: params.dimensions.Rt,
+                        expn: params.dimensions.expn,
+                    },
+                );
                 const ow = buildTierCOuterWall(sampler, {
                     maxSagMm: 0.1,
                     maxEdgeMm: 8,
@@ -2294,6 +2311,8 @@ export class ParametricExportComputer {
                     maxLevel: 10,
                     resU: 128,
                     resT: 128,
+                    analyticRA: tierCAnalyticRA,
+                    analyticH: params.dimensions.H,
                 }, params.styleId); // styleId = the Tier-C dispatch signal (allow-list)
 
                 // 5. Evaluate the conforming (u,t) vertices to real 3D positions.
