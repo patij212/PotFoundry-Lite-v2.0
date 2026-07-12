@@ -159,4 +159,38 @@ describe('scoreCandidateFacets — honest geometric chord/max-sag verdict scorer
     expect(a1[0].iu).toBe(0);
     expect(b1[0].iu).toBe(1);
   });
+
+  it('SEAM: a facet straddling the periodic u=0/u=1 seam is scored across the SHORT arc, not the long way around', () => {
+    // QuadtreeTriangulator collapses the u=1 column onto u=0 (QuadtreeTriangulator.ts:11-13,
+    // 68-72), so a facet on the right seam is STORED with u-values that straddle 0/1 — here
+    // {0.95, 0.05, 0.0}: three points on a narrow ~36deg arc around angle 0. On a plain
+    // cylinder its only true deviation is the barrel's own arc sagitta (R*(1-cos(18deg)) ~
+    // 2.4mm at R=50). The naive u-blend (wa*0.95 + wb*0.05 + wc*0.0) instead sweeps interior
+    // samples across u in [0, 0.95] — nearly all the way around — lifting to the FAR wall and
+    // fabricating sag on the order of the cylinder DIAMETER (~100mm). This asserts the scorer
+    // unwraps u across the seam (relative to ua) before dense-sampling, exactly as its own
+    // centroid keying already does (verdictRefine.ts wrapDu) and as the spike's scoreOuterSag
+    // was fixed to do.
+    const cyl = new BumpCylinderSampler(50, 100, 0, 0.5, 0.5, 0.05); // amp=0 ⇒ plain cylinder
+    const mesh = buildMesh([[0.95, 0.5], [0.05, 0.5], [0.0, 0.55]], [[0, 1, 2]]);
+    // tol=-1 forces the cell out regardless of flagging so we can read worstMm directly.
+    const cells = scoreCandidateFacets(mesh, cyl, [0], -1, /* featureLevel */ 4, /* uBias */ 0);
+    expect(cells).toHaveLength(1);
+    // Honest narrow-arc sag is ~2.4mm; the naive-blend bug reports ~100mm (order of the barrel
+    // diameter). A 10mm ceiling sits unambiguously between: passes post-fix, fails hard pre-fix.
+    expect(cells[0].worstMm).toBeLessThan(10);
+  });
+
+  it('SEAM/GUARD: a genuine non-periodic full-span triangle (u = 0,1,0) is NOT folded to zero width', () => {
+    // The seam-unwrap guard is `Math.abs(ub - ua) < 1 ? unwrap : leave`. Real mesh u's live
+    // in [0,1) so a raw delta of exactly ±1 never arises there — but the UNIT-EXACT saddle
+    // fixture above uses u = {0, 1, 0} (delta exactly 1.0). An UNCONDITIONAL unwrap would fold
+    // that ub from 1→0 (wrapDu(1)=0), collapsing the triangle in u and destroying its analytic
+    // worst. This pins that the guard keeps such a full-span facet intact. position(u,t)=[u,t,u*t]
+    // ⇒ interior (u,t)=(wb,wc), z=wb*wc, analytic max 0.25 at (0.5,0.5) — identical to UNIT-EXACT.
+    const mesh = buildMesh([[0, 0], [1, 0], [0, 1]], [[0, 1, 2]]);
+    const cells = scoreCandidateFacets(mesh, new SaddleSampler(), [0], 0.1, /* featureLevel */ 1, /* uBias */ 0);
+    expect(cells).toHaveLength(1);
+    expect(cells[0].worstMm).toBeCloseTo(0.25, 10);
+  });
 });

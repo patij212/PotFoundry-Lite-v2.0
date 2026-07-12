@@ -145,9 +145,24 @@ export function scoreCandidateFacets(
     const B = toXYZ(liftSampler.position(ub, tb));
     const C = toXYZ(liftSampler.position(uc, tc));
 
+    // Unwrap ub/uc across the periodic u=0/u=1 seam (relative to ua) BEFORE blending,
+    // then wrap each interior sample back into [0,1). QuadtreeTriangulator collapses the
+    // u=1 column onto u=0 (QuadtreeTriangulator.ts:11-13, 68-72), so a seam facet is stored
+    // with straddling u's (e.g. ua=0.95, ub=0.05); a naive `wa*ua + wb*ub + wc*uc` blend
+    // then sweeps interior samples the LONG way around the pot (toward the numeric midpoint
+    // ~1/3), lifting to the far wall and fabricating ~pot-diameter sag — the exact bug fixed
+    // in the spike's `scoreOuterSag`. The centroid keying below already unwraps via `wrapDu`
+    // for this same reason; the sag VALUE (which decides escalation) must too. Guarded to
+    // |delta| < 1 so a genuine non-periodic full-span fixture (ua=0, ub=1) is left intact
+    // rather than folded to zero width; real mesh u's live in [0,1) so a raw delta of exactly
+    // ±1 never occurs in production (see the SEAM and SEAM/GUARD scorer tests).
+    const ubU = Math.abs(ub - ua) < 1 ? ua + wrapDu(ub - ua) : ub;
+    const ucU = Math.abs(uc - ua) < 1 ? ua + wrapDu(uc - ua) : uc;
+
     let worst = 0;
     for (const [wa, wb, wc] of DENSE8) {
-      const u = wa * ua + wb * ub + wc * uc;
+      const uRaw = wa * ua + wb * ubU + wc * ucU;
+      const u = ((uRaw % 1) + 1) % 1;
       const t = wa * ta + wb * tb + wc * tc;
       const P = toXYZ(liftSampler.position(u, t));
       const d = perpDistToPlane(P, A, B, C);
