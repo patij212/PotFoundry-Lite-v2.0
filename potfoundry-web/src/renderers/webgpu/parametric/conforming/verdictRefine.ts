@@ -176,3 +176,139 @@ export function scoreCandidateFacets(
   }
   return out;
 }
+
+/** One marked escalation target cell on the (iu,it) grid, with its bounding
+ * box in (u,t) parametric space — mirrors P2.5c's `CellFlag` (see
+ * `research/bridge/_tierc_p2_5c.test.ts:231`, `cellFlagAt`), minus the fields
+ * this builder doesn't need (`level`, `cu0`/`cu1`/`ct0`/`ct1` are still
+ * required for the range-overlap query below). */
+interface OneRingFlag {
+  target: number;
+  cu0: number;
+  cu1: number;
+  ct0: number;
+  ct1: number;
+  tc: number;
+}
+
+/**
+ * Turns the T2 scorer's `OutlierCell[]` into a `featureLevelAt`-shaped
+ * command function covering each outlier cell AND its 8-neighbour 1-ring —
+ * proven necessary by research P2.5c: escalating only the single outlier
+ * cell leaves a 2:1-balance transition-apron sliver on a NEIGHBOUR (worst
+ * 0.0108, minAngle 2.31 deg); the 1-ring lands that apron in the smooth zone.
+ *
+ * Keys cells on the IDENTICAL (iu,it) grid the T2 scorer
+ * (`scoreCandidateFacets`) and the production quadtree use: u at
+ * `1 << (featureLevel + uBias)` resolution (PERIODIC — wraps 0≡1), t at
+ * `1 << featureLevel` resolution (NOT periodic — clamped to the valid
+ * range). Matching this convention exactly is what makes the 1-ring target
+ * the correct footprint; re-deriving it differently would silently escalate
+ * the wrong cells.
+ *
+ * `baseLevel` for the commanded escalation starts from the caller's
+ * `featureLevel` (the two-pass loop escalates +1 per pass and re-invokes this
+ * builder each pass with its own `featureLevel`), so a single call commands
+ * `min(featureLevel + 1, maxLevel)` uniformly across every marked cell —
+ * `maxLevel` caps it so an outlier already at `maxLevel` commands no deeper.
+ *
+ * Overlapping 1-rings from adjacent outliers MERGE (max, not sum/double-
+ * count) — see the `marks` de-dup below.
+ *
+ * The returned closure mirrors P2.5c's `makeSparseLevelAt` sparse-lookup
+ * structure (`research/bridge/_tierc_p2_5c.test.ts:242-268`): flags sorted by
+ * t-center with a binary-search lower-bound prune, then a periodic-wrapped
+ * u-overlap test — reimplemented locally (not imported; this module does not
+ * import from `research/**`, see the import-hygiene note at the top of this
+ * file). O(log N_targets + k) per query, k = overlapping flags near the
+ * query's t-band — sparse, since the production quadtree consults `levelAt`
+ * on many cells per build (T1).
+ */
+export function buildOneRingLevelAt(
+  outliers: OutlierCell[],
+  featureLevel: number,
+  uBias: number,
+  maxLevel: number,
+): (u0: number, t0: number, size: number) => number {
+  const uCellRes = 1 << (featureLevel + uBias);
+  const tCellRes = 1 << featureLevel;
+  const commandedLevel = Math.min(featureLevel + 1, maxLevel);
+
+  // Mark each outlier cell + its 1-ring: iu±1 periodic-wrapped at uCellRes,
+  // it±1 clamped (dropped when out of [0,tCellRes)). De-duped by (iu,it) key
+  // taking the max target — this IS the merge: two outliers whose rings
+  // overlap the same cell never double-apply or sum, they just agree (both
+  // commanding the same `commandedLevel` here, but `max` keeps this correct
+  // even if a future caller passes per-outlier levels).
+  const marks = new Map<number, number>();
+  for (const o of outliers) {
+    for (let dt = -1; dt <= 1; dt++) {
+      const it = o.it + dt;
+      if (it < 0 || it >= tCellRes) continue; // t is NOT periodic — clamp by dropping
+      for (let du = -1; du <= 1; du++) {
+        const iu = ((o.iu + du) % uCellRes + uCellRes) % uCellRes; // periodic wrap
+        const key = it * uCellRes + iu;
+        const existing = marks.get(key);
+        if (existing === undefined || commandedLevel > existing) {
+          marks.set(key, commandedLevel);
+        }
+      }
+    }
+  }
+
+  const flags: OneRingFlag[] = [];
+  for (const [key, target] of marks) {
+    const iu = key % uCellRes;
+    const it = (key - iu) / uCellRes;
+    const cu0 = iu / uCellRes, cu1 = (iu + 1) / uCellRes;
+    const ct0 = it / tCellRes, ct1 = (it + 1) / tCellRes;
+    flags.push({ target, cu0, cu1, ct0, ct1, tc: (ct0 + ct1) / 2 });
+  }
+
+  // Sparse lookup structure — mirrors P2.5c's makeSparseLevelAt shape
+  // (sorted-by-tc + binary-search lower_bound t-prune, then a periodic-
+  // wrapped u-overlap test over the pruned band). One deliberate deviation
+  // from P2.5c's boundary convention: P2.5c's overlap test is INCLUSIVE of
+  // mere edge-touching (`< cu1 + EPS` / `> cu0 - EPS`), which is correct for
+  // its coarse-ancestor "does this box's edge graze a feature" query but
+  // would wrongly light up an off-target cell that only shares a boundary
+  // with a marked cell (zero-area intersection) when queried at THIS
+  // builder's own resolution — breaking the "0 everywhere else" contract
+  // from the brief. This overlap test is STRICT (excludes zero-area
+  // touching) instead, via a small negative EPS margin on each side; a
+  // genuine partial-area overlap (the coarse-ancestor case this structure
+  // still supports) is unaffected since real overlaps exceed 2*EPS.
+  const sorted = flags.slice().sort((a, b) => a.tc - b.tc);
+  const tcs = Float64Array.from(sorted.map((f) => f.tc));
+  const maxFlagT = 1 / tCellRes;
+  const EPS = 1e-9;
+  const lowerBound = (arr: Float64Array, x: number): number => {
+    let lo = 0, hi = arr.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (arr[mid] < x) lo = mid + 1; else hi = mid;
+    }
+    return lo;
+  };
+  const uOverlap = (qu0: number, qu1: number, cu0: number, cu1: number): boolean => {
+    for (const s of [-1, 0, 1]) if (qu0 + s < cu1 - EPS && qu1 + s > cu0 + EPS) return true;
+    return false;
+  };
+
+  return (u0: number, t0: number, size: number): number => {
+    // Query box in (u,t) space. u-width scales by 1<<uBias since u is
+    // indexed at the finer featureLevel+uBias resolution while `size` is
+    // expressed in t-units (matches belowFeatureFloorTest's call convention
+    // in PeriodicBalancedQuadtree.ts and P2.5c's makeSparseLevelAt).
+    const qU0 = u0, qU1 = u0 + size / (1 << uBias);
+    const qT0 = t0, qT1 = t0 + size;
+    let best = 0;
+    for (let i = lowerBound(tcs, qT0 - maxFlagT - EPS); i < sorted.length && tcs[i] <= qT1 + EPS; i++) {
+      const fl = sorted[i];
+      if (fl.ct0 < qT1 - EPS && fl.ct1 > qT0 + EPS && uOverlap(qU0, qU1, fl.cu0, fl.cu1)) {
+        if (fl.target > best) best = fl.target;
+      }
+    }
+    return best;
+  };
+}
