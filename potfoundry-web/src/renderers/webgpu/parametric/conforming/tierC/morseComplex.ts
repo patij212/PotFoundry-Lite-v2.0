@@ -96,6 +96,35 @@ export interface BandContour {
   maxChordMm?: number;
 }
 
+/**
+ * PERIODIC SEAM LOCK (T3.2, PROD-TIERC wire-and-validate, opt-in) — a pair of
+ * LOCKED t-aligned constraint columns injected at the periodic wrap `u=uLo` and
+ * `u=uHi`, both carrying a SINGLE set of t-stations computed ONCE (so the two
+ * columns are byte-identical in t). cdt2d over the UNWRAPPED [0,1] u-chart
+ * otherwise places the u=0 and u=1 boundaries as independent vertex sets whose
+ * t-stations don't even match count-for-count (measured T3.1: 175 vs 41, 0
+ * shared), leaving the outer wall's periodic seam an open crack. Locking both
+ * columns to identical stations lets the downstream mapper (`toOuterWallResult`)
+ * dedupe `u=uHi` onto `u=uLo` into one shared locked index column.
+ *
+ * Same planarity-safe machinery as pickets / band contours: each column is a
+ * chain of vertices appended to the raw mm soup BEFORE `planarizeMM`, so any
+ * rib-chain crossing splits into a T-junction and `residualCrossings` stays 0.
+ * Off ⇒ byte-identical to the prior complex.
+ */
+export interface SeamLockSpec {
+  /** Left periodic column (u fraction) — the canonical seam column. Typically 0. */
+  uLo: number;
+  /** Right periodic column (u fraction) — the wrap image of `uLo`. Typically 1. */
+  uHi: number;
+  /** t-band start (fraction). Default 0. */
+  tLo?: number;
+  /** t-band end (fraction). Default 1. */
+  tHi?: number;
+  /** Max 3D chord (mm) between consecutive locked seam vertices. Default 0.15. */
+  maxChordMm?: number;
+}
+
 // ---------------------------------------------------------------------------
 // Physical scale measurement (same 128-pt chord sums detectFeatures uses
 // internally; module-private there, so re-measured locally).
@@ -515,6 +544,7 @@ export function buildProtectedComplex(
   prebuilt?: FeatureGraph,
   pickets?: readonly PicketSpec[],
   bandContours?: readonly BandContour[],
+  seam?: SeamLockSpec,
 ): ProtectedComplex {
   const uToMm = measureUCircumference(sampler);
   const tToMm = measureTHeight(sampler);
@@ -713,6 +743,37 @@ export function buildProtectedComplex(
           prevIdx = idx;
         }
         uPrev = u;
+      }
+    }
+  }
+
+  // PERIODIC SEAM LOCK (T3.2, opt-in). Emit TWO locked columns at u=uLo and
+  // u=uHi sharing ONE set of t-stations (computed once along the uLo column's
+  // 3D arc so both columns are byte-identical in t) — the prerequisite for
+  // toOuterWallResult to dedupe the periodic wrap boundaries into a single
+  // shared index column. Injected into the raw mm soup BEFORE planarizeMM so
+  // any rib-chain crossing splits to a T-junction (residualCrossings stays 0).
+  // Off ⇒ byte-identical to the prior complex.
+  if (seam) {
+    const sTLo = seam.tLo ?? 0;
+    const sTHi = seam.tHi ?? 1;
+    const maxChordMm = seam.maxChordMm ?? 0.15;
+    const A = pos3D(seam.uLo, sTLo);
+    const B = pos3D(seam.uLo, sTHi);
+    const len3 = Math.hypot(A[0] - B[0], A[1] - B[1], A[2] - B[2]);
+    const nSeg = Math.max(1, Math.ceil(len3 / maxChordMm));
+    const tStations: number[] = [];
+    for (let s = 0; s <= nSeg; s++) {
+      tStations.push(sTLo + (s / nSeg) * (sTHi - sTLo));
+    }
+    for (const uCol of [seam.uLo, seam.uHi]) {
+      let prevIdx = pts.length / 2;
+      pts.push(uCol * uToMm, tStations[0] * tToMm);
+      for (let s = 1; s < tStations.length; s++) {
+        const idx = pts.length / 2;
+        pts.push(uCol * uToMm, tStations[s] * tToMm);
+        rawEdges.push([prevIdx, idx]);
+        prevIdx = idx;
       }
     }
   }

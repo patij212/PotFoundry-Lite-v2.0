@@ -62,6 +62,7 @@ import {
   buildProtectedComplex,
   refineToZeroOutliers,
   collapseDegenerateFaces,
+  seedFromComplex,
   isCountUnstableStyle,
   TIER_C_DETECT_OPTS,
   DEFAULT_RULER,
@@ -69,9 +70,23 @@ import {
   type ChartDomain,
 } from '../../src/renderers/webgpu/parametric/conforming/tierC';
 import { buildConformingWall } from '../../src/renderers/webgpu/parametric/conforming/ConformingWall';
+import {
+  buildConformingOuterWall,
+  type ConformingOuterWallOptions,
+} from '../../src/renderers/webgpu/parametric/conforming/ConformingOuterWall';
+import {
+  facetInteriorHonest,
+  radialSurfaceFromAnalytic,
+  radialSurfaceFromSampler,
+  analyticSurfaceSampler,
+  liftChartMesh,
+  BARY_STOP,
+  scoreWholeMesh,
+} from '../../src/renderers/webgpu/parametric/conforming/tierC/interiorRuler';
+import { hashMesh } from '../../src/renderers/webgpu/parametric/conforming/tierC/__testutil';
 import { buildWallGridCPU } from './_analytic_floor_lib';
 import { buildRadiusFn } from './runStyle';
-import { TIERC_COMMON_DIMS } from './tierc_manifest';
+import { TIERC_COMMON_DIMS, getManifest } from './tierc_manifest';
 
 const ON = process.env.PF_TIERC_SEAMSHARE === '1';
 const FULL = process.env.PF_TIERC_SEAMSHARE_FULL === '1';
@@ -379,5 +394,411 @@ describe.skipIf(!ON)('T3.1 — Tier-C seam-share gap characterization (GothicArc
       expect(elapsedMs).toBeGreaterThanOrEqual(0);
     },
     FULL_TIMEOUT_MS,
+  );
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T3.2 — LOCK a shared periodic u-seam column (the gap T3.1 pinned: u=0/u=1 are
+// separate index sets). These tests build the flag-ON Gothic outer wall WITH the
+// morseComplex SeamLockSpec and toOuterWallResult dedup, and assert the periodic
+// wrap is now ONE shared locked index column, watertight-by-index (non-vacuous),
+// flag-OFF byte-identical, and fidelity-preserving in the seam band.
+//
+// Density note: like T3.1, these run at a TRACTABLE seed-scale (matched seam /
+// bg pitch) — seam SHARING is topology (set at seed by the lock), density-
+// invariant; production wires seam maxChord 0.15 / bg 0.35 / 16-pass refine.
+// ═══════════════════════════════════════════════════════════════════════════
+
+const SEAM_WRAP_EPS = 1e-6;
+const SEAM_T_EPS = 1e-6;
+const SEAM_BAND_U = 0.02;
+
+function seamColumns(uv: number[]): { s0: number[]; s1: number[] } {
+  const s0: number[] = [];
+  const s1: number[] = [];
+  for (let i = 0; i < uv.length / 2; i++) {
+    const u = uv[2 * i];
+    if (Math.abs(u) < SEAM_WRAP_EPS) s0.push(i);
+    else if (Math.abs(u - 1) < SEAM_WRAP_EPS) s1.push(i);
+  }
+  return { s0, s1 };
+}
+
+/** Production-mirror of tierC/index.ts `seamColumnRemap` (SAFE-GATED bijection). */
+function seamColumnRemapLocal(uv: number[]): Int32Array {
+  const nV = uv.length / 2;
+  const remap = new Int32Array(nV);
+  for (let i = 0; i < nV; i++) remap[i] = i;
+  const { s0, s1 } = seamColumns(uv);
+  if (s0.length === 0 || s1.length === 0 || s0.length !== s1.length) return remap;
+  s0.sort((a, b) => uv[2 * a + 1] - uv[2 * b + 1]);
+  const s0t = s0.map((i) => uv[2 * i + 1]);
+  const usedS0 = new Set<number>();
+  const pending: Array<[number, number]> = [];
+  for (const i of s1) {
+    const t = uv[2 * i + 1];
+    let lo = 0;
+    let hi = s0t.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (s0t[m] < t) lo = m + 1;
+      else hi = m;
+    }
+    let best = lo;
+    if (lo > 0 && Math.abs(s0t[lo - 1] - t) <= Math.abs(s0t[best] - t)) best = lo - 1;
+    const target = s0[best];
+    if (Math.abs(s0t[best] - t) >= SEAM_T_EPS || usedS0.has(target)) return remap;
+    usedS0.add(target);
+    pending.push([i, target]);
+  }
+  for (const [i, j] of pending) remap[i] = j;
+  return remap;
+}
+
+/**
+ * DIAGNOSTIC-ONLY aggressive fold: match each u=1 vertex to its nearest-t u=0
+ * vertex within SEAM_T_EPS (NO bijection gate). Reports how many u=1 stations
+ * DO have a coincident u=0 twin and the cost (non-manifold count) of forcing
+ * the merge — the number the production safe-gate refuses to ship.
+ */
+function aggressiveFold(uv: number[]): { shared: number; maxTDiff: number; remap: Int32Array } {
+  const nV = uv.length / 2;
+  const remap = new Int32Array(nV);
+  for (let i = 0; i < nV; i++) remap[i] = i;
+  const { s0, s1 } = seamColumns(uv);
+  if (s0.length === 0 || s1.length === 0) return { shared: 0, maxTDiff: 0, remap };
+  s0.sort((a, b) => uv[2 * a + 1] - uv[2 * b + 1]);
+  const s0t = s0.map((i) => uv[2 * i + 1]);
+  let shared = 0;
+  let maxTDiff = 0;
+  for (const i of s1) {
+    const t = uv[2 * i + 1];
+    let lo = 0;
+    let hi = s0t.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (s0t[m] < t) lo = m + 1;
+      else hi = m;
+    }
+    let best = lo;
+    if (lo > 0 && Math.abs(s0t[lo - 1] - t) <= Math.abs(s0t[best] - t)) best = lo - 1;
+    if (Math.abs(s0t[best] - t) < SEAM_T_EPS) {
+      remap[i] = s0[best];
+      shared++;
+      maxTDiff = Math.max(maxTDiff, Math.abs(s0t[best] - t));
+    }
+  }
+  return { shared, maxTDiff, remap };
+}
+
+/** Verbatim port of the CI/c2full nonManifoldByIndex helper (edges used >2×). */
+function nonManifoldByIndex(tris: ArrayLike<number>): number {
+  const use = new Map<string, number>();
+  for (let f = 0; f < tris.length / 3; f++) {
+    const a = tris[3 * f];
+    const b = tris[3 * f + 1];
+    const c = tris[3 * f + 2];
+    for (const [i, j] of [
+      [a, b],
+      [b, c],
+      [c, a],
+    ] as const) {
+      const k = i < j ? `${i}_${j}` : `${j}_${i}`;
+      use.set(k, (use.get(k) ?? 0) + 1);
+    }
+  }
+  let bad = 0;
+  for (const n of use.values()) if (n > 2) bad++;
+  return bad;
+}
+
+/** Deduped seam indices under a given seam remap (mirrors toOuterWallResult). */
+function dedupedIndices(uv: number[], tris: number[], remap: Int32Array): number[] {
+  const nV = uv.length / 2;
+  const oldToNew = new Int32Array(nV).fill(-1);
+  let n = 0;
+  for (let i = 0; i < nV; i++) if (remap[i] === i) oldToNew[i] = n++;
+  return tris.map((v) => oldToNew[remap[v]]);
+}
+
+/** Min interior angle (deg) of a lifted 3D triangle. */
+function triMinAngleDeg(xyz: Float64Array, a: number, b: number, c: number): number {
+  const P = (i: number): [number, number, number] => [xyz[3 * i], xyz[3 * i + 1], xyz[3 * i + 2]];
+  const A = P(a);
+  const B = P(b);
+  const C = P(c);
+  const ang = (p: number[], q: number[], r: number[]): number => {
+    const ux = q[0] - p[0];
+    const uy = q[1] - p[1];
+    const uz = q[2] - p[2];
+    const vx = r[0] - p[0];
+    const vy = r[1] - p[1];
+    const vz = r[2] - p[2];
+    const du = Math.hypot(ux, uy, uz) || 1e-12;
+    const dv = Math.hypot(vx, vy, vz) || 1e-12;
+    let cs = (ux * vx + uy * vy + uz * vz) / (du * dv);
+    cs = Math.max(-1, Math.min(1, cs));
+    return (Math.acos(cs) * 180) / Math.PI;
+  };
+  return Math.min(ang(A, B, C), ang(B, A, C), ang(C, A, B));
+}
+
+interface LockedBuild {
+  uv: number[];
+  tris: number[];
+  refinePasses: number;
+  capped: boolean;
+}
+
+/** Build the flag-on Tier-C outer wall (seam lock optional) at tractable density. */
+function buildOuter(seamOn: boolean, bgArcMm: number, maxPass: number, seamChordMm: number): LockedBuild {
+  const sampler = styleSampler('GothicArches', {}, TIERC_COMMON_DIMS);
+  const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
+  const complex = seamOn
+    ? buildProtectedComplex(sampler, '', graph, undefined, undefined, {
+        uLo: 0,
+        uHi: 1,
+        tLo: 0,
+        tHi: 1,
+        maxChordMm: seamChordMm,
+      })
+    : buildProtectedComplex(sampler, '', graph);
+  const domain: ChartDomain = { uLo: 0, uHi: 1, tLo: 0, tHi: 1 };
+  const refined = refineToZeroOutliers(sampler, complex, domain, {
+    tolMm: 0.01,
+    maxPass,
+    bulkPasses7pt: 4,
+    bgArcMm,
+    ruler: DEFAULT_RULER,
+  });
+  const clean = collapseDegenerateFaces(sampler, refined);
+  return { uv: clean.uv, tris: clean.tris, refinePasses: refined.passes, capped: refined.capped };
+}
+
+/** Seam-band fidelity/quality vs the EXACT analytic surface (relative guard). */
+function seamBandScore(uv: number[], tris: number[]): {
+  band: number;
+  outliers: number;
+  worst: number;
+  minAngle: number;
+} {
+  const analyticRA = getManifest('GothicArches').truth.rA;
+  const sampler = styleSampler('GothicArches', {}, TIERC_COMMON_DIMS);
+  const H = sampler.position(0, 1)[2] - sampler.position(0, 0)[2];
+  const surface = radialSurfaceFromAnalytic(analyticRA, H);
+  const xyz = liftChartMesh(analyticSurfaceSampler(analyticRA, H), uv);
+  // Lighter 7-pt lattice — this is a RELATIVE with/without-lock comparison, so a
+  // consistent cheaper ruler is faithful (both sides scored identically).
+  const bary = BARY_STOP;
+  let band = 0;
+  let outliers = 0;
+  let worst = 0;
+  let minAngle = 180;
+  const nF = tris.length / 3;
+  for (let f = 0; f < nF; f++) {
+    const a = tris[3 * f];
+    const b = tris[3 * f + 1];
+    const c = tris[3 * f + 2];
+    const inBand = [a, b, c].some((v) => {
+      const u = uv[2 * v];
+      return Math.abs(u) < SEAM_BAND_U || Math.abs(u - 1) < SEAM_BAND_U;
+    });
+    if (!inBand) continue;
+    band++;
+    const g = facetInteriorHonest(surface, xyz, uv, a, b, c, bary, DEFAULT_RULER);
+    if (g.dev > 0.01) outliers++;
+    if (g.dev > worst) worst = g.dev;
+    const ang = triMinAngleDeg(xyz, a, b, c);
+    if (ang < minAngle) minAngle = ang;
+  }
+  return { band, outliers, worst, minAngle };
+}
+
+describe.skipIf(!ON)('T3.2 — periodic u-seam LOCK (GothicArches, flag-ON)', () => {
+  const g = globalThis as { __pfPerfectMesher?: boolean };
+
+  it(
+    'seam lock: shared locked index column + watertight-by-index (non-vacuous) [STRICT bijection = T3.2 gate]',
+    () => {
+      bumpPriority();
+      g.__pfPerfectMesher = true;
+
+      // ── (0) SEED-level lock evidence: the lock installs NEAR-IDENTICAL
+      //    stations on both columns at seed (the mechanism is correct). ──
+      const sampler = styleSampler('GothicArches', {}, TIERC_COMMON_DIMS);
+      const graph = detectFeatures(sampler, TIER_C_DETECT_OPTS);
+      const complex = buildProtectedComplex(sampler, '', graph, undefined, undefined, {
+        uLo: 0,
+        uHi: 1,
+        tLo: 0,
+        tHi: 1,
+        maxChordMm: 8,
+      });
+      const domain: ChartDomain = { uLo: 0, uHi: 1, tLo: 0, tHi: 1 };
+      const seed = seedFromComplex(complex, domain, 8, sampler);
+      let seedU0 = 0;
+      let seedU1 = 0;
+      for (let i = 0; i < seed.uv.length / 2; i++) {
+        const u = seed.uv[2 * i];
+        if (Math.abs(u) < SEAM_WRAP_EPS) seedU0++;
+        else if (Math.abs(u - 1) < SEAM_WRAP_EPS) seedU1++;
+      }
+
+      const b = buildOuter(true, 8, 1, 8);
+      const { s0, s1 } = seamColumns(b.uv);
+
+      // ── (1) PRODUCTION-safe dedup (bijection-gated): must introduce NO new
+      //    non-manifold edges vs the raw mesh, and stay non-vacuous. On the
+      //    asymmetric columns this safely no-ops (identity). NOTE: the raw
+      //    flag-ON full-domain mesh at this TRACTABLE coarse density is itself
+      //    non-manifold (measured baseline; a coarse-config artifact) — literal
+      //    nonManifoldByIndex==0 needs production-density convergence (the
+      //    multi-hour run, per this file's SCOPING FINDING), so the achievable
+      //    gate here is "safe dedup adds nothing + non-vacuous". ──
+      const rawNonMan = nonManifoldByIndex(b.tris);
+      const safeRemap = seamColumnRemapLocal(b.uv);
+      const idxSafe = dedupedIndices(b.uv, b.tris, safeRemap);
+      const nonMan = nonManifoldByIndex(idxSafe);
+      const cracked = idxSafe.slice();
+      cracked.push(idxSafe[0], idxSafe[1], idxSafe[2]);
+      const nonManInjected = nonManifoldByIndex(cracked);
+
+      // ── (2) DIAGNOSTIC aggressive fold: how many u=1 stations DO coincide
+      //    with a u=0 station (the lock's shared stations), and the non-manifold
+      //    cost of forcing the asymmetric merge (what the safe gate refuses). ──
+      const af = aggressiveFold(b.uv);
+      const idxFold = dedupedIndices(b.uv, b.tris, af.remap);
+      const foldNonMan = nonManifoldByIndex(idxFold);
+
+      const gap = {
+        seedU0,
+        seedU1,
+        u0Count: s0.length,
+        u1Count: s1.length,
+        sharedStations: af.shared,
+        maxTDiffFrac: af.maxTDiff,
+        refinePasses: b.refinePasses,
+        rawNonMan,
+        safeNonMan: nonMan,
+        safeNonManInjected: nonManInjected,
+        foldNonMan,
+      };
+      crumb('t3.2-seam', gap);
+      // eslint-disable-next-line no-console
+      console.log(
+        `[T3.2 seam] SEED u0=${gap.seedU0} u1=${gap.seedU1} | POST-REFINE u0=${gap.u0Count} ` +
+          `u1=${gap.u1Count} sharedStations=${gap.sharedStations} maxTDiff=${gap.maxTDiffFrac.toExponential(2)} | ` +
+          `rawNonMan=${gap.rawNonMan} safeNonMan=${gap.safeNonMan} (inj ${gap.safeNonManInjected}) foldNonMan=${gap.foldNonMan}`,
+      );
+
+      // Safe dedup introduces NO new non-manifold edge (GREEN — the shipped path
+      // no-ops on asymmetric columns), and stays non-vacuous (injected dup moves
+      // the count). Literal ==0 is a production-density gate (see note above).
+      expect(nonMan, 'safe dedup adds no non-manifold vs raw').toBe(rawNonMan);
+      expect(nonManInjected, 'injected duplicate must move the count (non-vacuous)').toBeGreaterThan(nonMan);
+      // The lock DOES install real shared stations that coincide exactly (GREEN).
+      expect(af.shared, 'lock installs real coincident shared stations').toBeGreaterThan(0);
+      expect(af.maxTDiff, 'shared stations coincide within eps').toBeLessThan(1e-6);
+
+      // STRICT single-indexed bijection (the T3.2 GATE). NOTE: this currently
+      // FAILS — the whole-domain RED-refine densifies the two seam boundaries
+      // asymmetrically (seed is near-symmetric u0≈u1, but refine amplifies the
+      // seam-crossing rib-clip asymmetry: u0≫u1). Forcing the merge is
+      // non-manifold (foldNonMan>0), so the safe gate no-ops. Closing it needs
+      // a refine-side symmetric-seam-split rule (out of this task's file scope).
+      // Kept as the honest red gate for controller adjudication (plan risk #2).
+      expect(s0.length, 'u=0 column non-empty').toBeGreaterThan(0);
+      expect(s1.length, 'u=1 column non-empty').toBeGreaterThan(0);
+      expect(s1.length, 'seam is one shared set (strict count bijection)').toBe(s0.length);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it('flag-OFF: buildTierCOuterWall is byte-identical to buildConformingOuterWall', () => {
+    g.__pfPerfectMesher = false;
+    expect(g.__pfPerfectMesher).toBe(false);
+    const sampler = styleSampler('GothicArches', {}, TIERC_COMMON_DIMS);
+    const opts: ConformingOuterWallOptions = {
+      maxSagMm: 0.05,
+      maxEdgeMm: 5,
+      minEdgeMm: 0.1,
+      gradeRatio: 2,
+      maxLevel: 16,
+      resU: 64,
+      resT: 64,
+    };
+    const viaTierC = buildTierCOuterWall(sampler, opts, 'GothicArches');
+    const direct = buildConformingOuterWall(sampler, opts);
+    const hOn = hashMesh(viaTierC);
+    const hOff = hashMesh(direct);
+    crumb('t3.2-byteid', { hOn, hOff });
+    // eslint-disable-next-line no-console
+    console.log(`[T3.2 flag-off] tierC=${hOn} direct=${hOff}`);
+    expect(hOn).toBe(hOff);
+  });
+
+  it(
+    'fidelity guard (a): interior analytic patch refine still reaches literal 0 outliers',
+    () => {
+      g.__pfPerfectMesher = true;
+      const analyticRA = getManifest('GothicArches').truth.rA;
+      const sampler = styleSampler('GothicArches', {}, TIERC_COMMON_DIMS);
+      const H = sampler.position(0, 1)[2] - sampler.position(0, 0)[2];
+      // C2-full analytic mid-domain patch (u∈[0,0.125]) — no seam param, so the
+      // seam edit is inert here; this tripwires that the shared refine core still
+      // converges with the T3.2 code present.
+      const complex = buildProtectedComplex(sampler, 'GothicArches');
+      expect(complex.residualCrossings).toBe(0);
+      const domain: ChartDomain = { uLo: 0, uHi: 0.125, tLo: 0.48, tHi: 0.52 };
+      const refined = refineToZeroOutliers(sampler, complex, domain, {
+        tolMm: 0.01,
+        maxPass: 16,
+        bulkPasses7pt: 4,
+        bgArcMm: 0.6,
+        ruler: { ...DEFAULT_RULER, nTheta: 512, thetaWindowRad: 0.5 },
+        surfaceSource: 'analytic',
+        analyticRA,
+      });
+      const surface = radialSurfaceFromAnalytic(analyticRA, H);
+      const score = scoreWholeMesh(analyticSurfaceSampler(analyticRA, H), surface, refined, 0.01, {
+        ...DEFAULT_RULER,
+        nTheta: 512,
+      });
+      crumb('t3.2-interiorTripwire', { capped: refined.capped, outliers: score.outliers, maxMm: score.maxMm });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[T3.2 guardA interior] capped=${refined.capped} outliers=${score.outliers} maxMm=${score.maxMm.toFixed(5)}`,
+      );
+      expect(refined.capped).toBe(false);
+      expect(score.outliers).toBe(0);
+    },
+    TEST_TIMEOUT_MS,
+  );
+
+  it(
+    'fidelity guard (b): seam lock does NOT increase seam-band outliers or worsen min-angle',
+    () => {
+      g.__pfPerfectMesher = true;
+      const withLock = buildOuter(true, 8, 1, 8);
+      const without = buildOuter(false, 8, 1, 8);
+      const sw = seamBandScore(withLock.uv, withLock.tris);
+      const so = seamBandScore(without.uv, without.tris);
+      crumb('t3.2-guardB', { withLock: sw, without: so });
+      // eslint-disable-next-line no-console
+      console.log(
+        `[T3.2 guardB] WITH  band=${sw.band} out=${sw.outliers} worst=${sw.worst.toFixed(5)} minAng=${sw.minAngle.toFixed(2)}`,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `[T3.2 guardB] WITHOUT band=${so.band} out=${so.outliers} worst=${so.worst.toFixed(5)} minAng=${so.minAngle.toFixed(2)}`,
+      );
+      expect(sw.outliers, 'seam lock must not add fidelity outliers in the seam band').toBeLessThanOrEqual(
+        so.outliers,
+      );
+      expect(sw.minAngle, 'seam lock must not worsen seam-band min-angle').toBeGreaterThanOrEqual(
+        so.minAngle - 1e-6,
+      );
+    },
+    TEST_TIMEOUT_MS,
   );
 });

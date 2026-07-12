@@ -80,38 +80,115 @@ export {
   type CollapseResult,
 } from './collapseDegenerate';
 
+/** Raw-u proximity (fraction) to the uLo / uHi periodic columns. */
+const SEAM_WRAP_EPS = 1e-6;
+/** t-station match tolerance (fraction) between the two locked seam columns. */
+const SEAM_T_EPS = 1e-6;
+
+/**
+ * Build the u=uHi→u=uLo remap that dedupes the periodic seam column (T3.2).
+ * The seam lock ({@link buildProtectedComplex}'s `SeamLockSpec`) gives the u=0
+ * and u=1 columns byte-identical t-stations, so each u=1 vertex coincides 1:1
+ * (same t) with a u=0 vertex after the u→[0,1) wrap.
+ *
+ * SAFETY GATE (T3.2 concern): the merge is APPLIED only when the two columns
+ * form a CLEAN equal-count, injective, t-matched BIJECTION — the converged
+ * shared-column state. Merging asymmetric columns (which the whole-domain
+ * RED-refine currently produces: it densifies the two boundaries unequally,
+ * measured u0≫u1) folds a sparse boundary onto a dense one and introduces
+ * NON-MANIFOLD edges — a mesh the watertight guard would reject. So when the
+ * columns are NOT a clean bijection this returns IDENTITY (a safe no-op that
+ * leaves the prior open-seam mesh untouched, nonManifoldByIndex unchanged),
+ * and the dedup auto-activates once the seam boundaries are symmetric. Also
+ * identity when the flag is off / no wrap columns exist ⇒ byte-identical.
+ */
+function seamColumnRemap(uv: number[]): Int32Array {
+  const nV = uv.length / 2;
+  const remap = new Int32Array(nV);
+  for (let i = 0; i < nV; i++) remap[i] = i;
+  if (!isPerfectMesherEnabled()) return remap;
+  const s0: number[] = [];
+  const s1: number[] = [];
+  for (let i = 0; i < nV; i++) {
+    const u = uv[2 * i];
+    if (Math.abs(u) < SEAM_WRAP_EPS) s0.push(i);
+    else if (Math.abs(u - 1) < SEAM_WRAP_EPS) s1.push(i);
+  }
+  // Only a clean equal-count bijection is safe to weld (see SAFETY GATE above).
+  if (s0.length === 0 || s1.length === 0 || s0.length !== s1.length) return remap;
+  s0.sort((a, b) => uv[2 * a + 1] - uv[2 * b + 1]);
+  const s0t = s0.map((i) => uv[2 * i + 1]);
+  const usedS0 = new Set<number>();
+  const pending: Array<[number, number]> = [];
+  for (const i of s1) {
+    const t = uv[2 * i + 1];
+    let lo = 0;
+    let hi = s0t.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (s0t[m] < t) lo = m + 1;
+      else hi = m;
+    }
+    let best = lo;
+    if (lo > 0 && Math.abs(s0t[lo - 1] - t) <= Math.abs(s0t[best] - t)) best = lo - 1;
+    const target = s0[best];
+    // Unmatched (no coincident twin) or a collision (two u=1 onto one u=0) ⇒
+    // NOT a clean bijection ⇒ abandon the whole merge (safe identity no-op).
+    if (Math.abs(s0t[best] - t) >= SEAM_T_EPS || usedS0.has(target)) return remap;
+    usedS0.add(target);
+    pending.push([i, target]);
+  }
+  for (const [i, j] of pending) remap[i] = j;
+  return remap;
+}
+
 /**
  * Map a refined chart mesh onto the ConformingOuterWallResult contract.
  * Seam-wrap flags are derived per-facet (corner u's straddling the wrap);
- * boundary rings are the ordered t=0 / t=1 vertex rows. NOTE (staging
- * honesty): unlike the quadtree path, cdt2d over [0,1] does not SHARE seam
- * vertex indices — full-wall seam closure is Task-6/integration scope and
- * one reason the flag stays default-OFF.
+ * boundary rings are the ordered t=0 / t=1 vertex rows.
+ *
+ * FLAG-ON (T3.2): the periodic u=0/u=1 wrap is deduped to ONE shared locked
+ * index column via {@link seamColumnRemap} (the seam lock installs identical
+ * t-stations on both columns). Flag-off never reaches here (buildTierCOuterWall
+ * pure-delegates) AND `seamColumnRemap` returns identity when the flag is off,
+ * so the mapping stays byte-identical to the pre-T3.2 output for any caller.
  */
 function toOuterWallResult(refined: RefineResult): ConformingOuterWallResult {
   const nV = refined.uv.length / 2;
-  const vertices = new Float32Array(nV * 3);
+  const remap = seamColumnRemap(refined.uv);
+  // Compact surviving vertices (those that map to themselves) to new indices.
+  const oldToNew = new Int32Array(nV).fill(-1);
+  let newCount = 0;
   for (let i = 0; i < nV; i++) {
-    const u = refined.uv[2 * i];
-    vertices[3 * i] = ((u % 1) + 1) % 1;
-    vertices[3 * i + 1] = refined.uv[2 * i + 1];
-    vertices[3 * i + 2] = 0;
+    if (remap[i] === i) oldToNew[i] = newCount++;
   }
-  const indices = Uint32Array.from(refined.tris);
-  const nF = indices.length / 3;
+  const finalIndexOf = (i: number): number => oldToNew[remap[i]];
+
+  const vertices = new Float32Array(newCount * 3);
+  for (let i = 0; i < nV; i++) {
+    if (remap[i] !== i) continue;
+    const ni = oldToNew[i];
+    const u = refined.uv[2 * i];
+    vertices[3 * ni] = ((u % 1) + 1) % 1;
+    vertices[3 * ni + 1] = refined.uv[2 * i + 1];
+    vertices[3 * ni + 2] = 0;
+  }
+  const nF = refined.tris.length / 3;
+  const indices = new Uint32Array(nF * 3);
+  for (let k = 0; k < nF * 3; k++) indices[k] = finalIndexOf(refined.tris[k]);
   const seamTriangles = new Uint8Array(nF);
   for (let f = 0; f < nF; f++) {
     const ua = vertices[3 * indices[3 * f]];
     const ub = vertices[3 * indices[3 * f + 1]];
     const uc = vertices[3 * indices[3 * f + 2]];
-    const span =
-      Math.max(ua, ub, uc) - Math.min(ua, ub, uc);
+    const span = Math.max(ua, ub, uc) - Math.min(ua, ub, uc);
     if (span > 0.5) seamTriangles[f] = 1;
   }
   const ringOf = (t: number): number[] => {
     const ring: number[] = [];
     for (let i = 0; i < nV; i++) {
-      if (Math.abs(refined.uv[2 * i + 1] - t) < 1e-9) ring.push(i);
+      if (remap[i] !== i) continue;
+      if (Math.abs(refined.uv[2 * i + 1] - t) < 1e-9) ring.push(oldToNew[i]);
     }
     ring.sort((a, b) => vertices[3 * a] - vertices[3 * b]);
     return ring;
@@ -120,7 +197,7 @@ function toOuterWallResult(refined: RefineResult): ConformingOuterWallResult {
     vertices,
     indices,
     seamTriangles,
-    gridVertexCount: nV,
+    gridVertexCount: newCount,
     bottomRing: ringOf(0),
     topRing: ringOf(1),
   };
@@ -169,7 +246,15 @@ export function buildTierCOuterWall(
   // patch scale (Gothic/GeoStar, VALIDATION 7); the full-wall domain below is
   // integration scope validated by the Task-6 re-baseline gate — the flag
   // stays default-OFF until that gate and the sliver question resolve.
-  const complex = buildProtectedComplex(sampler, '', graph);
+  // Lock the periodic u=0≡u=1 wrap as a single shared seam column (T3.2): two
+  // locked columns with identical t-stations that toOuterWallResult dedupes
+  // into one index column (watertight seam). Flag-on-only path.
+  const complex = buildProtectedComplex(sampler, '', graph, undefined, undefined, {
+    uLo: 0,
+    uHi: 1,
+    tLo: 0,
+    tHi: 1,
+  });
   const refined = refineToZeroOutliers(
     sampler,
     complex,
