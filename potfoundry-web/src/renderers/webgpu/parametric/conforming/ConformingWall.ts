@@ -227,6 +227,27 @@ export interface ConformingWallOptions {
    * `featureLines` are present.
    */
   multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair' | 'snapMerge';
+  /**
+   * VERDICT-loop ONLY (E-2026-07-12 T6 root-cause fix): the EXACT closed-form
+   * outer radius r(θ,z) (mm) the two-pass verdict scores its chord/max-sag
+   * against, INSTEAD of the warp-composed `efgSampler`/`sampler`. The production
+   * `efgSampler` is a 256² bilinear grid (`tierc_regionLayer.ts`) that SMOOTHS
+   * the band-edge cliff — the Gyroid knee's true ~0.025mm sag reads <0.01 through
+   * the grid, so it is never flagged and never escalated. Only the closed-form
+   * radius exposes the cliff (the same principle that closed Gothic/GeoStar). The
+   * (u,t)→(θ,z) lift matches the export/P2.5c analytic surface EXACTLY: θ = u·2π,
+   * z = t·{@link analyticH}, r = analyticRA(θ,z). Consumed ONLY inside the
+   * flag-on branch (`__pfConformingVerdictRefine`); omit ⇒ the loop keeps the
+   * `efgSampler ?? sampler` lift (unchanged) — but the knee only truly closes when
+   * this is supplied. Never read on the flag-off / production path.
+   */
+  analyticRA?: (theta: number, z: number) => number;
+  /**
+   * Pot height H (mm) paired with {@link analyticRA}: the analytic lift maps a
+   * mesh vertex's t to surface height z = t·H. Only read when `analyticRA` is set
+   * (verdict loop, flag-on). Should always accompany `analyticRA`.
+   */
+  analyticH?: number;
 }
 
 /**
@@ -1083,15 +1104,38 @@ export function buildConformingWall(
 
   const uBias = opts.uBias ?? 0;
   const uCellRes = 1 << (featureLevel + uBias);
-  const lift = opts.efgSampler ?? sampler;
-  // Adapt the (readonly-tuple) SurfaceSampler to the scorer's lift interface —
-  // one fresh (mutable) triple per query (the scorer copies to XYZ anyway).
-  const liftSampler: VerdictLiftSampler = {
-    position: (u, t) => {
-      const p = lift.position(u, t);
-      return [p[0], p[1], p[2]];
-    },
-  };
+  // VERDICT LIFT. When the caller supplies the EXACT closed-form radius
+  // `analyticRA`, score against the analytic surface instead of the warp-composed
+  // `efgSampler`/`sampler`: the production `efgSampler` is a 256² bilinear grid
+  // that SMOOTHS the band-edge cliff (the knee's true ~0.025mm sag reads <0.01
+  // through the grid → never flagged → never escalated; E-2026-07-12 T6 root
+  // cause). The (u,t)→(θ,z) lift mirrors the export/P2.5c analytic surface
+  // EXACTLY (research/bridge/_tierc_p2_5c.test.ts:122-123, _gyroid_truthLib.ts
+  // `surf`): θ = u·TAU, z = t·H, r = rA(θ,z). WITHOUT `analyticRA` the loop keeps
+  // the efgSampler/sampler lift (behaviour unchanged) — but the knee only truly
+  // closes with `analyticRA` supplied.
+  const TAU = 2 * Math.PI;
+  const analyticRA = opts.analyticRA;
+  const analyticH = opts.analyticH ?? 1;
+  const fallbackLift = opts.efgSampler ?? sampler;
+  const liftSampler: VerdictLiftSampler = analyticRA
+    ? {
+        position: (u, t) => {
+          const theta = u * TAU;
+          const z = t * analyticH;
+          const r = analyticRA(theta, z);
+          return [r * Math.cos(theta), r * Math.sin(theta), z];
+        },
+      }
+    : {
+        // Adapt the (readonly-tuple) SurfaceSampler to the scorer's lift
+        // interface — one fresh (mutable) triple per query (the scorer copies to
+        // XYZ anyway).
+        position: (u, t) => {
+          const p = fallbackLift.position(u, t);
+          return [p[0], p[1], p[2]];
+        },
+      };
 
   // ACCUMULATE + INCREMENT (faithful P2.5c "iterate, fold survivors one level
   // deeper"). `targets` persists across passes: coreCellKey → commanded level.

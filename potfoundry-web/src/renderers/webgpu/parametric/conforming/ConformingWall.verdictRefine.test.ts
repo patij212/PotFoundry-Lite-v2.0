@@ -13,7 +13,12 @@
 // The flag is a `globalThis.__pfConformingVerdictRefine` read; every test that
 // sets it restores it in a `finally`.
 import { describe, it, expect, afterEach } from 'vitest';
-import { SyntheticCylinderSampler, type SurfaceSampler, type Vec3 } from './SurfaceSampler';
+import {
+  SyntheticCylinderSampler,
+  GpuSurfaceSampler,
+  type SurfaceSampler,
+  type Vec3,
+} from './SurfaceSampler';
 import {
   buildConformingWall,
   buildConformingWallOnce,
@@ -334,4 +339,72 @@ describe('buildConformingWall — verdict-refine loop ACCUMULATES + INCREMENTS a
     // Still watertight after multi-pass escalation.
     expect(nonManifoldByIndex(on.indices)).toBe(0);
   }, 30_000);
+});
+
+describe('verdict lift — ANALYTIC surface flags the band-edge cliff a bilinear grid SMOOTHS away', () => {
+  // T6 root cause: the production verdict lifts against `efgSampler`, a 256²
+  // BILINEAR grid, which linearly ramps across a band-edge cliff that falls
+  // between grid rows — so the knee's true ~0.025mm sag reads <tol and is never
+  // flagged/escalated (flag-on == flag-off). The EXACT analytic radius exposes
+  // the cliff. This pins that mechanism at the scorer level: the SAME coarse
+  // facet straddling a sharp radial step is an OUTLIER under the analytic lift
+  // and a MISS under the grid lift.
+  const TAU = 2 * Math.PI;
+  const R0 = 50, H = 100, AMP = 0.05; // step ⇒ ~AMP/2 chord ≈ 0.025mm > tol
+  const ZC = 0.5 * H; // cliff at t = 0.5 (falls strictly between coarse grid rows)
+  const TOL = 0.01;
+
+  // Sharp radial cliff: r jumps by AMP at z = ZC (a true C^-1 band edge).
+  const analyticRA = (_theta: number, z: number): number => R0 + (z >= ZC ? AMP : 0);
+  const analyticLift: VerdictLiftSampler = {
+    position: (u, t) => {
+      const theta = u * TAU, z = t * H, r = analyticRA(theta, z);
+      return [r * Math.cos(theta), r * Math.sin(theta), z];
+    },
+  };
+
+  // A COARSE bilinear grid sampling that surface. resT=8 ⇒ rows at t=k/7; the
+  // cliff at t=0.5 falls between rows 3 (t≈0.429) and 4 (t≈0.571), so between
+  // them the grid RAMPS linearly R0→R0+AMP — the smoothing the real efgSampler does.
+  const RESU = 8, REST = 8;
+  const grid = new Float32Array(RESU * REST * 3);
+  for (let tr = 0; tr < REST; tr++) {
+    for (let uc = 0; uc < RESU; uc++) {
+      const u = uc / RESU, t = tr / (REST - 1);
+      const [x, y, z] = analyticLift.position(u, t);
+      const i = (tr * RESU + uc) * 3;
+      grid[i] = x; grid[i + 1] = y; grid[i + 2] = z;
+    }
+  }
+  const gpu = new GpuSurfaceSampler(grid, RESU, REST);
+  const gridLift: VerdictLiftSampler = {
+    position: (u, t) => {
+      const p = gpu.position(u, t);
+      return [p[0], p[1], p[2]];
+    },
+  };
+
+  // One facet straddling the cliff (t 0.46 → 0.54), entirely inside the single
+  // grid cell rows 3–4 so the grid lift sees only its smooth ramp. Kept THIN in u
+  // (Δu≈0.001) so the radius-50 cylinder ARC chord is negligible and the measured
+  // deviation comes from the t-direction cliff alone, not the circumferential arc.
+  const uts: Array<[number, number]> = [[0.100, 0.46], [0.101, 0.46], [0.1005, 0.54]];
+  const vertices = new Float32Array(uts.length * 3);
+  uts.forEach(([u, t], i) => { vertices[i * 3] = u; vertices[i * 3 + 1] = t; vertices[i * 3 + 2] = 0; });
+  const mesh = { vertices, indices: Uint32Array.from([0, 1, 2]) };
+
+  it('analytic lift FLAGS the cliff facet; bilinear-grid lift MISSES it', () => {
+    const analyticCells = scoreCandidateFacets(mesh, analyticLift, [0], TOL, 6, 0);
+    const gridCells = scoreCandidateFacets(mesh, gridLift, [0], TOL, 6, 0);
+
+    // Analytic lift sees the real cliff ⇒ outlier above tol.
+    expect(analyticCells.length).toBe(1);
+    expect(analyticCells[0].worstMm).toBeGreaterThan(TOL);
+
+    // Grid lift ramps across the cliff ⇒ under-reads ⇒ NOT flagged.
+    expect(gridCells.length).toBe(0);
+    // And its measured chord is genuinely sub-tol (tol=0 returns the raw worst).
+    const gridWorst = scoreCandidateFacets(mesh, gridLift, [0], 0, 6, 0)[0]?.worstMm ?? 0;
+    expect(gridWorst).toBeLessThan(TOL);
+  });
 });
