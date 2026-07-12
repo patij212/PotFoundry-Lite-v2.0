@@ -684,14 +684,21 @@ export class PeriodicBalancedQuadtree {
    * `intersects` predicate is short-circuited by the level gate exactly as before
    * and evaluated through the same evidence cache.
    *
-   * When `levelAt` is present the order flips — the cheap, bucketed, cached
-   * `intersects` gate runs FIRST, and only on a hit is the per-cell `levelAt`
-   * escalation consulted — so a cell already AT `featureRefine.level` can still be
-   * driven deeper toward its own escalated target (capped by the pin-graded `cap`,
-   * and never past `maxLevel`). The cell box is [iu·uSize, iu·uSize+uSize] ×
-   * [it·tSize, it·tSize+tSize]; the larger extent is passed as `size` so an
-   * anisotropic (B>0) cell is hit-tested over its full span (a conservative
-   * superset — never misses a crossing).
+   * When `levelAt` is present the `intersects` gate NO LONGER short-circuits the
+   * escalation (P2.5c / T1): an OFF-contour cell (one `intersects` misses) can
+   * still be driven to a per-cell `levelAt`-commanded target, because a coarse
+   * ancestor's conservative box can straddle a feature that a finer descendant's
+   * own box no longer touches — the pre-T1 code left such cells permanently
+   * uncovered. On-contour cells keep the existing uniform `featureRefine.level`
+   * floor ON TOP of their own `levelAt` command (`target = max(featureRefine.level,
+   * levelAt)`); off-contour cells drop the floor (`target = levelAt`, floor 0) so a
+   * non-target off-contour cell (`levelAt` returning ≤0, the common case) never
+   * refines — byte-identical intent to the pre-T1 code whenever `levelAt`
+   * returns 0 everywhere. Both `cap` (pin-graded) and `maxLevel` still bound the
+   * result. The cell box is [iu·uSize, iu·uSize+uSize] × [it·tSize, it·tSize+tSize];
+   * the larger extent is passed as `size` so an anisotropic (B>0) cell is
+   * hit-tested over its full span (a conservative superset — never misses a
+   * crossing).
    */
   private belowFeatureFloorTest(
     level: number,
@@ -715,12 +722,15 @@ export class PeriodicBalancedQuadtree {
       return level < Math.min(featureRefine.level, cap) && hitTest();
     }
     if (level >= cap) return false;
-    if (!hitTest()) return false;
     const size = Math.max(uSize, tSize);
-    const target = Math.max(
-      featureRefine.level,
-      featureRefine.levelAt(iu * uSize, it * tSize, size),
-    );
+    const commanded = featureRefine.levelAt(iu * uSize, it * tSize, size);
+    // On-contour keeps the featureLevel floor (existing behaviour). Off-contour
+    // still honours a levelAt escalation. levelAt returns <= featureLevel
+    // (typically 0) for non-target cells, so off-contour non-targets never
+    // refine (byte-identical intent vs pre-T1).
+    const onContour = hitTest();
+    const floor = onContour ? featureRefine.level : 0;
+    const target = Math.max(floor, commanded);
     return level < Math.min(target, cap);
   }
 
