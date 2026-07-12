@@ -67,3 +67,24 @@ flat-P1-tractable majority (smooth + analytic-faithful knife-edges) and **honest
 single named curved-element frontier for high-curvature relief — with exact mechanism, exact residual,
 and exact next mechanism. The audit-first discipline turned "we think the champions are good" into a
 complete, measured map of what is true, what is not, and the one mechanism that remains.
+
+---
+
+## CORRECTION (2026-07-12, featureAlignedCell cross-style eval) — the sliver "frontier" was over-broad
+
+The Regime-2 table above lists "Gothic/GeoStar quality | 19% <20°" as a flat-P1/curved-element frontier.
+**That is corrected:** the 19% is the K2 perfect-mesher/tierC refine-policy floor (the path C2 makes
+true-0.01), NOT the production conforming path — which sits at **1.9% <20°** for Gothic. The two are
+disjoint code paths; the "19%" figure also partly traces to a standalone research prototype
+(`_pf_perfectMesherBruteLib`) never wired to `src/`. See `featureAlignedCell-crossstyle-verdict.md`.
+
+The sliver "frontier" is **style/topology-conditional, mostly specific existing levers, not monolithic
+curved-element work:**
+- Production Gothic: the existing `featureAlignedCell` (default-off `__pfFeatureAlignedCells`) takes it
+  1.9%→1.1% <20°, watertight held — a WIRING/VALIDATION win (confirm true-3D fidelity + GPU A/B, then
+  flip default-on for Gothic).
+- DragonScales: NO-OP for featureAlignedCell; its ring/body slivers live in FCT_PLAIN_FAN/PLAIN_QUAD
+  ring-transition templates — a different, now-identified lever.
+- SuperformulaBlossom: featureAlignedCell REGRESSES it (per-cell granularity wrong for diagonal chains;
+  needs railLines).
+- The genuine curved-element question, if any, narrows to the K2 literal-0 refine-policy floor alone.
