@@ -312,3 +312,150 @@ export function buildOneRingLevelAt(
     return best;
   };
 }
+
+/**
+ * The feature-driven refinement spec the quadtree consumes — mirrors
+ * `ConformingWall.ts`'s (non-exported) `type FeatureRefineSpec` byte-for-byte
+ * (verified against that file directly; the real type is not exported, so
+ * this is an intentionally-duplicated local declaration — keep both in sync
+ * by hand if that shape ever changes). Production always supplies
+ * `intersects` (built by `buildFeatureIntersector` from `featureLines`)
+ * whenever `featureLines` is non-empty (`ConformingWall.ts:848-856`), so this
+ * selector consumes the SAME cheap box-vs-segment predicate the quadtree
+ * itself consults for cell refinement — there is no separate `featureLines`
+ * field on the real type to read directly.
+ */
+export interface CandidateFeatureRefineSpec {
+  level: number;
+  intersects: (u0: number, t0: number, size: number) => boolean;
+  levelAt?: (u0: number, t0: number, size: number) => number;
+}
+
+/**
+ * Minimal reader surface this selector needs from `MetricSizingField` — just
+ * its public `edgeLength(u,t)` target-mm query (verified against
+ * `MetricSizingField.ts`: the class exposes no direct kappa/threshold
+ * accessor, only the graded target edge length by bilinear interpolation).
+ */
+export interface CandidateSizingFieldReader {
+  edgeLength(u: number, t: number): number;
+}
+
+/** Margin below which a nearby sizing-field reading counts as a local
+ * "under-read" drop relative to the facet's own centroid reading (T5). */
+const SIZING_UNDERREAD_MARGIN = 0.12;
+/** Sub-cell probe radius (fraction of the feature-grid cell size) used to
+ * detect a sizing-field reading that changes sharply just off-centroid. */
+const SIZING_PROBE_FRACTION = 0.25;
+
+/**
+ * Does the facet's own (iu,it) feature-grid cell, or its 1-ring neighbourhood,
+ * get crossed by `featureRefine.intersects`? Tested as a single enlarged box
+ * (3 cells wide, centered on the facet's own cell) against the SAME cheap
+ * box-vs-segment predicate the quadtree itself consults for on-contour
+ * refinement — just widened by one cell on each side, which is what makes an
+ * OFF-contour but near-band facet (like the Gyroid knee) reachable.
+ */
+function isNearBandCandidate(
+  featureRefine: CandidateFeatureRefineSpec,
+  uc: number,
+  tc: number,
+  cellRes: number,
+  cellSize: number,
+): boolean {
+  const iu = Math.min(cellRes - 1, Math.max(0, Math.floor(uc * cellRes)));
+  const it = Math.min(cellRes - 1, Math.max(0, Math.floor(Math.min(1 - 1e-12, Math.max(0, tc)) * cellRes)));
+  const u0 = (iu - 1) * cellSize;
+  const t0 = (it - 1) * cellSize;
+  return featureRefine.intersects(u0, t0, 3 * cellSize);
+}
+
+/**
+ * Local-gradient proxy for the P2.4 sizing-field "under-read" band: the
+ * production `MetricSizingField` bilinearly interpolates a target edge
+ * length off a coarse `resU x resT` grid, so a true curvature ridge that
+ * falls BETWEEN two grid nodes can read smooth/coarse exactly at a facet's
+ * own centroid while the reading drops sharply a fraction of a cell away —
+ * the mechanism behind the documented 1.2-20x broad under-read near features.
+ * `selectCandidateFacets` has no physical sampler / metric-tensor access (the
+ * T5 interface takes only `mesh`/`featureRefine`/`sizingField`), so it cannot
+ * reproduce `shouldRefine`'s literal physical-cell-size-vs-`edgeLength` ratio
+ * test; this probes a small (u,t) neighbourhood of the centroid instead and
+ * flags a sharp local drop as a candidate worth the T2 scorer's real chord
+ * measurement.
+ */
+function isSizingUnderReadCandidate(
+  sizingField: CandidateSizingFieldReader,
+  uc: number,
+  tc: number,
+  cellSize: number,
+): boolean {
+  const probe = cellSize * SIZING_PROBE_FRACTION;
+  const center = sizingField.edgeLength(uc, tc);
+  let minNearby = center;
+  const offsets: Array<[number, number]> = [[probe, 0], [-probe, 0], [0, probe], [0, -probe]];
+  for (const [du, dt] of offsets) {
+    const v = sizingField.edgeLength(uc + du, Math.min(1, Math.max(0, tc + dt)));
+    if (v < minNearby) minNearby = v;
+  }
+  return minNearby < center * (1 - SIZING_UNDERREAD_MARGIN);
+}
+
+/**
+ * Cheap SUPERSET selector for the two-pass verdict loop (T5) — returns the
+ * facet indices the T2 scorer (`scoreCandidateFacets`) should actually
+ * dense-sample, so a pass never dense-scans the whole mesh (P2.5c's full scan
+ * of the 2.24M-tri mesh took minutes). A facet is a candidate iff EITHER:
+ *
+ *  - its (iu,it) feature-grid cell, or any of its 1-ring neighbours, is
+ *    crossed by `featureRefine.intersects` (`isNearBandCandidate`). The
+ *    Gyroid knee sits just OFF the contour itself (`contourCrossed=false` at
+ *    `radial≈0.287`) but inside this near-band reach — exactly why T1 had to
+ *    decouple `levelAt` from the `intersects` short-circuit in
+ *    `PeriodicBalancedQuadtree.ts`: an off-contour cell can still be a
+ *    genuine outlier, and this selector is what makes it reachable by the
+ *    scorer in the first place.
+ *  - (when `sizingField` is supplied) the sizing field's own reading is
+ *    locally STEEP near the facet's centroid — the P2.4 "under-read" proxy;
+ *    see `isSizingUnderReadCandidate`'s doc comment for the mechanism and its
+ *    documented limitation (no physical-size ground truth available here).
+ *
+ * Both checks key onto the SAME `featureRefine.level`-resolution (iu,it) grid
+ * `scoreCandidateFacets` / `buildOneRingLevelAt` use — isotropic (this
+ * selector's `featureRefine` shape carries no `uBias`, matching the real,
+ * non-exported `FeatureRefineSpec` in `ConformingWall.ts`).
+ */
+export function selectCandidateFacets(
+  mesh: VerdictScorableMesh,
+  featureRefine: CandidateFeatureRefineSpec,
+  sizingField?: CandidateSizingFieldReader,
+): number[] {
+  const { vertices, indices } = mesh;
+  const uAt = (vi: number): number => vertices[vi * VERTEX_STRIDE];
+  const tAt = (vi: number): number => vertices[vi * VERTEX_STRIDE + 1];
+  const cellRes = 1 << featureRefine.level;
+  const cellSize = 1 / cellRes;
+  const facetCount = Math.floor(indices.length / 3);
+  const out: number[] = [];
+
+  for (let f = 0; f < facetCount; f++) {
+    const ia = indices[3 * f], ib = indices[3 * f + 1], ic = indices[3 * f + 2];
+    const ua = uAt(ia), ta = tAt(ia);
+    const ub = uAt(ib), tb = tAt(ib);
+    const ucv = uAt(ic), tcv = tAt(ic);
+
+    // Centroid, wrapping u across the periodic seam (mirrors scoreCandidateFacets).
+    const uCentroidRaw = ua + (wrapDu(ub - ua) + wrapDu(ucv - ua)) / 3;
+    const uCentroid = ((uCentroidRaw % 1) + 1) % 1;
+    const tCentroid = (ta + tb + tcv) / 3;
+
+    if (isNearBandCandidate(featureRefine, uCentroid, tCentroid, cellRes, cellSize)) {
+      out.push(f);
+      continue;
+    }
+    if (sizingField && isSizingUnderReadCandidate(sizingField, uCentroid, tCentroid, cellSize)) {
+      out.push(f);
+    }
+  }
+  return out;
+}
