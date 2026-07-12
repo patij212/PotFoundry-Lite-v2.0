@@ -643,6 +643,34 @@ function buildSingleRRefineRegion(
 // ════════════════════════════════════════════════════════════════════════════════════════════════
 
 /**
+ * Per-body sizing defaults: `K1_TOY_DEFAULTS` (B0's proven-loose toy config) unless the region's own
+ * `kernelOpts` explicitly opts into `AF_PROD_OPTS` (production-tight sag/edge/level tolerances) via
+ * `kernelOpts.prodTight === true`.
+ *
+ * Deliberately OPT-IN, NOT derived from `sizing.method === 'metric-sizing'` — even though every DS
+ * body region already carries that method unconditionally (tierc_manifest.ts's `dragonScalesAnatomy`)
+ * — because DS-topofix-verdict.md's own "Remaining for full DS reproduction" list scopes the
+ * AF_PROD_OPTS tight-sizing fidelity rerun as a SEPARATE, not-yet-measured follow-up (maxSagMm
+ * 0.05->0.003mm, maxLevel 10->16 — roughly a 4x tighter quadtree at N=8-body scale, never gate-scored
+ * for wall-time/tri-count at this scale by any prereg arm). Wiring the switch here satisfies A-1's
+ * "use AF_PROD_OPTS where a body region wants production tightness" without silently making every
+ * existing DS chain build unmeasured-heavier as a side effect of this task. A future tight-sizing task
+ * flips it on by setting `kernelOpts.prodTight = true` on the body regions it wants tightened, with its
+ * own dedicated wall-time/tri-count measurement.
+ */
+function bodyRegionDefaults(region: RegionPlan): {
+  maxSagMm: number;
+  maxEdgeMm: number;
+  minEdgeMm: number;
+  gradeRatio: number;
+  maxLevel: number;
+  resU: number;
+  resT: number;
+} {
+  return region.kernelOpts?.prodTight === true ? AF_PROD_OPTS : K1_TOY_DEFAULTS;
+}
+
+/**
  * Generalizes _tierc_b0_toy_lib.ts's `mergeAdoptedAssembly` (B0-proven for exactly 2 K1 regions + 1
  * ring band) to an N-body/(N-1)-ring alternating chain, by applying the IDENTICAL per-seam remap
  * mechanism at every seam in sequence — "wiring, not invention" (B0-boundary-contract-verdict.md's own
@@ -753,9 +781,12 @@ function mergeAdoptedChain(
  *       K1 regions (sharing a boundary with TWO different rings) interact in any way neither region's
  *       own build sees is UNTESTED here, same as B0 left it;
  *   (4) sizing/build options fall back to B0's own `K1_TOY_DEFAULTS` (loose, non-production-tight
- *       tolerances), NOT `AF_PROD_OPTS` — this path was never validated against the tight production
- *       sag/edge tolerances at N>1 scale, so defaulting to the proven-loose toy config is the honest
- *       choice over silently claiming production tightness B0 never measured at this scale.
+ *       tolerances) UNLESS a body region's `kernelOpts.prodTight === true` (see `bodyRegionDefaults`
+ *       above), in which case `AF_PROD_OPTS` is used instead — the switch is wired but not yet
+ *       exercised by any manifest's DS anatomy (A-1 scope), since this path was never validated
+ *       against the tight production sag/edge tolerances at N>1 scale; defaulting to the
+ *       proven-loose toy config remains the honest choice until a dedicated tight-sizing task
+ *       measures the AF_PROD_OPTS path at this scale.
  */
 function buildStructCdtChain(
   manifest: StyleManifest,
@@ -793,8 +824,9 @@ function buildStructCdtChain(
       'gate-checked end to end by any prereg arm in this mission. Curves/pins are unsupported on every ' +
       'region in this path. Each body region computes uBias independently (B0 verdict §6 open thread — ' +
       'adjacent-region uBias interaction across >1 seam is untested). Sizing defaults to K1_TOY_DEFAULTS ' +
-      '(loose), not AF_PROD_OPTS (production-tight) — never validated at this scale. Treat this path as ' +
-      'a structural TODO, not a proven build.',
+      "(loose) unless a body region's kernelOpts.prodTight===true opts into AF_PROD_OPTS " +
+      '(production-tight) — the opt-in path is wired but never validated at this scale. Treat this path ' +
+      'as a structural TODO, not a proven build.',
   ];
 
   const bodies: K1Region[] = [];
@@ -804,16 +836,17 @@ function buildStructCdtChain(
     const p = region.sizing.params;
     const k = region.kernelOpts;
     const nRing = pickNum('nRing', 512, p, k);
+    const defaults = bodyRegionDefaults(region);
     bodies.push(
       buildK1ZBand(rA, zLo, zHi, {
         nRing,
-        maxSagMm: pickNum('maxSagMm', K1_TOY_DEFAULTS.maxSagMm, p, k),
-        maxEdgeMm: pickNum('maxEdgeMm', K1_TOY_DEFAULTS.maxEdgeMm, p, k),
-        minEdgeMm: pickNum('minEdgeMm', K1_TOY_DEFAULTS.minEdgeMm, p, k),
-        gradeRatio: pickNum('gradeRatio', K1_TOY_DEFAULTS.gradeRatio, p, k),
-        maxLevel: pickNum('maxLevel', K1_TOY_DEFAULTS.maxLevel, p, k),
-        resU: pickNum('resU', K1_TOY_DEFAULTS.resU, p, k),
-        resT: pickNum('resT', K1_TOY_DEFAULTS.resT, p, k),
+        maxSagMm: pickNum('maxSagMm', defaults.maxSagMm, p, k),
+        maxEdgeMm: pickNum('maxEdgeMm', defaults.maxEdgeMm, p, k),
+        minEdgeMm: pickNum('minEdgeMm', defaults.minEdgeMm, p, k),
+        gradeRatio: pickNum('gradeRatio', defaults.gradeRatio, p, k),
+        maxLevel: pickNum('maxLevel', defaults.maxLevel, p, k),
+        resU: pickNum('resU', defaults.resU, p, k),
+        resT: pickNum('resT', defaults.resT, p, k),
       }),
     );
   }

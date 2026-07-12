@@ -145,30 +145,44 @@ describe('DragonScales anatomy — dragonRings(8) -> 7 ring + 8 body regions', (
       expect(r.kernelOpts?.nTheta).toBe(2400);
       expect(r.kernelOpts?.treadCap).toBe(4);
       expect(r.boundaryChains).toHaveLength(2);
-      expect(r.boundaryChains.every((c) => c.status === 'TODO')).toBe(true);
+      // A-1 (region-layer-core plan §4): the R-STRUCT<->R-CDT adoption contract is now DEFINED
+      // (B0-boundary-contract-verdict.md contract (a), CLOSED) — was 'TODO'/adopter:null before this
+      // task; updated here alongside the production fix per this repo's own established convention
+      // (commit d4eeb5c8 did the identical update to _tierc_winding_diag.test.ts for the sibling DS
+      // topology fix). See research/bridge/_tierc_a1_dschain.test.ts for the full dedicated coverage.
+      expect(r.boundaryChains.every((c) => c.status === 'DEFINED' && c.adopter !== null)).toBe(true);
       expect(r.sizing.method).toBe('designed-texture-exempt');
     }
   });
 
-  it('yields exactly 8 R-CDT body regions spanning [0,15],[15,30],...,[105,120]', () => {
+  it('yields exactly 8 R-CDT body regions spanning the corrected disjoint z-boundaries (ring bands excluded)', () => {
     const anatomy = dragonScalesAnatomy({}, TIERC_COMMON_DIMS);
     const bodyRegions = anatomy.regions.filter((r) => r.type === 'R-CDT');
     expect(bodyRegions).toHaveLength(8);
 
+    // A-1: body-region z-boundaries stop at ringZ∓DS_RING_HALF_BAND_MM (strictly disjoint from the
+    // R-STRUCT ring bands) — this was already corrected in tierc_manifest.ts by commit d4eeb5c8
+    // (DS-topofix-verdict.md Finding 1, nonManifoldEdges 3584->0); this assertion was left asserting
+    // the OLD raw-z (overlapping) values and is updated here to match, per the same convention noted
+    // in the sibling test above.
     const bodyBounds = bodyRegions.map((r) => [r.domain.zLo, r.domain.zHi]);
     expect(bodyBounds).toEqual([
-      [0, 15],
-      [15, 30],
-      [30, 45],
-      [45, 60],
-      [60, 75],
-      [75, 90],
-      [90, 105],
-      [105, 120],
+      [0, 14.4],
+      [15.6, 29.4],
+      [30.6, 44.4],
+      [45.6, 59.4],
+      [60.6, 74.4],
+      [75.6, 89.4],
+      [90.6, 104.4],
+      [105.6, 120],
     ]);
-    for (const r of bodyRegions) {
+    for (const [i, r] of bodyRegions.entries()) {
       expect(r.sizing.method).toBe('metric-sizing'); // Decision A6: stays on K1 adaptive.
-      expect(r.boundaryChains).toHaveLength(2);
+      // body-0's z=0 edge and body-7 (last)'s z=H edge are the pot's own true domain boundary
+      // (rim/base), not an R-STRUCT seam — no ChainSpec there (see _tierc_a1_dschain.test.ts).
+      const expectedLen = i === 0 || i === bodyRegions.length - 1 ? 1 : 2;
+      expect(r.boundaryChains).toHaveLength(expectedLen);
+      expect(r.boundaryChains.every((c) => c.status === 'DEFINED' && c.adopter !== null)).toBe(true);
     }
   });
 

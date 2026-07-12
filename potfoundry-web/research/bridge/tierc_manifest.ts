@@ -65,12 +65,17 @@ export interface RegionDomain {
 /**
  * An inter-region boundary contract — architecture-v1 §2's "load-bearing new design element": an
  * explicit, immutable, ordered vertex chain OWNED by one region and ADOPTED by its neighbor, shared
- * by index after assembly welding, never re-derived independently. Region-layer core (build item 4)
- * has not landed, and the R-STRUCT<->R-CDT adoption contract itself is an OPEN pre-registered
- * question with three untried candidates (architecture-v1 §2 "the known hard case", Decision A2,
- * resolved by the B0 toy arm, build item 5) — so every ChainSpec produced by this manifest has
- * `status: 'TODO'` and `adopter: null`. Structurally present (satisfies RegionPlan.boundaryChains),
- * not a proven contract. Do not treat a 'TODO' chain here as resolved.
+ * by index after assembly welding, never re-derived independently.
+ *
+ * The R-STRUCT<->R-CDT adoption contract (architecture-v1 §2 "the known hard case", Decision A2) is
+ * now RESOLVED — CLOSED by the B0 toy arm (B0-boundary-contract-verdict.md, contract (a)): the K1
+ * (R-CDT) region OWNS its `nRing`-pinned boundary ring (production `ConformingWall` pins t=0/t=1 for
+ * ANY `SurfaceSampler`, zero awareness of "outer wall vs region"); the R-STRUCT ring band ADOPTS it
+ * by reading the K1 region's own emitted `topRing`/`bottomRing` thetas directly and index-remapping
+ * into the combined buffer, never re-deriving. DS's `dragonScalesAnatomy` below wires this: every DS
+ * `ChainSpec` has `owner` = the bordering K1 body region, `adopter` = the R-STRUCT ring band between
+ * it and its neighbor, `status: 'DEFINED'`. Every OTHER style in this manifest (FourierBloom, Gyroid,
+ * Gothic) is single-region — `boundaryChains: []`, no inter-region seam exists, nothing to define.
  */
 export interface ChainSpec {
   id: string;
@@ -333,11 +338,26 @@ const DS_TREAD_CAP = 4;
 const DS_Z_EPS = 5e-4; // mesh row offset = ruler wall offset (must match, "aligned")
 const DS_RING_HALF_BAND_MM = 0.6; // buildRows' `nearRing` skip-band, champion-spec-dragonscales.md §2.3
 
-function dsRingChain(idx: number, edge: 'below' | 'above'): ChainSpec {
-  return { id: `ring-${idx}-${edge}`, owner: `ring-${idx}`, adopter: null, status: 'TODO' };
+/**
+ * B0-proven contract (B0-boundary-contract-verdict.md contract (a), §6 recommendation for B1): the
+ * K1 (R-CDT) body region OWNS its `nRing`-pinned boundary ring; the R-STRUCT ring band ADOPTS it by
+ * reading the body region's own emitted `topRing`/`bottomRing` thetas directly, never re-deriving.
+ * Ring `ringIdx` borders body `ringIdx` (below) and body `ringIdx+1` (above) — matches
+ * `tierc_regionLayer.ts`'s `buildStructCdtChain`'s own `bodies[i]`/`bodies[i+1]` indexing for ring
+ * `i` exactly, so `bodyIdx` here is never an independent guess.
+ */
+function dsRingChain(ringIdx: number, edge: 'below' | 'above', bodyIdx: number): ChainSpec {
+  return { id: `ring-${ringIdx}-${edge}`, owner: `body-${bodyIdx}`, adopter: `ring-${ringIdx}`, status: 'DEFINED' };
 }
-function dsBodyChain(idx: number, edge: 'lo' | 'hi'): ChainSpec {
-  return { id: `body-${idx}-${edge}`, owner: `body-${idx}`, adopter: null, status: 'TODO' };
+/**
+ * Body region `bodyIdx`'s `edge` side borders `ring-${ringIdx}` — DEFINED per the same B0 contract
+ * (owner=this body region, adopter=the ring). `dragonScalesAnatomy` below calls this ONLY for edges
+ * that actually border a ring — body-0's z=0 edge and body-7's z=H edge are the pot's own true domain
+ * boundary (rim/base), not an R-STRUCT seam, so those two edges carry no ChainSpec at all (rather
+ * than a fabricated adopter that doesn't exist).
+ */
+function dsBodyChain(bodyIdx: number, edge: 'lo' | 'hi', ringIdx: number): ChainSpec {
+  return { id: `body-${bodyIdx}-${edge}`, owner: `body-${bodyIdx}`, adopter: `ring-${ringIdx}`, status: 'DEFINED' };
 }
 
 /**
@@ -346,9 +366,9 @@ function dsBodyChain(idx: number, edge: 'lo' | 'hi'): ChainSpec {
  * + 8 R-CDT body bands filling the gaps between rings (architecture-v1 Decision A6: DS body regions
  * stay on K1 adaptive — do NOT port the champion's uniform nZband grid, which is measured
  * CONSISTENT-to-better by production's existing adaptive body meshing, champion-spec-dragonscales.md
- * §4.7). boundaryChains are TODO-typed but structurally present on every region (architecture-v1 §2
- * Decision A2: the R-STRUCT<->R-CDT adoption contract is the pre-registered B0 toy arm's job, not
- * this manifest's).
+ * §4.7). boundaryChains are `status:'DEFINED'` on every region (architecture-v1 §2 Decision A2: the
+ * R-STRUCT<->R-CDT adoption contract was the pre-registered B0 toy arm's job — CLOSED,
+ * B0-boundary-contract-verdict.md contract (a) — and is wired here via dsRingChain/dsBodyChain).
  *
  * VERBATIM-IMPORT LIMITATION (flagged): `dragonRings()` computes ring z's from its OWN hardcoded
  * module-level `H=120` constant (research/bridge/_ds_prodtruth_lib.ts:39, NOT a function parameter),
@@ -366,7 +386,7 @@ export function dragonScalesAnatomy(_params: StyleOptions, dims: StyleDims): Fea
       id: `ring-${i}`,
       type: 'R-STRUCT',
       domain: { uLo: 0, uHi: 1, zLo: z - DS_RING_HALF_BAND_MM, zHi: z + DS_RING_HALF_BAND_MM },
-      boundaryChains: [dsRingChain(i, 'below'), dsRingChain(i, 'above')],
+      boundaryChains: [dsRingChain(i, 'below', i), dsRingChain(i, 'above', i + 1)],
       // Fixed structured row schedule (K3) — exempt from generic curvature-driven density by
       // construction; nTheta is GLOBAL and must not be raised (θ-trap, §2.5: doubling nTheta made the
       // sheet WORSE, +77% outliers).
@@ -393,11 +413,16 @@ export function dragonScalesAnatomy(_params: StyleOptions, dims: StyleDims): Fea
   bodyHi.push(dims.H);
   const bodyRegions: RegionPlan[] = [];
   for (let i = 0; i < bodyLo.length; i++) {
+    // body-0 has no 'lo' seam (z=0 is the pot's own true domain boundary, not a ring); body-7 (the
+    // last body, i === rings.length) has no 'hi' seam (z=H, same reasoning) — see dsBodyChain's doc.
+    const chains: ChainSpec[] = [];
+    if (i > 0) chains.push(dsBodyChain(i, 'lo', i - 1));
+    if (i < rings.length) chains.push(dsBodyChain(i, 'hi', i));
     bodyRegions.push({
       id: `body-${i}`,
       type: 'R-CDT',
       domain: { uLo: 0, uHi: 1, zLo: bodyLo[i], zHi: bodyHi[i] },
-      boundaryChains: [dsBodyChain(i, 'lo'), dsBodyChain(i, 'hi')],
+      boundaryChains: chains,
       // Decision A6: stays on K1 adaptive (matches production, measured CONSISTENT-to-better than the
       // champion's own uniform sheet). CAUTION carried forward, not enforced here: a generic
       // curvature-driven escalation on the per-scale relief texture would repeat the champion's own
