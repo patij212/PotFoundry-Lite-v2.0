@@ -10,12 +10,21 @@ export interface ScoreRow {
   conditionC: { ok: boolean; boundaryEdges: number; nonManifoldEdges: number;
                 orientationMismatches: number; selfIntersections: number; stlPath: string };
   driftMaxMm: number | null;
+  /** Set when a style's build/score/validate pipeline threw (Task 5 robustness:
+   *  one style's failure must not lose the others' rows). Other fields on the
+   *  row are best-effort (whatever completed before the throw) or 0/defaults. */
+  error?: string;
 }
 
 const f = (x: number, d = 4) => x.toFixed(d);
 const drift = (x: number | null) => (x === null ? 'pending' : f(x));
+// Markdown-table-safe: collapse newlines and escape pipes so a thrown error
+// message can never corrupt the row structure; cap length so one huge stack
+// trace can't blow out the table width.
+const sanitizeForTable = (s: string) => s.replace(/\r?\n/g, ' ').replace(/\|/g, '\\|').slice(0, 300);
 
 function goNoGo(r: ScoreRow): string {
+  if (r.error) return `BUILD FAILED — ${sanitizeForTable(r.error)}`;
   // Spike-methodology pivot (Task 4): CPU/GPU drift gates ahead of A/C —
   // where the CPU field diverges from the certified GPU field, the CPU sag
   // numbers measure the wrong surface and can't certify tolerance.
