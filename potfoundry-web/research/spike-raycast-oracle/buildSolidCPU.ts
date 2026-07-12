@@ -166,8 +166,12 @@ export function buildSolidCPU(
   const generalCurves: FeatureLine[] = featureLines.filter((l) => l.kind === 'general-curve');
   const minLevel = Math.max(creaseChoice.level, creaseTChoice.level, helixChoice.level);
 
-  // Verdict-refine flag: eligible only when outer featureLines are non-empty
-  // (matches ConformingWall's flag-ON guard). Record eligibility for the scorecard.
+  // Verdict-refine flag: `verdictRan` records a 2-of-4 SUBSET of ConformingWall's
+  // real flag-ON guard — the two conditions that vary here (flag set AND non-empty
+  // general-curve featureLines). The other two always hold in this harness:
+  // assembleWatertight builds the outer wall at surfaceId 0, and we never thread a
+  // caller `featureLevelAt`. The scorecard go/no-go's "remesher signal" vs "verdict
+  // inert" split rests on this, so it must stay honest — not "matches the guard".
   const prevFlag = (globalThis as Record<string, unknown>).__pfConformingVerdictRefine;
   const verdictRan = opts.verdictRefine && generalCurves.length > 0;
   (globalThis as Record<string, unknown>).__pfConformingVerdictRefine = opts.verdictRefine;
