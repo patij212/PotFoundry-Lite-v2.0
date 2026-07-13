@@ -210,6 +210,33 @@ export interface RefineOptions {
    * interior fidelity the guard checks is unchanged.
    */
   seamSymmetry?: { uLo: number; uHi: number };
+  /**
+   * RIM-ROW PIN (LEVER, PROD-TIERC assembly-share, opt-in; default undefined ⇒
+   * NO rim reconciliation — BYTE-IDENTICAL to prior for every existing caller).
+   * Set `{nRing}` to reconcile the t=tLo (bottom) and t=tHi (top) BOUNDARY rows to
+   * exactly `nRing` evenly-spaced ascending-U stations (u = uLo + k·(uHi−uLo)/nRing),
+   * so the emitted `bottomRing`/`topRing` are length `nRing` and the downstream
+   * {@link WatertightAssembly.assembleWatertight} `annulusStrip`/`emitRadialCap`
+   * caps — which pair the outer rings index-for-index against the pinned-nRing inner
+   * wall — adopt this analytic outer wall UNCHANGED (watertight rim/base joins).
+   *
+   * WHY: the whole-domain CDT refine leaves the two rim rows at EMERGENT counts
+   * (hundreds–thousands), never `nRing`, so the assembler's equal-count rim strip
+   * cannot pair them. Runs POST-convergence (after {@link seamSymmetry}), applying
+   * the SAME canonical-station rebuild the seam reconciliation uses, now to the two
+   * rim rows: it imposes the fixed nRing u-lattice (endpoints k=0/k=nRing REUSE the
+   * seam-column corner vertices so the periodic weld's column bijection is
+   * preserved), re-points every rim vertex onto its nearest station, drops the old
+   * intra-row edges, re-chains each rim as an ascending-U locked polyline, and
+   * re-triangulates ONCE. After the downstream seam weld (u=uHi station k=nRing folds
+   * onto u=uLo station k=0) each rim is exactly `nRing` distinct ascending-U vertices.
+   * Rim vertices sit exactly on their t=const boundary line (a ≤(uHi−uLo)/(2·nRing)
+   * tangential re-point), so the reconciliation is on-surface. The interior
+   * CONVERGENCE loop is untouched (this runs strictly after it). Typically paired
+   * with {@link seamSymmetry} (production sets both); `uLo`/`uHi` are taken from
+   * `seamSymmetry` when present, else from the domain.
+   */
+  rimPin?: { nRing: number };
 }
 
 export interface RefinePassStat {
@@ -1006,6 +1033,110 @@ function symmetrizeSeamColumns(
   return true;
 }
 
+/** t-proximity (FRACTION of t) for rim-row membership — mirrors {@link SEAM_T_EPS}. */
+const RIM_T_EPS = 1e-6;
+
+/**
+ * RIM-ROW PIN (see {@link RefineOptions.rimPin}). REBUILDS `uv`/`cEdges` IN PLACE so
+ * the two boundary rows t=tLo and t=tHi each carry exactly `nRing`+1 canonical,
+ * evenly-spaced, ascending-U stations (k=0..nRing at u = uLo + k·(uHi−uLo)/nRing).
+ * Returns true iff a rebuild happened (⇒ the caller MUST re-triangulate); false when
+ * either rim row is empty (nothing to pin).
+ *
+ * Runs AFTER {@link symmetrizeSeamColumns}, so the two periodic seam columns already
+ * carry canonical t-stations INCLUDING the four corners (u∈{uLo,uHi} × t∈{tLo,tHi}).
+ * The station endpoints k=0 (u=uLo) and k=nRing (u=uHi) coincide with those corners:
+ * every rim vertex — corners included — is re-pointed onto its nearest station BY U,
+ * so the corner at u=uLo maps to k=0 and the corner at u=uHi maps to k=nRing. This
+ * keeps each seam column's t-multiset unchanged (only the tLo/tHi corner INDICES are
+ * relabelled, not their positions), so the downstream `seamColumnRemap` bijection +
+ * weld still folds u=uHi (station k=nRing) onto u=uLo (station k=0) — leaving each rim
+ * exactly `nRing` distinct ascending-U vertices. Interior rim stations (k=1..nRing−1)
+ * are strictly interior in u (never on a seam column), so they never collide with the
+ * seam reconciliation. Rim vertices lie exactly on their t=const line, so the pin is
+ * on-surface (a ≤(uHi−uLo)/(2·nRing) tangential shift).
+ */
+function pinRimRows(
+  uv: number[],
+  cEdges: Array<[number, number]>,
+  tLo: number,
+  tHi: number,
+  uLo: number,
+  uHi: number,
+  nRing: number,
+): boolean {
+  const du = (uHi - uLo) / nRing;
+  if (!(du > 0) || nRing < 2) return false;
+  const nV0 = uv.length / 2;
+  // Row tag per vertex: 0 = t=tLo, 1 = t=tHi, -1 = interior/non-rim.
+  const rowOf = new Int8Array(nV0).fill(-1);
+  let n0 = 0;
+  let n1 = 0;
+  for (let i = 0; i < nV0; i++) {
+    const t = uv[2 * i + 1];
+    if (Math.abs(t - tLo) < RIM_T_EPS) {
+      rowOf[i] = 0;
+      n0++;
+    } else if (Math.abs(t - tHi) < RIM_T_EPS) {
+      rowOf[i] = 1;
+      n1++;
+    }
+  }
+  if (n0 === 0 || n1 === 0) return false;
+  // Nearest fixed station index (0..nRing) for a rim vertex's u.
+  const stationOf = (u: number): number => {
+    let k = Math.round((u - uLo) / du);
+    if (k < 0) k = 0;
+    if (k > nRing) k = nRing;
+    return k;
+  };
+  // Rebuild vertex layout: interior vertices keep their order, then nRing+1 canonical
+  // stations for the tLo row, then nRing+1 for the tHi row.
+  const newUv: number[] = [];
+  const oldToNew = new Int32Array(nV0);
+  for (let i = 0; i < nV0; i++) {
+    if (rowOf[i] === -1) {
+      oldToNew[i] = newUv.length / 2;
+      newUv.push(uv[2 * i], uv[2 * i + 1]);
+    }
+  }
+  const loBase = newUv.length / 2;
+  for (let k = 0; k <= nRing; k++) newUv.push(uLo + k * du, tLo);
+  const hiBase = newUv.length / 2; // = loBase + (nRing + 1)
+  for (let k = 0; k <= nRing; k++) newUv.push(uLo + k * du, tHi);
+  for (let i = 0; i < nV0; i++) {
+    if (rowOf[i] === 0) oldToNew[i] = loBase + stationOf(uv[2 * i]);
+    else if (rowOf[i] === 1) oldToNew[i] = hiBase + stationOf(uv[2 * i]);
+  }
+  // Remap edges; drop degenerates, dups, and old intra-row rim edges (re-chained
+  // below). Rib/interior edges touching a rim vertex survive, re-pointed onto its
+  // canonical station (seam-column edges likewise keep their now-relabelled corner).
+  const seen = new Set<number>();
+  const cKey = (a: number, b: number): number => (a < b ? a * 1e7 + b : b * 1e7 + a);
+  const inLoRow = (v: number): boolean => v >= loBase && v < hiBase;
+  const inHiRow = (v: number): boolean => v >= hiBase;
+  const newEdges: Array<[number, number]> = [];
+  for (const [a, b] of cEdges) {
+    const na = oldToNew[a];
+    const nb = oldToNew[b];
+    if (na === nb) continue;
+    if ((inLoRow(na) && inLoRow(nb)) || (inHiRow(na) && inHiRow(nb))) continue;
+    const k = cKey(na, nb);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    newEdges.push([na, nb]);
+  }
+  for (let k = 0; k < nRing; k++) {
+    newEdges.push([loBase + k, loBase + k + 1]);
+    newEdges.push([hiBase + k, hiBase + k + 1]);
+  }
+  uv.length = 0;
+  for (const x of newUv) uv.push(x);
+  cEdges.length = 0;
+  for (const e of newEdges) cEdges.push(e);
+  return true;
+}
+
 /**
  * The whole-mesh honest-brute refine loop (see module doc). Returns the
  * refined chart mesh; `capped` is true when the pass budget ran out with
@@ -1188,18 +1319,27 @@ export function refineToZeroOutliers(
     tris = triangulateMM(uv, uToMm, tToMm, cEdges);
     if (pass === opts.maxPass && outliers > 0) capped = true;
   }
-  // SYMMETRIC PERIODIC-SEAM RECONCILIATION (opt-in; post-convergence, so the
-  // interior fidelity above is untouched). Makes the u=uLo / u=uHi columns a
-  // bijection ⇒ the downstream seam weld closes the periodic crack.
+  // BOUNDARY RECONCILIATION (opt-in; post-convergence, so the interior fidelity
+  // above is untouched). (a) SEAM: make the u=uLo/u=uHi columns a bijection ⇒ the
+  // downstream weld closes the periodic crack. (b) RIM: pin the t=tLo/t=tHi rows to
+  // nRing ascending-U stations ⇒ the assembler adopts this wall's rings unchanged.
+  // Both mutate uv/cEdges in place; a single re-triangulation follows either.
+  let boundaryChanged = false;
   if (opts.seamSymmetry) {
-    const changed = symmetrizeSeamColumns(
-      uv,
-      cEdges,
-      opts.seamSymmetry.uLo,
-      opts.seamSymmetry.uHi,
-    );
-    if (changed) tris = triangulateMM(uv, uToMm, tToMm, cEdges);
+    if (
+      symmetrizeSeamColumns(uv, cEdges, opts.seamSymmetry.uLo, opts.seamSymmetry.uHi)
+    ) {
+      boundaryChanged = true;
+    }
   }
+  if (opts.rimPin) {
+    const uLo = opts.seamSymmetry?.uLo ?? domain.uLo;
+    const uHi = opts.seamSymmetry?.uHi ?? domain.uHi;
+    if (pinRimRows(uv, cEdges, domain.tLo, domain.tHi, uLo, uHi, opts.rimPin.nRing)) {
+      boundaryChanged = true;
+    }
+  }
+  if (boundaryChanged) tris = triangulateMM(uv, uToMm, tToMm, cEdges);
   return { uv, tris, passes: pass, capped, history, constraintEdges: cEdges };
 }
 

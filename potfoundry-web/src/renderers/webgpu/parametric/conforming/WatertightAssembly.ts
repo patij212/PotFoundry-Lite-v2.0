@@ -39,6 +39,8 @@ import { TRI_SOURCE } from './QuadtreeTriangulator';
 import { annulusStrip, discFan } from './RingStrip';
 import type { FeatureLine } from './FeatureLineGraph';
 import { classifySurfaceShear } from './FShearDiagnostics';
+import type { ConformingOuterWallResult } from './ConformingOuterWall';
+import { isPerfectMesherEnabled } from './tierC';
 
 /** Reference shape anisotropy gating uBias on (a wide/flat pot exceeds it). */
 const UBIAS_AREF = 3;
@@ -312,6 +314,20 @@ export interface AssemblyWallOptions {
    * mechanism.
    */
   multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair' | 'snapMerge';
+  /**
+   * PROD-TIERC (opt-in, flag-gated): a pre-built Tier-C analytic outer wall to
+   * ADOPT for surfaceId 0 instead of building it via {@link buildConformingWall}.
+   * This is the literal-0.01 Gothic/GeoStar outer wall
+   * ({@link buildTierCOuterWall}); its periodic u-seam is welded and its t=0/t=1
+   * rings MUST be rim-pinned (via `TierCOuterWallOptions.nRing`) to exactly this
+   * assembly's `nRing`, ascending-U — so the shared rim (`annulusStrip`) and base
+   * caps (`emitRadialCap`) pair it index-for-index against the pinned-nRing inner
+   * wall UNCHANGED. When adopted, the inner wall is built at the SAME ring count
+   * with uBias 0 to guarantee the equal-count rim join. CONSUMED ONLY when
+   * {@link isPerfectMesherEnabled} is true AND this is present; omit (or flag-off)
+   * ⇒ structurally byte-identical default assembly (the load-bearing tripwire).
+   */
+  tierCOuterWall?: ConformingOuterWallResult;
 }
 
 /** Index range and vertex count for one surface in the combined mesh. */
@@ -537,29 +553,52 @@ export function assembleWatertight(
     directionalRefine,
     cellSamples: opts.cellSamples,
   };
+  // PROD-TIERC (flag-gated, opt-in): ADOPT a pre-built Tier-C analytic outer wall
+  // for surfaceId 0 instead of building it here. Gated on BOTH the perfect-mesher
+  // flag AND the wall being supplied ⇒ the non-Tier-C path is structurally
+  // untouched (flag-off / absent = byte-identical default assembly). The adopted
+  // wall's rings are rim-pinned to `nRing`; the inner wall is built at that SAME
+  // ring count (uBias 0) so the shared rim/base caps pair index-for-index.
+  const adoptTierC =
+    isPerfectMesherEnabled() && opts.tierCOuterWall !== undefined;
   // Features go on the OUTER wall only (the inner wall is a smooth offset).
   // The per-wall efg samplers (warp-composed maps) arm the shaped templates;
   // sizing stays on the plain samplers (first positional arg).
-  const outer = buildConformingWall(outerSampler, {
-    ...wallOpts,
-    surfaceId: 0,
-    featureLines: opts.outerFeatureLines,
-    featureTMargin: opts.featureTMargin,
-    featureLevel: opts.featureLevel,
-    creaseLines: opts.outerCreaseLines,
-    efgSampler: opts.outerEfgSampler,
-    bandRegions: opts.bandRegions,
-    railLines: opts.railLines,
-    // Analytic curvature floor — OUTER wall only (see AssemblyWallOptions doc).
-    curvatureFloor: opts.outerCurvatureFloor,
-    maxKappa: opts.outerMaxKappa,
-    // Multi-curve cell force-refine — OUTER wall only (features are outer-only).
-    multiCurveCellPolicy: opts.multiCurveCellPolicy,
-  });
+  const outer: ConformingWallResult = adoptTierC
+    ? {
+        vertices: opts.tierCOuterWall!.vertices,
+        indices: opts.tierCOuterWall!.indices,
+        seamTriangles: opts.tierCOuterWall!.seamTriangles,
+        gridVertexCount: opts.tierCOuterWall!.gridVertexCount,
+        bottomRing: opts.tierCOuterWall!.bottomRing,
+        topRing: opts.tierCOuterWall!.topRing,
+      }
+    : buildConformingWall(outerSampler, {
+        ...wallOpts,
+        surfaceId: 0,
+        featureLines: opts.outerFeatureLines,
+        featureTMargin: opts.featureTMargin,
+        featureLevel: opts.featureLevel,
+        creaseLines: opts.outerCreaseLines,
+        efgSampler: opts.outerEfgSampler,
+        bandRegions: opts.bandRegions,
+        railLines: opts.railLines,
+        // Analytic curvature floor — OUTER wall only (see AssemblyWallOptions doc).
+        curvatureFloor: opts.outerCurvatureFloor,
+        maxKappa: opts.outerMaxKappa,
+        // Multi-curve cell force-refine — OUTER wall only (features are outer-only).
+        multiCurveCellPolicy: opts.multiCurveCellPolicy,
+      });
   const inner = buildConformingWall(innerSampler, {
     ...wallOpts,
     surfaceId: 1,
     efgSampler: opts.innerEfgSampler,
+    // When adopting the Tier-C outer wall, pin the inner wall to the SAME emergent
+    // ring count (uBias 0) so both walls' boundary rings match by index — the
+    // equal-count precondition of the rim `annulusStrip` and base `emitRadialCap`.
+    ...(adoptTierC
+      ? { nRing: outer.bottomRing.length, uBias: 0 }
+      : {}),
   });
 
   // DEV-ONLY "array packing" timer (E-2026-07-10 follow-up): everything from

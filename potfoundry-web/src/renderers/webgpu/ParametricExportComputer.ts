@@ -73,6 +73,8 @@ import {
 } from './parametric/conforming';
 import { resolveUniformLevelOverride } from './parametric/conforming/uniformLevelOverride';
 import { buildAnalyticCurvatureFloor } from './parametric/conforming/AnalyticCurvatureFloor';
+import { isPerfectMesherEnabled, isCountUnstableStyle } from './parametric/conforming/tierC';
+import type { ConformingOuterWallResult } from './parametric/conforming/ConformingOuterWall';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
 import {
@@ -2863,6 +2865,46 @@ export class ParametricExportComputer {
                       )
                     : null;
 
+                // PROD-TIERC (dev flag, default OFF ⇒ byte-identical): build the
+                // literal-0.01 analytic outer wall for count-unstable styles
+                // (Gothic/GeoStar) and adopt it as surfaceId 0 in the assembly. The
+                // build itself is gated on isPerfectMesherEnabled() — NEVER on in
+                // production — so this is inert (undefined ⇒ default outer wall)
+                // unless the perfect-mesher flag is set. rimPin nRing = qNRing pins
+                // the wall's t=0/t=1 rings to the assembly's ring count so the
+                // shared rim/base caps adopt it unchanged (see assembleWatertight's
+                // tierCOuterWall option). buildTierCOuterWall internally re-checks
+                // the count-unstable allow-list; we only build+pass when it will
+                // take the Tier-C branch (else it returns an un-pinned plain wall).
+                const adoptTierCOuter =
+                    isPerfectMesherEnabled() &&
+                    isCountUnstableStyle(params.styleId, { nodes: [], edges: [] });
+                let tierCOuterWall: ConformingOuterWallResult | undefined;
+                if (adoptTierCOuter) {
+                    tierCOuterWall = buildTierCOuterWall(
+                        outerSampler,
+                        {
+                            maxSagMm: qMaxSag,
+                            maxEdgeMm: qMaxEdge,
+                            minEdgeMm: qMinEdge,
+                            gradeRatio: 2,
+                            maxLevel: qMaxLevel,
+                            resU: qSizingRes,
+                            resT: qSizingRes,
+                            analyticRA: buildAnalyticRadiusFn(params.styleId, params.styleOpts, {
+                                H: dimensions.H,
+                                Rb: dimensions.Rb,
+                                Rt: dimensions.Rt,
+                                expn: dimensions.expn,
+                            }),
+                            analyticH: dimensions.H,
+                            // Rim-pin the t=0/t=1 rings to the assembly's ring count.
+                            nRing: qNRing,
+                        },
+                        params.styleId,
+                    );
+                }
+
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.
                 // With curvature de-noising (grid-scaled finite differences) the
                 // sag-driven mesh is already far coarser on smooth styles, so a
@@ -2934,6 +2976,9 @@ export class ParametricExportComputer {
                     // byte-identical). OUTER wall only — see AssemblyWallOptions.
                     outerCurvatureFloor: analyticFloor?.curvatureFloor,
                     outerMaxKappa: analyticFloor?.maxKappa,
+                    // PROD-TIERC (flag-gated, undefined in production): adopt the
+                    // pre-built literal-0.01 analytic outer wall for surfaceId 0.
+                    tierCOuterWall,
                 };
                 // Feature graft must precede the u/t/helix warps so corridor
                 // surfaceId-0 vertices warp with the outer wall. For Voronoi the

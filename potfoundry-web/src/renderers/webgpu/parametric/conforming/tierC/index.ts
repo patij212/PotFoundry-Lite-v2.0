@@ -238,6 +238,17 @@ export interface TierCOuterWallOptions extends ConformingOuterWallOptions {
   analyticRA?: (theta: number, z: number) => number;
   /** Optional analytic wall height (mm); default = measured off the sampler. */
   analyticH?: number;
+  /**
+   * RIM-PIN target ring count (PROD-TIERC assembly-share, flag-on only). When set,
+   * the flag-on refine reconciles the t=0/t=1 boundary rows to exactly this many
+   * evenly-spaced ascending-U stations (see {@link RefineOptions.rimPin}), so the
+   * emitted `bottomRing`/`topRing` are length `nRing` and
+   * {@link WatertightAssembly.assembleWatertight}'s shared rim/base caps adopt this
+   * wall UNCHANGED. Must equal the inner wall's ring count the assembler pairs
+   * against. Absent ⇒ emergent CDT rim counts (byte-identical to the pre-share
+   * build; the assembler must not adopt an un-pinned wall).
+   */
+  nRing?: number;
 }
 
 /**
@@ -304,6 +315,10 @@ export function buildTierCOuterWall(
     // welds them into ONE shared locked index column (watertight periodic seam).
     // Matches the SeamLockSpec {uLo:0,uHi:1} locked into `complex` above.
     seamSymmetry: { uLo: 0, uHi: 1 },
+    // Rim-share (PROD-TIERC assembly): pin the t=0/t=1 rim rows to nRing ascending-U
+    // stations so assembleWatertight adopts this wall's rings unchanged. Only when
+    // the caller supplied the assembly's ring count; absent ⇒ emergent rim counts.
+    ...(opts.nRing ? { rimPin: { nRing: opts.nRing } } : {}),
     ...(useAnalytic
       ? {
           surfaceSource: 'analytic',
