@@ -120,29 +120,19 @@ function seamColumnRemap(uv: number[]): Int32Array {
   }
   // Only a clean equal-count bijection is safe to weld (see SAFETY GATE above).
   if (s0.length === 0 || s1.length === 0 || s0.length !== s1.length) return remap;
+  // Two-pointer pairing over BOTH t-sorted columns: with equal counts a clean
+  // bijection is the k-th u=1 station paired to the k-th u=0 station. Every pair
+  // MUST coincide within SEAM_T_EPS or the columns are not a shared set (abandon
+  // to the safe identity no-op). This is robust to genuine within-column
+  // duplicate stations that a greedy nearest-match would collide on — the
+  // refine's symmetric-seam reconciliation (noBridgeRefine.seamSymmetry) emits
+  // both columns as the SAME sorted station multiset, so k-th↔k-th is exact.
   s0.sort((a, b) => uv[2 * a + 1] - uv[2 * b + 1]);
-  const s0t = s0.map((i) => uv[2 * i + 1]);
-  const usedS0 = new Set<number>();
-  const pending: Array<[number, number]> = [];
-  for (const i of s1) {
-    const t = uv[2 * i + 1];
-    let lo = 0;
-    let hi = s0t.length - 1;
-    while (lo < hi) {
-      const m = (lo + hi) >> 1;
-      if (s0t[m] < t) lo = m + 1;
-      else hi = m;
-    }
-    let best = lo;
-    if (lo > 0 && Math.abs(s0t[lo - 1] - t) <= Math.abs(s0t[best] - t)) best = lo - 1;
-    const target = s0[best];
-    // Unmatched (no coincident twin) or a collision (two u=1 onto one u=0) ⇒
-    // NOT a clean bijection ⇒ abandon the whole merge (safe identity no-op).
-    if (Math.abs(s0t[best] - t) >= SEAM_T_EPS || usedS0.has(target)) return remap;
-    usedS0.add(target);
-    pending.push([i, target]);
+  s1.sort((a, b) => uv[2 * a + 1] - uv[2 * b + 1]);
+  for (let k = 0; k < s1.length; k++) {
+    if (Math.abs(uv[2 * s1[k] + 1] - uv[2 * s0[k] + 1]) >= SEAM_T_EPS) return remap;
   }
-  for (const [i, j] of pending) remap[i] = j;
+  for (let k = 0; k < s1.length; k++) remap[s1[k]] = s0[k];
   return remap;
 }
 
@@ -309,6 +299,11 @@ export function buildTierCOuterWall(
     bulkPasses7pt: 4,
     bgArcMm: 0.35,
     ruler: DEFAULT_RULER,
+    // Seam-share (PROD-TIERC): reconcile the periodic u=0/u=1 boundary columns
+    // to a t-station bijection post-refine so toOuterWallResult's seamColumnRemap
+    // welds them into ONE shared locked index column (watertight periodic seam).
+    // Matches the SeamLockSpec {uLo:0,uHi:1} locked into `complex` above.
+    seamSymmetry: { uLo: 0, uHi: 1 },
     ...(useAnalytic
       ? {
           surfaceSource: 'analytic',

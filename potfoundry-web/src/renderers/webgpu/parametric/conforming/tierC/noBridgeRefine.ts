@@ -182,6 +182,34 @@ export interface RefineOptions {
    * SAFE while `round(t_mm/cell) < 1e5` (t-span ~29mm ⇒ cell ≥ ~0.0003mm).
    */
   dedupeCellMm?: number;
+  /**
+   * SYMMETRIC PERIODIC-SEAM RECONCILIATION (LEVER, PROD-TIERC seam-share, opt-in;
+   * default undefined ⇒ NO seam reconciliation — BYTE-IDENTICAL to prior for every
+   * existing caller). Set `{uLo, uHi}` to the two periodic boundary columns the
+   * {@link ProtectedComplex} was seam-LOCKED at (typically `{uLo:0, uHi:1}`).
+   *
+   * WHY: cdt2d triangulates the UNWRAPPED [uLo,uHi] u-chart as a flat rectangle,
+   * so the u=uLo and u=uHi boundaries are two INDEPENDENT vertex columns. The
+   * seam lock ({@link ProtectedComplex} SeamLockSpec) installs identical t-stations
+   * on both at SEED, but the whole-domain RED-refine then DESYMMETRIZES them: the
+   * seam-crossing rib chains clip onto u=uLo, so its side carries far more
+   * near-crest outliers and accrues far more midpoint splits than u=uHi (MEASURED
+   * T3.2: u0=2477 vs u1=942 post-refine) — so the two columns are NOT a count
+   * bijection and the downstream `seamColumnRemap` weld safely no-ops, leaving the
+   * periodic seam an OPEN crack (the production-linchpin blocker).
+   *
+   * FIX (post-loop, once): after the refine loop converges, take the UNION of both
+   * columns' t-stations and add the missing TWIN on each column — a vertex exactly
+   * on the seam line, geometrically identical to its periodic image (ZERO fidelity
+   * cost), t copied EXACTLY from the source column so the twin pairs to it within
+   * `seamColumnRemap`'s tolerance. Re-chain each column's LOCKED seam edges through
+   * ALL its vertices (no T-junction) and re-triangulate ONCE. The columns are then
+   * an equal-count, t-matched BIJECTION ⇒ `toOuterWallResult`'s seam weld folds
+   * u=uHi onto u=uLo into ONE shared locked index column ⇒ watertight periodic seam.
+   * The refine CONVERGENCE loop is untouched (this runs strictly after it), so the
+   * interior fidelity the guard checks is unchanged.
+   */
+  seamSymmetry?: { uLo: number; uHi: number };
 }
 
 export interface RefinePassStat {
@@ -852,6 +880,132 @@ function resolveSurfaceSource(
   };
 }
 
+/** u-fraction proximity to a periodic seam column (uLo / uHi). */
+const SEAM_U_EPS = 1e-6;
+/**
+ * t-station pairing tolerance (FRACTION of t) — IDENTICAL to the downstream
+ * `seamColumnRemap` (tierC/index.ts SEAM_T_EPS): two seam stations within this
+ * are "the same" station (the seam lock installs both columns' shared stations
+ * to 7.31e-7 fraction — T3.2; genuine stations are ≥ maxChord/tToMm ≈ 1e-3
+ * fraction apart). Reconciling in the SAME metric the weld validates in
+ * guarantees the bijection this produces is exactly the one the weld accepts.
+ */
+const SEAM_T_EPS = 1e-6;
+
+/**
+ * SYMMETRIC PERIODIC-SEAM RECONCILIATION (see {@link RefineOptions.seamSymmetry}).
+ * REBUILDS `uv` and `cEdges` IN PLACE so the two periodic boundary columns (u=uLo,
+ * u=uHi) share ONE canonical t-station set — an exact, duplicate-free, equal-count
+ * bijection. Returns true iff a rebuild happened (⇒ the caller MUST re-triangulate
+ * from the rebuilt `uv`/`cEdges`); false when either column is empty (nothing to do).
+ *
+ * WHY a rebuild (not an in-place twin-append): the whole-domain refine leaves the
+ * two columns asymmetric AND with WITHIN-column near-coincident stations (rib
+ * endpoints clipped onto the seam coincide with seam-lock stations; near-duplicate
+ * midpoint splits). Keeping every such vertex and welding u=uHi→u=uLo folds
+ * coincident duplicates together and fabricates non-manifold edges (MEASURED:
+ * dedupNonMan 12→2247) and leaves a residual crack. Instead we CLUSTER all seam
+ * t-stations (both columns) to canonical stations within {@link SEAM_T_EPS}, place
+ * EXACTLY ONE vertex per station on each column (welding within-column duplicates,
+ * dropping the coincident extras), remap every rib/interior edge that touched a
+ * seam vertex onto its canonical station, and re-chain each column's locked seam
+ * edges. The columns are then an exact duplicate-free bijection ⇒ the downstream
+ * `seamColumnRemap` welds them into ONE shared index column with no T-junction and
+ * no non-manifold edge ⇒ watertight periodic seam. Vertices are exactly on the seam
+ * line (periodic images of each other) so the reconciliation is fidelity-free.
+ */
+function symmetrizeSeamColumns(
+  uv: number[],
+  cEdges: Array<[number, number]>,
+  uLo: number,
+  uHi: number,
+): boolean {
+  const onCol = (u: number, uCol: number): boolean => Math.abs(u - uCol) < SEAM_U_EPS;
+  const nV0 = uv.length / 2;
+  // Column tag per vertex: 0 = uLo, 1 = uHi, -1 = interior/non-seam.
+  const colOf = new Int8Array(nV0).fill(-1);
+  const seamTs: number[] = [];
+  let n0 = 0;
+  let n1 = 0;
+  for (let i = 0; i < nV0; i++) {
+    const u = uv[2 * i];
+    if (onCol(u, uLo)) {
+      colOf[i] = 0;
+      n0++;
+      seamTs.push(uv[2 * i + 1]);
+    } else if (onCol(u, uHi)) {
+      colOf[i] = 1;
+      n1++;
+      seamTs.push(uv[2 * i + 1]);
+    }
+  }
+  if (n0 === 0 || n1 === 0) return false;
+  // Canonical stations: cluster ALL seam t (both columns) within SEAM_T_EPS.
+  seamTs.sort((a, b) => a - b);
+  const canon: number[] = [];
+  for (const t of seamTs) {
+    if (canon.length === 0 || t - canon[canon.length - 1] >= SEAM_T_EPS) canon.push(t);
+  }
+  // Nearest canonical station index for a seam t (exists by construction).
+  const stationOf = (t: number): number => {
+    let lo = 0;
+    let hi = canon.length - 1;
+    while (lo < hi) {
+      const m = (lo + hi) >> 1;
+      if (canon[m] < t) lo = m + 1;
+      else hi = m;
+    }
+    let best = lo;
+    if (lo > 0 && Math.abs(canon[lo - 1] - t) <= Math.abs(canon[best] - t)) best = lo - 1;
+    return best;
+  };
+  // Rebuild vertex layout: interior vertices keep their order, then one canonical
+  // vertex per station on each column (uLo block, then uHi block).
+  const newUv: number[] = [];
+  const oldToNew = new Int32Array(nV0);
+  for (let i = 0; i < nV0; i++) {
+    if (colOf[i] === -1) {
+      oldToNew[i] = newUv.length / 2;
+      newUv.push(uv[2 * i], uv[2 * i + 1]);
+    }
+  }
+  const loBase = newUv.length / 2;
+  for (const t of canon) newUv.push(uLo, t);
+  const hiBase = newUv.length / 2;
+  for (const t of canon) newUv.push(uHi, t);
+  for (let i = 0; i < nV0; i++) {
+    if (colOf[i] === 0) oldToNew[i] = loBase + stationOf(uv[2 * i + 1]);
+    else if (colOf[i] === 1) oldToNew[i] = hiBase + stationOf(uv[2 * i + 1]);
+  }
+  // Remap constraint edges; drop degenerates, dups, and old intra-column seam
+  // edges (re-chained below). Rib/interior edges touching a seam vertex survive,
+  // re-pointed onto its canonical station.
+  const seen = new Set<number>();
+  const cKey = (a: number, b: number): number => (a < b ? a * 1e7 + b : b * 1e7 + a);
+  const newEdges: Array<[number, number]> = [];
+  const inLo = (v: number): boolean => v >= loBase && v < hiBase;
+  const inHi = (v: number): boolean => v >= hiBase;
+  for (const [a, b] of cEdges) {
+    const na = oldToNew[a];
+    const nb = oldToNew[b];
+    if (na === nb) continue;
+    if ((inLo(na) && inLo(nb)) || (inHi(na) && inHi(nb))) continue;
+    const k = cKey(na, nb);
+    if (seen.has(k)) continue;
+    seen.add(k);
+    newEdges.push([na, nb]);
+  }
+  for (let s = 1; s < canon.length; s++) {
+    newEdges.push([loBase + s - 1, loBase + s]);
+    newEdges.push([hiBase + s - 1, hiBase + s]);
+  }
+  uv.length = 0;
+  for (const x of newUv) uv.push(x);
+  cEdges.length = 0;
+  for (const e of newEdges) cEdges.push(e);
+  return true;
+}
+
 /**
  * The whole-mesh honest-brute refine loop (see module doc). Returns the
  * refined chart mesh; `capped` is true when the pass budget ran out with
@@ -1033,6 +1187,18 @@ export function refineToZeroOutliers(
     }
     tris = triangulateMM(uv, uToMm, tToMm, cEdges);
     if (pass === opts.maxPass && outliers > 0) capped = true;
+  }
+  // SYMMETRIC PERIODIC-SEAM RECONCILIATION (opt-in; post-convergence, so the
+  // interior fidelity above is untouched). Makes the u=uLo / u=uHi columns a
+  // bijection ⇒ the downstream seam weld closes the periodic crack.
+  if (opts.seamSymmetry) {
+    const changed = symmetrizeSeamColumns(
+      uv,
+      cEdges,
+      opts.seamSymmetry.uLo,
+      opts.seamSymmetry.uHi,
+    );
+    if (changed) tris = triangulateMM(uv, uToMm, tToMm, cEdges);
   }
   return { uv, tris, passes: pass, capped, history, constraintEdges: cEdges };
 }
