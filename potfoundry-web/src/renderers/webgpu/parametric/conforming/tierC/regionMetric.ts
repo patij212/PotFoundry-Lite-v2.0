@@ -284,6 +284,19 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   const rimPinRing = opts.rimPinRing;
   const doRimPin = rimPinRing !== undefined && rimPinRing >= 2;
   const BND_EPS = 1e-9;
+  // Rim-pin near-boundary SPLIT guard (PROD-TIERC feature-conforming region path). Under rim-pin, refining an edge
+  // from an INTERIOR (feature-u) vertex down to the locked rim/seam marches split-midpoints geometrically toward
+  // the boundary (t or u halving each round). At a NON-seed station — which the feature-conforming injection
+  // introduces (θ-valley/flank-toe loci sit at the scale lattice, not the nRing rim stations) — those midpoints are
+  // NOT deduped against the seed columns, so once one lands within the ring-collection band (metricMeshToOuterWall
+  // collects t/u within 1e-6) it pollutes the emitted rim ring or breaks the u-seam weld bijection. Rejecting any
+  // split midpoint inside a thin locked-boundary band keeps the marching clear of that zone (the band is 1000× the
+  // collection epsilon, so smoothing drift cannot re-enter it). STRICT NO-OP when doRimPin is false (the default and
+  // non-rim-pinned region paths never evaluate it → the split loop is byte-identical). Without injection the marching
+  // only occurs at seed-u (which dedupes), so this guard changes nothing for a plain rim-pinned wall either.
+  const RIM_SPLIT_BAND = 1e-3;
+  const rimSplitBlocked = (mu: number, mt: number): boolean =>
+    doRimPin && (mt < RIM_SPLIT_BAND || mt > 1 - RIM_SPLIT_BAND || mu < RIM_SPLIT_BAND || mu > 1 - RIM_SPLIT_BAND);
 
   const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells });
   const RU = mf.resU, RT = mf.resT, M = mf.m;
@@ -440,9 +453,13 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
       const eAB = metricLen2(uv[a], uv[a + 1], uv[b], uv[b + 1]);
       const eBC = metricLen2(uv[b], uv[b + 1], uv[c], uv[c + 1]);
       const eCA = metricLen2(uv[c], uv[c + 1], uv[a], uv[a + 1]);
-      if (!lockAB && eAB > splitThresh2 && addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++;
-      if (!lockBC && eBC > splitThresh2 && addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++;
-      if (!lockCA && eCA > splitThresh2 && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
+      // Midpoints of each edge (rim-pin guard rejects any that land inside the locked-boundary band; no-op off).
+      const mABu = (uv[a] + uv[b]) / 2, mABt = (uv[a + 1] + uv[b + 1]) / 2;
+      const mBCu = (uv[b] + uv[c]) / 2, mBCt = (uv[b + 1] + uv[c + 1]) / 2;
+      const mCAu = (uv[c] + uv[a]) / 2, mCAt = (uv[c + 1] + uv[a + 1]) / 2;
+      if (!lockAB && eAB > splitThresh2 && !rimSplitBlocked(mABu, mABt) && addPoint(mABu, mABt)) added++;
+      if (!lockBC && eBC > splitThresh2 && !rimSplitBlocked(mBCu, mBCt) && addPoint(mBCu, mBCt)) added++;
+      if (!lockCA && eCA > splitThresh2 && !rimSplitBlocked(mCAu, mCAt) && addPoint(mCAu, mCAt)) added++;
       // fidelity guard: if the facet deviates from the TRUE surface > chordTolMm, split the longest edge
       // (catches sharp/thin relief the grid-curvature metric aliases). Skip if already metric-split this edge.
       if (chordTolMm !== undefined && Math.max(eAB, eBC, eCA) <= splitThresh2) {
@@ -454,9 +471,9 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
           const wOnBnd = doRimPin && (w.u <= BND_EPS || w.u >= 1 - BND_EPS || w.t <= BND_EPS || w.t >= 1 - BND_EPS);
           if (!wOnBnd && w.sag > chordTolMm && addPoint(w.u, w.t)) added++;
         } else if (chordSag(tris[ti], tris[ti + 1], tris[ti + 2]) > chordTolMm) {
-          if (eAB >= eBC && eAB >= eCA) { if (!lockAB && addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++; }
-          else if (eBC >= eCA) { if (!lockBC && addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++; }
-          else if (!lockCA && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
+          if (eAB >= eBC && eAB >= eCA) { if (!lockAB && !rimSplitBlocked(mABu, mABt) && addPoint(mABu, mABt)) added++; }
+          else if (eBC >= eCA) { if (!lockBC && !rimSplitBlocked(mBCu, mBCt) && addPoint(mBCu, mBCt)) added++; }
+          else if (!lockCA && !rimSplitBlocked(mCAu, mCAt) && addPoint(mCAu, mCAt)) added++;
         }
       }
       if (uv.length / 2 > maxPoints) { hitBudget = true; break; }
@@ -580,6 +597,29 @@ export interface MetricOuterWallOpts {
   curvatureFineStep?: number;
   curvatureSubsamples?: number;
   /**
+   * PROD-TIERC FEATURE-CONFORMING graph (opt-in, region-dispatch only). Flat (u,t) pairs of FORCED points seeded
+   * alongside the seed grid — typically a per-style crease/valley edge graph (e.g. the DragonScales θ-valley ∪
+   * flank-toe contour built by {@link buildDragonScalesConformingGraph}). Threaded straight to
+   * {@link MetricMeshOpts.injectedPoints}. The region dispatch generates these per style; a plain region wall (no
+   * style graph) leaves them absent. STRICT NO-OP when absent/empty (kernel injection block never runs ⇒
+   * byte-identical to the pre-conforming region wall). MUST be clipped to the patch INTERIOR (off the four locked
+   * boundaries) so the rim-pin seam-weld bijection holds — {@link buildDragonScalesConformingGraph} does this.
+   */
+  injectedPoints?: number[];
+  /**
+   * PROD-TIERC constraint edges (opt-in): vertex-PAIRS as positions into {@link injectedPoints} — the kernel
+   * recovers each as a real mesh edge (a locus edge lies ON the crease). Threaded to
+   * {@link MetricMeshOpts.constraintEdges}. Requires {@link injectedPoints}. STRICT NO-OP when absent/empty.
+   */
+  constraintEdges?: number[];
+  /** With {@link injectedPoints}: PIN the injected crease vertices during smoothing (default true when a graph is
+   *  supplied). Threaded to {@link MetricMeshOpts.pinInjected}. No-op without a graph. */
+  pinInjected?: boolean;
+  /** With {@link constraintEdges}: robust SUBDIVIDE-COLLINEAR recovery (lifts recovery→~100% regardless of density
+   *  — the proven DS-close recovery mode). Threaded to {@link MetricMeshOpts.recoverySubdivideCollinear}. No-op
+   *  without a graph. */
+  recoverySubdivideCollinear?: boolean;
+  /**
    * PROD-TIERC region-assembly RIM-PIN (opt-in). When set, the emitted `bottomRing`/`topRing` are reconciled to
    * EXACTLY this many evenly-spaced ascending-u stations, and the u=0/u=1 seam is welded into a periodic cylinder,
    * so {@link WatertightAssembly.assembleWatertight}'s shared rim (`annulusStrip`) and base caps (`emitRadialCap`)
@@ -623,6 +663,13 @@ export function buildMetricOuterWall(
     optimizeSweeps: opts.optimizeSweeps, dedupeEps: opts.dedupeEps,
     chordTolMm: opts.chordTolMm, chordSteiner: opts.chordSteiner, chordSampleN: opts.chordSampleN,
     curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples,
+    // OPT-IN feature-conforming graph (region dispatch, per style). Absent ⇒ kernel injection/constraint blocks
+    // never run ⇒ byte-identical to the plain region wall. The dispatch clips the graph to the interior so the
+    // rim-pin seam-weld bijection below still holds.
+    injectedPoints: opts.injectedPoints,
+    constraintEdges: opts.constraintEdges,
+    pinInjected: opts.pinInjected,
+    recoverySubdivideCollinear: opts.recoverySubdivideCollinear,
     guardManifoldAlways: true, // MANDATORY — watertight-by-construction (byte-identical off on non-buggy configs).
     rimPinRing: opts.nRing,    // OPT-IN region-assembly rim-pin (undefined ⇒ emergent rims, byte-identical).
   });

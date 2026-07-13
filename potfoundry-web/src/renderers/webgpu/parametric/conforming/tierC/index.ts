@@ -36,6 +36,11 @@ import {
 import { collapseDegenerateFaces } from './collapseDegenerate';
 import type { AnalyticRadiusFn } from '../../../../../fidelity/analyticSurfaceGate';
 import { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
+import {
+  buildDragonScalesConformingGraph,
+  DS_CURVATURE_FINE_STEP,
+  DS_CURVATURE_SUBSAMPLES,
+} from './dsFeatureEdges';
 import { isRegionLayerEnabled } from './regionLayerFlag';
 export { isRegionLayerEnabled } from './regionLayerFlag';
 export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
@@ -414,5 +419,22 @@ export function buildRegionOuterWall(
     maxPoints: params.maxPoints,
     chordTolMm: params.chordTolMm,
   };
+  // DragonScales feature-conforming path (E-2026-07-13-DS-INTERIOR-CLOSE): embed the per-scale C1 creases (θ-valley
+  // ∪ flank-toe) as constraint edges + sub-cell curvature sizing so the body closes to the LITERAL 0.01mm true-3D
+  // standard (proven: witness body p99 ~0.009 ≤ 0.01, nonMan 0, vs baseline OFF 0.0147). The graph is analytic from
+  // the DS lattice and clipped to the patch INTERIOR so the rim-pin seam-weld bijection holds. Every other region
+  // style (GeometricStar) takes the plain region wall UNCHANGED (no graph ⇒ kernel injection blocks inert ⇒
+  // byte-identical). The graph assumes the DEFAULT DS lattice (8/16/0.5) — the validated recipe + captured
+  // production artifact both use defaults; non-default dsScaleRows/dsScalesPerRow would need the lattice plumbed
+  // through RegionOuterWallParams (follow-up).
+  if (styleId === 'DragonScales') {
+    const graph = buildDragonScalesConformingGraph(params.H);
+    kernelOpts.injectedPoints = graph.pts;
+    kernelOpts.constraintEdges = graph.edges;
+    kernelOpts.pinInjected = true;
+    kernelOpts.recoverySubdivideCollinear = true;
+    kernelOpts.curvatureFineStep = DS_CURVATURE_FINE_STEP;
+    kernelOpts.curvatureSubsamples = DS_CURVATURE_SUBSAMPLES;
+  }
   return buildMetricOuterWall(params.analyticRA, { H: params.H }, kernelOpts);
 }
