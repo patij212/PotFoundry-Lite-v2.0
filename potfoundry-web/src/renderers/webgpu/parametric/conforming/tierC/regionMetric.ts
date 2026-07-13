@@ -108,6 +108,18 @@ export interface MetricMeshOpts {
    */
   guardManifoldAlways?: boolean;
   /**
+   * OPT-IN RIM-PIN for the PROD-TIERC region-assembly share (self-contained; NOT the noBridgeRefine K2 path).
+   * When set to `nRing >= 2`, the kernel is built so its FOUR patch boundaries are LOCKED to fixed stations that
+   * make `buildMetricOuterWall` able to emit periodic bottom/top rings of EXACTLY `nRing` ascending-u vertices:
+   *   • the t=0 and t=1 RIM rows are seeded at u=i/nRing (i=0..nRing, incl. the u=1 seam image) and never split,
+   *   • the u=0 and u=1 SEAM columns are seeded with identical t-stations and never split (so the post-pass can
+   *     weld u=1→u=0 into ONE shared column — a periodic cylinder — closing the seam manifold-by-construction).
+   * Refinement never subdivides an edge lying wholly on a boundary line; the INTERIOR refines freely by the metric.
+   * Smoothing already pins patch-boundary vertices (u or t at 0/1), so the locked stations never move. STRICT NO-OP
+   * when absent/<2 (the seed + split loop are byte-identical to the default kernel). `guardManifoldAlways` stays on.
+   */
+  rimPinRing?: number;
+  /**
    * OPT-IN manifold guard for the CONSTRAINT-RECOVERY flips (E-2026-07-01-PUREGREEN). On a PLANARIZED constraint
    * graph the dense T-junction fans let a recovery flip duplicate an existing edge → non-manifold (MEASURED
    * nonMan=2 on planarized GothicArches). When true, recoverAndLockEdges rejects any crossing-flip whose new
@@ -267,6 +279,11 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   const splitThresh2 = (opts.splitThresh ?? 1.5) ** 2; // split if longest metric-edge² exceeds this
   const sweeps = opts.optimizeSweeps ?? 6;
   const dedupeEps = opts.dedupeEps ?? 1e-6;
+  // OPT-IN rim-pin (region-assembly share). Lock the four patch boundaries to fixed stations so
+  // buildMetricOuterWall can weld the seam and emit nRing-length periodic rims. STRICT NO-OP when absent.
+  const rimPinRing = opts.rimPinRing;
+  const doRimPin = rimPinRing !== undefined && rimPinRing >= 2;
+  const BND_EPS = 1e-9;
 
   const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells });
   const RU = mf.resU, RT = mf.resT, M = mf.m;
@@ -348,8 +365,23 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   const addPoint = (u: number, t: number): boolean => { const k = keyOf(u, t); if (seen.has(k)) return false; seen.set(k, uv.length / 2); uv.push(u, t); return true; };
   const vertOfKey = (k: number): number => seen.get(k) ?? -1;
 
-  const seedNt = Math.max(2, seedN), seedNu = Math.max(2, Math.round(seedN * s));
+  // Rim-pin: seed EXACTLY `rimPinRing` u-columns (u=i/nRing, i=0..nRing) so the t=0/t=1 rows carry nRing+1
+  // stations (the u=1 station is the periodic image of u=0) AND the u=0/u=1 seam columns share identical
+  // t-stations (both are the seed rows j/seedNt) — the clean bijection buildMetricOuterWall welds. Default: the
+  // anisotropy-scaled column count.
+  const seedNt = Math.max(2, seedN), seedNu = doRimPin ? rimPinRing! : Math.max(2, Math.round(seedN * s));
   for (let i = 0; i <= seedNu; i++) for (let j = 0; j <= seedNt; j++) addPoint(i / seedNu, j / seedNt);
+
+  // Rim-pin boundary lock: true iff the edge (i0,i1) lies WHOLLY on one patch boundary line (both endpoints on
+  // t=0, or both on t=1, or both on u=0, or both on u=1). Such edges are never split, so the seeded rim/seam
+  // stations stay fixed → the emitted rings are exactly nRing and the seam columns stay a weldable bijection.
+  const onSameBoundaryLine = (i0: number, i1: number): boolean => {
+    const u0 = uv[2 * i0], t0v = uv[2 * i0 + 1], u1 = uv[2 * i1], t1v = uv[2 * i1 + 1];
+    return (t0v <= BND_EPS && t1v <= BND_EPS)
+      || (t0v >= 1 - BND_EPS && t1v >= 1 - BND_EPS)
+      || (u0 <= BND_EPS && u1 <= BND_EPS)
+      || (u0 >= 1 - BND_EPS && u1 >= 1 - BND_EPS);
+  };
 
   // OPT-IN feature-conforming injection. Forced points (e.g. refined crest/valley loci) are appended to the
   // point set here — exactly where a denser seed grid would add them — then participate in EVERY round of
@@ -400,12 +432,17 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
     // via addPoint, and refining all over-size edges at once converges in ~log2(ratio) rounds, not ~60.
     for (let ti = 0; ti < tris.length; ti += 3) {
       const a = tris[ti] * 2, b = tris[ti + 1] * 2, c = tris[ti + 2] * 2;
+      // Rim-pin: an edge lying wholly on a patch boundary is LOCKED (never split) so the seeded rim/seam
+      // stations stay fixed. No-op when doRimPin is false (all three flags stay false → byte-identical splits).
+      const lockAB = doRimPin && onSameBoundaryLine(tris[ti], tris[ti + 1]);
+      const lockBC = doRimPin && onSameBoundaryLine(tris[ti + 1], tris[ti + 2]);
+      const lockCA = doRimPin && onSameBoundaryLine(tris[ti + 2], tris[ti]);
       const eAB = metricLen2(uv[a], uv[a + 1], uv[b], uv[b + 1]);
       const eBC = metricLen2(uv[b], uv[b + 1], uv[c], uv[c + 1]);
       const eCA = metricLen2(uv[c], uv[c + 1], uv[a], uv[a + 1]);
-      if (eAB > splitThresh2 && addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++;
-      if (eBC > splitThresh2 && addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++;
-      if (eCA > splitThresh2 && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
+      if (!lockAB && eAB > splitThresh2 && addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++;
+      if (!lockBC && eBC > splitThresh2 && addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++;
+      if (!lockCA && eCA > splitThresh2 && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
       // fidelity guard: if the facet deviates from the TRUE surface > chordTolMm, split the longest edge
       // (catches sharp/thin relief the grid-curvature metric aliases). Skip if already metric-split this edge.
       if (chordTolMm !== undefined && Math.max(eAB, eBC, eCA) <= splitThresh2) {
@@ -413,11 +450,13 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
           // Steiner at the worst-sag sample (interior apex faces): an edge split can't converge a vertex onto
           // an interior bulge; the worst-sag point (often the centroid) can.
           const w = chordWorstBary(tris[ti], tris[ti + 1], tris[ti + 2]);
-          if (w.sag > chordTolMm && addPoint(w.u, w.t)) added++;
+          // Rim-pin: never place a Steiner point ON a locked boundary line (would break the seam bijection).
+          const wOnBnd = doRimPin && (w.u <= BND_EPS || w.u >= 1 - BND_EPS || w.t <= BND_EPS || w.t >= 1 - BND_EPS);
+          if (!wOnBnd && w.sag > chordTolMm && addPoint(w.u, w.t)) added++;
         } else if (chordSag(tris[ti], tris[ti + 1], tris[ti + 2]) > chordTolMm) {
-          if (eAB >= eBC && eAB >= eCA) { if (addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++; }
-          else if (eBC >= eCA) { if (addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++; }
-          else if (addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
+          if (eAB >= eBC && eAB >= eCA) { if (!lockAB && addPoint((uv[a] + uv[b]) / 2, (uv[a + 1] + uv[b + 1]) / 2)) added++; }
+          else if (eBC >= eCA) { if (!lockBC && addPoint((uv[b] + uv[c]) / 2, (uv[b + 1] + uv[c + 1]) / 2)) added++; }
+          else if (!lockCA && addPoint((uv[c] + uv[a]) / 2, (uv[c + 1] + uv[a + 1]) / 2)) added++;
         }
       }
       if (uv.length / 2 > maxPoints) { hitBudget = true; break; }
@@ -540,6 +579,15 @@ export interface MetricOuterWallOpts {
   /** OPT-IN fine-step sub-cell curvature sizing (resolves sharp sub-cell ridges). */
   curvatureFineStep?: number;
   curvatureSubsamples?: number;
+  /**
+   * PROD-TIERC region-assembly RIM-PIN (opt-in). When set, the emitted `bottomRing`/`topRing` are reconciled to
+   * EXACTLY this many evenly-spaced ascending-u stations, and the u=0/u=1 seam is welded into a periodic cylinder,
+   * so {@link WatertightAssembly.assembleWatertight}'s shared rim (`annulusStrip`) and base caps (`emitRadialCap`)
+   * adopt this wall UNCHANGED (they pair index-for-index against the pinned-nRing inner wall). MUST equal the
+   * assembly's `nRing`. Absent ⇒ emergent CDT rim counts + all-zero seam-triangle flags (byte-identical to the
+   * pre-share build; the assembler must not adopt an un-pinned wall).
+   */
+  nRing?: number;
 }
 
 /**
@@ -576,32 +624,95 @@ export function buildMetricOuterWall(
     chordTolMm: opts.chordTolMm, chordSteiner: opts.chordSteiner, chordSampleN: opts.chordSampleN,
     curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples,
     guardManifoldAlways: true, // MANDATORY — watertight-by-construction (byte-identical off on non-buggy configs).
+    rimPinRing: opts.nRing,    // OPT-IN region-assembly rim-pin (undefined ⇒ emergent rims, byte-identical).
   });
-  return metricMeshToOuterWall(mesh);
+  return metricMeshToOuterWall(mesh, opts.nRing);
 }
 
 /**
  * Adapt a {@link MetricMesh} (flat (u,t) + index buffer over the [0,1]² patch) to a {@link ConformingOuterWallResult}
- * (packed (u,t,0) vertices + ordered boundary rings). Pure repack — no geometry change.
+ * (packed (u,t,0) vertices + ordered boundary rings).
+ *
+ * DEFAULT (rimPinRing absent): a pure repack — no geometry change, distinct u=0/u=1 columns, all-zero seam flags,
+ * emergent bottom/top rings (byte-identical to the pre-share port).
+ *
+ * RIM-PIN (rimPinRing set): the mesh was built with all four boundaries LOCKED (see {@link MetricMeshOpts.rimPinRing}),
+ * so the u=0 and u=1 seam columns are an exact t-station bijection. We WELD u=1→u=0 (remap the u=1 column indices onto
+ * their u=0 twins, then compact) — closing the periodic seam into ONE shared index column (manifold-by-construction:
+ * each seam hull-edge is now shared by the u≈0-side and u≈1-side triangles) — and emit `bottomRing`/`topRing` of
+ * EXACTLY `rimPinRing` ascending-u stations. Seam-adjacent triangles now span the wrap, so `seamTriangles` is
+ * recomputed by u-span (>0.5). Throws if the seam columns are NOT a clean bijection (the rim-pin invariant broke —
+ * never emit a mesh the assembler would silently mis-adopt).
  */
-function metricMeshToOuterWall(mesh: MetricMesh): ConformingOuterWallResult {
+function metricMeshToOuterWall(mesh: MetricMesh, rimPinRing?: number): ConformingOuterWallResult {
   const ut = mesh.ut;
   const nV = ut.length / 2;
-  const vertices = new Float32Array(nV * 3);
-  for (let i = 0; i < nV; i++) { vertices[3 * i] = ut[2 * i]; vertices[3 * i + 1] = ut[2 * i + 1]; vertices[3 * i + 2] = 0; }
-  const nTri = mesh.indices.length / 3;
-  // The patch has explicit u=0/u=1 columns and no triangle spans the seam ⇒ zero seam-wrap triangles.
-  const seamTriangles = new Uint8Array(nTri);
-  // Boundary rings: t≈0 (bottom) / t≈1 (top), each ordered by u ascending. Boundary vertices are pinned during
-  // smoothing so they stay EXACTLY on t=0/t=1; refinement midpoints on a boundary edge stay on it too.
   const RING_EPS = 1e-6;
+  const doRimPin = rimPinRing !== undefined && rimPinRing >= 2;
+
+  // remap[i] = surviving vertex i maps to (identity by default; u=1→u=0 under the rim-pin weld).
+  const remap = new Int32Array(nV);
+  for (let i = 0; i < nV; i++) remap[i] = i;
+  if (doRimPin) {
+    const col0: number[] = [], col1: number[] = [];
+    for (let i = 0; i < nV; i++) {
+      const u = ut[2 * i];
+      if (u <= RING_EPS) col0.push(i);
+      else if (u >= 1 - RING_EPS) col1.push(i);
+    }
+    // The seed-lock keeps both seam columns as the SAME t-station multiset; a clean k-th↔k-th (t-sorted) bijection
+    // is required to weld. Anything else means the lock leaked (a boundary edge got split) — fail loudly.
+    if (col0.length === 0 || col0.length !== col1.length) {
+      throw new Error(`buildMetricOuterWall: rim-pin seam columns are not a bijection (u0=${col0.length}, u1=${col1.length})`);
+    }
+    col0.sort((a, b) => ut[2 * a + 1] - ut[2 * b + 1]);
+    col1.sort((a, b) => ut[2 * a + 1] - ut[2 * b + 1]);
+    for (let k = 0; k < col1.length; k++) {
+      if (Math.abs(ut[2 * col1[k] + 1] - ut[2 * col0[k] + 1]) >= RING_EPS) {
+        throw new Error('buildMetricOuterWall: rim-pin seam t-stations are not matched (lock leaked)');
+      }
+      remap[col1[k]] = col0[k];
+    }
+  }
+
+  // Compact the surviving vertices (those that map to themselves) to dense new indices.
+  const oldToNew = new Int32Array(nV).fill(-1);
+  let newCount = 0;
+  for (let i = 0; i < nV; i++) if (remap[i] === i) oldToNew[i] = newCount++;
+  const finalOf = (i: number): number => oldToNew[remap[i]];
+
+  const vertices = new Float32Array(newCount * 3);
+  for (let i = 0; i < nV; i++) {
+    if (remap[i] !== i) continue;
+    const ni = oldToNew[i];
+    vertices[3 * ni] = ut[2 * i]; vertices[3 * ni + 1] = ut[2 * i + 1]; vertices[3 * ni + 2] = 0;
+  }
+  const nTri = mesh.indices.length / 3;
+  const indices = new Uint32Array(mesh.indices.length);
+  for (let k = 0; k < mesh.indices.length; k++) indices[k] = finalOf(mesh.indices[k]);
+
+  // DEFAULT: no triangle spans the seam ⇒ all-zero seam flags. RIM-PIN: seam-adjacent triangles wrap after the
+  // weld ⇒ flag any triangle whose u-span exceeds 0.5 (mirrors index.ts toOuterWallResult).
+  const seamTriangles = new Uint8Array(nTri);
+  if (doRimPin) {
+    for (let f = 0; f < nTri; f++) {
+      const ua = vertices[3 * indices[3 * f]], ub = vertices[3 * indices[3 * f + 1]], uc = vertices[3 * indices[3 * f + 2]];
+      if (Math.max(ua, ub, uc) - Math.min(ua, ub, uc) > 0.5) seamTriangles[f] = 1;
+    }
+  }
+
+  // Boundary rings: t≈0 (bottom) / t≈1 (top), each ordered by u ascending. Boundary vertices are pinned during
+  // smoothing so they stay EXACTLY on t=0/t=1. Under the rim-pin weld the u=1 corner folds onto u=0, so a locked
+  // t-row of nRing+1 stations becomes a periodic ring of EXACTLY nRing entries.
   const bottom: number[] = [], top: number[] = [];
   for (let i = 0; i < nV; i++) {
+    if (remap[i] !== i) continue;
     const t = ut[2 * i + 1];
-    if (t <= RING_EPS) bottom.push(i);
-    else if (t >= 1 - RING_EPS) top.push(i);
+    const ni = oldToNew[i];
+    if (t <= RING_EPS) bottom.push(ni);
+    else if (t >= 1 - RING_EPS) top.push(ni);
   }
-  bottom.sort((a, b) => ut[2 * a] - ut[2 * b]);
-  top.sort((a, b) => ut[2 * a] - ut[2 * b]);
-  return { vertices, indices: mesh.indices, seamTriangles, gridVertexCount: nV, bottomRing: bottom, topRing: top };
+  bottom.sort((a, b) => vertices[3 * a] - vertices[3 * b]);
+  top.sort((a, b) => vertices[3 * a] - vertices[3 * b]);
+  return { vertices, indices, seamTriangles, gridVertexCount: newCount, bottomRing: bottom, topRing: top };
 }

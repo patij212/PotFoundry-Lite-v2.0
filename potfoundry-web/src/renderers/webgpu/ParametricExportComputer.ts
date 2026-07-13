@@ -73,7 +73,13 @@ import {
 } from './parametric/conforming';
 import { resolveUniformLevelOverride } from './parametric/conforming/uniformLevelOverride';
 import { buildAnalyticCurvatureFloor } from './parametric/conforming/AnalyticCurvatureFloor';
-import { isPerfectMesherEnabled, isCountUnstableStyle } from './parametric/conforming/tierC';
+import {
+    isPerfectMesherEnabled,
+    isCountUnstableStyle,
+    isRegionLayerEnabled,
+    isRegionLayerStyle,
+    buildRegionOuterWall,
+} from './parametric/conforming/tierC';
 import type { ConformingOuterWallResult } from './parametric/conforming/ConformingOuterWall';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
@@ -2876,33 +2882,73 @@ export class ParametricExportComputer {
                 // tierCOuterWall option). buildTierCOuterWall internally re-checks
                 // the count-unstable allow-list; we only build+pass when it will
                 // take the Tier-C branch (else it returns an un-pinned plain wall).
+                // PROD-TIERC region layer (dev flag __pfRegionLayer, default OFF): route
+                // DragonScales/GeometricStar to the CERTIFIED M=g/h² region kernel
+                // (buildRegionOuterWall, rim-pinned to qNRing), OVERRIDING the K2 wall
+                // for those styles. Flag-off ⇒ adoptRegion is false and the expression
+                // below reduces to the prior K2 gate (byte-identical). Adoption is still
+                // the isPerfectMesherEnabled() assembly hook, so a region run needs BOTH
+                // __pfRegionLayer and __pfPerfectMesher; __pfRegionLayer alone is inert.
+                const adoptRegion =
+                    isRegionLayerEnabled() && isRegionLayerStyle(params.styleId);
                 const adoptTierCOuter =
                     isPerfectMesherEnabled() &&
-                    isCountUnstableStyle(params.styleId, { nodes: [], edges: [] });
+                    (isCountUnstableStyle(params.styleId, { nodes: [], edges: [] }) ||
+                        adoptRegion);
                 let tierCOuterWall: ConformingOuterWallResult | undefined;
                 if (adoptTierCOuter) {
-                    tierCOuterWall = buildTierCOuterWall(
-                        outerSampler,
-                        {
-                            maxSagMm: qMaxSag,
-                            maxEdgeMm: qMaxEdge,
-                            minEdgeMm: qMinEdge,
-                            gradeRatio: 2,
-                            maxLevel: qMaxLevel,
-                            resU: qSizingRes,
-                            resT: qSizingRes,
-                            analyticRA: buildAnalyticRadiusFn(params.styleId, params.styleOpts, {
-                                H: dimensions.H,
-                                Rb: dimensions.Rb,
-                                Rt: dimensions.Rt,
-                                expn: dimensions.expn,
-                            }),
-                            analyticH: dimensions.H,
-                            // Rim-pin the t=0/t=1 rings to the assembly's ring count.
-                            nRing: qNRing,
-                        },
-                        params.styleId,
-                    );
+                    // Region M=g/h² kernel for DS/GeoStar (undefined for other styles /
+                    // region-off ⇒ fall through to the K2 analytic wall, unchanged).
+                    const regionWall = adoptRegion
+                        ? buildRegionOuterWall(
+                              {
+                                  analyticRA: buildAnalyticRadiusFn(
+                                      params.styleId,
+                                      params.styleOpts,
+                                      {
+                                          H: dimensions.H,
+                                          Rb: dimensions.Rb,
+                                          Rt: dimensions.Rt,
+                                          expn: dimensions.expn,
+                                      },
+                                  ),
+                                  H: dimensions.H,
+                                  nRing: qNRing,
+                                  tolMm: qMaxSag,
+                                  hMin: qMinEdge,
+                                  hMax: qMaxEdge,
+                                  sizeRes: qSizingRes,
+                                  // Direct facet→surface chord-sag guard at export tol
+                                  // (catches sharp relief the grid-curvature metric aliases).
+                                  chordTolMm: qMaxSag,
+                              },
+                              params.styleId,
+                          )
+                        : undefined;
+                    tierCOuterWall =
+                        regionWall ??
+                        buildTierCOuterWall(
+                            outerSampler,
+                            {
+                                maxSagMm: qMaxSag,
+                                maxEdgeMm: qMaxEdge,
+                                minEdgeMm: qMinEdge,
+                                gradeRatio: 2,
+                                maxLevel: qMaxLevel,
+                                resU: qSizingRes,
+                                resT: qSizingRes,
+                                analyticRA: buildAnalyticRadiusFn(params.styleId, params.styleOpts, {
+                                    H: dimensions.H,
+                                    Rb: dimensions.Rb,
+                                    Rt: dimensions.Rt,
+                                    expn: dimensions.expn,
+                                }),
+                                analyticH: dimensions.H,
+                                // Rim-pin the t=0/t=1 rings to the assembly's ring count.
+                                nRing: qNRing,
+                            },
+                            params.styleId,
+                        );
                 }
 
                 // Assemble the whole watertight mesh in (u,t,surfaceId) space.

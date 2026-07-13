@@ -34,6 +34,11 @@ import {
   type RefineResult,
 } from './noBridgeRefine';
 import { collapseDegenerateFaces } from './collapseDegenerate';
+import type { AnalyticRadiusFn } from '../../../../../fidelity/analyticSurfaceGate';
+import { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
+import { isRegionLayerEnabled } from './regionLayerFlag';
+export { isRegionLayerEnabled } from './regionLayerFlag';
+export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
 
 export {
   countJunctionNodes,
@@ -343,4 +348,71 @@ export function buildTierCOuterWall(
   // watertightness while welding UV-collinear zero-area faces to 0).
   const clean = collapseDegenerateFaces(sampler, refined);
   return toOuterWallResult({ ...refined, uv: clean.uv, tris: clean.tris });
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// D-2 REGION-LAYER DISPATCH — route sliver-heavy styles to the M=g/h² kernel
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The styles the PROD-TIERC region layer routes to the CERTIFIED M=g/h² region kernel
+ * ({@link buildMetricOuterWall}) instead of the structured Tier-A/B/K2 path — the sliver-heavy surfaces the
+ * accelerator was validated on (DragonScales 3.1% / GeometricStar 0.6% slivers <20° @ tol0.01, nonMan 0). Kept a
+ * deliberately small explicit allow-list (mirrors {@link COUNT_UNSTABLE_STYLES}); no measured graph signal isolates
+ * them from relief noise with a defensible margin (see countUnstable.ts).
+ */
+export const REGION_LAYER_STYLES: ReadonlySet<StyleId> = new Set<StyleId>([
+  'DragonScales',
+  'GeometricStar',
+]);
+
+/** True iff `styleId` is a region-layer style (empty/unknown ⇒ false — safe fallback to the non-region path). */
+export function isRegionLayerStyle(styleId: string | undefined): boolean {
+  return styleId !== undefined && REGION_LAYER_STYLES.has(styleId as StyleId);
+}
+
+/** Inputs for {@link buildRegionOuterWall} — the exact analytic surface + the assembly's shared ring count. */
+export interface RegionOuterWallParams {
+  /** Exact analytic radius r(theta, z) (built by `buildAnalyticRadiusFn` at the call site). */
+  analyticRA: AnalyticRadiusFn;
+  /** Wall height (mm). */
+  H: number;
+  /** Assembly ring count — the emitted rims are rim-pinned to exactly this (see {@link MetricOuterWallOpts.nRing}). */
+  nRing: number;
+  /** Chord tolerance (mm) driving the M=g/h² sizing field. */
+  tolMm: number;
+  /** Lower / upper clamp on the target 3D edge length (mm). */
+  hMin: number;
+  hMax: number;
+  /** Optional kernel knobs (metric-grid res, seed density, vertex budget, chord-sag guard). */
+  sizeRes?: number;
+  seedN?: number;
+  maxPoints?: number;
+  chordTolMm?: number;
+}
+
+/**
+ * D-2 region dispatch: when the region layer is ENABLED ({@link isRegionLayerEnabled}) AND `styleId` is a region
+ * style ({@link isRegionLayerStyle}), build the outer wall via the CERTIFIED M=g/h² region kernel, rim-pinned to
+ * `nRing` so {@link WatertightAssembly.assembleWatertight}'s existing `tierCOuterWall` adopt hook consumes it
+ * UNCHANGED. Returns `undefined` otherwise (flag-off OR a non-region style) ⇒ the caller keeps its existing outer-wall
+ * path, byte-identical. Adoption downstream still requires {@link isPerfectMesherEnabled} (the unchanged assembly
+ * hook) — a full region run sets BOTH `__pfRegionLayer` and `__pfPerfectMesher`; `__pfRegionLayer` alone is inert.
+ */
+export function buildRegionOuterWall(
+  params: RegionOuterWallParams,
+  styleId?: StyleId,
+): ConformingOuterWallResult | undefined {
+  if (!isRegionLayerEnabled() || !isRegionLayerStyle(styleId)) return undefined;
+  const kernelOpts: MetricOuterWallOpts = {
+    tolMm: params.tolMm,
+    hMin: params.hMin,
+    hMax: params.hMax,
+    nRing: params.nRing,
+    sizeRes: params.sizeRes,
+    seedN: params.seedN,
+    maxPoints: params.maxPoints,
+    chordTolMm: params.chordTolMm,
+  };
+  return buildMetricOuterWall(params.analyticRA, { H: params.H }, kernelOpts);
 }
