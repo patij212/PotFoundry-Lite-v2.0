@@ -660,9 +660,12 @@ fn dragon_scales_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let randomize = style_param(5u);
   let gradient = style_param(6u);
   
-  // Current row position
+  // Current row position.
+  // Clamp to the last valid row: at the rim (t=1) row_phase equals scale_rows exactly, so an
+  // unclamped floor() indexes a spurious extra row — flipping the stagger (row % 2) and stepping
+  // the radius ~1.27mm. ceil(scale_rows)-1 only bites at t=1 (no-op for every t<1).
   let row_phase = t * scale_rows;
-  let row = floor(row_phase);
+  let row = min(floor(row_phase), ceil(scale_rows) - 1.0);
   let row_local = row_phase - row;
   
   // Stagger scales (brick pattern)

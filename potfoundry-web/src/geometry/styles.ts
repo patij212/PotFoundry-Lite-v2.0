@@ -1023,9 +1023,13 @@ export function rOuterDragonScales(
   const randomize = params.dsRandomize ?? DEFAULT_DRAGON_SCALES.dsRandomize;
   const gradient = params.dsHeightGradient ?? DEFAULT_DRAGON_SCALES.dsHeightGradient;
 
-  // Current row and local position within row
+  // Current row and local position within row.
+  // Clamp to the last valid row: at the rim (t=1) rowPhase equals scaleRows exactly, so an
+  // unclamped floor() would index a spurious extra row — flipping the scale stagger (which keys
+  // on row % 2) and jerking the radius ~1.27mm at the rim. ceil(scaleRows)-1 only bites at t=1
+  // (it is a no-op for every t<1), so the top row extends continuously to the rim.
   const rowPhase = t * scaleRows;
-  const row = Math.floor(rowPhase);
+  const row = Math.min(Math.floor(rowPhase), Math.ceil(scaleRows) - 1);
   const rowLocal = rowPhase - row;
 
   // Stagger scales between rows (brick pattern)
