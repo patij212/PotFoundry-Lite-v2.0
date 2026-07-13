@@ -184,6 +184,8 @@ function makeArms(): Arm[] {
     { key: 'combo|res512|h0.012', hMin: 0.012, sizeRes: 512, graph: combo, note: 'combo + sizeRes 512 + hMin 0.012' },
     // (B) curvatureFineStep sub-cell-max curvature overlay.
     { key: 'combo|fine|h0.02', hMin: 0.02, fineStep: 0.0015, subsamples: 4, graph: combo, note: 'combo + curvatureFineStep 0.0015 + hMin 0.02' },
+    // ≤3M confirming arm — coarser fineStep trims tris below 3M while holding p99≤0.01 (E-DS-INTERIOR-CLOSE follow-up).
+    { key: 'combo|fine|s0.0022', hMin: 0.02, fineStep: 0.0022, subsamples: 4, graph: combo, note: 'combo + curvatureFineStep 0.0022 + hMin 0.02 (≤3M target)' },
     { key: 'combo|fine|h0.012', hMin: 0.012, fineStep: 0.0008, subsamples: 6, graph: combo, note: 'combo + curvatureFineStep 0.0008 + hMin 0.012' },
     // (C) direct chord guard — guarantees facet→surface chord < tol by splitting (sliver cost is the known trade).
     { key: 'combo|chord0.01', hMin: 0.03, chordTolMm: 0.01, chordSampleN: 8, graph: combo, note: 'combo + chordTolMm 0.01 (45-pt guard)' },
