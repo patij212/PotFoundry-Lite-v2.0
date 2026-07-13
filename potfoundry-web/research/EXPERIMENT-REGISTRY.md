@@ -10,6 +10,36 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-13-DS-RIMSTRIP — DEFINITIVE DS body 0.01-close: do u-RUNNING row-boundary/rim constraint rings (the §V11l riser mechanism on the RIGHT axis) close DS body to 0.01 true-3D, where the two prior t-running attempts (θ-edge, flank-toe) failed with the witness max byte-unmoved? [PRE-REGISTERED kill-criterion in the probe header before measuring]
+
+**VERDICT: REFUTED (u-strips do NOT close it) — and the ROOT CAUSE is RE-LOCATED: the DS body worst tail (witness max 0.847 / radial "1.13mm") is a RIM `floor()` BOUNDARY ARTIFACT, not a wall-axis or feature-conforming gap. At z=120 (t=1), `Math.floor(rowPhase=8.0)=8` flips the stagger (row 7 odd → row 8 even) ⇒ the analytic radius JUMPS up to 1.27mm at the measure-zero z=H slice while the whole row-7 body just below is continuous. The mesh's RIM vertices at t=1 lift to that spurious row-8 surface (r≈39.67/49.66); facets connecting them to the row-7 body (r≈38.39/48.38) chord the 1.27mm cliff → 0.847. NO (u,t) topology fixes a MISPLACED VERTEX, so u-strips leave the max UNMOVED (0.847→0.831); re-lifting the SAME mesh with a rim-continuous rA (row=min(floor,scaleRows−1)) COLLAPSES it 0.847→0.097 with zero topology change. Fix = a ONE-SIDED RIM EVALUATION in src, NOT feature-conforming strips.**
+
+**STEP 1 — LOCATE (analytic |dr/dz| scan + per-vertex diagnostic):** near-vertical z-walls at EVERY t=k/8; LARGEST |dr/dz|≈634 at t=1 (RIM). Interior risers t=1/8..7/8 = EXCLUDED ring-band; rim t=1 ∉ dragonRings() ⇒ BODY, dominant. All 200 worst body facets at zC 119.9–120. Worst-10 diagnostic: every worst facet = 2 verts at t=1 on r≈39.67/49.66 (row-8 artifact) + 1 vert at t≈0.999 on r≈38.39/48.38 (row-7 body) — the chorded 1.27mm rim step.
+
+**DISCRIMINATOR:** SAME certified config (`buildInhouseMetricMesh` tolMm0.01/sizeRes192/hMin0.05/hMax8/gradeBeta0.2/maxPoints2.5M/guardManifoldAlways). u-strip arm adds full-u constraint rings (512 pts/ring) at t=k/8±0.3mm (interior §V11l double-band) + t=1⁻ (rim), pinInjected + recoverySubdivideCollinear. `rimCont` = re-lift + re-score the identical (u,t) with `rA(θ, min(z, H−1e-4))` (row-7 limit at the rim). Witness = `perFaceTrue3DSag` on the body subset (ring-band bandMm1.0 excluded) — the fast decisive true-3D MAX (DS not tangled ⇒ GN honest per cheatsheet).
+
+**KILL-CRITERION (pre-reg):** CLOSES iff composite body p99 ≤ 0.01 AND witness max collapses 0.85→≤~0.05 AND %<20° ≤ ~3.5 AND nonMan 0 (tris flagged >3M). If max collapses only under rimCont (not u-strips) ⇒ rim floor() artifact, fix = one-sided rim lift.
+
+**EVIDENCE (witness = perFaceTrue3DSag, body subset ring-band-excluded; equal certified config):**
+| arm | tris | %<20° | nonMan | witness p99 / max | radial p99 / max |
+|---|---|---|---|---|---|
+| OFF · rA (baseline, DS-TRUE3D identity) | 717,196 | 3.1 | 0 | 0.01886 / **0.847338** | 0.02818 / 1.1283 |
+| OFF · rimCont (SAME mesh, row-7 rim re-lift) | 717,196 | — | — | 0.01527 / **0.097226** | 0.02025 / 0.18847 |
+| ON · u-strip / rA (PRE-REGISTERED) | 1,444,776 | **1.80** | **0** | 0.01296 / **0.830530** | — |
+| ON · u-strip / rimCont | 1,444,776 | — | — | 0.01183 / **0.105854** | — |
+
+u-strip recovery: req 7680 · present 43 · recovered 7622 · failed 15 (99.8% embedded). Composite (V11g certified ruler) pending (`composite.log`): OFF|rA identity ≈ 0.01725/0.1887 (known), + OFF|rimCont + ON|ustrip|rA.
+
+1. **u-strips REFUTED:** witness max 0.847→0.831 (−2%, UNMOVED, same worst class); p99 gain 0.0189→0.0130 is DENSITY (0.72M→1.44M) + interior, not rim-locking. Kill max-collapse FAILS. 2. **Rim artifact PROVEN:** rimCont re-lift (no topology change) collapses max 0.847→0.097 (8.7×). 3. **Rim-fix alone ≠ 0.01 either:** OFF|rimCont p99 0.0153, max 0.097 — residual after rim-fix is the SMALLER interior θ-scale-tile edge class (the density-invariant C0 relief θ-edge/flank-toe already could not close). u-strip+rimCont p99 0.0118, still >0.01. 4. Slivers SAFE (3.1→1.80%), watertight, <3M budget.
+
+**WHY (mechanism):** the residual is a MISPLACED rim VERTEX, not a chording-axis error. Both prior attempts (θ-edge, flank-toe) AND this u-strip attack the tessellation; none can move a vertex that is lifted onto the wrong (row-8, half-period-shifted) surface at t=1. Only correcting the rim EVALUATION (one-sided/row-clamped) moves it. The 8.7× collapse under a pure re-lift is the fingerprint.
+
+**RECOMMENDATION:** do NOT productionize u-running row/rim strips as the DS body closer (REFUTED, max unmoved). Fix the DS radius RIM: clamp `row = min(floor(rowPhase), scaleRows−1)` (evaluate the rim at the z=H⁻ limit) so the top row extends continuously — a minimal src change in the DS radius / rim-lift, NOT feature-conforming. VERIFY the GPU styles.wgsl DS shader shares the floor()-at-rim step (same formula ⇒ likely a real 1.27mm rim step in the production export, worth fixing regardless of the metric). AFTER the rim fix the DS body residual is the interior θ-scale-tile edge class (witness p99 ~0.015, max ~0.10) — accept+document as the irreducible §V11l C0 floor absent a hard sub-0.01 mandate; the rim fix removes the alarming 0.85/1.13 tail, leaving an honest p99 ~0.015 on the interior scale edges.
+
+**LEDGER:** NEW `research/bridge/_dsRimStrip.test.ts` (PF_DSRIM=1 fast; PF_DSRIM_COMP=1 composite; PF_DSRIM_RENDER=1) + `vitest.dsrimstrip.config.ts`. Data (self-checkpointed): `research/exchange/_dsRimStrip/arms.ndjson` (4 witness arms), `composite.log` (certified p99, harvesting), `rimStrip_3panel.png` (true-3D heatmap; camera on mid-body = interior ring-band risers, rim off-screen), `run.log`. Full finding: `.../scratchpad/briefs/task-dsrimstrip-report.md`. Reuses buildInhouseMetricMesh / _ds_prodtruth_lib (V11g ruler) / labkit READ-ONLY. No src/ edit, no flag, no commit (per task). New files staged only.
+
+---
+
 ## E-2026-07-13-DS-FLANKTOE — STEP 1: confirm the DS body worst-locus; STEP 2: does embedding the per-scale FLANK-TOE contour (distFromCenter=1 rounded-diamond) as M-kernel `constraintEdges` close DS BODY to the 0.01 true-3D standard (where the straight θ-edge missed)? [PRE-REGISTERED kill-criterion committed before measuring]
 
 **VERDICT: REFUTED as a CLOSE — and the RENDER CORRECTS THE LOCUS. STEP 1's `distFromCenter=1` straddle metric flagged "flank toe" (100% of top-200 worst body facets straddle dist=1) but was CONFOUNDED: those facets sit at rowLocal≈0.996 / t≈0.9996 / yDist≈0.66 (the ROW-BOUNDARY / RIM), NOT at mid-row (yDist≈0) where a pure θ-flank-toe would live. The true-3D heatmap render shows the DS body residual is the HORIZONTAL row-boundary/RIM z-wall (the same riser/tread C0 class as §V11l), NOT the θ-periodic per-scale flank toe — the scale flanks/valleys are GREEN/faithful; only the horizontal (t=const) lines are red. Embedding the flank-toe contour (t-running arcs) is ORTHOGONAL to a t=const wall ⇒ it cannot lock it: composite body max BYTE-IDENTICAL 0.188745→0.188745, witness max 0.847338→0.847303 (same worst facet), composite p99 0.01725→0.01466 (still > 0.01, the gain is DENSITY not feature-locking). Slivers IMPROVED (%<20° 3.10→2.50), nonMan 0, 99.8% recovery, 1.09M tris.**
