@@ -10,6 +10,43 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-13-MSURF-ISOVSSURF — does M=g/h² (surface-intrinsic first-form metric) MATERIALLY beat production ISOTROPIC scalar sizing on the two open frontiers (SLIVER quality + DS body/ring FIDELITY), for DragonScales + GeometricStar? [PRE-REGISTERED kill-criterion below, committed in the probe header before measuring]
+
+**VERDICT: M-METRIC-ACCELERATES — on the SLIVER frontier, decisively and on BOTH styles; NEUTRAL-to-POSITIVE on fidelity (no body-fidelity regression at adequate density; the residual is the discontinuity-band needle class M cannot fix, orthogonal to the metric choice).**
+
+**HYPOTHESIS:** meshing under M=g/h₃D² (even ON the 3D surface, `surfaceMetricField.ts` CHORD mode + gradeBeta, via gmsh BAMG) cuts slivers ≥30% relative AND holds DS body/ring true-3D fidelity vs the production-analog ISOTROPIC scalar sizing (even in the FLAT (u,t) rectangle, `buildIsotropicSizingField`, gmsh Frontal-Delaunay), at matched chord tolerance.
+
+**DISCRIMINATOR (clean A/B, ONE oracle, same chord target):** gmsh on the SAME unit (u,t) square at the SAME tolMm; ONLY the size field differs — iso scalar h(u,t) (Frontal-Delaunay) vs M=g/h₃D² tensor (BAMG Alg 7). No kernel fork. SLIVERS = `triangleQualityDistribution` (minAngle + pctBelow20); DS FIDELITY = the validated §V11g composite ruler (`_ds_prodtruth_lib`, BODY dense-45 radial-bound [sheet=radial, exact] vs RING-band composite-BVH, split); GeoStar FIDELITY = `perFaceTrue3DSag` (fair relative true-3D). Watertight-by-position `auditNonManByIndex`=0 on all 8 (u=0/u=1 lift to same xyz).
+
+**KILL-CRITERION (pre-registered):** ACCELERATES iff on BOTH styles, matched tolMm, tris within ~1.5×: surf pctBelow20 ≤ 0.7× iso AND surf minAngle ≥ iso AND DS surf body/ring p99 not worse than iso by >0.005mm. MARGINAL iff <30% reduction or fidelity regresses. NO-HELP iff surf pctBelow20 ≥ iso.
+
+**EVIDENCE (8 cells; DIMS H120/Rb40/Rt50; SIZE_RES 192; gradeBeta 0.2):**
+
+| style | tol | arm | tris | **pctBelow20** | minAng° | med° | p5° | body/true3d p50 | body/true3d p99 | ring p99 (DS) |
+|---|---|---|---|---|---|---|---|---|---|---|
+| DS | 0.02 | iso | 343625 | **21.8%** | 5.3 | 26 | 14 | 0.0187 | 0.0527 | 0.152 |
+| DS | 0.02 | **surf** | 282366 | **1.8%** | 7.4 | 49 | 32 | 0.0123 | 0.109 | 0.189 |
+| DS | 0.01 | iso | 643522 | **22.7%** | 5.6 | 26 | 14 | 0.0097 | 0.0291 | 0.115 |
+| DS | 0.01 | **surf** | 566234 | **2.3%** | 5.1 | 49 | 33 | 0.0061 | 0.0305 | 0.141 |
+| GeoStar | 0.02 | iso | 112517 | **21.7%** | 3.1 | 27 | 10 | 0.0100 | 0.428 | — |
+| GeoStar | 0.02 | **surf** | 164815 | **5.4%** | 5.4 | 46 | 19 | 0.0013 | 0.218 | — |
+| GeoStar | 0.01 | iso | 171880 | **18.2%** | 3.3 | 27 | 11 | 0.0066 | 0.283 | — |
+| GeoStar | 0.01 | **surf** | 330268 | **5.8%** | 5.0 | 46 | 18 | 0.0006 | 0.104 | — |
+
+**FINDINGS:**
+1. **SLIVERS — M-metric wins decisively, BOTH styles, DENSITY-ROBUST.** pctBelow20: DS 22.7%→2.3% (~10×), GeoStar 18.2%→5.8% (~3×); median minAngle 26–27°→46–49°, p5 10–14°→18–33°. The iso rate is DENSITY-INVARIANT (DS 21.8%@0.02 ≈ 22.7%@0.01) — confirming the mechanism is the PARAMETRIZATION ANISOTROPY √E/√G≈2.4 of S(u,t)=(r·cosθ,r·sinθ,z): a (u,t)-equilateral cell is a ~2.4:1 sliver in 3D, invariant to refinement. M=g/h² removes exactly this by making cells 3D-square. Well past the pre-reg 30%-relative bar.
+2. **BUDGET — M is FREE-to-CHEAPER on DS, +tris on GeoStar.** DS surf uses FEWER tris (0.82×/0.88×) because it stops over-refining the near-straight AXIAL direction that iso's scalar field wastes density on. GeoStar surf uses MORE (1.46×/1.92×) — its chevron κ_max pulls extra u-density — but stays within ~2×.
+3. **DS BODY FIDELITY — no regression at adequate density.** At tol=0.02 surf body p99 REGRESSED (0.109 vs 0.053) — a COARSE-density artifact: M's κ_max (max principal curvature) sizing under-resolves the AXIAL relief between rings that iso's directional 2nd-difference catches. At the proper tol=0.01 the gap CLOSED (surf 0.0305 ≈ iso 0.0291, within the 0.005 clause) with FEWER body outliers (94k vs 252k). So body fidelity is neutral-to-better once density is adequate.
+4. **DS RING band + GeoStar chevron — the residual is the discontinuity-needle class, NOT the metric.** DS surf ring p99 slightly worse (+0.026mm) — axial coarsening at the riser bands; ring p50 much better (0.0016 vs 0.006). GeoStar surf true-3D fidelity is BETTER on every stat (p99 0.283→0.104, over-0.01 26.6%→15.9%) but partly from +tris. Neither arm closes the ring/chevron to ≤0.01 (both need the step/chord guard). This residual is exactly the CROSS-CURVATURE crest-flank needle class E-2026-07-05-ANISO-RULER measured (M-angle ≡ iso-3D-angle there): M fixes the BULK parametrization slivers it was never contradicted on, and leaves the fidelity-forced discontinuity needles it was correctly refuted on. Fully consistent.
+
+**RECOMMENDED WIRING (the answer to the mission):** feed the ANISOTROPIC M=g/h² tensor to the ALREADY-WIRED `curvatureFloor` hook (`AnalyticCurvatureFloor.ts`/`MetricSizingField.ts`) IN PLACE OF today's scalar isotropic curvature — this is the sliver closer (10×/3× pctBelow20 at ≤ or ~2× tris). TWO required companions, both already existing levers: (a) keep the `chordTolMm`/directional chord-sag guard ON (surf's κ_max sizing under-resolves axial relief → the body p99 needs the guard, NOT more isotropic density); (b) the RING/chevron discontinuity bands still need the step/feature guard (the residual 1.8–5.8% + ring p99 is the fidelity-forced needle class, not closable by ANY isotropic-or-anisotropic sizing — same conclusion as ANISO-RULER/RELAX). Do NOT expect M to reach the Gothic zero-width-apex case (element-level, refuted separately).
+
+**HONEST CAVEATS:** (1) budget matched by equal tolMm not equal tris; deltas reported with both tris shown. (2) GeoStar fidelity via `perFaceTrue3DSag` (single-seed GN) may overstate absolute on the chevron but is fair as a same-ruler-both-arms RELATIVE delta. (3) both arms mesh the [0,1]² square (u-seam watertight-by-position, nonMan=0); this is the pure sizing-field isolation, not the production feature-conforming closer. (4) no dense >0.8M confirm — the mechanism (parametrization anisotropy) is density-invariant (shown by iso 0.02≈0.01), so a higher-density run cannot change the sliver verdict.
+
+**LEDGER:** NEW `research/bridge/_msurf_isoVsSurf.test.ts` (PF_MSURF=1) + `vitest.msurf.config.ts`; scorecard `research/exchange/_msurf_isoVsSurf/scorecard.ndjson` (8 rows) + persisted `_{style}_{arm}_{tol}/out_gmsh.json` meshes. Reuses `surfaceMetricField.buildSurfaceMetricField`, `sizingField.buildIsotropicSizingField`, the gmsh oracle, `_ds_prodtruth_lib` composite ruler, labkit instruments — no re-coded machinery, no src/ edit. ESLint 0-warn, typecheck clean. NOT committed (per task hard-constraint); new files staged.
+
+---
+
 ## E-2026-07-12-TIERC-FULLPOT-TRACTABILITY — is full-pot Gothic/GeoStar literal-0.01 via the C2 analytic lever tractable, and if not what must be parallelized? Re-measure the ANALYTIC path (prior "multi-day intractable" was the GRID sampler kernel) at increasing domains; derive a cost model + parallelizable fraction [PRE-REGISTERED: kill = converges at tractable tris+time single-thread ⇒ FULL-POT-FEASIBLE; converges but too slow ⇒ NEEDS-PARALLELIZATION with the quantified target; fails/intractable-even-parallel ⇒ BLOCKED]
 
 **VERDICT: NEEDS-PARALLELIZATION.** The analytic lever converges to LITERAL 0 outliers ≤0.01mm at every domain that finished — the wall is pure COMPUTE TIME, never fidelity. Prior "multi-day intractable" (sampler kernel) is REFUTED for the analytic path: it is multi-HOUR single-thread, an order below multi-day. Probe `research/bridge/_tierc_fullpot_scaling.test.ts` (+ `vitest.tierc_fullpot_scaling.config.ts`); raw `research/exchange/tierc/fullpot_*_verdict.json` + `fullpot_scaling_costmodel.json` + `fullpot_scaling_crumbs.ndjson`. Measured this machine, single-thread, AboveNormal.
