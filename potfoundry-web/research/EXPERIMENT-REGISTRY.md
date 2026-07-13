@@ -10,6 +10,44 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-13-MSURF-INHOUSE — is there a BROWSER-CAPABLE (pure-JS, no gmsh/node) M=g/h² mesher that reproduces the gmsh BAMG surf-metric sliver + fidelity wins, so the CERTIFIED M-metric acceleration can productionize as a browser region kernel? [PRE-REGISTERED kill-criterion in the probe header before measuring]
+
+**VERDICT: BROWSER-KERNEL-EXISTS — `buildInhouseMetricMesh` (research/bridge/inhouseMetricMesh.ts) is pure JS (Delaunator + surfaceMetricField, ZERO node:/gmsh/child_process/fs/WASM), consumes the SAME M=g/h₃D² tensor, and REPRODUCES the gmsh BAMG sliver acceleration (DS 22.7%→3.1% <20°, GeoStar 18.2%→0.6% — BEATS gmsh's 5.8%) at matched fidelity (DS body p99 0.0282 ≤ gmsh 0.0305; GeoStar true-3D p99 0.069 ≤ gmsh 0.104) and WATERTIGHT (nonMan=0 with the byte-identical-off `guardManifoldAlways`). One honest caveat: a thin TAIL of extreme slivers (worst minAngle→0 on DS) that gmsh BAMG's frontal insertion avoids — bulk quality (median 48°, p5 25°) is on par; a final edge-collapse cleanup would close the worst-case tail.**
+
+**BROWSER-CAPABILITY AUDIT (grep + import-chain read, all 5 metric files + the mesher):** every file imports ONLY the `AnalyticRadiusFn` TYPE from `src/fidelity/analyticSurfaceGate` (erased at compile) + pure-JS peers. NONE import `node:*`/`fs`/`child_process`/`execSync`/gmsh. `inhouseMetricMesh.ts`→{`delaunator` (pure-JS npm, browser-standard), `surfaceMetricField.ts`, `surfaceSmoothing.ts` (type-only src import), `constraintRecovery.ts` (no imports)}. `metricField.ts`/`creaseAlignedMetric.ts`/`onDemandMetric.ts`/`surfaceMetricField.ts` = pure math (E,F,G / II / 2×2 eigen). **All browser-capable.** The gmsh dependency in E-2026-07-13-MSURF-ISOVSSURF was the ORACLE harness only, NOT the metric — the metric field is browser-native and the in-house mesher consumes it browser-native.
+
+**DISCRIMINATOR (pure MESHER A/B on ONE shared metric):** `buildInhouseMetricMesh(rA,H,{tolMm,hMin:0.05,hMax:8,sizeRes:192,gradeBeta:0.2,maxPoints:2.5M})` — tolMm/hMin/hMax/sizeRes/gradeBeta MATCH the msurf `surf` arm ⇒ the internal `buildSurfaceMetricField` call is byte-identical to that arm's tensor; only the mesher differs (JS metric-Delaunay + true-3D Lawson flips + on-surface smoothing vs gmsh BAMG Alg 7). SAME rulers both meshers: `triangleQualityDistribution` (slivers), `_ds_prodtruth_lib` composite (DS body dense-45 radial-bound + ring-band BVH), `perFaceTrue3DSag` (GeoStar), `auditNonManByIndex` (watertight).
+
+**KILL-CRITERION (pre-registered):** REPRODUCES iff on BOTH styles at matched tolMm (tris within ~1.5× gmsh surf): in-house pctBelow20 ≤ 1.5× gmsh-surf pctBelow20 AND DS body/ring p99 not worse than gmsh surf by >0.01mm at tol0.01. NEEDS-PORT iff in-house pctBelow20 ≥ the ISO baseline.
+
+**EVIDENCE (in-house GUARDED `guardManifoldAlways:true` vs the E-2026-07-13-MSURF-ISOVSSURF gmsh baselines; DIMS H120/Rb40/Rt50, SIZE_RES 192, gradeBeta 0.2):**
+
+| style | tol | mesher | tris | pctBelow20 | minAng° | med° | p5° | body/true3d p99 | ring p99 | nonMan |
+|---|---|---|---|---|---|---|---|---|---|---|
+| DS | 0.01 | iso(gmsh) | 643522 | 22.7 | 5.6 | 26 | 14 | 0.0291 | 0.115 | ~0 |
+| DS | 0.01 | surf(gmsh BAMG) | 566234 | 2.3 | 5.1 | 49 | 33 | 0.0305 | 0.141 | ~0 |
+| DS | 0.01 | **inhouseG (JS)** | 717196 | **3.1** | 0 | 48 | 25 | **0.0282** | **0.119** | **0** |
+| GeoStar | 0.01 | iso(gmsh) | 171880 | 18.2 | 3.3 | 27 | 11 | 0.283 | — | — |
+| GeoStar | 0.01 | surf(gmsh BAMG) | 330268 | 5.8 | 5.0 | 46 | 18 | 0.104 | — | ~0 |
+| GeoStar | 0.01 | **inhouseG (JS)** | 474274 | **0.6** | 1.8 | 46 | 28 | **0.069** | — | **0** |
+
+(tol0.02 rows consistent: DS inhouseG 349071 tris / 2.9% <20 / body p99 0.142 / nonMan0; GeoStar inhouseG 235226 / 1.8% / p99 0.177 / nonMan0. Full 8 rows in scorecard.)
+
+**FINDINGS:**
+1. **SLIVERS reproduced, then some — BOTH styles.** DS pctBelow20 22.7%→3.1% (~7.3× vs iso; ≈ gmsh surf 2.3%, within the 1.5× bar). GeoStar 18.2%→0.6% — the JS mesher's iterated true-3D max-min-angle flips + on-surface smoothing BEAT gmsh BAMG (5.8%) on the chevron. Median minAngle 46–48° = gmsh's 46–49° on both. The parametrization-anisotropy sliver mechanism M removes is mesher-agnostic — confirmed reproduced in pure JS.
+2. **FIDELITY matched-or-better.** DS body p99 0.0282 ≤ gmsh surf 0.0305 (BETTER; well within the 0.01 clause), DS ring p99 0.119 ≤ 0.141, GeoStar true-3D p99 0.069 ≤ 0.104 (partly the +tris). No fidelity regression from swapping gmsh→JS.
+3. **WATERTIGHT is a FLAG, not a wall.** DEFAULT path leaves 228–257 non-manifold edges on DS (1–2 GeoStar) + a couple degenerate slivers — the documented pre-existing flipHE defect. `guardManifoldAlways:true` (byte-identical-off) drives nonMan→0 on ALL 4 cells with the sliver/fidelity numbers UNCHANGED (DS0.02 default vs guarded: pctBelow20 2.9=2.9, body p99 0.1424→0.1419, degenerate 2→0). The production kernel MUST run with this flag on.
+4. **HONEST GAP — worst-case sliver tail.** Even guarded, DS worst minAngle →0 (a handful of extreme slivers, degenerateCount 0 = non-degenerate but knife-thin) vs gmsh BAMG's clean 5.1° floor. Bulk quality (median/p5) is on par and pctBelow20 is within bar, so this is a TAIL issue: a final edge/sliver-collapse cleanup pass (the pass the kernel lacks) is the productionization item, not a metric or mesher defect.
+5. **BUDGET.** in-house uses MORE tris than gmsh surf (DS 1.27×, GeoStar 1.44×) at matched tolMm — its midpoint-metric-split refinement is less economical than BAMG's frontal insertion — but stays within the pre-reg 1.5× and beats iso's budget on GeoStar.
+
+**RECOMMENDATION (answer to the mission): PRODUCTIONIZE the in-house M-metric mesher as the browser region kernel — no port, no gmsh.** `buildInhouseMetricMesh` IS the browser-capable M=g/h² mesher the roadmap cites; it already consumes `surfaceMetricField.buildSurfaceMetricField` (the CERTIFIED accelerator). Region-kernel wiring: (a) run with `guardManifoldAlways:true` (mandatory — the watertight gate); (b) keep `chordTolMm`/directional chord-sag guard ON for the DS ring/axial-relief discontinuity bands (the residual body/ring p99 is the fidelity-forced needle class, not closable by sizing — same conclusion as MSURF-ISOVSSURF F4); (c) add a final edge-collapse cleanup to remove the worst-case knife slivers gmsh BAMG's insertion avoids (the only sub-par metric). The `creaseAlignedMetric.ts`/`onDemandMetric.ts` anisotropic + on-demand-fine-curvature variants are ALSO browser-capable drop-in metric fields for the same kernel (sharper sub-cell crest sizing) if the κ_max grid aliases. NEXT EXPERIMENT: measure the edge-collapse cleanup on the DS worst-sliver tail (target minAngle floor ≥ gmsh's ~5°) + confirm the in-house kernel on the discontinuity-band styles with chordTolMm on.
+
+**HONEST CAVEATS:** (1) budget matched by tolMm not tris (both tris shown). (2) GeoStar fidelity via single-seed `perFaceTrue3DSag` — fair same-ruler RELATIVE delta, may overstate absolute on the chevron. (3) meshes are the [0,1]² square (u-seam watertight-by-position, nonMan counts the 3D-weld); this isolates the sizing-field+mesher, not the production feature-conforming closer. (4) gmsh surf baseline numbers are cited from E-2026-07-13-MSURF-ISOVSSURF (same DIMS/res/tol), not re-run here.
+
+**LEDGER:** NEW `research/bridge/_msurf_inhouseVsGmsh.test.ts` (PF_MSURFIH=1, +PF_MSURFIH_GUARD=1 for the watertight variant) + `vitest.msurfih.config.ts`; scorecard `research/exchange/_msurf_inhouseVsGmsh/scorecard.ndjson` (8 rows: 4 default + 4 guarded). Reuses `buildInhouseMetricMesh`, `surfaceMetricField`, `_ds_prodtruth_lib`, labkit instruments READ-ONLY — no re-coded machinery, no src/ edit. ESLint 0-warn (test file), typecheck clean. NOT committed (per task hard-constraint); new files staged.
+
+---
+
 ## E-2026-07-13-MSURF-ISOVSSURF — does M=g/h² (surface-intrinsic first-form metric) MATERIALLY beat production ISOTROPIC scalar sizing on the two open frontiers (SLIVER quality + DS body/ring FIDELITY), for DragonScales + GeometricStar? [PRE-REGISTERED kill-criterion below, committed in the probe header before measuring]
 
 **VERDICT: M-METRIC-ACCELERATES — on the SLIVER frontier, decisively and on BOTH styles; NEUTRAL-to-POSITIVE on fidelity (no body-fidelity regression at adequate density; the residual is the discontinuity-band needle class M cannot fix, orthogonal to the metric choice).**
