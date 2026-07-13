@@ -10,6 +10,33 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-13-DS-TRUE3D — is the DS M=g/h² body residual (radial p99 0.0282 / max 1.13) a RADIAL-RULER ARTIFACT? Re-score the SAME OFF-baseline mesh under the certified TRUE-3D composite ruler. [PRE-REGISTERED kill-criterion in the probe header before measuring]
+
+**VERDICT: REFUTED (artifact hypothesis) — the radial ruler DID overstate (~1.6× p99, ~6× max tail), but the honest true-3D body residual is REAL and above the 0.01 export standard. Follows directly from the DS-CHORDGUARD rec (a); the residual is the θ-periodic SCALE-TILE-EDGE feature class, NOT sizing and NOT purely a ruler artifact.**
+
+**DISCRIMINATOR:** rebuild the IDENTICAL OFF-baseline mesh (`buildInhouseMetricMesh` tolMm0.01/sizeRes192/hMin0.05/hMax8/gradeBeta0.2/maxPoints2.5M/guardManifoldAlways) → re-score the SAME body facets (ring-band z-excluded, bandMm1.0) under the V11g-CERTIFIED composite locator (`buildConformRuler`→`RefLocator.dist`, nearest 3D point-to-MESH over radial-sheet-twin ∪ riser-wall; passed the 1a–1d metrologist battery) via `scoreBodyFacets`, plus an independent `perFaceTrue3DSag` (GN) witness. **Identity confirmed:** 717196 tris, radial body p99 0.02818 / max 1.128 / out 81644 = EXACTLY the DS-CHORDGUARD baseline (same mesh).
+
+**KILL-CRITERION (pre-reg):** ARTIFACT-DONE iff true-3D body p99 ≤ 0.01 AND max tail collapses ~1.1→≤~0.05. REAL-NEEDS-FEATURE-EDGE iff true-3D p99 still > 0.01.
+
+**EVIDENCE (equal mesh; body facets 500374; tol 0.01):**
+| ruler | body p50 | body p99 | body max | out (>tol) | note |
+|---|---|---|---|---|---|
+| RADIAL (`radialBoundAt`, same-(u,t) Δr) | 0.004886 | **0.02818** | **1.1283** | 81644 (16.3%) | = DS-CHORDGUARD baseline (identity) |
+| TRUE-3D composite (V11g `loc.dist`, CERTIFIED acceptance ruler) | 0.00454 | **0.01725** | **0.1887** | 32835 (6.6%) | 66.4% green-proven |
+| TRUE-3D witness (`perFaceTrue3DSag`, GN→analytic) | 0.004857 | 0.01886 | 0.8473 | 40003 (8.0%) | analytic-exact; DS not tangled ⇒ GN honest |
+
+1. Kill-criterion NOT met: true-3D p99 0.0173 > 0.01; max 0.19 > 0.05. 2. Radial OVERSTATED — p99 ~1.6× (0.0282→0.0173), max tail ~6× (1.13→0.19) — so the "1.13mm tail" was largely a radial artifact, BUT both true-3D rulers agree p99 ≈ 0.017–0.019 (still > tol) and the worst-facet chord is [0.19 composite, 0.85 GN] (composite understates via twin nTheta=2048 discretization; GN projects to the exact analytic surface). Residual real either way. 3. Density-invariant (DS-CHORDGUARD: chordTolMm can't converge it, shreds slivers 3.1%→11%).
+
+**WHICH RULER + WHY:** TRUE-3D composite is correct (honest shortest-3D-to-surface = the 0.01 acceptance standard). `radialBoundAt` overstates because a facet placed correctly in 3D but slightly off in (θ,z) reads a large Δr where r(θ) changes fast across a near-vertical scale wall — the cheatsheet's 2–27× gotcha, here empirically 1.6×/6×. GN witness independently corroborates.
+
+**NAMED LOCI (the real residual):** θ-PERIODIC SCALE-TILE EDGES — near-vertical C0 walls BETWEEN adjacent scales WITHIN each row (dsScalesPerRow θ-tiling), DISTINCT from the 7 z-ring stagger-flip risers (the V11l CLOSED-with-certified-tread wall-ruler class, excluded here as ring-band). The mesh chords across these θ-walls → real 0.19–0.85mm 3D gap on the worst facets; a C0 discontinuity sizing cannot converge.
+
+**RECOMMENDATION:** do NOT accept-DONE (p99 0.017 > Patryk's hard 0.01 true-3D standard; cliffs = real 3D features). NEXT: feature-conforming EDGE embedding of the DS θ-scale-tile edges via `buildFeatureConformingMeshB` constraintEdges (the SAME zero-serration-edge mechanism embedding the z-ring risers) — extend DS constraint-edge extraction from z-rings ONLY to the full scale-tile θ-edge graph; re-score body under this ruler targeting p99 ≤ 0.01 without regressing the certified 3.1% sliver win. Scope is MUCH smaller than the radial 1.13 implied (honest gap = 0.017 p99 on 6.6% of facets).
+
+**LEDGER:** NEW `research/bridge/_dsTrue3d.test.ts` (PF_DSTRUE3D=1) + `vitest.dstrue3d.config.ts`; scorecard `research/exchange/_dsTrue3d/scorecard.ndjson` (1 row). Reuses `buildInhouseMetricMesh`, `_ds_prodtruth_lib` (buildConformRuler/scoreBodyFacets/radialBoundAt), labkit `perFaceTrue3DSag` READ-ONLY. No src/ edit, no flag, no commit (per task). New files staged only.
+
+---
+
 ## E-2026-07-13-DS-CHORDGUARD — does turning the direct facet→surface chord-sag guard (`chordTolMm`, OFF in MSURF-INHOUSE) ON close the DragonScales BODY fidelity residual the M=g/h² κ_max sizing leaves open (body p99 0.0282, bodyMax 1.13)? [PRE-REGISTERED kill-criterion in the probe header before measuring]
 
 **VERDICT: REFUTED — the chord-sag guard does NOT close DS body to 0.01 and REGRESSES the certified sliver win. The residual is the feature-EDGE / C0-discontinuity class, not a sizing gap (confirms MSURF-ISOVSSURF F4 / MSURF-INHOUSE rec b).**
