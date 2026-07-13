@@ -41,6 +41,7 @@ import {
   type RadialSurface,
   type RulerOptions,
 } from './interiorRuler';
+import { planarizeChartMM } from './seamPlanarize';
 
 /** A rectangular chart domain (u in [0,1) fractions, t in [0,1]). */
 export interface ChartDomain {
@@ -1161,6 +1162,11 @@ export function refineToZeroOutliers(
   );
   let uv = seed.uv.slice();
   const cEdges = seed.cEdges;
+  // Seam-planarity guard: keep the chart PSLG non-spanning + crossing-free before EVERY cdt2d
+  // call (the interior loop's constraint subdivision can wrap-store midpoints that span the flat
+  // chart and crash cdt2d's mergeHulls — see seamPlanarize). The seed is already clipped-planar,
+  // so this is a near-no-op here; it earns its keep inside the pass loop below.
+  planarizeChartMM(uv, cEdges, uToMm, tToMm);
   let tris = triangulateMM(uv, uToMm, tToMm, cEdges);
 
   const dedupeCell = opts.dedupeCellMm ?? DEDUPE_CELL_MM;
@@ -1315,6 +1321,15 @@ export function refineToZeroOutliers(
     if (outliers === 0 && !useDense) {
       bulk = pass; // bulk done early — switch to the dense driver next pass
       continue;
+    }
+    // This pass's insertOutlierSplit may have wrap-stored seam-adjacent midpoints that span the
+    // flat chart (the cdt2d `upperIds` crash). Restore planarity before re-triangulating; when the
+    // guard mutates cEdges, rebuild cMap (it indexes the constraint edges) and drop the stale
+    // dirty-facet scores (their vertex geometry may have moved).
+    if (planarizeChartMM(uv, cEdges, uToMm, tToMm)) {
+      cMap.clear();
+      for (let i = 0; i < cEdges.length; i++) cMap.set(cKey(cEdges[i][0], cEdges[i][1]), i);
+      devCache.clear();
     }
     tris = triangulateMM(uv, uToMm, tToMm, cEdges);
     if (pass === opts.maxPass && outliers > 0) capped = true;
