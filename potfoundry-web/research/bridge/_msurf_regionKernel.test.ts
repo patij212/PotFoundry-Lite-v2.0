@@ -22,8 +22,10 @@ import { join } from 'node:path';
 import { buildRadiusFn, type StyleDims } from './runStyle';
 import { triangleQualityDistribution, auditNonManByIndex, perFaceTrue3DSag, liftUtToRadial } from './labkit';
 import { buildMetricOuterWall } from '../../src/renderers/webgpu/parametric/conforming/tierC/regionMetric';
+import { buildRegionOuterWall } from '../../src/renderers/webgpu/parametric/conforming/tierC/index';
 import {
-  buildConformRuler, dragonRings, classifyRingBand, scoreRingBandFacets, dsRadiusFn, radialBoundAt, DENSE, H as DS_H, TOL,
+  buildConformRuler, dragonRings, classifyRingBand, scoreRingBandFacets, scoreBodyFacets,
+  dsRadiusFn, radialBoundAt, DENSE, H as DS_H, TOL,
 } from './_ds_prodtruth_lib';
 import type { StyleId } from '../../src/geometry/types';
 
@@ -149,4 +151,100 @@ describe('SRC region kernel (buildMetricOuterWall) — port-fidelity reproductio
     }
     plog('DONE — all rows checkpointed to scorecard.ndjson');
   }, 3_000_000);
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// DIRECT SRC-PATH DragonScales validation (PF_MSURFIH_REGION_DS=1)
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// Drives the ACTUAL production region path — src `buildRegionOuterWall('DragonScales')` with `__pfRegionLayer` ON:
+// rim-pin(nRing) + the DS θ+toe conforming graph (curvatureFineStep=0.0022, pinInjected, recoverySubdivideCollinear)
+// + the rim-pin near-boundary split guard. This is what the src wiring runs; the block ABOVE calls the bare kernel
+// (no graph) and the E-2026-07-13-DS-INTERIOR-CLOSE research probe uses `buildInhouseMetricMesh` (no rim-pin). This
+// arm is the missing DIRECT confirm: does the src path (rim-pin + split guard) hold the research twin's ~0.009 body
+// close? Surface = dsRadiusFn()/DS_H — byte-identical to the twin, so p99 is directly comparable.
+//
+// BODY-only score (ring-band excluded, bandMm 1.0) under the SAME V11g composite ruler (buildConformRuler/
+// scoreBodyFacets) + the perFaceTrue3DSag witness. Env-parameterized (heavy defaults) + checkpointed/resumable.
+const DSR_NRING = Number(process.env.PF_DSREGION_NRING ?? '128');
+const DSR_SIZERES = Number(process.env.PF_DSREGION_SIZERES ?? '192');
+const DSR_MAXPTS = Number(process.env.PF_DSREGION_MAXPTS ?? '3000000');
+const DSR_HMIN = Number(process.env.PF_DSREGION_HMIN ?? '0.02');
+const DSR_TOL = Number(process.env.PF_DSREGION_TOL ?? '0.01');
+const DSR_SKIP_COMP = process.env.PF_DSREGION_SKIP_COMP === '1'; // witness-only (fast smoke)
+const DSR_NDJSON = join(OUT_DIR, 'ds_srcpath.ndjson');
+
+function dsrKeyExists(k: string): boolean {
+  if (!existsSync(DSR_NDJSON)) return false;
+  return readFileSync(DSR_NDJSON, 'utf8').split('\n').filter(Boolean)
+    .some((l) => { try { return (JSON.parse(l) as { key?: string }).key === k; } catch { return false; } });
+}
+function dsrCheckpoint(row: Record<string, unknown>): void {
+  mkdirSync(OUT_DIR, { recursive: true });
+  appendFileSync(DSR_NDJSON, JSON.stringify(row) + '\n');
+  // eslint-disable-next-line no-console
+  console.log(`[CP ${row.key as string}] ${JSON.stringify(row)}`);
+}
+
+describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + graph + split-guard body true-3D', () => {
+  it.skipIf(process.env.PF_MSURFIH_REGION_DS !== '1')('body composite p99 on the REAL src production path', () => {
+    // D-1 flag: buildRegionOuterWall throws unless the region layer is enabled.
+    (globalThis as unknown as { __pfRegionLayer?: boolean }).__pfRegionLayer = true;
+    const key = `DS|srcpath|nRing${DSR_NRING}|sizeRes${DSR_SIZERES}|maxPts${DSR_MAXPTS}|hMin${DSR_HMIN}|tol${DSR_TOL}${DSR_SKIP_COMP ? '|wit' : ''}`;
+    if (dsrKeyExists(key)) { plog(`[skip] ${key} already recorded`); return; }
+
+    const rA = dsRadiusFn();
+    const H = DS_H;
+    const t0 = Date.now();
+    // The EXACT production dispatch — the DS branch injects the θ+toe graph + curvatureFineStep=0.0022 internally.
+    const wall = buildRegionOuterWall(
+      { analyticRA: rA, H, nRing: DSR_NRING, tolMm: DSR_TOL, hMin: DSR_HMIN, hMax: HMAX_3D, sizeRes: DSR_SIZERES, maxPoints: DSR_MAXPTS },
+      'DragonScales' as StyleId,
+    );
+    if (!wall) throw new Error('buildRegionOuterWall returned undefined (region flag OFF or non-region style)');
+    const meshMs = Date.now() - t0;
+    const idx = wall.indices;
+    const ut = extractUt2(wall.vertices);
+    const xyz = liftUtToRadial(ut, rA, H).vertices;
+    const tris = idx.length / 3, verts = xyz.length / 3;
+    plog(`[DS srcpath] built ${tris} tris / ${verts} verts nRing=${DSR_NRING} bottomRing=${wall.bottomRing.length} topRing=${wall.topRing.length} in ${(meshMs / 1000).toFixed(1)}s`);
+
+    const q = triangleQualityDistribution({ vertices: xyz, indices: idx });
+    const nonMan = auditNonManByIndex(xyz, idx);
+
+    // BODY classification (ring-band excluded, bandMm 1.0) — identical to E-DS-INTERIOR-CLOSE.
+    const ringZs = dragonRings().map((r) => r.z);
+    const cls = classifyRingBand(xyz, idx, ringZs, 1.0);
+    const bodyAll: number[] = [];
+    for (let f = 0; f < tris; f++) if (cls(f) === 'body') bodyAll.push(f);
+
+    // WITNESS true-3D (perFaceTrue3DSag) on the body subset — cheap, GN-honest for DS risers.
+    const tW = Date.now();
+    const sag = perFaceTrue3DSag(ut, idx, rA, H, { preFilterMm: 0.01 });
+    const wDevs: number[] = []; let wWorst = 0, wOut = 0;
+    for (const f of bodyAll) { const e = sag.faceErr[f]; wDevs.push(e); if (e > wWorst) wWorst = e; if (e > DSR_TOL) wOut++; }
+    const wSorted = Float64Array.from(wDevs).sort();
+    const witP99 = pctFrom(wSorted, 0.99), witMax = +wWorst.toFixed(6);
+    plog(`[DS srcpath][WITNESS] body p99=${witP99} max=${witMax} out=${wOut}/${bodyAll.length} in ${((Date.now() - tW) / 1000).toFixed(1)}s`);
+
+    const row: Record<string, unknown> = {
+      key, mesher: 'regionSrcPath', nRing: DSR_NRING, sizeRes: DSR_SIZERES, maxPoints: DSR_MAXPTS, hMin: DSR_HMIN, tol: DSR_TOL,
+      tris, verts, meshMs, bottomRing: wall.bottomRing.length, topRing: wall.topRing.length,
+      minAngleDeg: +q.minAngleDeg.toFixed(3), pctBelow20: +q.pctBelow20.toFixed(2), nonMan,
+      bodyFacets: bodyAll.length, witP99, witMax, witOut: wOut,
+    };
+
+    // COMPOSITE (V11g certified ruler) — the E-DS-INTERIOR-CLOSE gate. Skippable for the fast smoke.
+    if (!DSR_SKIP_COMP) {
+      const loc = buildConformRuler(rA);
+      const tS = Date.now();
+      const t3 = scoreBodyFacets(xyz as unknown as Float32Array, idx, bodyAll, loc, rA, DSR_TOL,
+        (done, total) => { if (done % Math.max(1, Math.floor(total / 4)) === 0) plog(`  [DS srcpath][comp] ${done}/${total}`); });
+      row.t3P50 = t3.p50; row.t3P90 = t3.p90; row.t3P99 = t3.p99; row.t3Max = t3.maxMm; row.t3Out = t3.outliers;
+      row.t3GreenProvenFrac = t3.greenProvenFrac; row.compMs = Date.now() - tS;
+      plog(`[DS srcpath][COMPOSITE] body p50=${t3.p50} p90=${t3.p90} p99=${t3.p99} max=${t3.maxMm} out=${t3.outliers}/${bodyAll.length} in ${((Date.now() - tS) / 1000).toFixed(1)}s`);
+    }
+
+    dsrCheckpoint(row);
+    plog(`[DS srcpath][RESULT] bodyComp p99=${row.t3P99 ?? 'skip'} max=${row.t3Max ?? 'skip'} | wit p99=${witP99} max=${witMax} | %<20=${q.pctBelow20.toFixed(2)} tris=${tris} nonMan=${nonMan} rims=${wall.bottomRing.length}/${wall.topRing.length}`);
+  }, 6_000_000);
 });
