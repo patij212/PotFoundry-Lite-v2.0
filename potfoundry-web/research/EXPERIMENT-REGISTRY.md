@@ -10,6 +10,33 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-13-DS-CHORDGUARD — does turning the direct facet→surface chord-sag guard (`chordTolMm`, OFF in MSURF-INHOUSE) ON close the DragonScales BODY fidelity residual the M=g/h² κ_max sizing leaves open (body p99 0.0282, bodyMax 1.13)? [PRE-REGISTERED kill-criterion in the probe header before measuring]
+
+**VERDICT: REFUTED — the chord-sag guard does NOT close DS body to 0.01 and REGRESSES the certified sliver win. The residual is the feature-EDGE / C0-discontinuity class, not a sizing gap (confirms MSURF-ISOVSSURF F4 / MSURF-INHOUSE rec b).**
+
+**Q1 (does the term exist / is it ON?):** YES — `inhouseMetricMesh.ts` exposes `chordTolMm` (direct facet→surface sag, splits any facet whose lifted sag > tol) + `chordSampleN` (dense-45 detect) + `chordSteiner` (worst-sag Steiner). All OPT-IN, STRICT NO-OP off, and OFF in the MSURF-INHOUSE baseline. `surfaceMetricField.ts` has NO directional-sag term (scalar κ_max only). The guard's `liftP` uses the SAME radial lift as the body ruler `radialBoundAt` ⇒ `chordTolMm=0.01` targets exactly the body-ruler residual (clean direct test).
+
+**DISCRIMINATOR:** `buildInhouseMetricMesh(rA,H,{tolMm:0.01,hMin:0.05,hMax:8,sizeRes:192,gradeBeta:0.2,maxPoints:2.5M,guardManifoldAlways:true,...arm})` — matched to the MSURF-INHOUSE baseline (SAME budget, fair A/B). Arms: `ctol` (4-pt, longest-edge), `ctolStein` (dense-45 detect + worst-sag Steiner = strongest lever). Body = `radialBoundAt` dense-45 (SAME ruler both meshes); slivers = `triangleQualityDistribution`; watertight = `auditNonManByIndex`.
+
+**KILL-CRITERION (pre-reg):** CLOSES iff any arm → body p99 ≤ 0.01 AND bodyMax ≤ ~0.05 WITHOUT %<20° regressing above ~3.5% or nonMan > 0, within 2.5M-vert budget. REFUTED iff every arm floors body p99 > 0.01.
+
+**EVIDENCE (equal 2.5M-vert budget; body ruler radialBoundAt dense-45):**
+| arm | tris | %<20° | bodyP50 | bodyP99 | bodyMax | bodyOut | nonMan |
+|---|---|---|---|---|---|---|---|
+| OFF (MSURF-INHOUSE baseline) | 717,196 | 3.1 | 0.0049 | **0.0282** | **1.128** | 81,644 | 0 |
+| ctol (4-pt, longest-edge) | 1,424,601 | **11.9** | 0.0042 | **0.2109** | 1.125 | 39,367 | 0 |
+| ctolStein (dense-45, Steiner) | 1,140,591 | **11.3** | 0.0043 | **0.0179** | **1.270** | 34,564 | 0 |
+
+1. Body p99 NOT closed: best arm (ctolStein) 0.0282→0.0179 still > 0.01; ctol REGRESSES to 0.211. 2. bodyMax ~1.1–1.3 is DENSITY-INVARIANT (1.128→1.125→1.270) — the C0 near-vertical scale-edge signature, not sizing. 3. Slivers REGRESS 3.6× (3.1%→~11%, p5 minAngle 25°→9°) — the guard shreds the M-kernel's whole reason to exist. 4. Watertight held.
+
+**NAMED LEVER (the answer):** feature-conforming EDGE embedding on the DS scale-edge C0 loci (`buildFeatureConformingMeshB` constraintEdges — the mechanism already embedding the ring risers as zero-serration edges), NOT `chordTolMm` in `surfaceMetricField.ts`. **CAVEAT (must check first):** the body ruler is RADIAL (`radialBoundAt`), which the cheatsheet notes OVERSTATES near-vertical relief 2–27×, and DS is already banked CLOSED-with-certified-tread (V11l, ruler-class). The density-invariant 1.13 tail is plausibly a radial-overstatement of relief the mesh already represents ⇒ RE-SCORE the body under the composite/true-3D ruler before any feature-conforming investment; if true-3D collapses < 0.01 the DS body is DONE and the only real open item is the sliver tail (which chordTolMm worsens).
+
+**RECOMMENDATION:** do NOT productionize the directional/chord-sag guard as the DS body fix (measured: misses 0.01, regresses slivers). NEXT: (1) score OFF-baseline / ctolStein body under the TRUE-3D composite ruler (expected ACCEPT+DOCUMENT per V11l); (2) only if a genuine sub-0.01 body is still required, escalate to feature-conforming edge embedding on the scale loci.
+
+**LEDGER:** NEW `research/bridge/_dsChordGuard.test.ts` (PF_DSCHORD=1; +PF_DSCHORD_RING=1 for composite-BVH ring score, default OFF ~30min at 2× tris) + `vitest.dschord.config.ts`; scorecard `research/exchange/_dsChordGuard/scorecard.ndjson` (2 arms). Reuses `buildInhouseMetricMesh`, `surfaceMetricField`, `_ds_prodtruth_lib`, labkit READ-ONLY. No src/ edit, no flag, no commit (per task). New files staged only.
+
+---
+
 ## E-2026-07-13-MSURF-INHOUSE — is there a BROWSER-CAPABLE (pure-JS, no gmsh/node) M=g/h² mesher that reproduces the gmsh BAMG surf-metric sliver + fidelity wins, so the CERTIFIED M-metric acceleration can productionize as a browser region kernel? [PRE-REGISTERED kill-criterion in the probe header before measuring]
 
 **VERDICT: BROWSER-KERNEL-EXISTS — `buildInhouseMetricMesh` (research/bridge/inhouseMetricMesh.ts) is pure JS (Delaunator + surfaceMetricField, ZERO node:/gmsh/child_process/fs/WASM), consumes the SAME M=g/h₃D² tensor, and REPRODUCES the gmsh BAMG sliver acceleration (DS 22.7%→3.1% <20°, GeoStar 18.2%→0.6% — BEATS gmsh's 5.8%) at matched fidelity (DS body p99 0.0282 ≤ gmsh 0.0305; GeoStar true-3D p99 0.069 ≤ gmsh 0.104) and WATERTIGHT (nonMan=0 with the byte-identical-off `guardManifoldAlways`). One honest caveat: a thin TAIL of extreme slivers (worst minAngle→0 on DS) that gmsh BAMG's frontal insertion avoids — bulk quality (median 48°, p5 25°) is on par; a final edge-collapse cleanup would close the worst-case tail.**
