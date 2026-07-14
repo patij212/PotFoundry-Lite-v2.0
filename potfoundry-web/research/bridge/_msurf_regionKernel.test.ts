@@ -173,6 +173,7 @@ const DSR_TOL = Number(process.env.PF_DSREGION_TOL ?? '0.01');
 // Direct facet→surface chord-sag guard, matching the PRODUCTION dispatch (ParametricExportComputer passes
 // chordTolMm=qMaxSag). Catches sharp near-rim relief the curvature metric aliases. Default = tol; 0 disables.
 const DSR_CHORD = Number(process.env.PF_DSREGION_CHORD ?? String(DSR_TOL));
+const DSR_RAIL = Number(process.env.PF_DSREGION_RAIL ?? '0'); // DS seam-rail samples override (0 ⇒ src default 192)
 const DSR_SKIP_COMP = process.env.PF_DSREGION_SKIP_COMP === '1'; // witness-only (fast smoke)
 const DSR_DUMP_WORST = Number(process.env.PF_DSREGION_DUMP_WORST ?? '0'); // log top-K worst body facets' (u,t) locus
 const DSR_NDJSON = join(OUT_DIR, 'ds_srcpath.ndjson');
@@ -205,6 +206,7 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
         analyticRA: rA, H, nRing: DSR_NRING, tolMm: DSR_TOL, hMin: DSR_HMIN, hMax: HMAX_3D,
         sizeRes: DSR_SIZERES, maxPoints: DSR_MAXPTS,
         ...(DSR_CHORD > 0 ? { chordTolMm: DSR_CHORD } : {}),
+        ...(DSR_RAIL >= 2 ? { seamRailSamples: DSR_RAIL } : {}),
       },
       'DragonScales' as StyleId,
     );
@@ -220,10 +222,21 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
     const nonMan = auditNonManByIndex(xyz, idx);
 
     // BODY classification (ring-band excluded, bandMm 1.0) — identical to E-DS-INTERIOR-CLOSE.
+    // DIAGNOSTIC: PF_DSREGION_EXCLUDE_TRIM (t-fraction, default 0) additionally drops facets touching the locked
+    // t=0/t=1 pot RIM — the rim ring is fixed at exactly nRing stations (an assembly precondition), so its u-spacing
+    // (1/nRing) cannot resolve sub-cell θ scale-relief at the rim; this isolates the interior body+seam residual.
     const ringZs = dragonRings().map((r) => r.z);
     const cls = classifyRingBand(xyz, idx, ringZs, 1.0);
+    const trimBand = Number(process.env.PF_DSREGION_EXCLUDE_TRIM ?? '0');
+    const touchesTRim = (f: number): boolean => {
+      if (trimBand <= 0) return false;
+      const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+      const tmin = Math.min(ut[2 * a + 1], ut[2 * b + 1], ut[2 * c + 1]);
+      const tmax = Math.max(ut[2 * a + 1], ut[2 * b + 1], ut[2 * c + 1]);
+      return tmin < trimBand || tmax > 1 - trimBand;
+    };
     const bodyAll: number[] = [];
-    for (let f = 0; f < tris; f++) if (cls(f) === 'body') bodyAll.push(f);
+    for (let f = 0; f < tris; f++) if (cls(f) === 'body' && !touchesTRim(f)) bodyAll.push(f);
 
     // WITNESS true-3D (perFaceTrue3DSag) on the body subset — cheap, GN-honest for DS risers.
     const tW = Date.now();

@@ -394,6 +394,12 @@ export interface RegionOuterWallParams {
   seedN?: number;
   maxPoints?: number;
   chordTolMm?: number;
+  /**
+   * DragonScales only: dense seam-rail t-samples on the (mirrored) u=0≡u=1 seam column (see
+   * {@link buildDragonScalesConformingGraph}). The rim-pin weld locks the seam columns, so a rail resolves the
+   * wrap-triangle chord that would otherwise spike true-3D error at the seam. Absent ⇒ the DS default (512).
+   */
+  seamRailSamples?: number;
 }
 
 /**
@@ -422,13 +428,17 @@ export function buildRegionOuterWall(
   // DragonScales feature-conforming path (E-2026-07-13-DS-INTERIOR-CLOSE): embed the per-scale C1 creases (θ-valley
   // ∪ flank-toe) as constraint edges + sub-cell curvature sizing so the body closes to the LITERAL 0.01mm true-3D
   // standard (proven: witness body p99 ~0.009 ≤ 0.01, nonMan 0, vs baseline OFF 0.0147). The graph is analytic from
-  // the DS lattice and clipped to the patch INTERIOR so the rim-pin seam-weld bijection holds. Every other region
-  // style (GeometricStar) takes the plain region wall UNCHANGED (no graph ⇒ kernel injection blocks inert ⇒
-  // byte-identical). The graph assumes the DEFAULT DS lattice (8/16/0.5) — the validated recipe + captured
-  // production artifact both use defaults; non-default dsScaleRows/dsScalesPerRow would need the lattice plumbed
-  // through RegionOuterWallParams (follow-up).
+  // the DS lattice and made SEAM-SYMMETRIC (buildDragonScalesConformingGraph → seamSymmetrizeGraph + a dense seam
+  // rail) so the seam-column scales are conformed WITHOUT breaking the rim-pin u=1→u=0 weld bijection — the seam-clip
+  // predecessor left them un-conformed and spiked true-3D error ~1.87mm at the seam. Every other region style
+  // (GeometricStar) takes the plain region wall UNCHANGED (no graph ⇒ kernel injection blocks inert ⇒ byte-identical).
+  // The graph assumes the DEFAULT DS lattice (8/16/0.5) — the validated recipe + captured production artifact both use
+  // defaults; non-default dsScaleRows/dsScalesPerRow would need the lattice plumbed through RegionOuterWallParams (follow-up).
   if (styleId === 'DragonScales') {
-    const graph = buildDragonScalesConformingGraph(params.H);
+    const graph = buildDragonScalesConformingGraph(
+      params.H,
+      params.seamRailSamples !== undefined ? { seamRailSamples: params.seamRailSamples } : {},
+    );
     kernelOpts.injectedPoints = graph.pts;
     kernelOpts.constraintEdges = graph.edges;
     kernelOpts.pinInjected = true;

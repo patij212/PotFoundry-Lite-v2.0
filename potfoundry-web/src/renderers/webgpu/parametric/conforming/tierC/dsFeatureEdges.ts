@@ -17,18 +17,19 @@
 // resolution the kernel runs at.
 //
 // The three generators (`buildThetaEdgeGraph`, `buildFlankToeGraph`, `mergeGraphs`) are a byte-faithful port of the
-// research helpers; the ONLY additions are (a) parameterization by the DS lattice (research hard-coded 8/16/0.5),
-// (b) {@link clipGraphToInterior} (rim-pin safety — see below), and (c) the {@link buildDragonScalesConformingGraph}
-// composer that assembles the winning `combo|fine` arm's graph.
+// research helpers; the additions are (a) parameterization by the DS lattice (research hard-coded 8/16/0.5), (b) the
+// rim-pin seam handling ({@link seamSymmetrizeGraph} + {@link buildSeamRail}; {@link clipGraphToInterior} is the
+// retained simpler-drop utility), and (c) the {@link buildDragonScalesConformingGraph} composer.
 //
-// RIM-PIN SAFETY: the region kernel runs rim-pinned (see {@link MetricMeshOpts.rimPinRing}), which LOCKS the four
-// (u,t) patch boundaries and welds the u=0/u=1 seam columns by an exact t-station bijection. A raw θ/toe graph puts
-// its seam-scale valley line + flank mid-node EXACTLY on u=0 (the periodic seam), which would leak extra vertices
-// onto the u=0 column and break the weld bijection (the kernel would throw). {@link clipGraphToInterior} drops any
-// point that lands on a locked boundary (mirroring the kernel's own `wOnBnd` Steiner discipline) and re-indexes the
-// edges, so the injected graph is confined to the patch interior and the rim-pin invariants hold. The seam scale's
-// exact-on-seam crease points are dropped (their crease coincides with the seam weld itself); every interior
-// crease point survives.
+// RIM-PIN SEAM HANDLING: the region kernel runs rim-pinned (see {@link MetricMeshOpts.rimPinRing}), which LOCKS the
+// four (u,t) patch boundaries and welds the u=0/u=1 seam columns by an exact t-station bijection. A raw θ/toe graph
+// puts its seam-scale valley line + flank mid-node EXACTLY on u=0 (the periodic seam). Simply DROPPING those (the
+// clip predecessor) leaves the seam-column scales UN-conformed AND — because the rim-pin locks the seam columns —
+// the u=1→u=0 weld bridges the fine interior to the coarse locked seam with long "wrap" triangles that chord the
+// seam relief (MEASURED: a ~1.87mm true-3D spike at the seam). {@link seamSymmetrizeGraph} instead MIRRORS every
+// seam point onto both the u=0 and u=1 columns at shared t-stations (bijection preserved) and routes edges to the
+// nearest column (no long seam-spanning edge), and {@link buildSeamRail} seeds a dense t-rail on the (locked) seam
+// column so the wrap triangles are short. Together these conform the seam-column scales without breaking the weld.
 
 /** DragonScales scale-lattice parameters that drive the feature-conforming graph (subset of `DragonScalesParams`). */
 export interface DsLattice {
@@ -227,7 +228,8 @@ export interface DsConformingGraphOpts {
   /** Flank-toe t-end epsilon, mm (default 0.04). */
   flankEndEpsMm?: number;
   /**
-   * Dense seam-rail t-samples on the (mirrored) u=0≡u=1 seam column (default 192). Resolves the locked-seam wrap-
+   * Dense seam-rail t-samples on the (mirrored) u=0≡u=1 seam column (default 512 — MEASURED to fully evict the seam
+   * from the worst-facet tail at ≥1.6M tris; 192 leaves it at body-residual level). Resolves the locked-seam wrap-
    * triangle chord (see {@link buildSeamRail}). 0 disables the rail (θ+toe only — leaves the seam-column spike).
    */
   seamRailSamples?: number;
@@ -318,7 +320,7 @@ export function buildDragonScalesConformingGraph(H: number, opts: DsConformingGr
   );
   const combo = mergeGraphs({ pts: theta.pts, edges: theta.edges }, { pts: toe.pts, edges: toe.edges });
   // Dense seam rail on u=0 (symmetrize mirrors it to u=1) so the locked seam column resolves the wrap-triangle chord.
-  const railN = opts.seamRailSamples ?? 192;
+  const railN = opts.seamRailSamples ?? 512;
   const withRail = railN >= 2 ? mergeGraphs(combo, buildSeamRail(railN)) : combo;
   return seamSymmetrizeGraph(withRail, opts.clipEps ?? 1e-6);
 }
