@@ -186,6 +186,34 @@ export function clipGraphToInterior(g: FeatureGraph, eps = 1e-6): FeatureGraph {
   return { pts, edges };
 }
 
+/**
+ * A dense vertical constraint RAIL on the u=0 seam column: `nSamples` t-stations chained into one line, inset off
+ * the locked t-rims by `tEps`. {@link seamSymmetrizeGraph} mirrors it onto BOTH u=0 and u=1 columns.
+ *
+ * WHY: rim-pin LOCKS the u=0/u=1 seam columns (their edges never split), so they stay at the coarse seed resolution
+ * while the interior refines by the metric. The u=1→u=0 weld then bridges the fine interior to the coarse seam with
+ * long "wrap" triangles that chord the seam-column scale relief (MEASURED: a ~1.87mm true-3D spike concentrated on
+ * the seam, dominating witMax although body p99 was already ≤0.01). The research twin never saw this — with no
+ * rim-pin its seam boundary refined freely. Seeding the locked seam column with a dense rail (pinned, both columns,
+ * so the bijection holds) makes the wrap triangles short ⇒ the seam relief is resolved. The rail is uniform in t
+ * (feature-agnostic) because the seam column crosses every scale row at a different scaleLocal (even rows: a valley
+ * on u=0; odd rows: a scale centre) — a uniform rail conforms them all.
+ */
+export function buildSeamRail(nSamples: number, tEps = 1e-3): FeatureGraph {
+  const pts: number[] = [];
+  const edges: number[] = [];
+  const n = Math.max(2, Math.floor(nSamples));
+  let prev = -1;
+  for (let s = 0; s < n; s++) {
+    const t = tEps + (1 - 2 * tEps) * (s / (n - 1));
+    const pos = pts.length / 2;
+    pts.push(0, t);
+    if (prev >= 0) edges.push(prev, pos);
+    prev = pos;
+  }
+  return { pts, edges };
+}
+
 /** Options for {@link buildDragonScalesConformingGraph}. Defaults reproduce the winning `combo|fine` arm's graph. */
 export interface DsConformingGraphOpts {
   /** θ-valley samples per line (default 24). */
@@ -198,6 +226,11 @@ export interface DsConformingGraphOpts {
   flankRingInsetMm?: number;
   /** Flank-toe t-end epsilon, mm (default 0.04). */
   flankEndEpsMm?: number;
+  /**
+   * Dense seam-rail t-samples on the (mirrored) u=0≡u=1 seam column (default 192). Resolves the locked-seam wrap-
+   * triangle chord (see {@link buildSeamRail}). 0 disables the rail (θ+toe only — leaves the seam-column spike).
+   */
+  seamRailSamples?: number;
   /** Interior clip epsilon in (u,t) fraction (default 1e-6). */
   clipEps?: number;
   /** DragonScales lattice (default {@link DEFAULT_DS_LATTICE} = 8/16/0.5). */
@@ -205,8 +238,71 @@ export interface DsConformingGraphOpts {
 }
 
 /**
+ * SEAM-SYMMETRIC transform for the periodic u=0≡u=1 seam under rim-pin (the production replacement for the seam
+ * CLIP). The rim-pin weld ({@link MetricMeshOpts.rimPinRing}, in metricMeshToOuterWall) folds the u=1 column onto
+ * u=0 and REQUIRES the two seam columns to be an exact t-station bijection. A raw θ/toe graph puts the seam-column
+ * scale's valley line + flank mid-node on u=0 ONLY (asymmetric), so the earlier fix simply DROPPED them — leaving
+ * the seam-column scales UN-conformed (MEASURED: a ~1.87mm true-3D chord spike concentrated at the seam, dominating
+ * witMax while body p99 was already ≤0.01). This transform instead makes the seam feature SYMMETRIC:
+ *   • every constraint point that lands on the seam is snapped to a canonical t-station present on BOTH the u=0 and
+ *     the u=1 column (so col0 and col1 hold the identical t-set ⇒ the weld bijection holds), and
+ *   • each edge that touches a seam point is routed to the seam column NEAREST its interior partner — so a flank arc
+ *     on the u≈0 side connects to the u=0 mid-node and the wrapped u≈1 side connects to the u=1 mirror (no long
+ *     seam-spanning edge) — while a purely on-seam edge (a θ-valley segment) is emitted on BOTH columns.
+ * After the weld the two mirrored columns merge into ONE conformed seam column (manifold-by-construction): the
+ * seam-column scales get their creases AND the bijection survives. Points on the locked t-rims are dropped
+ * (defensive; the DS graph is t-inset by construction). Pure + browser-capable; NO-OP-equivalent for a graph with
+ * no seam points (every point becomes an interior point, re-indexed).
+ */
+export function seamSymmetrizeGraph(g: FeatureGraph, seamEps = 1e-6): FeatureGraph {
+  const nPts = g.pts.length / 2;
+  const uAt = (i: number): number => g.pts[2 * i];
+  const tAt = (i: number): number => g.pts[2 * i + 1];
+  const onTRim = (i: number): boolean => tAt(i) <= seamEps || tAt(i) >= 1 - seamEps;
+  const isSeam = (i: number): boolean => uAt(i) <= seamEps || uAt(i) >= 1 - seamEps;
+
+  const outPts: number[] = [];
+  const interiorOut = new Int32Array(nPts).fill(-1);
+  // canonical seam t-station (rounded key) → its {left(u=0), right(u=1)} output indices.
+  const seamCols = new Map<number, { left: number; right: number }>();
+  const seamKey = (t: number): number => Math.round(t / seamEps);
+  const ensureSeam = (t: number): { left: number; right: number } => {
+    const k = seamKey(t);
+    let e = seamCols.get(k);
+    if (e === undefined) {
+      const left = outPts.length / 2; outPts.push(0, t);
+      const right = outPts.length / 2; outPts.push(1, t);
+      e = { left, right }; seamCols.set(k, e);
+    }
+    return e;
+  };
+  const outInterior = (i: number): number => {
+    if (interiorOut[i] < 0) { interiorOut[i] = outPts.length / 2; outPts.push(uAt(i), tAt(i)); }
+    return interiorOut[i];
+  };
+  const seamOnCol = (i: number, col: 0 | 1): number => { const e = ensureSeam(tAt(i)); return col === 0 ? e.left : e.right; };
+
+  // Pre-create BOTH columns for every seam t-station so col0 and col1 are t-identical regardless of edge routing.
+  for (let i = 0; i < nPts; i++) if (isSeam(i) && !onTRim(i)) ensureSeam(tAt(i));
+
+  const outEdges: number[] = [];
+  const push = (a: number, b: number): void => { if (a !== b) outEdges.push(a, b); };
+  for (let e = 0; e + 1 < g.edges.length; e += 2) {
+    const a = g.edges[e], b = g.edges[e + 1];
+    if (onTRim(a) || onTRim(b)) continue; // drop edges touching the locked t-rims (defensive)
+    const sa = isSeam(a), sb = isSeam(b);
+    if (!sa && !sb) push(outInterior(a), outInterior(b));
+    else if (sa && !sb) push(seamOnCol(a, uAt(b) < 0.5 ? 0 : 1), outInterior(b));
+    else if (!sa && sb) push(outInterior(a), seamOnCol(b, uAt(a) < 0.5 ? 0 : 1));
+    else { push(seamOnCol(a, 0), seamOnCol(b, 0)); push(seamOnCol(a, 1), seamOnCol(b, 1)); } // on-seam segment: mirror both columns
+  }
+  return { pts: outPts, edges: outEdges };
+}
+
+/**
  * Assemble the DragonScales feature-conforming constraint graph (θ-valley ∪ flank-toe, the proven `combo` graph),
- * clipped to the patch interior for rim-pin safety. Pure + browser-capable.
+ * made SEAM-SYMMETRIC for the rim-pin weld (see {@link seamSymmetrizeGraph} — conforms the seam-column scales WITHOUT
+ * breaking the u=1→u=0 bijection). Pure + browser-capable.
  *
  * @param H  Wall height (mm) — the θ/flank insets are specified in mm and normalized by H.
  */
@@ -221,7 +317,10 @@ export function buildDragonScalesConformingGraph(H: number, opts: DsConformingGr
     lat,
   );
   const combo = mergeGraphs({ pts: theta.pts, edges: theta.edges }, { pts: toe.pts, edges: toe.edges });
-  return clipGraphToInterior(combo, opts.clipEps ?? 1e-6);
+  // Dense seam rail on u=0 (symmetrize mirrors it to u=1) so the locked seam column resolves the wrap-triangle chord.
+  const railN = opts.seamRailSamples ?? 192;
+  const withRail = railN >= 2 ? mergeGraphs(combo, buildSeamRail(railN)) : combo;
+  return seamSymmetrizeGraph(withRail, opts.clipEps ?? 1e-6);
 }
 
 /** Default curvatureFineStep for the DS region path (the ≤3M-tri confirming arm `combo|fine|s0.0022`). */

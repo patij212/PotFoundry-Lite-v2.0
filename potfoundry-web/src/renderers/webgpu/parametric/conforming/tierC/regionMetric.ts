@@ -290,11 +290,14 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   // introduces (θ-valley/flank-toe loci sit at the scale lattice, not the nRing rim stations) — those midpoints are
   // NOT deduped against the seed columns, so once one lands within the ring-collection band (metricMeshToOuterWall
   // collects t/u within 1e-6) it pollutes the emitted rim ring or breaks the u-seam weld bijection. Rejecting any
-  // split midpoint inside a thin locked-boundary band keeps the marching clear of that zone (the band is 1000× the
-  // collection epsilon, so smoothing drift cannot re-enter it). STRICT NO-OP when doRimPin is false (the default and
-  // non-rim-pinned region paths never evaluate it → the split loop is byte-identical). Without injection the marching
-  // only occurs at seed-u (which dedupes), so this guard changes nothing for a plain rim-pinned wall either.
-  const RIM_SPLIT_BAND = 1e-3;
+  // split midpoint inside a thin locked-boundary band keeps the marching clear of that zone (the band is 100× the
+  // collection epsilon, so smoothing drift — which pulls near-boundary interior vertices AWAY from the boundary
+  // toward the denser interior — cannot re-enter it). At 1e-4 the near-rim/near-seam scale relief still refines to
+  // within 1e-4 of the boundary (a ~0.012mm-tall final cell at H≈120), so the guard no longer starves legitimate
+  // near-rim conformance while still killing the ring/seam pollution. STRICT NO-OP when doRimPin is false (the default
+  // and non-rim-pinned region paths never evaluate it → the split loop is byte-identical). Without injection the
+  // marching only occurs at seed-u (which dedupes), so this guard changes nothing for a plain rim-pinned wall either.
+  const RIM_SPLIT_BAND = 1e-4;
   const rimSplitBlocked = (mu: number, mt: number): boolean =>
     doRimPin && (mt < RIM_SPLIT_BAND || mt > 1 - RIM_SPLIT_BAND || mu < RIM_SPLIT_BAND || mu > 1 - RIM_SPLIT_BAND);
 

@@ -14,6 +14,7 @@ import {
   buildFlankToeGraph,
   mergeGraphs,
   clipGraphToInterior,
+  seamSymmetrizeGraph,
   buildDragonScalesConformingGraph,
   DEFAULT_DS_LATTICE,
   DS_CURVATURE_FINE_STEP,
@@ -98,18 +99,51 @@ describe('dsFeatureEdges — pure graph generators (browser-capable, analytic fr
     expect(new Set(c.edges)).toEqual(new Set([0, 1]));
   });
 
-  it('composed DS graph is non-empty, valid, and STRICTLY INTERIOR (rim-pin safe)', () => {
+  it('composed DS graph is non-empty, valid, off the t-rims, and SEAM-SYMMETRIC (u=0 and u=1 columns t-identical)', () => {
     const g = buildDragonScalesConformingGraph(H);
     expect(g.pts.length / 2).toBeGreaterThan(100);
     expect(g.edges.length / 2).toBeGreaterThan(100);
     expect(edgesValid(g)).toBe(true);
     const nPts = g.pts.length / 2;
+    // The seam-column scales ARE conformed now: there must be points on BOTH u=0 and u=1.
+    const leftTs: number[] = [], rightTs: number[] = [];
     for (let i = 0; i < nPts; i++) {
       const u = g.pts[2 * i], t = g.pts[2 * i + 1];
-      expect(u).toBeGreaterThan(1e-6);
-      expect(u).toBeLessThan(1 - 1e-6);
+      // Nothing lands on the locked t-rims (dropped by the transform).
       expect(t).toBeGreaterThan(1e-6);
       expect(t).toBeLessThan(1 - 1e-6);
+      if (u <= 1e-6) leftTs.push(t);
+      else if (u >= 1 - 1e-6) rightTs.push(t);
+    }
+    expect(leftTs.length).toBeGreaterThan(0);
+    // BIJECTION-READY: the u=0 and u=1 seam columns carry the IDENTICAL t-station multiset (what the weld requires).
+    expect(rightTs.length).toBe(leftTs.length);
+    leftTs.sort((a, b) => a - b); rightTs.sort((a, b) => a - b);
+    for (let k = 0; k < leftTs.length; k++) expect(Math.abs(leftTs[k] - rightTs[k])).toBeLessThan(1e-6);
+  });
+
+  it('seamSymmetrizeGraph mirrors seam points onto both columns + routes edges to the nearest column', () => {
+    // A seam-crossing scale: M-node on the seam (u=0), a left-flank point (u=0.03) and a wrapped right-flank point
+    // (u=0.97), each edged to M; plus a t-rim point (t=1) that must be dropped.
+    const raw: FeatureGraph = {
+      pts: [0, 0.5, /*M*/ 0.03, 0.45, /*left*/ 0.97, 0.55, /*right*/ 0.4, 1.0 /*t-rim*/],
+      edges: [0, 1, /*M-left*/ 0, 2, /*M-right*/ 0, 3 /*M-trim, dropped*/],
+    };
+    const s = seamSymmetrizeGraph(raw);
+    expect(edgesValid(s)).toBe(true);
+    // The seam t-station (0.5) exists on BOTH columns; the interior left/right points survive.
+    let left = 0, right = 0;
+    for (let i = 0; i < s.pts.length / 2; i++) {
+      const u = s.pts[2 * i];
+      if (u <= 1e-6) left++; else if (u >= 1 - 1e-6) right++;
+    }
+    expect(left).toBe(1); expect(right).toBe(1); // (0,0.5) and (1,0.5)
+    // Two surviving edges: left-flank→(u=0,0.5) and right-flank→(u=1,0.5). The t-rim edge is dropped.
+    expect(s.edges.length / 2).toBe(2);
+    // No edge spans the seam (max |Δu| over an edge < 0.5): the wrapped right flank routes to the u=1 mirror.
+    for (let e = 0; e + 1 < s.edges.length; e += 2) {
+      const du = Math.abs(s.pts[2 * s.edges[e]] - s.pts[2 * s.edges[e + 1]]);
+      expect(du).toBeLessThan(0.5);
     }
   });
 

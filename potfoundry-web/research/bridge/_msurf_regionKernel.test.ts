@@ -170,7 +170,11 @@ const DSR_SIZERES = Number(process.env.PF_DSREGION_SIZERES ?? '192');
 const DSR_MAXPTS = Number(process.env.PF_DSREGION_MAXPTS ?? '3000000');
 const DSR_HMIN = Number(process.env.PF_DSREGION_HMIN ?? '0.02');
 const DSR_TOL = Number(process.env.PF_DSREGION_TOL ?? '0.01');
+// Direct facet→surface chord-sag guard, matching the PRODUCTION dispatch (ParametricExportComputer passes
+// chordTolMm=qMaxSag). Catches sharp near-rim relief the curvature metric aliases. Default = tol; 0 disables.
+const DSR_CHORD = Number(process.env.PF_DSREGION_CHORD ?? String(DSR_TOL));
 const DSR_SKIP_COMP = process.env.PF_DSREGION_SKIP_COMP === '1'; // witness-only (fast smoke)
+const DSR_DUMP_WORST = Number(process.env.PF_DSREGION_DUMP_WORST ?? '0'); // log top-K worst body facets' (u,t) locus
 const DSR_NDJSON = join(OUT_DIR, 'ds_srcpath.ndjson');
 
 function dsrKeyExists(k: string): boolean {
@@ -189,7 +193,7 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
   it.skipIf(process.env.PF_MSURFIH_REGION_DS !== '1')('body composite p99 on the REAL src production path', () => {
     // D-1 flag: buildRegionOuterWall throws unless the region layer is enabled.
     (globalThis as unknown as { __pfRegionLayer?: boolean }).__pfRegionLayer = true;
-    const key = `DS|srcpath|nRing${DSR_NRING}|sizeRes${DSR_SIZERES}|maxPts${DSR_MAXPTS}|hMin${DSR_HMIN}|tol${DSR_TOL}${DSR_SKIP_COMP ? '|wit' : ''}`;
+    const key = `DS|srcpath|nRing${DSR_NRING}|sizeRes${DSR_SIZERES}|maxPts${DSR_MAXPTS}|hMin${DSR_HMIN}|tol${DSR_TOL}|chord${DSR_CHORD}${DSR_SKIP_COMP ? '|wit' : ''}`;
     if (dsrKeyExists(key)) { plog(`[skip] ${key} already recorded`); return; }
 
     const rA = dsRadiusFn();
@@ -197,7 +201,11 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
     const t0 = Date.now();
     // The EXACT production dispatch — the DS branch injects the θ+toe graph + curvatureFineStep=0.0022 internally.
     const wall = buildRegionOuterWall(
-      { analyticRA: rA, H, nRing: DSR_NRING, tolMm: DSR_TOL, hMin: DSR_HMIN, hMax: HMAX_3D, sizeRes: DSR_SIZERES, maxPoints: DSR_MAXPTS },
+      {
+        analyticRA: rA, H, nRing: DSR_NRING, tolMm: DSR_TOL, hMin: DSR_HMIN, hMax: HMAX_3D,
+        sizeRes: DSR_SIZERES, maxPoints: DSR_MAXPTS,
+        ...(DSR_CHORD > 0 ? { chordTolMm: DSR_CHORD } : {}),
+      },
       'DragonScales' as StyleId,
     );
     if (!wall) throw new Error('buildRegionOuterWall returned undefined (region flag OFF or non-region style)');
@@ -225,6 +233,25 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
     const wSorted = Float64Array.from(wDevs).sort();
     const witP99 = pctFrom(wSorted, 0.99), witMax = +wWorst.toFixed(6);
     plog(`[DS srcpath][WITNESS] body p99=${witP99} max=${witMax} out=${wOut}/${bodyAll.length} in ${((Date.now() - tW) / 1000).toFixed(1)}s`);
+
+    // LOCUS CONFIRM: dump the top-K worst-witness body facets' centroid (u,t) + classify seam/rim/body.
+    if (DSR_DUMP_WORST > 0) {
+      const ranked = bodyAll.map((f) => ({ f, e: sag.faceErr[f] })).sort((x, y) => y.e - x.e).slice(0, DSR_DUMP_WORST);
+      let seamCount = 0;
+      for (const { f, e } of ranked) {
+        const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+        const cu = (ut[2 * a] + ut[2 * b] + ut[2 * c]) / 3;
+        const ct = (ut[2 * a + 1] + ut[2 * b + 1] + ut[2 * c + 1]) / 3;
+        // A facet is at the SEAM if any corner is within 0.03 of u=0 or u=1 (the seam-column scale spans both edges).
+        const uMin = Math.min(ut[2 * a], ut[2 * b], ut[2 * c]);
+        const uMax = Math.max(ut[2 * a], ut[2 * b], ut[2 * c]);
+        const atSeam = uMin < 0.03 || uMax > 0.97;
+        if (atSeam) seamCount++;
+        // eslint-disable-next-line no-console
+        plog(`  [worst] sag=${e.toFixed(4)} centroid u=${cu.toFixed(4)} t=${ct.toFixed(4)} uSpan=[${uMin.toFixed(4)},${uMax.toFixed(4)}] ${atSeam ? 'SEAM' : (ct < 0.03 || ct > 0.97 ? 'RIM' : 'body')}`);
+      }
+      plog(`[DS srcpath][LOCUS] ${seamCount}/${ranked.length} of the worst facets touch the seam (u<0.03 || u>0.97)`);
+    }
 
     const row: Record<string, unknown> = {
       key, mesher: 'regionSrcPath', nRing: DSR_NRING, sizeRes: DSR_SIZERES, maxPoints: DSR_MAXPTS, hMin: DSR_HMIN, tol: DSR_TOL,
