@@ -250,8 +250,10 @@ describe('assembleWatertight adopts the rim-pinned M-kernel wall (tractable smok
 
       const dims: AssemblyDimensions = { H, tBottom: TBOTTOM, rDrain: RDRAIN };
       // No ring-mismatch throw ⇒ the shared rim/base caps adopted the pinned wall index-for-index.
+      // maxLevel must host the inner wall's pinBoundaryLevel = log2(nRing); production CAD uses maxLevel 16.
+      // Adaptive so the gate runs at production nRing (1024/2048) — max(7, ...) preserves the nRing≤128 behavior.
       const asm = assembleWatertight(outerSampler, innerSampler, dims, {
-        maxSagMm: 0.5, maxEdgeMm: 200, minEdgeMm: 0.5, gradeRatio: 2, maxLevel: 7,
+        maxSagMm: 0.5, maxEdgeMm: 200, minEdgeMm: 0.5, gradeRatio: 2, maxLevel: Math.max(7, Math.ceil(Math.log2(NRING))),
         resU: 33, resT: 9, nRing: NRING, tierCOuterWall: wall,
       });
 
