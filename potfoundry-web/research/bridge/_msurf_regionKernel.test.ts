@@ -236,7 +236,16 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
       return tmin < trimBand || tmax > 1 - trimBand;
     };
     const bodyAll: number[] = [];
-    for (let f = 0; f < tris; f++) if (cls(f) === 'body' && !touchesTRim(f)) bodyAll.push(f);
+    // RIM-BAND subset (E-DS-RIM curve): the body-classified facets the exclude-trim mask DROPS — i.e. those touching
+    // the locked t=0/t=1 pot rim. When trimBand>0 this is exactly the complement of bodyAll (both are cls==='body'),
+    // so we can report the RIM residual and the interior body residual from ONE build. Measurement-only; empty when
+    // trimBand<=0 (default) ⇒ the rim metrics are omitted and the row is byte-identical to the pre-curve arm.
+    const rimBand: number[] = [];
+    for (let f = 0; f < tris; f++) {
+      if (cls(f) !== 'body') continue;
+      if (touchesTRim(f)) rimBand.push(f);
+      else bodyAll.push(f);
+    }
 
     // WITNESS true-3D (perFaceTrue3DSag) on the body subset — cheap, GN-honest for DS risers.
     const tW = Date.now();
@@ -246,6 +255,16 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
     const wSorted = Float64Array.from(wDevs).sort();
     const witP99 = pctFrom(wSorted, 0.99), witMax = +wWorst.toFixed(6);
     plog(`[DS srcpath][WITNESS] body p99=${witP99} max=${witMax} out=${wOut}/${bodyAll.length} in ${((Date.now() - tW) / 1000).toFixed(1)}s`);
+
+    // RIM-BAND witness — the t=0/t=1 rim residual isolated (nRing-limited, the LAST DS band). Only when trimBand>0.
+    let rimWitP99 = 0, rimWitMax = 0, rimWitOut = 0;
+    if (rimBand.length > 0) {
+      const rDevs: number[] = [];
+      for (const f of rimBand) { const e = sag.faceErr[f]; rDevs.push(e); if (e > rimWitMax) rimWitMax = e; if (e > DSR_TOL) rimWitOut++; }
+      const rSorted = Float64Array.from(rDevs).sort();
+      rimWitP99 = pctFrom(rSorted, 0.99); rimWitMax = +rimWitMax.toFixed(6);
+      plog(`[DS srcpath][RIM] band=${trimBand} nRing=${DSR_NRING} rim p99=${rimWitP99} max=${rimWitMax} out=${rimWitOut}/${rimBand.length}`);
+    }
 
     // LOCUS CONFIRM: dump the top-K worst-witness body facets' centroid (u,t) + classify seam/rim/body.
     if (DSR_DUMP_WORST > 0) {
@@ -271,6 +290,7 @@ describe('SRC region PATH (buildRegionOuterWall DragonScales) — rim-pin + grap
       tris, verts, meshMs, bottomRing: wall.bottomRing.length, topRing: wall.topRing.length,
       minAngleDeg: +q.minAngleDeg.toFixed(3), pctBelow20: +q.pctBelow20.toFixed(2), nonMan,
       bodyFacets: bodyAll.length, witP99, witMax, witOut: wOut,
+      ...(rimBand.length > 0 ? { rimFacets: rimBand.length, rimWitP99, rimWitMax, rimWitOut } : {}),
     };
 
     // COMPOSITE (V11g certified ruler) — the E-DS-INTERIOR-CLOSE gate. Skippable for the fast smoke.
