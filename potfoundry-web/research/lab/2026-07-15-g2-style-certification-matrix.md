@@ -179,3 +179,29 @@ Session tally: certified set unchanged at five pots (HR gentle small + DEFAULT S
 SR gentle, FB defaults, SE defaults); U3a machinery landed and tested; Gothic and the
 fract family have precisely named next mechanisms (screen-v3 pow semantics; U3b rational
 stations).
+
+## Addendum 6 — screen v3 exactness + the Gothic cusp classification
+
+Two screen tightenings landed (both pure improvements, no policy loosened):
+
+1. **Power-of-two-point products/quotients stay exact unwidened** — multiplying by a
+   0.5-style constant is a float64 exponent shift; widening it was manufacturing
+   spurious -4e-16 lower bounds that broke clamped-at-zero domain guards downstream.
+2. **p < 1 cusp pow** (`max(0, 1-t)^(5/6)` arch outlines): value stays enclosed by
+   monotone corners (pow(0,p) = 0 finite), derivative is genuinely unbounded at the
+   clamp boundary, so the run downgrades to the value-hull residual and the b&b refines
+   cusp neighborhoods geometrically instead of dumping them on 32 ms decimal cells.
+
+**Gothic final classification (empirical, histogram-clean):** with these, Gothic runs the
+ENTIRE proof with ZERO screen refusals — and still exceeds the deadline as pure
+hull-cascade volume along its arch outlines. The outlines are p<1 CUSP CURVES (vertical
+tangent), diagonal in (u,v): no axis-aligned station ladder can reach them, and hull
+convergence at ~h^0.83 along a curve costs millions of cells. GothicArches therefore joins
+WaveInterference in the CURVED-FEATURE-ALIGNMENT class — the unlock is stations ON curves
+(true feature-conforming tessellation, the same machinery the production mesher track
+carries), not more ops, density, or ceilings.
+
+Updated routing table: U3b exact-rational stations -> fract family (6 styles, axis-aligned
+jump lines); curved-feature conforming (U5-class) -> GothicArches + WaveInterference;
+U4 curtain/riser complexes -> 7 layered styles. Certified set: five pots across four
+styles (HR small+default-scale, SR, FB, SE).

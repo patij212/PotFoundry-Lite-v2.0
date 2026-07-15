@@ -75,9 +75,10 @@ export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
     `outward-float64-interval-proof=${OUTWARD_FLOAT64_INTERVAL_PROOF_SHA256}`,
     'a centered mean-value screen may enclose non-affine residual cells in outward float64 intervals: residual(cell) is contained in residual(centre) plus the box interval Jacobian of target-minus-affine-artifact times the centred cell offsets',
     'the screen Jacobian is forward-mode interval differentiation of the same compiled instructions over the axis-aligned cell hull; kinked minimum/maximum/absolute nodes use the Clarke subgradient hull, which the Lebourg mean-value theorem admits',
-    'screen arithmetic widens every node result by a pure relative 4*2^-52 (libm-backed nodes 8*2^-52, assuming platform libm within one unit in the last place per call), which preserves exact zeros; soundness of relative-only widening is enforced by refusing any nonzero computed bound below 1e-150 in magnitude, above which a rounded result is exactly zero only when truly zero; add/subtract results additionally keep exactness proven by an error-free round-trip check; trig ranges include every critical point conservatively located with outward pi',
+    'screen arithmetic widens every node result by a pure relative 4*2^-52 (libm-backed nodes 8*2^-52, assuming platform libm within one unit in the last place per call), which preserves exact zeros; soundness of relative-only widening is enforced by refusing any nonzero computed bound below 1e-150 in magnitude, above which a rounded result is exactly zero only when truly zero; add/subtract results additionally keep exactness proven by an error-free round-trip check; products and quotients by a power-of-two point factor are exponent shifts and stay exact unwidened; trig ranges include every critical point conservatively located with outward pi',
     'piecewise/branch-cut nodes (floor, ceiling, round, fractional-part, sign, step, atan2, pcg2d) are jump-guarded: cells whose argument enclosures exclude every jump take exact locally-constant or smooth paths (pcg2d resolves proven single-integer operands to its exact dyadic constant), and straddling cells downgrade the whole run to a plain value-hull residual over the cell — still a sound enclosure, only first-order wide',
     'power additionally supports a varying exponent y >= 1 with base >= 0: value and base-derivative factors by monotone corner bounds, exponent-derivative factor a^y*ln(a) bounded below by -1/(e*yLo) on (0,1] and corner-monotone for base >= 1',
+    'power with base >= 0 and a positive exponent below one (a clamp-boundary cusp with unbounded derivative) keeps its monotone corner VALUE enclosure and downgrades the run to the value-hull residual, so cusp neighborhoods refine by subdivision instead of refusing to the decimal kernel',
     'the screen refuses (returns unavailable, never a bound) on non-positive sqrt/ln/divide domains, power bases that may be negative, atan2 argument rectangles touching the origin outside the hull path, degenerate cell Jacobian systems, and any nonfinite value; refused cells fall back to the validated decimal enclosure',
     'program input is strict bounded canonical number-free JSON; arbitrary callbacks and closure state are impossible',
     'legacy v2 expression trees remain accepted; production v3 programs are forward-only SSA arrays with canonical string indices',
@@ -1384,6 +1385,20 @@ function fastBelowMagnitudeFloor(value: number): boolean {
   return value !== 0 && Math.abs(value) < FAST_MIN_MAGNITUDE;
 }
 
+/**
+ * A point interval whose magnitude is an exact power of two: multiplying or
+ * dividing by it only shifts the float64 exponent, so those products are
+ * EXACT and must not be widened — exactness matters because clamped-at-zero
+ * expressions (0.5 + 0.5*sin, 1 - cos, ...) must reach 0 exactly for the
+ * pow/sqrt domain guards to stay decidable.
+ */
+function fastIsPowerOfTwoPoint(lower: number, upper: number): boolean {
+  if (lower !== upper || lower === 0 || !Number.isFinite(lower)) return false;
+  const magnitude = Math.abs(lower);
+  if (magnitude < 2 ** -500 || magnitude > 2 ** 500) return false;
+  return magnitude === 2 ** Math.round(Math.log2(magnitude));
+}
+
 function fastConstantBounds(decimalValue: string): readonly [number, number] | null {
   const value = Number(decimalValue);
   if (!Number.isFinite(value)) return null;
@@ -1803,12 +1818,17 @@ function fastRunTape(
         const aHi = valueHi[a];
         const bLo = valueLo[b];
         const bHi = valueHi[b];
+        const aExact = fastIsPowerOfTwoPoint(aLo, aHi);
+        const bExact = fastIsPowerOfTwoPoint(bLo, bHi);
+        const valueExact = aExact || bExact;
         const m0 = aLo * bLo;
         const m1 = aLo * bHi;
         const m2 = aHi * bLo;
         const m3 = aHi * bHi;
-        rLo = fastWidenLo(Math.min(Math.min(m0, m1), Math.min(m2, m3)));
-        rHi = fastWidenHi(Math.max(Math.max(m0, m1), Math.max(m2, m3)));
+        const mMin = Math.min(Math.min(m0, m1), Math.min(m2, m3));
+        const mMax = Math.max(Math.max(m0, m1), Math.max(m2, m3));
+        rLo = valueExact ? mMin : fastWidenLo(mMin);
+        rHi = valueExact ? mMax : fastWidenHi(mMax);
         const p0 = duLo[a] * bLo;
         const p1 = duLo[a] * bHi;
         const p2 = duHi[a] * bLo;
@@ -1817,13 +1837,17 @@ function fastRunTape(
         const p5 = aLo * duHi[b];
         const p6 = aHi * duLo[b];
         const p7 = aHi * duHi[b];
-        rDuLo = fastWidenLo(
-          Math.min(Math.min(p0, p1), Math.min(p2, p3)) +
-            Math.min(Math.min(p4, p5), Math.min(p6, p7))
+        const duGroup1Lo = Math.min(Math.min(p0, p1), Math.min(p2, p3));
+        const duGroup1Hi = Math.max(Math.max(p0, p1), Math.max(p2, p3));
+        const duGroup2Lo = Math.min(Math.min(p4, p5), Math.min(p6, p7));
+        const duGroup2Hi = Math.max(Math.max(p4, p5), Math.max(p6, p7));
+        rDuLo = fastCheckedAddLo(
+          bExact ? duGroup1Lo : fastWidenLo(duGroup1Lo),
+          aExact ? duGroup2Lo : fastWidenLo(duGroup2Lo)
         );
-        rDuHi = fastWidenHi(
-          Math.max(Math.max(p0, p1), Math.max(p2, p3)) +
-            Math.max(Math.max(p4, p5), Math.max(p6, p7))
+        rDuHi = fastCheckedAddHi(
+          bExact ? duGroup1Hi : fastWidenHi(duGroup1Hi),
+          aExact ? duGroup2Hi : fastWidenHi(duGroup2Hi)
         );
         const q0 = dvLo[a] * bLo;
         const q1 = dvLo[a] * bHi;
@@ -1833,13 +1857,17 @@ function fastRunTape(
         const q5 = aLo * dvHi[b];
         const q6 = aHi * dvLo[b];
         const q7 = aHi * dvHi[b];
-        rDvLo = fastWidenLo(
-          Math.min(Math.min(q0, q1), Math.min(q2, q3)) +
-            Math.min(Math.min(q4, q5), Math.min(q6, q7))
+        const dvGroup1Lo = Math.min(Math.min(q0, q1), Math.min(q2, q3));
+        const dvGroup1Hi = Math.max(Math.max(q0, q1), Math.max(q2, q3));
+        const dvGroup2Lo = Math.min(Math.min(q4, q5), Math.min(q6, q7));
+        const dvGroup2Hi = Math.max(Math.max(q4, q5), Math.max(q6, q7));
+        rDvLo = fastCheckedAddLo(
+          bExact ? dvGroup1Lo : fastWidenLo(dvGroup1Lo),
+          aExact ? dvGroup2Lo : fastWidenLo(dvGroup2Lo)
         );
-        rDvHi = fastWidenHi(
-          Math.max(Math.max(q0, q1), Math.max(q2, q3)) +
-            Math.max(Math.max(q4, q5), Math.max(q6, q7))
+        rDvHi = fastCheckedAddHi(
+          bExact ? dvGroup1Hi : fastWidenHi(dvGroup1Hi),
+          aExact ? dvGroup2Hi : fastWidenHi(dvGroup2Hi)
         );
         break;
       }
@@ -1853,8 +1881,11 @@ function fastRunTape(
         const d1 = aLo / bHi;
         const d2 = aHi / bLo;
         const d3 = aHi / bHi;
-        rLo = fastWidenLo(Math.min(Math.min(d0, d1), Math.min(d2, d3)));
-        rHi = fastWidenHi(Math.max(Math.max(d0, d1), Math.max(d2, d3)));
+        const divisorExact = fastIsPowerOfTwoPoint(bLo, bHi);
+        const dMin = Math.min(Math.min(d0, d1), Math.min(d2, d3));
+        const dMax = Math.max(Math.max(d0, d1), Math.max(d2, d3));
+        rLo = divisorExact ? dMin : fastWidenLo(dMin);
+        rHi = divisorExact ? dMax : fastWidenHi(dMax);
         const bSq0 = bLo * bLo;
         const bSq1 = bHi * bHi;
         const bSqLo = fastWidenLo(Math.min(bSq0, bSq1));
@@ -2070,6 +2101,22 @@ function fastRunTape(
             Math.max(Math.max(dv0, dv1), Math.max(dv2, dv3)) +
               Math.max(Math.max(gv0, gv1), Math.max(gv2, gv3))
           );
+          break;
+        }
+        if (baseLo >= 0 && expLo > 0 && Number.isFinite(baseHi)) {
+          // Nonnegative base with a positive exponent that neither >=1
+          // branch accepted (typically a constant p < 1: a clamp-boundary
+          // CUSP with unbounded derivative, e.g. max(0, 1-t)^(5/6) arch
+          // outlines). The VALUE stays enclosed by monotone corners —
+          // pow(0, p) = 0 is finite — but no mean-value form exists, so the
+          // run downgrades to the value-hull residual and the
+          // branch-and-bound refines the cusp neighborhood geometrically.
+          if (!fastPowCornersRaw(baseLo, baseHi, expLo, expHi)) {
+            return recordFastRefusalBoolean('power-corners');
+          }
+          rLo = fastPowScratch[0];
+          rHi = fastPowScratch[1];
+          fastRunTapeHullOnly = true;
           break;
         }
         if (!(baseLo > 0)) return recordFastRefusalBoolean('power-domain');
