@@ -6796,3 +6796,34 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   WebGPU) is the recommended next opener. Then U3b exact-rational stations (fract family,
   6 styles + production-mesh provenance), then curved-feature conforming tessellation
   (Gothic + WI, shared with U5 mesher track), then U4 curtain/riser complexes.
+
+## 2026-07-15 - Claude Fable 5 - containment #5: clean-tree all-20 baseline (cont. 8)
+
+### Summary
+- Executed the long-owed containment #5 on the now-dedicated machine (af75e45c +
+  2784c417). Fresh CLEAN-TREE (HEAD 3de5641e) all-20 production-default capture on real
+  WebGPU: 41 min, zero failures, July perf gains hold (worst style 370 s CelticTriquetra
+  at 13.65M full-pot tris).
+- Byte-identity vs preserved 2026-07-11 bins: **17/20 sha1-IDENTICAL** (July verdicts
+  carry; notably BasketWeave + Gyroid identical DESPITE their styles.ts truth fixes —
+  those changed CPU truth, not the GPU pipeline). 3 DIFFERENT, each traced to a landed
+  fix: WI (parity, hash-diff at equal sizes), DragonScales (>2.1M-vertex edge-key fix,
+  size-diff), Voronoi (PCG2D hash syncs, size-diff).
+- **WaveInterference: SHIPPED-CLEAN fresh** (100% green-proven prescreen over 394,806
+  facets; vtxOnSurf max 0.00002 — parity premise OK; interior outliers 0; coverage max
+  0.0080/p99 0.0032). July's 0.937mm TRUTH-BRIDGE-FAILURE is fully converted.
+- **SuperellipseMorph: SHIPPED-CLEAN fresh** (100% green prescreen; coverage max 0.0032)
+  — scored because the smoke capture overwrote its July bins pre-comparison (ops lesson:
+  BACK UP the exchange dirs BEFORE any capture; the capture arm overwrites in place).
+- DragonScales + Voronoi: 4-shard scoring fleets in flight (prescreen -> interior/
+  coverage; DS ~40k survivors/shard stride 1). Merge via _prod_truth_merge.mjs when done.
+
+### Validation
+- Baseline doc: research/lab/2026-07-15-all20-clean-tree-baseline.md. Basis: HEAD clean
+  except the committed PF_PT_URL harness override. Backup of July bins at
+  research/exchange/_prod_truth_2026_07_11_backup.
+
+### Next agent
+- When fleets complete: merge shard rows, append DS + Voronoi verdicts to the baseline
+  doc (DS also has its dedicated composite ruler _ds_prodtruth.test.ts per the July
+  special-ruler precedent), and mark containment #5 CLOSED. Then U3b rational stations.
