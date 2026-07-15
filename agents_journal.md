@@ -6457,3 +6457,49 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
 - Begin with G0 target/validity semantics and G1 evaluator parity before further mesher tuning.
 - Run GitNexus impact before touching the critical hubs and stage each change behind narrow gates.
 - Fix deterministic baseline tests, then produce a clean all-20 artifact rerun as empirical evidence.
+
+## 2026-07-15 - Claude Fable 5 - Review + landing of Codex's 0.01mm certification work
+
+### Summary
+- Reviewed Codex's uncommitted worktree (audit + containment + G0-G2 machinery); verdict KEEP.
+- Note: Codex's 07-14 11:31->07-15 03:48 implementation sprint was NOT journaled by Codex —
+  its journal entry claims audit-only. This entry documents the sprint and its landing.
+- Fixed loose ends: refreshed stale styles.wgsl SHA-256 pin in styleEvaluatorSourceContract
+  (edited 07-15 00:29 after the 16:32 pin — the contract correctly caught it); restored the
+  clobbered research/lab/2026-07-12-raycast-oracle-fidelity.md (a Phase-1 re-run harness had
+  deleted the committed Phase-2 CERTIFIED/findings/lever sections at 07-14 04:40) with the
+  re-run rows preserved as an append-only addendum; reduced package.json/lock churn from
+  17,151 diff lines to +4/-1 (both new deps were already transitive: decimal.js dev,
+  robust-predicates via delaunator).
+- Landed in 5 slices: 9bec055d docs(audit), d85a4c07 research(bridge), 7fb03d1f fix(export),
+  2d02f566 feat(styles), 35d8b68b feat(certify).
+
+### Decisions
+- CPU WaveInterference aligned to WGSL (not vice versa): WGSL is the rendered/product truth.
+- Drain 0 = no drain honored end-to-end; production conforming assembly already center-fans
+  at rDrain<=0 (WatertightAssembly), legacy CPU path throws (pre-existing, fail-closed).
+- targetSolid proof layer stays standalone (reached only via styles/runtimeContract);
+  no proof-session call in the production export path yet — staged per the audit roadmap.
+
+### Validation
+- typecheck PASS; lint PASS (0 warnings); new suites 455/455 after pin fix; touched suites
+  229/229; styleGolden 45/45. detect_changes: 59 symbols / 38 files / 5 flows, MEDIUM,
+  all confined to export paths. Full `npm test` run in progress at landing time — result
+  and any triage recorded by the next entry.
+
+### Risks
+- Legacy GPU-grid path (pipeline 2) with r_drain=0 emits degenerate center triangles for
+  the drain segment (previously masked by the 0.25 WGSL floor); topology validation flags
+  them (honest fail) but the segment should eventually be skipped when r_drain=0.
+- WI parity contract is an f32 EMULATION of WGSL (fround/fma-emulated); true on-GPU
+  differential (fleet, real fma/sin ULP behavior) is still required for G1.
+- Semantic changes (WI parity, BasketWeave ratio live, drain floors, pack defaults) have
+  NO fresh all-20 production artifact baseline yet — audit containment #5 remains open.
+
+### Next agent
+- Run the fresh clean-tree all-20 default artifact baseline (containment #5) on real WebGPU.
+- G1: on-GPU CPU/WGSL differential at parameter corners + fuzz.
+- G2: continuous two-sided patch-distance proof completion (branch-and-bound on uncertain
+  cells) and wire finalStlPartialCertification into an env-gated e2e gate.
+- Mesher track unchanged: Gothic 0.44 / Gyroid 0.72 / DS rim 0.25 worst-case still need the
+  feature-conforming remesher (region-core / M-surf kernel) before anything can certify.
