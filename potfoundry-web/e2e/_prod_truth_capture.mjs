@@ -36,7 +36,7 @@ page.on('pageerror', (e) => console.log(`[pageerror] ${String(e).slice(0, 300)}`
 page.on('console', (m) => {
   if (m.type() === 'error') console.log(`[page:error] ${m.text().slice(0, 300)}`);
 });
-await page.goto('http://localhost:3000/');
+await page.goto(process.env.PF_PT_URL ?? 'http://localhost:3000/');
 await page.waitForFunction(() => Boolean(window.__pfFidelity), null, { timeout: 60_000 });
 
 /** Persist a typed array stashed on window.__prodTruth[kind] via a Blob download
