@@ -47,14 +47,15 @@ const GENTLE_HARMONIC_RIPPLE = Object.freeze({
 
 function atlas(
   geometry: typeof SMALL_POT_GEOMETRY,
-  styleParams: Readonly<Record<string, number>>
+  styleParams: Readonly<Record<string, number>>,
+  styleId = 'HarmonicRipple'
 ): {
   binding: SinglePatchAnnularRadialSolidTargetBinding;
   canonicalInput: ReturnType<typeof createCanonicalTargetInputBinding>;
 } {
   const canonicalInput = createCanonicalTargetInputBinding(
     geometry,
-    'HarmonicRipple',
+    styleId,
     styleParams,
     TARGET_CONTROLS
   );
@@ -160,49 +161,94 @@ describe('annular solid reference tessellation', () => {
     expect(seen.size).toBe(tessellation.triangleCount);
   });
 
-  // The pot-scale composed proof takes ~20 s, so it rides the PF_G2_POT env
-  // gate like the repo's other heavy fidelity gates. It IS the G2 e2e gate:
-  // atlas -> reference tessellation -> final bytes -> full partial
-  // certification at the 0.01 mm claim.
-  it.skipIf(!process.env.PF_G2_POT)(
-    'proves a complete small pot to the continuous 0.01 mm partial certificate',
-    { timeout: 120_000 },
-    () => {
-      const { binding, canonicalInput } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
-      const tessellation = tessellateAnnularRadialSolidTargetForCertification(
-        binding,
-        SMALL_POT_DIVISIONS
-      );
-      const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
-        binding.surfaceComplex
-      );
-      const session = createFinalArtifactProofSession(tessellation.stlBytes);
-      const result = proveFinalStlMappedGeometryAndStructure(
-        session,
-        canonicalInput,
-        target,
-        jobsFor(binding, tessellation, target.targetSha256),
-        {
-          requestedTolerancePm: 10_000_000n,
-          reservedNonGeometricMarginPm: 500_000n,
-          maxElapsedMilliseconds: 30_000,
-        }
-      );
-      // The module can never mint a full certificate — but the continuous
-      // two-sided geometric claim over the COMPLETE closed solid must hold.
-      expect(result.certified).toBe(false);
-      expect(result.provenClaims).toContain('patch-distance');
-      expect(result.provenClaims).toContain('artifact-coverage');
-      expect(result.provenClaims).toContain('topology');
-      expect(result.provenClaims).toContain('self-intersection');
-      expect(result.structural.structurallyValid).toBe(true);
-      expect(result.geometry.scanComplete).toBe(true);
-      const upper = BigInt(result.geometricTwoSidedUpperPm);
-      expect(upper > 0n).toBe(true);
-      expect(upper <= BigInt(result.geometricBudgetPm)).toBe(true);
-      expect(BigInt(result.geometryPlusReservedUpperPm) <= 10_000_000n).toBe(true);
-    }
-  );
+  // Styles proven through the full chain on the small pot. Configs are the
+  // measured winners of the 2026-07-15 certification matrix (see
+  // research/lab/2026-07-15-g2-style-certification-matrix.md): HarmonicRipple
+  // at 9,499,923 pm / 29k tris and SpiralRidges (low-turn gentle helix) at
+  // 9,499,969 pm / 54k tris. Styles absent here are blocked by the measured
+  // frontier (131,072-triangle cap x 30 s deadline x uniform dyadic grids,
+  // plus two screen op gaps), not by the proof machinery.
+  const CERTIFIED_POTS: readonly {
+    styleId: string;
+    styleParams: Readonly<Record<string, number>>;
+    divisions: AnnularSolidReferenceTessellationOptions;
+  }[] = [
+    {
+      styleId: 'HarmonicRipple',
+      styleParams: GENTLE_HARMONIC_RIPPLE,
+      divisions: SMALL_POT_DIVISIONS,
+    },
+    {
+      styleId: 'SpiralRidges',
+      styleParams: {
+        spiral_amp_min: 0.02,
+        spiral_amp_max: 0.02,
+        spiral_groove_amp: 0,
+        spiral_turns: 0.2,
+      },
+      divisions: {
+        angularDivisionsLog2: 8,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+      },
+    },
+  ];
+
+  // The pot-scale composed proofs take ~20-25 s each, so they ride the
+  // PF_G2_POT env gate like the repo's other heavy fidelity gates. This IS
+  // the G2 e2e gate: atlas -> reference tessellation -> final bytes -> full
+  // partial certification at the 0.01 mm claim.
+  for (const certified of CERTIFIED_POTS) {
+    it.skipIf(!process.env.PF_G2_POT)(
+      `proves a complete small ${certified.styleId} pot to the continuous 0.01 mm partial certificate`,
+      { timeout: 120_000 },
+      () => {
+        const { binding, canonicalInput } = atlas(
+          SMALL_POT_GEOMETRY,
+          certified.styleParams,
+          certified.styleId
+        );
+        const tessellation = tessellateAnnularRadialSolidTargetForCertification(
+          binding,
+          certified.divisions
+        );
+        const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+          binding.surfaceComplex
+        );
+        const session = createFinalArtifactProofSession(tessellation.stlBytes);
+        const result = proveFinalStlMappedGeometryAndStructure(
+          session,
+          canonicalInput,
+          target,
+          jobsFor(binding, tessellation, target.targetSha256),
+          {
+            requestedTolerancePm: 10_000_000n,
+            reservedNonGeometricMarginPm: 500_000n,
+            maxElapsedMilliseconds: 30_000,
+          }
+        );
+        // The module can never mint a full certificate — but the continuous
+        // two-sided geometric claim over the COMPLETE closed solid must hold.
+        expect(result.certified).toBe(false);
+        expect(result.provenClaims).toContain('patch-distance');
+        expect(result.provenClaims).toContain('artifact-coverage');
+        expect(result.provenClaims).toContain('topology');
+        expect(result.provenClaims).toContain('self-intersection');
+        expect(result.structural.structurallyValid).toBe(true);
+        expect(result.geometry.scanComplete).toBe(true);
+        const upper = BigInt(result.geometricTwoSidedUpperPm);
+        expect(upper > 0n).toBe(true);
+        expect(upper <= BigInt(result.geometricBudgetPm)).toBe(true);
+        expect(BigInt(result.geometryPlusReservedUpperPm) <= 10_000_000n).toBe(true);
+      }
+    );
+  }
 
   it.skipIf(!process.env.PF_G2_POT)(
     'refuses fail-closed at production-default scale instead of weakening tolerance',
