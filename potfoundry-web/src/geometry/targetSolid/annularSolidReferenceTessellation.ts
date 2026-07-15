@@ -50,6 +50,53 @@ export interface AnnularSolidReferenceTessellationOptions {
   readonly verticalStationsByPatch?: Readonly<
     Partial<Record<AnnularRadialSolidPatchId, VerticalStationLadder>>
   >;
+  /**
+   * Optional shared non-uniform ANGULAR stations (overrides the uniform
+   * angular grid). The atlas's junction welds reverse the free parameter, so
+   * the ladder must be symmetric under numerator -> 2^log2Denominator -
+   * numerator; the reversed station of index i is then index count-1-i.
+   */
+  readonly angularStations?: VerticalStationLadder;
+}
+
+/**
+ * Build a shared symmetric angular ladder: a uniform 2^uniformLog2 grid
+ * unioned with each feature fraction (e.g. crease angles k/24) snapped to
+ * the nearest dyadic station at 2^snapLog2, plus every mirror 1-s so the
+ * atlas's reversed junctions weld station-for-station. Snapping error is
+ * at most 2^-(snapLog2+1) in u.
+ */
+export function snappedFeatureAngularLadder(
+  uniformLog2: number,
+  featureFractions: readonly number[],
+  snapLog2: number
+): VerticalStationLadder {
+  if (
+    !Number.isSafeInteger(uniformLog2) ||
+    uniformLog2 < 1 ||
+    uniformLog2 > MAX_ANGULAR_DIVISIONS_LOG2 ||
+    !Number.isSafeInteger(snapLog2) ||
+    snapLog2 < uniformLog2 ||
+    snapLog2 > MAX_LADDER_LOG2_DENOMINATOR
+  ) {
+    invalid('snappedFeatureAngularLadder arguments are out of range');
+  }
+  const denominator = 1 << snapLog2;
+  const stationSet = new Set<number>();
+  const uniformStep = 1 << (snapLog2 - uniformLog2);
+  for (let station = 0; station <= 1 << uniformLog2; station += 1) {
+    stationSet.add(station * uniformStep);
+  }
+  for (const fraction of featureFractions) {
+    if (!Number.isFinite(fraction) || fraction < 0 || fraction > 1) {
+      invalid('feature fractions must lie in [0, 1]');
+    }
+    const snapped = Math.min(denominator, Math.max(0, Math.round(fraction * denominator)));
+    stationSet.add(snapped);
+    stationSet.add(denominator - snapped);
+  }
+  const numerators = [...stationSet].sort((left, right) => left - right);
+  return Object.freeze({ log2Denominator: snapLog2, numerators: Object.freeze(numerators) });
 }
 
 /**
@@ -198,15 +245,16 @@ function gridIndex(angularDivisions: number, uStation: number, vStation: number)
 function evaluatePatchGrid(
   patchId: AnnularRadialSolidPatchId,
   evaluateFloat64: (u: number, v: number) => readonly [number, number, number],
-  angularDivisions: number,
+  angularValues: Float64Array,
   stationValues: Float64Array
 ): PatchGrid {
+  const angularDivisions = angularValues.length - 1;
   const verticalDivisions = stationValues.length - 1;
   const coordinates = new Float64Array((verticalDivisions + 1) * (angularDivisions + 1) * 3);
   for (let vStation = 0; vStation <= verticalDivisions; vStation += 1) {
     const v = stationValues[vStation];
     for (let uStation = 0; uStation < angularDivisions; uStation += 1) {
-      const point = evaluateFloat64(uStation / angularDivisions, v);
+      const point = evaluateFloat64(angularValues[uStation], v);
       if (!Number.isFinite(point[0]) || !Number.isFinite(point[1]) || !Number.isFinite(point[2])) {
         invalid(`patch '${patchId}' evaluated a non-finite coordinate`);
       }
@@ -295,7 +343,26 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   if (typeof verticalByPatch !== 'object' || verticalByPatch === null) {
     invalid('verticalDivisionsLog2ByPatch must be a record');
   }
-  const angularDivisions = 1 << angularLog2;
+  const angularResolved = resolveStations(
+    'outer-wall',
+    angularLog2,
+    options.angularStations
+  );
+  if (options.angularStations !== undefined) {
+    // Reversed junction welds mirror station indices, which is only exact
+    // when the ladder itself is symmetric under s -> 1 - s.
+    const numerators = angularResolved.numerators;
+    const denominator = 1 << angularResolved.log2Denominator;
+    for (let station = 0; station < numerators.length; station += 1) {
+      if (
+        numerators[station] !==
+        denominator - numerators[numerators.length - 1 - station]
+      ) {
+        invalid('angularStations must be symmetric under reversal (s -> 1 - s)');
+      }
+    }
+  }
+  const angularDivisions = angularResolved.numerators.length - 1;
   const ladders = options.verticalStationsByPatch ?? {};
   if (typeof ladders !== 'object' || ladders === null) {
     invalid('verticalStationsByPatch must be a record when present');
@@ -333,7 +400,7 @@ export function tessellateAnnularRadialSolidTargetForCertification(
       evaluatePatchGrid(
         program.patchId,
         program.backends.evaluateFloat64,
-        angularDivisions,
+        angularResolved.values,
         stations.values
       )
     );
@@ -352,8 +419,13 @@ export function tessellateAnnularRadialSolidTargetForCertification(
       invalid(`unknown atlas patch '${program.patchId}'`);
     }
     const verticalDivisions = grid.verticalDivisions;
-    const fractionBits = Math.max(angularLog2, stations.log2Denominator);
-    const uNumeratorStep = 1 << (fractionBits - angularLog2);
+    const fractionBits = Math.max(
+      angularResolved.log2Denominator,
+      stations.log2Denominator
+    );
+    const uNumeratorScale = 1 << (fractionBits - angularResolved.log2Denominator);
+    const angularNumerator = (uStation: number): number =>
+      angularResolved.numerators[uStation] * uNumeratorScale;
     const vNumeratorScale = 1 << (fractionBits - stations.log2Denominator);
     const stationNumerator = (vStation: number): number =>
       stations.numerators[vStation] * vNumeratorScale;
@@ -392,15 +464,15 @@ export function tessellateAnnularRadialSolidTargetForCertification(
             artifactTriangleIndex,
             vertices: [
               {
-                uNumerator: (cellTriangle[0][0] * uNumeratorStep).toString(),
+                uNumerator: angularNumerator(cellTriangle[0][0]).toString(),
                 vNumerator: stationNumerator(cellTriangle[0][1]).toString(),
               },
               {
-                uNumerator: (cellTriangle[1][0] * uNumeratorStep).toString(),
+                uNumerator: angularNumerator(cellTriangle[1][0]).toString(),
                 vNumerator: stationNumerator(cellTriangle[1][1]).toString(),
               },
               {
-                uNumerator: (cellTriangle[2][0] * uNumeratorStep).toString(),
+                uNumerator: angularNumerator(cellTriangle[2][0]).toString(),
                 vNumerator: stationNumerator(cellTriangle[2][1]).toString(),
               },
             ],

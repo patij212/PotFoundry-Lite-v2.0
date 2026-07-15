@@ -146,3 +146,36 @@ edges), so straddling cells persist at every depth — the honest classification
 U3 (exact-rational feature-aligned stations), exactly as the roadmap review predicted.
 U2's machinery is complete; U3 is now the sole unlock for six styles plus Gothic and
 WaveInterference.
+
+## Addendum 5 — U3a: shared snapped-feature angular ladders + the Gothic pow finding
+
+Landed the kernel-untouched half of U3: `angularStations` — a shared non-uniform dyadic
+angular ladder (validated symmetric under s -> 1-s so the atlas's reversed junction welds
+stay station-exact) with a `snappedFeatureAngularLadder` generator that unions a uniform
+grid with feature fractions (e.g. crease angles k/24) snapped to 2^-20 dyadics plus their
+mirrors. Snap error <= 2^-21 in u (~5e-5 mm of arc at r=15) — for CONTINUOUS kinks
+(min/max/abs creases) the crease-straddling sliver becomes so thin its chord error
+vanishes, with zero changes to the exactness kernel.
+
+**Gothic outcome (honest):** crease alignment works mechanically (529 stations weld and
+partition cleanly), but Gothic STILL deadlines on bottom-top with a budget-INDEPENDENT
+~100 s burn — histogram: `power-domain:1778`. Diagnosis: Gothic's arch-shape `pow` sees
+bases the SCREEN's libm-padded trig dips to ~-2e-16 while the DECIMAL kernel's 40-digit
+enclosures keep them exactly clamped at 0 (`decimalPow` throws on any negative base, so
+decimal never actually saw them) — 1778 borderline cells/patch route to 32 ms decimal
+consults regardless of budget. Fix class: align negative-base/zero-touching pow semantics
+between kernels (screen v3) or normalize the style program's clamp placement (G1) — a
+semantics-critical change deliberately NOT rushed here.
+
+**Value-discontinuity split confirmed:** snapped-dyadic stations can never sit exactly ON
+k/N jump lines (N not a power of two), and a floor/fract node whose jump is strictly
+inside a cell keeps a width-1 hull at every depth in BOTH kernels — the fract family
+(SFB, Crystalline, RippleInterference, GeometricStar, CelticTriquetra, Voronoi)
+mathematically requires exact-RATIONAL stations (U3b: partition kernel generalization from
+one power-of-two denominator to one arbitrary positive integer denominator; decimal
+conversion becomes an outward-rounded interval instead of an exact point).
+
+Session tally: certified set unchanged at five pots (HR gentle small + DEFAULT SCALE,
+SR gentle, FB defaults, SE defaults); U3a machinery landed and tested; Gothic and the
+fract family have precisely named next mechanisms (screen-v3 pow semantics; U3b rational
+stations).

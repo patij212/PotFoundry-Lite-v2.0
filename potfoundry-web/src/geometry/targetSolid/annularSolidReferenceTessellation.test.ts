@@ -19,6 +19,7 @@ import {
 import { createStyleOuterWallTargetRegistryBinding } from './styleOuterWallTargetRegistry';
 import {
   dyadicEdgeLadder,
+  snappedFeatureAngularLadder,
   tessellateAnnularRadialSolidTargetForCertification,
   type AnnularSolidReferenceTessellation,
   type AnnularSolidReferenceTessellationOptions,
@@ -152,6 +153,43 @@ describe('annular solid reference tessellation', () => {
     // Finest rows hug the requested edge with geometrically halving widths.
     expect(towardTop.numerators.slice(-3)).toEqual([126, 127, 128]);
     expect(towardBase.numerators.slice(0, 3)).toEqual([0, 1, 2]);
+  });
+
+  it('builds symmetric snapped-feature angular ladders and welds them closed', () => {
+    const ladder = snappedFeatureAngularLadder(4, [1 / 24, 5 / 24, 7 / 24], 10);
+    const denominator = 1 << ladder.log2Denominator;
+    expect(ladder.numerators[0]).toBe(0);
+    expect(ladder.numerators[ladder.numerators.length - 1]).toBe(denominator);
+    for (let station = 1; station < ladder.numerators.length; station += 1) {
+      expect(ladder.numerators[station]).toBeGreaterThan(ladder.numerators[station - 1]);
+    }
+    // Symmetric under reversal so the atlas's reversed junctions weld.
+    for (let station = 0; station < ladder.numerators.length; station += 1) {
+      expect(ladder.numerators[station]).toBe(
+        denominator - ladder.numerators[ladder.numerators.length - 1 - station]
+      );
+    }
+    // A tessellation on the snapped ladder still welds into a closed solid.
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 4,
+      angularStations: ladder,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    expect(structural.scanComplete).toBe(true);
   });
 
   it('assigns every artifact triangle to exactly one exact dyadic patch partition', () => {
