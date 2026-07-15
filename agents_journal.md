@@ -6605,3 +6605,30 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
 - Note: the Voronoi dense-truth background agent landed 549bec4d + 5cf68c3e (PCG2D hash
   desync fixes) during this session — coordinate before touching conforming/bandRemesh
   Voronoi truth.
+
+## 2026-07-15 - Claude Fable 5 - numeric screen channel (same session, cont. 2)
+
+### Summary
+- Landed the matrix's ranked-#1 unlock (2646395e): exact numeric cell side-channel for the
+  screen (kernel v14 / registry v8). Canonical BigInt/string requests are now built ONLY
+  for cells the validated decimal enclosure actually decides; screen consultations travel
+  per-mapping numeric caches (integer numerators guarded within 2^52 so weighted midpoint
+  combinations stay exact float64; exact parsed binary32 STL coordinates). Picometre
+  formats keep the string channel. Bit-identical enclosures property-tested across both
+  channels.
+
+### Validation
+- targetSolid suite with PF_G2_POT=1: 58 files / 414 tests PASS; lint 0 warnings;
+  detect_changes: 7 symbols / 4 files, MEDIUM, single affected process (the certify
+  kernel). Gate proofs: HarmonicRipple 19.4s -> 15.8s, SpiralRidges 22.0s -> 18.1s.
+
+### Risks / findings
+- With geometry cells fast, FourierBloom defaults now fails the COMPOSED 30s ceiling at
+  its needed density (~108k tris: exact partition verify + structural self-intersection
+  scans dominate) and WaveInterference the 131,072-triangle cap. The last walls for
+  those two are exactly the matrix's ranked-#2 items: raise/stream the cap + composed
+  scan throughput, and non-uniform vertical ladders to spend triangles at styled edges.
+
+### Next agent
+- Ranked list unchanged (lab doc): #2 cap/deadline + ladders, #3 screen v2 ops (SE,
+  fract-family), #4 exact-rational stations (Gothic), #5 curtain/riser complexes.
