@@ -51,3 +51,16 @@ Analytic-surface lever = `__pfConformingAnalyticFloor` (ParametricExportComputer
 - **Analytic-floor lever**: meaningful only for SpiralRidges; a NO-OP for the two CHORD_FLOOR styles (Gothic, Gyroid) that need help most.
 - **Verdict-refine (Gyroid, CERTIFIED)**: p99 −35% (real, substantial) — this CORRECTS the spike's CPU-proxy "non-convergent / made-it-worse" claim (that was a proxy artifact) — BUT max is UNCHANGED: the single worst facet is PINNED at the same (θ,z) across all 3 Gyroid conditions.
 - **Strategic**: neither existing lever cracks the worst-case MAX on the CHORD_FLOOR styles. The pinned worst facet IS the barrier to "0.01mm everywhere" — exactly the feature-conforming-escalation target. (Budget note: the nominal 500k targetTriangles never bound — the mesher's sag/quality floor produced ~2M tris regardless; on/off deltas remain valid.)
+
+---
+
+## Addendum — Phase 1 re-run after the Set-cap fix (2026-07-14, Codex audit validation)
+
+The 2026-07-12 Phase-1 rows for SpiralRidges and GyroidManifold reported `BUILD FAILED — RangeError: Set maximum size exceeded` in `detectSelfIntersections`. That crash was fixed on 2026-07-12 (bounded-dedup, see `selfIntersection.ts`). A re-run during the 2026-07-14 audit validation completed Condition C for both styles; drift-independent numbers below supersede ONLY the C-condition/verdict columns of those two Phase-1 rows. Everything else in this document (Phase 2 CERTIFIED, FINDINGS & GO/NO-GO, lever re-gating) stands unchanged.
+
+| Style | feature kinds | sag OFF | >tol OFF | sag ON | >tol ON | verdictRan | tris OFF | tris ON | worst(u,t) | C ok | bnd | nonMan | orient | selfX | drift max | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| SpiralRidges | helical-crease:9 | 0.6133 | 37389 | 0.6133 | 37389 | false | 1242458 | 1242458 | (0.119,1.000) | true | 0 | 0 | 0 | 0 | pending | A UNMET, verdict inert (feature kind not general-curve) |
+| GyroidManifold | general-curve:10 | 0.4616 | 50977 | 0.4616 | 69932 | true | 965302 | 1631954 | (0.655,0.879) | true | 0 | 0 | 0 | 0 | pending | A UNMET after verdict cap → remesher/machinery signal |
+
+Provenance note: a re-run harness overwrote this file on 2026-07-14 04:40, deleting the committed Phase-2/findings/lever sections. Restored from HEAD (8af880ac) on 2026-07-15 with the re-run rows preserved here as an append-only addendum.

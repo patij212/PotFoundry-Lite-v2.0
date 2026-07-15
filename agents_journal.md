@@ -6422,3 +6422,38 @@ pure mesh error); carried rows cite the pilot/DS-PRODTRUTH arms' bases verbatim.
 merge into EXPERIMENT-REGISTRY.md deferred (file holds other sessions' uncommitted rows) — the
 prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -> 17debce9 ->
 60501fc1 -> 519d83b8 -> 3e8aa0ae -> 5c5f6042 -> fac08d33 -> 9d3933f7.
+
+## 2026-07-14 - Codex - Universal 0.01 mm meshing audit
+
+### Summary
+- Audited the production export pipeline and research evidence against a literal continuous 0.01 mm goal.
+- Confirmed strong watertightness progress, but rejected the current universal tolerance claim.
+- Wrote the full review and staged G0-G5 programme in
+  `archive/plans/parametric-pipeline/2026-07-14-perfect-meshing-0.01mm-audit.md`.
+
+### Decisions
+- Treated p99/sample passes as empirical evidence, never as a worst-case certificate.
+- Required the complete closed target solid: outer, inner, rim, base, drain/caps, seams, twist,
+  feature curves, and explicit curtain/riser patches for discontinuities.
+- Approved the four-role debate architecture unanimously: generated target semantics plus an
+  independent validated oracle, shared-boundary surface-complex meshing, and final-byte proof.
+- Required every mutation and serialization to invalidate prior proof; resource exhaustion fails closed.
+
+### Validation
+- Refreshed GitNexus at `cb901c2a`; critical impacts are 157 symbols for `buildConformingWall`,
+  108 for `assembleWatertight`, and 98 for `buildStyleParamPayload`.
+- `npm run typecheck` passed; `npm run lint` passed with zero warnings.
+- `npm test` failed after 1,769.4s: 34 failures and 2 unhandled worker-start errors.
+- Concurrent research load explains many timeouts, but deterministic topology/truth/test failures remain.
+- No production source changed; unrelated working-tree files and active research jobs were preserved.
+
+### Risks
+- The latest complete all-20 baseline predates recent truth and pipeline changes; no clean rebaseline exists.
+- Wave CPU/WGSL parity, parameter-key normalization, full-solid coverage, post-check mutations,
+  budget coarsening, and continuous final-artifact certification remain open.
+- This entry delivers an audit and roadmap, not implementation of the fixes.
+
+### Next agent
+- Begin with G0 target/validity semantics and G1 evaluator parity before further mesher tuning.
+- Run GitNexus impact before touching the critical hubs and stage each change behind narrow gates.
+- Fix deterministic baseline tests, then produce a clean all-20 artifact rerun as empirical evidence.
