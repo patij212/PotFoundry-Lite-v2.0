@@ -612,21 +612,42 @@ function extractGyroidManifold(p: Float32Array): FeatureLine[] {
 
 const fract = (x: number): number => x - Math.floor(x);
 
-/** WGSL hash22 replicated in f64 (periodic_cellular jitter, styles.wgsl). */
-function hash22(px: number, py: number): [number, number] {
-  let p3x = fract(px * 0.1031);
-  let p3y = fract(py * 0.103);
-  let p3z = fract(px * 0.0973);
-  const d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33);
-  p3x += d;
-  p3y += d;
-  p3z += d;
-  return [fract((p3x + p3y) * p3z), fract((p3x + p3z) * p3y)];
+// Voronoi jitter hash — INTEGER-EXACT PCG2D, synced to the SHIPPING surface.
+// styles.ts `rOuterVoronoi` and styles.wgsl `style_voronoi` were swapped to this
+// integer chain in 03948af8 (E-2026-07-10-INTHASH-SWAP, USER-APPROVED). This f64
+// replica MUST match, or the exact Voronoi loci track a now-STALE cell layout: the
+// pre-swap float hash22 (fract(px*0.1031)…) rode a DIFFERENT web than the surface
+// `rOuterVoronoi` actually raises, collapsing dense-truth↔exact mutual coverage
+// (validate-the-validator gate: truth→exact 0.664→0.841 on re-sync, groundTruth.test.ts).
+// Mirrors styles.ts pcg2dHash/u32ToUnitFloat/hash22Int and WGSL hash_pcg2d/
+// u32_to_unit_float/hash22_int — keep all three copies in lockstep.
+function pcg2dHash(vx: number, vy: number): { x: number; y: number } {
+  let x = vx >>> 0;
+  let y = vy >>> 0;
+  x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+  y = (Math.imul(y, 1664525) + 1013904223) >>> 0;
+  x = (x + Math.imul(y, 1664525)) >>> 0;
+  y = (y + Math.imul(x, 1664525)) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  y = (y ^ (y >>> 16)) >>> 0;
+  x = (x + Math.imul(y, 1664525)) >>> 0;
+  y = (y + Math.imul(x, 1664525)) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  y = (y ^ (y >>> 16)) >>> 0;
+  return { x: x >>> 0, y: y >>> 0 };
+}
+function u32ToUnitFloat(h: number): number {
+  return (h >>> 8) * 2 ** -24;
+}
+/** hash22 analog: integer cell coords in, [0,1)^2 out. Mirrors styles.ts hash22Int. */
+function hash22Int(cx: number, cy: number): [number, number] {
+  const seeded = pcg2dHash((cx + 0x9e3779b1) >>> 0, (cy + 0x85ebca77) >>> 0);
+  return [u32ToUnitFloat(seeded.x), u32ToUnitFloat(seeded.y)];
 }
 
 /**
- * Voronoi CONTINUOUS web field at (u_wall, t) — replicates `periodic_cellular` /
- * `style_voronoi` (styles.wgsl), tracking the TWO smallest worley distances f1,f2
+ * Voronoi CONTINUOUS web field at (u_wall, t) — replicates `periodic_cellular_int` /
+ * `style_voronoi` (styles.wgsl, integer-hash swap 03948af8), tracking the TWO smallest worley distances f1,f2
  * and returning the SIGN-CHANGING field whose zero set is the VISIBLE relief
  * crease the surface actually shows.
  *
@@ -654,6 +675,9 @@ function hash22(px: number, py: number): [number, number] {
  */
 function voronoiWebField(uWall: number, t: number, p: Float32Array): number {
   const scale = p[0] > 0 ? p[0] : 8;
+  // Integer period for the u-wrap, mirroring styles.ts periodicCellularInt
+  // (E-2026-07-10-INTHASH-SWAP): the integer hash domain must not take a fractional id.
+  const periodXInt = Math.max(1, Math.round(scale));
   const jitter = p[1];
   const thickness = p[2] > 0 ? p[2] : 0.1;
   const stretch = p[5] > 0 ? p[5] : 1;
@@ -670,8 +694,8 @@ function voronoiWebField(uWall: number, t: number, p: Float32Array): number {
     for (let nx = -1; nx <= 1; nx++) {
       const nidX = cellIdX + nx;
       const nidY = cellIdY + ny;
-      const wrappedX = ((nidX % scale) + scale) % scale;
-      const h = hash22(wrappedX, nidY);
+      const wrappedX = ((nidX % periodXInt) + periodXInt) % periodXInt;
+      const h = hash22Int(wrappedX, nidY);
       const dx = nx + h[0] * jitter - cuX;
       const dy = ny + h[1] * jitter - cuY;
       const dist = Math.sqrt(dx * dx + dy * dy);
