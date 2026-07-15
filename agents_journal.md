@@ -6770,3 +6770,29 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   default artifact baseline on real WebGPU — is finally runnable; recommend it as the
   next session's opener alongside screen-v3 pow semantics (Gothic) and U3b rational
   stations (fract family, + production-mesh provenance prerequisite for U5.3).
+
+## 2026-07-15 - Claude Fable 5 - screen v3 exactness + Gothic cusp classification (cont. 7)
+
+### Summary
+- Landed screen v3 (978d6804), two tightenings: (1) power-of-two-point products/quotients
+  stay exact unwidened (widening 0.5*sin was manufacturing -4e-16 lower bounds that broke
+  clamped-at-zero domain guards); (2) p<1 cusp pow (max(0,1-t)^(5/6) arch outlines) keeps
+  its monotone corner VALUE enclosure and hull-downgrades the run — no mean-value form
+  exists at an unbounded-derivative cusp — so cusp neighborhoods refine by subdivision
+  instead of falling to 32 ms decimal cells.
+- **Gothic final classification:** the whole proof now runs with an EMPTY refusal
+  histogram and still exceeds the deadline as pure hull-cascade volume along its arch
+  outlines — p<1 cusp CURVES, diagonal in (u,v). GothicArches joins WaveInterference in
+  the curved-feature-alignment class: the unlock is stations ON curves (true
+  feature-conforming tessellation, shared with the production mesher track), not ops,
+  density, or ceilings. Diagnosis chain worth keeping: budget-independence test ->
+  refusal histogram -> pow-node operand-chain dump.
+
+### Validation
+- Suite 58 files / 420 tests with PF_G2_POT=1; typecheck 0; lint 0.
+
+### Next agent
+- Machine is dedicated: containment #5 (fresh clean-tree all-20 default baseline on real
+  WebGPU) is the recommended next opener. Then U3b exact-rational stations (fract family,
+  6 styles + production-mesh provenance), then curved-feature conforming tessellation
+  (Gothic + WI, shared with U5 mesher track), then U4 curtain/riser complexes.
