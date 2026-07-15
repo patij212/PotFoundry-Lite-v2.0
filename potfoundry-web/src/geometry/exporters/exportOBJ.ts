@@ -34,6 +34,50 @@ export interface ExportOBJOptions {
   onProgress?: (progress: number, message: string) => void;
 }
 
+function validateOBJExportInputs(mesh: MeshData, options: ExportOBJOptions): void {
+  if (!(mesh.vertices instanceof Float32Array) || !(mesh.indices instanceof Uint32Array)) {
+    throw new TypeError('OBJ mesh must use Float32Array vertices and Uint32Array indices');
+  }
+  if (
+    !Number.isSafeInteger(mesh.vertexCount) ||
+    mesh.vertexCount < 0 ||
+    mesh.vertices.length !== mesh.vertexCount * 3 ||
+    !Number.isSafeInteger(mesh.triangleCount) ||
+    mesh.triangleCount < 0 ||
+    mesh.indices.length !== mesh.triangleCount * 3
+  ) {
+    throw new RangeError('OBJ mesh counts must exactly match their xyz/index buffers');
+  }
+  const precision = options.precision ?? 6;
+  if (!Number.isSafeInteger(precision) || precision < 0 || precision > 9) {
+    throw new RangeError('OBJ coordinate precision must be an integer from 0 through 9');
+  }
+  if (options.includeNormals !== undefined && typeof options.includeNormals !== 'boolean') {
+    throw new TypeError('OBJ includeNormals must be boolean');
+  }
+  if (options.onProgress !== undefined && typeof options.onProgress !== 'function') {
+    throw new TypeError('OBJ onProgress must be callable');
+  }
+  for (const [label, value] of [
+    ['name', options.name],
+    ['createdAt', options.createdAt],
+  ] as const) {
+    if (value !== undefined && (typeof value !== 'string' || /[\r\n\0]/.test(value))) {
+      throw new TypeError(`OBJ ${label} must be a single-line string without NUL`);
+    }
+  }
+  for (let coordinate = 0; coordinate < mesh.vertices.length; coordinate += 1) {
+    if (!Number.isFinite(mesh.vertices[coordinate])) {
+      throw new TypeError(`OBJ vertex coordinate ${coordinate} must be finite`);
+    }
+  }
+  for (let index = 0; index < mesh.indices.length; index += 1) {
+    if (mesh.indices[index] >= mesh.vertexCount) {
+      throw new RangeError(`OBJ triangle index ${index} is outside the vertex table`);
+    }
+  }
+}
+
 // ============================================================================
 // Normal Calculation
 // ============================================================================
@@ -102,10 +146,9 @@ function generateOBJString(mesh: MeshData, options: ExportOBJOptions = {}): stri
     const y = vertices[i * 3 + 1];
     const z = vertices[i * 3 + 2];
 
-    // Handle non-finite values
-    const vx = Number.isFinite(x) ? x.toFixed(precision) : '0';
-    const vy = Number.isFinite(y) ? y.toFixed(precision) : '0';
-    const vz = Number.isFinite(z) ? z.toFixed(precision) : '0';
+    const vx = x.toFixed(precision);
+    const vy = y.toFixed(precision);
+    const vz = z.toFixed(precision);
 
     lines.push(`v ${vx} ${vy} ${vz}`);
   }
@@ -206,9 +249,9 @@ function generateStreamingOBJ(mesh: MeshData, options: ExportOBJOptions = {}): B
       const y = vertices[i * 3 + 1];
       const z = vertices[i * 3 + 2];
 
-      const vx = Number.isFinite(x) ? x.toFixed(precision) : '0';
-      const vy = Number.isFinite(y) ? y.toFixed(precision) : '0';
-      const vz = Number.isFinite(z) ? z.toFixed(precision) : '0';
+      const vx = x.toFixed(precision);
+      const vy = y.toFixed(precision);
+      const vz = z.toFixed(precision);
 
       chunk += `v ${vx} ${vy} ${vz}\n`;
     }
@@ -300,6 +343,7 @@ export async function exportToOBJ(
   mesh: MeshData,
   options: ExportOBJOptions = {}
 ): Promise<Blob> {
+  validateOBJExportInputs(mesh, options);
   const { onProgress } = options;
 
   onProgress?.(0, 'Generating OBJ data...');

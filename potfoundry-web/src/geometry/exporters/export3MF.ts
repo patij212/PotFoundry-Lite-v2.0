@@ -147,9 +147,47 @@ function triangleColorIndex(
 /** Number of discrete color steps in the palette */
 const COLOR_PALETTE_SIZE = 64;
 
+/** Convert the application's millimetre coordinates into the declared 3MF unit. */
+function modelUnitsPerMillimetre(
+    unit: NonNullable<Export3MFOptions['unit']>,
+): number {
+    switch (unit) {
+        case 'millimeter': return 1;
+        case 'centimeter': return 0.1;
+        case 'inch': return 1 / 25.4;
+        default: throw new TypeError(`Unsupported 3MF unit '${String(unit)}'`);
+    }
+}
+
+/**
+ * Decimal places that preserve whole picometres after conversion back to mm.
+ * Inch coordinates stop at 8 places because 1e-9 inch is 25.4 pm, which is
+ * not an integer number of picometres.
+ */
+function modelCoordinateDecimalPlaces(
+    unit: NonNullable<Export3MFOptions['unit']>,
+): number {
+    switch (unit) {
+        case 'millimeter': return 9;
+        case 'centimeter': return 10;
+        case 'inch': return 8;
+        default: throw new TypeError(`Unsupported 3MF unit '${String(unit)}'`);
+    }
+}
+
+function formatModelCoordinate(valueMm: number, scale: number, decimalPlaces: number): string {
+    if (!Number.isFinite(valueMm)) {
+        throw new TypeError('3MF coordinates must be finite');
+    }
+    const value = valueMm * scale;
+    return (Object.is(value, -0) ? 0 : value).toFixed(decimalPlaces);
+}
+
 function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): string | Blob {
     const { name = 'PotFoundry', unit = 'millimeter', colors, createdAt } = options;
     const { vertices, indices, vertexCount, triangleCount } = mesh;
+    const coordinateScale = modelUnitsPerMillimetre(unit);
+    const coordinateDecimalPlaces = modelCoordinateDecimalPlaces(unit);
 
     // For very large meshes, use blob-based streaming (without color for simplicity)
     const STREAMING_THRESHOLD = 1_000_000;
@@ -212,7 +250,11 @@ function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): strin
         const x = vertices[i * 3];
         const y = vertices[i * 3 + 1];
         const z = vertices[i * 3 + 2];
-        lines.push(`          <vertex x="${x.toFixed(6)}" y="${y.toFixed(6)}" z="${z.toFixed(6)}"/>`);
+        lines.push(
+            `          <vertex x="${formatModelCoordinate(x, coordinateScale, coordinateDecimalPlaces)}"` +
+            ` y="${formatModelCoordinate(y, coordinateScale, coordinateDecimalPlaces)}"` +
+            ` z="${formatModelCoordinate(z, coordinateScale, coordinateDecimalPlaces)}"/>`,
+        );
     }
     lines.push('        </vertices>');
 
@@ -248,6 +290,8 @@ function generateModelXML(mesh: MeshData, options: Export3MFOptions = {}): strin
 function generateStreamingModelXML(mesh: MeshData, options: Export3MFOptions = {}): Blob {
     const { name = 'PotFoundry', unit = 'millimeter', createdAt } = options;
     const { vertices, indices, vertexCount, triangleCount } = mesh;
+    const coordinateScale = modelUnitsPerMillimetre(unit);
+    const coordinateDecimalPlaces = modelCoordinateDecimalPlaces(unit);
     const chunks: string[] = [];
 
     // Header
@@ -272,9 +316,9 @@ function generateStreamingModelXML(mesh: MeshData, options: Export3MFOptions = {
         const end = Math.min(start + CHUNK_SIZE, vertexCount);
         let chunk = '';
         for (let i = start; i < end; i++) {
-            const x = vertices[i * 3].toFixed(6);
-            const y = vertices[i * 3 + 1].toFixed(6);
-            const z = vertices[i * 3 + 2].toFixed(6);
+            const x = formatModelCoordinate(vertices[i * 3], coordinateScale, coordinateDecimalPlaces);
+            const y = formatModelCoordinate(vertices[i * 3 + 1], coordinateScale, coordinateDecimalPlaces);
+            const z = formatModelCoordinate(vertices[i * 3 + 2], coordinateScale, coordinateDecimalPlaces);
             chunk += `          <vertex x="${x}" y="${y}" z="${z}"/>\n`;
         }
         vertexBlobs.push(new Blob([chunk]));

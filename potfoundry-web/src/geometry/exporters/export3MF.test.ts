@@ -167,6 +167,22 @@ describe('exportTo3MF', () => {
   });
 
   describe('model XML', () => {
+    it.each([
+      ['centimeter', 10, '1.0000000000'],
+      // 25.4 is rounded when stored in the Float32 mesh before unit conversion.
+      ['inch', 25.4, '0.99999998'],
+    ] as const)('rescales millimetres into declared %s units', async (unit, xMm, expectedX) => {
+      const mesh = createSingleTriangleMesh();
+      mesh.vertices[3] = xMm;
+      const blob = await exportTo3MF(mesh, { unit });
+      const zip = await JSZip.loadAsync(blob);
+      const content = await zip.file('3D/3dmodel.model')!.async('string');
+      const doc = new DOMParser().parseFromString(content, 'application/xml');
+      expect(doc.documentElement.getAttribute('unit')).toBe(unit);
+      const vertices = doc.getElementsByTagName('vertex');
+      expect(vertices[1].getAttribute('x')).toBe(expectedX);
+    });
+
     it('includes correct vertex count', async () => {
       const mesh = createQuadMesh();
       const blob = await exportTo3MF(mesh);

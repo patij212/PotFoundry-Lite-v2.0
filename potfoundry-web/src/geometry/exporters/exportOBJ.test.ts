@@ -283,19 +283,29 @@ describe('exportToOBJ', () => {
       expect(vertexLines.length).toBe(0);
     });
 
-    it('sanitizes non-finite vertex values', async () => {
+    it('refuses non-finite vertex values instead of changing the solid', async () => {
       const mesh: MeshData = {
         vertices: new Float32Array([NaN, Infinity, -Infinity]),
         indices: new Uint32Array([0, 0, 0]),
         vertexCount: 1,
         triangleCount: 1,
       };
-      const blob = await exportToOBJ(mesh, { includeNormals: false });
-      const text = await blobToText(blob);
+      await expect(exportToOBJ(mesh, { includeNormals: false })).rejects.toThrow(/finite/i);
+    });
 
-      // Should output zeros for non-finite values
-      const vertexLines = text.split('\n').filter((l) => l.startsWith('v '));
-      expect(vertexLines[0]).toBe('v 0 0 0');
+    it('refuses mismatched buffers, out-of-range indices, and unsafe metadata', async () => {
+      const mesh = createSingleTriangleMesh();
+      mesh.indices[2] = 99;
+      await expect(exportToOBJ(mesh)).rejects.toThrow(/outside the vertex table/i);
+
+      const mismatched = createSingleTriangleMesh();
+      mismatched.vertexCount = 2;
+      await expect(exportToOBJ(mismatched)).rejects.toThrow(/exactly match/i);
+
+      await expect(exportToOBJ(createSingleTriangleMesh(), { precision: 10 }))
+        .rejects.toThrow(/0 through 9/i);
+      await expect(exportToOBJ(createSingleTriangleMesh(), { name: 'safe\nv 0 0 0' }))
+        .rejects.toThrow(/single-line/i);
     });
   });
 });
