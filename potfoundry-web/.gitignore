@@ -61,3 +61,6 @@ verify_fix.ts
 
 # Brainstorm companion sessions (mock working dirs)
 .superpowers/
+
+# Raycast-oracle spike harness outputs (scorecard + STLs) — regenerate with PF_RAYCAST_SPIKE=1
+research/spike-raycast-oracle/_out/

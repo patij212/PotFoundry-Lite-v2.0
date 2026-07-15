@@ -48,8 +48,14 @@ const STYLES: (StyleId | '__SmoothControl__')[] = [
   'GyroidManifold',
 ];
 const TOL = 0.01;
-const OUT_MD = join('research', 'lab', '2026-07-12-raycast-oracle-fidelity.md');
-const STL_DIR = join('research', 'lab', 'spike-stl');
+// Outputs go to the harness's own _out/ dir (untracked). This test used to write
+// straight over the committed research/lab/2026-07-12-raycast-oracle-fidelity.md,
+// which destroyed its curated Phase-2/findings/lever sections twice (2026-07-14
+// 04:40, 2026-07-15 05:54). Curated docs are append-only by hand; harnesses must
+// never own a committed lab-doc path.
+const OUT_DIR = join('research', 'spike-raycast-oracle', '_out');
+const OUT_MD = join(OUT_DIR, 'scorecard.md');
+const STL_DIR = join(OUT_DIR, 'stl');
 const CAP_NOTE =
   'cap = production VERDICT_MAX_PASS(4) @ VERDICT_TOL_MM(0.01mm). Reasoned: 4 dyadic ' +
   'passes = up to 16x local refine over the base feature cell; non-convergence past ' +
@@ -62,7 +68,9 @@ const emptyConditionC = (): ScoreRow['conditionC'] => ({
 });
 
 describe('raycast-oracle fidelity scorecard', () => {
-  it('scores 4 styles and writes the scorecard + STLs', () => {
+  // Gated: this is a ~30-minute measurement run with file side effects, not a
+  // regression test — it must not ride along in a default `npm test`.
+  it.skipIf(!process.env.PF_RAYCAST_SPIKE)('scores 4 styles and writes the scorecard + STLs', () => {
     const rows: ScoreRow[] = [];
     const suiteStart = Date.now();
 
@@ -141,7 +149,7 @@ describe('raycast-oracle fidelity scorecard', () => {
     // Write artifacts BEFORE the assertions below so a failing sanity check
     // never costs us the scorecard/STLs already produced.
     const md = renderScorecard(rows, CAP_NOTE);
-    mkdirSync(join('research', 'lab'), { recursive: true });
+    mkdirSync(OUT_DIR, { recursive: true });
     writeFileSync(OUT_MD, md);
 
     expect(rows.length).toBe(4);

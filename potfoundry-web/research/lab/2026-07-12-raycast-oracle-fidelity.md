@@ -64,3 +64,18 @@ The 2026-07-12 Phase-1 rows for SpiralRidges and GyroidManifold reported `BUILD 
 | GyroidManifold | general-curve:10 | 0.4616 | 50977 | 0.4616 | 69932 | true | 965302 | 1631954 | (0.655,0.879) | true | 0 | 0 | 0 | 0 | pending | A UNMET after verdict cap → remesher/machinery signal |
 
 Provenance note: a re-run harness overwrote this file on 2026-07-14 04:40, deleting the committed Phase-2/findings/lever sections. Restored from HEAD (8af880ac) on 2026-07-15 with the re-run rows preserved here as an append-only addendum.
+
+---
+
+## Addendum 2 — Phase 1 re-run on the landed certification tree (2026-07-15 05:54)
+
+The full `npm test` running at the 2026-07-15 landing (see agents_journal 07-15 entry) re-executed the spike harness — `scorecard.spike.test.ts` was ungated and wrote over this committed doc a second time. Restored again from HEAD (276bb885); rows preserved below. The harness is now env-gated (`PF_RAYCAST_SPIKE=1`) and writes to `research/spike-raycast-oracle/_out/` instead of this file, so this cannot recur.
+
+| Style | feature kinds | sag OFF | >tol OFF | sag ON | >tol ON | verdictRan | tris OFF | tris ON | worst(u,t) | C ok | bnd | nonMan | orient | selfX | drift max | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| __SmoothControl__ | none | 0.0051 | 0 | 0.0051 | 0 | false | 184320 | 184320 | (0.557,1.000) | true | 0 | 0 | 0 | 0 | pending | A+C met (oracle-refine viable) |
+| SpiralRidges | helical-crease:9 | 0.6133 | 37389 | 0.6133 | 37389 | false | 1242458 | 1242458 | (0.119,1.000) | true | 0 | 0 | 0 | 0 | pending | A UNMET, verdict inert (feature kind not general-curve) |
+| GothicArches | vertical-crease:24 horizontal-band:3 | 1.4913 | 51056 | 1.4913 | 51056 | false | 613824 | 613824 | (0.893,0.439) | true | 0 | 0 | 0 | 0 | pending | A UNMET, verdict inert (feature kind not general-curve) |
+| GyroidManifold | general-curve:14 | 0.4616 | 50887 | 0.4616 | 69918 | true | 965704 | 1630868 | (0.655,0.879) | true | 0 | 0 | 0 | 0 | pending | A UNMET after verdict cap → remesher/machinery signal |
+
+Delta vs the 2026-07-14 addendum: GyroidManifold feature detection shifted `general-curve:10 → :14` with small triangle/outlier drift (965302→965704 OFF tris, 69932→69918 >tol ON) — consistent with the landed Gyroid pack-fallback default alignment in 2d02f566 (CPU `styles.ts` truth changed at defaults). SpiralRidges byte-stable. Structural verdicts unchanged: the CPU-spine Phase-1 conclusions (verdict-refine inert for non-general-curve kinds; Gyroid non-convergent at cap) still hold on the landed tree.
