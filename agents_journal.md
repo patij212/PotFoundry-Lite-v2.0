@@ -6740,3 +6740,33 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
 - U3 exact-rational partition stations is now the single highest-leverage increment
   (8 styles). Then U4 curtain/riser complexes (7 layered styles). Containment #5
   (fresh all-20 WebGPU baseline) still owed on a quiet machine.
+
+## 2026-07-15 - Claude Fable 5 - U3a snapped angular ladders + Gothic pow finding (cont. 6)
+
+### Summary
+- Landed U3a (c494f7b4): shared non-uniform dyadic ANGULAR ladders (`angularStations`,
+  validated symmetric under s -> 1-s for the reversed junction welds) + a
+  `snappedFeatureAngularLadder` generator (uniform grid ∪ feature fractions snapped to
+  2^-20 ∪ mirrors). For continuous kinks the crease sliver's chord error vanishes with
+  ZERO exactness-kernel changes.
+- Gothic (honest): alignment works mechanically, but certification deadlines
+  budget-INDEPENDENTLY — histogram `power-domain:1778`: the screen's libm-padded trig
+  dips clamped-at-zero pow bases to ~-2e-16 where decimal's 40-digit enclosures stay
+  exactly 0 (`decimalPow` throws on negatives, so decimal never saw them) -> ~1.8k
+  borderline cells/patch fall to 32 ms decimal. Named next mechanism: screen-v3
+  negative/zero-touching pow semantics alignment, or G1 clamp-placement normalization.
+  Deliberately not rushed (semantics-critical).
+- Confirmed the U3 split: fract-family value jumps at k/N can NEVER sit on snapped
+  dyadics; they require U3b — partition kernel generalized from one power-of-two
+  denominator to one arbitrary integer denominator (decimal coordinate conversion becomes
+  an outward interval instead of an exact point).
+
+### Validation
+- Suite 58 files / 420 tests with PF_G2_POT=1; typecheck 0 errors; lint 0 warnings.
+  New tests: ladder symmetry/monotonicity + closed-solid weld on a snapped ladder.
+
+### Next agent
+- Machine is now dedicated (user confirmed): containment #5 — the fresh clean-tree all-20
+  default artifact baseline on real WebGPU — is finally runnable; recommend it as the
+  next session's opener alongside screen-v3 pow semantics (Gothic) and U3b rational
+  stations (fract family, + production-mesh provenance prerequisite for U5.3).
