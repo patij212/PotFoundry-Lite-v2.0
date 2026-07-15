@@ -28,7 +28,7 @@ describe('assessProofSessionStructuralIntegrity', () => {
     expect(result.topology.volumeSign).toBe('positive-proven');
     expect(result.selfIntersection.selfIntersectionFree).toBe(true);
     expect(result.evidenceSha256).toMatch(/^[0-9a-f]{64}$/);
-    expect(result.configuredByteCeiling).toBeLessThanOrEqual(384 * 1024 * 1024);
+    expect(result.configuredByteCeiling).toBeLessThanOrEqual(768 * 1024 * 1024);
     expect(result.structuralWorkUnitCount).toBeGreaterThan(0);
   });
 
@@ -85,7 +85,7 @@ describe('assessProofSessionStructuralIntegrity', () => {
       assessProofSessionStructuralIntegrity(
         session,
         { componentCount: 1, genus: 0 },
-        { maxTotalBytes: 384 * 1024 * 1024 + 1 }
+        { maxTotalBytes: 768 * 1024 * 1024 + 1 }
       )
     ).toThrow(/hard limit/i);
     expect(() =>

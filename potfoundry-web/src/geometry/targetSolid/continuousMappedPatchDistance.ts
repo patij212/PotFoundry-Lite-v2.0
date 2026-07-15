@@ -63,7 +63,7 @@ export const CONTINUOUS_MAPPED_PATCH_DISTANCE_PROOF_SHA256 = sha256Utf8(
     'the accepted exact-picometre geometric budget is snapshotted once and bound into result evidence',
     'a shared complete parametrization bounds both target-to-mesh and mesh-to-target directed distances by the same residual supremum',
     `per-patch work is hard-capped at ${CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS} cells regardless of caller options`,
-    `each evaluated cell is additionally charged the authenticated program node count, with a hard ceiling of ${CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_EVALUATOR_WORK_UNITS} node executions`,
+    `each consulted cell is charged one screen unit and each validated-decimal consultation is additionally charged the authenticated program node count, with a hard ceiling of ${CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_EVALUATOR_WORK_UNITS} units`,
     `partition snapshots refuse before allocation above ${HARD_DYADIC_PARTITION_MAX_TRIANGLES} triangles and poll shared cancellation`,
     'authenticated partition snapshots are reused without recopying; partition build and audit work is exposed for aggregate composition',
     'an absolute deadline is polled throughout partition, hashing, and residual-cell work and refuses fail-closed',
@@ -774,10 +774,12 @@ export function certifyContinuousMappedPatchDistance(
           cell.depth
         );
       }
-      if (
-        evaluatorWorkUnitCount >
-        maxEvaluatorWorkUnits - evaluatorSnapshot.evaluatorWorkUnitsPerCell
-      ) {
+      // Differentiated work charge: every consulted cell costs one unit for
+      // the float64 screen; only cells the validated decimal enclosure
+      // actually decides additionally cost the authenticated program node
+      // count. The pre-check reserves the screen unit; the decimal charge is
+      // levied (and checked) at the consult site below.
+      if (evaluatorWorkUnitCount > maxEvaluatorWorkUnits - 1) {
         throw new ContinuousMappedPatchDistanceError(
           'RESOURCE_LIMIT',
           `Continuous proof exceeds maxEvaluatorWorkUnits=${maxEvaluatorWorkUnits}`,
@@ -785,7 +787,7 @@ export function certifyContinuousMappedPatchDistance(
           cell.depth
         );
       }
-      evaluatorWorkUnitCount += evaluatorSnapshot.evaluatorWorkUnitsPerCell;
+      evaluatorWorkUnitCount += 1;
       maximumDepthReached = Math.max(maximumDepthReached, cell.depth);
       let residualUpperPm: bigint;
       let acceptedByFastScreen = false;
@@ -871,6 +873,18 @@ export function certifyContinuousMappedPatchDistance(
               cell
             );
           }
+          if (
+            evaluatorWorkUnitCount >
+            maxEvaluatorWorkUnits - evaluatorSnapshot.evaluatorWorkUnitsPerCell
+          ) {
+            throw new ContinuousMappedPatchDistanceError(
+              'RESOURCE_LIMIT',
+              `Continuous proof exceeds maxEvaluatorWorkUnits=${maxEvaluatorWorkUnits}`,
+              mapping.artifactTriangleIndex,
+              cell.depth
+            );
+          }
+          evaluatorWorkUnitCount += evaluatorSnapshot.evaluatorWorkUnitsPerCell;
           residualUpperPm = float64UpperMillimetresToPicometres(
             validatedResidualUpperMm(evaluatorSnapshot.encloseResidual(request))
           );

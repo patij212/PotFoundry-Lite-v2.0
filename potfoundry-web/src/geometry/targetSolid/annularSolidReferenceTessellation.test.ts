@@ -172,11 +172,13 @@ describe('annular solid reference tessellation', () => {
     styleId: string;
     styleParams: Readonly<Record<string, number>>;
     divisions: AnnularSolidReferenceTessellationOptions;
+    maxElapsedMilliseconds: number;
   }[] = [
     {
       styleId: 'HarmonicRipple',
       styleParams: GENTLE_HARMONIC_RIPPLE,
       divisions: SMALL_POT_DIVISIONS,
+      maxElapsedMilliseconds: 30_000,
     },
     {
       styleId: 'SpiralRidges',
@@ -197,6 +199,27 @@ describe('annular solid reference tessellation', () => {
           'drain-wall': 0,
         },
       },
+      maxElapsedMilliseconds: 30_000,
+    },
+    // FULL DEFAULT PARAMETERS — certified 9,499,927 pm over 206,848
+    // triangles in ~65 s under the 2026-07-15 resource envelope (524,288
+    // mapped triangles / 120 s composed ceiling / differentiated work
+    // charging / numeric screen channel).
+    {
+      styleId: 'FourierBloom',
+      styleParams: {},
+      divisions: {
+        angularDivisionsLog2: 10,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 2,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+      },
+      maxElapsedMilliseconds: 110_000,
     },
   ];
 
@@ -207,7 +230,7 @@ describe('annular solid reference tessellation', () => {
   for (const certified of CERTIFIED_POTS) {
     it.skipIf(!process.env.PF_G2_POT)(
       `proves a complete small ${certified.styleId} pot to the continuous 0.01 mm partial certificate`,
-      { timeout: 120_000 },
+      { timeout: 180_000 },
       () => {
         const { binding, canonicalInput } = atlas(
           SMALL_POT_GEOMETRY,
@@ -230,7 +253,7 @@ describe('annular solid reference tessellation', () => {
           {
             requestedTolerancePm: 10_000_000n,
             reservedNonGeometricMarginPm: 500_000n,
-            maxElapsedMilliseconds: 30_000,
+            maxElapsedMilliseconds: certified.maxElapsedMilliseconds,
           }
         );
         // The module can never mint a full certificate — but the continuous

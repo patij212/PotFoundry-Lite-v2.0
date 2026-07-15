@@ -61,3 +61,40 @@ sharpened their classification:
 Conclusion: for FB/WI the last walls are exactly ranked-#2 — the 131,072 cap and the 30s
 composed ceiling (structural/partition scan throughput), plus non-uniform ladders to spend
 triangles where the styled edges need them.
+
+## Addendum 2 — resource envelope v2 + FourierBloom certified at pure defaults (same day)
+
+Landed ranked-#2: the proof layer's v1 resource policy was retired for a coherent v2
+envelope (every constant was sized for 65k-triangle artifacts): mapped-triangle cap
+131,072 -> 524,288 (per-patch partition 65,536 -> 262,144), composed/partition/structural
+hard elapsed 30s -> 120s, and the derived work/byte cap families (partition build/BVH/
+traversal/pair-checks, topology work units/vertices, self-intersection build/traversal/
+candidate/broad-phase, structural byte+work totals, mapped variant mirrored) scaled to
+match. Work-unit charging is now differentiated: every consulted cell costs one screen
+unit; only validated-decimal consultations pay the program node count (the old policy
+billed screen cells at decimal prices and capped FB at ~223k cells). The screen core also
+moved to raw widened float64 (dropping ~60 BigInt-nextafter interval ops per cell;
+47.5 -> 37.6 us/cell measured).
+
+**RESULT: FourierBloom CERTIFIED-PARTIAL at FULL DEFAULT parameters — 9,499,927 pm over
+206,848 triangles in ~65 s** (1024 angular x 32-row walls / 16-row bottoms). Third
+certified style; first at completely untouched defaults. Added to the PF_G2_POT gate.
+
+Sharpened classifications from the unlocked attempts:
+
+- **WaveInterference: reclassified from cap-blocked to FEATURE-ALIGNED-REQUIRED.** Its
+  crossing value is density-invariant across 512/1024/2048 angular and 32/64 inner rows
+  (9,500,027 -> 9,500,011 -> 9,500,010 pm); periodic seams and all six junctions measure
+  image-exact (<=3e-14 mm). By elimination the relief crest is a sqrt-type cusp (vertical
+  tangent; chord error ~ sqrt(h)), which no uniform grid can close — same class as
+  GothicArches' creases. Needs stations on the crest curves (exact-rational partitions).
+- **GyroidManifold (gentle 0.3 mm): ladder-blocked.** Structural now PASSES at 410k
+  triangles under the v2 envelope; geometry still needs ~128 rows on BOTH walls and
+  bottoms simultaneously (> 524k uniform) — non-uniform vertical ladders fit it.
+- FourierBloom's earlier "deadline" classification was the resource policy, as predicted.
+
+Certified set: HarmonicRipple (gentle), SpiralRidges (gentle low-turn),
+**FourierBloom (defaults)**. Remaining ranked increments: non-uniform dyadic vertical
+ladders (Gyroid, styled-edge annuli, default-scale), screen v2 ops (SuperellipseMorph,
+fract-family), exact-rational stations (Gothic, WaveInterference), curtain/riser
+complexes (7 layered styles).

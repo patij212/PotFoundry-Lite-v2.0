@@ -1730,6 +1730,9 @@ function fastRunTape(
         rLo = fastTrigScratch[0];
         rHi = fastTrigScratch[1];
         // Derivative factor: sin' = cos, cos' = -sin over the same argument.
+        // Skipped entirely on unseeded (pure value) passes — the derivative
+        // channels are exactly zero, so the factor multiplies to zero anyway.
+        if (!seedDerivatives) break;
         if (!fastTrigRangeRaw(valueLo[a], valueHi[a], !isSin)) {
           return recordFastRefusalBoolean(isSin ? 'sin-range' : 'cos-range');
         }
@@ -1933,6 +1936,7 @@ function fastRunTape(
           }
           rLo = fastPowScratch[0];
           rHi = fastPowScratch[1];
+          if (!seedDerivatives) break;
           if (
             !fastPowCornersRaw(baseLo, baseHi, Math.max(0, expLo - 1), Math.max(0, expHi - 1))
           ) {
@@ -2165,15 +2169,35 @@ export function fastEncloseCompiledValidatedResidualProgram(
     }
     if (numeratorSum !== denominator) return null;
   }
-  const artifact: OutwardInterval[] = [];
   for (let artifactVertex = 0; artifactVertex < 3; artifactVertex += 1) {
     for (const coordinate of [0, 1, 2] as const) {
       const value = fastArtifactCoordinate(request, artifactVertex, coordinate);
       if (value === null) return null;
-      artifact.push(value);
+      fastWrapperArtifactLo[artifactVertex * 3 + coordinate] = value.lower;
+      fastWrapperArtifactHi[artifactVertex * 3 + coordinate] = value.upper;
     }
   }
-  return fastEncloseCore(internal, cellU, cellV, weights, artifact);
+  for (let vertex = 0; vertex < 3; vertex += 1) {
+    fastWrapperULo[vertex] = cellU[vertex].lower;
+    fastWrapperUHi[vertex] = cellU[vertex].upper;
+    fastWrapperVLo[vertex] = cellV[vertex].lower;
+    fastWrapperVHi[vertex] = cellV[vertex].upper;
+  }
+  for (let weight = 0; weight < 9; weight += 1) {
+    fastWrapperWeightLo[weight] = weights[weight].lower;
+    fastWrapperWeightHi[weight] = weights[weight].upper;
+  }
+  return fastEncloseCore(
+    internal,
+    fastWrapperULo,
+    fastWrapperUHi,
+    fastWrapperVLo,
+    fastWrapperVHi,
+    fastWrapperWeightLo,
+    fastWrapperWeightHi,
+    fastWrapperArtifactLo,
+    fastWrapperArtifactHi
+  );
 }
 
 /**
@@ -2226,24 +2250,41 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
     cellV.push(outwardInterval(vNumerator * scale, vNumerator * scale));
   }
   const denominator = 2 ** barycentricFractionBits;
-  const weights: OutwardInterval[] = [];
   for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
     let numeratorSum = 0;
     for (let weight = 0; weight < 3; weight += 1) {
       const numerator = barycentricNumerators[cellVertex * 3 + weight];
       if (!Number.isInteger(numerator) || numerator < 0) return null;
       numeratorSum += numerator;
-      weights.push(outwardInterval(numerator / denominator, numerator / denominator));
+      const exactWeight = numerator / denominator;
+      fastWrapperWeightLo[cellVertex * 3 + weight] = exactWeight;
+      fastWrapperWeightHi[cellVertex * 3 + weight] = exactWeight;
     }
     if (numeratorSum !== denominator) return null;
   }
-  const artifact: OutwardInterval[] = [];
   for (let value = 0; value < 9; value += 1) {
     const coordinate = artifactVerticesMm[value];
     if (!Number.isFinite(coordinate)) return null;
-    artifact.push(outwardInterval(coordinate, coordinate));
+    fastWrapperArtifactLo[value] = coordinate;
+    fastWrapperArtifactHi[value] = coordinate;
   }
-  return fastEncloseCore(internal, cellU, cellV, weights, artifact);
+  for (let vertex = 0; vertex < 3; vertex += 1) {
+    fastWrapperULo[vertex] = cellU[vertex].lower;
+    fastWrapperUHi[vertex] = cellU[vertex].upper;
+    fastWrapperVLo[vertex] = cellV[vertex].lower;
+    fastWrapperVHi[vertex] = cellV[vertex].upper;
+  }
+  return fastEncloseCore(
+    internal,
+    fastWrapperULo,
+    fastWrapperUHi,
+    fastWrapperVLo,
+    fastWrapperVHi,
+    fastWrapperWeightLo,
+    fastWrapperWeightHi,
+    fastWrapperArtifactLo,
+    fastWrapperArtifactHi
+  );
 }
 
 /**
@@ -2252,130 +2293,237 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
  * major a,b,c), `artifact` the nine artifact coordinate enclosures
  * (vertex-major x,y,z).
  */
+function fastCheckedAddLo(left: number, right: number): number {
+  const sum = left + right;
+  if (sum - left === right && sum - right === left) return sum;
+  return fastWidenLo(sum);
+}
+
+function fastCheckedAddHi(left: number, right: number): number {
+  const sum = left + right;
+  if (sum - left === right && sum - right === left) return sum;
+  return fastWidenHi(sum);
+}
+
+/**
+ * Shared centered mean-value core on raw widened float64 bounds (the same
+ * soundness patterns as the tape: error-free-checked adds, four-corner
+ * products with pure relative widening that preserves exact zeros).
+ * Inputs: three cell vertex bounds per axis, nine barycentric weight bounds
+ * (vertex-major a,b,c), nine artifact coordinate bounds (vertex-major x,y,z).
+ */
 function fastEncloseCore(
   internal: InternalCompiledProgram,
-  cellU: readonly OutwardInterval[],
-  cellV: readonly OutwardInterval[],
-  weights: readonly OutwardInterval[],
-  artifact: readonly OutwardInterval[]
+  uLo: Float64Array,
+  uHi: Float64Array,
+  vLo: Float64Array,
+  vHi: Float64Array,
+  weightLo: Float64Array,
+  weightHi: Float64Array,
+  artifactLo: Float64Array,
+  artifactHi: Float64Array
 ): ValidatedResidualEnclosure | null {
-  const three = outwardInterval(3, 3);
-  const uBox = outwardHull(outwardHull(cellU[0], cellU[1]), cellU[2]);
-  const vBox = outwardHull(outwardHull(cellV[0], cellV[1]), cellV[2]);
-  const uCentre = outwardDivide(outwardAdd(outwardAdd(cellU[0], cellU[1]), cellU[2]), three);
-  const vCentre = outwardDivide(outwardAdd(outwardAdd(cellV[0], cellV[1]), cellV[2]), three);
-  const uOffset = outwardSubtract(uBox, uCentre);
-  const vOffset = outwardSubtract(vBox, vCentre);
+  const uBoxLo = Math.min(uLo[0], uLo[1], uLo[2]);
+  const uBoxHi = Math.max(uHi[0], uHi[1], uHi[2]);
+  const vBoxLo = Math.min(vLo[0], vLo[1], vLo[2]);
+  const vBoxHi = Math.max(vHi[0], vHi[1], vHi[2]);
+  const uCentreLo = fastWidenLo(fastCheckedAddLo(fastCheckedAddLo(uLo[0], uLo[1]), uLo[2]) / 3);
+  const uCentreHi = fastWidenHi(fastCheckedAddHi(fastCheckedAddHi(uHi[0], uHi[1]), uHi[2]) / 3);
+  const vCentreLo = fastWidenLo(fastCheckedAddLo(fastCheckedAddLo(vLo[0], vLo[1]), vLo[2]) / 3);
+  const vCentreHi = fastWidenHi(fastCheckedAddHi(fastCheckedAddHi(vHi[0], vHi[1]), vHi[2]) / 3);
+  const uOffsetLo = fastCheckedAddLo(uBoxLo, -uCentreHi);
+  const uOffsetHi = fastCheckedAddHi(uBoxHi, -uCentreLo);
+  const vOffsetLo = fastCheckedAddLo(vBoxLo, -vCentreHi);
+  const vOffsetHi = fastCheckedAddHi(vBoxHi, -vCentreLo);
 
   // Affine artifact values at the three cell vertices via the exact dyadic
   // barycentric weights (the same combination the decimal path uses).
-  const artifactAtCellVertex: OutwardInterval[][] = [];
+  // Vertex-major x,y,z bounds.
+  const artifactAtLo = fastCoreArtifactAtLo;
+  const artifactAtHi = fastCoreArtifactAtHi;
   for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
-    const coordinates: OutwardInterval[] = [];
     for (let coordinate = 0; coordinate < 3; coordinate += 1) {
-      let combination = fastZero();
+      let sumLo = 0;
+      let sumHi = 0;
       for (let artifactVertex = 0; artifactVertex < 3; artifactVertex += 1) {
-        combination = outwardAdd(
-          combination,
-          outwardMultiply(
-            weights[cellVertex * 3 + artifactVertex],
-            artifact[artifactVertex * 3 + coordinate]
-          )
-        );
+        const wLo = weightLo[cellVertex * 3 + artifactVertex];
+        const wHi = weightHi[cellVertex * 3 + artifactVertex];
+        const aLo = artifactLo[artifactVertex * 3 + coordinate];
+        const aHi = artifactHi[artifactVertex * 3 + coordinate];
+        const p0 = wLo * aLo;
+        const p1 = wLo * aHi;
+        const p2 = wHi * aLo;
+        const p3 = wHi * aHi;
+        sumLo = fastCheckedAddLo(sumLo, fastWidenLo(Math.min(Math.min(p0, p1), Math.min(p2, p3))));
+        sumHi = fastCheckedAddHi(sumHi, fastWidenHi(Math.max(Math.max(p0, p1), Math.max(p2, p3))));
       }
-      coordinates.push(combination);
+      artifactAtLo[cellVertex * 3 + coordinate] = sumLo;
+      artifactAtHi[cellVertex * 3 + coordinate] = sumHi;
     }
-    artifactAtCellVertex.push(coordinates);
   }
 
   // Constant affine gradient of the artifact over the cell triangle.
-  const edge1U = outwardSubtract(cellU[1], cellU[0]);
-  const edge1V = outwardSubtract(cellV[1], cellV[0]);
-  const edge2U = outwardSubtract(cellU[2], cellU[0]);
-  const edge2V = outwardSubtract(cellV[2], cellV[0]);
-  const determinant = outwardSubtract(
-    outwardMultiply(edge1U, edge2V),
-    outwardMultiply(edge2U, edge1V)
+  const edge1ULo = fastCheckedAddLo(uLo[1], -uHi[0]);
+  const edge1UHi = fastCheckedAddHi(uHi[1], -uLo[0]);
+  const edge1VLo = fastCheckedAddLo(vLo[1], -vHi[0]);
+  const edge1VHi = fastCheckedAddHi(vHi[1], -vLo[0]);
+  const edge2ULo = fastCheckedAddLo(uLo[2], -uHi[0]);
+  const edge2UHi = fastCheckedAddHi(uHi[2], -uLo[0]);
+  const edge2VLo = fastCheckedAddLo(vLo[2], -vHi[0]);
+  const edge2VHi = fastCheckedAddHi(vHi[2], -vLo[0]);
+  const det00 = edge1ULo * edge2VLo;
+  const det01 = edge1ULo * edge2VHi;
+  const det02 = edge1UHi * edge2VLo;
+  const det03 = edge1UHi * edge2VHi;
+  const det10 = edge2ULo * edge1VLo;
+  const det11 = edge2ULo * edge1VHi;
+  const det12 = edge2UHi * edge1VLo;
+  const det13 = edge2UHi * edge1VHi;
+  const determinantLo = fastCheckedAddLo(
+    fastWidenLo(Math.min(Math.min(det00, det01), Math.min(det02, det03))),
+    -fastWidenHi(Math.max(Math.max(det10, det11), Math.max(det12, det13)))
   );
-  if (determinant.lower <= 0 && determinant.upper >= 0) return null;
+  const determinantHi = fastCheckedAddHi(
+    fastWidenHi(Math.max(Math.max(det00, det01), Math.max(det02, det03))),
+    -fastWidenLo(Math.min(Math.min(det10, det11), Math.min(det12, det13)))
+  );
+  if (determinantLo <= 0 && determinantHi >= 0) return null;
 
   const screenProgram = fastCompileScreenProgram(internal);
   if (!screenProgram.supported) return recordFastRefusal(screenProgram.unsupportedReason);
   const targets = [internal.targetX, internal.targetY, internal.targetZ] as const;
   // Pass 1: interval Jacobian over the cell hull. Capture the three target
   // slots before the second run reuses the same channel buffers.
-  if (!fastRunTape(screenProgram, uBox.lower, uBox.upper, vBox.lower, vBox.upper, true)) {
+  if (!fastRunTape(screenProgram, uBoxLo, uBoxHi, vBoxLo, vBoxHi, true)) {
     return null;
   }
-  const jacobianDu: OutwardInterval[] = [];
-  const jacobianDv: OutwardInterval[] = [];
-  for (const targetIndex of targets) {
-    jacobianDu.push(
-      outwardInterval(screenProgram.duLo[targetIndex], screenProgram.duHi[targetIndex])
-    );
-    jacobianDv.push(
-      outwardInterval(screenProgram.dvLo[targetIndex], screenProgram.dvHi[targetIndex])
-    );
+  const jacobianDuLo = fastCoreJacobianDuLo;
+  const jacobianDuHi = fastCoreJacobianDuHi;
+  const jacobianDvLo = fastCoreJacobianDvLo;
+  const jacobianDvHi = fastCoreJacobianDvHi;
+  for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+    const targetIndex = targets[coordinate];
+    jacobianDuLo[coordinate] = screenProgram.duLo[targetIndex];
+    jacobianDuHi[coordinate] = screenProgram.duHi[targetIndex];
+    jacobianDvLo[coordinate] = screenProgram.dvLo[targetIndex];
+    jacobianDvHi[coordinate] = screenProgram.dvHi[targetIndex];
   }
   // Pass 2: target value at the cell centroid (derivative channels unseeded).
-  if (
-    !fastRunTape(
-      screenProgram,
-      uCentre.lower,
-      uCentre.upper,
-      vCentre.lower,
-      vCentre.upper,
-      false
-    )
-  ) {
+  if (!fastRunTape(screenProgram, uCentreLo, uCentreHi, vCentreLo, vCentreHi, false)) {
     return null;
-  }
-  const centreValue: OutwardInterval[] = [];
-  for (const targetIndex of targets) {
-    centreValue.push(
-      outwardInterval(screenProgram.vLo[targetIndex], screenProgram.vHi[targetIndex])
-    );
   }
 
   const residuals: OutwardInterval[] = [];
   for (let coordinate = 0; coordinate < 3; coordinate += 1) {
-    const delta1 = outwardSubtract(
-      artifactAtCellVertex[1][coordinate],
-      artifactAtCellVertex[0][coordinate]
+    const a0Lo = artifactAtLo[coordinate];
+    const a0Hi = artifactAtHi[coordinate];
+    const a1Lo = artifactAtLo[3 + coordinate];
+    const a1Hi = artifactAtHi[3 + coordinate];
+    const a2Lo = artifactAtLo[6 + coordinate];
+    const a2Hi = artifactAtHi[6 + coordinate];
+    const delta1Lo = fastCheckedAddLo(a1Lo, -a0Hi);
+    const delta1Hi = fastCheckedAddHi(a1Hi, -a0Lo);
+    const delta2Lo = fastCheckedAddLo(a2Lo, -a0Hi);
+    const delta2Hi = fastCheckedAddHi(a2Hi, -a0Lo);
+    // gradientU = (delta1*edge2V - delta2*edge1V) / det
+    const gu00 = delta1Lo * edge2VLo;
+    const gu01 = delta1Lo * edge2VHi;
+    const gu02 = delta1Hi * edge2VLo;
+    const gu03 = delta1Hi * edge2VHi;
+    const gu10 = delta2Lo * edge1VLo;
+    const gu11 = delta2Lo * edge1VHi;
+    const gu12 = delta2Hi * edge1VLo;
+    const gu13 = delta2Hi * edge1VHi;
+    const gradientUNumLo = fastCheckedAddLo(
+      fastWidenLo(Math.min(Math.min(gu00, gu01), Math.min(gu02, gu03))),
+      -fastWidenHi(Math.max(Math.max(gu10, gu11), Math.max(gu12, gu13)))
     );
-    const delta2 = outwardSubtract(
-      artifactAtCellVertex[2][coordinate],
-      artifactAtCellVertex[0][coordinate]
+    const gradientUNumHi = fastCheckedAddHi(
+      fastWidenHi(Math.max(Math.max(gu00, gu01), Math.max(gu02, gu03))),
+      -fastWidenLo(Math.min(Math.min(gu10, gu11), Math.min(gu12, gu13)))
     );
-    const gradientU = outwardDivide(
-      outwardSubtract(outwardMultiply(delta1, edge2V), outwardMultiply(delta2, edge1V)),
-      determinant
+    const du0 = gradientUNumLo / determinantLo;
+    const du1 = gradientUNumLo / determinantHi;
+    const du2 = gradientUNumHi / determinantLo;
+    const du3 = gradientUNumHi / determinantHi;
+    const gradientULo = fastWidenLo(Math.min(Math.min(du0, du1), Math.min(du2, du3)));
+    const gradientUHi = fastWidenHi(Math.max(Math.max(du0, du1), Math.max(du2, du3)));
+    // gradientV = (delta2*edge1U - delta1*edge2U) / det
+    const gv00 = delta2Lo * edge1ULo;
+    const gv01 = delta2Lo * edge1UHi;
+    const gv02 = delta2Hi * edge1ULo;
+    const gv03 = delta2Hi * edge1UHi;
+    const gv10 = delta1Lo * edge2ULo;
+    const gv11 = delta1Lo * edge2UHi;
+    const gv12 = delta1Hi * edge2ULo;
+    const gv13 = delta1Hi * edge2UHi;
+    const gradientVNumLo = fastCheckedAddLo(
+      fastWidenLo(Math.min(Math.min(gv00, gv01), Math.min(gv02, gv03))),
+      -fastWidenHi(Math.max(Math.max(gv10, gv11), Math.max(gv12, gv13)))
     );
-    const gradientV = outwardDivide(
-      outwardSubtract(outwardMultiply(delta2, edge1U), outwardMultiply(delta1, edge2U)),
-      determinant
+    const gradientVNumHi = fastCheckedAddHi(
+      fastWidenHi(Math.max(Math.max(gv00, gv01), Math.max(gv02, gv03))),
+      -fastWidenLo(Math.min(Math.min(gv10, gv11), Math.min(gv12, gv13)))
     );
-    // The artifact is affine, so its value at the centroid is the exact mean
-    // of its three cell-vertex values.
-    const artifactCentre = outwardDivide(
-      outwardAdd(
-        outwardAdd(artifactAtCellVertex[0][coordinate], artifactAtCellVertex[1][coordinate]),
-        artifactAtCellVertex[2][coordinate]
-      ),
-      three
-    );
-    const residualCentre = outwardSubtract(centreValue[coordinate], artifactCentre);
-    const residualGradientU = outwardSubtract(jacobianDu[coordinate], gradientU);
-    const residualGradientV = outwardSubtract(jacobianDv[coordinate], gradientV);
-    const residual = outwardAdd(
-      residualCentre,
-      outwardAdd(
-        outwardMultiply(residualGradientU, uOffset),
-        outwardMultiply(residualGradientV, vOffset)
+    const dv0 = gradientVNumLo / determinantLo;
+    const dv1 = gradientVNumLo / determinantHi;
+    const dv2 = gradientVNumHi / determinantLo;
+    const dv3 = gradientVNumHi / determinantHi;
+    const gradientVLo = fastWidenLo(Math.min(Math.min(dv0, dv1), Math.min(dv2, dv3)));
+    const gradientVHi = fastWidenHi(Math.max(Math.max(dv0, dv1), Math.max(dv2, dv3)));
+    // The artifact is affine, so its centroid value is the exact mean of the
+    // three cell-vertex values.
+    const artifactCentreLo = fastWidenLo(fastCheckedAddLo(fastCheckedAddLo(a0Lo, a1Lo), a2Lo) / 3);
+    const artifactCentreHi = fastWidenHi(fastCheckedAddHi(fastCheckedAddHi(a0Hi, a1Hi), a2Hi) / 3);
+    const targetIndex = targets[coordinate];
+    const residualCentreLo = fastCheckedAddLo(screenProgram.vLo[targetIndex], -artifactCentreHi);
+    const residualCentreHi = fastCheckedAddHi(screenProgram.vHi[targetIndex], -artifactCentreLo);
+    const residualGradientULo = fastCheckedAddLo(jacobianDuLo[coordinate], -gradientUHi);
+    const residualGradientUHi = fastCheckedAddHi(jacobianDuHi[coordinate], -gradientULo);
+    const residualGradientVLo = fastCheckedAddLo(jacobianDvLo[coordinate], -gradientVHi);
+    const residualGradientVHi = fastCheckedAddHi(jacobianDvHi[coordinate], -gradientVLo);
+    const ru0 = residualGradientULo * uOffsetLo;
+    const ru1 = residualGradientULo * uOffsetHi;
+    const ru2 = residualGradientUHi * uOffsetLo;
+    const ru3 = residualGradientUHi * uOffsetHi;
+    const rv0 = residualGradientVLo * vOffsetLo;
+    const rv1 = residualGradientVLo * vOffsetHi;
+    const rv2 = residualGradientVHi * vOffsetLo;
+    const rv3 = residualGradientVHi * vOffsetHi;
+    const residualLo = fastCheckedAddLo(
+      residualCentreLo,
+      fastCheckedAddLo(
+        fastWidenLo(Math.min(Math.min(ru0, ru1), Math.min(ru2, ru3))),
+        fastWidenLo(Math.min(Math.min(rv0, rv1), Math.min(rv2, rv3)))
       )
     );
-    if (!fastFinite(residual)) return null;
-    residuals.push(residual);
+    const residualHi = fastCheckedAddHi(
+      residualCentreHi,
+      fastCheckedAddHi(
+        fastWidenHi(Math.max(Math.max(ru0, ru1), Math.max(ru2, ru3))),
+        fastWidenHi(Math.max(Math.max(rv0, rv1), Math.max(rv2, rv3)))
+      )
+    );
+    if (!Number.isFinite(residualLo) || !Number.isFinite(residualHi) || residualLo > residualHi) {
+      return null;
+    }
+    residuals.push(outwardInterval(residualLo, residualHi));
   }
   return Object.freeze({ xMm: residuals[0], yMm: residuals[1], zMm: residuals[2] });
 }
+
+// Reusable core scratch (single-threaded proof kernel).
+const fastCoreArtifactAtLo = new Float64Array(9);
+const fastCoreArtifactAtHi = new Float64Array(9);
+const fastCoreJacobianDuLo = new Float64Array(3);
+const fastCoreJacobianDuHi = new Float64Array(3);
+const fastCoreJacobianDvLo = new Float64Array(3);
+const fastCoreJacobianDvHi = new Float64Array(3);
+const fastWrapperULo = new Float64Array(3);
+const fastWrapperUHi = new Float64Array(3);
+const fastWrapperVLo = new Float64Array(3);
+const fastWrapperVHi = new Float64Array(3);
+const fastWrapperWeightLo = new Float64Array(9);
+const fastWrapperWeightHi = new Float64Array(9);
+const fastWrapperArtifactLo = new Float64Array(9);
+const fastWrapperArtifactHi = new Float64Array(9);

@@ -44,7 +44,7 @@ describe('mapped proof-session structural integrity', () => {
     expect(result.structurallyValid).toBe(true);
     expect(result.scanComplete).toBe(true);
     expect(Object.values(result.checks)).toEqual(new Array(9).fill(true));
-    expect(result.configuredByteCeiling).toBeLessThanOrEqual(384 * 1024 * 1024);
+    expect(result.configuredByteCeiling).toBeLessThanOrEqual(768 * 1024 * 1024);
     expect(result.structuralWorkUnitCount).toBeGreaterThan(0);
   });
 
@@ -71,7 +71,7 @@ describe('mapped proof-session structural integrity', () => {
       assessMappedProofSessionStructuralIntegrity(
         session,
         { componentCount: 1, genus: 0 },
-        { maxTotalBytes: 384 * 1024 * 1024 + 1 }
+        { maxTotalBytes: 768 * 1024 * 1024 + 1 }
       )
     ).toThrow(/hard limit/i);
     expect(() =>
