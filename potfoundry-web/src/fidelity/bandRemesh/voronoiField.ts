@@ -2,8 +2,8 @@
  * voronoiField.ts — f64 replication of the Voronoi web `f2−f1` field.
  *
  * Mirrors `voronoiWebField` in
- * `src/renderers/webgpu/parametric/conforming/FeatureLineGraph.ts` (lines 651-686)
- * and the helpers `fract` / `hash22` from the same file.
+ * `src/renderers/webgpu/parametric/conforming/FeatureLineGraph.ts`
+ * and its integer-PCG2D jitter hash (both synced to the shipping surface in 03948af8).
  *
  * ⚠️ Must stay in sync with FeatureLineGraph.ts voronoiWebField.
  * Phase 0 spike — production wiring (calling into FeatureLineGraph) happens in Phase 1.
@@ -13,16 +13,34 @@
 
 const fract = (x: number): number => x - Math.floor(x);
 
-/** WGSL hash22 replicated in f64 (mirrors FeatureLineGraph.ts). */
-function hash22(px: number, py: number): [number, number] {
-  let p3x = fract(px * 0.1031);
-  let p3y = fract(py * 0.103);
-  let p3z = fract(px * 0.0973);
-  const d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33);
-  p3x += d;
-  p3y += d;
-  p3z += d;
-  return [fract((p3x + p3y) * p3z), fract((p3x + p3z) * p3y)];
+// Voronoi jitter hash — INTEGER-EXACT PCG2D, synced to the SHIPPING surface
+// (styles.ts rOuterVoronoi / styles.wgsl style_voronoi, swapped in 03948af8
+// E-2026-07-10-INTHASH-SWAP; FeatureLineGraph.ts voronoiWebField re-synced too).
+// The pre-swap float hash22 traced a now-STALE cell layout — the bandRemesh rails
+// would land on creases the surface no longer raises. Mirrors styles.ts
+// pcg2dHash/u32ToUnitFloat/hash22Int and WGSL hash_pcg2d/u32_to_unit_float/hash22_int.
+function pcg2dHash(vx: number, vy: number): { x: number; y: number } {
+  let x = vx >>> 0;
+  let y = vy >>> 0;
+  x = (Math.imul(x, 1664525) + 1013904223) >>> 0;
+  y = (Math.imul(y, 1664525) + 1013904223) >>> 0;
+  x = (x + Math.imul(y, 1664525)) >>> 0;
+  y = (y + Math.imul(x, 1664525)) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  y = (y ^ (y >>> 16)) >>> 0;
+  x = (x + Math.imul(y, 1664525)) >>> 0;
+  y = (y + Math.imul(x, 1664525)) >>> 0;
+  x = (x ^ (x >>> 16)) >>> 0;
+  y = (y ^ (y >>> 16)) >>> 0;
+  return { x: x >>> 0, y: y >>> 0 };
+}
+function u32ToUnitFloat(h: number): number {
+  return (h >>> 8) * 2 ** -24;
+}
+/** hash22 analog: integer cell coords in, [0,1)^2 out. Mirrors styles.ts hash22Int. */
+function hash22Int(cx: number, cy: number): [number, number] {
+  const seeded = pcg2dHash((cx + 0x9e3779b1) >>> 0, (cy + 0x85ebca77) >>> 0);
+  return [u32ToUnitFloat(seeded.x), u32ToUnitFloat(seeded.y)];
 }
 
 /**
@@ -38,6 +56,8 @@ function hash22(px: number, py: number): [number, number] {
  */
 export function voronoiSdf(uWall: number, t: number, p: Float32Array): number {
   const scale = p[0] > 0 ? p[0] : 8;
+  // Integer period for the u-wrap, mirroring styles.ts periodicCellularInt.
+  const periodXInt = Math.max(1, Math.round(scale));
   const jitter = p[1];
   const stretch = p[5] > 0 ? p[5] : 1;
   const pulse = p[6];
@@ -53,8 +73,8 @@ export function voronoiSdf(uWall: number, t: number, p: Float32Array): number {
     for (let nx = -1; nx <= 1; nx++) {
       const nidX = cellIdX + nx;
       const nidY = cellIdY + ny;
-      const wrappedX = ((nidX % scale) + scale) % scale;
-      const h = hash22(wrappedX, nidY);
+      const wrappedX = ((nidX % periodXInt) + periodXInt) % periodXInt;
+      const h = hash22Int(wrappedX, nidY);
       const dx = nx + h[0] * jitter - cuX;
       const dy = ny + h[1] * jitter - cuY;
       const dist = Math.sqrt(dx * dx + dy * dy);

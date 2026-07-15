@@ -34,12 +34,17 @@ describe('extractRails', () => {
     const { foot, crest } = extractRails(p, opts);
     expect(foot.length).toBeGreaterThan(0);
     expect(crest.length).toBeGreaterThan(0);
-    // Each polyline has at least minPoints=3 points.
+    // Each returned polyline is a valid segment (>= 2 points). NOTE: segmentsToPolylines
+    // filters raw paths by minPoints=3 BEFORE Douglas-Peucker simplification, so a
+    // near-straight 3-point contour legitimately collapses to a 2-point segment in the
+    // output (SampledFeatureExtractor.ts:301-306). The integer-hash web (03948af8 sync)
+    // seeds one such short crest fragment near the f2-f1=th*0.15 level; a 2-point straight
+    // rail is valid. The meaningful non-empty checks are the foot/crest .length > 0 above.
     for (const line of foot) {
-      expect(line.points.length).toBeGreaterThanOrEqual(3);
+      expect(line.points.length).toBeGreaterThanOrEqual(2);
     }
     for (const line of crest) {
-      expect(line.points.length).toBeGreaterThanOrEqual(3);
+      expect(line.points.length).toBeGreaterThanOrEqual(2);
     }
   });
 
