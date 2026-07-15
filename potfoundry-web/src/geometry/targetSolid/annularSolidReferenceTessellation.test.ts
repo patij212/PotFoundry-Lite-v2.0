@@ -1,0 +1,246 @@
+import { describe, expect, it } from 'vitest';
+
+import { DEFAULT_GEOMETRY } from '../../state/types';
+import { createCanonicalTargetInputBinding } from './canonicalTargetInput';
+import {
+  createCompleteMappedGeometryTargetBindingFromSurfaceComplex,
+  type MappedPatchProofJob,
+} from './completeMappedArtifactGeometry';
+import { createFinalArtifactProofSession } from './finalArtifactProofSession';
+import {
+  FinalStlPartialCertificationError,
+  proveFinalStlMappedGeometryAndStructure,
+} from './finalStlPartialCertification';
+import { assessProofSessionStructuralIntegrity } from './proofSessionStructuralIntegrity';
+import {
+  createSinglePatchAnnularRadialSolidTargetBinding,
+  type SinglePatchAnnularRadialSolidTargetBinding,
+} from './singlePatchAnnularRadialSolidTarget';
+import { createStyleOuterWallTargetRegistryBinding } from './styleOuterWallTargetRegistry';
+import {
+  tessellateAnnularRadialSolidTargetForCertification,
+  type AnnularSolidReferenceTessellation,
+  type AnnularSolidReferenceTessellationOptions,
+} from './annularSolidReferenceTessellation';
+import { compileValidatedResidualEvaluator } from './validatedResidualEvaluatorRegistry';
+
+const TARGET_CONTROLS = Object.freeze({ superformulaSeamBlendDegrees: 30 });
+
+// A small, valid HarmonicRipple pot chosen so a uniform dyadic reference grid
+// provably reaches the 0.01 mm continuous budget inside the proof layer's
+// 131,072 mapped-triangle and elapsed-time hard caps. Every value is inside
+// the registry/geometry bounds — this is a real supported pot, not a toy
+// abstraction; production-DEFAULT scale at default style params does NOT fit
+// the caps yet (see the fail-closed case below).
+const SMALL_POT_GEOMETRY = Object.freeze({
+  ...DEFAULT_GEOMETRY,
+  H: 40,
+  top_od: 30,
+  bottom_od: 30,
+  r_drain: 6,
+});
+const GENTLE_HARMONIC_RIPPLE = Object.freeze({
+  hr_petal_amp: 0.01,
+  hr_ripple_amp: 0,
+  hr_bell: 0,
+});
+
+function atlas(
+  geometry: typeof SMALL_POT_GEOMETRY,
+  styleParams: Readonly<Record<string, number>>
+): {
+  binding: SinglePatchAnnularRadialSolidTargetBinding;
+  canonicalInput: ReturnType<typeof createCanonicalTargetInputBinding>;
+} {
+  const canonicalInput = createCanonicalTargetInputBinding(
+    geometry,
+    'HarmonicRipple',
+    styleParams,
+    TARGET_CONTROLS
+  );
+  const binding = createSinglePatchAnnularRadialSolidTargetBinding(
+    canonicalInput,
+    createStyleOuterWallTargetRegistryBinding(canonicalInput)
+  );
+  return { binding, canonicalInput };
+}
+
+function jobsFor(
+  binding: SinglePatchAnnularRadialSolidTargetBinding,
+  tessellation: AnnularSolidReferenceTessellation,
+  targetSha256: string
+): readonly MappedPatchProofJob[] {
+  const programByPatch = new Map(
+    binding.programs.map((program) => [program.patchId, program.programCanonicalJson])
+  );
+  return tessellation.partitions.map((partition) => {
+    const programCanonicalJson = programByPatch.get(
+      partition.patchId as (typeof binding.programs)[number]['patchId']
+    );
+    if (programCanonicalJson === undefined) {
+      throw new Error(`missing program for partition patch '${partition.patchId}'`);
+    }
+    return {
+      partition,
+      evaluator: compileValidatedResidualEvaluator({ targetSha256, programCanonicalJson }),
+    };
+  });
+}
+
+// 256 angular stations give ~4x sag margin at the gentle petal amplitude
+// (~0.0017 mm estimated vs the 0.0095 mm geometric budget). The radial
+// annuli (rim, both bottoms) are ruled surfaces — linear in v but with a
+// ruling direction that rotates with u — so a triangle spanning du x dv
+// carries a mixed d2P/dudv twist error of roughly r'(v)*theta'(u)*du*dv/4.
+// Measured on this pot: ~31 um at one v-cell across the 6.1 mm bottom
+// annulus (the continuous proof correctly REFUSED that mesh, and at two
+// rim v-cells it pinned a true 9.50010 um point against the 9.5 um budget).
+// Eight v-cells on the bottoms (~3.8 um) and four on the 3 mm rim
+// (~2.3 um) leave real margin. The drain wall is a straight cylinder
+// (r constant in v), so its mixed term is exactly zero and one v-cell is
+// exact. Total ~18.9k triangles.
+const SMALL_POT_DIVISIONS: AnnularSolidReferenceTessellationOptions = Object.freeze({
+  angularDivisionsLog2: 8,
+  verticalDivisionsLog2ByPatch: Object.freeze({
+    'outer-wall': 3,
+    'inner-wall': 3,
+    'top-rim': 3,
+    'bottom-top': 4,
+    'bottom-under': 4,
+    'drain-wall': 0,
+  }),
+});
+
+describe('annular solid reference tessellation', () => {
+  it('welds a tiny grid into a closed genus-one embedded solid', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 4,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    expect(session.triangleCount).toBe(tessellation.triangleCount);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    expect(structural.scanComplete).toBe(true);
+  });
+
+  it('assigns every artifact triangle to exactly one exact dyadic patch partition', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 3,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 1,
+        'inner-wall': 1,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    });
+    expect(tessellation.partitions).toHaveLength(6);
+    const seen = new Set<number>();
+    for (const partition of tessellation.partitions) {
+      expect(partition.artifactTriangleCount).toBe(tessellation.triangleCount);
+      for (const triangle of partition.triangles) {
+        expect(seen.has(triangle.artifactTriangleIndex)).toBe(false);
+        seen.add(triangle.artifactTriangleIndex);
+      }
+    }
+    expect(seen.size).toBe(tessellation.triangleCount);
+  });
+
+  // The pot-scale composed proof takes ~20 s, so it rides the PF_G2_POT env
+  // gate like the repo's other heavy fidelity gates. It IS the G2 e2e gate:
+  // atlas -> reference tessellation -> final bytes -> full partial
+  // certification at the 0.01 mm claim.
+  it.skipIf(!process.env.PF_G2_POT)(
+    'proves a complete small pot to the continuous 0.01 mm partial certificate',
+    { timeout: 120_000 },
+    () => {
+      const { binding, canonicalInput } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+      const tessellation = tessellateAnnularRadialSolidTargetForCertification(
+        binding,
+        SMALL_POT_DIVISIONS
+      );
+      const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+        binding.surfaceComplex
+      );
+      const session = createFinalArtifactProofSession(tessellation.stlBytes);
+      const result = proveFinalStlMappedGeometryAndStructure(
+        session,
+        canonicalInput,
+        target,
+        jobsFor(binding, tessellation, target.targetSha256),
+        {
+          requestedTolerancePm: 10_000_000n,
+          reservedNonGeometricMarginPm: 500_000n,
+          maxElapsedMilliseconds: 30_000,
+        }
+      );
+      // The module can never mint a full certificate — but the continuous
+      // two-sided geometric claim over the COMPLETE closed solid must hold.
+      expect(result.certified).toBe(false);
+      expect(result.provenClaims).toContain('patch-distance');
+      expect(result.provenClaims).toContain('artifact-coverage');
+      expect(result.provenClaims).toContain('topology');
+      expect(result.provenClaims).toContain('self-intersection');
+      expect(result.structural.structurallyValid).toBe(true);
+      expect(result.geometry.scanComplete).toBe(true);
+      const upper = BigInt(result.geometricTwoSidedUpperPm);
+      expect(upper > 0n).toBe(true);
+      expect(upper <= BigInt(result.geometricBudgetPm)).toBe(true);
+      expect(BigInt(result.geometryPlusReservedUpperPm) <= 10_000_000n).toBe(true);
+    }
+  );
+
+  it.skipIf(!process.env.PF_G2_POT)(
+    'refuses fail-closed at production-default scale instead of weakening tolerance',
+    { timeout: 120_000 },
+    () => {
+      // DEFAULT_GEOMETRY at default HarmonicRipple params needs more than the
+      // proof layer's 131,072 mapped-triangle hard cap to reach 0.01 mm with a
+      // uniform grid. The honest outcome today is a refusal, never a silently
+      // weakened tolerance. This documents the exact refusal shape.
+      const { binding, canonicalInput } = atlas({ ...DEFAULT_GEOMETRY, r_drain: 10 }, {});
+      const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+        angularDivisionsLog2: 10,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 6,
+          'inner-wall': 6,
+          'top-rim': 1,
+          'bottom-top': 3,
+          'bottom-under': 3,
+          'drain-wall': 2,
+        },
+      });
+      const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+        binding.surfaceComplex
+      );
+      const session = createFinalArtifactProofSession(tessellation.stlBytes);
+      expect(() =>
+        proveFinalStlMappedGeometryAndStructure(
+          session,
+          canonicalInput,
+          target,
+          jobsFor(binding, tessellation, target.targetSha256),
+          {
+            requestedTolerancePm: 10_000_000n,
+            reservedNonGeometricMarginPm: 500_000n,
+            maxElapsedMilliseconds: 30_000,
+          }
+        )
+      ).toThrow(FinalStlPartialCertificationError);
+    }
+  );
+});
