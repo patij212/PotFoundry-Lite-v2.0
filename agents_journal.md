@@ -6670,3 +6670,42 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   annuli + default-scale pots; (b) screen v2 ops (non-constant-exponent power, fract/
   floor) -> SuperellipseMorph + fract-family; (c) exact-rational partition stations ->
   GothicArches + WaveInterference (sqrt-cusp crests); (d) curtain/riser complexes.
+
+## 2026-07-15 - Claude Fable 5 - roadmap review + vertical ladders: first default-scale certificate (cont. 4)
+
+### Summary
+- Committed the UNIVERSAL-001 roadmap (7a5b2ee4 — authored in-tree by a parallel planning
+  agent) with an executor review addendum: frame/ordering/guardrails ADOPTED, seven
+  bench-measured adjustments (U1 items 1-2 landed; FourierBloom certified at defaults;
+  WaveInterference rerouted U1->U3 as a measured sqrt-cusp; default-scale U1 exit scoped
+  to gentle params; composed-scan streaming moved to U5/G4; style classifier probe added
+  to the toolkit; U3 made an explicit prerequisite of U5.3 since production meshes carry
+  non-dyadic float UV provenance).
+- Landed the last U1 item (ae271268): per-patch dyadic vertical ladders
+  (verticalStationsByPatch + dyadicEdgeLadder generator; stations stay exactly dyadic,
+  welds/partitions untouched).
+- **HarmonicRipple (gentle) CERTIFIED-PARTIAL at PRODUCTION-DEFAULT SCALE
+  (OD140/H120/drain10): 9,499,996 pm / 155,648 tris / ~85 s** — the default-scale blocker
+  was the live profile exponent t^1.1 (kappa ~ t^-0.9 diverges at the base); v0-edge wall
+  ladders match the divergence. PF_G2_POT gate = four pots + fail-closed; 417/417.
+
+### Validation
+- Suite 417/417 with PF_G2_POT=1; typecheck 0 errors; lint 0 warnings. Ladder generator
+  had one real bug caught by fail-closed validation (splice index made stations
+  non-monotonic; fixed + unit-tested both edges).
+
+### Risks / findings
+- Gyroid-gentle honest wall MEASURED: styled inner edge needs ~1024 SHARED angular
+  stations (junction welds demand one angular grid across patches) -> walls alone ~524k
+  tris = the whole v2 cap. Waits for envelope v3/streaming scans, not tessellation
+  cleverness.
+- Ladder scope lesson: edge ladders fix EDGE-CONCENTRATED error only; uniform-in-v twist
+  needs uniform density; angular demands need global stations. Classify before tooling.
+- Default-scale HR margin is 4 pm under budget (deterministic float math, but thin);
+  extra ladder steps did not move the binding cell — it sits elsewhere at 9.4999 um.
+
+### Next agent
+- U2 screen v2 ops (SuperellipseMorph non-constant-exponent power; fract/floor family;
+  preregistered Voronoi hypothesis) is the next ranked increment. Then U3 exact-rational
+  stations (Gothic + WaveInterference + production-mesh provenance). Containment #5
+  (fresh all-20 WebGPU baseline) still owed on a quiet machine.
