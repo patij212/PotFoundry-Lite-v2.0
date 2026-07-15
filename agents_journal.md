@@ -6632,3 +6632,41 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
 ### Next agent
 - Ranked list unchanged (lab doc): #2 cap/deadline + ladders, #3 screen v2 ops (SE,
   fract-family), #4 exact-rational stations (Gothic), #5 curtain/riser complexes.
+
+## 2026-07-15 - Claude Fable 5 - resource envelope v2: FourierBloom certified at pure defaults (cont. 3)
+
+### Summary
+- Landed ranked-#2 (3a0a8c0a): retired the proof layer's v1 resource policy (sized for
+  65k-tri artifacts) for a coherent v2 envelope — mapped-triangle cap 131,072 -> 524,288,
+  per-patch partition 65,536 -> 262,144, composed/partition/structural hard elapsed
+  30s -> 120s, all derived work/byte cap families scaled to match (six modules; the
+  ceiling onion had SEVEN layers, each found empirically by fail-closed refusals).
+- Differentiated work-unit charging (screen cell = 1 unit; decimal consult = node count)
+  and a raw widened-float64 screen core (dropped BigInt-nextafter interval objects;
+  47.5 -> 37.6 us/cell; unseeded passes skip derivative factors).
+- **FourierBloom CERTIFIED-PARTIAL at FULL DEFAULTS: 9,499,927 pm / 206,848 tris / ~65 s**
+  — third certified style, first at untouched defaults; added to the PF_G2_POT gate.
+- WaveInterference RECLASSIFIED by elimination: crossing density-invariant across
+  512/1024/2048 angular; periodic seams and all six junctions image-exact (<=3e-14mm)
+  => sqrt-cusp relief crests (chord ~ sqrt(h)) — needs feature-aligned stations, joins
+  Gothic. Gyroid-gentle now passes STRUCTURAL at 410k tris; geometry awaits ladders.
+
+### Validation
+- targetSolid suite 415/415 with PF_G2_POT=1 (gate = HR + SR + FB-defaults + fail-closed
+  case); typecheck 0 errors; lint 0 warnings; detect_changes 27 symbols / 15 files,
+  MEDIUM, single affected process (certify kernel). Policy-pin tests updated to v2
+  constants (384MB -> 768MB structural byte totals).
+
+### Risks
+- The v2 envelope is still a self-imposed policy, not the audit's G4 SLA; heaviest gate
+  case is now ~65 s (vitest timeout 180 s). Composed scans (partition verify + self-
+  intersection) dominate wall-time at 200k+ tris — streaming/incremental scans are the
+  next perf lever if 524k-tri artifacts become routine.
+- Untracked research/lab/2026-07-15-universal-001mm-roadmap.md appeared during the
+  session (not mine — likely another agent's); left untouched.
+
+### Next agent
+- Ranked: (a) non-uniform dyadic vertical ladders -> GyroidManifold gentle + styled-edge
+  annuli + default-scale pots; (b) screen v2 ops (non-constant-exponent power, fract/
+  floor) -> SuperellipseMorph + fract-family; (c) exact-rational partition stations ->
+  GothicArches + WaveInterference (sqrt-cusp crests); (d) curtain/riser complexes.
