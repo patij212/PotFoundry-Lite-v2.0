@@ -38,7 +38,7 @@ import {
 export type { RegisteredValidatedResidualEvaluator } from './validatedResidualEvaluatorRegistry';
 
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_VERSION =
-  'potfoundry.continuous-mapped-patch-distance/v12' as const;
+  'potfoundry.continuous-mapped-patch-distance/v13' as const;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_WORK_CELLS = 1_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS = 2_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_EVALUATOR_WORK_UNITS =
@@ -57,6 +57,7 @@ export const CONTINUOUS_MAPPED_PATCH_DISTANCE_PROOF_SHA256 = sha256Utf8(
     'evaluator executable state is compiled only from a target-committed canonical target x/y/z program; compiler-derived residuals admit no artifact-coordinate leaves or arbitrary callbacks',
     'registered evaluator encloses target-minus-affine-artifact residual continuously over the complete triangular cell',
     'compiler-proven affine target coordinates use a complete three-vertex residual hull over the shared exact barycentric cell; nonlinear coordinates retain outward interval enclosure',
+    'a cell may be accepted by the registered centered mean-value float64 screen when its outward enclosure already meets the budget; an over-budget screen enclosure below maximum depth subdivides directly; screen-unavailable cells and every maximum-depth decision consult the validated decimal enclosure, so no cell is refused on screen evidence alone',
     `outward binary64 norm and exact-picometre ceiling=${OUTWARD_FLOAT64_INTERVAL_PROOF_SHA256}`,
     'the accepted exact-picometre geometric budget is snapshotted once and bound into result evidence',
     'a shared complete parametrization bounds both target-to-mesh and mesh-to-target directed distances by the same residual supremum',
@@ -171,6 +172,7 @@ export interface ContinuousMappedPatchDistanceResult {
   readonly workCellCount: number;
   readonly evaluatorWorkUnitCount: number;
   readonly acceptedLeafCellCount: number;
+  readonly fastScreenAcceptedCellCount: number;
   readonly maximumDepthReached: number;
   readonly certifiedMaximumGeometricUpperPm: string;
   readonly targetToMeshUpperPm: string;
@@ -668,7 +670,8 @@ export function certifyContinuousMappedPatchDistance(
       VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 ||
     typeof evaluatorSnapshot.targetSha256 !== 'string' ||
     !SHA256_RE.test(evaluatorSnapshot.targetSha256) ||
-    typeof evaluatorSnapshot.encloseResidual !== 'function'
+    typeof evaluatorSnapshot.encloseResidual !== 'function' ||
+    typeof evaluatorSnapshot.encloseResidualFast !== 'function'
   ) {
     invalid('Evaluator identity, target binding, patch binding, or implementation is invalid');
   }
@@ -698,6 +701,7 @@ export function certifyContinuousMappedPatchDistance(
   let workCellCount = 0;
   let evaluatorWorkUnitCount = 0;
   let acceptedLeafCellCount = 0;
+  let fastScreenAcceptedCellCount = 0;
   let maximumDepthReached = 0;
   let maximumResidualUpperPm = 0n;
 
@@ -745,6 +749,7 @@ export function certifyContinuousMappedPatchDistance(
       evaluatorWorkUnitCount += evaluatorSnapshot.evaluatorWorkUnitsPerCell;
       maximumDepthReached = Math.max(maximumDepthReached, cell.depth);
       let residualUpperPm: bigint;
+      let acceptedByFastScreen = false;
       try {
         const request = requestForCell(
           mapping,
@@ -753,9 +758,32 @@ export function certifyContinuousMappedPatchDistance(
           artifactVertices,
           cell
         );
-        residualUpperPm = float64UpperMillimetresToPicometres(
-          validatedResidualUpperMm(evaluatorSnapshot.encloseResidual(request))
-        );
+        // Acceptance-only screen: a non-null centered mean-value enclosure
+        // that already meets the budget accepts the cell without the decimal
+        // kernel. When the screen answers over budget below maximum depth,
+        // subdividing directly is both sound and far cheaper than consulting
+        // the decimal kernel — the screen tightens quadratically with cell
+        // size, so it re-decides the children. The validated decimal
+        // enclosure remains the deciding authority whenever the screen is
+        // unavailable and as the last consult at maximum depth before an
+        // INCONCLUSIVE refusal.
+        let fastUpperPm: bigint | null = null;
+        const fastEnclosure = evaluatorSnapshot.encloseResidualFast(request);
+        if (fastEnclosure !== null) {
+          fastUpperPm = float64UpperMillimetresToPicometres(
+            validatedResidualUpperMm(fastEnclosure)
+          );
+        }
+        if (fastUpperPm !== null && fastUpperPm <= optionsSnapshot.maximumGeometricUpperPm) {
+          residualUpperPm = fastUpperPm;
+          acceptedByFastScreen = true;
+        } else if (fastUpperPm !== null && cell.depth < maxDepth) {
+          residualUpperPm = fastUpperPm;
+        } else {
+          residualUpperPm = float64UpperMillimetresToPicometres(
+            validatedResidualUpperMm(evaluatorSnapshot.encloseResidual(request))
+          );
+        }
       } catch (error) {
         throw new ContinuousMappedPatchDistanceError(
           'EVALUATOR_REFUSED',
@@ -768,6 +796,7 @@ export function certifyContinuousMappedPatchDistance(
       }
       if (residualUpperPm <= optionsSnapshot.maximumGeometricUpperPm) {
         acceptedLeafCellCount += 1;
+        if (acceptedByFastScreen) fastScreenAcceptedCellCount += 1;
         if (residualUpperPm > maximumResidualUpperPm) {
           maximumResidualUpperPm = residualUpperPm;
         }
@@ -794,6 +823,7 @@ export function certifyContinuousMappedPatchDistance(
     'potfoundry.continuous-mapped-patch/distance-evidence/v1',
     {
       acceptedLeafCellCount: acceptedLeafCellCount.toString(),
+      fastScreenAcceptedCellCount: fastScreenAcceptedCellCount.toString(),
       artifactByteSha256: artifact.byteSha256,
       artifactCoordinateEncoding:
         artifact.format === 'stl' ? 'exact-binary32-mm' : 'exact-integer-pm',
@@ -850,6 +880,7 @@ export function certifyContinuousMappedPatchDistance(
     workCellCount,
     evaluatorWorkUnitCount,
     acceptedLeafCellCount,
+    fastScreenAcceptedCellCount,
     maximumDepthReached,
     certifiedMaximumGeometricUpperPm:
       optionsSnapshot.maximumGeometricUpperPm.toString(),

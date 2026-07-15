@@ -6,6 +6,7 @@ import type {
 import {
   compileValidatedResidualProgram,
   evaluateCompiledValidatedResidualProgram,
+  fastEncloseCompiledValidatedResidualProgram,
   VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256,
   VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION,
   VALIDATED_RESIDUAL_PROGRAM_MAX_NODES,
@@ -13,7 +14,7 @@ import {
 } from './validatedResidualProgram';
 
 export const VALIDATED_RESIDUAL_EVALUATOR_REGISTRY_VERSION =
-  'potfoundry.validated-residual-evaluator-registry/v6' as const;
+  'potfoundry.validated-residual-evaluator-registry/v7' as const;
 
 declare const registeredValidatedResidualEvaluatorBrand: unique symbol;
 
@@ -33,6 +34,14 @@ export interface RegisteredValidatedResidualEvaluator {
   readonly encloseResidual: (
     request: ValidatedResidualEnclosureRequest
   ) => ValidatedResidualEnclosure;
+  /**
+   * Centered mean-value screen over the same compiled program in outward
+   * float64 intervals. A non-null enclosure is sound for acceptance; `null`
+   * means unavailable and the validated `encloseResidual` remains authority.
+   */
+  readonly encloseResidualFast: (
+    request: ValidatedResidualEnclosureRequest
+  ) => ValidatedResidualEnclosure | null;
   readonly [registeredValidatedResidualEvaluatorBrand]: true;
 }
 
@@ -110,12 +119,17 @@ export function compileValidatedResidualEvaluator(
       VALIDATED_RESIDUAL_EVALUATOR_REGISTRY_VERSION,
       evaluatorSourceSha256,
       'no-callback canonical-target-program compilation with compiler-derived residual',
+      'acceptance-only centered mean-value float64 screen derived from the same compiled program; refusals defer to the validated decimal enclosure',
       `node-count=${program.nodeCount}`,
     ].join('\n')
   );
   const encloseResidual = Object.freeze(
     (request: ValidatedResidualEnclosureRequest): ValidatedResidualEnclosure =>
       evaluateCompiledValidatedResidualProgram(program, request)
+  );
+  const encloseResidualFast = Object.freeze(
+    (request: ValidatedResidualEnclosureRequest): ValidatedResidualEnclosure | null =>
+      fastEncloseCompiledValidatedResidualProgram(program, request)
   );
   const handle = Object.freeze({
     patchId: program.patchId,
@@ -129,6 +143,7 @@ export function compileValidatedResidualEvaluator(
     evaluatorCompilerProofSha256: VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256,
     targetSha256,
     encloseResidual,
+    encloseResidualFast,
   }) as RegisteredValidatedResidualEvaluator;
   registry.set(handle, handle);
   return handle;
