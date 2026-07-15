@@ -98,3 +98,25 @@ Certified set: HarmonicRipple (gentle), SpiralRidges (gentle low-turn),
 ladders (Gyroid, styled-edge annuli, default-scale), screen v2 ops (SuperellipseMorph,
 fract-family), exact-rational stations (Gothic, WaveInterference), curtain/riser
 complexes (7 layered styles).
+
+## Addendum 3 — non-uniform dyadic vertical ladders + first DEFAULT-SCALE certificate (same day)
+
+Landed the last U1 item: per-patch `verticalStationsByPatch` ladders (explicit strictly-
+increasing dyadic station numerators; `dyadicEdgeLadder(uniformLog2, refinements, edge)`
+generator halves the row width geometrically into a chosen edge). Uniform grids unchanged.
+
+**RESULT: HarmonicRipple (gentle) CERTIFIED-PARTIAL at PRODUCTION-DEFAULT SCALE
+(OD140/H120/drain10) — 9,499,996 pm over 155,648 triangles in ~85 s.** The blocker was the
+live profile exponent t^1.1 whose curvature diverges at the base (kappa ~ t^-0.9); v0-edge
+wall ladders match the divergence (each halving toward the base halves local sag). In the
+PF_G2_POT gate (now four pots + fail-closed case; 417/417 with the gate on).
+
+Gyroid-gentle honest wall (measured): with laddered bottoms its styled inner edge STILL
+binds — it needs ~1024 shared angular stations (welds require one angular grid across
+patches), putting walls alone at ~524k triangles = the entire v2 cap. Gyroid waits for
+envelope v3 / streaming scans (U5-era), not for more tessellation cleverness.
+
+Ladder lesson: edge ladders fix EDGE-CONCENTRATED error (profile-exponent base, styled
+edges); they cannot fix uniform-in-v twist terms (those need uniform density) or angular
+demands (those need global stations). Classify first (crossing-invariance + patch id +
+edge locality), then choose the tool.

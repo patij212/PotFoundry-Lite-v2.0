@@ -18,6 +18,7 @@ import {
 } from './singlePatchAnnularRadialSolidTarget';
 import { createStyleOuterWallTargetRegistryBinding } from './styleOuterWallTargetRegistry';
 import {
+  dyadicEdgeLadder,
   tessellateAnnularRadialSolidTargetForCertification,
   type AnnularSolidReferenceTessellation,
   type AnnularSolidReferenceTessellationOptions,
@@ -136,6 +137,23 @@ describe('annular solid reference tessellation', () => {
     expect(structural.scanComplete).toBe(true);
   });
 
+  it('builds strictly increasing dyadic edge ladders toward either edge', () => {
+    const towardTop = dyadicEdgeLadder(3, 4, 'v1');
+    const towardBase = dyadicEdgeLadder(3, 4, 'v0');
+    for (const ladder of [towardTop, towardBase]) {
+      expect(ladder.log2Denominator).toBe(7);
+      expect(ladder.numerators[0]).toBe(0);
+      expect(ladder.numerators[ladder.numerators.length - 1]).toBe(128);
+      expect(ladder.numerators.length).toBe(8 + 4 + 1);
+      for (let station = 1; station < ladder.numerators.length; station += 1) {
+        expect(ladder.numerators[station]).toBeGreaterThan(ladder.numerators[station - 1]);
+      }
+    }
+    // Finest rows hug the requested edge with geometrically halving widths.
+    expect(towardTop.numerators.slice(-3)).toEqual([126, 127, 128]);
+    expect(towardBase.numerators.slice(0, 3)).toEqual([0, 1, 2]);
+  });
+
   it('assigns every artifact triangle to exactly one exact dyadic patch partition', () => {
     const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
     const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
@@ -171,12 +189,14 @@ describe('annular solid reference tessellation', () => {
   const CERTIFIED_POTS: readonly {
     styleId: string;
     styleParams: Readonly<Record<string, number>>;
+    geometry: typeof SMALL_POT_GEOMETRY;
     divisions: AnnularSolidReferenceTessellationOptions;
     maxElapsedMilliseconds: number;
   }[] = [
     {
       styleId: 'HarmonicRipple',
       styleParams: GENTLE_HARMONIC_RIPPLE,
+      geometry: SMALL_POT_GEOMETRY,
       divisions: SMALL_POT_DIVISIONS,
       maxElapsedMilliseconds: 30_000,
     },
@@ -188,6 +208,7 @@ describe('annular solid reference tessellation', () => {
         spiral_groove_amp: 0,
         spiral_turns: 0.2,
       },
+      geometry: SMALL_POT_GEOMETRY,
       divisions: {
         angularDivisionsLog2: 8,
         verticalDivisionsLog2ByPatch: {
@@ -208,6 +229,7 @@ describe('annular solid reference tessellation', () => {
     {
       styleId: 'FourierBloom',
       styleParams: {},
+      geometry: SMALL_POT_GEOMETRY,
       divisions: {
         angularDivisionsLog2: 10,
         verticalDivisionsLog2ByPatch: {
@@ -221,6 +243,32 @@ describe('annular solid reference tessellation', () => {
       },
       maxElapsedMilliseconds: 110_000,
     },
+    // PRODUCTION-DEFAULT SCALE (OD140/H120, gentle params) — certified
+    // 9,499,996 pm over 155,648 triangles in ~85 s. The live profile
+    // exponent t^1.1 has unbounded curvature at the base (kappa ~ t^-0.9);
+    // the geometric v0 wall ladders match that divergence — each dyadic
+    // halving toward the base halves the local sag.
+    {
+      styleId: 'HarmonicRipple',
+      styleParams: GENTLE_HARMONIC_RIPPLE,
+      geometry: Object.freeze({ ...DEFAULT_GEOMETRY, r_drain: 10 }),
+      divisions: {
+        angularDivisionsLog2: 9,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 5,
+          'bottom-under': 5,
+          'drain-wall': 1,
+        },
+        verticalStationsByPatch: {
+          'outer-wall': dyadicEdgeLadder(5, 7, 'v0'),
+          'inner-wall': dyadicEdgeLadder(5, 7, 'v0'),
+        },
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
   ];
 
   // The pot-scale composed proofs take ~20-25 s each, so they ride the
@@ -229,11 +277,11 @@ describe('annular solid reference tessellation', () => {
   // partial certification at the 0.01 mm claim.
   for (const certified of CERTIFIED_POTS) {
     it.skipIf(!process.env.PF_G2_POT)(
-      `proves a complete small ${certified.styleId} pot to the continuous 0.01 mm partial certificate`,
+      `proves a complete ${certified.styleId} pot (${certified.geometry.top_od}mm OD) to the continuous 0.01 mm partial certificate`,
       { timeout: 180_000 },
       () => {
         const { binding, canonicalInput } = atlas(
-          SMALL_POT_GEOMETRY,
+          certified.geometry,
           certified.styleParams,
           certified.styleId
         );

@@ -27,13 +27,67 @@ import {
  *   which the atlas's baked-in parameter reversals turn into material-outward
  *   winding on every patch.
  */
+/**
+ * Explicit non-uniform vertical stations for one patch: strictly increasing
+ * integer numerators over 2^log2Denominator, starting at 0 and ending at
+ * 2^log2Denominator. Lets a patch spend rows where its target needs them
+ * (e.g. geometrically refined toward a styled edge) while every station
+ * stays exactly dyadic for the partition proof.
+ */
+export interface VerticalStationLadder {
+  readonly log2Denominator: number;
+  readonly numerators: readonly number[];
+}
+
 export interface AnnularSolidReferenceTessellationOptions {
   /** log2 of the shared angular division count (all patches use 2^a cells in u). */
   readonly angularDivisionsLog2: number;
-  /** log2 of each patch's vertical division count (2^b cells in v). */
+  /** log2 of each patch's uniform vertical division count (2^b cells in v). */
   readonly verticalDivisionsLog2ByPatch: Readonly<
     Record<AnnularRadialSolidPatchId, number>
   >;
+  /** Optional per-patch non-uniform station ladders overriding the uniform grid. */
+  readonly verticalStationsByPatch?: Readonly<
+    Partial<Record<AnnularRadialSolidPatchId, VerticalStationLadder>>
+  >;
+}
+
+/**
+ * Build a dyadic ladder that is uniform at 2^uniformDivisionsLog2 rows and
+ * then halves the row adjacent to the chosen edge `refinements` times, so
+ * row widths shrink geometrically into the edge. Total rows =
+ * 2^uniformDivisionsLog2 + refinements.
+ */
+export function dyadicEdgeLadder(
+  uniformDivisionsLog2: number,
+  refinements: number,
+  edge: 'v0' | 'v1'
+): VerticalStationLadder {
+  if (
+    !Number.isSafeInteger(uniformDivisionsLog2) ||
+    uniformDivisionsLog2 < 0 ||
+    uniformDivisionsLog2 > MAX_VERTICAL_DIVISIONS_LOG2 ||
+    !Number.isSafeInteger(refinements) ||
+    refinements < 0 ||
+    uniformDivisionsLog2 + refinements > MAX_LADDER_LOG2_DENOMINATOR
+  ) {
+    invalid('dyadicEdgeLadder arguments are out of range');
+  }
+  const log2Denominator = uniformDivisionsLog2 + refinements;
+  const denominator = 1 << log2Denominator;
+  const uniformStep = 1 << refinements;
+  const numerators: number[] = [];
+  for (let station = 0; station <= 1 << uniformDivisionsLog2; station += 1) {
+    numerators.push(station * uniformStep);
+  }
+  for (let step = 1; step <= refinements; step += 1) {
+    const offset = uniformStep >> step;
+    // Insert immediately inside the edge terminus so the stations stay
+    // strictly increasing and each new row halves the previous edge row.
+    if (edge === 'v1') numerators.splice(numerators.length - 1, 0, denominator - offset);
+    else numerators.splice(1, 0, offset);
+  }
+  return Object.freeze({ log2Denominator, numerators: Object.freeze(numerators) });
 }
 
 export interface AnnularSolidReferenceTessellation {
@@ -54,7 +108,65 @@ const PATCH_IDS: readonly AnnularRadialSolidPatchId[] = Object.freeze([
 const MIN_DIVISIONS_LOG2 = 0;
 const MAX_ANGULAR_DIVISIONS_LOG2 = 12;
 const MAX_VERTICAL_DIVISIONS_LOG2 = 10;
+const MAX_LADDER_LOG2_DENOMINATOR = 20;
+const MAX_LADDER_STATIONS = 4_097;
 const MAX_REFERENCE_TRIANGLES = 2_097_152;
+
+interface ResolvedStations {
+  readonly log2Denominator: number;
+  readonly numerators: readonly number[];
+  /** Exact dyadic station values numerator * 2^-log2Denominator. */
+  readonly values: Float64Array;
+}
+
+function resolveStations(
+  patchId: AnnularRadialSolidPatchId,
+  uniformLog2: number,
+  ladder: VerticalStationLadder | undefined
+): ResolvedStations {
+  if (ladder === undefined) {
+    const divisions = 1 << uniformLog2;
+    const numerators: number[] = [];
+    const values = new Float64Array(divisions + 1);
+    for (let station = 0; station <= divisions; station += 1) {
+      numerators.push(station);
+      values[station] = station / divisions;
+    }
+    return { log2Denominator: uniformLog2, numerators, values };
+  }
+  const log2Denominator = ladder.log2Denominator;
+  if (
+    !Number.isSafeInteger(log2Denominator) ||
+    log2Denominator < 1 ||
+    log2Denominator > MAX_LADDER_LOG2_DENOMINATOR
+  ) {
+    invalid(`verticalStationsByPatch['${patchId}'].log2Denominator out of range`);
+  }
+  const numerators = ladder.numerators;
+  const denominator = 1 << log2Denominator;
+  if (
+    !Array.isArray(numerators) ||
+    numerators.length < 2 ||
+    numerators.length > MAX_LADDER_STATIONS ||
+    numerators[0] !== 0 ||
+    numerators[numerators.length - 1] !== denominator
+  ) {
+    invalid(`verticalStationsByPatch['${patchId}'] must run 0..2^${log2Denominator}`);
+  }
+  const values = new Float64Array(numerators.length);
+  const scale = 2 ** -log2Denominator;
+  for (let station = 0; station < numerators.length; station += 1) {
+    const numerator = numerators[station];
+    if (
+      !Number.isSafeInteger(numerator) ||
+      (station > 0 && numerator <= numerators[station - 1])
+    ) {
+      invalid(`verticalStationsByPatch['${patchId}'] must be strictly increasing integers`);
+    }
+    values[station] = numerator * scale;
+  }
+  return { log2Denominator, numerators, values };
+}
 
 interface PatchGrid {
   readonly patchId: AnnularRadialSolidPatchId;
@@ -87,11 +199,12 @@ function evaluatePatchGrid(
   patchId: AnnularRadialSolidPatchId,
   evaluateFloat64: (u: number, v: number) => readonly [number, number, number],
   angularDivisions: number,
-  verticalDivisions: number
+  stationValues: Float64Array
 ): PatchGrid {
+  const verticalDivisions = stationValues.length - 1;
   const coordinates = new Float64Array((verticalDivisions + 1) * (angularDivisions + 1) * 3);
   for (let vStation = 0; vStation <= verticalDivisions; vStation += 1) {
-    const v = vStation / verticalDivisions;
+    const v = stationValues[vStation];
     for (let uStation = 0; uStation < angularDivisions; uStation += 1) {
       const point = evaluateFloat64(uStation / angularDivisions, v);
       if (!Number.isFinite(point[0]) || !Number.isFinite(point[1]) || !Number.isFinite(point[2])) {
@@ -183,16 +296,18 @@ export function tessellateAnnularRadialSolidTargetForCertification(
     invalid('verticalDivisionsLog2ByPatch must be a record');
   }
   const angularDivisions = 1 << angularLog2;
-  const verticalLog2: Map<AnnularRadialSolidPatchId, number> = new Map();
+  const ladders = options.verticalStationsByPatch ?? {};
+  if (typeof ladders !== 'object' || ladders === null) {
+    invalid('verticalStationsByPatch must be a record when present');
+  }
+  const stationsByPatch: Map<AnnularRadialSolidPatchId, ResolvedStations> = new Map();
   for (const patchId of PATCH_IDS) {
-    verticalLog2.set(
-      patchId,
-      divisionsLog2(
-        verticalByPatch[patchId],
-        MAX_VERTICAL_DIVISIONS_LOG2,
-        `verticalDivisionsLog2ByPatch['${patchId}']`
-      )
+    const uniformLog2 = divisionsLog2(
+      verticalByPatch[patchId],
+      MAX_VERTICAL_DIVISIONS_LOG2,
+      `verticalDivisionsLog2ByPatch['${patchId}']`
     );
+    stationsByPatch.set(patchId, resolveStations(patchId, uniformLog2, ladders[patchId]));
   }
 
   const programs = authenticated.programs;
@@ -201,9 +316,9 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   }
   let triangleCount = 0;
   for (const program of programs) {
-    const log2 = verticalLog2.get(program.patchId);
-    if (log2 === undefined) invalid(`unknown atlas patch '${program.patchId}'`);
-    triangleCount += 2 * angularDivisions * (1 << log2);
+    const stations = stationsByPatch.get(program.patchId);
+    if (stations === undefined) invalid(`unknown atlas patch '${program.patchId}'`);
+    triangleCount += 2 * angularDivisions * (stations.numerators.length - 1);
   }
   if (triangleCount > MAX_REFERENCE_TRIANGLES) {
     invalid(`requested grid needs ${triangleCount} triangles > ${MAX_REFERENCE_TRIANGLES}`);
@@ -211,15 +326,15 @@ export function tessellateAnnularRadialSolidTargetForCertification(
 
   const grids = new Map<AnnularRadialSolidPatchId, PatchGrid>();
   for (const program of programs) {
-    const log2 = verticalLog2.get(program.patchId);
-    if (log2 === undefined) invalid(`unknown atlas patch '${program.patchId}'`);
+    const stations = stationsByPatch.get(program.patchId);
+    if (stations === undefined) invalid(`unknown atlas patch '${program.patchId}'`);
     grids.set(
       program.patchId,
       evaluatePatchGrid(
         program.patchId,
         program.backends.evaluateFloat64,
         angularDivisions,
-        1 << log2
+        stations.values
       )
     );
   }
@@ -232,14 +347,16 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   let artifactTriangleIndex = 0;
   for (const program of programs) {
     const grid = grids.get(program.patchId);
-    const verticalLog2ForPatch = verticalLog2.get(program.patchId);
-    if (grid === undefined || verticalLog2ForPatch === undefined) {
+    const stations = stationsByPatch.get(program.patchId);
+    if (grid === undefined || stations === undefined) {
       invalid(`unknown atlas patch '${program.patchId}'`);
     }
     const verticalDivisions = grid.verticalDivisions;
-    const fractionBits = Math.max(angularLog2, verticalLog2ForPatch);
+    const fractionBits = Math.max(angularLog2, stations.log2Denominator);
     const uNumeratorStep = 1 << (fractionBits - angularLog2);
-    const vNumeratorStep = 1 << (fractionBits - verticalLog2ForPatch);
+    const vNumeratorScale = 1 << (fractionBits - stations.log2Denominator);
+    const stationNumerator = (vStation: number): number =>
+      stations.numerators[vStation] * vNumeratorScale;
     const maxNumerator = (1 << fractionBits).toString();
     const triangles: {
       artifactTriangleIndex: number;
@@ -276,15 +393,15 @@ export function tessellateAnnularRadialSolidTargetForCertification(
             vertices: [
               {
                 uNumerator: (cellTriangle[0][0] * uNumeratorStep).toString(),
-                vNumerator: (cellTriangle[0][1] * vNumeratorStep).toString(),
+                vNumerator: stationNumerator(cellTriangle[0][1]).toString(),
               },
               {
                 uNumerator: (cellTriangle[1][0] * uNumeratorStep).toString(),
-                vNumerator: (cellTriangle[1][1] * vNumeratorStep).toString(),
+                vNumerator: stationNumerator(cellTriangle[1][1]).toString(),
               },
               {
                 uNumerator: (cellTriangle[2][0] * uNumeratorStep).toString(),
-                vNumerator: (cellTriangle[2][1] * vNumeratorStep).toString(),
+                vNumerator: stationNumerator(cellTriangle[2][1]).toString(),
               },
             ],
           });
