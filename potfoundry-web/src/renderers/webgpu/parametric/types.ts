@@ -203,10 +203,18 @@ export interface ParametricExportResult {
     };
     /** Quality profile used for this export (if resolved). */
     qualityProfile?: QualityProfileName;
-    /** Effective tolerances used (after profile + overrides resolution). */
+    /** Effective heuristic thresholds used (after profile + overrides resolution). */
     effectiveTolerances?: ExportTolerances;
-    /** Whether the export passed all tolerance gates. */
-    tolerancesPassed?: boolean;
+    /**
+     * @deprecated Fail-closed compatibility field. This is never true because the
+     * production export path does not yet prove continuous or final-byte error.
+     */
+    tolerancesPassed?: false;
+    /**
+     * Whether the sampled adaptive-refinement heuristic met its configured
+     * thresholds. This is telemetry, not a continuous or final-artifact proof.
+     */
+    heuristicRefinementPassed?: boolean;
     /** If the profile was downgraded due to resource limits, the original profile. */
     requestedProfile?: QualityProfileName;
     /** If downgraded, the reason string. */
@@ -291,7 +299,7 @@ export interface ValidationSummary {
  * Summary of the adaptive refinement pass.
  */
 export interface RefinementSummary {
-    /** Whether all tolerances are satisfied after refinement. */
+    /** Whether sampled adaptive-refinement heuristics met their thresholds. */
     tolerancesPassed: boolean;
     /** Number of refinement iterations performed. */
     iterationsPerformed: number;

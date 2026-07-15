@@ -11,6 +11,11 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../state';
 import {
+    materializeSharedStyleOptions,
+    requireNormalizedStylePayload,
+    resolveStyleId,
+} from '../styles/runtimeContract';
+import {
     downloadSTL,
     downloadMesh,
     calculateMeshVolume,
@@ -31,7 +36,7 @@ import {
     DEFAULT_EXPORT_QUALITY_PROFILE,
     getQualityProfile,
 } from '../renderers/webgpu/parametric/QualityProfiles';
-import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
+import { STYLE_IDS, STYLE_FUNCTION_MAP } from '../styles/registry';
 import { stripShaderCode } from '../utils/shaderStripper';
 import { useControllerMaybe } from '../context/ControllerContext';
 import { isMobileDevice } from '../ResizeManager';
@@ -265,9 +270,24 @@ export function useParametricExport(): UseParametricExportResult {
                 });
 
                 // Build shader
-                const styleIdVal = (style.name as StyleId) ?? 'SuperformulaBlossom';
-                const styleIndex = STYLE_IDS[styleIdVal] ?? 0;
-                const functionName = (STYLE_FUNCTION_MAP as Record<number, string>)[styleIndex] || 'sf_radius';
+                const styleIdVal = resolveStyleId(style.name);
+                if (!styleIdVal) {
+                    throw new Error(
+                        `[style-runtime] Unknown style '${style.name}'; shader initialization never falls back`
+                    );
+                }
+                const styleIndex = STYLE_IDS[styleIdVal];
+                if (styleIndex === undefined) {
+                    throw new Error(
+                        `[style-runtime] Unknown style '${style.name}'; shader initialization never falls back`
+                    );
+                }
+                const functionName = (STYLE_FUNCTION_MAP as Record<number, string>)[styleIndex];
+                if (!functionName) {
+                    throw new Error(
+                        `[style-runtime] ${styleIdVal} has no shader function for registry index ${styleIndex}`
+                    );
+                }
                 const strippedStyles = stripShaderCode(stylesWgsl, functionName);
 
                 const dispatchCode = `
@@ -322,16 +342,13 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         opts.bellCenter = geometry.bellCenter ?? 0.5;
         opts.bellWidth = geometry.bellWidth ?? 0.22;
 
-        const styleOpts = style.opts;
-        if (styleOpts) {
-            Object.entries(styleOpts).forEach(([key, value]) => {
-                if (typeof value === 'number') {
-                    opts[key] = value;
-                }
-            });
-        }
+        const normalized = requireNormalizedStylePayload(style.name, style.opts ?? {});
 
-        return opts;
+        return {
+            styleId: normalized.styleId,
+            styleIndex: normalized.styleIndex,
+            styleOpts: materializeSharedStyleOptions(normalized, opts),
+        };
     }, [style, geometry, mesh]);
 
     const generateMesh = useCallback(async (targetTriangles?: number, overrides?: ParametricExportOverrides): Promise<MeshData | null> => {
@@ -377,22 +394,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
                 expn: geometry.expn,
             };
 
-            let styleId = style.name as StyleId;
-            let styleIndex = STYLE_IDS[styleId];
-            if (styleIndex === undefined) {
-                const foundEntry = Object.entries(STYLE_REGISTRY).find(
-                    ([_, config]) => config.name === style.name
-                );
-                if (foundEntry) {
-                    styleId = foundEntry[0] as StyleId;
-                    styleIndex = foundEntry[1].id;
-                } else {
-                    styleIndex = 0;
-                    styleId = 'SuperformulaBlossom';
-                }
-            }
-
-            const styleOpts = buildStyleOptions();
+            const { styleId, styleIndex, styleOpts } = buildStyleOptions();
 
             const params: ParametricExportParams = {
                 dimensions,

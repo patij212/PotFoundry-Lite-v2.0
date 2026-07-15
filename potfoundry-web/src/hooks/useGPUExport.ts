@@ -14,12 +14,16 @@ import {
     calculateMeshSurfaceArea,
     estimateSTLSize,
     formatFileSize,
-    StyleId,
     MeshData,
     type ExportFormat,
 } from '../geometry';
 import { ExportComputer, type ExportParams, type ExportResult } from '../renderers/webgpu/ExportComputer';
-import { STYLE_IDS, STYLE_FUNCTION_MAP, STYLE_REGISTRY } from '../styles/registry';
+import { STYLE_IDS, STYLE_FUNCTION_MAP } from '../styles/registry';
+import {
+    materializeSharedStyleOptions,
+    requireNormalizedStylePayload,
+    resolveStyleId,
+} from '../styles/runtimeContract';
 import { stripShaderCode } from '../utils/shaderStripper';
 
 // Import shader sources
@@ -158,12 +162,19 @@ export function useGPUExport(): UseGPUExportResult {
                 if (!computerRef.current) return;
 
                 // 2. Identify active style function
-                const styleIdVal = (style.name as StyleId) ?? 'SuperformulaBlossom';
-                const styleIndex = STYLE_IDS[styleIdVal] ?? 0;
-                // Import map dynamically or assume it's available? 
-                // We need to import STYLE_FUNCTION_MAP.
-                // Assuming it's imported at top (I will add import in next step if missed, but assume I add it)
-                const functionName = STYLE_FUNCTION_MAP[styleIndex] ?? 'sf_radius';
+                const styleIdVal = resolveStyleId(style.name);
+                if (!styleIdVal) {
+                    throw new Error(
+                        `[style-runtime] Unknown style '${style.name}'; GPU shader initialization never falls back`
+                    );
+                }
+                const styleIndex = STYLE_IDS[styleIdVal];
+                const functionName = STYLE_FUNCTION_MAP[styleIndex];
+                if (!functionName) {
+                    throw new Error(
+                        `[style-runtime] ${styleIdVal} has no GPU shader function for registry index ${styleIndex}`
+                    );
+                }
 
                 // 3. Strip unused styles to reduce bloat/conflicts and generate dispatch
                 const strippedStyles = stripShaderCode(stylesWgsl, functionName);
@@ -245,18 +256,13 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
         opts.flareCenter = 0.5;
         opts.flareSharp = 6.0;
 
-        // Add style-specific parameters
-        const styleOpts = style.opts;
-        if (styleOpts) {
-            Object.entries(styleOpts).forEach(([key, value]) => {
-                if (typeof value === 'number') {
-                    opts[key] = value;
-                }
-            });
-        }
-
-        return opts;
-    }, [style, geometry]);
+        const normalized = requireNormalizedStylePayload(style.name, style.opts ?? {});
+        return {
+            styleId: normalized.styleId,
+            styleIndex: normalized.styleIndex,
+            styleOpts: materializeSharedStyleOptions(normalized, opts),
+        };
+    }, [style, geometry, mesh]);
 
     /**
      * Generate mesh using GPU compute
@@ -314,27 +320,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
 
             const quality = { nTheta, nZ };
 
-            // Map style name to ID with robust fallback
-            let styleId = (style.name as StyleId);
-            let styleIndex = STYLE_IDS[styleId];
-
-            if (styleIndex === undefined) {
-                // Try to find by Display Name (e.g. "Celtic Knot" -> "CelticKnot")
-                const foundEntry = Object.entries(STYLE_REGISTRY).find(([_, config]) => config.name === style.name);
-
-                if (foundEntry) {
-                    styleId = foundEntry[0] as StyleId;
-                    styleIndex = foundEntry[1].id;
-                    if (import.meta.env.DEV) console.log(`[useGPUExport] Mapped display name "${style.name}" to key "${styleId}" (ID: ${styleIndex})`);
-                } else {
-                    console.warn(`[useGPUExport] Style ID not found for "${style.name}". Defaulting to 0 (Superformula).`);
-                    styleIndex = 0;
-                    styleId = 'SuperformulaBlossom';
-                }
-            }
-
-            // Build style options
-            const styleOpts = buildStyleOptions();
+            const { styleId, styleIndex, styleOpts } = buildStyleOptions();
 
             setProgress({
                 status: 'generating',

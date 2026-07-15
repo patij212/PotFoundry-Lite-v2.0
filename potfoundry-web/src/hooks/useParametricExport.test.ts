@@ -70,6 +70,12 @@ vi.mock('../geometry', async (importOriginal) => {
 });
 
 import { useParametricExport } from './useParametricExport';
+import { useAppStore } from '../state';
+
+const baselineStyle = {
+    name: useAppStore.getState().style.name,
+    opts: { ...useAppStore.getState().style.opts },
+};
 
 async function renderReadyHook() {
     const view = renderHook(() => useParametricExport());
@@ -309,5 +315,91 @@ describe('useParametricExport budget/profile plumbing', () => {
         };
         expect(params.qualityProfile).toBeUndefined();
         expect(params.toleranceOverrides).toEqual({ epsPosMm: 0.04, epsNormalDeg: 3 });
+    });
+});
+
+describe('useParametricExport strict style runtime boundary', () => {
+    beforeEach(() => {
+        computeParamsSpy.mockClear();
+    });
+
+    afterEach(() => {
+        act(() => {
+            useAppStore.setState({
+                style: { name: baselineStyle.name, opts: { ...baselineStyle.opts } },
+            });
+        });
+        vi.restoreAllMocks();
+    });
+
+    it('forwards one validated payload with wire and CPU evaluator aliases', async () => {
+        act(() => {
+            useAppStore.setState({
+                style: {
+                    name: 'WaveInterference',
+                    opts: {
+                        wi_feature_count: 2.25,
+                        wi_relief_depth: 7.5,
+                        wi_phase: 0.375,
+                    },
+                },
+            });
+        });
+        const { result } = await renderReadyHook();
+
+        await act(async () => {
+            await result.current.generateMesh();
+        });
+
+        const params = computeParamsSpy.mock.calls[0][0] as {
+            styleId: string;
+            styleOpts: Record<string, number>;
+        };
+        expect(params.styleId).toBe('WaveInterference');
+        expect(params.styleOpts.wi_feature_count).toBe(2.25);
+        expect(params.styleOpts.wiFeatureCount).toBe(2.25);
+        expect(params.styleOpts.wi_relief_depth).toBe(7.5);
+        expect(params.styleOpts.wiReliefDepth).toBe(7.5);
+        expect(params.styleOpts.wi_phase).toBe(0.375);
+        expect(params.styleOpts.wiPhase).toBe(0.375);
+    });
+
+    it('rejects an out-of-range control before invoking the mesher', async () => {
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        act(() => {
+            useAppStore.setState({
+                style: {
+                    name: 'WaveInterference',
+                    opts: { wi_feature_count: 999 },
+                },
+            });
+        });
+        const { result } = await renderReadyHook();
+
+        let mesh: unknown;
+        await act(async () => {
+            mesh = await result.current.generateMesh();
+        });
+
+        expect(mesh).toBeNull();
+        expect(computeParamsSpy).not.toHaveBeenCalled();
+        expect(result.current.progress.status).toBe('error');
+        expect(result.current.progress.message).toMatch(/outside \[0, 3\]/);
+        expect(errorSpy).toHaveBeenCalled();
+    });
+
+    it('rejects an unknown style during shader initialization instead of compiling style zero', async () => {
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+        act(() => {
+            useAppStore.setState({ style: { name: 'NotAStyle', opts: {} } });
+        });
+
+        const view = renderHook(() => useParametricExport());
+        await waitFor(() => expect(errorSpy).toHaveBeenCalled());
+
+        expect(view.result.current.isAvailable).toBe(false);
+        expect(errorSpy.mock.calls.flat().map(String).join(' ')).toContain(
+            "Unknown style 'NotAStyle'; shader initialization never falls back"
+        );
     });
 });

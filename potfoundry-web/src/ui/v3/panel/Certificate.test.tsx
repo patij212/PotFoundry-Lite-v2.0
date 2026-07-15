@@ -66,9 +66,9 @@ describe('Certificate', () => {
 
     // All checks should be present
     expect(screen.getByText(/watertight/)).toBeInTheDocument();
-    expect(screen.getByText(/mesh valid/)).toBeInTheDocument();
+    expect(screen.getByText(/topology checks passed/)).toBeInTheDocument();
     expect(screen.getByText(/triangles/)).toBeInTheDocument();
-    expect(screen.getByText(/p95 deviation/)).toBeInTheDocument();
+    expect(screen.queryByText(/p95 deviation/)).not.toBeInTheDocument();
   });
 
   it('shows checkmark for passing checks', () => {
@@ -103,7 +103,7 @@ describe('Certificate', () => {
     expect(screen.getByText(/2 boundary edges at rim seam/)).toBeInTheDocument();
   });
 
-  it('shows printable message when valid and manifoldOk', () => {
+  it('labels topology-clean output as uncertified and avoids printability claims', () => {
     const stats = mockStats({
       validationSummary: mockValidationSummary({
         valid: true,
@@ -112,10 +112,11 @@ describe('Certificate', () => {
     });
     render(<Certificate filename="test" stats={stats} />);
 
-    expect(screen.getByText(/printable on any FDM\/SLA slicer/)).toBeInTheDocument();
+    expect(screen.getByText(/not certified to 0\.01 mm/)).toBeInTheDocument();
+    expect(screen.queryByText(/printable on any FDM\/SLA slicer/)).not.toBeInTheDocument();
   });
 
-  it('does not show printable message when manifoldOk is false', () => {
+  it('keeps the uncertified disclosure when manifoldOk is false', () => {
     const stats = mockStats({
       validationSummary: mockValidationSummary({
         valid: true,
@@ -124,10 +125,10 @@ describe('Certificate', () => {
     });
     render(<Certificate filename="test" stats={stats} />);
 
-    expect(screen.queryByText(/printable on any FDM\/SLA slicer/)).not.toBeInTheDocument();
+    expect(screen.getByText(/not certified to 0\.01 mm/)).toBeInTheDocument();
   });
 
-  it('does not show printable message when valid is false', () => {
+  it('keeps the uncertified disclosure when topology validity is false', () => {
     const stats = mockStats({
       validationSummary: mockValidationSummary({
         valid: false,
@@ -136,7 +137,7 @@ describe('Certificate', () => {
     });
     render(<Certificate filename="test" stats={stats} />);
 
-    expect(screen.queryByText(/printable on any FDM\/SLA slicer/)).not.toBeInTheDocument();
+    expect(screen.getByText(/not certified to 0\.01 mm/)).toBeInTheDocument();
   });
 
   it('renders only header and triangles when no validation summary', () => {

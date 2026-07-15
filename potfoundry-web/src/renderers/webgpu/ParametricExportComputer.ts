@@ -7296,7 +7296,10 @@ export class ParametricExportComputer {
                 },
                 qualityProfile: effectiveProfileName,
                 effectiveTolerances,
-                tolerancesPassed: validationSummary?.valid ?? refinementSummary?.tolerancesPassed,
+                // Fail closed: topology validity and sampled refinement are not a
+                // continuous or final-byte tolerance certificate.
+                tolerancesPassed: false,
+                heuristicRefinementPassed: refinementSummary?.tolerancesPassed,
                 requestedProfile,
                 validationSummary,
                 refinementSummary,

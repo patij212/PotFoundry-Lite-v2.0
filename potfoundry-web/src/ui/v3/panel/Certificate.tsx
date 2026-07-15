@@ -29,7 +29,7 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, format = 'st
       warning: vs.manifoldOk ? undefined : vs.warnings[0],
     });
     checks.push({
-      label: 'mesh valid',
+      label: 'topology checks passed',
       pass: vs.valid,
       // Use a distinct warning for the second failing check so both rows are informative
       warning: vs.valid ? undefined : (vs.warnings[1] ?? vs.warnings[0]),
@@ -41,16 +41,6 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, format = 'st
     label: `${stats.triangleCount.toLocaleString()} triangles`,
     pass: true,
   });
-
-  // P95 error check (when present)
-  if (vs?.p95PosErrorMm !== undefined) {
-    checks.push({
-      label: `${vs.p95PosErrorMm} mm p95 deviation`,
-      pass: true,
-    });
-  }
-
-  const canPrint = vs ? vs.valid && vs.manifoldOk : false;
 
   return (
     <div className="pf3-certificate">
@@ -72,11 +62,9 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, format = 'st
             ))}
           </div>
 
-          {canPrint && (
-            <div className="pf3-certificate__subline">
-              printable on any FDM/SLA slicer
-            </div>
-          )}
+          <div className="pf3-certificate__subline pf3-certificate__subline--uncertified">
+            topology report only — not certified to 0.01 mm; slicer acceptance and printability are not guaranteed
+          </div>
 
           <DisclosureSeam id="certificate-report" summary="full report ⌄">
             <div className="pf3-certificate__report">
@@ -111,12 +99,19 @@ export const Certificate: React.FC<CertificateProps> = ({ filename, format = 'st
       )}
 
       {!vs && (
-        <div className="pf3-certificate__checklist">
-          <div className="pf3-certificate__item pf3-certificate__item--ok">
-            <span className="pf3-certificate__mark">✓</span>
-            <span className="pf3-mono pf3-certificate__label">{stats.triangleCount.toLocaleString()} triangles</span>
+        <>
+          <div className="pf3-certificate__checklist">
+            <div className="pf3-certificate__item pf3-certificate__item--ok">
+              <span className="pf3-certificate__mark">✓</span>
+              <span className="pf3-mono pf3-certificate__label">
+                {stats.triangleCount.toLocaleString()} triangles
+              </span>
+            </div>
           </div>
-        </div>
+          <div className="pf3-certificate__subline pf3-certificate__subline--uncertified">
+            topology report only — not certified to 0.01 mm; slicer acceptance and printability are not guaranteed
+          </div>
+        </>
       )}
     </div>
   );

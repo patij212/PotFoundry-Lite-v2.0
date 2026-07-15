@@ -14,11 +14,14 @@ import {
   calculateMeshSurfaceArea,
   estimateSTLSize,
   formatFileSize,
-  StyleId,
   StyleOptions,
   MeshResult,
   ExportFormat,
 } from '../geometry';
+import {
+  materializeSharedStyleOptions,
+  requireNormalizedStylePayload,
+} from '../styles/runtimeContract';
 
 // ============================================================================
 // Types
@@ -96,7 +99,7 @@ export function useExport(): UseExportResult {
   /**
    * Build style options from current state
    */
-  const buildStyleOptions = useCallback((): StyleOptions => {
+  const buildStyleOptions = useCallback(() => {
     const opts: StyleOptions = {};
 
     // Add spin parameters from geometry state
@@ -116,28 +119,11 @@ export function useExport(): UseExportResult {
     opts.flareCenter = 0.5;
     opts.flareSharp = 6.0;
 
-    // Add style-specific parameters from current style state
-    const styleOpts = style.opts;
-    if (styleOpts) {
-      // Copy all style parameters to options, converting snake_case to camelCase
-      // The geometry functions expect camelCase (e.g. wiFeatureCount), but state has snake_case (wi_feature_count)
-      const toCamel = (s: string) => {
-        return s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
-      };
-
-      Object.entries(styleOpts).forEach(([key, value]) => {
-        if (typeof value === 'number') {
-          opts[key] = value;
-          // Also set the camelCase version
-          const camelKey = toCamel(key);
-          if (camelKey !== key) {
-            opts[camelKey] = value;
-          }
-        }
-      });
-    }
-
-    return opts;
+    const normalized = requireNormalizedStylePayload(style.name, style.opts ?? {});
+    return {
+      styleId: normalized.styleId,
+      styleOpts: materializeSharedStyleOptions(normalized, opts),
+    };
   }, [style, geometry]);
 
   /**
@@ -165,49 +151,7 @@ export function useExport(): UseExportResult {
       // Quality will be built separately with safety caps applied
       // const quality = { nTheta, nZ, seamAngle } is in baseQuality below
 
-      // Map style name to StyleId
-      const styleIdMap: Record<string, StyleId> = {
-        HarmonicRipple: 'HarmonicRipple',
-        SuperformulaBlossom: 'SuperformulaBlossom',
-        FourierBloom: 'FourierBloom',
-        SpiralRidges: 'SpiralRidges',
-        SuperellipseMorph: 'SuperellipseMorph',
-        GothicArches: 'GothicArches',
-        WaveInterference: 'WaveInterference',
-        Crystalline: 'Crystalline',
-        ArtDeco: 'ArtDeco',
-        DragonScales: 'DragonScales',
-        BambooSegments: 'BambooSegments',
-        RippleInterference: 'RippleInterference',
-        LowPolyFacet: 'LowPolyFacet',
-        GyroidManifold: 'GyroidManifold',
-        Voronoi: 'Voronoi',
-        BasketWeave: 'BasketWeave',
-        GeometricStar: 'GeometricStar',
-        HexagonalHive: 'HexagonalHive',
-        CelticKnot: 'CelticKnot',
-        CelticTriquetra: 'CelticTriquetra',
-        // Legacy snake_case mappings
-        superformula_blossom: 'SuperformulaBlossom',
-        fourier_bloom: 'FourierBloom',
-        spiral_ridges: 'SpiralRidges',
-        superellipse_morph: 'SuperellipseMorph',
-        harmonic_ripple: 'HarmonicRipple',
-        gothic_arches: 'GothicArches',
-        wave_interference: 'WaveInterference',
-        crystalline: 'Crystalline',
-        art_deco: 'ArtDeco',
-        dragon_scales: 'DragonScales',
-        bamboo_segments: 'BambooSegments',
-        ripple_interference: 'RippleInterference',
-      };
-
-      // Try exact match, then legacy map, then name itself if it's a valid ID (as a fallback cast)
-      const mappedId = styleIdMap[style.name];
-      const styleId = mappedId ?? (style.name as StyleId);
-
-      // Build style options
-      const styleOpts = buildStyleOptions();
+      const { styleId, styleOpts } = buildStyleOptions();
 
       setProgress({
         status: 'generating',
