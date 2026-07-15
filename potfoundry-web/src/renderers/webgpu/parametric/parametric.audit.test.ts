@@ -688,12 +688,19 @@ describe('Parametric audit — Phase B: invariants', () => {
     /**
      * B8: Max aspect ratio bounded for mild-spiral configurations that DON'T
      * trigger the steep-delta split. F11-style config (22 chains, spiral 0.01,
-     * seam crossing, no multi-row gap). Phase A matrix: F11 maxAspect = 1235;
-     * F13: 608; F14: 7342. These configurations preserve all chain edges
-     * (none get dropped by Fix #3) but still produce slivers from chain-
-     * vertex / grid-column proximity. Pinning this bug here for future work.
+     * seam crossing, no multi-row gap).
+     *
+     * RESOLVED (2026-07-15): was `it.fails`, pinning a slivering bug (historic
+     * maxAspect 1235; 274.8 at F14 scale). Root cause was R58's cross-seam
+     * grid→chain remap (recordNearRowGridChainRemaps) using a WRAPPING U-metric:
+     * it bound u=0 perimeter grid vertices to u≈0.9996 chains across the seam,
+     * and the R55 index remap then stretched their triangles across the whole
+     * U-domain. Making R58's metric non-periodic (matching coalesceNearGridChain)
+     * removed those domain-spanning slivers → maxAspect now 24.7 for this config
+     * (15.5 at F14 scale). The same fix closes the F14 interior-boundary doubling
+     * pinned by OuterWallWatertight M/N.
      */
-    it.fails('B8: max aspect ratio < 100 for mild-spiral configs (no multi-row gap)', () => {
+    it('B8: max aspect ratio < 100 for mild-spiral configs (no multi-row gap)', () => {
         const fixture = buildFixture('B8', {
             numU: 200, numT: 50,
             chainSpec: { numChains: 22, numU: 0, numT: 0, spiralDuPerRow: 0.01, seamCrossingChainIdx: 0 },

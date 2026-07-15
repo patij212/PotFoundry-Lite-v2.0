@@ -891,11 +891,16 @@ export function recordNearRowGridChainRemaps(
     const T_KEY_SCALE = 1e6;
     const rowChainVertices = new Map<number, number[]>();
     const rowKey = (vertexIdx: number): number => Math.round(verts[vertexIdx * 3 + 1] * T_KEY_SCALE);
-    const rowDistanceU = (a: number, b: number): number => {
-        let du = Math.abs(verts[a * 3] - verts[b * 3]);
-        if (du > 0.5) du = 1 - du;
-        return du;
-    };
+    // True (non-periodic) U-distance — matches coalesceNearGridChain's metric
+    // (see ~L490). R58 must NOT coalesce across the u=0 / u=1 seam: a
+    // left-perimeter grid vertex (u≈0) is a distinct mesh vertex from a chain
+    // near the right seam (u≈0.9996); remapping it there tears the perimeter
+    // column. The seam is welded downstream by the fill battery
+    // (fillOuterWallSeamBoundaryChains), never here. A wrapping metric was the
+    // F14 doubling: each of the 83 phantom-row seam slivers gained one spurious
+    // collinear T-junction (interior boundary 83 → 166).
+    const rowDistanceU = (a: number, b: number): number =>
+        Math.abs(verts[a * 3] - verts[b * 3]);
 
     for (let vertexIdx = 0; vertexIdx < totalVertices; vertexIdx++) {
         if (!isChainLikeFn(vertexIdx)) continue;
@@ -938,10 +943,11 @@ export function recordNearRowGridChainRemaps(
                 nearestDist = dist;
             }
         };
+        // Nearest chain by U is always an in-order neighbour of the binary-search
+        // insertion point. The wraparound end-probes (check(0) / check(last)) were
+        // removed with the periodic metric above: cross-seam coalescing is invalid.
         check(lo - 1);
         check(lo);
-        check(0);
-        check(row.length - 1);
 
         if (nearest >= 0) {
             remap.set(vertexIdx, nearest);
