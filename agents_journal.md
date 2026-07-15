@@ -6503,3 +6503,68 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   cells) and wire finalStlPartialCertification into an env-gated e2e gate.
 - Mesher track unchanged: Gothic 0.44 / Gyroid 0.72 / DS rim 0.25 worst-case still need the
   feature-conforming remesher (region-core / M-surf kernel) before anything can certify.
+
+## 2026-07-15 - Claude Fable 5 - G2 continuous-proof completion: first certified closed pot at 0.01mm
+
+### Summary
+- Completed the audit's G2 "branch-and-bound on uncertain cells" gap: the landed decimal
+  hull-subtract enclosure is first-order in cell size (~0.4mm at pot scale, 42x over budget
+  at depth 0, ~32ms/cell), so it could only ever certify affine targets (the cube fixture).
+  Added a centered mean-value SCREEN — forward-mode interval AD over the compiled program
+  tape (interval Jacobian of target-minus-affine-artifact x centred offsets) — whose width
+  is second-order (sag-order), executed on a flat compiled opcode tape (WeakMap-cached,
+  Float64Array channels, relative-only outward widening + 1e-150 magnitude-floor refusal,
+  error-free-checked exact add/subtract).
+- Built `annularSolidReferenceTessellation` — certification-first mesher for the six-patch
+  annular atlas (shared dyadic angular stations, owner-evaluated junction welds with exact
+  station reversal, periodic seam reuse, CCW UV<->STL vertex correspondence) emitting final
+  STL bytes + exact dyadic partitions.
+- RESULT: `proveFinalStlMappedGeometryAndStructure` PASSES on a complete closed
+  HarmonicRipple pot (H40/OD30/drain6, gentle-but-valid params, 29k triangles):
+  geometricTwoSidedUpperPm <= 9.5e6 within the 0.01mm claim, full chain
+  (parse -> coverage -> continuous two-sided distance -> topology -> self-intersection ->
+  height) in ~20s. First continuously-certified closed curved solid in the project.
+- Also: restored research/lab/2026-07-12-raycast-oracle-fidelity.md after a SECOND harness
+  clobber (05:54 today, from the full `npm test` at landing — vitest includes research/**),
+  preserved the re-run rows as Addendum 2, env-gated the spike (PF_RAYCAST_SPIKE=1) and
+  redirected its outputs to research/spike-raycast-oracle/_out/ (gitignored).
+
+### Decisions
+- Screen is ACCEPTANCE-ONLY: a non-null outward enclosure within budget accepts; over-budget
+  screen answers below maxDepth subdivide directly (screen tightens quadratically); the
+  validated decimal enclosure decides whenever the screen is unavailable and at maximum
+  depth — no cell is refused on screen evidence alone. Manifests updated truthfully
+  (kernel v13, registry v7, compiler v10); no version-string pins existed.
+- Discontinuous ops (floor/step/sign/fract/round/atan2/pcg2d) refuse the screen whole-program;
+  power supports base >= 0 with near-constant exponent >= 1 via monotone corner bounds.
+- The pot e2e gate rides PF_G2_POT (repo convention for heavy gates); the weld/partition
+  tessellation tests stay always-on.
+- The proof layer earned its keep TWICE during bring-up: it refused my nV=1 annuli meshes
+  for a real ~31um mixed d2P/dudv ruled-surface twist error (annuli need v-cells), and
+  pinned a true 9.50010um point against the 9.5um budget at 2 rim v-cells.
+
+### Validation
+- Full targetSolid suite with PF_G2_POT=1: 58 files / 411 tests PASS. typecheck PASS,
+  lint PASS (0 warnings). Screen soundness: sampling-containment property (40 cells x 25
+  samples inside enclosure), discontinuity refusal + decimal fallback, exact-zero power
+  base decidability. detect_changes: 22 symbols / my 9 files, MEDIUM, 1 affected process
+  (the certify kernel itself). Background agents' files (OuterWallTessellator,
+  FeatureLineGraph, parametric.audit.test.ts) untouched.
+
+### Risks
+- Screen soundness rests on documented platform assumptions (libm <= 1 ulp per call, padded
+  8*2^-52; relative widening floor 1e-150) — cross-validated by tests, not formally proven.
+- Production-DEFAULT scale (OD140/H120, default HR params) still cannot fit the 131,072
+  mapped-triangle cap with a uniform grid; the env-gated fail-closed case documents the
+  refusal. Non-uniform dyadic vertical ladders are the next tessellation increment.
+- Proof throughput is now dominated by per-cell request construction (BigInt dyadic points,
+  ~100us/cell overall), not enclosure math — a numeric fast-path in requestForCell is the
+  next perf lever if bigger artifacts must fit the 30s composed deadline.
+
+### Next agent
+- Certify remaining smooth styles through the same gate (SuperellipseMorph, FourierBloom...)
+  and push toward default-scale via non-uniform vertical stations + the mapped-triangle cap.
+- The production mesher track is unchanged (Gothic 0.44 / Gyroid 0.72 need region-core/
+  M-surf); the JUDGE is now demonstrably able to certify curved solids when the candidate
+  generator is good enough — mesher outputs can be wired to partitions next.
+- Fresh all-20 baseline (containment #5) and on-GPU G1 differential remain open.
