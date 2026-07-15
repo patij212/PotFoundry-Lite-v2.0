@@ -403,7 +403,9 @@ export function createUniformBlock(
 
       // Drain radius
       const drainRaw = c.r_drain ?? c.drain ?? c.drainRadius ?? c.drain_radius ?? cur.r_drain;
-      buffer[O.DrainRadius] = Math.max(Math.abs(clampNumber(drainRaw, 10.0)), 0.5);
+      // Preserve the exact requested binary32 radius, including zero/no-drain.
+      // The prior 0.5 mm floor silently changed otherwise valid target solids.
+      buffer[O.DrainRadius] = Math.abs(clampNumber(drainRaw, 10.0));
 
       // Bell/bulge params
       buffer[O.BellAmp] = clampNumber(c.bellAmp, 0.0);

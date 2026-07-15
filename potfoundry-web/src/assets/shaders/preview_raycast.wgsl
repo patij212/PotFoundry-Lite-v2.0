@@ -98,8 +98,8 @@ fn pot_field(p: vec3<f32>) -> f32 {
   let r0_base = r_base(0.0);
   let r_out0 = style_radius(style_id, phi - phase, 0.0, r0_base); // delta(0) = phase
   let r_in0 = max(r_out0 - wall, 0.5);
-  let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
-  let r_drain = clamp(drain_raw, 0.25, max(r_in0 - 0.2, 0.25));
+  let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.0);
+  let r_drain = clamp(drain_raw, 0.0, max(r_in0 - 0.2, 0.0));
   let drain = max(rho - r_drain, z - bottom);
   f = max(f, -drain);
 

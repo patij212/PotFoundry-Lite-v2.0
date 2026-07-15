@@ -779,10 +779,10 @@ export function rOuterWaveInterference(
   const warpFreq = Math.floor(4.0 + 8.0 * warpScale + 0.5);
   const warpMag = domainWarp * 0.3; // Match GPU: warp_mag = domain_warp * 0.3
 
-  // Handedness Fix: Negate theta to match WebGPU winding order
-  // This ensures the Moiré interference (linear vs product params) resolves to the same geometric shape
-  const th = -theta;
-  const warp = warpMag * Math.sin(th * warpFreq + phase * TAU + t * 5.0);
+  // CPU and WGSL use the same handedness. The exact periodic endpoint shares
+  // theta=0's evaluation so binary32 TAU cannot introduce a seam discrepancy.
+  const th = theta === TAU ? 0 : theta;
+  const warp = warpMag * Math.sin(th * warpFreq + t * 5.0);
   const warpedTheta = th + warp;
 
   // Coordinate setup
@@ -1668,6 +1668,7 @@ export function rOuterBasketWeave(
 
   const strands = params.bwStrands ?? DEFAULT_BASKET_WEAVE.bwStrands;
   const layers = params.bwLayers ?? DEFAULT_BASKET_WEAVE.bwLayers;
+  const ratio = Math.max(0.01, params.bwRatio ?? DEFAULT_BASKET_WEAVE.bwRatio);
   const depth = params.bwDepth ?? DEFAULT_BASKET_WEAVE.bwDepth;
   const twist = params.bwTwist ?? DEFAULT_BASKET_WEAVE.bwTwist;
   const profile = params.bwProfile ?? DEFAULT_BASKET_WEAVE.bwProfile;
@@ -1683,7 +1684,7 @@ export function rOuterBasketWeave(
 
   // Coordinates
   const u = theta * strands / TAU;
-  const v = t * lEff;
+  const v = t * lEff * ratio;
 
   // Twist
   const twistOffset = twist * t * strands;

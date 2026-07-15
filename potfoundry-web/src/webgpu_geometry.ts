@@ -83,7 +83,10 @@ export const fillGeometryBuffer = (f32: Float32Array, cfg: WebGPUParams, current
     f32[10] = clampNumber(c.sf_n1 ?? c.n1, 0.35);
     f32[11] = clampNumber(c.sf_n2 ?? c.n2, 0.8);
     f32[12] = clampNumber(c.sf_n3 ?? c.n3, 0.8);
-    f32[DRAIN_RADIUS_OFFSET] = Math.max(Math.abs(drainRadius), 0.5);
+    // Zero means no drain and every positive binary32 value retains its target
+    // radius. Containment is validated upstream; silently widening a small hole
+    // changed the generated solid by orders of magnitude beyond export tolerance.
+    f32[DRAIN_RADIUS_OFFSET] = Math.abs(drainRadius);
 
     // Resolution parameters (no caps - user controls quality directly)
     f32[16] = clampNumber(c.cells_x ?? c.cellsX, 200.0);       // default 200

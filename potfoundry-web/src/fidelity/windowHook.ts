@@ -966,6 +966,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
             styleOpt('bw_strands', 'bwStrands', 16),
             styleOpt('bw_layers', 'bwLayers', 10),
             styleOpt('bw_phase', 'bwPhase', 0),
+            styleOpt('bw_ratio', 'bwRatio', 1),
           ));
         }
       } else if (styleId === 'CelticKnot') {

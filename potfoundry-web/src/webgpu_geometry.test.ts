@@ -149,11 +149,12 @@ describe('fillGeometryBuffer - Core Geometry', () => {
             expect(f32[13]).toBe(15);
         });
 
-        it('should enforce minimum drain radius of 0.5', () => {
+        it('should preserve small positive and zero drain radii', () => {
             const f32 = new Float32Array(100);
             fillGeometryBuffer(f32, createConfig({ r_drain: 0.1 }), createConfig());
-            // Min is 0.5 per Math.max(Math.abs(drainRadius), 0.5)
-            expect(f32[13]).toBe(0.5);
+            expect(f32[13]).toBeCloseTo(0.1);
+            fillGeometryBuffer(f32, createConfig({ r_drain: 0 }), createConfig());
+            expect(f32[13]).toBe(0);
         });
     });
 

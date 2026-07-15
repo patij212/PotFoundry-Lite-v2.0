@@ -29,6 +29,8 @@
  * Pure CPU, no production dependency beyond types. Used by the fidelity probes.
  */
 
+import { deriveBasketWeaveAxisAlignedCreases } from '../geometry/basketWeaveCreases';
+
 const TAU = 2 * Math.PI;
 
 /** Config-true OUTER radius (mm) as a function of recovered (theta, z). */
@@ -592,21 +594,21 @@ export function artDecoRiserTBands(stepCount: number): number[] {
  * BasketWeave over/under crease loci (the conforming warp pins mesh columns/rows
  * onto these — `extractBasketWeave`/FeatureLineGraph). VERTICAL strand edges at
  * `u_twisted = u·strands + phase = m` ⇒ `u = (m−phase)/strands` (m=0..strands−1),
- * HORIZONTAL layer rings at `v = t·layers = k` ⇒ `t = k/layers` (interior
- * k=1..layers−1; t=0/1 are shared boundary rings, not creases). Only the
- * AXIS-ALIGNED weave (twist=0, vGrad=0) is warp-pinned — the caller passes [] for
- * the diagonal/non-uniform cases (no pinning ⇒ no false discontinuity dev).
+ * HORIZONTAL layer rings at `v = t·layers·ratio = k` ⇒
+ * `t = k/(layers·ratio)` for each positive integer `k < layers·ratio`.
+ * t=0/1 are shared boundary rings, not creases. Only the AXIS-ALIGNED weave
+ * (twist=0, vGrad=0) is warp-pinned — the caller passes [] for the
+ * diagonal/non-uniform cases (no pinning ⇒ no false discontinuity dev).
  */
 export function basketWeaveCreaseLoci(
   strands: number,
   layers: number,
   phase: number,
+  ratio = 1,
 ): { creaseU: number[]; creaseT: number[] } {
-  const s = Math.max(1, Math.round(strands));
-  const l = Math.max(1, Math.round(layers));
-  const creaseU = Array.from({ length: s }, (_, m) => wrap1((m - phase) / s));
-  const creaseT = Array.from({ length: l - 1 }, (_, i) => (i + 1) / l)
-    .filter((t) => t > 2e-3 && t < 1 - 2e-3);
+  const derived = deriveBasketWeaveAxisAlignedCreases({ strands, layers, ratio, phase });
+  const creaseU = derived.creaseU;
+  const creaseT = derived.creaseT.filter((t) => t > 2e-3 && t < 1 - 2e-3);
   return { creaseU, creaseT };
 }
 

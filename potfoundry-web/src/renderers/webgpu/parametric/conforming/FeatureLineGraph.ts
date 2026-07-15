@@ -118,6 +118,7 @@ import { marchingSquaresZero, segmentsToPolylines } from './SampledFeatureExtrac
 import type { UWarp } from './CreaseUWarp';
 import type { TWarp } from './CreaseTWarp';
 import type { HelixWarp } from './CreaseHelixWarp';
+import { deriveBasketWeaveAxisAlignedCreases } from '../../../../geometry/basketWeaveCreases';
 
 const TAU = 2 * Math.PI;
 const SQRT3 = Math.sqrt(3);
@@ -411,17 +412,18 @@ function extractSpiralRidges(p: Float32Array): FeatureLine[] {
  * (styles.wgsl) builds an over/under weave on a checkerboard of cells indexed by
  * `u_cell=floor(u_twisted)` and `v_cell=floor(v)`, where
  * `u_twisted = theta·strands/TAU + twist·t·strands + phase` and
- * `v = t·layers·(1 + v_grad·(t−½))`. The strand profile `cos(u_local·π/2)` (and
- * its v twin) is zero at every cell boundary and the over/under `checker` flips
- * there, so each cell boundary is a sharp C0/C1 ridge crease.
+ * `v = t·layers·(1 + v_grad·(t−½))·ratio`. The strand profile
+ * `cos(u_local·π/2)` (and its v twin) is zero at every cell boundary and the
+ * over/under `checker` flips there, so each cell boundary is a sharp C0/C1
+ * ridge crease.
  *
  * When `twist = 0` AND `v_grad = 0` (the defaults) the boundaries are AXIS
  * ALIGNED and single-family-warp-pinnable:
  *  - VERTICAL creases at `u_twisted = m` ⇒ `u = (m − phase)/strands`
  *    (m = 0..strands−1) → `strands` constant-u lines (CreaseUWarp territory);
- *  - HORIZONTAL creases at `v = k` ⇒ `t = k/layers` (k = 1..layers−1 interior;
- *    t=0/t=1 are the shared boundary rings) → `layers−1` constant-t lines
- *    (CreaseTWarp territory).
+ *  - HORIZONTAL creases at `v = k` ⇒ `t = k/(layers·ratio)` for every positive
+ *    integer `k < layers·ratio`; this remains exact when the product is not an
+ *    integer. t=0/t=1 are shared boundary rings (CreaseTWarp territory).
  *
  * When `twist ≠ 0` the u-boundaries become HELICAL with slope `−twist·strands`
  * in (u,t) — but unlike SpiralRidges this family is NOT a pure shear of the
@@ -434,24 +436,26 @@ function extractSpiralRidges(p: Float32Array): FeatureLine[] {
  * rather than emit creases the pinning machinery cannot resolve.
  */
 function extractBasketWeave(p: Float32Array): FeatureLine[] {
-  const strands = Math.max(1, Math.round(p[0]));
-  const layers = Math.max(1, Math.round(p[1]));
   const twist = p[3];
   const vGrad = p[8];
-  const phase = p[9];
   // Only the axis-aligned weave is single-family-warp-pinnable. Diagonal (twist)
   // or non-uniform-t (v_grad) weaves need two warp families / a re-mesh — honest
   // empty so the count is never fabricated beyond what the warps can resolve.
   if (Math.abs(twist) > 1e-9 || Math.abs(vGrad) > 1e-9) return [];
+  const { creaseU, creaseT } = deriveBasketWeaveAxisAlignedCreases({
+    strands: p[0],
+    layers: p[1],
+    ratio: p[4],
+    phase: p[9],
+  });
   const lines: FeatureLine[] = [];
-  // Vertical creases: u_twisted = u·strands + phase = m ⇒ u = (m − phase)/strands.
-  for (let m = 0; m < strands; m++) {
-    const u = wrapU((m - phase) / strands);
+  for (let m = 0; m < creaseU.length; m++) {
+    const u = creaseU[m];
     lines.push(verticalLine(u, 0, 1, `strand-edge[m=${m}]`));
   }
-  // Horizontal creases: v = t·layers = k ⇒ t = k/layers (interior k=1..layers−1).
-  for (let k = 1; k < layers; k++) {
-    lines.push(horizontalLine(k / layers, `layer-ring[k=${k}]`));
+  for (let i = 0; i < creaseT.length; i++) {
+    const k = i + 1;
+    lines.push(horizontalLine(creaseT[i], `layer-ring[k=${k}]`));
   }
   return lines;
 }

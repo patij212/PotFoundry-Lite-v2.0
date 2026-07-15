@@ -158,7 +158,7 @@ describe('crease-locus exclusion (BasketWeave over/under discontinuity)', () => 
     expect(r.wallTriangles).toBe(1); // measured
   });
 
-  it('basketWeaveCreaseLoci: strand edges u=(m-phase)/strands + interior layer rings', () => {
+  it('basketWeaveCreaseLoci: strand edges + ratio-aware interior layer rings', () => {
     const { creaseU, creaseT } = basketWeaveCreaseLoci(16, 10, 0);
     expect(creaseU).toHaveLength(16);
     expect(creaseU[0]).toBeCloseTo(0, 10); // m=0 strand edge at u=0 (= seam)
@@ -168,5 +168,9 @@ describe('crease-locus exclusion (BasketWeave over/under discontinuity)', () => 
     // phase shifts the strand edges; loci stay in [0,1).
     const shifted = basketWeaveCreaseLoci(16, 10, 4);
     expect(shifted.creaseU.every((u) => u >= 0 && u < 1)).toBe(true);
+    const fractional = basketWeaveCreaseLoci(16, 5, 0, 1.25);
+    expect(fractional.creaseT).toHaveLength(6);
+    expect(fractional.creaseT[0]).toBeCloseTo(0.16, 10);
+    expect(fractional.creaseT[5]).toBeCloseTo(0.96, 10);
   });
 });

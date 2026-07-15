@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-12T19:40:51.346Z",
+  "generatedAt": "2026-07-14T15:10:06.093Z",
   "version": "1.0.0",
   "tolerance": 0.001,
   "styles": {
@@ -1281,210 +1281,210 @@
         "theta": 0,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 46.99874496459961
+        "expectedRadius": 47.07947540283203
       },
       {
         "styleId": "WaveInterference",
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 46.722206115722656
+        "expectedRadius": 46.76069641113281
       },
       {
         "styleId": "WaveInterference",
         "theta": 1.5707963267948966,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.18663787841797
+        "expectedRadius": 47.55649948120117
       },
       {
         "styleId": "WaveInterference",
         "theta": 3.141592653589793,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.04261779785156
+        "expectedRadius": 47.029361724853516
       },
       {
         "styleId": "WaveInterference",
         "theta": 4.71238898038469,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.493431091308594
+        "expectedRadius": 47.23594665527344
       },
       {
         "styleId": "WaveInterference",
         "theta": 6.2731853071795864,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 46.992862701416016
+        "expectedRadius": 47.12126159667969
       },
       {
         "styleId": "WaveInterference",
         "theta": 0,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 50.70316696166992
+        "expectedRadius": 51.48318862915039
       },
       {
         "styleId": "WaveInterference",
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 50.87080383300781
+        "expectedRadius": 50.478397369384766
       },
       {
         "styleId": "WaveInterference",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 50.677818298339844
+        "expectedRadius": 50.87336730957031
       },
       {
         "styleId": "WaveInterference",
         "theta": 3.141592653589793,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.013946533203125
+        "expectedRadius": 51.300994873046875
       },
       {
         "styleId": "WaveInterference",
         "theta": 4.71238898038469,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 50.6292839050293
+        "expectedRadius": 51.121376037597656
       },
       {
         "styleId": "WaveInterference",
         "theta": 6.2731853071795864,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 50.699241638183594
+        "expectedRadius": 51.42656707763672
       },
       {
         "styleId": "WaveInterference",
         "theta": 0,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.19425582885742
+        "expectedRadius": 56.76994323730469
       },
       {
         "styleId": "WaveInterference",
         "theta": 0.7853981633974483,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 56.76864242553711
+        "expectedRadius": 56.79249954223633
       },
       {
         "styleId": "WaveInterference",
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.22439956665039
+        "expectedRadius": 56.93046188354492
       },
       {
         "styleId": "WaveInterference",
         "theta": 3.141592653589793,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 56.92794418334961
+        "expectedRadius": 56.966773986816406
       },
       {
         "styleId": "WaveInterference",
         "theta": 4.71238898038469,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.24996566772461
+        "expectedRadius": 57.01781463623047
       },
       {
         "styleId": "WaveInterference",
         "theta": 6.2731853071795864,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.214134216308594
+        "expectedRadius": 56.77360916137695
       },
       {
         "styleId": "WaveInterference",
         "theta": 0,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.14717102050781
+        "expectedRadius": 63.13453674316406
       },
       {
         "styleId": "WaveInterference",
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.340721130371094
+        "expectedRadius": 63.328216552734375
       },
       {
         "styleId": "WaveInterference",
         "theta": 1.5707963267948966,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.03569030761719
+        "expectedRadius": 62.9895133972168
       },
       {
         "styleId": "WaveInterference",
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 62.952667236328125
+        "expectedRadius": 62.94176483154297
       },
       {
         "styleId": "WaveInterference",
         "theta": 4.71238898038469,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 62.994300842285156
+        "expectedRadius": 63.018775939941406
       },
       {
         "styleId": "WaveInterference",
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 63.09329605102539
+        "expectedRadius": 63.13714599609375
       },
       {
         "styleId": "WaveInterference",
         "theta": 0,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 66.66642761230469
+        "expectedRadius": 66.96082305908203
       },
       {
         "styleId": "WaveInterference",
         "theta": 0.7853981633974483,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 66.87094116210938
+        "expectedRadius": 66.64713287353516
       },
       {
         "styleId": "WaveInterference",
         "theta": 1.5707963267948966,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 66.7545166015625
+        "expectedRadius": 67.11470794677734
       },
       {
         "styleId": "WaveInterference",
         "theta": 3.141592653589793,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 66.7565689086914
+        "expectedRadius": 67.0473861694336
       },
       {
         "styleId": "WaveInterference",
         "theta": 4.71238898038469,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 66.66427612304688
+        "expectedRadius": 66.89180755615234
       },
       {
         "styleId": "WaveInterference",
         "theta": 6.2731853071795864,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 66.6519546508789
+        "expectedRadius": 66.9755630493164
       }
     ],
     "Crystalline": [

@@ -301,14 +301,14 @@ function packRippleInterference(opts: Record<string, unknown>): number[] {
  */
 function packGyroidManifold(opts: Record<string, unknown>): number[] {
   return pad(clamp([
-    getOpt(opts, 'gm_scale', 3.5),        // 0: Scale (Lattice density)
-    getOpt(opts, 'gm_thickness', 0.2),    // 1: Thickness
+    getOpt(opts, 'gm_scale', 4.0),        // 0: Scale (Lattice density)
+    getOpt(opts, 'gm_thickness', 0.1),    // 1: Thickness
     getOpt(opts, 'gm_morph', 0),          // 2: Morph (0=Gyroid, 1=Schwarz P)
-    getOpt(opts, 'gm_relief', 1.0),       // 3: Relief Depth
+    getOpt(opts, 'gm_relief', 1.5),       // 3: Relief Depth
     getOpt(opts, 'gm_sharpness', 0.1),    // 4: Sharpness
     getOpt(opts, 'gm_z_stretch', 1.0),    // 5: Z-Stretch
     getOpt(opts, 'gm_pulse', 0),          // 6: Pulse Phase
-    getOpt(opts, 'gm_edge_fade', 0.15),   // 7: Edge Fade
+    getOpt(opts, 'gm_edge_fade', 0.2),    // 7: Edge Fade
     getOpt(opts, 'gm_bias', 0.0),         // 8: Bias
     getOpt(opts, 'gm_curve', 1.0),        // 9: Curve
   ]));
@@ -386,8 +386,8 @@ function packCelticTriquetra(opts: Record<string, unknown>): number[] {
     getOpt(opts, 'ct_width', 0.18),      // 2: Ribbon Width
     getOpt(opts, 'ct_relief', 2.5),      // 3: Relief depth
     getOpt(opts, 'ct_med_scale', 0.22),  // 4: Medallion Scale
-    getOpt(opts, 'ct_med_y', 0.70),      // 5: Medallion Y position
-    getOpt(opts, 'ct_gap', 0.06),        // 6: Gap at crossings
+    getOpt(opts, 'ct_med_y', 0.69),      // 5: Medallion Y position
+    getOpt(opts, 'ct_gap', 0.05),        // 6: Gap at crossings
   ]));
 }
 

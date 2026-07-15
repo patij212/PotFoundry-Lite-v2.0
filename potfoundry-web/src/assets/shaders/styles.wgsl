@@ -389,6 +389,28 @@ fn gothic_arches_radius(theta: f32, t_in: f32, r0: f32) -> f32 {
 // ============================================================================
 
 // #region wave_interference_radius
+// Cody-Waite split for stable binary32 range reduction. WI_TAU_HI is chosen
+// with few enough significand bits that small integer products are exact.
+const WI_TAU_HI: f32 = 6.28125;
+const WI_TAU_LO: f32 = 0.0019353072;
+
+fn wi_reduce_angle(angle: f32) -> f32 {
+  let turns = floor(angle / TAU + 0.5);
+  return fma(-turns, WI_TAU_HI, angle) - turns * WI_TAU_LO;
+}
+
+fn wi_mul_integer_angle(angle: f32, integer_frequency: f32) -> f32 {
+  let approximate = angle * integer_frequency;
+  let turns = floor(approximate / TAU + 0.5);
+  return fma(angle, integer_frequency, -turns * WI_TAU_HI) - turns * WI_TAU_LO;
+}
+
+fn wi_cycles_to_angle(cycles: f32) -> f32 {
+  let whole_cycles = floor(cycles + 0.5);
+  let fractional_cycles = cycles - whole_cycles;
+  return fractional_cycles * WI_TAU_HI + fractional_cycles * WI_TAU_LO;
+}
+
 // Helper function to compute wave interference pattern at arbitrary theta
 fn wi_compute_pattern(th: f32, t_val: f32, feature_count: f32, moire_strength: f32, 
                        pattern_style: f32, helix_pitch: f32, pitch_mismatch: f32,
@@ -409,15 +431,24 @@ fn wi_compute_pattern(th: f32, t_val: f32, feature_count: f32, moire_strength: f
   // Domain warp frequency: must be integer
   let warp_freq = floor(4.0 + 8.0 * warp_scale + 0.5); // 4-12 integer
   let warp_mag = domain_warp * 0.3; // Reduced magnitude to minimize seam impact
-  let warp = warp_mag * sin(th * warp_freq + t_val * 5.0);
+  let warp_arg = wi_reduce_angle(wi_mul_integer_angle(th, warp_freq) + t_val * 5.0);
+  let warp = warp_mag * sin(warp_arg);
   let warped_theta = th + warp;
 
   // Coordinate setup - helical coordinate system
   let spiral_v = t_val * (1.0 + helix_pitch * 4.0);
   
-  // Phases - use phase for animation, not theta disruption
-  let p1 = warped_theta * base_freq + spiral_v * TAU + phase * TAU;
-  let p2 = warped_theta * secondary_freq + spiral_v * TAU * 1.1 + phase * TAU + 1.7;
+  // Range-reduced phases preserve the same real-valued expression while
+  // avoiding large binary32 trig arguments at valid high-frequency corners.
+  let p1 = wi_reduce_angle(
+    wi_mul_integer_angle(warped_theta, base_freq) +
+    wi_cycles_to_angle(spiral_v + phase)
+  );
+  let p2_cycles = spiral_v * 1.1 + phase + 1.7 / TAU;
+  let p2 = wi_reduce_angle(
+    wi_mul_integer_angle(warped_theta, secondary_freq) +
+    wi_cycles_to_angle(p2_cycles)
+  );
 
   // Wave Layers
   let w1 = sin(p1);
@@ -430,13 +461,19 @@ fn wi_compute_pattern(th: f32, t_val: f32, feature_count: f32, moire_strength: f
 
   // Pattern Style modulation - also use integer frequency
   let style_freq = 3.0; // Already integer
-  let style_mod = pattern_style * cos(warped_theta * style_freq + t_val * 10.0);
+  let style_arg = wi_reduce_angle(
+    wi_mul_integer_angle(warped_theta, style_freq) + t_val * 10.0
+  );
+  let style_mod = pattern_style * cos(style_arg);
   let styled_pattern = raw_pattern + style_mod * 0.2;
 
   // Ridge processing - detail frequency must be integer
   var n = 0.5 + 0.5 * styled_pattern;
   let detail_freq = floor(base_freq * 2.5 + 0.5); // Round to integer
-  let detail = contour_density * 0.15 * sin(warped_theta * detail_freq + t_val * 20.0);
+  let detail_arg = wi_reduce_angle(
+    wi_mul_integer_angle(warped_theta, detail_freq) + t_val * 20.0
+  );
+  let detail = contour_density * 0.15 * sin(detail_arg);
   n = n + detail;
 
   let contrast_exp = 0.5 + ridge_contrast * 3.0;
@@ -464,8 +501,10 @@ fn wave_interference_radius(theta: f32, t: f32, r0: f32) -> f32 {
   // the pattern naturally wraps at theta=TAU without any blending needed.
   // sin(theta * N) = sin((theta + TAU) * N) when N is an integer.
 
-  // Compute pattern at current theta - no blending required
-  var final_ridge = wi_compute_pattern(theta, t, feature_count, moire_strength, 
+  // The periodic seam has one owner: binary32 TAU is not mathematically exact,
+  // so evaluate the exact endpoint with the same theta value as u=0.
+  let theta_periodic = select(theta, 0.0, theta == TAU);
+  var final_ridge = wi_compute_pattern(theta_periodic, t, feature_count, moire_strength,
                                         pattern_style, helix_pitch, pitch_mismatch,
                                         domain_warp, warp_scale, contour_density, 
                                         ridge_contrast, phase);
@@ -929,8 +968,8 @@ fn periodic_cellular(uv: vec2<f32>, period: vec2<f32>, jitter: f32) -> vec3<f32>
 // hash22Int/periodicCellularInt (WGSL u32 arithmetic is exact/wrapping per spec, matching JS's
 // Math.imul+>>>0 idiom bit-for-bit — no additional translation risk). Mirrors
 // src/geometry/styles.ts's pcg2dHash/u32ToUnitFloat/hash22Int/periodicCellularInt 1:1.
-// NOTE: comment lines in this file must never start with the literal token "// #region" or
-// "// #endregion" (even mid-sentence) — stripShaderCode() (src/utils/shaderStripper.ts) does a
+// NOTE: comments must not contain literal region-marker examples; the shader-stripper and
+// region lint recognize marker-shaped text even when it appears mid-sentence. stripShaderCode()
 // naive startsWith() match with no escaping, so such a line is misparsed as a real region marker.
 // ----------------------------------------------------------------------------------------------
 
@@ -1515,7 +1554,7 @@ fn style_basket_weave(theta: f32, t: f32, r0: f32) -> f32 {
   let layers = style_param(1u);
   let depth = style_param(2u);
   let twist = style_param(3u);
-  let ratio = style_param(4u); // Unused in basic weave but could affect spacing
+  let ratio = max(style_param(4u), 0.01);
   let profile = style_param(5u);
   let unders = style_param(6u);
   let noise = style_param(7u);
@@ -1527,7 +1566,8 @@ fn style_basket_weave(theta: f32, t: f32, r0: f32) -> f32 {
   
   // Coordinates
   let u = theta * strands / TAU; // 0..strands
-  let v = t * l_eff;             // 0..layers
+  // Cell ratio controls vertical spacing relative to circumferential spacing.
+  let v = t * l_eff * ratio;
   
   // Twist
   let twist_offset = twist * t * strands;
@@ -1985,9 +2025,9 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     let outer_bottom = outer_point(u, bottom);
     let r_outer = length(outer_bottom.xy);
     let r_inner = length(inner_bottom.xy);
-    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
-    let r_inner_cap = max(r_inner - 0.2, 0.25);
-    let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
+    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.0);
+    let r_inner_cap = max(r_inner - 0.2, 0.0);
+    let r_drain = clamp(drain_raw, 0.0, r_inner_cap);
     let rings = max(getf(28u), 2.0);
     let seam_t = 1.0 - (1.0 / max(rings, 1.0));
     let t = clamp(v, 0.0, 1.0);
@@ -2015,9 +2055,9 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     // Calculate inner radius at z=0 (where underside actually is), not at z=bottom
     let inner_base = inner_point(u, 0.0);
     let r_inner = length(inner_base.xy);
-    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
-    let r_inner_cap = max(r_inner - 0.2, 0.25);
-    let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
+    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.0);
+    let r_inner_cap = max(r_inner - 0.2, 0.0);
+    let r_drain = clamp(drain_raw, 0.0, r_inner_cap);
     let rings = max(getf(28u), 2.0);
     let seam_t = 1.0 - (1.0 / max(rings, 1.0));
     let t = clamp(v, 0.0, 1.0);
@@ -2045,9 +2085,9 @@ fn surface_point(seg: u32, u: f32, v: f32) -> vec3<f32> {
     let bottom = clamp(getf(26u), 0.0, H);
     let inner_base = inner_point(u, 0.0);
     let r_inner_base = length(inner_base.xy);
-    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.25);
-    let r_inner_cap = max(r_inner_base - 0.2, 0.25);
-    let r_drain = clamp(drain_raw, 0.25, r_inner_cap);
+    let drain_raw = max(getf(DRAIN_RADIUS_OFFSET), 0.0);
+    let r_inner_cap = max(r_inner_base - 0.2, 0.0);
+    let r_drain = clamp(drain_raw, 0.0, r_inner_cap);
     // v goes from 0 (bottom at z=0) to 1 (top at z=bottom)
     let z = mix(0.0, bottom, clamp(v, 0.0, 1.0));
     // Apply twist to drain cylinder at current z

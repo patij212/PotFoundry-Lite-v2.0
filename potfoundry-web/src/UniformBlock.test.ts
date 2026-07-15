@@ -276,9 +276,11 @@ describe('UniformBlock populateGeometry', () => {
     expect(block.buffer[UNIFORM_OFFSETS.SeamAngle]).toBeCloseTo(expected, 6);
   });
 
-  it('should ensure drain radius is at least 0.5', () => {
+  it('should preserve small positive and zero drain radii', () => {
     block.populateGeometry({ drainRadius: 0.1 }, {});
-    expect(block.buffer[UNIFORM_OFFSETS.DrainRadius]).toBeGreaterThanOrEqual(0.5);
+    expect(block.buffer[UNIFORM_OFFSETS.DrainRadius]).toBeCloseTo(0.1);
+    block.populateGeometry({ drainRadius: 0 }, {});
+    expect(block.buffer[UNIFORM_OFFSETS.DrainRadius]).toBe(0);
   });
 });
 

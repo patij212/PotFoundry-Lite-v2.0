@@ -149,8 +149,8 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
   // Packed slots (packBasketWeave): 0 strands, 1 layers, 2 depth, 3 twist,
   // 4 ratio, 5 profile, 6 unders, 7 noise, 8 v_grad, 9 phase. Defaults
   // (twist=0, v_grad=0) give a clean axis-aligned weave: `strands` vertical
-  // creases at u=m/strands and `layers-1` interior horizontal creases at
-  // t=k/layers (the C0/C1 cell boundaries where the over/under checker flips).
+  // creases at u=m/strands and every positive integer k<layers*ratio gives an
+  // interior horizontal crease at t=k/(layers*ratio).
   it('BasketWeave: strands vertical creases + (layers-1) interior horizontal creases', () => {
     // strands=16, layers=10, twist=0, v_grad=0, phase=0 (defaults).
     const g = extractAnalyticFeatures(
@@ -181,6 +181,27 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(g.lines.filter((l) => l.kind === 'vertical-crease').length).toBe(24);
     expect(g.lines.filter((l) => l.kind === 'horizontal-band').length).toBe(5); // 6 layers → 5 interior
     expect(g.groundTruthCount).toBe(29);
+  });
+
+  it('BasketWeave: ratio scales layer-ring count and supports non-integer products', () => {
+    const cases = [
+      { ratio: 0.1, expected: [] },
+      { ratio: 0.5, expected: [0.4, 0.8] },
+      { ratio: 1.25, expected: [0.16, 0.32, 0.48, 0.64, 0.8, 0.96] },
+      { ratio: 2, expected: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9] },
+    ];
+    for (const { ratio, expected } of cases) {
+      const g = extractAnalyticFeatures(
+        'BasketWeave',
+        packed([8, ratio === 0.1 ? 10 : 5, 2, 0, ratio, 0.5, 0.5, 0, 0, 0]),
+        DIMS,
+      );
+      const ts = g.lines
+        .filter((line) => line.kind === 'horizontal-band')
+        .map((line) => line.points[0].t);
+      expect(ts).toHaveLength(expected.length);
+      expected.forEach((value, index) => expect(ts[index]).toBeCloseTo(value, 7));
+    }
   });
 
   it('BasketWeave: phase shifts the vertical-crease u-loci by -phase/strands', () => {
