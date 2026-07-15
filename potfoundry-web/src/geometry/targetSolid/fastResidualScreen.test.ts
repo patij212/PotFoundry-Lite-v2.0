@@ -153,6 +153,101 @@ describe('fast residual screen', () => {
     expect(screened).toBeGreaterThan(30);
   });
 
+  it('numeric cell channel produces bit-identical enclosures to the string channel', () => {
+    const { program, evaluator } = outerWallFixture();
+    const random = mulberry32(0xcafe);
+    const divisionsLog2 = 5;
+    const divisions = 1 << divisionsLog2;
+    let compared = 0;
+    for (let trial = 0; trial < 25; trial += 1) {
+      const uCell = Math.floor(random() * divisions);
+      const vCell = Math.floor(random() * divisions);
+      const request = requestForGridCell(
+        uCell,
+        vCell,
+        divisionsLog2,
+        program.backends.evaluateFloat64,
+        random() < 0.5
+      );
+      const stringEnclosure = evaluator.encloseResidualFast(request);
+      const uNumerators = Float64Array.from(request.cell.vertices, (vertex) =>
+        Number(vertex.uNumerator)
+      );
+      const vNumerators = Float64Array.from(request.cell.vertices, (vertex) =>
+        Number(vertex.vNumerator)
+      );
+      const barycentric = new Float64Array(9);
+      request.cell.barycentricVertices.forEach((weights, vertex) => {
+        barycentric[vertex * 3] = Number(weights.aNumerator);
+        barycentric[vertex * 3 + 1] = Number(weights.bNumerator);
+        barycentric[vertex * 3 + 2] = Number(weights.cNumerator);
+      });
+      const artifact = new Float64Array(9);
+      request.artifactTriangleVerticesMm.forEach((vertex, index) => {
+        artifact[index * 3] = vertex[0];
+        artifact[index * 3 + 1] = vertex[1];
+        artifact[index * 3 + 2] = vertex[2];
+      });
+      const numericEnclosure = evaluator.encloseResidualFastNumeric(
+        uNumerators,
+        vNumerators,
+        request.cell.fractionBits,
+        barycentric,
+        request.cell.barycentricFractionBits,
+        artifact
+      );
+      expect(numericEnclosure === null).toBe(stringEnclosure === null);
+      if (stringEnclosure !== null && numericEnclosure !== null) {
+        compared += 1;
+        expect(numericEnclosure.xMm.lower).toBe(stringEnclosure.xMm.lower);
+        expect(numericEnclosure.xMm.upper).toBe(stringEnclosure.xMm.upper);
+        expect(numericEnclosure.yMm.lower).toBe(stringEnclosure.yMm.lower);
+        expect(numericEnclosure.yMm.upper).toBe(stringEnclosure.yMm.upper);
+        expect(numericEnclosure.zMm.lower).toBe(stringEnclosure.zMm.lower);
+        expect(numericEnclosure.zMm.upper).toBe(stringEnclosure.zMm.upper);
+      }
+    }
+    expect(compared).toBeGreaterThan(15);
+  });
+
+  it('numeric cell channel refuses non-integer or inconsistent encodings', () => {
+    const { evaluator } = outerWallFixture();
+    const goodU = Float64Array.from([0, 1, 1]);
+    const goodV = Float64Array.from([0, 0, 1]);
+    const goodBarycentric = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    const goodArtifact = new Float64Array(9);
+    expect(
+      evaluator.encloseResidualFastNumeric(
+        Float64Array.from([0.5, 1, 1]),
+        goodV,
+        0,
+        goodBarycentric,
+        0,
+        goodArtifact
+      )
+    ).toBeNull();
+    expect(
+      evaluator.encloseResidualFastNumeric(
+        goodU,
+        goodV,
+        0,
+        Float64Array.from([1, 1, 0, 0, 1, 0, 0, 0, 1]),
+        0,
+        goodArtifact
+      )
+    ).toBeNull();
+    expect(
+      evaluator.encloseResidualFastNumeric(
+        goodU,
+        goodV,
+        0,
+        goodBarycentric,
+        0,
+        Float64Array.from([NaN, 0, 0, 0, 0, 0, 0, 0, 0])
+      )
+    ).toBeNull();
+  });
+
   it('refuses discontinuous operations instead of guessing a bound', () => {
     const evaluator = compileValidatedResidualEvaluator({
       targetSha256: 'a'.repeat(64),

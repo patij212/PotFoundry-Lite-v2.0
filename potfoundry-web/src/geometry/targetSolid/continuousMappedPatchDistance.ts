@@ -38,7 +38,7 @@ import {
 export type { RegisteredValidatedResidualEvaluator } from './validatedResidualEvaluatorRegistry';
 
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_VERSION =
-  'potfoundry.continuous-mapped-patch-distance/v13' as const;
+  'potfoundry.continuous-mapped-patch-distance/v14' as const;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_WORK_CELLS = 1_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS = 2_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_EVALUATOR_WORK_UNITS =
@@ -58,6 +58,7 @@ export const CONTINUOUS_MAPPED_PATCH_DISTANCE_PROOF_SHA256 = sha256Utf8(
     'registered evaluator encloses target-minus-affine-artifact residual continuously over the complete triangular cell',
     'compiler-proven affine target coordinates use a complete three-vertex residual hull over the shared exact barycentric cell; nonlinear coordinates retain outward interval enclosure',
     'a cell may be accepted by the registered centered mean-value float64 screen when its outward enclosure already meets the budget; an over-budget screen enclosure below maximum depth subdivides directly; screen-unavailable cells and every maximum-depth decision consult the validated decimal enclosure, so no cell is refused on screen evidence alone',
+    'screen consultations may travel an exact numeric cell channel - integer dyadic numerators kept within 2^52 so weighted midpoint combinations stay exact, plus exact parsed binary32 STL coordinates - bypassing canonical request construction; the validated decimal enclosure always receives the canonical exact request',
     `outward binary64 norm and exact-picometre ceiling=${OUTWARD_FLOAT64_INTERVAL_PROOF_SHA256}`,
     'the accepted exact-picometre geometric budget is snapshotted once and bound into result evidence',
     'a shared complete parametrization bounds both target-to-mesh and mesh-to-target directed distances by the same residual supremum',
@@ -671,7 +672,8 @@ export function certifyContinuousMappedPatchDistance(
     typeof evaluatorSnapshot.targetSha256 !== 'string' ||
     !SHA256_RE.test(evaluatorSnapshot.targetSha256) ||
     typeof evaluatorSnapshot.encloseResidual !== 'function' ||
-    typeof evaluatorSnapshot.encloseResidualFast !== 'function'
+    typeof evaluatorSnapshot.encloseResidualFast !== 'function' ||
+    typeof evaluatorSnapshot.encloseResidualFastNumeric !== 'function'
   ) {
     invalid('Evaluator identity, target binding, patch binding, or implementation is invalid');
   }
@@ -698,6 +700,13 @@ export function certifyContinuousMappedPatchDistance(
     partition.pairCheckCount;
   const floatTriangleScratch = new Float64Array(9);
   const picometreTriangleScratch = new BigInt64Array(9);
+  // Numeric screen scratch (reused across every cell of the proof).
+  const numericOriginalU = new Float64Array(3);
+  const numericOriginalV = new Float64Array(3);
+  const numericArtifact = new Float64Array(9);
+  const numericCellU = new Float64Array(3);
+  const numericCellV = new Float64Array(3);
+  const numericBarycentric = new Float64Array(9);
   let workCellCount = 0;
   let evaluatorWorkUnitCount = 0;
   let acceptedLeafCellCount = 0;
@@ -712,6 +721,36 @@ export function certifyContinuousMappedPatchDistance(
       floatTriangleScratch,
       picometreTriangleScratch
     );
+    // The numeric screen channel needs exact float64 encodings: original
+    // triangle numerators that stay integers, and binary32 STL coordinates
+    // (already exact in the snapshot). Picometre formats keep the canonical
+    // string channel.
+    let numericAvailable = artifact.format === 'stl';
+    let numericMaxNumerator = 0;
+    for (let vertex = 0; vertex < 3 && numericAvailable; vertex += 1) {
+      const uNumerator = Number(mapping.vertices[vertex].uNumerator);
+      const vNumerator = Number(mapping.vertices[vertex].vNumerator);
+      if (
+        !Number.isSafeInteger(uNumerator) ||
+        !Number.isSafeInteger(vNumerator) ||
+        uNumerator < 0 ||
+        vNumerator < 0
+      ) {
+        numericAvailable = false;
+        break;
+      }
+      numericOriginalU[vertex] = uNumerator;
+      numericOriginalV[vertex] = vNumerator;
+      numericMaxNumerator = Math.max(numericMaxNumerator, uNumerator, vNumerator);
+    }
+    if (numericAvailable) {
+      for (let vertex = 0; vertex < 3; vertex += 1) {
+        for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+          numericArtifact[vertex * 3 + coordinate] =
+            artifactVertices.verticesMm[vertex][coordinate];
+        }
+      }
+    }
     const stack: WorkCell[] = [
       {
         depth: 0,
@@ -751,13 +790,6 @@ export function certifyContinuousMappedPatchDistance(
       let residualUpperPm: bigint;
       let acceptedByFastScreen = false;
       try {
-        const request = requestForCell(
-          mapping,
-          partitionSnapshot.patchId,
-          partitionSnapshot.fractionBits,
-          artifactVertices,
-          cell
-        );
         // Acceptance-only screen: a non-null centered mean-value enclosure
         // that already meets the budget accepts the cell without the decimal
         // kernel. When the screen answers over budget below maximum depth,
@@ -767,12 +799,62 @@ export function certifyContinuousMappedPatchDistance(
         // enclosure remains the deciding authority whenever the screen is
         // unavailable and as the last consult at maximum depth before an
         // INCONCLUSIVE refusal.
+        //
+        // The screen is consulted over the exact numeric channel when every
+        // weighted numerator combination stays an exact float64 integer;
+        // canonical request construction (BigInt exact points) then happens
+        // only for cells the decimal kernel actually decides.
         let fastUpperPm: bigint | null = null;
-        const fastEnclosure = evaluatorSnapshot.encloseResidualFast(request);
-        if (fastEnclosure !== null) {
-          fastUpperPm = float64UpperMillimetresToPicometres(
-            validatedResidualUpperMm(fastEnclosure)
+        let screenConsulted = false;
+        const weightScale = 2 ** cell.depth;
+        if (
+          numericAvailable &&
+          numericMaxNumerator * weightScale <= 4_503_599_627_370_496
+        ) {
+          for (let vertex = 0; vertex < 3; vertex += 1) {
+            const weight = cell.vertices[vertex];
+            numericCellU[vertex] =
+              weight.a * numericOriginalU[0] +
+              weight.b * numericOriginalU[1] +
+              weight.c * numericOriginalU[2];
+            numericCellV[vertex] =
+              weight.a * numericOriginalV[0] +
+              weight.b * numericOriginalV[1] +
+              weight.c * numericOriginalV[2];
+            numericBarycentric[vertex * 3] = weight.a;
+            numericBarycentric[vertex * 3 + 1] = weight.b;
+            numericBarycentric[vertex * 3 + 2] = weight.c;
+          }
+          screenConsulted = true;
+          const numericEnclosure = evaluatorSnapshot.encloseResidualFastNumeric(
+            numericCellU,
+            numericCellV,
+            partitionSnapshot.fractionBits + cell.depth,
+            numericBarycentric,
+            cell.depth,
+            numericArtifact
           );
+          if (numericEnclosure !== null) {
+            fastUpperPm = float64UpperMillimetresToPicometres(
+              validatedResidualUpperMm(numericEnclosure)
+            );
+          }
+        }
+        let request: ValidatedResidualEnclosureRequest | null = null;
+        if (!screenConsulted) {
+          request = requestForCell(
+            mapping,
+            partitionSnapshot.patchId,
+            partitionSnapshot.fractionBits,
+            artifactVertices,
+            cell
+          );
+          const fastEnclosure = evaluatorSnapshot.encloseResidualFast(request);
+          if (fastEnclosure !== null) {
+            fastUpperPm = float64UpperMillimetresToPicometres(
+              validatedResidualUpperMm(fastEnclosure)
+            );
+          }
         }
         if (fastUpperPm !== null && fastUpperPm <= optionsSnapshot.maximumGeometricUpperPm) {
           residualUpperPm = fastUpperPm;
@@ -780,6 +862,15 @@ export function certifyContinuousMappedPatchDistance(
         } else if (fastUpperPm !== null && cell.depth < maxDepth) {
           residualUpperPm = fastUpperPm;
         } else {
+          if (request === null) {
+            request = requestForCell(
+              mapping,
+              partitionSnapshot.patchId,
+              partitionSnapshot.fractionBits,
+              artifactVertices,
+              cell
+            );
+          }
           residualUpperPm = float64UpperMillimetresToPicometres(
             validatedResidualUpperMm(evaluatorSnapshot.encloseResidual(request))
           );

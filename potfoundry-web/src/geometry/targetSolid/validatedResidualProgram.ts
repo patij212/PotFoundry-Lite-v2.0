@@ -2142,6 +2142,123 @@ export function fastEncloseCompiledValidatedResidualProgram(
     cellU.push(u);
     cellV.push(v);
   }
+
+  // Affine artifact values at the three cell vertices via the exact dyadic
+  // barycentric weights (the same combination the decimal path uses).
+  const denominator = 2 ** barycentricFractionBits;
+  const weights: OutwardInterval[] = [];
+  for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
+    const vertexWeights = cell.barycentricVertices[cellVertex];
+    const numerators = [
+      vertexWeights.aNumerator,
+      vertexWeights.bNumerator,
+      vertexWeights.cNumerator,
+    ];
+    let numeratorSum = 0;
+    for (const numerator of numerators) {
+      if (!INTEGER_RE.test(numerator) || numerator.length > 16) return null;
+      const parsed = Number(numerator);
+      if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
+      numeratorSum += parsed;
+      // Weight = numerator / 2^bits with both parts exact in float64.
+      weights.push(outwardInterval(parsed / denominator, parsed / denominator));
+    }
+    if (numeratorSum !== denominator) return null;
+  }
+  const artifact: OutwardInterval[] = [];
+  for (let artifactVertex = 0; artifactVertex < 3; artifactVertex += 1) {
+    for (const coordinate of [0, 1, 2] as const) {
+      const value = fastArtifactCoordinate(request, artifactVertex, coordinate);
+      if (value === null) return null;
+      artifact.push(value);
+    }
+  }
+  return fastEncloseCore(internal, cellU, cellV, weights, artifact);
+}
+
+/**
+ * Exact numeric screen entry: the caller supplies the cell as raw numbers —
+ * integer dyadic numerators (exact within 2^52), exact dyadic barycentric
+ * numerators, and exact parsed binary32 STL coordinates. Identical
+ * enclosures to the canonical string entry; `null` on any validation doubt.
+ */
+export function fastEncloseCompiledValidatedResidualProgramNumeric(
+  compiled: CompiledValidatedResidualProgram,
+  uNumerators: Float64Array,
+  vNumerators: Float64Array,
+  fractionBits: number,
+  barycentricNumerators: Float64Array,
+  barycentricFractionBits: number,
+  artifactVerticesMm: Float64Array
+): ValidatedResidualEnclosure | null {
+  const internal = compiled as InternalCompiledProgram;
+  if (!Array.isArray(internal.instructions)) return null;
+  if (
+    !Number.isSafeInteger(fractionBits) ||
+    fractionBits < 0 ||
+    fractionBits > 52 ||
+    !Number.isSafeInteger(barycentricFractionBits) ||
+    barycentricFractionBits < 0 ||
+    barycentricFractionBits > 30 ||
+    uNumerators.length !== 3 ||
+    vNumerators.length !== 3 ||
+    barycentricNumerators.length !== 9 ||
+    artifactVerticesMm.length !== 9
+  ) {
+    return null;
+  }
+  const scale = 2 ** -fractionBits;
+  const cellU: OutwardInterval[] = [];
+  const cellV: OutwardInterval[] = [];
+  for (let vertex = 0; vertex < 3; vertex += 1) {
+    const uNumerator = uNumerators[vertex];
+    const vNumerator = vNumerators[vertex];
+    if (
+      !Number.isInteger(uNumerator) ||
+      !Number.isInteger(vNumerator) ||
+      Math.abs(uNumerator) > 4_503_599_627_370_496 ||
+      Math.abs(vNumerator) > 4_503_599_627_370_496
+    ) {
+      return null;
+    }
+    // Integer numerator times an exact power of two is exact in float64.
+    cellU.push(outwardInterval(uNumerator * scale, uNumerator * scale));
+    cellV.push(outwardInterval(vNumerator * scale, vNumerator * scale));
+  }
+  const denominator = 2 ** barycentricFractionBits;
+  const weights: OutwardInterval[] = [];
+  for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
+    let numeratorSum = 0;
+    for (let weight = 0; weight < 3; weight += 1) {
+      const numerator = barycentricNumerators[cellVertex * 3 + weight];
+      if (!Number.isInteger(numerator) || numerator < 0) return null;
+      numeratorSum += numerator;
+      weights.push(outwardInterval(numerator / denominator, numerator / denominator));
+    }
+    if (numeratorSum !== denominator) return null;
+  }
+  const artifact: OutwardInterval[] = [];
+  for (let value = 0; value < 9; value += 1) {
+    const coordinate = artifactVerticesMm[value];
+    if (!Number.isFinite(coordinate)) return null;
+    artifact.push(outwardInterval(coordinate, coordinate));
+  }
+  return fastEncloseCore(internal, cellU, cellV, weights, artifact);
+}
+
+/**
+ * Shared centered mean-value core. `cellU`/`cellV` are the three exact cell
+ * vertex coordinates, `weights` the nine exact barycentric weights (vertex-
+ * major a,b,c), `artifact` the nine artifact coordinate enclosures
+ * (vertex-major x,y,z).
+ */
+function fastEncloseCore(
+  internal: InternalCompiledProgram,
+  cellU: readonly OutwardInterval[],
+  cellV: readonly OutwardInterval[],
+  weights: readonly OutwardInterval[],
+  artifact: readonly OutwardInterval[]
+): ValidatedResidualEnclosure | null {
   const three = outwardInterval(3, 3);
   const uBox = outwardHull(outwardHull(cellU[0], cellU[1]), cellU[2]);
   const vBox = outwardHull(outwardHull(cellV[0], cellV[1]), cellV[2]);
@@ -2152,31 +2269,18 @@ export function fastEncloseCompiledValidatedResidualProgram(
 
   // Affine artifact values at the three cell vertices via the exact dyadic
   // barycentric weights (the same combination the decimal path uses).
-  const denominator = 2 ** barycentricFractionBits;
   const artifactAtCellVertex: OutwardInterval[][] = [];
   for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
-    const weights = cell.barycentricVertices[cellVertex];
-    const numerators = [weights.aNumerator, weights.bNumerator, weights.cNumerator];
-    const weightIntervals: OutwardInterval[] = [];
-    let numeratorSum = 0;
-    for (const numerator of numerators) {
-      if (!INTEGER_RE.test(numerator) || numerator.length > 16) return null;
-      const parsed = Number(numerator);
-      if (!Number.isSafeInteger(parsed) || parsed < 0) return null;
-      numeratorSum += parsed;
-      // Weight = numerator / 2^bits with both parts exact in float64.
-      weightIntervals.push(outwardInterval(parsed / denominator, parsed / denominator));
-    }
-    if (numeratorSum !== denominator) return null;
     const coordinates: OutwardInterval[] = [];
-    for (const coordinate of [0, 1, 2] as const) {
+    for (let coordinate = 0; coordinate < 3; coordinate += 1) {
       let combination = fastZero();
       for (let artifactVertex = 0; artifactVertex < 3; artifactVertex += 1) {
-        const value = fastArtifactCoordinate(request, artifactVertex, coordinate);
-        if (value === null) return null;
         combination = outwardAdd(
           combination,
-          outwardMultiply(weightIntervals[artifactVertex], value)
+          outwardMultiply(
+            weights[cellVertex * 3 + artifactVertex],
+            artifact[artifactVertex * 3 + coordinate]
+          )
         );
       }
       coordinates.push(combination);

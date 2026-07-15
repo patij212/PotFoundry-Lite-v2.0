@@ -38,3 +38,26 @@
 3. Screen v2 ops: non-constant-exponent `power` (base ≥ 0), `fract`/`floor` on jump-free cells — unlocks SE and the fract-family styles.
 4. Exact-rational (non-dyadic) partition stations — Gothic/crease styles, and pre-requisite for feature-aligned production meshes.
 5. Curtain/riser multi-patch complexes — the 7 atlas-refused styles.
+
+## Addendum — numeric screen channel (same day)
+
+Landed the ranked-#1 unlock: an exact numeric cell side-channel for the screen
+(`encloseResidualFastNumeric`, kernel v14 / registry v8). The kernel screens cells from
+per-mapping numeric caches (integer numerators kept within 2^52 so weighted midpoint
+combinations stay exact; exact parsed binary32 STL coordinates) and builds the canonical
+BigInt/string request ONLY for cells the decimal authority actually decides. Bit-identical
+enclosures to the string channel (property-tested).
+
+Measured effect: HR pot proof 19.4s -> 15.8s, SR 22.0s -> 18.1s; the geometry phase is no
+longer the composed bottleneck. Re-testing FB/WI at defaults with the freed headroom
+sharpened their classification:
+
+- FourierBloom defaults now fails on the COMPOSED 30s deadline at its required density
+  (1024 angular -> ~108k tris: exact partition verify + structural self-intersection scans
+  dominate), no longer on geometry cells.
+- WaveInterference defaults still needs ~140k triangles (bottoms x walls at 512 angular)
+  -> mapped-triangle cap.
+
+Conclusion: for FB/WI the last walls are exactly ranked-#2 — the 131,072 cap and the 30s
+composed ceiling (structural/partition scan throughput), plus non-uniform ladders to spend
+triangles where the styled edges need them.

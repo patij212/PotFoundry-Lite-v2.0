@@ -7,6 +7,7 @@ import {
   compileValidatedResidualProgram,
   evaluateCompiledValidatedResidualProgram,
   fastEncloseCompiledValidatedResidualProgram,
+  fastEncloseCompiledValidatedResidualProgramNumeric,
   VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256,
   VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION,
   VALIDATED_RESIDUAL_PROGRAM_MAX_NODES,
@@ -14,7 +15,7 @@ import {
 } from './validatedResidualProgram';
 
 export const VALIDATED_RESIDUAL_EVALUATOR_REGISTRY_VERSION =
-  'potfoundry.validated-residual-evaluator-registry/v7' as const;
+  'potfoundry.validated-residual-evaluator-registry/v8' as const;
 
 declare const registeredValidatedResidualEvaluatorBrand: unique symbol;
 
@@ -41,6 +42,19 @@ export interface RegisteredValidatedResidualEvaluator {
    */
   readonly encloseResidualFast: (
     request: ValidatedResidualEnclosureRequest
+  ) => ValidatedResidualEnclosure | null;
+  /**
+   * Exact numeric variant of the screen for hot proof loops: integer dyadic
+   * numerators (within 2^52), exact dyadic barycentric numerators, exact
+   * parsed binary32 STL coordinates. Same enclosures as the string entry.
+   */
+  readonly encloseResidualFastNumeric: (
+    uNumerators: Float64Array,
+    vNumerators: Float64Array,
+    fractionBits: number,
+    barycentricNumerators: Float64Array,
+    barycentricFractionBits: number,
+    artifactVerticesMm: Float64Array
   ) => ValidatedResidualEnclosure | null;
   readonly [registeredValidatedResidualEvaluatorBrand]: true;
 }
@@ -120,6 +134,7 @@ export function compileValidatedResidualEvaluator(
       evaluatorSourceSha256,
       'no-callback canonical-target-program compilation with compiler-derived residual',
       'acceptance-only centered mean-value float64 screen derived from the same compiled program; refusals defer to the validated decimal enclosure',
+      'the screen additionally accepts an exact numeric cell encoding (integer dyadic numerators within 2^52, exact parsed binary32 STL coordinates) that yields identical enclosures to the canonical string encoding',
       `node-count=${program.nodeCount}`,
     ].join('\n')
   );
@@ -130,6 +145,25 @@ export function compileValidatedResidualEvaluator(
   const encloseResidualFast = Object.freeze(
     (request: ValidatedResidualEnclosureRequest): ValidatedResidualEnclosure | null =>
       fastEncloseCompiledValidatedResidualProgram(program, request)
+  );
+  const encloseResidualFastNumeric = Object.freeze(
+    (
+      uNumerators: Float64Array,
+      vNumerators: Float64Array,
+      fractionBits: number,
+      barycentricNumerators: Float64Array,
+      barycentricFractionBits: number,
+      artifactVerticesMm: Float64Array
+    ): ValidatedResidualEnclosure | null =>
+      fastEncloseCompiledValidatedResidualProgramNumeric(
+        program,
+        uNumerators,
+        vNumerators,
+        fractionBits,
+        barycentricNumerators,
+        barycentricFractionBits,
+        artifactVerticesMm
+      )
   );
   const handle = Object.freeze({
     patchId: program.patchId,
@@ -144,6 +178,7 @@ export function compileValidatedResidualEvaluator(
     targetSha256,
     encloseResidual,
     encloseResidualFast,
+    encloseResidualFastNumeric,
   }) as RegisteredValidatedResidualEvaluator;
   registry.set(handle, handle);
   return handle;
