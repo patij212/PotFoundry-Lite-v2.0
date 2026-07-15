@@ -6568,3 +6568,40 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   M-surf); the JUDGE is now demonstrably able to certify curved solids when the candidate
   generator is good enough — mesher outputs can be wired to partitions next.
 - Fresh all-20 baseline (containment #5) and on-GPU G1 differential remain open.
+
+## 2026-07-15 - Claude Fable 5 - G2 style certification matrix (same session, cont.)
+
+### Summary
+- Measured all 20 registry styles against the G2 chain; full matrix in
+  research/lab/2026-07-15-g2-style-certification-matrix.md (f510bada).
+- SpiralRidges (gentle low-turn helix) CERTIFIED at 9,499,969 pm / 53.8k tris / 24.4s and
+  joined HarmonicRipple in the PF_G2_POT gate (now parameterized; 5/5 gate tests green).
+- Classified the rest with measured mechanisms: 7 screen-full admissible, 6 screen-op-gap
+  (fract/floor/sign/step/atan2/pcg2d -> decimal-only), 7 atlas-refused (need curtain/riser
+  complexes). Gyroid: styled inner edge runs at effective angular frequency ~30 => needs
+  >262k tris at ANY meaningful relief (true 85um max measured). Gothic: 24 crease kinks can
+  never sit on dyadic stations (24 does not divide 2^n) => needs exact-rational stations.
+  SuperellipseMorph: screen gap (non-constant-exponent power at abs fold lines).
+  FourierBloom: razor-edge near-miss (true max ~9.08um), blocked by per-cell throughput.
+
+### Decisions
+- Diagnostic rule now on record: the depth-24 "Residual upper 9.5000x" refusal value is a
+  crossing-contour artifact (first max-depth cell at the budget contour), NEVER the region
+  max — Gyroid read 9,500,033 pm while truly at ~85,000,000 pm. Diagnose by dense-sampling
+  the named patch.
+- The binding frontier is the triad 131,072-triangle cap x 30s deadline x uniform dyadic
+  grids, with per-cell cost dominated by requestForCell BigInt construction (~100us/cell),
+  not enclosure math (~us).
+
+### Validation
+- PF_G2_POT=1 gate: 5/5 (both style proofs + weld + partition + fail-closed default-scale).
+  typecheck 0 errors; lint 0 warnings. Probes deleted before commit.
+
+### Next agent
+- Ranked increments in the lab doc: (1) requestForCell numeric fast-path (unlocks
+  FourierBloom at defaults), (2) non-uniform dyadic vertical ladders (default scale),
+  (3) screen v2 ops (SE + fract-family), (4) exact-rational stations (Gothic/creases),
+  (5) curtain/riser multi-patch complexes (7 layered styles).
+- Note: the Voronoi dense-truth background agent landed 549bec4d + 5cf68c3e (PCG2D hash
+  desync fixes) during this session — coordinate before touching conforming/bandRemesh
+  Voronoi truth.
