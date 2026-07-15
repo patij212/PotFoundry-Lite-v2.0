@@ -6709,3 +6709,34 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   preregistered Voronoi hypothesis) is the next ranked increment. Then U3 exact-rational
   stations (Gothic + WaveInterference + production-mesh provenance). Containment #5
   (fresh all-20 WebGPU baseline) still owed on a quiet machine.
+
+## 2026-07-15 - Claude Fable 5 - screen v2 ops (U2): SuperellipseMorph at defaults (cont. 5)
+
+### Summary
+- Landed U2 (d5327967): piecewise/branch-cut ops (floor/ceiling/round/fract/sign/step/
+  atan2/pcg2d) compile to jump-guarded opcodes (compiler v11). Jump-free cells take exact
+  locally-constant/smooth paths (fract stays smooth; pcg2d with proven single-integer
+  operands resolves to its exact dyadic constant — the preregistered Voronoi hypothesis
+  holds at the op level). Straddling cells downgrade the run to a sound first-order
+  value-hull residual, so the b&b subdivides toward jump-free children instead of
+  refusing. power gained a varying-exponent branch (base >= 0, y >= 1).
+- **SuperellipseMorph CERTIFIED-PARTIAL at FULL DEFAULTS: 9,499,679 pm / 107,520 tris /
+  ~38 s** (fifth gate pot; second style at untouched defaults). The unlock needed one
+  real enclosure fix: the exponent-derivative factor a^y*ln(a) must be bounded
+  CELL-LOCALLY (corners + analytic minimum a* = e^(-1/y) when interior) — a constant-
+  width global floor destroyed second-order convergence and blew the 1M work-cell cap.
+- fract/floor family (SFB, Crystalline, RippleInterference, GeometricStar,
+  CelticTriquetra, Voronoi): machinery now sound, but all deadline on bottom-top
+  hull-cascades — their jump lines are dense and non-dyadic, so straddling cells persist
+  at every depth. Honest routing: U3 exact-rational feature-aligned stations (as the
+  roadmap review predicted). U3 now unlocks EIGHT styles (these six + Gothic + WI).
+
+### Validation
+- Suite 419/419 with PF_G2_POT=1; typecheck 0 errors; lint 0 warnings. Screen tests
+  updated to jump-guarded semantics (straddle => sound wide hull, not null; fract-tight;
+  pcg2d-constant cases).
+
+### Next agent
+- U3 exact-rational partition stations is now the single highest-leverage increment
+  (8 styles). Then U4 curtain/riser complexes (7 layered styles). Containment #5
+  (fresh all-20 WebGPU baseline) still owed on a quiet machine.
