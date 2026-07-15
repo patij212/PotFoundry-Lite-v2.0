@@ -66,7 +66,7 @@ export const VALIDATED_RESIDUAL_PROGRAM_VERSION =
 export const VALIDATED_RESIDUAL_SSA_PROGRAM_VERSION =
   'potfoundry.validated-target-ssa-program/v3' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION =
-  'potfoundry.validated-target-program-compiler/v10' as const;
+  'potfoundry.validated-target-program-compiler/v11' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
   [
     VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION,
@@ -76,7 +76,9 @@ export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
     'a centered mean-value screen may enclose non-affine residual cells in outward float64 intervals: residual(cell) is contained in residual(centre) plus the box interval Jacobian of target-minus-affine-artifact times the centred cell offsets',
     'the screen Jacobian is forward-mode interval differentiation of the same compiled instructions over the axis-aligned cell hull; kinked minimum/maximum/absolute nodes use the Clarke subgradient hull, which the Lebourg mean-value theorem admits',
     'screen arithmetic widens every node result by a pure relative 4*2^-52 (libm-backed nodes 8*2^-52, assuming platform libm within one unit in the last place per call), which preserves exact zeros; soundness of relative-only widening is enforced by refusing any nonzero computed bound below 1e-150 in magnitude, above which a rounded result is exactly zero only when truly zero; add/subtract results additionally keep exactness proven by an error-free round-trip check; trig ranges include every critical point conservatively located with outward pi',
-    'the screen refuses (returns unavailable, never a bound) on floor, ceiling, round, fractional-part, sign, step, atan2, pcg2d nodes, non-positive sqrt/ln/power/divide domains, degenerate cell Jacobian systems, and any nonfinite value; refused cells fall back to the validated decimal enclosure',
+    'piecewise/branch-cut nodes (floor, ceiling, round, fractional-part, sign, step, atan2, pcg2d) are jump-guarded: cells whose argument enclosures exclude every jump take exact locally-constant or smooth paths (pcg2d resolves proven single-integer operands to its exact dyadic constant), and straddling cells downgrade the whole run to a plain value-hull residual over the cell — still a sound enclosure, only first-order wide',
+    'power additionally supports a varying exponent y >= 1 with base >= 0: value and base-derivative factors by monotone corner bounds, exponent-derivative factor a^y*ln(a) bounded below by -1/(e*yLo) on (0,1] and corner-monotone for base >= 1',
+    'the screen refuses (returns unavailable, never a bound) on non-positive sqrt/ln/divide domains, power bases that may be negative, atan2 argument rectangles touching the origin outside the hull path, degenerate cell Jacobian systems, and any nonfinite value; refused cells fall back to the validated decimal enclosure',
     'program input is strict bounded canonical number-free JSON; arbitrary callbacks and closure state are impossible',
     'legacy v2 expression trees remain accepted; production v3 programs are forward-only SSA arrays with canonical string indices',
     'SSA references may address only earlier nodes, making cycles and forward references impossible; target references must address declared nodes',
@@ -1325,6 +1327,15 @@ const FAST_OP_DIV = 15;
 const FAST_OP_MIN = 16;
 const FAST_OP_MAX = 17;
 const FAST_OP_POW = 18;
+const FAST_OP_FLOOR = 19;
+const FAST_OP_CEIL = 20;
+const FAST_OP_ROUND = 21;
+const FAST_OP_FRACT = 22;
+const FAST_OP_SIGN = 23;
+const FAST_OP_STEP = 24;
+const FAST_OP_ATAN2 = 25;
+const FAST_OP_PCG2D_X = 26;
+const FAST_OP_PCG2D_Y = 27;
 
 const FAST_REL = 8.881784197001252e-16; // 4 * 2^-52
 const FAST_REL_LIBM = 1.7763568394002505e-15; // 8 * 2^-52
@@ -1428,21 +1439,19 @@ function fastCompileScreenProgram(internal: InternalCompiledProgram): FastCompil
       case 'minimum': ops[index] = FAST_OP_MIN; argA[index] = instruction.left; argB[index] = instruction.right; break;
       case 'maximum': ops[index] = FAST_OP_MAX; argA[index] = instruction.left; argB[index] = instruction.right; break;
       case 'power': ops[index] = FAST_OP_POW; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      // Piecewise-constant / branch-cut operations: the mean-value form is
-      // invalid across their jumps, so the screen refuses the whole program
-      // rather than guess.
-      case 'floor':
-      case 'ceiling':
-      case 'round':
-      case 'fractional-part':
-      case 'sign':
-      case 'step':
-      case 'atan2':
-      case 'pcg2d-unit-x':
-      case 'pcg2d-unit-y':
-        supported = false;
-        unsupportedReason = `op-${instruction.op}`;
-        break;
+      // Piecewise / branch-cut operations compile to jump-guarded opcodes:
+      // cells whose argument enclosure excludes every jump take a tight
+      // (often exactly constant) path; straddling cells downgrade the whole
+      // run to a value-hull enclosure (see fastRunTapeHullOnly).
+      case 'floor': ops[index] = FAST_OP_FLOOR; argA[index] = instruction.arg; break;
+      case 'ceiling': ops[index] = FAST_OP_CEIL; argA[index] = instruction.arg; break;
+      case 'round': ops[index] = FAST_OP_ROUND; argA[index] = instruction.arg; break;
+      case 'fractional-part': ops[index] = FAST_OP_FRACT; argA[index] = instruction.arg; break;
+      case 'sign': ops[index] = FAST_OP_SIGN; argA[index] = instruction.arg; break;
+      case 'step': ops[index] = FAST_OP_STEP; argA[index] = instruction.left; argB[index] = instruction.right; break;
+      case 'atan2': ops[index] = FAST_OP_ATAN2; argA[index] = instruction.left; argB[index] = instruction.right; break;
+      case 'pcg2d-unit-x': ops[index] = FAST_OP_PCG2D_X; argA[index] = instruction.left; argB[index] = instruction.right; break;
+      case 'pcg2d-unit-y': ops[index] = FAST_OP_PCG2D_Y; argA[index] = instruction.left; argB[index] = instruction.right; break;
     }
   }
   const compiled: FastCompiledScreenProgram = {
@@ -1537,6 +1546,14 @@ function recordFastRefusalBoolean(reason: string): false {
 }
 
 /**
+ * Set when a jump-guarded node straddled a discontinuity during the last
+ * fastRunTape run: value channels remain sound enclosures, derivative
+ * channels are meaningless, and the caller must fall back to the plain
+ * value-hull residual instead of the centered mean-value form.
+ */
+let fastRunTapeHullOnly = false;
+
+/**
  * Execute the compiled tape with dual-number interval forward differentiation
  * over u in [uLo, uHi], v in [vLo, vHi]. When `seedDerivatives` is false both
  * derivative channels stay zero (pure value pass). Returns false (with a
@@ -1562,6 +1579,7 @@ function fastRunTape(
   const dvLo = program.dvLo;
   const dvHi = program.dvHi;
   const count = ops.length;
+  fastRunTapeHullOnly = false;
   for (let index = 0; index < count; index += 1) {
     let rLo = 0;
     let rHi = 0;
@@ -1962,6 +1980,98 @@ function fastRunTape(
           rDvHi = fastWidenHi(Math.max(Math.max(q0, q1), Math.max(q2, q3)));
           break;
         }
+        if (!exponentIsConstant && expLo >= 1 && baseLo >= 0 && Number.isFinite(baseHi)) {
+          // Nonnegative base with a VARYING exponent y >= 1 (e.g. a Lame
+          // power morphing along v): pow stays monotone per argument, the
+          // base-derivative factor y*a^(y-1) stays finite (y-1 >= 0), and
+          // the exponent-derivative factor g = a^y*ln(a) is globally bounded
+          // below by -1/(e*yLo) on a in [0,1] and corner-monotone on a >= 1.
+          if (!fastPowCornersRaw(baseLo, baseHi, expLo, expHi)) {
+            return recordFastRefusalBoolean('power-corners');
+          }
+          rLo = fastPowScratch[0];
+          rHi = fastPowScratch[1];
+          if (!fastPowCornersRaw(baseLo, baseHi, Math.max(0, expLo - 1), Math.max(0, expHi - 1))) {
+            return recordFastRefusalBoolean('power-corners');
+          }
+          const bf0 = expLo * fastPowScratch[0];
+          const bf1 = expLo * fastPowScratch[1];
+          const bf2 = expHi * fastPowScratch[0];
+          const bf3 = expHi * fastPowScratch[1];
+          const baseFactorLo = fastWidenLo(Math.min(Math.min(bf0, bf1), Math.min(bf2, bf3)));
+          const baseFactorHi = fastWidenHi(Math.max(Math.max(bf0, bf1), Math.max(bf2, bf3)));
+          // g(a, y) = a^y * ln(a): for fixed y it decreases to a global
+          // minimum at a* = e^(-1/y) and increases beyond; for fixed a it is
+          // monotone in y. Cell-local bounds therefore come from the four
+          // (a, y) corners plus g(a*, y) for each y endpoint whose a* lies
+          // inside the cell's base interval — keeping the enclosure width
+          // proportional to the cell, which preserves the screen's
+          // second-order convergence (a constant-width global floor here
+          // previously destroyed it and blew the work-cell budget).
+          const gCandidates: number[] = [];
+          const pushG = (baseValue: number, exponentValue: number): boolean => {
+            if (baseValue <= 0) {
+              gCandidates.push(0); // a -> 0 limit of a^y ln a for y >= 1
+              return true;
+            }
+            const candidate = Math.pow(baseValue, exponentValue) * Math.log(baseValue);
+            if (!Number.isFinite(candidate)) return false;
+            gCandidates.push(candidate);
+            return true;
+          };
+          let gOk = true;
+          gOk = gOk && pushG(baseLo, expLo) && pushG(baseLo, expHi);
+          gOk = gOk && pushG(baseHi, expLo) && pushG(baseHi, expHi);
+          for (const exponentEnd of [expLo, expHi]) {
+            const interior = Math.exp(-1 / exponentEnd);
+            if (interior > baseLo && interior < baseHi) {
+              // Widen the analytic minimum location outward via both y ends.
+              gCandidates.push(-Math.exp(-1) / exponentEnd);
+            }
+          }
+          if (!gOk) return recordFastRefusalBoolean('power-overflow');
+          let gMin = gCandidates[0];
+          let gMax = gCandidates[0];
+          for (const candidate of gCandidates) {
+            if (candidate < gMin) gMin = candidate;
+            if (candidate > gMax) gMax = candidate;
+          }
+          const gLo = fastWidenLoLibm(gMin);
+          const gHi = fastWidenHiLibm(gMax);
+          const du0 = baseFactorLo * duLo[a];
+          const du1 = baseFactorLo * duHi[a];
+          const du2 = baseFactorHi * duLo[a];
+          const du3 = baseFactorHi * duHi[a];
+          const gu0 = gLo * duLo[b];
+          const gu1 = gLo * duHi[b];
+          const gu2 = gHi * duLo[b];
+          const gu3 = gHi * duHi[b];
+          rDuLo = fastWidenLo(
+            Math.min(Math.min(du0, du1), Math.min(du2, du3)) +
+              Math.min(Math.min(gu0, gu1), Math.min(gu2, gu3))
+          );
+          rDuHi = fastWidenHi(
+            Math.max(Math.max(du0, du1), Math.max(du2, du3)) +
+              Math.max(Math.max(gu0, gu1), Math.max(gu2, gu3))
+          );
+          const dv0 = baseFactorLo * dvLo[a];
+          const dv1 = baseFactorLo * dvHi[a];
+          const dv2 = baseFactorHi * dvLo[a];
+          const dv3 = baseFactorHi * dvHi[a];
+          const gv0 = gLo * dvLo[b];
+          const gv1 = gLo * dvHi[b];
+          const gv2 = gHi * dvLo[b];
+          const gv3 = gHi * dvHi[b];
+          rDvLo = fastWidenLo(
+            Math.min(Math.min(dv0, dv1), Math.min(dv2, dv3)) +
+              Math.min(Math.min(gv0, gv1), Math.min(gv2, gv3))
+          );
+          rDvHi = fastWidenHi(
+            Math.max(Math.max(dv0, dv1), Math.max(dv2, dv3)) +
+              Math.max(Math.max(gv0, gv1), Math.max(gv2, gv3))
+          );
+          break;
+        }
         if (!(baseLo > 0)) return recordFastRefusalBoolean('power-domain');
         // General positive base: a^b = exp(b * ln a) with widened libm calls;
         // d(a^b) = a^b * (b' * ln a + b * a'/a).
@@ -2028,6 +2138,183 @@ function fastRunTape(
         const i3 = rHi * innerDvHi;
         rDvLo = fastWidenLo(Math.min(Math.min(i0, i1), Math.min(i2, i3)));
         rDvHi = fastWidenHi(Math.max(Math.max(i0, i1), Math.max(i2, i3)));
+        break;
+      }
+      case FAST_OP_FLOOR:
+      case FAST_OP_CEIL:
+      case FAST_OP_ROUND: {
+        const lo = valueLo[a];
+        const hi = valueHi[a];
+        // Monotone integer-valued maps: applying them to the enclosure
+        // bounds encloses the truth exactly.
+        if (ops[index] === FAST_OP_FLOOR) {
+          rLo = Math.floor(lo);
+          rHi = Math.floor(hi);
+        } else if (ops[index] === FAST_OP_CEIL) {
+          rLo = Math.ceil(lo);
+          rHi = Math.ceil(hi);
+        } else {
+          rLo = roundTiesToEven(lo);
+          rHi = roundTiesToEven(hi);
+        }
+        // Jump-free cell: the map is locally constant; derivative is zero.
+        // Straddling cell: value hull stays sound, derivatives do not.
+        if (rLo !== rHi) fastRunTapeHullOnly = true;
+        break;
+      }
+      case FAST_OP_FRACT: {
+        const lo = valueLo[a];
+        const hi = valueHi[a];
+        const floorLo = Math.floor(lo);
+        if (floorLo === Math.floor(hi)) {
+          // fract(x) = x - k on the whole cell: exact shift, smooth.
+          rLo = lo - floorLo;
+          rHi = hi - floorLo;
+          rDuLo = duLo[a];
+          rDuHi = duHi[a];
+          rDvLo = dvLo[a];
+          rDvHi = dvHi[a];
+        } else {
+          rLo = 0;
+          rHi = 1;
+          fastRunTapeHullOnly = true;
+        }
+        break;
+      }
+      case FAST_OP_SIGN: {
+        const lo = valueLo[a];
+        const hi = valueHi[a];
+        if (lo > 0) {
+          rLo = 1;
+          rHi = 1;
+        } else if (hi < 0) {
+          rLo = -1;
+          rHi = -1;
+        } else {
+          rLo = -1;
+          rHi = 1;
+          fastRunTapeHullOnly = true;
+        }
+        break;
+      }
+      case FAST_OP_STEP: {
+        // step(edge, x) is one exactly when edge <= x.
+        const edgeLo = valueLo[a];
+        const edgeHi = valueHi[a];
+        const xLo = valueLo[b];
+        const xHi = valueHi[b];
+        if (edgeHi <= xLo) {
+          rLo = 1;
+          rHi = 1;
+        } else if (edgeLo > xHi) {
+          rLo = 0;
+          rHi = 0;
+        } else {
+          rLo = 0;
+          rHi = 1;
+          fastRunTapeHullOnly = true;
+        }
+        break;
+      }
+      case FAST_OP_ATAN2: {
+        // atan2(y = left, x = right): continuous away from the branch cut
+        // (y = 0, x <= 0); over a rectangle in the continuous region the
+        // angle is monotone along every edge, so corner values bound it.
+        const yLo = valueLo[a];
+        const yHi = valueHi[a];
+        const xLo = valueLo[b];
+        const xHi = valueHi[b];
+        if (yLo <= 0 && yHi >= 0 && xLo <= 0) {
+          rLo = -FAST_PI_HI;
+          rHi = FAST_PI_HI;
+          fastRunTapeHullOnly = true;
+          break;
+        }
+        const c0 = Math.atan2(yLo, xLo);
+        const c1 = Math.atan2(yLo, xHi);
+        const c2 = Math.atan2(yHi, xLo);
+        const c3 = Math.atan2(yHi, xHi);
+        rLo = fastWidenLoLibm(Math.min(Math.min(c0, c1), Math.min(c2, c3)));
+        rHi = fastWidenHiLibm(Math.max(Math.max(c0, c1), Math.max(c2, c3)));
+        // d(atan2) = (x*dy - y*dx) / (x^2 + y^2); the guarded region
+        // excludes the origin so the denominator is strictly positive.
+        const sq0 = xLo * xLo;
+        const sq1 = xHi * xHi;
+        const sq2 = yLo * yLo;
+        const sq3 = yHi * yHi;
+        const xSqLo = xLo <= 0 && xHi >= 0 ? 0 : fastWidenLo(Math.min(sq0, sq1));
+        const xSqHi = fastWidenHi(Math.max(sq0, sq1));
+        const ySqLo = yLo <= 0 && yHi >= 0 ? 0 : fastWidenLo(Math.min(sq2, sq3));
+        const ySqHi = fastWidenHi(Math.max(sq2, sq3));
+        const rSqLo = fastCheckedAddLo(xSqLo, ySqLo);
+        const rSqHi = fastCheckedAddHi(xSqHi, ySqHi);
+        if (!(rSqLo > 0)) return recordFastRefusalBoolean('atan2-origin');
+        const n0 = xLo * duLo[a];
+        const n1 = xLo * duHi[a];
+        const n2 = xHi * duLo[a];
+        const n3 = xHi * duHi[a];
+        const m0 = yLo * duLo[b];
+        const m1 = yLo * duHi[b];
+        const m2 = yHi * duLo[b];
+        const m3 = yHi * duHi[b];
+        const numDuLo =
+          Math.min(Math.min(n0, n1), Math.min(n2, n3)) -
+          Math.max(Math.max(m0, m1), Math.max(m2, m3));
+        const numDuHi =
+          Math.max(Math.max(n0, n1), Math.max(n2, n3)) -
+          Math.min(Math.min(m0, m1), Math.min(m2, m3));
+        const e0 = numDuLo / rSqLo;
+        const e1 = numDuLo / rSqHi;
+        const e2 = numDuHi / rSqLo;
+        const e3 = numDuHi / rSqHi;
+        rDuLo = fastWidenLo(Math.min(Math.min(e0, e1), Math.min(e2, e3)));
+        rDuHi = fastWidenHi(Math.max(Math.max(e0, e1), Math.max(e2, e3)));
+        const p0 = xLo * dvLo[a];
+        const p1 = xLo * dvHi[a];
+        const p2 = xHi * dvLo[a];
+        const p3 = xHi * dvHi[a];
+        const q0 = yLo * dvLo[b];
+        const q1 = yLo * dvHi[b];
+        const q2 = yHi * dvLo[b];
+        const q3 = yHi * dvHi[b];
+        const numDvLo =
+          Math.min(Math.min(p0, p1), Math.min(p2, p3)) -
+          Math.max(Math.max(q0, q1), Math.max(q2, q3));
+        const numDvHi =
+          Math.max(Math.max(p0, p1), Math.max(p2, p3)) -
+          Math.min(Math.min(q0, q1), Math.min(q2, q3));
+        const f0 = numDvLo / rSqLo;
+        const f1 = numDvLo / rSqHi;
+        const f2 = numDvHi / rSqLo;
+        const f3 = numDvHi / rSqHi;
+        rDvLo = fastWidenLo(Math.min(Math.min(f0, f1), Math.min(f2, f3)));
+        rDvHi = fastWidenHi(Math.max(Math.max(f0, f1), Math.max(f2, f3)));
+        break;
+      }
+      case FAST_OP_PCG2D_X:
+      case FAST_OP_PCG2D_Y: {
+        const aLo = valueLo[a];
+        const bLo = valueLo[b];
+        if (
+          aLo === valueHi[a] &&
+          bLo === valueHi[b] &&
+          Number.isInteger(aLo) &&
+          Number.isInteger(bLo)
+        ) {
+          // Compiler-proven integer operands resolved to single integers:
+          // the hash is an exact dyadic constant ((hash >>> 8) * 2^-24).
+          try {
+            const pair = integerPcg2dUnitHash(aLo, bLo);
+            rLo = ops[index] === FAST_OP_PCG2D_X ? pair[0] : pair[1];
+            rHi = rLo;
+            break;
+          } catch {
+            // Outside the hash coordinate envelope: sound unit hull below.
+          }
+        }
+        rLo = 0;
+        rHi = 1;
+        fastRunTapeHullOnly = true;
         break;
       }
       default:
@@ -2396,6 +2683,37 @@ function fastEncloseCore(
   // slots before the second run reuses the same channel buffers.
   if (!fastRunTape(screenProgram, uBoxLo, uBoxHi, vBoxLo, vBoxHi, true)) {
     return null;
+  }
+  if (fastRunTapeHullOnly) {
+    // A jump-guarded node straddled its discontinuity: the centered
+    // mean-value form is invalid, but the tape's value channels are still
+    // sound enclosures. Fall back to the plain hull residual —
+    // target(cell) minus the artifact triangle hull — which is first-order
+    // wide but cheap, so the branch-and-bound can subdivide toward
+    // jump-free children on it.
+    const hullResiduals: OutwardInterval[] = [];
+    for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+      const targetIndex = targets[coordinate];
+      const a0Lo = artifactLo[coordinate];
+      const a1Lo = artifactLo[3 + coordinate];
+      const a2Lo = artifactLo[6 + coordinate];
+      const a0Hi = artifactHi[coordinate];
+      const a1Hi = artifactHi[3 + coordinate];
+      const a2Hi = artifactHi[6 + coordinate];
+      const artifactMin = Math.min(a0Lo, Math.min(a1Lo, a2Lo));
+      const artifactMax = Math.max(a0Hi, Math.max(a1Hi, a2Hi));
+      const residualLo = fastCheckedAddLo(screenProgram.vLo[targetIndex], -artifactMax);
+      const residualHi = fastCheckedAddHi(screenProgram.vHi[targetIndex], -artifactMin);
+      if (!Number.isFinite(residualLo) || !Number.isFinite(residualHi) || residualLo > residualHi) {
+        return null;
+      }
+      hullResiduals.push(outwardInterval(residualLo, residualHi));
+    }
+    return Object.freeze({
+      xMm: hullResiduals[0],
+      yMm: hullResiduals[1],
+      zMm: hullResiduals[2],
+    });
   }
   const jacobianDuLo = fastCoreJacobianDuLo;
   const jacobianDuHi = fastCoreJacobianDuHi;

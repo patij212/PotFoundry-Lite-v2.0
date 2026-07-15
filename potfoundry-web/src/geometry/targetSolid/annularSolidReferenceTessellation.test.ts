@@ -243,6 +243,26 @@ describe('annular solid reference tessellation', () => {
       },
       maxElapsedMilliseconds: 110_000,
     },
+    // FULL DEFAULT PARAMETERS — certified 9,499,679 pm over 107,520
+    // triangles in ~38 s once the screen's varying-exponent power gained
+    // cell-local a^y*ln(a) bounds (screen v2).
+    {
+      styleId: 'SuperellipseMorph',
+      styleParams: {},
+      geometry: SMALL_POT_GEOMETRY,
+      divisions: {
+        angularDivisionsLog2: 9,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
     // PRODUCTION-DEFAULT SCALE (OD140/H120, gentle params) — certified
     // 9,499,996 pm over 155,648 triangles in ~85 s. The live profile
     // exponent t^1.1 has unbounded curvature at the base (kappa ~ t^-0.9);

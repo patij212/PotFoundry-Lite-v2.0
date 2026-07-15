@@ -120,3 +120,29 @@ Ladder lesson: edge ladders fix EDGE-CONCENTRATED error (profile-exponent base, 
 edges); they cannot fix uniform-in-v twist terms (those need uniform density) or angular
 demands (those need global stations). Classify first (crossing-invariance + patch id +
 edge locality), then choose the tool.
+
+## Addendum 4 — screen v2 ops: SuperellipseMorph certified at pure defaults (same day)
+
+Landed U2: the piecewise/branch-cut ops (floor, ceiling, round, fract, sign, step, atan2,
+pcg2d) now compile to JUMP-GUARDED opcodes — cells whose argument enclosures exclude every
+jump take exact locally-constant/smooth paths (fract(x)=x-k stays fully smooth; pcg2d with
+proven single-integer operands resolves to its exact dyadic constant, confirming the
+preregistered Voronoi hypothesis at the op level), and straddling cells downgrade the run
+to a plain value-hull residual — first-order wide but sound and cheap, so the b&b
+subdivides toward jump-free children. `power` gained a varying-exponent branch
+(base >= 0, y >= 1): the first cut bounded the exponent-derivative factor a^y*ln(a) by a
+constant-width global floor, which destroyed second-order convergence and blew the 1M
+work-cell cap on SuperellipseMorph's inner wall; cell-local piecewise-monotone bounds
+(corners + the analytic minimum at a* = e^(-1/y) when inside the cell) fixed it.
+
+**RESULT: SuperellipseMorph CERTIFIED-PARTIAL at FULL DEFAULT parameters — 9,499,679 pm
+over 107,520 triangles in ~38 s** (m_top = 5.5 corner bands and all). Fifth pot in the
+PF_G2_POT gate (419/419 with the gate on).
+
+The fract/floor family (SuperformulaBlossom, Crystalline, RippleInterference,
+GeometricStar, CelticTriquetra, Voronoi) all now run soundly but deadline on bottom-top
+hull-cascades: their jump lines are DENSE and non-dyadic (facet boundaries, lattice
+edges), so straddling cells persist at every depth — the honest classification is
+U3 (exact-rational feature-aligned stations), exactly as the roadmap review predicted.
+U2's machinery is complete; U3 is now the sole unlock for six styles plus Gothic and
+WaveInterference.

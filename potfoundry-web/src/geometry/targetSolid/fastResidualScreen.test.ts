@@ -12,6 +12,7 @@ import {
   VALIDATED_RESIDUAL_PROGRAM_VERSION,
 } from './validatedResidualProgram';
 import { canonicalizeCertificationJson } from './canonicalCertificationJson';
+import { integerPcg2dUnitHash } from './integerPcg2dHash';
 
 const TARGET_CONTROLS = Object.freeze({ superformulaSeamBlendDegrees: 30 });
 
@@ -248,7 +249,7 @@ describe('fast residual screen', () => {
     ).toBeNull();
   });
 
-  it('refuses discontinuous operations instead of guessing a bound', () => {
+  it('jump-guarded floor: hull on straddling cells, refusal-free, decimal still agrees', () => {
     const evaluator = compileValidatedResidualEvaluator({
       targetSha256: 'a'.repeat(64),
       programCanonicalJson: canonicalizeCertificationJson({
@@ -291,11 +292,106 @@ describe('fast residual screen', () => {
         ],
       },
     };
-    expect(evaluator.encloseResidualFast(request)).toBeNull();
-    expect(fastResidualScreenRefusalHistogram().get('op-floor')).toBeGreaterThanOrEqual(1);
+    // The cell spans u in [0, 1], so floor(u) straddles a jump: the screen
+    // must answer with a sound (wide) hull rather than refuse.
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure !== null) {
+      // Truth samples: residual x = floor(u) - affine x at the same point.
+      expect(enclosure.xMm.lower).toBeLessThanOrEqual(-1 + 1e-9); // u≈1-, floor=0, artifact≈1
+      expect(enclosure.xMm.upper).toBeGreaterThanOrEqual(0 - 1e-9);
+    }
     // The validated decimal enclosure still answers the same request.
     const decimal = evaluator.encloseResidual(request);
     expect(Number.isFinite(decimal.xMm.lower)).toBe(true);
+  });
+
+  it('fract is exact and smooth on jump-free cells; pcg2d resolves proven integers', () => {
+    const fractEvaluator = compileValidatedResidualEvaluator({
+      targetSha256: 'c'.repeat(64),
+      programCanonicalJson: canonicalizeCertificationJson({
+        evaluatorId: 'screen-test:fract',
+        evaluatorVersion: 'v1',
+        patchId: 'screen-fract',
+        schemaVersion: VALIDATED_RESIDUAL_PROGRAM_VERSION,
+        target: {
+          x: { op: 'fractional-part', arg: { op: 'u' } },
+          y: { op: 'v' },
+          z: { op: 'constant', value: '0' },
+        },
+      }),
+    });
+    // Cell strictly inside (0, 1): fract(u) = u, and the artifact matches it
+    // exactly, so the enclosure must be tight around zero.
+    const jumpFree: ValidatedResidualEnclosureRequest = {
+      patchId: 'screen-fract',
+      artifactTriangleIndex: 0,
+      artifactTriangleVerticesMm: [
+        [0.25, 0, 0],
+        [0.5, 0, 0],
+        [0.5, 1, 0],
+      ],
+      originalDomainTriangle: [
+        { uNumerator: '1', vNumerator: '0' },
+        { uNumerator: '2', vNumerator: '0' },
+        { uNumerator: '2', vNumerator: '4' },
+      ],
+      cell: {
+        fractionBits: 2,
+        barycentricFractionBits: 0,
+        vertices: [
+          { uNumerator: '1', vNumerator: '0' },
+          { uNumerator: '2', vNumerator: '0' },
+          { uNumerator: '2', vNumerator: '4' },
+        ],
+        barycentricVertices: [
+          { aNumerator: '1', bNumerator: '0', cNumerator: '0' },
+          { aNumerator: '0', bNumerator: '1', cNumerator: '0' },
+          { aNumerator: '0', bNumerator: '0', cNumerator: '1' },
+        ],
+      },
+    };
+    const tight = fractEvaluator.encloseResidualFast(jumpFree);
+    expect(tight).not.toBeNull();
+    if (tight !== null) {
+      expect(Math.abs(tight.xMm.lower)).toBeLessThan(1e-9);
+      expect(Math.abs(tight.xMm.upper)).toBeLessThan(1e-9);
+    }
+
+    const hashEvaluator = compileValidatedResidualEvaluator({
+      targetSha256: 'd'.repeat(64),
+      programCanonicalJson: canonicalizeCertificationJson({
+        evaluatorId: 'screen-test:pcg',
+        evaluatorVersion: 'v1',
+        patchId: 'screen-pcg',
+        schemaVersion: VALIDATED_RESIDUAL_PROGRAM_VERSION,
+        target: {
+          x: {
+            op: 'pcg2d-unit-x',
+            left: { op: 'constant', value: '3' },
+            right: { op: 'constant', value: '5' },
+          },
+          y: { op: 'v' },
+          z: { op: 'constant', value: '0' },
+        },
+      }),
+    });
+    const expected = integerPcg2dUnitHash(3, 5)[0];
+    const hashRequest: ValidatedResidualEnclosureRequest = {
+      ...jumpFree,
+      patchId: 'screen-pcg',
+      artifactTriangleVerticesMm: [
+        [expected, 0, 0],
+        [expected, 0, 0],
+        [expected, 1, 0],
+      ],
+    };
+    const constant = hashEvaluator.encloseResidualFast(hashRequest);
+    expect(constant).not.toBeNull();
+    if (constant !== null) {
+      expect(Math.abs(constant.xMm.lower)).toBeLessThan(1e-12);
+      expect(Math.abs(constant.xMm.upper)).toBeLessThan(1e-12);
+    }
   });
 
   it('keeps a power base exactly zero decidable (constant-folded profile term)', () => {
