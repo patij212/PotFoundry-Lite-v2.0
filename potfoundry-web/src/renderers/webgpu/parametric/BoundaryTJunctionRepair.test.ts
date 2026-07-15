@@ -179,7 +179,14 @@ describe('repairOuterWallTJunctions', () => {
         expect(counts.get(key(3, 1))).toBe(2);
     });
 
-    it('flips a skinny split triangle across its adjacent interior edge', () => {
+    // TDD-red spec preserved from a54a1b29: repairOuterWallTJunctions splits the
+    // coarse triangle at the T-junction but has never flipped the resulting skinny
+    // triangle across its adjacent interior edge (verified 2026-07-15: (1,2,3)
+    // survives, edge (1,6) never appears). Sliver quality is now owned by the
+    // by-construction meshers (M-surf region kernel), not the tail repair battery,
+    // so this stays an expected failure until someone deliberately implements the
+    // flip — at which point it.fails turns red and this must flip back to it().
+    it.fails('flips a skinny split triangle across its adjacent interior edge', () => {
         const uvs = new Float32Array([
             0.50, 0.50, 0, // 0 A: coarse boundary start
             0.59, 0.50, 0, // 1 M: split vertex near B

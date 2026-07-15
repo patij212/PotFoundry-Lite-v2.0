@@ -10,10 +10,12 @@
 import { normalizeWindingByComponent } from './WindingNormalizer';
 
 // Number-encoded undirected edge key: min(a,b) * EDGE_STRIDE + max(a,b).
-// Vertex indices are < EDGE_STRIDE (2^21); the product stays < 2^42, well within
-// the 2^53 safe-integer range, so Number keys are collision-free and far cheaper
-// than BigInt (no per-edge heap allocation, faster Map hashing).
-const EDGE_STRIDE = 0x200000;
+// Vertex indices must stay < EDGE_STRIDE (2^26 = 67,108,864, matching
+// WindingNormalizer); the product stays < 2^52, within the 2^53 safe-integer
+// range, so Number keys are collision-free and far cheaper than BigInt.
+// The previous 2^21 stride collided for post-refine meshes above ~2.1M
+// vertices — e.g. edgeKey(0, 2_097_157) === edgeKey(1, 5).
+const EDGE_STRIDE = 0x4000000;
 const UV_WELD_EPS = 1e-5;
 const UV_SEGMENT_SPLIT_EPS = 1e-4;
 const PROJECTED_LOOP_FILL_MAX_ASPECT = 100;
@@ -163,7 +165,9 @@ type SurfaceJoinKey =
     | 'drainTop'
     | 'drainBottom';
 
-function edgeKey(a: number, b: number): number {
+// Exported so the stride-collision regression test can pin key uniqueness
+// for post-refine vertex ids above the old 2M stride.
+export function edgeKey(a: number, b: number): number {
     return a < b
         ? a * EDGE_STRIDE + b
         : b * EDGE_STRIDE + a;
