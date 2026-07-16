@@ -6827,3 +6827,29 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
 - When fleets complete: merge shard rows, append DS + Voronoi verdicts to the baseline
   doc (DS also has its dedicated composite ruler _ds_prodtruth.test.ts per the July
   special-ruler precedent), and mark containment #5 CLOSED. Then U3b rational stations.
+
+## 2026-07-16 - Claude Fable 5 - containment #5 CLOSED: fleet verdicts merged
+
+### Summary
+- DS + Voronoi 4-shard fleets completed overnight (DS ~13.1 h/shard at sustained ~99% CPU
+  — the EcoQoS AboveNormal bump + CPU-delta health checks worked as designed); merged via
+  _prod_truth_merge.mjs (c39a0089).
+- **DragonScales: REGRESSION, TRUSTED for the first time on the generic ruler.** The
+  premise HOLDS on the fresh post-edge-key topology (vtxOnSurf max 0.00008 over 2.26M
+  vertices): Newton worst 0.4024mm, 158,750/159,722 survivors over tol, watertight,
+  coverage max 0.0603. Vertices ON-surface + facet interiors missing 0.40mm = chord error
+  across scale cliffs — the feature-conforming gap measured trusted on a production
+  artifact for the first time.
+- **Voronoi: REGRESSION** on the post-hash-sync field: Newton worst 0.1274mm, coverage
+  max 0.2012mm (real surface->mesh gaps at cell edges), watertight, premise OK.
+- **Containment #5 CLOSED.** All-20 clean-tree baseline: 5 shipped-clean at defaults
+  (incl. fresh WaveInterference — July's 0.937mm bridge-failure fully converted — and
+  SuperellipseMorph), 17/20 byte-identity carries, 4 fresh rows. The two worst production
+  styles by trusted measurement: DS 0.40mm and Gyroid 0.72mm — both feature-conforming
+  gaps, exactly the U5 mesher-track priorities.
+
+### Next agent
+- Containment: #4 (adversarial regression set) + #1 remnant (tolerancesPassed naming) are
+  the remaining open containment items; audit G-track: U3b exact-rational stations is the
+  highest-leverage judge increment (6 fract styles + production-mesh provenance for U5.3);
+  the mesher track now has trusted priorities (DS scale-cliff conforming, Gyroid).
