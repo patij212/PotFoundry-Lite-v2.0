@@ -61,6 +61,31 @@ vtxOnSurf max 0.00002; interior outliers 0; coverage max 0.0032 / p99 0.0028).
   `_prod_truth_merge.mjs` when the fleets complete; DS additionally has its dedicated
   composite ruler `_ds_prodtruth.test.ts` as the July special-ruler precedent).
 
-**Containment #5 status: capture + classification COMPLETE; scoring 2/4 changed styles
-done (both clean), 2 in flight.** This baseline is empirical status for the production
-pipeline at defaults — not a universality proof (that remains the G2+ judge's job).
+## Fleet results (merged 2026-07-16, 4 shards each, premise-checked)
+
+**DragonScales — REGRESSION, now TRUSTED on the generic ruler for the first time.**
+Watertight (nonManRaw 0, zeroArea 0, non-vacuous control moved); vertexOnSurf max
+0.00008 / p99 0.00004 over 2,264,666 vertices — the generic ruler's premise HOLDS on the
+fresh post-edge-key-fix topology (July's row was a carried special-ruler entry, never
+premise-checked fresh). Interior: 96.5 % of 4.53M facets green-proven; 158,750 of 159,722
+survivors are outliers, grid worst 0.6017 mm -> **Newton-refined worst 0.4024 mm**,
+p99 ~0.537 (survivor population). Coverage (surface->mesh): max 0.0603 / p99 0.0016.
+Reading: vertices sit ON the surface while facet interiors miss by up to 0.40 mm — chord
+error across DS scale cliffs, i.e. the known feature-conforming gap, now measured
+trusted on the production artifact. ~13.1 h/shard of honest interior work.
+
+**Voronoi — REGRESSION (post-hash-sync field).** Watertight; premise OK (vtx p99
+0.00002). Interior: 97.6 % of 3.79M facets green-proven; 52,081 outliers of 90,020
+survivors, grid worst 0.2057 -> **Newton worst 0.1274 mm**, p99 ~0.046. Coverage max
+**0.2012 mm** — the reverse ruler finds real surface regions up to 0.2 mm from the mesh
+(cell-edge territory). ~5 min/shard.
+
+**Containment #5 status: CLOSED.** Capture 20/20 clean-tree, classification 17/20
+byte-identical (July verdicts carry), 4 fresh scored rows (WI SHIPPED-CLEAN,
+SE SHIPPED-CLEAN, DS regression-trusted, Voronoi regression). Baseline tally at defaults:
+**5 shipped-clean** (July's FourierBloom, SuperellipseMorph*, HarmonicRipple + fresh
+WaveInterference and SuperellipseMorph re-proof), the rest regression/special classes as
+recorded — empirical status for the production pipeline, not a universality proof (that
+remains the G2+ judge's job). The two worst production styles by trusted measurement are
+now DragonScales (0.40 mm) and GyroidManifold (0.72 mm, July GPU-oracle) — both
+feature-conforming gaps, matching the U5 mesher-track priorities exactly.
