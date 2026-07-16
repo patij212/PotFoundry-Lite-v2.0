@@ -205,3 +205,30 @@ Updated routing table: U3b exact-rational stations -> fract family (6 styles, ax
 jump lines); curved-feature conforming (U5-class) -> GothicArches + WaveInterference;
 U4 curtain/riser complexes -> 7 layered styles. Certified set: five pots across four
 styles (HR small+default-scale, SR, FB, SE).
+
+## Addendum 7 — containment #4 CLOSED: adversarial regression suite (2026-07-16)
+
+`src/geometry/targetSolid/adversarialContainment.test.ts` — six permanent tests, each
+CONSTRUCTING one failure mode the old sampled/percentile rulers admitted and pinning the
+chain's refusal. Design rule: every adversarial case first shows the untouched artifact
+PASSING at the same budget, so the refusal is attributable to the attack, never fixture
+slack.
+
+| Attack | Construction | Refusal (pinned) |
+|---|---|---|
+| p99-pass/max-fail | 1 vertex of ~18.9k-tri certified pot displaced 0.05 mm (byte poke) | `PATCH_PROOF_REFUSED`, reported residual **50,000,026 pm** — the ruler measures the TRUE 0.05 mm defect; p99 would never see it (gated PF_G2_POT) |
+| post-check mutation | 1-ulp byte flip | `byteSha256` AND `parsedTriangleSetSha256` both re-bind |
+| budget coarsening (claim) | request 0.05 mm tolerance | `BUDGET_INVALID` at the composed layer — `requestedTolerancePm <= 10,000,000` is a hard wall, no coarser certificate exists |
+| budget coarsening (geometry) | coarse strong-ripple grid | passes loose (2 mm), refuses 9.5 µm (`PATCH_PROOF_REFUSED` at max depth) |
+| decimation bridging | collapse one facet to a point | geometry refuses (cell uncovered -> residual explodes) AND structural gate refuses independently |
+| non-default params | artifact @ petal 0.01 vs target @ petal 0.15 | `PATCH_PROOF_REFUSED` — the "defaults-only" escape hatch is closed |
+| twist | unspun artifact vs spinTurns 0.25 target | `PATCH_PROOF_REFUSED` at ~0.7 mm (macroscopic, pinned > 0.5 mm) |
+
+Finding worth recording: **every geometric attack is caught by the continuous residual
+gate itself** — none needed provenance side-checks to fire. And twist is INSIDE analytic
+truth (radialOuterWallProgram bakes `2*pi*spinTurns*v^spinCurve` into theta placement),
+so the correct G1 pin is "unspun-vs-spun refuses", not "spin refuses to build".
+
+Suite: 5 cases always-on (~8 s total, CHEAP fixture angular 2^7), 1 gated PF_G2_POT
+(~16 s, two full certified-pot proofs). Full targetSolid suite: 59 files / 427 tests
+green. Remaining containment: #1 remnant (`tolerancesPassed` naming sweep).

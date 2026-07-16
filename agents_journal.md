@@ -6853,3 +6853,46 @@ prereg file carries the full record. Commits: 922abd0c -> 2d1e82bf -> 10b02de1 -
   the remaining open containment items; audit G-track: U3b exact-rational stations is the
   highest-leverage judge increment (6 fract styles + production-mesh provenance for U5.3);
   the mesher track now has trusted priorities (DS scale-cliff conforming, Gyroid).
+
+## 2026-07-16 — Containment #4 CLOSED: adversarial regression suite (session continuation)
+
+**Mandate:** audit `9bec055d` containment item #4 — pin the audit's failure modes as
+permanent tests so the certification chain can never silently regress into the old
+sampled/percentile behaviors.
+
+**Landed:** `src/geometry/targetSolid/adversarialContainment.test.ts` — 6 cases, each
+constructing an attack and pinning the refusal code + message shape. Pattern: baseline
+artifact PASSES at the same budget first, so the refusal is attributable to the attack.
+- **p99-pass/max-fail** (gated PF_G2_POT): one vertex of the certified small pot byte-poked
+  +0.05 mm among ~18.9k triangles — statistically invisible to every percentile ruler.
+  Refuses `PATCH_PROOF_REFUSED` reporting residual 50,000,026 pm: the continuous ruler
+  MEASURES the true defect (pinned 45–55M pm window).
+- **post-check mutation**: 1-ulp flip re-binds byteSha256 + parsedTriangleSetSha256.
+- **budget coarsening**, both layers: composed prover hard-refuses requestedTolerancePm
+  > 10M pm (BUDGET_INVALID — no coarser certificate exists to request); geometry layer
+  passes the same coarse artifact at 2 mm and refuses at 9.5 µm.
+- **decimation bridging**: facet collapsed to a point — geometry refuses (uncovered cell)
+  AND the structural gate refuses independently.
+- **non-default params**: petal 0.01 artifact vs petal 0.15 target refuses — closes the
+  audit's "defaults-only" escape hatch.
+- **twist**: spinTurns is INSIDE analytic truth (radialOuterWallProgram bakes
+  2π·spinTurns·v^spinCurve into θ placement — checked before pinning; the naive
+  "spin refuses to build" expectation was WRONG), so the honest G1 pin is: unspun
+  artifact vs spinTurns 0.25 target refuses at ~0.7 mm (pinned > 0.5 mm).
+
+**Finding:** every geometric attack fired the continuous residual gate itself
+(`PATCH_PROOF_REFUSED` / "Residual upper N pm exceeds"), no provenance side-check needed.
+Probe-then-pin method: ran once with `toBe('PROBE')` to read real codes/magnitudes, then
+pinned them.
+
+**Verification:** full targetSolid suite PF_G2_POT=1: 59 files / 427 tests green
+(+1 file / +7 tests). eslint clean, zero new tsc errors, detect_changes: no production
+symbols touched (test-only slice).
+
+### Next agent
+- Containment #1 remnant: `tolerancesPassed` naming sweep in parametric contracts
+  (impact() scope-check first).
+- Audit G-track: U3b exact-rational partition stations remains the highest-leverage judge
+  increment (6 fract styles; production-mesh provenance for U5.3) — start it in a fresh
+  session with full context budget.
+- Mesher track trusted priorities: DS scale-cliff conforming (0.40 mm), Gyroid (0.72 mm).
