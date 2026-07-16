@@ -321,3 +321,53 @@ Certified set unchanged this slice: six pots across five styles. Next fract-fami
 increments in leverage order: GeometricStar (vertical rational ladders now exist; needs
 the sector-coordinate affine re-emission and gsShift=0 gentling), SFB/CelticTriquetra
 (sign/step value-jump banding), RippleInterference (float-offset ladders).
+
+## Addendum 10 — U3b slice 6: GeometricStar CERTIFIED — first style with BOTH exact jump families (2026-07-17)
+
+**GeometricStar gentle CERTIFIED-PARTIAL: 9,499,903 pm two-sided / 176,128 triangles /
+46.7 s composed** on the H32/OD30 pot (params: relief 0.02, roundness 1; everything else
+pure registry defaults — points 8, gap 0.05, detail 0.5, layers 4, interlace 1, zoom 1,
+shift 0). Seventh pot, sixth style in `PF_G2_POT`. First certificate whose exact stations
+span BOTH axes: sector floors jump in u (k/8) and row floors jump in v (t = k/4),
+including the REMAPPED inner wall where those rows live at v = (8k−3)/29 — the
+slice-5 vertical rational ladder's first production use, enabled by choosing H 32 so the
+bottom fraction c = 3/32 is exactly dyadic (the slice-5 geometry-choice lever, exercised).
+
+**The one code change (target v6):** GeometricStar's sector cycles are now emitted as
+affine unit-parameter expressions — pointCount·u, plus rowParity·shift only when
+shift ≠ 0 — with tau cancelled symbolically at authoring ((θ + rowOffset)/(τ/N) =
+N·u + rowParity·shift exactly, since 2π/τ = 1). The old emission divided θ = τ·u by
+sectorAngle = τ/N with INTERVAL τ, so at any cell touching u = k/8 the enclosure
+overhung the integer and the sector floor hulled one full band wide at every depth —
+measured 7.33 mm on a station-adjacent cell that the re-emission closes to 0.0202 mm
+(pure base-curvature sag). At shift = 0 (registry default) the row-coupled term is
+constant-folded away at authoring so the floor argument is compiler-provably
+point-affine; at shift ≠ 0 it chains through the row floor, is not affine, and keeps
+the sound hull (regression-pinned on a cell straddling the shifted jump u = (k−0.37)/8).
+Real semantics unchanged; float parity pinned at both row parities.
+
+**Measured campaign (per-patch probe, Addendum-9 pattern, before tuning):**
+- The feared diagonal-strap Clarke-volume explosion did NOT materialize: total geometry
+  14–37 s across all configs tried (vs Voronoi bubble's ~150 s); fast-screen acceptance
+  ~85 %, depths ≤ 2 on certified runs.
+- At roundness 0 (edge 0.02) the walls refuse HONESTLY: the strap's vertical
+  cross-section (~0.019 in v) fits inside one 2⁻⁵ v-cell, so the artifact triangle
+  bridges the whole bump — dense-sampled TRUE residuals 15.1 µm (inner wall) / 10.0 µm
+  (outer wall), both at the bottom edge (matrix lesson #2's hot spot, reconfirmed). The
+  depth-24 refusal values (9.50000x pm) were again the lesson-#1 crossing-contour
+  artifact — relief- and density-invariant while the true max moved.
+- Two honest levers close it: roundness 1 widens the smoothstep edge to 0.22
+  (κ ∝ relief/edge², ~48× softer), and walls 2⁶ resolve the widened cross-section.
+  Angular 2⁹ covers the u-direction. relief 0.02 keeps ~4× margin.
+
+**Verification:** 61 files / 452 + 9 gated tests ALL GREEN foreground (7 pot proofs
+incl. GS ~51 s; adversarial containment green); eslint 0-warnings on all touched files;
+tsc exactly at the 356-error HEAD baseline (zero new; one same-family test error was
+cast away). detect_changes: LOW, 7 symbols / 5 files, zero affected processes.
+
+**Residual routing after this slice:** SFB (`sign`) + CelticTriquetra (`step`/`atan2`)
+= value-jump banding on the same point-affine machinery (BandedJumpNode already keys
+off the affine derivation — extend the op set); RippleInterference = float jump offsets
+(BigInt ladder numerators or authoring-side offset normalization); Voronoi bubble =
+compute-bound (U5/G4 envelope); web mode + heightPhase ≠ 0 diagonals + Gothic/WI curved
+features = U4/U5 classes, unchanged.

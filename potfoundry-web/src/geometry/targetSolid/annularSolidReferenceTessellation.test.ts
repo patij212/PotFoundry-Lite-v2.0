@@ -500,6 +500,47 @@ describe('annular solid reference tessellation', () => {
       },
       maxElapsedMilliseconds: 60_000,
     },
+    // FIRST style with BOTH exact jump families (U3b slice 6): gentle
+    // GeometricStar. Sector floors jump in u (k/8 at pointCount 8) and row
+    // floors jump in v (t = k/4 at layers*zoom = 4); the affine sector
+    // re-emission (target v6) + the H-32 pot (bottom fraction c = 3/32
+    // exactly dyadic) put the outer-wall lines on dyadic stations and the
+    // REMAPPED inner-wall lines on the exact rationals v = (8k-3)/29 that
+    // the slice-5 vertical rational ladder expresses. Roundness 1 widens the
+    // strap smoothstep (edge 0.22) so its diagonal cross-section resolves at
+    // walls 2^6 — at roundness 0 the strap fits inside one v-cell and the
+    // dense-sampled bottom-edge residual is a real 15.1 um (probe
+    // 2026-07-16). Per-patch measured: all six converge, ~37 s geometry.
+    {
+      styleId: 'GeometricStar',
+      styleParams: { gs_relief: 0.02, gs_roundness: 1 },
+      geometry: Object.freeze({
+        ...DEFAULT_GEOMETRY,
+        H: 32,
+        top_od: 30,
+        bottom_od: 30,
+        r_drain: 6,
+      }),
+      divisions: {
+        angularDivisionsLog2: 9,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 6,
+          'inner-wall': 6,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+        verticalStationsByPatch: {
+          'inner-wall': rationalStationLadder(6, [
+            [5, 29],
+            [13, 29],
+            [21, 29],
+          ]),
+        },
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
   ];
 
   // The pot-scale composed proofs take ~20-25 s each, so they ride the

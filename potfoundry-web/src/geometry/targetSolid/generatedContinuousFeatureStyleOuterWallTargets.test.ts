@@ -12,11 +12,13 @@ import {
 } from '../styles';
 import type { StyleId, StyleOptions } from '../types';
 import { createCanonicalTargetInputBinding } from './canonicalTargetInput';
+import type { ValidatedResidualEnclosureRequest } from './continuousMappedPatchDistance';
 import {
   createGeneratedContinuousFeatureStyleOuterWallTargetBinding,
   generatedContinuousFeatureStyleOuterWallTargetForProof,
   type GeneratedContinuousFeatureStyleOuterWallTargetBinding,
 } from './generatedContinuousFeatureStyleOuterWallTargets';
+import { compileValidatedResidualEvaluator } from './validatedResidualEvaluatorRegistry';
 
 const legacy = {
   GothicArches: rOuterGothicArches,
@@ -201,5 +203,159 @@ describe('generated continuous-feature style outer-wall targets', () => {
     expect(() =>
       createGeneratedContinuousFeatureStyleOuterWallTargetBinding(input('HarmonicRipple'))
     ).toThrow(/not supported/i);
+  });
+});
+
+// U3b slice 6: GeometricStar sector cycles must be emitted as point-affine
+// expressions of the unit angular parameter (pointCount*u, plus the
+// row-coupled rowParity*shift term only when shift != 0) with tau cancelled
+// symbolically at authoring time. The old tau-roundtrip emission
+// (theta/(tau/pointCount) with INTERVAL tau) makes every cell that touches a
+// sector station u = k/pointCount overhang the integer, so its sector floor
+// hulls one full band wide at every subdivision depth — the measured
+// GeometricStar mechanism block.
+describe('GeometricStar band-resolvable sector emission (U3b)', () => {
+  type Corner = readonly [number, number];
+
+  function residualRequestFor(
+    binding: GeneratedContinuousFeatureStyleOuterWallTargetBinding,
+    corners: readonly [Corner, Corner, Corner],
+    fractionBits: number
+  ): ValidatedResidualEnclosureRequest {
+    const denominator = 2 ** fractionBits;
+    const vertices = corners.map(([cu, cv]) => ({
+      uNumerator: cu.toString(),
+      vNumerator: cv.toString(),
+    })) as unknown as ValidatedResidualEnclosureRequest['cell']['vertices'];
+    const verticesMm = corners.map(([cu, cv]) => {
+      const point = binding.backends.evaluateFloat64(cu / denominator, cv / denominator);
+      return [Math.fround(point[0]), Math.fround(point[1]), Math.fround(point[2])] as const;
+    }) as unknown as ValidatedResidualEnclosureRequest['artifactTriangleVerticesMm'];
+    return {
+      patchId: 'outer-wall',
+      artifactTriangleIndex: 0,
+      artifactTriangleVerticesMm: verticesMm,
+      originalDomainTriangle: vertices,
+      cell: {
+        fractionBits,
+        barycentricFractionBits: 0,
+        vertices,
+        barycentricVertices: [
+          { aNumerator: '1', bNumerator: '0', cNumerator: '0' },
+          { aNumerator: '0', bNumerator: '1', cNumerator: '0' },
+          { aNumerator: '0', bNumerator: '0', cNumerator: '1' },
+        ],
+      },
+    };
+  }
+
+  function maxEnclosureWidthMm(enclosure: {
+    xMm: { lower: number; upper: number };
+    yMm: { lower: number; upper: number };
+    zMm: { lower: number; upper: number };
+  }): number {
+    return Math.max(
+      enclosure.xMm.upper - enclosure.xMm.lower,
+      enclosure.yMm.upper - enclosure.yMm.lower,
+      enclosure.zMm.upper - enclosure.zMm.lower
+    );
+  }
+
+  function evaluatorFor(binding: GeneratedContinuousFeatureStyleOuterWallTargetBinding) {
+    return compileValidatedResidualEvaluator({
+      targetSha256: binding.bindingSha256,
+      programCanonicalJson: binding.programCanonicalJson,
+    });
+  }
+
+  it('band-resolves a sector-station-adjacent cell at gsShift 0 (defaults)', () => {
+    // Registry defaults: pointCount 8, layers 4, zoom 1, shift 0. Cell with
+    // its LEFT edge exactly ON the sector station u = 1/8 (= 64/512) and v
+    // strictly inside row 2 (vRaw in [2.5, 2.508]). Both floors must
+    // band-resolve; the strap there is inactive (shape identically 0), so
+    // the resolved residual is just the base-profile curvature sag of the
+    // 1/512 cell (~5 um on this 140 mm pot) while the old tau-roundtrip
+    // emission hulled the sector floor one full band wide — measured
+    // 7.33 mm on this exact cell — at every subdivision depth.
+    const binding = createGeneratedContinuousFeatureStyleOuterWallTargetBinding(
+      input('GeometricStar')
+    );
+    const evaluator = evaluatorFor(binding);
+    const request = residualRequestFor(
+      binding,
+      [
+        [64, 320],
+        [65, 320],
+        [65, 321],
+      ],
+      9
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expect(maxEnclosureWidthMm(enclosure)).toBeLessThan(0.01);
+  });
+
+  it('keeps the sound hull when a nonzero gsShift jump crosses a cell interior', () => {
+    // With shift != 0 the sector argument pointCount*u + rowParity*shift is
+    // NOT affine in u/v (rowParity chains through the row floor), so it can
+    // never band-resolve; and a non-dyadic shift (0.37) moves the odd-row
+    // jump lines to u = (k - 0.37)/8, strictly inside every dyadic cell.
+    // The cell around u = 0.63/8 = 0.07875 in row 1 must keep a hull at
+    // least as wide as the sector ambiguity — banding never invents a
+    // branch.
+    const binding = createGeneratedContinuousFeatureStyleOuterWallTargetBinding(
+      input('GeometricStar', { gs_shift: 0.37 })
+    );
+    const evaluator = evaluatorFor(binding);
+    const request = residualRequestFor(
+      binding,
+      [
+        [2, 10],
+        [3, 10],
+        [3, 11],
+      ],
+      5
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expect(maxEnclosureWidthMm(enclosure)).toBeGreaterThan(0.5);
+  });
+
+  it('matches the legacy radius at gsShift != 0 across both row parities', () => {
+    // The re-emitted sector cycles use the exact identity
+    // (theta + rowOffset)/(tau/pointCount) = pointCount*u + rowParity*shift;
+    // pin float parity against the legacy CPU evaluator on both parities so
+    // the symbolic cancellation cannot drift the real semantics.
+    const canonicalInput = input('GeometricStar', { gs_shift: 0.37 });
+    const binding = createGeneratedContinuousFeatureStyleOuterWallTargetBinding(canonicalInput);
+    for (const [u, v] of [
+      [0.013, 0.07],
+      [0.49, 0.3],
+      [0.83, 0.55],
+      [0.17, 0.8],
+      [0.61, 0.95],
+    ] as const) {
+      const point = binding.backends.evaluateFloat64(u, v);
+      const theta = 2 * Math.PI * u;
+      const z = DEFAULT_GEOMETRY.H * v;
+      const r0 = baseRadius(
+        z,
+        DEFAULT_GEOMETRY.H,
+        DEFAULT_GEOMETRY.bottom_od / 2,
+        DEFAULT_GEOMETRY.top_od / 2,
+        DEFAULT_GEOMETRY.expn,
+        DEFAULT_GEOMETRY as unknown as StyleOptions
+      );
+      const expected = rOuterGeometricStar(
+        theta,
+        z,
+        r0,
+        DEFAULT_GEOMETRY.H,
+        canonicalInput.style.cpuOptions as StyleOptions
+      );
+      expect(Math.hypot(point[0], point[1])).toBeCloseTo(expected, 9);
+    }
   });
 });

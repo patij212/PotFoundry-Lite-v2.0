@@ -183,3 +183,16 @@ F2-window discontinuity (0.138 mm, U4-class); bubble mode CONVERGES per-patch on
 (≤ 9.4999 µm each) but sums to ~150 s vs the 120 s composed ceiling — reclassified
 compute-bound (kink-line Clarke-hull volume; U5/G4 streamed scans or bisector-conforming
 cells). Certified set holds at six pots / five styles.
+
+**Slice 6 addendum (2026-07-17):** GeometricStar gentle **CERTIFIED-PARTIAL —
+9,499,903 pm / 176,128 tris / 46.7 s** on the H32/OD30 pot (relief 0.02, roundness 1,
+rest registry defaults incl. shift 0). Seventh pot / sixth style; FIRST with exact
+stations on BOTH axes (sector u-floors k/8 + row v-floors incl. the remapped inner wall
+at (8k−3)/29 — first production use of the slice-5 vertical rational ladder + the H-32
+dyadic-c geometry lever). One code change: sector cycles re-emitted point-affine with τ
+cancelled symbolically (target v6); the shift ≠ 0 row-coupled form stays hull
+(fail-closed, regression-pinned). The Addendum-9 diagonal-strap compute risk did NOT
+materialize (14–37 s per config vs Voronoi's ~150 s); the honest blocker was strap
+cross-section under-resolution at roundness 0 (true 15.1 µm at the bottom edge, lesson
+#2 reconfirmed), closed by roundness 1 (edge 0.22) + walls 2⁶. Matrix Addendum 10 has
+the full campaign. Remaining fract-family: SFB/CT sign/step banding, RI float offsets.

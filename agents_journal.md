@@ -7145,3 +7145,61 @@ this; always print a distinguishing config marker in probe output.
    Voronoi web-mode discontinuity now has a measured curtain case waiting).
 5. Voronoi bubble certificate unlocks with envelope v3 / streamed scans (U5/G4) — the
    per-patch numbers are in Addendum 9; nothing else is missing.
+
+## 2026-07-17 — U3b slice 6: GeometricStar CERTIFIED — first both-axes exact-station certificate
+
+**Mandate:** the slice-5 handoff chunk, item 1 — GeometricStar attempt (affine sector
+re-emission at gsShift 0, rows via vertical rational ladders, per-patch timing EARLY).
+
+**Landed:**
+- `generatedContinuousFeatureStyleOuterWallTargets.ts` (v5 -> v6): sector cycles emitted
+  point-affine — pointCount*u, plus rowParity*shift only when shift != 0 — with tau
+  cancelled symbolically ((theta+rowOffset)/(tau/N) = N*u + rowParity*shift exactly).
+  The old interval-tau roundtrip made every station-touching cell hull its sector floor
+  one band wide at every depth (measured 7.33 mm on the pinned cell; 0.0202 mm after —
+  pure base sag). At shift != 0 the row-coupled argument is not affine and keeps the
+  sound hull (regression-pinned on a straddling cell at shift 0.37). TDD: RED test
+  first, 3 new emission tests (band-resolve, hull-keep, both-parity float parity).
+- CERTIFIED_POTS + STL emitter rosters: GeometricStar H32/OD30 pot (relief 0.02,
+  roundness 1, rest defaults) with angular 2^9, walls 2^6, inner-wall
+  rationalStationLadder(6, [5/29, 13/29, 21/29]) — slice-5 ladder + dyadic-c geometry
+  lever in first production use. Removed the UNCERTIFIED Voronoi entry the stale
+  emitter roster carried (would have emitted a false-claim STL; honest note left).
+- `research/bridge/_probe_gs_timing.test.ts`: per-patch certify probe (env-gated,
+  PF_GS_* config knobs, composed mode, lesson-#1 dense-sample diagnosis).
+
+**RESULT: GeometricStar gentle CERTIFIED-PARTIAL — 9,499,903 pm two-sided / 176,128
+tris / 46.7 s composed** (claims: parse, coverage, patch-distance, topology,
+self-intersection, height; structural valid). Seventh pot / sixth style in PF_G2_POT.
+
+**Campaign findings (matrix Addendum 10):**
+- Addendum-9's diagonal-strap Clarke-volume risk did NOT materialize: 14-37 s total
+  geometry per config (vs Voronoi bubble ~150 s), fast-screen ~85%, depths <= 2.
+- At roundness 0 the walls refuse HONESTLY: strap v-cross-section (~0.019) inside one
+  2^-5 v-cell => artifact bridges the bump; dense-sampled TRUE 15.1 um (inner) /
+  10.0 um (outer), both at the styled bottom edge (lesson #2 reconfirmed). The
+  9.50000x-pm depth-24 refusal values were the lesson-#1 contour artifact again —
+  relief- AND density-invariant while the true max moved. Levers: roundness 1
+  (edge 0.22, kappa ~48x softer) + walls 2^6.
+- vFade zeroes the style exactly at t=0/t=1: bottom-under and top-rim certify at any
+  config; bottom-top (t=3/32, style ON) behaves like a wall.
+
+**Verification:** targetSolid FOREGROUND: gated files 23/23 green (~5 min, 7 pot
+proofs); full dir 61 files / 452+9 green. eslint 0-warnings all touched files. tsc
+EXACTLY at the 356 pre-existing baseline (one same-family new error in my test was
+cast away). detect_changes: LOW, 7 symbols / 5 files, zero affected processes.
+impact(buildGeometricStar): LOW, 1 direct caller, targetSolid-contained.
+
+### Next agent
+1. **SFB/CelticTriquetra: sign/step value-jump banding** — extend BandedJumpNode
+   beyond fract/floor: sign bands (-inf,0),(0,inf) with the closed-graph edge
+   convention; step(edge, x) via the edge-x affine argument; same point-affine
+   predicate, both kernels + decimal channel + numeric==string bit-identity tests
+   (mirror the slice-4 kernel suite). Then re-emit/certify SFB (sign) and CT
+   (step/atan2 — atan2 may need its own routing note).
+2. **RippleInterference float-offset stations**: BigInt ladder numerators (52-bit
+   dyadic stations) or authoring-side offset normalization to small rationals.
+3. heightPhase != 0 Crystalline / GS shift != 0 = row-coupled or diagonal jump lines:
+   feature-conforming cells, U5-class (unchanged).
+4. U4 curtain/riser complexes remain the widest unlock (7 layered styles + the
+   measured Voronoi web-mode curtain case).

@@ -25,7 +25,7 @@ import type {
 } from './validatedTargetProgramBuilder';
 
 export const GENERATED_CONTINUOUS_FEATURE_STYLE_OUTER_WALL_TARGET_VERSION =
-  'potfoundry.generated-continuous-feature-style-outer-wall-target/v5' as const;
+  'potfoundry.generated-continuous-feature-style-outer-wall-target/v6' as const;
 export const GENERATED_CONTINUOUS_FEATURE_STYLE_OUTER_WALL_TARGET_SCOPE =
   'authenticated-generated-gothic-wave-crystalline-gyroid-ripple-star-outer-wall-with-declared-piecewise-boundary-obligations-only-no-root-isolation-full-solid-regularity-artifact-distance-or-device-conformance-proof' as const;
 
@@ -63,6 +63,7 @@ export const GENERATED_CONTINUOUS_FEATURE_STYLE_OUTER_WALL_TARGET_PROOF_SHA256 =
     'GyroidManifold is seam-periodic for every finite scale because its angular domain enters only through cos(theta) and sin(theta), contrary to the stale production comment that nonintegral scale can open the seam',
     'RippleInterference statically unrolls its authenticated two-to-eight sources and uses an exact periodic nearest-image coordinate before Euclidean distance evaluation',
     'GeometricStar row parity changes are position-continuous because the exact fourth-power vertical fade is zero on every row boundary; those boundaries remain declared derivative creases',
+    'GeometricStar emits its sector cycles as affine unit-parameter expressions (pointCount*u, plus rowParity*shift only when shift is nonzero) with tau cancelled symbolically at authoring time — real semantics unchanged — so at shift zero certification kernels can band-resolve sector wraps against exact rational stations while the row-coupled nonzero-shift form keeps the sound hull',
     'every absolute-value, clamp, maximum, minimum, and compact-support transition that may reduce output regularity is declared as a partition obligation',
     'declarations are authenticated semantic obligations; they are not root-isolation results and do not by themselves prove a complete embedded feature graph',
     'all programs use the shared exact-pi radial profile/twist/Cartesian generator and forward-only SSA compiler',
@@ -1025,7 +1026,7 @@ function buildGeometricStar(input: CanonicalTargetInputBinding): ProgramAndManif
       evaluatorVersion: 'v1',
       patchId: 'outer-wall',
     },
-    ({ builder, baseRadius, thetaMaterial, t, tau, one, constant }) => {
+    ({ builder, baseRadius, t, tau, one, constant }) => {
       const two = constant(2);
       const pi = builder.divide(tau, two);
       const verticalRaw = builder.multiply(
@@ -1040,24 +1041,37 @@ function buildGeometricStar(input: CanonicalTargetInputBinding): ProgramAndManif
         ),
         two
       );
-      const rowParity = builder.multiply(
-        builder.fractionalPart(builder.divide(row, two)),
-        two
-      );
-      const rowOffset = builder.multiply(
-        builder.multiply(
-          builder.multiply(rowParity, builder.divide(pi, constant(pointCount))),
-          constant(shift)
-        ),
-        two
-      );
+      // Sector cycles are emitted as affine expressions of the unit angular
+      // parameter DIRECTLY — pointCount*u plus the row-coupled offset in
+      // CYCLE units — with tau cancelled symbolically at authoring time:
+      // theta = tau*u, sectorAngle = tau/pointCount and rowOffset =
+      // rowParity*(pi/pointCount)*shift*2, so (theta + rowOffset)/sectorAngle
+      // = pointCount*u + rowParity*shift exactly (2*pi/tau = 1). Real
+      // semantics are unchanged; at shift = 0 the row-coupled term is
+      // constant-folded away HERE so the sector floor argument is
+      // compiler-provably point-affine and every sector wrap band-resolves
+      // against exact rational stations (U3b). At shift != 0 the term chains
+      // through the row floor, is not affine, and the kernels keep the sound
+      // hull — the same fail-closed refusal as before this re-emission.
+      const materialU = builder.u();
+      const sectorCyclesAffine = builder.multiply(materialU, constant(pointCount));
+      const sectorCycles = shift === 0
+        ? sectorCyclesAffine
+        : builder.add(
+            sectorCyclesAffine,
+            builder.multiply(
+              builder.multiply(
+                builder.fractionalPart(builder.divide(row, two)),
+                two
+              ),
+              constant(shift)
+            )
+          );
       const sectorAngle = builder.divide(tau, constant(pointCount));
-      const shiftedTheta = builder.add(thetaMaterial, rowOffset);
-      const sectorCoordinate = builder.divide(shiftedTheta, sectorAngle);
-      const sector = builder.floor(sectorCoordinate);
+      const sector = builder.floor(sectorCycles);
       const localAngle = builder.multiply(
         builder.subtract(
-          builder.subtract(sectorCoordinate, sector),
+          builder.subtract(sectorCycles, sector),
           constant(0.5)
         ),
         sectorAngle
@@ -1136,8 +1150,8 @@ function buildGeometricStar(input: CanonicalTargetInputBinding): ProgramAndManif
       boundary(
         'star-angular-sector-boundaries-and-folds',
         'explicit-parameter-line-or-periodic-family',
-        'shiftedTheta/(2*pi/pointCount) is an integer or half-integer',
-        'sector coordinate wraps and folded local angle changes derivative'
+        'pointCount*u+rowParity*shift is an integer or half-integer',
+        'sector cycles wrap and folded local angle changes derivative'
       ),
       boundary(
         'star-line-absolute-zero',
