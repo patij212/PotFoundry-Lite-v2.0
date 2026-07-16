@@ -502,3 +502,215 @@ describe('rational partitions and the unit-square domain gate (U3b)', () => {
     );
   });
 });
+
+describe('band-resolved fract certification (U3b slice 4)', () => {
+  const mul = (left: Expression, right: Expression): Expression => ({
+    op: 'multiply',
+    left,
+    right,
+  });
+  const sub = (left: Expression, right: Expression): Expression => ({
+    op: 'subtract',
+    left,
+    right,
+  });
+  const absOf = (arg: Expression): Expression => ({ op: 'absolute', arg });
+  const fractOf = (arg: Expression): Expression => ({ op: 'fractional-part', arg });
+  const uExpr: Expression = { op: 'u' };
+
+  // z = 0.02 * |2*fract(3u) - 1|: continuous triangle wave. All its fract
+  // jumps (u = k/3) and abs kinks (u = (2k+1)/6) lie exactly on k/6, so a
+  // denominator-6 rational partition puts every feature ON a cell boundary.
+  const TRIANGLE_WAVE = mul(
+    constant('0.02'),
+    absOf(sub(mul(constant('2'), fractOf(mul(constant('3'), uExpr))), constant('1')))
+  );
+  const triangleWave = (u: number): number =>
+    0.02 * Math.abs(2 * (3 * u - Math.floor(3 * u)) - 1);
+
+  // z = 0.02 * fract(3u): value-discontinuous sawtooth (closure semantics).
+  const SAWTOOTH = mul(constant('0.02'), fractOf(mul(constant('3'), uExpr)));
+
+  function rationalSixPartition(): ExactDyadicDomainPartitionInput {
+    const triangles: ExactDyadicDomainPartitionInput['triangles'][number][] = [];
+    for (let column = 0; column < 6; column += 1) {
+      const left = column.toString();
+      const right = (column + 1).toString();
+      triangles.push({
+        artifactTriangleIndex: column * 2,
+        vertices: [
+          { uNumerator: left, vNumerator: '0' },
+          { uNumerator: right, vNumerator: '0' },
+          { uNumerator: right, vNumerator: '6' },
+        ],
+      });
+      triangles.push({
+        artifactTriangleIndex: column * 2 + 1,
+        vertices: [
+          { uNumerator: left, vNumerator: '0' },
+          { uNumerator: right, vNumerator: '6' },
+          { uNumerator: left, vNumerator: '6' },
+        ],
+      });
+    }
+    return {
+      patchId: 'outer-wall',
+      fractionBits: 1,
+      oddDenominatorFactor: '3',
+      domain: {
+        minUNumerator: '0',
+        maxUNumerator: '6',
+        minVNumerator: '0',
+        maxVNumerator: '6',
+      },
+      artifactTriangleCount: 12,
+      triangles,
+    };
+  }
+
+  function columnArtifact(
+    zLeft: (column: number) => number,
+    zRight: (column: number) => number
+  ) {
+    const triangles: Triangle3[] = [];
+    for (let column = 0; column < 6; column += 1) {
+      const left = column / 6;
+      const right = (column + 1) / 6;
+      const zl = zLeft(column);
+      const zr = zRight(column);
+      triangles.push([
+        [left, 0, zl],
+        [right, 0, zr],
+        [right, 1, zr],
+      ]);
+      triangles.push([
+        [left, 0, zl],
+        [right, 1, zr],
+        [left, 1, zl],
+      ]);
+    }
+    return createFinalArtifactProofSession(binaryStl(triangles));
+  }
+
+  it('certifies a fract-family target over jump-aligned rational stations', () => {
+    // Without band resolution every jump-adjacent cell hulls fract to [0, 1]
+    // (the float image of k/3 overhangs the integer by one ulp), so this
+    // proof was impossible at ANY density or depth. With the exact per-cell
+    // band check the wave certifies at a 1 um budget: the abs-kink cells
+    // carry a two-sided Clarke derivative hull (~6.7 um at depth 0), so the
+    // branch-and-bound must SUBDIVIDE them — which also pins that
+    // barycentric children of rational cells keep resolving their bands.
+    const result = certifyContinuousMappedPatchDistance(
+      columnArtifact(
+        (column) => triangleWave(column / 6),
+        (column) => triangleWave((column + 1) / 6)
+      ),
+      rationalSixPartition(),
+      evaluator(TRIANGLE_WAVE),
+      { maximumGeometricUpperPm: 1_000_000n }
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        artifactTriangleSubsetCount: 12,
+        scanComplete: true,
+        continuousCorrespondenceProven: true,
+      })
+    );
+    expect(BigInt(result.targetToMeshUpperPm)).toBeLessThan(1_000_000n);
+    expect(result.workCellCount).toBeGreaterThan(12);
+  });
+
+  it('still refuses when the partition stations are not on the jumps', () => {
+    // A dyadic denominator-2 partition strictly contains u = 1/3 inside a
+    // cell: the exact band check must refuse there and the hull cascade
+    // keeps the proof INCONCLUSIVE at every depth — alignment is REQUIRED,
+    // never silently approximated.
+    const half = (column: number): number => triangleWave(column / 2);
+    const triangles: Triangle3[] = [];
+    for (let column = 0; column < 2; column += 1) {
+      const left = column / 2;
+      const right = (column + 1) / 2;
+      triangles.push([
+        [left, 0, half(column)],
+        [right, 0, half(column + 1)],
+        [right, 1, half(column + 1)],
+      ]);
+      triangles.push([
+        [left, 0, half(column)],
+        [right, 1, half(column + 1)],
+        [left, 1, half(column)],
+      ]);
+    }
+    const p = (u: string, v: string) => ({ uNumerator: u, vNumerator: v });
+    expectCode(
+      () =>
+        certifyContinuousMappedPatchDistance(
+          createFinalArtifactProofSession(binaryStl(triangles)),
+          {
+            patchId: 'outer-wall',
+            fractionBits: 1,
+            domain: {
+              minUNumerator: '0',
+              maxUNumerator: '2',
+              minVNumerator: '0',
+              maxVNumerator: '2',
+            },
+            artifactTriangleCount: 4,
+            triangles: [
+              { artifactTriangleIndex: 0, vertices: [p('0', '0'), p('1', '0'), p('1', '2')] },
+              { artifactTriangleIndex: 1, vertices: [p('0', '0'), p('1', '2'), p('0', '2')] },
+              { artifactTriangleIndex: 2, vertices: [p('1', '0'), p('2', '0'), p('2', '2')] },
+              { artifactTriangleIndex: 3, vertices: [p('1', '0'), p('2', '2'), p('1', '2')] },
+            ],
+          },
+          evaluator(TRIANGLE_WAVE),
+          { maximumGeometricUpperPm: 10_000_000n, maxDepth: 3 }
+        ),
+      'INCONCLUSIVE'
+    );
+  });
+
+  it('bounds a value-discontinuous sawtooth against its closed graph', () => {
+    // The artifact ramps 0 -> 0.02 inside each band and is CRACKED at the
+    // jump stations (left column ends at the one-sided closure limit 0.02,
+    // right column restarts at 0). Band-resolved cells certify each side
+    // against its own closure branch — a sound distance-to-closed-graph
+    // claim, because closure points are infima of graph points. Whether a
+    // radial SOLID at such a jump needs a curtain face is a G0 surface-
+    // complex obligation, deliberately outside this patch proof.
+    const result = certifyContinuousMappedPatchDistance(
+      columnArtifact(
+        (column) => 0.02 * ((column % 2) / 2),
+        (column) => 0.02 * ((column % 2) / 2 + 0.5)
+      ),
+      rationalSixPartition(),
+      evaluator(SAWTOOTH),
+      { maximumGeometricUpperPm: 10_000_000n }
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        scanComplete: true,
+        continuousCorrespondenceProven: true,
+      })
+    );
+    expect(BigInt(result.targetToMeshUpperPm)).toBeLessThan(5_000n);
+  });
+
+  it('never lets band resolution absorb a real residual', () => {
+    // Flat plane vs the 0.02 sawtooth: bands resolve, the reported residual
+    // is the TRUE 0.02 mm gap, and the proof refuses on budget.
+    expectCode(
+      () =>
+        certifyContinuousMappedPatchDistance(
+          columnArtifact(
+            () => 0,
+            () => 0
+          ),
+          rationalSixPartition(),
+          evaluator(SAWTOOTH),
+          { maximumGeometricUpperPm: 10_000_000n, maxDepth: 3 }
+        ),
+      'INCONCLUSIVE'
+    );
+  });
+});

@@ -25,7 +25,7 @@ import type {
 } from './validatedTargetProgramBuilder';
 
 export const GENERATED_CONTINUOUS_FEATURE_STYLE_OUTER_WALL_TARGET_VERSION =
-  'potfoundry.generated-continuous-feature-style-outer-wall-target/v4' as const;
+  'potfoundry.generated-continuous-feature-style-outer-wall-target/v5' as const;
 export const GENERATED_CONTINUOUS_FEATURE_STYLE_OUTER_WALL_TARGET_SCOPE =
   'authenticated-generated-gothic-wave-crystalline-gyroid-ripple-star-outer-wall-with-declared-piecewise-boundary-obligations-only-no-root-isolation-full-solid-regularity-artifact-distance-or-device-conformance-proof' as const;
 
@@ -59,6 +59,7 @@ export const GENERATED_CONTINUOUS_FEATURE_STYLE_OUTER_WALL_TARGET_PROOF_SHA256 =
     'WaveInterference rounds warp, base, secondary, and detail angular frequencies to integers before program emission',
     'WaveInterference is seam-periodic because every warped angular consumer has integral frequency',
     'Crystalline uses integral facet and sub-facet counts with exact fractional-cycle coordinates; every wrap is position-continuous and declared as a facet boundary',
+    'Crystalline emits its fractional-cycle coordinates as affine unit-parameter expressions (facetCount*u + heightPhase*v and the subFacets multiple) with tau cancelled symbolically at authoring time — real semantics unchanged — so certification kernels can band-resolve wraps against exact rational stations',
     'GyroidManifold is seam-periodic for every finite scale because its angular domain enters only through cos(theta) and sin(theta), contrary to the stale production comment that nonintegral scale can open the seam',
     'RippleInterference statically unrolls its authenticated two-to-eight sources and uses an exact periodic nearest-image coordinate before Euclidean distance evaluation',
     'GeometricStar row parity changes are position-continuous because the exact fourth-power vertical fade is zero on every row boundary; those boundaries remain declared derivative creases',
@@ -639,20 +640,20 @@ function buildCrystalline(input: CanonicalTargetInputBinding): ProgramAndManifes
       patchId: 'outer-wall',
     },
     ({ builder, baseRadius, thetaMaterial, t, tau, one, constant }) => {
-      const phaseShift = builder.divide(
-        builder.multiply(
-          builder.multiply(t, constant(heightPhase)),
-          tau
-        ),
-        constant(facetCount)
+      // Fractional-cycle coordinates are emitted as affine expressions of
+      // the unit parameters DIRECTLY — facetCount*u + heightPhase*t — with
+      // the tau factor cancelled symbolically at authoring time (theta =
+      // tau*u, phase = heightPhase*t*tau/facetCount, so (theta+phase)*
+      // facetCount/tau = facetCount*u + heightPhase*t exactly). The real
+      // semantics are unchanged; the affine argument lets the certification
+      // kernels band-resolve every wrap against exact rational stations
+      // instead of hulling jump-adjacent cells (U3b).
+      const materialU = builder.u();
+      const facetCycles = builder.add(
+        builder.multiply(materialU, constant(facetCount)),
+        builder.multiply(t, constant(heightPhase))
       );
-      const adjustedTheta = builder.add(thetaMaterial, phaseShift);
-      const facetFraction = builder.fractionalPart(
-        builder.divide(
-          builder.multiply(adjustedTheta, constant(facetCount)),
-          tau
-        )
-      );
+      const facetFraction = builder.fractionalPart(facetCycles);
       const facetPhase = builder.multiply(facetFraction, tau);
       const triangleWave = builder.absolute(
         builder.subtract(
@@ -665,12 +666,15 @@ function buildCrystalline(input: CanonicalTargetInputBinding): ProgramAndManifes
         constant(edgeSharpness)
       );
       const subFraction = builder.fractionalPart(
-        builder.divide(
+        builder.add(
           builder.multiply(
-            builder.multiply(adjustedTheta, constant(facetCount)),
+            builder.multiply(materialU, constant(facetCount)),
             constant(subFacets)
           ),
-          tau
+          builder.multiply(
+            builder.multiply(t, constant(heightPhase)),
+            constant(subFacets)
+          )
         )
       );
       const subPhase = builder.multiply(subFraction, tau);
@@ -721,7 +725,7 @@ function buildCrystalline(input: CanonicalTargetInputBinding): ProgramAndManifes
       boundary(
         'crystalline-primary-facet-wraps',
         'explicit-parameter-line-or-periodic-family',
-        'fractionalPart((thetaMaterial+heightPhaseShift)*facetCount/(2*pi))=0',
+        'fractionalPart(facetCount*u+heightPhase*v)=0',
         'triangle-wave derivative reverses at each primary facet boundary'
       ),
       boundary(
@@ -733,7 +737,7 @@ function buildCrystalline(input: CanonicalTargetInputBinding): ProgramAndManifes
       boundary(
         'crystalline-subfacet-wraps',
         'explicit-parameter-line-or-periodic-family',
-        'fractionalPart((thetaMaterial+heightPhaseShift)*facetCount*subFacets/(2*pi))=0',
+        'fractionalPart(facetCount*subFacets*u+heightPhase*subFacets*v)=0',
         'absolute half-sine has a periodic cusp at each sub-facet boundary'
       ),
       boundary(

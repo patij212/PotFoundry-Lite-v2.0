@@ -19,6 +19,7 @@ import {
 import { createStyleOuterWallTargetRegistryBinding } from './styleOuterWallTargetRegistry';
 import {
   dyadicEdgeLadder,
+  rationalFeatureAngularLadder,
   snappedFeatureAngularLadder,
   tessellateAnnularRadialSolidTargetForCertification,
   type AnnularSolidReferenceTessellation,
@@ -192,6 +193,102 @@ describe('annular solid reference tessellation', () => {
     expect(structural.scanComplete).toBe(true);
   });
 
+  it('builds exact-rational feature angular ladders (U3b): stations exactly ON k/N', () => {
+    // N = 24 jump lines (odd part 3): every k/24 must be an exact station of
+    // the ladder — no dyadic snapping — over denominator 3 * 2^f.
+    const ladder = rationalFeatureAngularLadder(4, 24);
+    expect(ladder.oddDenominatorFactor).toBe(3);
+    const denominator = 3 * 2 ** ladder.log2Denominator;
+    expect(ladder.numerators[0]).toBe(0);
+    expect(ladder.numerators[ladder.numerators.length - 1]).toBe(denominator);
+    for (let station = 1; station < ladder.numerators.length; station += 1) {
+      expect(ladder.numerators[station]).toBeGreaterThan(ladder.numerators[station - 1]);
+    }
+    // Exact feature stations: k/24 = k * (denominator / 24), an integer.
+    expect(denominator % 24).toBe(0);
+    for (let jump = 0; jump <= 24; jump += 1) {
+      expect(ladder.numerators).toContain((jump * denominator) / 24);
+    }
+    // Symmetric under reversal (numerator -> D - numerator) so the atlas's
+    // reversed junction welds stay station-exact.
+    for (let station = 0; station < ladder.numerators.length; station += 1) {
+      expect(ladder.numerators[station]).toBe(
+        denominator - ladder.numerators[ladder.numerators.length - 1 - station]
+      );
+    }
+    // A power-of-two jump denominator needs no odd factor at all.
+    const dyadic = rationalFeatureAngularLadder(4, 8);
+    expect(dyadic.oddDenominatorFactor).toBeUndefined();
+  });
+
+  it('welds a rational-ladder tessellation closed and emits rational partitions', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const ladder = rationalFeatureAngularLadder(4, 24);
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 4,
+      angularStations: ladder,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    expect(structural.scanComplete).toBe(true);
+    // Every patch partition inherits the angular odd factor and declares the
+    // complete unit square over oddFactor * 2^fractionBits on BOTH axes.
+    for (const partition of tessellation.partitions) {
+      expect(partition.oddDenominatorFactor).toBe('3');
+      const declared = 3 * 2 ** partition.fractionBits;
+      expect(partition.domain.minUNumerator).toBe('0');
+      expect(partition.domain.minVNumerator).toBe('0');
+      expect(partition.domain.maxUNumerator).toBe(declared.toString());
+      expect(partition.domain.maxVNumerator).toBe(declared.toString());
+      // The jump station u = 1/24 appears verbatim among the cell corners.
+      const jumpNumerator = declared / 24;
+      expect(Number.isInteger(jumpNumerator)).toBe(true);
+      const uNumerators = new Set<string>();
+      for (const triangle of partition.triangles) {
+        for (const vertex of triangle.vertices) {
+          uNumerators.add(vertex.uNumerator);
+        }
+      }
+      expect(uNumerators.has(jumpNumerator.toString())).toBe(true);
+    }
+  });
+
+  it('refuses odd factors on vertical ladders (rational stations are angular-only)', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        angularDivisionsLog2: 3,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 2,
+          'inner-wall': 2,
+          'top-rim': 1,
+          'bottom-top': 1,
+          'bottom-under': 1,
+          'drain-wall': 1,
+        },
+        verticalStationsByPatch: {
+          'outer-wall': {
+            log2Denominator: 2,
+            oddDenominatorFactor: 3,
+            numerators: [0, 3, 6, 9, 12],
+          },
+        },
+      })
+    ).toThrow(/angular/i);
+  });
+
   it('assigns every artifact triangle to exactly one exact dyadic patch partition', () => {
     const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
     const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
@@ -326,6 +423,36 @@ describe('annular solid reference tessellation', () => {
         },
       },
       maxElapsedMilliseconds: 110_000,
+    },
+    // FIRST FRACT-FAMILY CERTIFICATE (U3b): gentle Crystalline. Facet and
+    // sub-facet wraps are value jumps of fract at u = k/24 — never on a
+    // dyadic station, so before exact-rational stations + band-resolved
+    // fract nodes every jump-adjacent cell hulled to [0,1] and certification
+    // was impossible at ANY density. The rational angular ladder puts all 25
+    // wrap stations exactly ON cell boundaries (denominator 3 * 2^8) and the
+    // exact per-cell band check takes the smooth shifted path across them.
+    {
+      styleId: 'Crystalline',
+      styleParams: {
+        cr_facet_depth: 0.02,
+        cr_edge_sharpness: 2,
+        cr_asymmetry: 0,
+        cr_height_phase: 0,
+      },
+      geometry: SMALL_POT_GEOMETRY,
+      divisions: {
+        angularDivisionsLog2: 8,
+        angularStations: rationalFeatureAngularLadder(8, 24),
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 3,
+          'inner-wall': 3,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+      },
+      maxElapsedMilliseconds: 60_000,
     },
   ];
 

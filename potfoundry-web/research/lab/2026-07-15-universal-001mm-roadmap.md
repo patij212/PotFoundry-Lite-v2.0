@@ -146,3 +146,30 @@ I executed U1 the same day this roadmap was written; §§1/3/4/6 predate commits
 7. **U5.3's dependency on U3 is broader than "Gothic-class".** Production conforming meshes carry float UV provenance — their stations are non-dyadic in general, so certifying ANY production mesh via exact partitions needs exact-rational stations (or dyadic snapping with accounted-for correspondence error). Make U3 an explicit prerequisite of U5.3, not a style-specific footnote.
 
 §6 status: the in-flight WIP described there landed as `2646395e` + `3a0a8c0a`; probes deleted. Remaining U1 item = non-uniform dyadic vertical ladders (Gyroid-gentle ≥ 262 k attempt + gentle default-scale), which I am executing next.
+
+## U3b progress addendum (2026-07-16, executor)
+
+U0 containment: **ALL FIVE ITEMS CLOSED** (#5 fleet baseline `c39a0089`, #4 adversarial
+suite `d6a5205f`, #1 remnant `cc93bdf4`). U1 landed earlier (envelope v2 + ladders); U2
+landed (screen v2 ops; SE certified). U3a landed (snapped angular ladders; Gothic
+reclassified to curved-feature-alignment with WI after screen v3).
+
+**U3b (exact-rational stations): slices 1–4 LANDED.** Slices 1–3 = kernel/evaluator/cMPD
+rational coordinates (partition kernel v8, evaluator odd-denominator channels, unit-square
+domain gate). Slice 4 (this session) = the payoff: band-resolved fract/floor nodes
+(compiler v12 — exact per-cell BigInt band checks on point-affine arguments, closed-graph
+semantics, hull fallback on straddle), `rationalFeatureAngularLadder` (stations exactly ON
+k/N, symmetric, partitions inherit the odd factor), Crystalline re-emitted with affine
+cycle coordinates (target v5). **Crystalline gentle CERTIFIED-PARTIAL — 9,497,638 pm /
+31,008 tris / ~16 s — the FIRST fract-family certificate.** Certified set: six pots across
+five styles (HR small + default-scale, SR, FB, SE, Crystalline). See the certification
+matrix Addendum 8 for the honest routing of the remaining five fract styles (RI float
+offsets, GS vertical rows, SFB/CT sign/step ops, Voronoi floor+pcg2d re-attempt next,
+heightPhase ≠ 0 diagonals = conforming cells).
+
+U3 exit check: the original exit ("GothicArches gentle CERTIFIED with crease-aligned
+stations") was superseded by the Addendum-6 reclassification — Gothic's arch outlines are
+p<1 cusp CURVES, not axis-aligned stations; the honest U3 exit is now "partition proofs
+accept exact-rational stations with adversarial tests intact" (DONE) + "first fract-family
+style certified via stations-on-jumps" (DONE — Crystalline). Curved-feature conforming
+(Gothic, WI) remains U5-class; U4 layered complexes unchanged.

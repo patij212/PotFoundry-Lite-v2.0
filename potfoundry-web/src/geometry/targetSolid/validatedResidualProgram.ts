@@ -66,7 +66,7 @@ export const VALIDATED_RESIDUAL_PROGRAM_VERSION =
 export const VALIDATED_RESIDUAL_SSA_PROGRAM_VERSION =
   'potfoundry.validated-target-ssa-program/v3' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION =
-  'potfoundry.validated-target-program-compiler/v11' as const;
+  'potfoundry.validated-target-program-compiler/v12' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
   [
     VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION,
@@ -77,6 +77,8 @@ export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
     'the screen Jacobian is forward-mode interval differentiation of the same compiled instructions over the axis-aligned cell hull; kinked minimum/maximum/absolute nodes use the Clarke subgradient hull, which the Lebourg mean-value theorem admits',
     'screen arithmetic widens every node result by a pure relative 4*2^-52 (libm-backed nodes 8*2^-52, assuming platform libm within one unit in the last place per call), which preserves exact zeros; soundness of relative-only widening is enforced by refusing any nonzero computed bound below 1e-150 in magnitude, above which a rounded result is exactly zero only when truly zero; add/subtract results additionally keep exactness proven by an error-free round-trip check; products and quotients by a power-of-two point factor are exponent shifts and stay exact unwidened; trig ranges include every critical point conservatively located with outward pi',
     'piecewise/branch-cut nodes (floor, ceiling, round, fractional-part, sign, step, atan2, pcg2d) are jump-guarded: cells whose argument enclosures exclude every jump take exact locally-constant or smooth paths (pcg2d resolves proven single-integer operands to its exact dyadic constant), and straddling cells downgrade the whole run to a plain value-hull residual over the cell — still a sound enclosure, only first-order wide',
+    'fractional-part and floor nodes whose argument is compiler-proven point-exact affine in u/v additionally band-resolve per cell: exact integer arithmetic on the cell rational vertex numerators must prove the argument range lies inside one closed unit band [k, k+1], and the node then evaluates as the error-free-checked smooth shift argument-minus-k or the exact constant k with no hull downgrade; cells whose exact argument range spans a jump keep the hull fallback, and both interval kernels apply the same per-cell band',
+    'band-resolved enclosures bound distance to the closed graph of the program: on a jump line the resolved branch evaluates its one-sided closure limit, which distance-to-set claims admit because closure points are infima of graph points; any solid-boundary curtain at a value-discontinuous jump remains a surface-complex obligation outside this program proof',
     'power additionally supports a varying exponent y >= 1 with base >= 0: value and base-derivative factors by monotone corner bounds, exponent-derivative factor a^y*ln(a) bounded below by -1/(e*yLo) on (0,1] and corner-monotone for base >= 1',
     'power with base >= 0 and a positive exponent below one (a clamp-boundary cusp with unbounded derivative) keeps its monotone corner VALUE enclosure and downgrades the run to the value-hull residual, so cusp neighborhoods refine by subdivision instead of refusing to the decimal kernel',
     'the screen refuses (returns unavailable, never a bound) on non-positive sqrt/ln/divide domains, power bases that may be negative, atan2 argument rectangles touching the origin outside the hull path, degenerate cell Jacobian systems, and any nonfinite value; refused cells fall back to the validated decimal enclosure',
@@ -202,6 +204,24 @@ interface InternalCompiledProgram extends CompiledValidatedResidualProgram {
   readonly affineX: AffineForm | null;
   readonly affineY: AffineForm | null;
   readonly affineZ: AffineForm | null;
+  readonly bandedJumpNodes: readonly BandedJumpNode[] | null;
+}
+
+/**
+ * A fractional-part/floor node whose argument is compiler-proven affine in
+ * u/v with point-exact decimal coefficients. The argument over a cell equals
+ * (uScaled*uNumerator + vScaled*vNumerator + constantScaled*cellDenominator)
+ * / (cellDenominator * powerOfTenScale) exactly, so exact integer arithmetic
+ * on the cell's rational vertex numerators decides whether the whole cell
+ * lies inside one closed unit band [k, k+1] of the argument.
+ */
+interface BandedJumpNode {
+  readonly nodeIndex: number;
+  readonly operation: 'fractional-part' | 'floor';
+  readonly uScaled: bigint;
+  readonly vScaled: bigint;
+  readonly constantScaled: bigint;
+  readonly powerOfTenScale: bigint;
 }
 
 interface RegisteredGeneratedTargetProgramBackends {
@@ -549,6 +569,7 @@ function compileProgram(canonicalProgramJson: unknown): InternalCompiledProgram 
     affineX: affineForms[targetX],
     affineY: affineForms[targetY],
     affineZ: affineForms[targetZ],
+    bandedJumpNodes: deriveBandedJumpNodes(instructions, affineForms),
   });
 }
 
@@ -1231,6 +1252,118 @@ function deriveAffineForms(instructions: readonly Instruction[]): readonly (Affi
   return Object.freeze(forms);
 }
 
+const CANONICAL_POINT_DECIMAL_RE = /^(-?)([0-9]+)(?:\.([0-9]+))?$/;
+const MAX_BAND_COEFFICIENT_FRACTION_DIGITS = 120;
+const BAND_INDEX_LIMIT = 1_099_511_627_776; // 2^40: band indices stay exact float64 integers.
+
+interface ParsedPointDecimal {
+  readonly mantissa: bigint;
+  readonly fractionDigits: number;
+}
+
+function parsePointDecimal(interval: DecimalInterval): ParsedPointDecimal | null {
+  if (interval.lower !== interval.upper) return null;
+  const match = CANONICAL_POINT_DECIMAL_RE.exec(interval.lower);
+  if (match === null) return null;
+  const fraction = match[3] ?? '';
+  if (fraction.length > MAX_BAND_COEFFICIENT_FRACTION_DIGITS) return null;
+  const magnitude = BigInt(`${match[2]}${fraction}`);
+  return {
+    mantissa: match[1] === '-' ? -magnitude : magnitude,
+    fractionDigits: fraction.length,
+  };
+}
+
+/**
+ * Collect fractional-part/floor nodes whose argument affine form has
+ * point-exact coefficients (an interval pi coefficient, a rounded product,
+ * or any non-affine argument disqualifies the node — fail closed to the
+ * jump-guard behavior). Coefficients are normalized to one shared
+ * power-of-ten scale so per-cell band checks are single BigInt comparisons.
+ */
+function deriveBandedJumpNodes(
+  instructions: readonly Instruction[],
+  forms: readonly (AffineForm | null)[]
+): readonly BandedJumpNode[] | null {
+  const banded: BandedJumpNode[] = [];
+  for (let index = 0; index < instructions.length; index += 1) {
+    const instruction = instructions[index];
+    if (instruction.op !== 'fractional-part' && instruction.op !== 'floor') continue;
+    const form = forms[instruction.arg];
+    if (form === null) continue;
+    const uCoefficient = parsePointDecimal(form.u);
+    const vCoefficient = parsePointDecimal(form.v);
+    const constant = parsePointDecimal(form.constant);
+    if (uCoefficient === null || vCoefficient === null || constant === null) continue;
+    // A fully constant argument already folds through the affine constant
+    // path; banding it would be redundant.
+    if (uCoefficient.mantissa === 0n && vCoefficient.mantissa === 0n) continue;
+    const exponent = Math.max(
+      uCoefficient.fractionDigits,
+      vCoefficient.fractionDigits,
+      constant.fractionDigits
+    );
+    banded.push(
+      Object.freeze({
+        nodeIndex: index,
+        operation: instruction.op,
+        uScaled: uCoefficient.mantissa * 10n ** BigInt(exponent - uCoefficient.fractionDigits),
+        vScaled: vCoefficient.mantissa * 10n ** BigInt(exponent - vCoefficient.fractionDigits),
+        constantScaled: constant.mantissa * 10n ** BigInt(exponent - constant.fractionDigits),
+        powerOfTenScale: 10n ** BigInt(exponent),
+      })
+    );
+  }
+  return banded.length === 0 ? null : Object.freeze(banded);
+}
+
+/**
+ * Exact per-cell band resolution. Writes the resolved band k (an exact
+ * float64 integer) into `bands[node.nodeIndex]` when the argument range over
+ * the cell provably lies inside [k, k+1]; writes NaN otherwise. All
+ * arithmetic is exact BigInt on the cell's rational vertex numerators
+ * (numerator / (oddFactor * 2^fractionBits)), so a jump strictly inside the
+ * cell can never be resolved away.
+ */
+function resolveJumpBandsInto(
+  bands: Float64Array,
+  banded: readonly BandedJumpNode[],
+  uNumerators: readonly bigint[],
+  vNumerators: readonly bigint[],
+  fractionBits: number,
+  oddFactor: bigint
+): void {
+  const cellDenominator = oddFactor << BigInt(fractionBits);
+  for (const node of banded) {
+    let minimum: bigint | undefined;
+    let maximum: bigint | undefined;
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      const value =
+        node.uScaled * uNumerators[vertex] +
+        node.vScaled * vNumerators[vertex] +
+        node.constantScaled * cellDenominator;
+      if (minimum === undefined || value < minimum) minimum = value;
+      if (maximum === undefined || value > maximum) maximum = value;
+    }
+    if (minimum === undefined || maximum === undefined) {
+      bands[node.nodeIndex] = Number.NaN;
+      continue;
+    }
+    const bandDenominator = cellDenominator * node.powerOfTenScale;
+    let band = minimum / bandDenominator;
+    if (minimum % bandDenominator !== 0n && minimum < 0n) band -= 1n;
+    if (
+      maximum <= (band + 1n) * bandDenominator &&
+      band > BigInt(-BAND_INDEX_LIMIT) &&
+      band < BigInt(BAND_INDEX_LIMIT)
+    ) {
+      bands[node.nodeIndex] = Number(band);
+    } else {
+      bands[node.nodeIndex] = Number.NaN;
+    }
+  }
+}
+
 function evaluateAffineAt(
   form: AffineForm,
   u: DecimalInterval,
@@ -1266,9 +1399,11 @@ function affineResidualHull(
 
 function evaluateInstruction(
   instruction: Instruction,
+  instructionIndex: number,
   values: readonly DecimalInterval[],
   environment: EvaluationEnvironment,
-  pcg2dCache: Map<string, readonly [DecimalInterval, DecimalInterval]>
+  pcg2dCache: Map<string, readonly [DecimalInterval, DecimalInterval]>,
+  bands: Float64Array | null
 ): DecimalInterval {
   switch (instruction.op) {
     case 'constant': return decimalPoint(instruction.value);
@@ -1283,10 +1418,29 @@ function evaluateInstruction(
     case 'ln': return decimalLn(values[instruction.arg]);
     case 'sin': return decimalSin(values[instruction.arg]);
     case 'cos': return decimalCos(values[instruction.arg]);
-    case 'floor': return decimalFloor(values[instruction.arg]);
+    case 'floor': {
+      if (bands !== null) {
+        const band = bands[instructionIndex];
+        // Exact-band cell: floor is the band constant on the closed band's
+        // left-closed branch (closed-graph semantics at the right edge).
+        if (band === band) return decimalPoint(band.toString());
+      }
+      return decimalFloor(values[instruction.arg]);
+    }
     case 'ceiling': return decimalCeil(values[instruction.arg]);
     case 'round': return decimalRoundTiesToEven(values[instruction.arg]);
-    case 'fractional-part': return decimalFract(values[instruction.arg]);
+    case 'fractional-part': {
+      if (bands !== null) {
+        const band = bands[instructionIndex];
+        // Exact-band cell: fract(x) = x - k over the whole closed band; the
+        // outward argument enclosure may overhang the band by its rounding
+        // guard, which only widens the (still sound) shifted enclosure.
+        if (band === band) {
+          return decimalSubtract(values[instruction.arg], decimalPoint(band.toString()));
+        }
+      }
+      return decimalFract(values[instruction.arg]);
+    }
     case 'sign': return decimalSign(values[instruction.arg]);
     case 'add': return decimalAdd(values[instruction.left], values[instruction.right]);
     case 'subtract': return decimalSubtract(values[instruction.left], values[instruction.right]);
@@ -1326,13 +1480,45 @@ export function evaluateCompiledValidatedResidualProgram(
     artifactY: affineArtifactHull(request, 1),
     artifactZ: affineArtifactHull(request, 2),
   };
+  let bands: Float64Array | null = null;
+  if (internal.bandedJumpNodes !== null) {
+    const fractionBits = request.cell.fractionBits;
+    if (
+      !Number.isSafeInteger(fractionBits) ||
+      fractionBits < 0 ||
+      fractionBits > MAX_DYADIC_BITS
+    ) {
+      refuse('dyadic fraction bits exceed the evaluator envelope');
+    }
+    const uNumerators: bigint[] = [];
+    const vNumerators: bigint[] = [];
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      uNumerators.push(
+        parseInteger(request.cell.vertices[vertex].uNumerator, 'cell vertex uNumerator')
+      );
+      vNumerators.push(
+        parseInteger(request.cell.vertices[vertex].vNumerator, 'cell vertex vNumerator')
+      );
+    }
+    bands = new Float64Array(internal.instructions.length).fill(Number.NaN);
+    resolveJumpBandsInto(
+      bands,
+      internal.bandedJumpNodes,
+      uNumerators,
+      vNumerators,
+      fractionBits,
+      requestOddFactor(request)
+    );
+  }
   const values: DecimalInterval[] = [];
   const pcg2dCache = new Map<
     string,
     readonly [DecimalInterval, DecimalInterval]
   >();
-  for (const instruction of internal.instructions) {
-    values.push(evaluateInstruction(instruction, values, environment, pcg2dCache));
+  for (let index = 0; index < internal.instructions.length; index += 1) {
+    values.push(
+      evaluateInstruction(internal.instructions[index], index, values, environment, pcg2dCache, bands)
+    );
   }
   return Object.freeze({
     xMm: decimalToOutwardFloat64(
@@ -1653,6 +1839,25 @@ function recordFastRefusalBoolean(reason: string): false {
  * value-hull residual instead of the centered mean-value form.
  */
 let fastRunTapeHullOnly = false;
+
+/**
+ * Per-cell exact band assignments for the current fastEncloseCore run,
+ * indexed by instruction: NaN everywhere except banded fractional-part/floor
+ * nodes the exact integer check resolved for this cell. Null when the
+ * program has no banded nodes.
+ */
+let fastRunTapeBands: Float64Array | null = null;
+
+const fastBandScratchCache = new WeakMap<object, Float64Array>();
+
+function fastBandScratch(internal: InternalCompiledProgram): Float64Array {
+  let scratch = fastBandScratchCache.get(internal);
+  if (scratch === undefined) {
+    scratch = new Float64Array(internal.instructions.length).fill(Number.NaN);
+    fastBandScratchCache.set(internal, scratch);
+  }
+  return scratch;
+}
 
 /**
  * Execute the compiled tape with dual-number interval forward differentiation
@@ -2278,6 +2483,17 @@ function fastRunTape(
       case FAST_OP_ROUND: {
         const lo = valueLo[a];
         const hi = valueHi[a];
+        if (ops[index] === FAST_OP_FLOOR && fastRunTapeBands !== null) {
+          const band = fastRunTapeBands[index];
+          if (band === band) {
+            // Exact-band cell: floor is the band constant on the closed
+            // band's left-closed branch (closed-graph semantics at the
+            // right edge). Derivatives stay zero.
+            rLo = band;
+            rHi = band;
+            break;
+          }
+        }
         // Monotone integer-valued maps: applying them to the enclosure
         // bounds encloses the truth exactly.
         if (ops[index] === FAST_OP_FLOOR) {
@@ -2298,6 +2514,24 @@ function fastRunTape(
       case FAST_OP_FRACT: {
         const lo = valueLo[a];
         const hi = valueHi[a];
+        if (fastRunTapeBands !== null) {
+          const band = fastRunTapeBands[index];
+          if (band === band) {
+            // Exact-band cell: fract(x) = x - k over the whole closed band.
+            // The float argument enclosure may overhang the band by ulps;
+            // the shift keeps a sound superset. Error-free-checked like
+            // add/subtract, widened otherwise.
+            const shiftLo = lo - band;
+            const shiftHi = hi - band;
+            rLo = shiftLo + band === lo ? shiftLo : fastWidenLo(shiftLo);
+            rHi = shiftHi + band === hi ? shiftHi : fastWidenHi(shiftHi);
+            rDuLo = duLo[a];
+            rDuHi = duHi[a];
+            rDvLo = dvLo[a];
+            rDvHi = dvHi[a];
+            break;
+          }
+        }
         const floorLo = Math.floor(lo);
         if (floorLo === Math.floor(hi)) {
           // fract(x) = x - k on the whole cell: exact shift, smooth.
@@ -2614,6 +2848,29 @@ export function fastEncloseCompiledValidatedResidualProgram(
     cellV.push(v);
   }
 
+  let bands: Float64Array | null = null;
+  if (internal.bandedJumpNodes !== null) {
+    const uNumerators: bigint[] = [];
+    const vNumerators: bigint[] = [];
+    try {
+      for (let vertex = 0; vertex < 3; vertex += 1) {
+        uNumerators.push(BigInt(cell.vertices[vertex].uNumerator));
+        vNumerators.push(BigInt(cell.vertices[vertex].vNumerator));
+      }
+    } catch {
+      return null;
+    }
+    bands = fastBandScratch(internal);
+    resolveJumpBandsInto(
+      bands,
+      internal.bandedJumpNodes,
+      uNumerators,
+      vNumerators,
+      fractionBits,
+      BigInt(oddFactor)
+    );
+  }
+
   // Affine artifact values at the three cell vertices via the exact dyadic
   // barycentric weights (the same combination the decimal path uses).
   const denominator = 2 ** barycentricFractionBits;
@@ -2663,7 +2920,8 @@ export function fastEncloseCompiledValidatedResidualProgram(
     fastWrapperWeightLo,
     fastWrapperWeightHi,
     fastWrapperArtifactLo,
-    fastWrapperArtifactHi
+    fastWrapperArtifactHi,
+    bands
   );
 }
 
@@ -2744,6 +3002,24 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
         : outwardInterval(fastWidenLo(vValue), fastWidenHi(vValue))
     );
   }
+  let bands: Float64Array | null = null;
+  if (internal.bandedJumpNodes !== null) {
+    const uExact: bigint[] = [];
+    const vExact: bigint[] = [];
+    for (let vertex = 0; vertex < 3; vertex += 1) {
+      uExact.push(BigInt(uNumerators[vertex]));
+      vExact.push(BigInt(vNumerators[vertex]));
+    }
+    bands = fastBandScratch(internal);
+    resolveJumpBandsInto(
+      bands,
+      internal.bandedJumpNodes,
+      uExact,
+      vExact,
+      fractionBits,
+      BigInt(oddDenominatorFactor)
+    );
+  }
   const denominator = 2 ** barycentricFractionBits;
   for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
     let numeratorSum = 0;
@@ -2778,7 +3054,8 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
     fastWrapperWeightLo,
     fastWrapperWeightHi,
     fastWrapperArtifactLo,
-    fastWrapperArtifactHi
+    fastWrapperArtifactHi,
+    bands
   );
 }
 
@@ -2808,6 +3085,39 @@ function fastCheckedAddHi(left: number, right: number): number {
  * (vertex-major a,b,c), nine artifact coordinate bounds (vertex-major x,y,z).
  */
 function fastEncloseCore(
+  internal: InternalCompiledProgram,
+  uLo: Float64Array,
+  uHi: Float64Array,
+  vLo: Float64Array,
+  vHi: Float64Array,
+  weightLo: Float64Array,
+  weightHi: Float64Array,
+  artifactLo: Float64Array,
+  artifactHi: Float64Array,
+  bands: Float64Array | null = null
+): ValidatedResidualEnclosure | null {
+  // Per-cell band assignments stay live for both tape passes (hull pass and
+  // centroid pass): the centroid lies inside the same cell, so the same
+  // exact band applies. Cleared before returning.
+  fastRunTapeBands = bands;
+  try {
+    return fastEncloseCoreInner(
+      internal,
+      uLo,
+      uHi,
+      vLo,
+      vHi,
+      weightLo,
+      weightHi,
+      artifactLo,
+      artifactHi
+    );
+  } finally {
+    fastRunTapeBands = null;
+  }
+}
+
+function fastEncloseCoreInner(
   internal: InternalCompiledProgram,
   uLo: Float64Array,
   uHi: Float64Array,

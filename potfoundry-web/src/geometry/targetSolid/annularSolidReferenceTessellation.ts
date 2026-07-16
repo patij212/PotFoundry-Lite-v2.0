@@ -33,10 +33,18 @@ import {
  * 2^log2Denominator. Lets a patch spend rows where its target needs them
  * (e.g. geometrically refined toward a styled edge) while every station
  * stays exactly dyadic for the partition proof.
+ *
+ * U3b: a ladder may additionally carry an odd denominator factor q >= 3, in
+ * which case numerators run 0..q*2^log2Denominator and stations are the
+ * exact rationals numerator / (q * 2^log2Denominator) — so feature stations
+ * k/N with N not a power of two sit EXACTLY on cell boundaries. Rational
+ * ladders are supported on the shared ANGULAR stations only; the partition
+ * proof consumes the factor through its own exact-rational coordinate layer.
  */
 export interface VerticalStationLadder {
   readonly log2Denominator: number;
   readonly numerators: readonly number[];
+  readonly oddDenominatorFactor?: number;
 }
 
 export interface AnnularSolidReferenceTessellationOptions {
@@ -97,6 +105,63 @@ export function snappedFeatureAngularLadder(
   }
   const numerators = [...stationSet].sort((left, right) => left - right);
   return Object.freeze({ log2Denominator: snapLog2, numerators: Object.freeze(numerators) });
+}
+
+/**
+ * Build a shared symmetric angular ladder whose stations include every jump
+ * fraction k/N EXACTLY (U3b). The denominator is q * 2^f with q the odd part
+ * of N and f = max(uniformLog2, trailingZeros(N)) + extraDyadicBits, so both
+ * the uniform grid and all N+1 feature stations are exact integers over it.
+ * The ladder is symmetric under numerator -> denominator - numerator by
+ * construction (the mirror of k/N is (N-k)/N), so reversed junction welds
+ * stay station-exact.
+ */
+export function rationalFeatureAngularLadder(
+  uniformLog2: number,
+  jumpDenominator: number,
+  extraDyadicBits = 0
+): VerticalStationLadder {
+  if (
+    !Number.isSafeInteger(uniformLog2) ||
+    uniformLog2 < 1 ||
+    uniformLog2 > MAX_ANGULAR_DIVISIONS_LOG2 ||
+    !Number.isSafeInteger(jumpDenominator) ||
+    jumpDenominator < 2 ||
+    jumpDenominator > 1 << MAX_ANGULAR_DIVISIONS_LOG2 ||
+    !Number.isSafeInteger(extraDyadicBits) ||
+    extraDyadicBits < 0
+  ) {
+    invalid('rationalFeatureAngularLadder arguments are out of range');
+  }
+  let trailingZeros = 0;
+  let oddPart = jumpDenominator;
+  while (oddPart % 2 === 0) {
+    oddPart /= 2;
+    trailingZeros += 1;
+  }
+  const log2Denominator = Math.max(uniformLog2, trailingZeros) + extraDyadicBits;
+  if (log2Denominator > MAX_LADDER_LOG2_DENOMINATOR) {
+    invalid('rationalFeatureAngularLadder denominator exceeds the ladder envelope');
+  }
+  const denominator = oddPart * 2 ** log2Denominator;
+  const stationSet = new Set<number>();
+  const uniformStep = denominator / 2 ** uniformLog2;
+  for (let station = 0; station <= 1 << uniformLog2; station += 1) {
+    stationSet.add(station * uniformStep);
+  }
+  const jumpStep = denominator / jumpDenominator;
+  for (let jump = 0; jump <= jumpDenominator; jump += 1) {
+    stationSet.add(jump * jumpStep);
+  }
+  const numerators = [...stationSet].sort((left, right) => left - right);
+  if (numerators.length > MAX_LADDER_STATIONS) {
+    invalid('rationalFeatureAngularLadder produces too many stations');
+  }
+  return Object.freeze({
+    log2Denominator,
+    numerators: Object.freeze(numerators),
+    ...(oddPart === 1 ? {} : { oddDenominatorFactor: oddPart }),
+  });
 }
 
 /**
@@ -161,15 +226,20 @@ const MAX_REFERENCE_TRIANGLES = 2_097_152;
 
 interface ResolvedStations {
   readonly log2Denominator: number;
+  /** Odd part of the station denominator (1 for purely dyadic ladders). */
+  readonly oddDenominatorFactor: number;
   readonly numerators: readonly number[];
-  /** Exact dyadic station values numerator * 2^-log2Denominator. */
+  /** Station values numerator / (oddDenominatorFactor * 2^log2Denominator). */
   readonly values: Float64Array;
 }
+
+const MAX_LADDER_ODD_FACTOR = 4_503_599_627_370_495; // 2^52 - 1 (kernel envelope)
 
 function resolveStations(
   patchId: AnnularRadialSolidPatchId,
   uniformLog2: number,
-  ladder: VerticalStationLadder | undefined
+  ladder: VerticalStationLadder | undefined,
+  role: 'angular' | 'vertical'
 ): ResolvedStations {
   if (ladder === undefined) {
     const divisions = 1 << uniformLog2;
@@ -179,7 +249,7 @@ function resolveStations(
       numerators.push(station);
       values[station] = station / divisions;
     }
-    return { log2Denominator: uniformLog2, numerators, values };
+    return { log2Denominator: uniformLog2, oddDenominatorFactor: 1, numerators, values };
   }
   const log2Denominator = ladder.log2Denominator;
   if (
@@ -189,8 +259,29 @@ function resolveStations(
   ) {
     invalid(`verticalStationsByPatch['${patchId}'].log2Denominator out of range`);
   }
+  const rawOddFactor = ladder.oddDenominatorFactor;
+  let oddDenominatorFactor = 1;
+  if (rawOddFactor !== undefined) {
+    if (role !== 'angular') {
+      invalid(
+        `verticalStationsByPatch['${patchId}'] carries an odd denominator factor — rational stations are supported on the shared angular ladder only`
+      );
+    }
+    if (
+      !Number.isSafeInteger(rawOddFactor) ||
+      rawOddFactor < 3 ||
+      rawOddFactor % 2 !== 1 ||
+      rawOddFactor > MAX_LADDER_ODD_FACTOR
+    ) {
+      invalid('angularStations.oddDenominatorFactor must be an odd integer >= 3');
+    }
+    oddDenominatorFactor = rawOddFactor;
+  }
   const numerators = ladder.numerators;
-  const denominator = 1 << log2Denominator;
+  const denominator = oddDenominatorFactor * 2 ** log2Denominator;
+  if (!Number.isSafeInteger(denominator)) {
+    invalid(`verticalStationsByPatch['${patchId}'] denominator exceeds the exact envelope`);
+  }
   if (
     !Array.isArray(numerators) ||
     numerators.length < 2 ||
@@ -198,10 +289,11 @@ function resolveStations(
     numerators[0] !== 0 ||
     numerators[numerators.length - 1] !== denominator
   ) {
-    invalid(`verticalStationsByPatch['${patchId}'] must run 0..2^${log2Denominator}`);
+    invalid(
+      `verticalStationsByPatch['${patchId}'] must run 0..${oddDenominatorFactor}*2^${log2Denominator}`
+    );
   }
   const values = new Float64Array(numerators.length);
-  const scale = 2 ** -log2Denominator;
   for (let station = 0; station < numerators.length; station += 1) {
     const numerator = numerators[station];
     if (
@@ -210,9 +302,9 @@ function resolveStations(
     ) {
       invalid(`verticalStationsByPatch['${patchId}'] must be strictly increasing integers`);
     }
-    values[station] = numerator * scale;
+    values[station] = numerator / denominator;
   }
-  return { log2Denominator, numerators, values };
+  return { log2Denominator, oddDenominatorFactor, numerators, values };
 }
 
 interface PatchGrid {
@@ -346,13 +438,15 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   const angularResolved = resolveStations(
     'outer-wall',
     angularLog2,
-    options.angularStations
+    options.angularStations,
+    'angular'
   );
   if (options.angularStations !== undefined) {
     // Reversed junction welds mirror station indices, which is only exact
     // when the ladder itself is symmetric under s -> 1 - s.
     const numerators = angularResolved.numerators;
-    const denominator = 1 << angularResolved.log2Denominator;
+    const denominator =
+      angularResolved.oddDenominatorFactor * 2 ** angularResolved.log2Denominator;
     for (let station = 0; station < numerators.length; station += 1) {
       if (
         numerators[station] !==
@@ -374,7 +468,10 @@ export function tessellateAnnularRadialSolidTargetForCertification(
       MAX_VERTICAL_DIVISIONS_LOG2,
       `verticalDivisionsLog2ByPatch['${patchId}']`
     );
-    stationsByPatch.set(patchId, resolveStations(patchId, uniformLog2, ladders[patchId]));
+    stationsByPatch.set(
+      patchId,
+      resolveStations(patchId, uniformLog2, ladders[patchId], 'vertical')
+    );
   }
 
   const programs = authenticated.programs;
@@ -423,13 +520,22 @@ export function tessellateAnnularRadialSolidTargetForCertification(
       angularResolved.log2Denominator,
       stations.log2Denominator
     );
-    const uNumeratorScale = 1 << (fractionBits - angularResolved.log2Denominator);
+    // The partition's shared coordinate denominator is q * 2^fractionBits
+    // with q the angular ladder's odd factor (vertical ladders are dyadic by
+    // the resolve gate above): u numerators already carry q and only scale
+    // by the dyadic gap; dyadic v numerators additionally multiply by q.
+    const oddFactor = angularResolved.oddDenominatorFactor;
+    const uNumeratorScale = 2 ** (fractionBits - angularResolved.log2Denominator);
     const angularNumerator = (uStation: number): number =>
       angularResolved.numerators[uStation] * uNumeratorScale;
-    const vNumeratorScale = 1 << (fractionBits - stations.log2Denominator);
+    const vNumeratorScale = oddFactor * 2 ** (fractionBits - stations.log2Denominator);
     const stationNumerator = (vStation: number): number =>
       stations.numerators[vStation] * vNumeratorScale;
-    const maxNumerator = (1 << fractionBits).toString();
+    const declaredDenominator = oddFactor * 2 ** fractionBits;
+    if (!Number.isSafeInteger(declaredDenominator)) {
+      invalid(`patch '${program.patchId}' partition denominator exceeds the exact envelope`);
+    }
+    const maxNumerator = declaredDenominator.toString();
     const triangles: {
       artifactTriangleIndex: number;
       vertices: readonly [
@@ -484,6 +590,7 @@ export function tessellateAnnularRadialSolidTargetForCertification(
     partitions.push({
       patchId: program.patchId,
       fractionBits,
+      ...(oddFactor === 1 ? {} : { oddDenominatorFactor: oddFactor.toString() }),
       domain: {
         minUNumerator: '0',
         maxUNumerator: maxNumerator,

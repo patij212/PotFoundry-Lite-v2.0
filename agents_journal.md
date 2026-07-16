@@ -7016,3 +7016,72 @@ believing failures.
   D−numerator) + FIRST BAND-RESOLVED fract program (fract(N·u+φ) → N·u+φ−k per band,
   region-core decomposition) + certification attempt on the simplest fract style.
 - Remember: stations-on-jumps (done) + band-resolved programs (open) are BOTH required.
+
+## 2026-07-16 — U3b slice 4: band-resolved fract + rational ladders = FIRST fract-family certificate
+
+**Mandate:** the slice-3 handoff verbatim — rational angular ladders in the tessellator,
+the first band-resolved fract program, certification attempt on the simplest fract style.
+
+**Design pivot recorded before building:** no new DSL op and no per-band program
+splitting. The compiler already derives per-node affine forms with decimal-interval
+coefficients, and pi is an INTERVAL constant — so "argument is point-exact affine in u/v"
+is a compiler-provable predicate that tau-roundtrip arguments can never satisfy. Band
+resolution therefore keys off the EXISTING affine derivation: per cell, exact BigInt
+arithmetic on the rational vertex numerators (numerator/(q·2^f), slices 1–3) must prove
+the argument range sits inside ONE closed band [k, k+1]; then fract -> x−k (error-free-
+checked shift, derivatives pass through) and floor -> constant k, in BOTH kernels
+(fast tape via a per-run band array like the hullOnly flag; decimal via the request's
+exact strings). Straddling cells keep the hull — misalignment still refuses. Soundness
+frame: enclosures bound distance to the CLOSED GRAPH of the program (one-sided closure
+limits on jump lines; closure points are infima of graph points, so distance-to-set
+claims stay sound; curtains at genuinely discontinuous jumps remain a G0 obligation —
+and the flat-plane-vs-sawtooth regression pins that bands never absorb a real residual).
+
+**Landed:**
+- `validatedResidualProgram.ts` (compiler v11 -> v12): BandedJumpNode table at compile,
+  `resolveJumpBandsInto` exact checker, band paths in FAST_OP_FRACT/FLOOR + decimal
+  fract/floor, bands computed in both fast entries and the decimal entry. 9 new kernel
+  tests (bandResolvedPiecewiseScreen.test.ts): jump-left/right/seam cells, floor,
+  DIAGONAL affine bands (3u+1.5v — axis alignment not required, only cell containment),
+  straddle fallback, numeric==string bit-identity, decimal channel, pi-argument refusal.
+- `annularSolidReferenceTessellation.ts`: `VerticalStationLadder.oddDenominatorFactor`,
+  `rationalFeatureAngularLadder(uniformLog2, N)` (stations exactly ON k/N over
+  odd(N)·2^f, symmetric by construction), partition emission scales both axes to q·2^F
+  and inherits the odd factor (v15 unit-square gate satisfied); vertical odd factors
+  refuse (angular-only this slice). 3 new tests.
+- `generatedContinuousFeatureStyleOuterWallTargets.ts` (v4 -> v5): Crystalline emits its
+  fractional-cycle coordinates as affine unit-parameter expressions (facetCount·u +
+  heightPhase·v and the subFacets multiple), tau cancelled SYMBOLICALLY at authoring —
+  real semantics identical, parity green — making both wrap families band-resolvable.
+- cMPD e2e (4 new tests): triangle-wave certifies over a denominator-6 partition at a
+  1 um budget WITH subdivision (children keep bands); dyadic-misaligned partition still
+  INCONCLUSIVE; cracked-ramp sawtooth certifies against the closed graph (documented
+  closure semantics); flat plane vs sawtooth refuses (bands never eat real error).
+
+**RESULT: Crystalline CERTIFIED-PARTIAL at gentle params (facetDepth 0.02, edgeSharpness
+2, asymmetry 0, heightPhase 0; facet counts 12x2 = registry defaults) — 9,497,638 pm
+over 31,008 triangles in ~16 s** on the small pot with rationalFeatureAngularLadder(8,24)
+(all 25 wrap stations of both families exactly on cell boundaries). FIRST fract-family
+certificate; sixth pot in PF_G2_POT. Before this slice the family was impossible in
+principle: every jump-adjacent cell hulled fract to [0,1] at every density and depth.
+
+**Verification:** targetSolid suite PF_G2_POT=1 FOREGROUND: 61 files / 456 tests ALL
+GREEN (six pot proofs included). A single transient failure appeared only in a DETACHED
+background run — the Windows EcoQoS throttle (banked ops lesson) slows detached node
+4-5x and blew a composed pot-proof deadline; two subsequent runs incl. the authoritative
+foreground pass were clean. Run pot-gated suites foreground. eslint --max-warnings=0
+clean on all six touched files; zero NEW tsc errors (the 358 pre-existing tree errors
+audited against HEAD: annular r_drain:10 literal-type pair + unused-import family all
+pre-date the session). detect_changes: 11 symbols / 5 files, all inside targetSolid,
+zero affected processes, LOW risk.
+
+### Next agent
+- Fract-family remainder, in leverage order: Voronoi (floor-banding + proven-constant
+  pcg2d — likely closest), GeometricStar (needs VERTICAL rational ladders + row-coupled
+  sector floors), SFB/CelticTriquetra (sign/step value-jump banding, same affine-argument
+  pattern), RippleInterference (float jump offsets exceed the ladder envelope — needs
+  offset-aware ladders or offset normalization at authoring).
+- heightPhase != 0 Crystalline = DIAGONAL jump lines: the exact band check already
+  handles arbitrary affine directions; the axis-aligned tessellation is what straddles —
+  feature-conforming cells (U5-class), same family as Gothic/WI curves.
+- U4 layered complexes remain the widest coverage unlock (7 styles).

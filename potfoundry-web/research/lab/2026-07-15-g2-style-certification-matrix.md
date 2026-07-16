@@ -232,3 +232,50 @@ so the correct G1 pin is "unspun-vs-spun refuses", not "spin refuses to build".
 Suite: 5 cases always-on (~8 s total, CHEAP fixture angular 2^7), 1 gated PF_G2_POT
 (~16 s, two full certified-pot proofs). Full targetSolid suite: 59 files / 427 tests
 green. Remaining containment: #1 remnant (`tolerancesPassed` naming sweep).
+
+## Addendum 8 — U3b slice 4: band-resolved piecewise nodes + FIRST fract-family certificate (2026-07-16)
+
+Landed the two halves of exact-rational station support and connected them end-to-end:
+
+1. **Band-resolved fract/floor (compiler v12).** A fractional-part/floor node whose
+   argument is compiler-proven POINT-EXACT affine in u/v (via the existing per-node affine
+   derivation — pi's interval coefficient disqualifies tau-roundtrip arguments by
+   construction, exactly the right fail-closed default) now band-resolves per cell: exact
+   BigInt arithmetic on the cell's rational vertex numerators must prove the argument range
+   lies inside ONE closed unit band [k, k+1]; the node then evaluates as the error-free-
+   checked smooth shift x−k (fract) or the exact constant k (floor) in BOTH interval
+   kernels, no hull downgrade. Cells whose exact range spans a jump keep today's hull —
+   a jump strictly inside a cell can never be resolved away, so misaligned partitions
+   still refuse. Enclosures bound distance to the CLOSED graph of the program: on a jump
+   line the resolved branch evaluates its one-sided closure limit (sound for
+   distance-to-set claims — closure points are infima of graph points); a solid-boundary
+   curtain at a genuinely discontinuous jump remains a G0 surface-complex obligation, and
+   the flat-plane-vs-sawtooth regression pins that bands never absorb a real residual.
+2. **Rational feature angular ladders.** `rationalFeatureAngularLadder(uniformLog2, N)`
+   puts stations exactly ON every k/N over denominator odd(N)·2^f — no dyadic snapping —
+   symmetric under reversal by construction; partitions inherit the odd factor, scale both
+   axes to q·2^F, and declare the complete unit square (v15 domain gate satisfied).
+   Vertical ladders stay dyadic this slice (fail-closed refusal on vertical odd factors).
+3. **Crystalline re-emission (target v5).** Fractional-cycle coordinates now emitted as
+   affine unit-parameter expressions — facetCount·u + heightPhase·v and its subFacets
+   multiple — with tau cancelled SYMBOLICALLY at authoring time. Real semantics unchanged
+   (backends + parity green); the affine arguments are what the kernels can band-resolve.
+   At heightPhase 0 every wrap of both families lies on u = k/24 (defaults 12×2).
+
+**RESULT: Crystalline CERTIFIED-PARTIAL (gentle: facetDepth 0.02, edgeSharpness 2,
+asymmetry 0, heightPhase 0, facets 12×2 default) — 9,497,638 pm over 31,008 triangles in
+~16 s** on the small pot with `rationalFeatureAngularLadder(8, 24)` shared stations.
+**FIRST certificate in the fract family** — before this slice every jump-adjacent cell
+hulled fract to [0,1] at every density and every depth, making certification impossible
+in principle, not just in budget. Sixth pot in the PF_G2_POT gate.
+
+Honest residual routing for the rest of the family: RippleInterference's jump offsets are
+float constants (52-bit dyadic stations exceed the ladder envelope — needs offset-aware
+ladders or program-side offset normalization); GeometricStar needs vertical rational
+ladders (row floors in v) plus its row-coupled sector floors; SuperformulaBlossom's `sign`
+and CelticTriquetra's `step` are value jumps the band machinery does not yet cover
+(same affine-argument pattern, different ops); Voronoi rides floor-banding + the proven
+constant-pcg2d path and should be re-attempted next; Crystalline at heightPhase ≠ 0 has
+DIAGONAL jump lines — the exact band check already handles arbitrary affine directions,
+but the axis-aligned tessellation cannot avoid straddling them (feature-conforming cells,
+U5-class). Gothic/WaveInterference stay in the curved-feature-alignment class (unchanged).
