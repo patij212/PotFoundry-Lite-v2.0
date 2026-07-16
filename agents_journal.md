@@ -7085,3 +7085,63 @@ zero affected processes, LOW risk.
   handles arbitrary affine directions; the axis-aligned tessellation is what straddles —
   feature-conforming cells (U5-class), same family as Gothic/WI curves.
 - U4 layered complexes remain the widest coverage unlock (7 styles).
+
+## 2026-07-16 — U3b slice 5: vertical rational ladders + the measured Voronoi campaign
+
+**Mandate:** continue the roadmap — fract-family remainder in leverage order (Voronoi
+first per the slice-4 handoff).
+
+**Landed (machinery):** vertical station ladders now accept odd denominator factors and
+`rationalStationLadder(uniformLog2, stations)` inserts ARBITRARY exact p/q stations over
+the lcm denominator; partition emission combines per-axis odd factors (q = lcm(q_u, q_v))
+and still pins the complete unit square. Driven by a general discovery: **remapped
+patches (inner wall, drain wall) carry their style-t jump lines at (line − c)/s in local
+v with c = t_bottom/H** — float-rounded c makes those positions astronomically-
+denominated; DYADIC c (H 32, t_bottom 3 ⇒ c = 3/32) makes them small rationals
+((4k−3)/29). Geometry choice is a station-alignment lever. Suite 61 files / 457 tests
+green foreground; tsc net −2 errors (widened the certified-pot geometry typing);
+detect_changes LOW, targetSolid-only.
+
+**Voronoi campaign (all measured, H32/OD30 pot; matrix Addendum 9 has the full data):**
+- The style's emission was ALREADY point-affine; at advanced defaults every u-lattice
+  line is dyadic and the period wrap is exact (scale 8). Banded floors make the lattice
+  coordinates per-cell point integers → the proven-constant pcg2d path runs END-TO-END
+  (the preregistered U2 hypothesis, now live: walls consult ~100–130 decimal cells).
+- WEB morph at jitter 0.8: **genuinely value-discontinuous** — 9-window F2 misses the
+  true second-nearest across lattice lines; 0.138 mm measured on the inner wall. U4
+  curtain class (production shader shares the artifact). F1 (bubble) measured jump-free
+  at every tested jitter.
+- jitter 0 pathology: centers = lattice corners = mesh stations ⇒ sqrt cusps touch cell
+  corners at every depth ⇒ thousands of 32 ms decimal consults (6,916 on one patch).
+  The jitter is PROTECTIVE for the proof — never zero it for alignment.
+- BUBBLE gentle: **all six patches converge individually** (each ≤ 9.4999 µm; walls
+  9,499,980/9,499,986 pm at relief 0.04) but sum ~150 s > the 120 s composed ceiling at
+  every config tried (relief 0.02–0.05 × angular 2^7–2^9 × walls 2^5–2^7). Cost driver:
+  Clarke-hull subdivision volume along the CURVED bisector kink-lines (~10–15× smooth
+  styles). **Reclassified: compute-bound (U5/G4 streamed scans or bisector-conforming
+  cells), no longer mechanism-blocked.** No certificate minted; no false claims.
+
+**Ops lesson:** heredoc python edit scripts must assert-and-write atomically — a failed
+later assert after earlier replaces silently leaves the file UNCHANGED (the write never
+runs), and the next test run measures the stale config. Two probe cycles were burned on
+this; always print a distinguishing config marker in probe output.
+
+### Next agent — the prepared next chunk
+1. **GeometricStar attempt** (vertical rational ladders now exist): re-emit
+   `sectorCoordinate` as affine cycles (u·pointCount + rowOffset·pointCount/tau expanded
+   symbolically — at gsShift 0 the row-coupled offset constant-folds to zero), rows band
+   via floor(t·layers·zoom) with rational v-stations at k/(layers·zoom); pick
+   layers·zoom decimal-exact. RISK: the strap smoothstep edges are DIAGONAL CURVED level
+   sets — same Clarke-kink-volume class that made Voronoi compute-bound; measure per-patch
+   time EARLY with the timing-probe pattern (per-patch certify + refusal-histogram delta +
+   elapsed; see this session's probe shape) before tuning params.
+2. **SFB/CelticTriquetra**: extend band resolution to `sign`/`step` value jumps of
+   point-affine arguments (same BandedJumpNode machinery; sign bands are (-inf,0),(0,inf)
+   with the closed-graph edge convention; step likewise via edge−x affine).
+3. **RippleInterference**: jump offsets are float constants — either raise the ladder
+   envelope to 52-bit dyadic stations (BigInt numerators in the tessellator) or normalize
+   offsets at authoring to small rationals.
+4. **U4 curtain/riser complexes** remain the widest unlock (7 layered styles + the
+   Voronoi web-mode discontinuity now has a measured curtain case waiting).
+5. Voronoi bubble certificate unlocks with envelope v3 / streamed scans (U5/G4) — the
+   per-patch numbers are in Addendum 9; nothing else is missing.

@@ -173,3 +173,13 @@ p<1 cusp CURVES, not axis-aligned stations; the honest U3 exit is now "partition
 accept exact-rational stations with adversarial tests intact" (DONE) + "first fract-family
 style certified via stations-on-jumps" (DONE — Crystalline). Curved-feature conforming
 (Gothic, WI) remains U5-class; U4 layered complexes unchanged.
+
+**Slice 5 addendum (same day):** vertical rational ladders + combined per-axis odd
+factors landed (arbitrary exact p/q stations; remapped-patch jump lines discovered:
+inner-wall lattice lines live at (k/8 − c)/s with c = t_bottom/H — geometry choice
+gates station exactness, H 32 ⇒ (4k−3)/29). Voronoi campaign fully measured (matrix
+Addendum 9): banded floors + constant-pcg2d LIVE end-to-end; web mode = authenticated
+F2-window discontinuity (0.138 mm, U4-class); bubble mode CONVERGES per-patch on all six
+(≤ 9.4999 µm each) but sums to ~150 s vs the 120 s composed ceiling — reclassified
+compute-bound (kink-line Clarke-hull volume; U5/G4 streamed scans or bisector-conforming
+cells). Certified set holds at six pots / five styles.

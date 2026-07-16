@@ -20,6 +20,7 @@ import { createStyleOuterWallTargetRegistryBinding } from './styleOuterWallTarge
 import {
   dyadicEdgeLadder,
   rationalFeatureAngularLadder,
+  rationalStationLadder,
   snappedFeatureAngularLadder,
   tessellateAnnularRadialSolidTargetForCertification,
   type AnnularSolidReferenceTessellation,
@@ -49,7 +50,7 @@ const GENTLE_HARMONIC_RIPPLE = Object.freeze({
 });
 
 function atlas(
-  geometry: typeof SMALL_POT_GEOMETRY,
+  geometry: Readonly<Record<string, number>>,
   styleParams: Readonly<Record<string, number>>,
   styleId = 'HarmonicRipple'
 ): {
@@ -265,28 +266,73 @@ describe('annular solid reference tessellation', () => {
     }
   });
 
-  it('refuses odd factors on vertical ladders (rational stations are angular-only)', () => {
+  it('builds vertical rational-station ladders (U3b slice 5): arbitrary exact p/q stations', () => {
+    // Inner-wall lattice lines for a dyadic bottom fraction c = 3/32 sit at
+    // v = (4k-3)/29 — arbitrary rationals, not k/N of one family. The
+    // ladder must contain each EXACTLY over odd(L)*2^v2(L) with L the lcm
+    // of the uniform grid and every station denominator.
+    const stations = [1, 2, 3, 4, 5, 6, 7].map(
+      (k) => [4 * k - 3, 29] as readonly [number, number]
+    );
+    const ladder = rationalStationLadder(5, stations);
+    expect(ladder.oddDenominatorFactor).toBe(29);
+    expect(ladder.log2Denominator).toBe(5);
+    const denominator = 29 * 2 ** 5;
+    expect(ladder.numerators[0]).toBe(0);
+    expect(ladder.numerators[ladder.numerators.length - 1]).toBe(denominator);
+    for (let station = 1; station < ladder.numerators.length; station += 1) {
+      expect(ladder.numerators[station]).toBeGreaterThan(ladder.numerators[station - 1]);
+    }
+    for (const [p, q] of stations) {
+      expect(Number.isInteger((p * denominator) / q)).toBe(true);
+      expect(ladder.numerators).toContain((p * denominator) / q);
+    }
+  });
+
+  it('combines angular and vertical odd factors in partition emission', () => {
     const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
-    expect(() =>
-      tessellateAnnularRadialSolidTargetForCertification(binding, {
-        angularDivisionsLog2: 3,
-        verticalDivisionsLog2ByPatch: {
-          'outer-wall': 2,
-          'inner-wall': 2,
-          'top-rim': 1,
-          'bottom-top': 1,
-          'bottom-under': 1,
-          'drain-wall': 1,
-        },
-        verticalStationsByPatch: {
-          'outer-wall': {
-            log2Denominator: 2,
-            oddDenominatorFactor: 3,
-            numerators: [0, 3, 6, 9, 12],
-          },
-        },
-      })
-    ).toThrow(/angular/i);
+    const vertical = rationalStationLadder(2, [[1, 29]]);
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 4,
+      angularStations: rationalFeatureAngularLadder(4, 24),
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+      verticalStationsByPatch: { 'inner-wall': vertical },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    // The inner-wall partition combines q = lcm(3, 29) = 87; every other
+    // patch keeps the angular factor 3 alone. All declare the complete unit
+    // square over their own q * 2^fractionBits.
+    for (const partition of tessellation.partitions) {
+      const expectedOdd = partition.patchId === 'inner-wall' ? 87 : 3;
+      expect(partition.oddDenominatorFactor).toBe(expectedOdd.toString());
+      const declared = expectedOdd * 2 ** partition.fractionBits;
+      expect(partition.domain.maxUNumerator).toBe(declared.toString());
+      expect(partition.domain.maxVNumerator).toBe(declared.toString());
+    }
+    const inner = tessellation.partitions.find((p) => p.patchId === 'inner-wall');
+    if (inner === undefined) throw new Error('missing inner-wall partition');
+    // The rational vertical station 1/29 appears verbatim among v corners.
+    const innerDeclared = 87 * 2 ** inner.fractionBits;
+    const vNumerators = new Set<string>();
+    for (const triangle of inner.triangles) {
+      for (const vertex of triangle.vertices) {
+        vNumerators.add(vertex.vNumerator);
+      }
+    }
+    expect(innerDeclared % 29).toBe(0);
+    expect(vNumerators.has((innerDeclared / 29).toString())).toBe(true);
   });
 
   it('assigns every artifact triangle to exactly one exact dyadic patch partition', () => {
@@ -324,7 +370,7 @@ describe('annular solid reference tessellation', () => {
   const CERTIFIED_POTS: readonly {
     styleId: string;
     styleParams: Readonly<Record<string, number>>;
-    geometry: typeof SMALL_POT_GEOMETRY;
+    geometry: Readonly<Record<string, number>>;
     divisions: AnnularSolidReferenceTessellationOptions;
     maxElapsedMilliseconds: number;
   }[] = [

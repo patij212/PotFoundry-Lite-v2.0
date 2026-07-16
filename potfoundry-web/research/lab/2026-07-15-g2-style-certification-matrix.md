@@ -279,3 +279,45 @@ constant-pcg2d path and should be re-attempted next; Crystalline at heightPhase 
 DIAGONAL jump lines — the exact band check already handles arbitrary affine directions,
 but the axis-aligned tessellation cannot avoid straddling them (feature-conforming cells,
 U5-class). Gothic/WaveInterference stay in the curved-feature-alignment class (unchanged).
+
+## Addendum 9 — U3b slice 5: vertical rational ladders + the Voronoi campaign (2026-07-16)
+
+**Machinery landed:** vertical station ladders may now carry odd denominator factors, and
+`rationalStationLadder(uniformLog2, stations)` inserts ARBITRARY exact p/q stations (lcm
+denominator). Partition emission combines per-axis odd factors (q = lcm of angular and
+vertical) and still declares the complete unit square. This was forced by a general
+discovery: **patches whose local v remaps affinely into style-t (inner wall, drain wall)
+have their lattice/jump lines at REMAPPED positions** — e.g. the inner wall's line
+t = k/8 sits at local v = (k/8 − c)/s with c = t_bottom/H. At H 40 the float rounding of
+c makes those positions astronomically-denominated; at H 32 (c = 3/32, exactly dyadic)
+they are the small rationals (4k−3)/29 — geometry choice matters for station alignment.
+
+**Voronoi findings (all measured on the H32/OD30 small pot, relief-gentled):**
+1. The affine emission was ALREADY in place (`u·scale + pulse·scale`, `t·scale·zStretch`)
+   — at defaults (scale 8 = power of two, pulse 0, zStretch 1) every u-lattice line is
+   dyadic, the period wrap divides exactly, and the banded floors light the
+   proven-constant PCG2D path end-to-end: the U2 Voronoi hypothesis is now LIVE (walls
+   consult only ~100–130 decimal cells, refusal histograms near-empty).
+2. **WEB mode (morph 1) at jitter 0.8 is genuinely value-discontinuous:** the true
+   second-nearest center can live outside the 3×3 window, so the 9-candidate f2 JUMPS
+   across lattice lines — measured 0.138 mm on the inner wall. An authenticated
+   production-pattern property (the shader shares it), not provable as a graph: needs U4
+   curtains or a window-exact F2. Direct lattice-line sampling shows NO jumps in F1
+   (bubble) at any tested jitter.
+3. **jitter 0 is pathological for the PROOF:** centers coincide with lattice corners =
+   mesh stations, so a sqrt cusp touches cell corners at every depth — thousands of
+   32 ms decimal consults (6,916 on one patch alone). The jitter is protective; never
+   chase station alignment by zeroing it.
+4. **BUBBLE mode (morph 0, jitter 0.8) CONVERGES on all six patches individually**
+   (every patch ≤ 9.4999 µm; walls 9,499,980/9,499,986 pm at relief 0.04) — but the
+   summed geometry is ~150 s vs the 120 s composed ceiling, at every configuration tried
+   (relief 0.02–0.05, angular 2^7–2^9, walls 2^5–2^7). The cost driver is Clarke-hull
+   subdivision volume along the CURVED Voronoi bisector kink-lines (~10–15× a smooth
+   style's cell count). Classification: **compute-bound (U5/G4-era streamed scans or
+   bisector-conforming cells), no longer mechanism-blocked** — a real reclassification
+   from the pre-U3b "screen op gap, impossible in principle".
+
+Certified set unchanged this slice: six pots across five styles. Next fract-family
+increments in leverage order: GeometricStar (vertical rational ladders now exist; needs
+the sector-coordinate affine re-emission and gsShift=0 gentling), SFB/CelticTriquetra
+(sign/step value-jump banding), RippleInterference (float-offset ladders).
