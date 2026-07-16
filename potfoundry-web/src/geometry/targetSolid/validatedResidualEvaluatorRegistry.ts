@@ -54,7 +54,8 @@ export interface RegisteredValidatedResidualEvaluator {
     fractionBits: number,
     barycentricNumerators: Float64Array,
     barycentricFractionBits: number,
-    artifactVerticesMm: Float64Array
+    artifactVerticesMm: Float64Array,
+    oddDenominatorFactor?: number
   ) => ValidatedResidualEnclosure | null;
   readonly [registeredValidatedResidualEvaluatorBrand]: true;
 }
@@ -135,6 +136,7 @@ export function compileValidatedResidualEvaluator(
       'no-callback canonical-target-program compilation with compiler-derived residual',
       'acceptance-only centered mean-value float64 screen derived from the same compiled program; refusals defer to the validated decimal enclosure',
       'the screen additionally accepts an exact numeric cell encoding (integer dyadic numerators within 2^52, exact parsed binary32 STL coordinates) that yields identical enclosures to the canonical string encoding',
+      'cell coordinates may declare one odd denominator factor (rational stations k/N exactly on cell boundaries); coordinates the factor divides stay exact, all others are enclosed by outward directed rounding in both the decimal authority and the float screen',
       `node-count=${program.nodeCount}`,
     ].join('\n')
   );
@@ -153,7 +155,8 @@ export function compileValidatedResidualEvaluator(
       fractionBits: number,
       barycentricNumerators: Float64Array,
       barycentricFractionBits: number,
-      artifactVerticesMm: Float64Array
+      artifactVerticesMm: Float64Array,
+      oddDenominatorFactor = 1
     ): ValidatedResidualEnclosure | null =>
       fastEncloseCompiledValidatedResidualProgramNumeric(
         program,
@@ -162,7 +165,8 @@ export function compileValidatedResidualEvaluator(
         fractionBits,
         barycentricNumerators,
         barycentricFractionBits,
-        artifactVerticesMm
+        artifactVerticesMm,
+        oddDenominatorFactor
       )
   );
   const handle = Object.freeze({

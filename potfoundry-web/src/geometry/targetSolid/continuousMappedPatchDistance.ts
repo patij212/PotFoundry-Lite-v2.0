@@ -73,6 +73,13 @@ export const CONTINUOUS_MAPPED_PATCH_DISTANCE_PROOF_SHA256 = sha256Utf8(
 
 export interface ExactDyadicTriangleCell {
   readonly fractionBits: number;
+  /**
+   * Optional odd factor of the coordinate denominator (coordinate =
+   * numerator / (oddDenominatorFactor * 2^fractionBits)); omitted for
+   * dyadic cells. Lets rational feature stations (k/N, N not a power of
+   * two) sit exactly on cell boundaries.
+   */
+  readonly oddDenominatorFactor?: string;
   readonly barycentricFractionBits: number;
   readonly vertices: readonly [ExactDyadicPoint2, ExactDyadicPoint2, ExactDyadicPoint2];
   readonly barycentricVertices: readonly [

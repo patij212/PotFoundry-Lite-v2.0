@@ -394,3 +394,82 @@ describe('verifyExactDyadicRectanglePartition', () => {
     }
   });
 });
+
+describe('rational partitions (odd denominator factor)', () => {
+  // Unit square over denominator 3 (fractionBits 0, odd factor 3): the
+  // vertical line u = 1/3 is EXACTLY a cell boundary — the U3b unlock for
+  // fract-family feature lines at k/N with N not a power of two.
+  const thirdSplit = (): ExactDyadicDomainPartitionInput => ({
+    patchId: 'outer-wall',
+    fractionBits: 0,
+    oddDenominatorFactor: '3',
+    domain: {
+      minUNumerator: '0',
+      maxUNumerator: '3',
+      minVNumerator: '0',
+      maxVNumerator: '3',
+    },
+    artifactTriangleCount: 4,
+    triangles: [
+      triangle(0, point(0, 0), point(1, 0), point(1, 3)),
+      triangle(1, point(0, 0), point(1, 3), point(0, 3)),
+      triangle(2, point(1, 0), point(3, 0), point(3, 3)),
+      triangle(3, point(1, 0), point(3, 3), point(1, 3)),
+    ],
+  });
+
+  it('proves a partition split exactly at u = 1/3', () => {
+    const result = verifyExactDyadicRectanglePartition(thirdSplit());
+    expect(result).toEqual(
+      expect.objectContaining({
+        exactPartition: true,
+        scanComplete: true,
+        triangleCount: 4,
+        oddDenominatorFactor: '3',
+        doubledDomainAreaNumerator: '18',
+        doubledTriangleAreaSumNumerator: '18',
+      })
+    );
+  });
+
+  it('resolves the odd factor to 1 for dyadic partitions and binds it into evidence', () => {
+    const dyadic = verifyExactDyadicRectanglePartition(
+      input([
+        triangle(3, point(0, 0), point(16, 0), point(16, 16)),
+        triangle(9, point(0, 0), point(16, 16), point(0, 16)),
+      ])
+    );
+    expect(dyadic.oddDenominatorFactor).toBe('1');
+
+    // Same numerators, same rectangle, different declared denominator: the
+    // partitions describe different coordinate systems and must never share
+    // an evidence hash.
+    const rational = verifyExactDyadicRectanglePartition(thirdSplit());
+    const sameNumeratorsDyadic = verifyExactDyadicRectanglePartition({
+      ...thirdSplit(),
+      oddDenominatorFactor: undefined,
+    } as unknown as ExactDyadicDomainPartitionInput);
+    expect(rational.evidenceSha256).not.toBe(sameNumeratorsDyadic.evidenceSha256);
+  });
+
+  it('refuses every non-canonical odd factor encoding', () => {
+    const withFactor = (oddDenominatorFactor: unknown): ExactDyadicDomainPartitionInput =>
+      ({ ...thirdSplit(), oddDenominatorFactor } as ExactDyadicDomainPartitionInput);
+    for (const bad of ['2', '1', '0', '-3', '03', '4503599627370497', 3, '9007199254740993x']) {
+      expectCode(() => verifyExactDyadicRectanglePartition(withFactor(bad)), 'INVALID_INPUT');
+    }
+  });
+
+  it('audits rational partitions with the same scale-free exactness (gap refused)', () => {
+    const gapped: ExactDyadicDomainPartitionInput = {
+      ...thirdSplit(),
+      artifactTriangleCount: 3,
+      triangles: [
+        triangle(0, point(0, 0), point(1, 0), point(1, 3)),
+        triangle(1, point(0, 0), point(1, 3), point(0, 3)),
+        triangle(2, point(1, 0), point(3, 0), point(3, 3)),
+      ],
+    };
+    expectCode(() => verifyExactDyadicRectanglePartition(gapped), 'INVALID_PARTITION');
+  });
+});

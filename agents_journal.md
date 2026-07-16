@@ -6928,3 +6928,52 @@ under G1) #4 ✓ #5 ✓ — all five audit containment items now closed.**
 - Audit G-track: U3b exact-rational partition stations (fresh session, full context).
 - Mesher track: DS scale-cliff conforming (0.40mm trusted), Gyroid (0.72mm).
 - G1 remnant: on-GPU differential for the f32-emulated WI contract.
+
+## 2026-07-16 — U3b slices 1+2: exact-rational partition stations (kernel + evaluator)
+
+**Why:** fract-family jump lines live at k/N (N never a power of two) — dyadic stations
+can't sit on them, cells straddle jumps, certification impossible at any density. U3b
+makes the coordinate denominator q·2^f with q odd.
+
+**Slice 1 — partition kernel v8 (`exactDyadicDomainPartition.ts`):** the conformity/
+coverage audit was already scale-free (pure BigInt on numerators — never divides), so the
+kernel gains only the declaration: optional `oddDenominatorFactor` (odd ≥ 3, ≤ 2^52−1;
+'1' must be omitted → one canonical encoding), validated, hash-bound into evidence,
+echoed in the result. 4 new tests incl. an exact u=1/3 split partition.
+
+**Slice 2 — evaluator rational coordinates (`validatedResidualProgram.ts` + registry):**
+- Decimal authority: `rationalDecimalInterval` — directed-rounded BigInt long division
+  (45 guard digits, floor/ceil pair, sign-aware); collapses to a decimalPoint when q
+  divides the numerator or the remainder factor divides a power of ten (q=5 exact).
+- Fast screen + numeric channel: correctly-rounded float division + exact 2^-f scale,
+  covered by the existing pure relative widening. KEY EXACTNESS RULE: q odd ⇒ quotient
+  exactly representable iff q | numerator, and `%` on ≤2^53 integers is exact — so the
+  exactness test is itself exact and u=0/u=1 domain guards stay decidable (the Gothic
+  power-domain lesson preserved). This is WHY the factor is constrained odd.
+- Registry: numeric channel gains optional `oddDenominatorFactor` arg; evaluator proof
+  text documents the rational semantics; `ExactDyadicTriangleCell` gains the optional
+  field.
+- 5 new tests: fast + decimal sampling containment on denominator-96 cells, q=3-on-3k ≡
+  dyadic BIT-FOR-BIT (no widening on divisible paths), numeric ≡ string bit-identity,
+  full refusal matrix on all three channels.
+
+**Verification:** full targetSolid PF_G2_POT=1: 60 files / 436 tests green (dyadic
+bit-identity pinned by the certified pots + existing equivalence tests). Zero new tsc
+errors (one Object.hasOwn → es2021-compatible form). detect_changes: 19 symbols/5 files
+all inside the judge modules.
+
+**Design finding (recorded for the next slices):** float/decimal can NEVER represent
+1/3 exactly, so a 1-ulp outward overhang at rational stations is unavoidable — sound
+(superset enclosure) but a jump-op program still hull-refuses jump-adjacent cells.
+Stations-on-jumps therefore needs BAND-RESOLVED programs (fract(N·u) → N·u − k with the
+band's k baked in, exactly the region-core decomposition) to be sufficient. U3b coordinate
+machinery + band-resolved programs together unlock the fract family; neither alone.
+
+### Next agent
+- U3b slice 3: thread `oddDenominatorFactor` through continuousMappedPatchDistance
+  (requestForCell + numeric-channel calls at lines ~834/850/871 + cMPD proof-text v15) —
+  cells inherit the partition's factor; subdivision only raises the 2^ part.
+- U3b slice 4: tessellator rational angular ladders (odd factor in VerticalStationLadder,
+  exact feature fractions, junction reversal symmetry numerator ↔ D−numerator) + FIRST
+  band-resolved fract program (pick the simplest fract style) + certification attempt.
+- Then: U4 layered complexes; curved-feature conforming (Gothic/WI); DS/Gyroid mesher.

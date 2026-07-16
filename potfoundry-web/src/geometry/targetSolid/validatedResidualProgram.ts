@@ -874,6 +874,102 @@ function parseInteger(value: unknown, label: string): bigint {
   return BigInt(value);
 }
 
+// 2^52 - 1 (odd) — matches the exact partition kernel's declarable envelope.
+const MAX_ODD_DENOMINATOR_FACTOR = 4_503_599_627_370_495n;
+// Directed-rounding guard digits for rational cell coordinates: interval
+// width 10^-45 relative to the coordinate, far below every geometric budget.
+const RATIONAL_DECIMAL_GUARD_DIGITS = 45;
+
+/**
+ * Optional odd denominator factor of the cell coordinate system (coordinate
+ * = numerator / (oddDenominatorFactor * 2^fractionBits)). Dyadic cells omit
+ * the field; a present field must be a canonical odd integer >= 3, so every
+ * cell has exactly one encoding.
+ */
+function requestOddFactor(request: ValidatedResidualEnclosureRequest): bigint {
+  const raw = (
+    request.cell as { readonly oddDenominatorFactor?: unknown }
+  ).oddDenominatorFactor;
+  if (raw === undefined) return 1n;
+  if (typeof raw !== 'string' || raw.length > 16 || !INTEGER_RE.test(raw)) {
+    refuse('cell oddDenominatorFactor must be a canonical bounded integer string');
+  }
+  const parsed = BigInt(raw);
+  if (
+    parsed < 3n ||
+    (parsed & 1n) !== 1n ||
+    parsed > MAX_ODD_DENOMINATOR_FACTOR
+  ) {
+    refuse(
+      'cell oddDenominatorFactor must be an odd integer >= 3 within the exact envelope; dyadic cells omit it'
+    );
+  }
+  return parsed;
+}
+
+function scaledDecimalString(scaled: bigint, fractionalDigits: number): string {
+  if (scaled === 0n) return '0';
+  const digits = scaled.toString().padStart(fractionalDigits + 1, '0');
+  const split = digits.length - fractionalDigits;
+  return `${digits.slice(0, split)}.${digits.slice(split)}`
+    .replace(/0+$/, '')
+    .replace(/\.$/, '');
+}
+
+/**
+ * Outward decimal enclosure of numerator / (oddFactor * 2^fractionBits).
+ * Exact (a point) whenever the odd factor divides the numerator, or when the
+ * remaining factor divides a power of ten (e.g. 5); otherwise a directed
+ * floor/ceil pair with RATIONAL_DECIMAL_GUARD_DIGITS guard digits. Sound for
+ * enclosure: the true rational always lies inside the returned interval.
+ */
+function rationalDecimalInterval(
+  numerator: bigint,
+  oddFactor: bigint,
+  fractionBits: number
+): DecimalInterval {
+  if (numerator % oddFactor === 0n) {
+    return decimalPoint(exactDyadicDecimal(numerator / oddFactor, fractionBits));
+  }
+  if (!Number.isSafeInteger(fractionBits) || fractionBits < 0 || fractionBits > MAX_DYADIC_BITS) {
+    refuse('dyadic fraction bits exceed the evaluator envelope');
+  }
+  const negative = numerator < 0n;
+  const magnitude = negative ? -numerator : numerator;
+  const fractionalDigits = fractionBits + RATIONAL_DECIMAL_GUARD_DIGITS;
+  const scaled =
+    magnitude *
+    5n ** BigInt(fractionBits) *
+    10n ** BigInt(RATIONAL_DECIMAL_GUARD_DIGITS);
+  const flooredQuotient = scaled / oddFactor;
+  const remainder = scaled % oddFactor;
+  const lowMagnitude = scaledDecimalString(flooredQuotient, fractionalDigits);
+  if (remainder === 0n) {
+    return decimalPoint(negative ? `-${lowMagnitude}` : lowMagnitude);
+  }
+  const highMagnitude = scaledDecimalString(flooredQuotient + 1n, fractionalDigits);
+  return decimalHull(
+    decimalPoint(negative ? `-${highMagnitude}` : lowMagnitude),
+    decimalPoint(negative ? `-${lowMagnitude}` : highMagnitude)
+  );
+}
+
+function cellCoordinateInterval(
+  request: ValidatedResidualEnclosureRequest,
+  cellVertex: number,
+  coordinate: 'uNumerator' | 'vNumerator'
+): DecimalInterval {
+  const numerator = parseInteger(
+    request.cell.vertices[cellVertex][coordinate],
+    `cell vertex ${coordinate}`
+  );
+  const oddFactor = requestOddFactor(request);
+  if (oddFactor === 1n) {
+    return decimalPoint(exactDyadicDecimal(numerator, request.cell.fractionBits));
+  }
+  return rationalDecimalInterval(numerator, oddFactor, request.cell.fractionBits);
+}
+
 function exactPicometresToMillimetresDecimal(value: unknown, label: string): string {
   const picometres = parseInteger(value, label);
   if (picometres === 0n) return '0';
@@ -925,12 +1021,7 @@ function coordinateHull(
 ): DecimalInterval {
   let result: DecimalInterval | undefined;
   for (let index = 0; index < 3; index += 1) {
-    const value = decimalPoint(
-      exactDyadicDecimal(
-        parseInteger(request.cell.vertices[index][coordinate], `cell vertex ${coordinate}`),
-        request.cell.fractionBits
-      )
-    );
+    const value = cellCoordinateInterval(request, index, coordinate);
     result = result === undefined ? value : decimalHull(result, value);
   }
   if (result === undefined) refuse('cell has no vertices');
@@ -942,12 +1033,7 @@ function coordinatePoint(
   cellVertex: number,
   coordinate: 'uNumerator' | 'vNumerator'
 ): DecimalInterval {
-  return decimalPoint(
-    exactDyadicDecimal(
-      parseInteger(request.cell.vertices[cellVertex][coordinate], `cell vertex ${coordinate}`),
-      request.cell.fractionBits
-    )
-  );
+  return cellCoordinateInterval(request, cellVertex, coordinate);
 }
 
 function affineArtifactPoint(
@@ -2423,6 +2509,50 @@ function fastDyadic(numerator: string, fractionBits: number): OutwardInterval | 
   return outwardInterval(fastWidenLo(value), fastWidenHi(value));
 }
 
+/** Fast-channel mirror of requestOddFactor: null (screen unavailable) on doubt. */
+function fastCellOddFactor(cell: ValidatedResidualEnclosureRequest['cell']): number | null {
+  const raw = (cell as { readonly oddDenominatorFactor?: unknown }).oddDenominatorFactor;
+  if (raw === undefined) return 1;
+  if (typeof raw !== 'string' || raw.length > 16 || !INTEGER_RE.test(raw)) return null;
+  const parsed = Number(raw);
+  if (
+    !Number.isSafeInteger(parsed) ||
+    parsed < 3 ||
+    parsed % 2 !== 1 ||
+    parsed > 4_503_599_627_370_495
+  ) {
+    return null;
+  }
+  return parsed;
+}
+
+/**
+ * Cell coordinate numerator / (oddFactor * 2^fractionBits) as an outward
+ * float64 interval. For an ODD factor the quotient is exactly representable
+ * iff the factor divides the numerator (an odd q dividing a dyadic k/2^j
+ * forces q | k), and `%` on exact integer operands <= 2^53 is exact — so the
+ * exactness test is itself exact, and coordinates like 0 and 1 stay EXACT
+ * points (power/sqrt domain guards remain decidable at patch edges). All
+ * other coordinates get correctly-rounded division (<= 0.5 ulp) followed by
+ * an exact power-of-two scale, covered by pure relative widening.
+ */
+function fastCellCoordinate(
+  numerator: string,
+  fractionBits: number,
+  oddFactor: number
+): OutwardInterval | null {
+  if (oddFactor === 1) return fastDyadic(numerator, fractionBits);
+  if (!INTEGER_RE.test(numerator) || numerator.length > 64) return null;
+  const parsed = Number(numerator);
+  if (!Number.isFinite(parsed) || Math.abs(parsed) > 9_007_199_254_740_992) return null;
+  const value = (parsed / oddFactor) * 2 ** -fractionBits;
+  if (!Number.isFinite(value)) return null;
+  if (parsed % oddFactor === 0 && fractionBits <= 900) {
+    return outwardInterval(value, value);
+  }
+  return outwardInterval(fastWidenLo(value), fastWidenHi(value));
+}
+
 function fastArtifactCoordinate(
   request: ValidatedResidualEnclosureRequest,
   artifactVertex: number,
@@ -2471,11 +2601,14 @@ export function fastEncloseCompiledValidatedResidualProgram(
     return null;
   }
 
+  const oddFactor = fastCellOddFactor(cell);
+  if (oddFactor === null) return null;
+
   const cellU: OutwardInterval[] = [];
   const cellV: OutwardInterval[] = [];
   for (let vertex = 0; vertex < 3; vertex += 1) {
-    const u = fastDyadic(cell.vertices[vertex].uNumerator, fractionBits);
-    const v = fastDyadic(cell.vertices[vertex].vNumerator, fractionBits);
+    const u = fastCellCoordinate(cell.vertices[vertex].uNumerator, fractionBits, oddFactor);
+    const v = fastCellCoordinate(cell.vertices[vertex].vNumerator, fractionBits, oddFactor);
     if (u === null || v === null) return null;
     cellU.push(u);
     cellV.push(v);
@@ -2547,7 +2680,8 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
   fractionBits: number,
   barycentricNumerators: Float64Array,
   barycentricFractionBits: number,
-  artifactVerticesMm: Float64Array
+  artifactVerticesMm: Float64Array,
+  oddDenominatorFactor = 1
 ): ValidatedResidualEnclosure | null {
   const internal = compiled as InternalCompiledProgram;
   if (!Array.isArray(internal.instructions)) return null;
@@ -2565,6 +2699,15 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
   ) {
     return null;
   }
+  if (
+    oddDenominatorFactor !== 1 &&
+    (!Number.isSafeInteger(oddDenominatorFactor) ||
+      oddDenominatorFactor < 3 ||
+      oddDenominatorFactor % 2 !== 1 ||
+      oddDenominatorFactor > 4_503_599_627_370_495)
+  ) {
+    return null;
+  }
   const scale = 2 ** -fractionBits;
   const cellU: OutwardInterval[] = [];
   const cellV: OutwardInterval[] = [];
@@ -2579,9 +2722,27 @@ export function fastEncloseCompiledValidatedResidualProgramNumeric(
     ) {
       return null;
     }
-    // Integer numerator times an exact power of two is exact in float64.
-    cellU.push(outwardInterval(uNumerator * scale, uNumerator * scale));
-    cellV.push(outwardInterval(vNumerator * scale, vNumerator * scale));
+    if (oddDenominatorFactor === 1) {
+      // Integer numerator times an exact power of two is exact in float64.
+      cellU.push(outwardInterval(uNumerator * scale, uNumerator * scale));
+      cellV.push(outwardInterval(vNumerator * scale, vNumerator * scale));
+      continue;
+    }
+    // Same exactness rule as fastCellCoordinate: exact iff the odd factor
+    // divides the numerator; otherwise <= 0.5 ulp covered by relative widening.
+    const uValue = (uNumerator / oddDenominatorFactor) * scale;
+    const vValue = (vNumerator / oddDenominatorFactor) * scale;
+    if (!Number.isFinite(uValue) || !Number.isFinite(vValue)) return null;
+    cellU.push(
+      uNumerator % oddDenominatorFactor === 0
+        ? outwardInterval(uValue, uValue)
+        : outwardInterval(fastWidenLo(uValue), fastWidenHi(uValue))
+    );
+    cellV.push(
+      vNumerator % oddDenominatorFactor === 0
+        ? outwardInterval(vValue, vValue)
+        : outwardInterval(fastWidenLo(vValue), fastWidenHi(vValue))
+    );
   }
   const denominator = 2 ** barycentricFractionBits;
   for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {

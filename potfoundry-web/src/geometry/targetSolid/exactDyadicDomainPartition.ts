@@ -2,11 +2,13 @@ import { domainSeparatedCanonicalJsonSha256 } from './canonicalCertificationJson
 import { IncrementalSha256, sha256Utf8 } from './incrementalSha256';
 
 export const EXACT_DYADIC_DOMAIN_PARTITION_VERSION =
-  'potfoundry.exact-dyadic-rectangle-partition/v7' as const;
+  'potfoundry.exact-dyadic-rectangle-partition/v8' as const;
 export const EXACT_DYADIC_DOMAIN_PARTITION_PROOF_SHA256 = sha256Utf8(
   [
     EXACT_DYADIC_DOMAIN_PARTITION_VERSION,
-    'coordinates = bounded signed integer numerators over one declared power-of-two denominator',
+    'coordinates = bounded signed integer numerators over one declared positive integer denominator',
+    'the denominator is an odd factor times a power of two; the odd factor defaults to one and is declared explicitly otherwise, so every partition has exactly one canonical coordinate encoding',
+    'the conformity, containment, and coverage audit is scale-free: it operates on numerators only and never divides by the denominator',
     'triangle orientation, areas, containment, segment incidence, and total area use exact BigInt arithmetic',
     'every parameter triangle is positively oriented and lies inside the declared closed rectangle',
     'pair audit permits only exact common vertices or one complete common edge',
@@ -46,6 +48,14 @@ export const HARD_DYADIC_PARTITION_MAX_PAIR_CHECKS =
   DEFAULT_DYADIC_PARTITION_MAX_PAIR_CHECKS;
 export const HARD_DYADIC_PARTITION_MAX_ELAPSED_MILLISECONDS = 120_000;
 export const MAX_DYADIC_FRACTION_BITS = 52;
+/**
+ * Largest declarable odd denominator factor. Coordinates are
+ * numerator / (oddDenominatorFactor * 2^fractionBits); the factor lets
+ * feature lines at k/N (N not a power of two) sit EXACTLY on cell
+ * boundaries. 2^52-1 keeps numerator*factor products inside the signed
+ * 62-bit numerator envelope used by downstream exact converters.
+ */
+export const MAX_ODD_DENOMINATOR_FACTOR = 4_503_599_627_370_495n;
 const PARTITION_BVH_LEAF_SIZE = 8;
 
 export interface ExactDyadicPoint2 {
@@ -68,6 +78,13 @@ export interface ExactDyadicMappedTriangle {
 export interface ExactDyadicDomainPartitionInput {
   readonly patchId: string;
   readonly fractionBits: number;
+  /**
+   * Optional odd factor of the coordinate denominator (denominator =
+   * oddDenominatorFactor * 2^fractionBits). Omit for dyadic partitions;
+   * when present it must be an odd integer >= 3, so each partition has
+   * exactly one canonical encoding.
+   */
+  readonly oddDenominatorFactor?: string;
   readonly domain: ExactDyadicRectangle;
   readonly artifactTriangleCount: number;
   readonly triangles: readonly ExactDyadicMappedTriangle[];
@@ -117,6 +134,8 @@ export interface ExactDyadicDomainPartitionResult {
   readonly evidenceSha256: string;
   readonly patchId: string;
   readonly fractionBits: number;
+  /** Resolved odd denominator factor ('1' for dyadic partitions). */
+  readonly oddDenominatorFactor: string;
   readonly triangleCount: number;
   readonly buildWorkCount: number;
   readonly bvhNodeCount: number;
@@ -825,7 +844,14 @@ export function snapshotExactDyadicDomainPartitionInputForProof(
   }
   const root = snapshotDataRecord(
     untrusted,
-    ['artifactTriangleCount', 'domain', 'fractionBits', 'patchId', 'triangles'],
+    [
+      'artifactTriangleCount',
+      'domain',
+      'fractionBits',
+      'oddDenominatorFactor',
+      'patchId',
+      'triangles',
+    ],
     ['artifactTriangleCount', 'domain', 'fractionBits', 'patchId', 'triangles'],
     'partition input'
   );
@@ -886,6 +912,9 @@ export function snapshotExactDyadicDomainPartitionInputForProof(
   const snapshot = Object.freeze({
     patchId: root.patchId as string,
     fractionBits: root.fractionBits as number,
+    ...(Object.prototype.hasOwnProperty.call(root, 'oddDenominatorFactor')
+      ? { oddDenominatorFactor: root.oddDenominatorFactor as string }
+      : {}),
     domain: Object.freeze({
       minUNumerator: domainValue.minUNumerator as string,
       maxUNumerator: domainValue.maxUNumerator as string,
@@ -1026,6 +1055,22 @@ export function verifyExactDyadicRectanglePartition(
   ) {
     inputError(`fractionBits must be an integer in [0, ${MAX_DYADIC_FRACTION_BITS}]`);
   }
+  let oddDenominatorFactor = 1n;
+  if (input.oddDenominatorFactor !== undefined) {
+    oddDenominatorFactor = parseNumerator(
+      input.oddDenominatorFactor,
+      'oddDenominatorFactor'
+    );
+    if (
+      oddDenominatorFactor < 3n ||
+      (oddDenominatorFactor & 1n) !== 1n ||
+      oddDenominatorFactor > MAX_ODD_DENOMINATOR_FACTOR
+    ) {
+      inputError(
+        `oddDenominatorFactor must be an odd integer in [3, ${MAX_ODD_DENOMINATOR_FACTOR}]; omit it for dyadic partitions`
+      );
+    }
+  }
   if (
     !Number.isSafeInteger(input.artifactTriangleCount) ||
     input.artifactTriangleCount <= 0 ||
@@ -1112,6 +1157,7 @@ export function verifyExactDyadicRectanglePartition(
       doubledDomainAreaNumerator: doubledDomainArea.toString(),
       doubledTriangleAreaSumNumerator: doubledTriangleAreaSum.toString(),
       fractionBits: input.fractionBits.toString(),
+      oddDenominatorFactor: oddDenominatorFactor.toString(),
       pairCheckCount: pairAudit.pairCheckCount.toString(),
       patchId: input.patchId,
       proofMethodSha256: EXACT_DYADIC_DOMAIN_PARTITION_PROOF_SHA256,
@@ -1128,6 +1174,7 @@ export function verifyExactDyadicRectanglePartition(
     evidenceSha256,
     patchId: input.patchId,
     fractionBits: input.fractionBits,
+    oddDenominatorFactor: oddDenominatorFactor.toString(),
     triangleCount: triangles.length,
     buildWorkCount: pairAudit.buildWorkCount,
     bvhNodeCount: pairAudit.bvhNodeCount,
