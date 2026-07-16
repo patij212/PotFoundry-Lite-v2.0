@@ -6977,3 +6977,42 @@ machinery + band-resolved programs together unlock the fract family; neither alo
   exact feature fractions, junction reversal symmetry numerator ↔ D−numerator) + FIRST
   band-resolved fract program (pick the simplest fract style) + certification attempt.
 - Then: U4 layered complexes; curved-feature conforming (Gothic/WI); DS/Gyroid mesher.
+
+## 2026-07-16 — U3b slice 3: rational threading through the patch-distance kernel + unit-square gate
+
+**Landed (`continuousMappedPatchDistance.ts`, v14 → v15):** cells inherit the partition's
+resolved odd factor — requestForCell emits `oddDenominatorFactor` on every cell (omitted
+when '1'), the numeric screen channel receives it as its 8th arg, and barycentric
+subdivision raises only the dyadic part of the denominator. First rational end-to-end
+proof: a denominator-3 partition of the unit square certifies with residual < 1000 pm
+(the only error is binary32 rounding of 1/3 — the station itself is exact); a hidden-bump
+INCONCLUSIVE case pins rational subdivision through all three evaluator channels.
+
+**AUDIT GAP FOUND AND CLOSED (fail-open, pre-existing):** nothing in the chain verified
+the partition's declared rectangle equals the FULL unit square of its coordinate system.
+An honest-arithmetic partition over a SUB-rectangle (e.g. declared [0,1]^2 numerators at
+fractionBits 1 = absolute [0,1/2]^2) passed the kernel proof, per-cell residuals, and
+complete artifact-side assignment — silently shrinking target-side coverage to a quarter
+of the patch. The two-sided distance bound's complete-parametrization premise was
+TRUSTED, not checked. v15 pins: min = 0 and max = oddFactor·2^fractionBits on both axes,
+refusing otherwise (new regression test constructs the quarter-domain attack). The honest
+tessellator always declared the full square, which is why certified pots never tripped it
+— exactly the producer-trust pattern the Codex audit exists to eliminate.
+
+**Verification:** targetSolid 60 files / 439 tests green under PF_G2_POT=1 (certified
+pots re-proved through the gate + v15), lint clean, zero tsc errors. detect_changes:
+5 symbols / 2 files, all in cMPD.
+
+**Ops lesson:** the Bash session cwd can silently reset to the repo ROOT (not
+potfoundry-web) on shell recycle — from there vitest resolves WITHOUT the jsdom config
+and DOM-dependent tests fail with FileReader/environment artifacts (26 phantom failures,
+`environment 0ms` in the summary is the tell). Always `cd` into potfoundry-web in the
+same command as a vitest/eslint invocation, or check `environment` timing before
+believing failures.
+
+### Next agent
+- U3b slice 4 (the payoff): tessellator rational angular ladders (odd factor in the
+  ladder type + exact feature fractions k/N + junction reversal symmetry numerator ↔
+  D−numerator) + FIRST BAND-RESOLVED fract program (fract(N·u+φ) → N·u+φ−k per band,
+  region-core decomposition) + certification attempt on the simplest fract style.
+- Remember: stations-on-jumps (done) + band-resolved programs (open) are BOTH required.

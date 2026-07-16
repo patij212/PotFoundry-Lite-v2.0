@@ -388,3 +388,117 @@ describe('certifyContinuousMappedPatchDistance', () => {
     expect(budgetReads).toBe(0);
   });
 });
+
+describe('rational partitions and the unit-square domain gate (U3b)', () => {
+  // Unit square over denominator 3: the line u = 1/3 is exactly a cell
+  // boundary. The artifact plane carries matching binary32 vertices.
+  function rationalPartition(): ExactDyadicDomainPartitionInput {
+    const p = (u: string, v: string) => ({ uNumerator: u, vNumerator: v });
+    return {
+      patchId: 'outer-wall',
+      fractionBits: 0,
+      oddDenominatorFactor: '3',
+      domain: {
+        minUNumerator: '0',
+        maxUNumerator: '3',
+        minVNumerator: '0',
+        maxVNumerator: '3',
+      },
+      artifactTriangleCount: 4,
+      triangles: [
+        { artifactTriangleIndex: 0, vertices: [p('0', '0'), p('1', '0'), p('1', '3')] },
+        { artifactTriangleIndex: 1, vertices: [p('0', '0'), p('1', '3'), p('0', '3')] },
+        { artifactTriangleIndex: 2, vertices: [p('1', '0'), p('3', '0'), p('3', '3')] },
+        { artifactTriangleIndex: 3, vertices: [p('1', '0'), p('3', '3'), p('1', '3')] },
+      ],
+    };
+  }
+
+  function rationalArtifact() {
+    const third = 1 / 3;
+    return createFinalArtifactProofSession(
+      binaryStl([
+        [
+          [0, 0, 0],
+          [third, 0, 0],
+          [third, 1, 0],
+        ],
+        [
+          [0, 0, 0],
+          [third, 1, 0],
+          [0, 1, 0],
+        ],
+        [
+          [third, 0, 0],
+          [1, 0, 0],
+          [1, 1, 0],
+        ],
+        [
+          [third, 0, 0],
+          [1, 1, 0],
+          [third, 1, 0],
+        ],
+      ])
+    );
+  }
+
+  it('proves a continuous correspondence over a denominator-3 partition', () => {
+    const result = certifyContinuousMappedPatchDistance(
+      rationalArtifact(),
+      rationalPartition(),
+      constantZResidual(0),
+      { maximumGeometricUpperPm: 10_000_000n }
+    );
+    expect(result).toEqual(
+      expect.objectContaining({
+        artifactTriangleSubsetCount: 4,
+        scanComplete: true,
+        continuousCorrespondenceProven: true,
+      })
+    );
+    // The only residual is the binary32 rounding of 1/3 (~10 pm) plus
+    // enclosure widening — the rational station itself is exact.
+    expect(BigInt(result.targetToMeshUpperPm)).toBeLessThan(1_000n);
+  });
+
+  it('subdivides rational cells without losing the odd factor', () => {
+    // A hidden interior bump forces depth-limited refusal: every consulted
+    // cell at depth >= 1 carries fractionBits+depth with the inherited odd
+    // factor through the numeric, screen, and decimal channels.
+    const pi = constant(Math.PI.toString());
+    const bump = evaluator({
+      op: 'multiply',
+      left: constant('0.02'),
+      right: {
+        op: 'multiply',
+        left: { op: 'sin', arg: { op: 'multiply', left: pi, right: { op: 'u' } } },
+        right: { op: 'sin', arg: { op: 'multiply', left: pi, right: { op: 'v' } } },
+      },
+    });
+    expectCode(
+      () =>
+        certifyContinuousMappedPatchDistance(rationalArtifact(), rationalPartition(), bump, {
+          maximumGeometricUpperPm: 10_000_000n,
+          maxDepth: 2,
+        }),
+      'INCONCLUSIVE'
+    );
+  });
+
+  it('refuses a partition whose declared rectangle is not the full unit square', () => {
+    // Same exact triangles and a VALID kernel partition proof — but declared
+    // over denominator 2, so the rectangle is [0, 1/2]^2 in absolute UV. The
+    // two-sided bound would silently cover a quarter of the target patch;
+    // the complete-parametrization gate must refuse.
+    expectCode(
+      () =>
+        certifyContinuousMappedPatchDistance(
+          artifact(),
+          { ...partition(), fractionBits: 1 },
+          constantZResidual(0),
+          { maximumGeometricUpperPm: 10_000_000n }
+        ),
+      'INVALID_INPUT'
+    );
+  });
+});

@@ -38,7 +38,7 @@ import {
 export type { RegisteredValidatedResidualEvaluator } from './validatedResidualEvaluatorRegistry';
 
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_VERSION =
-  'potfoundry.continuous-mapped-patch-distance/v14' as const;
+  'potfoundry.continuous-mapped-patch-distance/v15' as const;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_WORK_CELLS = 1_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS = 2_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_EVALUATOR_WORK_UNITS =
@@ -50,7 +50,8 @@ export const CONTINUOUS_MAPPED_PATCH_DISTANCE_PROOF_SHA256 = sha256Utf8(
     CONTINUOUS_MAPPED_PATCH_DISTANCE_VERSION,
     'artifact geometry = immutable exact triangle snapshot parsed from authenticated final binary-STL, 3MF, or OBJ bytes',
     'binary STL coordinates retain exact binary32 values; 3MF and OBJ coordinates retain exact signed integer picometres through residual evaluation',
-    'target/mesh correspondence = exact complete dyadic rectangle partition proof',
+    'target/mesh correspondence = exact complete rectangle partition proof over one declared denominator (odd factor times a power of two); cells inherit the odd factor and barycentric subdivision raises only the dyadic part',
+    'the declared partition rectangle must be exactly the absolute closed unit square of its coordinate system (zero to the full denominator on both axes), so the complete-parametrization premise behind the two-sided distance bound is checked, never trusted',
     'each work cell is one exact barycentric midpoint subdivision of its assigned artifact triangle and target parameter triangle',
     'each evaluator request carries exact dyadic barycentric numerators for auditable affine-artifact enclosure',
     `validated evaluator = WeakMap-authenticated immutable registry capability (${VALIDATED_RESIDUAL_EVALUATOR_REGISTRY_VERSION})`,
@@ -299,9 +300,12 @@ function requestForCell(
   mapping: ExactDyadicMappedTriangle,
   patchId: string,
   originalFractionBits: number,
+  oddDenominatorFactor: string,
   artifactTriangle: ArtifactTriangleSnapshot,
   cell: WorkCell
 ): ValidatedResidualEnclosureRequest {
+  // Barycentric subdivision doubles numerators per depth level, so only the
+  // dyadic part of the denominator grows; the odd factor is inherited as-is.
   const fractionBits = originalFractionBits + cell.depth;
   const vertices = cell.vertices.map((weight) =>
     exactCellPoint(mapping.vertices, weight)
@@ -315,6 +319,7 @@ function requestForCell(
   ) as unknown as ExactDyadicTriangleCell['barycentricVertices'];
   const frozenCell = Object.freeze({
     fractionBits,
+    ...(oddDenominatorFactor === '1' ? {} : { oddDenominatorFactor }),
     barycentricFractionBits: cell.depth,
     vertices: Object.freeze(vertices.map((point) => Object.freeze(point))) as unknown as readonly [
       ExactDyadicPoint2,
@@ -692,6 +697,24 @@ export function certifyContinuousMappedPatchDistance(
     cancellationFlag: optionsSnapshot.cancellationFlag,
     deadlineEpochMilliseconds,
   });
+  // The two-sided bound holds only if the shared parametrization covers the
+  // COMPLETE patch domain. The partition proof covers whatever rectangle was
+  // declared, so pin that rectangle to the absolute closed unit square of the
+  // declared coordinate system: [0, oddFactor * 2^fractionBits] on both axes.
+  const oddDenominatorFactor = partition.oddDenominatorFactor;
+  const declaredDenominator =
+    BigInt(oddDenominatorFactor) << BigInt(partitionSnapshot.fractionBits);
+  if (
+    BigInt(partitionSnapshot.domain.minUNumerator) !== 0n ||
+    BigInt(partitionSnapshot.domain.minVNumerator) !== 0n ||
+    BigInt(partitionSnapshot.domain.maxUNumerator) !== declaredDenominator ||
+    BigInt(partitionSnapshot.domain.maxVNumerator) !== declaredDenominator
+  ) {
+    invalid(
+      'Partition rectangle must be the complete closed unit square of its declared coordinate system'
+    );
+  }
+  const numericOddFactor = Number(oddDenominatorFactor);
   const subsetSha256 = artifactSubsetSha256(
     artifact,
     partitionSnapshot.triangles,
@@ -841,7 +864,8 @@ export function certifyContinuousMappedPatchDistance(
             partitionSnapshot.fractionBits + cell.depth,
             numericBarycentric,
             cell.depth,
-            numericArtifact
+            numericArtifact,
+            numericOddFactor
           );
           if (numericEnclosure !== null) {
             fastUpperPm = float64UpperMillimetresToPicometres(
@@ -855,6 +879,7 @@ export function certifyContinuousMappedPatchDistance(
             mapping,
             partitionSnapshot.patchId,
             partitionSnapshot.fractionBits,
+            oddDenominatorFactor,
             artifactVertices,
             cell
           );
@@ -876,6 +901,7 @@ export function certifyContinuousMappedPatchDistance(
               mapping,
               partitionSnapshot.patchId,
               partitionSnapshot.fractionBits,
+              oddDenominatorFactor,
               artifactVertices,
               cell
             );
