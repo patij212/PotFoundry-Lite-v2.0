@@ -217,8 +217,8 @@ export interface RefinementInput {
 export interface RefinementOutput {
     /** Refined mesh data. */
     readonly mesh: StageMeshData;
-    /** Whether all tolerances are satisfied. */
-    readonly tolerancesPassed: boolean;
+    /** Whether the sampled refinement heuristics met their thresholds (telemetry, not a proof). */
+    readonly heuristicRefinementPassed: boolean;
     /** Number of refinement iterations performed. */
     readonly iterationsPerformed: number;
     /** Reason refinement stopped. */

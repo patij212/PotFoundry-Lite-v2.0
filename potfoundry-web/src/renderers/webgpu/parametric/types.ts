@@ -300,7 +300,7 @@ export interface ValidationSummary {
  */
 export interface RefinementSummary {
     /** Whether sampled adaptive-refinement heuristics met their thresholds. */
-    tolerancesPassed: boolean;
+    heuristicRefinementPassed: boolean;
     /** Number of refinement iterations performed. */
     iterationsPerformed: number;
     /** Why refinement stopped. */

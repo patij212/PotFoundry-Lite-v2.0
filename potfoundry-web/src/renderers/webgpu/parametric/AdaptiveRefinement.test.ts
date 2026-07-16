@@ -530,7 +530,7 @@ describe('adaptiveRefine', () => {
 
         const result = await adaptiveRefine(positions, uvs, indices, config, linearEvaluator);
         expect(result.stopReason).toBe('tolerances_passed');
-        expect(result.tolerancesPassed).toBe(true);
+        expect(result.heuristicRefinementPassed).toBe(true);
         expect(result.maxPosErrorMm).toBeLessThanOrEqual(10);
     });
 
@@ -1239,7 +1239,7 @@ describe('multi-iteration convergence', () => {
             positions, uvs, indices, config, linearEvaluator,
         );
 
-        expect(result.tolerancesPassed).toBe(true);
+        expect(result.heuristicRefinementPassed).toBe(true);
         expect(result.stopReason).toBe('tolerances_passed');
         // Should exit after first iteration's tolerance check
         expect(result.iterationsPerformed).toBe(1);
@@ -1339,7 +1339,7 @@ describe('per-edge vs per-triangle error estimation', () => {
         );
 
         // Flat mesh should pass immediately (no chord error)
-        expect(result.tolerancesPassed).toBe(true);
+        expect(result.heuristicRefinementPassed).toBe(true);
         expect(result.stopReason).toBe('tolerances_passed');
     });
 });

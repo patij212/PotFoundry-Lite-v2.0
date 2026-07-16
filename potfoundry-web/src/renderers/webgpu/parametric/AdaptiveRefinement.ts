@@ -273,8 +273,8 @@ export interface RefinementResult {
     uvs: Float32Array;
     /** Final triangle index buffer (may be a grown copy). */
     indices: Uint32Array;
-    /** Whether all tolerances are satisfied. */
-    tolerancesPassed: boolean;
+    /** Whether the sampled refinement heuristics met their thresholds (telemetry, not a proof). */
+    heuristicRefinementPassed: boolean;
     /** Number of refinement iterations performed. */
     iterationsPerformed: number;
     /** Per-iteration diagnostics. */
@@ -2228,7 +2228,7 @@ export async function adaptiveRefine(
             positions: curPositions,
             uvs: curUVs,
             indices: curIndices,
-            tolerancesPassed: maxPos <= tolerances.epsPosMm && maxNorm <= tolerances.epsNormalDeg,
+            heuristicRefinementPassed: maxPos <= tolerances.epsPosMm && maxNorm <= tolerances.epsNormalDeg,
             iterationsPerformed: 0,
             iterationStats: [],
             maxPosErrorMm: maxPos,
@@ -2606,7 +2606,7 @@ function buildResult(
         positions,
         uvs,
         indices,
-        tolerancesPassed: stopReason === 'tolerances_passed',
+        heuristicRefinementPassed: stopReason === 'tolerances_passed',
         iterationsPerformed: stats.length,
         iterationStats: stats,
         maxPosErrorMm: last?.maxPosErrorMm ?? 0,

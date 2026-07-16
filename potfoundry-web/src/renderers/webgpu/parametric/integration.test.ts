@@ -621,7 +621,7 @@ describe('Parametric Pipeline Integration', () => {
                 async execute(input) {
                     return {
                         mesh: input.mesh,
-                        tolerancesPassed: true,
+                        heuristicRefinementPassed: true,
                         iterationsPerformed: 0,
                         stopReason: 'zero_iterations',
                         maxPosErrorMm: 0,

@@ -5873,7 +5873,7 @@ export class ParametricExportComputer {
                 const finalQuality = mqFn(finalResultData, finalCombinedIdxs, outerIdxCountAfterSubdiv, true);
 
                 refinementSummary = {
-                    tolerancesPassed: refineResult.tolerancesPassed,
+                    heuristicRefinementPassed: refineResult.heuristicRefinementPassed,
                     iterationsPerformed: refineResult.iterationsPerformed,
                     stopReason: refineResult.stopReason,
                     maxPosErrorMm: refineResult.maxPosErrorMm,
@@ -7299,7 +7299,7 @@ export class ParametricExportComputer {
                 // Fail closed: topology validity and sampled refinement are not a
                 // continuous or final-byte tolerance certificate.
                 tolerancesPassed: false,
-                heuristicRefinementPassed: refinementSummary?.tolerancesPassed,
+                heuristicRefinementPassed: refinementSummary?.heuristicRefinementPassed,
                 requestedProfile,
                 validationSummary,
                 refinementSummary,

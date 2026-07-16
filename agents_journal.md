@@ -6896,3 +6896,35 @@ symbols touched (test-only slice).
   increment (6 fract styles; production-mesh provenance for U5.3) — start it in a fresh
   session with full context budget.
 - Mesher track trusted priorities: DS scale-cliff conforming (0.40 mm), Gyroid (0.72 mm).
+
+## 2026-07-16 — Containment #1 remnant CLOSED: tolerancesPassed naming retired
+
+**Mandate:** audit `9bec055d` containment #1 remnant — the internal parametric contracts
+still named their sampled-heuristic stop condition `tolerancesPassed`, wording that reads
+as a tolerance certificate. (The EXTERNAL boundary was already honest: types.ts carries
+deprecated `tolerancesPassed?: false` fail-closed compat + `heuristicRefinementPassed`
+telemetry.)
+
+**Landed:** internal field renamed `tolerancesPassed` -> `heuristicRefinementPassed`
+(same name as the external telemetry field — one concept, one name) in RefinementResult
+(AdaptiveRefinement.ts), RefinementOutput (contracts.ts), RefinementSummary (types.ts),
+both assignment sites, both ParametricExportComputer pass-throughs, and 10 test
+assertions/mocks. Misleading doc comments ("Whether all tolerances are satisfied")
+replaced with heuristic wording. KEPT intentionally: the deprecated external
+`tolerancesPassed?: false` compat field + its fail-closed literal assignment, and the
+`'tolerances_passed'` stopReason enum value (loop-local vocabulary, not a claim).
+
+**Method note:** GitNexus impact() read RefinementSummary as CRITICAL (37 direct) — hub
+fan-out on the parametric types module per the banked calibration; the field itself had
+21 grep-enumerated occurrences, all edited explicitly (no blanket sed). detect_changes
+confirms 9 symbols/7 files all in the parametric refinement path, 1 process
+(AdaptiveRefine -> EdgeKey). Parametric suite 3 files/140 tests green; eslint clean;
+zero rename-related tsc errors.
+
+**Containment scoreboard: #1 ✓ #2 ✓ #3 ✓(WI parity; on-GPU differential still owed
+under G1) #4 ✓ #5 ✓ — all five audit containment items now closed.**
+
+### Next agent
+- Audit G-track: U3b exact-rational partition stations (fresh session, full context).
+- Mesher track: DS scale-cliff conforming (0.40mm trusted), Gyroid (0.72mm).
+- G1 remnant: on-GPU differential for the f32-emulated WI contract.

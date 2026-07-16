@@ -96,7 +96,7 @@ const mockRefinement: RefinementStage = {
     async execute(input: RefinementInput): Promise<RefinementOutput> {
         return {
             mesh: input.mesh,
-            tolerancesPassed: true,
+            heuristicRefinementPassed: true,
             iterationsPerformed: 2,
             stopReason: 'tolerances_passed',
             maxPosErrorMm: 0.01,
@@ -374,7 +374,7 @@ describe('contracts', () => {
             };
             const output = await mockRefinement.execute(input);
 
-            expect(output.tolerancesPassed).toBe(true);
+            expect(output.heuristicRefinementPassed).toBe(true);
             expect(output.stopReason).toBe('tolerances_passed');
             expect(output.iterationsPerformed).toBe(2);
             expect(output.maxPosErrorMm).toBeLessThan(1.0);
@@ -453,7 +453,7 @@ describe('contracts', () => {
                 maxTriangles: 50000,
                 evaluate: null,
             });
-            expect(refOut.tolerancesPassed).toBe(true);
+            expect(refOut.heuristicRefinementPassed).toBe(true);
 
             // Stage 4: Validation
             const valOut = await registry.validation.execute({
@@ -476,7 +476,7 @@ describe('contracts', () => {
                 async execute(input: RefinementInput): Promise<RefinementOutput> {
                     return {
                         mesh: input.mesh,
-                        tolerancesPassed: false,
+                        heuristicRefinementPassed: false,
                         iterationsPerformed: 0,
                         stopReason: 'no_improvement',
                         maxPosErrorMm: 99.9,
@@ -502,7 +502,7 @@ describe('contracts', () => {
                 maxTriangles: 50000,
                 evaluate: null,
             });
-            expect(refOut.tolerancesPassed).toBe(false);
+            expect(refOut.heuristicRefinementPassed).toBe(false);
             expect(refOut.stopReason).toBe('no_improvement');
         });
     });
