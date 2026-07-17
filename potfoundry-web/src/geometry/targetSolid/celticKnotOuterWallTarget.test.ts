@@ -124,7 +124,11 @@ describe('Celtic Knot generated outer-wall target', () => {
     expect(binding.patchCount).toBe(1);
   });
 
-  it('statically unrolls every admitted strand count', () => {
+  // Building every strand count now also emits the feature-side curtain complex
+  // (ribbon + occlusion). Occlusion count grows ~quadratically (54 patches at the
+  // default 3 strands, 482 at 8), so the full 2..8 sweep needs a wider timeout than
+  // the 5s default. Per-patch node counts stay small (<600); only the count grows.
+  it('statically unrolls every admitted strand count', { timeout: 60000 }, () => {
     for (const count of [2, 3, 4, 5, 6, 7, 8]) {
       const binding = createCelticKnotOuterWallTargetBinding(
         input({ ck_strands: count })
@@ -194,5 +198,62 @@ describe('Celtic Knot ribbon↔background feature curtains (P2)', () => {
     const binding = createCelticKnotOuterWallTargetBinding(input({ ck_relief: 0 }));
     expect(binding.patches.some((p) => p.role === 'feature-curtain')).toBe(false);
     expect(binding.patchCount).toBe(1);
+  });
+});
+
+describe('Celtic Knot internal occlusion feature curtains (P2)', () => {
+  it('emits one occlusion-curtain per declared occlusion segment when relief>0', () => {
+    const canonicalInput = input();
+    const binding = createCelticKnotOuterWallTargetBinding(canonicalInput);
+    const cx = celticKnotDeclaredComplex(canonicalInput);
+    const declaredOcc = cx.segments.filter((s) => s.kind === 'occlusion');
+    const occPatches = binding.patches.filter((p) => p.kind === 'occlusion-curtain');
+    expect(declaredOcc.length).toBeGreaterThan(0);
+    expect(occPatches.length).toBe(declaredOcc.length);
+    for (const patch of occPatches) expect(patch.nodeCount).toBeLessThan(8192);
+  });
+
+  it('occlusion curtains are non-degenerate raised steps (delta-nudge picks the under strand)', () => {
+    const binding = createCelticKnotOuterWallTargetBinding(input());
+    const occPatches = binding.patches.filter((p) => p.kind === 'occlusion-curtain');
+    for (const patch of occPatches) {
+      const lo = rad(patch.backends.evaluateFloat64(0.5, 0));
+      const up = rad(patch.backends.evaluateFloat64(0.5, 1));
+      const t = patch.backends.evaluateFloat64(0.5, 0)[2] / DEFAULT_GEOMETRY.H;
+      expect(lo).toBeCloseTo(r0At(t), 4); // lower lip = over-strand foot r0
+      expect(up).toBeGreaterThan(lo + 0.05); // a genuine step UP to a ribbon (NOT collapsed)
+    }
+  });
+
+  it('occlusion curtains weld to the outer-wall one-sided limits across the over-edge', () => {
+    const canonicalInput = input();
+    const binding = createCelticKnotOuterWallTargetBinding(canonicalInput);
+    const wall = outer(binding);
+    const cx = celticKnotDeclaredComplex(canonicalInput);
+    const occ = cx.segments
+      .map((seg, i) => ({ seg, i }))
+      .filter((e) => e.seg.kind === 'occlusion');
+    const dU = 1e-6;
+    let checked = 0;
+    let worst = 0;
+    for (const { seg, i } of occ) {
+      const patch = binding.patches.find((p) => p.patchId === `feature-curtain-occ-${i}`);
+      expect(patch).toBeDefined();
+      if (patch === undefined) continue;
+      for (const f of [0.3, 0.5, 0.7]) {
+        const { u, t } = seg.at(f);
+        const materialU = u / (2 * Math.PI); // spin=0 => material = placement angle
+        const lo = rad(patch.backends.evaluateFloat64(f, 0));
+        const up = rad(patch.backends.evaluateFloat64(f, 1));
+        const rIn = rad(wall.backends.evaluateFloat64(materialU - seg.side * dU, t)); // over foot ~ r0
+        const rOut = rad(wall.backends.evaluateFloat64(materialU + seg.side * dU, t)); // under surface
+        if (rOut - rIn > 0.05) {
+          checked += 1;
+          worst = Math.max(worst, Math.abs(up - rOut), Math.abs(lo - rIn));
+        }
+      }
+    }
+    expect(checked).toBeGreaterThan(0);
+    expect(worst).toBeLessThan(0.02);
   });
 });

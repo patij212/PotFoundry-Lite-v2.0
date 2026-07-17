@@ -434,9 +434,19 @@ function compileFeatureCurtain(
       let lowerRadius: TargetExpressionReference;
       let upperRadius: TargetExpressionReference;
       if (kind === 'occlusion') {
-        // Occlusion branch — implemented in Task 2.
+        // Lower lip = the over-strand foot r0 (its profile -> 0 at its own edge).
         lowerRadius = r0;
-        upperRadius = r0;
+        // Upper lip = the raised under-strand surface = the shared celticKnotRadius graph
+        // evaluated at the over-edge nudged OUTWARD by delta. The nudge is load-bearing: at
+        // the exact edge the strict step is 1-ULP fragile and the higher-z over-strand can
+        // win, collapsing the wall. delta (in localU units) strictly excludes the over-strand
+        // so the under-strand's one-sided surface limit shows.
+        const DELTA_LOCAL_U = 1e-6;
+        const localUOuter = builder.add(
+          centerline,
+          constant(side * (params.strandWidth + DELTA_LOCAL_U))
+        );
+        upperRadius = celticKnotRadius(context, params, t, materialUAt(localUOuter));
       } else {
         lowerRadius = builder.subtract(r0, constant(params.relief * 0.3));
         upperRadius = r0;
@@ -523,12 +533,9 @@ function derive(input: CanonicalTargetInputBinding): CelticKnotOuterWallTargetBi
   const internalRibbonDiscontinuitiesActive = params.relief !== 0;
   const complex = seamCurtainActive ? declaredComplex(input, params) : undefined;
   const featureCurtains = complex
-    ? complex.segments
-        .map((segment, index) => ({ segment, index }))
-        // Task 2 removes this filter to also emit occlusion curtains. The original
-        // cx.segments `index` is preserved so occlusion patchIds stay stable.
-        .filter(({ segment }) => segment.kind === 'ribbon-background')
-        .map(({ segment, index }) => compileFeatureCurtain(input, params, segment, index))
+    ? complex.segments.map((segment, index) =>
+        compileFeatureCurtain(input, params, segment, index)
+      )
     : [];
   const patches = Object.freeze([
     compileOuterWall(input, params),
