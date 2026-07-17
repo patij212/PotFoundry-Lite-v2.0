@@ -25,6 +25,8 @@ const PARAMS: CelticKnotCliffParams = {
   strandCount: 3,          // clamp(floor(ckStrands+0.5),2,8)
   tightness: 0.5,          // max(0.5, ckTwist=0 + 0.5)
   relief: 2.0,             // ckRelief
+  gap: 0.02,               // ckGap
+  roundness: 0.5,          // ckRoundness
 };
 
 type Vec3 = [number, number, number];
@@ -139,7 +141,61 @@ describe('celticKnotCliffComplex (P1 declaration)', () => {
 
   it('a double-valued wall built from a segment chords <0.01mm to its ruled face', () => {
     const cx = buildCelticKnotCliffComplex(PARAMS, DIMS);
-    const err = wallHausdorff(cx.segments[0], 256, 1200);
+    const outer = cx.segments.find((s) => s.kind === 'ribbon-background');
+    expect(outer).toBeDefined();
+    const err = wallHausdorff(outer as CliffSegment, 256, 1200);
     expect(err).toBeLessThan(0.01);
+  });
+
+  // ---- P1-remainder: internal occlusion segments (z-buffer over/under step) ----
+  it('emits occlusion segments — the internal ribbon↔ribbon over/under step', () => {
+    const rA = buildAnalyticRadiusFn('CelticKnot', {}, DIMS);
+    const cx = buildCelticKnotCliffComplex(PARAMS, DIMS, rA);
+    const occ = cx.segments.filter((s) => s.kind === 'occlusion');
+    expect(occ.length).toBeGreaterThan(0);
+    // an occlusion wall is ribbon-to-ribbon: lower lip sits at the over-strand foot
+    // r0 (NOT the background r0−jump), upper lip is the raised under-strand surface.
+    for (const seg of occ) {
+      const mid = seg.lipsAt(0.5);
+      const r0 = baseRadius(seg.at(0.5).t * DIMS.H, DIMS.H, DIMS.Rb, DIMS.Rt, DIMS.expn ?? 1, {});
+      expect(mid.lower).toBeCloseTo(r0, 4);            // over-strand foot, not background
+      expect(mid.upper).toBeGreaterThan(mid.lower + 0.05); // a real raised step
+    }
+  });
+
+  it('occlusion lips equal the production one-sided limits (ribbon↔ribbon weld)', () => {
+    const rA = buildAnalyticRadiusFn('CelticKnot', {}, DIMS);
+    const cx = buildCelticKnotCliffComplex(PARAMS, DIMS, rA);
+    const occ = cx.segments.filter((s) => s.kind === 'occlusion');
+    const dU = 1e-5;
+    let validated = 0, tested = 0, worst = 0;
+    for (const seg of occ) {
+      for (let k = 0; k <= 30; k++) {
+        const f = k / 30; const { u, t } = seg.at(f); const { upper, lower } = seg.lipsAt(f);
+        const z = t * DIMS.H;
+        const rIn = rA(u - seg.side * dU, z);  // inside the over-strand band → over foot ≈ lower
+        const rOut = rA(u + seg.side * dU, z); // outside → raised under-strand ≈ upper
+        tested++;
+        if (rOut - rIn > 0.05 && rOut > lower + 0.02) { // a genuine step UP to a ribbon
+          validated++;
+          worst = Math.max(worst, Math.abs(rIn - lower), Math.abs(rOut - upper));
+        }
+      }
+    }
+    expect(validated / tested).toBeGreaterThan(0.3);
+    expect(worst).toBeLessThan(0.02);
+  });
+
+  it('occlusion walls taper toward the diamond-corner pinch (peak mid, small at ends)', () => {
+    const rA = buildAnalyticRadiusFn('CelticKnot', {}, DIMS);
+    const cx = buildCelticKnotCliffComplex(PARAMS, DIMS, rA);
+    const occ = cx.segments.filter((s) => s.kind === 'occlusion');
+    for (const seg of occ) {
+      const h = (f: number): number => seg.lipsAt(f).upper - seg.lipsAt(f).lower;
+      const hMid = h(0.5);
+      const hEnd = Math.max(h(0), h(1));
+      expect(hMid).toBeGreaterThan(0.1);   // a real wall mid-diamond
+      expect(hMid).toBeGreaterThan(hEnd);  // tapers toward the corner pinches
+    }
   });
 });

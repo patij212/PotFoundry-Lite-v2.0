@@ -49,7 +49,20 @@ export interface CelticKnotCliffParams {
   readonly tightness: number;
   /** `ckRelief`. */
   readonly relief: number;
+  /** `ckGap` — sets the occlusion depth floor `0.3 + gap*0.2`. */
+  readonly gap: number;
+  /** `ckRoundness` — the ribbon profile linear↔cosine blend. */
+  readonly roundness: number;
 }
+
+/**
+ * The style's OWN radius `(theta, z) → r` (mm). Supplied so occlusion (ribbon↔ribbon)
+ * upper lips read as the exact one-sided limit of the under-strand surface — the
+ * agnostic contract (the curve is declared analytically; the lip is the style's own
+ * function, never a black-box detector). Omit it and only the analytic ribbon↔
+ * background outer walls are emitted (their lips are closed form: r0 / r0 − jump).
+ */
+export type StyleRadiusFn = (theta: number, z: number) => number;
 
 /** The two one-sided radius limits at a cliff point: the upper (ribbon) and lower (background) lip (mm). */
 export interface CliffLips {
@@ -59,7 +72,8 @@ export interface CliffLips {
 
 /** A declared snaking C0 cliff curve segment in (u=theta, t) with its one-sided lips. */
 export interface CliffSegment {
-  readonly kind: 'ribbon-background';
+  /** `ribbon-background` = the 0.6mm outer wall; `occlusion` = the internal over/under step. */
+  readonly kind: 'ribbon-background' | 'occlusion';
   readonly column: number;
   readonly strand: number;
   /** Which strand edge: +1 = `centerline + strandWidth`, −1 = `centerline − strandWidth`. */
@@ -112,19 +126,39 @@ const SCAN_STEP = 0.0005;
 export function buildCelticKnotCliffComplex(
   params: CelticKnotCliffParams,
   dims: CliffDims,
+  styleRadius?: StyleRadiusFn,
 ): CelticKnotCliffComplex {
   const { columnCount, strandWidth, strandCount, tightness, relief } = params;
   const jumpMm = relief * 0.3;
   const expn = dims.expn ?? 1;
+  const weaveDensity = Math.max(1, strandCount - 1);
 
   const r0At = (t: number): number => baseRadius(t * dims.H, dims.H, dims.Rb, dims.Rt, expn, {});
-  const centerline = (column: number, strand: number, t: number): number =>
-    AMP * Math.sin(t * tightness * TAU * 3 + column * Math.PI * 0.333 + strand * (TAU / strandCount));
+  const argOf = (column: number, strand: number, t: number): number =>
+    t * tightness * TAU * 3 + column * Math.PI * 0.333 + strand * (TAU / strandCount);
+  const centerline = (column: number, strand: number, t: number): number => AMP * Math.sin(argOf(column, strand, t));
+  const zHeight = (column: number, strand: number, t: number): number => {
+    const osc = argOf(column, strand, t) * weaveDensity;
+    return strandCount % 2 !== 0 ? Math.sin(osc) : Math.cos(osc);
+  };
   const localUToTheta = (column: number, localU: number): number =>
     ((column + localU / 2 + 0.5) / columnCount) * TAU;
-  const tOf = (s: number): number => {
+  const lerpT = (range: readonly [number, number], s: number): number => {
     const f = s < 0 ? 0 : s > 1 ? 1 : s;
-    return T_LO + (T_HI - T_LO) * f;
+    return range[0] + (range[1] - range[0]) * f;
+  };
+  const tOf = (s: number): number => lerpT([T_LO, T_HI], s);
+  /** Bisect g(t)=target in [a,b]; null if no sign change (target outside the window). */
+  const rootFor = (g: (t: number) => number, target: number, a: number, b: number): number | null => {
+    let lo = a, hi = b, flo = g(lo) - target, fhi = g(hi) - target;
+    if (flo === 0) return lo;
+    if (fhi === 0) return hi;
+    if ((flo < 0) === (fhi < 0)) return null;
+    for (let k = 0; k < 60; k += 1) {
+      const m = (lo + hi) / 2;
+      if ((g(m) - target < 0) === (flo < 0)) { lo = m; flo = g(m) - target; } else hi = m;
+    }
+    return (lo + hi) / 2;
   };
 
   // ---- ribbon<->background outer-wall segments (column × strand × ±edge) ----
@@ -152,7 +186,6 @@ export function buildCelticKnotCliffComplex(
     }
   }
 
-  // ---- strand-pair crossing junctions (filtered to genuine 2-sheet pinches) ----
   const otherStrandInBand = (column: number, t: number, localU: number, i: number, j: number): boolean => {
     for (let k = 0; k < strandCount; k += 1) {
       if (k === i || k === j) continue;
@@ -160,6 +193,72 @@ export function buildCelticKnotCliffComplex(
     }
     return false;
   };
+
+  // ---- internal occlusion segments (the z-buffer over/under step inside each diamond) ----
+  // On the OVER strand's edge facing the UNDER strand, the surface steps from the
+  // over-strand foot (r0) up to the raised under-strand surface. The step vanishes
+  // at the diamond corners (both strands at their edges ⇒ shared pinch) and peaks
+  // where the over-edge sits on the under centerline. Emitted only when styleRadius
+  // is supplied (the upper lip is the under-strand's one-sided surface limit).
+  if (styleRadius) {
+    const DELTA = 1e-6;
+    const w2 = 2 * strandWidth;
+    const WIN = 0.03; // diamond half-extent bound in t (overlap band is ~0.014)
+    for (let column = 0; column < columnCount; column += 1) {
+      for (let i = 0; i < strandCount; i += 1) {
+        for (let j = i + 1; j < strandCount; j += 1) {
+          const diff = (t: number): number => centerline(column, i, t) - centerline(column, j, t);
+          let prev = diff(T_LO);
+          for (let t = T_LO + SCAN_STEP; t <= T_HI; t += SCAN_STEP) {
+            const cur = diff(t);
+            if (prev !== 0 && (prev < 0) === (cur < 0)) { prev = cur; continue; }
+            const tc = rootFor(diff, 0, t - SCAN_STEP, t);
+            prev = cur;
+            if (tc === null) continue;
+            const over = zHeight(column, i, tc) >= zHeight(column, j, tc) ? i : j;
+            const under = over === i ? j : i;
+            const dOU = (tt: number): number => centerline(column, over, tt) - centerline(column, under, tt);
+            const tm = rootFor(dOU, -w2, tc - WIN, tc);
+            const tp = rootFor(dOU, w2, tc, tc + WIN);
+            const tmA = rootFor(dOU, -w2, tc, tc + WIN);
+            const tpB = rootFor(dOU, w2, tc - WIN, tc);
+            // +edge occludes where dOU ∈ (−2w, 0); −edge where dOU ∈ (0, +2w).
+            const plusRange = tm !== null ? [tm, tc] : tmA !== null ? [tc, tmA] : null;
+            const minusRange = tp !== null ? [tc, tp] : tpB !== null ? [tpB, tc] : null;
+            for (const [edge, range] of [[1, plusRange], [-1, minusRange]] as const) {
+              if (!range) continue;
+              const lo = Math.min(range[0], range[1]);
+              const hi = Math.max(range[0], range[1]);
+              if (hi - lo < 1e-6) continue;
+              const mid = (lo + hi) / 2;
+              if (otherStrandInBand(column, mid, centerline(column, over, mid) + edge * strandWidth, i, j)) continue;
+              const tRange: readonly [number, number] = [lo, hi];
+              segments.push({
+                kind: 'occlusion',
+                column,
+                strand: over,
+                side: edge,
+                tRange,
+                at: (s: number) => {
+                  const tt = lerpT(tRange, s);
+                  const localU = centerline(column, over, tt) + edge * strandWidth;
+                  return { u: localUToTheta(column, localU), t: tt };
+                },
+                lipsAt: (s: number) => {
+                  const tt = lerpT(tRange, s);
+                  const localU = centerline(column, over, tt) + edge * strandWidth;
+                  const u = localUToTheta(column, localU);
+                  return { lower: r0At(tt), upper: styleRadius(u + edge * DELTA, tt * dims.H) };
+                },
+              });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // ---- strand-pair crossing junctions (filtered to genuine 2-sheet pinches) ----
   const junctions: CliffJunction[] = [];
   const seen = new Set<string>();
   for (let column = 0; column < columnCount; column += 1) {
