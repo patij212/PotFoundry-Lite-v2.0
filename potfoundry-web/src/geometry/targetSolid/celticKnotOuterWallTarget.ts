@@ -1,4 +1,13 @@
 import {
+  buildCelticKnotCliffComplex,
+  type CelticKnotCliffComplex,
+  type CelticKnotCliffParams,
+  type CliffDims,
+  type CliffSegment,
+} from '../../renderers/webgpu/parametric/conforming/tierC/celticKnotCliffComplex';
+import { buildAnalyticRadiusFn } from '../analyticRadius';
+import type { StyleOptions } from '../types';
+import {
   canonicalizeCertificationJson,
   domainSeparatedCanonicalJsonSha256,
   type CanonicalJsonValue,
@@ -63,9 +72,20 @@ export interface CelticKnotSeamCurtainPatch {
   readonly backends: GeneratedTargetProgramBackends;
 }
 
+export interface CelticKnotFeatureCurtainPatch {
+  readonly kind: 'ribbon-curtain' | 'occlusion-curtain';
+  readonly role: 'feature-curtain';
+  readonly patchId: string;
+  readonly programCanonicalJson: string;
+  readonly programSha256: string;
+  readonly nodeCount: number;
+  readonly backends: GeneratedTargetProgramBackends;
+}
+
 export type CelticKnotOuterWallTargetPatch =
   | CelticKnotOuterWallPatch
-  | CelticKnotSeamCurtainPatch;
+  | CelticKnotSeamCurtainPatch
+  | CelticKnotFeatureCurtainPatch;
 
 declare const celticKnotOuterWallTargetBrand: unique symbol;
 
@@ -260,6 +280,41 @@ function celticKnotRadius(
   );
 }
 
+function declaredComplex(
+  input: CanonicalTargetInputBinding,
+  params: CelticKnotParameters
+): CelticKnotCliffComplex {
+  const geometry = input.geometry.geometry;
+  const dims: CliffDims = {
+    H: geometry.H,
+    Rb: geometry.bottom_od / 2,
+    Rt: geometry.top_od / 2,
+    expn: geometry.expn,
+  };
+  const cliffParams: CelticKnotCliffParams = {
+    columnCount: params.columnCount,
+    strandWidth: params.strandWidth,
+    strandCount: params.strandCount,
+    tightness: params.tightness,
+    relief: params.relief,
+    gap: params.gap,
+    roundness: params.roundness,
+  };
+  const analyticRadius = buildAnalyticRadiusFn(
+    'CelticKnot',
+    input.style.cpuOptions as StyleOptions,
+    dims
+  );
+  return buildCelticKnotCliffComplex(cliffParams, dims, analyticRadius);
+}
+
+/** The declared CelticKnot feature-side complex the target emits as curtain patches. */
+export function celticKnotDeclaredComplex(
+  input: CanonicalTargetInputBinding
+): CelticKnotCliffComplex {
+  return declaredComplex(input, parameters(input));
+}
+
 function compileOuterWall(
   input: CanonicalTargetInputBinding,
   params: CelticKnotParameters
@@ -316,6 +371,85 @@ function compileSeamCurtain(
     kind: 'seam-curtain',
     role: 'feature-curtain',
     patchId: 'seam-curtain',
+    programCanonicalJson,
+    programSha256: backends.programSha256,
+    nodeCount: backends.nodeCount,
+    backends,
+  });
+}
+
+function compileFeatureCurtain(
+  input: CanonicalTargetInputBinding,
+  params: CelticKnotParameters,
+  segment: CliffSegment,
+  index: number
+): CelticKnotFeatureCurtainPatch {
+  const { column, strand, side, tRange, kind } = segment;
+  const patchId = `feature-curtain-${kind === 'occlusion' ? 'occ' : 'rb'}-${index}`;
+  const programCanonicalJson = buildRadialTargetPatchProgram(
+    input,
+    'CelticKnot',
+    {
+      evaluatorId: `potfoundry.celtic-knot.feature-curtain.${kind}`,
+      evaluatorVersion: 'v1',
+      patchId,
+    },
+    (context) => {
+      const { builder, constant } = context;
+      const s = context.localU; // arc along the cliff curve, 0..1
+      const v = context.localV; // lip fraction, 0..1
+      // t = tRange0 + (tRange1 - tRange0) * s
+      const t = builder.add(
+        constant(tRange[0]),
+        builder.multiply(constant(tRange[1] - tRange[0]), s)
+      );
+      // centerline = 0.4 * sin( t*tightness*tau*3 + column*pi*0.333 + strand*(tau/strandCount) )
+      const argument = builder.add(
+        builder.multiply(
+          builder.multiply(builder.multiply(t, constant(params.tightness)), context.tau),
+          constant(3)
+        ),
+        builder.add(
+          builder.multiply(builder.multiply(constant(column), builder.pi()), constant(0.333)),
+          builder.multiply(
+            builder.divide(context.tau, constant(params.strandCount)),
+            constant(strand)
+          )
+        )
+      );
+      const centerline = builder.multiply(constant(0.4), builder.sin(argument));
+      const materialUAt = (
+        localUGeom: TargetExpressionReference
+      ): TargetExpressionReference =>
+        builder.divide(
+          builder.add(
+            builder.add(constant(column), builder.multiply(localUGeom, constant(0.5))),
+            constant(0.5)
+          ),
+          constant(params.columnCount)
+        );
+      const localUEdge = builder.add(centerline, constant(side * params.strandWidth));
+      const materialU = materialUAt(localUEdge);
+      const r0 = context.baseRadiusAt(t);
+      let lowerRadius: TargetExpressionReference;
+      let upperRadius: TargetExpressionReference;
+      if (kind === 'occlusion') {
+        // Occlusion branch — implemented in Task 2.
+        lowerRadius = r0;
+        upperRadius = r0;
+      } else {
+        lowerRadius = builder.subtract(r0, constant(params.relief * 0.3));
+        upperRadius = r0;
+      }
+      const radius = builder.mix(lowerRadius, upperRadius, v);
+      return context.radialPointAt(radius, materialU, t);
+    }
+  );
+  const backends = compileGeneratedTargetProgramBackends(programCanonicalJson);
+  return Object.freeze({
+    kind: kind === 'occlusion' ? 'occlusion-curtain' : 'ribbon-curtain',
+    role: 'feature-curtain',
+    patchId,
     programCanonicalJson,
     programSha256: backends.programSha256,
     nodeCount: backends.nodeCount,
@@ -387,9 +521,19 @@ function derive(input: CanonicalTargetInputBinding): CelticKnotOuterWallTargetBi
   const params = parameters(input);
   const seamCurtainActive = params.relief !== 0;
   const internalRibbonDiscontinuitiesActive = params.relief !== 0;
+  const complex = seamCurtainActive ? declaredComplex(input, params) : undefined;
+  const featureCurtains = complex
+    ? complex.segments
+        .map((segment, index) => ({ segment, index }))
+        // Task 2 removes this filter to also emit occlusion curtains. The original
+        // cx.segments `index` is preserved so occlusion patchIds stay stable.
+        .filter(({ segment }) => segment.kind === 'ribbon-background')
+        .map(({ segment, index }) => compileFeatureCurtain(input, params, segment, index))
+    : [];
   const patches = Object.freeze([
     compileOuterWall(input, params),
     ...(seamCurtainActive ? [compileSeamCurtain(input, params)] : []),
+    ...featureCurtains,
   ]) as readonly CelticKnotOuterWallTargetPatch[];
   const patchValue = patchSetValue(patches);
   const patchSetSha256 = domainSeparatedCanonicalJsonSha256(

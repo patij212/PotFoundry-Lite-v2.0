@@ -6,6 +6,7 @@ import { rOuterCelticKnot } from '../styles';
 import type { StyleOptions } from '../types';
 import { createCanonicalTargetInputBinding } from './canonicalTargetInput';
 import {
+  celticKnotDeclaredComplex,
   celticKnotOuterWallTargetForProof,
   createCelticKnotOuterWallTargetBinding,
   type CelticKnotOuterWallPatch,
@@ -35,6 +36,21 @@ function outer(binding: CelticKnotOuterWallTargetBinding): CelticKnotOuterWallPa
   );
   if (patch === undefined) throw new Error('missing outer wall');
   return patch;
+}
+
+/** Cylindrical radius of an evaluated patch point (mm). */
+const rad = (p: readonly [number, number, number]): number => Math.hypot(p[0], p[1]);
+
+/** Analytic base radius r0 at height fraction t, for the default test geometry (mm). */
+function r0At(t: number): number {
+  return baseRadius(
+    DEFAULT_GEOMETRY.H * t,
+    DEFAULT_GEOMETRY.H,
+    DEFAULT_GEOMETRY.bottom_od / 2,
+    DEFAULT_GEOMETRY.top_od / 2,
+    DEFAULT_GEOMETRY.expn,
+    DEFAULT_GEOMETRY
+  );
 }
 
 describe('Celtic Knot generated outer-wall target', () => {
@@ -136,5 +152,47 @@ describe('Celtic Knot generated outer-wall target', () => {
         )
       )
     ).toThrow(/expected CelticKnot/i);
+  });
+});
+
+describe('Celtic Knot ribbon↔background feature curtains (P2)', () => {
+  it('emits one ribbon-curtain per declared ribbon-background segment when relief>0', () => {
+    const canonicalInput = input();
+    const binding = createCelticKnotOuterWallTargetBinding(canonicalInput);
+    const cx = celticKnotDeclaredComplex(canonicalInput);
+    const declaredRibbon = cx.segments.filter((s) => s.kind === 'ribbon-background');
+    const ribbonPatches = binding.patches.filter((p) => p.kind === 'ribbon-curtain');
+    expect(declaredRibbon.length).toBeGreaterThan(0);
+    expect(ribbonPatches.length).toBe(declaredRibbon.length);
+    for (const patch of ribbonPatches) {
+      expect(patch.role).toBe('feature-curtain');
+      expect(patch.programSha256).toMatch(/^[0-9a-f]{64}$/);
+      expect(patch.nodeCount).toBeGreaterThan(0);
+      expect(patch.nodeCount).toBeLessThan(8192);
+    }
+  });
+
+  it('welds each ribbon curtain to the analytic one-sided limits (upper=r0, lower=r0-jump)', () => {
+    const binding = createCelticKnotOuterWallTargetBinding(input());
+    const jump = 2.0 * 0.3; // default ck_relief=2.0 -> jump 0.6 mm
+    const ribbonPatches = binding.patches.filter((p) => p.kind === 'ribbon-curtain');
+    let worst = 0;
+    for (const patch of ribbonPatches) {
+      for (const s of [0.15, 0.5, 0.85]) {
+        const pUp = patch.backends.evaluateFloat64(s, 1);
+        const pLo = patch.backends.evaluateFloat64(s, 0);
+        const t = pUp[2] / DEFAULT_GEOMETRY.H; // z = H*t
+        const r0 = r0At(t);
+        expect(pLo[2]).toBeCloseTo(pUp[2], 9); // v=0 and v=1 share the (u,t) locus
+        worst = Math.max(worst, Math.abs(rad(pUp) - r0), Math.abs(rad(pLo) - (r0 - jump)));
+      }
+    }
+    expect(worst).toBeLessThan(1e-6);
+  });
+
+  it('emits no feature curtains when relief is zero (patchCount stays 1)', () => {
+    const binding = createCelticKnotOuterWallTargetBinding(input({ ck_relief: 0 }));
+    expect(binding.patches.some((p) => p.role === 'feature-curtain')).toBe(false);
+    expect(binding.patchCount).toBe(1);
   });
 });
