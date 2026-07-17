@@ -379,15 +379,23 @@ function onClosedSegmentUv(
 }
 
 function conformingPieceTriangles(
-  pieces: readonly (readonly ExactUvPoint[])[]
+  pieces: readonly (readonly ExactUvPoint[])[],
+  densePieces?: WeakSet<object>
 ): readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] {
   const triangles: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
   for (const piece of pieces) {
-    // Fan from the first origin for which every fan triangle has strictly
-    // positive area: collinear boundary runs (several chord endpoints on one
-    // cell edge) make some origins degenerate, but a convex piece always has
-    // a valid one unless it is genuinely degenerate — refuse fail-closed.
+    // Pieces carrying interior-vertex chains triangulate by MAX-MIN-ANGLE
+    // (exact-validity Klincsek-style DP): a fan from any single origin —
+    // and even a minimal-LENGTH triangulation — emits thin slivers whose
+    // three vertices all lie on one dense chain, long diagonals sagging off
+    // the bending guide curve (measured 9,519,723 pm on the Gothic +0.002
+    // offset curve). Maximizing the minimum angle prefers the fat cross
+    // rungs between chains by construction. Legacy pieces keep the fan
+    // path bit-for-bit.
     let fanned: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] | null = null;
+    if (densePieces !== undefined && densePieces.has(piece)) {
+      fanned = maxMinAngleTriangulation(piece);
+    }
     for (let originIndex = 0; originIndex < piece.length && fanned === null; originIndex += 1) {
       const origin = piece[originIndex];
       const candidate: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
@@ -404,6 +412,15 @@ function conformingPieceTriangles(
       if (valid) fanned = candidate;
     }
     if (fanned === null) {
+      // NON-convex pieces (possible since the interior-vertex chain
+      // extension: a chain bulging into a piece leaves a reflex boundary
+      // run) have no valid fan origin. Ear-clip with exact orientation
+      // tests: strictly convex ears only, closed-triangle emptiness against
+      // every remaining vertex, so no boundary vertex is ever dropped
+      // (dropping one would hang it against the neighbouring piece).
+      fanned = earClipSimplePolygon(piece);
+    }
+    if (fanned === null) {
       invalid('conforming split produced a degenerate or misoriented piece');
     }
     triangles.push(...fanned);
@@ -411,17 +428,211 @@ function conformingPieceTriangles(
   return triangles;
 }
 
+function earClipSimplePolygon(
+  piece: readonly ExactUvPoint[]
+): (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] | null {
+  const working = [...piece];
+  const clipped: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
+  let guard = piece.length * piece.length + 8;
+  while (working.length > 3) {
+    guard -= 1;
+    if (guard <= 0) return null;
+    let earIndex = -1;
+    for (let index = 0; index < working.length; index += 1) {
+      const previous = working[(index - 1 + working.length) % working.length];
+      const current = working[index];
+      const next = working[(index + 1) % working.length];
+      if (orientationBig(previous, current, next) <= 0n) continue;
+      let blocked = false;
+      for (let other = 0; other < working.length && !blocked; other += 1) {
+        if (
+          other === index ||
+          other === (index - 1 + working.length) % working.length ||
+          other === (index + 1) % working.length
+        ) {
+          continue;
+        }
+        const point = working[other];
+        if (
+          orientationBig(previous, current, point) >= 0n &&
+          orientationBig(current, next, point) >= 0n &&
+          orientationBig(next, previous, point) >= 0n
+        ) {
+          blocked = true;
+        }
+      }
+      if (blocked) continue;
+      earIndex = index;
+      break;
+    }
+    if (earIndex < 0) return null;
+    const previous = working[(earIndex - 1 + working.length) % working.length];
+    const current = working[earIndex];
+    const next = working[(earIndex + 1) % working.length];
+    clipped.push([previous, current, next]);
+    working.splice(earIndex, 1);
+  }
+  if (orientationBig(working[0], working[1], working[2]) <= 0n) return null;
+  clipped.push([working[0], working[1], working[2]]);
+  return clipped;
+}
+
 /**
- * Split one convex CCW polygon by the chord from `start` to `end`, both of
- * which must lie on the polygon's closed boundary. Pure boundary walk — no
- * divisions. Returns null when either endpoint is not on this polygon's
- * boundary (the caller tries other pieces) and refuses degenerate splits.
+ * MAX-MIN-ANGLE triangulation of a simple CCW polygon (Klincsek-style
+ * interval DP — the constrained-Delaunay-equivalent objective). Thin
+ * chain-hugging slivers (three near-collinear vertices along one guide
+ * curve) carry the measured ~10 um sag class and have tiny minimum angles,
+ * so maximizing the minimum angle prefers fat cross rungs by construction —
+ * a pure length objective does NOT (a short skip diagonal can beat the rung
+ * total). Diagonal validity is EXACT (no strict boundary crossing, no
+ * vertex on the open diagonal, doubled-coordinate midpoint strictly
+ * inside); only the angle weights use floats, which steer the choice among
+ * valid triangulations and cannot break correctness. Returns null when no
+ * valid triangulation is found (caller falls back fail-closed).
  */
-function splitPolygonByChord(
+function maxMinAngleTriangulation(
+  piece: readonly ExactUvPoint[]
+): (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] | null {
+  const count = piece.length;
+  if (count < 3) return null;
+  if (count === 3) {
+    if (orientationBig(piece[0], piece[1], piece[2]) <= 0n) return null;
+    return [[piece[0], piece[1], piece[2]]];
+  }
+  const doubled = piece.map((point) => ({ U: point.U * 2n, V: point.V * 2n }));
+  const strictlyInsideDoubled = (px: bigint, py: bigint): boolean => {
+    let inside = false;
+    for (let index = 0; index < doubled.length; index += 1) {
+      const from = doubled[index];
+      const to = doubled[(index + 1) % doubled.length];
+      const fromAbove = from.V > py;
+      const toAbove = to.V > py;
+      if (fromAbove === toAbove) continue;
+      const det =
+        (to.U - from.U) * (py - from.V) - (to.V - from.V) * (px - from.U);
+      if (det === 0n) return false;
+      if (to.V > from.V ? det > 0n : det < 0n) inside = !inside;
+    }
+    return inside;
+  };
+  const adjacent = (i: number, j: number): boolean =>
+    j === i + 1 || (i === 0 && j === count - 1);
+  const usable: boolean[][] = Array.from({ length: count }, () =>
+    new Array<boolean>(count).fill(false)
+  );
+  for (let i = 0; i < count; i += 1) {
+    for (let j = i + 1; j < count; j += 1) {
+      if (adjacent(i, j)) {
+        usable[i][j] = true;
+        continue;
+      }
+      const a = piece[i];
+      const b = piece[j];
+      if (pointsEqualUv(a, b)) continue;
+      let valid = true;
+      for (let edge = 0; edge < count && valid; edge += 1) {
+        if (
+          segmentsCrossStrictly(a, b, piece[edge], piece[(edge + 1) % count])
+        ) {
+          valid = false;
+        }
+      }
+      for (let other = 0; other < count && valid; other += 1) {
+        if (other === i || other === j) continue;
+        if (onClosedSegmentUv(piece[other], a, b)) valid = false;
+      }
+      if (valid && !strictlyInsideDoubled(a.U + b.U, a.V + b.V)) valid = false;
+      usable[i][j] = valid;
+    }
+  }
+  const minAngle = (i: number, k: number, j: number): number => {
+    const corner = (
+      at: ExactUvPoint,
+      left: ExactUvPoint,
+      right: ExactUvPoint
+    ): number => {
+      const leftU = Number(left.U - at.U);
+      const leftV = Number(left.V - at.V);
+      const rightU = Number(right.U - at.U);
+      const rightV = Number(right.V - at.V);
+      const cross = leftU * rightV - leftV * rightU;
+      const dot = leftU * rightU + leftV * rightV;
+      return Math.abs(Math.atan2(cross, dot));
+    };
+    const a = piece[i];
+    const b = piece[k];
+    const c = piece[j];
+    return Math.min(corner(a, b, c), corner(b, c, a), corner(c, a, b));
+  };
+  const best: number[][] = Array.from({ length: count }, () =>
+    new Array<number>(count).fill(Number.NEGATIVE_INFINITY)
+  );
+  const choice: number[][] = Array.from({ length: count }, () =>
+    new Array<number>(count).fill(-1)
+  );
+  for (let i = 0; i + 1 < count; i += 1) best[i][i + 1] = Number.POSITIVE_INFINITY;
+  for (let span = 2; span < count; span += 1) {
+    for (let i = 0; i + span < count; i += 1) {
+      const j = i + span;
+      if (!usable[i][j]) continue;
+      for (let k = i + 1; k < j; k += 1) {
+        if (!usable[i][k] || !usable[k][j]) continue;
+        if (best[i][k] === Number.NEGATIVE_INFINITY) continue;
+        if (best[k][j] === Number.NEGATIVE_INFINITY) continue;
+        if (orientationBig(piece[i], piece[k], piece[j]) <= 0n) continue;
+        const value = Math.min(best[i][k], best[k][j], minAngle(i, k, j));
+        if (value > best[i][j]) {
+          best[i][j] = value;
+          choice[i][j] = k;
+        }
+      }
+    }
+  }
+  if (best[0][count - 1] === Number.NEGATIVE_INFINITY) return null;
+  const result: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
+  const emit = (i: number, j: number): boolean => {
+    if (j - i < 2) return true;
+    const k = choice[i][j];
+    if (k < 0) return false;
+    if (orientationBig(piece[i], piece[k], piece[j]) <= 0n) return false;
+    result.push([piece[i], piece[k], piece[j]]);
+    return emit(i, k) && emit(k, j);
+  };
+  if (!emit(0, count - 1)) return null;
+  return result;
+}
+
+/** Strict proper crossing of open segments (all four orientations strict). */
+function segmentsCrossStrictly(
+  a1: ExactUvPoint,
+  a2: ExactUvPoint,
+  b1: ExactUvPoint,
+  b2: ExactUvPoint
+): boolean {
+  const o1 = orientationBig(a1, a2, b1);
+  const o2 = orientationBig(a1, a2, b2);
+  if (!((o1 > 0n && o2 < 0n) || (o1 < 0n && o2 > 0n))) return false;
+  const o3 = orientationBig(b1, b2, a1);
+  const o4 = orientationBig(b1, b2, a2);
+  return (o3 > 0n && o4 < 0n) || (o3 < 0n && o4 > 0n);
+}
+
+/**
+ * Split one simple CCW polygon by the polyline chain `points[0] .. points[n-1]`.
+ * The two extreme points must lie on the polygon's closed boundary; every
+ * middle point must lie strictly inside it (interior pass-through vertices —
+ * the U5 collar extension). Pure boundary walk — no divisions. Returns null
+ * when the chain does not belong to this piece (an extreme point off the
+ * boundary, a middle point ON it, or a segment strictly crossing it) so the
+ * caller can try other pieces; refuses degenerate splits.
+ */
+function splitPolygonByChain(
   polygon: readonly ExactUvPoint[],
-  start: ExactUvPoint,
-  end: ExactUvPoint
+  points: readonly ExactUvPoint[]
 ): readonly [readonly ExactUvPoint[], readonly ExactUvPoint[]] | null {
+  const start = points[0];
+  const end = points[points.length - 1];
+  const middles = points.slice(1, points.length - 1);
   interface BoundaryPosition {
     readonly edgeIndex: number;
     readonly isVertex: boolean;
@@ -444,6 +655,27 @@ function splitPolygonByChord(
   const startPosition = locate(start);
   const endPosition = locate(end);
   if (startPosition === null || endPosition === null) return null;
+  // Middle (interior pass-through) points must not touch THIS piece's
+  // boundary, and no chain segment may strictly cross it — otherwise the
+  // chain belongs to a different piece (or to none: the caller refuses
+  // fail-closed after trying every piece).
+  for (const middle of middles) {
+    if (locate(middle) !== null) return null;
+  }
+  for (let segment = 0; segment + 1 < points.length; segment += 1) {
+    for (let edge = 0; edge < polygon.length; edge += 1) {
+      if (
+        segmentsCrossStrictly(
+          points[segment],
+          points[segment + 1],
+          polygon[edge],
+          polygon[(edge + 1) % polygon.length]
+        )
+      ) {
+        return null;
+      }
+    }
+  }
   // Walk the boundary forward from a position: the first vertex strictly
   // after the position along the CCW cycle.
   const nextVertexIndex = (position: BoundaryPosition): number =>
@@ -475,11 +707,20 @@ function splitPolygonByChord(
     if (!pointsEqualUv(walk[walk.length - 1], toPoint)) walk.push(toPoint);
     return walk;
   };
+  // Each side closes back through the chain so the polyline's interior
+  // vertices become boundary vertices of BOTH pieces and every chain
+  // segment becomes a shared piece edge.
   const sideA = collectWalk(start, startPosition, end, endPosition);
+  for (let index = middles.length - 1; index >= 0; index -= 1) {
+    sideA.push(middles[index]);
+  }
   const sideB = collectWalk(end, endPosition, start, startPosition);
-  const dedupe = (points: readonly ExactUvPoint[]): ExactUvPoint[] => {
+  for (let index = 0; index < middles.length; index += 1) {
+    sideB.push(middles[index]);
+  }
+  const dedupe = (walk: readonly ExactUvPoint[]): ExactUvPoint[] => {
     const result: ExactUvPoint[] = [];
-    for (const point of points) {
+    for (const point of walk) {
       if (result.length === 0 || !pointsEqualUv(result[result.length - 1], point)) {
         result.push(point);
       }
@@ -669,6 +910,10 @@ function buildPatchPartitionFrame(
   ];
   // Phase 1 (straight parallel lines): split crossed cells, store POLYGONS.
   const polygonsByCell = new Map<number, readonly (readonly ExactUvPoint[])[]>();
+  // Pieces produced by interior-vertex chain splits (and their descendants)
+  // triangulate by minimal weight instead of fanning — see
+  // conformingPieceTriangles.
+  const densePieces = new WeakSet<object>();
   if (lines.length > 0) {
     const scaledLines = lines.map((line) => ({
       a: BigInt(line.aNumerator),
@@ -728,7 +973,13 @@ function buildPatchPartitionFrame(
   }
   // Phase 2 (curved guide-polyline chords): boundary-walk splits, no division.
   if (chords.length > 0) {
-    const chordsByCell = new Map<number, { start: ExactUvPoint; end: ExactUvPoint }[]>();
+    interface CellChordRecord {
+      readonly start: ExactUvPoint;
+      readonly end: ExactUvPoint;
+      readonly startInterior: boolean;
+      readonly endInterior: boolean;
+    }
+    const chordsByCell = new Map<number, CellChordRecord[]>();
     for (const chord of chords) {
       const denominator = BigInt(chord.denominator);
       if (declared % denominator !== 0n) {
@@ -756,13 +1007,17 @@ function buildPatchPartitionFrame(
       if (startU === null || startV === null || endU === null || endV === null) {
         invalid(`patch '${patchId}' conforming chord endpoint leaves the station range`);
       }
+      // Endpoints strictly inside a cell (on NO grid line) are legal as
+      // degree-2 chain pass-through vertices — validated after bucketing.
+      // On-grid endpoints keep the boundary-row and seam rules below
+      // (an interior point can touch neither: rows 0/declared and the seam
+      // columns are always stations, so isStation would be true there).
+      const startInterior = !startU.isStation && !startV.isStation;
+      const endInterior = !endU.isStation && !endV.isStation;
       for (const [point, uInfo, vInfo] of [
         [start, startU, startV],
         [end, endU, endV],
       ] as const) {
-        if (!uInfo.isStation && !vInfo.isStation) {
-          invalid(`patch '${patchId}' conforming chord endpoint is off the station grid lines`);
-        }
         if (
           (point.V === 0n || point.V === declared) &&
           !stationSet.has(point.U.toString())
@@ -818,16 +1073,113 @@ function buildPatchPartitionFrame(
       if (shared.length !== 1) {
         invalid(`patch '${patchId}' conforming chord endpoints do not bound one common cell`);
       }
+      const record: CellChordRecord = { start, end, startInterior, endInterior };
       const bucket = chordsByCell.get(shared[0]);
-      if (bucket === undefined) chordsByCell.set(shared[0], [{ start, end }]);
-      else bucket.push({ start, end });
+      if (bucket === undefined) chordsByCell.set(shared[0], [record]);
+      else bucket.push(record);
     }
     for (const [cellIndex, cellChords] of chordsByCell) {
       const uCell = cellIndex % angularDivisions;
       const vCell = (cellIndex - uCell) / angularDivisions;
+      // Assemble guide-polyline CHAINS: an interior endpoint must be shared
+      // by exactly two of the cell's chords (a degree-2 pass-through vertex)
+      // and every maximal chain must reach the grid at both extremes.
+      const pointKey = (point: ExactUvPoint): string => `${point.U},${point.V}`;
+      const interiorLinks = new Map<
+        string,
+        { chordIndex: number; endIndex: 0 | 1 }[]
+      >();
+      for (let chordIndex = 0; chordIndex < cellChords.length; chordIndex += 1) {
+        const chordRecord = cellChords[chordIndex];
+        if (chordRecord.startInterior) {
+          const key = pointKey(chordRecord.start);
+          const links = interiorLinks.get(key);
+          if (links === undefined) {
+            interiorLinks.set(key, [{ chordIndex, endIndex: 0 }]);
+          } else {
+            links.push({ chordIndex, endIndex: 0 });
+          }
+        }
+        if (chordRecord.endInterior) {
+          const key = pointKey(chordRecord.end);
+          const links = interiorLinks.get(key);
+          if (links === undefined) {
+            interiorLinks.set(key, [{ chordIndex, endIndex: 1 }]);
+          } else {
+            links.push({ chordIndex, endIndex: 1 });
+          }
+        }
+      }
+      for (const links of interiorLinks.values()) {
+        if (links.length !== 2) {
+          invalid(
+            `patch '${patchId}' conforming chord interior vertex is not a degree-2 chain pass-through`
+          );
+        }
+      }
+      const visited: boolean[] = new Array(cellChords.length).fill(false);
+      const chains: (readonly ExactUvPoint[])[] = [];
+      const extendThroughInterior = (
+        chainPoints: ExactUvPoint[],
+        head: boolean
+      ): void => {
+        let guard = cellChords.length + 1;
+        for (;;) {
+          guard -= 1;
+          if (guard <= 0) {
+            invalid(
+              `patch '${patchId}' conforming chord chain forms a closed loop without grid contact`
+            );
+          }
+          const tip = head ? chainPoints[0] : chainPoints[chainPoints.length - 1];
+          const links = interiorLinks.get(pointKey(tip));
+          if (links === undefined) return; // tip reached the grid
+          const partner = links.find((link) => !visited[link.chordIndex]);
+          if (partner === undefined) {
+            invalid(
+              `patch '${patchId}' conforming chord chain forms a closed loop without grid contact`
+            );
+          }
+          visited[partner.chordIndex] = true;
+          const partnerRecord = cellChords[partner.chordIndex];
+          const nextPoint =
+            partner.endIndex === 0 ? partnerRecord.end : partnerRecord.start;
+          const nextInterior =
+            partner.endIndex === 0
+              ? partnerRecord.endInterior
+              : partnerRecord.startInterior;
+          if (head) chainPoints.unshift(nextPoint);
+          else chainPoints.push(nextPoint);
+          if (!nextInterior) return;
+        }
+      };
+      for (let seed = 0; seed < cellChords.length; seed += 1) {
+        if (visited[seed]) continue;
+        visited[seed] = true;
+        const seedRecord = cellChords[seed];
+        const chainPoints: ExactUvPoint[] = [seedRecord.start, seedRecord.end];
+        if (seedRecord.startInterior) extendThroughInterior(chainPoints, true);
+        if (seedRecord.endInterior) extendThroughInterior(chainPoints, false);
+        // Fail-closed simplicity: non-adjacent chain segments must not cross.
+        for (let left = 0; left + 1 < chainPoints.length; left += 1) {
+          for (let right = left + 2; right + 1 < chainPoints.length; right += 1) {
+            if (
+              segmentsCrossStrictly(
+                chainPoints[left],
+                chainPoints[left + 1],
+                chainPoints[right],
+                chainPoints[right + 1]
+              )
+            ) {
+              invalid(`patch '${patchId}' conforming chord chain self-intersects`);
+            }
+          }
+        }
+        chains.push(chainPoints);
+      }
       let currentPieces: readonly (readonly ExactUvPoint[])[] =
         polygonsByCell.get(cellIndex) ?? [cellCorners(uCell, vCell)];
-      for (const { start, end } of cellChords) {
+      for (const chainPoints of chains) {
         const nextPieces: (readonly ExactUvPoint[])[] = [];
         let splitDone = false;
         for (const piece of currentPieces) {
@@ -835,10 +1187,14 @@ function buildPatchPartitionFrame(
             nextPieces.push(piece);
             continue;
           }
-          const split = splitPolygonByChord(piece, start, end);
+          const split = splitPolygonByChain(piece, chainPoints);
           if (split === null) {
             nextPieces.push(piece);
             continue;
+          }
+          if (chainPoints.length > 2 || densePieces.has(piece)) {
+            densePieces.add(split[0]);
+            densePieces.add(split[1]);
           }
           nextPieces.push(split[0], split[1]);
           splitDone = true;
@@ -856,7 +1212,7 @@ function buildPatchPartitionFrame(
   // Fan every touched cell's polygons; untouched cells keep two triangles.
   let patchTriangleCount = 2 * (angularDivisions * verticalDivisions - polygonsByCell.size);
   for (const [cellIndex, cellPolygons] of polygonsByCell) {
-    const cellTriangles = conformingPieceTriangles(cellPolygons);
+    const cellTriangles = conformingPieceTriangles(cellPolygons, densePieces);
     pieces.set(cellIndex, cellTriangles);
     patchTriangleCount += cellTriangles.length;
   }

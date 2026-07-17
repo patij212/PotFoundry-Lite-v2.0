@@ -400,3 +400,30 @@ measured useless-or-harmful). Certified set unchanged: twelve pots / ten styles.
 Playbook additions: single-variable config deltas only (cross-round cells/tri over
 different sweep prefixes is invalid evidence); per-patch isolation at the target bound
 is the razor-cell localizer (refusal UV names the mechanism).
+
+## Addendum (2026-07-17, session 2) — interior chain vertices LANDED; Gothic reframed from kernel-bound to PROOF-VOLUME-bound
+
+The splitter unlock named in the previous addendum is BUILT and gated (TDD; targetSolid
+470/470; PF_G2_POT roster 37/37 — all twelve certified pots re-proven under the new
+kernel; legacy triangulations bit-identical via fan-first). Conforming chord chains may
+now carry degree-2 INTERIOR pass-through vertices; chain-marked pieces triangulate by
+max-min-angle DP (length-minimal and fans both measurably emit chain-hugging slivers of
+the ~10 µm sag class). Full mechanics: matrix Addendum 17.
+
+Gothic p=1: the collar mechanism ladder is geometrically CLOSED (each razor the
+R ≈ κg²/8·f′(o) model named was killed by the matching chain extension: 9,500,004 →
+… → 9,500,159 → covered). What remains is NOT geometry: the volume truth was corrected
+(probe `tri=` indices are GLOBAL — all prior sweep-fraction readings restated): Gothic
+walls need ~3.5–4M work cells each at chain configs (~1–1.3M even at the bare hour-3
+baseline), the inner wall carries ~2× the outer's screen slack, and the official
+composed artifact is REFUSED at 214.3 s on the 2M/patch hard pool. The prior "69 s
+composed a8w5" figure is unreproduced and flagged for archaeology.
+
+**U5 exit ranking for Gothic (and the curved-feature class) is now:**
+1. per-patch workers + the pool-shape/envelope decision (2M/patch is the binding hard
+   constant — raising it is the certify-or-refuse contract call, pending with Patryk);
+2. evaluator screen-enclosure slack (the universal multiplier; inner ≈ 2× outer);
+3. scoped per-patch claims (outer-wall-first directive).
+The feature-conforming machinery (straight lines, curved chord chains, interior collar
+vertices, sliver-free chain triangulation) is COMPLETE for this class — perf items 1–2
+of the browser perf programme are now the entire distance to the Gothic certificate.

@@ -354,6 +354,314 @@ describe('annular solid reference tessellation', () => {
     }
   });
 
+  it('splits a cell along a chord chain with interior pass-through vertices (collar points)', () => {
+    // U5 kernel extension: chain vertices STRICTLY INSIDE one cell are legal
+    // when they are degree-2 pass-through points (shared by exactly two
+    // chords). They carry along-curve resolution — e.g. the Gothic crease
+    // collar — at zero grid breadth. On the 4x4 grid below (denominator 64,
+    // grid lines at multiples of 16) the chain enters cell [16,32]x[16,32]
+    // on the u=16/64 station column, bends at two interior points, and exits
+    // on the u=32/64 column.
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    // Grid-line contacts follow the conformity rule the Gothic generator
+    // obeys: chain ends sit on GRID CORNERS (shared by every adjacent cell's
+    // plain triangulation) and mid-edge crossings CONTINUE into the
+    // neighbouring cell so both split sides carry the shared vertex.
+    const chain = [
+      { U: 16n, V: 16n }, // grid corner (anchored chain end)
+      { U: 21n, V: 24n }, // INTERIOR (no grid line)
+      { U: 26n, V: 27n }, // INTERIOR (no grid line)
+      { U: 32n, V: 30n }, // on the u = 32/64 column — continued below
+      { U: 48n, V: 32n }, // grid corner (anchored chain end, next cell over)
+    ];
+    const chords = Array.from({ length: 4 }, (_, index) => ({
+      denominator: '64',
+      start: {
+        uNumerator: chain[index].U.toString(),
+        vNumerator: chain[index].V.toString(),
+      },
+      end: {
+        uNumerator: chain[index + 1].U.toString(),
+        vNumerator: chain[index + 1].V.toString(),
+      },
+    }));
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 2,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+      conformingChordsByPatch: { 'outer-wall': chords },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    const outerWall = tessellation.partitions.find(
+      (partition) => partition.patchId === 'outer-wall'
+    );
+    if (outerWall === undefined) throw new Error('expected outer-wall partition');
+    const verified = verifyExactDyadicRectanglePartition(outerWall);
+    expect(verified.exactPartition).toBe(true);
+    const declared =
+      BigInt(outerWall.oddDenominatorFactor ?? '1') << BigInt(outerWall.fractionBits);
+    const scale = declared / 64n;
+    // Every chain vertex — including the two interior ones — is a REAL
+    // partition vertex, and every chain segment is an interior mesh edge
+    // (shared by exactly two triangles).
+    const vertexKey = (u: bigint, v: bigint): string => `${u},${v}`;
+    const seenVertices = new Set<string>();
+    const edgeCount = new Map<string, number>();
+    for (const triangle of outerWall.triangles) {
+      const scaled = triangle.vertices.map((vertex) => ({
+        u: BigInt(vertex.uNumerator),
+        v: BigInt(vertex.vNumerator),
+      }));
+      for (const vertex of scaled) seenVertices.add(vertexKey(vertex.u, vertex.v));
+      for (let side = 0; side < 3; side += 1) {
+        const a = scaled[side];
+        const b = scaled[(side + 1) % 3];
+        const key =
+          a.u < b.u || (a.u === b.u && a.v < b.v)
+            ? `${vertexKey(a.u, a.v)}|${vertexKey(b.u, b.v)}`
+            : `${vertexKey(b.u, b.v)}|${vertexKey(a.u, a.v)}`;
+        edgeCount.set(key, (edgeCount.get(key) ?? 0) + 1);
+      }
+    }
+    for (const point of chain) {
+      expect(seenVertices.has(vertexKey(point.U * scale, point.V * scale))).toBe(true);
+    }
+    for (let index = 0; index + 1 < chain.length; index += 1) {
+      const a = { u: chain[index].U * scale, v: chain[index].V * scale };
+      const b = { u: chain[index + 1].U * scale, v: chain[index + 1].V * scale };
+      const key =
+        a.u < b.u || (a.u === b.u && a.v < b.v)
+          ? `${vertexKey(a.u, a.v)}|${vertexKey(b.u, b.v)}`
+          : `${vertexKey(b.u, b.v)}|${vertexKey(a.u, a.v)}`;
+      expect(edgeCount.get(key)).toBe(2);
+    }
+  });
+
+  it('splits a chained cell further with straight chords across the non-convex piece', () => {
+    // After the interior-vertex chain splits the cell, the upper piece is
+    // NON-convex (the chain bulges into it). A later straight chord across
+    // that piece exercises the general boundary walk + the ear-clip
+    // triangulation fallback.
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const chainChords = [
+      [
+        { U: 16n, V: 16n },
+        { U: 21n, V: 24n },
+      ],
+      [
+        { U: 21n, V: 24n },
+        { U: 26n, V: 27n },
+      ],
+      [
+        { U: 26n, V: 27n },
+        { U: 32n, V: 30n },
+      ],
+      [
+        { U: 32n, V: 30n },
+        { U: 48n, V: 32n },
+      ],
+      // Second chain strictly above the first, corner to corner through an
+      // interior vertex: splits the NON-convex upper piece of the cell.
+      [
+        { U: 16n, V: 32n },
+        { U: 28n, V: 31n },
+      ],
+      [
+        { U: 28n, V: 31n },
+        { U: 32n, V: 32n },
+      ],
+    ];
+    const chords = chainChords.map(([start, end]) => ({
+      denominator: '64',
+      start: { uNumerator: start.U.toString(), vNumerator: start.V.toString() },
+      end: { uNumerator: end.U.toString(), vNumerator: end.V.toString() },
+    }));
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 2,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+      conformingChordsByPatch: { 'outer-wall': chords },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    const outerWall = tessellation.partitions.find(
+      (partition) => partition.patchId === 'outer-wall'
+    );
+    if (outerWall === undefined) throw new Error('expected outer-wall partition');
+    expect(verifyExactDyadicRectanglePartition(outerWall).exactPartition).toBe(true);
+  });
+
+  it('triangulates twin-chain (ladder) pieces with rungs, never all-on-one-chain slivers', () => {
+    // Two dense parallel chains through one cell (the Gothic kink + a
+    // near-kink offset curve): a fan triangulation from any single origin
+    // creates triangles whose three vertices all lie on ONE chain — long
+    // diagonals sagging off the bending curve (measured 9,519,723 pm on the
+    // +0.002 curve). Chain-split pieces must triangulate with cross rungs.
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const chainA = [
+      { U: 16n, V: 16n },
+      { U: 20n, V: 20n },
+      { U: 24n, V: 22n },
+      { U: 28n, V: 23n },
+      { U: 32n, V: 24n },
+      { U: 48n, V: 32n },
+    ];
+    const chainB = [
+      { U: 16n, V: 32n },
+      { U: 20n, V: 26n },
+      { U: 24n, V: 27n },
+      { U: 28n, V: 28n },
+      { U: 32n, V: 29n },
+      { U: 48n, V: 32n },
+    ];
+    const chordsOf = (
+      chain: readonly { U: bigint; V: bigint }[]
+    ): { denominator: string; start: { uNumerator: string; vNumerator: string }; end: { uNumerator: string; vNumerator: string } }[] =>
+      Array.from({ length: chain.length - 1 }, (_, index) => ({
+        denominator: '64',
+        start: {
+          uNumerator: chain[index].U.toString(),
+          vNumerator: chain[index].V.toString(),
+        },
+        end: {
+          uNumerator: chain[index + 1].U.toString(),
+          vNumerator: chain[index + 1].V.toString(),
+        },
+      }));
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 2,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+      conformingChordsByPatch: {
+        'outer-wall': [...chordsOf(chainA), ...chordsOf(chainB)],
+      },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    const outerWall = tessellation.partitions.find(
+      (partition) => partition.patchId === 'outer-wall'
+    );
+    if (outerWall === undefined) throw new Error('expected outer-wall partition');
+    expect(verifyExactDyadicRectanglePartition(outerWall).exactPartition).toBe(true);
+    // The chained cells must be SLIVER-FREE: a fan triangulation emits
+    // triangles hugging one chain with ~3.7-6 degree corners (the measured
+    // ~10 um sag class on the Gothic offset curves); the max-min-angle DP
+    // keeps every corner fat. 8 degrees separates the two states with
+    // margin on this geometry (fan worst 3.7, DP worst ~10.6).
+    let worstDegrees = Number.POSITIVE_INFINITY;
+    for (const triangle of outerWall.triangles) {
+      const points = triangle.vertices.map((vertex) => ({
+        u: Number(BigInt(vertex.uNumerator)),
+        v: Number(BigInt(vertex.vNumerator)),
+      }));
+      for (let corner = 0; corner < 3; corner += 1) {
+        const at = points[corner];
+        const left = points[(corner + 1) % 3];
+        const right = points[(corner + 2) % 3];
+        const cross =
+          (left.u - at.u) * (right.v - at.v) - (left.v - at.v) * (right.u - at.u);
+        const dot =
+          (left.u - at.u) * (right.u - at.u) + (left.v - at.v) * (right.v - at.v);
+        const degrees = (Math.abs(Math.atan2(cross, dot)) * 180) / Math.PI;
+        if (degrees < worstDegrees) worstDegrees = degrees;
+      }
+    }
+    expect(worstDegrees).toBeGreaterThanOrEqual(8);
+  });
+
+  it('refuses interior chord vertices that dangle, branch, or form grid-free cycles', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const base = {
+      angularDivisionsLog2: 2,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    } as const;
+    const chord = (
+      startU: number,
+      startV: number,
+      endU: number,
+      endV: number
+    ): {
+      denominator: string;
+      start: { uNumerator: string; vNumerator: string };
+      end: { uNumerator: string; vNumerator: string };
+    } => ({
+      denominator: '64',
+      start: { uNumerator: startU.toString(), vNumerator: startV.toString() },
+      end: { uNumerator: endU.toString(), vNumerator: endV.toString() },
+    });
+    // Dangling: the interior point (21,24) is touched by only ONE chord.
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingChordsByPatch: { 'outer-wall': [chord(16, 20, 21, 24)] },
+      })
+    ).toThrow(/degree-2 chain pass-through/);
+    // Branching: (21,24) is touched by THREE chords.
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingChordsByPatch: {
+          'outer-wall': [
+            chord(16, 20, 21, 24),
+            chord(21, 24, 32, 30),
+            chord(21, 24, 26, 32),
+          ],
+        },
+      })
+    ).toThrow(/degree-2 chain pass-through/);
+    // Cycle: three interior points, each degree 2, but no grid contact.
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingChordsByPatch: {
+          'outer-wall': [
+            chord(21, 24, 26, 27),
+            chord(26, 27, 23, 29),
+            chord(23, 29, 21, 24),
+          ],
+        },
+      })
+    ).toThrow(/closed loop without grid contact/);
+  });
+
   it('refuses conforming chords that are off grid lines, off-station at boundaries, or cell-ambiguous', () => {
     const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
     const base = {
@@ -377,13 +685,15 @@ describe('annular solid reference tessellation', () => {
       start: { uNumerator: startU.toString(), vNumerator: startV.toString() },
       end: { uNumerator: endU.toString(), vNumerator: endV.toString() },
     });
-    // Start point (17/64, 3/64) lies on NO grid line of the 4x4 grid.
+    // Start point (17/64, 3/64) lies on NO grid line of the 4x4 grid. Since
+    // the interior-vertex extension, an off-grid endpoint is legal ONLY as a
+    // degree-2 chain pass-through — a lone chord leaves it dangling.
     expect(() =>
       tessellateAnnularRadialSolidTargetForCertification(binding, {
         ...base,
         conformingChordsByPatch: { 'outer-wall': [chord(17, 3, 18, 16)] },
       })
-    ).toThrow(/grid line/);
+    ).toThrow(/degree-2 chain pass-through/);
     // Boundary-row endpoint at u = 17/64 is not an angular station.
     expect(() =>
       tessellateAnnularRadialSolidTargetForCertification(binding, {

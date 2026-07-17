@@ -7570,3 +7570,49 @@ All probe outputs quoted verbatim in matrix Addendum 16.
    chain points ≈ trivial cells; Gothic certifies at hour-3 volume (~100 s).
 2. Alternatives (perf programme): per-patch workers (razor-edge on 2M/patch),
    screen-enclosure improvements.
+
+---
+
+## [2026-07-17b] Splitter interior-vertex support BUILT (TDD) + Gothic volume truth corrected
+
+### Summary
+Built the Addendum-16 unlock: conforming chord chains accept degree-2 INTERIOR
+pass-through vertices (annularSolidReferenceTessellation.ts). Three layers: chain
+assembly with fail-closed degree-2/cycle/self-intersection validation;
+splitPolygonByChain (polyline boundary walk, exact containment);
+triangulation ladder fan (legacy bit-identical) -> max-min-angle Klincsek DP for
+chain-marked pieces -> ear-clip -> refuse. Gothic collar carried by chain injection
+(asymmetric window: above-kink |o|<=0.0112, below-kink |o|<=0.0076, pitch 0.0012).
+Every measured collar razor fell to its matching extension (9,500,004 ... 9,500,159).
+VOLUME CORRECTION: probe tri= indices are GLOBAL, not per-patch — all prior
+sweep-fraction readings were wrong; walls need ~3.5-4M cells (chain configs) /
+~1-1.3M (baseline), inner ~2x outer slack. Official composed artifact: REFUSED
+214.3 s, maxWorkCells=2M. Addendum-16's absolute row/station costs retracted
+(relative verdict stands). "69 s composed" unreproduced — archaeology flagged.
+
+### Decisions
+- Max-min-angle DP, NOT length-minimal (measured: both fans and MWT-by-length pick
+  chain-hugging 3.7-6 degree slivers = the ~10 um sag class).
+- Legacy pieces keep the fan bit-for-bit (WeakSet marking) — zero certificate churn,
+  proven by the 37/37 roster gate.
+- Below-kink curves are NOT injected (tongue spring-o rows cover; injecting them
+  double-covers the band into a cell explosion).
+- Ladder unit test pins sliver-freeness (min angle >= 8 deg), not chain membership
+  (fat corner-anchored all-on-chain triangles are legitimate).
+
+### Validation
+targetSolid 470/470; PF_G2_POT roster 37/37 (all twelve pots re-proven, incl.
+adversarial vertex-poke + fail-closed scale refusal); eslint clean; tsc 0 errors on
+touched files; five Gothic per-patch probes + tessellation-only tricount probe +
+composed artifact.
+
+### Risks / open questions
+- The composed "69 s" history could not be reproduced; before trusting any pre-17
+  volume numbers, re-derive with PF_GOTHIC_TRICOUNT + global-index arithmetic.
+- Max-min-angle DP is O(n^3)/piece (fine at current piece sizes ~30 vertices).
+
+### Next agent
+Gothic's remaining distance = proof volume, not geometry: (1) per-patch workers +
+the 2M pool-shape decision (envelope constant, Patryk's call); (2) evaluator
+enclosure slack (inner ~2x outer — universal payoff); (3) scoped per-patch claims.
+Chain machinery is complete — do NOT add rows/stations for collars (measured dead).

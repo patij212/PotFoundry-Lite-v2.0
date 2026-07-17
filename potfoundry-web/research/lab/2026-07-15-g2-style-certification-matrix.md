@@ -706,3 +706,54 @@ All knobs and the measured configurations remain in
 `research/bridge/_gothicVoronoiConformingSpike.test.ts` (env switches:
 `PF_GOTHIC_H3_BASELINE`, `PF_GOTHIC_COLLAR` for the baseline and the
 single-variable collar-station experiment).
+
+## Addendum 17 — the interior-chain-vertex splitter extension BUILT + the volume truth corrected (2026-07-17, second session)
+
+**The Addendum-16 named unlock is LANDED** (TDD, `annularSolidReferenceTessellation.ts`;
+impact LOW — certification track only). Chord endpoints strictly inside a cell are now
+legal as degree-2 chain pass-through vertices. Three kernel layers:
+1. Chain assembly from chords sharing interior endpoints — fail-closed refusals for
+   dangling/branching vertices ("not a degree-2 chain pass-through"), grid-free cycles,
+   and chain self-intersection.
+2. `splitPolygonByChain`: polyline boundary walk generalizing the chord walk, with exact
+   containment (middles off the piece boundary, no strict segment/boundary crossing).
+3. Piece triangulation ladder: legacy fan (bit-identical for all existing inputs) →
+   for chain-marked pieces a MAX-MIN-ANGLE Klincsek DP (exact validity: no strict
+   crossings, no vertex on the open diagonal, doubled-midpoint strictly inside; float
+   angles steer only) → strictly-convex ear-clip fallback → refuse. Length-minimal was
+   measured WRONG (a skip diagonal 8.06 beats rungs totaling 30.7 and picks the same
+   chain-hugging slivers the fan does — 3.7–6° corners, the ~10 µm sag class).
+**Gates: full targetSolid suite 470/470 green; the PF_G2_POT roster gate 37/37 — all
+twelve certified pots re-proven to the 0.01 mm certificate under the new kernel.**
+
+**Gothic application — the collar mechanism ladder is geometrically CLOSED.** Chain
+injection on the kink + near-kink offset curves (asymmetric window: above-kink |o| ≤
+0.0112 where every razor lives, below-kink |o| ≤ 0.0076 — the tongue's spring−o rows
+cover below; pitch 0.0012) marched the razors down mechanism by mechanism:
+9,500,004/9,500,096 (kink chords) → 9,500,182/9,500,597 (0.002-offset chords, and the
+fan slivers) → 9,500,159 (+0.0075/+0.011 gap) → fixed. Every mechanism the model
+R ≈ κg²/8 · f′(o) named was killed by the corresponding extension.
+
+**THE VOLUME TRUTH, corrected.** The per-patch probe's `tri=` refusal indices are
+GLOBAL artifact indices, not per-patch — all of this session's and Addendum 16's
+sweep-fraction readings were misread. Restated with the partition offsets
+(tessellation-only probe, `PF_GOTHIC_TRICOUNT`): chain-config walls are ~121k/123k
+triangles and their FULL sweeps need ~3.5–4M work cells each; even the hour-3 baseline
+walls are ~1–1.3M (not ~460–500k). Addendum 16's absolute per-row/per-station marginal
+costs are RETRACTED as numbers (the relative verdict — any grid collar mechanism blows
+the pool — was measured directly and stands). The doc's "a8w5 runs the full proof in
+~69 s" claim is UNREPRODUCED under today's kernel: the official composed artifact at
+the best config (a8w5-chain, 28,180 + 28,976 chords) is
+**REFUSED after 214.3 s — Continuous proof exceeds maxWorkCells=2,000,000**, and the
+inner wall additionally carries ~2× the outer's per-triangle screen slack.
+
+**Frontier restated: Gothic p=1 fidelity machinery is DONE; the blocker is pure
+proof-volume economics.** Exits, reprioritized:
+1. Per-patch worker parallelism + a pool-shape decision (chain-config walls need
+   >2M cells/patch — `CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS` is an
+   envelope constant = Patryk's certify-or-refuse contract decision).
+2. Evaluator screen-enclosure slack (the ~4M is slack-multiplied; inner ~2× outer —
+   the same lever would shrink every style's proofs).
+3. Scoped per-patch tolerance claims (outer-wall-first directive).
+Harness: `PF_GOTHIC_TRICOUNT` (tessellation-only counts), `PF_GOTHIC_H3_BASELINE`
+(disables injection), `PF_GOTHIC_COLLAR` (superseded station experiment).
