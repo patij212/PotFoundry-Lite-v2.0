@@ -63,6 +63,8 @@ export interface FinalStlPartialCertificationOptions {
   readonly maxStructuralBytes?: number;
   readonly maxStructuralWorkUnits?: number;
   readonly patchProof?: CompleteMappedArtifactGeometryOptions['patchProof'];
+  /** Worker-computed patch outcomes minted by the parallel patch-proof pool. */
+  readonly parallelPatchProofs?: CompleteMappedArtifactGeometryOptions['parallelPatchProofs'];
   readonly topology?: TopologyResourceOptions;
   readonly selfIntersection?: SelfIntersectionResourceOptions;
   readonly cancellationFlag?: Int32Array;
@@ -194,6 +196,7 @@ function snapshotOptions(
       'maxTotalEvaluatorWorkUnits',
       'maxTotalPartitionWorkUnits',
       'maximumHeightErrorPm',
+      'parallelPatchProofs',
       'patchProof',
       'requestedTolerancePm',
       'reservedNonGeometricMarginPm',
@@ -276,6 +279,8 @@ function snapshotOptions(
         ? undefined
         : (Object.freeze({ ...selfIntersection }) as SelfIntersectionResourceOptions),
     cancellationFlag: top.cancellationFlag as Int32Array | undefined,
+    parallelPatchProofs:
+      top.parallelPatchProofs as FinalStlPartialCertificationOptions['parallelPatchProofs'],
   });
 }
 
@@ -403,6 +408,7 @@ export function proveFinalStlMappedGeometryAndStructure(
       maxElapsedMilliseconds: remainingElapsedMilliseconds(),
       patchProof: optionSnapshot.patchProof,
       cancellationFlag: optionSnapshot.cancellationFlag,
+      parallelPatchProofs: optionSnapshot.parallelPatchProofs,
     });
   } catch (error) {
     refuse('GEOMETRY_REFUSED', error instanceof Error ? error.message : 'Geometry proof refused');

@@ -757,3 +757,48 @@ proof-volume economics.** Exits, reprioritized:
 3. Scoped per-patch tolerance claims (outer-wall-first directive).
 Harness: `PF_GOTHIC_TRICOUNT` (tessellation-only counts), `PF_GOTHIC_H3_BASELINE`
 (disables injection), `PF_GOTHIC_COLLAR` (superseded station experiment).
+
+## Addendum 18 — per-patch proof WORKERS built: composed wall-clock = max(patch) (2026-07-17, third session)
+
+**Exit 1 of Addendum 17 is LANDED** (TDD; impact LOW — certification track only).
+`parallelPatchProofPool.proveFinalStlWithPatchWorkers(stlBytes, canonicalInput,
+target, jobsWithProgramJson, {..., patchWorkerCount})` runs the six per-patch
+cMPD proofs on worker_threads and REPLAYS the outcomes through the UNCHANGED
+sequential prover:
+- Workers run at the sequential FIRST-ITERATION caps
+  (`resolveParallelPatchProofDispatches`, exported from the composed module —
+  one source of truth for the cap arithmetic); each worker mints its own proof
+  session from cloned STL bytes and recompiles its evaluator from
+  {targetSha256, programCanonicalJson} with program/proof hash cross-checks.
+- Outcomes enter `certifyCompleteMappedArtifactGeometry` via a WeakMap-MINTED
+  container (`parallelPatchProofs` option; structural lookalikes refuse) and
+  the existing loop replays them through the identical shrinking-pool
+  arithmetic in canonical patch order — including exact synthesis of the
+  shrunk-cap refusal messages a sequential child would have thrown. The
+  sequential path with the option absent is bit-identical legacy.
+- Worker loading mirrors tierC/parallelScorer (esbuild native binary, temp
+  `.mjs`, cached); cancellation bridges caller flags onto a SharedArrayBuffer.
+
+**Determinism contract (tested, `parallelPatchProof.test.ts`, 4/4):**
+per-patch evidence hashes are RUN-STABLE and exactly equal across modes; all
+content fields deeply equal; refusals identical in code + message (geometry
+refusals and aggregate-pool replays; the synthesized path omits only the
+in-flight triangle index). DISCOVERY en route: the COMPOSED evidence hash and
+per-stage `maxElapsedMilliseconds` were never run-stable — the composed
+evidence binds its resolved elapsed budget, which finalStl passes as
+remaining-deadline, so it differs between ANY two runs (two sequential runs
+included). The per-patch evidence hashes are the certificate-stable anchors.
+
+**Measurements (this machine, AboveNormal, six workers):**
+- Voronoi bubble (certified, a8w6): sequential 107.8 s → parallel **55.0 s
+  (1.96×)**, CONVERGED at the IDENTICAL certified bound 9,499,879 pm /
+  172,032 tris.
+- Gothic chain config: parallel REFUSED 235.9 s at the per-patch 2M pool —
+  parallelism deliberately does NOT mask the pool-shape decision (Addendum 17
+  exit 1's second half, still Patryk's call); when that ceiling moves, the
+  time envelope is now ready (walls run concurrently).
+
+**Gates: full targetSolid 474/474 (incl. the 4 new parallel tests);
+PF_G2_POT roster 37/37 — all twelve certified pots re-proven, sequential path
+bit-identical.** Probes: `PF_SLICE11_VORONOI_PAR`, `PF_SLICE11_GOTHIC_PAR` in
+the spike harness.

@@ -427,3 +427,69 @@ composed a8w5" figure is unreproduced and flagged for archaeology.
 The feature-conforming machinery (straight lines, curved chord chains, interior collar
 vertices, sliver-free chain triangulation) is COMPLETE for this class — perf items 1–2
 of the browser perf programme are now the entire distance to the Gothic certificate.
+
+## Addendum (2026-07-17) — snaking C0 double-valued walls: a named fifth-ish feature, mechanism DE-RISKED, feeds U4/U5
+
+The sharp-feature taxonomy (§348) named four classes and claimed "no fifth class has
+appeared." Measurement adds a distinct sub-class the taxonomy folded together: a **true
+C0 JUMP whose locus is a CURVED (snaking) curve** — not class 2 (straight jumps) nor
+class 3 (cusps = continuous value). Found by `research/bridge/_c0Scan.test.ts`
+(jump-convergence classifier; deep-ladder exponent-fit is the authority over the ratio
+classifier): TRUE C0 in 6/20 styles at defaults; **snaking** in **CelticKnot (0.60mm),
+CelticTriquetra (1.73mm), BasketWeave@twist≠0 (2.0mm)**. Gyroid confirmed C1 EVERYWHERE
+(breadth false-flagged gm_curve=0.1; deep-ladder p=1.0 steep-C1) ⇒ its miss is density,
+not representation — no wall needed, stays envelope-v3/M=g/h².
+
+**Mechanism DE-RISKED (three committed probes, all PF_-gated dormant):**
+`_wallSpike` (8d146d50) — a DOUBLE-VALUED wall (two vertices at one (u,t), radii = the
+two one-sided limits, flat quads) chords a snaking C0 to **<0.01mm** true-3D, O(spacing²),
+crossing 0.01 at 0.635mm = 1.3× a surface edge (NOT pathological); lips == one-sided
+limits ⇒ watertight weld. `_wallJunction` (86311aba) — ribbon crossings are **3-sheet
+Y-junctions**; ring-shrink levels collapse 55→…→2 = {r0−0.6, r0} ⇒ all walls at a Y
+**pinch to one shared double-vertex** ⇒ watertight by construction; occlusion is an
+INTERNAL cliff (0→0.65mm) inside a small overlap diamond, outer envelope keeps its full
+0.6mm wall.
+
+**Correction to the record:** "generalize the seam machinery" (an earlier framing) is a
+category error — `seamSymmetrizeGraph`/`buildSeamRail` enforce a same-radius PERIODIC
+weld, the opposite of a cliff. The real precursor is the ArtDeco paired-RING, which
+EXCLUDES its band (`tBands`); a scorable wall needs both lips at one (u,t) — exists
+nowhere yet.
+
+**Placement in this roadmap:** the target ALREADY DECLARES this structure —
+`celticKnotOuterWallTarget.ts` obligations `foreground-background-radial-jump` +
+`z-buffer-occlusion-ties` + `closest-strand-ownership-ties`, with
+`completeInternalFeatureSideGraphEmitted: false` and scope note "declared but not yet
+emitted as a complete clipped feature-side complex." This work EMITS that complex as
+curved double-valued **riser curtains** clipped at the Y-junctions — i.e. it advances
+**U4** (curtain/riser complexes) for the CURVED-riser sub-class and supplies **R2**
+(representation) for curved jump curves; the mesher side is **U5**. Refines the matrix:
+CelticKnot/BasketWeave move from "atlas-refused / composition blockers" to "curved-riser
+curtain, mechanism-known"; CelticTriquetra's U5 "diagonal braid" gains the same vehicle.
+Fully agnostic-compliant (§340): the cliff curves are the style's own closed form
+(`localU = x_i(t) ± strandW`), a DECLARATION, not detection.
+
+**Phasing (spec: `docs/superpowers/specs/2026-07-17-snaking-c0-double-valued-wall-design.md`):**
+P1 pure declaration module `celticKnotCliffComplex.ts` (curves + one-sided lips +
+junction graph; tested by lip-weld / junction-pinch / wall-fidelity) — IN PROGRESS,
+new-file-only (concurrency-safe). P2 target `compileFeatureCurtain` (flip the flag;
+proof-critical, co-edited — coordinate). P3 mesher double-valued wall (U5, flag-gated,
+CRITICAL hubs). P4 certification scores the wall band (retire `tBands` exclusion). P1′
+extend to CelticTriquetra + BasketWeave@twist. Off the DS/Gyroid/Gothic mandate's
+critical path. Full memory: `project_c0_scan_verdict`.
+
+## Addendum (2026-07-17, session 3) — per-patch workers LANDED (perf item 1a)
+
+The worker half of Gothic exit 1 is BUILT and gated (TDD 4/4; targetSolid
+474/474; PF_G2_POT roster 37/37): `proveFinalStlWithPatchWorkers` runs the six
+patch proofs on worker_threads at first-iteration caps and replays them
+through the UNCHANGED sequential prover via a minted container — per-patch
+evidence hashes exactly equal, refusals code+message-identical, legacy path
+bit-identical. Measured on the certified Voronoi bubble: composed 107.8 s →
+**55.0 s (1.96×)** at the IDENTICAL certified bound (9,499,879 pm). Discovery:
+composed-level evidence hashes were never run-stable (they bind the remaining
+elapsed envelope); per-patch evidence hashes are the certificate anchors.
+Gothic still refuses at the per-patch 2M pool by design — the POOL-SHAPE
+decision (exit 1's other half) remains with Patryk, and the time envelope is
+now ready for it. Remaining perf items: enclosure slack (2), scoped per-patch
+claims (3). Mechanics: matrix Addendum 18.

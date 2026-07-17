@@ -15,6 +15,10 @@ import {
 import { createFinalArtifactProofSession } from '../../src/geometry/targetSolid/finalArtifactProofSession';
 import { proveFinalStlMappedGeometryAndStructure } from '../../src/geometry/targetSolid/finalStlPartialCertification';
 import {
+  proveFinalStlWithPatchWorkers,
+  type ParallelMappedPatchProofJob,
+} from '../../src/geometry/targetSolid/parallelPatchProofPool';
+import {
   createSinglePatchAnnularRadialSolidTargetBinding,
   type SinglePatchAnnularRadialSolidTargetBinding,
 } from '../../src/geometry/targetSolid/singlePatchAnnularRadialSolidTarget';
@@ -107,6 +111,80 @@ function runComposed(
               patchProof: { maxWorkCells: 2_000_000 },
             }
           : {}),
+      }
+    );
+    console.log(
+      `[probe:${label}] CONVERGED tris=${tessellation.triangleCount}` +
+        ` upperPm=${result.geometricTwoSidedUpperPm}` +
+        ` plusReservedPm=${result.geometryPlusReservedUpperPm}` +
+        ` structural=${result.structural.structurallyValid}` +
+        ` elapsedMs=${Date.now() - startedAt}`
+    );
+  } catch (error) {
+    const detail =
+      error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    console.log(
+      `[probe:${label}] REFUSED after ${Date.now() - startedAt}ms -> ${detail.slice(0, 500)}`
+    );
+  }
+}
+
+/** runComposed twin driving the per-patch WORKER pool (wall-clock = max patch). */
+async function runComposedParallel(
+  label: string,
+  styleId: string,
+  styleParams: Readonly<Record<string, number>>,
+  divisions: AnnularSolidReferenceTessellationOptions,
+  maxElapsedMilliseconds: number,
+  generousCells = false
+): Promise<void> {
+  const startedAt = Date.now();
+  try {
+    const { binding, canonicalInput } = atlas(styleId, styleParams);
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(
+      binding,
+      divisions
+    );
+    const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+      binding.surfaceComplex
+    );
+    const programByPatch = new Map(
+      binding.programs.map((program) => [program.patchId, program.programCanonicalJson])
+    );
+    const jobs: ParallelMappedPatchProofJob[] = tessellation.partitions.map(
+      (partition) => {
+        const programCanonicalJson = programByPatch.get(
+          partition.patchId as (typeof binding.programs)[number]['patchId']
+        );
+        if (programCanonicalJson === undefined) {
+          throw new Error(`missing program for partition patch '${partition.patchId}'`);
+        }
+        return {
+          partition,
+          evaluator: compileValidatedResidualEvaluator({
+            targetSha256: target.targetSha256,
+            programCanonicalJson,
+          }),
+          programCanonicalJson,
+        };
+      }
+    );
+    const result = await proveFinalStlWithPatchWorkers(
+      tessellation.stlBytes,
+      canonicalInput,
+      target,
+      jobs,
+      {
+        requestedTolerancePm: 10_000_000n,
+        reservedNonGeometricMarginPm: 500_000n,
+        maxElapsedMilliseconds,
+        ...(generousCells
+          ? {
+              maxTotalWorkCells: 8_000_000,
+              patchProof: { maxWorkCells: 2_000_000 },
+            }
+          : {}),
+        patchWorkerCount: 6,
       }
     );
     console.log(
@@ -1182,6 +1260,83 @@ describe('slice-11 probes (env-gated, session-local)', () => {
           },
         },
         235_000
+      );
+      expect(true).toBe(true);
+    }
+  );
+
+  it.skipIf(!process.env.PF_SLICE11_VORONOI_PAR)(
+    'Voronoi bubble via per-patch workers (wall-clock = max patch)',
+    { timeout: 900_000 },
+    async () => {
+      await runComposedParallel(
+        'voronoi-bubble-a8w6-PAR',
+        'Voronoi',
+        { v_morph: 0, v_relief: 0.04 },
+        {
+          angularDivisionsLog2: 8,
+          verticalDivisionsLog2ByPatch: {
+            'outer-wall': 7,
+            'inner-wall': 7,
+            'top-rim': 3,
+            'bottom-top': 5,
+            'bottom-under': 5,
+            'drain-wall': 0,
+          },
+          verticalStationsByPatch: {
+            'inner-wall': rationalStationLadder(7, [
+              [1, 29],
+              [5, 29],
+              [9, 29],
+              [13, 29],
+              [17, 29],
+              [21, 29],
+              [25, 29],
+            ]),
+          },
+        },
+        235_000
+      );
+      expect(true).toBe(true);
+    }
+  );
+
+  it.skipIf(!process.env.PF_SLICE11_GOTHIC_PAR)(
+    'GothicArches chain config via per-patch workers (parallel refusal timing)',
+    { timeout: 900_000 },
+    async () => {
+      const ladders = gothicLadderFractions();
+      const angularLadder = rationalStationLadder(8, ladders.angularFractions);
+      const outerVertical = rationalStationLadder(5, ladders.outerVerticalFractions);
+      const innerVertical = rationalStationLadder(5, ladders.innerVerticalFractions);
+      const outerChords = gothicChordsForPatch('outer', angularLadder, outerVertical);
+      const innerChords = gothicChordsForPatch('inner', angularLadder, innerVertical);
+      await runComposedParallel(
+        'gothic-p1-a8w5-chain-PAR',
+        'GothicArches',
+        { gaPointiness: 1, gaDiamond: 0, gaRelief: 0.2 },
+        {
+          angularDivisionsLog2: 8,
+          angularStations: angularLadder,
+          verticalDivisionsLog2ByPatch: {
+            'outer-wall': 5,
+            'inner-wall': 5,
+            'top-rim': 3,
+            'bottom-top': 4,
+            'bottom-under': 4,
+            'drain-wall': 0,
+          },
+          verticalStationsByPatch: {
+            'outer-wall': outerVertical,
+            'inner-wall': innerVertical,
+          },
+          conformingChordsByPatch: {
+            'outer-wall': outerChords,
+            'inner-wall': innerChords,
+          },
+        },
+        235_000,
+        true
       );
       expect(true).toBe(true);
     }

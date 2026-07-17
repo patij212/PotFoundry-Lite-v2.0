@@ -98,6 +98,63 @@ export interface MappedPatchProofJob {
   readonly evaluator: RegisteredValidatedResidualEvaluator;
 }
 
+/** One worker-computed patch outcome: exactly one of proof / refusal. */
+export interface ParallelPatchProofOutcome {
+  readonly proof?: ContinuousMappedPatchDistanceResult;
+  readonly refusal?: {
+    readonly code: 'CANCELLED' | 'RESOURCE_LIMIT' | 'REFUSED';
+    readonly message: string;
+    readonly artifactTriangleIndex?: number;
+  };
+}
+
+export const PARALLEL_PATCH_PROOFS_VERSION =
+  'potfoundry.parallel-patch-proofs/v1' as const;
+
+/**
+ * Unforgeable in-process container of worker-computed patch outcomes. The
+ * sequential prover replays these through its canonical budget arithmetic, so
+ * aggregation and refusal ordering stay byte-identical to sequential runs.
+ * Structural lookalikes that were not minted by the proof kernel refuse.
+ */
+export interface MintedParallelPatchProofs {
+  readonly version: typeof PARALLEL_PATCH_PROOFS_VERSION;
+  readonly patchCount: number;
+}
+
+const mintedParallelPatchProofs = new WeakMap<
+  MintedParallelPatchProofs,
+  ReadonlyMap<string, ParallelPatchProofOutcome>
+>();
+
+/** Internal proof-kernel bridge: outcomes MUST come from the parallel patch-proof pool. */
+export function mintParallelPatchProofsForProofKernel(
+  outcomes: ReadonlyMap<string, ParallelPatchProofOutcome>
+): MintedParallelPatchProofs {
+  const token = Object.freeze({
+    version: PARALLEL_PATCH_PROOFS_VERSION,
+    patchCount: outcomes.size,
+  });
+  mintedParallelPatchProofs.set(token, outcomes);
+  return token;
+}
+
+function parallelPatchProofsForProof(
+  value: unknown
+): ReadonlyMap<string, ParallelPatchProofOutcome> {
+  if (typeof value !== 'object' || value === null) {
+    fail('INVALID_INPUT', 'parallelPatchProofs container is invalid');
+  }
+  const outcomes = mintedParallelPatchProofs.get(value as MintedParallelPatchProofs);
+  if (outcomes === undefined) {
+    fail(
+      'INVALID_INPUT',
+      'parallelPatchProofs was not minted by the parallel patch-proof kernel'
+    );
+  }
+  return outcomes;
+}
+
 export interface CompleteMappedArtifactGeometryOptions {
   readonly maximumGeometricUpperPm: bigint;
   readonly maxAssignmentBytes?: number;
@@ -114,6 +171,14 @@ export interface CompleteMappedArtifactGeometryOptions {
   >;
   readonly cancellationFlag?: Int32Array;
   readonly progressCounter?: Int32Array;
+  /**
+   * Worker-computed per-patch outcomes minted by the parallel patch-proof
+   * pool. When present, the prover REPLAYS them through the identical
+   * sequential budget arithmetic instead of re-running the per-patch proofs;
+   * every binding and aggregate check still runs. Omit for the sequential
+   * path (bit-identical legacy behaviour).
+   */
+  readonly parallelPatchProofs?: MintedParallelPatchProofs;
 }
 
 export type CompleteMappedArtifactGeometryErrorCode =
@@ -703,6 +768,7 @@ function snapshotOptions(
       'maxTotalEvaluatorWorkUnits',
       'maxTotalPartitionWorkUnits',
       'maxTotalWorkCells',
+      'parallelPatchProofs',
       'patchProof',
       'progressCounter',
     ],
@@ -768,6 +834,133 @@ function snapshotOptions(
     patchProof,
     cancellationFlag: top.cancellationFlag as Int32Array | undefined,
     progressCounter: top.progressCounter as Int32Array | undefined,
+    parallelPatchProofs: top.parallelPatchProofs as
+      | MintedParallelPatchProofs
+      | undefined,
+  });
+}
+
+/**
+ * Per-patch cMPD dispatch options exactly as the sequential prover's FIRST
+ * iteration would compute them (zero prior consumption). The parallel
+ * patch-proof pool hands these to its workers so worker proofs are
+ * input-identical to sequential ones whenever the aggregate pools never
+ * bind (they do not bind in certified runs); the replay in
+ * certifyCompleteMappedArtifactGeometry re-applies the shrinking-pool
+ * arithmetic canonically afterwards.
+ */
+export interface ParallelPatchProofDispatch {
+  readonly maximumGeometricUpperPm: bigint;
+  readonly maxDepth?: number;
+  readonly maxWorkCells: number;
+  readonly maxEvaluatorWorkUnits: number;
+  readonly partition: {
+    readonly maxTriangles: number;
+    readonly maxBuildWork: number;
+    readonly maxBvhNodes: number;
+    readonly maxTraversalVisits: number;
+    readonly maxBroadPhasePairChecks: number;
+    readonly maxPairChecks: number;
+  };
+}
+
+/** Resolve first-iteration per-patch dispatches (canonical job order). */
+export function resolveParallelPatchProofDispatches(
+  options: CompleteMappedArtifactGeometryOptions,
+  partitionTriangleCounts: readonly number[]
+): ParallelPatchProofDispatch[] {
+  const optionsSnapshot = snapshotOptions(options);
+  const maxTotalWorkCells =
+    optionsSnapshot.maxTotalWorkCells ?? DEFAULT_MAX_TOTAL_WORK_CELLS;
+  const maxTotalEvaluatorWorkUnits =
+    optionsSnapshot.maxTotalEvaluatorWorkUnits ??
+    DEFAULT_MAX_TOTAL_EVALUATOR_WORK_UNITS;
+  const maxTotalPartitionWorkUnits =
+    optionsSnapshot.maxTotalPartitionWorkUnits ??
+    DEFAULT_MAX_TOTAL_PARTITION_WORK_UNITS;
+  const requestedPatchWorkCells = boundedPositiveOption(
+    optionsSnapshot.patchProof?.maxWorkCells,
+    CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_WORK_CELLS,
+    CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS,
+    'patchProof.maxWorkCells'
+  );
+  const requestedPatchEvaluatorWorkUnits = boundedPositiveOption(
+    optionsSnapshot.patchProof?.maxEvaluatorWorkUnits,
+    CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_EVALUATOR_WORK_UNITS,
+    CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_EVALUATOR_WORK_UNITS,
+    'patchProof.maxEvaluatorWorkUnits'
+  );
+  const maxTrianglesPerPatch = boundedPositiveOption(
+    optionsSnapshot.patchProof?.partition?.maxTriangles,
+    DEFAULT_DYADIC_PARTITION_MAX_TRIANGLES,
+    HARD_DYADIC_PARTITION_MAX_TRIANGLES,
+    'patchProof.partition.maxTriangles'
+  );
+  const requestedPartitionBuildWork = boundedPositiveOption(
+    optionsSnapshot.patchProof?.partition?.maxBuildWork,
+    DEFAULT_DYADIC_PARTITION_MAX_BUILD_WORK,
+    HARD_DYADIC_PARTITION_MAX_BUILD_WORK,
+    'patchProof.partition.maxBuildWork'
+  );
+  const requestedPartitionBvhNodes = boundedPositiveOption(
+    optionsSnapshot.patchProof?.partition?.maxBvhNodes,
+    DEFAULT_DYADIC_PARTITION_MAX_BVH_NODES,
+    HARD_DYADIC_PARTITION_MAX_BVH_NODES,
+    'patchProof.partition.maxBvhNodes'
+  );
+  const requestedPartitionTraversalVisits = boundedPositiveOption(
+    optionsSnapshot.patchProof?.partition?.maxTraversalVisits,
+    DEFAULT_DYADIC_PARTITION_MAX_TRAVERSAL_VISITS,
+    HARD_DYADIC_PARTITION_MAX_TRAVERSAL_VISITS,
+    'patchProof.partition.maxTraversalVisits'
+  );
+  const requestedPartitionBroadPhasePairChecks = boundedPositiveOption(
+    optionsSnapshot.patchProof?.partition?.maxBroadPhasePairChecks,
+    DEFAULT_DYADIC_PARTITION_MAX_BROAD_PHASE_PAIR_CHECKS,
+    HARD_DYADIC_PARTITION_MAX_BROAD_PHASE_PAIR_CHECKS,
+    'patchProof.partition.maxBroadPhasePairChecks'
+  );
+  const requestedPartitionPairChecks = boundedPositiveOption(
+    optionsSnapshot.patchProof?.partition?.maxPairChecks,
+    DEFAULT_DYADIC_PARTITION_MAX_PAIR_CHECKS,
+    HARD_DYADIC_PARTITION_MAX_PAIR_CHECKS,
+    'patchProof.partition.maxPairChecks'
+  );
+  return partitionTriangleCounts.map((triangleCount) => {
+    if (!Number.isSafeInteger(triangleCount) || triangleCount <= 0) {
+      fail('INVALID_INPUT', 'partitionTriangleCounts must be positive safe integers');
+    }
+    const distributablePartitionWork = maxTotalPartitionWorkUnits - triangleCount;
+    if (distributablePartitionWork < 5) {
+      fail(
+        'RESOURCE_LIMIT',
+        `Complete mapped-artifact proof exhausted maxTotalPartitionWorkUnits=${maxTotalPartitionWorkUnits}`
+      );
+    }
+    const partitionCounterShare = Math.floor(distributablePartitionWork / 5);
+    return Object.freeze({
+      maximumGeometricUpperPm: optionsSnapshot.maximumGeometricUpperPm,
+      maxDepth: optionsSnapshot.patchProof?.maxDepth,
+      maxWorkCells: Math.min(requestedPatchWorkCells, maxTotalWorkCells),
+      maxEvaluatorWorkUnits: Math.min(
+        requestedPatchEvaluatorWorkUnits,
+        maxTotalEvaluatorWorkUnits
+      ),
+      partition: Object.freeze({
+        maxTriangles: Math.min(maxTrianglesPerPatch, triangleCount),
+        maxBuildWork: Math.min(requestedPartitionBuildWork, partitionCounterShare),
+        maxBvhNodes: Math.min(requestedPartitionBvhNodes, partitionCounterShare),
+        maxTraversalVisits: Math.min(
+          requestedPartitionTraversalVisits,
+          partitionCounterShare
+        ),
+        maxBroadPhasePairChecks: Math.min(
+          requestedPartitionBroadPhasePairChecks,
+          partitionCounterShare
+        ),
+        maxPairChecks: Math.min(requestedPartitionPairChecks, partitionCounterShare),
+      }),
+    });
   });
 }
 
@@ -1031,6 +1224,21 @@ export function certifyCompleteMappedArtifactGeometry(
     );
   }
 
+  const parallelOutcomes =
+    optionsSnapshot.parallelPatchProofs === undefined
+      ? undefined
+      : parallelPatchProofsForProof(optionsSnapshot.parallelPatchProofs);
+  if (parallelOutcomes !== undefined) {
+    for (const job of jobSnapshots) {
+      if (!parallelOutcomes.has(job.partition.patchId)) {
+        fail(
+          'INVALID_INPUT',
+          'parallelPatchProofs is missing an outcome for a target patch',
+          job.partition.patchId
+        );
+      }
+    }
+  }
   const patchProofs: ContinuousMappedPatchDistanceResult[] = [];
   let geometricUpperPm = 0n;
   let totalWorkCellCount = 0;
@@ -1071,50 +1279,120 @@ export function certifyCompleteMappedArtifactGeometry(
     // Five independently checked counters share the remaining aggregate budget.
     // This conservative split guarantees a child cannot overspend before returning.
     const partitionCounterShare = Math.floor(distributablePartitionWork / 5);
+    const sequentialMaxWorkCells = Math.min(requestedPatchWorkCells, remainingWorkCells);
+    const sequentialMaxEvaluatorWorkUnits = Math.min(
+      requestedPatchEvaluatorWorkUnits,
+      remainingEvaluatorWorkUnits
+    );
+    const replayOutcome = parallelOutcomes?.get(job.partition.patchId);
     let proof: ContinuousMappedPatchDistanceResult;
-    try {
-      proof = certifyContinuousMappedPatchDistance(session, job.partition, job.evaluator, {
-        ...optionsSnapshot.patchProof,
-        partition: {
-          ...optionsSnapshot.patchProof?.partition,
-          maxBuildWork: Math.min(requestedPartitionBuildWork, partitionCounterShare),
-          maxBvhNodes: Math.min(requestedPartitionBvhNodes, partitionCounterShare),
-          maxTraversalVisits: Math.min(
-            requestedPartitionTraversalVisits,
-            partitionCounterShare
-          ),
-          maxBroadPhasePairChecks: Math.min(
-            requestedPartitionBroadPhasePairChecks,
-            partitionCounterShare
-          ),
-          maxPairChecks: Math.min(requestedPartitionPairChecks, partitionCounterShare),
-          maxTriangles: Math.min(maxTrianglesPerPatch, job.partition.triangles.length),
+    if (replayOutcome !== undefined) {
+      // CANONICAL REPLAY of a worker-computed outcome: the identical budget
+      // arithmetic and fail() mapping as the in-process call below. Workers
+      // run at first-iteration caps; when the aggregate pools would have
+      // shrunk this patch's cap below its actual consumption, synthesize the
+      // exact refusal the shrunk in-process run would have produced (the
+      // refusal's triangle-index detail is absent in this synthesized path).
+      if (replayOutcome.refusal !== undefined) {
+        const refusal = replayOutcome.refusal;
+        if (refusal.code === 'CANCELLED') {
+          fail('CANCELLED', refusal.message, job.partition.patchId, refusal.artifactTriangleIndex);
+        }
+        if (refusal.code === 'RESOURCE_LIMIT') {
+          // A worker that hit its STATIC first-iteration cap would have hit
+          // the (never larger) shrunk sequential cap even earlier: rewrite
+          // the two per-patch cap messages to the sequential cap so the
+          // refusal text is order-arithmetic-identical. The in-flight
+          // triangle index is not reproducible in this path and is omitted.
+          if (/^Continuous proof exceeds maxWorkCells=\d+$/.test(refusal.message)) {
+            fail(
+              'RESOURCE_LIMIT',
+              `Continuous proof exceeds maxWorkCells=${sequentialMaxWorkCells}`,
+              job.partition.patchId
+            );
+          }
+          if (
+            /^Continuous proof exceeds maxEvaluatorWorkUnits=\d+$/.test(refusal.message)
+          ) {
+            fail(
+              'RESOURCE_LIMIT',
+              `Continuous proof exceeds maxEvaluatorWorkUnits=${sequentialMaxEvaluatorWorkUnits}`,
+              job.partition.patchId
+            );
+          }
+          fail(
+            'RESOURCE_LIMIT',
+            refusal.message,
+            job.partition.patchId,
+            refusal.artifactTriangleIndex
+          );
+        }
+        fail('PATCH_PROOF_REFUSED', refusal.message, job.partition.patchId);
+      }
+      if (replayOutcome.proof === undefined) {
+        fail(
+          'INVALID_INPUT',
+          'parallelPatchProofs outcome carries neither proof nor refusal',
+          job.partition.patchId
+        );
+      }
+      proof = replayOutcome.proof;
+      if (proof.workCellCount > sequentialMaxWorkCells) {
+        fail(
+          'RESOURCE_LIMIT',
+          `Continuous proof exceeds maxWorkCells=${sequentialMaxWorkCells}`,
+          job.partition.patchId
+        );
+      }
+      if (proof.evaluatorWorkUnitCount > sequentialMaxEvaluatorWorkUnits) {
+        fail(
+          'RESOURCE_LIMIT',
+          `Continuous proof exceeds maxEvaluatorWorkUnits=${sequentialMaxEvaluatorWorkUnits}`,
+          job.partition.patchId
+        );
+      }
+    } else {
+      try {
+        proof = certifyContinuousMappedPatchDistance(session, job.partition, job.evaluator, {
+          ...optionsSnapshot.patchProof,
+          partition: {
+            ...optionsSnapshot.patchProof?.partition,
+            maxBuildWork: Math.min(requestedPartitionBuildWork, partitionCounterShare),
+            maxBvhNodes: Math.min(requestedPartitionBvhNodes, partitionCounterShare),
+            maxTraversalVisits: Math.min(
+              requestedPartitionTraversalVisits,
+              partitionCounterShare
+            ),
+            maxBroadPhasePairChecks: Math.min(
+              requestedPartitionBroadPhasePairChecks,
+              partitionCounterShare
+            ),
+            maxPairChecks: Math.min(requestedPartitionPairChecks, partitionCounterShare),
+            maxTriangles: Math.min(maxTrianglesPerPatch, job.partition.triangles.length),
+            deadlineEpochMilliseconds,
+          },
+          maxEvaluatorWorkUnits: sequentialMaxEvaluatorWorkUnits,
+          maxWorkCells: sequentialMaxWorkCells,
+          maximumGeometricUpperPm: optionsSnapshot.maximumGeometricUpperPm,
+          cancellationFlag: optionsSnapshot.cancellationFlag,
           deadlineEpochMilliseconds,
-        },
-        maxEvaluatorWorkUnits: Math.min(
-          requestedPatchEvaluatorWorkUnits,
-          remainingEvaluatorWorkUnits
-        ),
-        maxWorkCells: Math.min(requestedPatchWorkCells, remainingWorkCells),
-        maximumGeometricUpperPm: optionsSnapshot.maximumGeometricUpperPm,
-        cancellationFlag: optionsSnapshot.cancellationFlag,
-        deadlineEpochMilliseconds,
-      });
-    } catch (error) {
-      if (error instanceof ContinuousMappedPatchDistanceError && error.code === 'CANCELLED') {
-        fail('CANCELLED', error.message, job.partition.patchId, error.artifactTriangleIndex);
+        });
+      } catch (error) {
+        if (error instanceof ContinuousMappedPatchDistanceError && error.code === 'CANCELLED') {
+          fail('CANCELLED', error.message, job.partition.patchId, error.artifactTriangleIndex);
+        }
+        if (
+          error instanceof ContinuousMappedPatchDistanceError &&
+          error.code === 'RESOURCE_LIMIT'
+        ) {
+          fail('RESOURCE_LIMIT', error.message, job.partition.patchId, error.artifactTriangleIndex);
+        }
+        fail(
+          'PATCH_PROOF_REFUSED',
+          error instanceof Error ? error.message : 'Patch proof refused',
+          job.partition.patchId
+        );
       }
-      if (
-        error instanceof ContinuousMappedPatchDistanceError &&
-        error.code === 'RESOURCE_LIMIT'
-      ) {
-        fail('RESOURCE_LIMIT', error.message, job.partition.patchId, error.artifactTriangleIndex);
-      }
-      fail(
-        'PATCH_PROOF_REFUSED',
-        error instanceof Error ? error.message : 'Patch proof refused',
-        job.partition.patchId
-      );
     }
     if (
       proof.targetSha256 !== targetSnapshot.targetSha256 ||

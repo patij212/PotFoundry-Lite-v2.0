@@ -7616,3 +7616,43 @@ Gothic's remaining distance = proof volume, not geometry: (1) per-patch workers 
 the 2M pool-shape decision (envelope constant, Patryk's call); (2) evaluator
 enclosure slack (inner ~2x outer — universal payoff); (3) scoped per-patch claims.
 Chain machinery is complete — do NOT add rows/stations for collars (measured dead).
+
+---
+
+## [2026-07-17c] Per-patch proof workers BUILT (TDD) — composed wall-clock = max(patch)
+
+### Summary
+parallelPatchProofPool.ts + _patchProofWorker.ts: six per-patch cMPD proofs on
+worker_threads (tierC/parallelScorer esbuild-binary bundle pattern), replayed
+through the UNCHANGED sequential prover via a WeakMap-minted parallelPatchProofs
+option (structural lookalikes refuse). Workers use first-iteration caps from the
+exported resolveParallelPatchProofDispatches (one source of truth); recompiled
+evaluators hash-cross-checked; SAB cancellation bridge. Shrunk-cap refusal
+messages synthesized exactly during replay.
+
+### Decisions
+- Replay-through-sequential over a parallel re-implementation: the sequential
+  loop IS the canonical budget/refusal arithmetic; zero drift risk.
+- Workers get static first-iteration caps (identical to sequential whenever
+  aggregate pools do not bind = every certified run).
+- No envelope/pool constant touched: Gothic's 2M/patch refusal is preserved
+  deliberately; pool shape stays Patryk's pending call.
+
+### Validation
+parallelPatchProof.test.ts 4/4 (identity: per-patch evidence hashes equal +
+deep content equality; refusal identity; aggregate-pool replay; forged-mint
+refusal); targetSolid 474/474; PF_G2_POT roster 37/37; measured Voronoi
+certified pot 107.8 s -> 55.0 s (1.96x) at the identical bound 9,499,879 pm.
+
+### Risks / open questions
+- Composed evidenceSha256 + per-stage maxElapsedMilliseconds are time-variant
+  BY PRE-EXISTING DESIGN (bind remaining envelope) — never run-stable; the
+  identity tests normalize them and pin the per-patch evidence instead.
+- Worker mode requires explicit maxElapsedMilliseconds (deadline inside workers).
+- Browser Web Worker port not attempted (Node/research track only).
+
+### Next agent
+Certified-pot composed runs can use PF_SLICE11_*_PAR-style harness calls for
+~2x wall-clock. Gothic needs the pool-shape decision (raise per-patch cells)
+or enclosure-slack work; with workers, walls run concurrently once either
+lands. Do not compare composed evidence hashes across runs — use per-patch.
