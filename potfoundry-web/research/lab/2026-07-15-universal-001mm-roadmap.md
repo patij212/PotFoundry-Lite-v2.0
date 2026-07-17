@@ -196,3 +196,123 @@ materialize (14–37 s per config vs Voronoi's ~150 s); the honest blocker was s
 cross-section under-resolution at roundness 0 (true 15.1 µm at the bottom edge, lesson
 #2 reconfirmed), closed by roundness 1 (edge 0.22) + walls 2⁶. Matrix Addendum 10 has
 the full campaign. Remaining fract-family: SFB/CT sign/step banding, RI float offsets.
+
+**Slice 7–8 addenda (2026-07-17): U3b CLOSED.** Slice 7 (`42b29716`) landed sign/step
+value-jump banding (compiler v13) + the honest rerouting: SFB's sign argument is
+transcendental (positivity route, not banding); CT needs re-authoring at minimum.
+Slice 8 (`b37df65c`) executed measurement-first and closed the family with ZERO new
+kernel code: **SuperformulaBlossom CERTIFIED** (positivity route — 9,499,801 pm /
+53,760 tris / 22 s, uniform 2⁸) and **RippleInterference CERTIFIED** (dyadic default
+offsets i/4 ⇒ antipode fract lines on k/4 — 9,499,975 pm / 86,528 tris / 49 s);
+**CelticTriquetra measured OUT to the U5 conforming class** (4 refusals, density- AND
+relief-invariant including sub-tolerance 0.005 mm — the 45°-rotated braid lattice is
+diagonal in (u,v); the slice-7 handoff's vBand re-authoring alone cannot unlock it and
+was deliberately not built). Certified set: **nine pots / eight styles**; PF_G2_POT
+18/18. No fract-family style remains unlockable by stations/bands — the frontiers are
+now exactly the sufficiency addendum's ranked list: (1) curved/diagonal
+feature-conforming cells spike on WI (templates Gothic + CT + Voronoi bisectors +
+heightPhase/shift corners AND the production-mesh path), (2) U4 curtain complexes,
+(3) envelope v3 / streamed scans (Voronoi bubble, Gyroid). Matrix Addendum 12 has the
+full slice-8 data.
+
+## Sufficiency addendum — does U0–U6 deliver "full feature-preserving representation of every possible shape"? (2026-07-17, analysis)
+
+Requested by Patryk after slice 6. Decomposition: the claim = four requirements, each
+with a different status. (R1) **Definition** — knowing what the features ARE per
+(style, params): the `featureManifest` contract already enforces declared-obligation
+semantics (`empty-proven`/`present-proven`, curtain counts, per-feature satisfied
+assignment records — `certificationContract.ts`), but 7 layered styles + Voronoi web
+(measured 0.138 mm F2-window jump) + diagonal param corners cannot yet declare
+satisfiable obligations. (R2) **Representation** — the mesh class: axis-aligned exact
+stations are DONE (both axes, GS); two classes remain unrepresentable: curved feature
+curves (Gothic p<1 cusps, WI √-crests, Voronoi bisectors, heightPhase/shift diagonals)
+and curtain/riser faces (U4). (R3) **Generation within budgets**: triangle demand scales
+~ relief·freq²·area/tolerance — envelope corners (HR default-params at OD140 ≈ 2M+ tris)
+are unbounded ⇒ refusal at corners is mathematically mandatory, not a defect. (R4)
+**Verification**: the strongest layer — two-sided closed-graph proof + adversarial suite;
+semantics: no real feature above tolerance can be LOST (forward bound) and no artifact
+feature above tolerance can be ADDED (reverse bound); sub-2×tolerance features can
+legally smooth away (manufacturability-consistent; state it in the product contract).
+
+**Mechanism taxonomy of the remaining 14 styles** (the true map — style counts
+understate the parameter axis): 3 mechanism-known (SFB/CT sign-step banding, RI
+offsets — S-size); 2 compute-bound with converged mechanisms (Voronoi bubble ~150 s vs
+120 s ceiling, per-patch ≤ 9.4999 µm proven; Gyroid ~1024 shared angular ⇒ envelope
+v3/streaming); 2 curved-feature-conforming (Gothic, WI) — **the structural frontier,
+and the same machinery certified-production meshes need (charter P1/P4)**; 7 curtain
+class (U4). Certified styles re-enter the harder classes at param corners (Crystalline
+heightPhase ≠ 0 → diagonal/curved class; GS shift ≠ 0 → hull; GS roundness → 0 →
+density wall, honest refusal measured at 15.1 µm true).
+
+**Correction to §5:** "twist outside analytic truth" is STALE — Addendum-7 (adversarial
+suite) established spin is inside `radialOuterWallProgram` truth (unspun-vs-spun
+refuses at ~0.7 mm); the remaining twist gap is certification coverage, not truth.
+
+**The decision that defines success (Patryk's call, record in G0/G4):** (a)
+certify-or-refuse over a formalized envelope — achievable; G3's goal becomes
+"refusal-free interior, refusals only at the documented resource boundary"; or (b)
+never-refuse over the full envelope — not achievable at 0.01 mm in browser budgets
+(R3). Recommend (a); treat interior refusals as bugs. Second standing decision
+unchanged: inner-wall semantics (blocks U4 'complete solid' claims).
+
+**Recommended order (information-value ranked):** 1) finish fract remainder (SFB/CT/RI)
+→ ~9 certified styles cheaply; 2) **curved-feature-conforming spike on WI** (pure
+cusp-curve vehicle, no curtains; success templates Gothic + bisector + diagonal classes
+AND the production-mesh path) — de-risk the biggest unknown before U4; 3) U4 with
+DragonScales first + the inner-wall decision; 4) Voronoi-bubble/Gyroid envelope v3
+opportunistically; 5) start per-style G3 param-envelope fleets EARLY (the roundness-0
+class of discovery must happen per style, not at release).
+
+## Directive addendum — outer-wall-first + agnosticism/perf analysis (2026-07-17, Patryk)
+
+**User directive (recorded):** "inner wall can save triangles and compute. for now the
+outer wall is the main focus." Provisional resolution of the standing inner-wall
+question: fidelity effort concentrates on the OUTER wall; the inner wall becomes a
+triangle/compute savings pool. Two implementation options, in recommended order:
+
+1. **Scoped claims (do now, zero semantic risk):** keep target semantics unchanged;
+   extend the certification contract with per-patch-class tolerance — outer-wall patches
+   at 10 µm, inner/rim/base at a relaxed bound (e.g. 100 µm) or topology-only, honestly
+   labelled in the certificate. Kills the universal hot spot (lesson #2: styled
+   inner-bottom edge) as a 10 µm obligation; WI's ~140 k-tri demand and the Gyroid
+   inner-edge frequency wall were inner-edge-driven.
+2. **Smooth-offset inner semantics (the full savings, a G0/G1 change):** redefine inner
+   = smooth offset. Halves styled area and removes inner curtains from U4 scope — but
+   the WGSL preview currently styles the inner from the outer radius, so this touches
+   preview parity (G1) and is product-visible. Decide only with preview updated in step.
+
+**Agnosticism claim, made precise:** the engine is agnostic at the CONTRACT level (one
+mesher+judge consuming the semantic style contract: point-affine emissions, declared
+jump/feature manifests, curvature bounds). Black-box/sampling agnosticism is provably
+out (finite samples never bound a supremum — the audit's core finding, and the
+mechanism of the months of pre-audit failures). Every U3b breakthrough came from the
+target DECLARING structure (affine re-emission, symbolic τ), not the mesher detecting it.
+New styles must emit the contract to be certifiable — that is the product rule to keep.
+
+**Sharp-feature completeness taxonomy (registry-wide, all four classes named):**
+smooth (solved) · straight jump/kink lines, axis-aligned or diagonal (solved in-kernel —
+slice-4 handles diagonal affine bands; diagonal TESSELLATION conforming still needed) ·
+curved feature curves — cusps with vertical tangent (machinery missing = the WI/Gothic
+spike; note √- and p<1-cusps need graded ladders TOWARD the curve + stations ON it;
+chord error ~ √h ⇒ uniform grids are hopeless but geometric grading is log-cost — the
+HR t^-0.9 base-ladder certificate is the working precedent) · curtains (U4). No fifth
+class has appeared in any measured campaign.
+
+**Browser perf programme (levers ranked by measured leverage):**
+1. Feature-conforming candidates — conformity IS the perf lever: hull-cascade volume
+   along unconformed kinks costs 10–15× cells (Voronoi bubble); conformed GS ran ~85 %
+   fast-screen acceptance at depth ≤ 2. Fidelity and speed are the same build.
+2. Outer-wall scoping (this directive) — removes the hot-spot class from the 10 µm
+   budget; ≈ halves styled proof/mesh area once inner relaxes.
+3. Per-patch worker parallelism — proofs are per-patch independent; Voronoi's 150 s SUM
+   with six converged patches → ~max-patch wall time on a worker pool.
+4. Patch-local residual queues (audit perf item) — refine-until-certified loops re-prove
+   only failed cells' mapped correspondence, not the artifact.
+5. WASM SIMD for the screen tape + WebGPU as PRIORITIZATION only (find worst cells,
+   route CPU proof work; GPU never enters the trust chain — raycast oracle precedent).
+6. Anisotropic M = g/h² sizing (certified-but-unwired asset) — fewer, better triangles
+   before any proof runs.
+7. Envelope v3 streaming (STL sink + streamed structural/self-intersection scans) —
+   removes memory ceilings; unlocks Gyroid/Voronoi-bubble class certificates.
+SLA shape to aim at (G4): gentle/defaults ≤ 30 s certified; heavy ≤ 2 min with progress
++ cancel; envelope corners refuse FAST (fail-closed detection is cheap).

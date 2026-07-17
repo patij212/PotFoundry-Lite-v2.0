@@ -405,3 +405,49 @@ a U4 curtain obligation, never a banding target.
   The v13 machinery is the necessary substrate; CT re-authoring is the next increment.
 
 Certified set unchanged this slice: seven pots across six styles.
+
+## Addendum 12 — U3b slice 8: SFB + RI certified with ZERO new machinery; CT measured into the conforming class (2026-07-17)
+
+Measurement-first execution of the slice-7 handoff (probe before building — the
+roadmap review's classifier discipline). All runs H40/OD30 small pot, foreground.
+
+- **SuperformulaBlossom gentle CERTIFIED-PARTIAL — 9,499,801 pm / 53,760 tris /
+  ~22 s** (uniform 2⁸, walls 2⁵ — no ladder). Recipe: sf_strength 0.15, m 6→6
+  (constant integer ⇒ every |trig| zero line is vertical), n1 1→1 (outer power
+  exponent exactly 1), n2 2→2 / n3 4→4 (even powers ⇒ the abs-power terms are
+  analytically smooth). The transcendental sign-gate argument
+  max(0, cos²+sin⁴ − 1e-6) stays ≥ 3/4 − ε, so it resolves by plain interval
+  positivity — the slice-7 routing CONFIRMED on the bench; banding was never
+  consulted. Eighth pot / seventh style. The reachable level set
+  denominator = ε at sharp params (n1 → 0.1, n2/n3 large) remains the
+  output-discontinuity corner (curtain class).
+- **RippleInterference gentle CERTIFIED-PARTIAL — 9,499,975 pm / 86,528 tris /
+  ~49 s** (count 4, rotation 0, freq 6, relief 0.15; walls 2⁶ for the ~6.5 µm
+  wave sag). **Addendum-8's "float jump offsets" DISSOLVES at power-of-two source
+  counts with rotation 0**: i/4 is exact in float, so the antipode fract lines
+  land on k/4 — already uniform-dyadic stations — and the argument
+  u − sourceU + 0.5 is point-affine (no τ roundtrip). Ninth pot / EIGHTH style.
+  The float-offset wall is real only for counts ∉ {2,4,8} or rotation ≠ 0 —
+  an envelope boundary like GS shift ≠ 0 (BigInt ladder numerators when a
+  certificate there is actually wanted).
+- **CelticTriquetra classified OUT (4 measured refusals):** deadline burns,
+  density-invariant (2⁸ w5 / 2⁹ w6) AND relief-invariant (0.3 mm and
+  **sub-tolerance 0.005 mm**). The sub-tolerance refusal is the decisive one: the
+  wall is subdivision VOLUME, not hull amplitude. Mechanism: the braid runs on a
+  45°-ROTATED lattice (rotatedX = u·columns + vBand·rows), so its fract jump
+  lines are DIAGONAL in (u,v); straddle cells never resolve on any axis-aligned
+  partition and the b&b grinds to depth cap through 32 ms decimal consults
+  (the Voronoi-kink signature). The slice-7 handoff's vBand re-authoring was
+  intentionally NOT built — it affine-izes only the edge-cap step gates and
+  cannot unlock the braid. CT joins Gothic / WaveInterference /
+  Crystalline-heightPhase≠0 / GS-shift≠0 in the curved/diagonal
+  feature-conforming class (U5); the medallion atan2 sector fold is the same
+  class.
+
+**Fract-family closeout.** Crystalline ✓, GeometricStar ✓, SuperformulaBlossom ✓,
+RippleInterference ✓ certified; Voronoi bubble compute-bound (per-patch
+converged, Addendum 9); CelticTriquetra conforming-class. **U3b is CLOSED — no
+remaining style is unlockable by stations/bands alone.** The three remaining
+walls are exactly the roadmap's next frontiers: curved/diagonal conforming cells
+(U5 spike, WI as vehicle), U4 curtain complexes, envelope v3/streamed scans.
+Certified set: **NINE pots across EIGHT styles.**

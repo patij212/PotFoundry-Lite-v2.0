@@ -7247,3 +7247,65 @@ session mid-slice — left untouched and uncommitted here (concurrency rule).
 3. **RippleInterference float-offset stations** (slice-5 item, still open): BigInt
    ladder numerators or authoring-side offset normalization.
 4. U4 curtain/riser complexes remain the widest unlock.
+
+## 2026-07-17 — Claude Fable 5 — U3b slice 8: SFB + RI certified (zero new machinery); CT measured into the conforming class; U3b CLOSED
+
+**Mandate:** Patryk: "carry out the next set of the roadmap with your improvements" —
+the slice-7 handoff items, reordered measurement-first (probe before building, the
+roadmap review's classifier discipline). Session start found slice 7 already landed
+(42b29716) with the SFB/CT rerouting, so the executable set was: SFB positivity
+probe, CT probe-then-decide, RI offsets.
+
+**Measured (env-gated session probe `_probe_slice8.test.ts`, deleted before commit):**
+- SFB gentle (strength 0.15, m 6→6, n1 1→1, n2 2→2, n3 4→4): CONVERGED on the FIRST
+  run — 9,499,801 pm / 53,760 tris / 22.3 s, plain uniform 2^8 (no ladder). The
+  transcendental sign-gate argument max(0, cos²+sin⁴ − 1e-6) stays ≥ 3/4 − ε ⇒
+  resolves by interval positivity exactly as slice 7 rerouted. Constant integer m
+  keeps |trig| zero lines vertical; even powers make the abs-power terms smooth.
+- RI gentle (count 4, rotation 0, freq 6, relief 0.15): CONVERGED — 9,499,975 pm /
+  86,528 tris / 48.9 s. Addendum-8's "float jump offsets" DISSOLVES at power-of-two
+  source counts with rotation 0: i/4 is exact in float ⇒ antipode fract lines on k/4
+  dyadic stations, argument u − sourceU + 0.5 point-affine (no τ roundtrip). The
+  float-offset wall is real only for counts ∉ {2,4,8} or rotation ≠ 0 (GS-shift-class
+  envelope boundary; BigInt ladder numerators only when that corner is wanted).
+- CT: FOUR refusals — deadline burns at 2^8 w5 AND 2^9 w6, at relief 0.3 AND
+  sub-tolerance 0.005 mm. Relief-invariance is the decisive signature: the wall is
+  subdivision VOLUME, not hull amplitude. Mechanism: the braid lattice is 45°-rotated
+  (rotatedX = u·columns + vBand·rows) ⇒ fract jump lines DIAGONAL in (u,v) ⇒ straddle
+  cells unresolvable on any axis-aligned partition ⇒ depth-cap grind into 32 ms
+  decimal consults (Voronoi-kink signature). Handoff item 1 (vBand re-authoring) was
+  deliberately NOT built: it affine-izes only the edge-cap step gates and cannot
+  unlock the braid; medallion atan2 fold is the same class. CT joins the U5
+  conforming class.
+
+**Landed (b37df65c):** both certificates in CERTIFIED_POTS
+(annularSolidReferenceTessellation.test.ts) and the STL emitter roster
+(research/bridge/_certifiedPotStl.test.ts, count 7→9) with mechanism comments; CT
+absence documented in both rosters. Docs: matrix Addendum 12, roadmap slice-7/8
+addendum (U3b CLOSED), sufficiency + outer-wall-directive addenda from earlier today.
+
+**Verification:** PF_G2_POT gate FOREGROUND 18/18 green (~6.3 min: 9 pot proofs +
+fail-closed + always-on). Full targetSolid dir 61 files / 461 tests green. tsc
+EXACTLY at the 356 pre-existing baseline. eslint --max-warnings=0 clean on touched
+files. detect_changes: LOW, 6 doc/test sections, ZERO affected processes. Probe
+deleted pre-commit. NOTE: CLAUDE.md/agents.md working-tree modifications from other
+sessions left untouched and uncommitted (concurrency rule).
+
+**Fract-family closeout:** Crystalline / GeometricStar / SuperformulaBlossom /
+RippleInterference certified; Voronoi bubble compute-bound (per-patch converged);
+CelticTriquetra conforming-class. Certified set: NINE pots across EIGHT styles.
+U3b has no further style unlocks — stations/bands are exhausted as a frontier.
+
+### Next agent
+1. The three frontiers, in the roadmap's information-value order: (a) the
+   curved/diagonal feature-conforming cells SPIKE, WI as vehicle (templates Gothic +
+   CT + Voronoi bisectors + Crystalline heightPhase ≠ 0 + GS shift ≠ 0, and it is
+   the same machinery the production mesher track needs — charter P1/P4); (b) U4
+   curtain/riser complexes (7 layered styles + Voronoi web + SFB sharp-param level
+   set); (c) envelope v3 / streamed scans (Voronoi bubble ~150 s per-patch-converged,
+   Gyroid ~1024 shared angular).
+2. The outer-wall directive (2026-07-17, roadmap directive addendum) stands: scoped
+   per-patch-class tolerance claims (option 1) are the recommended first move and
+   would relax the inner-wall/bottom hot spot for every future campaign.
+3. Do NOT re-attempt CT/SFB-sharp/RI-rotated via stations or banding — measured out;
+   they route to U5/U4/BigInt-ladders respectively.
