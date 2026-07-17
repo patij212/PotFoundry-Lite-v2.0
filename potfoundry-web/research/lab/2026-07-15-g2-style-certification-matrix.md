@@ -638,4 +638,8 @@ the surgical fix is TWO-sided: clip rib-offset strip curves to the live band
 (tMin = spring − bandSupport, not spring − offset) so no slanted slivers cross
 the flat zone, and spend the saved cells on 1/64 rows ONLY in t ∈ [0.05, 0.2].
 All knobs and the measured configurations live in
-`research/bridge/_gothicVoronoiConformingSpike.test.ts`.
+`research/bridge/_gothicVoronoiConformingSpike.test.ts`. One more measured
+data point (hour 4, reverted): a NAIVE clip of all strips to
+tMin = spring − 0.04 fits the cell pool (89 s to a verdict) but reads
+9,546,743 pm — the clip termination rows need their own snapped stations and
+corner-anchored chain ends, exactly like the gate curve's terminations.
