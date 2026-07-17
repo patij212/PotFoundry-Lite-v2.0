@@ -7486,3 +7486,40 @@ this session's final report). detect_changes run pre-commit.
    M = g/h² kernel) — do NOT chase with uniform density or envelope raises.
 3. CT crossing-family splitter extension after Gothic; U4 curtains unchanged.
 4. Respect the new playbook rules (TRUE-sag maps first; contour values never).
+
+## 2026-07-17 — Claude Fable 5 — slice 11 appendix (window hours 2-3): Gothic chain hardening + cMPD v16 anisotropic bisection
+
+**Continuation of the 6-hour window after the interim report.**
+
+**Gothic chain hardening (DONE):** offset guide curves are now chained GLOBALLY
+per period — per-half-arch chaining left the two chains around each base
+minimum ending at unconnected mid-edge points (the hanging-vertex topology
+refusals). Global chains + explicit seam-corner anchors + boundary-column
+pivots: topology and partition audits accept the full 61-68k-chord meshes.
+
+**Next binder found and closed:** the MULLION ridge at every apex column
+((1−xAbs/0.0975)^4, half-width ~0.0026 u, kappa_u ≈ 107,000 mm/u²) — the
+apex-column sibling of the base spike; closed by extending geometric station
+neighborhoods from k/12 to every k/24.
+
+**The volume wall + cMPD v16:** at 473 angular stations the proof exhausts 1M
+AND 2M work cells. The sliver component got a principled kernel fix —
+**cMPD v15 → v16: longest-edge bisection for cells with aspect > 8** (children
+[A,M,C] ∪ [M,B,C] tile the parent exactly; exact doubled-weight midpoints;
+same depth accounting; proof-method string updated). cMPD + band-screen +
+adversarial suites green; full 12-pot gate revalidated under v16 evidence
+hashes (result in the final report). The DEFAULT work-cell pool stays 1M (a
+2M bump was tried twice, bought nothing for Gothic, and was reverted —
+unmeasured defaults don't ship). Gothic's grind has a SECOND component,
+unmeasured: suspect slow-converging screen enclosures along the C³ quartic
+support curves crossed by ultra-thin station columns.
+
+### Next agent
+1. **Gothic volume-driver histogram** (timing-probe pattern, one wall): count
+   cells by depth × deciding channel × op refusals to name the second grind
+   component; then certify. Config + all knobs in
+   research/bridge/_gothicVoronoiConformingSpike.test.ts (RIB_OFFSETS 8/side,
+   k/24 station neighborhoods, global chains).
+2. cMPD v16 is live — conforming-sliver campaigns (CT next) benefit
+   automatically; note prior art: production AdaptiveRefinement's
+   anisotropicSplitPriority is the same concept on the mesher side.

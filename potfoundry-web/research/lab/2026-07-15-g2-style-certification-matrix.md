@@ -602,3 +602,25 @@ per-patch isolation + TRUE-sag maps do.
   proven, one hardening session from certification.**
 
 Certified set: **TWELVE pots across TEN styles.**
+
+**Addendum 15 (cont.) — second half of the window: chain hardening DONE, the
+mullion spike, and the volume wall.** The offset-strip chain defect is FIXED:
+curves are now chained GLOBALLY per period (per-half-arch chaining left the two
+chains around each base minimum ending at unconnected mid-edge points), with
+explicit seam-corner anchors and boundary-column pivots — topology and the
+partition audit accept the full 61–68k-chord meshes. The next binder appeared
+exactly where the playbook predicted a sibling of the base spike: the
+**mullion ridge at every apex column** ((1−xAbs/0.0975)⁴, half-width ~0.0026 u,
+κ_u ≈ 107,000 mm/u²) — closed by extending the geometric station neighborhoods
+from k/12 to every k/24. That configuration then hit a WORK-CELL VOLUME WALL:
+1M and 2M cells both exhaust at 473 angular stations. A principled kernel
+improvement was landed for the sliver component — **cMPD v16: longest-edge
+bisection for cells with aspect > 8** (two children tile the parent exactly;
+exact doubled-weight midpoints; suites + adversarial containment green; full
+12-pot gate revalidated under the new evidence hashes) — but the Gothic grind
+has a second, still-unmeasured component (suspect: slow-converging screen
+enclosures along the C³ quartic support curves crossed by ultra-thin
+station columns). NEXT SESSION: per-cell depth/op histogram on one wall
+(timing-probe pattern) to name the volume driver, then certify. All knobs and
+the measured configuration live in
+`research/bridge/_gothicVoronoiConformingSpike.test.ts`.
