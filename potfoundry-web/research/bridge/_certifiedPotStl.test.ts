@@ -181,6 +181,18 @@ const CERTIFIED_POTS: ReadonlyArray<{
     },
   },
   {
+    name: 'WaveInterference_H32_OD30_smoothDense',
+    styleId: 'WaveInterference',
+    styleParams: { wi_relief_depth: 0.25, wi_edge_fade: 0 },
+    geometry: Object.freeze({ ...DEFAULT_GEOMETRY, H: 32, top_od: 30, bottom_od: 30, r_drain: 6 }),
+    divisions: {
+      angularDivisionsLog2: 10,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 6, 'inner-wall': 6, 'top-rim': 3, 'bottom-top': 5, 'bottom-under': 5, 'drain-wall': 0,
+      },
+    },
+  },
+  {
     name: 'SuperformulaBlossom_small_OD30_positivity',
     styleId: 'SuperformulaBlossom',
     styleParams: {
@@ -228,6 +240,6 @@ describe('certified pot STL emission', () => {
       console.log(line);
       expect(tris).toBeGreaterThan(0);
     }
-    expect(CERTIFIED_POTS.length).toBe(10); // PF_G2_POT roster size — bump if the gate grows
+    expect(CERTIFIED_POTS.length).toBe(11); // PF_G2_POT roster size — bump if the gate grows
   }, 10 * 60 * 1000);
 });

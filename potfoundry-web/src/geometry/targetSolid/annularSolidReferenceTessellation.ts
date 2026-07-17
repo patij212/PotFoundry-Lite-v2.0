@@ -65,6 +65,29 @@ export interface ConformingFeatureLine {
   readonly cNumerator: number;
 }
 
+export interface ConformingChordPoint {
+  readonly uNumerator: string;
+  readonly vNumerator: string;
+}
+
+/**
+ * One exact chord of a curved guide polyline (U5 curved extension). Both
+ * endpoints are exact rationals over `denominator` and must lie ON grid
+ * lines of the patch (an angular station column or a vertical station row) —
+ * chords therefore need no intersection divisions at all: splitting a cell
+ * by a chord is a pure boundary walk between two on-boundary points.
+ * Conformity across cells comes from the CHAIN: an interior chain vertex is
+ * shared verbatim by the two adjacent cells' chords, and the exact partition
+ * kernel refuses any inconsistent chain as a T-junction. Endpoints on the
+ * v=0/v=1 boundary rows must sit exactly on angular stations (junction
+ * safety); endpoints strictly inside the periodic seam columns are refused.
+ */
+export interface ConformingChord {
+  readonly denominator: string;
+  readonly start: ConformingChordPoint;
+  readonly end: ConformingChordPoint;
+}
+
 export interface AnnularSolidReferenceTessellationOptions {
   /** log2 of the shared angular division count (all patches use 2^a cells in u). */
   readonly angularDivisionsLog2: number;
@@ -86,6 +109,10 @@ export interface AnnularSolidReferenceTessellationOptions {
   /** Optional per-patch parallel conforming feature lines (see ConformingFeatureLine). */
   readonly conformingLinesByPatch?: Readonly<
     Partial<Record<AnnularRadialSolidPatchId, readonly ConformingFeatureLine[]>>
+  >;
+  /** Optional per-patch curved guide-polyline chords (see ConformingChord). */
+  readonly conformingChordsByPatch?: Readonly<
+    Partial<Record<AnnularRadialSolidPatchId, readonly ConformingChord[]>>
   >;
 }
 
@@ -330,25 +357,147 @@ function splitConvexByLine(
   return [positiveSide, negativeSide].filter((side) => side.length >= 3);
 }
 
+function orientationBig(a: ExactUvPoint, b: ExactUvPoint, c: ExactUvPoint): bigint {
+  return (b.U - a.U) * (c.V - a.V) - (b.V - a.V) * (c.U - a.U);
+}
+
+function pointsEqualUv(left: ExactUvPoint, right: ExactUvPoint): boolean {
+  return left.U === right.U && left.V === right.V;
+}
+
+function onClosedSegmentUv(
+  point: ExactUvPoint,
+  from: ExactUvPoint,
+  to: ExactUvPoint
+): boolean {
+  if (orientationBig(from, to, point) !== 0n) return false;
+  const minU = from.U < to.U ? from.U : to.U;
+  const maxU = from.U > to.U ? from.U : to.U;
+  const minV = from.V < to.V ? from.V : to.V;
+  const maxV = from.V > to.V ? from.V : to.V;
+  return point.U >= minU && point.U <= maxU && point.V >= minV && point.V <= maxV;
+}
+
 function conformingPieceTriangles(
   pieces: readonly (readonly ExactUvPoint[])[]
 ): readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] {
   const triangles: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
   for (const piece of pieces) {
-    const origin = piece[0];
-    for (let index = 1; index + 1 < piece.length; index += 1) {
-      const middle = piece[index];
-      const last = piece[index + 1];
-      const doubledArea =
-        (middle.U - origin.U) * (last.V - origin.V) -
-        (middle.V - origin.V) * (last.U - origin.U);
-      if (doubledArea <= 0n) {
-        invalid('conforming split produced a degenerate or misoriented piece triangle');
+    // Fan from the first origin for which every fan triangle has strictly
+    // positive area: collinear boundary runs (several chord endpoints on one
+    // cell edge) make some origins degenerate, but a convex piece always has
+    // a valid one unless it is genuinely degenerate — refuse fail-closed.
+    let fanned: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] | null = null;
+    for (let originIndex = 0; originIndex < piece.length && fanned === null; originIndex += 1) {
+      const origin = piece[originIndex];
+      const candidate: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
+      let valid = true;
+      for (let step = 1; step + 1 < piece.length && valid; step += 1) {
+        const middle = piece[(originIndex + step) % piece.length];
+        const last = piece[(originIndex + step + 1) % piece.length];
+        if (orientationBig(origin, middle, last) <= 0n) {
+          valid = false;
+          break;
+        }
+        candidate.push([origin, middle, last]);
       }
-      triangles.push([origin, middle, last]);
+      if (valid) fanned = candidate;
     }
+    if (fanned === null) {
+      invalid('conforming split produced a degenerate or misoriented piece');
+    }
+    triangles.push(...fanned);
   }
   return triangles;
+}
+
+/**
+ * Split one convex CCW polygon by the chord from `start` to `end`, both of
+ * which must lie on the polygon's closed boundary. Pure boundary walk — no
+ * divisions. Returns null when either endpoint is not on this polygon's
+ * boundary (the caller tries other pieces) and refuses degenerate splits.
+ */
+function splitPolygonByChord(
+  polygon: readonly ExactUvPoint[],
+  start: ExactUvPoint,
+  end: ExactUvPoint
+): readonly [readonly ExactUvPoint[], readonly ExactUvPoint[]] | null {
+  interface BoundaryPosition {
+    readonly edgeIndex: number;
+    readonly isVertex: boolean;
+  }
+  const locate = (point: ExactUvPoint): BoundaryPosition | null => {
+    for (let index = 0; index < polygon.length; index += 1) {
+      if (pointsEqualUv(polygon[index], point)) {
+        return { edgeIndex: index, isVertex: true };
+      }
+    }
+    for (let index = 0; index < polygon.length; index += 1) {
+      const from = polygon[index];
+      const to = polygon[(index + 1) % polygon.length];
+      if (onClosedSegmentUv(point, from, to)) {
+        return { edgeIndex: index, isVertex: false };
+      }
+    }
+    return null;
+  };
+  const startPosition = locate(start);
+  const endPosition = locate(end);
+  if (startPosition === null || endPosition === null) return null;
+  // Walk the boundary forward from a position: the first vertex strictly
+  // after the position along the CCW cycle.
+  const nextVertexIndex = (position: BoundaryPosition): number =>
+    position.isVertex
+      ? (position.edgeIndex + 1) % polygon.length
+      : (position.edgeIndex + 1) % polygon.length;
+  const collectWalk = (
+    fromPoint: ExactUvPoint,
+    fromPosition: BoundaryPosition,
+    toPoint: ExactUvPoint,
+    toPosition: BoundaryPosition
+  ): ExactUvPoint[] => {
+    const walk: ExactUvPoint[] = [fromPoint];
+    let cursor = nextVertexIndex(fromPosition);
+    for (let steps = 0; steps <= polygon.length; steps += 1) {
+      // Stop when the target lies on the edge we are about to leave from:
+      // for a vertex target, stop when the cursor reaches it; for an
+      // edge-interior target, stop once the cursor has passed its edge.
+      if (toPosition.isVertex && cursor === toPosition.edgeIndex) break;
+      if (
+        !toPosition.isVertex &&
+        cursor === (toPosition.edgeIndex + 1) % polygon.length
+      ) {
+        break;
+      }
+      walk.push(polygon[cursor]);
+      cursor = (cursor + 1) % polygon.length;
+    }
+    if (!pointsEqualUv(walk[walk.length - 1], toPoint)) walk.push(toPoint);
+    return walk;
+  };
+  const sideA = collectWalk(start, startPosition, end, endPosition);
+  const sideB = collectWalk(end, endPosition, start, startPosition);
+  const dedupe = (points: readonly ExactUvPoint[]): ExactUvPoint[] => {
+    const result: ExactUvPoint[] = [];
+    for (const point of points) {
+      if (result.length === 0 || !pointsEqualUv(result[result.length - 1], point)) {
+        result.push(point);
+      }
+    }
+    while (
+      result.length > 1 &&
+      pointsEqualUv(result[0], result[result.length - 1])
+    ) {
+      result.pop();
+    }
+    return result;
+  };
+  const pieceA = dedupe(sideA);
+  const pieceB = dedupe(sideB);
+  if (pieceA.length < 3 || pieceB.length < 3) {
+    invalid('conforming chord splits a cell into a degenerate piece');
+  }
+  return [pieceA, pieceB];
 }
 
 /**
@@ -385,17 +534,61 @@ function leastCommonMultipleSafe(
   return result;
 }
 
+interface ChordEndpointInterval {
+  readonly index: number;
+  readonly isStation: boolean;
+}
+
+function locateIntervalIndex(
+  sorted: readonly bigint[],
+  value: bigint
+): ChordEndpointInterval | null {
+  if (value < sorted[0] || value > sorted[sorted.length - 1]) return null;
+  let low = 0;
+  let high = sorted.length - 1;
+  while (low < high) {
+    const middle = (low + high + 1) >> 1;
+    if (sorted[middle] <= value) low = middle;
+    else high = middle - 1;
+  }
+  return { index: low, isStation: sorted[low] === value };
+}
+
 function buildPatchPartitionFrame(
   patchId: AnnularRadialSolidPatchId,
   angular: ResolvedStations,
   vertical: ResolvedStations,
-  lines: readonly NormalizedConformingLine[]
+  lines: readonly NormalizedConformingLine[],
+  chords: readonly ConformingChord[]
 ): PatchPartitionFrame {
   const angularOdd = angular.oddDenominatorFactor;
   const verticalOdd = vertical.oddDenominatorFactor;
   let fractionBits = Math.max(angular.log2Denominator, vertical.log2Denominator);
   let oddFactor =
     (angularOdd / greatestCommonDivisor(angularOdd, verticalOdd)) * verticalOdd;
+  if (chords.length > 4_096 * 64) {
+    invalid(`conformingChordsByPatch['${patchId}'] carries too many chords`);
+  }
+  for (const chord of chords) {
+    // Fold every chord denominator (odd part and dyadic part) into the frame
+    // so all chord coordinates become exact integer numerators.
+    const denominator = Number(chord.denominator);
+    if (
+      !Number.isSafeInteger(denominator) ||
+      denominator < 1 ||
+      denominator > MAX_LADDER_ODD_FACTOR
+    ) {
+      invalid(`conformingChordsByPatch['${patchId}'] denominator is out of range`);
+    }
+    let oddPart = denominator;
+    let dyadicBits = 0;
+    while (oddPart % 2 === 0) {
+      oddPart /= 2;
+      dyadicBits += 1;
+    }
+    oddFactor = leastCommonMultipleSafe(oddFactor, oddPart, patchId);
+    fractionBits = Math.max(fractionBits, dyadicBits);
+  }
   if (lines.length > 0) {
     // Crossing a horizontal grid edge divides by a, a vertical edge by b, and
     // every existing coordinate is a multiple of this extra factor after the
@@ -451,7 +644,7 @@ function buildPatchPartitionFrame(
     number,
     readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[]
   >();
-  if (lines.length === 0) {
+  if (lines.length === 0 && chords.length === 0) {
     return Object.freeze({
       fractionBits,
       oddFactor,
@@ -463,76 +656,200 @@ function buildPatchPartitionFrame(
     });
   }
   const declared = BigInt(declaredDenominator);
-  const scaledLines = lines.map((line) => ({
-    a: BigInt(line.aNumerator),
-    b: BigInt(line.bNumerator),
-    cScaled: BigInt(line.cNumerator) * declared,
-  }));
+  const scaledAngularBig = scaledAngularNumerators.map((numerator) => BigInt(numerator));
+  const scaledVerticalBig = scaledVerticalNumerators.map((numerator) => BigInt(numerator));
   const stationSet = new Set<string>(
     scaledAngularNumerators.map((numerator) => numerator.toString())
   );
-  for (const line of scaledLines) {
-    // Boundary rows: a crossing strictly inside v=0 or v=1 must land EXACTLY
-    // on a shared angular station, or the junction weld with the neighbouring
-    // patch would carry a T-junction. (a > 0 after normalization.)
-    for (const rowV of [0n, declared]) {
-      const numerator = line.cScaled - line.b * rowV;
-      if (numerator > 0n && numerator < line.a * declared) {
-        if (
-          numerator % line.a !== 0n ||
-          !stationSet.has((numerator / line.a).toString())
-        ) {
-          invalid(
-            `patch '${patchId}' conforming line crosses a patch boundary row off-station`
-          );
+  const cellCorners = (uCell: number, vCell: number): readonly ExactUvPoint[] => [
+    { U: scaledAngularBig[uCell], V: scaledVerticalBig[vCell] },
+    { U: scaledAngularBig[uCell + 1], V: scaledVerticalBig[vCell] },
+    { U: scaledAngularBig[uCell + 1], V: scaledVerticalBig[vCell + 1] },
+    { U: scaledAngularBig[uCell], V: scaledVerticalBig[vCell + 1] },
+  ];
+  // Phase 1 (straight parallel lines): split crossed cells, store POLYGONS.
+  const polygonsByCell = new Map<number, readonly (readonly ExactUvPoint[])[]>();
+  if (lines.length > 0) {
+    const scaledLines = lines.map((line) => ({
+      a: BigInt(line.aNumerator),
+      b: BigInt(line.bNumerator),
+      cScaled: BigInt(line.cNumerator) * declared,
+    }));
+    for (const line of scaledLines) {
+      // Boundary rows: a crossing strictly inside v=0 or v=1 must land
+      // EXACTLY on a shared angular station, or the junction weld with the
+      // neighbouring patch would carry a T-junction. (a > 0 normalized.)
+      for (const rowV of [0n, declared]) {
+        const numerator = line.cScaled - line.b * rowV;
+        if (numerator > 0n && numerator < line.a * declared) {
+          if (
+            numerator % line.a !== 0n ||
+            !stationSet.has((numerator / line.a).toString())
+          ) {
+            invalid(
+              `patch '${patchId}' conforming line crosses a patch boundary row off-station`
+            );
+          }
+        }
+      }
+      // Periodic seam: interior crossings are refused this slice (the
+      // wrapped continuation would need matched seam subdivisions).
+      for (const columnU of [0n, declared]) {
+        const numerator = line.cScaled - line.a * columnU;
+        const inside =
+          line.b > 0n
+            ? numerator > 0n && numerator < line.b * declared
+            : numerator < 0n && numerator > line.b * declared;
+        if (inside) {
+          invalid(`patch '${patchId}' conforming line crosses the periodic seam interior`);
         }
       }
     }
-    // Periodic seam: interior crossings are refused this slice (the wrapped
-    // continuation would need matched seam subdivisions on both columns).
-    for (const columnU of [0n, declared]) {
-      const numerator = line.cScaled - line.a * columnU;
-      const inside =
-        line.b > 0n
-          ? numerator > 0n && numerator < line.b * declared
-          : numerator < 0n && numerator > line.b * declared;
-      if (inside) {
-        invalid(`patch '${patchId}' conforming line crosses the periodic seam interior`);
+    for (let vCell = 0; vCell < verticalDivisions; vCell += 1) {
+      for (let uCell = 0; uCell < angularDivisions; uCell += 1) {
+        let currentPieces: readonly (readonly ExactUvPoint[])[] = [
+          cellCorners(uCell, vCell),
+        ];
+        let anySplit = false;
+        for (const line of scaledLines) {
+          const nextPieces: (readonly ExactUvPoint[])[] = [];
+          for (const piece of currentPieces) {
+            const split = splitConvexByLine(piece, line.a, line.b, line.cScaled);
+            if (split.length > 1) anySplit = true;
+            for (const part of split) nextPieces.push(part);
+          }
+          currentPieces = nextPieces;
+        }
+        if (anySplit) {
+          polygonsByCell.set(vCell * angularDivisions + uCell, currentPieces);
+        }
       }
     }
   }
-  let patchTriangleCount = 0;
-  for (let vCell = 0; vCell < verticalDivisions; vCell += 1) {
-    const V0 = BigInt(scaledVerticalNumerators[vCell]);
-    const V1 = BigInt(scaledVerticalNumerators[vCell + 1]);
-    for (let uCell = 0; uCell < angularDivisions; uCell += 1) {
-      const U0 = BigInt(scaledAngularNumerators[uCell]);
-      const U1 = BigInt(scaledAngularNumerators[uCell + 1]);
-      const corners: readonly ExactUvPoint[] = [
-        { U: U0, V: V0 },
-        { U: U1, V: V0 },
-        { U: U1, V: V1 },
-        { U: U0, V: V1 },
-      ];
-      let currentPieces: readonly (readonly ExactUvPoint[])[] = [corners];
-      let anySplit = false;
-      for (const line of scaledLines) {
+  // Phase 2 (curved guide-polyline chords): boundary-walk splits, no division.
+  if (chords.length > 0) {
+    const chordsByCell = new Map<number, { start: ExactUvPoint; end: ExactUvPoint }[]>();
+    for (const chord of chords) {
+      const denominator = BigInt(chord.denominator);
+      if (declared % denominator !== 0n) {
+        invalid(`patch '${patchId}' conforming chord denominator does not divide the frame`);
+      }
+      const scale = declared / denominator;
+      const parsePoint = (point: ConformingChordPoint, label: string): ExactUvPoint => {
+        const uRaw = BigInt(point.uNumerator);
+        const vRaw = BigInt(point.vNumerator);
+        const scaled = { U: uRaw * scale, V: vRaw * scale };
+        if (scaled.U < 0n || scaled.U > declared || scaled.V < 0n || scaled.V > declared) {
+          invalid(`patch '${patchId}' conforming chord ${label} leaves the unit square`);
+        }
+        return scaled;
+      };
+      const start = parsePoint(chord.start, 'start');
+      const end = parsePoint(chord.end, 'end');
+      if (pointsEqualUv(start, end)) {
+        invalid(`patch '${patchId}' conforming chord is a single point`);
+      }
+      const startU = locateIntervalIndex(scaledAngularBig, start.U);
+      const startV = locateIntervalIndex(scaledVerticalBig, start.V);
+      const endU = locateIntervalIndex(scaledAngularBig, end.U);
+      const endV = locateIntervalIndex(scaledVerticalBig, end.V);
+      if (startU === null || startV === null || endU === null || endV === null) {
+        invalid(`patch '${patchId}' conforming chord endpoint leaves the station range`);
+      }
+      for (const [point, uInfo, vInfo] of [
+        [start, startU, startV],
+        [end, endU, endV],
+      ] as const) {
+        if (!uInfo.isStation && !vInfo.isStation) {
+          invalid(`patch '${patchId}' conforming chord endpoint is off the station grid lines`);
+        }
+        if (
+          (point.V === 0n || point.V === declared) &&
+          !stationSet.has(point.U.toString())
+        ) {
+          invalid(
+            `patch '${patchId}' conforming chord crosses a patch boundary row off-station`
+          );
+        }
+        if ((point.U === 0n || point.U === declared) && point.V !== 0n && point.V !== declared) {
+          invalid(`patch '${patchId}' conforming chord touches the periodic seam interior`);
+        }
+      }
+      if (
+        (start.U === end.U && startU.isStation && endU.isStation) ||
+        (start.V === end.V && startV.isStation && endV.isStation)
+      ) {
+        invalid(`patch '${patchId}' conforming chord lies along a grid line`);
+      }
+      const candidateCells = (
+        uInfo: ChordEndpointInterval,
+        vInfo: ChordEndpointInterval
+      ): Set<number> => {
+        const uCells = uInfo.isStation
+          ? [uInfo.index - 1, uInfo.index]
+          : [uInfo.index];
+        const vCells = vInfo.isStation
+          ? [vInfo.index - 1, vInfo.index]
+          : [vInfo.index];
+        const cells = new Set<number>();
+        for (const uCell of uCells) {
+          if (uCell < 0 || uCell >= angularDivisions) continue;
+          for (const vCell of vCells) {
+            if (vCell < 0 || vCell >= verticalDivisions) continue;
+            cells.add(vCell * angularDivisions + uCell);
+          }
+        }
+        return cells;
+      };
+      const startCells = candidateCells(startU, startV);
+      const shared: number[] = [];
+      for (const cell of candidateCells(endU, endV)) {
+        if (startCells.has(cell)) shared.push(cell);
+      }
+      if (shared.length !== 1) {
+        invalid(`patch '${patchId}' conforming chord endpoints do not bound one common cell`);
+      }
+      const bucket = chordsByCell.get(shared[0]);
+      if (bucket === undefined) chordsByCell.set(shared[0], [{ start, end }]);
+      else bucket.push({ start, end });
+    }
+    for (const [cellIndex, cellChords] of chordsByCell) {
+      const uCell = cellIndex % angularDivisions;
+      const vCell = (cellIndex - uCell) / angularDivisions;
+      let currentPieces: readonly (readonly ExactUvPoint[])[] =
+        polygonsByCell.get(cellIndex) ?? [cellCorners(uCell, vCell)];
+      for (const { start, end } of cellChords) {
         const nextPieces: (readonly ExactUvPoint[])[] = [];
+        let splitDone = false;
         for (const piece of currentPieces) {
-          const split = splitConvexByLine(piece, line.a, line.b, line.cScaled);
-          if (split.length > 1) anySplit = true;
-          for (const part of split) nextPieces.push(part);
+          if (splitDone) {
+            nextPieces.push(piece);
+            continue;
+          }
+          const split = splitPolygonByChord(piece, start, end);
+          if (split === null) {
+            nextPieces.push(piece);
+            continue;
+          }
+          nextPieces.push(split[0], split[1]);
+          splitDone = true;
+        }
+        if (!splitDone) {
+          invalid(
+            `patch '${patchId}' conforming chord does not lie on one piece boundary of its cell`
+          );
         }
         currentPieces = nextPieces;
       }
-      if (!anySplit) {
-        patchTriangleCount += 2;
-        continue;
-      }
-      const cellTriangles = conformingPieceTriangles(currentPieces);
-      pieces.set(vCell * angularDivisions + uCell, cellTriangles);
-      patchTriangleCount += cellTriangles.length;
+      polygonsByCell.set(cellIndex, currentPieces);
     }
+  }
+  // Fan every touched cell's polygons; untouched cells keep two triangles.
+  let patchTriangleCount = 2 * (angularDivisions * verticalDivisions - polygonsByCell.size);
+  for (const [cellIndex, cellPolygons] of polygonsByCell) {
+    const cellTriangles = conformingPieceTriangles(cellPolygons);
+    pieces.set(cellIndex, cellTriangles);
+    patchTriangleCount += cellTriangles.length;
   }
   return Object.freeze({
     fractionBits,
@@ -919,6 +1236,10 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   if (typeof conformingByPatch !== 'object' || conformingByPatch === null) {
     invalid('conformingLinesByPatch must be a record when present');
   }
+  const chordsByPatch = options.conformingChordsByPatch ?? {};
+  if (typeof chordsByPatch !== 'object' || chordsByPatch === null) {
+    invalid('conformingChordsByPatch must be a record when present');
+  }
   const frames = new Map<AnnularRadialSolidPatchId, PatchPartitionFrame>();
   let triangleCount = 0;
   for (const program of programs) {
@@ -927,11 +1248,18 @@ export function tessellateAnnularRadialSolidTargetForCertification(
     const rawLines = conformingByPatch[program.patchId];
     const lines =
       rawLines === undefined ? [] : validateConformingLines(program.patchId, rawLines);
+    const rawChords = chordsByPatch[program.patchId];
+    if (rawChords !== undefined && (!Array.isArray(rawChords) || rawChords.length === 0)) {
+      invalid(
+        `conformingChordsByPatch['${program.patchId}'] must be a non-empty array when present`
+      );
+    }
     const frame = buildPatchPartitionFrame(
       program.patchId,
       angularResolved,
       stations,
-      lines
+      lines,
+      rawChords ?? []
     );
     frames.set(program.patchId, frame);
     triangleCount += frame.patchTriangleCount;

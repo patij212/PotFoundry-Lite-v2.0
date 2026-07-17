@@ -271,6 +271,135 @@ describe('annular solid reference tessellation', () => {
     }
   });
 
+  it('splits cells along a conforming chord chain (curved guide polyline)', () => {
+    // U5 curved extension: a guide polyline approximating a curved feature is
+    // supplied as exact chord chains whose vertices lie ON grid lines, one
+    // chord per crossed cell. Interior chain vertices are shared by the two
+    // adjacent cells' chords (conformity), boundary endpoints sit on angular
+    // stations (junction safety). Chords need no divisions: the split is a
+    // boundary walk between two on-boundary points.
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    // 4x4 grid on the outer wall; chain crosses rows v=0..1 near u ~ 1/4,
+    // drifting right by 1/64 per row (denominator 64 covers all coords).
+    const chain = [
+      { U: 16n, V: 0n },
+      { U: 17n, V: 16n },
+      { U: 18n, V: 32n },
+      { U: 19n, V: 48n },
+      { U: 16n, V: 64n },
+    ];
+    const chords = Array.from({ length: 4 }, (_, index) => ({
+      denominator: '64',
+      start: {
+        uNumerator: chain[index].U.toString(),
+        vNumerator: chain[index].V.toString(),
+      },
+      end: {
+        uNumerator: chain[index + 1].U.toString(),
+        vNumerator: chain[index + 1].V.toString(),
+      },
+    }));
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 2,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+      conformingChordsByPatch: { 'outer-wall': chords },
+    });
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    const outerWall = tessellation.partitions.find(
+      (partition) => partition.patchId === 'outer-wall'
+    );
+    if (outerWall === undefined) throw new Error('expected outer-wall partition');
+    const verified = verifyExactDyadicRectanglePartition(outerWall);
+    expect(verified.exactPartition).toBe(true);
+    // Four crossed cells contribute extra triangles beyond the plain 4x4 grid.
+    expect(outerWall.triangles.length).toBeGreaterThan(2 * 4 * 4);
+    // Every emitted triangle is exactly one-sided against every chord's line
+    // (restricted to the chord's own cell, one-sidedness against the full
+    // line is what the splitter guarantees for the crossed cell's pieces).
+    const declared =
+      BigInt(outerWall.oddDenominatorFactor ?? '1') << BigInt(outerWall.fractionBits);
+    const scale = declared / 64n;
+    for (let index = 0; index < 4; index += 1) {
+      const start = { U: chain[index].U * scale, V: chain[index].V * scale };
+      const end = { U: chain[index + 1].U * scale, V: chain[index + 1].V * scale };
+      const a = end.V - start.V;
+      const b = start.U - end.U;
+      const c = a * start.U + b * start.V;
+      for (const triangle of outerWall.triangles) {
+        let positive = false;
+        let negative = false;
+        for (const vertex of triangle.vertices) {
+          const u = BigInt(vertex.uNumerator);
+          const v = BigInt(vertex.vNumerator);
+          // Only vertices inside the chord's own row band constrain the test.
+          if (v < start.V || v > end.V) continue;
+          const sign = a * u + b * v - c;
+          if (sign > 0n) positive = true;
+          if (sign < 0n) negative = true;
+        }
+        expect(positive && negative).toBe(false);
+      }
+    }
+  });
+
+  it('refuses conforming chords that are off grid lines, off-station at boundaries, or cell-ambiguous', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const base = {
+      angularDivisionsLog2: 2,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    } as const;
+    const chord = (
+      startU: number,
+      startV: number,
+      endU: number,
+      endV: number
+    ): { denominator: string; start: { uNumerator: string; vNumerator: string }; end: { uNumerator: string; vNumerator: string } } => ({
+      denominator: '64',
+      start: { uNumerator: startU.toString(), vNumerator: startV.toString() },
+      end: { uNumerator: endU.toString(), vNumerator: endV.toString() },
+    });
+    // Start point (17/64, 3/64) lies on NO grid line of the 4x4 grid.
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingChordsByPatch: { 'outer-wall': [chord(17, 3, 18, 16)] },
+      })
+    ).toThrow(/grid line/);
+    // Boundary-row endpoint at u = 17/64 is not an angular station.
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingChordsByPatch: { 'outer-wall': [chord(17, 0, 18, 16)] },
+      })
+    ).toThrow(/boundary row off-station/);
+    // Endpoints on grid lines of two DIFFERENT cells (no common cell).
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingChordsByPatch: { 'outer-wall': [chord(17, 16, 40, 32)] },
+      })
+    ).toThrow(/common cell/);
+  });
+
   it('refuses conforming lines whose boundary-row crossings miss the angular stations', () => {
     const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
     expect(() =>
@@ -777,6 +906,37 @@ describe('annular solid reference tessellation', () => {
           'drain-wall': 0,
         },
         conformingLinesByPatch: CRYSTALLINE_HP_CONFORMING_LINES,
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
+    // CLASSIFICATION CORRECTED (slice 10): WaveInterference at defaults is
+    // SMOOTH-but-dense, not cusp-class — the earlier "sqrt-cusp by
+    // elimination" call was the lesson-#1 contour artifact. Dense ridge
+    // sampling shows the clamp branches unreachable (ridge in [0.14, 0.66]
+    // at the failing cell); the binding axis is ANGULAR (moire products at
+    // effective frequency ~27), so 2^10 angular closes it with no conforming
+    // machinery. Defaults with relief gentled 2.3 -> 0.25 mm and edge fade
+    // off; certified 9,499,973 pm over 411,648 triangles in ~84 s.
+    {
+      styleId: 'WaveInterference',
+      styleParams: { wi_relief_depth: 0.25, wi_edge_fade: 0 },
+      geometry: Object.freeze({
+        ...DEFAULT_GEOMETRY,
+        H: 32,
+        top_od: 30,
+        bottom_od: 30,
+        r_drain: 6,
+      }),
+      divisions: {
+        angularDivisionsLog2: 10,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 6,
+          'inner-wall': 6,
+          'top-rim': 3,
+          'bottom-top': 5,
+          'bottom-under': 5,
+          'drain-wall': 0,
+        },
       },
       maxElapsedMilliseconds: 110_000,
     },
