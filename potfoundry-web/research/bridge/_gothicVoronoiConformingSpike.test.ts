@@ -145,7 +145,7 @@ const GOTHIC = (() => {
   return { spring, archHeight, apex, gateWidth, archZ, invArch };
 })();
 
-const RIB_OFFSETS = [0.003, 0.0065, 0.0105, 0.015, 0.021, 0.028, 0.036] as const;
+const RIB_OFFSETS = [0.002, 0.0045, 0.0075, 0.011, 0.0155, 0.021, 0.028, 0.036] as const;
 
 interface GothicLadders {
   readonly angularFractions: (readonly [number, number])[];
@@ -168,12 +168,12 @@ function gothicLadderFractions(): GothicLadders {
       if (numerator > 0 && numerator < Q) angularFractions.push([numerator, Q]);
     }
   }
-  // Arch-base angular spike (columnEdge^4): geometric refinement toward
-  // every base column k/12 — stations at k/12 ± j/2048 (j = 1, 2, 4, 8).
-  for (let k = 0; k < 12; k += 1) {
+  // Angular spikes: columnEdge^4 at every base column k/12 AND mullion^4 at
+  // every apex column (2k+1)/24 — geometric stations around every k/24.
+  for (let k = 0; k < 24; k += 1) {
     for (const j of [1, 2, 4, 8]) {
       for (const sign of [-1, 1]) {
-        const value = k / 12 + (sign * j) / 2048;
+        const value = k / 24 + (sign * j) / 2048;
         const wrapped = value - Math.floor(value);
         const numerator = Math.round(wrapped * 6144);
         if (numerator > 0 && numerator < 6144) angularFractions.push([numerator, 6144]);
@@ -305,12 +305,13 @@ function gothicChordsForPatch(
       });
     }
   };
-  const curves: { offset: number; tMin: number; tMax: number }[] = [
-    { offset: 0, tMin: GOTHIC.spring, tMax: GOTHIC.apex },
+  const curves: { offset: number; tMin: number; tMax: number; fullPeriod: boolean }[] = [
+    { offset: 0, tMin: GOTHIC.spring, tMax: GOTHIC.apex, fullPeriod: true },
     {
       offset: GOTHIC.gateWidth,
       tMin: GOTHIC.spring,
       tMax: GOTHIC.apex - GOTHIC.gateWidth,
+      fullPeriod: false,
     },
   ];
   for (const ribOffset of RIB_OFFSETS) {
@@ -320,34 +321,62 @@ function gothicChordsForPatch(
       offset: ribOffset,
       tMin: Math.max(1 / 8192, GOTHIC.spring - ribOffset),
       tMax: GOTHIC.apex - ribOffset,
+      fullPeriod: true,
     });
     curves.push({
       offset: -ribOffset,
       tMin: GOTHIC.spring + ribOffset,
       tMax: Math.min(1 - 1 / 8192, GOTHIC.apex + ribOffset),
+      fullPeriod: true,
     });
   }
   for (const curve of curves) {
-    for (let halfArch = 0; halfArch < 24; halfArch += 1) {
-      const crossings: Crossing[] = [];
-      const seen = new Set<string>();
-      const add = (uNumerator: number, vNumerator: number): void => {
-        const key = `${uNumerator},${vNumerator}`;
-        if (seen.has(key)) return;
-        seen.add(key);
-        crossings.push({
-          uPatch: uNumerator / denominator,
-          vPatch: vNumerator / denominator,
-          uNumerator,
-          vNumerator,
-        });
+    const crossings: Crossing[] = [];
+    const seen = new Set<string>();
+    const add = (uNumerator: number, vNumerator: number): void => {
+      const key = `${uNumerator},${vNumerator}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      crossings.push({
+        uPatch: uNumerator / denominator,
+        vPatch: vNumerator / denominator,
+        uNumerator,
+        vNumerator,
+      });
+    };
+    if (curve.fullPeriod) {
+      // Explicit seam corners: the curve value at the seam is a snapped
+      // station row, so (0, row) and (1, row) are grid corners that anchor
+      // the global chain (legal seam endpoints per the corner exemption).
+      const tSeam = GOTHIC.archZ(0) - curve.offset;
+      const vSeam = patchV(tSeam);
+      const seamNumerator = Math.round(vSeam * denominator);
+      const snapToVertical = (raw: number): number => {
+        let best = verticalLadder.numerators[0] * vScale;
+        for (const stationNumerator of verticalLadder.numerators) {
+          const scaled = stationNumerator * vScale;
+          if (Math.abs(scaled - raw) < Math.abs(best - raw)) best = scaled;
+        }
+        return best;
       };
-      // Column crossings: every angular station strictly inside the half-arch.
+      const seamRow = snapToVertical(seamNumerator);
+      add(0, seamRow);
+      add(denominator, seamRow);
+    }
+    for (let halfArch = 0; halfArch < 24; halfArch += 1) {
+      // Column crossings: every angular station inside the half-arch. For
+      // full-period curves the LEFT boundary station is included too (the
+      // curve's base minimum / apex sits on half-arch boundaries and the
+      // global chain must pivot through that column).
       for (const angularNumerator of angularLadder.numerators) {
         const uP = angularNumerator / angularDen;
         const uS = styleU(uP);
-        const inside =
-          uS > halfArch / 24 + 1e-12 && uS < (halfArch + 1) / 24 - 1e-12;
+        const inside = curve.fullPeriod
+          ? uS >= halfArch / 24 - 1e-12 &&
+            uS < (halfArch + 1) / 24 - 1e-12 &&
+            angularNumerator > 0 &&
+            angularNumerator < angularDen
+          : uS > halfArch / 24 + 1e-12 && uS < (halfArch + 1) / 24 - 1e-12;
         if (!inside) continue;
         const t = GOTHIC.archZ(uS) - curve.offset;
         if (t < curve.tMin - 1e-12 || t > curve.tMax + 1e-12) continue;
@@ -387,9 +416,9 @@ function gothicChordsForPatch(
         }
         add(uNumerator, verticalNumerator * vScale);
       }
-      crossings.sort((left, right) => left.uNumerator - right.uNumerator);
-      pushChain(crossings);
     }
+    crossings.sort((left, right) => left.uNumerator - right.uNumerator);
+    pushChain(crossings);
   }
   return chords;
 }
@@ -658,7 +687,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     { timeout: 900_000 },
     async () => {
       const { certifyContinuousMappedPatchDistance } = await import(
-        './continuousMappedPatchDistance'
+        '../../src/geometry/targetSolid/continuousMappedPatchDistance'
       );
       const { binding } = atlas('Voronoi', { v_morph: 0, v_relief: 0.04 });
       const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
@@ -744,7 +773,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     { timeout: 900_000 },
     async () => {
       const { certifyContinuousMappedPatchDistance } = await import(
-        './continuousMappedPatchDistance'
+        '../../src/geometry/targetSolid/continuousMappedPatchDistance'
       );
       const ladders = gothicLadderFractions();
       const angularLadder = rationalStationLadder(8, ladders.angularFractions);
@@ -882,9 +911,9 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     { timeout: 900_000 },
     async () => {
       const { certifyContinuousMappedPatchDistance } = await import(
-        './continuousMappedPatchDistance'
+        '../../src/geometry/targetSolid/continuousMappedPatchDistance'
       );
-      const { dyadicEdgeLadder } = await import('./annularSolidReferenceTessellation');
+      const { dyadicEdgeLadder } = await import('../../src/geometry/targetSolid/annularSolidReferenceTessellation');
       const { binding } = atlas('GyroidManifold', { gm_relief: 0.25, gm_edge_fade: 1 });
       const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
         angularDivisionsLog2: 10,
@@ -961,7 +990,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     'Gyroid gentle under envelope v3 (1M mapped cap, 1024 angular)',
     { timeout: 900_000 },
     async () => {
-      const { dyadicEdgeLadder } = await import('./annularSolidReferenceTessellation');
+      const { dyadicEdgeLadder } = await import('../../src/geometry/targetSolid/annularSolidReferenceTessellation');
       runComposed(
         'gyroid-a10w7',
         'GyroidManifold',

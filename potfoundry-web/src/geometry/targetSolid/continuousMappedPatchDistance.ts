@@ -38,7 +38,7 @@ import {
 export type { RegisteredValidatedResidualEvaluator } from './validatedResidualEvaluatorRegistry';
 
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_VERSION =
-  'potfoundry.continuous-mapped-patch-distance/v15' as const;
+  'potfoundry.continuous-mapped-patch-distance/v16' as const;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_WORK_CELLS = 1_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS = 2_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_EVALUATOR_WORK_UNITS =
@@ -52,7 +52,7 @@ export const CONTINUOUS_MAPPED_PATCH_DISTANCE_PROOF_SHA256 = sha256Utf8(
     'binary STL coordinates retain exact binary32 values; 3MF and OBJ coordinates retain exact signed integer picometres through residual evaluation',
     'target/mesh correspondence = exact complete rectangle partition proof over one declared denominator (odd factor times a power of two); cells inherit the odd factor and barycentric subdivision raises only the dyadic part',
     'the declared partition rectangle must be exactly the absolute closed unit square of its coordinate system (zero to the full denominator on both axes), so the complete-parametrization premise behind the two-sided distance bound is checked, never trusted',
-    'each work cell is one exact barycentric midpoint subdivision of its assigned artifact triangle and target parameter triangle',
+    'each work cell is an exact barycentric subdivision of its assigned artifact triangle and target parameter triangle: the standard four-way midpoint split, or a longest-edge bisection for pathologically thin cells (aspect over 8) whose two children tile the parent exactly',
     'each evaluator request carries exact dyadic barycentric numerators for auditable affine-artifact enclosure',
     `validated evaluator = WeakMap-authenticated immutable registry capability (${VALIDATED_RESIDUAL_EVALUATOR_REGISTRY_VERSION})`,
     'evaluator executable state is compiled only from a target-committed canonical target x/y/z program; compiler-derived residuals admit no artifact-coordinate leaves or arbitrary callbacks',
@@ -273,6 +273,81 @@ function subdivide(cell: WorkCell): readonly [WorkCell, WorkCell, WorkCell, Work
     { depth, vertices: [ca, bc, cc] },
     { depth, vertices: [ab, bc, ca] },
   ];
+}
+
+const ANISOTROPIC_ASPECT_THRESHOLD = 8;
+
+/**
+ * Longest-edge bisection for pathologically thin cells: the two children
+ * [A, M, C] and [M, B, C] (M the exact doubled-weight midpoint of the
+ * longest UV edge) tile the parent exactly, so coverage of the shared
+ * parametrization is preserved and every downstream enclosure stays sound.
+ * Isotropic 4-way splitting halves BOTH directions and therefore wastes
+ * quadratically many cells on conforming slivers whose short direction is
+ * already converged; bisection halves only the long one.
+ */
+function subdivideAnisotropic(
+  cell: WorkCell,
+  longestEdgeIndex: number
+): readonly [WorkCell, WorkCell] {
+  const [a, b, c] = cell.vertices;
+  const depth = cell.depth + 1;
+  if (longestEdgeIndex === 0) {
+    return [
+      { depth, vertices: [doublePoint(a), midpoint(a, b), doublePoint(c)] },
+      { depth, vertices: [midpoint(a, b), doublePoint(b), doublePoint(c)] },
+    ];
+  }
+  if (longestEdgeIndex === 1) {
+    return [
+      { depth, vertices: [doublePoint(a), doublePoint(b), midpoint(b, c)] },
+      { depth, vertices: [doublePoint(a), midpoint(b, c), doublePoint(c)] },
+    ];
+  }
+  return [
+    { depth, vertices: [doublePoint(a), doublePoint(b), midpoint(c, a)] },
+    { depth, vertices: [midpoint(c, a), doublePoint(b), doublePoint(c)] },
+  ];
+}
+
+/**
+ * Choose the subdivision for a work cell from its UV geometry: index of the
+ * longest edge when the aspect ratio (longest edge over its altitude)
+ * exceeds the anisotropic threshold, or -1 for the standard 4-way split.
+ */
+function anisotropicEdgeIndex(
+  cell: WorkCell,
+  originalU: readonly [number, number, number],
+  originalV: readonly [number, number, number]
+): number {
+  const scale = 2 ** cell.depth;
+  const uv: [number, number][] = [0, 1, 2].map((vertex) => {
+    const weight = cell.vertices[vertex];
+    return [
+      (weight.a * originalU[0] + weight.b * originalU[1] + weight.c * originalU[2]) / scale,
+      (weight.a * originalV[0] + weight.b * originalV[1] + weight.c * originalV[2]) / scale,
+    ];
+  }) as [number, number][];
+  const edgeSquared = (from: number, to: number): number => {
+    const du = uv[to][0] - uv[from][0];
+    const dv = uv[to][1] - uv[from][1];
+    return du * du + dv * dv;
+  };
+  const edges = [edgeSquared(0, 1), edgeSquared(1, 2), edgeSquared(2, 0)];
+  let longest = 0;
+  if (edges[1] > edges[longest]) longest = 1;
+  if (edges[2] > edges[longest]) longest = 2;
+  const doubledArea = Math.abs(
+    (uv[1][0] - uv[0][0]) * (uv[2][1] - uv[0][1]) -
+      (uv[1][1] - uv[0][1]) * (uv[2][0] - uv[0][0])
+  );
+  if (!(edges[longest] > 0) || !Number.isFinite(edges[longest])) return -1;
+  // altitude = doubledArea / longestEdge; aspect = longestEdge / altitude.
+  const aspectSquared =
+    (edges[longest] * edges[longest]) / Math.max(doubledArea * doubledArea, 1e-300);
+  return aspectSquared > ANISOTROPIC_ASPECT_THRESHOLD * ANISOTROPIC_ASPECT_THRESHOLD
+    ? longest
+    : -1;
 }
 
 function exactCellPoint(
@@ -781,6 +856,17 @@ export function certifyContinuousMappedPatchDistance(
         }
       }
     }
+    // Raw numerator floats for the aspect test (scale-free; always available).
+    const aspectOriginalU: [number, number, number] = [
+      Number(mapping.vertices[0].uNumerator),
+      Number(mapping.vertices[1].uNumerator),
+      Number(mapping.vertices[2].uNumerator),
+    ];
+    const aspectOriginalV: [number, number, number] = [
+      Number(mapping.vertices[0].vNumerator),
+      Number(mapping.vertices[1].vNumerator),
+      Number(mapping.vertices[2].vNumerator),
+    ];
     const stack: WorkCell[] = [
       {
         depth: 0,
@@ -946,9 +1032,15 @@ export function certifyContinuousMappedPatchDistance(
           cell.depth
         );
       } else {
-        const children = subdivide(cell);
-        for (let childIndex = children.length - 1; childIndex >= 0; childIndex -= 1) {
-          stack.push(children[childIndex]);
+        const bisectionEdge = anisotropicEdgeIndex(cell, aspectOriginalU, aspectOriginalV);
+        if (bisectionEdge >= 0) {
+          const children = subdivideAnisotropic(cell, bisectionEdge);
+          stack.push(children[1], children[0]);
+        } else {
+          const children = subdivide(cell);
+          for (let childIndex = children.length - 1; childIndex >= 0; childIndex -= 1) {
+            stack.push(children[childIndex]);
+          }
         }
       }
       if (optionsSnapshot.progressCounter !== undefined) {
