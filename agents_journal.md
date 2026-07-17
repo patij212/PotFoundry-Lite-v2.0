@@ -7420,3 +7420,69 @@ roadmap slice-10 addendum committed alongside.
    binding axis was angular; vertical doubling was the misleading test).
 3. CT crossing-family splitter extension, GS/Cr row-coupled kernel banding,
    Voronoi/Gyroid envelope v3, U4 curtains — unchanged from Addendum 13.
+
+## 2026-07-17 — Claude Fable 5 — slice 11 (6-hour autonomy): envelope v3, Voronoi certified (10th style), Gyroid + Gothic measured to their true mechanisms
+
+**Mandate:** Patryk: "you have next 6 hours to fully own the machine. please do as
+much work as you can" — executed as envelope v3 → Voronoi → Gyroid → Gothic, with
+docs/gate closing the window.
+
+**Envelope v3 (minimal-change):** nine HARD elapsed ceilings 120_000 → 240_000
+(partition, topology x2, self-intersection x2, structural x2, final x2) +
+HARD_MAX_TOTAL_MAPPED_TRIANGLES 524,288 → 1,048,576. Pools deliberately untouched
+until a measured refusal names one (v2 discipline).
+
+**Voronoi bubble CERTIFIED-PARTIAL — 9,499,879 pm / 172,032 tris / 118.8 s —
+TENTH style, twelfth pot (roster + emitter updated, gate-verified).** Correction
+to Addendum 9: "compute-bound" was partly a LADDER GAP — the inner wall's
+remapped t-lattice needs rows at EVERY t = k/8 (v = (4k−3)/29 at H32, odd k
+included: 1/29, 9/29, 17/29, 25/29); the GS-copied ladder had only even k. The
+invariant ~80 µm refusals were missing-odd-k floor straddles (per-patch
+isolation pinned v = 1/29 exactly). Full ladder + walls 2^7 (bisector kinks) →
+composed ~119 s.
+
+**Gyroid honestly OUT of uniform grids:** four "razor-miss 9,500,02x" readings
+across relief/fade/ladder levers were ALL the lesson-#1 contour artifact. The
+TRUE-sag map (centroid vs triangle interpolation over the actual grid) found
+166.8 µm at (0.54, 0.51) — mid-wall, STYLE sag — at 1024×128. Any visible relief
+needs 2–4M-triangle-class meshes: route to anisotropic/metric tessellation (the
+production M = g/h² kernel), not envelope raises. NEW PLAYBOOK RULES: (1)
+relief/fade-invariance of a depth-24 crossing value discriminates NOTHING;
+(2) axis-resolved density (u vs v separately); (3) TRUE-sag maps are the
+standard classifier before any lever-pulling.
+
+**Gothic campaign — cusp-cascade eliminated; one session from certification:**
+- Conforming chords for t = archZ(u) (pointiness 1 ⇒ smooth arcs between
+  station-alignable 24ths) + the gate offset: FULL composed proofs in 18–56 s
+  with normal cell counts — the historic budget-independent ~100 s hull burns
+  (Addendum 6) are gone. The machinery works in anger.
+- Hardened en route (committed in the tessellator): seam-column chord endpoints
+  legal at GRID CORNERS (arch bases sit exactly on the seam); the spike harness
+  gained axis-collinear chord skipping + crossing-run collapse-to-corner.
+- Mechanisms measured: arch-base ANGULAR SPIKE (columnEdge^4, kappa_u ≈ 5,560
+  mm/u² ⇒ geometric k/12-neighborhood stations, landed) and THE binder — the
+  rib-band quartic STRIPE at the steep mid-flank: TRUE sag 196.8/197.6 µm at
+  (u≈0.72, t≈0.49), under-resolved ACROSS a ±0.04 stripe that crosses ~1
+  angular cell at slope ~20.
+- Architecture validated: graded OFFSET guide curves (±0.003…0.036) through the
+  SAME chord machinery — strips carry across-stripe resolution so global rows
+  stay coarse. 126k offset chords ACCEPTED by the splitter (structural pool
+  tripped → rebalanced rows 2^6 + 7 offsets/side ≈ 54k); ONE defect remains:
+  chain consistency near offset-curve flat minima (topology refusal). Complete
+  campaign harness committed: research/bridge/_gothicVoronoiConformingSpike.test.ts
+  (env knobs PF_SLICE11_*).
+
+**Verification:** full targetSolid 62 files / 466 green; tsc EXACTLY at the 356
+baseline; eslint 0 warnings on all touched files; full 12-pot PF_G2_POT gate run
+foreground-equivalent (background at AboveNormal priority, result recorded in
+this session's final report). detect_changes run pre-commit.
+
+### Next agent
+1. **Gothic finisher (highest value, ~1 session):** harden offset-curve chains
+   near flat minima — the collapse/skip interplay at grazing rows leaves a
+   hanging vertex (topology refusal). Then rebalance strips vs pools and
+   certify. Everything else is measured and in the harness.
+2. **Gyroid:** anisotropic/metric tessellation vehicle (production-track
+   M = g/h² kernel) — do NOT chase with uniform density or envelope raises.
+3. CT crossing-family splitter extension after Gothic; U4 curtains unchanged.
+4. Respect the new playbook rules (TRUE-sag maps first; contour values never).

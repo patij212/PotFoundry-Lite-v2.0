@@ -250,6 +250,27 @@ otherwise unchanged: CT (crossing-family splitter extension), GS shift/Cr
 heightPhase row-coupled corners (kernel per-band affine), Voronoi bubble +
 Gyroid (envelope v3/streaming), U4 curtains (7 layered styles).
 
+**Slice 11 addendum (2026-07-17, 6-hour autonomous session): envelope v3 +
+TENTH style + the Gothic mechanism fully measured.** Envelope v3 = nine hard
+elapsed ceilings 120→240 s + total mapped cap 524k→1,048k (minimal-change;
+pools only on measured trips). **Voronoi bubble CERTIFIED — 9,499,879 pm /
+172,032 tris / 118.8 s** — with an Addendum-9 correction: the "compute-bound"
+call was partly a LADDER GAP (inner wall needs ALL t = k/8 rows, v = (4k−3)/29
+incl. odd k; the invariant 80 µm refusals were the missing-odd-k straddles).
+**Gyroid measured OUT of uniform grids**: TRUE-sag map found 166.8 µm mid-wall
+style sag at 1024×128 — 2–4M-triangle class ⇒ route to the anisotropic/metric
+tessellation (production-track M = g/h² kernel), not cap raises. **Gothic: the
+cusp-cascade is DEAD under conforming chords** (full proofs 18–56 s vs the
+historic ~100 s burns); base spike (κ_u ≈ 5,560/u²) and rib-stripe binder
+(196.8 µm at the steep mid-flank) measured; graded OFFSET guide curves through
+the same machinery validated (126k chords accepted; rebalanced 7/side) with
+ONE chain-hardening defect left near offset-curve flat minima — **one session
+from certification** (harness committed at
+research/bridge/_gothicVoronoiConformingSpike.test.ts). New playbook rules:
+axis-resolved density; relief/fade-invariance of contour values proves
+nothing; TRUE-sag maps are the standard classifier. Certified set: **twelve
+pots / TEN styles**; gate 26 tests.
+
 ## Sufficiency addendum — does U0–U6 deliver "full feature-preserving representation of every possible shape"? (2026-07-17, analysis)
 
 Requested by Patryk after slice 6. Decomposition: the claim = four requirements, each

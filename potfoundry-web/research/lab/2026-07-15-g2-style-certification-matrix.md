@@ -551,3 +551,54 @@ profile, Addendum 6, stands), Voronoi bisector kink-lines (bubble mode's
 compute burn), CT braid (after the crossing-family splitter extension), and
 Crystalline/GS row-coupled corners (kernel per-band affine first). Certified
 set: **ELEVEN pots across NINE styles.**
+
+## Addendum 15 — slice 11 (6-hour autonomous session): envelope v3, Voronoi CERTIFIED, Gyroid and Gothic honestly measured (2026-07-17)
+
+**Envelope v3 (minimal-change):** all nine hard elapsed ceilings 120 s → 240 s;
+`HARD_MAX_TOTAL_MAPPED_TRIANGLES` 524,288 → 1,048,576. Pools untouched until a
+measured trip names them (v2 discipline).
+
+**Voronoi bubble CERTIFIED-PARTIAL — 9,499,879 pm / 172,032 tris / 118.8 s —
+TENTH style, twelfth pot.** And a correction to Addendum 9: "compute-bound" was
+partly a LADDER GAP. The inner wall's remapped t-lattice needs rows at EVERY
+t = k/8 — v = (4k−3)/29 at H32 including the odd k (1/29, 9/29, 17/29, 25/29);
+the GS-copied ladder carried only even k, and the invariant ~80 µm refusals
+were the missing-odd-k floor straddles (per-patch isolation pinned the failing
+cell exactly at v = 1/29). With the full ladder + walls 2⁷ (bisector-kink
+chords) the composed proof fits in ~119 s.
+
+**Gyroid honestly measured OUT (for now):** the four "razor-miss 9,500,02x"
+readings across relief/fade/ladder changes were ALL the lesson-#1 contour
+artifact — the TRUE-sag map (centroid vs triangle interpolation over the
+actual grid) found **166.8 µm at (u=0.54, v=0.51), mid-wall, style-driven**, at
+1024×128 walls. Uniform grids need 2–4M-triangle-class meshes at any visible
+relief; the honest vehicle is anisotropic/metric tessellation (the production
+track's M = g/h² kernel), not another cap raise. NEW PLAYBOOK RULE: relief- or
+fade-invariance of a depth-24 crossing VALUE discriminates nothing; only
+per-patch isolation + TRUE-sag maps do.
+
+**Gothic campaign — the cusp-cascade is DEAD, certification one session out:**
+- Conforming chords for the arch kink `t = archZ(u)` (pointiness 1: smooth
+  cosine arcs between station-alignable 24ths) + the gate offset ran the FULL
+  composed proof in 18–56 s with normal cell counts — the historic
+  budget-independent ~100 s hull-cascade burns (Addendum 6) are eliminated.
+- Machinery hardened en route (committed): seam-column chord endpoints are
+  legal at GRID CORNERS (Gothic's arch bases sit exactly on the seam);
+  axis-collinear chords are skipped and crossing runs collapse to corner
+  representatives (flat-base grazing rows).
+- Measured mechanisms: (a) arch-base ANGULAR SPIKE (columnEdge⁴):
+  κ_u ≈ 5,560 mm/u² ⇒ geometric k/12-neighborhood stations (landed in the
+  harness); (b) THE binder: the rib-band quartic STRIPE at the steep mid-flank
+  — true sag **196.8/197.6 µm at (u≈0.72, t≈0.49)** — under-resolved ACROSS
+  the ±0.04 stripe that crosses ~1 angular cell at slope ~20.
+- Architecture answer (validated in concept): graded OFFSET guide curves
+  (±0.003…0.036) through the same chord machinery — offset strips carry the
+  across-stripe resolution so GLOBAL rows stay coarse. First full-period
+  attempt: 126k chords ACCEPTED by the splitter (pools tripped ⇒ rebalanced to
+  rows 2⁶ + 7 offsets/side ≈ 54k chords); one chain-consistency defect remains
+  near offset-curve flat minima (topology refusal). The complete campaign
+  harness is committed at `research/bridge/_gothicVoronoiConformingSpike.test.ts`.
+  **Classification: offset-strip-conforming — mechanism measured, machinery
+  proven, one hardening session from certification.**
+
+Certified set: **TWELVE pots across TEN styles.**
