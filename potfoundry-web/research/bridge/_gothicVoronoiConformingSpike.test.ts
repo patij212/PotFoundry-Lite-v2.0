@@ -78,7 +78,8 @@ function runComposed(
   styleId: string,
   styleParams: Readonly<Record<string, number>>,
   divisions: AnnularSolidReferenceTessellationOptions,
-  maxElapsedMilliseconds: number
+  maxElapsedMilliseconds: number,
+  generousCells = false
 ): void {
   const startedAt = Date.now();
   try {
@@ -100,6 +101,12 @@ function runComposed(
         requestedTolerancePm: 10_000_000n,
         reservedNonGeometricMarginPm: 500_000n,
         maxElapsedMilliseconds,
+        ...(generousCells
+          ? {
+              maxTotalWorkCells: 8_000_000,
+              patchProof: { maxWorkCells: 2_000_000 },
+            }
+          : {}),
       }
     );
     console.log(
@@ -219,6 +226,13 @@ function gothicLadderFractions(): GothicLadders {
       snapRow(outerVerticalFractions, tValue, false);
       snapRow(innerVerticalFractions, tValue, true);
     }
+  }
+  // Base-profile sag refinement: halve the rows in the lower wall
+  // (t in (0, 1/4]) where the profile curvature peaks — the strip slivers'
+  // longer diagonals otherwise tip the ~9.49 um base sag just over budget.
+  for (let k = 1; k <= 16; k += 1) {
+    snapRow(outerVerticalFractions, k / 64, false);
+    snapRow(innerVerticalFractions, k / 64, true);
   }
   return { angularFractions, outerVerticalFractions, innerVerticalFractions };
 }
@@ -777,8 +791,8 @@ describe('slice-11 probes (env-gated, session-local)', () => {
       );
       const ladders = gothicLadderFractions();
       const angularLadder = rationalStationLadder(8, ladders.angularFractions);
-      const outerVertical = rationalStationLadder(6, ladders.outerVerticalFractions);
-      const innerVertical = rationalStationLadder(6, ladders.innerVerticalFractions);
+      const outerVertical = rationalStationLadder(5, ladders.outerVerticalFractions);
+      const innerVertical = rationalStationLadder(5, ladders.innerVerticalFractions);
       const outerChords = gothicChordsForPatch('outer', angularLadder, outerVertical);
       const innerChords = gothicChordsForPatch('inner', angularLadder, innerVertical);
       const { binding } = atlas('GothicArches', {
@@ -790,8 +804,8 @@ describe('slice-11 probes (env-gated, session-local)', () => {
         angularDivisionsLog2: 8,
         angularStations: angularLadder,
         verticalDivisionsLog2ByPatch: {
-          'outer-wall': 8,
-          'inner-wall': 8,
+          'outer-wall': 5,
+          'inner-wall': 5,
           'top-rim': 3,
           'bottom-top': 4,
           'bottom-under': 4,
@@ -872,8 +886,8 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     () => {
       const ladders = gothicLadderFractions();
       const angularLadder = rationalStationLadder(8, ladders.angularFractions);
-      const outerVertical = rationalStationLadder(6, ladders.outerVerticalFractions);
-      const innerVertical = rationalStationLadder(6, ladders.innerVerticalFractions);
+      const outerVertical = rationalStationLadder(5, ladders.outerVerticalFractions);
+      const innerVertical = rationalStationLadder(5, ladders.innerVerticalFractions);
       const outerChords = gothicChordsForPatch('outer', angularLadder, outerVertical);
       const innerChords = gothicChordsForPatch('inner', angularLadder, innerVertical);
       console.log(
@@ -881,15 +895,15 @@ describe('slice-11 probes (env-gated, session-local)', () => {
           ` angularStations=${angularLadder.numerators.length}`
       );
       runComposed(
-        'gothic-p1-a8w6s',
+        'gothic-p1-a8w5r',
         'GothicArches',
         { gaPointiness: 1, gaDiamond: 0, gaRelief: 0.2 },
         {
           angularDivisionsLog2: 8,
           angularStations: angularLadder,
           verticalDivisionsLog2ByPatch: {
-            'outer-wall': 6,
-            'inner-wall': 6,
+            'outer-wall': 5,
+            'inner-wall': 5,
             'top-rim': 3,
             'bottom-top': 4,
             'bottom-under': 4,
@@ -904,7 +918,8 @@ describe('slice-11 probes (env-gated, session-local)', () => {
             'inner-wall': innerChords,
           },
         },
-        235_000
+        235_000,
+        true
       );
       expect(true).toBe(true);
     }

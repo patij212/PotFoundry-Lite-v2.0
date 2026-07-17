@@ -627,7 +627,15 @@ the volume wall entirely: a8w5 runs the full proof in ~69 s and lands at
 9,500,004 pm — FOUR PICOMETRES over. The endgame is pinched between that
 +4 pm contour at w5 (cells fine) and the 1M work-cell pool at w6 (full
 stations + strips ≈ 152k tris/wall): NEXT SESSION picks one of two clean
-exits — (a) targeted vertical refinement at the +4 pm cell instead of global
-w6, or (b) plumb per-patch maxWorkCells (the cMPD option already exists, the
-composed layer just does not expose it). All knobs and the measured
-configuration live in `research/bridge/_gothicVoronoiConformingSpike.test.ts`.
+exits — (a) targeted refinement at the +4 pm sliver, or (b) more cells.
+Window hour 4 established the exact landscape for both: (b) needs NO code —
+`FinalStlPartialCertificationOptions.patchProof.maxWorkCells` (+
+`maxTotalWorkCells`) already plumb through to cMPD — but even 2M per patch
+exhausts once k/64 lower-wall rows stack onto the strips (breadth × breadth);
+(a) the +4 pm slivers are strip chords in the style-FLAT dead zone below the
+band support carrying pure base-profile sag over their longer diagonals — so
+the surgical fix is TWO-sided: clip rib-offset strip curves to the live band
+(tMin = spring − bandSupport, not spring − offset) so no slanted slivers cross
+the flat zone, and spend the saved cells on 1/64 rows ONLY in t ∈ [0.05, 0.2].
+All knobs and the measured configurations live in
+`research/bridge/_gothicVoronoiConformingSpike.test.ts`.
