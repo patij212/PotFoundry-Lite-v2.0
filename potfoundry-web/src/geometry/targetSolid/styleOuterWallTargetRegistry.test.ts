@@ -59,8 +59,19 @@ describe('all-style outer-wall target registry', () => {
     expect(target('BasketWeave').compositionBlockers).toContain(
       'MISSING_INTERNAL_CHECKER_CURTAIN_GRAPH'
     );
-    expect(target('CelticKnot').compositionBlockers).toContain(
-      'MISSING_INTERNAL_RIBBON_FEATURE_SIDE_GRAPH'
+  });
+
+  it('admits CelticKnot composition once its feature-side curtain complex is emitted', () => {
+    const binding = target('CelticKnot');
+    expect(binding.outerWallCompositionAdmissible).toBe(true);
+    expect(binding.compositionBlockers).toEqual([]);
+    expect(binding.outerWallPhysicalClosureComplete).toBe(true);
+    // sibling styles whose graphs are still absent must STILL refuse (change is CelticKnot-scoped)
+    expect(target('HexagonalHive', { hh_noise: 0.2 }).compositionBlockers).toContain(
+      'MISSING_INTERNAL_CELL_FEATURE_SIDE_GRAPH'
+    );
+    expect(target('BasketWeave').compositionBlockers).toContain(
+      'MISSING_INTERNAL_CHECKER_CURTAIN_GRAPH'
     );
   });
 

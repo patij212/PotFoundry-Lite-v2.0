@@ -385,7 +385,10 @@ function compositionStatus(source: StyleOuterWallTargetSourceBinding): Readonly<
       }
       break;
     case 'CelticKnot':
-      if (source.internalRibbonDiscontinuitiesActive) {
+      if (
+        source.internalRibbonDiscontinuitiesActive &&
+        !source.completeInternalFeatureSideGraphEmitted
+      ) {
         blockers.push('MISSING_INTERNAL_RIBBON_FEATURE_SIDE_GRAPH');
       }
       break;
