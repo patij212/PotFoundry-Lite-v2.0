@@ -33,7 +33,7 @@ import type { TargetExpressionReference } from './validatedTargetProgramBuilder'
 export const CELTIC_KNOT_OUTER_WALL_TARGET_VERSION =
   'potfoundry.celtic-knot-outer-wall-target/v2' as const;
 export const CELTIC_KNOT_OUTER_WALL_TARGET_SCOPE =
-  'authenticated-generated-celtic-knot-outer-wall-and-conditional-physical-seam-curtain-with-declared-ribbon-and-occlusion-jumps-only-no-complete-feature-side-graph-inner-rim-bottom-regularity-artifact-distance-or-device-conformance-proof' as const;
+  'authenticated-generated-celtic-knot-outer-wall-conditional-physical-seam-curtain-and-complete-clipped-ribbon-and-occlusion-feature-side-curtain-complex-no-inner-rim-bottom-regularity-artifact-distance-or-device-conformance-proof' as const;
 export const CELTIC_KNOT_OUTER_WALL_TARGET_PROOF_SHA256 = sha256Utf8(
   [
     CELTIC_KNOT_OUTER_WALL_TARGET_VERSION,
@@ -48,7 +48,7 @@ export const CELTIC_KNOT_OUTER_WALL_TARGET_PROOF_SHA256 = sha256Utf8(
     'the foreground profile is exactly zero at minDistance=strandWidth while the exterior branch is baseRadius-0.3*relief, proving a finite support-boundary jump whenever relief is active',
     'column phase advances by columnId*pi*binary64(0.333), so active relief is conservatively closed by an explicit physical seam curtain',
     'support curves, closest-distance ties, occlusion z ties, column boundaries, profile pieces, positive radius, and curtain nondegeneracy remain explicit obligations',
-    'the internal ribbon and occlusion discontinuity graph is declared but not yet emitted as a complete clipped feature-side complex',
+    'the internal ribbon and occlusion discontinuity graph declared by the celtic knot cliff complex is emitted as clipped double-valued feature-side curtain patches for every declared segment whenever relief is active',
   ].join('\n')
 );
 
@@ -103,7 +103,7 @@ export interface CelticKnotOuterWallTargetBinding {
   readonly seamCurtainActive: boolean;
   readonly periodicIdentificationAdmissible: boolean;
   readonly internalRibbonDiscontinuitiesActive: boolean;
-  readonly completeInternalFeatureSideGraphEmitted: false;
+  readonly completeInternalFeatureSideGraphEmitted: boolean;
   readonly patchCount: number;
   readonly patchSetSha256: string;
   readonly regularityObligationsCanonicalJson: string;
@@ -487,7 +487,7 @@ function regularityValue(
   seamCurtainActive: boolean
 ): CanonicalJsonValue {
   return {
-    completeInternalFeatureSideGraphEmitted: false,
+    completeInternalFeatureSideGraphEmitted: seamCurtainActive,
     internalRibbonDiscontinuitiesActive: params.relief !== 0,
     obligations: [
       {
@@ -531,6 +531,7 @@ function derive(input: CanonicalTargetInputBinding): CelticKnotOuterWallTargetBi
   const params = parameters(input);
   const seamCurtainActive = params.relief !== 0;
   const internalRibbonDiscontinuitiesActive = params.relief !== 0;
+  const completeInternalFeatureSideGraphEmitted = internalRibbonDiscontinuitiesActive;
   const complex = seamCurtainActive ? declaredComplex(input, params) : undefined;
   const featureCurtains = complex
     ? complex.segments.map((segment, index) =>
@@ -556,7 +557,7 @@ function derive(input: CanonicalTargetInputBinding): CelticKnotOuterWallTargetBi
   const bindingValue = {
     canonicalInputSha256: inputProof.canonicalInputSha256,
     columnCount: params.columnCount.toString(),
-    completeInternalFeatureSideGraphEmitted: false,
+    completeInternalFeatureSideGraphEmitted,
     implementationScope: CELTIC_KNOT_OUTER_WALL_TARGET_SCOPE,
     internalRibbonDiscontinuitiesActive,
     patchCount: patches.length.toString(),
@@ -589,7 +590,7 @@ function derive(input: CanonicalTargetInputBinding): CelticKnotOuterWallTargetBi
     seamCurtainActive,
     periodicIdentificationAdmissible: !seamCurtainActive,
     internalRibbonDiscontinuitiesActive,
-    completeInternalFeatureSideGraphEmitted: false,
+    completeInternalFeatureSideGraphEmitted,
     patchCount: patches.length,
     patchSetSha256,
     regularityObligationsCanonicalJson,

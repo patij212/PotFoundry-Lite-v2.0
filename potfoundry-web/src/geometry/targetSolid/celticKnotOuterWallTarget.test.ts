@@ -84,16 +84,20 @@ describe('Celtic Knot generated outer-wall target', () => {
     }
   });
 
-  it('declares the finite foreground/background and occlusion discontinuities', () => {
-    const binding = createCelticKnotOuterWallTargetBinding(input());
-    expect(binding.internalRibbonDiscontinuitiesActive).toBe(true);
-    expect(binding.completeInternalFeatureSideGraphEmitted).toBe(false);
-    expect(binding.regularityObligationsCanonicalJson).toContain(
+  it('flips the complete-feature-side-graph flag once curtains are emitted', () => {
+    const active = createCelticKnotOuterWallTargetBinding(input());
+    expect(active.internalRibbonDiscontinuitiesActive).toBe(true);
+    expect(active.completeInternalFeatureSideGraphEmitted).toBe(true);
+    expect(active.regularityObligationsCanonicalJson).toContain(
       'foreground-background-radial-jump'
     );
-    expect(binding.regularityObligationsCanonicalJson).toContain(
+    expect(active.regularityObligationsCanonicalJson).toContain(
       'z-buffer-occlusion-ties'
     );
+
+    const flat = createCelticKnotOuterWallTargetBinding(input({ ck_relief: 0 }));
+    expect(flat.internalRibbonDiscontinuitiesActive).toBe(false);
+    expect(flat.completeInternalFeatureSideGraphEmitted).toBe(false);
   });
 
   it('closes the column-phase seam with a physical curtain', () => {
