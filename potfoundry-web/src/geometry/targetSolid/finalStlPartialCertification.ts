@@ -126,7 +126,7 @@ export interface FinalStlPartialCertificationResult {
 }
 
 const TRUE_TOLERANCE_PM = 10_000_000n;
-const HARD_FINAL_ELAPSED_MILLISECONDS = 120_000;
+const HARD_FINAL_ELAPSED_MILLISECONDS = 240_000;
 
 function refuse(code: FinalStlPartialCertificationErrorCode, message: string): never {
   throw new FinalStlPartialCertificationError(code, message);

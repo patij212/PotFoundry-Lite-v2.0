@@ -771,7 +771,16 @@ function buildPatchPartitionFrame(
             `patch '${patchId}' conforming chord crosses a patch boundary row off-station`
           );
         }
-        if ((point.U === 0n || point.U === declared) && point.V !== 0n && point.V !== declared) {
+        // Seam-column endpoints are safe exactly when they are GRID CORNERS
+        // (station x station): the periodic weld copies the u=0 column, so a
+        // corner on the seam is shared by construction. Any other seam touch
+        // would need matched subdivisions on both wrapped columns — refused.
+        if (
+          (point.U === 0n || point.U === declared) &&
+          point.V !== 0n &&
+          point.V !== declared &&
+          !vInfo.isStation
+        ) {
           invalid(`patch '${patchId}' conforming chord touches the periodic seam interior`);
         }
       }

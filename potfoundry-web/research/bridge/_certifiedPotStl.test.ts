@@ -124,9 +124,6 @@ const CERTIFIED_POTS: ReadonlyArray<{
       },
     },
   },
-  // Voronoi is intentionally ABSENT: bubble mode converges per-patch but is
-  // compute-bound over the composed ceiling (Addendum 9) — no certificate
-  // was minted, so emitting its STL here would be a false claim.
   {
     name: 'GeometricStar_H32_OD30_fract',
     styleId: 'GeometricStar',
@@ -142,6 +139,23 @@ const CERTIFIED_POTS: ReadonlyArray<{
           [5, 29],
           [13, 29],
           [21, 29],
+        ]),
+      },
+    },
+  },
+  {
+    name: 'Voronoi_H32_OD30_bubble',
+    styleId: 'Voronoi',
+    styleParams: { v_morph: 0, v_relief: 0.04 },
+    geometry: Object.freeze({ ...DEFAULT_GEOMETRY, H: 32, top_od: 30, bottom_od: 30, r_drain: 6 }),
+    divisions: {
+      angularDivisionsLog2: 8,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 7, 'inner-wall': 7, 'top-rim': 3, 'bottom-top': 5, 'bottom-under': 5, 'drain-wall': 0,
+      },
+      verticalStationsByPatch: {
+        'inner-wall': rationalStationLadder(7, [
+          [1, 29], [5, 29], [9, 29], [13, 29], [17, 29], [21, 29], [25, 29],
         ]),
       },
     },
@@ -240,6 +254,6 @@ describe('certified pot STL emission', () => {
       console.log(line);
       expect(tris).toBeGreaterThan(0);
     }
-    expect(CERTIFIED_POTS.length).toBe(11); // PF_G2_POT roster size — bump if the gate grows
+    expect(CERTIFIED_POTS.length).toBe(12); // PF_G2_POT roster size — bump if the gate grows
   }, 10 * 60 * 1000);
 });

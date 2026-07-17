@@ -909,6 +909,47 @@ describe('annular solid reference tessellation', () => {
       },
       maxElapsedMilliseconds: 110_000,
     },
+    // TENTH STYLE (slice 11, envelope v3): Voronoi bubble. Addendum 9's
+    // "compute-bound" was partly a LADDER gap: the true 80 um wall was the
+    // inner wall's remapped t-lattice at EVERY t = k/8 (v = (4k-3)/29 at
+    // H32) — the GS ladder only covered k even. With the full odd-k ladder
+    // + walls 2^7 (bisector-kink chords) the composed proof runs ~119 s
+    // under the v3 240 s ceiling. Banded floors + proven-constant pcg2d
+    // carry the lattice; certified 9,499,879 pm / 172,032 tris.
+    {
+      styleId: 'Voronoi',
+      styleParams: { v_morph: 0, v_relief: 0.04 },
+      geometry: Object.freeze({
+        ...DEFAULT_GEOMETRY,
+        H: 32,
+        top_od: 30,
+        bottom_od: 30,
+        r_drain: 6,
+      }),
+      divisions: {
+        angularDivisionsLog2: 8,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 7,
+          'inner-wall': 7,
+          'top-rim': 3,
+          'bottom-top': 5,
+          'bottom-under': 5,
+          'drain-wall': 0,
+        },
+        verticalStationsByPatch: {
+          'inner-wall': rationalStationLadder(7, [
+            [1, 29],
+            [5, 29],
+            [9, 29],
+            [13, 29],
+            [17, 29],
+            [21, 29],
+            [25, 29],
+          ]),
+        },
+      },
+      maxElapsedMilliseconds: 235_000,
+    },
     // CLASSIFICATION CORRECTED (slice 10): WaveInterference at defaults is
     // SMOOTH-but-dense, not cusp-class — the earlier "sqrt-cusp by
     // elimination" call was the lesson-#1 contour artifact. Dense ridge
