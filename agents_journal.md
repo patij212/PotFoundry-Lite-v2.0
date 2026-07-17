@@ -7523,3 +7523,50 @@ support curves crossed by ultra-thin station columns.
 2. cMPD v16 is live — conforming-sliver campaigns (CT next) benefit
    automatically; note prior art: production AdaptiveRefinement's
    anisotropicSplitPriority is the same concept on the mesher side.
+
+---
+
+## [2026-07-17] Gothic endgame: +4 pm localized, collar calibrated, KERNEL-BOUND verdict
+
+### Summary
+Nine single-config per-patch probe rounds (PF_SLICE11_GO_PP) closed the Gothic
+p=1 lattice. The historic 9,500,004 pm "+4 pm" is the INNER wall's kink-crease
+collar gap (style-δ 0.009–0.0117, t 0.186–0.207); outer's twin reads 9,500,096.
+One mechanism explains every razor ever measured on this style: crease-chord
+sag R[µm] ≈ 2500·κ·g², κ = 845·cos(12π·δu) — verified ±5 % on four cells.
+Covering the collar band (δ ∈ [0.009, 0.020], pitch ~0.0018, 24 windows × both
+walls) was priced on every in-contract mechanism: strip-band rows ~190k cells
+each, stations ~9k each (168 minimal ⇒ both walls exhaust the 2M hard pool),
+interior chain vertices rejected by the tessellator endpoint contract.
+Baseline walls are cheap (~460–500k). Verdict: KERNEL-BOUND, reclassified from
+Addendum-15's "one session from certification". Docs: matrix Addendum 16 +
+roadmap addendum. Harness: env switches PF_GOTHIC_H3_BASELINE / PF_GOTHIC_COLLAR.
+
+### Decisions
+- Band-clip exit RETIRED (hour-4 datapoint was the unclipped collar cell;
+  clipping measured useless at safe depths, harmful at useful ones).
+- a7, inner-w6, 6-offsets/side all measured net-negative and reverted.
+- Multi-variable config deltas retired: cells/tri across different sweep
+  prefixes is invalid evidence; single-variable probes only.
+- No composed run recorded: per-patch isolation subsumes it (walls exhaust
+  individually with collar coverage; razors 4–409 pm over without).
+
+### Validation
+eslint clean + tsc 0 errors on the spike file (pre-existing unrelated tsc
+errors in src/AxisOverlay.test.ts / BindGroupFactory.test.ts untouched).
+All probe outputs quoted verbatim in matrix Addendum 16.
+
+### Risks / open questions
+- The ~9k/station and ~190k/row constants are this style at H32; other curved
+  styles (WI) may price differently.
+- Apex±o row cut is in the candidate path but unverified past the razor cells
+  (baseline keeps them; sweep never reached apex zones on walls).
+
+### Next agent
+1. THE unlock, precisely named: extend the splitter/chord contract to accept
+   INTERIOR chain vertices (degree-2 pass-through on a conforming polyline);
+   rejection site: annularSolidReferenceTessellation.ts buildPatchPartitionFrame
+   ("chord endpoint is off the station grid lines"). With it, collar = ~400
+   chain points ≈ trivial cells; Gothic certifies at hour-3 volume (~100 s).
+2. Alternatives (perf programme): per-patch workers (razor-edge on 2M/patch),
+   screen-enclosure improvements.

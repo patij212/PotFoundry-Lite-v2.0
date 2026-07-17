@@ -643,3 +643,66 @@ data point (hour 4, reverted): a NAIVE clip of all strips to
 tMin = spring − 0.04 fits the cell pool (89 s to a verdict) but reads
 9,546,743 pm — the clip termination rows need their own snapped stations and
 corner-anchored chain ends, exactly like the gate curve's terminations.
+
+## Addendum 16 — Gothic endgame session: the +4 pm localized, the collar mechanism calibrated, and a KERNEL-BOUND verdict (2026-07-17)
+
+Nine per-patch probe rounds (`PF_SLICE11_GO_PP`, cMPD per patch at the
+9.5M pm bound, 2M-cell pool) closed the Gothic p=1 measurement lattice.
+Protocol lesson first: cross-round cells/triangle comparisons over DIFFERENT
+sweep prefixes are invalid (the sweep is not uniform); only same-index
+prefixes, converged totals, and refusal cells count. Multi-variable config
+deltas were retired mid-session for single-variable ones.
+
+**The one residual mechanism.** Every razor cell measured this session is
+kink-crease chord sag in the base-column collar: crossings of the arch crease
+t = archZ(u) are row-pitch-limited near columns (gap g ≈ (1/32)/slope), and
+the ridge slope-jump 8A/w ≈ 40,000 µm/unit-t converts chord sag into
+residual R[µm] ≈ 2500·κ·g², κ = 845·cos(12π·δu) — verified within ~5 % on
+four independent cells:
+- inner 9,500,004 pm at δ 0.009–0.0117, t 0.186–0.207 — THE hour-3 "+4 pm"
+  (it was the inner wall's collar gap between the spring+0.036 row and the
+  1/8 dyadic row all along);
+- outer 9,500,096 pm, same class, t 0.1875–0.207;
+- inner 9,500,409 pm (collar-rows config, gap to 13/64);
+- outer 9,541,416 pm (k/64-band config, δ 0.0156–0.0181, t 0.25–0.28125).
+Hour-4 attribution CORRECTED: the "naive clip reads 9,546,743" data point
+matches the unclipped collar cell; clip terminations were never the driver,
+and band clipping is retired (at safe depths it saves ~nothing; at useful
+depths the collapse-run diagonals cross the residual tongue at 28–38 µm).
+
+**The volume economics (measured, single-variable).** Hour-3 baseline
+(a8w5, 8 offsets/side, spring+apex rows, no k/64) is CHEAP — walls ~460–500k
+cells, 33–35 s sweeps — and fails ONLY at the two collar razors above. Every
+in-contract mechanism that covers the collar band (δ ∈ [0.009, 0.020] at
+~0.0018 crossing pitch, t ∈ [0.186, 0.31], 24 windows × both walls) costs:
+- horizontal rows: ~190k cells each (a strip-band row is cut ~768× per wall
+  — against the strip grain); ~8–12 needed ⇒ +1.5–2.3M/wall;
+- angular stations: ~9k cells each (168 minimal stations ⇒ +~1.5M/wall;
+  measured baseline+168 = both walls exhaust the 2M pool);
+- interior chain vertices: REJECTED by the tessellator contract in 0.9 s
+  ("conforming chord endpoint is off the station grid lines",
+  `annularSolidReferenceTessellation.ts` buildPatchPartitionFrame).
+Also measured dead: a7 (station removal reappears as work-cell splits and
+worsens per-cell grind), inner w6 (44 % of sweep at 2M vs 55 % at w5), the
+6/side offset regrade (the removed 0.028 row's absence stacks cross-strip +
+base sag to 9,500,010 pm while saving little). The 2M per-patch pool is a
+HARD envelope constant (`CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS`);
+throughput ~10.5k cells/s puts the composed 235 s envelope at ~2.0–2.2M total
+wall cells. Collar coverage ≥ 3× the headroom on either wall.
+
+**Verdict: GothicArches p=1 at 0.01 mm / H32 is KERNEL-bound, not
+config-bound** — reclassified from "one hardening session from certification"
+(Addendum 15). Priced exits, cheapest first:
+1. **Interior chain vertices** (extend the splitter/endpoint contract to
+   accept degree-2 pass-through points on a conforming polyline): the collar
+   fix becomes ~400 chain points ≈ ~1k extra chords ≈ trivial cells; walls
+   stay at hour-3 volume ⇒ composed ~100 s. The T-junction oracle already
+   handles mid-edge points on grid lines; this is the surgical kernel feature.
+2. **Per-patch workers** (roadmap perf item): walls in parallel could fit the
+   time envelope at ~1.9M cells/wall, but sits razor-edge against the 2M pool.
+3. **Screen-enclosure improvements** (roadmap perf item): lower the ~9k/station
+   and ~190k/row constants themselves.
+All knobs and the measured configurations remain in
+`research/bridge/_gothicVoronoiConformingSpike.test.ts` (env switches:
+`PF_GOTHIC_H3_BASELINE`, `PF_GOTHIC_COLLAR` for the baseline and the
+single-variable collar-station experiment).

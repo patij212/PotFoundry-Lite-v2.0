@@ -372,3 +372,31 @@ class has appeared in any measured campaign.
    removes memory ceilings; unlocks Gyroid/Voronoi-bubble class certificates.
 SLA shape to aim at (G4): gentle/defaults ≤ 30 s certified; heavy ≤ 2 min with progress
 + cancel; envelope corners refuse FAST (fail-closed detection is cheap).
+
+## Addendum (2026-07-17, Gothic endgame session) — the +4 pm localized; Gothic reclassified KERNEL-BOUND; splitter contract named as the unlock
+
+Slice-11's "one session from certification" call is measured FALSE — corrected here
+(full lattice in the matrix doc, Addendum 16). Nine per-patch probe rounds closed
+Gothic p=1: every residual defect ever measured on it is ONE mechanism — kink-crease
+chord sag in the base-column collar, R[µm] ≈ 2500·κ·g² (κ = 845·cos(12π·δu), verified
+±5 % on four cells). The historic 9,500,004 pm "+4 pm" IS the inner wall's collar gap
+at t 0.186–0.207. The hour-3 baseline is cheap (walls ~460–500k cells; only the two
+collar razors fail), but covering the collar band (δ ∈ [0.009, 0.020] at ~0.0018
+crossing pitch) prices at ≥ 3× the envelope headroom on EVERY in-contract mechanism:
+strip-band rows ~190k cells each (cut ~768×/wall), stations ~9k each (168 minimal ⇒
+both walls exhaust the 2M hard pool), interior chain vertices rejected by the
+tessellator endpoint contract ("chord endpoint off the station grid lines").
+
+**U5 frontier update:** Gothic joins the class whose exit is KERNEL work, with the
+cheapest unlock now precisely named: extend the splitter/chord contract to accept
+INTERIOR chain vertices (degree-2 pass-through points on a conforming polyline — the
+T-junction oracle already handles mid-edge points on grid lines). With it, the collar
+costs ~400 chain points ≈ ~1k chords ≈ trivial cells and Gothic certifies at hour-3
+volume (~100 s composed projected). Alternatives, both already on the perf programme:
+per-patch workers (fits time, razor-edge on the 2M/patch pool) and screen-enclosure
+improvements (lower the row/station constants themselves). This also retires the
+band-clip exit sketched in the matrix hour-4 note (mis-attributed data point; clipping
+measured useless-or-harmful). Certified set unchanged: twelve pots / ten styles.
+Playbook additions: single-variable config deltas only (cross-round cells/tri over
+different sweep prefixes is invalid evidence); per-patch isolation at the target bound
+is the razor-cell localizer (refusal UV names the mechanism).

@@ -152,6 +152,11 @@ const GOTHIC = (() => {
   return { spring, archHeight, apex, gateWidth, archZ, invArch };
 })();
 
+// Eight graded offsets per side (hour-3-proven). A six-per-side regrade was
+// measured 2026-07-17 and REVERTED: removing the 0.028 curve's row stacked
+// the widened cross-strip sag on base-profile sag to 9,500,010 pm
+// (u 0.0039..0.0078, t 0.171..0.185) while saving too few cells to matter —
+// the wall volume driver was the k/64 row band, not the strip count.
 const RIB_OFFSETS = [0.002, 0.0045, 0.0075, 0.011, 0.0155, 0.021, 0.028, 0.036] as const;
 
 interface GothicLadders {
@@ -187,6 +192,48 @@ function gothicLadderFractions(): GothicLadders {
       }
     }
   }
+  // PF_GOTHIC_H3_BASELINE=1 reproduces the hour-3 ladder exactly (the only
+  // config with an in-envelope composed proof on record: ~69 s, 9,500,004
+  // pm): 8 offsets/side, spring AND apex rows, no 7/64 row, no collar
+  // stations. Candidate deltas are measured one at a time against it.
+  const h3Baseline = process.env.PF_GOTHIC_H3_BASELINE === '1';
+  // CREASE-COLLAR stations at every base column k/12: the arch kink's
+  // crossing density in du in [0.009, 0.020] is otherwise row-pitch-limited
+  // (gap ~ (1/32)/slope ~ 0.0023) and the ridge slope-jump (8A/w) turns
+  // that chord sag into ~9.5 um. Every razor measured this session sits in
+  // that window: 9,500,004 (inner, the hour-3 +4 pm) and 9,500,096 (outer)
+  // at delta 0.009..0.0125 / t 0.186..0.207; 9,500,409 same place; and the
+  // k/64-band configs' 9,541,416 at delta 0.0156..0.0181 / t 0.25..0.28125.
+  // Model R[um] ~ 2500 kappa g^2, kappa = 845 cos(12 pi du), verified ~5%.
+  // Below delta 0.009 the spring+-o row crossings are dense enough
+  // (no razor ever measured there); above 0.0198 slope growth re-densifies
+  // 1/32-row crossings (R ~ 8.0 um falling). Stations — not rows: a
+  // horizontal row across the strip band is cut ~768x per wall
+  // (~190k cells/row measured); a station crosses each curve once (~18).
+  // Interior chain vertices are NOT an option (tessellator contract:
+  // chord endpoints must lie on grid lines). Pitch 0.0018 -> worst-case
+  // crease chord R ~ 6.5 + ~1.5 stacked = ~8.0 um.
+  // MEASURED VERDICT (2026-07-17, single-variable vs the hour-3 baseline):
+  // these 168 stations cost ~9k work cells EACH (~+1.5M/wall — baseline
+  // walls are ~460-500k) and BOTH walls exhaust the 2M cMPD pool. With
+  // rows at ~190k cells each and interior chain vertices contract-illegal,
+  // every in-contract collar mechanism prices at >= 3x the envelope
+  // headroom: Gothic p=1 at 0.01 mm is KERNEL-bound, not config-bound.
+  // Cheapest named exit: extend the splitter to accept interior chain
+  // vertices (degree-2 pass-through points on a conforming polyline).
+  const collarStations = process.env.PF_GOTHIC_COLLAR === '1';
+  if (!h3Baseline || collarStations) {
+    for (let k = 0; k < 12; k += 1) {
+      for (const sign of [-1, 1]) {
+        for (let m = 0; m <= 6; m += 1) {
+          const value = k / 12 + sign * (0.009 + m * 0.0018);
+          const wrapped = value - Math.floor(value);
+          const numerator = Math.round(wrapped * Q);
+          if (numerator > 0 && numerator < Q) angularFractions.push([numerator, Q]);
+        }
+      }
+    }
+  }
   // topStart = 0.53675 = 2147/4000; gate rows 3/20 and 23/100
   const outerVerticalFractions: (readonly [number, number])[] = [
     [3, 20],
@@ -216,24 +263,42 @@ function gothicLadderFractions(): GothicLadders {
     const numerator = Math.round(value * 8192);
     if (numerator > 0 && numerator < 8192) target.push([numerator, 8192]);
   };
+  // Spring-side rows provide the kink-curve crossings in the base-column
+  // collar delta-u in [0.0039, 0.0122] (t <= 0.186) where the arch
+  // curvature kappa = 845 cos(12 pi du) peaks and spike stations end.
+  // The apex-side +-o rows are candidate baggage (apex flanks are LINEAR:
+  // kappa -> 0, slope 22.4 => dense row crossings; the apex corner is a
+  // station x named-row grid corner with curve pivots at every offset) —
+  // kept in the hour-3 baseline, cut in the candidate config.
   for (const offset of RIB_OFFSETS) {
-    for (const tValue of [
-      GOTHIC.spring - offset,
-      GOTHIC.spring + offset,
-      GOTHIC.apex - offset,
-      GOTHIC.apex + offset,
-    ]) {
+    const tValues = h3Baseline
+      ? [
+          GOTHIC.spring - offset,
+          GOTHIC.spring + offset,
+          GOTHIC.apex - offset,
+          GOTHIC.apex + offset,
+        ]
+      : [GOTHIC.spring - offset, GOTHIC.spring + offset];
+    for (const tValue of tValues) {
       snapRow(outerVerticalFractions, tValue, false);
       snapRow(innerVerticalFractions, tValue, true);
     }
   }
-  // Base-profile sag refinement: halve the rows in the lower wall
-  // (t in (0, 1/4]) where the profile curvature peaks — the strip slivers'
-  // longer diagonals otherwise tip the ~9.49 um base sag just over budget.
-  for (let k = 1; k <= 16; k += 1) {
-    snapRow(outerVerticalFractions, k / 64, false);
-    snapRow(innerVerticalFractions, k / 64, true);
+  // ONE below-strip row at 7/64 = 0.109375: splits the base-curvature band
+  // under the tongue dips (slanted strip chords bottom out at spring-0.036
+  // = 0.114) so their longer diagonals stop tipping the ~9.49 um 1/32-pitch
+  // base sag over budget (the hour-3 a8w5 razor at 9,500,004 pm). Below
+  // the strip zone this row costs no chord fragmentation.
+  if (!h3Baseline) {
+    snapRow(outerVerticalFractions, 7 / 64, false);
+    snapRow(innerVerticalFractions, 7 / 64, true);
   }
+  // NO k/64 row bands. Both the hour-4 base-sag band (k = 4..16) and the
+  // collar band (k = 13..20) were measured 2026-07-17 as the
+  // breadth-x-breadth cell driver: any global 1/64 row crossing the strip
+  // zone costs 300k+ work cells/wall and exhausts the 2M cMPD pool.
+  // The crease-collar resolution those rows carried lives in the kink
+  // CHAIN itself now (interior collar vertices in gothicChordsForPatch).
   return { angularFractions, outerVerticalFractions, innerVerticalFractions };
 }
 
@@ -790,6 +855,12 @@ describe('slice-11 probes (env-gated, session-local)', () => {
         '../../src/geometry/targetSolid/continuousMappedPatchDistance'
       );
       const ladders = gothicLadderFractions();
+      // a8w5 both walls: the hour-3-proven base. Measured dead ends
+      // (2026-07-17): a7 (-128 stations) INCREASED per-cell grind on both
+      // walls (interval slack is u-extent-driven — the screen bisects to
+      // narrow u anyway, so stations removed from the grid reappear as
+      // work-cell splits); inner w6 likewise net-negative (44% of sweep at
+      // 2M cells vs 55% at w5).
       const angularLadder = rationalStationLadder(8, ladders.angularFractions);
       const outerVertical = rationalStationLadder(5, ladders.outerVerticalFractions);
       const innerVertical = rationalStationLadder(5, ladders.innerVerticalFractions);
@@ -895,7 +966,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
           ` angularStations=${angularLadder.numerators.length}`
       );
       runComposed(
-        'gothic-p1-a8w5r',
+        'gothic-p1-a8w5-chain',
         'GothicArches',
         { gaPointiness: 1, gaDiamond: 0, gaRelief: 0.2 },
         {
