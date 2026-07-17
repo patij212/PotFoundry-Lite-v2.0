@@ -66,7 +66,7 @@ export const VALIDATED_RESIDUAL_PROGRAM_VERSION =
 export const VALIDATED_RESIDUAL_SSA_PROGRAM_VERSION =
   'potfoundry.validated-target-ssa-program/v3' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION =
-  'potfoundry.validated-target-program-compiler/v12' as const;
+  'potfoundry.validated-target-program-compiler/v13' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
   [
     VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION,
@@ -78,6 +78,7 @@ export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
     'screen arithmetic widens every node result by a pure relative 4*2^-52 (libm-backed nodes 8*2^-52, assuming platform libm within one unit in the last place per call), which preserves exact zeros; soundness of relative-only widening is enforced by refusing any nonzero computed bound below 1e-150 in magnitude, above which a rounded result is exactly zero only when truly zero; add/subtract results additionally keep exactness proven by an error-free round-trip check; products and quotients by a power-of-two point factor are exponent shifts and stay exact unwidened; trig ranges include every critical point conservatively located with outward pi',
     'piecewise/branch-cut nodes (floor, ceiling, round, fractional-part, sign, step, atan2, pcg2d) are jump-guarded: cells whose argument enclosures exclude every jump take exact locally-constant or smooth paths (pcg2d resolves proven single-integer operands to its exact dyadic constant), and straddling cells downgrade the whole run to a plain value-hull residual over the cell — still a sound enclosure, only first-order wide',
     'fractional-part and floor nodes whose argument is compiler-proven point-exact affine in u/v additionally band-resolve per cell: exact integer arithmetic on the cell rational vertex numerators must prove the argument range lies inside one closed unit band [k, k+1], and the node then evaluates as the error-free-checked smooth shift argument-minus-k or the exact constant k with no hull downgrade; cells whose exact argument range spans a jump keep the hull fallback, and both interval kernels apply the same per-cell band',
+    'sign nodes with a point-exact affine argument and step nodes whose combined argument x-minus-edge is point-exact affine band-resolve by the same exact per-cell check against their single zero jump: a cell provably on one closed side evaluates that side closure constant (sign minus-one/plus-one, step zero/one with the right-closed branch carrying the true equality value), and mixed-sign cells keep the hull fallback in every kernel',
     'band-resolved enclosures bound distance to the closed graph of the program: on a jump line the resolved branch evaluates its one-sided closure limit, which distance-to-set claims admit because closure points are infima of graph points; any solid-boundary curtain at a value-discontinuous jump remains a surface-complex obligation outside this program proof',
     'power additionally supports a varying exponent y >= 1 with base >= 0: value and base-derivative factors by monotone corner bounds, exponent-derivative factor a^y*ln(a) bounded below by -1/(e*yLo) on (0,1] and corner-monotone for base >= 1',
     'power with base >= 0 and a positive exponent below one (a clamp-boundary cusp with unbounded derivative) keeps its monotone corner VALUE enclosure and downgrades the run to the value-hull residual, so cusp neighborhoods refine by subdivision instead of refusing to the decimal kernel',
@@ -217,7 +218,7 @@ interface InternalCompiledProgram extends CompiledValidatedResidualProgram {
  */
 interface BandedJumpNode {
   readonly nodeIndex: number;
-  readonly operation: 'fractional-part' | 'floor';
+  readonly operation: 'fractional-part' | 'floor' | 'sign' | 'step';
   readonly uScaled: bigint;
   readonly vScaled: bigint;
   readonly constantScaled: bigint;
@@ -1275,11 +1276,14 @@ function parsePointDecimal(interval: DecimalInterval): ParsedPointDecimal | null
 }
 
 /**
- * Collect fractional-part/floor nodes whose argument affine form has
+ * Collect piecewise-jump nodes whose (combined) argument affine form has
  * point-exact coefficients (an interval pi coefficient, a rounded product,
  * or any non-affine argument disqualifies the node — fail closed to the
- * jump-guard behavior). Coefficients are normalized to one shared
- * power-of-ten scale so per-cell band checks are single BigInt comparisons.
+ * jump-guard behavior). fractional-part/floor key off their argument; sign
+ * keys off its argument's single jump at zero; step(edge, x) keys off the
+ * combined affine x - edge with its single jump at zero. Coefficients are
+ * normalized to one shared power-of-ten scale so per-cell band checks are
+ * single BigInt comparisons.
  */
 function deriveBandedJumpNodes(
   instructions: readonly Instruction[],
@@ -1288,8 +1292,20 @@ function deriveBandedJumpNodes(
   const banded: BandedJumpNode[] = [];
   for (let index = 0; index < instructions.length; index += 1) {
     const instruction = instructions[index];
-    if (instruction.op !== 'fractional-part' && instruction.op !== 'floor') continue;
-    const form = forms[instruction.arg];
+    let form: AffineForm | null = null;
+    if (
+      instruction.op === 'fractional-part' ||
+      instruction.op === 'floor' ||
+      instruction.op === 'sign'
+    ) {
+      form = forms[instruction.arg];
+    } else if (instruction.op === 'step') {
+      const edge = forms[instruction.left];
+      const argument = forms[instruction.right];
+      form = edge === null || argument === null ? null : affineAdd(argument, affineNegate(edge));
+    } else {
+      continue;
+    }
     if (form === null) continue;
     const uCoefficient = parsePointDecimal(form.u);
     const vCoefficient = parsePointDecimal(form.v);
@@ -1347,6 +1363,20 @@ function resolveJumpBandsInto(
     }
     if (minimum === undefined || maximum === undefined) {
       bands[node.nodeIndex] = Number.NaN;
+      continue;
+    }
+    if (node.operation === 'sign' || node.operation === 'step') {
+      // Single value jump at argument zero. A cell provably on one closed
+      // side resolves to that side's constant (its one-sided closure limit
+      // on the jump line itself); the right-closed step branch carries the
+      // true edge <= x equality value. Mixed signs keep the hull.
+      if (maximum <= 0n) {
+        bands[node.nodeIndex] = node.operation === 'sign' ? -1 : 0;
+      } else if (minimum >= 0n) {
+        bands[node.nodeIndex] = 1;
+      } else {
+        bands[node.nodeIndex] = Number.NaN;
+      }
       continue;
     }
     const bandDenominator = cellDenominator * node.powerOfTenScale;
@@ -1441,7 +1471,15 @@ function evaluateInstruction(
       }
       return decimalFract(values[instruction.arg]);
     }
-    case 'sign': return decimalSign(values[instruction.arg]);
+    case 'sign': {
+      if (bands !== null) {
+        const band = bands[instructionIndex];
+        // Exact-band cell: the argument range provably sits on one closed
+        // side of zero; sign is that side's closure constant.
+        if (band === band) return decimalPoint(band.toString());
+      }
+      return decimalSign(values[instruction.arg]);
+    }
     case 'add': return decimalAdd(values[instruction.left], values[instruction.right]);
     case 'subtract': return decimalSubtract(values[instruction.left], values[instruction.right]);
     case 'multiply': return decimalMultiply(values[instruction.left], values[instruction.right]);
@@ -1449,7 +1487,16 @@ function evaluateInstruction(
     case 'minimum': return decimalMinimum(values[instruction.left], values[instruction.right]);
     case 'maximum': return decimalMaximum(values[instruction.left], values[instruction.right]);
     case 'power': return decimalPow(values[instruction.left], values[instruction.right]);
-    case 'step': return decimalStep(values[instruction.left], values[instruction.right]);
+    case 'step': {
+      if (bands !== null) {
+        const band = bands[instructionIndex];
+        // Exact-band cell: the combined argument x - edge provably sits on
+        // one closed side of zero; step is that side's closure constant
+        // (the right-closed branch carries the true equality value).
+        if (band === band) return decimalPoint(band.toString());
+      }
+      return decimalStep(values[instruction.left], values[instruction.right]);
+    }
     case 'atan2': return decimalAtan2(values[instruction.left], values[instruction.right]);
     case 'pcg2d-unit-x':
     case 'pcg2d-unit-y': {
@@ -2549,6 +2596,17 @@ function fastRunTape(
         break;
       }
       case FAST_OP_SIGN: {
+        if (fastRunTapeBands !== null) {
+          const band = fastRunTapeBands[index];
+          if (band === band) {
+            // Exact-band cell: the argument range provably sits on one
+            // closed side of zero; sign is that side's closure constant.
+            // Derivatives stay zero.
+            rLo = band;
+            rHi = band;
+            break;
+          }
+        }
         const lo = valueLo[a];
         const hi = valueHi[a];
         if (lo > 0) {
@@ -2565,6 +2623,18 @@ function fastRunTape(
         break;
       }
       case FAST_OP_STEP: {
+        if (fastRunTapeBands !== null) {
+          const band = fastRunTapeBands[index];
+          if (band === band) {
+            // Exact-band cell: the combined argument x - edge provably sits
+            // on one closed side of zero; step is that side's closure
+            // constant (the right-closed branch carries the true equality
+            // value). Derivatives stay zero.
+            rLo = band;
+            rHi = band;
+            break;
+          }
+        }
         // step(edge, x) is one exactly when edge <= x.
         const edgeLo = valueLo[a];
         const edgeHi = valueHi[a];

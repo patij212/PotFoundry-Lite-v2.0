@@ -371,3 +371,37 @@ off the affine derivation — extend the op set); RippleInterference = float jum
 (BigInt ladder numerators or authoring-side offset normalization); Voronoi bubble =
 compute-bound (U5/G4 envelope); web mode + heightPhase ≠ 0 diagonals + Gothic/WI curved
 features = U4/U5 classes, unchanged.
+
+## Addendum 11 — U3b slice 7: sign/step value-jump banding (compiler v13) + honest SFB/CT rerouting (2026-07-17)
+
+**Machinery landed (compiler v12 → v13):** `sign` nodes with a point-exact affine
+argument and `step(edge, x)` nodes whose COMBINED argument x − edge is point-exact
+affine now band-resolve by the same exact BigInt per-cell check, against their single
+zero jump: a cell provably on one closed side evaluates that side's closure constant
+(sign −1/+1; step 0/1, the right-closed branch carrying the true `edge <= x` equality
+value); mixed-sign cells keep the hull in every kernel (fast string, fast numeric,
+decimal — bit-identity pinned). 9 new kernel tests incl. a DIAGONAL combined-affine
+step line, one-sided closures, straddle soundness pins, and interval-pi refusal.
+
+**Test-design lesson worth keeping:** a value-jump band is for INTERMEDIATE jumps
+inside continuous composites (sign(x)·x = |x|, step·arg = max(0, arg)) — exactly like
+fract inside Crystalline's triangle wave. A genuinely discontinuous OUTPUT leaves a
+real full-amplitude residual at the station no matter how the node resolves (float
+`sign(0) = 0` at the artifact corner makes it visible immediately) — that is and stays
+a U4 curtain obligation, never a banding target.
+
+**Honest rerouting of the two styles this was aimed at (emission inspection):**
+- **SuperformulaBlossom:** its `sign` argument is `max(0, denominator − ε)` with a
+  TRANSCENDENTAL denominator — NOT affine and not re-authorable to affine. Banding
+  cannot apply. Wherever gentle params keep denominator − ε interval-positive the sign
+  gate already resolves by plain positivity; the real question is the curved level set
+  denominator = ε (output-discontinuity ⇒ curtain class if reachable, else params must
+  provably clear it). Slice-4's "same affine-argument pattern" claim was WRONG for SFB.
+  Route: probe first (classifier), not banding.
+- **CelticTriquetra:** its `step(0.3, vBand)` / `step(vBand, 0.7)` gates ARE the
+  intended shape but vBand chains through fract-family nodes, so the COMBINED argument
+  is affine only if CT is re-authored Crystalline/GS-style (emit the band coordinates
+  as affine unit-parameter expressions). Plus its `atan2` fold needs its own routing.
+  The v13 machinery is the necessary substrate; CT re-authoring is the next increment.
+
+Certified set unchanged this slice: seven pots across six styles.

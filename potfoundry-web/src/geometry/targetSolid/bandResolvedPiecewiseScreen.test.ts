@@ -416,3 +416,276 @@ describe('band-resolved piecewise nodes (U3b slice 4)', () => {
     expect(zWidth(enclosure)).toBeGreaterThan(0.015);
   });
 });
+
+// U3b slice 7: the same exact per-cell affine machinery resolves the VALUE
+// jumps of sign and step. sign bands are (-inf, 0) -> -1 and (0, inf) -> +1;
+// step(edge, x) keys off the combined point-affine argument x - edge with
+// bands (-inf, 0) -> 0 and (0, inf) -> 1. Cells whose exact range touches
+// the jump from one side evaluate that side's one-sided closure limit
+// (closed-graph semantics, same doctrine as fract/floor; for step the
+// right-closed branch carries the true edge <= x equality value). Cells
+// whose exact range spans the jump keep the sound hull.
+describe('band-resolved sign/step value jumps (U3b slice 7)', () => {
+  const signOf = (arg: Expression): Expression => ({ op: 'sign', arg });
+  const stepOf = (left: Expression, right: Expression): Expression => ({
+    op: 'step',
+    left,
+    right,
+  });
+
+  // Like fract in a triangle wave, the realistic use is an INTERMEDIATE
+  // jump inside a continuous composite (a genuinely discontinuous OUTPUT is
+  // a curtain-class obligation no band can absorb). z = 0.02*sign(x)*x =
+  // 0.02*|x| with x = 3u - 1: continuous, sign jump at u = 1/3 (never
+  // dyadic). Unresolved cells hull sign to [-1, 1] and poison the product;
+  // resolved cells take the exact one-sided constant.
+  const SIGN_ARG = sub(mul(constant('3'), U), constant('1'));
+  const SIGN_Z = mul(constant('0.02'), mul(signOf(SIGN_ARG), SIGN_ARG));
+  const signZ = (u: number): number => {
+    const x = 3 * u - 1;
+    return 0.02 * Math.sign(x) * x;
+  };
+
+  // z = 0.02*step(1.5v + 1, 3u)*(3u - 1.5v - 1) = 0.02*max(0, x) with the
+  // combined affine argument x = 3u - 1.5v - 1 along a DIAGONAL jump line —
+  // continuous across the jump, step jump intermediate.
+  const STEP_ARG = sub(
+    mul(constant('3'), U),
+    add(mul(constant('1.5'), V), constant('1'))
+  );
+  const STEP_Z = mul(
+    constant('0.02'),
+    mul(
+      stepOf(add(mul(constant('1.5'), V), constant('1')), mul(constant('3'), U)),
+      STEP_ARG
+    )
+  );
+  const stepZ = (u: number, v: number): number => {
+    const x = 3 * u - 1.5 * v - 1;
+    return 1.5 * v + 1 <= 3 * u ? 0.02 * x : 0;
+  };
+
+  it('resolves sign to +1 on a cell whose left edge sits exactly ON the jump', () => {
+    // q=3, f=3 (denominator 24): cell u in [8/24, 9/24]. The float image of
+    // 1/3 dips one ulp below the jump, so the unbanded guard hulls sign to
+    // [-1, 1] forever; the exact check proves the range is inside [0, inf)
+    // and takes the +1 closure branch.
+    const evaluator = bandEvaluator(SIGN_Z);
+    const request = requestFor(
+      (u) => signZ(u),
+      [
+        [8, 0],
+        [9, 0],
+        [9, 1],
+      ],
+      3,
+      3
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expectZContainment(enclosure, request, (u) => signZ(u), 24, mulberry32(0xc1));
+    expect(zWidth(enclosure)).toBeLessThan(1e-6);
+  });
+
+  it('resolves sign to the -1 closure on the cell LEFT of the jump', () => {
+    const evaluator = bandEvaluator(SIGN_Z);
+    const request = requestFor(
+      (u) => signZ(u),
+      [
+        [7, 0],
+        [8, 0],
+        [8, 1],
+      ],
+      3,
+      3
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expectZContainment(enclosure, request, (u) => signZ(u), 24, mulberry32(0xc2));
+    expect(zWidth(enclosure)).toBeLessThan(1e-6);
+  });
+
+  it('keeps the sound hull on a sign cell whose exact range spans the jump', () => {
+    const evaluator = bandEvaluator(SIGN_Z);
+    const request = requestFor(
+      (u) => signZ(u),
+      [
+        [1, 0],
+        [2, 0],
+        [2, 1],
+      ],
+      2,
+      1
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expectZContainment(enclosure, request, (u) => signZ(u), 4, mulberry32(0xc3));
+    expect(zWidth(enclosure)).toBeGreaterThan(0.004);
+  });
+
+  it('resolves step through its combined diagonal affine argument', () => {
+    // q=9, f=4 (denominator 144): corners (48,0), (66,0), (66,16). The
+    // argument 3u - 1.5v - 1 is 0, 0.375, and 0.375 - 1/6 at the corners —
+    // inside the right-closed branch, whose constant 1 carries the true
+    // edge <= x equality value at the touching corner.
+    const evaluator = bandEvaluator(STEP_Z);
+    const request = requestFor(
+      stepZ,
+      [
+        [48, 0],
+        [66, 0],
+        [66, 16],
+      ],
+      4,
+      9
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expectZContainment(enclosure, request, stepZ, 144, mulberry32(0xc4));
+    expect(zWidth(enclosure)).toBeLessThan(1e-6);
+  });
+
+  it('resolves step to the 0 closure on a cell touching the jump from below', () => {
+    // Corners (30,0), (48,0), (30,16): argument -0.375, 0, and -0.375 - 1/6
+    // — max is exactly 0, the left-closure branch.
+    const evaluator = bandEvaluator(STEP_Z);
+    const request = requestFor(
+      stepZ,
+      [
+        [30, 0],
+        [48, 0],
+        [30, 16],
+      ],
+      4,
+      9
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expect(zWidth(enclosure)).toBeLessThan(1e-6);
+  });
+
+  it('keeps the sound hull on a step cell spanning the diagonal jump', () => {
+    // Corners (48,0), (66,0), (48,16): argument 0, 0.375, -1/6 — mixed
+    // signs, so the exact check must refuse and the hull must stay.
+    const evaluator = bandEvaluator(STEP_Z);
+    const request = requestFor(
+      stepZ,
+      [
+        [48, 0],
+        [66, 0],
+        [48, 16],
+      ],
+      4,
+      9
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expectZContainment(enclosure, request, stepZ, 144, mulberry32(0xc5));
+    expect(zWidth(enclosure)).toBeGreaterThan(0.003);
+  });
+
+  it('never resolves sign whose argument is not point-exact affine', () => {
+    // sign(pi*u - 1): the interval pi coefficient disqualifies the node;
+    // the straddling cell around u = 1/pi keeps the hull.
+    const evaluator = bandEvaluator(
+      mul(constant('0.02'), signOf(sub(mul({ op: 'pi' }, U), constant('1'))))
+    );
+    const zAt = (u: number): number => 0.02 * Math.sign(Math.PI * u - 1);
+    const request = requestFor(
+      zAt,
+      [
+        [5, 0],
+        [6, 0],
+        [6, 1],
+      ],
+      4,
+      1
+    );
+    const enclosure = evaluator.encloseResidualFast(request);
+    expect(enclosure).not.toBeNull();
+    if (enclosure === null) return;
+    expectZContainment(enclosure, request, zAt, 16, mulberry32(0xc6));
+    expect(zWidth(enclosure)).toBeGreaterThan(0.03);
+  });
+
+  it('sign/step numeric channel band resolution matches the string channel bit-for-bit', () => {
+    for (const [z, zAt, corners, fractionBits, oddFactor] of [
+      [SIGN_Z, (u: number) => signZ(u), [[8, 0], [9, 0], [9, 1]], 3, 3],
+      [SIGN_Z, (u: number) => signZ(u), [[7, 0], [8, 0], [8, 1]], 3, 3],
+      [STEP_Z, stepZ, [[48, 0], [66, 0], [66, 16]], 4, 9],
+      [STEP_Z, stepZ, [[48, 0], [66, 0], [48, 16]], 4, 9],
+    ] as const) {
+      const evaluator = bandEvaluator(z);
+      const request = requestFor(
+        zAt as (u: number, v: number) => number,
+        corners as unknown as readonly [Corner, Corner, Corner],
+        fractionBits,
+        oddFactor
+      );
+      const stringEnclosure = evaluator.encloseResidualFast(request);
+      const uNumerators = Float64Array.from(request.cell.vertices, (vertex) =>
+        Number(vertex.uNumerator)
+      );
+      const vNumerators = Float64Array.from(request.cell.vertices, (vertex) =>
+        Number(vertex.vNumerator)
+      );
+      const barycentric = Float64Array.from([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+      const artifact = new Float64Array(9);
+      request.artifactTriangleVerticesMm.forEach((vertex, index) => {
+        artifact[index * 3] = vertex[0];
+        artifact[index * 3 + 1] = vertex[1];
+        artifact[index * 3 + 2] = vertex[2];
+      });
+      const numericEnclosure = evaluator.encloseResidualFastNumeric(
+        uNumerators,
+        vNumerators,
+        fractionBits,
+        barycentric,
+        0,
+        artifact,
+        oddFactor
+      );
+      expect(numericEnclosure === null).toBe(stringEnclosure === null);
+      if (stringEnclosure !== null && numericEnclosure !== null) {
+        expect(numericEnclosure.zMm.lower).toBe(stringEnclosure.zMm.lower);
+        expect(numericEnclosure.zMm.upper).toBe(stringEnclosure.zMm.upper);
+      }
+    }
+  });
+
+  it('validated decimal authority band-resolves sign and step jump-adjacent cells', () => {
+    const signEvaluator = bandEvaluator(SIGN_Z);
+    const signRequest = requestFor(
+      (u) => signZ(u),
+      [
+        [8, 0],
+        [9, 0],
+        [9, 1],
+      ],
+      3,
+      3
+    );
+    // The decimal kernel restores the first-order hull-subtract width (the
+    // outward rational conversion carries its rounding guard), same shape
+    // as the fract decimal case above.
+    expect(zWidth(signEvaluator.encloseResidual(signRequest))).toBeLessThan(0.012);
+    const stepEvaluator = bandEvaluator(STEP_Z);
+    const stepRequest = requestFor(
+      stepZ,
+      [
+        [48, 0],
+        [66, 0],
+        [66, 16],
+      ],
+      4,
+      9
+    );
+    expect(zWidth(stepEvaluator.encloseResidual(stepRequest))).toBeLessThan(0.02);
+  });
+});

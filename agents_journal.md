@@ -7203,3 +7203,47 @@ impact(buildGeometricStar): LOW, 1 direct caller, targetSolid-contained.
    feature-conforming cells, U5-class (unchanged).
 4. U4 curtain/riser complexes remain the widest unlock (7 layered styles + the
    measured Voronoi web-mode curtain case).
+
+## 2026-07-17 — U3b slice 7: sign/step value-jump banding (compiler v13) + SFB/CT honest rerouting
+
+**Mandate:** slice-6 handoff item 1 — extend BandedJumpNode to sign/step value jumps.
+
+**Landed:** compiler v12 -> v13 in `validatedResidualProgram.ts`: sign (affine arg) and
+step (combined affine x - edge) band-resolve via the same exact BigInt per-cell check
+against their single zero jump — one-sided closure constants (sign -1/+1, step 0/1
+right-closed carrying the true equality value), hull kept on mixed-sign cells, wired in
+all three kernels (fast string, fast numeric, decimal; bit-identity pinned). 9 new
+kernel tests in bandResolvedPiecewiseScreen.test.ts (TDD: 5 RED first), incl. diagonal
+combined-affine step lines and interval-pi refusal. Doc-hash line + version bumped.
+
+**Test-design lesson:** value-jump bands serve INTERMEDIATE jumps in continuous
+composites (sign(x)*x = |x|; step*arg = max(0,arg)) — a discontinuous OUTPUT leaves a
+real full-amplitude residual at the station (float sign(0)=0 at the artifact corner
+exposes it instantly); that stays U4 curtain class, never banding.
+
+**Honest rerouting (matrix Addendum 11):** SFB's sign argument is transcendental
+(max(0, superformula-denominator - eps)) — NOT affine, banding inapplicable; its gate
+resolves by interval positivity at params that provably clear the level set, else
+curtain class. Slice-4's "same affine-argument pattern" was wrong for SFB. CT's steps
+fit ONLY after a Crystalline/GS-style re-authoring (vBand chains through fract nodes);
+atan2 fold needs its own routing. v13 is the substrate either way.
+
+**Verification:** pot gate re-run under v13 (compiler hash changes every evaluator
+proof): 23/23 green foreground ~5 min; full targetSolid 61 files / 461+9 green; eslint
+clean; tsc at the 356 pre-existing baseline; detect_changes LOW, 13 symbols / 5 files,
+zero affected processes. NOTE: the roadmap doc was concurrently modified by another
+session mid-slice — left untouched and uncommitted here (concurrency rule).
+
+### Next agent
+1. **CelticTriquetra re-authoring** (Crystalline/GS pattern): emit vBand's band
+   coordinate as an affine unit-parameter expression so the step gates' combined
+   arguments are point-affine; route the atan2 medallion fold separately; then probe
+   (per-patch timing pattern, matrix Addendum 9/10) and attempt certification with
+   rational station ladders where the band lines land.
+2. **SuperformulaBlossom**: run the classifier probe FIRST at gentle params — if
+   denominator - eps stays interval-positive everywhere, sign resolves without any
+   banding and the only question is density/params; if the level set is reachable,
+   it is curtain class (U4), not U2/U3.
+3. **RippleInterference float-offset stations** (slice-5 item, still open): BigInt
+   ladder numerators or authoring-side offset normalization.
+4. U4 curtain/riser complexes remain the widest unlock.
