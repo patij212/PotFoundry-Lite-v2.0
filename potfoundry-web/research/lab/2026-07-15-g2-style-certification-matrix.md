@@ -802,3 +802,49 @@ included). The per-patch evidence hashes are the certificate-stable anchors.
 PF_G2_POT roster 37/37 — all twelve certified pots re-proven, sequential path
 bit-identical.** Probes: `PF_SLICE11_VORONOI_PAR`, `PF_SLICE11_GOTHIC_PAR` in
 the spike harness.
+
+## Addendum 19 — envelope v4 executed; Gothic runs the full sweep and lands TWO PICOMETRES from the certificate (2026-07-17, fourth session)
+
+**Envelope v4 (Patryk's pool-shape decision, executed):** per-patch work cells
+2M → 6M (measured trip: chain-config walls need ~3.9/4.0M — both exhausted 2M
+at 51%/49.5% of their sweeps); aggregate cells 8M → 16M (2×4M + ~165k smalls
+≈ 8.4M measured); all nine hard elapsed ceilings 240 s → 600 s (walls ~380 s
+each at the measured ~10.5k cells/s, run concurrently by the patch workers).
+DEFAULTS untouched — existing certificates are behavior-neutral (suite +
+roster gates re-run green below).
+
+**The volume wall is GONE and the razor ladder continued past the collar,
+one mechanism per refusal, exactly as the playbook predicts:**
+1. 9,519,144 pm — the TIER-BLEND ends: topMask's smoothstep swaps lower-tier
+   relief for the lattice across topStart ± blendW = 0.53675 ± 0.05
+   (blendW = max(0.015, 1.25·gaBandW)); curvature peaks at the blend ENDS
+   (±600/t²) × the crest deltas (colEdge 0.70 at base columns / mullion 0.30
+   at apex columns) ⇒ ~10.3 µm at 1/32 pitch. Cells pinned at the apex
+   column 23/24 (inner) and base column 0 on the seam (outer). FIXED by
+   rows 31/64, 33/64, 37/64 (~2.6-3.6 µm priced, confirmed).
+2. 9,500,001 / 9,500,045 pm — the bandMid RIDGE FLANKS: the tier divider is
+   itself a quartic ridge crest AT topStart (bw = 1.8·gaBandW = 0.072);
+   the crest is a conforming named row but its flanks (~104k µm/t²) over the
+   remaining 0.016-0.026 gaps price the razors. Depth 24 → 30 did NOT shave
+   them (a clean discriminator: genuine geometric excess, not enclosure
+   slack). FIXED by rows at 0.5265 / 0.5495.
+3. 9,500,002 pm — TERMINAL for v4: the residual PLATEAU. At w5 base pitch
+   the whole config adaptively prices just-under the bound (~9.49 µm class
+   everywhere: the bottoms sit at 9,499,4xx-9xx by construction), so every
+   fix reveals a +1-2 pm successor; meanwhile the fix currency has inflated
+   (the two bandMid rows cost ~1.2M cells each — strip-crossing row cost is
+   superlinear in the dense mid-band) and the run measured 581.3 s / 590 s
+   with walls at ~5.2M / 6M cells. Both v4 ceilings are exhausted; the next
+   verify run would time-refuse before reporting its residual.
+
+**Exits from the plateau (ranked):**
+1. Evaluator screen-enclosure slack (roadmap perf item 2) — the universal
+   multiplier: cheaper cells globally buy BOTH the remaining fixes and the
+   margin; inner ≈ 2× outer remains the asymmetry to attack first.
+2. Envelope v5 density step (w6-class walls drop the plateau to ~2.4 µm base
+   sag but need ~×1.7 volume/time over v4's ceilings — price it as v4 was
+   priced, from measured trips).
+3. Nothing in the accept-band direction (0.01 mm is the line; the machine is
+   refusing at 2 pm and that is the machine working).
+Config state: `gothic-p1-a8w5-chain` + blend rows + bandMid rows +
+maxDepth 30, in the spike harness. Twelve pots / ten styles unchanged.

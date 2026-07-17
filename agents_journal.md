@@ -7656,3 +7656,35 @@ Certified-pot composed runs can use PF_SLICE11_*_PAR-style harness calls for
 ~2x wall-clock. Gothic needs the pool-shape decision (raise per-patch cells)
 or enclosure-slack work; with workers, walls run concurrently once either
 lands. Do not compare composed evidence hashes across runs — use per-patch.
+
+---
+
+## [2026-07-17d] Envelope v4 + Gothic full-sweep campaign: terminal at 9,500,002 pm
+
+### Summary
+Executed Patryk's pool-shape decision as envelope v4: per-patch cells 2M->6M,
+total 8M->16M, all nine hard elapsed ceilings 240s->600s (each raise named by
+its measured trip; defaults untouched). Under v4 + patch workers, Gothic ran
+complete wall sweeps for the first time. Fixed two new razor mechanisms
+(tier-blend smoothstep ends at topStart+-0.05: rows 31/33/37/64; bandMid
+ridge flanks at topStart: rows 0.5265/0.5495; depth 24->30 proved the +1pm
+class geometric, not enclosure slack). Terminal: REFUSED 9,500,002 pm at
+581.3/590s, walls 5.2/6M cells — the w5 residual plateau (everything
+adaptively just-under 9.5um) supplies +-2pm successors while both v4
+ceilings are exhausted.
+
+### Decisions
+- Envelope raises only at HARD ceilings; defaults and certificates untouched
+  (roster 37/37 re-proven).
+- Stopped the razor chase at the plateau: marginal row cost went superlinear
+  (~1.2M cells/row in the mid-band) and the next verify would time-refuse.
+
+### Validation
+targetSolid suite green under v4; PF_G2_POT roster 37/37; five certification
+runs + two per-patch pins, every refusal decoded to a named mechanism.
+
+### Next agent
+The plateau needs enclosure-slack kernel work (roadmap perf 2; inner ~2x
+outer) or an envelope v5 density step (priced ~x1.7 over v4) — NOT more
+rows. Config: gothic-p1-a8w5-chain + blend + bandMid rows + maxDepth 30.
+Two picometres. Matrix Addendum 19.

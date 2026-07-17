@@ -115,7 +115,7 @@ export interface FinalMappedArtifactPartialCertificationResult {
 }
 
 const TRUE_TOLERANCE_PM = 10_000_000n;
-const HARD_FINAL_ELAPSED_MILLISECONDS = 240_000;
+const HARD_FINAL_ELAPSED_MILLISECONDS = 600_000;
 
 function refuse(
   code: FinalMappedArtifactPartialCertificationErrorCode,

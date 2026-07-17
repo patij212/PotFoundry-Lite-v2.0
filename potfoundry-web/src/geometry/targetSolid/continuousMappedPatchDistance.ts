@@ -40,7 +40,11 @@ export type { RegisteredValidatedResidualEvaluator } from './validatedResidualEv
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_VERSION =
   'potfoundry.continuous-mapped-patch-distance/v16' as const;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_WORK_CELLS = 1_000_000;
-export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS = 2_000_000;
+// Envelope v4 (2026-07-17): hard ceiling 2M -> 6M, named by the measured trip
+// it clears — the Gothic p=1 chain-config walls need ~3.9M/4.0M work cells
+// each (both walls exhausted 2M at 51%/49.5% of their sweeps). The DEFAULT is
+// deliberately unchanged: certified configs opt in explicitly.
+export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_WORK_CELLS = 6_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_DEFAULT_MAX_EVALUATOR_WORK_UNITS =
   25_000_000;
 export const CONTINUOUS_MAPPED_PATCH_DISTANCE_HARD_MAX_EVALUATOR_WORK_UNITS =

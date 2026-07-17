@@ -244,7 +244,11 @@ const ID_RE = /^[a-z0-9](?:[a-z0-9._:/-]{0,127})$/;
 const DEFAULT_MAX_ASSIGNMENT_BYTES = 64 * 1024 * 1024;
 const HARD_MAX_ASSIGNMENT_BYTES = 256 * 1024 * 1024;
 const DEFAULT_MAX_TOTAL_WORK_CELLS = 4_000_000;
-const HARD_MAX_TOTAL_WORK_CELLS = 8_000_000;
+// Envelope v4 (2026-07-17): aggregate hard ceiling 8M -> 16M — two Gothic
+// chain-config walls at ~4M each plus ~165k small-patch cells measure ~8.4M
+// total; 16M leaves the same ~2x headroom the per-patch raise carries.
+// The DEFAULT is unchanged.
+const HARD_MAX_TOTAL_WORK_CELLS = 16_000_000;
 const DEFAULT_MAX_TOTAL_EVALUATOR_WORK_UNITS = 100_000_000;
 const HARD_MAX_TOTAL_EVALUATOR_WORK_UNITS = 250_000_000;
 const DEFAULT_MAX_TOTAL_PARTITION_WORK_UNITS = 160_000_000;

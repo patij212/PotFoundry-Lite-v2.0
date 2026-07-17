@@ -107,8 +107,8 @@ function runComposed(
         maxElapsedMilliseconds,
         ...(generousCells
           ? {
-              maxTotalWorkCells: 8_000_000,
-              patchProof: { maxWorkCells: 2_000_000 },
+              maxTotalWorkCells: 16_000_000,
+              patchProof: { maxWorkCells: 6_000_000, maxDepth: 30 },
             }
           : {}),
       }
@@ -180,8 +180,8 @@ async function runComposedParallel(
         maxElapsedMilliseconds,
         ...(generousCells
           ? {
-              maxTotalWorkCells: 8_000_000,
-              patchProof: { maxWorkCells: 2_000_000 },
+              maxTotalWorkCells: 16_000_000,
+              patchProof: { maxWorkCells: 6_000_000, maxDepth: 30 },
             }
           : {}),
         patchWorkerCount: 6,
@@ -339,6 +339,31 @@ function gothicLadderFractions(): GothicLadders {
     const numerator = Math.round(value * 8192);
     if (numerator > 0 && numerator < 8192) target.push([numerator, 8192]);
   };
+  // TIER-BLEND rows: the topMask smoothstep swaps lower-tier relief for the
+  // upper lattice across topStart +- blendW = 0.53675 +- 0.05 (blendW =
+  // max(0.015, 1.25*gaBandW) at defaults). At ridge-crest columns the swap
+  // delta is maximal (colEdge 0.70 / mullion 0.30 coefficients) and the
+  // smoothstep curvature peaks at the BLEND ENDS (+-600/t^2): measured
+  // razors 9,500,052 (outer, base column 0, t 0.500..0.531) and 9,519,144
+  // (inner, apex column 23/24, t 0.490..0.519) at 1/32 pitch — the
+  // 84,000 um/t^2 * (1/32)^2 / 8 ~ 10.3 um class. Halving the pitch across
+  // both ends prices ~2.6-3.6 um. First razors ever found PAST the collar:
+  // envelope v4 let the sweeps reach this zone for the first time.
+  for (const numerator of [31, 33, 37]) {
+    snapRow(outerVerticalFractions, numerator / 64, false);
+    snapRow(innerVerticalFractions, numerator / 64, true);
+  }
+  // bandMid RIDGE FLANK rows: the tier divider is itself a quartic ridge
+  // crest AT topStart (ridge(t - topStart, 1.8*gaBandW = 0.072, 4)); the
+  // crest is a conforming named row, but its flanks (f'' ~ 104k um/t^2 at
+  // the measured amplitudes) over the remaining 0.016-0.026 row gaps price
+  // the two depth-30 razors 9,500,001 (inner, seam column, t 0.519..0.537)
+  // and 9,500,045 (outer, delta 0.032, t 0.516..0.531). One row per flank
+  // halves the pitch: ~1.4-2.9 um.
+  for (const tValue of [0.5265, 0.5495]) {
+    snapRow(outerVerticalFractions, tValue, false);
+    snapRow(innerVerticalFractions, tValue, true);
+  }
   // Hour-3 row set, unconditional: spring AND apex +-o rows. This is the
   // proven-cheap base (walls ~460-500k cells); the collar deficit it leaves
   // is carried by interior CHAIN vertices on the kink curve (see
@@ -1064,8 +1089,9 @@ describe('slice-11 probes (env-gated, session-local)', () => {
             job.evaluator,
             {
               maximumGeometricUpperPm: 9_500_000n,
-              maxWorkCells: 2_000_000,
-              deadlineEpochMilliseconds: Date.now() + 200_000,
+              maxWorkCells: 6_000_000,
+              maxDepth: 30,
+              deadlineEpochMilliseconds: Date.now() + 500_000,
             }
           );
           const decimalUnits = result.evaluatorWorkUnitCount - result.workCellCount;
@@ -1148,7 +1174,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
             'inner-wall': innerChords,
           },
         },
-        235_000,
+        590_000,
         true
       );
       expect(true).toBe(true);
@@ -1335,7 +1361,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
             'inner-wall': innerChords,
           },
         },
-        235_000,
+        590_000,
         true
       );
       expect(true).toBe(true);

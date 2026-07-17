@@ -493,3 +493,20 @@ Gothic still refuses at the per-patch 2M pool by design — the POOL-SHAPE
 decision (exit 1's other half) remains with Patryk, and the time envelope is
 now ready for it. Remaining perf items: enclosure slack (2), scoped per-patch
 claims (3). Mechanics: matrix Addendum 18.
+
+## Addendum (2026-07-17, session 4) — envelope v4 executed; Gothic at TWO PICOMETRES
+
+The pool-shape decision was made and executed (per-patch 6M / total 16M /
+nine elapsed ceilings 600 s — every number named by its measured trip;
+defaults untouched, roster re-proven). Under v4 + patch workers the Gothic
+chain config ran its FIRST complete sweeps: the volume wall is gone, the
+razor ladder continued (tier-blend ends 9,519,144 → fixed; bandMid ridge
+flanks 9,500,001/45 → fixed; depth-30 discriminator: these are geometric,
+not enclosure slack) and the campaign is TERMINAL at **REFUSED
+9,500,002 pm** — two picometres over, at 581/590 s and 5.2/6M cells: the
+w5 residual plateau supplies +1-2 pm successors while both v4 ceilings are
+exhausted. U5 exit ranking is now: (1) evaluator enclosure slack — the
+universal multiplier and the only lever that buys margin AND volume at once;
+(2) an envelope v5 density step (w6 walls ≈ ×1.7 volume/time, plateau drops
+to ~2.4 µm); (3) nothing accept-band-shaped. Matrix Addendum 19 has the
+full ladder.
