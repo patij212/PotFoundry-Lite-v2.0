@@ -820,12 +820,16 @@ describe('slice-11 probes (env-gated, session-local)', () => {
             job.evaluator,
             {
               maximumGeometricUpperPm: 9_500_000n,
-              deadlineEpochMilliseconds: Date.now() + 90_000,
+              maxWorkCells: 2_000_000,
+              deadlineEpochMilliseconds: Date.now() + 200_000,
             }
           );
+          const decimalUnits = result.evaluatorWorkUnitCount - result.workCellCount;
           console.log(
             `[probe:gopp] ${job.partition.patchId} OK upperPm=${result.targetToMeshUpperPm}` +
-              ` cells=${result.workCellCount} maxDepth=${result.maximumDepthReached}` +
+              ` cells=${result.workCellCount} fast=${result.fastScreenAcceptedCellCount}` +
+              ` decimalUnits=${decimalUnits} unitsPerCell=${result.evaluatorWorkUnitsPerCell}` +
+              ` maxDepth=${result.maximumDepthReached} tris=${job.partition.triangles.length}` +
               ` elapsedMs=${Date.now() - startedAt}`
           );
         } catch (error) {
@@ -877,7 +881,7 @@ describe('slice-11 probes (env-gated, session-local)', () => {
           ` angularStations=${angularLadder.numerators.length}`
       );
       runComposed(
-        'gothic-p1-a8w6',
+        'gothic-p1-a8w6s',
         'GothicArches',
         { gaPointiness: 1, gaDiamond: 0, gaRelief: 0.2 },
         {

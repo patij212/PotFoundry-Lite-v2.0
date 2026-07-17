@@ -620,7 +620,14 @@ exact doubled-weight midpoints; suites + adversarial containment green; full
 12-pot gate revalidated under the new evidence hashes) — but the Gothic grind
 has a second, still-unmeasured component (suspect: slow-converging screen
 enclosures along the C³ quartic support curves crossed by ultra-thin
-station columns). NEXT SESSION: per-cell depth/op histogram on one wall
-(timing-probe pattern) to name the volume driver, then certify. All knobs and
-the measured configuration live in
-`research/bridge/_gothicVoronoiConformingSpike.test.ts`.
+station columns). THE HISTOGRAM RAN (window hour 3): decimalUnits = 0,
+depth <= 5, ~220 units/cell — the grind is pure BREADTH (mesh size), not
+convergence. Coarsening the global grid (strips carry the features) removed
+the volume wall entirely: a8w5 runs the full proof in ~69 s and lands at
+9,500,004 pm — FOUR PICOMETRES over. The endgame is pinched between that
++4 pm contour at w5 (cells fine) and the 1M work-cell pool at w6 (full
+stations + strips ≈ 152k tris/wall): NEXT SESSION picks one of two clean
+exits — (a) targeted vertical refinement at the +4 pm cell instead of global
+w6, or (b) plumb per-patch maxWorkCells (the cMPD option already exists, the
+composed layer just does not expose it). All knobs and the measured
+configuration live in `research/bridge/_gothicVoronoiConformingSpike.test.ts`.
