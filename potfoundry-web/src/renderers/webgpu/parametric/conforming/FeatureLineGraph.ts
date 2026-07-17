@@ -119,6 +119,7 @@ import type { UWarp } from './CreaseUWarp';
 import type { TWarp } from './CreaseTWarp';
 import type { HelixWarp } from './CreaseHelixWarp';
 import { deriveBasketWeaveAxisAlignedCreases } from '../../../../geometry/basketWeaveCreases';
+import type { StyleId } from '../../../../geometry/types';
 
 const TAU = 2 * Math.PI;
 const SQRT3 = Math.sqrt(3);
@@ -912,7 +913,16 @@ function extractArtDeco(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {
   return lines;
 }
 
-const EXTRACTORS: Record<string, (p: Float32Array, opts?: ExtractOpts) => FeatureLine[]> = {
+type FeatureExtractor = (p: Float32Array, opts?: ExtractOpts) => FeatureLine[];
+
+/**
+ * Per-style feature-locus table. Keyed by {@link StyleId} — NOT `string` — so a new
+ * style added to the union without an entry here is a COMPILE error rather than a
+ * silent lookup miss (which would drop the style's crease/feature pinning from every
+ * export with no warning). The `() => []` entries below are DELIBERATE: see each
+ * comment for why that style has no closed-form locus to pin.
+ */
+const EXTRACTORS: Record<StyleId, FeatureExtractor> = {
   // Vertical (u=const) creases.
   LowPolyFacet: extractLowPolyFacet,
   GeometricStar: extractGeometricStar,
@@ -985,7 +995,11 @@ export function extractAnalyticFeatures(
   opts?: ExtractOpts,
 ): FeatureLineGraph {
   void _dimensions; // loci are in (u,t) param space — dimensions reserved for future 3D loci
-  const extractor = EXTRACTORS[styleId];
+  // The TABLE is exhaustive over StyleId; the LOOKUP stays `string` because callers
+  // pass unvalidated ids (probes, research harnesses), and an unknown id must keep
+  // returning an honest-empty graph rather than throwing.
+  const extractor: FeatureExtractor | undefined =
+    (EXTRACTORS as Partial<Record<string, FeatureExtractor>>)[styleId];
   const lines = extractor ? extractor(packedParams, opts) : [];
   return { styleId, lines, groundTruthCount: lines.length };
 }
