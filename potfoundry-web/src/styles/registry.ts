@@ -29,8 +29,15 @@ export const STYLE_CATEGORIES: ReadonlyArray<{ key: StyleCategory | 'all'; label
 /**
  * Registry of all available styles.
  * Order matters for ID generation if we auto-assigned, but we use explicit IDs here.
+ *
+ * Keyed by {@link StyleId} — NOT `string` — so adding a style to the StyleId union
+ * without a registry entry is a COMPILE error rather than a silent gap in this
+ * "single source of truth" (CLAUDE.md step 1 of the add-a-style checklist). Call
+ * sites that index with an unvalidated `string` widen at the lookup (see
+ * `STYLE_REGISTRY as Partial<Record<string, StyleConfig>>` usages) so unknown ids
+ * still resolve to `undefined` rather than forcing a throw.
  */
-export const STYLE_REGISTRY: Record<string, StyleConfig> = {
+export const STYLE_REGISTRY: Record<StyleId, StyleConfig> = {
     SuperformulaBlossom: {
         id: 0,
         shaderName: 'sf_radius',
@@ -483,3 +490,16 @@ export const STYLE_ID_MAP_FROM_KEYS = STYLE_IDS;
 export const STYLE_FUNCTION_MAP = Object.fromEntries(
     Object.values(STYLE_REGISTRY).map(s => [s.id, s.shaderName])
 ) as Record<number, string>;
+
+/**
+ * Look up a style config by an id that may not be a known {@link StyleId}
+ * (persisted localStorage presets, URL params, research probes, store state
+ * typed as `string`). Returns `undefined` for unknown ids.
+ *
+ * `STYLE_REGISTRY` is keyed by StyleId, so a bare `STYLE_REGISTRY[someString]`
+ * no longer type-checks — this is the single widening seam for unvalidated
+ * lookups, so callers keep getting `undefined` (not a throw) for stale ids.
+ */
+export function getStyleConfig(id: string): StyleConfig | undefined {
+    return (STYLE_REGISTRY as Partial<Record<string, StyleConfig>>)[id];
+}

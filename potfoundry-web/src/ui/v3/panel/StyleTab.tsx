@@ -5,7 +5,7 @@ import { DisclosureSeam } from '../primitives/DisclosureSeam';
 import { Button } from '../primitives/Button';
 import StyleThumb from '../showroom/StyleThumb';
 import { useAppStore } from '../../../state';
-import { STYLE_REGISTRY } from '../../../styles/registry';
+import { getStyleConfig } from '../../../styles/registry';
 import type { ParamSchema, StyleName } from '../../../state/types';
 import {
   getFavorites,
@@ -24,7 +24,7 @@ export const StyleTab: React.FC = () => {
   const [favorites, setFavorites] = useState<string[]>(() => getFavorites());
   const [recents, setRecents] = useState<string[]>(() => getRecents());
 
-  const config = STYLE_REGISTRY[style.name];
+  const config = getStyleConfig(style.name);
   if (!config) return <p className="pf3-label">Unknown style: {style.name}</p>;
 
   const isCurFav = favorites.includes(style.name);

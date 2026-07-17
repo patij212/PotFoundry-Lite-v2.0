@@ -22,7 +22,7 @@
 import ThumbnailRenderer from '../../../services/ThumbnailRenderer';
 import type { LibraryDesign } from '../../../context/LibraryContext';
 import type { GeometryParams } from '../../../state/types';
-import { STYLE_REGISTRY } from '../../../styles/registry';
+import { getStyleConfig } from '../../../styles/registry';
 import { getStyleId } from '../../../utils/styleParams';
 
 // ---------------------------------------------------------------------------
@@ -47,7 +47,7 @@ export function geometryHash(g: GeometryParams): string {
 
 /** Collect every param's `default` value from params + advancedParams. */
 function buildDefaultOpts(styleName: string): Record<string, number> {
-  const config = STYLE_REGISTRY[styleName];
+  const config = getStyleConfig(styleName);
   if (!config) return {};
   const out: Record<string, number> = {};
   const allParams = { ...config.params, ...(config.advancedParams ?? {}) };

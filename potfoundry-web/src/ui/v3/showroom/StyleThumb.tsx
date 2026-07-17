@@ -15,7 +15,7 @@
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { useGeometry, type GeometryParams } from '../../../state';
-import { STYLE_REGISTRY } from '../../../styles/registry';
+import { getStyleConfig } from '../../../styles/registry';
 import { getStyleThumbnail } from './styleThumbnails';
 import { sampleProfile } from '../blueprint/profileSampler';
 import { useHaptics } from '../../../hooks/useHaptics';
@@ -127,7 +127,7 @@ const StyleThumb = React.forwardRef<HTMLButtonElement, StyleThumbProps>(
     const [isLoading, setIsLoading] = useState(false);
 
     const displayName = useMemo(() => {
-      const config = STYLE_REGISTRY[styleName];
+      const config = getStyleConfig(styleName);
       return config?.name || styleName;
     }, [styleName]);
 

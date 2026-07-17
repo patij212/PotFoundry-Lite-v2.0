@@ -1,4 +1,5 @@
 import type { ParamSchema } from '../state/types';
+import type { StyleId } from '../geometry/types';
 import {
   STYLE_GPU_DISPATCH_MANIFEST,
   STYLE_GPU_LAYOUT_MANIFEST,
@@ -70,7 +71,10 @@ export const STYLE_CERTIFICATION_SCHEMA_SNAPSHOT: Readonly<
 > = Object.freeze(
   Object.fromEntries(
     dispatchStyleIds.map((styleId) => {
-      const config = STYLE_REGISTRY[styleId];
+      // `styleId` ∈ registry keys — asserted equal above (requireEqualKeys
+      // 'registry/dispatch'), so the StyleId cast on this string is sound and
+      // keeps `config` non-optional (matches the dispatch cast just below).
+      const config = STYLE_REGISTRY[styleId as StyleId];
       const expectedDispatchIndex =
         STYLE_GPU_DISPATCH_MANIFEST[styleId as keyof typeof STYLE_GPU_DISPATCH_MANIFEST];
       if (config.id !== expectedDispatchIndex) {
