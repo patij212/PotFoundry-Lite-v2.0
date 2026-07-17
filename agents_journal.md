@@ -7309,3 +7309,65 @@ U3b has no further style unlocks — stations/bands are exhausted as a frontier.
    would relax the inner-wall/bottom hot spot for every future campaign.
 3. Do NOT re-attempt CT/SFB-sharp/RI-rotated via stations or banding — measured out;
    they route to U5/U4/BigInt-ladders respectively.
+
+## 2026-07-17 — Claude Fable 5 — U5 slice 9: conforming feature-line cells; first diagonal-jump certificate
+
+**Mandate:** Patryk: "go ahead with the curved/diagonal feature-conforming cells" —
+the U5 frontier spike.
+
+**Architecture finding (collapsed the build from multi-slice kernel surgery to one
+tessellation slice):** the proof chain is ALREADY triangle-native.
+`verifyExactDyadicRectanglePartition` audits arbitrary exact-rational conforming
+triangulations (positive orientation, pair audit, exact area sum = complete
+coverage) and cMPD's barycentric subdivision never assumed grids; the v15 gate pins
+only the domain rectangle. Conforming cells therefore need ZERO proof-layer
+changes, and tessellation bugs can only surface as refusals — the kernel is the
+conformity oracle.
+
+**Landed (`7b1a5a4f`, TDD — 3 RED tests first):**
+`conformingLinesByPatch` on `tessellateAnnularRadialSolidTargetForCertification`:
+per-patch PARALLEL straight lines a·u+b·v=c (integer coefficients); strictly
+crossed cells split along the EXACT line via exact-rational convex clipping
+(intersections only on axis-aligned edges — a parallel line is sign-constant along
+any previous cut edge; frame denominator extends by lcm(|a|,|b|) so every
+intersection is an integer numerator). Fail-closed: pairwise-parallel only,
+boundary-row crossings must land EXACTLY on shared angular stations (junction
+welds stay T-junction-free), seam-interior crossings refused, degenerate pieces
+refused, line-free patches byte-identical. impact(): LOW, 0 direct callers.
+
+**RESULT: Crystalline heightPhase 0.25 CERTIFIED-PARTIAL — 9,499,985 pm / 50,544
+tris / 19.4 s composed (H32/OD30)** — the exact diagonal-jump corner Addendum 8
+measured as impossible-in-principle for axis-aligned partitions. TENTH pot in
+PF_G2_POT. Per-patch probe: all six patches converge at depth <= 2, ~85%
+fast-screen; drain-wall 688 cells / depth 0 / ~50 ms. Both fract families sit in
+single unit bands per one-sided cell => full band resolution at smooth-style cost.
+
+**Campaign lesson:** the atlas's inward-facing patches reverse u (reverseU: true —
+inner wall, drain wall). First line set ignored it: inner refused in 0.5 s at the
+full 0.3 mm fract-hull amplitude; drain ground its 60 s deadline in ~1,800 decimal
+consults. Corrected families: inner 1536u−29v=1539−64k (t=(3+29v)/32 at H32),
+drain 1536u−3v=1536−64k (t=3v/32). The symmetric j/48 ∪ (64k±3)/1536 ladder holds
+every boundary crossing — symmetry is also why u-reversed const-t patches passed
+with stations alone.
+
+**Verification:** PF_G2_POT gate FOREGROUND 22/22 (~6.9 min, TEN pot proofs +
+fail-closed; both Crystalline configs green). Full targetSolid 61 files / 464
+green. tsc EXACTLY at the 356 baseline; eslint 0 warnings; detect_changes LOW,
+36 symbols / tessellation-contained, zero affected processes. Probes deleted
+pre-commit; matrix Addendum 13 + roadmap slice-9 addendum committed.
+
+### Next agent
+1. **Curved guide-polylines** (WI clamp level set, Gothic p<1 arch outlines,
+   Voronoi bisectors): same splitter driven by per-cell chords of the curve —
+   rational-snapped edge crossings computed ONCE per shared edge (conformity),
+   pieces one-sided up to a thin sliver that shrinks second-order with the
+   polyline; p<1 cusps additionally need graded ladders TOWARD the curve (the
+   HR t^-0.9 base-ladder precedent). This is the WI/Gothic unlock.
+2. **CT crossing families**: bounded splitter extension — absorb the cross-family
+   determinant into the frame lcm and allow intersections on previous cut edges.
+3. **GS shift != 0** is a KERNEL gap (piecewise-affine per-band argument needs
+   region-resolved affine derivation in the compiler), not a tessellation gap —
+   do not chase it with lines.
+4. The conforming splitter is exactly the feature-aligned-stations machinery the
+   production mesher track carries (charter P1/P4) — U5.3 wiring can begin
+   consuming it once curved polylines land.

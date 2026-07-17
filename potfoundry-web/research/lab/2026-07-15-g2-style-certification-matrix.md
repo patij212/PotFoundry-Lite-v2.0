@@ -451,3 +451,65 @@ remaining style is unlockable by stations/bands alone.** The three remaining
 walls are exactly the roadmap's next frontiers: curved/diagonal conforming cells
 (U5 spike, WI as vehicle), U4 curtain complexes, envelope v3/streamed scans.
 Certified set: **NINE pots across EIGHT styles.**
+
+## Addendum 13 — U5 slice 9: conforming feature-line cells — FIRST diagonal-jump certificate (2026-07-17)
+
+**Architecture finding that collapsed the build:** the proof chain was ALREADY
+triangle-native. `verifyExactDyadicRectanglePartition` audits ARBITRARY
+exact-rational conforming triangulations (positive orientation, pair audit
+allowing only shared vertices/complete shared edges, exact area sum = coverage),
+and cMPD's barycentric subdivision never assumed grids. The v15 gate pins only
+the DOMAIN rectangle. So conforming cells are a pure tessellation-layer build —
+zero kernel changes — and splitter bugs can only surface as refusals, never as
+false certificates.
+
+**Machinery (`conformingLinesByPatch`):** per-patch PARALLEL straight lines
+a·u + b·v = c with integer coefficients. Strictly-crossed cells are split along
+the EXACT line by exact-rational convex clipping; intersections land only on
+axis-aligned edges (a parallel line is sign-constant along any previous cut
+edge), and the frame denominator extends by lcm(|a|, |b|) so every intersection
+is an exact integer numerator. Fail-closed: pairwise-parallel only,
+boundary-row crossings must land EXACTLY on shared angular stations (junction
+welds stay T-junction-free), seam-interior crossings refused, degenerate pieces
+refused. Line-free patches emit byte-identical plain grids.
+
+**RESULT: Crystalline heightPhase 0.25 CERTIFIED-PARTIAL — 9,499,985 pm /
+50,544 tris / 19.4 s composed** (H32/OD30, facetDepth 0.02, sharpness 2) — the
+exact corner Addendum 8 measured as impossible-in-principle for axis-aligned
+partitions. Tenth pot in `PF_G2_POT`. Per-patch (probe): all six converge at
+depth ≤ 2 with ~85 % fast-screen acceptance; drain-wall = 688 cells / depth 0 /
+~50 ms. One-sidedness between adjacent half-integer lines puts BOTH fract
+families inside single unit bands per cell, so every piece band-resolves — the
+proof runs at smooth-style cost on a diagonal-jump style.
+
+**Campaign lesson (u-reversal):** the atlas's inward-facing patches (inner
+wall, drain wall — `reverseU: true`) carry their style argument at 12(1−u) +
+0.25·t(v); the first line set ignored this and the inner wall refused in 0.5 s
+at the full 0.3 mm fract-hull amplitude while the drain wall ground its
+deadline on ~1,800 decimal consults. Corrected families: inner
+1536u − 29v = 1539 − 64k (t = (3+29v)/32 at H32), drain 1536u − 3v = 1536 − 64k
+(t = 3v/32). Boundary crossings all land in the symmetric j/48 ∪ (64k±3)/1536
+ladder — which is also why the u-reversed top-rim/bottom patches passed with
+stations alone (symmetry covers reversal).
+
+**Updated conforming taxonomy:**
+- **Straight PARALLEL diagonal families: CLOSED** (this slice). Crystalline
+  heightPhase ≠ 0 certified; the same machinery covers any style whose jump
+  lines form one parallel rational family per patch.
+- **Crossing straight families (CelticTriquetra's ±45° braid): small
+  extension, not new theory** — line-line intersections of integer lines are
+  rational (denominator = the 2×2 determinant), so the frame lcm must absorb
+  cross-family determinants and the splitter must allow intersections on
+  previous cut edges. Bounded work; CT stays honestly open until then.
+- **Row-coupled offsets (GS shift ≠ 0, Crystalline-hp analogues with per-row
+  phases): kernel-side gap, not tessellation** — the argument is piecewise
+  affine per row band, which the point-affine band predicate refuses; needs
+  region-resolved (per-band) affine derivation in the compiler before
+  conforming rows can help.
+- **CURVED feature curves (WaveInterference clamp level set, Gothic p<1 arch
+  outlines, Voronoi bisectors): the next slice** — same splitter, driven by
+  per-cell guide-polyline chords (rational-snapped crossings computed once per
+  shared edge for conformity). Pieces are then one-sided up to a thin sliver
+  whose width shrinks second-order with the polyline, restoring convergence
+  for kinks; p < 1 cusps additionally need graded ladders toward the curve
+  (the HR t^-0.9 base-ladder precedent).

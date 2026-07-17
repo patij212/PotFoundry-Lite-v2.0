@@ -215,6 +215,24 @@ heightPhase/shift corners AND the production-mesh path), (2) U4 curtain complexe
 (3) envelope v3 / streamed scans (Voronoi bubble, Gyroid). Matrix Addendum 12 has the
 full slice-8 data.
 
+**Slice 9 addendum (2026-07-17): U5 FIRST BREACH — conforming cells landed
+(`7b1a5a4f`).** Architecture collapse: the kernel + cMPD were already
+triangle-native (arbitrary exact-rational conforming triangulations audited by
+area-sum + pair audit), so conforming cells were a pure TESSELLATION build —
+`conformingLinesByPatch` splits crossed cells along exact parallel rational lines
+with fail-closed boundary/seam/parallel validations; zero proof-layer changes, and
+splitter bugs can only refuse, never falsely certify. **Crystalline heightPhase 0.25
+CERTIFIED — 9,499,985 pm / 50,544 tris / 19.4 s — the first certificate in the
+class Addendum 8 measured impossible for axis-aligned partitions.** Tenth pot;
+gate 22/22. Campaign lesson: inward-facing patches reverse u (atlas `reverseU`) —
+inner/drain line families are 1536u−29v = 1539−64k and 1536u−3v = 1536−64k.
+Updated frontier map (matrix Addendum 13): straight-parallel diagonals CLOSED;
+CT's crossing ±45° families = bounded splitter extension (line-line determinant
+into the frame lcm); GS shift ≠ 0 = KERNEL gap (per-band affine derivation), not
+tessellation; **WI/Gothic curved curves = next slice** — same splitter driven by
+per-cell guide-polyline chords + graded ladders toward p<1 cusps (HR base-ladder
+precedent).
+
 ## Sufficiency addendum — does U0–U6 deliver "full feature-preserving representation of every possible shape"? (2026-07-17, analysis)
 
 Requested by Patryk after slice 6. Decomposition: the claim = four requirements, each
