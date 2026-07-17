@@ -7688,3 +7688,33 @@ The plateau needs enclosure-slack kernel work (roadmap perf 2; inner ~2x
 outer) or an envelope v5 density step (priced ~x1.7 over v4) — NOT more
 rows. Config: gothic-p1-a8w5-chain + blend + bandMid rows + maxDepth 30.
 Two picometres. Matrix Addendum 19.
+
+---
+
+## [2026-07-17e] GOTHIC CERTIFIED — eleventh style, via the triangle-exact mean-value screen
+
+### Summary
+Enclosure-slack session: audited the fast screen (op census: inner 219 vs
+outer 210 nodes — asymmetry is enclosure quality; profile dominated by kink
+ops), found the dominant slack (J*offset hulled over the AABB while cells
+are triangles — 2x overshoot in mixed-sign-J quadrants, measured exactly on
+a linear-target discriminator), replaced with the per-vertex offset hull
+(sound by convexity; compiler v13->v14 with honest method text). Dividend:
+Gothic composed -18%, bottoms -35/-56% cells with better bounds. Pinned and
+killed the two surviving razors (inner-remap ladder gap at t=0.5625; bandRim
+flank 63/64). **CERTIFIED: 9,499,997 pm / 304,808 tris / 287.5 s /
+structural TRUE.** Thirteen pots, eleven styles.
+
+### Validation
+triangleExactMeanValueScreen.test.ts (RED->GREEN discriminator + kinked
+soundness); targetSolid 482/482 clean (one load-flake ruled out by isolated
++ clean reruns); PF_G2_POT roster re-proof under v14 [pending at write time
+— gate before commit]; certification run converged in-envelope.
+
+### Next agent
+The inner/outer enclosure asymmetry is NOT fully closed — more slack
+sources remain (Jacobian pass still evaluates over the AABB; Clarke hulls
+at kinks are unconditionally wide). Each further tightening pays every
+style. WaveInterference is the next curved-feature candidate on the same
+machinery. Never compare composed evidence hashes across runs (they bind
+remaining-elapsed); per-patch evidence is the anchor.

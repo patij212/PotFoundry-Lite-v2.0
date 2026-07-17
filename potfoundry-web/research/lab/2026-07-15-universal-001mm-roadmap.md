@@ -510,3 +510,20 @@ universal multiplier and the only lever that buys margin AND volume at once;
 (2) an envelope v5 density step (w6 walls ≈ ×1.7 volume/time, plateau drops
 to ~2.4 µm); (3) nothing accept-band-shaped. Matrix Addendum 19 has the
 full ladder.
+
+## Addendum (2026-07-17, session 5) — GOTHIC CERTIFIED (eleventh style) via the enclosure-slack lever
+
+The slack audit named ONE dominant source in an afternoon: the centered
+mean-value screen hulled its J·offset term over the axis-aligned box while
+cells are triangles (2× measured overshoot in mixed-sign-Jacobian
+quadrants). The triangle-exact per-vertex hull (compiler v14; TDD; suite
+482/482; roster re-proven) paid an immediate −18% on the Gothic composed
+run and −35/−56% on the bottom patches, and the reopened envelope headroom
+absorbed the final two ladder rows (inner-remap gap at 0.5625; bandRim
+flank 63/64). **GothicArches p=1 is CERTIFIED: 9,499,997 pm / 304,808
+tris / 287.5 s / structural TRUE — THIRTEEN pots, ELEVEN styles.** The U5
+curved-feature-conforming class is now proven end to end: feature chains
+with interior vertices + per-patch workers + envelope v4 + the v14 screen.
+Remaining out-styles: WaveInterference-class curved features share this
+exact machinery; the enclosure-slack lever (more sources remain: the
+inner/outer asymmetry is not fully closed) keeps paying every style.

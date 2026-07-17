@@ -66,14 +66,14 @@ export const VALIDATED_RESIDUAL_PROGRAM_VERSION =
 export const VALIDATED_RESIDUAL_SSA_PROGRAM_VERSION =
   'potfoundry.validated-target-ssa-program/v3' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION =
-  'potfoundry.validated-target-program-compiler/v13' as const;
+  'potfoundry.validated-target-program-compiler/v14' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
   [
     VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION,
     `decimal-interval-proof=${DECIMAL_INTERVAL_PROOF_SHA256}`,
     `integer-pcg2d-proof=${INTEGER_PCG2D_HASH_PROOF_SHA256}`,
     `outward-float64-interval-proof=${OUTWARD_FLOAT64_INTERVAL_PROOF_SHA256}`,
-    'a centered mean-value screen may enclose non-affine residual cells in outward float64 intervals: residual(cell) is contained in residual(centre) plus the box interval Jacobian of target-minus-affine-artifact times the centred cell offsets',
+    'a centered mean-value screen may enclose non-affine residual cells in outward float64 intervals: residual(cell) is contained in residual(centre) plus the box interval Jacobian of target-minus-affine-artifact times the centred cell offsets, hulled over the three exact cell-vertex offsets (every cell point is a convex combination of the vertices and the term is linear in the offset for each fixed Jacobian selection, so the vertex hull contains the triangle range and is pointwise contained in the axis-aligned-box hull it replaces)',
     'the screen Jacobian is forward-mode interval differentiation of the same compiled instructions over the axis-aligned cell hull; kinked minimum/maximum/absolute nodes use the Clarke subgradient hull, which the Lebourg mean-value theorem admits',
     'screen arithmetic widens every node result by a pure relative 4*2^-52 (libm-backed nodes 8*2^-52, assuming platform libm within one unit in the last place per call), which preserves exact zeros; soundness of relative-only widening is enforced by refusing any nonzero computed bound below 1e-150 in magnitude, above which a rounded result is exactly zero only when truly zero; add/subtract results additionally keep exactness proven by an error-free round-trip check; products and quotients by a power-of-two point factor are exponent shifts and stay exact unwidened; trig ranges include every critical point conservatively located with outward pi',
     'piecewise/branch-cut nodes (floor, ceiling, round, fractional-part, sign, step, atan2, pcg2d) are jump-guarded: cells whose argument enclosures exclude every jump take exact locally-constant or smooth paths (pcg2d resolves proven single-integer operands to its exact dyadic constant), and straddling cells downgrade the whole run to a plain value-hull residual over the cell — still a sound enclosure, only first-order wide',
@@ -3206,10 +3206,23 @@ function fastEncloseCoreInner(
   const uCentreHi = fastWidenHi(fastCheckedAddHi(fastCheckedAddHi(uHi[0], uHi[1]), uHi[2]) / 3);
   const vCentreLo = fastWidenLo(fastCheckedAddLo(fastCheckedAddLo(vLo[0], vLo[1]), vLo[2]) / 3);
   const vCentreHi = fastWidenHi(fastCheckedAddHi(fastCheckedAddHi(vHi[0], vHi[1]), vHi[2]) / 3);
-  const uOffsetLo = fastCheckedAddLo(uBoxLo, -uCentreHi);
-  const uOffsetHi = fastCheckedAddHi(uBoxHi, -uCentreLo);
-  const vOffsetLo = fastCheckedAddLo(vBoxLo, -vCentreHi);
-  const vOffsetHi = fastCheckedAddHi(vBoxHi, -vCentreLo);
+  // Centred offsets PER CELL VERTEX (each interval is only rounding-wide).
+  // The mean-value term is hulled over these three offsets rather than the
+  // axis-aligned box: every cell point is a convex combination of the
+  // vertices, and for each fixed Jacobian selection the term is linear in
+  // the offset, so its range over the triangle lies inside the convex hull
+  // of the vertex values — while the box's mixed-sign corner, which the
+  // triangle cannot reach, would pay up to min(|Ju|·du, |Jv|·dv) extra.
+  const offsetULo = fastCoreOffsetULo;
+  const offsetUHi = fastCoreOffsetUHi;
+  const offsetVLo = fastCoreOffsetVLo;
+  const offsetVHi = fastCoreOffsetVHi;
+  for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
+    offsetULo[cellVertex] = fastCheckedAddLo(uLo[cellVertex], -uCentreHi);
+    offsetUHi[cellVertex] = fastCheckedAddHi(uHi[cellVertex], -uCentreLo);
+    offsetVLo[cellVertex] = fastCheckedAddLo(vLo[cellVertex], -vCentreHi);
+    offsetVHi[cellVertex] = fastCheckedAddHi(vHi[cellVertex], -vCentreLo);
+  }
 
   // Affine artifact values at the three cell vertices via the exact dyadic
   // barycentric weights (the same combination the decimal path uses).
@@ -3388,28 +3401,39 @@ function fastEncloseCoreInner(
     const residualGradientUHi = fastCheckedAddHi(jacobianDuHi[coordinate], -gradientULo);
     const residualGradientVLo = fastCheckedAddLo(jacobianDvLo[coordinate], -gradientVHi);
     const residualGradientVHi = fastCheckedAddHi(jacobianDvHi[coordinate], -gradientVLo);
-    const ru0 = residualGradientULo * uOffsetLo;
-    const ru1 = residualGradientULo * uOffsetHi;
-    const ru2 = residualGradientUHi * uOffsetLo;
-    const ru3 = residualGradientUHi * uOffsetHi;
-    const rv0 = residualGradientVLo * vOffsetLo;
-    const rv1 = residualGradientVLo * vOffsetHi;
-    const rv2 = residualGradientVHi * vOffsetLo;
-    const rv3 = residualGradientVHi * vOffsetHi;
-    const residualLo = fastCheckedAddLo(
-      residualCentreLo,
-      fastCheckedAddLo(
+    // Mean-value term hulled over the three exact vertex offsets: per vertex
+    // the u- and v-parts hull the four Jacobian-endpoint products (the
+    // per-vertex offset intervals are rounding-wide only), then the term
+    // hulls over the vertices. Sound by convexity (see the offset comment)
+    // and pointwise contained in the axis-aligned-box form it replaces.
+    let termLo = Number.POSITIVE_INFINITY;
+    let termHi = Number.NEGATIVE_INFINITY;
+    for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
+      const ouLo = offsetULo[cellVertex];
+      const ouHi = offsetUHi[cellVertex];
+      const ovLo = offsetVLo[cellVertex];
+      const ovHi = offsetVHi[cellVertex];
+      const ru0 = residualGradientULo * ouLo;
+      const ru1 = residualGradientULo * ouHi;
+      const ru2 = residualGradientUHi * ouLo;
+      const ru3 = residualGradientUHi * ouHi;
+      const rv0 = residualGradientVLo * ovLo;
+      const rv1 = residualGradientVLo * ovHi;
+      const rv2 = residualGradientVHi * ovLo;
+      const rv3 = residualGradientVHi * ovHi;
+      const vertexLo = fastCheckedAddLo(
         fastWidenLo(Math.min(Math.min(ru0, ru1), Math.min(ru2, ru3))),
         fastWidenLo(Math.min(Math.min(rv0, rv1), Math.min(rv2, rv3)))
-      )
-    );
-    const residualHi = fastCheckedAddHi(
-      residualCentreHi,
-      fastCheckedAddHi(
+      );
+      const vertexHi = fastCheckedAddHi(
         fastWidenHi(Math.max(Math.max(ru0, ru1), Math.max(ru2, ru3))),
         fastWidenHi(Math.max(Math.max(rv0, rv1), Math.max(rv2, rv3)))
-      )
-    );
+      );
+      if (vertexLo < termLo) termLo = vertexLo;
+      if (vertexHi > termHi) termHi = vertexHi;
+    }
+    const residualLo = fastCheckedAddLo(residualCentreLo, termLo);
+    const residualHi = fastCheckedAddHi(residualCentreHi, termHi);
     if (!Number.isFinite(residualLo) || !Number.isFinite(residualHi) || residualLo > residualHi) {
       return null;
     }
@@ -3421,6 +3445,10 @@ function fastEncloseCoreInner(
 // Reusable core scratch (single-threaded proof kernel).
 const fastCoreArtifactAtLo = new Float64Array(9);
 const fastCoreArtifactAtHi = new Float64Array(9);
+const fastCoreOffsetULo = new Float64Array(3);
+const fastCoreOffsetUHi = new Float64Array(3);
+const fastCoreOffsetVLo = new Float64Array(3);
+const fastCoreOffsetVHi = new Float64Array(3);
 const fastCoreJacobianDuLo = new Float64Array(3);
 const fastCoreJacobianDuHi = new Float64Array(3);
 const fastCoreJacobianDvLo = new Float64Array(3);

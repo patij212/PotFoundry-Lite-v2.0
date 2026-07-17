@@ -364,6 +364,18 @@ function gothicLadderFractions(): GothicLadders {
     snapRow(outerVerticalFractions, tValue, false);
     snapRow(innerVerticalFractions, tValue, true);
   }
+  // bandMid upper-flank continuation + bandRim flank (v14-screen pins):
+  // t = 0.5625 exists as a dyadic row on the OUTER wall but not in the
+  // inner's remapped ladder — its absence prices 9,500,002 pm at
+  // delta 0.034, t 0.5495..0.5752 (inner). The RIM band ridge (crest at
+  // t = 1.0, same 1.8*gaBandW quartic) needs its flank split: 63/64 kills
+  // the 9,500,001 pm seam-column cell at t 31/32..1; the symmetric base
+  // band is inert under topMask ~ 0. The rim row crosses no strips
+  // (curves end at apex+0.036 = 0.781) — near-zero cell cost.
+  for (const tValue of [0.5625, 63 / 64]) {
+    snapRow(outerVerticalFractions, tValue, false);
+    snapRow(innerVerticalFractions, tValue, true);
+  }
   // Hour-3 row set, unconditional: spring AND apex +-o rows. This is the
   // proven-cheap base (walls ~460-500k cells); the collar deficit it leaves
   // is carried by interior CHAIN vertices on the kink curve (see
@@ -980,6 +992,46 @@ describe('slice-11 probes (env-gated, session-local)', () => {
               ` -> ${err.message?.slice(0, 160)}${uvNote}`
           );
         }
+      }
+      expect(true).toBe(true);
+    }
+  );
+
+  it.skipIf(!process.env.PF_GOTHIC_OPCENSUS)(
+    'Gothic program op census: outer vs inner wall (slack audit, zero proofs)',
+    { timeout: 120_000 },
+    () => {
+      const { binding } = atlas('GothicArches', {
+        gaPointiness: 1,
+        gaDiamond: 0,
+        gaRelief: 0.2,
+      });
+      for (const patchId of ['outer-wall', 'inner-wall'] as const) {
+        const program = binding.programs.find((entry) => entry.patchId === patchId);
+        if (program === undefined) throw new Error(`no ${patchId}`);
+        const parsed: unknown = JSON.parse(program.programCanonicalJson);
+        const opCounts = new Map<string, number>();
+        let nodes = 0;
+        const walk = (value: unknown): void => {
+          if (Array.isArray(value)) {
+            for (const entry of value) walk(entry);
+            return;
+          }
+          if (typeof value !== 'object' || value === null) return;
+          const record = value as Record<string, unknown>;
+          const op = record.op ?? record.kind ?? record.type;
+          if (typeof op === 'string') {
+            nodes += 1;
+            opCounts.set(op, (opCounts.get(op) ?? 0) + 1);
+          }
+          for (const key of Object.keys(record)) walk(record[key]);
+        };
+        walk(parsed);
+        const summary = [...opCounts.entries()]
+          .sort((left, right) => right[1] - left[1])
+          .map(([op, count]) => `${op}=${count}`)
+          .join(' ');
+        console.log(`[probe:opcensus] ${patchId} nodes=${nodes} ${summary}`);
       }
       expect(true).toBe(true);
     }

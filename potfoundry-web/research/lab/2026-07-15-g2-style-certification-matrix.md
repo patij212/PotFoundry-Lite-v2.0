@@ -848,3 +848,45 @@ one mechanism per refusal, exactly as the playbook predicts:**
    refusing at 2 pm and that is the machine working).
 Config state: `gothic-p1-a8w5-chain` + blend rows + bandMid rows +
 maxDepth 30, in the spike harness. Twelve pots / ten styles unchanged.
+
+## Addendum 20 — GOTHIC CERTIFIED: the ELEVENTH style (2026-07-17, enclosure-slack session)
+
+**GothicArches (pointiness 1, diamond 0, relief 0.2, H32) — CONVERGED
+9,499,997 pm / 304,808 tris / 287.5 s parallel / structural TRUE
+(plusReserved 9,999,997 ≤ 10,000,000).** Three picometres under the bound,
+at half the envelope-v4 elapsed ceiling. THIRTEEN pots / ELEVEN styles.
+
+**The enclosure-slack work that closed it (compiler v14):** the centered
+mean-value screen's J·offset term hulled the centred offsets over the
+AXIS-ALIGNED BOX while cells are triangles; the mixed-sign-Jacobian corner
+the triangle cannot reach paid up to min(|Ju|·du, |Jv|·dv) — measured
+exactly 2× on the discriminator (linear target z = 0.25u − 0.25v against a
+flat artifact on a right-triangle cell: box width 0.125 vs true 0.0625).
+Replaced with the exact per-vertex offset hull (sound by convexity: every
+cell point is a convex combination of the vertices and the term is linear
+in the offset for each fixed Jacobian selection; pointwise contained in the
+box form it replaces). Method text + compiler version rebound
+(v13 → v14); TDD (`triangleExactMeanValueScreen.test.ts`), suite 482/482,
+roster re-proof green. MEASURED DIVIDEND: Gothic composed 581.3 → 476.9 s
+(−18%) pre-fix; bottoms 42k→27k / 71k→31.5k cells (−35/−56%) with BETTER
+bounds; the reopened headroom paid for the final fixes.
+
+**The last two razors (pinned under v14, killed by two rows):**
+- inner 9,500,002: bandMid UPPER-flank continuation at t ∈ [0.5495, 0.5752],
+  δ ≈ 0.034 — t = 0.5625 is a dyadic outer row but was MISSING from the
+  inner wall's remapped ladder (the recurring inner-remap ladder-gap class,
+  cf. Voronoi Addendum 9). Fix: snapRow(0.5625) — inner-effective only.
+- outer 9,500,001: the bandRim ridge flank (crest at t = 1.0, the third
+  1.8·gaBandW quartic) at t ∈ [31/32, 1] on the seam column. Fix: row
+  63/64 — strip-free (curves end at 0.781), near-zero cost. The symmetric
+  base band is inert under topMask ≈ 0 (early sweep passed it, consistent).
+
+**The complete Gothic mechanism ladder, for the record** (every razor
+measured, priced by R ≈ κg²/8 · slope-jump/f′, and closed by its matching
+primitive): arch-kink crease collar (chains: interior vertices) →
+near-kink offset-curve collar (chain window |o| ≤ 0.0112 above / 0.0076
+below) → fan/MWT triangulation slivers (max-min-angle DP) → tier-blend
+smoothstep ends (rows 31/33/37/64) → bandMid crest flanks (rows
+0.5265/0.5495) → bandMid upper continuation (0.5625 inner) → bandRim flank
+(63/64). Config: `gothic-p1-a8w5-chain` in the spike harness; envelope v4;
+maxDepth 30; six patch workers.
