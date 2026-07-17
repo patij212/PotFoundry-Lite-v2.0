@@ -151,6 +151,36 @@ const CERTIFIED_POTS: ReadonlyArray<{
   // max depth at every density AND every relief (measured refusals at relief
   // 0.3 and 0.005, angular 2^8/2^9 — slice 8) — conforming-cell class (U5).
   {
+    name: 'Crystalline_H32_OD30_hp025_conforming',
+    styleId: 'Crystalline',
+    styleParams: {
+      cr_facet_depth: 0.02, cr_edge_sharpness: 2, cr_asymmetry: 0, cr_height_phase: 0.25,
+    },
+    geometry: Object.freeze({ ...DEFAULT_GEOMETRY, H: 32, top_od: 30, bottom_od: 30, r_drain: 6 }),
+    divisions: {
+      angularDivisionsLog2: 8,
+      angularStations: rationalStationLadder(8, [
+        ...Array.from({ length: 47 }, (_, j) => [j + 1, 48] as const),
+        ...Array.from({ length: 24 }, (_, k) => [64 * (k + 1) - 3, 1536] as const),
+        ...Array.from({ length: 24 }, (_, k) => [64 * k + 3, 1536] as const),
+      ]),
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 4, 'inner-wall': 4, 'top-rim': 3, 'bottom-top': 4, 'bottom-under': 4, 'drain-wall': 0,
+      },
+      conformingLinesByPatch: {
+        'outer-wall': Array.from({ length: 24 }, (_, i) => ({
+          aNumerator: 48, bNumerator: 1, cNumerator: 2 * (i + 1),
+        })),
+        'inner-wall': Array.from({ length: 24 }, (_, i) => ({
+          aNumerator: 1536, bNumerator: -29, cNumerator: 1539 - 64 * (i + 1),
+        })),
+        'drain-wall': Array.from({ length: 24 }, (_, i) => ({
+          aNumerator: 1536, bNumerator: -3, cNumerator: 1536 - 64 * (i + 1),
+        })),
+      },
+    },
+  },
+  {
     name: 'SuperformulaBlossom_small_OD30_positivity',
     styleId: 'SuperformulaBlossom',
     styleParams: {
@@ -198,6 +228,6 @@ describe('certified pot STL emission', () => {
       console.log(line);
       expect(tris).toBeGreaterThan(0);
     }
-    expect(CERTIFIED_POTS.length).toBe(9); // PF_G2_POT roster size — bump if the gate grows
+    expect(CERTIFIED_POTS.length).toBe(10); // PF_G2_POT roster size — bump if the gate grows
   }, 10 * 60 * 1000);
 });

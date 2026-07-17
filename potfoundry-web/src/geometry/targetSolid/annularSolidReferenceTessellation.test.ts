@@ -11,6 +11,7 @@ import {
   FinalStlPartialCertificationError,
   proveFinalStlMappedGeometryAndStructure,
 } from './finalStlPartialCertification';
+import { verifyExactDyadicRectanglePartition } from './exactDyadicDomainPartition';
 import { assessProofSessionStructuralIntegrity } from './proofSessionStructuralIntegrity';
 import {
   createSinglePatchAnnularRadialSolidTargetBinding,
@@ -194,6 +195,138 @@ describe('annular solid reference tessellation', () => {
     expect(structural.scanComplete).toBe(true);
   });
 
+  it('splits cells along parallel conforming feature lines with exact one-sided triangles', () => {
+    // U5 spike: diagonal jump lines a*u + b*v = c can never be avoided by an
+    // axis-aligned grid; the conforming splitter cuts every crossed rectangle
+    // along the EXACT line so no emitted triangle straddles it. The partition
+    // kernel is the conformity oracle (area sum + pair audit), and every
+    // triangle must be exactly one-sided against every declared line.
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    // All 48ths: contains every v=0 crossing (m/24) and v=1 crossing
+    // ((2m-1)/48) of the line family 48u + v = 2m, and is symmetric.
+    const ladder = rationalStationLadder(
+      4,
+      Array.from({ length: 47 }, (_, index) => [index + 1, 48] as const)
+    );
+    const lines = Array.from({ length: 23 }, (_, index) => ({
+      aNumerator: 48,
+      bNumerator: 1,
+      cNumerator: 2 * (index + 1),
+    }));
+    const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+      angularDivisionsLog2: 4,
+      angularStations: ladder,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+      conformingLinesByPatch: { 'outer-wall': lines },
+    });
+    // Still a closed genus-one embedded solid after the splits.
+    const session = createFinalArtifactProofSession(tessellation.stlBytes);
+    expect(session.triangleCount).toBe(tessellation.triangleCount);
+    const structural = assessProofSessionStructuralIntegrity(session, {
+      componentCount: 1,
+      genus: 1,
+    });
+    expect(structural.structurallyValid).toBe(true);
+    const outerWall = tessellation.partitions.find(
+      (partition) => partition.patchId === 'outer-wall'
+    );
+    const innerWall = tessellation.partitions.find(
+      (partition) => partition.patchId === 'inner-wall'
+    );
+    if (outerWall === undefined || innerWall === undefined) {
+      throw new Error('expected outer-wall and inner-wall partitions');
+    }
+    // The kernel accepts the split partition as an exact complete coverage.
+    const verified = verifyExactDyadicRectanglePartition(outerWall);
+    expect(verified.exactPartition).toBe(true);
+    expect(verified.scanComplete).toBe(true);
+    // The split patch carries MORE triangles than its plain grid would.
+    const plainGridTriangles = 2 * 48 * 4;
+    expect(outerWall.triangles.length).toBeGreaterThan(plainGridTriangles);
+    // Unsplit patches keep their plain grids.
+    expect(innerWall.triangles.length).toBe(plainGridTriangles);
+    // EXACT one-sidedness: no emitted triangle straddles any declared line.
+    const declared = BigInt(outerWall.oddDenominatorFactor ?? '1') << BigInt(outerWall.fractionBits);
+    for (const line of lines) {
+      const a = BigInt(line.aNumerator);
+      const b = BigInt(line.bNumerator);
+      const c = BigInt(line.cNumerator) * declared;
+      for (const triangle of outerWall.triangles) {
+        let positive = false;
+        let negative = false;
+        for (const vertex of triangle.vertices) {
+          const sign = a * BigInt(vertex.uNumerator) + b * BigInt(vertex.vNumerator) - c;
+          if (sign > 0n) positive = true;
+          if (sign < 0n) negative = true;
+        }
+        expect(positive && negative).toBe(false);
+      }
+    }
+  });
+
+  it('refuses conforming lines whose boundary-row crossings miss the angular stations', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        angularDivisionsLog2: 4,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 2,
+          'inner-wall': 2,
+          'top-rim': 1,
+          'bottom-top': 1,
+          'bottom-under': 1,
+          'drain-wall': 1,
+        },
+        // v=0 crossing at u = 1/48 is NOT a station of the plain 2^4 grid.
+        conformingLinesByPatch: {
+          'outer-wall': [{ aNumerator: 48, bNumerator: 1, cNumerator: 1 }],
+        },
+      })
+    ).toThrow(/boundary row off-station/);
+  });
+
+  it('refuses non-parallel conforming line sets and seam-interior crossings', () => {
+    const { binding } = atlas(SMALL_POT_GEOMETRY, GENTLE_HARMONIC_RIPPLE);
+    const base = {
+      angularDivisionsLog2: 4,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 2,
+        'inner-wall': 2,
+        'top-rim': 1,
+        'bottom-top': 1,
+        'bottom-under': 1,
+        'drain-wall': 1,
+      },
+    } as const;
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        conformingLinesByPatch: {
+          'outer-wall': [
+            { aNumerator: 48, bNumerator: 1, cNumerator: 2 },
+            { aNumerator: 1, bNumerator: 48, cNumerator: 2 },
+          ],
+        },
+      })
+    ).toThrow(/pairwise parallel/);
+    expect(() =>
+      tessellateAnnularRadialSolidTargetForCertification(binding, {
+        ...base,
+        // At u=0 this line sits at v=1/2: a periodic-seam interior crossing.
+        conformingLinesByPatch: {
+          'outer-wall': [{ aNumerator: 1, bNumerator: 4, cNumerator: 2 }],
+        },
+      })
+    ).toThrow(/seam/);
+  });
+
   it('builds exact-rational feature angular ladders (U3b): stations exactly ON k/N', () => {
     // N = 24 jump lines (odd part 3): every k/24 must be an exact station of
     // the ladder — no dyadic snapping — over denominator 3 * 2^f.
@@ -367,6 +500,37 @@ describe('annular solid reference tessellation', () => {
   // 9,499,969 pm / 54k tris. Styles absent here are blocked by the measured
   // frontier (131,072-triangle cap x 30 s deadline x uniform dyadic grids,
   // plus two screen op gaps), not by the proof machinery.
+  // Crystalline heightPhase 0.25 conforming machinery: both wrap families are
+  // the parallel diagonal lines 12u + 0.25t = k/2; the u-REVERSED inner and
+  // drain walls carry the remapped families. The shared angular ladder holds
+  // every boundary-row crossing (j/48 and (64k±3)/1536) so junction welds
+  // stay station-exact.
+  const CRYSTALLINE_HP_LADDER_FRACTIONS: (readonly [number, number])[] = [];
+  for (let j = 1; j < 48; j += 1) CRYSTALLINE_HP_LADDER_FRACTIONS.push([j, 48]);
+  for (let k = 1; k <= 24; k += 1) {
+    CRYSTALLINE_HP_LADDER_FRACTIONS.push([64 * k - 3, 1536]);
+  }
+  for (let k = 0; k < 24; k += 1) {
+    CRYSTALLINE_HP_LADDER_FRACTIONS.push([64 * k + 3, 1536]);
+  }
+  const CRYSTALLINE_HP_CONFORMING_LINES = {
+    'outer-wall': Array.from({ length: 24 }, (_, index) => ({
+      aNumerator: 48,
+      bNumerator: 1,
+      cNumerator: 2 * (index + 1),
+    })),
+    'inner-wall': Array.from({ length: 24 }, (_, index) => ({
+      aNumerator: 1536,
+      bNumerator: -29,
+      cNumerator: 1539 - 64 * (index + 1),
+    })),
+    'drain-wall': Array.from({ length: 24 }, (_, index) => ({
+      aNumerator: 1536,
+      bNumerator: -3,
+      cNumerator: 1536 - 64 * (index + 1),
+    })),
+  } as const;
+
   const CERTIFIED_POTS: readonly {
     styleId: string;
     styleParams: Readonly<Record<string, number>>;
@@ -574,6 +738,45 @@ describe('annular solid reference tessellation', () => {
           'bottom-under': 4,
           'drain-wall': 0,
         },
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
+    // FIRST CONFORMING-CELLS CERTIFICATE (U5 spike, slice 9): Crystalline at
+    // heightPhase 0.25 — the diagonal-jump corner Addendum 8 classified
+    // U5-impossible for axis-aligned partitions. conformingLinesByPatch
+    // splits every crossed cell along the EXACT parallel lines, every piece
+    // is one-sided so both fract families band-resolve, and the proof runs
+    // at depth <= 2 with ~85% fast-screen acceptance. All six patches
+    // converge per-patch (drain-wall: 688 cells, depth 0, ~50 ms). The
+    // remaining conforming frontier is CURVED feature lines (WI/Gothic) —
+    // straight rational-affine diagonals are now closed.
+    {
+      styleId: 'Crystalline',
+      styleParams: {
+        cr_facet_depth: 0.02,
+        cr_edge_sharpness: 2,
+        cr_asymmetry: 0,
+        cr_height_phase: 0.25,
+      },
+      geometry: Object.freeze({
+        ...DEFAULT_GEOMETRY,
+        H: 32,
+        top_od: 30,
+        bottom_od: 30,
+        r_drain: 6,
+      }),
+      divisions: {
+        angularDivisionsLog2: 8,
+        angularStations: rationalStationLadder(8, CRYSTALLINE_HP_LADDER_FRACTIONS),
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 4,
+          'inner-wall': 4,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+        conformingLinesByPatch: CRYSTALLINE_HP_CONFORMING_LINES,
       },
       maxElapsedMilliseconds: 110_000,
     },

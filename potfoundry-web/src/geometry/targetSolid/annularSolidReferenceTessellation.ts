@@ -47,6 +47,24 @@ export interface VerticalStationLadder {
   readonly oddDenominatorFactor?: number;
 }
 
+/**
+ * One straight conforming feature line a*u + b*v = c with exact integer
+ * coefficients (U5 spike). Cells the line strictly crosses are split along
+ * the EXACT line so no emitted triangle straddles it — the tessellation-side
+ * unlock for diagonal jump/kink lines that axis-aligned station grids can
+ * never avoid. Restrictions enforced fail-closed: a and b nonzero (use
+ * angular/vertical stations for axis-aligned lines), all lines of one patch
+ * pairwise parallel (line-line intersections would leave the exact-rational
+ * envelope), boundary-row crossings must land exactly on angular stations
+ * (junction welds stay T-junction-free), and periodic-seam interior
+ * crossings are refused this slice.
+ */
+export interface ConformingFeatureLine {
+  readonly aNumerator: number;
+  readonly bNumerator: number;
+  readonly cNumerator: number;
+}
+
 export interface AnnularSolidReferenceTessellationOptions {
   /** log2 of the shared angular division count (all patches use 2^a cells in u). */
   readonly angularDivisionsLog2: number;
@@ -65,6 +83,10 @@ export interface AnnularSolidReferenceTessellationOptions {
    * numerator; the reversed station of index i is then index count-1-i.
    */
   readonly angularStations?: VerticalStationLadder;
+  /** Optional per-patch parallel conforming feature lines (see ConformingFeatureLine). */
+  readonly conformingLinesByPatch?: Readonly<
+    Partial<Record<AnnularRadialSolidPatchId, readonly ConformingFeatureLine[]>>
+  >;
 }
 
 /**
@@ -173,6 +195,354 @@ function greatestCommonDivisor(left: number, right: number): number {
     b = next;
   }
   return a;
+}
+
+/** Exact UV point as integer numerators over one patch partition denominator. */
+interface ExactUvPoint {
+  readonly U: bigint;
+  readonly V: bigint;
+}
+
+interface NormalizedConformingLine {
+  /** Normalized so aNumerator > 0; the line is a*u + b*v = c in unit coords. */
+  readonly aNumerator: number;
+  readonly bNumerator: number;
+  readonly cNumerator: number;
+}
+
+const LINE_COEFFICIENT_LIMIT = 1_048_576; // 2^20 — keeps s-values far inside BigInt comfort
+
+function validateConformingLines(
+  patchId: AnnularRadialSolidPatchId,
+  untrusted: readonly ConformingFeatureLine[]
+): readonly NormalizedConformingLine[] {
+  if (!Array.isArray(untrusted) || untrusted.length === 0) {
+    invalid(`conformingLinesByPatch['${patchId}'] must be a non-empty array when present`);
+  }
+  if (untrusted.length > 4_096) {
+    invalid(`conformingLinesByPatch['${patchId}'] carries too many lines`);
+  }
+  const lines: NormalizedConformingLine[] = [];
+  for (const line of untrusted) {
+    const { aNumerator, bNumerator, cNumerator } = line;
+    for (const [value, label] of [
+      [aNumerator, 'aNumerator'],
+      [bNumerator, 'bNumerator'],
+      [cNumerator, 'cNumerator'],
+    ] as const) {
+      if (!Number.isSafeInteger(value) || Math.abs(value) > LINE_COEFFICIENT_LIMIT) {
+        invalid(
+          `conformingLinesByPatch['${patchId}'].${label} must be an integer within ±${LINE_COEFFICIENT_LIMIT}`
+        );
+      }
+    }
+    if (aNumerator === 0 || bNumerator === 0) {
+      invalid(
+        `conformingLinesByPatch['${patchId}'] lines must be diagonal (a and b nonzero); axis-aligned jump lines belong on angular/vertical stations`
+      );
+    }
+    // Normalize the sign so a > 0; the line itself is unchanged.
+    const sign = aNumerator > 0 ? 1 : -1;
+    lines.push({
+      aNumerator: sign * aNumerator,
+      bNumerator: sign * bNumerator,
+      cNumerator: sign * cNumerator,
+    });
+  }
+  // Pairwise parallel: line-line intersection points would carry compound
+  // denominators outside the exact single-denominator envelope this slice.
+  for (let left = 0; left < lines.length; left += 1) {
+    for (let right = left + 1; right < lines.length; right += 1) {
+      if (
+        BigInt(lines[left].aNumerator) * BigInt(lines[right].bNumerator) !==
+        BigInt(lines[right].aNumerator) * BigInt(lines[left].bNumerator)
+      ) {
+        invalid(`conformingLinesByPatch['${patchId}'] lines must be pairwise parallel`);
+      }
+    }
+  }
+  return Object.freeze(lines);
+}
+
+function exactEdgeIntersection(
+  from: ExactUvPoint,
+  to: ExactUvPoint,
+  a: bigint,
+  b: bigint,
+  cScaled: bigint
+): ExactUvPoint {
+  if (from.U === to.U) {
+    const numerator = cScaled - a * from.U;
+    if (numerator % b !== 0n) {
+      invalid('conforming intersection left the exact single-denominator envelope');
+    }
+    return { U: from.U, V: numerator / b };
+  }
+  if (from.V === to.V) {
+    const numerator = cScaled - b * from.V;
+    if (numerator % a !== 0n) {
+      invalid('conforming intersection left the exact single-denominator envelope');
+    }
+    return { U: numerator / a, V: from.V };
+  }
+  // Unreachable for pairwise-parallel families: a parallel line is exactly
+  // sign-constant along any previous cut edge, so strict crossings only ever
+  // happen on axis-aligned grid edges. Refuse fail-closed regardless.
+  invalid('conforming line strictly crossed a non-axis-aligned edge');
+}
+
+/**
+ * Split one convex CCW polygon by the line a*U + b*V = cScaled (exact). When
+ * the line does not strictly separate the vertices the polygon is returned
+ * unchanged; otherwise the two closed sides are returned, each carrying the
+ * exact intersection points, so adjacent cells that compute the same
+ * intersection on a shared grid edge stay conforming.
+ */
+function splitConvexByLine(
+  points: readonly ExactUvPoint[],
+  a: bigint,
+  b: bigint,
+  cScaled: bigint
+): readonly (readonly ExactUvPoint[])[] {
+  const signs = points.map((point) => a * point.U + b * point.V - cScaled);
+  let anyPositive = false;
+  let anyNegative = false;
+  for (const sign of signs) {
+    if (sign > 0n) anyPositive = true;
+    else if (sign < 0n) anyNegative = true;
+  }
+  if (!anyPositive || !anyNegative) return [points];
+  const positiveSide: ExactUvPoint[] = [];
+  const negativeSide: ExactUvPoint[] = [];
+  for (let index = 0; index < points.length; index += 1) {
+    const point = points[index];
+    const sign = signs[index];
+    const nextIndex = (index + 1) % points.length;
+    if (sign >= 0n) positiveSide.push(point);
+    if (sign <= 0n) negativeSide.push(point);
+    const nextSign = signs[nextIndex];
+    if ((sign > 0n && nextSign < 0n) || (sign < 0n && nextSign > 0n)) {
+      const crossing = exactEdgeIntersection(point, points[nextIndex], a, b, cScaled);
+      positiveSide.push(crossing);
+      negativeSide.push(crossing);
+    }
+  }
+  return [positiveSide, negativeSide].filter((side) => side.length >= 3);
+}
+
+function conformingPieceTriangles(
+  pieces: readonly (readonly ExactUvPoint[])[]
+): readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] {
+  const triangles: (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[] = [];
+  for (const piece of pieces) {
+    const origin = piece[0];
+    for (let index = 1; index + 1 < piece.length; index += 1) {
+      const middle = piece[index];
+      const last = piece[index + 1];
+      const doubledArea =
+        (middle.U - origin.U) * (last.V - origin.V) -
+        (middle.V - origin.V) * (last.U - origin.U);
+      if (doubledArea <= 0n) {
+        invalid('conforming split produced a degenerate or misoriented piece triangle');
+      }
+      triangles.push([origin, middle, last]);
+    }
+  }
+  return triangles;
+}
+
+/**
+ * Per-patch exact partition coordinate frame: the shared denominator
+ * oddFactor * 2^fractionBits merging the angular ladder, the vertical ladder,
+ * and (when conforming lines are present) the lcm of the line coefficients —
+ * so every station AND every line/grid-edge intersection is an exact integer
+ * numerator. `pieces` holds the split triangles of strictly-crossed cells;
+ * uncrossed cells keep their two standard grid triangles.
+ */
+interface PatchPartitionFrame {
+  readonly fractionBits: number;
+  readonly oddFactor: number;
+  readonly declaredDenominator: number;
+  readonly scaledAngularNumerators: readonly number[];
+  readonly scaledVerticalNumerators: readonly number[];
+  readonly pieces: ReadonlyMap<
+    number,
+    readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[]
+  >;
+  readonly patchTriangleCount: number;
+}
+
+function leastCommonMultipleSafe(
+  left: number,
+  right: number,
+  patchId: AnnularRadialSolidPatchId
+): number {
+  const divisor = greatestCommonDivisor(left, right);
+  const result = (left / divisor) * right;
+  if (!Number.isSafeInteger(result) || result > MAX_LADDER_ODD_FACTOR) {
+    invalid(`patch '${patchId}' conforming line coefficients exceed the exact envelope`);
+  }
+  return result;
+}
+
+function buildPatchPartitionFrame(
+  patchId: AnnularRadialSolidPatchId,
+  angular: ResolvedStations,
+  vertical: ResolvedStations,
+  lines: readonly NormalizedConformingLine[]
+): PatchPartitionFrame {
+  const angularOdd = angular.oddDenominatorFactor;
+  const verticalOdd = vertical.oddDenominatorFactor;
+  let fractionBits = Math.max(angular.log2Denominator, vertical.log2Denominator);
+  let oddFactor =
+    (angularOdd / greatestCommonDivisor(angularOdd, verticalOdd)) * verticalOdd;
+  if (lines.length > 0) {
+    // Crossing a horizontal grid edge divides by a, a vertical edge by b, and
+    // every existing coordinate is a multiple of this extra factor after the
+    // scale-up — so all intersection numerators stay exact integers (parallel
+    // families never strictly cross each other's cut edges).
+    let extraFactor = 1;
+    for (const line of lines) {
+      extraFactor = leastCommonMultipleSafe(
+        extraFactor,
+        Math.abs(line.aNumerator),
+        patchId
+      );
+      extraFactor = leastCommonMultipleSafe(
+        extraFactor,
+        Math.abs(line.bNumerator),
+        patchId
+      );
+    }
+    let extraOdd = extraFactor;
+    let extraLog2 = 0;
+    while (extraOdd % 2 === 0) {
+      extraOdd /= 2;
+      extraLog2 += 1;
+    }
+    fractionBits += extraLog2;
+    oddFactor *= extraOdd;
+    if (!Number.isSafeInteger(oddFactor) || oddFactor > MAX_LADDER_ODD_FACTOR) {
+      invalid(`patch '${patchId}' conforming denominator exceeds the exact envelope`);
+    }
+  }
+  const uNumeratorScale =
+    (oddFactor / angularOdd) * 2 ** (fractionBits - angular.log2Denominator);
+  const vNumeratorScale =
+    (oddFactor / verticalOdd) * 2 ** (fractionBits - vertical.log2Denominator);
+  const declaredDenominator = oddFactor * 2 ** fractionBits;
+  if (
+    !Number.isSafeInteger(uNumeratorScale) ||
+    !Number.isSafeInteger(vNumeratorScale) ||
+    !Number.isSafeInteger(declaredDenominator) ||
+    declaredDenominator > MAX_LADDER_ODD_FACTOR
+  ) {
+    invalid(`patch '${patchId}' partition denominator exceeds the exact envelope`);
+  }
+  const scaledAngularNumerators = angular.numerators.map(
+    (numerator) => numerator * uNumeratorScale
+  );
+  const scaledVerticalNumerators = vertical.numerators.map(
+    (numerator) => numerator * vNumeratorScale
+  );
+  const angularDivisions = angular.numerators.length - 1;
+  const verticalDivisions = vertical.numerators.length - 1;
+  const pieces = new Map<
+    number,
+    readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[]
+  >();
+  if (lines.length === 0) {
+    return Object.freeze({
+      fractionBits,
+      oddFactor,
+      declaredDenominator,
+      scaledAngularNumerators,
+      scaledVerticalNumerators,
+      pieces,
+      patchTriangleCount: 2 * angularDivisions * verticalDivisions,
+    });
+  }
+  const declared = BigInt(declaredDenominator);
+  const scaledLines = lines.map((line) => ({
+    a: BigInt(line.aNumerator),
+    b: BigInt(line.bNumerator),
+    cScaled: BigInt(line.cNumerator) * declared,
+  }));
+  const stationSet = new Set<string>(
+    scaledAngularNumerators.map((numerator) => numerator.toString())
+  );
+  for (const line of scaledLines) {
+    // Boundary rows: a crossing strictly inside v=0 or v=1 must land EXACTLY
+    // on a shared angular station, or the junction weld with the neighbouring
+    // patch would carry a T-junction. (a > 0 after normalization.)
+    for (const rowV of [0n, declared]) {
+      const numerator = line.cScaled - line.b * rowV;
+      if (numerator > 0n && numerator < line.a * declared) {
+        if (
+          numerator % line.a !== 0n ||
+          !stationSet.has((numerator / line.a).toString())
+        ) {
+          invalid(
+            `patch '${patchId}' conforming line crosses a patch boundary row off-station`
+          );
+        }
+      }
+    }
+    // Periodic seam: interior crossings are refused this slice (the wrapped
+    // continuation would need matched seam subdivisions on both columns).
+    for (const columnU of [0n, declared]) {
+      const numerator = line.cScaled - line.a * columnU;
+      const inside =
+        line.b > 0n
+          ? numerator > 0n && numerator < line.b * declared
+          : numerator < 0n && numerator > line.b * declared;
+      if (inside) {
+        invalid(`patch '${patchId}' conforming line crosses the periodic seam interior`);
+      }
+    }
+  }
+  let patchTriangleCount = 0;
+  for (let vCell = 0; vCell < verticalDivisions; vCell += 1) {
+    const V0 = BigInt(scaledVerticalNumerators[vCell]);
+    const V1 = BigInt(scaledVerticalNumerators[vCell + 1]);
+    for (let uCell = 0; uCell < angularDivisions; uCell += 1) {
+      const U0 = BigInt(scaledAngularNumerators[uCell]);
+      const U1 = BigInt(scaledAngularNumerators[uCell + 1]);
+      const corners: readonly ExactUvPoint[] = [
+        { U: U0, V: V0 },
+        { U: U1, V: V0 },
+        { U: U1, V: V1 },
+        { U: U0, V: V1 },
+      ];
+      let currentPieces: readonly (readonly ExactUvPoint[])[] = [corners];
+      let anySplit = false;
+      for (const line of scaledLines) {
+        const nextPieces: (readonly ExactUvPoint[])[] = [];
+        for (const piece of currentPieces) {
+          const split = splitConvexByLine(piece, line.a, line.b, line.cScaled);
+          if (split.length > 1) anySplit = true;
+          for (const part of split) nextPieces.push(part);
+        }
+        currentPieces = nextPieces;
+      }
+      if (!anySplit) {
+        patchTriangleCount += 2;
+        continue;
+      }
+      const cellTriangles = conformingPieceTriangles(currentPieces);
+      pieces.set(vCell * angularDivisions + uCell, cellTriangles);
+      patchTriangleCount += cellTriangles.length;
+    }
+  }
+  return Object.freeze({
+    fractionBits,
+    oddFactor,
+    declaredDenominator,
+    scaledAngularNumerators,
+    scaledVerticalNumerators,
+    pieces,
+    patchTriangleCount,
+  });
 }
 
 /**
@@ -545,11 +915,26 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   if (programs.length !== PATCH_IDS.length) {
     invalid(`atlas must carry exactly ${PATCH_IDS.length} patch programs`);
   }
+  const conformingByPatch = options.conformingLinesByPatch ?? {};
+  if (typeof conformingByPatch !== 'object' || conformingByPatch === null) {
+    invalid('conformingLinesByPatch must be a record when present');
+  }
+  const frames = new Map<AnnularRadialSolidPatchId, PatchPartitionFrame>();
   let triangleCount = 0;
   for (const program of programs) {
     const stations = stationsByPatch.get(program.patchId);
     if (stations === undefined) invalid(`unknown atlas patch '${program.patchId}'`);
-    triangleCount += 2 * angularDivisions * (stations.numerators.length - 1);
+    const rawLines = conformingByPatch[program.patchId];
+    const lines =
+      rawLines === undefined ? [] : validateConformingLines(program.patchId, rawLines);
+    const frame = buildPatchPartitionFrame(
+      program.patchId,
+      angularResolved,
+      stations,
+      lines
+    );
+    frames.set(program.patchId, frame);
+    triangleCount += frame.patchTriangleCount;
   }
   if (triangleCount > MAX_REFERENCE_TRIANGLES) {
     invalid(`requested grid needs ${triangleCount} triangles > ${MAX_REFERENCE_TRIANGLES}`);
@@ -578,39 +963,57 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   let artifactTriangleIndex = 0;
   for (const program of programs) {
     const grid = grids.get(program.patchId);
-    const stations = stationsByPatch.get(program.patchId);
-    if (grid === undefined || stations === undefined) {
+    const frame = frames.get(program.patchId);
+    if (grid === undefined || frame === undefined) {
       invalid(`unknown atlas patch '${program.patchId}'`);
     }
     const verticalDivisions = grid.verticalDivisions;
-    const fractionBits = Math.max(
-      angularResolved.log2Denominator,
-      stations.log2Denominator
-    );
-    // The partition's shared coordinate denominator is q * 2^fractionBits
-    // with q = lcm of the angular and per-patch vertical odd factors: each
-    // axis's numerators scale by the missing odd cofactor times the dyadic
-    // gap, keeping every station an exact integer over the shared system.
-    const angularOdd = angularResolved.oddDenominatorFactor;
-    const verticalOdd = stations.oddDenominatorFactor;
-    const oddFactor =
-      (angularOdd / greatestCommonDivisor(angularOdd, verticalOdd)) * verticalOdd;
-    const uNumeratorScale =
-      (oddFactor / angularOdd) * 2 ** (fractionBits - angularResolved.log2Denominator);
-    const angularNumerator = (uStation: number): number =>
-      angularResolved.numerators[uStation] * uNumeratorScale;
-    const vNumeratorScale =
-      (oddFactor / verticalOdd) * 2 ** (fractionBits - stations.log2Denominator);
-    const stationNumerator = (vStation: number): number =>
-      stations.numerators[vStation] * vNumeratorScale;
-    const declaredDenominator = oddFactor * 2 ** fractionBits;
-    if (
-      !Number.isSafeInteger(declaredDenominator) ||
-      declaredDenominator > MAX_LADDER_ODD_FACTOR
-    ) {
-      invalid(`patch '${program.patchId}' partition denominator exceeds the exact envelope`);
-    }
+    const declaredDenominator = frame.declaredDenominator;
     const maxNumerator = declaredDenominator.toString();
+    // Grid corners resolve to the pre-evaluated (junction-welded, seam-copied)
+    // grid coordinates; conforming intersection vertices are strictly interior
+    // (boundary/seam crossings are refused or forced onto stations), so they
+    // evaluate directly and memoize so shared edges reuse bit-identical floats.
+    const angularIndexByNumerator = new Map<number, number>();
+    frame.scaledAngularNumerators.forEach((numerator, index) => {
+      angularIndexByNumerator.set(numerator, index);
+    });
+    const verticalIndexByNumerator = new Map<number, number>();
+    frame.scaledVerticalNumerators.forEach((numerator, index) => {
+      verticalIndexByNumerator.set(numerator, index);
+    });
+    const extraCoordinateMemo = new Map<string, readonly [number, number, number]>();
+    const vertexCoordinates = (point: ExactUvPoint): readonly [number, number, number] => {
+      const uNumerator = Number(point.U);
+      const vNumerator = Number(point.V);
+      const uIndex = angularIndexByNumerator.get(uNumerator);
+      const vIndex = verticalIndexByNumerator.get(vNumerator);
+      if (uIndex !== undefined && vIndex !== undefined) {
+        const source = gridIndex(angularDivisions, uIndex, vIndex);
+        return [
+          grid.coordinates[source],
+          grid.coordinates[source + 1],
+          grid.coordinates[source + 2],
+        ];
+      }
+      const key = `${uNumerator},${vNumerator}`;
+      const memoized = extraCoordinateMemo.get(key);
+      if (memoized !== undefined) return memoized;
+      const evaluated = program.backends.evaluateFloat64(
+        uNumerator / declaredDenominator,
+        vNumerator / declaredDenominator
+      );
+      if (
+        !Number.isFinite(evaluated[0]) ||
+        !Number.isFinite(evaluated[1]) ||
+        !Number.isFinite(evaluated[2])
+      ) {
+        invalid(`patch '${program.patchId}' evaluated a non-finite coordinate`);
+      }
+      const frozen = Object.freeze([evaluated[0], evaluated[1], evaluated[2]] as const);
+      extraCoordinateMemo.set(key, frozen);
+      return frozen;
+    };
     const triangles: {
       artifactTriangleIndex: number;
       vertices: readonly [
@@ -621,40 +1024,51 @@ export function tessellateAnnularRadialSolidTargetForCertification(
     }[] = [];
     for (let vCell = 0; vCell < verticalDivisions; vCell += 1) {
       for (let uCell = 0; uCell < angularDivisions; uCell += 1) {
-        // Two CCW parameter triangles per cell; STL vertices reuse the exact
-        // station order so the proof's vertex-wise correspondence holds.
-        const corners = [
-          [uCell, vCell],
-          [uCell + 1, vCell],
-          [uCell + 1, vCell + 1],
-          [uCell, vCell + 1],
-        ] as const;
-        for (const cellTriangle of [
-          [corners[0], corners[1], corners[2]],
-          [corners[0], corners[2], corners[3]],
-        ] as const) {
+        // Two CCW parameter triangles per uncrossed cell (exactly the plain
+        // grid emission), or the conforming piece fan for cells split along
+        // feature lines; STL vertices reuse the exact station/intersection
+        // order so the proof's vertex-wise correspondence holds.
+        const conforming = frame.pieces.get(vCell * angularDivisions + uCell);
+        let cellTriangles: readonly (readonly [ExactUvPoint, ExactUvPoint, ExactUvPoint])[];
+        if (conforming === undefined) {
+          const U0 = BigInt(frame.scaledAngularNumerators[uCell]);
+          const U1 = BigInt(frame.scaledAngularNumerators[uCell + 1]);
+          const V0 = BigInt(frame.scaledVerticalNumerators[vCell]);
+          const V1 = BigInt(frame.scaledVerticalNumerators[vCell + 1]);
+          const corner0 = { U: U0, V: V0 };
+          const corner1 = { U: U1, V: V0 };
+          const corner2 = { U: U1, V: V1 };
+          const corner3 = { U: U0, V: V1 };
+          cellTriangles = [
+            [corner0, corner1, corner2],
+            [corner0, corner2, corner3],
+          ];
+        } else {
+          cellTriangles = conforming;
+        }
+        for (const cellTriangle of cellTriangles) {
           const byteBase = 84 + artifactTriangleIndex * 50;
-          cellTriangle.forEach(([uStation, vStation], vertexIndex) => {
-            const source = gridIndex(angularDivisions, uStation, vStation);
+          cellTriangle.forEach((point, vertexIndex) => {
+            const coordinates = vertexCoordinates(point);
             const vertexBase = byteBase + 12 + vertexIndex * 12;
-            view.setFloat32(vertexBase, grid.coordinates[source], true);
-            view.setFloat32(vertexBase + 4, grid.coordinates[source + 1], true);
-            view.setFloat32(vertexBase + 8, grid.coordinates[source + 2], true);
+            view.setFloat32(vertexBase, coordinates[0], true);
+            view.setFloat32(vertexBase + 4, coordinates[1], true);
+            view.setFloat32(vertexBase + 8, coordinates[2], true);
           });
           triangles.push({
             artifactTriangleIndex,
             vertices: [
               {
-                uNumerator: angularNumerator(cellTriangle[0][0]).toString(),
-                vNumerator: stationNumerator(cellTriangle[0][1]).toString(),
+                uNumerator: cellTriangle[0].U.toString(),
+                vNumerator: cellTriangle[0].V.toString(),
               },
               {
-                uNumerator: angularNumerator(cellTriangle[1][0]).toString(),
-                vNumerator: stationNumerator(cellTriangle[1][1]).toString(),
+                uNumerator: cellTriangle[1].U.toString(),
+                vNumerator: cellTriangle[1].V.toString(),
               },
               {
-                uNumerator: angularNumerator(cellTriangle[2][0]).toString(),
-                vNumerator: stationNumerator(cellTriangle[2][1]).toString(),
+                uNumerator: cellTriangle[2].U.toString(),
+                vNumerator: cellTriangle[2].V.toString(),
               },
             ],
           });
@@ -664,8 +1078,10 @@ export function tessellateAnnularRadialSolidTargetForCertification(
     }
     partitions.push({
       patchId: program.patchId,
-      fractionBits,
-      ...(oddFactor === 1 ? {} : { oddDenominatorFactor: oddFactor.toString() }),
+      fractionBits: frame.fractionBits,
+      ...(frame.oddFactor === 1
+        ? {}
+        : { oddDenominatorFactor: frame.oddFactor.toString() }),
       domain: {
         minUNumerator: '0',
         maxUNumerator: maxNumerator,
