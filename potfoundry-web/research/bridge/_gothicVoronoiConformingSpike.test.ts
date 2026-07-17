@@ -997,6 +997,73 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     }
   );
 
+  it.skipIf(!process.env.PF_GOTHIC_STL)(
+    'emit the CERTIFIED Gothic STL (exact certified config; bytes = the artifact)',
+    { timeout: 300_000 },
+    async () => {
+      const { mkdirSync, writeFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { sha256Utf8 } = await import(
+        '../../src/geometry/targetSolid/incrementalSha256'
+      );
+      const { createFinalArtifactProofSession: mintSession } = await import(
+        '../../src/geometry/targetSolid/finalArtifactProofSession'
+      );
+      const ladders = gothicLadderFractions();
+      const angularLadder = rationalStationLadder(8, ladders.angularFractions);
+      const outerVertical = rationalStationLadder(5, ladders.outerVerticalFractions);
+      const innerVertical = rationalStationLadder(5, ladders.innerVerticalFractions);
+      const outerChords = gothicChordsForPatch('outer', angularLadder, outerVertical);
+      const innerChords = gothicChordsForPatch('inner', angularLadder, innerVertical);
+      const { binding } = atlas('GothicArches', {
+        gaPointiness: 1,
+        gaDiamond: 0,
+        gaRelief: 0.2,
+      });
+      const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+        angularDivisionsLog2: 8,
+        angularStations: angularLadder,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+        verticalStationsByPatch: {
+          'outer-wall': outerVertical,
+          'inner-wall': innerVertical,
+        },
+        conformingChordsByPatch: {
+          'outer-wall': outerChords,
+          'inner-wall': innerChords,
+        },
+      });
+      const session = mintSession(tessellation.stlBytes);
+      const directory = join(__dirname, '..', 'exchange', '_certified_stl');
+      mkdirSync(directory, { recursive: true });
+      const stlPath = join(directory, 'GothicArches_p1_H32_OD30_certified.stl');
+      writeFileSync(stlPath, tessellation.stlBytes);
+      const note = [
+        'GothicArches p=1 (gaPointiness 1, gaDiamond 0, gaRelief 0.2), H32/OD30/drain6 — CERTIFIED 2026-07-17',
+        'certificate: CONVERGED 9,499,997 pm two-sided (geometric budget 9,500,000 pm; plusReserved 9,999,997 <= 10,000,000 pm = 0.01 mm), structural TRUE',
+        `triangles=${tessellation.triangleCount} bytes=${tessellation.stlBytes.byteLength}`,
+        `artifactByteSha256=${session.byteSha256}`,
+        `parsedTriangleSetSha256=${session.parsedTriangleSetSha256}`,
+        'config: gothic-p1-a8w5-chain (spike harness) + envelope v4 + maxDepth 30 + compiler v14 triangle-exact screen; matrix Addendum 20',
+        `methodNote=${sha256Utf8('emitted by PF_GOTHIC_STL from the exact certified tessellation path').slice(0, 16)}`,
+      ].join('\n');
+      writeFileSync(stlPath.replace(/\.stl$/, '.certificate.txt'), `${note}\n`);
+      console.log(
+        `[probe:stl] wrote ${stlPath} tris=${tessellation.triangleCount}` +
+          ` bytes=${tessellation.stlBytes.byteLength} sha256=${session.byteSha256}`
+      );
+      expect(tessellation.triangleCount).toBe(304808);
+      expect(tessellation.stlBytes.byteLength).toBe(84 + 304808 * 50);
+    }
+  );
+
   it.skipIf(!process.env.PF_GOTHIC_OPCENSUS)(
     'Gothic program op census: outer vs inner wall (slack audit, zero proofs)',
     { timeout: 120_000 },
