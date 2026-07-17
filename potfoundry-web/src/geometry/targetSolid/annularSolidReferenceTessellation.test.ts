@@ -541,6 +541,74 @@ describe('annular solid reference tessellation', () => {
       },
       maxElapsedMilliseconds: 110_000,
     },
+    // POSITIVITY ROUTE, NOT BANDING (slice 8, confirming the slice-7
+    // rerouting): SuperformulaBlossom's sign gate argument is transcendental,
+    // but gentle params make it interval-positive everywhere — constant
+    // integer symmetry (m=6 both ends) keeps every |trig| zero line vertical,
+    // even powers n2=2 / n3=4 make the abs-power terms analytically smooth,
+    // and n1=1 keeps denominator = cos^2 + sin^4 inside [3/4, 1], clearing
+    // the 1e-6 epsilon by 3/4. No banding, no ladder: a plain uniform 2^8
+    // grid certified 9,499,801 pm over 53,760 triangles in ~22 s. The
+    // reachable level set denominator = epsilon at sharp params (n1 small,
+    // n2/n3 large) stays an output-discontinuity/curtain obligation.
+    {
+      styleId: 'SuperformulaBlossom',
+      styleParams: {
+        sf_strength: 0.15,
+        sf_m_top: 6,
+        sf_n1: 1,
+        sf_n1_top: 1,
+        sf_n2: 2,
+        sf_n2_top: 2,
+        sf_n3: 4,
+        sf_n3_top: 4,
+      },
+      geometry: SMALL_POT_GEOMETRY,
+      divisions: {
+        angularDivisionsLog2: 8,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
+    // DYADIC DEFAULT OFFSETS (slice 8): at source_count 4 / rotation 0 every
+    // RippleInterference source sits at an EXACT float dyadic (i/4), so the
+    // antipode fract jump lines land on k/4 — already uniform-dyadic
+    // stations — and the fract argument u - sourceU + 0.5 is point-affine
+    // (no tau roundtrip). Addendum-8's float-offset wall exists only at
+    // non-power-of-two source counts or rotation != 0 (the honest envelope
+    // boundary, exactly like GeometricStar shift != 0). Frequency 6 keeps
+    // wall sag ~6.5 um at 2^6 vertical cells. Certified 9,499,975 pm over
+    // 86,528 triangles in ~49 s.
+    {
+      styleId: 'RippleInterference',
+      styleParams: {
+        ri_source_count: 4,
+        ri_wave_frequency: 6,
+        ri_relief_depth: 0.15,
+        ri_phase: 0,
+        ri_rotation: 0,
+      },
+      geometry: SMALL_POT_GEOMETRY,
+      divisions: {
+        angularDivisionsLog2: 8,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 6,
+          'inner-wall': 6,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+      },
+      maxElapsedMilliseconds: 110_000,
+    },
   ];
 
   // The pot-scale composed proofs take ~20-25 s each, so they ride the

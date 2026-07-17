@@ -146,6 +146,38 @@ const CERTIFIED_POTS: ReadonlyArray<{
       },
     },
   },
+  // CelticTriquetra is intentionally ABSENT: its 45-degree rotated braid
+  // lattice puts fract jump lines DIAGONAL in (u,v); straddle cells grind to
+  // max depth at every density AND every relief (measured refusals at relief
+  // 0.3 and 0.005, angular 2^8/2^9 — slice 8) — conforming-cell class (U5).
+  {
+    name: 'SuperformulaBlossom_small_OD30_positivity',
+    styleId: 'SuperformulaBlossom',
+    styleParams: {
+      sf_strength: 0.15, sf_m_top: 6, sf_n1: 1, sf_n1_top: 1, sf_n2: 2, sf_n2_top: 2, sf_n3: 4, sf_n3_top: 4,
+    },
+    geometry: SMALL_POT_GEOMETRY,
+    divisions: {
+      angularDivisionsLog2: 8,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 5, 'inner-wall': 5, 'top-rim': 3, 'bottom-top': 4, 'bottom-under': 4, 'drain-wall': 0,
+      },
+    },
+  },
+  {
+    name: 'RippleInterference_small_OD30_dyadicOffsets',
+    styleId: 'RippleInterference',
+    styleParams: {
+      ri_source_count: 4, ri_wave_frequency: 6, ri_relief_depth: 0.15, ri_phase: 0, ri_rotation: 0,
+    },
+    geometry: SMALL_POT_GEOMETRY,
+    divisions: {
+      angularDivisionsLog2: 8,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 6, 'inner-wall': 6, 'top-rim': 3, 'bottom-top': 4, 'bottom-under': 4, 'drain-wall': 0,
+      },
+    },
+  },
 ];
 
 describe('certified pot STL emission', () => {
@@ -166,6 +198,6 @@ describe('certified pot STL emission', () => {
       console.log(line);
       expect(tris).toBeGreaterThan(0);
     }
-    expect(CERTIFIED_POTS.length).toBe(7); // PF_G2_POT roster size — bump if the gate grows
+    expect(CERTIFIED_POTS.length).toBe(9); // PF_G2_POT roster size — bump if the gate grows
   }, 10 * 60 * 1000);
 });
