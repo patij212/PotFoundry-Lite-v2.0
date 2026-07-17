@@ -233,6 +233,23 @@ tessellation; **WI/Gothic curved curves = next slice** — same splitter driven 
 per-cell guide-polyline chords + graded ladders toward p<1 cusps (HR base-ladder
 precedent).
 
+**Slice 10 addendum (2026-07-17): chord machinery landed + WaveInterference
+CERTIFIED — with a measured classification CORRECTION (`b1fff083`).** The curved
+guide-polyline machinery (`conformingChordsByPatch`, division-free boundary-walk
+splits, chain conformity, kernel as the T-junction oracle) is live and tested. The
+WI campaign then proved the style never needed it: per-patch isolation + dense
+ridge sampling showed BOTH clamp branches unreachable at defaults (ridge ∈
+[0.14, 0.66] at the failing cell — Addendum-2/6's "√-cusp by elimination" was the
+lesson-#1 contour artifact), and axis-resolved density (angular 2¹⁰ for the ~27
+effective moiré frequency) certified it: **9,499,973 pm / 411,648 tris / 84 s,
+defaults with relief 2.3→0.25 mm — NINTH style, eleventh pot, gate 25/25.** The
+curved-cusp frontier now has exactly one style-vehicle left: **Gothic** (p<1
+arch-outline cusp curves, Addendum-6 zero-refusal hull-cascade profile stands) —
+chords + graded ladders toward the outlines, machinery ready. Remaining map
+otherwise unchanged: CT (crossing-family splitter extension), GS shift/Cr
+heightPhase row-coupled corners (kernel per-band affine), Voronoi bubble +
+Gyroid (envelope v3/streaming), U4 curtains (7 layered styles).
+
 ## Sufficiency addendum — does U0–U6 deliver "full feature-preserving representation of every possible shape"? (2026-07-17, analysis)
 
 Requested by Patryk after slice 6. Decomposition: the claim = four requirements, each

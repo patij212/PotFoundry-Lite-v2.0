@@ -513,3 +513,41 @@ stations alone (symmetry covers reversal).
   whose width shrinks second-order with the polyline, restoring convergence
   for kinks; p < 1 cusps additionally need graded ladders toward the curve
   (the HR t^-0.9 base-ladder precedent).
+
+## Addendum 14 — U5 slice 10: chord machinery + WaveInterference CERTIFIED with a corrected classification (2026-07-17)
+
+**Machinery landed (`conformingChordsByPatch`):** curved guide polylines as
+exact chord CHAINS. Every chord endpoint must lie ON a grid line (angular
+station column or vertical station row), so cell splitting is a pure boundary
+walk between two on-boundary points — **no divisions at all**; chord
+denominators fold into the frame by lcm. Conformity across cells comes from
+the chain (interior vertices shared verbatim; the exact kernel refuses any
+inconsistent chain as a T-junction — the tessellator never has to be trusted).
+Boundary-row endpoints must be angular stations; seam-interior endpoints
+refused; degenerate splits refused; piece fanning searches for a valid origin
+so collinear boundary runs (several chord endpoints on one cell edge) fan
+correctly. Lines and chords compose in one frame. TDD, 2 RED tests first.
+
+**WaveInterference CERTIFIED-PARTIAL — 9,499,973 pm / 411,648 tris / ~84 s**
+(H32/OD30, PURE DEFAULTS except relief 2.3 → 0.25 mm, edge fade off). Tenth
+style-config, NINTH style. **And the mechanism is a measured classification
+CORRECTION:** the Addendum-2/6 "√-type cusp by elimination" call was the
+lesson-#1 crossing-contour artifact. The campaign playbook nailed it in three
+steps: (1) per-patch isolation → only the outer wall refused, tri 199292 at
+uv≈(0.622, 0.02), depth 24; (2) dense ridge sampling in that box → ridge ∈
+[0.136, 0.660], i.e. BOTH clamp branches unreachable — no cusp, no kink, the
+surface is smooth there (at defaults rc=0.45 ⇒ exponent 1.85, and the moiré
+envelope never reaches the clamp); (3) axis-resolved density: vertical
+doubling (w5→w6) left the crossing pinned (9,500,012 → 9,500,014 pm — the
+contour artifact), but the binding axis is ANGULAR (moiré products at
+effective frequency ~27): 2^10 angular closed it. No conforming chords were
+consumed by this certificate.
+
+**Honest routing after this slice:** WI joins the smooth-dense class
+(density-responsive on the right axis — its earlier U3/U5 placements are
+retired). The chord machinery remains the unlock for the styles with GENUINE
+curved features: Gothic (p<1 arch-outline cusps — zero-refusal hull-cascade
+profile, Addendum 6, stands), Voronoi bisector kink-lines (bubble mode's
+compute burn), CT braid (after the crossing-family splitter extension), and
+Crystalline/GS row-coupled corners (kernel per-band affine first). Certified
+set: **ELEVEN pots across NINE styles.**

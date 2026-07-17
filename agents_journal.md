@@ -7371,3 +7371,52 @@ pre-commit; matrix Addendum 13 + roadmap slice-9 addendum committed.
 4. The conforming splitter is exactly the feature-aligned-stations machinery the
    production mesher track carries (charter P1/P4) — U5.3 wiring can begin
    consuming it once curved polylines land.
+
+## 2026-07-17 — Claude Fable 5 — U5 slice 10: curved chord machinery + WaveInterference certified (classification corrected)
+
+**Mandate:** Patryk: "please continue your work" — the slice-9 handoff item 1
+(curved guide-polylines, WI as vehicle).
+
+**Landed (b1fff083, TDD — 2 RED tests first):** `conformingChordsByPatch` —
+curved guide polylines as exact chord CHAINS. Every endpoint lies ON a grid
+line, so cell splitting is a boundary walk between two on-boundary points
+(NO divisions; chord denominators fold into the frame by lcm). Conformity
+comes from the chain (interior vertices shared verbatim by adjacent cells'
+chords; the exact kernel refuses inconsistent chains as T-junctions — the
+tessellator stays untrusted). Boundary-row endpoints must be stations;
+seam-interior endpoints refused; piece fanning gained a valid-origin search
+(collinear boundary runs fan correctly; slice-9 outputs stay byte-stable).
+Lines + chords compose in one frame.
+
+**WaveInterference campaign (the playbook, three steps):**
+1. Composed attempt at defaults (relief 2.3→0.25, fade 0), a9w5: REFUSED
+   9,500,012 pm at depth 24; w6: 9,500,014 — "density-invariant", the exact
+   signature Addendum 2 read as a √-cusp.
+2. Per-patch isolation: ONLY the outer wall refuses (tri 199292,
+   uv≈(0.622,0.02)); dense ridge sampling in that box: ridge ∈ [0.136, 0.660]
+   — BOTH clamp branches unreachable; at defaults rc=0.45 ⇒ exponent 1.85 ⇒
+   no cusp anywhere. The Addendum-2/6 classification was the lesson-#1
+   crossing-contour artifact. WI at defaults is SMOOTH-but-dense.
+3. Axis-resolved density: the binding axis is ANGULAR (moiré products at
+   effective frequency ~27) — vertical doubling changed nothing; angular 2^10
+   closed it. **CERTIFIED-PARTIAL 9,499,973 pm / 411,648 tris / ~84 s** —
+   NINTH style, eleventh pot, zero conforming chords consumed.
+
+**Verification:** PF_G2_POT gate FOREGROUND 25/25 (~7.9 min, ELEVEN pot proofs
++ fail-closed). Full targetSolid 62 files / 466 green. tsc EXACTLY at the 356
+baseline; eslint 0 warnings. Probes deleted pre-commit. Matrix Addendum 14 +
+roadmap slice-10 addendum committed alongside.
+
+### Next agent
+1. **Gothic is the one remaining curved-cusp vehicle** (p<1 arch outlines;
+   Addendum-6 zero-refusal hull-cascade profile stands): march the outline
+   level sets on the frame grid, emit chord chains + graded vertical/angular
+   refinement toward the outlines (HR t^-0.9 base-ladder precedent), certify
+   gentle-then-defaults. The machinery is ready; only the generator (probe-
+   side marching + snapping, slice-10 pattern) and the campaign remain.
+2. Diagnosis discipline: NEVER accept "by elimination" classifications that
+   rest on the depth-24 crossing value — per-patch isolation + dense-sample +
+   AXIS-RESOLVED density (u vs v separately) is cheap and decisive (WI's
+   binding axis was angular; vertical doubling was the misleading test).
+3. CT crossing-family splitter extension, GS/Cr row-coupled kernel banding,
+   Voronoi/Gyroid envelope v3, U4 curtains — unchanged from Addendum 13.
