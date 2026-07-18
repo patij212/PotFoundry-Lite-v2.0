@@ -60,6 +60,27 @@ export interface Mesh {
 /** Exact radius at a domain point: (u,t) -> r (mm). */
 export type SurfaceRadiusFn = (u: number, t: number) => number;
 
+/**
+ * One emitted wall interval, exposed READ-ONLY (via an optional `wallsOut` out-param of
+ * `buildDoubleValuedMesh`) so a style entry can IDENTIFY which walls are occlusion curtains
+ * (M4). A wall bridges one cliff arc-interval's two incident region rails; `railA`/`railB`
+ * are those two rails' mean cylindrical radii across the interval. The occlusion test needs
+ * only the locus + the two rail radii — never the region labels — so it stays classifier-free.
+ */
+export interface WallRecord {
+  /** Index (into the FED `complex.segments` order) of the cliff segment this wall bridges. */
+  ci: number;
+  /** Arc-interval on that segment (sample i → i+1). */
+  interval: number;
+  /** Interval-midpoint domain coordinates (the wall's locus). */
+  u: number;
+  t: number;
+  /** Mean cylindrical radius (mm) of the first incident region's rail across the interval. */
+  railA: number;
+  /** Mean cylindrical radius (mm) of the second incident region's rail across the interval. */
+  railB: number;
+}
+
 /** A single declared cliff curve: a parametric polyline in (u,t) with one-sided lip radii. */
 export interface SegLike {
   at(s: number): { u: number; t: number };
@@ -256,4 +277,26 @@ export interface MeshReport {
   junctionCount: number;
   /** Per-junction pinch measurement (empty for M1/M2). Each must show exactly 2 levels. */
   junctions: JunctionLevelReport[];
+  /**
+   * INTERNAL OCCLUSION walls (M4). Count of ribbon-background wall intervals that a declared
+   * `kind:'occlusion'` segment identifies as a ribbon-over-ribbon curtain — i.e. whose lower
+   * rail is RAISED above the plain background (r0 − jump) because the z-buffer-occluding under
+   * strand, not true background, lies across the over-strand edge inside the overlap diamond.
+   * 0 for M1/M2/M3 (no `styleRadius` supplied ⇒ no declared occlusion segments). See M4's
+   * reconciliation: the curtain is the ribbon-background edge's own one-sided-lifted wall, so
+   * occlusion is represented EXACTLY ONCE and this counts it — it never adds a second wall.
+   */
+  occlusionWallCount: number;
+  /**
+   * Distinct (u,t) loci among the occlusion walls. A watertight single curtain has
+   * `occlusionWallLoci === occlusionWallCount` (one wall per locus); a doubled co-located
+   * curtain would put more than one wall at a locus and split the two apart.
+   */
+  occlusionWallLoci: number;
+  /**
+   * Smallest raise (mm) of an occlusion wall's lower rail above the plain background level
+   * (r0 − jump), over all occlusion walls. Positive and non-trivial ⇒ the curtains are genuine
+   * raised steps, not degenerate/plain ribbon→background drops. 0 when there are no occlusion walls.
+   */
+  minOcclusionRaiseMm: number;
 }

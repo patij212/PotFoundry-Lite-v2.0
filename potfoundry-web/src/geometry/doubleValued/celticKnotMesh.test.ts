@@ -8,7 +8,11 @@
 // refinement. No strand crossings / Y-junctions yet (that is M3).
 
 import { describe, it, expect } from 'vitest';
-import { buildCelticKnotDoubleValuedMesh, buildCelticKnotColumnCrossingMesh } from './celticKnotMesh';
+import {
+  buildCelticKnotDoubleValuedMesh,
+  buildCelticKnotColumnCrossingMesh,
+  buildCelticKnotOcclusionMesh,
+} from './celticKnotMesh';
 
 const DIMS = { H: 120, Rb: 40, Rt: 50, expn: 1 };
 // CelticKnot params derived exactly as celticKnotOuterWallTarget.parameters(), with
@@ -129,6 +133,79 @@ describe('CelticKnot double-valued mesher (M3: crossings + watertight Y-junction
     expect(cert.maxSheetDevMm).toBeLessThan(0.01);
     expect(cert.maxCliffDevMm).toBeLessThan(0.01);
     // the certification actually covered the mesh (no cliff vertex skipped for want of a neighbour)
+    expect(cert.sheetVertsChecked).toBeGreaterThan(0);
+    expect(cert.cliffVertsCertified).toBeGreaterThan(0);
+    expect(cert.cliffVertsSkipped).toBe(0);
+  }, 180000);
+});
+
+// ---------------------------------------------------------------------------
+// Milestone 4: INTERNAL OCCLUSION walls (the ribbon-over-ribbon z-buffer step).
+//
+// RECONCILIATION (investigated + measured before this test): P1 emits declared
+// `kind:'occlusion'` segments only when a `styleRadius` fn is supplied, and every
+// such segment is EXACTLY co-located (Δu < 1e-9) with an existing ribbon-background
+// cliff edge (same column/strand/side) — it is a sub-arc of that edge inside the
+// overlap diamond. Feeding those co-located segments as a SECOND CDT constraint chain
+// cracks the mesh (measured: nonManifold 1, boundaryNonRim 257 — overlapping collinear
+// constraints degenerate the PSLG). But the M3 path (ribbon-background + junctions,
+// one-sided-limit lift ON) ALREADY produces the occlusion curtains watertight: inside
+// the diamond a ribbon-background edge's outward one-sided limit IS the raised, z-buffer-
+// occluding under-strand surface, so its wall already steps r0 → raised-under (measured:
+// 12 raised loci, nonManifold 0). So occlusion is represented EXACTLY ONCE by the
+// ribbon-background wall; the declared occlusion segments are used only to IDENTIFY and
+// CERTIFY which of those walls are occlusion curtains (raised lower rail), never to add a
+// second wall. `buildCelticKnotOcclusionMesh` supplies `styleRadius`, meshes the same
+// watertight M3-path complex, and reports the occlusion-wall census.
+const STYLE_M4 = { ckScale: 1, ckWidth: 0.15, ckRelief: 2, ckGap: 0.02, ckRoundness: 1, ckTwist: 0, ckStrands: 2 };
+const JUMP_MM_M4 = STYLE_M4.ckRelief * 0.3;
+
+describe('CelticKnot double-valued mesher (M4: internal occlusion walls)', () => {
+  it('meshes internal occlusion curtains watertight, exactly once, and <0.01mm certified', () => {
+    const { mesh, report } = buildCelticKnotOcclusionMesh(STYLE_M4, DIMS, {
+      baseGridU: 92,
+      baseGridT: 70,
+      chordTolMm: 0.01,
+      maxRefinePasses: 3,
+    });
+
+    // a real mesh came out
+    expect(report.triangleCount).toBeGreaterThan(0);
+    expect(mesh.triangleCount).toBe(report.triangleCount);
+    expect(mesh.vertexCount).toBe(report.vertexCount);
+
+    // watertight: no non-manifold edges ANYWHERE — including at the occlusion curtains and junctions
+    expect(report.nonManifold).toBe(0);
+    expect(report.cliffBoundary).toBe(0);
+    expect(report.boundaryNonRim).toBe(0);
+
+    // the crossing still produced genuine junctions, each pinched to exactly two levels
+    expect(report.junctionCount).toBeGreaterThan(0);
+    for (const j of report.junctions) {
+      expect(j.distinctLevels).toBe(2);
+      expect(j.upper - j.lower).toBeCloseTo(JUMP_MM_M4, 3);
+    }
+
+    // OCCLUSION WALLS present: some ribbon-background wall interval, matched to a declared
+    // occlusion segment, steps up to the raised (z-buffer-occluding) under-strand surface.
+    expect(report.occlusionWallCount).toBeGreaterThan(0);
+    // NON-DEGENERATE raised step: the lower rail sits genuinely ABOVE the plain background
+    // (r0 − jump) — a real ribbon-over-ribbon curtain, not a plain ribbon→background drop.
+    expect(report.minOcclusionRaiseMm).toBeGreaterThan(0.05);
+    // REPRESENTED EXACTLY ONCE: every occlusion locus carries exactly ONE wall (a doubled
+    // co-located curtain would put >1 wall at a locus ⇒ occlusionWallCount > occlusionWallLoci).
+    expect(report.occlusionWallLoci).toBe(report.occlusionWallCount);
+
+    // after refinement the mesh chords the (self-consistent) true-surface reference < 0.01mm
+    expect(report.refinePasses).toBeGreaterThanOrEqual(1);
+    expect(report.maxChordMm).toBeLessThan(0.01);
+
+    // INDEPENDENT fidelity certification: the occlusion rails ARE cliff split-vertices, so the
+    // one-sided-limit gate below certifies each occlusion curtain against the true raised under
+    // surface (a naive r0 lower lip would spike maxCliffDevMm by ~the occlusion step). < 0.01mm.
+    const cert = report.certification;
+    expect(cert.maxSheetDevMm).toBeLessThan(0.01);
+    expect(cert.maxCliffDevMm).toBeLessThan(0.01);
     expect(cert.sheetVertsChecked).toBeGreaterThan(0);
     expect(cert.cliffVertsCertified).toBeGreaterThan(0);
     expect(cert.cliffVertsSkipped).toBe(0);

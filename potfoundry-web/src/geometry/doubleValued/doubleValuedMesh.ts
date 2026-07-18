@@ -29,6 +29,7 @@ import type {
   SegLike,
   SurfaceRadiusFn,
   Vec3,
+  WallRecord,
 } from './types';
 
 const TAU = 2 * Math.PI;
@@ -73,6 +74,7 @@ export function buildDoubleValuedMesh(
   dims: { H: number },
   opts: MeshBuildOptions,
   stats?: BuildStats,
+  wallsOut?: WallRecord[],
 ): Mesh {
   const { H } = dims;
   const { baseGridU, baseGridT, chordTolMm, maxRefinePasses } = opts;
@@ -193,6 +195,27 @@ export function buildDoubleValuedMesh(
     stats.pointCapHit = cappedAt;
     stats.voteFreeRegions = result.voteFreeRegions;
     stats.tieCliffRegions = result.tieCliffRegions;
+  }
+
+  // Expose the emitted walls (final pass) read-only: each wall interval's segment, locus, and
+  // its two incident region rail radii. A style entry uses this to identify which walls are
+  // occlusion curtains (M4) — the mesher itself stays style-agnostic and adds no occlusion wall.
+  if (wallsOut) {
+    const pos = result.mesh.positions;
+    const U = result.mesh.vertexU;
+    const T = result.mesh.vertexT;
+    const rOf = (v: number): number => Math.hypot(pos[v * 3], pos[v * 3 + 1]);
+    for (const wq of result.wallQuads) {
+      const [aP, bP, bQ, aQ] = wq.v;
+      wallsOut.push({
+        ci: wq.ci,
+        interval: wq.interval,
+        u: (U[aP] + U[bP]) / 2,
+        t: (T[aP] + T[bP]) / 2,
+        railA: (rOf(aP) + rOf(bP)) / 2,
+        railB: (rOf(aQ) + rOf(bQ)) / 2,
+      });
+    }
   }
   // Never let an undecided region classification pass silently (see the vote loop in
   // `assemble`): a non-zero tie is a real anomaly, a vote-free region is inert but surfaced.

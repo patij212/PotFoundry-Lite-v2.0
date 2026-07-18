@@ -37,6 +37,7 @@ import type {
   SurfaceCertification,
   SurfaceRadiusFn,
   Vec3,
+  WallRecord,
 } from './types';
 import type { MeshData } from '../types';
 
@@ -230,6 +231,9 @@ export function buildCelticKnotDoubleValuedMesh(
     certification,
     junctionCount: 0, // M2 isolates a single strand — no crossings
     junctions: [],
+    occlusionWallCount: 0, // M2 supplies no styleRadius ⇒ no declared occlusion segments
+    occlusionWallLoci: 0,
+    minOcclusionRaiseMm: 0,
   };
   return { mesh: md, report };
 }
@@ -337,19 +341,61 @@ function meshToRefTris(mesh: { positions: number[]; triangles: number[] }): RefT
  * complex (its overlap diamond + the four corner junctions), emitting the watertight
  * Y-junction pinch at every crossing, and verify it against the exact analytic surface.
  *
- * Difference from M2: this feeds the FULL complex — all strands, their crossings, and the
- * declared `junctions`. At each junction several cliff curves meet, so the general
- * per-region split would emit a non-manifold FAN; instead the mesher pinches every incident
- * sheet + wall to the two shared `pinch` vertices (r0 / r0−jump) by radius level (the
- * 55→…→2 collapse). On the overlap-diamond sides the surface is z-buffer OCCLUDED, so cliff
- * vertices are lifted to the true one-sided analytic limit (the occluded raised neighbour),
- * not the naive r0 lip — which both makes the wall span the real occlusion step and keeps
- * the independent certifier ~0. Occlusion *segments/walls* proper + multi-column are M4/M5.
+ * Feeds the FULL complex — all strands, their crossings, and the declared `junctions`. At each
+ * junction several cliff curves meet, so the general per-region split would emit a non-manifold
+ * FAN; instead the mesher pinches every incident sheet + wall to the two shared `pinch` vertices
+ * (r0 / r0−jump) by radius level (the 55→…→2 collapse). On the overlap-diamond sides the surface
+ * is z-buffer OCCLUDED, so cliff vertices are lifted to the true one-sided analytic limit (the
+ * occluded raised neighbour), not the naive r0 lip — which both makes the wall span the real
+ * occlusion step and keeps the independent certifier ~0. This entry supplies NO `styleRadius`,
+ * so P1 declares no `kind:'occlusion'` segments and `occlusionWallCount` is 0 (that is M4).
  */
 export function buildCelticKnotColumnCrossingMesh(
   styleOptions: StyleOptions,
   dims: CelticKnotMeshDims,
   opts: CelticKnotMeshOptions,
+): { mesh: MeshData; report: MeshReport } {
+  return meshColumnCrossing(styleOptions, dims, opts, false);
+}
+
+/**
+ * Milestone 4: the same single-column crossing mesh, now WITH the internal occlusion walls
+ * (the ribbon-over-ribbon z-buffer step) declared and certified.
+ *
+ * RECONCILIATION (measured before implementing — see the M4 header in celticKnotMesh.test.ts):
+ * a declared `kind:'occlusion'` segment is EXACTLY co-located with an existing ribbon-background
+ * cliff edge — it is a sub-arc of that edge, inside the overlap diamond. Feeding those segments
+ * as a SECOND CDT constraint chain cracks the mesh (overlapping collinear constraints ⇒
+ * nonManifold 1, boundaryNonRim 257). The ribbon-background edge's OWN one-sided-limit wall,
+ * however, already IS the occlusion curtain: inside the diamond its outward one-sided limit is
+ * the raised, z-buffer-occluding under-strand surface, so its wall already steps r0 → raised-under,
+ * watertight. So occlusion is represented EXACTLY ONCE (by that wall). This entry supplies the
+ * analytic `styleRadius` so P1 emits the declared occlusion segments, meshes the identical
+ * watertight M3-path complex, and uses those segments ONLY to IDENTIFY + count which ribbon-
+ * background walls are occlusion curtains (raised lower rail) — it adds no second wall. The
+ * occlusion rails are ordinary cliff split-vertices, so the existing one-sided-limit certifier
+ * already certifies them against the true raised under surface (< 0.01mm).
+ */
+export function buildCelticKnotOcclusionMesh(
+  styleOptions: StyleOptions,
+  dims: CelticKnotMeshDims,
+  opts: CelticKnotMeshOptions,
+): { mesh: MeshData; report: MeshReport } {
+  return meshColumnCrossing(styleOptions, dims, opts, true);
+}
+
+/**
+ * Shared core for the single-column crossing mesh (M3) and its occlusion variant (M4). The MESH
+ * is identical either way — occlusion curtains are the ribbon-background edges' own one-sided-
+ * lifted walls, never a second wall. `withOcclusion` only (a) supplies the analytic `styleRadius`
+ * to P1 so it emits the declared `kind:'occlusion'` segments and (b) reports the occlusion-wall
+ * census (count, distinct loci, min raise above background) computed from the emitted walls.
+ */
+function meshColumnCrossing(
+  styleOptions: StyleOptions,
+  dims: CelticKnotMeshDims,
+  opts: CelticKnotMeshOptions,
+  withOcclusion: boolean,
 ): { mesh: MeshData; report: MeshReport } {
   const H = dims.H;
   const expn = dims.expn ?? 1;
@@ -365,10 +411,15 @@ export function buildCelticKnotColumnCrossingMesh(
     roundness: merged.ckRoundness,
   };
   const cliffDims: CliffDims = { H, Rb: dims.Rb, Rt: dims.Rt, expn };
-  const complex = buildCelticKnotCliffComplex(params, cliffDims);
 
   const rA = buildAnalyticRadiusFn('CelticKnot', styleOptions, { H, Rb: dims.Rb, Rt: dims.Rt, expn });
   const surface: SurfaceRadiusFn = (u, t) => rA(TAU * u, t * H);
+  // The style's OWN analytic radius (theta,z)→r, supplied to P1 so the occlusion upper lip reads
+  // as the exact one-sided limit of the raised under-strand surface. Same fn as `surface`, un-wrapped.
+  const styleRadius = (theta: number, z: number): number => rA(theta, z);
+  const complex = withOcclusion
+    ? buildCelticKnotCliffComplex(params, cliffDims, styleRadius)
+    : buildCelticKnotCliffComplex(params, cliffDims);
 
   // ---- one column + its ribbon-background strand edges ----
   const COLUMN = 0;
@@ -427,6 +478,8 @@ export function buildCelticKnotColumnCrossingMesh(
     voteFreeRegions: 0,
     tieCliffRegions: 0,
   };
+  // Collect the emitted walls only when we need the occlusion census (M4); the mesh is identical.
+  const walls: WallRecord[] = [];
   const mesh = buildDoubleValuedMesh(
     complexAdapted,
     surface,
@@ -441,6 +494,7 @@ export function buildCelticKnotColumnCrossingMesh(
       oneSidedDelta: ONE_SIDED_DELTA,
     },
     stats,
+    withOcclusion ? walls : undefined,
   );
 
   // ---- verify: manifold + chord against the conforming reference soup ----
@@ -478,6 +532,16 @@ export function buildCelticKnotColumnCrossingMesh(
   // ---- per-junction pinch levels (read straight off the mesh's junction vertices) ----
   const junctionLevels = measureJunctionLevels(mesh, junctions);
 
+  // ---- occlusion-wall census (M4): which emitted walls are declared occlusion curtains ----
+  const occ = withOcclusion
+    ? occlusionWallCensus(
+        walls,
+        adaptedId,
+        complex.segments.filter((s) => s.kind === 'occlusion' && s.column === COLUMN),
+        complex.jumpMm,
+      )
+    : { count: 0, loci: 0, minRaise: 0 };
+
   const md = toMeshData(mesh);
   const report: MeshReport = {
     vertexCount: md.vertexCount,
@@ -492,8 +556,52 @@ export function buildCelticKnotColumnCrossingMesh(
     certification,
     junctionCount: junctions.length,
     junctions: junctionLevels,
+    occlusionWallCount: occ.count,
+    occlusionWallLoci: occ.loci,
+    minOcclusionRaiseMm: occ.minRaise,
   };
   return { mesh: md, report };
+}
+
+/**
+ * Identify which emitted walls are internal OCCLUSION curtains, using P1's declared
+ * `kind:'occlusion'` segments. Each such segment is co-located with a ribbon-background edge
+ * (same strand/side) over a sub-arc `tRange`; a wall on that edge whose midpoint-t lies in the
+ * sub-arc and whose LOWER rail is raised above the plain background (r0 − jump) by more than
+ * `RAISE_MARGIN` is a genuine ribbon-over-ribbon curtain (near the diamond corners the step
+ * tapers to the plain jump and is excluded). Returns the count, the distinct-locus count (equal
+ * to the count ⇒ exactly one wall per locus, no doubled curtain), and the min raise above
+ * background (positive ⇒ the curtains are genuine raised steps, not plain ribbon→background drops).
+ */
+function occlusionWallCensus(
+  walls: readonly WallRecord[],
+  adaptedId: ReadonlyArray<{ strand: number; side: number }>,
+  occlusionSegs: readonly CliffSegment[],
+  jumpMm: number,
+): { count: number; loci: number; minRaise: number } {
+  const RAISE_MARGIN = 0.1; // mm above plain background to count as a genuine raised curtain
+  const T_EPS = 1e-9;
+  const raises: number[] = [];
+  const lociKeys = new Set<string>();
+  for (const w of walls) {
+    const id = adaptedId[w.ci];
+    if (!id) continue;
+    const decl = occlusionSegs.find(
+      (o) => o.strand === id.strand && o.side === id.side && w.t >= o.tRange[0] - T_EPS && w.t <= o.tRange[1] + T_EPS,
+    );
+    if (!decl) continue;
+    const s = clamp01((w.t - decl.tRange[0]) / (decl.tRange[1] - decl.tRange[0]));
+    const background = decl.lipsAt(s).lower - jumpMm; // r0(t) − jump = plain background radius at t
+    const raise = Math.min(w.railA, w.railB) - background;
+    if (raise <= RAISE_MARGIN) continue; // plain wall or tapered corner interval — not a curtain
+    raises.push(raise);
+    lociKeys.add(`${Math.round(w.u / 1e-6)}:${Math.round(w.t / 1e-6)}`);
+  }
+  return {
+    count: raises.length,
+    loci: lociKeys.size,
+    minRaise: raises.length ? Math.min(...raises) : 0,
+  };
 }
 
 /**
