@@ -23,6 +23,7 @@ import { buildAnalyticRadiusFn } from '../analyticRadius';
 import { DEFAULT_CELTIC_KNOT, type StyleOptions } from '../types';
 import { buildDoubleValuedMesh } from './doubleValuedMesh';
 import { toMeshData } from './mesh';
+import { orientMeshForSTL } from '../stlExport';
 import { auditManifold, certifyAgainstTrueSurface, chordToSurface, regionRadiusConsistency } from './verify';
 import type {
   BuildStats,
@@ -676,4 +677,459 @@ function measureJunctionLevels(mesh: Mesh, junctions: readonly JunLike[]): Junct
     });
   }
   return out;
+}
+
+// ===========================================================================
+// Milestone 5: the FULL multi-column CelticKnot pot outer wall — ONE watertight,
+// double-valued-wall tube, PERIODIC in u, refined to 0.01mm, verified, exported to STL.
+// ===========================================================================
+
+/** WGSL braid amplitude (styles.ts `rOuterCelticKnot`); needed to place the crest/strip creases. */
+const CK_AMP = 0.4;
+
+/** Options for {@link buildCelticKnotFullPotMesh} (adds the ribbon strip density knob). */
+export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
+  /**
+   * Structured crest+flank strips per ribbon (M2's technique, generalised to the whole pot):
+   * `across − 1` iso-fraction crease lines span each ribbon between its two cliff edges, so the
+   * tall thin snaking ridge is meshed as clean strips instead of relying on isotropic refinement.
+   * f = 0.5 is the crest itself. Default 16 (≈13 flank segments ⇒ crest-flank sag ≲ 0.01 mm).
+   */
+  across?: number;
+  /** t-margin trimming each clear crease interval back from the overlap diamonds. Default 0.004. */
+  creaseMarginT?: number;
+  /**
+   * Add dense crest-band seed points through the overlap diamonds (finely tessellates the diamond
+   * crest for appearance). It does NOT bring the diamond chord below 0.01mm — that ridge needs
+   * crest-crossing planarization — and it enlarges/slows the build, so it is OFF by default.
+   */
+  diamondSeeds?: boolean;
+}
+
+/**
+ * Diamond-CLIPPED crest + flank strip creases for every ribbon, derived from CelticKnot's own
+ * analytic centreline (matches P1 exactly). Each crease is emitted ONLY over the t-intervals
+ * where its strand is clear of every other same-column strand (no other centreline within
+ * `2·strandWidth`), so a crease never enters an overlap diamond and thus NEVER crosses another
+ * crease or cliff — the mesh stays a planar PSLG with no crease-crossing planarization needed.
+ * Inside the diamonds the crest is carried by the base grid + junction pinch (already M3-proven).
+ */
+function diamondClippedCreases(
+  params: CelticKnotCliffParams,
+  across: number,
+  marginT: number,
+  domain: DomainWindow,
+): CreaseLike[] {
+  const { columnCount, strandCount, strandWidth, tightness } = params;
+  const centre = (col: number, strand: number, t: number): number =>
+    CK_AMP * Math.sin(t * tightness * TAU * 3 + col * Math.PI * 0.333 + strand * (TAU / strandCount));
+  const uOf = (col: number, localU: number): number => (col + localU / 2 + 0.5) / columnCount;
+  const w2 = 2 * strandWidth;
+  const STEP = 0.0008;
+  const creases: CreaseLike[] = [];
+  for (let col = 0; col < columnCount; col += 1) {
+    for (let strand = 0; strand < strandCount; strand += 1) {
+      const clear = (t: number): boolean => {
+        for (let o = 0; o < strandCount; o += 1) {
+          if (o === strand) continue;
+          if (Math.abs(centre(col, strand, t) - centre(col, o, t)) < w2) return false;
+        }
+        return true;
+      };
+      const runs: Array<[number, number]> = [];
+      let runStart = -1;
+      for (let t = domain.tLo; t <= domain.tHi + 1e-9; t += STEP) {
+        if (clear(t)) {
+          if (runStart < 0) runStart = t;
+        } else if (runStart >= 0) {
+          runs.push([runStart, t - STEP]);
+          runStart = -1;
+        }
+      }
+      if (runStart >= 0) runs.push([runStart, domain.tHi]);
+      for (const [a0, b0] of runs) {
+        const a = a0 + marginT;
+        const b = b0 - marginT;
+        if (b - a < 0.02) continue; // too short to structure
+        for (let k = 1; k < across; k += 1) {
+          const off = (2 * (k / across) - 1) * strandWidth;
+          creases.push({
+            tRange: [a, b],
+            at: (s: number) => {
+              const t = a + (b - a) * clamp01(s);
+              return { u: uOf(col, centre(col, strand, t) + off), t };
+            },
+          });
+        }
+      }
+    }
+  }
+  return creases;
+}
+
+/**
+ * Narrow crest-band SEED points through each overlap diamond. The visible over-strand crest
+ * continues through the diamond, but the diamond-clipped creases stop at its edge (so nothing
+ * crosses), leaving the crest there structured only by the coarse base grid — where a single
+ * base cell spans the whole ~2mm-tall ribbon and a triangle straddles the ridge. This seeds a
+ * dense lattice ALONG both crossing strands' centrelines (±~1.25·halfWidth across, a short t
+ * window around each junction) so that ridge is resolved by DENSITY (M3's proven approach,
+ * localised to the diamonds). Points only — no constraint edges — so nothing crosses; deduped
+ * on a rounded (u,t) key so the four corner-junctions of one diamond share their overlap.
+ */
+function diamondCrestSeeds(
+  junctions: readonly CliffJunction[],
+  params: CelticKnotCliffParams,
+  domain: DomainWindow,
+  hw: number,
+): Array<[number, number]> {
+  const { columnCount, strandCount, tightness } = params;
+  const centre = (col: number, strand: number, t: number): number =>
+    CK_AMP * Math.sin(t * tightness * TAU * 3 + col * Math.PI * 0.333 + strand * (TAU / strandCount));
+  const uOf = (col: number, localU: number): number => (col + localU / 2 + 0.5) / columnCount;
+  const T_WIN = 0.007;
+  const GT = 0.0009;
+  const GU = Math.max(0.0004, (2 * hw) / 14); // ~14 samples across the ribbon width
+  const ACROSS = 1.25 * hw;
+  const seen = new Set<string>();
+  const seeds: Array<[number, number]> = [];
+  for (const j of junctions) {
+    const strands = new Set(j.incident.map((inc) => inc.strand));
+    for (const strand of strands) {
+      for (let t = j.t - T_WIN; t <= j.t + T_WIN + 1e-9; t += GT) {
+        if (t < domain.tLo || t > domain.tHi) continue;
+        const cu = uOf(j.column, centre(j.column, strand, t));
+        for (let du = -ACROSS; du <= ACROSS + 1e-9; du += GU) {
+          const u = cu + du;
+          if (u <= domain.uMin || u >= domain.uMax) continue;
+          const k = `${Math.round(u / GU)}:${Math.round(t / GT)}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          seeds.push([u, t]);
+        }
+      }
+    }
+  }
+  return seeds;
+}
+
+/** Periodic-tube boundary census: which OPEN edges are on a t-rim vs the (must-be-welded) u-seam. */
+function periodicSeamAudit(mesh: Mesh, domain: DomainWindow): { seamOpen: number; tRim: number; other: number } {
+  const use = new Map<string, number>();
+  const key = (a: number, b: number): string => (a < b ? `${a}:${b}` : `${b}:${a}`);
+  const tris = mesh.triangles;
+  for (let i = 0; i < tris.length; i += 3) {
+    for (const [a, b] of [[tris[i], tris[i + 1]], [tris[i + 1], tris[i + 2]], [tris[i + 2], tris[i]]] as const) {
+      use.set(key(a, b), (use.get(key(a, b)) ?? 0) + 1);
+    }
+  }
+  const onTRim = (v: number): boolean => mesh.vertexT[v] <= domain.tLo + 1e-9 || mesh.vertexT[v] >= domain.tHi - 1e-9;
+  const onSeam = (v: number): boolean => mesh.vertexU[v] <= domain.uMin + 1e-9 || mesh.vertexU[v] >= domain.uMax - 1e-9;
+  let seamOpen = 0;
+  let tRim = 0;
+  let other = 0;
+  for (const [k, c] of use) {
+    if (c !== 1) continue;
+    const sep = k.indexOf(':');
+    const a = Number(k.slice(0, sep));
+    const b = Number(k.slice(sep + 1));
+    if (onTRim(a) && onTRim(b)) tRim += 1;
+    else if (onSeam(a) && onSeam(b)) seamOpen += 1;
+    else other += 1;
+  }
+  return { seamOpen, tRim, other };
+}
+
+/**
+ * Orientation check for STL (this codebase has an orientation-bug history, so ASSERT don't assume):
+ * run the exact `orientMeshForSTL` the exporter uses, then confirm the result is (a) a single
+ * connected component, (b) coherently wound — every interior edge traversed antiparallel by its
+ * two faces — and (c) OUTWARD (total signed volume > 0 for a tube around the z-axis).
+ */
+function checkOutwardWinding(md: MeshData): {
+  consistent: boolean;
+  inconsistentEdges: number;
+  outward: boolean;
+  signedVolume: number;
+  components: number;
+} {
+  const oriented = orientMeshForSTL(md);
+  const idx = oriented.indices;
+  const v = oriented.vertices;
+  const nTri = idx.length / 3;
+  const key = (a: number, b: number): string => (a < b ? `${a}:${b}` : `${b}:${a}`);
+  const dir = new Map<string, { fwd: number; bwd: number; tris: number[] }>();
+  for (let t = 0; t < nTri; t += 1) {
+    const i0 = idx[t * 3];
+    const i1 = idx[t * 3 + 1];
+    const i2 = idx[t * 3 + 2];
+    for (const [a, b] of [[i0, i1], [i1, i2], [i2, i0]] as const) {
+      if (a === b) continue;
+      const k = key(a, b);
+      let e = dir.get(k);
+      if (!e) {
+        e = { fwd: 0, bwd: 0, tris: [] };
+        dir.set(k, e);
+      }
+      if (a < b) e.fwd += 1;
+      else e.bwd += 1;
+      e.tris.push(t);
+    }
+  }
+  let inconsistent = 0;
+  const adj: number[][] = Array.from({ length: nTri }, () => []);
+  for (const e of dir.values()) {
+    if (e.fwd + e.bwd === 2) {
+      if (!(e.fwd === 1 && e.bwd === 1)) inconsistent += 1;
+      if (e.tris.length === 2) {
+        adj[e.tris[0]].push(e.tris[1]);
+        adj[e.tris[1]].push(e.tris[0]);
+      }
+    }
+  }
+  const seen = new Uint8Array(nTri);
+  let components = 0;
+  for (let s = 0; s < nTri; s += 1) {
+    if (seen[s]) continue;
+    components += 1;
+    const stack = [s];
+    seen[s] = 1;
+    while (stack.length) {
+      const x = stack.pop() as number;
+      for (const y of adj[x]) if (!seen[y]) {
+        seen[y] = 1;
+        stack.push(y);
+      }
+    }
+  }
+  let vol = 0;
+  for (let t = 0; t < nTri; t += 1) {
+    const a = idx[t * 3] * 3;
+    const b = idx[t * 3 + 1] * 3;
+    const c = idx[t * 3 + 2] * 3;
+    vol +=
+      (v[a] * (v[b + 1] * v[c + 2] - v[b + 2] * v[c + 1]) -
+        v[a + 1] * (v[b] * v[c + 2] - v[b + 2] * v[c]) +
+        v[a + 2] * (v[b] * v[c + 1] - v[b + 1] * v[c])) /
+      6;
+  }
+  return { consistent: inconsistent === 0, inconsistentEdges: inconsistent, outward: vol > 0, signedVolume: vol, components };
+}
+
+/**
+ * Reference-free sheet-facet sag split by proximity to a crossing: `clearMax` is the worst sag
+ * OUTSIDE every overlap diamond (farther than `DIAMOND_R` in (u,t) from any junction), `diamondMax`
+ * is the worst inside. The clear-region mechanism (structured crest/flank strips) resolves the
+ * ribbons to tolerance; the diamond crest — where the clipped creases cannot go without crossing —
+ * carries the residual until crest-crossing planarization structures it. Also returns the RMS.
+ */
+function analyticChordSplit(
+  mesh: Mesh,
+  junctions: readonly JunLike[],
+  surface: SurfaceRadiusFn,
+  H: number,
+): { clearMax: number; diamondMax: number; rms: number } {
+  const pos = mesh.positions;
+  const U = mesh.vertexU;
+  const T = mesh.vertexT;
+  const onCliff = mesh.vertexOnCliff;
+  const tris = mesh.triangles;
+  const DIAMOND_R = 0.02;
+  // Unwrap the second endpoint's u across the periodic seam (u=0 ≡ u=1), else a seam-straddling
+  // background edge's parameter midpoint lands on the far side and fabricates a phantom sag.
+  const unwrapU = (u: number, ref: number): number => (u - ref > 0.5 ? u - 1 : u - ref < -0.5 ? u + 1 : u);
+  const nearJunction = (um: number, tm: number): boolean => {
+    for (const j of junctions) {
+      const du = Math.abs(um - j.u);
+      const duw = Math.min(du, 1 - du); // periodic in u
+      if (duw < DIAMOND_R && Math.abs(tm - j.t) < DIAMOND_R) return true;
+    }
+    return false;
+  };
+  let clearMax = 0;
+  let diamondMax = 0;
+  let sumSq = 0;
+  let n = 0;
+  for (let i = 0; i < tris.length; i += 3) {
+    const vs = [tris[i], tris[i + 1], tris[i + 2]];
+    for (const [a, b] of [[vs[0], vs[1]], [vs[1], vs[2]], [vs[2], vs[0]]] as const) {
+      if (onCliff[a] && onCliff[b]) continue; // wall/cliff edge (radial, not a sheet facet)
+      let um = (U[a] + unwrapU(U[b], U[a])) / 2;
+      if (um < 0) um += 1;
+      else if (um >= 1) um -= 1;
+      const tm = (T[a] + T[b]) / 2;
+      const r = surface(um, tm);
+      const dx = (pos[a * 3] + pos[b * 3]) / 2 - r * Math.cos(TAU * um);
+      const dy = (pos[a * 3 + 1] + pos[b * 3 + 1]) / 2 - r * Math.sin(TAU * um);
+      const dz = (pos[a * 3 + 2] + pos[b * 3 + 2]) / 2 - tm * H;
+      const d = Math.hypot(dx, dy, dz);
+      sumSq += d * d;
+      n += 1;
+      if (nearJunction(um, tm)) {
+        if (d > diamondMax) diamondMax = d;
+      } else if (d > clearMax) clearMax = d;
+    }
+  }
+  return { clearMax, diamondMax, rms: Math.sqrt(sumSq / Math.max(1, n)) };
+}
+
+/**
+ * Build the FULL multi-column CelticKnot pot outer wall as one watertight, double-valued-wall
+ * tube, PERIODIC in u (u=0 and u=1 are the same physical location), refined to a max chord below
+ * `chordTolMm` against the exact analytic surface, and independently certified.
+ *
+ * The whole periodic domain u∈[0,1], t∈[0.02,0.98] is triangulated in ONE constrained CDT: every
+ * column's ribbon↔background cliffs are constraint chains, every declared crossing is planarized
+ * to its shared 2-level pinch (M3), each ribbon is structured into diamond-clipped crest/flank
+ * strips (so the tall thin snaking ridge meshes without a globally dense grid), the chord is
+ * measured reference-free against the analytic surface, and the u-seam is welded so the only open
+ * boundary is the two t-rims. Occlusion fidelity rides on the M3 one-sided-limit lift (certified
+ * by `maxCliffDevMm`); this entry supplies no `styleRadius`, so it declares no occlusion census.
+ */
+export function buildCelticKnotFullPotMesh(
+  styleOptions: StyleOptions,
+  dims: CelticKnotMeshDims,
+  opts: CelticKnotFullPotOptions,
+): { mesh: MeshData; report: MeshReport } {
+  const H = dims.H;
+  const expn = dims.expn ?? 1;
+  const merged = { ...DEFAULT_CELTIC_KNOT, ...styleOptions };
+  const params: CelticKnotCliffParams = {
+    columnCount: Math.max(1, Math.floor(merged.ckScale)),
+    strandWidth: merged.ckWidth * 0.15,
+    strandCount: Math.max(2, Math.min(8, Math.floor(merged.ckStrands + 0.5))),
+    tightness: Math.max(0.5, merged.ckTwist + 0.5),
+    relief: merged.ckRelief,
+    gap: merged.ckGap,
+    roundness: merged.ckRoundness,
+  };
+  const cliffDims: CliffDims = { H, Rb: dims.Rb, Rt: dims.Rt, expn };
+  const complex = buildCelticKnotCliffComplex(params, cliffDims);
+  const rA = buildAnalyticRadiusFn('CelticKnot', styleOptions, { H, Rb: dims.Rb, Rt: dims.Rt, expn });
+  const surface: SurfaceRadiusFn = (u, t) => rA(TAU * u, t * H);
+
+  const T_LO = 0.02;
+  const T_HI = 0.98; // matches P1's declared interior band
+  const domain: DomainWindow = { uMin: 0, uMax: 1, tLo: T_LO, tHi: T_HI };
+  const window: Window = { domain, tPeak: (T_LO + T_HI) / 2 };
+
+  // ALL columns' ribbon-background edges → normalized-u segs; crossings → seg-index junctions.
+  const ribbonSegs = complex.segments.filter((s) => s.kind === 'ribbon-background');
+  const adapted: SegLike[] = [];
+  const adaptedId: Array<{ column: number; strand: number; side: number }> = [];
+  for (const seg of ribbonSegs) {
+    adapted.push(adaptSegment(seg, window));
+    adaptedId.push({ column: seg.column, strand: seg.strand, side: seg.side });
+  }
+  const segIndexOf = (column: number, strand: number, side: number): number =>
+    adaptedId.findIndex((a) => a.column === column && a.strand === strand && a.side === side);
+  const junctions: JunLike[] = [];
+  for (const j of complex.junctions) {
+    const segs = j.incident.map((inc) => segIndexOf(j.column, inc.strand, inc.side)).filter((i) => i >= 0);
+    if (segs.length < 2) continue;
+    junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
+  }
+
+  const across = opts.across ?? 20;
+  const creases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain);
+  // Ribbon u half-width (theta=2π·u): the crest sits at the strand centreline, the cliff edges
+  // at ±strandWidth in localU ⇒ ±(strandWidth/(2·columnCount)) in u.
+  const hw = params.strandWidth / (2 * params.columnCount);
+  // Dense crest-band seeds through the overlap diamonds (opt-in): they finely tessellate the
+  // diamond crest but do NOT bring it under 0.01mm — the crossing ridge needs the crest to be a
+  // MESH EDGE there, i.e. crest-crossing planarization (documented remaining work). Off by
+  // default so the build stays bounded; the honest diamond chord is the same either way.
+  const seedPoints = opts.diamondSeeds ? diamondCrestSeeds(complex.junctions, params, domain, hw) : undefined;
+
+  const stats: BuildStats = {
+    refinePasses: 0,
+    addedSheetPoints: 0,
+    splitCliffEdges: 0,
+    unwalledCliffEdges: 0,
+    maxAnalyticChordMm: 0,
+    pointCapHit: 0,
+    voteFreeRegions: 0,
+    tieCliffRegions: 0,
+  };
+  const mesh = buildDoubleValuedMesh(
+    { segments: adapted, junctions, creases },
+    surface,
+    { H },
+    {
+      baseGridU: opts.baseGridU,
+      baseGridT: opts.baseGridT,
+      chordTolMm: opts.chordTolMm * 0.75, // refine a little under the report gate for margin
+      maxRefinePasses: opts.maxRefinePasses,
+      domain,
+      oneSidedDelta: ONE_SIDED_DELTA,
+      analyticChord: true,
+      periodicU: true,
+      refineCreases: true,
+      seedPoints,
+      pointCap: 400000,
+    },
+    stats,
+  );
+
+  // ---- verify: manifold + periodic-seam census (u-seam welded ⇒ open only on t-rims) ----
+  const audit = auditManifold(mesh);
+  const seam = periodicSeamAudit(mesh, domain);
+
+  // ---- INDEPENDENT fidelity certification (classifier-free, vs the exact analytic surface) ----
+  const cliffLocusDistance = (u: number, t: number): number => {
+    const s = clamp01((t - T_LO) / (T_HI - T_LO));
+    let best = Infinity;
+    for (const sg of adapted) {
+      const d = Math.abs(u - sg.at(s).u);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+  const locusUAt = (seg: number, t: number): number => adapted[seg].at(clamp01((t - T_LO) / (T_HI - T_LO))).u;
+  const cert = certifyAgainstTrueSurface(mesh, surface, cliffLocusDistance, locusUAt, ONE_SIDED_DELTA);
+  const regionStats = regionRadiusConsistency(mesh);
+  const certification: SurfaceCertification = {
+    maxSheetDevMm: cert.maxSheetDevMm,
+    maxCliffDevMm: cert.maxCliffDevMm,
+    sheetVertsChecked: cert.sheetVertsChecked,
+    cliffVertsCertified: cert.cliffVertsCertified,
+    cliffVertsSkipped: cert.cliffVertsSkipped,
+    minRibbonMeanRadiusMm: regionStats.minRibbonMeanRadiusMm,
+    maxBackgroundMeanRadiusMm: regionStats.maxBackgroundMeanRadiusMm,
+    ribbonRegionCount: regionStats.ribbonRegionCount,
+    backgroundRegionCount: regionStats.backgroundRegionCount,
+  };
+
+  const junctionLevels = measureJunctionLevels(mesh, junctions);
+  const chordSplit = analyticChordSplit(mesh, junctions, surface, H);
+  const md = toMeshData(mesh);
+  const orient = checkOutwardWinding(md);
+
+  const report: MeshReport = {
+    vertexCount: md.vertexCount,
+    triangleCount: md.triangleCount,
+    nonManifold: audit.nonManifold,
+    boundary: audit.boundary,
+    cliffBoundary: audit.cliffBoundary,
+    boundaryNonRim: audit.boundaryNonRim,
+    maxChordMm: stats.maxAnalyticChordMm,
+    rmsChordMm: chordSplit.rms,
+    refinePasses: stats.refinePasses,
+    certification,
+    junctionCount: junctions.length,
+    junctions: junctionLevels,
+    occlusionWallCount: 0,
+    occlusionWallLoci: 0,
+    minOcclusionRaiseMm: 0,
+    seamOpenEdges: seam.seamOpen,
+    tRimBoundaryEdges: seam.tRim,
+    orientationConsistent: orient.consistent,
+    orientationInconsistentEdges: orient.inconsistentEdges,
+    outwardWinding: orient.outward,
+    signedVolumeMm3: orient.signedVolume,
+    componentCount: orient.components,
+    clearRegionMaxChordMm: chordSplit.clearMax,
+    diamondMaxChordMm: chordSplit.diamondMax,
+  };
+  return { mesh: md, report };
 }

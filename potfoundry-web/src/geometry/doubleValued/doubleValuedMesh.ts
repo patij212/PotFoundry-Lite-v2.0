@@ -21,6 +21,7 @@ import { buildTriDistance } from './verify';
 import type {
   BuildStats,
   CliffComplexLike,
+  CreaseLike,
   DomainWindow,
   JunLike,
   Mesh,
@@ -58,6 +59,12 @@ interface CliffState {
   seg: SegLike;
   samples: CliffSample[];
 }
+/** The mutable per-crease sampling state (in-sheet constraint line; refined in place when enabled). */
+interface CreaseState {
+  cr: CreaseLike;
+  /** Arc parameters s∈[0,1] along the crease, in order (bisected during crease refinement). */
+  ss: number[];
+}
 
 /** Cylindrical lift matching the rest of the app: theta = 2*pi*u, z = t*H. */
 const lift = (u: number, t: number, r: number, H: number): Vec3 => [
@@ -78,6 +85,8 @@ export function buildDoubleValuedMesh(
 ): Mesh {
   const { H } = dims;
   const { baseGridU, baseGridT, chordTolMm, maxRefinePasses } = opts;
+  const periodicU = opts.periodicU ?? false;
+  const refineCreases = opts.refineCreases ?? false;
 
   // 1. Domain window. Default (M1): full circle u in [0,1], t spanning the cliff band.
   const domain: DomainWindow = opts.domain ?? {
@@ -151,27 +160,35 @@ export function buildDoubleValuedMesh(
   // They constrain the triangulation (so triangles never cross a sharp ridge and the ribbon
   // becomes clean structured strips) but never split a region or get a wall. Sampled on the
   // SAME t-grid as the cliffs so the strips between constraint lines are clean quads.
-  const creaseChains: Array<Array<[number, number]>> = (complex.creases ?? []).map((cr) => {
-    const chain: Array<[number, number]> = [];
-    for (let j = 0; j < baseGridT; j += 1) {
-      const { u, t } = cr.at(j / (baseGridT - 1));
-      chain.push([u, t]);
-    }
-    return chain;
+  // Crease sampling is PROPORTIONAL to the crease's t-length (a full-height crease keeps the
+  // baseGridT count, so M2 is byte-identical; a short diamond-clipped crest fragment is not
+  // over-sampled). With `refineCreases` the sample count then grows adaptively along t.
+  const domainSpanT = domain.tHi - domain.tLo;
+  const creases: CreaseState[] = (complex.creases ?? []).map((cr) => {
+    const frac = domainSpanT > 0 ? Math.abs(cr.tRange[1] - cr.tRange[0]) / domainSpanT : 1;
+    const n = Math.max(2, Math.ceil(baseGridT * Math.min(1, frac)));
+    const ss: number[] = [];
+    for (let j = 0; j < n; j += 1) ss.push(j / (n - 1));
+    return { cr, ss };
   });
 
   // 3. Build; if refining, measure GEOMETRICALLY against a hole-free reference soup of
   //    the true surface (sampling the discontinuous radius across a cliff would fabricate
   //    ~jump-sized phantom chord). Refine until the chord is under tol (or passes run out).
+  // Reference-free (analytic) chord measures facet sag directly against `surface` at the
+  // parameter-space midpoint; otherwise fall back to nearest-distance to a reference soup.
+  const analytic = opts.analyticChord ? { surface, H } : undefined;
   const dist =
-    maxRefinePasses > 0
+    maxRefinePasses > 0 && !analytic
       ? buildTriDistance(opts.refSoup ?? buildSurfaceReferenceSoup(surface, domain, complex.segments, H))
       : () => 0;
-  const POINT_CAP = 60000; // hard bound on the sampling set (logged, never silent)
-  let result = assemble(gridPts, cliffs, creaseChains, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta);
-  let m = measure(result, dist, chordTolMm);
+  const POINT_CAP = opts.pointCap ?? 60000; // hard bound on the sampling set (logged, never silent)
+  const uPeriod = periodicU ? domain.uMax - domain.uMin : undefined;
+  let result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU);
+  let m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod);
   let addedSheetPoints = 0;
   let splitCliffEdges = 0;
+  let splitCreaseEdges = 0;
   let passes = 0;
   let cappedAt = 0;
   while (passes < maxRefinePasses && m.maxChord >= chordTolMm) {
@@ -181,10 +198,12 @@ export function buildDoubleValuedMesh(
     }
     addedSheetPoints += applyCentroids(gridPts, m.centroidInserts);
     splitCliffEdges += applyCliffSplits(cliffs, m.cliffSplits);
-    result = assemble(gridPts, cliffs, creaseChains, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta);
-    m = measure(result, dist, chordTolMm);
+    if (refineCreases) splitCreaseEdges += applyCreaseSplits(creases, m.creaseSplits);
+    result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU);
+    m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod);
     passes += 1;
   }
+  void splitCreaseEdges;
 
   if (stats) {
     stats.refinePasses = passes;
@@ -226,7 +245,81 @@ export function buildDoubleValuedMesh(
         `${result.voteFreeRegions} cliff-vote-free region(s).`,
     );
   }
+  // M5: close the periodic u-seam on the FINAL mesh (measure/wallsOut have already read the
+  // open-seam intermediate; welding + compacting only rewrites indices/positions). Done once,
+  // after the refine loop, so the tube is watertight with open edges only on the two t-rims.
+  if (periodicU) weldPeriodicSeamAndCompact(result.mesh, domain);
   return result.mesh;
+}
+
+/**
+ * Weld the periodic u-seam (M5) and drop the now-orphaned duplicate vertices.
+ *
+ * `theta = 2π·u`, so a vertex at `u = uMax` sits at the IDENTICAL 3D point as the vertex at
+ * `u = uMin` with the same t (and the CelticKnot strands never reach the column edges, so the
+ * seam is always plain background — one vertex per t on each side, no cliff/wall there). Every
+ * u=uMax seam vertex is therefore merged onto the coincident u=uMin vertex by rounded 3D
+ * position (restricted to seam vertices, so nothing interior is ever fused), the triangle
+ * indices are remapped, and the vertex buffer is compacted to keep `vertexCount` honest.
+ */
+function weldPeriodicSeamAndCompact(mesh: Mesh, domain: DomainWindow): void {
+  const n = mesh.positions.length / 3;
+  const isSeam = (v: number): boolean =>
+    mesh.vertexU[v] <= domain.uMin + RIM_EPS || mesh.vertexU[v] >= domain.uMax - RIM_EPS;
+  // 1. weld: canonical seam vertex per rounded 3D position (1e-5 mm), seam vertices only.
+  const canon = new Int32Array(n);
+  for (let v = 0; v < n; v += 1) canon[v] = v;
+  const Q = 1e5;
+  const seamMap = new Map<string, number>();
+  for (let v = 0; v < n; v += 1) {
+    if (!isSeam(v)) continue;
+    const k = `${Math.round(mesh.positions[v * 3] * Q)}:${Math.round(mesh.positions[v * 3 + 1] * Q)}:${Math.round(mesh.positions[v * 3 + 2] * Q)}`;
+    const c = seamMap.get(k);
+    if (c === undefined) seamMap.set(k, v);
+    else canon[v] = c;
+  }
+  const tris = mesh.triangles;
+  for (let i = 0; i < tris.length; i += 1) tris[i] = canon[tris[i]];
+
+  // 2. compact: keep only vertices still referenced, rebuilding the index-aligned tag arrays.
+  const used = new Uint8Array(n);
+  for (let i = 0; i < tris.length; i += 1) used[tris[i]] = 1;
+  const remap = new Int32Array(n);
+  const positions: number[] = [];
+  const vertexOnCliff: boolean[] = [];
+  const vertexOnRim: boolean[] = [];
+  const vertexU: number[] = [];
+  const vertexT: number[] = [];
+  const vertexRegion: number[] = [];
+  const vertexCliffSeg: number[] = [];
+  const vertexIsJunction: boolean[] = [];
+  let next = 0;
+  for (let v = 0; v < n; v += 1) {
+    if (!used[v]) {
+      remap[v] = -1;
+      continue;
+    }
+    remap[v] = next;
+    next += 1;
+    positions.push(mesh.positions[v * 3], mesh.positions[v * 3 + 1], mesh.positions[v * 3 + 2]);
+    vertexOnCliff.push(mesh.vertexOnCliff[v]);
+    vertexOnRim.push(mesh.vertexOnRim[v]);
+    vertexU.push(mesh.vertexU[v]);
+    vertexT.push(mesh.vertexT[v]);
+    vertexRegion.push(mesh.vertexRegion[v]);
+    vertexCliffSeg.push(mesh.vertexCliffSeg[v]);
+    vertexIsJunction.push(mesh.vertexIsJunction[v]);
+  }
+  for (let i = 0; i < tris.length; i += 1) tris[i] = remap[tris[i]];
+  mesh.positions = positions;
+  mesh.vertexOnCliff = vertexOnCliff;
+  mesh.vertexOnRim = vertexOnRim;
+  mesh.vertexU = vertexU;
+  mesh.vertexT = vertexT;
+  mesh.vertexRegion = vertexRegion;
+  mesh.vertexCliffSeg = vertexCliffSeg;
+  mesh.vertexIsJunction = vertexIsJunction;
+  // regionIsRibbon is per-region (not per-vertex) — unchanged by the weld/compact.
 }
 
 /**
@@ -307,6 +400,7 @@ interface Assembled {
   wallQuads: WallQuad[];
   cliffs: CliffState[];
   cliffEdgeSet: Set<string>;
+  creaseEdgeInfo: Map<string, { cr: number; interval: number }>;
   unwalled: number;
   voteFreeRegions: number;
   tieCliffRegions: number;
@@ -315,13 +409,14 @@ interface Assembled {
 function assemble(
   gridPts: ReadonlyArray<[number, number]>,
   cliffs: CliffState[],
-  creaseChains: ReadonlyArray<ReadonlyArray<readonly [number, number]>>,
+  creases: ReadonlyArray<CreaseState>,
   surface: SurfaceRadiusFn,
   domain: DomainWindow,
   H: number,
   junctions: ReadonlyArray<JunLike>,
   occlusionAware: boolean,
   oneSidedDelta: number,
+  periodicU: boolean,
 ): Assembled {
   const pts: Array<[number, number]> = [];
   const cliffLip: Array<Lip | null> = [];
@@ -377,12 +472,20 @@ function assemble(
   }
 
   // Creases: enforced as CDT constraints (so no triangle crosses the ridge apex) but NOT
-  // added to cliffEdgeSet — regions union across them and they get no wall.
-  for (const chain of creaseChains) {
+  // added to cliffEdgeSet — regions union across them and they get no wall. Their edges ARE
+  // recorded (creaseEdgeInfo) so the refine loop can bisect a crease interval whose sheet
+  // chord is too large (a snaking crest line sampled too coarsely).
+  const creaseEdgeInfo = new Map<string, { cr: number; interval: number }>();
+  for (let cr = 0; cr < creases.length; cr += 1) {
+    const { cr: creaseLike, ss } = creases[cr];
     let prev = -1;
-    for (const [u, t] of chain) {
+    for (let j = 0; j < ss.length; j += 1) {
+      const { u, t } = creaseLike.at(ss[j]);
       const id = pushPt(u, t, null);
-      if (prev >= 0) edges.push([prev, id]);
+      if (prev >= 0 && prev !== id) {
+        edges.push([prev, id]);
+        creaseEdgeInfo.set(edgeKey(prev, id), { cr, interval: j - 1 });
+      }
       prev = id;
     }
   }
@@ -534,11 +637,14 @@ function assemble(
 
   // ---- split-lift: one mesh vertex per (cdtPointIndex, region); junctions pinch by level ----
   const mesh = createMesh();
-  const onRimPt = (u: number, t: number): boolean =>
-    u <= domain.uMin + RIM_EPS ||
-    u >= domain.uMax - RIM_EPS ||
-    t <= domain.tLo + RIM_EPS ||
-    t >= domain.tHi - RIM_EPS;
+  // For a PERIODIC-u pot the u=uMin/uMax edges are NOT open rims — they weld to each other —
+  // so only the t-rims count as declared-open. Tagging the seam as non-rim makes an unwelded
+  // seam surface as `boundaryNonRim` (a caught defect) instead of being hidden as "rim".
+  const onRimPt = (u: number, t: number): boolean => {
+    const tRim = t <= domain.tLo + RIM_EPS || t >= domain.tHi - RIM_EPS;
+    if (periodicU) return tRim;
+    return tRim || u <= domain.uMin + RIM_EPS || u >= domain.uMax - RIM_EPS;
+  };
   const tagVertex = (id: number, u: number, t: number, region: number, seg: number, onCliff: boolean, isJn: boolean): void => {
     mesh.vertexOnCliff[id] = onCliff;
     mesh.vertexOnRim[id] = onRimPt(u, t);
@@ -646,7 +752,7 @@ function assemble(
   // it against the label-independent interior-sheet geometry).
   mesh.regionIsRibbon = isRibbon;
 
-  return { mesh, pts, sheetTris, wallQuads, cliffs, cliffEdgeSet, unwalled, voteFreeRegions, tieCliffRegions };
+  return { mesh, pts, sheetTris, wallQuads, cliffs, cliffEdgeSet, creaseEdgeInfo, unwalled, voteFreeRegions, tieCliffRegions };
 }
 
 // ---------------------------------------------------------------------------
@@ -657,6 +763,7 @@ interface Measured {
   maxChord: number;
   centroidInserts: Array<[number, number]>;
   cliffSplits: Map<number, Set<number>>;
+  creaseSplits: Map<number, Set<number>>;
 }
 
 /**
@@ -666,16 +773,55 @@ interface Measured {
  * its cliff arc-interval (so the polyline hugs the curve). Vertices already sit on the
  * surface; the midpoints carry the chord.
  */
-function measure(a: Assembled, dist: (p: Vec3) => number, tol: number): Measured {
-  const { mesh, pts, sheetTris, wallQuads, cliffEdgeSet } = a;
+function measure(
+  a: Assembled,
+  dist: (p: Vec3) => number,
+  tol: number,
+  analytic: { surface: SurfaceRadiusFn; H: number } | undefined,
+  refineCreases: boolean,
+  uPeriod: number | undefined,
+): Measured {
+  const { mesh, pts, sheetTris, wallQuads, cliffEdgeSet, creaseEdgeInfo, cliffs } = a;
   const pos = mesh.positions;
   const vert = (id: number): Vec3 => [pos[id * 3], pos[id * 3 + 1], pos[id * 3 + 2]];
   const mid3 = (p: Vec3, q: Vec3): Vec3 => [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2];
+  // Periodic u: a background edge/triangle straddling the welded seam has parameter u's near 0
+  // AND near the period, whose naive average lands on the OPPOSITE side of the pot — evaluating
+  // the analytic surface there fabricates a ~2·radius phantom sag. Unwrap the second u onto the
+  // same branch as a reference u before averaging (the 3D midpoint itself is already correct).
+  const unwrapU = (u: number, ref: number): number => {
+    if (uPeriod === undefined) return u;
+    if (u - ref > uPeriod / 2) return u - uPeriod;
+    if (u - ref < -uPeriod / 2) return u + uPeriod;
+    return u;
+  };
+  const wrapInsertU = (u: number): number => {
+    if (uPeriod === undefined) return u;
+    let x = (u - 0) % uPeriod;
+    if (x < 0) x += uPeriod;
+    return x; // domain uMin is 0 for the periodic pot
+  };
+  const d3 = (p: Vec3, q: Vec3): number => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  // Reference-free sag: distance of a flat sample at parameter (um,tm) to the TRUE surface point
+  // there. Falls back to nearest-triangle distance to the reference soup when not analytic.
+  const liftA = (u: number, t: number, r: number): Vec3 =>
+    analytic ? [r * Math.cos(TAU * u), r * Math.sin(TAU * u), t * analytic.H] : [0, 0, 0];
+  const sheetSag = (flat: Vec3, um: number, tm: number): number =>
+    analytic ? d3(flat, liftA(um, tm, analytic.surface(um, tm))) : dist(flat);
 
   let maxChord = 0;
   const centroidInserts: Array<[number, number]> = [];
   const seenInsert = new Set<string>();
   const cliffSplits = new Map<number, Set<number>>();
+  const creaseSplits = new Map<number, Set<number>>();
+  const scheduleCrease = (cr: number, interval: number): void => {
+    let set = creaseSplits.get(cr);
+    if (!set) {
+      set = new Set<number>();
+      creaseSplits.set(cr, set);
+    }
+    set.add(interval);
+  };
 
   const flag = (uv: UV): void => {
     const k = `${Math.round(uv[0] / 1e-7)}:${Math.round(uv[1] / 1e-7)}`;
@@ -693,13 +839,17 @@ function measure(a: Assembled, dist: (p: Vec3) => number, tol: number): Measured
     const uvA = pts[a3];
     const uvB = pts[b3];
     const uvC = pts[c3];
-    const cenUV: UV = [(uvA[0] + uvB[0] + uvC[0]) / 3, (uvA[1] + uvB[1] + uvC[1]) / 3];
+    // Unwrap onto uvA's branch so a seam-straddling triangle's centroid u is meaningful.
+    const cenUV: UV = [
+      wrapInsertU((uvA[0] + unwrapU(uvB[0], uvA[0]) + unwrapU(uvC[0], uvA[0])) / 3),
+      (uvA[1] + uvB[1] + uvC[1]) / 3,
+    ];
     const flatCen: Vec3 = [
       (pos[va * 3] + pos[vb * 3] + pos[vc * 3]) / 3,
       (pos[va * 3 + 1] + pos[vb * 3 + 1] + pos[vc * 3 + 1]) / 3,
       (pos[va * 3 + 2] + pos[vb * 3 + 2] + pos[vc * 3 + 2]) / 3,
     ];
-    const cenD = dist(flatCen);
+    const cenD = sheetSag(flatCen, cenUV[0], cenUV[1]);
     let triMax = cenD;
     let edgeFlagged = false;
     for (const [pIdx, qIdx, pV, qV] of [
@@ -707,11 +857,20 @@ function measure(a: Assembled, dist: (p: Vec3) => number, tol: number): Measured
       [b3, c3, vb, vc],
       [c3, a3, vc, va],
     ] as const) {
-      if (cliffEdgeSet.has(edgeKey(pIdx, qIdx))) continue; // walls own the cliff seam
-      const d = dist(mid3(vert(pV), vert(qV)));
+      const ek = edgeKey(pIdx, qIdx);
+      if (cliffEdgeSet.has(ek)) continue; // walls own the cliff seam
+      const uq = unwrapU(pts[qIdx][0], pts[pIdx][0]); // unwrap across the periodic seam
+      const umid = (pts[pIdx][0] + uq) / 2;
+      const tmid = (pts[pIdx][1] + pts[qIdx][1]) / 2;
+      const d = sheetSag(mid3(vert(pV), vert(qV)), umid, tmid);
       if (d > triMax) triMax = d;
       if (d > tol) {
-        flag([(pts[pIdx][0] + pts[qIdx][0]) / 2, (pts[pIdx][1] + pts[qIdx][1]) / 2]);
+        // A crease edge is a constraint cdt2d never splits, so refine it by bisecting the
+        // crease interval (its snaking crest line tracks the true ridge); otherwise densify
+        // the sheet with a grid point at the edge midpoint.
+        const ci = refineCreases ? creaseEdgeInfo.get(ek) : undefined;
+        if (ci) scheduleCrease(ci.cr, ci.interval);
+        else flag([wrapInsertU(umid), tmid]);
         edgeFlagged = true;
       }
     }
@@ -719,19 +878,34 @@ function measure(a: Assembled, dist: (p: Vec3) => number, tol: number): Measured
     if (!edgeFlagged && cenD > tol) flag(cenUV); // interior bulge with no bad edge
   }
 
-  // Wall quads: how far the flat ruled face sits from the true (curving) cliff wall.
+  // Wall quads: how far the flat ruled face sits from the true (curving) cliff wall. The radial
+  // direction is exact (rails sit at the exact lip radii), so the sag is the cliff curve's
+  // LATERAL sag between the two samples — measured analytically against the true cliff point at
+  // the interval midpoint, or against the reference soup otherwise.
   for (const wq of wallQuads) {
     const [aP, bP, bQ, aQ] = wq.v.map(vert) as [Vec3, Vec3, Vec3, Vec3];
-    const samples: Vec3[] = [
-      mid3(aP, bP),
-      mid3(aQ, bQ),
-      mid3(aP, bQ),
-      [(aP[0] + bP[0] + bQ[0] + aQ[0]) / 4, (aP[1] + bP[1] + bQ[1] + aQ[1]) / 4, (aP[2] + bP[2] + bQ[2] + aQ[2]) / 4],
-    ];
     let triMax = 0;
-    for (const s of samples) {
-      const d = dist(s);
-      if (d > triMax) triMax = d;
+    if (analytic) {
+      const st = cliffs[wq.ci];
+      const sMid = (st.samples[wq.interval].s + st.samples[wq.interval + 1].s) / 2;
+      const c = st.seg.at(sMid);
+      const rLow = (Math.hypot(aP[0], aP[1]) + Math.hypot(bP[0], bP[1])) / 2;
+      const rUp = (Math.hypot(aQ[0], aQ[1]) + Math.hypot(bQ[0], bQ[1])) / 2;
+      triMax = Math.max(
+        d3(mid3(aP, bP), liftA(c.u, c.t, rLow)),
+        d3(mid3(aQ, bQ), liftA(c.u, c.t, rUp)),
+      );
+    } else {
+      const samples: Vec3[] = [
+        mid3(aP, bP),
+        mid3(aQ, bQ),
+        mid3(aP, bQ),
+        [(aP[0] + bP[0] + bQ[0] + aQ[0]) / 4, (aP[1] + bP[1] + bQ[1] + aQ[1]) / 4, (aP[2] + bP[2] + bQ[2] + aQ[2]) / 4],
+      ];
+      for (const s of samples) {
+        const d = dist(s);
+        if (d > triMax) triMax = d;
+      }
     }
     if (triMax > maxChord) maxChord = triMax;
     if (triMax > tol) {
@@ -744,7 +918,7 @@ function measure(a: Assembled, dist: (p: Vec3) => number, tol: number): Measured
     }
   }
 
-  return { maxChord, centroidInserts, cliffSplits };
+  return { maxChord, centroidInserts, cliffSplits, creaseSplits };
 }
 
 // ---------------------------------------------------------------------------
@@ -777,6 +951,22 @@ function applyCliffSplits(cliffs: CliffState[], splits: ReadonlyMap<number, Set<
       const { u, t } = state.seg.at(sMid);
       const { lower, upper } = state.seg.lipsAt(sMid);
       state.samples.splice(iv + 1, 0, { s: sMid, u, t, lower, upper });
+      count += 1;
+    }
+  }
+  return count;
+}
+
+/** Bisect the flagged crease intervals in place (mirror of {@link applyCliffSplits} for creases). */
+function applyCreaseSplits(creases: ReadonlyArray<CreaseState>, splits: ReadonlyMap<number, Set<number>>): number {
+  let count = 0;
+  for (const [cr, intervals] of splits) {
+    const state = creases[cr];
+    if (!state) continue;
+    for (const iv of [...intervals].sort((x, y) => y - x)) {
+      if (iv + 1 >= state.ss.length) continue;
+      const sMid = (state.ss[iv] + state.ss[iv + 1]) / 2;
+      state.ss.splice(iv + 1, 0, sMid);
       count += 1;
     }
   }

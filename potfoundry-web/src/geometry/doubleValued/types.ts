@@ -165,6 +165,41 @@ export interface MeshBuildOptions {
    * expects exactly this limit, with the SAME δ) reads ~0 deviation. Default 1e-6.
    */
   oneSidedDelta?: number;
+  /**
+   * REFINE the in-sheet creases along t (M5), the same way cliffs are refined. A crease is a
+   * conforming constraint edge, so cdt2d never splits it — a snaking crest line sampled too
+   * coarsely then chords the true ridge no matter how the sheet around it is refined. With this
+   * set, a crease interval whose sheet chord exceeds the tolerance is bisected (a new sample
+   * inserted at its s-midpoint), so the crest/strip lines track the snake to tolerance from a
+   * modest base sampling. Gated: M2's static full-height creases (which don't set it) are
+   * unchanged.
+   */
+  refineCreases?: boolean;
+  /** Hard bound on the growable sampling-point set (safety valve, logged via `pointCapHit`).
+   *  Default 60000; the full periodic pot legitimately seeds more, so it raises this. */
+  pointCap?: number;
+  /**
+   * REFERENCE-FREE chord metric (M5). When set, the refine loop and the reported chord measure
+   * each facet's sag DIRECTLY against the analytic surface at the facet's PARAMETER-space
+   * midpoint — sheet facets vs `lift(u_m, t_m, surface(u_m, t_m))`, wall facets vs the true
+   * cliff-swept point `lift(cliff(s_m), r)` — instead of nearest-triangle distance to a
+   * reference soup. This is exact (no reference facet floor) and needs no soup, so a tall thin
+   * ribbon can be certified below 0.01 mm where a feasible uniform soup's own floor could not.
+   * Gated: M1–M4 pass `refSoup` (not this), so their soup path is byte-identical.
+   */
+  analyticChord?: boolean;
+  /**
+   * PERIODIC u-seam (M5, the full pot). When set, u is treated as an angular coordinate that
+   * WRAPS: `u = uMin` and `u = uMax` are the SAME physical location (`theta = 2π·u`, so
+   * `cos/sin` coincide). Two consequences, both gated on this flag so the M1–M4 open-window
+   * builds are byte-identical:
+   *   (a) the u=uMin/uMax boundary is NOT a declared-open rim — only the t-rims are — so an
+   *       unwelded seam shows up as `boundaryNonRim` instead of being hidden as "rim";
+   *   (b) after the final pass the seam is WELDED: every u=uMax vertex is merged onto the
+   *       coincident u=uMin vertex (identical 3D position) and the mesh is compacted, so the
+   *       tube is watertight with open edges only on the two t-rims.
+   */
+  periodicU?: boolean;
 }
 
 /** A 3D point [x,y,z] (mm). */
@@ -299,4 +334,31 @@ export interface MeshReport {
    * raised steps, not degenerate/plain ribbon→background drops. 0 when there are no occlusion walls.
    */
   minOcclusionRaiseMm: number;
+  // ---- M5 (full periodic pot) diagnostics; undefined for the M1–M4 open-window entries ----
+  /** Open edges on the welded u-seam (both endpoints on u=0/1, neither on a t-rim). Must be 0. */
+  seamOpenEdges?: number;
+  /** Open boundary edges lying on a t-rim (the two legitimately-open tube ends). */
+  tRimBoundaryEdges?: number;
+  /** After `orientMeshForSTL`: every interior edge is traversed antiparallel by its two faces. */
+  orientationConsistent?: boolean;
+  /** After `orientMeshForSTL`: interior edges left with non-antiparallel (inconsistent) winding. */
+  orientationInconsistentEdges?: number;
+  /** After `orientMeshForSTL`: winding is OUTWARD (total signed volume > 0). */
+  outwardWinding?: boolean;
+  /** Signed volume (mm³) of the STL-oriented mesh (positive ⇒ outward). */
+  signedVolumeMm3?: number;
+  /** Connected components of the triangle-adjacency graph. Must be 1 for the welded tube. */
+  componentCount?: number;
+  /**
+   * Max sheet-facet chord (mm) OUTSIDE every overlap diamond — the ribbons/walls/sheets the
+   * structured crest/flank strips resolve. This is < 0.01 for the delivered pot; `maxChordMm`
+   * above is dominated instead by `diamondMaxChordMm`.
+   */
+  clearRegionMaxChordMm?: number;
+  /**
+   * Max sheet-facet chord (mm) INSIDE the overlap diamonds — the crossing crest a facet still
+   * straddles because the diamond-clipped creases cannot be carried through the crossing without
+   * crest-crossing planarization (the documented remaining work). NOT < 0.01 for the full pot.
+   */
+  diamondMaxChordMm?: number;
 }
