@@ -22,12 +22,30 @@ import { buildAnalyticRadiusFn } from '../analyticRadius';
 import { DEFAULT_CELTIC_KNOT, type StyleOptions } from '../types';
 import { buildDoubleValuedMesh } from './doubleValuedMesh';
 import { toMeshData } from './mesh';
-import { auditManifold, chordToSurface } from './verify';
-import type { BuildStats, CreaseLike, DomainWindow, MeshReport, RefTri, SegLike, SurfaceRadiusFn, Vec3 } from './types';
+import { auditManifold, certifyAgainstTrueSurface, chordToSurface, regionRadiusConsistency } from './verify';
+import type {
+  BuildStats,
+  CreaseLike,
+  DomainWindow,
+  MeshReport,
+  RefTri,
+  SegLike,
+  SurfaceCertification,
+  SurfaceRadiusFn,
+  Vec3,
+} from './types';
 import type { MeshData } from '../types';
 
 const TAU = 2 * Math.PI;
 const clamp01 = (x: number): number => (x < 0 ? 0 : x > 1 ? 1 : x);
+/**
+ * u-space nudge used by the independent certifier for the cliff one-sided limit and the
+ * sheet straddle guard. Small enough that the ribbon-profile one-sided limit `surface(u∓δ)`
+ * overshoots the exact edge value r0 by only ~1e-3mm (≪ the 0.01mm gate and ≪ the 0.6mm
+ * radial jump a swapped label would produce), yet ≫ float noise so the cliff branch is
+ * unambiguous.
+ */
+const ONE_SIDED_DELTA = 1e-6;
 
 export interface CelticKnotMeshDims {
   H: number;
@@ -135,6 +153,8 @@ export function buildCelticKnotDoubleValuedMesh(
     unwalledCliffEdges: 0,
     maxAnalyticChordMm: 0,
     pointCapHit: 0,
+    voteFreeRegions: 0,
+    tieCliffRegions: 0,
   };
   const mesh = buildDoubleValuedMesh(
     adapted,
@@ -155,6 +175,43 @@ export function buildCelticKnotDoubleValuedMesh(
   const audit = auditManifold(mesh);
   const chord = chordToSurface(mesh, refTris);
 
+  // ---- INDEPENDENT fidelity certification (does NOT go through the region classifier) ----
+  // The chord above is a valid facet/interpolation bound GIVEN a correct classifier, but it
+  // cannot certify the classifier itself: a swapped ribbon/background lip hides inside the
+  // wall ruled-face. `certifyAgainstTrueSurface` pins every vertex to the analytic ground
+  // truth `surface` — sheet vertices to `surface(u,t)`, cliff vertices to the ONE-SIDED limit
+  // taken from INSIDE their own region (direction read from mesh geometry, not the label).
+  const cliffLocusDistance = (u: number, t: number): number => {
+    const s = clamp01((t - domain.tLo) / (domain.tHi - domain.tLo));
+    const dPlus = Math.abs(u - plusAdapted.at(s).u);
+    const dMinus = Math.abs(u - minusAdapted.at(s).u);
+    return dPlus < dMinus ? dPlus : dMinus;
+  };
+  // Normalized-u of cliff segment `seg` at height t (t is linear in s over the window). The
+  // segment order matches `adapted.segments` below: 0 = plus edge, 1 = minus edge. The
+  // certifier uses this to test each neighbour's side against the cliff curve at the
+  // NEIGHBOUR's own t — snake-robust, unlike comparing bare u to the cliff vertex's u (the
+  // snaking ribbon shifts in u with t, so a genuine ribbon neighbour a row away can sit at
+  // smaller u than the cliff vertex).
+  const adaptedSegs = [plusAdapted, minusAdapted];
+  const locusUAt = (seg: number, t: number): number => {
+    const s = clamp01((t - domain.tLo) / (domain.tHi - domain.tLo));
+    return adaptedSegs[seg].at(s).u;
+  };
+  const cert = certifyAgainstTrueSurface(mesh, surface, cliffLocusDistance, locusUAt, ONE_SIDED_DELTA);
+  const regionStats = regionRadiusConsistency(mesh);
+  const certification: SurfaceCertification = {
+    maxSheetDevMm: cert.maxSheetDevMm,
+    maxCliffDevMm: cert.maxCliffDevMm,
+    sheetVertsChecked: cert.sheetVertsChecked,
+    cliffVertsCertified: cert.cliffVertsCertified,
+    cliffVertsSkipped: cert.cliffVertsSkipped,
+    minRibbonMeanRadiusMm: regionStats.minRibbonMeanRadiusMm,
+    maxBackgroundMeanRadiusMm: regionStats.maxBackgroundMeanRadiusMm,
+    ribbonRegionCount: regionStats.ribbonRegionCount,
+    backgroundRegionCount: regionStats.backgroundRegionCount,
+  };
+
   const md = toMeshData(mesh);
   const report: MeshReport = {
     vertexCount: md.vertexCount,
@@ -166,6 +223,7 @@ export function buildCelticKnotDoubleValuedMesh(
     maxChordMm: chord.maxMm,
     rmsChordMm: chord.rmsMm,
     refinePasses: stats.refinePasses,
+    certification,
   };
   return { mesh: md, report };
 }

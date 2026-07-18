@@ -17,6 +17,34 @@ export interface Mesh {
   vertexOnCliff: boolean[];
   /** True where the vertex sits on the declared-open outer domain rim (u=0/1 or t=tLo/tHi). */
   vertexOnRim: boolean[];
+  /**
+   * Source domain coordinates the vertex was lifted from (index-aligned with vertices).
+   * Exposed READ-ONLY so an independent certifier can recover (u,t) exactly instead of
+   * un-projecting the 3D position — and, crucially, WITHOUT going through the region
+   * classifier (the classifier only picks each cliff vertex's lip radius, never its (u,t)).
+   */
+  vertexU: number[];
+  vertexT: number[];
+  /**
+   * Dense region id (topological connected component) the vertex belongs to. Region
+   * MEMBERSHIP is pure triangle-adjacency topology — independent of the ribbon/background
+   * LABEL — so it is a sound basis for a classifier-independent cross-check.
+   */
+  vertexRegion: number[];
+  /**
+   * For a cliff split-vertex, the index of the cliff SEGMENT (in `complex.segments` order)
+   * whose locus it sits on; −1 for sheet vertices. Lets the certifier measure a neighbour's
+   * side against the cliff CURVE at the neighbour's own t (snake-robust), rather than against
+   * the cliff vertex's bare u. Segment identity is declared input — not a classifier output.
+   */
+  vertexCliffSeg: number[];
+  /**
+   * The classifier's ribbon(true)/background(false) LABEL per dense region id (indexed by
+   * region, not vertex). Exposed so a sanity check can confirm the label agrees with the
+   * label-INDEPENDENT geometry (interior sheet lifts): a swapped label points "ribbon" at a
+   * geometrically depressed region.
+   */
+  regionIsRibbon: boolean[];
 }
 
 /** Exact radius at a domain point: (u,t) -> r (mm). */
@@ -111,6 +139,47 @@ export interface BuildStats {
   maxAnalyticChordMm: number;
   /** Sampling-set size at which refinement was halted by the point cap (0 = not hit). */
   pointCapHit: number;
+  /**
+   * Regions that received ZERO cliff votes (touch no cliff edge). Their ribbon/background
+   * label is irrelevant (they own no cliff vertices), but it is surfaced rather than
+   * silently defaulted. Expected 0 for a clean single-strand patch.
+   */
+  voteFreeRegions: number;
+  /**
+   * Regions whose cliff votes tied with a NON-ZERO count (ribVotes === bgVotes > 0): a
+   * genuinely ambiguous classification the code no longer hides. Must be 0 — a tie means a
+   * region's own cliff edges disagree on which side is ribbon, which should never happen.
+   */
+  tieCliffRegions: number;
+}
+
+/**
+ * Independent (classifier-free) fidelity certification of a built mesh against the TRUE
+ * analytic surface. Produced by `certifyAgainstTrueSurface` + `regionRadiusConsistency`
+ * (verify.ts). Unlike the geometric chord-to-reference gate — which cannot see a
+ * ribbon/background lip swap because the wall ruled-face spans the whole radial jump and a
+ * mis-lifted cliff vertex still lands ON it — this certification pins each cliff vertex to
+ * the ONE-SIDED analytic limit taken from INSIDE its own region, so a swapped label spikes.
+ */
+export interface SurfaceCertification {
+  /** Max |hypot(x,y) − surface(u,t)| over interior SHEET vertices (skips near-cliff ones). */
+  maxSheetDevMm: number;
+  /** Max |radius − surface one-sided limit into the vertex's OWN region| over CLIFF vertices. */
+  maxCliffDevMm: number;
+  /** SHEET vertices actually measured (near-cliff vertices are skipped by the straddle guard). */
+  sheetVertsChecked: number;
+  /** CLIFF vertices certified (an interior same-region neighbor oriented the one-sided limit). */
+  cliffVertsCertified: number;
+  /** CLIFF vertices skipped for lack of an interior neighbor to orient by. Must be 0 for a full cert. */
+  cliffVertsSkipped: number;
+  /** Min mean cylindrical radius over classifier-labeled RIBBON regions (+Infinity if none). */
+  minRibbonMeanRadiusMm: number;
+  /** Max mean cylindrical radius over classifier-labeled BACKGROUND regions (−Infinity if none). */
+  maxBackgroundMeanRadiusMm: number;
+  /** Count of regions the classifier labeled ribbon. */
+  ribbonRegionCount: number;
+  /** Count of regions the classifier labeled background. */
+  backgroundRegionCount: number;
 }
 
 /** The verified per-build report returned by the CelticKnot entry. */
@@ -131,4 +200,11 @@ export interface MeshReport {
   rmsChordMm: number;
   /** Refine iterations performed. */
   refinePasses: number;
+  /**
+   * Independent, classifier-free certification against the analytic surface. This is the
+   * load-bearing fidelity claim for the region classifier — the geometric `maxChordMm`
+   * gate above is a valid facet/interpolation bound GIVEN a correct classifier, but it
+   * cannot itself certify the classifier (a lip swap hides inside the wall ruled-face).
+   */
+  certification: SurfaceCertification;
 }

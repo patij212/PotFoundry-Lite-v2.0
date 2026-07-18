@@ -1,6 +1,6 @@
 // verify.ts — self-contained manifold audit + chord-to-surface for the mesher.
 
-import type { Mesh } from './types';
+import type { Mesh, SurfaceRadiusFn } from './types';
 import type { RefTri, Vec3 } from './types';
 
 export interface ManifoldReport {
@@ -232,4 +232,180 @@ export function chordToSurface(mesh: Mesh, refTris: ReadonlyArray<RefTri>): Chor
   }
 
   return { maxMm, rmsMm: Math.sqrt(sumSq / Math.max(1, n)) };
+}
+
+// ---------------------------------------------------------------------------
+// Independent (classifier-free) certification against the TRUE analytic surface.
+//
+// WHY the geometric chord gate above cannot certify the classifier: the reference soup
+// includes each cliff's WALL ruled-face, which spans the entire radial jump lower↔upper.
+// A cliff vertex mis-lifted to the wrong lip (a swapped ribbon/background label) still lands
+// ON that ruled-face, so its nearest-triangle distance stays ~0 — the swap is invisible to
+// `chordToSurface`. The checks below instead pin each cliff vertex to the ONE-SIDED analytic
+// limit taken from INSIDE its own region, where a swap is a full-jump-sized spike.
+// ---------------------------------------------------------------------------
+
+/** u-distance from (u,t) to the nearest declared cliff locus at height t (for the straddle guard). */
+export type CliffLocusDistance = (u: number, t: number) => number;
+
+/**
+ * Normalized u of cliff SEGMENT `seg` (in `complex.segments` order) at height t. Used to
+ * measure a neighbour's side against the cliff CURVE at the neighbour's own t, which is
+ * snake-robust: a snaking ribbon shifts in u with t, so comparing a neighbour's bare u to the
+ * cliff vertex's u mis-orders genuine interior neighbours a row away.
+ */
+export type CliffLocusU = (seg: number, t: number) => number;
+
+/** Result of {@link certifyAgainstTrueSurface}. */
+export interface SurfaceCertReport {
+  /** Max |hypot(x,y) − surface(u,t)| over interior SHEET vertices (near-cliff ones skipped). */
+  maxSheetDevMm: number;
+  /** Max |radius − surface one-sided limit into the vertex's OWN region| over CLIFF vertices. */
+  maxCliffDevMm: number;
+  /** SHEET vertices actually measured. */
+  sheetVertsChecked: number;
+  /** CLIFF vertices certified (an interior same-region neighbour oriented the one-sided limit). */
+  cliffVertsCertified: number;
+  /** CLIFF vertices skipped for lack of an interior neighbour. Must be 0 for a full cert. */
+  cliffVertsSkipped: number;
+}
+
+/**
+ * Certify a built mesh's vertices directly against the true analytic `surface`, WITHOUT
+ * routing through the mesher's region classifier (the classifier's only effect is which lip
+ * radius each cliff vertex takes — every sheet vertex is lifted straight to `surface(u,t)`).
+ *
+ *  - SHEET vertex (not on a cliff, and farther than `oneSidedDelta` in u from any cliff
+ *    locus): its cylindrical radius `hypot(x,y)` must equal `surface(u,t)`. Certifies the
+ *    interior lift is on the true surface; the near-cliff skip is the straddle guard.
+ *  - CLIFF vertex (a split copy sitting on a locus): its radius must equal the ONE-SIDED
+ *    limit `surface(u ∓ δ, t)` taken from INSIDE its own region. The nudge DIRECTION is read
+ *    from mesh geometry — which side of the vertex's OWN cliff locus its interior same-region
+ *    sheet neighbours fall on (measured against the locus at each neighbour's own t, so the
+ *    ribbon's snake does not mis-order them) — so the expected value is classifier-independent.
+ *    A swapped label makes the vertex take the wrong lip while the geometric limit is
+ *    unchanged ⇒ the deviation spikes by the radial jump.
+ *
+ * (u,t), region and cliff-segment come from the mesh's read-only provenance arrays
+ * (independent of the label); `surface` is the analytic ground truth (`buildAnalyticRadiusFn`).
+ */
+export function certifyAgainstTrueSurface(
+  mesh: Mesh,
+  surface: SurfaceRadiusFn,
+  cliffLocusDistance: CliffLocusDistance,
+  cliffLocusU: CliffLocusU,
+  oneSidedDelta: number,
+): SurfaceCertReport {
+  const pos = mesh.positions;
+  const onCliff = mesh.vertexOnCliff;
+  const U = mesh.vertexU;
+  const T = mesh.vertexT;
+  const region = mesh.vertexRegion;
+  const cliffSeg = mesh.vertexCliffSeg;
+  const vcount = pos.length / 3;
+
+  // Into-region nudge direction per cliff vertex: for each interior (non-cliff) same-region
+  // neighbour, vote for the SIDE of the cliff vertex's OWN locus the neighbour lies on —
+  // `sign(u_neighbour − locus(seg, t_neighbour))`, evaluated at the NEIGHBOUR's t so the
+  // snaking ribbon (which shifts in u with t) cannot flip the sign. Sheet neighbours of a
+  // cliff vertex are always in its own region (walls only join cliff→cliff), and a region lies
+  // wholly on one side of its bounding locus, so the majority vote is that side.
+  const dirSum = new Float64Array(vcount);
+  const dirCnt = new Int32Array(vcount);
+  const tris = mesh.triangles;
+  for (let i = 0; i < tris.length; i += 3) {
+    const tri: readonly [number, number, number] = [tris[i], tris[i + 1], tris[i + 2]];
+    for (let p = 0; p < 3; p += 1) {
+      const vp = tri[p];
+      if (!onCliff[vp] || cliffSeg[vp] < 0) continue;
+      for (let q = 0; q < 3; q += 1) {
+        if (q === p) continue;
+        const vq = tri[q];
+        if (onCliff[vq] || region[vq] !== region[vp]) continue;
+        const side = U[vq] - cliffLocusU(cliffSeg[vp], T[vq]) >= 0 ? 1 : -1;
+        dirSum[vp] += side;
+        dirCnt[vp] += 1;
+      }
+    }
+  }
+
+  let maxSheetDevMm = 0;
+  let maxCliffDevMm = 0;
+  let sheetVertsChecked = 0;
+  let cliffVertsCertified = 0;
+  let cliffVertsSkipped = 0;
+
+  for (let v = 0; v < vcount; v += 1) {
+    const x = pos[v * 3];
+    const y = pos[v * 3 + 1];
+    const r = Math.hypot(x, y);
+    const u = U[v];
+    const t = T[v];
+    if (!onCliff[v]) {
+      if (cliffLocusDistance(u, t) <= oneSidedDelta) continue; // straddle guard: skip near-cliff sheet points
+      const dev = Math.abs(r - surface(u, t));
+      if (dev > maxSheetDevMm) maxSheetDevMm = dev;
+      sheetVertsChecked += 1;
+    } else {
+      if (dirCnt[v] === 0) {
+        cliffVertsSkipped += 1;
+        continue;
+      }
+      const dir = dirSum[v] >= 0 ? 1 : -1;
+      const dev = Math.abs(r - surface(u + dir * oneSidedDelta, t));
+      if (dev > maxCliffDevMm) maxCliffDevMm = dev;
+      cliffVertsCertified += 1;
+    }
+  }
+
+  return { maxSheetDevMm, maxCliffDevMm, sheetVertsChecked, cliffVertsCertified, cliffVertsSkipped };
+}
+
+/** Per-label mean-radius summary returned by {@link regionRadiusConsistency}. */
+export interface RegionRadiusStats {
+  /** Min mean cylindrical radius over classifier-labeled RIBBON regions (+Infinity if none). */
+  minRibbonMeanRadiusMm: number;
+  /** Max mean cylindrical radius over classifier-labeled BACKGROUND regions (−Infinity if none). */
+  maxBackgroundMeanRadiusMm: number;
+  ribbonRegionCount: number;
+  backgroundRegionCount: number;
+}
+
+/**
+ * Cross-check the classifier's per-region label against the label-INDEPENDENT geometry:
+ * mean cylindrical radius per region, split by ribbon/background label. Because interior
+ * sheet lifts (which dominate the mean) never consult the label, a correct classifier must
+ * give every ribbon (raised) region a mean radius above every background (depressed) region's.
+ * A swapped label points "ribbon" at a depressed region and inverts the ordering.
+ */
+export function regionRadiusConsistency(mesh: Mesh): RegionRadiusStats {
+  const pos = mesh.positions;
+  const region = mesh.vertexRegion;
+  const isRib = mesh.regionIsRibbon;
+  const nReg = isRib.length;
+  const sum = new Float64Array(nReg);
+  const cnt = new Int32Array(nReg);
+  const vcount = pos.length / 3;
+  for (let v = 0; v < vcount; v += 1) {
+    const reg = region[v];
+    if (reg < 0 || reg >= nReg) continue;
+    sum[reg] += Math.hypot(pos[v * 3], pos[v * 3 + 1]);
+    cnt[reg] += 1;
+  }
+  let minRibbonMeanRadiusMm = Infinity;
+  let maxBackgroundMeanRadiusMm = -Infinity;
+  let ribbonRegionCount = 0;
+  let backgroundRegionCount = 0;
+  for (let r = 0; r < nReg; r += 1) {
+    if (cnt[r] === 0) continue;
+    const mean = sum[r] / cnt[r];
+    if (isRib[r]) {
+      ribbonRegionCount += 1;
+      if (mean < minRibbonMeanRadiusMm) minRibbonMeanRadiusMm = mean;
+    } else {
+      backgroundRegionCount += 1;
+      if (mean > maxBackgroundMeanRadiusMm) maxBackgroundMeanRadiusMm = mean;
+    }
+  }
+  return { minRibbonMeanRadiusMm, maxBackgroundMeanRadiusMm, ribbonRegionCount, backgroundRegionCount };
 }

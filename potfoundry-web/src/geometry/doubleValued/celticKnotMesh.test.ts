@@ -39,5 +39,26 @@ describe('CelticKnot double-valued mesher (M2: one real snaking strand)', () => 
     // after refinement (>= 4 passes available) the mesh chords the true surface < 0.01mm
     expect(report.refinePasses).toBeGreaterThanOrEqual(1);
     expect(report.maxChordMm).toBeLessThan(0.01);
+
+    // INDEPENDENT fidelity certification (does NOT route through the region classifier).
+    // Every SHEET vertex sits on the true analytic surface, and every CLIFF split-vertex equals
+    // the ONE-SIDED surface limit taken from INSIDE its own region. A classifier lip-swap is
+    // invisible to the chord gate above (the wall ruled-face spans the whole radial jump, so a
+    // mis-lifted cliff vertex still lands on it) but spikes maxCliffDevMm by the full ~0.6mm
+    // jump — so this is what actually certifies the load-bearing M2 region classifier.
+    const cert = report.certification;
+    expect(cert.maxSheetDevMm).toBeLessThan(0.01);
+    expect(cert.maxCliffDevMm).toBeLessThan(0.01);
+    // the certification actually covered the mesh (no cliff vertex skipped for want of a neighbour)
+    expect(cert.sheetVertsChecked).toBeGreaterThan(0);
+    expect(cert.cliffVertsCertified).toBeGreaterThan(0);
+    expect(cert.cliffVertsSkipped).toBe(0);
+
+    // Direct classifier sanity: the classifier-labeled ribbon region must be geometrically
+    // RAISED — its mean vertex radius above every background region's. Interior sheet lifts set
+    // these means and never consult the label, so a swapped label inverts the ordering.
+    expect(cert.ribbonRegionCount).toBeGreaterThanOrEqual(1);
+    expect(cert.backgroundRegionCount).toBeGreaterThanOrEqual(1);
+    expect(cert.minRibbonMeanRadiusMm).toBeGreaterThan(cert.maxBackgroundMeanRadiusMm);
   }, 120000);
 });

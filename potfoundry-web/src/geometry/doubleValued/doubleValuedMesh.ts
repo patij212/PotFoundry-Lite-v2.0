@@ -144,6 +144,17 @@ export function buildDoubleValuedMesh(
     stats.unwalledCliffEdges = result.unwalled;
     stats.maxAnalyticChordMm = m.maxChord;
     stats.pointCapHit = cappedAt;
+    stats.voteFreeRegions = result.voteFreeRegions;
+    stats.tieCliffRegions = result.tieCliffRegions;
+  }
+  // Never let an undecided region classification pass silently (see the vote loop in
+  // `assemble`): a non-zero tie is a real anomaly, a vote-free region is inert but surfaced.
+  if (result.tieCliffRegions > 0 || result.voteFreeRegions > 0) {
+    console.warn(
+      `[doubleValuedMesh] region classification defaulted to background for ` +
+        `${result.tieCliffRegions} non-zero cliff-vote tie(s) and ` +
+        `${result.voteFreeRegions} cliff-vote-free region(s).`,
+    );
   }
   return result.mesh;
 }
@@ -227,6 +238,8 @@ interface Assembled {
   cliffs: CliffState[];
   cliffEdgeSet: Set<string>;
   unwalled: number;
+  voteFreeRegions: number;
+  tieCliffRegions: number;
 }
 
 function assemble(
@@ -239,9 +252,11 @@ function assemble(
 ): Assembled {
   const pts: Array<[number, number]> = [];
   const cliffLip: Array<Lip | null> = [];
-  const pushPt = (u: number, t: number, lip: Lip | null): number => {
+  const cliffSegOf: number[] = []; // segment index this point's locus belongs to; -1 for sheet points
+  const pushPt = (u: number, t: number, lip: Lip | null, seg = -1): number => {
     pts.push([u, t]);
     cliffLip.push(lip);
+    cliffSegOf.push(seg);
     return pts.length - 1;
   };
 
@@ -257,7 +272,7 @@ function assemble(
     const { samples } = cliffs[ci];
     for (let j = 0; j < samples.length; j += 1) {
       const sm = samples[j];
-      const id = pushPt(sm.u, sm.t, { lower: sm.lower, upper: sm.upper });
+      const id = pushPt(sm.u, sm.t, { lower: sm.lower, upper: sm.upper }, ci);
       chain.push(id);
       if (prev >= 0) {
         const k = edgeKey(prev, id);
@@ -349,7 +364,21 @@ function assemble(
     }
   }
   const isRibbon = new Array<boolean>(regionCount);
-  for (let r = 0; r < regionCount; r += 1) isRibbon[r] = ribVotes[r] > bgVotes[r];
+  let voteFreeRegions = 0;
+  let tieCliffRegions = 0;
+  for (let r = 0; r < regionCount; r += 1) {
+    const rib = ribVotes[r];
+    const bg = bgVotes[r];
+    // Surface the two cases the bare `rib > bg` used to swallow silently: a region touching
+    // no cliff edge (rib === bg === 0 — its label is inert, it owns no cliff vertex) and a
+    // genuine NON-zero tie (rib === bg > 0 — a region's own cliff edges disagree on which
+    // side is ribbon, which should never happen). Both are counted and threaded to stats.
+    if (rib === bg) {
+      if (rib === 0) voteFreeRegions += 1;
+      else tieCliffRegions += 1;
+    }
+    isRibbon[r] = rib > bg;
+  }
 
   // ---- split-lift: one mesh vertex per (cdtPointIndex, region) ----
   const mesh = createMesh();
@@ -370,6 +399,13 @@ function assemble(
     const id = addVertex(mesh, x, y, z);
     mesh.vertexOnCliff[id] = lip !== null;
     mesh.vertexOnRim[id] = onRimPt(u, t);
+    // Read-only provenance for the independent certifier: the exact (u,t) this vertex was
+    // lifted from and the topological region it belongs to. Neither depends on the
+    // ribbon/background label — only the radius `r` above does.
+    mesh.vertexU[id] = u;
+    mesh.vertexT[id] = t;
+    mesh.vertexRegion[id] = region;
+    mesh.vertexCliffSeg[id] = cliffSegOf[pi];
     registry.set(k, id);
     return id;
   };
@@ -409,7 +445,11 @@ function assemble(
     }
   }
 
-  return { mesh, pts, sheetTris, wallQuads, cliffs, cliffEdgeSet, unwalled };
+  // Expose the classifier's per-region label read-only (the independent certifier cross-checks
+  // it against the label-independent interior-sheet geometry).
+  mesh.regionIsRibbon = isRibbon;
+
+  return { mesh, pts, sheetTris, wallQuads, cliffs, cliffEdgeSet, unwalled, voteFreeRegions, tieCliffRegions };
 }
 
 // ---------------------------------------------------------------------------

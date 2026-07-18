@@ -9,6 +9,11 @@ export const createMesh = (): Mesh => ({
   triangles: [],
   vertexOnCliff: [],
   vertexOnRim: [],
+  vertexU: [],
+  vertexT: [],
+  vertexRegion: [],
+  vertexCliffSeg: [],
+  regionIsRibbon: [],
 });
 
 /** Append a vertex; returns its index. Tag arrays are filled by the caller in lockstep. */
