@@ -12,6 +12,7 @@ import {
   buildCelticKnotDoubleValuedMesh,
   buildCelticKnotColumnCrossingMesh,
   buildCelticKnotCrestCrossingMesh,
+  buildCelticKnotClippedCrossingMesh,
   buildCelticKnotOcclusionMesh,
   buildCelticKnotFullPotMesh,
 } from './celticKnotMesh';
@@ -356,5 +357,67 @@ describe('CelticKnot double-valued mesher (M6a: crest-crossing planarization, co
     expect(report.facetMaxChordMm).toBeLessThan(0.01);
     expect(base.report.facetMaxChordMm).toBeGreaterThan(0.01);
     expect(report.facetMaxChordMm).toBeLessThan(base.report.facetMaxChordMm ?? Infinity);
+  }, 300000);
+});
+
+// ---------------------------------------------------------------------------
+// P3b Task 2 (LOAD-BEARING TOPOLOGICAL PROOF): mesh the single-column 3-strand crossing at the
+// CORNERED-CREST default (ckRoundness = 0.5, ckStrands = 3) from the VISIBLE-ENVELOPE-CLIPPED cliffs
+// (Task 1's `clipCliffsToVisibleEnvelope`), NOT from full-band cliffs + `weldSoftCliffs`.
+//
+// The M6a soft-drop mechanism proves out only for an ISOLATED 2-strand crossing; at the real 3-strand
+// default it mis-welds an occluded cliff vertex and the independent certification `maxCliffDevMm`
+// spikes to the full 0.60mm radial jump (the M6b blocker — measured on the un-clipped crest path). By
+// feeding each ribbon↔background cliff clipped to exactly its visible sub-arcs, the occluded under-
+// strand edges are ABSENT inside the diamond, so the over-strand crest crease threads the crossing
+// through free space, each occlusion boundary closes via the M3 junction pinch + M4 one-sided-limit
+// occlusion wall, and BOTH the crossing-crest facet chord AND maxCliffDevMm fall below 0.01mm.
+//
+// The four bounds are asserted verbatim (no loosening): nonManifold === 0; boundaryNonRim === 0;
+// certification sheetDev AND cliffDev < 0.01 with cliffVertsSkipped === 0; facet maxChord < 0.01mm.
+// STYLE reproduces Task 1's clip PARAMS exactly (columnCount 1, strandWidth 0.0225, strandCount 3,
+// tightness 0.5, relief 2, gap 0.02, roundness 0.5) so the clip and the mesh agree on the geometry.
+const STYLE_T2 = { ckScale: 1, ckWidth: 0.15, ckRelief: 2, ckGap: 0.02, ckRoundness: 0.5, ckTwist: 0, ckStrands: 3 };
+const JUMP_T2 = STYLE_T2.ckRelief * 0.3;
+const OPTS_T2 = { baseGridU: 92, baseGridT: 70, chordTolMm: 0.01, maxRefinePasses: 5 };
+
+describe('CelticKnot double-valued mesher (P3b T2: clipped-envelope 3-strand crossing)', () => {
+  it('meshes the 3-strand crossing from clipped cliffs — watertight, certified, crest facet < 0.01mm', () => {
+    const { mesh, report } = buildCelticKnotClippedCrossingMesh(STYLE_T2, DIMS, OPTS_T2);
+
+    // a real mesh came out
+    expect(report.triangleCount).toBeGreaterThan(0);
+    expect(mesh.triangleCount).toBe(report.triangleCount);
+    expect(mesh.vertexCount).toBe(report.vertexCount);
+
+    // BOUND 1 — watertight: no non-manifold edges anywhere
+    expect(report.nonManifold).toBe(0);
+    // BOUND 2 — every open boundary edge lies on the window/t-rims: no interior holes, no cliff
+    // cracks, and no gap where a clipped under-cliff terminates at an occlusion boundary
+    expect(report.cliffBoundary).toBe(0);
+    expect(report.boundaryNonRim).toBe(0);
+
+    // the crossing produced genuine junctions, each STILL pinched to exactly the two levels
+    // {r0, r0−jump} (the clipped diamond closes watertight — no collapsed-to-one-level junction)
+    expect(report.junctionCount).toBeGreaterThan(0);
+    for (const j of report.junctions) {
+      expect(j.distinctLevels).toBe(2);
+      expect(j.upper - j.lower).toBeCloseTo(JUMP_T2, 3);
+    }
+
+    // BOUND 3 — INDEPENDENT certification (classifier-free): every sheet vertex on the true analytic
+    // surface, every cliff split-vertex at the one-sided analytic limit into its OWN region. The M6b
+    // failure was cliffDev = 0.60 (a mis-welded occluded cliff); clipping must drive it < 0.01mm,
+    // with no cliff vertex left uncertified.
+    const cert = report.certification;
+    expect(cert.maxSheetDevMm).toBeLessThan(0.01);
+    expect(cert.maxCliffDevMm).toBeLessThan(0.01);
+    expect(cert.cliffVertsSkipped).toBe(0);
+
+    // BOUND 4 — the honest facet chord at the crossing crests is < 0.01mm (the crest is now a real
+    // mesh edge threading the crossing-free diamond), measured vs the true analytic surface with the
+    // genuine cliff-straddle skipped (never widened to hide a crest).
+    expect(report.refinePasses).toBeGreaterThanOrEqual(1);
+    expect(report.facetMaxChordMm).toBeLessThan(0.01);
   }, 300000);
 });

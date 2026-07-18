@@ -104,6 +104,10 @@ export function buildDoubleValuedMesh(
   const periodicU = opts.periodicU ?? false;
   const refineCreases = opts.refineCreases ?? false;
   const weldSoftCliffs = opts.weldSoftCliffs ?? false;
+  // The reference-free refine metric skips genuine cliff-straddle samples when soft-welding OR when
+  // cliffs are pre-clipped to their visible sub-arcs (T2). `weldSoftCliffs` implies the guard; the
+  // explicit `straddleGuard` turns the SAME guard on for the clip path (no soft-weld). M1–M5: false.
+  const straddleGuard = weldSoftCliffs || (opts.straddleGuard ?? false);
 
   // 1. Domain window. Default (M1): full circle u in [0,1], t spanning the cliff band.
   const domain: DomainWindow = opts.domain ?? {
@@ -142,12 +146,21 @@ export function buildDoubleValuedMesh(
   const tSpan = domain.tHi - domain.tLo;
   for (let k = 0; k < complex.junctions.length; k += 1) {
     const jn = complex.junctions[k];
-    const sJ = tSpan > 0 ? (jn.t - domain.tLo) / tSpan : 0;
-    if (sJ < -1e-9 || sJ > 1 + 1e-9) continue; // junction outside this window
-    const sClamped = sJ < 0 ? 0 : sJ > 1 ? 1 : sJ;
+    const sDom = tSpan > 0 ? (jn.t - domain.tLo) / tSpan : 0;
+    if (sDom < -1e-9 || sDom > 1 + 1e-9) continue; // junction outside this window
     for (const segIdx of jn.segs) {
       const st = cliffs[segIdx];
       if (!st) continue;
+      // Sort the junction sample by ITS OWN segment's arc fraction, not the domain fraction: a T2
+      // visible-envelope-CLIPPED arc spans only a sub-interval of the window, so a domain-fraction s
+      // would place the junction in the middle of the arc's chain (a non-monotonic t spike). For a
+      // full-band arc (M1–M5: tRange === the window) segLo/segHi === domain.tLo/tHi, so sSeg === the
+      // old sDom and the inserted sample is byte-identical.
+      const segLo = st.seg.tRange[0];
+      const segHi = st.seg.tRange[1];
+      const segSpan = segHi - segLo;
+      const sSeg = segSpan > 0 ? (jn.t - segLo) / segSpan : 0;
+      const sClamped = sSeg < 0 ? 0 : sSeg > 1 ? 1 : sSeg;
       const sample: CliffSample = {
         s: sClamped,
         u: jn.u,
@@ -156,7 +169,15 @@ export function buildDoubleValuedMesh(
         upper: jn.pinch.upper,
         junction: k,
       };
-      insertSampleSorted(st.samples, sample);
+      // A T2 visible-envelope-clipped arc TERMINATES on this crossing, so its endpoint base sample sits
+      // at the junction (u,t): UPGRADE that sample in place to the shared pinch vertex instead of adding
+      // a coincident CDT point (which would degenerate the wall). A full-band arc (M1–M5) meets a
+      // junction mid-arc with no coincident base sample ⇒ the insert path runs, byte-identical.
+      const hit = st.samples.findIndex(
+        (sm) => Math.abs(sm.u - jn.u) < 1e-6 && Math.abs(sm.t - jn.t) < 1e-6,
+      );
+      if (hit >= 0) st.samples[hit] = sample;
+      else insertSampleSorted(st.samples, sample);
     }
   }
   // When crossings are declared, lift each cliff split-vertex to the TRUE one-sided analytic
@@ -196,7 +217,7 @@ export function buildDoubleValuedMesh(
   const POINT_CAP = opts.pointCap ?? 60000; // hard bound on the sampling set (logged, never silent)
   const uPeriod = periodicU ? domain.uMax - domain.uMin : undefined;
   let result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs);
-  let m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, weldSoftCliffs);
+  let m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, straddleGuard);
   let addedSheetPoints = 0;
   let splitCliffEdges = 0;
   let splitCreaseEdges = 0;
@@ -211,7 +232,7 @@ export function buildDoubleValuedMesh(
     splitCliffEdges += applyCliffSplits(cliffs, m.cliffSplits);
     if (refineCreases) splitCreaseEdges += applyCreaseSplits(creases, m.creaseSplits);
     result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs);
-    m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, weldSoftCliffs);
+    m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, straddleGuard);
     passes += 1;
   }
   void splitCreaseEdges;
@@ -842,7 +863,7 @@ function measure(
   analytic: { surface: SurfaceRadiusFn; H: number } | undefined,
   refineCreases: boolean,
   uPeriod: number | undefined,
-  weldSoftCliffs: boolean,
+  straddleGuard: boolean,
 ): Measured {
   const { mesh, pts, sheetTris, wallQuads, cliffEdgeSet, creaseEdgeInfo, cliffs } = a;
   const pos = mesh.positions;
@@ -869,16 +890,17 @@ function measure(
   // there. Falls back to nearest-triangle distance to the reference soup when not analytic.
   const liftA = (u: number, t: number, r: number): Vec3 =>
     analytic ? [r * Math.cos(TAU * u), r * Math.sin(TAU * u), t * analytic.H] : [0, 0, 0];
-  // Straddle guard (M6, `weldSoftCliffs` only): a sheet sample whose parameter midpoint lands across
-  // a genuine surface DISCONTINUITY (a real ribbon↔background cliff) reports a ~jump-sized phantom
-  // sag and makes the refine loop chase the cliff forever (the wall, not the sheet, owns that radial
-  // step). Zero those samples out; an OCCLUDED (continuous) cliff under the visible crest passes the
-  // test and is refined normally. Gated so the M5 refine path is byte-identical (M5 relies on the
-  // un-guarded analytic sag for its clear/diamond chord split).
+  // Straddle guard (M6 soft-weld OR T2 clip — `straddleGuard`): a sheet sample whose parameter
+  // midpoint lands across a genuine surface DISCONTINUITY (a real ribbon↔background cliff) reports a
+  // ~jump-sized phantom sag and makes the refine loop chase the cliff forever (the wall, not the
+  // sheet, owns that radial step). Zero those samples out; an OCCLUDED (continuous) cliff under the
+  // visible crest passes the test and is refined normally. Gated so the M5 refine path is byte-
+  // identical (M5 sets neither flag and relies on the un-guarded analytic sag for its clear/diamond
+  // chord split).
   const STRADDLE_JUMP = 0.05;
   const STRADDLE_DU = 2e-4;
   const straddles = (um: number, tm: number): boolean =>
-    !!analytic && weldSoftCliffs && Math.abs(analytic.surface(um + STRADDLE_DU, tm) - analytic.surface(um - STRADDLE_DU, tm)) > STRADDLE_JUMP;
+    !!analytic && straddleGuard && Math.abs(analytic.surface(um + STRADDLE_DU, tm) - analytic.surface(um - STRADDLE_DU, tm)) > STRADDLE_JUMP;
   const sheetSag = (flat: Vec3, um: number, tm: number): number => {
     if (!analytic) return dist(flat);
     if (straddles(um, tm)) return 0;

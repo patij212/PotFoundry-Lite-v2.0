@@ -207,6 +207,15 @@ export interface MeshBuildOptions {
    */
   weldSoftCliffs?: boolean;
   /**
+   * STRADDLE-GUARD the reference-free refine metric (P3b T2) INDEPENDENTLY of `weldSoftCliffs`. The
+   * analytic-chord refine loop otherwise measures a sheet facet whose parameter midpoint crosses a
+   * genuine ribbon↔background surface discontinuity as a ~jump-sized (~0.6mm) phantom sag and chases
+   * that cliff forever (the wall, not the sheet, owns the radial step). `weldSoftCliffs` already
+   * implies this guard; when cliffs are pre-CLIPPED to their visible sub-arcs (so no soft-weld is
+   * needed) this flag turns the SAME guard on by itself. Gated: M1–M5 set neither ⇒ byte-identical.
+   */
+  straddleGuard?: boolean;
+  /**
    * PERIODIC u-seam (M5, the full pot). When set, u is treated as an angular coordinate that
    * WRAPS: `u = uMin` and `u = uMax` are the SAME physical location (`theta = 2π·u`, so
    * `cos/sin` coincide). Two consequences, both gated on this flag so the M1–M4 open-window
