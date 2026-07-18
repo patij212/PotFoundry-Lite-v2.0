@@ -22,7 +22,7 @@ import type {
 import { buildAnalyticRadiusFn } from '../analyticRadius';
 import { DEFAULT_CELTIC_KNOT, type StyleOptions } from '../types';
 import { buildDoubleValuedMesh } from './doubleValuedMesh';
-import { clipCliffsToVisibleEnvelope } from './visibleEnvelope';
+import { clipCliffsToVisibleEnvelope, type VisibleEnvelope } from './visibleEnvelope';
 import { toMeshData } from './mesh';
 import { orientMeshForSTL } from '../stlExport';
 import {
@@ -311,22 +311,13 @@ function isolateWindow(plusSeg: CliffSegment, minusSeg: CliffSegment, others: re
   return { domain: { uMin, uMax, tLo, tHi }, tPeak };
 }
 
-/** Clip a P1 segment to the window and convert its theta to normalized u. */
+/**
+ * Clip a P1 segment to the window and convert its theta to normalized u. m1 (P3b): the window is
+ * just the explicit `[tLo,tHi]` sub-range of {@link adaptSegmentToRange} — this delegates so the
+ * clip/convert body lives in ONE place (byte-identical: same `tLo,tHi` from `w.domain`).
+ */
 function adaptSegment(seg: CliffSegment, w: Window): SegLike {
-  const { tLo, tHi } = w.domain;
-  const origS = (t: number): number => (t - seg.tRange[0]) / (seg.tRange[1] - seg.tRange[0]);
-  return {
-    tRange: [tLo, tHi],
-    at: (s: number) => {
-      const t = tLo + (tHi - tLo) * clamp01(s);
-      const o = seg.at(origS(t));
-      return { u: o.u / TAU, t: o.t };
-    },
-    lipsAt: (s: number) => {
-      const t = tLo + (tHi - tLo) * clamp01(s);
-      return seg.lipsAt(origS(t));
-    },
-  };
+  return adaptSegmentToRange(seg, w.domain.tLo, w.domain.tHi);
 }
 
 /**
@@ -349,6 +340,107 @@ function adaptSegmentToRange(seg: CliffSegment, tLo: number, tHi: number): SegLi
       return seg.lipsAt(origS(t));
     },
   };
+}
+
+/**
+ * P3b I2 — the SHARED clip-arc construction + junction binding used by BOTH clipped-envelope paths:
+ * the single-crossing T2 path (`meshColumnCrossing` withClip) and the full-pot T3 path
+ * (`buildCelticKnotFullPotMesh` clip). Both clip each ribbon↔background cliff to its visible
+ * (non-occluded) t-sub-arcs, SNAP every non-rim arc end onto its declared crossing junction (so the
+ * clipped arc terminates ON the crossing the M3 pinch closes), and BIND each in-band junction to the
+ * arcs that reach it. The two callers differed ONLY by the strand-key scope (single column vs all
+ * columns) and T2's extra far-strand `overlapsWindowU` drop — unified here into the always-column-keyed
+ * form (single-column T2 is a no-op subset of it) plus an optional `arcFilter`. Behavior-preserving:
+ * the emitted `adapted`/`adaptedId`/`junctions` are byte-identical to the two prior inline copies, and
+ * the tuned tolerances (`SNAP_T`, `JBIND`, the `1e-3` min-arc drop) now live in ONE place (m4 bound).
+ */
+function buildClippedConstraints(
+  env: VisibleEnvelope,
+  ribbonSegs: readonly CliffSegment[],
+  junctionList: readonly CliffJunction[],
+  domain: DomainWindow,
+  arcFilter?: (arcSeg: SegLike) => boolean,
+): {
+  adapted: SegLike[];
+  adaptedId: Array<{ column: number; strand: number; side: number }>;
+  junctions: JunLike[];
+} {
+  const adapted: SegLike[] = [];
+  const adaptedId: Array<{ column: number; strand: number; side: number }> = [];
+  const arcRange: Array<[number, number]> = [];
+  const junctions: JunLike[] = [];
+
+  // Per (column,strand,side): the t of every incident crossing junction (its occlusion boundaries).
+  // An arc end that abuts an occlusion boundary is SNAPPED exactly onto its junction t, so the clipped
+  // arc terminates ON the crossing the pinch closes (the endpoint base sample is then upgraded in place
+  // to the junction's shared pinch vertex by `buildDoubleValuedMesh`).
+  const keyOf = (column: number, strand: number, side: number): string => `${column}:${strand}:${side}`;
+  const incidentJt = new Map<string, number[]>();
+  for (const j of junctionList) {
+    for (const inc of j.incident) {
+      const key = keyOf(j.column, inc.strand, inc.side);
+      const arr = incidentJt.get(key) ?? [];
+      arr.push(j.t);
+      incidentJt.set(key, arr);
+    }
+  }
+  // The clip's occlusion-boundary t and its crossing junction's t agree to ~1e-4; snap within a
+  // tolerance ≪ the occluded gap (~0.007 at DEFAULT) so an arc end never snaps across the diamond.
+  const SNAP_T = 3e-3;
+  const snapEnd = (column: number, strand: number, side: number, t: number): number => {
+    let best = t;
+    let bestD = SNAP_T;
+    for (const jt of incidentJt.get(keyOf(column, strand, side)) ?? []) {
+      const d = Math.abs(jt - t);
+      if (d < bestD) {
+        bestD = d;
+        best = jt;
+      }
+    }
+    return best;
+  };
+  // t-range of each adapted arc, parallel to `adapted`, so a junction binds to the arc that reaches it
+  // (an under-strand edge has several visible arcs; the over-strand one spans the diamond).
+  for (const arc of env.visibleCliffs) {
+    const seg = ribbonSegs.find((s) => s.column === arc.column && s.strand === arc.strand && s.side === arc.side);
+    if (!seg) continue;
+    let lo = Math.max(arc.tRange[0], domain.tLo);
+    let hi = Math.min(arc.tRange[1], domain.tHi);
+    // A non-rim end is an occlusion boundary ⇒ snap it onto its crossing junction; a t-rim end stays.
+    if (lo > domain.tLo + 1e-9) lo = snapEnd(arc.column, arc.strand, arc.side, lo);
+    if (hi < domain.tHi - 1e-9) hi = snapEnd(arc.column, arc.strand, arc.side, hi);
+    if (hi - lo < 1e-3) continue; // sub-arc too short to mesh meaningfully
+    const arcSeg = adaptSegmentToRange(seg, lo, hi);
+    if (arcFilter && !arcFilter(arcSeg)) continue; // far strand not participating in this crossing (T2)
+    adapted.push(arcSeg);
+    adaptedId.push({ column: arc.column, strand: arc.strand, side: arc.side });
+    arcRange.push([lo, hi]);
+  }
+  // Bind an incident (column,strand,side) at height t to the adapted arc that reaches t. Arc ends now
+  // sit ON the junctions, so a tiny tolerance suffices; another arc of the same edge is ≫ that away.
+  const JBIND = 1e-4;
+  const arcIndexAt = (column: number, strand: number, side: number, t: number): number => {
+    let best = -1;
+    let bestSlack = Infinity;
+    for (let i = 0; i < adaptedId.length; i += 1) {
+      const id = adaptedId[i];
+      if (id.column !== column || id.strand !== strand || id.side !== side) continue;
+      const [lo, hi] = arcRange[i];
+      const slack = Math.max(0, lo - t) + Math.max(0, t - hi); // 0 when t is inside (endpoints incl.)
+      if (slack <= JBIND && slack < bestSlack) {
+        bestSlack = slack;
+        best = i;
+      }
+    }
+    return best;
+  };
+  for (const j of junctionList) {
+    if (j.t < domain.tLo || j.t > domain.tHi) continue;
+    const segs = j.incident.map((inc) => arcIndexAt(j.column, inc.strand, inc.side, j.t)).filter((i) => i >= 0);
+    if (segs.length < 2) continue; // both incident edges must reach the junction
+    junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
+  }
+  return { adapted, adaptedId, junctions };
 }
 
 /** Flatten a built mesh into a reference triangle soup (3D corners per face). */
@@ -518,90 +610,27 @@ function meshColumnCrossing(
   };
 
   const adapted: SegLike[] = [];
-  const adaptedId: Array<{ strand: number; side: number }> = [];
+  const adaptedId: Array<{ column: number; strand: number; side: number }> = [];
   const junctions: JunLike[] = [];
   if (withClip) {
-    // P3b T2: feed each ribbon↔background cliff CLIPPED to its visible (non-occluded) t-sub-arcs
-    // (Task 1's `clipCliffsToVisibleEnvelope`). The occluded under-strand edges are then ABSENT inside
-    // the overlap diamond, so the over-strand crest crease threads the crossing through FREE space
-    // (no cliff to cross ⇒ planar PSLG, no cdt2d crash, no soft-weld). Each occlusion boundary
-    // coincides with a declared crossing junction, so the clipped arc TERMINATES there and the M3
-    // junction pinch + M4 one-sided-limit occlusion wall close it watertight.
+    // P3b T2 (via the shared clip helper `buildClippedConstraints`): feed each ribbon↔background cliff
+    // CLIPPED to its visible (non-occluded) t-sub-arcs (`clipCliffsToVisibleEnvelope`), dropping the far
+    // strands that do NOT reach this crossing window (`overlapsWindowU`). The occluded under-strand edges
+    // are then ABSENT inside the overlap diamond, so the over-strand crest crease threads the crossing
+    // through FREE space (planar PSLG, no cdt2d crash, no soft-weld); each occlusion boundary is snapped
+    // onto its declared crossing junction so the clipped arc terminates there and the M3 pinch + M4
+    // one-sided-limit occlusion wall close it watertight.
     const env = clipCliffsToVisibleEnvelope(params, cliffDims);
-    // Each ribbon-background edge's crossing junctions (the occlusion boundaries) per (strand,side):
-    // an arc end that abuts an occlusion boundary is SNAPPED exactly onto its junction t, so the
-    // clipped arc terminates ON the crossing the pinch closes (the arc's endpoint sample is then
-    // upgraded in place to the junction's shared pinch vertex by `buildDoubleValuedMesh`).
-    const incidentJt = new Map<string, number[]>();
-    for (const j of colJunctions) {
-      for (const inc of j.incident) {
-        const key = `${inc.strand}:${inc.side}`;
-        const arr = incidentJt.get(key) ?? [];
-        arr.push(j.t);
-        incidentJt.set(key, arr);
-      }
-    }
-    // The clip's occlusion-boundary t and its crossing junction's t agree to ~1e-4; snap within a
-    // tolerance ≪ the occluded gap (~0.007) so an arc end never snaps across the diamond.
-    const SNAP_T = 3e-3;
-    const snapEnd = (strand: number, side: number, t: number): number => {
-      let best = t;
-      let bestD = SNAP_T;
-      for (const jt of incidentJt.get(`${strand}:${side}`) ?? []) {
-        const d = Math.abs(jt - t);
-        if (d < bestD) {
-          bestD = d;
-          best = jt;
-        }
-      }
-      return best;
-    };
-    // t-range of each adapted arc, parallel to `adapted`, so a junction binds to the arc that reaches it
-    // (an under-strand edge has several arcs; the over-strand one spans the window).
-    const arcRange: Array<[number, number]> = [];
-    for (const arc of env.visibleCliffs) {
-      if (arc.column !== COLUMN) continue;
-      const seg = ribbonSegs.find((s) => s.strand === arc.strand && s.side === arc.side);
-      if (!seg) continue;
-      let lo = Math.max(arc.tRange[0], domain.tLo);
-      let hi = Math.min(arc.tRange[1], domain.tHi);
-      // A non-rim end is an occlusion boundary ⇒ snap it onto its crossing junction; a rim end stays.
-      if (lo > domain.tLo + 1e-9) lo = snapEnd(arc.strand, arc.side, lo);
-      if (hi < domain.tHi - 1e-9) hi = snapEnd(arc.strand, arc.side, hi);
-      if (hi - lo < 1e-3) continue; // sub-arc does not meaningfully meet the window
-      const arcSeg = adaptSegmentToRange(seg, lo, hi);
-      if (!overlapsWindowU(arcSeg.at)) continue; // far strand not participating in this crossing
-      adapted.push(arcSeg);
-      adaptedId.push({ strand: arc.strand, side: arc.side });
-      arcRange.push([lo, hi]);
-    }
-    // Bind an incident (strand,side) at height t to the adapted arc that reaches t. Arc ends now sit
-    // ON the junctions, so a tiny tolerance suffices; the far-gap arc is ≫ that away and never binds.
-    const JBIND = 1e-4;
-    const arcIndexAt = (strand: number, side: number, t: number): number => {
-      let best = -1;
-      let bestSlack = Infinity;
-      for (let i = 0; i < adaptedId.length; i += 1) {
-        if (adaptedId[i].strand !== strand || adaptedId[i].side !== side) continue;
-        const [lo, hi] = arcRange[i];
-        const slack = Math.max(0, lo - t) + Math.max(0, t - hi); // 0 when t is inside (endpoints incl.)
-        if (slack <= JBIND && slack < bestSlack) {
-          bestSlack = slack;
-          best = i;
-        }
-      }
-      return best;
-    };
-    for (const j of colJunctions) {
-      if (j.t < domain.tLo || j.t > domain.tHi) continue;
-      const segs = j.incident.map((inc) => arcIndexAt(inc.strand, inc.side, j.t)).filter((i) => i >= 0);
-      if (segs.length < 2) continue; // both incident edges must reach the junction in the window
-      junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
-    }
+    const clipped = buildClippedConstraints(env, ribbonSegs, colJunctions, domain, (arcSeg) =>
+      overlapsWindowU(arcSeg.at),
+    );
+    adapted.push(...clipped.adapted);
+    adaptedId.push(...clipped.adaptedId);
+    junctions.push(...clipped.junctions);
   } else {
     for (const seg of ribbonSegs) {
       adapted.push(adaptSegment(seg, window));
-      adaptedId.push({ strand: seg.strand, side: seg.side });
+      adaptedId.push({ column: seg.column, strand: seg.strand, side: seg.side });
     }
     const segIndexOf = (strand: number, side: number): number =>
       adaptedId.findIndex((a) => a.strand === strand && a.side === side);
@@ -700,18 +729,22 @@ function meshColumnCrossing(
   const facet = facetChordToTrueSurface(mesh, surface, H);
 
   // ---- INDEPENDENT fidelity certification (does NOT go through the region classifier) ----
+  // I1 (P3b): evaluate each arc at ITS OWN tRange fraction, not the domain fraction. A clip-path arc
+  // (`adaptSegmentToRange`) spans only a sub-interval [lo,hi] of the domain, so its `at(s)` maps s∈[0,1]
+  // onto [lo,hi]; the domain fraction (t−tLo)/(tHi−tLo) would sample the wrong physical height. For a
+  // full-band arc (M3/M4/M6a: tRange === domain) this is byte-identical, so it corrects only the clip path.
   const cliffLocusDistance = (u: number, t: number): number => {
-    const s = clamp01((t - domain.tLo) / (domain.tHi - domain.tLo));
     let best = Infinity;
     for (const seg of adapted) {
+      const s = clamp01((t - seg.tRange[0]) / (seg.tRange[1] - seg.tRange[0]));
       const d = Math.abs(u - seg.at(s).u);
       if (d < best) best = d;
     }
     return best;
   };
   const locusUAt = (seg: number, t: number): number => {
-    const s = clamp01((t - domain.tLo) / (domain.tHi - domain.tLo));
-    return adapted[seg].at(s).u;
+    const sg = adapted[seg];
+    return sg.at(clamp01((t - sg.tRange[0]) / (sg.tRange[1] - sg.tRange[0]))).u;
   };
   const cert = certifyAgainstTrueSurface(mesh, surface, cliffLocusDistance, locusUAt, ONE_SIDED_DELTA);
   const regionStats = regionRadiusConsistency(mesh);
@@ -1358,85 +1391,31 @@ export function buildCelticKnotFullPotMesh(
   const adaptedId: Array<{ column: number; strand: number; side: number }> = [];
   const junctions: JunLike[] = [];
   if (clip) {
-    // P3b T3: feed each ribbon↔background cliff CLIPPED to its visible (non-occluded) t-sub-arcs
-    // (Task 1's `clipCliffsToVisibleEnvelope`), composed over EVERY column and the WHOLE periodic
-    // band — no isolation window, no far-strand drop (that was T2's single-crossing window scoping;
-    // here every strand of every column participates). The occluded under-strand edges are ABSENT
-    // inside each overlap diamond, so the over-strand crest crease threads the crossing through free
-    // space (planar PSLG, no cdt2d crash, no soft-weld); each occlusion boundary coincides with a
-    // declared crossing junction, so the clipped arc TERMINATES there and the M3 junction pinch + M4
-    // one-sided-limit wall close it watertight.
+    // P3b T3 (via the shared clip helper `buildClippedConstraints`): feed each ribbon↔background cliff
+    // CLIPPED to its visible (non-occluded) t-sub-arcs (`clipCliffsToVisibleEnvelope`), composed over
+    // EVERY column and the WHOLE periodic band — no isolation window, no far-strand drop (that was T2's
+    // single-crossing window scoping; here every strand of every column participates, so NO `arcFilter`).
+    // The occluded under-strand edges are ABSENT inside each overlap diamond, so the over-strand crest
+    // crease threads the crossing through free space (planar PSLG, no cdt2d crash, no soft-weld); each
+    // occlusion boundary is snapped onto its declared crossing junction so the clipped arc terminates
+    // there and the M3 junction pinch + M4 one-sided-limit wall close it watertight.
     const env = clipCliffsToVisibleEnvelope(params, cliffDims);
-    // Per (column,strand,side): the t of every incident crossing junction (its occlusion boundaries).
-    // An arc end that abuts an occlusion boundary is SNAPPED exactly onto its junction t, so the
-    // clipped arc terminates ON the crossing the pinch closes (the endpoint base sample is then
-    // upgraded in place to the junction's shared pinch vertex by `buildDoubleValuedMesh`).
-    const incidentJt = new Map<string, number[]>();
-    for (const j of complex.junctions) {
-      for (const inc of j.incident) {
-        const key = `${j.column}:${inc.strand}:${inc.side}`;
-        const arr = incidentJt.get(key) ?? [];
-        arr.push(j.t);
-        incidentJt.set(key, arr);
-      }
-    }
-    // The clip's occlusion-boundary t and its crossing junction's t agree to ~1e-4; snap within a
-    // tolerance ≪ the occluded gap (~0.007 at DEFAULT) so an arc end never snaps across the diamond.
-    // Measured at the 3-strand default: all 108 occlusion boundaries snap to a junction, 0 orphans.
-    const SNAP_T = 3e-3;
-    const snapEnd = (column: number, strand: number, side: number, t: number): number => {
-      let best = t;
-      let bestD = SNAP_T;
-      for (const jt of incidentJt.get(`${column}:${strand}:${side}`) ?? []) {
-        const d = Math.abs(jt - t);
-        if (d < bestD) {
-          bestD = d;
-          best = jt;
-        }
-      }
-      return best;
-    };
-    // t-range of each adapted arc, parallel to `adapted`, so a junction binds to the arc that reaches
-    // it (an under-strand edge has several visible arcs; the over-strand one spans the diamond).
-    const arcRange: Array<[number, number]> = [];
-    for (const arc of env.visibleCliffs) {
-      const seg = ribbonSegs.find(
-        (s) => s.column === arc.column && s.strand === arc.strand && s.side === arc.side,
+    const clipped = buildClippedConstraints(env, ribbonSegs, complex.junctions, domain);
+    adapted.push(...clipped.adapted);
+    adaptedId.push(...clipped.adaptedId);
+    junctions.push(...clipped.junctions);
+    // m4-harden (P3b): a junction whose incident arcs did NOT both reach it — a dropped short arc
+    // (`hi−lo < 1e-3`) or an arm that failed to bind — is silently absent from `junctions`, leaving
+    // that crossing un-planarized. Guard LOUDLY: every declared junction inside the band must bind
+    // (at the 3-strand DEFAULT this is 108/108, 0 orphans). A silent junction-skip now THROWS with the
+    // orphan count instead of passing unnoticed. Deterministic (pure count over the declared junctions).
+    const inBandJunctions = complex.junctions.filter((j) => j.t >= domain.tLo && j.t <= domain.tHi).length;
+    if (junctions.length !== inBandJunctions) {
+      throw new Error(
+        `clip junction bind incomplete: ${junctions.length}/${inBandJunctions} in-band junctions bound ` +
+          `(${inBandJunctions - junctions.length} orphan crossing(s) left un-planarized — a clipped arc was ` +
+          `dropped as too short or failed to reach its junction; loosen SNAP_T/the 1e-3 min-arc or investigate)`,
       );
-      if (!seg) continue;
-      let lo = Math.max(arc.tRange[0], domain.tLo);
-      let hi = Math.min(arc.tRange[1], domain.tHi);
-      // A non-rim end is an occlusion boundary ⇒ snap it onto its crossing junction; a t-rim end stays.
-      if (lo > domain.tLo + 1e-9) lo = snapEnd(arc.column, arc.strand, arc.side, lo);
-      if (hi < domain.tHi - 1e-9) hi = snapEnd(arc.column, arc.strand, arc.side, hi);
-      if (hi - lo < 1e-3) continue; // sub-arc too short to mesh meaningfully
-      adapted.push(adaptSegmentToRange(seg, lo, hi));
-      adaptedId.push({ column: arc.column, strand: arc.strand, side: arc.side });
-      arcRange.push([lo, hi]);
-    }
-    // Bind an incident (column,strand,side) at height t to the adapted arc that reaches t. Arc ends now
-    // sit ON the junctions, so a tiny tolerance suffices; another arc of the same edge is ≫ that away.
-    const JBIND = 1e-4;
-    const arcIndexAt = (column: number, strand: number, side: number, t: number): number => {
-      let best = -1;
-      let bestSlack = Infinity;
-      for (let i = 0; i < adaptedId.length; i += 1) {
-        const id = adaptedId[i];
-        if (id.column !== column || id.strand !== strand || id.side !== side) continue;
-        const [lo, hi] = arcRange[i];
-        const slack = Math.max(0, lo - t) + Math.max(0, t - hi); // 0 when t is inside (endpoints incl.)
-        if (slack <= JBIND && slack < bestSlack) {
-          bestSlack = slack;
-          best = i;
-        }
-      }
-      return best;
-    };
-    for (const j of complex.junctions) {
-      if (j.t < domain.tLo || j.t > domain.tHi) continue;
-      const segs = j.incident.map((inc) => arcIndexAt(j.column, inc.strand, inc.side, j.t)).filter((i) => i >= 0);
-      if (segs.length < 2) continue; // both incident edges must reach the junction
-      junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
     }
   } else {
     for (const seg of ribbonSegs) {
@@ -1511,16 +1490,24 @@ export function buildCelticKnotFullPotMesh(
   const seam = periodicSeamAudit(mesh, domain);
 
   // ---- INDEPENDENT fidelity certification (classifier-free, vs the exact analytic surface) ----
+  // I1 (P3b): evaluate each arc at ITS OWN tRange fraction, not the domain (T_LO..T_HI) fraction. A
+  // clip-path arc (`adaptSegmentToRange`) spans only a sub-interval [lo,hi] of the band, so its `at(s)`
+  // maps s∈[0,1] onto [lo,hi]; the domain fraction (t−T_LO)/(T_HI−T_LO) samples the wrong physical
+  // height, mis-locating the locus the side-vote (verify.ts:338) and straddle guard (verify.ts:382) use.
+  // For a full-band arc (M5: tRange === [T_LO,T_HI]) this is byte-identical — it corrects only the clip path.
   const cliffLocusDistance = (u: number, t: number): number => {
-    const s = clamp01((t - T_LO) / (T_HI - T_LO));
     let best = Infinity;
     for (const sg of adapted) {
+      const s = clamp01((t - sg.tRange[0]) / (sg.tRange[1] - sg.tRange[0]));
       const d = Math.abs(u - sg.at(s).u);
       if (d < best) best = d;
     }
     return best;
   };
-  const locusUAt = (seg: number, t: number): number => adapted[seg].at(clamp01((t - T_LO) / (T_HI - T_LO))).u;
+  const locusUAt = (seg: number, t: number): number => {
+    const sg = adapted[seg];
+    return sg.at(clamp01((t - sg.tRange[0]) / (sg.tRange[1] - sg.tRange[0]))).u;
+  };
   const cert = certifyAgainstTrueSurface(mesh, surface, cliffLocusDistance, locusUAt, ONE_SIDED_DELTA);
   const regionStats = regionRadiusConsistency(mesh);
   const certification: SurfaceCertification = {

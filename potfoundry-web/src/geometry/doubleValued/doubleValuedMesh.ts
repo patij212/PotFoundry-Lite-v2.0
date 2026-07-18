@@ -644,13 +644,21 @@ function assemble(
   // neighbour of a (non-junction) cliff point in that region, vote for the u-SIDE of the
   // cliff's OWN locus the neighbour lies on — measured against the locus at the neighbour's t
   // (snake-robust). The cliff vertex is then lifted to surface(u ∓ δ, t) taken from that side.
-  const tSpanA = domain.tHi - domain.tLo;
-  const sOfT = (t: number): number => {
-    if (tSpanA <= 0) return 0;
-    const s = (t - domain.tLo) / tSpanA;
-    return s < 0 ? 0 : s > 1 ? 1 : s;
+  // I1/sSeg parity (P3b): evaluate the locus at the cliff arc's OWN tRange fraction, NOT the domain
+  // fraction. A T2/T3 visible-envelope-CLIPPED arc spans only a sub-interval [lo,hi] of the window, so
+  // its `at(s)` maps s∈[0,1] onto [lo,hi]; the domain fraction (t−tLo)/tSpan samples the arc at the WRONG
+  // height and can flip a fragile side-vote at an occlusion-corner cliff point — mis-lifting it a full
+  // radial jump off its own region's sheets (measured: T2 cliff vertex placed 0.60mm below its region).
+  // For a full-band arc (M1–M6a: tRange === the window) lo/hi === domain.tLo/tHi, so this is byte-identical
+  // — it corrects only the clip path, and keeps the mesher consistent with the independent certifier.
+  const locusU = (ci: number, t: number): number => {
+    const sg = cliffs[ci].seg;
+    const lo = sg.tRange[0];
+    const hi = sg.tRange[1];
+    const span = hi - lo;
+    const s = span > 0 ? (t - lo) / span : 0;
+    return sg.at(s < 0 ? 0 : s > 1 ? 1 : s).u;
   };
-  const locusU = (ci: number, t: number): number => cliffs[ci].seg.at(sOfT(t)).u;
   const regCenU = new Float64Array(regionCount);
   const regCenT = new Float64Array(regionCount);
   const regCenN = new Int32Array(regionCount);
