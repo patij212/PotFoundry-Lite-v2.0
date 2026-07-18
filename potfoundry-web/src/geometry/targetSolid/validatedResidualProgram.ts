@@ -61,8 +61,7 @@ import type {
   ValidatedResidualEnclosureRequest,
 } from './continuousMappedPatchDistance';
 
-export const VALIDATED_RESIDUAL_PROGRAM_VERSION =
-  'potfoundry.validated-target-program/v2' as const;
+export const VALIDATED_RESIDUAL_PROGRAM_VERSION = 'potfoundry.validated-target-program/v2' as const;
 export const VALIDATED_RESIDUAL_SSA_PROGRAM_VERSION =
   'potfoundry.validated-target-ssa-program/v3' as const;
 export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_VERSION =
@@ -105,8 +104,7 @@ export const GENERATED_TARGET_PROGRAM_BACKENDS_VERSION =
   'potfoundry.generated-target-program-backends/v7' as const;
 export const GENERATED_TARGET_PROGRAM_BACKENDS_SCOPE =
   'shared-ir-cpu-f64-wgsl-f32-reference-and-validated-interval-no-device-conformance-proof' as const;
-export const WGSL_TARGET_BUILTIN_SEMANTICS_REVISION =
-  'W3C-CRD-WGSL-20260310' as const;
+export const WGSL_TARGET_BUILTIN_SEMANTICS_REVISION = 'W3C-CRD-WGSL-20260310' as const;
 export const GENERATED_TARGET_PROGRAM_BACKENDS_PROOF_SHA256 = sha256Utf8(
   [
     GENERATED_TARGET_PROGRAM_BACKENDS_VERSION,
@@ -154,10 +152,7 @@ export interface GeneratedTargetProgramBackends {
   readonly wgslSource: string;
   readonly wgslSourceSha256: string;
   readonly evaluateFloat64: (u: number, v: number) => readonly [number, number, number];
-  readonly evaluateFloat32Reference: (
-    u: number,
-    v: number
-  ) => readonly [number, number, number];
+  readonly evaluateFloat32Reference: (u: number, v: number) => readonly [number, number, number];
   readonly [generatedTargetProgramBackendsBrand]: true;
 }
 
@@ -275,10 +270,7 @@ function exactKeys(
   label: string
 ): void {
   const actual = Object.keys(value).sort();
-  if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
-  ) {
+  if (actual.length !== expected.length || actual.some((key, index) => key !== expected[index])) {
     refuse(`${label} has unknown or missing fields`);
   }
 }
@@ -298,7 +290,8 @@ function compileExpression(
 
   if (operation === 'constant') {
     exactKeys(expression, ['op', 'value'], 'constant expression');
-    if (typeof expression.value !== 'string') refuse('constant value must be an exact decimal string');
+    if (typeof expression.value !== 'string')
+      refuse('constant value must be an exact decimal string');
     try {
       decimalPoint(expression.value);
     } catch (error) {
@@ -311,11 +304,7 @@ function compileExpression(
     instructions.push(Object.freeze({ op: operation, value: expression.value }));
     return instructions.length - 1;
   }
-  if (
-    operation === 'u' ||
-    operation === 'v' ||
-    operation === 'pi'
-  ) {
+  if (operation === 'u' || operation === 'v' || operation === 'pi') {
     exactKeys(expression, ['op'], `${operation} expression`);
     instructions.push(Object.freeze({ op: operation }));
     return instructions.length - 1;
@@ -379,7 +368,8 @@ function compileSsaNode(value: CanonicalJsonValue, nodeIndex: number): Instructi
   if (typeof operation !== 'string') refuse(`SSA node ${nodeIndex} op must be a string`);
   if (operation === 'constant') {
     exactKeys(node, ['op', 'value'], `SSA constant node ${nodeIndex}`);
-    if (typeof node.value !== 'string') refuse('SSA constant value must be an exact decimal string');
+    if (typeof node.value !== 'string')
+      refuse('SSA constant value must be an exact decimal string');
     try {
       decimalPoint(node.value);
     } catch (error) {
@@ -482,15 +472,11 @@ function validateIntegerHashOperands(instructions: readonly Instruction[]): void
       case 'multiply':
       case 'minimum':
       case 'maximum':
-        isInteger =
-          integerValued[instruction.left] && integerValued[instruction.right];
+        isInteger = integerValued[instruction.left] && integerValued[instruction.right];
         break;
       case 'pcg2d-unit-x':
       case 'pcg2d-unit-y':
-        if (
-          !integerValued[instruction.left] ||
-          !integerValued[instruction.right]
-        ) {
+        if (!integerValued[instruction.left] || !integerValued[instruction.right]) {
           refuse(`SSA node ${index} PCG2D operands are not structurally integer-valued`);
         }
         break;
@@ -550,10 +536,7 @@ function compileProgram(canonicalProgramJson: unknown): InternalCompiledProgram 
     targetZ = ssaNodeIndex(target.z, instructions.length, 'target z');
     hashDomain = 'potfoundry.validated-target-ssa-program/definition/v3';
   }
-  const programSha256 = domainSeparatedCanonicalJsonSha256(
-    hashDomain,
-    parsed.value
-  );
+  const programSha256 = domainSeparatedCanonicalJsonSha256(hashDomain, parsed.value);
   validateIntegerHashOperands(instructions);
   const affineForms = deriveAffineForms(instructions);
   return Object.freeze({
@@ -574,9 +557,7 @@ function compileProgram(canonicalProgramJson: unknown): InternalCompiledProgram 
   });
 }
 
-export function computeValidatedResidualProgramSha256(
-  canonicalProgramJson: unknown
-): string {
+export function computeValidatedResidualProgramSha256(canonicalProgramJson: unknown): string {
   return compileProgram(canonicalProgramJson).programSha256;
 }
 
@@ -605,41 +586,64 @@ function numericInstructionValue(
   pcg2dCache: Map<string, readonly [number, number]>
 ): number {
   switch (instruction.op) {
-    case 'constant': return Number(instruction.value);
-    case 'u': return u;
-    case 'v': return v;
-    case 'pi': return Math.PI;
-    case 'negate': return -values[instruction.arg];
-    case 'absolute': return Math.abs(values[instruction.arg]);
-    case 'square': return values[instruction.arg] * values[instruction.arg];
-    case 'sqrt': return Math.sqrt(values[instruction.arg]);
-    case 'exp': return Math.exp(values[instruction.arg]);
-    case 'ln': return Math.log(values[instruction.arg]);
-    case 'sin': return Math.sin(values[instruction.arg]);
-    case 'cos': return Math.cos(values[instruction.arg]);
-    case 'floor': return Math.floor(values[instruction.arg]);
-    case 'ceiling': return Math.ceil(values[instruction.arg]);
-    case 'round': return roundTiesToEven(values[instruction.arg]);
-    case 'fractional-part': return values[instruction.arg] - Math.floor(values[instruction.arg]);
-    case 'sign': return Math.sign(values[instruction.arg]);
-    case 'add': return values[instruction.left] + values[instruction.right];
-    case 'subtract': return values[instruction.left] - values[instruction.right];
-    case 'multiply': return values[instruction.left] * values[instruction.right];
-    case 'divide': return values[instruction.left] / values[instruction.right];
-    case 'minimum': return Math.min(values[instruction.left], values[instruction.right]);
-    case 'maximum': return Math.max(values[instruction.left], values[instruction.right]);
-    case 'power': return Math.pow(values[instruction.left], values[instruction.right]);
-    case 'step': return values[instruction.left] <= values[instruction.right] ? 1 : 0;
-    case 'atan2': return Math.atan2(values[instruction.left], values[instruction.right]);
+    case 'constant':
+      return Number(instruction.value);
+    case 'u':
+      return u;
+    case 'v':
+      return v;
+    case 'pi':
+      return Math.PI;
+    case 'negate':
+      return -values[instruction.arg];
+    case 'absolute':
+      return Math.abs(values[instruction.arg]);
+    case 'square':
+      return values[instruction.arg] * values[instruction.arg];
+    case 'sqrt':
+      return Math.sqrt(values[instruction.arg]);
+    case 'exp':
+      return Math.exp(values[instruction.arg]);
+    case 'ln':
+      return Math.log(values[instruction.arg]);
+    case 'sin':
+      return Math.sin(values[instruction.arg]);
+    case 'cos':
+      return Math.cos(values[instruction.arg]);
+    case 'floor':
+      return Math.floor(values[instruction.arg]);
+    case 'ceiling':
+      return Math.ceil(values[instruction.arg]);
+    case 'round':
+      return roundTiesToEven(values[instruction.arg]);
+    case 'fractional-part':
+      return values[instruction.arg] - Math.floor(values[instruction.arg]);
+    case 'sign':
+      return Math.sign(values[instruction.arg]);
+    case 'add':
+      return values[instruction.left] + values[instruction.right];
+    case 'subtract':
+      return values[instruction.left] - values[instruction.right];
+    case 'multiply':
+      return values[instruction.left] * values[instruction.right];
+    case 'divide':
+      return values[instruction.left] / values[instruction.right];
+    case 'minimum':
+      return Math.min(values[instruction.left], values[instruction.right]);
+    case 'maximum':
+      return Math.max(values[instruction.left], values[instruction.right]);
+    case 'power':
+      return Math.pow(values[instruction.left], values[instruction.right]);
+    case 'step':
+      return values[instruction.left] <= values[instruction.right] ? 1 : 0;
+    case 'atan2':
+      return Math.atan2(values[instruction.left], values[instruction.right]);
     case 'pcg2d-unit-x':
     case 'pcg2d-unit-y': {
       const key = `${instruction.left}:${instruction.right}`;
       let pair = pcg2dCache.get(key);
       if (pair === undefined) {
-        pair = integerPcg2dUnitHash(
-          values[instruction.left],
-          values[instruction.right]
-        );
+        pair = integerPcg2dUnitHash(values[instruction.left], values[instruction.right]);
         pcg2dCache.set(key, pair);
       }
       return pair[instruction.op === 'pcg2d-unit-x' ? 0 : 1];
@@ -678,7 +682,9 @@ function evaluateGeneratedTargetPoint(
     );
     const value = float32 ? Math.fround(unrounded) : unrounded;
     if (!Number.isFinite(value)) {
-      generatedBackendRefuse(`node ${index} produced a non-finite ${float32 ? 'f32' : 'f64'} value`);
+      generatedBackendRefuse(
+        `node ${index} produced a non-finite ${float32 ? 'f32' : 'f64'} value`
+      );
     }
     values.push(value === 0 ? 0 : value);
   }
@@ -702,32 +708,58 @@ function wgslFloat32Literal(decimal: string): string {
 function wgslInstructionExpression(instruction: Instruction): string {
   const node = (index: number): string => `n${index}`;
   switch (instruction.op) {
-    case 'constant': return wgslFloat32Literal(instruction.value);
-    case 'u': return 'u';
-    case 'v': return 'v';
-    case 'pi': return wgslFloat32Literal(exactFloat64Decimal(Math.PI));
-    case 'negate': return `-${node(instruction.arg)}`;
-    case 'absolute': return `abs(${node(instruction.arg)})`;
-    case 'square': return `(${node(instruction.arg)} * ${node(instruction.arg)})`;
-    case 'sqrt': return `sqrt(${node(instruction.arg)})`;
-    case 'exp': return `exp(${node(instruction.arg)})`;
-    case 'ln': return `log(${node(instruction.arg)})`;
-    case 'sin': return `sin(${node(instruction.arg)})`;
-    case 'cos': return `cos(${node(instruction.arg)})`;
-    case 'floor': return `floor(${node(instruction.arg)})`;
-    case 'ceiling': return `ceil(${node(instruction.arg)})`;
-    case 'round': return `round(${node(instruction.arg)})`;
-    case 'fractional-part': return `fract(${node(instruction.arg)})`;
-    case 'sign': return `sign(${node(instruction.arg)})`;
-    case 'add': return `(${node(instruction.left)} + ${node(instruction.right)})`;
-    case 'subtract': return `(${node(instruction.left)} - ${node(instruction.right)})`;
-    case 'multiply': return `(${node(instruction.left)} * ${node(instruction.right)})`;
-    case 'divide': return `(${node(instruction.left)} / ${node(instruction.right)})`;
-    case 'minimum': return `min(${node(instruction.left)}, ${node(instruction.right)})`;
-    case 'maximum': return `max(${node(instruction.left)}, ${node(instruction.right)})`;
-    case 'power': return `pow(${node(instruction.left)}, ${node(instruction.right)})`;
-    case 'step': return `step(${node(instruction.left)}, ${node(instruction.right)})`;
-    case 'atan2': return `atan2(select(${node(instruction.left)}, 0.0, ${node(instruction.left)} == 0.0), select(${node(instruction.right)}, 0.0, ${node(instruction.right)} == 0.0))`;
+    case 'constant':
+      return wgslFloat32Literal(instruction.value);
+    case 'u':
+      return 'u';
+    case 'v':
+      return 'v';
+    case 'pi':
+      return wgslFloat32Literal(exactFloat64Decimal(Math.PI));
+    case 'negate':
+      return `-${node(instruction.arg)}`;
+    case 'absolute':
+      return `abs(${node(instruction.arg)})`;
+    case 'square':
+      return `(${node(instruction.arg)} * ${node(instruction.arg)})`;
+    case 'sqrt':
+      return `sqrt(${node(instruction.arg)})`;
+    case 'exp':
+      return `exp(${node(instruction.arg)})`;
+    case 'ln':
+      return `log(${node(instruction.arg)})`;
+    case 'sin':
+      return `sin(${node(instruction.arg)})`;
+    case 'cos':
+      return `cos(${node(instruction.arg)})`;
+    case 'floor':
+      return `floor(${node(instruction.arg)})`;
+    case 'ceiling':
+      return `ceil(${node(instruction.arg)})`;
+    case 'round':
+      return `round(${node(instruction.arg)})`;
+    case 'fractional-part':
+      return `fract(${node(instruction.arg)})`;
+    case 'sign':
+      return `sign(${node(instruction.arg)})`;
+    case 'add':
+      return `(${node(instruction.left)} + ${node(instruction.right)})`;
+    case 'subtract':
+      return `(${node(instruction.left)} - ${node(instruction.right)})`;
+    case 'multiply':
+      return `(${node(instruction.left)} * ${node(instruction.right)})`;
+    case 'divide':
+      return `(${node(instruction.left)} / ${node(instruction.right)})`;
+    case 'minimum':
+      return `min(${node(instruction.left)}, ${node(instruction.right)})`;
+    case 'maximum':
+      return `max(${node(instruction.left)}, ${node(instruction.right)})`;
+    case 'power':
+      return `pow(${node(instruction.left)}, ${node(instruction.right)})`;
+    case 'step':
+      return `step(${node(instruction.left)}, ${node(instruction.right)})`;
+    case 'atan2':
+      return `atan2(select(${node(instruction.left)}, 0.0, ${node(instruction.left)} == 0.0), select(${node(instruction.right)}, 0.0, ${node(instruction.right)} == 0.0))`;
     case 'pcg2d-unit-x':
     case 'pcg2d-unit-y':
       generatedBackendRefuse('PCG2D instructions require paired WGSL emission');
@@ -740,12 +772,15 @@ function generatedWgslSource(program: InternalCompiledProgram): {
 } {
   const functionName = `pf_target_${program.programSha256.slice(0, 16)}`;
   const usesPcg2d = program.instructions.some(
-    (instruction) =>
-      instruction.op === 'pcg2d-unit-x' || instruction.op === 'pcg2d-unit-y'
+    (instruction) => instruction.op === 'pcg2d-unit-x' || instruction.op === 'pcg2d-unit-y'
   );
   const pcg2dFunctionName = `pf_pcg2d_${program.programSha256.slice(0, 16)}`;
   const lines = usesPcg2d
-    ? [integerPcg2dUnitHashWgslSource(pcg2dFunctionName).trimEnd(), '', `fn ${functionName}(u: f32, v: f32) -> vec3<f32> {`]
+    ? [
+        integerPcg2dUnitHashWgslSource(pcg2dFunctionName).trimEnd(),
+        '',
+        `fn ${functionName}(u: f32, v: f32) -> vec3<f32> {`,
+      ]
     : [`fn ${functionName}(u: f32, v: f32) -> vec3<f32> {`];
   const pcg2dBindings = new Map<string, string>();
   for (let index = 0; index < program.instructions.length; index += 1) {
@@ -765,9 +800,7 @@ function generatedWgslSource(program: InternalCompiledProgram): {
       );
       continue;
     }
-    lines.push(
-      `  let n${index}: f32 = ${wgslInstructionExpression(instruction)};`
-    );
+    lines.push(`  let n${index}: f32 = ${wgslInstructionExpression(instruction)};`);
   }
   lines.push(
     `  return vec3<f32>(n${program.targetX}, n${program.targetY}, n${program.targetZ});`,
@@ -801,9 +834,8 @@ function deriveGeneratedTargetProgramBackends(
     'potfoundry.generated-target-program-backends/binding/v6',
     bindingValue
   );
-  const evaluateFloat64 = Object.freeze(
-    (u: number, v: number): readonly [number, number, number] =>
-      evaluateGeneratedTargetPoint(program, u, v, false)
+  const evaluateFloat64 = Object.freeze((u: number, v: number): readonly [number, number, number] =>
+    evaluateGeneratedTargetPoint(program, u, v, false)
   );
   const evaluateFloat32Reference = Object.freeze(
     (u: number, v: number): readonly [number, number, number] =>
@@ -909,19 +941,13 @@ const RATIONAL_DECIMAL_GUARD_DIGITS = 45;
  * cell has exactly one encoding.
  */
 function requestOddFactor(request: ValidatedResidualEnclosureRequest): bigint {
-  const raw = (
-    request.cell as { readonly oddDenominatorFactor?: unknown }
-  ).oddDenominatorFactor;
+  const raw = (request.cell as { readonly oddDenominatorFactor?: unknown }).oddDenominatorFactor;
   if (raw === undefined) return 1n;
   if (typeof raw !== 'string' || raw.length > 16 || !INTEGER_RE.test(raw)) {
     refuse('cell oddDenominatorFactor must be a canonical bounded integer string');
   }
   const parsed = BigInt(raw);
-  if (
-    parsed < 3n ||
-    (parsed & 1n) !== 1n ||
-    parsed > MAX_ODD_DENOMINATOR_FACTOR
-  ) {
+  if (parsed < 3n || (parsed & 1n) !== 1n || parsed > MAX_ODD_DENOMINATOR_FACTOR) {
     refuse(
       'cell oddDenominatorFactor must be an odd integer >= 3 within the exact envelope; dyadic cells omit it'
     );
@@ -933,9 +959,7 @@ function scaledDecimalString(scaled: bigint, fractionalDigits: number): string {
   if (scaled === 0n) return '0';
   const digits = scaled.toString().padStart(fractionalDigits + 1, '0');
   const split = digits.length - fractionalDigits;
-  return `${digits.slice(0, split)}.${digits.slice(split)}`
-    .replace(/0+$/, '')
-    .replace(/\.$/, '');
+  return `${digits.slice(0, split)}.${digits.slice(split)}`.replace(/0+$/, '').replace(/\.$/, '');
 }
 
 /**
@@ -960,9 +984,7 @@ function rationalDecimalInterval(
   const magnitude = negative ? -numerator : numerator;
   const fractionalDigits = fractionBits + RATIONAL_DECIMAL_GUARD_DIGITS;
   const scaled =
-    magnitude *
-    5n ** BigInt(fractionBits) *
-    10n ** BigInt(RATIONAL_DECIMAL_GUARD_DIGITS);
+    magnitude * 5n ** BigInt(fractionBits) * 10n ** BigInt(RATIONAL_DECIMAL_GUARD_DIGITS);
   const flooredQuotient = scaled / oddFactor;
   const remainder = scaled % oddFactor;
   const lowMagnitude = scaledDecimalString(flooredQuotient, fractionalDigits);
@@ -999,9 +1021,8 @@ function exactPicometresToMillimetresDecimal(value: unknown, label: string): str
   const digits = (negative ? -picometres : picometres).toString().padStart(10, '0');
   const split = digits.length - 9;
   const fractional = digits.slice(split).replace(/0+$/, '');
-  const magnitude = fractional.length === 0
-    ? digits.slice(0, split)
-    : `${digits.slice(0, split)}.${fractional}`;
+  const magnitude =
+    fractional.length === 0 ? digits.slice(0, split) : `${digits.slice(0, split)}.${fractional}`;
   return `${negative ? '-' : ''}${magnitude}`;
 }
 
@@ -1107,7 +1128,9 @@ function zeroInterval(): DecimalInterval {
 }
 
 function isConstantAffine(form: AffineForm): boolean {
-  return form.u.lower === '0' && form.u.upper === '0' && form.v.lower === '0' && form.v.upper === '0';
+  return (
+    form.u.lower === '0' && form.u.upper === '0' && form.v.lower === '0' && form.v.upper === '0'
+  );
 }
 
 function affineConstant(value: DecimalInterval): AffineForm {
@@ -1143,36 +1166,57 @@ function evaluateConstantInstruction(
   values: readonly DecimalInterval[]
 ): DecimalInterval | null {
   switch (instruction.op) {
-    case 'constant': return decimalPoint(instruction.value);
-    case 'pi': return decimalPi();
-    case 'negate': return decimalNegate(values[instruction.arg]);
-    case 'absolute': return decimalAbsolute(values[instruction.arg]);
-    case 'square': return decimalSquare(values[instruction.arg]);
-    case 'sqrt': return decimalSqrt(values[instruction.arg]);
-    case 'exp': return decimalExp(values[instruction.arg]);
-    case 'ln': return decimalLn(values[instruction.arg]);
-    case 'sin': return decimalSin(values[instruction.arg]);
-    case 'cos': return decimalCos(values[instruction.arg]);
-    case 'floor': return decimalFloor(values[instruction.arg]);
-    case 'ceiling': return decimalCeil(values[instruction.arg]);
-    case 'round': return decimalRoundTiesToEven(values[instruction.arg]);
-    case 'fractional-part': return decimalFract(values[instruction.arg]);
-    case 'sign': return decimalSign(values[instruction.arg]);
-    case 'add': return decimalAdd(values[instruction.left], values[instruction.right]);
-    case 'subtract': return decimalSubtract(values[instruction.left], values[instruction.right]);
-    case 'multiply': return decimalMultiply(values[instruction.left], values[instruction.right]);
-    case 'divide': return decimalDivide(values[instruction.left], values[instruction.right]);
-    case 'minimum': return decimalMinimum(values[instruction.left], values[instruction.right]);
-    case 'maximum': return decimalMaximum(values[instruction.left], values[instruction.right]);
-    case 'power': return decimalPow(values[instruction.left], values[instruction.right]);
-    case 'step': return decimalStep(values[instruction.left], values[instruction.right]);
-    case 'atan2': return decimalAtan2(values[instruction.left], values[instruction.right]);
+    case 'constant':
+      return decimalPoint(instruction.value);
+    case 'pi':
+      return decimalPi();
+    case 'negate':
+      return decimalNegate(values[instruction.arg]);
+    case 'absolute':
+      return decimalAbsolute(values[instruction.arg]);
+    case 'square':
+      return decimalSquare(values[instruction.arg]);
+    case 'sqrt':
+      return decimalSqrt(values[instruction.arg]);
+    case 'exp':
+      return decimalExp(values[instruction.arg]);
+    case 'ln':
+      return decimalLn(values[instruction.arg]);
+    case 'sin':
+      return decimalSin(values[instruction.arg]);
+    case 'cos':
+      return decimalCos(values[instruction.arg]);
+    case 'floor':
+      return decimalFloor(values[instruction.arg]);
+    case 'ceiling':
+      return decimalCeil(values[instruction.arg]);
+    case 'round':
+      return decimalRoundTiesToEven(values[instruction.arg]);
+    case 'fractional-part':
+      return decimalFract(values[instruction.arg]);
+    case 'sign':
+      return decimalSign(values[instruction.arg]);
+    case 'add':
+      return decimalAdd(values[instruction.left], values[instruction.right]);
+    case 'subtract':
+      return decimalSubtract(values[instruction.left], values[instruction.right]);
+    case 'multiply':
+      return decimalMultiply(values[instruction.left], values[instruction.right]);
+    case 'divide':
+      return decimalDivide(values[instruction.left], values[instruction.right]);
+    case 'minimum':
+      return decimalMinimum(values[instruction.left], values[instruction.right]);
+    case 'maximum':
+      return decimalMaximum(values[instruction.left], values[instruction.right]);
+    case 'power':
+      return decimalPow(values[instruction.left], values[instruction.right]);
+    case 'step':
+      return decimalStep(values[instruction.left], values[instruction.right]);
+    case 'atan2':
+      return decimalAtan2(values[instruction.left], values[instruction.right]);
     case 'pcg2d-unit-x':
     case 'pcg2d-unit-y': {
-      const pair = decimalIntegerPcg2dUnitHash(
-        values[instruction.left],
-        values[instruction.right]
-      );
+      const pair = decimalIntegerPcg2dUnitHash(values[instruction.left], values[instruction.right]);
       return pair[instruction.op === 'pcg2d-unit-x' ? 0 : 1];
     }
     case 'u':
@@ -1189,11 +1233,15 @@ function deriveAffineForms(instructions: readonly Instruction[]): readonly (Affi
       continue;
     }
     if (instruction.op === 'u') {
-      forms.push(Object.freeze({ constant: zeroInterval(), u: decimalPoint('1'), v: zeroInterval() }));
+      forms.push(
+        Object.freeze({ constant: zeroInterval(), u: decimalPoint('1'), v: zeroInterval() })
+      );
       continue;
     }
     if (instruction.op === 'v') {
-      forms.push(Object.freeze({ constant: zeroInterval(), u: zeroInterval(), v: decimalPoint('1') }));
+      forms.push(
+        Object.freeze({ constant: zeroInterval(), u: zeroInterval(), v: decimalPoint('1') })
+      );
       continue;
     }
     if (instruction.op === 'pi') {
@@ -1236,11 +1284,12 @@ function deriveAffineForms(instructions: readonly Instruction[]): readonly (Affi
       continue;
     }
 
-    const argumentIndices = 'arg' in instruction
-      ? [instruction.arg]
-      : 'left' in instruction
-        ? [instruction.left, instruction.right]
-        : [];
+    const argumentIndices =
+      'arg' in instruction
+        ? [instruction.arg]
+        : 'left' in instruction
+          ? [instruction.left, instruction.right]
+          : [];
     const argumentForms = argumentIndices.map((index) => forms[index]);
     if (argumentForms.some((form) => form === null || !isConstantAffine(form))) {
       forms.push(null);
@@ -1417,10 +1466,7 @@ function affineResidualHull(
       coordinatePoint(request, cellVertex, 'uNumerator'),
       coordinatePoint(request, cellVertex, 'vNumerator')
     );
-    const residual = decimalSubtract(
-      target,
-      affineArtifactPoint(request, coordinate, cellVertex)
-    );
+    const residual = decimalSubtract(target, affineArtifactPoint(request, coordinate, cellVertex));
     hull = hull === undefined ? residual : decimalHull(hull, residual);
   }
   if (hull === undefined) refuse('affine residual cell has no vertices');
@@ -1436,18 +1482,30 @@ function evaluateInstruction(
   bands: Float64Array | null
 ): DecimalInterval {
   switch (instruction.op) {
-    case 'constant': return decimalPoint(instruction.value);
-    case 'pi': return decimalPi();
-    case 'u': return environment.u;
-    case 'v': return environment.v;
-    case 'negate': return decimalNegate(values[instruction.arg]);
-    case 'absolute': return decimalAbsolute(values[instruction.arg]);
-    case 'square': return decimalSquare(values[instruction.arg]);
-    case 'sqrt': return decimalSqrt(values[instruction.arg]);
-    case 'exp': return decimalExp(values[instruction.arg]);
-    case 'ln': return decimalLn(values[instruction.arg]);
-    case 'sin': return decimalSin(values[instruction.arg]);
-    case 'cos': return decimalCos(values[instruction.arg]);
+    case 'constant':
+      return decimalPoint(instruction.value);
+    case 'pi':
+      return decimalPi();
+    case 'u':
+      return environment.u;
+    case 'v':
+      return environment.v;
+    case 'negate':
+      return decimalNegate(values[instruction.arg]);
+    case 'absolute':
+      return decimalAbsolute(values[instruction.arg]);
+    case 'square':
+      return decimalSquare(values[instruction.arg]);
+    case 'sqrt':
+      return decimalSqrt(values[instruction.arg]);
+    case 'exp':
+      return decimalExp(values[instruction.arg]);
+    case 'ln':
+      return decimalLn(values[instruction.arg]);
+    case 'sin':
+      return decimalSin(values[instruction.arg]);
+    case 'cos':
+      return decimalCos(values[instruction.arg]);
     case 'floor': {
       if (bands !== null) {
         const band = bands[instructionIndex];
@@ -1457,8 +1515,10 @@ function evaluateInstruction(
       }
       return decimalFloor(values[instruction.arg]);
     }
-    case 'ceiling': return decimalCeil(values[instruction.arg]);
-    case 'round': return decimalRoundTiesToEven(values[instruction.arg]);
+    case 'ceiling':
+      return decimalCeil(values[instruction.arg]);
+    case 'round':
+      return decimalRoundTiesToEven(values[instruction.arg]);
     case 'fractional-part': {
       if (bands !== null) {
         const band = bands[instructionIndex];
@@ -1480,13 +1540,20 @@ function evaluateInstruction(
       }
       return decimalSign(values[instruction.arg]);
     }
-    case 'add': return decimalAdd(values[instruction.left], values[instruction.right]);
-    case 'subtract': return decimalSubtract(values[instruction.left], values[instruction.right]);
-    case 'multiply': return decimalMultiply(values[instruction.left], values[instruction.right]);
-    case 'divide': return decimalDivide(values[instruction.left], values[instruction.right]);
-    case 'minimum': return decimalMinimum(values[instruction.left], values[instruction.right]);
-    case 'maximum': return decimalMaximum(values[instruction.left], values[instruction.right]);
-    case 'power': return decimalPow(values[instruction.left], values[instruction.right]);
+    case 'add':
+      return decimalAdd(values[instruction.left], values[instruction.right]);
+    case 'subtract':
+      return decimalSubtract(values[instruction.left], values[instruction.right]);
+    case 'multiply':
+      return decimalMultiply(values[instruction.left], values[instruction.right]);
+    case 'divide':
+      return decimalDivide(values[instruction.left], values[instruction.right]);
+    case 'minimum':
+      return decimalMinimum(values[instruction.left], values[instruction.right]);
+    case 'maximum':
+      return decimalMaximum(values[instruction.left], values[instruction.right]);
+    case 'power':
+      return decimalPow(values[instruction.left], values[instruction.right]);
     case 'step': {
       if (bands !== null) {
         const band = bands[instructionIndex];
@@ -1497,16 +1564,14 @@ function evaluateInstruction(
       }
       return decimalStep(values[instruction.left], values[instruction.right]);
     }
-    case 'atan2': return decimalAtan2(values[instruction.left], values[instruction.right]);
+    case 'atan2':
+      return decimalAtan2(values[instruction.left], values[instruction.right]);
     case 'pcg2d-unit-x':
     case 'pcg2d-unit-y': {
       const key = `${instruction.left}:${instruction.right}`;
       let pair = pcg2dCache.get(key);
       if (pair === undefined) {
-        pair = decimalIntegerPcg2dUnitHash(
-          values[instruction.left],
-          values[instruction.right]
-        );
+        pair = decimalIntegerPcg2dUnitHash(values[instruction.left], values[instruction.right]);
         pcg2dCache.set(key, pair);
       }
       return pair[instruction.op === 'pcg2d-unit-x' ? 0 : 1];
@@ -1530,11 +1595,7 @@ export function evaluateCompiledValidatedResidualProgram(
   let bands: Float64Array | null = null;
   if (internal.bandedJumpNodes !== null) {
     const fractionBits = request.cell.fractionBits;
-    if (
-      !Number.isSafeInteger(fractionBits) ||
-      fractionBits < 0 ||
-      fractionBits > MAX_DYADIC_BITS
-    ) {
+    if (!Number.isSafeInteger(fractionBits) || fractionBits < 0 || fractionBits > MAX_DYADIC_BITS) {
       refuse('dyadic fraction bits exceed the evaluator envelope');
     }
     const uNumerators: bigint[] = [];
@@ -1558,13 +1619,17 @@ export function evaluateCompiledValidatedResidualProgram(
     );
   }
   const values: DecimalInterval[] = [];
-  const pcg2dCache = new Map<
-    string,
-    readonly [DecimalInterval, DecimalInterval]
-  >();
+  const pcg2dCache = new Map<string, readonly [DecimalInterval, DecimalInterval]>();
   for (let index = 0; index < internal.instructions.length; index += 1) {
     values.push(
-      evaluateInstruction(internal.instructions[index], index, values, environment, pcg2dCache, bands)
+      evaluateInstruction(
+        internal.instructions[index],
+        index,
+        values,
+        environment,
+        pcg2dCache,
+        bands
+      )
     );
   }
   return Object.freeze({
@@ -1755,37 +1820,126 @@ function fastCompileScreenProgram(internal: InternalCompiledProgram): FastCompil
         constHi[index] = bounds[1];
         break;
       }
-      case 'pi': ops[index] = FAST_OP_PI; break;
-      case 'u': ops[index] = FAST_OP_U; break;
-      case 'v': ops[index] = FAST_OP_V; break;
-      case 'negate': ops[index] = FAST_OP_NEG; argA[index] = instruction.arg; break;
-      case 'absolute': ops[index] = FAST_OP_ABS; argA[index] = instruction.arg; break;
-      case 'square': ops[index] = FAST_OP_SQUARE; argA[index] = instruction.arg; break;
-      case 'sqrt': ops[index] = FAST_OP_SQRT; argA[index] = instruction.arg; break;
-      case 'exp': ops[index] = FAST_OP_EXP; argA[index] = instruction.arg; break;
-      case 'ln': ops[index] = FAST_OP_LN; argA[index] = instruction.arg; break;
-      case 'sin': ops[index] = FAST_OP_SIN; argA[index] = instruction.arg; break;
-      case 'cos': ops[index] = FAST_OP_COS; argA[index] = instruction.arg; break;
-      case 'add': ops[index] = FAST_OP_ADD; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'subtract': ops[index] = FAST_OP_SUB; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'multiply': ops[index] = FAST_OP_MUL; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'divide': ops[index] = FAST_OP_DIV; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'minimum': ops[index] = FAST_OP_MIN; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'maximum': ops[index] = FAST_OP_MAX; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'power': ops[index] = FAST_OP_POW; argA[index] = instruction.left; argB[index] = instruction.right; break;
+      case 'pi':
+        ops[index] = FAST_OP_PI;
+        break;
+      case 'u':
+        ops[index] = FAST_OP_U;
+        break;
+      case 'v':
+        ops[index] = FAST_OP_V;
+        break;
+      case 'negate':
+        ops[index] = FAST_OP_NEG;
+        argA[index] = instruction.arg;
+        break;
+      case 'absolute':
+        ops[index] = FAST_OP_ABS;
+        argA[index] = instruction.arg;
+        break;
+      case 'square':
+        ops[index] = FAST_OP_SQUARE;
+        argA[index] = instruction.arg;
+        break;
+      case 'sqrt':
+        ops[index] = FAST_OP_SQRT;
+        argA[index] = instruction.arg;
+        break;
+      case 'exp':
+        ops[index] = FAST_OP_EXP;
+        argA[index] = instruction.arg;
+        break;
+      case 'ln':
+        ops[index] = FAST_OP_LN;
+        argA[index] = instruction.arg;
+        break;
+      case 'sin':
+        ops[index] = FAST_OP_SIN;
+        argA[index] = instruction.arg;
+        break;
+      case 'cos':
+        ops[index] = FAST_OP_COS;
+        argA[index] = instruction.arg;
+        break;
+      case 'add':
+        ops[index] = FAST_OP_ADD;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'subtract':
+        ops[index] = FAST_OP_SUB;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'multiply':
+        ops[index] = FAST_OP_MUL;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'divide':
+        ops[index] = FAST_OP_DIV;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'minimum':
+        ops[index] = FAST_OP_MIN;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'maximum':
+        ops[index] = FAST_OP_MAX;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'power':
+        ops[index] = FAST_OP_POW;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
       // Piecewise / branch-cut operations compile to jump-guarded opcodes:
       // cells whose argument enclosure excludes every jump take a tight
       // (often exactly constant) path; straddling cells downgrade the whole
       // run to a value-hull enclosure (see fastRunTapeHullOnly).
-      case 'floor': ops[index] = FAST_OP_FLOOR; argA[index] = instruction.arg; break;
-      case 'ceiling': ops[index] = FAST_OP_CEIL; argA[index] = instruction.arg; break;
-      case 'round': ops[index] = FAST_OP_ROUND; argA[index] = instruction.arg; break;
-      case 'fractional-part': ops[index] = FAST_OP_FRACT; argA[index] = instruction.arg; break;
-      case 'sign': ops[index] = FAST_OP_SIGN; argA[index] = instruction.arg; break;
-      case 'step': ops[index] = FAST_OP_STEP; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'atan2': ops[index] = FAST_OP_ATAN2; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'pcg2d-unit-x': ops[index] = FAST_OP_PCG2D_X; argA[index] = instruction.left; argB[index] = instruction.right; break;
-      case 'pcg2d-unit-y': ops[index] = FAST_OP_PCG2D_Y; argA[index] = instruction.left; argB[index] = instruction.right; break;
+      case 'floor':
+        ops[index] = FAST_OP_FLOOR;
+        argA[index] = instruction.arg;
+        break;
+      case 'ceiling':
+        ops[index] = FAST_OP_CEIL;
+        argA[index] = instruction.arg;
+        break;
+      case 'round':
+        ops[index] = FAST_OP_ROUND;
+        argA[index] = instruction.arg;
+        break;
+      case 'fractional-part':
+        ops[index] = FAST_OP_FRACT;
+        argA[index] = instruction.arg;
+        break;
+      case 'sign':
+        ops[index] = FAST_OP_SIGN;
+        argA[index] = instruction.arg;
+        break;
+      case 'step':
+        ops[index] = FAST_OP_STEP;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'atan2':
+        ops[index] = FAST_OP_ATAN2;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'pcg2d-unit-x':
+        ops[index] = FAST_OP_PCG2D_X;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
+      case 'pcg2d-unit-y':
+        ops[index] = FAST_OP_PCG2D_Y;
+        argA[index] = instruction.left;
+        argB[index] = instruction.right;
+        break;
     }
   }
   const compiled: FastCompiledScreenProgram = {
@@ -1886,6 +2040,15 @@ function recordFastRefusalBoolean(reason: string): false {
  * value-hull residual instead of the centered mean-value form.
  */
 let fastRunTapeHullOnly = false;
+// Observational only (never read by the bound math): set when a min/max/abs node
+// takes its Clarke subgradient branch during a tape run. Lets slack audits split
+// genuine-kink cells from smooth cells. Does not affect the enclosure/soundness.
+let fastRunTapeClarkeFired = false;
+let fastLastScreenClarkeFired = false;
+
+export function getLastScreenClarkeFired(): boolean {
+  return fastLastScreenClarkeFired;
+}
 
 /**
  * Per-cell exact band assignments for the current fastEncloseCore run,
@@ -1933,6 +2096,7 @@ function fastRunTape(
   const dvHi = program.dvHi;
   const count = ops.length;
   fastRunTapeHullOnly = false;
+  fastRunTapeClarkeFired = false;
   for (let index = 0; index < count; index += 1) {
     let rLo = 0;
     let rHi = 0;
@@ -1994,6 +2158,7 @@ function fastRunTape(
           rDvHi = -dvLo[a];
         } else {
           // Kinked across zero: Clarke subgradient hull of {+d, -d}.
+          fastRunTapeClarkeFired = true;
           rLo = 0;
           rHi = Math.max(-lo, hi);
           rDuLo = Math.min(duLo[a], -duHi[a]);
@@ -2293,6 +2458,7 @@ function fastRunTape(
           rDvHi = dvHi[b];
         } else {
           // Possibly kinked inside the cell: Clarke subgradient hull.
+          fastRunTapeClarkeFired = true;
           rDuLo = Math.min(duLo[a], duLo[b]);
           rDuHi = Math.max(duHi[a], duHi[b]);
           rDvLo = Math.min(dvLo[a], dvLo[b]);
@@ -2306,11 +2472,7 @@ function fastRunTape(
         const expLo = valueLo[b];
         const expHi = valueHi[b];
         const exponentIsConstant =
-          duLo[b] === 0 &&
-          duHi[b] === 0 &&
-          dvLo[b] === 0 &&
-          dvHi[b] === 0 &&
-          expHi - expLo < 1e-9;
+          duLo[b] === 0 && duHi[b] === 0 && dvLo[b] === 0 && dvHi[b] === 0 && expHi - expLo < 1e-9;
         if (exponentIsConstant && expLo >= 1 && baseLo >= 0 && Number.isFinite(baseHi)) {
           // Nonnegative base with an effectively constant exponent p >= 1:
           // pow is monotone in each argument separately on base >= 0, so the
@@ -2324,9 +2486,7 @@ function fastRunTape(
           rLo = fastPowScratch[0];
           rHi = fastPowScratch[1];
           if (!seedDerivatives) break;
-          if (
-            !fastPowCornersRaw(baseLo, baseHi, Math.max(0, expLo - 1), Math.max(0, expHi - 1))
-          ) {
+          if (!fastPowCornersRaw(baseLo, baseHi, Math.max(0, expLo - 1), Math.max(0, expHi - 1))) {
             return recordFastRefusalBoolean('power-corners');
           }
           const g0 = expLo * fastPowScratch[0];
@@ -3187,6 +3347,119 @@ function fastEncloseCore(
   }
 }
 
+// Flag-gated tighter Jacobian (measurement instrument; 0 => OFF => byte-
+// identical to the single-box pass). When > 1, Pass 1 partitions the cell's
+// axis-aligned box into a K x K sub-box grid, runs the interval-Jacobian tape
+// over each sub-box NOT provably disjoint from the exact cell triangle, and
+// hulls the target Jacobian channels. Kept sub-boxes cover the triangle, so
+// hulling sound per-sub-box Jacobians is a sound enclosure and lies inside the
+// single-box hull it replaces; a jump straddling any covering sub-box forces a
+// fall back to the single box. Non-dyadic (interval-vertex) cells fall back for
+// soundness. The default (OFF) certificate and its proof hash are unchanged;
+// productionizing this pass would require updating the compiler proof text.
+let screenJacobianPartition = 0;
+
+export function setScreenJacobianPartition(partition: number): void {
+  screenJacobianPartition = Number.isSafeInteger(partition) && partition > 1 ? partition : 0;
+}
+
+// Provably-disjoint test: true iff every corner of [su0,su1]x[sv0,sv1] lies
+// strictly on the outer side of one triangle edge. Excluding only such boxes
+// preserves coverage of the triangle (and of any jump line crossing it).
+function fastBoxOutsideTriangle(
+  su0: number,
+  su1: number,
+  sv0: number,
+  sv1: number,
+  pu: readonly [number, number, number],
+  pv: readonly [number, number, number]
+): boolean {
+  for (let e = 0; e < 3; e += 1) {
+    const i = e;
+    const j = (e + 1) % 3;
+    const k = (e + 2) % 3;
+    const ex = pu[j] - pu[i];
+    const ey = pv[j] - pv[i];
+    const sideK = ex * (pv[k] - pv[i]) - ey * (pu[k] - pu[i]);
+    if (sideK === 0) continue;
+    const c00 = ex * (sv0 - pv[i]) - ey * (su0 - pu[i]);
+    const c01 = ex * (sv1 - pv[i]) - ey * (su0 - pu[i]);
+    const c10 = ex * (sv0 - pv[i]) - ey * (su1 - pu[i]);
+    const c11 = ex * (sv1 - pv[i]) - ey * (su1 - pu[i]);
+    if (sideK > 0) {
+      if (c00 < 0 && c01 < 0 && c10 < 0 && c11 < 0) return true;
+    } else if (c00 > 0 && c01 > 0 && c10 > 0 && c11 > 0) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const fastPartitionDuLo = new Float64Array(3);
+const fastPartitionDuHi = new Float64Array(3);
+const fastPartitionDvLo = new Float64Array(3);
+const fastPartitionDvHi = new Float64Array(3);
+
+// Hull the target Jacobian over the triangle-covering sub-boxes into the
+// fastPartition* scratch. Returns false (caller keeps the single-box pass) on
+// tape failure, a hull-only straddle in any covering sub-box, non-dyadic
+// vertices, or empty coverage.
+function fastRunPartitionedJacobian(
+  screenProgram: FastCompiledScreenProgram,
+  targets: readonly [number, number, number],
+  partition: number,
+  uLo: Float64Array,
+  uHi: Float64Array,
+  vLo: Float64Array,
+  vHi: Float64Array
+): boolean {
+  for (let i = 0; i < 3; i += 1) {
+    if (uLo[i] !== uHi[i] || vLo[i] !== vHi[i]) return false;
+  }
+  const pu: readonly [number, number, number] = [uLo[0], uLo[1], uLo[2]];
+  const pv: readonly [number, number, number] = [vLo[0], vLo[1], vLo[2]];
+  const boxULo = Math.min(pu[0], pu[1], pu[2]);
+  const boxUHi = Math.max(pu[0], pu[1], pu[2]);
+  const boxVLo = Math.min(pv[0], pv[1], pv[2]);
+  const boxVHi = Math.max(pv[0], pv[1], pv[2]);
+  const stepU = (boxUHi - boxULo) / partition;
+  const stepV = (boxVHi - boxVLo) / partition;
+  for (let c = 0; c < 3; c += 1) {
+    fastPartitionDuLo[c] = Number.POSITIVE_INFINITY;
+    fastPartitionDuHi[c] = Number.NEGATIVE_INFINITY;
+    fastPartitionDvLo[c] = Number.POSITIVE_INFINITY;
+    fastPartitionDvHi[c] = Number.NEGATIVE_INFINITY;
+  }
+  let covered = false;
+  let clarke = false;
+  for (let i = 0; i < partition; i += 1) {
+    const su0 = i === 0 ? boxULo : boxULo + stepU * i;
+    const su1 = i === partition - 1 ? boxUHi : boxULo + stepU * (i + 1);
+    for (let j = 0; j < partition; j += 1) {
+      const sv0 = j === 0 ? boxVLo : boxVLo + stepV * j;
+      const sv1 = j === partition - 1 ? boxVHi : boxVLo + stepV * (j + 1);
+      if (fastBoxOutsideTriangle(su0, su1, sv0, sv1, pu, pv)) continue;
+      if (!fastRunTape(screenProgram, su0, su1, sv0, sv1, true)) return false;
+      if (fastRunTapeHullOnly) return false;
+      covered = true;
+      if (fastRunTapeClarkeFired) clarke = true;
+      for (let c = 0; c < 3; c += 1) {
+        const t = targets[c];
+        if (screenProgram.duLo[t] < fastPartitionDuLo[c])
+          fastPartitionDuLo[c] = screenProgram.duLo[t];
+        if (screenProgram.duHi[t] > fastPartitionDuHi[c])
+          fastPartitionDuHi[c] = screenProgram.duHi[t];
+        if (screenProgram.dvLo[t] < fastPartitionDvLo[c])
+          fastPartitionDvLo[c] = screenProgram.dvLo[t];
+        if (screenProgram.dvHi[t] > fastPartitionDvHi[c])
+          fastPartitionDvHi[c] = screenProgram.dvHi[t];
+      }
+    }
+  }
+  fastLastScreenClarkeFired = clarke;
+  return covered;
+}
+
 function fastEncloseCoreInner(
   internal: InternalCompiledProgram,
   uLo: Float64Array,
@@ -3280,52 +3553,70 @@ function fastEncloseCoreInner(
   const screenProgram = fastCompileScreenProgram(internal);
   if (!screenProgram.supported) return recordFastRefusal(screenProgram.unsupportedReason);
   const targets = [internal.targetX, internal.targetY, internal.targetZ] as const;
-  // Pass 1: interval Jacobian over the cell hull. Capture the three target
-  // slots before the second run reuses the same channel buffers.
-  if (!fastRunTape(screenProgram, uBoxLo, uBoxHi, vBoxLo, vBoxHi, true)) {
-    return null;
-  }
-  if (fastRunTapeHullOnly) {
-    // A jump-guarded node straddled its discontinuity: the centered
-    // mean-value form is invalid, but the tape's value channels are still
-    // sound enclosures. Fall back to the plain hull residual —
-    // target(cell) minus the artifact triangle hull — which is first-order
-    // wide but cheap, so the branch-and-bound can subdivide toward
-    // jump-free children on it.
-    const hullResiduals: OutwardInterval[] = [];
-    for (let coordinate = 0; coordinate < 3; coordinate += 1) {
-      const targetIndex = targets[coordinate];
-      const a0Lo = artifactLo[coordinate];
-      const a1Lo = artifactLo[3 + coordinate];
-      const a2Lo = artifactLo[6 + coordinate];
-      const a0Hi = artifactHi[coordinate];
-      const a1Hi = artifactHi[3 + coordinate];
-      const a2Hi = artifactHi[6 + coordinate];
-      const artifactMin = Math.min(a0Lo, Math.min(a1Lo, a2Lo));
-      const artifactMax = Math.max(a0Hi, Math.max(a1Hi, a2Hi));
-      const residualLo = fastCheckedAddLo(screenProgram.vLo[targetIndex], -artifactMax);
-      const residualHi = fastCheckedAddHi(screenProgram.vHi[targetIndex], -artifactMin);
-      if (!Number.isFinite(residualLo) || !Number.isFinite(residualHi) || residualLo > residualHi) {
-        return null;
-      }
-      hullResiduals.push(outwardInterval(residualLo, residualHi));
-    }
-    return Object.freeze({
-      xMm: hullResiduals[0],
-      yMm: hullResiduals[1],
-      zMm: hullResiduals[2],
-    });
-  }
   const jacobianDuLo = fastCoreJacobianDuLo;
   const jacobianDuHi = fastCoreJacobianDuHi;
   const jacobianDvLo = fastCoreJacobianDvLo;
   const jacobianDvHi = fastCoreJacobianDvHi;
-  for (let coordinate = 0; coordinate < 3; coordinate += 1) {
-    const targetIndex = targets[coordinate];
-    jacobianDuLo[coordinate] = screenProgram.duLo[targetIndex];
-    jacobianDuHi[coordinate] = screenProgram.duHi[targetIndex];
-    jacobianDvLo[coordinate] = screenProgram.dvLo[targetIndex];
-    jacobianDvHi[coordinate] = screenProgram.dvHi[targetIndex];
+  // Pass 1: interval Jacobian over the cell domain, captured before Pass 2
+  // reuses the channels. The optional sub-box partition tightens it over the
+  // exact triangle; any fallback reverts to the single axis-aligned box.
+  if (
+    screenJacobianPartition > 0 &&
+    fastRunPartitionedJacobian(screenProgram, targets, screenJacobianPartition, uLo, uHi, vLo, vHi)
+  ) {
+    for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+      jacobianDuLo[coordinate] = fastPartitionDuLo[coordinate];
+      jacobianDuHi[coordinate] = fastPartitionDuHi[coordinate];
+      jacobianDvLo[coordinate] = fastPartitionDvLo[coordinate];
+      jacobianDvHi[coordinate] = fastPartitionDvHi[coordinate];
+    }
+  } else {
+    if (!fastRunTape(screenProgram, uBoxLo, uBoxHi, vBoxLo, vBoxHi, true)) {
+      return null;
+    }
+    fastLastScreenClarkeFired = fastRunTapeClarkeFired;
+    if (fastRunTapeHullOnly) {
+      // A jump-guarded node straddled its discontinuity: the centered
+      // mean-value form is invalid, but the tape's value channels are still
+      // sound enclosures. Fall back to the plain hull residual —
+      // target(cell) minus the artifact triangle hull — which is first-order
+      // wide but cheap, so the branch-and-bound can subdivide toward
+      // jump-free children on it.
+      const hullResiduals: OutwardInterval[] = [];
+      for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+        const targetIndex = targets[coordinate];
+        const a0Lo = artifactLo[coordinate];
+        const a1Lo = artifactLo[3 + coordinate];
+        const a2Lo = artifactLo[6 + coordinate];
+        const a0Hi = artifactHi[coordinate];
+        const a1Hi = artifactHi[3 + coordinate];
+        const a2Hi = artifactHi[6 + coordinate];
+        const artifactMin = Math.min(a0Lo, Math.min(a1Lo, a2Lo));
+        const artifactMax = Math.max(a0Hi, Math.max(a1Hi, a2Hi));
+        const residualLo = fastCheckedAddLo(screenProgram.vLo[targetIndex], -artifactMax);
+        const residualHi = fastCheckedAddHi(screenProgram.vHi[targetIndex], -artifactMin);
+        if (
+          !Number.isFinite(residualLo) ||
+          !Number.isFinite(residualHi) ||
+          residualLo > residualHi
+        ) {
+          return null;
+        }
+        hullResiduals.push(outwardInterval(residualLo, residualHi));
+      }
+      return Object.freeze({
+        xMm: hullResiduals[0],
+        yMm: hullResiduals[1],
+        zMm: hullResiduals[2],
+      });
+    }
+    for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+      const targetIndex = targets[coordinate];
+      jacobianDuLo[coordinate] = screenProgram.duLo[targetIndex];
+      jacobianDuHi[coordinate] = screenProgram.duHi[targetIndex];
+      jacobianDvLo[coordinate] = screenProgram.dvLo[targetIndex];
+      jacobianDvHi[coordinate] = screenProgram.dvHi[targetIndex];
+    }
   }
   // Pass 2: target value at the cell centroid (derivative channels unseeded).
   if (!fastRunTape(screenProgram, uCentreLo, uCentreHi, vCentreLo, vCentreHi, false)) {
