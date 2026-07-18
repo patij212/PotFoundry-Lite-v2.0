@@ -3,6 +3,8 @@
 import type { Mesh, SurfaceRadiusFn } from './types';
 import type { RefTri, Vec3 } from './types';
 
+const TAU = 2 * Math.PI;
+
 export interface ManifoldReport {
   /** Count of edges shared by more than two triangles (must be 0). */
   nonManifold: number;
@@ -461,4 +463,166 @@ export function regionRadiusConsistency(mesh: Mesh): RegionRadiusStats {
     }
   }
   return { minRibbonMeanRadiusMm, maxBackgroundMeanRadiusMm, ribbonRegionCount, backgroundRegionCount };
+}
+
+// ---------------------------------------------------------------------------
+// Honest facet-chord vs the TRUE analytic surface (reference-free; M6).
+//
+// The prior full-pot chord (`analyticChordSplit`) skipped only wall edges (both
+// endpoints on a cliff), so a SHEET edge whose parameter midpoint straddled a genuine
+// ribbon↔background cliff scored a ~jump-sized (~0.6mm) PHANTOM sag — the "clear-region
+// 0.599" the M5 report carried. That is not a facet error: the radial jump is a real 3D
+// feature carried by the double-valued WALL, not the sheet. This metric measures the true
+// facet sag of every SHEET facet by:
+//   • sampling each triangle's three edge-midpoints AND its centroid (a barycentric interior
+//     point), taking the mesh's flat (linear) interpolation there;
+//   • comparing that flat point to the true surface point `lift(surface(u,t))` at the
+//     sample's PARAMETER midpoint (the crest VALUE is continuous — only its slope kinks — so a
+//     crest facet's midpoint samples the true ridge with no discontinuity);
+//   • SKIPPING genuine cliff-straddle: a sample touching a cliff split-vertex across which the
+//     surface is DISCONTINUOUS (|surface(u+δ)−surface(u−δ)| exceeds `straddleJumpMm`). A genuine
+//     ribbon↔background cliff (≈0.6mm jump) is skipped; an OCCLUDED under-strand cliff buried
+//     under the visible over-ribbon crest is C0-continuous there (≈0 jump) and IS measured — so
+//     the crest ridge running through an overlap diamond is honestly certified, not waved past.
+//
+// Read-only: consumes the mesh's own (u,t)/onCliff provenance; never re-meshes.
+// ---------------------------------------------------------------------------
+
+/** Result of {@link facetChordToTrueSurface}. */
+export interface FacetChordReport {
+  /** Max flat-sample→true-surface distance (mm) over all measured sheet-facet samples. */
+  maxMm: number;
+  /** RMS of the same distances (mm). */
+  rmsMm: number;
+  /** Samples actually measured. */
+  measured: number;
+  /** Samples skipped (wall edges + genuine cliff-straddle). */
+  skipped: number;
+  /** Normalized u of the worst sample (for diagnostics). */
+  maxU: number;
+  /** t of the worst sample. */
+  maxT: number;
+}
+
+/**
+ * Measure the honest facet chord of a built mesh's SHEET facets against the exact analytic
+ * `surface`, skipping wall edges and genuine cliff-straddle samples (see the section header).
+ *
+ * `opts.uPeriod` unwraps the second endpoint's u across a welded periodic seam before averaging
+ * (a seam-straddling background edge would otherwise land on the opposite side of the pot).
+ * `opts.straddleJumpMm` (default 0.05) is the surface-jump threshold that separates a genuine
+ * cliff from an occluded (continuous) one; `opts.straddleDeltaU` (default 2e-4) is the u-nudge
+ * used to probe that jump at a cliff split-vertex's locus.
+ */
+export function facetChordToTrueSurface(
+  mesh: Mesh,
+  surface: SurfaceRadiusFn,
+  H: number,
+  opts?: { uPeriod?: number; straddleJumpMm?: number; straddleDeltaU?: number },
+): FacetChordReport {
+  const pos = mesh.positions;
+  const U = mesh.vertexU;
+  const T = mesh.vertexT;
+  const onCliff = mesh.vertexOnCliff;
+  const tris = mesh.triangles;
+  const uPeriod = opts?.uPeriod;
+  const straddleJump = opts?.straddleJumpMm ?? 0.05;
+  const dU = opts?.straddleDeltaU ?? 2e-4;
+
+  // A cliff split-vertex is "hard" when the surface genuinely jumps across its locus (a real
+  // ribbon↔background cliff); "soft" when the surface is continuous there (an occluded under-
+  // strand cliff buried beneath the visible crest). Any facet sample touching a HARD cliff
+  // vertex would straddle the discontinuity, so it is skipped; soft-cliff facets are measured.
+  const hardCache = new Int8Array(pos.length / 3).fill(-1); // -1 unknown, 0 soft, 1 hard
+  const isHard = (v: number): boolean => {
+    if (!onCliff[v]) return false;
+    if (hardCache[v] >= 0) return hardCache[v] === 1;
+    const jump = Math.abs(surface(U[v] + dU, T[v]) - surface(U[v] - dU, T[v]));
+    const hard = jump > straddleJump ? 1 : 0;
+    hardCache[v] = hard;
+    return hard === 1;
+  };
+
+  // Unwrap `u` onto `ref`'s branch (periodic seam), then re-wrap the average into [0,uPeriod).
+  const unwrap = (u: number, ref: number): number => {
+    if (uPeriod === undefined) return u;
+    if (u - ref > uPeriod / 2) return u - uPeriod;
+    if (u - ref < -uPeriod / 2) return u + uPeriod;
+    return u;
+  };
+  const rewrap = (u: number): number => {
+    if (uPeriod === undefined) return u;
+    let x = u % uPeriod;
+    if (x < 0) x += uPeriod;
+    return x;
+  };
+
+  let maxMm = 0;
+  let sumSq = 0;
+  let n = 0;
+  let skipped = 0;
+  let maxU = 0;
+  let maxT = 0;
+  const consider = (fx: number, fy: number, fz: number, um: number, tm: number): void => {
+    const r = surface(um, tm);
+    const dx = fx - r * Math.cos(TAU * um);
+    const dy = fy - r * Math.sin(TAU * um);
+    const dz = fz - tm * H;
+    const d = Math.hypot(dx, dy, dz);
+    if (d > maxMm) {
+      maxMm = d;
+      maxU = um;
+      maxT = tm;
+    }
+    sumSq += d * d;
+    n += 1;
+  };
+
+  for (let i = 0; i < tris.length; i += 3) {
+    const a = tris[i];
+    const b = tris[i + 1];
+    const c = tris[i + 2];
+    // edge midpoints
+    for (const [p, q] of [[a, b], [b, c], [c, a]] as const) {
+      if (onCliff[p] && onCliff[q]) { skipped += 1; continue; } // wall / cliff-seam edge (radial)
+      // A near-RADIAL edge (endpoints at ~the same (u,t) but different radius) is a wall edge —
+      // e.g. a sheet vertex meeting a cliff rail at a diamond-edge occlusion taper — not a sagging
+      // sheet facet; the wall spans that step exactly, so its midpoint-vs-surface is a metric
+      // artifact. Skip it (consistent with skipping cliff↔cliff wall edges above).
+      if (Math.abs(U[p] - U[q]) < 5e-5 && Math.abs(T[p] - T[q]) < 5e-5) { skipped += 1; continue; }
+      if (isHard(p) || isHard(q)) { skipped += 1; continue; } // genuine cliff-straddle
+      const uq = unwrap(U[q], U[p]);
+      const um = rewrap((U[p] + uq) / 2);
+      const tm = (T[p] + T[q]) / 2;
+      consider(
+        (pos[p * 3] + pos[q * 3]) / 2,
+        (pos[p * 3 + 1] + pos[q * 3 + 1]) / 2,
+        (pos[p * 3 + 2] + pos[q * 3 + 2]) / 2,
+        um,
+        tm,
+      );
+    }
+    // centroid (skip wall triangles, degenerate (u,t) wall slivers, and hard-cliff straddle)
+    if (onCliff[a] && onCliff[b] && onCliff[c]) { skipped += 1; continue; }
+    // A triangle with any coincident-(u,t) vertex pair has ~zero PARAMETER area — it is a vertical
+    // wall sliver (spanning radius at one (u,t)), not a sheet patch, so its centroid-vs-surface is
+    // meaningless. Skip it (its vertices are still certified on the surface elsewhere).
+    const coincident =
+      (Math.abs(U[a] - U[b]) < 5e-5 && Math.abs(T[a] - T[b]) < 5e-5) ||
+      (Math.abs(U[b] - U[c]) < 5e-5 && Math.abs(T[b] - T[c]) < 5e-5) ||
+      (Math.abs(U[c] - U[a]) < 5e-5 && Math.abs(T[c] - T[a]) < 5e-5);
+    if (coincident) { skipped += 1; continue; }
+    if (isHard(a) || isHard(b) || isHard(c)) { skipped += 1; continue; }
+    const ub = unwrap(U[b], U[a]);
+    const uc = unwrap(U[c], U[a]);
+    consider(
+      (pos[a * 3] + pos[b * 3] + pos[c * 3]) / 3,
+      (pos[a * 3 + 1] + pos[b * 3 + 1] + pos[c * 3 + 1]) / 3,
+      (pos[a * 3 + 2] + pos[b * 3 + 2] + pos[c * 3 + 2]) / 3,
+      rewrap((U[a] + ub + uc) / 3),
+      (T[a] + T[b] + T[c]) / 3,
+    );
+  }
+
+  return { maxMm, rmsMm: Math.sqrt(sumSq / Math.max(1, n)), measured: n, skipped, maxU, maxT };
 }

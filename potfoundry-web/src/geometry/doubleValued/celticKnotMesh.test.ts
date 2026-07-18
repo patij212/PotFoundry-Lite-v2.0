@@ -11,6 +11,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildCelticKnotDoubleValuedMesh,
   buildCelticKnotColumnCrossingMesh,
+  buildCelticKnotCrestCrossingMesh,
   buildCelticKnotOcclusionMesh,
   buildCelticKnotFullPotMesh,
 } from './celticKnotMesh';
@@ -289,4 +290,71 @@ describe('CelticKnot double-valued mesher (M5: full periodic multi-column pot)',
     expect(report.outwardWinding).toBe(true);
     expect(report.orientationInconsistentEdges).toBeLessThan(report.triangleCount * 0.002);
   }, 600000);
+});
+
+// ---------------------------------------------------------------------------
+// Milestone 6a (LOAD-BEARING PROOF): CREST-CROSSING PLANARIZATION at the cornered-crest
+// default (ckRoundness = 0.5). M3/M4 sidestepped the sharp ridge by meshing the smooth crest
+// (roundness 1); this meshes the REAL default sharp ridge at a genuine strand crossing and closes
+// the FACET chord at the crossing crest to < 0.01mm — the M5 report's flagged structure problem.
+//
+// The FIX (measured, not assumed): the visible crest ridge `localU = centre_over(t)` is carried
+// THROUGH the overlap diamond as an in-sheet CREASE (a real mesh edge). Inside the diamond it
+// crosses the OCCLUDED under-strand cliffs; those carry no visible radial step there, so the mesher
+// DROPS them in-sheet (`weldSoftCliffs`: surface-continuous ⇒ no constraint, no wall, welded
+// vertices) and the crest crosses FREE space — a planar PSLG, no crack. Each crest run is trimmed a
+// hair short of its HARD dive/emerge occlusion cliff so the ridge never lands on a wall. Result:
+// watertight + independently certified, with the crest a mesh edge (facet chord < 0.01mm over every
+// non-degenerate sheet facet). `facetChordToTrueSurface` (verify.ts) is the honest metric: it skips
+// wall edges, genuine cliff-straddle, and zero-parameter-area wall slivers, so it measures true
+// sheet-facet sag against the exact analytic surface — not a self-referential re-mesh.
+//
+// HONEST SCOPE (see the M6 report): this is the ISOLATED single-crossing proof. The window's fine
+// local grid density-resolves part of what is ~1.5mm on the coarse full pot (the baseline here is
+// ~0.03, not 1.5), and the mechanism does NOT yet compose into the full periodic multi-column pot
+// (that is the documented remaining concern). `crestThroughDiamonds` therefore stays OFF by default,
+// so M5 and production are byte-identical.
+const STYLE_M6A = { ckScale: 1, ckWidth: 0.15, ckRelief: 2, ckGap: 0.02, ckRoundness: 0.5, ckTwist: 0, ckStrands: 2 };
+const JUMP_M6A = STYLE_M6A.ckRelief * 0.3;
+const OPTS_M6A = { baseGridU: 92, baseGridT: 70, chordTolMm: 0.01, maxRefinePasses: 5 };
+
+describe('CelticKnot double-valued mesher (M6a: crest-crossing planarization, cornered crest)', () => {
+  it('meshes the crossing crest as a mesh edge — watertight, certified, facet chord < 0.01mm', () => {
+    // Baseline: the M3/M4 crossing mesh with NO crest structuring at the same cornered default.
+    const base = buildCelticKnotColumnCrossingMesh(STYLE_M6A, DIMS, OPTS_M6A);
+    // Fixed: the crest carried through the diamond by crest-crossing planarization.
+    const { mesh, report } = buildCelticKnotCrestCrossingMesh(STYLE_M6A, DIMS, OPTS_M6A);
+
+    expect(report.triangleCount).toBeGreaterThan(0);
+    expect(mesh.triangleCount).toBe(report.triangleCount);
+    expect(mesh.vertexCount).toBe(report.vertexCount);
+
+    // WATERTIGHT everywhere — no non-manifold edges, no cliff cracks, no interior holes
+    expect(report.nonManifold).toBe(0);
+    expect(report.cliffBoundary).toBe(0);
+    expect(report.boundaryNonRim).toBe(0);
+
+    // the crossing produced genuine junctions, each still pinched to exactly the two levels
+    expect(report.junctionCount).toBeGreaterThan(0);
+    for (const j of report.junctions) {
+      expect(j.distinctLevels).toBe(2);
+      expect(j.upper - j.lower).toBeCloseTo(JUMP_M6A, 3);
+    }
+
+    // INDEPENDENT fidelity certification: every sheet vertex on the true analytic surface, every
+    // cliff split-vertex at the one-sided analytic limit into its OWN region. The crest crease is
+    // in-sheet (no wall, no double vertex), so adding it leaves the certification untouched.
+    const cert = report.certification;
+    expect(cert.maxSheetDevMm).toBeLessThan(0.01);
+    expect(cert.maxCliffDevMm).toBeLessThan(0.01);
+    expect(cert.cliffVertsSkipped).toBe(0);
+
+    // THE M6a CLAIM: the honest facet chord at the crossing crest is < 0.01mm (the crest is now a
+    // real mesh edge), where the un-structured baseline is ABOVE the gate — the structure fix, not
+    // density, closes it.
+    expect(report.refinePasses).toBeGreaterThanOrEqual(1);
+    expect(report.facetMaxChordMm).toBeLessThan(0.01);
+    expect(base.report.facetMaxChordMm).toBeGreaterThan(0.01);
+    expect(report.facetMaxChordMm).toBeLessThan(base.report.facetMaxChordMm ?? Infinity);
+  }, 300000);
 });

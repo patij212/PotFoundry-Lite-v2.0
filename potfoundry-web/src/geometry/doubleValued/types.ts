@@ -108,6 +108,11 @@ export interface JunLike {
  * triangulation must not cross, but which — unlike a cliff — does NOT split regions and
  * gets no wall (same region, same surface branch on both sides). Its points lift to
  * `surface(u,t)`.
+ *
+ * A crest crease carried THROUGH an overlap diamond (M6) crosses the OCCLUDED under-strand cliffs
+ * there; rather than planarize each crossing, the mesher's `weldSoftCliffs` DROPS those occluded
+ * cliffs in-sheet (surface-continuous ⇒ no constraint), so the crease crosses free space (planar)
+ * with no pins required.
  */
 export interface CreaseLike {
   at(s: number): { u: number; t: number };
@@ -188,6 +193,19 @@ export interface MeshBuildOptions {
    * Gated: M1–M4 pass `refSoup` (not this), so their soup path is byte-identical.
    */
   analyticChord?: boolean;
+  /**
+   * WELD soft (occluded) cliff intervals (M6). A cliff interval across which the true surface is
+   * CONTINUOUS (`|surface(u+δ)−surface(u−δ)| < a small jump`) carries no real radial step — it is
+   * an occluded under-strand edge buried beneath the visible over-ribbon, whose double-valued wall
+   * would be 0-height. When set, such intervals are treated as IN-SHEET: their constraint edge is
+   * kept (so the crest crease can pin a planar crossing on it) but it does NOT split regions and
+   * gets NO wall, and its vertices weld to one single-valued point at `surface(u,t)`. This
+   * de-fragments each overlap diamond (the over-ribbon becomes one region bounded by its OWN —
+   * still hard — occlusion cliffs) so a crest crease threads straight through, watertight. HARD
+   * cliffs (a genuine ribbon↔background or occlusion step) are untouched. Gated: M1–M5 leave it
+   * off and are byte-identical.
+   */
+  weldSoftCliffs?: boolean;
   /**
    * PERIODIC u-seam (M5, the full pot). When set, u is treated as an angular coordinate that
    * WRAPS: `u = uMin` and `u = uMax` are the SAME physical location (`theta = 2π·u`, so
@@ -361,4 +379,21 @@ export interface MeshReport {
    * crest-crossing planarization (the documented remaining work). NOT < 0.01 for the full pot.
    */
   diamondMaxChordMm?: number;
+  // ---- M6 (crest carried through diamonds): the honest facet chord vs the true surface ----
+  /**
+   * Max honest facet chord (mm) over ALL sheet facets vs the true analytic surface
+   * (`facetChordToTrueSurface`): edge-midpoint + centroid samples, skipping wall edges and genuine
+   * cliff-straddle (a real ribbon↔background jump, owned by the wall). The occluded under-strand
+   * cliff beneath a visible crest is continuous there and IS measured — so with the crest carried
+   * through the diamonds this is the load-bearing < 0.01mm-everywhere claim.
+   */
+  facetMaxChordMm?: number;
+  /** RMS of the honest facet chord (mm). */
+  facetRmsChordMm?: number;
+  /** Normalized u of the worst facet sample (diagnostics). */
+  facetMaxU?: number;
+  /** t of the worst facet sample (diagnostics). */
+  facetMaxT?: number;
+  /** Facet samples skipped (wall edges + genuine cliff-straddle). */
+  facetSamplesSkipped?: number;
 }

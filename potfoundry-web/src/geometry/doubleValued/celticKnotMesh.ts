@@ -24,7 +24,13 @@ import { DEFAULT_CELTIC_KNOT, type StyleOptions } from '../types';
 import { buildDoubleValuedMesh } from './doubleValuedMesh';
 import { toMeshData } from './mesh';
 import { orientMeshForSTL } from '../stlExport';
-import { auditManifold, certifyAgainstTrueSurface, chordToSurface, regionRadiusConsistency } from './verify';
+import {
+  auditManifold,
+  certifyAgainstTrueSurface,
+  chordToSurface,
+  facetChordToTrueSurface,
+  regionRadiusConsistency,
+} from './verify';
 import type {
   BuildStats,
   CreaseLike,
@@ -386,6 +392,22 @@ export function buildCelticKnotOcclusionMesh(
 }
 
 /**
+ * Milestone 6a (LOAD-BEARING PROOF): the single-column crossing mesh at the CORNERED-CREST default
+ * (ckRoundness = 0.5), with each ribbon's crest crease carried THROUGH the overlap diamond by
+ * crest-crossing planarization. Where M3/M4 used the smooth crest (roundness 1) to sidestep the
+ * ridge, this meshes the real default sharp ridge and asserts the honest facet chord AT the crossing
+ * crest is < 0.01mm — the fix the M5 report flagged as the remaining structure problem. Reports
+ * `facetMaxChordMm` (vs the exact analytic surface, straddle-guarded) alongside the M3/M4 gates.
+ */
+export function buildCelticKnotCrestCrossingMesh(
+  styleOptions: StyleOptions,
+  dims: CelticKnotMeshDims,
+  opts: CelticKnotMeshOptions,
+): { mesh: MeshData; report: MeshReport } {
+  return meshColumnCrossing(styleOptions, dims, opts, true, true);
+}
+
+/**
  * Shared core for the single-column crossing mesh (M3) and its occlusion variant (M4). The MESH
  * is identical either way — occlusion curtains are the ribbon-background edges' own one-sided-
  * lifted walls, never a second wall. `withOcclusion` only (a) supplies the analytic `styleRadius`
@@ -397,6 +419,7 @@ function meshColumnCrossing(
   dims: CelticKnotMeshDims,
   opts: CelticKnotMeshOptions,
   withOcclusion: boolean,
+  withCreases = false,
 ): { mesh: MeshData; report: MeshReport } {
   const H = dims.H;
   const expn = dims.expn ?? 1;
@@ -418,7 +441,7 @@ function meshColumnCrossing(
   // The style's OWN analytic radius (theta,z)→r, supplied to P1 so the occlusion upper lip reads
   // as the exact one-sided limit of the raised under-strand surface. Same fn as `surface`, un-wrapped.
   const styleRadius = (theta: number, z: number): number => rA(theta, z);
-  const complex = withOcclusion
+  const complex = withOcclusion || withCreases
     ? buildCelticKnotCliffComplex(params, cliffDims, styleRadius)
     : buildCelticKnotCliffComplex(params, cliffDims);
 
@@ -452,20 +475,35 @@ function meshColumnCrossing(
   }
   if (junctions.length === 0) throw new Error('crossing window captured no complete junction');
 
-  const complexAdapted = { segments: adapted, junctions };
+  // M6a: structure the cornered crest. Flanks stay diamond-clipped; the crest is carried THROUGH
+  // the diamond (the occluded under-strand cliffs are DROPPED in-sheet by `weldSoftCliffs`, so the
+  // crest crosses free space), making the sharp default ridge a real mesh edge across the crossing.
+  const cwOpts = opts as CelticKnotMeshOptions & { across?: number; creaseMarginT?: number; crestMarginT?: number };
+  const creases: CreaseLike[] | undefined = withCreases
+    ? [
+        ...diamondClippedCreases(params, cwOpts.across ?? 20, cwOpts.creaseMarginT ?? 0.004, domain, false),
+        ...crestCreasesThroughDiamonds(params, domain, cwOpts.crestMarginT ?? CREST_END_MARGIN_T),
+      ]
+    : undefined;
+  const complexAdapted = { segments: adapted, junctions, creases };
 
   // Conforming reference soup: a FINE run of the SAME mesher (same junctions + occlusion-aware
   // walls) so the chord metric measures facet error, not a uniform grid's false cliff/occlusion
   // floor. A uniform surface soup cannot represent the cliffs, the occlusion steps, or the pinch.
-  const refMesh = buildDoubleValuedMesh(complexAdapted, surface, { H }, {
-    baseGridU: 132,
-    baseGridT: 128,
-    chordTolMm: 1,
-    maxRefinePasses: 0,
-    domain,
-    oneSidedDelta: ONE_SIDED_DELTA,
-  });
-  const refTris = meshToRefTris(refMesh);
+  // Skipped in crease mode — there the refine metric is the reference-free analytic chord (a self-
+  // mesh reference would carry the same cornered-crest sag and hide it), measured vs `surface`.
+  const refTris = withCreases
+    ? []
+    : meshToRefTris(
+        buildDoubleValuedMesh(complexAdapted, surface, { H }, {
+          baseGridU: 132,
+          baseGridT: 128,
+          chordTolMm: 1,
+          maxRefinePasses: 0,
+          domain,
+          oneSidedDelta: ONE_SIDED_DELTA,
+        }),
+      );
 
   // ---- build (with refinement) ----
   const innerTol = opts.chordTolMm * 0.5; // refine tighter than the report gate for margin
@@ -491,16 +529,27 @@ function meshColumnCrossing(
       chordTolMm: innerTol,
       maxRefinePasses: opts.maxRefinePasses,
       domain,
-      refSoup: refTris,
+      refSoup: withCreases ? undefined : refTris,
       oneSidedDelta: ONE_SIDED_DELTA,
+      analyticChord: withCreases,
+      refineCreases: withCreases,
+      weldSoftCliffs: withCreases,
+      pointCap: withCreases ? 300000 : undefined,
     },
     stats,
     withOcclusion ? walls : undefined,
   );
 
-  // ---- verify: manifold + chord against the conforming reference soup ----
+  // ---- verify: manifold + chord ----
   const audit = auditManifold(mesh);
-  const chord = chordToSurface(mesh, refTris);
+  // In crease mode the honest facet chord (vs the true analytic surface, straddle-guarded) is the
+  // gate; otherwise the geometric chord vs the conforming reference soup (M3/M4).
+  const chord = withCreases
+    ? { maxMm: stats.maxAnalyticChordMm, rmsMm: 0 }
+    : chordToSurface(mesh, refTris);
+  // Honest facet chord vs the true analytic surface (straddle-guarded). In crease mode this is the
+  // M6a gate; in the M3/M4 paths it is a free diagnostic (the smooth crest keeps it small).
+  const facet = facetChordToTrueSurface(mesh, surface, H);
 
   // ---- INDEPENDENT fidelity certification (does NOT go through the region classifier) ----
   const cliffLocusDistance = (u: number, t: number): number => {
@@ -560,6 +609,11 @@ function meshColumnCrossing(
     occlusionWallCount: occ.count,
     occlusionWallLoci: occ.loci,
     minOcclusionRaiseMm: occ.minRaise,
+    facetMaxChordMm: facet.maxMm,
+    facetRmsChordMm: facet.rmsMm,
+    facetMaxU: facet.maxU,
+    facetMaxT: facet.maxT,
+    facetSamplesSkipped: facet.skipped,
   };
   return { mesh: md, report };
 }
@@ -687,6 +741,29 @@ function measureJunctionLevels(mesh: Mesh, junctions: readonly JunLike[]): Junct
 /** WGSL braid amplitude (styles.ts `rOuterCelticKnot`); needed to place the crest/strip creases. */
 const CK_AMP = 0.4;
 
+/**
+ * Default t-trim of each crest run's HARD dive/emerge ends (M6). Kept SMALL so the tiny sliver of
+ * ridge left un-structured at the occlusion boundary is minimal, but > the visibility scan step so
+ * the ridge never lands on the occlusion cliff (which cracks the wall).
+ */
+const CREST_END_MARGIN_T = 0.0012;
+
+// CelticKnot analytic centreline / z-height, EXACTLY as `rOuterCelticKnot` (styles.ts) and P1
+// (`celticKnotCliffComplex`) evaluate them — the single source of truth the mesh must conform to.
+const ckArg = (p: CelticKnotCliffParams, col: number, strand: number, t: number): number =>
+  t * p.tightness * TAU * 3 + col * Math.PI * 0.333 + strand * (TAU / p.strandCount);
+/** Strand centreline offset in localU at height t (localU = CK_AMP·sin(arg)). */
+const ckCentre = (p: CelticKnotCliffParams, col: number, strand: number, t: number): number =>
+  CK_AMP * Math.sin(ckArg(p, col, strand, t));
+/** Strand z-buffer height (parity-switched osc), the z-order that decides which crest is visible. */
+const ckZHeight = (p: CelticKnotCliffParams, col: number, strand: number, t: number): number => {
+  const osc = ckArg(p, col, strand, t) * Math.max(1, p.strandCount - 1);
+  return p.strandCount % 2 !== 0 ? Math.sin(osc) : Math.cos(osc);
+};
+/** localU → normalized u (theta/TAU); matches `localUToTheta`/TAU and `diamondClippedCreases`. */
+const ckUOf = (p: CelticKnotCliffParams, col: number, localU: number): number =>
+  (col + localU / 2 + 0.5) / p.columnCount;
+
 /** Options for {@link buildCelticKnotFullPotMesh} (adds the ribbon strip density knob). */
 export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
   /**
@@ -698,12 +775,97 @@ export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
   across?: number;
   /** t-margin trimming each clear crease interval back from the overlap diamonds. Default 0.004. */
   creaseMarginT?: number;
+  /** t-trim of each crest run's HARD dive/emerge ends (M6). Default {@link CREST_END_MARGIN_T}. */
+  crestMarginT?: number;
   /**
    * Add dense crest-band seed points through the overlap diamonds (finely tessellates the diamond
    * crest for appearance). It does NOT bring the diamond chord below 0.01mm — that ridge needs
    * crest-crossing planarization — and it enlarges/slows the build, so it is OFF by default.
    */
   diamondSeeds?: boolean;
+  /**
+   * Carry each ribbon's crest crease THROUGH the overlap diamonds (M6). When set, the flank strips
+   * stay diamond-clipped but the CREST becomes a continuous mesh edge along every visible ridge; the
+   * occluded under-strand cliffs it crosses are DROPPED in-sheet (via `weldSoftCliffs`), so the crest
+   * crosses free space (planar, no crack). Also supplies P1 the analytic radius so it declares the
+   * `kind:'occlusion'` segments (over-strand identity). OFF by default so the M5 pot (which documents
+   * the crossing residual as the remaining task) is byte-identical; M6 turns it on. NOTE (M6b): this
+   * mechanism is proven in an ISOLATED crossing but does NOT yet compose into the full periodic
+   * multi-column pot — see the M6 report.
+   */
+  crestThroughDiamonds?: boolean;
+}
+
+/**
+ * Crest creases carried THROUGH overlap diamonds (M6) — the fix that makes each strand's visible
+ * ridge a real mesh EDGE where the M5 diamond-clipped creases could not go.
+ *
+ * For every strand the visible crest ridge is the polyline `localU = centre_s(t)` over exactly the
+ * t where that strand is the OUTERMOST at its own centreline (the analytic z-buffer: no other
+ * strand within `strandWidth` has a higher z-height) — i.e. the clear runs AND the intervals where
+ * the strand passes OVER another inside a diamond (precisely where P1 declares its `kind:'occlusion'`
+ * segment with `strand` = this over strand). Inside a diamond the crest crosses the OCCLUDED under
+ * strand's cliff edges, but those cliffs carry no real step there and are DROPPED in-sheet by the
+ * mesher's `weldSoftCliffs` (surface-continuous ⇒ no constraint, no wall) — so the crest crosses
+ * FREE space and no crossing needs planarizing (crossing constraints crash cdt2d). Each visible run
+ * is trimmed by `endMargin` at both ends so the crease never touches the HARD occlusion cliff at the
+ * dive/emerge boundary (which would crack the wall); the tiny untrimmed sliver of ridge there is a
+ * cliff-straddle the facet metric skips. Fine-scanned visibility so a z-order swap mid-overlap also
+ * ends the run cleanly. In-sheet only: no wall, no double vertex ⇒ watertightness + the vertex
+ * certification are unchanged.
+ */
+function crestCreasesThroughDiamonds(
+  params: CelticKnotCliffParams,
+  domain: DomainWindow,
+  endMargin: number,
+): CreaseLike[] {
+  const { columnCount, strandCount } = params;
+  const w = params.strandWidth;
+  const ST = 0.0003; // t scan step (finer than the ~0.014 diamond so no visibility flip is missed)
+  const spanT = domain.tHi - domain.tLo;
+  const creases: CreaseLike[] = [];
+  const visibleAt = (col: number, s: number, t: number): boolean => {
+    const cs = ckCentre(params, col, s, t);
+    const zs = ckZHeight(params, col, s, t);
+    for (let k = 0; k < strandCount; k += 1) {
+      if (k === s) continue;
+      if (Math.abs(cs - ckCentre(params, col, k, t)) < w && ckZHeight(params, col, k, t) > zs) return false;
+    }
+    return true;
+  };
+  for (let col = 0; col < columnCount; col += 1) {
+    for (let s = 0; s < strandCount; s += 1) {
+      const flush = (a0: number, b0: number): void => {
+        // Trim each run's HARD dive/emerge ends so the ridge never lands on the occlusion cliff.
+        const a = a0 + endMargin;
+        const b = b0 - endMargin;
+        if (b - a < 5e-4) return; // too short to structure
+        creases.push({
+          tRange: [a, b],
+          at: (sPar: number) => {
+            const t = a + (b - a) * clamp01(sPar);
+            return { u: ckUOf(params, col, ckCentre(params, col, s, t)), t };
+          },
+        });
+      };
+      // maximal visible runs from a fine scan (boundaries are the strand's dive/emerge points)
+      const nStep = Math.max(4, Math.ceil(spanT / ST));
+      let runA: number | null = null;
+      let prevVis = false;
+      for (let i = 0; i <= nStep; i += 1) {
+        const t = domain.tLo + spanT * (i / nStep);
+        const vis = visibleAt(col, s, t);
+        if (vis && !prevVis) runA = i === 0 ? domain.tLo : t;
+        else if (!vis && prevVis && runA !== null) {
+          flush(runA, t);
+          runA = null;
+        }
+        prevVis = vis;
+      }
+      if (runA !== null) flush(runA, domain.tHi);
+    }
+  }
+  return creases;
 }
 
 /**
@@ -719,6 +881,7 @@ function diamondClippedCreases(
   across: number,
   marginT: number,
   domain: DomainWindow,
+  includeCrest = true,
 ): CreaseLike[] {
   const { columnCount, strandCount, strandWidth, tightness } = params;
   const centre = (col: number, strand: number, t: number): number =>
@@ -752,6 +915,9 @@ function diamondClippedCreases(
         const b = b0 - marginT;
         if (b - a < 0.02) continue; // too short to structure
         for (let k = 1; k < across; k += 1) {
+          // The crest (k = across/2, off = 0) is carried THROUGH diamonds by
+          // `crestCreasesThroughDiamonds` in M6 mode; skip it here so it is not double-emitted.
+          if (!includeCrest && k * 2 === across) continue;
           const off = (2 * (k / across) - 1) * strandWidth;
           creases.push({
             tRange: [a, b],
@@ -1004,9 +1170,17 @@ export function buildCelticKnotFullPotMesh(
     roundness: merged.ckRoundness,
   };
   const cliffDims: CliffDims = { H, Rb: dims.Rb, Rt: dims.Rt, expn };
-  const complex = buildCelticKnotCliffComplex(params, cliffDims);
   const rA = buildAnalyticRadiusFn('CelticKnot', styleOptions, { H, Rb: dims.Rb, Rt: dims.Rt, expn });
   const surface: SurfaceRadiusFn = (u, t) => rA(TAU * u, t * H);
+  const crestThrough = opts.crestThroughDiamonds ?? false;
+  // M6: supply P1 the style's own analytic radius so it DECLARES the `kind:'occlusion'` segments
+  // (their `strand` = the OVER strand — the crest that continues through each diamond). The mesher
+  // reads over-identity from the same analytic z-buffer (`ckZHeight`), so these are used to confirm
+  // the crest fix, not as a second CDT chain; without crestThrough the pot is byte-identical to M5.
+  const styleRadius = (theta: number, z: number): number => rA(theta, z);
+  const complex = crestThrough
+    ? buildCelticKnotCliffComplex(params, cliffDims, styleRadius)
+    : buildCelticKnotCliffComplex(params, cliffDims);
 
   const T_LO = 0.02;
   const T_HI = 0.98; // matches P1's declared interior band
@@ -1031,7 +1205,14 @@ export function buildCelticKnotFullPotMesh(
   }
 
   const across = opts.across ?? 20;
-  const creases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain);
+  // M6: when carrying the crest THROUGH diamonds, `diamondClippedCreases` emits FLANKS only (the
+  // crest is now a continuous through-diamond mesh edge) and `crestCreasesThroughDiamonds` adds the
+  // crest along every visible ridge; the occluded under-strand cliffs it crosses are dropped in-sheet
+  // by `weldSoftCliffs`. Otherwise (M5) the crest is a diamond-clipped strip like the flanks.
+  const flankCreases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain, !crestThrough);
+  const creases = crestThrough
+    ? [...flankCreases, ...crestCreasesThroughDiamonds(params, domain, opts.crestMarginT ?? CREST_END_MARGIN_T)]
+    : flankCreases;
   // Ribbon u half-width (theta=2π·u): the crest sits at the strand centreline, the cliff edges
   // at ±strandWidth in localU ⇒ ±(strandWidth/(2·columnCount)) in u.
   const hw = params.strandWidth / (2 * params.columnCount);
@@ -1065,6 +1246,7 @@ export function buildCelticKnotFullPotMesh(
       analyticChord: true,
       periodicU: true,
       refineCreases: true,
+      weldSoftCliffs: crestThrough,
       seedPoints,
       pointCap: 400000,
     },
@@ -1102,6 +1284,10 @@ export function buildCelticKnotFullPotMesh(
 
   const junctionLevels = measureJunctionLevels(mesh, junctions);
   const chordSplit = analyticChordSplit(mesh, junctions, surface, H);
+  // Honest facet chord (M6): the true sheet-facet sag against the analytic surface, straddle-guarded
+  // so a genuine ribbon↔background cliff (owned by the wall) is not counted as a facet error. This is
+  // the load-bearing < 0.01mm-EVERYWHERE claim once the crest is carried through the diamonds.
+  const facet = facetChordToTrueSurface(mesh, surface, H, { uPeriod: domain.uMax - domain.uMin });
   const md = toMeshData(mesh);
   const orient = checkOutwardWinding(md);
 
@@ -1130,6 +1316,11 @@ export function buildCelticKnotFullPotMesh(
     componentCount: orient.components,
     clearRegionMaxChordMm: chordSplit.clearMax,
     diamondMaxChordMm: chordSplit.diamondMax,
+    facetMaxChordMm: facet.maxMm,
+    facetRmsChordMm: facet.rmsMm,
+    facetMaxU: facet.maxU,
+    facetMaxT: facet.maxT,
+    facetSamplesSkipped: facet.skipped,
   };
   return { mesh: md, report };
 }

@@ -59,11 +59,15 @@ interface CliffState {
   seg: SegLike;
   samples: CliffSample[];
 }
+/** One sample along a crease polyline (in arc order). */
+interface CreaseSample {
+  /** Arc parameter s∈[0,1] along the crease (bisected during crease refinement). */
+  s: number;
+}
 /** The mutable per-crease sampling state (in-sheet constraint line; refined in place when enabled). */
 interface CreaseState {
   cr: CreaseLike;
-  /** Arc parameters s∈[0,1] along the crease, in order (bisected during crease refinement). */
-  ss: number[];
+  samples: CreaseSample[];
 }
 
 /** Cylindrical lift matching the rest of the app: theta = 2*pi*u, z = t*H. */
@@ -74,6 +78,18 @@ const lift = (u: number, t: number, r: number, H: number): Vec3 => [
 ];
 
 const edgeKey = (a: number, b: number): string => (a < b ? `${a}:${b}` : `${b}:${a}`);
+
+/** Insert a sample into an arc-ordered list, keeping it sorted by `s` (first-fit before a larger s). */
+function insertSampleSorted<T extends { s: number }>(list: T[], sample: T): void {
+  let idx = list.length;
+  for (let m = 0; m < list.length; m += 1) {
+    if (list[m].s > sample.s) {
+      idx = m;
+      break;
+    }
+  }
+  list.splice(idx, 0, sample);
+}
 
 export function buildDoubleValuedMesh(
   complex: CliffComplexLike,
@@ -87,6 +103,7 @@ export function buildDoubleValuedMesh(
   const { baseGridU, baseGridT, chordTolMm, maxRefinePasses } = opts;
   const periodicU = opts.periodicU ?? false;
   const refineCreases = opts.refineCreases ?? false;
+  const weldSoftCliffs = opts.weldSoftCliffs ?? false;
 
   // 1. Domain window. Default (M1): full circle u in [0,1], t spanning the cliff band.
   const domain: DomainWindow = opts.domain ?? {
@@ -139,14 +156,7 @@ export function buildDoubleValuedMesh(
         upper: jn.pinch.upper,
         junction: k,
       };
-      let idx = st.samples.length;
-      for (let m = 0; m < st.samples.length; m += 1) {
-        if (st.samples[m].s > sClamped) {
-          idx = m;
-          break;
-        }
-      }
-      st.samples.splice(idx, 0, sample);
+      insertSampleSorted(st.samples, sample);
     }
   }
   // When crossings are declared, lift each cliff split-vertex to the TRUE one-sided analytic
@@ -167,10 +177,11 @@ export function buildDoubleValuedMesh(
   const creases: CreaseState[] = (complex.creases ?? []).map((cr) => {
     const frac = domainSpanT > 0 ? Math.abs(cr.tRange[1] - cr.tRange[0]) / domainSpanT : 1;
     const n = Math.max(2, Math.ceil(baseGridT * Math.min(1, frac)));
-    const ss: number[] = [];
-    for (let j = 0; j < n; j += 1) ss.push(j / (n - 1));
-    return { cr, ss };
+    const samples: CreaseSample[] = [];
+    for (let j = 0; j < n; j += 1) samples.push({ s: j / (n - 1) });
+    return { cr, samples };
   });
+
 
   // 3. Build; if refining, measure GEOMETRICALLY against a hole-free reference soup of
   //    the true surface (sampling the discontinuous radius across a cliff would fabricate
@@ -184,8 +195,8 @@ export function buildDoubleValuedMesh(
       : () => 0;
   const POINT_CAP = opts.pointCap ?? 60000; // hard bound on the sampling set (logged, never silent)
   const uPeriod = periodicU ? domain.uMax - domain.uMin : undefined;
-  let result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU);
-  let m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod);
+  let result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs);
+  let m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, weldSoftCliffs);
   let addedSheetPoints = 0;
   let splitCliffEdges = 0;
   let splitCreaseEdges = 0;
@@ -199,8 +210,8 @@ export function buildDoubleValuedMesh(
     addedSheetPoints += applyCentroids(gridPts, m.centroidInserts);
     splitCliffEdges += applyCliffSplits(cliffs, m.cliffSplits);
     if (refineCreases) splitCreaseEdges += applyCreaseSplits(creases, m.creaseSplits);
-    result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU);
-    m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod);
+    result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs);
+    m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, weldSoftCliffs);
     passes += 1;
   }
   void splitCreaseEdges;
@@ -417,16 +428,27 @@ function assemble(
   occlusionAware: boolean,
   oneSidedDelta: number,
   periodicU: boolean,
+  weldSoftCliffs: boolean,
 ): Assembled {
+  // A cliff sample is SOFT (occluded — the visible over-ribbon is continuous across its locus)
+  // when the surface barely jumps there. Its interval carries no real wall, so under
+  // `weldSoftCliffs` it is meshed in-sheet (constraint kept for planarity, but no region split,
+  // no wall, vertices welded to one `surface(u,t)` point) — de-fragmenting overlap diamonds.
+  const SOFT_JUMP = 0.05;
+  const SOFT_DU = 2e-4;
+  const isSoftAt = (u: number, t: number): boolean =>
+    weldSoftCliffs && Math.abs(surface(u + SOFT_DU, t) - surface(u - SOFT_DU, t)) < SOFT_JUMP;
   const pts: Array<[number, number]> = [];
   const cliffLip: Array<Lip | null> = [];
   const cliffSegOf: number[] = []; // segment index this point's locus belongs to; -1 for sheet points
   const ptJunction: number[] = []; // declared-junction index this point pinches to; -1 otherwise
+  const ptWeld: number[] = []; // >=0 ⇒ soft (occluded) point welded to ONE single-valued vertex; -1 otherwise
   const pushPt = (u: number, t: number, lip: Lip | null, seg = -1): number => {
     pts.push([u, t]);
     cliffLip.push(lip);
     cliffSegOf.push(seg);
     ptJunction.push(-1);
+    ptWeld.push(-1);
     return pts.length - 1;
   };
 
@@ -440,12 +462,24 @@ function assemble(
   // junction creates it, every other incident segment reuses it — so their constraint chains
   // MEET at that single vertex (planar PSLG) instead of crossing.
   const junctionPt = new Map<number, number>();
+  // Edges of INERT (soft, occluded) cliff intervals: kept as CDT constraints for planarity, but
+  // NOT split (regions union across them) and NOT walled — so the buried under-cliff no longer
+  // fragments the over-ribbon. Skipped in the wall loop (not counted as `unwalled`).
+  const inertEdges = new Set<string>();
   for (let ci = 0; ci < cliffs.length; ci += 1) {
     const chain: number[] = [];
     let prev = -1;
     const { samples } = cliffs[ci];
+    // Per-sample softness: an occluded stretch where the surface is continuous across the locus.
+    const soft = samples.map((sm) => sm.junction === undefined && isSoftAt(sm.u, sm.t));
     for (let j = 0; j < samples.length; j += 1) {
       const sm = samples[j];
+      // Drop INTERIOR soft samples (both neighbours also soft): the occluded under-cliff has no
+      // visible step there, so its Steiner point serves nothing and — worse — sits on the very (u,t)
+      // a crest crease crosses, spawning a coincident near-vertical sliver. Dropping it lets the
+      // crest cross truly empty space. Soft samples at a hard/soft BOUNDARY are kept + welded so the
+      // fading occlusion wall converges to one vertex (a clean taper), never left dangling.
+      if (weldSoftCliffs && soft[j] && j > 0 && j < samples.length - 1 && soft[j - 1] && soft[j + 1]) continue;
       let id: number;
       if (sm.junction !== undefined) {
         const shared = junctionPt.get(sm.junction);
@@ -458,13 +492,22 @@ function assemble(
         }
       } else {
         id = pushPt(sm.u, sm.t, { lower: sm.lower, upper: sm.upper }, ci);
+        // WELD a kept soft (boundary) point to one single-valued vertex at surface(u,t).
+        if (soft[j]) ptWeld[id] = 1;
       }
       chain.push(id);
       if (prev >= 0 && prev !== id) {
         const k = edgeKey(prev, id);
-        edges.push([prev, id]);
-        cliffEdgeSet.add(k);
-        cliffEdgeInfo.set(k, { ci, interval: j - 1 });
+        // A both-soft interval is INERT: the occluded under-cliff carries no visible step there, so
+        // it is DROPPED entirely — no constraint edge (the crest crease crosses free space, planar,
+        // no crossing to planarize), no region split, no wall. HARD intervals stay real cliffs.
+        if (weldSoftCliffs && ptWeld[prev] >= 0 && ptWeld[id] >= 0) {
+          inertEdges.add(k);
+        } else {
+          edges.push([prev, id]);
+          cliffEdgeSet.add(k);
+          cliffEdgeInfo.set(k, { ci, interval: j - 1 });
+        }
       }
       prev = id;
     }
@@ -477,10 +520,11 @@ function assemble(
   // chord is too large (a snaking crest line sampled too coarsely).
   const creaseEdgeInfo = new Map<string, { cr: number; interval: number }>();
   for (let cr = 0; cr < creases.length; cr += 1) {
-    const { cr: creaseLike, ss } = creases[cr];
+    const { cr: creaseLike, samples } = creases[cr];
     let prev = -1;
-    for (let j = 0; j < ss.length; j += 1) {
-      const { u, t } = creaseLike.at(ss[j]);
+    for (let j = 0; j < samples.length; j += 1) {
+      const sm = samples[j];
+      const { u, t } = creaseLike.at(sm.s);
       const id = pushPt(u, t, null);
       if (prev >= 0 && prev !== id) {
         edges.push([prev, id]);
@@ -674,8 +718,25 @@ function assemble(
     store.set(jk, id);
     return id;
   };
+  // Soft-cliff WELD (M6): a soft (occluded) point has a surface-continuous locus, so collapse it to
+  // ONE single-valued vertex at `surface(u,t)` shared by every incident region — turning that
+  // cliff's (0-height) wall into a watertight converging fan at the hard/soft boundary and letting a
+  // crest crease thread straight over the buried cliff. Still tagged onCliff (its locus is a cliff).
+  // Welded points key by ROUNDED (u,t) so coincident welds (two soft cliffs meeting) collapse to one.
+  const weldVert = new Map<string, number>();
   const registry = new Map<string, number>();
   const getV = (pi: number, region: number): number => {
+    if (ptWeld[pi] >= 0) {
+      const [u, t] = pts[pi];
+      const wk = `${Math.round(u / 1e-7)}:${Math.round(t / 1e-7)}`;
+      const existing = weldVert.get(wk);
+      if (existing !== undefined) return existing;
+      const [x, y, z] = lift(u, t, surface(u, t), H);
+      const id = addVertex(mesh, x, y, z);
+      tagVertex(id, u, t, region, cliffSegOf[pi], true, false);
+      weldVert.set(wk, id);
+      return id;
+    }
     const lip = cliffLip[pi];
     const jk = ptJunction[pi];
     if (jk >= 0 && lip) return junctionVert(jk, isRibbon[region], region, pi);
@@ -733,6 +794,7 @@ function assemble(
       const a = chain[i];
       const b = chain[i + 1];
       if (a === b) continue; // degenerate chain step (shared junction point)
+      if (inertEdges.has(edgeKey(a, b))) continue; // occluded soft interval: in-sheet, no wall
       const bucket = edgeTri.get(edgeKey(a, b)) ?? [];
       const regs = [...new Set(bucket.map((ti) => regionDense[ti]))];
       if (regs.length < 2) {
@@ -780,6 +842,7 @@ function measure(
   analytic: { surface: SurfaceRadiusFn; H: number } | undefined,
   refineCreases: boolean,
   uPeriod: number | undefined,
+  weldSoftCliffs: boolean,
 ): Measured {
   const { mesh, pts, sheetTris, wallQuads, cliffEdgeSet, creaseEdgeInfo, cliffs } = a;
   const pos = mesh.positions;
@@ -806,8 +869,21 @@ function measure(
   // there. Falls back to nearest-triangle distance to the reference soup when not analytic.
   const liftA = (u: number, t: number, r: number): Vec3 =>
     analytic ? [r * Math.cos(TAU * u), r * Math.sin(TAU * u), t * analytic.H] : [0, 0, 0];
-  const sheetSag = (flat: Vec3, um: number, tm: number): number =>
-    analytic ? d3(flat, liftA(um, tm, analytic.surface(um, tm))) : dist(flat);
+  // Straddle guard (M6, `weldSoftCliffs` only): a sheet sample whose parameter midpoint lands across
+  // a genuine surface DISCONTINUITY (a real ribbon↔background cliff) reports a ~jump-sized phantom
+  // sag and makes the refine loop chase the cliff forever (the wall, not the sheet, owns that radial
+  // step). Zero those samples out; an OCCLUDED (continuous) cliff under the visible crest passes the
+  // test and is refined normally. Gated so the M5 refine path is byte-identical (M5 relies on the
+  // un-guarded analytic sag for its clear/diamond chord split).
+  const STRADDLE_JUMP = 0.05;
+  const STRADDLE_DU = 2e-4;
+  const straddles = (um: number, tm: number): boolean =>
+    !!analytic && weldSoftCliffs && Math.abs(analytic.surface(um + STRADDLE_DU, tm) - analytic.surface(um - STRADDLE_DU, tm)) > STRADDLE_JUMP;
+  const sheetSag = (flat: Vec3, um: number, tm: number): number => {
+    if (!analytic) return dist(flat);
+    if (straddles(um, tm)) return 0;
+    return d3(flat, liftA(um, tm, analytic.surface(um, tm)));
+  };
 
   let maxChord = 0;
   const centroidInserts: Array<[number, number]> = [];
@@ -964,9 +1040,9 @@ function applyCreaseSplits(creases: ReadonlyArray<CreaseState>, splits: Readonly
     const state = creases[cr];
     if (!state) continue;
     for (const iv of [...intervals].sort((x, y) => y - x)) {
-      if (iv + 1 >= state.ss.length) continue;
-      const sMid = (state.ss[iv] + state.ss[iv + 1]) / 2;
-      state.ss.splice(iv + 1, 0, sMid);
+      if (iv + 1 >= state.samples.length) continue;
+      const sMid = (state.samples[iv].s + state.samples[iv + 1].s) / 2;
+      state.samples.splice(iv + 1, 0, { s: sMid }); // interior split point carries no pin
       count += 1;
     }
   }
