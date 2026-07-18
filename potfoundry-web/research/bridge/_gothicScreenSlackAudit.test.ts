@@ -11,7 +11,10 @@ import {
   compileValidatedResidualProgram,
   fastEncloseCompiledValidatedResidualProgram,
   getLastScreenClarkeFired,
+  getLastScreenSecondOrderUsed,
+  getLastSecondOrderInvalidOp,
   setScreenJacobianPartition,
+  setScreenSecondOrder,
 } from '../../src/geometry/targetSolid/validatedResidualProgram';
 import { outwardInterval, outwardVectorNormUpper } from '../../src/geometry/targetSolid/outwardFloat64Interval';
 import {
@@ -68,6 +71,36 @@ const VORONOI_BUBBLE_LATTICE: VoronoiLatticeParams = {
  */
 
 const RUN = process.env.PF_GOTHIC_SLACK === '1';
+
+// Integer opcode -> name for the second-order fallback attribution (mirrors the
+// FAST_OP_* constants in validatedResidualProgram; -1 = hull-only/other).
+const SO_OP_NAME: Readonly<Record<number, string>> = {
+  [-1]: 'hull/other',
+  4: 'negate',
+  5: 'abs',
+  6: 'square',
+  7: 'sqrt',
+  8: 'exp',
+  9: 'ln',
+  10: 'sin',
+  11: 'cos',
+  12: 'add',
+  13: 'sub',
+  14: 'mul',
+  15: 'divide',
+  16: 'min',
+  17: 'max',
+  18: 'power',
+  19: 'floor',
+  20: 'ceil',
+  21: 'round',
+  22: 'fract',
+  23: 'sign',
+  24: 'step',
+  25: 'atan2',
+  26: 'pcg2d-x',
+  27: 'pcg2d-y',
+};
 
 const H32_POT_GEOMETRY = Object.freeze({
   ...DEFAULT_GEOMETRY,
@@ -477,6 +510,13 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
     () => {
       const errPath = (process.env.PF_SLACK_OUT ?? 'gothic_slack_report.txt') + '.err';
       setScreenJacobianPartition(GATE === 'screen' ? JAC_PARTITION : 0);
+      // Speedup measurement toggle: when PF_SLACK_SECOND_ORDER=1 the real screen
+      // runs the flag-gated Hessian-interval (second-order) pass, so total cells /
+      // accepted leaves fall by whatever the tighter bound buys; the minSlack
+      // soundness gate below then also validates the second-order screen over the
+      // whole real grid. Default (unset) is the untouched first-order baseline.
+      const SECOND_ORDER = process.env.PF_SLACK_SECOND_ORDER === '1';
+      setScreenSecondOrder(SECOND_ORDER);
       try {
       const canonicalInput = createCanonicalTargetInputBinding(
         H32_POT_GEOMETRY,
@@ -520,6 +560,8 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
       const soCeilingRatio: number[] = []; // Voronoi interior: 2nd-order ceiling ratio
       const voronoiStraddle = STYLE === 'Voronoi' && PARAMS.v_morph === 0;
       let subdivided = 0;
+      let secondOrderUsed = 0; // cells whose screen used the 2nd-order form (not fallback)
+      const soInvalidOpHist = new Map<number, number>(); // fallback attribution: invalidating opcode -> count (-1 = hull-only/other)
       let slackForced = 0; // subdivided but true<=budget => pure waste
       let genuineOver = 0; // subdivided and true>budget => real
       let capLeaves = 0; // hit MAX_DEPTH still over budget (decimal/refuse regime)
@@ -556,6 +598,11 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
             ? screenUpperMm(buildRequest(base, artifactMm, cell, depth), program)
             : sampledMeanValueBound(corners, artifactMm, evaluateFloat64, GATE, FIX_RES);
         const clarkeFired = GATE === 'screen' && getLastScreenClarkeFired();
+        if (GATE === 'screen' && SECOND_ORDER && getLastScreenSecondOrderUsed()) secondOrderUsed += 1;
+        if (GATE === 'screen' && SECOND_ORDER && screen !== null && !getLastScreenSecondOrderUsed()) {
+          const op = getLastSecondOrderInvalidOp();
+          soInvalidOpHist.set(op, (soInvalidOpHist.get(op) ?? 0) + 1);
+        }
         const trueMm = trueUpperMm(baseUvFloat, artifactMm, cell, depth, evaluateFloat64, ORACLE_RES);
         if (screen === null) {
           refused += 1;
@@ -682,6 +729,15 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
         `budget: ${um(BUDGET_MM)} um`,
         '',
         '--- b&b population (adaptive descent = cMPD accept/subdivide) ---',
+        `  second-order screen        : ${SECOND_ORDER ? 'ON' : 'OFF (first-order baseline)'}${SECOND_ORDER ? `  (2nd-order cells: ${secondOrderUsed}, ${((100 * secondOrderUsed) / Math.max(totalCells, 1)).toFixed(1)}%; rest fell back)` : ''}`,
+        ...(SECOND_ORDER
+          ? [
+              `  2nd-order fallback by op   : ${[...soInvalidOpHist.entries()]
+                .sort((x, y) => y[1] - x[1])
+                .map(([op, n]) => `${SO_OP_NAME[op] ?? `op${op}`}=${n}`)
+                .join(' ')}`,
+            ]
+          : []),
         `  total cells visited        : ${totalCells}${capped ? ` (CAPPED at ${MAX_CELLS} — coverage partial)` : ''}`,
         `  screen-refused (unavailable): ${refused}`,
         `  accepted leaves            : ${acceptRatio.length}`,
@@ -749,6 +805,7 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
         throw e;
       } finally {
         setScreenJacobianPartition(0);
+        setScreenSecondOrder(false);
       }
     },
     600_000

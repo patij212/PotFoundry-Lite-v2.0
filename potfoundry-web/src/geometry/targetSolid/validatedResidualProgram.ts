@@ -100,6 +100,26 @@ export const VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 = sha256Utf8(
     'invalid syntax, domain uncertainty, nonfinite conversion, resource excess, or inconsistent barycentric data refuses',
   ].join('\n')
 );
+// Prepared proof text for the optional second-order (Hessian-interval) screen.
+// It is NOT part of VALIDATED_RESIDUAL_PROGRAM_COMPILER_PROOF_SHA256 above: the
+// second-order pass is flag-gated OFF by default, so the certified first-order
+// method text and its hash are unchanged and every existing certificate stays
+// valid. Productionizing the pass (enabling it inside a certification run) is a
+// deliberate step: append these sentences to the compiler proof array, bump the
+// compiler version, and re-derive the certificate roster.
+export const VALIDATED_RESIDUAL_PROGRAM_SECOND_ORDER_METHOD_TEXT = [
+  'the optional second-order (Hessian-interval) screen encloses a twice-differentiable residual cell by Taylor expansion with the second-order Lagrange remainder: for the cell centroid c and offset delta = x - c, r(x) = r(c) + grad r(c) . delta + 1/2 delta^T H_r(xi) delta for some xi on the segment from c to x, which lies in the cell, so r(x) is contained in r(c) + { grad r(c) . delta : x in the cell } + 1/2 { delta^T H delta : delta in the axis-aligned cell offset box, H in H_r(cell) }',
+  'the residual value and gradient at the centroid are enclosed as thin intervals over the same compiled instructions, and the linear term is hulled over the three exact cell-vertex offsets exactly as the first-order mean-value form, so it is a sound outward superset by convexity',
+  'the affine artifact has identically zero curvature, so the residual Hessian equals the target Hessian, which is enclosed over the whole axis-aligned cell box by forward-mode interval second differentiation of the compiled instructions; the quadratic remainder is that interval Hessian contracted with the box offset interval and halved, a sound outward superset of every 1/2 delta^T H(xi) delta',
+  'per-op second-derivative rules propagate outward interval Hessian channels: the chain rule y_ij = f(2)(g) g_i g_j + f(1)(g) g_ij for unary nodes (negate, square, sqrt, exp, ln, sin, cos) and the product rule y_ij = a_ij b + a_i b_j + a_j b_i + a b_ij for multiply, with the same relative-only widening and error-free-checked additions that keep the first-order channels sound and exact zeros exact',
+  'kinked nodes whose Clarke subgradient branch fires (a straddling minimum, maximum, or absolute value), jump and branch-cut nodes, and any operation whose bounded second-derivative rule is not yet implemented mark the cell second-order-invalid; the screen then falls back to the sound first-order mean-value enclosure for that cell, so soundness never depends on second-order coverage',
+  'the second-order pass is an acceptance-only accelerator with the same one-sided authority as the first-order screen: a returned enclosure is a sound bound usable for acceptance and it never rejects a cell on its own',
+].join('\n');
+
+export const VALIDATED_RESIDUAL_PROGRAM_SECOND_ORDER_METHOD_SHA256 = sha256Utf8(
+  VALIDATED_RESIDUAL_PROGRAM_SECOND_ORDER_METHOD_TEXT
+);
+
 export const GENERATED_TARGET_PROGRAM_BACKENDS_VERSION =
   'potfoundry.generated-target-program-backends/v7' as const;
 export const GENERATED_TARGET_PROGRAM_BACKENDS_SCOPE =
@@ -1749,6 +1769,40 @@ interface FastCompiledScreenProgram {
 
 const fastCompiledCache = new WeakMap<object, FastCompiledScreenProgram>();
 
+/**
+ * Second-derivative channels for the optional Hessian-interval (second-order)
+ * screen pass. Allocated lazily on first second-order use and cached per
+ * compiled program, so the default first-order path allocates nothing new and
+ * stays byte-identical.
+ */
+interface FastHessianChannels {
+  readonly duuLo: Float64Array;
+  readonly duuHi: Float64Array;
+  readonly duvLo: Float64Array;
+  readonly duvHi: Float64Array;
+  readonly dvvLo: Float64Array;
+  readonly dvvHi: Float64Array;
+}
+
+const fastHessianCache = new WeakMap<FastCompiledScreenProgram, FastHessianChannels>();
+
+function fastHessianChannels(program: FastCompiledScreenProgram): FastHessianChannels {
+  let channels = fastHessianCache.get(program);
+  if (channels === undefined) {
+    const count = program.ops.length;
+    channels = {
+      duuLo: new Float64Array(count),
+      duuHi: new Float64Array(count),
+      duvLo: new Float64Array(count),
+      duvHi: new Float64Array(count),
+      dvvLo: new Float64Array(count),
+      dvvHi: new Float64Array(count),
+    };
+    fastHessianCache.set(program, channels);
+  }
+  return channels;
+}
+
 function fastWidenLo(value: number): number {
   return value - Math.abs(value) * FAST_REL;
 }
@@ -2045,9 +2099,38 @@ let fastRunTapeHullOnly = false;
 // genuine-kink cells from smooth cells. Does not affect the enclosure/soundness.
 let fastRunTapeClarkeFired = false;
 let fastLastScreenClarkeFired = false;
+/**
+ * Set true during a Hessian-tape run (fastRunTape called with a non-null
+ * `hess`) when a node has no sound bounded second-derivative over the cell: a
+ * straddling kink (abs/min/max Clarke branch), a jump / hull-only node, or an
+ * operation whose per-op second-order rule is not yet implemented. The centered
+ * second-order form is then invalid for the run and the caller must fall back
+ * to the first-order mean-value screen. Never affects the first-order bound.
+ */
+let fastRunTapeSecondOrderInvalid = false;
+let fastLastScreenSecondOrderUsed = false;
+// Diagnostic only (never read by any bound decision): the integer opcode of the
+// node that first made the last Hessian-tape run second-order-invalid, or -1 if
+// none did (the run stayed second-order-valid, or fell back via hull-only).
+let fastRunTapeSecondOrderInvalidOp = -1;
 
 export function getLastScreenClarkeFired(): boolean {
   return fastLastScreenClarkeFired;
+}
+
+/**
+ * Observational: whether the last screened cell was enclosed by the second-order
+ * Hessian-interval form (true) or fell back to the first-order mean-value form
+ * (false). Never read by any bound or soundness decision.
+ */
+export function getLastScreenSecondOrderUsed(): boolean {
+  return fastLastScreenSecondOrderUsed;
+}
+
+/** Diagnostic: integer opcode of the node that first invalidated the second-order
+ * pass on the last Hessian-tape run (-1 = none). Never read by proof decisions. */
+export function getLastSecondOrderInvalidOp(): number {
+  return fastRunTapeSecondOrderInvalidOp;
 }
 
 /**
@@ -2074,6 +2157,13 @@ function fastBandScratch(internal: InternalCompiledProgram): Float64Array {
  * over u in [uLo, uHi], v in [vLo, vHi]. When `seedDerivatives` is false both
  * derivative channels stay zero (pure value pass). Returns false (with a
  * refusal recorded) when any node leaves the screen's supported domain.
+ *
+ * When `hess` is non-null the run additionally propagates outward interval
+ * second-derivative channels (duu, duv, dvv) by the per-op chain/product rule
+ * for the Hessian-interval (second-order) screen; `seedDerivatives` must be true
+ * in that case. Nodes with no sound bounded second derivative over the cell set
+ * `fastRunTapeSecondOrderInvalid` (the value and first-derivative channels stay
+ * sound, so the caller can still use the first-order form).
  */
 function fastRunTape(
   program: FastCompiledScreenProgram,
@@ -2081,7 +2171,8 @@ function fastRunTape(
   uHi: number,
   vLo: number,
   vHi: number,
-  seedDerivatives: boolean
+  seedDerivatives: boolean,
+  hess: FastHessianChannels | null = null
 ): boolean {
   const ops = program.ops;
   const argA = program.argA;
@@ -2097,6 +2188,10 @@ function fastRunTape(
   const count = ops.length;
   fastRunTapeHullOnly = false;
   fastRunTapeClarkeFired = false;
+  if (hess !== null) {
+    fastRunTapeSecondOrderInvalid = false;
+    fastRunTapeSecondOrderInvalidOp = -1;
+  }
   for (let index = 0; index < count; index += 1) {
     let rLo = 0;
     let rHi = 0;
@@ -2946,6 +3041,558 @@ function fastRunTape(
     duHi[index] = rDuHi;
     dvLo[index] = rDvLo;
     dvHi[index] = rDvHi;
+    if (hess !== null) {
+      // Per-op second-derivative (Hessian-interval) rules. Each unary rule is
+      // the chain rule y'' = f''(g)·g'⊗g' + f'(g)·g''; leaves are constant or
+      // linear (zero). Operations without a sound bounded second-derivative rule
+      // over this cell — every op not handled here yet, plus straddling kinks
+      // and jumps handled inline above — mark the run second-order-invalid so
+      // the caller falls back to the first-order mean-value form.
+      const wasInvalid = fastRunTapeSecondOrderInvalid;
+      let hDuuLo = 0;
+      let hDuuHi = 0;
+      let hDuvLo = 0;
+      let hDuvHi = 0;
+      let hDvvLo = 0;
+      let hDvvHi = 0;
+      switch (ops[index]) {
+        case FAST_OP_CONST:
+        case FAST_OP_PI:
+        case FAST_OP_U:
+        case FAST_OP_V:
+          break; // constant or linear leaf: all second derivatives are zero
+        case FAST_OP_SQUARE: {
+          // y = g^2 => f'(g) = 2g, f''(g) = 2 (constant).
+          const gLo = valueLo[a];
+          const gHi = valueHi[a];
+          const guLo = duLo[a];
+          const guHi = duHi[a];
+          const gvLo = dvLo[a];
+          const gvHi = dvHi[a];
+          const g2Lo = 2 * gLo; // multiply by two is an exact exponent shift
+          const g2Hi = 2 * gHi;
+          // yuu = 2*gu^2 + 2g*guu
+          hDuuLo = fastCheckedAddLo(
+            2 * fastIntSquareLo(guLo, guHi),
+            fastIntProdLo(g2Lo, g2Hi, hess.duuLo[a], hess.duuHi[a])
+          );
+          hDuuHi = fastCheckedAddHi(
+            2 * fastIntSquareHi(guLo, guHi),
+            fastIntProdHi(g2Lo, g2Hi, hess.duuLo[a], hess.duuHi[a])
+          );
+          // yuv = 2*gu*gv + 2g*guv
+          hDuvLo = fastCheckedAddLo(
+            2 * fastIntProdLo(guLo, guHi, gvLo, gvHi),
+            fastIntProdLo(g2Lo, g2Hi, hess.duvLo[a], hess.duvHi[a])
+          );
+          hDuvHi = fastCheckedAddHi(
+            2 * fastIntProdHi(guLo, guHi, gvLo, gvHi),
+            fastIntProdHi(g2Lo, g2Hi, hess.duvLo[a], hess.duvHi[a])
+          );
+          // yvv = 2*gv^2 + 2g*gvv
+          hDvvLo = fastCheckedAddLo(
+            2 * fastIntSquareLo(gvLo, gvHi),
+            fastIntProdLo(g2Lo, g2Hi, hess.dvvLo[a], hess.dvvHi[a])
+          );
+          hDvvHi = fastCheckedAddHi(
+            2 * fastIntSquareHi(gvLo, gvHi),
+            fastIntProdHi(g2Lo, g2Hi, hess.dvvLo[a], hess.dvvHi[a])
+          );
+          break;
+        }
+        case FAST_OP_NEG:
+          // y = -g: every second derivative negates.
+          hDuuLo = -hess.duuHi[a];
+          hDuuHi = -hess.duuLo[a];
+          hDuvLo = -hess.duvHi[a];
+          hDuvHi = -hess.duvLo[a];
+          hDvvLo = -hess.dvvHi[a];
+          hDvvHi = -hess.dvvLo[a];
+          break;
+        case FAST_OP_ADD:
+          // y = a + b: second derivatives add component-wise.
+          hDuuLo = fastCheckedAddLo(hess.duuLo[a], hess.duuLo[b]);
+          hDuuHi = fastCheckedAddHi(hess.duuHi[a], hess.duuHi[b]);
+          hDuvLo = fastCheckedAddLo(hess.duvLo[a], hess.duvLo[b]);
+          hDuvHi = fastCheckedAddHi(hess.duvHi[a], hess.duvHi[b]);
+          hDvvLo = fastCheckedAddLo(hess.dvvLo[a], hess.dvvLo[b]);
+          hDvvHi = fastCheckedAddHi(hess.dvvHi[a], hess.dvvHi[b]);
+          break;
+        case FAST_OP_SUB:
+          // y = a - b: subtract b's second derivatives component-wise.
+          hDuuLo = fastCheckedAddLo(hess.duuLo[a], -hess.duuHi[b]);
+          hDuuHi = fastCheckedAddHi(hess.duuHi[a], -hess.duuLo[b]);
+          hDuvLo = fastCheckedAddLo(hess.duvLo[a], -hess.duvHi[b]);
+          hDuvHi = fastCheckedAddHi(hess.duvHi[a], -hess.duvLo[b]);
+          hDvvLo = fastCheckedAddLo(hess.dvvLo[a], -hess.dvvHi[b]);
+          hDvvHi = fastCheckedAddHi(hess.dvvHi[a], -hess.dvvLo[b]);
+          break;
+        case FAST_OP_MUL: {
+          // y = a*b. Product rule for the Hessian:
+          //   yuu = auu*b + 2*au*bu + a*buu
+          //   yuv = auv*b + au*bv + av*bu + a*buv
+          //   yvv = avv*b + 2*av*bv + a*bvv
+          const aVLo = valueLo[a];
+          const aVHi = valueHi[a];
+          const bVLo = valueLo[b];
+          const bVHi = valueHi[b];
+          const aDuLo = duLo[a];
+          const aDuHi = duHi[a];
+          const aDvLo = dvLo[a];
+          const aDvHi = dvHi[a];
+          const bDuLo = duLo[b];
+          const bDuHi = duHi[b];
+          const bDvLo = dvLo[b];
+          const bDvHi = dvHi[b];
+          // yuu = auu*b + 2*(au*bu) + a*buu
+          hDuuLo = fastCheckedAddLo(
+            fastCheckedAddLo(
+              fastIntProdLo(hess.duuLo[a], hess.duuHi[a], bVLo, bVHi),
+              2 * fastIntProdLo(aDuLo, aDuHi, bDuLo, bDuHi)
+            ),
+            fastIntProdLo(aVLo, aVHi, hess.duuLo[b], hess.duuHi[b])
+          );
+          hDuuHi = fastCheckedAddHi(
+            fastCheckedAddHi(
+              fastIntProdHi(hess.duuLo[a], hess.duuHi[a], bVLo, bVHi),
+              2 * fastIntProdHi(aDuLo, aDuHi, bDuLo, bDuHi)
+            ),
+            fastIntProdHi(aVLo, aVHi, hess.duuLo[b], hess.duuHi[b])
+          );
+          // yuv = auv*b + au*bv + av*bu + a*buv
+          hDuvLo = fastCheckedAddLo(
+            fastCheckedAddLo(
+              fastIntProdLo(hess.duvLo[a], hess.duvHi[a], bVLo, bVHi),
+              fastIntProdLo(aDuLo, aDuHi, bDvLo, bDvHi)
+            ),
+            fastCheckedAddLo(
+              fastIntProdLo(aDvLo, aDvHi, bDuLo, bDuHi),
+              fastIntProdLo(aVLo, aVHi, hess.duvLo[b], hess.duvHi[b])
+            )
+          );
+          hDuvHi = fastCheckedAddHi(
+            fastCheckedAddHi(
+              fastIntProdHi(hess.duvLo[a], hess.duvHi[a], bVLo, bVHi),
+              fastIntProdHi(aDuLo, aDuHi, bDvLo, bDvHi)
+            ),
+            fastCheckedAddHi(
+              fastIntProdHi(aDvLo, aDvHi, bDuLo, bDuHi),
+              fastIntProdHi(aVLo, aVHi, hess.duvLo[b], hess.duvHi[b])
+            )
+          );
+          // yvv = avv*b + 2*(av*bv) + a*bvv
+          hDvvLo = fastCheckedAddLo(
+            fastCheckedAddLo(
+              fastIntProdLo(hess.dvvLo[a], hess.dvvHi[a], bVLo, bVHi),
+              2 * fastIntProdLo(aDvLo, aDvHi, bDvLo, bDvHi)
+            ),
+            fastIntProdLo(aVLo, aVHi, hess.dvvLo[b], hess.dvvHi[b])
+          );
+          hDvvHi = fastCheckedAddHi(
+            fastCheckedAddHi(
+              fastIntProdHi(hess.dvvLo[a], hess.dvvHi[a], bVLo, bVHi),
+              2 * fastIntProdHi(aDvLo, aDvHi, bDvLo, bDvHi)
+            ),
+            fastIntProdHi(aVLo, aVHi, hess.dvvLo[b], hess.dvvHi[b])
+          );
+          break;
+        }
+        case FAST_OP_SIN:
+        case FAST_OP_COS: {
+          // f''(g) = -f(g) (the negated node value) for both sin and cos; f'(g)
+          // = cos(g) for sin, -sin(g) for cos, from the sound trig range.
+          const isSin = ops[index] === FAST_OP_SIN;
+          if (!fastTrigRangeRaw(valueLo[a], valueHi[a], !isSin)) {
+            fastRunTapeSecondOrderInvalid = true;
+            break;
+          }
+          let fpLo = fastTrigScratch[0];
+          let fpHi = fastTrigScratch[1];
+          if (!isSin) {
+            const swap = fpLo;
+            fpLo = -fpHi;
+            fpHi = -swap;
+          }
+          fastUnaryChainHessianInto(
+            fpLo,
+            fpHi,
+            -valueHi[index],
+            -valueLo[index],
+            duLo[a],
+            duHi[a],
+            dvLo[a],
+            dvHi[a],
+            hess.duuLo[a],
+            hess.duuHi[a],
+            hess.duvLo[a],
+            hess.duvHi[a],
+            hess.dvvLo[a],
+            hess.dvvHi[a]
+          );
+          hDuuLo = fastUnaryHessScratch[0];
+          hDuuHi = fastUnaryHessScratch[1];
+          hDuvLo = fastUnaryHessScratch[2];
+          hDuvHi = fastUnaryHessScratch[3];
+          hDvvLo = fastUnaryHessScratch[4];
+          hDvvHi = fastUnaryHessScratch[5];
+          break;
+        }
+        case FAST_OP_SQRT: {
+          // y = sqrt(g), g > 0: f'(g) = 1/(2 sqrt g), f''(g) = -1/(4 g^(3/2)).
+          const gLo = valueLo[a];
+          const gHi = valueHi[a];
+          if (!(gLo > 0)) {
+            fastRunTapeSecondOrderInvalid = true;
+            break;
+          }
+          const rootLo = fastWidenLo(Math.sqrt(gLo));
+          const rootHi = fastWidenHi(Math.sqrt(gHi));
+          const fpLo = fastWidenLo(1 / (2 * rootHi));
+          const fpHi = fastWidenHi(1 / (2 * rootLo));
+          // -1/(4 g^(3/2)) is negative and increasing in g (most negative at gLo).
+          const fppLo = -fastWidenHi(1 / (4 * gLo * rootLo));
+          const fppHi = -fastWidenLo(1 / (4 * gHi * rootHi));
+          fastUnaryChainHessianInto(
+            fpLo,
+            fpHi,
+            fppLo,
+            fppHi,
+            duLo[a],
+            duHi[a],
+            dvLo[a],
+            dvHi[a],
+            hess.duuLo[a],
+            hess.duuHi[a],
+            hess.duvLo[a],
+            hess.duvHi[a],
+            hess.dvvLo[a],
+            hess.dvvHi[a]
+          );
+          hDuuLo = fastUnaryHessScratch[0];
+          hDuuHi = fastUnaryHessScratch[1];
+          hDuvLo = fastUnaryHessScratch[2];
+          hDuvHi = fastUnaryHessScratch[3];
+          hDvvLo = fastUnaryHessScratch[4];
+          hDvvHi = fastUnaryHessScratch[5];
+          break;
+        }
+        case FAST_OP_EXP: {
+          // y = exp(g): f'(g) = f''(g) = e^g = the node value.
+          const fLo = valueLo[index];
+          const fHi = valueHi[index];
+          fastUnaryChainHessianInto(
+            fLo,
+            fHi,
+            fLo,
+            fHi,
+            duLo[a],
+            duHi[a],
+            dvLo[a],
+            dvHi[a],
+            hess.duuLo[a],
+            hess.duuHi[a],
+            hess.duvLo[a],
+            hess.duvHi[a],
+            hess.dvvLo[a],
+            hess.dvvHi[a]
+          );
+          hDuuLo = fastUnaryHessScratch[0];
+          hDuuHi = fastUnaryHessScratch[1];
+          hDuvLo = fastUnaryHessScratch[2];
+          hDuvHi = fastUnaryHessScratch[3];
+          hDvvLo = fastUnaryHessScratch[4];
+          hDvvHi = fastUnaryHessScratch[5];
+          break;
+        }
+        case FAST_OP_LN: {
+          // y = ln(g), g > 0: f'(g) = 1/g, f''(g) = -1/g^2.
+          const gLo = valueLo[a];
+          const gHi = valueHi[a];
+          if (!(gLo > 0)) {
+            fastRunTapeSecondOrderInvalid = true;
+            break;
+          }
+          const fpLo = fastWidenLo(1 / gHi);
+          const fpHi = fastWidenHi(1 / gLo);
+          const fppLo = -fastWidenHi(1 / (gLo * gLo));
+          const fppHi = -fastWidenLo(1 / (gHi * gHi));
+          fastUnaryChainHessianInto(
+            fpLo,
+            fpHi,
+            fppLo,
+            fppHi,
+            duLo[a],
+            duHi[a],
+            dvLo[a],
+            dvHi[a],
+            hess.duuLo[a],
+            hess.duuHi[a],
+            hess.duvLo[a],
+            hess.duvHi[a],
+            hess.dvvLo[a],
+            hess.dvvHi[a]
+          );
+          hDuuLo = fastUnaryHessScratch[0];
+          hDuuHi = fastUnaryHessScratch[1];
+          hDuvLo = fastUnaryHessScratch[2];
+          hDuvHi = fastUnaryHessScratch[3];
+          hDvvLo = fastUnaryHessScratch[4];
+          hDvvHi = fastUnaryHessScratch[5];
+          break;
+        }
+        case FAST_OP_DIV: {
+          // y = a/b (b guarded non-straddling by the value pass). Quotient rule:
+          //   y_ij = a_ij/b - (a_i b_j + a_j b_i)/b^2 - a b_ij/b^2 + 2 a b_i b_j/b^3.
+          const bLo = valueLo[b];
+          const bHi = valueHi[b];
+          if (bLo <= 0 && bHi >= 0) {
+            fastRunTapeSecondOrderInvalid = true;
+            break;
+          }
+          const aVLo = valueLo[a];
+          const aVHi = valueHi[a];
+          const aDuLo = duLo[a];
+          const aDuHi = duHi[a];
+          const aDvLo = dvLo[a];
+          const aDvHi = dvHi[a];
+          const bDuLo = duLo[b];
+          const bDuHi = duHi[b];
+          const bDvLo = dvLo[b];
+          const bDvHi = dvHi[b];
+          // 1/b, 1/b^2, 1/b^3 as outward intervals (b is single-signed here).
+          const invBLo = fastWidenLo(1 / bHi);
+          const invBHi = fastWidenHi(1 / bLo);
+          const invB2Lo = fastIntSquareLo(invBLo, invBHi);
+          const invB2Hi = fastIntSquareHi(invBLo, invBHi);
+          const invB3Lo = fastIntProdLo(invB2Lo, invB2Hi, invBLo, invBHi);
+          const invB3Hi = fastIntProdHi(invB2Lo, invB2Hi, invBLo, invBHi);
+          const aInvB2Lo = fastIntProdLo(aVLo, aVHi, invB2Lo, invB2Hi);
+          const aInvB2Hi = fastIntProdHi(aVLo, aVHi, invB2Lo, invB2Hi);
+          const aInvB3x2Lo = 2 * fastIntProdLo(aVLo, aVHi, invB3Lo, invB3Hi);
+          const aInvB3x2Hi = 2 * fastIntProdHi(aVLo, aVHi, invB3Lo, invB3Hi);
+          // uu
+          {
+            const t1Lo = fastIntProdLo(hess.duuLo[a], hess.duuHi[a], invBLo, invBHi);
+            const t1Hi = fastIntProdHi(hess.duuLo[a], hess.duuHi[a], invBLo, invBHi);
+            const crossLo = 2 * fastIntProdLo(aDuLo, aDuHi, bDuLo, bDuHi);
+            const crossHi = 2 * fastIntProdHi(aDuLo, aDuHi, bDuLo, bDuHi);
+            const t2Lo = -fastIntProdHi(crossLo, crossHi, invB2Lo, invB2Hi);
+            const t2Hi = -fastIntProdLo(crossLo, crossHi, invB2Lo, invB2Hi);
+            const t3Lo = -fastIntProdHi(aInvB2Lo, aInvB2Hi, hess.duuLo[b], hess.duuHi[b]);
+            const t3Hi = -fastIntProdLo(aInvB2Lo, aInvB2Hi, hess.duuLo[b], hess.duuHi[b]);
+            const bu2Lo = fastIntSquareLo(bDuLo, bDuHi);
+            const bu2Hi = fastIntSquareHi(bDuLo, bDuHi);
+            const t4Lo = fastIntProdLo(aInvB3x2Lo, aInvB3x2Hi, bu2Lo, bu2Hi);
+            const t4Hi = fastIntProdHi(aInvB3x2Lo, aInvB3x2Hi, bu2Lo, bu2Hi);
+            hDuuLo = fastCheckedAddLo(fastCheckedAddLo(t1Lo, t2Lo), fastCheckedAddLo(t3Lo, t4Lo));
+            hDuuHi = fastCheckedAddHi(fastCheckedAddHi(t1Hi, t2Hi), fastCheckedAddHi(t3Hi, t4Hi));
+          }
+          // uv
+          {
+            const t1Lo = fastIntProdLo(hess.duvLo[a], hess.duvHi[a], invBLo, invBHi);
+            const t1Hi = fastIntProdHi(hess.duvLo[a], hess.duvHi[a], invBLo, invBHi);
+            const c1Lo = fastIntProdLo(aDuLo, aDuHi, bDvLo, bDvHi);
+            const c1Hi = fastIntProdHi(aDuLo, aDuHi, bDvLo, bDvHi);
+            const c2Lo = fastIntProdLo(aDvLo, aDvHi, bDuLo, bDuHi);
+            const c2Hi = fastIntProdHi(aDvLo, aDvHi, bDuLo, bDuHi);
+            const crossLo = fastCheckedAddLo(c1Lo, c2Lo);
+            const crossHi = fastCheckedAddHi(c1Hi, c2Hi);
+            const t2Lo = -fastIntProdHi(crossLo, crossHi, invB2Lo, invB2Hi);
+            const t2Hi = -fastIntProdLo(crossLo, crossHi, invB2Lo, invB2Hi);
+            const t3Lo = -fastIntProdHi(aInvB2Lo, aInvB2Hi, hess.duvLo[b], hess.duvHi[b]);
+            const t3Hi = -fastIntProdLo(aInvB2Lo, aInvB2Hi, hess.duvLo[b], hess.duvHi[b]);
+            const bubvLo = fastIntProdLo(bDuLo, bDuHi, bDvLo, bDvHi);
+            const bubvHi = fastIntProdHi(bDuLo, bDuHi, bDvLo, bDvHi);
+            const t4Lo = fastIntProdLo(aInvB3x2Lo, aInvB3x2Hi, bubvLo, bubvHi);
+            const t4Hi = fastIntProdHi(aInvB3x2Lo, aInvB3x2Hi, bubvLo, bubvHi);
+            hDuvLo = fastCheckedAddLo(fastCheckedAddLo(t1Lo, t2Lo), fastCheckedAddLo(t3Lo, t4Lo));
+            hDuvHi = fastCheckedAddHi(fastCheckedAddHi(t1Hi, t2Hi), fastCheckedAddHi(t3Hi, t4Hi));
+          }
+          // vv
+          {
+            const t1Lo = fastIntProdLo(hess.dvvLo[a], hess.dvvHi[a], invBLo, invBHi);
+            const t1Hi = fastIntProdHi(hess.dvvLo[a], hess.dvvHi[a], invBLo, invBHi);
+            const crossLo = 2 * fastIntProdLo(aDvLo, aDvHi, bDvLo, bDvHi);
+            const crossHi = 2 * fastIntProdHi(aDvLo, aDvHi, bDvLo, bDvHi);
+            const t2Lo = -fastIntProdHi(crossLo, crossHi, invB2Lo, invB2Hi);
+            const t2Hi = -fastIntProdLo(crossLo, crossHi, invB2Lo, invB2Hi);
+            const t3Lo = -fastIntProdHi(aInvB2Lo, aInvB2Hi, hess.dvvLo[b], hess.dvvHi[b]);
+            const t3Hi = -fastIntProdLo(aInvB2Lo, aInvB2Hi, hess.dvvLo[b], hess.dvvHi[b]);
+            const bv2Lo = fastIntSquareLo(bDvLo, bDvHi);
+            const bv2Hi = fastIntSquareHi(bDvLo, bDvHi);
+            const t4Lo = fastIntProdLo(aInvB3x2Lo, aInvB3x2Hi, bv2Lo, bv2Hi);
+            const t4Hi = fastIntProdHi(aInvB3x2Lo, aInvB3x2Hi, bv2Lo, bv2Hi);
+            hDvvLo = fastCheckedAddLo(fastCheckedAddLo(t1Lo, t2Lo), fastCheckedAddLo(t3Lo, t4Lo));
+            hDvvHi = fastCheckedAddHi(fastCheckedAddHi(t1Hi, t2Hi), fastCheckedAddHi(t3Hi, t4Hi));
+          }
+          break;
+        }
+        case FAST_OP_POW: {
+          // Constant exponent p, nonnegative base: y = a^p is unary in a, with
+          // f'(a) = p a^(p-1), f''(a) = p(p-1) a^(p-2). p = 1 is linear (f'' = 0).
+          // f'' stays finite as a -> 0 when p >= 2; for 1 < p < 2 it blows up, so
+          // a base that can touch zero there falls back. A varying exponent falls
+          // back. (fastPowCornersRaw also returns false on any nonfinite corner.)
+          const baseLo = valueLo[a];
+          const baseHi = valueHi[a];
+          const expLo = valueLo[b];
+          const expHi = valueHi[b];
+          const exponentIsConstant =
+            duLo[b] === 0 &&
+            duHi[b] === 0 &&
+            dvLo[b] === 0 &&
+            dvHi[b] === 0 &&
+            expHi - expLo < 1e-9;
+          if (!exponentIsConstant || !(baseLo >= 0) || !Number.isFinite(baseHi)) {
+            fastRunTapeSecondOrderInvalid = true;
+            break;
+          }
+          let powFpLo = 1;
+          let powFpHi = 1;
+          let powFppLo = 0;
+          let powFppHi = 0;
+          if (Math.abs(expLo - 1) < 1e-9 && Math.abs(expHi - 1) < 1e-9) {
+            // y = a: f' = 1, f'' = 0 (values above are already correct).
+          } else {
+            if (baseLo <= 0 && expLo < 2) {
+              // p(p-1) a^(p-2) is unbounded as a -> 0 for 1 < p < 2.
+              fastRunTapeSecondOrderInvalid = true;
+              break;
+            }
+            if (!fastPowCornersRaw(baseLo, baseHi, expLo - 1, expHi - 1)) {
+              fastRunTapeSecondOrderInvalid = true;
+              break;
+            }
+            const apm1Lo = fastPowScratch[0];
+            const apm1Hi = fastPowScratch[1];
+            if (!fastPowCornersRaw(baseLo, baseHi, expLo - 2, expHi - 2)) {
+              fastRunTapeSecondOrderInvalid = true;
+              break;
+            }
+            const apm2Lo = fastPowScratch[0];
+            const apm2Hi = fastPowScratch[1];
+            // f'(a) = p a^(p-1)
+            powFpLo = fastIntProdLo(expLo, expHi, apm1Lo, apm1Hi);
+            powFpHi = fastIntProdHi(expLo, expHi, apm1Lo, apm1Hi);
+            // f''(a) = p(p-1) a^(p-2)
+            const pp1Lo = fastIntProdLo(expLo, expHi, expLo - 1, expHi - 1);
+            const pp1Hi = fastIntProdHi(expLo, expHi, expLo - 1, expHi - 1);
+            powFppLo = fastIntProdLo(pp1Lo, pp1Hi, apm2Lo, apm2Hi);
+            powFppHi = fastIntProdHi(pp1Lo, pp1Hi, apm2Lo, apm2Hi);
+          }
+          fastUnaryChainHessianInto(
+            powFpLo,
+            powFpHi,
+            powFppLo,
+            powFppHi,
+            duLo[a],
+            duHi[a],
+            dvLo[a],
+            dvHi[a],
+            hess.duuLo[a],
+            hess.duuHi[a],
+            hess.duvLo[a],
+            hess.duvHi[a],
+            hess.dvvLo[a],
+            hess.dvvHi[a]
+          );
+          hDuuLo = fastUnaryHessScratch[0];
+          hDuuHi = fastUnaryHessScratch[1];
+          hDuvLo = fastUnaryHessScratch[2];
+          hDuvHi = fastUnaryHessScratch[3];
+          hDvvLo = fastUnaryHessScratch[4];
+          hDvvHi = fastUnaryHessScratch[5];
+          break;
+        }
+        case FAST_OP_ABS: {
+          // A provably one-sided abs is the smooth +g or -g branch over the whole
+          // cell (C2), so its Hessian is the argument's, possibly negated. A cell
+          // straddling zero has a kink (no bounded second derivative) and falls
+          // back. The branch test matches the value/first-derivative pass exactly.
+          const lo = valueLo[a];
+          const hi = valueHi[a];
+          if (lo >= 0) {
+            hDuuLo = hess.duuLo[a];
+            hDuuHi = hess.duuHi[a];
+            hDuvLo = hess.duvLo[a];
+            hDuvHi = hess.duvHi[a];
+            hDvvLo = hess.dvvLo[a];
+            hDvvHi = hess.dvvHi[a];
+          } else if (hi <= 0) {
+            hDuuLo = -hess.duuHi[a];
+            hDuuHi = -hess.duuLo[a];
+            hDuvLo = -hess.duvHi[a];
+            hDuvHi = -hess.duvLo[a];
+            hDvvLo = -hess.dvvHi[a];
+            hDvvHi = -hess.dvvLo[a];
+          } else {
+            fastRunTapeSecondOrderInvalid = true;
+          }
+          break;
+        }
+        case FAST_OP_MIN:
+        case FAST_OP_MAX: {
+          // A provably one-sided min/max is exactly the selected argument over the
+          // whole cell, so its Hessian is that argument's. An overlapping cell may
+          // contain a kink and falls back. Branch test matches the value pass.
+          const takeMin = ops[index] === FAST_OP_MIN;
+          const aLo = valueLo[a];
+          const aHi = valueHi[a];
+          const bLo = valueLo[b];
+          const bHi = valueHi[b];
+          const leftOnly = takeMin ? aHi < bLo : aLo > bHi;
+          const rightOnly = takeMin ? bHi < aLo : bLo > aHi;
+          if (leftOnly) {
+            hDuuLo = hess.duuLo[a];
+            hDuuHi = hess.duuHi[a];
+            hDuvLo = hess.duvLo[a];
+            hDuvHi = hess.duvHi[a];
+            hDvvLo = hess.dvvLo[a];
+            hDvvHi = hess.dvvHi[a];
+          } else if (rightOnly) {
+            hDuuLo = hess.duuLo[b];
+            hDuuHi = hess.duuHi[b];
+            hDuvLo = hess.duvLo[b];
+            hDuvHi = hess.duvHi[b];
+            hDvvLo = hess.dvvLo[b];
+            hDvvHi = hess.dvvHi[b];
+          } else {
+            fastRunTapeSecondOrderInvalid = true;
+          }
+          break;
+        }
+        default:
+          fastRunTapeSecondOrderInvalid = true;
+      }
+      if (
+        !(hDuuLo <= hDuuHi) ||
+        !Number.isFinite(hDuuLo) ||
+        !Number.isFinite(hDuuHi) ||
+        !(hDuvLo <= hDuvHi) ||
+        !Number.isFinite(hDuvLo) ||
+        !Number.isFinite(hDuvHi) ||
+        !(hDvvLo <= hDvvHi) ||
+        !Number.isFinite(hDvvLo) ||
+        !Number.isFinite(hDvvHi)
+      ) {
+        fastRunTapeSecondOrderInvalid = true;
+        hDuuLo = 0;
+        hDuuHi = 0;
+        hDuvLo = 0;
+        hDuvHi = 0;
+        hDvvLo = 0;
+        hDvvHi = 0;
+      }
+      if (!wasInvalid && fastRunTapeSecondOrderInvalid && fastRunTapeSecondOrderInvalidOp < 0) {
+        fastRunTapeSecondOrderInvalidOp = ops[index];
+      }
+      hess.duuLo[index] = hDuuLo;
+      hess.duuHi[index] = hDuuHi;
+      hess.duvLo[index] = hDuvLo;
+      hess.duvHi[index] = hDuvHi;
+      hess.dvvLo[index] = hDvvLo;
+      hess.dvvHi[index] = hDvvHi;
+    }
   }
   return true;
 }
@@ -3307,6 +3954,217 @@ function fastCheckedAddHi(left: number, right: number): number {
   return fastWidenHi(sum);
 }
 
+// ---------------------------------------------------------------------------
+// Interval helpers for the Hessian-interval (second-order) screen pass. Each
+// returns one outward bound with the same pure-relative widening the tape uses
+// (a square of a zero-straddling interval keeps an exact zero lower bound; a
+// four-corner product is widened outward). Second order is flag-gated OFF by
+// default, so these never run on the certified first-order path.
+// ---------------------------------------------------------------------------
+
+function fastIntSquareLo(lo: number, hi: number): number {
+  if (lo <= 0 && hi >= 0) return 0;
+  const a = lo * lo;
+  const b = hi * hi;
+  return fastWidenLo(Math.min(a, b));
+}
+
+function fastIntSquareHi(lo: number, hi: number): number {
+  const a = lo * lo;
+  const b = hi * hi;
+  return fastWidenHi(Math.max(a, b));
+}
+
+function fastIntProdLo(aLo: number, aHi: number, bLo: number, bHi: number): number {
+  const p0 = aLo * bLo;
+  const p1 = aLo * bHi;
+  const p2 = aHi * bLo;
+  const p3 = aHi * bHi;
+  return fastWidenLo(Math.min(Math.min(p0, p1), Math.min(p2, p3)));
+}
+
+function fastIntProdHi(aLo: number, aHi: number, bLo: number, bHi: number): number {
+  const p0 = aLo * bLo;
+  const p1 = aLo * bHi;
+  const p2 = aHi * bLo;
+  const p3 = aHi * bHi;
+  return fastWidenHi(Math.max(Math.max(p0, p1), Math.max(p2, p3)));
+}
+
+// Outward bound of the Lagrange quadratic remainder 1/2 * deltaᵀ H delta over
+// the cell box offset [duLo,duHi] x [dvLo,dvHi] with the interval Hessian H =
+// [[Huu,Huv],[Huv,Hvv]]. Written into `fastQuadRemainderScratch` = [lo, hi].
+// (1/2 and the doubled cross term are exact power-of-two scalings.)
+const fastQuadRemainderScratch = new Float64Array(2);
+
+function fastQuadraticRemainderInto(
+  huuLo: number,
+  huuHi: number,
+  huvLo: number,
+  huvHi: number,
+  hvvLo: number,
+  hvvHi: number,
+  duLo: number,
+  duHi: number,
+  dvLo: number,
+  dvHi: number
+): void {
+  const du2Lo = fastIntSquareLo(duLo, duHi);
+  const du2Hi = fastIntSquareHi(duLo, duHi);
+  const dv2Lo = fastIntSquareLo(dvLo, dvHi);
+  const dv2Hi = fastIntSquareHi(dvLo, dvHi);
+  const duvLo = fastIntProdLo(duLo, duHi, dvLo, dvHi);
+  const duvHi = fastIntProdHi(duLo, duHi, dvLo, dvHi);
+  const uuLo = fastIntProdLo(huuLo, huuHi, du2Lo, du2Hi);
+  const uuHi = fastIntProdHi(huuLo, huuHi, du2Lo, du2Hi);
+  const uvLo = 2 * fastIntProdLo(huvLo, huvHi, duvLo, duvHi);
+  const uvHi = 2 * fastIntProdHi(huvLo, huvHi, duvLo, duvHi);
+  const vvLo = fastIntProdLo(hvvLo, hvvHi, dv2Lo, dv2Hi);
+  const vvHi = fastIntProdHi(hvvLo, hvvHi, dv2Lo, dv2Hi);
+  const sumLo = fastCheckedAddLo(fastCheckedAddLo(uuLo, uvLo), vvLo);
+  const sumHi = fastCheckedAddHi(fastCheckedAddHi(uuHi, uvHi), vvHi);
+  fastQuadRemainderScratch[0] = 0.5 * sumLo;
+  fastQuadRemainderScratch[1] = 0.5 * sumHi;
+}
+
+// Chain rule for a unary node y = f(g): the Hessian is
+//   y_ij = f''(g)*g_i*g_j + f'(g)*g_ij.
+// Written into `fastUnaryHessScratch` = [duuLo, duuHi, duvLo, duvHi, dvvLo, dvvHi].
+// fp = f'(g) and fpp = f''(g) are outward intervals supplied by the caller; the
+// g first/second derivatives are the argument node's channels.
+const fastUnaryHessScratch = new Float64Array(6);
+
+function fastUnaryChainHessianInto(
+  fpLo: number,
+  fpHi: number,
+  fppLo: number,
+  fppHi: number,
+  guLo: number,
+  guHi: number,
+  gvLo: number,
+  gvHi: number,
+  guuLo: number,
+  guuHi: number,
+  guvLo: number,
+  guvHi: number,
+  gvvLo: number,
+  gvvHi: number
+): void {
+  const gu2Lo = fastIntSquareLo(guLo, guHi);
+  const gu2Hi = fastIntSquareHi(guLo, guHi);
+  const gv2Lo = fastIntSquareLo(gvLo, gvHi);
+  const gv2Hi = fastIntSquareHi(gvLo, gvHi);
+  const guvProdLo = fastIntProdLo(guLo, guHi, gvLo, gvHi);
+  const guvProdHi = fastIntProdHi(guLo, guHi, gvLo, gvHi);
+  fastUnaryHessScratch[0] = fastCheckedAddLo(
+    fastIntProdLo(fppLo, fppHi, gu2Lo, gu2Hi),
+    fastIntProdLo(fpLo, fpHi, guuLo, guuHi)
+  );
+  fastUnaryHessScratch[1] = fastCheckedAddHi(
+    fastIntProdHi(fppLo, fppHi, gu2Lo, gu2Hi),
+    fastIntProdHi(fpLo, fpHi, guuLo, guuHi)
+  );
+  fastUnaryHessScratch[2] = fastCheckedAddLo(
+    fastIntProdLo(fppLo, fppHi, guvProdLo, guvProdHi),
+    fastIntProdLo(fpLo, fpHi, guvLo, guvHi)
+  );
+  fastUnaryHessScratch[3] = fastCheckedAddHi(
+    fastIntProdHi(fppLo, fppHi, guvProdLo, guvProdHi),
+    fastIntProdHi(fpLo, fpHi, guvLo, guvHi)
+  );
+  fastUnaryHessScratch[4] = fastCheckedAddLo(
+    fastIntProdLo(fppLo, fppHi, gv2Lo, gv2Hi),
+    fastIntProdLo(fpLo, fpHi, gvvLo, gvvHi)
+  );
+  fastUnaryHessScratch[5] = fastCheckedAddHi(
+    fastIntProdHi(fppLo, fppHi, gv2Lo, gv2Hi),
+    fastIntProdHi(fpLo, fpHi, gvvLo, gvvHi)
+  );
+}
+
+// Constant affine gradient and centroid value of the affine artifact for one
+// coordinate, written into `fastAffineCoordScratch` = [gradientULo, gradientUHi,
+// gradientVLo, gradientVHi, artifactCentreLo, artifactCentreHi]. Extracted
+// verbatim from the first-order assembly so both the first- and second-order
+// paths share one proven computation.
+const fastAffineCoordScratch = new Float64Array(6);
+
+function fastArtifactAffineCoord(
+  coordinate: number,
+  artifactAtLo: Float64Array,
+  artifactAtHi: Float64Array,
+  edge1VLo: number,
+  edge1VHi: number,
+  edge2VLo: number,
+  edge2VHi: number,
+  edge1ULo: number,
+  edge1UHi: number,
+  edge2ULo: number,
+  edge2UHi: number,
+  determinantLo: number,
+  determinantHi: number
+): void {
+  const a0Lo = artifactAtLo[coordinate];
+  const a0Hi = artifactAtHi[coordinate];
+  const a1Lo = artifactAtLo[3 + coordinate];
+  const a1Hi = artifactAtHi[3 + coordinate];
+  const a2Lo = artifactAtLo[6 + coordinate];
+  const a2Hi = artifactAtHi[6 + coordinate];
+  const delta1Lo = fastCheckedAddLo(a1Lo, -a0Hi);
+  const delta1Hi = fastCheckedAddHi(a1Hi, -a0Lo);
+  const delta2Lo = fastCheckedAddLo(a2Lo, -a0Hi);
+  const delta2Hi = fastCheckedAddHi(a2Hi, -a0Lo);
+  // gradientU = (delta1*edge2V - delta2*edge1V) / det
+  const gu00 = delta1Lo * edge2VLo;
+  const gu01 = delta1Lo * edge2VHi;
+  const gu02 = delta1Hi * edge2VLo;
+  const gu03 = delta1Hi * edge2VHi;
+  const gu10 = delta2Lo * edge1VLo;
+  const gu11 = delta2Lo * edge1VHi;
+  const gu12 = delta2Hi * edge1VLo;
+  const gu13 = delta2Hi * edge1VHi;
+  const gradientUNumLo = fastCheckedAddLo(
+    fastWidenLo(Math.min(Math.min(gu00, gu01), Math.min(gu02, gu03))),
+    -fastWidenHi(Math.max(Math.max(gu10, gu11), Math.max(gu12, gu13)))
+  );
+  const gradientUNumHi = fastCheckedAddHi(
+    fastWidenHi(Math.max(Math.max(gu00, gu01), Math.max(gu02, gu03))),
+    -fastWidenLo(Math.min(Math.min(gu10, gu11), Math.min(gu12, gu13)))
+  );
+  const du0 = gradientUNumLo / determinantLo;
+  const du1 = gradientUNumLo / determinantHi;
+  const du2 = gradientUNumHi / determinantLo;
+  const du3 = gradientUNumHi / determinantHi;
+  fastAffineCoordScratch[0] = fastWidenLo(Math.min(Math.min(du0, du1), Math.min(du2, du3)));
+  fastAffineCoordScratch[1] = fastWidenHi(Math.max(Math.max(du0, du1), Math.max(du2, du3)));
+  // gradientV = (delta2*edge1U - delta1*edge2U) / det
+  const gv00 = delta2Lo * edge1ULo;
+  const gv01 = delta2Lo * edge1UHi;
+  const gv02 = delta2Hi * edge1ULo;
+  const gv03 = delta2Hi * edge1UHi;
+  const gv10 = delta1Lo * edge2ULo;
+  const gv11 = delta1Lo * edge2UHi;
+  const gv12 = delta1Hi * edge2ULo;
+  const gv13 = delta1Hi * edge2UHi;
+  const gradientVNumLo = fastCheckedAddLo(
+    fastWidenLo(Math.min(Math.min(gv00, gv01), Math.min(gv02, gv03))),
+    -fastWidenHi(Math.max(Math.max(gv10, gv11), Math.max(gv12, gv13)))
+  );
+  const gradientVNumHi = fastCheckedAddHi(
+    fastWidenHi(Math.max(Math.max(gv00, gv01), Math.max(gv02, gv03))),
+    -fastWidenLo(Math.min(Math.min(gv10, gv11), Math.min(gv12, gv13)))
+  );
+  const dv0 = gradientVNumLo / determinantLo;
+  const dv1 = gradientVNumLo / determinantHi;
+  const dv2 = gradientVNumHi / determinantLo;
+  const dv3 = gradientVNumHi / determinantHi;
+  fastAffineCoordScratch[2] = fastWidenLo(Math.min(Math.min(dv0, dv1), Math.min(dv2, dv3)));
+  fastAffineCoordScratch[3] = fastWidenHi(Math.max(Math.max(dv0, dv1), Math.max(dv2, dv3)));
+  // Affine artifact centroid value = exact mean of the three vertex values.
+  fastAffineCoordScratch[4] = fastWidenLo(fastCheckedAddLo(fastCheckedAddLo(a0Lo, a1Lo), a2Lo) / 3);
+  fastAffineCoordScratch[5] = fastWidenHi(fastCheckedAddHi(fastCheckedAddHi(a0Hi, a1Hi), a2Hi) / 3);
+}
+
 /**
  * Shared centered mean-value core on raw widened float64 bounds (the same
  * soundness patterns as the tape: error-free-checked adds, four-corner
@@ -3361,6 +4219,18 @@ let screenJacobianPartition = 0;
 
 export function setScreenJacobianPartition(partition: number): void {
   screenJacobianPartition = Number.isSafeInteger(partition) && partition > 1 ? partition : 0;
+}
+
+// Flag-gated second-order (Hessian-interval) screen (measurement instrument;
+// false => OFF => byte-identical enclosures to the first-order mean-value screen,
+// so the default certificate and its compiler proof hash are unchanged). When
+// true, fastEncloseCore attempts the centered second-order form per cell and
+// falls back to the first-order form on any invalid cell. Productionizing this
+// pass would require extending the compiler proof text (a deliberate re-proof).
+let screenSecondOrder = false;
+
+export function setScreenSecondOrder(enabled: boolean): void {
+  screenSecondOrder = enabled === true;
 }
 
 // Provably-disjoint test: true iff every corner of [su0,su1]x[sv0,sv1] lies
@@ -3460,6 +4330,154 @@ function fastRunPartitionedJacobian(
   return covered;
 }
 
+// Attempt the centered second-order (Hessian-interval) enclosure of the residual
+// over one cell. Returns null (caller falls back to the first-order mean-value
+// screen) on any invalidity: a straddling kink or jump node, an operation whose
+// per-op second-derivative rule is not yet implemented, or a nonfinite bound.
+//
+// Soundness (Taylor with the second-order Lagrange remainder): for a C² residual
+// r over the cell with centroid c and offset delta = x - c,
+//   r(x) = r(c) + grad r(c)·delta + 1/2 delta^T H_r(xi) delta,   xi in [c,x] ⊆ cell,
+// so r(x) is contained in  r(c) + { grad r(c)·delta : x in triangle }
+//                                + 1/2 { delta^T H delta : delta in box offset, H in H_r(cell) }.
+// The linear term uses the THIN centroid gradient hulled over the exact vertex
+// offsets (convexity, as in the first-order form). The affine artifact has zero
+// curvature, so H_r = H_target, enclosed over the whole cell box by the Hessian
+// tape. Each part is a sound outward superset, so their sum encloses r(x). The
+// win over the first-order form: the linear term no longer pays the cell-wide
+// Jacobian variation (the curvature tax), only the genuine quadratic sag.
+function fastSecondOrderEnclose(
+  screenProgram: FastCompiledScreenProgram,
+  targets: readonly [number, number, number],
+  uBoxLo: number,
+  uBoxHi: number,
+  vBoxLo: number,
+  vBoxHi: number,
+  uCentreLo: number,
+  uCentreHi: number,
+  vCentreLo: number,
+  vCentreHi: number,
+  offsetULo: Float64Array,
+  offsetUHi: Float64Array,
+  offsetVLo: Float64Array,
+  offsetVHi: Float64Array,
+  artifactAtLo: Float64Array,
+  artifactAtHi: Float64Array,
+  edge1ULo: number,
+  edge1UHi: number,
+  edge1VLo: number,
+  edge1VHi: number,
+  edge2ULo: number,
+  edge2UHi: number,
+  edge2VLo: number,
+  edge2VHi: number,
+  determinantLo: number,
+  determinantHi: number
+): ValidatedResidualEnclosure | null {
+  const hess = fastHessianChannels(screenProgram);
+  // Pass H: value + Jacobian + Hessian over the whole cell box.
+  if (!fastRunTape(screenProgram, uBoxLo, uBoxHi, vBoxLo, vBoxHi, true, hess)) return null;
+  if (fastRunTapeHullOnly || fastRunTapeSecondOrderInvalid) return null;
+  // Pass C: value + gradient at the centroid POINT (thin, first derivatives
+  // seeded, no Hessian). This overwrites the value/derivative channels with the
+  // narrow centroid gradient; the separate Hessian channels keep the box bounds.
+  if (!fastRunTape(screenProgram, uCentreLo, uCentreHi, vCentreLo, vCentreHi, true)) return null;
+  if (fastRunTapeHullOnly) return null;
+  // Cell box offset about the centroid interval (contains x - c for every cell x).
+  const duBoxLo = fastCheckedAddLo(uBoxLo, -uCentreHi);
+  const duBoxHi = fastCheckedAddHi(uBoxHi, -uCentreLo);
+  const dvBoxLo = fastCheckedAddLo(vBoxLo, -vCentreHi);
+  const dvBoxHi = fastCheckedAddHi(vBoxHi, -vCentreLo);
+  const residuals: OutwardInterval[] = [];
+  for (let coordinate = 0; coordinate < 3; coordinate += 1) {
+    const targetIndex = targets[coordinate];
+    fastArtifactAffineCoord(
+      coordinate,
+      artifactAtLo,
+      artifactAtHi,
+      edge1VLo,
+      edge1VHi,
+      edge2VLo,
+      edge2VHi,
+      edge1ULo,
+      edge1UHi,
+      edge2ULo,
+      edge2UHi,
+      determinantLo,
+      determinantHi
+    );
+    const gradientULo = fastAffineCoordScratch[0];
+    const gradientUHi = fastAffineCoordScratch[1];
+    const gradientVLo = fastAffineCoordScratch[2];
+    const gradientVHi = fastAffineCoordScratch[3];
+    const artifactCentreLo = fastAffineCoordScratch[4];
+    const artifactCentreHi = fastAffineCoordScratch[5];
+    // r(c) = target(centroid) - affine artifact(centroid).
+    const residualCentreLo = fastCheckedAddLo(screenProgram.vLo[targetIndex], -artifactCentreHi);
+    const residualCentreHi = fastCheckedAddHi(screenProgram.vHi[targetIndex], -artifactCentreLo);
+    // grad r(c) = target gradient at the centroid point (thin) - affine artifact gradient.
+    const residualGradientULo = fastCheckedAddLo(screenProgram.duLo[targetIndex], -gradientUHi);
+    const residualGradientUHi = fastCheckedAddHi(screenProgram.duHi[targetIndex], -gradientULo);
+    const residualGradientVLo = fastCheckedAddLo(screenProgram.dvLo[targetIndex], -gradientVHi);
+    const residualGradientVHi = fastCheckedAddHi(screenProgram.dvHi[targetIndex], -gradientVLo);
+    // Linear term hulled over the three exact vertex offsets (convexity).
+    let termLo = Number.POSITIVE_INFINITY;
+    let termHi = Number.NEGATIVE_INFINITY;
+    for (let cellVertex = 0; cellVertex < 3; cellVertex += 1) {
+      const ouLo = offsetULo[cellVertex];
+      const ouHi = offsetUHi[cellVertex];
+      const ovLo = offsetVLo[cellVertex];
+      const ovHi = offsetVHi[cellVertex];
+      const ru0 = residualGradientULo * ouLo;
+      const ru1 = residualGradientULo * ouHi;
+      const ru2 = residualGradientUHi * ouLo;
+      const ru3 = residualGradientUHi * ouHi;
+      const rv0 = residualGradientVLo * ovLo;
+      const rv1 = residualGradientVLo * ovHi;
+      const rv2 = residualGradientVHi * ovLo;
+      const rv3 = residualGradientVHi * ovHi;
+      const vertexLo = fastCheckedAddLo(
+        fastWidenLo(Math.min(Math.min(ru0, ru1), Math.min(ru2, ru3))),
+        fastWidenLo(Math.min(Math.min(rv0, rv1), Math.min(rv2, rv3)))
+      );
+      const vertexHi = fastCheckedAddHi(
+        fastWidenHi(Math.max(Math.max(ru0, ru1), Math.max(ru2, ru3))),
+        fastWidenHi(Math.max(Math.max(rv0, rv1), Math.max(rv2, rv3)))
+      );
+      if (vertexLo < termLo) termLo = vertexLo;
+      if (vertexHi > termHi) termHi = vertexHi;
+    }
+    // Lagrange quadratic remainder 1/2 delta^T H(box) delta; residual Hessian =
+    // target Hessian because the affine artifact has zero curvature.
+    fastQuadraticRemainderInto(
+      hess.duuLo[targetIndex],
+      hess.duuHi[targetIndex],
+      hess.duvLo[targetIndex],
+      hess.duvHi[targetIndex],
+      hess.dvvLo[targetIndex],
+      hess.dvvHi[targetIndex],
+      duBoxLo,
+      duBoxHi,
+      dvBoxLo,
+      dvBoxHi
+    );
+    const residualLo = fastCheckedAddLo(
+      fastCheckedAddLo(residualCentreLo, termLo),
+      fastQuadRemainderScratch[0]
+    );
+    const residualHi = fastCheckedAddHi(
+      fastCheckedAddHi(residualCentreHi, termHi),
+      fastQuadRemainderScratch[1]
+    );
+    if (!Number.isFinite(residualLo) || !Number.isFinite(residualHi) || residualLo > residualHi) {
+      return null;
+    }
+    residuals.push(outwardInterval(residualLo, residualHi));
+  }
+  fastLastScreenClarkeFired = false;
+  return Object.freeze({ xMm: residuals[0], yMm: residuals[1], zMm: residuals[2] });
+}
+
 function fastEncloseCoreInner(
   internal: InternalCompiledProgram,
   uLo: Float64Array,
@@ -3471,6 +4489,7 @@ function fastEncloseCoreInner(
   artifactLo: Float64Array,
   artifactHi: Float64Array
 ): ValidatedResidualEnclosure | null {
+  fastLastScreenSecondOrderUsed = false;
   const uBoxLo = Math.min(uLo[0], uLo[1], uLo[2]);
   const uBoxHi = Math.max(uHi[0], uHi[1], uHi[2]);
   const vBoxLo = Math.min(vLo[0], vLo[1], vLo[2]);
@@ -3553,6 +4572,43 @@ function fastEncloseCoreInner(
   const screenProgram = fastCompileScreenProgram(internal);
   if (!screenProgram.supported) return recordFastRefusal(screenProgram.unsupportedReason);
   const targets = [internal.targetX, internal.targetY, internal.targetZ] as const;
+  // Optional second-order (Hessian-interval) pass. Flag-gated OFF by default so
+  // the certified first-order path below is byte-identical. On any invalidity it
+  // returns null and the first-order mean-value screen runs unchanged.
+  if (screenSecondOrder) {
+    const secondOrder = fastSecondOrderEnclose(
+      screenProgram,
+      targets,
+      uBoxLo,
+      uBoxHi,
+      vBoxLo,
+      vBoxHi,
+      uCentreLo,
+      uCentreHi,
+      vCentreLo,
+      vCentreHi,
+      offsetULo,
+      offsetUHi,
+      offsetVLo,
+      offsetVHi,
+      artifactAtLo,
+      artifactAtHi,
+      edge1ULo,
+      edge1UHi,
+      edge1VLo,
+      edge1VHi,
+      edge2ULo,
+      edge2UHi,
+      edge2VLo,
+      edge2VHi,
+      determinantLo,
+      determinantHi
+    );
+    if (secondOrder !== null) {
+      fastLastScreenSecondOrderUsed = true;
+      return secondOrder;
+    }
+  }
   const jacobianDuLo = fastCoreJacobianDuLo;
   const jacobianDuHi = fastCoreJacobianDuHi;
   const jacobianDvLo = fastCoreJacobianDvLo;
