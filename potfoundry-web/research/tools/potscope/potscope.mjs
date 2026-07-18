@@ -234,7 +234,11 @@ function cmdRun(args) {
     process.exit(2);
   }
   const startedAt = Date.now();
-  const child = spawn(command[0], command.slice(1), { shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
+  // shell:true concatenates args without escaping, which re-splits any token
+  // containing whitespace (a multi-word `-t` filter becomes stray file
+  // filters). Quote such tokens before handing the line to the shell.
+  const quoted = command.map((token) => (/\s/.test(token) ? `"${token.replace(/"/g, '\\"')}"` : token));
+  const child = spawn(quoted[0], quoted.slice(1), { shell: true, stdio: ['ignore', 'pipe', 'pipe'] });
   // The EcoQoS ritual, automated: Windows throttles detached node jobs 4-5x.
   setTimeout(() => {
     if (process.platform === 'win32') {
@@ -442,12 +446,52 @@ function cmdView(args) {
   const ceramic = args.flags.includes('--ceramic') || stlPaths.length > 1;
   const decimate = Math.max(1, Number(argValue(args, '--decimate') ?? '1'));
 
+  const errorMode = args.flags.includes('--error');
+  if (errorMode && stlPaths.length > 1) {
+    console.error('--error is per-pot only: evaluation views are individual, full resolution');
+    process.exit(2);
+  }
   if (stlPaths.length === 1) {
     const stlPath = stlPaths[0];
+    if (errorMode && decimate > 1) {
+      console.error('--error requires --decimate 1: the sidecar indexes every artifact triangle');
+      process.exit(2);
+    }
     if (ceramic && decimate > 1) console.warn('note: stride decimation punches holes; ceramic looks best at --decimate 1');
     const outPath = resolve(argValue(args, '--out') ?? stlPath.replace(/\.stl$/i, '.view.html'));
     const parsed = parseStl(stlPath, decimate);
-    const attrs = ceramic ? ceramicAttributes(parsed.positions) : { normals: flatNormals(parsed.positions), cavity: null };
+    // Error mode evaluates: flat normals show the actual facets.
+    const attrs = ceramic && !errorMode ? ceramicAttributes(parsed.positions) : { normals: flatNormals(parsed.positions), cavity: null };
+    let errorCornersB64 = '';
+    let errorMeta = null;
+    if (errorMode) {
+      const sidecarPath = resolve(argValue(args, '--error-file') ?? `${stlPath}.error.bin`);
+      if (!existsSync(sidecarPath)) {
+        console.error(`no error sidecar: ${sidecarPath}`);
+        console.error('bake one from the certified residual programs (PF_GOTHIC_ERRORBAKE — see README)');
+        process.exit(2);
+      }
+      const raw = readFileSync(sidecarPath);
+      const newline = raw.indexOf(0x0a);
+      errorMeta = JSON.parse(raw.subarray(0, newline).toString('utf8'));
+      if (errorMeta.magic !== 'potscope-error/v1') {
+        console.error(`unrecognised sidecar magic: ${errorMeta.magic}`);
+        process.exit(2);
+      }
+      if (errorMeta.count !== parsed.triangleCount) {
+        console.error(`sidecar/STL mismatch: sidecar has ${errorMeta.count} triangles, STL has ${parsed.triangleCount} — refusing (provenance)`);
+        process.exit(2);
+      }
+      const values = new Float32Array(errorMeta.count);
+      Buffer.from(values.buffer).set(raw.subarray(newline + 1, newline + 1 + errorMeta.count * 4));
+      const corners = new Float32Array(parsed.kept * 3);
+      for (let t = 0; t < parsed.kept; t += 1) {
+        corners[t * 3] = values[t];
+        corners[t * 3 + 1] = values[t];
+        corners[t * 3 + 2] = values[t];
+      }
+      errorCornersB64 = Buffer.from(corners.buffer).toString('base64');
+    }
     const certPath = stlPath.replace(/\.stl$/i, '.certificate.txt');
     const html = viewerHtml({
       title: parsed.title,
@@ -457,13 +501,15 @@ function cmdView(args) {
       decimate,
       bbox: bboxOf(parsed.positions),
       certificate: existsSync(certPath) ? readFileSync(certPath, 'utf8') : '',
-      mode: ceramic ? 'ceramic' : 'clay',
+      mode: errorMode ? 'error' : ceramic ? 'ceramic' : 'clay',
       positionsB64: Buffer.from(parsed.positions.buffer).toString('base64'),
       normalsB64: Buffer.from(attrs.normals.buffer).toString('base64'),
       cavityB64: attrs.cavity ? Buffer.from(attrs.cavity.buffer).toString('base64') : '',
+      errorB64: errorCornersB64,
+      errorMeta,
     });
     writeFileSync(outPath, html);
-    console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${parsed.kept}/${parsed.triangleCount} tris${decimate > 1 ? `, decimate ${decimate}` : ''}, ${ceramic ? 'ceramic' : 'clay'})`);
+    console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${parsed.kept}/${parsed.triangleCount} tris${decimate > 1 ? `, decimate ${decimate}` : ''}, ${errorMode ? 'error overlay' : ceramic ? 'ceramic' : 'clay'})`);
     return;
   }
 
@@ -535,12 +581,49 @@ function viewerHtml(model) {
     : '';
   const subtitleBlock = model.subtitle ? `<div id="sub">${model.subtitle}</div>` : '';
   const ceramic = model.mode === 'ceramic';
-  const vsrc = ceramic
+  const errorView = model.mode === 'error';
+  const um = (mm) => (mm * 1000).toFixed(mm * 1000 >= 100 ? 0 : mm * 1000 >= 10 ? 1 : 2);
+  const legendBlock = errorView
+    ? `<div id="legend">
+  <label><input type="checkbox" id="ovl" checked> error overlay <span class="dim">(press e)</span></label>
+  <div id="bar"></div>
+  <div id="ticks"><span>0</span><span>${um(model.errorMeta.budgetMm)}µm budget</span><span>${um(model.errorMeta.stats.maxMm)}µm max</span></div>
+  <div id="stats">${model.errorMeta.semantics === 'certifies-at-level' ? 'per-triangle certifies-at level (guaranteed bound vs analytic target)' : 'true-3D error vs certified analytic target'} — p50 ${um(model.errorMeta.stats.p50Mm)}µm · p99 ${um(model.errorMeta.stats.p99Mm)}µm · max ${um(model.errorMeta.stats.maxMm)}µm<br>${model.errorMeta.variant} bake · ${model.errorMeta.enclosures.toLocaleString()} enclosures · ${model.errorMeta.unconverged} unconverged${model.errorMeta.decimalFallbacks ? ` · ${model.errorMeta.decimalFallbacks} decimal fallbacks` : ''}</div>
+</div>`
+    : '';
+  const vsrc = errorView
+    ? `attribute vec3 p; attribute vec3 n; attribute float err; uniform mat4 mvp; uniform mat4 mv; varying vec3 vn; varying vec3 vp; varying float verr;
+void main(){ gl_Position = mvp * vec4(p,1.0); vn = mat3(mv) * n; vp = (mv * vec4(p,1.0)).xyz; verr = err; }`
+    : ceramic
     ? `attribute vec3 p; attribute vec3 n; attribute float cav; uniform mat4 mvp; uniform mat4 mv; varying vec3 vn; varying vec3 vp; varying float vcav;
 void main(){ gl_Position = mvp * vec4(p,1.0); vn = mat3(mv) * n; vp = (mv * vec4(p,1.0)).xyz; vcav = cav; }`
     : `attribute vec3 p; attribute vec3 n; uniform mat4 mvp; uniform mat4 mv; varying vec3 vn; varying vec3 vp;
 void main(){ gl_Position = mvp * vec4(p,1.0); vn = mat3(mv) * n; vp = (mv * vec4(p,1.0)).xyz; }`;
-  const fsrc = ceramic
+  const fsrc = errorView
+    ? `precision highp float; varying vec3 vn; varying vec3 vp; varying float verr;
+uniform float uOverlay; uniform float uBudget; uniform float uMax;
+void main(){
+  vec3 N = normalize(vn); if (!gl_FrontFacing) N = -N;
+  vec3 L1 = normalize(vec3(0.5, 0.7, 0.9)); vec3 L2 = normalize(vec3(-0.6, -0.2, 0.4));
+  float d = max(dot(N,L1),0.0)*0.85 + max(dot(N,L2),0.0)*0.35 + 0.12;
+  vec3 clay = vec3(0.82, 0.74, 0.62) * d + pow(max(dot(reflect(-L1, N), normalize(-vp)), 0.0), 24.0) * 0.25;
+  float e = verr;
+  vec3 overlay;
+  // 0.5% comparison slack: an at-budget value must never render hot through
+  // varying-interpolation rounding.
+  if (e <= uBudget * 1.005) {
+    float q = e / max(uBudget, 1e-9);
+    overlay = mix(vec3(0.87, 0.88, 0.86), vec3(0.69, 0.74, 0.68), q);
+  } else {
+    float s = clamp(log2(e / uBudget) / max(log2(max(uMax, uBudget * 1.0001) / uBudget), 1e-6), 0.0, 1.0);
+    vec3 c1 = vec3(0.99, 0.87, 0.22); vec3 c2 = vec3(0.96, 0.55, 0.12);
+    vec3 c3 = vec3(0.86, 0.16, 0.10); vec3 c4 = vec3(0.72, 0.09, 0.56);
+    overlay = s < 0.3333 ? mix(c1, c2, s * 3.0) : s < 0.6667 ? mix(c2, c3, (s - 0.3333) * 3.0) : mix(c3, c4, (s - 0.6667) * 3.0);
+  }
+  vec3 lit = overlay * (0.72 + 0.28 * d);
+  gl_FragColor = vec4(mix(clay, lit, uOverlay), 1.0);
+}`
+    : ceramic
     ? `precision mediump float; varying vec3 vn; varying vec3 vp; varying float vcav;
 void main(){
   vec3 N = normalize(vn); if (!gl_FrontFacing) N = -N;
@@ -584,6 +667,12 @@ void main(){
   #sub{margin-top:4px;font-size:11px;color:#8b949e;max-height:14vh;overflow:auto}
   #cert{margin-top:6px}
   #cert pre{max-height:40vh;overflow:auto;font-size:11px;color:#8b949e}
+  #legend{margin-top:8px;border-top:1px solid #30363d;padding-top:8px}
+  #legend .dim{color:#8b949e}
+  #bar{height:10px;border-radius:3px;margin:6px 0 2px;background:linear-gradient(to right,#dedfdc 0%,#b0bcae 25%,#fcdd38 25%,#f58c1f 50%,#db2919 75%,#b8178f 100%)}
+  #ticks{display:flex;justify-content:space-between;font-size:10px;color:#8b949e}
+  #ticks span:nth-child(2){position:relative;left:-12%}
+  #stats{margin-top:5px;font-size:10px;color:#8b949e;line-height:1.45}
   canvas{display:block;width:100vw;height:100vh;cursor:grab}
 </style>
 <div id="hud">
@@ -591,6 +680,7 @@ void main(){
   ${model.triangleCount.toLocaleString()} triangles${model.decimate > 1 ? ` (showing ${model.kept.toLocaleString()}, 1/${model.decimate})` : ''}<br>
   drag = orbit &nbsp; wheel = zoom &nbsp; shift-drag = pan
   ${subtitleBlock}
+  ${legendBlock}
   ${certificateBlock}
 </div>
 <canvas id="c"></canvas>
@@ -599,6 +689,8 @@ const b64f32 = (s) => { const b = atob(s); const a = new Uint8Array(b.length); f
 const positions = b64f32("${model.positionsB64}");
 const normals = b64f32("${model.normalsB64}");
 const cavity = ${model.cavityB64 ? `b64f32("${model.cavityB64}")` : 'null'};
+const errs = ${model.errorB64 ? `b64f32("${model.errorB64}")` : 'null'};
+const errorMeta = ${model.errorMeta ? JSON.stringify({ budgetMm: model.errorMeta.budgetMm, maxMm: model.errorMeta.stats.maxMm }) : 'null'};
 const bbox = ${JSON.stringify(model.bbox)};
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl', { antialias: true });
@@ -611,9 +703,15 @@ gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fsrc));
 gl.linkProgram(prog); gl.useProgram(prog);
 const attribs = [['p', positions, 3], ['n', normals, 3]];
 if (cavity) attribs.push(['cav', cavity, 1]);
+if (errs) attribs.push(['err', errs, 1]);
 for (const [name, data, size] of attribs) {
   const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
   const loc = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+}
+let overlayOn = true;
+if (errorMeta) {
+  gl.uniform1f(gl.getUniformLocation(prog, 'uBudget'), errorMeta.budgetMm);
+  gl.uniform1f(gl.getUniformLocation(prog, 'uMax'), errorMeta.maxMm);
 }
 gl.enable(gl.DEPTH_TEST);
 const center = [0,1,2].map(i => (bbox.min[i]+bbox.max[i])/2);
@@ -635,7 +733,14 @@ function draw(){
   const mvp = m4.mul(m4.persp(0.9, canvas.width / canvas.height, radius * 0.02, radius * 40), mv);
   gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'mvp'), false, mvp);
   gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'mv'), false, mv);
+  if (errorMeta) gl.uniform1f(gl.getUniformLocation(prog, 'uOverlay'), overlayOn ? 1 : 0);
   gl.drawArrays(gl.TRIANGLES, 0, positions.length / 3);
+}
+const ovlBox = document.getElementById('ovl');
+if (ovlBox) {
+  const setOverlay = (on) => { overlayOn = on; ovlBox.checked = on; requestAnimationFrame(draw); };
+  ovlBox.addEventListener('change', () => setOverlay(ovlBox.checked));
+  addEventListener('keydown', (e) => { if (e.key === 'e') setOverlay(!overlayOn); });
 }
 let dragging = false, lastX = 0, lastY = 0, panning = false;
 canvas.addEventListener('mousedown', (e) => { dragging = true; panning = e.shiftKey; lastX = e.clientX; lastY = e.clientY; });
@@ -659,7 +764,7 @@ function argValue(args, name) {
   return index >= 0 ? args.flags[index + 1] : undefined;
 }
 
-const BOOLEAN_FLAGS = new Set(['--ceramic']);
+const BOOLEAN_FLAGS = new Set(['--ceramic', '--error']);
 
 function parseArgs(argv) {
   const positional = [];
@@ -689,5 +794,6 @@ switch (command) {
     console.log('  run -- <command ...>');
     console.log("  decode '<refusal line>' [--patch inner|outer] [--counts json]");
     console.log('  view <file.stl> [--out html] [--decimate k] [--ceramic]');
+    console.log('  view <file.stl> --error [--error-file f.error.bin]   (true-3D error overlay)');
     console.log('  view <a.stl> <b.stl> ... [--out html] [--pot-tris n] [--title t]   (glazed shelf)');
 }

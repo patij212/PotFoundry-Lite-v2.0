@@ -40,7 +40,34 @@ node potscope.mjs view <a.stl> <b.stl> ... [--pot-tris n] [--title t] [--out f.h
 #   shelf mode (2+ STLs): each pot is vertex-cluster decimated to ~n tris
 #   (default 22000 — real coarsening, not hole-punching), glazed, base-aligned,
 #   and arranged in centered rows of up to 7 on one orbitable canvas.
+#   GALLERY ONLY: clustering rewrites the surface. Evaluation is always
+#   per-pot, full resolution.
+
+node potscope.mjs view <stl> --error [--error-file f.error.bin]
+#   EVALUATION view: renders the per-triangle true-3D error vs the exact
+#   analytic target as a smooth gradient (neutral <= 10µm budget, then
+#   yellow->orange->red->magenta, log-scaled), with a live toggle (checkbox /
+#   'e' key), a legend bar, and p50/p99/max stats. Requires full resolution
+#   (--decimate 1) and a baked sidecar <stl>.error.bin.
 ```
+
+## Error sidecars (single-source truth)
+
+potscope never re-implements the analytic surface (the Voronoi hash-desync
+lesson: copies drift). Sidecars are baked by the certification machinery
+itself — `PF_GOTHIC_ERRORBAKE=certified|coarse npx vitest run
+research/bridge/_gothicVoronoiConformingSpike.test.ts -t "error sidecar"` —
+which rebuilds the exact tessellation, then per triangle bisects a
+certifies-at ladder {2.5,5,10,20,40,80,160,320,640}µm using the prover's own
+residual enclosures (accept-prune at threshold; pointwise incumbent as fail
+witness). The sidecar value is a GUARANTEE ("this triangle certifies at
+<= T"), not a sample. Format: one JSON header line + Float32LE per-triangle
+mm values; provenance hashes bind sidecar to STL, and the viewer refuses a
+count mismatch. Baked 2026-07-18: the certified Gothic re-derives its
+certificate per-triangle (max = budget 10µm, p50 2.5µm, 0 unconverged,
+58.9M enclosures, 86 min). Direct sup-estimation was tried first and starves
+on crease-band triangles (O(2^depth) cells per crease) — that history and
+the numbers live in ledger.jsonl.
 
 ## Why these four
 

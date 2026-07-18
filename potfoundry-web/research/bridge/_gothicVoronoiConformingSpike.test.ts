@@ -1064,6 +1064,357 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     }
   );
 
+  it.skipIf(!process.env.PF_GOTHIC_ERRORBAKE)(
+    'bake per-triangle true-3D error sidecar from the certified residual programs',
+    // The certified bake measured 86 min (58.9M enclosures) — the at-budget
+    // checks spend prover-grade effort on razor triangles by design.
+    { timeout: 10_800_000 },
+    async () => {
+      // Measured overlay for potscope `view --error`: per artifact triangle,
+      // an upper estimate of sup ||target - flat-triangle|| (mm) obtained by
+      // greedy max-refinement of residual enclosures over the SAME compiled
+      // per-patch programs the certificate used. Truth stays single-source;
+      // this block only orchestrates and serialises.
+      const { mkdirSync, writeFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { createFinalArtifactProofSession: mintSession } = await import(
+        '../../src/geometry/targetSolid/finalArtifactProofSession'
+      );
+      const variant =
+        process.env.PF_GOTHIC_ERRORBAKE === 'coarse' ? 'coarse' : 'certified';
+      const ladders = gothicLadderFractions();
+      const angularLadder = rationalStationLadder(8, ladders.angularFractions);
+      const outerVertical = rationalStationLadder(
+        5,
+        variant === 'coarse' ? [] : ladders.outerVerticalFractions
+      );
+      const innerVertical = rationalStationLadder(
+        5,
+        variant === 'coarse' ? [] : ladders.innerVerticalFractions
+      );
+      const { binding } = atlas('GothicArches', {
+        gaPointiness: 1,
+        gaDiamond: 0,
+        gaRelief: 0.2,
+      });
+      const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+        angularDivisionsLog2: 8,
+        angularStations: angularLadder,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+        verticalStationsByPatch: {
+          'outer-wall': outerVertical,
+          'inner-wall': innerVertical,
+        },
+        ...(variant === 'coarse'
+          ? {}
+          : {
+              conformingChordsByPatch: {
+                'outer-wall': gothicChordsForPatch('outer', angularLadder, outerVertical),
+                'inner-wall': gothicChordsForPatch('inner', angularLadder, innerVertical),
+              },
+            }),
+      });
+      const session = mintSession(tessellation.stlBytes);
+      const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+        binding.surfaceComplex
+      );
+      const programByPatch = new Map(
+        binding.programs.map((program) => [program.patchId, program.programCanonicalJson])
+      );
+      const stl = Buffer.from(
+        tessellation.stlBytes.buffer,
+        tessellation.stlBytes.byteOffset,
+        tessellation.stlBytes.byteLength
+      );
+      const errors = new Float32Array(tessellation.triangleCount).fill(Number.NaN);
+      // Certifies-at ladder: per triangle we bisect over these thresholds with
+      // the prover's accept rule (prune any cell whose enclosure upper <= T;
+      // the pointwise incumbent is a definitive fail witness when it exceeds
+      // T). Direct sup estimation starves on crease-band triangles — covering
+      // a crease needs O(2^depth) cells, so any split cap leaves fat uppers
+      // and false hot spots. Accept-pruning is exactly what makes the real
+      // certification tractable; the sidecar value is a GUARANTEE ("this
+      // triangle certifies at <= T"), not a sample.
+      const LADDER_MM = [0.0025, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64];
+      const START_LEVEL = 2; // 0.01 mm — the export standard
+      const MAX_DEPTH = 24;
+      // At-or-above the budget the verdict is truth-bearing (a false 'unknown'
+      // paints an over-budget colour on a certified pot) — spend prover-grade
+      // effort there. Below budget the level only quantises the quiet zone —
+      // spend little. The real prover needed depth up to 30 on razor cells.
+      const checkSplitsFor = (thresholdMm: number): number =>
+        thresholdMm >= 0.01 ? 20000 : 400;
+      let enclosureCount = 0;
+      let fallbackCount = 0;
+      let unconvergedCount = 0;
+      let unknownCheckCount = 0;
+      const artifact = new Float64Array(9);
+      const uN = new Float64Array(3);
+      const vN = new Float64Array(3);
+      const bary = new Float64Array(9);
+      const startedAt = Date.now();
+      for (const partition of tessellation.partitions) {
+        const programCanonicalJson = programByPatch.get(
+          partition.patchId as (typeof binding.programs)[number]['patchId']
+        );
+        if (programCanonicalJson === undefined) {
+          throw new Error(`missing program for partition patch '${partition.patchId}'`);
+        }
+        const evaluator = compileValidatedResidualEvaluator({
+          targetSha256: target.targetSha256,
+          programCanonicalJson,
+        });
+        const oddFactor = partition.oddDenominatorFactor ?? '1';
+        const oddNumeric = Number(oddFactor);
+        for (const mapping of partition.triangles) {
+          const at = 84 + mapping.artifactTriangleIndex * 50 + 12;
+          for (let i = 0; i < 9; i += 1) artifact[i] = stl.readFloatLE(at + i * 4);
+          const uBase = mapping.vertices.map((vertex) => Number(vertex.uNumerator));
+          const vBase = mapping.vertices.map((vertex) => Number(vertex.vNumerator));
+          const enclose = (weights: readonly number[], depth: number): number => {
+            for (let vtx = 0; vtx < 3; vtx += 1) {
+              let u = 0;
+              let v = 0;
+              for (let k = 0; k < 3; k += 1) {
+                const weight = weights[vtx * 3 + k];
+                u += weight * uBase[k];
+                v += weight * vBase[k];
+                bary[vtx * 3 + k] = weight;
+              }
+              uN[vtx] = u;
+              vN[vtx] = v;
+            }
+            enclosureCount += 1;
+            let enclosure = evaluator.encloseResidualFastNumeric(
+              uN,
+              vN,
+              partition.fractionBits + depth,
+              bary,
+              depth,
+              artifact,
+              oddNumeric === 1 ? undefined : oddNumeric
+            );
+            if (enclosure === null) {
+              fallbackCount += 1;
+              const cellVertices = [0, 1, 2].map((vtx) => {
+                let u = 0n;
+                let v = 0n;
+                for (let k = 0; k < 3; k += 1) {
+                  const weight = BigInt(weights[vtx * 3 + k]);
+                  u += weight * BigInt(mapping.vertices[k].uNumerator);
+                  v += weight * BigInt(mapping.vertices[k].vNumerator);
+                }
+                return { uNumerator: u.toString(), vNumerator: v.toString() };
+              }) as [
+                (typeof mapping.vertices)[number],
+                (typeof mapping.vertices)[number],
+                (typeof mapping.vertices)[number],
+              ];
+              enclosure = evaluator.encloseResidual({
+                patchId: partition.patchId,
+                artifactTriangleIndex: mapping.artifactTriangleIndex,
+                artifactTriangleVerticesMm: [
+                  [artifact[0], artifact[1], artifact[2]],
+                  [artifact[3], artifact[4], artifact[5]],
+                  [artifact[6], artifact[7], artifact[8]],
+                ],
+                originalDomainTriangle: mapping.vertices,
+                cell: {
+                  fractionBits: partition.fractionBits + depth,
+                  ...(oddFactor === '1' ? {} : { oddDenominatorFactor: oddFactor }),
+                  barycentricFractionBits: depth,
+                  vertices: cellVertices,
+                  barycentricVertices: [0, 1, 2].map((vtx) => ({
+                    aNumerator: String(weights[vtx * 3]),
+                    bNumerator: String(weights[vtx * 3 + 1]),
+                    cNumerator: String(weights[vtx * 3 + 2]),
+                  })) as unknown as never,
+                },
+              });
+            }
+            const distanceToZero = (interval: { lower: number; upper: number }): number =>
+              interval.lower > 0 ? interval.lower : interval.upper < 0 ? -interval.upper : 0;
+            const ax = Math.max(Math.abs(enclosure.xMm.lower), Math.abs(enclosure.xMm.upper));
+            const ay = Math.max(Math.abs(enclosure.yMm.lower), Math.abs(enclosure.yMm.upper));
+            const az = Math.max(Math.abs(enclosure.zMm.lower), Math.abs(enclosure.zMm.upper));
+            return {
+              upper: Math.hypot(ax, ay, az),
+              lower: Math.hypot(
+                distanceToZero(enclosure.xMm),
+                distanceToZero(enclosure.yMm),
+                distanceToZero(enclosure.zMm)
+              ),
+            };
+          };
+          const twice = (p: readonly number[]): number[] => p.map((x) => 2 * x);
+          const mid = (p: readonly number[], q: readonly number[]): number[] =>
+            p.map((x, i) => x + q[i]);
+          // Pointwise incumbent: descend central children of a cell so the
+          // probe cell shrinks 2^-k toward its medial point; the enclosure's
+          // distance-to-zero norm there is a sound lower bound on the
+          // triangle's residual supremum.
+          const probeLower = (weights: readonly number[], depth: number): number => {
+            let w = weights;
+            let d = depth;
+            for (let k = 0; k < 6; k += 1) {
+              const a = w.slice(0, 3);
+              const b = w.slice(3, 6);
+              const c = w.slice(6, 9);
+              w = [...mid(a, b), ...mid(b, c), ...mid(a, c)];
+              d += 1;
+            }
+            return enclose(w, d).lower;
+          };
+          type BakeCell = { readonly w: readonly number[]; readonly depth: number; upper: number };
+          const rootWeights = [1, 0, 0, 0, 1, 0, 0, 0, 1] as const;
+          let incumbent = 0;
+          const certifiesAt = (thresholdMm: number): 'yes' | 'no' | 'unknown' => {
+            if (incumbent > thresholdMm) return 'no';
+            const cells: BakeCell[] = [
+              { w: rootWeights, depth: 0, upper: enclose(rootWeights, 0).upper },
+            ];
+            const checkSplits = checkSplitsFor(thresholdMm);
+            let splits = 0;
+            while (splits < checkSplits) {
+              for (let i = cells.length - 1; i >= 0; i -= 1) {
+                if (cells[i].upper <= thresholdMm) {
+                  cells[i] = cells[cells.length - 1];
+                  cells.pop();
+                }
+              }
+              if (cells.length === 0) return 'yes';
+              let worstIndex = 0;
+              for (let i = 1; i < cells.length; i += 1) {
+                if (cells[i].upper > cells[worstIndex].upper) worstIndex = i;
+              }
+              const worst = cells[worstIndex];
+              if (worst.depth >= MAX_DEPTH) return 'unknown';
+              incumbent = Math.max(incumbent, probeLower(worst.w, worst.depth));
+              if (incumbent > thresholdMm) return 'no';
+              cells[worstIndex] = cells[cells.length - 1];
+              cells.pop();
+              const a = worst.w.slice(0, 3);
+              const b = worst.w.slice(3, 6);
+              const c = worst.w.slice(6, 9);
+              const children = [
+                [...twice(a), ...mid(a, b), ...mid(a, c)],
+                [...mid(a, b), ...twice(b), ...mid(b, c)],
+                [...mid(a, c), ...mid(b, c), ...twice(c)],
+                [...mid(a, b), ...mid(b, c), ...mid(a, c)],
+              ];
+              for (const w of children) {
+                const upper = enclose(w, worst.depth + 1).upper;
+                if (upper > thresholdMm) cells.push({ w, depth: worst.depth + 1, upper });
+              }
+              splits += 1;
+            }
+            return 'unknown';
+          };
+          let level = START_LEVEL;
+          let verdict = certifiesAt(LADDER_MM[level]);
+          if (verdict === 'yes') {
+            while (level > 0 && certifiesAt(LADDER_MM[level - 1]) === 'yes') level -= 1;
+            errors[mapping.artifactTriangleIndex] = LADDER_MM[level];
+          } else {
+            if (verdict === 'unknown') unknownCheckCount += 1;
+            let certified = false;
+            while (level + 1 < LADDER_MM.length) {
+              level += 1;
+              const step = certifiesAt(LADDER_MM[level]);
+              if (step === 'unknown') unknownCheckCount += 1;
+              if (step === 'yes') {
+                certified = true;
+                break;
+              }
+            }
+            if (certified) {
+              errors[mapping.artifactTriangleIndex] = LADDER_MM[level];
+            } else {
+              unconvergedCount += 1;
+              errors[mapping.artifactTriangleIndex] = LADDER_MM[LADDER_MM.length - 1] * 2;
+            }
+          }
+        }
+        console.log(
+          `[probe:errorbake] ${partition.patchId} done tris=${partition.triangles.length}` +
+            ` enclosures=${enclosureCount} elapsedMs=${Date.now() - startedAt}`
+        );
+      }
+      for (let i = 0; i < errors.length; i += 1) {
+        if (Number.isNaN(errors[i])) throw new Error(`triangle ${i} not covered by any partition`);
+      }
+      const sorted = Float32Array.from(errors).sort();
+      const quantile = (f: number): number =>
+        sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * f))];
+      const maxMm = sorted[sorted.length - 1];
+      const header = JSON.stringify({
+        magic: 'potscope-error/v1',
+        style: 'GothicArches',
+        variant,
+        count: errors.length,
+        unitsMm: true,
+        semantics: 'certifies-at-level',
+        ladderMm: LADDER_MM,
+        budgetMm: 0.01,
+        maxDepth: MAX_DEPTH,
+        checkSplits: { atOrAboveBudget: checkSplitsFor(0.01), belowBudget: checkSplitsFor(0.005) },
+        unconverged: unconvergedCount,
+        unknownChecks: unknownCheckCount,
+        enclosures: enclosureCount,
+        decimalFallbacks: fallbackCount,
+        stats: { maxMm, p50Mm: quantile(0.5), p99Mm: quantile(0.99) },
+        provenance: {
+          targetSha256: target.targetSha256,
+          artifactByteSha256: session.byteSha256,
+          parsedTriangleSetSha256: session.parsedTriangleSetSha256,
+        },
+      });
+      const payload = Buffer.concat([
+        Buffer.from(`${header}\n`, 'utf8'),
+        Buffer.from(errors.buffer, 0, errors.byteLength),
+      ]);
+      const potscopeDir = join(__dirname, '..', 'tools', 'potscope');
+      mkdirSync(potscopeDir, { recursive: true });
+      let sidecarPath: string;
+      if (variant === 'coarse') {
+        const stlPath = join(potscopeDir, 'GothicArches_coarse_reference.stl');
+        writeFileSync(stlPath, tessellation.stlBytes);
+        sidecarPath = `${stlPath}.error.bin`;
+      } else {
+        expect(tessellation.triangleCount).toBe(304808);
+        const stlPath = join(
+          __dirname,
+          '..',
+          'exchange',
+          '_certified_stl',
+          'GothicArches_p1_H32_OD30_certified.stl'
+        );
+        sidecarPath = `${stlPath}.error.bin`;
+      }
+      writeFileSync(sidecarPath, payload);
+      console.log(
+        `[probe:errorbake] ${variant} wrote ${sidecarPath} tris=${errors.length}` +
+          ` maxMm=${maxMm.toFixed(6)} p99Mm=${quantile(0.99).toFixed(6)}` +
+          ` p50Mm=${quantile(0.5).toFixed(6)} unconverged=${unconvergedCount}` +
+          ` unknownChecks=${unknownCheckCount} enclosures=${enclosureCount}` +
+          ` decimalFallbacks=${fallbackCount} elapsedMs=${Date.now() - startedAt}`
+      );
+      if (variant === 'certified') {
+        // Independent per-triangle re-derivation of the certificate: every
+        // triangle of the certified artifact must certify at <= 0.01 mm.
+        expect(unconvergedCount).toBe(0);
+        expect(maxMm).toBeLessThanOrEqual(0.01);
+      }
+    }
+  );
+
   it.skipIf(!process.env.PF_GOTHIC_OPCENSUS)(
     'Gothic program op census: outer vs inner wall (slack audit, zero proofs)',
     { timeout: 120_000 },
