@@ -976,6 +976,10 @@ describe('annular solid reference tessellation', () => {
     geometry: Readonly<Record<string, number>>;
     divisions: AnnularSolidReferenceTessellationOptions;
     maxElapsedMilliseconds: number;
+    /** Envelope opt-ins for megatriangle-class pots (v5); merged into the composed options. */
+    proofOptions?: Readonly<Record<string, unknown>>;
+    /** Vitest timeout override for pots that outgrow the 180 s default. */
+    timeoutMilliseconds?: number;
   }[] = [
     {
       styleId: 'HarmonicRipple',
@@ -1291,6 +1295,71 @@ describe('annular solid reference tessellation', () => {
       },
       maxElapsedMilliseconds: 110_000,
     },
+    // FULL DEFAULTS (slice 11, 2026-07-18): relief 2.3 mm (9.2x the gentled
+    // pot above) with the edge fade ACTIVE. Measured demand: vertical 87 um
+    // at 2^6 rows with a knife-edge ~9.5000005 um global miss at 2^8 (closed
+    // by the uniform 288-row rational ladder, odd factor 9); angular <= 10 um
+    // at 2^10; edge-fade C1 kinks at t = 3/20 and 17/20 held by exact
+    // stations; inner wall passes at plain 2^8. First megatriangle-class
+    // certified artifact (1,267,712 tris) — envelope v5 opt-ins below.
+    // Certified 9,499,990 pm in ~187 s (parallel) / ~250 s (sequential).
+    {
+      styleId: 'WaveInterference',
+      styleParams: {},
+      geometry: Object.freeze({
+        ...DEFAULT_GEOMETRY,
+        H: 32,
+        top_od: 30,
+        bottom_od: 30,
+        r_drain: 6,
+      }),
+      divisions: {
+        angularDivisionsLog2: 10,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 8,
+          'top-rim': 3,
+          'bottom-top': 5,
+          'bottom-under': 5,
+          'drain-wall': 0,
+        },
+        verticalStationsByPatch: {
+          'outer-wall': rationalStationLadder(5, [
+            ...Array.from({ length: 287 }, (_, i) => [i + 1, 288] as const).filter(
+              ([numerator]) => numerator % 9 !== 0
+            ),
+            [3, 20],
+            [17, 20],
+          ]),
+        },
+      },
+      maxElapsedMilliseconds: 560_000,
+      timeoutMilliseconds: 600_000,
+      proofOptions: {
+        maxTotalWorkCells: 16_000_000,
+        maxTotalPartitionWorkUnits: 400_000_000,
+        maxStructuralWorkUnits: 2_000_000_000,
+        topology: { maxWorkUnits: 400_000_000 },
+        selfIntersection: {
+          maxBuildWork: 400_000_000,
+          maxTraversalVisits: 400_000_000,
+          maxBroadPhasePairChecks: 400_000_000,
+          maxCandidatePairs: 100_000_000,
+        },
+        patchProof: {
+          maxWorkCells: 6_000_000,
+          maxDepth: 30,
+          partition: {
+            maxTriangles: 1_048_576,
+            maxBuildWork: 320_000_000,
+            maxBvhNodes: 4_194_304,
+            maxTraversalVisits: 320_000_000,
+            maxBroadPhasePairChecks: 320_000_000,
+            maxPairChecks: 160_000_000,
+          },
+        },
+      },
+    },
     // DYADIC DEFAULT OFFSETS (slice 8): at source_count 4 / rotation 0 every
     // RippleInterference source sits at an EXACT float dyadic (i/4), so the
     // antipode fract jump lines land on k/4 — already uniform-dyadic
@@ -1332,7 +1401,7 @@ describe('annular solid reference tessellation', () => {
   for (const certified of CERTIFIED_POTS) {
     it.skipIf(!process.env.PF_G2_POT)(
       `proves a complete ${certified.styleId} pot (${certified.geometry.top_od}mm OD) to the continuous 0.01 mm partial certificate`,
-      { timeout: 180_000 },
+      { timeout: certified.timeoutMilliseconds ?? 180_000 },
       () => {
         const { binding, canonicalInput } = atlas(
           certified.geometry,
@@ -1356,6 +1425,7 @@ describe('annular solid reference tessellation', () => {
             requestedTolerancePm: 10_000_000n,
             reservedNonGeometricMarginPm: 500_000n,
             maxElapsedMilliseconds: certified.maxElapsedMilliseconds,
+            ...certified.proofOptions,
           }
         );
         // The module can never mint a full certificate — but the continuous

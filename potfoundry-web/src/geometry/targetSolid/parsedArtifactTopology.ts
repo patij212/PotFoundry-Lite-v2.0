@@ -29,7 +29,10 @@ export const HARD_TOPOLOGY_MAX_UNIQUE_VERTICES = 1_000_000;
 export const HARD_TOPOLOGY_MAX_EDGE_RECORD_BYTES = 128 * 1024 * 1024;
 export const HARD_TOPOLOGY_MAX_TRIANGLE_VERTEX_BYTES = 64 * 1024 * 1024;
 export const HARD_TOPOLOGY_MAX_LINK_UNION_BYTES = 64 * 1024 * 1024;
-export const HARD_TOPOLOGY_MAX_WORK_UNITS = 200_000_000;
+// Envelope v5 (2026-07-18): WaveInterference full-defaults parses 1,267,712
+// triangles; topology scan work scales ~linearly (Gothic 304,808 fit within
+// a 60M share), so the 200M hard ceiling doubles.
+export const HARD_TOPOLOGY_MAX_WORK_UNITS = 400_000_000;
 export const HARD_TOPOLOGY_MAX_ELAPSED_MILLISECONDS = 600_000;
 
 export type ParsedTopologyErrorCode = 'RESOURCE_LIMIT' | 'INVALID_OPTIONS' | 'CANCELLED';

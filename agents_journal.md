@@ -7718,3 +7718,23 @@ at kinks are unconditionally wide). Each further tightening pays every
 style. WaveInterference is the next curved-feature candidate on the same
 machinery. Never compare composed evidence hashes across runs (they bind
 remaining-elapsed); per-patch evidence is the anchor.
+
+## 2026-07-18 — WaveInterference FULL DEFAULTS certified (twelfth style) + envelope v5 + potscope error overlay (Claude Fable 5)
+
+- potscope grew per-request evaluation instruments (Patryk: "evaluate pots
+  individually, true-3D error overlay"): `view --error` renders per-triangle
+  certifies-at levels baked from the certified residual programs
+  (PF_GOTHIC_ERRORBAKE; certified pot re-derives its certificate per
+  triangle — max = budget 10 µm, p50 2.5 µm, 0 unconverged; coarse
+  reference lights the lancets at 160–320 µm). Sup-estimation starves on
+  crease bands; certifies-at ladder semantics is the honest quantity.
+  Commit fba872c6.
+- WI campaign (user: "continue with the waveinterference"): full registry
+  defaults CERTIFIED — 9,499,990 pm / 1,267,712 tris / 187.2 s parallel /
+  structural TRUE. Five probe generations pinned vertical 87 µm @ 2⁶ vs
+  angular ≤ 10 µm @ 2¹⁰, found the edge-fade C1 kinks (exact stations at
+  3/20, 17/20), and diagnosed a knife-edge global 9.5000005 µm vertical
+  miss at 2⁸ (closed by a 288-row rational ladder, odd factor 9). Envelope
+  v5: partition tris ×4, total mapped ×2, structural pools ×2–5 — every
+  raise named by a measured trip; defaults untouched. Matrix Addendum 21;
+  roadmap addendum; spike `_wiFullReliefSpike.test.ts`.

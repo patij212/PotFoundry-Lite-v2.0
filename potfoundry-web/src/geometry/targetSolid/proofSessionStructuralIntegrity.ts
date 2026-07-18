@@ -96,7 +96,10 @@ export interface ProofSessionStructuralIntegrityResult {
 const DEFAULT_STRUCTURAL_MAX_TOTAL_BYTES = 768 * 1024 * 1024;
 const HARD_STRUCTURAL_MAX_TOTAL_BYTES = 768 * 1024 * 1024;
 const DEFAULT_STRUCTURAL_MAX_TOTAL_WORK_UNITS = 300_000_000;
-const HARD_STRUCTURAL_MAX_TOTAL_WORK_UNITS = 400_000_000;
+// Envelope v5 (2026-07-18): the per-counter share is total/5; WaveInterference
+// full-defaults (1,267,712 parsed triangles) needs topology and scan counters
+// up to ~400M each, so the aggregate hard pool rises to 2B. DEFAULT unchanged.
+const HARD_STRUCTURAL_MAX_TOTAL_WORK_UNITS = 2_000_000_000;
 const DEFAULT_STRUCTURAL_MAX_ELAPSED_MILLISECONDS = 15_000;
 const HARD_STRUCTURAL_MAX_ELAPSED_MILLISECONDS = 600_000;
 const CONSERVATIVE_VERTEX_INTERNER_BYTES_PER_VERTEX = 160;

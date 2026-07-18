@@ -256,7 +256,10 @@ const HARD_MAX_TOTAL_PARTITION_WORK_UNITS = 400_000_000;
 const DEFAULT_MAX_ELAPSED_MILLISECONDS = 15_000;
 const HARD_MAX_ELAPSED_MILLISECONDS =
   HARD_DYADIC_PARTITION_MAX_ELAPSED_MILLISECONDS;
-const HARD_MAX_TOTAL_MAPPED_TRIANGLES = 1_048_576;
+// Envelope v5 (2026-07-18): WaveInterference full-defaults totals 1,206,272
+// mapped triangles (walls 2 × 528,384 at the measured 2^10 × 2^8 + fade-kink
+// demand, plus bottoms/rim/drain); ×2 keeps the usual headroom.
+const HARD_MAX_TOTAL_MAPPED_TRIANGLES = 2_097_152;
 const MAX_CERTIFICATION_PM = 1_000_000_000_000_000_000n;
 const MAX_TARGET_PATCHES = 4_096;
 

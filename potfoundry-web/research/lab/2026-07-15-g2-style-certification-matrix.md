@@ -890,3 +890,53 @@ smoothstep ends (rows 31/33/37/64) → bandMid crest flanks (rows
 0.5265/0.5495) → bandMid upper continuation (0.5625 inner) → bandRim flank
 (63/64). Config: `gothic-p1-a8w5-chain` in the spike harness; envelope v4;
 maxDepth 30; six patch workers.
+
+## Addendum 21 — WaveInterference FULL DEFAULTS certified: twelfth style, largest artifact, envelope v5 (2026-07-18, executor)
+
+**WaveInterference at pure registry defaults (relief 2.3 mm — 9.2× the
+slice-10 gentled cert — edge fade 0.5 ACTIVE, all advanced params default,
+H32/OD30/drain6) — CONVERGED 9,499,990 pm / 1,267,712 tris / 187.2 s
+parallel / structural TRUE (plusReserved 9,999,990 ≤ 10,000,000).**
+FOURTEEN pots / TWELVE styles. The largest artifact the judge has ever
+certified (4.2× Gothic) and the first above the old envelope.
+
+**Measured demand map (the campaign was five probe generations, ~2 h):**
+- Slice-10's angular-dominance did NOT carry to full relief: axis-resolved
+  generous-budget probes showed vertical-doubling −53/−63% vs
+  angular-doubling −0.8/−6%. Pinned by converged/refused brackets:
+  **vertical ≈ 87 µm at 2⁶ rows; angular ≤ 10 µm at 2¹⁰.**
+- The 11x6@50 µm refusal landed exactly on the edge-fade C1 kink
+  (v ∈ [0.1406, 0.1563] ∋ 3/20) — the fade ramp `min(t/0.15, 1)` kinks at
+  t = 3/20 and 17/20; **exact rational stations** kill it (U3 machinery).
+- With kinks stationed, the +1 pm refusal surfed shoulder splits at fresh
+  (u, v) three times: ceiling-quantised reporting shows the bulk vertical
+  sag at 2⁸ is **~9.5000005 µm globally** — a knife-edge uniform miss, not
+  a feature. No local ladder beats a sinusoid's Nyquist; the honest fix is
+  uniform ×1.125: **288-row rational ladder** (288 = 2⁵·9, odd factor 9)
+  + the two fade kinks = 290 outer rows. Inner wall passes at plain 2⁸
+  (9,499,888 pm).
+- Final config `10xr288`: angular 2¹⁰; outer 2·1024·290 = 593,920 tris;
+  inner 524,288; bottoms/rim/drain already green at defaults from the
+  first probe (8.74/2.15/7.65/0.10 µm).
+
+**Envelope v5 (every raise named by a measured trip; DEFAULTS unchanged):**
+- exactDyadicDomainPartition HARD: triangles 262,144 → 1,048,576 (walls
+  524k–594k), BVH 1,048,576 → 4,194,304, build/traversal/broad 80M → 320M,
+  pair 40M → 160M.
+- completeMappedArtifactGeometry HARD_MAX_TOTAL_MAPPED_TRIANGLES
+  1,048,576 → 2,097,152 (artifact 1,267,712).
+- proofSessionStructuralIntegrity HARD total work 400M → 2B (per-counter
+  share = total/5; topology tripped its 60 M default share at 130 s in).
+- parsedArtifactTopology HARD work 200M → 400M;
+  parsedArtifactSelfIntersection scan counters 200M → 400M (×4.2 Gothic
+  scan volume).
+- Two more composed-level trips named en route: aggregate partition pool
+  (default 160M share clipped inner-wall BVH build at 31.9M → pass 400M)
+  and the structural topology share. Work cells needed NO raise (2.5M ≤
+  envelope-v4 16M); elapsed 187 s ≪ 590 s.
+
+Spike harness: `research/bridge/_wiFullReliefSpike.test.ts` (probes:
+PF_WI_TRICOUNT / PF_WI_AXIS / PF_WI_PP with PF_WI_CFG+PF_WI_BUDGET_UM /
+PF_WI_GO / PF_WI_SEQ / PF_WI_STL). The refusal-names-the-value bisection
+(max-depth refusals report the true pointwise residual, pm-ceiling
+quantised) did the pinning; potscope ledgered every probe line.

@@ -527,3 +527,29 @@ with interior vertices + per-patch workers + envelope v4 + the v14 screen.
 Remaining out-styles: WaveInterference-class curved features share this
 exact machinery; the enclosure-slack lever (more sources remain: the
 inner/outer asymmetry is not fully closed) keeps paying every style.
+
+## WaveInterference full-defaults addendum (2026-07-18, executor)
+
+**"WaveInterference defaults CERTIFIED" — the original U1 exit criterion —
+is DONE, at true registry defaults** (relief 2.3 mm, edge fade active):
+9,499,990 pm / 1,267,712 tris / 187.2 s / structural TRUE. FOURTEEN pots /
+TWELVE styles. Matrix Addendum 21 has the full demand map and campaign log.
+
+Corrections this lands on the map:
+1. Addendum-3's reclassification ("WI = curved-feature-alignment with
+   Gothic") was HALF right: full-relief WI needed no curved chains at all —
+   the binding mechanisms were the edge-fade C1 kink rows (exact rational
+   stations, U3) and a knife-edge UNIFORM vertical miss at 2⁸ closed by a
+   288-row rational ladder (density, U1-style). The curved-feature-class
+   frontier list shrinks again: no style currently NEEDS curved chains
+   except as already shipped for Gothic.
+2. **Envelope v5 exists** (partition triangles ×4 to 1,048,576, total
+   mapped ×2 to 2,097,152, structural pools ×2–5): the judge now proves
+   megatriangle-class artifacts in ~3 minutes. This retires "the 131k/262k
+   cap" as a frontier for every remaining refused style whose demand is
+   ≤ ~1M tris per patch — Gyroid-gentle at ≥262k is now directly
+   attemptable (next candidate on the same machinery).
+3. The G3 production-matrix track inherits a proven pattern: measure axis
+   demand (generous-budget per-patch magnitudes) → pin by
+   refusal-names-the-value bisection → station the kinks → uniform-ladder
+   the knife-edge → envelope raises only where a measured trip names them.
