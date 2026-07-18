@@ -435,18 +435,29 @@ describe('CelticKnot double-valued mesher (P3b T2: clipped-envelope 3-strand cro
 // the measured residual). The clip COMPOSES WATERTIGHT — measured at DEFAULT (baseGridU 132, baseGridT
 // 96, across 22, 4 passes): nonManifold 0, cliffBoundary 0, boundaryNonRim 0, seamOpenEdges 0,
 // tRim === boundary (571), 108 junctions all pinched to 2 levels, 1 outward component, sheetDev 0.000.
-// BUT the fidelity gate is NOT met: maxCliffDevMm 0.60001 and facetMaxChordMm 0.20438 (@ u≈0.20,
-// t≈0.06, i.e. AT a crossing). ROOT CAUSE (diagnosed, verify.ts PF_T3_DEBUG + analytic probe): the
-// visible-envelope clip drops the occluded under-strand edge ENTIRELY inside each diamond, but the
-// under-strand's surface is still second-highest-VISIBLE just outside the over-strand and steps down
-// to background there — an occlusion step with NO cliff/wall left to carry it. So (a) sheet facets
-// flat-span that ~0.6mm step (no cliff split-vertex ⇒ the straddle guard cannot skip it) ⇒ facet chord
-// ~0.2–0.35mm at every crossing, and (b) the un-walled under-strand merges with background into a
-// mixed region whose lower-pinch junction vertices lose their background-sheet orientation (dirCnt 0)
-// ⇒ cliffDev spikes to the full jump. This is diamond-closure / occlusion-envelope topology — a T1
-// clip-completeness gap (the envelope must KEEP the under-strand's background-facing edge where it is
-// second-highest-visible, dropping only the truly-buried inner edge), NOT closable by T3 tuning
-// without loosening the gate. See .superpowers/sdd/p3b-task-3-report.md. The M5 unclipped path is
+// BUT the fidelity gate is NOT met: facetMaxChordMm 0.20438 (@ u≈0.20, t≈0.06, AT a crossing) and
+// maxCliffDevMm up to 0.60001.
+//
+// CORRECTED ROOT CAUSE (P3c, MEASURED — supersedes the P3b-report diagnosis below): the P3b report
+// blamed a dropped "second-highest-visible" OUTER edge and prescribed a 3-way visibility model that
+// keeps+walls it. That diagnosis is REFUTED by measurement. (1) The visibility model is already
+// COMPLETE: a full-domain hunt shows every visible step — including every second-highest-visible
+// under-strand OUTER (background-facing) edge — already has a kept, walled arc; a refutation probe over
+// the DEFAULT-T3 domain finds 747 occluded edge-samples, of which 744 are truly buried (outer side is
+// another ribbon, correctly dropped) and only 3 are occlusion-flip boundary noise — ZERO wrongly-
+// dropped outer edges. (2) cliffDev is DENSITY-SENSITIVE: at higher per-column density it resolves to
+// ~0.0004 (single-column repro, passes 3); the 0.60 at the DEFAULT grid is under-resolution of the thin
+// diamond slivers, not a mixed region. (3) The real, density-INVARIANT blocker is a diamond-CORNER
+// BRIDGING FACET: the occluded under-strand INNER edge is (correctly) dropped over its narrow occlusion
+// gap; where that under-strand EMERGES at the diamond corner its inner-edge arc restarts with a
+// background rail, and a flat sheet facet in the over-strand's ribbon region bridges from the over-
+// strand crest (~r0+relief) down to that background rail (~r0−jump), sagging ~0.2–0.48mm. It stays
+// ~0.2–0.48mm across densities (whack-a-mole over corners) and appears identically in the weldSoftCliffs
+// inert-constraint path — so it is diamond-closure / crest-crossing-planarization topology (the
+// deferred "disproportionately hard" work: the buried inner edge crosses the over-strand crest crease),
+// NOT a visibility-model gap. Closing it needs crest-crossing planarization composed over the periodic
+// pot, not a model/wall change. See .superpowers/sdd/p3c-task-1-report.md (full measurements) and
+// .superpowers/sdd/p3b-task-3-report.md (prior, now-corrected diagnosis). The M5 unclipped path is
 // unchanged (clip OFF ⇒ byte-identical; smoke: cliffDev 0.00091, watertight).
 const STYLE_T3 = { ckScale: 3, ckWidth: 0.15, ckRelief: 2, ckGap: 0.02, ckRoundness: 0.5, ckTwist: 0, ckStrands: 3 };
 const JUMP_T3 = STYLE_T3.ckRelief * 0.3;
@@ -459,8 +470,8 @@ const OPTS_T3 = {
   clipToVisibleEnvelope: true,
 };
 
-// SKIPPED (DONE_WITH_CONCERNS): composes watertight but the crossing occlusion-step fidelity residual
-// above is not < 0.01mm. Strict bounds preserved below (never loosened); un-skip to reproduce.
+// SKIPPED (DONE_WITH_CONCERNS): composes watertight but the diamond-corner bridging-facet fidelity
+// residual above is not < 0.01mm. Strict bounds preserved below (never loosened); un-skip to reproduce.
 describe.skip('CelticKnot double-valued mesher (P3b T3: full clipped periodic pot, default crest)', () => {
   it('meshes the full default pot watertight, seam-welded, certified, facet chord < 0.01mm everywhere', () => {
     const { mesh, report } = buildCelticKnotFullPotMesh(STYLE_T3, DIMS, OPTS_T3);
