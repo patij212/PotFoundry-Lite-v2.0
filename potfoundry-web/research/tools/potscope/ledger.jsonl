@@ -1,0 +1,2 @@
+{"ts":"2026-07-18T14:49:48.884Z","kind":"probe","cmd":"seed","line":"[probe:tricount] chords outer=28180 inner=28976 totalTris=283032 bottom-top=15104 bottom-under=15104 drain-wall=944 inner-wall=122960 outer-wall=121368 top-rim=7552"}
+{"ts":"2026-07-18T14:49:49.021Z","kind":"certificate","style":"GothicArches","params":"p1 d0 r0.2 H32","upperPm":9499997,"tris":304808,"elapsedMs":287452,"structural":true,"commit":"4b301990","note":"ELEVENTH STYLE — chains + workers + envelope v4 + v14 triangle-exact screen"}
