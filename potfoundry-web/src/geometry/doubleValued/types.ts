@@ -45,6 +45,16 @@ export interface Mesh {
    * geometrically depressed region.
    */
   regionIsRibbon: boolean[];
+  /**
+   * True where the vertex is one of the two shared PINCH vertices of a declared crossing
+   * junction (M3+). At a Y-junction several cliff curves meet, so the general per-region
+   * split would emit one copy per incident sheet (a non-manifold FAN); instead every
+   * incident sheet + wall is routed by radius LEVEL to exactly two shared vertices —
+   * `pinch.upper` (r0) and `pinch.lower` (r0−jump). Flagged so the certifier can treat them
+   * as the special multi-region pinch (their one-sided limit is read with a full-direction
+   * nudge, since incident regions differ in t as well as u around a corner).
+   */
+  vertexIsJunction: boolean[];
 }
 
 /** Exact radius at a domain point: (u,t) -> r (mm). */
@@ -62,6 +72,14 @@ export interface JunLike {
   u: number;
   t: number;
   pinch: { upper: number; lower: number };
+  /**
+   * Indices (into `CliffComplexLike.segments`) of the cliff segments that CROSS here. The
+   * mesher inserts one shared CDT point at `(u,t)` on each of these segments so their
+   * constraint chains MEET at a single vertex (planar PSLG) instead of crossing — cdt2d
+   * crashes on crossing constraints — and so the incident walls can pinch to the shared
+   * double-vertex.
+   */
+  segs: readonly number[];
 }
 
 /**
@@ -117,6 +135,15 @@ export interface MeshBuildOptions {
    * uniform soup from `surface` (fine for smooth sheets; not apex-accurate).
    */
   refSoup?: ReadonlyArray<RefTri>;
+  /**
+   * u-space nudge δ for the one-sided-limit cliff lift (M3+, active only when the complex
+   * declares junctions). A cliff split-vertex is then lifted to `surface(u ∓ δ, t)` taken
+   * from INSIDE its own region — the TRUE analytic one-sided limit — rather than the naive
+   * declared lip. On an overlap-diamond side that limit is the occluded (raised) neighbour,
+   * not r0, so the wall spans the real occlusion step and the independent certifier (which
+   * expects exactly this limit, with the SAME δ) reads ~0 deviation. Default 1e-6.
+   */
+  oneSidedDelta?: number;
 }
 
 /** A 3D point [x,y,z] (mm). */
@@ -182,6 +209,24 @@ export interface SurfaceCertification {
   backgroundRegionCount: number;
 }
 
+/**
+ * Per-junction pinch measurement (M3+). Read straight off the built mesh's junction
+ * vertices, so it independently confirms the 55→…→2 collapse: exactly TWO distinct radius
+ * levels at the shared crossing point — `upper` (r0) and `lower` (r0−jump).
+ */
+export interface JunctionLevelReport {
+  /** Normalized u of the declared junction. */
+  u: number;
+  /** t of the declared junction. */
+  t: number;
+  /** Distinct radius levels among the mesh's junction vertices at this (u,t). Must be 2. */
+  distinctLevels: number;
+  /** Highest junction-vertex radius here (the ribbon foot r0). */
+  upper: number;
+  /** Lowest junction-vertex radius here (the background r0−jump). */
+  lower: number;
+}
+
 /** The verified per-build report returned by the CelticKnot entry. */
 export interface MeshReport {
   vertexCount: number;
@@ -207,4 +252,8 @@ export interface MeshReport {
    * cannot itself certify the classifier (a lip swap hides inside the wall ruled-face).
    */
   certification: SurfaceCertification;
+  /** Number of declared crossing junctions meshed (0 for M1/M2, >0 once strands cross). */
+  junctionCount: number;
+  /** Per-junction pinch measurement (empty for M1/M2). Each must show exactly 2 levels. */
+  junctions: JunctionLevelReport[];
 }

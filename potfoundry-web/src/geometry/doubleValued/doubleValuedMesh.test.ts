@@ -74,6 +74,7 @@ function stepDetectorMesh(cliffR: number): Mesh {
     vertexRegion: [1, 1, 1], // all in the ribbon region
     vertexCliffSeg: [0, -1, -1],
     regionIsRibbon: [false, true], // region 1 = ribbon
+    vertexIsJunction: [false, false, false], // no crossings in this hand-built detector mesh
   };
 }
 

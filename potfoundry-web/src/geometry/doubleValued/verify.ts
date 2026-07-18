@@ -298,6 +298,7 @@ export function certifyAgainstTrueSurface(
 ): SurfaceCertReport {
   const pos = mesh.positions;
   const onCliff = mesh.vertexOnCliff;
+  const isJunction = mesh.vertexIsJunction;
   const U = mesh.vertexU;
   const T = mesh.vertexT;
   const region = mesh.vertexRegion;
@@ -310,8 +311,14 @@ export function certifyAgainstTrueSurface(
   // snaking ribbon (which shifts in u with t) cannot flip the sign. Sheet neighbours of a
   // cliff vertex are always in its own region (walls only join cliff→cliff), and a region lies
   // wholly on one side of its bounding locus, so the majority vote is that side.
+  //
+  // A JUNCTION pinch vertex (M3+) is shared by several regions that differ in t as well as u
+  // around the corner, so a u-only side is ambiguous; for those we accumulate the FULL (du,dt)
+  // offset toward the tagged region's interior and nudge along it instead.
   const dirSum = new Float64Array(vcount);
   const dirCnt = new Int32Array(vcount);
+  const juDu = new Float64Array(vcount);
+  const juDt = new Float64Array(vcount);
   const tris = mesh.triangles;
   for (let i = 0; i < tris.length; i += 3) {
     const tri: readonly [number, number, number] = [tris[i], tris[i + 1], tris[i + 2]];
@@ -322,12 +329,40 @@ export function certifyAgainstTrueSurface(
         if (q === p) continue;
         const vq = tri[q];
         if (onCliff[vq] || region[vq] !== region[vp]) continue;
-        const side = U[vq] - cliffLocusU(cliffSeg[vp], T[vq]) >= 0 ? 1 : -1;
-        dirSum[vp] += side;
+        if (isJunction[vp]) {
+          juDu[vp] += U[vq] - U[vp];
+          juDt[vp] += T[vq] - T[vp];
+        } else {
+          const side = U[vq] - cliffLocusU(cliffSeg[vp], T[vq]) >= 0 ? 1 : -1;
+          dirSum[vp] += side;
+        }
         dirCnt[vp] += 1;
       }
     }
   }
+
+  // Region centroids (from ALL vertices — topological region membership, label-independent).
+  // Used to orient a cliff vertex that has NO interior sheet neighbour to vote a direction
+  // (a thin sliver region meshed with only cliff/junction corners): nudge toward the region
+  // interior instead of skipping it, so every cliff vertex is certified, not waved through.
+  let maxRegion = -1;
+  for (let v = 0; v < vcount; v += 1) if (region[v] > maxRegion) maxRegion = region[v];
+  const nReg = maxRegion + 1;
+  const regU = new Float64Array(nReg);
+  const regT = new Float64Array(nReg);
+  const regN = new Int32Array(nReg);
+  for (let v = 0; v < vcount; v += 1) {
+    const rg = region[v];
+    if (rg < 0) continue;
+    regU[rg] += U[v];
+    regT[rg] += T[v];
+    regN[rg] += 1;
+  }
+  for (let rg = 0; rg < nReg; rg += 1)
+    if (regN[rg] > 0) {
+      regU[rg] /= regN[rg];
+      regT[rg] /= regN[rg];
+    }
 
   let maxSheetDevMm = 0;
   let maxCliffDevMm = 0;
@@ -347,12 +382,30 @@ export function certifyAgainstTrueSurface(
       if (dev > maxSheetDevMm) maxSheetDevMm = dev;
       sheetVertsChecked += 1;
     } else {
-      if (dirCnt[v] === 0) {
-        cliffVertsSkipped += 1;
-        continue;
+      let expected: number;
+      if (isJunction[v] && dirCnt[v] > 0) {
+        // full-direction nudge into the tagged region (corner regions differ in t, not just u)
+        const mag = Math.hypot(juDu[v], juDt[v]);
+        expected =
+          mag < 1e-12
+            ? surface(u, t)
+            : surface(u + (juDu[v] / mag) * oneSidedDelta, t + (juDt[v] / mag) * oneSidedDelta);
+      } else if (!isJunction[v] && dirCnt[v] > 0) {
+        const dir = dirSum[v] >= 0 ? 1 : -1;
+        expected = surface(u + dir * oneSidedDelta, t);
+      } else {
+        // no interior sheet neighbour: orient by the region centroid (still label-independent)
+        const rg = region[v];
+        const du = rg >= 0 ? regU[rg] - u : 0;
+        const dt = rg >= 0 ? regT[rg] - t : 0;
+        const mag = Math.hypot(du, dt);
+        if (mag < 1e-12) {
+          cliffVertsSkipped += 1;
+          continue;
+        }
+        expected = surface(u + (du / mag) * oneSidedDelta, t + (dt / mag) * oneSidedDelta);
       }
-      const dir = dirSum[v] >= 0 ? 1 : -1;
-      const dev = Math.abs(r - surface(u + dir * oneSidedDelta, t));
+      const dev = Math.abs(r - expected);
       if (dev > maxCliffDevMm) maxCliffDevMm = dev;
       cliffVertsCertified += 1;
     }

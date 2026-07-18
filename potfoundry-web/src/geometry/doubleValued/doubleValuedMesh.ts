@@ -22,6 +22,7 @@ import type {
   BuildStats,
   CliffComplexLike,
   DomainWindow,
+  JunLike,
   Mesh,
   MeshBuildOptions,
   RefTri,
@@ -44,6 +45,12 @@ interface CliffSample {
   t: number;
   lower: number;
   upper: number;
+  /**
+   * Index of the declared crossing junction this sample is SNAPPED onto (M3+). All samples
+   * across every incident segment sharing a junction index collapse to ONE CDT point in
+   * `assemble`, so the crossing constraint edges MEET at a single vertex (planar PSLG).
+   */
+  junction?: number;
 }
 /** The mutable per-cliff sampling state (refined in place). */
 interface CliffState {
@@ -98,6 +105,46 @@ export function buildDoubleValuedMesh(
     }
     return { seg, samples };
   });
+
+  // Snap each declared crossing junction onto its incident segments: insert one sample at the
+  // EXACT junction (u,t) on every incident segment, tagged with the junction index. In
+  // `assemble` all samples sharing a junction index collapse to a single shared CDT point, so
+  // (a) the crossing constraint edges MEET there instead of crossing (cdt2d needs a planar
+  // PSLG) and (b) the incident walls pinch to the one shared double-vertex.
+  const tSpan = domain.tHi - domain.tLo;
+  for (let k = 0; k < complex.junctions.length; k += 1) {
+    const jn = complex.junctions[k];
+    const sJ = tSpan > 0 ? (jn.t - domain.tLo) / tSpan : 0;
+    if (sJ < -1e-9 || sJ > 1 + 1e-9) continue; // junction outside this window
+    const sClamped = sJ < 0 ? 0 : sJ > 1 ? 1 : sJ;
+    for (const segIdx of jn.segs) {
+      const st = cliffs[segIdx];
+      if (!st) continue;
+      const sample: CliffSample = {
+        s: sClamped,
+        u: jn.u,
+        t: jn.t,
+        lower: jn.pinch.lower,
+        upper: jn.pinch.upper,
+        junction: k,
+      };
+      let idx = st.samples.length;
+      for (let m = 0; m < st.samples.length; m += 1) {
+        if (st.samples[m].s > sClamped) {
+          idx = m;
+          break;
+        }
+      }
+      st.samples.splice(idx, 0, sample);
+    }
+  }
+  // When crossings are declared, lift each cliff split-vertex to the TRUE one-sided analytic
+  // limit taken from inside its own region (not the naive declared lip): on an overlap-diamond
+  // side that limit is the occluded (raised) neighbour, so the wall spans the real occlusion
+  // step and the independent certifier reads ~0. Genuine ribbon↔background cliffs are
+  // unaffected (their one-sided limits ARE r0 / r0−jump).
+  const occlusionAware = complex.junctions.length > 0;
+  const oneSidedDelta = opts.oneSidedDelta ?? 1e-6;
   // Creases: in-sheet conforming polylines (ridge apexes / iso-fraction ribbon lines).
   // They constrain the triangulation (so triangles never cross a sharp ridge and the ribbon
   // becomes clean structured strips) but never split a region or get a wall. Sampled on the
@@ -119,7 +166,7 @@ export function buildDoubleValuedMesh(
       ? buildTriDistance(opts.refSoup ?? buildSurfaceReferenceSoup(surface, domain, complex.segments, H))
       : () => 0;
   const POINT_CAP = 60000; // hard bound on the sampling set (logged, never silent)
-  let result = assemble(gridPts, cliffs, creaseChains, surface, domain, H);
+  let result = assemble(gridPts, cliffs, creaseChains, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta);
   let m = measure(result, dist, chordTolMm);
   let addedSheetPoints = 0;
   let splitCliffEdges = 0;
@@ -132,7 +179,7 @@ export function buildDoubleValuedMesh(
     }
     addedSheetPoints += applyCentroids(gridPts, m.centroidInserts);
     splitCliffEdges += applyCliffSplits(cliffs, m.cliffSplits);
-    result = assemble(gridPts, cliffs, creaseChains, surface, domain, H);
+    result = assemble(gridPts, cliffs, creaseChains, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta);
     m = measure(result, dist, chordTolMm);
     passes += 1;
   }
@@ -249,14 +296,19 @@ function assemble(
   surface: SurfaceRadiusFn,
   domain: DomainWindow,
   H: number,
+  junctions: ReadonlyArray<JunLike>,
+  occlusionAware: boolean,
+  oneSidedDelta: number,
 ): Assembled {
   const pts: Array<[number, number]> = [];
   const cliffLip: Array<Lip | null> = [];
   const cliffSegOf: number[] = []; // segment index this point's locus belongs to; -1 for sheet points
+  const ptJunction: number[] = []; // declared-junction index this point pinches to; -1 otherwise
   const pushPt = (u: number, t: number, lip: Lip | null, seg = -1): number => {
     pts.push([u, t]);
     cliffLip.push(lip);
     cliffSegOf.push(seg);
+    ptJunction.push(-1);
     return pts.length - 1;
   };
 
@@ -266,15 +318,31 @@ function assemble(
   const chains: number[][] = [];
   const cliffEdgeSet = new Set<string>();
   const cliffEdgeInfo = new Map<string, { ci: number; interval: number }>();
+  // Shared CDT point per declared junction: the first incident segment that reaches the
+  // junction creates it, every other incident segment reuses it — so their constraint chains
+  // MEET at that single vertex (planar PSLG) instead of crossing.
+  const junctionPt = new Map<number, number>();
   for (let ci = 0; ci < cliffs.length; ci += 1) {
     const chain: number[] = [];
     let prev = -1;
     const { samples } = cliffs[ci];
     for (let j = 0; j < samples.length; j += 1) {
       const sm = samples[j];
-      const id = pushPt(sm.u, sm.t, { lower: sm.lower, upper: sm.upper }, ci);
+      let id: number;
+      if (sm.junction !== undefined) {
+        const shared = junctionPt.get(sm.junction);
+        if (shared !== undefined) {
+          id = shared;
+        } else {
+          id = pushPt(sm.u, sm.t, { lower: sm.lower, upper: sm.upper }, ci);
+          ptJunction[id] = sm.junction;
+          junctionPt.set(sm.junction, id);
+        }
+      } else {
+        id = pushPt(sm.u, sm.t, { lower: sm.lower, upper: sm.upper }, ci);
+      }
       chain.push(id);
-      if (prev >= 0) {
+      if (prev >= 0 && prev !== id) {
         const k = edgeKey(prev, id);
         edges.push([prev, id]);
         cliffEdgeSet.add(k);
@@ -380,32 +448,121 @@ function assemble(
     isRibbon[r] = rib > bg;
   }
 
-  // ---- split-lift: one mesh vertex per (cdtPointIndex, region) ----
+  // ---- one-sided-limit machinery (occlusion-faithful cliff lift; M3+) ----
+  // Direction into a region at a cliff point, matching the certifier: for each interior sheet
+  // neighbour of a (non-junction) cliff point in that region, vote for the u-SIDE of the
+  // cliff's OWN locus the neighbour lies on — measured against the locus at the neighbour's t
+  // (snake-robust). The cliff vertex is then lifted to surface(u ∓ δ, t) taken from that side.
+  const tSpanA = domain.tHi - domain.tLo;
+  const sOfT = (t: number): number => {
+    if (tSpanA <= 0) return 0;
+    const s = (t - domain.tLo) / tSpanA;
+    return s < 0 ? 0 : s > 1 ? 1 : s;
+  };
+  const locusU = (ci: number, t: number): number => cliffs[ci].seg.at(sOfT(t)).u;
+  const regCenU = new Float64Array(regionCount);
+  const regCenT = new Float64Array(regionCount);
+  const regCenN = new Int32Array(regionCount);
+  const dirAcc = new Map<number, { sum: number; cnt: number }>();
+  const dirKey = (pi: number, reg: number): number => pi * (regionCount + 1) + reg;
+  for (let ti = 0; ti < tris.length; ti += 1) {
+    const tri = tris[ti];
+    const reg = regionDense[ti];
+    regCenU[reg] += (pts[tri[0]][0] + pts[tri[1]][0] + pts[tri[2]][0]) / 3;
+    regCenT[reg] += (pts[tri[0]][1] + pts[tri[1]][1] + pts[tri[2]][1]) / 3;
+    regCenN[reg] += 1;
+    if (!occlusionAware) continue;
+    for (let a = 0; a < 3; a += 1) {
+      const p = tri[a];
+      if (cliffLip[p] === null || ptJunction[p] >= 0 || cliffSegOf[p] < 0) continue;
+      for (let b = 0; b < 3; b += 1) {
+        if (b === a) continue;
+        const q = tri[b];
+        if (cliffLip[q] !== null) continue; // interior sheet neighbour only
+        const side = pts[q][0] - locusU(cliffSegOf[p], pts[q][1]) >= 0 ? 1 : -1;
+        const kk = dirKey(p, reg);
+        const acc = dirAcc.get(kk);
+        if (acc) {
+          acc.sum += side;
+          acc.cnt += 1;
+        } else dirAcc.set(kk, { sum: side, cnt: 1 });
+      }
+    }
+  }
+  for (let r = 0; r < regionCount; r += 1)
+    if (regCenN[r] > 0) {
+      regCenU[r] /= regCenN[r];
+      regCenT[r] /= regCenN[r];
+    }
+  /** True one-sided analytic limit of the surface into `region` at cliff point `pi`. */
+  const oneSidedLimit = (pi: number, region: number): number => {
+    const [u, t] = pts[pi];
+    const acc = dirAcc.get(dirKey(pi, region));
+    if (acc && acc.cnt > 0) return surface(u + (acc.sum >= 0 ? oneSidedDelta : -oneSidedDelta), t);
+    // Fallback (thin region without an interior sheet neighbour): nudge toward its centroid.
+    let du = regCenU[region] - u;
+    let dt = regCenT[region] - t;
+    const mag = Math.hypot(du, dt);
+    if (mag < 1e-12) return surface(u, t);
+    du /= mag;
+    dt /= mag;
+    return surface(u + du * oneSidedDelta, t + dt * oneSidedDelta);
+  };
+
+  // ---- split-lift: one mesh vertex per (cdtPointIndex, region); junctions pinch by level ----
   const mesh = createMesh();
   const onRimPt = (u: number, t: number): boolean =>
     u <= domain.uMin + RIM_EPS ||
     u >= domain.uMax - RIM_EPS ||
     t <= domain.tLo + RIM_EPS ||
     t >= domain.tHi - RIM_EPS;
+  const tagVertex = (id: number, u: number, t: number, region: number, seg: number, onCliff: boolean, isJn: boolean): void => {
+    mesh.vertexOnCliff[id] = onCliff;
+    mesh.vertexOnRim[id] = onRimPt(u, t);
+    mesh.vertexU[id] = u;
+    mesh.vertexT[id] = t;
+    mesh.vertexRegion[id] = region;
+    mesh.vertexCliffSeg[id] = seg;
+    mesh.vertexIsJunction[id] = isJn;
+  };
+  // Junction pinch: exactly two shared vertices per crossing — upper (r0) and lower (r0−jump).
+  // Every incident sheet/wall copy is routed by its radius LEVEL (ribbon→upper, background→
+  // lower), so N incident sheets collapse to 2 vertices (the 55→…→2 pinch) instead of a fan.
+  // Lazily created so an unused level never leaves a floating vertex.
+  const junctionUpper = new Map<number, number>();
+  const junctionLower = new Map<number, number>();
+  const junctionVert = (jk: number, upper: boolean, region: number, pi: number): number => {
+    const store = upper ? junctionUpper : junctionLower;
+    const existing = store.get(jk);
+    if (existing !== undefined) return existing;
+    const jn = junctions[jk];
+    const r = upper ? jn.pinch.upper : jn.pinch.lower;
+    const [x, y, z] = lift(jn.u, jn.t, r, H);
+    const id = addVertex(mesh, x, y, z);
+    // Tag with the routing region (a ribbon region for upper, a background region for lower)
+    // so the certifier's into-region nudge reproduces this exact level.
+    tagVertex(id, jn.u, jn.t, region, cliffSegOf[pi], true, true);
+    store.set(jk, id);
+    return id;
+  };
   const registry = new Map<string, number>();
   const getV = (pi: number, region: number): number => {
+    const lip = cliffLip[pi];
+    const jk = ptJunction[pi];
+    if (jk >= 0 && lip) return junctionVert(jk, isRibbon[region], region, pi);
     const k = `${pi}:${region}`;
     const existing = registry.get(k);
     if (existing !== undefined) return existing;
     const [u, t] = pts[pi];
-    const lip = cliffLip[pi];
-    const r = lip ? (isRibbon[region] ? lip.upper : lip.lower) : surface(u, t);
+    let r: number;
+    if (lip) r = occlusionAware ? oneSidedLimit(pi, region) : isRibbon[region] ? lip.upper : lip.lower;
+    else r = surface(u, t);
     const [x, y, z] = lift(u, t, r, H);
     const id = addVertex(mesh, x, y, z);
-    mesh.vertexOnCliff[id] = lip !== null;
-    mesh.vertexOnRim[id] = onRimPt(u, t);
     // Read-only provenance for the independent certifier: the exact (u,t) this vertex was
     // lifted from and the topological region it belongs to. Neither depends on the
     // ribbon/background label — only the radius `r` above does.
-    mesh.vertexU[id] = u;
-    mesh.vertexT[id] = t;
-    mesh.vertexRegion[id] = region;
-    mesh.vertexCliffSeg[id] = cliffSegOf[pi];
+    tagVertex(id, u, t, region, cliffSegOf[pi], lip !== null, false);
     registry.set(k, id);
     return id;
   };
@@ -422,6 +579,23 @@ function assemble(
   }
 
   // ---- walls: bridge each cliff edge's two incident region-rails ----
+  // At a Y-junction both rails may route to the SAME shared pinch vertex, collapsing the quad
+  // to a triangle (one end pinched) or nothing (fully pinched — the sheets already share the
+  // seam). Emitting a quad with a repeated index would fabricate a zero-length self-edge and
+  // corrupt the manifold census, so collapse explicitly.
+  const addWall = (aP: number, bP: number, bQ: number, aQ: number): boolean => {
+    if (aP === aQ && bP === bQ) return false; // fully pinched: shared seam, no wall
+    if (aP === aQ) {
+      addTriangle(mesh, aP, bP, bQ);
+      return true;
+    }
+    if (bP === bQ) {
+      addTriangle(mesh, aP, bP, aQ);
+      return true;
+    }
+    addQuad(mesh, aP, bP, bQ, aQ);
+    return true;
+  };
   const wallQuads: WallQuad[] = [];
   let unwalled = 0;
   for (let ci = 0; ci < chains.length; ci += 1) {
@@ -429,6 +603,7 @@ function assemble(
     for (let i = 0; i + 1 < chain.length; i += 1) {
       const a = chain[i];
       const b = chain[i + 1];
+      if (a === b) continue; // degenerate chain step (shared junction point)
       const bucket = edgeTri.get(edgeKey(a, b)) ?? [];
       const regs = [...new Set(bucket.map((ti) => regionDense[ti]))];
       if (regs.length < 2) {
@@ -440,8 +615,7 @@ function assemble(
       const bP = getV(b, rP);
       const aQ = getV(a, rQ);
       const bQ = getV(b, rQ);
-      addQuad(mesh, aP, bP, bQ, aQ);
-      wallQuads.push({ ci, interval: i, v: [aP, bP, bQ, aQ] });
+      if (addWall(aP, bP, bQ, aQ)) wallQuads.push({ ci, interval: i, v: [aP, bP, bQ, aQ] });
     }
   }
 

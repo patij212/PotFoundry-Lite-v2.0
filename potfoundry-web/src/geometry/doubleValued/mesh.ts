@@ -14,6 +14,7 @@ export const createMesh = (): Mesh => ({
   vertexRegion: [],
   vertexCliffSeg: [],
   regionIsRibbon: [],
+  vertexIsJunction: [],
 });
 
 /** Append a vertex; returns its index. Tag arrays are filled by the caller in lockstep. */
