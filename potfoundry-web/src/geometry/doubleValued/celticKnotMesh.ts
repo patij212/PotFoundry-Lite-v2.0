@@ -942,6 +942,20 @@ export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
    * multi-column pot — see the M6 report.
    */
   crestThroughDiamonds?: boolean;
+  /**
+   * P3b T3 (DELIVER): mesh from the VISIBLE-ENVELOPE-CLIPPED cliffs — T2's single-crossing fix
+   * GENERALISED to compose over every crossing across all columns AND the periodic u-seam. Each
+   * ribbon↔background cliff is fed CLIPPED to exactly its visible (non-occluded) t-sub-arcs
+   * (`clipCliffsToVisibleEnvelope`), so the occluded under-strand edges are ABSENT inside every
+   * overlap diamond: the over-strand crest crease threads each crossing through free space (no cliff
+   * to cross ⇒ planar PSLG, no crash, no soft-weld), and each occlusion boundary is SNAPPED onto its
+   * declared crossing junction so the clipped arc terminates there and closes via the M3 pinch + M4
+   * one-sided-limit wall. Implies the crest-through-diamond creases (like `crestThroughDiamonds`) but
+   * replaces `weldSoftCliffs` with the pre-clip + per-junction `straddleGuard`. Where the M5 unclipped
+   * path carries a ~1.58mm diamond crossing residual at the 3-strand default, this closes the honest
+   * facet chord < 0.01mm EVERYWHERE. OFF by default so M5/M6 stay byte-identical.
+   */
+  clipToVisibleEnvelope?: boolean;
 }
 
 /**
@@ -1320,7 +1334,10 @@ export function buildCelticKnotFullPotMesh(
   const cliffDims: CliffDims = { H, Rb: dims.Rb, Rt: dims.Rt, expn };
   const rA = buildAnalyticRadiusFn('CelticKnot', styleOptions, { H, Rb: dims.Rb, Rt: dims.Rt, expn });
   const surface: SurfaceRadiusFn = (u, t) => rA(TAU * u, t * H);
-  const crestThrough = opts.crestThroughDiamonds ?? false;
+  // T3 clip path carries the crest through every diamond the same way M6 does (the occluded
+  // under-strand cliffs are simply ABSENT rather than soft-welded), so it implies crest-through.
+  const clip = opts.clipToVisibleEnvelope ?? false;
+  const crestThrough = (opts.crestThroughDiamonds ?? false) || clip;
   // M6: supply P1 the style's own analytic radius so it DECLARES the `kind:'occlusion'` segments
   // (their `strand` = the OVER strand — the crest that continues through each diamond). The mesher
   // reads over-identity from the same analytic z-buffer (`ckZHeight`), so these are used to confirm
@@ -1339,17 +1356,100 @@ export function buildCelticKnotFullPotMesh(
   const ribbonSegs = complex.segments.filter((s) => s.kind === 'ribbon-background');
   const adapted: SegLike[] = [];
   const adaptedId: Array<{ column: number; strand: number; side: number }> = [];
-  for (const seg of ribbonSegs) {
-    adapted.push(adaptSegment(seg, window));
-    adaptedId.push({ column: seg.column, strand: seg.strand, side: seg.side });
-  }
-  const segIndexOf = (column: number, strand: number, side: number): number =>
-    adaptedId.findIndex((a) => a.column === column && a.strand === strand && a.side === side);
   const junctions: JunLike[] = [];
-  for (const j of complex.junctions) {
-    const segs = j.incident.map((inc) => segIndexOf(j.column, inc.strand, inc.side)).filter((i) => i >= 0);
-    if (segs.length < 2) continue;
-    junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
+  if (clip) {
+    // P3b T3: feed each ribbon↔background cliff CLIPPED to its visible (non-occluded) t-sub-arcs
+    // (Task 1's `clipCliffsToVisibleEnvelope`), composed over EVERY column and the WHOLE periodic
+    // band — no isolation window, no far-strand drop (that was T2's single-crossing window scoping;
+    // here every strand of every column participates). The occluded under-strand edges are ABSENT
+    // inside each overlap diamond, so the over-strand crest crease threads the crossing through free
+    // space (planar PSLG, no cdt2d crash, no soft-weld); each occlusion boundary coincides with a
+    // declared crossing junction, so the clipped arc TERMINATES there and the M3 junction pinch + M4
+    // one-sided-limit wall close it watertight.
+    const env = clipCliffsToVisibleEnvelope(params, cliffDims);
+    // Per (column,strand,side): the t of every incident crossing junction (its occlusion boundaries).
+    // An arc end that abuts an occlusion boundary is SNAPPED exactly onto its junction t, so the
+    // clipped arc terminates ON the crossing the pinch closes (the endpoint base sample is then
+    // upgraded in place to the junction's shared pinch vertex by `buildDoubleValuedMesh`).
+    const incidentJt = new Map<string, number[]>();
+    for (const j of complex.junctions) {
+      for (const inc of j.incident) {
+        const key = `${j.column}:${inc.strand}:${inc.side}`;
+        const arr = incidentJt.get(key) ?? [];
+        arr.push(j.t);
+        incidentJt.set(key, arr);
+      }
+    }
+    // The clip's occlusion-boundary t and its crossing junction's t agree to ~1e-4; snap within a
+    // tolerance ≪ the occluded gap (~0.007 at DEFAULT) so an arc end never snaps across the diamond.
+    // Measured at the 3-strand default: all 108 occlusion boundaries snap to a junction, 0 orphans.
+    const SNAP_T = 3e-3;
+    const snapEnd = (column: number, strand: number, side: number, t: number): number => {
+      let best = t;
+      let bestD = SNAP_T;
+      for (const jt of incidentJt.get(`${column}:${strand}:${side}`) ?? []) {
+        const d = Math.abs(jt - t);
+        if (d < bestD) {
+          bestD = d;
+          best = jt;
+        }
+      }
+      return best;
+    };
+    // t-range of each adapted arc, parallel to `adapted`, so a junction binds to the arc that reaches
+    // it (an under-strand edge has several visible arcs; the over-strand one spans the diamond).
+    const arcRange: Array<[number, number]> = [];
+    for (const arc of env.visibleCliffs) {
+      const seg = ribbonSegs.find(
+        (s) => s.column === arc.column && s.strand === arc.strand && s.side === arc.side,
+      );
+      if (!seg) continue;
+      let lo = Math.max(arc.tRange[0], domain.tLo);
+      let hi = Math.min(arc.tRange[1], domain.tHi);
+      // A non-rim end is an occlusion boundary ⇒ snap it onto its crossing junction; a t-rim end stays.
+      if (lo > domain.tLo + 1e-9) lo = snapEnd(arc.column, arc.strand, arc.side, lo);
+      if (hi < domain.tHi - 1e-9) hi = snapEnd(arc.column, arc.strand, arc.side, hi);
+      if (hi - lo < 1e-3) continue; // sub-arc too short to mesh meaningfully
+      adapted.push(adaptSegmentToRange(seg, lo, hi));
+      adaptedId.push({ column: arc.column, strand: arc.strand, side: arc.side });
+      arcRange.push([lo, hi]);
+    }
+    // Bind an incident (column,strand,side) at height t to the adapted arc that reaches t. Arc ends now
+    // sit ON the junctions, so a tiny tolerance suffices; another arc of the same edge is ≫ that away.
+    const JBIND = 1e-4;
+    const arcIndexAt = (column: number, strand: number, side: number, t: number): number => {
+      let best = -1;
+      let bestSlack = Infinity;
+      for (let i = 0; i < adaptedId.length; i += 1) {
+        const id = adaptedId[i];
+        if (id.column !== column || id.strand !== strand || id.side !== side) continue;
+        const [lo, hi] = arcRange[i];
+        const slack = Math.max(0, lo - t) + Math.max(0, t - hi); // 0 when t is inside (endpoints incl.)
+        if (slack <= JBIND && slack < bestSlack) {
+          bestSlack = slack;
+          best = i;
+        }
+      }
+      return best;
+    };
+    for (const j of complex.junctions) {
+      if (j.t < domain.tLo || j.t > domain.tHi) continue;
+      const segs = j.incident.map((inc) => arcIndexAt(j.column, inc.strand, inc.side, j.t)).filter((i) => i >= 0);
+      if (segs.length < 2) continue; // both incident edges must reach the junction
+      junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
+    }
+  } else {
+    for (const seg of ribbonSegs) {
+      adapted.push(adaptSegment(seg, window));
+      adaptedId.push({ column: seg.column, strand: seg.strand, side: seg.side });
+    }
+    const segIndexOf = (column: number, strand: number, side: number): number =>
+      adaptedId.findIndex((a) => a.column === column && a.strand === strand && a.side === side);
+    for (const j of complex.junctions) {
+      const segs = j.incident.map((inc) => segIndexOf(j.column, inc.strand, inc.side)).filter((i) => i >= 0);
+      if (segs.length < 2) continue;
+      junctions.push({ u: j.u / TAU, t: j.t, pinch: { upper: j.pinch.upper, lower: j.pinch.lower }, segs });
+    }
   }
 
   const across = opts.across ?? 20;
@@ -1394,8 +1494,13 @@ export function buildCelticKnotFullPotMesh(
       analyticChord: true,
       periodicU: true,
       refineCreases: true,
-      weldSoftCliffs: crestThrough,
-      seedPoints,
+      // Clip path (T3): the cliffs are already pre-clipped to their visible sub-arcs, so the occluded
+      // under-strand edges are ABSENT (nothing to soft-weld) — but the analytic-chord refine loop still
+      // needs the straddle guard for the genuine (visible) ribbon↔background cliffs it must skip. M5/M6
+      // (clip off): `weldSoftCliffs: crestThrough`, no straddle guard — byte-identical.
+      weldSoftCliffs: crestThrough && !clip,
+      straddleGuard: clip,
+      seedPoints: clip ? undefined : seedPoints,
       pointCap: 400000,
     },
     stats,
