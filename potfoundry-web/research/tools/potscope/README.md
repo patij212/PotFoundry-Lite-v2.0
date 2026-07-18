@@ -25,11 +25,21 @@ node potscope.mjs decode '<refusal line>'      # paste a certification refusal l
 #   bandRim / mullion). Encodes the global-vs-local index lesson permanently.
 #   Options: --patch inner|outer   --counts '{"outer":N,"inner":M}'
 
-node potscope.mjs view <stl> [--decimate k] [--out f.html]
+node potscope.mjs view <stl> [--decimate k] [--out f.html] [--ceramic]
 #   parses binary STL, recomputes face normals from windings (certification STLs
 #   carry zero normal fields), and writes a self-contained raw-WebGL1 orbit viewer
 #   (base64-embedded buffers, no CDN, works from file://). Embeds the matching
 #   .certificate.txt sidecar if present. drag=orbit wheel=zoom shift-drag=pan.
+#   --ceramic: welded crease-preserving smooth normals (40-degree cone) plus a
+#   discrete pointiness (mean edge-vs-normal dot over the welded 1-ring) driving
+#   a celadon glaze shader — glaze pools in recesses, thins to clay on crests,
+#   so the certified feature curves outline themselves the way a kiln would.
+#   Use --decimate 1 with ceramic (stride decimation punches holes).
+
+node potscope.mjs view <a.stl> <b.stl> ... [--pot-tris n] [--title t] [--out f.html]
+#   shelf mode (2+ STLs): each pot is vertex-cluster decimated to ~n tris
+#   (default 22000 — real coarsening, not hole-punching), glazed, base-aligned,
+#   and arranged in centered rows of up to 7 on one orbitable canvas.
 ```
 
 ## Why these four
@@ -44,7 +54,10 @@ They are the four things I did by hand, repeatedly, across the Gothic campaign:
 4. **Seeing the artifact.** The certified STL was only ever numbers in a proof
    session. `view` renders it: the lancet arches are visible in the bare mesh
    because the certified tessellation puts mesh edges exactly on the feature
-   curves. First light 2026-07-18.
+   curves. First light 2026-07-18. Second light, same day: `--ceramic` renders
+   the pot as glazed porcelain (cavity-driven celadon pooling), and shelf mode
+   put all thirteen OD30 certified pots on one canvas — the first time the
+   collection was ever *seen* together.
 
 ## Notes
 

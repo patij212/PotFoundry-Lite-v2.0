@@ -273,74 +273,258 @@ function cmdRun(args) {
 }
 
 // ---------------------------------------------------------------------- view
-function cmdView(args) {
-  const stlPath = resolve(args._[0] ?? '');
-  if (!existsSync(stlPath)) {
-    console.error(`no such STL: ${stlPath}`);
-    process.exit(2);
-  }
-  const decimate = Math.max(1, Number(argValue(args, '--decimate') ?? '1'));
-  const outPath = resolve(argValue(args, '--out') ?? stlPath.replace(/\.stl$/i, '.view.html'));
+function parseStl(stlPath, decimate = 1) {
   const bytes = readFileSync(stlPath);
   const triangleCount = bytes.readUInt32LE(80);
   const kept = Math.floor(triangleCount / decimate);
   const positions = new Float32Array(kept * 9);
-  const normals = new Float32Array(kept * 9);
   let write = 0;
-  const bbox = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   for (let i = 0; i < kept; i += 1) {
     const at = 84 + i * decimate * 50;
-    const triangle = [];
     for (let vertex = 0; vertex < 3; vertex += 1) {
       const va = at + 12 + vertex * 12;
-      triangle.push([
-        bytes.readFloatLE(va),
-        bytes.readFloatLE(va + 4),
-        bytes.readFloatLE(va + 8),
-      ]);
-    }
-    // Certification STLs carry derived/zero normal fields — recompute the
-    // face normal from the winding so the viewer's lighting is honest.
-    const e1 = [0, 1, 2].map((axis) => triangle[1][axis] - triangle[0][axis]);
-    const e2 = [0, 1, 2].map((axis) => triangle[2][axis] - triangle[0][axis]);
-    let nx = e1[1] * e2[2] - e1[2] * e2[1];
-    let ny = e1[2] * e2[0] - e1[0] * e2[2];
-    let nz = e1[0] * e2[1] - e1[1] * e2[0];
-    const norm = Math.hypot(nx, ny, nz) || 1;
-    nx /= norm;
-    ny /= norm;
-    nz /= norm;
-    for (let vertex = 0; vertex < 3; vertex += 1) {
-      const [x, y, z] = triangle[vertex];
-      positions[write] = x;
-      positions[write + 1] = y;
-      positions[write + 2] = z;
-      normals[write] = nx;
-      normals[write + 1] = ny;
-      normals[write + 2] = nz;
+      positions[write] = bytes.readFloatLE(va);
+      positions[write + 1] = bytes.readFloatLE(va + 4);
+      positions[write + 2] = bytes.readFloatLE(va + 8);
       write += 3;
-      for (let axis = 0; axis < 3; axis += 1) {
-        const value = triangle[vertex][axis];
-        if (value < bbox.min[axis]) bbox.min[axis] = value;
-        if (value > bbox.max[axis]) bbox.max[axis] = value;
-      }
     }
   }
-  const certPath = stlPath.replace(/\.stl$/i, '.certificate.txt');
-  const certificate = existsSync(certPath) ? readFileSync(certPath, 'utf8') : '';
-  const title = stlPath.split(/[\\/]/).pop();
+  return { title: stlPath.split(/[\\/]/).pop(), triangleCount, kept, positions };
+}
+
+function bboxOf(positions) {
+  const bbox = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  for (let i = 0; i < positions.length; i += 3) {
+    for (let axis = 0; axis < 3; axis += 1) {
+      const value = positions[i + axis];
+      if (value < bbox.min[axis]) bbox.min[axis] = value;
+      if (value > bbox.max[axis]) bbox.max[axis] = value;
+    }
+  }
+  return bbox;
+}
+
+// Certification STLs carry derived/zero normal fields — every normal in the
+// viewer is recomputed from windings so the lighting is honest.
+function flatNormals(positions) {
+  const normals = new Float32Array(positions.length);
+  for (let t = 0; t < positions.length; t += 9) {
+    const e1x = positions[t + 3] - positions[t], e1y = positions[t + 4] - positions[t + 1], e1z = positions[t + 5] - positions[t + 2];
+    const e2x = positions[t + 6] - positions[t], e2y = positions[t + 7] - positions[t + 1], e2z = positions[t + 8] - positions[t + 2];
+    let nx = e1y * e2z - e1z * e2y, ny = e1z * e2x - e1x * e2z, nz = e1x * e2y - e1y * e2x;
+    const norm = Math.hypot(nx, ny, nz) || 1;
+    nx /= norm; ny /= norm; nz /= norm;
+    for (let c = 0; c < 3; c += 1) { normals[t + c * 3] = nx; normals[t + c * 3 + 1] = ny; normals[t + c * 3 + 2] = nz; }
+  }
+  return normals;
+}
+
+// Ceramic mode: welded smooth normals (crease-preserving, 40° cone) plus a
+// discrete "pointiness" — the mean of dot(edge direction, vertex normal) over
+// the welded 1-ring. Positive in recesses (glaze pools and deepens), negative
+// on crests (glaze thins toward the clay body). Normalised per mesh so
+// p95(|cavity|) = 1: pooling reads consistently across styles and densities.
+function ceramicAttributes(positions) {
+  const cornerCount = positions.length / 3;
+  const faceCount = cornerCount / 3;
+  const faceNX = new Float32Array(faceCount), faceNY = new Float32Array(faceCount), faceNZ = new Float32Array(faceCount);
+  const crossX = new Float32Array(faceCount), crossY = new Float32Array(faceCount), crossZ = new Float32Array(faceCount);
+  const cornerKey = new Array(cornerCount);
+  const verts = new Map();
+  for (let f = 0; f < faceCount; f += 1) {
+    const t = f * 9;
+    const e1x = positions[t + 3] - positions[t], e1y = positions[t + 4] - positions[t + 1], e1z = positions[t + 5] - positions[t + 2];
+    const e2x = positions[t + 6] - positions[t], e2y = positions[t + 7] - positions[t + 1], e2z = positions[t + 8] - positions[t + 2];
+    const cx = e1y * e2z - e1z * e2y, cy = e1z * e2x - e1x * e2z, cz = e1x * e2y - e1y * e2x;
+    const len = Math.hypot(cx, cy, cz) || 1;
+    crossX[f] = cx; crossY[f] = cy; crossZ[f] = cz;
+    faceNX[f] = cx / len; faceNY[f] = cy / len; faceNZ[f] = cz / len;
+    for (let s = 0; s < 3; s += 1) {
+      const i = t + s * 3;
+      const key = `${positions[i]},${positions[i + 1]},${positions[i + 2]}`;
+      cornerKey[f * 3 + s] = key;
+      let entry = verts.get(key);
+      if (!entry) { entry = { faces: [], sx: 0, sy: 0, sz: 0, rep: i, nb: new Set() }; verts.set(key, entry); }
+      entry.faces.push(f);
+      entry.sx += cx; entry.sy += cy; entry.sz += cz; // raw cross = area-weighted normal
+    }
+    for (let s = 0; s < 3; s += 1) {
+      const a = cornerKey[f * 3 + s], b = cornerKey[f * 3 + ((s + 1) % 3)];
+      if (a !== b) { verts.get(a).nb.add(b); verts.get(b).nb.add(a); }
+    }
+  }
+  for (const entry of verts.values()) {
+    const len = Math.hypot(entry.sx, entry.sy, entry.sz) || 1;
+    entry.nx = entry.sx / len; entry.ny = entry.sy / len; entry.nz = entry.sz / len;
+    let sum = 0, count = 0;
+    for (const nbKey of entry.nb) {
+      const o = verts.get(nbKey).rep;
+      const ex = positions[o] - positions[entry.rep], ey = positions[o + 1] - positions[entry.rep + 1], ez = positions[o + 2] - positions[entry.rep + 2];
+      const el = Math.hypot(ex, ey, ez) || 1;
+      sum += (ex * entry.nx + ey * entry.ny + ez * entry.nz) / el;
+      count += 1;
+    }
+    entry.cavity = count > 0 ? sum / count : 0;
+  }
+  const magnitudes = [];
+  for (const entry of verts.values()) magnitudes.push(Math.abs(entry.cavity));
+  magnitudes.sort((a, b) => a - b);
+  const p95 = magnitudes[Math.min(magnitudes.length - 1, Math.floor(magnitudes.length * 0.95))] || 1;
+  const cone = Math.cos((40 * Math.PI) / 180);
+  const normals = new Float32Array(positions.length);
+  const cavity = new Float32Array(cornerCount);
+  for (let f = 0; f < faceCount; f += 1) {
+    for (let s = 0; s < 3; s += 1) {
+      const c = f * 3 + s;
+      const entry = verts.get(cornerKey[c]);
+      let sx = 0, sy = 0, sz = 0;
+      for (const g of entry.faces) {
+        if (faceNX[g] * faceNX[f] + faceNY[g] * faceNY[f] + faceNZ[g] * faceNZ[f] > cone) {
+          sx += crossX[g]; sy += crossY[g]; sz += crossZ[g];
+        }
+      }
+      const len = Math.hypot(sx, sy, sz);
+      if (len > 0) { normals[c * 3] = sx / len; normals[c * 3 + 1] = sy / len; normals[c * 3 + 2] = sz / len; }
+      else { normals[c * 3] = faceNX[f]; normals[c * 3 + 1] = faceNY[f]; normals[c * 3 + 2] = faceNZ[f]; }
+      cavity[c] = Math.max(-1, Math.min(1, entry.cavity / p95));
+    }
+  }
+  return { normals, cavity };
+}
+
+// Vertex-clustering decimation for shelf mode. Stride-skipping punches holes
+// in the surface (it drops whole triangles); clustering instead snaps vertices
+// to an N³ grid and collapses triangles that lose a distinct corner — a real
+// coarser surface, watertight-ish, fine at shelf scale.
+function clusterOnce(positions, grid) {
+  const bbox = bboxOf(positions);
+  const extent = Math.max(bbox.max[0] - bbox.min[0], bbox.max[1] - bbox.min[1], bbox.max[2] - bbox.min[2]) || 1;
+  const cell = extent / grid;
+  const clusters = new Map();
+  const cornerCell = new Array(positions.length / 3);
+  for (let i = 0, c = 0; i < positions.length; i += 3, c += 1) {
+    const key = `${Math.round((positions[i] - bbox.min[0]) / cell)},${Math.round((positions[i + 1] - bbox.min[1]) / cell)},${Math.round((positions[i + 2] - bbox.min[2]) / cell)}`;
+    cornerCell[c] = key;
+    let entry = clusters.get(key);
+    if (!entry) { entry = { sx: 0, sy: 0, sz: 0, n: 0 }; clusters.set(key, entry); }
+    entry.sx += positions[i]; entry.sy += positions[i + 1]; entry.sz += positions[i + 2]; entry.n += 1;
+  }
+  const outCells = [];
+  for (let f = 0; f < positions.length / 9; f += 1) {
+    const a = cornerCell[f * 3], b = cornerCell[f * 3 + 1], c = cornerCell[f * 3 + 2];
+    if (a === b || b === c || a === c) continue;
+    outCells.push(a, b, c);
+  }
+  const out = new Float32Array(outCells.length * 3);
+  for (let i = 0; i < outCells.length; i += 1) {
+    const entry = clusters.get(outCells[i]);
+    out[i * 3] = entry.sx / entry.n; out[i * 3 + 1] = entry.sy / entry.n; out[i * 3 + 2] = entry.sz / entry.n;
+  }
+  return out;
+}
+
+function clusterDecimate(positions, targetTris) {
+  if (positions.length / 9 <= targetTris) return positions;
+  let grid = 96;
+  let best = positions;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    best = clusterOnce(positions, grid);
+    if (best.length / 9 <= targetTris * 1.35 || grid <= 24) return best;
+    grid = Math.round(grid * 0.78);
+  }
+  return best;
+}
+
+function cmdView(args) {
+  const stlPaths = args._.map((p) => resolve(p));
+  if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
+  for (const p of stlPaths) if (!existsSync(p)) { console.error(`no such STL: ${p}`); process.exit(2); }
+  const ceramic = args.flags.includes('--ceramic') || stlPaths.length > 1;
+  const decimate = Math.max(1, Number(argValue(args, '--decimate') ?? '1'));
+
+  if (stlPaths.length === 1) {
+    const stlPath = stlPaths[0];
+    if (ceramic && decimate > 1) console.warn('note: stride decimation punches holes; ceramic looks best at --decimate 1');
+    const outPath = resolve(argValue(args, '--out') ?? stlPath.replace(/\.stl$/i, '.view.html'));
+    const parsed = parseStl(stlPath, decimate);
+    const attrs = ceramic ? ceramicAttributes(parsed.positions) : { normals: flatNormals(parsed.positions), cavity: null };
+    const certPath = stlPath.replace(/\.stl$/i, '.certificate.txt');
+    const html = viewerHtml({
+      title: parsed.title,
+      subtitle: '',
+      triangleCount: parsed.triangleCount,
+      kept: parsed.kept,
+      decimate,
+      bbox: bboxOf(parsed.positions),
+      certificate: existsSync(certPath) ? readFileSync(certPath, 'utf8') : '',
+      mode: ceramic ? 'ceramic' : 'clay',
+      positionsB64: Buffer.from(parsed.positions.buffer).toString('base64'),
+      normalsB64: Buffer.from(attrs.normals.buffer).toString('base64'),
+      cavityB64: attrs.cavity ? Buffer.from(attrs.cavity.buffer).toString('base64') : '',
+    });
+    writeFileSync(outPath, html);
+    console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${parsed.kept}/${parsed.triangleCount} tris${decimate > 1 ? `, decimate ${decimate}` : ''}, ${ceramic ? 'ceramic' : 'clay'})`);
+    return;
+  }
+
+  // Shelf mode: every pot clustered to a budget, glazed, arranged in rows.
+  const potTris = Math.max(1000, Number(argValue(args, '--pot-tris') ?? '22000'));
+  const outPath = resolve(argValue(args, '--out') ?? 'certified_shelf.view.html');
+  const models = [];
+  let totalSourceTris = 0;
+  for (const stlPath of stlPaths) {
+    const parsed = parseStl(stlPath, 1);
+    const clustered = clusterDecimate(parsed.positions, potTris);
+    const bb = bboxOf(clustered);
+    const dx = -(bb.min[0] + bb.max[0]) / 2, dy = -(bb.min[1] + bb.max[1]) / 2, dz = -bb.min[2];
+    for (let i = 0; i < clustered.length; i += 3) { clustered[i] += dx; clustered[i + 1] += dy; clustered[i + 2] += dz; }
+    const attrs = ceramicAttributes(clustered);
+    models.push({ name: parsed.title.replace(/\.stl$/i, ''), positions: clustered, ...attrs, bbox: bboxOf(clustered) });
+    totalSourceTris += parsed.triangleCount;
+    console.log(`  ${parsed.title}: ${parsed.triangleCount.toLocaleString()} -> ${(clustered.length / 9).toLocaleString()} tris`);
+  }
+  const count = models.length;
+  const rows = Math.ceil(count / 7);
+  const cols = Math.ceil(count / rows);
+  const footprint = Math.max(...models.map((m) => Math.max(m.bbox.max[0] - m.bbox.min[0], m.bbox.max[1] - m.bbox.min[1])));
+  const spacing = footprint * 1.25;
+  let totalFloats = 0;
+  for (const m of models) totalFloats += m.positions.length;
+  const positions = new Float32Array(totalFloats);
+  const normals = new Float32Array(totalFloats);
+  const cavity = new Float32Array(totalFloats / 3);
+  let writeAt = 0;
+  models.forEach((m, i) => {
+    const row = Math.floor(i / cols);
+    const rowCount = Math.min(cols, count - row * cols);
+    const col = i - row * cols;
+    const ox = (col - (rowCount - 1) / 2) * spacing;
+    const oy = ((rows - 1) / 2 - row) * spacing * 1.1;
+    for (let j = 0; j < m.positions.length; j += 3) {
+      positions[writeAt + j] = m.positions[j] + ox;
+      positions[writeAt + j + 1] = m.positions[j + 1] + oy;
+      positions[writeAt + j + 2] = m.positions[j + 2];
+    }
+    normals.set(m.normals, writeAt);
+    cavity.set(m.cavity, writeAt / 3);
+    writeAt += m.positions.length;
+  });
+  const keptTris = totalFloats / 9;
   const html = viewerHtml({
-    title,
-    triangleCount,
-    kept,
-    decimate,
-    bbox,
-    certificate,
+    title: argValue(args, '--title') ?? `certified collection — ${count} pots`,
+    subtitle: models.map((m) => m.name).join(' · ') + ` — clustered from ${totalSourceTris.toLocaleString()} certified source triangles`,
+    triangleCount: keptTris,
+    kept: keptTris,
+    decimate: 1,
+    bbox: bboxOf(positions),
+    certificate: '',
+    mode: 'ceramic',
     positionsB64: Buffer.from(positions.buffer).toString('base64'),
     normalsB64: Buffer.from(normals.buffer).toString('base64'),
+    cavityB64: Buffer.from(cavity.buffer).toString('base64'),
   });
   writeFileSync(outPath, html);
-  console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${kept}/${triangleCount} tris${decimate > 1 ? `, decimate ${decimate}` : ''})`);
+  console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${count} pots, ${keptTris.toLocaleString()} tris)`);
 }
 
 function viewerHtml(model) {
@@ -349,34 +533,38 @@ function viewerHtml(model) {
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')}</pre></details>`
     : '';
-  return `<!doctype html>
-<meta charset="utf-8">
-<title>potscope — ${model.title}</title>
-<style>
-  html,body{margin:0;height:100%;background:#0e1116;color:#c9d1d9;font:13px/1.5 ui-monospace,Consolas,monospace;overflow:hidden}
-  #hud{position:fixed;top:10px;left:12px;z-index:2;background:rgba(14,17,22,.85);padding:10px 14px;border:1px solid #30363d;border-radius:8px;max-width:46ch}
-  #hud b{color:#e6edf3}
-  #cert{margin-top:6px}
-  #cert pre{max-height:40vh;overflow:auto;font-size:11px;color:#8b949e}
-  canvas{display:block;width:100vw;height:100vh;cursor:grab}
-</style>
-<div id="hud">
-  <b>${model.title}</b><br>
-  ${model.triangleCount.toLocaleString()} triangles${model.decimate > 1 ? ` (showing ${model.kept.toLocaleString()}, 1/${model.decimate})` : ''}<br>
-  drag = orbit &nbsp; wheel = zoom &nbsp; shift-drag = pan
-  ${certificateBlock}
-</div>
-<canvas id="c"></canvas>
-<script>
-const b64f32 = (s) => { const b = atob(s); const a = new Uint8Array(b.length); for (let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return new Float32Array(a.buffer); };
-const positions = b64f32("${model.positionsB64}");
-const normals = b64f32("${model.normalsB64}");
-const bbox = ${JSON.stringify(model.bbox)};
-const canvas = document.getElementById('c');
-const gl = canvas.getContext('webgl', { antialias: true });
-const vsrc = \`attribute vec3 p; attribute vec3 n; uniform mat4 mvp; uniform mat4 mv; varying vec3 vn; varying vec3 vp;
-void main(){ gl_Position = mvp * vec4(p,1.0); vn = mat3(mv) * n; vp = (mv * vec4(p,1.0)).xyz; }\`;
-const fsrc = \`precision mediump float; varying vec3 vn; varying vec3 vp;
+  const subtitleBlock = model.subtitle ? `<div id="sub">${model.subtitle}</div>` : '';
+  const ceramic = model.mode === 'ceramic';
+  const vsrc = ceramic
+    ? `attribute vec3 p; attribute vec3 n; attribute float cav; uniform mat4 mvp; uniform mat4 mv; varying vec3 vn; varying vec3 vp; varying float vcav;
+void main(){ gl_Position = mvp * vec4(p,1.0); vn = mat3(mv) * n; vp = (mv * vec4(p,1.0)).xyz; vcav = cav; }`
+    : `attribute vec3 p; attribute vec3 n; uniform mat4 mvp; uniform mat4 mv; varying vec3 vn; varying vec3 vp;
+void main(){ gl_Position = mvp * vec4(p,1.0); vn = mat3(mv) * n; vp = (mv * vec4(p,1.0)).xyz; }`;
+  const fsrc = ceramic
+    ? `precision mediump float; varying vec3 vn; varying vec3 vp; varying float vcav;
+void main(){
+  vec3 N = normalize(vn); if (!gl_FrontFacing) N = -N;
+  vec3 V = normalize(-vp);
+  vec3 L1 = normalize(vec3(0.5, 0.75, 0.85));
+  vec3 L2 = normalize(vec3(-0.7, -0.15, 0.35));
+  vec3 L3 = normalize(vec3(-0.15, 0.9, -0.7));
+  float pool = clamp(vcav, 0.0, 1.0);   // glaze pools in recesses
+  float crest = clamp(-vcav, 0.0, 1.0); // glaze thins over crests
+  vec3 glazeThick = vec3(0.286, 0.478, 0.412); // pooled sea-green
+  vec3 glazeBody  = vec3(0.678, 0.788, 0.729); // pale celadon
+  vec3 clayEdge   = vec3(0.816, 0.749, 0.639); // body showing through
+  vec3 albedo = mix(glazeBody, glazeThick, pow(pool, 0.75) * 0.9);
+  albedo = mix(albedo, clayEdge, pow(crest, 1.6) * 0.55);
+  float diff = max(dot(N,L1),0.0)*0.9 + max(dot(N,L2),0.0)*0.3 + max(dot(N,L3),0.0)*0.22 + 0.16;
+  float fres = pow(1.0 - max(dot(N,V),0.0), 3.0);
+  vec3 col = albedo * diff + fres * vec3(0.10, 0.13, 0.13);
+  vec3 H1 = normalize(L1 + V);
+  float spec = pow(max(dot(N,H1),0.0), 140.0) * 0.9 + pow(max(dot(N,H1),0.0), 18.0) * 0.12;
+  col += spec * vec3(1.0, 0.99, 0.95) * (0.55 + 0.45 * (1.0 - pool * 0.5));
+  col = pow(col, vec3(1.0/1.9));
+  gl_FragColor = vec4(col, 1.0);
+}`
+    : `precision mediump float; varying vec3 vn; varying vec3 vp;
 void main(){
   vec3 N = normalize(vn); if (!gl_FrontFacing) N = -N;
   vec3 L1 = normalize(vec3(0.5, 0.7, 0.9)); vec3 L2 = normalize(vec3(-0.6, -0.2, 0.4));
@@ -385,15 +573,47 @@ void main(){
   vec3 col = base * d;
   float spec = pow(max(dot(reflect(-L1, N), normalize(-vp)), 0.0), 24.0) * 0.25;
   gl_FragColor = vec4(col + spec, 1.0);
-}\`;
+}`;
+  return `<!doctype html>
+<meta charset="utf-8">
+<title>potscope — ${model.title}</title>
+<style>
+  html,body{margin:0;height:100%;background:#0e1116;color:#c9d1d9;font:13px/1.5 ui-monospace,Consolas,monospace;overflow:hidden}
+  #hud{position:fixed;top:10px;left:12px;z-index:2;background:rgba(14,17,22,.85);padding:10px 14px;border:1px solid #30363d;border-radius:8px;max-width:52ch}
+  #hud b{color:#e6edf3}
+  #sub{margin-top:4px;font-size:11px;color:#8b949e;max-height:14vh;overflow:auto}
+  #cert{margin-top:6px}
+  #cert pre{max-height:40vh;overflow:auto;font-size:11px;color:#8b949e}
+  canvas{display:block;width:100vw;height:100vh;cursor:grab}
+</style>
+<div id="hud">
+  <b>${model.title}</b><br>
+  ${model.triangleCount.toLocaleString()} triangles${model.decimate > 1 ? ` (showing ${model.kept.toLocaleString()}, 1/${model.decimate})` : ''}<br>
+  drag = orbit &nbsp; wheel = zoom &nbsp; shift-drag = pan
+  ${subtitleBlock}
+  ${certificateBlock}
+</div>
+<canvas id="c"></canvas>
+<script>
+const b64f32 = (s) => { const b = atob(s); const a = new Uint8Array(b.length); for (let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return new Float32Array(a.buffer); };
+const positions = b64f32("${model.positionsB64}");
+const normals = b64f32("${model.normalsB64}");
+const cavity = ${model.cavityB64 ? `b64f32("${model.cavityB64}")` : 'null'};
+const bbox = ${JSON.stringify(model.bbox)};
+const canvas = document.getElementById('c');
+const gl = canvas.getContext('webgl', { antialias: true });
+const vsrc = ${JSON.stringify(vsrc)};
+const fsrc = ${JSON.stringify(fsrc)};
 function shader(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s); return s; }
 const prog = gl.createProgram();
 gl.attachShader(prog, shader(gl.VERTEX_SHADER, vsrc));
 gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fsrc));
 gl.linkProgram(prog); gl.useProgram(prog);
-for (const [name, data] of [['p', positions], ['n', normals]]) {
+const attribs = [['p', positions, 3], ['n', normals, 3]];
+if (cavity) attribs.push(['cav', cavity, 1]);
+for (const [name, data, size] of attribs) {
   const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 3, gl.FLOAT, false, 0, 0);
+  const loc = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
 }
 gl.enable(gl.DEPTH_TEST);
 const center = [0,1,2].map(i => (bbox.min[i]+bbox.max[i])/2);
@@ -439,14 +659,18 @@ function argValue(args, name) {
   return index >= 0 ? args.flags[index + 1] : undefined;
 }
 
+const BOOLEAN_FLAGS = new Set(['--ceramic']);
+
 function parseArgs(argv) {
   const positional = [];
   const flags = [];
   let afterDashDash = false;
+  let awaitingValue = false;
   for (const token of argv) {
-    if (token === '--') { afterDashDash = true; continue; }
-    if (!afterDashDash && token.startsWith('--')) flags.push(token);
-    else if (!afterDashDash && flags.length > 0 && !flags.includes(token) && flags[flags.length - 1].startsWith('--') && flags.length % 2 === 1) flags.push(token);
+    if (token === '--') { afterDashDash = true; awaitingValue = false; continue; }
+    if (afterDashDash) { positional.push(token); continue; }
+    if (token.startsWith('--')) { flags.push(token); awaitingValue = !BOOLEAN_FLAGS.has(token); }
+    else if (awaitingValue) { flags.push(token); awaitingValue = false; }
     else positional.push(token);
   }
   return { _: positional, flags };
@@ -464,5 +688,6 @@ switch (command) {
     console.log('  ledger list [--grep re] [--last n] | ledger add <json>');
     console.log('  run -- <command ...>');
     console.log("  decode '<refusal line>' [--patch inner|outer] [--counts json]");
-    console.log('  view <file.stl> [--out html] [--decimate k]');
+    console.log('  view <file.stl> [--out html] [--decimate k] [--ceramic]');
+    console.log('  view <a.stl> <b.stl> ... [--out html] [--pot-tris n] [--title t]   (glazed shelf)');
 }
