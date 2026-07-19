@@ -568,3 +568,43 @@ tris/wall ⇒ **envelope v6**, a deliberate compute-scale decision. The
 Remaining v5-reachable candidates: none certifies new ground tonight —
 the frontier list is now exactly: Gyroid (v6 density), U4 curtain
 complexes (7 layered styles), U2 leftover ops, production-mesh U5 track.
+
+---
+
+## SUPERSEDED — see `2026-07-19-all20-status-truth.md` (2026-07-19, Track C status audit)
+
+This marker corrects stale assertions ABOVE without deleting them (append-only discipline).
+The current, commit-pinned all-20 status is the 2026-07-19 status-truth doc. Specifically:
+
+- **§3 "All-20 distance matrix (post `2646395e`)" (lines ~44–67) is STALE for 9 rows.** Every
+  style the table shows as "screen op gap", "admissible/refused", "atlas admissible/stations
+  impossible", or "atlas-refused / composition blockers" that has since been CERTIFIED-PARTIAL
+  is now false as written: **FourierBloom, WaveInterference, SuperellipseMorph, Crystalline,
+  RippleInterference, GeometricStar, Voronoi (bubble), GothicArches, SuperformulaBlossom** are
+  all certified (small/gentle) — see the status-truth table §2 for the pinned pm/tris/commit.
+  §3 is preserved as the historical 2026-07-15 snapshot; do not read it as current.
+
+- **Mis-ordered refuted claims (the roadmap's own known layout problem — corrections sit BELOW
+  the claims they fix).** Flagged here so readers hit the correction first:
+  - **WI "√-type cusp / √-crests" (≈ lines 142, 284, 351).** REFUTED by the slice-10 campaign
+    (`b1fff083`) and finalised by full-defaults (`8ffb958a`): WI has NO cusp — both clamp
+    branches are unreachable at defaults; the binding mechanisms were edge-fade C1 kink rows
+    (U3 stations) + a uniform vertical knife-edge (288-row ladder). The "√-cusp by elimination"
+    reading was the lesson-#1 crossing-contour artifact. WI is smooth-dense, density-responsive.
+  - **Voronoi "compute-bound ~150 s" (≈ lines 295–296).** REFUTED for bubble mode: Addendum 15
+    (`d42c1b88`) traced the ~80 µm invariant refusals to a missing-odd-k LADDER GAP, not compute
+    volume; Voronoi bubble is CERTIFIED at 118.8 s. (Web/F2 mode remains a genuine 0.138 mm
+    value-jump, U4-class.)
+  - **Gyroid "eff. angular freq ≈ 30" (§3 line 52) and "~1024 shared angular" (≈ lines 295–296).**
+    Both SUPERSEDED by the 2026-07-19 Gyroid note / matrix Addendum 22: the wall is a VERTICAL
+    ridge network (crease-class, response exponent p ∈ 0.87–1.5), demanding ~850–1,900 rows ⇒
+    1.7–3.9 M tris/wall ⇒ **envelope v6**. The "~30 frequency" claim does not bind at 2¹⁰.
+
+- **Certified-style COUNT.** The certified set is **14 pots / 11 DISTINCT styles**, not "12
+  styles": WaveInterference is counted twice across the addenda (gentled slice-10 + full-defaults).
+  See status-truth §1.
+
+- **Scale honesty.** No assertion above should be read as "certified at production scale."
+  ZERO styles are certified at OD140/H120 + registry defaults; the single OD140 certificate
+  (HarmonicRipple, `ae271268`) is GENTLE-param. Distance-to-production-scale for the 3 closest
+  styles (SE→v5, FB→v5b, WI→v6) is quantified in status-truth §4.
