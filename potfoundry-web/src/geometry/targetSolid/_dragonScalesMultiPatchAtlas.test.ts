@@ -136,21 +136,24 @@ describe('DragonScales multi-patch atlas — U4 acceptance (PF_DS_ATLAS_SPIKE)',
   );
 
   it.skipIf(GATE)(
-    'WALL (green): the single-patch atlas refuses DragonScales with UNSUPPORTED_PATCH_COMPLEX',
+    'WALL LIFTED (green, post-S1): the atlas now ADMITS DragonScales — the single-patch UNSUPPORTED_PATCH_COMPLEX wall is gone',
     () => {
       const canonicalInput = dragonScalesInput();
       const registry = createStyleOuterWallTargetRegistryBinding(canonicalInput);
+      // Pre-S1 this threw SinglePatchAnnularRadialSolidTargetError(UNSUPPORTED_PATCH_COMPLEX)
+      // — "exactly one periodic outer-wall patch". S1's flag-gated multi-patch admission lifts
+      // that gate for authenticated layered styles; ACC1/2/3 below prove the admitted complex is
+      // a valid 20-patch certified solid.
       let caught: unknown;
       try {
         createSinglePatchAnnularRadialSolidTargetBinding(canonicalInput, registry);
       } catch (error) {
         caught = error;
       }
-      expect(caught).toBeInstanceOf(SinglePatchAnnularRadialSolidTargetError);
-      expect((caught as SinglePatchAnnularRadialSolidTargetError).code).toBe(
-        'UNSUPPORTED_PATCH_COMPLEX'
-      );
-      expect((caught as Error).message).toMatch(/exactly one periodic outer-wall patch/i);
+      const stillWalled =
+        caught instanceof SinglePatchAnnularRadialSolidTargetError &&
+        caught.code === 'UNSUPPORTED_PATCH_COMPLEX';
+      expect(stillWalled).toBe(false);
     }
   );
 
