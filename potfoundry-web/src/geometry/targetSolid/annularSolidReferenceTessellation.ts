@@ -2,6 +2,9 @@ import type { ExactDyadicDomainPartitionInput } from './exactDyadicDomainPartiti
 import {
   singlePatchAnnularRadialSolidTargetForProof,
   type AnnularRadialSolidPatchId,
+  type AnnularRadialSolidTargetProgram,
+  type AtlasJunctionCopy,
+  type MultiPatchAtlasComplex,
   type SinglePatchAnnularRadialSolidTargetBinding,
 } from './singlePatchAnnularRadialSolidTarget';
 
@@ -1552,6 +1555,9 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   if (typeof options !== 'object' || options === null) {
     invalid('options must be a record');
   }
+  if (authenticated.atlasComplex !== undefined) {
+    return tessellateLayeredAtlas(authenticated, authenticated.atlasComplex, options);
+  }
   const angularLog2 = divisionsLog2(
     options.angularDivisionsLog2,
     MAX_ANGULAR_DIVISIONS_LOG2,
@@ -1652,6 +1658,34 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   }
   applyJunctionWelds(grids, angularDivisions);
 
+  const { stlBytes, partitions } = buildAtlasStlAndPartitions(
+    programs,
+    grids,
+    frames,
+    angularDivisions,
+    triangleCount
+  );
+
+  return Object.freeze({
+    stlBytes,
+    triangleCount,
+    partitions: Object.freeze(partitions),
+  });
+}
+
+/**
+ * Emit final binary-STL bytes plus one exact dyadic partition per patch, in
+ * program order. Shared by the single-patch and the layered multi-patch paths;
+ * the per-triangle vertex ordering is unchanged, so single-patch output stays
+ * byte-for-byte identical.
+ */
+function buildAtlasStlAndPartitions(
+  programs: readonly AnnularRadialSolidTargetProgram[],
+  grids: ReadonlyMap<string, PatchGrid>,
+  frames: ReadonlyMap<string, PatchPartitionFrame>,
+  angularDivisions: number,
+  triangleCount: number
+): { readonly stlBytes: Uint8Array; readonly partitions: ExactDyadicDomainPartitionInput[] } {
   const stlBytes = new Uint8Array(84 + triangleCount * 50);
   const view = new DataView(stlBytes.buffer);
   view.setUint32(80, triangleCount, true);
@@ -1788,6 +1822,219 @@ export function tessellateAnnularRadialSolidTargetForCertification(
       triangles,
     });
   }
+
+  return { stlBytes, partitions };
+}
+
+/**
+ * Copy each owner boundary row into its receiver row (with the declared exact
+ * angular-station reversal) so the shared row is bit-identical by index. The
+ * layered atlas guarantees no owner row is also a receiver row, so welds are
+ * order-independent.
+ */
+function applyAtlasJunctionWelds(
+  grids: ReadonlyMap<string, PatchGrid>,
+  copies: readonly AtlasJunctionCopy[],
+  angularDivisions: number
+): void {
+  for (const copy of copies) {
+    const receiver = grids.get(copy.receiverPatchId);
+    const owner = grids.get(copy.ownerPatchId);
+    if (receiver === undefined || owner === undefined) {
+      invalid(
+        `layered weld references missing patch '${copy.receiverPatchId}'/'${copy.ownerPatchId}'`
+      );
+    }
+    const receiverRow = copy.receiverRow === 'v0' ? 0 : receiver.verticalDivisions;
+    const ownerRow = copy.ownerRow === 'v0' ? 0 : owner.verticalDivisions;
+    for (let uStation = 0; uStation <= angularDivisions; uStation += 1) {
+      const ownerStation = copy.reverseFreeParameter ? angularDivisions - uStation : uStation;
+      const source = gridIndex(angularDivisions, ownerStation, ownerRow);
+      const target = gridIndex(angularDivisions, uStation, receiverRow);
+      receiver.coordinates[target] = owner.coordinates[source];
+      receiver.coordinates[target + 1] = owner.coordinates[source + 1];
+      receiver.coordinates[target + 2] = owner.coordinates[source + 2];
+    }
+  }
+}
+
+/**
+ * EXACT AUDIT (riser weld). After all welds, every receiver boundary vertex must
+ * be bit-identical to its owner vertex at the reversed index — proving each riser
+ * is watertight by shared index with no T-junction and that no later weld silently
+ * broke an earlier one. Fail-closed.
+ */
+function auditAtlasJunctionWelds(
+  grids: ReadonlyMap<string, PatchGrid>,
+  copies: readonly AtlasJunctionCopy[],
+  angularDivisions: number
+): void {
+  for (const copy of copies) {
+    const receiver = grids.get(copy.receiverPatchId);
+    const owner = grids.get(copy.ownerPatchId);
+    if (receiver === undefined || owner === undefined) {
+      invalid('layered weld audit references a missing patch');
+    }
+    const receiverRow = copy.receiverRow === 'v0' ? 0 : receiver.verticalDivisions;
+    const ownerRow = copy.ownerRow === 'v0' ? 0 : owner.verticalDivisions;
+    for (let uStation = 0; uStation <= angularDivisions; uStation += 1) {
+      const ownerStation = copy.reverseFreeParameter ? angularDivisions - uStation : uStation;
+      const source = gridIndex(angularDivisions, ownerStation, ownerRow);
+      const target = gridIndex(angularDivisions, uStation, receiverRow);
+      if (
+        receiver.coordinates[target] !== owner.coordinates[source] ||
+        receiver.coordinates[target + 1] !== owner.coordinates[source + 1] ||
+        receiver.coordinates[target + 2] !== owner.coordinates[source + 2]
+      ) {
+        invalid(
+          `layered riser weld not watertight by index at '${copy.receiverPatchId}':${copy.receiverRow} station ${uStation}`
+        );
+      }
+    }
+  }
+}
+
+/**
+ * EXACT AUDIT (global assignment). Every STL triangle is assigned to exactly one
+ * patch partition and the union covers every triangle — the disjoint + complete
+ * property the per-patch exact-BigInt kernel does not itself check across
+ * patches. Pure integer indices; fail-closed.
+ */
+function auditGlobalTriangleAssignment(
+  partitions: readonly ExactDyadicDomainPartitionInput[],
+  triangleCount: number
+): void {
+  const seen = new Uint8Array(triangleCount);
+  let assigned = 0;
+  for (const partition of partitions) {
+    if (partition.artifactTriangleCount !== triangleCount) {
+      invalid('layered partition artifactTriangleCount disagrees with the global triangle count');
+    }
+    for (const triangle of partition.triangles) {
+      const index = triangle.artifactTriangleIndex;
+      if (!Number.isInteger(index) || index < 0 || index >= triangleCount) {
+        invalid(`layered artifact triangle index ${index} is out of range`);
+      }
+      if (seen[index] !== 0) {
+        invalid(`layered artifact triangle index ${index} is assigned to more than one patch`);
+      }
+      seen[index] = 1;
+      assigned += 1;
+    }
+  }
+  if (assigned !== triangleCount) {
+    invalid(`layered atlas assigned ${assigned} triangles but expected ${triangleCount}`);
+  }
+}
+
+/**
+ * Mesh the layered multi-patch atlas (R bands + R-1 curtains + 5 base patches)
+ * into final STL bytes plus one exact dyadic partition per patch. Bands use the
+ * `outer-wall` vertical division count; the five base patches use their own; the
+ * ruled curtains use their fixed count. Two exact audits (riser weld by index,
+ * global triangle assignment) run before the bytes are returned; the final
+ * structural proof is the watertight/manifold/genus backstop.
+ */
+function tessellateLayeredAtlas(
+  authenticated: SinglePatchAnnularRadialSolidTargetBinding,
+  atlas: MultiPatchAtlasComplex,
+  options: AnnularSolidReferenceTessellationOptions
+): AnnularSolidReferenceTessellation {
+  const angularLog2 = divisionsLog2(
+    options.angularDivisionsLog2,
+    MAX_ANGULAR_DIVISIONS_LOG2,
+    'angularDivisionsLog2'
+  );
+  const verticalByPatch = options.verticalDivisionsLog2ByPatch;
+  if (typeof verticalByPatch !== 'object' || verticalByPatch === null) {
+    invalid('verticalDivisionsLog2ByPatch must be a record');
+  }
+  const angularResolved = resolveStations('outer-wall', angularLog2, options.angularStations);
+  if (options.angularStations !== undefined) {
+    const numerators = angularResolved.numerators;
+    const denominator =
+      angularResolved.oddDenominatorFactor * 2 ** angularResolved.log2Denominator;
+    for (let station = 0; station < numerators.length; station += 1) {
+      if (
+        numerators[station] !==
+        denominator - numerators[numerators.length - 1 - station]
+      ) {
+        invalid('angularStations must be symmetric under reversal (s -> 1 - s)');
+      }
+    }
+  }
+  const angularDivisions = angularResolved.numerators.length - 1;
+
+  const programs = authenticated.programs;
+  const programByPatch = new Map(programs.map((program) => [program.patchId, program]));
+  if (
+    programByPatch.size !== programs.length ||
+    programs.length !== atlas.patchLayouts.length
+  ) {
+    invalid('layered atlas program list disagrees with the patch layout');
+  }
+
+  const stationsByPatch = new Map<string, ResolvedStations>();
+  for (const layout of atlas.patchLayouts) {
+    const uniformLog2 =
+      layout.verticalDivisions.kind === 'role'
+        ? divisionsLog2(
+            verticalByPatch[layout.verticalDivisions.role],
+            MAX_VERTICAL_DIVISIONS_LOG2,
+            `verticalDivisionsLog2ByPatch['${layout.verticalDivisions.role}']`
+          )
+        : divisionsLog2(
+            layout.verticalDivisions.log2,
+            MAX_VERTICAL_DIVISIONS_LOG2,
+            `atlas fixed divisions for '${layout.patchId}'`
+          );
+    stationsByPatch.set(
+      layout.patchId,
+      resolveStations(layout.patchId, uniformLog2, undefined)
+    );
+  }
+
+  const frames = new Map<string, PatchPartitionFrame>();
+  let triangleCount = 0;
+  for (const layout of atlas.patchLayouts) {
+    const stations = stationsByPatch.get(layout.patchId);
+    if (stations === undefined) invalid(`unknown atlas patch '${layout.patchId}'`);
+    // Layered atlas patches are plain grids: no conforming lines or chords.
+    const frame = buildPatchPartitionFrame(layout.patchId, angularResolved, stations, [], []);
+    frames.set(layout.patchId, frame);
+    triangleCount += frame.patchTriangleCount;
+  }
+  if (triangleCount > MAX_REFERENCE_TRIANGLES) {
+    invalid(`layered atlas needs ${triangleCount} triangles > ${MAX_REFERENCE_TRIANGLES}`);
+  }
+
+  const grids = new Map<string, PatchGrid>();
+  for (const layout of atlas.patchLayouts) {
+    const program = programByPatch.get(layout.patchId);
+    if (program === undefined) invalid(`layered atlas patch '${layout.patchId}' has no program`);
+    const stations = stationsByPatch.get(layout.patchId);
+    if (stations === undefined) invalid(`unknown atlas patch '${layout.patchId}'`);
+    grids.set(
+      layout.patchId,
+      evaluatePatchGrid(
+        layout.patchId,
+        program.backends.evaluateFloat64,
+        angularResolved.values,
+        stations.values
+      )
+    );
+  }
+  applyAtlasJunctionWelds(grids, atlas.junctionCopies, angularDivisions);
+  auditAtlasJunctionWelds(grids, atlas.junctionCopies, angularDivisions);
+
+  const { stlBytes, partitions } = buildAtlasStlAndPartitions(
+    programs,
+    grids,
+    frames,
+    angularDivisions,
+    triangleCount
+  );
+  auditGlobalTriangleAssignment(partitions, triangleCount);
 
   return Object.freeze({
     stlBytes,
