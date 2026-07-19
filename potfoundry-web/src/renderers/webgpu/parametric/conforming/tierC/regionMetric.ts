@@ -75,6 +75,22 @@ export interface MetricMeshOpts {
   /** MIN-overlay neighbourhood half-width in grid cells for crestSizeOverlay (default 1). Only used with it. */
   crestBandCells?: number;
   /**
+   * OPT-IN ANISOTROPIC (II,I) CURVATURE metric + metric-in-circle Delaunay (E-2026-07-19-DS-CONVERGE-B /
+   * project_msurf_accelerator). Two coupled changes, both STRICT NO-OP when absent/false (byte-identical default):
+   *   (1) the sizing field is assembled by {@link buildSurfaceMetricField}'s `aniso` branch — the crease-aligned
+   *       (II,I) metric that sizes EACH principal direction by its OWN |κ_i| (fine ACROSS the steep flank, long
+   *       ALONG it) instead of the isotropic g/h² single MAX-curvature size; and
+   *   (2) the Lawson flips switch from the true-3D max-min-angle criterion to a METRIC in-circle (Cholesky-whitened
+   *       by the local M), so the connectivity comes out long-along-flank / thin-across-flank rather than the
+   *       isotropic-3D flip fighting the anisotropic point layout (the sliver-trap the isotropic region kernel hits
+   *       on near-vertical flanks — E-2026-07-14-DS-PERP-MAX). The {@link chordTolMm} chord-sag guard stays ON — it
+   *       is the fidelity backstop the metric-only mesher (`buildCreaseAlignedMesh`) lacked when it STALLED at 130k
+   *       tris / 0.6mm residual; here it keeps splitting across the flank until the true chord-sag is < tol.
+   * Sizes each principal direction by curvature ⇒ the near-ring DS flank closes at far fewer points across the sag
+   * axis. Reduces EXACTLY to the isotropic kernel when κ₁=κ₂. Compose freely with the injection/constraint path.
+   */
+  aniso?: boolean;
+  /**
    * OPT-IN feature-conforming hook (DEV/LAB only). Flat (u,t) pairs of FORCED points to seed into the point
    * set alongside the seed grid — typically dense feature loci refined to the true crest/valley extremum
    * (see research/bridge/featureConformingMesh.ts). De-duped against existing points via the same addPoint
@@ -194,6 +210,15 @@ function maxCosXYZ(xyz: Float64Array, a: number, b: number, c: number): number {
 
 const linkHE = (halfedges: Int32Array, a: number, b: number): void => { halfedges[a] = b; if (b !== -1) halfedges[b] = a; };
 
+/** 2D in-circle predicate: >0 iff (px,py) is inside the circumcircle of the CCW triangle (a,b,c). Used by the
+ *  OPT-IN anisotropic metric-in-circle flip (points are pre-whitened by the local metric's Cholesky factor so a
+ *  Euclidean in-circle IS the metric Delaunay). Ported verbatim from research creaseAlignedMesh. */
+function inCircle(ax: number, ay: number, bx: number, by: number, cx: number, cy: number, px: number, py: number): number {
+  const dx = ax - px, dy = ay - py, ex = bx - px, ey = by - py, fx = cx - px, fy = cy - py;
+  const ap = dx * dx + dy * dy, bp = ex * ex + ey * ey, cp = fx * fx + fy * fy;
+  return dx * (ey * cp - bp * fy) - dy * (ex * cp - bp * fx) + ap * (ex * fy - ey * fx);
+}
+
 /**
  * In-place true-3D max-min-angle Lawson flips over Delaunator's halfedge structure — NO per-pass edge Map
  * (the 84%-of-runtime bottleneck). Each flip relinks a constant number of halfedges following Delaunator's own
@@ -301,7 +326,7 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   const rimSplitBlocked = (mu: number, mt: number): boolean =>
     doRimPin && (mt < RIM_SPLIT_BAND || mt > 1 - RIM_SPLIT_BAND || mu < RIM_SPLIT_BAND || mu > 1 - RIM_SPLIT_BAND);
 
-  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells });
+  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells, aniso: opts.aniso });
   const RU = mf.resU, RT = mf.resT, M = mf.m;
   const metricAt = (u: number, t: number): [number, number, number] => {
     const fu = Math.min(Math.max(u, 0), 1) * (RU - 1), ft = Math.min(Math.max(t, 0), 1) * (RT - 1);
@@ -320,6 +345,24 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
     const du = u1 - u0, dt = t1 - t0;
     return m00 * du * du + 2 * m01 * du * dt + m11 * dt * dt;
   };
+  // OPT-IN anisotropic metric-in-circle flip (E-2026-07-19-DS-CONVERGE-B). When `aniso`, the Lawson flips maximize
+  // the METRIC Delaunay: Cholesky-whiten the 4 (u,t) points by the local M (M = L·Lᵀ ⇒ Lᵀ maps params to metric-
+  // orthonormal), then a plain Euclidean in-circle. Triangles come out long-ALONG-flank / thin-ACROSS-flank rather
+  // than the default true-3D max-min-angle flip flattening the anisotropic point layout into cross-curvature slivers
+  // (the near-vertical-flank sliver trap). `coords` is the (u,t) array the flip operates on (uv for refine rounds,
+  // cur for the smoothing sweeps). STRICT NO-OP when aniso is off: anisoFlip(...) returns undefined ⇒ flipHE keeps
+  // its default true-3D criterion (byte-identical).
+  const wantAnisoFlip = opts.aniso === true;
+  const anisoFlip = (coords: number[]): ((pr: number, pl: number, p0: number, p1: number) => boolean) | undefined =>
+    wantAnisoFlip
+      ? (pr, pl, p0, p1): boolean => {
+          const [m00, m01, m11] = metricAt((coords[pr * 2] + coords[pl * 2]) / 2, (coords[pr * 2 + 1] + coords[pl * 2 + 1]) / 2);
+          const l00 = Math.sqrt(Math.max(m00, 1e-30)), l10 = m01 / l00, l11 = Math.sqrt(Math.max(m11 - l10 * l10, 1e-30));
+          const tx = (i: number): number => l00 * coords[i * 2] + l10 * coords[i * 2 + 1];
+          const ty = (i: number): number => l11 * coords[i * 2 + 1];
+          return inCircle(tx(p0), ty(p0), tx(pr), ty(pr), tx(pl), ty(pl), tx(p1), ty(p1)) < 0;
+        }
+      : undefined;
   // DIRECT facet→surface chord-sag of triangle (va,vb,vc): sample the TRUE surface at the 3 edge-midpoints +
   // centroid, return the max |deviation| from the facet plane. Robust to grid aliasing of sharp relief.
   const chordTolMm = opts.chordTolMm;
@@ -441,7 +484,7 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   for (; rounds < maxRounds; rounds++) {
     let z = now(); const d = new Delaunator(scaledCoords()); tris = d.triangles; const he = d.halfedges; tDel += now() - z;
     z = now(); const xyzR = computeXYZ(); tXYZ += now() - z;
-    z = now(); flipHE(tris, he, xyzR, uv, 3); tFlip += now() - z;
+    z = now(); flipHE(tris, he, xyzR, uv, 3, anisoFlip(uv)); tFlip += now() - z;
     z = now();
     let added = 0;
     // split EVERY over-size edge's midpoint this round (not just the longest per triangle) — shared edges dedup
@@ -494,7 +537,7 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   // final connectivity + optimization sweeps (relocate on the surface, then re-flip to the true-3D Delaunay).
   // Smoothing moves vertices but NOT connectivity, so the halfedge structure stays valid across sweeps.
   let z = now(); const dF = new Delaunator(scaledCoords()); tris = dF.triangles; const heF = dF.halfedges; tDel += now() - z;
-  z = now(); flipHE(tris, heF, computeXYZ(), uv, 4, undefined, undefined, guardAlways); tFlip += now() - z;
+  z = now(); flipHE(tris, heF, computeXYZ(), uv, 4, anisoFlip(uv), undefined, guardAlways); tFlip += now() - z;
 
   // OPT-IN Stage-B: recover + lock the constraint edges on the final triangulation, BEFORE the optimization
   // sweeps, so the locus becomes a real mesh edge and the locked-flip guard keeps it. STRICT NO-OP when
@@ -552,7 +595,7 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
     const n = cur.length / 2, p = new Float64Array(n * 3);
     for (let i = 0; i < n; i++) { const u = cur[2 * i], t = cur[2 * i + 1], th = TAU * u, zz = t * H, r = rA(th, zz); p[3 * i] = r * Math.cos(th); p[3 * i + 1] = r * Math.sin(th); p[3 * i + 2] = zz; }
     tXYZ += now() - z;
-    z = now(); flipHE(tris, heF, p, cur, 4, undefined, isLocked, guardMan); tFlip += now() - z;
+    z = now(); flipHE(tris, heF, p, cur, 4, anisoFlip(cur), isLocked, guardMan); tFlip += now() - z;
   }
 
   if (prof) {

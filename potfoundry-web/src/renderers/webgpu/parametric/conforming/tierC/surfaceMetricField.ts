@@ -64,6 +64,21 @@ type ChordOpts = {
   /** MIN-overlay neighbourhood half-width in grid cells for crestSizeOverlay (default 1 = a 3×3 stamp). Keep
    *  NARROW so the overlay does not balloon triangle count away from the loci. Only used with crestSizeOverlay. */
   crestBandCells?: number;
+  /**
+   * OPT-IN ANISOTROPIC (II,I) CURVATURE metric (E-2026-07-19-DS-CONVERGE-B / project_msurf_accelerator). Instead of
+   * the isotropic M = g/h₃D² (h₃D sized by the MAX principal curvature and applied EQUALLY in every direction — even
+   * 3D SHAPE), assemble the crease-aligned metric that sizes EACH principal direction by ITS OWN |κ_i|: fine ACROSS
+   * the steep flank (high κ), long ALONG it (low κ). M = I^{1/2}·(R·diag(μ₁,μ₂)·Rᵀ)·I^{1/2}, μ_i =
+   * clamp(|κ_i|/(8·tol), 1/hMax², 1/hMin²), where (κ_i, R) are the eigenpairs of the SYMMETRIC shape operator
+   * B = I^{-1/2}·II·I^{-1/2} (the (II,I) generalized eigenproblem). Reduces EXACTLY to g/h² when κ₁=κ₂ ⇒ isotropic
+   * zones are untouched; only anisotropic-curvature zones (the DragonScales near-ring flank, GeometricStar chevron)
+   * get the directional coarsening — the SAME chord-sag guarantee at far fewer points across the sag axis. The shape
+   * operator uses the {@link ChordOpts.curvatureFineStep} FD step when set (sub-cell relief), else a grid-scale step.
+   * Scalar h-gradation + {@link ChordOpts.crestSizeOverlay} are SKIPPED in aniso mode (they operate on a scalar h
+   * field; anisotropic metric gradation is a follow-up). STRICT NO-OP when absent/false ⇒ the isotropic g/h² path
+   * runs unchanged (byte-identical — verified by the no-op fingerprint + the region flag-off byte-identical suite).
+   */
+  aniso?: boolean;
 } & Grade;
 export type SurfaceMetricOpts = UniformOpts | ChordOpts;
 
@@ -124,6 +139,72 @@ export function gradeSizeField(h: Float64Array, resU: number, resT: number, beta
   }
 }
 
+// ── 2×2 symmetric-matrix helpers for the ANISOTROPIC (II,I) metric (packed [s00, s01, s11]) ─────────────
+// Ported verbatim from the proven research onDemandMetric.creaseMetricAt (E-2026-07-13-MSURF-ACCELERATOR): the
+// crease-aligned metric that reduces EXACTLY to g/h² in the isotropic-curvature case (unit-test-guarded).
+type Sym2 = [number, number, number];
+/** Eigen-decomposition of the symmetric 2×2 [[a,b],[b,c]] → eigenvalues l1≥l2 + orthonormal eigenvectors. */
+function eigSym2(a: number, b: number, c: number): { l1: number; l2: number; e1: [number, number]; e2: [number, number] } {
+  const tr = a + c, det = a * c - b * b, disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
+  const l1 = tr / 2 + disc, l2 = tr / 2 - disc;
+  let ex: number, ey: number;
+  if (Math.abs(b) > 1e-300) { ex = b; ey = l1 - a; const el = Math.hypot(ex, ey); if (el > 1e-300) { ex /= el; ey /= el; } else { ex = 1; ey = 0; } }
+  else if (a >= c) { ex = 1; ey = 0; } else { ex = 0; ey = 1; }
+  return { l1, l2, e1: [ex, ey], e2: [-ey, ex] };
+}
+/** Reassemble a symmetric 2×2 from eigenvalues + orthonormal eigenvectors. */
+function reconstructSym2(l1: number, l2: number, e1: [number, number], e2: [number, number]): Sym2 {
+  return [l1 * e1[0] * e1[0] + l2 * e2[0] * e2[0], l1 * e1[0] * e1[1] + l2 * e2[0] * e2[1], l1 * e1[1] * e1[1] + l2 * e2[1] * e2[1]];
+}
+/** Symmetric-matrix power (±1/2) of [[a,b],[b,c]] via its eigen-decomposition. */
+function powSym2(a: number, b: number, c: number, sign: 0.5 | -0.5): Sym2 {
+  const { l1, l2, e1, e2 } = eigSym2(a, b, c);
+  const p1 = sign === 0.5 ? Math.sqrt(l1) : 1 / Math.sqrt(l1), p2 = sign === 0.5 ? Math.sqrt(l2) : 1 / Math.sqrt(l2);
+  return reconstructSym2(p1, p2, e1, e2);
+}
+/** Congruence s·x·s for symmetric s,x (s symmetric ⇒ s = sᵀ). */
+function congruenceSym2(s: Sym2, x: Sym2): Sym2 {
+  const [s0, s1, s2] = s, [x0, x1, x2] = x;
+  const t00 = s0 * x0 + s1 * x1, t01 = s0 * x1 + s1 * x2, t10 = s1 * x0 + s2 * x1, t11 = s1 * x1 + s2 * x2;
+  return [t00 * s0 + t01 * s1, t00 * s1 + t01 * s2, t10 * s1 + t11 * s2];
+}
+
+/**
+ * ANISOTROPIC crease-aligned (II,I) curvature metric at (u,t), packed [M00, M01, M11]. Sizes EACH principal
+ * direction by its OWN principal curvature: μ_i = clamp(|κ_i|/(8·tol), 1/hMax², 1/hMin²) — fine ACROSS the steep
+ * flank, long ALONG it — vs the isotropic g/h²'s single MAX-curvature size in every direction. hFD is the central-
+ * difference step for the shape operator (small ⇒ resolves sub-cell relief). Reduces to the g/h² metric when the two
+ * principal curvatures are equal (isotropic zones untouched). Byte-faithful to research onDemandMetric.creaseMetricAt.
+ */
+export function anisoCurvatureMetric(
+  rA: AnalyticRadiusFn, H: number, u: number, t: number, tol: number, hMin: number, hMax: number, hFD: number,
+): Sym2 {
+  const muMin = 1 / (hMax * hMax), muMax = 1 / (hMin * hMin);
+  const S = (uu: number, tt: number): V3 => { const th = TAU * uu, z = tt * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
+  const sub = (a: V3, b: V3): V3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const uu = Math.min(Math.max(u, hFD), 1 - hFD), tt = Math.min(Math.max(t, hFD), 1 - hFD);
+  const c = S(uu, tt);
+  const Su = (sub(S(uu + hFD, tt), S(uu - hFD, tt)).map((v) => v / (2 * hFD)) as V3);
+  const St = (sub(S(uu, tt + hFD), S(uu, tt - hFD)).map((v) => v / (2 * hFD)) as V3);
+  const Suu = (sub(sub(S(uu + hFD, tt), c), sub(c, S(uu - hFD, tt))).map((v) => v / (hFD * hFD)) as V3);
+  const Stt = (sub(sub(S(uu, tt + hFD), c), sub(c, S(uu, tt - hFD))).map((v) => v / (hFD * hFD)) as V3);
+  const pp = S(uu + hFD, tt + hFD), pm = S(uu + hFD, tt - hFD), mp = S(uu - hFD, tt + hFD), mm_ = S(uu - hFD, tt - hFD);
+  const Sut = ([0, 1, 2].map((k) => (pp[k] - pm[k] - mp[k] + mm_[k]) / (4 * hFD * hFD)) as V3);
+  let n: V3 = [Su[1] * St[2] - Su[2] * St[1], Su[2] * St[0] - Su[0] * St[2], Su[0] * St[1] - Su[1] * St[0]];
+  const nl = Math.hypot(n[0], n[1], n[2]);
+  const E = dot(Su, Su), F = dot(Su, St), G = dot(St, St);
+  if (nl < 1e-30 || !(E * G - F * F > 1e-30)) return [muMin, 0, muMin];
+  n = [n[0] / nl, n[1] / nl, n[2] / nl];
+  const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
+  const Ihalf = powSym2(E, F, G, 0.5), Iinvhalf = powSym2(E, F, G, -0.5);
+  const B = congruenceSym2(Iinvhalf, [L, Mn, N]);   // symmetric shape operator; eigenvalues = principal curvatures
+  const eb = eigSym2(B[0], B[1], B[2]);
+  const mu1 = Math.min(Math.max(Math.abs(eb.l1) / (8 * tol), muMin), muMax);
+  const mu2 = Math.min(Math.max(Math.abs(eb.l2) / (8 * tol), muMin), muMax);
+  return congruenceSym2(Ihalf, reconstructSym2(mu1, mu2, eb.e1, eb.e2));
+}
+
 export function buildSurfaceMetricField(rA: AnalyticRadiusFn, H: number, opts: SurfaceMetricOpts): SurfaceMetricField {
   const { resU, resT } = opts;
   const S = (u: number, t: number): V3 => { const th = TAU * u, z = t * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
@@ -132,6 +213,24 @@ export function buildSurfaceMetricField(rA: AnalyticRadiusFn, H: number, opts: S
   const dot = (a: V3, b: V3): number => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
   const du = 1 / Math.max(resU - 1, 1), dt = 1 / Math.max(resT - 1, 1);
   const chord = isChord(opts);
+
+  // OPT-IN ANISOTROPIC (II,I) CURVATURE metric (E-2026-07-19-DS-CONVERGE-B). Assemble the crease-aligned metric
+  // per grid node (fine ACROSS the high-κ flank, long ALONG it) INSTEAD of the isotropic g/h² Pass-1/Pass-2 below.
+  // Early return ⇒ the isotropic path is untouched when aniso is absent/false (byte-identical). Chord mode only
+  // (needs tolMm/hMin/hMax). Uses curvatureFineStep as the shape-operator FD step when set, else a grid-scale step.
+  if (chord && (opts as ChordOpts).aniso === true) {
+    const o = opts as ChordOpts;
+    const hFD = o.curvatureFineStep ?? Math.min(du, dt);
+    const m = new Float64Array(resU * resT * 3);
+    for (let it = 0; it < resT; it++) {
+      for (let iu = 0; iu < resU; iu++) {
+        const packed = anisoCurvatureMetric(rA, H, iu * du, it * dt, o.tolMm, o.hMin, o.hMax, hFD);
+        const idx = (it * resU + iu) * 3;
+        m[idx] = packed[0]; m[idx + 1] = packed[1]; m[idx + 2] = packed[2];
+      }
+    }
+    return { resU, resT, m };
+  }
 
   // κ_max (max |principal curvature|) at (cu,ct) via central differences with FD step h. Powers the OPT-IN
   // fine-curvature sizing path — a small h resolves a sharp sub-cell ridge that the grid-step FD averages away.
