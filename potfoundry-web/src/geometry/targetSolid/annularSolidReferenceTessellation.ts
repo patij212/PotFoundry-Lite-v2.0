@@ -240,7 +240,7 @@ interface NormalizedConformingLine {
 const LINE_COEFFICIENT_LIMIT = 1_048_576; // 2^20 — keeps s-values far inside BigInt comfort
 
 function validateConformingLines(
-  patchId: AnnularRadialSolidPatchId,
+  patchId: string,
   untrusted: readonly ConformingFeatureLine[]
 ): readonly NormalizedConformingLine[] {
   if (!Array.isArray(untrusted) || untrusted.length === 0) {
@@ -765,7 +765,7 @@ interface PatchPartitionFrame {
 function leastCommonMultipleSafe(
   left: number,
   right: number,
-  patchId: AnnularRadialSolidPatchId
+  patchId: string
 ): number {
   const divisor = greatestCommonDivisor(left, right);
   const result = (left / divisor) * right;
@@ -796,7 +796,7 @@ function locateIntervalIndex(
 }
 
 function buildPatchPartitionFrame(
-  patchId: AnnularRadialSolidPatchId,
+  patchId: string,
   angular: ResolvedStations,
   vertical: ResolvedStations,
   lines: readonly NormalizedConformingLine[],
@@ -1368,7 +1368,7 @@ interface ResolvedStations {
 const MAX_LADDER_ODD_FACTOR = 4_503_599_627_370_495; // 2^52 - 1 (kernel envelope)
 
 function resolveStations(
-  patchId: AnnularRadialSolidPatchId,
+  patchId: string,
   uniformLog2: number,
   ladder: VerticalStationLadder | undefined
 ): ResolvedStations {
@@ -1434,7 +1434,7 @@ function resolveStations(
 }
 
 interface PatchGrid {
-  readonly patchId: AnnularRadialSolidPatchId;
+  readonly patchId: string;
   readonly verticalDivisions: number;
   /** (nV+1) x (nU+1) x 3 float64 coordinates, row-major by v station. */
   readonly coordinates: Float64Array;
@@ -1461,7 +1461,7 @@ function gridIndex(angularDivisions: number, uStation: number, vStation: number)
 }
 
 function evaluatePatchGrid(
-  patchId: AnnularRadialSolidPatchId,
+  patchId: string,
   evaluateFloat64: (u: number, v: number) => readonly [number, number, number],
   angularValues: Float64Array,
   stationValues: Float64Array
@@ -1518,7 +1518,7 @@ function rowStation(grid: PatchGrid, row: 'v0' | 'v1'): number {
 }
 
 function applyJunctionWelds(
-  grids: ReadonlyMap<AnnularRadialSolidPatchId, PatchGrid>,
+  grids: ReadonlyMap<string, PatchGrid>,
   angularDivisions: number
 ): void {
   for (const copy of JUNCTION_COPIES) {
@@ -1586,7 +1586,7 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   if (typeof ladders !== 'object' || ladders === null) {
     invalid('verticalStationsByPatch must be a record when present');
   }
-  const stationsByPatch: Map<AnnularRadialSolidPatchId, ResolvedStations> = new Map();
+  const stationsByPatch: Map<string, ResolvedStations> = new Map();
   for (const patchId of PATCH_IDS) {
     const uniformLog2 = divisionsLog2(
       verticalByPatch[patchId],
@@ -1608,15 +1608,15 @@ export function tessellateAnnularRadialSolidTargetForCertification(
   if (typeof chordsByPatch !== 'object' || chordsByPatch === null) {
     invalid('conformingChordsByPatch must be a record when present');
   }
-  const frames = new Map<AnnularRadialSolidPatchId, PatchPartitionFrame>();
+  const frames = new Map<string, PatchPartitionFrame>();
   let triangleCount = 0;
   for (const program of programs) {
     const stations = stationsByPatch.get(program.patchId);
     if (stations === undefined) invalid(`unknown atlas patch '${program.patchId}'`);
-    const rawLines = conformingByPatch[program.patchId];
+    const rawLines = conformingByPatch[program.patchId as AnnularRadialSolidPatchId];
     const lines =
       rawLines === undefined ? [] : validateConformingLines(program.patchId, rawLines);
-    const rawChords = chordsByPatch[program.patchId];
+    const rawChords = chordsByPatch[program.patchId as AnnularRadialSolidPatchId];
     if (rawChords !== undefined && (!Array.isArray(rawChords) || rawChords.length === 0)) {
       invalid(
         `conformingChordsByPatch['${program.patchId}'] must be a non-empty array when present`
@@ -1636,7 +1636,7 @@ export function tessellateAnnularRadialSolidTargetForCertification(
     invalid(`requested grid needs ${triangleCount} triangles > ${MAX_REFERENCE_TRIANGLES}`);
   }
 
-  const grids = new Map<AnnularRadialSolidPatchId, PatchGrid>();
+  const grids = new Map<string, PatchGrid>();
   for (const program of programs) {
     const stations = stationsByPatch.get(program.patchId);
     if (stations === undefined) invalid(`unknown atlas patch '${program.patchId}'`);

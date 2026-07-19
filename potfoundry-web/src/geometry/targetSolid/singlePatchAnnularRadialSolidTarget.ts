@@ -92,12 +92,65 @@ export type AnnularRadialSolidPatchId =
   | 'bottom-under'
   | 'drain-wall';
 
+/** The six base radial-solid roles keyed by the reference tessellation options. */
+export type AnnularRadialSolidBasePatchId = AnnularRadialSolidPatchId;
+
 export interface AnnularRadialSolidTargetProgram {
-  readonly patchId: AnnularRadialSolidPatchId;
+  /**
+   * A base-atlas patch id (`outer-wall` …) for the single-patch atlas, or a
+   * layered band/curtain id (`outer-wall-band-3`, `feature-curtain-2`) for the
+   * flag-gated multi-patch atlas. Widened to `string` so one program list can
+   * carry both; base-role lookups narrow through the atlas structure.
+   */
+  readonly patchId: string;
   readonly role: TargetSurfacePatchRole;
   readonly programCanonicalJson: string;
   readonly programSha256: string;
   readonly backends: GeneratedTargetProgramBackends;
+}
+
+/**
+ * How the reference tessellation resolves a layered atlas patch's vertical
+ * division count: either from one of the six base-role option keys (bands use
+ * `outer-wall`; the five base patches use their own role) or a fixed dyadic
+ * count (feature curtains are a linear radial mix, exact at one division).
+ */
+export type AtlasVerticalDivisionSource =
+  | Readonly<{ kind: 'role'; role: AnnularRadialSolidBasePatchId }>
+  | Readonly<{ kind: 'fixed'; log2: number }>;
+
+/** One patch in the layered atlas: how to grid it (division source). */
+export interface AtlasPatchLayout {
+  readonly patchId: string;
+  readonly role: TargetSurfacePatchRole;
+  readonly verticalDivisions: AtlasVerticalDivisionSource;
+}
+
+/**
+ * One receiver<-owner boundary weld the reference tessellation copies so the
+ * shared row is bit-identical by index (T-junction-free). `reverseFreeParameter`
+ * mirrors the angular station index (i -> nU - i) exactly as the atlas junction
+ * grammar declares.
+ */
+export interface AtlasJunctionCopy {
+  readonly receiverPatchId: string;
+  readonly receiverRow: 'v0' | 'v1';
+  readonly ownerPatchId: string;
+  readonly ownerRow: 'v0' | 'v1';
+  readonly reverseFreeParameter: boolean;
+}
+
+/**
+ * The layered multi-patch atlas structure the reference tessellation consumes
+ * when present (flag-gated). Absent for the byte-identical single-patch path.
+ * Every patch's program still lives in `binding.programs`; this only records
+ * the layered gridding + weld graph the fixed six-patch path cannot express.
+ */
+export interface MultiPatchAtlasComplex {
+  readonly bandCount: number;
+  readonly curtainCount: number;
+  readonly patchLayouts: readonly AtlasPatchLayout[];
+  readonly junctionCopies: readonly AtlasJunctionCopy[];
 }
 
 declare const singlePatchAnnularRadialSolidTargetBrand: unique symbol;
@@ -117,6 +170,12 @@ export interface SinglePatchAnnularRadialSolidTargetBinding {
   readonly radialClearanceProof: StyleRadialClearanceProofResult;
   readonly drainClearanceProof: ValidatedTargetScalarPositivityResult;
   readonly nonPeriodicJunctionProofs: readonly ValidatedProgramBoundaryIdentityResult[];
+  /**
+   * Present only for the flag-gated layered multi-patch atlas (e.g. active
+   * DragonScales). Undefined for the byte-identical single-patch six-patch
+   * atlas; the reference tessellation branches on it.
+   */
+  readonly atlasComplex?: MultiPatchAtlasComplex;
   readonly completeAbstractClosedSurfaceComplex: true;
   readonly allPatchEvaluatorsAuthenticated: true;
   readonly radialClampInactive: true;
@@ -228,6 +287,19 @@ function fail(
   message: string
 ): never {
   throw new SinglePatchAnnularRadialSolidTargetError(code, message);
+}
+
+/**
+ * Default-off admission gate for the layered multi-patch atlas (DragonScales
+ * -first, U4). When unset the atlas refuses layered outer-wall complexes exactly
+ * as the single-patch atlas always has, so the production path and the default
+ * test suite stay byte-identical. Read from the same `PF_DS_ATLAS_SPIKE`
+ * environment flag the acceptance probe uses.
+ */
+function multiPatchAtlasEnabled(): boolean {
+  return (
+    typeof process !== 'undefined' && process.env?.PF_DS_ATLAS_SPIKE === '1'
+  );
 }
 
 function makeEdge(
@@ -375,12 +447,26 @@ export function createSinglePatchAnnularRadialSolidTargetBinding(
     fail('UNSUPPORTED_PATCH_COMPLEX', 'outer target has a composition or production-integration blocker');
   }
   const sourcePrograms = styleOuterWallTargetProgramsForProof(styleRegistry);
-  if (
-    sourcePrograms.length !== 1 ||
-    sourcePrograms[0].patchId !== 'outer-wall' ||
-    sourcePrograms[0].role !== 'outer-wall'
-  ) {
-    fail('UNSUPPORTED_PATCH_COMPLEX', 'atlas currently accepts exactly one periodic outer-wall patch');
+  const isSinglePeriodicOuterWall =
+    sourcePrograms.length === 1 &&
+    sourcePrograms[0].patchId === 'outer-wall' &&
+    sourcePrograms[0].role === 'outer-wall';
+  if (!isSinglePeriodicOuterWall) {
+    // A layered outer wall (row bands + feature-curtain risers, e.g. active
+    // DragonScales) is admitted only behind the default-off multi-patch flag.
+    // Flag OFF -> refuse exactly as the single-patch atlas always has.
+    if (!multiPatchAtlasEnabled()) {
+      fail(
+        'UNSUPPORTED_PATCH_COMPLEX',
+        'atlas currently accepts exactly one periodic outer-wall patch'
+      );
+    }
+    // C2 replaces this with layered admission; until then refuse under the flag
+    // too so the acceptance probe's ACC cases stay red rather than half-built.
+    fail(
+      'UNSUPPORTED_PATCH_COMPLEX',
+      'layered multi-patch atlas admission is not yet implemented'
+    );
   }
   const source = sourcePrograms[0];
   let radialClearanceProof: StyleRadialClearanceProofResult;
