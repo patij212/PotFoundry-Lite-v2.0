@@ -272,6 +272,24 @@ export interface SurfaceCertReport {
   cliffVertsSkipped: number;
 }
 
+/** u-resolution of the {@link lowestSurfaceAcrossU} scan for a junction's LOWER pinch level. */
+const LOWER_PINCH_SCAN_U = 2000;
+
+/**
+ * The LOWER pinch level at height `t`: the minimum of the analytic `surface` over a full sweep of
+ * u ∈ [0,1]. At a ribbon↔background pot surface this is the depressed background level at that height
+ * (the true one-sided limit a background junction-pinch vertex is routed to). Read-only; used only to
+ * certify a `dirCnt==0` JUNCTION corner whose region-centroid nudge fails to cross the local footprint.
+ */
+function lowestSurfaceAcrossU(surface: SurfaceRadiusFn, t: number): number {
+  let lo = Infinity;
+  for (let k = 0; k <= LOWER_PINCH_SCAN_U; k += 1) {
+    const s = surface(k / LOWER_PINCH_SCAN_U, t);
+    if (s < lo) lo = s;
+  }
+  return lo;
+}
+
 /**
  * Certify a built mesh's vertices directly against the true analytic `surface`, WITHOUT
  * routing through the mesher's region classifier (the classifier's only effect is which lip
@@ -287,6 +305,11 @@ export interface SurfaceCertReport {
  *    ribbon's snake does not mis-order them) — so the expected value is classifier-independent.
  *    A swapped label makes the vertex take the wrong lip while the geometric limit is
  *    unchanged ⇒ the deviation spikes by the radial jump.
+ *  - JUNCTION-PINCH vertex with NO interior sheet neighbour (`dirCnt==0`, a diamond corner): the
+ *    geometric centroid nudge can fail to cross the local over-strand footprint and land on the
+ *    WRONG branch. It is then replaced by the region's own analytic one-sided PINCH LEVEL (lower =
+ *    min-over-u of `surface`, upper = the locus-straddle max), read at the vertex's own t — but only
+ *    where the nudge demonstrably landed on the other branch, so valid corners stay byte-identical.
  *
  * (u,t), region and cliff-segment come from the mesh's read-only provenance arrays
  * (independent of the label); `surface` is the analytic ground truth (`buildAnalyticRadiusFn`).
@@ -304,6 +327,7 @@ export function certifyAgainstTrueSurface(
   const U = mesh.vertexU;
   const T = mesh.vertexT;
   const region = mesh.vertexRegion;
+  const regionIsRibbon = mesh.regionIsRibbon;
   const cliffSeg = mesh.vertexCliffSeg;
   const vcount = pos.length / 3;
 
@@ -406,6 +430,34 @@ export function certifyAgainstTrueSurface(
           continue;
         }
         expected = surface(u + (du / mag) * oneSidedDelta, t + (dt / mag) * oneSidedDelta);
+        // JUNCTION-PINCH robustness (dirCnt==0): at a diamond CORNER the tagged background/ribbon
+        // region can wrap so its centroid direction, nudged by δ, never crosses the local over-strand
+        // footprint the pinch vertex sits in — so the nudge above lands on the WRONG analytic branch
+        // (a full radial-jump error: the certifier's ~0.6mm false positive on the clipped full pot).
+        // Guard it by the region's OWN one-sided PINCH LEVEL, read straight from `surface` at the
+        // vertex's own t (no taper), independent of the classifier label only for the branch VALUE:
+        //   • background region  → the LOWER pinch level  = min over u of surface(·, t)  (the depressed
+        //     background level at this height; the over-strand occludes it in u near the corner, but it
+        //     is the true one-sided limit into the background the mesher routed this vertex to);
+        //   • ribbon region      → the UPPER pinch level  = max(surface(u±δ, t)) across the locus (the
+        //     ribbon FOOT r0; the crest-ward straddle overshoots by <1e-3, well under the gate).
+        // Only ADOPT the pinch level when the centroid nudge landed on the OTHER branch (closer to it
+        // than to the region's own level) — i.e. it demonstrably failed to cross. Where the nudge
+        // already resolves the own branch (every M1–M6a/T2/M5 junction corner), `expected` is left
+        // byte-identical; this bites only the wrong-branch corners (the clipped full pot).
+        if (isJunction[v]) {
+          const isRib = regionIsRibbon[rg];
+          let ownLevel: number;
+          let otherLevel: number;
+          if (isRib) {
+            ownLevel = Math.max(surface(u + oneSidedDelta, t), surface(u - oneSidedDelta, t));
+            otherLevel = lowestSurfaceAcrossU(surface, t);
+          } else {
+            ownLevel = lowestSurfaceAcrossU(surface, t);
+            otherLevel = Math.max(surface(u + oneSidedDelta, t), surface(u - oneSidedDelta, t));
+          }
+          if (Math.abs(expected - otherLevel) < Math.abs(expected - ownLevel)) expected = ownLevel;
+        }
       }
       const dev = Math.abs(r - expected);
       if (dev > maxCliffDevMm) maxCliffDevMm = dev;

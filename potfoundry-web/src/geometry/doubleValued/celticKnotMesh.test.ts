@@ -435,8 +435,9 @@ describe('CelticKnot double-valued mesher (P3b T2: clipped-envelope 3-strand cro
 // the measured residual). The clip COMPOSES WATERTIGHT — measured at DEFAULT (baseGridU 132, baseGridT
 // 96, across 22, 4 passes): nonManifold 0, cliffBoundary 0, boundaryNonRim 0, seamOpenEdges 0,
 // tRim === boundary (571), 108 junctions all pinched to 2 levels, 1 outward component, sheetDev 0.000.
-// BUT the fidelity gate is NOT met: facetMaxChordMm 0.20438 (@ u≈0.20, t≈0.06, AT a crossing) and
-// maxCliffDevMm up to 0.60001.
+// BUT the FACET-chord gate is not met: facetMaxChordMm 0.20438 (@ u≈0.20, t≈0.06, AT a crossing) — the
+// diamond-corner bridging facet (point 3 below). (The former maxCliffDevMm 0.60001 was NOT a mesh
+// defect but a CERTIFIER false positive — now fixed in verify.ts; see the CORRECTED ROOT CAUSE below.)
 //
 // CORRECTED ROOT CAUSE (P3c, MEASURED — supersedes the P3b-report diagnosis below): the P3b report
 // blamed a dropped "second-highest-visible" OUTER edge and prescribed a 3-way visibility model that
@@ -445,9 +446,18 @@ describe('CelticKnot double-valued mesher (P3b T2: clipped-envelope 3-strand cro
 // under-strand OUTER (background-facing) edge — already has a kept, walled arc; a refutation probe over
 // the DEFAULT-T3 domain finds 747 occluded edge-samples, of which 744 are truly buried (outer side is
 // another ribbon, correctly dropped) and only 3 are occlusion-flip boundary noise — ZERO wrongly-
-// dropped outer edges. (2) cliffDev is DENSITY-SENSITIVE: at higher per-column density it resolves to
-// ~0.0004 (single-column repro, passes 3); the 0.60 at the DEFAULT grid is under-resolution of the thin
-// diamond slivers, not a mixed region. (3) The real, density-INVARIANT blocker is a diamond-CORNER
+// dropped outer edges. (2) The maxCliffDevMm 0.60 was a CERTIFIER FALSE POSITIVE — NOT under-resolution
+// and NOT density-sensitive (the prior "density-sensitive → 0.0004" claim is REFUTED). cliffDev is
+// density-INVARIANT: the 0.60 reproduces identically at the coarse single-column repro (baseGridU 36 /
+// baseGridT 90 / 1 pass) AND the DEFAULT 132×96 / 4-pass grid — an artifact, not thin-sliver under-
+// resolution. Mechanism (measured): `certifyAgainstTrueSurface` mis-oriented a `dirCnt==0` JUNCTION-
+// pinch CORNER vertex (a background pinch with no interior sheet neighbour); its region-centroid nudge
+// lands INSIDE the occluding over-strand footprint ⇒ the wrong (upper) analytic branch ⇒ a full ~0.6mm
+// phantom deviation. FIXED in verify.ts (detector-tested in doubleValuedMesh.test.ts): the corner is
+// certified against its region's OWN analytic pinch level (background → min-over-u of surface, ribbon →
+// the locus-straddle max), so the single-column clip repro now reads cliffDev 0.00042 (< 0.01) and the
+// mesh is confirmed vertex-exact. The genuine ~0.0004 was the 731e0592-unmasked residual, never 0.60.
+// (3) The real, density-INVARIANT blocker (the remaining FACET-chord gap) is a diamond-CORNER
 // BRIDGING FACET: the occluded under-strand INNER edge is (correctly) dropped over its narrow occlusion
 // gap; where that under-strand EMERGES at the diamond corner its inner-edge arc restarts with a
 // background rail, and a flat sheet facet in the over-strand's ribbon region bridges from the over-
