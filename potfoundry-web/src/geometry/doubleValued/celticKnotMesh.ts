@@ -1063,6 +1063,26 @@ export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
    * CCP-T3 test un-skips onto it); DO NOT enable in production.
    */
   planarizeCrests?: boolean;
+  /**
+   * CCP (clip path only): carry each over-strand's FLANK strips THROUGH every overlap diamond,
+   * exactly as `crestCreasesThroughDiamonds` already carries the crest — over the SAME maximal-
+   * visible (z-buffer-top) runs, as in-sheet creases (no wall, no region split). Where
+   * `diamondClippedCreases` CLIPS the flank strips at each diamond boundary (leaving the crest→foot
+   * flank region inside the diamond unstructured — a coarse base-grid + junction-pinch FAN that
+   * refinement's isolated point-insertions cannot shrink, hence the density-INVARIANT ~0.22mm
+   * diamond-corner facet), this emits the full set of `across` flank offsets `off =
+   * (2·k/across − 1)·strandWidth` (k=1..across−1) through the diamonds too, structuring crest→foot
+   * into thin flank quads. The interior flanks (|off| < strandWidth) touch no wall and no junction;
+   * inside the diamond the occluded under-strand cliffs are ABSENT (the clip pre-removed them), so
+   * the flanks thread FREE space — a planar PSLG needing NO crossing-planarization (the buried
+   * over-flank × under-edge crossings carry no visible radial step and cannot be walled — that is
+   * the T3/CCP-T3 NO-GO). Implies `clipToVisibleEnvelope` (has no effect without it). This lands the
+   * corner at the density-reducible FLANK-FLOOR (structural-complete, NOT < 0.01mm — the sub-<0.01
+   * endgame is a separate deferred density problem on the flank class). OFF by default so M5/M6/T3
+   * are byte-identical. See `.superpowers/sdd/ccp-corner-rediagnose.md` +
+   * `.superpowers/sdd/ccp-flankcarry-report.md`.
+   */
+  flanksThroughDiamonds?: boolean;
 }
 
 /**
@@ -1092,6 +1112,15 @@ export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
  * interior (its own cliffs are ±strandWidth away), so it touches no wall and the rim stays an open
  * t-rim (boundaryNonRim unchanged). OFF by default so the crossing-window callers (M6a/T2), whose
  * domain edges are interior window cuts and are meant to stay trimmed, are byte-identical.
+ *
+ * `flankOffsets` (CCP `flanksThroughDiamonds`): additional localU offsets to carry alongside the
+ * crest (off=0), on the SAME visible runs, with the SAME trimming/rim-extension/splits. Each emitted
+ * run becomes one crease per offset `off` at `localU = centre_s(t) + off` — so passing the
+ * `diamondClippedCreases` flank offsets threads the whole over-strand ribbon cross-section through
+ * every diamond as in-sheet flank strips (the crest→foot fan → thin flank quads). `undefined`/empty
+ * ⇒ crest only ⇒ byte-identical to the crest-through path. The offsets stay strictly inside the
+ * ribbon (|off| < strandWidth), so a flank crease touches neither the over-strand's own cliff walls
+ * nor a junction pinch — it is an interior in-sheet crease exactly like the crest.
  */
 function crestCreasesThroughDiamonds(
   params: CelticKnotCliffParams,
@@ -1099,69 +1128,83 @@ function crestCreasesThroughDiamonds(
   endMargin: number,
   extendToRim = false,
   splitTs?: Map<string, number[]>,
+  flankOffsets?: readonly number[],
 ): CreaseLike[] {
   const { columnCount, strandCount } = params;
   const w = params.strandWidth;
   const ST = 0.0003; // t scan step (finer than the ~0.014 diamond so no visibility flip is missed)
   const spanT = domain.tHi - domain.tLo;
   const creases: CreaseLike[] = [];
-  const visibleAt = (col: number, s: number, t: number): boolean => {
-    const cs = ckCentre(params, col, s, t);
+  // The crest (off=0) plus any CCP flank offsets. Each is carried over ITS OWN maximal-visible runs
+  // (below), NOT the shared centreline runs — see `visibleAt`.
+  const offsets = flankOffsets && flankOffsets.length ? [0, ...flankOffsets] : [0];
+  // Is strand `s`'s ribbon point at localU = centre_s(t) + off the z-buffer TOP at height t? Occlusion
+  // is per-POINT: a higher strand k occludes it iff k's ribbon COVERS that localU
+  // (|localU − centre_k| < strandWidth) AND sits higher (z_k > z_s). For off=0 this is EXACTLY the
+  // crest/centreline test (byte-identical to the prior crest-only scan); for a flank the coverage
+  // boundary is shifted by `off`, so a flank facing a crossing strand becomes occluded at a DIFFERENT t
+  // than the centreline. Trimming each flank to its OWN visible run keeps it strictly on the visible
+  // over-strand surface — never carried under the crossing strand, whose (now-visible) edge it would
+  // otherwise cross (a non-planar PSLG that crashes cdt2d). This is visibility trimming, not a wall.
+  const visibleAt = (col: number, s: number, off: number, t: number): boolean => {
+    const probe = ckCentre(params, col, s, t) + off;
     const zs = ckZHeight(params, col, s, t);
     for (let k = 0; k < strandCount; k += 1) {
       if (k === s) continue;
-      if (Math.abs(cs - ckCentre(params, col, k, t)) < w && ckZHeight(params, col, k, t) > zs) return false;
+      if (Math.abs(probe - ckCentre(params, col, k, t)) < w && ckZHeight(params, col, k, t) > zs) return false;
     }
     return true;
   };
   for (let col = 0; col < columnCount; col += 1) {
     for (let s = 0; s < strandCount; s += 1) {
-      const flush = (a0: number, b0: number, aIsRim: boolean, bIsRim: boolean): void => {
-        // Trim each run's HARD dive/emerge ends so the ridge never lands on the occlusion cliff — but
-        // NOT a domain t-rim end (an OPEN mesh boundary, not an occlusion cliff): when `extendToRim`
-        // the crest runs all the way to it, else the un-structured [rim∓endMargin, rim] sliver leaves a
-        // flat r0→r0+relief base facet (the rim-trim facet). The run is occlusion-free up to the rim by
-        // construction, so extending it crosses no wall.
-        const a = aIsRim && extendToRim ? a0 : a0 + endMargin;
-        const b = bIsRim && extendToRim ? b0 : b0 - endMargin;
-        if (b - a < 5e-4) return; // too short to structure
-        // CCP T3 (gated): split the run at each crest × under-inner-edge crossing t in (a,b), so the
-        // crossing is a crease-sample ENDPOINT — its (u,t) = (crest u at that t) EXACTLY matches the
-        // extended under-inner-edge arc's crossing sample (formula identity), so the core merges them onto
-        // one shared vertex. Without `splitTs` the whole run is one crease (byte-identical).
-        const cuts = (splitTs?.get(`${col}:${s}`) ?? []).filter((tc) => tc > a + 1e-6 && tc < b - 1e-6).sort((x, y) => x - y);
-        const bounds = [a, ...cuts, b];
-        for (let seg = 0; seg + 1 < bounds.length; seg += 1) {
-          const aa = bounds[seg];
-          const bb = bounds[seg + 1];
-          if (bb - aa < 5e-4) continue;
-          creases.push({
-            tRange: [aa, bb],
-            at: (sPar: number) => {
-              const t = aa + (bb - aa) * clamp01(sPar);
-              return { u: ckUOf(params, col, ckCentre(params, col, s, t)), t };
-            },
-          });
+      for (const off of offsets) {
+        const flush = (a0: number, b0: number, aIsRim: boolean, bIsRim: boolean): void => {
+          // Trim each run's HARD dive/emerge ends so the ridge never lands on the occlusion cliff — but
+          // NOT a domain t-rim end (an OPEN mesh boundary, not an occlusion cliff): when `extendToRim`
+          // the crest runs all the way to it, else the un-structured [rim∓endMargin, rim] sliver leaves a
+          // flat r0→r0+relief base facet (the rim-trim facet). The run is occlusion-free up to the rim by
+          // construction, so extending it crosses no wall.
+          const a = aIsRim && extendToRim ? a0 : a0 + endMargin;
+          const b = bIsRim && extendToRim ? b0 : b0 - endMargin;
+          if (b - a < 5e-4) return; // too short to structure
+          // CCP T3 (gated): split the run at each crest × under-inner-edge crossing t in (a,b), so the
+          // crossing is a crease-sample ENDPOINT — its (u,t) = (crest u at that t) EXACTLY matches the
+          // extended under-inner-edge arc's crossing sample (formula identity), so the core merges them onto
+          // one shared vertex. Without `splitTs` the whole run is one crease (byte-identical).
+          const cuts = (splitTs?.get(`${col}:${s}`) ?? []).filter((tc) => tc > a + 1e-6 && tc < b - 1e-6).sort((x, y) => x - y);
+          const bounds = [a, ...cuts, b];
+          for (let seg = 0; seg + 1 < bounds.length; seg += 1) {
+            const aa = bounds[seg];
+            const bb = bounds[seg + 1];
+            if (bb - aa < 5e-4) continue;
+            creases.push({
+              tRange: [aa, bb],
+              at: (sPar: number) => {
+                const t = aa + (bb - aa) * clamp01(sPar);
+                return { u: ckUOf(params, col, ckCentre(params, col, s, t) + off), t };
+              },
+            });
+          }
+        };
+        // maximal visible runs from a fine scan (boundaries are THIS offset's dive/emerge points)
+        const nStep = Math.max(4, Math.ceil(spanT / ST));
+        let runA: number | null = null;
+        let runAIsRim = false; // did this run OPEN on the bottom domain t-rim (visible from t=tLo)?
+        let prevVis = false;
+        for (let i = 0; i <= nStep; i += 1) {
+          const t = domain.tLo + spanT * (i / nStep);
+          const vis = visibleAt(col, s, off, t);
+          if (vis && !prevVis) {
+            runA = i === 0 ? domain.tLo : t;
+            runAIsRim = i === 0;
+          } else if (!vis && prevVis && runA !== null) {
+            flush(runA, t, runAIsRim, false); // this end is a dive occlusion boundary — always trimmed
+            runA = null;
+          }
+          prevVis = vis;
         }
-      };
-      // maximal visible runs from a fine scan (boundaries are the strand's dive/emerge points)
-      const nStep = Math.max(4, Math.ceil(spanT / ST));
-      let runA: number | null = null;
-      let runAIsRim = false; // did this run OPEN on the bottom domain t-rim (visible from t=tLo)?
-      let prevVis = false;
-      for (let i = 0; i <= nStep; i += 1) {
-        const t = domain.tLo + spanT * (i / nStep);
-        const vis = visibleAt(col, s, t);
-        if (vis && !prevVis) {
-          runA = i === 0 ? domain.tLo : t;
-          runAIsRim = i === 0;
-        } else if (!vis && prevVis && runA !== null) {
-          flush(runA, t, runAIsRim, false); // this end is a dive occlusion boundary — always trimmed
-          runA = null;
-        }
-        prevVis = vis;
+        if (runA !== null) flush(runA, domain.tHi, runAIsRim, true); // reaches the top domain t-rim
       }
-      if (runA !== null) flush(runA, domain.tHi, runAIsRim, true); // reaches the top domain t-rim
     }
   }
   return creases;
@@ -1570,6 +1613,20 @@ export function buildCelticKnotFullPotMesh(
   }
 
   const across = opts.across ?? 20;
+  // CCP (clip path only): carry the over-strand FLANK strips THROUGH the diamonds like the crest.
+  // The clip pre-removes the occluded under-strand cliffs, so the flanks thread free space (planar,
+  // no crossing-planarization). Eliminates the density-INVARIANT crest→foot FLANK fan (~0.22mm) at
+  // the diamond corners → the density-reducible clear-region flank class. OFF ⇒ byte-identical.
+  const flanksThrough = clip && (opts.flanksThroughDiamonds ?? false);
+  // The SAME flank offsets `diamondClippedCreases` emits (k=1..across-1, EXCLUDING the crest
+  // k*2===across, which `crestCreasesThroughDiamonds` carries). Only built when flanks are carried.
+  const flankOffsets: number[] = [];
+  if (flanksThrough) {
+    for (let k = 1; k < across; k += 1) {
+      if (k * 2 === across) continue;
+      flankOffsets.push((2 * (k / across) - 1) * params.strandWidth);
+    }
+  }
   // M6: when carrying the crest THROUGH diamonds, `diamondClippedCreases` emits FLANKS only (the
   // crest is now a continuous through-diamond mesh edge) and `crestCreasesThroughDiamonds` adds the
   // crest along every visible ridge; the occluded under-strand cliffs it crosses are dropped in-sheet
@@ -1577,9 +1634,24 @@ export function buildCelticKnotFullPotMesh(
   // In the crest-through/clip path both the crest AND its flank strips run to the domain t-rims
   // (extendToRim), so the ribbon is fully structured up to the open rim and no coarse base facet
   // bridges r0→r0+relief there. M5 (crestThrough=false) passes extendToRim=false ⇒ byte-identical.
-  const flankCreases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain, !crestThrough, crestThrough);
+  // CCP `flanksThrough`: the flank strips are instead carried THROUGH the diamonds by
+  // `crestCreasesThroughDiamonds` (over the visible runs, which superset the clear runs), so
+  // `diamondClippedCreases` (clear-run flanks) is dropped entirely to avoid double-emitting them.
+  const flankCreases = flanksThrough
+    ? []
+    : diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain, !crestThrough, crestThrough);
   const creases = crestThrough
-    ? [...flankCreases, ...crestCreasesThroughDiamonds(params, domain, opts.crestMarginT ?? CREST_END_MARGIN_T, true, planarizeCrests ? crestSplitTs : undefined)]
+    ? [
+        ...flankCreases,
+        ...crestCreasesThroughDiamonds(
+          params,
+          domain,
+          opts.crestMarginT ?? CREST_END_MARGIN_T,
+          true,
+          planarizeCrests ? crestSplitTs : undefined,
+          flanksThrough ? flankOffsets : undefined,
+        ),
+      ]
     : flankCreases;
   // Ribbon u half-width (theta=2π·u): the crest sits at the strand centreline, the cliff edges
   // at ±strandWidth in localU ⇒ ±(strandWidth/(2·columnCount)) in u.

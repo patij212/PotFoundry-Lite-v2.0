@@ -572,6 +572,7 @@ describe.skip('CelticKnot double-valued mesher (P3b T3: full clipped periodic po
 // UNIVERSAL-001 roadmap + P3c report). The crest-crossing shared vertex, though correct as a primitive,
 // is the WRONG lever for this facet. Full measurements: `.superpowers/sdd/ccp-task-3-report.md`.
 const STYLE_CCP = { ckScale: 1, ckWidth: 0.15, ckRelief: 2, ckGap: 0.02, ckRoundness: 0.5, ckTwist: 0, ckStrands: 3 };
+const JUMP_CCP = STYLE_CCP.ckRelief * 0.3;
 const OPTS_CCP = { baseGridU: 60, baseGridT: 96, chordTolMm: 0.01, maxRefinePasses: 1, across: 22, clipToVisibleEnvelope: true };
 
 describe('CelticKnot double-valued mesher (CCP T3: crest-crossing planarization)', () => {
@@ -593,6 +594,88 @@ describe('CelticKnot double-valued mesher (CCP T3: crest-crossing planarization)
     expect(report.facetMaxT ?? 0).toBeGreaterThan(0.05);
     expect(report.facetMaxT ?? 1).toBeLessThan(0.95);
   }, 300000);
+
+  // ACTIVE — THE FIX (this session): carry the over-strand FLANK strips THROUGH each overlap diamond,
+  // exactly as the crest already is (`flanksThroughDiamonds`), structuring the crest→foot flank fan into
+  // thin flank quads. This is a STRUCTURAL fix and lands at the density-reducible FLANK-FLOOR — NOT
+  // < 0.01mm (the sub-<0.01 endgame is a separate deferred DENSITY problem on the flank class, out of
+  // scope). The gate asserts: (a) the un-flank-carried baseline is the ~0.22 fan (RED), (b) flank-carried
+  // is watertight + cliff-certified verbatim, and (c) flank-carried facetMax collapses to the flank floor
+  // — WELL below the 0.22 fan AND below the un-flank-carried value — with the worst remaining facet a
+  // plain over-strand flank facet at a crossing corner (density-reducible), NOT the crest→foot fan.
+  //
+  // FLANK_FLOOR_MAX is the structural-complete threshold: the MEASURED flank-carried facetMax + a small
+  // margin. It is deliberately >> 0.01 — asserting < 0.01 here would be dishonest (it would fail; the
+  // density endgame is deferred). Do NOT loosen the watertight/cliff bounds and do NOT add a facet < 0.01
+  // assertion. See `.superpowers/sdd/ccp-corner-rediagnose.md` + `.superpowers/sdd/ccp-flankcarry-report.md`.
+  //
+  // Density: the remaining flank floor is a base-grid t-sag on the steep flanks (NOT reducible by `across`
+  // or refine passes — measured: byte-identical facetMax across across 22/24/32 and passes 1/2; it is set
+  // by `baseGridT`). At 60/96 the floor is ~0.10; at the re-diagnosis-class 90/150 it is ~0.048 (the
+  // task's ~0.04–0.06 — the density-reducible clear-region flank class). The base FAN is density-INVARIANT
+  // (re-diagnosis: 0.21–0.22 at every density), so the un-flank build here is still the ~0.21 fan. passes 1
+  // suffices (refine does not touch this floor) and keeps the two-build test tractable (~330s).
+  const OPTS_FLANK = { ...OPTS_CCP, baseGridU: 90, baseGridT: 150, across: 20, maxRefinePasses: 1 };
+  const FLANK_FLOOR_MAX = 0.065; // structural-complete floor: measured fix facetMax 0.0484 + small margin
+  it('flanks-through-diamonds: crest→foot fan ELIMINATED → density-reducible flank floor (structural-complete)', () => {
+    const base = buildCelticKnotFullPotMesh(STYLE_CCP, DIMS, OPTS_FLANK); // un-flank-carried (crest through, flanks clipped)
+    const fix = buildCelticKnotFullPotMesh(STYLE_CCP, DIMS, { ...OPTS_FLANK, flanksThroughDiamonds: true });
+
+    // eslint-disable-next-line no-console
+    console.log(
+      `[CCP flank-carry] base(un-flank) facetMax=${(base.report.facetMaxChordMm ?? -1).toFixed(5)} @ u=${(base.report.facetMaxU ?? -1).toFixed(4)} t=${(base.report.facetMaxT ?? -1).toFixed(4)} | ` +
+        `fix(flank) facetMax=${(fix.report.facetMaxChordMm ?? -1).toFixed(5)} @ u=${(fix.report.facetMaxU ?? -1).toFixed(4)} t=${(fix.report.facetMaxT ?? -1).toFixed(4)}\n` +
+        `  fix: tris=${fix.report.triangleCount} verts=${fix.report.vertexCount} passes=${fix.report.refinePasses} facetRms=${(fix.report.facetRmsChordMm ?? -1).toFixed(5)} clearMax=${(fix.report.clearRegionMaxChordMm ?? -1).toFixed(5)} diamondMax=${(fix.report.diamondMaxChordMm ?? -1).toFixed(5)}\n` +
+        `  fix watertight: nonMan=${fix.report.nonManifold} cliffB=${fix.report.cliffBoundary} bNonRim=${fix.report.boundaryNonRim} seamOpen=${fix.report.seamOpenEdges} tRim=${fix.report.tRimBoundaryEdges} boundary=${fix.report.boundary}\n` +
+        `  fix cert: cliffDev=${fix.report.certification.maxCliffDevMm.toFixed(5)} sheetDev=${fix.report.certification.maxSheetDevMm.toFixed(5)} cliffSkipped=${fix.report.certification.cliffVertsSkipped} junctions=${fix.report.junctionCount} components=${fix.report.componentCount} outward=${fix.report.outwardWinding}`,
+    );
+
+    // RED baseline (un-flank-carried): the crest→foot FLANK fan at a diamond corner (density-INVARIANT
+    // ~0.21), far above the gate, and localised AT a crossing (off-rim) — not a rim artifact.
+    expect(base.report.facetMaxChordMm ?? 0).toBeGreaterThan(0.15);
+    expect(base.report.facetMaxT ?? 0).toBeGreaterThan(0.05);
+    expect(base.report.facetMaxT ?? 1).toBeLessThan(0.95);
+
+    // Watertight preserved VERBATIM with the flanks carried through the diamonds.
+    expect(fix.report.nonManifold).toBe(0);
+    expect(fix.report.cliffBoundary).toBe(0);
+    expect(fix.report.boundaryNonRim).toBe(0);
+    expect(fix.report.seamOpenEdges).toBe(0);
+    expect(fix.report.boundary).toBeGreaterThan(0);
+    expect(fix.report.tRimBoundaryEdges).toBe(fix.report.boundary);
+
+    // every declared crossing STILL pinches to exactly the two levels {r0, r0−jump} (flanks are
+    // in-sheet creases — they add no wall and do not disturb the junction pinch)
+    expect(fix.report.junctionCount).toBeGreaterThan(0);
+    for (const j of fix.report.junctions) {
+      expect(j.distinctLevels).toBe(2);
+      expect(j.upper - j.lower).toBeCloseTo(JUMP_CCP, 3);
+    }
+
+    // Certification preserved VERBATIM (< 0.01mm, none skipped) — the flank creases are in-sheet, lifted
+    // straight to the true surface, so they add no wall and leave every cliff/junction vertex untouched.
+    expect(fix.report.certification.maxCliffDevMm).toBeLessThan(0.01);
+    expect(fix.report.certification.maxSheetDevMm).toBeLessThan(0.01);
+    expect(fix.report.certification.cliffVertsSkipped).toBe(0);
+    expect(fix.report.componentCount).toBe(1);
+    expect(fix.report.outwardWinding).toBe(true);
+
+    // STRUCTURAL-COMPLETE: the diamond-corner crest→foot fan is ELIMINATED.
+    // (a) the honest facet chord collapses to the density-reducible flank floor — below the un-flank
+    //     value AND WELL below the ~0.21 fan (< 0.35× it), at the structural-complete floor. NOT
+    //     < 0.01mm: the sub-<0.01 endgame is a separate DEFERRED density problem and is NOT asserted here.
+    expect(fix.report.facetMaxChordMm ?? Infinity).toBeLessThan(base.report.facetMaxChordMm ?? Infinity);
+    expect(fix.report.facetMaxChordMm ?? Infinity).toBeLessThan(0.35 * (base.report.facetMaxChordMm ?? Infinity));
+    expect(fix.report.facetMaxChordMm ?? Infinity).toBeLessThan(FLANK_FLOOR_MAX);
+    // (b) the diamond corner by the COMPLETE split-ruler (`diamondMaxChordMm`; the honest ruler slightly
+    //     UNDER-reports hard-foot corners) is ALSO well below the fan — the fan is structured AWAY into thin
+    //     flank quads, not merely hidden from the honest ruler.
+    expect(fix.report.diamondMaxChordMm ?? Infinity).toBeLessThan(0.5 * (base.report.facetMaxChordMm ?? Infinity));
+    // (c) the worst REMAINING facet is a plain over-strand FLANK facet at a crossing (off-rim),
+    //     density-reducible — not a rim hole, not the crest→foot junction fan.
+    expect(fix.report.facetMaxT ?? 0).toBeGreaterThan(0.05);
+    expect(fix.report.facetMaxT ?? 1).toBeLessThan(0.95);
+  }, 600000);
 
   // SKIPPED (DONE_WITH_CONCERNS) — the strict GREEN target, preserved verbatim (never loosened). Un-skip
   // to REPRODUCE the measured NO-GO: `planarizeCrests` inserts the shared crest×inner-edge vertex, which
