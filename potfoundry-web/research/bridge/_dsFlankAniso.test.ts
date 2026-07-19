@@ -80,11 +80,16 @@ function pct(sorted: Float64Array, q: number): number {
   return sorted.length ? +sorted[Math.min(sorted.length - 1, Math.floor(q * sorted.length))].toFixed(6) : 0;
 }
 
-interface Arm { key: string; aniso: boolean; note: string; }
+interface Arm { key: string; aniso: boolean; chordSteiner?: boolean; note: string; }
 
 const SCREEN_ARMS: Arm[] = [
   { key: 'ISO', aniso: false, note: 'isotropic g/h² region kernel — reproduces flank ~0.34 baseline' },
   { key: 'ANISO', aniso: true, note: '+aniso (II,I) metric + metric-in-circle flip (C1)' },
+  // The ANISO convergence floor (HD) is the chord guard splitting the metric-LONGEST (across-flank) edge while the
+  // residual sag is ALONG-flank. chordSteiner inserts at the WORST-sag bary sample (interior) instead ⇒ the
+  // along-flank bulge is directly reducible (an edge split can't converge an interior apex; a Steiner can). Tests
+  // whether the pre-registered fix breaks the floor from 0.102 toward 0.01.
+  { key: 'ANISO_STEINER', aniso: true, chordSteiner: true, note: '+aniso +chordSteiner (worst-sag Steiner split)' },
 ];
 
 /** Build the DS conforming graph (θ+toe+rail, NO riser) and mesh with the PRODUCTION region kernel (no rim-pin,
@@ -99,6 +104,7 @@ function buildMesh(arm: Arm, maxPoints: number): { ut: number[]; idx: Uint32Arra
     curvatureFineStep: FINE_STEP, curvatureSubsamples: SUBSAMPLES,
     chordTolMm: TOL, chordSampleN: 8,
     ...(arm.aniso ? { aniso: true } : {}),
+    ...(arm.chordSteiner ? { chordSteiner: true } : {}),
   };
   const t0 = Date.now();
   const c0 = cpuUsage();
