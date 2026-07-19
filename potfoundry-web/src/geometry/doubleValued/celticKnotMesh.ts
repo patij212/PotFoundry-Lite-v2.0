@@ -1008,11 +1008,22 @@ export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
  * cliff-straddle the facet metric skips. Fine-scanned visibility so a z-order swap mid-overlap also
  * ends the run cleanly. In-sheet only: no wall, no double vertex ⇒ watertightness + the vertex
  * certification are unchanged.
+ *
+ * `extendToRim` (the full pot only): a run END that coincides with a DOMAIN t-rim (t=tLo or t=tHi)
+ * is NOT a dive/emerge occlusion cliff — it is the mesh's declared-OPEN outer boundary — and the
+ * maximal-visible run is occlusion-free right up to it by construction, so the crest is extended ALL
+ * THE WAY to the rim there instead of being trimmed. Trimming a rim end instead leaves the ridge
+ * unstructured over [rim∓endMargin, rim], where a flat base facet bridges r0→r0+relief (the rim-trim
+ * facet — the global-worst chord on the clipped pot). The crest at the rim lands in the ribbon
+ * interior (its own cliffs are ±strandWidth away), so it touches no wall and the rim stays an open
+ * t-rim (boundaryNonRim unchanged). OFF by default so the crossing-window callers (M6a/T2), whose
+ * domain edges are interior window cuts and are meant to stay trimmed, are byte-identical.
  */
 function crestCreasesThroughDiamonds(
   params: CelticKnotCliffParams,
   domain: DomainWindow,
   endMargin: number,
+  extendToRim = false,
 ): CreaseLike[] {
   const { columnCount, strandCount } = params;
   const w = params.strandWidth;
@@ -1030,10 +1041,14 @@ function crestCreasesThroughDiamonds(
   };
   for (let col = 0; col < columnCount; col += 1) {
     for (let s = 0; s < strandCount; s += 1) {
-      const flush = (a0: number, b0: number): void => {
-        // Trim each run's HARD dive/emerge ends so the ridge never lands on the occlusion cliff.
-        const a = a0 + endMargin;
-        const b = b0 - endMargin;
+      const flush = (a0: number, b0: number, aIsRim: boolean, bIsRim: boolean): void => {
+        // Trim each run's HARD dive/emerge ends so the ridge never lands on the occlusion cliff — but
+        // NOT a domain t-rim end (an OPEN mesh boundary, not an occlusion cliff): when `extendToRim`
+        // the crest runs all the way to it, else the un-structured [rim∓endMargin, rim] sliver leaves a
+        // flat r0→r0+relief base facet (the rim-trim facet). The run is occlusion-free up to the rim by
+        // construction, so extending it crosses no wall.
+        const a = aIsRim && extendToRim ? a0 : a0 + endMargin;
+        const b = bIsRim && extendToRim ? b0 : b0 - endMargin;
         if (b - a < 5e-4) return; // too short to structure
         creases.push({
           tRange: [a, b],
@@ -1046,18 +1061,21 @@ function crestCreasesThroughDiamonds(
       // maximal visible runs from a fine scan (boundaries are the strand's dive/emerge points)
       const nStep = Math.max(4, Math.ceil(spanT / ST));
       let runA: number | null = null;
+      let runAIsRim = false; // did this run OPEN on the bottom domain t-rim (visible from t=tLo)?
       let prevVis = false;
       for (let i = 0; i <= nStep; i += 1) {
         const t = domain.tLo + spanT * (i / nStep);
         const vis = visibleAt(col, s, t);
-        if (vis && !prevVis) runA = i === 0 ? domain.tLo : t;
-        else if (!vis && prevVis && runA !== null) {
-          flush(runA, t);
+        if (vis && !prevVis) {
+          runA = i === 0 ? domain.tLo : t;
+          runAIsRim = i === 0;
+        } else if (!vis && prevVis && runA !== null) {
+          flush(runA, t, runAIsRim, false); // this end is a dive occlusion boundary — always trimmed
           runA = null;
         }
         prevVis = vis;
       }
-      if (runA !== null) flush(runA, domain.tHi);
+      if (runA !== null) flush(runA, domain.tHi, runAIsRim, true); // reaches the top domain t-rim
     }
   }
   return creases;
@@ -1070,6 +1088,14 @@ function crestCreasesThroughDiamonds(
  * `2·strandWidth`), so a crease never enters an overlap diamond and thus NEVER crosses another
  * crease or cliff — the mesh stays a planar PSLG with no crease-crossing planarization needed.
  * Inside the diamonds the crest is carried by the base grid + junction pinch (already M3-proven).
+ *
+ * `extendToRim` (the full-pot clip path): a run END on a DOMAIN t-rim (t=tLo/tHi) is the mesh's
+ * OPEN outer boundary, not a diamond occlusion edge, so the flank strips are run ALL THE WAY to it
+ * instead of being pulled back by `marginT`. Trimming there leaves the flanks un-structured over
+ * [rim∓marginT, rim], where a coarse base facet spans the rounded flank (the flank half of the
+ * rim-trim facet — with the crest carried to the rim by `crestCreasesThroughDiamonds`, this is what
+ * remains). OFF by default so M5 (crest-clipped strips) and the M6a/T2 crossing-window caller — whose
+ * domain edges are interior cuts meant to stay trimmed — are byte-identical.
  */
 function diamondClippedCreases(
   params: CelticKnotCliffParams,
@@ -1077,6 +1103,7 @@ function diamondClippedCreases(
   marginT: number,
   domain: DomainWindow,
   includeCrest = true,
+  extendToRim = false,
 ): CreaseLike[] {
   const { columnCount, strandCount, strandWidth, tightness } = params;
   const centre = (col: number, strand: number, t: number): number =>
@@ -1094,20 +1121,24 @@ function diamondClippedCreases(
         }
         return true;
       };
-      const runs: Array<[number, number]> = [];
+      const runs: Array<[number, number, boolean, boolean]> = [];
       let runStart = -1;
       for (let t = domain.tLo; t <= domain.tHi + 1e-9; t += STEP) {
         if (clear(t)) {
           if (runStart < 0) runStart = t;
         } else if (runStart >= 0) {
-          runs.push([runStart, t - STEP]);
+          // ends because the strand entered an overlap diamond — an occlusion boundary, NOT a rim
+          runs.push([runStart, t - STEP, runStart <= domain.tLo + 1e-9, false]);
           runStart = -1;
         }
       }
-      if (runStart >= 0) runs.push([runStart, domain.tHi]);
-      for (const [a0, b0] of runs) {
-        const a = a0 + marginT;
-        const b = b0 - marginT;
+      if (runStart >= 0) runs.push([runStart, domain.tHi, runStart <= domain.tLo + 1e-9, true]);
+      for (const [a0, b0, aIsRim, bIsRim] of runs) {
+        // A run END on a domain t-rim is the OPEN mesh boundary; extend the flank strips to it under
+        // `extendToRim` rather than pulling back by `marginT` (else the un-structured band leaves a
+        // coarse flank facet at the rim). A diamond occlusion end stays trimmed.
+        const a = aIsRim && extendToRim ? a0 : a0 + marginT;
+        const b = bIsRim && extendToRim ? b0 : b0 - marginT;
         if (b - a < 0.02) continue; // too short to structure
         for (let k = 1; k < across; k += 1) {
           // The crest (k = across/2, off = 0) is carried THROUGH diamonds by
@@ -1436,9 +1467,12 @@ export function buildCelticKnotFullPotMesh(
   // crest is now a continuous through-diamond mesh edge) and `crestCreasesThroughDiamonds` adds the
   // crest along every visible ridge; the occluded under-strand cliffs it crosses are dropped in-sheet
   // by `weldSoftCliffs`. Otherwise (M5) the crest is a diamond-clipped strip like the flanks.
-  const flankCreases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain, !crestThrough);
+  // In the crest-through/clip path both the crest AND its flank strips run to the domain t-rims
+  // (extendToRim), so the ribbon is fully structured up to the open rim and no coarse base facet
+  // bridges r0→r0+relief there. M5 (crestThrough=false) passes extendToRim=false ⇒ byte-identical.
+  const flankCreases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain, !crestThrough, crestThrough);
   const creases = crestThrough
-    ? [...flankCreases, ...crestCreasesThroughDiamonds(params, domain, opts.crestMarginT ?? CREST_END_MARGIN_T)]
+    ? [...flankCreases, ...crestCreasesThroughDiamonds(params, domain, opts.crestMarginT ?? CREST_END_MARGIN_T, true)]
     : flankCreases;
   // Ribbon u half-width (theta=2π·u): the crest sits at the strand centreline, the cliff edges
   // at ±strandWidth in localU ⇒ ±(strandWidth/(2·columnCount)) in u.
