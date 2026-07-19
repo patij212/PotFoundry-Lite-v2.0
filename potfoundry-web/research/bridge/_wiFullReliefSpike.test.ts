@@ -475,6 +475,90 @@ describe('WaveInterference full-defaults probes (env-gated, session-local)', () 
     }
   );
 
+  it.skipIf(!process.env.PF_WI_ERRORBAKE)(
+    'bake the certifies-at error sidecar for the certified full-defaults artifact',
+    { timeout: 10_800_000 },
+    async () => {
+      const { writeFileSync } = await import('node:fs');
+      const { join } = await import('node:path');
+      const { createFinalArtifactProofSession: mintSession } = await import(
+        '../../src/geometry/targetSolid/finalArtifactProofSession'
+      );
+      const { bakeCertifiesAtErrors } = await import('./_certifiesAtBakeLib');
+      const LADDER_MM = [0.0025, 0.005, 0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64];
+      const startedAt = Date.now();
+      const { angular, outerVertical, innerVertical, stations } = parseWiSpec('10xr288');
+      const { binding } = atlas(WI_FULL_DEFAULTS);
+      const tessellation = tessellateAnnularRadialSolidTargetForCertification(
+        binding,
+        wiDivisions(angular, outerVertical, innerVertical, stations)
+      );
+      const session = mintSession(tessellation.stlBytes);
+      const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+        binding.surfaceComplex
+      );
+      const bake = bakeCertifiesAtErrors(binding, tessellation, target.targetSha256, {
+        ladderMm: LADDER_MM,
+        startLevel: 2,
+        maxDepth: 24,
+        checkSplitsFor: (thresholdMm) => (thresholdMm >= 0.01 ? 20000 : 400),
+        onPatchDone: (patchId, patchTriangles, enclosures) =>
+          console.log(
+            `[probe:wi-errorbake] ${patchId} done tris=${patchTriangles}` +
+              ` enclosures=${enclosures} elapsedMs=${Date.now() - startedAt}`
+          ),
+      });
+      const sorted = Float32Array.from(bake.errors).sort();
+      const quantile = (f: number): number =>
+        sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * f))];
+      const maxMm = sorted[sorted.length - 1];
+      const header = JSON.stringify({
+        magic: 'potscope-error/v1',
+        style: 'WaveInterference',
+        variant: 'certified-defaults',
+        count: bake.errors.length,
+        unitsMm: true,
+        semantics: 'certifies-at-level',
+        ladderMm: LADDER_MM,
+        budgetMm: 0.01,
+        maxDepth: 24,
+        checkSplits: { atOrAboveBudget: 20000, belowBudget: 400 },
+        unconverged: bake.unconvergedCount,
+        unknownChecks: bake.unknownCheckCount,
+        enclosures: bake.enclosureCount,
+        decimalFallbacks: bake.decimalFallbackCount,
+        stats: { maxMm, p50Mm: quantile(0.5), p99Mm: quantile(0.99) },
+        provenance: {
+          targetSha256: target.targetSha256,
+          artifactByteSha256: session.byteSha256,
+          parsedTriangleSetSha256: session.parsedTriangleSetSha256,
+        },
+      });
+      const payload = Buffer.concat([
+        Buffer.from(`${header}\n`, 'utf8'),
+        Buffer.from(bake.errors.buffer, 0, bake.errors.byteLength),
+      ]);
+      const sidecarPath = join(
+        __dirname,
+        '..',
+        'exchange',
+        '_certified_stl',
+        'WaveInterference_defaults_H32_OD30_certified.stl.error.bin'
+      );
+      writeFileSync(sidecarPath, payload);
+      console.log(
+        `[probe:wi-errorbake] wrote ${sidecarPath} tris=${bake.errors.length}` +
+          ` maxMm=${maxMm.toFixed(6)} p99Mm=${quantile(0.99).toFixed(6)}` +
+          ` p50Mm=${quantile(0.5).toFixed(6)} unconverged=${bake.unconvergedCount}` +
+          ` unknownChecks=${bake.unknownCheckCount} enclosures=${bake.enclosureCount}` +
+          ` decimalFallbacks=${bake.decimalFallbackCount} elapsedMs=${Date.now() - startedAt}`
+      );
+      // Independent per-triangle re-derivation of the certificate.
+      expect(bake.unconvergedCount).toBe(0);
+      expect(maxMm).toBeLessThanOrEqual(0.01);
+    }
+  );
+
   it.skipIf(!process.env.PF_WI_SEQ)(
     'composed full-defaults certification attempt (PF_WI_CFG, sequential)',
     { timeout: 3_600_000 },

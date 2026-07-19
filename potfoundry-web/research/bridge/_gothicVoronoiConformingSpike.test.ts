@@ -1075,6 +1075,11 @@ describe('slice-11 probes (env-gated, session-local)', () => {
       // greedy max-refinement of residual enclosures over the SAME compiled
       // per-patch programs the certificate used. Truth stays single-source;
       // this block only orchestrates and serialises.
+      // NOTE (2026-07-19): the certifies-at core was EXTRACTED verbatim to
+      // `_certifiesAtBakeLib.ts` (canonical copy; the WI spike consumes it).
+      // Rewire this block to the lib on its next scheduled bake and validate
+      // against the recorded certified stats (max=budget, p50 2.5 um, 0
+      // unconverged) — do not let the two copies drift.
       const { mkdirSync, writeFileSync } = await import('node:fs');
       const { join } = await import('node:path');
       const { createFinalArtifactProofSession: mintSession } = await import(

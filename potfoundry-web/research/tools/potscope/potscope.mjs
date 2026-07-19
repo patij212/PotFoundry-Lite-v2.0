@@ -454,8 +454,9 @@ function cmdView(args) {
   if (stlPaths.length === 1) {
     const stlPath = stlPaths[0];
     if (errorMode && decimate > 1) {
-      console.error('--error requires --decimate 1: the sidecar indexes every artifact triangle');
-      process.exit(2);
+      console.warn(
+        `note: --error with --decimate ${decimate} subsamples the DISPLAY (every ${decimate}th triangle, sidecar subsampled with the same stride); legend stats remain full-bake fidelity`
+      );
     }
     if (ceramic && decimate > 1) console.warn('note: stride decimation punches holes; ceramic looks best at --decimate 1');
     const outPath = resolve(argValue(args, '--out') ?? stlPath.replace(/\.stl$/i, '.view.html'));
@@ -486,9 +487,10 @@ function cmdView(args) {
       Buffer.from(values.buffer).set(raw.subarray(newline + 1, newline + 1 + errorMeta.count * 4));
       const corners = new Float32Array(parsed.kept * 3);
       for (let t = 0; t < parsed.kept; t += 1) {
-        corners[t * 3] = values[t];
-        corners[t * 3 + 1] = values[t];
-        corners[t * 3 + 2] = values[t];
+        const value = values[t * decimate];
+        corners[t * 3] = value;
+        corners[t * 3 + 1] = value;
+        corners[t * 3 + 2] = value;
       }
       errorCornersB64 = Buffer.from(corners.buffer).toString('base64');
     }
