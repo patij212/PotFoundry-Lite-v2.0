@@ -545,3 +545,71 @@ describe.skip('CelticKnot double-valued mesher (P3b T3: full clipped periodic po
     expect(report.outwardWinding).toBe(true);
   }, 600000);
 });
+
+// ---------------------------------------------------------------------------
+// CCP Task 3 (LOAD-BEARING PROOF — MEASURED NO-GO): close the diamond-corner bridging facet by
+// CREST-CROSSING PLANARIZATION — insert a shared vertex at each over-crest × under-inner-edge crossing
+// (Task 2's `planarizeCrestCrossings`) + split both constraints, so the CDT can't bridge the crest→
+// background step. The shared-vertex primitive is real (core `planarizeCrossings` merge; the skipped
+// GREEN block below drives it), and it FIXES the certifier (single-column clip repro maxCliffDevMm
+// 0.60→0.0004). BUT it does NOT close the facet and is NOT watertight, for a MEASURED, STRUCTURAL reason:
+//
+//   Every one of the 18 default single-column crest×under-inner-edge crossings sits where the
+//   under-inner-edge is OCCLUDED — buried at the over-strand's own crest centreline (measured:
+//   `underInnerOccluded === true` for all 18; the over-crest u EQUALS the under-inner-edge u exactly at
+//   the crossing, i.e. deepest under the over-ribbon). The analytic surface is C0-CONTINUOUS across a
+//   buried inner-edge (the over-ribbon covers BOTH sides), so that span carries no radial step and
+//   cannot be walled. Forcing the arc through it to reach the crossing (the only place the crest can
+//   share its vertex) CRACKS the mesh: single-column clip repro (baseGridU 60, baseGridT 96, across 22,
+//   1 pass) goes boundaryNonRim 0→183 and facetMaxChordMm 0.221→0.449 (worst now at a DIFFERENT corner).
+//   cdt2d itself stays stable (no crash) — the blocker is the buried-gap unwalling, not planarity.
+//
+// The bridging facet is a SHEET-STRUCTURING problem at the VISIBLE emergence corner (the worst triangle
+// is an apex-straddling over-strand FLANK facet: two ~crest-level sheet vertices + one emerging-rail
+// cliff vertex — dumped from the mesh), NOT a shared vertex at the buried crossing. Closing it needs full
+// diamond-corner closure — structure the over-strand flanks through the diamond, planarizing THEIR
+// crossings with the VISIBLE under-strand edges — the P1-deferred "disproportionately hard" work (see
+// UNIVERSAL-001 roadmap + P3c report). The crest-crossing shared vertex, though correct as a primitive,
+// is the WRONG lever for this facet. Full measurements: `.superpowers/sdd/ccp-task-3-report.md`.
+const STYLE_CCP = { ckScale: 1, ckWidth: 0.15, ckRelief: 2, ckGap: 0.02, ckRoundness: 0.5, ckTwist: 0, ckStrands: 3 };
+const OPTS_CCP = { baseGridU: 60, baseGridT: 96, chordTolMm: 0.01, maxRefinePasses: 1, across: 22, clipToVisibleEnvelope: true };
+
+describe('CelticKnot double-valued mesher (CCP T3: crest-crossing planarization)', () => {
+  // ACTIVE — the RED baseline the fix must beat: the single-column clipped pot is watertight and
+  // certified, but the diamond-corner bridging facet at the over1×under2 crossing (worst near u≈0.396,
+  // t≈0.839) sags ~0.22mm, density-INVARIANT. (The dense ISOLATED single-crossing window density-
+  // resolves this to ~0.005mm, so the residual is a full-pot phenomenon — the baseline is measured here.)
+  it('un-planarized: watertight + certified, but the diamond-corner facet is > 0.01mm (RED baseline)', () => {
+    const { report } = buildCelticKnotFullPotMesh(STYLE_CCP, DIMS, OPTS_CCP);
+    // watertight + certified TODAY (the clip pot's non-fidelity gates already pass)
+    expect(report.nonManifold).toBe(0);
+    expect(report.cliffBoundary).toBe(0);
+    expect(report.boundaryNonRim).toBe(0);
+    expect(report.certification.maxCliffDevMm).toBeLessThan(0.01);
+    expect(report.certification.cliffVertsSkipped).toBe(0);
+    // RED: the bridging facet is the sole unmet bar, and it is well above 0.01mm (measured ≈0.22).
+    expect(report.facetMaxChordMm ?? 0).toBeGreaterThan(0.01);
+    // localised at a diamond crossing corner (over1×under2 band ≈ u 0.40 / t 0.84), not at a rim.
+    expect(report.facetMaxT ?? 0).toBeGreaterThan(0.05);
+    expect(report.facetMaxT ?? 1).toBeLessThan(0.95);
+  }, 300000);
+
+  // SKIPPED (DONE_WITH_CONCERNS) — the strict GREEN target, preserved verbatim (never loosened). Un-skip
+  // to REPRODUCE the measured NO-GO: `planarizeCrests` inserts the shared crest×inner-edge vertex, which
+  // drives maxCliffDevMm to ~0.0004 (the primitive works) but CANNOT satisfy the facet/watertight bounds
+  // because the crossing is buried (boundaryNonRim → 183, facetMaxChordMm → ~0.45). See the header + report.
+  describe.skip('planarized (buried-crossing blocker — reproduces the NO-GO)', () => {
+    it('closes the diamond-corner facet < 0.01mm, watertight and certified', () => {
+      const { report } = buildCelticKnotFullPotMesh(STYLE_CCP, DIMS, { ...OPTS_CCP, planarizeCrests: true });
+      // BOUND 1 — watertight (would FAIL: the buried-gap arc extension cannot wall ⇒ boundaryNonRim ≈ 183)
+      expect(report.nonManifold).toBe(0);
+      expect(report.boundaryNonRim).toBe(0);
+      // BOUND 2/3 — certified (the shared vertex DOES achieve this: sheetDev/cliffDev < 0.01, none skipped)
+      expect(report.certification.maxSheetDevMm).toBeLessThan(0.01);
+      expect(report.certification.maxCliffDevMm).toBeLessThan(0.01);
+      expect(report.certification.cliffVertsSkipped).toBe(0);
+      // BOUND 4 — the load-bearing bar: the diamond-corner facet closes < 0.01mm (would FAIL: ≈0.45)
+      expect(report.facetMaxChordMm ?? Infinity).toBeLessThan(0.01);
+    }, 300000);
+  });
+});

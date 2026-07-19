@@ -104,6 +104,16 @@ export function buildDoubleValuedMesh(
   const periodicU = opts.periodicU ?? false;
   const refineCreases = opts.refineCreases ?? false;
   const weldSoftCliffs = opts.weldSoftCliffs ?? false;
+  // CREST-CROSSING PLANARIZATION (CCP T3, gated OFF): a crest CREASE sample that lands EXACTLY on a
+  // cliff sample's (u,t) (a declared crest × under-inner-edge crossing) reuses that cliff point's ONE
+  // cdt2d index instead of pushing a second coincident point — so the crease chain and the cliff chain
+  // MEET at a single shared vertex (a clean planar-PSLG fan) instead of an X-crossing cdt2d silently
+  // drops or a coincident-point pair it degenerates. The over-strand entry (celticKnotMesh.ts) pins the
+  // crest crease sample and the under-inner-edge arc sample to the SAME crossing (u,t), so the merge
+  // fires ONLY at those intended crossings. Read via a cast so `MeshBuildOptions` (a concurrent surface)
+  // is untouched; default OFF ⇒ M1–M6a/T2/M5 are byte-identical (no crease sample coincides with a cliff
+  // sample to 1e-7 in those paths).
+  const planarizeCrossings = (opts as { planarizeCrossings?: boolean }).planarizeCrossings ?? false;
   // The reference-free refine metric skips genuine cliff-straddle samples when soft-welding OR when
   // cliffs are pre-clipped to their visible sub-arcs (T2). `weldSoftCliffs` implies the guard; the
   // explicit `straddleGuard` turns the SAME guard on for the clip path (no soft-weld). M1–M5: false.
@@ -216,7 +226,7 @@ export function buildDoubleValuedMesh(
       : () => 0;
   const POINT_CAP = opts.pointCap ?? 60000; // hard bound on the sampling set (logged, never silent)
   const uPeriod = periodicU ? domain.uMax - domain.uMin : undefined;
-  let result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs);
+  let result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs, planarizeCrossings);
   let m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, straddleGuard);
   let addedSheetPoints = 0;
   let splitCliffEdges = 0;
@@ -231,7 +241,7 @@ export function buildDoubleValuedMesh(
     addedSheetPoints += applyCentroids(gridPts, m.centroidInserts);
     splitCliffEdges += applyCliffSplits(cliffs, m.cliffSplits);
     if (refineCreases) splitCreaseEdges += applyCreaseSplits(creases, m.creaseSplits);
-    result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs);
+    result = assemble(gridPts, cliffs, creases, surface, domain, H, complex.junctions, occlusionAware, oneSidedDelta, periodicU, weldSoftCliffs, planarizeCrossings);
     m = measure(result, dist, chordTolMm, analytic, refineCreases, uPeriod, straddleGuard);
     passes += 1;
   }
@@ -450,6 +460,7 @@ function assemble(
   oneSidedDelta: number,
   periodicU: boolean,
   weldSoftCliffs: boolean,
+  planarizeCrossings: boolean,
 ): Assembled {
   // A cliff sample is SOFT (occluded — the visible over-ribbon is continuous across its locus)
   // when the surface barely jumps there. Its interval carries no real wall, so under
@@ -487,6 +498,15 @@ function assemble(
   // NOT split (regions union across them) and NOT walled — so the buried under-cliff no longer
   // fragments the over-ribbon. Skipped in the wall loop (not counted as `unwalled`).
   const inertEdges = new Set<string>();
+  // CCP T3: (u,t)→cdt2d index of every cliff sample, so a coincident crest-crease sample can REUSE it
+  // (the shared-vertex planarization). The over-strand entry places the crest-crease and the
+  // under-inner-edge arc samples at the SAME crossing (u,t), so only intended crossings collide. Built
+  // only when the merge is enabled (no cost / no behaviour change when OFF).
+  const cliffPtByUT = new Map<string, number>();
+  // 1e-5 tolerance: the crest crease sample (re-derived closed form) and the under-inner-edge arc sample
+  // (P1's segment) agree to ~1e-6 at a crossing (they are equal there by definition), so a 1e-5 bucket
+  // merges them while staying ≫ float noise and ≪ the ~0.011 crest↔edge separation everywhere else.
+  const utKey = (u: number, t: number): string => `${Math.round(u / 1e-5)}:${Math.round(t / 1e-5)}`;
   for (let ci = 0; ci < cliffs.length; ci += 1) {
     const chain: number[] = [];
     let prev = -1;
@@ -516,6 +536,8 @@ function assemble(
         // WELD a kept soft (boundary) point to one single-valued vertex at surface(u,t).
         if (soft[j]) ptWeld[id] = 1;
       }
+      // Record this cliff sample's (u,t) so a coincident crest crease can share its vertex (CCP T3).
+      if (planarizeCrossings) cliffPtByUT.set(utKey(sm.u, sm.t), id);
       chain.push(id);
       if (prev >= 0 && prev !== id) {
         const k = edgeKey(prev, id);
@@ -546,7 +568,14 @@ function assemble(
     for (let j = 0; j < samples.length; j += 1) {
       const sm = samples[j];
       const { u, t } = creaseLike.at(sm.s);
-      const id = pushPt(u, t, null);
+      // CCP T3: at a declared crest × under-inner-edge crossing the crest crease sample coincides EXACTLY
+      // (1e-7) with the under-inner-edge cliff sample the over-strand entry pinned there — REUSE that cliff
+      // point's index so the two constraint chains share ONE vertex (planar-PSLG fan). The shared point is
+      // a cliff split-vertex, so in the over-strand's ribbon region it lifts to that region's one-sided
+      // analytic limit (≈ the crest value at the crossing), and the wall carries the radial step down to the
+      // occluded under-surface — the bridging facet the flat over-region triangle otherwise spans.
+      const merged = planarizeCrossings ? cliffPtByUT.get(utKey(u, t)) : undefined;
+      const id = merged ?? pushPt(u, t, null);
       if (prev >= 0 && prev !== id) {
         edges.push([prev, id]);
         creaseEdgeInfo.set(edgeKey(prev, id), { cr, interval: j - 1 });

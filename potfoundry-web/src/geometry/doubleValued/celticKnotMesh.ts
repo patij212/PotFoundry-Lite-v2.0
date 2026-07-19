@@ -23,6 +23,7 @@ import { buildAnalyticRadiusFn } from '../analyticRadius';
 import { DEFAULT_CELTIC_KNOT, type StyleOptions } from '../types';
 import { buildDoubleValuedMesh } from './doubleValuedMesh';
 import { clipCliffsToVisibleEnvelope, type VisibleEnvelope } from './visibleEnvelope';
+import { planarizeCrestCrossings, type CrestCrossing } from './crestCrossingPlanarize';
 import { toMeshData } from './mesh';
 import { orientMeshForSTL } from '../stlExport';
 import {
@@ -39,6 +40,7 @@ import type {
   JunctionLevelReport,
   JunLike,
   Mesh,
+  MeshBuildOptions,
   MeshReport,
   RefTri,
   SegLike,
@@ -360,6 +362,7 @@ function buildClippedConstraints(
   junctionList: readonly CliffJunction[],
   domain: DomainWindow,
   arcFilter?: (arcSeg: SegLike) => boolean,
+  extendToCrossings?: Map<string, number[]>,
 ): {
   adapted: SegLike[];
   adaptedId: Array<{ column: number; strand: number; side: number }>;
@@ -409,6 +412,17 @@ function buildClippedConstraints(
     // A non-rim end is an occlusion boundary ⇒ snap it onto its crossing junction; a t-rim end stays.
     if (lo > domain.tLo + 1e-9) lo = snapEnd(arc.column, arc.strand, arc.side, lo);
     if (hi < domain.tHi - 1e-9) hi = snapEnd(arc.column, arc.strand, arc.side, hi);
+    // CCP T3 (gated): EXTEND an occlusion-boundary end into the buried gap to the crest×inner-edge
+    // crossing sitting just beyond it, so the arc reaches the crossing where the over-crest crease
+    // merges. Only extends toward a crossing within one diamond-width of the end.
+    if (extendToCrossings) {
+      const crs = extendToCrossings.get(keyOf(arc.column, arc.strand, arc.side)) ?? [];
+      const GAP = 0.02;
+      for (const tc of crs) {
+        if (tc > hi && tc < hi + GAP && hi < domain.tHi - 1e-9) hi = tc;
+        if (tc < lo && tc > lo - GAP && lo > domain.tLo + 1e-9) lo = tc;
+      }
+    }
     if (hi - lo < 1e-3) continue; // sub-arc too short to mesh meaningfully
     const arcSeg = adaptSegmentToRange(seg, lo, hi);
     if (arcFilter && !arcFilter(arcSeg)) continue; // far strand not participating in this crossing (T2)
@@ -945,6 +959,43 @@ const ckZHeight = (p: CelticKnotCliffParams, col: number, strand: number, t: num
 const ckUOf = (p: CelticKnotCliffParams, col: number, localU: number): number =>
   (col + localU / 2 + 0.5) / p.columnCount;
 
+/**
+ * CCP T3: is strand `s`'s CREST (its centreline ridge) the z-buffer TOP at `t` (no other same-column
+ * strand within `strandWidth` of its centreline sits higher)? Same test `crestCreasesThroughDiamonds`
+ * uses to decide where a crest crease is emitted — so a crossing kept by this filter lands on an
+ * actually-emitted crest run. A crossing whose over-crest is itself occluded produces NO visible
+ * bridging facet (the over-ribbon is buried), so planarizing it is wrong/wasteful.
+ */
+function crestVisibleAt(p: CelticKnotCliffParams, col: number, s: number, t: number): boolean {
+  const cs = ckCentre(p, col, s, t);
+  const zs = ckZHeight(p, col, s, t);
+  for (let k = 0; k < p.strandCount; k += 1) {
+    if (k === s) continue;
+    if (Math.abs(cs - ckCentre(p, col, k, t)) < p.strandWidth && ckZHeight(p, col, k, t) > zs) return false;
+  }
+  return true;
+}
+
+/**
+ * CCP T3: the Task-2 crest × under-inner-edge crossings, filtered to (a) the interior of `domain` and
+ * (b) crossings whose OVER-strand crest is actually VISIBLE at that t (Task 2's flagged concern). Each
+ * returned crossing is a point where the visible over-crest crease geometrically crosses an emerging
+ * under-strand inner-edge cliff — the diamond-corner bridging facet Task 3 targets.
+ */
+function visibleCrestCrossings(
+  params: CelticKnotCliffParams,
+  cliffDims: CliffDims,
+  domain: DomainWindow,
+): CrestCrossing[] {
+  const pl = planarizeCrestCrossings(params, cliffDims, { tLo: domain.tLo, tHi: domain.tHi });
+  return pl.crossings.filter(
+    (c) =>
+      c.t > domain.tLo + 1e-9 &&
+      c.t < domain.tHi - 1e-9 &&
+      crestVisibleAt(params, c.column, c.overStrand, c.t),
+  );
+}
+
 /** Options for {@link buildCelticKnotFullPotMesh} (adds the ribbon strip density knob). */
 export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
   /**
@@ -989,6 +1040,29 @@ export interface CelticKnotFullPotOptions extends CelticKnotMeshOptions {
    * facet chord < 0.01mm EVERYWHERE. OFF by default so M5/M6 stay byte-identical.
    */
   clipToVisibleEnvelope?: boolean;
+  /**
+   * CCP T3 — crest × under-inner-edge planarization on the clipped path. **MEASURED NO-GO — OFF only.**
+   *
+   * Consumes Task-2's `planarizeCrestCrossings`: for each VISIBLE over-crest × under-inner-edge crossing
+   * it EXTENDS the under-inner-edge arc into its buried gap to reach the crossing (`extendToCrossings`)
+   * and SPLITS the over-crest crease there (`crestSplitTs`), so the two constraint chains share ONE
+   * cdt2d vertex (the core `planarizeCrossings` merge — the shared-vertex primitive). The shared vertex
+   * DOES fix the certifier (single-column clip repro `maxCliffDevMm` 0.60→0.0004).
+   *
+   * BUT it does NOT close the diamond-corner bridging facet and it is NOT watertight: every one of the
+   * 18 default single-column crossings sits where the under-inner-edge is OCCLUDED (buried at the
+   * over-strand's crest centreline — measured, `underInnerOccluded=true` for all 18). The surface is
+   * C0-continuous across a buried inner-edge (the over-ribbon covers both sides), so that span carries no
+   * radial step and cannot be walled — forcing an arc through it cracks the mesh (single-column clip
+   * repro: `boundaryNonRim` 0→183, `facetMaxChordMm` 0.221→0.449 at a DIFFERENT corner). The bridging
+   * facet is a SHEET-structuring problem at the VISIBLE emergence corner, not a shared vertex at the
+   * buried crossing. Closing it needs full diamond-corner closure (structure the over-strand FLANKS
+   * through the diamond, planarizing their crossings with the VISIBLE under-strand edges) — the deferred
+   * "disproportionately hard" work — not this crest-crossing shared vertex. See `.superpowers/sdd/
+   * ccp-task-3-report.md`. Kept gated OFF (byte-identical) so the finding is reproducible (the skipped
+   * CCP-T3 test un-skips onto it); DO NOT enable in production.
+   */
+  planarizeCrests?: boolean;
 }
 
 /**
@@ -1024,6 +1098,7 @@ function crestCreasesThroughDiamonds(
   domain: DomainWindow,
   endMargin: number,
   extendToRim = false,
+  splitTs?: Map<string, number[]>,
 ): CreaseLike[] {
   const { columnCount, strandCount } = params;
   const w = params.strandWidth;
@@ -1050,13 +1125,24 @@ function crestCreasesThroughDiamonds(
         const a = aIsRim && extendToRim ? a0 : a0 + endMargin;
         const b = bIsRim && extendToRim ? b0 : b0 - endMargin;
         if (b - a < 5e-4) return; // too short to structure
-        creases.push({
-          tRange: [a, b],
-          at: (sPar: number) => {
-            const t = a + (b - a) * clamp01(sPar);
-            return { u: ckUOf(params, col, ckCentre(params, col, s, t)), t };
-          },
-        });
+        // CCP T3 (gated): split the run at each crest × under-inner-edge crossing t in (a,b), so the
+        // crossing is a crease-sample ENDPOINT — its (u,t) = (crest u at that t) EXACTLY matches the
+        // extended under-inner-edge arc's crossing sample (formula identity), so the core merges them onto
+        // one shared vertex. Without `splitTs` the whole run is one crease (byte-identical).
+        const cuts = (splitTs?.get(`${col}:${s}`) ?? []).filter((tc) => tc > a + 1e-6 && tc < b - 1e-6).sort((x, y) => x - y);
+        const bounds = [a, ...cuts, b];
+        for (let seg = 0; seg + 1 < bounds.length; seg += 1) {
+          const aa = bounds[seg];
+          const bb = bounds[seg + 1];
+          if (bb - aa < 5e-4) continue;
+          creases.push({
+            tRange: [aa, bb],
+            at: (sPar: number) => {
+              const t = aa + (bb - aa) * clamp01(sPar);
+              return { u: ckUOf(params, col, ckCentre(params, col, s, t)), t };
+            },
+          });
+        }
       };
       // maximal visible runs from a fine scan (boundaries are the strand's dive/emerge points)
       const nStep = Math.max(4, Math.ceil(spanT / ST));
@@ -1416,6 +1502,20 @@ export function buildCelticKnotFullPotMesh(
   const domain: DomainWindow = { uMin: 0, uMax: 1, tLo: T_LO, tHi: T_HI };
   const window: Window = { domain, tPeak: (T_LO + T_HI) / 2 };
 
+  // CCP T3 (gated OFF; clip path only): the visible crest × under-inner-edge crossings, and the map of
+  // which under-inner-edge arcs must EXTEND into their buried gap to reach a crossing (so the over-crest
+  // crease can merge onto a shared cliff vertex there). Empty when the flag is off ⇒ byte-identical.
+  const planarizeCrests = clip && (opts.planarizeCrests ?? false);
+  const crestCrossings = planarizeCrests ? visibleCrestCrossings(params, cliffDims, domain) : [];
+  const extendToCrossings = new Map<string, number[]>(); // under-inner-edge arc → crossing t's to extend to
+  const crestSplitTs = new Map<string, number[]>(); // over-strand crest run → crossing t's to split at
+  for (const c of crestCrossings) {
+    const ek = `${c.column}:${c.underStrand}:${c.underSide}`;
+    (extendToCrossings.get(ek) ?? extendToCrossings.set(ek, []).get(ek)!).push(c.t);
+    const ck = `${c.column}:${c.overStrand}`;
+    (crestSplitTs.get(ck) ?? crestSplitTs.set(ck, []).get(ck)!).push(c.t);
+  }
+
   // ALL columns' ribbon-background edges → normalized-u segs; crossings → seg-index junctions.
   const ribbonSegs = complex.segments.filter((s) => s.kind === 'ribbon-background');
   const adapted: SegLike[] = [];
@@ -1431,7 +1531,14 @@ export function buildCelticKnotFullPotMesh(
     // occlusion boundary is snapped onto its declared crossing junction so the clipped arc terminates
     // there and the M3 junction pinch + M4 one-sided-limit wall close it watertight.
     const env = clipCliffsToVisibleEnvelope(params, cliffDims);
-    const clipped = buildClippedConstraints(env, ribbonSegs, complex.junctions, domain);
+    const clipped = buildClippedConstraints(
+      env,
+      ribbonSegs,
+      complex.junctions,
+      domain,
+      undefined,
+      planarizeCrests ? extendToCrossings : undefined,
+    );
     adapted.push(...clipped.adapted);
     adaptedId.push(...clipped.adaptedId);
     junctions.push(...clipped.junctions);
@@ -1472,7 +1579,7 @@ export function buildCelticKnotFullPotMesh(
   // bridges r0→r0+relief there. M5 (crestThrough=false) passes extendToRim=false ⇒ byte-identical.
   const flankCreases = diamondClippedCreases(params, across, opts.creaseMarginT ?? 0.004, domain, !crestThrough, crestThrough);
   const creases = crestThrough
-    ? [...flankCreases, ...crestCreasesThroughDiamonds(params, domain, opts.crestMarginT ?? CREST_END_MARGIN_T, true)]
+    ? [...flankCreases, ...crestCreasesThroughDiamonds(params, domain, opts.crestMarginT ?? CREST_END_MARGIN_T, true, planarizeCrests ? crestSplitTs : undefined)]
     : flankCreases;
   // Ribbon u half-width (theta=2π·u): the crest sits at the strand centreline, the cliff edges
   // at ±strandWidth in localU ⇒ ±(strandWidth/(2·columnCount)) in u.
@@ -1511,11 +1618,14 @@ export function buildCelticKnotFullPotMesh(
       // under-strand edges are ABSENT (nothing to soft-weld) — but the analytic-chord refine loop still
       // needs the straddle guard for the genuine (visible) ribbon↔background cliffs it must skip. M5/M6
       // (clip off): `weldSoftCliffs: crestThrough`, no straddle guard — byte-identical.
-      weldSoftCliffs: crestThrough && !clip,
+      weldSoftCliffs: (crestThrough && !clip) || planarizeCrests,
       straddleGuard: clip,
       seedPoints: clip ? undefined : seedPoints,
       pointCap: 400000,
-    },
+      // CCP T3 (gated): merge a crest-crease sample onto the coincident extended-inner-edge cliff vertex
+      // at each crossing (the shared-vertex planarization). OFF ⇒ byte-identical.
+      planarizeCrossings: planarizeCrests,
+    } as MeshBuildOptions & { planarizeCrossings?: boolean },
     stats,
   );
 
