@@ -1351,7 +1351,10 @@ const MAX_ANGULAR_DIVISIONS_LOG2 = 12;
 const MAX_VERTICAL_DIVISIONS_LOG2 = 10;
 const MAX_LADDER_LOG2_DENOMINATOR = 20;
 const MAX_LADDER_STATIONS = 4_097;
-const MAX_REFERENCE_TRIANGLES = 2_097_152;
+// Envelope v5b (2026-07-19): the Gyroid gentle-soft cap-point probe (walls
+// 2 x 1,048,576 at the per-patch hard cap + laddered bottoms) totals
+// 2,410,496 reference triangles; x2 keeps the usual headroom.
+const MAX_REFERENCE_TRIANGLES = 4_194_304;
 
 interface ResolvedStations {
   readonly log2Denominator: number;

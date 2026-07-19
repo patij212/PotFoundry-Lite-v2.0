@@ -940,3 +940,44 @@ PF_WI_TRICOUNT / PF_WI_AXIS / PF_WI_PP with PF_WI_CFG+PF_WI_BUDGET_UM /
 PF_WI_GO / PF_WI_SEQ / PF_WI_STL). The refusal-names-the-value bisection
 (max-depth refusals report the true pointwise residual, pm-ceiling
 quantised) did the pinning; potscope ledgered every probe line.
+
+## Addendum 22 — GyroidManifold gentle: the wall MEASURED and NAMED under v5 (2026-07-19, executor)
+
+**Verdict: NOT certifiable under envelope v5 at gentle params (relief 0.25,
+edge fade 1) — walls demand ~850–1,900 rows at 2¹⁰ angular ⇒ 1.7–3.9 M
+triangles PER WALL ⇒ envelope v6.** The U1 exit's honest branch: attempted
+at the v5 cap point (walls 2 × 1,048,576 — 4× beyond the old "262k" claim),
+wall named with converged brackets and a measured response exponent.
+Spike: `research/bridge/_gyroidV5Spike.test.ts`.
+
+**Measured demand map:**
+- a10w7 (2¹⁰ × 128 rows + v1-laddered bottoms, 707k tris): three +1 pm
+  crossing-contour refusals; TRUE wall sup ∈ (100, 160] µm (soft).
+- a10w9b6 (walls at the per-patch hard cap, 2.41 M total — needed the
+  **v5b** raises: tessellator MAX_REFERENCE_TRIANGLES and proof-side
+  HARD_MAX_TOTAL_MAPPED_TRIANGLES both 2,097,152 → 4,194,304):
+  wall sup ∈ (20, 30] µm.
+- Response exponent p = log(sup₁₂₈/sup₅₁₂)/log 4 ∈ (0.87, 1.5) — crease-
+  class, NOT h² sag: the relief lives on a narrow |value| ≤ threshold ridge
+  network (~0.02–0.06 wide in parameter space); a Hermite bump this narrow
+  behaves like a crease until h ≪ ridge width.
+- **Sharpness is NOT the wall mechanism**: gm_sharpness 0.1 → 1.0 collapsed
+  bottom-top from >120 µm to a converged 9,498,540 pm (the shoulder fix) but
+  left the walls essentially unchanged (>100 µm at 128 rows). The wall cost
+  is the ridge network itself.
+- bottoms/rim/drain all pass at gentle-soft (9.485 / 1.244 / 8.133 / 0.101
+  µm) — walls are the entire remaining bill.
+
+**Traps re-confirmed for the playbook:** lesson #1 (crossing-contour "+1 pm
+at max depth" readings) cost three probe rounds before re-reading it — the
+WI knife-edge (values genuinely AT budget, bisection converges just above)
+and the Gyroid crossing (every budget refuses budget+1 pm, sup far higher)
+are distinguished ONLY by whether a modestly-raised budget converges.
+
+**Envelope v6 bill if/when Gyroid-gentle is wanted** (not spent tonight —
+compute grows real): per-patch triangles 1,048,576 → ~4 M, totals → ~8 M,
+per-patch work cells beyond 6 M, proof cells ~15–30 M, est. 15–45 min runs.
+Alternative levers that AVOID v6: relief ≤ ~0.08 mm fits 512 rows
+(sup scales ~linearly with relief) but is token-thin; or a future
+ridge-aligned graded-station family (the bands smear full-height in t as
+the lattice winds — plain t-bands were checked and do not localise).

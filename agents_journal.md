@@ -7738,3 +7738,17 @@ remaining-elapsed); per-patch evidence is the anchor.
   v5: partition tris ×4, total mapped ×2, structural pools ×2–5 — every
   raise named by a measured trip; defaults untouched. Matrix Addendum 21;
   roadmap addendum; spike `_wiFullReliefSpike.test.ts`.
+
+## 2026-07-19 — Gyroid gentle: wall MEASURED and NAMED under v5/v5b (Claude Fable 5)
+
+- User: "please continue with gyroid." Audit-first campaign in
+  `_gyroidV5Spike.test.ts`: a10w7 (707k) refused; walls density-invariant
+  at practical grids. Re-learned matrix lesson #1 the hard way (three
+  crossing-contour rounds). v5b raises (tessellator + total mapped
+  2,097,152 → 4,194,304) enabled the cap-point probe (walls 2 × 1,048,576).
+- Verdict: gentle walls sup (20,30] µm @ 512 rows / (100,160] µm @ 128
+  rows, exponent p ∈ (0.87,1.5) — the |value|≤threshold ridge network is
+  crease-class; sharpness 1.0 fixes bottoms (>120 µm → 9.485) but not
+  walls. Demand 850–1,900 rows ⇒ 1.7–3.9 M tris/wall ⇒ envelope v6 (a
+  compute-scale decision deliberately not taken unilaterally overnight).
+  U1 exit satisfied in its honest branch. Matrix Addendum 22.

@@ -553,3 +553,18 @@ Corrections this lands on the map:
    demand (generous-budget per-patch magnitudes) → pin by
    refusal-names-the-value bisection → station the kinks → uniform-ladder
    the knife-edge → envelope raises only where a measured trip names them.
+
+## Gyroid addendum (2026-07-19, executor)
+
+**U1's "Gyroid gentle attempted at ≥262k (certified or an honestly-measured
+wall named)" is DONE — wall named.** Attempted at the v5 cap point (walls
+2 × 1,048,576, 4× the old figure, via the v5b total raises): gentle walls
+measure sup ∈ (20, 30] µm at 512 rows / (100, 160] µm at 128 rows, response
+exponent p ∈ (0.87, 1.5) (crease-class ridge network, not h² sag; sharpness
+softening fixes only the bottoms). Demand ≈ 850–1,900 rows ⇒ 1.7–3.9 M
+tris/wall ⇒ **envelope v6**, a deliberate compute-scale decision. The
+"~30 effective angular frequency" claim from the early row does not bind at
+2¹⁰; the vertical ridge network does. Matrix Addendum 22 has the full map.
+Remaining v5-reachable candidates: none certifies new ground tonight —
+the frontier list is now exactly: Gyroid (v6 density), U4 curtain
+complexes (7 layered styles), U2 leftover ops, production-mesh U5 track.
