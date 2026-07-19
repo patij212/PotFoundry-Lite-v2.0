@@ -1,0 +1,243 @@
+// dsRingStrips.ts — CONVERGE-A: UNIFIED STRUCTURED RING-STRIP EMITTER for the DragonScales interior rings.
+//
+// WHY THIS FILE EXISTS (the two measured findings that define it):
+//   S2  (E-2026-07-19-DS-RISER-CLOSE, 008cab1b): the region-kernel constraint RINGS do NOT close the tread — the
+//        long full-circumference u-running riser constraints only PARTIALLY recover in the dense near-ring Delaunay
+//        (subdivFailNonCollinear ~1094), leaving stretches where the ~1mm C0 step is still chorded (TREAD max 0.266).
+//   B   (E-2026-07-19-DS-CONVERGE-B-FLANK, d23b8cbe): the anisotropic (II,I) metric MOVES the near-ring FLANK 3.4x
+//        (0.343 -> 0.102) but FLOORS there — the chord guard splits the metric-LONGEST (across-flank) edge while the
+//        residual sag is ALONG-flank, so it splits the wrong axis and halts.
+//   BOTH verdicts converged on the SAME recommendation: emit ONE STRUCTURED along-ring strip with GUARANTEED
+//   CONNECTIVITY (rows-ALONG each ring / columns-ACROSS the ring) instead of free-Delaunay recovery. The across-ring
+//   columns give exactly the along-flank resolution B's guard could not; a double-valued tread at t=k/8 gives the C0.
+//
+// THE MECHANISM (structured cylinder grid — watertight BY CONSTRUCTION, no recovery, no stitch):
+//   • ALONG-ring ROWS: nU circumferential columns at u=i/nU (full 2pi), the row at each t-station is one closed ring
+//     of nU vertices. When nU is a multiple of 2*scalesPerRow the columns land exactly on the theta-valley u-lattice
+//     (u=m/16 on even rows, (m-0.5)/16 on odd) so a mesh column edge lies ON each valley (no facet chords the valley).
+//   • ACROSS-ring COLUMNS: the vertical (t-running) edges between consecutive t-stations. Their DENSITY near a ring —
+//     graded fine at the tread, coarsening out to the body — is the along-flank resolution (this is B's aniso (II,I)
+//     t-sizing composed as the row schedule: fine across the steep flank, sparse in the smooth body).
+//   • DOUBLE-VALUED TREAD: at each interior stagger ring t=k/8 (k=1..scaleRows-1) the schedule places a PAIR of rows
+//     at t=k/8 -/+ dtHalf (NO row exactly AT the C0 jump). The lower row lifts to r- (row k-1's one-sided limit), the
+//     upper to r+ (row k's) — the SAME one-sided-limit weld pattern as src/geometry/doubleValued (studied read-only:
+//     doubleValuedMesh.getV lifts a cliff vertex to surface(u -/+ delta,t) into its own region). The quad between the
+//     pair IS the near-vertical tread face (r- -> r+ over dz=2*dtHalf*H), EXPLICITLY emitted — never chorded, never
+//     recovered. S2's tread-strip deviation analysis: worst ~ (dtHalfMm - rulerWallEps 5e-4) => dtHalf~0.005 => ~0.0045.
+//   • The u-seam (column i=nU wraps to column 0) welds BY INDEX — one shared column, watertight cylinder.
+//
+// REUSES the src/geometry/doubleValued primitives READ-ONLY (createMesh/addVertex/addTriangle/addQuad/toMeshData) and
+// the one-sided-limit lift pattern; edits NOTHING there. Pure browser-capable arithmetic (no node:/gmsh/WASM/DOM) so
+// it ships exactly like buildMetricMesh. Flag-gated (isDsRingStripsEnabled) + byte-identical off — see index.ts.
+
+import type { AnalyticRadiusFn } from '../../../../../fidelity/analyticSurfaceGate';
+import { createMesh, addVertex, addQuad } from '../../../../../geometry/doubleValued/mesh';
+import { type DsLattice, DEFAULT_DS_LATTICE } from './dsFeatureEdges';
+import type { ConformingOuterWallResult } from '../ConformingOuterWall';
+
+const TAU = 2 * Math.PI;
+
+/** Options for the geometric t-station schedule (the across-ring column layout). All lengths in mm. */
+export interface DsTScheduleOpts {
+  /** DragonScales lattice (default {@link DEFAULT_DS_LATTICE} = 8/16/0.5) — sets the ring t-stations k/scaleRows. */
+  lattice?: DsLattice;
+  /**
+   * Double-tread half-height (mm): each ring gets a row at t=k/8 -/+ treadHalfMm/H. The tread quad spans dz=2*this.
+   * S2: worst tread deviation ~ (treadHalfMm - 5e-4) => 0.005 lands ~0.0045 <= 0.01. Smaller closes tighter but risks
+   * a sub-metric sliver band. Default 0.005.
+   */
+  treadHalfMm?: number;
+  /** How far the graded flank rows fan out from each ring (mm). Covers the FLANK band (0.05-1mm) + margin. Default 1.3. */
+  flankReachMm?: number;
+  /** Max graded flank rows per side of each ring (geometric ladder from the tread outward). Default 20. */
+  flankRows?: number;
+  /** Geometric ratio of the flank ladder (each step = previous * this). Default 1.5. */
+  flankGrade?: number;
+  /** Uniform body-row spacing (mm) filling the gaps between adjacent rings' flank reaches. Default 0.5. */
+  bodyStepMm?: number;
+}
+
+/** Result of {@link buildDsRingStripWall}: an explicit-XYZ structured cylinder mesh + its (u,t) provenance + rims. */
+export interface DsRingStripWall {
+  /** Flat xyz (3 per vertex). */
+  vertices: Float32Array;
+  /** Flat triangle vertex indices (3 per face). */
+  indices: Uint32Array;
+  /** Flat (u,t) per vertex (index-aligned with vertices) — the single-valued provenance (u in [0,1), t in [0,1]). */
+  ut: number[];
+  /** The sorted t-stations (rows) the grid used — diagnostic. */
+  tRows: number[];
+  /** Circumferential column count (nU). */
+  nU: number;
+  /** Ordered t=0 rim vertex indices (ascending u). */
+  bottomRing: number[];
+  /** Ordered t=1 rim vertex indices (ascending u). */
+  topRing: number[];
+}
+
+const RING_EPS = 1e-9;
+
+/**
+ * Build the sorted, de-duplicated t-station schedule (the across-ring COLUMN layout): a double-tread PAIR straddling
+ * every interior stagger ring, a geometric flank ladder fanning out from each ring, and uniform body rows filling the
+ * remaining gaps. t=0 and t=1 are always present (the pot rims). No row is ever placed AT a ring t=k/scaleRows (the C0
+ * jump is bracketed, never sampled).
+ */
+export function buildDsRingTSchedule(H: number, opts: DsTScheduleOpts = {}): number[] {
+  const lat = opts.lattice ?? DEFAULT_DS_LATTICE;
+  const scaleRows = lat.scaleRows;
+  const dtHalf = (opts.treadHalfMm ?? 0.005) / H;
+  const reach = (opts.flankReachMm ?? 1.3) / H;
+  const flankRows = Math.max(1, Math.floor(opts.flankRows ?? 20));
+  const grade = Math.max(1.05, opts.flankGrade ?? 1.5);
+  const bodyStepT = Math.max(1e-6, (opts.bodyStepMm ?? 0.5) / H);
+
+  const raw: number[] = [0, 1];
+  for (let k = 1; k < scaleRows; k++) {
+    const tk = k / scaleRows;
+    // tread pair + geometric flank ladder outward on both sides.
+    let d = dtHalf;
+    let step = dtHalf;
+    raw.push(tk - d, tk + d);
+    for (let j = 0; j < flankRows; j++) {
+      step *= grade;
+      d += step;
+      if (d > reach) break;
+      raw.push(tk - d, tk + d);
+    }
+  }
+  // sort + dedup within a tight epsilon (the tread pair 2*dtHalf apart survives; float dups collapse).
+  raw.sort((a, b) => a - b);
+  const uniq: number[] = [];
+  for (const t of raw) {
+    const tc = t < 0 ? 0 : t > 1 ? 1 : t;
+    if (uniq.length === 0 || tc - uniq[uniq.length - 1] > RING_EPS) uniq.push(tc);
+  }
+  // fill body gaps that exceed the body step (uniform rows keep the smooth-body chord bounded).
+  const out: number[] = [];
+  for (let i = 0; i < uniq.length; i++) {
+    out.push(uniq[i]);
+    if (i + 1 >= uniq.length) break;
+    const a = uniq[i];
+    const b = uniq[i + 1];
+    const gap = b - a;
+    if (gap > bodyStepT * 1.5) {
+      const n = Math.ceil(gap / bodyStepT);
+      for (let m = 1; m < n; m++) out.push(a + (gap * m) / n);
+    }
+  }
+  return out;
+}
+
+/**
+ * Emit the structured DragonScales outer wall: a watertight cylinder grid of `nU` circumferential columns x `tRows`
+ * t-stations, lifted through `rA`. The u-seam welds by index (column nU == column 0). Every quad is the surface strip
+ * between four grid nodes; the double-tread pair in `tRows` makes the near-vertical tread face an EXPLICIT quad.
+ *
+ * @param rA     exact analytic radius r(theta, z) for DragonScales (defaults merged by the caller).
+ * @param H      wall height (mm).
+ * @param nU     circumferential columns (>= 3). Multiple of 2*scalesPerRow => columns land on the theta-valley lattice.
+ * @param tRows  sorted t-stations (from {@link buildDsRingTSchedule} or a metric-driven schedule) — the row layout.
+ */
+export function buildDsRingStripWall(
+  rA: AnalyticRadiusFn,
+  H: number,
+  nU: number,
+  tRows: number[],
+): DsRingStripWall {
+  const cols = Math.max(3, Math.floor(nU));
+  const rows = tRows.length;
+  const mesh = createMesh();
+  const ut: number[] = [];
+  // grid[j*cols + i] = vertex index of (row j, column i). Column `cols` is the periodic image of column 0 (u=1==u=0),
+  // NOT stored — the wrap in the quad loop uses column 0 directly, so the seam is one shared index column.
+  const grid = new Int32Array(rows * cols);
+  for (let j = 0; j < rows; j++) {
+    const t = tRows[j];
+    const z = t * H;
+    for (let i = 0; i < cols; i++) {
+      const u = i / cols;
+      const th = TAU * u;
+      const r = rA(th, z);
+      const id = addVertex(mesh, r * Math.cos(th), r * Math.sin(th), z);
+      grid[j * cols + i] = id;
+      ut.push(u, t);
+    }
+  }
+  // Structured quads: for each cell (row j..j+1, column i..i+1 with i+1 wrapping to 0) emit one quad (two triangles).
+  // addQuad(a,b,c,d) => (a,b,c)+(a,c,d). Order a=（j,i) b=(j,i+1) c=(j+1,i+1) d=(j+1,i) gives outward-consistent winding
+  // for an increasing-t, increasing-u (CCW-from-outside) cylinder; winding is irrelevant to the by-index manifold audit.
+  for (let j = 0; j + 1 < rows; j++) {
+    for (let i = 0; i < cols; i++) {
+      const iN = i + 1 === cols ? 0 : i + 1;
+      const a = grid[j * cols + i];
+      const b = grid[j * cols + iN];
+      const c = grid[(j + 1) * cols + iN];
+      const d = grid[(j + 1) * cols + i];
+      addQuad(mesh, a, b, c, d);
+    }
+  }
+  const bottomRing: number[] = [];
+  const topRing: number[] = [];
+  for (let i = 0; i < cols; i++) {
+    bottomRing.push(grid[i]);
+    topRing.push(grid[(rows - 1) * cols + i]);
+  }
+  return {
+    vertices: new Float32Array(mesh.positions),
+    indices: new Uint32Array(mesh.triangles),
+    ut,
+    tRows,
+    nU: cols,
+    bottomRing,
+    topRing,
+  };
+}
+
+/** Convenience: build the geometric schedule and emit the wall in one call (the wiring entry). */
+export function buildDsRingStripWallGeometric(
+  rA: AnalyticRadiusFn,
+  H: number,
+  nU: number,
+  scheduleOpts: DsTScheduleOpts = {},
+): DsRingStripWall {
+  return buildDsRingStripWall(rA, H, nU, buildDsRingTSchedule(H, scheduleOpts));
+}
+
+/**
+ * Pack a {@link DsRingStripWall} into the {@link ConformingOuterWallResult} contract the region dispatch +
+ * WatertightAssembly consume. The result stores (u,t,0) vertices (the DOWNSTREAM single-valued lift reproduces the
+ * strip xyz exactly — the emitter's t-schedule brackets every C0 jump so no vertex is at a discontinuity), the
+ * structured index buffer, per-face seam flags by u-span (the seam is already welded by index, so seam-adjacent
+ * triangles wrap u=(nU-1)/nU -> 0), and the t=0/t=1 rims. gridVertexCount = the vertex count.
+ *
+ * NOTE: this wall is already a periodic cylinder (u-seam welded by index) with EMERGENT rim counts (nU). Assembly
+ * adoption via `assembleWatertight` (which pairs index-for-index against a `nRing` inner wall) needs the rims
+ * reconciled to that `nRing` — a documented follow-up. The flag is default-off, and the CONVERGE-A measurement scores
+ * the strip mesh DIRECTLY (xyz+indices), so this packing only has to be a valid, watertight ConformingOuterWallResult.
+ */
+export function dsRingStripWallToOuterWall(wall: DsRingStripWall): ConformingOuterWallResult {
+  const nV = wall.ut.length / 2;
+  const vertices = new Float32Array(nV * 3);
+  for (let i = 0; i < nV; i++) {
+    vertices[3 * i] = wall.ut[2 * i];
+    vertices[3 * i + 1] = wall.ut[2 * i + 1];
+    vertices[3 * i + 2] = 0;
+  }
+  const nF = wall.indices.length / 3;
+  const seamTriangles = new Uint8Array(nF);
+  for (let f = 0; f < nF; f++) {
+    const ua = vertices[3 * wall.indices[3 * f]];
+    const ub = vertices[3 * wall.indices[3 * f + 1]];
+    const uc = vertices[3 * wall.indices[3 * f + 2]];
+    if (Math.max(ua, ub, uc) - Math.min(ua, ub, uc) > 0.5) seamTriangles[f] = 1;
+  }
+  return {
+    vertices,
+    indices: wall.indices,
+    seamTriangles,
+    gridVertexCount: nV,
+    bottomRing: wall.bottomRing,
+    topRing: wall.topRing,
+  };
+}

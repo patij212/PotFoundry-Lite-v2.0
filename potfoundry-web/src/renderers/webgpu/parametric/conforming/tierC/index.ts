@@ -42,9 +42,18 @@ import {
   DS_CURVATURE_FINE_STEP,
   DS_CURVATURE_SUBSAMPLES,
 } from './dsFeatureEdges';
-import { isRegionLayerEnabled, isDsRiserEdgesEnabled } from './regionLayerFlag';
-export { isRegionLayerEnabled, isDsRiserEdgesEnabled } from './regionLayerFlag';
+import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled } from './regionLayerFlag';
+export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled } from './regionLayerFlag';
 export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
+import { buildDsRingStripWallGeometric, dsRingStripWallToOuterWall } from './dsRingStrips';
+export {
+  buildDsRingStripWall,
+  buildDsRingStripWallGeometric,
+  buildDsRingTSchedule,
+  dsRingStripWallToOuterWall,
+  type DsRingStripWall,
+  type DsTScheduleOpts,
+} from './dsRingStrips';
 
 export {
   countJunctionNodes,
@@ -409,7 +418,17 @@ export interface RegionOuterWallParams {
    */
   riserSamplesPerRing?: number;
   riserHalfMm?: number;
+  /**
+   * DragonScales only, CONVERGE-A structured ring-strip circumferential column count (nU). Only consulted when the
+   * {@link isDsRingStripsEnabled} sub-flag is on. A multiple of 2*scalesPerRow (=32 at defaults) lands the columns on
+   * the theta-valley u-lattice. Absent => the {@link DS_RING_STRIP_DEFAULT_NU} default. No effect on the default
+   * export path (the flag is off in production).
+   */
+  ringStripNU?: number;
 }
+
+/** Default CONVERGE-A ring-strip circumferential column count (512 = 16*32, valley-aligned at the default DS lattice). */
+export const DS_RING_STRIP_DEFAULT_NU = 512;
 
 /**
  * D-2 region dispatch: when the region layer is ENABLED ({@link isRegionLayerEnabled}) AND `styleId` is a region
@@ -444,6 +463,20 @@ export function buildRegionOuterWall(
   // The graph assumes the DEFAULT DS lattice (8/16/0.5) — the validated recipe + captured production artifact both use
   // defaults; non-default dsScaleRows/dsScalesPerRow would need the lattice plumbed through RegionOuterWallParams (follow-up).
   if (styleId === 'DragonScales') {
+    // CONVERGE-A structured ring-strip emitter (E-2026-07-19-DS-CONVERGE-A) fires ONLY under the narrow default-off
+    // `__pfDsRingStrips` sub-flag (a THIRD gate under __pfRegionLayer + __pfPerfectMesher). When on it BYPASSES the
+    // free-Delaunay region kernel entirely and emits the DS wall as a structured cylinder grid (along-ring rows +
+    // across-ring columns + double-valued tread pairs) — watertight by construction, closing BOTH the tread C0 and
+    // the near-ring flank the two free-Delaunay levers (S2 risers, B aniso) each REFUTED. Off => this branch never
+    // runs and the DS region graph path below is byte-identical to the pre-CONVERGE-A build.
+    if (isDsRingStripsEnabled()) {
+      const wall = buildDsRingStripWallGeometric(
+        params.analyticRA,
+        params.H,
+        params.ringStripNU ?? DS_RING_STRIP_DEFAULT_NU,
+      );
+      return dsRingStripWallToOuterWall(wall);
+    }
     // §V11l riser edges (E-2026-07-19-DS-RISER-CLOSE) fire ONLY under the narrow default-off `__pfDsRiserEdges`
     // sub-flag: the doubled u-running tread rings at t=k/8 close the interior C0 ring risers (baseline chords the
     // ~1mm step ⇒ ring composite MAX ≈ 0.25mm). Off ⇒ graphOpts omits riserEdges ⇒ byte-identical to the pre-riser
