@@ -149,6 +149,60 @@ export function buildFlankToeGraph(
   return { pts, edges, arcs };
 }
 
+/**
+ * §V11l u-running RISER edge family (E-2026-07-19-DS-RISER-CLOSE). The 7 interior stagger-flip rings at
+ * `t = k/scaleRows` (k=1..scaleRows−1) are a genuine C0 radius JUMP: the row-parity flip shifts the scale θ-lattice
+ * by half a scale, so `rOuterDragonScales` is discontinuous across each ring (LOCATE-measured 0.95–1.13mm jump,
+ * INVARIANT as dz→0 ⇒ a true C0 step, not a steep-but-continuous slope). This is the near-HORIZONTAL annular TREAD
+ * where the r⁻ wall (row k−1, below) steps out/in to the r⁺ wall (row k, above). A single-valued radial mesh cannot
+ * place a vertex at an intermediate radius AT z_k (rA(θ,z_k) is single-valued = r⁺), and the prior t-running edge
+ * families (θ-valley, flank-toe) are ORTHOGONAL to a t=const tread ⇒ leave it chorded (E-DS-THETAEDGE / E-DS-FLANKTOE
+ * both left the ring MAX byte-unmoved; E-DS-PERP-MAX measured the residual ring composite MAX ≈ 0.25mm).
+ *
+ * The cure is a DOUBLED u-running (horizontal, t=const) edge ring straddling each stagger ring — one BELOW at
+ * `t = k/R − dtHalf` (its vertices sample the row-(k−1) limit r⁻) and one ABOVE at `t = k/R + dtHalf` (sample the
+ * row-k limit r⁺). The Delaunay strip the kernel builds between the pair BECOMES the tread face (r⁻→r⁺ over a thin
+ * z-band 2·dtHalf) instead of a single flat facet chording the whole 1mm step. `dtHalfMm` sets the strip half-height:
+ * the strip's worst deviation from the true tread ≈ (dtHalfMm − rulerWallEps), so `dtHalfMm ≈ 0.005mm` lands the
+ * ring composite ~0.0045mm ≤ 0.01 (rulerWallEps = 5e-4 is the V11g composite wall band). Each ring is `nUper`+1
+ * collinear points across u∈[0,1] (endpoints on both seam columns), chained by u-running edges. NO vertical strip
+ * edges — the Delaunay + metric split connects the pair directly (the two rings are ~0.01mm apart in z, far closer
+ * than any body vertex) and the metric refines the u-resolution to body density; explicit ~0.01mm vertical
+ * constraints would only risk recovery folds. The endpoints at u=0/u=1 are mirrored onto both seam columns by
+ * {@link seamSymmetrizeGraph} (bijection preserved); the rings are strictly t-interior (k/R ∈ [1/8,7/8], off the
+ * locked t-rims) and sit in the ~0.01-in-t GAP between adjacent row-bands' θ/toe graphs (t-inset 1.3mm) ⇒ they cross
+ * NO existing constraint edge.
+ */
+export function buildRiserEdgeGraph(
+  H: number,
+  nUper: number,
+  dtHalfMm: number,
+  lat: DsLattice = DEFAULT_DS_LATTICE,
+): FeatureGraph & { rings: number } {
+  const pts: number[] = [];
+  const edges: number[] = [];
+  const { scaleRows } = lat;
+  const dtHalf = dtHalfMm / H;
+  const nU = Math.max(2, Math.floor(nUper));
+  let rings = 0;
+  for (let k = 1; k < scaleRows; k++) {
+    const tk = k / scaleRows;
+    for (const side of [-1, 1] as const) {
+      const t = tk + side * dtHalf;
+      let prev = -1;
+      for (let j = 0; j <= nU; j++) {
+        const u = j / nU; // includes u=0 and u=1 (seam endpoints → seamSymmetrizeGraph mirrors both columns).
+        const pos = pts.length / 2;
+        pts.push(u, t);
+        if (prev >= 0) edges.push(prev, pos);
+        prev = pos;
+      }
+      rings++;
+    }
+  }
+  return { pts, edges, rings };
+}
+
 /** Merge two constraint graphs (offset the second's edge indices by the first's vertex count). Verbatim port. */
 export function mergeGraphs(a: FeatureGraph, b: FeatureGraph): FeatureGraph {
   const off = a.pts.length / 2;
@@ -237,6 +291,20 @@ export interface DsConformingGraphOpts {
   clipEps?: number;
   /** DragonScales lattice (default {@link DEFAULT_DS_LATTICE} = 8/16/0.5). */
   lattice?: DsLattice;
+  /**
+   * §V11l RISER EDGES (E-2026-07-19-DS-RISER-CLOSE): add the doubled u-running (t=const) edge rings straddling each
+   * interior stagger ring (t=k/R±riserHalfMm) so the Delaunay strip between the pair becomes the near-horizontal
+   * TREAD face instead of chording the ~1mm C0 step (see {@link buildRiserEdgeGraph}). Default FALSE ⇒ the composed
+   * graph is byte-identical to the pre-riser build (the riser generator is never called). Set true only via the DS
+   * region dispatch's default-off riser sub-flag (measurement); production leaves it off.
+   */
+  riserEdges?: boolean;
+  /** With {@link riserEdges}: u-stations per riser ring (default 128 — the metric refines finer via the chord/κ
+   *  split; the constraint just establishes the ring so the strip is a tread, not a chord). */
+  riserSamplesPerRing?: number;
+  /** With {@link riserEdges}: strip half-height in mm (default 0.005 — worst tread deviation ≈ riserHalfMm − 5e-4
+   *  ⇒ ~0.0045mm ≤ 0.01 at the V11g composite wall band; smaller closes tighter but risks a sub-metric sliver band). */
+  riserHalfMm?: number;
 }
 
 /**
@@ -318,7 +386,13 @@ export function buildDragonScalesConformingGraph(H: number, opts: DsConformingGr
     opts.flankEndEpsMm ?? 0.04,
     lat,
   );
-  const combo = mergeGraphs({ pts: theta.pts, edges: theta.edges }, { pts: toe.pts, edges: toe.edges });
+  let combo = mergeGraphs({ pts: theta.pts, edges: theta.edges }, { pts: toe.pts, edges: toe.edges });
+  // §V11l RISER EDGES (opt-in, default OFF ⇒ byte-identical): doubled u-running rings straddling each interior
+  // stagger ring so the strip between them is the tread face, not a chord across the ~1mm C0 step.
+  if (opts.riserEdges === true) {
+    const riser = buildRiserEdgeGraph(H, opts.riserSamplesPerRing ?? 128, opts.riserHalfMm ?? 0.005, lat);
+    combo = mergeGraphs(combo, { pts: riser.pts, edges: riser.edges });
+  }
   // Dense seam rail on u=0 (symmetrize mirrors it to u=1) so the locked seam column resolves the wrap-triangle chord.
   const railN = opts.seamRailSamples ?? 512;
   const withRail = railN >= 2 ? mergeGraphs(combo, buildSeamRail(railN)) : combo;

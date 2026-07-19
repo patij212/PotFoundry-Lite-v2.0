@@ -38,11 +38,12 @@ import type { AnalyticRadiusFn } from '../../../../../fidelity/analyticSurfaceGa
 import { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
 import {
   buildDragonScalesConformingGraph,
+  type DsConformingGraphOpts,
   DS_CURVATURE_FINE_STEP,
   DS_CURVATURE_SUBSAMPLES,
 } from './dsFeatureEdges';
-import { isRegionLayerEnabled } from './regionLayerFlag';
-export { isRegionLayerEnabled } from './regionLayerFlag';
+import { isRegionLayerEnabled, isDsRiserEdgesEnabled } from './regionLayerFlag';
+export { isRegionLayerEnabled, isDsRiserEdgesEnabled } from './regionLayerFlag';
 export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
 
 export {
@@ -400,6 +401,14 @@ export interface RegionOuterWallParams {
    * wrap-triangle chord that would otherwise spike true-3D error at the seam. Absent ⇒ the DS default (512).
    */
   seamRailSamples?: number;
+  /**
+   * DragonScales only, MEASUREMENT knobs for the §V11l riser-edge family (E-2026-07-19-DS-RISER-CLOSE). Only consulted
+   * when the {@link isDsRiserEdgesEnabled} sub-flag is on (which is what turns risers on at all); absent ⇒ the riser
+   * generator's own defaults (128 u-stations, 0.005mm half-height). Let a research probe sweep the tread strip
+   * without a rebuild. No effect on the default export path (the flag is off in production).
+   */
+  riserSamplesPerRing?: number;
+  riserHalfMm?: number;
 }
 
 /**
@@ -435,10 +444,18 @@ export function buildRegionOuterWall(
   // The graph assumes the DEFAULT DS lattice (8/16/0.5) — the validated recipe + captured production artifact both use
   // defaults; non-default dsScaleRows/dsScalesPerRow would need the lattice plumbed through RegionOuterWallParams (follow-up).
   if (styleId === 'DragonScales') {
-    const graph = buildDragonScalesConformingGraph(
-      params.H,
-      params.seamRailSamples !== undefined ? { seamRailSamples: params.seamRailSamples } : {},
-    );
+    // §V11l riser edges (E-2026-07-19-DS-RISER-CLOSE) fire ONLY under the narrow default-off `__pfDsRiserEdges`
+    // sub-flag: the doubled u-running tread rings at t=k/8 close the interior C0 ring risers (baseline chords the
+    // ~1mm step ⇒ ring composite MAX ≈ 0.25mm). Off ⇒ graphOpts omits riserEdges ⇒ byte-identical to the pre-riser
+    // DS region graph (the current wired flag-on behavior).
+    const graphOpts: DsConformingGraphOpts = {};
+    if (params.seamRailSamples !== undefined) graphOpts.seamRailSamples = params.seamRailSamples;
+    if (isDsRiserEdgesEnabled()) {
+      graphOpts.riserEdges = true;
+      if (params.riserSamplesPerRing !== undefined) graphOpts.riserSamplesPerRing = params.riserSamplesPerRing;
+      if (params.riserHalfMm !== undefined) graphOpts.riserHalfMm = params.riserHalfMm;
+    }
+    const graph = buildDragonScalesConformingGraph(params.H, graphOpts);
     kernelOpts.injectedPoints = graph.pts;
     kernelOpts.constraintEdges = graph.edges;
     kernelOpts.pinInjected = true;
