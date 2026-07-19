@@ -30,14 +30,16 @@
  *
  * ## Reference scalars (independent of the inserted curve)
  *
- *  • Voronoi  — the extractor traces the categorical border of `voronoiCellId`
- *    (FeatureLineGraph.ts:631). We REPLICATE that exact scalar (hash22/fract/wrap)
- *    and trace it at hi-res via `marchingSquaresLabels` for the EXTRACTION-FIDELITY
- *    reference. For an INDEPENDENT relief-ridge locus we trace the CONTINUOUS
- *    cell-SDF `cellSdf = f2 − f1` zero-band (`cellSdf − vThickness = 0`) via
- *    `marchingSquaresZero` — this is the actual web boundary `rOuterVoronoi` uses
- *    (`web = 1 − smoothstep(0, th, cellSdf)`), so it is the true visible crease,
- *    NOT a re-trace of the extractor's categorical field.
+ *  • Voronoi  — the categorical nearest-cell border (`voronoiCellId`), traced at
+ *    hi-res via `marchingSquaresLabels`, is the EXTRACTION-FIDELITY reference. Both it
+ *    and the web SDF below use the SHIPPING integer PCG2D hash (`integerPcg2dUnitHash`,
+ *    byte-identical to styles.ts `hash22Int` — E-2026-07-10-INTHASH-SWAP 03948af8), so
+ *    they trace the cell layout `rOuterVoronoi` actually raises, NOT the pre-swap float
+ *    `hash22` web (the 0.1031/pcg2d desync the groundTruth canary exists to catch). For
+ *    an INDEPENDENT relief-ridge locus we trace the CONTINUOUS cell-SDF `cellSdf = f2 − f1`
+ *    zero-band (`cellSdf − vThickness = 0`) via `marchingSquaresZero` — the actual web
+ *    boundary `rOuterVoronoi` uses (`web = 1 − smoothstep(0, th, cellSdf)`), the true
+ *    visible crease, NOT a re-trace of the categorical field.
  *
  *  • CelticKnot — the extractor places strand centerlines as smooth analytic
  *    sinusoids (no hash). A genuinely independent reference cannot reuse that
@@ -54,6 +56,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import { rOuterVoronoi, rOuterCelticKnot } from '../geometry/styles';
+import { integerPcg2dUnitHash } from '../geometry/targetSolid/integerPcg2dHash';
 import { DEFAULT_VORONOI, DEFAULT_CELTIC_KNOT } from '../geometry/types';
 import type { StyleOptions } from '../geometry/types';
 import { buildStyleParamPayload } from '../utils/styleParams';
@@ -414,19 +417,29 @@ function measure(spec: StyleSpec, prodLines: FeatureLine[], cfg: FeatureLevelCon
 // VORONOI
 // ─────────────────────────────────────────────────────────────────────────────
 function fract(x: number): number { return x - Math.floor(x); }
-/** WGSL hash22 (f64 replica of FeatureLineGraph.ts:612 / styles.ts hash22). */
-function vHash22(px: number, py: number): [number, number] {
-  let p3x = fract(px * 0.1031);
-  let p3y = fract(py * 0.103);
-  let p3z = fract(px * 0.0973);
-  const d = p3x * (p3y + 33.33) + p3y * (p3z + 33.33) + p3z * (p3x + 33.33);
-  p3x += d; p3y += d; p3z += d;
-  return [fract((p3x + p3y) * p3z), fract((p3x + p3z) * p3y)];
+/**
+ * Voronoi jitter hash — INTEGER-EXACT PCG2D, synced to the SHIPPING surface.
+ * styles.ts `rOuterVoronoi`/`periodicCellularInt` and styles.wgsl `style_voronoi` were
+ * swapped from the pre-swap float `hash22` (fract(px*0.1031)…) to this integer chain in
+ * 03948af8 (E-2026-07-10-INTHASH-SWAP, USER-APPROVED). The float hash rode a DIFFERENT
+ * web than the surface now raises, so tracing it here measured a STALE cell layout —
+ * exactly the 0.1031/pcg2d desync the groundTruth canary exists to catch. We call the
+ * PROVEN shared kernel `integerPcg2dUnitHash` (integerPcg2dHash.ts), byte-identical to
+ * styles.ts `hash22Int` and FeatureLineGraph.ts `hash22Int`, so this reference cannot
+ * drift from the shipping surface again. Inputs are integer neighbour cell coords.
+ */
+function vHash22(cellX: number, cellY: number): readonly [number, number] {
+  return integerPcg2dUnitHash(cellX, cellY);
 }
-/** voronoiCellId — EXACT replica of FeatureLineGraph.ts:631 (the extractor's own
- *  categorical scalar). Packed slots: 0 scale, 1 jitter, 5 z_stretch, 6 pulse. */
+/** voronoiCellId — the categorical nearest-cell border of the CURRENT (integer-hash)
+ *  Voronoi surface: the locus the pre-swap extractor traced, re-derived on the shipping
+ *  cell layout via the integer `vHash22` + the `periodicCellularInt` integer u-wrap
+ *  (styles.ts). EXTRACTION-FIDELITY reference — measured to cover only ~74-76% of the
+ *  visible web ridge, which is why the extractor moved to the continuous web. Packed
+ *  slots: 0 scale, 1 jitter, 5 z_stretch, 6 pulse. */
 function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
   const scale = p[0] > 0 ? p[0] : 8;
+  const periodXInt = Math.max(1, Math.round(scale)); // integer u-period (styles.ts periodicCellularInt)
   const jitter = p[1];
   const stretch = p[5] > 0 ? p[5] : 1;
   const pulse = p[6];
@@ -443,7 +456,7 @@ function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
     for (let nx = -1; nx <= 1; nx++) {
       const nidX = cellIdX + nx;
       const nidY = cellIdY + ny;
-      const wrappedX = ((nidX % scale) + scale) % scale;
+      const wrappedX = ((nidX % periodXInt) + periodXInt) % periodXInt;
       const h = vHash22(wrappedX, nidY);
       const dx = nx + h[0] * jitter - cuX;
       const dy = ny + h[1] * jitter - cuY;
@@ -453,11 +466,13 @@ function voronoiCellId(uWall: number, t: number, p: Float32Array): number {
   }
   return Math.round(bestX) * 4096 + (bestY + 32);
 }
-/** Continuous cell-SDF `f2 − f1` (the WEB boundary `rOuterVoronoi` actually uses):
- *  an INDEPENDENT relief-ridge scalar, NOT the categorical field. cellSdf small ⇒
- *  on a cell border. We trace `cellSdf − vThickness = 0` (the web's smoothstep e1). */
+/** Continuous cell-SDF `f2 − f1` on the CURRENT (integer-hash) surface — the WEB
+ *  boundary `rOuterVoronoi`/`periodicCellularInt` (styles.ts) actually raises; an
+ *  INDEPENDENT relief-ridge scalar, NOT the categorical field. cellSdf small ⇒ on a
+ *  cell border. We trace `cellSdf − vThickness = 0` (the web's smoothstep e1). */
 function voronoiCellSdf(uWall: number, t: number, p: Float32Array): number {
   const scale = p[0] > 0 ? p[0] : 8;
+  const periodXInt = Math.max(1, Math.round(scale)); // integer u-period (styles.ts periodicCellularInt)
   const jitter = p[1];
   const stretch = p[5] > 0 ? p[5] : 1;
   const pulse = p[6];
@@ -473,7 +488,7 @@ function voronoiCellSdf(uWall: number, t: number, p: Float32Array): number {
     for (let nx = -1; nx <= 1; nx++) {
       const nidX = cellIdX + nx;
       const nidY = cellIdY + ny;
-      const wrappedX = ((nidX % scale) + scale) % scale;
+      const wrappedX = ((nidX % periodXInt) + periodXInt) % periodXInt;
       const h = vHash22(wrappedX, nidY);
       const dx = nx + h[0] * jitter - cuX;
       const dy = ny + h[1] * jitter - cuY;

@@ -1743,7 +1743,10 @@ const FAST_OP_PCG2D_X = 26;
 const FAST_OP_PCG2D_Y = 27;
 
 const FAST_REL = 8.881784197001252e-16; // 4 * 2^-52
-const FAST_REL_LIBM = 1.7763568394002505e-15; // 8 * 2^-52
+// Exported for the platform libm ULP guard (libmUlpGuard.test.ts): the screen's
+// soundness rests on the assumption that Math.sin/cos/exp/log/pow/atan2 stay within
+// this relative bound, so an independent test cross-checks the platform against it.
+export const FAST_REL_LIBM = 1.7763568394002505e-15; // 8 * 2^-52
 // Any nonzero computed bound below this magnitude refuses the screen. Above
 // this floor a rounded result can never be exactly zero unless it is truly
 // zero (a zero factor, an error-free-checked exact sum, or an exact libm

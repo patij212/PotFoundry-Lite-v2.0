@@ -1843,6 +1843,109 @@ describe('slice-11 probes (env-gated, session-local)', () => {
     }
   );
 
+  // JUDGE-SIDE ASSERTION for the Gothic certificate (commit 4b301990;
+  // 9,499,997 pm two-sided / 9,999,997 pm plusReserved, 304,808 tris). Every
+  // other Gothic probe in this file only console.logs and expect(true) — the
+  // cert is asserted NOWHERE. This block RUNS the worker-parallel composed proof
+  // (proveFinalStlWithPatchWorkers, the runComposedParallel engine) on the EXACT
+  // certified config (a8w5 chain = the PF_GOTHIC_STL tessellation) and asserts
+  // the picometre bound the certificate claims, so a regression that pushes a
+  // wall over 0.01 mm FAILS instead of printing a number nobody reads. NOTE the
+  // result pm fields are decimal STRINGS (FinalStlPartialCertificationResult),
+  // so compare via BigInt(...). ~590 s × EcoQoS — env-gated OFF by default.
+  it.skipIf(!process.env.PF_GOTHIC_G2)(
+    'Gothic G2: worker-parallel composed proof asserts the certified <= 0.01 mm bound',
+    { timeout: 900_000 },
+    async () => {
+      const ladders = gothicLadderFractions();
+      const angularLadder = rationalStationLadder(8, ladders.angularFractions);
+      const outerVertical = rationalStationLadder(5, ladders.outerVerticalFractions);
+      const innerVertical = rationalStationLadder(5, ladders.innerVerticalFractions);
+      const outerChords = gothicChordsForPatch('outer', angularLadder, outerVertical);
+      const innerChords = gothicChordsForPatch('inner', angularLadder, innerVertical);
+      const { binding, canonicalInput } = atlas('GothicArches', {
+        gaPointiness: 1,
+        gaDiamond: 0,
+        gaRelief: 0.2,
+      });
+      const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
+        angularDivisionsLog2: 8,
+        angularStations: angularLadder,
+        verticalDivisionsLog2ByPatch: {
+          'outer-wall': 5,
+          'inner-wall': 5,
+          'top-rim': 3,
+          'bottom-top': 4,
+          'bottom-under': 4,
+          'drain-wall': 0,
+        },
+        verticalStationsByPatch: {
+          'outer-wall': outerVertical,
+          'inner-wall': innerVertical,
+        },
+        conformingChordsByPatch: {
+          'outer-wall': outerChords,
+          'inner-wall': innerChords,
+        },
+      });
+      // Fast pre-check: confirm we reproduced the certified artifact BEFORE the
+      // ~590 s proof (fails in seconds if the ladder/chord config ever drifts).
+      expect(tessellation.triangleCount).toBe(304808);
+      const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+        binding.surfaceComplex
+      );
+      const programByPatch = new Map(
+        binding.programs.map((program) => [program.patchId, program.programCanonicalJson])
+      );
+      const jobs: ParallelMappedPatchProofJob[] = tessellation.partitions.map(
+        (partition) => {
+          const programCanonicalJson = programByPatch.get(
+            partition.patchId as (typeof binding.programs)[number]['patchId']
+          );
+          if (programCanonicalJson === undefined) {
+            throw new Error(`missing program for partition patch '${partition.patchId}'`);
+          }
+          return {
+            partition,
+            evaluator: compileValidatedResidualEvaluator({
+              targetSha256: target.targetSha256,
+              programCanonicalJson,
+            }),
+            programCanonicalJson,
+          };
+        }
+      );
+      const startedAt = Date.now();
+      const result = await proveFinalStlWithPatchWorkers(
+        tessellation.stlBytes,
+        canonicalInput,
+        target,
+        jobs,
+        {
+          requestedTolerancePm: 10_000_000n,
+          reservedNonGeometricMarginPm: 500_000n,
+          maxElapsedMilliseconds: 590_000,
+          maxTotalWorkCells: 16_000_000,
+          patchProof: { maxWorkCells: 6_000_000, maxDepth: 30 },
+          patchWorkerCount: 6,
+        }
+      );
+      console.log(
+        `[probe:gothic-g2] tris=${tessellation.triangleCount}` +
+          ` geometricTwoSidedUpperPm=${result.geometricTwoSidedUpperPm}` +
+          ` geometryPlusReservedUpperPm=${result.geometryPlusReservedUpperPm}` +
+          ` structural=${result.structural.structurallyValid}` +
+          ` elapsedMs=${Date.now() - startedAt}`
+      );
+      // The certificate: two-sided geometric <= 9,500,000 pm (the geometric
+      // budget = requested 10,000,000 − reserved 500,000) and, with the reserved
+      // non-geometric margin, plusReserved <= 10,000,000 pm (0.01 mm).
+      expect(result.structural.structurallyValid).toBe(true);
+      expect(BigInt(result.geometryPlusReservedUpperPm) <= 10_000_000n).toBe(true);
+      expect(BigInt(result.geometricTwoSidedUpperPm) <= 9_500_000n).toBe(true);
+    }
+  );
+
   it.skipIf(!process.env.PF_SLICE11_VORONOI)(
     'Voronoi bubble under envelope v3 (composed 240s)',
     { timeout: 900_000 },
