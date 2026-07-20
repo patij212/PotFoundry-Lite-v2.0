@@ -99,9 +99,19 @@ function buildCrestRidgeGraph(H: number, nUper: number): FeatureGraph {
   return { pts, edges };
 }
 
+/** Analytic crest-ridge locus samples for the crestSizeOverlay (T2): the scale-center t-cusp lines t=(k+0.5)/8 at
+ * every u station (nUper covers all tips), each forced to `h3DMm`. The ANALYTIC-scoring move — the metric fineness
+ * FOLLOWS the KNOWN cone loci instead of the FD-aliased grid curvature (step 0.0022 smooths the C1 cusp). */
+function buildCrestSizeSamples(nUper: number, h3DMm: number): Array<{ u: number; t: number; h3DMm: number }> {
+  const out: Array<{ u: number; t: number; h3DMm: number }> = [];
+  for (let k = 0; k < SCALE_ROWS; k++) { const t = (k + 0.5) / SCALE_ROWS; for (let j = 0; j < nUper; j++) out.push({ u: j / nUper, t, h3DMm }); }
+  return out;
+}
+
 /** Build the region-kernel DS wall. `crestRidge` (D1b) adds the crest-ridge family, reconstructing the SAME base graph
- * (theta24 + toe16 + seamRail128, seamSymmetrized) as the D1 base so the arms are apples-to-apples. */
-function buildRegionWall(maxPoints: number, crestRidge = false): { rA: AnalyticRadiusFn; xyz: Float32Array; idx: Uint32Array; ut: number[]; tris: number; buildS: number; cpuS: number; graphPts: number } {
+ * (theta24 + toe16 + seamRail128, seamSymmetrized) as the D1 base so the arms are apples-to-apples. `extra` merges
+ * tournament levers (chordSteiner / crestSizeOverlay+crestBandCells) into the kernel opts. */
+function buildRegionWall(maxPoints: number, crestRidge = false, extra: Partial<MetricMeshOpts> = {}): { rA: AnalyticRadiusFn; xyz: Float32Array; idx: Uint32Array; ut: number[]; tris: number; buildS: number; cpuS: number; graphPts: number } {
   const rA = dsRadiusFn() as AnalyticRadiusFn;
   let graph: FeatureGraph;
   if (crestRidge) {
@@ -122,6 +132,7 @@ function buildRegionWall(maxPoints: number, crestRidge = false): { rA: AnalyticR
     injectedPoints: graph.pts, constraintEdges: graph.edges, pinInjected: true, recoverySubdivideCollinear: true,
     curvatureFineStep: FINE_STEP, curvatureSubsamples: SUBSAMPLES,
     chordTolMm: TOL, chordSampleN: 8,
+    ...extra,
   };
   const t0 = Date.now(); const c0 = cpuUsage();
   const mesh = buildMetricMesh(rA, DS_H, opts);
@@ -147,6 +158,33 @@ function revCoverageSplit(
     }
   }
   return { bodyMax: +bMax.toFixed(6), bodyOut: bOut, bodyN: bN, bodyWorstU: +bU.toFixed(4), bodyWorstT: +bT.toFixed(5), ringMax: +rMax.toFixed(6) };
+}
+
+interface Wall { rA: AnalyticRadiusFn; xyz: Float32Array; idx: Uint32Array; ut: number[]; tris: number }
+/** CHEAP tip metric (no BVH): fwd `perFaceTrue3DSag` MAX over BODY facets (dz-to-ring > BODY_CUT_MM) — the worst body
+ * facet IS the scale tip. + slivers + nonMan. The tournament ranks arms on this; rev confirms the contenders. */
+function scoreFwdTip(m: Wall, ringZs: number[]): { fwdMax: number; fwdP99: number; fwdOut: number; fwdN: number; fwdU: number; fwdT: number; pctBelow20: number; minAngle: number; nonMan: number } {
+  const sag = perFaceTrue3DSag(m.ut, m.idx, m.rA, DS_H, { preFilterMm: 0.005 });
+  let fMax = 0, fu = 0, ft = 0, fn = 0; const errs: number[] = [];
+  const nF = m.idx.length / 3;
+  for (let f = 0; f < nF; f++) {
+    if (dzToRing(centroidZ(m.xyz, m.idx, f), ringZs) <= BODY_CUT_MM) continue;
+    fn++; const e = sag.faceErr[f]; errs.push(e);
+    if (e > fMax) { fMax = e; const a = m.idx[3 * f]; fu = m.ut[2 * a]; ft = m.ut[2 * a + 1]; }
+  }
+  errs.sort((x, y) => x - y);
+  const p99 = errs.length ? errs[Math.floor(0.99 * errs.length)] : 0;
+  let out = 0; for (const e of errs) if (e > TOL) out++;
+  const q = triangleQualityDistribution({ vertices: m.xyz, indices: m.idx });
+  const nonMan = m.tris < 5_500_000 ? auditNonManByIndex(m.xyz, m.idx) : -1;
+  return { fwdMax: +fMax.toFixed(6), fwdP99: +p99.toFixed(6), fwdOut: out, fwdN: fn, fwdU: +fu.toFixed(4), fwdT: +ft.toFixed(5), pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3), nonMan };
+}
+/** rev-coverage BODY tip metric (BVH — the ~2min confirm). Call only for a PROMISING arm (fwdMax small). */
+function scoreRevTip(m: Wall, ringZs: number[]): { revMax: number; revOut: number; revU: number; revT: number } {
+  const loc = buildArtifactLocator(m.xyz, m.idx);
+  const rAos = oneSidedRA(m.rA, ringZs, 1e-4) as unknown as AnalyticRadiusFn;
+  const rc = revCoverageSplit(loc, rAos, ringZs, BODY_CUT_MM);
+  return { revMax: rc.bodyMax, revOut: rc.bodyOut, revU: rc.bodyWorstU, revT: rc.bodyWorstT };
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════
@@ -250,5 +288,65 @@ describe('DS HYBRID — region-kernel flank-toe body composed with strip-emitter
       pctBelow20: +q.pctBelow20.toFixed(2), minAngleDeg: +q.minAngleDeg.toFixed(3), nonMan, D1b_REVIVE: revive,
     });
     plog(`[D1b] DONE — D1b_REVIVE=${revive}`);
+  }, 180 * 60 * 1000);
+
+  // ───────────────────────────────────────────────────────────────────────────────────────────
+  // FRONTIER TOURNAMENT on the DS scale-tip CONE APEX (the DOUBLE WALL: strip 0.042 / region 0.040).
+  // PRE-REGISTERED per-arm KILL-CRITERION (committed BEFORE running): an arm CONVERGES iff its tip-population true-3D
+  // MAX (fwd `perFaceTrue3DSag` body-MAX AND, when fwd is promising, rev-coverage body-MAX) reaches ≤0.01 at a bounded
+  // SCREEN budget (≤0.8M pts / ≤~2×L2 tris), with the sag-vs-tris (or sag-vs-target-size) law measured across ≥2
+  // points so "MOVES-BUT-FLOORS" (slope→0 above 0.01) is distinguishable from "CONVERGES" (reaches ≤0.01 or the law
+  // extrapolates to ≤0.01 within ~6.35M tris). WINNER = the arm reaching ≤0.01 at the fewest tris; it alone gets an
+  // HD confirm. All arms sit on the D1b crest-ridge base (the t-cusp RIDGELINE captured; the isolated TIP is what's
+  // left). READ-ONLY src (chordSteiner / crestSizeOverlay are existing MetricMeshOpts levers).
+
+  // T1 — chordSteiner-AT-apex. E-DS-CONVERGE-B refuted chordSteiner for the DISTRIBUTED along-flank but noted "an edge
+  // split can't converge an interior APEX; a Steiner CAN" — the scale tip IS an isolated apex ⇒ untested & indicated.
+  it.skipIf(process.env.PF_DSHYBRID_T1 !== '1')('T1 chordSteiner — Steiner-at-apex on the crest-ridge base', () => {
+    plog(`=== T1 chordSteiner => ${NDJSON} ===`);
+    const ringZs = ringZsArr();
+    const arms: Array<{ tag: string; pts: number }> = [
+      { tag: '400k', pts: 400_000 },
+      { tag: '700k', pts: 700_000 },
+    ];
+    for (const a of arms) {
+      const key = `T1|steiner_${a.tag}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const m = buildRegionWall(a.pts, true, { chordSteiner: true });
+      const f = scoreFwdTip(m, ringZs);
+      plog(`[T1][${a.tag}] pts=${a.pts} tris=${m.tris} build=${m.buildS.toFixed(1)}s cpu=${m.cpuS.toFixed(1)}s fwdTIP MAX=${f.fwdMax} p99=${f.fwdP99} out=${f.fwdOut}/${f.fwdN} @u=${f.fwdU} t=${f.fwdT} dtToCrest=${dtToCrest(f.fwdT).toFixed(5)} | %<20=${f.pctBelow20} minAng=${f.minAngle} nonMan=${f.nonMan}`);
+      const row: Record<string, unknown> = { key, arm: 'chordSteiner', tag: a.tag, pts: a.pts, tris: m.tris, cpuS: +m.cpuS.toFixed(1), fwdTipMax: f.fwdMax, fwdP99: f.fwdP99, fwdOut: f.fwdOut, fwdWorst: { u: f.fwdU, t: f.fwdT, dtToCrest: +dtToCrest(f.fwdT).toFixed(5) }, pctBelow20: f.pctBelow20, minAngle: f.minAngle, nonMan: f.nonMan };
+      if (f.fwdMax <= 0.02) { const r = scoreRevTip(m, ringZs); plog(`[T1][${a.tag}] rev TIP MAX=${r.revMax} out=${r.revOut} @u=${r.revU} t=${r.revT}`); row.revTipMax = r.revMax; row.revOut = r.revOut; row.revWorst = { u: r.revU, t: r.revT }; }
+      row.CONVERGED = (row.fwdTipMax as number) <= TOL && (row.revTipMax === undefined || (row.revTipMax as number) <= TOL);
+      checkpoint(row);
+    }
+    plog('[T1] DONE');
+  }, 180 * 60 * 1000);
+
+  // T2 — exact-analytic cone-slope sizing (the analytic-scoring move): crestSizeOverlay forces the metric fineness to
+  // FOLLOW the KNOWN crest-ridge/tip loci (h3DMm swept) instead of the FD-aliased grid curvature (step 0.0022 smooths
+  // the C1 cusp). The h3DMm sweep at fixed budget IS the convergence law for a sizing arm.
+  it.skipIf(process.env.PF_DSHYBRID_T2 !== '1')('T2 crestOverlay — analytic cone-slope sizing at the tips', () => {
+    plog(`=== T2 crestOverlay => ${NDJSON} ===`);
+    const ringZs = ringZsArr();
+    const PTS = 500_000;
+    const arms: Array<{ tag: string; h: number }> = [
+      { tag: 'h0.05', h: 0.05 },
+      { tag: 'h0.02', h: 0.02 },
+      { tag: 'h0.01', h: 0.01 },
+    ];
+    for (const a of arms) {
+      const key = `T2|overlay_${a.tag}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const overlay = buildCrestSizeSamples(512, a.h);
+      const m = buildRegionWall(PTS, true, { crestSizeOverlay: overlay, crestBandCells: 1 });
+      const f = scoreFwdTip(m, ringZs);
+      plog(`[T2][${a.tag}] h3D=${a.h} pts=${PTS} tris=${m.tris} build=${m.buildS.toFixed(1)}s cpu=${m.cpuS.toFixed(1)}s fwdTIP MAX=${f.fwdMax} p99=${f.fwdP99} out=${f.fwdOut}/${f.fwdN} @u=${f.fwdU} t=${f.fwdT} dtToCrest=${dtToCrest(f.fwdT).toFixed(5)} | %<20=${f.pctBelow20} minAng=${f.minAngle} nonMan=${f.nonMan}`);
+      const row: Record<string, unknown> = { key, arm: 'crestOverlay', tag: a.tag, h3DMm: a.h, pts: PTS, tris: m.tris, cpuS: +m.cpuS.toFixed(1), fwdTipMax: f.fwdMax, fwdP99: f.fwdP99, fwdOut: f.fwdOut, fwdWorst: { u: f.fwdU, t: f.fwdT, dtToCrest: +dtToCrest(f.fwdT).toFixed(5) }, pctBelow20: f.pctBelow20, minAngle: f.minAngle, nonMan: f.nonMan };
+      if (f.fwdMax <= 0.02) { const r = scoreRevTip(m, ringZs); plog(`[T2][${a.tag}] rev TIP MAX=${r.revMax} out=${r.revOut} @u=${r.revU} t=${r.revT}`); row.revTipMax = r.revMax; row.revOut = r.revOut; row.revWorst = { u: r.revU, t: r.revT }; }
+      row.CONVERGED = (row.fwdTipMax as number) <= TOL && (row.revTipMax === undefined || (row.revTipMax as number) <= TOL);
+      checkpoint(row);
+    }
+    plog('[T2] DONE');
   }, 180 * 60 * 1000);
 });
