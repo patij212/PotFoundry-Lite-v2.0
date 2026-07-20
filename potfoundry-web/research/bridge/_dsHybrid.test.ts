@@ -108,10 +108,42 @@ function buildCrestSizeSamples(nUper: number, h3DMm: number): Array<{ u: number;
   return out;
 }
 
+/** The 128 scale-TIP (u,t) apexes (16 scales × 8 rows): even rows u=(m+0.5)/16, odd rows u=m/16, at t=(k+0.5)/8. */
+function scaleTipUts(): Array<{ u: number; t: number }> {
+  const tips: Array<{ u: number; t: number }> = [];
+  for (let k = 0; k < SCALE_ROWS; k++) {
+    const t = (k + 0.5) / SCALE_ROWS;
+    for (let m = 0; m < 16; m++) { let u = (k % 2 === 0 ? (m + 0.5) : m) / 16; u -= Math.floor(u); tips.push({ u, t }); }
+  }
+  return tips;
+}
+
+/** T3 cone-fan: a graded polar fan of pinned SEED points around EACH scale-tip apex — the apex + geometric rings at
+ * radii `radiiMm` (arc-mm), `nAz` azimuths each, mapped arc→u by the local circumference and z→t by H. The graded
+ * density makes the near-apex facets tiny (a cone is ruled ⇒ the azimuthal chord is the residual, which the chord
+ * guard finishes). The EXPLICIT graded geometry the sizing field (T2) and the metric-longest chord guard (T1) both
+ * failed to produce at a point cone. Returns a flat (u,t) list to append to injectedPoints. */
+function buildConeFanPoints(radiiMm: number[], nAz: number): number[] {
+  const out: number[] = [];
+  for (const tip of scaleTipUts()) {
+    const circ = TAU * (40 + 10 * tip.t); // r0(t) ≈ Rb + (Rt-Rb)*t = 40 + 10 t; DS modulation ≈ 1.
+    out.push(tip.u, tip.t); // apex
+    for (const rho of radiiMm) {
+      for (let a = 0; a < nAz; a++) {
+        const phi = (TAU * a) / nAz;
+        let u = tip.u + (rho * Math.cos(phi)) / circ; u -= Math.floor(u);
+        const t = Math.min(1 - 1e-6, Math.max(1e-6, tip.t + (rho * Math.sin(phi)) / DS_H));
+        out.push(u, t);
+      }
+    }
+  }
+  return out;
+}
+
 /** Build the region-kernel DS wall. `crestRidge` (D1b) adds the crest-ridge family, reconstructing the SAME base graph
  * (theta24 + toe16 + seamRail128, seamSymmetrized) as the D1 base so the arms are apples-to-apples. `extra` merges
  * tournament levers (chordSteiner / crestSizeOverlay+crestBandCells) into the kernel opts. */
-function buildRegionWall(maxPoints: number, crestRidge = false, extra: Partial<MetricMeshOpts> = {}): { rA: AnalyticRadiusFn; xyz: Float32Array; idx: Uint32Array; ut: number[]; tris: number; buildS: number; cpuS: number; graphPts: number } {
+function buildRegionWall(maxPoints: number, crestRidge = false, extra: Partial<MetricMeshOpts> = {}, extraInjected: number[] = []): { rA: AnalyticRadiusFn; xyz: Float32Array; idx: Uint32Array; ut: number[]; tris: number; buildS: number; cpuS: number; graphPts: number } {
   const rA = dsRadiusFn() as AnalyticRadiusFn;
   let graph: FeatureGraph;
   if (crestRidge) {
@@ -126,10 +158,13 @@ function buildRegionWall(maxPoints: number, crestRidge = false, extra: Partial<M
   } else {
     graph = buildDragonScalesConformingGraph(DS_H, { seamRailSamples: SEAM_RAIL });
   }
+  // T3 cone-fan: append graded polar-fan seed points AFTER the graph points (constraintEdges index the graph's
+  // positions, unchanged) — extra pinned seeds, no edges (a cone apex is a POINT, resolved by graded density).
+  const injected = extraInjected.length ? graph.pts.concat(extraInjected) : graph.pts;
   const opts: MetricMeshOpts = {
     tolMm: TOL, hMin: 0.02, hMax: HMAX_3D, sizeRes: SIZE_RES, gradeBeta: GRADE_BETA,
     maxPoints, guardManifoldAlways: true,
-    injectedPoints: graph.pts, constraintEdges: graph.edges, pinInjected: true, recoverySubdivideCollinear: true,
+    injectedPoints: injected, constraintEdges: graph.edges, pinInjected: true, recoverySubdivideCollinear: true,
     curvatureFineStep: FINE_STEP, curvatureSubsamples: SUBSAMPLES,
     chordTolMm: TOL, chordSampleN: 8,
     ...extra,
@@ -348,5 +383,35 @@ describe('DS HYBRID — region-kernel flank-toe body composed with strip-emitter
       checkpoint(row);
     }
     plog('[T2] DONE');
+  }, 180 * 60 * 1000);
+
+  // T3 — DISCONTINUITY-FIRST cone-fan primitive (only reached because T1 chordSteiner FLOORED 0.072 and T2
+  // crestSizeOverlay BACKFIRED 1.23). An EXPLICIT graded polar fan of pinned seeds around each of the 128 scale-tip
+  // apexes (apex + geometric rings) makes the near-apex facets tiny by CONSTRUCTION — the graded local geometry the
+  // sizing field (sub-grid-cell limited) and the metric-longest chord guard (halts on an isolated apex) could not
+  // produce. sag-vs-tris across 2 budgets (+ optionally a finer inner ring) tests converge vs floor.
+  it.skipIf(process.env.PF_DSHYBRID_T3 !== '1')('T3 coneFan — injected graded polar fan at each scale-tip apex', () => {
+    plog(`=== T3 coneFan => ${NDJSON} ===`);
+    const ringZs = ringZsArr();
+    const RADII = process.env.PF_DSHYBRID_FANR === 'fine' ? [0.015, 0.035, 0.08, 0.18, 0.4] : [0.03, 0.07, 0.15, 0.3, 0.6];
+    const nAz = process.env.PF_DSHYBRID_FANAZ ? parseInt(process.env.PF_DSHYBRID_FANAZ, 10) : 8;
+    const fan = buildConeFanPoints(RADII, nAz);
+    const arms: Array<{ tag: string; pts: number }> = [
+      { tag: '400k', pts: 400_000 },
+      { tag: '700k', pts: 700_000 },
+    ];
+    const suffix = process.env.PF_DSHYBRID_FANR === 'fine' ? '_fine' : '';
+    for (const a of arms) {
+      const key = `T3|coneFan${suffix}_az${nAz}_${a.tag}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const m = buildRegionWall(a.pts, true, { chordSteiner: true }, fan);
+      const f = scoreFwdTip(m, ringZs);
+      plog(`[T3][${a.tag}${suffix}] fanPts=${fan.length / 2} pts=${a.pts} tris=${m.tris} cpu=${m.cpuS.toFixed(1)}s fwdTIP MAX=${f.fwdMax} p99=${f.fwdP99} out=${f.fwdOut}/${f.fwdN} @u=${f.fwdU} t=${f.fwdT} dtToCrest=${dtToCrest(f.fwdT).toFixed(5)} | %<20=${f.pctBelow20} minAng=${f.minAngle} nonMan=${f.nonMan}`);
+      const row: Record<string, unknown> = { key, arm: 'coneFan', tag: a.tag, fine: suffix === '_fine', nAz, fanPts: fan.length / 2, pts: a.pts, tris: m.tris, cpuS: +m.cpuS.toFixed(1), fwdTipMax: f.fwdMax, fwdP99: f.fwdP99, fwdOut: f.fwdOut, fwdWorst: { u: f.fwdU, t: f.fwdT, dtToCrest: +dtToCrest(f.fwdT).toFixed(5) }, pctBelow20: f.pctBelow20, minAngle: f.minAngle, nonMan: f.nonMan };
+      if (f.fwdMax <= 0.02) { const r = scoreRevTip(m, ringZs); plog(`[T3][${a.tag}${suffix}] rev TIP MAX=${r.revMax} out=${r.revOut} @u=${r.revU} t=${r.revT}`); row.revTipMax = r.revMax; row.revOut = r.revOut; row.revWorst = { u: r.revU, t: r.revT }; }
+      row.CONVERGED = (row.fwdTipMax as number) <= TOL && (row.revTipMax === undefined || (row.revTipMax as number) <= TOL);
+      checkpoint(row);
+    }
+    plog('[T3] DONE');
   }, 180 * 60 * 1000);
 });
