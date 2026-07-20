@@ -198,21 +198,25 @@ function revCoverageSplit(
 interface Wall { rA: AnalyticRadiusFn; xyz: Float32Array; idx: Uint32Array; ut: number[]; tris: number }
 /** CHEAP tip metric (no BVH): fwd `perFaceTrue3DSag` MAX over BODY facets (dz-to-ring > BODY_CUT_MM) — the worst body
  * facet IS the scale tip. + slivers + nonMan. The tournament ranks arms on this; rev confirms the contenders. */
-function scoreFwdTip(m: Wall, ringZs: number[]): { fwdMax: number; fwdP99: number; fwdOut: number; fwdN: number; fwdU: number; fwdT: number; pctBelow20: number; minAngle: number; nonMan: number } {
+function scoreFwdTip(m: Wall, ringZs: number[]): { fwdMax: number; fwdP99: number; fwdOut: number; fwdN: number; fwdU: number; fwdT: number; apexMax: number; apexOut: number; apexN: number; pctBelow20: number; minAngle: number; nonMan: number } {
   const sag = perFaceTrue3DSag(m.ut, m.idx, m.rA, DS_H, { preFilterMm: 0.005 });
-  let fMax = 0, fu = 0, ft = 0, fn = 0; const errs: number[] = [];
+  let fMax = 0, fu = 0, ft = 0, fn = 0, apexMax = 0, apexOut = 0, apexN = 0; const errs: number[] = [];
   const nF = m.idx.length / 3;
   for (let f = 0; f < nF; f++) {
-    if (dzToRing(centroidZ(m.xyz, m.idx, f), ringZs) <= BODY_CUT_MM) continue;
+    const zc = centroidZ(m.xyz, m.idx, f);
+    if (dzToRing(zc, ringZs) <= BODY_CUT_MM) continue;
     fn++; const e = sag.faceErr[f]; errs.push(e);
     if (e > fMax) { fMax = e; const a = m.idx[3 * f]; fu = m.ut[2 * a]; ft = m.ut[2 * a + 1]; }
+    // APEX population: facets whose centroid t is within 0.6mm (in t) of a crest ridgeline — isolates the TIP CONE
+    // residual from the ordinary flank/body curvature (which has its own lever, E-DS-CONVERGE-B aniso).
+    if (dtToCrest(zc / DS_H) < 0.6 / DS_H) { apexN++; if (e > apexMax) apexMax = e; if (e > TOL) apexOut++; }
   }
   errs.sort((x, y) => x - y);
   const p99 = errs.length ? errs[Math.floor(0.99 * errs.length)] : 0;
   let out = 0; for (const e of errs) if (e > TOL) out++;
   const q = triangleQualityDistribution({ vertices: m.xyz, indices: m.idx });
   const nonMan = m.tris < 5_500_000 ? auditNonManByIndex(m.xyz, m.idx) : -1;
-  return { fwdMax: +fMax.toFixed(6), fwdP99: +p99.toFixed(6), fwdOut: out, fwdN: fn, fwdU: +fu.toFixed(4), fwdT: +ft.toFixed(5), pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3), nonMan };
+  return { fwdMax: +fMax.toFixed(6), fwdP99: +p99.toFixed(6), fwdOut: out, fwdN: fn, fwdU: +fu.toFixed(4), fwdT: +ft.toFixed(5), apexMax: +apexMax.toFixed(6), apexOut, apexN, pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3), nonMan };
 }
 /** rev-coverage BODY tip metric (BVH — the ~2min confirm). Call only for a PROMISING arm (fwdMax small). */
 function scoreRevTip(m: Wall, ringZs: number[]): { revMax: number; revOut: number; revU: number; revT: number } {
@@ -413,5 +417,30 @@ describe('DS HYBRID — region-kernel flank-toe body composed with strip-emitter
       checkpoint(row);
     }
     plog('[T3] DONE');
+  }, 180 * 60 * 1000);
+
+  // T3HD — WINNER CONFIRM (cone-fan). T3 screen: fwd tip 0.108@0.80M -> 0.0278@1.40M (converging FASTER than 1/sqrt,
+  // p99 0.0091), worst RELOCATED OFF the apex (dtToCrest 0.032 = mid-flank). Confirm at higher budgets and report the
+  // APEX-cone residual (dtToCrest < 0.6mm) SEPARATELY from the global body max — apexMax isolates whether the cone
+  // itself is closed (the tournament's actual target) vs the ordinary flank (E-DS-CONVERGE-B aniso's lever). Budgets
+  // within ~2xL2 (6.35M tris).
+  it.skipIf(process.env.PF_DSHYBRID_T3HD !== '1')('T3HD — cone-fan winner confirm (apex-cone vs flank)', () => {
+    plog(`=== T3HD coneFan confirm => ${NDJSON} ===`);
+    const ringZs = ringZsArr();
+    const RADII = [0.03, 0.07, 0.15, 0.3, 0.6];
+    const fan = buildConeFanPoints(RADII, 8);
+    const budgets = process.env.PF_DSHYBRID_HDPTS ? process.env.PF_DSHYBRID_HDPTS.split(',').map((s) => parseInt(s, 10)) : [1_000_000, 1_500_000, 2_200_000];
+    for (const pts of budgets) {
+      const key = `T3HD|coneFan_${pts}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const m = buildRegionWall(pts, true, { chordSteiner: true }, fan);
+      const f = scoreFwdTip(m, ringZs);
+      plog(`[T3HD][${pts}] tris=${m.tris} cpu=${m.cpuS.toFixed(1)}s APEX-cone MAX=${f.apexMax} (out=${f.apexOut}/${f.apexN}) | global body MAX=${f.fwdMax} @dtToCrest=${dtToCrest(f.fwdT).toFixed(5)} p99=${f.fwdP99} | %<20=${f.pctBelow20} minAng=${f.minAngle} nonMan=${f.nonMan}`);
+      const row: Record<string, unknown> = { key, arm: 'coneFan-HD', pts, tris: m.tris, cpuS: +m.cpuS.toFixed(1), apexConeMax: f.apexMax, apexOut: f.apexOut, apexN: f.apexN, globalBodyMax: f.fwdMax, globalWorst: { t: f.fwdT, dtToCrest: +dtToCrest(f.fwdT).toFixed(5) }, fwdP99: f.fwdP99, pctBelow20: f.pctBelow20, minAngle: f.minAngle, nonMan: f.nonMan };
+      if (f.apexMax <= 0.02) { const r = scoreRevTip(m, ringZs); plog(`[T3HD][${pts}] rev body MAX=${r.revMax} out=${r.revOut} @t=${r.revT} dtToCrest=${dtToCrest(r.revT).toFixed(5)}`); row.revBodyMax = r.revMax; row.revOut = r.revOut; row.revWorst = { t: r.revT, dtToCrest: +dtToCrest(r.revT).toFixed(5) }; }
+      row.APEX_CONE_CLOSED = f.apexMax <= TOL;
+      checkpoint(row);
+    }
+    plog('[T3HD] DONE');
   }, 180 * 60 * 1000);
 });
