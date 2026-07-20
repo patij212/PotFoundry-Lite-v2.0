@@ -427,11 +427,16 @@ describe('DS HYBRID — region-kernel flank-toe body composed with strip-emitter
   it.skipIf(process.env.PF_DSHYBRID_T3HD !== '1')('T3HD — cone-fan winner confirm (apex-cone vs flank)', () => {
     plog(`=== T3HD coneFan confirm => ${NDJSON} ===`);
     const ringZs = ringZsArr();
-    const RADII = [0.03, 0.07, 0.15, 0.3, 0.6];
-    const fan = buildConeFanPoints(RADII, 8);
+    const fine = process.env.PF_DSHYBRID_FANR === 'fine';
+    const nAz = process.env.PF_DSHYBRID_FANAZ ? parseInt(process.env.PF_DSHYBRID_FANAZ, 10) : 8;
+    // FINE fan: smaller inner radius + an extra inner ring (finer apex cells) — the radius lever the T3 screen showed
+    // moves the apex; tests crossing <=0.01 at a TRACTABLE budget instead of a compute-prohibitive one.
+    const RADII = fine ? [0.008, 0.02, 0.045, 0.1, 0.22, 0.45] : [0.03, 0.07, 0.15, 0.3, 0.6];
+    const fan = buildConeFanPoints(RADII, nAz);
+    const suffix = `${fine ? '_fine' : ''}${nAz !== 8 ? `_az${nAz}` : ''}`;
     const budgets = process.env.PF_DSHYBRID_HDPTS ? process.env.PF_DSHYBRID_HDPTS.split(',').map((s) => parseInt(s, 10)) : [1_000_000, 1_500_000, 2_200_000];
     for (const pts of budgets) {
-      const key = `T3HD|coneFan_${pts}`;
+      const key = `T3HD|coneFan${suffix}_${pts}`;
       if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
       const m = buildRegionWall(pts, true, { chordSteiner: true }, fan);
       const f = scoreFwdTip(m, ringZs);
