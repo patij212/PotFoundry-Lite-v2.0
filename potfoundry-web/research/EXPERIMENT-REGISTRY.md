@@ -10,6 +10,30 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-21-DS-SEAM (S3 / U5.3) — the mesher→partition certification seam for the DS cone-fan mesh: take the PRODUCTION DS mesh (`__pfDsConeFan`) from "geometrically faithful" (DS-COMPOSE) to "judge-certifiable" by `verifyExactDyadicRectanglePartition` (Track A, READ-ONLY). [SCOPE arm; PRE-REGISTERED kill in the probe header.]
+
+**VERDICT: SCOPE COMPLETE — gaps fully localized; NOT YET CLOSED. Judge-accept requires an EMITTER-SIDE PATH-B change (seam-clean + positive-winding emission), NOT a pure converter — and the reason is a hard judge constraint, not a choice: the judge requires each domain triangle ↔ EXACTLY ONE artifact STL triangle (artifactTriangleIndex unique + strictly sorted). A snap+repair converter that seam-SPLITS a wrap triangle produces MULTIPLE domain triangles per artifact triangle ⇒ rejected. So the artifact MESH itself must be emitted seam-clean. The cone-fan's grid columns are already lattice-native (u=i/nU, N=nU·2^k); the two STRUCTURAL gaps are the u-seam WRAP and the FAN NEGATIVE WINDING; zero-area and fan-δ are RESOLUTION-limited (vanish/shrink with N). No judge file edited.**
+
+**LOCALIZATION (cheapest-first discriminator: snap a small cone-fan wall to N=2^bits, feed the judge, sweep N; nU=128, 71,936 tris):**
+| gap | N=2^16 | 2^18 | 2^20 | 2^22 | nature |
+|---|---|---|---|---|---|
+| **#1 wrap** | 562 | 562 | 562 | 562 | **STRUCTURAL** (u-seam; welded-by-index ≠ seam-split) |
+| **orientation (negArea)** | 7618 (fan 7152) | 8626 (fan 8160) | 8626 | 8626 | **STRUCTURAL** (fan winds CW in (u,t) vs grid CCW — latent, masked by the assembly's `orientOutward`) |
+| #3 zero-area | 1024 (all fan) | **0** | 0 | 0 | resolution ⇒ gone at N≥2^18 |
+| #2 fan δ (mm) | 0.005669 | 0.001306 | 0.000322 | 0.000082 | resolution ∝1/N ⇒ **≤0.0003mm at N=2^20** ⇒ path-A-accountable, folds ≪0.01 |
+
+The judge rejects FIRST on orientation ("Triangle 254 is degenerate or not positively oriented") at every N. So even a perfect seam-split would still fail until the fan winding is fixed.
+
+**THE PATH (chosen = B, emitter-side, FORCED by the 1:1 domain↔artifact constraint):** emit a certification-clean cone-fan in `tierC/dsRingStrips.ts` behind a default-off flag: **(a) POSITIVE WINDING** — reverse the fan triangle vertex order so every fan triangle is CCW in (u,t) (= outward normal; a genuine latent-normal-consistency fix, currently masked by `orientOutward`); **(b) SEAM COLUMN** — emit an explicit u=1 column (duplicate of u=0's vertices at u=1, same 3D, welded by index) so the last-column triangles reference u=1 instead of wrapping to u=0 (no wrap triangle); **(c) SEAM-APEX FAN** — the odd-row m=0 apex sits exactly on u=0; its fan straddles the seam, so emit it seam-split (apex duplicated at u=0 and u=1, the ~2 straddling triangles per seam-apex cut at u=0 with a seam vertex) so no fan triangle wraps. Then a THIN path-A adapter (in the probe/labkit) snaps (u,t)→N=2^20 and ACCOUNTS the fan δ (≤0.0003mm) into the downstream geometric bound (folds ≪0.01). The 3D mesh geometry is UNCHANGED by (a)/(b)/(c) — winding is normal-only, the seam column/apex-split are lattice copies of existing vertices — so DS-COMPOSE's whole-mesh 0.0072 does not regress.
+
+**KILL-CRITERION (pre-reg):** S3 CLOSED iff the judge ACCEPTS the cone-fan partition (complete+valid, no wrap, no zero-area, positive orientation, 1:1 artifact) AND (path A) δ folds ≤0.01 AND DS-COMPOSE 0.0072 unchanged. → judge REJECTS (orientation + wrap remain) ⇒ **NOT CLOSED**; the gaps are localized and the path-B emitter build is specified. (Not a wall — tractable; deferred to a focused emitter round per "stop-and-report rather than grind" at the end of a long multi-round session.)
+
+**RECOMMENDATION:** NEXT = build the path-B certification-clean emitter (a/b/c above) in `tierC/dsRingStrips.ts` behind a new default-off flag (e.g. `__pfDsConeFanCert`), TDD (every domain triangle positively oriented + no wrap by construction + seam column is an exact u=0 lattice copy + flag-off byte-identical), GitNexus impact/detect_changes on the emitter, then the thin path-A snap+δ adapter in the probe feeds the judge → target ACCEPT. Judge machinery stays READ-ONLY (Track A); if the build ever needs a judge/targetSolid edit, STOP and escalate (it should not — the 1:1 constraint is satisfiable emitter-side).
+
+**LEDGER:** research-only, NO src edit / NO flag flipped / NO judge file touched. NEW probe `research/bridge/_dsSeam.test.ts` (PF_DSSEAM_SCOPE) + `vitest.dsseam.config.ts` — committed BEFORE running per resilience. Data `research/exchange/_dsSeam/{seam.ndjson,run.log}` (gitignored). Reuses the SRC `buildDsConeFanWallGeometric` (production path) + `verifyExactDyadicRectanglePartition` (READ-ONLY, Track A) + `_ds_prodtruth_lib`. Commit: see below.
+
+---
+
 ## E-2026-07-21-DS-COMPOSE — gate the FULL DragonScales outer wall whole-MESH ≤0.01mm true-3D, composing the cone-fan body (3f2b7462) + CONVERGE-A ring bands (af1544d0) + rims. About the JOINS, not re-measuring the closed parts. [PRE-REGISTERED kill in the probe header before measuring; production-dispatch config.]
 
 **VERDICT: CLOSED — the full DS outer wall meets the whole-mesh 0.01mm true-3D standard, watertight, with EVERY join scored explicitly ≤0.01. NO src change needed: the three joins were already clean BY CONSTRUCTION (the discriminator CONFIRMED the composition rather than requiring a weld/rim-pin fix). Scorecard (production dispatch = src `buildDsConeFanWallGeometric` @ `DS_CONE_FAN_DEFAULT_NU`=4096, 9,420,800 tris, build 2.41s / 1.9s CPU): fwd whole-mesh same-side true-3D MAX 0.007167 (0/9.36M >0.01) · rev-coverage MAX 0.002417 (0/2,457,600 >0.01) · u-seam MAX 0.005232 · full-mesh nonMan-by-index 0 / boundary 8192 = 2×4096 intended rims (cap-free `nonManRawBigStats`; non-vacuous dup-triangle control moves it 0→2) · prod `auditWatertight` (nU1024 twin, topology nU-invariant) nonManifoldEdges 0 / tJunctions 0 / boundary 2048 · slivers %<20°=14.3 / minAngle 1.4° (the separately-named cleanup, out of scope).**
