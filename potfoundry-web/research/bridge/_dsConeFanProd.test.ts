@@ -184,11 +184,12 @@ describe('DS-CONEFAN-PROD — substrate A/B + productionize + verify', () => {
       const t0 = Date.now(); const c0 = cpuUsage();
       const w = buildStripConeFanWall(a.nU, tRows, rA, a.p, a.fan);
       const cpu = cpuUsage(c0); const buildS = (Date.now() - t0) / 1000;
-      // MANIFOLD GATE (by index) + non-vacuous crack control.
+      // MANIFOLD GATE (by index) + NON-VACUOUS control: append a DUPLICATE of triangle 0 ⇒ its 3 edges become
+      // 3-shared ⇒ the non-manifold-edge count MUST increase (a detach-crack only makes BOUNDARY edges, not >2).
       const nm = w.tris < 5_400_000 ? auditNonManByIndex(w.xyz, w.idx) : nonManRawBigStats(w.idx).nonMan;
-      const idx2 = Uint32Array.from(w.idx); const xyz2 = new Float32Array(w.xyz.length + 3); xyz2.set(w.xyz);
-      const nv = w.xyz.length / 3; xyz2[3 * nv] = w.xyz[3 * idx2[0]] + 5; xyz2[3 * nv + 1] = w.xyz[3 * idx2[0] + 1]; xyz2[3 * nv + 2] = w.xyz[3 * idx2[0] + 2]; idx2[0] = nv;
-      const nmCrack = w.tris < 5_400_000 ? auditNonManByIndex(xyz2, idx2) : nonManRawBigStats(idx2).nonMan;
+      const idx2 = new Uint32Array(w.idx.length + 3); idx2.set(w.idx);
+      idx2[w.idx.length] = w.idx[0]; idx2[w.idx.length + 1] = w.idx[1]; idx2[w.idx.length + 2] = w.idx[2];
+      const nmCrack = idx2.length / 3 < 5_400_000 ? auditNonManByIndex(w.xyz, idx2) : nonManRawBigStats(idx2).nonMan;
       plog(`[A][${a.tag}] rows=${tRows.length} tris=${w.tris} fanTris=${w.fanTris} apexCells=${w.apexCells}/128 overlaps=${w.overlaps} build=${buildS.toFixed(2)}s cpu=${(cpu.user + cpu.system) / 1e6}s | nonMan=${nm} crackNonMan=${nmCrack}`);
       const row: Record<string, unknown> = { key, tag: a.tag, nU: a.nU, p: a.p, rows: tRows.length, tris: w.tris, fanTris: w.fanTris, apexCells: w.apexCells, overlaps: w.overlaps, buildS: +buildS.toFixed(2), cpuS: +((cpu.user + cpu.system) / 1e6).toFixed(2), nonMan: nm, crackNonMan: nmCrack };
       if (nm === 0) {
@@ -207,7 +208,58 @@ describe('DS-CONEFAN-PROD — substrate A/B + productionize + verify', () => {
     }
     plog('[A] DONE');
   }, 60 * 60 * 1000);
-});
 
-// reserved for Phase C rev-coverage (winner only).
-void buildArtifactLocator; void oneSidedRA;
+  // PHASE C (verify at the law budget, on the strip-emitter substrate — the ONLY one that reaches it here). Higher nU
+  // + finer fan; WHOLE-BODY fwd true-3D (ring-excluded) AND rev-coverage MAX, apex-cone isolated, nonMan (no Map cap),
+  // slivers, build time. The FIRST whole-body ≤0.01 attempt for DS — scored adversarial-grade. State plainly if it misses.
+  it.skipIf(process.env.PF_CFP_C !== '1')('C verify — whole-body <=0.01 on the strip fan (fwd + rev)', () => {
+    plog(`=== C verify => ${NDJSON} ===`);
+    const rA = dsRadiusFn() as AnalyticRadiusFn;
+    const ringZs = ringZsArr();
+    const nU = process.env.PF_CFP_NU ? parseInt(process.env.PF_CFP_NU, 10) : 4096;
+    const bodyStep = process.env.PF_CFP_BODYSTEP ? parseFloat(process.env.PF_CFP_BODYSTEP) : 0.12;
+    const p = process.env.PF_CFP_P ? parseInt(process.env.PF_CFP_P, 10) : 3;
+    const fan = process.env.PF_CFP_FAN ? process.env.PF_CFP_FAN.split(',').map(Number) : [0.05, 0.12, 0.25, 0.45, 0.7];
+    const key = `C|nU${nU}_bs${bodyStep}_p${p}_f${fan.length}`;
+    if (keyExists(key)) { plog(`[skip] ${key}`); plog('[C] DONE'); return; }
+    const t0 = Date.now(); const c0 = cpuUsage();
+    const w = buildStripConeFanWall(nU, buildCrestAnchoredTRows(bodyStep, 7), rA, p, fan);
+    const cpuD = cpuUsage(c0); const buildS = (Date.now() - t0) / 1000; const cpuS = (cpuD.user + cpuD.system) / 1e6;
+    plog(`[C] nU=${nU} bodyStep=${bodyStep} p=${p} fan=[${fan}] tris=${w.tris} fanTris=${w.fanTris} apexCells=${w.apexCells}/128 overlaps=${w.overlaps} build=${buildS.toFixed(2)}s`);
+    const nm = w.tris < 5_400_000 ? auditNonManByIndex(w.xyz, w.idx) : nonManRawBigStats(w.idx).nonMan;
+    const idx2 = new Uint32Array(w.idx.length + 3); idx2.set(w.idx); idx2[w.idx.length] = w.idx[0]; idx2[w.idx.length + 1] = w.idx[1]; idx2[w.idx.length + 2] = w.idx[2];
+    const nmCrack = idx2.length / 3 < 5_400_000 ? auditNonManByIndex(w.xyz, idx2) : nonManRawBigStats(idx2).nonMan;
+    // fwd whole-body (ring-excluded dz>1mm) + apex-cone isolated.
+    const sag = perFaceTrue3DSag(w.ut, w.idx, rA, DS_H, { preFilterMm: 0.005 });
+    let bodyMax = 0, bodyOut = 0, bodyN = 0, bwT = 0, apexMax = 0, apexOut = 0; const nF = w.idx.length / 3;
+    for (let f = 0; f < nF; f++) {
+      const zc = (w.xyz[3 * w.idx[3 * f] + 2] + w.xyz[3 * w.idx[3 * f + 1] + 2] + w.xyz[3 * w.idx[3 * f + 2] + 2]) / 3;
+      let dzr = 1e9; for (const rz of ringZs) { const d = Math.abs(zc - rz); if (d < dzr) dzr = d; }
+      if (dzr <= 1.0) continue;
+      bodyN++; const e = sag.faceErr[f]; if (e > bodyMax) { bodyMax = e; bwT = zc / DS_H; } if (e > TOL) bodyOut++;
+      if (dtToCrest(zc / DS_H) < 0.6 / DS_H) { if (e > apexMax) apexMax = e; if (e > TOL) apexOut++; }
+    }
+    plog(`[C] fwd WHOLE-BODY MAX=${bodyMax.toFixed(6)} out=${bodyOut}/${bodyN} worst@t=${bwT.toFixed(5)} dtToCrest=${dtToCrest(bwT).toFixed(5)} | APEX-cone MAX=${apexMax.toFixed(6)} out=${apexOut}`);
+    // rev-coverage whole-body (dz>1mm).
+    const loc = buildArtifactLocator(w.xyz, w.idx);
+    const rAos = oneSidedRA(rA, ringZs, 1e-4) as unknown as AnalyticRadiusFn;
+    let revMax = 0, revOut = 0, revN = 0, rT = 0; const nUu = 1024, nTt = 2400;
+    for (let j = 0; j < nTt; j++) {
+      const z = (j / (nTt - 1)) * DS_H; let dzr = 1e9; for (const rz of ringZs) { const d = Math.abs(z - rz); if (d < dzr) dzr = d; }
+      if (dzr <= 1.0) continue;
+      for (let i = 0; i < nUu; i++) { const th = (i / nUu) * TAU; const r = rAos(th, z); const d = loc.dist(r * Math.cos(th), r * Math.sin(th), z); revN++; if (d > TOL) revOut++; if (d > revMax) { revMax = d; rT = z / DS_H; } }
+    }
+    plog(`[C] rev WHOLE-BODY MAX=${revMax.toFixed(6)} out=${revOut}/${revN} worst@t=${rT.toFixed(5)} dtToCrest=${dtToCrest(rT).toFixed(5)}`);
+    const q = triangleQualityDistribution({ vertices: w.xyz, indices: w.idx });
+    plog(`[C] nonMan=${nm} crack=${nmCrack} | slivers %<20=${q.pctBelow20.toFixed(2)} minAng=${q.minAngleDeg.toFixed(3)} | build=${buildS.toFixed(2)}s`);
+    const closed = bodyMax <= TOL && bodyOut === 0 && revMax <= TOL && revOut === 0;
+    checkpoint({
+      key, nU, bodyStep, p, fanRings: fan.length, tris: w.tris, apexCells: w.apexCells, overlaps: w.overlaps, buildS: +buildS.toFixed(2), cpuS: +cpuS.toFixed(2),
+      fwdBodyMax: +bodyMax.toFixed(6), fwdBodyOut: bodyOut, bodyN, apexConeMax: +apexMax.toFixed(6), apexOut,
+      revBodyMax: +revMax.toFixed(6), revBodyOut: revOut, revN,
+      nonMan: nm, crackNonMan: nmCrack, pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3),
+      WHOLE_BODY_CLOSED: closed,
+    });
+    plog(`[C] DONE — WHOLE_BODY_CLOSED=${closed}`);
+  }, 60 * 60 * 1000);
+});
