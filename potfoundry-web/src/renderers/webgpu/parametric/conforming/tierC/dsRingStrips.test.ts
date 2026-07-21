@@ -9,8 +9,11 @@ import {
   buildDsRingStripWall,
   buildDsRingStripWallGeometric,
   dsRingStripWallToOuterWall,
+  buildDsConeFanTSchedule,
+  buildDsConeFanWall,
+  buildDsConeFanWallGeometric,
 } from './dsRingStrips';
-import { isDsRingStripsEnabled, isRegionLayerEnabled } from './regionLayerFlag';
+import { isDsRingStripsEnabled, isDsConeFanEnabled, isRegionLayerEnabled } from './regionLayerFlag';
 import { buildRegionOuterWall } from './index';
 import { DEFAULT_DS_LATTICE } from './dsFeatureEdges';
 
@@ -129,8 +132,87 @@ describe('CONVERGE-A dsRingStrips — structured emitter invariants', () => {
   });
 });
 
+describe('DS-CONEFAN-PROD coneFan — structured tip-fan invariants', () => {
+  const SCALES_PER_ROW = DEFAULT_DS_LATTICE.scalesPerRow; // 16
+  // scale-tip (u,t) apexes: even rows u=(m+0.5)/16, odd rows u=m/16, at t=(k+0.5)/8.
+  function tipUts(): Array<{ u: number; t: number }> {
+    const tips: Array<{ u: number; t: number }> = [];
+    for (let k = 0; k < SCALE_ROWS; k++) { const t = (k + 0.5) / SCALE_ROWS; for (let m = 0; m < SCALES_PER_ROW; m++) { let u = (k % 2 === 0 ? m + 0.5 : m) / SCALES_PER_ROW; u -= Math.floor(u); tips.push({ u, t }); } }
+    return tips;
+  }
+
+  it('crest-anchored schedule places a row EXACTLY on every scale-center crest t=(k+0.5)/8', () => {
+    const tRows = buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 });
+    expect(tRows[0]).toBe(0);
+    expect(tRows[tRows.length - 1]).toBe(1);
+    for (let i = 1; i < tRows.length; i++) expect(tRows[i]).toBeGreaterThan(tRows[i - 1]);
+    for (let k = 0; k < SCALE_ROWS; k++) {
+      const tc = (k + 0.5) / SCALE_ROWS;
+      expect(tRows.some((t) => Math.abs(t - tc) < 1e-12)).toBe(true);
+    }
+  });
+
+  it('cone-fan wall is watertight BY CONSTRUCTION (0 non-manifold edges; boundary only on the two t-rims)', () => {
+    const nU = 64; // = 2*2*scalesPerRow ⇒ every apex u lands on a column
+    const wall = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 }), { patchP: 1 });
+    expect(wall.apexCount).toBeGreaterThan(0);
+    const census = manifoldCensus(wall.indices);
+    expect(census.nonManifold).toBe(0);
+    // the fan is INTERIOR (welds to the grid) ⇒ the only open boundary is still the two rims (nU edges each).
+    expect(census.boundary).toBe(2 * nU);
+    expect(wall.bottomRing.length).toBe(nU);
+    expect(wall.topRing.length).toBe(nU);
+    expect(wall.fanTriangles).toBeGreaterThan(0);
+  });
+
+  it('each non-skipped fan APEX is a grid vertex EXACTLY on the analytic scale tip (u,t) and its lift', () => {
+    const nU = 64;
+    const wall = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 }), { patchP: 1 });
+    let matched = 0;
+    for (const tip of tipUts()) {
+      // a vertex at exactly (tip.u, tip.t)?
+      for (let v = 0; v < wall.ut.length / 2; v++) {
+        if (Math.abs(wall.ut[2 * v] - tip.u) < 1e-9 && Math.abs(wall.ut[2 * v + 1] - tip.t) < 1e-9) {
+          const th = TAU * tip.u, z = tip.t * H, r = syntheticDsRA(th, z);
+          expect(Math.abs(wall.vertices[3 * v] - r * Math.cos(th))).toBeLessThan(1e-3);
+          expect(Math.abs(wall.vertices[3 * v + 1] - r * Math.sin(th))).toBeLessThan(1e-3);
+          expect(Math.abs(wall.vertices[3 * v + 2] - z)).toBeLessThan(1e-3);
+          matched++;
+          break;
+        }
+      }
+    }
+    // every apex u lands on a column at nU=64 ⇒ all interior (non-rim-skipped) tips are matched.
+    expect(matched).toBe(wall.apexCount);
+  });
+
+  it('fan rings are geometric-graded (fractions strictly increasing) and welded (geometric convenience matches explicit)', () => {
+    const frac = [0.05, 0.12, 0.25, 0.45, 0.7];
+    for (let i = 1; i < frac.length; i++) expect(frac[i]).toBeGreaterThan(frac[i - 1]);
+    const nU = 64;
+    const opts = { patchP: 1, fanFrac: frac, bodyStepMm: 2, crestLadderRows: 3 };
+    const a = buildDsConeFanWallGeometric(syntheticDsRA, H, nU, opts);
+    const b = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, opts), opts);
+    expect(a.indices.length).toBe(b.indices.length);
+    expect(a.vertices.length).toBe(b.vertices.length);
+    expect(a.apexCount).toBe(b.apexCount);
+    // more fan rings ⇒ more fan triangles per apex (graded resolution is real).
+    const coarse = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 }), { patchP: 1, fanFrac: [0.3, 0.7] });
+    expect(a.fanTriangles).toBeGreaterThan(coarse.fanTriangles);
+  });
+
+  it('cone-fan wall packs into a watertight ConformingOuterWallResult (u,t,0)', () => {
+    const nU = 64;
+    const wall = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 }), { patchP: 1 });
+    const res = dsRingStripWallToOuterWall(wall);
+    expect(res.gridVertexCount).toBe(wall.vertices.length / 3);
+    expect(manifoldCensus(res.indices).nonManifold).toBe(0);
+    for (let i = 0; i < res.gridVertexCount; i++) expect(res.vertices[3 * i + 2]).toBe(0);
+  });
+});
+
 describe('CONVERGE-A flag gating — default OFF, byte-identical', () => {
-  type G = { __pfDsRingStrips?: boolean; __pfRegionLayer?: boolean };
+  type G = { __pfDsRingStrips?: boolean; __pfDsConeFan?: boolean; __pfRegionLayer?: boolean };
 
   it('isDsRingStripsEnabled defaults to false and is true only when explicitly set', () => {
     const g = globalThis as unknown as G;
@@ -144,6 +226,21 @@ describe('CONVERGE-A flag gating — default OFF, byte-identical', () => {
       expect(isDsRingStripsEnabled()).toBe(true);
     } finally {
       g.__pfDsRingStrips = prior;
+    }
+  });
+
+  it('isDsConeFanEnabled defaults to false and is true only when explicitly set (default byte-identical gate)', () => {
+    const g = globalThis as unknown as G;
+    const prior = g.__pfDsConeFan;
+    delete g.__pfDsConeFan;
+    try {
+      expect(isDsConeFanEnabled()).toBe(false);
+      g.__pfDsConeFan = false;
+      expect(isDsConeFanEnabled()).toBe(false);
+      g.__pfDsConeFan = true;
+      expect(isDsConeFanEnabled()).toBe(true);
+    } finally {
+      g.__pfDsConeFan = prior;
     }
   });
 

@@ -241,3 +241,226 @@ export function dsRingStripWallToOuterWall(wall: DsRingStripWall): ConformingOut
     topRing: wall.topRing,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// SCALE-TIP CONE-FAN (E-2026-07-21-DS-CONEFAN-PROD — the tournament winner, whole-body ≤0.01 proven).
+//
+// The DragonScales scale TIP is a genuine C1 CONE APEX (rOuterDragonScales scaleShape ≈ 1.5·√(xDist²+yDist²) near the
+// apex ⇒ |grad| constant in every radial direction). It defeated BOTH the uniform grid AND the curvature-adaptive
+// region kernel at ~0.04mm (E-DS-BODY-CLOSE / E-DS-HYBRID: the "double wall"). A frontier tournament
+// (E-DS-TIPCONE-TOURNAMENT) found the ONLY converging mechanism: an EXPLICIT graded polar cone-fan at each apex. Round
+// 4 (E-DS-CONEFAN-PROD) proved the fan welds BY INDEX into the FAST strip grid (nonMan 0, ~160× faster than the region
+// kernel) and hits whole-body ≤0.01 (fwd 0.0072 / rev 0.0024, 0 outliers @ 9.76M tris in 2.6s).
+//
+// Flag-gated (isDsConeFanEnabled / __pfDsConeFan) + byte-identical off: the ring-only path (buildDsRingStripWall) is
+// UNCHANGED; these are additive functions with no default caller.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Options for the crest-anchored cone-fan schedule + the per-apex fan. All lengths mm. */
+export interface DsConeFanOpts {
+  /** DragonScales lattice (default 8/16/0.5). */
+  lattice?: DsLattice;
+  /** Uniform body-row spacing (mm) filling gaps between the crest ladders (default 0.12 — the whole-body-close value). */
+  bodyStepMm?: number;
+  /** Rows per side of the geometric ladder fanning out from each crest cusp (default 7). */
+  crestLadderRows?: number;
+  /** Fan block half-extent in grid CELLS (the (2p+1)² block retriangulated as a fan; default 3). */
+  patchP?: number;
+  /** Fan ring fractions apex→boundary (geometric-graded, fine near apex; default the whole-body-close ladder). */
+  fanFrac?: number[];
+}
+
+const DEFAULT_CONE_FAN_FRAC = [0.05, 0.12, 0.25, 0.45, 0.7];
+
+/**
+ * Crest-anchored t-schedule for the cone-fan wall: the ring machinery (tread pairs + flank ladders, {@link
+ * buildDsRingTSchedule} with the body fill suppressed) + a row EXACTLY on each scale-center crest t=(k+0.5)/scaleRows
+ * + a symmetric geometric ladder fanning out from each crest + a uniform body fill. A grid vertex lands on every crest
+ * (so the fan apex is exact); the t-cusp ridgeline is captured; the flanks/rings keep their CONVERGE-A structure.
+ */
+export function buildDsConeFanTSchedule(H: number, opts: DsConeFanOpts = {}): number[] {
+  const lat = opts.lattice ?? DEFAULT_DS_LATTICE;
+  const scaleRows = lat.scaleRows;
+  const bodyStepT = Math.max(1e-6, (opts.bodyStepMm ?? 0.12) / H);
+  const ladderRows = Math.max(0, Math.floor(opts.crestLadderRows ?? 7));
+  // ring machinery only (huge bodyStepMm ⇒ buildDsRingTSchedule adds no uniform body rows).
+  const set = new Set<number>(buildDsRingTSchedule(H, { lattice: lat, bodyStepMm: 1e9 }));
+  for (let k = 0; k < scaleRows; k++) {
+    const tc = (k + 0.5) / scaleRows;
+    set.add(tc);
+    let d = 0.02 / H;
+    let step = 0.02 / H;
+    for (let j = 0; j < ladderRows; j++) {
+      const a = tc - d;
+      const b = tc + d;
+      if (a > 0) set.add(a);
+      if (b < 1) set.add(b);
+      step *= 1.4;
+      d += step;
+      if (d > 1.3 / H) break;
+    }
+  }
+  const rows = [...set].sort((a, b) => a - b);
+  const out: number[] = [];
+  for (let i = 0; i < rows.length; i++) {
+    out.push(rows[i]);
+    if (i + 1 >= rows.length) break;
+    const gap = rows[i + 1] - rows[i];
+    if (gap > bodyStepT * 1.5) {
+      const n = Math.ceil(gap / bodyStepT);
+      for (let m = 1; m < n; m++) out.push(rows[i] + (gap * m) / n);
+    }
+  }
+  const uniq: number[] = [];
+  for (const t of out) if (uniq.length === 0 || t - uniq[uniq.length - 1] > RING_EPS) uniq.push(t);
+  return uniq;
+}
+
+/** The scale-tip (u,t) apexes: even rows u=(m+0.5)/scalesPerRow, odd rows u=m/scalesPerRow, at t=(k+0.5)/scaleRows. */
+function scaleTipUts(lat: DsLattice): Array<{ u: number; t: number }> {
+  const tips: Array<{ u: number; t: number }> = [];
+  for (let k = 0; k < lat.scaleRows; k++) {
+    const t = (k + 0.5) / lat.scaleRows;
+    for (let m = 0; m < lat.scalesPerRow; m++) {
+      let u = (k % 2 === 0 ? m + 0.5 : m) / lat.scalesPerRow;
+      u -= Math.floor(u);
+      tips.push({ u, t });
+    }
+  }
+  return tips;
+}
+
+/**
+ * Emit the DragonScales outer wall with a per-apex SCALE-TIP CONE-FAN: the structured cylinder grid (nU cols × tRows)
+ * where the (2p+1)² grid block around each of the scaleRows·scalesPerRow apexes is retriangulated as a graded polar
+ * fan (apex + `fanFrac` rings spoked to the block's 8p perimeter vertices). The perimeter vertices are EXISTING grid
+ * vertices ⇒ the fan welds to the untouched outer grid by index (each perimeter edge shared by the fan + one outer
+ * cell ⇒ manifold BY CONSTRUCTION). Cells interior to a block are removed (replaced by the fan). Apex blocks that
+ * would exceed the t-range or overlap an already-placed block are skipped (the returned `skippedApexes`).
+ *
+ * @param rA     exact analytic radius r(theta,z) for DragonScales.
+ * @param H      wall height (mm).
+ * @param nU     circumferential columns (>=3; a multiple of 2·scalesPerRow lands columns on the tip u-lattice).
+ * @param tRows  sorted t-stations (from {@link buildDsConeFanTSchedule}; a row must sit on each crest for an exact apex).
+ */
+export function buildDsConeFanWall(
+  rA: AnalyticRadiusFn,
+  H: number,
+  nU: number,
+  tRows: number[],
+  opts: DsConeFanOpts = {},
+): DsRingStripWall & { fanTriangles: number; apexCount: number; skippedApexes: number } {
+  const lat = opts.lattice ?? DEFAULT_DS_LATTICE;
+  const p = Math.max(1, Math.floor(opts.patchP ?? 3));
+  const fanFrac = opts.fanFrac && opts.fanFrac.length > 0 ? opts.fanFrac : DEFAULT_CONE_FAN_FRAC;
+  const cols = Math.max(3, Math.floor(nU));
+  const rows = tRows.length;
+  const positions: number[] = [];
+  const ut: number[] = [];
+  const addV = (u: number, t: number): number => {
+    const th = TAU * u;
+    const z = t * H;
+    const r = rA(th, z);
+    const id = positions.length / 3;
+    positions.push(r * Math.cos(th), r * Math.sin(th), z);
+    ut.push(u, t);
+    return id;
+  };
+  const grid = new Int32Array(rows * cols);
+  for (let j = 0; j < rows; j++) for (let i = 0; i < cols; i++) grid[j * cols + i] = addV(i / cols, tRows[j]);
+
+  const wrapCol = (i: number): number => ((i % cols) + cols) % cols;
+  const rowOfT = (t: number): number => {
+    let br = 0;
+    let bd = Infinity;
+    for (let j = 0; j < rows; j++) { const d = Math.abs(tRows[j] - t); if (d < bd) { bd = d; br = j; } }
+    return br;
+  };
+  const removed = new Uint8Array((rows - 1) * cols);
+  const keep: Array<{ r: number; c: number }> = [];
+  let skipped = 0;
+  for (const tip of scaleTipUts(lat)) {
+    const r = rowOfT(tip.t);
+    const c = Math.round(tip.u * cols) % cols;
+    // range guard FIRST ⇒ r+dj ∈ [r-p, r+p-1] ⊆ [0, rows-2] is always a valid `removed` index (matches the proven
+    // probe's cellKey = j*cols + wrapCol(i); wraps the periodic COLUMN only, never the row).
+    if (r - p < 0 || r + p > rows - 1) { skipped++; continue; }
+    let clash = false;
+    for (let dj = -p; dj < p && !clash; dj++) for (let di = -p; di < p; di++) if (removed[(r + dj) * cols + wrapCol(c + di)]) { clash = true; break; }
+    if (clash) { skipped++; continue; }
+    for (let dj = -p; dj < p; dj++) for (let di = -p; di < p; di++) removed[(r + dj) * cols + wrapCol(c + di)] = 1;
+    keep.push({ r, c });
+  }
+
+  const triangles: number[] = [];
+  for (let j = 0; j + 1 < rows; j++) for (let i = 0; i < cols; i++) {
+    if (removed[j * cols + i]) continue;
+    const iN = i + 1 === cols ? 0 : i + 1;
+    const a = grid[j * cols + i], b = grid[j * cols + iN], c = grid[(j + 1) * cols + iN], d = grid[(j + 1) * cols + i];
+    triangles.push(a, b, c, a, c, d);
+  }
+  let fanTriangles = 0;
+  const G = fanFrac.length;
+  for (const ap of keep) {
+    const apexV = grid[ap.r * cols + ap.c];
+    const rTop = ap.r - p, rBot = ap.r + p, cL = ap.c - p, cR = ap.c + p;
+    const loop: number[] = [];
+    for (let i = cL; i <= cR; i++) loop.push(grid[rTop * cols + wrapCol(i)]);
+    for (let j = rTop + 1; j <= rBot; j++) loop.push(grid[j * cols + wrapCol(cR)]);
+    for (let i = cR - 1; i >= cL; i--) loop.push(grid[rBot * cols + wrapCol(i)]);
+    for (let j = rBot - 1; j >= rTop + 1; j--) loop.push(grid[j * cols + wrapCol(cL)]);
+    const B = loop.length;
+    const au = ut[2 * apexV];
+    const at = ut[2 * apexV + 1];
+    const spoke: number[][] = [];
+    for (let k = 0; k < B; k++) {
+      let bu = ut[2 * loop[k]];
+      const bt = ut[2 * loop[k] + 1];
+      if (bu - au > 0.5) bu -= 1; else if (au - bu > 0.5) bu += 1;
+      const colV: number[] = [];
+      for (let g = 0; g < G; g++) {
+        const f = fanFrac[g];
+        let u = au + f * (bu - au);
+        u -= Math.floor(u);
+        colV.push(addV(u, at + f * (bt - at)));
+      }
+      spoke.push(colV);
+    }
+    for (let k = 0; k < B; k++) { const kn = (k + 1) % B; triangles.push(apexV, spoke[k][0], spoke[kn][0]); fanTriangles++; }
+    for (let g = 0; g + 1 < G; g++) for (let k = 0; k < B; k++) {
+      const kn = (k + 1) % B;
+      triangles.push(spoke[k][g], spoke[kn][g], spoke[kn][g + 1], spoke[k][g], spoke[kn][g + 1], spoke[k][g + 1]);
+      fanTriangles += 2;
+    }
+    for (let k = 0; k < B; k++) {
+      const kn = (k + 1) % B;
+      triangles.push(spoke[k][G - 1], loop[k], loop[kn], spoke[k][G - 1], loop[kn], spoke[kn][G - 1]);
+      fanTriangles += 2;
+    }
+  }
+  const bottomRing: number[] = [];
+  const topRing: number[] = [];
+  for (let i = 0; i < cols; i++) { bottomRing.push(grid[i]); topRing.push(grid[(rows - 1) * cols + i]); }
+  return {
+    vertices: new Float32Array(positions),
+    indices: new Uint32Array(triangles),
+    ut,
+    tRows,
+    nU: cols,
+    bottomRing,
+    topRing,
+    fanTriangles,
+    apexCount: keep.length,
+    skippedApexes: skipped,
+  };
+}
+
+/** Convenience: build the crest-anchored schedule and emit the cone-fan wall in one call (the wiring entry). */
+export function buildDsConeFanWallGeometric(
+  rA: AnalyticRadiusFn,
+  H: number,
+  nU: number,
+  opts: DsConeFanOpts = {},
+): DsRingStripWall & { fanTriangles: number; apexCount: number; skippedApexes: number } {
+  return buildDsConeFanWall(rA, H, nU, buildDsConeFanTSchedule(H, opts), opts);
+}

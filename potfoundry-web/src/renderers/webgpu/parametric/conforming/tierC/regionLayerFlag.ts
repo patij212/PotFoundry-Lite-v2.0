@@ -38,3 +38,17 @@ export function isDsRingStripsEnabled(): boolean {
   const g = globalThis as unknown as { __pfDsRingStrips?: boolean };
   return g.__pfDsRingStrips === true;
 }
+
+/**
+ * NARROW default-off SUB-FLAG for the DragonScales SCALE-TIP CONE-FAN (E-2026-07-21-DS-CONEFAN-PROD — the frontier
+ * tournament winner; first whole-body ≤0.01mm true-3D DS mesh). When on, the DS region dispatch emits the outer wall
+ * via {@link buildDsConeFanWallGeometric}: the crest-anchored structured grid with a per-apex graded polar cone-fan at
+ * each scale tip (welded by index, watertight by construction), closing the scale-tip C1 cone apex that defeated both
+ * the uniform grid AND the region kernel at ~0.04mm (the "double wall"). Off (production) ⇒ this branch never runs and
+ * the DS region path is byte-identical. Effective ONLY inside the already-flag-gated `buildRegionOuterWall` DS branch
+ * (needs `__pfRegionLayer` + `__pfPerfectMesher` to reach production) ⇒ a third independent gate.
+ */
+export function isDsConeFanEnabled(): boolean {
+  const g = globalThis as unknown as { __pfDsConeFan?: boolean };
+  return g.__pfDsConeFan === true;
+}

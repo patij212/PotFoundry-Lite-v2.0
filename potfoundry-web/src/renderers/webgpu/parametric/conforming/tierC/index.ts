@@ -42,17 +42,21 @@ import {
   DS_CURVATURE_FINE_STEP,
   DS_CURVATURE_SUBSAMPLES,
 } from './dsFeatureEdges';
-import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled } from './regionLayerFlag';
-export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled } from './regionLayerFlag';
+import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled } from './regionLayerFlag';
+export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled } from './regionLayerFlag';
 export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
-import { buildDsRingStripWallGeometric, dsRingStripWallToOuterWall } from './dsRingStrips';
+import { buildDsRingStripWallGeometric, dsRingStripWallToOuterWall, buildDsConeFanWallGeometric } from './dsRingStrips';
 export {
   buildDsRingStripWall,
   buildDsRingStripWallGeometric,
   buildDsRingTSchedule,
   dsRingStripWallToOuterWall,
+  buildDsConeFanWall,
+  buildDsConeFanWallGeometric,
+  buildDsConeFanTSchedule,
   type DsRingStripWall,
   type DsTScheduleOpts,
+  type DsConeFanOpts,
 } from './dsRingStrips';
 
 export {
@@ -430,6 +434,10 @@ export interface RegionOuterWallParams {
 /** Default CONVERGE-A ring-strip circumferential column count (512 = 16*32, valley-aligned at the default DS lattice). */
 export const DS_RING_STRIP_DEFAULT_NU = 512;
 
+/** Default DS-CONEFAN-PROD circumferential column count (4096 — the whole-body ≤0.01 verified nU; a multiple of
+ *  2*scalesPerRow=32 lands columns on the scale-tip u-lattice so every fan apex is an exact grid vertex). */
+export const DS_CONE_FAN_DEFAULT_NU = 4096;
+
 /**
  * D-2 region dispatch: when the region layer is ENABLED ({@link isRegionLayerEnabled}) AND `styleId` is a region
  * style ({@link isRegionLayerStyle}), build the outer wall via the CERTIFIED M=g/h² region kernel, rim-pinned to
@@ -463,6 +471,20 @@ export function buildRegionOuterWall(
   // The graph assumes the DEFAULT DS lattice (8/16/0.5) — the validated recipe + captured production artifact both use
   // defaults; non-default dsScaleRows/dsScalesPerRow would need the lattice plumbed through RegionOuterWallParams (follow-up).
   if (styleId === 'DragonScales') {
+    // SCALE-TIP CONE-FAN (E-2026-07-21-DS-CONEFAN-PROD — the tournament winner; FIRST whole-body ≤0.01mm true-3D DS
+    // mesh) fires ONLY under the narrow default-off `__pfDsConeFan` sub-flag. When on it emits the DS wall as the
+    // crest-anchored structured grid with a per-apex graded polar cone-fan at each scale tip (welded by index,
+    // watertight by construction) — closing the scale-tip C1 cone apex the uniform grid AND the region kernel both
+    // floored at ~0.04mm. Off ⇒ this branch never runs (byte-identical). Checked BEFORE the ring-strip branch since
+    // the cone-fan grid already carries the CONVERGE-A ring tread pairs + flank ladders (a superset).
+    if (isDsConeFanEnabled()) {
+      const wall = buildDsConeFanWallGeometric(
+        params.analyticRA,
+        params.H,
+        params.ringStripNU ?? DS_CONE_FAN_DEFAULT_NU,
+      );
+      return dsRingStripWallToOuterWall(wall);
+    }
     // CONVERGE-A structured ring-strip emitter (E-2026-07-19-DS-CONVERGE-A) fires ONLY under the narrow default-off
     // `__pfDsRingStrips` sub-flag (a THIRD gate under __pfRegionLayer + __pfPerfectMesher). When on it BYPASSES the
     // free-Delaunay region kernel entirely and emits the DS wall as a structured cylinder grid (along-ring rows +
