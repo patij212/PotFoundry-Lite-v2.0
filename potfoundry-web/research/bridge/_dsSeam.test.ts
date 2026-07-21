@@ -55,46 +55,46 @@ function buildSmallWall(nU: number, bodyStepMm: number, crestLadderRows: number,
 function lift(rA: AnalyticRadiusFn, u: number, t: number): [number, number, number] { const th = TAU * u, z = t * DS_H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; }
 
 describe('DS-SEAM (S3) — cone-fan mesh → exact-dyadic partition certifiability', () => {
-  // ARM 1 (SCOPE): snap raw + feed the judge → localize the rejection (#1 wrap / #2 fan / #3 zero-area).
+  // ARM 1 (SCOPE): snap raw + feed the judge → localize the rejection (#1 wrap / #2 fan / #3 zero-area). Sweep N to
+  // separate resolution-limited collapse (drops with N) from structural collapse (persists), and classify by fan-touch.
   it.skipIf(process.env.PF_DSSEAM_SCOPE !== '1')('SCOPE — snap raw, judge REJECTS, localize the gap', () => {
     plog(`=== SCOPE => ${NDJSON} ===`);
-    const nU = 64, k = 10; const N = nU * (1 << k); const bits = Math.round(Math.log2(N)); // N=2^16, nU=2^6 divides it
+    const nU = 128; // ≥96 so p=1 apex blocks (apexes 4 cols apart) do NOT overlap-skip
     const w = buildSmallWall(nU, 3, 2, 1);
-    const key = `scope|nU${nU}_N${N}`;
-    if (keyExists(key)) { plog(`[skip] ${key}`); return; }
-    plog(`[SCOPE] nU=${nU} rows=${w.rows} gridVerts=${w.gridVerts} tris=${w.tris} N=${N} (2^${bits})`);
-    const nV = w.ut.length / 2;
-    const uNum = new Int32Array(nV), vNum = new Int32Array(nV);
-    for (let i = 0; i < nV; i++) { uNum[i] = Math.round(w.ut[2 * i] * N); vNum[i] = Math.round(w.ut[2 * i + 1] * N); }
-    // fan δ: max surface displacement from snapping the FAN vertices (index >= gridVerts).
-    let fanDeltaMax = 0, fanVerts = 0;
-    for (let i = w.gridVerts; i < nV; i++) {
-      fanVerts++;
-      const p0 = lift(w.rA, w.ut[2 * i], w.ut[2 * i + 1]);
-      const p1 = lift(w.rA, uNum[i] / N, vNum[i] / N);
-      const d = Math.hypot(p0[0] - p1[0], p0[1] - p1[1], p0[2] - p1[2]); if (d > fanDeltaMax) fanDeltaMax = d;
-    }
+    plog(`[SCOPE] nU=${nU} rows=${w.rows} gridVerts=${w.gridVerts} tris=${w.tris} fanVerts=${w.ut.length / 2 - w.gridVerts}`);
     const nF = w.idx.length / 3;
-    let wrapTris = 0, zeroArea = 0, negArea = 0;
-    const tris: ExactDyadicMappedTriangle[] = [];
-    for (let f = 0; f < nF; f++) {
-      const a = w.idx[3 * f], b = w.idx[3 * f + 1], c = w.idx[3 * f + 2];
-      if (Math.max(uNum[a], uNum[b], uNum[c]) - Math.min(uNum[a], uNum[b], uNum[c]) > N / 2) wrapTris++;
-      const area2 = (uNum[b] - uNum[a]) * (vNum[c] - vNum[a]) - (uNum[c] - uNum[a]) * (vNum[b] - vNum[a]);
-      if (area2 === 0) zeroArea++; else if (area2 < 0) negArea++;
-      tris.push({ artifactTriangleIndex: f, vertices: [{ uNumerator: String(uNum[a]), vNumerator: String(vNum[a]) }, { uNumerator: String(uNum[b]), vNumerator: String(vNum[b]) }, { uNumerator: String(uNum[c]), vNumerator: String(vNum[c]) }] });
+    const isFan = (v: number): boolean => v >= w.gridVerts;
+    for (const bits of [16, 18, 20, 22]) {
+      const N = 1 << bits;
+      const key = `scope|nU${nU}_N${N}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const nV = w.ut.length / 2;
+      const uNum = new Int32Array(nV), vNum = new Int32Array(nV);
+      for (let i = 0; i < nV; i++) { uNum[i] = Math.round(w.ut[2 * i] * N); vNum[i] = Math.round(w.ut[2 * i + 1] * N); }
+      let fanDeltaMax = 0;
+      for (let i = w.gridVerts; i < nV; i++) { const p0 = lift(w.rA, w.ut[2 * i], w.ut[2 * i + 1]); const p1 = lift(w.rA, uNum[i] / N, vNum[i] / N); const d = Math.hypot(p0[0] - p1[0], p0[1] - p1[1], p0[2] - p1[2]); if (d > fanDeltaMax) fanDeltaMax = d; }
+      let wrapTris = 0, zeroArea = 0, zeroFan = 0, negArea = 0, negFan = 0;
+      const tris: ExactDyadicMappedTriangle[] = [];
+      for (let f = 0; f < nF; f++) {
+        const a = w.idx[3 * f], b = w.idx[3 * f + 1], c = w.idx[3 * f + 2];
+        const touchesFan = isFan(a) || isFan(b) || isFan(c);
+        if (Math.max(uNum[a], uNum[b], uNum[c]) - Math.min(uNum[a], uNum[b], uNum[c]) > N / 2) wrapTris++;
+        const area2 = (uNum[b] - uNum[a]) * (vNum[c] - vNum[a]) - (uNum[c] - uNum[a]) * (vNum[b] - vNum[a]);
+        if (area2 === 0) { zeroArea++; if (touchesFan) zeroFan++; } else if (area2 < 0) { negArea++; if (touchesFan) negFan++; }
+        tris.push({ artifactTriangleIndex: f, vertices: [{ uNumerator: String(uNum[a]), vNumerator: String(vNum[a]) }, { uNumerator: String(uNum[b]), vNumerator: String(vNum[b]) }, { uNumerator: String(uNum[c]), vNumerator: String(vNum[c]) }] });
+      }
+      plog(`[SCOPE][N=2^${bits}] wrap=${wrapTris} zeroArea=${zeroArea}(fan ${zeroFan}) negArea=${negArea}(fan ${negFan}) fanδmax=${fanDeltaMax.toFixed(6)}mm`);
+      const input: ExactDyadicDomainPartitionInput = {
+        patchId: 'dsseam-conefan-scope', fractionBits: bits,
+        domain: { minUNumerator: '0', maxUNumerator: String(N), minVNumerator: '0', maxVNumerator: String(N) },
+        artifactTriangleCount: nF, triangles: tris,
+      };
+      let rejected = false, detail = '';
+      try { const r = verifyExactDyadicRectanglePartition(input); detail = `ACCEPTED tris=${r.triangleCount}`; }
+      catch (e) { rejected = true; detail = String(e).slice(0, 200); }
+      plog(`[SCOPE][N=2^${bits}] judge: rejected=${rejected} :: ${detail}`);
+      checkpoint({ key, nU, N, bits, tris: w.tris, wrapTris, zeroArea, zeroFan, negArea, negFan, fanDeltaMax: +fanDeltaMax.toFixed(6), rejected, detail });
     }
-    plog(`[SCOPE] wrapTris=${wrapTris} zeroAreaAfterSnap=${zeroArea} negArea=${negArea} fanVerts=${fanVerts} fanDeltaMax=${fanDeltaMax.toFixed(6)}mm`);
-    const input: ExactDyadicDomainPartitionInput = {
-      patchId: 'dsseam-conefan-scope', fractionBits: bits,
-      domain: { minUNumerator: '0', maxUNumerator: String(N), minVNumerator: '0', maxVNumerator: String(N) },
-      artifactTriangleCount: nF, triangles: tris,
-    };
-    let rejected = false, detail = '';
-    try { const r = verifyExactDyadicRectanglePartition(input); detail = `ACCEPTED tris=${r.triangleCount}`; }
-    catch (e) { rejected = true; detail = String(e).slice(0, 240); }
-    plog(`[SCOPE] judge: rejected=${rejected} :: ${detail}`);
-    checkpoint({ key, nU, N, bits, tris: w.tris, wrapTris, zeroAreaAfterSnap: zeroArea, negArea, fanVerts, fanDeltaMax: +fanDeltaMax.toFixed(6), rejected, detail });
     plog('[SCOPE] DONE');
   }, 15 * 60 * 1000);
 });
