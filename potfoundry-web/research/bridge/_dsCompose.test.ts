@@ -28,7 +28,7 @@ import { mkdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cpuUsage } from 'node:process';
 import {
-  perFaceTrue3DSag, triangleQualityDistribution, auditNonManByIndex, nonManRawBigStats,
+  perFaceTrue3DSag, triangleQualityDistribution, nonManRawBigStats,
 } from './labkit';
 import {
   dsRadiusFn, dragonRings, H as DS_H, TOL, buildArtifactLocator, oneSidedRA,
@@ -121,26 +121,33 @@ describe('DS-COMPOSE — full DragonScales outer wall, whole-mesh ≤0.01 gate',
     }
     plog(`[C] RIM validity: bottomRing=${wall.bottomRing.length} topRing=${wall.topRing.length} (nU=${nU}) ascending-u & on t=0/1 = ${rimsAscending}`);
 
-    // ── WATERTIGHT: auditNonManByIndex (no Map cap) + NON-VACUOUS control (append a duplicate triangle) + prod audit.
-    const nm = tris < 5_400_000 ? auditNonManByIndex(xyz, idx) : nonManRawBigStats(idx).nonMan;
+    // ── WATERTIGHT (full mesh, NO Map cap): nonManRawBigStats gives nonMan + boundary exact for all u32 indices
+    //    (the prod auditWatertight is Map-based ⇒ dies >~5.6M tris). NON-VACUOUS control: append a duplicate triangle.
+    const nmStats = nonManRawBigStats(idx);
     const idx2 = new Uint32Array(idx.length + 3); idx2.set(idx); idx2[idx.length] = idx[0]; idx2[idx.length + 1] = idx[1]; idx2[idx.length + 2] = idx[2];
-    const nmCrack = idx2.length / 3 < 5_400_000 ? auditNonManByIndex(xyz, idx2) : nonManRawBigStats(idx2).nonMan;
-    const res = dsRingStripWallToOuterWall(wall);
-    const bvi = new Set<number>([...wall.bottomRing, ...wall.topRing]);
-    const mesh3: Mesh3 = { positions: res.vertices, indices: res.indices };
-    const prod = auditWatertight(mesh3, { boundaryVertexIndices: bvi });
-    plog(`[C] WATERTIGHT nonManByIndex=${nm} (crack ${nmCrack}) | prod nonManifoldEdges=${prod.nonManifoldEdges} tJunctions=${prod.tJunctions} boundaryEdges=${prod.boundaryEdges} (intended rims=${2 * nU})`);
+    const nmCrack = nonManRawBigStats(idx2).nonMan;
+    const nm = nmStats.nonMan;
+    // prod by-index TOPOLOGY audit (tJunctions — the T-junction check nonManRawBigStats does not do) on a nU1024 TWIN:
+    // the grid+fan weld topology is nU-INVARIANT by construction (same rows/schedule/fan, fewer columns), and 1024
+    // cols keeps tris < the Map cap so the prod auditWatertight runs. Confirms tJunctions 0 + boundary = 2*nU + agree.
+    const twin = buildDsConeFanWallGeometric(rA, DS_H, 1024);
+    const twinRes = dsRingStripWallToOuterWall(twin);
+    const bviT = new Set<number>([...twin.bottomRing, ...twin.topRing]);
+    const prodMesh: Mesh3 = { positions: twinRes.vertices, indices: twinRes.indices };
+    const prod = auditWatertight(prodMesh, { boundaryVertexIndices: bviT });
+    plog(`[C] WATERTIGHT full nonMan=${nm} boundary=${nmStats.boundary} (intended rims=${2 * nU}) crack=${nmCrack} | prod TWIN nU1024 nonManifoldEdges=${prod.nonManifoldEdges} tJunctions=${prod.tJunctions} boundaryEdges=${prod.boundaryEdges} (twin rims=${2 * 1024})`);
     const q = triangleQualityDistribution({ vertices: xyz, indices: idx });
     plog(`[C] slivers %<20=${q.pctBelow20.toFixed(2)} minAng=${q.minAngleDeg.toFixed(3)}`);
 
-    const closed = fwdMax <= TOL && revMax <= TOL && revOut === 0 && seamMax <= TOL && nm === 0 && nmCrack !== nm
-      && prod.nonManifoldEdges === 0 && prod.tJunctions === 0 && prod.boundaryEdges === 2 * nU && rimsAscending;
+    const closed = fwdMax <= TOL && revMax <= TOL && revOut === 0 && seamMax <= TOL
+      && nm === 0 && nmStats.boundary === 2 * nU && nmCrack !== nm && rimsAscending
+      && prod.nonManifoldEdges === 0 && prod.tJunctions === 0 && prod.boundaryEdges === 2 * 1024;
     checkpoint({
       key, nU, tris, rows: wall.tRows.length, apexCount: wall.apexCount, skippedApexes: wall.skippedApexes, buildS: +buildS.toFixed(2),
       fwdSameSideMax: +fwdMax.toFixed(6), fwdOut, fwdWorst: { t: +fwdT.toFixed(5), dtToCrest: +dtToCrest(fwdT).toFixed(5), band: bandOf(fwdT, ringZs) }, fwdRingBandMax: +fwdRingMax.toFixed(6), fwdBodyMax: +fwdBodyMax.toFixed(6), treadCrossings: crossings,
       revMax: +revMax.toFixed(6), revOut, revWorst: { t: +revT.toFixed(5), dtToCrest: +dtToCrest(revT).toFixed(5) }, revRingBandMax: +revRingMax.toFixed(6), revBodyMax: +revBodyMax.toFixed(6),
-      uSeamMax: +seamMax.toFixed(6), rimsAscending, boundaryEdges: prod.boundaryEdges, intendedRims: 2 * nU,
-      nonMan: nm, crackNonMan: nmCrack, prodNonManifoldEdges: prod.nonManifoldEdges, prodTJunctions: prod.tJunctions,
+      uSeamMax: +seamMax.toFixed(6), rimsAscending, fullBoundaryEdges: nmStats.boundary, intendedRims: 2 * nU,
+      nonMan: nm, crackNonMan: nmCrack, twinProdNonManifoldEdges: prod.nonManifoldEdges, twinProdTJunctions: prod.tJunctions, twinProdBoundaryEdges: prod.boundaryEdges,
       pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3),
       WHOLE_MESH_CLOSED: closed,
     });
