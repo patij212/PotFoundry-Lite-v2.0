@@ -36,9 +36,11 @@ import {
   coarsenLadder,
   coarsenedAxesReport,
   convergePot,
+  convergePotSelfCalibrated,
   sampleWorstResidualByPatch,
   trianglesByPatch,
   uniformSubcellWeights,
+  verdictsAgree,
 } from './_certRosterConvergenceLib';
 
 const OUT_DIR = join(__dirname, '..', 'exchange', '_certified_stl');
@@ -363,4 +365,114 @@ describe('certified roster — convergence probe', () => {
       }
     );
   }
+});
+
+// minimal fake ConvergePotResult with only the fields the stability logic reads.
+// Casts kept deliberately loose (`as unknown`) so the fake stays tiny — the DI
+// runner never touches the surface machinery, so the omitted fields are inert.
+function fakeResult(depth: number, perPatchVerdict: Record<string, string>) {
+  const perPatch: Record<string, unknown> = {};
+  for (const [p, verdict] of Object.entries(perPatchVerdict)) {
+    perPatch[p] = { verdict, ratio: 0, fineMaxMm: 1, coarseMaxMm: 1, fineTris: 1, coarseTris: 1 };
+  }
+  return {
+    name: 'fake',
+    styleId: 'X',
+    depth,
+    coarseStep: 1,
+    fineDivisions: {},
+    coarseDivisions: {},
+    perPatch,
+    fineGlobalMaxMm: 1,
+    coarseGlobalMaxMm: 1,
+    fineTrisTotal: 2,
+    coarseTrisTotal: 1,
+    fineMs: 0,
+    coarseMs: 0,
+    fineEnclosures: 0,
+    coarseEnclosures: 0,
+    fallbackCount: 0,
+  } as unknown;
+}
+
+// A fake whose COARSE mesh did not actually shrink (coarseTris >= fineTris) — the
+// division knobs are already at the floor. Trips the cannot-coarsen guard.
+function fakeResultNoShrink(depth: number, perPatchVerdict: Record<string, string>) {
+  return {
+    ...(fakeResult(depth, perPatchVerdict) as Record<string, unknown>),
+    fineTrisTotal: 1,
+    coarseTrisTotal: 1,
+  } as unknown;
+}
+
+describe('convergence probe — self-calibration', () => {
+  it('stops at the depth where per-patch verdicts first agree', () => {
+    const scripted: Record<number, Record<string, string>> = {
+      2: { 'inner-wall': 'partial', 'outer-wall': 'responsive' },
+      3: { 'inner-wall': 'irreducible', 'outer-wall': 'responsive' }, // inner changed 2->3
+      4: { 'inner-wall': 'irreducible', 'outer-wall': 'responsive' }, // stable 3->4
+    };
+    const runAtDepth = (_cfg: unknown, d: number) => fakeResult(d, scripted[d]);
+    const r = convergePotSelfCalibrated(
+      {} as never,
+      { startDepth: 2, maxDepth: 5 },
+      runAtDepth as never
+    );
+    expect(r.selfCalibration.stable).toBe(true);
+    expect(r.selfCalibration.reason).toBe('converged');
+    expect(r.selfCalibration.finalDepth).toBe(4); // reported at the upper of the stable pair
+    expect(r.selfCalibration.depthsRun).toEqual([2, 3, 4]);
+    expect(r.depth).toBe(4);
+  });
+
+  it('reports UNCALIBRATED when verdicts never stabilize by maxDepth', () => {
+    const flip = (d: number) => ({ 'inner-wall': d % 2 ? 'responsive' : 'irreducible' });
+    const runAtDepth = (_cfg: unknown, d: number) => fakeResult(d, flip(d));
+    const r = convergePotSelfCalibrated(
+      {} as never,
+      { startDepth: 2, maxDepth: 4 },
+      runAtDepth as never
+    );
+    expect(r.selfCalibration.stable).toBe(false);
+    expect(r.selfCalibration.reason).toBe('max-depth');
+    expect(r.selfCalibration.depthsRun).toEqual([2, 3, 4]);
+  });
+
+  it('refuses with cannot-coarsen when the coarse mesh did not shrink', () => {
+    const runAtDepth = (_cfg: unknown, d: number) =>
+      fakeResultNoShrink(d, { 'inner-wall': 'irreducible' });
+    const r = convergePotSelfCalibrated(
+      {} as never,
+      { startDepth: 2, maxDepth: 5 },
+      runAtDepth as never
+    );
+    expect(r.selfCalibration.stable).toBe(false);
+    expect(r.selfCalibration.reason).toBe('cannot-coarsen');
+    expect(r.selfCalibration.finalDepth).toBe(2); // bailed at the start depth
+    expect(r.selfCalibration.depthsRun).toEqual([2]); // never escalated
+  });
+
+  it('gives up with budget when the time bound is exceeded before agreement', () => {
+    // Never-agreeing verdicts, driven by an injected clock: t0 reads 0, the first
+    // in-loop budget check reads 1000 > budgetMs, so it bails at the first step.
+    const flip = (d: number) => ({ 'inner-wall': d % 2 ? 'responsive' : 'irreducible' });
+    const runAtDepth = (_cfg: unknown, d: number) => fakeResult(d, flip(d));
+    let calls = 0;
+    const nowMs = (): number => (calls++ === 0 ? 0 : 1000);
+    const r = convergePotSelfCalibrated(
+      {} as never,
+      { startDepth: 2, maxDepth: 5, budgetMs: 10, nowMs },
+      runAtDepth as never
+    );
+    expect(r.selfCalibration.reason).toBe('budget');
+    expect(r.selfCalibration.stable).toBe(false);
+    expect(r.selfCalibration.finalDepth).toBe(3); // bailed at the first over-budget step
+    expect(r.selfCalibration.depthsRun).toEqual([2, 3]);
+  });
+
+  it('verdictsAgree compares per patch', () => {
+    const a = fakeResult(2, { p: 'responsive', q: 'partial' });
+    const b = fakeResult(3, { p: 'responsive', q: 'irreducible' });
+    expect(verdictsAgree(a as never, b as never)).toEqual({ p: true, q: false });
+  });
 });

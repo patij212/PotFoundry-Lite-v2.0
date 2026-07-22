@@ -434,3 +434,133 @@ export function convergePot(pot: CertifiedPot, options: ConvergePotOptions): Con
     fallbackCount: fine.fallbackCount + coarse.fallbackCount,
   };
 }
+
+/**
+ * PURE: per-patch verdict equality between two convergence results. Keyed by the
+ * patches of `a`; a patch absent from `b` reads as disagreement (its verdict is
+ * `undefined`, which never equals a real verdict). This is the stability signal
+ * `convergePotSelfCalibrated` compares across a one-depth step.
+ */
+export function verdictsAgree(a: ConvergePotResult, b: ConvergePotResult): Record<string, boolean> {
+  const out: Record<string, boolean> = {};
+  for (const patchId of Object.keys(a.perPatch)) {
+    out[patchId] = a.perPatch[patchId].verdict === b.perPatch[patchId]?.verdict;
+  }
+  return out;
+}
+
+export interface SelfCalibrateOptions {
+  readonly startDepth?: number;
+  readonly maxDepth?: number;
+  readonly coarseStep?: number;
+  readonly floors?: CoarsenFloors;
+  readonly budgetMs?: number;
+  readonly nowMs?: () => number;
+}
+
+export type SelfCalibratedResult = ConvergePotResult & {
+  readonly selfCalibration: {
+    readonly method: 'verdict-stability';
+    readonly depthsRun: number[];
+    readonly finalDepth: number;
+    readonly perPatchStable: Record<string, boolean>;
+    readonly stable: boolean;
+    readonly reason: 'converged' | 'max-depth' | 'budget' | 'cannot-coarsen';
+  };
+};
+
+/**
+ * CERT-FREE calibration by verdict-stability. Bake the probe at successive depths
+ * (via the injected `runAtDepth`, default the real `convergePot`) and stop as soon
+ * as the per-patch verdicts AGREE across a one-depth step — the mesher's
+ * refine-vs-redesign call has stopped moving, so the shallow depth is deep enough
+ * to trust WITHOUT the expensive certifies-at ladder. Escalates `startDepth..maxDepth`
+ * (default 2..5), optionally bounded by `budgetMs`.
+ *
+ * `finalDepth` is the UPPER depth of the first agreeing pair (the depth whose
+ * result is returned). `reason`:
+ *   - 'converged'      — verdicts agreed across a step;
+ *   - 'max-depth'      — reached `maxDepth` without agreement (UNCALIBRATED);
+ *   - 'budget'         — `budgetMs` elapsed before agreement;
+ *   - 'cannot-coarsen' — the coarse mesh did not actually shrink at `startDepth`
+ *                        (`coarseTrisTotal >= fineTrisTotal`, e.g. divisions already
+ *                        at the floor), so the ratio would be a meaningless ~1 that
+ *                        reads as a false 'irreducible'. Refuse rather than mislead.
+ *
+ * The `runAtDepth` seam is the whole point: the stability logic is unit-tested with
+ * a stub returning scripted per-depth verdicts, no real bake.
+ */
+export function convergePotSelfCalibrated(
+  config: CertifiedPot,
+  options: SelfCalibrateOptions = {},
+  runAtDepth: (cfg: CertifiedPot, depth: number) => ConvergePotResult = (cfg, depth) =>
+    convergePot(cfg, { depth, coarseStep: options.coarseStep, floors: options.floors })
+): SelfCalibratedResult {
+  const startDepth = options.startDepth ?? 2;
+  const maxDepth = options.maxDepth ?? 5;
+  const now = options.nowMs ?? ((): number => Date.now());
+  const t0 = now();
+  const depthsRun: number[] = [startDepth];
+  let prev = runAtDepth(config, startDepth);
+
+  // cannot-coarsen guard: if the coarse mesh did not actually shrink, the ratio
+  // is a meaningless ~1 — refuse rather than emit a false 'irreducible'.
+  if (prev.coarseTrisTotal >= prev.fineTrisTotal) {
+    return {
+      ...prev,
+      selfCalibration: {
+        method: 'verdict-stability',
+        depthsRun,
+        finalDepth: startDepth,
+        perPatchStable: {},
+        stable: false,
+        reason: 'cannot-coarsen',
+      },
+    };
+  }
+
+  for (let depth = startDepth + 1; depth <= maxDepth; depth += 1) {
+    const cur = runAtDepth(config, depth);
+    depthsRun.push(depth);
+    const perPatchStable = verdictsAgree(prev, cur);
+    const stable = Object.values(perPatchStable).every(Boolean);
+    if (stable) {
+      return {
+        ...cur,
+        selfCalibration: {
+          method: 'verdict-stability',
+          depthsRun,
+          finalDepth: depth,
+          perPatchStable,
+          stable: true,
+          reason: 'converged',
+        },
+      };
+    }
+    if (options.budgetMs !== undefined && now() - t0 > options.budgetMs) {
+      return {
+        ...cur,
+        selfCalibration: {
+          method: 'verdict-stability',
+          depthsRun,
+          finalDepth: depth,
+          perPatchStable,
+          stable: false,
+          reason: 'budget',
+        },
+      };
+    }
+    prev = cur;
+  }
+  return {
+    ...prev,
+    selfCalibration: {
+      method: 'verdict-stability',
+      depthsRun,
+      finalDepth: prev.depth,
+      perPatchStable: {},
+      stable: false,
+      reason: 'max-depth',
+    },
+  };
+}
