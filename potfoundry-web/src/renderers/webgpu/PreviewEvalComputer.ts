@@ -39,6 +39,8 @@ export class PreviewEvalComputer {
   /** Nbr struct = 6 × u32. */
   private static readonly NBR_STRIDE = 24;
   private static readonly WG_SIZE = 64;
+  /** WebGPU maxComputeWorkgroupsPerDimension default — dispatch 2D past this. */
+  private static readonly MAX_DIM = 65535;
 
   constructor(device: GPUDevice, uniformBuffer: GPUBuffer, styleParamBuffer: GPUBuffer) {
     this.device = device;
@@ -121,20 +123,21 @@ export class PreviewEvalComputer {
     if (!this.evalPipeline || !this.normPipeline || !this.evalBind0 || !this.evalBind1 || !this.normBind0) return;
     const groups = Math.ceil(this.vertexCount / PreviewEvalComputer.WG_SIZE);
     if (groups === 0) return;
-    if (groups > 65535) {
-      console.warn(`[PreviewEvalComputer] ${groups} workgroups exceeds the 1D limit; prototype supports up to ${65535 * PreviewEvalComputer.WG_SIZE} vertices`);
-    }
+    // 2D dispatch to get past the 65535 per-dimension workgroup limit; the shaders
+    // rebuild the linear index from num_workgroups. Covers up to 65535*65535*64 verts.
+    const wgX = Math.min(groups, PreviewEvalComputer.MAX_DIM);
+    const wgY = Math.ceil(groups / wgX);
     const enc = this.device.createCommandEncoder({ label: 'preview-eval' });
     const p1 = enc.beginComputePass();
     p1.setPipeline(this.evalPipeline);
     p1.setBindGroup(0, this.evalBind0);
     p1.setBindGroup(1, this.evalBind1);
-    p1.dispatchWorkgroups(Math.min(groups, 65535));
+    p1.dispatchWorkgroups(wgX, wgY);
     p1.end();
     const p2 = enc.beginComputePass();
     p2.setPipeline(this.normPipeline);
     p2.setBindGroup(0, this.normBind0);
-    p2.dispatchWorkgroups(Math.min(groups, 65535));
+    p2.dispatchWorkgroups(wgX, wgY);
     p2.end();
     this.device.queue.submit([enc.finish()]);
   }

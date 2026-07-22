@@ -427,8 +427,9 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
 @group(1) @binding(2) var<storage, read> pf_uv_in: array<vec2<f32>>;
 
 @compute @workgroup_size(64)
-fn eval_pos(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x;
+fn eval_pos(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) nwg: vec3<u32>) {
+    // 2D dispatch: reconstruct the linear vertex index (past the 65535 per-dim limit).
+    let i = gid.y * (nwg.x * 64u) + gid.x;
     if (i >= arrayLength(&pf_pos_out)) { return; }
     let uv = pf_uv_in[i];
     pf_pos_out[i] = surface_point(pf_seg_in[i], uv.x, uv.y);
@@ -465,8 +466,9 @@ const PF_FLAG_CAP_DOWN: u32 = 2u; // seg 3   -> -Z (flat underside)
 const PF_FLAG_INNER: u32 = 4u;    // seg 1   -> flip (inner wall)
 
 @compute @workgroup_size(64)
-fn norm_from_nbr(@builtin(global_invocation_id) gid: vec3<u32>) {
-    let i = gid.x;
+fn norm_from_nbr(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgroups) nwg: vec3<u32>) {
+    // 2D dispatch: reconstruct the linear vertex index (past the 65535 per-dim limit).
+    let i = gid.y * (nwg.x * 64u) + gid.x;
     if (i >= arrayLength(&pf_norm_out)) { return; }
     let nb = pf_nbr_in[i];
     if ((nb.flags & PF_FLAG_CAP_UP) != 0u)   { pf_norm_out[i] = vec3<f32>(0.0, 0.0, 1.0); return; }
