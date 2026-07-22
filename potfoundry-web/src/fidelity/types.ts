@@ -65,5 +65,13 @@ export interface FidelityBaseline {
 export const SAG_TOL_MM = 0.1;
 /** 3D aspect-ratio sliver bound (matches the UV audit B5 bound). */
 export const ASPECT_MAX = 100;
-/** Position weld tolerance (mm), matches exportValidation.ts. */
+/**
+ * Position weld tolerance (mm) for the fidelity harness.
+ * DIVERGENCE (do not assume they match): the export DOWNLOAD gate welds at
+ * `DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM = 0.001` (exportValidation.ts:29) — 10× looser
+ * than this 1e-4. A 0.1–1µm seam therefore passes one gate and fails the other.
+ * Reconciling the two is a deliberate decision (see the unified-ruler roadmap R5,
+ * docs/superpowers/specs/2026-07-22-unified-ruler-design.md); the prior comment here
+ * claimed they were equal, which was false.
+ */
 export const WELD_TOL_MM = 1e-4;
