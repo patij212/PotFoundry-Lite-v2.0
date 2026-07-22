@@ -16,9 +16,13 @@
  * in a 3D bucket grid. To project a point P, seed GN from the GLOBALLY nearest grid
  * samples (found in ~O(1) via the bucket index) AND from the radial foot, then keep
  * the smallest polished distance. Because the grid samples the WHOLE surface, the
- * true basin is always among the seeds — no wrong well — and because the seed set
- * ALWAYS INCLUDES the radial foot, the result is provably ≤ the single-GN projector
- * (it can never overstate relative to it). The expensive grid build is amortized
+ * true basin is always among the seeds — no wrong well — and because every seed is
+ * polished to an ACTUAL surface point, the returned distance is always a VALID UPPER
+ * BOUND on the true perpendicular distance (it never UNDER-states ⇒ it can never
+ * falsely certify a bad mesh). Since the seed set also includes the radial foot, it
+ * is ≤ the single-seed projector up to GN-convergence noise (the single-seed path also
+ * runs its own local ±0.22-rad coarse search, so the ordering is not bit-exact, but
+ * the global seed field dominates that local window). The expensive grid build is amortized
  * across every projection of a mesh, so the whole-mesh cost is ~O(samples) — orders
  * of magnitude below the brute twin, and correct everywhere (not just worst-N).
  *
@@ -221,9 +225,10 @@ export function buildRadialSurfaceProjector(
     sampleCount: nSamples,
     project(px: number, py: number, pz: number): SurfaceProjection {
       // Seed set = the radial foot (exact on a vertical wall, cheapest) ∪ the K
-      // globally-nearest surface samples. Polishing the radial foot GUARANTEES the
-      // result is ≤ the single-GN projector; the global samples supply the correct
-      // basin on tangled lattices.
+      // globally-nearest surface samples. Every seed is polished to an actual surface
+      // point, so the result is always a valid UPPER bound on the true distance; the
+      // radial foot keeps it ≤ the single-seed projector (up to GN noise); the global
+      // samples supply the correct basin on tangled lattices.
       let thetaRad = Math.atan2(py, px);
       if (thetaRad < 0) thetaRad += TAU;
       let best = gnFoot(px, py, pz, thetaRad, pz);

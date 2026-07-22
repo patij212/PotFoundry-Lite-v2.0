@@ -117,7 +117,10 @@ export function measureRadialFidelity(
   const q = triangleQualityDistribution({ vertices: mesh.vertices, indices: mesh.indices });
 
   const maxMm = Math.max(dev.chordMaxMm, dev.vertexMaxMm);
-  const certified = dev.nonFiniteCount === 0 && maxMm <= opts.tolMm;
+  // Require that a wall was actually measured: a mesh with zero outer-wall (surfaceId
+  // 0) samples reads maxMm=0 and would otherwise certify VACUOUSLY ("faithful" with
+  // nothing measured). An absent wall is not a faithful wall.
+  const certified = dev.samples > 0 && dev.nonFiniteCount === 0 && maxMm <= opts.tolMm;
 
   return {
     maxMm,

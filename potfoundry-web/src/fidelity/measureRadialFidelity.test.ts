@@ -71,4 +71,20 @@ describe('measureRadialFidelity — unified MAX-first radial ruler', () => {
     expect(globalRep.chordMaxMm).toBeLessThan(singleRep.chordMaxMm);
     expect(singleRep.chordMaxMm - globalRep.chordMaxMm).toBeGreaterThan(0.05);
   }, 120000);
+
+  it('does NOT vacuously certify a mesh with no measured outer wall (samples===0)', () => {
+    const rA: AnalyticRadiusFn = () => 50;
+    // A single cap triangle: every vertex is surfaceId 2, so perpendicular3DDeviation
+    // measures NO outer-wall (surfaceId 0) sample. A "certified" here would be vacuous —
+    // an absent wall is not a faithful wall.
+    const mesh = {
+      vertices: Float32Array.from([50, 0, 100, 0, 50, 100, -50, 0, 100]),
+      indices: Uint32Array.from([0, 1, 2]),
+    };
+    const ut = Float32Array.from([0, 1, 2, 0.33, 1, 2, 0.66, 1, 2]);
+    const rep = measureRadialFidelity(mesh, ut, rA, { H, tolMm: 0.1, denseN: 3 });
+    expect(rep.samples).toBe(0);
+    expect(rep.wallTriangles).toBe(0);
+    expect(rep.certified).toBe(false);
+  });
 });
