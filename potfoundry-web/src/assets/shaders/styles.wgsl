@@ -752,9 +752,11 @@ fn bamboo_segments_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let taper = style_param(5u);
   let asymmetry = style_param(6u);
   
-  // Segment position
+  // Segment position — clamp to the last real segment so the rim (t=1, segment_phase=node_count)
+  // does not index a spurious extra segment (the floor() rim-lip defect; mirrors dragon_scales_radius
+  // above and the CPU rOuterBambooSegments fix). ceil(node_count)-1 only bites at t=1 (no-op for t<1).
   let segment_phase = t * node_count;
-  let segment = floor(segment_phase);
+  let segment = min(floor(segment_phase), ceil(node_count) - 1.0);
   let segment_local = segment_phase - segment;
   
   // Node ring: bulge at segment boundaries - clamp exp argument to prevent overflow

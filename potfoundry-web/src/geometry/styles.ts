@@ -1105,9 +1105,15 @@ export function rOuterBambooSegments(
   const taper = params.bsTaper ?? DEFAULT_BAMBOO_SEGMENTS.bsTaper;
   const asymmetry = params.bsAsymmetry ?? DEFAULT_BAMBOO_SEGMENTS.bsAsymmetry;
 
-  // Segment position
+  // Segment position.
+  // Clamp to the last real segment: at the rim (t=1) segmentPhase equals nodeCount exactly, so an
+  // unclamped floor() would index a spurious extra segment (nodeCount) — flipping the per-segment
+  // asymmetry variation (which keys on `segment`) and jerking the radius ~2.46mm at the rim. Mirrors
+  // the DragonScales sibling fix (rOuterDragonScales rowPhase clamp above); ceil(nodeCount)-1 only
+  // bites at t=1 (a no-op for every t<1), so the last segment extends continuously to the rim. The
+  // Track-A judge (bambooSegmentsLayeredOuterWallTarget.ts) rejects the unclamped row as a defect.
   const segmentPhase = t * nodeCount;
-  const segment = Math.floor(segmentPhase);
+  const segment = Math.min(Math.floor(segmentPhase), Math.ceil(nodeCount) - 1);
   const segmentLocal = segmentPhase - segment; // 0 to 1 within segment
 
   // Node ring: bulge at segment boundaries
