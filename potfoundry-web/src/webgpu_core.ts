@@ -3701,8 +3701,9 @@ export const mount = async ({
         instantController.draw(pass, safeDrawVerts);
         totalDrawCalls += 1;
         // [preview-eval] count instant frames drawn (window.__pfInstant, read by e2e)
-        try { const w = window as unknown as { __pfInstant?: Record<string, unknown> }; if (w.__pfInstant) w.__pfInstant.instantFrames = ((w.__pfInstant.instantFrames as number) ?? 0) + 1; } catch { /* ignore */ }
+        try { const w = window as unknown as { __pfInstant?: Record<string, unknown> }; if (w.__pfInstant) { w.__pfInstant.instantFrames = ((w.__pfInstant.instantFrames as number) ?? 0) + 1; w.__pfInstant.lastPath = 'instant'; } } catch { /* ignore */ }
       } else {
+        if (instantController) { try { const w = window as unknown as { __pfInstant?: Record<string, unknown> }; if (w.__pfInstant) w.__pfInstant.lastPath = 'perstyle'; } catch { /* ignore */ } }
         pass.setPipeline(activePipeline || pipeline); // Fallback to initial pipeline if active is somehow null
         pass.setBindGroup(0, bindGroup);
         if (!raycastDrewFrame) {
