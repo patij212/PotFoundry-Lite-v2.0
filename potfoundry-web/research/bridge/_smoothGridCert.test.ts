@@ -80,11 +80,14 @@ const CASES: SmoothCase[] = [
 describe('SMOOTH-GRID-CERT — structured grid closes + judge-certifies for smooth styles', () => {
   it.skipIf(process.env.PF_SMOOTHGRID !== '1')('close true-3D ≤0.01 on a uniform grid, then judge-cert via the cut-at-gap adapter', () => {
     plog(`=== SMOOTH-GRID-CERT => ${NDJSON} ===`);
-    const H = 120, Rb = 70, Rt = 70; // OD140 / H120 production scale
+    // Production DEFAULT_DIMENSIONS: OD140/H120 TAPERED ⇒ H120 / Rt70 / Rb45 / expn1.1 (not the untapered Rb=Rt=70).
+    const H = 120, Rb = 45, Rt = 70, expn = 1.1;
     const onlyTag = process.env.PF_SMOOTHGRID_TAG;
+    const onlyTags = process.env.PF_SMOOTHGRID_TAGS ? process.env.PF_SMOOTHGRID_TAGS.split(',') : undefined;
     for (const cs of CASES) {
       if (onlyTag && cs.tag !== onlyTag) continue;
-      const rA = buildRadiusFn(cs.style, cs.params, { H, Rb, Rt }) as unknown as RA;
+      if (onlyTags && !onlyTags.includes(cs.tag)) continue;
+      const rA = buildRadiusFn(cs.style, cs.params, { H, Rb, Rt, expn }) as unknown as RA;
       // density ladder — record each rung; find the CLOSING grid (fidelity ≤0.01mm) AND the largest UNDER-CAP grid.
       // The judge's hard triangle cap is 1,048,576; the grid STRUCTURE is density-invariant, so an under-cap grid
       // certifies the whole family (exactly like the DS representative-wall cert covers production nU=4096).
