@@ -19,6 +19,15 @@ describe('reconstruct lib — pure', () => {
     expect(configDigest(pot)).toBe(configDigest(pot));
     expect(configDigest(pot)).toMatch(/^[0-9a-f]{64}$/);
   });
+
+  it('configDigest is sensitive to styleId', () => {
+    const pot = CERTIFIED_POTS[0];
+    // styleId is a real input to atlas(...) and changes the geometry, so it must
+    // participate in the digest — otherwise two distinct configs collide.
+    expect(configDigest({ ...pot, styleId: 'ZZZ_nonexistent' })).not.toBe(
+      configDigest(pot)
+    );
+  });
 });
 
 describe('reconstruct lib — one small pot', () => {

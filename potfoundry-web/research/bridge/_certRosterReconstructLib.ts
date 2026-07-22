@@ -48,6 +48,7 @@ export function configDigest(pot: CertifiedPot): string {
   const canonical = canonicalJson({
     geometry: pot.geometry,
     styleParams: pot.styleParams,
+    styleId: pot.styleId,
     divisions: pot.divisions,
   });
   return createHash('sha256').update(canonical).digest('hex');
