@@ -42,9 +42,19 @@ import {
   DS_CURVATURE_FINE_STEP,
   DS_CURVATURE_SUBSAMPLES,
 } from './dsFeatureEdges';
-import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled } from './regionLayerFlag';
-export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled } from './regionLayerFlag';
+import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled, isSmoothGridEnabled } from './regionLayerFlag';
+export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled, isSmoothGridEnabled } from './regionLayerFlag';
 export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
+import { buildSmoothGridOuterWall, type SmoothGridOuterWallParams } from './smoothGrid';
+export {
+  buildSmoothGridWall,
+  smoothGridWallToOuterWall,
+  deriveSmoothGridDensity,
+  buildSmoothGridOuterWall,
+  type SmoothGridWall,
+  type SmoothGridDensityOpts,
+  type SmoothGridOuterWallParams,
+} from './smoothGrid';
 import { buildDsRingStripWallGeometric, dsRingStripWallToOuterWall, buildDsConeFanWallGeometric } from './dsRingStrips';
 export {
   buildDsRingStripWall,
@@ -521,4 +531,48 @@ export function buildRegionOuterWall(
     kernelOpts.curvatureSubsamples = DS_CURVATURE_SUBSAMPLES;
   }
   return buildMetricOuterWall(params.analyticRA, { H: params.H }, kernelOpts);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// SMOOTH-GRID DISPATCH — route the C∞ smooth styles to the certifiable uniform grid
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The six C∞ SMOOTH styles the certifiable-production-mesh campaign closes on a UNIFORM structured (u,t) grid
+ * ({@link buildSmoothGridOuterWall}) — whole-mesh true-3D ≤0.01mm AND judge-certifiable by the exact-dyadic partition
+ * (power-of-two columns snap exactly), where the free-Delaunay conforming mesher carries non-dyadic float stations and
+ * cannot be. Measured closers (research/lab/2026-07-22-certifiable-production-mesh-campaign.md): SFB 65k · SE 261k ·
+ * FB/HR/WI 1.04M · SR ~4M tris. A deliberately small explicit allow-list (mirrors {@link REGION_LAYER_STYLES}) — DISJOINT
+ * from the region + count-unstable allow-lists so exactly one emitter claims each style.
+ */
+export const SMOOTH_GRID_STYLES: ReadonlySet<StyleId> = new Set<StyleId>([
+  'HarmonicRipple',
+  'SuperellipseMorph',
+  'FourierBloom',
+  'SpiralRidges',
+  'SuperformulaBlossom',
+  'WaveInterference',
+]);
+
+/** True iff `styleId` is a smooth-grid style (empty/unknown ⇒ false — safe fallback to the non-smooth path). */
+export function isSmoothGridStyle(styleId: string | undefined): boolean {
+  return styleId !== undefined && SMOOTH_GRID_STYLES.has(styleId as StyleId);
+}
+
+/**
+ * Smooth-grid dispatch: when the smooth-grid emitter is ENABLED ({@link isSmoothGridEnabled}) AND `styleId` is a
+ * smooth-grid style ({@link isSmoothGridStyle}), build the outer wall via the certifiable uniform (u,t) grid
+ * ({@link buildSmoothGridOuterWall}) at the sag-derived density. The grid's rims are EMERGENT (nU columns); the
+ * assembly pins the inner wall to `outer.bottomRing.length` (WatertightAssembly.ts) so it adopts this wall UNCHANGED,
+ * exactly as for the DS cone-fan — no `nRing` needed. Returns `undefined` otherwise (flag-off OR a non-smooth style)
+ * ⇒ the caller keeps its existing outer-wall path, byte-identical. Adoption downstream still requires
+ * {@link isPerfectMesherEnabled} (the unchanged assembly hook), so a smooth-grid run needs BOTH `__pfSmoothGrid` and
+ * `__pfPerfectMesher`; `__pfSmoothGrid` alone is inert.
+ */
+export function buildSmoothGridDispatchWall(
+  params: SmoothGridOuterWallParams,
+  styleId?: StyleId,
+): ConformingOuterWallResult | undefined {
+  if (!isSmoothGridEnabled() || !isSmoothGridStyle(styleId)) return undefined;
+  return buildSmoothGridOuterWall(params);
 }

@@ -79,6 +79,9 @@ import {
     isRegionLayerEnabled,
     isRegionLayerStyle,
     buildRegionOuterWall,
+    isSmoothGridEnabled,
+    isSmoothGridStyle,
+    buildSmoothGridDispatchWall,
 } from './parametric/conforming/tierC';
 import type { ConformingOuterWallResult } from './parametric/conforming/ConformingOuterWall';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
@@ -2891,12 +2894,49 @@ export class ParametricExportComputer {
                 // __pfRegionLayer and __pfPerfectMesher; __pfRegionLayer alone is inert.
                 const adoptRegion =
                     isRegionLayerEnabled() && isRegionLayerStyle(params.styleId);
+                // SMOOTH-GRID (dev flag __pfSmoothGrid, default OFF): route the six C∞
+                // smooth styles (HarmonicRipple/SuperellipseMorph/FourierBloom/
+                // SpiralRidges/SuperformulaBlossom/WaveInterference) to the CERTIFIABLE
+                // uniform (u,t) structured grid emitter (buildSmoothGridDispatchWall),
+                // OVERRIDING the K2 wall for those styles. Flag-off ⇒ adoptSmooth is false
+                // and every expression below reduces to the prior region/K2 gate
+                // (byte-identical). Adoption is still the isPerfectMesherEnabled() assembly
+                // hook, so a smooth-grid run needs BOTH __pfSmoothGrid and __pfPerfectMesher;
+                // __pfSmoothGrid alone is inert.
+                const adoptSmooth =
+                    isSmoothGridEnabled() && isSmoothGridStyle(params.styleId);
                 const adoptTierCOuter =
                     isPerfectMesherEnabled() &&
                     (isCountUnstableStyle(params.styleId, { nodes: [], edges: [] }) ||
-                        adoptRegion);
+                        adoptRegion ||
+                        adoptSmooth);
                 let tierCOuterWall: ConformingOuterWallResult | undefined;
                 if (adoptTierCOuter) {
+                    // Smooth-grid uniform (u,t) grid for the C∞ smooth styles (undefined
+                    // for other styles / smooth-off ⇒ fall through to the region wall then
+                    // the K2 analytic wall, unchanged). The grid's rims are EMERGENT (nU
+                    // columns) — the assembly pins the inner wall to outer.bottomRing.length
+                    // (WatertightAssembly), adopting this wall as-is exactly like the DS
+                    // cone-fan, so no nRing is threaded here.
+                    const smoothWall = adoptSmooth
+                        ? buildSmoothGridDispatchWall(
+                              {
+                                  analyticRA: buildAnalyticRadiusFn(
+                                      params.styleId,
+                                      params.styleOpts,
+                                      {
+                                          H: dimensions.H,
+                                          Rb: dimensions.Rb,
+                                          Rt: dimensions.Rt,
+                                          expn: dimensions.expn,
+                                      },
+                                  ),
+                                  H: dimensions.H,
+                                  tolMm: qMaxSag,
+                              },
+                              params.styleId,
+                          )
+                        : undefined;
                     // Region M=g/h² kernel for DS/GeoStar (undefined for other styles /
                     // region-off ⇒ fall through to the K2 analytic wall, unchanged).
                     const regionWall = adoptRegion
@@ -2926,6 +2966,7 @@ export class ParametricExportComputer {
                           )
                         : undefined;
                     tierCOuterWall =
+                        smoothWall ??
                         regionWall ??
                         buildTierCOuterWall(
                             outerSampler,

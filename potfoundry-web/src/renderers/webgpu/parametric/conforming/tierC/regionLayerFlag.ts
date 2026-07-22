@@ -52,3 +52,18 @@ export function isDsConeFanEnabled(): boolean {
   const g = globalThis as unknown as { __pfDsConeFan?: boolean };
   return g.__pfDsConeFan === true;
 }
+
+/**
+ * NARROW default-off SUB-FLAG for the SMOOTH-GRID tierC emitter (E-2026-07-22-CERTIFIABLE-PRODUCTION-MESH). When on,
+ * the six C∞ smooth styles (HarmonicRipple/SuperellipseMorph/FourierBloom/SpiralRidges/SuperformulaBlossom/
+ * WaveInterference) route their outer wall to {@link buildSmoothGridOuterWall}: a uniform (u,t) structured grid at the
+ * sag-derived density, which closes whole-mesh true-3D ≤0.01mm AND is judge-certifiable by the exact-dyadic partition
+ * (power-of-two columns snap exactly), unlike the free-Delaunay conforming mesher. Off (production) ⇒ this branch never
+ * runs and the smooth-style export path is byte-identical. Effective ONLY when the assembly's existing `tierCOuterWall`
+ * adopt hook fires (needs `__pfPerfectMesher`), so — exactly like the region-layer + DS sub-flags — this is an
+ * independent gate that can never alter the default export path on its own.
+ */
+export function isSmoothGridEnabled(): boolean {
+  const g = globalThis as unknown as { __pfSmoothGrid?: boolean };
+  return g.__pfSmoothGrid === true;
+}
