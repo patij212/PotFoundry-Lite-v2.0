@@ -36,9 +36,14 @@ defines?* Two things make that question subtle.
 
 **The distance is directional.** Almost every ruler here is **one-sided
 mesh→surface** (sample the mesh, measure to the surface). That is blind to
-**missing** surface (a hole in the mesh emits no sample). Only `scoreCoverage`
-(PEC twin) and the rigorous `target→mesh` direction close that gap — and the
-latter is only *assumed* sound (`geometricImageManifoldProven:false`).
+**missing** surface (a hole in the mesh emits no sample). Closing that gap:
+`scoreCoverage` (PEC twin) and the rigorous `target→mesh` direction (only *assumed*
+sound, `geometricImageManifoldProven:false`); and now **`surfaceToMeshMaxMm` /
+`twoSidedHausdorffMm`** (`parametricHausdorff.ts`) — dense `Φ(u,v)` samples to the
+nearest mesh triangle (exact, unbounded), giving the **symmetric two-sided Hausdorff**
+`max(mesh→surface, surface→mesh)` = the honest "true error including ALL features".
+Shape-agnostic (the mesh→surface half is the parametric projector §4.5b, so over/under
+walls are handled).
 
 **The reference is the hard part.** "The true surface" has three representations,
 and picking the wrong one for the shape is the #1 way a ruler lies (see §3):
@@ -169,7 +174,7 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 - **Where:** `src/fidelity/parametricSurfaceProjector.ts`. The `(u,v)`/`Φ` generalization of the radial `buildRadialSurfaceProjector`.
 - **Measures:** shortest 3D distance `min_(u,v) |P − Φ(u,v)|` from a mesh point to a surface given as a general parametric 2-manifold `Φ(u,v)` (single-valued in the chart; image may self-fold).
 - **Algorithm:** 2×2 Gauss-Newton on `(u,v)` (tangents `Φ_u`,`Φ_v` by central FD, backtracking) seeded from a precomputed **global seed-field** (`Φ` on a `(u,v)` grid, 3D-bucket-indexed). Periodic/clamped domains supported.
-- **Precision:** sub-µm on smooth surfaces (matches a brute `(u,v)` scan); a valid **upper bound** on the true distance (never under-states). Sampled → the surface→mesh (missing-feature) half is a separate dense-`Φ`-vs-mesh-BVH pass.
+- **Precision:** sub-µm on smooth surfaces (matches a brute `(u,v)` scan); a valid **upper bound** on the true distance (never under-states). This is the mesh→surface half; the surface→mesh (missing-feature) half is `surfaceToMeshMaxMm`, combined by `twoSidedHausdorffMm` (`parametricHausdorff.ts`).
 - **Failure modes:** needs `Φ` fine enough that the seed grid resolves each sheet's basin (raise `nu`/`nv` for very fine relief); FD step vs feature wavelength (same class as §4.5). The reference `Φ` must be the **exact analytic** map (post-warp GPU eval only checks tessellation, not design).
 - **When/how:** the multi-valued (over/under weave/braid, DS ring) shape class — the case the radial projector cannot represent. Also works for any single-valued style (radial is a special case).
 - **Shape:** **fully shape-agnostic** — over/under, cusp, cliff, twist are all just points of one single-valued `Φ`. Verified on a torus (two-valued in `(θ,z)`): resolves the correct sheet, matches brute.
