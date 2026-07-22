@@ -27,6 +27,7 @@ import {
   tessellateAnnularRadialSolidTargetForCertification,
   type AnnularSolidReferenceTessellation,
   type AnnularSolidReferenceTessellationOptions,
+  type VerticalStationLadder,
 } from '../../src/geometry/targetSolid/annularSolidReferenceTessellation';
 import { createCompleteMappedGeometryTargetBindingFromSurfaceComplex } from '../../src/geometry/targetSolid/completeMappedArtifactGeometry';
 import type { SinglePatchAnnularRadialSolidTargetBinding } from '../../src/geometry/targetSolid/singlePatchAnnularRadialSolidTarget';
@@ -42,13 +43,83 @@ export interface CoarsenFloors {
 export const DEFAULT_COARSEN_FLOORS: CoarsenFloors = Object.freeze({ angular: 2, vertical: 0 });
 
 /**
+ * The COARSE variant of a station ladder: drop alternate INTERIOR stations
+ * (stride 2 by index), keeping the two endpoints and the SAME denominator
+ * (`log2Denominator` + `oddDenominatorFactor` verbatim), so the result is still
+ * a valid `VerticalStationLadder` the tessellator's `resolveStations` accepts —
+ * a genuinely lower-resolution vertical grid, not a re-scaled one. `step`
+ * halvings; a no-op once only the two endpoints remain (nothing safe to drop).
+ * This is the v2 fix so ladder-pinned patches coarsen VERTICALLY too, not
+ * angular-only. The dropped subsequence stays strictly increasing because it is
+ * a subsequence of the (strictly increasing) input with both endpoints pinned.
+ */
+export function coarsenLadder(ladder: VerticalStationLadder, step: number): VerticalStationLadder {
+  let nums = [...ladder.numerators];
+  for (let s = 0; s < step; s += 1) {
+    if (nums.length <= 2) break; // only endpoints left — nothing safe to drop
+    const last = nums.length - 1;
+    const kept: number[] = [nums[0]]; // bottom endpoint
+    for (let i = 2; i < last; i += 2) kept.push(nums[i]); // keep even interior indices
+    kept.push(nums[last]); // top endpoint (=== denominator, unchanged)
+    nums = kept;
+  }
+  return {
+    log2Denominator: ladder.log2Denominator,
+    numerators: nums,
+    ...(ladder.oddDenominatorFactor !== undefined
+      ? { oddDenominatorFactor: ladder.oddDenominatorFactor }
+      : {}),
+  };
+}
+
+/**
+ * Per-patch report of which axes the coarse variant actually reduced, so a
+ * verdict never over-claims: 'angular+vertical' when the uniform vertical knob
+ * dropped OR the patch's station ladder shrank; 'angular' otherwise (a patch
+ * whose ladder could not be coarsened — e.g. already at its two endpoints — or
+ * whose uniform vertical knob was already at the floor). Keyed by every patch in
+ * `fine.verticalDivisionsLog2ByPatch`.
+ */
+export function coarsenedAxesReport(
+  fine: AnnularSolidReferenceTessellationOptions,
+  coarse: AnnularSolidReferenceTessellationOptions
+): Record<string, 'angular' | 'angular+vertical'> {
+  const out: Record<string, 'angular' | 'angular+vertical'> = {};
+  const fineLadders = (fine.verticalStationsByPatch ?? {}) as Record<
+    string,
+    VerticalStationLadder | undefined
+  >;
+  const coarseLadders = (coarse.verticalStationsByPatch ?? {}) as Record<
+    string,
+    VerticalStationLadder | undefined
+  >;
+  const coarseUniform = coarse.verticalDivisionsLog2ByPatch as Record<string, number>;
+  for (const [patchId, fineLog2] of Object.entries(fine.verticalDivisionsLog2ByPatch)) {
+    const fineLadder = fineLadders[patchId];
+    if (fineLadder === undefined) {
+      // No ladder: the uniform vertical knob governs — did it drop?
+      out[patchId] = coarseUniform[patchId] < fineLog2 ? 'angular+vertical' : 'angular';
+    } else {
+      const coarseLadder = coarseLadders[patchId];
+      out[patchId] =
+        coarseLadder !== undefined &&
+        coarseLadder.numerators.length < fineLadder.numerators.length
+          ? 'angular+vertical'
+          : 'angular';
+    }
+  }
+  return out;
+}
+
+/**
  * PURE transform: the COARSE variant of a division spec. Reduce the shared
  * `angularDivisionsLog2` and every `verticalDivisionsLog2ByPatch` entry by
- * `coarseStep`, clamped at the floors. All other keys (station ladders,
- * angular stations, conforming lines/chords) pass through UNCHANGED, so a patch
- * pinned by a `verticalStationsByPatch` ladder coarsens only ANGULARLY — the
- * uniform vertical knob is inert under a ladder (see resolveStations). This is
- * exactly the task's scope: touch only the two uniform knobs.
+ * `coarseStep`, clamped at the floors, AND (v2) coarsen every
+ * `verticalStationsByPatch` ladder via `coarsenLadder` so a patch pinned by a
+ * station ladder coarsens VERTICALLY too — not angular-only (the uniform
+ * vertical knob is inert under a ladder, so before v2 such a patch never lost
+ * vertical resolution). Angular stations and conforming lines/chords still pass
+ * through UNCHANGED. Pure: `divisions` is never mutated.
  */
 export function coarsenDivisions(
   divisions: AnnularSolidReferenceTessellationOptions,
@@ -64,10 +135,20 @@ export function coarsenDivisions(
       Math.max(floors.vertical, log2 - coarseStep),
     ])
   ) as AnnularSolidReferenceTessellationOptions['verticalDivisionsLog2ByPatch'];
+  const verticalStationsByPatch =
+    divisions.verticalStationsByPatch === undefined
+      ? undefined
+      : (Object.fromEntries(
+          Object.entries(divisions.verticalStationsByPatch).map(([patchId, ladder]) => [
+            patchId,
+            ladder === undefined ? ladder : coarsenLadder(ladder, coarseStep),
+          ])
+        ) as AnnularSolidReferenceTessellationOptions['verticalStationsByPatch']);
   return {
     ...divisions,
     angularDivisionsLog2: Math.max(floors.angular, divisions.angularDivisionsLog2 - coarseStep),
     verticalDivisionsLog2ByPatch,
+    ...(verticalStationsByPatch === undefined ? {} : { verticalStationsByPatch }),
   };
 }
 

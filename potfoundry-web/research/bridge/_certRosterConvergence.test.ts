@@ -23,12 +23,18 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { tessellateAnnularRadialSolidTargetForCertification } from '../../src/geometry/targetSolid/annularSolidReferenceTessellation';
+import {
+  dyadicEdgeLadder,
+  rationalStationLadder,
+  tessellateAnnularRadialSolidTargetForCertification,
+} from '../../src/geometry/targetSolid/annularSolidReferenceTessellation';
 import { createCompleteMappedGeometryTargetBindingFromSurfaceComplex } from '../../src/geometry/targetSolid/completeMappedArtifactGeometry';
 import { atlas, CERTIFIED_POTS } from './_certRoster';
 import {
   classifyRatio,
   coarsenDivisions,
+  coarsenLadder,
+  coarsenedAxesReport,
   convergePot,
   sampleWorstResidualByPatch,
   trianglesByPatch,
@@ -134,7 +140,7 @@ describe('convergence probe — pure helpers', () => {
     expect(() => uniformSubcellWeights(2.5)).toThrow();
   });
 
-  it('coarsenDivisions: reduces the two uniform knobs, clamps at floors, passes ladders through', () => {
+  it('coarsenDivisions: reduces the two uniform knobs, clamps at floors, coarsens ladders (v2)', () => {
     const fine = {
       angularDivisionsLog2: 9,
       verticalDivisionsLog2ByPatch: {
@@ -151,8 +157,14 @@ describe('convergence probe — pure helpers', () => {
     expect(coarse.angularDivisionsLog2).toBe(8);
     expect(coarse.verticalDivisionsLog2ByPatch['outer-wall']).toBe(5);
     expect(coarse.verticalDivisionsLog2ByPatch['drain-wall']).toBe(0); // clamped at vertical floor
-    // station ladder passes through unchanged (a laddered patch coarsens only angularly)
-    expect(coarse.verticalStationsByPatch).toBe(fine.verticalStationsByPatch);
+    // v2: a laddered patch now coarsens VERTICALLY too (ladder subsetted, endpoints kept).
+    // This 2-station ladder is already at its endpoints, so coarsenLadder is a no-op —
+    // endpoints preserved and length unchanged (a wider ladder is exercised by the
+    // dedicated coarsenLadder test above).
+    const fineLadder = fine.verticalStationsByPatch!['inner-wall'];
+    const coarseLadder = coarse.verticalStationsByPatch!['inner-wall'];
+    expect(coarseLadder.numerators[0]).toBe(fineLadder.numerators[0]);
+    expect(coarseLadder.numerators.length).toBeLessThanOrEqual(fineLadder.numerators.length);
     // fine spec is untouched (pure transform)
     expect(fine.angularDivisionsLog2).toBe(9);
   });
@@ -167,6 +179,57 @@ describe('convergence probe — pure helpers', () => {
     expect(coarse.verticalDivisionsLog2ByPatch['outer-wall']).toBe(3);
     expect(coarse.verticalDivisionsLog2ByPatch['drain-wall']).toBe(1); // 1-2 -> clamp at 1
     expect(() => coarsenDivisions(fine, 0)).toThrow();
+  });
+
+  it('coarsenLadder halves stations, keeps endpoints + denominator, stays valid', () => {
+    const ladder = dyadicEdgeLadder(4, 0, 'v0'); // uniform 16-row: numerators 0..16
+    const coarse = coarsenLadder(ladder, 1);
+    expect(coarse.log2Denominator).toBe(ladder.log2Denominator); // same denominator
+    expect(coarse.numerators[0]).toBe(0); // endpoint kept
+    expect(coarse.numerators[coarse.numerators.length - 1]).toBe(
+      ladder.numerators[ladder.numerators.length - 1]
+    ); // top endpoint kept
+    expect(coarse.numerators.length).toBeLessThan(ladder.numerators.length); // genuinely reduced
+    for (let i = 1; i < coarse.numerators.length; i += 1) {
+      expect(coarse.numerators[i]).toBeGreaterThan(coarse.numerators[i - 1]); // strictly increasing
+    }
+    // resolveStations' core contract: top numerator === (oddFactor ?? 1) * 2^log2Denominator
+    expect(coarse.numerators[coarse.numerators.length - 1]).toBe(
+      (coarse.oddDenominatorFactor ?? 1) * 2 ** coarse.log2Denominator
+    );
+    // a rational (non-dyadic) ladder keeps its oddDenominatorFactor
+    const rat = rationalStationLadder(6, [
+      [5, 29],
+      [13, 29],
+      [21, 29],
+    ]);
+    const ratCoarse = coarsenLadder(rat, 1);
+    expect(ratCoarse.oddDenominatorFactor).toBe(rat.oddDenominatorFactor);
+    expect(ratCoarse.numerators.length).toBeLessThan(rat.numerators.length);
+    expect(ratCoarse.numerators[0]).toBe(0); // endpoint kept
+    expect(ratCoarse.numerators[ratCoarse.numerators.length - 1]).toBe(
+      (ratCoarse.oddDenominatorFactor ?? 1) * 2 ** ratCoarse.log2Denominator
+    ); // top endpoint === denominator preserved
+    for (let i = 1; i < ratCoarse.numerators.length; i += 1) {
+      expect(ratCoarse.numerators[i]).toBeGreaterThan(ratCoarse.numerators[i - 1]); // strictly increasing
+    }
+  });
+
+  it('coarsenLadder is a no-op below 3 stations (nothing safe to drop)', () => {
+    const tiny = { log2Denominator: 3, numerators: [0, 8] };
+    expect(coarsenLadder(tiny, 1).numerators).toEqual([0, 8]);
+  });
+
+  it('coarsenedAxesReport marks ladder patches vertical when the ladder shrank', () => {
+    const fine = {
+      angularDivisionsLog2: 8,
+      verticalDivisionsLog2ByPatch: { 'outer-wall': 6, 'inner-wall': 6 },
+      verticalStationsByPatch: { 'inner-wall': dyadicEdgeLadder(5, 0, 'v0') },
+    } as unknown as Parameters<typeof coarsenedAxesReport>[0];
+    const coarse = coarsenDivisions(fine, 1);
+    const axes = coarsenedAxesReport(fine, coarse);
+    expect(axes['outer-wall']).toBe('angular+vertical'); // uniform vertical knob dropped
+    expect(axes['inner-wall']).toBe('angular+vertical'); // ladder was coarsened (v2)
   });
 
   it('classifyRatio: maps ratio to refine-vs-redesign verdict', () => {
