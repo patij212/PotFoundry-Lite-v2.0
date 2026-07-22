@@ -3628,7 +3628,14 @@ export const mount = async ({
         }
       }
 
-      if (reqStyleId !== activePipelineStyleId) {
+      // [preview-eval] when the instant path is drawing it renders EVERY style from one
+      // style-independent pipeline, so this whole per-style mismatch block is not just
+      // wasteful but WRONG here: with the per-style compile skipped, activePipelineStyleId
+      // never catches up to reqStyleId, so the skip-draw guard below would return early
+      // forever → black screen on every switch. Bypass the entire block; the instant draw
+      // branch handles the swap by re-dispatching the eval passes for the new style.
+      const instantActive = !!(instantController && instantController.canDraw);
+      if (!instantActive && reqStyleId !== activePipelineStyleId) {
         // If we haven't requested this style yet, start compilation.
         // Raycast mode never draws the mesh (wireframe off forces the mesh path),
         // so kicking the mesh pipeline compile here is pure waste — and on the
@@ -3639,12 +3646,7 @@ export const mount = async ({
         // stale while raycast is active — harmless for the main pass, which
         // draws no pot, but debug line/point overlays key off it and keep the
         // last mesh-compiled style until wireframe/mesh mode is used again.)
-        // [preview-eval] when the instant path is drawing, it renders every style from ONE
-        // style-independent pipeline, so compiling the per-style mesh pipeline on switch is
-        // pure waste (same rationale as the raycast guard above) — and it's the 7-19s stall
-        // this whole path exists to remove. Skip it; the instant draw branch handles the swap.
-        const instantActive = !!(instantController && instantController.canDraw);
-        if (!raycastActive && !instantActive && reqStyleId !== pendingPipelineStyleId) {
+        if (!raycastActive && reqStyleId !== pendingPipelineStyleId) {
           if (import.meta.env.DEV) console.log(`[WebGPU] Style change detected! ${activePipelineStyleId} -> ${reqStyleId}. Initiating compilation...`);
           pendingPipelineStyleId = reqStyleId;
           getOrCreatePipeline(reqStyleId).then((p) => {

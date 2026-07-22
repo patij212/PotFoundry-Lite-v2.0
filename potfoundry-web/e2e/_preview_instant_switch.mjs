@@ -52,8 +52,25 @@ try {
     }
     await page.waitForTimeout(700);
     const canvas = await page.$('canvas');
-    if (canvas) await canvas.screenshot({ path: `${artDir}switch_${style}.png` });
-    results.push({ style, latencyMs: latency, lastPath, storeStyle: cur });
+    let brightness = -1;
+    if (canvas) {
+      const b64 = (await canvas.screenshot({ path: `${artDir}switch_${style}.png` })).toString('base64');
+      // decode the PNG as an <img> (drawImage on a live WebGPU canvas returns black) and
+      // measure mean brightness — a black/blank frame is near-0, a rendered pot is ~40+.
+      brightness = await page.evaluate((b) => new Promise((res) => {
+        const im = new Image();
+        im.onload = () => {
+          const cv = document.createElement('canvas'); cv.width = im.width; cv.height = im.height;
+          const ctx = cv.getContext('2d'); ctx.drawImage(im, 0, 0);
+          const d = ctx.getImageData(0, 0, im.width, im.height).data;
+          let s = 0; for (let i = 0; i < d.length; i += 4) s += d[i] + d[i + 1] + d[i + 2];
+          res(Math.round(s / (d.length / 4 * 3) * 10) / 10);
+        };
+        im.onerror = () => res(-1);
+        im.src = 'data:image/png;base64,' + b;
+      }), b64);
+    }
+    results.push({ style, latencyMs: latency, lastPath, storeStyle: cur, brightness });
   }
 
   // Reliable no-recompile signals: every switch registered (store) and the active draw
@@ -63,10 +80,11 @@ try {
   const measured = results.map((r) => r.latencyMs).filter((m) => m >= 0);
   console.log('\n=== INSTANT SWITCH LATENCY ===');
   console.log('ready state:', JSON.stringify(readyState));
-  for (const r of results) console.log(`  ${r.style.padEnd(20)} ${r.latencyMs >= 0 ? r.latencyMs + 'ms' : '(counter idle)'}  path=${r.lastPath}  store=${r.storeStyle}`);
+  for (const r of results) console.log(`  ${r.style.padEnd(20)} ${r.latencyMs >= 0 ? r.latencyMs + 'ms' : '(counter idle)'}  path=${r.lastPath}  store=${r.storeStyle}  brightness=${r.brightness}`);
   console.log(`measured switch latencies: [${measured.join(', ')}] ms (max ${Math.max(0, ...measured)}ms vs 7000-19000ms per-style recompile)`);
-  const pass = results.every((r) => r.lastPath === 'instant' && r.storeStyle === r.style) && measured.length > 0 && measured.every((m) => m < 2500);
-  console.log(pass ? 'PASS: all switches drew via the instant pipeline, no recompile' : 'REVIEW: a switch fell back to per-style or did not register');
+  const rendered = results.every((r) => r.brightness > 20); // black/blank frame is near 0
+  const pass = rendered && results.every((r) => r.lastPath === 'instant' && r.storeStyle === r.style) && measured.length > 0 && measured.every((m) => m < 2500);
+  console.log(pass ? 'PASS: every style rendered (non-black) via the instant pipeline, no recompile' : 'REVIEW: a switch was black, fell back, or did not register');
   console.log('==============================\n');
   process.exit(pass ? 0 : 1);
 } finally {
