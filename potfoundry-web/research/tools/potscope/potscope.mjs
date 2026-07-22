@@ -699,6 +699,22 @@ function pearson(xs, ys) {
   return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
 }
 
+// Hot-triangle selection for cmdHotspots. The per-triangle error values are
+// stored as f32 in the sidecar, so the worst certifies-at rung reads back one
+// ULP BELOW an f64 hotThresh (e.g. f32(0.005) = 0.004999999888… < 0.005), which
+// would silently drop the worst rung and print "0 hot clusters" on a pot that
+// has them. Snap the threshold onto the f32 grid the values live on so a
+// triangle sitting exactly at the worst rung is admitted. Math.fround is exact
+// here: rungs are spaced by factors of ~2, so half-ULP rounding cannot cross to
+// a lower rung. The comparison uses the snapped value; callers keep printing the
+// intended f64 hotThresh.
+export function selectHotTriangles(values, hotThresh) {
+  const hotThreshF32 = Math.fround(hotThresh);
+  const hot = [];
+  for (let t = 0; t < values.length; t += 1) if (values[t] >= hotThreshF32) hot.push(t);
+  return hot;
+}
+
 function cmdHotspots(args) {
   const nameOrStl = args._[0];
   if (!nameOrStl) { console.error('usage: potscope hotspots <name|stl> [--top N] [--budget mm] [--json]'); process.exit(2); }
@@ -720,8 +736,7 @@ function cmdHotspots(args) {
   const budget = Number(argValue(args, '--budget') ?? err.header.budgetMm ?? 0.01);
   const p99 = err.header.stats?.p99Mm ?? budget * 0.5;
   const hotThresh = Math.max(budget * 0.5, p99);
-  const hot = [];
-  for (let t = 0; t < parsed.triangleCount; t += 1) if (err.values[t] >= hotThresh) hot.push(t);
+  const hot = selectHotTriangles(err.values, hotThresh);
   const featureLoci = deriveFeatureLoci(loc.body, loc.header.count);
   const ctx = { positions: parsed.positions, locBody: loc.body, errors: err.values, budget, featureLoci };
   const clusters = weldClusters(parsed.positions, hot)

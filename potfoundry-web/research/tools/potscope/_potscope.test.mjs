@@ -19,6 +19,7 @@ import {
   readErrorRaw,
   triAnisotropy,
   weldClusters,
+  selectHotTriangles,
 } from './potscope.mjs';
 
 // --- synthetic binary STL: header(80) + uint32 count + 50 bytes/triangle ------
@@ -249,4 +250,24 @@ test('deriveFeatureLoci finds a dense column among sparse ones', () => {
   us.forEach((u, t) => { for (let k = 0; k < 3; k += 1) body[t * 7 + 1 + k * 2] = u; });
   const loci = deriveFeatureLoci(body, us.length);
   assert.ok(loci.u.some((u) => Math.abs(u - 0.5) < 0.02), `u loci ${loci.u}`);
+});
+
+// --- hot-triangle selection: f32-tolerant default threshold (Task 5 review fix) --
+// The sidecar stores per-triangle error as f32, so the worst certifies-at rung
+// reads back as f32(0.005) = 0.004999999888… — one ULP BELOW an f64 hotThresh of
+// 0.005 (= max(budget*0.5, p99) at defaults). A naive f64 `>=` drops it, so a
+// healthy certified pot (GeometricStar) prints "0 hot clusters" at the default
+// budget. selectHotTriangles snaps the threshold onto the f32 grid the values
+// live on, so a triangle sitting exactly at the worst rung is admitted while a
+// genuinely lower rung stays out.
+test('selectHotTriangles admits the worst f32 rung at the f64 threshold, excludes lower rungs', () => {
+  const hotThresh = 0.005; // f64, exactly as cmdHotspots computes it at defaults
+  // a Float32Array containing f32(0.005) — the on-disk readback of the worst rung
+  const values = new Float32Array([Math.fround(0.005)]);
+  // pre-fix (plain f64 `>=`) this returned [] because f32(0.005) < f64(0.005)
+  assert.deepEqual(selectHotTriangles(values, hotThresh), [0]);
+  // a genuinely lower rung (f32(0.0025)) must NOT be selected at the same threshold
+  assert.deepEqual(selectHotTriangles(new Float32Array([Math.fround(0.0025)]), hotThresh), []);
+  // and a plain f64 `>=` really does drop it — pins the regression, not a tautology
+  assert.ok(!(values[0] >= hotThresh), 'guard: f32(0.005) is below f64 0.005');
 });
