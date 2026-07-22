@@ -370,7 +370,7 @@ describe('computeFidelityMetrics', () => {
     expect(Number.isFinite(row.maxAspect3D)).toBe(true);
   });
 
-  it('scales sampled sliver counts back to the original triangle population', () => {
+  it('counts every sliver exactly (quality is scored over all triangles, not a subsample)', () => {
     const dense = denseCylinder(40, 100, 360, 200);
     const mesh = repeatedNeedleSlivers(1_000);
     const row = computeFidelityMetrics({
@@ -378,12 +378,12 @@ describe('computeFidelityMetrics', () => {
       mesh,
       denseVertices: dense,
       features: { expected: 0, present: 0 },
-      weldToleranceMm: 1e-4,
       sagTriangleSampleLimit: 128,
-      qualityTriangleSampleLimit: 100,
+      qualityTriangleSampleLimit: 100, // ignored — quality is always exact now
+      weldToleranceMm: 1e-4,
     });
     expect(row.triangleCount).toBe(1_000);
-    expect(row.sliverCount).toBe(1_000);
+    expect(row.sliverCount).toBe(1_000); // all 1000 needles counted exactly (not estimated)
     expect(row.maxAspect3D).toBeGreaterThan(100);
   });
 
@@ -452,6 +452,43 @@ describe('computeFidelityMetrics — sag MAX is exact, never masked by the sampl
     // never allowed to hide behind a stride (golden rule #1: certify on MAX).
     expect(subsampled.maxSagMm).toBeGreaterThan(4.5);
     expect(subsampled.maxSagMm).toBeCloseTo(full.maxSagMm, 6);
+  });
+});
+
+/** N triangles: index 0 is a NEEDLE sliver (min-angle ≈0°, huge aspect); the rest are
+ *  near-equilateral. Lets a test plant the worst sliver at a known index. */
+function trisWithOneSliver(n: number): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [];
+  const idx: number[] = [];
+  for (let k = 0; k < n; k++) {
+    const base = k * 3, z = k * 0.5;
+    if (k === 0) verts.push(0, 0, z, 100, 0, z, 50, 0.01, z); // needle: base 100, height 0.01
+    else verts.push(0, 0, z, 1, 0, z, 0.5, Math.sqrt(3) / 2, z); // equilateral (min-angle ≈60°)
+    idx.push(base, base + 1, base + 2);
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
+describe('computeFidelityMetrics — quality extremes are exact, never masked by the sample limit [R2b]', () => {
+  it('reports the worst sliver (min-angle / aspect) even when the limit would stride over it', () => {
+    const dense = denseCylinder(40, 100, 360, 200);
+    const mesh = trisWithOneSliver(21); // needle at index 0, equilateral elsewhere
+    const base = {
+      styleId: 'R2b-SliverMasking', mesh, denseVertices: dense,
+      features: { expected: 0, present: 0 }, weldToleranceMm: 1e-4,
+    };
+    // qualityTriangleSampleLimit:1 samples ONLY the middle (equilateral) triangle — it
+    // strides straight over the needle at index 0.
+    const subsampled = computeFidelityMetrics({ ...base, qualityTriangleSampleLimit: 1 });
+    const full = computeFidelityMetrics({ ...base, qualityTriangleSampleLimit: 0 });
+
+    // The worst sliver (min-angle ≈0°, aspect ≫100) must surface REGARDLESS of the limit —
+    // a masked worst-sliver is a FALSE clean-mesh certificate.
+    expect(full.minAngleDeg).toBeLessThan(1);
+    expect(subsampled.minAngleDeg).toBeLessThan(1);
+    expect(subsampled.minAngleDeg).toBeCloseTo(full.minAngleDeg, 6);
+    expect(subsampled.maxAspect3D).toBeGreaterThan(100);
+    expect(subsampled.sliverCount).toBeGreaterThanOrEqual(1);
   });
 });
 

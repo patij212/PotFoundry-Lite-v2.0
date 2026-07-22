@@ -7,11 +7,9 @@ import type { FidelityMetrics, MeshView, RTrue } from './types';
 
 const TAU = 2 * Math.PI;
 
-/** Default upper bound for expensive sag test triangles in large fidelity runs. */
+/** Default upper bound for expensive sag test triangles in large fidelity runs.
+ *  (Bounds the sag RMS statistic only — the sag MAX is always exact over every triangle.) */
 const DEFAULT_SAG_TRIANGLE_SAMPLE_LIMIT = 64_000;
-
-/** Default upper bound for 3D triangle-quality scoring in large fidelity runs. */
-const DEFAULT_QUALITY_TRIANGLE_SAMPLE_LIMIT = 256_000;
 
 /** Default upper bound for reference triangles indexed by nearest-surface sag. */
 const DEFAULT_NEAREST_REFERENCE_TRIANGLE_SAMPLE_LIMIT = 256_000;
@@ -1324,7 +1322,9 @@ export interface ComputeFidelityArgs {
    *  ALWAYS exact over every triangle regardless of this — the certification number must never
    *  hide behind a stride (golden rule #1). */
   sagTriangleSampleLimit?: number;
-  /** 0 or negative disables downsampling and scores quality on every test triangle. */
+  /** @deprecated Accepted for API compatibility but IGNORED: triangle-quality is now always
+   *  scored over every triangle. The worst-case extremes (minAngleDeg, maxAspect3D) and the
+   *  sliverCount are exact — a subsample could mask the single worst sliver (golden rule #1). */
   qualityTriangleSampleLimit?: number;
   /** 0 or negative disables downsampling for the nearest-surface reference index. */
   nearestReferenceTriangleSampleLimit?: number;
@@ -1338,10 +1338,6 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
   const sagMesh = sampleTriangles(
     mesh,
     args.sagTriangleSampleLimit ?? DEFAULT_SAG_TRIANGLE_SAMPLE_LIMIT,
-  );
-  const qualityMesh = sampleTriangles(
-    mesh,
-    args.qualityTriangleSampleLimit ?? DEFAULT_QUALITY_TRIANGLE_SAMPLE_LIMIT,
   );
   const nearestReference = denseIndices
     ? sampleTriangles(
@@ -1364,7 +1360,11 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
   // An exact MAX inherently needs the full mesh, so the sample limit cannot bound it
   // (measured: full-mesh sag ≈0.5s@1M / ≈1.9s@4M tris — the price of a correct MAX).
   const sagMaxMm = sagDeviation(mesh, ref.rTrue, sagOrder, nearestSurface).maxSagMm;
-  const quality = triangleQuality3D(qualityMesh.mesh);
+  // Quality extremes (worst aspect, smallest angle) are worst-case metrics — measured over
+  // EVERY triangle so the single worst sliver (a scale-tip needle) can never hide behind a
+  // stride. A masked worst-sliver is a FALSE clean-mesh certificate. sliverCount is likewise
+  // exact here (no subsample scaling estimate). Same golden-rule-#1 discipline as the sag MAX.
+  const quality = triangleQuality3D(mesh);
   const topo = topologyMetric(mesh, weldToleranceMm);
   const dropped = Math.max(0, features.expected - features.present);
 
@@ -1379,7 +1379,7 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
     sagReferenceBinZmm: ref.binZmm,
     maxAspect3D: quality.maxAspect3D,
     minAngleDeg: quality.minAngleDeg,
-    sliverCount: Math.round(quality.sliverCount * qualityMesh.scaleToOriginal),
+    sliverCount: quality.sliverCount,
     boundaryEdges: topo.boundaryEdges,
     nonManifoldEdges: topo.nonManifoldEdges,
     orientationMismatches: topo.orientationMismatches,
