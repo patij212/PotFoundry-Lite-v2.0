@@ -29,6 +29,7 @@ import {
   tessellateAnnularRadialSolidTargetForCertification,
 } from '../../src/geometry/targetSolid/annularSolidReferenceTessellation';
 import { createCompleteMappedGeometryTargetBindingFromSurfaceComplex } from '../../src/geometry/targetSolid/completeMappedArtifactGeometry';
+import { DEFAULT_GEOMETRY, type GeometryParams } from '../../src/state/types';
 import { atlas, CERTIFIED_POTS, type CertifiedPot } from './_certRoster';
 import {
   classifyRatio,
@@ -440,7 +441,12 @@ describe('arbitrary-config — self-calibrated convergence probe', () => {
         name: parsed.name,
         styleId: parsed.styleId,
         styleParams: parsed.styleParams,
-        geometry: parsed.geometry,
+        // Merge DEFAULT_GEOMETRY so a PARTIAL `geometry` bakes: the convergeconfig
+        // builder emits only { H, top_od, bottom_od, r_drain }, but atlas() needs
+        // all ~13 GeometryParams fields (t_wall/t_bottom/expn/bell*/spin*). The
+        // config's own fields win over the defaults; a fully-specified geometry
+        // (e.g. a reproduced roster pot) is unaffected.
+        geometry: { ...DEFAULT_GEOMETRY, ...(parsed.geometry as Partial<GeometryParams>) },
         divisions: parsed.divisions,
       } as unknown as CertifiedPot;
 
