@@ -1016,17 +1016,25 @@ export const mount = async ({
   );
   const sceneManager = new SceneManager(renderer);
   const reqInitStyleId = typeof initialParams.style === 'number' ? initialParams.style : 0;
-  // [preview-eval] instant-switch prototype flag (dev). When on, the pot renders via
-  // ONE style-independent pipeline fed by an eval-compute pass, so a style switch is a
-  // uniform write + dispatch (no recompile) — and we skip the per-style warmup blast.
+  // [preview-eval] instant-switch preview: the pot renders via ONE style-independent
+  // pipeline fed by an eval-compute pass, so a style switch is a uniform write + dispatch
+  // (no per-style recompile). DEFAULT ON for the desktop mesh preview; opt out with
+  // localStorage['pf-preview-eval']='0' or window.__pfPreviewEval=false. Desktop-only
+  // (mobile keeps its ultra-compact shader) and skipped in ray-cast mode (mesh unused).
   const instantEvalEnabled = (() => {
     try {
-      if (typeof window !== 'undefined' && (window as unknown as { __pfPreviewEval?: boolean }).__pfPreviewEval === true) return true;
-      return typeof localStorage !== 'undefined' && localStorage.getItem('pf-preview-eval') === '1';
-    } catch { return false; }
+      const w = typeof window !== 'undefined' ? (window as unknown as { __pfPreviewEval?: boolean }) : undefined;
+      if (w && w.__pfPreviewEval === false) return false;
+      if (w && w.__pfPreviewEval === true) return true;
+      const ls = typeof localStorage !== 'undefined' ? localStorage.getItem('pf-preview-eval') : null;
+      if (ls === '0') return false;
+      if (ls === '1') return true;
+      return true; // default on
+    } catch { return true; }
   })();
+  const instantEngaged = instantEvalEnabled && !isMobileDevice() && previewMode !== 'raycast';
   try {
-    if (!await sceneManager.init(reqInitStyleId, previewMode !== 'raycast' && !instantEvalEnabled)) {
+    if (!await sceneManager.init(reqInitStyleId, previewMode !== 'raycast' && !instantEngaged)) {
       console.error('[WebGPU] SceneManager.init returned false');
       ThumbnailRenderer.getInstance().rejectDevice();
       return fail('webgpu:pipeline-failed', 'SceneManager initialization failed');
@@ -1071,10 +1079,7 @@ export const mount = async ({
   // pipeline + eval passes in the background (~13s once); until ready, canDraw stays false
   // and the frame loop falls back to the per-style pipeline. Never blocks mount.
   let instantController: PreviewInstantController | null = null;
-  if (instantEvalEnabled && isMobileDevice()) {
-    console.log('[preview-eval] flag on but device is MOBILE — instant path is desktop-only (uses the desktop preview shader; mobile uses a separate ultra-compact shader). Staying on the per-style path.');
-  }
-  if (instantEvalEnabled && !isMobileDevice()) {
+  if (instantEngaged) {
     const ctl = new PreviewInstantController(device, {
       uniformBuffer,
       styleParamBuffer,
