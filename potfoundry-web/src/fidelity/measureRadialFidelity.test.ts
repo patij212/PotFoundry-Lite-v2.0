@@ -87,4 +87,27 @@ describe('measureRadialFidelity — unified MAX-first radial ruler', () => {
     expect(rep.wallTriangles).toBe(0);
     expect(rep.certified).toBe(false);
   });
+
+  it('measures near-bar facets by the HONEST perpendicular (pre-filter scales below tol)', () => {
+    // A steep cone r=40+3z: the facet interior chords radially inward, but the true
+    // PERPENDICULAR distance is that sagitta / sqrt(1+3²) ≈ 1/3.16 of it. Density chosen
+    // so the perpendicular chord is < 0.01mm (FAITHFUL) while the radial residual is
+    // ABOVE 0.01mm. With the legacy 0.04mm pre-filter (above the bar), the facet is
+    // recorded at its RADIAL over-estimate and FALSELY fails; scaling the pre-filter
+    // below the bar runs the honest perpendicular scan and certifies it.
+    const rA: AnalyticRadiusFn = (_t, z) => 40 + 3 * z;
+    const { mesh, ut } = buildGridMesh(320, 16, rA);
+    const opts = { H, tolMm: 0.01, denseN: 5 };
+
+    const honest = measureRadialFidelity(mesh, ut, rA, opts);                    // default (tol-scaled) pre-filter
+    const legacy = measureRadialFidelity(mesh, ut, rA, { ...opts, preFilterMm: 0.04 }); // legacy above-bar pre-filter
+    // Measured: honest chordMax ≈ 0.0059mm (perpendicular) vs legacy ≈ 0.017mm (radial).
+
+    // The honest ruler never reports MORE than the radial-over-estimating one.
+    expect(honest.chordMaxMm).toBeLessThanOrEqual(legacy.chordMaxMm + 1e-9);
+    // And it certifies this faithful steep cone (perpendicular < 0.01) that the
+    // above-bar pre-filter falsely fails on the radial over-estimate.
+    expect(honest.certified).toBe(true);
+    expect(legacy.certified).toBe(false);
+  }, 60000);
 });

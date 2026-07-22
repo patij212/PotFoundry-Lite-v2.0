@@ -113,7 +113,14 @@ export function measureRadialFidelity(
     chordProjector = (x, y, z) => projector.project(x, y, z).dist;
   }
 
-  const dev = perpendicular3DDeviation(mesh, ut, rA, { ...opts, chordProjector });
+  // Scale the centroid pre-filter BELOW the tolerance (unless the caller pinned it):
+  // facets whose cheap radial bound is ≤ preFilterMm skip the dense scan and are
+  // recorded at that RADIAL over-estimate. The built-in default (0.04mm) sits ABOVE a
+  // 0.01mm bar, so a steep-but-faithful facet (radial ≈0.013, true perpendicular ≈0.006)
+  // would be recorded at 0.013 and FALSELY fail. tolMm·0.25 keeps every near-bar facet
+  // on the honest perpendicular scan while still skipping the genuinely-flat tail.
+  const preFilterMm = opts.preFilterMm ?? opts.tolMm * 0.25;
+  const dev = perpendicular3DDeviation(mesh, ut, rA, { ...opts, preFilterMm, chordProjector });
   const q = triangleQualityDistribution({ vertices: mesh.vertices, indices: mesh.indices });
 
   const maxMm = Math.max(dev.chordMaxMm, dev.vertexMaxMm);
