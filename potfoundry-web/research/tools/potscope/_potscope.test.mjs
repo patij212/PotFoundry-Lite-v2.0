@@ -1263,3 +1263,29 @@ test('runHistory returns the null shape on empty / no-match / non-numeric elapse
     nullShape
   );
 });
+
+// === convergeconfig builder: arbitrary-config JSON for the probe (Task 4) ========
+// The ergonomic front-end to the Task-3 convergence probe (which reads an
+// arbitrary config via PF_CONVERGE_CONFIG). `reliefKeyForStyle` is the one
+// legitimately style-specific bit — which styleParam is the "relief" knob — as a
+// documented per-style table that throws a helpful (mention `--relief-key`) error
+// on an unknown style. `buildConvergeConfig` is PURE: it assembles the
+// { name, styleId, styleParams, geometry, divisions } config the probe consumes,
+// so the session agent never hand-authors the `divisions` block again.
+import { buildConvergeConfig, reliefKeyForStyle } from './potscope.mjs';
+
+test('reliefKeyForStyle maps known styles, throws helpfully on unknown', () => {
+  assert.equal(reliefKeyForStyle('GeometricStar'), 'gs_relief');
+  assert.equal(reliefKeyForStyle('Crystalline'), 'cr_facet_depth');
+  assert.throws(() => reliefKeyForStyle('NoSuchStyle'), /relief-key/);
+});
+
+test('buildConvergeConfig produces a valid convergePot-shaped config', () => {
+  const cfg = buildConvergeConfig({ styleId: 'GeometricStar', relief: 0.08, od: 30, h: 32, ang: 8, vert: 5 });
+  assert.equal(cfg.styleId, 'GeometricStar');
+  assert.equal(cfg.styleParams.gs_relief, 0.08);
+  assert.equal(cfg.geometry.top_od, 30);
+  assert.equal(cfg.divisions.angularDivisionsLog2, 8);
+  assert.ok(cfg.divisions.verticalDivisionsLog2ByPatch['outer-wall'] === 5);
+  assert.ok(cfg.name.includes('GeometricStar'));
+});

@@ -1429,6 +1429,64 @@ function cmdConverge(args) {
   }
 }
 
+// ---------------------------------------------------------------- convergeconfig
+// The ergonomic builder for the Task-3 convergence probe's arbitrary-config input
+// (PF_CONVERGE_CONFIG=<path.json>). It removes the last hand-authoring friction —
+// writing the `divisions` block by hand — so a session agent converges an
+// off-roster pot by naming a style + relief depth + geometry on the command line.
+
+// The one legitimately style-specific bit: which styleParam is "relief". Extend
+// per src/styles/registry.ts as styles are probed. Unknown -> explicit error.
+const RELIEF_KEY = {
+  GeometricStar: 'gs_relief', Crystalline: 'cr_facet_depth', Voronoi: 'v_relief',
+  WaveInterference: 'wi_relief_depth', RippleInterference: 'ri_relief_depth',
+  HarmonicRipple: 'hr_petal_amp', SpiralRidges: 'spiral_amp_max',
+  SuperformulaBlossom: 'sf_strength',
+};
+export function reliefKeyForStyle(styleId) {
+  const key = RELIEF_KEY[styleId];
+  if (!key) throw new Error(`convergeconfig: no relief-key known for '${styleId}' — pass --relief-key <param> (see src/styles/registry.ts)`);
+  return key;
+}
+export function buildConvergeConfig({ styleId, relief, reliefKey, od, h, ang, vert, name }) {
+  const key = reliefKey ?? reliefKeyForStyle(styleId);
+  const verticalDivisionsLog2ByPatch = {
+    'outer-wall': vert, 'inner-wall': vert, 'top-rim': 3,
+    'bottom-top': 4, 'bottom-under': 4, 'drain-wall': 0,
+  };
+  return {
+    name: name ?? `${styleId}_arb_od${od}_h${h}_rel${String(relief).replace('.', 'p')}_a${ang}v${vert}`,
+    styleId,
+    styleParams: { [key]: relief },
+    geometry: { H: h, top_od: od, bottom_od: od, r_drain: Math.min(6, Math.round(od / 5)) },
+    divisions: { angularDivisionsLog2: ang, verticalDivisionsLog2ByPatch },
+  };
+}
+function cmdConvergeConfig(args) {
+  const styleId = args._[0];
+  if (!styleId) { console.error('usage: convergeconfig <styleId> --relief r --od mm --h mm --ang log2 --vert log2 [--relief-key k] [--name n] [--out path]'); process.exit(2); }
+  const num = (flag, dflt) => { const v = argValue(args, flag); return v === undefined ? dflt : Number(v); };
+  // reliefKeyForStyle throws (its message already prefixed + names --relief-key) on an
+  // unknown style with no --relief-key override. Catch it like every other cmd* here
+  // (cmdConverge/cmdDecode/cmdHotspots) so the helpful hint prints as one clean line +
+  // exit 2, not a raw Node stack trace.
+  let cfg;
+  try {
+    cfg = buildConvergeConfig({
+      styleId, relief: num('--relief', 0.08), reliefKey: argValue(args, '--relief-key'),
+      od: num('--od', 30), h: num('--h', 32), ang: num('--ang', 8), vert: num('--vert', 5),
+      name: argValue(args, '--name'),
+    });
+  } catch (err) {
+    console.error(err.message);
+    process.exit(2);
+  }
+  const out = resolve(argValue(args, '--out') ?? `${cfg.name}.convergeconfig.json`);
+  writeFileSync(out, `${JSON.stringify(cfg, null, 2)}\n`);
+  console.log(`wrote ${out}`);
+  console.log(`  bake:  PF_CONVERGE_CONFIG="${out}" node ${'research/tools/potscope/potscope.mjs'} run -- npx vitest run research/bridge/_certRosterConvergence.test.ts`);
+}
+
 // --------------------------------------------------------------------- doctor
 // The roster health roll-up: one row per registry pot (buildStatusRows) unified
 // with its two on-disk truth layers when the sidecars are present — the worst
@@ -2509,6 +2567,7 @@ function main() {
     case 'status': cmdStatus(args); break;
     case 'manifest': cmdManifest(args); break;
     case 'converge': cmdConverge(args); break;
+    case 'convergeconfig': cmdConvergeConfig(args); break;
     case 'doctor': cmdDoctor(args); break;
     case 'dashboard': cmdDashboard(args); break;
     case 'serve': cmdServe(args); break;
@@ -2524,6 +2583,7 @@ function main() {
       console.log('  status [<substr>] [--check] [--json]   (certificate registry + drift guard)');
       console.log('  manifest [--dir <certified_stl>] [--out path]   (portable cert snapshot → fresh-clone status)');
       console.log('  converge <name|path> [--json]   (per-patch refine-vs-redesign verdict from the convergence probe)');
+      console.log('  convergeconfig <styleId> --relief r --od mm --h mm --ang log2 --vert log2 [--relief-key k] [--name n] [--out path]   (write an arbitrary-config JSON for the probe)');
       console.log('  doctor [--dir <certified_stl>] [--json] [--fast]   (roster health: registry + hotspots + convergence)');
       console.log('  dashboard [--dir <certified_stl>] [--out path] [--fast]   (self-contained certification command center → dashboard.view.html)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
