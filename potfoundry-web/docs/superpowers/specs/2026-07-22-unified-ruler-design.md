@@ -80,6 +80,23 @@ Additive, TDD, byte-identical on every existing path (opt-in only):
   outer wall. The test is ALWAYS-ON (not env-gated): it rigorously certifies a gentle
   outer wall at 0.01mm (~17s) and proves the gate is non-vacuous. The prover was
   previously only in a dev-only, env-gated sidecar baker (gating nothing).
+- **The shape-agnostic multi-sheet stack (Tier-1) — three additive modules:**
+  - **`src/fidelity/parametricSurfaceProjector.ts` — `buildParametricSurfaceProjector(Φ)`.**
+    The `(u,v)`/`Φ` generalization of the radial projector: nearest point on a general
+    parametric 2-manifold, global-seed-field 2×2 Gauss-Newton. Single-valued in the chart
+    even where the 3D image self-folds ⇒ **represents over/under (multi-sheet) walls** the
+    radius field cannot. Verified on a torus (two-valued in `(θ,z)`): resolves the correct
+    sheet, matches brute.
+  - **`src/fidelity/parametricHausdorff.ts` — `surfaceToMeshMaxMm` + `twoSidedHausdorffMm`.**
+    The surface→mesh half (dense `Φ` samples → nearest triangle, exact unbounded field) that
+    catches **missing** surface the one-sided rulers are blind to; combined as the symmetric
+    two-sided Hausdorff `max(both)` = the honest "true error including ALL features".
+  - **`src/fidelity/radialParametricSurface.ts` — `buildRadialParametricSurface(rA)`.** The
+    bridge that lifts any single-valued `rA(θ,z)` into `Φ(u,v)`, so the **whole radial roster
+    gets two-sided (missing-feature) coverage** through the exact same machinery. Proven on the
+    real `HarmonicRipple` analytic surface: a faithful uniform 128×64 mesh reads surface→mesh
+    0.55mm (the honest uniform-grid crest chord), a dropped ridge reads >5mm while mesh→surface
+    stays blind — see §4.5b/§4.5c of the compendium.
 - **`research/MEASUREMENT-COMPENDIUM.md`:** the authoritative ruler catalog.
 
 _Roadmap status: R1 DONE; R4 DONE (measureRadialFidelity pre-filter); R5 doc-half done;

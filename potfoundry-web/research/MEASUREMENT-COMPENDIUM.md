@@ -43,7 +43,9 @@ sound, `geometricImageManifoldProven:false`); and now **`surfaceToMeshMaxMm` /
 nearest mesh triangle (exact, unbounded), giving the **symmetric two-sided Hausdorff**
 `max(mesh→surface, surface→mesh)` = the honest "true error including ALL features".
 Shape-agnostic (the mesh→surface half is the parametric projector §4.5b, so over/under
-walls are handled).
+walls are handled). Any **single-valued** style reaches this two-sided measurement through
+`buildRadialParametricSurface` (§4.5c), which lifts its `rA(θ,z)` into a `Φ(u,v)` — so the
+whole radial roster gets missing-feature detection, not just hand-built surfaces.
 
 **The reference is the hard part.** "The true surface" has three representations,
 and picking the wrong one for the shape is the #1 way a ruler lies (see §3):
@@ -178,6 +180,14 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 - **Failure modes:** needs `Φ` fine enough that the seed grid resolves each sheet's basin (raise `nu`/`nv` for very fine relief); FD step vs feature wavelength (same class as §4.5). The reference `Φ` must be the **exact analytic** map (post-warp GPU eval only checks tessellation, not design).
 - **When/how:** the multi-valued (over/under weave/braid, DS ring) shape class — the case the radial projector cannot represent. Also works for any single-valued style (radial is a special case).
 - **Shape:** **fully shape-agnostic** — over/under, cusp, cliff, twist are all just points of one single-valued `Φ`. Verified on a torus (two-valued in `(θ,z)`): resolves the correct sheet, matches brute.
+
+### 4.5c `buildRadialParametricSurface` — lift a radius field `rA(θ,z)` into `Φ(u,v)` (the roster bridge)
+- **Where:** `src/fidelity/radialParametricSurface.ts`. A 20-line adapter: `Φ(u,v) = (rA·cosθ, rA·sinθ, z)`, `θ = 2π·u`, `z = z0 + height·v` (u periodic).
+- **Why it exists:** every single-valued style is a radius field, and its rulers are **one-sided** (mesh→surface) — structurally blind to a **dropped** feature (no mesh sample ⇒ mesh→surface reads ≈0). `twoSidedHausdorffMm` closes that blind spot but consumes `Φ(u,v)`, not `rA`. This is the missing bridge, so the **two-sided (missing-feature) measurement now applies to the ENTIRE single-valued roster** with zero change to the styles.
+- **How:** wrap `buildAnalyticRadiusFn(styleId, {}, {H,Rb,Rt})` (`{}` = canonical default surface, so no snake_case/camelCase param hazard) → `buildRadialParametricSurface(rA, {z0:0, height:H})` → feed to `twoSidedHausdorffMm({uPeriodic:true, …})`.
+- **Proven (radialParametricSurface.test.ts):** on the real `HarmonicRipple` analytic surface, a faithful UNIFORM 128×64 radial mesh reads surface→mesh **0.55 mm** — the honest uniform-grid *crest chord* (the very sagitta feature-conforming meshing exists to close to 0.01 mm), NOT a hole; a **dropped ridge** (a domain patch omitted) reads surface→mesh **>5 mm** while mesh→surface stays blind at <0.05 mm.
+- **When/how:** use whenever you need two-sided (coverage + placement) numbers on a single-valued style. For a genuinely multi-sheet over/under wall a radius field cannot represent it — build `Φ` directly in the `(u,v)` chart (§4.5b), do not go through this adapter.
+- **Shape:** single-valued radial only (by construction); it is the reduction of §4.5b's `Φ` to the radius-field special case.
 
 ### 4.6 `featureLineChord3D` / `perFaceTrue3DSag` — labkit true-3D
 - **Where:** `research/bridge/labkit.ts` (barrel), `featureLocalizedFidelity.ts:720`.
