@@ -98,7 +98,17 @@ emits sidecars next to the STL; the three commands below read them.
 Bake the sidecars (seconds/pot):
     PF_CERT_RECON=all npx vitest run research/bridge/_certRosterReconstruct.test.ts
 This also runs the standing drift guard: any committed pot whose fresh
-tessellation ≠ committed STL (or whose target hash moved) FAILS the test.
+tessellation ≠ on-disk certified STL (or whose target hash moved) FAILS the test.
+
+**Documented contract.** Scope: `research/exchange/` is git-ignored, so the
+certified STLs/error.bin sidecars are NOT version-controlled — they live on disk
+in this persistent campaign tree from the expensive bakes. So the drift guard's
+GREEN means 'the fresh tessellation is deterministic and byte-matches the on-disk
+certified STL (and the recorded target hash)', NOT 'matches a git-pinned
+certificate'. On a fresh clone with no on-disk artifacts, every pot reads
+STL-MISSING — a vacuous pass — and `status`/`hotspots` have no data until the
+artifacts are re-baked + reconstructed. This is a working-tree lab instrument, by
+design.
 
     node potscope.mjs hotspots <name|stl> [--top N] [--budget mm] [--json]
         Ranks the worst residual clusters and CLASSIFIES each — SPIKE / BAND

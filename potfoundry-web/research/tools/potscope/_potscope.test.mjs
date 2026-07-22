@@ -310,6 +310,46 @@ test('buildStatusRows flags p99===0 with nonzero max as masked (not cleared)', (
   assert.equal(rows[0].masked, true);
 });
 
+// --- status resilience: one malformed sidecar must not abort the whole scan ----
+// buildStatusRows parses every *.recon.json (+ sibling error.bin header) in the
+// dir. A single truncated/corrupt file must be SKIPPED (with a warn) so the whole
+// certificate registry / --check guard still reports the healthy pots — not throw
+// and kill the run. (truth-layer merge fix #2)
+test('buildStatusRows skips a malformed recon.json and returns only the valid rows', () => {
+  const d = join(DIR, 'status_malformed');
+  mkdirSync(d, { recursive: true });
+  // one VALID pot: recon.json + sibling error.bin
+  writeFileSync(
+    join(d, 'Good.recon.json'),
+    JSON.stringify({ name: 'Good', style: 'Good', tris: 100, configDigest: 'abc', verdict: 'GREEN' })
+  );
+  writeFileSync(join(d, 'Good.stl.error.bin'), Buffer.concat([
+    Buffer.from(JSON.stringify({ magic: 'potscope-error/v1', count: 1, budgetMm: 0.01, stats: { maxMm: 0.006, p50Mm: 0.001, p99Mm: 0.005 } }) + '\n', 'utf8'),
+    Buffer.from(new Float32Array([0.006]).buffer),
+  ]));
+  // one MALFORMED pot: unparseable recon.json — the WHOLE per-file body is guarded.
+  // 'Bad' sorts before 'Good', so it is processed FIRST: proves the loop CONTINUES
+  // past the throw rather than aborting the scan.
+  writeFileSync(join(d, 'Bad.recon.json'), '{ not json');
+
+  // capture the skip warning (keeps test output clean; also asserts it fired)
+  const warnings = [];
+  const origWarn = console.warn;
+  console.warn = (msg) => warnings.push(String(msg));
+  let rows;
+  try {
+    rows = buildStatusRows(d); // must NOT throw despite Bad.recon.json
+  } finally {
+    console.warn = origWarn;
+  }
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Good');
+  assert.ok(
+    warnings.some((w) => w.includes('Bad.recon.json')),
+    `expected a skip warning naming Bad.recon.json, got ${JSON.stringify(warnings)}`
+  );
+});
+
 // --- status --check drift gate: pure exit-code helper (Task 6 review fix) -------
 // statusExitCode is the headline drift guard, factored out so the exit decision
 // is testable without intercepting process.exit. cmdStatus calls it identically

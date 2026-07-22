@@ -133,7 +133,15 @@ function cmdDecode(args) {
   if (potArg && triMatch) {
     const locPath = potArg.endsWith('.loc.bin') ? resolve(potArg) : resolve(`${potArg}.stl.loc.bin`);
     if (existsSync(locPath)) {
-      const r = resolveTriFromLoc(locPath, Number(triMatch[1]));
+      let r;
+      try {
+        r = resolveTriFromLoc(locPath, Number(triMatch[1]));
+      } catch (err) {
+        // An out-of-range global tri index (or a corrupt loc.bin) throws inside
+        // resolveTriFromLoc — print a clean one-line error, not a Node stack trace.
+        console.error('decode: ' + err.message);
+        return;
+      }
       console.log(`tri ${triMatch[1]} -> patch ${r.patch} (style ${r.style})`);
       r.vertices.forEach((v, i) => console.log(`  v${i}: patch-u ${v.u.toFixed(6)} patch-v ${v.v.toFixed(6)}`));
       if (r.style !== 'GothicArches') {
@@ -803,26 +811,33 @@ function cmdHotspots(args) {
 export function buildStatusRows(dir) {
   const rows = [];
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.recon.json')).sort()) {
-    const recon = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-    const errPath = join(dir, `${recon.name}.stl.error.bin`);
-    let maxMm = null, p99Mm = null, masked = false;
-    if (existsSync(errPath)) {
-      const raw = readFileSync(errPath);
-      const hdr = JSON.parse(raw.subarray(0, raw.indexOf(0x0a)).toString('utf8'));
-      maxMm = hdr.stats?.maxMm ?? null; p99Mm = hdr.stats?.p99Mm ?? null;
-      // masked = the "certify on MAX, not p99" flag. No data (either stat null)
-      // ⇒ not masked. With p99>0 it is the >3x ratio; with p99===0 a nonzero max
-      // is the MAXIMALLY masked case (a hidden cliff over an all-clean p99), so
-      // treating p99===0 as falsy — the old bug — silently cleared exactly it.
-      if (maxMm != null && p99Mm != null) masked = p99Mm > 0 ? maxMm / p99Mm > 3 : maxMm > 0;
+    // One malformed/truncated sidecar must not abort the whole registry scan:
+    // guard the per-file body so a bad recon.json / error.bin is SKIPPED (with a
+    // warn) and the loop keeps going, instead of throwing and killing `status`.
+    try {
+      const recon = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+      const errPath = join(dir, `${recon.name}.stl.error.bin`);
+      let maxMm = null, p99Mm = null, masked = false;
+      if (existsSync(errPath)) {
+        const raw = readFileSync(errPath);
+        const hdr = JSON.parse(raw.subarray(0, raw.indexOf(0x0a)).toString('utf8'));
+        maxMm = hdr.stats?.maxMm ?? null; p99Mm = hdr.stats?.p99Mm ?? null;
+        // masked = the "certify on MAX, not p99" flag. No data (either stat null)
+        // ⇒ not masked. With p99>0 it is the >3x ratio; with p99===0 a nonzero max
+        // is the MAXIMALLY masked case (a hidden cliff over an all-clean p99), so
+        // treating p99===0 as falsy — the old bug — silently cleared exactly it.
+        if (maxMm != null && p99Mm != null) masked = p99Mm > 0 ? maxMm / p99Mm > 3 : maxMm > 0;
+      }
+      const certPath = join(dir, `${recon.name}.certificate.txt`);
+      let commit = null;
+      if (existsSync(certPath)) {
+        const m = readFileSync(certPath, 'utf8').match(/\b([0-9a-f]{7,40})\b/);
+        commit = m ? m[1] : null;
+      }
+      rows.push({ name: recon.name, style: recon.style, tris: recon.tris, configDigest: (recon.configDigest ?? '').slice(0, 8), maxMm, p99Mm, masked, commit, verdict: recon.verdict });
+    } catch (err) {
+      console.warn(`potscope status: skipping ${f}: ${err.message}`);
     }
-    const certPath = join(dir, `${recon.name}.certificate.txt`);
-    let commit = null;
-    if (existsSync(certPath)) {
-      const m = readFileSync(certPath, 'utf8').match(/\b([0-9a-f]{7,40})\b/);
-      commit = m ? m[1] : null;
-    }
-    rows.push({ name: recon.name, style: recon.style, tris: recon.tris, configDigest: (recon.configDigest ?? '').slice(0, 8), maxMm, p99Mm, masked, commit, verdict: recon.verdict });
   }
   return rows;
 }

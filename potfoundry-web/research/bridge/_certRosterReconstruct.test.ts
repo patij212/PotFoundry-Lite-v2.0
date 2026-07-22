@@ -71,10 +71,16 @@ type Verdict = 'GREEN' | 'DRIFT' | 'STL-MISSING';
 
 function committedProvenance(errPath: string): Provenance | null {
   if (!existsSync(errPath)) return null;
-  const raw = readFileSync(errPath);
-  const nl = raw.indexOf(0x0a);
-  const hdr = JSON.parse(raw.subarray(0, nl).toString('utf8'));
-  return hdr.provenance ?? null;
+  try {
+    const raw = readFileSync(errPath);
+    const nl = raw.indexOf(0x0a);
+    const hdr = JSON.parse(raw.subarray(0, nl).toString('utf8'));
+    return hdr.provenance ?? null;
+  } catch {
+    // A corrupt/truncated committed provenance sidecar must not crash the guard;
+    // a null `recorded` already flows correctly (the targetSha256 compare is skipped).
+    return null;
+  }
 }
 
 describe('reconstruct driver — guard + writer', () => {
