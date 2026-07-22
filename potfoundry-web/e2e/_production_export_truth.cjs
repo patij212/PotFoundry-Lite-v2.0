@@ -64,7 +64,9 @@ async function runState(browser, style, state) {
 (async () => {
   let browser;
   try {
-    browser = await chromium.launch({ headless: false, args: ['--enable-unsafe-webgpu', '--use-angle=default'] });
+    // Same WebGPU-enabling flags the project's playwright.config uses (a real GPU adapter needs
+    // Vulkan on Windows; --enable-unsafe-webgpu alone leaves navigator.gpu undefined).
+    browser = await chromium.launch({ headless: false, args: ['--enable-unsafe-webgpu', '--enable-features=Vulkan,UseSkiaRenderer'] });
   } catch (e) {
     console.log('LAUNCH_FAILED: ' + String(e.message).slice(0, 200));
     process.exit(3);
