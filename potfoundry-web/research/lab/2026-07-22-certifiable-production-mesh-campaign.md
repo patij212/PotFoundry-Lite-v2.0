@@ -34,15 +34,15 @@ Cross-validated against the DS-specific `buildDsConeFanCertDomain`; judge-ACCEPT
 | 4 | **FourierBloom** (defaults) | uniform structured grid 2048×256 | 0.004659 | 1,044,480 (under cap) | 0.000061 | 0.00472 | smooth grid + adapter |
 | 5 | **SpiralRidges** (defaults) | uniform-θ structured grid ~3.94M (safe) | 0.0048 | 3.94M (>cap ⇒ atlas) | 0.000004 (pow2) | ~0.0048 | smooth grid, subagent (`18cd894f`) |
 | 6 | **SuperformulaBlossom** (defaults) | uniform structured grid 256×128 | 0.005271 | **65,024** (under cap) | 0.000057 | 0.00533 | smooth grid + adapter |
+| 7 | **WaveInterference** (defaults) | uniform structured grid 2048×256 | 0.008924 | 1,044,480 (under cap) | 0.000058 | 0.00898 | smooth grid + adapter |
 
-**Measured NON-closers on a uniform grid (route to feature-conforming / graded, NOT uniform density):**
+**Measured NON-closer on a uniform grid (route to feature-conforming / graded, NOT uniform density):**
 - **RippleInterference** (defaults): stuck true-3D MAX ~0.028 / ~40 outliers even at 2.09M — wave-interference crests are
-  localized sharp features.
-- **WaveInterference** (defaults): ~0.024 / 10,020 outliers at 261k, not closing on the uniform ladder — edge-fade C1
-  kinks + interference need exact-rational stations (the judge-side WI cert used stations + a 288-row ladder).
-- Both still judge-ACCEPT at 2048×256 (structure clean); only FIDELITY is unmet on a uniform grid.
+  localized sharp features. Still judge-ACCEPTs at 2048×256 (structure clean); only FIDELITY is unmet on a uniform grid.
+  Route: feature-conforming rows on the interference crest lines. (WaveInterference LOOKED stuck at low density but CLOSES
+  at 2048×256 — its edge-fade kinks resolve by angular density at true-3D; it is row 7.)
 
-DS is the STRUCTURED-EMITTER class proof; HR/SE/FB/SR/SFB are the SMOOTH-GRID class proof. **6 styles now have a
+DS is the STRUCTURED-EMITTER class proof; HR/SE/FB/SR/SFB/WI are the SMOOTH-GRID class proof. **7 styles now have a
 certifiable structured production mesh, from 0 at session start.** Note the closing tri-count varies 65k (SFB) → ~4M
 (SR): SFB/SE are gentle-shaped (cheap), FB/HR/SR need the angular columns for their petals/ridges. SR (>cap) certifies
 by the DS multi-patch-atlas + representative-wall argument; the under-cap styles certify directly. All three certify the EXACT production
