@@ -779,7 +779,11 @@ export function buildStatusRows(dir) {
       const raw = readFileSync(errPath);
       const hdr = JSON.parse(raw.subarray(0, raw.indexOf(0x0a)).toString('utf8'));
       maxMm = hdr.stats?.maxMm ?? null; p99Mm = hdr.stats?.p99Mm ?? null;
-      if (maxMm && p99Mm && maxMm / p99Mm > 3) masked = true;
+      // masked = the "certify on MAX, not p99" flag. No data (either stat null)
+      // ⇒ not masked. With p99>0 it is the >3x ratio; with p99===0 a nonzero max
+      // is the MAXIMALLY masked case (a hidden cliff over an all-clean p99), so
+      // treating p99===0 as falsy — the old bug — silently cleared exactly it.
+      if (maxMm != null && p99Mm != null) masked = p99Mm > 0 ? maxMm / p99Mm > 3 : maxMm > 0;
     }
     const certPath = join(dir, `${recon.name}.certificate.txt`);
     let commit = null;
@@ -792,22 +796,37 @@ export function buildStatusRows(dir) {
   return rows;
 }
 
+// The --check drift gate, factored out so it is testable without intercepting
+// process.exit: exit 1 iff --check is set AND some row drifted. Independent of
+// output mode — the JSON path must gate identically to the table path (a CI job
+// reads `status --check --json`, parses stdout, and relies on the exit code).
+export function statusExitCode(rows, check) {
+  return check && rows.some((r) => r.verdict === 'DRIFT') ? 1 : 0;
+}
+
 function cmdStatus(args) {
   const dir = resolve(argValue(args, '--dir') ?? join(HERE, '..', '..', 'exchange', '_certified_stl'));
   if (!existsSync(dir)) { console.error(`status: no such dir ${dir} (bake sidecars first: PF_CERT_RECON=all)`); process.exit(2); }
   const substr = args._[0];
   let rows = buildStatusRows(dir);
   if (substr) rows = rows.filter((r) => r.name.toLowerCase().includes(substr.toLowerCase()));
-  if (args.flags.includes('--json')) { console.log(JSON.stringify(rows, null, 2)); return; }
-  const um = (mm) => (mm == null ? '   —' : (mm * 1000).toFixed(1));
-  console.log('style/variant                                  tris     maxµm  p99µm  commit    verdict');
-  for (const r of rows) {
-    const flag = r.masked ? ' ⚠MASK' : '';
-    console.log(`${r.name.padEnd(46)} ${String(r.tris).padStart(8)}  ${um(r.maxMm).padStart(5)}  ${um(r.p99Mm).padStart(5)}  ${(r.commit ?? '—').padEnd(8)}  ${r.verdict}${flag}`);
+  // Emit output first (JSON stays pure on stdout; table gets its summary line),
+  // THEN apply the drift gate in BOTH modes so a machine consumer of
+  // `status --check --json` gets the same exit-1-on-drift contract as the table.
+  if (args.flags.includes('--json')) {
+    console.log(JSON.stringify(rows, null, 2));
+  } else {
+    const um = (mm) => (mm == null ? '   —' : (mm * 1000).toFixed(1));
+    console.log('style/variant                                  tris     maxµm  p99µm  commit    verdict');
+    for (const r of rows) {
+      const flag = r.masked ? ' ⚠MASK' : '';
+      console.log(`${r.name.padEnd(46)} ${String(r.tris).padStart(8)}  ${um(r.maxMm).padStart(5)}  ${um(r.p99Mm).padStart(5)}  ${(r.commit ?? '—').padEnd(8)}  ${r.verdict}${flag}`);
+    }
+    const drift = rows.filter((r) => r.verdict === 'DRIFT');
+    console.log(`\n${rows.length} pots · ${rows.filter((r) => r.verdict === 'GREEN').length} GREEN · ${drift.length} DRIFT · ${rows.filter((r) => r.masked).length} max-masked`);
   }
-  const drift = rows.filter((r) => r.verdict === 'DRIFT');
-  console.log(`\n${rows.length} pots · ${rows.filter((r) => r.verdict === 'GREEN').length} GREEN · ${drift.length} DRIFT · ${rows.filter((r) => r.masked).length} max-masked`);
-  if (args.flags.includes('--check') && drift.length > 0) {
+  if (statusExitCode(rows, args.flags.includes('--check'))) {
+    const drift = rows.filter((r) => r.verdict === 'DRIFT');
     console.error(`FAIL: ${drift.length} drifted certificate(s): ${drift.map((r) => r.name).join(', ')}`);
     process.exit(1);
   }

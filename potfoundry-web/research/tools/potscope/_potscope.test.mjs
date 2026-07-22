@@ -275,7 +275,7 @@ test('selectHotTriangles admits the worst f32 rung at the f64 threshold, exclude
 // --- status registry: joins recon.json + error.bin header + certificate.txt ----
 // buildStatusRows is the generated certificate registry: one row per baked pot,
 // with the "certify on MAX, not p99" mask flag raised when max/p99 > 3x.
-import { buildStatusRows } from './potscope.mjs';
+import { buildStatusRows, statusExitCode } from './potscope.mjs';
 import { mkdirSync } from 'node:fs';
 
 test('buildStatusRows joins recon.json + error.bin header and flags masking', () => {
@@ -292,4 +292,33 @@ test('buildStatusRows joins recon.json + error.bin header and flags masking', ()
   assert.equal(rows[0].verdict, 'GREEN');
   assert.equal(rows[0].masked, true);
   assert.ok(Math.abs(rows[0].maxMm - 0.01) < 1e-6);
+});
+
+// p99===0 with a nonzero max is the MAXIMALLY masked case (a hidden cliff over an
+// all-clean p99). The old `maxMm && p99Mm && …` guard read p99===0 as falsy and
+// cleared exactly the flag it exists to raise; masked must be true here.
+test('buildStatusRows flags p99===0 with nonzero max as masked (not cleared)', () => {
+  const d = join(DIR, 'status_p99zero');
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'Cliff.recon.json'), JSON.stringify({ name: 'Cliff', style: 'Cliff', tris: 50, configDigest: 'deadbeef', verdict: 'GREEN' }));
+  writeFileSync(join(d, 'Cliff.stl.error.bin'), Buffer.concat([
+    Buffer.from(JSON.stringify({ magic: 'potscope-error/v1', count: 1, budgetMm: 0.01, stats: { maxMm: 0.010, p50Mm: 0, p99Mm: 0 } }) + '\n', 'utf8'),
+    Buffer.from(new Float32Array([0.01]).buffer),
+  ]));
+  const rows = buildStatusRows(d);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].masked, true);
+});
+
+// --- status --check drift gate: pure exit-code helper (Task 6 review fix) -------
+// statusExitCode is the headline drift guard, factored out so the exit decision
+// is testable without intercepting process.exit. cmdStatus calls it identically
+// after the JSON and table branches, so `status --check --json` gates on drift
+// exactly as `status --check` (table) does — the regression this pins.
+test('statusExitCode: --check + a DRIFT row exits 1; no --check or no drift exits 0', () => {
+  const drifted = [{ verdict: 'GREEN' }, { verdict: 'DRIFT' }];
+  const clean = [{ verdict: 'GREEN' }, { verdict: 'GREEN' }];
+  assert.equal(statusExitCode(drifted, true), 1); // DRIFT present + --check → fail
+  assert.equal(statusExitCode(drifted, false), 0); // DRIFT present but no --check → 0
+  assert.equal(statusExitCode(clean, true), 0); // --check but all GREEN → 0
 });
