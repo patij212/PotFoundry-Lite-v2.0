@@ -271,3 +271,25 @@ test('selectHotTriangles admits the worst f32 rung at the f64 threshold, exclude
   // and a plain f64 `>=` really does drop it — pins the regression, not a tautology
   assert.ok(!(values[0] >= hotThresh), 'guard: f32(0.005) is below f64 0.005');
 });
+
+// --- status registry: joins recon.json + error.bin header + certificate.txt ----
+// buildStatusRows is the generated certificate registry: one row per baked pot,
+// with the "certify on MAX, not p99" mask flag raised when max/p99 > 3x.
+import { buildStatusRows } from './potscope.mjs';
+import { mkdirSync } from 'node:fs';
+
+test('buildStatusRows joins recon.json + error.bin header and flags masking', () => {
+  const d = join(DIR, 'status1');
+  mkdirSync(d, { recursive: true });
+  // masked pot: max 0.010 but p99 0.002 -> ratio 5 > 3
+  writeFileSync(join(d, 'Foo.recon.json'), JSON.stringify({ name: 'Foo', style: 'Foo', tris: 100, configDigest: 'abc', verdict: 'GREEN' }));
+  writeFileSync(join(d, 'Foo.stl.error.bin'), Buffer.concat([
+    Buffer.from(JSON.stringify({ magic: 'potscope-error/v1', count: 1, budgetMm: 0.01, stats: { maxMm: 0.010, p50Mm: 0.001, p99Mm: 0.002 } }) + '\n', 'utf8'),
+    Buffer.from(new Float32Array([0.01]).buffer),
+  ]));
+  const rows = buildStatusRows(d);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].verdict, 'GREEN');
+  assert.equal(rows[0].masked, true);
+  assert.ok(Math.abs(rows[0].maxMm - 0.01) < 1e-6);
+});

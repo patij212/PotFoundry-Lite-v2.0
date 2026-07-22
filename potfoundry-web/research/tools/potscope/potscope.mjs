@@ -763,6 +763,56 @@ function cmdHotspots(args) {
   });
 }
 
+// ---------------------------------------------------------------------- status
+// The generated certificate registry + drift guard. One row per baked pot: join
+// the reconstruct sidecar (*.recon.json — style/tris/configDigest/verdict) with
+// its error.bin header (max/p99) and optional certificate.txt (commit). masked
+// raises the "certify on MAX, not p99" flag whenever max/p99 > 3x, so a pot that
+// looks clean on p99 but hides a scale-tip cliff on MAX is never trusted blind.
+export function buildStatusRows(dir) {
+  const rows = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.recon.json')).sort()) {
+    const recon = JSON.parse(readFileSync(join(dir, f), 'utf8'));
+    const errPath = join(dir, `${recon.name}.stl.error.bin`);
+    let maxMm = null, p99Mm = null, masked = false;
+    if (existsSync(errPath)) {
+      const raw = readFileSync(errPath);
+      const hdr = JSON.parse(raw.subarray(0, raw.indexOf(0x0a)).toString('utf8'));
+      maxMm = hdr.stats?.maxMm ?? null; p99Mm = hdr.stats?.p99Mm ?? null;
+      if (maxMm && p99Mm && maxMm / p99Mm > 3) masked = true;
+    }
+    const certPath = join(dir, `${recon.name}.certificate.txt`);
+    let commit = null;
+    if (existsSync(certPath)) {
+      const m = readFileSync(certPath, 'utf8').match(/\b([0-9a-f]{7,40})\b/);
+      commit = m ? m[1] : null;
+    }
+    rows.push({ name: recon.name, style: recon.style, tris: recon.tris, configDigest: (recon.configDigest ?? '').slice(0, 8), maxMm, p99Mm, masked, commit, verdict: recon.verdict });
+  }
+  return rows;
+}
+
+function cmdStatus(args) {
+  const dir = resolve(argValue(args, '--dir') ?? join(HERE, '..', '..', 'exchange', '_certified_stl'));
+  if (!existsSync(dir)) { console.error(`status: no such dir ${dir} (bake sidecars first: PF_CERT_RECON=all)`); process.exit(2); }
+  const substr = args._[0];
+  let rows = buildStatusRows(dir);
+  if (substr) rows = rows.filter((r) => r.name.toLowerCase().includes(substr.toLowerCase()));
+  if (args.flags.includes('--json')) { console.log(JSON.stringify(rows, null, 2)); return; }
+  const um = (mm) => (mm == null ? '   —' : (mm * 1000).toFixed(1));
+  console.log('style/variant                                  tris     maxµm  p99µm  commit    verdict');
+  for (const r of rows) {
+    const flag = r.masked ? ' ⚠MASK' : '';
+    console.log(`${r.name.padEnd(46)} ${String(r.tris).padStart(8)}  ${um(r.maxMm).padStart(5)}  ${um(r.p99Mm).padStart(5)}  ${(r.commit ?? '—').padEnd(8)}  ${r.verdict}${flag}`);
+  }
+  const drift = rows.filter((r) => r.verdict === 'DRIFT');
+  console.log(`\n${rows.length} pots · ${rows.filter((r) => r.verdict === 'GREEN').length} GREEN · ${drift.length} DRIFT · ${rows.filter((r) => r.masked).length} max-masked`);
+  if (args.flags.includes('--check') && drift.length > 0) {
+    console.error(`FAIL: ${drift.length} drifted certificate(s): ${drift.map((r) => r.name).join(', ')}`);
+    process.exit(1);
+  }
+}
+
 function cmdView(args) {
   const stlPaths = args._.map((p) => resolve(p));
   if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
@@ -1116,7 +1166,7 @@ function argValue(args, name) {
   return index >= 0 ? args.flags[index + 1] : undefined;
 }
 
-const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay', '--json']);
+const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay', '--json', '--check']);
 
 // ----------------------------------------------------------------------- serve
 // One command to serve a directory over http (fetch-viewers need it) with a
@@ -1217,6 +1267,7 @@ function main() {
     case 'decode': cmdDecode(args); break;
     case 'view': cmdView(args); break;
     case 'hotspots': cmdHotspots(args); break;
+    case 'status': cmdStatus(args); break;
     case 'serve': cmdServe(args); break;
     default:
       console.log('potscope — certification-lab instrument panel');
@@ -1227,6 +1278,7 @@ function main() {
       console.log('  view <file.stl> --error [--error-file f.error.bin]   (true-3D error overlay)');
       console.log('  view <a.stl> <b.stl> ... [--out html] [--title t] [--clay]   (full-res shelf)');
       console.log('  hotspots <name|stl> [--top N] [--budget mm] [--json]   (residual structure)');
+      console.log('  status [<substr>] [--check] [--json]   (certificate registry + drift guard)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
   }
 }
