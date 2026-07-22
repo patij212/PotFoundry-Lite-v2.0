@@ -83,7 +83,7 @@ import {
 import { TAU } from '../geometry/types';
 import type { StyleId, StyleOptions } from '../geometry/types';
 import { ASPECT_MAX, WELD_TOL_MM, type FidelityMetrics } from './types';
-import { measureRadialFidelity, type RadialFidelityReport } from './measureRadialFidelity';
+import { measureProjectorMax, type ProjectorMaxReport } from './measureProjectorMax';
 import { validateMeshForExport } from '../geometry/exportValidation';
 
 /**
@@ -924,7 +924,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
       // is unavailable (legacy path, decimated vertex count, twist, or missing taper).
       const ut = getLastConformingAssemblyUT();
       const style = deps.getStyleState?.() ?? null;
-      let fid: RadialFidelityReport | null = null;
+      let fid: ProjectorMaxReport | null = null;
       if (
         ut && style && ut.length === mesh.vertices.length &&
         Number.isFinite(style.H) && style.H > 0 &&
@@ -941,10 +941,20 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
           bellCenter: style.bellCenter,
           bellWidth: style.bellWidth,
         });
-        fid = measureRadialFidelity(view, ut, rA, {
+        // Restrict to the OUTER WALL (surfaceId 0): rA is the wall surface, so base/drain/rim
+        // (other surfaceIds) would fabricate huge distances. The (u,t,surfaceId) stash is
+        // parallel to the full mesh, so surfaceId 0 masks the wall vertices. measureProjectorMax
+        // is the LEAN one-sided-Hausdorff MAX (projector-only, no per-facet coarse search — the
+        // ~3.6ms/tri cost that makes measureRadialFidelity infeasible at production scale).
+        const nV = mesh.vertices.length / 3;
+        const outerMask = new Uint8Array(nV);
+        for (let i = 0; i < nV; i++) if (ut[3 * i + 2] === 0) outerMask[i] = 1;
+        const wall = extractOuterWallSubmesh(mesh.vertices, mesh.indices, outerMask);
+        fid = measureProjectorMax(wall, rA, {
           H: style.H,
           tolMm: opts.tolMm ?? 0.01,
-          globalProjector: { nTheta: opts.projectorNTheta ?? 2048, nZ: opts.projectorNZ ?? 512 },
+          nTheta: opts.projectorNTheta ?? 1024,
+          nZ: opts.projectorNZ ?? 512,
         });
       }
       return {
@@ -953,7 +963,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         vertexCount: Math.floor(mesh.vertices.length / 3),
         maxMm: fid?.maxMm ?? NaN,
         chordMaxMm: fid?.chordMaxMm ?? NaN,
-        chordP99Mm: fid?.chordP99Mm ?? NaN,
+        chordP99Mm: fid?.p99Mm ?? NaN,
         vertexMaxMm: fid?.vertexMaxMm ?? NaN,
         referenceTrusted: fid ? fid.vertexMaxMm <= REFERENCE_PARITY_EPS_MM : false,
         minAngleDeg: q.minAngleDeg,
