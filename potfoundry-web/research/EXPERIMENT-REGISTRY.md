@@ -10,6 +10,31 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-22-DS-SLIVER (SCOPE) — localize the production DragonScales cone-fan <20° sliver population by STRUCTURAL source before touching the emitter (the user's clean-ship priority; DS-COMPOSE's one named concession was %<20°=14.3 / minAngle 1.4°). [Audit-first SCOPE arm; READ-ONLY src.]
+
+**VERDICT: SCOPE COMPLETE — the 14.3% is GRID-SCHEDULE-DOMINATED and largely INTRINSIC to the structured uniform-u grid; the FAN is negligible in COUNT (0.26%) but owns the single WORST triangle (1.4°). New probe `research/bridge/_dsSliver.test.ts` (PF_DSSLIVER) scores the SRC production emitter `buildDsConeFanWallGeometric` and attributes every <20° triangle to its source (fan sub-groups by emission index, grid sub-types by t-geometry). At nU=4096 it reproduces the DS-COMPOSE headline EXACTLY (%<20=14.30, minAngle=1.400) ⇒ classifier faithful. NO fix — the fix path is a real fidelity/effort/re-architecture tradeoff for the user to steer.**
+
+**LOCALIZATION (nU=4096, 9.42M tris; % = share of ALL triangles that are <20°):**
+| source | totalTris | <20° count | <20° %ofAll | src min∠ | note |
+|---|---|---|---|---|---|
+| fan-apexRing | 3,072 | 2,498 | 0.03 | 2.06 | fan-center convergence |
+| **fan-ringBand** | 24,576 | 17,617 | 0.19 | **1.41** | owns the GLOBAL worst (a micro-tri at a crest) |
+| fan-outerBand | 6,144 | 3,730 | 0.04 | 4.30 | |
+| **grid-tread** | 286,720 | 283,071 | **3.00** | 2.65 | C0-step risers — 98.7% sliver, INTRINSIC |
+| **grid-crestLadder** | 4,971,520 | 551,671 | **5.86** | 5.90 | crest-half rows (broad bucket) |
+| grid-flankLadder | 688,128 | 258,337 | 2.74 | 7.06 | |
+| grid-body | 3,440,640 | 226,377 | 2.40 | 16.21 | only 6.6% sliver rate = the rippled θ-regions |
+
+grid-sliver dz-histogram (mm): {<0.005: 0, 0.005–0.02: 499,254, 0.02–0.05: 274,931, 0.05–0.12: 506,813, >0.12: 38,458}.
+
+**MECHANISM (why the grid slivers are INTRINSIC):** the tread ring is a horizontal C0 step (~0.5–1.5mm radial jump, constant t=k/8, all θ) meshed as a ring of tall-thin quads whose SHORT side is the uniform u-column (2πr/nU ≈ 0.069mm @ nU4096), not the row height ⇒ min∠ = atan(column/step) ≈ 2.6° regardless of dtHalf. A structured uniform-u grid cannot give the tread ring coarse-θ (to match its tall step) while keeping the body fine-θ — the tension is architectural. grid-body confirms it: 93.4% of body IS clean; only the rippled-θ regions (6.6%) sliver.
+
+**PATHS FORWARD (each a tradeoff; NOT yet chosen):** (A) FAN-CENTER quick-fix — coarsen the innermost fan fraction / apex convergence ⇒ fixes the 1.4° MIN (→~2.6°), low-risk, barely moves 14.3%. (B) SCHEDULE Pareto sweep — regrade crest/flank ladders + body step to shed thin rows, GATED on whole-mesh ≤0.01 (targets the diffuse ~8.6% ladder chunk). (C) SLIVER-COLLAPSE post-pass — generalize `collapseDegenerateFaces` to sub-20° slivers, preserving fidelity + watertight (targets tread + all; manifold/fidelity risk). (D) ACCEPT + DOCUMENT — the tread + rippled slivers are inherent to the by-construction structured mesher; a fully sliver-free DS needs the CVT/M=g/h² region kernel (proven 22.7→2.3% <20° per [[project_msurf_accelerator]]) which trades the whole-body-≤0.01 + by-construction-watertight guarantees.
+
+**LEDGER:** research-only, NO src edit. NEW probe `research/bridge/_dsSliver.test.ts` (PF_DSSLIVER) + `vitest.dssliver.config.ts`. Reuses SRC `buildDsConeFanWallGeometric` (production path, post the part-(a) winding fix) + labkit `triangleQualityDistribution` + `_ds_prodtruth_lib`, all READ-ONLY. Data `research/exchange/_dsSliver/{sliver.ndjson,run.log}` (gitignored). Commit 4d409492.
+
+---
+
 ## E-2026-07-21-DS-SEAM (S3 / U5.3) — the mesher→partition certification seam for the DS cone-fan mesh: take the PRODUCTION DS mesh (`__pfDsConeFan`) from "geometrically faithful" (DS-COMPOSE) to "judge-certifiable" by `verifyExactDyadicRectanglePartition` (Track A, READ-ONLY). [SCOPE arm; PRE-REGISTERED kill in the probe header.]
 
 **VERDICT: SCOPE COMPLETE — gaps fully localized; NOT YET CLOSED. Judge-accept requires an EMITTER-SIDE PATH-B change (seam-clean + positive-winding emission), NOT a pure converter — and the reason is a hard judge constraint, not a choice: the judge requires each domain triangle ↔ EXACTLY ONE artifact STL triangle (artifactTriangleIndex unique + strictly sorted). A snap+repair converter that seam-SPLITS a wrap triangle produces MULTIPLE domain triangles per artifact triangle ⇒ rejected. So the artifact MESH itself must be emitted seam-clean. The cone-fan's grid columns are already lattice-native (u=i/nU, N=nU·2^k); the two STRUCTURAL gaps are the u-seam WRAP and the FAN NEGATIVE WINDING; zero-area and fan-δ are RESOLUTION-limited (vanish/shrink with N). No judge file edited.**
