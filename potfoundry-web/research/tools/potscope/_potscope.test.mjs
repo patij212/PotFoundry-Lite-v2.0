@@ -1289,3 +1289,55 @@ test('buildConvergeConfig produces a valid convergePot-shaped config', () => {
   assert.ok(cfg.divisions.verticalDivisionsLog2ByPatch['outer-wall'] === 5);
   assert.ok(cfg.name.includes('GeometricStar'));
 });
+
+// === self-calibration method: arbitrary configs calibrate by depth-stability (Task 5) ===
+// Roster pots carry a cert `calibration` block (calibrationRatio vs tolerance).
+// Arbitrary configs (Task 3) have no KNOWN certified max to compare against, so they
+// self-calibrate instead: selfCalibration:{ method:'verdict-stability', stable, reason,
+// finalDepth }. readConverge must derive `calibrated` + `calibrationMethod` from EITHER
+// source — prefer the cert block ('cert'); else fall back to selfCalibration.stable
+// ('depth-stability'); else calibrated:false ('none') — and surface selfCalibration.
+test('readConverge derives calibrated from selfCalibration when no cert calibration', () => {
+  const scWrite = (name, sc) => { const p = join(DIR, name);
+    writeFileSync(p, JSON.stringify({ magic:'potscope-converge/v1', variant:'X', style:'X',
+      perPatch:{ 'inner-wall': { ratio: 1.0, verdict:'irreducible' } },
+      calibration: null, selfCalibration: sc }) ); return p; };
+  const stable = readConverge(scWrite('a.converge.json', { method:'verdict-stability', stable:true, reason:'converged', finalDepth:3 }));
+  assert.equal(stable.calibrated, true);
+  assert.equal(stable.calibrationMethod, 'depth-stability');
+  const unstable = readConverge(scWrite('b.converge.json', { method:'verdict-stability', stable:false, reason:'max-depth', finalDepth:5 }));
+  assert.equal(unstable.calibrated, false);
+});
+
+// Cert path is UNCHANGED for roster pots: a cert `calibration` block still drives
+// `calibrated` (calibrationRatio <= tolerance) and now reports calibrationMethod:'cert'.
+// selfCalibration is surfaced (null when absent). No cert AND no selfCalibration →
+// calibrated:false, method 'none' (cannot verify ⇒ cannot trust). Cert WINS when both
+// are present (the roster's KNOWN certified max is stronger evidence than self-stability).
+test('readConverge: cert calibration still wins and reports method cert; none when neither present', () => {
+  // cert present → method 'cert', calibrated exactly as before (ratio 1.32 <= tol 2.5)
+  const cert = readConverge(writeConverge('m_cert.converge.json', CONVERGE_PATCHES, {
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 1.32, tolerance: 2.5 },
+  }));
+  assert.equal(cert.calibrated, true);
+  assert.equal(cert.calibrationMethod, 'cert');
+  assert.equal(cert.selfCalibration, null); // roster pot has no selfCalibration block
+  // cert present but ABOVE tolerance → still method 'cert', calibrated:false (unchanged)
+  const certUncal = readConverge(writeConverge('m_certuncal.converge.json', CONVERGE_PATCHES, {
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 427.41, tolerance: 2.5 },
+  }));
+  assert.equal(certUncal.calibrated, false);
+  assert.equal(certUncal.calibrationMethod, 'cert');
+  // cert WINS over a (contradictory) selfCalibration when both are present
+  const both = readConverge(writeConverge('m_both.converge.json', CONVERGE_PATCHES, {
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 1.32, tolerance: 2.5 },
+    selfCalibration: { method: 'verdict-stability', stable: false, reason: 'max-depth', finalDepth: 5 },
+  }));
+  assert.equal(both.calibrationMethod, 'cert');
+  assert.equal(both.calibrated, true); // cert says calibrated; self-cal's stable:false is ignored
+  // neither cert nor selfCalibration → calibrated:false, method 'none'
+  const none = readConverge(writeConverge('m_none.converge.json', CONVERGE_PATCHES));
+  assert.equal(none.calibrated, false);
+  assert.equal(none.calibrationMethod, 'none');
+  assert.equal(none.selfCalibration, null);
+});

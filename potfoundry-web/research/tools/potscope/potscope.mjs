@@ -1265,12 +1265,34 @@ export function readConverge(path) {
   // unreliable. Absent calibration data → NOT calibrated (cannot verify ⇒ cannot
   // trust). Surface calibrationRatio/tolerance at top level (don't lose them) so the
   // CLI / doctor / dashboard can mark an uncalibrated pot's verdict as unverified.
+  //
+  // TWO calibration methods now feed the SAME `calibrated` flag + a `calibrationMethod`
+  // tag saying which established trust:
+  //   'cert'            — roster pot with a KNOWN certified max: calibrationRatio <= tolerance.
+  //   'depth-stability' — arbitrary config (no cert to compare to) self-calibrated by
+  //                       verdict stability across depths (selfCalibration.stable).
+  //   'none'            — neither present ⇒ cannot verify ⇒ NOT calibrated.
+  // The cert block WINS when both are present: the roster's known truth is stronger
+  // evidence than self-stability. selfCalibration is surfaced (null when absent) so the
+  // CLI can report its `reason` on an unstable self-calibration.
   const cal = data.calibration;
+  const sc = data.selfCalibration;
   const calibrationRatio =
     cal && typeof cal.calibrationRatio === 'number' ? cal.calibrationRatio : null;
   const tolerance = cal && typeof cal.tolerance === 'number' ? cal.tolerance : null;
-  const calibrated = calibrationRatio !== null && tolerance !== null && calibrationRatio <= tolerance;
-  return { ...data, calibrated, calibrationRatio, tolerance };
+  let calibrated;
+  let calibrationMethod;
+  if (calibrationRatio !== null && tolerance !== null) {
+    calibrated = calibrationRatio <= tolerance;
+    calibrationMethod = 'cert';
+  } else if (sc && typeof sc.stable === 'boolean') {
+    calibrated = sc.stable;
+    calibrationMethod = 'depth-stability';
+  } else {
+    calibrated = false;
+    calibrationMethod = 'none';
+  }
+  return { ...data, calibrated, calibrationMethod, calibrationRatio, tolerance, selfCalibration: sc ?? null };
 }
 
 // PURE + exported. Flatten perPatch into rows carrying the RECOMPUTED verdict +
@@ -1354,8 +1376,10 @@ function cmdConverge(args) {
           coarseGlobalMaxMm: data.coarseGlobalMaxMm,
           certGlobalMaxMm: cert,
           calibrated,
+          calibrationMethod: data.calibrationMethod,
           calibrationRatio: data.calibrationRatio,
           tolerance: data.tolerance,
+          selfCalibration: data.selfCalibration ?? null,
           fineTrisTotal: data.fineTrisTotal,
           coarseTrisTotal: data.coarseTrisTotal,
           worstPatch: worst ? worst.patchId : null,
@@ -1381,16 +1405,30 @@ function cmdConverge(args) {
     `fine global max ${um(data.fineGlobalMaxMm)}µm · coarse ${um(data.coarseGlobalMaxMm)}µm` +
       `${cert !== undefined ? ` · cert ${um(cert)}µm` : ''} · ${n(data.fineTrisTotal)}→${n(data.coarseTrisTotal)} tris`
   );
-  // Calibration gate: warn LOUDLY before the table when the probe is uncalibrated —
-  // its fine-density max is calibrationRatio× the certified max, far above tolerance,
-  // so the per-patch ratios below cannot be trusted (re-bake at a higher depth).
+  // Calibration gate: warn LOUDLY before the table when the probe is uncalibrated, so
+  // the per-patch ratios below are never read as trustworthy. The message names WHY it
+  // is uncalibrated, which depends on the method: a roster pot's cert calibration cites
+  // the calibrationRatio-vs-tolerance blow-up; an arbitrary config's depth-stability
+  // self-calibration (no certified max to compare against) cites the self-cal `reason`
+  // (e.g. "did not converge by maxDepth"). A stable self-calibration sets calibrated:true,
+  // so this block never fires for it.
   if (!calibrated) {
-    const cr = Number.isFinite(data.calibrationRatio) ? data.calibrationRatio.toFixed(1) : '?';
-    const tol = Number.isFinite(data.tolerance) ? data.tolerance : '?';
-    console.log(
-      `\n⚠ UNCALIBRATED: depth-${data.depth} proxy fine-max is ${cr}× the certified max ` +
-        `(tolerance ${tol}×) — the ratios below are NOT trustworthy; re-bake at higher depth.\n`
-    );
+    if (data.calibrationMethod === 'depth-stability') {
+      const sc = data.selfCalibration || {};
+      const reason = sc.reason ? `: ${sc.reason}` : '';
+      const fd = Number.isFinite(sc.finalDepth) ? ` (finalDepth ${sc.finalDepth})` : '';
+      console.log(
+        `\n⚠ UNCALIBRATED: verdict-stability self-calibration did not stabilize${reason}${fd} — ` +
+          `the ratios below are NOT trustworthy; re-bake at higher maxDepth.\n`
+      );
+    } else {
+      const cr = Number.isFinite(data.calibrationRatio) ? data.calibrationRatio.toFixed(1) : '?';
+      const tol = Number.isFinite(data.tolerance) ? data.tolerance : '?';
+      console.log(
+        `\n⚠ UNCALIBRATED: depth-${data.depth} proxy fine-max is ${cr}× the certified max ` +
+          `(tolerance ${tol}×) — the ratios below are NOT trustworthy; re-bake at higher depth.\n`
+      );
+    }
   }
   console.log(
     `refine-vs-redesign by patch (ratio = coarseMax/fineMax; ~4 responsive · ~1 irreducible)` +
@@ -1571,6 +1609,9 @@ export function buildDoctorReport(dir, opts = {}) {
             // Honor the calibration gate: carry the derived flag so an uncalibrated
             // pot's worst ratio is never trusted as a measured verdict downstream.
             calibrated: conv.calibrated,
+            // How trust was established ('cert' | 'depth-stability' | 'none') — the
+            // dashboard renders it as a small marker next to the verdict.
+            calibrationMethod: conv.calibrationMethod,
             calibrationRatio: conv.calibrationRatio,
             worst: worst ? { patchId: worst.patchId, ratio: worst.ratio, verdict: worst.verdict } : null,
           };
@@ -1589,6 +1630,9 @@ export function buildDoctorReport(dir, opts = {}) {
           base.convergence = {
             available: true,
             calibrated: !!mc.calibrated,
+            // Carried through when the manifest snapshot recorded it; a manifest predating
+            // the field yields null → the dashboard simply omits the marker (as before).
+            calibrationMethod: mc.calibrationMethod ?? null,
             calibrationRatio: mc.calibrationRatio ?? null,
             worst: mc.worst
               ? { patchId: mc.worst.patchId, ratio: mc.worst.ratio, verdict: mc.worst.verdict }
@@ -1732,6 +1776,16 @@ export function dashboardHtml(report) {
     const cls = v === 'RESPONSIVE' ? 'c-resp' : v === 'PARTIAL' ? 'c-part' : 'c-irr';
     return `<span class="cbadge ${cls}">${esc(v)}</span>`;
   };
+  // A small marker naming HOW trust was established, next to the (calibrated) verdict:
+  // '(cert)'     = roster pot calibrated against its KNOWN certified max;
+  // '(self-cal)' = arbitrary config self-calibrated by verdict stability across depths.
+  // An unknown/legacy method (null on a pre-field report) → no marker (renders as before).
+  const methodMark = (m) =>
+    m === 'cert'
+      ? `<span class="cmethod" title="calibrated against the pot's known certified max">(cert)</span>`
+      : m === 'depth-stability'
+      ? `<span class="cmethod" title="self-calibrated by verdict stability across depths (no certified max to compare against)">(self-cal)</span>`
+      : '';
   const tagPill = (t) => {
     const cls = t === 'FULL-SPAN' ? 't-irr' : t === 'ANISOTROPIC' ? 't-aniso' : 't-feat';
     return `<span class="tag ${cls}">${esc(t)}</span>`;
@@ -1798,6 +1852,7 @@ export function dashboardHtml(report) {
       `<span class="patch">${esc(w.patchId)}</span>` +
       `<span class="ratio">×${Number(w.ratio).toFixed(2)}</span>` +
       cBadge(w.verdict) +
+      methodMark(c.calibrationMethod) +
       `</div>`
     );
   };
@@ -1992,6 +2047,9 @@ export function dashboardHtml(report) {
   .c-uncal{color:var(--amber); background:color-mix(in srgb, var(--amber) 8%, transparent); border-color:color-mix(in srgb, var(--amber) 26%, transparent); border-style:dashed; opacity:.85; font-style:italic; text-transform:none}
   .line.uncal .patch{opacity:.62}
   .line.uncal .ratio{opacity:.62; text-decoration:line-through}
+  /* method marker: how trust was established — (cert) vs (self-cal). Deliberately
+     quiet (dim, small mono) so it annotates the verdict badge without competing. */
+  .cmethod{font-family:var(--mono); font-size:9px; color:var(--dim); opacity:.8; margin-left:1px}
   .lever{font-size:11px; color:var(--dim); line-height:1.4; padding-left:2px; overflow-wrap:anywhere}
   .cfoot{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:auto; padding-top:2px}
 
