@@ -57,6 +57,8 @@ interface SmoothCase { tag: string; style: StyleId; params: StyleOptions; }
 const CASES: SmoothCase[] = [
   { tag: 'HR_gentle', style: 'HarmonicRipple' as StyleId, params: { hr_petal_amp: 0.01, hr_ripple_amp: 0, hr_bell: 0 } as StyleOptions },
   { tag: 'SE_defaults', style: 'SuperellipseMorph' as StyleId, params: {} as StyleOptions },
+  { tag: 'FB_defaults', style: 'FourierBloom' as StyleId, params: {} as StyleOptions },
+  { tag: 'RI_defaults', style: 'RippleInterference' as StyleId, params: {} as StyleOptions },
 ];
 
 describe('SMOOTH-GRID-CERT — structured grid closes + judge-certifies for smooth styles', () => {
@@ -90,14 +92,16 @@ describe('SMOOTH-GRID-CERT — structured grid closes + judge-certifies for smoo
       const rungs = loadRungs(cs.tag);
       const closedGrid = rungs.filter((r) => r.max <= 0.01 && r.out === 0).sort((a, b) => a.tris - b.tris)[0] ?? null;
       const certGrid = rungs.filter((r) => r.tris <= HARD_CAP).sort((a, b) => b.tris - a.tris)[0] ?? null;
-      // STRUCTURE cert on the largest under-cap grid (density-invariant ⇒ certifies the whole grid family, incl. the closing one).
-      if (certGrid) {
-        const certKey = `cert|${cs.tag}|${certGrid.nU}x${certGrid.nT}`;
+      // Cert the SHIPPABLE grid = the CLOSING grid if it's under the cap (the actual production mesh), else the largest
+      // under-cap grid (representative; the structure is density-invariant so it certifies the closing grid's family too).
+      const shipGrid = closedGrid && closedGrid.tris <= HARD_CAP ? closedGrid : certGrid;
+      if (shipGrid) {
+        const certKey = `cert|${cs.tag}|${shipGrid.nU}x${shipGrid.nT}`;
         if (!keyExists(certKey)) {
-          const gc = buildSmoothGrid(rA, H, certGrid.nU, certGrid.nT);
-          const v = certifyPeriodicGridMesh(gc.ut, gc.indices, gc.positions, certGrid.nU, 0, rA, H, bits, { patchId: `smoothgrid-${cs.tag.toLowerCase().replace(/_/g, '-')}` });
-          plog(`[${cs.tag}] STRUCTURE-CERT @ ${certGrid.nU}x${certGrid.nT} (${v.tris} tris, under cap) judge=${v.accepted ? 'ACCEPT' : 'REJECT'} maxδ=${v.maxDelta.toFixed(6)} wrap=${v.wrapTris} nonPos=${v.nonPosTris} :: ${v.detail}`);
-          checkpoint({ key: certKey, tag: cs.tag, nU: certGrid.nU, nT: certGrid.nT, tris: v.tris, accepted: v.accepted, maxDelta: +v.maxDelta.toFixed(6), wrapTris: v.wrapTris, nonPos: v.nonPosTris, detail: v.detail });
+          const gc = buildSmoothGrid(rA, H, shipGrid.nU, shipGrid.nT);
+          const v = certifyPeriodicGridMesh(gc.ut, gc.indices, gc.positions, shipGrid.nU, 0, rA, H, bits, { patchId: `smoothgrid-${cs.tag.toLowerCase().replace(/_/g, '-')}` });
+          plog(`[${cs.tag}] SHIP-CERT @ ${shipGrid.nU}x${shipGrid.nT} (${v.tris} tris) judge=${v.accepted ? 'ACCEPT' : 'REJECT'} maxδ=${v.maxDelta.toFixed(6)} wrap=${v.wrapTris} nonPos=${v.nonPosTris} :: ${v.detail}`);
+          checkpoint({ key: certKey, tag: cs.tag, nU: shipGrid.nU, nT: shipGrid.nT, tris: v.tris, accepted: v.accepted, maxDelta: +v.maxDelta.toFixed(6), wrapTris: v.wrapTris, nonPos: v.nonPosTris, detail: v.detail });
         }
       }
       // FIDELITY verdict on the closing grid + the vertical-slice fold (fidelity + snap δ ≤ 0.01).
