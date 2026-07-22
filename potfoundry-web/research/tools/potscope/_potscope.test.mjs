@@ -499,6 +499,72 @@ test('buildManifest distills recon.json + error.bin + certificate.txt into a sor
   assert.ok(!/\d{4}-\d\d-\d\dT/.test(JSON.stringify(manifest)), 'manifest must carry NO ISO timestamps (minimal regen diffs)');
 });
 
+// --- portable convergence: the manifest carries the refine-vs-redesign map (P10) --
+// research/exchange/ (where the on-disk <name>.converge.json live) is git-ignored, so
+// a fresh clone loses the whole roster's refine-vs-redesign picture. buildManifest now
+// distills each pot's converge.json into a per-pot `convergence`:
+//   { calibrated, calibrationRatio, worst: { patchId, ratio, verdict } }
+// where `worst` is the MIN-ratio (worst-first) patch and verdict is RECOMPUTED via
+// convergeVerdict. No converge.json → convergence:null; a malformed one → convergence
+// :null + a warn (the pot still lands in the manifest — only its convergence drops).
+function writeConvergeIn(dir, name, perPatch, extra = {}) {
+  writeFileSync(join(dir, `${name}.converge.json`), JSON.stringify({
+    magic: 'potscope-converge/v1', variant: name, style: 'X', depth: 2, coarseStep: 1,
+    fineTrisTotal: 1000, coarseTrisTotal: 250, fineGlobalMaxMm: 0.006, coarseGlobalMaxMm: 0.014,
+    perPatch, ...extra,
+  }));
+}
+
+test('buildManifest attaches per-pot convergence (worst verdict + calibrated); null when absent; skips malformed', () => {
+  const d = join(DIR, 'manifest_conv');
+  mkdirSync(d, { recursive: true });
+  const prov = { targetSha256: 't', artifactByteSha256: 'a', parsedTriangleSetSha256: 'p' };
+  const stats = { maxMm: 0.005, p50Mm: 0.0025, p99Mm: 0.0025 };
+  // Star: CALIBRATED (1.32<=2.5); worst patch = inner-wall (min ratio 1.07) → IRREDUCIBLE
+  writeCertifiedPot(d, 'Star', { style: 'GeometricStar', tris: 100, configDigest: 'star', verdict: 'GREEN', provenance: prov, stats });
+  writeConvergeIn(d, 'Star', {
+    'outer-wall': { fineMaxMm: 0.0066, coarseMaxMm: 0.014, ratio: 2.12, fineTris: 100, coarseTris: 25 },
+    'inner-wall': { fineMaxMm: 0.0059, coarseMaxMm: 0.0063, ratio: 1.07, fineTris: 200, coarseTris: 100 },
+  }, { calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 1.32, tolerance: 2.5 } });
+  // Bloom: UNCALIBRATED (3.48>2.5); worst outer-wall (ratio 2.09) → PARTIAL, but calibrated:false
+  writeCertifiedPot(d, 'Bloom', { style: 'SuperellipseMorph', tris: 200, configDigest: 'bloom', verdict: 'GREEN', provenance: prov, stats });
+  writeConvergeIn(d, 'Bloom', {
+    'outer-wall': { fineMaxMm: 0.006, coarseMaxMm: 0.0125, ratio: 2.09, fineTris: 100, coarseTris: 25 },
+  }, { calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 3.48, tolerance: 2.5 } });
+  // Naked: NO converge.json → convergence: null
+  writeCertifiedPot(d, 'Naked', { style: 'X', tris: 50, configDigest: 'naked', verdict: 'GREEN', provenance: prov, stats });
+  // Broken: MALFORMED converge.json → convergence: null + warn, but the pot STILL builds
+  writeCertifiedPot(d, 'Broken', { style: 'X', tris: 60, configDigest: 'broken', verdict: 'GREEN', provenance: prov, stats });
+  writeFileSync(join(d, 'Broken.converge.json'), '{ not json');
+
+  const warnings = [];
+  const origWarn = console.warn;
+  console.warn = (m) => warnings.push(String(m));
+  let manifest;
+  try { manifest = buildManifest(d); } finally { console.warn = origWarn; }
+
+  // a malformed converge.json does NOT drop the pot — all four present, sorted by name
+  assert.deepEqual(manifest.pots.map((p) => p.name), ['Bloom', 'Broken', 'Naked', 'Star']);
+  const by = (n) => manifest.pots.find((p) => p.name === n);
+  // Star: calibrated + IRREDUCIBLE worst (recomputed), calibrationRatio + ratio surfaced
+  assert.equal(by('Star').convergence.calibrated, true);
+  assert.equal(by('Star').convergence.worst.patchId, 'inner-wall');
+  assert.equal(by('Star').convergence.worst.verdict, 'IRREDUCIBLE');
+  assert.ok(Math.abs(by('Star').convergence.calibrationRatio - 1.32) < 1e-9);
+  assert.ok(Math.abs(by('Star').convergence.worst.ratio - 1.07) < 1e-9);
+  // Bloom: worst verdict stored regardless of calibration; the calibrated flag is false
+  assert.equal(by('Bloom').convergence.calibrated, false);
+  assert.equal(by('Bloom').convergence.worst.verdict, 'PARTIAL');
+  // Naked: no converge.json → null
+  assert.equal(by('Naked').convergence, null);
+  // Broken: malformed → convergence null (skipped) + a warn naming it; pot still built
+  assert.equal(by('Broken').convergence, null);
+  assert.ok(warnings.some((w) => /Broken/.test(w) && /converge/i.test(w)),
+    `expected a converge skip warning naming Broken, got ${JSON.stringify(warnings)}`);
+  // convergence must not leak ISO timestamps (deterministic regen — clean git diffs)
+  assert.ok(!/\d{4}-\d\d-\d\dT/.test(JSON.stringify(manifest)), 'convergence must add no timestamps');
+});
+
 test('buildStatusRows falls back to the committed manifest when a dir has no recon.json (source: manifest)', () => {
   const emptyDir = join(DIR, 'fresh_clone_empty');
   mkdirSync(emptyDir, { recursive: true }); // exists but holds no *.recon.json (fresh clone)
@@ -1063,6 +1129,66 @@ test('buildDoctorReport: an UNCALIBRATED irreducible is marked and excluded from
   assert.equal(report.summary.convergeCalibrated, 1);
   assert.equal(report.summary.convergeUncalibrated, 1);
   assert.equal(report.summary.convergeAvailable, 2);
+});
+
+// --- doctor manifest-fallback carries the convergence map on a fresh clone (P10) --
+// On a fresh clone research/exchange/ is git-ignored, so there are no on-disk
+// converge.json — buildStatusRows drives its manifest fallback (row.source==='manifest').
+// The refine-vs-redesign map is carried IN the committed manifest (buildManifest
+// attaches per-pot convergence), so buildDoctorReport reads it from there and mirrors
+// the on-disk shape: available:true with the same worst verdict + calibrated flag, and
+// the summary counts it identically (only a CALIBRATED irreducible is a frontier).
+test('buildDoctorReport manifest-fallback populates convergence from the manifest (fresh clone shows the map)', () => {
+  const emptyDir = join(DIR, 'doctor_fresh_conv');
+  mkdirSync(emptyDir, { recursive: true }); // exists but holds no *.recon.json (fresh clone)
+  const prov = { targetSha256: 't', artifactByteSha256: 'a', parsedTriangleSetSha256: 'p' };
+  const manifestPath = join(DIR, 'certs.manifest.freshconv.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    magic: 'potscope-manifest/v1',
+    pots: [
+      // calibrated IRREDUCIBLE → the frontier
+      { name: 'Star', style: 'GeometricStar', configDigest: 'star', tris: 176128, verdict: 'GREEN',
+        provenance: prov, stats: { maxMm: 0.005, p50Mm: 0.0025, p99Mm: 0.0025 }, cert: { commit: null },
+        convergence: { calibrated: true, calibrationRatio: 1.32, worst: { patchId: 'inner-wall', ratio: 1.07, verdict: 'IRREDUCIBLE' } } },
+      // calibrated RESPONSIVE
+      { name: 'Bloom', style: 'FourierBloom', configDigest: 'bloom', tris: 206848, verdict: 'GREEN',
+        provenance: prov, stats: { maxMm: 0.01, p50Mm: 0.0025, p99Mm: 0.005 }, cert: { commit: null },
+        convergence: { calibrated: true, calibrationRatio: 0.8, worst: { patchId: 'outer-wall', ratio: 3.92, verdict: 'RESPONSIVE' } } },
+      // UNCALIBRATED irreducible — available, but must NOT count as a frontier
+      { name: 'Vor', style: 'Voronoi', configDigest: 'vor', tris: 172032, verdict: 'GREEN',
+        provenance: prov, stats: { maxMm: 0.005, p50Mm: 0.0025, p99Mm: 0.004 }, cert: { commit: null },
+        convergence: { calibrated: false, calibrationRatio: 427.41, worst: { patchId: 'inner-wall', ratio: 0.23, verdict: 'IRREDUCIBLE' } } },
+      // no convergence carried in the manifest → available:false
+      { name: 'Plain', style: 'X', configDigest: 'plain', tris: 100, verdict: 'GREEN',
+        provenance: prov, stats: { maxMm: 0.004, p50Mm: 0.002, p99Mm: 0.003 }, cert: { commit: null }, convergence: null },
+    ],
+  }, null, 2) + '\n');
+
+  const report = buildDoctorReport(emptyDir, { fast: true, manifestPath });
+  const by = (n) => report.pots.find((p) => p.name === n);
+  // every row came from the committed manifest (fresh clone)
+  assert.ok(report.pots.every((p) => p.source === 'manifest'), `all manifest-sourced, got ${report.pots.map((p) => p.source)}`);
+  // Star: convergence rebuilt from the manifest — available, calibrated, IRREDUCIBLE worst
+  assert.equal(by('Star').convergence.available, true);
+  assert.equal(by('Star').convergence.calibrated, true);
+  assert.equal(by('Star').convergence.worst.patchId, 'inner-wall');
+  assert.equal(by('Star').convergence.worst.verdict, 'IRREDUCIBLE');
+  // Bloom: RESPONSIVE
+  assert.equal(by('Bloom').convergence.available, true);
+  assert.equal(by('Bloom').convergence.worst.verdict, 'RESPONSIVE');
+  // Vor: available + irreducible worst, but calibrated:false (its ratio is unreliable)
+  assert.equal(by('Vor').convergence.available, true);
+  assert.equal(by('Vor').convergence.calibrated, false);
+  assert.equal(by('Vor').convergence.worst.verdict, 'IRREDUCIBLE');
+  // Plain: the manifest carried no convergence → available:false (null-safe default)
+  assert.equal(by('Plain').convergence.available, false);
+  assert.equal(by('Plain').convergence.worst, null);
+  // summary counts correct in the MANIFEST path: only the CALIBRATED irreducible (Star)
+  // is a frontier — Vor's uncalibrated irreducible is excluded; 2 calibrated · 1 uncal · 3 avail
+  assert.equal(report.summary.withIrreducibleConvergence, 1);
+  assert.equal(report.summary.convergeCalibrated, 2);
+  assert.equal(report.summary.convergeUncalibrated, 1);
+  assert.equal(report.summary.convergeAvailable, 3);
 });
 
 test('dashboardHtml renders an UNCALIBRATED convergence row as a muted chip, never an authoritative verdict badge', () => {

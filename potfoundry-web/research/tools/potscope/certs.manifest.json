@@ -19,6 +19,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 1.408971374060585,
+        "worst": {
+          "patchId": "drain-wall",
+          "ratio": 1,
+          "verdict": "IRREDUCIBLE"
+        }
       }
     },
     {
@@ -39,6 +48,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 1.3525904080612368,
+        "worst": {
+          "patchId": "outer-wall",
+          "ratio": 1,
+          "verdict": "IRREDUCIBLE"
+        }
       }
     },
     {
@@ -59,6 +77,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 0.7978820272536252,
+        "worst": {
+          "patchId": "outer-wall",
+          "ratio": 3.9158644504916635,
+          "verdict": "RESPONSIVE"
+        }
       }
     },
     {
@@ -79,6 +106,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 1.324506429017067,
+        "worst": {
+          "patchId": "inner-wall",
+          "ratio": 1.0734918851257877,
+          "verdict": "IRREDUCIBLE"
+        }
       }
     },
     {
@@ -99,6 +135,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 0.9116930657674419,
+        "worst": {
+          "patchId": "outer-wall",
+          "ratio": 1.8164135526117502,
+          "verdict": "PARTIAL"
+        }
       }
     },
     {
@@ -119,6 +164,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 1.0578051486860836,
+        "worst": {
+          "patchId": "outer-wall",
+          "ratio": 3.91840811576353,
+          "verdict": "RESPONSIVE"
+        }
       }
     },
     {
@@ -139,6 +193,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": false,
+        "calibrationRatio": 9.239492245795262,
+        "worst": {
+          "patchId": "inner-wall",
+          "ratio": 1.9982078682725792,
+          "verdict": "PARTIAL"
+        }
       }
     },
     {
@@ -159,6 +222,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 1.2780937964403487,
+        "worst": {
+          "patchId": "bottom-under",
+          "ratio": 3.9504040259177566,
+          "verdict": "RESPONSIVE"
+        }
       }
     },
     {
@@ -179,6 +251,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": false,
+        "calibrationRatio": 3.48152218994057,
+        "worst": {
+          "patchId": "outer-wall",
+          "ratio": 2.0901016570755377,
+          "verdict": "PARTIAL"
+        }
       }
     },
     {
@@ -199,6 +280,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": false,
+        "calibrationRatio": 3.521228862987797,
+        "worst": {
+          "patchId": "inner-wall",
+          "ratio": 2.4330145437090556,
+          "verdict": "PARTIAL"
+        }
       }
     },
     {
@@ -219,6 +309,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": false,
+        "calibrationRatio": 427.4097557200256,
+        "worst": {
+          "patchId": "inner-wall",
+          "ratio": 0.2320852401165961,
+          "verdict": "IRREDUCIBLE"
+        }
       }
     },
     {
@@ -239,6 +338,15 @@
       },
       "cert": {
         "commit": null
+      },
+      "convergence": {
+        "calibrated": true,
+        "calibrationRatio": 0.9040800306007698,
+        "worst": {
+          "patchId": "outer-wall",
+          "ratio": 3.758681555250978,
+          "verdict": "RESPONSIVE"
+        }
       }
     }
   ]

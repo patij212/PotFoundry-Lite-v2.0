@@ -1083,13 +1083,41 @@ export function buildStatusRows(dir, manifestPath = join(HERE, 'certs.manifest.j
   return rows;
 }
 
+// The portable convergence snapshot for one pot: read <name>.converge.json (if
+// present) via readConverge and distill it to { calibrated, calibrationRatio, worst }
+// where `worst` is the MIN-ratio (worst-first) patch — buildConvergeRows[0] — carrying
+// its RECOMPUTED verdict (convergeVerdict on the stored ratio). This is what makes the
+// roster's refine-vs-redesign map PORTABLE: research/exchange/ (with the on-disk
+// converge.json) is git-ignored, so the manifest is the only copy that survives a fresh
+// clone. No converge.json → null. A malformed one → null + a warn (the pot still lands
+// in the manifest; only its convergence drops) — same per-file resilience stance as the
+// recon.json scan. Only the derived numbers are carried (no timestamps ⇒ deterministic
+// regen ⇒ clean git diffs).
+function readManifestConvergence(dir, name) {
+  const convPath = join(dir, `${name}.converge.json`);
+  if (!existsSync(convPath)) return null;
+  try {
+    const conv = readConverge(convPath);
+    const worst = buildConvergeRows(conv)[0] ?? null;
+    return {
+      calibrated: conv.calibrated,
+      calibrationRatio: conv.calibrationRatio,
+      worst: worst ? { patchId: worst.patchId, ratio: worst.ratio, verdict: worst.verdict } : null,
+    };
+  } catch (err) {
+    console.warn(`potscope manifest: skipping malformed converge.json for ${name}: ${err.message}`);
+    return null;
+  }
+}
+
 // The portable certificate snapshot. research/exchange/ (where the certified STLs
 // + sidecars live) is git-ignored, so a fresh clone has none of them and `status`
 // would be empty. buildManifest distills every on-disk pot into a small tracked
 // JSON — enough to rebuild the registry rows (name/style/config/tris/verdict/
-// stats/commit) plus the full provenance digests for an integrity re-check. Pots
-// sorted by name; NO timestamps, so re-running on unchanged sidecars yields a
-// byte-identical file (clean git diffs).
+// stats/commit) plus the full provenance digests for an integrity re-check, AND the
+// per-pot convergence snapshot (readManifestConvergence) so the refine-vs-redesign
+// map is portable too. Pots sorted by name; NO timestamps, so re-running on unchanged
+// sidecars yields a byte-identical file (clean git diffs).
 export function buildManifest(dir) {
   const pots = [];
   for (const f of readdirSync(dir).filter((x) => x.endsWith('.recon.json')).sort()) {
@@ -1104,6 +1132,10 @@ export function buildManifest(dir) {
         provenance: s.provenance,
         stats: s.stats,
         cert: { commit: s.commit },
+        // Portable refine-vs-redesign map: the pot's worst-patch convergence verdict,
+        // distilled from its converge.json (null when absent/malformed). Carried in the
+        // git-tracked manifest so a fresh clone still shows the frontier.
+        convergence: readManifestConvergence(dir, s.name),
       });
     } catch (err) {
       console.warn(`potscope manifest: skipping ${f}: ${err.message}`);
@@ -1412,6 +1444,29 @@ function cmdConverge(args) {
 export function buildDoctorReport(dir, opts = {}) {
   const resolvedDir = resolve(dir);
   const rows = buildStatusRows(resolvedDir, opts.manifestPath);
+  // Fresh-clone convergence map: research/exchange/ (with the on-disk converge.json)
+  // is git-ignored, so a clean checkout drives buildStatusRows to its manifest fallback
+  // (every row.source === 'manifest'). The refine-vs-redesign map is carried IN that
+  // committed manifest (buildManifest attaches per-pot convergence), so read it once —
+  // keyed by name — to populate each manifest-sourced pot's convergence exactly as the
+  // on-disk path would. Only consulted when some row is manifest-sourced; a missing/
+  // foreign/broken manifest simply leaves the map empty (convergence stays available
+  // :false). Resolve the SAME manifest path buildStatusRows used (default when unset).
+  const manifestConvByName = new Map();
+  if (rows.some((r) => r.source === 'manifest')) {
+    try {
+      const manifest = JSON.parse(readFileSync(opts.manifestPath ?? join(HERE, 'certs.manifest.json'), 'utf8'));
+      if (manifest && manifest.magic === 'potscope-manifest/v1') {
+        for (const p of manifest.pots ?? []) {
+          if (p && typeof p === 'object' && typeof p.name === 'string') {
+            manifestConvByName.set(p.name, p.convergence ?? null);
+          }
+        }
+      }
+    } catch {
+      /* no/unreadable manifest → no fallback convergence (available:false stays) */
+    }
+  }
   const pots = rows.map((row) => {
     const base = {
       name: row.name,
@@ -1464,6 +1519,24 @@ export function buildDoctorReport(dir, opts = {}) {
         } catch {
           /* malformed converge.json → leave convergence available:false */
         }
+      } else if (row.source === 'manifest') {
+        // Fresh clone: no on-disk converge.json, but the committed manifest carries the
+        // convergence snapshot (buildManifest). Mirror the on-disk shape so doctor/
+        // dashboard show the same refine-vs-redesign map and the summary counts it
+        // identically (only a CALIBRATED irreducible is a frontier). A manifest entry
+        // whose convergence is null (no converge.json at bake time) leaves available
+        // :false — the same as a not-yet-probed pot.
+        const mc = manifestConvByName.get(row.name);
+        if (mc && typeof mc === 'object') {
+          base.convergence = {
+            available: true,
+            calibrated: !!mc.calibrated,
+            calibrationRatio: mc.calibrationRatio ?? null,
+            worst: mc.worst
+              ? { patchId: mc.worst.patchId, ratio: mc.worst.ratio, verdict: mc.worst.verdict }
+              : null,
+          };
+        }
       }
     } catch (err) {
       base.error = err.message; // one bad pot must not sink the whole report
@@ -1509,7 +1582,7 @@ function cmdDoctor(args) {
     console.log(JSON.stringify(report, null, 2));
     if (fast) console.error('note: --fast elided hotspots (hotspots.available=false everywhere) — registry + convergence only');
     if (report.pots.some((p) => p.source === 'manifest')) {
-      console.error('note: rows from committed manifest — no on-disk sidecars; hotspots/convergence unavailable until re-baked');
+      console.error('note: rows from committed manifest — no on-disk sidecars; convergence carried in the manifest, hotspots unavailable until re-baked');
     }
     return;
   }
@@ -1548,7 +1621,7 @@ function cmdDoctor(args) {
       `converge ${s.convergeAvailable}/${s.pots} (${s.convergeCalibrated} calibrated · ${s.convergeUncalibrated} uncalibrated)`
   );
   if (report.pots.some((p) => p.source === 'manifest')) {
-    console.error('(from committed manifest — no on-disk sidecars; hotspots/convergence unavailable until re-baked + reconstructed)');
+    console.error('(from committed manifest — no on-disk sidecars; convergence carried in the manifest, hotspots unavailable until re-baked + reconstructed)');
   }
 }
 
