@@ -59,6 +59,22 @@ const CASES: SmoothCase[] = [
   { tag: 'SE_defaults', style: 'SuperellipseMorph' as StyleId, params: {} as StyleOptions },
   { tag: 'FB_defaults', style: 'FourierBloom' as StyleId, params: {} as StyleOptions },
   { tag: 'RI_defaults', style: 'RippleInterference' as StyleId, params: {} as StyleOptions },
+  { tag: 'SFB_defaults', style: 'SuperformulaBlossom' as StyleId, params: {} as StyleOptions },
+  { tag: 'WI_defaults', style: 'WaveInterference' as StyleId, params: {} as StyleOptions },
+  { tag: 'Cryst_defaults', style: 'Crystalline' as StyleId, params: {} as StyleOptions },
+  { tag: 'Bamboo_defaults', style: 'BambooSegments' as StyleId, params: {} as StyleOptions },
+  // remaining styles — the all-20 uniform-grid baseline (feature/layered/steep styles are EXPECTED not to close on a
+  // uniform grid; the classification is the value — closes ⇒ smooth-grid cert, else ⇒ structured-emitter/conforming).
+  { tag: 'Gothic_defaults', style: 'GothicArches' as StyleId, params: {} as StyleOptions },
+  { tag: 'ArtDeco_defaults', style: 'ArtDeco' as StyleId, params: {} as StyleOptions },
+  { tag: 'GeoStar_defaults', style: 'GeometricStar' as StyleId, params: {} as StyleOptions },
+  { tag: 'Voronoi_defaults', style: 'Voronoi' as StyleId, params: {} as StyleOptions },
+  { tag: 'Gyroid_defaults', style: 'GyroidManifold' as StyleId, params: {} as StyleOptions },
+  { tag: 'HexHive_defaults', style: 'HexagonalHive' as StyleId, params: {} as StyleOptions },
+  { tag: 'LowPoly_defaults', style: 'LowPolyFacet' as StyleId, params: {} as StyleOptions },
+  { tag: 'Basket_defaults', style: 'BasketWeave' as StyleId, params: {} as StyleOptions },
+  { tag: 'CKnot_defaults', style: 'CelticKnot' as StyleId, params: {} as StyleOptions },
+  { tag: 'CTri_defaults', style: 'CelticTriquetra' as StyleId, params: {} as StyleOptions },
 ];
 
 describe('SMOOTH-GRID-CERT — structured grid closes + judge-certifies for smooth styles', () => {
@@ -75,7 +91,11 @@ describe('SMOOTH-GRID-CERT — structured grid closes + judge-certifies for smoo
       const HARD_CAP = 1_048_576;
       const bits = 20; // N=2^20; power-of-2 nU divides N ⇒ grid columns snap exactly (only t carries snap δ on a smooth grid).
       // power-of-2 nU (exact column snap); vertical sweep at nU=2048 separates angular- from vertical-limited residual.
-      for (const [nU, nT] of [[256, 128], [512, 256], [1024, 384], [2048, 256], [2048, 384], [2048, 512]] as Array<[number, number]>) {
+      // QUICK mode stops at ~1M tris (classify closes-under-cap-or-not) — for the all-20 baseline scan over non-closers.
+      const LADDER: Array<[number, number]> = process.env.PF_SMOOTHGRID_QUICK === '1'
+        ? [[512, 256], [1024, 384], [2048, 256]]
+        : [[256, 128], [512, 256], [1024, 384], [2048, 256], [2048, 384], [2048, 512]];
+      for (const [nU, nT] of LADDER) {
         const key = `grid|${cs.tag}|${nU}x${nT}`;
         if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
         const g = buildSmoothGrid(rA, H, nU, nT);
