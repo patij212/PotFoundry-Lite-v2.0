@@ -1096,3 +1096,44 @@ test('dashboardHtml renders an UNCALIBRATED convergence row as a muted chip, nev
   // the worst ratio is still surfaced as context (just not as a verdict)
   assert.ok(card.includes('×0.62'), 'worst ratio still shown as context');
 });
+
+// === run history: on-completion historical comparison (pure core, P5) ===========
+// runHistory is the testable core of cmdRun's on-exit "prior runs of this cmd" line.
+// It scans a SNAPSHOT of ledger entries for prior `run-complete` entries with the
+// SAME cmd and summarizes them: count (how many matched), avgMs (mean of their
+// elapsedMs), lastMs (the most-recent matching in ARRAY order — deliberately not the
+// min/max/avg). cmdRun snapshots the ledger BEFORE appending this run's own entry,
+// so the run that just finished is excluded by construction (nothing to strip here).
+import { runHistory } from './potscope.mjs';
+
+test('runHistory summarizes prior run-complete entries for the same cmd (count / avg / last)', () => {
+  const entries = [
+    { kind: 'run-complete', cmd: 'bake A', exitCode: 0, elapsedMs: 100 },
+    { kind: 'probe', cmd: 'bake A', line: '[probe:x] ...' },               // wrong kind → ignored
+    { kind: 'run-complete', cmd: 'bake B', exitCode: 0, elapsedMs: 9999 }, // wrong cmd → ignored
+    { kind: 'run-complete', cmd: 'bake A', exitCode: 0, elapsedMs: 700 },
+    { kind: 'run-complete', cmd: 'bake A', exitCode: 1, elapsedMs: 200 },
+    { kind: 'run-complete', cmd: 'bake A', exitCode: 0, elapsedMs: 400 },  // last matching in array order
+  ];
+  const h = runHistory(entries, 'bake A');
+  assert.equal(h.count, 4);                            // four 'bake A' run-complete entries
+  assert.equal(h.avgMs, (100 + 700 + 200 + 400) / 4);  // = 350, mean of the matching elapsedMs
+  // lastMs is the LAST matching in array order (400) — deliberately not the min (100),
+  // max (700), or the avg (350), so the assertion pins array-order semantics exactly.
+  assert.equal(h.lastMs, 400);
+});
+
+test('runHistory returns the null shape on empty / no-match / non-numeric elapsedMs', () => {
+  const nullShape = { count: 0, avgMs: null, lastMs: null };
+  assert.deepEqual(runHistory([], 'bake A'), nullShape); // empty snapshot
+  assert.deepEqual(
+    runHistory([{ kind: 'run-complete', cmd: 'other', elapsedMs: 50 }], 'bake A'),
+    nullShape // entries exist but none match the cmd
+  );
+  // a run-complete for the right cmd but with a non-numeric elapsedMs cannot
+  // contribute (it would poison the mean) → still the null shape, never { count: 1, avgMs: NaN }
+  assert.deepEqual(
+    runHistory([{ kind: 'run-complete', cmd: 'bake A', elapsedMs: undefined }], 'bake A'),
+    nullShape
+  );
+});

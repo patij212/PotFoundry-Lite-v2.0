@@ -258,6 +258,27 @@ function cmdLedger(args) {
 }
 
 // ----------------------------------------------------------------------- run
+// Pure, testable core of cmdRun's on-completion historical comparison. Given a
+// SNAPSHOT of ledger entries (ledgerEntries()) and a command string, summarize the
+// prior `run-complete` entries for the SAME cmd: count (how many matched), avgMs
+// (mean of their elapsedMs), lastMs (the most-recent matching in ARRAY order).
+// cmdRun snapshots the ledger BEFORE it appends this run's own run-complete entry,
+// so the just-finished run is excluded by construction. An entry without a finite
+// numeric elapsedMs cannot contribute and is skipped (it also cannot poison the
+// mean). No match / empty → { count: 0, avgMs: null, lastMs: null }.
+export function runHistory(entries, cmd) {
+  const matching = entries.filter(
+    (e) => e && e.kind === 'run-complete' && e.cmd === cmd && Number.isFinite(e.elapsedMs)
+  );
+  if (matching.length === 0) return { count: 0, avgMs: null, lastMs: null };
+  const sum = matching.reduce((acc, e) => acc + e.elapsedMs, 0);
+  return {
+    count: matching.length,
+    avgMs: sum / matching.length,
+    lastMs: matching[matching.length - 1].elapsedMs,
+  };
+}
+
 function cmdRun(args) {
   const command = args._;
   if (command.length === 0) {
@@ -265,6 +286,9 @@ function cmdRun(args) {
     process.exit(2);
   }
   const startedAt = Date.now();
+  // Snapshot the ledger NOW — before this run appends its own run-complete entry —
+  // so the on-exit historical comparison (runHistory) counts only PRIOR runs.
+  const historySnapshot = ledgerEntries();
   // shell:true concatenates args without escaping, which re-splits any token
   // containing whitespace (a multi-word `-t` filter becomes stray file
   // filters). Quote such tokens before handing the line to the shell.
@@ -278,7 +302,29 @@ function cmdRun(args) {
         () => console.log('[potscope] node priorities bumped to AboveNormal'));
     }
   }, 8000);
+  // Progress visibility for the 10-90 min bakes this wraps. A heartbeat every
+  // PF_RUN_HEARTBEAT_MS (default 60s) reports elapsed + time since the child last
+  // emitted; once that silence passes PF_RUN_STALL_MS (default 120s) the line turns
+  // into a stall warning. The lesson it encodes: Windows EcoQoS throttles detached
+  // node ~4-5x, so a silent stretch is diagnosed by CPU delta (Task Manager), NOT
+  // wall time. The interval is cleared on child exit.
+  let lastActivityAt = Date.now();
+  const heartbeatMs = Number(process.env.PF_RUN_HEARTBEAT_MS) || 60000;
+  const stallMs = Number(process.env.PF_RUN_STALL_MS) || 120000;
+  const dim = (s) => `\x1b[2m${s}\x1b[0m`;
+  const heartbeat = setInterval(() => {
+    const now = Date.now();
+    const elapsedS = Math.round((now - startedAt) / 1000);
+    const agoS = Math.round((now - lastActivityAt) / 1000);
+    if (now - lastActivityAt > stallMs) {
+      console.log(dim(`[potscope] ⚠ no output for ${agoS}s — possible EcoQoS throttle or hang; diagnose by CPU delta (Task Manager), not wall time`));
+    } else {
+      console.log(dim(`[potscope] ${elapsedS}s elapsed · last activity ${agoS}s ago`));
+    }
+  }, heartbeatMs);
+  heartbeat.unref?.(); // child pipes keep the loop alive; the heartbeat must never hold it open alone
   const onData = (chunk) => {
+    lastActivityAt = Date.now();
     const text = chunk.toString();
     process.stdout.write(text);
     for (const line of text.split('\n')) {
@@ -295,14 +341,25 @@ function cmdRun(args) {
   child.stdout.on('data', onData);
   child.stderr.on('data', onData);
   child.on('exit', (code) => {
+    clearInterval(heartbeat);
+    const elapsedMs = Date.now() - startedAt;
     ledgerAppend({
       ts: new Date().toISOString(),
       kind: 'run-complete',
       cmd: command.join(' '),
       exitCode: code,
-      elapsedMs: Date.now() - startedAt,
+      elapsedMs,
     });
-    console.log(`[potscope] exit ${code} after ${((Date.now() - startedAt) / 1000).toFixed(1)}s (probe lines ledgered)`);
+    console.log(`[potscope] exit ${code} after ${(elapsedMs / 1000).toFixed(1)}s (probe lines ledgered)`);
+    // Historical comparison against PRIOR runs of this exact cmd (from the
+    // start-of-run snapshot, so this run itself is excluded). Answers "is this bake
+    // slower than usual?" — the >1.5x-avg flag points straight at a throttle.
+    const hist = runHistory(historySnapshot, command.join(' '));
+    if (hist.count > 0) {
+      let line = `[potscope] prior runs of this cmd: ${hist.count} · avg ${(hist.avgMs / 1000).toFixed(1)}s · last ${(hist.lastMs / 1000).toFixed(1)}s`;
+      if (elapsedMs > 1.5 * hist.avgMs) line += ' — ⚠ slower than usual (throttle?)';
+      console.log(line);
+    }
     process.exit(code ?? 0);
   });
 }
