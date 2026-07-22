@@ -178,7 +178,16 @@ export function snapAndVerifyCertDomain(
   };
   let accepted = false, detail = '';
   try {
-    const r = verifyExactDyadicRectanglePartition(input, { maxTriangles: opts.maxTriangles ?? 1_048_576 });
+    // Request the judge's full HARD resource headroom (it clamps each to its own hard ceiling anyway). A ~1M-triangle
+    // grid trips the DEFAULT build-work/traversal/pair ceilings well before the triangle cap, so pass them all.
+    const r = verifyExactDyadicRectanglePartition(input, {
+      maxTriangles: opts.maxTriangles ?? 1_048_576,
+      maxBuildWork: 320_000_000,
+      maxBvhNodes: 4_194_304,
+      maxTraversalVisits: 320_000_000,
+      maxBroadPhasePairChecks: 320_000_000,
+      maxPairChecks: 160_000_000,
+    });
     accepted = true;
     detail = `ACCEPTED tris=${r.triangleCount} exactPartition=${r.exactPartition}`;
   } catch (e) {
