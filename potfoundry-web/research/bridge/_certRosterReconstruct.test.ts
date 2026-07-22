@@ -1,8 +1,11 @@
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import {
   normalizeNumerator,
   configDigest,
   reconstructPot,
+  type Provenance,
 } from './_certRosterReconstructLib';
 import { CERTIFIED_POTS } from './_certRoster';
 
@@ -55,4 +58,83 @@ describe('reconstruct lib — one small pot', () => {
     }
     expect(r.provenance.targetSha256).toMatch(/^[0-9a-f]{64}$/);
   }, 60_000);
+});
+
+const OUT_DIR = join(__dirname, '..', 'exchange', '_certified_stl');
+const RECON_SELECTOR = process.env.PF_CERT_RECON;
+const reconSelected = (name: string): boolean =>
+  RECON_SELECTOR !== undefined &&
+  (RECON_SELECTOR === 'all' ||
+    name.toLowerCase().includes(RECON_SELECTOR.toLowerCase()));
+
+type Verdict = 'GREEN' | 'DRIFT' | 'STL-MISSING';
+
+function committedProvenance(errPath: string): Provenance | null {
+  if (!existsSync(errPath)) return null;
+  const raw = readFileSync(errPath);
+  const nl = raw.indexOf(0x0a);
+  const hdr = JSON.parse(raw.subarray(0, nl).toString('utf8'));
+  return hdr.provenance ?? null;
+}
+
+describe('reconstruct driver — guard + writer', () => {
+  for (const pot of CERTIFIED_POTS) {
+    it(
+      `guard: ${pot.name} does not drift from committed STL`,
+      { timeout: 120_000 },
+      () => {
+        const stlPath = join(OUT_DIR, `${pot.name}.stl`);
+        if (!existsSync(stlPath)) {
+          // eslint-disable-next-line no-console
+          console.log(`[probe:recon] ${pot.name} STL-MISSING (skip guard)`);
+          return;
+        }
+        const result = reconstructPot(pot);
+        const recorded = committedProvenance(`${stlPath}.error.bin`);
+        const committed = readFileSync(stlPath);
+        let verdict: Verdict;
+        let targetStl = stlPath;
+        if (!committed.equals(result.stlBytes)) {
+          verdict = 'DRIFT';
+          targetStl = join(OUT_DIR, `${pot.name}.regen.stl`);
+        } else if (
+          recorded &&
+          recorded.targetSha256 !== result.provenance.targetSha256
+        ) {
+          verdict = 'DRIFT';
+        } else {
+          verdict = 'GREEN';
+        }
+
+        if (reconSelected(pot.name)) {
+          if (verdict === 'DRIFT' && targetStl.endsWith('.regen.stl')) {
+            writeFileSync(targetStl, result.stlBytes);
+          }
+          writeFileSync(`${targetStl}.loc.bin`, result.locBuffer);
+          writeFileSync(
+            join(OUT_DIR, `${pot.name}.recon.json`),
+            JSON.stringify(
+              {
+                name: pot.name,
+                style: pot.styleId,
+                tris: result.triangleCount,
+                configDigest: configDigest(pot),
+                provenance: result.provenance,
+                verdict,
+                recorded,
+              },
+              null,
+              2
+            )
+          );
+          // eslint-disable-next-line no-console
+          console.log(
+            `[probe:recon] ${pot.name} ${verdict} tris=${result.triangleCount} wrote loc.bin+recon.json`
+          );
+        }
+
+        expect(verdict, `${pot.name} drifted from committed STL`).not.toBe('DRIFT');
+      }
+    );
+  }
 });
