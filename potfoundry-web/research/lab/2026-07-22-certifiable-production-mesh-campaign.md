@@ -131,8 +131,14 @@ the EASY static-crease class, NOT the snaking class. Clean split: **{LowPolyFace
 {CelticKnot, CelticTriquetra} → the `doubleValued/` snaking mesher** (do NOT force the Celtics onto the ring-strip).
 
 **Recommended order + mechanism:**
-1. **LowPolyFacet** (easiest) — 12 vertical C1 facet edges, no C0, no junctions ⇒ uniform smooth grid (nU aligned to 12),
-   NO double-valued wall. ~0.1–0.3M est. (MEASURING now via the shipped `buildSmoothGridWall`.)
+1. **LowPolyFacet** (measured 2026-07-22) — periodic flat-faced **12-gon PRISM** with SHARP C0 vertical edges (the bevel is
+   INACTIVE at defaults: k=2.1 < 2.09mm prominence). Two FIXABLE blockers, both density-invariant: **(A) a rim `floor()`
+   off-by-one** — `tierIdx=floor(t·tiersN)` overflows at t=1 ⇒ **1.124mm step at the rim** of every pot (a REAL product bug,
+   same class as the fixed DS rim bug; also in the current export) ⇒ clamp `min(floor(t·tiersN),tiersN−1)` in
+   `rOuterLowPolyFacet` + WGSL parity + fixture; **(B) facet alignment** — pow2 needs nU=8192/2.08M (>cap) and shipped
+   `deriveSmoothGridDensity` picks only nU=1024 (blind to the sub-cell edge), but **facet-aligned nU = multiple of 24** closes
+   the body at **nU≈48 / 12k tris** (flat planes; mult-12 is WORST 0.207 — straddles edges). Both cert paths ACCEPT
+   (align24 maxδ 0.0002). ⇒ add an `alignNU` lever to the smooth grid + fix the rim. Spawned as task `task_8f14f03d`.
 2. **BambooSegments** (de-risked) — the DS ring-strip RAN and floors at **0.79mm**; root cause = a t-SCHEDULE gap
    (`buildDsRingTSchedule` brackets the ±1mm C0 ring but does NOT grade rows across the smooth node-bulge flanks, `exp`
    reaches ±3.6mm), NOT a wall. Fix = a node-bulge-tracking `buildBambooTSchedule`. ~1–3M est.
@@ -159,10 +165,11 @@ Corrects the prior E-CT-HEXHIVE "reaches ≤0.01" (that was p99 with the seam ex
 
 ## Open threads (updated 2026-07-22 pm)
 - ✅ **Smooth-grid emitter PRODUCTIONIZED** (commit 121a7fe1) — 6 smooth styles wired into the dispatch, flag-gated.
-- **GeometricStar closure** (active subagent) — synthesize the 9 `_geoStar*` probes + measure the best
-  conforming-graph+fineStep+aniso arm at production scale; is true-3D MAX (trusted continuous, not single-seed GN) ≤0.01?
-- **LowPolyFacet closure** (active subagent) — measure whole-mesh MAX on the shipped smooth grid (pow2 vs facet-aligned nU);
-  the rank-1 layered win, likely a smooth-grid style with no double-valued wall.
+- **GeometricStar closure** — free-Delaunay REFUTED (measured); now BUILDING the analytic chevron-strip emitter
+  (`buildGeometricStarStripEmitter`) — does the structured strip + apex fan reach ≤0.01 MAX? (active subagent.)
+- ✅ **LowPolyFacet** — measured: periodic 12-gon prism, closable at ~12k tris via facet-aligned nU BUT blocked by (A) a
+  1.124mm rim `floor()` bug (real product bug, spawned `task_8f14f03d`) + (B) shipped density blind to sharp edges (needs an
+  `alignNU` lever). Both fixable; judge-cert not a blocker. See layered-class section.
 - ✅ **HexagonalHive** — NO-GO (irreducible non-periodic seam); reclassified + escalated to Patryk. See layered-class section.
 - **Next layered productionizations** (in order): LowPoly (smooth grid + facet-aligned nU) → Bamboo (`buildBambooTSchedule`
   node-bulge grading) → BasketWeave (2-axis tread grid) → ArtDeco (riser+fan+chevron superposition). Celtics = separate
