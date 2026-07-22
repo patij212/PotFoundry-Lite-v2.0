@@ -18,6 +18,7 @@ import { ShaderManager } from './renderers/webgpu/ShaderManager';
 import { WebGPURenderer } from './renderers/webgpu/WebGPURenderer';
 import { SceneManager } from './renderers/webgpu/SceneManager';
 import { PreviewInstantController } from './renderers/webgpu/PreviewInstantController';
+import { isMobileDevice } from './ResizeManager';
 import ThumbnailRenderer from './services/ThumbnailRenderer';
 import {
   createAxisOverlay,
@@ -1070,7 +1071,10 @@ export const mount = async ({
   // pipeline + eval passes in the background (~13s once); until ready, canDraw stays false
   // and the frame loop falls back to the per-style pipeline. Never blocks mount.
   let instantController: PreviewInstantController | null = null;
-  if (instantEvalEnabled) {
+  if (instantEvalEnabled && isMobileDevice()) {
+    console.log('[preview-eval] flag on but device is MOBILE — instant path is desktop-only (uses the desktop preview shader; mobile uses a separate ultra-compact shader). Staying on the per-style path.');
+  }
+  if (instantEvalEnabled && !isMobileDevice()) {
     const ctl = new PreviewInstantController(device, {
       uniformBuffer,
       styleParamBuffer,
@@ -3635,7 +3639,12 @@ export const mount = async ({
         // stale while raycast is active — harmless for the main pass, which
         // draws no pot, but debug line/point overlays key off it and keep the
         // last mesh-compiled style until wireframe/mesh mode is used again.)
-        if (!raycastActive && reqStyleId !== pendingPipelineStyleId) {
+        // [preview-eval] when the instant path is drawing, it renders every style from ONE
+        // style-independent pipeline, so compiling the per-style mesh pipeline on switch is
+        // pure waste (same rationale as the raycast guard above) — and it's the 7-19s stall
+        // this whole path exists to remove. Skip it; the instant draw branch handles the swap.
+        const instantActive = !!(instantController && instantController.canDraw);
+        if (!raycastActive && !instantActive && reqStyleId !== pendingPipelineStyleId) {
           if (import.meta.env.DEV) console.log(`[WebGPU] Style change detected! ${activePipelineStyleId} -> ${reqStyleId}. Initiating compilation...`);
           pendingPipelineStyleId = reqStyleId;
           getOrCreatePipeline(reqStyleId).then((p) => {
