@@ -1,0 +1,103 @@
+# Unified Shape-Agnostic Measurement — Design & Roadmap
+
+_2026-07-22. Companion to `research/MEASUREMENT-COMPENDIUM.md` (the ruler catalog) and
+`research/LAB-CHEATSHEET.md` (field discipline). This spec states the unification
+thesis, records what shipped this session, and lays out the roadmap for the remaining
+precision/speed/soundness fixes. Autonomous session — no interactive design gate; this
+doc is written for review-on-return._
+
+## 1. Problem
+
+The project accreted **~a dozen distance rulers, four quality/topology rulers, and one
+rigorous certificate engine** across three non-sharing stacks (`src/fidelity`,
+`src/geometry/targetSolid`, `research/bridge/labkit`). A 7-agent audit (archived under
+the session scratchpad `audit/`) found the measurements — not just the mesher — are a
+gap on the road to shape-agnostic 0.01mm certification:
+
+- **Four different "distance-to-truth" definitions** selected ad-hoc, three of which
+  violate the 0.01mm-MAX-vs-exact-analytic standard (grid-bound reference, radial
+  overstatement, GN wrong-well overstatement).
+- **MAX is masked** three ways: by p99 headlines, by triangle subsampling (64k/256k),
+  and by loci-only sampling (blind to non-locus scale-tip cones).
+- **Percentiles are quantized** (0.05mm histogram buckets — 5× the target).
+- **The rigorous certificate is unwired and un-cross-validated.**
+- No single, shape-agnostic entry; the reference representation is not selected by
+  shape class, so single-valued `rA` is (mis)applied to multi-valued weaves.
+
+## 2. Thesis
+
+**One ruler, one reference-selection rule, MAX-first, with the interval prover as the
+gold standard.**
+
+1. **One distance definition:** perpendicular 3D distance from mesh sample to the true
+   surface — the one-sided Hausdorff the exported facets must satisfy (the MMG `hausd`
+   knob). Radial is a *screen* only (it overstates steep relief 2–370×).
+2. **Reference by shape class** (compendium §3): single-valued → exact `rA`;
+   steep tangled lattice → exact `rA` **with global seeding**; multi-valued weave →
+   post-warp / multi-patch reference (NOT `rA`); rigorous → the validated interval
+   target program.
+3. **MAX-first:** certify on `max ≤ tol ∧ watertight ∧ all-finite`. Report the full
+   vector `{max, p99, rms, mean, minAngle}` for diagnosis; never certify on p99.
+4. **The interval prover is the gold standard** (`targetSolid`): continuous,
+   outward-rounded, fail-closed, ~1 picometre floor, no nearest-point search. Sampled
+   rulers are the fast path and must be **cross-validated** against it (sampled ≤
+   certified upper bound).
+
+## 3. What shipped this session
+
+Additive, TDD, byte-identical on every existing path (opt-in only):
+
+- **`src/fidelity/radialSurfaceProjector.ts` — `buildRadialSurfaceProjector(rA, opts)`.**
+  A globally-correct, fast perpendicular projector. Precomputes the surface on a `(θ,z)`
+  grid, indexes the sample points in a 3D bucket grid, and seeds Gauss-Newton from the
+  globally-nearest samples **and** the radial foot. Fixes the single-seed wrong-well
+  overstatement (measured: **1.47mm → 0** on real Gyroid floating centroids; never
+  overstates the trusted 2560×640 brute; provably ≤ single-GN up to GN noise). The grid
+  build amortizes across every projection ⇒ whole-mesh cost ~O(samples), orders of
+  magnitude below the worst-N brute twin (`bruteAnchoredRedPerp`, ~3.4h whole-mesh),
+  and correct everywhere, not just worst-N.
+- **`src/fidelity/measureRadialFidelity.ts` — the unified ruler.** ONE entry that
+  measures against exact `rA` with the global projector, reports MAX-first distance +
+  min-angle quality + exclusion bands, and certifies on MAX. Watertight stays the
+  separate cap-safe `topologyMetric` (different scope). Global projector default ON;
+  `globalProjector:false` for A/B against the legacy overstatement.
+- **`analyticSurfaceGate.ts`:** (a) non-finite deviations no longer poison
+  `rms`/`p99` (guarded + counted in `nonFiniteCount`); (b) `perpendicular3DDeviation`
+  gains an injectable `chordProjector` (the acyclic seam for the global projector).
+- **`research/MEASUREMENT-COMPENDIUM.md`:** the authoritative ruler catalog.
+
+## 4. Roadmap (remaining fixes, ranked)
+
+Each is TDD, additive/opt-in where it would shift a pinned baseline. Line refs in the
+compendium §11.
+
+| # | Fix | Where | Risk | Notes |
+|---|---|---|---|---|
+| R1 | Exact-percentile (drop 0.05mm histogram) | `wallDeviation`, `wallChordError` (metrics.ts) | low | max/rms already exact; p99 is the only quantized field. No test pins it. |
+| R2 | MAX on the FULL mesh (stop subsampling the MAX channel) | `computeFidelityMetrics` (metrics.ts:1331) | med | keep rms/p99 subsampled; MAX radial eval is cheap. Shifts the persisted baseline row → rebaseline. |
+| R3 | Scale `coarseTrigger`/`preFilterMm` with `tolMm` | `analyticSurfaceGate.ts:263,379` | low-med | both hard-pinned to the 0.1mm regime; opt-in a `tolScaled` mode. |
+| R4 | Facet-wide pre-filter bound (not centroid-only) | `analyticSurfaceGate.ts:486` | med | centroid bound understates an off-centroid interior spike; use vertex+centroid max, or the interval screen. |
+| R5 | Reconcile watertight tol; fix the false `types.ts:68` comment | `exportValidation.ts:29`, `types.ts:68` | med | `1e-3` download vs `1e-4` internal, 10× apart; decide the correct value (don't silently change a gate). |
+| R6 | Share the numeric packed-key path (Map-cap) | `exportValidation.ts:238`, `topologyDiagnostics` | med | the download path can still crash on 8M+ tris. |
+| R7 | Cross-validate: sampled ≤ certified upper bound | new test bridging `measureRadialFidelity` ↔ `targetSolid` | med | proves the fast ruler is sound (or finds where it diverges) — the unification's soundness proof. |
+| R8 | Add a non-locus MAX pass to the all-20 harnesses | `featConformAll20` | med | fl3d loci-only is blind to scale-tip cones; add a facet/interval MAX gate. |
+
+## 5. Future work (bigger bets)
+
+- **Multi-valued reference.** Extend the ruler to select a post-warp / multi-patch
+  reference for over/under weaves (BasketWeave/CelticKnot/DragonScales rings), so `rA`
+  artifacts stop being reported as mesh defects. Folds into the `targetSolid`
+  multi-patch registry + the missing per-style discontinuity curtains.
+- **The right GPU oracle.** A facet-sample → GPU-ray → perpendicular-gap mesh-vs-solid
+  scorer on the existing preview march+bound+bisection machinery: whole-solid,
+  double-valued-capable, GPU-speed, independent of the CPU tessellation. The highest-
+  leverage measurement capability the project does not yet have.
+- **Wire a live all-style MAX gate.** Today no gate is in production; certification is
+  a frozen baseline + human copy. A live `measureRadialFidelity`-based MAX gate over the
+  all-20 at production-default scale would make certification continuous.
+
+## 6. Non-goals
+
+- Rewriting the 900+ existing call sites of the legacy rulers. The unified ruler is
+  additive; migration is opt-in and out of scope for this session.
+- Changing production mesher behaviour. This is a measurement work-stream only.
