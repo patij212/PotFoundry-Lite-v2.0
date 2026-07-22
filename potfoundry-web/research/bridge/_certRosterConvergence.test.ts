@@ -1,0 +1,303 @@
+// _certRosterConvergence.test.ts — DEV-ONLY. The refine-vs-redesign convergence
+// probe on the PF_G2_POT certified roster: the shallow-depth worst-residual at
+// TWO densities (FINE = certified divisions, COARSE = one step down), per patch.
+// coarseMax/fineMax ~4 => density-responsive (refine); ~1 => structurally
+// irreducible (redesign the mesher).
+//
+// Reuses atlas -> tessellate from ./_certRoster and the exact residual evaluator
+// via ./_certRosterConvergenceLib (no re-implemented surface). The pure helpers
+// (coarsenDivisions / uniformSubcellWeights / classifyRatio) are unit-tested
+// deterministically and always run; the heavy per-pot probe is env-selected.
+//
+// Select which pot to probe with PF_CONVERGE (substring of the pot name,
+// mirroring PF_CERT_ERRORBAKE):
+//   PF_CONVERGE=HarmonicRipple            — probe matching pot(s)
+//   PF_CONVERGE_DEPTH=3                    — override the calibrated fixed depth
+//   PF_CONVERGE_DEPTHS=2,3,4              — CALIBRATION sweep: fine-only at each
+//                                           depth vs the committed certified max
+//   PF_CONVERGE_COARSE_STEP=1             — density step for the coarse variant
+// Runs through the potscope EcoQoS wrapper to dodge the Windows throttle:
+//   node research/tools/potscope/potscope.mjs run -- \
+//     npx vitest run research/bridge/_certRosterConvergence.test.ts
+import { describe, it, expect } from 'vitest';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+import { tessellateAnnularRadialSolidTargetForCertification } from '../../src/geometry/targetSolid/annularSolidReferenceTessellation';
+import { createCompleteMappedGeometryTargetBindingFromSurfaceComplex } from '../../src/geometry/targetSolid/completeMappedArtifactGeometry';
+import { atlas, CERTIFIED_POTS } from './_certRoster';
+import {
+  classifyRatio,
+  coarsenDivisions,
+  convergePot,
+  sampleWorstResidualByPatch,
+  trianglesByPatch,
+  uniformSubcellWeights,
+} from './_certRosterConvergenceLib';
+
+const OUT_DIR = join(__dirname, '..', 'exchange', '_certified_stl');
+// Calibrated 2026-07-22 by the PF_CONVERGE_DEPTHS sweep: at depth 2 the
+// HarmonicRipple_small fine global-max is 0.010578 mm vs the committed certified
+// 0.010 mm (ratio 1.058 — within 6%), it is the cheapest depth (17 s fine on the
+// small pot), and the fine-max converges DOWNWARD with depth (0.0106 -> 0.0093
+// -> 0.0089), confirming it brackets the true residual from above. Deeper depths
+// cost 4x each (depth 4 = 266 s) and would push GeometricStar past a few minutes.
+const DEFAULT_DEPTH = 2;
+// The calibration acceptance band: the probe's fine global-max must sit within
+// this factor of the pot's committed certified global max (both directions).
+// Generous because the certificate quantizes to a ladder (floor 0.0025) while
+// the probe is a continuous conservative sup.
+const CALIBRATION_TOLERANCE = 2.5;
+
+const SELECTOR = process.env.PF_CONVERGE;
+const selected = (name: string): boolean =>
+  SELECTOR !== undefined &&
+  (SELECTOR === 'all' || SELECTOR === '1' || name.toLowerCase().includes(SELECTOR.toLowerCase()));
+
+interface CertifiedReference {
+  readonly globalMaxMm: number;
+  readonly perPatchMaxMm: Record<string, number>;
+}
+
+/** Split a `<header-json>\n<float32 body>` sidecar into its two parts. */
+function splitSidecar(buf: Buffer): { header: Record<string, unknown>; body: Float32Array } {
+  const nl = buf.indexOf(0x0a);
+  const header = JSON.parse(buf.subarray(0, nl).toString('utf8')) as Record<string, unknown>;
+  // The body offset is not 4-aligned (header length varies), so copy to a fresh
+  // aligned buffer before viewing as Float32.
+  const body = new Float32Array(Uint8Array.from(buf.subarray(nl + 1)).buffer);
+  return { header, body };
+}
+
+/**
+ * Read the committed certifies-at sidecar (`<name>.stl.error.bin`) and, if the
+ * localization sidecar (`<name>.stl.loc.bin`) is present, the per-patch max. The
+ * error sidecar carries the global stats in its header regardless.
+ */
+function readCertifiedReference(name: string): CertifiedReference | undefined {
+  const errPath = join(OUT_DIR, `${name}.stl.error.bin`);
+  if (!existsSync(errPath)) return undefined;
+  const err = splitSidecar(readFileSync(errPath));
+  const stats = err.header.stats as { maxMm: number } | undefined;
+  const globalMaxMm = stats?.maxMm ?? Number.NaN;
+  const perPatchMaxMm: Record<string, number> = {};
+  const locPath = join(OUT_DIR, `${name}.stl.loc.bin`);
+  if (existsSync(locPath)) {
+    const loc = splitSidecar(readFileSync(locPath));
+    const patches = loc.header.patches as string[];
+    // loc body = count * 7 floats: [patchIdx, u0, v0, u1, v1, u2, v2].
+    for (let tri = 0; tri < err.body.length; tri += 1) {
+      const patch = patches[loc.body[tri * 7]];
+      perPatchMaxMm[patch] = Math.max(perPatchMaxMm[patch] ?? 0, err.body[tri]);
+    }
+  }
+  return { globalMaxMm, perPatchMaxMm };
+}
+
+describe('convergence probe — pure helpers', () => {
+  it('uniformSubcellWeights: 4^depth cells, each row a partition of 2^depth', () => {
+    expect(uniformSubcellWeights(0)).toEqual([[1, 0, 0, 0, 1, 0, 0, 0, 1]]);
+    for (const depth of [0, 1, 2, 3, 4]) {
+      const cells = uniformSubcellWeights(depth);
+      expect(cells.length).toBe(4 ** depth);
+      const scale = 2 ** depth;
+      for (const w of cells) {
+        expect(w.length).toBe(9);
+        for (let vtx = 0; vtx < 3; vtx += 1) {
+          const rowSum = w[vtx * 3] + w[vtx * 3 + 1] + w[vtx * 3 + 2];
+          expect(rowSum).toBe(scale); // barycentric weights sum to 2^depth
+          for (let k = 0; k < 3; k += 1) expect(w[vtx * 3 + k]).toBeGreaterThanOrEqual(0);
+        }
+      }
+    }
+  });
+
+  it('uniformSubcellWeights: subcell areas tile the reference triangle', () => {
+    // Each depth-d subcell has |det| = 1 in weight units; total 4^d covers the
+    // root (det scale 4^d over the 2^d denominator squared).
+    for (const depth of [1, 2, 3]) {
+      const cells = uniformSubcellWeights(depth);
+      let area2 = 0;
+      for (const w of cells) {
+        const det =
+          (w[3] - w[0]) * (w[7] - w[1]) - (w[6] - w[0]) * (w[4] - w[1]);
+        area2 += Math.abs(det);
+      }
+      // 4^d cells each |det|=1 in the 2^d grid => total |det| = 4^d.
+      expect(area2).toBe(4 ** depth);
+    }
+  });
+
+  it('uniformSubcellWeights: rejects out-of-range depth', () => {
+    expect(() => uniformSubcellWeights(-1)).toThrow();
+    expect(() => uniformSubcellWeights(9)).toThrow();
+    expect(() => uniformSubcellWeights(2.5)).toThrow();
+  });
+
+  it('coarsenDivisions: reduces the two uniform knobs, clamps at floors, passes ladders through', () => {
+    const fine = {
+      angularDivisionsLog2: 9,
+      verticalDivisionsLog2ByPatch: {
+        'outer-wall': 6,
+        'inner-wall': 6,
+        'top-rim': 3,
+        'bottom-top': 4,
+        'bottom-under': 4,
+        'drain-wall': 0,
+      },
+      verticalStationsByPatch: { 'inner-wall': { log2Denominator: 6, numerators: [0, 64] } },
+    } as unknown as Parameters<typeof coarsenDivisions>[0];
+    const coarse = coarsenDivisions(fine, 1);
+    expect(coarse.angularDivisionsLog2).toBe(8);
+    expect(coarse.verticalDivisionsLog2ByPatch['outer-wall']).toBe(5);
+    expect(coarse.verticalDivisionsLog2ByPatch['drain-wall']).toBe(0); // clamped at vertical floor
+    // station ladder passes through unchanged (a laddered patch coarsens only angularly)
+    expect(coarse.verticalStationsByPatch).toBe(fine.verticalStationsByPatch);
+    // fine spec is untouched (pure transform)
+    expect(fine.angularDivisionsLog2).toBe(9);
+  });
+
+  it('coarsenDivisions: coarseStep=2 and custom floors', () => {
+    const fine = {
+      angularDivisionsLog2: 8,
+      verticalDivisionsLog2ByPatch: { 'outer-wall': 5, 'drain-wall': 1 },
+    } as unknown as Parameters<typeof coarsenDivisions>[0];
+    const coarse = coarsenDivisions(fine, 2, { angular: 4, vertical: 1 });
+    expect(coarse.angularDivisionsLog2).toBe(6);
+    expect(coarse.verticalDivisionsLog2ByPatch['outer-wall']).toBe(3);
+    expect(coarse.verticalDivisionsLog2ByPatch['drain-wall']).toBe(1); // 1-2 -> clamp at 1
+    expect(() => coarsenDivisions(fine, 0)).toThrow();
+  });
+
+  it('classifyRatio: maps ratio to refine-vs-redesign verdict', () => {
+    expect(classifyRatio(4)).toBe('responsive');
+    expect(classifyRatio(3.5)).toBe('responsive');
+    expect(classifyRatio(2)).toBe('partial');
+    expect(classifyRatio(1)).toBe('irreducible');
+    expect(classifyRatio(0.9)).toBe('irreducible');
+    expect(classifyRatio(Number.POSITIVE_INFINITY)).toBe('responsive');
+  });
+});
+
+describe('certified roster — convergence probe', () => {
+  for (const pot of CERTIFIED_POTS) {
+    it.skipIf(!selected(pot.name))(
+      `probes coarse/fine convergence for ${pot.name}`,
+      { timeout: 3_600_000 },
+      () => {
+        const startedAt = Date.now();
+        const reference = readCertifiedReference(pot.name);
+        const certGlobalMax = reference?.globalMaxMm ?? Number.NaN;
+
+        // CALIBRATION SWEEP: fine-only worst-residual at each depth vs the
+        // committed certified max. Picks the cheapest depth that calibrates.
+        const sweep = process.env.PF_CONVERGE_DEPTHS;
+        if (sweep !== undefined) {
+          const binding = atlas(pot.geometry, pot.styleParams, pot.styleId);
+          const tess = tessellateAnnularRadialSolidTargetForCertification(binding, pot.divisions);
+          const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
+            binding.surfaceComplex
+          );
+          const triByPatch = trianglesByPatch(tess);
+          for (const depthStr of sweep.split(',')) {
+            const depth = Number(depthStr.trim());
+            const t0 = Date.now();
+            const s = sampleWorstResidualByPatch(binding, tess, target.targetSha256, depth);
+            const ms = Date.now() - t0;
+            let fineGlobalMax = 0;
+            for (const v of Object.values(s.perPatchMaxMm)) if (v > fineGlobalMax) fineGlobalMax = v;
+            // eslint-disable-next-line no-console
+            console.log(
+              `[probe:converge] CALIB ${pot.name} depth=${depth} fineGlobalMax=${fineGlobalMax.toFixed(6)}` +
+                ` certGlobalMax=${certGlobalMax.toFixed(6)} ratioToCert=${(fineGlobalMax / certGlobalMax).toFixed(3)}` +
+                ` enclosures=${s.enclosureCount} fallbacks=${s.fallbackCount} ms=${ms}`
+            );
+            for (const patchId of Object.keys(s.perPatchMaxMm)) {
+              const cert = reference?.perPatchMaxMm[patchId];
+              // eslint-disable-next-line no-console
+              console.log(
+                `[probe:converge] CALIB ${pot.name} depth=${depth}   ${patchId.padEnd(14)}` +
+                  ` fineMax=${s.perPatchMaxMm[patchId].toFixed(6)}` +
+                  ` cert=${cert === undefined ? 'n/a' : cert.toFixed(6)} tris=${triByPatch[patchId]}`
+              );
+            }
+          }
+          return; // sweep is a calibration probe only — no ratio, no assertion
+        }
+
+        const depth = Number(process.env.PF_CONVERGE_DEPTH ?? DEFAULT_DEPTH);
+        const coarseStep = Number(process.env.PF_CONVERGE_COARSE_STEP ?? 1);
+        const result = convergePot(pot, { depth, coarseStep });
+
+        // eslint-disable-next-line no-console
+        console.log(
+          `[probe:converge] ${pot.name} depth=${depth} coarseStep=${coarseStep}` +
+            ` fineGlobalMax=${result.fineGlobalMaxMm.toFixed(6)} coarseGlobalMax=${result.coarseGlobalMaxMm.toFixed(6)}` +
+            ` certGlobalMax=${certGlobalMax.toFixed(6)} calibRatio=${(result.fineGlobalMaxMm / certGlobalMax).toFixed(3)}` +
+            ` fineTris=${result.fineTrisTotal} coarseTris=${result.coarseTrisTotal}` +
+            ` fineMs=${result.fineMs} coarseMs=${result.coarseMs} fallbacks=${result.fallbackCount}`
+        );
+        for (const patchId of Object.keys(result.perPatch)) {
+          const p = result.perPatch[patchId];
+          const cert = reference?.perPatchMaxMm[patchId];
+          // eslint-disable-next-line no-console
+          console.log(
+            `[probe:converge] ${pot.name}   ${patchId.padEnd(14)} fineMax=${p.fineMaxMm.toFixed(6)}` +
+              ` coarseMax=${p.coarseMaxMm.toFixed(6)} ratio=${p.ratio.toFixed(2)} ${p.verdict.padEnd(11)}` +
+              ` fineTris=${p.fineTris} coarseTris=${p.coarseTris}` +
+              ` cert=${cert === undefined ? 'n/a' : cert.toFixed(6)}`
+          );
+        }
+
+        const outPath = join(OUT_DIR, `${pot.name}.converge.json`);
+        writeFileSync(
+          outPath,
+          `${JSON.stringify(
+            {
+              magic: 'potscope-converge/v1',
+              variant: pot.name,
+              style: pot.styleId,
+              depth,
+              coarseStep,
+              fineDivisions: result.fineDivisions,
+              coarseDivisions: result.coarseDivisions,
+              fineTrisTotal: result.fineTrisTotal,
+              coarseTrisTotal: result.coarseTrisTotal,
+              fineGlobalMaxMm: result.fineGlobalMaxMm,
+              coarseGlobalMaxMm: result.coarseGlobalMaxMm,
+              fineMs: result.fineMs,
+              coarseMs: result.coarseMs,
+              fallbackCount: result.fallbackCount,
+              calibration: {
+                certGlobalMaxMm: certGlobalMax,
+                certPerPatchMaxMm: reference?.perPatchMaxMm ?? null,
+                calibrationRatio: result.fineGlobalMaxMm / certGlobalMax,
+                tolerance: CALIBRATION_TOLERANCE,
+              },
+              perPatch: result.perPatch,
+            },
+            null,
+            2
+          )}\n`
+        );
+        // eslint-disable-next-line no-console
+        console.log(
+          `[probe:converge] ${pot.name} WROTE ${outPath} elapsedMs=${Date.now() - startedAt}`
+        );
+
+        // Sanity: probe produced a per-patch table and never fell back to the
+        // decimal enclosure at this depth (shallow => fast numeric suffices).
+        expect(Object.keys(result.perPatch).length).toBeGreaterThan(0);
+        expect(result.fineGlobalMaxMm).toBeGreaterThan(0);
+
+        // CALIBRATION GATE: the probe's fine global-max must land within
+        // CALIBRATION_TOLERANCE of the committed certified global-max (both
+        // directions). Outside the band the proxy is untrustworthy — fail loud.
+        if (Number.isFinite(certGlobalMax) && certGlobalMax > 0) {
+          expect(result.fineGlobalMaxMm).toBeLessThanOrEqual(certGlobalMax * CALIBRATION_TOLERANCE);
+          expect(result.fineGlobalMaxMm).toBeGreaterThanOrEqual(certGlobalMax / CALIBRATION_TOLERANCE);
+        }
+      }
+    );
+  }
+});
