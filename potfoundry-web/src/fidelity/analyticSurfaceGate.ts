@@ -398,6 +398,17 @@ function accumulateDeviation(
       aboveTol.push({ u: wrap1(Math.atan2(y, x) / TAU), t: z / H, mm });
     }
   };
+  // A non-finite deviation (an rAnalytic that returns NaN/Inf at a recovered (θ,z)
+  // while the mesh vertex itself is finite — a REFERENCE mismatch, e.g. the measured
+  // SFB case) must NOT enter `devs`: it poisons the sort → p99DevMm and the sum →
+  // rmsDevMm to NaN. Skip it and COUNT it in `nonFinite` (the documented "DO NOT gate
+  // on this result" signal), exactly as a non-finite vertex COORDINATE is handled
+  // above. On the happy path (all deviations finite) this is a no-op — byte-identical.
+  const finiteDev = (d: number): boolean => {
+    if (Number.isFinite(d)) return true;
+    nonFinite++;
+    return false;
+  };
 
   for (let i = 0; i + 2 < I.length; i += 3) {
     const a = I[i], b = I[i + 1], c = I[i + 2];
@@ -475,6 +486,7 @@ function accumulateDeviation(
       if (exclude === 1) { if (d > seamMax) seamMax = d; continue; }
       if (exclude === 2) { if (d > riserMax) riserMax = d; continue; }
       if (exclude === 3) { if (d > creaseMax) creaseMax = d; continue; }
+      if (!finiteDev(d)) continue;
       devs.push(d);
       if (d > vMax) vMax = d;
       if (d > triMax) { triMax = d; triWorst = { theta: Math.atan2(vyc, vxc), z: vzc, mm: d }; }
@@ -491,9 +503,11 @@ function accumulateDeviation(
     // Pre-filter: a facet whose UPPER BOUND is ≤ pre has chordDev ≤ bound ≤ pre,
     // so it cannot beat chordMax/cross tol — record the bound, skip the dense scan.
     if (boundCen <= pre) {
-      devs.push(boundCen);
-      if (boundCen > cMax) cMax = boundCen;
-      if (boundCen > triMax) { triMax = boundCen; triWorst = { theta: Math.atan2(ccy, ccx), z: ccz, mm: boundCen }; }
+      if (finiteDev(boundCen)) {
+        devs.push(boundCen);
+        if (boundCen > cMax) cMax = boundCen;
+        if (boundCen > triMax) { triMax = boundCen; triWorst = { theta: Math.atan2(ccy, ccx), z: ccz, mm: boundCen }; }
+      }
     } else {
       for (let p = 0; p <= N; p++) {
         for (let q = 0; q <= N - p; q++) {
@@ -502,6 +516,7 @@ function accumulateDeviation(
           const py = wa * ay + wb * by + wc * cy;
           const pz = wa * az + wb * bz + wc * cz;
           const d = chordDev(px, py, pz);
+          if (!finiteDev(d)) continue;
           devs.push(d);
           if (d > cMax) cMax = d;
           collect(px, py, pz, d);
