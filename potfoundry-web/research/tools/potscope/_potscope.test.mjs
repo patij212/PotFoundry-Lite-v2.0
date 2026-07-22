@@ -1,0 +1,158 @@
+// potscope unit tests — zero-dep, run with:  node --test _potscope.test.mjs
+// Encodes the anti-regression the certified-shelf complaint exposed: the viewer
+// MUST preserve 100% of source triangles (no cluster-decimation), for single
+// pots AND the shelf. Also round-trips the compact .pack the fetch-viewer loads.
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import {
+  parseStl,
+  bboxOf,
+  flatNormals,
+  layoutShelf,
+  buildPack,
+  readPack,
+  readLoc,
+  readErrorRaw,
+} from './potscope.mjs';
+
+// --- synthetic binary STL: header(80) + uint32 count + 50 bytes/triangle ------
+function makeStl(triangles) {
+  const buf = Buffer.alloc(84 + triangles.length * 50);
+  buf.writeUInt32LE(triangles.length, 80);
+  triangles.forEach((tri, t) => {
+    const at = 84 + t * 50; // normal left zero (certification STLs carry no normals)
+    for (let v = 0; v < 3; v += 1) {
+      const o = at + 12 + v * 12;
+      buf.writeFloatLE(tri[v][0], o);
+      buf.writeFloatLE(tri[v][1], o + 4);
+      buf.writeFloatLE(tri[v][2], o + 8);
+    }
+  });
+  return buf;
+}
+
+const DIR = mkdtempSync(join(tmpdir(), 'potscope-'));
+function writeStl(name, triangles) {
+  const p = join(DIR, name);
+  writeFileSync(p, makeStl(triangles));
+  return p;
+}
+
+// two unit triangles in the z=0..1 range, footprint ~1mm
+const TRIS_A = [
+  [[0, 0, 0], [1, 0, 0], [0, 1, 0]],
+  [[0, 0, 1], [1, 0, 1], [0, 1, 1]],
+];
+const TRIS_B = [
+  [[0, 0, 0], [2, 0, 0], [0, 2, 0]],
+  [[0, 0, 1], [2, 0, 1], [0, 2, 1]],
+  [[0, 0, 2], [2, 0, 2], [0, 2, 2]],
+];
+
+test('parseStl preserves every triangle at full resolution', () => {
+  const parsed = parseStl(writeStl('a.stl', TRIS_A));
+  assert.equal(parsed.triangleCount, 2);
+  assert.equal(parsed.kept, 2);
+  assert.equal(parsed.positions.length, 2 * 9);
+  assert.equal(parsed.positions[3], 1); // second vertex x of first triangle
+});
+
+test('flatNormals yields unit-length face normals', () => {
+  const parsed = parseStl(writeStl('a2.stl', TRIS_A));
+  const n = flatNormals(parsed.positions);
+  const len = Math.hypot(n[0], n[1], n[2]);
+  assert.ok(Math.abs(len - 1) < 1e-6, `normal length ${len}`);
+});
+
+test('layoutShelf keeps 100% of triangles and separates pots (no obliteration)', () => {
+  const a = parseStl(writeStl('sa.stl', TRIS_A));
+  const b = parseStl(writeStl('sb.stl', TRIS_B));
+  const models = [a, b].map((m) => ({
+    name: m.title,
+    positions: m.positions,
+    normals: flatNormals(m.positions),
+    cavity: null,
+    bbox: bboxOf(m.positions),
+  }));
+  const shelf = layoutShelf(models);
+
+  // THE regression guard: total triangles preserved exactly, nothing clustered.
+  assert.equal(shelf.keptTris, TRIS_A.length + TRIS_B.length);
+  assert.equal(shelf.positions.length, (TRIS_A.length + TRIS_B.length) * 9);
+
+  // pots placed at distinct x offsets (a real shelf, not overlapping blobs)
+  const centroidX = (pos, start, count) => {
+    let s = 0;
+    for (let i = start; i < start + count * 9; i += 3) s += pos[i];
+    return s / (count * 3);
+  };
+  const xa = centroidX(shelf.positions, 0, TRIS_A.length);
+  const xb = centroidX(shelf.positions, TRIS_A.length * 9, TRIS_B.length);
+  assert.notEqual(xa, xb);
+});
+
+test('buildPack/readPack round-trips positions exactly (full fidelity)', () => {
+  const a = parseStl(writeStl('pa.stl', TRIS_A));
+  const positions = a.positions;
+  const normals = flatNormals(positions);
+  const pack = buildPack({
+    mode: 'clay',
+    positions,
+    normals,
+    cavity: null,
+    error: null,
+    meta: { title: 'a', triangleCount: 2, bbox: bboxOf(positions) },
+  });
+  assert.ok(Buffer.isBuffer(pack));
+  const round = readPack(pack);
+  assert.equal(round.header.magic, 'potscope-pack/v1');
+  assert.equal(round.header.triangleCount, 2);
+  assert.equal(round.positions.length, positions.length);
+  for (let i = 0; i < positions.length; i += 1) {
+    assert.equal(round.positions[i], positions[i]); // exact — no quantization loss
+  }
+});
+
+// --- sidecar readers: loc.bin (patch + per-vertex uv) & error.bin (per-tri mm) --
+// "JSON header line + \n + Float32LE body" — same envelope as the .pack, distinct
+// magics. Both readers COPY the body (unaligned payload offset ⇒ a view throws).
+function writeLoc(name, tris /* [[patchIdx,u0,v0,u1,v1,u2,v2],...] */) {
+  const header = JSON.stringify({
+    magic: 'potscope-loc/v1', style: 'X', variant: name, count: tris.length,
+    patches: ['outer-wall'], provenance: { artifactByteSha256: 'abc' },
+  });
+  const body = new Float32Array(tris.flat());
+  const p = join(DIR, name);
+  writeFileSync(p, Buffer.concat([Buffer.from(header + '\n', 'utf8'), Buffer.from(body.buffer)]));
+  return p;
+}
+function writeErr(name, values, extra = {}) {
+  const header = JSON.stringify({
+    magic: 'potscope-error/v1', count: values.length, budgetMm: 0.01,
+    stats: { maxMm: Math.max(...values), p50Mm: 0.0025, p99Mm: 0.005 },
+    provenance: { artifactByteSha256: 'abc' }, ...extra,
+  });
+  const p = join(DIR, name);
+  writeFileSync(p, Buffer.concat([Buffer.from(header + '\n', 'utf8'), Buffer.from(new Float32Array(values).buffer)]));
+  return p;
+}
+
+test('readLoc round-trips patch + per-vertex uv', () => {
+  const p = writeLoc('t.loc.bin', [[0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6]]);
+  const { header, body } = readLoc(p);
+  assert.equal(header.count, 1);
+  assert.ok(Math.abs(body[1] - 0.1) < 1e-6);
+  assert.ok(Math.abs(body[6] - 0.6) < 1e-6);
+});
+
+test('readErrorRaw exposes per-triangle mm values + header stats', () => {
+  const p = writeErr('t.error.bin', [0.002, 0.009]);
+  const { header, values } = readErrorRaw(p);
+  assert.equal(header.count, 2);
+  assert.ok(Math.abs(values[1] - 0.009) < 1e-6);
+  assert.equal(header.budgetMm, 0.01);
+});

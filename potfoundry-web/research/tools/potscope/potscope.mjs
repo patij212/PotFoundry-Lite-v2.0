@@ -20,10 +20,14 @@ import {
   appendFileSync,
   existsSync,
   mkdirSync,
+  readdirSync,
   readFileSync,
+  realpathSync,
+  statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { createServer } from 'node:http';
+import { dirname, extname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -277,7 +281,7 @@ function cmdRun(args) {
 }
 
 // ---------------------------------------------------------------------- view
-function parseStl(stlPath, decimate = 1) {
+export function parseStl(stlPath, decimate = 1) {
   const bytes = readFileSync(stlPath);
   const triangleCount = bytes.readUInt32LE(80);
   const kept = Math.floor(triangleCount / decimate);
@@ -296,7 +300,7 @@ function parseStl(stlPath, decimate = 1) {
   return { title: stlPath.split(/[\\/]/).pop(), triangleCount, kept, positions };
 }
 
-function bboxOf(positions) {
+export function bboxOf(positions) {
   const bbox = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
   for (let i = 0; i < positions.length; i += 3) {
     for (let axis = 0; axis < 3; axis += 1) {
@@ -310,7 +314,7 @@ function bboxOf(positions) {
 
 // Certification STLs carry derived/zero normal fields — every normal in the
 // viewer is recomputed from windings so the lighting is honest.
-function flatNormals(positions) {
+export function flatNormals(positions) {
   const normals = new Float32Array(positions.length);
   for (let t = 0; t < positions.length; t += 9) {
     const e1x = positions[t + 3] - positions[t], e1y = positions[t + 4] - positions[t + 1], e1z = positions[t + 5] - positions[t + 2];
@@ -328,7 +332,7 @@ function flatNormals(positions) {
 // the welded 1-ring. Positive in recesses (glaze pools and deepens), negative
 // on crests (glaze thins toward the clay body). Normalised per mesh so
 // p95(|cavity|) = 1: pooling reads consistently across styles and densities.
-function ceramicAttributes(positions) {
+export function ceramicAttributes(positions) {
   const cornerCount = positions.length / 3;
   const faceCount = cornerCount / 3;
   const faceNX = new Float32Array(faceCount), faceNY = new Float32Array(faceCount), faceNZ = new Float32Array(faceCount);
@@ -396,153 +400,46 @@ function ceramicAttributes(positions) {
   return { normals, cavity };
 }
 
-// Vertex-clustering decimation for shelf mode. Stride-skipping punches holes
-// in the surface (it drops whole triangles); clustering instead snaps vertices
-// to an N³ grid and collapses triangles that lose a distinct corner — a real
-// coarser surface, watertight-ish, fine at shelf scale.
-function clusterOnce(positions, grid) {
-  const bbox = bboxOf(positions);
-  const extent = Math.max(bbox.max[0] - bbox.min[0], bbox.max[1] - bbox.min[1], bbox.max[2] - bbox.min[2]) || 1;
-  const cell = extent / grid;
-  const clusters = new Map();
-  const cornerCell = new Array(positions.length / 3);
-  for (let i = 0, c = 0; i < positions.length; i += 3, c += 1) {
-    const key = `${Math.round((positions[i] - bbox.min[0]) / cell)},${Math.round((positions[i + 1] - bbox.min[1]) / cell)},${Math.round((positions[i + 2] - bbox.min[2]) / cell)}`;
-    cornerCell[c] = key;
-    let entry = clusters.get(key);
-    if (!entry) { entry = { sx: 0, sy: 0, sz: 0, n: 0 }; clusters.set(key, entry); }
-    entry.sx += positions[i]; entry.sy += positions[i + 1]; entry.sz += positions[i + 2]; entry.n += 1;
-  }
-  const outCells = [];
-  for (let f = 0; f < positions.length / 9; f += 1) {
-    const a = cornerCell[f * 3], b = cornerCell[f * 3 + 1], c = cornerCell[f * 3 + 2];
-    if (a === b || b === c || a === c) continue;
-    outCells.push(a, b, c);
-  }
-  const out = new Float32Array(outCells.length * 3);
-  for (let i = 0; i < outCells.length; i += 1) {
-    const entry = clusters.get(outCells[i]);
-    out[i * 3] = entry.sx / entry.n; out[i * 3 + 1] = entry.sy / entry.n; out[i * 3 + 2] = entry.sz / entry.n;
-  }
-  return out;
-}
-
-function clusterDecimate(positions, targetTris) {
-  if (positions.length / 9 <= targetTris) return positions;
-  let grid = 96;
-  let best = positions;
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    best = clusterOnce(positions, grid);
-    if (best.length / 9 <= targetTris * 1.35 || grid <= 24) return best;
-    grid = Math.round(grid * 0.78);
-  }
-  return best;
-}
-
-function cmdView(args) {
-  const stlPaths = args._.map((p) => resolve(p));
-  if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
-  for (const p of stlPaths) if (!existsSync(p)) { console.error(`no such STL: ${p}`); process.exit(2); }
-  const ceramic = args.flags.includes('--ceramic') || stlPaths.length > 1;
-  const decimate = Math.max(1, Number(argValue(args, '--decimate') ?? '1'));
-
-  const errorMode = args.flags.includes('--error');
-  if (errorMode && stlPaths.length > 1) {
-    console.error('--error is per-pot only: evaluation views are individual, full resolution');
-    process.exit(2);
-  }
-  if (stlPaths.length === 1) {
-    const stlPath = stlPaths[0];
-    if (errorMode && decimate > 1) {
-      console.warn(
-        `note: --error with --decimate ${decimate} subsamples the DISPLAY (every ${decimate}th triangle, sidecar subsampled with the same stride); legend stats remain full-bake fidelity`
-      );
+// Shelf layout — FULL RESOLUTION, no decimation. Every source triangle is kept
+// (the certified-shelf mandate: "only full resolution is acceptable"). Each pot
+// is base-aligned (centred in x/y, sitting on the floor at z=0), then placed on
+// a centred grid of rows. The prior clusterDecimate() snapped pots onto a
+// 24-96³ voxel grid to hit a ~22k-tri budget — at OD30 that is 0.3-1.25 mm
+// cells vs the 0.01 mm certified feature scale, so it deleted exactly the
+// certified detail (WaveInterference 1.27M -> 21k, 1.7% kept). Removed.
+export function layoutShelf(models, opts = {}) {
+  const perRow = opts.perRow ?? 7;
+  const aligned = models.map((m) => {
+    const bb = m.bbox ?? bboxOf(m.positions);
+    const dx = -(bb.min[0] + bb.max[0]) / 2;
+    const dy = -(bb.min[1] + bb.max[1]) / 2;
+    const dz = -bb.min[2];
+    const p = new Float32Array(m.positions.length);
+    for (let i = 0; i < p.length; i += 3) {
+      p[i] = m.positions[i] + dx;
+      p[i + 1] = m.positions[i + 1] + dy;
+      p[i + 2] = m.positions[i + 2] + dz;
     }
-    if (ceramic && decimate > 1) console.warn('note: stride decimation punches holes; ceramic looks best at --decimate 1');
-    const outPath = resolve(argValue(args, '--out') ?? stlPath.replace(/\.stl$/i, '.view.html'));
-    const parsed = parseStl(stlPath, decimate);
-    // Error mode evaluates: flat normals show the actual facets.
-    const attrs = ceramic && !errorMode ? ceramicAttributes(parsed.positions) : { normals: flatNormals(parsed.positions), cavity: null };
-    let errorCornersB64 = '';
-    let errorMeta = null;
-    if (errorMode) {
-      const sidecarPath = resolve(argValue(args, '--error-file') ?? `${stlPath}.error.bin`);
-      if (!existsSync(sidecarPath)) {
-        console.error(`no error sidecar: ${sidecarPath}`);
-        console.error('bake one from the certified residual programs (PF_GOTHIC_ERRORBAKE — see README)');
-        process.exit(2);
-      }
-      const raw = readFileSync(sidecarPath);
-      const newline = raw.indexOf(0x0a);
-      errorMeta = JSON.parse(raw.subarray(0, newline).toString('utf8'));
-      if (errorMeta.magic !== 'potscope-error/v1') {
-        console.error(`unrecognised sidecar magic: ${errorMeta.magic}`);
-        process.exit(2);
-      }
-      if (errorMeta.count !== parsed.triangleCount) {
-        console.error(`sidecar/STL mismatch: sidecar has ${errorMeta.count} triangles, STL has ${parsed.triangleCount} — refusing (provenance)`);
-        process.exit(2);
-      }
-      const values = new Float32Array(errorMeta.count);
-      Buffer.from(values.buffer).set(raw.subarray(newline + 1, newline + 1 + errorMeta.count * 4));
-      const corners = new Float32Array(parsed.kept * 3);
-      for (let t = 0; t < parsed.kept; t += 1) {
-        const value = values[t * decimate];
-        corners[t * 3] = value;
-        corners[t * 3 + 1] = value;
-        corners[t * 3 + 2] = value;
-      }
-      errorCornersB64 = Buffer.from(corners.buffer).toString('base64');
-    }
-    const certPath = stlPath.replace(/\.stl$/i, '.certificate.txt');
-    const html = viewerHtml({
-      title: parsed.title,
-      subtitle: '',
-      triangleCount: parsed.triangleCount,
-      kept: parsed.kept,
-      decimate,
-      bbox: bboxOf(parsed.positions),
-      certificate: existsSync(certPath) ? readFileSync(certPath, 'utf8') : '',
-      mode: errorMode ? 'error' : ceramic ? 'ceramic' : 'clay',
-      positionsB64: Buffer.from(parsed.positions.buffer).toString('base64'),
-      normalsB64: Buffer.from(attrs.normals.buffer).toString('base64'),
-      cavityB64: attrs.cavity ? Buffer.from(attrs.cavity.buffer).toString('base64') : '',
-      errorB64: errorCornersB64,
-      errorMeta,
-    });
-    writeFileSync(outPath, html);
-    console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${parsed.kept}/${parsed.triangleCount} tris${decimate > 1 ? `, decimate ${decimate}` : ''}, ${errorMode ? 'error overlay' : ceramic ? 'ceramic' : 'clay'})`);
-    return;
-  }
-
-  // Shelf mode: every pot clustered to a budget, glazed, arranged in rows.
-  const potTris = Math.max(1000, Number(argValue(args, '--pot-tris') ?? '22000'));
-  const outPath = resolve(argValue(args, '--out') ?? 'certified_shelf.view.html');
-  const models = [];
-  let totalSourceTris = 0;
-  for (const stlPath of stlPaths) {
-    const parsed = parseStl(stlPath, 1);
-    const clustered = clusterDecimate(parsed.positions, potTris);
-    const bb = bboxOf(clustered);
-    const dx = -(bb.min[0] + bb.max[0]) / 2, dy = -(bb.min[1] + bb.max[1]) / 2, dz = -bb.min[2];
-    for (let i = 0; i < clustered.length; i += 3) { clustered[i] += dx; clustered[i + 1] += dy; clustered[i + 2] += dz; }
-    const attrs = ceramicAttributes(clustered);
-    models.push({ name: parsed.title.replace(/\.stl$/i, ''), positions: clustered, ...attrs, bbox: bboxOf(clustered) });
-    totalSourceTris += parsed.triangleCount;
-    console.log(`  ${parsed.title}: ${parsed.triangleCount.toLocaleString()} -> ${(clustered.length / 9).toLocaleString()} tris`);
-  }
-  const count = models.length;
-  const rows = Math.ceil(count / 7);
+    return { ...m, positions: p, bbox: bboxOf(p) };
+  });
+  const count = aligned.length;
+  const rows = Math.ceil(count / perRow);
   const cols = Math.ceil(count / rows);
-  const footprint = Math.max(...models.map((m) => Math.max(m.bbox.max[0] - m.bbox.min[0], m.bbox.max[1] - m.bbox.min[1])));
+  const footprint = Math.max(
+    ...aligned.map((m) => Math.max(m.bbox.max[0] - m.bbox.min[0], m.bbox.max[1] - m.bbox.min[1])),
+    1e-6
+  );
   const spacing = footprint * 1.25;
   let totalFloats = 0;
-  for (const m of models) totalFloats += m.positions.length;
+  for (const m of aligned) totalFloats += m.positions.length;
   const positions = new Float32Array(totalFloats);
-  const normals = new Float32Array(totalFloats);
-  const cavity = new Float32Array(totalFloats / 3);
+  const hasNormals = aligned.every((m) => m.normals);
+  const hasCavity = aligned.every((m) => m.cavity);
+  const normals = hasNormals ? new Float32Array(totalFloats) : null;
+  const cavity = hasCavity ? new Float32Array(totalFloats / 3) : null;
+  const layout = [];
   let writeAt = 0;
-  models.forEach((m, i) => {
+  aligned.forEach((m, i) => {
     const row = Math.floor(i / cols);
     const rowCount = Math.min(cols, count - row * cols);
     const col = i - row * cols;
@@ -553,29 +450,226 @@ function cmdView(args) {
       positions[writeAt + j + 1] = m.positions[j + 1] + oy;
       positions[writeAt + j + 2] = m.positions[j + 2];
     }
-    normals.set(m.normals, writeAt);
-    cavity.set(m.cavity, writeAt / 3);
+    if (normals) normals.set(m.normals, writeAt);
+    if (cavity) cavity.set(m.cavity, writeAt / 3);
+    layout.push({ name: m.name, triStart: writeAt / 9, triCount: m.positions.length / 9 });
     writeAt += m.positions.length;
   });
-  const keptTris = totalFloats / 9;
-  const html = viewerHtml({
-    title: argValue(args, '--title') ?? `certified collection — ${count} pots`,
-    subtitle: models.map((m) => m.name).join(' · ') + ` — clustered from ${totalSourceTris.toLocaleString()} certified source triangles`,
-    triangleCount: keptTris,
-    kept: keptTris,
-    decimate: 1,
+  return {
+    positions,
+    normals,
+    cavity,
     bbox: bboxOf(positions),
-    certificate: '',
-    mode: 'ceramic',
-    positionsB64: Buffer.from(positions.buffer).toString('base64'),
-    normalsB64: Buffer.from(normals.buffer).toString('base64'),
-    cavityB64: Buffer.from(cavity.buffer).toString('base64'),
-  });
-  writeFileSync(outPath, html);
-  console.log(`wrote ${outPath} (${(html.length / 1024 / 1024).toFixed(1)} MB, ${count} pots, ${keptTris.toLocaleString()} tris)`);
+    keptTris: totalFloats / 9,
+    potCount: count,
+    layout,
+  };
 }
 
-function viewerHtml(model) {
+// The compact geometry payload the fetch-viewer loads: one JSON header line,
+// then raw little-endian Float32 buffers (positions, then optional normals,
+// cavity, per-corner error). Binary — no base64 inflation — so a 1.27M-tri pot
+// is a ~46 MB fetch instead of a 116 MB embedded-base64 HTML, and the whole
+// certified shelf loads at full resolution. All heavy/complex prep (welded
+// ceramic normals, layout, error subsampling) stays in Node; the browser just
+// slices buffers and uploads them (no logic duplicated across the boundary).
+export function buildPack(view) {
+  const { mode, positions } = view;
+  const normals = view.normals ?? null;
+  const cavity = view.cavity ?? null;
+  const error = view.error ?? null;
+  const header = {
+    magic: 'potscope-pack/v1',
+    mode,
+    triangleCount: positions.length / 9,
+    hasNormals: !!normals,
+    hasCavity: !!cavity,
+    hasError: !!error,
+    ...view.meta,
+  };
+  const asBuf = (arr) => Buffer.from(arr.buffer, arr.byteOffset, arr.byteLength);
+  const parts = [Buffer.from(`${JSON.stringify(header)}\n`, 'utf8'), asBuf(positions)];
+  if (normals) parts.push(asBuf(normals));
+  if (cavity) parts.push(asBuf(cavity));
+  if (error) parts.push(asBuf(error));
+  return Buffer.concat(parts);
+}
+
+export function readPack(buffer) {
+  const newline = buffer.indexOf(0x0a);
+  const header = JSON.parse(buffer.subarray(0, newline).toString('utf8'));
+  let offset = newline + 1;
+  const take = (floats) => {
+    const out = new Float32Array(floats);
+    Buffer.from(out.buffer).set(buffer.subarray(offset, offset + floats * 4));
+    offset += floats * 4;
+    return out;
+  };
+  const triCount = header.triangleCount;
+  const positions = take(triCount * 9);
+  const normals = header.hasNormals ? take(triCount * 9) : null;
+  const cavity = header.hasCavity ? take(triCount * 3) : null;
+  const error = header.hasError ? take(triCount * 3) : null;
+  return { header, positions, normals, cavity, error };
+}
+
+export function readLoc(path) {
+  const raw = readFileSync(path);
+  const nl = raw.indexOf(0x0a);
+  const header = JSON.parse(raw.subarray(0, nl).toString('utf8'));
+  if (header.magic !== 'potscope-loc/v1') throw new Error(`bad loc magic: ${header.magic}`);
+  const body = new Float32Array(header.count * 7);
+  Buffer.from(body.buffer).set(raw.subarray(nl + 1, nl + 1 + header.count * 7 * 4));
+  return { header, body };
+}
+
+export function readErrorRaw(path) {
+  const raw = readFileSync(path);
+  const nl = raw.indexOf(0x0a);
+  const header = JSON.parse(raw.subarray(0, nl).toString('utf8'));
+  if (header.magic !== 'potscope-error/v1') throw new Error(`bad error magic: ${header.magic}`);
+  const values = new Float32Array(header.count);
+  Buffer.from(values.buffer).set(raw.subarray(nl + 1, nl + 1 + header.count * 4));
+  return { header, values };
+}
+
+function cmdView(args) {
+  const stlPaths = args._.map((p) => resolve(p));
+  if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
+  for (const p of stlPaths) if (!existsSync(p)) { console.error(`no such STL: ${p}`); process.exit(2); }
+  const clay = args.flags.includes('--clay');
+  const ceramic = !clay && (args.flags.includes('--ceramic') || stlPaths.length > 1);
+  const decimate = Math.max(1, Number(argValue(args, '--decimate') ?? '1'));
+  const embed = args.flags.includes('--embed');
+  const errorMode = args.flags.includes('--error');
+  if (argValue(args, '--pot-tris') !== undefined) {
+    console.warn('note: --pot-tris is ignored — the shelf renders full resolution now (no cluster-decimation)');
+  }
+  if (errorMode && stlPaths.length > 1) {
+    console.error('--error is per-pot only: evaluation views are individual, full resolution');
+    process.exit(2);
+  }
+
+  // ---------------------------------------------------------------- single pot
+  if (stlPaths.length === 1) {
+    const stlPath = stlPaths[0];
+    if (ceramic && decimate > 1) console.warn('note: stride decimation punches holes; ceramic looks best at --decimate 1');
+    const outPath = resolve(argValue(args, '--out') ?? stlPath.replace(/\.stl$/i, '.view.html'));
+    const parsed = parseStl(stlPath, decimate);
+    const mode = errorMode ? 'error' : ceramic ? 'ceramic' : 'clay';
+    // Ceramic welds crease-preserving normals in Node. clay/error let the
+    // browser recompute flat normals from windings — trivial, and it keeps the
+    // pack half the size (positions only) so a 1.27M-tri pot fetches ~46 MB
+    // instead of embedding a 116 MB base64 HTML.
+    const attrs = mode === 'ceramic' ? ceramicAttributes(parsed.positions) : { normals: null, cavity: null };
+    const sidecar = errorMode ? loadErrorSidecar(args, stlPath, parsed, decimate) : { error: null, errorMeta: null };
+    const certPath = stlPath.replace(/\.stl$/i, '.certificate.txt');
+    const meta = {
+      title: parsed.title,
+      subtitle: '',
+      triangleCount: parsed.triangleCount,
+      kept: parsed.kept,
+      decimate,
+      bbox: bboxOf(parsed.positions),
+      certificate: existsSync(certPath) ? readFileSync(certPath, 'utf8') : '',
+      errorMeta: sidecar.errorMeta,
+    };
+    const pack = buildPack({ mode, positions: parsed.positions, normals: attrs.normals, cavity: attrs.cavity, error: sidecar.error, meta });
+    writeViewer(outPath, mode, meta, pack, embed);
+    return;
+  }
+
+  // ------------------------------------------------------ shelf: FULL RESOLUTION
+  // Every certified triangle of every pot — no decimation (the mandate). Ceramic
+  // by default so the certified feature curves outline themselves in celadon;
+  // --clay is the fast path (browser flat normals, no Node welding).
+  const outPath = resolve(argValue(args, '--out') ?? 'certified_shelf.view.html');
+  const mode = clay ? 'clay' : 'ceramic';
+  const models = [];
+  for (const stlPath of stlPaths) {
+    const parsed = parseStl(stlPath, decimate);
+    const attrs = mode === 'ceramic' ? ceramicAttributes(parsed.positions) : { normals: null, cavity: null };
+    models.push({
+      name: parsed.title.replace(/\.stl$/i, ''),
+      positions: parsed.positions,
+      normals: attrs.normals,
+      cavity: attrs.cavity,
+      bbox: bboxOf(parsed.positions),
+    });
+    console.log(`  ${parsed.title}: ${parsed.triangleCount.toLocaleString()} tris (full resolution)`);
+  }
+  const shelf = layoutShelf(models);
+  const meta = {
+    title: argValue(args, '--title') ?? `certified collection — ${shelf.potCount} pots`,
+    subtitle: `${models.map((m) => m.name).join(' · ')} — ${shelf.keptTris.toLocaleString()} triangles, full resolution`,
+    triangleCount: shelf.keptTris,
+    kept: shelf.keptTris,
+    decimate: 1,
+    bbox: shelf.bbox,
+    certificate: '',
+    errorMeta: null,
+  };
+  const pack = buildPack({ mode, positions: shelf.positions, normals: shelf.normals, cavity: shelf.cavity, error: null, meta });
+  writeViewer(outPath, mode, meta, pack, embed);
+}
+
+function loadErrorSidecar(args, stlPath, parsed, decimate) {
+  const sidecarPath = resolve(argValue(args, '--error-file') ?? `${stlPath}.error.bin`);
+  if (!existsSync(sidecarPath)) {
+    console.error(`no error sidecar: ${sidecarPath}`);
+    console.error('bake one with the roster error-bake harness (PF_CERT_ERRORBAKE — see README)');
+    process.exit(2);
+  }
+  const raw = readFileSync(sidecarPath);
+  const newline = raw.indexOf(0x0a);
+  const errorMeta = JSON.parse(raw.subarray(0, newline).toString('utf8'));
+  if (errorMeta.magic !== 'potscope-error/v1') {
+    console.error(`unrecognised sidecar magic: ${errorMeta.magic}`);
+    process.exit(2);
+  }
+  if (errorMeta.count !== parsed.triangleCount) {
+    console.error(`sidecar/STL mismatch: sidecar has ${errorMeta.count} triangles, STL has ${parsed.triangleCount} — refusing (provenance)`);
+    process.exit(2);
+  }
+  const values = new Float32Array(errorMeta.count);
+  Buffer.from(values.buffer).set(raw.subarray(newline + 1, newline + 1 + errorMeta.count * 4));
+  const corners = new Float32Array(parsed.kept * 3);
+  for (let t = 0; t < parsed.kept; t += 1) {
+    const value = values[t * decimate];
+    corners[t * 3] = value;
+    corners[t * 3 + 1] = value;
+    corners[t * 3 + 2] = value;
+  }
+  return { error: corners, errorMeta };
+}
+
+// Default: write <out>.pack next to the HTML and fetch it by basename (serve the
+// dir). --embed inlines the pack as base64 for a portable single file (fine for
+// small pots; heavy for dense ones). Either way the geometry is identical bytes.
+function writeViewer(outPath, mode, meta, pack, embed) {
+  let packUrl = null;
+  let packB64 = null;
+  if (embed) {
+    packB64 = pack.toString('base64');
+  } else {
+    const packPath = `${outPath.replace(/\.html$/i, '')}.pack`;
+    writeFileSync(packPath, pack);
+    packUrl = packPath.split(/[\\/]/).pop();
+  }
+  const html = packViewerHtml({ ...meta, mode, packUrl, packB64 });
+  writeFileSync(outPath, html);
+  const mb = (n) => (n / 1024 / 1024).toFixed(1);
+  const viewName = outPath.split(/[\\/]/).pop();
+  console.log(
+    `wrote ${outPath} — ${meta.kept.toLocaleString()} tris ${mode}, ` +
+      (embed ? `${mb(html.length)} MB self-contained` : `${mb(html.length)} MB html + ${packUrl} (${mb(pack.length)} MB)`)
+  );
+  if (!embed) {
+    console.log(`  serve + open:  node potscope.mjs serve "${dirname(outPath)}"  ->  http://localhost:8099/${viewName}`);
+  }
+}
+
+function packViewerHtml(model) {
   const certificateBlock = model.certificate
     ? `<details id="cert"><summary>certificate</summary><pre>${model.certificate
         .replace(/&/g, '&amp;')
@@ -671,6 +765,7 @@ void main(){
   #cert pre{max-height:40vh;overflow:auto;font-size:11px;color:#8b949e}
   #legend{margin-top:8px;border-top:1px solid #30363d;padding-top:8px}
   #legend .dim{color:#8b949e}
+  #status-load{margin-top:6px;color:#d9a441}
   #bar{height:10px;border-radius:3px;margin:6px 0 2px;background:linear-gradient(to right,#dedfdc 0%,#b0bcae 25%,#fcdd38 25%,#f58c1f 50%,#db2919 75%,#b8178f 100%)}
   #ticks{display:flex;justify-content:space-between;font-size:10px;color:#8b949e}
   #ticks span:nth-child(2){position:relative;left:-12%}
@@ -681,50 +776,54 @@ void main(){
   <b>${model.title}</b><br>
   ${model.triangleCount.toLocaleString()} triangles${model.decimate > 1 ? ` (showing ${model.kept.toLocaleString()}, 1/${model.decimate})` : ''}<br>
   drag = orbit &nbsp; wheel = zoom &nbsp; shift-drag = pan
+  <div id="status-load">loading geometry…</div>
   ${subtitleBlock}
   ${legendBlock}
   ${certificateBlock}
 </div>
 <canvas id="c"></canvas>
 <script>
-const b64f32 = (s) => { const b = atob(s); const a = new Uint8Array(b.length); for (let i=0;i<b.length;i++) a[i]=b.charCodeAt(i); return new Float32Array(a.buffer); };
-const positions = b64f32("${model.positionsB64}");
-const normals = b64f32("${model.normalsB64}");
-const cavity = ${model.cavityB64 ? `b64f32("${model.cavityB64}")` : 'null'};
-const errs = ${model.errorB64 ? `b64f32("${model.errorB64}")` : 'null'};
-const errorMeta = ${model.errorMeta ? JSON.stringify({ budgetMm: model.errorMeta.budgetMm, maxMm: model.errorMeta.stats.maxMm }) : 'null'};
+const MODE = ${JSON.stringify(model.mode)};
+const PACK_URL = ${model.packUrl ? JSON.stringify(model.packUrl) : 'null'};
+const PACK_B64 = ${model.packB64 ? JSON.stringify(model.packB64) : 'null'};
 const bbox = ${JSON.stringify(model.bbox)};
+const errorMeta = ${model.errorMeta ? JSON.stringify({ budgetMm: model.errorMeta.budgetMm, maxMm: model.errorMeta.stats.maxMm }) : 'null'};
 const canvas = document.getElementById('c');
 const gl = canvas.getContext('webgl', { antialias: true });
 const vsrc = ${JSON.stringify(vsrc)};
 const fsrc = ${JSON.stringify(fsrc)};
+const statusEl = document.getElementById('status-load');
+// Flat face normals from windings — mirrors potscope.mjs flatNormals(); the
+// certified STL/pack carries positions only for clay/error to halve the fetch.
+function flatNormals(p){ const n=new Float32Array(p.length); for(let t=0;t<p.length;t+=9){ const ax=p[t+3]-p[t],ay=p[t+4]-p[t+1],az=p[t+5]-p[t+2],bx=p[t+6]-p[t],by=p[t+7]-p[t+1],bz=p[t+8]-p[t+2]; let nx=ay*bz-az*by,ny=az*bx-ax*bz,nz=ax*by-ay*bx; const l=Math.hypot(nx,ny,nz)||1; nx/=l;ny/=l;nz/=l; for(let c=0;c<3;c++){n[t+c*3]=nx;n[t+c*3+1]=ny;n[t+c*3+2]=nz;} } return n; }
+function parsePack(bytes){
+  const nl = bytes.indexOf(10);
+  const header = JSON.parse(new TextDecoder().decode(bytes.subarray(0, nl)));
+  let off = bytes.byteOffset + nl + 1;
+  const take = (floats) => { const a = new Float32Array(bytes.buffer.slice(off, off + floats*4)); off += floats*4; return a; };
+  const tc = header.triangleCount;
+  const positions = take(tc*9);
+  const normals = header.hasNormals ? take(tc*9) : flatNormals(positions);
+  const cavity = header.hasCavity ? take(tc*3) : null;
+  const errs = header.hasError ? take(tc*3) : null;
+  return { positions, normals, cavity, errs };
+}
+async function loadBytes(){
+  if (PACK_URL){ const r = await fetch(PACK_URL); if(!r.ok) throw new Error('pack '+r.status+' — serve the directory over http'); return new Uint8Array(await r.arrayBuffer()); }
+  const bin = atob(PACK_B64); const a = new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) a[i]=bin.charCodeAt(i); return a;
+}
 function shader(type, src){ const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s); if(!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw gl.getShaderInfoLog(s); return s; }
-const prog = gl.createProgram();
-gl.attachShader(prog, shader(gl.VERTEX_SHADER, vsrc));
-gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fsrc));
-gl.linkProgram(prog); gl.useProgram(prog);
-const attribs = [['p', positions, 3], ['n', normals, 3]];
-if (cavity) attribs.push(['cav', cavity, 1]);
-if (errs) attribs.push(['err', errs, 1]);
-for (const [name, data, size] of attribs) {
-  const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
-  const loc = gl.getAttribLocation(prog, name); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
-}
-let overlayOn = true;
-if (errorMeta) {
-  gl.uniform1f(gl.getUniformLocation(prog, 'uBudget'), errorMeta.budgetMm);
-  gl.uniform1f(gl.getUniformLocation(prog, 'uMax'), errorMeta.maxMm);
-}
-gl.enable(gl.DEPTH_TEST);
-const center = [0,1,2].map(i => (bbox.min[i]+bbox.max[i])/2);
-const radius = Math.max(...[0,1,2].map(i => bbox.max[i]-bbox.min[i])) * 0.75;
-let rotX = -1.2, rotY = 0.6, dist = radius * 3.4, panX = 0, panY = 0;
 const m4 = { mul(a,b){ const o = new Float32Array(16); for(let r=0;r<4;r++)for(let c=0;c<4;c++){let s=0;for(let k=0;k<4;k++)s+=a[k*4+r]*b[c*4+k];o[c*4+r]=s;} return o; },
   persp(fov,asp,n,f){ const t = 1/Math.tan(fov/2); return new Float32Array([t/asp,0,0,0, 0,t,0,0, 0,0,(f+n)/(n-f),-1, 0,0,2*f*n/(n-f),0]); },
   rx(a){ const c=Math.cos(a),s=Math.sin(a); return new Float32Array([1,0,0,0, 0,c,s,0, 0,-s,c,0, 0,0,0,1]); },
   ry(a){ const c=Math.cos(a),s=Math.sin(a); return new Float32Array([c,0,-s,0, 0,1,0,0, s,0,c,0, 0,0,0,1]); },
-  t(x,y,z){ const o = new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]); return o; } };
+  t(x,y,z){ return new Float32Array([1,0,0,0, 0,1,0,0, 0,0,1,0, x,y,z,1]); } };
+const center = [0,1,2].map(i => (bbox.min[i]+bbox.max[i])/2);
+const radius = (Math.max(...[0,1,2].map(i => bbox.max[i]-bbox.min[i])) * 0.75) || 1;
+let rotX = -1.2, rotY = 0.6, dist = radius * 3.4, panX = 0, panY = 0;
+let prog = null, vcount = 0, overlayOn = true;
 function draw(){
+  if (!prog) return;
   const dpr = window.devicePixelRatio || 1;
   canvas.width = innerWidth * dpr; canvas.height = innerHeight * dpr;
   gl.viewport(0, 0, canvas.width, canvas.height);
@@ -736,8 +835,30 @@ function draw(){
   gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'mvp'), false, mvp);
   gl.uniformMatrix4fv(gl.getUniformLocation(prog, 'mv'), false, mv);
   if (errorMeta) gl.uniform1f(gl.getUniformLocation(prog, 'uOverlay'), overlayOn ? 1 : 0);
-  gl.drawArrays(gl.TRIANGLES, 0, positions.length / 3);
+  gl.drawArrays(gl.TRIANGLES, 0, vcount);
 }
+loadBytes().then((bytes) => {
+  const { positions, normals, cavity, errs } = parsePack(bytes);
+  vcount = positions.length / 3;
+  prog = gl.createProgram();
+  gl.attachShader(prog, shader(gl.VERTEX_SHADER, vsrc));
+  gl.attachShader(prog, shader(gl.FRAGMENT_SHADER, fsrc));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const attribs = [['p', positions, 3], ['n', normals, 3]];
+  if (cavity) attribs.push(['cav', cavity, 1]);
+  if (errs) attribs.push(['err', errs, 1]);
+  for (const [name, data, size] of attribs) {
+    const buf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    const loc = gl.getAttribLocation(prog, name); if (loc < 0) continue; gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, size, gl.FLOAT, false, 0, 0);
+  }
+  if (errorMeta) {
+    gl.uniform1f(gl.getUniformLocation(prog, 'uBudget'), errorMeta.budgetMm);
+    gl.uniform1f(gl.getUniformLocation(prog, 'uMax'), errorMeta.maxMm);
+  }
+  gl.enable(gl.DEPTH_TEST);
+  if (statusEl) statusEl.remove();
+  draw();
+}).catch((e) => { if (statusEl) { statusEl.textContent = 'load error: ' + e.message; statusEl.style.color = '#f66'; } });
 const ovlBox = document.getElementById('ovl');
 if (ovlBox) {
   const setOverlay = (on) => { overlayOn = on; ovlBox.checked = on; requestAnimationFrame(draw); };
@@ -756,7 +877,6 @@ addEventListener('mousemove', (e) => {
 });
 addEventListener('wheel', (e) => { dist *= Math.exp(e.deltaY * 0.001); requestAnimationFrame(draw); }, { passive: true });
 addEventListener('resize', () => requestAnimationFrame(draw));
-draw();
 </script>`;
 }
 
@@ -766,7 +886,82 @@ function argValue(args, name) {
   return index >= 0 ? args.flags[index + 1] : undefined;
 }
 
-const BOOLEAN_FLAGS = new Set(['--ceramic', '--error']);
+const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay']);
+
+// ----------------------------------------------------------------------- serve
+// One command to serve a directory over http (fetch-viewers need it) with a
+// clickable index of every *.view.html. Removes the "spin up a static server
+// first" friction that made opening the big certified pots a chore.
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.pack': 'application/octet-stream',
+  '.stl': 'application/octet-stream',
+  '.bin': 'application/octet-stream',
+  '.js': 'text/javascript',
+  '.mjs': 'text/javascript',
+};
+
+function serveIndex(dir) {
+  const views = readdirSync(dir).filter((f) => f.endsWith('.view.html')).sort();
+  const links = views.length
+    ? views.map((v) => `<li><a href="/${encodeURIComponent(v)}">${v}</a></li>`).join('')
+    : '<li>(no *.view.html here yet — run <code>potscope view ...</code>)</li>';
+  return `<!doctype html><meta charset="utf-8"><title>potscope — ${dir}</title><style>body{background:#0e1116;color:#c9d1d9;font:14px/1.7 ui-monospace,Consolas,monospace;padding:24px}a{color:#79c0ff}h1{font-size:15px;color:#e6edf3}</style><h1>potscope — ${dir}</h1><ul>${links}</ul>`;
+}
+
+function cmdServe(args) {
+  const dir = resolve(args._[0] ?? '.');
+  if (!existsSync(dir) || !statSync(dir).isDirectory()) {
+    console.error(`potscope serve: not a directory: ${dir}`);
+    console.error('  pass the folder holding the *.view.html / *.pack files, e.g.');
+    console.error('  node <path>/potscope.mjs serve <path>/research/exchange/_certified_stl');
+    process.exit(2);
+  }
+  const startPort = Number(argValue(args, '--port') ?? '8099');
+  const handler = (req, res) => {
+    try {
+      const rel = decodeURIComponent(req.url.split('?')[0]);
+      if (rel === '/' || rel === '') {
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+        res.end(serveIndex(dir));
+        return;
+      }
+      const file = join(dir, rel);
+      if (!file.startsWith(dir) || !existsSync(file) || statSync(file).isDirectory()) {
+        res.writeHead(404, { 'content-type': 'text/plain' });
+        res.end('not found');
+        return;
+      }
+      res.writeHead(200, {
+        'content-type': MIME[extname(file).toLowerCase()] ?? 'application/octet-stream',
+        'cache-control': 'no-cache',
+      });
+      res.end(readFileSync(file));
+    } catch (err) {
+      res.writeHead(500, { 'content-type': 'text/plain' });
+      res.end(String(err));
+    }
+  };
+  // A stale server (or another potscope) can hold the default port; step past it
+  // instead of dying with an EADDRINUSE stack trace.
+  const tryListen = (port, attemptsLeft) => {
+    const server = createServer(handler);
+    server.once('error', (err) => {
+      if (err.code === 'EADDRINUSE' && attemptsLeft > 0) {
+        console.log(`potscope: port ${port} busy — trying ${port + 1}`);
+        tryListen(port + 1, attemptsLeft - 1);
+      } else {
+        console.error(`potscope serve: ${err.message}`);
+        process.exit(1);
+      }
+    });
+    server.listen(port, () => {
+      console.log(`potscope serving ${dir}`);
+      console.log(`  http://localhost:${port}/   (index of *.view.html)`);
+    });
+  };
+  tryListen(startPort, 20);
+}
 
 function parseArgs(argv) {
   const positional = [];
@@ -783,19 +978,36 @@ function parseArgs(argv) {
   return { _: positional, flags };
 }
 
-const [, , command, ...rest] = process.argv;
-const args = parseArgs(rest);
-switch (command) {
-  case 'ledger': cmdLedger(args); break;
-  case 'run': cmdRun(args); break;
-  case 'decode': cmdDecode(args); break;
-  case 'view': cmdView(args); break;
-  default:
-    console.log('potscope — certification-lab instrument panel');
-    console.log('  ledger list [--grep re] [--last n] | ledger add <json>');
-    console.log('  run -- <command ...>');
-    console.log("  decode '<refusal line>' [--patch inner|outer] [--counts json]");
-    console.log('  view <file.stl> [--out html] [--decimate k] [--ceramic]');
-    console.log('  view <file.stl> --error [--error-file f.error.bin]   (true-3D error overlay)');
-    console.log('  view <a.stl> <b.stl> ... [--out html] [--pot-tris n] [--title t]   (glazed shelf)');
+function main() {
+  const [, , command, ...rest] = process.argv;
+  const args = parseArgs(rest);
+  switch (command) {
+    case 'ledger': cmdLedger(args); break;
+    case 'run': cmdRun(args); break;
+    case 'decode': cmdDecode(args); break;
+    case 'view': cmdView(args); break;
+    case 'serve': cmdServe(args); break;
+    default:
+      console.log('potscope — certification-lab instrument panel');
+      console.log('  ledger list [--grep re] [--last n] | ledger add <json>');
+      console.log('  run -- <command ...>');
+      console.log("  decode '<refusal line>' [--patch inner|outer] [--counts json]");
+      console.log('  view <file.stl> [--out html] [--decimate k] [--ceramic] [--embed]   (full-res pot)');
+      console.log('  view <file.stl> --error [--error-file f.error.bin]   (true-3D error overlay)');
+      console.log('  view <a.stl> <b.stl> ... [--out html] [--title t] [--clay]   (full-res shelf)');
+      console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
+  }
 }
+
+// Run the CLI only when invoked directly — importing this module (unit tests,
+// the error-bake harness) must not dispatch.
+const invokedDirectly =
+  process.argv[1] !== undefined &&
+  (() => {
+    try {
+      return realpathSync(process.argv[1]) === fileURLToPath(import.meta.url);
+    } catch {
+      return false;
+    }
+  })();
+if (invokedDirectly) main();
