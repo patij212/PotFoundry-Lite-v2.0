@@ -83,6 +83,8 @@ import {
 import { TAU } from '../geometry/types';
 import type { StyleId, StyleOptions } from '../geometry/types';
 import { ASPECT_MAX, WELD_TOL_MM, type FidelityMetrics } from './types';
+import { measureRadialFidelity, type RadialFidelityReport } from './measureRadialFidelity';
+import { validateMeshForExport } from '../geometry/exportValidation';
 
 /**
  * Reference-parity epsilon (mm) for the B5 surface-fidelity gate. Production
@@ -137,6 +139,42 @@ export interface FidelityTopoQualitySummary {
 
 export interface FidelityTriangleQualitySummary extends TriangleQualityDistribution {
   styleId: string;
+}
+
+export interface FidelityExportTruthDiagnosticOptions {
+  targetTriangles?: number;
+  /** Fidelity tolerance (mm); default 0.01. */
+  tolMm?: number;
+  /** Global radial projector grid — fine enough to resolve designed C0 cliffs (defaults 2048 × 512). */
+  projectorNTheta?: number;
+  projectorNZ?: number;
+}
+
+/**
+ * The production-export-truth row for ONE style/flag-state: MAX-first true-3D fidelity,
+ * full-mesh watertight, and the REAL production download gate — all from a single build.
+ */
+export interface FidelityExportTruthDiagnostics {
+  styleId: string;
+  triangleCount: number;
+  vertexCount: number;
+  /** max(chordMax, vertexMax) vs the exact analytic surface — THE certification number (NaN if no ut/style stash). */
+  maxMm: number;
+  chordMaxMm: number;
+  chordP99Mm: number;
+  vertexMaxMm: number;
+  /** vertexMax ≤ REFERENCE_PARITY_EPS_MM ⇒ the CPU reference tracks the GPU shader (else the number is untrusted). */
+  referenceTrusted: boolean;
+  /** Worst 3D min interior angle (deg) over the FULL mesh — the depth-invariant sliver signal. */
+  minAngleDeg: number;
+  boundaryEdges: number;
+  nonManifoldEdges: number;
+  orientationMismatches: number;
+  /** The REAL production download gate (validateMeshForExport): ok + blocking errors. */
+  downloadOk: boolean;
+  downloadErrors: string[];
+  /** Non-finite fidelity samples (>0 ⇒ do not gate); -1 when fidelity was not measured. */
+  nonFiniteCount: number;
 }
 
 export interface FidelityHookDeps {
@@ -217,6 +255,14 @@ export interface PfFidelityApi {
   diagnoseQuality(opts?: FidelityQualityDiagnosticOptions): Promise<FidelityQualityDiagnostics>;
   /** Fast combined check: generates the mesh ONCE, returns topology + quality summary. */
   diagnoseTopoQuality(opts?: FidelityTopologyDiagnosticOptions): Promise<FidelityTopoQualitySummary>;
+  /**
+   * THE audit method: generate the export mesh ONCE and return the full production-truth
+   * row — MAX-first true-3D fidelity (measureRadialFidelity, global-correct projector, NO
+   * exclusion loci so designed cliffs are MEASURED), full-mesh watertight (topologyMetric),
+   * and the REAL production download gate (validateMeshForExport). Fidelity is honestly NaN
+   * when the conforming (u,t) stash or style-state is unavailable — never a fabricated 0.
+   */
+  diagnoseExportTruth(opts?: FidelityExportTruthDiagnosticOptions): Promise<FidelityExportTruthDiagnostics>;
   /**
    * Generate the conforming mesh once, then return the min-angle DISTRIBUTION
    * (the triangle-quality instrument the aspect>ASPECT_MAX sliver gate lacks):
@@ -674,6 +720,60 @@ export function shouldEnableFidelityHook(): boolean {
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
+/**
+ * Build the config-true analytic radius closure `rA(theta, z)` for a style from a
+ * forwarded style-state. This is the SAME construction `diagnoseSurfaceFidelity` performs
+ * inline (SFB honors sf_strength via the packed GPU mix; every other style goes through
+ * STYLE_FUNCTIONS with the snake+camel opts convention) — kept here as a standalone
+ * ADDITIVE helper so `diagnoseExportTruth` can reuse it WITHOUT editing the load-bearing
+ * B5 gate, mirroring how `diagnoseCrestLateralDeviation` already builds its own rA.
+ */
+export function buildRAFromStyleState(
+  styleId: string,
+  style: {
+    opts: Record<string, number>;
+    H: number;
+    Rt: number;
+    Rb: number;
+    expn: number;
+    bellAmp?: number;
+    bellCenter?: number;
+    bellWidth?: number;
+  },
+): AnalyticRadiusFn {
+  const H = style.H, Rt = style.Rt, Rb = style.Rb, expn = style.expn;
+  const bellOpts: StyleOptions = {
+    bellAmp: style.bellAmp ?? 0,
+    bellCenter: style.bellCenter ?? 0.5,
+    bellWidth: style.bellWidth ?? 0.22,
+  };
+  const r0Of = (t: number): number => baseRadius(t * H, H, Rb, Rt, expn, bellOpts);
+  if (styleId === 'SuperformulaBlossom') {
+    const [, packed] = buildStyleParamPayload(styleId, style.opts as Record<string, unknown>);
+    const p = Float32Array.from(packed);
+    const strength = Math.max(0, Math.min(1, p[0]));
+    return (theta, z) => {
+      const t = z / H;
+      const r0 = r0Of(t);
+      const sf = r0 * (0.9 + 0.35 * sfRf(((theta / TAU) % 1 + 1) % 1, t, p));
+      return r0 + (sf - r0) * strength;
+    };
+  }
+  const toCamel = (s: string): string => s.replace(/_([a-z])/g, (g) => g[1].toUpperCase());
+  const styleOptions: Record<string, number> = {};
+  for (const [key, value] of Object.entries(style.opts)) {
+    if (typeof value !== 'number') continue;
+    styleOptions[key] = value;
+    const camel = toCamel(key);
+    if (camel !== key) styleOptions[camel] = value;
+  }
+  const fn = getStyleFunction(styleId as StyleId);
+  return (theta, z) => {
+    const r = fn(theta, z, r0Of(z / H), H, styleOptions as StyleOptions);
+    return Number.isFinite(r) ? r : r0Of(z / H);
+  };
+}
+
 export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
   return {
     listStyles() {
@@ -804,6 +904,65 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         maxAspect3D: qual.maxAspect3D,
         minAngleDeg: qual.minAngleDeg,
         triangleCount: Math.floor(mesh.indices.length / 3),
+      };
+    },
+    async diagnoseExportTruth(
+      opts: FidelityExportTruthDiagnosticOptions = {},
+    ): Promise<FidelityExportTruthDiagnostics> {
+      const styleId = currentStyleId();
+      const mesh = await deps.generateMesh(opts.targetTriangles);
+      if (!mesh) throw new Error('Fidelity: under-test generateMesh returned null');
+      const view = { vertices: mesh.vertices, indices: mesh.indices };
+      // Full-mesh watertight (cap-safe by-index) + the depth-invariant sliver signal.
+      const topo = topologyMetric(view, WELD_TOL_MM);
+      const q = triangleQualityDistribution(view);
+      // The REAL production download gate — the Map-cap + watertight-tol divergence live here.
+      const dl = validateMeshForExport(mesh);
+      // MAX-first true-3D fidelity vs the exact analytic surface — NO exclusion loci, so
+      // designed cliffs are MEASURED (feedback_export_standard), with a fine global
+      // projector grid to resolve them. HONEST-NULL when the conforming stash/style-state
+      // is unavailable (legacy path, decimated vertex count, twist, or missing taper).
+      const ut = getLastConformingAssemblyUT();
+      const style = deps.getStyleState?.() ?? null;
+      let fid: RadialFidelityReport | null = null;
+      if (
+        ut && style && ut.length === mesh.vertices.length &&
+        Number.isFinite(style.H) && style.H > 0 &&
+        style.spinTurns === 0 && style.spinPhaseDeg === 0 &&
+        style.Rt !== undefined && style.Rb !== undefined && style.expn !== undefined
+      ) {
+        const rA = buildRAFromStyleState(styleId, {
+          opts: style.opts,
+          H: style.H,
+          Rt: style.Rt,
+          Rb: style.Rb,
+          expn: style.expn,
+          bellAmp: style.bellAmp,
+          bellCenter: style.bellCenter,
+          bellWidth: style.bellWidth,
+        });
+        fid = measureRadialFidelity(view, ut, rA, {
+          H: style.H,
+          tolMm: opts.tolMm ?? 0.01,
+          globalProjector: { nTheta: opts.projectorNTheta ?? 2048, nZ: opts.projectorNZ ?? 512 },
+        });
+      }
+      return {
+        styleId,
+        triangleCount: Math.floor(mesh.indices.length / 3),
+        vertexCount: Math.floor(mesh.vertices.length / 3),
+        maxMm: fid?.maxMm ?? NaN,
+        chordMaxMm: fid?.chordMaxMm ?? NaN,
+        chordP99Mm: fid?.chordP99Mm ?? NaN,
+        vertexMaxMm: fid?.vertexMaxMm ?? NaN,
+        referenceTrusted: fid ? fid.vertexMaxMm <= REFERENCE_PARITY_EPS_MM : false,
+        minAngleDeg: q.minAngleDeg,
+        boundaryEdges: topo.boundaryEdges,
+        nonManifoldEdges: topo.nonManifoldEdges,
+        orientationMismatches: topo.orientationMismatches,
+        downloadOk: dl.ok,
+        downloadErrors: dl.errors,
+        nonFiniteCount: fid?.nonFiniteCount ?? -1,
       };
     },
     async diagnoseTriangleQuality(opts: FidelityTopologyDiagnosticOptions = {}): Promise<FidelityTriangleQualitySummary> {
