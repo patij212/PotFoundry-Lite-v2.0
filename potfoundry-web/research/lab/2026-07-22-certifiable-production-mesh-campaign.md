@@ -84,9 +84,15 @@ under-cap wall — the structure is identical at every density.
   the OPPOSITE of DS here (short diagonal ramp+corners, not a long straight flank) — it CONVERGES to a WORSE 0.091 MAX + 20%
   slivers; the chevron-conform graph makes it worse still (80.7% recovery failure, creases ~0.0019mm apart). Residual is the
   **chevron apex/V-turn corner** (render-confirmed). Honest free-Delaunay floor ~0.06–0.09 apex-limited → ~0.075 @5.3M.
-  **The 0.01 path is a NEW analytic STRUCTURED chevron-strip emitter** (`buildGeometricStarStripEmitter`, DS-ring-strip
-  analog: strips along each crease + apex fan, no double-valued wall) → certAdapter cut-at-gap. (Building + measuring now.)
-  Ship-now fallback: route through the ISO kernel (`aniso:false`) — CAD-grade p99, watertight, apex floor documented.
+  A structured **chevron-strip emitter** (`buildGeometricStarStripEmitter`, prototyped) was built + measured: it also
+  **floors at ~0.075 MAX (density-invariant)** — a single sheared-column coordinate can't follow the crease network where
+  it rotates 90° at the star-tip/V-turn **junctions** (a point-fan won't fix it; the residual is a wall SEGMENT), and it
+  self-inflicts shear slivers (38–62% <20°). **BUT it newly achieved watertight-BY-CONSTRUCTION + JUDGE-CERTIFIABLE** (first
+  GeoStar structured mesh the exact-dyadic judge ACCEPTS: exactPartition, maxδ 0.001, wrap/nonPos 0) — removes the
+  certifiability blocker, structure fidelity-invariant. ≤0.01 needs the FULL crease-network **ribbon mesher** (rows that
+  TURN with the chevron + polar junction fans) — a much larger, UNPROVEN build (DS-snaking-mesher class). **SHIP-NOW =
+  the ISO region kernel** (`aniso:false` — aniso is WORSE): CAD-grade p99 0.014–0.025, watertight, apex floor documented.
+  This is GeoStar's current flag-gated path already, so nothing to change; do NOT enable aniso or the chevron graph.
 
 ## All-20 honest uniform-grid baseline (2026-07-22, production scale + defaults)
 
@@ -165,8 +171,9 @@ Corrects the prior E-CT-HEXHIVE "reaches ≤0.01" (that was p99 with the seam ex
 
 ## Open threads (updated 2026-07-22 pm)
 - ✅ **Smooth-grid emitter PRODUCTIONIZED** (commit 121a7fe1) — 6 smooth styles wired into the dispatch, flag-gated.
-- **GeometricStar closure** — free-Delaunay REFUTED (measured); now BUILDING the analytic chevron-strip emitter
-  (`buildGeometricStarStripEmitter`) — does the structured strip + apex fan reach ≤0.01 MAX? (active subagent.)
+- ✅ **GeometricStar** — free-Delaunay AND sheared chevron-strip both floor ~0.075 MAX at the crease junctions; ≤0.01 needs
+  a full crease-network ribbon mesher + junction fans (large, unproven, deferred). The chevron-strip DID achieve
+  watertight + judge-certifiable structure (removes the cert blocker). SHIP-NOW = ISO region kernel (CAD-grade p99).
 - ✅ **LowPolyFacet** — measured: periodic 12-gon prism, closable at ~12k tris via facet-aligned nU BUT blocked by (A) a
   1.124mm rim `floor()` bug (real product bug, spawned `task_8f14f03d`) + (B) shipped density blind to sharp edges (needs an
   `alignNU` lever). Both fixable; judge-cert not a blocker. See layered-class section.
