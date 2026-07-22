@@ -169,6 +169,18 @@ irreducible non-periodic seam**, NOT a curtain/riser structured-emitter style. T
 (likely a latent bug: the cell count should be an integer) escalated to Patryk (spawned task chip) — not a mesher gap.
 Corrects the prior E-CT-HEXHIVE "reaches ≤0.01" (that was p99 with the seam excluded).
 
+**Systematic surface-bug audit (2026-07-22, `src/geometry/styles.ts`).** Two recurring latent-bug CLASSES surfaced by the
+campaign, worth a library-wide sweep:
+- **Rim `floor()` off-by-one** — `floor(t·N)` used as a DIRECT per-tier index (sets a value/phase) overflows at t=1 ⇒ a
+  radius step at the rim. Confirmed: **LowPolyFacet** (`tierIdx`, 1.124mm, `task_8f14f03d`), **BambooSegments**
+  (`segment`/`asymVar` — under measurement). Already FIXED: **DragonScales** (`row = Math.min(floor(rowPhase),
+  ceil(scaleRows)−1)` — the reference clamp). CLEARED (not a bug): **ArtDeco** `stepTier` is used only for the fractional
+  `stepLocal` and its edge band is symmetric ⇒ `stepFactor` is continuous at t=1. Fix template = the DS `Math.min` clamp.
+- **Angular non-periodic seam** — a feature count that doesn't tile 2π to an integer leaves a wrap-seam discontinuity
+  (**HexagonalHive** 25.13 cells / 0.921mm, `task_fbe2f913`). Not yet swept library-wide; other θ-tiled styles (BasketWeave
+  `sector`, ArtDeco fan, Voronoi/Crystalline cells) MAY carry the same class — a follow-up audit (measure |rA(0⁺)−rA(2π⁻)|
+  per style at defaults). These two classes, not the mesher, are the true ≤0.01 blockers for several styles.
+
 ## Open threads (updated 2026-07-22 pm)
 - ✅ **Smooth-grid emitter PRODUCTIONIZED** (commit 121a7fe1) — 6 smooth styles wired into the dispatch, flag-gated.
 - ✅ **GeometricStar** — free-Delaunay AND sheared chevron-strip both floor ~0.075 MAX at the crease junctions; ≤0.01 needs
