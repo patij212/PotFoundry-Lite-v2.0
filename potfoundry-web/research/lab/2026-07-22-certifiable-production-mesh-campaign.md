@@ -61,6 +61,40 @@ under-cap wall — the structure is identical at every density.
 - **Anisotropic-flank styles** (GeometricStar chevrons): the M=g/h² surface metric sizes along/across the flank; isotropic
   density is the wrong lever. (In progress.)
 
+## All-20 honest uniform-grid baseline (2026-07-22, production scale + defaults)
+
+The stalled subagent's goal, done via the lighter smooth-grid harness. Uniform-grid true-3D classifies each style:
+CLOSES ⇒ smooth-grid certifiable; else ⇒ the feature-specific route. (Steep-lattice numbers are GN-based ⇒ may
+overstate; the classification stands.)
+
+| ID | style | best uniform-grid true-3D | verdict | route |
+|----|-------|---------------------------|---------|-------|
+| 0 | SuperformulaBlossom | 0.0053 @ 65k | **CLOSES** | smooth-grid ✓ certified |
+| 1 | FourierBloom | 0.0047 @ 1.04M | **CLOSES** | smooth-grid ✓ certified |
+| 2 | SpiralRidges | 0.0048 @ 3.94M (>cap) | **CLOSES** | smooth-grid + atlas ✓ certified |
+| 3 | SuperellipseMorph | 0.0083 @ 261k | **CLOSES** | smooth-grid ✓ certified |
+| 4 | HarmonicRipple | 0.0071 @ 1.04M (gentle) | **CLOSES** | smooth-grid ✓ certified |
+| 5 | GothicArches | 0.237 | no | feature-conforming (p<1 arch cusps; judge-side already certified) |
+| 6 | WaveInterference | 0.0089 @ 1.04M | **CLOSES** | smooth-grid ✓ certified |
+| 7 | Crystalline | 0.150 | no | feature-conforming (facet creases; gentle hp0 was certified small) |
+| 8 | ArtDeco | 3.42 | no | structured emitter — COMPLEX (horizontal steps + angular fan + diagonal chevron) |
+| 9 | DragonScales | (structured emitter) | — | structured emitter ✓ certified (S3 cut-at-gap) |
+| 10 | BambooSegments | 0.95 uniform / 0.79 ring-strip WIP | no | ring-strip WIP — bulk closes, feature-line residual (per-style adaptation needed) |
+| 11 | RippleInterference | 0.028 | no | feature-conforming (interference crests) |
+| 12 | GyroidManifold | ~1.0 (GN) | no | v6 density (vertical ridge network) |
+| 13 | Voronoi | 0.245 | no | feature-conforming (cell bisectors) |
+| 14 | BasketWeave | (expected no) | no | structured emitter (weave/occlusion) |
+| 15 | GeometricStar | 0.726 | no | ANISOTROPIC (chevron flanks; M=g/h² kernel) |
+| 16 | HexagonalHive | 0.581 | no | structured emitter (curtain/riser) |
+| 17 | CelticKnot | (expected no) | no | structured emitter (double-valued, snaking-C0 WIP exists) |
+| 18 | CelticTriquetra | (expected no) | no | structured emitter (diagonal braid) |
+| 19 | LowPolyFacet | (expected no) | no | structured emitter (facet complex) |
+
+**7 / 20 now have a certifiable structured production mesh** (was 0). The 13 non-closers split: 4 feature-conforming
+(Crystalline/RI/Voronoi/Gothic), 1 anisotropic (GeoStar), 1 v6-density (Gyroid), 7 structured-emitter/layered (ArtDeco/
+Bamboo/HexHive/Basket/CKnot/CTri/LowPoly). The DS structured-emitter template is the vehicle for the layered class but
+is NOT plug-and-play (the Bamboo probe showed per-style tread-placement + double-valued scoring are still needed).
+
 ## Open threads (this session)
 - All-20 honest production-scale true-3D baseline (subagent) — routes the remaining closures.
 - SpiralRidges closure (subagent) — the closest smooth style (~0.047, helix-shear).
