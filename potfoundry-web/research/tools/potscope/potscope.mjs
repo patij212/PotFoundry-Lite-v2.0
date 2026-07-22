@@ -600,6 +600,154 @@ export function weldClusters(positions, hotIndices) {
   return [...groups.values()];
 }
 
+// Feature-locus heuristic: axis positions where the resolved grid is locally
+// dense. Rational feature ladders cluster rows/columns AT features, so a gap
+// far below the median gap marks a feature line. Global per-axis (not per-patch)
+// — a first proxy; FEATURE-ALIGNED simply never fires on uniform pots.
+export function deriveFeatureLoci(locBody, count) {
+  const axis = (offset) => {
+    const vals = [];
+    for (let t = 0; t < count; t += 1) {
+      for (let k = 0; k < 3; k += 1) vals.push(locBody[t * 7 + offset + k * 2]);
+    }
+    const uniq = [...new Set(vals.map((x) => Math.round(x * 1e6) / 1e6))].sort((a, b) => a - b);
+    if (uniq.length < 4) return [];
+    const gaps = [];
+    for (let i = 1; i < uniq.length; i += 1) gaps.push(uniq[i] - uniq[i - 1]);
+    const median = [...gaps].sort((a, b) => a - b)[Math.floor(gaps.length / 2)] || 1;
+    const loci = [];
+    for (let i = 1; i < uniq.length; i += 1) {
+      if (uniq[i] - uniq[i - 1] < 0.35 * median) loci.push((uniq[i] + uniq[i - 1]) / 2);
+    }
+    return loci;
+  };
+  return { u: axis(1), v: axis(2) };
+}
+
+const HOTSPOT_THRESHOLDS = {
+  spikeMaxTris: 8,
+  compactExtent: 0.05,
+  elongRatio: 4,
+  fullAxis: 0.9,
+  anisoThresh: 3,
+  // Tuned 0.3 -> 0: pearson returns its 0 sentinel whenever the cluster's error
+  // is constant (zero variance) — as in a pure metric-stretch flank where every
+  // triangle sits at the same residual. meanAniso (>=3) is the real stretch
+  // discriminator; this gate only has to reject ANTI-correlation (corr<0: high
+  // anisotropy where error is LOW, i.e. stretch is not the driver). >=0 admits
+  // the "no counter-evidence" sentinel; a positive floor can never be met by a
+  // uniform-error cluster, which is exactly the anisotropic case we must tag.
+  anisoCorr: 0,
+  featTol: 0.02,
+};
+
+export function classifyCluster(triIndices, ctx) {
+  const { positions, locBody, errors, featureLoci } = ctx;
+  const T = HOTSPOT_THRESHOLDS;
+  let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
+  let peak = 0, sumErr = 0, sumAniso = 0, anisoN = 0;
+  const anisoVals = [], errVals = [];
+  for (const t of triIndices) {
+    for (let k = 0; k < 3; k += 1) {
+      const u = locBody[t * 7 + 1 + k * 2], v = locBody[t * 7 + 2 + k * 2];
+      if (u < uMin) uMin = u; if (u > uMax) uMax = u;
+      if (v < vMin) vMin = v; if (v > vMax) vMax = v;
+    }
+    const e = errors[t];
+    peak = Math.max(peak, e); sumErr += e;
+    const uv = [
+      locBody[t * 7 + 1], locBody[t * 7 + 2],
+      locBody[t * 7 + 3], locBody[t * 7 + 4],
+      locBody[t * 7 + 5], locBody[t * 7 + 6],
+    ];
+    const a = triAnisotropy(positions.subarray(t * 9, t * 9 + 9), uv);
+    if (Number.isFinite(a)) { sumAniso += a; anisoN += 1; anisoVals.push(a); errVals.push(e); }
+  }
+  const uExtent = uMax - uMin, vExtent = vMax - vMin;
+  const meanAniso = anisoN > 0 ? sumAniso / anisoN : 1;
+  const corr = pearson(anisoVals, errVals);
+
+  const longAxis = Math.max(uExtent, vExtent), shortAxis = Math.min(uExtent, vExtent);
+  let shape = 'DIFFUSE';
+  if (triIndices.length <= T.spikeMaxTris && longAxis <= T.compactExtent) shape = 'SPIKE';
+  else if (shortAxis <= 1e-6 || longAxis / Math.max(shortAxis, 1e-6) >= T.elongRatio) shape = 'BAND';
+
+  const tags = [];
+  if (shape === 'BAND' && longAxis >= T.fullAxis) tags.push('IRREDUCIBLE');
+  if (meanAniso >= T.anisoThresh && corr >= T.anisoCorr) tags.push('ANISOTROPIC');
+  const uc = (uMin + uMax) / 2, vc = (vMin + vMax) / 2;
+  const near = (loci, c) => loci.some((x) => Math.abs(x - c) < T.featTol);
+  if (near(featureLoci.u, uc) || near(featureLoci.v, vc)) tags.push('FEATURE-ALIGNED');
+
+  let lever;
+  if (shape === 'SPIKE') lever = 'localized singularity → conforming edge / seam pin / atlas patch';
+  else if (tags.includes('ANISOTROPIC')) lever = 'anisotropic flank kernel (M=g/h²) — not more triangles';
+  else if (tags.includes('IRREDUCIBLE')) lever = `full-${uExtent >= vExtent ? 'u' : 'v'} band ⇒ density-irreducible; envelope/redesign, not more triangles`;
+  else if (shape === 'BAND') lever = `density/envelope along ${uExtent >= vExtent ? 'v' : 'u'} (the short axis)`;
+  else lever = 'diffuse — measure locally (no single dominant structure)';
+
+  return { shape, tags, lever, u: uc, v: vc, uExtent, vExtent, peak, mean: sumErr / triIndices.length, anisotropy: meanAniso };
+}
+
+function pearson(xs, ys) {
+  const n = xs.length;
+  if (n < 2) return 0;
+  let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+  for (let i = 0; i < n; i += 1) { sx += xs[i]; sy += ys[i]; sxx += xs[i] * xs[i]; syy += ys[i] * ys[i]; sxy += xs[i] * ys[i]; }
+  const cov = sxy - (sx * sy) / n;
+  const vx = sxx - (sx * sx) / n, vy = syy - (sy * sy) / n;
+  return vx > 0 && vy > 0 ? cov / Math.sqrt(vx * vy) : 0;
+}
+
+function cmdHotspots(args) {
+  const nameOrStl = args._[0];
+  if (!nameOrStl) { console.error('usage: potscope hotspots <name|stl> [--top N] [--budget mm] [--json]'); process.exit(2); }
+  const stlPath = resolve(nameOrStl.endsWith('.stl') ? nameOrStl : `${nameOrStl}.stl`);
+  const errPath = `${stlPath}.error.bin`;
+  const locPath = `${stlPath}.loc.bin`;
+  for (const [label, p] of [['STL', stlPath], ['error.bin', errPath], ['loc.bin', locPath]]) {
+    if (!existsSync(p)) { console.error(`hotspots: missing ${label}: ${p}`); process.exit(2); }
+  }
+  const parsed = parseStl(stlPath);
+  const err = readErrorRaw(errPath);
+  const loc = readLoc(locPath);
+  if (err.header.count !== parsed.triangleCount || loc.header.count !== parsed.triangleCount) {
+    console.error(`count mismatch: stl ${parsed.triangleCount} error ${err.header.count} loc ${loc.header.count}`); process.exit(2);
+  }
+  const ep = err.header.provenance?.artifactByteSha256, lp = loc.header.provenance?.artifactByteSha256;
+  if (ep && lp && ep !== lp) { console.error(`provenance mismatch: error.bin and loc.bin describe different meshes (${ep} vs ${lp}) — re-bake`); process.exit(2); }
+
+  const budget = Number(argValue(args, '--budget') ?? err.header.budgetMm ?? 0.01);
+  const p99 = err.header.stats?.p99Mm ?? budget * 0.5;
+  const hotThresh = Math.max(budget * 0.5, p99);
+  const hot = [];
+  for (let t = 0; t < parsed.triangleCount; t += 1) if (err.values[t] >= hotThresh) hot.push(t);
+  const featureLoci = deriveFeatureLoci(loc.body, loc.header.count);
+  const ctx = { positions: parsed.positions, locBody: loc.body, errors: err.values, budget, featureLoci };
+  const clusters = weldClusters(parsed.positions, hot)
+    .map((tris) => ({ tris, ...classifyCluster(tris, ctx) }))
+    .sort((a, b) => b.peak - a.peak || b.tris.length - a.tris.length);
+  const top = Number(argValue(args, '--top') ?? '5');
+  const shown = clusters.slice(0, top);
+
+  if (args.flags.includes('--json')) {
+    console.log(JSON.stringify({ name: parsed.title, triangleCount: parsed.triangleCount, stats: err.header.stats, hotThresh, clusters: shown.map(({ tris, ...c }) => ({ ...c, triCount: tris.length })) }, null, 2));
+    return;
+  }
+  const um = (mm) => (mm * 1000).toFixed(1);
+  const s = err.header.stats ?? {};
+  console.log(`${parsed.title} — ${parsed.triangleCount.toLocaleString()} tris, max ${um(s.maxMm ?? 0)}µm  p99 ${um(s.p99Mm ?? 0)}µm  p50 ${um(s.p50Mm ?? 0)}µm`);
+  console.log(`worst residual structure (top ${top} of ${clusters.length} hot clusters, threshold ${um(hotThresh)}µm):\n`);
+  shown.forEach((c, i) => {
+    const patchIdx = loc.body[c.tris[0] * 7];
+    const patch = loc.header.patches[patchIdx] ?? `patch${patchIdx}`;
+    const tagStr = c.tags.length ? ` · ${c.tags.join(' · ')}` : '';
+    console.log(`  [${i + 1}] ${c.shape}${tagStr} · ${patch}`);
+    console.log(`      ${c.tris.length} tris · u∈[${(c.u - c.uExtent / 2).toFixed(2)},${(c.u + c.uExtent / 2).toFixed(2)}] v≈${c.v.toFixed(2)} · peak ${um(c.peak)}µm mean ${um(c.mean)}µm · anisotropy ${c.anisotropy.toFixed(1)}`);
+    console.log(`      → ${c.lever}\n`);
+  });
+}
+
 function cmdView(args) {
   const stlPaths = args._.map((p) => resolve(p));
   if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
@@ -953,7 +1101,7 @@ function argValue(args, name) {
   return index >= 0 ? args.flags[index + 1] : undefined;
 }
 
-const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay']);
+const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay', '--json']);
 
 // ----------------------------------------------------------------------- serve
 // One command to serve a directory over http (fetch-viewers need it) with a
@@ -1053,6 +1201,7 @@ function main() {
     case 'run': cmdRun(args); break;
     case 'decode': cmdDecode(args); break;
     case 'view': cmdView(args); break;
+    case 'hotspots': cmdHotspots(args); break;
     case 'serve': cmdServe(args); break;
     default:
       console.log('potscope — certification-lab instrument panel');
@@ -1062,6 +1211,7 @@ function main() {
       console.log('  view <file.stl> [--out html] [--decimate k] [--ceramic] [--embed]   (full-res pot)');
       console.log('  view <file.stl> --error [--error-file f.error.bin]   (true-3D error overlay)');
       console.log('  view <a.stl> <b.stl> ... [--out html] [--title t] [--clay]   (full-res shelf)');
+      console.log('  hotspots <name|stl> [--top N] [--budget mm] [--json]   (residual structure)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
   }
 }

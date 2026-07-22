@@ -191,3 +191,62 @@ test('weldClusters groups hot triangles sharing a vertex, separates disjoint one
   const sizes = clusters.map((c) => c.length).sort();
   assert.deepEqual(sizes, [1, 2]);
 });
+
+// --- residual structural classifier: SPIKE / BAND / DIFFUSE + tags + feature loci
+import { classifyCluster, deriveFeatureLoci } from './potscope.mjs';
+
+// helper: build parallel positions/locBody/errors arrays for N triangles.
+// place() returns a tiny scene where triangle t has uv centroid (uc,vc), a small
+// uv footprint, xyz = uv mapped to a plane scaled by (sx,sy), and error e.
+function scene(specs /* [{uc,vc,e,sx=1,sy=1}] */) {
+  const n = specs.length;
+  const positions = new Float32Array(n * 9);
+  const locBody = new Float32Array(n * 7);
+  const errors = new Float32Array(n);
+  specs.forEach((s, t) => {
+    const sx = s.sx ?? 1, sy = s.sy ?? 1, h = 0.004;
+    const uv = [s.uc, s.vc, s.uc + h, s.vc, s.uc, s.vc + h];
+    locBody[t * 7] = 0;
+    for (let k = 0; k < 3; k += 1) { locBody[t * 7 + 1 + k * 2] = uv[k * 2]; locBody[t * 7 + 2 + k * 2] = uv[k * 2 + 1]; }
+    const xyz = [uv[0] * sx, uv[1] * sy, 0, uv[2] * sx, uv[3] * sy, 0, uv[4] * sx, uv[5] * sy, 0];
+    positions.set(xyz, t * 9);
+    errors[t] = s.e;
+  });
+  return { positions, locBody, errors, budget: 0.01, featureLoci: { u: [], v: [] } };
+}
+
+test('classifyCluster: compact high-error blob -> SPIKE', () => {
+  const ctx = scene([
+    { uc: 0.5, vc: 0.5, e: 0.0098 },
+    { uc: 0.502, vc: 0.5, e: 0.0097 },
+    { uc: 0.5, vc: 0.502, e: 0.0096 },
+  ]);
+  const c = classifyCluster([0, 1, 2], ctx);
+  assert.equal(c.shape, 'SPIKE');
+});
+
+test('classifyCluster: full-u row at fixed v -> BAND + IRREDUCIBLE', () => {
+  const specs = [];
+  for (let i = 0; i < 40; i += 1) specs.push({ uc: i / 40, vc: 0.87, e: 0.0099 });
+  const ctx = scene(specs);
+  const c = classifyCluster(specs.map((_, i) => i), ctx);
+  assert.equal(c.shape, 'BAND');
+  assert.ok(c.tags.includes('IRREDUCIBLE'), `tags ${c.tags}`);
+});
+
+test('classifyCluster: metric-stretched cluster -> ANISOTROPIC tag', () => {
+  const specs = [];
+  for (let i = 0; i < 10; i += 1) specs.push({ uc: 0.3 + i * 0.01, vc: 0.4, e: 0.009, sx: 20, sy: 1 });
+  const ctx = scene(specs);
+  const c = classifyCluster(specs.map((_, i) => i), ctx);
+  assert.ok(c.tags.includes('ANISOTROPIC'), `tags ${c.tags} aniso ${c.anisotropy}`);
+});
+
+test('deriveFeatureLoci finds a dense column among sparse ones', () => {
+  // sparse u at 0,0.25,0.5,0.75 plus a dense trio near 0.5
+  const us = [0, 0.25, 0.5, 0.75, 0.5, 0.505, 0.51];
+  const body = new Float32Array(us.length * 7);
+  us.forEach((u, t) => { for (let k = 0; k < 3; k += 1) body[t * 7 + 1 + k * 2] = u; });
+  const loci = deriveFeatureLoci(body, us.length);
+  assert.ok(loci.u.some((u) => Math.abs(u - 0.5) < 0.02), `u loci ${loci.u}`);
+});
