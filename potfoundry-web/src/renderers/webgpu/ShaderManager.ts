@@ -384,6 +384,105 @@ fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
     }
 
     /**
+     * Universal position-eval COMPUTE shader (all styles via a style_id switch).
+     * One thread per preview vertex; writes the surface position to a storage buffer.
+     * Compiled ONCE (universal), so a style switch becomes a uniform write + dispatch,
+     * never a recompile. Paired with {@link getNeighborNormalWGSL} for normals.
+     * The host supplies per-vertex (segment, u, v) via index buffers, so this entry
+     * does not re-derive the vs_main cell walk.
+     */
+    public getEvalPositionWGSL(): string {
+        const dispatchCode = `
+// UNIVERSAL DISPATCHER (position eval)
+fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
+    let th = theta - floor(theta / TAU) * TAU;
+    switch (style_id) {
+        ${Object.entries(STYLE_FUNCTION_MAP).map(([id, func]) => `
+        case ${id}: { return ${func}(th, t, r0); }`).join('')}
+        default: { return sf_radius(th, t, r0); }
+    }
+}
+
+fn style_radius_zero(style_id: i32, t: f32, r0: f32) -> f32 {
+    switch (style_id) {
+        ${Object.entries(STYLE_FUNCTION_MAP).map(([id, func]) => `
+        case ${id}: { return ${func}(0.0, t, r0); }`).join('')}
+        default: { return sf_radius(0.0, t, r0); }
+    }
+}
+
+fn style_radius_tau(style_id: i32, t: f32, r0: f32) -> f32 {
+    switch (style_id) {
+        ${Object.entries(STYLE_FUNCTION_MAP).map(([id, func]) => `
+        case ${id}: { return ${func}(TAU, t, r0); }`).join('')}
+        default: { return sf_radius(TAU, t, r0); }
+    }
+}
+`;
+
+        const evalEntry = `
+// [preview-eval] one thread per preview vertex -> surface position
+@group(1) @binding(0) var<storage, read_write> pf_pos_out: array<vec3<f32>>;
+@group(1) @binding(1) var<storage, read> pf_seg_in: array<u32>;
+@group(1) @binding(2) var<storage, read> pf_uv_in: array<vec2<f32>>;
+
+@compute @workgroup_size(64)
+fn eval_pos(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= arrayLength(&pf_pos_out)) { return; }
+    let uv = pf_uv_in[i];
+    pf_pos_out[i] = surface_point(pf_seg_in[i], uv.x, uv.y);
+}
+`;
+
+        return [
+            this.constantsWgsl,
+            this.commonWgsl,
+            this.uniformsWgsl,
+            this.stylesWgsl,   // ALL styles + shared surface logic (surf / surface_point)
+            dispatchCode,
+            evalEntry,
+        ].join('\n');
+    }
+
+    /**
+     * Style-free neighbor-normal COMPUTE shader. Derives each vertex normal from the
+     * cross product of its grid-neighbor positions — the SAME central-difference
+     * stencil the vertex shader's surface_normal uses (du/dv == grid spacing), just
+     * reading cached neighbor positions instead of re-evaluating the surface 7×.
+     * References no style code, so it compiles once and never recompiles on a switch.
+     * Bind group 0: {position(read), neighbor-index(read), normal(read_write)}.
+     */
+    public getNeighborNormalWGSL(): string {
+        return `
+struct Nbr { iL: u32, iR: u32, iD: u32, iU: u32, flags: u32, pad0: u32 };
+@group(0) @binding(0) var<storage, read> pf_pos_in: array<vec3<f32>>;
+@group(0) @binding(1) var<storage, read> pf_nbr_in: array<Nbr>;
+@group(0) @binding(2) var<storage, read_write> pf_norm_out: array<vec3<f32>>;
+
+const PF_FLAG_CAP_UP: u32 = 1u;   // seg 2/4 -> +Z (flat top caps)
+const PF_FLAG_CAP_DOWN: u32 = 2u; // seg 3   -> -Z (flat underside)
+const PF_FLAG_INNER: u32 = 4u;    // seg 1   -> flip (inner wall)
+
+@compute @workgroup_size(64)
+fn norm_from_nbr(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let i = gid.x;
+    if (i >= arrayLength(&pf_norm_out)) { return; }
+    let nb = pf_nbr_in[i];
+    if ((nb.flags & PF_FLAG_CAP_UP) != 0u)   { pf_norm_out[i] = vec3<f32>(0.0, 0.0, 1.0); return; }
+    if ((nb.flags & PF_FLAG_CAP_DOWN) != 0u) { pf_norm_out[i] = vec3<f32>(0.0, 0.0, -1.0); return; }
+    let d_u = pf_pos_in[nb.iR] - pf_pos_in[nb.iL];
+    let d_v = pf_pos_in[nb.iU] - pf_pos_in[nb.iD];
+    var n = cross(d_u, d_v);
+    let l = length(n);
+    if (l < 1e-6) { n = vec3<f32>(0.0, 0.0, 1.0); } else { n = n / l; }
+    if ((nb.flags & PF_FLAG_INNER) != 0u) { n = -n; }
+    pf_norm_out[i] = n;
+}
+`;
+    }
+
+    /**
      * Generates Vertex/Fragment shader for Debug Lines (magenta).
      * Projects 2D (u,v) segments onto the 3D pot surface.
      */
