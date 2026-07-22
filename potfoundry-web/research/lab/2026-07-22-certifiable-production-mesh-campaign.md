@@ -77,13 +77,16 @@ under-cap wall — the structure is identical at every density.
 - **Structured-feature styles** (DS rings + scale-tip cone; the 6 layered/curtain styles): the DS template — a
   structured emitter with explicit discontinuity handling (double-valued tread walls, per-apex cone-fans), cut at an
   apex-GAP column so no feature straddles the flat seam.
-- **Conforming-crease riser styles** (GeometricStar chevrons): CORRECTED — the strapwork chevron edges (`dStrap≈0` in
-  `geometricStarStrapField`, analyticSurfaceGate.ts) are steep **C0 SLOPE kinks, NOT double-valued value cliffs**
-  (`_geoStarClose.test.ts:36`: "no separate riser-wall to exclude; every facet is a body facet"). So the close path is the
-  DS-INTERIOR-CLOSE recipe — CONFORM mesh edges onto the diagonal chevron crease loci (a `buildGeometricStarConformingGraph`
-  analog of `buildDragonScalesConformingGraph`) + fine curvature sizing (`curvatureFineStep`), with the `aniso` metric as a
-  SLIVER-quality accelerator (not the fidelity closer). GeoStar is grouped with DragonScales in `RISERS_4`
-  (featConformAll20.test.ts). Extensive prior art (9 `_geoStar*` probes) under active synthesis + measurement. (In progress.)
+- **GeometricStar chevrons — free-Delaunay REFUTED (measured 2026-07-22).** The strapwork chevron edges (`dStrap≈0` in
+  `geometricStarStrapField`) are steep **C0 SLOPE kinks, NOT double-valued cliffs** (`_geoStarClose.test.ts:36`), shift=0 ⇒
+  no value cliff. Measured on the production kernel at production dims: **NO free-Delaunay path reaches 0.01 MAX** — iso+chord
+  floors trusted-continuous MAX **0.061 @2M** (bulk CAD-grade p99 0.014, watertight); the `aniso` metric-in-circle flip is
+  the OPPOSITE of DS here (short diagonal ramp+corners, not a long straight flank) — it CONVERGES to a WORSE 0.091 MAX + 20%
+  slivers; the chevron-conform graph makes it worse still (80.7% recovery failure, creases ~0.0019mm apart). Residual is the
+  **chevron apex/V-turn corner** (render-confirmed). Honest free-Delaunay floor ~0.06–0.09 apex-limited → ~0.075 @5.3M.
+  **The 0.01 path is a NEW analytic STRUCTURED chevron-strip emitter** (`buildGeometricStarStripEmitter`, DS-ring-strip
+  analog: strips along each crease + apex fan, no double-valued wall) → certAdapter cut-at-gap. (Building + measuring now.)
+  Ship-now fallback: route through the ISO kernel (`aniso:false`) — CAD-grade p99, watertight, apex floor documented.
 
 ## All-20 honest uniform-grid baseline (2026-07-22, production scale + defaults)
 
