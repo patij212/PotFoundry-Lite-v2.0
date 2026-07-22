@@ -29,7 +29,7 @@ import {
   tessellateAnnularRadialSolidTargetForCertification,
 } from '../../src/geometry/targetSolid/annularSolidReferenceTessellation';
 import { createCompleteMappedGeometryTargetBindingFromSurfaceComplex } from '../../src/geometry/targetSolid/completeMappedArtifactGeometry';
-import { atlas, CERTIFIED_POTS } from './_certRoster';
+import { atlas, CERTIFIED_POTS, type CertifiedPot } from './_certRoster';
 import {
   classifyRatio,
   coarsenDivisions,
@@ -44,6 +44,40 @@ import {
 } from './_certRosterConvergenceLib';
 
 const OUT_DIR = join(__dirname, '..', 'exchange', '_certified_stl');
+
+/**
+ * The arbitrary-config bake input (Task 3): a self-describing JSON that names a
+ * style + geometry + divisions to converge WITHOUT a committed certificate. The
+ * `geometry`/`divisions` shapes are validated downstream by `atlas` /
+ * `tessellate` (they throw on a malformed spec), so this parse guard only
+ * enforces that the five required fields are present — a fast fail before any
+ * heavy bake. `coarseStep`/`maxDepth`/`budgetMs` are optional self-calibration
+ * knobs. Exported for the same-file structural guard test.
+ */
+export interface ConvergeConfig {
+  readonly name: string;
+  readonly styleId: string;
+  readonly styleParams: Readonly<Record<string, number>>;
+  readonly geometry: unknown; // GeometryParams shape — validated by atlas() downstream
+  readonly divisions: unknown; // AnnularSolidReferenceTessellationOptions — validated by tessellate()
+  readonly coarseStep?: number;
+  readonly maxDepth?: number;
+  readonly budgetMs?: number;
+}
+
+/**
+ * Parse + shape-guard an arbitrary-config JSON. Throws (before any bake) if any
+ * of the five required fields is missing. A `function` declaration (hoisted) so
+ * the same-file structural test can reference it above its definition.
+ */
+export function parseConvergeConfig(json: string): ConvergeConfig {
+  const c = JSON.parse(json) as Partial<ConvergeConfig>;
+  for (const key of ['name', 'styleId', 'styleParams', 'geometry', 'divisions'] as const) {
+    if (c[key] === undefined) throw new Error(`convergeconfig: missing '${key}'`);
+  }
+  return c as ConvergeConfig;
+}
+
 // Calibrated 2026-07-22 by the PF_CONVERGE_DEPTHS sweep: at depth 2 the
 // HarmonicRipple_small fine global-max is 0.010578 mm vs the committed certified
 // 0.010 mm (ratio 1.058 — within 6%), it is the cheapest depth (17 s fine on the
@@ -242,6 +276,20 @@ describe('convergence probe — pure helpers', () => {
     expect(classifyRatio(0.9)).toBe('irreducible');
     expect(classifyRatio(Number.POSITIVE_INFINITY)).toBe('responsive');
   });
+
+  // A tiny structural check that the config-JSON parse + shape guard exists.
+  // (The full bake path is exercised by Task 6's real bakes.)
+  it('parseConvergeConfig accepts a valid config and rejects a missing field', () => {
+    const good = {
+      name: 'X',
+      styleId: 'GeometricStar',
+      styleParams: { gs_relief: 0.08 },
+      geometry: { H: 32, top_od: 30, bottom_od: 30, r_drain: 6 },
+      divisions: { angularDivisionsLog2: 8, verticalDivisionsLog2ByPatch: { 'outer-wall': 5 } },
+    };
+    expect(() => parseConvergeConfig(JSON.stringify(good))).not.toThrow();
+    expect(() => parseConvergeConfig(JSON.stringify({ ...good, divisions: undefined }))).toThrow();
+  });
 });
 
 describe('certified roster — convergence probe', () => {
@@ -339,6 +387,9 @@ describe('certified roster — convergence probe', () => {
                 calibrationRatio: result.fineGlobalMaxMm / certGlobalMax,
                 tolerance: CALIBRATION_TOLERANCE,
               },
+              // Shared with the arbitrary-config path so both converge.json flavors
+              // carry the same per-patch coarsened-axes report (no behavior change).
+              coarsenedAxes: coarsenedAxesReport(result.fineDivisions, result.coarseDivisions),
               perPatch: result.perPatch,
             },
             null,
@@ -365,6 +416,102 @@ describe('certified roster — convergence probe', () => {
       }
     );
   }
+});
+
+// The ARBITRARY-CONFIG driver: converge a self-describing config JSON that has
+// NO committed certificate. Env-gated on PF_CONVERGE_CONFIG=<path.json> (skipped
+// by default, like the roster probes). Runs `convergePotSelfCalibrated` (which
+// self-calibrates the probe depth by verdict-stability) and writes a
+// `<name>.converge.json` sharing the roster schema PLUS `configSource:'arbitrary'`,
+// `selfCalibration`, `coarsenedAxes`, and `calibration:null` — there is no cert to
+// gate against, so the assertions only check the probe produced a table (and a
+// real global-max once stable). The real bake is exercised in Task 6.
+describe('arbitrary-config — self-calibrated convergence probe', () => {
+  const CONFIG_PATH = process.env.PF_CONVERGE_CONFIG;
+  it.skipIf(CONFIG_PATH === undefined)(
+    'converges an arbitrary config JSON and emits self-calibration',
+    { timeout: 3_600_000 },
+    () => {
+      const startedAt = Date.now();
+      const parsed = parseConvergeConfig(readFileSync(CONFIG_PATH as string, 'utf8'));
+      // CertifiedPot-shaped input for the converger. `geometry`/`divisions` are
+      // validated downstream by atlas()/tessellate(); the cast is the only bridge.
+      const config = {
+        name: parsed.name,
+        styleId: parsed.styleId,
+        styleParams: parsed.styleParams,
+        geometry: parsed.geometry,
+        divisions: parsed.divisions,
+      } as unknown as CertifiedPot;
+
+      const result = convergePotSelfCalibrated(config, {
+        startDepth: 2,
+        maxDepth: parsed.maxDepth ?? 5,
+        coarseStep: parsed.coarseStep ?? 1,
+        budgetMs: parsed.budgetMs,
+      });
+      const coarsenedAxes = coarsenedAxesReport(config.divisions, result.coarseDivisions);
+
+      // eslint-disable-next-line no-console
+      console.log(
+        `[probe:converge] ${config.name} selfCal stable=${result.selfCalibration.stable}` +
+          ` reason=${result.selfCalibration.reason} finalDepth=${result.selfCalibration.finalDepth}` +
+          ` depthsRun=[${result.selfCalibration.depthsRun.join(',')}]`
+      );
+      for (const patchId of Object.keys(result.perPatch)) {
+        const p = result.perPatch[patchId];
+        // eslint-disable-next-line no-console
+        console.log(
+          `[probe:converge] ${config.name}   ${patchId.padEnd(14)} fineMax=${p.fineMaxMm.toFixed(6)}` +
+            ` coarseMax=${p.coarseMaxMm.toFixed(6)} ratio=${p.ratio.toFixed(2)} ${p.verdict.padEnd(11)}` +
+            ` fineTris=${p.fineTris} coarseTris=${p.coarseTris}`
+        );
+      }
+
+      const outPath = join(OUT_DIR, `${config.name}.converge.json`);
+      writeFileSync(
+        outPath,
+        `${JSON.stringify(
+          {
+            magic: 'potscope-converge/v1',
+            variant: config.name,
+            style: config.styleId,
+            configSource: 'arbitrary',
+            depth: result.depth,
+            coarseStep: result.coarseStep,
+            fineDivisions: result.fineDivisions,
+            coarseDivisions: result.coarseDivisions,
+            fineTrisTotal: result.fineTrisTotal,
+            coarseTrisTotal: result.coarseTrisTotal,
+            fineGlobalMaxMm: result.fineGlobalMaxMm,
+            coarseGlobalMaxMm: result.coarseGlobalMaxMm,
+            fineMs: result.fineMs,
+            coarseMs: result.coarseMs,
+            fallbackCount: result.fallbackCount,
+            // No certificate for an arbitrary config — null, not a cert block.
+            calibration: null,
+            selfCalibration: result.selfCalibration,
+            coarsenedAxes,
+            perPatch: result.perPatch,
+          },
+          null,
+          2
+        )}\n`
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `[probe:converge] ${config.name} WROTE ${outPath} elapsedMs=${Date.now() - startedAt}`
+      );
+
+      // No cert-tolerance gate (there is no certificate). Only assert the probe
+      // produced a per-patch table and — when it self-calibrated to a stable
+      // verdict — a real (positive) fine global-max.
+      expect(Object.keys(result.perPatch).length).toBeGreaterThan(0);
+      if (result.selfCalibration.stable) {
+        expect(result.fineGlobalMaxMm).toBeGreaterThan(0);
+      }
+    }
+  );
 });
 
 // minimal fake ConvergePotResult with only the fields the stability logic reads.
