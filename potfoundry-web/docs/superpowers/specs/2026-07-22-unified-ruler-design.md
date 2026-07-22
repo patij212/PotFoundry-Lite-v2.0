@@ -61,10 +61,23 @@ Additive, TDD, byte-identical on every existing path (opt-in only):
   min-angle quality + exclusion bands, and certifies on MAX. Watertight stays the
   separate cap-safe `topologyMetric` (different scope). Global projector default ON;
   `globalProjector:false` for A/B against the legacy overstatement.
+- **`src/fidelity/certifyMeshExport.ts` — the full export certificate.** Composes the
+  unified fidelity ruler AND the watertight `topologyMetric` into one verdict
+  (`certified = fidelity.certified && watertight`): faithful-but-leaky and
+  watertight-but-inaccurate both correctly fail.
 - **`analyticSurfaceGate.ts`:** (a) non-finite deviations no longer poison
   `rms`/`p99` (guarded + counted in `nonFiniteCount`); (b) `perpendicular3DDeviation`
   gains an injectable `chordProjector` (the acyclic seam for the global projector).
+- **`metrics.ts`:** wall p99 (wallDeviation + wallChordError) de-quantized — 0.05mm
+  lower-edge histogram → 0.001mm conservative upper edge (was reporting 0.00 for any
+  sub-0.05mm p99). **This lands roadmap R1.**
+- **`types.ts`:** the false "WELD_TOL_MM matches exportValidation" comment corrected to
+  document the 10× divergence (1e-4 vs 1e-3). **This lands the doc half of R5** (the
+  gate-tolerance reconciliation itself is still open).
 - **`research/MEASUREMENT-COMPENDIUM.md`:** the authoritative ruler catalog.
+
+_Roadmap status: R1 DONE; R5 doc-half done (reconciliation open). R2/R3/R4/R6/R7/R8
+remain as below._
 
 ## 4. Roadmap (remaining fixes, ranked)
 
