@@ -145,9 +145,16 @@ the EASY static-crease class, NOT the snaking class. Clean split: **{LowPolyFace
    `deriveSmoothGridDensity` picks only nU=1024 (blind to the sub-cell edge), but **facet-aligned nU = multiple of 24** closes
    the body at **nU≈48 / 12k tris** (flat planes; mult-12 is WORST 0.207 — straddles edges). Both cert paths ACCEPT
    (align24 maxδ 0.0002). ⇒ add an `alignNU` lever to the smooth grid + fix the rim. Spawned as task `task_8f14f03d`.
-2. **BambooSegments** (de-risked) — the DS ring-strip RAN and floors at **0.79mm**; root cause = a t-SCHEDULE gap
-   (`buildDsRingTSchedule` brackets the ±1mm C0 ring but does NOT grade rows across the smooth node-bulge flanks, `exp`
-   reaches ±3.6mm), NOT a wall. Fix = a node-bulge-tracking `buildBambooTSchedule`. ~1–3M est.
+2. ✅ **BambooSegments — CLOSES (GO, measured 2026-07-22): the FIRST layered-class closure.** whole-mesh HONEST true-3D
+   MAX **0.0074mm** (p99 0.0028), 0 outliers, watertight, ~2% <20° (DS-class treads), nU1280–1408 / ~2.6M tris; judge
+   ACCEPT (representative nU512/1.04M, exactPartition, maxδ 0.00017). **The "0.79 floor" diagnosis was REFUTED:** the
+   node-bulge flanks were ALREADY closed (radial 0.0052, 0 out); "0.79" was a `perFaceTrue3DSag` WRONG-WELL artifact on the
+   near-vertical step faces (honest MAX 0.0857). The real residual was the **rim `floor()` defect** (`segment=floor(nodeCount·t)`
+   → **2.4563mm per-θ lip at t=1**, Track-A judge independently calls it "an implementation defect" — the 3rd confirmation
+   of the rim-floor bug class). Close = rim double-valued bracket + curtain u-density (u-responsive 0.0255→0.0070). Two
+   productionization paths (spawned `task_8f14f03d`-class): (a) MESHER — `buildBambooTSchedule` (rim bracket + curtains,
+   nU≥1280, sagTol 0.004, hMax 0.12, treadHalf 0.002) into a Bamboo branch of `buildRegionOuterWall`; (b) CLEANER — fix the
+   src rim `floor()` (`segment=min(floor(nodeCount·t),nodeCount−1)`) ⇒ rim lip vanishes, closes on a simpler grid.
 3. **BasketWeave** — 2-axis value cliffs (`bwTwist=0` axis-aligned) + checker occlusion ⇒ generalize the DS tread to
    treads on u=m/16 AND t=k/10 + a per-cell over/under step. Loci exist (`deriveBasketWeaveAxisAlignedCreases`). ~1–4M.
 4. **ArtDeco** — riser (dominant; the 3.42 blocker is the riser facet-chord, on-loci true-3D is only 0.039) + fan cusps +
