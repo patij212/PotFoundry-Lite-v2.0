@@ -426,10 +426,17 @@ export function buildDsConeFanWall(
       }
       spoke.push(colV);
     }
+    // WINDING: every fan triangle is emitted CCW in (u,t) (= outward normal on this increasing-u/increasing-t
+    // cylinder), matching the grid quads above BY CONSTRUCTION — not left for the assembly's orientOutward to repair.
+    // The apex ring (apexV, spoke[k][0], spoke[kn][0]) and the outer band below are already CCW because the block loop
+    // winds CCW around the interior apex; only the interior RING BANDS needed their order fixed (they wound CW —
+    // area2 = -f_g·(f_{g+1}-f_g)·(d_k×d_kn) < 0 — a latent inconsistency previously masked downstream).
     for (let k = 0; k < B; k++) { const kn = (k + 1) % B; triangles.push(apexV, spoke[k][0], spoke[kn][0]); fanTriangles++; }
     for (let g = 0; g + 1 < G; g++) for (let k = 0; k < B; k++) {
       const kn = (k + 1) % B;
-      triangles.push(spoke[k][g], spoke[kn][g], spoke[kn][g + 1], spoke[k][g], spoke[kn][g + 1], spoke[k][g + 1]);
+      // quad (spoke[k][g], spoke[kn][g], spoke[kn][g+1], spoke[k][g+1]) split on the spoke[k][g]→spoke[kn][g+1]
+      // diagonal, both triangles wound CCW (reversed from the earlier CW emission; same three vertices each).
+      triangles.push(spoke[k][g], spoke[kn][g + 1], spoke[kn][g], spoke[k][g], spoke[k][g + 1], spoke[kn][g + 1]);
       fanTriangles += 2;
     }
     for (let k = 0; k < B; k++) {

@@ -165,6 +165,38 @@ describe('DS-CONEFAN-PROD coneFan — structured tip-fan invariants', () => {
     expect(wall.fanTriangles).toBeGreaterThan(0);
   });
 
+  it('every cone-fan triangle is positively oriented (CCW) in (u,t) — correct BY CONSTRUCTION, not repaired downstream', () => {
+    // The assembly's orientOutward pass re-derives a consistent outward winding from geometry, so a mesh that is
+    // internally winding-INconsistent still exports correctly — but only AFTER repair. This pins the stronger property
+    // the cert-clean partition needs and the production mesh should have anyway: every emitted triangle already winds
+    // CCW in (u,t) (= outward normal on this increasing-u/increasing-t cylinder). Grid quads are CCW by construction;
+    // this catches the per-apex fan, whose ring-band triangles wound CW (latent, masked by orientOutward).
+    const nU = 64;
+    const wall = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 }), { patchP: 1 });
+    const gridVertexCount = wall.tRows.length * wall.nU; // grid vertices are emitted first, then the fan spokes.
+    // Signed (u,t) area, unwrapping u relative to the first vertex so the periodic seam never fakes the sign.
+    const signedArea2 = (a: number, b: number, c: number): number => {
+      const ua = wall.ut[2 * a], ta = wall.ut[2 * a + 1];
+      let ub = wall.ut[2 * b]; const tb = wall.ut[2 * b + 1];
+      let uc = wall.ut[2 * c]; const tc = wall.ut[2 * c + 1];
+      if (ub - ua > 0.5) ub -= 1; else if (ua - ub > 0.5) ub += 1;
+      if (uc - ua > 0.5) uc -= 1; else if (ua - uc > 0.5) uc += 1;
+      return (ub - ua) * (tc - ta) - (uc - ua) * (tb - ta);
+    };
+    const nF = wall.indices.length / 3;
+    let gridCW = 0, fanCW = 0, fanCount = 0;
+    for (let f = 0; f < nF; f++) {
+      const a = wall.indices[3 * f], b = wall.indices[3 * f + 1], c = wall.indices[3 * f + 2];
+      const isFan = a >= gridVertexCount || b >= gridVertexCount || c >= gridVertexCount;
+      const area2 = signedArea2(a, b, c);
+      if (isFan) { fanCount++; if (area2 <= 0) fanCW++; }
+      else if (area2 <= 0) gridCW++;
+    }
+    expect(fanCount).toBeGreaterThan(0);
+    expect(gridCW).toBe(0); // reference: the structured grid quads are already CCW
+    expect(fanCW).toBe(0); // the per-apex fan must be CCW by construction too
+  });
+
   it('each non-skipped fan APEX is a grid vertex EXACTLY on the analytic scale tip (u,t) and its lift', () => {
     const nU = 64;
     const wall = buildDsConeFanWall(syntheticDsRA, H, nU, buildDsConeFanTSchedule(H, { bodyStepMm: 2, crestLadderRows: 3 }), { patchP: 1 });
