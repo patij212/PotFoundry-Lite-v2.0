@@ -241,6 +241,20 @@ describe('DS-CONEFAN-PROD coneFan — structured tip-fan invariants', () => {
     expect(manifoldCensus(res.indices).nonManifold).toBe(0);
     for (let i = 0; i < res.gridVertexCount; i++) expect(res.vertices[3 * i + 2]).toBe(0);
   });
+
+  it('cone-fan DEFAULTS are the E-DS-SLIVER sliver-Pareto schedule (no crest ladder, steeper flank, finer body)', () => {
+    // Measurement-driven defaults (research/bridge/_dsSliver.test.ts sweep @ nU4096, real DS radius): body 0.10 +
+    // crestLadderRows 0 + flankGrade 2.5 took the production cone-fan from 14.3% to 3.3% <20° while IMPROVING fidelity
+    // (fwd 0.0072→0.005, rev 0.0024→0.0028, watertight, both ≤0.01). This guards the DEFAULTS against accidental
+    // revert; the sliver/fidelity OUTCOME is the research probe's verdict (it needs nU4096 + the real radius).
+    const def = buildDsConeFanTSchedule(H).length;
+    // crest ladder is OFF by default — adding it back inserts fine rows around every crest.
+    expect(buildDsConeFanTSchedule(H, { crestLadderRows: 7 }).length).toBeGreaterThan(def);
+    // flank grade is the steeper 2.5 by default — the shallower pre-DS-SLIVER 1.5 packs more fine near-tread rows.
+    expect(buildDsConeFanTSchedule(H, { flankGrade: 1.5 }).length).toBeGreaterThan(def);
+    // body step is the finer 0.10 by default — the old 0.12 is coarser ⇒ fewer body rows.
+    expect(buildDsConeFanTSchedule(H, { bodyStepMm: 0.12 }).length).toBeLessThan(def);
+  });
 });
 
 describe('CONVERGE-A flag gating — default OFF, byte-identical', () => {

@@ -260,14 +260,32 @@ export function dsRingStripWallToOuterWall(wall: DsRingStripWall): ConformingOut
 export interface DsConeFanOpts {
   /** DragonScales lattice (default 8/16/0.5). */
   lattice?: DsLattice;
-  /** Uniform body-row spacing (mm) filling gaps between the crest ladders (default 0.12 — the whole-body-close value). */
+  /**
+   * Uniform body-row spacing (mm). Default 0.10 — the sliver-Pareto value (E-2026-07-22-DS-SLIVER): near the nU=4096
+   * u-column arc (~0.069mm) so body quads are near-isotropic. Coarser (≥0.16) EXPLODES slivers; 0.10 lands the grid at
+   * the ~3% intrinsic tread floor while IMPROVING whole-body fidelity (fwd 0.005 vs 0.0072 at the old 0.12).
+   */
   bodyStepMm?: number;
-  /** Rows per side of the geometric ladder fanning out from each crest cusp (default 7). */
+  /**
+   * Rows per side of the geometric ladder fanning out from each crest cusp. Default 0 (E-2026-07-22-DS-SLIVER): the
+   * per-apex fan already resolves the tip cone, so the ladder only ADDED thin-row slivers + anisotropic fan blocks and
+   * (measured) WORSENED fidelity. The crest ROW itself is always kept (the fan apex must be exact) — this is only the
+   * fine ladder around it.
+   */
   crestLadderRows?: number;
   /** Fan block half-extent in grid CELLS (the (2p+1)² block retriangulated as a fan; default 3). */
   patchP?: number;
   /** Fan ring fractions apex→boundary (geometric-graded, fine near apex; default the whole-body-close ladder). */
   fanFrac?: number[];
+  /** Tread double-pair half-height (mm), forwarded to the ring schedule (default 0.005 — the near-vertical C0 riser). */
+  treadHalfMm?: number;
+  /** Flank-ladder reach (mm) fanning from each ring, forwarded to the ring schedule (default 1.3). */
+  flankReachMm?: number;
+  /** Flank-ladder max rows per side of each ring, forwarded to the ring schedule (default 20). */
+  flankRows?: number;
+  /** Flank-ladder geometric ratio, forwarded to the ring schedule. Default 2.5 (E-2026-07-22-DS-SLIVER): steeper than
+   *  the ring-strip's 1.5 so the ladder skips the fine near-tread sliver rows (fidelity unchanged — worst facet is elsewhere). */
+  flankGrade?: number;
 }
 
 const DEFAULT_CONE_FAN_FRAC = [0.05, 0.12, 0.25, 0.45, 0.7];
@@ -281,10 +299,21 @@ const DEFAULT_CONE_FAN_FRAC = [0.05, 0.12, 0.25, 0.45, 0.7];
 export function buildDsConeFanTSchedule(H: number, opts: DsConeFanOpts = {}): number[] {
   const lat = opts.lattice ?? DEFAULT_DS_LATTICE;
   const scaleRows = lat.scaleRows;
-  const bodyStepT = Math.max(1e-6, (opts.bodyStepMm ?? 0.12) / H);
-  const ladderRows = Math.max(0, Math.floor(opts.crestLadderRows ?? 7));
-  // ring machinery only (huge bodyStepMm ⇒ buildDsRingTSchedule adds no uniform body rows).
-  const set = new Set<number>(buildDsRingTSchedule(H, { lattice: lat, bodyStepMm: 1e9 }));
+  // DEFAULTS = the E-2026-07-22-DS-SLIVER safe-Pareto config (14.3% → 3.3% <20°, min 1.4° → 2.4°, fwd fidelity 0.0072 →
+  // 0.005, watertight preserved): body 0.10 (near-isotropic quads), NO crest ladder (the fan resolves the tip cone),
+  // flank grade 2.5 (skip the fine near-tread sliver rows). The ~3% residual is the intrinsic tread-riser floor.
+  const bodyStepT = Math.max(1e-6, (opts.bodyStepMm ?? 0.10) / H);
+  const ladderRows = Math.max(0, Math.floor(opts.crestLadderRows ?? 0));
+  // ring machinery only (huge bodyStepMm ⇒ buildDsRingTSchedule adds no uniform body rows). The tread/flank-ladder
+  // knobs forward to the ring schedule so the cone-fan can regrade them (sliver Pareto) without a separate schedule.
+  const set = new Set<number>(buildDsRingTSchedule(H, {
+    lattice: lat,
+    bodyStepMm: 1e9,
+    flankGrade: opts.flankGrade ?? 2.5,
+    ...(opts.treadHalfMm !== undefined ? { treadHalfMm: opts.treadHalfMm } : {}),
+    ...(opts.flankReachMm !== undefined ? { flankReachMm: opts.flankReachMm } : {}),
+    ...(opts.flankRows !== undefined ? { flankRows: opts.flankRows } : {}),
+  }));
   for (let k = 0; k < scaleRows; k++) {
     const tc = (k + 0.5) / scaleRows;
     set.add(tc);

@@ -19,8 +19,8 @@ import { describe, it } from 'vitest';
 import { mkdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { cpuUsage } from 'node:process';
-import { triangleQualityDistribution } from './labkit';
-import { dsRadiusFn, H as DS_H } from './_ds_prodtruth_lib';
+import { triangleQualityDistribution, perFaceTrue3DSag, nonManRawBigStats } from './labkit';
+import { dsRadiusFn, dragonRings, H as DS_H, TOL, buildArtifactLocator, oneSidedRA } from './_ds_prodtruth_lib';
 import {
   buildDsConeFanWallGeometric,
   type DsConeFanOpts,
@@ -155,5 +155,76 @@ describe('DS-SLIVER (SCOPE) — localize the production cone-fan <20° populatio
     plog(`[SLIVER] WORST triangle: ${JSON.stringify(worstInfo)}`);
     checkpoint({ key, nU, rows, tris: nF, gridTris, fanTris, apex: w.apexCount, pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3), uArcMm: +uArcMm.toFixed(4), bySource: table, dzHist, worst: worstInfo });
     plog('[SLIVER] DONE');
+  }, 60 * 60 * 1000);
+
+  // SWEEP arm (safe Pareto): for a parametrized cone-fan config, measure slivers (%<20, global min, FAN-only min) AND
+  // fwd true-3D fidelity (ring-excluded whole-body MAX + apex-cone MAX + outliers) so no sliver win is bought with a
+  // fidelity regression. Env knobs: PF_DSSLIVER_FAN (comma fractions) / _CREST (crestLadderRows) / _BODY (bodyStepMm) /
+  // _P (patchP) / _NU / _TAG. Baseline (defaults) must reproduce DS-COMPOSE fwd≈0.0072, %<20=14.3, min=1.4.
+  it.skipIf(process.env.PF_DSSLIVER_SWEEP !== '1')('sweep — slivers + fan-min + fwd true-3D fidelity for a parametrized config', () => {
+    plog(`=== DS-SLIVER SWEEP => ${NDJSON} ===`);
+    const rA = dsRadiusFn() as AnalyticRadiusFn;
+    const nU = process.env.PF_DSSLIVER_NU ? parseInt(process.env.PF_DSSLIVER_NU, 10) : 4096;
+    const fan = process.env.PF_DSSLIVER_FAN ? process.env.PF_DSSLIVER_FAN.split(',').map(Number) : [0.05, 0.12, 0.25, 0.45, 0.7];
+    const crest = process.env.PF_DSSLIVER_CREST ? parseInt(process.env.PF_DSSLIVER_CREST, 10) : 7;
+    const body = process.env.PF_DSSLIVER_BODY ? parseFloat(process.env.PF_DSSLIVER_BODY) : 0.12;
+    const p = process.env.PF_DSSLIVER_P ? parseInt(process.env.PF_DSSLIVER_P, 10) : 3;
+    const flankRows = process.env.PF_DSSLIVER_FLANKROWS ? parseInt(process.env.PF_DSSLIVER_FLANKROWS, 10) : undefined;
+    const flankGrade = process.env.PF_DSSLIVER_FLANKGRADE ? parseFloat(process.env.PF_DSSLIVER_FLANKGRADE) : undefined;
+    const flankReachMm = process.env.PF_DSSLIVER_FLANKREACH ? parseFloat(process.env.PF_DSSLIVER_FLANKREACH) : undefined;
+    const treadHalfMm = process.env.PF_DSSLIVER_TREAD ? parseFloat(process.env.PF_DSSLIVER_TREAD) : undefined;
+    const tag = process.env.PF_DSSLIVER_TAG ?? 'x';
+    // PURE=1 ⇒ build with NO opts (the src emitter DEFAULTS) — the end-to-end check that the shipped defaults are the
+    // sliver-Pareto winner, not just that an explicit config is.
+    const pure = process.env.PF_DSSLIVER_PURE === '1';
+    const key = `sweep|${tag}|nU${nU}|${pure ? 'PUREDEFAULTS' : `fan${fan.join('-')}|c${crest}|b${body}|p${p}|fr${flankRows ?? '_'}|fg${flankGrade ?? '_'}|frr${flankReachMm ?? '_'}|tr${treadHalfMm ?? '_'}`}`;
+    if (keyExists(key)) { plog(`[skip] ${key}`); return; }
+    const opts: DsConeFanOpts = pure ? {} : {
+      patchP: p, fanFrac: fan, bodyStepMm: body, crestLadderRows: crest,
+      ...(flankRows !== undefined ? { flankRows } : {}),
+      ...(flankGrade !== undefined ? { flankGrade } : {}),
+      ...(flankReachMm !== undefined ? { flankReachMm } : {}),
+      ...(treadHalfMm !== undefined ? { treadHalfMm } : {}),
+    };
+    const t0 = Date.now();
+    const w = buildDsConeFanWallGeometric(rA, DS_H, nU, opts);
+    const buildS = (Date.now() - t0) / 1000;
+    const nF = w.indices.length / 3;
+    const gridTris = nF - w.fanTriangles;
+    const q = triangleQualityDistribution({ vertices: w.vertices, indices: w.indices });
+    // FAN-only min angle (the fan-center metric the fanFrac lever targets).
+    let fanMin = 180;
+    for (let f = gridTris; f < nF; f++) { const a = triMinAngle(w.vertices, w.indices[3 * f], w.indices[3 * f + 1], w.indices[3 * f + 2]); if (a >= 0 && a < fanMin) fanMin = a; }
+    // fwd true-3D fidelity: ring-excluded whole-body (dz>1mm) MAX + apex-cone (dtToCrest<0.6mm) MAX. The FIDELITY GATE.
+    const ringZs = dragonRings().map((r) => r.z);
+    const sag = perFaceTrue3DSag(w.ut, w.indices, rA, DS_H, { preFilterMm: 0.005 });
+    let bodyMax = 0, bodyOut = 0, bodyN = 0, apexMax = 0, apexOut = 0;
+    for (let f = 0; f < nF; f++) {
+      const zc = (w.vertices[3 * w.indices[3 * f] + 2] + w.vertices[3 * w.indices[3 * f + 1] + 2] + w.vertices[3 * w.indices[3 * f + 2] + 2]) / 3;
+      let dzr = 1e9; for (const rz of ringZs) { const d = Math.abs(zc - rz); if (d < dzr) dzr = d; }
+      if (dzr <= 1.0) continue;
+      bodyN++; const e = sag.faceErr[f]; if (e > bodyMax) bodyMax = e; if (e > TOL) bodyOut++;
+      if (nearestMm(zc / DS_H, CREST_TS) < 0.6) { if (e > apexMax) apexMax = e; if (e > TOL) apexOut++; }
+    }
+    // REV-coverage (under-coverage) + watertight — the full DS-COMPOSE gate; only on a winner (heavy). PF_DSSLIVER_REV=1.
+    let revMax = -1, revOut = -1, nonMan = -1, boundary = -1;
+    if (process.env.PF_DSSLIVER_REV === '1') {
+      const loc = buildArtifactLocator(w.vertices, w.indices);
+      const rAos = oneSidedRA(rA, ringZs, 1e-4) as unknown as AnalyticRadiusFn;
+      revMax = 0; revOut = 0; const nUu = 1024, nTt = 2400;
+      for (let j = 0; j < nTt; j++) {
+        const z = (j / (nTt - 1)) * DS_H;
+        let dzr = 1e9; for (const rz of ringZs) { const d = Math.abs(z - rz); if (d < dzr) dzr = d; }
+        if (dzr <= 1.0) continue;
+        for (let i = 0; i < nUu; i++) { const th = (i / nUu) * 2 * Math.PI; const r = rAos(th, z); const d = loc.dist(r * Math.cos(th), r * Math.sin(th), z); if (d > TOL) revOut++; if (d > revMax) revMax = d; }
+      }
+      const bs = nonManRawBigStats(w.indices); nonMan = bs.nonMan; boundary = bs.boundary;
+      plog(`[SWEEP][${tag}] REV bodyMAX=${revMax.toFixed(6)} out=${revOut} | nonMan=${nonMan} boundary=${boundary} (expect 2*nU=${2 * w.nU})`);
+    }
+    const fidelityOk = bodyOut === 0 && apexOut === 0 && (revOut <= 0) && (nonMan <= 0);
+    plog(`[SWEEP][${tag}] nU=${nU} fan=[${fan}] crest=${crest} body=${body} p=${p} tris=${nF} apex=${w.apexCount} build=${buildS.toFixed(2)}s`);
+    plog(`[SWEEP][${tag}] SLIVERS %<20=${q.pctBelow20.toFixed(2)} min=${q.minAngleDeg.toFixed(3)} fanMin=${fanMin.toFixed(3)} | FIDELITY fwdBodyMAX=${bodyMax.toFixed(6)} out=${bodyOut}/${bodyN} apexMAX=${apexMax.toFixed(6)} out=${apexOut} => ${fidelityOk ? 'OK' : 'REGRESSED'}`);
+    checkpoint({ key, tag, nU, fan, crest, body, p, flankGrade: flankGrade ?? null, flankRows: flankRows ?? null, flankReachMm: flankReachMm ?? null, treadHalfMm: treadHalfMm ?? null, tris: nF, apex: w.apexCount, buildS: +buildS.toFixed(2), pctBelow20: +q.pctBelow20.toFixed(2), minAngle: +q.minAngleDeg.toFixed(3), fanMinAngle: +fanMin.toFixed(3), fwdBodyMax: +bodyMax.toFixed(6), fwdBodyOut: bodyOut, apexConeMax: +apexMax.toFixed(6), apexOut, revBodyMax: +revMax.toFixed(6), revBodyOut: revOut, nonMan, boundary, FIDELITY_OK: fidelityOk });
+    plog(`[SWEEP][${tag}] DONE fidelityOK=${fidelityOk}`);
   }, 60 * 60 * 1000);
 });
