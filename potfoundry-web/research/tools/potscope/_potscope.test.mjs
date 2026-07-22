@@ -547,3 +547,110 @@ test('buildStatusRows ignores the manifest when on-disk recon.json are present (
   assert.equal(rows[0].source, 'sidecar');
   assert.ok(!rows.some((r) => r.name === 'FromManifest'), 'manifest must be ignored when sidecars exist');
 });
+
+// --- convergence probe: refine-vs-redesign VERDICT (P2b) ------------------------
+// The user-facing half of the probe. The harness (_certRosterConvergence.test.ts)
+// bakes each pot's worst per-patch residual at TWO densities into a
+// <name>.converge.json; the ratio coarseMax/fineMax is the signal (chord error
+// ~h², so doubling density should ~quarter a smooth-surface residual). potscope
+// turns that ratio into an actionable per-patch call.
+import { convergeVerdict, readConverge, buildConvergeRows } from './potscope.mjs';
+
+test('convergeVerdict: ratio thresholds map to the refine-vs-redesign verdict', () => {
+  // measured roster anchors
+  assert.equal(convergeVerdict(4.0).verdict, 'RESPONSIVE'); // HarmonicRipple walls 3.9-4.0
+  assert.equal(convergeVerdict(2.12).verdict, 'PARTIAL'); // GeometricStar outer-wall
+  assert.equal(convergeVerdict(1.07).verdict, 'IRREDUCIBLE'); // GeometricStar inner-wall
+  // EXACT boundaries: >=3 RESPONSIVE, [1.8,3) PARTIAL, <1.8 IRREDUCIBLE
+  assert.equal(convergeVerdict(3.0).verdict, 'RESPONSIVE');
+  assert.equal(convergeVerdict(1.8).verdict, 'PARTIAL');
+  assert.equal(convergeVerdict(1.79).verdict, 'IRREDUCIBLE');
+  // each verdict carries a lever naming the action
+  assert.match(convergeVerdict(4).lever, /refine:/);
+  assert.match(convergeVerdict(2).lever, /mixed:/);
+  assert.match(convergeVerdict(1).lever, /redesign:/);
+  // degenerate ratios: +Infinity (fineMax 0) -> RESPONSIVE; NaN (missing coarse)
+  // -> conservative IRREDUCIBLE (no evidence density helps)
+  assert.equal(convergeVerdict(Number.POSITIVE_INFINITY).verdict, 'RESPONSIVE');
+  assert.equal(convergeVerdict(Number.NaN).verdict, 'IRREDUCIBLE');
+});
+
+// synthetic converge.json fixture (real schema: magic + variant/style + perPatch
+// object keyed by patchId, NOT a `patches` array — confirmed against the emitted
+// GeometricStar/HarmonicRipple files). extra merges/overrides top-level keys.
+function writeConverge(name, perPatch, extra = {}) {
+  const p = join(DIR, name);
+  writeFileSync(
+    p,
+    JSON.stringify({
+      magic: 'potscope-converge/v1',
+      variant: name.replace(/\.converge\.json$/, ''),
+      style: 'X',
+      depth: 2,
+      coarseStep: 1,
+      fineTrisTotal: 1000,
+      coarseTrisTotal: 250,
+      fineGlobalMaxMm: 0.0066,
+      coarseGlobalMaxMm: 0.014,
+      perPatch,
+      ...extra,
+    })
+  );
+  return p;
+}
+
+const CONVERGE_PATCHES = {
+  'outer-wall': { fineMaxMm: 0.0066, coarseMaxMm: 0.014, ratio: 2.12, verdict: 'partial', fineTris: 100, coarseTris: 25 },
+  'inner-wall': { fineMaxMm: 0.0059, coarseMaxMm: 0.0063, ratio: 1.07, verdict: 'irreducible', fineTris: 200, coarseTris: 100 },
+  'top-rim': { fineMaxMm: 0.0022, coarseMaxMm: 0.0088, ratio: 4.0, verdict: 'responsive', fineTris: 50, coarseTris: 12 },
+};
+
+test('readConverge parses a converge.json and exposes the perPatch table', () => {
+  const data = readConverge(writeConverge('good.converge.json', CONVERGE_PATCHES));
+  assert.equal(data.variant, 'good');
+  assert.equal(Object.keys(data.perPatch).length, 3);
+  assert.ok(Math.abs(data.perPatch['outer-wall'].ratio - 2.12) < 1e-9);
+});
+
+test('readConverge throws on a wrong magic (provenance guard)', () => {
+  const p = join(DIR, 'wrongmagic.converge.json');
+  writeFileSync(p, JSON.stringify({ magic: 'potscope-error/v1', perPatch: {} }));
+  assert.throws(() => readConverge(p), /bad converge magic/);
+});
+
+test('readConverge throws when perPatch is absent (not a convergence sidecar)', () => {
+  const p = join(DIR, 'nopatches.converge.json');
+  writeFileSync(p, JSON.stringify({ magic: 'potscope-converge/v1' }));
+  assert.throws(() => readConverge(p), /perPatch/);
+});
+
+test('buildConvergeRows recomputes verdict+lever, sorts worst (lowest ratio) first, flags laddered patches', () => {
+  const p = writeConverge('rows.converge.json', CONVERGE_PATCHES, {
+    // inner-wall pinned by a vertical station-ladder → coarsens ANGULAR-only
+    fineDivisions: {
+      angularDivisionsLog2: 9,
+      verticalDivisionsLog2ByPatch: { 'outer-wall': 6, 'inner-wall': 6, 'top-rim': 3 },
+      verticalStationsByPatch: { 'inner-wall': { log2Denominator: 6, numerators: [0, 64] } },
+    },
+  });
+  const rows = buildConvergeRows(readConverge(p));
+  // worst-first = ascending ratio (the patch most demanding redesign at the top)
+  assert.deepEqual(rows.map((r) => r.patchId), ['inner-wall', 'outer-wall', 'top-rim']);
+  // verdict is RECOMPUTED via convergeVerdict on the ratio — NOT the stored
+  // lowercase field (the harness lib uses different 2.5/1.5 thresholds)
+  assert.equal(rows[0].verdict, 'IRREDUCIBLE');
+  assert.equal(rows[1].verdict, 'PARTIAL');
+  assert.equal(rows[2].verdict, 'RESPONSIVE');
+  assert.ok(rows[0].lever.includes('redesign'));
+  // laddered flag derived from fineDivisions.verticalStationsByPatch
+  assert.equal(rows.find((r) => r.patchId === 'inner-wall').laddered, true);
+  assert.equal(rows.find((r) => r.patchId === 'outer-wall').laddered, false);
+  // row carries the raw residuals + ratio through
+  assert.ok(Math.abs(rows[1].fineMaxMm - 0.0066) < 1e-9);
+  assert.ok(Math.abs(rows[1].ratio - 2.12) < 1e-9);
+});
+
+test('buildConvergeRows: no station ladder -> every laddered flag false', () => {
+  const rows = buildConvergeRows(readConverge(writeConverge('noladder.converge.json', CONVERGE_PATCHES)));
+  assert.ok(rows.every((r) => r.laddered === false), 'no verticalStationsByPatch → nothing laddered');
+});

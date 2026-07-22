@@ -14,6 +14,7 @@
  *   node potscope.mjs run -- <command ...>      # spawn + EcoQoS bump + probe capture
  *   node potscope.mjs decode '<refusal line>' [--patch inner|outer] [--counts '<json>']
  *   node potscope.mjs view <file.stl> [--out <file.html>] [--decimate <k>]
+ *   node potscope.mjs converge <name|path> [--json]   # per-patch refine-vs-redesign verdict
  */
 import { spawn, execFile } from 'node:child_process';
 import {
@@ -1041,6 +1042,184 @@ function cmdManifest(args) {
   console.log(`potscope manifest: wrote ${manifest.pots.length} pots to ${outPath}`);
 }
 
+// --------------------------------------------------------------------- converge
+// The refine-vs-redesign VERDICT layer over the convergence probe. The harness
+// (research/bridge/_certRosterConvergence.test.ts) bakes each pot's worst
+// per-patch residual at TWO densities into <name>.converge.json; the ratio
+// coarseMax/fineMax is the signal — chord error scales ~h² where the surface is
+// smooth, so DOUBLING density should ~quarter the residual (ratio ~4). Where a
+// feature is under-resolvable by the current tessellation the residual barely
+// drops (ratio ~1). This turns that ratio into a per-patch call.
+
+const CONVERGE_LEVERS = {
+  RESPONSIVE: 'refine: add density — error falls ~h², more triangles will certify this region',
+  PARTIAL: 'mixed: density helps but a feature is limiting — targeted density + inspect the feature (hotspots)',
+  IRREDUCIBLE: 'redesign: refinement barely helps — conforming edges / anisotropic kernel / atlas, NOT more triangles',
+};
+
+// PURE + exported. Map a coarse/fine worst-residual ratio to { verdict, lever }.
+// Thresholds calibrated on the measured roster: HarmonicRipple walls 3.9-4.0
+// (RESPONSIVE), GeometricStar outer-wall 2.12 (PARTIAL), inner-wall 1.07
+// (IRREDUCIBLE). >=3 is within ~25% of the ideal h² quartering; <1.8 means the
+// residual barely moved when density doubled. Degenerate inputs fall out of the
+// same comparisons: +Infinity (fineMax 0, i.e. already exact) >=3 → RESPONSIVE;
+// NaN (missing coarse) fails both >= tests → the conservative IRREDUCIBLE (no
+// evidence density helps). NOTE these thresholds differ deliberately from the
+// harness lib's classifyRatio (2.5/1.5, lowercase) — the CLI recomputes here.
+export function convergeVerdict(ratio) {
+  const verdict = ratio >= 3 ? 'RESPONSIVE' : ratio >= 1.8 ? 'PARTIAL' : 'IRREDUCIBLE';
+  return { verdict, lever: CONVERGE_LEVERS[verdict] };
+}
+
+// Parse a <name>.converge.json (JSON object; see the harness writer). Throws on a
+// wrong magic (provenance: the file is not a converge sidecar) and on a
+// missing/non-object perPatch (the payload the verdict layer needs). The real
+// schema keys the per-patch data by patchId in a `perPatch` OBJECT (not a
+// `patches` array). Exported.
+export function readConverge(path) {
+  const data = JSON.parse(readFileSync(path, 'utf8'));
+  if (data.magic !== undefined && data.magic !== 'potscope-converge/v1') {
+    throw new Error(`bad converge magic: ${data.magic}`);
+  }
+  if (data.perPatch === null || typeof data.perPatch !== 'object' || Array.isArray(data.perPatch)) {
+    throw new Error('converge: missing perPatch object (not a convergence sidecar?)');
+  }
+  return data;
+}
+
+// PURE + exported. Flatten perPatch into rows carrying the RECOMPUTED verdict +
+// lever (convergeVerdict on the stored ratio — the CLI's job is to apply the
+// verdict thresholds, not to trust the harness's lowercase `verdict` field which
+// uses different cutoffs), plus a `laddered` flag. A patch listed in
+// fineDivisions.verticalStationsByPatch is pinned by a vertical station-ladder
+// that coarsenDivisions passes through UNCHANGED (only the two uniform knobs
+// coarsen), so that patch coarsens ANGULAR-only and its ratio reflects angular
+// refinement alone. Rows sorted worst-first = ascending ratio (ties: larger fine
+// residual first), so the patch most demanding redesign heads the table.
+export function buildConvergeRows(data) {
+  const perPatch = data.perPatch ?? {};
+  const laddered = (data.fineDivisions && data.fineDivisions.verticalStationsByPatch) || {};
+  const rows = Object.entries(perPatch).map(([patchId, p]) => {
+    const { verdict, lever } = convergeVerdict(p.ratio);
+    return {
+      patchId,
+      fineMaxMm: p.fineMaxMm,
+      coarseMaxMm: p.coarseMaxMm,
+      ratio: p.ratio,
+      verdict,
+      lever,
+      fineTris: p.fineTris,
+      coarseTris: p.coarseTris,
+      laddered: Object.prototype.hasOwnProperty.call(laddered, patchId),
+    };
+  });
+  rows.sort((a, b) => a.ratio - b.ratio || b.fineMaxMm - a.fineMaxMm);
+  return rows;
+}
+
+const CERTIFIED_STL_DIR = () => join(HERE, '..', '..', 'exchange', '_certified_stl');
+
+function cmdConverge(args) {
+  const nameOrPath = args._[0];
+  if (!nameOrPath) {
+    console.error('usage: potscope converge <name|path> [--json] [--dir <certified_stl>]');
+    process.exit(2);
+  }
+  const dir = resolve(argValue(args, '--dir') ?? CERTIFIED_STL_DIR());
+  // Accept a bare pot name (resolve to <dir>/<name>.converge.json), an explicit
+  // *.converge.json path, or any existing file path.
+  const direct = resolve(nameOrPath);
+  const path =
+    existsSync(direct) && statSync(direct).isFile()
+      ? direct
+      : nameOrPath.endsWith('.converge.json')
+      ? direct
+      : join(dir, `${nameOrPath}.converge.json`);
+  if (!existsSync(path)) {
+    const name = nameOrPath.replace(/\.converge\.json$/i, '').split(/[\\/]/).pop();
+    console.error(`converge: no converge.json at ${path}`);
+    console.error('bake it first (~minutes; the probe runs through the EcoQoS wrapper):');
+    console.error(
+      `  PF_CONVERGE=${name} node research/tools/potscope/potscope.mjs run -- npx vitest run research/bridge/_certRosterConvergence.test.ts`
+    );
+    process.exit(2);
+  }
+  let data;
+  try {
+    data = readConverge(path);
+  } catch (err) {
+    console.error(`converge: ${err.message}`);
+    process.exit(2);
+  }
+  const rows = buildConvergeRows(data);
+  const worst = rows[0];
+  const cert = data.calibration ? data.calibration.certGlobalMaxMm : undefined;
+
+  if (args.flags.includes('--json')) {
+    console.log(
+      JSON.stringify(
+        {
+          variant: data.variant,
+          style: data.style,
+          depth: data.depth,
+          coarseStep: data.coarseStep,
+          fineGlobalMaxMm: data.fineGlobalMaxMm,
+          coarseGlobalMaxMm: data.coarseGlobalMaxMm,
+          certGlobalMaxMm: cert,
+          fineTrisTotal: data.fineTrisTotal,
+          coarseTrisTotal: data.coarseTrisTotal,
+          worstPatch: worst ? worst.patchId : null,
+          worstVerdict: worst ? worst.verdict : null,
+          rows,
+        },
+        null,
+        2
+      )
+    );
+    return;
+  }
+
+  const um = (mm) => (mm == null || Number.isNaN(mm) ? '—' : (mm * 1000).toFixed(2));
+  const ratioStr = (r) => (Number.isFinite(r) ? r.toFixed(2) : '∞');
+  const n = (x) => (typeof x === 'number' ? x.toLocaleString() : '?');
+  console.log(
+    `${data.variant} (${data.style}) — convergence probe · depth ${data.depth} · coarseStep ${data.coarseStep}`
+  );
+  console.log(
+    `fine global max ${um(data.fineGlobalMaxMm)}µm · coarse ${um(data.coarseGlobalMaxMm)}µm` +
+      `${cert !== undefined ? ` · cert ${um(cert)}µm` : ''} · ${n(data.fineTrisTotal)}→${n(data.coarseTrisTotal)} tris`
+  );
+  console.log('refine-vs-redesign by patch (ratio = coarseMax/fineMax; ~4 responsive · ~1 irreducible):\n');
+  console.log('  patch           fineµm  coarseµm  ratio  verdict');
+  for (const r of rows) {
+    console.log(
+      `  ${r.patchId.padEnd(14)} ${um(r.fineMaxMm).padStart(6)}  ${um(r.coarseMaxMm).padStart(7)}  ` +
+        `${ratioStr(r.ratio).padStart(5)}  ${r.verdict}${r.laddered ? ' *' : ''}`
+    );
+  }
+  // Coarsening caveat: a station-laddered patch coarsened on the ANGULAR axis
+  // only — its vertical feature stations passed through the coarse transform
+  // unchanged — so its ratio is the angular-refinement response, not a
+  // full-density one. Surface it so an IRREDUCIBLE laddered patch is not
+  // mis-read as "density-proof on every axis".
+  const ladderedRows = rows.filter((r) => r.laddered);
+  if (ladderedRows.length > 0) {
+    console.log('');
+    for (const r of ladderedRows) {
+      console.log(
+        `  * ${r.patchId}: vertical station-ladder held fixed across densities — ratio reflects` +
+          ` ANGULAR refinement only (vertical feature stations are refinement-invariant)`
+      );
+    }
+  }
+  if (worst) {
+    console.log(
+      `\nworst: ${worst.patchId} ${worst.verdict} (ratio ${ratioStr(worst.ratio)}, fine ${um(worst.fineMaxMm)}µm)` +
+        `\n  → ${worst.lever}`
+    );
+  }
+}
+
 function cmdView(args) {
   const stlPaths = args._.map((p) => resolve(p));
   if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
@@ -1497,6 +1676,7 @@ function main() {
     case 'hotspots': cmdHotspots(args); break;
     case 'status': cmdStatus(args); break;
     case 'manifest': cmdManifest(args); break;
+    case 'converge': cmdConverge(args); break;
     case 'serve': cmdServe(args); break;
     default:
       console.log('potscope — certification-lab instrument panel');
@@ -1509,6 +1689,7 @@ function main() {
       console.log('  hotspots <name|stl> [--top N] [--budget mm] [--json]   (residual structure)');
       console.log('  status [<substr>] [--check] [--json]   (certificate registry + drift guard)');
       console.log('  manifest [--dir <certified_stl>] [--out path]   (portable cert snapshot → fresh-clone status)');
+      console.log('  converge <name|path> [--json]   (per-patch refine-vs-redesign verdict from the convergence probe)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
   }
 }
