@@ -48,8 +48,21 @@ the extra base curvature. DS + SpiralRidges already used correct tapered dims. S
   Route: feature-conforming rows on the interference crest lines. (WaveInterference LOOKED stuck at low density but CLOSES
   at 2048×256 — its edge-fade kinks resolve by angular density at true-3D; it is row 7.)
 
+### PRODUCTIONIZED (commit 121a7fe1) — the smooth-grid emitter is WIRED into the export dispatch
+
+The 6 smooth-grid styles are no longer just a research harness: `src/renderers/webgpu/parametric/conforming/tierC/
+smoothGrid.ts` (`buildSmoothGridWall` uniform periodic (u,t) grid CCW-by-construction + u-seam welded by index;
+`smoothGridWallToOuterWall` (u,t,0) packing with EMERGENT nU rims; `deriveSmoothGridDensity` sag∝1/n² sizing nU→pow2;
+`buildSmoothGridOuterWall`) is routed by the `ParametricExportComputer` dispatch (`smoothWall ?? regionWall ??
+buildTierCOuterWall`) under a narrow default-OFF sub-flag `__pfSmoothGrid` (regionLayerFlag.ts) + `SMOOTH_GRID_STYLES`/
+`isSmoothGridStyle`/`buildSmoothGridDispatchWall` (index.ts). Needs BOTH `__pfSmoothGrid` AND `__pfPerfectMesher` (the
+assembly adopt hook) ⇒ `__pfSmoothGrid` alone is inert, flag-off is byte-identical (guarded). The emergent-nU rims are
+adopted exactly like the DS cone-fan (WatertightAssembly pins the inner wall to `outer.bottomRing.length`). TDD 18/18 +
+an END-TO-END `assembleWatertight` adoption test proving the wall stitches into a watertight closed solid (boundary=0,
+nonMan=0, orient=0). This is the FIRST production-wired member of the certifiable-mesh campaign.
+
 DS is the STRUCTURED-EMITTER class proof; HR/SE/FB/SR/SFB/WI are the SMOOTH-GRID class proof. **7 styles now have a
-certifiable structured production mesh, from 0 at session start.** Note the closing tri-count varies 65k (SFB) → ~4M
+certifiable structured production mesh, from 0 at session start (6 now WIRED into the dispatch).** Note the closing tri-count varies 65k (SFB) → ~4M
 (SR): SFB/SE are gentle-shaped (cheap), FB/HR/SR need the angular columns for their petals/ridges. SR (>cap) certifies
 by the DS multi-patch-atlas + representative-wall argument; the under-cap styles certify directly. All three certify the EXACT production
 positions (the cut/relabel is domain-only). The judge's 1,048,576-triangle hard cap means production meshes larger than
@@ -64,8 +77,13 @@ under-cap wall — the structure is identical at every density.
 - **Structured-feature styles** (DS rings + scale-tip cone; the 6 layered/curtain styles): the DS template — a
   structured emitter with explicit discontinuity handling (double-valued tread walls, per-apex cone-fans), cut at an
   apex-GAP column so no feature straddles the flat seam.
-- **Anisotropic-flank styles** (GeometricStar chevrons): the M=g/h² surface metric sizes along/across the flank; isotropic
-  density is the wrong lever. (In progress.)
+- **Conforming-crease riser styles** (GeometricStar chevrons): CORRECTED — the strapwork chevron edges (`dStrap≈0` in
+  `geometricStarStrapField`, analyticSurfaceGate.ts) are steep **C0 SLOPE kinks, NOT double-valued value cliffs**
+  (`_geoStarClose.test.ts:36`: "no separate riser-wall to exclude; every facet is a body facet"). So the close path is the
+  DS-INTERIOR-CLOSE recipe — CONFORM mesh edges onto the diagonal chevron crease loci (a `buildGeometricStarConformingGraph`
+  analog of `buildDragonScalesConformingGraph`) + fine curvature sizing (`curvatureFineStep`), with the `aniso` metric as a
+  SLIVER-quality accelerator (not the fidelity closer). GeoStar is grouped with DragonScales in `RISERS_4`
+  (featConformAll20.test.ts). Extensive prior art (9 `_geoStar*` probes) under active synthesis + measurement. (In progress.)
 
 ## All-20 honest uniform-grid baseline (2026-07-22, production scale + defaults)
 
@@ -101,9 +119,14 @@ overstate; the classification stands.)
 Bamboo/HexHive/Basket/CKnot/CTri/LowPoly). The DS structured-emitter template is the vehicle for the layered class but
 is NOT plug-and-play (the Bamboo probe showed per-style tread-placement + double-valued scoring are still needed).
 
-## Open threads (this session)
-- All-20 honest production-scale true-3D baseline (subagent) — routes the remaining closures.
-- SpiralRidges closure (subagent) — the closest smooth style (~0.047, helix-shear).
-- GeometricStar anisotropic closure (pending) — is the 0.37 real or a radial/GN artifact?
-- Curvature-graded grid — close smooth styles under the cap at far fewer triangles.
-- Structured emitters for the layered styles (DS template) — the U4 class, 6 styles.
+## Open threads (updated 2026-07-22 pm)
+- ✅ **Smooth-grid emitter PRODUCTIONIZED** (commit 121a7fe1) — 6 smooth styles wired into the dispatch, flag-gated.
+- **GeometricStar closure** (active, meshing-researcher subagent) — synthesize the 9 `_geoStar*` probes + measure the best
+  conforming-graph+fineStep+aniso arm at production scale; is true-3D MAX (trusted continuous, not single-seed GN) ≤0.01?
+- **HexagonalHive layered closure** (active, meshing-researcher subagent) — can the DS structured-emitter template close the
+  hex curtain/riser layered style ≤0.01 MAX at production scale?
+- **SpiralRidges under-cap** — it currently certifies via the multi-patch atlas (~4M > 1.05M judge cap); a row-graded (t)
+  density that keeps u-columns uniform+dyadic could bring it under-cap for a DIRECT cert. (Cert-safe grading: grade rows only.)
+- **Curvature-graded grid** — close the smooth styles under the cap at far fewer triangles (u must stay dyadic to certify).
+- **Structured emitters for the remaining layered styles** (DS template): ArtDeco/Bamboo/Basket/CelticKnot/CelticTriquetra/
+  LowPoly — the U4 class.
