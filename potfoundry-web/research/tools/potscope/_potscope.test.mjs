@@ -654,3 +654,133 @@ test('buildConvergeRows: no station ladder -> every laddered flag false', () => 
   const rows = buildConvergeRows(readConverge(writeConverge('noladder.converge.json', CONVERGE_PATCHES)));
   assert.ok(rows.every((r) => r.laddered === false), 'no verticalStationsByPatch → nothing laddered');
 });
+
+// --- doctor: roster health roll-up (registry + hotspots + convergence) (P7) -----
+// `hotspotClusters` is the shared cluster-builder extracted from cmdHotspots (DRY —
+// both cmdHotspots and doctor call it). `buildDoctorReport` unifies the three truth
+// layers per pot: registry row (buildStatusRows), worst hotspot cluster (if the
+// stl+error.bin+loc.bin sidecars are present), worst-ratio converge patch (if a
+// <name>.converge.json is present). Missing per-pot data (fresh clone) is
+// available:false — never an error — and one bad pot must not sink the report.
+import { hotspotClusters, buildDoctorReport } from './potscope.mjs';
+
+// A full sidecar set (stl + error.bin + loc.bin) whose provenance binds, whose
+// counts agree, and whose 3 triangles all share the vertex (0,0,0) so they weld
+// into ONE cluster; the compact uv (near 0.5,0.5) + ≤8 tris makes it a SPIKE on
+// outer-wall. Mirrors the on-disk certified layout the real doctor reads.
+function writeHotPot(dir, name, { errors, locRows, stats, style = 'X', verdict = 'GREEN' }) {
+  const tris = [
+    [[0, 0, 0], [0.01, 0, 0], [0, 0.01, 0]],
+    [[0, 0, 0], [-0.01, 0, 0], [0, -0.01, 0]],
+    [[0, 0, 0], [0.01, 0.01, 0], [0.005, 0, 0]],
+  ];
+  writeFileSync(join(dir, `${name}.stl`), makeStl(tris));
+  const errHeader = JSON.stringify({
+    magic: 'potscope-error/v1', count: errors.length, budgetMm: 0.01, stats,
+    provenance: { artifactByteSha256: 'bind' },
+  });
+  writeFileSync(join(dir, `${name}.stl.error.bin`), Buffer.concat([
+    Buffer.from(errHeader + '\n', 'utf8'), Buffer.from(new Float32Array(errors).buffer),
+  ]));
+  const locHeader = JSON.stringify({
+    magic: 'potscope-loc/v1', style, count: locRows.length, patches: ['outer-wall', 'inner-wall'],
+    provenance: { artifactByteSha256: 'bind' },
+  });
+  writeFileSync(join(dir, `${name}.stl.loc.bin`), Buffer.concat([
+    Buffer.from(locHeader + '\n', 'utf8'), Buffer.from(new Float32Array(locRows.flat()).buffer),
+  ]));
+  writeFileSync(join(dir, `${name}.recon.json`), JSON.stringify({ name, style, tris: 3, configDigest: 'digest', verdict }));
+}
+
+const SPIKE_LOC = [
+  [0, 0.5, 0.5, 0.502, 0.5, 0.5, 0.502],
+  [0, 0.5, 0.5, 0.498, 0.5, 0.5, 0.498],
+  [0, 0.5, 0.5, 0.501, 0.501, 0.5005, 0.5],
+];
+
+test('hotspotClusters builds worst-first clusters + stats + hotThresh from the sidecars (shared extraction)', () => {
+  const d = join(DIR, 'hc1');
+  mkdirSync(d, { recursive: true });
+  writeHotPot(d, 'Hot', { errors: [0.009, 0.008, 0.007], locRows: SPIKE_LOC, stats: { maxMm: 0.009, p50Mm: 0.002, p99Mm: 0.005 } });
+  const { clusters, stats, hotThresh } = hotspotClusters(join(d, 'Hot.stl'));
+  assert.ok(Math.abs(hotThresh - 0.005) < 1e-9, `hotThresh ${hotThresh}`); // max(budget*0.5, p99)
+  assert.ok(Math.abs(stats.maxMm - 0.009) < 1e-6);
+  assert.equal(clusters.length, 1); // all 3 tris welded on (0,0,0)
+  const top = clusters[0];
+  assert.equal(top.shape, 'SPIKE');
+  assert.equal(top.patch, 'outer-wall');
+  assert.ok(Math.abs(top.peak - 0.009) < 1e-6); // sorted worst-first: peak = max error
+  // carries every field doctor projects into its top-cluster summary
+  for (const k of ['tris', 'shape', 'tags', 'lever', 'u', 'v', 'peak', 'mean', 'anisotropy', 'patch']) {
+    assert.ok(k in top, `cluster missing ${k}`);
+  }
+});
+
+test('hotspotClusters throws (not exits) on a missing sidecar so doctor can degrade to available:false', () => {
+  const d = join(DIR, 'hc_missing');
+  mkdirSync(d, { recursive: true });
+  writeFileSync(join(d, 'NoSidecars.stl'), makeStl([[[0, 0, 0], [1, 0, 0], [0, 1, 0]]]));
+  assert.throws(() => hotspotClusters(join(d, 'NoSidecars.stl')), /missing/);
+});
+
+test('buildDoctorReport aggregates registry + hotspots + convergence; a sidecar-less pot degrades to available:false', () => {
+  const d = join(DIR, 'doctor1');
+  mkdirSync(d, { recursive: true });
+  // pot "Full": full sidecar set (→ hotspots) + a converge.json (→ convergence)
+  writeHotPot(d, 'Full', { style: 'Gothic', errors: [0.009, 0.008, 0.007], locRows: SPIKE_LOC, stats: { maxMm: 0.009, p50Mm: 0.002, p99Mm: 0.005 } });
+  writeFileSync(join(d, 'Full.converge.json'), JSON.stringify({
+    magic: 'potscope-converge/v1', variant: 'Full', style: 'Gothic',
+    perPatch: {
+      'outer-wall': { fineMaxMm: 0.0066, coarseMaxMm: 0.014, ratio: 2.12, fineTris: 100, coarseTris: 25 },
+      'inner-wall': { fineMaxMm: 0.0059, coarseMaxMm: 0.0063, ratio: 1.07, fineTris: 200, coarseTris: 100 },
+    },
+  }));
+  // pot "Bare": registry entry only (recon.json) — no stl/error/loc/converge sidecars
+  writeFileSync(join(d, 'Bare.recon.json'), JSON.stringify({ name: 'Bare', style: 'Voronoi', tris: 100, configDigest: 'bd', verdict: 'GREEN' }));
+
+  const report = buildDoctorReport(d);
+  assert.equal(report.magic, 'potscope-doctor/v1');
+
+  const full = report.pots.find((p) => p.name === 'Full');
+  assert.equal(full.style, 'Gothic');
+  assert.equal(full.verdict, 'GREEN');
+  assert.equal(full.masked, false); // 0.009/0.005 = 1.8, not > 3
+  assert.equal(full.hotspots.available, true);
+  assert.equal(full.hotspots.top.shape, 'SPIKE');
+  assert.equal(full.hotspots.top.patch, 'outer-wall');
+  assert.ok(Math.abs(full.hotspots.top.peakMm - 0.009) < 1e-6);
+  assert.equal(full.convergence.available, true);
+  assert.equal(full.convergence.worst.patchId, 'inner-wall'); // lowest ratio = worst-first
+  assert.equal(full.convergence.worst.verdict, 'IRREDUCIBLE'); // ratio 1.07 < 1.8
+
+  const bare = report.pots.find((p) => p.name === 'Bare');
+  assert.equal(bare.style, 'Voronoi'); // registry fields present
+  assert.equal(bare.tris, 100);
+  assert.equal(bare.verdict, 'GREEN');
+  assert.equal(bare.hotspots.available, false); // no sidecars → not an error
+  assert.equal(bare.hotspots.top, null);
+  assert.equal(bare.convergence.available, false);
+  assert.equal(bare.convergence.worst, null);
+
+  assert.deepEqual(report.summary, {
+    pots: 2, green: 2, drift: 0, masked: 0,
+    withIrreducibleConvergence: 1, hotspotsAvailable: 1, convergeAvailable: 1,
+  });
+});
+
+test('buildDoctorReport --fast elides the hotspots STL reads (registry + convergence only)', () => {
+  const d = join(DIR, 'doctor_fast');
+  mkdirSync(d, { recursive: true });
+  writeHotPot(d, 'Full', { style: 'Gothic', errors: [0.009, 0.008, 0.007], locRows: SPIKE_LOC, stats: { maxMm: 0.009, p50Mm: 0.002, p99Mm: 0.005 } });
+  writeFileSync(join(d, 'Full.converge.json'), JSON.stringify({
+    magic: 'potscope-converge/v1', variant: 'Full', style: 'Gothic',
+    perPatch: { 'inner-wall': { fineMaxMm: 0.0059, coarseMaxMm: 0.0063, ratio: 1.07, fineTris: 200, coarseTris: 100 } },
+  }));
+  const report = buildDoctorReport(d, { fast: true });
+  const full = report.pots.find((p) => p.name === 'Full');
+  assert.equal(full.hotspots.available, false); // elided by --fast even though sidecars exist
+  assert.equal(full.hotspots.top, null);
+  assert.equal(full.convergence.available, true); // convergence still read (cheap)
+  assert.equal(report.summary.hotspotsAvailable, 0);
+  assert.equal(report.summary.convergeAvailable, 1);
+});

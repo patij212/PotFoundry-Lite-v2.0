@@ -775,49 +775,77 @@ export function selectHotTriangles(values, hotThresh) {
   return hot;
 }
 
-function cmdHotspots(args) {
-  const nameOrStl = args._[0];
-  if (!nameOrStl) { console.error('usage: potscope hotspots <name|stl> [--top N] [--budget mm] [--json]'); process.exit(2); }
-  const stlPath = resolve(nameOrStl.endsWith('.stl') ? nameOrStl : `${nameOrStl}.stl`);
+// The shared hotspot pipeline, extracted from cmdHotspots so `doctor` reuses it
+// (DRY). Reads the three sidecars bound to <stlPath> (STL + .error.bin + .loc.bin),
+// cross-checks their counts and provenance, selects the hot triangles at
+// max(budget/2, p99), welds them into connected clusters, classifies each, and
+// returns them sorted worst-first (peak desc, then size). THROWS a clean Error
+// (NOT process.exit) on a missing sidecar / count mismatch / provenance mismatch,
+// so a library caller — doctor — can degrade that pot to available:false while the
+// CLI (cmdHotspots) turns the throw into its `hotspots: …` message + exit 2.
+// opts.budget (CLI --budget) overrides the error.bin header budget, else 0.01.
+export function hotspotClusters(stlPath, opts = {}) {
   const errPath = `${stlPath}.error.bin`;
   const locPath = `${stlPath}.loc.bin`;
   for (const [label, p] of [['STL', stlPath], ['error.bin', errPath], ['loc.bin', locPath]]) {
-    if (!existsSync(p)) { console.error(`hotspots: missing ${label}: ${p}`); process.exit(2); }
+    if (!existsSync(p)) throw new Error(`missing ${label}: ${p}`);
   }
   const parsed = parseStl(stlPath);
   const err = readErrorRaw(errPath);
   const loc = readLoc(locPath);
   if (err.header.count !== parsed.triangleCount || loc.header.count !== parsed.triangleCount) {
-    console.error(`count mismatch: stl ${parsed.triangleCount} error ${err.header.count} loc ${loc.header.count}`); process.exit(2);
+    throw new Error(`count mismatch: stl ${parsed.triangleCount} error ${err.header.count} loc ${loc.header.count}`);
   }
   const ep = err.header.provenance?.artifactByteSha256, lp = loc.header.provenance?.artifactByteSha256;
-  if (ep && lp && ep !== lp) { console.error(`provenance mismatch: error.bin and loc.bin describe different meshes (${ep} vs ${lp}) — re-bake`); process.exit(2); }
-
-  const budget = Number(argValue(args, '--budget') ?? err.header.budgetMm ?? 0.01);
+  if (ep && lp && ep !== lp) {
+    throw new Error(`provenance mismatch: error.bin and loc.bin describe different meshes (${ep} vs ${lp}) — re-bake`);
+  }
+  const budget = Number(opts.budget ?? err.header.budgetMm ?? 0.01);
   const p99 = err.header.stats?.p99Mm ?? budget * 0.5;
   const hotThresh = Math.max(budget * 0.5, p99);
   const hot = selectHotTriangles(err.values, hotThresh);
   const featureLoci = deriveFeatureLoci(loc.body, loc.header.count);
   const ctx = { positions: parsed.positions, locBody: loc.body, errors: err.values, budget, featureLoci, patches: loc.header.patches };
+  // classifyCluster already resolves `patch` from the same patches table; re-apply
+  // the loc-header fallback (`patchN` for an index absent from the table) so every
+  // cluster's `patch` is exactly the string cmdHotspots printed inline — one source
+  // of truth for both the CLI row and the doctor top-cluster summary.
   const clusters = weldClusters(parsed.positions, hot)
-    .map((tris) => ({ tris, ...classifyCluster(tris, ctx) }))
+    .map((tris) => {
+      const c = classifyCluster(tris, ctx);
+      const patchIdx = loc.body[tris[0] * 7];
+      return { tris, ...c, patch: loc.header.patches[patchIdx] ?? `patch${patchIdx}` };
+    })
     .sort((a, b) => b.peak - a.peak || b.tris.length - a.tris.length);
+  return { clusters, stats: err.header.stats, hotThresh, triangleCount: parsed.triangleCount, title: parsed.title };
+}
+
+function cmdHotspots(args) {
+  const nameOrStl = args._[0];
+  if (!nameOrStl) { console.error('usage: potscope hotspots <name|stl> [--top N] [--budget mm] [--json]'); process.exit(2); }
+  const stlPath = resolve(nameOrStl.endsWith('.stl') ? nameOrStl : `${nameOrStl}.stl`);
+  let result;
+  try {
+    result = hotspotClusters(stlPath, { budget: argValue(args, '--budget') });
+  } catch (e) {
+    console.error(`hotspots: ${e.message}`);
+    process.exit(2);
+  }
+  const { clusters, stats, hotThresh, triangleCount, title } = result;
   const top = Number(argValue(args, '--top') ?? '5');
   const shown = clusters.slice(0, top);
 
   if (args.flags.includes('--json')) {
-    console.log(JSON.stringify({ name: parsed.title, triangleCount: parsed.triangleCount, stats: err.header.stats, hotThresh, clusters: shown.map(({ tris, ...c }) => ({ ...c, triCount: tris.length })) }, null, 2));
+    console.log(JSON.stringify({ name: title, triangleCount, stats, hotThresh, clusters: shown.map(({ tris, ...c }) => ({ ...c, triCount: tris.length })) }, null, 2));
     return;
   }
   const um = (mm) => (mm * 1000).toFixed(1);
-  const s = err.header.stats ?? {};
-  console.log(`${parsed.title} — ${parsed.triangleCount.toLocaleString()} tris, max ${um(s.maxMm ?? 0)}µm  p99 ${um(s.p99Mm ?? 0)}µm  p50 ${um(s.p50Mm ?? 0)}µm`);
+  const s = stats ?? {};
+  console.log(`${title} — ${triangleCount.toLocaleString()} tris, max ${um(s.maxMm ?? 0)}µm  p99 ${um(s.p99Mm ?? 0)}µm  p50 ${um(s.p50Mm ?? 0)}µm`);
   console.log(`worst residual structure (top ${top} of ${clusters.length} hot clusters, threshold ${um(hotThresh)}µm):\n`);
   shown.forEach((c, i) => {
-    const patchIdx = loc.body[c.tris[0] * 7];
-    const patch = loc.header.patches[patchIdx] ?? `patch${patchIdx}`;
     const tagStr = c.tags.length ? ` · ${c.tags.join(' · ')}` : '';
-    console.log(`  [${i + 1}] ${c.shape}${tagStr} · ${patch}`);
+    console.log(`  [${i + 1}] ${c.shape}${tagStr} · ${c.patch}`);
     console.log(`      ${c.tris.length} tris · u∈[${(c.u - c.uExtent / 2).toFixed(2)},${(c.u + c.uExtent / 2).toFixed(2)}] v≈${c.v.toFixed(2)} · peak ${um(c.peak)}µm mean ${um(c.mean)}µm · anisotropy ${c.anisotropy.toFixed(1)}`);
     console.log(`      → ${c.lever}\n`);
   });
@@ -1220,6 +1248,138 @@ function cmdConverge(args) {
   }
 }
 
+// --------------------------------------------------------------------- doctor
+// The roster health roll-up: one row per registry pot (buildStatusRows) unified
+// with its two on-disk truth layers when the sidecars are present — the worst
+// residual cluster (hotspotClusters: needs stl + error.bin + loc.bin) and the
+// worst-ratio convergence patch (buildConvergeRows: needs <name>.converge.json).
+// Missing per-pot sidecars (a fresh clone, or a pot not yet probed) are
+// available:false — NOT an error — and each pot's aggregation is wrapped in
+// try/catch so one bad pot cannot sink the whole report (consistent with the
+// status-scan hardening). The clean object it returns is what BOTH the CLI table
+// and the dashboard `--json` consume, so it is the single source of roster truth.
+// opts: { fast } skips the (expensive, ~45 MB) hotspots STL reads; { manifestPath }
+// + { budget } pass through to buildStatusRows / hotspotClusters.
+export function buildDoctorReport(dir, opts = {}) {
+  const resolvedDir = resolve(dir);
+  const rows = buildStatusRows(resolvedDir, opts.manifestPath);
+  const pots = rows.map((row) => {
+    const base = {
+      name: row.name,
+      style: row.style,
+      tris: row.tris,
+      verdict: row.verdict,
+      maxMm: row.maxMm,
+      p99Mm: row.p99Mm,
+      masked: row.masked,
+      source: row.source,
+      hotspots: { available: false, top: null },
+      convergence: { available: false, worst: null },
+    };
+    try {
+      // Hotspots: elided entirely under --fast (reading a dozen STLs, some ~45 MB,
+      // costs ~a minute). Otherwise attempt the sidecar read; any failure (missing
+      // sidecar / count / provenance mismatch) simply leaves available:false.
+      if (!opts.fast) {
+        const stlPath = join(resolvedDir, `${row.name}.stl`);
+        if (existsSync(stlPath) && existsSync(`${stlPath}.error.bin`) && existsSync(`${stlPath}.loc.bin`)) {
+          try {
+            const t = hotspotClusters(stlPath, { budget: opts.budget }).clusters[0] ?? null;
+            base.hotspots = {
+              available: true,
+              top: t
+                ? { shape: t.shape, tags: t.tags, patch: t.patch, peakMm: t.peak, u: t.u, v: t.v, lever: t.lever }
+                : null,
+            };
+          } catch {
+            /* corrupt/mismatched sidecar → leave hotspots available:false */
+          }
+        }
+      }
+      // Convergence: cheap (a small JSON), so read it whenever present.
+      const convPath = join(resolvedDir, `${row.name}.converge.json`);
+      if (existsSync(convPath)) {
+        try {
+          const worst = buildConvergeRows(readConverge(convPath))[0] ?? null;
+          base.convergence = {
+            available: true,
+            worst: worst ? { patchId: worst.patchId, ratio: worst.ratio, verdict: worst.verdict } : null,
+          };
+        } catch {
+          /* malformed converge.json → leave convergence available:false */
+        }
+      }
+    } catch (err) {
+      base.error = err.message; // one bad pot must not sink the whole report
+    }
+    return base;
+  });
+  const summary = {
+    pots: pots.length,
+    green: pots.filter((p) => p.verdict === 'GREEN').length,
+    drift: pots.filter((p) => p.verdict === 'DRIFT').length,
+    masked: pots.filter((p) => p.masked).length,
+    withIrreducibleConvergence: pots.filter((p) => p.convergence.worst && p.convergence.worst.verdict === 'IRREDUCIBLE').length,
+    hotspotsAvailable: pots.filter((p) => p.hotspots.available).length,
+    convergeAvailable: pots.filter((p) => p.convergence.available).length,
+  };
+  return { magic: 'potscope-doctor/v1', pots, summary };
+}
+
+function cmdDoctor(args) {
+  const dir = resolve(argValue(args, '--dir') ?? CERTIFIED_STL_DIR());
+  const manifestPath = join(HERE, 'certs.manifest.json');
+  // Fresh clone: exchange/ is git-ignored. Only bail when there is ALSO no
+  // committed manifest to fall back to; otherwise proceed and let buildStatusRows
+  // rebuild the registry from certs.manifest.json (hotspots/convergence then just
+  // read available:false — no on-disk sidecars).
+  if (!existsSync(dir) && !existsSync(manifestPath)) {
+    console.error(`doctor: no such dir ${dir} (bake sidecars: PF_CERT_RECON=all) and no committed manifest at ${manifestPath}`);
+    process.exit(2);
+  }
+  const fast = args.flags.includes('--fast');
+  const report = buildDoctorReport(dir, { fast, manifestPath });
+  const s = report.summary;
+
+  if (args.flags.includes('--json')) {
+    // stdout stays PURE JSON for the dashboard; every note goes to stderr.
+    console.log(JSON.stringify(report, null, 2));
+    if (fast) console.error('note: --fast elided hotspots (hotspots.available=false everywhere) — registry + convergence only');
+    if (report.pots.some((p) => p.source === 'manifest')) {
+      console.error('note: rows from committed manifest — no on-disk sidecars; hotspots/convergence unavailable until re-baked');
+    }
+    return;
+  }
+
+  const um = (mm) => (mm == null ? '    —' : (mm * 1000).toFixed(1));
+  if (fast) console.error('note: --fast elided the hotspots STL reads (drop --fast for worst-cluster shapes; ~a minute on the full roster)');
+  console.log(`roster health — registry · hotspots · convergence${fast ? '   [--fast: hotspots elided]' : ''}`);
+  console.log(
+    `${'variant'.padEnd(44)} ${'style'.padEnd(18)} ${'tris'.padStart(9)}  ${'maxµm'.padStart(6)}  ${'verdict'.padEnd(7)}  ${'worst hotspot'.padEnd(26)} converge`
+  );
+  for (const p of report.pots) {
+    const hot = !p.hotspots.available
+      ? fast
+        ? '— (fast)'
+        : '—'
+      : p.hotspots.top
+      ? `${p.hotspots.top.shape}/${p.hotspots.top.patch}`
+      : 'clean';
+    const conv = p.convergence.available ? (p.convergence.worst ? p.convergence.worst.verdict : '—') : '—';
+    const flag = p.masked ? ' ⚠MASK' : '';
+    console.log(
+      `${p.name.padEnd(44)} ${String(p.style).padEnd(18)} ${String(p.tris).padStart(9)}  ${um(p.maxMm).padStart(6)}  ${String(p.verdict).padEnd(7)}  ${hot.padEnd(26)} ${conv}${flag}`
+    );
+  }
+  console.log(
+    `\n${s.pots} pots · ${s.green} GREEN · ${s.drift} DRIFT · ${s.masked} max-masked · ` +
+      `${s.withIrreducibleConvergence} irreducible-converge · hotspots ${s.hotspotsAvailable}/${s.pots} · converge ${s.convergeAvailable}/${s.pots}`
+  );
+  if (report.pots.some((p) => p.source === 'manifest')) {
+    console.error('(from committed manifest — no on-disk sidecars; hotspots/convergence unavailable until re-baked + reconstructed)');
+  }
+}
+
 function cmdView(args) {
   const stlPaths = args._.map((p) => resolve(p));
   if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
@@ -1573,7 +1733,7 @@ function argValue(args, name) {
   return index >= 0 ? args.flags[index + 1] : undefined;
 }
 
-const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay', '--json', '--check']);
+const BOOLEAN_FLAGS = new Set(['--ceramic', '--error', '--embed', '--clay', '--json', '--check', '--fast']);
 
 // ----------------------------------------------------------------------- serve
 // One command to serve a directory over http (fetch-viewers need it) with a
@@ -1677,6 +1837,7 @@ function main() {
     case 'status': cmdStatus(args); break;
     case 'manifest': cmdManifest(args); break;
     case 'converge': cmdConverge(args); break;
+    case 'doctor': cmdDoctor(args); break;
     case 'serve': cmdServe(args); break;
     default:
       console.log('potscope — certification-lab instrument panel');
@@ -1690,6 +1851,7 @@ function main() {
       console.log('  status [<substr>] [--check] [--json]   (certificate registry + drift guard)');
       console.log('  manifest [--dir <certified_stl>] [--out path]   (portable cert snapshot → fresh-clone status)');
       console.log('  converge <name|path> [--json]   (per-patch refine-vs-redesign verdict from the convergence probe)');
+      console.log('  doctor [--dir <certified_stl>] [--json] [--fast]   (roster health: registry + hotspots + convergence)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
   }
 }
