@@ -194,12 +194,16 @@ test('weldClusters groups hot triangles sharing a vertex, separates disjoint one
 });
 
 // --- residual structural classifier: SPIKE / BAND / DIFFUSE + tags + feature loci
-import { classifyCluster, deriveFeatureLoci } from './potscope.mjs';
+import { classifyCluster, deriveFeatureLoci, isWallPatch } from './potscope.mjs';
 
 // helper: build parallel positions/locBody/errors arrays for N triangles.
 // place() returns a tiny scene where triangle t has uv centroid (uc,vc), a small
 // uv footprint, xyz = uv mapped to a plane scaled by (sx,sy), and error e.
-function scene(specs /* [{uc,vc,e,sx=1,sy=1}] */) {
+// opts.patches names the loc header's patch table; each spec's patchIdx (default 0)
+// selects the patch that cluster's triangles sit on (default table = ['outer-wall'],
+// so every existing fixture stays wall-gated and ANISOTROPIC still fires there).
+function scene(specs /* [{uc,vc,e,sx=1,sy=1,patchIdx=0}] */, opts = {}) {
+  const patches = opts.patches ?? ['outer-wall'];
   const n = specs.length;
   const positions = new Float32Array(n * 9);
   const locBody = new Float32Array(n * 7);
@@ -207,13 +211,13 @@ function scene(specs /* [{uc,vc,e,sx=1,sy=1}] */) {
   specs.forEach((s, t) => {
     const sx = s.sx ?? 1, sy = s.sy ?? 1, h = 0.004;
     const uv = [s.uc, s.vc, s.uc + h, s.vc, s.uc, s.vc + h];
-    locBody[t * 7] = 0;
+    locBody[t * 7] = s.patchIdx ?? 0;
     for (let k = 0; k < 3; k += 1) { locBody[t * 7 + 1 + k * 2] = uv[k * 2]; locBody[t * 7 + 2 + k * 2] = uv[k * 2 + 1]; }
     const xyz = [uv[0] * sx, uv[1] * sy, 0, uv[2] * sx, uv[3] * sy, 0, uv[4] * sx, uv[5] * sy, 0];
     positions.set(xyz, t * 9);
     errors[t] = s.e;
   });
-  return { positions, locBody, errors, budget: 0.01, featureLoci: { u: [], v: [] } };
+  return { positions, locBody, errors, budget: 0.01, featureLoci: { u: [], v: [] }, patches };
 }
 
 test('classifyCluster: compact high-error blob -> SPIKE', () => {
@@ -241,6 +245,54 @@ test('classifyCluster: metric-stretched cluster -> ANISOTROPIC tag', () => {
   const ctx = scene(specs);
   const c = classifyCluster(specs.map((_, i) => i), ctx);
   assert.ok(c.tags.includes('ANISOTROPIC'), `tags ${c.tags} aniso ${c.anisotropy}`);
+});
+
+// --- ANISOTROPIC is a WALL-patch-only verdict (radial cap/rim param-anisotropy is a coordinate artifact) ---
+// triAnisotropy measures the uv->xyz first-fundamental-form STRETCH. On the (u=angular,
+// v=height) WALL parameterization that stretch genuinely flags the feature-driven "wrong
+// metric space" the M=g/h² lever names. But the polar/annular CAP/RIM/DRAIN parameterization
+// (bottom-top, bottom-under, top-rim, drain-wall) is LEGITIMATELY, hugely anisotropic near
+// the pole/axis independent of any feature or mesher defect — so tagging ANISOTROPIC there
+// points the M=g/h² lever at a pure coordinate artifact. Real evidence: SpiralRidges
+// bottom-top reads anisotropy ~8.7 and Voronoi top-rim ~29.5, both mislabeled pre-gate.
+// The SAME high-anisotropy cluster: tagged on a wall, NOT tagged on a cap. The numeric
+// anisotropy is informational and stays reported on BOTH.
+const CAP_GATE_SPECS = [];
+for (let i = 0; i < 10; i += 1) CAP_GATE_SPECS.push({ uc: 0.3 + i * 0.01, vc: 0.4, e: 0.009, sx: 20, sy: 1 });
+const ANISO_LEVER = 'anisotropic flank kernel (M=g/h²) — not more triangles';
+
+test('classifyCluster: high-anisotropy cluster on outer-wall -> ANISOTROPIC (wall gate open)', () => {
+  const ctx = scene(
+    CAP_GATE_SPECS.map((s) => ({ ...s, patchIdx: 0 })), // patchIdx 0 -> 'outer-wall'
+    { patches: ['outer-wall', 'bottom-top'] }
+  );
+  const c = classifyCluster(CAP_GATE_SPECS.map((_, i) => i), ctx);
+  assert.ok(c.tags.includes('ANISOTROPIC'), `wall cluster must stay ANISOTROPIC, tags ${c.tags} aniso ${c.anisotropy}`);
+  assert.equal(c.lever, ANISO_LEVER); // and the lever is the M=g/h² one
+  assert.ok(c.anisotropy > 3, `anisotropy ${c.anisotropy}`);
+});
+
+test('classifyCluster: SAME high-anisotropy cluster on bottom-top -> NOT ANISOTROPIC, number preserved', () => {
+  const ctx = scene(
+    CAP_GATE_SPECS.map((s) => ({ ...s, patchIdx: 1 })), // patchIdx 1 -> 'bottom-top' (radial cap)
+    { patches: ['outer-wall', 'bottom-top'] }
+  );
+  const c = classifyCluster(CAP_GATE_SPECS.map((_, i) => i), ctx);
+  assert.ok(!c.tags.includes('ANISOTROPIC'), `radial cap must NOT be tagged ANISOTROPIC, tags ${c.tags}`);
+  assert.notEqual(c.lever, ANISO_LEVER); // never the M=g/h² lever on a cap
+  // the anisotropy VALUE is still reported (informational) — not zeroed by the gate
+  assert.ok(c.anisotropy > 3, `anisotropy value must survive the gate, got ${c.anisotropy}`);
+  assert.equal(c.patch, 'bottom-top'); // classifier surfaces the resolved patch
+});
+
+test('isWallPatch: true only for outer-wall / inner-wall (drain-wall is NOT a wall)', () => {
+  assert.equal(isWallPatch('outer-wall'), true);
+  assert.equal(isWallPatch('inner-wall'), true);
+  assert.equal(isWallPatch('top-rim'), false);
+  assert.equal(isWallPatch('bottom-top'), false);
+  assert.equal(isWallPatch('bottom-under'), false);
+  assert.equal(isWallPatch('drain-wall'), false); // substring 'wall' must not open the gate
+  assert.equal(isWallPatch(undefined), false);
 });
 
 test('deriveFeatureLoci finds a dense column among sparse ones', () => {

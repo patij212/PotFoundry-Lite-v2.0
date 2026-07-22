@@ -680,9 +680,24 @@ const HOTSPOT_THRESHOLDS = {
   featTol: 0.02,
 };
 
+// The WALL patches. triAnisotropy measures uv->xyz parameterization stretch: on the
+// (angular, height) wall param that stretch is the feature-driven "wrong metric space"
+// (M=g/h²) signal, but the polar/annular cap/rim/drain param (bottom-top, bottom-under,
+// top-rim, drain-wall) is legitimately, hugely anisotropic near the pole/axis regardless
+// of any feature. So the ANISOTROPIC verdict is gated to walls only. Exact match — note
+// 'drain-wall' merely CONTAINS 'wall' and must NOT open the gate.
+export function isWallPatch(name) {
+  return name === 'outer-wall' || name === 'inner-wall';
+}
+
 export function classifyCluster(triIndices, ctx) {
-  const { positions, locBody, errors, featureLoci } = ctx;
+  const { positions, locBody, errors, featureLoci, patches } = ctx;
   const T = HOTSPOT_THRESHOLDS;
+  // A weld cluster is one patch (welded across shared xyz within a patch's sweep),
+  // so the patch of its first triangle names the whole cluster. patches is the loc
+  // header's name-list; guard the lookup so a caller without it simply never opens
+  // the ANISOTROPIC gate (conservative) rather than throwing.
+  const patch = patches ? patches[locBody[triIndices[0] * 7]] : undefined;
   let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
   let peak = 0, sumErr = 0, sumAniso = 0, anisoN = 0;
   const anisoVals = [], errVals = [];
@@ -713,7 +728,12 @@ export function classifyCluster(triIndices, ctx) {
 
   const tags = [];
   if (shape === 'BAND' && longAxis >= T.fullAxis) tags.push('IRREDUCIBLE');
-  if (meanAniso >= T.anisoThresh && corr >= T.anisoCorr) tags.push('ANISOTROPIC');
+  // ANISOTROPIC (and its M=g/h² lever below) is WALL-ONLY: on outer/inner-wall the high
+  // uv->xyz stretch is the feature-driven wrong-metric-space signal; on the polar/annular
+  // cap/rim/drain patches it is a legitimate coordinate artifact near the pole/axis. The
+  // numeric anisotropy (meanAniso) is still returned below for every cluster — only the
+  // verdict is gated.
+  if (isWallPatch(patch) && meanAniso >= T.anisoThresh && corr >= T.anisoCorr) tags.push('ANISOTROPIC');
   const uc = (uMin + uMax) / 2, vc = (vMin + vMax) / 2;
   const near = (loci, c) => loci.some((x) => Math.abs(x - c) < T.featTol);
   if (near(featureLoci.u, uc) || near(featureLoci.v, vc)) tags.push('FEATURE-ALIGNED');
@@ -725,7 +745,7 @@ export function classifyCluster(triIndices, ctx) {
   else if (shape === 'BAND') lever = `density/envelope along ${uExtent >= vExtent ? 'v' : 'u'} (the short axis)`;
   else lever = 'diffuse — measure locally (no single dominant structure)';
 
-  return { shape, tags, lever, u: uc, v: vc, uExtent, vExtent, peak, mean: sumErr / triIndices.length, anisotropy: meanAniso };
+  return { shape, tags, lever, patch, u: uc, v: vc, uExtent, vExtent, peak, mean: sumErr / triIndices.length, anisotropy: meanAniso };
 }
 
 function pearson(xs, ys) {
@@ -777,7 +797,7 @@ function cmdHotspots(args) {
   const hotThresh = Math.max(budget * 0.5, p99);
   const hot = selectHotTriangles(err.values, hotThresh);
   const featureLoci = deriveFeatureLoci(loc.body, loc.header.count);
-  const ctx = { positions: parsed.positions, locBody: loc.body, errors: err.values, budget, featureLoci };
+  const ctx = { positions: parsed.positions, locBody: loc.body, errors: err.values, budget, featureLoci, patches: loc.header.patches };
   const clusters = weldClusters(parsed.positions, hot)
     .map((tris) => ({ tris, ...classifyCluster(tris, ctx) }))
     .sort((a, b) => b.peak - a.peak || b.tris.length - a.tris.length);
