@@ -230,13 +230,19 @@ test('classifyCluster: compact high-error blob -> SPIKE', () => {
   assert.equal(c.shape, 'SPIKE');
 });
 
-test('classifyCluster: full-u row at fixed v -> BAND + IRREDUCIBLE', () => {
+test('classifyCluster: full-u row at fixed v -> BAND + FULL-SPAN (structural, not the measured IRREDUCIBLE)', () => {
   const specs = [];
   for (let i = 0; i < 40; i += 1) specs.push({ uc: i / 40, vc: 0.87, e: 0.0099 });
   const ctx = scene(specs);
   const c = classifyCluster(specs.map((_, i) => i), ctx);
   assert.equal(c.shape, 'BAND');
-  assert.ok(c.tags.includes('IRREDUCIBLE'), `tags ${c.tags}`);
+  // the classifier reports the STRUCTURAL fact (band spans the full axis)...
+  assert.ok(c.tags.includes('FULL-SPAN'), `tags ${c.tags}`);
+  // ...and never claims 'IRREDUCIBLE' — that word is reserved for the convergence
+  // probe's MEASURED verdict (a full-span band can still be density-responsive).
+  assert.ok(!c.tags.includes('IRREDUCIBLE'), `structural classifier must not claim IRREDUCIBLE; tags ${c.tags}`);
+  // its lever points at the convergence probe, not an irreducibility claim
+  assert.match(c.lever, /run `converge` to measure/);
 });
 
 test('classifyCluster: metric-stretched cluster -> ANISOTROPIC tag', () => {
@@ -802,7 +808,7 @@ const DASH_FIXTURE = {
     {
       name: 'BetaBandPot', style: 'HarmonicRipple', tris: 812345, verdict: 'GREEN',
       maxMm: 0.01, p99Mm: 0.005, masked: true, source: 'sidecar',
-      hotspots: { available: true, top: { shape: 'BAND', tags: ['IRREDUCIBLE'], patch: 'outer-wall', peakMm: 0.01, u: 0.3, v: 0.7, lever: 'full-u band ⇒ density-irreducible; envelope/redesign, not more triangles' } },
+      hotspots: { available: true, top: { shape: 'BAND', tags: ['FULL-SPAN'], patch: 'outer-wall', peakMm: 0.01, u: 0.3, v: 0.7, lever: 'full-u band — run `converge` to measure: density-responsive (refine) vs truly irreducible (redesign)' } },
       convergence: { available: true, worst: { patchId: 'outer-wall', ratio: 3.92, verdict: 'RESPONSIVE' } },
     },
     {
@@ -841,6 +847,13 @@ test('dashboardHtml renders a self-contained certification command center', () =
   assert.ok(html.includes('IRREDUCIBLE') && html.includes('RESPONSIVE'), 'convergence verdicts render');
   assert.ok(html.includes('SPIKE') && html.includes('BAND'), 'hotspot shapes render');
   assert.ok(html.includes('DRIFT'), 'drift verdict renders');
+  // the two IRREDUCIBLE/FULL-SPAN paths stay separate: the hotspot-cluster tag
+  // renders under its STRUCTURAL name (FULL-SPAN, class t-irr)...
+  assert.ok(html.includes('t-irr">FULL-SPAN'), 'hotspot FULL-SPAN tag renders (structural)');
+  assert.ok(!html.includes('t-irr">IRREDUCIBLE'), 'hotspot tag path must not render IRREDUCIBLE');
+  // ...while the word IRREDUCIBLE survives ONLY as the MEASURED convergence badge
+  // (class c-irr) — AlphaSpirePot inner-wall ratio 1.07.
+  assert.ok(html.includes('c-irr">IRREDUCIBLE'), 'IRREDUCIBLE renders as the measured convergence verdict');
 });
 
 test('dashboardHtml tolerates an empty roster (no pots) and stays self-contained', () => {
