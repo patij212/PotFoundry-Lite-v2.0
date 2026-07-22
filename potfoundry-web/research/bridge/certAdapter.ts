@@ -31,6 +31,13 @@ export interface CertDomain {
   cutColumn: number;
   nU: number;
   seamDupCount: number;
+  /**
+   * Count of redirected vertices that were NOT on the u=0 grid seam (u_judge > 0) — i.e. a FEATURE straddled the cut.
+   * A clean gap cut only straddles the one grid-quad column (verts exactly on u_judge=0 ⇒ dup at u=1 is exact). A
+   * feature straddle clamps a u≈0.0x vertex to u=1 ⇒ a DISTORTED domain (topologically valid, but geometrically wrong,
+   * caught only by a large δ). MUST be 0 for a valid cert; >0 means the cut column is bad (choose an apex-gap column).
+   */
+  nonGapStraddle: number;
 }
 
 /**
@@ -61,10 +68,13 @@ export function cutAtGapCertDomain(
     tt[v] = ut[2 * v + 1];
   }
   const pos: number[] = Array.from(positions as ArrayLike<number>);
+  const SEAM_EPS = 1e-9;
+  let nonGapStraddle = 0;
   const dupOf = new Map<number, number>();
   const getDup = (v: number): number => {
     let d = dupOf.get(v);
     if (d === undefined) {
+      if (uJ[v] > SEAM_EPS) nonGapStraddle++; // redirected vert off the u=0 grid seam ⇒ a feature straddled ⇒ bad cut column
       d = uJ.length;
       uJ.push(1);
       tt.push(tt[v]);
@@ -96,6 +106,7 @@ export function cutAtGapCertDomain(
     cutColumn,
     nU,
     seamDupCount: dupOf.size,
+    nonGapStraddle,
   };
 }
 
@@ -112,6 +123,8 @@ export interface CertVerdict {
   wrapTris: number;
   /** Triangles with non-positive snapped domain area — MUST be 0 (winding + snap health). */
   nonPosTris: number;
+  /** Redirected verts off the u=0 grid seam — MUST be 0; >0 ⇒ a feature straddled the cut (bad cut column). */
+  nonGapStraddle: number;
   /** The judge's message (accept detail or rejection reason). */
   detail: string;
 }
@@ -193,7 +206,7 @@ export function snapAndVerifyCertDomain(
   } catch (e) {
     detail = String(e).slice(0, 300);
   }
-  return { accepted, maxDelta, tris: nF, seamDupCount: cert.seamDupCount, wrapTris, nonPosTris, detail };
+  return { accepted, maxDelta, tris: nF, seamDupCount: cert.seamDupCount, wrapTris, nonPosTris, nonGapStraddle: cert.nonGapStraddle, detail };
 }
 
 /** Convenience: cut a periodic grid mesh at `cutColumn` and judge-cert it in one call. */

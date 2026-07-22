@@ -55,4 +55,15 @@ describe('certAdapter — general cut-at-gap judge-cert bridge', () => {
     expect(verdict.accepted).toBe(true);
     expect(verdict.maxDelta).toBeLessThan(0.001); // path-A snap δ at N=2^20 folds ≪ 0.01
   }, 120_000);
+
+  it('a BAD cut column (inside a fan block, off the apex) is DIAGNOSED via nonGapStraddle', () => {
+    // Cutting at column 0 is CLEAN (the apex sits exactly on u=0 ⇒ it splits, redirected verts stay at u=0). A bad cut
+    // is a column INSIDE a fan block but OFF the apex (col 1, inside apex-0's p=3 block): the fan's u≈0.0x verts get
+    // clamped to u=1 ⇒ a DISTORTED (topologically-valid) domain. wrap/nonPos stay 0; nonGapStraddle (+ a blown-up δ)
+    // flags it. The adapter must fail LOUD, not silently certify.
+    const wall = buildDsConeFanWallGeometric(syntheticDsRA, H, NU, OPTS);
+    const v = certifyPeriodicGridMesh(wall.ut, wall.indices, wall.vertices, NU, 1, syntheticDsRA, H, 20);
+    expect(v.nonGapStraddle).toBeGreaterThan(0);
+    expect(v.maxDelta).toBeGreaterThan(0.01); // the clamped-to-u=1 fan verts land at the wrong θ ⇒ huge δ
+  }, 120_000);
 });
