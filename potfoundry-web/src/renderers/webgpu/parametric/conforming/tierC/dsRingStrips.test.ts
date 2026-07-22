@@ -3,7 +3,7 @@
 // research probe research/bridge/_dsRingStrips.test.ts against the certified V11g ruler) — this pins the mechanism
 // invariants that make the fidelity result trustworthy: guaranteed connectivity + the double-valued tread pair.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import {
   buildDsRingTSchedule,
   buildDsRingStripWall,
@@ -318,7 +318,15 @@ describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of t
   // copies of column q (coincident, weld away). Inherits the part-(a) CCW winding.
   const NU = 512; // q = nU/64 = 8 > default p=3 ⇒ a comfortable apex-gap margin
   const CERT_OPTS = { bodyStepMm: 2, crestLadderRows: 0 }; // coarse+fast; the cut structure is schedule-independent
-  const buildCert = (): ReturnType<typeof buildDsConeFanCertDomain> => buildDsConeFanCertDomain(syntheticDsRA, H, NU, CERT_OPTS);
+  // Build the cert domain ONCE for the whole describe (deterministic + read-only across the tests). Rebuilding it in
+  // every test made each of the 6 pay the ~4.7 s cone-fan build, which TIMES OUT under the default 5 s per-test budget
+  // when the full tierC suite's parallel-scorer worker tests (wholeMesh0Outlier) saturate the CPU — a slow-test/timeout
+  // flake, NOT a logic failure (the assertion compares two calls to the same global-free pure builder). The 30 s hook
+  // budget absorbs the contention; the shared read-only `cert` keeps the describe fast.
+  let cert: ReturnType<typeof buildDsConeFanCertDomain>;
+  beforeAll(() => {
+    cert = buildDsConeFanCertDomain(syntheticDsRA, H, NU, CERT_OPTS);
+  }, 30000);
   // signed (u_judge, t) area — the flat domain the judge scores (already cut ⇒ NO unwrap).
   const area2 = (c: ReturnType<typeof buildDsConeFanCertDomain>, a: number, b: number, cc: number): number => {
     const ua = c.uJudge[a], ta = c.t[a], ub = c.uJudge[b], tb = c.t[b], uc = c.uJudge[cc], tc = c.t[cc];
@@ -326,7 +334,7 @@ describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of t
   };
 
   it('NO WRAP by construction: no triangle spans the u=0↔1 domain seam', () => {
-    const c = buildCert();
+    const c = cert;
     const nF = c.indices.length / 3;
     let maxSpan = 0;
     for (let f = 0; f < nF; f++) {
@@ -338,7 +346,7 @@ describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of t
   });
 
   it('every domain triangle is positively oriented (CCW) in (u_judge, t)', () => {
-    const c = buildCert();
+    const c = cert;
     const nF = c.indices.length / 3;
     let nCW = 0, minA = Infinity;
     for (let f = 0; f < nF; f++) {
@@ -351,7 +359,7 @@ describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of t
   });
 
   it('the u=1 seam duplicates are EXACT copies of their u=0 column-q originals (same 3D + t)', () => {
-    const c = buildCert();
+    const c = cert;
     const nV = c.uJudge.length;
     const u0 = new Set<string>();
     const posKey = (v: number): string => `${c.positions[3 * v]},${c.positions[3 * v + 1]},${c.positions[3 * v + 2]},${c.t[v]}`;
@@ -363,14 +371,16 @@ describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of t
   });
 
   it('3D geometry is UNCHANGED vs the production cone-fan (positions preserved, same tri count) ⇒ fidelity preserved', () => {
-    const c = buildCert();
+    const c = cert;
     const wall = buildDsConeFanWallGeometric(syntheticDsRA, H, NU, CERT_OPTS);
     for (let i = 0; i < wall.vertices.length; i++) expect(c.positions[i]).toBe(wall.vertices[i]);
     expect(c.indices.length).toBe(wall.indices.length); // dups redirect, never add triangles
-  });
+    // 30 s budget: this test additionally builds a FRESH cone-fan wall (~4.7 s) on top of the shared `cert`, so it can
+    // still cross the default 5 s test budget when the parallel-scorer suite saturates the CPU (see beforeAll note).
+  }, 30000);
 
   it('domain partition covers [0,1]² exactly (Σ signed area = 1)', () => {
-    const c = buildCert();
+    const c = cert;
     const nF = c.indices.length / 3;
     let s = 0;
     for (let f = 0; f < nF; f++) s += area2(c, c.indices[3 * f], c.indices[3 * f + 1], c.indices[3 * f + 2]);
@@ -378,7 +388,7 @@ describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of t
   });
 
   it('cert mesh welded by 3D position is the SAME closed cylinder as the periodic wall (watertight, only t-rims open)', () => {
-    const c = buildCert();
+    const c = cert;
     const nV = c.uJudge.length;
     const weld = new Map<string, number>();
     const remap = new Int32Array(nV);
