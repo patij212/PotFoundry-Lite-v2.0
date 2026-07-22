@@ -67,3 +67,20 @@ export function isSmoothGridEnabled(): boolean {
   const g = globalThis as unknown as { __pfSmoothGrid?: boolean };
   return g.__pfSmoothGrid === true;
 }
+
+/**
+ * NARROW default-off SUB-FLAG for the BAMBOO-SEGMENTS ring-strip emitter (E-2026-07-22-BAMBOO-SCHED — the first
+ * LAYERED-class production closure). When on, the BambooSegments outer wall routes to
+ * {@link buildBambooRingStripWallGeometric}: the CONVERGE-A structured cylinder grid with a double-valued tread pair at
+ * each interior segment boundary t=k/nodeCount (the asymVar C0 "radial curtains") + a sag-law body fill, closing
+ * whole-mesh true-3D ≤0.01mm watertight BY CONSTRUCTION and judge-certifiable via the cut-at-gap exact-dyadic partition
+ * — where the free-Delaunay conforming mesher floors on the layered C0 steps. The rim (t=1) is smooth (no bracket)
+ * after the rim-floor() fix (styles.ts rOuterBambooSegments / bamboo_segments_radius). Off (production) ⇒ this branch
+ * never runs and the Bamboo export path is byte-identical. Effective ONLY when the assembly's existing `tierCOuterWall`
+ * adopt hook fires (needs `__pfPerfectMesher`), so — exactly like the smooth-grid + region-layer sub-flags — this is an
+ * independent gate that can never alter the default export path on its own.
+ */
+export function isBambooEnabled(): boolean {
+  const g = globalThis as unknown as { __pfBamboo?: boolean };
+  return g.__pfBamboo === true;
+}

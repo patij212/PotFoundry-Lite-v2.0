@@ -80,8 +80,11 @@ import {
     isRegionLayerStyle,
     buildRegionOuterWall,
     isSmoothGridEnabled,
-    isSmoothGridStyle,
+    isStructuredGridStyle,
     buildSmoothGridDispatchWall,
+    isBambooEnabled,
+    isBambooStyle,
+    buildBambooDispatchWall,
 } from './parametric/conforming/tierC';
 import type { ConformingOuterWallResult } from './parametric/conforming/ConformingOuterWall';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
@@ -2894,22 +2897,33 @@ export class ParametricExportComputer {
                 // __pfRegionLayer and __pfPerfectMesher; __pfRegionLayer alone is inert.
                 const adoptRegion =
                     isRegionLayerEnabled() && isRegionLayerStyle(params.styleId);
-                // SMOOTH-GRID (dev flag __pfSmoothGrid, default OFF): route the six C∞
-                // smooth styles (HarmonicRipple/SuperellipseMorph/FourierBloom/
-                // SpiralRidges/SuperformulaBlossom/WaveInterference) to the CERTIFIABLE
-                // uniform (u,t) structured grid emitter (buildSmoothGridDispatchWall),
-                // OVERRIDING the K2 wall for those styles. Flag-off ⇒ adoptSmooth is false
-                // and every expression below reduces to the prior region/K2 gate
-                // (byte-identical). Adoption is still the isPerfectMesherEnabled() assembly
-                // hook, so a smooth-grid run needs BOTH __pfSmoothGrid and __pfPerfectMesher;
-                // __pfSmoothGrid alone is inert.
+                // STRUCTURED-GRID (dev flag __pfSmoothGrid, default OFF): route the six C∞
+                // smooth styles (HarmonicRipple/SuperellipseMorph/FourierBloom/SpiralRidges/
+                // SuperformulaBlossom/WaveInterference) AND the FACET-aligned LowPolyFacet (a
+                // flat-faced 12-gon prism closed by columns landing on its facet edges via the
+                // per-style alignNU=24) to the CERTIFIABLE uniform (u,t) structured grid emitter
+                // (buildSmoothGridDispatchWall — which injects the alignNU), OVERRIDING the K2
+                // wall for those styles. Flag-off ⇒ adoptSmooth is false and every expression
+                // below reduces to the prior region/K2 gate (byte-identical). Adoption is still
+                // the isPerfectMesherEnabled() assembly hook, so a run needs BOTH __pfSmoothGrid
+                // and __pfPerfectMesher; __pfSmoothGrid alone is inert.
                 const adoptSmooth =
-                    isSmoothGridEnabled() && isSmoothGridStyle(params.styleId);
+                    isSmoothGridEnabled() && isStructuredGridStyle(params.styleId);
+                // BAMBOO (dev flag __pfBamboo, default OFF): route the LAYERED BambooSegments
+                // style to the CONVERGE-A ring-strip emitter (buildBambooDispatchWall —
+                // interior segment-boundary tread pairs + sag-law body), OVERRIDING the K2
+                // wall for it. Flag-off ⇒ adoptBamboo is false and every expression below
+                // reduces to the prior smooth/region/K2 gate (byte-identical). Adoption is
+                // still the isPerfectMesherEnabled() assembly hook, so a Bamboo run needs BOTH
+                // __pfBamboo and __pfPerfectMesher; __pfBamboo alone is inert.
+                const adoptBamboo =
+                    isBambooEnabled() && isBambooStyle(params.styleId);
                 const adoptTierCOuter =
                     isPerfectMesherEnabled() &&
                     (isCountUnstableStyle(params.styleId, { nodes: [], edges: [] }) ||
                         adoptRegion ||
-                        adoptSmooth);
+                        adoptSmooth ||
+                        adoptBamboo);
                 let tierCOuterWall: ConformingOuterWallResult | undefined;
                 if (adoptTierCOuter) {
                     // Smooth-grid uniform (u,t) grid for the C∞ smooth styles (undefined
@@ -2933,6 +2947,31 @@ export class ParametricExportComputer {
                                   ),
                                   H: dimensions.H,
                                   tolMm: qMaxSag,
+                              },
+                              params.styleId,
+                          )
+                        : undefined;
+                    // Bamboo ring-strip wall for BambooSegments (undefined for other styles /
+                    // bamboo-off ⇒ fall through to the region/K2 wall, unchanged). Emergent nU
+                    // rims are adopted like the smooth grid + DS cone-fan; nodeCount threads the
+                    // real bsNodeCount so the interior tread pairs land on t=k/nodeCount.
+                    const bambooWall = adoptBamboo
+                        ? buildBambooDispatchWall(
+                              {
+                                  analyticRA: buildAnalyticRadiusFn(
+                                      params.styleId,
+                                      params.styleOpts,
+                                      {
+                                          H: dimensions.H,
+                                          Rb: dimensions.Rb,
+                                          Rt: dimensions.Rt,
+                                          expn: dimensions.expn,
+                                      },
+                                  ),
+                                  H: dimensions.H,
+                                  tolMm: qMaxSag,
+                                  nodeCount: (params.styleOpts as { bsNodeCount?: number })
+                                      .bsNodeCount,
                               },
                               params.styleId,
                           )
@@ -2967,6 +3006,7 @@ export class ParametricExportComputer {
                         : undefined;
                     tierCOuterWall =
                         smoothWall ??
+                        bambooWall ??
                         regionWall ??
                         buildTierCOuterWall(
                             outerSampler,

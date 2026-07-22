@@ -42,8 +42,8 @@ import {
   DS_CURVATURE_FINE_STEP,
   DS_CURVATURE_SUBSAMPLES,
 } from './dsFeatureEdges';
-import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled, isSmoothGridEnabled } from './regionLayerFlag';
-export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled, isSmoothGridEnabled } from './regionLayerFlag';
+import { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled, isSmoothGridEnabled, isBambooEnabled } from './regionLayerFlag';
+export { isRegionLayerEnabled, isDsRiserEdgesEnabled, isDsRingStripsEnabled, isDsConeFanEnabled, isSmoothGridEnabled, isBambooEnabled } from './regionLayerFlag';
 export { buildMetricOuterWall, type MetricOuterWallOpts } from './regionMetric';
 import { buildSmoothGridOuterWall, type SmoothGridOuterWallParams } from './smoothGrid';
 export {
@@ -55,7 +55,7 @@ export {
   type SmoothGridDensityOpts,
   type SmoothGridOuterWallParams,
 } from './smoothGrid';
-import { buildDsRingStripWallGeometric, dsRingStripWallToOuterWall, buildDsConeFanWallGeometric } from './dsRingStrips';
+import { buildDsRingStripWallGeometric, dsRingStripWallToOuterWall, buildDsConeFanWallGeometric, buildBambooRingStripWallGeometric } from './dsRingStrips';
 export {
   buildDsRingStripWall,
   buildDsRingStripWallGeometric,
@@ -65,10 +65,13 @@ export {
   buildDsConeFanWallGeometric,
   buildDsConeFanTSchedule,
   buildDsConeFanCertDomain,
+  buildBambooTSchedule,
+  buildBambooRingStripWallGeometric,
   type DsRingStripWall,
   type DsTScheduleOpts,
   type DsConeFanOpts,
   type DsConeFanCertDomain,
+  type BambooTScheduleOpts,
 } from './dsRingStrips';
 
 export {
@@ -560,19 +563,120 @@ export function isSmoothGridStyle(styleId: string | undefined): boolean {
 }
 
 /**
+ * FACET-ALIGNED structured-grid styles: routed to the SAME uniform (u,t) grid emitter as the C∞ smooth styles, but
+ * with facet-aligned column snapping ({@link SmoothGridDensityOpts.alignNU}) instead of pow2, so grid columns LAND on
+ * the style's static facet edges (its sharp vertical C0 seams) rather than STRADDLING them. Kept DISJOINT from
+ * {@link SMOOTH_GRID_STYLES} (those are genuinely C∞) — the map value is the per-style alignment period. LowPolyFacet:
+ * 12 facets tile 2π ⇒ edges at u=odd/24 AND centers at u=even/24 ⇒ alignNU=24 lands columns on BOTH (a multiple of 12
+ * that is NOT 24 is the WORST case — it hits centers but the 12 edges fall mid-gap; scorecard mult12/252 body 0.207).
+ */
+export const FACET_GRID_ALIGN_NU: ReadonlyMap<StyleId, number> = new Map<StyleId, number>([
+  ['LowPolyFacet', 24],
+]);
+
+/** The facet-alignment period for `styleId`, or undefined if it is not a facet-aligned grid style. */
+export function facetGridAlignNU(styleId: string | undefined): number | undefined {
+  return styleId === undefined ? undefined : FACET_GRID_ALIGN_NU.get(styleId as StyleId);
+}
+
+/**
+ * True iff `styleId` routes through the structured-grid emitter — a C∞ smooth style ({@link isSmoothGridStyle}) OR a
+ * facet-aligned grid style ({@link facetGridAlignNU}). The dispatch predicate the production caller gates on;
+ * empty/unknown ⇒ false (safe fallback to the existing outer-wall path).
+ */
+export function isStructuredGridStyle(styleId: string | undefined): boolean {
+  return isSmoothGridStyle(styleId) || facetGridAlignNU(styleId) !== undefined;
+}
+
+/**
  * Smooth-grid dispatch: when the smooth-grid emitter is ENABLED ({@link isSmoothGridEnabled}) AND `styleId` is a
- * smooth-grid style ({@link isSmoothGridStyle}), build the outer wall via the certifiable uniform (u,t) grid
- * ({@link buildSmoothGridOuterWall}) at the sag-derived density. The grid's rims are EMERGENT (nU columns); the
- * assembly pins the inner wall to `outer.bottomRing.length` (WatertightAssembly.ts) so it adopts this wall UNCHANGED,
- * exactly as for the DS cone-fan — no `nRing` needed. Returns `undefined` otherwise (flag-off OR a non-smooth style)
- * ⇒ the caller keeps its existing outer-wall path, byte-identical. Adoption downstream still requires
- * {@link isPerfectMesherEnabled} (the unchanged assembly hook), so a smooth-grid run needs BOTH `__pfSmoothGrid` and
- * `__pfPerfectMesher`; `__pfSmoothGrid` alone is inert.
+ * structured-grid style ({@link isStructuredGridStyle} — a C∞ smooth style OR a facet-aligned style), build the outer
+ * wall via the certifiable uniform (u,t) grid ({@link buildSmoothGridOuterWall}) at the sag-derived density. A
+ * FACET-aligned style ({@link facetGridAlignNU}) carries its `alignNU` period into the density opts so grid columns
+ * land on its static facet edges (else pow2 straddles them); the C∞ smooth styles carry none (pow2, byte-identical).
+ * The grid's rims are EMERGENT (nU columns); the assembly pins the inner wall to `outer.bottomRing.length`
+ * (WatertightAssembly.ts) so it adopts this wall UNCHANGED, exactly as for the DS cone-fan — no `nRing` needed.
+ * Returns `undefined` otherwise (flag-off OR a non-structured style) ⇒ the caller keeps its existing outer-wall path,
+ * byte-identical. Adoption downstream still requires {@link isPerfectMesherEnabled} (the unchanged assembly hook), so
+ * a run needs BOTH `__pfSmoothGrid` and `__pfPerfectMesher`; `__pfSmoothGrid` alone is inert.
  */
 export function buildSmoothGridDispatchWall(
   params: SmoothGridOuterWallParams,
   styleId?: StyleId,
 ): ConformingOuterWallResult | undefined {
-  if (!isSmoothGridEnabled() || !isSmoothGridStyle(styleId)) return undefined;
-  return buildSmoothGridOuterWall(params);
+  if (!isSmoothGridEnabled() || !isStructuredGridStyle(styleId)) return undefined;
+  // A facet-aligned style carries an alignNU period so columns land on its static facet edges; the C∞ smooth styles
+  // carry none (density.alignNU undefined ⇒ pow2 ⇒ byte-identical to the pre-facet build).
+  const alignNU = facetGridAlignNU(styleId);
+  const p =
+    alignNU === undefined ? params : { ...params, density: { ...params.density, alignNU } };
+  return buildSmoothGridOuterWall(p);
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// BAMBOO-SEGMENTS DISPATCH — route the layered Bamboo style to the ring-strip emitter
+// ════════════════════════════════════════════════════════════════════════════
+
+/**
+ * The LAYERED style the BAMBOO-SCHED campaign closes on the CONVERGE-A structured ring-strip
+ * ({@link buildBambooRingStripWallGeometric}) — whole-mesh true-3D ≤0.01mm watertight BY CONSTRUCTION AND
+ * judge-certifiable via the cut-at-gap exact-dyadic partition, where the free-Delaunay conforming mesher floors on the
+ * interior asymVar C0 steps. A deliberately small explicit allow-list (mirrors {@link SMOOTH_GRID_STYLES}) — DISJOINT
+ * from the region + smooth + count-unstable allow-lists so exactly one emitter claims each style.
+ */
+export const BAMBOO_STYLES: ReadonlySet<StyleId> = new Set<StyleId>(['BambooSegments']);
+
+/** True iff `styleId` is the Bamboo dispatch style (empty/unknown ⇒ false — safe fallback to the non-Bamboo path). */
+export function isBambooStyle(styleId: string | undefined): boolean {
+  return styleId !== undefined && BAMBOO_STYLES.has(styleId as StyleId);
+}
+
+/**
+ * Default Bamboo ring-strip circumferential column count (1408 — the proven whole-mesh ≤0.01 close, ~2.6M tris at the
+ * production H120/Rb45/Rt70 geometry). The residual after close is u-chord ∝ 1/nU (the θ-dependent asymVar tread walls
+ * the strip columns chord), so nU is the fidelity lever; ≥1280 closes. Judge cert uses a representative power-of-two nU
+ * (the exact-dyadic partition is a property of the STRUCTURE, invariant to column count — the smoothGridCert / DS
+ * cut-at-gap precedent), so the production nU need not itself be a power of two.
+ */
+export const BAMBOO_RING_STRIP_DEFAULT_NU = 1408;
+
+/** Inputs for {@link buildBambooDispatchWall} — the exact analytic surface + the export chord tolerance + node count. */
+export interface BambooOuterWallParams {
+  /** Exact analytic radius r(theta, z) (built by `buildAnalyticRadiusFn` at the call site; carries the rim-floor() fix). */
+  analyticRA: AnalyticRadiusFn;
+  /** Wall height (mm). */
+  H: number;
+  /** Export chord tolerance (mm) — drives the sag-law body density (schedule `sagTolMm`). */
+  tolMm: number;
+  /** Segment count (registry bsNodeCount) — the interior tread pairs sit at t=k/nodeCount. Default 5. */
+  nodeCount?: number;
+  /** Circumferential column count (nU). Default {@link BAMBOO_RING_STRIP_DEFAULT_NU}. */
+  ringStripNU?: number;
+}
+
+/**
+ * Bamboo dispatch: when the Bamboo emitter is ENABLED ({@link isBambooEnabled}) AND `styleId` is a Bamboo style
+ * ({@link isBambooStyle}), build the outer wall via the CONVERGE-A ring-strip ({@link buildBambooRingStripWallGeometric}
+ * — interior segment-boundary tread pairs + sag-law body) packed with the shared {@link dsRingStripWallToOuterWall}.
+ * The grid's rims are EMERGENT (nU columns); the assembly pins the inner wall to `outer.bottomRing.length`
+ * (WatertightAssembly.ts) so it adopts this wall UNCHANGED, exactly as for the smooth grid + DS cone-fan — no `nRing`
+ * needed. Returns `undefined` otherwise (flag-off OR a non-Bamboo style) ⇒ the caller keeps its existing outer-wall
+ * path, byte-identical. Adoption downstream still requires {@link isPerfectMesherEnabled} (the unchanged assembly
+ * hook), so a Bamboo run needs BOTH `__pfBamboo` and `__pfPerfectMesher`; `__pfBamboo` alone is inert.
+ */
+export function buildBambooDispatchWall(
+  params: BambooOuterWallParams,
+  styleId?: StyleId,
+): ConformingOuterWallResult | undefined {
+  if (!isBambooEnabled() || !isBambooStyle(styleId)) return undefined;
+  const wall = buildBambooRingStripWallGeometric(
+    params.analyticRA,
+    params.H,
+    params.ringStripNU ?? BAMBOO_RING_STRIP_DEFAULT_NU,
+    {
+      sagTolMm: params.tolMm,
+      ...(params.nodeCount !== undefined ? { nodeCount: params.nodeCount } : {}),
+    },
+  );
+  return dsRingStripWallToOuterWall(wall);
 }

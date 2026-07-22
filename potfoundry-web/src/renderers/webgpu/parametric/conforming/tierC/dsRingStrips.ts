@@ -243,6 +243,119 @@ export function dsRingStripWallToOuterWall(wall: DsRingStripWall): ConformingOut
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
+// BAMBOO-SEGMENTS SCHEDULE (E-2026-07-22-BAMBOO-SCHED — the first LAYERED-class production closure).
+//
+// BambooSegments (post the rim-floor() fix in rOuterBambooSegments / bamboo_segments_radius) is a SMOOTH body — the
+// node rings are Gaussian bulges exp(-d²/2w²), the taper is quadratic, the striations are sin(θ·k) — with a genuine
+// C0 asymVar STEP at each INTERIOR segment boundary t=k/nodeCount (k=1..nodeCount-1) whenever bsAsymmetry≠0 (the judge
+// bambooSegmentsLayeredOuterWallTarget.ts emits a "radial curtain" at each such boundary). So the same CONVERGE-A
+// structured ring-strip machinery that closes DragonScales applies: nodeCount takes DragonScales' scaleRows role, and
+// the double-valued tread pair at each t=k/nodeCount brackets the asymVar step by construction (never chords it). The
+// difference from the DS ring schedule is the BODY fill: DS uses uniform body rows, Bamboo grades them by a SAG LAW on
+// the (θ-independent) node-bulge curvature so the smooth flank is chorded ≤tol where its 2nd difference demands. The
+// rim (t=1) is now smooth (last real segment extends to it) ⇒ NO rim bracket, unlike the pre-fix probe.
+//
+// Reuses buildDsRingTSchedule (tread pairs, body fill suppressed) + buildDsRingStripWall (the shared emitter) +
+// dsRingStripWallToOuterWall (the shared packing) unchanged. Flag-gated (isBambooEnabled / __pfBamboo) + byte-identical
+// off — see index.ts (buildBambooDispatchWall has no default caller). Pure browser-capable arithmetic.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** Options for the BambooSegments t-station schedule (the across-ring column layout). All lengths in mm. */
+export interface BambooTScheduleOpts {
+  /**
+   * Segment count (registry bsNodeCount, default 5). Interior asymVar C0 boundaries sit at t=k/nodeCount for
+   * k=1..nodeCount-1; the schedule brackets each with a tread pair. Must match the analytic surface's node count.
+   */
+  nodeCount?: number;
+  /**
+   * Double-valued tread half-height (mm): each interior boundary gets a row at t=k/nodeCount ∓ treadHalfMm/H, so the
+   * asymVar step is an EXPLICIT near-vertical strip (dz=2·this), never a chord. Default 0.002 (the closing config).
+   */
+  treadHalfMm?: number;
+  /**
+   * Sag-law body chord tolerance (mm): body rows are placed where the Gaussian node-bulge 2nd difference demands a
+   * chord ≤ this. The residual after close is u-chord ∝ 1/nU, so a tighter body tol mostly adds rows without moving the
+   * whole-mesh MAX; 0.004 is the closing value.
+   */
+  sagTolMm?: number;
+  /** Sag-law body row spacing clamp (mm). Defaults min 0.01 / max 0.12. */
+  sagHMinMm?: number;
+  sagHMaxMm?: number;
+  /** Flank-ladder reach (mm) fanning from each interior ring, forwarded to {@link buildDsRingTSchedule}. Default 2.0. */
+  flankReachMm?: number;
+  /**
+   * Flank-ladder max rows per side of each ring, forwarded to {@link buildDsRingTSchedule}. Default 0 (sliver-Pareto):
+   * the sag-law body already grades the smooth flank, so the DS geometric ladder is redundant here and its fine
+   * near-tread rows are the sliver source. The tread pair itself is always kept.
+   */
+  flankRows?: number;
+  /** Flank-ladder geometric ratio, forwarded to {@link buildDsRingTSchedule}. Default 1.5. */
+  flankGrade?: number;
+}
+
+/** Central-difference step (mm) for the sag-law r''(z). */
+const BAMBOO_FD_STEP_MM = 0.02;
+
+/**
+ * Build the BambooSegments t-station schedule: a double-valued tread PAIR straddling every interior segment boundary
+ * t=k/nodeCount (k=1..nodeCount-1) via the DS ring machinery ({@link buildDsRingTSchedule} with scaleRows=nodeCount and
+ * the uniform body fill suppressed), plus SAG-LAW body rows graded by the node-bulge curvature. t=0 and t=1 are always
+ * present (the pot rims). No row is ever placed AT a boundary (the C0 jump is bracketed, never sampled), and — after
+ * the rim-floor() fix — the rim itself needs no bracket.
+ */
+export function buildBambooTSchedule(
+  H: number,
+  rA: AnalyticRadiusFn,
+  opts: BambooTScheduleOpts = {},
+): number[] {
+  const nodeCount = Math.max(1, Math.floor(opts.nodeCount ?? 5));
+  const tol = opts.sagTolMm ?? 0.004;
+  const hMin = (opts.sagHMinMm ?? 0.01) / H;
+  const hMax = (opts.sagHMaxMm ?? 0.12) / H;
+  // (a) interior segment-boundary tread PAIRS: the DS ring machinery with scaleRows=nodeCount places a pair at t=k/
+  //     nodeCount for k=1..nodeCount-1 (its loop is k<scaleRows ⇒ NO pair at t=1). Body fill suppressed (bodyStepMm
+  //     huge) so the sag-law walk below is the sole body source (else a redundant ~2× double-fill for no fidelity gain).
+  const base = new Set<number>(buildDsRingTSchedule(H, {
+    lattice: { ...DEFAULT_DS_LATTICE, scaleRows: nodeCount },
+    treadHalfMm: opts.treadHalfMm ?? 0.002,
+    bodyStepMm: 1e9,
+    flankReachMm: opts.flankReachMm ?? 2.0,
+    flankRows: opts.flankRows ?? 0,
+    flankGrade: opts.flankGrade ?? 1.5,
+  }));
+  base.add(0);
+  base.add(1);
+  // (b) SAG-LAW body rows on the θ=0 profile (the Gaussian node-bulge curvature is θ-independent; asymVar/striation are
+  //     piecewise-flat/small in z). Walk z, place the next row at Δt = sqrt(8·tol/|r''(z)|)/H clamped to [hMin,hMax].
+  const rProfile = (z: number): number => rA(0, Math.max(0, Math.min(H, z)));
+  const secondDiff = (z: number): number =>
+    Math.abs((rProfile(z + BAMBOO_FD_STEP_MM) - 2 * rProfile(z) + rProfile(z - BAMBOO_FD_STEP_MM)) / (BAMBOO_FD_STEP_MM * BAMBOO_FD_STEP_MM));
+  let t = 0;
+  while (t < 1) {
+    const k = secondDiff(t * H);
+    let stepT = k > 1e-9 ? Math.sqrt((8 * tol) / k) / H : hMax;
+    stepT = Math.max(hMin, Math.min(hMax, stepT));
+    t += stepT;
+    if (t < 1) base.add(t);
+  }
+  // sort + dedup within a tight epsilon (the tread pair 2·treadHalf apart survives; float dups collapse).
+  const rows = [...base].filter((x) => x >= 0 && x <= 1).sort((a, b) => a - b);
+  const uniq: number[] = [];
+  for (const r of rows) if (uniq.length === 0 || r - uniq[uniq.length - 1] > RING_EPS) uniq.push(r);
+  return uniq;
+}
+
+/** Convenience: build the Bamboo schedule and emit the ring-strip wall in one call (the wiring entry). */
+export function buildBambooRingStripWallGeometric(
+  rA: AnalyticRadiusFn,
+  H: number,
+  nU: number,
+  opts: BambooTScheduleOpts = {},
+): DsRingStripWall {
+  return buildDsRingStripWall(rA, H, nU, buildBambooTSchedule(H, rA, opts));
+}
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
 // SCALE-TIP CONE-FAN (E-2026-07-21-DS-CONEFAN-PROD — the tournament winner, whole-body ≤0.01 proven).
 //
 // The DragonScales scale TIP is a genuine C1 CONE APEX (rOuterDragonScales scaleShape ≈ 1.5·√(xDist²+yDist²) near the
