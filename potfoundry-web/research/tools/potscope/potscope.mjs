@@ -1166,7 +1166,22 @@ export function readConverge(path) {
   if (data.perPatch === null || typeof data.perPatch !== 'object' || Array.isArray(data.perPatch)) {
     throw new Error('converge: missing perPatch object (not a convergence sidecar?)');
   }
-  return data;
+  // Calibration gate. The roster bake attaches
+  //   calibration: { certGlobalMaxMm, certPerPatchMaxMm, calibrationRatio, tolerance }
+  // where calibrationRatio = (probe fine-density global max) / (KNOWN certified max).
+  // A pot is CALIBRATED only when calibrationRatio <= tolerance: the cheap depth-N
+  // proxy's fine max sits within tolerance× of the pot's certified truth, so its
+  // per-patch coarse/fine ratios can be trusted. When calibrationRatio > tolerance
+  // (Voronoi blows up 427×) the proxy is too loose and EVERY ratio it reports is
+  // unreliable. Absent calibration data → NOT calibrated (cannot verify ⇒ cannot
+  // trust). Surface calibrationRatio/tolerance at top level (don't lose them) so the
+  // CLI / doctor / dashboard can mark an uncalibrated pot's verdict as unverified.
+  const cal = data.calibration;
+  const calibrationRatio =
+    cal && typeof cal.calibrationRatio === 'number' ? cal.calibrationRatio : null;
+  const tolerance = cal && typeof cal.tolerance === 'number' ? cal.tolerance : null;
+  const calibrated = calibrationRatio !== null && tolerance !== null && calibrationRatio <= tolerance;
+  return { ...data, calibrated, calibrationRatio, tolerance };
 }
 
 // PURE + exported. Flatten perPatch into rows carrying the RECOMPUTED verdict +
@@ -1236,6 +1251,7 @@ function cmdConverge(args) {
   const rows = buildConvergeRows(data);
   const worst = rows[0];
   const cert = data.calibration ? data.calibration.certGlobalMaxMm : undefined;
+  const calibrated = data.calibrated;
 
   if (args.flags.includes('--json')) {
     console.log(
@@ -1248,10 +1264,15 @@ function cmdConverge(args) {
           fineGlobalMaxMm: data.fineGlobalMaxMm,
           coarseGlobalMaxMm: data.coarseGlobalMaxMm,
           certGlobalMaxMm: cert,
+          calibrated,
+          calibrationRatio: data.calibrationRatio,
+          tolerance: data.tolerance,
           fineTrisTotal: data.fineTrisTotal,
           coarseTrisTotal: data.coarseTrisTotal,
           worstPatch: worst ? worst.patchId : null,
-          worstVerdict: worst ? worst.verdict : null,
+          // An uncalibrated probe's verdict is unverified — report null so no
+          // consumer of the JSON reads it as a measured verdict.
+          worstVerdict: worst ? (calibrated ? worst.verdict : null) : null,
           rows,
         },
         null,
@@ -1271,7 +1292,21 @@ function cmdConverge(args) {
     `fine global max ${um(data.fineGlobalMaxMm)}µm · coarse ${um(data.coarseGlobalMaxMm)}µm` +
       `${cert !== undefined ? ` · cert ${um(cert)}µm` : ''} · ${n(data.fineTrisTotal)}→${n(data.coarseTrisTotal)} tris`
   );
-  console.log('refine-vs-redesign by patch (ratio = coarseMax/fineMax; ~4 responsive · ~1 irreducible):\n');
+  // Calibration gate: warn LOUDLY before the table when the probe is uncalibrated —
+  // its fine-density max is calibrationRatio× the certified max, far above tolerance,
+  // so the per-patch ratios below cannot be trusted (re-bake at a higher depth).
+  if (!calibrated) {
+    const cr = Number.isFinite(data.calibrationRatio) ? data.calibrationRatio.toFixed(1) : '?';
+    const tol = Number.isFinite(data.tolerance) ? data.tolerance : '?';
+    console.log(
+      `\n⚠ UNCALIBRATED: depth-${data.depth} proxy fine-max is ${cr}× the certified max ` +
+        `(tolerance ${tol}×) — the ratios below are NOT trustworthy; re-bake at higher depth.\n`
+    );
+  }
+  console.log(
+    `refine-vs-redesign by patch (ratio = coarseMax/fineMax; ~4 responsive · ~1 irreducible)` +
+      `${calibrated ? '' : ' [UNCALIBRATED]'}:\n`
+  );
   console.log('  patch           fineµm  coarseµm  ratio  verdict');
   for (const r of rows) {
     console.log(
@@ -1295,8 +1330,11 @@ function cmdConverge(args) {
     }
   }
   if (worst) {
+    // The verdict is only a measured call when the probe is calibrated; otherwise
+    // flag it as unverified so the summary line is never read as a certified result.
+    const uncalSuffix = calibrated ? '' : ' [UNCALIBRATED — ratio unreliable]';
     console.log(
-      `\nworst: ${worst.patchId} ${worst.verdict} (ratio ${ratioStr(worst.ratio)}, fine ${um(worst.fineMaxMm)}µm)` +
+      `\nworst: ${worst.patchId} ${worst.verdict}${uncalSuffix} (ratio ${ratioStr(worst.ratio)}, fine ${um(worst.fineMaxMm)}µm)` +
         `\n  → ${worst.lever}`
     );
   }
@@ -1328,7 +1366,9 @@ export function buildDoctorReport(dir, opts = {}) {
       masked: row.masked,
       source: row.source,
       hotspots: { available: false, top: null },
-      convergence: { available: false, worst: null },
+      // calibrated defaults false so a sidecar-less pot is null-safe AND is never
+      // counted into the (calibrated-only) irreducible frontier.
+      convergence: { available: false, calibrated: false, worst: null },
     };
     try {
       // Hotspots: elided entirely under --fast (reading a dozen STLs, some ~45 MB,
@@ -1354,9 +1394,14 @@ export function buildDoctorReport(dir, opts = {}) {
       const convPath = join(resolvedDir, `${row.name}.converge.json`);
       if (existsSync(convPath)) {
         try {
-          const worst = buildConvergeRows(readConverge(convPath))[0] ?? null;
+          const conv = readConverge(convPath);
+          const worst = buildConvergeRows(conv)[0] ?? null;
           base.convergence = {
             available: true,
+            // Honor the calibration gate: carry the derived flag so an uncalibrated
+            // pot's worst ratio is never trusted as a measured verdict downstream.
+            calibrated: conv.calibrated,
+            calibrationRatio: conv.calibrationRatio,
             worst: worst ? { patchId: worst.patchId, ratio: worst.ratio, verdict: worst.verdict } : null,
           };
         } catch {
@@ -1373,7 +1418,14 @@ export function buildDoctorReport(dir, opts = {}) {
     green: pots.filter((p) => p.verdict === 'GREEN').length,
     drift: pots.filter((p) => p.verdict === 'DRIFT').length,
     masked: pots.filter((p) => p.masked).length,
-    withIrreducibleConvergence: pots.filter((p) => p.convergence.worst && p.convergence.worst.verdict === 'IRREDUCIBLE').length,
+    // The irreducible frontier counts ONLY calibrated pots: an uncalibrated probe's
+    // IRREDUCIBLE is an unreliable verdict (its ratio can't be trusted), so counting
+    // it would overstate how much of the roster is genuinely density-proof.
+    withIrreducibleConvergence: pots.filter(
+      (p) => p.convergence.calibrated && p.convergence.worst && p.convergence.worst.verdict === 'IRREDUCIBLE'
+    ).length,
+    convergeCalibrated: pots.filter((p) => p.convergence.available && p.convergence.calibrated).length,
+    convergeUncalibrated: pots.filter((p) => p.convergence.available && !p.convergence.calibrated).length,
     hotspotsAvailable: pots.filter((p) => p.hotspots.available).length,
     convergeAvailable: pots.filter((p) => p.convergence.available).length,
   };
@@ -1419,7 +1471,15 @@ function cmdDoctor(args) {
       : p.hotspots.top
       ? `${p.hotspots.top.shape}/${p.hotspots.top.patch}`
       : 'clean';
-    const conv = p.convergence.available ? (p.convergence.worst ? p.convergence.worst.verdict : '—') : '—';
+    // Uncalibrated probes never print a bare verdict here — show UNCAL so the
+    // table can't be read as a measured call (same gate the dashboard applies).
+    const conv = !p.convergence.available
+      ? '—'
+      : !p.convergence.calibrated
+      ? 'UNCAL'
+      : p.convergence.worst
+      ? p.convergence.worst.verdict
+      : '—';
     const flag = p.masked ? ' ⚠MASK' : '';
     console.log(
       `${p.name.padEnd(44)} ${String(p.style).padEnd(18)} ${String(p.tris).padStart(9)}  ${um(p.maxMm).padStart(6)}  ${String(p.verdict).padEnd(7)}  ${hot.padEnd(26)} ${conv}${flag}`
@@ -1427,7 +1487,8 @@ function cmdDoctor(args) {
   }
   console.log(
     `\n${s.pots} pots · ${s.green} GREEN · ${s.drift} DRIFT · ${s.masked} max-masked · ` +
-      `${s.withIrreducibleConvergence} irreducible-converge · hotspots ${s.hotspotsAvailable}/${s.pots} · converge ${s.convergeAvailable}/${s.pots}`
+      `${s.withIrreducibleConvergence} irreducible-converge (calibrated) · hotspots ${s.hotspotsAvailable}/${s.pots} · ` +
+      `converge ${s.convergeAvailable}/${s.pots} (${s.convergeCalibrated} calibrated · ${s.convergeUncalibrated} uncalibrated)`
   );
   if (report.pots.some((p) => p.source === 'manifest')) {
     console.error('(from committed manifest — no on-disk sidecars; hotspots/convergence unavailable until re-baked + reconstructed)');
@@ -1527,6 +1588,23 @@ export function dashboardHtml(report) {
     if (!c.available) return `<div class="line faint"><span class="lk">converge</span> not probed</div>`;
     const w = c.worst;
     if (!w) return `<div class="line"><span class="lk">converge</span><span class="ok">no limiting patch</span></div>`;
+    // Calibration gate: when the probe is UNCALIBRATED (its fine-density max sits far
+    // above the pot's KNOWN certified max) its per-patch ratios are unreliable, so
+    // NEVER render an authoritative RESPONSIVE/PARTIAL/IRREDUCIBLE badge. Show the
+    // worst patch + ratio behind a muted "uncalibrated" chip (amber-dim) so a viewer
+    // can't mistake it for a measured verdict. Only an EXPLICIT calibrated===false
+    // demotes — a report predating the flag (undefined) renders authoritatively as before.
+    if (c.calibrated === false) {
+      const cr = Number.isFinite(c.calibrationRatio) ? `${Number(c.calibrationRatio).toFixed(1)}×` : '';
+      const tip = `uncalibrated: proxy fine-max ${cr || 'is'} above the certified max — ratio not a measured verdict`;
+      return (
+        `<div class="line uncal"><span class="lk">converge</span>` +
+        `<span class="patch">${esc(w.patchId)}</span>` +
+        `<span class="ratio">×${Number(w.ratio).toFixed(2)}</span>` +
+        `<span class="cbadge c-uncal" title="${esc(tip)}">uncalibrated${cr ? ` ${esc(cr)}` : ''}</span>` +
+        `</div>`
+      );
+    }
     return (
       `<div class="line"><span class="lk">converge</span>` +
       `<span class="patch">${esc(w.patchId)}</span>` +
@@ -1721,6 +1799,11 @@ export function dashboardHtml(report) {
   .c-resp{color:var(--responsive); background:color-mix(in srgb, var(--responsive) 14%, transparent); border-color:color-mix(in srgb, var(--responsive) 36%, transparent)}
   .c-part{color:var(--amber); background:color-mix(in srgb, var(--amber) 14%, transparent); border-color:color-mix(in srgb, var(--amber) 36%, transparent)}
   .c-irr{color:var(--ember); background:color-mix(in srgb, var(--ember) 14%, transparent); border-color:color-mix(in srgb, var(--ember) 36%, transparent)}
+  /* UNCALIBRATED: deliberately muted vs the authoritative verdict badges — a dim,
+     dashed amber chip that reads as "not a measured verdict", not a status. */
+  .c-uncal{color:var(--amber); background:color-mix(in srgb, var(--amber) 8%, transparent); border-color:color-mix(in srgb, var(--amber) 26%, transparent); border-style:dashed; opacity:.85; font-style:italic; text-transform:none}
+  .line.uncal .patch{opacity:.62}
+  .line.uncal .ratio{opacity:.62; text-decoration:line-through}
   .lever{font-size:11px; color:var(--dim); line-height:1.4; padding-left:2px; overflow-wrap:anywhere}
   .cfoot{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:auto; padding-top:2px}
 

@@ -735,7 +735,9 @@ test('buildDoctorReport aggregates registry + hotspots + convergence; a sidecar-
   // pot "Full": full sidecar set (→ hotspots) + a converge.json (→ convergence)
   writeHotPot(d, 'Full', { style: 'Gothic', errors: [0.009, 0.008, 0.007], locRows: SPIKE_LOC, stats: { maxMm: 0.009, p50Mm: 0.002, p99Mm: 0.005 } });
   writeFileSync(join(d, 'Full.converge.json'), JSON.stringify({
-    magic: 'potscope-converge/v1', variant: 'Full', style: 'Gothic',
+    magic: 'potscope-converge/v1', variant: 'Full', style: 'Gothic', depth: 2,
+    // calibrated (1.32 <= 2.5) → its IRREDUCIBLE inner-wall is a TRUSTED verdict and counts
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 1.32, tolerance: 2.5 },
     perPatch: {
       'outer-wall': { fineMaxMm: 0.0066, coarseMaxMm: 0.014, ratio: 2.12, fineTris: 100, coarseTris: 25 },
       'inner-wall': { fineMaxMm: 0.0059, coarseMaxMm: 0.0063, ratio: 1.07, fineTris: 200, coarseTris: 100 },
@@ -756,6 +758,7 @@ test('buildDoctorReport aggregates registry + hotspots + convergence; a sidecar-
   assert.equal(full.hotspots.top.patch, 'outer-wall');
   assert.ok(Math.abs(full.hotspots.top.peakMm - 0.009) < 1e-6);
   assert.equal(full.convergence.available, true);
+  assert.equal(full.convergence.calibrated, true); // calibrationRatio 1.32 <= tolerance 2.5
   assert.equal(full.convergence.worst.patchId, 'inner-wall'); // lowest ratio = worst-first
   assert.equal(full.convergence.worst.verdict, 'IRREDUCIBLE'); // ratio 1.07 < 1.8
 
@@ -766,11 +769,13 @@ test('buildDoctorReport aggregates registry + hotspots + convergence; a sidecar-
   assert.equal(bare.hotspots.available, false); // no sidecars → not an error
   assert.equal(bare.hotspots.top, null);
   assert.equal(bare.convergence.available, false);
+  assert.equal(bare.convergence.calibrated, false); // null-safe default when converge.json absent
   assert.equal(bare.convergence.worst, null);
 
   assert.deepEqual(report.summary, {
     pots: 2, green: 2, drift: 0, masked: 0,
-    withIrreducibleConvergence: 1, hotspotsAvailable: 1, convergeAvailable: 1,
+    withIrreducibleConvergence: 1, convergeCalibrated: 1, convergeUncalibrated: 0,
+    hotspotsAvailable: 1, convergeAvailable: 1,
   });
 });
 
@@ -984,4 +989,110 @@ test('Fix D: isInsideDir — descendant true, shared-prefix sibling false, dir i
   assert.equal(isInsideDir('/x/_certified_stl/a', '/x/_certified_stl'), true);   // descendant
   assert.equal(isInsideDir('/x/_certified_stl_secret/a', '/x/_certified_stl'), false); // sibling — the bug
   assert.equal(isInsideDir('/x/_certified_stl', '/x/_certified_stl'), true);      // dir itself
+});
+
+// === calibration gate: convergence ratios are only trustworthy when CALIBRATED (P2c) ===
+// The roster bake attaches a `calibration` object to each converge.json:
+// { certGlobalMaxMm, certPerPatchMaxMm, calibrationRatio, tolerance }. A pot is
+// CALIBRATED when calibrationRatio <= tolerance — i.e. the cheap depth-N proxy's
+// fine-density max sits within tolerance× of the pot's KNOWN certified max. When
+// calibrationRatio > tolerance the proxy is too loose (Voronoi blows up 427×), so
+// its per-patch ratios are NOT trustworthy and must never be shown as a measured
+// verdict. These tests pin that honesty gate across readConverge/doctor/dashboard.
+
+test('readConverge derives `calibrated` from calibrationRatio vs tolerance and surfaces both', () => {
+  // ratio ABOVE tolerance → NOT calibrated (proxy fine-max too far above the cert)
+  const uncal = readConverge(writeConverge('uncal.converge.json', CONVERGE_PATCHES, {
+    depth: 2,
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 427.41, tolerance: 2.5 },
+  }));
+  assert.equal(uncal.calibrated, false);
+  assert.ok(Math.abs(uncal.calibrationRatio - 427.41) < 1e-9, 'calibrationRatio surfaced (not lost)');
+  assert.equal(uncal.tolerance, 2.5);
+
+  // ratio BELOW tolerance → calibrated
+  const cal = readConverge(writeConverge('cal.converge.json', CONVERGE_PATCHES, {
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 1.32, tolerance: 2.5 },
+  }));
+  assert.equal(cal.calibrated, true);
+  assert.ok(Math.abs(cal.calibrationRatio - 1.32) < 1e-9);
+  assert.equal(cal.tolerance, 2.5);
+
+  // EXACT boundary calibrationRatio === tolerance → calibrated (the gate is <=)
+  const edge = readConverge(writeConverge('edge.converge.json', CONVERGE_PATCHES, {
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 2.5, tolerance: 2.5 },
+  }));
+  assert.equal(edge.calibrated, true);
+
+  // no calibration object at all → cannot verify ⇒ NOT calibrated (honest default)
+  const none = readConverge(writeConverge('nocal.converge.json', CONVERGE_PATCHES));
+  assert.equal(none.calibrated, false);
+  assert.equal(none.calibrationRatio, null);
+});
+
+test('buildDoctorReport: an UNCALIBRATED irreducible is marked and excluded from the irreducible frontier', () => {
+  const d = join(DIR, 'doctor_uncal');
+  mkdirSync(d, { recursive: true });
+  // "Uncal": worst verdict IS IRREDUCIBLE (ratio 0.62 < 1.8) but the probe is
+  // UNCALIBRATED (calibrationRatio 427 > tol 2.5) — an unreliable irreducible.
+  writeFileSync(join(d, 'Uncal.recon.json'), JSON.stringify({ name: 'Uncal', style: 'Voronoi', tris: 100, configDigest: 'u', verdict: 'GREEN' }));
+  writeFileSync(join(d, 'Uncal.converge.json'), JSON.stringify({
+    magic: 'potscope-converge/v1', variant: 'Uncal', style: 'Voronoi', depth: 2,
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 427.41, tolerance: 2.5 },
+    perPatch: { 'outer-wall': { fineMaxMm: 2.13, coarseMaxMm: 1.32, ratio: 0.62, fineTris: 100, coarseTris: 25 } },
+  }));
+  // "Cal": worst IRREDUCIBLE (ratio 1.07) AND calibrated (1.32 <= 2.5) → the only one counted
+  writeFileSync(join(d, 'Cal.recon.json'), JSON.stringify({ name: 'Cal', style: 'GeometricStar', tris: 100, configDigest: 'c', verdict: 'GREEN' }));
+  writeFileSync(join(d, 'Cal.converge.json'), JSON.stringify({
+    magic: 'potscope-converge/v1', variant: 'Cal', style: 'GeometricStar', depth: 2,
+    calibration: { certGlobalMaxMm: 0.005, certPerPatchMaxMm: {}, calibrationRatio: 1.32, tolerance: 2.5 },
+    perPatch: { 'inner-wall': { fineMaxMm: 0.0059, coarseMaxMm: 0.0063, ratio: 1.07, fineTris: 200, coarseTris: 100 } },
+  }));
+
+  const report = buildDoctorReport(d, { fast: true });
+  const uncal = report.pots.find((p) => p.name === 'Uncal');
+  const cal = report.pots.find((p) => p.name === 'Cal');
+  assert.equal(uncal.convergence.available, true);
+  assert.equal(uncal.convergence.calibrated, false);
+  assert.equal(uncal.convergence.worst.verdict, 'IRREDUCIBLE'); // it IS irreducible...
+  assert.equal(cal.convergence.calibrated, true);
+  assert.equal(cal.convergence.worst.verdict, 'IRREDUCIBLE');
+
+  // ...but an UNCALIBRATED irreducible is not trustworthy, so only the CALIBRATED one counts
+  assert.equal(report.summary.withIrreducibleConvergence, 1);
+  assert.equal(report.summary.convergeCalibrated, 1);
+  assert.equal(report.summary.convergeUncalibrated, 1);
+  assert.equal(report.summary.convergeAvailable, 2);
+});
+
+test('dashboardHtml renders an UNCALIBRATED convergence row as a muted chip, never an authoritative verdict badge', () => {
+  const report = {
+    magic: 'potscope-doctor/v1',
+    pots: [{
+      name: 'UncalVoronoiPot', style: 'Voronoi', tris: 172032, verdict: 'GREEN',
+      maxMm: 0.005, p99Mm: 0.004, masked: false, source: 'sidecar',
+      hotspots: { available: false, top: null },
+      convergence: {
+        available: true, calibrated: false, calibrationRatio: 427.41,
+        worst: { patchId: 'outer-wall', ratio: 0.62, verdict: 'IRREDUCIBLE' },
+      },
+    }],
+    summary: { pots: 1, green: 1, drift: 0, masked: 0, withIrreducibleConvergence: 0, convergeCalibrated: 0, convergeUncalibrated: 1, hotspotsAvailable: 0, convergeAvailable: 1 },
+  };
+  const html = dashboardHtml(report);
+  assert.ok(html.includes('UncalVoronoiPot'), 'pot renders');
+  // Scope the assertions to THIS pot's card (the footer legend always shows one of
+  // every badge, incl. a sample c-irr">IRREDUCIBLE — a global absence check would
+  // collide with that legend, not the pot's row).
+  const cardStart = html.indexOf('data-name="UncalVoronoiPot"');
+  assert.ok(cardStart >= 0, 'pot card present');
+  const card = html.slice(cardStart, html.indexOf('</article>', cardStart));
+  // the convergence row is explicitly marked uncalibrated (muted chip)...
+  assert.ok(/uncalibrated/i.test(card), 'convergence row marked uncalibrated');
+  assert.ok(card.includes('c-uncal'), 'uncalibrated chip uses the muted c-uncal class');
+  // ...and NO authoritative RESPONSIVE/PARTIAL/IRREDUCIBLE verdict badge is rendered
+  // for it — the ratio is unreliable, so a viewer must never read it as a measured verdict.
+  assert.ok(!/c-(resp|part|irr)"/.test(card), `uncalibrated card must show no authoritative cBadge, card=${card}`);
+  // the worst ratio is still surfaced as context (just not as a verdict)
+  assert.ok(card.includes('×0.62'), 'worst ratio still shown as context');
 });
