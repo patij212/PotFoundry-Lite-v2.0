@@ -74,10 +74,18 @@ Additive, TDD, byte-identical on every existing path (opt-in only):
 - **`types.ts`:** the false "WELD_TOL_MM matches exportValidation" comment corrected to
   document the 10× divergence (1e-4 vs 1e-3). **This lands the doc half of R5** (the
   gate-tolerance reconciliation itself is still open).
+- **`research/bridge/exactCertGate.ts` + `.test.ts` — the rigorous prover wired to a
+  LIVE gate.** `certifyOuterWallExact` drives the targetSolid interval prover end-to-end
+  (atlas → tessellate → bake) into a MAX-first, fail-closed verdict, patch-scoped to the
+  outer wall. The test is ALWAYS-ON (not env-gated): it rigorously certifies a gentle
+  outer wall at 0.01mm (~17s) and proves the gate is non-vacuous. The prover was
+  previously only in a dev-only, env-gated sidecar baker (gating nothing).
 - **`research/MEASUREMENT-COMPENDIUM.md`:** the authoritative ruler catalog.
 
-_Roadmap status: R1 DONE; R5 doc-half done (reconciliation open). R2/R3/R4/R6/R7/R8
-remain as below._
+_Roadmap status: R1 DONE; R4 DONE (measureRadialFidelity pre-filter); R5 doc-half done;
+the rigorous prover is now on a LIVE gate (exactCertGate) — the "wire a live gate" future
+bet, on one config. R2/R3/R6/R7/R8 remain (R7 cross-validation and an all-style/all-scale
+gate are the natural next steps now that the prover runs live)._
 
 ## 4. Roadmap (remaining fixes, ranked)
 
