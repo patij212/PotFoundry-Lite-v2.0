@@ -432,3 +432,118 @@ test('resolveTriFromLoc returns patch + per-vertex uv for a global triangle inde
   assert.ok(Math.abs(r.vertices[0].u - 0.7) < 1e-6);
   assert.ok(Math.abs(r.vertices[2].v - 0.3) < 1e-6);
 });
+
+// --- portable certificate manifest (Task P1) ------------------------------------
+// research/exchange/ (the certified STLs + their *.recon.json / *.error.bin /
+// *.certificate.txt sidecars) is git-ignored, so a fresh clone has NONE of them and
+// `status` would be empty. buildManifest distills every on-disk pot into a small
+// git-TRACKED certs.manifest.json; buildStatusRows falls back to it when a dir has
+// no on-disk recon.json, so the registry still reports on a clean checkout.
+import { buildManifest } from './potscope.mjs';
+
+// write a valid recon.json + sibling error.bin (+ optional certificate.txt) pair
+function writeCertifiedPot(dir, name, { style, tris, configDigest, verdict, provenance, stats, certText }) {
+  writeFileSync(join(dir, `${name}.recon.json`), JSON.stringify({ name, style, tris, configDigest, provenance, verdict }));
+  writeFileSync(join(dir, `${name}.stl.error.bin`), Buffer.concat([
+    Buffer.from(JSON.stringify({ magic: 'potscope-error/v1', count: 1, budgetMm: 0.01, stats }) + '\n', 'utf8'),
+    Buffer.from(new Float32Array([stats.maxMm]).buffer),
+  ]));
+  if (certText !== undefined) writeFileSync(join(dir, `${name}.certificate.txt`), certText);
+}
+
+test('buildManifest distills recon.json + error.bin + certificate.txt into a sorted, portable snapshot (skips malformed)', () => {
+  const d = join(DIR, 'manifest1');
+  mkdirSync(d, { recursive: true });
+  // "Zeta" written FIRST but must sort AFTER "Alpha" in the manifest
+  writeCertifiedPot(d, 'Zeta', {
+    style: 'Voronoi', tris: 200, configDigest: 'zzz11111zzz', verdict: 'GREEN',
+    provenance: { targetSha256: 'zt', artifactByteSha256: 'za', parsedTriangleSetSha256: 'zp' },
+    stats: { maxMm: 0.009, p50Mm: 0.003, p99Mm: 0.008 },
+  });
+  writeCertifiedPot(d, 'Alpha', {
+    style: 'Gothic', tris: 100, configDigest: 'aaa22222aaa', verdict: 'GREEN',
+    provenance: { targetSha256: 'at', artifactByteSha256: 'aa', parsedTriangleSetSha256: 'ap' },
+    stats: { maxMm: 0.010, p50Mm: 0.001, p99Mm: 0.002 },
+    certText: 'certified at commit deadbeef1234 — all good\n',
+  });
+  // malformed recon.json → SKIPPED with a warn, scan continues
+  writeFileSync(join(d, 'Bad.recon.json'), '{ not json');
+
+  const warnings = [];
+  const origWarn = console.warn;
+  console.warn = (m) => warnings.push(String(m));
+  let manifest;
+  try { manifest = buildManifest(d); } finally { console.warn = origWarn; }
+
+  assert.equal(manifest.magic, 'potscope-manifest/v1');
+  assert.equal(manifest.pots.length, 2); // Bad skipped
+  assert.deepEqual(manifest.pots.map((p) => p.name), ['Alpha', 'Zeta']); // sorted by name
+  const alpha = manifest.pots[0];
+  assert.equal(alpha.style, 'Gothic');
+  assert.equal(alpha.tris, 100);
+  assert.equal(alpha.configDigest, 'aaa22222aaa'); // FULL digest preserved in the snapshot
+  assert.equal(alpha.verdict, 'GREEN');
+  assert.deepEqual(alpha.provenance, { targetSha256: 'at', artifactByteSha256: 'aa', parsedTriangleSetSha256: 'ap' });
+  assert.ok(Math.abs(alpha.stats.maxMm - 0.010) < 1e-6);
+  assert.ok(Math.abs(alpha.stats.p50Mm - 0.001) < 1e-6);
+  assert.ok(Math.abs(alpha.stats.p99Mm - 0.002) < 1e-6);
+  assert.equal(alpha.cert.commit, 'deadbeef1234'); // parsed from certificate.txt
+  assert.equal(manifest.pots[1].cert.commit, null); // Zeta had no certificate.txt
+  assert.ok(warnings.some((w) => w.includes('Bad.recon.json')), `expected skip warning, got ${JSON.stringify(warnings)}`);
+  assert.ok(!/\d{4}-\d\d-\d\dT/.test(JSON.stringify(manifest)), 'manifest must carry NO ISO timestamps (minimal regen diffs)');
+});
+
+test('buildStatusRows falls back to the committed manifest when a dir has no recon.json (source: manifest)', () => {
+  const emptyDir = join(DIR, 'fresh_clone_empty');
+  mkdirSync(emptyDir, { recursive: true }); // exists but holds no *.recon.json (fresh clone)
+  const manifestPath = join(DIR, 'certs.manifest.fixture.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    magic: 'potscope-manifest/v1',
+    pots: [
+      { name: 'Alpha', style: 'Gothic', configDigest: 'aaa22222aaa', tris: 100, verdict: 'GREEN',
+        provenance: { targetSha256: 'at', artifactByteSha256: 'aa', parsedTriangleSetSha256: 'ap' },
+        stats: { maxMm: 0.010, p50Mm: 0.001, p99Mm: 0.002 }, cert: { commit: 'deadbeef1234' } },
+      { name: 'Zeta', style: 'Voronoi', configDigest: 'zzz11111zzz', tris: 200, verdict: 'GREEN',
+        provenance: { targetSha256: 'zt', artifactByteSha256: 'za', parsedTriangleSetSha256: 'zp' },
+        stats: { maxMm: 0.009, p50Mm: 0.003, p99Mm: 0.008 }, cert: { commit: null } },
+    ],
+  }, null, 2) + '\n');
+
+  const rows = buildStatusRows(emptyDir, manifestPath);
+  assert.equal(rows.length, 2);
+  assert.ok(rows.every((r) => r.source === 'manifest'), `all rows manifest-sourced, got ${rows.map((r) => r.source)}`);
+  const alpha = rows.find((r) => r.name === 'Alpha');
+  assert.equal(alpha.style, 'Gothic');
+  assert.equal(alpha.tris, 100);
+  assert.equal(alpha.configDigest, 'aaa22222'); // sliced to 8, matching the sidecar Row
+  assert.equal(alpha.commit, 'deadbeef1234');
+  assert.equal(alpha.verdict, 'GREEN');
+  assert.equal(alpha.masked, true); // 0.010/0.002 = 5 > 3, recomputed from stats (same formula)
+  assert.ok(Math.abs(alpha.maxMm - 0.010) < 1e-6);
+  assert.ok(Math.abs(alpha.p99Mm - 0.002) < 1e-6);
+  assert.equal(rows.find((r) => r.name === 'Zeta').masked, false); // 0.009/0.008 < 3
+});
+
+test('buildStatusRows ignores the manifest when on-disk recon.json are present (source: sidecar)', () => {
+  const d = join(DIR, 'sidecar_wins');
+  mkdirSync(d, { recursive: true });
+  writeCertifiedPot(d, 'OnDisk', {
+    style: 'Ripple', tris: 42, configDigest: 'ondiskdigest', verdict: 'GREEN',
+    provenance: { targetSha256: 'ot', artifactByteSha256: 'oa', parsedTriangleSetSha256: 'op' },
+    stats: { maxMm: 0.006, p50Mm: 0.001, p99Mm: 0.005 },
+  });
+  // a manifest that, if wrongly consulted, would inject a DIFFERENT pot — proves it is ignored
+  const manifestPath = join(DIR, 'certs.manifest.ignored.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    magic: 'potscope-manifest/v1',
+    pots: [{ name: 'FromManifest', style: 'X', configDigest: 'xxxxxxxxxx', tris: 999, verdict: 'DRIFT',
+      provenance: { targetSha256: null, artifactByteSha256: null, parsedTriangleSetSha256: null },
+      stats: { maxMm: null, p50Mm: null, p99Mm: null }, cert: { commit: null } }],
+  }, null, 2) + '\n');
+
+  const rows = buildStatusRows(d, manifestPath);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'OnDisk'); // on-disk, NOT 'FromManifest'
+  assert.equal(rows[0].source, 'sidecar');
+  assert.ok(!rows.some((r) => r.name === 'FromManifest'), 'manifest must be ignored when sidecars exist');
+});

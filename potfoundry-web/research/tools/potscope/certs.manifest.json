@@ -1,0 +1,245 @@
+{
+  "magic": "potscope-manifest/v1",
+  "pots": [
+    {
+      "name": "Crystalline_H32_OD30_hp025_conforming",
+      "style": "Crystalline",
+      "configDigest": "fa3079d9bb8d171c4a8aae57971f69ac2d3596881e7e7ee1e812b10fa53fcdbf",
+      "tris": 50544,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "0ccae3054d0494c7b54e67cca17dced3816052fa3aa9ab19dcabc00399371334",
+        "artifactByteSha256": "b8ea695774bd4942d6b574cc591a0248cbbf47f6f6c42444cb3ddb07b2131e27",
+        "parsedTriangleSetSha256": "738779bcf6f5f70179be7b41e2432bc9e09959d3c3b9098d73563f961c767890"
+      },
+      "stats": {
+        "maxMm": 0.004999999888241291,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "Crystalline_small_OD30_fract",
+      "style": "Crystalline",
+      "configDigest": "6777db5f3d8b945dbd1380e41048447a4f56296faf78768dc740763efce28095",
+      "tris": 31008,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "b4403464fbbe77677b74e9dafc75fc4a01e576c83949e1db9a1d75ec61bf0350",
+        "artifactByteSha256": "7ac15167cc1998067fcf1f03401c47eead398d7e8c25065fb64d3693845e4fc9",
+        "parsedTriangleSetSha256": "7659439619beabab74a97244eda51fb17f198d3975b1f015c6ca6f8b4e6c80ae"
+      },
+      "stats": {
+        "maxMm": 0.004999999888241291,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "FourierBloom_small_OD30_defaults",
+      "style": "FourierBloom",
+      "configDigest": "3eafc72823c92ae185b683d2fc0df8bf6e394571f9e15e918f60c4be194a36ae",
+      "tris": 206848,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "18db127c15c48ef9fefeb010f10a18ee749408a2006deb1e0ff3035175a93dab",
+        "artifactByteSha256": "24470227d61563501b2cdf4e58dfe6d1565d6b93291f59ba43331236083f4365",
+        "parsedTriangleSetSha256": "3628ed0afe98561eddfea530446bf04959ff57cbd85c87d8bc8720f1d767e7b4"
+      },
+      "stats": {
+        "maxMm": 0.009999999776482582,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "GeometricStar_H32_OD30_fract",
+      "style": "GeometricStar",
+      "configDigest": "ec306d87508acd0709087324fbfaad236b529aa96d6bbebc0d99b24102f0ea24",
+      "tris": 176128,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "4fd30530c7ca7558200d8cb2720da0bc804e96cd03881175c2449807b64df4d6",
+        "artifactByteSha256": "87d94a3670188318c512c1911e227b833c6bc9b6ccdabd952d24167003b5591c",
+        "parsedTriangleSetSha256": "a6ed15807f7ffb259cd293b1df5a711961d97abaca2cd6eaabdb38d486b0a8a7"
+      },
+      "stats": {
+        "maxMm": 0.004999999888241291,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.0024999999441206455
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "HarmonicRipple_production_OD140",
+      "style": "HarmonicRipple",
+      "configDigest": "9cc065ab55b05b4ef93aff1b77bd575891465c89e7b3984c8121d31d626ec0d0",
+      "tris": 155648,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "ac5f9600abb0039d71fe0670aaea30133f5fdb9e0095277336cd434b06e78e7b",
+        "artifactByteSha256": "84330dce0667a6145ce3621b50608779550b5b6e3fc5117b09820485ba162334",
+        "parsedTriangleSetSha256": "85ccd3ce88d7cd4c69a0f1d48ef5e275168a87c8acfd97b4ba69e60306775ff2"
+      },
+      "stats": {
+        "maxMm": 0.009999999776482582,
+        "p50Mm": 0.004999999888241291,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "HarmonicRipple_small_OD30",
+      "style": "HarmonicRipple",
+      "configDigest": "9ca2ae81521206626e1d59bd2332f1445076e615540ce1b704c034e333fe8a88",
+      "tris": 29184,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "428b79f067875d63cdced3b0a00d671869a99aeacc2d3845a3b9861e780bde9b",
+        "artifactByteSha256": "be48444d79142e7997d939d3684f080b4e73ca2bf6a8de8ce97587f912d03104",
+        "parsedTriangleSetSha256": "f63fb8f210a3da0415117dd5ec9dfcdf2c703fd6e7526a07653054fe84b1ecab"
+      },
+      "stats": {
+        "maxMm": 0.009999999776482582,
+        "p50Mm": 0.004999999888241291,
+        "p99Mm": 0.009999999776482582
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "RippleInterference_small_OD30_dyadicOffsets",
+      "style": "RippleInterference",
+      "configDigest": "7d25446d715342c612a9bdc76a20dd19e1b630ac172530f597f30fb0219e7747",
+      "tris": 86528,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "54e96689a18c63f3905bf7da2bf2dc9bf5ceb208d5c3ed4d42caef97026ca391",
+        "artifactByteSha256": "fb6b8b830e78928ecf69363bc3f24a0fbe76eaa713cbfa820ac919d1a2a262f8",
+        "parsedTriangleSetSha256": "2283842e9e7b874ebd00fe36a96d812d417b7c6a0534ea32b805c9eef83fa9ac"
+      },
+      "stats": {
+        "maxMm": 0.009999999776482582,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "SpiralRidges_small_OD30",
+      "style": "SpiralRidges",
+      "configDigest": "9b8a3fff1f6909639dae657788e2c1b05bbfaa9d9658570be2bfdc383127d067",
+      "tris": 53760,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "84f356357cba1974a8d203478136a7c80d6cabc5ee3f6ba286335786d95749fc",
+        "artifactByteSha256": "9eada0a46e38e94ebaa02ead6b7ef7968a065598fec2d745158fa92e9b1009cd",
+        "parsedTriangleSetSha256": "c1fe53e8135d914a8752bc32b587821ff22c2511992abc6b32314537a60680fb"
+      },
+      "stats": {
+        "maxMm": 0.004999999888241291,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "SuperellipseMorph_small_OD30_defaults",
+      "style": "SuperellipseMorph",
+      "configDigest": "99705c39bbde876ea0453680b52b94b841ce4df26fa09e829bb330e22830bbc5",
+      "tris": 107520,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "f20f4a6778b67a2e526e0b60290ad14910430e519849e93e6b6169e0f76f62d0",
+        "artifactByteSha256": "61ccae1b264bb763a0d17b04cf12201a5cca10dcdc47b574ff07d6f2888c8d33",
+        "parsedTriangleSetSha256": "ea838f0db67781950259d20da9d5a90941d5a27ea15219245169f052bb89d9d6"
+      },
+      "stats": {
+        "maxMm": 0.009999999776482582,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "SuperformulaBlossom_small_OD30_positivity",
+      "style": "SuperformulaBlossom",
+      "configDigest": "ef2aeeeec2c1eaa2e2c17be76e0c0a6744e011c7bddbc09db8f07f01b10a15f0",
+      "tris": 53760,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "cf15a416b6a852fcb52f6b02e63511074ce55052f7d0b4f239b598f2f3846b64",
+        "artifactByteSha256": "cb84090ad9ffbf913f1a48e5b1043433b347347e9d5e05c099c7d65e29b8675f",
+        "parsedTriangleSetSha256": "f0933edf198e66fe6293a4550074b008791204331ffb2dd2f293900adf9465e7"
+      },
+      "stats": {
+        "maxMm": 0.004999999888241291,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "Voronoi_H32_OD30_bubble",
+      "style": "Voronoi",
+      "configDigest": "3b81f03bc551b01e9b82757dcee46544f8076ef9ff2bebafb1a2c076c7afb0ed",
+      "tris": 172032,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "9c2709951151216bd3eba958b2eda82cf3da2e7cb8ff80101aa50bdbf397bad7",
+        "artifactByteSha256": "c1d9893434e6f1c11af46eb21120abf168baaf5dc612677c2fd95647cb6d64b4",
+        "parsedTriangleSetSha256": "9839f34e62a3cc79d37fdbfab750af045c2ce900e4ab14b65a75f75120c8ec7f"
+      },
+      "stats": {
+        "maxMm": 0.004999999888241291,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    },
+    {
+      "name": "WaveInterference_H32_OD30_smoothDense",
+      "style": "WaveInterference",
+      "configDigest": "65418ceb9618b9655ae7702348649b75e3c86d673958c8d9f33ede8ae3ec06b1",
+      "tris": 411648,
+      "verdict": "GREEN",
+      "provenance": {
+        "targetSha256": "a4ec85770b7bd2047b18a883b313f9f65e390f47c739d0a31786f59a7457d829",
+        "artifactByteSha256": "1dbd5b95ecb28e587b398c0a97832a243176e24ebf91bd7e1147d36c8abd6f5d",
+        "parsedTriangleSetSha256": "ab4d8fa0c019ff4c2a999f13eec035be1a9ab5a58d44c131984f9533d0452a36"
+      },
+      "stats": {
+        "maxMm": 0.009999999776482582,
+        "p50Mm": 0.0024999999441206455,
+        "p99Mm": 0.004999999888241291
+      },
+      "cert": {
+        "commit": null
+      }
+    }
+  ]
+}

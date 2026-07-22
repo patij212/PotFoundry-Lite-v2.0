@@ -828,38 +828,149 @@ function cmdHotspots(args) {
 // its error.bin header (max/p99) and optional certificate.txt (commit). masked
 // raises the "certify on MAX, not p99" flag whenever max/p99 > 3x, so a pot that
 // looks clean on p99 but hides a scale-tip cliff on MAX is never trusted blind.
-export function buildStatusRows(dir) {
+
+// Parse ONE certified pot's sidecars: recon.json (name/style/tris/configDigest/
+// verdict/provenance) + its sibling error.bin header (max/p50/p99) + optional
+// certificate.txt (commit). Throws on a malformed recon.json so the caller's
+// per-file try/catch can SKIP+warn (keeping the whole scan alive). Shared by the
+// on-disk registry (buildStatusRows) and the portable snapshot (buildManifest) so
+// the two representations can never drift.
+function readCertifiedSidecar(dir, reconFile) {
+  const recon = JSON.parse(readFileSync(join(dir, reconFile), 'utf8'));
+  let maxMm = null, p50Mm = null, p99Mm = null;
+  const errPath = join(dir, `${recon.name}.stl.error.bin`);
+  if (existsSync(errPath)) {
+    const raw = readFileSync(errPath);
+    const hdr = JSON.parse(raw.subarray(0, raw.indexOf(0x0a)).toString('utf8'));
+    maxMm = hdr.stats?.maxMm ?? null;
+    p50Mm = hdr.stats?.p50Mm ?? null;
+    p99Mm = hdr.stats?.p99Mm ?? null;
+  }
+  const certPath = join(dir, `${recon.name}.certificate.txt`);
+  let commit = null;
+  if (existsSync(certPath)) {
+    const m = readFileSync(certPath, 'utf8').match(/\b([0-9a-f]{7,40})\b/);
+    commit = m ? m[1] : null;
+  }
+  const prov = recon.provenance ?? {};
+  return {
+    name: recon.name,
+    style: recon.style,
+    tris: recon.tris,
+    configDigest: recon.configDigest ?? '',
+    verdict: recon.verdict,
+    provenance: {
+      targetSha256: prov.targetSha256 ?? null,
+      artifactByteSha256: prov.artifactByteSha256 ?? null,
+      parsedTriangleSetSha256: prov.parsedTriangleSetSha256 ?? null,
+    },
+    stats: { maxMm, p50Mm, p99Mm },
+    commit,
+  };
+}
+
+// The "certify on MAX, not p99" mask flag. No data (either stat null) ⇒ not
+// masked. With p99>0 it is the >3x ratio; with p99===0 a nonzero max is the
+// MAXIMALLY masked case (a hidden cliff over an all-clean p99). Shared so the
+// on-disk and manifest row paths raise the flag identically.
+function computeMasked(maxMm, p99Mm) {
+  if (maxMm == null || p99Mm == null) return false;
+  return p99Mm > 0 ? maxMm / p99Mm > 3 : maxMm > 0;
+}
+
+// Rebuild registry rows from the committed portable manifest (the fresh-clone
+// path — see buildStatusRows). Same Row shape + masked formula as the sidecar
+// path, source tagged 'manifest'; configDigest sliced to 8 to match.
+function manifestStatusRows(manifestPath) {
+  if (!existsSync(manifestPath)) return [];
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
+  } catch (err) {
+    console.warn(`potscope status: committed manifest unreadable (${manifestPath}): ${err.message}`);
+    return [];
+  }
+  return (manifest.pots ?? []).map((p) => {
+    const maxMm = p.stats?.maxMm ?? null;
+    const p99Mm = p.stats?.p99Mm ?? null;
+    return {
+      name: p.name,
+      style: p.style,
+      tris: p.tris,
+      configDigest: (p.configDigest ?? '').slice(0, 8),
+      maxMm,
+      p99Mm,
+      masked: computeMasked(maxMm, p99Mm),
+      commit: p.cert?.commit ?? null,
+      verdict: p.verdict,
+      source: 'manifest',
+    };
+  });
+}
+
+export function buildStatusRows(dir, manifestPath = join(HERE, 'certs.manifest.json')) {
+  let reconFiles = [];
+  if (existsSync(dir)) {
+    reconFiles = readdirSync(dir).filter((x) => x.endsWith('.recon.json')).sort();
+  }
+  // Fresh-clone fallback: research/exchange/ is git-ignored, so a clean checkout
+  // has NO on-disk sidecars (the dir may not even exist). When no *.recon.json is
+  // found, rebuild the rows from the committed, git-tracked certs.manifest.json.
+  if (reconFiles.length === 0) return manifestStatusRows(manifestPath);
   const rows = [];
-  for (const f of readdirSync(dir).filter((x) => x.endsWith('.recon.json')).sort()) {
+  for (const f of reconFiles) {
     // One malformed/truncated sidecar must not abort the whole registry scan:
     // guard the per-file body so a bad recon.json / error.bin is SKIPPED (with a
     // warn) and the loop keeps going, instead of throwing and killing `status`.
     try {
-      const recon = JSON.parse(readFileSync(join(dir, f), 'utf8'));
-      const errPath = join(dir, `${recon.name}.stl.error.bin`);
-      let maxMm = null, p99Mm = null, masked = false;
-      if (existsSync(errPath)) {
-        const raw = readFileSync(errPath);
-        const hdr = JSON.parse(raw.subarray(0, raw.indexOf(0x0a)).toString('utf8'));
-        maxMm = hdr.stats?.maxMm ?? null; p99Mm = hdr.stats?.p99Mm ?? null;
-        // masked = the "certify on MAX, not p99" flag. No data (either stat null)
-        // ⇒ not masked. With p99>0 it is the >3x ratio; with p99===0 a nonzero max
-        // is the MAXIMALLY masked case (a hidden cliff over an all-clean p99), so
-        // treating p99===0 as falsy — the old bug — silently cleared exactly it.
-        if (maxMm != null && p99Mm != null) masked = p99Mm > 0 ? maxMm / p99Mm > 3 : maxMm > 0;
-      }
-      const certPath = join(dir, `${recon.name}.certificate.txt`);
-      let commit = null;
-      if (existsSync(certPath)) {
-        const m = readFileSync(certPath, 'utf8').match(/\b([0-9a-f]{7,40})\b/);
-        commit = m ? m[1] : null;
-      }
-      rows.push({ name: recon.name, style: recon.style, tris: recon.tris, configDigest: (recon.configDigest ?? '').slice(0, 8), maxMm, p99Mm, masked, commit, verdict: recon.verdict });
+      const s = readCertifiedSidecar(dir, f);
+      rows.push({
+        name: s.name,
+        style: s.style,
+        tris: s.tris,
+        configDigest: (s.configDigest ?? '').slice(0, 8),
+        maxMm: s.stats.maxMm,
+        p99Mm: s.stats.p99Mm,
+        masked: computeMasked(s.stats.maxMm, s.stats.p99Mm),
+        commit: s.commit,
+        verdict: s.verdict,
+        source: 'sidecar',
+      });
     } catch (err) {
       console.warn(`potscope status: skipping ${f}: ${err.message}`);
     }
   }
   return rows;
+}
+
+// The portable certificate snapshot. research/exchange/ (where the certified STLs
+// + sidecars live) is git-ignored, so a fresh clone has none of them and `status`
+// would be empty. buildManifest distills every on-disk pot into a small tracked
+// JSON — enough to rebuild the registry rows (name/style/config/tris/verdict/
+// stats/commit) plus the full provenance digests for an integrity re-check. Pots
+// sorted by name; NO timestamps, so re-running on unchanged sidecars yields a
+// byte-identical file (clean git diffs).
+export function buildManifest(dir) {
+  const pots = [];
+  for (const f of readdirSync(dir).filter((x) => x.endsWith('.recon.json')).sort()) {
+    try {
+      const s = readCertifiedSidecar(dir, f);
+      pots.push({
+        name: s.name,
+        style: s.style,
+        configDigest: s.configDigest,
+        tris: s.tris,
+        verdict: s.verdict,
+        provenance: s.provenance,
+        stats: s.stats,
+        cert: { commit: s.commit },
+      });
+    } catch (err) {
+      console.warn(`potscope manifest: skipping ${f}: ${err.message}`);
+    }
+  }
+  pots.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  return { magic: 'potscope-manifest/v1', pots };
 }
 
 // The --check drift gate, factored out so it is testable without intercepting
@@ -872,9 +983,16 @@ export function statusExitCode(rows, check) {
 
 function cmdStatus(args) {
   const dir = resolve(argValue(args, '--dir') ?? join(HERE, '..', '..', 'exchange', '_certified_stl'));
-  if (!existsSync(dir)) { console.error(`status: no such dir ${dir} (bake sidecars first: PF_CERT_RECON=all)`); process.exit(2); }
+  const manifestPath = join(HERE, 'certs.manifest.json');
+  // A fresh clone has no exchange/ dir at all (it is git-ignored). Only bail when
+  // there is ALSO no committed manifest to fall back to; otherwise proceed and let
+  // buildStatusRows rebuild the registry from certs.manifest.json.
+  if (!existsSync(dir) && !existsSync(manifestPath)) {
+    console.error(`status: no such dir ${dir} (bake sidecars first: PF_CERT_RECON=all) and no committed manifest at ${manifestPath}`);
+    process.exit(2);
+  }
   const substr = args._[0];
-  let rows = buildStatusRows(dir);
+  let rows = buildStatusRows(dir, manifestPath);
   if (substr) rows = rows.filter((r) => r.name.toLowerCase().includes(substr.toLowerCase()));
   // Emit output first (JSON stays pure on stdout; table gets its summary line),
   // THEN apply the drift gate in BOTH modes so a machine consumer of
@@ -891,11 +1009,36 @@ function cmdStatus(args) {
     const drift = rows.filter((r) => r.verdict === 'DRIFT');
     console.log(`\n${rows.length} pots · ${rows.filter((r) => r.verdict === 'GREEN').length} GREEN · ${drift.length} DRIFT · ${rows.filter((r) => r.masked).length} max-masked`);
   }
+  // Fresh-clone note: some/all rows came from the committed manifest, not on-disk
+  // sidecars. Emit on stderr so the --json stdout stays pure for machine consumers.
+  if (rows.some((r) => r.source === 'manifest')) {
+    console.error('(from committed manifest — no on-disk sidecars; run PF_CERT_RECON + potscope manifest to refresh)');
+  }
   if (statusExitCode(rows, args.flags.includes('--check'))) {
     const drift = rows.filter((r) => r.verdict === 'DRIFT');
     console.error(`FAIL: ${drift.length} drifted certificate(s): ${drift.map((r) => r.name).join(', ')}`);
     process.exit(1);
   }
+}
+
+// --------------------------------------------------------------------- manifest
+// Writes the portable certificate snapshot (buildManifest) to a git-TRACKABLE
+// path so `status` works on a fresh clone even though the certified STLs/sidecars
+// under research/exchange/ are git-ignored. Default --out is certs.manifest.json
+// IN the potscope dir (which the potscope .gitignore does NOT ignore — unlike
+// exchange/ and the *.recon.json sidecars); default --dir is the same
+// _certified_stl the status registry scans.
+function cmdManifest(args) {
+  const dir = resolve(argValue(args, '--dir') ?? join(HERE, '..', '..', 'exchange', '_certified_stl'));
+  if (!existsSync(dir)) {
+    console.error(`manifest: no such dir ${dir} (bake sidecars first: PF_CERT_RECON=all)`);
+    process.exit(2);
+  }
+  const outPath = resolve(argValue(args, '--out') ?? join(HERE, 'certs.manifest.json'));
+  const manifest = buildManifest(dir);
+  // 2-space indent + trailing newline: minimal, stable git diffs on regen.
+  writeFileSync(outPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  console.log(`potscope manifest: wrote ${manifest.pots.length} pots to ${outPath}`);
 }
 
 function cmdView(args) {
@@ -1353,6 +1496,7 @@ function main() {
     case 'view': cmdView(args); break;
     case 'hotspots': cmdHotspots(args); break;
     case 'status': cmdStatus(args); break;
+    case 'manifest': cmdManifest(args); break;
     case 'serve': cmdServe(args); break;
     default:
       console.log('potscope — certification-lab instrument panel');
@@ -1364,6 +1508,7 @@ function main() {
       console.log('  view <a.stl> <b.stl> ... [--out html] [--title t] [--clay]   (full-res shelf)');
       console.log('  hotspots <name|stl> [--top N] [--budget mm] [--json]   (residual structure)');
       console.log('  status [<substr>] [--check] [--json]   (certificate registry + drift guard)');
+      console.log('  manifest [--dir <certified_stl>] [--out path]   (portable cert snapshot → fresh-clone status)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
   }
 }
