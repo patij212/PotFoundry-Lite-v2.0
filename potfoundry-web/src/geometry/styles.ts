@@ -1875,8 +1875,18 @@ export function rOuterHexagonalHive(
 
   const t = Math.max(0, Math.min(1, z / Math.max(H, 1e-4)));
 
-  // Coordinates
-  const u = theta * scale;
+  // Coordinates. Snap the effective angular cell frequency to an INTEGER column
+  // count so the honeycomb tiles the circumference seamlessly: the hex distance
+  // field has x-period exactly 1.0, so rA(2π,z)=rA(0,z) IFF 2π·scale is an
+  // integer. At the shipped default scale=4.0 the raw count 2π·4=25.13 is
+  // non-integer ⇒ a ~0.92mm C0 seam at the u=0↔2π weld; round() → 25 closes it to
+  // machine zero. Circumferential only (v below is unchanged). The WGSL
+  // style_hexagonal_hive, FeatureLineGraph.hexCreaseD, and
+  // hexagonalHiveOuterWallTarget carry the byte-identical snap — change all four
+  // together (CPU↔WGSL↔feature-graph↔target parity).
+  const TAU = 2 * Math.PI;
+  const cols = Math.max(1, Math.round(TAU * scale));
+  const u = theta * (cols / TAU);
   // WGSL style_hexagonal_hive HARDCODES H=20 (styles.wgsl:1173 `let H = 20.0`,
   // shadowing the real height) → v = t·scale·(20/40). The CPU port used the REAL
   // pot height here, a ~6× vertical-grid mismatch that misaligned the hex cells by
@@ -1929,6 +1939,15 @@ export function rOuterHexagonalHive(
     cellIdX = gridB_X + 0.5;
     cellIdY = gridB_Y + 0.5;
   }
+
+  // Periodic cell hash: wrap the circumferential cell id modulo the integer column
+  // count so the seam-straddling cell hashes consistently (it is id −0.5 seen from
+  // θ=0 but cols−0.5 seen from θ=2π; both fold to cols−0.5). Without this the noise
+  // term re-opens the seam even though the distance field is periodic. Interior is
+  // untouched (only that one cell's id changes; noise is gated by wall→0 at every
+  // cell boundary). WGSL style_hexagonal_hive and hexagonalHiveOuterWallTarget
+  // carry the identical wrap.
+  cellIdX = cellIdX - cols * Math.floor(cellIdX / cols);
 
   // Hash
   const dotHash = cellIdX * 12.9898 + cellIdY * 78.233;

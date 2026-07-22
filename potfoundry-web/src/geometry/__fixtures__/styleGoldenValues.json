@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-14T15:10:06.093Z",
+  "generatedAt": "2026-07-22T13:13:17.966Z",
   "version": "1.0.0",
   "tolerance": 0.001,
   "styles": {
@@ -3408,14 +3408,14 @@
         "theta": 0.7853981633974483,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 48.37961196899414
+        "expectedRadius": 48.415000915527344
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 47.8984489440918
+        "expectedRadius": 48.040000915527344
       },
       {
         "styleId": "HexagonalHive",
@@ -3429,14 +3429,14 @@
         "theta": 4.71238898038469,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 48.35893249511719
+        "expectedRadius": 48.040000915527344
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.1,
         "r0": 47.5,
-        "expectedRadius": 48.47119140625
+        "expectedRadius": 48.52733612060547
       },
       {
         "styleId": "HexagonalHive",
@@ -3450,35 +3450,35 @@
         "theta": 0.7853981633974483,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.222354888916016
+        "expectedRadius": 52.125
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.873931884765625
+        "expectedRadius": 52.75
       },
       {
         "styleId": "HexagonalHive",
         "theta": 3.141592653589793,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 53.214759826660156
+        "expectedRadius": 53.25
       },
       {
         "styleId": "HexagonalHive",
         "theta": 4.71238898038469,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 52.272483825683594
+        "expectedRadius": 52.75
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.25,
         "r0": 51.25,
-        "expectedRadius": 51.92312240600586
+        "expectedRadius": 51.52260971069336
       },
       {
         "styleId": "HexagonalHive",
@@ -3492,35 +3492,35 @@
         "theta": 0.7853981633974483,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.3396110534668
+        "expectedRadius": 59.375
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 58.85844802856445
+        "expectedRadius": 59
       },
       {
         "styleId": "HexagonalHive",
         "theta": 3.141592653589793,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 57.9957275390625
+        "expectedRadius": 57.5
       },
       {
         "styleId": "HexagonalHive",
         "theta": 4.71238898038469,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.318931579589844
+        "expectedRadius": 59
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.5,
         "r0": 57.5,
-        "expectedRadius": 59.43119430541992
+        "expectedRadius": 59.487335205078125
       },
       {
         "styleId": "HexagonalHive",
@@ -3534,35 +3534,35 @@
         "theta": 0.7853981633974483,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.72235107421875
+        "expectedRadius": 64.625
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.37393188476562
+        "expectedRadius": 65.25
       },
       {
         "styleId": "HexagonalHive",
         "theta": 3.141592653589793,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 65.71475982666016
+        "expectedRadius": 65.75
       },
       {
         "styleId": "HexagonalHive",
         "theta": 4.71238898038469,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.7724838256836
+        "expectedRadius": 65.25
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.75,
         "r0": 63.75,
-        "expectedRadius": 64.4231185913086
+        "expectedRadius": 64.02261352539062
       },
       {
         "styleId": "HexagonalHive",
@@ -3576,14 +3576,14 @@
         "theta": 0.7853981633974483,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 68.3796157836914
+        "expectedRadius": 68.41500091552734
       },
       {
         "styleId": "HexagonalHive",
         "theta": 1.5707963267948966,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 67.89844512939453
+        "expectedRadius": 68.04000091552734
       },
       {
         "styleId": "HexagonalHive",
@@ -3597,14 +3597,14 @@
         "theta": 4.71238898038469,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 68.35893249511719
+        "expectedRadius": 68.04000091552734
       },
       {
         "styleId": "HexagonalHive",
         "theta": 6.2731853071795864,
         "t": 0.9,
         "r0": 67.5,
-        "expectedRadius": 68.47119140625
+        "expectedRadius": 68.52733612060547
       }
     ],
     "CelticKnot": [

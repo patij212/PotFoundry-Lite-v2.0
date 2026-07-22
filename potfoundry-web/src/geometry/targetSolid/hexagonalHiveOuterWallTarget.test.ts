@@ -70,35 +70,45 @@ describe('Hexagonal Hive generated outer-wall target', () => {
     }
   });
 
-  it('closes the nonperiodic production seam with a physical curtain', () => {
+  it('identifies the now-periodic seam without a curtain at default params', () => {
     const binding = createHexagonalHiveOuterWallTargetBinding(input());
     const wall = outer(binding);
-    const curtain = binding.patches.find((patch) => patch.kind === 'seam-curtain');
-    expect(binding.seamCurtainActive).toBe(true);
-    expect(binding.periodicIdentificationAdmissible).toBe(false);
-    expect(binding.patchCount).toBe(2);
-    expect(curtain).toBeDefined();
+    // The integer column snap makes the distance field tile the seam; with default
+    // (zero) noise the u=0 and u=2π traces coincide exactly ⇒ no curtain, and u is
+    // periodically identified.
+    expect(binding.seamCurtainActive).toBe(false);
+    expect(binding.periodicIdentificationAdmissible).toBe(true);
+    expect(binding.patchCount).toBe(1);
+    expect(binding.patches.every((patch) => patch.kind === 'outer-wall')).toBe(true);
     const seamGaps = [0.17, 0.31, 0.53, 0.79].map((t) =>
       distance(
         wall.backends.evaluateFloat64(0, t),
         wall.backends.evaluateFloat64(1, t)
       )
     );
-    expect(Math.max(...seamGaps)).toBeGreaterThan(1e-6);
-    if (curtain === undefined || curtain.kind !== 'seam-curtain') return;
-    for (const t of [0, 0.17, 0.53, 1]) {
-      expect(distance(
-        curtain.backends.evaluateFloat64(t, 0),
-        wall.backends.evaluateFloat64(0, t)
-      )).toBeLessThan(1e-9);
-      expect(distance(
-        curtain.backends.evaluateFloat64(t, 1),
-        wall.backends.evaluateFloat64(1, t)
-      )).toBeLessThan(1e-9);
-    }
+    expect(Math.max(...seamGaps)).toBeLessThan(1e-9);
   });
 
-  it('omits the degenerate seam curtain when relief is zero', () => {
+  it('keeps the seam periodic when the noise parameter is active (no curtain)', () => {
+    const binding = createHexagonalHiveOuterWallTargetBinding(input({ hh_noise: 0.5 }));
+    const wall = outer(binding);
+    // The cell id is wrapped modulo the column count before hashing, so the
+    // seam-straddling cell hashes identically from both sides — active noise no
+    // longer re-opens the seam, and no curtain is emitted.
+    expect(binding.seamCurtainActive).toBe(false);
+    expect(binding.periodicIdentificationAdmissible).toBe(true);
+    expect(binding.patchCount).toBe(1);
+    expect(binding.patches.every((patch) => patch.kind === 'outer-wall')).toBe(true);
+    const seamGaps = [0.17, 0.31, 0.53, 0.79].map((t) =>
+      distance(
+        wall.backends.evaluateFloat64(0, t),
+        wall.backends.evaluateFloat64(1, t)
+      )
+    );
+    expect(Math.max(...seamGaps)).toBeLessThan(1e-9);
+  });
+
+  it('emits no seam curtain regardless of relief (surface is periodic)', () => {
     const binding = createHexagonalHiveOuterWallTargetBinding(input({ hh_relief: 0 }));
     expect(binding.seamCurtainActive).toBe(false);
     expect(binding.periodicIdentificationAdmissible).toBe(true);

@@ -499,7 +499,12 @@ function clamp01(x: number): number {
  * sharp valley crease. (scale = style_param 0; H=20 fallback as in the shader.)
  */
 function hexCreaseD(u: number, t: number, scale: number): number {
-  const uvx = u * TAU * scale; // theta*scale, theta=u*TAU
+  // Snap to an INTEGER column count so the honeycomb tiles the seam (hex x-period
+  // is exactly 1.0 ⇒ periodic IFF 2π·scale is integer). uvx = θ·(cols/TAU) with
+  // θ=u·TAU collapses to u·cols. Byte-identical snap in rOuterHexagonalHive
+  // (styles.ts), style_hexagonal_hive (styles.wgsl), hexagonalHiveOuterWallTarget.
+  const cols = Math.max(1, Math.round(TAU * scale));
+  const uvx = u * cols; // = theta·scale snapped to integer columns (theta=u·TAU)
   const uvy = t * scale * 0.5 * SQRT3; // v*r, v=t*scale*(H/40)=t*scale*0.5, r=√3
   const sx = 1;
   const sy = SQRT3;
@@ -520,9 +525,11 @@ const HEX_RES_T = 256;
 
 /**
  * HexagonalHive honeycomb creases — the zero set of {@link hexCreaseD} traced
- * into general-curve polylines. Non-periodic in u (the pattern does NOT tile at
- * the seam: `u·TAU·scale` is non-integer), so seam-crossing edges simply end at
- * u=0/1 rather than fabricating a spurious seam contour.
+ * into general-curve polylines. The pattern now tiles the circumference (integer
+ * column count snapped in {@link hexCreaseD}), so it is periodic in u; any
+ * seam-crossing crease is conservatively truncated at u=0/1 by the non-wrapping
+ * marching squares (safe — the geometric seam weld still closes it; this never
+ * fabricates a spurious seam contour).
  */
 function extractHexagonalHive(p: Float32Array): FeatureLine[] {
   const scale = Math.max(0.1, p[0]);

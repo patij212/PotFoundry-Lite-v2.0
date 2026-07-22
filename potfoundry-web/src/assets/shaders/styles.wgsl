@@ -1312,7 +1312,16 @@ fn style_hexagonal_hive(theta: f32, t: f32, r0: f32) -> f32 {
   // Better grid math by iq:
   // https://www.shadertoy.com/view/Xd2GR3
   
-  let u = theta * scale;
+  // Snap the effective angular cell frequency to an INTEGER column count so the
+  // honeycomb tiles the circumference seamlessly: the hex distance field has
+  // x-period exactly 1.0, so r(2π,z)=r(0,z) IFF 2π·scale is an integer. At the
+  // shipped default scale=4 the raw count 2π·4=25.13 is non-integer ⇒ a ~0.92mm C0
+  // seam at the u=0↔2π weld; floor(x+0.5) rounds to 25, closing it. Circumferential
+  // only (v below unchanged). Byte-identical snap lives in rOuterHexagonalHive
+  // (styles.ts), FeatureLineGraph.hexCreaseD, and hexagonalHiveOuterWallTarget —
+  // change all four together (CPU↔WGSL↔feature-graph↔target parity).
+  let cols = max(1.0, floor(TAU * scale + 0.5));
+  let u = theta * (cols / TAU);
   let v = t * scale * (H / 40.0); // Rough aspect
   
   // Axial Coordinates for Pointy Top
@@ -1344,7 +1353,14 @@ fn style_hexagonal_hive(theta: f32, t: f32, r0: f32) -> f32 {
   let dist = sqrt(min(len_a, len_b));
   
   // Cell ID (random seed)
-  let cell_id_vec = request_cell_id(a, b, len_a, len_b);
+  let cell_id_raw = request_cell_id(a, b, len_a, len_b);
+  // Periodic cell hash: wrap the circumferential cell id modulo the integer column
+  // count so the seam-straddling cell hashes consistently (it is id −0.5 seen from
+  // θ=0 but cols−0.5 from θ=2π; both fold to cols−0.5). Else the noise term re-opens
+  // the seam. Interior untouched (noise is gated by wall→0 at cell boundaries).
+  // Identical wrap in rOuterHexagonalHive (styles.ts) and hexagonalHiveOuterWallTarget.
+  let cell_id_x = cell_id_raw.x - cols * floor(cell_id_raw.x / cols);
+  let cell_id_vec = vec2<f32>(cell_id_x, cell_id_raw.y);
   // Hash for noise
   let cell_hash = fract(sin(dot(cell_id_vec, vec2<f32>(12.9898, 78.233))) * 43758.5453);
   

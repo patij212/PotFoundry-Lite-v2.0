@@ -24,7 +24,7 @@ import type { TargetExpressionReference } from './validatedTargetProgramBuilder'
 export const HEXAGONAL_HIVE_OUTER_WALL_TARGET_VERSION =
   'potfoundry.hexagonal-hive-outer-wall-target/v2' as const;
 export const HEXAGONAL_HIVE_OUTER_WALL_TARGET_SCOPE =
-  'authenticated-generated-hexagonal-hive-outer-wall-and-conditional-physical-seam-curtain-with-declared-internal-cell-jumps-only-no-complete-feature-side-graph-inner-rim-bottom-regularity-artifact-distance-or-device-conformance-proof' as const;
+  'authenticated-generated-hexagonal-hive-outer-wall-fully-periodic-seam-no-curtain-with-declared-internal-cell-jumps-only-no-complete-feature-side-graph-inner-rim-bottom-regularity-artifact-distance-or-device-conformance-proof' as const;
 export const HEXAGONAL_HIVE_OUTER_WALL_TARGET_PROOF_SHA256 = sha256Utf8(
   [
     HEXAGONAL_HIVE_OUTER_WALL_TARGET_VERSION,
@@ -34,11 +34,11 @@ export const HEXAGONAL_HIVE_OUTER_WALL_TARGET_PROOF_SHA256 = sha256Utf8(
     'the generated grid preserves production constants 1.7320508, 0.8660254, and the shader-matching hardcoded vertical factor 20/40',
     'A/B grids, strict lenA<lenB selection with B owning equality, selected cell id, sine hash, gap smoothstep, convex/concave profile, noise, and relief share one SSA graph',
     'the profile-only normalized distance is clamped to [0,1] after the unchanged gap smoothstep; this is identity wherever wall support is nonzero and inert where wall support is zero',
-    'u=theta*scale advances by 2*pi*scale across the cylindrical seam; every admitted nonzero binary-rational scale therefore fails unit-grid periodicity',
-    'active relief emits a physical radial seam curtain joining the exact u=0 and u=1 traces; zero relief proves all hive state position-dead',
+    'u=theta*round(2*pi*scale)/(2*pi) advances by exactly round(2*pi*scale) integer unit-grid columns across the cylindrical seam, so the profile distance field is periodic and its u=0 and u=2*pi traces coincide',
+    'the selected cell id is wrapped modulo round(2*pi*scale) before hashing, so the noise cell-hash is periodic too and the seam-straddling cell hashes identically from both sides; the whole surface is therefore periodic for every admitted parameter and no seam curtain is emitted; zero relief proves all hive state position-dead',
     'when noise and relief are active, selected-cell identity changes create real radial jumps on grid and A/B ownership boundaries',
     'those internal cell jumps are declared but their complete clipped feature-side patch graph is not yet emitted by this layer',
-    'all floor lines, A/B ties, hash jumps, smoothstep pieces, concave switch, power origin, radius positivity, and curtain degeneracy remain explicit obligations',
+    'all floor lines, A/B ties, hash jumps, smoothstep pieces, concave switch, power origin, and radius positivity remain explicit obligations',
   ].join('\n')
 );
 
@@ -52,19 +52,11 @@ export interface HexagonalHiveOuterWallPatch {
   readonly backends: GeneratedTargetProgramBackends;
 }
 
-export interface HexagonalHiveSeamCurtainPatch {
-  readonly kind: 'seam-curtain';
-  readonly role: 'feature-curtain';
-  readonly patchId: 'seam-curtain';
-  readonly programCanonicalJson: string;
-  readonly programSha256: string;
-  readonly nodeCount: number;
-  readonly backends: GeneratedTargetProgramBackends;
-}
-
-export type HexagonalHiveOuterWallTargetPatch =
-  | HexagonalHiveOuterWallPatch
-  | HexagonalHiveSeamCurtainPatch;
+// The honeycomb is now fully periodic in the circumferential angle for EVERY admitted
+// parameter (integer column count + hash wrapped modulo that count), so — unlike the
+// genuinely non-periodic BasketWeave/CelticKnot/Voronoi targets — HexHive emits no seam
+// curtain. Only the outer-wall patch remains.
+export type HexagonalHiveOuterWallTargetPatch = HexagonalHiveOuterWallPatch;
 
 declare const hexagonalHiveOuterWallTargetBrand: unique symbol;
 
@@ -138,9 +130,16 @@ function hiveRadius(
   const zero = constant(0);
   const half = constant(0.5);
   const sqrtThreeApprox = constant(1.7320508);
+  // Snap the effective angular cell frequency to an INTEGER column count so the
+  // honeycomb distance field tiles the circumference: it has unit x-period, so it
+  // is periodic IFF round(2*pi*scale) columns span the seam. Byte-identical snap
+  // lives in rOuterHexagonalHive (styles.ts), style_hexagonal_hive (styles.wgsl),
+  // and FeatureLineGraph.hexCreaseD. scale is a build-time constant here, so the
+  // integer column count folds directly into the injected multiplier.
+  const columns = Math.max(1, Math.round(2 * Math.PI * params.scale));
   const uGrid = builder.multiply(
     context.thetaMaterialAt(materialU),
-    constant(params.scale)
+    constant(columns / (2 * Math.PI))
   );
   const vGrid = builder.multiply(
     builder.multiply(t, constant(params.scale * 0.5)),
@@ -166,7 +165,17 @@ function hiveRadius(
   const lengthB = builder.add(builder.square(guvBX), builder.square(guvBY));
   const chooseB = builder.step(lengthB, lengthA);
   const distance = builder.sqrt(builder.minimum(lengthA, lengthB));
-  const cellIdX = builder.mix(gridAX, builder.add(gridBX, half), chooseB);
+  const cellIdXRaw = builder.mix(gridAX, builder.add(gridBX, half), chooseB);
+  // Periodic cell hash: wrap the circumferential cell id modulo the integer column
+  // count so the seam-straddling cell hashes consistently (id −0.5 from θ=0 vs
+  // cols−0.5 from θ=2π); else active noise re-opens the seam. Interior untouched.
+  const cellIdX = builder.subtract(
+    cellIdXRaw,
+    builder.multiply(
+      constant(columns),
+      builder.floor(builder.divide(cellIdXRaw, constant(columns)))
+    )
+  );
   const cellIdY = builder.mix(gridAY, builder.add(gridBY, half), chooseB);
   const hashArgument = builder.add(
     builder.multiply(cellIdX, constant(12.9898)),
@@ -240,40 +249,6 @@ function compileOuterWall(
   });
 }
 
-function compileSeamCurtain(
-  input: CanonicalTargetInputBinding,
-  params: HexagonalHiveParameters
-): HexagonalHiveSeamCurtainPatch {
-  const programCanonicalJson = buildRadialTargetPatchProgram(
-    input,
-    'HexagonalHive',
-    {
-      evaluatorId: 'potfoundry.hexagonal-hive.seam-curtain',
-      evaluatorVersion: 'v1',
-      patchId: 'seam-curtain',
-    },
-    (context) => {
-      const zero = context.constant(0);
-      const materialOne = context.constant(1);
-      const t = context.localU;
-      const leftRadius = hiveRadius(context, params, t, zero);
-      const rightRadius = hiveRadius(context, params, t, materialOne);
-      const radius = context.builder.mix(leftRadius, rightRadius, context.localV);
-      return context.radialPointAt(radius, zero, t);
-    }
-  );
-  const backends = compileGeneratedTargetProgramBackends(programCanonicalJson);
-  return Object.freeze({
-    kind: 'seam-curtain',
-    role: 'feature-curtain',
-    patchId: 'seam-curtain',
-    programCanonicalJson,
-    programSha256: backends.programSha256,
-    nodeCount: backends.nodeCount,
-    backends,
-  });
-}
-
 function patchSetValue(
   patches: readonly HexagonalHiveOuterWallTargetPatch[]
 ): CanonicalJsonValue {
@@ -291,7 +266,6 @@ function patchSetValue(
 
 function regularityValue(
   params: HexagonalHiveParameters,
-  seamCurtainActive: boolean,
   internalCellDiscontinuitiesActive: boolean
 ): CanonicalJsonValue {
   return {
@@ -322,15 +296,9 @@ function regularityValue(
         condition: 'selected squared distance is zero or outer radius/Jacobian is nonregular',
         id: 'distance-power-and-wall-regularity',
       },
-      ...(seamCurtainActive
-        ? [{
-            condition: 'the two seam radii coincide at any height',
-            id: 'seam-curtain-jacobian-degeneracy',
-          }]
-        : []),
     ],
     scale: params.scale.toString(),
-    seamCurtainActive,
+    seamCurtainActive: false,
     styleId: 'HexagonalHive',
   };
 }
@@ -341,23 +309,24 @@ function derive(input: CanonicalTargetInputBinding): HexagonalHiveOuterWallTarge
     fail(`expected HexagonalHive but received '${input.style.styleId}'`);
   }
   const params = parameters(input);
-  const seamCurtainActive = params.relief !== 0;
+  // Both the distance field (integer column count) AND the cell hash (id wrapped
+  // modulo that count) now tile the circumference, so the u=0↔u=2π traces coincide
+  // exactly for EVERY admitted parameter — including active noise. The seam is
+  // unconditionally periodically identified; no physical seam curtain is emitted.
+  // `internalCellDiscontinuitiesActive` still flags the per-cell hash branches
+  // (masked by wall→0 at cell boundaries), which are orthogonal to the seam.
   const internalCellDiscontinuitiesActive =
     params.relief !== 0 && params.noise !== 0;
+  const seamCurtainActive = false;
   const patches = Object.freeze([
     compileOuterWall(input, params),
-    ...(seamCurtainActive ? [compileSeamCurtain(input, params)] : []),
   ]) as readonly HexagonalHiveOuterWallTargetPatch[];
   const patchValue = patchSetValue(patches);
   const patchSetSha256 = domainSeparatedCanonicalJsonSha256(
     'potfoundry.hexagonal-hive-outer-wall-target/patch-set/v1',
     patchValue
   );
-  const regularity = regularityValue(
-    params,
-    seamCurtainActive,
-    internalCellDiscontinuitiesActive
-  );
+  const regularity = regularityValue(params, internalCellDiscontinuitiesActive);
   const regularityObligationsCanonicalJson = canonicalizeCertificationJson(regularity);
   const regularityObligationsSha256 = domainSeparatedCanonicalJsonSha256(
     'potfoundry.hexagonal-hive-outer-wall-target/regularity-obligations/v1',
