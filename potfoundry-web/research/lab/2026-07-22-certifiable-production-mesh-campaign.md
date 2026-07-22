@@ -119,14 +119,50 @@ overstate; the classification stands.)
 Bamboo/HexHive/Basket/CKnot/CTri/LowPoly). The DS structured-emitter template is the vehicle for the layered class but
 is NOT plug-and-play (the Bamboo probe showed per-style tread-placement + double-valued scoring are still needed).
 
+## Layered-class routing (2026-07-22 desk study — analysis-only)
+
+Tractability map for the 6 remaining layered/structured-emitter styles. **The class boundary is set by DEFAULT
+params:** at defaults BasketWeave (`bwTwist=0`, axis-aligned) and LowPolyFacet (`lpTiers=1`, no horizontal step) are in
+the EASY static-crease class, NOT the snaking class. Clean split: **{LowPolyFacet, BambooSegments, ArtDeco, BasketWeave}
+→ DS ring-strip / smooth-grid template (one shared double-valued TREAD primitive from `src/geometry/doubleValued/mesh.ts`);
+{CelticKnot, CelticTriquetra} → the `doubleValued/` snaking mesher** (do NOT force the Celtics onto the ring-strip).
+
+**Recommended order + mechanism:**
+1. **LowPolyFacet** (easiest) — 12 vertical C1 facet edges, no C0, no junctions ⇒ uniform smooth grid (nU aligned to 12),
+   NO double-valued wall. ~0.1–0.3M est. (MEASURING now via the shipped `buildSmoothGridWall`.)
+2. **BambooSegments** (de-risked) — the DS ring-strip RAN and floors at **0.79mm**; root cause = a t-SCHEDULE gap
+   (`buildDsRingTSchedule` brackets the ±1mm C0 ring but does NOT grade rows across the smooth node-bulge flanks, `exp`
+   reaches ±3.6mm), NOT a wall. Fix = a node-bulge-tracking `buildBambooTSchedule`. ~1–3M est.
+3. **BasketWeave** — 2-axis value cliffs (`bwTwist=0` axis-aligned) + checker occlusion ⇒ generalize the DS tread to
+   treads on u=m/16 AND t=k/10 + a per-cell over/under step. Loci exist (`deriveBasketWeaveAxisAlignedCreases`). ~1–4M.
+4. **ArtDeco** — riser (dominant; the 3.42 blocker is the riser facet-chord, on-loci true-3D is only 0.039) + fan cusps +
+   diagonal chevron ⇒ DS treads at `artDecoRiserTBands` + fan columns + chevron density. ~1–3M.
+5–6. **CelticTriquetra ∥ CelticKnot** — OFF the ring-strip lane. `doubleValued/celticKnotMesh.ts` EXISTS (215k
+   watertight, vertices <0.01); the ONLY residual is the crossing-crest occlusion-fold diamond **0.211mm MAX**
+   (architectural M6b full-envelope clip). Triquetra reuses that braid core + a medallion atlas patch. ONE snaking project.
+
+**Discipline:** every layered style needs its OWN feature-shaped t/u-schedule — the emitter generalizes, the schedule does
+NOT (the concrete content of "not plug-and-play"). Radial MAX (ArtDeco 3.42 / BasketWeave 1.90) is near-vertical-riser
+inflation; the real blocker is the facet chord ACROSS the riser, which the double-valued tread removes by construction —
+the tread route beats density-only (free-Delaunay floors p99~0.6).
+
+**HexagonalHive — RECLASSIFIED (NO-GO on the DS template):** measured whole-mesh true-3D MAX floors at **0.738mm** on a
+NON-PERIODIC honeycomb seam (25.13 cells don't tile the circumference ⇒ |rA(0⁺)−rA(2π⁻)| up to 0.921mm — a C0
+discontinuity of the TARGET surface, density- AND curtain-invariant). The interior closes ≤0.01 on a plain smooth grid
+(≈3.27M uniform) and judge-certifies; the seam is irreducible for ANY mesher. HexHive is a **smooth-grid style + an
+irreducible non-periodic seam**, NOT a curtain/riser structured-emitter style. This is a SURFACE-DEFINITION issue
+(likely a latent bug: the cell count should be an integer) escalated to Patryk (spawned task chip) — not a mesher gap.
+Corrects the prior E-CT-HEXHIVE "reaches ≤0.01" (that was p99 with the seam excluded).
+
 ## Open threads (updated 2026-07-22 pm)
 - ✅ **Smooth-grid emitter PRODUCTIONIZED** (commit 121a7fe1) — 6 smooth styles wired into the dispatch, flag-gated.
-- **GeometricStar closure** (active, meshing-researcher subagent) — synthesize the 9 `_geoStar*` probes + measure the best
+- **GeometricStar closure** (active subagent) — synthesize the 9 `_geoStar*` probes + measure the best
   conforming-graph+fineStep+aniso arm at production scale; is true-3D MAX (trusted continuous, not single-seed GN) ≤0.01?
-- **HexagonalHive layered closure** (active, meshing-researcher subagent) — can the DS structured-emitter template close the
-  hex curtain/riser layered style ≤0.01 MAX at production scale?
-- **SpiralRidges under-cap** — it currently certifies via the multi-patch atlas (~4M > 1.05M judge cap); a row-graded (t)
-  density that keeps u-columns uniform+dyadic could bring it under-cap for a DIRECT cert. (Cert-safe grading: grade rows only.)
-- **Curvature-graded grid** — close the smooth styles under the cap at far fewer triangles (u must stay dyadic to certify).
-- **Structured emitters for the remaining layered styles** (DS template): ArtDeco/Bamboo/Basket/CelticKnot/CelticTriquetra/
-  LowPoly — the U4 class.
+- **LowPolyFacet closure** (active subagent) — measure whole-mesh MAX on the shipped smooth grid (pow2 vs facet-aligned nU);
+  the rank-1 layered win, likely a smooth-grid style with no double-valued wall.
+- ✅ **HexagonalHive** — NO-GO (irreducible non-periodic seam); reclassified + escalated to Patryk. See layered-class section.
+- **Next layered productionizations** (in order): LowPoly (smooth grid + facet-aligned nU) → Bamboo (`buildBambooTSchedule`
+  node-bulge grading) → BasketWeave (2-axis tread grid) → ArtDeco (riser+fan+chevron superposition). Celtics = separate
+  `doubleValued/` snaking-mesher project (CelticKnot crossing-crest 0.211mm architectural fix + productionize the standalone mesher).
+- **SpiralRidges under-cap / curvature-graded grid** — DEFERRED: grading breaks BOTH u- and t-dyadic certifiability (the
+  exact-dyadic partition needs both axes dyadic); SR certifies via the multi-patch atlas argument instead.
