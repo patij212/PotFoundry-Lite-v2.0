@@ -85,9 +85,14 @@ Additive, TDD, byte-identical on every existing path (opt-in only):
 _Roadmap status: R1 DONE; R4 DONE (measureRadialFidelity pre-filter); R5 doc-half done;
 the rigorous prover is now on a LIVE gate (exactCertGate) — the "wire a live gate" future
 bet, on one config. R7 DONE (`certCrossValidate.test.ts` — sampled ≤ certifiesAt, tight
-ratio 0.84; also proved the src analytic surface == the prover's target). R2/R3/R6/R8
-remain (an all-style/all-scale live gate is the natural next step now that the prover
-runs live and the fast ruler is proven sound against it)._
+ratio 0.84; also proved the src analytic surface == the prover's target). ALL-20 gate
+DONE (`exactCertGateAll20.test.ts`, env-gated): honest coverage matrix — the prover
+CERTIFIES 6/20 smooth/single-valued styles; the cusp (GothicArches) + cellular/weave
+families (Voronoi/BasketWeave/HexHive/CelticKnot/CelticTriquetra) are INTRACTABLE
+(non-terminating) and 4 styles are atlas-refused, so the rigorous ruler's frontier IS
+the meshing frontier. R2/R3/R6/R8 remain (the standout next step is making the prover
+terminate on cusps/lattices — curtains + the curved-element / cut-graph mesher work in
+FRONTIER-KNOWLEDGE — which would widen the all-20 certified set)._
 
 ## 4. Roadmap (remaining fixes, ranked)
 
