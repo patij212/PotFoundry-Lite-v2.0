@@ -1,3 +1,7 @@
 *.view.html
+*.pack
 *.error.bin
+*.loc.bin
+*.recon.json
+*.regen.stl
 GothicArches_coarse_reference.stl
