@@ -6,6 +6,7 @@
  */
 
 import { useCallback, useState, useRef, useEffect } from 'react';
+import { EXPORT_REARM_DEBOUNCE_MS } from './useGPUExport';
 import { useAppStore } from '../state';
 import {
     downloadSTL,
@@ -228,10 +229,13 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             }
         };
 
-        initGPU();
+        // Debounce the re-arm so rapid preview style switching doesn't thrash the
+        // export shader compiler (see EXPORT_REARM_DEBOUNCE_MS).
+        const rearmTimer = setTimeout(initGPU, EXPORT_REARM_DEBOUNCE_MS);
 
         return () => {
             isMounted = false;
+            clearTimeout(rearmTimer);
             // Cleanup on unmount or re-effect
             computerRef.current?.destroy();
             featureComputerRef.current?.destroy();
@@ -240,7 +244,7 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             featureComputerRef.current = null;
             deviceRef.current = null;
         };
-    }, [style.name]); // Re-init when style (shader) changes
+    }, [style.name]); // Re-init when style (shader) changes (debounced)
 
     const buildStyleOptions = useCallback(() => {
         const opts: Record<string, number> = {};

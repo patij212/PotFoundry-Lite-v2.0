@@ -33,6 +33,14 @@ import potExportWgsl from '../assets/shaders/pot_export.wgsl?raw';
 import scanProfileWgsl from '../assets/shaders/scan_profile.wgsl?raw';
 import { isMobileDevice } from '../ResizeManager';
 
+/**
+ * Delay (ms) before pre-warming the export pipeline after a style change. The
+ * instant preview lets users flip through styles quickly; without this, each
+ * switch re-compiles the export shader for a pipeline the user may never export.
+ * The re-arm fires once the style has been stable for this long.
+ */
+export const EXPORT_REARM_DEBOUNCE_MS = 500;
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -211,19 +219,25 @@ fn style_radius(style_id: i32, theta: f32, t: f32, r0: f32) -> f32 {
             }
         };
 
-        initOrUpdateGPU();
+        // Debounce the re-arm: with the instant preview, users flip through styles
+        // quickly. Re-compiling the export shader on every switch thrashes the
+        // compiler for a pipeline the user may never export. isGPUAvailable is set
+        // false up front (above), so no wrong-style export during the settle window;
+        // we just pre-warm once the style has been stable for a moment.
+        const rearmTimer = setTimeout(initOrUpdateGPU, EXPORT_REARM_DEBOUNCE_MS);
 
         // Cleanup only on unmount (device destruction)
         return () => {
             isMounted = false;
-            // We don't destroy device on every style change, only on unmount provided by parent? 
+            clearTimeout(rearmTimer);
+            // We don't destroy device on every style change, only on unmount provided by parent?
             // Actually useEffect cleanup runs on re-run.
             // We do NOT want to destroy device on re-run.
             // So we need a separate effect for lifecycle or careful management.
             // But here we just set isMounted=false.
             // Real cleanup should be in a separate [] effect or logic.
         };
-    }, [style.name]); // Re-run on style change
+    }, [style.name]); // Re-run on style change (debounced)
 
     // Separate cleanup effect
     useEffect(() => {
