@@ -862,3 +862,126 @@ test('dashboardHtml tolerates an empty roster (no pots) and stays self-contained
   assert.ok(!/https?:\/\//.test(html));
   assert.ok(html.includes('<div id="grid"></div>'), 'empty grid renders without throwing');
 });
+
+// === consolidation fixes (manifest guards, dominant-patch label, serve containment) ===
+
+// --- Fix A: manifest schema guard on READ ---------------------------------------
+// manifestStatusRows (the fresh-clone fallback) must VALIDATE the committed
+// manifest's schema tag before mapping manifest.pots. A missing/foreign `magic`
+// means the file is a future or unrelated schema, so it is refused with a warn and
+// yields [] — never degraded rows from a shape we do not understand. The version tag
+// was inert on the read side before this; now it is load-bearing. Exercised through
+// buildStatusRows (empty dir → manifest fallback).
+test('Fix A: buildStatusRows refuses a manifest with a wrong or missing magic (warn + [])', () => {
+  const emptyDir = join(DIR, 'fixA_empty');
+  mkdirSync(emptyDir, { recursive: true }); // no *.recon.json → forces the manifest fallback
+  const wrongPath = join(DIR, 'certs.manifest.wrongmagic.json');
+  writeFileSync(wrongPath, JSON.stringify({
+    magic: 'potscope-manifest/v2', // NOT v1 — a future/foreign schema
+    pots: [{ name: 'Ghost', style: 'X', tris: 1, verdict: 'GREEN', stats: { maxMm: 0.001, p99Mm: 0.001 } }],
+  }));
+  const missingPath = join(DIR, 'certs.manifest.nomagic.json');
+  writeFileSync(missingPath, JSON.stringify({
+    pots: [{ name: 'Ghost', style: 'X', tris: 1, verdict: 'GREEN', stats: { maxMm: 0.001, p99Mm: 0.001 } }],
+  }));
+
+  for (const badPath of [wrongPath, missingPath]) {
+    const warnings = [];
+    const origWarn = console.warn;
+    console.warn = (m) => warnings.push(String(m));
+    let rows;
+    try {
+      rows = buildStatusRows(emptyDir, badPath); // must NOT throw
+    } finally {
+      console.warn = origWarn;
+    }
+    // pre-fix this mapped the Ghost pot into a degraded row; post-fix it is refused
+    assert.deepEqual(rows, [], `wrong/missing-magic manifest must yield no rows (${badPath})`);
+    assert.ok(warnings.some((w) => /magic/.test(w)), `expected a schema warning for ${badPath}, got ${JSON.stringify(warnings)}`);
+  }
+});
+
+// --- Fix B: per-entry resilience inside a valid manifest ------------------------
+// A single malformed POT ENTRY (non-object, or missing `name`) inside an otherwise
+// valid manifest must be SKIPPED with a warn — one bad entry cannot silently degrade
+// (optional chaining) or sink the rest of the registry — mirroring the per-FILE
+// hardening in buildStatusRows / buildManifest.
+test('Fix B: buildStatusRows skips a malformed manifest entry and returns the good ones', () => {
+  const emptyDir = join(DIR, 'fixB_empty');
+  mkdirSync(emptyDir, { recursive: true });
+  const manifestPath = join(DIR, 'certs.manifest.badentry.json');
+  writeFileSync(manifestPath, JSON.stringify({
+    magic: 'potscope-manifest/v1',
+    pots: [
+      { name: 'Good', style: 'Gothic', configDigest: 'aaa22222aaa', tris: 100, verdict: 'GREEN',
+        stats: { maxMm: 0.010, p99Mm: 0.002 }, cert: { commit: 'deadbeef1234' } },
+      null,                                                                 // non-object entry
+      { style: 'X', tris: 5, verdict: 'GREEN', stats: { maxMm: 0.001, p99Mm: 0.001 } }, // missing name
+    ],
+  }));
+
+  const warnings = [];
+  const origWarn = console.warn;
+  console.warn = (m) => warnings.push(String(m));
+  let rows;
+  try {
+    rows = buildStatusRows(emptyDir, manifestPath); // must NOT throw despite the two bad entries
+  } finally {
+    console.warn = origWarn;
+  }
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, 'Good');
+  assert.equal(rows[0].source, 'manifest');
+  assert.equal(rows[0].masked, true); // 0.010/0.002 = 5 > 3 — the mask formula still applies
+  assert.equal(rows[0].commit, 'deadbeef1234');
+  assert.ok(warnings.some((w) => /malformed manifest entry/.test(w)),
+    `expected skip warning(s) for the bad entries, got ${JSON.stringify(warnings)}`);
+});
+
+// --- Fix C: hotspot cluster patch label = DOMINANT patch, not tris[0] -----------
+// A weld cluster can span a patch seam (the review flagged a SpiralRidges 23,752-tri
+// cluster spanning u∈[0,1] mislabeled by its first triangle). The patch label must be
+// the plurality patch over the cluster's triangles. Location 2 (classifyCluster):
+test('Fix C: classifyCluster labels a seam-spanning cluster by the DOMINANT patch, not tris[0]', () => {
+  const specs = [
+    { uc: 0.10, vc: 0.5, e: 0.009, patchIdx: 0 }, // tris[0] sits on outer-wall...
+    { uc: 0.30, vc: 0.5, e: 0.009, patchIdx: 1 },
+    { uc: 0.50, vc: 0.5, e: 0.009, patchIdx: 1 },
+    { uc: 0.70, vc: 0.5, e: 0.009, patchIdx: 1 },
+    { uc: 0.90, vc: 0.5, e: 0.009, patchIdx: 1 }, // ...but 4 of 5 are inner-wall (plurality)
+  ];
+  const ctx = scene(specs, { patches: ['outer-wall', 'inner-wall'] });
+  const c = classifyCluster(specs.map((_, i) => i), ctx);
+  assert.equal(c.patch, 'inner-wall'); // dominant, NOT tris[0]'s 'outer-wall'
+  assert.notEqual(c.patch, 'outer-wall'); // pre-fix (locBody[triIndices[0]*7]) returned this
+});
+
+// Location 1 (hotspotClusters): the same dominant-patch rule on the shared builder.
+// 3 tris welded on (0,0,0); tri0 on outer-wall (patchIdx 0), tri1+tri2 on inner-wall
+// (patchIdx 1) → plurality = inner-wall, first-triangle = outer-wall.
+test('Fix C: hotspotClusters labels a seam-welded cluster by the DOMINANT patch', () => {
+  const d = join(DIR, 'fixC_hc');
+  mkdirSync(d, { recursive: true });
+  const MIXED_PATCH_LOC = [
+    [0, 0.5, 0.5, 0.502, 0.5, 0.5, 0.502],    // tri0 → outer-wall (sorts first)
+    [1, 0.5, 0.5, 0.498, 0.5, 0.5, 0.498],    // tri1 → inner-wall
+    [1, 0.5, 0.5, 0.501, 0.501, 0.5005, 0.5], // tri2 → inner-wall
+  ];
+  writeHotPot(d, 'Seam', { errors: [0.009, 0.008, 0.007], locRows: MIXED_PATCH_LOC, stats: { maxMm: 0.009, p50Mm: 0.002, p99Mm: 0.005 } });
+  const { clusters } = hotspotClusters(join(d, 'Seam.stl'));
+  assert.equal(clusters.length, 1); // all 3 welded on (0,0,0)
+  assert.equal(clusters[0].patch, 'inner-wall'); // dominant (2 of 3), not tris[0]'s outer-wall
+});
+
+// --- Fix D: serve path-traversal containment ------------------------------------
+// cmdServe's directory guard must reject a shared-prefix SIBLING: a bare
+// `startsWith(dir)` admits `/x/_certified_stl_secret/...` past a guard on
+// `/x/_certified_stl`. isInsideDir requires the resolved path to equal dir or begin
+// with `dir + path.sep`.
+import { isInsideDir } from './potscope.mjs';
+
+test('Fix D: isInsideDir — descendant true, shared-prefix sibling false, dir itself true', () => {
+  assert.equal(isInsideDir('/x/_certified_stl/a', '/x/_certified_stl'), true);   // descendant
+  assert.equal(isInsideDir('/x/_certified_stl_secret/a', '/x/_certified_stl'), false); // sibling — the bug
+  assert.equal(isInsideDir('/x/_certified_stl', '/x/_certified_stl'), true);      // dir itself
+});

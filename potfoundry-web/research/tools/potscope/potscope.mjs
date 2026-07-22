@@ -28,7 +28,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createServer } from 'node:http';
-import { dirname, extname, join, resolve } from 'node:path';
+import { dirname, extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -691,14 +691,36 @@ export function isWallPatch(name) {
   return name === 'outer-wall' || name === 'inner-wall';
 }
 
+// A weld cluster can straddle a patch SEAM (welded across shared xyz where two
+// patches meet). Its patch LABEL is the DOMINANT patch: the id held by the plurality
+// of the cluster's triangles (mode of locBody[t*7]). A cluster welded across a seam
+// (e.g. a band spanning u∈[0,1]) is then reported by the patch that actually owns
+// most of it — not whichever triangle happened to sort first. Ties break to the
+// lower index (deterministic, insertion-order-independent).
+export function dominantPatchIdx(locBody, triIndices) {
+  const counts = new Map();
+  for (const t of triIndices) {
+    const idx = locBody[t * 7];
+    counts.set(idx, (counts.get(idx) ?? 0) + 1);
+  }
+  let best = -1, bestCount = -1;
+  for (const [idx, count] of counts) {
+    if (count > bestCount || (count === bestCount && idx < best)) { best = idx; bestCount = count; }
+  }
+  return best;
+}
+
 export function classifyCluster(triIndices, ctx) {
   const { positions, locBody, errors, featureLoci, patches } = ctx;
   const T = HOTSPOT_THRESHOLDS;
-  // A weld cluster is one patch (welded across shared xyz within a patch's sweep),
-  // so the patch of its first triangle names the whole cluster. patches is the loc
-  // header's name-list; guard the lookup so a caller without it simply never opens
-  // the ANISOTROPIC gate (conservative) rather than throwing.
-  const patch = patches ? patches[locBody[triIndices[0] * 7]] : undefined;
+  // A weld cluster can span a patch SEAM, so its label is the DOMINANT patch — the id
+  // held by the plurality of its triangles (dominantPatchIdx) — NOT the patch of
+  // whichever triangle sorted first. patches is the loc header's name-list; guard the
+  // lookup so a caller without it simply never opens the ANISOTROPIC gate
+  // (conservative) rather than throwing, and keep the `patchN` fallback for an index
+  // absent from the table.
+  const patchIdx = dominantPatchIdx(locBody, triIndices);
+  const patch = patches ? (patches[patchIdx] ?? `patch${patchIdx}`) : undefined;
   let uMin = Infinity, uMax = -Infinity, vMin = Infinity, vMax = -Infinity;
   let peak = 0, sumErr = 0, sumAniso = 0, anisoN = 0;
   const anisoVals = [], errVals = [];
@@ -817,7 +839,11 @@ export function hotspotClusters(stlPath, opts = {}) {
   const clusters = weldClusters(parsed.positions, hot)
     .map((tris) => {
       const c = classifyCluster(tris, ctx);
-      const patchIdx = loc.body[tris[0] * 7];
+      // DOMINANT patch (Fix C): plurality over the cluster's triangles, not tris[0]
+      // — a seam-welded cluster reports the patch that owns most of it. Same helper
+      // classifyCluster uses (so c.patch and this label agree); re-apply the
+      // loc-header `patchN` fallback for an index absent from the table.
+      const patchIdx = dominantPatchIdx(loc.body, tris);
       return { tris, ...c, patch: loc.header.patches[patchIdx] ?? `patch${patchIdx}` };
     })
     .sort((a, b) => b.peak - a.peak || b.tris.length - a.tris.length);
@@ -923,22 +949,46 @@ function manifestStatusRows(manifestPath) {
     console.warn(`potscope status: committed manifest unreadable (${manifestPath}): ${err.message}`);
     return [];
   }
-  return (manifest.pots ?? []).map((p) => {
-    const maxMm = p.stats?.maxMm ?? null;
-    const p99Mm = p.stats?.p99Mm ?? null;
-    return {
-      name: p.name,
-      style: p.style,
-      tris: p.tris,
-      configDigest: (p.configDigest ?? '').slice(0, 8),
-      maxMm,
-      p99Mm,
-      masked: computeMasked(maxMm, p99Mm),
-      commit: p.cert?.commit ?? null,
-      verdict: p.verdict,
-      source: 'manifest',
-    };
-  });
+  // Schema guard on READ (Fix A): the version tag is load-bearing here. A missing or
+  // foreign `magic` means the file is not a potscope-manifest/v1 (a future or
+  // unrelated schema); refuse it with a warn instead of silently mapping degraded
+  // rows out of a shape we do not understand — the same provenance stance the loc/
+  // error/converge readers already take on their magics.
+  if (manifest?.magic !== 'potscope-manifest/v1') {
+    console.warn(
+      `potscope status: committed manifest has unexpected schema (magic=${JSON.stringify(manifest?.magic)}); ignoring ${manifestPath}`
+    );
+    return [];
+  }
+  // Per-entry resilience (Fix B): one malformed pot entry (non-object, or missing
+  // `name`) is SKIPPED with a warn — consistent with the per-FILE hardening in
+  // buildStatusRows / buildManifest — so a single bad entry never silently degrades
+  // (via optional chaining) or sinks the rest of the registry.
+  const rows = [];
+  for (const p of manifest.pots ?? []) {
+    try {
+      if (p === null || typeof p !== 'object' || typeof p.name !== 'string') {
+        throw new Error('non-object entry or missing/invalid `name`');
+      }
+      const maxMm = p.stats?.maxMm ?? null;
+      const p99Mm = p.stats?.p99Mm ?? null;
+      rows.push({
+        name: p.name,
+        style: p.style,
+        tris: p.tris,
+        configDigest: (p.configDigest ?? '').slice(0, 8),
+        maxMm,
+        p99Mm,
+        masked: computeMasked(maxMm, p99Mm),
+        commit: p.cert?.commit ?? null,
+        verdict: p.verdict,
+        source: 'manifest',
+      });
+    } catch (err) {
+      console.warn(`potscope status: skipping malformed manifest entry: ${err.message}`);
+    }
+  }
+  return rows;
 }
 
 export function buildStatusRows(dir, manifestPath = join(HERE, 'certs.manifest.json')) {
@@ -2154,6 +2204,17 @@ function serveIndex(dir) {
   return `<!doctype html><meta charset="utf-8"><title>potscope — ${dir}</title><style>body{background:#0e1116;color:#c9d1d9;font:14px/1.7 ui-monospace,Consolas,monospace;padding:24px}a{color:#79c0ff}h1{font-size:15px;color:#e6edf3}</style><h1>potscope — ${dir}</h1><ul>${links}</ul>`;
 }
 
+// Directory containment for the static file server (Fix D). A bare
+// `file.startsWith(dir)` admits a shared-prefix SIBLING — a guard on
+// `/x/_certified_stl` lets `/x/_certified_stl_secret/...` slip through. Require the
+// resolved request path to EQUAL dir or begin with `dir + path.sep`. Localhost-only
+// lab tool, but the correct check is trivial. Exported so the predicate is unit-tested.
+export function isInsideDir(file, dir) {
+  const resolvedDir = resolve(dir);
+  const resolvedFile = resolve(file);
+  return resolvedFile === resolvedDir || resolvedFile.startsWith(resolvedDir + sep);
+}
+
 function cmdServe(args) {
   const dir = resolve(args._[0] ?? '.');
   if (!existsSync(dir) || !statSync(dir).isDirectory()) {
@@ -2172,7 +2233,7 @@ function cmdServe(args) {
         return;
       }
       const file = join(dir, rel);
-      if (!file.startsWith(dir) || !existsSync(file) || statSync(file).isDirectory()) {
+      if (!isInsideDir(file, dir) || !existsSync(file) || statSync(file).isDirectory()) {
         res.writeHead(404, { 'content-type': 'text/plain' });
         res.end('not found');
         return;
