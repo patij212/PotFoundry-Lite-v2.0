@@ -119,7 +119,7 @@ compendium §11.
 | # | Fix | Where | Risk | Notes |
 |---|---|---|---|---|
 | R1 | Exact-percentile (drop 0.05mm histogram) | `wallDeviation`, `wallChordError` (metrics.ts) | low | max/rms already exact; p99 is the only quantized field. No test pins it. |
-| R2 | MAX on the FULL mesh (stop subsampling the MAX channel) | `computeFidelityMetrics` (metrics.ts:1331) | med | keep rms/p99 subsampled; MAX radial eval is cheap. Shifts the persisted baseline row → rebaseline. |
+| ~~R2~~ **DONE** | MAX exact over the FULL mesh (sag + quality) | `computeFidelityMetrics` (metrics.ts) | — | sag MAX (`7cd2e049`) + quality extremes minAngle/aspect/sliverCount (`3e706e43`) now exact over every triangle; the sample limit governs only the sag RMS. TDD: a worst facet / worst sliver hidden behind a stride now surfaces, invariant to the limit. No persisted baseline pins these (0 non-test callers), so no rebaseline needed. |
 | R3 | Scale `coarseTrigger`/`preFilterMm` with `tolMm` | `analyticSurfaceGate.ts:263,379` | low-med | both hard-pinned to the 0.1mm regime; opt-in a `tolScaled` mode. |
 | R4 | Facet-wide pre-filter bound (not centroid-only) | `analyticSurfaceGate.ts:486` | med | centroid bound understates an off-centroid interior spike; use vertex+centroid max, or the interval screen. |
 | R5 | Reconcile watertight tol; fix the false `types.ts:68` comment | `exportValidation.ts:29`, `types.ts:68` | med | `1e-3` download vs `1e-4` internal, 10× apart; decide the correct value (don't silently change a gate). |

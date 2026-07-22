@@ -243,7 +243,7 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 
 ### 5.2 `triangleQuality3D` / `triMinAngleAndAspect` — aspect + min angle
 - **Where:** `metrics.ts:676`, `:962`. `aspect = longest²·√3/(4·area)` (1=equilateral); sliver = `aspect > ASPECT_MAX(100)`.
-- **Failure modes:** **divergent degenerate sentinels** — `DEGENERATE_ASPECT=1e9` (JSON-safe) in one, `Infinity` (JSON→`null`) in the other (`:972`): a footgun — serialize bucket *counts*, never raw aspects. `barycentricSamples(4)` = **3 interior points, no centroid** (the comment "15" is wrong) — the worst chord dip near the centroid is under-sampled. In `computeFidelityMetrics` quality runs on a **256k subsample** then extrapolates → the true worst sliver angle is masked.
+- **Failure modes:** **divergent degenerate sentinels** — `DEGENERATE_ASPECT=1e9` (JSON-safe) in one, `Infinity` (JSON→`null`) in the other (`:972`): a footgun — serialize bucket *counts*, never raw aspects. `barycentricSamples(4)` = **3 interior points, no centroid** (the comment "15" is wrong) — the worst chord dip near the centroid is under-sampled. In `computeFidelityMetrics` quality now runs on **every triangle** (R2b, `3e706e43`) → minAngle/maxAspect/sliverCount are exact (was a 256k-subsample estimate that masked the true worst sliver).
 - **When/how:** the aspect sliver gate. Run on the **full mesh** for the true min; `ASPECT_MAX=100` is a loose bar — minAngle is the real signal.
 
 ---
@@ -301,7 +301,7 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 | Failure mode | Afflicts | Mechanism | Mitigation |
 |---|---|---|---|
 | **p99-masking** | dualGate, featConformAll20, wall p99 | p99 hides the worst 1% (scale-tip cones) | certify on MAX |
-| **MAX-masking by sampling** | `computeFidelityMetrics` (64k), quality (256k) | strided subsample of a structured mesh aliases; max over a subset ≤ true max | MAX on full mesh |
+| **MAX-masking by sampling** ✅ FIXED (R2/R2b) | `computeFidelityMetrics` sag (64k) + quality (256k) | strided subsample of a structured mesh aliases; max over a subset ≤ true max | sag+quality MAX now exact over the full mesh; limit governs only the sag RMS |
 | **loci-blind MAX** | `featureLineChord3D`/fl3d | non-locus facets (tip cones) carry no locus → never sampled | add a facet/interval MAX pass |
 | **p99 quantization** | `wallDeviation`, `wallChordError` | 0.05mm histogram buckets, lower-edge report | exact percentile / ≤0.002mm bins |
 | **grid-bound reference** | `buildRadialReference`/sag | 720×400 mean bins + dilation fabrication | score vs exact `rA` / interval |
@@ -342,7 +342,7 @@ Need to look at it?                               → potscope view --error (§8
 Confirmed by code-read + audit; ranked by impact. (Tracked for the unification work
 in `docs/superpowers/specs/2026-07-22-unified-ruler-design.md`.)
 
-1. `computeFidelityMetrics` sags a **64k strided subsample** → `maxSagMm` is not the true max (`metrics.ts:1331`).
+1. ~~`computeFidelityMetrics` sags a **64k strided subsample** → `maxSagMm` is not the true max~~ **FIXED — R2 (`7cd2e049`):** sag MAX is now exact over every triangle (the limit governs only the RMS). Its twin — quality extremes (minAngle/maxAspect/sliverCount) over a **256k subsample** — **FIXED — R2b (`3e706e43`):** also exact now. (`metrics.ts`)
 2. p99 **0.05mm-quantized** in `wallDeviation` (`:584`) and `wallChordError` (`:1711`).
 3. `buildRadialReference` **grid-bound + dilation-fabricated** (`:44`); the persisted `FidelityMetrics` row still uses it.
 4. `NEAR_VERTICAL_COS=0.35` routes tip cones onto the **laterally-blind** nearest path and drops conical walls (`:237`).
