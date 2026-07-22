@@ -1320,7 +1320,9 @@ export interface ComputeFidelityArgs {
   features: { expected: number; present: number };
   weldToleranceMm: number;
   sagSampleOrder?: number;
-  /** 0 or negative disables downsampling and measures sag on every test triangle. */
+  /** Bounds the cost of the sag RMS statistic only (0/negative = full mesh). The sag MAX is
+   *  ALWAYS exact over every triangle regardless of this — the certification number must never
+   *  hide behind a stride (golden rule #1). */
   sagTriangleSampleLimit?: number;
   /** 0 or negative disables downsampling and scores quality on every test triangle. */
   qualityTriangleSampleLimit?: number;
@@ -1352,7 +1354,16 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
       minNonVerticalCos: ALL_REFERENCE_ORIENTATIONS_COS,
     })
     : undefined;
-  const sag = sagDeviation(sagMesh.mesh, ref.rTrue, args.sagSampleOrder ?? 4, nearestSurface);
+  const sagOrder = args.sagSampleOrder ?? 4;
+  // RMS is a representative statistic — the subsample (bounded by sagTriangleSampleLimit)
+  // estimates it fine and keeps this channel cheap.
+  const sagStat = sagDeviation(sagMesh.mesh, ref.rTrue, sagOrder, nearestSurface);
+  // MAX is the certification number and MUST be exact over EVERY triangle. A strided
+  // subsample lets the single worst facet (e.g. a scale-tip cone) hide behind the stride
+  // and silently under-reports the MAX — golden rule #1 (certify on MAX, never a subset).
+  // An exact MAX inherently needs the full mesh, so the sample limit cannot bound it
+  // (measured: full-mesh sag ≈0.5s@1M / ≈1.9s@4M tris — the price of a correct MAX).
+  const sagMaxMm = sagDeviation(mesh, ref.rTrue, sagOrder, nearestSurface).maxSagMm;
   const quality = triangleQuality3D(qualityMesh.mesh);
   const topo = topologyMetric(mesh, weldToleranceMm);
   const dropped = Math.max(0, features.expected - features.present);
@@ -1362,8 +1373,8 @@ export function computeFidelityMetrics(args: ComputeFidelityArgs): FidelityMetri
     triangleCount: mesh.indices.length / 3,
     vertexCount: mesh.vertices.length / 3,
     referenceTriangleCount: args.referenceTriangleCount ?? denseVertices.length / 3,
-    maxSagMm: sag.maxSagMm,
-    rmsSagMm: sag.rmsSagMm,
+    maxSagMm: sagMaxMm,
+    rmsSagMm: sagStat.rmsSagMm,
     sagReferenceBinThetaRad: ref.binThetaRad,
     sagReferenceBinZmm: ref.binZmm,
     maxAspect3D: quality.maxAspect3D,

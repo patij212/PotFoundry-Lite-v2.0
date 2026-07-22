@@ -407,6 +407,54 @@ describe('computeFidelityMetrics', () => {
   });
 });
 
+/** N independent near-vertical wall triangles; triangle k sits at radius `radii[k]`
+ *  (a distinct small θ-slot, spanning z∈[45,55]) so its radial sag = |radii[k] − R_true|.
+ *  Lets a test plant a worst facet at a known index. */
+function wallTrisAtRadii(radii: number[]): { vertices: Float32Array; indices: Uint32Array } {
+  const verts: number[] = [];
+  const idx: number[] = [];
+  const z0 = 45, z1 = 55, dth = 0.02;
+  for (let k = 0; k < radii.length; k++) {
+    const r = radii[k];
+    const th = (k / radii.length) * 0.5; // spread across a small arc; distinct per triangle
+    const base = k * 3;
+    verts.push(
+      r * Math.cos(th), r * Math.sin(th), z0,
+      r * Math.cos(th + dth), r * Math.sin(th + dth), z0,
+      r * Math.cos(th), r * Math.sin(th), z1,
+    );
+    idx.push(base, base + 1, base + 2);
+  }
+  return { vertices: new Float32Array(verts), indices: new Uint32Array(idx) };
+}
+
+describe('computeFidelityMetrics — sag MAX is exact, never masked by the sample limit [R2]', () => {
+  it('reports the worst facet even when the sample limit would stride over it', () => {
+    const dense = denseCylinder(40, 100, 360, 200); // R_true ≈ 40 everywhere
+    // 21 on-surface wall triangles + ONE 5mm-proud facet planted at index 0.
+    const radii = new Array<number>(21).fill(40);
+    radii[0] = 45; // the worst facet: 5mm radial sag
+    const mesh = wallTrisAtRadii(radii);
+
+    const base = {
+      styleId: 'R2-MaxMasking', mesh, denseVertices: dense,
+      features: { expected: 0, present: 0 }, weldToleranceMm: 1e-4, sagSampleOrder: 4,
+    };
+    // sagTriangleSampleLimit:1 samples ONLY the middle triangle (index 10) — it strides
+    // straight over the worst facet at index 0.
+    const subsampled = computeFidelityMetrics({ ...base, sagTriangleSampleLimit: 1 });
+    // sagTriangleSampleLimit:0 disables downsampling → measures every triangle (exact).
+    const full = computeFidelityMetrics({ ...base, sagTriangleSampleLimit: 0 });
+
+    // The exact MAX is the ~5mm planted facet…
+    expect(full.maxSagMm).toBeGreaterThan(4.5);
+    // …and the reported MAX must be INVARIANT to the sample limit — the worst facet is
+    // never allowed to hide behind a stride (golden rule #1: certify on MAX).
+    expect(subsampled.maxSagMm).toBeGreaterThan(4.5);
+    expect(subsampled.maxSagMm).toBeCloseTo(full.maxSagMm, 6);
+  });
+});
+
 // ---------------------------------------------------------------------------
 // Hardening: input guards, z-boundary accuracy, degenerate-triangle isolation,
 // and non-manifold detection. These pin the measurement instrument so its
