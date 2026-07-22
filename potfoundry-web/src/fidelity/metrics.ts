@@ -580,9 +580,12 @@ export function wallDeviation(
   let sumSq = 0;
   let count = 0;
   let wallTris = 0;
-  // Histogram for a cheap p99 (0..20mm at 0.05mm; overflow in the last bucket).
-  const BUCKETS = 400;
-  const BW = 0.05;
+  // Histogram for a cheap, bounded-memory p99 (0..20mm at 0.001mm; overflow in the
+  // last bucket). 0.001mm resolution is 10× below the 0.01mm export standard — the
+  // former 0.05mm bucket could not resolve (and, reporting the lower edge, UNDER-
+  // reported) any p99 below 0.05mm, so a full-tolerance violation read as 0.00.
+  const BUCKETS = 20000;
+  const BW = 0.001;
   const hist = new Float64Array(BUCKETS + 1);
 
   for (let t = 0; t < indices.length; t += 3) {
@@ -621,7 +624,9 @@ export function wallDeviation(
     let acc = 0;
     for (let b = 0; b <= BUCKETS; b++) {
       acc += hist[b];
-      if (acc >= target) { p99 = b * BW; break; }
+      // Report the bucket's UPPER edge: a conservative upper bound on the true p99,
+      // so this can never UNDER-report a percentile (the safe direction for a gate).
+      if (acc >= target) { p99 = (b + 1) * BW; break; }
     }
   }
   return {
@@ -1708,8 +1713,10 @@ export function wallChordError(
   let maxCrest = 0;
   let sumSqCrest = 0;
   let crestCount = 0;
-  const BUCKETS = 400;
-  const BW = 0.05;
+  // 0..20mm at 0.001mm (10× below the 0.01mm standard); the former 0.05mm bucket
+  // could not resolve — and, as a lower edge, under-reported — a sub-0.05mm p99.
+  const BUCKETS = 20000;
+  const BW = 0.001;
   const hist = new Float64Array(BUCKETS + 1);
 
   const accumulate = (px: number, py: number, pz: number): void => {
@@ -1761,7 +1768,8 @@ export function wallChordError(
     let acc = 0;
     for (let bkt = 0; bkt <= BUCKETS; bkt++) {
       acc += hist[bkt];
-      if (acc >= target) { p99 = bkt * BW; break; }
+      // Upper edge — a conservative upper bound; never under-reports the percentile.
+      if (acc >= target) { p99 = (bkt + 1) * BW; break; }
     }
   }
   const rmsDevMm = count > 0 ? Math.sqrt(sumSq / count) : 0;
