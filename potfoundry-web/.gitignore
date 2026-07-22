@@ -32,6 +32,7 @@ Thumbs.db
 build_error*.txt
 
 # Debug & test output (agent session artifacts)
+e2e/.artifacts/
 debug_seam*.log
 stress_test*.txt
 test_results*.txt
