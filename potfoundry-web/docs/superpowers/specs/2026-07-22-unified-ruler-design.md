@@ -84,8 +84,10 @@ Additive, TDD, byte-identical on every existing path (opt-in only):
 
 _Roadmap status: R1 DONE; R4 DONE (measureRadialFidelity pre-filter); R5 doc-half done;
 the rigorous prover is now on a LIVE gate (exactCertGate) — the "wire a live gate" future
-bet, on one config. R2/R3/R6/R7/R8 remain (R7 cross-validation and an all-style/all-scale
-gate are the natural next steps now that the prover runs live)._
+bet, on one config. R7 DONE (`certCrossValidate.test.ts` — sampled ≤ certifiesAt, tight
+ratio 0.84; also proved the src analytic surface == the prover's target). R2/R3/R6/R8
+remain (an all-style/all-scale live gate is the natural next step now that the prover
+runs live and the fast ruler is proven sound against it)._
 
 ## 4. Roadmap (remaining fixes, ranked)
 
@@ -100,7 +102,7 @@ compendium §11.
 | R4 | Facet-wide pre-filter bound (not centroid-only) | `analyticSurfaceGate.ts:486` | med | centroid bound understates an off-centroid interior spike; use vertex+centroid max, or the interval screen. |
 | R5 | Reconcile watertight tol; fix the false `types.ts:68` comment | `exportValidation.ts:29`, `types.ts:68` | med | `1e-3` download vs `1e-4` internal, 10× apart; decide the correct value (don't silently change a gate). |
 | R6 | Share the numeric packed-key path (Map-cap) | `exportValidation.ts:238`, `topologyDiagnostics` | med | the download path can still crash on 8M+ tris. |
-| R7 | Cross-validate: sampled ≤ certified upper bound | new test bridging `measureRadialFidelity` ↔ `targetSolid` | med | proves the fast ruler is sound (or finds where it diverges) — the unification's soundness proof. |
+| ~~R7~~ **DONE** | Cross-validate: sampled ≤ certified upper bound | `research/bridge/certCrossValidate.test.ts` | — | sampled 0.0168 ≤ cert 0.02 (SOUND), ratio 0.84 (TIGHT); also proved src analytic surface == prover target. |
 | R8 | Add a non-locus MAX pass to the all-20 harnesses | `featConformAll20` | med | fl3d loci-only is blind to scale-tip cones; add a facet/interval MAX gate. |
 
 ## 5. Future work (bigger bets)
