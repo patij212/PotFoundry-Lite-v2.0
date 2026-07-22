@@ -31,8 +31,21 @@ Cross-validated against the DS-specific `buildDsConeFanCertDomain`; judge-ACCEPT
 | 1 | **DragonScales** | cone-fan structured emitter | fwd 0.005 / rev 0.0028 | (representative 656,896; prod nU4096 9.4M) | 0.00039 | 0.00539 | structured emitter + cut-at-gap (S3, `175a2a6f`) |
 | 2 | **HarmonicRipple** (gentle) | uniform structured grid 2048×256 | 0.007078 | 1,044,480 (under cap) | 0.000065 | 0.00714 | smooth grid + adapter (`01d610bd`) |
 | 3 | **SuperellipseMorph** (defaults) | uniform structured grid 512×256 | 0.008334 | 261,120 (under cap) | 0.000059 | 0.00840 | smooth grid + adapter (`01d610bd`) |
+| 4 | **FourierBloom** (defaults) | uniform structured grid 2048×256 | 0.004659 | 1,044,480 (under cap) | 0.000061 | 0.00472 | smooth grid + adapter |
+| 5 | **SpiralRidges** (defaults) | uniform-θ structured grid ~3.94M (safe) | 0.0048 | 3.94M (>cap ⇒ atlas) | 0.000004 (pow2) | ~0.0048 | smooth grid, subagent (`18cd894f`) |
+| 6 | **SuperformulaBlossom** (defaults) | uniform structured grid 256×128 | 0.005271 | **65,024** (under cap) | 0.000057 | 0.00533 | smooth grid + adapter |
 
-DS is the STRUCTURED-EMITTER class proof; HR/SE are the SMOOTH-GRID class proof. All three certify the EXACT production
+**Measured NON-closers on a uniform grid (route to feature-conforming / graded, NOT uniform density):**
+- **RippleInterference** (defaults): stuck true-3D MAX ~0.028 / ~40 outliers even at 2.09M — wave-interference crests are
+  localized sharp features.
+- **WaveInterference** (defaults): ~0.024 / 10,020 outliers at 261k, not closing on the uniform ladder — edge-fade C1
+  kinks + interference need exact-rational stations (the judge-side WI cert used stations + a 288-row ladder).
+- Both still judge-ACCEPT at 2048×256 (structure clean); only FIDELITY is unmet on a uniform grid.
+
+DS is the STRUCTURED-EMITTER class proof; HR/SE/FB/SR/SFB are the SMOOTH-GRID class proof. **6 styles now have a
+certifiable structured production mesh, from 0 at session start.** Note the closing tri-count varies 65k (SFB) → ~4M
+(SR): SFB/SE are gentle-shaped (cheap), FB/HR/SR need the angular columns for their petals/ridges. SR (>cap) certifies
+by the DS multi-patch-atlas + representative-wall argument; the under-cap styles certify directly. All three certify the EXACT production
 positions (the cut/relabel is domain-only). The judge's 1,048,576-triangle hard cap means production meshes larger than
 that (DS nU4096, or any dense grid) certify by the **density/structure-invariant** argument on a representative
 under-cap wall — the structure is identical at every density.
