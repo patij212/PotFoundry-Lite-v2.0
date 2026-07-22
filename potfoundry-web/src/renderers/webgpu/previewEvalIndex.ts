@@ -43,9 +43,11 @@ export const FLAG_INNER = 4;
 //   3 bottom-under (-Z), 4 rim (+Z), 5 drain (finite diff).
 const SEG_FLAG = [0, FLAG_INNER, FLAG_CAP_UP, FLAG_CAP_DOWN, FLAG_CAP_UP, 0];
 
-// corner -> grid-node offset (dgx, dgy) within a cell, matching vs_main's corner map.
+// corner -> grid-node offset (dgx, dgy) within a cell, matching vs_main's corner map:
+//   0:(u0,v0) 1:(u0,v1) 2:(u1,v0) 3:(u1,v0) 4:(u0,v1) 5:(u1,v1)
+// (two triangles per quad; corners 2==3 and 1==4 are duplicated shared vertices).
 const CORNER_DGX = [0, 0, 1, 1, 0, 1];
-const CORNER_DGY = [0, 1, 0, 1, 1, 1];
+const CORNER_DGY = [0, 1, 0, 0, 1, 1];
 
 export function buildPreviewEvalIndexBuffers(counts: PreviewEvalCounts): PreviewEvalIndexBuffers {
   const cellsX = Math.max(1, Math.floor(counts.cellsX));

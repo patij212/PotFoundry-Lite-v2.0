@@ -69,6 +69,23 @@ describe('buildPreviewEvalIndexBuffers', () => {
     }
   });
 
+  it('cell corners match vs_main triangle layout (corners 2==3, 1==4 duplicated)', () => {
+    // Every 6 consecutive vertices form one quad-cell (2 triangles). vs_main maps
+    // corner 2 and 3 to the same node (u1,v0) and corner 1 and 4 to (u0,v1). If the
+    // corner map is wrong, the second triangle is malformed (shredded surface).
+    for (let base = 0; base < r.vertexCount; base += 6) {
+      // corner 2 == corner 3
+      expect(r.uv[(base + 2) * 2]).toBeCloseTo(r.uv[(base + 3) * 2], 6);
+      expect(r.uv[(base + 2) * 2 + 1]).toBeCloseTo(r.uv[(base + 3) * 2 + 1], 6);
+      // corner 1 == corner 4
+      expect(r.uv[(base + 1) * 2]).toBeCloseTo(r.uv[(base + 4) * 2], 6);
+      expect(r.uv[(base + 1) * 2 + 1]).toBeCloseTo(r.uv[(base + 4) * 2 + 1], 6);
+      // the quad spans two distinct rows and columns (non-degenerate)
+      expect(r.uv[(base + 0) * 2]).not.toBeCloseTo(r.uv[(base + 2) * 2], 6); // u0 != u1
+      expect(r.uv[(base + 0) * 2 + 1]).not.toBeCloseTo(r.uv[(base + 1) * 2 + 1], 6); // v0 != v1
+    }
+  });
+
   it('all neighbour indices are in range', () => {
     for (let i = 0; i < r.nbr.length; i += 6) {
       for (let k = 0; k < 4; k++) {

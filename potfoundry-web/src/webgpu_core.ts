@@ -17,6 +17,7 @@
 import { ShaderManager } from './renderers/webgpu/ShaderManager';
 import { WebGPURenderer } from './renderers/webgpu/WebGPURenderer';
 import { SceneManager } from './renderers/webgpu/SceneManager';
+import { PreviewInstantController } from './renderers/webgpu/PreviewInstantController';
 import ThumbnailRenderer from './services/ThumbnailRenderer';
 import {
   createAxisOverlay,
@@ -1014,8 +1015,17 @@ export const mount = async ({
   );
   const sceneManager = new SceneManager(renderer);
   const reqInitStyleId = typeof initialParams.style === 'number' ? initialParams.style : 0;
+  // [preview-eval] instant-switch prototype flag (dev). When on, the pot renders via
+  // ONE style-independent pipeline fed by an eval-compute pass, so a style switch is a
+  // uniform write + dispatch (no recompile) — and we skip the per-style warmup blast.
+  const instantEvalEnabled = (() => {
+    try {
+      if (typeof window !== 'undefined' && (window as unknown as { __pfPreviewEval?: boolean }).__pfPreviewEval === true) return true;
+      return typeof localStorage !== 'undefined' && localStorage.getItem('pf-preview-eval') === '1';
+    } catch { return false; }
+  })();
   try {
-    if (!await sceneManager.init(reqInitStyleId, previewMode !== 'raycast')) {
+    if (!await sceneManager.init(reqInitStyleId, previewMode !== 'raycast' && !instantEvalEnabled)) {
       console.error('[WebGPU] SceneManager.init returned false');
       ThumbnailRenderer.getInstance().rejectDevice();
       return fail('webgpu:pipeline-failed', 'SceneManager initialization failed');
@@ -1055,6 +1065,34 @@ export const mount = async ({
   const bufferWriter = createBufferWriter({ device, context: writeContext });
 
   let depth = createDepthTexture(device, width, height);
+
+  // [preview-eval] instant-switch controller (prototype). Compiles the style-independent
+  // pipeline + eval passes in the background (~13s once); until ready, canDraw stays false
+  // and the frame loop falls back to the per-style pipeline. Never blocks mount.
+  let instantController: PreviewInstantController | null = null;
+  if (instantEvalEnabled) {
+    const ctl = new PreviewInstantController(device, {
+      uniformBuffer,
+      styleParamBuffer,
+      bgBuffers: sceneManager.bgBuffers,
+      format,
+      depthFormat: depthFormatUsed ?? 'depth24plus',
+    });
+    instantController = ctl;
+    // [preview-eval] expose readiness/frame state on window for e2e — the app's
+    // ConsolePatch swallows console.*, so tests read window.__pfInstant instead.
+    try { (window as unknown as { __pfInstant?: unknown }).__pfInstant = { created: true, ready: false, error: null }; } catch { /* ignore */ }
+    ctl.init()
+      .then(() => {
+        console.log('[preview-eval] instant-switch pipeline ready');
+        try { (window as unknown as { __pfInstant?: Record<string, unknown> }).__pfInstant = { created: true, ready: true, error: null }; } catch { /* ignore */ }
+      })
+      .catch((e) => {
+        console.error('[preview-eval] instant-switch init failed; staying on per-style path', e);
+        try { (window as unknown as { __pfInstant?: Record<string, unknown> }).__pfInstant = { created: true, ready: false, error: String(e && (e as Error).message || e) }; } catch { /* ignore */ }
+        if (instantController === ctl) instantController = null;
+      });
+  }
 
   const initialAutoRotateRaw = (initialParams as Record<string, unknown>).autoRotate;
   const initialAutoRotate =
@@ -3363,6 +3401,10 @@ export const mount = async ({
       const clearTuple = parseClearColor((cfg as Record<string, unknown>).__pf_bg_rgba);
       const clearValue = { r: clearTuple[0], g: clearTuple[1], b: clearTuple[2], a: clearTuple[3] };
 
+      // [preview-eval] recompute position+normal buffers off the current uniforms, then
+      // the instant pipeline draws from them below. No-op until the controller is ready.
+      if (instantController) instantController.updateAndDispatch(f32);
+
       lastOperation = 'create-encoder';
       const encoder = device.createCommandEncoder({ label: 'component:frame-encoder' });
       let textureView: GPUTextureView | null = null;
@@ -3652,12 +3694,22 @@ export const mount = async ({
       }
 
       const pass = encoder.beginRenderPass(renderPassDesc);
-      pass.setPipeline(activePipeline || pipeline); // Fallback to initial pipeline if active is somehow null
-      pass.setBindGroup(0, bindGroup);
-      if (!raycastDrewFrame) {
-        lastOperation = 'draw-main';
-        pass.draw(safeDrawVerts);
+      if (instantController && instantController.canDraw && !raycastDrewFrame) {
+        // [preview-eval] instant-switch path: one style-independent pipeline reading the
+        // eval buffers. A style switch never recompiles a pipeline.
+        lastOperation = 'draw-main-instant';
+        instantController.draw(pass, safeDrawVerts);
         totalDrawCalls += 1;
+        // [preview-eval] count instant frames drawn (window.__pfInstant, read by e2e)
+        try { const w = window as unknown as { __pfInstant?: Record<string, unknown> }; if (w.__pfInstant) w.__pfInstant.instantFrames = ((w.__pfInstant.instantFrames as number) ?? 0) + 1; } catch { /* ignore */ }
+      } else {
+        pass.setPipeline(activePipeline || pipeline); // Fallback to initial pipeline if active is somehow null
+        pass.setBindGroup(0, bindGroup);
+        if (!raycastDrewFrame) {
+          lastOperation = 'draw-main';
+          pass.draw(safeDrawVerts);
+          totalDrawCalls += 1;
+        }
       }
 
       // Draw wireframe overlay in the SAME render pass if enabled
@@ -4405,6 +4457,12 @@ export const mount = async ({
       if (idleDetector) {
         idleDetector.dispose();
       }
+    } catch (e) { /* ignore cleanup errors */ }
+
+    // [preview-eval] instant-switch controller (flag-gated; no-op when never constructed)
+    try {
+      instantController?.dispose();
+      instantController = null;
     } catch (e) { /* ignore cleanup errors */ }
 
     // Clean up ray-cast controller (flag-gated; no-op when never constructed)
