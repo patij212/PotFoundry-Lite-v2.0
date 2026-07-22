@@ -119,6 +119,20 @@ export interface AnalyticDevOpts {
    * dropping them loses real wall coverage.)
    */
   dropNearHorizontalNz?: number;
+  /**
+   * Injected CHORD-channel distance function `(x,y,z) → shortest 3D distance to the
+   * true surface (mm)`. When provided, {@link perpendicular3DDeviation} uses it for
+   * the dense chord scan instead of its built-in single-seed
+   * {@link projectPointToRadialSurface}. This is the seam for a GLOBALLY-CORRECT
+   * projector (`buildRadialSurfaceProjector`) that eliminates the single-seed
+   * wrong-well overstatement on tangled lattices (~7× on Gyroid). Dependency-injected
+   * (not imported here) so this module stays acyclic and the caller controls the
+   * projector's cost/resolution. Default undefined ⇒ the built-in projector ⇒
+   * byte-identical to the prior behaviour. Must be a valid UPPER bound's companion:
+   * it should return ≤ the radial residual (the pre-filter bound), like every
+   * perpendicular projection.
+   */
+  chordProjector?: (x: number, y: number, z: number) => number;
 }
 
 export interface AnalyticDevResult {
@@ -588,8 +602,11 @@ export function perpendicular3DDeviation(
   opts: AnalyticDevOpts,
 ): AnalyticDevResult {
   const { devAt, vertexDev } = makeRadialDevs(rAnalytic, opts.H, opts.utPlacement);
-  const chordDev = (x: number, y: number, z: number): number =>
-    projectPointToRadialSurface(x, y, z, rAnalytic).dist;
+  // Dependency-injected projector (a globally-correct buildRadialSurfaceProjector)
+  // when supplied; else the built-in single-seed projector (byte-identical default).
+  const chordDev = opts.chordProjector
+    ?? ((x: number, y: number, z: number): number =>
+      projectPointToRadialSurface(x, y, z, rAnalytic).dist);
   return accumulateDeviation(mesh, ut, opts, { vertexDev, chordBound: devAt, chordDev });
 }
 
