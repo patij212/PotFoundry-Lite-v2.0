@@ -1380,6 +1380,400 @@ function cmdDoctor(args) {
   }
 }
 
+// -------------------------------------------------------------------- dashboard
+// The doctor report, rendered as a self-contained "command center": one offline
+// HTML page (inline CSS/JS, NO external fetches / fonts / CDNs) that opens
+// straight off file:// and is listed by `potscope serve`. The roster is rendered
+// SERVER-SIDE — every pot name and every summary count is literal text, not
+// JS-dependent — while REPORT is also embedded for inspection / re-sort. Design:
+// a ceramic studio-at-dusk lab instrument (celadon-glaze accents), not a table.
+const DASHBOARD_DATE = '2026-07-22';
+const CERT_BUDGET_MM = 0.01; // the campaign's 0.01 mm (10 µm) true-3D budget
+
+export function dashboardHtml(report) {
+  const summary = (report && report.summary) || {};
+  const pots = Array.isArray(report && report.pots) ? report.pots : [];
+
+  const esc = (s) =>
+    String(s == null ? '' : s)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  const um = (mm) => (mm == null || !Number.isFinite(mm) ? '—' : (mm * 1000).toFixed(1));
+  const barPct = (mm) => Math.max(0, Math.min(1, (Number.isFinite(mm) ? mm : 0) / CERT_BUDGET_MM)) * 100;
+  const commas = (n) => (n == null || !Number.isFinite(Number(n)) ? '—' : Number(n).toLocaleString('en-US'));
+  const N = (v) => (v == null ? 0 : v);
+
+  // Server-side display order: any DRIFT first (the only thing needing action),
+  // then worst-max-first so the eye lands on the tightest margins.
+  const ordered = pots.slice().sort((a, b) => {
+    const da = a.verdict === 'DRIFT' ? 0 : 1;
+    const db = b.verdict === 'DRIFT' ? 0 : 1;
+    if (da !== db) return da - db;
+    return (b.maxMm == null ? -1 : b.maxMm) - (a.maxMm == null ? -1 : a.maxMm);
+  });
+
+  const stat = (num, label, cls) =>
+    `<div class="stat ${cls}"><div class="snum">${esc(String(num))}</div><div class="slab">${esc(label)}</div></div>`;
+  const chips = [
+    stat(N(summary.pots) || pots.length, 'pots certified', 'k-clay'),
+    stat(N(summary.green), 'GREEN', 'k-green'),
+    stat(N(summary.drift), 'DRIFT', 'k-drift'),
+    stat(N(summary.masked), 'max-masked', 'k-amber'),
+    stat(N(summary.withIrreducibleConvergence), 'irreducible frontier', 'k-ember'),
+  ].join('');
+
+  const vBadge = (v) => `<span class="badge ${v === 'DRIFT' ? 'b-drift' : 'b-green'}">${esc(v || '—')}</span>`;
+  const cBadge = (v) => {
+    const cls = v === 'RESPONSIVE' ? 'c-resp' : v === 'PARTIAL' ? 'c-part' : 'c-irr';
+    return `<span class="cbadge ${cls}">${esc(v)}</span>`;
+  };
+  const tagPill = (t) => {
+    const cls = t === 'IRREDUCIBLE' ? 't-irr' : t === 'ANISOTROPIC' ? 't-aniso' : 't-feat';
+    return `<span class="tag ${cls}">${esc(t)}</span>`;
+  };
+
+  const meter = (p) => {
+    const drift = p.verdict === 'DRIFT';
+    const masked = !!p.masked;
+    const cls = drift ? 'm-drift' : masked ? 'm-masked' : 'm-green';
+    const fill = barPct(p.maxMm);
+    const mark = Number.isFinite(p.p99Mm) ? barPct(p.p99Mm) : null;
+    const warn = masked ? ' <span class="warn" title="max-masked: max ≫ p99 — certify on MAX">⚠</span>' : '';
+    return (
+      `<div class="meter ${cls}">` +
+      `<div class="mlab"><span>max <b>${um(p.maxMm)}</b> µm${warn}</span>` +
+      `<span class="dim">p99 ${um(p.p99Mm)} µm</span>` +
+      `<span class="bud">budget 10 µm</span></div>` +
+      `<div class="track" role="img" aria-label="max ${um(p.maxMm)} micron of 10 micron budget">` +
+      `<div class="fill" style="width:${fill.toFixed(1)}%"></div>` +
+      (mark == null ? '' : `<i class="p99" style="left:${mark.toFixed(1)}%"></i>`) +
+      `</div></div>`
+    );
+  };
+
+  const hotRow = (p) => {
+    const h = p.hotspots || { available: false, top: null };
+    if (!h.available) return `<div class="line faint"><span class="lk">hotspot</span> no on-disk sidecar</div>`;
+    const t = h.top;
+    if (!t) return `<div class="line"><span class="lk">hotspot</span><span class="ok">clean — no cluster over threshold</span></div>`;
+    const tags = Array.isArray(t.tags) ? t.tags.map(tagPill).join('') : '';
+    return (
+      `<div class="line"><span class="lk">hotspot</span>` +
+      `<span class="shape s-${esc(t.shape)}">${esc(t.shape)}</span>${tags}` +
+      `<span class="patch">${esc(t.patch || '—')}</span>` +
+      `<span class="peak">peak ${um(t.peakMm)} µm</span></div>` +
+      (t.lever ? `<div class="lever">${esc(t.lever)}</div>` : '')
+    );
+  };
+
+  const convRow = (p) => {
+    const c = p.convergence || { available: false, worst: null };
+    if (!c.available) return `<div class="line faint"><span class="lk">converge</span> not probed</div>`;
+    const w = c.worst;
+    if (!w) return `<div class="line"><span class="lk">converge</span><span class="ok">no limiting patch</span></div>`;
+    return (
+      `<div class="line"><span class="lk">converge</span>` +
+      `<span class="patch">${esc(w.patchId)}</span>` +
+      `<span class="ratio">×${Number(w.ratio).toFixed(2)}</span>` +
+      cBadge(w.verdict) +
+      `</div>`
+    );
+  };
+
+  const card = (p) =>
+    `<article class="card${p.verdict === 'DRIFT' ? ' is-drift' : ''}${p.masked ? ' is-masked' : ''}"` +
+    ` data-name="${esc(p.name)}" data-style="${esc(p.style)}" data-max="${Number.isFinite(p.maxMm) ? p.maxMm : ''}" data-verdict="${esc(p.verdict)}">` +
+    `<header class="chead"><h2 title="${esc(p.name)}">${esc(p.name)}</h2>${vBadge(p.verdict)}</header>` +
+    `<div class="cmeta"><span class="stylechip">${esc(p.style || '—')}</span><span class="tris">${commas(p.tris)} tris</span></div>` +
+    meter(p) +
+    `<div class="rows">${hotRow(p)}${convRow(p)}</div>` +
+    `<div class="cfoot">source · ${esc(p.source || '—')}</div>` +
+    `</article>`;
+
+  const cardsHtml = ordered.map(card).join('');
+  const cov = `hotspots ${N(summary.hotspotsAvailable)}/${N(summary.pots) || pots.length} · converge ${N(summary.convergeAvailable)}/${N(summary.pots) || pots.length}`;
+  // Embed the report for inspection / client re-sort. Escape '<' so a string
+  // value can never close the <script> or open a comment.
+  const dataJson = JSON.stringify(report).replace(/</g, '\\u003c');
+
+  return `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PotFoundry — Certification Command Center</title>
+<style>
+  :root{
+    --bg:#0e1116; --panel:rgba(255,255,255,.035); --panel2:rgba(255,255,255,.06);
+    --border:#2a3038; --hair:#20262e; --top:rgba(14,17,22,.82);
+    --ink:#e6edf3; --body:#c9d1d9; --dim:#8b949e;
+    --celadon:#6db38f; --celadon-deep:#497a69; --clay:#d0bfa3;
+    --drift:#db2919; --ember:#f0883e; --amber:#d9a441; --responsive:#6db38f;
+    --glaze-a:rgba(73,122,105,.22); --glaze-b:rgba(208,191,163,.10);
+    --shadow:rgba(0,0,0,.45);
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code","Segoe UI Mono",Consolas,monospace;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#f4f0e8; --panel:rgba(28,38,32,.035); --panel2:rgba(28,38,32,.06);
+      --border:#ddd6c8; --hair:#e8e2d6; --top:rgba(244,240,232,.82);
+      --ink:#1c2429; --body:#3c464d; --dim:#6c757c;
+      --celadon:#3c7c62; --celadon-deep:#2e5c49; --clay:#9c7c4e;
+      --drift:#bd2417; --ember:#c05a17; --amber:#a9761f; --responsive:#3c7c62;
+      --glaze-a:rgba(63,124,98,.14); --glaze-b:rgba(176,141,91,.10);
+      --shadow:rgba(60,50,35,.14);
+    }
+  }
+  :root[data-theme="light"]{
+    --bg:#f4f0e8; --panel:rgba(28,38,32,.035); --panel2:rgba(28,38,32,.06);
+    --border:#ddd6c8; --hair:#e8e2d6; --top:rgba(244,240,232,.82);
+    --ink:#1c2429; --body:#3c464d; --dim:#6c757c;
+    --celadon:#3c7c62; --celadon-deep:#2e5c49; --clay:#9c7c4e;
+    --drift:#bd2417; --ember:#c05a17; --amber:#a9761f; --responsive:#3c7c62;
+    --glaze-a:rgba(63,124,98,.14); --glaze-b:rgba(176,141,91,.10);
+    --shadow:rgba(60,50,35,.14);
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    background:var(--bg); color:var(--body); font:14px/1.55 var(--sans);
+    min-height:100vh; overflow-x:hidden; position:relative; -webkit-font-smoothing:antialiased;
+  }
+  body::before{
+    content:""; position:fixed; inset:0; z-index:-1; pointer-events:none;
+    background:
+      radial-gradient(1100px 560px at 80% -10%, var(--glaze-a), transparent 62%),
+      radial-gradient(820px 460px at 6% 112%, var(--glaze-b), transparent 58%);
+  }
+  a{color:var(--celadon)}
+  code{font-family:var(--mono); font-size:.92em; color:var(--clay)}
+  .num{font-family:var(--mono); font-variant-numeric:tabular-nums}
+
+  header.top{
+    position:sticky; top:0; z-index:10; padding:18px clamp(16px,4vw,40px) 14px;
+    background:var(--top); backdrop-filter:saturate(1.3) blur(12px);
+    -webkit-backdrop-filter:saturate(1.3) blur(12px);
+    border-bottom:1px solid var(--border);
+  }
+  header.top h1{
+    margin:0; font-size:clamp(17px,2.4vw,23px); font-weight:650; letter-spacing:.2px; color:var(--ink);
+  }
+  header.top .sub{margin:4px 0 0; font-size:12.5px; color:var(--dim)}
+  header.top .sub .cov{font-family:var(--mono); color:var(--celadon)}
+  .chips{display:flex; flex-wrap:wrap; gap:10px; margin-top:14px}
+  .stat{
+    flex:1 1 128px; min-width:118px; padding:11px 14px; border-radius:11px;
+    background:var(--panel); border:1px solid var(--border);
+    display:flex; flex-direction:column; gap:2px;
+  }
+  .stat .snum{font:600 25px/1 var(--mono); font-variant-numeric:tabular-nums; color:var(--ink)}
+  .stat .slab{font-size:11px; letter-spacing:.4px; text-transform:uppercase; color:var(--dim)}
+  .stat.k-green .snum{color:var(--celadon)}
+  .stat.k-green{border-color:color-mix(in srgb, var(--celadon) 42%, var(--border))}
+  .stat.k-drift .snum{color:var(--drift)}
+  .stat.k-amber .snum{color:var(--amber)}
+  .stat.k-ember .snum{color:var(--ember)}
+  .stat.k-clay .snum{color:var(--clay)}
+
+  .toolbar{display:flex; flex-wrap:wrap; align-items:center; gap:7px; margin-top:14px}
+  .toolbar .tlab{font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); margin-right:2px}
+  .toolbar button{
+    font:500 12px var(--sans); color:var(--body); cursor:pointer;
+    background:var(--panel); border:1px solid var(--border); border-radius:999px; padding:5px 12px;
+    transition:background .15s, border-color .15s, color .15s;
+  }
+  .toolbar button:hover{background:var(--panel2); color:var(--ink)}
+  .toolbar button.on{background:color-mix(in srgb, var(--celadon) 20%, transparent); border-color:var(--celadon); color:var(--ink)}
+  .toolbar .theme{margin-left:auto}
+
+  main{padding:clamp(16px,3vw,30px) clamp(16px,4vw,40px) 8px}
+  #grid{
+    display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:16px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:15px 16px 12px; display:flex; flex-direction:column; gap:11px;
+    position:relative; overflow:hidden;
+    transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease, background .16s ease;
+  }
+  .card::before{
+    content:""; position:absolute; left:0; top:0; bottom:0; width:3px;
+    background:linear-gradient(var(--celadon), var(--celadon-deep)); opacity:.75;
+  }
+  .card.is-drift::before{background:linear-gradient(var(--drift), #7a1109)}
+  .card.is-masked::before{background:linear-gradient(var(--amber), var(--ember))}
+  .card:hover{
+    transform:translateY(-3px); border-color:color-mix(in srgb, var(--celadon) 34%, var(--border));
+    box-shadow:0 10px 30px -12px var(--shadow); background:var(--panel2);
+  }
+  .chead{display:flex; align-items:flex-start; justify-content:space-between; gap:10px}
+  .chead h2{
+    margin:0; font-size:14.5px; font-weight:600; color:var(--ink); line-height:1.3;
+    overflow-wrap:anywhere; word-break:break-word;
+  }
+  .badge{
+    flex:none; font:600 10.5px/1 var(--mono); letter-spacing:.6px; padding:5px 9px; border-radius:7px;
+    border:1px solid transparent; white-space:nowrap;
+  }
+  .b-green{color:var(--celadon); background:color-mix(in srgb, var(--celadon) 15%, transparent); border-color:color-mix(in srgb, var(--celadon) 40%, transparent)}
+  .b-drift{color:var(--drift); background:color-mix(in srgb, var(--drift) 15%, transparent); border-color:color-mix(in srgb, var(--drift) 42%, transparent)}
+  .cmeta{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:-2px}
+  .stylechip{
+    font:500 11px var(--sans); color:var(--clay); padding:3px 9px; border-radius:999px;
+    background:color-mix(in srgb, var(--clay) 12%, transparent); border:1px solid color-mix(in srgb, var(--clay) 26%, var(--border));
+  }
+  .tris{font-family:var(--mono); font-size:11px; color:var(--dim); margin-left:auto}
+
+  .meter{display:flex; flex-direction:column; gap:6px}
+  .mlab{display:flex; flex-wrap:wrap; align-items:baseline; gap:8px; font-family:var(--mono); font-size:11.5px}
+  .mlab b{color:var(--ink); font-size:13px}
+  .mlab .dim{color:var(--dim)}
+  .mlab .bud{margin-left:auto; color:var(--dim); font-size:10.5px}
+  .mlab .warn{color:var(--amber)}
+  .track{
+    position:relative; height:9px; border-radius:6px; background:var(--hair);
+    border:1px solid var(--border); overflow:visible;
+  }
+  .fill{
+    position:absolute; left:0; top:0; bottom:0; border-radius:6px 3px 3px 6px; min-width:2px;
+    background:linear-gradient(90deg, var(--celadon-deep), var(--celadon));
+  }
+  .m-masked .fill{background:linear-gradient(90deg, var(--amber), var(--ember))}
+  .m-drift .fill{background:linear-gradient(90deg, #7a1109, var(--drift))}
+  .p99{
+    position:absolute; top:-3px; bottom:-3px; width:2px; margin-left:-1px; border-radius:2px;
+    background:var(--ink); opacity:.72; box-shadow:0 0 0 1px var(--bg);
+  }
+
+  .rows{display:flex; flex-direction:column; gap:6px; padding-top:2px; border-top:1px solid var(--hair)}
+  .line{display:flex; flex-wrap:wrap; align-items:center; gap:6px; font-size:11.5px; padding-top:6px}
+  .line:first-child{padding-top:8px}
+  .lk{font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:var(--dim); min-width:56px}
+  .line.faint{color:var(--dim); font-style:italic}
+  .line .ok{color:var(--celadon)}
+  .shape{font:600 10px/1 var(--mono); letter-spacing:.5px; padding:3px 7px; border-radius:6px; color:var(--ink); background:var(--panel2); border:1px solid var(--border)}
+  .s-SPIKE{color:var(--ember); border-color:color-mix(in srgb, var(--ember) 40%, transparent)}
+  .s-BAND{color:var(--amber); border-color:color-mix(in srgb, var(--amber) 40%, transparent)}
+  .s-DIFFUSE{color:var(--dim)}
+  .tag{font:600 9.5px/1 var(--mono); letter-spacing:.4px; padding:3px 6px; border-radius:5px; border:1px solid transparent}
+  .t-irr{color:var(--ember); background:color-mix(in srgb, var(--ember) 13%, transparent); border-color:color-mix(in srgb, var(--ember) 34%, transparent)}
+  .t-aniso{color:var(--celadon); background:color-mix(in srgb, var(--celadon-deep) 16%, transparent); border-color:color-mix(in srgb, var(--celadon) 32%, transparent)}
+  .t-feat{color:var(--clay); background:color-mix(in srgb, var(--clay) 13%, transparent); border-color:color-mix(in srgb, var(--clay) 30%, transparent)}
+  .patch{font-family:var(--mono); color:var(--body)}
+  .peak,.ratio{font-family:var(--mono); color:var(--dim); margin-left:auto}
+  .line .cbadge{margin-left:0}
+  .cbadge{font:600 9.5px/1 var(--mono); letter-spacing:.4px; padding:4px 7px; border-radius:6px; border:1px solid transparent}
+  .c-resp{color:var(--responsive); background:color-mix(in srgb, var(--responsive) 14%, transparent); border-color:color-mix(in srgb, var(--responsive) 36%, transparent)}
+  .c-part{color:var(--amber); background:color-mix(in srgb, var(--amber) 14%, transparent); border-color:color-mix(in srgb, var(--amber) 36%, transparent)}
+  .c-irr{color:var(--ember); background:color-mix(in srgb, var(--ember) 14%, transparent); border-color:color-mix(in srgb, var(--ember) 36%, transparent)}
+  .lever{font-size:11px; color:var(--dim); line-height:1.4; padding-left:2px; overflow-wrap:anywhere}
+  .cfoot{font-family:var(--mono); font-size:10px; color:var(--dim); margin-top:auto; padding-top:2px}
+
+  footer.legend{
+    margin:14px clamp(16px,4vw,40px) 28px; padding:16px 18px; border-radius:12px;
+    background:var(--panel); border:1px solid var(--border);
+  }
+  footer .keys{display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; font-size:11.5px; color:var(--dim)}
+  footer .keys .badge,footer .keys .cbadge,footer .keys .tag{margin-right:2px}
+  footer .gen{margin-top:12px; padding-top:11px; border-top:1px solid var(--hair); font-size:11px; color:var(--dim)}
+  @media (max-width:520px){
+    .tris{margin-left:0}
+    .stat{flex-basis:calc(50% - 5px)}
+  }
+</style>
+
+<header class="top">
+  <h1>PotFoundry — Certification Command Center</h1>
+  <p class="sub">0.01 mm true-3D certification campaign · ${DASHBOARD_DATE} · <span class="cov">${esc(cov)}</span></p>
+  <div class="chips">${chips}</div>
+  <div class="toolbar">
+    <span class="tlab">sort</span>
+    <button type="button" data-sort="error" class="on">max error</button>
+    <button type="button" data-sort="name">name</button>
+    <button type="button" data-sort="style">style</button>
+    <button type="button" id="theme" class="theme">◑ theme</button>
+  </div>
+</header>
+
+<main>
+  <div id="grid">${cardsHtml}</div>
+</main>
+
+<footer class="legend">
+  <div class="keys">
+    <span class="badge b-green">GREEN</span> ≤ 10 µm certified
+    <span class="badge b-drift">DRIFT</span> cert ↮ live
+    <span class="cbadge c-resp">RESPONSIVE</span> density certifies
+    <span class="cbadge c-part">PARTIAL</span> density + feature
+    <span class="cbadge c-irr">IRREDUCIBLE</span> redesign, not density
+    <span class="tag t-irr">IRREDUCIBLE</span><span class="tag t-aniso">ANISOTROPIC</span><span class="tag t-feat">FEATURE-ALIGNED</span> hotspot tags
+  </div>
+  <div class="gen">generated by <code>potscope dashboard</code> from the truth-layer sidecars · meter scale 0 → 10 µm budget · true-3D error vs the certified analytic target</div>
+</footer>
+
+<script>const REPORT = ${dataJson};</script>
+<script>
+(function(){
+  var root = document.documentElement;
+  var themeBtn = document.getElementById('theme');
+  if (themeBtn) themeBtn.addEventListener('click', function(){
+    var cur = root.getAttribute('data-theme');
+    var sysDark = !window.matchMedia || window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var next = cur === 'light' ? 'dark' : cur === 'dark' ? 'light' : (sysDark ? 'light' : 'dark');
+    root.setAttribute('data-theme', next);
+  });
+  var grid = document.getElementById('grid');
+  if (!grid) return;
+  var cards = Array.prototype.slice.call(grid.children);
+  var cmp = {
+    error: function(a,b){ return (parseFloat(b.dataset.max)||-1) - (parseFloat(a.dataset.max)||-1); },
+    name: function(a,b){ return a.dataset.name.localeCompare(b.dataset.name); },
+    style: function(a,b){ return a.dataset.style.localeCompare(b.dataset.style) || a.dataset.name.localeCompare(b.dataset.name); }
+  };
+  var btns = document.querySelectorAll('[data-sort]');
+  Array.prototype.forEach.call(btns, function(btn){
+    btn.addEventListener('click', function(){
+      Array.prototype.forEach.call(btns, function(b){ b.classList.remove('on'); });
+      btn.classList.add('on');
+      cards.slice().sort(cmp[btn.dataset.sort] || cmp.error).forEach(function(c){ grid.appendChild(c); });
+    });
+  });
+})();
+</script>
+`;
+}
+
+function cmdDashboard(args) {
+  const dir = resolve(argValue(args, '--dir') ?? CERTIFIED_STL_DIR());
+  const manifestPath = join(HERE, 'certs.manifest.json');
+  // Same fresh-clone contract as cmdDoctor: proceed on a committed manifest even
+  // when the (git-ignored) certified_stl dir is absent — the report degrades to
+  // registry-only rows (hotspots/convergence available:false).
+  if (!existsSync(dir) && !existsSync(manifestPath)) {
+    console.error(`dashboard: no such dir ${dir} (bake sidecars: PF_CERT_RECON=all) and no committed manifest at ${manifestPath}`);
+    process.exit(2);
+  }
+  const fast = args.flags.includes('--fast');
+  const report = buildDoctorReport(dir, { fast, manifestPath });
+  const outPath = resolve(argValue(args, '--out') ?? join(HERE, 'dashboard.view.html'));
+  const html = dashboardHtml(report);
+  writeFileSync(outPath, html);
+  const s = report.summary;
+  const mb = (n) => (n / 1024 / 1024).toFixed(2);
+  console.log(`wrote ${outPath} — ${mb(Buffer.byteLength(html))} MB self-contained (opens offline via file://)`);
+  console.log(
+    `${s.pots} pots · ${s.green} GREEN · ${s.drift} DRIFT · ${s.masked} max-masked · ` +
+      `${s.withIrreducibleConvergence} irreducible-frontier · hotspots ${s.hotspotsAvailable}/${s.pots} · converge ${s.convergeAvailable}/${s.pots}` +
+      (fast ? '   [--fast: hotspots elided]' : '')
+  );
+  if (report.pots.some((p) => p.source === 'manifest')) {
+    console.error('(from committed manifest — no on-disk sidecars; hotspots/convergence unavailable until re-baked)');
+  }
+  const viewName = outPath.split(/[\\/]/).pop();
+  console.log(`  serve + open:  node potscope.mjs serve "${dirname(outPath)}"  ->  http://localhost:8099/${viewName}`);
+}
+
 function cmdView(args) {
   const stlPaths = args._.map((p) => resolve(p));
   if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }
@@ -1838,6 +2232,7 @@ function main() {
     case 'manifest': cmdManifest(args); break;
     case 'converge': cmdConverge(args); break;
     case 'doctor': cmdDoctor(args); break;
+    case 'dashboard': cmdDashboard(args); break;
     case 'serve': cmdServe(args); break;
     default:
       console.log('potscope — certification-lab instrument panel');
@@ -1852,6 +2247,7 @@ function main() {
       console.log('  manifest [--dir <certified_stl>] [--out path]   (portable cert snapshot → fresh-clone status)');
       console.log('  converge <name|path> [--json]   (per-patch refine-vs-redesign verdict from the convergence probe)');
       console.log('  doctor [--dir <certified_stl>] [--json] [--fast]   (roster health: registry + hotspots + convergence)');
+      console.log('  dashboard [--dir <certified_stl>] [--out path] [--fast]   (self-contained certification command center → dashboard.view.html)');
       console.log('  serve [dir] [--port n]   (http server + index for the fetch-viewers)');
   }
 }

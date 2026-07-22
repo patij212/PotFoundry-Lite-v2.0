@@ -784,3 +784,68 @@ test('buildDoctorReport --fast elides the hotspots STL reads (registry + converg
   assert.equal(report.summary.hotspotsAvailable, 0);
   assert.equal(report.summary.convergeAvailable, 1);
 });
+
+import { dashboardHtml } from './potscope.mjs';
+
+// A doctor-report fixture exercising every card branch: a clean SPIKE pot with an
+// IRREDUCIBLE converge patch, a max-MASKED BAND pot with a RESPONSIVE patch, a
+// registry-only pot (hotspots/convergence unavailable), and a null-stats DRIFT.
+const DASH_FIXTURE = {
+  magic: 'potscope-doctor/v1',
+  pots: [
+    {
+      name: 'AlphaSpirePot', style: 'Gothic', tris: 304808, verdict: 'GREEN',
+      maxMm: 0.005, p99Mm: 0.0025, masked: false, source: 'sidecar',
+      hotspots: { available: true, top: { shape: 'SPIKE', tags: ['FEATURE-ALIGNED'], patch: 'inner-wall', peakMm: 0.005, u: 0.5, v: 0.5, lever: 'localized singularity — conforming edge / seam pin / atlas patch' } },
+      convergence: { available: true, worst: { patchId: 'inner-wall', ratio: 1.07, verdict: 'IRREDUCIBLE' } },
+    },
+    {
+      name: 'BetaBandPot', style: 'HarmonicRipple', tris: 812345, verdict: 'GREEN',
+      maxMm: 0.01, p99Mm: 0.005, masked: true, source: 'sidecar',
+      hotspots: { available: true, top: { shape: 'BAND', tags: ['IRREDUCIBLE'], patch: 'outer-wall', peakMm: 0.01, u: 0.3, v: 0.7, lever: 'full-u band ⇒ density-irreducible; envelope/redesign, not more triangles' } },
+      convergence: { available: true, worst: { patchId: 'outer-wall', ratio: 3.92, verdict: 'RESPONSIVE' } },
+    },
+    {
+      name: 'GammaBarePot', style: 'Voronoi', tris: 100000, verdict: 'GREEN',
+      maxMm: 0.005, p99Mm: 0.005, masked: false, source: 'manifest',
+      hotspots: { available: false, top: null },
+      convergence: { available: false, worst: null },
+    },
+    {
+      name: 'DeltaDriftPot', style: 'Crystalline', tris: 5000, verdict: 'DRIFT',
+      maxMm: null, p99Mm: null, masked: false, source: 'sidecar',
+      hotspots: { available: false, top: null },
+      convergence: { available: false, worst: null },
+    },
+  ],
+  summary: { pots: 4, green: 3, drift: 1, masked: 1, withIrreducibleConvergence: 1, hotspotsAvailable: 2, convergeAvailable: 2 },
+};
+
+test('dashboardHtml renders a self-contained certification command center', () => {
+  const html = dashboardHtml(DASH_FIXTURE);
+  assert.equal(typeof html, 'string');
+  // (a) a real, complete HTML document
+  assert.ok(html.toLowerCase().startsWith('<!doctype html'), 'must start with <!doctype html');
+  // (b) every pot name is literal text in the page (server-rendered, not JS-only)
+  for (const p of DASH_FIXTURE.pots) assert.ok(html.includes(p.name), `missing pot ${p.name}`);
+  // (c) the summary counts are shown as stat tiles
+  const s = DASH_FIXTURE.summary;
+  for (const n of [s.pots, s.green, s.drift, s.masked, s.withIrreducibleConvergence]) {
+    assert.ok(html.includes(`<div class="snum">${n}</div>`), `missing summary count ${n}`);
+  }
+  // (d) fully self-contained — NO external resource URLs (opens offline via file://)
+  assert.ok(!/https?:\/\//.test(html), 'must contain no http(s) external URLs');
+  // the report is embedded inline for inspection / client re-sort
+  assert.ok(html.includes('const REPORT ='), 'REPORT data must be embedded inline');
+  // verdict / convergence / hotspot semantics all surface in the roster
+  assert.ok(html.includes('IRREDUCIBLE') && html.includes('RESPONSIVE'), 'convergence verdicts render');
+  assert.ok(html.includes('SPIKE') && html.includes('BAND'), 'hotspot shapes render');
+  assert.ok(html.includes('DRIFT'), 'drift verdict renders');
+});
+
+test('dashboardHtml tolerates an empty roster (no pots) and stays self-contained', () => {
+  const html = dashboardHtml({ magic: 'potscope-doctor/v1', pots: [], summary: { pots: 0, green: 0, drift: 0, masked: 0, withIrreducibleConvergence: 0, hotspotsAvailable: 0, convergeAvailable: 0 } });
+  assert.ok(html.toLowerCase().startsWith('<!doctype html'));
+  assert.ok(!/https?:\/\//.test(html));
+  assert.ok(html.includes('<div id="grid"></div>'), 'empty grid renders without throwing');
+});
