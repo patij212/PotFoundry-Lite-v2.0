@@ -103,7 +103,7 @@ the style's surface class**, then apply the matching distance.
 |---|---|---|---|---|
 | **Single-valued radial** | smooth pots, GothicArches, HarmonicRipple, Bamboo, ArtDeco, GeometricStar risers | exact `rA(θ,z)` (`buildAnalyticRadiusFn`) | perpendicular GN (§4.5) or interval program (§4.9) | risers/creases are **designed C0 steps**: measure the plateaus, treat the cliff as a *feature to mesh*, NOT an accept-band to exclude (`feedback_export_standard`). |
 | **Steep tangled lattice** | GyroidManifold, Voronoi, CelticTriquetra, Crystalline | exact `rA(θ,z)` | perpendicular GN **with global (full-azimuth+z) seeding** — plain GN overstates ~7× (wrong well, §4.5) | fast path stalls in the wrong basin; today mitigated by the slow brute twin (§4.7). |
-| **Multi-valued (over/under)** | BasketWeave, CelticKnot, DragonScales rings | **post-warp GPU surface** OR multi-patch target — **NOT `rA`** | perpendicular to the *nearest sheet*, or interval multi-patch | `rA` is a 2.5D proxy that cannot store the overhang; a large vertexMax there is a **reference artifact** (`project_export_endgame_design`). |
+| **Multi-valued (over/under)** | BasketWeave, CelticKnot, DragonScales rings | the parametric map **`Φ(u,v)`** (post-warp / multi-sheet) — **NOT `rA`** | **`buildParametricSurfaceProjector`** (§4.5b) — nearest point on `Φ`, resolves the correct sheet automatically | `rA` is a 2.5D proxy that cannot store the overhang; a large vertexMax there is a **reference artifact** (`project_export_endgame_design`). `Φ` is single-valued in `(u,v)` even where the 3D image self-folds, so it *is* representable. |
 | **Any (rigorous)** | all 20 (single-valued outer wall) | validated interval **target program** (`styleOuterWallTargetRegistry`) | continuous mapped-patch interval bound (§4.9) | fail-closed; missing per-style discontinuity **curtains** → INCONCLUSIVE (HexagonalHive/BasketWeave/CelticKnot/SpiralRidges). |
 
 ---
@@ -164,6 +164,15 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
   - **⑤ Its regression test seeds inside the 0.22-rad window** → it green-lights the untrustworthy wrong-well path.
 - **When/how:** the true-3D fidelity verdict on single-valued styles at density. Read `chordMaxMm` and `vertexMaxMm` separately. On steep lattices **anchor with the brute twin** (§4.7) or use global seeding. Scale `coarseTrigger`/`preFilterMm` with `tolMm` for a 0.01 bar.
 - **Shape:** single-valued radial; discontinuous styles are **excluded** (seam/riser/crease bands, tracked in `creaseBandMaxMm`, **never gated**) — it structurally scores only the smooth complement.
+
+### 4.5b `buildParametricSurfaceProjector` — shape-agnostic nearest point on `Φ(u,v)` (multi-sheet)
+- **Where:** `src/fidelity/parametricSurfaceProjector.ts`. The `(u,v)`/`Φ` generalization of the radial `buildRadialSurfaceProjector`.
+- **Measures:** shortest 3D distance `min_(u,v) |P − Φ(u,v)|` from a mesh point to a surface given as a general parametric 2-manifold `Φ(u,v)` (single-valued in the chart; image may self-fold).
+- **Algorithm:** 2×2 Gauss-Newton on `(u,v)` (tangents `Φ_u`,`Φ_v` by central FD, backtracking) seeded from a precomputed **global seed-field** (`Φ` on a `(u,v)` grid, 3D-bucket-indexed). Periodic/clamped domains supported.
+- **Precision:** sub-µm on smooth surfaces (matches a brute `(u,v)` scan); a valid **upper bound** on the true distance (never under-states). Sampled → the surface→mesh (missing-feature) half is a separate dense-`Φ`-vs-mesh-BVH pass.
+- **Failure modes:** needs `Φ` fine enough that the seed grid resolves each sheet's basin (raise `nu`/`nv` for very fine relief); FD step vs feature wavelength (same class as §4.5). The reference `Φ` must be the **exact analytic** map (post-warp GPU eval only checks tessellation, not design).
+- **When/how:** the multi-valued (over/under weave/braid, DS ring) shape class — the case the radial projector cannot represent. Also works for any single-valued style (radial is a special case).
+- **Shape:** **fully shape-agnostic** — over/under, cusp, cliff, twist are all just points of one single-valued `Φ`. Verified on a torus (two-valued in `(θ,z)`): resolves the correct sheet, matches brute.
 
 ### 4.6 `featureLineChord3D` / `perFaceTrue3DSag` — labkit true-3D
 - **Where:** `research/bridge/labkit.ts` (barrel), `featureLocalizedFidelity.ts:720`.
