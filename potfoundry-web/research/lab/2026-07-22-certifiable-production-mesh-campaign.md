@@ -36,6 +36,12 @@ Cross-validated against the DS-specific `buildDsConeFanCertDomain`; judge-ACCEPT
 | 6 | **SuperformulaBlossom** (defaults) | uniform structured grid 256×128 | 0.005271 | **65,024** (under cap) | 0.000057 | 0.00533 | smooth grid + adapter |
 | 7 | **WaveInterference** (defaults) | uniform structured grid 2048×256 | 0.008924 | 1,044,480 (under cap) | 0.000058 | 0.00898 | smooth grid + adapter |
 
+**PRODUCTION-EXACT (tapered) confirmation (2026-07-22):** the table above was first measured at OD140 UNTAPERED (Rb=Rt=70);
+re-run on the true production `DEFAULT_DIMENSIONS` — TAPERED Rb45/Rt70/expn1.1 (more base curvature) — ALL 5 smooth
+closers still close ≤0.01 + judge-ACCEPT, near-identical: SFB 0.00514@65k · SE 0.00790@261k · FB 0.00440@1.04M ·
+HR 0.00614@1.04M · WI 0.00878@1.04M (δ ≤ 0.00007 each). The narrower tapered base gives finer columns there, absorbing
+the extra base curvature. DS + SpiralRidges already used correct tapered dims. So the 7-style claim is production-exact.
+
 **Measured NON-closer on a uniform grid (route to feature-conforming / graded, NOT uniform density):**
 - **RippleInterference** (defaults): stuck true-3D MAX ~0.028 / ~40 outliers even at 2.09M — wave-interference crests are
   localized sharp features. Still judge-ACCEPTs at 2048×256 (structure clean); only FIDELITY is unmet on a uniform grid.
