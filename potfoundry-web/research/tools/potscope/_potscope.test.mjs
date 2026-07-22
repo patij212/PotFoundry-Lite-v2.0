@@ -322,3 +322,21 @@ test('statusExitCode: --check + a DRIFT row exits 1; no --check or no drift exit
   assert.equal(statusExitCode(drifted, false), 0); // DRIFT present but no --check → 0
   assert.equal(statusExitCode(clean, true), 0); // --check but all GREEN → 0
 });
+
+// --- loc-backed, style-agnostic tri resolution (Task 7) -------------------------
+// resolveTriFromLoc maps a GLOBAL artifact triangle index straight to its patch +
+// per-vertex (u,v) via the loc.bin sidecar — exact and style-agnostic, so decode
+// no longer has to run the hardcoded Gothic analytic model on the other 19 styles.
+// Reuses the writeLoc helper above (header carries the patch table + style).
+import { resolveTriFromLoc } from './potscope.mjs';
+
+test('resolveTriFromLoc returns patch + per-vertex uv for a global triangle index', () => {
+  const p = writeLoc('dec.loc.bin', [
+    [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6],
+    [0, 0.7, 0.8, 0.9, 0.1, 0.2, 0.3],
+  ]);
+  const r = resolveTriFromLoc(p, 1);
+  assert.equal(r.patch, 'outer-wall');
+  assert.ok(Math.abs(r.vertices[0].u - 0.7) < 1e-6);
+  assert.ok(Math.abs(r.vertices[2].v - 0.3) < 1e-6);
+});

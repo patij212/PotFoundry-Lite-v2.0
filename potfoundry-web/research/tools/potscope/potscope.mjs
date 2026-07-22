@@ -125,6 +125,24 @@ function cmdDecode(args) {
     Number(m[2]),
   ]);
   const triMatch = line.match(/tri=(\d+)/);
+  // Loc-backed, style-agnostic decode: when a pot is named AND its loc.bin sidecar
+  // exists, resolve tri=<global> straight to patch + per-vertex (u,v) from the
+  // sidecar instead of the hardcoded Gothic model. Gothic falls through so its
+  // calibrated mechanismHints still print; every other style returns here.
+  const potArg = argValue(args, '--pot');
+  if (potArg && triMatch) {
+    const locPath = potArg.endsWith('.loc.bin') ? resolve(potArg) : resolve(`${potArg}.stl.loc.bin`);
+    if (existsSync(locPath)) {
+      const r = resolveTriFromLoc(locPath, Number(triMatch[1]));
+      console.log(`tri ${triMatch[1]} -> patch ${r.patch} (style ${r.style})`);
+      r.vertices.forEach((v, i) => console.log(`  v${i}: patch-u ${v.u.toFixed(6)} patch-v ${v.v.toFixed(6)}`));
+      if (r.style !== 'GothicArches') {
+        console.log('  (style-agnostic loc decode; Gothic mechanism hints suppressed for non-Gothic style)');
+        return;
+      }
+      // Gothic: fall through so the calibrated mechanismHints still print for GothicArches.
+    }
+  }
   const pmMatch = line.match(/(\d{7,}) pm/);
   let patch = patchArg ?? null;
   let localIndex = null;
@@ -521,6 +539,19 @@ export function readLoc(path) {
   const body = new Float32Array(header.count * 7);
   Buffer.from(body.buffer).set(raw.subarray(nl + 1, nl + 1 + header.count * 7 * 4));
   return { header, body };
+}
+
+// Exact, style-agnostic resolution of a GLOBAL artifact triangle index to its
+// patch + per-vertex (u,v) from the loc.bin sidecar (Task 2's reconstruct bakes
+// one triangle-for-triangle with the STL). This replaces the calibrated Gothic
+// analytic model in decode for the other 19 styles: the sidecar already carries
+// the truth (which patch, which uv), so there is nothing to re-derive per style.
+export function resolveTriFromLoc(locPath, globalTri) {
+  const { header, body } = readLoc(locPath);
+  if (globalTri < 0 || globalTri >= header.count) throw new Error(`tri ${globalTri} out of range 0..${header.count - 1}`);
+  const patchIdx = body[globalTri * 7];
+  const vertices = [0, 1, 2].map((k) => ({ u: body[globalTri * 7 + 1 + k * 2], v: body[globalTri * 7 + 2 + k * 2] }));
+  return { patch: header.patches[patchIdx] ?? `patch${patchIdx}`, style: header.style, vertices };
 }
 
 export function readErrorRaw(path) {
