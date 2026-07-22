@@ -1429,7 +1429,15 @@ export function rOuterLowPolyFacet(
   const N = Math.max(3, Math.floor(facets + 0.5));
   const tiersN = Math.max(1, Math.floor(tiers + 0.5));
 
-  const tierIdx = Math.floor(t * tiersN);
+  // RIM FLOOR() FIX (DragonScales-rim-bug class): clamp the tier index to the last
+  // REAL tier. At the exact rim t=1, floor(t·tiersN) = tiersN (one past the last real
+  // tier 0..tiersN−1), phase-shifting the facet pattern by a full jitter sector and
+  // stepping the radius ~1.124mm in the top vertex row of every LowPoly pot (CPU + WGSL).
+  // min(…, tiersN−1) extends the last real tier to the rim — the CORRECTED semantics the
+  // targetSolid judge (lowPolyFacetLayeredOuterWallTarget.ts) already encodes ("the
+  // zero-height extra tier selected by floor(t*tiers) at the exact rim is an
+  // implementation defect"). No-op for all t<1. WGSL parity: style_low_poly_facet.
+  const tierIdx = Math.min(Math.floor(t * tiersN), tiersN - 1);
   const tierPhase = tierIdx * jitter * (TAU / N);
   const th = theta + tierPhase + phaseOffset;
   const alpha = TAU / N;

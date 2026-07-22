@@ -132,7 +132,12 @@ describe('Low Poly Facet layered outer-wall target', () => {
       DEFAULT_GEOMETRY.H,
       canonicalInput.style.cpuOptions as StyleOptions
     );
-    expect(Math.abs(Math.hypot(rim[0], rim[1]) - legacyRim)).toBeGreaterThan(1e-4);
+    // MIGRATION COMPLETE (E-2026-07-22-LOWPOLY-GRID-CLOSE): rOuterLowPolyFacet + the WGSL
+    // low_poly_facet_radius now clamp tierIdx = min(floor(t·tiersN), tiersN−1), so the CPU/GPU rim
+    // continues the last real tier and now MATCHES this target — the CPU/WGSL claim this target
+    // identity. Previously this asserted a >1e-4 divergence (the "implementation defect" the target
+    // documents as still-to-be-migrated); the rim floor() fix retired that divergence.
+    expect(Math.abs(Math.hypot(rim[0], rim[1]) - legacyRim)).toBeLessThan(1e-6);
   });
 
   it.each([0, 1])('collapses equivalent jitter %s to one continuous wall', (jitter) => {

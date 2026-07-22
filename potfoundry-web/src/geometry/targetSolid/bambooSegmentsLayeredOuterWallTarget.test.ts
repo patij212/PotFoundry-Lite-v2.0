@@ -103,7 +103,7 @@ describe('Bamboo Segments layered outer-wall target', () => {
     }
   });
 
-  it('extends the last real segment continuously to the rim instead of selecting an extra segment', () => {
+  it('extends the last real segment continuously to the rim, and the migrated CPU now coincides with it', () => {
     const canonicalInput = input();
     const binding = createBambooSegmentsLayeredOuterWallTargetBinding(canonicalInput);
     const lastBand = binding.patches.filter(
@@ -115,7 +115,13 @@ describe('Bamboo Segments layered outer-wall target', () => {
     const rim = lastBand.backends.evaluateFloat64(0.31, 1);
     expect(distance(nearRim, rim)).toBeLessThan(1e-10);
 
-    const legacyRim = rOuterBambooSegments(
+    // The rim-floor() fix migrated rOuterBambooSegments (and its WGSL twin) to clamp segment to
+    // ceil(nodeCount)-1, so the CPU rim now COINCIDES with the target's corrected-rim band instead
+    // of selecting the spurious extra (zero-height) segment. This is exactly the migration the
+    // target's proof demanded ("current CPU and WGSL must be migrated at the rim before they can
+    // claim this target identity"); PRE-fix the CPU differed by the ~2.46mm rim lip (asserted here
+    // as a >1e-4 gap). The oracle (bambooSegmentsLayeredOuterWallTarget.ts) is unchanged.
+    const cpuRim = rOuterBambooSegments(
       2 * Math.PI * 0.31,
       DEFAULT_GEOMETRY.H,
       baseRadius(
@@ -129,7 +135,7 @@ describe('Bamboo Segments layered outer-wall target', () => {
       DEFAULT_GEOMETRY.H,
       canonicalInput.style.cpuOptions as StyleOptions
     );
-    expect(Math.abs(Math.hypot(rim[0], rim[1]) - legacyRim)).toBeGreaterThan(1e-4);
+    expect(Math.hypot(rim[0], rim[1])).toBeCloseTo(cpuRim, 9);
   });
 
   it('omits position-degenerate curtains when asymmetry is zero but keeps node bands', () => {

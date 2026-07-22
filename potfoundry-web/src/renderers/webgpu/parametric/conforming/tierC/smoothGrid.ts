@@ -107,6 +107,16 @@ export interface SmoothGridDensityOpts {
   maxNT?: number;
   /** Safety factor on the derived density (accounts for the coarse 2nd-difference sag estimate). Default 1.5. */
   safety?: number;
+  /**
+   * FACET-ALIGNED column snapping. When set, `nU` is snapped to the NEAREST multiple of `alignNU`
+   * (near the sag-derived raw density) instead of rounded UP to a power of two. For a faceted style
+   * whose static edges tile the circumference exactly (LowPolyFacet: 12 facets ⇒ sharp edges at
+   * u=odd/24 ⇒ `alignNU=24`) this LANDS grid columns on the edges AND the face centers, so the flat
+   * faces close at far lower density than pow2 (whose columns STRADDLE the edges — MAX floors ~0.044
+   * at nU=1024, needs 8192/2.08M-tris to close). Absent ⇒ the power-of-two path (the exact-dyadic
+   * snap the C∞ smooth styles cert against) — byte-identical.
+   */
+  alignNU?: number;
 }
 
 /**
@@ -145,9 +155,23 @@ export function deriveSmoothGridDensity(
   }
   const nURaw = n0 * Math.sqrt(Math.max(maxSagU, 1e-12) / tolMm) * safety;
   const nTRaw = n0 * Math.sqrt(Math.max(maxSagT, 1e-12) / tolMm) * safety;
-  let pow2 = 1;
-  while (pow2 < nURaw) pow2 *= 2;
-  const nU = Math.max(opts.minNU ?? 256, Math.min(opts.maxNU ?? 8192, pow2));
+  const minNU = opts.minNU ?? 256;
+  const maxNU = opts.maxNU ?? 8192;
+  let nU: number;
+  if (opts.alignNU !== undefined && opts.alignNU >= 1) {
+    // Facet-aligned: snap to the NEAREST multiple of alignNU so columns land on the static facet
+    // edges/centers. Clamp to the multiples of alignNU inside [minNU, maxNU] (ceil the lower / floor
+    // the upper) so the bound can never break alignment.
+    const a = Math.floor(opts.alignNU);
+    const lo = Math.max(a, Math.ceil(minNU / a) * a);
+    const hi = Math.max(lo, Math.floor(maxNU / a) * a);
+    nU = Math.min(hi, Math.max(lo, Math.round(nURaw / a) * a));
+  } else {
+    // Power-of-two: the exact-dyadic judge lattice the C∞ smooth styles cert against.
+    let pow2 = 1;
+    while (pow2 < nURaw) pow2 *= 2;
+    nU = Math.max(minNU, Math.min(maxNU, pow2));
+  }
   const nT = Math.max(opts.minNT ?? 32, Math.min(opts.maxNT ?? 2048, Math.ceil(nTRaw)));
   return { nU, nT };
 }

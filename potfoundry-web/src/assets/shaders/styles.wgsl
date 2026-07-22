@@ -1935,8 +1935,12 @@ fn low_poly_facet_radius(theta: f32, t: f32, r0: f32) -> f32 {
   let jitter = style_param(4u);
   let phase_offset = style_param(5u); 
   
-  // Tier logic
-  let tier_idx = floor(t * tiers);
+  // Tier logic — RIM FLOOR() FIX (mirrors bamboo_segments_radius / dragon_scales_radius and the CPU
+  // rOuterLowPolyFacet fix): clamp the tier index to the last REAL tier. At the rim (t=1) floor(t·tiers)
+  // = tiers indexes a spurious extra tier, phase-shifting the facets a full jitter sector and stepping
+  // the radius ~1.124mm. tiers-1.0 only bites at t=1 (a no-op for every t<1). The Track-A judge
+  // (lowPolyFacetLayeredOuterWallTarget.ts) rejects the unclamped rim row as an implementation defect.
+  let tier_idx = min(floor(t * tiers), tiers - 1.0);
   let tier_phase = tier_idx * jitter * (TAU / N);
   let th = theta + tier_phase + phase_offset;
   
