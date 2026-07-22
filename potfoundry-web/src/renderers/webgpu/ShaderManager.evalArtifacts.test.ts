@@ -16,9 +16,12 @@ describe('eval compute artifacts', () => {
     const sm = ShaderManager.getInstance();
     const evalPos = sm.getEvalPositionWGSL();
     const neighborNormal = sm.getNeighborNormalWGSL();
+    const instant = sm.getInstantPreviewWGSL();
     expect(evalPos).toContain('fn eval_pos');
     expect(neighborNormal).toContain('fn norm_from_nbr');
+    expect(instant).toContain('fn vs_main');
     writeFileSync(`${outDir}/eval_pos.wgsl`, evalPos, 'utf8');
     writeFileSync(`${outDir}/neighbor_normal.wgsl`, neighborNormal, 'utf8');
+    writeFileSync(`${outDir}/instant_preview.wgsl`, instant, 'utf8');
   });
 });

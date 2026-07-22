@@ -483,6 +483,39 @@ fn norm_from_nbr(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     /**
+     * Style-INDEPENDENT preview render shader for the instant-switch path.
+     * Reuses preview_main.wgsl's background / ground / solid-pot / fragment logic
+     * verbatim, but the pot branch reads its position and normal from the eval
+     * buffers (group 1) instead of calling surface_point / surface_normal. Because
+     * it contains no style code, it compiles ONCE — a style switch is then a
+     * uniform write + eval dispatch, never a pipeline recompile. The wireframe
+     * entry points (which still evaluate the surface) are excluded.
+     */
+    public getInstantPreviewWGSL(): string {
+        const wireMarker = '// Wireframe Shader Entry Points';
+        const idx = this.mainWgsl.indexOf(wireMarker);
+        const solidMain = idx >= 0 ? this.mainWgsl.slice(0, idx) : this.mainWgsl;
+        const patched = solidMain
+            .replace('let p = surface_point(segment, u, v);', 'let p = pf_pos_in[local_vid];')
+            .replace('let n_local = surface_normal(segment, u, v, du, dv);', 'let n_local = pf_norm_in[local_vid];');
+
+        const bindings = `
+// [preview-eval] style-independent render reads precomputed position + normal
+@group(1) @binding(0) var<storage, read> pf_pos_in: array<vec3<f32>>;
+@group(1) @binding(1) var<storage, read> pf_norm_in: array<vec3<f32>>;
+`;
+
+        return [
+            this.constantsWgsl,   // constants (offsets, STYLE_PARAM_CAPACITY)
+            this.commonWgsl,      // shared helpers
+            this.uniformsWgsl,    // getf / vp_matrix / colors (group 0)
+            this.lightingWgsl,    // gradient_color / shade_color
+            bindings,             // eval buffers (group 1)
+            patched,              // ground + vs_main (buffer reads) + fs_main
+        ].join('\n');
+    }
+
+    /**
      * Generates Vertex/Fragment shader for Debug Lines (magenta).
      * Projects 2D (u,v) segments onto the 3D pot surface.
      */
