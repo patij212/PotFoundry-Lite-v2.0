@@ -25,7 +25,7 @@
 // SCOPING — the judge machinery (targetSolid/*) is Track A / concurrent cert-roster territory, READ-ONLY. My editable
 // surface: THIS probe (+ config) and, IF the fix is emitter-side, tierC/dsRingStrips.ts behind a default-off flag. A
 // path-A converter lives HERE. If S3 requires editing shared judge files, STOP and report (do not edit them).
-import { describe, it } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { mkdirSync, existsSync, readFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -33,8 +33,8 @@ import {
   type ExactDyadicDomainPartitionInput,
   type ExactDyadicMappedTriangle,
 } from '../../src/geometry/targetSolid/exactDyadicDomainPartition';
-import { buildDsConeFanWallGeometric } from '../../src/renderers/webgpu/parametric/conforming/tierC/dsRingStrips';
-import { dsRadiusFn, H as DS_H } from './_ds_prodtruth_lib';
+import { buildDsConeFanWallGeometric, buildDsConeFanCertDomain } from '../../src/renderers/webgpu/parametric/conforming/tierC/dsRingStrips';
+import { dsRadiusFn, H as DS_H, TOL } from './_ds_prodtruth_lib';
 import type { AnalyticRadiusFn } from '../../src/fidelity/analyticSurfaceGate';
 
 const TAU = 2 * Math.PI;
@@ -96,5 +96,72 @@ describe('DS-SEAM (S3) — cone-fan mesh → exact-dyadic partition certifiabili
       checkpoint({ key, nU, N, bits, tris: w.tris, wrapTris, zeroArea, zeroFan, negArea, negFan, fanDeltaMax: +fanDeltaMax.toFixed(6), rejected, detail });
     }
     plog('[SCOPE] DONE');
+  }, 15 * 60 * 1000);
+
+  // ARM 2 (CLOSE): build the CUT-AT-GAP cert domain (src buildDsConeFanCertDomain — part (a) winding + relabel the seam
+  // onto an apex-gap column so no fan straddles), snap (u_judge,t)→N=2^20, feed the judge, and account the snap δ. The
+  // pre-registered kill: S3 CLOSED iff the judge ACCEPTS (positive orientation + no wrap + exact coverage + 1:1 artifact)
+  // AND (path A) the accounted δ folds into the geometric bound ≤0.01 (production fwd fidelity 0.005 by E-DS-SLIVER) AND
+  // the 3D mesh is unchanged (buildDsConeFanCertDomain positions == the production wall — pinned in dsRingStrips.test.ts).
+  // Small representative wall (the cut structure is nU/schedule-independent; production nU=4096 exceeds the judge cap).
+  it.skipIf(process.env.PF_DSSEAM_CLOSE !== '1')('CLOSE — cut-at-gap cert domain → judge ACCEPTS + δ folds ≤0.01', () => {
+    plog(`=== CLOSE => ${NDJSON} ===`);
+    const rA = dsRadiusFn() as AnalyticRadiusFn;
+    const nU = 256; // apexColStep=8 > 2·p(3); cut column q=4.
+    const bits = 20;
+    const N = 1 << bits;
+    const FWD_FIDELITY = 0.005; // the E-DS-SLIVER production cone-fan whole-mesh fwd MAX
+    // Certify BOTH a coarse wall (fast; exercises the hard fan+cut-at-gap structure) AND the PRODUCTION schedule
+    // (crest0/flank2.5/body0.10 — its fine tread-pair rows are the snap risk). The cut-at-gap is schedule-independent
+    // by construction; this confirms it empirically (audit-first) rather than assuming the fine rows snap clean.
+    const configs: Array<{ tag: string; opts: Parameters<typeof buildDsConeFanCertDomain>[3] }> = [
+      { tag: 'coarse', opts: { patchP: 3, bodyStepMm: 2, crestLadderRows: 0 } },
+      { tag: 'prod', opts: { patchP: 3 } }, // production defaults (crest 0 / flank 2.5 / body 0.10)
+    ];
+    for (const cfg of configs) {
+      const key = `close|${cfg.tag}|nU${nU}_N${N}`;
+      if (keyExists(key)) { plog(`[skip] ${key}`); continue; }
+      const cert = buildDsConeFanCertDomain(rA, DS_H, nU, cfg.opts);
+      const nV = cert.uJudge.length;
+      const nF = cert.indices.length / 3;
+      const shift = cert.cutColumn / cert.nU;
+      // Snap the flat domain to integer numerators over N; grid u snaps EXACTLY (nU | N), only fan-u and t carry δ.
+      const uNum = new Int32Array(nV), vNum = new Int32Array(nV);
+      for (let v = 0; v < nV; v++) { uNum[v] = Math.round(cert.uJudge[v] * N); vNum[v] = Math.round(cert.t[v] * N); }
+      // Path-A δ accounting: the 3D displacement from snapping the domain coords (folds into the geometric bound).
+      let maxDelta = 0;
+      for (let v = 0; v < nV; v++) {
+        let uPhys = uNum[v] / N + shift; uPhys -= Math.floor(uPhys); // recover θ from the cut-relabeled domain u
+        const ps = lift(rA, uPhys, vNum[v] / N);
+        const d = Math.hypot(ps[0] - cert.positions[3 * v], ps[1] - cert.positions[3 * v + 1], ps[2] - cert.positions[3 * v + 2]);
+        if (d > maxDelta) maxDelta = d;
+      }
+      const tris: ExactDyadicMappedTriangle[] = [];
+      for (let f = 0; f < nF; f++) {
+        const a = cert.indices[3 * f], b = cert.indices[3 * f + 1], c = cert.indices[3 * f + 2];
+        tris.push({ artifactTriangleIndex: f, vertices: [
+          { uNumerator: String(uNum[a]), vNumerator: String(vNum[a]) },
+          { uNumerator: String(uNum[b]), vNumerator: String(vNum[b]) },
+          { uNumerator: String(uNum[c]), vNumerator: String(vNum[c]) },
+        ] });
+      }
+      const input: ExactDyadicDomainPartitionInput = {
+        patchId: 'dsseam-conefan-cutgap', fractionBits: bits,
+        domain: { minUNumerator: '0', maxUNumerator: String(N), minVNumerator: '0', maxVNumerator: String(N) },
+        artifactTriangleCount: nF, triangles: tris,
+      };
+      let accepted = false, detail = '';
+      try {
+        const r = verifyExactDyadicRectanglePartition(input, { maxTriangles: 1_048_576 });
+        accepted = true; detail = `ACCEPTED tris=${r.triangleCount} exactPartition=${r.exactPartition}`;
+      } catch (e) { detail = String(e).slice(0, 300); }
+      const folds = FWD_FIDELITY + maxDelta <= TOL;
+      const CLOSED = accepted && folds;
+      plog(`[CLOSE][${cfg.tag}] nU=${nU} cut@col=${cert.cutColumn} tris=${nF} seamDups=${cert.seamDupCount} N=2^${bits} maxδ=${maxDelta.toFixed(6)}mm judge=${accepted ? 'ACCEPT' : 'REJECT'} :: ${detail}`);
+      plog(`[CLOSE][${cfg.tag}] geometric fold: fwd ${FWD_FIDELITY} + δ ${maxDelta.toFixed(6)} = ${(FWD_FIDELITY + maxDelta).toFixed(6)} ≤ ${TOL} ⇒ ${folds} | CLOSED=${CLOSED}`);
+      checkpoint({ key, tag: cfg.tag, nU, cutColumn: cert.cutColumn, tris: nF, seamDups: cert.seamDupCount, bits, maxDelta: +maxDelta.toFixed(6), accepted, folds, CLOSED, detail });
+      expect(accepted).toBe(true);
+      expect(folds).toBe(true);
+    }
   }, 15 * 60 * 1000);
 });

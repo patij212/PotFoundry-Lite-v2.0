@@ -54,9 +54,11 @@ export {
   buildDsConeFanWall,
   buildDsConeFanWallGeometric,
   buildDsConeFanTSchedule,
+  buildDsConeFanCertDomain,
   type DsRingStripWall,
   type DsTScheduleOpts,
   type DsConeFanOpts,
+  type DsConeFanCertDomain,
 } from './dsRingStrips';
 
 export {

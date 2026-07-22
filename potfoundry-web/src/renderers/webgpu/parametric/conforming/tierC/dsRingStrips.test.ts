@@ -12,6 +12,7 @@ import {
   buildDsConeFanTSchedule,
   buildDsConeFanWall,
   buildDsConeFanWallGeometric,
+  buildDsConeFanCertDomain,
 } from './dsRingStrips';
 import { isDsRingStripsEnabled, isDsConeFanEnabled, isRegionLayerEnabled } from './regionLayerFlag';
 import { buildRegionOuterWall } from './index';
@@ -306,5 +307,90 @@ describe('CONVERGE-A flag gating — default OFF, byte-identical', () => {
       g.__pfRegionLayer = priorR;
       g.__pfDsRingStrips = priorS;
     }
+  });
+});
+
+describe('DS-SEAM S3 cert domain — cut-at-gap (judge-clean flat partition of the production cone-fan)', () => {
+  // The production cone-fan is a PERIODIC cylinder with an apex exactly on u=0 (odd rows), so cutting the flat domain
+  // at u=0 makes that apex straddle the seam. CUT-AT-GAP instead relabels the domain seam onto an apex-GAP column q>p
+  // (u_phys=q/nU), so the u=0 apex lands interior + contiguous — no seam-apex split needed. It certifies the EXACT
+  // production mesh (same θ sampling ⇒ same 3D ⇒ DS-COMPOSE fidelity preserved); the only additions are u=1 lattice
+  // copies of column q (coincident, weld away). Inherits the part-(a) CCW winding.
+  const NU = 512; // q = nU/64 = 8 > default p=3 ⇒ a comfortable apex-gap margin
+  const CERT_OPTS = { bodyStepMm: 2, crestLadderRows: 0 }; // coarse+fast; the cut structure is schedule-independent
+  const buildCert = (): ReturnType<typeof buildDsConeFanCertDomain> => buildDsConeFanCertDomain(syntheticDsRA, H, NU, CERT_OPTS);
+  // signed (u_judge, t) area — the flat domain the judge scores (already cut ⇒ NO unwrap).
+  const area2 = (c: ReturnType<typeof buildDsConeFanCertDomain>, a: number, b: number, cc: number): number => {
+    const ua = c.uJudge[a], ta = c.t[a], ub = c.uJudge[b], tb = c.t[b], uc = c.uJudge[cc], tc = c.t[cc];
+    return (ub - ua) * (tc - ta) - (uc - ua) * (tb - ta);
+  };
+
+  it('NO WRAP by construction: no triangle spans the u=0↔1 domain seam', () => {
+    const c = buildCert();
+    const nF = c.indices.length / 3;
+    let maxSpan = 0;
+    for (let f = 0; f < nF; f++) {
+      const a = c.indices[3 * f], b = c.indices[3 * f + 1], cc = c.indices[3 * f + 2];
+      const span = Math.max(c.uJudge[a], c.uJudge[b], c.uJudge[cc]) - Math.min(c.uJudge[a], c.uJudge[b], c.uJudge[cc]);
+      if (span > maxSpan) maxSpan = span;
+    }
+    expect(maxSpan).toBeLessThan(0.5);
+  });
+
+  it('every domain triangle is positively oriented (CCW) in (u_judge, t)', () => {
+    const c = buildCert();
+    const nF = c.indices.length / 3;
+    let nCW = 0, minA = Infinity;
+    for (let f = 0; f < nF; f++) {
+      const a = area2(c, c.indices[3 * f], c.indices[3 * f + 1], c.indices[3 * f + 2]);
+      if (a <= 0) nCW++;
+      if (a < minA) minA = a;
+    }
+    expect(nCW).toBe(0);
+    expect(minA).toBeGreaterThan(0);
+  });
+
+  it('the u=1 seam duplicates are EXACT copies of their u=0 column-q originals (same 3D + t)', () => {
+    const c = buildCert();
+    const nV = c.uJudge.length;
+    const u0 = new Set<string>();
+    const posKey = (v: number): string => `${c.positions[3 * v]},${c.positions[3 * v + 1]},${c.positions[3 * v + 2]},${c.t[v]}`;
+    for (let v = 0; v < nV; v++) if (c.uJudge[v] === 0) u0.add(posKey(v));
+    let dups = 0;
+    for (let v = 0; v < nV; v++) if (c.uJudge[v] === 1) { dups++; expect(u0.has(posKey(v))).toBe(true); }
+    expect(dups).toBe(c.seamDupCount);
+    expect(dups).toBeGreaterThan(0);
+  });
+
+  it('3D geometry is UNCHANGED vs the production cone-fan (positions preserved, same tri count) ⇒ fidelity preserved', () => {
+    const c = buildCert();
+    const wall = buildDsConeFanWallGeometric(syntheticDsRA, H, NU, CERT_OPTS);
+    for (let i = 0; i < wall.vertices.length; i++) expect(c.positions[i]).toBe(wall.vertices[i]);
+    expect(c.indices.length).toBe(wall.indices.length); // dups redirect, never add triangles
+  });
+
+  it('domain partition covers [0,1]² exactly (Σ signed area = 1)', () => {
+    const c = buildCert();
+    const nF = c.indices.length / 3;
+    let s = 0;
+    for (let f = 0; f < nF; f++) s += area2(c, c.indices[3 * f], c.indices[3 * f + 1], c.indices[3 * f + 2]);
+    expect(s / 2).toBeCloseTo(1, 4);
+  });
+
+  it('cert mesh welded by 3D position is the SAME closed cylinder as the periodic wall (watertight, only t-rims open)', () => {
+    const c = buildCert();
+    const nV = c.uJudge.length;
+    const weld = new Map<string, number>();
+    const remap = new Int32Array(nV);
+    for (let v = 0; v < nV; v++) {
+      const k = `${c.positions[3 * v]},${c.positions[3 * v + 1]},${c.positions[3 * v + 2]}`;
+      if (!weld.has(k)) weld.set(k, v);
+      remap[v] = weld.get(k) as number;
+    }
+    const welded = new Uint32Array(c.indices.length);
+    for (let i = 0; i < c.indices.length; i++) welded[i] = remap[c.indices[i]];
+    const census = manifoldCensus(welded);
+    expect(census.nonManifold).toBe(0);
+    expect(census.boundary).toBe(2 * NU); // u-seam re-welds by position ⇒ closed cylinder; only the two t-rims open
   });
 });

@@ -500,3 +500,111 @@ export function buildDsConeFanWallGeometric(
 ): DsRingStripWall & { fanTriangles: number; apexCount: number; skippedApexes: number } {
   return buildDsConeFanWall(rA, H, nU, buildDsConeFanTSchedule(H, opts), opts);
 }
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+// S3 — CUT-AT-GAP CERT DOMAIN (E-2026-07-21-DS-SEAM path B, simplified). Present the PERIODIC production cone-fan's
+// (u,t) domain as a judge-clean FLAT partition of [0,1]² for `verifyExactDyadicRectanglePartition` (Track A, READ-ONLY).
+//
+// The production cone-fan is a periodic cylinder with a scale-tip apex EXACTLY on u=0 (odd rows). Cutting the flat
+// rectangle at u=0 makes that apex STRADDLE the seam (the scope's path-B part (c) seam-apex split). CUT-AT-GAP avoids
+// it entirely: relabel the domain u-origin so the flat seam falls on an apex-GAP column q>p (the midpoint between two
+// apex columns). Then the u=0 apex maps to an INTERIOR, contiguous u_judge and NO fan straddles the seam — only the
+// single grid quad column at q crosses it, closed by an explicit u=1 lattice copy of column q (welded by 3D position
+// downstream). This certifies the EXACT production mesh: the 3D positions are UNCHANGED (same θ sampling); the seam
+// copies are coincident duplicates that weld away ⇒ DS-COMPOSE's whole-mesh 0.005 does not regress. Winding is already
+// outward-CCW by part (a). Additive: no production caller ⇒ flag-off byte-identical by construction.
+// ─────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The judge-clean flat (u,t) DOMAIN of the cone-fan (cut at an apex-gap column) + its 3D positions. */
+export interface DsConeFanCertDomain {
+  /** u_judge ∈ [0,1] per vertex — the flat-rectangle domain U (the u=1 seam copies carry exactly 1). Index-aligned. */
+  uJudge: Float64Array;
+  /** t ∈ [0,1] per vertex — the domain V. Index-aligned. */
+  t: Float64Array;
+  /** 3D xyz per vertex — the PRODUCTION cone-fan positions + coincident u=1 seam copies (weld ⇒ identical mesh). */
+  positions: Float32Array;
+  /** Triangle vertex indices; NO triangle spans u_judge 0↔1 (cut at an apex-gap column ⇒ no wrap). */
+  indices: Uint32Array;
+  /** The apex-gap column the cylinder was cut at (domain seam = u_phys q/nU). */
+  cutColumn: number;
+  /** Circumferential column count (nU). */
+  nU: number;
+  /** Count of appended u=1 seam-duplicate vertices (exact lattice copies of column q). */
+  seamDupCount: number;
+}
+
+/**
+ * Build the {@link DsConeFanCertDomain} — the cut-at-gap judge-clean partition of the production cone-fan.
+ *
+ * @param nU  circumferential columns. MUST satisfy nU/(4·scalesPerRow) > patchP (so the midpoint apex-gap column clears
+ *            every fan block); throws otherwise. The production nU=4096 and the probe's nU≥256 (default p=3) qualify.
+ */
+export function buildDsConeFanCertDomain(
+  rA: AnalyticRadiusFn,
+  H: number,
+  nU: number,
+  opts: DsConeFanOpts = {},
+): DsConeFanCertDomain {
+  const wall = buildDsConeFanWallGeometric(rA, H, nU, opts);
+  const cols = wall.nU;
+  const lat = opts.lattice ?? DEFAULT_DS_LATTICE;
+  const p = Math.max(1, Math.floor(opts.patchP ?? 3));
+  // Apex columns sit at multiples of cols/(2·scalesPerRow); the domain seam is the MIDPOINT gap between two of them.
+  const apexColStep = cols / (2 * lat.scalesPerRow);
+  const q = Math.round(apexColStep / 2);
+  if (!Number.isInteger(apexColStep) || apexColStep <= 2 * p || q <= p || q >= cols) {
+    throw new Error(
+      `buildDsConeFanCertDomain: no valid apex-gap cut column for nU=${cols}, p=${p} (apexColStep=${apexColStep}, q=${q}); ` +
+        'need nU divisible by 4·scalesPerRow and nU/(4·scalesPerRow) > patchP',
+    );
+  }
+  const shift = q / cols;
+  const nV = wall.ut.length / 2;
+  const uJ: number[] = new Array(nV);
+  const tt: number[] = new Array(nV);
+  for (let v = 0; v < nV; v++) {
+    let u = wall.ut[2 * v] - shift;
+    u -= Math.floor(u); // wrap into [0,1) — the u-origin now sits on the apex gap q
+    uJ[v] = u;
+    tt[v] = wall.ut[2 * v + 1];
+  }
+  const pos: number[] = Array.from(wall.vertices);
+  // Only the grid quad column at q straddles the flat seam (q is a gap ⇒ no fan crosses it). Redirect each straddling
+  // triangle's LOW-u (column-q, u_judge=0) vertices to a dedup'd u=1 copy so the triangle sits contiguously at u≈1.
+  const dupOf = new Map<number, number>();
+  const getDup = (v: number): number => {
+    let d = dupOf.get(v);
+    if (d === undefined) {
+      d = uJ.length;
+      uJ.push(1); // exact u=1 boundary
+      tt.push(tt[v]);
+      pos.push(wall.vertices[3 * v], wall.vertices[3 * v + 1], wall.vertices[3 * v + 2]);
+      dupOf.set(v, d);
+    }
+    return d;
+  };
+  const nF = wall.indices.length / 3;
+  const outIdx = new Uint32Array(wall.indices.length);
+  for (let f = 0; f < nF; f++) {
+    let a = wall.indices[3 * f];
+    let b = wall.indices[3 * f + 1];
+    let c = wall.indices[3 * f + 2];
+    if (Math.max(uJ[a], uJ[b], uJ[c]) - Math.min(uJ[a], uJ[b], uJ[c]) > 0.5) {
+      if (uJ[a] < 0.5) a = getDup(a);
+      if (uJ[b] < 0.5) b = getDup(b);
+      if (uJ[c] < 0.5) c = getDup(c);
+    }
+    outIdx[3 * f] = a;
+    outIdx[3 * f + 1] = b;
+    outIdx[3 * f + 2] = c;
+  }
+  return {
+    uJudge: Float64Array.from(uJ),
+    t: Float64Array.from(tt),
+    positions: Float32Array.from(pos),
+    indices: outIdx,
+    cutColumn: q,
+    nU: cols,
+    seamDupCount: dupOf.size,
+  };
+}
