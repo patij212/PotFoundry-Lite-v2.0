@@ -533,6 +533,73 @@ export function readErrorRaw(path) {
   return { header, values };
 }
 
+// Surface metric (first fundamental form) of one triangle: the 2x2 SPD matrix M
+// with |dXYZ|^2 = d^T M d for uv-edges d. Anisotropy = sqrt(largest/smallest
+// eigenvalue) — this is the "wrong metric space" signal (M=g/h^2). Solved as a
+// 3x3 linear system in (E,F,G) from the three squared edge lengths.
+export function triAnisotropy(px, uv) {
+  const sq = (i, j) => {
+    const a = i * 3, b = j * 3;
+    return (px[a] - px[b]) ** 2 + (px[a + 1] - px[b + 1]) ** 2 + (px[a + 2] - px[b + 2]) ** 2;
+  };
+  const du1 = uv[2] - uv[0], dv1 = uv[3] - uv[1];
+  const du2 = uv[4] - uv[0], dv2 = uv[5] - uv[1];
+  const du3 = du2 - du1, dv3 = dv2 - dv1;
+  // rows: [du^2, 2*du*dv, dv^2] -> squared edge length
+  const A = [
+    [du1 * du1, 2 * du1 * dv1, dv1 * dv1],
+    [du2 * du2, 2 * du2 * dv2, dv2 * dv2],
+    [du3 * du3, 2 * du3 * dv3, dv3 * dv3],
+  ];
+  const rhs = [sq(0, 1), sq(0, 2), sq(1, 2)];
+  const det3 = (m) =>
+    m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
+    m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
+    m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
+  const det = det3(A);
+  if (Math.abs(det) < 1e-18) return NaN; // degenerate uv triangle
+  const col = (c) => A.map((row, r) => row.map((val, k) => (k === c ? rhs[r] : val)));
+  const E = det3(col(0)) / det;
+  const F = det3(col(1)) / det;
+  const G = det3(col(2)) / det;
+  const trace = E + G;
+  const disc = Math.sqrt(Math.max(0, (trace * trace) / 4 - (E * G - F * F)));
+  const l1 = trace / 2 + disc;
+  const l2 = trace / 2 - disc;
+  if (l2 <= 0) return Infinity;
+  return Math.sqrt(l1 / l2);
+}
+
+// Connected components of hot triangles via shared welded xyz vertex. Mirrors
+// the vertex-key weld in ceramicAttributes; union-find over the hot set only.
+export function weldClusters(positions, hotIndices) {
+  const parent = new Map(hotIndices.map((t) => [t, t]));
+  const find = (x) => {
+    let r = x;
+    while (parent.get(r) !== r) r = parent.get(r);
+    while (parent.get(x) !== r) { const n = parent.get(x); parent.set(x, r); x = n; }
+    return r;
+  };
+  const union = (a, b) => { const ra = find(a), rb = find(b); if (ra !== rb) parent.set(ra, rb); };
+  const owner = new Map(); // vertex key -> a hot triangle already touching it
+  for (const t of hotIndices) {
+    for (let s = 0; s < 3; s += 1) {
+      const o = t * 9 + s * 3;
+      const key = `${positions[o]},${positions[o + 1]},${positions[o + 2]}`;
+      const prev = owner.get(key);
+      if (prev === undefined) owner.set(key, t);
+      else union(prev, t);
+    }
+  }
+  const groups = new Map();
+  for (const t of hotIndices) {
+    const r = find(t);
+    if (!groups.has(r)) groups.set(r, []);
+    groups.get(r).push(t);
+  }
+  return [...groups.values()];
+}
+
 function cmdView(args) {
   const stlPaths = args._.map((p) => resolve(p));
   if (stlPaths.length === 0) { console.error('view: no STL given'); process.exit(2); }

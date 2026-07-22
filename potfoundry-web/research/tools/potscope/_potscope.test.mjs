@@ -17,6 +17,8 @@ import {
   readPack,
   readLoc,
   readErrorRaw,
+  triAnisotropy,
+  weldClusters,
 } from './potscope.mjs';
 
 // --- synthetic binary STL: header(80) + uint32 count + 50 bytes/triangle ------
@@ -155,4 +157,37 @@ test('readErrorRaw exposes per-triangle mm values + header stats', () => {
   assert.equal(header.count, 2);
   assert.ok(Math.abs(values[1] - 0.009) < 1e-6);
   assert.equal(header.budgetMm, 0.01);
+});
+
+// Magic guards: each reader must refuse the OTHER sidecar's envelope (provenance —
+// a mismatched magic means the file is not what the caller thinks it is).
+test('readLoc rejects a non-loc magic', () => {
+  assert.throws(() => readLoc(writeErr('x.error.bin', [0.001])), /bad loc magic/);
+});
+test('readErrorRaw rejects a non-error magic', () => {
+  assert.throws(() => readErrorRaw(writeLoc('x.loc.bin', [[0, 0, 0, 0, 0, 0, 0]])), /bad error magic/);
+});
+
+// --- residual geometry: surface-metric anisotropy + welded hot-tri clustering --
+test('triAnisotropy ~1 for an isometric triangle, large for a stretched one', () => {
+  // uv unit right triangle; xyz identical scale -> isometric
+  const uv = [0, 0, 1, 0, 0, 1];
+  const iso = triAnisotropy([0, 0, 0, 1, 0, 0, 0, 1, 0], uv);
+  assert.ok(Math.abs(iso - 1) < 1e-3, `iso ${iso}`);
+  // xyz stretched 10x in u-direction only -> anisotropy ~10
+  const aniso = triAnisotropy([0, 0, 0, 10, 0, 0, 0, 1, 0], uv);
+  assert.ok(aniso > 9 && aniso < 11, `aniso ${aniso}`);
+});
+
+test('weldClusters groups hot triangles sharing a vertex, separates disjoint ones', () => {
+  // tri0 & tri1 share vertex (0,0,0); tri2 is far away
+  const positions = new Float32Array([
+    0, 0, 0, 1, 0, 0, 0, 1, 0, // tri0
+    0, 0, 0, -1, 0, 0, 0, -1, 0, // tri1 (shares 0,0,0)
+    9, 9, 9, 9, 8, 9, 8, 9, 9, // tri2 (disjoint)
+  ]);
+  const clusters = weldClusters(positions, [0, 1, 2]);
+  assert.equal(clusters.length, 2);
+  const sizes = clusters.map((c) => c.length).sort();
+  assert.deepEqual(sizes, [1, 2]);
 });
