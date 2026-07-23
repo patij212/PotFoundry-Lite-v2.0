@@ -10,6 +10,37 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-23-SMOOTHGRID-DENSITY-GUARANTEE (make `deriveSmoothGridDensity` GUARANTEE ≤tol closure by MEASURING the worst flat-facet chord and bumping the deficient axis — the FIX for the PRODCARD 3/6 GAP) [BUILD+PROVE; src edit `smoothGrid.ts`, flag-gated default-OFF byte-identical; env-gated proof PF_SMOOTHFIX]
+
+**HYPOTHESIS (falsifiable):** appending a bounded verify-and-bump to `deriveSmoothGridDensity` — MEASURE the emitted grid's TRUE worst flat-triangle chord (`worstSmoothFacetChord`; two-stage golden-sheared top-K LOCATE + dense per-quad REFINE against the actual mesh triangle plane) and DOUBLE the deficient axis (`maxSag/n²`) ≤6× until ≤tol — closes all 7 relief-carrying smooth styles to `measureProjectorMax` MAX ≤0.01mm at prod dims (H120/Rb45/Rt70/expn1.1, registry-default opts, tol0.01), WITHOUT over-bumping the 3 already-closing styles, in <2s/derive.
+
+**KILL-CRITERION (pre-registered):** GO iff, building each style with the SHIPPED `buildSmoothGridWall` at the NEW derived (nU,nT): (a) HR/SR/WI/HexHive `measureProjectorMax` (nTheta2048/nZ1024) MAX ≤0.01 (were 0.0115–0.0183); (b) SFB/SE/FB still ≤0.01 AND nU/nT UNCHANGED from seed (no over-bump); (c) all watertight-by-index (nonMan0, boundary=2·nU); (d) deriveSmoothGridDensity <2s/call; (e) `worstSmoothFacetChord` AGREES with `measureProjectorMax` within ~10% (else densify — do not ship a metric that disagrees).
+
+**VERDICT: CONFIRMED — 7/7 close ≤0.01 MAX, 0 over-bump, all watertight, all derive <1.6s, metric agrees 1.00–1.04×.** All KILL-CRITERION legs met.
+
+**MECHANISM DISCOVERY — the gap is nT-deficiency (coarse VERTICAL rows), NOT the nU-azimuthal-undershoot the PRODCARD assumed.** The seed sizes nU generously (pow2 snap ≥ nURaw) but nT only to `ceil(nTRaw)` (HR 104, SR 193, WI 231, HexHive 335) — 7–11× coarser vertical spacing than azimuthal. The measured deficient-axis test (`maxSagT/nT² ≥ maxSagU/nU²`) correctly doubles nT: HR/WI/SR each close on ONE nT-doubling (→208/462/386, nU UNCHANGED); HexHive needs both (2048/335→2048/670→4096/670 — its fine hex relief is genuinely 2D). **That doubling nT reduces HR 0.01225→0.00690 PROVES nT was the reducible axis** (a pure-nU gap is nT-invariant) — refuting the PRODCARD's "azimuthal crest" attribution as a visual-crest misread (the chord was t-bridged). Doubling nT preserves the pow2 COLUMN lattice ⇒ exact-dyadic judge cert intact.
+
+**Two `worstSmoothFacetChord` mis-measurements found + fixed during the build (the task's sanctioned "densify until agree"):** (1) STAGE-1 ALIASING — a fixed 1024-u LOCATE grid shares a factor with pow2 nU ⇒ every sample lands at fu≡0 (column boundary, chord≈0) ⇒ BLIND to the intra-column crest that IS the gap; fixed by a golden-ratio per-row u-shear. (2) SINGLE-ARGMAX UNDER-READ (~7% on SR/HexHive) — at bumped density the true worst facet sits on a SECONDARY crest outside the argmax's ±4 window; fixed by refining the TOP-K (32) locate candidates. Post-fix agreement went 0.94→1.00× (SR), 0.96→1.01× (HexHive). Perf held <2s by a 640×512 locate (top-K supplies the accuracy, not resolution) + a precompute↔on-the-fly crossover cap.
+
+**EVIDENCE (real vitest node-env, `%TEMP%/pf_smoothfix.ndjson`; ruler = `measureProjectorMax` true-3D perpendicular nTheta2048/nZ1024; before = registry PRODCARD except HexHive self-measured at its seed 2048/335):**
+| style | seed nU/nT | before MAX | → nU/nT | tris | after MAX | vtx | derive | watertight | verdict |
+|---|---|---:|---|---:|---:|---:|---:|---|---|
+| SuperformulaBlossom | 512/90 | 0.00595 | 512/90 | 0.09M | **0.00595** | 4.3e-6 | 337ms | nm0 b=2·nU | CLOSED (no bump) |
+| SuperellipseMorph | 1024/124 | 0.00796 | 1024/124 | 0.25M | **0.00796** | 4.7e-6 | 361ms | nm0 b=2·nU | CLOSED (no bump) |
+| FourierBloom | 2048/97 | 0.00631 | 2048/97 | 0.39M | **0.00631** | 4.0e-6 | 379ms | nm0 b=2·nU | CLOSED (no bump) |
+| HarmonicRipple | 2048/104 | 0.01225 | 2048/**208** | 0.85M | **0.00690** | 5.0e-6 | 683ms | nm0 b=2·nU | CLOSED (bump nT) |
+| WaveInterference | 1024/231 | 0.01825 | 1024/**462** | 0.94M | **0.00659** | 4.7e-6 | 881ms | nm0 b=2·nU | CLOSED (bump nT) |
+| SpiralRidges | 2048/193 | 0.01667 | 2048/**386** | 1.58M | **0.00920** | 5.4e-6 | 867ms | nm0 b=2·nU | CLOSED (bump nT) |
+| HexagonalHive | 2048/335 | 0.01531 | **4096**/**670** | 5.48M | **0.00484** | 5.0e-6 | 1574ms | nm0 b=2·nU | CLOSED (bump nT+nU) |
+
+Internal `worstSmoothFacetChord` vs `measureProjectorMax` at the final density: agree 1.00–1.04× (all within the ~10% bar; calibration is essentially exact after the two metric fixes). 3 closers unchanged (byte-for-byte nU/nT ⇒ no over-bump). Watertight guard non-vacuous (crack→count moves; the 6 existing smoothGrid* + flagOff.byteIdentical src tests stay green — smoothGridFacetAlign's HR-dispatch check re-pointed off `lowPolyRA`, whose un-closable rim floor() bug would max the bump loop on the synthetic mismatch; production never routes it).
+
+**RECOMMENDATION:** PRODUCTIONIZE (already wired, flag-OFF byte-identical): the fix makes the smooth-grid emitter SELF-CERTIFYING (`worstSmoothFacetChord ≤ tol` by construction, agreeing with the sanctioned ruler). Flip-readiness for the 6 C∞ smooth styles rises from PRODCARD 3/6 to **6/6**. HexHive closes but at 5.48M tris — the honest density its 2D fine-hex relief needs at 0.01mm; note the cost if wiring HexHive through this helper. Bounded follow-up: the nT-then-nU self-correction over-provisions HexHive ~2× (the nT-first pick is "wasted" because the coarse 128²-probe under-estimates the azimuthal maxSagU); a MEASURED per-axis-doubling test (double whichever of {nU,nT} the chord actually responds to, one extra `worstSmoothFacetChord` probe per axis) would land HexHive ~2.7M instead of 5.48M.
+
+**LEDGER:** src `src/renderers/webgpu/parametric/conforming/tierC/smoothGrid.ts` (new export `worstSmoothFacetChord` + verify-and-bump in `deriveSmoothGridDensity`, scoped to the pow2 smooth path); proof `research/bridge/_pfSmoothGridDensityFix.test.ts` (PF_SMOOTHFIX, per-style projMax, checkpointed+resumable, 41min) + fast smoke `research/bridge/_pfSmoothFixSmoke.test.ts` (PF_SMOOTHSMOKE, calibration + bump, ~12s) + `vitest.smoothfix.config.ts` / `vitest.smoothsmoke.config.ts`. Run: `PF_SMOOTHFIX=1 npx vitest run --config vitest.smoothfix.config.ts`. Commit sha: see below.
+
+---
+
 ## E-2026-07-23-SMOOTHGRID-PRODCARD (do the SIX C∞ smooth-grid styles close true-3D MAX ≤0.01mm through the PRODUCTION smooth-grid emitter at production density? — flip-readiness scorecard) [measure-only; env-gated PF_SMOOTHCARD; NO src edit; `buildSmoothGridDispatchWall` behind `__pfPerfectMesher`+`__pfSmoothGrid`]
 
 **HYPOTHESIS (falsifiable):** all six C∞ smooth-grid styles (SuperformulaBlossom / FourierBloom / SpiralRidges / SuperellipseMorph / HarmonicRipple / WaveInterference), meshed by the PRODUCTION `buildSmoothGridDispatchWall` at production (sag-derived, pow2-`nU`) density, close whole-wall true-3D perpendicular MAX ≤0.01mm at registry-default opts (dims H120/Rb45/Rt70/expn1.1), watertight-by-index.

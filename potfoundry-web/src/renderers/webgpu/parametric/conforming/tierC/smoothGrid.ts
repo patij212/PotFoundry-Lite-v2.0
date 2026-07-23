@@ -119,11 +119,162 @@ export interface SmoothGridDensityOpts {
   alignNU?: number;
 }
 
+/** Golden ratio — decorrelates the stage-1 intra-quad u-phase from the power-of-two column lattice (see below). */
+const STAGE1_SHEAR = 0.618033988749895;
+
 /**
- * Sag-based density sizing: probe the analytic surface on a coarse `probeRes²` grid, estimate the worst chord sag per
- * direction from the 3D second difference (sag ≈ |Δ²P|/8 at the probe spacing), then scale by the sag∝1/n² law to the
- * `nU`/`nT` that bring the whole-mesh chord sag ≤ `tolMm`. `nU` is rounded UP to a power of two so the grid columns snap
- * exactly on the exact-dyadic judge lattice. Clamped to sane bounds.
+ * The TRUE worst flat-TRIANGLE chord of the smooth grid at (nU,nT): the maximum perpendicular distance from an
+ * analytic surface sample to the ACTUAL mesh triangle plane whose (u,t) cell the sample lands in. The separable
+ * second-difference sag law {@link deriveSmoothGridDensity} seeds from only PREDICTS this and under-picks `nU` for
+ * fine/oblique/2D azimuthal relief; this MEASURES the emitted mesh's chord directly so the derivation can bump
+ * density until it is ≤ tol. The triangulation matches {@link buildSmoothGridWall}: quad (i,j) splits on the
+ * c00→c11 diagonal into T1=(c00,c10,c11) and T2=(c00,c11,c01); a sample lands in T1 iff its intra-quad fu≥ft.
+ *
+ * TWO-STAGE (accuracy + bounded cost):
+ *   - STAGE 1 (coarse LOCATE only): a FIXED 640×512 (u,t) surface grid (independent of nU/nT ⇒ bounded), cell-centered
+ *     and GOLDEN-ROW-SHEARED in u, tracking the TOP-K highest-chord samples. Its only job is to find the crest
+ *     regions (accuracy comes from stage 2), so a modest resolution far above the relief's azimuthal Nyquist suffices.
+ *     The shear is LOAD-BEARING: an un-sheared fixed grid whose u-resolution shares a factor with the power-of-two
+ *     `nU` lands EVERY sample on a column boundary (fu≡0, e.g. u=a/1024 with nU=2048 ⇒ floor(u·nU)=2a, fu=0), where the
+ *     surface passes through the mesh edge ⇒ chord≈0 ⇒ the scan is BLIND to the intra-column crest sag that IS the gap.
+ *     The per-row golden shear moves successive rows to varied intra-quad u-phases so the crest is sampled near its peak.
+ *   - STAGE 2 (local refine): a ±4-quad block of ACTUAL mesh quads around EACH distinct top-K location, sampled on a
+ *     dense 5×5 interior grid (both triangles) against the true triangle plane — nails the exact worst facet at mesh
+ *     resolution. Refining the top-K (not just the single argmax) catches the true worst facet even when it sits on a
+ *     secondary crest; over-samples measureProjectorMax's 4-point-per-triangle chord, so it agrees within ~6%.
+ */
+export function worstSmoothFacetChord(rA: AnalyticRadiusFn, H: number, nU: number, nT: number): number {
+  const cols = Math.max(3, Math.floor(nU));
+  const rows = Math.max(2, Math.floor(nT));
+  const cellT = 1 / (rows - 1);
+  const N = cols * rows;
+  // Precompute the lifted vertex grid when it is CHEAPER than lifting corners on the fly (flat, no per-sample re-lift ⇒
+  // the stage-1 loop does 1 lift/sample + array reads instead of 5). Crossover: precompute = N + (S1U·S1T) lifts vs
+  // on-the-fly = 5·(S1U·S1T) lifts ⇒ precompute wins when N ≤ 4·S1U·S1T (≈1.31M for the 640×512 scan). Above that a
+  // large grid stays on the fly so the per-call cost is BOUNDED by the fixed 5·S1U·S1T stage-1 lifts (< ~1.65M).
+  let gx: Float64Array | null = null;
+  let gy: Float64Array | null = null;
+  let gz: Float64Array | null = null;
+  if (N <= 1_300_000) {
+    gx = new Float64Array(N);
+    gy = new Float64Array(N);
+    gz = new Float64Array(N);
+    for (let j = 0; j < rows; j++) {
+      const z = j * cellT * H;
+      for (let i = 0; i < cols; i++) {
+        const th = (TAU * i) / cols, r = rA(th, z), o = j * cols + i;
+        gx[o] = r * Math.cos(th);
+        gy[o] = r * Math.sin(th);
+        gz[o] = z;
+      }
+    }
+  }
+  const cor = new Float64Array(12); // c00 | c10 | c01 | c11 (3 each)
+  const setCorner = (base: number, i: number, j: number): void => {
+    const ii = i === cols ? 0 : i; // periodic wrap: column `cols` ≡ column 0 (rA is 2π-periodic)
+    if (gx && gy && gz) {
+      const o = j * cols + ii;
+      cor[base] = gx[o];
+      cor[base + 1] = gy[o];
+      cor[base + 2] = gz[o];
+    } else {
+      const th = (TAU * ii) / cols, z = j * cellT * H, r = rA(th, z);
+      cor[base] = r * Math.cos(th);
+      cor[base + 1] = r * Math.sin(th);
+      cor[base + 2] = z;
+    }
+  };
+  // Perpendicular distance from P=(px,py,pz) to the plane of the triangle whose corners are at offsets ai,bi,ci in `cor`.
+  const planeDist = (px: number, py: number, pz: number, ai: number, bi: number, ci: number): number => {
+    const ax = cor[ai], ay = cor[ai + 1], az = cor[ai + 2];
+    const ux = cor[bi] - ax, uy = cor[bi + 1] - ay, uz = cor[bi + 2] - az;
+    const vx = cor[ci] - ax, vy = cor[ci + 1] - ay, vz = cor[ci + 2] - az;
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const nl = Math.hypot(nx, ny, nz);
+    return nl < 1e-20 ? 0 : Math.abs((px - ax) * nx + (py - ay) * ny + (pz - az) * nz) / nl;
+  };
+  // STAGE 1 — golden-sheared, cell-centered 640×512 scan (see the load-bearing-shear note above). Track the TOP-K
+  // highest-chord samples (not just the single argmax): at bumped density the true worst facet can sit on a SECONDARY
+  // crest outside the global argmax's refine window, so refining only the argmax UNDER-reads the ruler (~7% measured
+  // on SpiralRidges/HexagonalHive). Refining every distinct top-K crest closes that gap.
+  const S1U = 640, S1T = 512;
+  const K = 32;
+  const tkChord = new Float64Array(K).fill(-1);
+  const tkU = new Float64Array(K);
+  const tkT = new Float64Array(K);
+  let tkMin = 0; // slot index of the smallest tracked chord
+  for (let b = 0; b < S1T; b++) {
+    const t = (b + 0.5) / S1T;
+    const shear = STAGE1_SHEAR * b;
+    const jj = Math.min(rows - 2, Math.floor(t * (rows - 1)));
+    const ft = t * (rows - 1) - jj;
+    const z = t * H;
+    for (let a = 0; a < S1U; a++) {
+      let u = (a + 0.5) / S1U + shear;
+      u -= Math.floor(u);
+      const i = Math.min(cols - 1, Math.floor(u * cols));
+      setCorner(0, i, jj);
+      setCorner(3, i + 1, jj);
+      setCorner(6, i, jj + 1);
+      setCorner(9, i + 1, jj + 1);
+      const th = TAU * u, r = rA(th, z), px = r * Math.cos(th), py = r * Math.sin(th);
+      const fu = u * cols - i;
+      const d = fu >= ft ? planeDist(px, py, z, 0, 3, 9) : planeDist(px, py, z, 0, 9, 6);
+      if (d > tkChord[tkMin]) {
+        tkChord[tkMin] = d; tkU[tkMin] = u; tkT[tkMin] = t;
+        let mi = 0;
+        for (let k = 1; k < K; k++) if (tkChord[k] < tkChord[mi]) mi = k;
+        tkMin = mi;
+      }
+    }
+  }
+  let worst = 0;
+  for (let k = 0; k < K; k++) if (tkChord[k] > worst) worst = tkChord[k];
+  // STAGE 2 — dense refine over a ±4-quad block of ACTUAL quads around EACH distinct top-K location (both triangles,
+  // 5×5 interior) against the true triangle plane; nails the exact worst facet at mesh resolution.
+  const FR = [1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6];
+  const seen = new Set<number>();
+  for (let k = 0; k < K; k++) {
+    if (tkChord[k] < 0) continue;
+    const iC = Math.min(cols - 1, Math.floor((tkU[k] - Math.floor(tkU[k])) * cols));
+    const jC = Math.min(rows - 2, Math.floor(tkT[k] * (rows - 1)));
+    const qkey = jC * cols + iC;
+    if (seen.has(qkey)) continue; // one refine per distinct quad (top-K samples cluster on shared crests)
+    seen.add(qkey);
+    for (let dj = -4; dj <= 4; dj++) {
+      const jq = jC + dj;
+      if (jq < 0 || jq > rows - 2) continue;
+      for (let di = -4; di <= 4; di++) {
+        const iq = (((iC + di) % cols) + cols) % cols;
+        setCorner(0, iq, jq);
+        setCorner(3, iq + 1, jq);
+        setCorner(6, iq, jq + 1);
+        setCorner(9, iq + 1, jq + 1);
+        for (let sj = 0; sj < 5; sj++) {
+          const ftc = FR[sj], t = (jq + ftc) * cellT, z = t * H;
+          for (let si = 0; si < 5; si++) {
+            const fuc = FR[si];
+            let u = (iq + fuc) / cols;
+            u -= Math.floor(u);
+            const th = TAU * u, r = rA(th, z), px = r * Math.cos(th), py = r * Math.sin(th);
+            const d = fuc >= ftc ? planeDist(px, py, z, 0, 3, 9) : planeDist(px, py, z, 0, 9, 6);
+            if (d > worst) worst = d;
+          }
+        }
+      }
+    }
+  }
+  return worst;
+}
+
+/**
+ * Sag-based density sizing WITH a measured chord GUARANTEE: probe the analytic surface on a coarse `probeRes²` grid,
+ * estimate the worst chord sag per direction from the 3D second difference (sag ≈ |Δ²P|/8 at the probe spacing), scale
+ * by the sag∝1/n² law to an `nU`/`nT` seed (rounded UP to a power of two — the exact-dyadic judge lattice), THEN
+ * verify-and-bump: MEASURE the emitted grid's true worst flat-facet chord ({@link worstSmoothFacetChord}) and double
+ * the deficient axis (≤6×) until it is ≤ `tolMm`. The separable predictive law alone under-picks `nU` for fine/oblique
+ * azimuthal relief (HarmonicRipple/SpiralRidges/WaveInterference/HexagonalHive floored 0.0115–0.0183 MAX at the seed);
+ * the bump loop closes it by construction. Clamped to sane bounds; the alignNU faceted path keeps the direct snap.
  */
 export function deriveSmoothGridDensity(
   rA: AnalyticRadiusFn,
@@ -157,12 +308,15 @@ export function deriveSmoothGridDensity(
   const nTRaw = n0 * Math.sqrt(Math.max(maxSagT, 1e-12) / tolMm) * safety;
   const minNU = opts.minNU ?? 256;
   const maxNU = opts.maxNU ?? 8192;
+  const minNT = opts.minNT ?? 32;
+  const maxNT = opts.maxNT ?? 2048;
+  const aligned = opts.alignNU !== undefined && opts.alignNU >= 1;
   let nU: number;
-  if (opts.alignNU !== undefined && opts.alignNU >= 1) {
+  if (aligned) {
     // Facet-aligned: snap to the NEAREST multiple of alignNU so columns land on the static facet
     // edges/centers. Clamp to the multiples of alignNU inside [minNU, maxNU] (ceil the lower / floor
     // the upper) so the bound can never break alignment.
-    const a = Math.floor(opts.alignNU);
+    const a = Math.floor(opts.alignNU as number);
     const lo = Math.max(a, Math.ceil(minNU / a) * a);
     const hi = Math.max(lo, Math.floor(maxNU / a) * a);
     nU = Math.min(hi, Math.max(lo, Math.round(nURaw / a) * a));
@@ -172,7 +326,30 @@ export function deriveSmoothGridDensity(
     while (pow2 < nURaw) pow2 *= 2;
     nU = Math.max(minNU, Math.min(maxNU, pow2));
   }
-  const nT = Math.max(opts.minNT ?? 32, Math.min(opts.maxNT ?? 2048, Math.ceil(nTRaw)));
+  let nT = Math.max(minNT, Math.min(maxNT, Math.ceil(nTRaw)));
+  // VERIFY-AND-BUMP (E-2026-07-23-SMOOTHGRID-DENSITY-GUARANTEE): the separable sag law under-picks nU for
+  // fine/oblique/2D azimuthal relief (HR 0.01225 / SR 0.01667 / WI 0.01825 / HexHive 0.0115 MAX at the seed). MEASURE
+  // the emitted grid's true worst flat-facet chord and DOUBLE the deficient axis until ≤ tol. Doubling preserves the
+  // power-of-two column lattice. Bounded ≤6. Scope = the pow2 smooth-style path: the alignNU faceted path closes by
+  // column edge-alignment (not density) and its lone candidate (LowPolyFacet) is routed OFF with an un-closable rim
+  // floor() surface bug, so it keeps the direct snap (byte-identical, and its density tests unchanged).
+  if (!aligned) {
+    for (let iter = 0; iter < 6; iter++) {
+      if (worstSmoothFacetChord(rA, H, nU, nT) <= tolMm) break;
+      const prevNU = nU, prevNT = nT;
+      // Double the axis whose predicted per-facet sag contribution (maxSag/n², sag ∝ 1/n²) dominates; if it is
+      // capped, grow the other. Re-evaluated each pass, so a wrong first pick self-corrects (doubling one axis
+      // shrinks its ratio 4×, flipping the decision toward the truly-deficient axis on the next pass).
+      if (maxSagU / (nU * nU) >= maxSagT / (nT * nT)) {
+        if (nU < maxNU) nU = Math.min(maxNU, nU * 2);
+        else nT = Math.min(maxNT, nT * 2);
+      } else {
+        if (nT < maxNT) nT = Math.min(maxNT, nT * 2);
+        else nU = Math.min(maxNU, nU * 2);
+      }
+      if (nU === prevNU && nT === prevNT) break; // both axes capped ⇒ cannot improve further
+    }
+  }
   return { nU, nT };
 }
 

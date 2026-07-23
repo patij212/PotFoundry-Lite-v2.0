@@ -22,6 +22,11 @@ import type { AnalyticRadiusFn } from '../../../../../fidelity/analyticSurfaceGa
 
 const H = 120, Rb = 45, Rt = 70, expn = 1.1; // production DEFAULT_DIMENSIONS (OD140/H120 tapered)
 const lowPolyRA = buildAnalyticRadiusFn('LowPolyFacet', {}, { H, Rb, Rt, expn }) as unknown as AnalyticRadiusFn;
+// A genuine C∞ smooth surface for exercising the pow2 (non-aligned) smooth-grid PATH. lowPolyFacet carries an
+// un-closable rim floor() surface discontinuity (E-2026-07-22-LOWPOLY-GRID-CLOSE), so the verify-and-bump loop
+// (which measures the true facet chord) would max out density on it — a real-style stand-in that never occurs in
+// production (LowPolyFacet is routed OFF; the 6 smooth styles are all genuinely C∞ and close at modest density).
+const smoothRA: AnalyticRadiusFn = (theta: number, z: number): number => 55 + 3 * Math.sin(6 * theta) + 2 * Math.sin((Math.PI * z) / H);
 
 function setSmoothGrid(on: boolean): void {
   (globalThis as unknown as { __pfSmoothGrid?: boolean }).__pfSmoothGrid = on;
@@ -32,7 +37,7 @@ afterEach(() => {
 
 describe('facet-aligned smooth-grid density (Blocker B)', () => {
   it('deriveSmoothGridDensity WITHOUT alignNU keeps the power-of-two nU (existing 6-smooth behavior unchanged)', () => {
-    const { nU } = deriveSmoothGridDensity(lowPolyRA, H, 0.01);
+    const { nU } = deriveSmoothGridDensity(smoothRA, H, 0.01); // a C∞ smooth surface (the pow2 path's real domain)
     expect(nU & (nU - 1)).toBe(0); // power of two
   });
 
@@ -80,8 +85,9 @@ describe('facet-aligned smooth-grid density (Blocker B)', () => {
     // LowPolyFacet is no longer a structured-grid style ⇒ the smooth-grid dispatch declines it, so the export falls to
     // the OFF conforming wall (feature-aligned, 0.001) instead of emitting a non-pow2 rim that null-s the assembly.
     expect(buildSmoothGridDispatchWall({ analyticRA: lowPolyRA, H, tolMm: 0.01 }, 'LowPolyFacet')).toBeUndefined();
-    // A C∞ smooth style still emits a valid pow2-rim wall (the 6-style emitter path is intact).
-    const hrWall = buildSmoothGridDispatchWall({ analyticRA: lowPolyRA, H, tolMm: 0.01 }, 'HarmonicRipple');
+    // A C∞ smooth style still emits a valid pow2-rim wall (the 6-style emitter path is intact). Use a genuine smooth
+    // surface — the emitter's verify-and-bump closes it at modest density (lowPolyRA's rim discontinuity would not).
+    const hrWall = buildSmoothGridDispatchWall({ analyticRA: smoothRA, H, tolMm: 0.01 }, 'HarmonicRipple');
     expect(hrWall).toBeDefined();
     for (let i = 0; i < hrWall!.gridVertexCount; i++) expect(hrWall!.vertices[3 * i + 2]).toBe(0);
   });
