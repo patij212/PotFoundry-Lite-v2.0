@@ -1,0 +1,60 @@
+# Autonomous closure session (2026-07-23) — close the open styles at default
+
+**Context:** Patryk away ~8h, free rein. Goal: **style/shape-agnostic 0.01mm at default (production dims
+OD140/H120 + registry defaults)** — close all 20, with good machinery. Secondary (his note, "but first…"):
+parameter-space shapes + small-pot sub-tolerance features come AFTER the default closures.
+
+**Coordination (two agents, one branch — collision-avoidance is a hard constraint):**
+- The **parallel agent owns MEASUREMENT/RULERS** (their committed trajectory: R2–R8 fidelity fixes, two-sided
+  Hausdorff, parametric projector, the Map-cap download fix `c7b34216`, the all-20 `_prodbase` baseline). Their
+  untracked probes touch **GeoStar / HexHive / LowPoly / Gyroid** → I AVOID those styles.
+- **I own the real-pipeline audit + CLOSURES.** To avoid colliding on shared src (tierC dispatch, styles.ts,
+  regionLayerFlag), I develop closures in **isolated `research/bridge/` tests** (importing the emitter machinery
+  read-only), prove ≤0.01, and leave src-wiring as a documented ready step — the campaign's prove-then-wire pattern.
+
+## All-20 gap map (measured)
+
+Two independent measurements agree on the routing:
+- **Real GPU pipeline** (my Pass-1 audit, `production-export-truth-pass1.json`) — the 9 closed/wired styles, OFF vs ON.
+- **Region kernel** (`_prodbase/baseline.ndjson`, parallel agent, `buildInhouseMetricMesh` @400k budget) — all 20.
+
+| class | styles (region-kernel true-3D max) | route |
+|---|---|---|
+| **Smooth — closes on density** | SFB 0.017, FB 0.022, SR 0.020, SE 0.018, HR 0.022, WI 0.017, **RippleInterference 0.019**, HexHive-interior 0.026 | uniform/graded smooth grid (mostly emitter-wired already; my audit confirms OFF already ≤0.01 for HR/SE/FB at prod density) |
+| **Riser/tread (DS-tread template)** | **ArtDeco 3.24**, DragonScales 1.09, Bamboo 1.04, BasketWeave 0.39 | structured ring-strip emitter w/ double-valued treads at the C0 steps (DS/Bamboo already wired) |
+| **Facet/grid (facet-aligned)** | LowPolyFacet 0.71 | facet-aligned smooth grid (parallel agent) |
+| **Feature-conforming** | GothicArches 0.44 (cusps), Crystalline 0.44/p99 0.03 (facet creases), GeometricStar 0.26/p99 0.028 (chevron) | conforming rows on the crease/cusp loci |
+| **Steep tangled lattice** | Gyroid 0.17, Voronoi 0.19, CelticKnot 0.10, CelticTriquetra 0.22 | v6 density / snaking mesher (architectural; hard) |
+
+## PIVOT (2026-07-23, per Patryk): reuse research — the work is WIRE-AND-VALIDATE, not re-derivation
+
+The `2026-07-12-existing-asset-roadmap.md` meta-finding holds: **most frontiers are closeable by existing,
+mostly-built, style-conditional levers** — the remaining work is *wiring + validating existing code*, not new
+closures. Gothic/GeoStar true-0.01 is VALIDATED (C2 analytic lever 0/18045, 0/5071) and blocked only on the
+`__pfPerfectMesher` flag flip (seam-share + rebaseline + finite-needle concession) — a product/integration decision.
+So: **I do NOT build closures from scratch.** My unique lane = the **real-pipeline audit** (the "validate" half) +
+**fixing the integration/wiring gaps it exposes** (the mesher dispatch — the parallel agent is on rulers, low
+collision). The from-scratch ArtDeco/RI probes were premature and are DEPRIORITIZED (ArtDeco/BasketWeave are genuine
+unbuilt gaps per the campaign, but only if the audit shows nothing more urgent, and only reusing `buildDsRingStripWall`).
+
+## The audit already earns its keep (real-pipeline findings)
+- **5/6 smooth styles already clear 0.01 on today's OFF mesher** (SFB/SE/FB/WI/HR) — their emitters are REDUNDANT.
+  Only **SpiralRidges genuinely needs the emitter** (OFF 0.047 ✗ → ON 0.003 ✓).
+- **LowPolyFacet: OFF holds (0.00102) but ON is BROKEN** — `generateMesh returned null` through the real pipeline.
+  Closure exists in research; the production WIRING is broken. ← concrete wire-and-validate target.
+- DragonScales / BambooSegments ON — pending (the audit will say if they work in-pipeline or are broken like LowPoly).
+
+## Revised plan (reuse-first, non-colliding)
+1. **Finish the Pass-1 audit** → the definitive real-pipeline verdict per closed style (which emitters WORK vs BREAK
+   in production). Hold all code edits until it completes (it shares the dev server).
+2. **Fix the wiring bugs the audit finds** (LowPolyFacet ON null first; DS/Bamboo if broken), reusing the existing
+   research closures — diagnose the null, restore the emitter path.
+3. **Produce the enablement status map**: per style, {research closure exists? · production wiring status · audit
+   real-pipeline verdict · exact remaining step}. Extends `2026-07-19-all20-status-truth.md` with the real-pipeline
+   column — does NOT rebuild it.
+4. Only THEN, if a genuine unbuilt gap remains and is unclaimed: ArtDeco/BasketWeave via the DS tread template.
+
+## Progress log
+- [in progress] Pass-1 real-pipeline audit — 12/18 cells (6 smooth done + LowPoly; DS/Bamboo pending).
+- [found] LowPolyFacet ON `generateMesh` null — production wiring bug (closure exists, wiring broken).
+- [next] diagnose LowPoly ON null (read-only until audit finishes); build the enablement status map.
