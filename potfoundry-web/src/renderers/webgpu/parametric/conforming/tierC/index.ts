@@ -632,13 +632,16 @@ export function isBambooStyle(styleId: string | undefined): boolean {
 }
 
 /**
- * Default Bamboo ring-strip circumferential column count (1408 — the proven whole-mesh ≤0.01 close, ~2.6M tris at the
- * production H120/Rb45/Rt70 geometry). The residual after close is u-chord ∝ 1/nU (the θ-dependent asymVar tread walls
- * the strip columns chord), so nU is the fidelity lever; ≥1280 closes. Judge cert uses a representative power-of-two nU
- * (the exact-dyadic partition is a property of the STRUCTURE, invariant to column count — the smoothGridCert / DS
- * cut-at-gap precedent), so the production nU need not itself be a power of two.
+ * Default Bamboo ring-strip circumferential column count. MUST be a power of two: the emergent rim (= nU columns) is
+ * what {@link WatertightAssembly.assembleWatertight} pins the INNER wall to, and `buildConformingWall` requires a
+ * power-of-two `nRing` for its quadtree boundary pinning (`pinBoundaryLevel = log2(nRing)`). A non-pow2 rim throws
+ * "nRing must be a power of two" ⇒ the whole export returns generateMesh null — the 2026-07-23 real-pipeline audit bug
+ * at the old 1408 (a prior comment wrongly claimed "the production nU need not itself be a power of two"; that held for
+ * the exact-dyadic JUDGE cert but NOT for the pipeline's ring-index adoption). 2048 ≥ the closing density (≥1280;
+ * residual u-chord ∝ 1/nU, treads are placed in t so nU only affects the circumferential chord). Any override is
+ * snapped up to a power of two by {@link buildBambooDispatchWall}.
  */
-export const BAMBOO_RING_STRIP_DEFAULT_NU = 1408;
+export const BAMBOO_RING_STRIP_DEFAULT_NU = 2048;
 
 /** Inputs for {@link buildBambooDispatchWall} — the exact analytic surface + the export chord tolerance + node count. */
 export interface BambooOuterWallParams {
@@ -669,10 +672,16 @@ export function buildBambooDispatchWall(
   styleId?: StyleId,
 ): ConformingOuterWallResult | undefined {
   if (!isBambooEnabled() || !isBambooStyle(styleId)) return undefined;
+  // Snap nU UP to a power of two: the emergent rim (= nU) becomes the assembly's inner-wall nRing, which
+  // buildConformingWall requires to be a power of two (quadtree boundary pinning). Snapping up only raises the
+  // circumferential column count, so fidelity is preserved/improved. (Fixes the 2026-07-23 generateMesh-null bug.)
+  const reqNU = params.ringStripNU ?? BAMBOO_RING_STRIP_DEFAULT_NU;
+  let nU = 1;
+  while (nU < reqNU) nU *= 2;
   const wall = buildBambooRingStripWallGeometric(
     params.analyticRA,
     params.H,
-    params.ringStripNU ?? BAMBOO_RING_STRIP_DEFAULT_NU,
+    nU,
     {
       sagTolMm: params.tolMm,
       ...(params.nodeCount !== undefined ? { nodeCount: params.nodeCount } : {}),

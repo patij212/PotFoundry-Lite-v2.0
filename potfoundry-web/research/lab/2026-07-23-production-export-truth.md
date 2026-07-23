@@ -4,6 +4,17 @@ _Generated from `e2e/baselines/production-export-truth-pass1.json` — measured 
 
 **What OFF vs ON mean:** OFF = what a user exports TODAY (old conforming mesher, all perfect-mesher flags off). ON = the flag-gated structured emitter for that style (`__pfPerfectMesher` + the per-family sub-flag).
 
+> ⚠ **RULER CAVEAT (2026-07-23, corrected):** `measureProjectorMax` measures vs the **single-valued** analytic
+> `rA`, so it is honest ONLY for styles whose surface is single-valued radial — the SMOOTH styles (+ LowPolyFacet,
+> whose facets are single-valued). For **riser/tread styles with genuine vertical walls (DragonScales rings/scale-tips,
+> BambooSegments treads)** it **INFLATES** the (faithful-by-construction) vertical tread facets to ~half the step
+> height, because `rA` has no vertical face to project onto. This was CONFIRMED: the DS cone-fan floors at ~0.82mm by
+> BOTH `measureProjectorMax` (0.822) AND the campaign's own `perFaceTrue3DSag` (0.825) — both `rA`-based, both share the
+> limitation (vertexMax ≈ 0.00001, i.e. vertices ARE on the surface; only the tread-facet chord is inflated). So the
+> **DragonScales/BambooSegments ON `maxMm` below are UPPER BOUNDS dominated by tread inflation, NOT confirmed fidelity
+> failures.** Their TRUE MAX needs the parametric-Φ projector (`buildParametricSurfaceProjector`, parallel-agent asset)
+> or a smooth-complement measurement. The smooth-style + LowPoly numbers are unaffected.
+
 | Style | OFF max·wt·tris·gate | ON max·wt·tris·gate·refTrust | flag-wired | verdict (ON) |
 |---|---|---|---|---|
 | HarmonicRipple | 0.00954·wt·4.87M·ok | 0.00386·wt·9.74M·ok·T | WIRED | **CLOSED-holds** — OFF already holds too (closure may be redundant) |

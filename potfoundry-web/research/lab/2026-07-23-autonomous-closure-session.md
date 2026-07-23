@@ -54,7 +54,24 @@ unbuilt gaps per the campaign, but only if the audit shows nothing more urgent, 
    column — does NOT rebuild it.
 4. Only THEN, if a genuine unbuilt gap remains and is unclaimed: ArtDeco/BasketWeave via the DS tread template.
 
-## Progress log
-- [in progress] Pass-1 real-pipeline audit — 12/18 cells (6 smooth done + LowPoly; DS/Bamboo pending).
-- [found] LowPolyFacet ON `generateMesh` null — production wiring bug (closure exists, wiring broken).
-- [next] diagnose LowPoly ON null (read-only until audit finishes); build the enablement status map.
+## Progress log / findings (audit COMPLETE 18/18)
+- **Truth table:** `2026-07-23-production-export-truth.md`. Real-pipeline verdict: 6 smooth styles deliver ≤0.01 (5 of
+  them already on OFF — emitter redundant; only SpiralRidges earns it 0.047→0.003). The 3 hard styles are NOT delivered
+  in production.
+- **DragonScales:** OFF 0.820 / ON (cone-fan) 0.823. Cone-fan ISOLATED (Node) also floors ~0.82 by BOTH `rA`-based
+  rulers (measureProjectorMax 0.822 AND the campaign's own perFaceTrue3DSag 0.825) — so it is the MESH, not a GPU
+  divergence. BUT vtx≈0.00001 + density-invariant ⇒ this 0.82 is **tread-wall INFLATION**: a single-valued `rA` cannot
+  represent DS's vertical scale/ring risers, so both rA-rulers inflate the faithful vertical tread facets to ~half-step.
+  **DS true MAX is UNKNOWN — needs the parametric-Φ projector (parallel-agent asset) or a smooth-complement pass.**
+- **RULER LIMITATION (important):** `measureProjectorMax` (my audit ruler) is honest for SINGLE-VALUED styles (smooth +
+  LowPoly) but INFLATES riser/tread styles (DS, Bamboo, ArtDeco, BasketWeave). The smooth verdicts stand; the riser-style
+  ON `maxMm` are upper bounds. FOLLOW-UP: re-measure DS/Bamboo with `buildParametricSurfaceProjector`.
+- **BambooSegments + LowPolyFacet ON = `generateMesh` null — ROOT-CAUSED + Bamboo FIXED.** `buildConformingWall`
+  requires a power-of-two `nRing` (inner-wall quadtree boundary pinning), but the emergent rim (= emitter nU) was 1408
+  (Bamboo) / 864 (LowPoly) — non-pow2 ⇒ throw ⇒ null. The working styles slip through only because their nU is pow2
+  (smooth 1024/2048, DS cone-fan 4096). **Bamboo fix (committed): snap nU up to a power of two (default 1408→2048) in
+  `buildBambooDispatchWall`** — verified lint/typecheck/byte-identical + re-probed through the live pipeline (mesh now
+  produced). LowPoly's facet-align needs mult-of-24 (never pow2) ⇒ deeper fix (inner-wall pow2 + rim reconciliation);
+  DEFERRED (LowPoly OFF already holds 0.001).
+- [next / follow-ups] (a) Φ re-measurement of DS/Bamboo true MAX; (b) LowPoly ON deeper wiring fix; (c) the enablement
+  decision for SpiralRidges (the one smooth style whose emitter genuinely earns its keep).
