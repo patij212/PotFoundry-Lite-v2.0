@@ -3137,6 +3137,22 @@ export class ParametricExportComputer {
                 // unchanged.
                 LAST_CONFORMING_ASSEMBLY_UT = asm.vertices.slice();
 
+                // ── PRE-CONFORMED WALL: suppress the domain warps ────────────────
+                // E-2026-07-23-ADOPTED-WALL-WARP-EXEMPT. The u/t/helix warps exist to make a GENERIC
+                // uniform grid conform — they pin its rows/columns onto the feature loci. An ADOPTED
+                // Tier-C outer wall is NOT generic: the ring-strip emitters (Bamboo/DS) place rows on
+                // t=k/nodeCount BY CONSTRUCTION and the buildTierCOuterWall refine (Gothic/GeoStar) /
+                // the region kernel conform by the metric — so the warp is REDUNDANT and, worse, drags
+                // those already-conforming rows OFF the loci they sit on. MEASURED (research/bridge/
+                // _pfCloseBambooWarpEffect.test.ts): the Bamboo t-warp maps the emitter's node-boundary
+                // rows 0.8→0.84 and re-busts the body chord to 1.81mm (undoing the sag-law MAX fix).
+                // The ONE adopted wall that IS generic is the smooth grid (uniform u,t) — SpiralRidges
+                // rides it and genuinely needs the helix shear — so it is EXCLUDED from the exemption.
+                // Flag-gated (adoptTierCOuter ⊂ perfect-mesher/sub-flags, default OFF) ⇒ byte-identical
+                // off. The warps are homeomorphisms and this only turns them into no-ops, so the mesh
+                // stays watertight/oriented/T-junction-free trivially.
+                const outerPreConformed = adoptTierCOuter && !adoptSmooth;
+
                 // ── Vertical-crease pinning, part 2: apply the u-warp ────────────
                 // φ is a circle homeomorphism (strictly increasing, seam fixed at
                 // 0→0/1→1) applied UNIFORMLY to every vertex's u, so connectivity —
@@ -3144,7 +3160,7 @@ export class ParametricExportComputer {
                 // untouched; only u-positions shift, landing the pinned full-height
                 // columns exactly on the creases. Identity ⇒ no-op. u is the angular
                 // coordinate on EVERY surface (walls + caps), so φ applies to all.
-                if (!creaseChoice.warp.isIdentity) {
+                if (!creaseChoice.warp.isIdentity && !outerPreConformed) {
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         asm.vertices[i] = applyUWarp(creaseChoice.warp, asm.vertices[i]);
                     }
@@ -3160,7 +3176,7 @@ export class ParametricExportComputer {
                 // (which the caps reference by index) do not move — watertightness,
                 // orientation, and T-junction-freeness are all preserved. Identity
                 // ⇒ no-op.
-                if (!creaseTChoice.warp.isIdentity) {
+                if (!creaseTChoice.warp.isIdentity && !outerPreConformed) {
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         const surfaceId = asm.vertices[i + 2];
                         if (surfaceId < 1.5) {
@@ -3192,7 +3208,7 @@ export class ParametricExportComputer {
                 // a rigid rotation about z — it preserves the cap's shape and every
                 // shared ring stays consistent, so watertightness/orientation hold.
                 // Identity ⇒ no-op.
-                if (!helixChoice.warp.isIdentity && creaseChoice.warp.isIdentity) {
+                if (!helixChoice.warp.isIdentity && creaseChoice.warp.isIdentity && !outerPreConformed) {
                     for (let i = 0; i < asm.vertices.length; i += 3) {
                         const surfaceId = asm.vertices[i + 2];
                         let tEval: number;

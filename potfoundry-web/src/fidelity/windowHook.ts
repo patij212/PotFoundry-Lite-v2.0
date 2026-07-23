@@ -150,6 +150,8 @@ export interface FidelityExportTruthDiagnosticOptions {
   projectorNZ?: number;
   /** Riser/tread radius-spread threshold (mm) for the known riser styles (default 0.1); see ProjectorMaxOptions. */
   treadRadiusSpreadMm?: number;
+  /** Half-band (mm) around each z-step-locus for the precise Bamboo tread classifier (default 0.01); see ProjectorMaxOptions. */
+  treadZBandMm?: number;
 }
 
 /**
@@ -964,14 +966,23 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         // Riser/tread styles carry near-vertical faces the single-valued rA cannot represent (it inflates them to
         // ~half-step). Tread-aware mode routes those out so `smoothMaxMm` is the honest tessellated-surface fidelity
         // (their treads are faithful vertical walls by construction, verified by vertexMax≈0).
+        // BambooSegments: the C0 asymVar steps sit at KNOWN heights z=k/nodeCount·H, so classify the riser/tread faces
+        // by an EXACT z-crossing test rather than the radius-spread heuristic (which over-excludes gentle bulge flanks
+        // AND under-excludes low-relief treads — measured to leak a ~half-step 0.048mm tread face into `smoothMaxMm`).
+        const bambooNode = styleId === 'BambooSegments'
+          ? Math.max(1, Math.floor(((style.opts as Record<string, number>)?.bsNodeCount ?? 5)))
+          : 0;
+        const bambooLoci: number[] = [];
+        if (bambooNode > 1) for (let k = 1; k < bambooNode; k++) bambooLoci.push((k / bambooNode) * style.H);
+        // Other riser styles (DS/ArtDeco/BasketWeave) keep the radius-spread heuristic until their loci are wired.
         const riser =
-          styleId === 'DragonScales' || styleId === 'BambooSegments' ||
-          styleId === 'ArtDeco' || styleId === 'BasketWeave';
+          styleId === 'DragonScales' || styleId === 'ArtDeco' || styleId === 'BasketWeave';
         fid = await measureProjectorMax(wall, rA, {
           H: style.H,
           tolMm: opts.tolMm ?? 0.01,
           nTheta: opts.projectorNTheta ?? 1024,
           nZ: opts.projectorNZ ?? 512,
+          ...(bambooLoci.length ? { treadZLociMm: bambooLoci, treadZBandMm: opts.treadZBandMm ?? 0.01 } : {}),
           ...(riser ? { treadRadiusSpreadMm: opts.treadRadiusSpreadMm ?? 0.1 } : {}),
         });
       }

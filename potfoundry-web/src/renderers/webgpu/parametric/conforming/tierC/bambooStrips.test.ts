@@ -89,6 +89,35 @@ describe('BAMBOO-SCHED buildBambooTSchedule — structured emitter invariants', 
     const fine = buildBambooTSchedule(H, rA, { sagTolMm: 0.002, nodeCount: NODE }).length;
     expect(fine).toBeGreaterThan(coarse);
   });
+
+  it('bounds EVERY body interval chord to tol at the DEFAULT sag (verify-and-bisect, no nodal stride-over) — E-2026-07-23-SAGLAW-MAXBOUND', () => {
+    // REGRESSION GUARD. The old walk read r''(z) nodally at the current row then stepped Δt=sqrt(8·tol/|r''|), STRIDING
+    // OVER the Gaussian node-bulge peak between rows: MAX busted ~32× at the export default (worst body chord 1.61mm at
+    // tol=0.05) while p99 stayed ~0.002mm — so a p99-scoped gate passed a mesh with 0.7mm cliffs. Verify-and-bisect
+    // shrinks each step until the TRUE chord honors tol, bounding MAX. This assertion FAILS on the old code, passes now.
+    const tol = 0.05; // 'high' profile epsPosMm — the sagTolMm=qMaxSag the emitter receives on a default export.
+    const rows = buildBambooTSchedule(H, rA, { sagTolMm: tol, nodeCount: NODE });
+    const rProfile = (z: number): number => rA(0, Math.max(0, Math.min(H, z)));
+    const chordSag = (tA: number, tB: number): number => {
+      const zA = tA * H, zB = tB * H, rAe = rProfile(zA), rBe = rProfile(zB);
+      let worst = 0;
+      for (let i = 1; i < 100; i++) {
+        const f = i / 100;
+        worst = Math.max(worst, Math.abs(rProfile(zA + (zB - zA) * f) - (rAe + (rBe - rAe) * f)));
+      }
+      return worst;
+    };
+    const crossesStep = (a: number, b: number): boolean => {
+      for (let k = 1; k < NODE; k++) { const e = k / NODE; if (a < e - 1e-6 && b > e + 1e-6) return true; }
+      return false;
+    };
+    let worst = 0;
+    for (let i = 0; i + 1 < rows.length; i++) {
+      if (crossesStep(rows[i], rows[i + 1])) continue; // the tread-pair C0 riser — bracketed by construction, not chorded
+      worst = Math.max(worst, chordSag(rows[i], rows[i + 1]));
+    }
+    expect(worst).toBeLessThanOrEqual(tol);
+  });
 });
 
 describe('BAMBOO-SCHED buildBambooRingStripWallGeometric — watertight by construction', () => {

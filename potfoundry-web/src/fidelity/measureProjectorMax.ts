@@ -52,6 +52,16 @@ export interface ProjectorMaxOptions {
    * verdict for them. Unset ⇒ every face counts in `chordMaxMm`/`maxMm` (single-valued behaviour, unchanged).
    */
   treadRadiusSpreadMm?: number;
+  /**
+   * PRECISE tread mode (preferred over `treadRadiusSpreadMm` for styles with KNOWN C0 step heights). A triangle whose
+   * z-span crosses (within ±`treadZBandMm`) any of these step-locus HEIGHTS (mm) is a riser/tread face. This is exact —
+   * the radius-spread heuristic both over-excludes gentle bulge flanks and under-excludes low-relief treads (a tread
+   * whose step is small at some θ). For BambooSegments the loci are `k/nodeCount · H` (k=1..nodeCount-1). Combined with
+   * `treadRadiusSpreadMm` by OR (either classifier flags a face). Unset ⇒ z-locus classification is off.
+   */
+  treadZLociMm?: number[];
+  /** Half-band (mm) around each z-locus for the crossing test. Default 0 (a face straddling the exact locus height). */
+  treadZBandMm?: number;
 }
 
 export interface ProjectorMaxReport {
@@ -110,6 +120,8 @@ export async function measureProjectorMax(
   let nonFinite = 0;
   const invBin = HIST_BUCKETS / HIST_MAX_MM;
   const treadThr = opts.treadRadiusSpreadMm;
+  const treadZLoci = opts.treadZLociMm;
+  const treadZBand = opts.treadZBandMm ?? 0;
 
   // `tread` chord samples (riser faces vs single-valued rA) are tracked separately and kept OUT of the histogram +
   // chordMax, so p99/smoothMax reflect the tessellated surface, not the inflated vertical treads.
@@ -150,15 +162,22 @@ export async function measureProjectorMax(
       const ax = V[3 * a], ay = V[3 * a + 1], az = V[3 * a + 2];
       const bx = V[3 * b], by = V[3 * b + 1], bz = V[3 * b + 2];
       const cx = V[3 * c], cy = V[3 * c + 1], cz = V[3 * c + 2];
-      // Tread classification: a large vertex-radius spread ⇒ a near-vertical riser face rA can't represent.
+      // Tread classification: a near-vertical riser face rA can't represent. Two classifiers (OR): (1) large
+      // vertex-radius spread (heuristic), (2) z-span crossing a KNOWN C0 step-locus height (exact — the preferred mode
+      // when the loci are known, e.g. Bamboo t=k/nodeCount·H; the spread heuristic both over- and under-excludes).
       let tread = false;
       if (treadThr !== undefined) {
         const ra = Math.hypot(ax, ay), rb = Math.hypot(bx, by), rc = Math.hypot(cx, cy);
-        if (Math.max(ra, rb, rc) - Math.min(ra, rb, rc) > treadThr) {
-          tread = true;
-          treadFaceCount++;
+        if (Math.max(ra, rb, rc) - Math.min(ra, rb, rc) > treadThr) tread = true;
+      }
+      if (!tread && treadZLoci !== undefined) {
+        const zlo = Math.min(az, bz, cz), zhi = Math.max(az, bz, cz);
+        for (let li = 0; li < treadZLoci.length; li++) {
+          const L = treadZLoci[li];
+          if (zlo <= L + treadZBand && zhi >= L - treadZBand) { tread = true; break; }
         }
       }
+      if (tread) treadFaceCount++;
       record(proj.project((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3).dist, true, tread);
       record(proj.project((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2).dist, true, tread);
       record(proj.project((bx + cx) / 2, (by + cy) / 2, (bz + cz) / 2).dist, true, tread);
@@ -183,7 +202,7 @@ export async function measureProjectorMax(
   const maxMm = Math.max(smoothMaxMm, treadChordMax); // FULL max — equals smoothMaxMm when not tread-aware (treadChordMax=0)
   // Certify on the HONEST max: smoothMaxMm in tread-aware mode (the treads are faithful vertical walls by construction,
   // so their rA-inflation is not a fidelity failure), else the full maxMm (single-valued styles).
-  const certMax = treadThr !== undefined ? smoothMaxMm : maxMm;
+  const certMax = (treadThr !== undefined || treadZLoci !== undefined) ? smoothMaxMm : maxMm;
   return {
     maxMm,
     vertexMaxMm: vertexMax,

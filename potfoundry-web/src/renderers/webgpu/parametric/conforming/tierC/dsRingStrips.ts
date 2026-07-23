@@ -293,8 +293,8 @@ export interface BambooTScheduleOpts {
   flankGrade?: number;
 }
 
-/** Central-difference step (mm) for the sag-law r''(z). */
-const BAMBOO_FD_STEP_MM = 0.02;
+/** Interior sample count for the verify-and-bisect body chord check (per candidate interval, ≤hMax≈0.12mm wide). */
+const BAMBOO_CHORD_SAMPLES = 32;
 
 /**
  * Build the BambooSegments t-station schedule: a double-valued tread PAIR straddling every interior segment boundary
@@ -326,17 +326,38 @@ export function buildBambooTSchedule(
   base.add(0);
   base.add(1);
   // (b) SAG-LAW body rows on the θ=0 profile (the Gaussian node-bulge curvature is θ-independent; asymVar/striation are
-  //     piecewise-flat/small in z). Walk z, place the next row at Δt = sqrt(8·tol/|r''(z)|)/H clamped to [hMin,hMax].
+  //     piecewise-flat/small in z). E-2026-07-23-SAGLAW-MAXBOUND: the old walk read r''(z) NODALLY at the current row,
+  //     then stepped Δt=sqrt(8·tol/|r''|); a node-bulge peak BETWEEN rows was strided over — busting whole-mesh MAX by
+  //     ~14-32× at the default tol while p99 stayed tiny (MEASURED: tol 0.05 → worst body chord 1.61mm 1D / smoothMax
+  //     0.72mm on the mesh; research/bridge/_pfCloseBambooSagLaw1D.test.ts + _pfCloseBambooSag.test.ts). Replaced by
+  //     VERIFY-AND-BISECT: start at hMax, halve the step until the TRUE chord-sag of rProfile over the candidate
+  //     interval honors tol — bounding MAX (not just p99) at the requested tol. The smooth body stays hMax-clamped (its
+  //     0.12mm chord is already ≪tol), so this is ~row-count-neutral; only the bulge neighbourhoods refine. Walked
+  //     WITHIN each segment bounded by the interior C0 loci t=k/nodeCount so a body interval never chords ACROSS a step
+  //     (the tread pair brackets those, handled above) — the walk that busts a step would bisect to hMin forever.
   const rProfile = (z: number): number => rA(0, Math.max(0, Math.min(H, z)));
-  const secondDiff = (z: number): number =>
-    Math.abs((rProfile(z + BAMBOO_FD_STEP_MM) - 2 * rProfile(z) + rProfile(z - BAMBOO_FD_STEP_MM)) / (BAMBOO_FD_STEP_MM * BAMBOO_FD_STEP_MM));
-  let t = 0;
-  while (t < 1) {
-    const k = secondDiff(t * H);
-    let stepT = k > 1e-9 ? Math.sqrt((8 * tol) / k) / H : hMax;
-    stepT = Math.max(hMin, Math.min(hMax, stepT));
-    t += stepT;
-    if (t < 1) base.add(t);
+  const chordSagProfile = (zA: number, zB: number): number => {
+    const rAe = rProfile(zA), rBe = rProfile(zB);
+    let worst = 0;
+    for (let i = 1; i < BAMBOO_CHORD_SAMPLES; i++) {
+      const f = i / BAMBOO_CHORD_SAMPLES;
+      worst = Math.max(worst, Math.abs(rProfile(zA + (zB - zA) * f) - (rAe + (rBe - rAe) * f)));
+    }
+    return worst;
+  };
+  const bounds = [0, 1];
+  for (let k = 1; k < nodeCount; k++) bounds.push(k / nodeCount);
+  bounds.sort((a, b) => a - b);
+  for (let s = 0; s + 1 < bounds.length; s++) {
+    const segLo = bounds[s], segHi = bounds[s + 1];
+    let t = segLo;
+    while (t < segHi - RING_EPS) {
+      let step = Math.min(hMax, segHi - t);
+      while (step > hMin && chordSagProfile(t * H, (t + step) * H) > tol) step *= 0.5;
+      step = Math.max(hMin, Math.min(step, segHi - t));
+      t += step;
+      if (t < segHi - RING_EPS) base.add(t);
+    }
   }
   // sort + dedup within a tight epsilon (the tread pair 2·treadHalf apart survives; float dups collapse).
   const rows = [...base].filter((x) => x >= 0 && x <= 1).sort((a, b) => a - b);
