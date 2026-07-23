@@ -109,6 +109,26 @@ function makeClosedTorus(nu: number, nv: number): MeshData {
   return { vertices, indices, vertexCount: nu * nv, triangleCount: nu * nv * 2 };
 }
 
+/** A closed tetrahedron with vertex 0 duplicated as vertex 4 offset by `gap` mm in x, and one of
+ *  vertex-0's faces reassigned to the duplicate — a seam that quantization-welds shut at a loose
+ *  tolerance (both land in the same bin) but stays a real crack at a tight one. */
+function makeSeamGapTetra(gap: number): MeshData {
+  const vertices = new Float32Array([
+    0, 0, 0,   // 0
+    10, 0, 0,  // 1
+    5, 10, 0,  // 2
+    5, 4, 10,  // 3
+    gap, 0, 0, // 4 = duplicate of vertex 0, offset +gap in x
+  ]);
+  const indices = new Uint32Array([
+    0, 1, 2,
+    0, 1, 3,
+    4, 2, 3, // was (0,2,3) — now references the offset duplicate → seam at edges (0,2)/(0,3)
+    1, 2, 3,
+  ]);
+  return { vertices, indices, vertexCount: 5, triangleCount: 4 };
+}
+
 describe('validateMeshForExport', () => {
   it('accepts a closed oriented cube and estimates STL size exactly', () => {
     const mesh = makeClosedCube();
@@ -255,6 +275,20 @@ describe('validateMeshForExport', () => {
     expect(report.nonManifoldEdges).toBe(0);
     expect(report.orientationMismatches).toBe(0);
     expect(report.degenerateTriangles).toBe(0);
+  });
+
+  it('catches a sub-mm seam crack at the 1e-4 export standard, which is the default [R5]', () => {
+    const mesh = makeSeamGapTetra(3e-4); // a 0.0003mm crack: 3x the 1e-4 bar, below the old 1e-3 one
+    const opts = { format: 'stl' as const, estimatedSizeBytes: 1024 };
+    const loose = validateMeshForExport(mesh, { ...opts, topologyWeldToleranceMm: 1e-3 });
+    const tight = validateMeshForExport(mesh, { ...opts, topologyWeldToleranceMm: 1e-4 });
+    expect(loose.boundaryEdges).toBe(0);            // 1e-3 welds the crack shut → looks closed
+    expect(tight.boundaryEdges).toBeGreaterThan(0); // 1e-4 keeps the real crack visible
+    // The DEFAULT must be the precise 1e-4 standard the export PIPELINE already certifies at
+    // (ParametricExportComputer → topologyMetric(mesh, WELD_TOL_MM)), not the looser 1e-3 that
+    // silently welds sub-mm cracks shut on the final download gate.
+    const dflt = validateMeshForExport(mesh, opts);
+    expect(dflt.boundaryEdges).toBe(tight.boundaryEdges);
   });
 });
 

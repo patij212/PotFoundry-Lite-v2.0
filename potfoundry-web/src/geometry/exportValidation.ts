@@ -7,6 +7,7 @@
  */
 
 import type { MeshData } from './types';
+import { WELD_TOL_MM } from '../fidelity/types';
 
 /** Supported mesh export formats for size estimation. */
 export type MeshExportFormat = 'stl' | 'obj' | '3mf';
@@ -26,7 +27,11 @@ const THREE_MF_TRIANGLE_XML_BYTES = 35;
 const THREE_MF_COMPRESSION_RATIO = 0.4;
 const DEFAULT_MIN_TRIANGLE_AREA_MM2 = 1e-12;
 const DEFAULT_MIN_EXTENT_MM = 1e-9;
-const DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM = 0.001;
+/** Watertight weld tolerance for the download gate — pinned to the fidelity/export-pipeline
+ *  standard {@link WELD_TOL_MM} (1e-4) so the FINAL gate is exactly as strict as the
+ *  `topologyMetric(mesh, WELD_TOL_MM)` check `ParametricExportComputer` already certifies meshes
+ *  at. The previous looser 1e-3 silently welded sub-mm cracks shut on the download path. [R5] */
+const DEFAULT_TOPOLOGY_WELD_TOLERANCE_MM = WELD_TOL_MM;
 const EXCESSIVE_SIZE_WARNING_RATIO = 0.75;
 
 /** Options for export validation. */
