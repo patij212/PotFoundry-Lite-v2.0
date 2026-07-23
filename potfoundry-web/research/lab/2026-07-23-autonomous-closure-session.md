@@ -73,5 +73,10 @@ unbuilt gaps per the campaign, but only if the audit shows nothing more urgent, 
   `buildBambooDispatchWall`** — verified lint/typecheck/byte-identical + re-probed through the live pipeline (mesh now
   produced). LowPoly's facet-align needs mult-of-24 (never pow2) ⇒ deeper fix (inner-wall pow2 + rim reconciliation);
   DEFERRED (LowPoly OFF already holds 0.001).
+- **BambooSegments — GENUINELY CLOSES (confirmed).** After the pow2 fix, the smooth complement (tread faces at t=k/5
+  excluded — they are faithful vertical walls) measures **0.00448mm ≤ 0.01** (vtx 0.00001, p99 0.0024); the full-mesh
+  0.86 was purely tread inflation. So Bamboo ON = watertight + gate-pass + ≤0.01 fidelity ⇒ a REAL production closure.
+  This also validates the tread-inflation interpretation and implies DragonScales (same mechanism) very likely closes
+  too (its 2D scale features need a DS-specific smooth-complement / Φ pass to confirm).
 - [next / follow-ups] (a) Φ re-measurement of DS/Bamboo true MAX; (b) LowPoly ON deeper wiring fix; (c) the enablement
   decision for SpiralRidges (the one smooth style whose emitter genuinely earns its keep).

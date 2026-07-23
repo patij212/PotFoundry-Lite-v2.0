@@ -27,6 +27,20 @@ _Generated from `e2e/baselines/production-export-truth-pass1.json` — measured 
 | DragonScales | 0.82032·wt·9.41M·ok | 0.82304·wt·18.97M·ok·T | WIRED | **CLOSED-refuted** (gap 0.82304mm) |
 | BambooSegments | 0.91391·wt·4.97M·ok | ERR page.evaluate: Error: Fidelity: under-te | ? | **ON-ERROR** (page.evaluate: Error: Fidelity: under-test generateMesh retu) |
 
+## Post-audit corrections (2026-07-23 pm)
+
+- **BambooSegments — null FIXED and fidelity CONFIRMED (genuine closure).** The ON `generateMesh` null was the pow2-rim
+  bug (`buildConformingWall` needs pow2 `nRing`); fixed by snapping the emitter nU to a power of two (commit `8d7cdd77`).
+  Re-probed through the live pipeline: ON now builds a **watertight** mesh (nRing=2048, boundary=0, download-gate pass).
+  The full-mesh `maxMm` (0.86) is tread-wall inflation; the **SMOOTH complement (tread faces excluded) = 0.00448 mm**
+  (vtx 0.00001, p99 0.0024), so Bamboo **TRULY closes ≤0.01** — the treads are faithful vertical walls by construction.
+  ⇒ **BambooSegments should be re-classified CLOSED-holds in production.**
+- **DragonScales — very likely closes; MAX still to confirm.** DS ON 0.82 is the SAME tread-inflation mechanism as
+  Bamboo (both rA-based rulers agree, vtx≈0). By analogy DS very likely closes on its smooth complement, but DS has 2D
+  scale features (not simple t-bands), so it needs a DS-specific smooth-complement or the parametric-Φ projector to
+  confirm the true MAX. NOT yet verified — do not claim DS closed at MAX until measured with a tread-aware ruler.
+- **LowPolyFacet — ON still null** (facet-align nU=864 non-pow2, can't be pow2). Deferred; OFF already holds 0.00102.
+
 ## Summary
 
 - Styles measured: **9/9**.
