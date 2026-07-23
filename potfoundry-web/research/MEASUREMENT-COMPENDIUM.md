@@ -346,7 +346,7 @@ in `docs/superpowers/specs/2026-07-22-unified-ruler-design.md`.)
 2. p99 **0.05mm-quantized** in `wallDeviation` (`:584`) and `wallChordError` (`:1711`).
 3. `buildRadialReference` **grid-bound + dilation-fabricated** (`:44`); the persisted `FidelityMetrics` row still uses it.
 4. `NEAR_VERTICAL_COS=0.35` routes tip cones onto the **laterally-blind** nearest path and drops conical walls (`:237`).
-5. Perpendicular `coarseTrigger=0.1` / `preFilterMm=0.04` **calibrated to 0.1mm**, wrong for 0.01mm; centroid-only pre-filter understates MAX (`analyticSurfaceGate.ts:263,379`).
+5. Perpendicular `coarseTrigger=0.1` / `preFilterMm=0.04` **calibrated to 0.1mm**, wrong for 0.01mm (R3, still open — `analyticSurfaceGate.ts:263,393`). ~~centroid-only pre-filter understates MAX~~ **FIXED — R4 (`15e8b16f`):** the pre-filter now bounds the whole facet (max chordBound over the dense samples), so an off-centroid spike can't hide behind a small centroid.
 6. GN **wrong-well ~7×** on lattices (`analyticSurfaceGate.ts:264`, coarse search azimuth-local).
 7. NaN chord dev → `rmsDevMm: null` (`analyticSurfaceGate.ts:478,505`).
 8. `exportValidation` Map-cap crash on the **download path** (`:238`); watertight tol `1e-3` vs `1e-4` + false `types.ts:68` comment.
