@@ -26,6 +26,7 @@ import {
   buildMeshUt, buildLocator, buildFeatureTruth, featureLineChord, featureLineChord3D,
   crestValleyRetention, featureAdjacentSlivers, type FeatureTruth,
 } from './featureLocalizedFidelity';
+import { perFaceTrue3DSag } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -116,6 +117,9 @@ interface Row {
   gateKept: number; gateTotal: number;
   crestUnderWorstMm: number; crestUnderMeanMm: number;
   fl3d_p99: number; fl3d_max: number; fl3d_rms: number; radOvr: number;
+  // R8: non-locus WHOLE-MESH true-3D MAX (perFaceTrue3DSag) — sees scale-tip cones that the
+  // loci-only fl3d_* channel is structurally blind to.
+  wholeMesh3d_max: number; wholeMesh3d_pctOver01: number;
   featAdj_pct20: number; wholeMesh_pct20: number; sliverRatio: number;
   nonMan: number; bnd: number; flip: number;
   constraint?: ConstraintRecoveryStats;
@@ -131,11 +135,16 @@ function measure(style: StyleId, mode: string, ut: number[], indices: Uint32Arra
   const cr = crestValleyRetention(truth, locator, rA, DIMS.H, stepMm);
   const sl = featureAdjacentSlivers(truth, locator, meshUt, stepMm);
   const man = auditManifold(ut, indices, rA, DIMS.H);
+  // R8: non-locus WHOLE-MESH true-3D MAX. featureLineChord3D samples ONLY along feature loci, so a
+  // smooth under-tessellated region — a scale-tip cone with no ridge/valley — is invisible to it.
+  // perFaceTrue3DSag scans EVERY face, so the scorecard MAX can no longer hide a non-locus spike.
+  const face = perFaceTrue3DSag(ut, indices, rA, DIMS.H);
   const cls = ACCEPT_9.has(String(style)) ? 'ACCEPT' : RISERS_4.has(String(style)) ? 'riser' : 'DEFECT';
   return {
     style: String(style), cls, mode, tris: indices.length / 3, runtimeS, gateKept, gateTotal,
     crestUnderWorstMm: cr.crestUnderWorstMm, crestUnderMeanMm: cr.crestUnderMeanMm,
     fl3d_p99: fl3.p99Mm, fl3d_max: fl3.maxMm, fl3d_rms: fl3.rmsMm, radOvr: fl3.radialOverstatementRatio,
+    wholeMesh3d_max: face.worstMm, wholeMesh3d_pctOver01: face.fracOver(0.01) * 100,
     featAdj_pct20: sl.featureAdj_pct20, wholeMesh_pct20: sl.wholeMesh_pct20, sliverRatio: sl.sliverRatio,
     nonMan: man.nonManifoldEdges, bnd: man.boundaryEdges, flip: man.flippedTris, constraint,
   };
@@ -146,7 +155,8 @@ function printRow(r: Row): void {
   // eslint-disable-next-line no-console
   console.log(
     `${r.style.padEnd(20)} ${r.cls.padEnd(6)} ${r.mode.padEnd(9)} tris=${String(r.tris).padStart(7)} ` +
-    `gate=${r.gateKept}/${r.gateTotal} 3dP99=${r.fl3d_p99.toFixed(4)} 3dMax=${r.fl3d_max.toFixed(3)} radOvr=${r.radOvr.toFixed(1)}x ` +
+    `gate=${r.gateKept}/${r.gateTotal} 3dP99=${r.fl3d_p99.toFixed(4)} 3dMax=${r.fl3d_max.toFixed(3)} ` +
+    `wmMax=${r.wholeMesh3d_max.toFixed(3)}(${r.wholeMesh3d_pctOver01.toFixed(1)}%>tol) radOvr=${r.radOvr.toFixed(1)}x ` +
     `crestU=${r.crestUnderWorstMm.toFixed(3)}/${r.crestUnderMeanMm.toFixed(3)} ` +
     `adj=${r.featAdj_pct20.toFixed(1)}/${r.wholeMesh_pct20.toFixed(1)}(x${r.sliverRatio.toFixed(1)}) ` +
     `nonMan=${r.nonMan} bnd=${r.bnd} flip=${r.flip}${c} ${r.runtimeS.toFixed(0)}s`,
