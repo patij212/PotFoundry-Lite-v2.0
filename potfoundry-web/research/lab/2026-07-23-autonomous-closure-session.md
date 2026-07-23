@@ -82,5 +82,37 @@ unbuilt gaps per the campaign, but only if the audit shows nothing more urgent, 
   inflation, but a real **scale-tip cone-apex** residual (~0.096, density-invariant, cone-fan can't reach ≤0.01)
   remains. So DS ≠ Bamboo — DS's closure was p99-scoped, MAX is an OPEN frontier ([[project_ds_rim_bug]]). Bamboo has
   only tread verticals (closes); DS additionally has the scale-tip cones (open).
-- [next / follow-ups] (a) Φ re-measurement of DS/Bamboo true MAX; (b) LowPoly ON deeper wiring fix; (c) the enablement
-  decision for SpiralRidges (the one smooth style whose emitter genuinely earns its keep).
+## RESOLUTION — all identified issues handled (2026-07-23 pm, single-agent)
+
+1. **BambooSegments ON null → FIXED** (`8d7cdd77`). Root cause: emitter emergent rim = nU = 1408 (non-pow2), but the
+   assembly adopts it as the inner-wall `nRing` which `buildConformingWall` requires pow2. Fix: snap Bamboo nU up to a
+   power of two (default 2048). Re-probed live: watertight mesh, and the SMOOTH complement closes 0.00448mm ⇒ a genuine
+   production closure.
+2. **LowPolyFacet ON null → FIXED** (`39d98686`). Same pow2-rim class, but a facet-aligned nU MUST be a multiple of 24
+   (never pow2) and the assembly caps pair rings index-for-index (no mismatched-ring path). A pow2 rim would straddle the
+   facets (worse than OFF). Fix: empty `FACET_GRID_ALIGN_NU` ⇒ LowPolyFacet routes through OFF, which already
+   feature-aligns and holds 0.00102mm. Re-probed live: watertight 0.00102mm mesh instead of null. Enabling `__pfSmoothGrid`
+   is now safe for it. (Deep option, if ever wanted: mismatched-ring cap reconciliation — not worth it, OFF holds.)
+3. **DragonScales scale-tip apex → CLASSIFIED (not a mesher bug).** Geometric smooth complement across density: MAX
+   0.102 / 0.0965 / 0.0984 at nU 512/1024/2048 = **DENSITY-INVARIANT** (while p99 falls 0.031→0.0024). The scale-tip cone
+   apex is a curvature singularity flat facets cannot close — a **finite-area-needle concession**, the same class that
+   already gates the master flag flip (Gothic/GeoStar). DS is p99-CAD-grade with a print-safe apex needle; closing MAX
+   needs curved elements (roadmap-reserved) or the concession — a product call, not a bug.
+4. **Ruler riser blind-spot → FIXED** (`cd37bbcd`). `measureProjectorMax` now has a tread-aware mode
+   (`treadRadiusSpreadMm`): near-vertical riser faces are routed to `treadChordMaxMm` and OUT of the smooth verdict, so
+   `smoothMaxMm` is the honest tessellated-surface MAX (certifies on it). Wired into `diagnoseExportTruth` for
+   DS/Bamboo/ArtDeco/BasketWeave ⇒ future audit runs report the true smooth fidelity, not the inflated whole-mesh number.
+
+## SpiralRidges / smooth-grid ENABLEMENT — recipe (a product decision, NOT auto-flipped)
+
+SpiralRidges is the ONE smooth style whose emitter genuinely earns its keep (OFF 0.047 ✗ → ON 0.003 ✓, verified
+working in-pipeline). To ship it (and the smooth group) in production:
+- **Flags:** default-ON `__pfPerfectMesher` + `__pfSmoothGrid` (+ `__pfBamboo` to also ship Bamboo's genuine closure).
+  Leave `__pfDsConeFan`/`__pfRegionLayer` OFF (DS's apex needle is unresolved). LowPolyFacet now safely falls to OFF.
+- **The one blocker to decouple:** flipping `__pfPerfectMesher` ALSO routes the count-unstable styles (Gothic/GeoStar)
+  through `buildTierCOuterWall`'s refine — the finite-needle sliver concession + the VALIDATION-9 rebaseline. Options:
+  (a) add a separate `__pfTierCRefine` gate so the emitter adoption ships without the Gothic/GeoStar refine (they stay
+  byte-identical OFF); or (b) accept the concession and ship the C2-validated Gothic/GeoStar true-0.01 too.
+- **The real tradeoff (why this is Patryk's call):** the smooth-grid emitter is ~2× the triangles (SpiralRidges ON
+  11.6M vs OFF 5.68M; a ~550MB STL) for the fidelity gain. A curvature-graded grid would close far cheaper (a documented
+  follow-up lever). Fidelity-vs-export-size + a permanent production-default change = a product decision.
