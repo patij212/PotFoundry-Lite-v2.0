@@ -555,6 +555,12 @@ export const SMOOTH_GRID_STYLES: ReadonlySet<StyleId> = new Set<StyleId>([
   'SpiralRidges',
   'SuperformulaBlossom',
   'WaveInterference',
+  // DENSITY-CLOSABLE relief (E-2026-07-23-SMOOTHGRID-DENSITY-GUARANTEE): not C∞, but single-valued rA whose whole-mesh
+  // true-3D chord the verify-bump density engine closes ≤0.01 with flat facets alone — so the structured grid handles
+  // them too (measured MAX: HexagonalHive 0.0048@5.5M, RippleInterference 0.0073@3.6M; measureProjectorMax 2048/1024).
+  // Their general-curve extractors are for the feature-resolution metric only; the grid needs no crease insertion here.
+  'HexagonalHive',
+  'RippleInterference',
 ]);
 
 /** True iff `styleId` is a smooth-grid style (empty/unknown ⇒ false — safe fallback to the non-smooth path). */

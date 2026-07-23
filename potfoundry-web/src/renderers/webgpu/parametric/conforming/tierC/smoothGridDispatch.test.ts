@@ -29,10 +29,12 @@ describe('smooth-grid production dispatch wiring', () => {
     expect(isSmoothGridEnabled()).toBe(false);
   });
 
-  it('SMOOTH_GRID_STYLES = the 6 C∞ smooth styles, DISJOINT from region + count-unstable allow-lists', () => {
+  it('SMOOTH_GRID_STYLES = the C∞ smooth styles + density-closable relief, DISJOINT from region + count-unstable', () => {
     expect([...SMOOTH_GRID_STYLES].sort()).toEqual([
       'FourierBloom',
       'HarmonicRipple',
+      'HexagonalHive',
+      'RippleInterference',
       'SpiralRidges',
       'SuperellipseMorph',
       'SuperformulaBlossom',
