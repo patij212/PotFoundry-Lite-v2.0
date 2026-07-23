@@ -19,19 +19,19 @@ function cylinderMesh(nCols: number, r: number, H: number): { vertices: Float32A
 }
 
 describe('measureProjectorMax', () => {
-  it('reads ≈0 vertex error for a mesh exactly on the analytic surface', () => {
+  it('reads ≈0 vertex error for a mesh exactly on the analytic surface', async () => {
     const H = 120;
-    const r = measureProjectorMax(cylinderMesh(64, 50, H), () => 50, { H, tolMm: 0.01, nTheta: 512, nZ: 64 });
+    const r = await measureProjectorMax(cylinderMesh(64, 50, H), () => 50, { H, tolMm: 0.01, nTheta: 512, nZ: 64 });
     expect(r.nonFiniteCount).toBe(0);
     expect(r.vertexMaxMm).toBeLessThan(0.001); // vertices sit ON the cylinder
     expect(Number.isFinite(r.chordMaxMm)).toBe(true);
     expect(Number.isFinite(r.p99Mm)).toBe(true);
   });
 
-  it('reports the radial offset when the mesh sits off the analytic surface (and fails certification)', () => {
+  it('reports the radial offset when the mesh sits off the analytic surface (and fails certification)', async () => {
     const H = 120;
     // radius 50.5 vs rA 50 ⇒ every vertex is ~0.5mm off the true surface.
-    const r = measureProjectorMax(cylinderMesh(128, 50.5, H), () => 50, { H, tolMm: 0.01, nTheta: 512, nZ: 64 });
+    const r = await measureProjectorMax(cylinderMesh(128, 50.5, H), () => 50, { H, tolMm: 0.01, nTheta: 512, nZ: 64 });
     expect(r.vertexMaxMm).toBeGreaterThan(0.45);
     expect(r.vertexMaxMm).toBeLessThan(0.55);
     expect(r.maxMm).toBeGreaterThanOrEqual(r.vertexMaxMm);

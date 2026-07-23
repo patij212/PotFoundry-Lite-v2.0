@@ -950,7 +950,7 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         const outerMask = new Uint8Array(nV);
         for (let i = 0; i < nV; i++) if (ut[3 * i + 2] === 0) outerMask[i] = 1;
         const wall = extractOuterWallSubmesh(mesh.vertices, mesh.indices, outerMask);
-        fid = measureProjectorMax(wall, rA, {
+        fid = await measureProjectorMax(wall, rA, {
           H: style.H,
           tolMm: opts.tolMm ?? 0.01,
           nTheta: opts.projectorNTheta ?? 1024,

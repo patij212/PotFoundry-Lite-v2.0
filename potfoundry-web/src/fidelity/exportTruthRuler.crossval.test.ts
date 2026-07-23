@@ -29,9 +29,9 @@ import {
 const DIMS = { H: 120, Rb: 45, Rt: 70, expn: 1.1 };
 const PROJ = { nTheta: 1024, nZ: 384, maxIter: 8 };
 
-function m(tag: string, wall: DsRingStripWall, rA: AnalyticRadiusFn): ProjectorMaxReport {
+async function m(tag: string, wall: DsRingStripWall, rA: AnalyticRadiusFn): Promise<ProjectorMaxReport> {
   const t0 = Date.now();
-  const r = measureProjectorMax(
+  const r = await measureProjectorMax(
     { vertices: wall.vertices, indices: wall.indices },
     rA,
     { H: DIMS.H, tolMm: 0.01, ...PROJ },
@@ -45,10 +45,10 @@ function m(tag: string, wall: DsRingStripWall, rA: AnalyticRadiusFn): ProjectorM
 }
 
 describe('exportTruth ruler cross-validation (measureProjectorMax on the multi-valued styles)', () => {
-  it('DragonScales ring-strip: on-surface vertices + density-responsive chord (no rA artifact)', () => {
+  it('DragonScales ring-strip: on-surface vertices + density-responsive chord (no rA artifact)', async () => {
     const rA = buildAnalyticRadiusFn('DragonScales', {}, DIMS);
-    const coarse = m('DS/nU64', buildDsRingStripWallGeometric(rA, DIMS.H, 64), rA);
-    const fine = m('DS/nU128', buildDsRingStripWallGeometric(rA, DIMS.H, 128), rA);
+    const coarse = await m('DS/nU64', buildDsRingStripWallGeometric(rA, DIMS.H, 64), rA);
+    const fine = await m('DS/nU128', buildDsRingStripWallGeometric(rA, DIMS.H, 128), rA);
     expect(coarse.nonFiniteCount).toBe(0);
     expect(fine.nonFiniteCount).toBe(0);
     expect(fine.vertexMaxMm).toBeLessThan(0.01); // vertices ON the analytic surface (no artifact)
@@ -56,10 +56,10 @@ describe('exportTruth ruler cross-validation (measureProjectorMax on the multi-v
     expect(fine.chordMaxMm).toBeLessThan(coarse.chordMaxMm); // real tessellation error → shrinks with density
   }, 180000);
 
-  it('BambooSegments ring-strip: on-surface vertices + density-responsive chord (no rA artifact)', () => {
+  it('BambooSegments ring-strip: on-surface vertices + density-responsive chord (no rA artifact)', async () => {
     const rA = buildAnalyticRadiusFn('BambooSegments', {}, DIMS);
-    const coarse = m('BB/nU64', buildBambooRingStripWallGeometric(rA, DIMS.H, 64, { sagTolMm: 0.004, nodeCount: 5 }), rA);
-    const fine = m('BB/nU128', buildBambooRingStripWallGeometric(rA, DIMS.H, 128, { sagTolMm: 0.004, nodeCount: 5 }), rA);
+    const coarse = await m('BB/nU64', buildBambooRingStripWallGeometric(rA, DIMS.H, 64, { sagTolMm: 0.004, nodeCount: 5 }), rA);
+    const fine = await m('BB/nU128', buildBambooRingStripWallGeometric(rA, DIMS.H, 128, { sagTolMm: 0.004, nodeCount: 5 }), rA);
     expect(coarse.nonFiniteCount).toBe(0);
     expect(fine.nonFiniteCount).toBe(0);
     expect(fine.vertexMaxMm).toBeLessThan(0.01);
