@@ -103,8 +103,16 @@ heights `z = k/nodeCount·H`, a precise **z-crossing** classifier is exact: flag
 (±band). FIX: `measureProjectorMax({treadZLociMm, treadZBandMm})` (`measureProjectorMax.ts`) + wired for Bamboo in
 `diagnoseExportTruth` (loci from `bsNodeCount`). Result: **81,920** tread faces flagged (15× fewer, exactly the
 step-crossing risers), honest `smoothMaxMm = 0.00265`. Additive/opt-in (radius-spread path byte-identical; 3/3
-`measureProjectorMax.test.ts` pass). Other riser styles (DS/ArtDeco/BasketWeave) keep the heuristic until their loci
-are wired — the documented follow-up.
+`measureProjectorMax.test.ts` pass). **DragonScales is now wired too** (loci `k/ds_scale_rows·H`), correct by
+construction (same classifier, verified on Bamboo) — explicit live-GPU DS number pending (the DS cone-fan is ~45min).
+ArtDeco/BasketWeave keep the heuristic until their loci are wired.
+
+**Key-convention bug in the FIRST ruler wiring (fixed):** the fidelity hook's `style.opts` is keyed by the REGISTRY
+snake_case names, while the export `StyleOptions` is camelCase — my first pass read `bsNodeCount` (camel) off a
+snake object, so a NON-default node count silently fell back to the default 5. Now reads both (`bs_node_count ??
+bsNodeCount`). The EXPORT pipeline itself is unaffected (its `params.styleOpts` merges wireOptions snake + cpuOptions
+camel via `materializeSharedStyleOptions`, so both the emitter and the GPU payload resolve the count) — confirmed
+shape-agnostic for node count.
 
 ## Guaranteeing the 0.01 standard on EVERY profile (emitter-CAD floor)
 
