@@ -51,16 +51,20 @@ describe('facet-aligned smooth-grid density (Blocker B)', () => {
     expect(nU % 24).toBe(0);
   });
 
-  it('FACET_GRID_ALIGN_NU maps LowPolyFacet→24 and nothing else; DISJOINT from the C∞ smooth set', () => {
-    expect(facetGridAlignNU('LowPolyFacet')).toBe(24);
+  it('FACET_GRID_ALIGN_NU is EMPTY — LowPolyFacet routed to OFF (mult-24 rim cannot be a pow2 nRing)', () => {
+    // The facet-align MECHANISM (deriveSmoothGridDensity alignNU) is retained + tested above, but NO style uses it:
+    // a facet-aligned nU is a multiple of 24 (never a power of two), yet the assembly adopts the emitter rim as the
+    // inner wall's nRing which buildConformingWall requires to be a power of two ⇒ generateMesh null (2026-07-23 audit).
+    // LowPolyFacet OFF already holds 0.00102mm, so it routes through the normal (OFF) path instead.
+    expect([...FACET_GRID_ALIGN_NU.keys()]).toEqual([]);
+    expect(facetGridAlignNU('LowPolyFacet')).toBeUndefined();
     expect(facetGridAlignNU('HarmonicRipple')).toBeUndefined();
     expect(facetGridAlignNU(undefined)).toBeUndefined();
-    expect([...FACET_GRID_ALIGN_NU.keys()]).toEqual(['LowPolyFacet']);
-    // LowPolyFacet is a FACET style, NOT one of the 6 C∞ smooth styles (keeps SMOOTH_GRID_STYLES = exactly 6).
+    // LowPolyFacet is NOT a smooth-grid style AND (now) NOT a structured-grid style ⇒ falls through to the OFF path.
     expect(isSmoothGridStyle('LowPolyFacet')).toBe(false);
     expect(SMOOTH_GRID_STYLES.has('LowPolyFacet')).toBe(false);
-    // …but it IS a structured-grid style (routed through the same emitter).
-    expect(isStructuredGridStyle('LowPolyFacet')).toBe(true);
+    expect(isStructuredGridStyle('LowPolyFacet')).toBe(false);
+    // The 6 C∞ smooth styles are unaffected (still structured-grid).
     expect(isStructuredGridStyle('HarmonicRipple')).toBe(true);
     expect(isStructuredGridStyle('DragonScales')).toBe(false);
     expect(isStructuredGridStyle(undefined)).toBe(false);
@@ -71,14 +75,14 @@ describe('facet-aligned smooth-grid density (Blocker B)', () => {
     expect(buildSmoothGridDispatchWall({ analyticRA: lowPolyRA, H, tolMm: 0.01 }, 'LowPolyFacet')).toBeUndefined();
   });
 
-  it('dispatch flag-ON: LowPolyFacet emits a facet-aligned grid (nU = multiple of 24, watertight-by-construction)', () => {
+  it('dispatch flag-ON: LowPolyFacet returns undefined (routed to OFF, not the emitter — the pow2-rim null fix)', () => {
     setSmoothGrid(true);
-    const wall = buildSmoothGridDispatchWall({ analyticRA: lowPolyRA, H, tolMm: 0.01 }, 'LowPolyFacet');
-    expect(wall).toBeDefined();
-    const nU = wall!.bottomRing.length;
-    expect(nU % 24).toBe(0); // facet-aligned rims
-    expect(wall!.topRing.length).toBe(nU);
-    // Domain packing: (u,t,0) with z=0 on every grid vertex (single-valued lift downstream).
-    for (let i = 0; i < wall!.gridVertexCount; i++) expect(wall!.vertices[3 * i + 2]).toBe(0);
+    // LowPolyFacet is no longer a structured-grid style ⇒ the smooth-grid dispatch declines it, so the export falls to
+    // the OFF conforming wall (feature-aligned, 0.001) instead of emitting a non-pow2 rim that null-s the assembly.
+    expect(buildSmoothGridDispatchWall({ analyticRA: lowPolyRA, H, tolMm: 0.01 }, 'LowPolyFacet')).toBeUndefined();
+    // A C∞ smooth style still emits a valid pow2-rim wall (the 6-style emitter path is intact).
+    const hrWall = buildSmoothGridDispatchWall({ analyticRA: lowPolyRA, H, tolMm: 0.01 }, 'HarmonicRipple');
+    expect(hrWall).toBeDefined();
+    for (let i = 0; i < hrWall!.gridVertexCount; i++) expect(hrWall!.vertices[3 * i + 2]).toBe(0);
   });
 });

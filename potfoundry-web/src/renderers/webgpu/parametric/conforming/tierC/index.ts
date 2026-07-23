@@ -570,9 +570,17 @@ export function isSmoothGridStyle(styleId: string | undefined): boolean {
  * 12 facets tile 2π ⇒ edges at u=odd/24 AND centers at u=even/24 ⇒ alignNU=24 lands columns on BOTH (a multiple of 12
  * that is NOT 24 is the WORST case — it hits centers but the 12 edges fall mid-gap; scorecard mult12/252 body 0.207).
  */
-export const FACET_GRID_ALIGN_NU: ReadonlyMap<StyleId, number> = new Map<StyleId, number>([
-  ['LowPolyFacet', 24],
-]);
+// EMPTY as of 2026-07-23. LowPolyFacet was routed here (alignNU=24) but the audit found its ON path returns
+// generateMesh NULL: a facet-aligned nU MUST be a multiple of 24 (columns on the 12-gon edges+centers), which is NEVER
+// a power of two — but the assembly adopts the emitter's EMERGENT rim (= nU) as the INNER wall's `nRing`, and
+// `buildConformingWall` requires a power-of-two `nRing` (quadtree boundary pinning), and the rim/base caps pair the two
+// walls' rings INDEX-FOR-INDEX (equal count). So a facet-aligned rim cannot be adopted without mismatched-ring cap
+// reconciliation (a deep WatertightAssembly change). It is not worth it: LowPolyFacet's OFF conforming mesher already
+// feature-aligns to the facet edges and holds 0.00102mm MAX at production defaults (real-pipeline audit), so the
+// smooth-grid facet emitter is redundant AND not exact-dyadic-certifiable (mult-24 ≠ pow2). Routing LowPolyFacet through
+// the normal path (this map empty ⇒ not a structured-grid style ⇒ OFF) exports a valid CAD-grade mesh instead of null,
+// and makes enabling `__pfSmoothGrid` safe for it. Re-add a style here only if the mismatched-ring cap path is built.
+export const FACET_GRID_ALIGN_NU: ReadonlyMap<StyleId, number> = new Map<StyleId, number>();
 
 /** The facet-alignment period for `styleId`, or undefined if it is not a facet-aligned grid style. */
 export function facetGridAlignNU(styleId: string | undefined): number | undefined {
