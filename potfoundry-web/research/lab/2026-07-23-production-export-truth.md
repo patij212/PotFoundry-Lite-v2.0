@@ -32,9 +32,12 @@ _Generated from `e2e/baselines/production-export-truth-pass1.json` — measured 
 - **BambooSegments — null FIXED and fidelity CONFIRMED (genuine closure).** The ON `generateMesh` null was the pow2-rim
   bug (`buildConformingWall` needs pow2 `nRing`); fixed by snapping the emitter nU to a power of two (commit `8d7cdd77`).
   Re-probed through the live pipeline: ON now builds a **watertight** mesh (nRing=2048, boundary=0, download-gate pass).
-  The full-mesh `maxMm` (0.86) is tread-wall inflation; the **SMOOTH complement (tread faces excluded) = 0.00448 mm**
-  (vtx 0.00001, p99 0.0024), so Bamboo **TRULY closes ≤0.01** — the treads are faithful vertical walls by construction.
-  ⇒ **BambooSegments should be re-classified CLOSED-holds in production.**
+  The full-mesh `maxMm` (0.86) is tread-wall inflation. ⚠ **CORRECTED (evening): the ISOLATED emitter closes (bridge
+  smooth complement 0.00448mm at fine sag-tol 0.004), but the REAL PIPELINE tread-aware run reports smoothMax = 0.121**
+  (watertight, gate-pass) — so Bamboo does NOT close at the export's DEFAULT quality. The gap (0.12 pipeline vs 0.0045
+  isolated) is a sag-tol/`tWarp=L3`/geometric-filter reconciliation (the emitter uses `sagTolMm=qMaxSag`, coarser than
+  the bridge's 0.004; Bamboo's node-bulges need finer tessellation than the smooth styles). **NET: the null FIX is a
+  real win (watertight export); the production FIDELITY is UNRESOLVED — do NOT re-classify Bamboo CLOSED-holds yet.**
 - **DragonScales — does NOT close at MAX (scale-tip cones); p99-CAD-grade only.** MEASURED: the full-mesh 0.82 IS tread
   inflation (rA-ruler), but the geometric smooth complement (faces with vertex-radius-spread > 0.2mm excluded) still
   floors at **MAX 0.0965mm** with **p99 0.0088mm** (vtx 0.00001). So DS ≠ Bamboo: excluding the risers reveals a real

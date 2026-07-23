@@ -82,6 +82,20 @@ unbuilt gaps per the campaign, but only if the audit shows nothing more urgent, 
   inflation, but a real **scale-tip cone-apex** residual (~0.096, density-invariant, cone-fan can't reach ≤0.01)
   remains. So DS ≠ Bamboo — DS's closure was p99-scoped, MAX is an OPEN frontier ([[project_ds_rim_bug]]). Bamboo has
   only tread verticals (closes); DS additionally has the scale-tip cones (open).
+## ⚠ CORRECTION (2026-07-23 evening) — Bamboo pipeline fidelity ≠ isolated
+
+The tread-aware hook, run end-to-end through the REAL pipeline on Bamboo ON, reports **smoothMax 0.121** (treadChord
+0.859, vtx 0.00004, watertight, gate-pass), NOT the isolated-bridge 0.00448. So **"Bamboo genuinely closes" was an
+isolated-emitter claim, not pipeline-faithful.** The pipeline differs from the bridge in three ways any of which can
+account for it: (a) it applies a **`tWarp=L3`** to the adopted Bamboo wall (the bridge measures the raw emitter — a warp
+on an already-final structured wall is suspect and may be a real bug); (b) it uses the **default export sag-tol** (qMaxSag),
+not the bridge's fine 0.004; (c) the hook's **geometric tread filter** (radius-spread>0.1mm) is cruder than the bridge's
+feature-specific t=k/nodeCount exclusion and can mis-classify Bamboo's smooth node-bulges. **NET: the Bamboo NULL FIX is
+a confirmed win (watertight export instead of null), but its production FIDELITY is UNRESOLVED (0.12 pipeline vs 0.0045
+isolated) — a tWarp/config/filter reconciliation is the follow-up. Do not treat Bamboo as closed-in-production yet.** The
+same caveat applies to the DS numbers (also pipeline-vs-isolated). The audit-first lesson holds: isolated bridge closures
+must be confirmed through the full pipeline.
+
 ## RESOLUTION — all identified issues handled (2026-07-23 pm, single-agent)
 
 1. **BambooSegments ON null → FIXED** (`8d7cdd77`). Root cause: emitter emergent rim = nU = 1408 (non-pow2), but the
