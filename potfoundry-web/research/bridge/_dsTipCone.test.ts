@@ -17,7 +17,7 @@ import { join } from 'node:path';
 import { cpuUsage } from 'node:process';
 import {
   perFaceTrue3DSag, triangleQualityDistribution, auditNonManByIndex, nonManRawBigStats,
-  bruteNearestOnRadialSurface, projectPointToRadialSurface, buildRadiusFn,
+  bruteNearestOnRadialSurface, projectPointToRadialSurface, buildRadiusFn, dumpHeatmap,
 } from './labkit';
 import type { StyleDims } from './labkit';
 import {
@@ -264,23 +264,77 @@ describe('DS-TIPCONE-RULER — cross-ruler apex + density law + provenance', () 
     const noFanMeas = subsetTrue3D(noFan.ut, noFan.indices, noFanCrest, rA, projGlobal);
     const noFanBrute = bruteWorst(noFan.ut, noFan.indices, noFanMeas, rA, 40);
     plog(`[PROV] FAN-OFF ring-strip nU${nU} tris=${noFan.indices.length / 3}: crest-band true-3D reGN=${noFanMeas.gnMax.toFixed(6)} global=${noFanMeas.globalMax.toFixed(6)} brute=${noFanBrute.toFixed(6)}`);
-    // (b) full measureProjectorMax on cone-fan vs no-fan, WITH and WITHOUT tread-aware (reproduce the headline).
+    // (b) full measureProjectorMax on the CONE-FAN, WITHOUT and WITH tread-aware — the whole-mesh headline + its
+    // tread-vs-smooth SPLIT (proves the ~0.82 whole-mesh max is the C0 tread riser vs single-valued rA, not the cone).
     const cf = buildDsConeFanWallGeometric(rA, H, nU);
     const cfMesh = { vertices: cf.vertices, indices: cf.indices };
-    const nfMesh = { vertices: noFan.vertices, indices: noFan.indices };
     const cfPlain = await measureProjectorMax(cfMesh, rA, { H, tolMm: TOL });
     const cfTread = await measureProjectorMax(cfMesh, rA, { H, tolMm: TOL, treadRadiusSpreadMm: 0.5 });
-    const nfPlain = await measureProjectorMax(nfMesh, rA, { H, tolMm: TOL });
-    const nfTread = await measureProjectorMax(nfMesh, rA, { H, tolMm: TOL, treadRadiusSpreadMm: 0.5 });
-    plog(`[PROV] measureProjectorMax CONE-FAN: plain max=${cfPlain.maxMm.toFixed(6)} (vtx=${cfPlain.vertexMaxMm.toFixed(6)} chord=${cfPlain.chordMaxMm.toFixed(6)}) | tread-aware smoothMax=${cfTread.smoothMaxMm.toFixed(6)} treadChord=${cfTread.treadChordMaxMm.toFixed(6)} treadFaces=${cfTread.treadFaceCount}`);
-    plog(`[PROV] measureProjectorMax RING-STRIP(no fan): plain max=${nfPlain.maxMm.toFixed(6)} | tread-aware smoothMax=${nfTread.smoothMaxMm.toFixed(6)} treadChord=${nfTread.treadChordMaxMm.toFixed(6)}`);
+    plog(`[PROV] measureProjectorMax CONE-FAN nU${nU}: plain max=${cfPlain.maxMm.toFixed(6)} (vtx=${cfPlain.vertexMaxMm.toFixed(6)} chord=${cfPlain.chordMaxMm.toFixed(6)}) | tread-aware smoothMax=${cfTread.smoothMaxMm.toFixed(6)} treadChord=${cfTread.treadChordMaxMm.toFixed(6)} treadFaces=${cfTread.treadFaceCount}`);
     checkpoint({
       key, nU,
       noFanCrestReGn: +noFanMeas.gnMax.toFixed(6), noFanCrestGlobal: +noFanMeas.globalMax.toFixed(6), noFanBrute: +noFanBrute.toFixed(6),
       cfPlainMax: +cfPlain.maxMm.toFixed(6), cfChordMax: +cfPlain.chordMaxMm.toFixed(6), cfVtxMax: +cfPlain.vertexMaxMm.toFixed(6),
       cfTreadSmoothMax: +cfTread.smoothMaxMm.toFixed(6), cfTreadChordMax: +cfTread.treadChordMaxMm.toFixed(6), cfTreadFaces: cfTread.treadFaceCount,
-      nfPlainMax: +nfPlain.maxMm.toFixed(6), nfTreadSmoothMax: +nfTread.smoothMaxMm.toFixed(6), nfTreadChordMax: +nfTread.treadChordMaxMm.toFixed(6),
     });
     plog('[PROV] DONE');
+  }, 60 * 60 * 1000);
+
+  // UNIT TREADLOC: attribute the whole-mesh single-valued-ruler MAX (~0.82, the audit "DS ON 0.82") — is the worst
+  // whole-mesh face the scale-tip CONE, or the C0 TREAD riser (which single-valued rA cannot represent)? Split the
+  // whole-mesh perFaceTrue3DSag MAX by dz-to-nearest-ring (t=k/8) vs the apex band. nU1024 for speed (2.5M tris).
+  it.skipIf(process.env.PF_DSTIP_TREADLOC !== '1')('TREADLOC — whole-mesh MAX = tread riser, not the cone', () => {
+    plog(`=== TREADLOC => ${NDJSON} ===`);
+    const key = 'TREADLOC|Rt70|nU1024';
+    if (keyExists(key)) { plog(`[skip] ${key}`); plog('[TREADLOC] DONE'); return; }
+    const rA = rAOf(DIMS_DEFAULT);
+    const w = buildDsConeFanWallGeometric(rA, H, 1024);
+    const ringZs: number[] = []; for (let k = 1; k < SCALE_ROWS; k++) ringZs.push((k / SCALE_ROWS) * H); // treads at t=k/8
+    const sag = perFaceTrue3DSag(w.ut, w.indices, rA, H, { preFilterMm: 0.006 });
+    let whole = 0, wt = 0, ringMax = 0, bodyMax = 0; const nF = w.indices.length / 3;
+    for (let f = 0; f < nF; f++) {
+      const zc = (w.vertices[3 * w.indices[3 * f] + 2] + w.vertices[3 * w.indices[3 * f + 1] + 2] + w.vertices[3 * w.indices[3 * f + 2] + 2]) / 3;
+      let dzr = 1e9; for (const rz of ringZs) { const d = Math.abs(zc - rz); if (d < dzr) dzr = d; }
+      const e = sag.faceErr[f];
+      if (e > whole) { whole = e; wt = zc / H; }
+      if (dzr <= 0.5) { if (e > ringMax) ringMax = e; } else if (dzr > 1.0) { if (e > bodyMax) bodyMax = e; }
+    }
+    let dzWorst = 1e9; for (const rz of ringZs) { const d = Math.abs(wt * H - rz); if (d < dzWorst) dzWorst = d; }
+    plog(`[TREADLOC] whole-mesh MAX=${whole.toFixed(6)} @t=${wt.toFixed(5)} dzToRing=${dzWorst.toFixed(4)}mm dtToCrest=${dtToCrest(wt).toFixed(5)} | RING-band(dz<=0.5) MAX=${ringMax.toFixed(6)} | BODY(dz>1) MAX=${bodyMax.toFixed(6)}`);
+    checkpoint({ key, nU: 1024, tris: nF, wholeMax: +whole.toFixed(6), worstT: +wt.toFixed(5), worstDzToRingMm: +dzWorst.toFixed(4), ringBandMax: +ringMax.toFixed(6), bodyMax: +bodyMax.toFixed(6), worstIsTread: dzWorst < 0.5 });
+    plog('[TREADLOC] DONE');
+  }, 60 * 60 * 1000);
+
+  // UNIT RENDER: visual evidence — a (u,t) WINDOW around several scale apexes, true-3D heatmap, cone-fan vs fan-off.
+  // scaleMm 0.02 ⇒ green=0, red≥0.02 (2× tol): fan-off apex saturates red, cone-fan apex stays deep-green.
+  it.skipIf(process.env.PF_DSTIP_RENDER !== '1')('RENDER — apex heatmap window (cone-fan vs fan-off)', () => {
+    plog(`=== RENDER => ${OUT_DIR} ===`);
+    const rA = rAOf(DIMS_DEFAULT);
+    const nU = 4096; // PRODUCTION density (apex 0.005) — window is small so the 10M-tri build renders fine
+    const [uLo, uHi, tLo, tHi] = [0.0, 0.135, 0.035, 0.113]; // ~2 scales, crest k0(t.0625) ONLY — excludes the t=0.125 ring
+    const windowSubmesh = (ut: number[], idx: Uint32Array): { xyz: Float32Array; ut: number[]; idx: Uint32Array } => {
+      const remap = new Map<number, number>();
+      const subUt: number[] = []; const subXyz: number[] = []; const subIdx: number[] = [];
+      const inWin = (v: number): boolean => { const u = ut[2 * v], t = ut[2 * v + 1]; return u >= uLo && u <= uHi && t >= tLo && t <= tHi; };
+      const push = (v: number): number => {
+        let id = remap.get(v);
+        if (id === undefined) { id = subUt.length / 2; remap.set(v, id); const u = ut[2 * v], t = ut[2 * v + 1]; const th = TAU * u, z = t * H, r = rA(th, z); subUt.push(u, t); subXyz.push(r * Math.cos(th), r * Math.sin(th), z); }
+        return id;
+      };
+      for (let f = 0; f < idx.length / 3; f++) {
+        const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
+        if (inWin(a) && inWin(b) && inWin(c)) subIdx.push(push(a), push(b), push(c));
+      }
+      return { xyz: Float32Array.from(subXyz), ut: subUt, idx: Uint32Array.from(subIdx) };
+    };
+    const cf = buildDsConeFanWallGeometric(rA, H, nU);
+    const nf = buildDsRingStripWallGeometric(rA, H, nU);
+    const cfW = windowSubmesh(cf.ut, cf.indices);
+    const nfW = windowSubmesh(nf.ut, nf.indices);
+    const cfSag = dumpHeatmap(OUT_DIR, 'ds_conefan_apex', cfW.xyz, cfW.ut, cfW.idx, rA, H, { scaleMm: 0.02, stl: true, meta: { variant: 'cone-fan ON', nU } });
+    const nfSag = dumpHeatmap(OUT_DIR, 'ds_fanoff_apex', nfW.xyz, nfW.ut, nfW.idx, rA, H, { scaleMm: 0.02, stl: true, meta: { variant: 'fan OFF (ring-strip)', nU } });
+    plog(`[RENDER] cone-fan window tris=${cfW.idx.length / 3} worstMm=${cfSag.worstMm.toFixed(6)} | fan-off window tris=${nfW.idx.length / 3} worstMm=${nfSag.worstMm.toFixed(6)}`);
+    checkpoint({ key: `RENDER|Rt70|nU${nU}`, nU, cfWinTris: cfW.idx.length / 3, cfWinWorst: +cfSag.worstMm.toFixed(6), nfWinTris: nfW.idx.length / 3, nfWinWorst: +nfSag.worstMm.toFixed(6) });
+    plog('[RENDER] DONE');
   }, 60 * 60 * 1000);
 });
