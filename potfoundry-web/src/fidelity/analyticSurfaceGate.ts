@@ -364,12 +364,16 @@ function makeRadialDevs(
  * an {@link AnalyticDevResult}. The deviation MEASURE is injected via `strategy`:
  *  - `vertexDev(idx,x,y,z)` — per outer-wall vertex (placement faithfulness).
  *  - `chordDev(x,y,z)` — the REAL chord-channel deviation at a flat-facet sample.
- *  - `chordBound(x,y,z)` — a CHEAP UPPER BOUND on chordDev, used ONLY for the
- *    centroid pre-filter and the tracked exclusion bands. A facet whose bound is
- *    ≤ preFilterMm has chordDev ≤ bound ≤ preFilterMm too, so it cannot drive
- *    chordMax/nAbove — recording the bound there (skipping the dense scan) keeps
- *    those headline numbers EXACT while avoiding the expensive measure on the
- *    smooth tail. For the radial metric bound === dev (byte-identical behaviour).
+ *  - `chordBound(x,y,z)` — a CHEAP per-point UPPER BOUND on chordDev (chordDev ≤
+ *    chordBound POINTWISE; for the perpendicular metric this is the radial residual,
+ *    always ≥ the perpendicular distance). The pre-filter takes its MAX over the SAME
+ *    dense samples the scan uses: if that facet-wide max is ≤ preFilterMm then every
+ *    chordDev is ≤ preFilterMm too, so the facet cannot drive chordMax/nAbove — the
+ *    dense chordDev is skipped and the exact bound recorded, keeping those headline
+ *    numbers exact while avoiding the expensive measure on the smooth tail. (Bounding
+ *    at the CENTROID alone was UNSOUND — an off-centroid spike hid behind it; see [R4].)
+ *    The tracked exclusion bands still use the cheap centroid bound. For the radial
+ *    metric bound === dev.
  *
  * `ut` = the PRE-WARP (u,t,surfaceId) stash, PARALLEL to `mesh.vertices`
  * (getLastConformingAssemblyUT). The caller MUST guard `ut.length ===
@@ -514,13 +518,28 @@ function accumulateDeviation(
     if (exclude === 2) { if (boundCen > riserMax) riserMax = boundCen; continue; }
     if (exclude === 3) { if (boundCen > creaseMax) creaseMax = boundCen; continue; }
     wallTris++;
-    // Pre-filter: a facet whose UPPER BOUND is ≤ pre has chordDev ≤ bound ≤ pre,
-    // so it cannot beat chordMax/cross tol — record the bound, skip the dense scan.
-    if (boundCen <= pre) {
-      if (finiteDev(boundCen)) {
-        devs.push(boundCen);
-        if (boundCen > cMax) cMax = boundCen;
-        if (boundCen > triMax) { triMax = boundCen; triWorst = { theta: Math.atan2(ccy, ccx), z: ccz, mm: boundCen }; }
+    // Pre-filter, SOUND version. Bound the WHOLE facet by the MAX cheap bound over the SAME
+    // dense samples the scan uses — the centroid alone does NOT bound the interior, so an
+    // off-centroid spike (whose centroid is ≤ pre) would hide behind it and under-report
+    // chordMax. Because chordDev ≤ chordBound POINTWISE (perpendicular ≤ radial), boundMax ≤ pre
+    // ⇒ every chordDev over the facet is ≤ boundMax ≤ pre: the facet cannot drive chordMax/nAbove,
+    // so the expensive dense chordDev is skipped and its EXACT bound recorded. [R4]
+    let boundMax = 0, bwx = ccx, bwy = ccy, bwz = ccz;
+    for (let p = 0; p <= N; p++) {
+      for (let q = 0; q <= N - p; q++) {
+        const wa = p / N, wb = q / N, wc = 1 - wa - wb;
+        const mx = wa * ax + wb * bx + wc * cx;
+        const my = wa * ay + wb * by + wc * cy;
+        const mz = wa * az + wb * bz + wc * cz;
+        const bnd = chordBound(mx, my, mz);
+        if (bnd > boundMax) { boundMax = bnd; bwx = mx; bwy = my; bwz = mz; }
+      }
+    }
+    if (boundMax <= pre) {
+      if (finiteDev(boundMax)) {
+        devs.push(boundMax);
+        if (boundMax > cMax) cMax = boundMax;
+        if (boundMax > triMax) { triMax = boundMax; triWorst = { theta: Math.atan2(bwy, bwx), z: bwz, mm: boundMax }; }
       }
     } else {
       for (let p = 0; p <= N; p++) {
