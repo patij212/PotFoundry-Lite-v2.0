@@ -17,13 +17,20 @@ Answer: **two independent bugs**, both in the path between "the emitter builds a
 2. The assembly adopts it (`WatertightAssembly.ts:567`), then `evaluatePoints` **GPU-evaluates ALL (u,t,surfaceId)
    vertices to 3D** through the single-valued `style_radius` (`ParametricExportComputer.ts:3220`). The treads survive
    because the analytic radius itself has the C0 step and the double-valued row-pair brackets it.
-3. Two things differ from the isolated bridge: the dispatch passes `sagTolMm = qMaxSag` = the export profile's surface
-   error (`high` → **0.05mm**, 12.5× coarser than the bridge's 0.004), and a **t-warp** is applied to the adopted wall
-   before the GPU eval.
+3. Two things differ from the isolated bridge: the dispatch passes `sagTolMm = qMaxSag`, and a **t-warp** is applied to
+   the adopted wall before the GPU eval. **CORRECTION (do not repeat my earlier error): at the DEFAULT `high` profile
+   qMaxSag is NOT the profile's 0.05 — `cadFidelity` clamps it to `CAD_SAG_MM = 0.003`** (`ParametricExportComputer.ts:2607-2628`).
+   So the default emitter already got a fine 0.003 tol; only draft/standard (cadFidelity off) get the coarse 0.12/0.08.
 
 The prior audit's `vertexMax ≈ 0.00001` means the GPU vertices sit exactly on the CPU `rA` surface — so CPU `analyticRA`
-≡ GPU WGSL for Bamboo. Both bugs below are **facet-chord** failures (vertices on-surface, but the triangles between them
-are wrong), not vertex-placement failures.
+≡ GPU WGSL for Bamboo. All three bugs below are **facet-chord** failures (vertices on-surface, but the triangles between
+them are wrong), not vertex-placement failures.
+
+**Which bug actually killed the DEFAULT pipeline (measured, `_pfCloseBambooWarpEffect.test.ts` sweep):** the **t-warp
+(Bug 2)** — it un-brackets the C0 step at t=0.8 regardless of row density, so it re-busts to **~1.81mm at EVERY tol
+including 0.003** (the default). Bug 1 (the nodal sag-law) does NOT bite at the default: it is fine for any tol ≤ ~0.01
+(only ≥0.02 strides), so it never manifested at the 0.003 default — it is **correctness hardening for coarse/draft
+exports**, not the default-pipeline fix. Bug 3 (the ruler) MASKED Bug-2's 1.81mm damage down to the reported 0.121.
 
 ## Bug 1 — nodal sag-law strides over the node-bulge peak (MAX-vs-p99)
 
@@ -35,10 +42,14 @@ MEASURED (`research/bridge/_pfCloseBambooSagLaw1D.test.ts`, pure-1D):
 
 | requested tol | worst body chord (old nodal walk) | ratio |
 |---|---|---|
-| 0.10 | 1.610 mm | 16× |
-| 0.05 (export default) | 1.610 mm | **32×** |
-| 0.01 | 0.0047 mm | ok |
-| 0.004 | 0.0042 mm | ok |
+| 0.10 (coarse request) | 1.610 mm | 16× |
+| 0.05 (coarse request) | 1.610 mm | **32×** |
+| 0.01 (the new emitter-CAD floor) | 0.0047 mm | ok |
+| 0.003 (the DEFAULT high profile) | 0.0042 mm | ok |
+
+So Bug-1 is invisible at the 0.003 default and at the 0.01 floor; it only bites a draft/standard export that requested a
+coarse sag AND had no floor. It is fixed for robustness (verify-and-bisect bounds MAX at ANY tol), but it was not the
+number that moved the default pipeline.
 
 Note 0.10 and 0.05 are **identical** — sag-blind in the coarse regime (the step is `hMax`-clamped / nodal-`r''`-blind).
 p99 stayed ~0.002 mm throughout, so a p99-scoped gate waved through a mesh with 0.7–1.6 mm cliffs. On the emitted mesh
@@ -95,9 +106,31 @@ step-crossing risers), honest `smoothMaxMm = 0.00265`. Additive/opt-in (radius-s
 `measureProjectorMax.test.ts` pass). Other riser styles (DS/ArtDeco/BasketWeave) keep the heuristic until their loci
 are wired — the documented follow-up.
 
+## Guaranteeing the 0.01 standard on EVERY profile (emitter-CAD floor)
+
+The default `high`/`ultra` profiles already feed the emitter 0.003 (`cadFidelity`), so the verify-bisect GUARANTEES
+≤0.003 there (measured 0.00265). But draft/standard feed the coarse profile default (0.12/0.08). Since the
+perfect-mesher emitters ARE the CAD-grade path, when one is adopted its tessellation must target 0.01 regardless of the
+quality slider. FIX (`ParametricExportComputer.ts`, adoption block): `emitterCadSagMm = Math.min(qMaxSag,
+PERFECT_MESHER_CAD_SAG_MM=0.01)` passed as the `tolMm`/`chordTolMm` to all three emitter dispatches (smooth/bamboo/
+region). min ⇒ high/ultra keep their tighter 0.003; only draft/standard are raised to the 0.01 cap. Flag-gated ⇒
+byte-identical off.
+
+VERIFIED (live-GPU): with a deliberately coarse `__pfConformingMaxSag = 0.05` (a draft-class request), the floor
+clamped the emitter to 0.01 and the export measured `smoothMax = 0.00364 ≤ 0.01` (watertight, vtx 0.0000386, 5.3M tris)
+— where WITHOUT the floor the emitter would have taken 0.05 and shipped ~0.7mm. **So the 0.01 standard is now
+guaranteed by construction on every profile**, not incidentally.
+
 ## Scope
 
-Both bugs were **Bamboo-specific in effect**: only the ring-strip emitter pairs a nodal density law with sharp
-sub-cell features (Bug 1), and the warp-vs-pre-conformed-wall conflict (Bug 2) is now fixed generally for ALL
-pre-conformed adopted walls. The smooth-grid emitter sizes by a global `maxSag` over a 128² probe — same aliasing
-*class*, but safe for its C∞ styles. DS uses uniform body rows (denser, no stride-over).
+The two mesher fixes:
+- **Bug 2 (warp exemption) is GENERAL** — it fixes every pre-conformed adopted wall (Bamboo/DS ring-strip, region
+  kernel, Gothic/GeoStar `buildTierCOuterWall` refine), not just Bamboo. Any adopted wall that was silently warp-dragged
+  now keeps its conforming placement.
+- **Bug 1 (verify-bisect) + the emitter-CAD floor** apply to Bamboo's schedule; the smooth-grid emitter sizes by a
+  global `maxSag` over a 128² probe (same aliasing *class*, safe for its C∞ styles) and the region kernel by its metric,
+  both now floored at 0.01 too. DS uses uniform body rows (denser, no stride-over).
+
+**Honest attribution (measured, not assumed):** Bug 2 (warp) closed the DEFAULT pipeline; Bug 3 (ruler) gave the honest
+number; Bug 1 (sag-law) is hardening for coarse/draft exports. See the "Which bug actually killed the default pipeline"
+note above.

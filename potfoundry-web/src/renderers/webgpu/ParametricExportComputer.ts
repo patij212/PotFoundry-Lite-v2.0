@@ -2610,6 +2610,10 @@ export class ParametricExportComputer {
                 const CAD_NRING = 2048;            // sampler ring must resolve the crease (≤1024 smears)
                 const CAD_CELL_SAMPLES = 2;        // crease-seeing refiner (minor, principled)
                 const CAD_BUDGET_TRIS = 16_000_000; // cap above the natural faithful mesh (no decimation)
+                // The user's export STANDARD (0.01mm true-3D). The perfect-mesher emitters floor their surface tol here
+                // so an ADOPTED wall is ≤0.01 by construction on every profile — not just the cadFidelity ones where
+                // qMaxSag already clamps to CAD_SAG_MM (0.003). See E-2026-07-23-EMITTER-CAD-FLOOR at the adoption block.
+                const PERFECT_MESHER_CAD_SAG_MM = 0.01;
                 const conformingBudget = (typeof qOv.__pfConformingBudget === 'number' && qOv.__pfConformingBudget > 0)
                     ? qOv.__pfConformingBudget
                     // targetTris (resolved once above) = min(explicit target, profile
@@ -2926,6 +2930,16 @@ export class ParametricExportComputer {
                         adoptBamboo);
                 let tierCOuterWall: ConformingOuterWallResult | undefined;
                 if (adoptTierCOuter) {
+                    // GUARANTEE THE 0.01 CAD STANDARD (E-2026-07-23-EMITTER-CAD-FLOOR). The perfect-mesher emitters ARE
+                    // the CAD-grade closure path — when one is adopted, its surface tessellation must target the 0.01mm
+                    // standard REGARDLESS of the user's quality slider. qMaxSag is already 0.003 on high/ultra
+                    // (cadFidelity clamps to CAD_SAG_MM), but on draft/standard it is the coarse profile default
+                    // (0.12/0.08) — coarse enough that the adopted wall would ship >0.01 body facets. Floor it at the
+                    // standard so the emitter is ≤0.01 by construction on EVERY profile (the emitter's verify-bisect /
+                    // sag law then bounds the true chord to this). min ⇒ high/ultra keep their tighter 0.003; only
+                    // draft/standard are raised to the 0.01 cap. The __pfConformingMaxSag dev override still wins via
+                    // qMaxSag. Applies to the OUTER emitter's own tessellation only; the inner wall/caps keep qMaxSag.
+                    const emitterCadSagMm = Math.min(qMaxSag, PERFECT_MESHER_CAD_SAG_MM);
                     // Smooth-grid uniform (u,t) grid for the C∞ smooth styles (undefined
                     // for other styles / smooth-off ⇒ fall through to the region wall then
                     // the K2 analytic wall, unchanged). The grid's rims are EMERGENT (nU
@@ -2946,7 +2960,7 @@ export class ParametricExportComputer {
                                       },
                                   ),
                                   H: dimensions.H,
-                                  tolMm: qMaxSag,
+                                  tolMm: emitterCadSagMm,
                               },
                               params.styleId,
                           )
@@ -2969,7 +2983,7 @@ export class ParametricExportComputer {
                                       },
                                   ),
                                   H: dimensions.H,
-                                  tolMm: qMaxSag,
+                                  tolMm: emitterCadSagMm,
                                   nodeCount: (params.styleOpts as { bsNodeCount?: number })
                                       .bsNodeCount,
                               },
@@ -2993,13 +3007,13 @@ export class ParametricExportComputer {
                                   ),
                                   H: dimensions.H,
                                   nRing: qNRing,
-                                  tolMm: qMaxSag,
+                                  tolMm: emitterCadSagMm,
                                   hMin: qMinEdge,
                                   hMax: qMaxEdge,
                                   sizeRes: qSizingRes,
                                   // Direct facet→surface chord-sag guard at export tol
                                   // (catches sharp relief the grid-curvature metric aliases).
-                                  chordTolMm: qMaxSag,
+                                  chordTolMm: emitterCadSagMm,
                               },
                               params.styleId,
                           )

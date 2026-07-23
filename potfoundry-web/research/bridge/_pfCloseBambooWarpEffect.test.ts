@@ -30,22 +30,20 @@ describe('BambooSegments — is the adopted wall harmed by the t-warp?', () => {
     const rA = buildAnalyticRadiusFn('BambooSegments', {}, DIMS);
     const rP = (z: number): number => rA(0, Math.max(0, Math.min(DIMS.H, z)));
     const warp = bambooTWarp();
-    const rows = buildBambooTSchedule(DIMS.H, rA, { sagTolMm: 0.05, nodeCount: NODE });
-    const warped = rows.map((t) => applyTWarp(warp, t));
-    // monotonic?
-    let mono = true; for (let i = 1; i < warped.length; i++) if (warped[i] <= warped[i - 1]) mono = false;
-    // bracket: for each surface step t=k/5, is there a warped row just below AND just above?
     const creases: number[] = []; for (let k = 1; k < NODE; k++) creases.push(k / NODE);
-    let bracketsOK = 0;
-    for (const c of creases) { const below = warped.some((t) => t < c && c - t < 0.02); const above = warped.some((t) => t > c && t - c < 0.02); if (below && above) bracketsOK++; }
-    // body chord in WARPED surface space (exclude intervals crossing a step)
     const crosses = (a: number, b: number): boolean => creases.some((e) => a < e - 1e-6 && b > e + 1e-6);
     const chordSag = (tA: number, tB: number): number => { const zA = tA * DIMS.H, zB = tB * DIMS.H, ra = rP(zA), rb = rP(zB); let w = 0; for (let i = 1; i < 100; i++) { const f = i / 100; w = Math.max(w, Math.abs(rP(zA + (zB - zA) * f) - (ra + (rb - ra) * f))); } return w; };
-    let worst = 0, worstAt = -1;
-    for (let i = 0; i + 1 < warped.length; i++) { if (crosses(warped[i], warped[i + 1])) continue; const s = chordSag(warped[i], warped[i + 1]); if (s > worst) { worst = s; worstAt = 0.5 * (warped[i] + warped[i + 1]); } }
-    console.log(`[WARPEFF] warp.anchors=${JSON.stringify((warp as { anchors?: unknown }).anchors)}`);
     console.log(`[WARPEFF] applyTWarp @creases: ${creases.map((c) => `${c}->${applyTWarp(warp, c).toFixed(4)}`).join(' ')}`);
-    console.log(`[WARPEFF] rows=${rows.length} monotonic=${mono} bracketsOK=${bracketsOK}/${creases.length} worstBodyChordWARPED=${worst.toFixed(5)}mm @t≈${worstAt.toFixed(4)} ${worst <= 0.01 ? 'STILL-CLOSED' : 'WARP-BREAKS-IT'}`);
+    // Sweep the REAL pipeline tols: 0.003 = the default (high, cadFidelity clamps qMaxSag→CAD_SAG_MM); 0.01 = the new
+    // emitter-CAD floor for draft/standard; 0.05 = a coarse request. If the warp busts even at 0.003, Bug-2 (the warp)
+    // was the DEFAULT-pipeline killer (not the nodal sag-law, which is fine ≤0.01), and the exemption is the real fix.
+    for (const sag of [0.05, 0.01, 0.003]) {
+      const rows = buildBambooTSchedule(DIMS.H, rA, { sagTolMm: sag, nodeCount: NODE });
+      const warped = rows.map((t) => applyTWarp(warp, t));
+      let worst = 0, worstAt = -1;
+      for (let i = 0; i + 1 < warped.length; i++) { if (crosses(warped[i], warped[i + 1])) continue; const s = chordSag(warped[i], warped[i + 1]); if (s > worst) { worst = s; worstAt = 0.5 * (warped[i] + warped[i + 1]); } }
+      console.log(`[WARPEFF] sag=${sag} rows=${rows.length} worstBodyChordWARPED=${worst.toFixed(5)}mm @t≈${worstAt.toFixed(4)} ${worst <= 0.01 ? 'STILL-CLOSED' : 'WARP-BREAKS-IT'}`);
+    }
     expect(true).toBe(true);
   });
 });
