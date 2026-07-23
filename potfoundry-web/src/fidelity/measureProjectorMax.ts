@@ -42,6 +42,16 @@ export interface ProjectorMaxOptions {
   zMax?: number;
   /** Samples per event-loop yield (default 25000). Lower = more responsive, slightly slower. */
   chunk?: number;
+  /**
+   * TREAD-AWARE mode (for riser/tread styles — DragonScales, BambooSegments, ArtDeco). When set, a triangle whose
+   * vertex-RADIUS spread (max|xy| − min|xy|) exceeds this (mm) is treated as a near-vertical RISER/TREAD face that the
+   * single-valued `rA` cannot represent (measuring it against `rA` fabricates ~half-step inflation). Its chord samples
+   * are routed to `treadChordMaxMm` (reported for transparency) instead of `chordMaxMm`, so `smoothMaxMm` (=
+   * max(vertexMax, smooth chord)) is the HONEST fidelity of the tessellated surface. Structured emitters place their
+   * treads as faithful vertical walls by construction (verify vertexMax ≈ 0 separately), so `smoothMaxMm` is the
+   * verdict for them. Unset ⇒ every face counts in `chordMaxMm`/`maxMm` (single-valued behaviour, unchanged).
+   */
+  treadRadiusSpreadMm?: number;
 }
 
 export interface ProjectorMaxReport {
@@ -59,6 +69,13 @@ export interface ProjectorMaxReport {
   tolMm: number;
   /** maxMm ≤ tol AND all samples finite. AND this with a watertight full-solid check. */
   certified: boolean;
+  // ── tread-aware split (populated only when opts.treadRadiusSpreadMm is set; else = maxMm / 0 / 0) ──
+  /** max(vertexMax, SMOOTH-face chord) — the HONEST fidelity of the tessellated surface (riser/tread faces excluded). */
+  smoothMaxMm: number;
+  /** Worst chord on the riser/tread faces (vs single-valued rA ⇒ ~half-step inflation; transparency only, never gate). */
+  treadChordMaxMm: number;
+  /** Triangles classified as riser/tread (radius-spread > threshold). */
+  treadFaceCount: number;
 }
 
 const HIST_BUCKETS = 4096;
@@ -88,12 +105,21 @@ export async function measureProjectorMax(
   let total = 0;
   let vertexMax = 0;
   let chordMax = 0;
+  let treadChordMax = 0;
+  let treadFaceCount = 0;
   let nonFinite = 0;
   const invBin = HIST_BUCKETS / HIST_MAX_MM;
+  const treadThr = opts.treadRadiusSpreadMm;
 
-  const record = (d: number, chordChannel: boolean): void => {
+  // `tread` chord samples (riser faces vs single-valued rA) are tracked separately and kept OUT of the histogram +
+  // chordMax, so p99/smoothMax reflect the tessellated surface, not the inflated vertical treads.
+  const record = (d: number, chordChannel: boolean, tread: boolean): void => {
     if (!Number.isFinite(d)) {
       nonFinite++;
+      return;
+    }
+    if (tread) {
+      if (d > treadChordMax) treadChordMax = d;
       return;
     }
     if (chordChannel) {
@@ -106,11 +132,12 @@ export async function measureProjectorMax(
   };
   const yieldToLoop = (): Promise<void> => new Promise((r) => setTimeout(r));
 
-  // Placement channel — each unique vertex once (chunked).
+  // Placement channel — each unique vertex once (chunked). Vertices are never "tread" (a placed vertex is on the
+  // surface; only the flat-facet interior can bridge a vertical riser).
   for (let base = 0; base < nV; base += chunk) {
     const end = Math.min(nV, base + chunk);
     for (let i = base; i < end; i++) {
-      record(proj.project(V[3 * i], V[3 * i + 1], V[3 * i + 2]).dist, false);
+      record(proj.project(V[3 * i], V[3 * i + 1], V[3 * i + 2]).dist, false, false);
     }
     await yieldToLoop();
   }
@@ -123,10 +150,19 @@ export async function measureProjectorMax(
       const ax = V[3 * a], ay = V[3 * a + 1], az = V[3 * a + 2];
       const bx = V[3 * b], by = V[3 * b + 1], bz = V[3 * b + 2];
       const cx = V[3 * c], cy = V[3 * c + 1], cz = V[3 * c + 2];
-      record(proj.project((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3).dist, true);
-      record(proj.project((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2).dist, true);
-      record(proj.project((bx + cx) / 2, (by + cy) / 2, (bz + cz) / 2).dist, true);
-      record(proj.project((cx + ax) / 2, (cy + ay) / 2, (cz + az) / 2).dist, true);
+      // Tread classification: a large vertex-radius spread ⇒ a near-vertical riser face rA can't represent.
+      let tread = false;
+      if (treadThr !== undefined) {
+        const ra = Math.hypot(ax, ay), rb = Math.hypot(bx, by), rc = Math.hypot(cx, cy);
+        if (Math.max(ra, rb, rc) - Math.min(ra, rb, rc) > treadThr) {
+          tread = true;
+          treadFaceCount++;
+        }
+      }
+      record(proj.project((ax + bx + cx) / 3, (ay + by + cy) / 3, (az + bz + cz) / 3).dist, true, tread);
+      record(proj.project((ax + bx) / 2, (ay + by) / 2, (az + bz) / 2).dist, true, tread);
+      record(proj.project((bx + cx) / 2, (by + cy) / 2, (bz + cz) / 2).dist, true, tread);
+      record(proj.project((cx + ax) / 2, (cy + ay) / 2, (cz + az) / 2).dist, true, tread);
     }
     await yieldToLoop();
   }
@@ -143,7 +179,11 @@ export async function measureProjectorMax(
       }
     }
   }
-  const maxMm = Math.max(vertexMax, chordMax);
+  const smoothMaxMm = Math.max(vertexMax, chordMax); // honest tessellated-surface max (treads excluded in tread-aware mode)
+  const maxMm = Math.max(smoothMaxMm, treadChordMax); // FULL max — equals smoothMaxMm when not tread-aware (treadChordMax=0)
+  // Certify on the HONEST max: smoothMaxMm in tread-aware mode (the treads are faithful vertical walls by construction,
+  // so their rA-inflation is not a fidelity failure), else the full maxMm (single-valued styles).
+  const certMax = treadThr !== undefined ? smoothMaxMm : maxMm;
   return {
     maxMm,
     vertexMaxMm: vertexMax,
@@ -152,6 +192,9 @@ export async function measureProjectorMax(
     samples: total,
     nonFiniteCount: nonFinite,
     tolMm,
-    certified: nonFinite === 0 && maxMm <= tolMm,
+    certified: nonFinite === 0 && certMax <= tolMm,
+    smoothMaxMm,
+    treadChordMaxMm: treadChordMax,
+    treadFaceCount,
   };
 }

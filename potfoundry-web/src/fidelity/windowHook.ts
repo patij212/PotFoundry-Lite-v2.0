@@ -148,6 +148,8 @@ export interface FidelityExportTruthDiagnosticOptions {
   /** Global radial projector grid — fine enough to resolve designed C0 cliffs (defaults 2048 × 512). */
   projectorNTheta?: number;
   projectorNZ?: number;
+  /** Riser/tread radius-spread threshold (mm) for the known riser styles (default 0.1); see ProjectorMaxOptions. */
+  treadRadiusSpreadMm?: number;
 }
 
 /**
@@ -165,6 +167,15 @@ export interface FidelityExportTruthDiagnostics {
   vertexMaxMm: number;
   /** vertexMax ≤ REFERENCE_PARITY_EPS_MM ⇒ the CPU reference tracks the GPU shader (else the number is untrusted). */
   referenceTrusted: boolean;
+  /**
+   * For riser/tread styles (DS/Bamboo/ArtDeco/BasketWeave): the HONEST tessellated-surface MAX with the near-vertical
+   * tread faces routed out (= maxMm for single-valued styles). Use THIS as the fidelity verdict for riser styles.
+   */
+  smoothMaxMm: number;
+  /** Riser/tread-face chord (vs single-valued rA ⇒ ~half-step inflation; transparency only). 0 for non-riser styles. */
+  treadChordMaxMm: number;
+  /** Triangles classified as riser/tread. 0 for non-riser styles. */
+  treadFaceCount: number;
   /** Worst 3D min interior angle (deg) over the FULL mesh — the depth-invariant sliver signal. */
   minAngleDeg: number;
   boundaryEdges: number;
@@ -950,11 +961,18 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         const outerMask = new Uint8Array(nV);
         for (let i = 0; i < nV; i++) if (ut[3 * i + 2] === 0) outerMask[i] = 1;
         const wall = extractOuterWallSubmesh(mesh.vertices, mesh.indices, outerMask);
+        // Riser/tread styles carry near-vertical faces the single-valued rA cannot represent (it inflates them to
+        // ~half-step). Tread-aware mode routes those out so `smoothMaxMm` is the honest tessellated-surface fidelity
+        // (their treads are faithful vertical walls by construction, verified by vertexMax≈0).
+        const riser =
+          styleId === 'DragonScales' || styleId === 'BambooSegments' ||
+          styleId === 'ArtDeco' || styleId === 'BasketWeave';
         fid = await measureProjectorMax(wall, rA, {
           H: style.H,
           tolMm: opts.tolMm ?? 0.01,
           nTheta: opts.projectorNTheta ?? 1024,
           nZ: opts.projectorNZ ?? 512,
+          ...(riser ? { treadRadiusSpreadMm: opts.treadRadiusSpreadMm ?? 0.1 } : {}),
         });
       }
       return {
@@ -966,6 +984,9 @@ export function createFidelityApi(deps: FidelityHookDeps): PfFidelityApi {
         chordP99Mm: fid?.p99Mm ?? NaN,
         vertexMaxMm: fid?.vertexMaxMm ?? NaN,
         referenceTrusted: fid ? fid.vertexMaxMm <= REFERENCE_PARITY_EPS_MM : false,
+        smoothMaxMm: fid?.smoothMaxMm ?? NaN,
+        treadChordMaxMm: fid?.treadChordMaxMm ?? 0,
+        treadFaceCount: fid?.treadFaceCount ?? 0,
         minAngleDeg: q.minAngleDeg,
         boundaryEdges: topo.boundaryEdges,
         nonManifoldEdges: topo.nonManifoldEdges,
