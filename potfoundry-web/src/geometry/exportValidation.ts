@@ -77,12 +77,6 @@ export interface MeshExportValidationReport {
   zeroExtentAxes: number;
 }
 
-interface EdgeUse {
-  total: number;
-  forward: number;
-  reverse: number;
-}
-
 function buildGeometricVertexRemap(
   vertices: Float32Array,
   vertexCount: number,
@@ -235,7 +229,6 @@ export function validateMeshForExport(
     errors.push('mesh bounds collapse on all coordinate axes');
   }
 
-  const edgeUses = new Map<string, EdgeUse>();
   let invalidIndices = 0;
   let degenerateTriangles = 0;
   let signedVolumeMm3 = 0;
@@ -245,18 +238,25 @@ export function validateMeshForExport(
     topologyWeldTolerance,
   );
 
-  const recordEdge = (a: number, b: number): void => {
-    const lo = Math.min(a, b);
-    const hi = Math.max(a, b);
-    const key = `${lo}:${hi}`;
-    const use = edgeUses.get(key) ?? { total: 0, forward: 0, reverse: 0 };
-    use.total++;
-    if (a === lo && b === hi) use.forward++;
-    else use.reverse++;
-    edgeUses.set(key, use);
-  };
-
   const triLimit = Math.min(mesh.indices.length, expectedIndices);
+  // Edge accounting WITHOUT a per-edge string Map: pack each welded directed edge into ONE numeric
+  // key (lo·V + hi, exact in f64 while V < 2^26.5 ≈ 95M — far above the 1 GiB export cap), collect
+  // into flat typed arrays, then sort + run-count below. The old `Map<string, EdgeUse>` allocated a
+  // heap string + object per unique edge and threw `RangeError: Map maximum size exceeded` past the
+  // JS Map's ~16.7M-entry cap on 8M+-tri artifacts — the same numeric fix `topologyMetric` carries. [R6]
+  const edgeMult = Math.max(1, mesh.vertexCount);
+  const edgeKeys = new Float64Array(triLimit);
+  const forwardKeys = new Float64Array(triLimit);
+  let edgeCount = 0;
+  let forwardCount = 0;
+  const pushEdge = (a: number, b: number): void => {
+    if (a === b) return; // degenerate edge (post-weld)
+    const lo = a < b ? a : b;
+    const hi = a < b ? b : a;
+    const key = lo * edgeMult + hi;
+    edgeKeys[edgeCount++] = key;
+    if (a === lo) forwardKeys[forwardCount++] = key; // directed a->b traverses lo->hi
+  };
   for (let t = 0; t < triLimit; t += 3) {
     const i0 = mesh.indices[t];
     const i1 = mesh.indices[t + 1];
@@ -293,9 +293,9 @@ export function validateMeshForExport(
     }
 
     signedVolumeMm3 += signedTetraVolumeMm3(mesh.vertices, i0, i1, i2);
-    recordEdge(c0, c1);
-    recordEdge(c1, c2);
-    recordEdge(c2, c0);
+    pushEdge(c0, c1);
+    pushEdge(c1, c2);
+    pushEdge(c2, c0);
   }
 
   if (invalidIndices > 0) {
@@ -309,10 +309,26 @@ export function validateMeshForExport(
   let nonManifoldEdges = 0;
   let orientationMismatches = 0;
 
-  for (const use of edgeUses.values()) {
-    if (use.total === 1) boundaryEdges++;
-    else if (use.total > 2) nonManifoldEdges++;
-    else if (use.forward !== 1 || use.reverse !== 1) orientationMismatches++;
+  // Sort the packed edge keys and count run lengths: total==1 → boundary, total>2 → non-manifold,
+  // total==2 with != one forward use → orientation mismatch (for a 2-use edge, forward+reverse==2,
+  // so `forward !== 1` is exactly the original `forward !== 1 || reverse !== 1`).
+  const keys = edgeKeys.subarray(0, edgeCount);
+  keys.sort();
+  const fwd = forwardKeys.subarray(0, forwardCount);
+  fwd.sort();
+  let fi = 0;
+  for (let i = 0; i < edgeCount; ) {
+    const k = keys[i];
+    let j = i + 1;
+    while (j < edgeCount && keys[j] === k) j++;
+    const total = j - i;
+    while (fi < forwardCount && fwd[fi] < k) fi++;
+    let forward = 0;
+    while (fi < forwardCount && fwd[fi] === k) { forward++; fi++; }
+    if (total === 1) boundaryEdges++;
+    else if (total > 2) nonManifoldEdges++;
+    else if (forward !== 1) orientationMismatches++;
+    i = j;
   }
 
   if (requireClosed && boundaryEdges > 0) {

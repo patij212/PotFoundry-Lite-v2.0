@@ -79,6 +79,36 @@ function makeFaceSplitCube(): MeshData {
   };
 }
 
+/** A CLOSED, consistently-wound torus grid (both u and v wrap) — a watertight manifold with
+ *  `nu·nv·2` triangles and `nu·nv·3` edge uses. Used to exercise the edge-accounting path at
+ *  volume (the string-keyed Map version was O(edges) heap strings and crashed past ~16.7M
+ *  edges — see the numeric-key fix). */
+function makeClosedTorus(nu: number, nv: number): MeshData {
+  const R = 30, r = 10;
+  const vertices = new Float32Array(nu * nv * 3);
+  for (let i = 0; i < nu; i++) {
+    const a = (i / nu) * Math.PI * 2, ca = Math.cos(a), sa = Math.sin(a);
+    for (let j = 0; j < nv; j++) {
+      const b = (j / nv) * Math.PI * 2, cb = Math.cos(b);
+      const o = (i * nv + j) * 3;
+      vertices[o] = (R + r * cb) * ca;
+      vertices[o + 1] = (R + r * cb) * sa;
+      vertices[o + 2] = r * Math.sin(b);
+    }
+  }
+  const at = (i: number, j: number): number => (i % nu) * nv + (j % nv);
+  const indices = new Uint32Array(nu * nv * 6);
+  let k = 0;
+  for (let i = 0; i < nu; i++) {
+    for (let j = 0; j < nv; j++) {
+      const a = at(i, j), b = at(i + 1, j), c = at(i + 1, j + 1), d = at(i, j + 1);
+      indices[k++] = a; indices[k++] = b; indices[k++] = c;
+      indices[k++] = a; indices[k++] = c; indices[k++] = d;
+    }
+  }
+  return { vertices, indices, vertexCount: nu * nv, triangleCount: nu * nv * 2 };
+}
+
 describe('validateMeshForExport', () => {
   it('accepts a closed oriented cube and estimates STL size exactly', () => {
     const mesh = makeClosedCube();
@@ -212,6 +242,19 @@ describe('validateMeshForExport', () => {
     expect(report.ok).toBe(false);
     expect(report.estimatedSizeBytes).toBe(oversizedBytes);
     expect(report.errors.join('\n')).toMatch(/1 GiB/i);
+  });
+
+  it('accounts edges without a per-edge string Map on a large closed mesh (R6 scale path)', () => {
+    // ~590k triangles / ~885k edge uses. The old string-keyed edgeUses Map allocated a heap
+    // string + object per unique edge and crashed with "Map maximum size exceeded" past ~16.7M
+    // edges (8.7M-tri artifacts); the numeric sort+count path handles the same accounting flat.
+    const mesh = makeClosedTorus(512, 384);
+    const report = validateMeshForExport(mesh, { format: 'stl', estimatedSizeBytes: 1024 });
+    // A watertight, consistently-wound manifold: zero boundary / non-manifold / orientation defects.
+    expect(report.boundaryEdges).toBe(0);
+    expect(report.nonManifoldEdges).toBe(0);
+    expect(report.orientationMismatches).toBe(0);
+    expect(report.degenerateTriangles).toBe(0);
   });
 });
 
