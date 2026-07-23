@@ -54,8 +54,10 @@ async function runState(browser, style, state) {
   await wt(page.evaluate((s) => window.__pfFidelity.setStyle(s), style), 150000, 'setStyle');
   await wt(page.evaluate((d) => window.__pfFidelity.setDimensions(d), DIMS), 40000, 'setDims');
   const t0 = Date.now();
-  // The projector-max fidelity scan can take many minutes on a multi-million-tri wall — budget generously.
-  const r = await wt(page.evaluate((t) => window.__pfFidelity.diagnoseExportTruth({ targetTriangles: t }), TARGET), 1800000, 'exportTruth');
+  // The projector-max fidelity scan can take many minutes on a multi-million-tri wall (measured:
+  // smooth styles ~2-5min; the DragonScales cone-fan at ~9M tris of steep relief ~45min). Async-chunked
+  // so it never freezes the tab; budget 60min per cell.
+  const r = await wt(page.evaluate((t) => window.__pfFidelity.diagnoseExportTruth({ targetTriangles: t }), TARGET), 3600000, 'exportTruth');
   const buildMs = Date.now() - t0;
   await page.close();
   return { ...r, buildMs, flagsApplied: state === 'on' ? { __pfPerfectMesher: true, ...ON_FLAGS[style] } : {} };
