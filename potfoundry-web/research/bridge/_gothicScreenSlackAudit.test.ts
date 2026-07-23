@@ -162,6 +162,13 @@ const FIX_RES = envInt('PF_SLACK_FIX_RES', 4); // Jacobian-sample resolution per
 // Real-kernel fix: K>1 turns on the sub-box triangle-Jacobian in the actual
 // screen (gate=screen). K=0 is the untouched baseline. Compare totalCells.
 const JAC_PARTITION = envInt('PF_SLACK_JAC_PARTITION', 0);
+// STRATA-001 S0 (E-2026-07-23-STRATA001-S0-BASELINE): per-cell CSV for the
+// fired-map overlay. Emits EVERY VISITED cell with its accept/subdivide
+// disposition -- not just accepted leaves -- because prediction P1 is about
+// where Clarke FIRES, and the Voronoi hang lives in the SUBDIVIDED population.
+// Off unless PF_SLACK_CSV is set; hard row cap (Set-cap lesson) reported honestly.
+const CSV_PATH = process.env.PF_SLACK_CSV;
+const CSV_MAX = envInt('PF_SLACK_CSV_MAX', 400_000);
 
 type Bary = { readonly a: bigint; readonly b: bigint; readonly c: bigint };
 type Uv = { readonly uNumerator: bigint; readonly vNumerator: bigint };
@@ -580,6 +587,52 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
       const worst: Worst[] = [];
       const K = 24;
 
+      // ---- STRATA-001 S0 per-cell CSV (additive; money-metrics untouched) ----
+      const csvRows: string[] = [];
+      let csvTruncated = false;
+      // The bubble lattice geometry is fixed by scale/jitter/pulse/zStretch, which
+      // v_morph does NOT change -- so the order-1 straddle classification is valid
+      // in web mode too (where the existing voronoiStraddle report gate is off).
+      const voronoiLattice = STYLE === 'Voronoi';
+      const straddleClassOf = (corners: TriF): string => {
+        if (!voronoiLattice) return 'na';
+        const s = VORONOI_BUBBLE_LATTICE.scale;
+        const id0 = voronoiNearestCenterId(VORONOI_BUBBLE_LATTICE, corners[0][0] * s, corners[0][1] * s);
+        const id1 = voronoiNearestCenterId(VORONOI_BUBBLE_LATTICE, corners[1][0] * s, corners[1][1] * s);
+        const id2 = voronoiNearestCenterId(VORONOI_BUBBLE_LATTICE, corners[2][0] * s, corners[2][1] * s);
+        return id0 !== id1 || id1 !== id2 ? 'order1-straddle' : 'interior';
+      };
+      const emitCsvRow = (
+        corners: TriF,
+        depth: number,
+        screen: number | null,
+        trueMm: number,
+        clarkeFired: boolean,
+        disposition: 'accept' | 'subdivide' | 'depthcap' | 'refused'
+      ): void => {
+        if (CSV_PATH === undefined) return;
+        if (csvRows.length >= CSV_MAX) {
+          csvTruncated = true;
+          return;
+        }
+        const us = [corners[0][0], corners[1][0], corners[2][0]];
+        const vs = [corners[0][1], corners[1][1], corners[2][1]];
+        csvRows.push(
+          [
+            Math.min(...us).toFixed(9),
+            Math.min(...vs).toFixed(9),
+            Math.max(...us).toFixed(9),
+            Math.max(...vs).toFixed(9),
+            String(depth),
+            screen === null ? '' : um(screen),
+            um(trueMm),
+            clarkeFired ? '1' : '0',
+            straddleClassOf(corners),
+            disposition,
+          ].join(',')
+        );
+      };
+
       const recurse = (
         base: readonly [Uv, Uv, Uv],
         baseUvFloat: TriF,
@@ -606,12 +659,14 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
         const trueMm = trueUpperMm(baseUvFloat, artifactMm, cell, depth, evaluateFloat64, ORACLE_RES);
         if (screen === null) {
           refused += 1;
+          emitCsvRow(corners, depth, null, trueMm, clarkeFired, 'refused');
           return;
         }
         if (screen - trueMm < minSlack) minSlack = screen - trueMm;
 
         if (screen <= BUDGET_MM) {
           // ACCEPTED leaf — this is the size the b&b certifies at.
+          emitCsvRow(corners, depth, screen, trueMm, clarkeFired, 'accept');
           acceptSlack.push(screen - trueMm);
           acceptTrue.push(trueMm);
           const ratio = trueMm > 1e-9 ? screen / trueMm : Number.POSITIVE_INFINITY;
@@ -642,8 +697,10 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
         // screen > budget.
         if (depth >= MAX_DEPTH) {
           capLeaves += 1;
+          emitCsvRow(corners, depth, screen, trueMm, clarkeFired, 'depthcap');
           return;
         }
+        emitCsvRow(corners, depth, screen, trueMm, clarkeFired, 'subdivide');
         subdivided += 1;
         if (trueMm <= BUDGET_MM) slackForced += 1;
         else genuineOver += 1;
@@ -786,6 +843,14 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
             (w) =>
               `  u=${w.u.toFixed(4)} v=${w.v.toFixed(4)} depth=${w.depth}  screen=${um(w.screen)}  true=${um(w.trueMm)}  ratio=${w.ratio.toFixed(2)}`
           ),
+        ...(CSV_PATH === undefined
+          ? []
+          : [
+              '',
+              '--- STRATA-001 S0 per-cell CSV ---',
+              `  rows written: ${csvRows.length}${csvTruncated ? ` (TRUNCATED at PF_SLACK_CSV_MAX=${CSV_MAX} — overlay coverage partial)` : ''}`,
+              `  path: ${CSV_PATH}`,
+            ]),
         '======================================================================',
         '',
       ].join('\n');
@@ -795,6 +860,13 @@ describe('Gothic screen-slack audit (Increment 1: total black-box slack)', () =>
       // file so the numbers always survive.
       const outPath = process.env.PF_SLACK_OUT;
       if (outPath !== undefined) writeFileSync(outPath, report, 'utf8');
+      if (CSV_PATH !== undefined) {
+        writeFileSync(
+          CSV_PATH,
+          ['uMin,vMin,uMax,vMax,depth,screenUm,trueUm,clarke,straddle,disp', ...csvRows].join('\n'),
+          'utf8'
+        );
+      }
 
       // Soundness only holds for the real screen; the sampled replica may dip
       // slightly negative where the sampled Jacobian under-encloses.
