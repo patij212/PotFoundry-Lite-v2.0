@@ -241,4 +241,55 @@ describe('STRATA-001 S0: fired-map overlay vs the order-1 bisector graph', () =>
 
     expect(rows.length).toBeGreaterThan(0);
   }, 600_000);
+
+  /*
+   * P2 point probe: locate specific failing cells (e.g. the INCONCLUSIVE
+   * depth-24 triangles the real certifier reports in WEB mode) against the
+   * order-1 bisector graph and the site cones. Order-1 edges are the ONLY
+   * stratum the guides module currently emits; spec §3 predicts web-mode kinks
+   * live on the ORDER-2 edges (f2 ties), which are not yet extracted — so a
+   * failing cell that is far from order-1 AND far from a site is positive
+   * evidence for the order-2 hypothesis (P2).
+   *
+   * PF_STRATA_POINTS="u,v;u,v;..." (UV, unit square).
+   */
+  it.runIf(process.env.PF_STRATA_POINTS !== undefined)(
+    'point probe: failing-cell UV vs order-1 graph and site cones',
+    () => {
+      const spec = process.env.PF_STRATA_POINTS;
+      if (spec === undefined) return;
+      const segs = voronoiBisectorSegmentsUv(VORONOI_BUBBLE_LATTICE);
+      const sites = siteCentersUv(VORONOI_BUBBLE_LATTICE);
+      // One lattice cell spans 1/scale in UV; report distances in those units so
+      // "0.5" reads as "halfway between a site and its neighbour".
+      const cellUv = 1 / VORONOI_BUBBLE_LATTICE.scale;
+      const lines = ['', '===== P2 POINT PROBE (distances in lattice-cell units) ====='];
+      for (const part of spec.split(';')) {
+        const [us, vs] = part.split(',');
+        const u = Number.parseFloat(us);
+        const v = Number.parseFloat(vs);
+        if (!Number.isFinite(u) || !Number.isFinite(v)) continue;
+        const dGraph = distanceToGraph(u, v, segs);
+        let dSite = Infinity;
+        for (const s of sites) {
+          const ds = Math.hypot(u - s[0], v - s[1]);
+          if (ds < dSite) dSite = ds;
+        }
+        lines.push(
+          `  (${u.toFixed(5)}, ${v.toFixed(5)})  d(order-1 graph)=${(dGraph / cellUv).toFixed(4)}` +
+            `  d(site cone)=${(dSite / cellUv).toFixed(4)}`
+        );
+      }
+      lines.push(
+        '  READ: near 0 on order-1 => spec §3 crease as-extracted; far from BOTH',
+        '        => order-2 stratum (P2) or another locus entirely.',
+        '===========================================================',
+        ''
+      );
+      // eslint-disable-next-line no-console
+      console.log(lines.join('\n'));
+      expect(segs.length).toBeGreaterThan(0);
+    },
+    600_000
+  );
 });

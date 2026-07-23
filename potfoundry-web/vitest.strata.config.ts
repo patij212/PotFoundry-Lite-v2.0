@@ -11,6 +11,10 @@ export default defineConfig({
     include: [
       'research/bridge/_gothicScreenSlackAudit.test.ts',
       'research/bridge/_strata*.test.ts',
+      // S0 root-cause arm: the REAL certifier (certifyContinuousMappedPatchDistance)
+      // per patch with failing-cell UV — tests whether the reported Voronoi hang is
+      // the exact-evaluator escalation at the 128 site-cone refusals (PF_SLICE11_VOR_PP).
+      'research/bridge/_gothicVoronoiConformingSpike.test.ts',
     ],
     testTimeout: 6_000_000,
     hookTimeout: 600_000,
