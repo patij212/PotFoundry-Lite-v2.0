@@ -125,7 +125,7 @@ compendium §11.
 | R5 | Reconcile watertight tol; fix the false `types.ts:68` comment | `exportValidation.ts:29`, `types.ts:68` | med | `1e-3` download vs `1e-4` internal, 10× apart; decide the correct value (don't silently change a gate). |
 | R6 | Share the numeric packed-key path (Map-cap) | `exportValidation.ts:238`, `topologyDiagnostics` | med | the download path can still crash on 8M+ tris. |
 | ~~R7~~ **DONE** | Cross-validate: sampled ≤ certified upper bound | `research/bridge/certCrossValidate.test.ts` | — | sampled 0.0168 ≤ cert 0.02 (SOUND), ratio 0.84 (TIGHT); also proved src analytic surface == prover target. |
-| R8 | Add a non-locus MAX pass to the all-20 harnesses | `featConformAll20` | med | fl3d loci-only is blind to scale-tip cones; add a facet/interval MAX gate. |
+| ~~R8~~ **DONE** | Add a non-locus MAX pass to the all-20 harness | `featConformAll20` | — | `53c85f60`: `perFaceTrue3DSag` (whole-mesh, per-face true-3D) added as `wholeMesh3d_max`/`_pctOver01` on every Row — the loci-only `fl3d_*` channel was blind to scale-tip cones. Verified: DragonScales baseline `wmMax 0.801 > fl3d 0.718` (off-locus worst). |
 
 ## 5. Future work (bigger bets)
 

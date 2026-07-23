@@ -192,8 +192,8 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 ### 4.6 `featureLineChord3D` / `perFaceTrue3DSag` — labkit true-3D
 - **Where:** `research/bridge/labkit.ts` (barrel), `featureLocalizedFidelity.ts:720`.
 - **Measures:** `featureLineChord3D` = exact 3D distance from analytic feature-loci points to the nearest mesh triangle (**truth→mesh**, one-sided, on loci). `perFaceTrue3DSag` = facet→nearest-surface (mesh→truth), the default honest heatmap ruler.
-- **Failure modes:** **fl3d loci-only sampling is BLIND (not diluted) to non-locus MAX spikes** — a scale-tip cone carries no feature locus, so it is **never sampled**. This is *worse* than p99-masking. `perFaceTrue3DSag` inherits the GN wrong-well (§4.5①).
-- **When/how:** `featureLineChord3D` for crest/valley fidelity where the feature is; `perFaceTrue3DSag` for the whole-wall heatmap. **Add a non-locus MAX pass** (facet or interval) for scale-tips.
+- **Failure modes:** **fl3d loci-only sampling is BLIND (not diluted) to non-locus MAX spikes** — a scale-tip cone carries no feature locus, so it is **never sampled**. This is *worse* than p99-masking. **CLOSED in the all-20 harness (R8, `53c85f60`):** `featConformAll20` now carries `wholeMesh3d_max` = `perFaceTrue3DSag.worstMm` (whole-mesh, non-locus) beside the loci-only `fl3d_*` (DragonScales baseline: wmMax 0.801 > fl3d 0.718 — an off-locus worst). `perFaceTrue3DSag` inherits the GN wrong-well on tangled lattices (§4.5①), but on the SMOOTH scale-tips this pass exists for, GN ≡ brute (honest).
+- **When/how:** `featureLineChord3D` for crest/valley fidelity where the feature is; `perFaceTrue3DSag` (`wholeMesh3d_max`) for the whole-wall non-locus MAX — **always run both** (loci for *where*, whole-mesh for the *worst*).
 - **Shape:** single-valued radial (uses `rA`).
 
 ### 4.7 `bruteNearestOnRadialSurface` / `bruteAnchoredRedPerp` — the trusted brute twin
