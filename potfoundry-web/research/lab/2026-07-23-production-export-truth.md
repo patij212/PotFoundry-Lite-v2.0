@@ -35,10 +35,14 @@ _Generated from `e2e/baselines/production-export-truth-pass1.json` — measured 
   The full-mesh `maxMm` (0.86) is tread-wall inflation; the **SMOOTH complement (tread faces excluded) = 0.00448 mm**
   (vtx 0.00001, p99 0.0024), so Bamboo **TRULY closes ≤0.01** — the treads are faithful vertical walls by construction.
   ⇒ **BambooSegments should be re-classified CLOSED-holds in production.**
-- **DragonScales — very likely closes; MAX still to confirm.** DS ON 0.82 is the SAME tread-inflation mechanism as
-  Bamboo (both rA-based rulers agree, vtx≈0). By analogy DS very likely closes on its smooth complement, but DS has 2D
-  scale features (not simple t-bands), so it needs a DS-specific smooth-complement or the parametric-Φ projector to
-  confirm the true MAX. NOT yet verified — do not claim DS closed at MAX until measured with a tread-aware ruler.
+- **DragonScales — does NOT close at MAX (scale-tip cones); p99-CAD-grade only.** MEASURED: the full-mesh 0.82 IS tread
+  inflation (rA-ruler), but the geometric smooth complement (faces with vertex-radius-spread > 0.2mm excluded) still
+  floors at **MAX 0.0965mm** with **p99 0.0088mm** (vtx 0.00001). So DS ≠ Bamboo: excluding the risers reveals a real
+  residual at the **scale-tip cone apex** (a near-point singularity the radius-spread filter can't remove, and the
+  cone-fan reduces but does not bring to ≤0.01). This matches the prior "certify on MAX, never p99 — MAX 0.10–0.13
+  hides at scale-tip cones" finding ([[project_ds_rim_bug]]). **DS's "closure" was p99-scoped; the honest MAX (~0.096)
+  is an OPEN frontier.** (Bamboo, by contrast, genuinely closes at MAX 0.0045 — its treads are the only vertical
+  feature; DS additionally has the scale-tip cones.)
 - **LowPolyFacet — ON still null** (facet-align nU=864 non-pow2, can't be pow2). Deferred; OFF already holds 0.00102.
 
 ## Summary

@@ -76,7 +76,11 @@ unbuilt gaps per the campaign, but only if the audit shows nothing more urgent, 
 - **BambooSegments — GENUINELY CLOSES (confirmed).** After the pow2 fix, the smooth complement (tread faces at t=k/5
   excluded — they are faithful vertical walls) measures **0.00448mm ≤ 0.01** (vtx 0.00001, p99 0.0024); the full-mesh
   0.86 was purely tread inflation. So Bamboo ON = watertight + gate-pass + ≤0.01 fidelity ⇒ a REAL production closure.
-  This also validates the tread-inflation interpretation and implies DragonScales (same mechanism) very likely closes
-  too (its 2D scale features need a DS-specific smooth-complement / Φ pass to confirm).
+  This validates the tread-inflation interpretation.
+- **DragonScales — does NOT close at MAX (MEASURED, corrects the inference above).** Geometric smooth complement
+  (radius-spread > 0.2mm faces excluded) still floors at **MAX 0.0965 / p99 0.0088** (vtx 0.00001): the 0.82 was tread
+  inflation, but a real **scale-tip cone-apex** residual (~0.096, density-invariant, cone-fan can't reach ≤0.01)
+  remains. So DS ≠ Bamboo — DS's closure was p99-scoped, MAX is an OPEN frontier ([[project_ds_rim_bug]]). Bamboo has
+  only tread verticals (closes); DS additionally has the scale-tip cones (open).
 - [next / follow-ups] (a) Φ re-measurement of DS/Bamboo true MAX; (b) LowPoly ON deeper wiring fix; (c) the enablement
   decision for SpiralRidges (the one smooth style whose emitter genuinely earns its keep).
