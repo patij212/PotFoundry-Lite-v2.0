@@ -268,7 +268,7 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 
 ### 6.4 `exportValidation` — the blocking download gate
 - **Where:** `src/geometry/exportValidation.ts`.
-- **Failure modes:** ① **re-implements** boundary/non-manifold counting with the **un-fixed `Map<string>`** (`:238`) — the same `RangeError: Map maximum size exceeded` / 27s-stall the `topologyMetric` fast path already solved, on the **blocking download path**; ② **watertight tolerance diverges 10×** from the internal gate: `1e-3` here vs `WELD_TOL_MM=1e-4` internally, and `types.ts:68`'s comment **falsely claims they match** — a 0.1–1µm seam passes one gate and fails the other.
+- **Failure modes:** ~~① re-implements boundary/non-manifold counting with the un-fixed `Map<string>`~~ **FIXED — R6 (`c7b34216`):** numeric packed-key path (`lo*V+hi` in flat Float64Arrays + sort/run-count, the same fix `topologyMetric` carries) — no Map-cap crash / stall on the download path. ~~② watertight tolerance diverges 10× (`1e-3` vs `WELD_TOL_MM=1e-4`)~~ **FIXED — R5 (`8762aba8`):** download gate default pinned to `WELD_TOL_MM` (1e-4, imported = single source of truth), matching the internal/pipeline standard. Tightening surfaced a REAL pre-existing conforming-Voronoi seam crack (3 naked edges) → pinned known-defective (`it.fails`) + mesher fix queued.
 - **When/how:** the pre-download guard. **Share the numeric-key path** from `metrics.ts`; reconcile the tolerance.
 
 ---
@@ -310,8 +310,8 @@ modes · When/how · Shape.** Line numbers are `src/…` unless noted.
 | **centroid pre-filter understatement** | perpendicular chord MAX | bound taken at centroid only, sub-0.04 recorded at radial bound | facet-wide bound, scale with tol |
 | **reference artifact (multi-valued)** | `rA` on weave/braid | 2.5D proxy can't store overhang | post-warp GPU / multi-patch |
 | **tracked-not-gated exclusions** | analyticSurfaceGate crease bands | cliff facets dropped into `creaseBandMaxMm`, never failed | gate the band (cliffs are features) |
-| **Map-cap crash** | `exportValidation`, `topologyDiagnostics` | V8 ~16.7M-entry `Map<string>` cap | numeric packed-key path / `nonManRawBig` |
-| **watertight tol divergence** | export gates | `1e-3` download vs `1e-4` internal | reconcile; fix `types.ts:68` comment |
+| **Map-cap crash** ✅ FIXED (R6) | `exportValidation` (`topologyDiagnostics` was already numeric) | V8 ~16.7M-entry `Map<string>` cap | numeric packed-key path (`8762aba8`/`c7b34216`) |
+| **watertight tol divergence** ✅ FIXED (R5) | export gates | ~~`1e-3` download vs `1e-4` internal~~ both `WELD_TOL_MM`=1e-4 now | pinned to the fidelity standard (`8762aba8`) |
 | **stationary-camera phantom** | GPU preview readback | camera inertia between reads | measure stationary, never after a drag |
 | **INCONCLUSIVE blow-up** | interval prover on high-freq | interval width explodes past budget | raise budget / curtains / accept INCONCLUSIVE |
 | **libm over-accept** | interval acceptance screen | platform libm > 8·2⁻⁵² | widen guard; expand the ULP test |
@@ -349,7 +349,7 @@ in `docs/superpowers/specs/2026-07-22-unified-ruler-design.md`.)
 5. Perpendicular `coarseTrigger=0.1` / `preFilterMm=0.04` **calibrated to 0.1mm**, wrong for 0.01mm (R3, still open — `analyticSurfaceGate.ts:263,393`). ~~centroid-only pre-filter understates MAX~~ **FIXED — R4 (`15e8b16f`):** the pre-filter now bounds the whole facet (max chordBound over the dense samples), so an off-centroid spike can't hide behind a small centroid.
 6. GN **wrong-well ~7×** on lattices (`analyticSurfaceGate.ts:264`, coarse search azimuth-local).
 7. NaN chord dev → `rmsDevMm: null` (`analyticSurfaceGate.ts:478,505`).
-8. `exportValidation` Map-cap crash on the **download path** (`:238`); watertight tol `1e-3` vs `1e-4` + false `types.ts:68` comment.
+8. ~~`exportValidation` Map-cap crash on the download path; watertight tol `1e-3` vs `1e-4`~~ **FIXED — R6 (`c7b34216`, numeric packed-key) + R5 (`8762aba8`, default pinned to `WELD_TOL_MM`=1e-4).**
 9. `barycentricSamples(4)` = 3 interior points, no centroid; comments say "15" (`metrics.ts:212`).
 10. Tolerance anchors pinned to 0.1mm: `SAG_TOL_MM`, `SERRATION_TOL_MM`, `REFERENCE_PARITY_EPS_MM=0.05` — 5–10× loose.
 11. The rigorous certificate is **not cross-validated** against the sampled rulers (no `perFaceTrue3DSag ≤ certifiedUpperPm` test).
