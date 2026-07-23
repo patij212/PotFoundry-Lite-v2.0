@@ -431,15 +431,44 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
   const seedNt = Math.max(2, seedN), seedNu = doRimPin ? rimPinRing! : Math.max(2, Math.round(seedN * s));
   for (let i = 0; i <= seedNu; i++) for (let j = 0; j <= seedNt; j++) addPoint(i / seedNu, j / seedNt);
 
-  // Rim-pin boundary lock: true iff the edge (i0,i1) lies WHOLLY on one patch boundary line (both endpoints on
-  // t=0, or both on t=1, or both on u=0, or both on u=1). Such edges are never split, so the seeded rim/seam
-  // stations stay fixed → the emitted rings are exactly nRing and the seam columns stay a weldable bijection.
-  const onSameBoundaryLine = (i0: number, i1: number): boolean => {
-    const u0 = uv[2 * i0], t0v = uv[2 * i0 + 1], u1 = uv[2 * i1], t1v = uv[2 * i1 + 1];
-    return (t0v <= BND_EPS && t1v <= BND_EPS)
-      || (t0v >= 1 - BND_EPS && t1v >= 1 - BND_EPS)
-      || (u0 <= BND_EPS && u1 <= BND_EPS)
-      || (u0 >= 1 - BND_EPS && u1 >= 1 - BND_EPS);
+  // Rim-pin RIM lock: true iff the edge (i0,i1) lies WHOLLY on a t=0 / t=1 RIM row. These are never split, so the
+  // seeded rim stations stay fixed → the emitted bottom/top rings are EXACTLY nRing (the assembly precondition).
+  const onSameRimLine = (i0: number, i1: number): boolean => {
+    const t0v = uv[2 * i0 + 1], t1v = uv[2 * i1 + 1];
+    return (t0v <= BND_EPS && t1v <= BND_EPS) || (t0v >= 1 - BND_EPS && t1v >= 1 - BND_EPS);
+  };
+  // Rim-pin SEAM detection: true iff the edge lies WHOLLY on the u=0 or the u=1 periodic SEAM column.
+  //
+  // SEAM-REFINEMENT (E-2026-07-23-GEOSTAR-SEAM-LOCK): these used to be LOCKED alongside the rim rows, which froze
+  // both seam columns at the SEED resolution (seedNt+1 stations, ~H/seedN apart in z ⇒ 10mm at the defaults) while
+  // the interior refined to hMin. The seam-adjacent triangles then spanned 1.5–6.5mm and chorded the relief:
+  // MEASURED on GeometricStar at production density (10M tris) the true-3D MAX 0.697mm was carried ENTIRELY by such
+  // facets (worst-20 all at u≈0.0004 / u≈0.9996 with maxEdge 1.5–6.5mm ≫ hMin 0.04, radSpread ~1.0–1.35mm), and it
+  // is INVARIANT under maxPoints (more budget refines the interior, never the locked seam) — which is why 4× the
+  // budget moved the MAX only 1.167→0.697. Seam edges are therefore SPLITTABLE now, but every seam split is MIRRORED
+  // onto BOTH columns (see `addSplitPoint`) so u=0 and u=1 keep an IDENTICAL t-station set and the rim-pin weld
+  // bijection in `metricMeshToOuterWall` still holds.
+  const onSameSeamLine = (i0: number, i1: number): boolean => {
+    const u0 = uv[2 * i0], u1 = uv[2 * i1];
+    return (u0 <= BND_EPS && u1 <= BND_EPS) || (u0 >= 1 - BND_EPS && u1 >= 1 - BND_EPS);
+  };
+  /**
+   * Add a refinement split point for the edge (i0,i1) whose midpoint is (mu,mt).
+   * • SEAM edge under rim-pin → add the station on BOTH seam columns (0,mt) and (1,mt), keeping the two columns an
+   *   exact t-station bijection (the weld precondition). The near-boundary band guard is deliberately bypassed here:
+   *   a seam midpoint is EXACTLY on the seam by construction, not the interior-vertex drift the guard exists to stop.
+   * • otherwise → the pre-existing behaviour (band guard, then addPoint).
+   * STRICT NO-OP when doRimPin is false: falls straight through to `rimSplitBlocked` (itself a no-op) + addPoint, so
+   * the default/non-rim-pinned kernel path is byte-identical.
+   */
+  const addSplitPoint = (i0: number, i1: number, mu: number, mt: number): boolean => {
+    if (doRimPin && onSameSeamLine(i0, i1)) {
+      const a0 = addPoint(0, mt);
+      const a1 = addPoint(1, mt);
+      return a0 || a1;
+    }
+    if (rimSplitBlocked(mu, mt)) return false;
+    return addPoint(mu, mt);
   };
 
   // OPT-IN feature-conforming injection. Forced points (e.g. refined crest/valley loci) are appended to the
@@ -491,11 +520,13 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
     // via addPoint, and refining all over-size edges at once converges in ~log2(ratio) rounds, not ~60.
     for (let ti = 0; ti < tris.length; ti += 3) {
       const a = tris[ti] * 2, b = tris[ti + 1] * 2, c = tris[ti + 2] * 2;
-      // Rim-pin: an edge lying wholly on a patch boundary is LOCKED (never split) so the seeded rim/seam
-      // stations stay fixed. No-op when doRimPin is false (all three flags stay false → byte-identical splits).
-      const lockAB = doRimPin && onSameBoundaryLine(tris[ti], tris[ti + 1]);
-      const lockBC = doRimPin && onSameBoundaryLine(tris[ti + 1], tris[ti + 2]);
-      const lockCA = doRimPin && onSameBoundaryLine(tris[ti + 2], tris[ti]);
+      // Rim-pin: an edge lying wholly on a t=0/t=1 RIM row is LOCKED (never split) so the seeded rim stations stay
+      // fixed and the emitted rings are exactly nRing. SEAM (u=0/u=1) edges are NOT locked — they refine, mirrored
+      // onto both columns by `addSplitPoint` (see onSameSeamLine: the frozen seam was the measured true-3D MAX).
+      // No-op when doRimPin is false (all three flags stay false → byte-identical splits).
+      const lockAB = doRimPin && onSameRimLine(tris[ti], tris[ti + 1]);
+      const lockBC = doRimPin && onSameRimLine(tris[ti + 1], tris[ti + 2]);
+      const lockCA = doRimPin && onSameRimLine(tris[ti + 2], tris[ti]);
       const eAB = metricLen2(uv[a], uv[a + 1], uv[b], uv[b + 1]);
       const eBC = metricLen2(uv[b], uv[b + 1], uv[c], uv[c + 1]);
       const eCA = metricLen2(uv[c], uv[c + 1], uv[a], uv[a + 1]);
@@ -503,9 +534,9 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
       const mABu = (uv[a] + uv[b]) / 2, mABt = (uv[a + 1] + uv[b + 1]) / 2;
       const mBCu = (uv[b] + uv[c]) / 2, mBCt = (uv[b + 1] + uv[c + 1]) / 2;
       const mCAu = (uv[c] + uv[a]) / 2, mCAt = (uv[c + 1] + uv[a + 1]) / 2;
-      if (!lockAB && eAB > splitThresh2 && !rimSplitBlocked(mABu, mABt) && addPoint(mABu, mABt)) added++;
-      if (!lockBC && eBC > splitThresh2 && !rimSplitBlocked(mBCu, mBCt) && addPoint(mBCu, mBCt)) added++;
-      if (!lockCA && eCA > splitThresh2 && !rimSplitBlocked(mCAu, mCAt) && addPoint(mCAu, mCAt)) added++;
+      if (!lockAB && eAB > splitThresh2 && addSplitPoint(tris[ti], tris[ti + 1], mABu, mABt)) added++;
+      if (!lockBC && eBC > splitThresh2 && addSplitPoint(tris[ti + 1], tris[ti + 2], mBCu, mBCt)) added++;
+      if (!lockCA && eCA > splitThresh2 && addSplitPoint(tris[ti + 2], tris[ti], mCAu, mCAt)) added++;
       // fidelity guard: if the facet deviates from the TRUE surface > chordTolMm, split the longest edge
       // (catches sharp/thin relief the grid-curvature metric aliases). Skip if already metric-split this edge.
       if (chordTolMm !== undefined && Math.max(eAB, eBC, eCA) <= splitThresh2) {
@@ -517,9 +548,9 @@ export function buildMetricMesh(rA: AnalyticRadiusFn, H: number, opts: MetricMes
           const wOnBnd = doRimPin && (w.u <= BND_EPS || w.u >= 1 - BND_EPS || w.t <= BND_EPS || w.t >= 1 - BND_EPS);
           if (!wOnBnd && w.sag > chordTolMm && addPoint(w.u, w.t)) added++;
         } else if (chordSag(tris[ti], tris[ti + 1], tris[ti + 2]) > chordTolMm) {
-          if (eAB >= eBC && eAB >= eCA) { if (!lockAB && !rimSplitBlocked(mABu, mABt) && addPoint(mABu, mABt)) added++; }
-          else if (eBC >= eCA) { if (!lockBC && !rimSplitBlocked(mBCu, mBCt) && addPoint(mBCu, mBCt)) added++; }
-          else if (!lockCA && !rimSplitBlocked(mCAu, mCAt) && addPoint(mCAu, mCAt)) added++;
+          if (eAB >= eBC && eAB >= eCA) { if (!lockAB && addSplitPoint(tris[ti], tris[ti + 1], mABu, mABt)) added++; }
+          else if (eBC >= eCA) { if (!lockBC && addSplitPoint(tris[ti + 1], tris[ti + 2], mBCu, mBCt)) added++; }
+          else if (!lockCA && addSplitPoint(tris[ti + 2], tris[ti], mCAu, mCAt)) added++;
         }
       }
       if (uv.length / 2 > maxPoints) { hitBudget = true; break; }
