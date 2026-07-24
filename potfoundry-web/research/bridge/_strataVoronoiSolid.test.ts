@@ -286,6 +286,106 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       // triangles (linear vs quadratic convergence, per E-2026-07-24-STRATA001-S2-CONVERGENCE).
       const gu = Math.round(envF('PF_SOLID_GRIDU', 96));
       const gv = Math.round(envF('PF_SOLID_GRIDV', 48));
+      // GENERIC FEATURE-ALIGNED θ-COLUMNS (shape-agnostic conforming for near-vertical ridge styles: Gothic /
+      // GeoStar / Gyroid / BasketWeave). PROVEN NEED (E-…-S7 pure-LEPP): uniform columns chord a steep θ-ridge,
+      // and sag-LEPP bisects the LONGEST (usually Z) edge — never ACROSS the ridge — so MAX sticks at ~relief
+      // (Gothic 1512µm at the 1.5µm floor, 4M cap). Fix: distribute the SAME gu columns by equidistribution of a
+      // ridge-density ρ(θ)=1+A·score so they CLUSTER on ridges, and SNAP one column exactly onto each ridge crest
+      // → a mesh edge lies on the ridge. Detector-driven (θ 2nd-difference, same test as _strataCreaseDetect),
+      // zero per-style code, watertight by construction (structured grid). Off unless PF_SOLID_FCOLS=1.
+      const fcolsOn = process.env.PF_SOLID_FCOLS === '1';
+      const thetaCols: number[] = [];
+      if (fcolsOn) {
+        const M = 2048;
+        const zLevels = [0.15, 0.35, 0.55, 0.75, 0.9].map((f) => f * H);
+        const hth = TWO_PI / M;
+        const scoreAt = (th: number): number => {
+          let best = 0;
+          for (const z of zLevels) {
+            const r0 = rA(canon(th), z);
+            const big = Math.abs(rA(canon(th + hth), z) - 2 * r0 + rA(canon(th - hth), z));
+            const sm = Math.abs(rA(canon(th + hth / 4), z) - 2 * r0 + rA(canon(th - hth / 4), z));
+            if (big < 1e-9) continue;
+            // ratio sm/big → ~1 for a crease/jump (scale-invariant), ~0.06 for smooth curvature. Keep the crease loci.
+            if (sm / big > 0.2 && big > best) best = big;
+          }
+          return best;
+        };
+        const score = new Float64Array(M);
+        let sMax = 0;
+        for (let k = 0; k < M; k += 1) {
+          score[k] = scoreAt((TWO_PI * k) / M);
+          if (score[k] > sMax) sMax = score[k];
+        }
+        const A = envF('PF_SOLID_FCOLS_A', 60);
+        const rho = new Float64Array(M);
+        for (let k = 0; k < M; k += 1) rho[k] = 1 + (sMax > 0 ? (A * score[k]) / sMax : 0);
+        const C = new Float64Array(M + 1);
+        for (let k = 0; k < M; k += 1) C[k + 1] = C[k] + rho[k];
+        const Ctot = C[M];
+        const invCDF = (target: number): number => {
+          let lo = 0;
+          let hi = M;
+          while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (C[mid] <= target) lo = mid;
+            else hi = mid;
+          }
+          const frac = (target - C[lo]) / (rho[lo] || 1);
+          return (TWO_PI * (lo + frac)) / M;
+        };
+        for (let i = 0; i < gu; i += 1) thetaCols.push(canon(invCDF((i / gu) * Ctot)));
+        thetaCols[0] = 0;
+        thetaCols.sort((a, b) => a - b);
+        // SNAP the nearest column exactly onto each ridge crest (local maxima of score) so an edge lies ON the ridge.
+        const crests: number[] = [];
+        for (let k = 0; k < M; k += 1) {
+          const kp = (k + 1) % M;
+          const km = (k - 1 + M) % M;
+          if (score[k] > 0.25 * sMax && score[k] >= score[kp] && score[k] > score[km]) crests.push((TWO_PI * k) / M);
+        }
+        const nomSpacing = TWO_PI / gu;
+        for (const cr of crests) {
+          let bi = 0;
+          let bd = Infinity;
+          for (let i = 1; i < gu; i += 1) {
+            const d = Math.abs(thetaCols[i] - cr);
+            if (d < bd) {
+              bd = d;
+              bi = i;
+            }
+          }
+          if (bi > 0 && bd < nomSpacing) thetaCols[bi] = cr; // never move the seam column [0]=0
+        }
+        thetaCols.sort((a, b) => a - b);
+        // Guarantee exactly gu DISTINCT monotone columns: snapping can land two columns on one θ (degenerate
+        // zero-width cell → non-manifold). Drop collisions (< 5% nominal spacing), then refill the largest gaps.
+        const epsCol = nomSpacing * 0.05;
+        const cols = thetaCols.filter((v, i) => i === 0 || v - thetaCols[i - 1] > epsCol);
+        while (cols.length < gu) {
+          let gIdx = 0;
+          let gMax = -1;
+          for (let i = 0; i < cols.length; i += 1) {
+            const nxt = i + 1 < cols.length ? cols[i + 1] : TWO_PI;
+            if (nxt - cols[i] > gMax) {
+              gMax = nxt - cols[i];
+              gIdx = i;
+            }
+          }
+          const nxt = gIdx + 1 < cols.length ? cols[gIdx + 1] : TWO_PI;
+          cols.splice(gIdx + 1, 0, (cols[gIdx] + nxt) / 2);
+        }
+        thetaCols.length = 0;
+        for (const v of cols) thetaCols.push(v);
+        if (process.env.PF_SOLID_DEBUG === '1') {
+          let minDth = Infinity;
+          for (let i = 1; i < gu; i += 1) minDth = Math.min(minDth, thetaCols[i] - thetaCols[i - 1]);
+          // eslint-disable-next-line no-console
+          console.log(`  feature-cols: ${crests.length} ridge crests, ${gu} cols (A=${A}), min Δθ ${((minDth * 180) / Math.PI).toFixed(3)}°`);
+        }
+      } else {
+        for (let i = 0; i < gu; i += 1) thetaCols.push((TWO_PI * i) / gu);
+      }
       // DOUBLE-VALUED STEP DETECTION (layered/C0 styles: Bamboo/DS/ArtDeco). rA jumps in z at each layer boundary
       // (Bamboo asymVar keys on the integer segment). A single-valued flat mesh chords the jump ⇒ 2+mm error. Detect
       // steps with jump > tol, mesh the smooth BANDS between them (disconnected — no strip crosses a step), then stitch
@@ -318,7 +418,10 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
             j1 = Math.max(j1, Math.abs(rA(th, z + d1) - rA(th, z - d1)));
             j2 = Math.max(j2, Math.abs(rA(th, z + d2) - rA(th, z - d2)));
           }
-          if (j2 > 0.5 * j1 && j1 > TOL) {
+          // Ratio j2/j1 → 1.0 for a true C0 JUMP (scale-invariant), → 0.5 for a CREASE (gradient kink, r
+          // continuous), → 0.125 for smooth. Threshold must sit ABOVE the crease value or z-creases (e.g.
+          // Gothic arch tops) get misread as steps → bogus tread annuli → T-junction seam cracks. 0.8 separates.
+          if (j2 > 0.8 * j1 && j1 > TOL) {
             if (runStartZ < 0) runStartZ = z;
             if (j2 > bestJ2) {
               bestJ2 = j2;
@@ -349,7 +452,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
         for (let j = 0; j <= bandRows; j += 1) {
           const row: number[] = [];
           const z = za + (bandH * j) / bandRows;
-          for (let i = 0; i < gu; i += 1) row.push(addV((TWO_PI * i) / gu, z));
+          for (let i = 0; i < gu; i += 1) row.push(addV(thetaCols[i], z));
           vgrid.push(row);
         }
         // GENERIC CREASE CONFORMING (shape-agnostic): where a crease (gradient discontinuity) crosses a cell edge,
@@ -376,7 +479,20 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
             }
           }
           if (bi < 0 || bv < TOL) return -1;
-          const t = bi / n;
+          // Sub-bin kink localization: intersect the left & right linear fits of r(t) near the argmax bin so the
+          // crease vertex sits ON the crease (not ~half a cell off — the reason the coarse-grid prototype was useless).
+          let t = bi / n;
+          if (bi >= 2 && bi <= n - 2) {
+            const sL = (rs[bi - 1] - rs[bi - 2]) * n;
+            const sR = (rs[bi + 2] - rs[bi + 1]) * n;
+            const denom = sL - sR;
+            if (Math.abs(denom) > 1e-9) {
+              const tL = (bi - 1) / n;
+              const tR = (bi + 1) / n;
+              const ti = (rs[bi + 1] - rs[bi - 1] + sL * tL - sR * tR) / denom;
+              if (ti > (bi - 1.5) / n && ti < (bi + 1.5) / n) t = ti;
+            }
+          }
           const mth = tha + (thb - tha) * t;
           const mz = za + (zb - za) * t;
           const dth = (thb - tha) / n;
@@ -388,12 +504,15 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
           if (big > TOL && small > 0.15 * big) return addV(mth, mz);
           return -1;
         };
-        const uOf = (i: number): number => (TWO_PI * i) / gu;
+        const uOf = (i: number): number => thetaCols[i % gu];
         const zOfRow = (j: number): number => za + (bandH * j) / bandRows;
         const hCache = new Map<string, number>();
         const hEdge = (i: number, j: number): number => {
           const i1 = (i + 1) % gu;
-          const key = `h${Math.min(i, i1)},${j}`;
+          // Unordered-pair key: min_max so the WRAP edge (gu-1↔0) does NOT collide with edge 0 (0↔1),
+          // which both hashed to min=0 before → wrap cell got a θ≈0 crease vertex → giant domain-spanning
+          // triangle → refineLongest thrash. Adjacent cells still share the key (watertight crease vertex).
+          const key = `h${Math.min(i, i1)}_${Math.max(i, i1)},${j}`;
           const hit = hCache.get(key);
           if (hit !== undefined) return hit;
           const c = edgeCrease(uOf(i), zOfRow(j), uOf(i1), zOfRow(j));
@@ -542,12 +661,16 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       }
     };
     const refineLongest = (t0: number): void => {
-      let guard = 8_000_000;
+      // CRITICAL: bail on triCap INSIDE the refine, not just in the outer stack loop. A single pathological
+      // triangle (e.g. a domain-spanning one from a mis-placed crease vertex) can otherwise add millions of
+      // triangles in ONE call — the 86s hang / OOM. Guards are a fail-fast backstop for a genuine cycle.
+      let guard = 200_000;
       while (alive[t0] && guard-- > 0) {
+        if (ta.length >= triCap) return;
         let t = t0;
-        let inner = 8_000_000;
+        let inner = 200_000;
         for (;;) {
-          if (inner-- <= 0) return;
+          if (inner-- <= 0 || ta.length >= triCap) return;
           const e = longest(t);
           const [a, b] = eVerts(t, e);
           const nb = neighbor(t, a, b);
