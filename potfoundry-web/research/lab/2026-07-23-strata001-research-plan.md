@@ -49,6 +49,17 @@ So the Φ projector can read ~4 µm on a mesh whose true crease error is 10 µm.
 - `WaveInterference_defaults_H32_OD30_certified` — **FULL DEFAULTS, relief 2.3 mm**, 1,267,712 tris: outer base 2^5 + 288-row rational ladder + fade-kink stations 3/20, 17/20. The existence proof that full-defaults certification is reachable.
 - `GothicArches_p1_H32_OD30_certified` — 304,808 tris from a 256×32 base + `angularStations`/`verticalStationsByPatch` + **`conformingChordsByPatch: gothicChordsForPatch(...)`** on both walls. Method-exemplary (its `gaRelief 0.2` vs default 1.5 is not).
 
+## 2026-07-24 progress — S2 landed, S6 characterized, S7 is the build
+
+Beyond the S0 stop-notice above, this session drove the campaign through the production mesher:
+
+- **S2 (conforming chords) — DONE, works.** `voronoiConformingChords.ts` built + green; crease-seeded ruler (`_strataCreaseRuler`) shows conforming closes the crease **128×** (p50 84.5→0.66 µm) for +4% triangles at registry defaults. Crease converges near-**O(h²)** but the reference tessellator needs ~64× over the triangle cap (degree-2 rule can't fan junctions). Evidence: `E-2026-07-24-STRATA001-S2-CHORDS`/`-RULER`/`-CONVERGENCE`.
+- **S6 (production CDT) — characterized, generic path EXHAUSTED.** All CDT arms top out at true-3D MAX ~0.11 mm (constraint recovery embeds only 21–42% of the dense bisector graph; points-only worst 0.26; plain sizing best but budget-limited; aniso a no-op). Evidence: `E-2026-07-24-STRATA001-S6-CDT`.
+- **DECISIVE:** the locus probe proved **100% of over-tolerance faces are crease-straddling; the far interior is ≤ 0.0072 mm** ⇒ a structured mesh (bisectors = shared cell edges, junctions = shared vertices) reaches 0.01 mm.
+- **S7 is the build:** mesh each Voronoi cell as a DOMAIN (polygon boundary = bisectors, respected for free — no CDT recovery) with boundary-parallel/M=g/h² sizing across the relief groove; weld shared edges + junction vertices (ring-strip pattern). A naive centre-fan was refuted (`-S6-CELLMESH`: 220 µm bubble / 1347 µm web — fans chord across the groove wall). Extract cells from the mesher's OWN field (hash-desync landmine). Param trap: `buildRadiusFn` reads **camelCase** VoronoiParams.
+
+Full detail lives in `EXPERIMENT-REGISTRY.md` (`E-2026-07-24-STRATA001-*`) and memory `project_strata001_campaign`.
+
 ## Phase map
 
 | Phase | Deliverable | Hard gate (invariants) | Probes |
