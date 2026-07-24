@@ -8014,3 +8014,30 @@ Extrapolated to the full 8×8 = 64-cell outer wall: ~0.1M (bubble) / ~1.28M (web
 **LEDGER.** `research/bridge/_strataVoronoiCellMesh.test.ts` (`PF_STRATA_CELLMESH=1`; env `PF_CELLMESH_MORPH`/`_SPLIT`(longest|steiner)/`_MAXDEPTH`/`_ORACLE`/`_VERIFY`/`_ACCEPT_TOL`/`_FACETCAP`). Evidence: `research/exchange/_strataVoronoiCellMesh/report.txt`.
 
 **CAVEAT on the breakthrough (watertight ≠ done):** the prototype does RECURSIVE per-facet longest-edge bisection, which proves the required RESOLUTION (~20k facets/cell) and FIDELITY but is NOT watertight — recursive splitting creates internal T-junctions (a facet splits an edge its neighbour does not). A shippable mesher needs CONFORMING refinement (Rivara LEPP / longest-edge-propagation-path, which propagates each split along the longest-edge path until it terminates on a compatible edge) so no T-junctions form, PLUS position-weld of shared bisector/junction vertices across cells. The conforming version produces a similar facet count (the resolution requirement is intrinsic), so the ~1.28M-facet budget and the 0.01mm fidelity TRANSFER. What remains is real computational-geometry engineering (LEPP + weld + seam/rim), not a fidelity question — the fidelity risk is retired.
+
+---
+
+## E-2026-07-24-STRATA001-S7-LEPP (WATERTIGHT structured Voronoi mesh: conforming LEPP + cell welding — fidelity AND manifold together) [BUILD+PROVE; research-only, no src edit]
+
+**HYPOTHESIS (falsifiable):** the structured per-cell mesh can be made WATERTIGHT (2-manifold, no T-junctions, cells welded) AND ≤0.01mm at once — the recursive prototype had the fidelity but left T-junctions.
+
+**KILL-CRITERION:** non-manifold edges = 0 AND inter-cell cracks = 0 AND independent from-disk MAX ≤ 0.01mm at a dense oracle.
+
+**VERDICT: CONFIRMED. First watertight + 0.01mm Voronoi mesh.**
+
+Engine: Rivara longest-edge bisection (LEPP) over a GLOBAL mesh with an edge→triangle adjacency map — splitting a shared edge splits BOTH incident triangles, conforming by construction. Cells welded across shared bisector edges (Voronoi vertices deduped by position at 1e-6 cellular). Registry defaults (H120, vRelief 2.0, vScale 8, vJitter 0.8).
+
+| region | mode | tris | non-manifold | cracks | from-disk MAX @oracle24 | over 0.01mm |
+|---|---|---|---|---|---|---|
+| 1 cell (4,4) | web | 18,134 | 0 | 0 | (accept-0.01 build) | — |
+| 2×2 (4-5,4-5) | web | 76,810 | 0 | 0 | — | — |
+| 3×3 (3-5,3-5) | **web** | **240,658** | **0** | **0** | **7.521 um ✅** | **0/240658** |
+| 3×3 (3-5,3-5) | **bubble** | **13,039** | **0** | **0** | **7.086 um ✅** | **0/13039** |
+
+Audits (both 3×3): non-manifold edges (>2 share) = 0; max edge share = 2 (clean interior); inter-cell CRACKS (coincident boundary-edge positions = weld failures) = 0 ✅ cells fully welded; T-junctions = 0 by construction. Independent from-disk verifier (reads STL bytes, position-welds, measures vs the analytic surface, oracle 24): non-manifold 0, MAX ≤ 0.01mm, 0 triangles over. STL files structurally valid (no nonfinite/degenerate, correct binary size).
+
+**HONESTY — accept-tol margin lesson (self-caught).** First LEPP build accepted at exactly 0.01 with oracle 10; the independent oracle-16 verify found MAX 11.087 um (199/166307 over) — a finite acceptance oracle UNDER-measures the true triangle sag, so accepting AT the verdict leaves a mesh a denser ruler finds over. Fixed by accepting at 0.007 (matching the recursive prototype that verified clean) → oracle-24 verify clean. This is the MAX-first / denser-ruler-wins discipline applied to the mesher's own acceptance test.
+
+**HONEST SCOPE.** OPEN outer-wall SURFACE — the boundary is the patch outline (web 3×3: 2,684 boundary edges = the outer hull, no internal holes since cracks=0). A closed PRINTABLE solid needs the inner wall + rim + base assembly and the u-seam ring weld (period 8) — the remaining pipeline work. Also: single relief (2.0) and one interior region; seam/rim cells not meshed. But the campaign's core unknown — can a structured mesh be watertight AND 0.01mm on Voronoi, where every generic mesher topped out at ~0.11mm — is answered YES.
+
+**LEDGER.** NEW: `research/bridge/_strataVoronoiLepp.test.ts` (`PF_STRATA_LEPP=1`; `PF_LEPP_MORPH`/`CXLO`/`CXHI`/`CYLO`/`CYHI`/`ORACLE`/`ACCEPT_TOL`/`TRICAP`). From-disk manifold+fidelity verify added to `_strataVoronoiStlVerify.test.ts` (`PF_STLV_*`). STLs: `research/exchange/_strataVoronoiLepp/` (gitignored artifacts). Commit `05cfb5c1` + this.

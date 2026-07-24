@@ -74,7 +74,11 @@ describe('STRATA-001 S7: watertight Voronoi mesh via LEPP', () => {
     const cxHi = Math.round(envF('PF_LEPP_CXHI', 4));
     const cyLo = Math.round(envF('PF_LEPP_CYLO', 4));
     const cyHi = Math.round(envF('PF_LEPP_CYHI', 4));
-    const oracleN = Math.round(envF('PF_LEPP_ORACLE', 10));
+    const oracleN = Math.round(envF('PF_LEPP_ORACLE', 12));
+    // Accept BELOW the 0.01 verdict with margin: a finite acceptance oracle under-estimates the true triangle sag, so
+    // accepting exactly at 0.01 leaves a mesh that an independent DENSER oracle finds slightly over (measured: oracle-10
+    // accept → 11.1um at oracle-16 verify). 0.007 matched the recursive prototype that verified clean at oracle 24.
+    const acceptTol = envF('PF_LEPP_ACCEPT_TOL', 0.007);
     const triCap = Math.round(envF('PF_LEPP_TRICAP', 1_500_000));
     const rA = buildRadiusFn('Voronoi' as StyleId, { vMorph: morph, vRelief: 2.0, vScale: 8, vJitter: 0.8, vZStretch: 1, vPulse: 0 }, DIMS);
 
@@ -299,7 +303,7 @@ describe('STRATA-001 S7: watertight Voronoi mesh via LEPP', () => {
     while (stack.length > 0) {
       const t = stack.pop() as number;
       if (!alive[t]) continue;
-      if (sagOf(t) <= TOL) continue;
+      if (sagOf(t) <= acceptTol) continue;
       if (ta.length >= triCap) {
         capped = true;
         break;

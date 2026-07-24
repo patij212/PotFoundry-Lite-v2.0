@@ -40,6 +40,23 @@ describe('STRATA-001 STL independent fidelity verifier', () => {
       return [r * Math.cos(theta), r * Math.sin(theta), z];
     };
 
+    // From-disk MANIFOLD audit: weld vertices by position (what a slicer does), build edge→count. non-manifold
+    // (>2) must be 0; every interior edge shared by exactly 2; boundary edges = the open patch outline.
+    const posIndex = new Map<string, number>();
+    const posOf = (x: number, y: number, z: number): number => {
+      const key = `${Math.round(x * 1e4)},${Math.round(y * 1e4)},${Math.round(z * 1e4)}`;
+      const hit = posIndex.get(key);
+      if (hit !== undefined) return hit;
+      const idx = posIndex.size;
+      posIndex.set(key, idx);
+      return idx;
+    };
+    const edgeCount = new Map<string, number>();
+    const bumpEdge = (a: number, b: number): void => {
+      const k = a < b ? `${a}_${b}` : `${b}_${a}`;
+      edgeCount.set(k, (edgeCount.get(k) ?? 0) + 1);
+    };
+
     let maxSag = 0;
     const sags: number[] = [];
     let over = 0;
@@ -81,6 +98,20 @@ describe('STRATA-001 STL independent fidelity verifier', () => {
       sags.push(s);
       if (s > maxSag) maxSag = s;
       if (s > 0.01) over += 1;
+      const ia = posOf(ax, ay, az);
+      const ib = posOf(bx, by, bz);
+      const ic = posOf(cx, cy, cz);
+      bumpEdge(ia, ib);
+      bumpEdge(ib, ic);
+      bumpEdge(ic, ia);
+    }
+    let nonManifold = 0;
+    let boundary = 0;
+    let interior = 0;
+    for (const c of edgeCount.values()) {
+      if (c === 1) boundary += 1;
+      else if (c === 2) interior += 1;
+      else nonManifold += 1;
     }
     sags.sort((a, b) => a - b);
     const um = (mm: number): string => (mm * 1000).toFixed(3);
@@ -94,10 +125,12 @@ describe('STRATA-001 STL independent fidelity verifier', () => {
         `triangles read: ${nTris}   analytic: Voronoi vMorph ${morph} vRelief 2.0 (registry defaults)   oracle ${oracleN}`,
         `MAX perpendicular sag vs analytic surface: ${um(maxSag)} um   ${maxSag <= 0.01 ? '✅ ≤ 0.01mm' : '❌ OVER'}`,
         `p99 ${um(qq(0.99))} um   p50 ${um(qq(0.5))} um   over-0.01mm: ${over}/${sags.length}`,
+        `position-welded manifold: non-manifold edges ${nonManifold} ${nonManifold === 0 ? '✅' : '❌'}  interior(2) ${interior}  boundary(1) ${boundary} (= open patch outline)`,
         '============================================================',
         '',
       ].join('\n')
     );
     expect(maxSag).toBeLessThanOrEqual(0.01);
+    expect(nonManifold).toBe(0);
   }, 3_000_000);
 });
