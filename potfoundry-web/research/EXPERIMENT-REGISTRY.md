@@ -7715,3 +7715,34 @@ So the shelf's certified Voronoi (172,032 tris, roster GREEN) certifies a **1/50
 **SCOPE CAVEATS:** outer-wall only; chords on the outer wall only; single pot geometry; order-2 (web f2-f1) strata NOT extracted; junction neighbourhoods are unconformed by construction (degree-2 rule); no independent ruler run, so NO fidelity claim is made here.
 
 **LEDGER.** NEW src: `src/geometry/targetSolid/voronoiConformingChords.ts` (+`.test.ts`, 9 tests). NEW research: `research/bridge/_strataChordDump.test.ts` (`PF_STRATA_DUMP=1` — orphan/degree census and per-cell chord map, the tool that found rules 3 and 4), `research/bridge/_strataFieldJump.test.ts` (`PF_STRATA_JUMP=1`). `_strataVoronoiCertify.test.ts` gained `PF_STRATA_CHORDS` / `PF_STRATA_CHORD_BITS` / `PF_STRATA_CHORD_SEGS`. Commits `b1b6750f`, `6772b669`, `9be0364c`.
+
+---
+
+## E-2026-07-24-STRATA001-S2-RULER (crease-seeded ruler: the instrument that can rank two meshes — and the first measured verdict that CONFORMING WORKS) [BUILD+MEASURE; research-only, no src edit]
+
+**WHY IT EXISTS.** Two prior instruments cannot rank meshes. (1) The CERTIFICATE reports the first MARGINAL cell to reach maxDepth (`budget + eps`), so chords ON/OFF returned byte-identical residuals. (2) A GRID ruler misses creases by construction — the max of |mesh − surface| across a crease sits ON the crease.
+
+**ALIASING, MEASURED ON THIS TOOL ITSELF (the headline ops lesson).** First run used 512×256 samples against a 2^9 × 2^8 mesh: every sample landed on a mesh VERTEX and body MAX read **0.001 um** — the mesh looked PERFECT — while its creases were off by **556.909 um**. A **500,000x** discrepancy from the SAME mesh. Sample counts are now primes (521 × 263) plus an irrational offset (3−sqrt5)/2, so they can never be commensurate with a power-of-two grid. **The Phi projector at 2048/1024 sits in exactly this trap** (2048 = 2^11 against power-of-two meshes); any fidelity number from a power-of-two grid ruler on a power-of-two mesh must be treated as unverified until re-sampled incommensurately.
+
+**WHAT IT MEASURES.** Same metric as the certificate — |target(u,v) − affine(artifact triangle)| against the SAME tessellation the certifier is handed — over three populations reported SEPARATELY (a blended number hides the failure conforming exists to fix): uniform alias-safe grid (body), dense samples ALONG the exact `voronoiBisectorSegmentsUv` geometry (crease), and crease again with the periodic-seam band excluded (the seam is unconformed by construction — the kernel refuses seam-column endpoints unless they are grid corners).
+
+**VERDICT: CONFORMING WORKS.** Voronoi at REGISTRY DEFAULTS (`v_relief 2.0`, `v_morph 1`), H32/OD30, outer-wall, grid (9,8):
+
+| metric | uniform | conforming | gain |
+|---|---|---|---|
+| crease **p50** | 84.549 um | **0.661 um** | **128x** |
+| crease p99 | 463.098 | **198.260** | 2.3x |
+| crease MAX | 556.909 | **447.957** | 1.24x |
+| body p99 | 214.409 | **166.205** | 1.29x |
+| body MAX | 507.711 | **426.279** | 1.19x |
+| outer-wall triangles | 262,144 | 272,942 | **+4%** |
+
+At the coarser (8,7) the same lever gives crease p50 **261.355 -> 1.556 um (168x)** for **+9%** triangles.
+
+**The crease median falls to the body median** (0.661 vs 0.251 um): after conforming, the crease is no longer a special locus. That is the whole thesis of section 4, measured.
+
+**WHAT REMAINS.** The crease TAIL — p99 194 um, MAX 439 um with the seam band excluded (excluding the seam barely moves it: 447.96 -> 438.61, so the seam is NOT the dominant term). By construction that tail is: junction neighbourhoods (the kernel's degree-2 interior-vertex rule forbids terminating three chains at a Voronoi vertex), the 122 chains still dropped at (9,8), and the corner-anchored chain ends (which leave the bisector by up to half a cell). Those three are the next increment, in that order.
+
+**HONEST LIMITS.** Outer-wall only; chords on the outer wall only; single pot geometry and relief; order-2 (web `f2-f1`) strata not extracted; this ruler is a SAMPLED falsifier and per P-INV-2 can refute a bound but never stand in for one — the certificate remains the authority.
+
+**LEDGER.** NEW: `research/bridge/_strataCreaseRuler.test.ts` (`PF_STRATA_RULER=1`; `_ALOG2`/`_VLOG2`/`_CHORDS`/`_RELIEF`/`_MORPH`/`_GRIDU`/`_GRIDV`/`_CREASE`/`_SEAMBAND`/`_OUT`). Commit `ff48371c`.
