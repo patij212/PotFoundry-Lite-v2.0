@@ -8151,3 +8151,36 @@ Ring stage, registry-default lattice (vScale 8, vJitter 0.8), swept vRelief × v
 **HONEST SCOPE:** treads are structural (ε=4µm inset ⇒ step geometric error < tol; not measured by the outer-wall ruler, which covers the LEPP bands). Registry-default params. Crystalline/LowPoly (arbitrary-direction facets) still need facet conforming — the tread mechanism is z-steps only.
 
 **LEDGER.** `research/bridge/_strataVoronoiSolid.test.ts`: `detectSteps` (two-scale), band init, `stitchRings` (rim+treads), `PF_SOLID_STEP_EPS_UM`. STLs in `research/exchange/_strataVoronoiSolid/`.
+
+---
+
+## E-2026-07-24-STRATA001-S7-COVERAGE (definitive all-20-style coverage map of the universal mesher) [MEASURE-ONLY]
+
+Ran every registry style through the universal solid mesher (`PF_SOLID_INIT=grid` + treads, or `voronoi` cells for Voronoi), ring stage, registry defaults, at ≤0.01mm. **13 / 20 styles close watertight in the universal mesher today; the remaining 7 need mechanisms that already exist per-style, not yet folded into the universal init.**
+
+**CLOSES ≤0.01mm watertight in the universal mesher (13):**
+
+| tier | styles | mechanism |
+|---|---|---|
+| T1 smooth | SuperellipseMorph, SuperformulaBlossom, FourierBloom, HarmonicRipple, SpiralRidges, WaveInterference, RippleInterference, HexagonalHive | uniform grid + LEPP |
+| T1 facet-flat | **LowPolyFacet (MAX 0.000um!)** | grid + LEPP (flat facets captured exactly) |
+| T2 conforming | Voronoi (bubble all-relief; web ≤ default) | per-cell bisector decomposition |
+| T3 layered/C0-step | BambooSegments, DragonScales, ArtDeco | auto step-detect + double-valued treads |
+
+**NEEDS a mechanism not yet in the universal init (7):**
+
+| style | grid result | needs |
+|---|---|---|
+| GothicArches | timeout (24 arch creases) | C1 crease conforming (chords exist: `conformingChordsByPatch`) |
+| GeometricStar | CAPPED 1232um @1.25M | C1 crease conforming (`buildGeometricStarConformingGraph`) |
+| GyroidManifold | timeout (ridge network) | C1 crease conforming (envelope-v6 class) |
+| BasketWeave | timeout (weave creases) | C1 crease conforming |
+| CelticKnot | CAPPED 2615um (snaking) | snaking-C0 double-valued WALL (`doubleValued/celticKnotMesh.ts`) |
+| CelticTriquetra | timeout (snaking) | snaking-C0 double-valued wall |
+| Crystalline | 2693um, 0 z-steps | arbitrary-direction facet-edge conforming |
+
+**READING.** The universal pipeline (LEPP + θ-seam + caps + sliver-collapse + double-valued treads + position-weld audit) is ONE piece of code closing 13 styles across 3 tiers with zero per-style code beyond the init strategy. The 7 open styles split cleanly: 4 are C1-CREASE (converge linearly on the grid — GeoStar to 10um would need ~150M tris, so they NEED conforming, not budget; the conforming graphs exist per-style), 2 are SNAKING-C0 (need the double-valued wall already built in `src/geometry/doubleValued/`), 1 is arbitrary-facet (needs facet-edge conforming). Folding each existing mechanism into the universal init (as the Voronoi cells and the treads already are) closes them — that is the remaining generalization work, now precisely scoped per style.
+
+**CLOSED SOLIDS delivered this campaign:** Voronoi (bubble+web), HarmonicRipple (T1), BambooSegments + DragonScales (T3). All boundary 0 / non-manifold 0 / outer MAX 7um / 0 over, independently from-disk audited.
+
+**LEDGER.** Same harness, swept `PF_SOLID_STYLE` across all 20 registry keys.
