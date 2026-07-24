@@ -126,6 +126,40 @@ export interface AnalyticSagRefine {
   samples?: number;
 }
 
+/**
+ * Grading law for the pinned-boundary level cap ({@link
+ * PeriodicBalancedQuadtree.levelCap}) — how fast a cell may get FINER as it
+ * moves away from the immovable t=0/t=1 pinned rows.
+ *
+ * WHY A CAP EXISTS AT ALL. The t=0/t=1 rows are forced to EXACTLY
+ * `pinBoundaryLevel` so the two boundary rings carry exactly `nRing` vertices
+ * that adjacent surfaces share BY INDEX (`ConformingWall` → `annulusStrip` /
+ * `emitRadialCap`). Those rows therefore CANNOT be split. `balance()` enforces
+ * 2:1 by splitting the COARSE side of a violation — which is impossible when the
+ * coarse side is a pinned row. So the cap, not the balance pass, is what keeps
+ * the tree 2:1-legal next to the pin.
+ *
+ * - `'linear'` (DEFAULT, shipped): one extra level per PINNED-ROW HEIGHT of
+ *   distance — `pin + floor(nearEdge·2^pin)`. Reaching `maxLevel` needs
+ *   `nearEdge ≥ (maxLevel−pin)/2^pin`, so the capped band GROWS with `maxLevel`:
+ *   refining harder makes the frozen band WIDER. Measured consequence
+ *   (E-2026-07-24-PINBAND): a band-interior cell three pinned-rows from the rim
+ *   is capped at `pin+3` at maxLevel 12, 13 AND 14 alike — a density-INVARIANT
+ *   residual that no refinement criterion can touch.
+ * - `'geometric'`: the TIGHT cap that still admits a 2:1 staircase down to the
+ *   pinned row. A level-`pin+j` cell needs its near edge only
+ *   `(2 − 2^(1−j))/2^pin` away (the pinned row's own height plus the geometric
+ *   series of the intermediate rows), so the capped band is BOUNDED BY TWO
+ *   pinned-row heights at every `maxLevel`. The t=0/t=1 rows themselves are
+ *   still returned at exactly `pin` ⇒ the shared rings stay `nRing`.
+ * - `'rowsOnly'`: DIAGNOSTIC ONLY — pins the rows and lets every non-boundary
+ *   cell reach `maxLevel` immediately. This BREAKS 2:1 balance against the
+ *   immovable pinned row, and {@link QuadtreeTriangulator} emits at most ONE
+ *   transition mid-edge per side, so the mesh acquires real T-junction cracks.
+ *   Exists so that claim can be MEASURED rather than asserted. Never ship it.
+ */
+export type PinBandGrading = 'linear' | 'geometric' | 'rowsOnly';
+
 /** Internal integer-cell key. */
 interface Cell {
   level: number;
@@ -392,6 +426,12 @@ export class PeriodicBalancedQuadtree {
    */
   private readonly pinBoundaryLevel: number;
   /**
+   * Grading law for {@link levelCap} inside the pinned band (see {@link
+   * PinBandGrading}). Defaults to `'linear'` — the shipped law — so an omitted
+   * option is byte-identical.
+   */
+  private readonly pinBandGrading: PinBandGrading;
+  /**
    * If set (>0), EVERY cell is refined to at least this level, producing a
    * uniform 2^L × 2^L base grid before curvature-driven refinement adds more.
    * This guarantees a full-height vertical column at each u = i/2^L (i in
@@ -482,6 +522,11 @@ export class PeriodicBalancedQuadtree {
     opts: {
       maxLevel: number;
       pinBoundaryLevel?: number;
+      /**
+       * Grading law for the pinned-band level cap (see {@link PinBandGrading}).
+       * Omit ⇒ `'linear'` ⇒ byte-identical to the shipped refinement.
+       */
+      pinBandGrading?: PinBandGrading;
       minUniformLevel?: number;
       featureRefine?: {
         level: number;
@@ -529,6 +574,7 @@ export class PeriodicBalancedQuadtree {
   ) {
     this.maxLevel = opts.maxLevel;
     this.pinBoundaryLevel = opts.pinBoundaryLevel ?? 0;
+    this.pinBandGrading = opts.pinBandGrading ?? 'linear';
     this.minUniformLevel = Math.max(0, Math.min(opts.minUniformLevel ?? 0, opts.maxLevel));
     this.featureRefine = opts.featureRefine;
     this.creaseRefine = opts.creaseRefine;
@@ -588,6 +634,15 @@ export class PeriodicBalancedQuadtree {
    * t=0/t=1 boundary — so boundary-touching cells cap at `pin`, the next pin-row
    * at `pin+1`, etc. This grading is exactly what keeps the uniform pinned rows
    * 2:1-balanced against a refined interior.
+   *
+   * Under {@link PinBandGrading} `'geometric'` the SAME 2:1 guarantee is
+   * delivered by the TIGHT staircase bound instead: the pinned row occupies the
+   * first pinned-row height, a level-`pin+1` row the next 1/2, a level-`pin+2`
+   * row the next 1/4 … so a level-`pin+j` cell only needs
+   * `nearEdge ≥ (2 − 2^(1−j))/2^pin` — every cell at least TWO pinned-row heights
+   * from the rim may reach `maxLevel`, at ANY `maxLevel`. Cells with
+   * `nearEdge == 0` (the pinned rows) still return exactly `pin`, so the shared
+   * `nRing` rings are untouched. See the type doc for `'rowsOnly'`.
    */
   private levelCap(level: number, it: number): number {
     if (this.pinBoundaryLevel <= 0) return this.maxLevel;
@@ -595,6 +650,17 @@ export class PeriodicBalancedQuadtree {
     const t0 = it / span;
     const t1 = (it + 1) / span;
     const nearEdge = Math.min(t0, 1 - t1); // distance to nearest boundary
+    if (this.pinBandGrading !== 'linear') {
+      // Distance to the rim measured in PINNED-ROW HEIGHTS.
+      const rows = nearEdge * (1 << this.pinBoundaryLevel);
+      // The pinned rows themselves are immovable — the shared-ring contract.
+      if (rows < 1 - 1e-9) return Math.min(this.maxLevel, this.pinBoundaryLevel);
+      if (this.pinBandGrading === 'rowsOnly') return this.maxLevel; // DIAGNOSTIC
+      // Tight staircase: a level pin+j cell needs rows >= 2 − 2^(1−j), j >= 1.
+      if (rows >= 2 - 1e-9) return this.maxLevel;
+      const j = Math.max(1, Math.ceil(1 - Math.log2(2 - rows) - 1e-9));
+      return Math.min(this.maxLevel, this.pinBoundaryLevel + j);
+    }
     const pinRows = Math.floor(nearEdge * (1 << this.pinBoundaryLevel) + 1e-9);
     return Math.min(this.maxLevel, this.pinBoundaryLevel + pinRows);
   }

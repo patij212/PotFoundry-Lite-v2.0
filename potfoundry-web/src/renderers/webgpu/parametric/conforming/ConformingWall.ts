@@ -29,6 +29,7 @@ import {
   QuadtreeRefinementEvidenceCache,
   QuadtreeRefinementHierarchy,
   type AnalyticSagRefine,
+  type PinBandGrading,
 } from './PeriodicBalancedQuadtree';
 import { triangulateQuadtree, type QuadtreeMesh, type TriangulationStageTiming } from './QuadtreeTriangulator';
 import { triangulateQuadtreeWithFeatures, type BandRegion } from './FeatureConformingTriangulator';
@@ -398,6 +399,30 @@ function isConformingAnalyticScoreEnabled(): boolean {
 }
 
 /**
+ * Dev/opt-in detector for the PIN-BAND GRADING RELAXATION (E-2026-07-24-PINBAND).
+ * Default OFF (undefined) ⇒ the quadtree keeps the shipped `'linear'` grading and
+ * every refinement decision is byte-identical.
+ *
+ * WHY it exists: `levelCap` grades ONE level per pinned-row height, so reaching
+ * `maxLevel` needs `nearEdge ≥ (maxLevel−pin)/2^pin` — the frozen band WIDENS as
+ * you refine. `'geometric'` is the tight 2:1-legal staircase bound (band ≤ 2
+ * pinned-row heights at ANY maxLevel) and keeps the t=0/t=1 rows at exactly
+ * `pin`, so `bottomRing`/`topRing` stay `nRing`-long and ascending-U.
+ * `'rowsOnly'` is a DIAGNOSTIC that deliberately breaks 2:1 (see the type doc) —
+ * it is never a shipping value.
+ *
+ * Accepts `true` as an alias for `'geometric'` so a probe can arm it like the
+ * other boolean `__pfConforming*` levers.
+ */
+function conformingPinBandGrading(): PinBandGrading | undefined {
+  const raw = (globalThis as unknown as { __pfConformingPinBandRelax?: unknown })
+    .__pfConformingPinBandRelax;
+  if (raw === true || raw === 'geometric') return 'geometric';
+  if (raw === 'rowsOnly') return 'rowsOnly';
+  return undefined;
+}
+
+/**
  * Build the exact-analytic sag criterion for one budget-search scale, or
  * undefined when the lever is not armed (flag off / no analytic surface).
  *
@@ -542,6 +567,9 @@ function buildQuadtreeAtScale(
   return new PeriodicBalancedQuadtree(field, sampler, {
     maxLevel: opts.maxLevel,
     pinBoundaryLevel,
+    // PIN-BAND grading relaxation (E-2026-07-24-PINBAND). undefined unless
+    // `__pfConformingPinBandRelax` is armed ⇒ 'linear' ⇒ byte-identical default.
+    pinBandGrading: conformingPinBandGrading(),
     minUniformLevel: opts.minUniformLevel,
     featureRefine,
     creaseRefine,
