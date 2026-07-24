@@ -9,15 +9,19 @@
 // This prototype meshes cells INDEPENDENTLY (fan from the site centre + adaptive true-3D-sag subdivision) and reports
 // the worst cell's MAX true-3D chord error INCLUDING its boundary facets (which lie along the bisector crease).
 //
-// VERDICT (E-2026-07-24-STRATA001-S6-CELLMESH): the naive centre-FAN is INSUFFICIENT — worst cell 220 um (bubble
-// v_morph 0) / 1347 um (web v_morph 1) even at 15k+ facets/cell and maxDepth 14. Cause: BOTH modes have a steep relief
-// GROOVE at the cell boundary (relief → 0 where f1 is largest / f2−f1 → 0), and long thin centre-to-boundary fan
-// triangles chord ACROSS that groove wall; Steiner-at-worst-sample keeps landing on the boundary and falling back to
-// the centroid, so it never resolves the wall. The correct structured mesher meshes each cell as a DOMAIN (its
-// polygon boundary = the bisectors, respected for FREE — no CDT recovery) with proper M=g/h² / boundary-PARALLEL
-// (ring-strip) sizing across the groove wall, NOT a centre fan. i.e. run the metric mesher PER CELL-DOMAIN. The
-// polygon extraction + the per-cell-domain metric mesh is the S7 build; this file documents why the shortcut fails.
-// DEV/LAB only; never edits src/.
+// VERDICT (E-2026-07-24-STRATA001-S6-CELLMESH): the per-cell mesher CLOSES Voronoi to 0.01mm HONESTLY.
+//   • Naive centre-FAN + Steiner-at-worst FAILS (220 um bubble / 1347 um web): long thin centre-to-boundary triangles
+//     chord across the steep relief GROOVE at the cell boundary, and Steiner-at-worst degenerates to the centroid.
+//   • Switching the split to Rivara LONGEST-EDGE bisection (bounded aspect ratio; self-organizes into concentric
+//     rings that resolve the groove) + an ACCEPT-TOL MARGIN (accept at 0.007 so the dense-verified sag has headroom
+//     against the between-sample under-report) CONVERGES: dense verify (oracle 24) worst = 7.03 um (bubble) / 7.95 um
+//     (web) ≤ 0.01mm, at ~1.6k facets/cell (bubble) / ~20k facets/cell (web) ⇒ ~0.1M / ~1.28M for the full 8×8 outer
+//     wall (comparable to the certified WaveInterference 1.27M).
+// So the FIDELITY of the structured per-cell approach is PROVEN end-to-end (not inference): bisectors are the cell
+// polygon boundary (respected for FREE — no CDT recovery, the wall the generic CDT hit) and the interior closes by
+// ordinary adaptive refinement. REMAINING for a shippable mesher: (1) weld shared bisector edges + junction vertices
+// with MATCHED boundary subdivision (ring-strip discipline) → watertight; (2) seam u=0/1 + rim t=0/1; (3) extract
+// cells from the mesher's OWN field (hash-desync landmine). DEV/LAB only; never edits src/.
 import { describe, it, expect } from 'vitest';
 import { mkdirSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -100,6 +104,11 @@ describe('STRATA-001 structured Voronoi cell-mesher — per-cell true-3D fidelit
     mkdirSync(outDir, { recursive: true });
     const maxDepth = Math.round(envFloat('PF_CELLMESH_MAXDEPTH', 14));
     const oracleN = Math.round(envFloat('PF_CELLMESH_ORACLE', 6));
+    // Acceptance tolerance MARGIN below the 0.01mm verdict: the accept-oracle samples the sag at discrete points and
+    // under-reports the true peak between them, so accepting at exactly 0.01 leaves the DENSE sag ~11-14um. Accepting
+    // at a tighter tol gives the between-sample peak headroom (the verify-and-bump pattern from the smooth-grid
+    // guarantee). Default 0.007.
+    const acceptTol = envFloat('PF_CELLMESH_ACCEPT_TOL', 0.007);
 
     // cellular (cx,cy) → (u,t) → 3D on the analytic outer wall.
     const lift = (cxCell: number, cyCell: number): { p: P3; u: number; t: number } => {
@@ -144,17 +153,78 @@ describe('STRATA-001 structured Voronoi cell-mesher — per-cell true-3D fidelit
       return { sag, worst };
     };
 
-    // Adaptively mesh one facet: split at the worst-sag point (Steiner) until sag ≤ TOL or depth cap.
+    // Adaptively mesh one facet until true-3D sag ≤ TOL or depth cap.
+    // SPLIT MODE: 'longest' = Rivara longest-edge bisection (bounded aspect ratio, self-organizes into concentric
+    // rings that resolve the boundary groove — the fix for the centre-fan's degenerate Steiner splits); 'steiner' =
+    // the refuted worst-sample split, kept for the A/B.
+    const splitMode = process.env.PF_CELLMESH_SPLIT ?? 'longest';
+    const dist3 = (P: P2, Q: P2): number => {
+      const p = lift(P[0], P[1]).p;
+      const q = lift(Q[0], Q[1]).p;
+      return Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+    };
     let facetCount = 0;
     let worstLeafSag = 0;
+    let worstVerifiedSag = 0; // leaves re-measured at a DENSER oracle (guards the chordSampleN under-report lesson)
+    const facetCap = Math.round(envFloat('PF_CELLMESH_FACETCAP', 400_000));
+    const verifyOracle = Math.round(envFloat('PF_CELLMESH_VERIFY', 16));
+    const mid = (P: P2, Q: P2): P2 => [(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2];
+    // Denser barycentric re-measure of one accepted leaf facet's true-3D sag.
+    const verifyFacet = (A: P2, B: P2, C: P2): number => {
+      const a = lift(A[0], A[1]).p;
+      const b = lift(B[0], B[1]).p;
+      const c = lift(C[0], C[1]).p;
+      let nx = (b[1] - a[1]) * (c[2] - a[2]) - (b[2] - a[2]) * (c[1] - a[1]);
+      let ny = (b[2] - a[2]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[2] - a[2]);
+      let nz = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+      const nl = Math.hypot(nx, ny, nz);
+      if (nl < 1e-18) return 0;
+      nx /= nl;
+      ny /= nl;
+      nz /= nl;
+      let s = 0;
+      for (let i = 0; i <= verifyOracle; i += 1) {
+        for (let j = 0; j <= verifyOracle - i; j += 1) {
+          const wa = i / verifyOracle;
+          const wb = j / verifyOracle;
+          const wc = 1 - wa - wb;
+          const q = lift(wa * A[0] + wb * B[0] + wc * C[0], wa * A[1] + wb * B[1] + wc * C[1]).p;
+          const d = Math.abs((q[0] - a[0]) * nx + (q[1] - a[1]) * ny + (q[2] - a[2]) * nz);
+          if (d > s) s = d;
+        }
+      }
+      return s;
+    };
     const meshFacet = (A: P2, B: P2, C: P2, depth: number): void => {
       const { sag, worst } = facetSag(A, B, C);
-      if (sag <= TOL || depth >= maxDepth) {
+      if (sag <= acceptTol || depth >= maxDepth || facetCount >= facetCap) {
         facetCount += 1;
         if (sag > worstLeafSag) worstLeafSag = sag;
+        const v = verifyFacet(A, B, C);
+        if (v > worstVerifiedSag) worstVerifiedSag = v;
         return;
       }
-      // Steiner split at the worst interior sample (fans the bulge); fall back to centroid if degenerate.
+      if (splitMode === 'longest') {
+        // Bisect the longest 3D edge at its midpoint → 2 triangles sharing the new vertex + opposite vertex.
+        const ab = dist3(A, B);
+        const bc = dist3(B, C);
+        const ca = dist3(C, A);
+        if (ab >= bc && ab >= ca) {
+          const m = mid(A, B);
+          meshFacet(A, m, C, depth + 1);
+          meshFacet(m, B, C, depth + 1);
+        } else if (bc >= ab && bc >= ca) {
+          const m = mid(B, C);
+          meshFacet(B, m, A, depth + 1);
+          meshFacet(m, C, A, depth + 1);
+        } else {
+          const m = mid(C, A);
+          meshFacet(C, m, B, depth + 1);
+          meshFacet(m, A, B, depth + 1);
+        }
+        return;
+      }
+      // Steiner split at the worst interior sample; fall back to centroid if degenerate.
       let s: P2 = worst;
       const eqA = s[0] === A[0] && s[1] === A[1];
       const eqB = s[0] === B[0] && s[1] === B[1];
@@ -167,8 +237,9 @@ describe('STRATA-001 structured Voronoi cell-mesher — per-cell true-3D fidelit
 
     // Interior cells only (avoid the seam u≈0/1 and rim t≈0/1 — those are separate loci handled by the seam/rim
     // machinery, not the cell interior this prototype validates).
-    const results: Array<{ cx: number; cy: number; max: number; facets: number; uSpan: number; tSpan: number; nPoly: number }> = [];
+    const results: Array<{ cx: number; cy: number; max: number; verified: number; facets: number; uSpan: number; tSpan: number; nPoly: number }> = [];
     let worstCellMax = 0;
+    let worstCellVerified = 0;
     let totalFacets = 0;
     for (let cx = 2; cx <= 6; cx += 1) {
       for (let cy = 2; cy <= 6; cy += 1) {
@@ -177,6 +248,7 @@ describe('STRATA-001 structured Voronoi cell-mesher — per-cell true-3D fidelit
         const [sx, sy] = voronoiCenterCellular(LATTICE, cx, cy);
         facetCount = 0;
         worstLeafSag = 0;
+        worstVerifiedSag = 0;
         for (let e = 0; e < poly.length; e += 1) {
           meshFacet([sx, sy], poly[e], poly[(e + 1) % poly.length], 0);
         }
@@ -192,22 +264,24 @@ describe('STRATA-001 structured Voronoi cell-mesher — per-cell true-3D fidelit
           if (tt < tMin) tMin = tt;
           if (tt > tMax) tMax = tt;
         }
-        results.push({ cx, cy, max: worstLeafSag, facets: facetCount, uSpan: uMax - uMin, tSpan: tMax - tMin, nPoly: poly.length });
+        results.push({ cx, cy, max: worstLeafSag, verified: worstVerifiedSag, facets: facetCount, uSpan: uMax - uMin, tSpan: tMax - tMin, nPoly: poly.length });
         totalFacets += facetCount;
         if (worstLeafSag > worstCellMax) worstCellMax = worstLeafSag;
+        if (worstVerifiedSag > worstCellVerified) worstCellVerified = worstVerifiedSag;
       }
     }
-    results.sort((a, b) => b.max - a.max);
+    results.sort((a, b) => b.verified - a.verified);
     const um = (mm: number): string => (mm * 1000).toFixed(2);
     const report = [
       '',
       '===== STRATA-001 STRUCTURED VORONOI CELL-MESH (per-cell true-3D) =====',
-      `Voronoi v_relief 2.0 v_morph 1, H120, cells cx,cy∈[2,6]  tol ${um(TOL)}um  maxDepth ${maxDepth} oracleN ${oracleN}`,
+      `Voronoi v_relief 2.0 v_morph ${morph}, H120, cells cx,cy∈[2,6]  tol ${um(TOL)}um  maxDepth ${maxDepth} oracleN ${oracleN} verifyOracle ${verifyOracle} split ${splitMode}`,
       `cells meshed: ${results.length}   total leaf facets: ${totalFacets}`,
-      `WORST-CELL MAX true-3D sag: ${um(worstCellMax)} um   [≤ 10 ⇒ structured cell-mesh closes Voronoi to 0.01mm]`,
+      `WORST-CELL MAX (accept oracle ${oracleN}):   ${um(worstCellMax)} um`,
+      `WORST-CELL MAX (VERIFY oracle ${verifyOracle}): ${um(worstCellVerified)} um   [≤ 10 ⇒ structured cell-mesh closes Voronoi to 0.01mm HONESTLY]`,
       '',
-      '  worst 8 cells:',
-      ...results.slice(0, 8).map((r) => `    cell(${r.cx},${r.cy})  MAX ${um(r.max)} um  facets ${r.facets}  uSpan ${r.uSpan.toFixed(4)} tSpan ${r.tSpan.toFixed(4)} nPoly ${r.nPoly}`),
+      '  worst 8 cells (by verified sag):',
+      ...results.slice(0, 8).map((r) => `    cell(${r.cx},${r.cy})  accept ${um(r.max)} verify ${um(r.verified)} um  facets ${r.facets}  nPoly ${r.nPoly}`),
       '=====================================================================',
       '',
     ].join('\n');
