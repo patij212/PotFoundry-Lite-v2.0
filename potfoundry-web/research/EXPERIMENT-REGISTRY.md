@@ -7938,3 +7938,32 @@ Reading: (1) the **conformed control reaches p90 7.2 um / p95 15 um** — genuin
 **CONSEQUENCE FOR THE CAMPAIGN.** The reference-tessellator + crease-chord path (spec §4) delivers exactly what §4 claims — quadratic crease convergence, crease median 0.6 um — and no more. The last mile to 0.01mm-everywhere on Voronoi is **junction fans + local refinement**, i.e. the region/cone-fan mesher (spec §7 / plan S7), which places degree-3 fan vertices and spends triangles only at junctions instead of uniformly. Within the reference tessellator the reachable wins are: proper seam-corner conforming (kills the 448 um worst), fewer dropped chains (U), and 2-of-3 junction pairing (partial J recovery) — none reach 0.01mm alone.
 
 **LEDGER.** NEW: `research/bridge/_strataTailAttribution.test.ts` (`PF_STRATA_TAIL=1`; J/U/A/C locus split + top-worst attribution). Convergence via `_strataCreaseRuler` at (8,7)/(9,8)/(10,9). Seam-corner snap added to `voronoiConformingChords.ts` (segment crossings on u=0/denom snap v to the nearest row = a legal grid corner) — did NOT yet reduce the seam MAX (chords still rejected downstream; open, next).
+
+---
+
+## E-2026-07-24-STRATA001-S6-CDT (Voronoi through the PRODUCTION M=g/h² CDT region kernel — sizing vs bisector-constraint-edge conforming, prod scale) [BUILD+MEASURE; research-only, no src edit]
+
+**WHY.** The reference-tessellator + exact-chord path CONVERGES O(h²) but needs ~64x over the triangle cap because it cannot fan degree-3 junctions (`-S2-CONVERGENCE`). The PRODUCTION feature-conforming CDT (`buildInhouseMetricMesh`) CAN fan junctions (chordSteiner) and CAN embed feature edges as constraints (the proven 0.01mm-on-cliffs lever: dsFeatureEdges → DS p99 0.009). Does either reach 0.01mm on Voronoi at prod scale?
+
+**HYPOTHESIS:** injecting the order-1 bisector graph as `constraintEdges` (+ pin + subdivColinear) into the M=g/h² kernel closes Voronoi's true-3D MAX below the plain-sizing baseline, the same way it closed DragonScales and (partially) GeometricStar.
+
+**KILL-CRITERION:** conforming CLOSES iff true-3D MAX(conform) < 0.5 × MAX(plain); IRREDUCIBLE-here iff MAX(conform) ≥ 0.9 × MAX(plain).
+
+**VERDICT: constraint-edge conforming FAILS on Voronoi — recovery cannot embed the dense bisector graph, and conform never beats plain. Both generic paths top out at true-3D MAX ~0.11mm, ~3.5% over 0.01mm.**
+
+Config: Voronoi registry defaults (`v_morph 1` web, `v_relief 2.0`, `v_scale 8`, `v_jitter 0.8`), prod dims H120/Rb40/Rt50/expn1, `buildInhouseMetricMesh` opts `{tolMm 0.01, hMin 0.02, hMax 8, sizeRes 256, gradeBeta 0.2, maxPoints 800k, guardManifoldAlways, chordTolMm 0.01, chordSteiner, chordSampleN 8}`; ruler `perFaceTrue3DSag` (GN true-3D, preFilter 0.01).
+
+| arm | tris | true3D MAX | p99 | p50 | over 0.01 | constraint recovery |
+|---|---|---|---|---|---|---|
+| plain (sizing + chord-Steiner) | 1.60M | **0.1122** | 0.0141 | 0.0016 | 3.2% | — |
+| conform (segLen 0.01) | 1.60M | 0.1341 (WORSE) | 0.0176 | 0.0013 | 664/1576 = **42%** |
+| conform-robust (segLen 0.02 + recoveryRobust + guardRecoveryManifold) | 1.60M | 0.1110 | 0.0154 | 0.0014 | 165/800 = **21%** |
+
+Readings:
+1. **Recovery is the wall.** The dense near-parallel bisector edges + triple-junctions break the CDT crossing-walk: only 21-42% of edges embed. Failed edges leave their crease UN-conformed, so the naive conform is WORSE than plain (0.134 vs 0.112) and the robust/coarser one only draws level (0.111). This is the SAME failure mode GeoStar's dedicated graph hit (memory `project_feature_conforming_reuse_map`: GeoStar GAP). It is NOT a sizing problem — the alignment self-check confirms the graph lies EXACTLY on the CPU radius-fn creases (edge 2nd-diff 0.21 vs control 0, ratio ∞), so the target→CPU desync risk (`project_voronoi_hash_desync`) is ruled out; the edges are right, the CDT just cannot recover them.
+2. **All three are budget-limited** (hitBudget at 800k pts, p99 ~0.014 near 0.01, MAX ~0.11 tail). Pushing the budget to test convergence OOMs the 12GB heap during true-3D scoring at ≥1.4M pts (worker exits unexpectedly), so the plain-sizing ceiling above 800k is UNMEASURED here — p99 0.014 hints it MIGHT converge at ~3-5M pts, but that is a lot of triangles and untested.
+3. **p50 is excellent** (0.0013-0.0016 mm) — the bulk of every mesh is deep sub-tolerance; the problem is purely the 3.2% tail (junction/crease neighbourhoods, as `-S2-CONVERGENCE`'s attribution found).
+
+**CONSEQUENCE — Voronoi needs a STRUCTURED cell-mesher, not a generic mesher.** Confirmed on BOTH generic vehicles now: (a) reference tessellator (degree-2, can't fan junctions), (b) production CDT (constraint recovery fails on the dense graph; pure sizing budget-limited at MAX 0.11). This is exactly `project_certifiable_production_mesh`'s lesson ("structured meshes judge-certify, free-Delaunay doesn't") applied to the cellular class. The structured answer is to MESH THE VORONOI DIAGRAM DIRECTLY: each cell a convex polygon bounded by bisectors (conformed by construction), fan-triangulated from its site centre with radial rings sized by the relief profile; junctions are shared polygon vertices (degree-3 by construction, no recovery); seam periodic. This is the ring-strip/cone-fan template (DS/Bamboo) specialized to Voronoi cells — plan S6/S7.
+
+**LEDGER.** NEW research: `research/bridge/voronoiFeatureEdges.ts` (`buildVoronoiConformingGraph` — exact bisector segments → welded FeatureGraph, junctions shared degree-3), `research/bridge/_strataVoronoiConform.test.ts` (`PF_STRATA_VCONFORM=1`; A/B + alignment self-check). Reuses labkit `buildInhouseMetricMesh`/`buildRadiusFn`/`perFaceTrue3DSag`. Evidence: `research/exchange/_strataVoronoiConform/scorecard.ndjson`. Ops: ≥1.4M-point meshes OOM the 12GB heap in scoring; singleFork HANGS (not errors) when a worker OOMs mid-arm — kill + rerun the remaining arm with a `-t` filter.
