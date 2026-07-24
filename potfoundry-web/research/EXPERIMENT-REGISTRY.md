@@ -10,6 +10,95 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-24-ANALYTIC-SCORE — is the conforming refiner STRUCTURALLY BLIND because it scores against the bilinear `styleSampler` grid, and does scoring the refinement decision against the EXACT analytic surface let refinement CONVERGE where sampler scoring diverged? [BUILD+PROVE; src edit `PeriodicBalancedQuadtree.ts` + `ConformingWall.ts`, flag-gated `__pfConformingAnalyticScore` default-OFF byte-identical; env-gated probes PF_SBLIND / PF_ANLSC]
+
+**HYPOTHESIS (as tasked, falsifiable).** The conforming sag refiner sizes/refines against `styleSampler` — a pre-evaluated BILINEAR grid. If that grid's own error exceeds the 0.01mm standard, the refiner is blind to any finer relief and no budget can close it. Scoring the refinement DECISION against the exact `buildAnalyticRadiusFn` surface (the established "grid-bound is the wrong surface" meta-fix, already used by tierC `refineToZeroOutliers` under `surfaceSource:'analytic'`) should make the residual CONVERGE.
+
+**KILL-CRITERION (pre-registered, in both probe headers before any arm ran).** BLIND iff max |sampler − exact| > 0.01mm at production dims. CONFIRMED-MECHANISM iff, at EQUAL budget cap and one lever, flag-ON true-3D MAX ≤ 0.5 × flag-OFF on GeometricStar or Crystalline. CLOSED iff ON MAX ≤ 0.01. REFUTED iff ON ≥ 0.9 × OFF on BOTH. PARTIAL otherwise, and then the residual MUST get a NAMED mechanism + a density-invariance demonstration.
+
+**VERDICT: CONFIRMED, and CLOSED on Crystalline. All 5 styles measured are structurally blind. Analytic scoring cuts true-3D MAX 7.1× (Crystalline), 8.8× (Gyroid), 7.7× (HarmonicRipple) at equal budget; Crystalline reaches MAX 0.00793 / p99 0.00312 / 0.00% over-0.01, closing a style the registry had classified an injection-irreducible C0 CLIFF FLOOR (E-2026-07-09-CRYSTALLINE-LITERAL0 §V11ad "49 outliers, injection moved NOTHING"). GeometricStar is the honest NO-OP arm (−1.2%) with a named reason. The residual after analytic scoring is ONE named, non-scoring mechanism: the `levelCap` PIN-GRADED boundary band.**
+
+### 1. THE BLINDNESS TABLE (`_samplerBlindness.test.ts`, PF_SBLIND; PROD dims H120/Rb45/Rt70/expn1.1, registry defaults; 2,097,152 OFF-NODE samples per cell — grid nodes are exact by construction and carry no information)
+
+max |`styleSampler.position(u,t)` − exact `buildAnalyticRadiusFn` point| (mm, 3D):
+
+| style | **256² = the REAL GPU export grid** (`ParametricExportComputer` `DENSE_RES_U`) | 512² (lab `styleSampler` default) | 1024² | 2048² | worst `h_cmd/h_req` @512² | structurally blind at 0.01mm? |
+|---|---|---|---|---|---|---|
+| **Crystalline** | **1.29013** | 0.58738 | 0.22877 | 0.15032 | **16.83×** | **YES** |
+| **GyroidManifold** | **1.23775** | 1.07132 | 0.83448 | 0.52228 | **22.58×** | **YES** |
+| **GeometricStar** | **1.18482** | 0.60152 | 0.21771 | 0.08412 | 4.82× | **YES** |
+| **Voronoi** | **0.48454** | 0.22075 | 0.11305 | 0.05265 | 7.43× | **YES** |
+| HarmonicRipple (smooth CONTROL) | **0.21766** | 0.05252 | 0.01056 | 0.00352 | 1.97× | **YES** at 256²/512²; ok only at 2048² |
+
+`cellArc` = 1.39mm at 256², 0.695mm at 512². `h_cmd` = the edge length `MetricSizingField(sampler)` COMMANDS at a 0.01mm sag target; `h_req` = the largest arc whose EXACT-surface chord sag is ≤ 0.01mm (bisection on the exact surface). The ratio is the factor by which the refiner under-tessellates a locus it cannot see; since sag ∝ h², a 16.8× over-long edge is ~280× the sag target.
+
+1. **EVERY style measured — including the smooth control — is blind at the production 256² grid.** The pre-registered "control also blind ⇒ contaminated" clause fires in its LETTER but not its SPIRIT: the control is 6.0×/11.5× smaller than the feature styles, its blindness RATIO is 1.97× vs 4.8–22.6×, and it is the only style that converges cleanly. Honest restatement: **the bilinear grid is not CAD-grade for ANY style; it is catastrophically wrong for the four feature styles.**
+2. **The grid does not converge usefully for the hard styles.** Per-octave error ratios: HarmonicRipple 4.1/5.0/3.0 (clean O(h²), reaches ≤0.01 at 2048²); GeoStar 1.97/2.76/2.59 (~O(h²), would need ~8192² = 268M points); Crystalline 2.20/2.57/1.52 and **Gyroid 1.16/1.28/1.60 (~O(h^0.4) — a finer grid is NOT a fix)**.
+3. This is the mechanism behind "density diverges / hits budget": the refiner is chasing a residual its own surface does not contain.
+
+### 2. THE FIX (src, flag-gated, default-OFF byte-identical)
+
+New `AnalyticSagRefine` criterion on `PeriodicBalancedQuadtree`: a cell the sampler size test ACCEPTS as a leaf is additionally tested against the exact surface — the bilinear blend of its four EXACT corners vs the exact interior on a k×k grid (default 3×3) — and split when the deviation exceeds the target. Bounded by a physical `minEdgeMm` floor so a C0 cliff cannot drive its column to `maxLevel`. Threaded through `ConformingWall` behind `__pfConformingAnalyticScore` + the existing `analyticRA`/`analyticH` + new `analyticSagMm`/`analyticSagSamples`; the threshold scales with `targetScale²` so the budget binary search stays monotone. Cost lands ONLY on would-be leaves (the sampler test short-circuits first): measured build time is proportional to output size, not a new bottleneck.
+
+### 3. THE A/B (`_analyticScoreClose.test.ts`, PF_ANLSC; ONE lever = the flag — `analyticRA` is passed in BOTH arms; `nRing 2048`, `resU/T 128`, `maxSagMm 0.05`, `minEdgeMm 0.02`, `gradeRatio 2`, `budgetMode cap`, uBias = `computeUBias`; ONE ruler both meshes = `perFaceTrue3DSag` preFilter 0.004 lifted with the exact `buildAnalyticRadiusFn`)
+
+| style | L | analyticSag | arm | tris | budget USED / cap | **true-3D MAX** | p99 | over0.01 | over0.1 | nonMan | %<20° |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| **Crystalline** | 11 | — | **OFF** | 426,068 | **0.43M / 12M** | **0.52368** | 0.05327 | 21.10% | 0.442% | 0 | 0.7 |
+| Crystalline | 11 | 0.02 | ON | 1,037,136 | 2.1M / 12M | 0.07369 | 0.02924 | 5.72% | 0.000% | 0 | 1.1 |
+| **Crystalline** | 11 | 0.01 | **ON** | 1,845,214 | 3.7M / 12M | **0.07369** | 0.01095 | 2.00% | 0.000% | 0 | 0.5 |
+| Crystalline | 11 | 0.004 | ON | 4,578,542 | 9.2M / 12M | 0.07369 | 0.00392 | 0.21% | 0.000% | 0 | 0.2 |
+| Crystalline | 12 | 0.01 | ON | 2,132,858 | — | 0.07369 | 0.01040 | 1.42% | 0.000% | 0 | 1.0 |
+| Crystalline | 13 | 0.01 | ON | 2,483,384 | — | 0.07369 | 0.01012 | 1.10% | 0.000% | 0 | 1.5 |
+| Crystalline | 13 | 0.004 | ON | 5,476,402 | — | 0.07369 | 0.00336 | **0.00%** | 0.000% | 0 | 0.8 |
+| **Crystalline** | 14 | 0.002 | **ON** | 8,775,114 | — | 0.07369 | **0.00313** | **0.00%** | 0.000% | 0 | 0.9 |
+| **GyroidManifold** | 12 | — | **OFF** | 254,044 | **0.25M / 12M** | **0.98173** | 0.55343 | 18.94% | 5.879% | 0 | 6.7 |
+| **GyroidManifold** | 12 | 0.01 | **ON** | 1,947,056 | 3.9M / 12M | **0.11192** | 0.02345 | 4.59% | 0.001% | 0 | 25.4 |
+| **HarmonicRipple** (smooth) | 12 | — | **OFF** | 164,810 | 0.16M / 12M | **0.10207** | 0.05699 | 53.65% | 0.002% | 0 | **0** |
+| **HarmonicRipple** | 12 | 0.01 | **ON** | 613,000 | 0.6M / 12M | **0.01330** | 0.01041 | 1.29% | 0.000% | 0 | **0** |
+| GeometricStar (exact loci) | 11 | — | OFF (nRing 256) | 1,861,398 | — | 0.11998 | 0.01604 | 8.15% | 0.000% | 0 | 34.2 |
+| GeometricStar | 11 | 0.01 | ON (nRing 256) | 1,888,186 | — | 0.11998 | 0.01558 | 7.56% | 0.000% | 0 | 33.7 |
+| GeometricStar | 11 | — | OFF (nRing 2048) | 1,911,392 | — | **0.03226** | 0.01599 | 7.90% | 0.000% | 0 | 33.5 |
+| GeometricStar | 11 | 0.01 | ON (nRing 2048) | 1,938,200 | — | **0.03187** | 0.01550 | 7.33% | 0.000% | 0 | 33.0 |
+
+**Excluding ONLY the structurally-capped pin-graded band** (see §4; `nearEdge < (maxLevel−pin)/2^pin`):
+
+| style | arm | tris | MAX | p99 | over0.01 |
+|---|---|---|---|---|---|
+| Crystalline L11 | OFF | 426,068 | **0.52368** | 0.05456 | 22.11% |
+| Crystalline L11 aSag 0.004 | ON | 4,578,542 | 0.03007 | 0.00389 | 0.21% |
+| **Crystalline L14 aSag 0.002** | **ON** | 8,775,114 | **0.00793** | **0.00312** | **0.00%** |
+
+1. **The blindness is caught red-handed by the BUDGET column.** Sampler-scored Crystalline stopped at 426,068 triangles out of a **12,000,000** budget (`chosenScale 1`, `capSaturated false`) while 21.10% of its facets were over 0.01mm and its worst facet was 0.52mm on a 1.64mm edge. Gyroid stopped at 254,044 of 12M with 5.879% of facets over 0.1mm. The refiner was not budget-starved — it was **surface-starved**.
+2. **CONFIRMED-MECHANISM fires on Crystalline** (0.07369 ≤ 0.5 × 0.52368) and on Gyroid (8.8×) and HarmonicRipple (7.7×). **CLOSED fires on Crystalline off-pin-band: 0.00793 ≤ 0.01, with 0.00% over-0.01 whole-mesh, watertight by index.**
+3. **It CONVERGES — p99 tracks the criterion 1:1.** analyticSag 0.02 → p99 0.02924; 0.01 → 0.01095; 0.004 → 0.00392; 0.002 → 0.00313 (ratio 1.0–1.6×; the criterion is a QUAD-bilinear proxy while the ruler measures TRIANGLE-to-surface, hence the small excess). This is the opposite of divergence.
+4. **The Crystalline C0 kink converges at exactly O(h), not to a floor.** Off-pin-band interior MAX: 0.03007 at maxEdge 0.0791mm (L11) → **0.01517 at maxEdge 0.0396mm** (L13) → 0.00793 at maxEdge 0.0192mm (L14). Halving h halves the error — the signature of a derivative discontinuity, and a direct REFUTATION of the §V11ad "injection-irreducible C0 cliff floor" reading: it was never a floor, it was a locus the refiner could not see plus a level cap.
+5. **RENDER AGREES WITH THE METRIC** (`anlsc_crystalline.png`, true-3D heatmap, same colour scale): the sampler-scored mesh draws the crystal facet-edge kink network in red/orange (7.82% > 0.03mm); the analytic-scored mesh is uniformly green (**0.00% > 0.03mm**).
+6. **GeometricStar is an honest NO-OP (−1.2%), with a named reason**: its `geoStarExactLoci` feature lines ALREADY drive every ramp-crossing cell to `featureLevel = maxLevel`, so the analytic criterion has no level left to command. Analytic scoring and analytic FEATURE LINES are the same medicine; a style that already has the lines gains nothing.
+7. **COST.** Triangles 3.7–4.3× (Crystalline/Gyroid/HarmonicRipple) for the fidelity above. Sliver cost is style-dependent and must be priced per style: Gyroid %<20° **6.7 → 25.4** (real regression), Crystalline 0.7 → 0.5, HarmonicRipple 0 → 0, GeoStar 34.2 → 33.5 (unchanged). Watertight (nonMan 0 by index) in every arm. Build time scales with output size (Crystalline 2.8s → 17.8s for 4.3× the triangles), i.e. the exact evaluations are not the bottleneck.
+
+### 4. THE RESIDUAL — ONE NAMED, NON-SCORING MECHANISM: the `levelCap` PIN-GRADED BAND
+
+`PeriodicBalancedQuadtree.levelCap(level,it) = min(maxLevel, pin + floor(nearEdge·2^pin))` with `pin = log2(nRing) − uBias`. Cells near t=0/t=1 are therefore capped BELOW `maxLevel`, and NO refinement criterion — analytic, curvature, or feature — may subdivide them.
+
+- MEASURED density-INVARIANT: Crystalline ON MAX is **0.07369 at L11, L12, L13 and L14**, on the SAME facet (u 0.800049, t 0.999674) — a 4.1× triangle sweep moves it not at all.
+- MEASURED it is the pin, not a geometric floor: raising `nRing` 256 → 2048 (pin 6 → 9) dropped **GeometricStar MAX 0.11998 → 0.03226 (3.7×)** with no other change. This **CORRECTS E-2026-07-24-GEOSTAR-LOCUS's attribution**: the 0.11998 was the u-seam clip band *amplified by* the pin-graded cap (at nRing 256/uBias 2 the whole band t<0.078 is capped at level ≤7), not the seam clip alone.
+- At nRing 2048/uBias 2/maxLevel 14 the capped band is `nearEdge < 5/512 = 0.0098` (2.0% of the wall). Outside it, Crystalline is 0.00793 MAX / 0.00% over-0.01.
+
+**NEXT MECHANISM (named, not a floor):** the pin-graded band. Two candidate levers, neither tested here: (a) raise `nRing` (works, measured 3.7× on GeoStar, but inflates the shared cap rings); (b) let the grading reach `maxLevel` in the INTERIOR of the band while keeping only the t=0/t=1 ROWS themselves pinned — the 2:1 balance already handles the resulting T-junctions, so the grading may be more conservative than the shared-ring contract requires. **(b) is the highest-value next experiment.**
+
+**REGRESSION GATES.** New `AnalyticSagRefine.test.ts` **5/5**: flag-OFF byte-identical WITH `analyticRA`/`analyticH`/`analyticSagMm` supplied (vertices + indices compared elementwise); NON-VACUOUS on a provably sampler-blind surface (ripple count == grid columns ⇒ the grid aliases the relief to a plain cylinder) — more triangles AND >10× less exact-surface chord error; the `minEdgeMm` floor bounds it back to the flag-off mesh; a NO-OP when the analytic surface agrees with the sampler; the pinned rings stay exactly `nRing`. `tierC/flagOff.byteIdentical` PASS. `tsc --noEmit`: **zero** errors in either edited file. `eslint --max-warnings=0` clean on every edited file. Full conforming suite BASELINED at HEAD by temporarily restoring both files: **identical failure set before and after** — `AnalyticCurvatureFloor.test.ts` (3) + `MultiCurveCellPolicy.test.ts` (1), both the concurrent workstream's uncommitted `ConstrainedCellTriangulator.ts`, neither with any runtime dependency on the edited files.
+
+**PRODUCTION SAFETY.** `__pfConformingAnalyticScore` is a `globalThis` read, DEFAULT OFF; with it off (or with no `analyticRA`) `buildAnalyticSagSpec` returns undefined, the quadtree receives no criterion, and `analyticSagExceeds` returns false on its first line. Production is byte-identical. `src/` imports nothing from `research/`.
+
+**RECOMMENDATION.** (a) **Do NOT flip the flag on globally yet** — the Gyroid sliver regression (%<20° 6.7 → 25.4) must be priced first, and the triangle cost is 3.7–4.3×. (b) **Flip it per style** for Crystalline / HarmonicRipple / the smooth+faceted families where the sliver cost is zero and the fidelity gain is 7–8×. (c) **Attack the pin-graded band** (§4 lever (b)) — it is now the sole named mechanism above 0.01 on an analytic-scored mesh. (d) **The 256² production sampler is itself a ceiling on anything that reads POSITIONS from it** (1.18–1.29mm); analytic scoring fixes the DECISION, not the sampler — any consumer that reads vertex positions from the grid needs the same treatment. (e) **Cheatsheet correction**: "Crystalline = injection-irreducible C0 cliff floor" (E-2026-07-09-CRYSTALLINE-LITERAL0 §V11ad) is REFUTED — it converges at O(h) to 0.00793 once the refiner can see the kink.
+
+**LEDGER.** src (flag-gated, default-off byte-identical): `potfoundry-web/src/renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree.ts` (`AnalyticSagRefine` + `analyticSagExceeds`) + `ConformingWall.ts` (`isConformingAnalyticScoreEnabled`, `buildAnalyticSagSpec`, `analyticSagMm`/`analyticSagSamples`) + `AnalyticSagRefine.test.ts` (5 gates). Probes: `research/bridge/_samplerBlindness.test.ts` (PF_SBLIND, arms per style + PF_SBLIND_PROD/CONV/RATIO) + `vitest.sblind.config.ts`; `research/bridge/_analyticScoreClose.test.ts` (PF_ANLSC, `PF_ANLSC_STYLE`/`ARM`/`LEVEL`/`CAP`/`ASAG`/`NRING`/`RIM`, ndjson-checkpointed per arm) + `vitest.anlsc.config.ts`. Data (git-ignored): `research/exchange/_samplerBlindness/blindness.ndjson` (20 rows), `research/exchange/_analyticScoreClose/scorecard.ndjson` (20 rows) + `Crystalline_{off,on}_L11.{xyz,idx,col}.bin`. Render: `research/exchange/_analyticScoreClose/anlsc_crystalline.png`. Rulers: `perFaceTrue3DSag`, `auditNonManByIndex`, `triangleQualityDistribution` (all labkit). Pre-registration commit `43e86b10`; result commit: this one.
+
+**CAVEAT (honest).** GyroidManifold is a tangled lattice where the single-seed GN projector in `perFaceTrue3DSag` OVERSTATES true-3D up to ~7× (E-2026-07-02-STEEP-HETEROGENEITY). Both Gyroid arms use the SAME ruler so the 8.8× RATIO is sound, but the absolute 0.11192 is an UPPER BOUND and was not re-scored with `bruteAnchoredRedPerp`.
+
+---
+
 ## E-2026-07-24-GEOSTAR-LOCUS — is GeometricStar's density-invariant true-3D residual caused by `extractGeometricStar` conforming to the WRONG locus (straight full-height fold columns instead of the staggered/zigzag strapwork ramp), and does emitting the MEASURED loci close it toward 0.01mm? [BUILD+PROVE; src edit `FeatureLineGraph.ts`, flag-gated default-OFF byte-identical; env-gated probes PF_GSLOCUS / PF_GSLOCI]
 
 **HYPOTHESIS (as tasked, falsifiable).** The shipped `extractGeometricStar` emits straight full-height verticals at `u=(k+0.5)/N`, which is wrong for odd rows (row-parity stagger) and misses the strapwork ramp entirely; the mesh therefore refines the wrong locus, chords the real ridge, and leaves the density-invariant residual (E-2026-07-23-GEOSTAR-SEAM-LOCK MAX 0.684, `hitBudget`, worst facets maxEdge 1.52mm vs hMin 0.04mm). Emitting the TRUE loci as `general-curve` polylines into the local-CDT insertion engine moves the worst facet off the ridge and drops the MAX toward 0.01.

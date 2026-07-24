@@ -48,6 +48,27 @@ import {
 - **Two different defects, don't conflate:** crest UNDER-shoot (vertex placement, ~density-INVARIANT) vs per-face
   chord SAG (facet bridging, density-RESPONSIVE, reducible by `chordTolMm`).
 
+## The SAMPLER is blind — score against the EXACT surface (E-2026-07-24-ANALYTIC-SCORE)
+The conforming refiner's own surface is a BILINEAR grid (`GpuSurfaceSampler`). Its max deviation from
+the exact `buildAnalyticRadiusFn` surface at PROD dims, **at the production 256² export grid**
+(`ParametricExportComputer` `DENSE_RES_U`, NOT the lab `styleSampler`'s 512²):
+Crystalline **1.29**, Gyroid **1.24**, GeoStar **1.18**, Voronoi **0.48**, HarmonicRipple **0.22** mm.
+The sizing field commands edges **4.8–22.6× too long** (h_cmd/h_req at a 0.01mm target) and cannot see it.
+⇒ **A sampler-scored mesh can never converge below its own grid error.** Symptom: a build that stops at
+0.4M triangles out of a 12M budget with 21% of facets over 0.01mm (`chosenScale 1`, `capSaturated false`)
+— surface-starved, NOT budget-starved. ALWAYS print `wall.budget` before blaming density.
+- **Lever:** `globalThis.__pfConformingAnalyticScore = true` + pass `analyticRA`/`analyticH`
+  (+ `analyticSagMm`, default = `maxSagMm`) to `buildConformingWall`. Default OFF ⇒ byte-identical.
+  Measured: Crystalline MAX 0.524→0.0737 (0.00793 off-pin-band, **0.00% over-0.01**), Gyroid 0.982→0.112,
+  HarmonicRipple 0.102→0.0133 — at EQUAL budget. p99 tracks `analyticSagMm` 1:1 (it CONVERGES).
+  Cost 3.7–4.3× tris; sliver cost is style-dependent (Gyroid %<20° 6.7→25.4; Crystalline/Ripple zero).
+  NO-OP where analytic FEATURE LINES already refine the locus to `featureLevel` (GeoStar: −1.2%).
+- **The `levelCap` PIN-GRADED BAND is the next wall, and it defeats EVERY criterion:**
+  `levelCap = min(maxLevel, pin + floor(nearEdge·2^pin))`, `pin = log2(nRing) − uBias`. At nRing 256 /
+  uBias 2 the whole band `t<0.078` is capped at level ≤7. It is DENSITY-INVARIANT by construction — if
+  your worst facet sits at `t≈0.00x` or `t≈0.99x`, raise `nRing` before theorising (GeoStar MAX
+  0.11998→0.03226 from nRing 256→2048 alone). Report MAX with the band excluded, and say so.
+
 ## Kernel knobs (`InhouseMeshOpts`, `buildInhouseMetricMesh`)
 `tolMm` (chord target), `hMin`/`hMax` (edge clamp mm), `sizeRes` (curvature-grid res — band-limited, blind to
 sub-cell relief), `maxPoints` (budget), `splitThresh`, `optimizeSweeps`, `chordTolMm` (splits any facet whose
@@ -65,8 +86,11 @@ non-manifold bug; opt-in, byte-identical off). Conforming: `buildFeatureConformi
   (`dStrap=0`/`dStrap=edge` level curves — a chevron ZIGZAG, C1-SMOOTH but steep: Δr 2.235mm over 0.659mm arc ⇒ needs
   ≤0.05mm facets). Emitting it (`geoStarExactLoci`, default OFF) → MAX 0.734→0.120, **off-seam 0.734→0.017**, p99
   0.0946→0.0073, over-0.1mm 0.921%→0.000%. Residual = the u-seam `clipFeaturesToBox` band (density-INVARIANT).
-  NB `styleSampler` is a 512² bilinear grid whose OWN error on GeoStar is **0.62mm** — the sag refiner is blind to any
-  sub-grid-cell relief, which is why ANALYTIC lines (not density) are the lever.
+  NB `styleSampler` is a 512² bilinear grid whose OWN error on GeoStar is **0.60mm** (production's 256² grid: **1.18mm**)
+  — the sag refiner is blind to any sub-grid-cell relief, which is why ANALYTIC lines (not density) are the lever.
+  See the SAMPLER-IS-BLIND section above: `__pfConformingAnalyticScore` is the general form of the same medicine.
+  **GeoStar's 0.11998 was NOT the u-seam clip alone** — it was the clip band AMPLIFIED by the `levelCap` pin grading;
+  nRing 256→2048 alone gives 0.03226 (E-2026-07-24-ANALYTIC-SCORE §4).
 - **EXCLUDE — weave/braid** (BasketWeave/CelticKnot/CelticTriquetra): step/occlusion-discontinuous relief. Conforming
   trades slivers for a true-3D chord regression — REFUTED that better loci OR no-lock rescue it (inject-only ≈ locked).
 - **Gate is mandatory**: applying conform to a smooth style (HarmonicRipple) wrecked it 0.023→3.56mm.

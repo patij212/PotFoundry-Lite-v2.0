@@ -55,7 +55,17 @@ const SAG = Number(process.env.PF_ANLSC_SAG ?? 0.05);
 const ASAG = Number(process.env.PF_ANLSC_ASAG ?? 0.01);
 const ASAMP = Number(process.env.PF_ANLSC_ASAMP ?? 3);
 const PREFILTER = Number(process.env.PF_ANLSC_PREFILTER ?? 0.004);
+const NRING = Number(process.env.PF_ANLSC_NRING ?? 256);
 const SEAM_BAND = 0.002;
+/**
+ * The t=0/t=1 rows are PINNED to exactly `log2(nRing)` (they are shared BY INDEX with the caps in
+ * the watertight assembly) and the levelCap grades one level per pin-row inward, so NO refinement
+ * criterion may subdivide them. Facets inside this band are scored separately: including them
+ * measures the PIN, not the scoring lever. Default = two pinned-row heights; set PF_ANLSC_RIM to the
+ * FULL pin-graded band ((maxLevel - pin + 1)/2^pin, where pin = log2(nRing) - uBias) to exclude every
+ * cell whose level is capped BELOW maxLevel by the grading.
+ */
+const RIM_BAND = Number(process.env.PF_ANLSC_RIM ?? 2 / NRING);
 
 function setAnalyticScore(on: boolean): void {
   (globalThis as unknown as { __pfConformingAnalyticScore?: boolean }).__pfConformingAnalyticScore = on;
@@ -65,10 +75,14 @@ interface Row {
   style: string; arm: 'off' | 'on'; level: number; cap: number; sag: number; aSag: number;
   lines: number; tris: number; verts: number; buildMs: number; scoreMs: number;
   floorLeaves?: number; chosenScale?: number; leavesAtChosen?: number; capSaturated?: boolean;
+  nRing: number; uBias: number;
   max: number; p99: number; p999: number; over001: number; over01: number;
   maxOffSeam: number; p99OffSeam: number; nSeamBand: number;
+  /** MAX/p99 excluding BOTH the u-seam clip band AND the pinned t=0/t=1 rows. */
+  maxInterior: number; p99Interior: number; over001Interior: number; nRimBand: number;
   nonMan: number; pctBelow20: number; minAngle: number;
   worst: Array<{ u: number; t: number; err: number; maxEdgeMm: number; dSeamU: number }>;
+  worstInterior: Array<{ u: number; t: number; err: number; maxEdgeMm: number; dSeamU: number }>;
 }
 
 function runArm(style: StyleId, arm: 'off' | 'on', useLoci: boolean): void {
@@ -86,7 +100,7 @@ function runArm(style: StyleId, arm: 'off' | 'on', useLoci: boolean): void {
   const t0 = Date.now();
   const wall = buildConformingWall(sampler, {
     maxSagMm: SAG, maxEdgeMm: 8, minEdgeMm: 0.02, gradeRatio: 2,
-    maxLevel: LEVEL, resU: 128, resT: 128, nRing: 256,
+    maxLevel: LEVEL, resU: 128, resT: 128, nRing: NRING,
     surfaceId: 0,
     featureLines: lines.length ? lines : undefined,
     featureLevel: LEVEL,
@@ -111,14 +125,27 @@ function runArm(style: StyleId, arm: 'off' | 'on', useLoci: boolean): void {
   const q = (f: number): number => sorted[Math.min(sorted.length - 1, Math.floor(f * sorted.length))];
 
   const offSeam: number[] = [];
+  const interior: number[] = [];
+  const interiorIdx: number[] = [];
   let nSeamBand = 0;
+  let nRimBand = 0;
   for (let f = 0; f < sag.faceErr.length; f++) {
     const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
     const uu = [ut[2 * a], ut[2 * b], ut[2 * c]];
-    if (uu.some((x) => Math.min(x, 1 - x) < SEAM_BAND)) { nSeamBand++; continue; }
-    offSeam.push(sag.faceErr[f]);
+    const tt = [ut[2 * a + 1], ut[2 * b + 1], ut[2 * c + 1]];
+    const nearSeam = uu.some((x) => Math.min(x, 1 - x) < SEAM_BAND);
+    const nearRim = tt.some((x) => x < RIM_BAND || x > 1 - RIM_BAND);
+    if (!nearSeam) offSeam.push(sag.faceErr[f]); else nSeamBand++;
+    if (nearRim) nRimBand++;
+    if (!nearSeam && !nearRim) { interior.push(sag.faceErr[f]); interiorIdx.push(f); }
   }
   offSeam.sort((x, y) => x - y);
+  const interiorSorted = Float64Array.from(interior).sort();
+  const qi = (fr: number): number =>
+    interiorSorted.length ? interiorSorted[Math.min(interiorSorted.length - 1, Math.floor(fr * interiorSorted.length))] : 0;
+  const overInterior = interior.length
+    ? interior.reduce((s, e) => s + (e > 0.01 ? 1 : 0), 0) / interior.length : 0;
+  interiorIdx.sort((x, y) => sag.faceErr[y] - sag.faceErr[x]);
 
   // 3D lift for topology/quality (sampler lift, matching the FACROSS template).
   const xyz = new Float64Array(nV * 3);
@@ -134,9 +161,7 @@ function runArm(style: StyleId, arm: 'off' | 'on', useLoci: boolean): void {
     const th = 2 * Math.PI * u, z = t * DIMS.H, r = rA(th, z);
     return [r * Math.cos(th), r * Math.sin(th), z];
   };
-  const order = Array.from({ length: sag.faceErr.length }, (_, i) => i)
-    .sort((a, b) => sag.faceErr[b] - sag.faceErr[a]).slice(0, 8);
-  const worst = order.map((f) => {
+  const describeFacet = (f: number): Row['worst'][number] => {
     const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
     let ua = ut[2 * a], ub = ut[2 * b], uc = ut[2 * c];
     if (Math.max(ua, ub, uc) - Math.min(ua, ub, uc) > 0.5) {
@@ -151,19 +176,26 @@ function runArm(style: StyleId, arm: 'off' | 'on', useLoci: boolean): void {
       maxEdgeMm: +Math.max(d(pa, pb), d(pb, pc), d(pc, pa)).toFixed(4),
       dSeamU: +Math.min(u, 1 - u).toFixed(6),
     };
-  });
+  };
+  const order = Array.from({ length: sag.faceErr.length }, (_, i) => i)
+    .sort((a, b) => sag.faceErr[b] - sag.faceErr[a]).slice(0, 8);
+  const worst = order.map(describeFacet);
+  const worstInterior = interiorIdx.slice(0, 6).map(describeFacet);
 
   const row: Row = {
     style, arm, level: LEVEL, cap: CAP, sag: SAG, aSag: ASAG,
-    lines: lines.length, tris: idx.length / 3, verts: nV, buildMs, scoreMs,
+    lines: lines.length, tris: idx.length / 3, verts: nV, buildMs, scoreMs, nRing: NRING, uBias,
     floorLeaves: wall.budget?.floorLeaves, chosenScale: wall.budget?.chosenScale,
     leavesAtChosen: wall.budget?.leavesAtChosen, capSaturated: wall.budget?.capSaturated,
     max: +sag.worstMm.toFixed(5), p99: +q(0.99).toFixed(5), p999: +q(0.999).toFixed(5),
     over001: +sag.fracOver(0.01).toFixed(5), over01: +sag.fracOver(0.1).toFixed(5),
     maxOffSeam: +(offSeam.length ? offSeam[offSeam.length - 1] : 0).toFixed(5),
     p99OffSeam: +(offSeam.length ? offSeam[Math.floor(0.99 * offSeam.length)] : 0).toFixed(5),
-    nSeamBand, nonMan, pctBelow20: quality.pctBelow20, minAngle: quality.minAngleDeg,
-    worst,
+    nSeamBand,
+    maxInterior: +qi(1).toFixed(5), p99Interior: +qi(0.99).toFixed(5),
+    over001Interior: +overInterior.toFixed(5), nRimBand,
+    nonMan, pctBelow20: quality.pctBelow20, minAngle: quality.minAngleDeg,
+    worst, worstInterior,
   };
   if (process.env.PF_ANLSC_DUMP === '1') {
     dumpRenderBins(OUT, `${style}_${arm}_L${LEVEL}`, Float32Array.from(xyz), idx, {
@@ -177,14 +209,19 @@ function runArm(style: StyleId, arm: 'off' | 'on', useLoci: boolean): void {
   appendFileSync(NDJSON, JSON.stringify(row) + '\n');
   /* eslint-disable no-console */
   console.log(`\n[ANLSC ${style} ${arm.toUpperCase()} L${LEVEL} cap${CAP} sag${SAG} aSag${ASAG}] ` +
-    `lines=${row.lines} tris=${row.tris} build=${(buildMs / 1000).toFixed(1)}s score=${(scoreMs / 1000).toFixed(1)}s`);
+    `lines=${row.lines} uBias=${row.uBias} nRing=${NRING} tris=${row.tris} build=${(buildMs / 1000).toFixed(1)}s score=${(scoreMs / 1000).toFixed(1)}s`);
   console.log(`  budget: floorLeaves=${row.floorLeaves} chosenScale=${row.chosenScale} ` +
     `leavesAtChosen=${row.leavesAtChosen} capSaturated=${row.capSaturated}`);
   console.log(`  true-3D MAX=${row.max} p99=${row.p99} p99.9=${row.p999} over0.01=${(row.over001 * 100).toFixed(2)}% ` +
     `over0.1=${(row.over01 * 100).toFixed(3)}% | offSeam MAX=${row.maxOffSeam} p99=${row.p99OffSeam} (${nSeamBand} excl)`);
+  console.log(`  INTERIOR (off-seam AND off the pinned t-rows, band ${RIM_BAND.toExponential(2)}; ` +
+    `${nRimBand} rim facets): MAX=${row.maxInterior} p99=${row.p99Interior} over0.01=${(row.over001Interior * 100).toFixed(2)}%`);
   console.log(`  nonMan=${row.nonMan} %<20deg=${row.pctBelow20} minAngle=${row.minAngle}`);
   for (const w of row.worst) {
     console.log(`    worst u=${w.u} t=${w.t} err=${w.err} maxEdge=${w.maxEdgeMm}mm dSeam=${w.dSeamU}`);
+  }
+  for (const w of row.worstInterior) {
+    console.log(`    worst-INTERIOR u=${w.u} t=${w.t} err=${w.err} maxEdge=${w.maxEdgeMm}mm dSeam=${w.dSeamU}`);
   }
   /* eslint-enable no-console */
 }
