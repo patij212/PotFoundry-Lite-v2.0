@@ -13,6 +13,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { voronoiCenterCellular, type VoronoiLatticeParams } from '../../src/geometry/targetSolid/voronoiBisectorGuides';
 import { baseRadius } from '../../src/geometry/profile';
+import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { buildRadiusFn } from './labkit';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
@@ -85,7 +86,30 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     const floorZ = envF('PF_SOLID_FLOORZ', 10); // cavity floor height (mm)
     const innerDiv = Math.round(envF('PF_SOLID_INNERDIV', 256)); // inner-wall angular divisions
     const innerRings = Math.round(envF('PF_SOLID_INNERRINGS', 48));
-    const rA = buildRadiusFn('Voronoi' as StyleId, { vMorph: morph, vRelief: 2.0, vScale: 8, vJitter: 0.8, vZStretch: 1, vPulse: 0 }, DIMS);
+    // GENERALIZATION: any style via buildRadiusFn. INIT='voronoi' uses the Voronoi cell decomposition (conforming,
+    // efficient — Voronoi only); INIT='grid' uses a uniform θ×z grid + sag-driven LEPP (universal, any style). Params
+    // default to the registry defaults (snake_case → camelCase, feedback_verify_registry_defaults) with a PF_SOLID_PARAMS
+    // JSON override; PF_SOLID_MORPH still overrides vMorph for Voronoi.
+    const STYLE = process.env.PF_SOLID_STYLE ?? 'Voronoi';
+    const INIT = process.env.PF_SOLID_INIT ?? (STYLE === 'Voronoi' ? 'voronoi' : 'grid');
+    const snakeToCamel = (s: string): string => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+    const registryDefaults = (id: string): Record<string, number> => {
+      const cfg = (STYLE_REGISTRY as Record<string, { params?: Record<string, { default?: unknown }>; advancedParams?: Record<string, { default?: unknown }> }>)[id];
+      const out: Record<string, number> = {};
+      for (const group of [cfg?.params, cfg?.advancedParams]) {
+        if (group === undefined) continue;
+        for (const [k, v] of Object.entries(group)) {
+          if (typeof v.default === 'number') out[snakeToCamel(k)] = v.default;
+        }
+      }
+      return out;
+    };
+    const styleParams: Record<string, number> = { ...registryDefaults(STYLE) };
+    if (STYLE === 'Voronoi') styleParams.vMorph = morph; // keep the morph knob for Voronoi
+    if (process.env.PF_SOLID_PARAMS !== undefined) {
+      Object.assign(styleParams, JSON.parse(process.env.PF_SOLID_PARAMS) as Record<string, number>);
+    }
+    const rA = buildRadiusFn(STYLE as StyleId, styleParams, DIMS);
     const rInner = (z: number): number => baseRadius(z, H, DIMS.Rb, DIMS.Rt, DIMS.expn ?? 1) - wallT;
 
     // ---- outer-wall mesh store in (θ, z), welded on canonical θ ----
@@ -232,26 +256,52 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     const cyLo = Math.round(envF('PF_SOLID_CYLO', -1));
     const cyHi = Math.round(envF('PF_SOLID_CYHI', SCALE + 1));
     let cells = 0;
-    for (let cx = 0; cx < SCALE; cx += 1) {
-      for (let cy = cyLo; cy <= cyHi; cy += 1) {
-        const poly = cellPolygon(cx, cy);
-        if (poly.length < 3) continue;
-        cells += 1;
-        let mcx = 0;
-        let mcy = 0;
-        for (const p of poly) {
-          mcx += p[0];
-          mcy += p[1];
+    if (INIT === 'voronoi') {
+      for (let cx = 0; cx < SCALE; cx += 1) {
+        for (let cy = cyLo; cy <= cyHi; cy += 1) {
+          const poly = cellPolygon(cx, cy);
+          if (poly.length < 3) continue;
+          cells += 1;
+          let mcx = 0;
+          let mcy = 0;
+          for (const p of poly) {
+            mcx += p[0];
+            mcy += p[1];
+          }
+          mcx /= poly.length;
+          mcy /= poly.length;
+          const cV = addV(TWO_PI * (mcx / SCALE), (mcy / SCALE) * H);
+          const ring = poly.map((p) => {
+            const [th, z] = mergeCorner(TWO_PI * (p[0] / SCALE), (p[1] / SCALE) * H);
+            return addV(th, z);
+          });
+          for (let e = 0; e < ring.length; e += 1) addT(cV, ring[e], ring[(e + 1) % ring.length]);
         }
-        mcx /= poly.length;
-        mcy /= poly.length;
-        const cV = addV(TWO_PI * (mcx / SCALE), (mcy / SCALE) * H);
-        const ring = poly.map((p) => {
-          const [th, z] = mergeCorner(TWO_PI * (p[0] / SCALE), (p[1] / SCALE) * H);
-          return addV(th, z);
-        });
-        for (let e = 0; e < ring.length; e += 1) addT(cV, ring[e], ring[(e + 1) % ring.length]);
       }
+    } else {
+      // UNIVERSAL uniform θ×z grid: periodic in θ (column gu ≡ 0), flat z=0/z=H edges by construction. sag-driven LEPP
+      // then refines it to the surface for ANY style — no style-specific decomposition. Crease styles just cost more
+      // triangles (linear vs quadratic convergence, per E-2026-07-24-STRATA001-S2-CONVERGENCE).
+      const gu = Math.round(envF('PF_SOLID_GRIDU', 96));
+      const gv = Math.round(envF('PF_SOLID_GRIDV', 48));
+      const vgrid: number[][] = [];
+      for (let j = 0; j <= gv; j += 1) {
+        const row: number[] = [];
+        for (let i = 0; i < gu; i += 1) row.push(addV((TWO_PI * i) / gu, (H * j) / gv));
+        vgrid.push(row);
+      }
+      for (let j = 0; j < gv; j += 1) {
+        for (let i = 0; i < gu; i += 1) {
+          const i1 = (i + 1) % gu;
+          const a = vgrid[j][i];
+          const b = vgrid[j][i1];
+          const c = vgrid[j + 1][i1];
+          const d = vgrid[j + 1][i];
+          addT(a, b, c);
+          addT(a, c, d);
+        }
+      }
+      cells = gu * gv;
     }
 
     // ---- geometry + LEPP ----
@@ -662,7 +712,8 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     // ---- emit STL ----
     const outDir = join('research', 'exchange', '_strataVoronoiSolid');
     mkdirSync(outDir, { recursive: true });
-    const stlName = `voronoi_${morph === 0 ? 'bubble' : 'web'}_${stage}.stl`;
+    const styleTag = STYLE === 'Voronoi' ? `voronoi_${morph === 0 ? 'bubble' : 'web'}` : STYLE.toLowerCase();
+    const stlName = `${styleTag}_${stage}.stl`;
     const buf = Buffer.alloc(84 + soup.length * 50);
     buf.write(`STRATA-001 Voronoi ${stage} (watertight)`, 0, 'ascii');
     buf.writeUInt32LE(soup.length, 80);
@@ -687,9 +738,9 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
 
     const report = [
       '',
-      `========== STRATA-001 S7: CLOSED VORONOI ${stage.toUpperCase()} ==========`,
+      `========== STRATA-001 S7 UNIVERSAL: ${STYLE} ${stage.toUpperCase()} (init=${INIT}) ==========`,
       `file: ${stlName}  (${soup.length} triangles: ${outerCount} outer wall + ${capTris} caps)`,
-      `Voronoi ${morph === 0 ? 'BUBBLE' : 'WEB'} vMorph ${morph}, vRelief 2.0, H120/Rb40/Rt50 — registry defaults`,
+      `${STYLE}${STYLE === 'Voronoi' ? ` ${morph === 0 ? 'BUBBLE' : 'WEB'}` : ''}, H120/Rb40/Rt50 — registry defaults · params ${JSON.stringify(styleParams)}`,
       `ring: ${cells} cells (cx 0..7 × cy ${cyLo}..${cyHi})${capped ? ' CAPPED' : ''}`,
       '',
       '--- WATERTIGHT AUDIT (3D position-weld) ---',

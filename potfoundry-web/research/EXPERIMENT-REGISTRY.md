@@ -8067,3 +8067,32 @@ Euler (bubble): V−E+F = 62,540 − 187,614 + 125,076 = **2** (genus-0). Indepe
 **HONEST SCOPE.** The OUTER WALL is the 0.01mm Voronoi feature surface; inner wall / rim / base / floor are smooth STRUCTURAL caps (correct geometry, not feature surfaces — they don't need 0.01mm). Web carries 144 sub-µm edges near junctions (valid, watertight at ≤100nm weld, but a coarse-welding slicer ~1µm might merge a few — a mesh-quality pass would coarsen them; bubble min edge 1.16µm has none). Single relief (2.0), one pot geometry.
 
 **LEDGER.** NEW: `research/bridge/_strataVoronoiSolid.test.ts` (`PF_STRATA_SOLID=1`; `PF_SOLID_MORPH`/`STAGE`(ring|solid)/`ORACLE`/`ACCEPT_TOL`/`WELD_UM`/`FLOOR_UM`/`WALLT`/`FLOORZ`/`INNERDIV`/`INNERRINGS`). STLs: `research/exchange/_strataVoronoiSolid/` (gitignored). Commits `dd69cb77` + this.
+
+---
+
+## E-2026-07-24-STRATA001-S7-UNIVERSAL (GENERALIZE the closed-solid pipeline beyond Voronoi: uniform-grid + sag-driven LEPP for ANY style) [BUILD+MEASURE; research-only, no src edit]
+
+**HYPOTHESIS (falsifiable):** the LEPP + seam-weld + caps + sliver-collapse machinery is style-AGNOSTIC — only the Voronoi cell decomposition was style-specific. Swapping it for a uniform θ×z initial grid + sag-driven LEPP (`INIT=grid`, `buildRadiusFn(style, registryDefaults)`) yields closed 0.01mm watertight solids for other styles with ZERO style-specific code.
+
+**KILL-CRITERION:** at least the smooth/modulation styles close ≤0.01mm watertight from the uniform grid; crease/step styles are honestly characterized.
+
+**VERDICT: CONFIRMED for the smooth tier — the pipeline generalizes; a clean 3-tier map falls out.** One harness, `PF_SOLID_STYLE=<name> PF_SOLID_INIT=grid`, registry-default params (snake→camel), all shared LEPP/seam/caps/collapse/audit code.
+
+**TIER 1 — universal grid + LEPP works out of the box (0.01mm, watertight, 0 slivers):**
+
+| style | ring tris | MAX sag | over 0.01mm | min edge |
+|---|---|---|---|---|
+| SuperellipseMorph | 91,524 | 6.999 um | 0 | 315 um |
+| FourierBloom | 381,757 | 7.000 um | 0 | 156 um |
+| SpiralRidges | 609,663 | 7.000 um | 0 | 107 um |
+| HarmonicRipple | 767,234 | 7.000 um | 0 | 133 um |
+
+**HarmonicRipple CLOSED SOLID** (full pipeline, `STAGE=solid`): 794,202 tris (767,234 wall + 26,968 caps), boundary 0, non-manifold 0, seam-crack 0, outer MAX 7.000 um, 0/767,234 over, 0 slivers. **The full closed-printable pipeline generalizes with zero style-specific code.**
+
+**TIER 2 — crease/C1 styles: converge but the uniform grid is too slow (linear vs quadratic).** GothicArches did not finish under a 6M-tri cap / ~10 min (24 arch creases refine linearly). These need their CONFORMING decomposition for efficiency — exactly what Voronoi's cells (this campaign) and Gothic's `conformingChordsByPatch` (existing) provide. The pipeline is the same; only the initial-mesh strategy changes.
+
+**TIER 3 — faceted / C0-step styles: a single-valued flat grid CANNOT close them.** BambooSegments MAX 2233 um (12,088 over — ring STEPS are C0 jumps); Crystalline MAX 2693 um + 5 non-manifold (sharp facet edges). A flat single-valued wall cannot represent a C0 jump to 0.01mm; these need the double-valued-wall / ring-strip / facet-aligned machinery already built per-style (BambooSegments productionized `[[project_bamboo_production_closure]]`, LowPoly alignNU, DS ring strips).
+
+**THE GENERALIZATION MAP (the payoff):** every style reduces to (shared pipeline) + (one of three initial-mesh strategies keyed by the style's regularity class): SMOOTH → uniform grid (universal, done); C1 CREASE → conforming edges (Voronoi cells / Gothic chords); C0 STEP/CUSP → double-valued wall / feature strips. This is spec §7's op→stratum table, reached empirically from the mesher side. The mesher itself — LEPP refinement, θ-seam weld, base/rim/inner/floor caps, needle-collapse, position-weld audit — is ONE piece of code for all of them.
+
+**LEDGER.** `research/bridge/_strataVoronoiSolid.test.ts` generalized: `PF_SOLID_STYLE` (default Voronoi), `PF_SOLID_INIT` (voronoi|grid), `PF_SOLID_PARAMS` (JSON override), `PF_SOLID_GRIDU`/`GRIDV`; registry-default extraction (snake→camel). STLs in `research/exchange/_strataVoronoiSolid/`. Commits `ae4c6eca` + this.
