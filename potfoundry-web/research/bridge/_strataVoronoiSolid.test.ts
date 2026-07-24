@@ -157,6 +157,37 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       return addV(vth[a] + dth / 2, (vz[a] + vz[b]) / 2);
     };
 
+    // δ-MERGE for near-degenerate cell CORNERS (spec failure-mode #4): jitter can make 4 sites nearly cocircular ⇒ two
+    // Voronoi vertices < 1µm apart ⇒ a micro-edge in the cell polygon ⇒ a permanent sliver (never refined — its sag is
+    // fine; never floored — its longest edge is big). Merge corners closer than CORNER_MM to one canonical point BEFORE
+    // meshing. δ well below the min LEGIT bisector edge (~tens of µm), well above the cocircular artifact (<1µm).
+    // Shared corners across cells are bit-exact ⇒ they merge to the same canonical point ⇒ no cross-cell crack.
+    const CORNER_MM = envF('PF_SOLID_CORNER_UM', 6) / 1000;
+    const cGrid = new Map<string, Array<{ th: number; z: number; x: number; y: number }>>();
+    const cgi = (v: number): number => Math.floor(v / CORNER_MM);
+    const mergeCorner = (thetaRaw: number, z: number): [number, number] => {
+      const theta = canon(thetaRaw);
+      const r = rA(theta, z);
+      const x = r * Math.cos(theta);
+      const y = r * Math.sin(theta);
+      const ix = cgi(x);
+      const iy = cgi(y);
+      const iz = cgi(z);
+      for (let dx = -1; dx <= 1; dx += 1)
+        for (let dy = -1; dy <= 1; dy += 1)
+          for (let dz = -1; dz <= 1; dz += 1) {
+            const l = cGrid.get(`${ix + dx},${iy + dy},${iz + dz}`);
+            if (l === undefined) continue;
+            for (const c of l) if (Math.hypot(c.x - x, c.y - y, c.z - z) <= CORNER_MM) return [c.th, c.z];
+          }
+      const key = `${ix},${iy},${iz}`;
+      const b = cGrid.get(key);
+      const entry = { th: theta, z, x, y };
+      if (b === undefined) cGrid.set(key, [entry]);
+      else b.push(entry);
+      return [theta, z];
+    };
+
     const ta: number[] = [];
     const tb: number[] = [];
     const tc: number[] = [];
@@ -177,6 +208,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       if (i >= 0) l.splice(i, 1);
     };
     const addT = (a: number, b: number, c: number): number => {
+      if (a === b || b === c || c === a) return -1; // degenerate (corner δ-merge collapsed an edge)
       const t = ta.length;
       ta.push(a);
       tb.push(b);
@@ -214,7 +246,10 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
         mcx /= poly.length;
         mcy /= poly.length;
         const cV = addV(TWO_PI * (mcx / SCALE), (mcy / SCALE) * H);
-        const ring = poly.map((p) => addV(TWO_PI * (p[0] / SCALE), (p[1] / SCALE) * H));
+        const ring = poly.map((p) => {
+          const [th, z] = mergeCorner(TWO_PI * (p[0] / SCALE), (p[1] / SCALE) * H);
+          return addV(th, z);
+        });
         for (let e = 0; e < ring.length; e += 1) addT(cV, ring[e], ring[(e + 1) % ring.length]);
       }
     }
@@ -351,6 +386,60 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       refineLongest(t);
       for (const nt of created) if (alive[nt]) stack.push(nt);
       if (alive[t]) stack.push(t);
+    }
+
+    // ---- NEEDLE-SLIVER COLLAPSE (generic, style-agnostic mesh-quality pass) ----
+    // LEPP conforming bisection occasionally lands a vertex < 1µm from an existing one, making a needle: two triangles
+    // sharing a sub-µm edge with much longer flanks (measured 0.76µm edge / 90µm flanks, aspect ~100). These never
+    // refine (sag fine) nor floor (longest edge big). Collapse each such short edge (union its endpoints to the root's
+    // position) — a < 1µm move, << the 10µm tol — and drop the two degenerate triangles. NOT a junction-cusp problem
+    // (corner δ-merge and the floor both had zero effect); this is triangle quality, so a quality pass is the fix.
+    const COLLAPSE_MM = envF('PF_SOLID_COLLAPSE_UM', 1) / 1000;
+    const uf = new Int32Array(vth.length);
+    for (let i = 0; i < uf.length; i += 1) uf[i] = i;
+    const find = (x0: number): number => {
+      let x = x0;
+      while (uf[x] !== x) {
+        uf[x] = uf[uf[x]];
+        x = uf[x];
+      }
+      return x;
+    };
+    const union = (a: number, b: number): void => {
+      const ra = find(a);
+      const rb = find(b);
+      if (ra !== rb) uf[Math.max(ra, rb)] = Math.min(ra, rb);
+    };
+    for (let t = 0; t < ta.length; t += 1) {
+      if (!alive[t]) continue;
+      const a = ta[t];
+      const b = tb[t];
+      const c = tc[t];
+      const eab = eLen(a, b);
+      const ebc = eLen(b, c);
+      const eca = eLen(c, a);
+      // Any edge below COLLAPSE_MM (<< tol) is collapsible regardless of aspect — the vertex move is negligible.
+      const mn = Math.min(eab, ebc, eca);
+      if (mn < COLLAPSE_MM) {
+        if (eab === mn) union(a, b);
+        else if (ebc === mn) union(b, c);
+        else union(c, a);
+      }
+    }
+    let collapsedTris = 0;
+    for (let t = 0; t < ta.length; t += 1) {
+      if (!alive[t]) continue;
+      const a = find(ta[t]);
+      const b = find(tb[t]);
+      const c = find(tc[t]);
+      if (a === b || b === c || c === a) {
+        alive[t] = false;
+        collapsedTris += 1;
+        continue;
+      }
+      ta[t] = a;
+      tb[t] = b;
+      tc[t] = c;
     }
 
     // ---- collect outer-wall triangles as 3D soup ----
@@ -544,6 +633,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     // ---- outer-wall fidelity ----
     let maxSag = 0;
     let minEdge = Infinity;
+    let subMicronEdges = 0;
     const sags: number[] = [];
     for (let t = 0; t < ta.length; t += 1) {
       if (!alive[t]) continue;
@@ -554,6 +644,15 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       const e1 = eLen(tb[t], tc[t]);
       const e2 = eLen(tc[t], ta[t]);
       minEdge = Math.min(minEdge, e0, e1, e2);
+      if (e0 < 1e-3) subMicronEdges += 1;
+      if (e1 < 1e-3) subMicronEdges += 1;
+      if (e2 < 1e-3) subMicronEdges += 1;
+      if (process.env.PF_SOLID_DEBUG === '1' && Math.min(e0, e1, e2) < 1e-3) {
+        const es = [e0, e1, e2].map((e) => (e * 1000).toFixed(2)).join('/');
+        const mz = (vzz[ta[t]] + vzz[tb[t]] + vzz[tc[t]]) / 3;
+        // eslint-disable-next-line no-console
+        if (subMicronEdges < 30) console.log(`  sliver tri edges(um) ${es}  z=${mz.toFixed(1)}`);
+      }
     }
     sags.sort((a, b) => a - b);
     const over = sags.filter((s) => s > TOL).length;
@@ -601,7 +700,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       '',
       '--- OUTER-WALL FIDELITY (oracle ' + oracleN + ') ---',
       `  MAX sag ${um(maxSag)} um  ${maxSag <= TOL ? '✅' : '❌'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-0.01mm ${over}/${sags.length}`,
-      `  min edge ${um(minEdge)} um  weld radius ${um(WELD_MM)} um  max merge dist ${(maxMergeDist * 1e6).toFixed(4)} nm  ${minEdge > 4 * WELD_MM ? '✅' : '⚠️ weld ≥ min edge'}`,
+      `  min edge ${um(minEdge)} um  sliver-collapsed tris ${collapsedTris}  sub-µm edges ${subMicronEdges}  ${subMicronEdges === 0 ? '✅' : '⚠️'}`,
       '=========================================================',
       '',
     ].join('\n');
