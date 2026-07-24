@@ -7901,3 +7901,40 @@ At the coarser (8,7) the same lever gives crease p50 **261.355 -> 1.556 um (168x
 **HONEST LIMITS.** Outer-wall only; chords on the outer wall only; single pot geometry and relief; order-2 (web `f2-f1`) strata not extracted; this ruler is a SAMPLED falsifier and per P-INV-2 can refute a bound but never stand in for one — the certificate remains the authority.
 
 **LEDGER.** NEW: `research/bridge/_strataCreaseRuler.test.ts` (`PF_STRATA_RULER=1`; `_ALOG2`/`_VLOG2`/`_CHORDS`/`_RELIEF`/`_MORPH`/`_GRIDU`/`_GRIDV`/`_CREASE`/`_SEAMBAND`/`_OUT`). Commit `ff48371c`.
+
+---
+
+## E-2026-07-24-STRATA001-S2-CONVERGENCE (does conforming Voronoi actually CONVERGE to 0.01mm, or plateau at a singularity? + tail attribution) [MEASURE-ONLY; no src behavior change]
+
+**HYPOTHESIS (falsifiable):** with the order-1 bisector chords in, refining the uniform base grid drives the crease chord error toward 0 (feature representable), rather than plateauing (a true singularity the reference tessellator cannot represent).
+
+**KILL-CRITERION:** if crease MAX stops falling as the grid refines, there is a singularity and the reference-tessellator path is dead for Voronoi.
+
+**VERDICT: CONVERGES — near-QUADRATIC — no plateau. But it needs ~16M tri/patch uniform to reach 0.01mm, 64x over the 262,144 cap.**
+
+Crease-seeded ruler (`_strataCreaseRuler`, alias-safe), Voronoi registry defaults (`v_relief 2.0`, `v_morph 1`), outer-wall, conforming ON:
+
+| grid | outer-wall tris | crease MAX | crease p99 | crease p50 |
+|---|---|---|---|---|
+| (8,7) | 168,448 | 1414.1 um | 742.2 | 1.56 |
+| (9,8) | 272,942 | 447.96 um | 198.3 | 0.66 |
+| (10,9) | ~1.05M | **117.12 um** | 46.2 | 0.61 |
+
+Each doubling cuts crease MAX **~3.5-3.8x** (1414 -> 448 -> 117): near-O(h²), the SMOOTH rate — conforming RESTORED quadratic convergence on the crease (an UNCONFORMED crease converges only linearly, ~2x/level). Extrapolating 117 -> ~30 -> ~8 um puts 0.01mm at roughly (12,11)-(13,12) = 4M-16M tri/patch, **~64x over the hard 262,144 tri/patch snapshot cap**. ((11,10)=4.2M tris did not return — OOM/timeout in the ruler's triangle table; three points fix the trend.)
+
+**TAIL ATTRIBUTION (`_strataTailAttribution`, PF_STRATA_TAIL=1, (9,8)).** Crease samples split by locus (cell diag 4.4 mUV):
+
+| locus | n | MAX | p99 | p95 | p90 | p50 |
+|---|---|---|---|---|---|---|
+| J near junction (<1.5 cell) | 24,590 | 441.3 | 259.0 | 168.2 | 121.1 | 4.8 |
+| U unconformed (dropped chain) | 2,667 | 340.1 | 268.8 | 185.1 | 108.1 | 21.5 |
+| A anchor band / seam | 2,016 | **448.2** | 311.0 | 137.5 | 31.3 | 0.22 |
+| C conformed control | 56,469 | 128.4 | 35.2 | 15.1 | **7.2** | 0.51 |
+
+Reading: (1) the **conformed control reaches p90 7.2 um / p95 15 um** — genuinely near tolerance where conforming lands, confirming the mechanism. (2) The **tail is JUNCTION-dominated**: J is the largest population (24,590 = ~30% of crease length, because creases are short junction-to-junction at scale 8) AND heavy-tailed (p95 168 um). (3) The single worst samples (448 um) are all at u≈0.999 — creases hitting the **periodic seam**. (4) Dropped chains (U) contribute a p99 269 um secondary tail.
+
+**THE ARCHITECTURAL CRUX [DERIVED from the kernel].** A Voronoi triple-junction is where THREE bisector creases meet — a degree-3 vertex. The reference tessellator requires every interior chain vertex to be **degree-2** (`annularSolidReferenceTessellation:1087-1089`, "an interior endpoint must be shared by exactly two of the cell's chords"). So it structurally CANNOT fan a junction; at most 2 of the 3 creases can pass through as a bent degree-2 chain, and the triple-point itself stays unconformed. That is why the junction tail converges only linearly (C0 corner) while the crease bulk converges quadratically — and why a uniform grid must pay junction-resolution cost EVERYWHERE. The junction is a bounded-slope (Lipschitz) corner, so it IS representable by a cone-FAN with the apex pinned at the junction (the DS-tip / spec §7 cusp mechanism) — but that needs a fan-capable mesher, NOT this tessellator.
+
+**CONSEQUENCE FOR THE CAMPAIGN.** The reference-tessellator + crease-chord path (spec §4) delivers exactly what §4 claims — quadratic crease convergence, crease median 0.6 um — and no more. The last mile to 0.01mm-everywhere on Voronoi is **junction fans + local refinement**, i.e. the region/cone-fan mesher (spec §7 / plan S7), which places degree-3 fan vertices and spends triangles only at junctions instead of uniformly. Within the reference tessellator the reachable wins are: proper seam-corner conforming (kills the 448 um worst), fewer dropped chains (U), and 2-of-3 junction pairing (partial J recovery) — none reach 0.01mm alone.
+
+**LEDGER.** NEW: `research/bridge/_strataTailAttribution.test.ts` (`PF_STRATA_TAIL=1`; J/U/A/C locus split + top-worst attribution). Convergence via `_strataCreaseRuler` at (8,7)/(9,8)/(10,9). Seam-corner snap added to `voronoiConformingChords.ts` (segment crossings on u=0/denom snap v to the nearest row = a legal grid corner) — did NOT yet reduce the seam MAX (chords still rejected downstream; open, next).

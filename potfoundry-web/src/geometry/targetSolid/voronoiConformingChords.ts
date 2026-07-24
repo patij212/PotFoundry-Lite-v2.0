@@ -122,6 +122,25 @@ function segmentCrossings(
       if (k < 0 || k > angularCells) continue;
       const t = (k / angularCells - u0) / du;
       if (t < 0 || t > 1) continue;
+      const onSeam = k === 0 || k === angularCells;
+      if (onSeam) {
+        // A crease reaching the periodic seam is refused unless its endpoint is a
+        // grid CORNER (kernel :1036-1043): the weld copies the u=0 column, so only
+        // a corner is shared across it. Snap v to the nearest ROW so the seam
+        // crossing becomes (seam column, row) = a legal corner. The field is
+        // periodic with the same integer period, so a crease exits u=1 at the
+        // same v it re-enters u=0; snapping both continuations to the nearest row
+        // keeps the weld consistent. This conforms the near-seam cell that would
+        // otherwise carry the worst crease error (measured MAX ~448 um).
+        const vRow = Math.round(((v0 + t * dv) * denominator) / vStep) * vStep;
+        points.push({
+          t,
+          uNumerator: k * uStep,
+          vNumerator: Math.min(denominator, Math.max(0, vRow)),
+          exact: 'both',
+        });
+        continue;
+      }
       const vNumerator = clampNumerator((v0 + t * dv) * denominator, denominator);
       points.push({
         t,
