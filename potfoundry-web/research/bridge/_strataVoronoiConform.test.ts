@@ -25,7 +25,8 @@ import {
 } from './labkit';
 import type { InhouseMeshOpts, StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
-import { buildVoronoiConformingGraph } from './voronoiFeatureEdges';
+import { buildVoronoiConformingGraph, DEFAULT_VORONOI_LATTICE } from './voronoiFeatureEdges';
+import { voronoiBisectorSegmentsUv } from '../../src/geometry/targetSolid/voronoiBisectorGuides';
 
 const RUN = process.env.PF_STRATA_VCONFORM === '1';
 
@@ -223,6 +224,58 @@ describe('STRATA-001 Voronoi via M=g/h² CDT + bisector constraint edges', () =>
         const over01 = +sag.fracOver(0.01).toFixed(6);
         plog(
           `[${arm.key}][TRUE3D] max=${true3dMax} p99.9=${true3dP999} p99=${true3dP99} p50=${true3dP50} over0.01=${over01} in ${((Date.now() - tT) / 1000).toFixed(1)}s`
+        );
+
+        // STRUCTURED-MESHER DECISION PROBE: split the per-face true-3D error by whether the face centroid sits in a
+        // crease/junction BAND (within `band` of a bisector) or in a cell INTERIOR. A structured cell-mesher conforms
+        // the crease/junction band BY CONSTRUCTION (bisectors = shared cell edges, junctions = shared vertices), so if
+        // interior faces are already ≤ 0.01 the structured path reaches 0.01mm overall.
+        const segs = voronoiBisectorSegmentsUv(DEFAULT_VORONOI_LATTICE);
+        const distToGraphUt = (u: number, t: number): number => {
+          let best = Infinity;
+          for (const s of segs) {
+            const dx = s.b[0] - s.a[0];
+            const dy = s.b[1] - s.a[1];
+            const l2 = dx * dx + dy * dy;
+            let tt = l2 > 1e-18 ? ((u - s.a[0]) * dx + (t - s.a[1]) * dy) / l2 : 0;
+            tt = tt < 0 ? 0 : tt > 1 ? 1 : tt;
+            const d = Math.hypot(u - (s.a[0] + tt * dx), t - (s.a[1] + tt * dy));
+            if (d < best) best = d;
+          }
+          return best;
+        };
+        // For each face: its true-3D error AND its centroid distance to the exact bisector graph (in u units;
+        // 1 lattice cell = 1/scale = 0.125). The structured-mesher decision hinges on two questions:
+        //   (1) Are the OVER-TOLERANCE faces concentrated near creases? (fraction within k cells)
+        //   (2) How clean is the FAR interior — max error of faces > k cells from any crease?
+        // A structured cell-mesher conforms the crease/junction band by construction, so if the far-interior max is
+        // ≤ 0.01 the structured mesh reaches 0.01mm; the residual would then be purely the (conformed-away) band.
+        const cell = 1 / DEFAULT_VORONOI_LATTICE.scale;
+        const faceErr = sag.faceErr;
+        const overIdx: number[] = [];
+        const dists = new Float64Array(faceErr.length);
+        for (let f = 0; f < faceErr.length; f += 1) {
+          const a = idx[f * 3];
+          const b = idx[f * 3 + 1];
+          const c = idx[f * 3 + 2];
+          const cu = (ut[a * 2] + ut[b * 2] + ut[c * 2]) / 3;
+          const ctt = (ut[a * 2 + 1] + ut[b * 2 + 1] + ut[c * 2 + 1]) / 3;
+          dists[f] = distToGraphUt(cu, ctt) / cell; // in lattice-cell units
+          if (faceErr[f] > 0.01) overIdx.push(f);
+        }
+        const bands = [0.05, 0.1, 0.25, 0.5, 1.0];
+        const overNear = bands.map((bk) => overIdx.filter((f) => dists[f] <= bk).length);
+        const farMax = bands.map((bk) => {
+          let m = 0;
+          for (let f = 0; f < faceErr.length; f += 1) if (dists[f] > bk && faceErr[f] > m) m = faceErr[f];
+          return +m.toFixed(6);
+        });
+        plog(
+          `[${arm.key}][LOCUS] over0.01 faces=${overIdx.length}. Within k cells of a bisector: ` +
+            bands.map((bk, i) => `${bk}c→${((100 * overNear[i]) / Math.max(overIdx.length, 1)).toFixed(0)}%`).join(' ') +
+            '  |  FAR-interior max (>k cells): ' +
+            bands.map((bk, i) => `${bk}c→${farMax[i]}`).join(' ') +
+            '  [far-max ≤ 0.01 ⇒ structured mesh (crease conformed) reaches 0.01mm]'
         );
 
         append({
