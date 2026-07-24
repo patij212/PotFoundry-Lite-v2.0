@@ -28,6 +28,7 @@ import {
   PeriodicBalancedQuadtree,
   QuadtreeRefinementEvidenceCache,
   QuadtreeRefinementHierarchy,
+  type AnalyticSagRefine,
 } from './PeriodicBalancedQuadtree';
 import { triangulateQuadtree, type QuadtreeMesh, type TriangulationStageTiming } from './QuadtreeTriangulator';
 import { triangulateQuadtreeWithFeatures, type BandRegion } from './FeatureConformingTriangulator';
@@ -229,26 +230,60 @@ export interface ConformingWallOptions {
    */
   multiCurveCellPolicy?: 'off' | 'forceRefine' | 'fanRepair' | 'snapMerge';
   /**
-   * VERDICT-loop ONLY (E-2026-07-12 T6 root-cause fix): the EXACT closed-form
-   * outer radius r(θ,z) (mm) the two-pass verdict scores its chord/max-sag
-   * against, INSTEAD of the warp-composed `efgSampler`/`sampler`. The production
+   * The EXACT closed-form outer radius r(θ,z) (mm). Read by TWO independent
+   * default-OFF branches, and by nothing else:
+   *
+   *  1. **VERDICT loop** (E-2026-07-12 T6, flag `__pfConformingVerdictRefine`):
+   *     the surface the two-pass verdict scores its chord/max-sag against,
+   *     INSTEAD of the warp-composed `efgSampler`/`sampler`.
+   *  2. **ANALYTIC SCORING** (E-2026-07-24-ANALYTIC-SCORE, flag
+   *     `__pfConformingAnalyticScore`): the surface the QUADTREE REFINEMENT
+   *     decision measures its chord sag against — see {@link analyticSagMm} and
+   *     {@link AnalyticSagRefine}. This is the cure for the band-limited-sampler
+   *     blindness: the sizing field's curvature is finite-differenced on the
+   *     bilinear sampler grid, whose OWN error at production dims is 0.48–1.29 mm
+   *     on GeometricStar/Crystalline/Gyroid/Voronoi, so the refiner cannot see
+   *     sub-grid-cell relief at all.
+   *
+   * Both branches are dead unless their own flag is on ⇒ supplying `analyticRA`
+   * is byte-identical on the production path.
+   *
+   * The (u,t)→(θ,z) lift matches the export/P2.5c analytic surface EXACTLY:
+   * θ = u·2π, z = t·{@link analyticH}, r = analyticRA(θ,z). The production
    * `efgSampler` is a 256² bilinear grid (`tierc_regionLayer.ts`) that SMOOTHS
    * the band-edge cliff — the Gyroid knee's true ~0.025mm sag reads <0.01 through
    * the grid, so it is never flagged and never escalated. Only the closed-form
-   * radius exposes the cliff (the same principle that closed Gothic/GeoStar). The
-   * (u,t)→(θ,z) lift matches the export/P2.5c analytic surface EXACTLY: θ = u·2π,
-   * z = t·{@link analyticH}, r = analyticRA(θ,z). Consumed ONLY inside the
-   * flag-on branch (`__pfConformingVerdictRefine`); omit ⇒ the loop keeps the
-   * `efgSampler ?? sampler` lift (unchanged) — but the knee only truly closes when
-   * this is supplied. Never read on the flag-off / production path.
+   * radius exposes the cliff (the same principle that closed Gothic/GeoStar).
+   * Omit ⇒ the verdict loop keeps the `efgSampler ?? sampler` lift (unchanged)
+   * and the analytic-scoring branch is inert. Never read on the flag-off path.
    */
   analyticRA?: (theta: number, z: number) => number;
   /**
    * Pot height H (mm) paired with {@link analyticRA}: the analytic lift maps a
    * mesh vertex's t to surface height z = t·H. Only read when `analyticRA` is set
-   * (verdict loop, flag-on). Should always accompany `analyticRA`.
+   * (verdict loop / analytic scoring, flag-on). Should always accompany
+   * `analyticRA` — without it neither analytic branch can arm.
    */
   analyticH?: number;
+  /**
+   * ANALYTIC-SCORING ONLY (E-2026-07-24-ANALYTIC-SCORE): the chord-sag target
+   * (mm) the EXACT-surface refinement test uses, when `__pfConformingAnalyticScore`
+   * is on and {@link analyticRA}/{@link analyticH} are supplied. Defaults to
+   * {@link maxSagMm}, so by default the analytic criterion enforces the SAME sag
+   * the sampler-scored sizing law nominally targets — it just measures it on the
+   * true surface instead of the grid. Set it INDEPENDENTLY (e.g. 0.01 against a
+   * 0.1 `maxSagMm`) to hold a tight fidelity target without perturbing the
+   * sampler-side sizing field. Scaled by the budget search exactly like the
+   * sizing law (sag ∝ h² ⇒ threshold ∝ targetScale²) so the triangle-budget
+   * binary search stays well-posed. Never read on the flag-off path.
+   */
+  analyticSagMm?: number;
+  /**
+   * ANALYTIC-SCORING ONLY: interior samples per axis (k×k) for the exact-surface
+   * sag test. Default 3 (includes the cell centre). Cost is (4 + k²) exact
+   * evaluations per would-be leaf. Never read on the flag-off path.
+   */
+  analyticSagSamples?: number;
   /**
    * VERDICT-loop ONLY (E-2026-07-12-R2b): shortest-altitude threshold (u,t) handed
    * to `fanConsistencyRepair` so it also drops the SCALE-INVARIANT degenerate
@@ -339,6 +374,65 @@ function isConformingVerdictRefineEnabled(): boolean {
     (globalThis as unknown as { __pfConformingVerdictRefine?: boolean })
       .__pfConformingVerdictRefine === true
   );
+}
+
+/**
+ * Dev/opt-in detector for EXACT-ANALYTIC SCORING of the refinement decision
+ * (E-2026-07-24-ANALYTIC-SCORE). Default OFF: when this returns false — or when
+ * the caller supplied no `analyticRA`/`analyticH` — {@link buildAnalyticSagSpec}
+ * returns undefined, the quadtree receives no `analyticSagRefine`, and every
+ * refinement decision is byte-identical to today's sampler-only test.
+ *
+ * WHY a flag and not a default: the criterion can only ADD triangles, and on a
+ * style whose relief is genuinely sub-grid it adds a lot. It must be measured
+ * per style (fidelity gain vs triangle cost vs sliver cost) before any default
+ * changes. Same `globalThis` convention as `__pfConformingVerdictRefine` —
+ * `WatertightAssembly` forwards only named fields, so there is no `...opts`
+ * spread to carry a new flag through.
+ */
+function isConformingAnalyticScoreEnabled(): boolean {
+  return (
+    (globalThis as unknown as { __pfConformingAnalyticScore?: boolean })
+      .__pfConformingAnalyticScore === true
+  );
+}
+
+/**
+ * Build the exact-analytic sag criterion for one budget-search scale, or
+ * undefined when the lever is not armed (flag off / no analytic surface).
+ *
+ * The (u,t)→3D lift is the EXPORT lift, verbatim: θ = u·2π, z = t·H,
+ * r = analyticRA(θ,z) — the same surface `perFaceTrue3DSag` and the GPU
+ * `evaluate_vertices` pass score against, so the refiner is now optimising the
+ * quantity the verdict actually measures instead of a band-limited proxy.
+ *
+ * The threshold scales with `targetScale²` because the sizing law scales edge
+ * length by `targetScale` and sagitta goes as h²; without that the criterion
+ * would be a scale-independent floor and the budget binary search's monotone
+ * count(scale) assumption would break.
+ */
+function buildAnalyticSagSpec(
+  opts: ConformingWallOptions,
+  targetScale: number,
+): AnalyticSagRefine | undefined {
+  if (!isConformingAnalyticScoreEnabled()) return undefined;
+  const rA = opts.analyticRA;
+  const H = opts.analyticH;
+  if (rA === undefined || H === undefined) return undefined;
+  const baseSag = opts.analyticSagMm ?? opts.maxSagMm;
+  if (!(baseSag > 0)) return undefined;
+  const scale = targetScale > 0 ? targetScale : 1;
+  return {
+    position: (u: number, t: number): readonly [number, number, number] => {
+      const theta = u * 2 * Math.PI;
+      const z = t * H;
+      const r = rA(theta, z);
+      return [r * Math.cos(theta), r * Math.sin(theta), z];
+    },
+    sagMm: baseSag * scale * scale,
+    minEdgeMm: opts.minEdgeMm,
+    samples: opts.analyticSagSamples,
+  };
 }
 
 /** Conforming wall mesh result with uniform shared boundary rings. */
@@ -456,6 +550,11 @@ function buildQuadtreeAtScale(
     // Crease-seeing refiner (92fca543's declared-but-unthreaded lever; Stage A of
     // E-2026-07-10-CAD-LEVER-COMPLETION). Absent ⇒ 1 ⇒ byte-identical centre-only.
     cellSamples: opts.cellSamples,
+    // EXACT-ANALYTIC scoring of the refinement decision (E-2026-07-24-ANALYTIC-
+    // SCORE). undefined unless `__pfConformingAnalyticScore` is on AND the caller
+    // supplied analyticRA/analyticH ⇒ byte-identical default. Built per-scale so
+    // the budget search's monotone count(scale) still holds.
+    analyticSagRefine: buildAnalyticSagSpec(opts, targetScale),
     // Per-leaf efg tagging (shaped templates). Lazy: the quadtree only computes
     // efg inside `leaves()`, and the budget search above calls `leafCount()`
     // alone — so threading it here costs the search nothing.

@@ -70,6 +70,62 @@ export interface QuadLeaf {
 /** Side of a cell. u-sides wrap; t-sides do not. */
 export type QuadSide = 'uMinus' | 'uPlus' | 'tMinus' | 'tPlus';
 
+/**
+ * OPT-IN exact-analytic SAG refinement criterion (E-2026-07-24-ANALYTIC-SCORE).
+ *
+ * ## Why this exists
+ *
+ * Every other refinement input in this class is read from the `metric`
+ * {@link SurfaceSampler} — in production a `GpuSurfaceSampler`, i.e. a 256²
+ * (export) / 512² (lab) grid of pre-evaluated positions read back BILINEARLY.
+ * The curvature that drives {@link MetricSizingField} is finite-differenced on
+ * that same grid with one-cell steps, so the sizing field is band-limited to the
+ * grid: relief whose wavelength is ≲2 cells is INVISIBLE to it (a bilinear patch
+ * has zero second derivative in its interior). MEASURED at production dims
+ * (`research/bridge/_samplerBlindness.test.ts`): the 256² production grid's own
+ * max deviation from the exact analytic surface is 0.48–1.29 mm across
+ * GeometricStar / Crystalline / GyroidManifold / Voronoi, and the sizing field
+ * commands edges 4.8–22.6× longer than the exact surface requires for a 0.01 mm
+ * chord. A sampler-scored refiner therefore cannot converge below its own grid
+ * error no matter how large the triangle budget is — refinement "diverges" /
+ * "hits budget" because it is chasing a residual it cannot see.
+ *
+ * ## What it does
+ *
+ * When supplied, a cell that the sampler-based size test would ACCEPT as a leaf
+ * is additionally tested against the EXACT surface: the four cell corners are
+ * evaluated with {@link position}, the interior is compared against their
+ * bilinear blend at a `samples`×`samples` interior grid, and the cell is split if
+ * the worst deviation exceeds {@link sagMm}. This is the same
+ * "score-against-the-analytic-surface" principle the Tier-C K2 loop already uses
+ * (`surfaceSource:'analytic'` / `analyticRA` in `tierC/noBridgeRefine.ts`), moved
+ * onto the CONFORMING path's refinement decision.
+ *
+ * The test is a strict ADDITION (OR) to the existing criteria: it can only make
+ * the mesh finer, never coarser, and it is skipped entirely when the sampler test
+ * already commands a split (so the cost lands only on would-be leaves).
+ *
+ * Omit ⇒ byte-identical legacy refinement (the load-bearing flag-OFF guarantee).
+ */
+export interface AnalyticSagRefine {
+  /**
+   * EXACT surface position at (u,t) — no grid, no interpolation. Built from
+   * `buildAnalyticRadiusFn` by the caller (θ = u·2π, z = t·H).
+   */
+  position: (u: number, t: number) => readonly [number, number, number];
+  /** Split while the cell's exact-vs-bilinear deviation exceeds this (mm). */
+  sagMm: number;
+  /**
+   * Physical edge-length floor (mm). A cell whose exact corner edges are already
+   * at/below this is never split by the sag test — mirroring the sizing field's
+   * own `minEdgeMm` clamp, so a genuine C0 cliff (where the deviation never
+   * vanishes) cannot drive every cell it crosses to `maxLevel`.
+   */
+  minEdgeMm: number;
+  /** Interior samples per axis (k×k). Default 3 (includes the cell centre). */
+  samples?: number;
+}
+
 /** Internal integer-cell key. */
 interface Cell {
   level: number;
@@ -412,6 +468,11 @@ export class PeriodicBalancedQuadtree {
    * k² metric evals per refinement decision; leaf geometry/efg are unchanged.
    */
   private readonly cellSamples: number;
+  /**
+   * OPT-IN exact-analytic sag criterion (see {@link AnalyticSagRefine}). Absent ⇒
+   * the refinement decision is byte-identical to the legacy sampler-only test.
+   */
+  private readonly analyticSagRefine?: AnalyticSagRefine;
   /** Optional search-scoped cache; absent on ordinary/final one-shot builds. */
   private readonly refinementEvidenceCache?: QuadtreeRefinementEvidenceCache;
 
@@ -446,6 +507,13 @@ export class PeriodicBalancedQuadtree {
        */
       cellSamples?: number;
       /**
+       * OPT-IN exact-analytic SAG refinement criterion — the cure for the
+       * band-limited-sampler blindness documented on {@link AnalyticSagRefine}.
+       * ORed into the refinement decision AFTER the sampler size test declines,
+       * so it can only add cells. Omit ⇒ byte-identical legacy refinement.
+       */
+      analyticSagRefine?: AnalyticSagRefine;
+      /**
        * Optional WARP-COMPOSED sampler for per-leaf `efg` tagging in
        * {@link leaves} (see the field doc). Sizing/refinement ignore it — the
        * PLAIN `metric` stays the sizing basis (spec: sizing stays plain).
@@ -467,6 +535,7 @@ export class PeriodicBalancedQuadtree {
     this.uBiasLevel = Math.max(0, Math.floor(opts.uBias ?? 0));
     this.directionalRefine = opts.directionalRefine ?? false;
     this.cellSamples = Math.max(1, Math.floor(opts.cellSamples ?? 1));
+    this.analyticSagRefine = opts.analyticSagRefine;
     this.efgSampler = opts.efgSampler;
     this.refinementEvidenceCache = opts.refinementEvidenceCache;
     // Codec sized to the tree's bounds — MUST precede any addLeaf (refine below).
@@ -659,7 +728,7 @@ export class PeriodicBalancedQuadtree {
         const physW = biasFreeU ? sample.physWBiasFree : sample.physW;
         if (Math.max(physW, sample.physH) > field.edgeLength(sample.uc, sample.tc)) return true;
       }
-      return false;
+      return this.analyticSagExceeds(level, iu, it, uSize, tSize);
     }
     for (let p = 0; p < k; p++) {
       for (let q = 0; q < k; q++) {
@@ -669,6 +738,67 @@ export class PeriodicBalancedQuadtree {
         const physW = Math.sqrt(Math.max(E, 0)) * wTestSize;
         const physH = Math.sqrt(Math.max(G, 0)) * tSize;
         if (Math.max(physW, physH) > field.edgeLength(uc, tc)) return true;
+      }
+    }
+    return this.analyticSagExceeds(level, iu, it, uSize, tSize);
+  }
+
+  /**
+   * EXACT-ANALYTIC sag test for one cell (see {@link AnalyticSagRefine}).
+   *
+   * Returns true iff the cell's interior deviates from the BILINEAR BLEND of its
+   * four exact corners by more than `sagMm` anywhere on a k×k interior grid — the
+   * chord error the emitted quad would actually carry against the true surface,
+   * measured WITHOUT the sampler grid the rest of the refiner is band-limited by.
+   *
+   * A hard `minEdgeMm` guard comes first: a cell already at/below the sizing
+   * field's own physical edge floor is never split here, so a genuine C0 cliff
+   * (where the deviation is scale-invariant) cannot drive the whole cliff column
+   * to `maxLevel`. Cost is (4 + k²) exact evaluations, paid ONLY on cells the
+   * cheap sampler test already declined to split.
+   *
+   * No-op returning `false` when {@link analyticSagRefine} is absent — the
+   * byte-identical flag-off path (one undefined check per would-be leaf).
+   */
+  private analyticSagExceeds(
+    level: number,
+    iu: number,
+    it: number,
+    uSize: number,
+    tSize: number,
+  ): boolean {
+    const spec = this.analyticSagRefine;
+    if (spec === undefined) return false;
+    if (level >= this.maxLevel) return false;
+    const u0 = iu * uSize;
+    const t0 = it * tSize;
+    const p00 = spec.position(u0, t0);
+    const p10 = spec.position(u0 + uSize, t0);
+    const p01 = spec.position(u0, t0 + tSize);
+    const p11 = spec.position(u0 + uSize, t0 + tSize);
+    const dist = (
+      a: readonly [number, number, number],
+      b: readonly [number, number, number],
+    ): number => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    // Physical edge floor: never refine a cell that is already at the sag mesh's
+    // own minimum edge length (mirrors MetricSizingField's minEdgeMm clamp).
+    const longest = Math.max(dist(p00, p10), dist(p01, p11), dist(p00, p01), dist(p10, p11));
+    if (longest <= spec.minEdgeMm) return false;
+    const k = Math.max(1, Math.floor(spec.samples ?? 3));
+    for (let p = 0; p < k; p++) {
+      const a = (p + 0.5) / k;
+      for (let q = 0; q < k; q++) {
+        const b = (q + 0.5) / k;
+        const exact = spec.position(u0 + a * uSize, t0 + b * tSize);
+        let d2 = 0;
+        for (let c = 0; c < 3; c++) {
+          const lower = p00[c] + (p10[c] - p00[c]) * a;
+          const upper = p01[c] + (p11[c] - p01[c]) * a;
+          const blend = lower + (upper - lower) * b;
+          const e = blend - exact[c];
+          d2 += e * e;
+        }
+        if (d2 > spec.sagMm * spec.sagMm) return true;
       }
     }
     return false;
