@@ -7675,3 +7675,43 @@ So the shelf's certified Voronoi (172,032 tris, roster GREEN) certifies a **1/50
 | `Voronoi_H32_OD30_bubble` | `v_relief 0.04` | 2.0 (**50x reduced**) + non-default `v_morph 0` | **NO — uniform grid**, 172,032 tris |
 
 **WaveInterference is the existence proof that the goal is reachable at full defaults** — and its method is the same family as Gothic's: coarse base + rational stations/chords placed AT the kinks. Neither exemplar uses a dense uniform grid. **The remaining roster entries need the same relief + conforming audit before any of them is cited as a style-level certification.**
+
+---
+
+## E-2026-07-24-STRATA001-S2-CHORDS (STRATA-001 S2: build `assembleVoronoiConformingChords` — the increment `voronoiBisectorGuides.ts` declared as "next" — and measure what conforming buys at REGISTRY-DEFAULT relief) [BUILD+MEASURE; new src module + tests; no kernel edit]
+
+**HYPOTHESIS (falsifiable):** the Voronoi order-1 bisector graph can be assembled into `conformingChordsByPatch` chords (the mechanism `GothicArches_p1` and `WaveInterference_defaults` certify with), and doing so closes the fidelity gap that a UNIFORM grid provably cannot (`E-2026-07-24-STRATA001-S0-CORRECTION`).
+
+**KILL-CRITERION (pre-registered):** chords must (a) pass the exact partition kernel, and (b) measurably improve fidelity at `v_relief 2.0` / `v_morph 1` versus the same grid without them.
+
+**VERDICT: (a) ACHIEVED — chords build and validate. (b) NOT DEMONSTRATED — and the reason is that the certifier cannot rank two meshes.**
+
+**BUILT.** `src/geometry/targetSolid/voronoiConformingChords.ts` + 9 unit tests. Each exact bisector segment is split at every angular-column and vertical-row crossing; the crossed axis stays exact and the free axis snaps to a dyadic chord denominator (2^16), so both grids divide it and no odd factor enters the partition frame.
+
+**FOUR KERNEL RULES, each found by measurement, none obvious from the type:**
+1. **Seam/boundary** (`annularSolidReferenceTessellation:1024-1043`) — a boundary-row endpoint needs an exact angular STATION; a seam-column endpoint must be a full grid CORNER. (My first predicate — reject the seam-column INTERIOR — was the wrong rule entirely.)
+2. **One common cell** (`:1051`) — only CONSECUTIVE crossings may be joined. A Gothic-style `collapseRuns` skips points and spans several cells.
+3. **No dangling chains** (`:1087-1089`) — "every maximal chain must reach the grid at both extremes", and interior vertices must be **degree-2**, so a degree-3 Voronoi junction can NOT be an interior vertex. A single segment's 3-chord chain failed on its own. Fixed by anchoring each extreme to a grid CORNER of the cell that chord already bounds — a corner is already a vertex of all four surrounding cells, so it adds no T-junction. Cost: end chords leave the bisector by up to half a cell.
+4. **No silent chord drops** — skipping any chord orphans BOTH its endpoints. Chains are accepted/rejected whole, corner selection avoids sharing a coordinate with the neighbour (which produces an along-grid-line chord that then gets skipped — the exact bug that survived fix 3).
+
+**SPLIT-DON'T-DISCARD (the big win).** Whole-chain rejection discarded most of the conforming, and a cell-by-cell search proved the harm: the crease beside the failing cell at (8,7) had no chord within five cells because its chain died at a distant junction collision. Cutting the chain at the offending chord and re-anchoring both survivors:
+
+| grid | chords before → after | dropped before → after |
+|---|---|---|
+| (8,5) | 1,744 → **2,435** | 356 → **9** |
+| (8,7) | 1,409 → **3,325** | 874 → **9** |
+| (9,8) | 1,095 → **6,355** | 1,598 → **122** |
+
+0 T-junctions and 0 contested cells at every grid. δ-merge (spec failure-mode #4) also landed — corner capture plus per-grid-interval clustering — after a junction landing a hair off a column produced two chain vertices 1/65536 apart.
+
+**BISECTOR IS A C1 CREASE, NOT A C0 JUMP** (`_strataFieldJump`, `PF_STRATA_JUMP=1`). The perpendicular field difference scales EXACTLY linearly with eps — 216.0 / 21.4 / 2.14 / 0.214 / 0.021 um at eps 1e-3..1e-7, 10x per decade, in BOTH modes at relief 2.0 — so it converges to zero. **Conforming is the right mechanism for this locus and the curtain / double-valued-wall path (section 7 C0 family) is ruled out.** (Note the same slope at relief 0.04, 189.0 um at 1e-3: this measures the total gradient, which the BASE profile dominates, not the relief kink.)
+
+**WHY (b) COULD NOT BE MEASURED.** At `v_relief 2.0` / web, outer-wall is INCONCLUSIVE with and without chords at (8,5), (8,7) and (9,7) — and **the reported residual is byte-identical between the two arms** (9,500,010 at (8,5); 9,500,024 at (8,7)). That is the S0 finding biting again: the certifier reports the FIRST marginal cell to reach maxDepth, i.e. `budget + eps(depth)`, so it is a DECISION output and cannot rank two meshes. Neither arm certifies even at a **200,000,000 pm (200 um)** budget, 20x looser than the goal.
+
+**WHAT THAT LOOSE-BUDGET FAILURE ACTUALLY SAYS.** At relief 2.0 a 256x32 grid has ~1 mm row pitch against 2 mm features — the SMOOTH BODY is under-resolved, and crease chords do not address body curvature. Denser grids collide with the hard **262,144 tri/patch** snapshot cap: (9,8) uniform already sits exactly at it, leaving no headroom for chords at all. So the two levers fight for one budget.
+
+**CONSEQUENCE — the missing instrument is a RULER, not more conforming.** Ranking meshes needs a fidelity measurement independent of the certificate. Per the plan's RULER CAVEAT, a grid-sampled Phi projector at 2048/1024 under-reports crease error by ~6 um on a 10 um budget for this style (sigma/2 * delta/2, sigma~0.51 mm/mm, delta~0.046 mm) and jitter makes which creases land near a sample luck. **The ruler must be seeded with the exact crease geometry (`voronoiBisectorSegmentsUv`) and report grid-MAX and crease-MAX separately.** That is the next build, and it gates every fidelity claim after it.
+
+**SCOPE CAVEATS:** outer-wall only; chords on the outer wall only; single pot geometry; order-2 (web f2-f1) strata NOT extracted; junction neighbourhoods are unconformed by construction (degree-2 rule); no independent ruler run, so NO fidelity claim is made here.
+
+**LEDGER.** NEW src: `src/geometry/targetSolid/voronoiConformingChords.ts` (+`.test.ts`, 9 tests). NEW research: `research/bridge/_strataChordDump.test.ts` (`PF_STRATA_DUMP=1` — orphan/degree census and per-cell chord map, the tool that found rules 3 and 4), `research/bridge/_strataFieldJump.test.ts` (`PF_STRATA_JUMP=1`). `_strataVoronoiCertify.test.ts` gained `PF_STRATA_CHORDS` / `PF_STRATA_CHORD_BITS` / `PF_STRATA_CHORD_SEGS`. Commits `b1b6750f`, `6772b669`, `9be0364c`.
