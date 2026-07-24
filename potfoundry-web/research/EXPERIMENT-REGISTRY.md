@@ -8096,3 +8096,31 @@ Euler (bubble): V−E+F = 62,540 − 187,614 + 125,076 = **2** (genus-0). Indepe
 **THE GENERALIZATION MAP (the payoff):** every style reduces to (shared pipeline) + (one of three initial-mesh strategies keyed by the style's regularity class): SMOOTH → uniform grid (universal, done); C1 CREASE → conforming edges (Voronoi cells / Gothic chords); C0 STEP/CUSP → double-valued wall / feature strips. This is spec §7's op→stratum table, reached empirically from the mesher side. The mesher itself — LEPP refinement, θ-seam weld, base/rim/inner/floor caps, needle-collapse, position-weld audit — is ONE piece of code for all of them.
 
 **LEDGER.** `research/bridge/_strataVoronoiSolid.test.ts` generalized: `PF_SOLID_STYLE` (default Voronoi), `PF_SOLID_INIT` (voronoi|grid), `PF_SOLID_PARAMS` (JSON override), `PF_SOLID_GRIDU`/`GRIDV`; registry-default extraction (snake→camel). STLs in `research/exchange/_strataVoronoiSolid/`. Commits `ae4c6eca` + this.
+
+---
+
+## E-2026-07-24-STRATA001-S7-SWEEP (parameter sweep of the confirmed Voronoi mesher before production wiring) [MEASURE-ONLY]
+
+**HYPOTHESIS (falsifiable):** the confirmed per-cell Voronoi mesher (`INIT=voronoi`) holds ≤0.01mm + watertight across the Voronoi parameter space, defining a safe production envelope.
+
+**VERDICT: BUBBLE robust across the full relief range; WEB robust through the registry default, degrading only at HIGH relief — and the reason is the known order-2 gap, not a mesher bug.**
+
+Ring stage, registry-default lattice (vScale 8, vJitter 0.8), swept vRelief × vMorph:
+
+| vMorph | vRelief | outer tris | MAX sag | over 0.01mm | watertight |
+|---|---|---|---|---|---|
+| 0 bubble | 0.5 | 64,896 | 7.000 um | 0 | ✅ |
+| 0 bubble | 2.0 (default) | 99,464 | 7.000 um | 0 | ✅ |
+| 0 bubble | 4.0 | 152,301 | 7.000 um | 0 | ✅ |
+| 0 bubble | 5.0 (max) | 180,120 | 7.000 um | 0 | ✅ |
+| 1 web | 0.5 | 601,994 | 7.000 um | 0 | ✅ |
+| 1 web | 2.0 (default) | 1,567,524 | 7.000 um | 0 | ✅ |
+| 1 web | 4.0 | THRASH | 5492 um | 377/2371 live | ❌ |
+
+**BUBBLE: production-safe across relief 0.5–5.0.** Cell decomposition conforms the order-1 bisectors (the bubble creases), so LEPP converges quadratically at every relief; triangle count scales smoothly with relief; no slivers.
+
+**WEB: safe through the registry default (relief 2.0, the shipped config — 1.57M tris, closed, 0.01mm), degrades at relief ≥4.** Diagnosis: web-mode creases are the ORDER-2 Voronoi edges (`f2−f1` ties), which the order-1 cell decomposition does NOT conform to (the S0 P2 finding). At low relief the unconformed order-2 creases are shallow enough for plain LEPP (relief 0.5 = 602k tris); at relief 4 they are deep enough that LEPP THRASHES — `ta.length` hits the triangle cap (500k created, mostly dead) while only ~2k survive, MAX stuck at 5492 um. This is the campaign's own convergence law (unconformed crease ⇒ linear ⇒ blow-up), not a new bug. Fix = build order-2 conforming (`voronoiSecondOrderSegmentsUv`, spec §4 / plan S2 Task 2.1 — never built) OR route high-relief web through the double-valued/curtain path.
+
+**PRODUCTION ENVELOPE:** ship bubble at any relief; ship web at the registry default relief (≤~2.5). Flag high-relief web as needing order-2 conforming. NOT swept (lattice-parameterization deferred): vScale, vJitter, vZStretch, vPulse — the cell decomposition is hardcoded to scale 8 / jitter 0.8; sweeping these needs the LATTICE/SCALE lifted into the run (next increment).
+
+**LEDGER.** Same harness; sweep via `PF_SOLID_MORPH` + `PF_SOLID_PARAMS='{"vRelief":R}'`. The thrash case surfaces as an assertion failure (seam-crack ≠ 0 after the cap) — an honest bad-config signal; a graceful "needs conforming" report is a polish item.
