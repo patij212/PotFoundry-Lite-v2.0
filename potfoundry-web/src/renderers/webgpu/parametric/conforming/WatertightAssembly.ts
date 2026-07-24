@@ -228,6 +228,28 @@ export interface AssemblyWallOptions {
   /** κ cap paired with `outerCurvatureFloor` (see {@link SizingOptions.maxKappa}). */
   outerMaxKappa?: number;
   /**
+   * PRODUCTION-MESHER analytic-score inputs for the OUTER wall ONLY
+   * (E-2026-07-24-ANALYTIC-SCORE / -LEVER-STACK-CLOSE). When the
+   * `__pfConformingAnalyticScore` flag is on AND these are supplied, the outer
+   * wall's quadtree refinement decision scores its chord sag against the EXACT
+   * analytic surface `outerAnalyticRA` (θ=u·2π, z=t·`outerAnalyticH`) instead of
+   * the band-limited bilinear sampler — the cure for the sampler blindness that
+   * floors Crystalline/GeoStar/Gyroid/Voronoi. Forwarded verbatim to the OUTER
+   * {@link buildConformingWall} as `analyticRA`/`analyticH`/`analyticSagMm`; the
+   * INNER wall is deliberately left WITHOUT them so its analytic branch stays
+   * inert ({@link buildConformingWall}'s `buildAnalyticSagSpec` no-ops when
+   * `analyticRA` is absent). Omit ⇒ byte-identical assembly (production default).
+   */
+  outerAnalyticRA?: (theta: number, z: number) => number;
+  /** Wall height H (mm) paired with `outerAnalyticRA` (the analytic z=t·H lift). */
+  outerAnalyticH?: number;
+  /**
+   * Analytic-sag target (mm) for the OUTER analytic-score refine, DECOUPLED from
+   * the sampler `maxSagMm`. Only read with `outerAnalyticRA`. Omit ⇒ the outer
+   * wall's analytic criterion defaults to `maxSagMm` (see {@link ConformingWallOptions.analyticSagMm}).
+   */
+  outerAnalyticSagMm?: number;
+  /**
    * Optional whole-pot triangle budget. Split evenly across the two walls (the
    * caps add only a small fixed amount), then each wall's sizing field is scaled
    * to approach its share — bounded so neither wall coarsens below the
@@ -586,6 +608,12 @@ export function assembleWatertight(
         // Analytic curvature floor — OUTER wall only (see AssemblyWallOptions doc).
         curvatureFloor: opts.outerCurvatureFloor,
         maxKappa: opts.outerMaxKappa,
+        // PRODUCTION-MESHER analytic-score surface — OUTER wall only (see
+        // AssemblyWallOptions doc). buildAnalyticSagSpec no-ops when analyticRA is
+        // absent, so this is byte-identical unless the production mesher supplied it.
+        analyticRA: opts.outerAnalyticRA,
+        analyticH: opts.outerAnalyticH,
+        analyticSagMm: opts.outerAnalyticSagMm,
         // Multi-curve cell force-refine — OUTER wall only (features are outer-only).
         multiCurveCellPolicy: opts.multiCurveCellPolicy,
       });

@@ -86,6 +86,15 @@ import {
     isBambooStyle,
     buildBambooDispatchWall,
 } from './parametric/conforming/tierC';
+// PRODUCTION MESHER (master flag `__pfProductionMesher`, default OFF ⇒ byte-identical):
+// the ONE feature-driven dispatch that expands each style's PROVEN closing config into
+// the per-path sub-flags + q-levers the registry proved. Inert unless the master flag is on.
+import {
+    resolveProductionMesher,
+    applyProductionMesher,
+    isProductionMesherEnabled,
+    type ResolvedProductionMesher,
+} from './parametric/conforming/tierC/productionMesherConfig';
 import type { ConformingOuterWallResult } from './parametric/conforming/ConformingOuterWall';
 import type { CdtStats } from './parametric/conforming/ConstrainedCellTriangulator';
 import { computeRawCurvature, normalizeProfile } from './parametric/CurvatureAnalysis';
@@ -2577,6 +2586,24 @@ export class ParametricExportComputer {
                     // ceiling (default 0.2mm ≈ one FDM layer height).
                     __pfDecimateErrMm?: number; __pfDecimateErrCeilMm?: number;
                 };
+                // ── PRODUCTION MESHER (master flag `__pfProductionMesher`) ────────
+                // The "one clean switch": when ON, resolve THIS style's PROVEN closing
+                // config (productionMesherConfig.ts) and expand it into the per-path
+                // sub-flags + q-levers the registry proved (E-2026-07-24-LEVER-STACK-
+                // CLOSE / -PINBAND / -ANALYTIC-SCORE / -GEOSTAR-LOCUS, SMOOTHGRID-
+                // DENSITY-GUARANTEE, BAMBOO-SCHED, DS-CONEFAN). applyProductionMesher
+                // WRITES the full controlled sub-flag set to globalThis (deterministic,
+                // no stale-lever leak), so every downstream read below — qOv.__pfConforming*
+                // (a live globalThis reference), isSmoothGridEnabled()/isBambooEnabled()/
+                // isRegionLayerEnabled()/isPerfectMesherEnabled(), isConformingAnalyticScore
+                // — picks the config up UNCHANGED. Master OFF ⇒ prodMesher null ⇒ nothing
+                // written ⇒ every q-lever/adopt read is byte-identical to production today.
+                // NB: this runs AFTER qOv is captured (qOv IS globalThis, read live below)
+                // and BEFORE qMaxSag/qMaxLevel/qNRing + the adopt flags consume it.
+                const prodMesher: ResolvedProductionMesher | null = isProductionMesherEnabled()
+                    ? resolveProductionMesher(params.styleId)
+                    : null;
+                if (prodMesher) applyProductionMesher(prodMesher);
                 // Fidelity + budget are PROFILE-DRIVEN, and the profile is the ONE
                 // resolved at the top of compute() (default 'high' — this conforming
                 // path is the high-fidelity EXPORT, not the live preview). The
@@ -3120,6 +3147,29 @@ export class ParametricExportComputer {
                     // PROD-TIERC (flag-gated, undefined in production): adopt the
                     // pre-built literal-0.01 analytic outer wall for surfaceId 0.
                     tierCOuterWall,
+                    // PRODUCTION MESHER conforming-analytic thread (master flag only;
+                    // absent otherwise ⇒ byte-identical). The 4 analytic-score conforming
+                    // styles (Crystalline/GeoStar/Gyroid/Voronoi) score the OUTER wall's
+                    // quadtree refinement against the EXACT analytic surface — armed by
+                    // __pfConformingAnalyticScore (set above) + these named fields
+                    // (buildAnalyticSagSpec needs analyticRA/analyticH present, so this is
+                    // OUTER-only: the inner wall gets no analyticRA ⇒ its analytic branch is
+                    // inert ⇒ byte-identical). analyticSagMm is the per-style target
+                    // (0.002–0.004mm) DECOUPLED from the sampler sag (qMaxSag). When
+                    // prodMesher is null / non-conforming these are undefined and
+                    // buildAnalyticSagSpec returns undefined regardless of any flag.
+                    ...(prodMesher?.conformingAnalytic
+                        ? {
+                              outerAnalyticRA: buildAnalyticRadiusFn(params.styleId, params.styleOpts, {
+                                  H: dimensions.H,
+                                  Rb: dimensions.Rb,
+                                  Rt: dimensions.Rt,
+                                  expn: dimensions.expn,
+                              }),
+                              outerAnalyticH: dimensions.H,
+                              outerAnalyticSagMm: prodMesher.qOverrides.analyticSagMm,
+                          }
+                        : {}),
                 };
                 // Feature graft must precede the u/t/helix warps so corridor
                 // surfaceId-0 vertices warp with the outer wall. For Voronoi the
