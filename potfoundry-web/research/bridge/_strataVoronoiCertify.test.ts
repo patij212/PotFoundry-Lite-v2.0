@@ -86,6 +86,9 @@ const MAXDEPTH = envInt('PF_STRATA_MAXDEPTH', 0);
 // Raising it within the 10_000_000 pm goal separates "screen too slack" from
 // "tessellation tuned exactly to the line".
 const BUDGET_PM = BigInt(envInt('PF_STRATA_BUDGET_PM', 9_500_000));
+// cMPD DEFAULT_MAX_WORK_CELLS=1e6, HARD_MAX=6e6. A denser reference tessellation
+// trips the default before any work happens (RESOURCE_LIMIT after 0ms).
+const MAXCELLS = envInt('PF_STRATA_MAXCELLS', 0);
 
 function atlas(
   styleId: string,
@@ -169,6 +172,7 @@ describe('STRATA-001 S0 increment 2: does the REAL certifier hang on Voronoi?', 
             maximumGeometricUpperPm: BUDGET_PM,
             deadlineEpochMilliseconds: Date.now() + DEADLINE_MS,
             ...(MAXDEPTH > 0 ? { maxDepth: MAXDEPTH } : {}),
+            ...(MAXCELLS > 0 ? { maxWorkCells: MAXCELLS } : {}),
           });
           lines.push(
             `  ${job.partition.patchId.padEnd(14)} OK       upperPm=${result.targetToMeshUpperPm}` +

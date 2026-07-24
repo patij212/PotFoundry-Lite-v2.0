@@ -7454,3 +7454,27 @@ Config: Voronoi `v_relief 0.04`, H32/OD30/drain6, `tessellateAnnularRadialSolidT
 **SCOPE CAVEATS (honest):** inner-wall failures in this harness are partly a tessellation artifact — the source probe uses a `rationalStationLadder` for `inner-wall` that this harness omits (bubble inner-wall then fails at 78,673,556 pm, 8.3x over, at the u=0 seam); the OUTER-WALL comparison is the controlled one (identical tessellation, only `v_morph` differs: bubble OK / web INCONCLUSIVE). Single relief 0.04; single pot geometry; no full-pot composed run.
 
 **LEDGER.** NEW (analysis/measurement only, no kernel edit): `research/bridge/_strataVoronoiCertify.test.ts` (`PF_STRATA_CERTIFY=1`; env `PF_STRATA_MORPH`/`RELIEF`/`MAXDEPTH`/`BUDGET_PM`/`ALOG2`/`VLOG2`/`DEADLINE_MS`/`CERTIFY_OUT`), plus a P2 point-probe arm in `research/bridge/_strataFiredMapOverlay.test.ts` (`PF_STRATA_POINTS="u,v;..."`). Runner `vitest.strata.config.ts` (now also includes `_gothicVoronoiConformingSpike.test.ts` for the `PF_SLICE11_VOR_PP` cross-check). Evidence: `research/bridge/out/strata_certify_{bubble,web,web_d30,web_v8,web_b97,web_b20}.txt`. Reused READ-ONLY: `certifyContinuousMappedPatchDistance`, `tessellateAnnularRadialSolidTargetForCertification`, `createFinalArtifactProofSession`, `compileValidatedResidualEvaluator`, `voronoiBisectorSegmentsUv`.
+
+---
+
+## E-2026-07-23-STRATA001-S0-DENSITY (STRATA-001 S0 increment 3: is the web-mode INCONCLUSIVE a certifier defect, or an honest triangle-budget shortfall?) [MEASURE-ONLY; NO kernel edit]
+
+**HYPOTHESIS (falsifiable):** the budget-invariant `INCONCLUSIVE` found in increment 2 is a certifier DEFECT — a residual bound anchored to whatever acceptance threshold is passed in, rather than a property of the mesh.
+
+**KILL-CRITERION (pre-registered):** defect CONFIRMED iff the failure persists at every budget (no escape) AND the reported overshoot is insensitive to refinement. Defect REFUTED iff a large enough budget certifies AND the overshoot shrinks with depth/density.
+
+**VERDICT: NOT A DEFECT. The certifier is honest; the shortfall is a triangle budget the UNIFORM reference tessellator cannot pay.**
+
+1. **Anchoring disproved by escape.** budget 50,000,000 pm -> outer-wall **OK** (`upperPm=49996373`, 220,276 cells, maxDepth 3). budget 200,000,000 -> **OK**. A budget-anchored bound could never certify.
+2. **Mechanism identified.** The b&b throws on the FIRST cell that reaches maxDepth still over budget — a MARGINAL cell, not the worst one. Its bound is `true residual + eps(depth)`; because marginal cells sit right at the acceptance line, the message reads `budget + eps`. That is why an arbitrary non-round budget 9,543,211 pm reports 9,543,233 (**+22**) and 9,400,000 reports 9,400,022 (**+22**) on the SAME triangle 102472 — the offset is the convergence excess, not an anchor.
+3. **eps shrinks under refinement, exactly as a converging bound must.** By DEPTH: maxDepth 24 -> 30 gives +23 -> **+1 pm**. By DENSITY: angular/vertical log2 (8,7) -> (9,8) — 65,536 -> 262,144 triangles, 4x — gives +22 -> **+6 pm**. No h-independent plateau anywhere; spec section 3's Clarke-pinning does not occur.
+4. **But web mode still misses 9.5 um at the DENSEST tessellation the certifier will accept.** `triangles has 524288 entries; hard snapshot limit is 262144` — (9,9) is rejected outright, so (9,8)=262,144 tri/patch is the ceiling, and there outer-wall is INCONCLUSIVE at 9,500,006 pm: **short by 6 pm on 9,500,000 = 0.6 ppm**.
+5. **Bubble certifies at the BASELINE density** (increment 2) — the difference between the modes is purely how much relief detail must be resolved, not a change of mathematical class.
+
+**CONSEQUENCE — the campaign re-points cleanly:**
+- **Spec section 5 / phase S1 (pivot + one-sided-defect node rule) is UNFOUNDED.** It exists to guarantee TERMINATION against an h-independent Clarke bound. Measured: the bound converges under both depth and density, bubble certifies, and web is 0.6 ppm short. There is no termination problem to solve.
+- **Spec section 4 / phase S2 (conform the partition to the exact kink graph) is VINDICATED and is the actual lever.** Web's failing cells lie ON the order-1 bisector (increment 2: 0.0014 lattice-cell units), which is precisely the graph `voronoiBisectorSegmentsUv` already emits; a uniform tessellator must spend its whole 262,144-triangle allowance everywhere to buy resolution that is only needed on that graph. Conforming spends it where the 6 pm actually lives.
+
+**SCOPE CAVEATS:** outer-wall is the controlled comparison (inner-wall in this harness lacks the source probe's `rationalStationLadder` and fails as a tessellation artifact — 106,697,707 pm at budget 50 um, and RESOURCE_LIMIT at 200 um). Single relief 0.04, single pot geometry, uniform tessellation only — no conforming tessellation was built or tested here.
+
+**LEDGER.** Same instruments as `E-2026-07-23-STRATA001-S0-CERTIFY`; `_strataVoronoiCertify.test.ts` gained `PF_STRATA_MAXCELLS` (cMPD `maxWorkCells`; DEFAULT 1e6 trips at 0 ms on dense tessellations, HARD_MAX 6e6). Evidence: `research/bridge/out/strata_certify_web_dense.txt`.
