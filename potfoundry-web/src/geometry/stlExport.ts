@@ -52,9 +52,29 @@ interface EdgeUseForOrientation {
 
 const STL_ORIENTATION_WELD_TOLERANCE_MM = 0.001;
 
+/** Binary STL hard ceiling: 1 GiB / 50 bytes-per-triangle (mirrors QualityProfiles.MAX_BINARY_STL_TRIANGLES — a fixed
+ *  format fact, duplicated here to avoid a geometry→renderers import). ≈ 21.47M triangles. */
+const MAX_BINARY_STL_TRIANGLES = Math.floor((1024 * 1024 * 1024 - 84) / 50);
+
+/**
+ * 0.01mm-everywhere meshes can exceed the binary-STL 1 GiB cap (the dense analytic-scored styles land at ~25M tris).
+ * Per the productionization decision, fidelity is NEVER compromised for size — so a too-large STL request auto-routes to
+ * 3MF (compressed, far higher ceiling). Returns the effective format + whether it was rerouted (so the caller can tell
+ * the user / fix the filename). Non-STL formats and meshes that fit pass through unchanged.
+ */
+export function resolveExportFormatForSize(
+  format: ExportFormat,
+  triangleCount: number,
+): { format: ExportFormat; rerouted: boolean } {
+  if (format === 'stl' && triangleCount > MAX_BINARY_STL_TRIANGLES) {
+    return { format: '3mf', rerouted: true };
+  }
+  return { format, rerouted: false };
+}
+
 /**
  * Export mesh to the specified format
- * 
+ *
  * @param mesh - Mesh data to export
  * @param format - Target format ('stl' or '3mf')
  * @param name - Model name
@@ -66,6 +86,14 @@ export async function exportMesh(
   name: string = 'PotFoundry',
   colors?: ExportOptions['colors']
 ): Promise<Blob> {
+  const routed = resolveExportFormatForSize(format, mesh.triangleCount);
+  if (routed.rerouted) {
+    console.warn(
+      `[export] ${mesh.triangleCount.toLocaleString()} triangles exceed the binary-STL cap ` +
+      `(${MAX_BINARY_STL_TRIANGLES.toLocaleString()}); auto-routing STL → 3MF to preserve full fidelity.`,
+    );
+  }
+  format = routed.format;
   assertMeshExportable(mesh, { format });
 
   if (format === '3mf') {
@@ -100,6 +128,17 @@ export async function downloadMesh(
     else format = 'stl';
   }
   const name = options.name ?? filename.replace(/\.(stl|3mf|obj)$/i, '');
+
+  // Auto-route an oversized STL request to 3MF (fidelity is never compromised for size) + fix the download extension.
+  const routed = resolveExportFormatForSize(format, mesh.triangleCount);
+  if (routed.rerouted) {
+    console.warn(
+      `[export] ${mesh.triangleCount.toLocaleString()} triangles exceed the binary-STL cap ` +
+      `(${MAX_BINARY_STL_TRIANGLES.toLocaleString()}); auto-routing STL → 3MF to preserve full fidelity.`,
+    );
+    format = routed.format;
+    filename = filename.replace(/\.stl$/i, '.3mf');
+  }
 
   if (options.validateMesh !== false) {
     assertMeshExportable(mesh, {
