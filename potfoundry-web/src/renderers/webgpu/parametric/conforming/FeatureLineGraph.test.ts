@@ -113,6 +113,114 @@ describe('extractAnalyticFeatures — ground-truth counts', () => {
     expect(g.groundTruthCount).toBe(12);
   });
 
+  // ── GeometricStar MEASURED loci (geoStarExactLoci, default-OFF) ────────────────
+  // E-2026-07-24-GEOSTAR-LOCUS (research/bridge/_gsLocus.test.ts) measured that the
+  // legacy full-height columns are 97.3% non-feature and that the dominant locus is
+  // the strap RAMP (dStrap=0 / dStrap=edge level curves). These pin the corrected
+  // emission; the two tests above pin the byte-identical default.
+  const GS_DEFAULTS = [8, 0.05, 0.5, 4, 1, 2, 0, 1, 0];
+  const gsExact = (v: number[]): FeatureLineGraph =>
+    extractAnalyticFeatures('GeometricStar', packed(v), DIMS, { geoStarExactLoci: true });
+
+  it('GeometricStar exact-loci: emits general-curve ramp contours + per-row fold segments (NOT full-height columns)', () => {
+    const g = gsExact(GS_DEFAULTS);
+    // groundTruthCount CHANGES from 8 (legacy columns) to ramp contours + N·rows fold segments.
+    expect(g.groundTruthCount).toBeGreaterThan(8);
+    expect(g.lines.every((l) => l.kind === 'general-curve')).toBe(true);
+    expect(g.lines.filter((l) => l.label.startsWith('gs-strap-top')).length).toBeGreaterThan(0);
+    expect(g.lines.filter((l) => l.label.startsWith('gs-gap-floor')).length).toBeGreaterThan(0);
+    // fold segments: N per row, layers*zoom = 4 rows ⇒ 32.
+    expect(g.lines.filter((l) => l.label.startsWith('fold[')).length).toBe(32);
+    // No fold segment spans the full height any more (measured: sharp over ~2.7% of a row).
+    for (const l of g.lines.filter((x) => x.label.startsWith('fold['))) {
+      const tMin = Math.min(...l.points.map((pt) => pt.t));
+      const tMax = Math.max(...l.points.map((pt) => pt.t));
+      expect(tMax - tMin).toBeLessThan(0.1); // vs 1.0 for the legacy column
+    }
+  });
+
+  it('GeometricStar exact-loci: fold u is STAGGERED by shift/N on odd rows (and not at all when shift=0)', () => {
+    const N = 8;
+    const foldUsByRow = (shift: number): Map<number, number[]> => {
+      const g = gsExact([N, 0.05, 0.5, 4, 1, 2, 0, 1, shift]);
+      const m = new Map<number, number[]>();
+      for (const l of g.lines) {
+        const mm = /^fold\[k=(\d+),row=(\d+)\]$/.exec(l.label);
+        if (!mm) continue;
+        const row = Number(mm[2]);
+        if (!m.has(row)) m.set(row, []);
+        m.get(row)!.push(l.points[0].u);
+      }
+      for (const arr of m.values()) arr.sort((a, b) => a - b);
+      return m;
+    };
+    // shift = 0 (registry default): identical u in every row.
+    const s0 = foldUsByRow(0);
+    expect(s0.get(0)).toEqual(s0.get(1));
+    expect(s0.get(0)![0]).toBeCloseTo(0.5 / N, 12);
+    // shift = 0.5: odd rows shifted by exactly shift/N = 0.0625 (mod 1).
+    const s5 = foldUsByRow(0.5);
+    const even = s5.get(0)!;
+    const odd = s5.get(1)!;
+    expect(even[0]).toBeCloseTo(0.5 / N, 12);
+    for (const u of even) {
+      const shifted = ((u - 0.5 / N) % 1 + 1) % 1;
+      expect(odd.some((o) => Math.abs(o - shifted) < 1e-9)).toBe(true);
+    }
+    // shift = 1: a FULL sector ⇒ the pattern is identical again (self-check on the formula).
+    const s1 = foldUsByRow(1);
+    expect([...s1.get(1)!].sort((a, b) => a - b)).toEqual([...s1.get(0)!].sort((a, b) => a - b));
+  });
+
+  it('GeometricStar exact-loci: every ramp-contour point lies on its strap level curve', async () => {
+    const { geometricStarStrapField } = await import('../../../../fidelity/analyticSurfaceGate');
+    const g = gsExact(GS_DEFAULTS);
+    const { field } = geometricStarStrapField(8, 0.05, 0.5, 4, 0, 1, 0);
+    const edge = 0.02;
+    let worstTop = 0;
+    let worstFloor = 0;
+    for (const l of g.lines) {
+      if (l.label.startsWith('gs-strap-top')) {
+        for (const pt of l.points) worstTop = Math.max(worstTop, Math.abs(field(pt.u, pt.t)));
+      } else if (l.label.startsWith('gs-gap-floor')) {
+        for (const pt of l.points) worstFloor = Math.max(worstFloor, Math.abs(field(pt.u, pt.t) - edge));
+      }
+    }
+    // marching-squares linear interpolation on a piecewise-LINEAR field ⇒ near-exact;
+    // the residual is the t-direction linearisation across a fold.
+    expect(worstTop).toBeLessThan(2e-3);
+    expect(worstFloor).toBeLessThan(2e-3);
+  });
+
+  it('GeometricStar exact-loci: zero relief ⇒ honest empty graph', () => {
+    const g = gsExact([8, 0.05, 0.5, 4, 1, 0, 0, 1, 0]);
+    expect(g.groundTruthCount).toBe(0);
+  });
+
+  it('GeometricStar FLAG-OFF is byte-identical, and surfaceFidelityExact alone does NOT switch it', () => {
+    const expected = (g: FeatureLineGraph): void => {
+      expect(g.groundTruthCount).toBe(8);
+      expect(g.lines.map((l) => l.label)).toEqual(
+        [0, 1, 2, 3, 4, 5, 6, 7].map((k) => `fold[k=${k}]`),
+      );
+      for (let k = 0; k < 8; k++) {
+        const l = g.lines[k];
+        expect(l.kind).toBe('vertical-crease');
+        expect(l.points.length).toBe(16);
+        expect(l.points[0].u).toBeCloseTo((k + 0.5) / 8, 12);
+        expect(l.points[0].t).toBe(0);
+        expect(l.points[l.points.length - 1].t).toBe(1);
+      }
+    };
+    expected(extractAnalyticFeatures('GeometricStar', packed(GS_DEFAULTS), DIMS));
+    // The SHIPPABLE production flag must NOT enable the measured loci (see ExtractOpts doc):
+    expected(extractAnalyticFeatures('GeometricStar', packed(GS_DEFAULTS), DIMS, { surfaceFidelityExact: true }));
+    // ...and it stays legacy even with a non-zero gs_shift (the stagger fix is flag-gated too).
+    const shifted = extractAnalyticFeatures('GeometricStar', packed([8, 0.05, 0.5, 4, 1, 2, 0, 1, 0.5]), DIMS);
+    expect(shifted.lines.every((l) => l.kind === 'vertical-crease')).toBe(true);
+    expect(shifted.groundTruthCount).toBe(8);
+  });
+
   it('BambooSegments: node_count-1 interior node-ring horizontal creases', () => {
     // node_count=5 → rings at t=k/5; interior k=1..4 ⇒ 4 horizontal creases
     // (t=0 and t=1 are the boundary rings, already full-width / shared with caps).

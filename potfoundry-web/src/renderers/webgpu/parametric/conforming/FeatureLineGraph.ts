@@ -115,6 +115,7 @@
  */
 
 import { marchingSquaresZero, segmentsToPolylines } from './SampledFeatureExtractor';
+import { geometricStarStrapField } from '../../../../fidelity/analyticSurfaceGate';
 import type { UWarp } from './CreaseUWarp';
 import type { TWarp } from './CreaseTWarp';
 import type { HelixWarp } from './CreaseHelixWarp';
@@ -327,22 +328,132 @@ function extractGothicArches(p: Float32Array): FeatureLine[] {
  * folds at sector boundaries `th=(k+0.5)*angle` (angle=TAU/N), where the
  * strapwork SDF has a C1 kink → N vertical fold creases at u=(k+0.5)/N.
  *
- * The DOMINANT chord residual is NOT these folds but the strapwork relief EDGES
- * (`dStrap=|dLine|−gap ∈ [0,edge]`), which are near-VERTICAL diagonal cliffs
- * (~relief over ~edge/|∇dLine| ≈ 2mm/0.07mm in z — the v-term gradient
- * dominates). MEASURED (2026-06-14): general-curve chevron insertion of those
- * cliffs left nAbove UNCHANGED (27%→26.3% at L8) while exploding to 2.2M tris —
- * a near-radial facet on a near-vertical wall reads large RADIAL chord
- * regardless of density. So the cliffs are a designed C0-ish feature handled by
- * EXCLUSION in the gate (geometricStarStrapPredicate, like the ArtDeco/Bamboo
- * riser), not extraction. The folds stay as the byte-identical baseline.
+ * ## MEASURED locus map (E-2026-07-24-GEOSTAR-LOCUS, `research/bridge/_gsLocus.test.ts`)
+ *
+ * The legacy (default) emission above is honest only in the WEAKEST sense — three
+ * measured corrections, all at PROD dims H120/Rb45/Rt70/expn1.1 with registry defaults:
+ *
+ * 1. **ROW-PARITY STAGGER (latent bug, dormant at defaults).** `rowOffset =
+ *    (row%2)·(π/N)·shift·2` shifts every ODD row's whole pattern by exactly
+ *    `Δu = shift/N` (translation identity `dStrap_row1(u) ≡ dStrap_row0(u+shift/N)`
+ *    verified to 2.1e-15). So the true fold locus is
+ *    `u_fold(row,j) = (j + 0.5 − (row%2)·shift)/N` — a BRICKWORK stagger, not a
+ *    straight full-height column. At the registry default `gs_shift = 0` the offset
+ *    is identically zero (rows 0/1 crossings agree bit-for-bit), so the legacy
+ *    straight columns are correct AT DEFAULTS and wrong for any `gs_shift > 0`.
+ * 2. **The fold line is sharp over only ~2.7% of each row.** The kink is carried by
+ *    `shape>0` (the interlace `weave` term folds with `p.x`), i.e. `|v| <
+ *    (gap+edge)/cos(starAngle)`, and it VANISHES at `v=0` (`sin(0)=0`). Measured
+ *    sharp bands (|Δslope| > 1 mm per mm of arc) in row 0: t∈[0.1127,0.1161] and
+ *    [0.1339,0.1373] — 0.0067 of the 0.25-tall row ⇒ **`verticalLine(u,0,1)` is
+ *    97.3% NON-FEATURE** (on the far plateau the u-derivative jump is EXACTLY 0:
+ *    relief is identically zero there). Peak jump 10.33 mm/mm-arc.
+ * 3. **The dominant residual is the strap RAMP, and it is C1-SMOOTH — not a cliff.**
+ *    The two level curves `dStrap=0` (strap top) / `dStrap=edge` (gap floor) bound a
+ *    smoothstep ramp: value gap AND one-sided slope jump both →0 as ε→0 (smoothstep
+ *    has zero derivative at both ends ⇒ C1, C2-discontinuous). It is merely very
+ *    STEEP: Δr 2.235mm over 0.659mm of arc (slope 3.39 mm/mm). A flat facet spanning
+ *    it needs arc ≤0.05mm for ≤0.01mm chord (measured: h=0.125mm→0.051mm,
+ *    h=0.0625→0.014, h=0.05→0.0091). All three worst facets of
+ *    E-2026-07-23-GEOSTAR-SEAM-LOCK (u 0.7809/0.6552/0.7815) sit INSIDE this ramp
+ *    band, ~0.25 sector-cells away from the nearest legacy fold column — the mesh
+ *    was refined on the wrong locus.
+ * 4. **Row boundaries `t=k/(layers·zoom)` are NOT creases** (a plausible-looking
+ *    candidate, measured false): `vFade=1−|v|⁴`→0 there, and `shape` is already
+ *    identically 0 before `|v|` reaches 1 (max `p.x`=0.785 < the 0.901 needed), so
+ *    both the value gap and the slope jump vanish ⇒ SMOOTH. Nothing to emit.
+ *
+ * ## What the flag emits
+ *
+ * `geoStarExactLoci` (opt-in; dev lever `__pfGeoStarLoci`) replaces the legacy
+ * columns with the MEASURED loci: the two ramp level curves as `general-curve`
+ * polylines (marching squares on the exact strap field — these carry the chevron
+ * zigzag AND the row stagger for ANY `gs_shift`, by construction), plus the fold
+ * ridge as per-ROW `general-curve` segments at the STAGGERED u over the band where
+ * it is actually sharp. NOT wired to `surfaceFidelityExact`: two prior experiments
+ * (E-2026-07-19-GEOSTAR-CHEVRON-CONFORM, E-2026-07-22-GEOSTAR-CREASE-CONFORM)
+ * measured that inserting these curves as hard constraints REGRESSED the true-3D MAX
+ * in two OTHER engines (metric-mesh edge recovery: 80.7% embed ⇒ MAX 3.4× worse;
+ * double-valued CDT: density-invariant 1.25mm at the V apexes), so the production
+ * flag stays on the legacy columns until a measurement says otherwise.
  */
-function extractGeometricStar(p: Float32Array): FeatureLine[] {
+const GS_RAMP_RES_U = 2048;
+const GS_RAMP_RES_T = 1024;
+const GS_FOLD_T_SAMPLES = 5;
+
+function extractGeometricStar(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {
   const N = Math.max(4, Math.round(p[0]));
-  const lines: FeatureLine[] = [];
-  for (let k = 0; k < N; k++) {
-    lines.push(verticalLine((k + 0.5) / N, 0, 1, `fold[k=${k}]`));
+  const exact = opts?.geoStarExactLoci
+    ?? ((globalThis as unknown as { __pfGeoStarLoci?: boolean }).__pfGeoStarLoci === true);
+  if (!exact) {
+    // LEGACY (default, byte-identical): N straight full-height fold columns.
+    const legacy: FeatureLine[] = [];
+    for (let k = 0; k < N; k++) {
+      legacy.push(verticalLine((k + 0.5) / N, 0, 1, `fold[k=${k}]`));
+    }
+    return legacy;
   }
+
+  // Packed slots (styleParams.ts:347): [0 points,1 gap,2 detail,3 layers,4 interlace,
+  // 5 relief,6 roundness,7 zoom,8 shift].
+  const gap = p.length > 1 ? p[1] : 0.05;
+  const detail = p.length > 2 ? p[2] : 0.5;
+  const layers = Math.max(1e-6, p.length > 3 ? p[3] : 4);
+  const relief = p.length > 5 ? p[5] : 2;
+  const roundness = p.length > 6 ? p[6] : 0;
+  const zoom = Math.max(1e-6, p.length > 7 ? p[7] : 1);
+  const shift = p.length > 8 ? p[8] : 0;
+  if (!(relief > 1e-6)) return []; // no relief ⇒ no loci at all (honest empty)
+  const edge = 0.02 + roundness * 0.2;
+
+  const lines: FeatureLine[] = [];
+
+  // ── (1) The strap RAMP boundaries: the two level curves of the exact strap field.
+  // Traced with the SAME marching-squares extractor the Gyroid/Voronoi/HexHive loci use,
+  // periodic in u. Shared field with the fidelity gate (`geometricStarStrapField`) so the
+  // extractor and the ruler can never desync.
+  // MEASURED (E-2026-07-24-GEOSTAR-LOCUS arm EXACT + DIAG): emitting ONLY the two BOUNDING curves
+  // leaves the ramp INTERIOR unrefined — the band is ~4 quadtree cells wide at featureLevel 11
+  // (Δu 2.25e-3 vs cell 4.9e-4), so the 2–3 middle cells contain no feature line, are invisible to
+  // the band-limited sizing field (resU/resT 128 ≫ the 0.66mm ramp), and carry facets that cross
+  // 70% of the ramp (residual 0.0349, density-INVARIANT L11→L12). `rampSteps` subdivides the band:
+  // steps=1 ⇒ the two bounding curves only (the measured-2-curve baseline), steps=k ⇒ k+1 level
+  // curves at dStrap = i·edge/k.
+  const { field } = geometricStarStrapField(N, gap, detail, layers, roundness, zoom, shift);
+  const rampSteps = Math.max(1, Math.round(opts?.geoStarRampSteps ?? 1));
+  for (let i = 0; i <= rampSteps; i++) {
+    const lvl = (edge * i) / rampSteps;
+    const tag = i === 0 ? 'strap-top' : i === rampSteps ? 'gap-floor' : `ramp${i}of${rampSteps}`;
+    const segs = marchingSquaresZero((u, t) => field(u, t) - lvl, GS_RAMP_RES_U, GS_RAMP_RES_T, true);
+    lines.push(...segmentsToPolylines(segs, `gs-${tag}`, 3, 0));
+  }
+
+  // ── (2) The FOLD ridge: per-row segments at the STAGGERED u, over the |v|-band where the
+  // interlace weave actually kinks (shape>0 ⇔ |v| < (gap+edge)/cos(starAngle)). Emitted as
+  // `general-curve` (not `vertical-crease`) because a per-ROW segment is not a full-height
+  // column: the u-warp family pins whole columns and cannot represent the stagger, whereas
+  // general curves route to local-CDT insertion where a row segment is exact.
+  const starAngle = (0.2 + 0.6 * detail) * (Math.PI / 2);
+  const ca = Math.cos(starAngle);
+  const vHi = ca > 1e-9 ? Math.min(1, (gap + edge) / ca) : 1;
+  const rowsPerT = layers * zoom;              // rows spanning t∈[0,1]
+  const nRows = Math.ceil(rowsPerT - 1e-9);
+  for (let row = 0; row < nRows; row++) {
+    // v = (t·rowsPerT − row − 0.5)·2 ⇒ t(v) = (row + 0.5 + v/2)/rowsPerT.
+    const t0 = Math.max(0, (row + 0.5 - vHi / 2) / rowsPerT);
+    const t1 = Math.min(1, (row + 0.5 + vHi / 2) / rowsPerT);
+    if (!(t1 - t0 > 1e-9)) continue;
+    const rowShiftU = (row % 2) * shift / N;   // MEASURED: Δu = shift/N on odd rows
+    for (let k = 0; k < N; k++) {
+      const u = wrapU((k + 0.5) / N - rowShiftU);
+      const points: FeatureLinePoint[] = [];
+      for (let i = 0; i < GS_FOLD_T_SAMPLES; i++) {
+        points.push({ u, t: t0 + (t1 - t0) * (i / (GS_FOLD_T_SAMPLES - 1)) });
+      }
+      lines.push({ kind: 'general-curve', points, label: `fold[k=${k},row=${row}]` });
+    }
+  }
+
   return lines;
 }
 
@@ -843,6 +954,22 @@ export interface ExtractOpts {
   /** Surface-fidelity exact mode. When omitted, each extractor falls back to its
    *  own dev lever (probes) or its byte-identical default. */
   surfaceFidelityExact?: boolean;
+  /**
+   * GeometricStar MEASURED-loci mode (opt-in; dev lever `__pfGeoStarLoci`).
+   * DELIBERATELY separate from {@link surfaceFidelityExact}: the measured loci
+   * (strap-ramp level curves + staggered per-row fold segments) are the honest
+   * geometry, but inserting them as hard constraints REGRESSED the true-3D MAX in
+   * two prior engines (see `extractGeometricStar`'s doc), so they must not ride the
+   * shippable production flag until a measurement clears them. Omit ⇒ legacy
+   * full-height fold columns (byte-identical).
+   */
+  geoStarExactLoci?: boolean;
+  /**
+   * GeometricStar strap-RAMP subdivision (only read when {@link geoStarExactLoci} is on).
+   * 1 (default) ⇒ the two bounding level curves dStrap=0 / dStrap=edge; k ⇒ k+1 curves at
+   * dStrap = i·edge/k, which covers the ramp INTERIOR cells the two bounding curves miss.
+   */
+  geoStarRampSteps?: number;
 }
 
 function extractSuperformulaBlossom(p: Float32Array, opts?: ExtractOpts): FeatureLine[] {

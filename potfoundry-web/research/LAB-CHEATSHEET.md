@@ -58,7 +58,15 @@ non-manifold bug; opt-in, byte-identical off). Conforming: `buildFeatureConformi
 ## Feature-conforming — the settled map (E-2026-06-30-FEAT-CONFORM-*)
 - **Conform helps**: thin-ridge / smooth-relief sharp styles — GothicArches (conf true-3D p99: base 0.22 → 0.096 @1M
   → 0.082 @3M, measured E-2026-06-30-SHOWCASE), Gyroid, LowPoly, Crystalline, (Bamboo already CAD-grade at density).
-- **EXCLUDE — risers** (ArtDeco/GeometricStar/DragonScales): true-3D already CAD-grade; radial overstates; conforming HURTS.
+- **EXCLUDE — risers** (ArtDeco/DragonScales): true-3D already CAD-grade; radial overstates; conforming HURTS.
+  **GeometricStar CORRECTED (E-2026-07-24-GEOSTAR-LOCUS):** it was on this list because it was conformed to the WRONG
+  locus. The shipped `extractGeometricStar` full-height columns at u=(k+0.5)/N are a MAX **no-op** (0.73357 =
+  bit-identical to no-lines) — 97.3% of each column is provably non-feature. The real locus is the strapwork RAMP
+  (`dStrap=0`/`dStrap=edge` level curves — a chevron ZIGZAG, C1-SMOOTH but steep: Δr 2.235mm over 0.659mm arc ⇒ needs
+  ≤0.05mm facets). Emitting it (`geoStarExactLoci`, default OFF) → MAX 0.734→0.120, **off-seam 0.734→0.017**, p99
+  0.0946→0.0073, over-0.1mm 0.921%→0.000%. Residual = the u-seam `clipFeaturesToBox` band (density-INVARIANT).
+  NB `styleSampler` is a 512² bilinear grid whose OWN error on GeoStar is **0.62mm** — the sag refiner is blind to any
+  sub-grid-cell relief, which is why ANALYTIC lines (not density) are the lever.
 - **EXCLUDE — weave/braid** (BasketWeave/CelticKnot/CelticTriquetra): step/occlusion-discontinuous relief. Conforming
   trades slivers for a true-3D chord regression — REFUTED that better loci OR no-lock rescue it (inject-only ≈ locked).
 - **Gate is mandatory**: applying conform to a smooth style (HarmonicRipple) wrecked it 0.023→3.56mm.
