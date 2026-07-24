@@ -7478,3 +7478,37 @@ Config: Voronoi `v_relief 0.04`, H32/OD30/drain6, `tessellateAnnularRadialSolidT
 **SCOPE CAVEATS:** outer-wall is the controlled comparison (inner-wall in this harness lacks the source probe's `rationalStationLadder` and fails as a tessellation artifact — 106,697,707 pm at budget 50 um, and RESOURCE_LIMIT at 200 um). Single relief 0.04, single pot geometry, uniform tessellation only — no conforming tessellation was built or tested here.
 
 **LEDGER.** Same instruments as `E-2026-07-23-STRATA001-S0-CERTIFY`; `_strataVoronoiCertify.test.ts` gained `PF_STRATA_MAXCELLS` (cMPD `maxWorkCells`; DEFAULT 1e6 trips at 0 ms on dense tessellations, HARD_MAX 6e6). Evidence: `research/bridge/out/strata_certify_web_dense.txt`.
+
+---
+
+## E-2026-07-24-STRATA001-S0-CORRECTION (CORRECTS the three S0 rows above: they were run at 50x-reduced relief and are NOT representative) [MEASURE-ONLY; NO kernel edit]
+
+**WHY THIS ROW EXISTS.** The three `E-2026-07-23-STRATA001-S0-*` rows above ran Voronoi at `v_relief 0.04` / `v_morph 0`. The REGISTRY DEFAULTS are `v_relief` **2.0 mm** (range 0-5.0) and `v_morph` **1.0 (Web)** — so the measured surface carried **1/50th** of its real relief, in a non-default mode. The parameters were inherited unexamined from `_gothicScreenSlackAudit`'s header comment and `_gothicVoronoiConformingSpike`'s `PF_SLICE11_VOR_PP` probe. Caught by Patryk: at that amplitude the features are near-tolerance by construction, and a uniform grid "generalizes them to a bumpy grid" rather than representing them.
+
+**RE-MEASURED AT REGISTRY DEFAULTS (`v_relief 2.0`), uniform tessellation, budget 9.5 um:**
+
+| config | outer-wall | previously reported |
+|---|---|---|
+| `v_relief 0.04`, bubble, (8,7) | OK 9,499,530 | "certifies in 99 s" |
+| **`v_relief 2.0`, bubble, (8,7)** | **INCONCLUSIVE** 9,500,023 | — |
+| **`v_relief 2.0`, web, (8,7)** | **INCONCLUSIVE** 9,500,024 | — |
+| **`v_relief 2.0`, web, (9,8) = 262,144 tri/patch cap** | **INCONCLUSIVE** 9,500,009 | — |
+
+Additional patches also fail at real relief (bottom-top tri=394, top-rim tri=7424) which never failed at 0.04.
+
+**WHAT IS RETRACTED.** "Bubble certifies end-to-end / the hang does not exist" (row `S0-CERTIFY` finding 1) is **VOID** — it certified a de-featured surface. Every "bubble is fine" statement in the three rows above inherits that defect. The site-cone refusal census (128 cells) and the fired-map overlay percentages were also measured at 0.04 relief and must be re-run before being cited.
+
+**WHAT SURVIVES (re-verified at `v_relief 2.0`).**
+1. **No h-independent Clarke plateau.** maxDepth 24 -> 30 still moves the bound **9,500,024 -> 9,500,001 pm** at REAL relief, exactly as at 0.04. The validated screen converges; spec section 3's "subdivision cannot close it" remains refuted at production amplitude.
+2. **`targetToMeshUpperPm` is max over ACCEPTED leaves** (cMPD:1025-1030), hence <= budget by construction — a code fact, unaffected by parameters. Never quote it as the mesh's error.
+3. **The b&b throws on the FIRST cell reaching maxDepth over budget** — a marginal cell, not the worst — which is why the message reads `budget + eps`.
+
+**THE ACTUAL FAILURE, RESTATED.** Voronoi cannot be certified by the **uniform** reference tessellator at ANY legal density: at the hard `262144` tri/patch snapshot cap it is still short (+9 pm at real relief, +6 pm at 0.04). Triangles are spent evenly across the domain while the residual lives on the bisector graph. **This is a triangle-PLACEMENT failure, not a screen failure.**
+
+**THE STANDARD TO MATCH (`GothicArches_p1_H32_OD30_certified.stl`, 304,808 tris).** Its certified path (`PF_GOTHIC_STL`, spike :1000-1064) is NOT a dense uniform grid — it is a **coarse** base (`angularDivisionsLog2 8`, `verticalDivisionsLog2 5` = 256x32) plus `angularStations`/`verticalStationsByPatch` (`rationalStationLadder`) plus **`conformingChordsByPatch: gothicChordsForPatch(...)`** on both walls. The ~18x triangle multiplier over the base grid is spent ON the arch creases. That is feature representation; a uniform grid at 4x the density is not.
+
+**THE GAP FOR VORONOI.** `voronoiBisectorSegmentsUv` already emits the exact order-1 bisector geometry (dyadic sites => exact lines), but there is **no chord assembly** — `voronoiBisectorGuides.ts:16-17` states it outright: "Grid-station snapping and chord-chain assembly for conformingChordsByPatch are the next increment." That unbuilt increment is spec section 4 / plan S2 Task 2.2 (`assembleVoronoiConformingChords`). **Phase S2, not S1, is the work.**
+
+**OPEN CONCERN FOR THE WHOLE CERTIFIED CORPUS.** The Gothic exemplar itself used `gaRelief: 0.2` against a registry default of **1.5** (7.5x reduced). If the standard is full fidelity at parameters users can actually dial, the certified corpus needs an audit of which configs were certified at reduced relief — the same defect this row corrects, potentially sitting in prior rows.
+
+**LEDGER.** Same instruments; `_strataVoronoiCertify.test.ts` `PF_STRATA_RELIEF` (default 0.04 retained only for continuity with the rows above — **pass 2.0 for representative runs**). Registry defaults read from `src/styles/registry.ts:355-366` (Voronoi) and `:183-190` (GothicArches).
