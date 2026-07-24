@@ -10,6 +10,78 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-24-LEVER-STACK-CLOSE — does the PROVEN lever stack (analytic-score / nRing / pin-band-geometric / exact loci) close the remaining conforming-path styles (GeometricStar / GyroidManifold / Voronoi) to ≤0.01mm true-3D at PROD dims, and at what triangle cost? [MEASURE+APPLY; NO src edit — all levers pre-landed default-OFF; env-gated probe PF_LSC]
+
+**HYPOTHESIS (as tasked, falsifiable, per style).** H-GS: GeometricStar's 0.03187 residual is owned by a lever untried on it — its rim row is clean (0.00041) and K≤1 so the pin-band mechanism is inert; sweeping nRing 2048→8192→32768 closes it. H-GY: GyroidManifold's 0.11192 responds the same way. H-VO: Voronoi's `general-curve` cell-border lines ARE inserted on the measured path, and levers 1+2+3 drop its MAX.
+
+**KILL-CRITERION (pre-registered in the probe header before any arm ran, per style).** CLOSED iff whole-mesh true-3D MAX ≤ 0.01mm with nonMan==0 and rings intact. CONFIRMED-LEVER iff the single lever under test drops MAX ≤ 0.5× its own control. REFUTED iff MAX ≥ 0.9× control across the WHOLE sweep. PARTIAL otherwise, and then the residual MUST get a NAMED mechanism + a density-invariance demonstration (≥2 configs, identical MAX). ROUTING (Voronoi): lines INSERTED iff exact-vertex coverage ON ≥ 0.9 AND the OFF control is materially lower (non-vacuous).
+
+**VERDICT: ALL THREE CLOSE. But the HANDOVER'S DOMINANT LEVER (nRing) IS WRONG FOR THESE THREE STYLES — it is a BIT-IDENTICAL NO-OP on all of them. Their residual is 100% DEEP-INTERIOR (rim row already clean at 0.00041–0.00047, K≤1 so the pin-band is inert), and the deep interior is owned by ONE lever: `maxLevel` (+ the analytic `aSagMm` target). GeoStar CLOSED 0.03187→0.00466 (L13, aSag 0.004, 12.68M tris). Gyroid CLOSED 0.11192→0.00892 (L14, aSag 0.004, 12.25M). Voronoi CLOSED 0.30018→0.00666 (L14, aSag 0.002, LOCI OFF, 9.01M) — and the loci INSERTION was the thing BLOCKING closure (it caps the achievable maxLevel via the CDT triangulator's V8 Map ceiling). Two task premises MEASURED FALSE, corrected below.**
+
+### 1. THE PER-STYLE × LEVER TABLE (`_leverStackClose.test.ts` PF_LSC=1 PROBE=arm; PROD dims H120/Rb45/Rt70/expn1.1, registry defaults, maxSag 0.05, budgetMode cap; ONE ruler both meshes = labkit `perFaceTrue3DSag` preFilter 0.004 lifted with exact `buildAnalyticRadiusFn`; slivers `triangleQualityDistribution`; watertight `nonManRawBigStats` by index. All arms are OUTER WALL, surfaceId 0.)
+
+| tag | style | L | nRing | loci | aSag | tris | **true-3D MAX** | p99 | over0.01 | rimMAX | bandMAX | **deepMAX** | seamMAX | nonMan | %<20° | minAng |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| GS-A | GeometricStar | 11 | 2048 | ✓ | 0.01 | 1,938,200 | 0.03187 | 0.0155 | 7.33% | 0.00041 | — | 0.01969 | **0.03187** | 0 | 39.5 | 0.4 |
+| GS-B | GeometricStar | 12 | 2048 | ✓ | 0.01 | 4,650,414 | 0.01068 | 0.0073 | 0.005% | 0.00041 | 0.00012 | 0.01035 | 0.01068 | 0 | 36.9 | 0.5 |
+| GS-C | GeometricStar | 12 | **8192** | ✓ | 0.01 | 4,748,718 | **0.01068** | 0.0072 | 0.004% | 0.00009 | — | 0.01035 | 0.01068 | 0 | 36.1 | 0.5 |
+| **GS-D** | **GeometricStar** | **13** | 2048 | ✓ | **0.004** | **12,683,310** | **0.00466** | 0.0033 | **0.000%** | 0.00041 | 0.00012 | 0.00466 | 0.00393 | 0 | 32.6 | 0.5 |
+| GY-A | GyroidManifold | 12 | 2048 | ✗ | 0.01 | 1,947,056 | 0.11192 | 0.0235 | 4.59% | 0.00045 | 0.00023 | **0.11192** | 0.00918 | 0 | 26.4 | 2.1 |
+| GY-B | GyroidManifold | 12 | 2048 | ✓ | 0.01 | 2,760,040 | 0.11192 | 0.0195 | 3.24% | 0.00045 | 0.00023 | 0.11192 | 0.00918 | 0 | 21.5 | 0.8 |
+| GY-C | GyroidManifold | **14** | 2048 | ✗ | 0.01 | 8,979,190 | 0.01973 | 0.0040 | 0.012% | 0.00045 | 0.00114 | 0.01973 | 0.00918 | 0 | 50.3 | 1.6 |
+| **GY-E** | **GyroidManifold** | **14** | 2048 | ✗ | **0.004** | **12,253,678** | **0.00892** | 0.0039 | **0.000%** | 0.00045 | 0.00114 | 0.00892 | 0.004 | 0 | 50.6 | 1.6 |
+| VO-A | Voronoi | 11 | 2048 | ✓ | 0.01 (score OFF) | 1,829,968 | 0.30018 | 0.0359 | 4.82% | 0.00047 | — | **0.30018** | 0.22448 | 0 | 8.8 | 0.9 |
+| VO-B | Voronoi | 11 | 2048 | ✓ | 0.01 (score ON) | 2,816,602 | 0.04921 | 0.0089 | 0.66% | 0.00047 | — | 0.04921 | 0.02017 | 0 | 6.5 | 0.9 |
+| VO-C | Voronoi | 13 | 2048 | ✓ | 0.004 | 10,399,498 | **0.01299** | 0.0036 | 0.003% | 0.00047 | 0.00045 | 0.01299 | 0.00685 | 0 | 6.4 | 0.5 |
+| VO-D | Voronoi | 13 | 2048 | ✓ | **0.002** | 13,140,006 | **0.01299** | 0.0021 | 0.002% | 0.00047 | 0.00045 | 0.01299 | 0.00685 | 0 | 5.3 | 0.5 |
+| VO-E | Voronoi | 13 | 2048 | ✓ | 0.002 (**minEdge 0.008**) | 13,140,006 | **0.01299** | 0.0021 | 0.002% | — | — | 0.01299 | — | 0 | 5.3 | 0.5 |
+| VO-F | Voronoi | **14** | 2048 | ✓ | 0.002 | — | **CRASH** | — | — | — | — | — | — | — | — | — |
+| **VO-G** | **Voronoi** | **14** | 2048 | **✗** | 0.002 | **9,014,076** | **0.00666** | 0.0024 | **0.000%** | 0.00047 | 0.0007 | 0.00666 | 0.004 | 0 | **1.1** | **11.2** |
+
+### 2. THE nRing NO-OP (task premise 1 MEASURED FALSE) — and the real lever
+
+The handover named nRing "the DOMINANT term (9.1×)". That was measured on **Crystalline**, whose relief reaches the rim (its whole-mesh MAX facet is IN the pinned row, E-2026-07-24-PINBAND §3c). For these three styles it is a **bit-identical no-op**: GeoStar L12 nRing 2048→8192 is 0.01068→0.01068 on the SAME facet, 4.65M vs 4.75M tris, +2% for zero MAX movement (GS-B vs GS-C). Reason (measured, not assumed): **all three have CLEAN rim rows** — rimMAX 0.00041 (GeoStar) / 0.00045 (Gyroid) / 0.00047 (Voronoi), already 20–24× below target — and K = maxLevel − pin ≤ 1 at nRing 2048, so the pin-band grading (lever 3) is inert too (bandMAX ≤ 0.00114). **Their entire >0.01 population is deep-interior** (deepMAX == whole-mesh MAX in every row above). The lever that moves the deep interior is `maxLevel` (each +1 level ≈ halves the worst edge ⇒ quarters a smooth sag; the observed drops are O(h) on the C0 kinks — see §3), with the analytic `aSagMm` setting the interior convergence floor 1:1 (E-2026-07-24-ANALYTIC-SCORE §3.3).
+
+- **GeometricStar:** MAX 0.03187 (L11) → 0.01068 (L12) → **0.00466 (L13, aSag 0.004) = CLOSED.** The L11 0.03187 MAX sat on the **u-seam** (`clipFeaturesToBox` band, dSeamU≈8e-5), the L12/L13 worst is deep-interior at the strapwork-ramp crossing (u≈0.02–0.52 at t≈0.82). nRing irrelevant.
+- **GyroidManifold:** MAX 0.11192 (L12) → 0.01973 (L14) → **0.00892 (L14, aSag 0.004) = CLOSED.** loci OPTIONAL: with vs without the 14 TPMS level-set lines the MAX is **bit-identical 0.11192** (GY-A == GY-B) — Gyroid's loci don't touch the worst facet. Criterion sub-sampling (`aSagSamples` 3→9) is a clean no-op (GY-D, 0.11192).
+- **Voronoi:** MAX 0.30018 → 0.04921 (analytic score, **6.1×, CONFIRMED-LEVER**) → 0.01299 (L13) → **0.00666 (L14, LOCI OFF) = CLOSED.**
+
+### 3. THE VORONOI ROUTING QUESTION — ANSWERED, then INVERTED (task premise 2)
+
+**Routing CONFIRMED (R0/R1, PF_LSC_PROBE=routing/insert):** Voronoi emits 82 `general-curve` cell-border lines (1,421 pts), survives `clipFeaturesToBox` at 100% retention, and they ARE inserted as mesh vertices — exact-vertex coverage **0.766 @ tol 1e-6, 0.927 @ the cornerSnap scale 2.9e-5, 1.000 @ 1e-3**, vs the lines-OFF control **0.000 / 0.009 / 0.807** (non-vacuous; the 23% at 1e-6 is corner-snap relocation to cell corners, BY DESIGN). Render `voronoi_analyticscore_ab.png` (true-3D heatmap) agrees: score-OFF draws saturated-red web creases + triple junctions (worst 0.300), score-ON collapses them to green with faint yellow only at the sharpest triple junctions.
+
+**But the loci HURT Voronoi (premise inverted).** The L13-loci worst facet (0.01299 at u=0.4734,t=0.4710) is **density-invariant across FOUR configs**: aSag 0.004 (VO-C) and 0.002 (VO-D) are byte-identical (13,140,006 tris, same facet), and minEdge 0.02 (VO-D) vs 0.008 (VO-E) are ALSO byte-identical — so it is neither the criterion nor the physical floor. It is a **maxLevel cap at L13**. The next level (L14) is the fix — but with 82 dense inserted web curves, **`FeatureConformingTriangulator.vertexIndex`'s `vertMap` hits the V8 ~16.7M-entry cap (`RangeError: Map maximum size exceeded`, FeatureConformingTriangulator.ts:1096) and the loci build CRASHES (VO-F).** The plain (loci-OFF) path uses no such Map — its `QuadtreeTopology` seals arbitrary hanging nodes — so **VO-G (L14, loci OFF) builds and CLOSES at 0.00666**, and the worst locus tracked 0.032mm@L13 → 0.016mm@L14 with error 0.01299 → 0.00666 (**halving h halves error = O(h) C0-kink convergence, NOT a floor**). loci-OFF ALSO wins on slivers (%<20° 5.3→1.1, minAngle 0.5→11.2): the analytic-score criterion resolves Voronoi's web creases GEOMETRICALLY at L14 without needing the insertion at all. **For Voronoi the exact-loci lever (4) is counter-productive** — it costs the maxLevel the deep interior needs.
+
+### 4. SLIVER COST (a first-class axis) — the closing configs are NOT free
+
+| closed config | %<20° | minAngle | verdict |
+|---|---|---|---|
+| GeoStar L13 aSag 0.004 (loci) | **32.6** | 0.5° | heavy — uBias 1 + ramp-loci insertion |
+| Gyroid L14 aSag 0.004 | **50.6** | 1.6° | heaviest — analytic-score sliver regression (E-ANALYTIC-SCORE §3.7 6.7→25.4) COMPOUNDS with L14 density |
+| Voronoi L14 aSag 0.002 (NO loci) | **1.1** | 11.2° | CLEAN — loci-off avoids the CDT-insertion needle slivers |
+
+Gyroid at 50.6% <20° is a real shipping concern (half the facets are slivers), independent of the pin band (E-2026-07-24-PINBAND §5). Voronoi's loci-off closure is the only sliver-clean one of the three.
+
+### 5. TRIANGLE COUNT & THE STL SHIPPING CONSTRAINT (task's hard-report item)
+
+Binary STL caps at **21,474,834 tris** (1 GiB = 84-byte header + 50 bytes/tri). The closing **outer-wall** configs are all under it: GeoStar 12.68M, Gyroid 12.25M, Voronoi 9.01M. **BUT two constraints bite:**
+1. **The full watertight solid ≈ 1.8–2.0× the outer wall** (inner offset wall + rim + base). INFERRED (not measured here — arms are outer-only): GeoStar/Gyroid closing solids ≈ **23–25M tris ⇒ OVER the binary-STL cap ⇒ 3MF required**; Voronoi ≈ 18M ⇒ fits STL. Any style needing L14+loci or aSag < 0.002 blows the cap outright.
+2. **The feature-conforming path (loci ON) cannot even BUILD past ~13M outer-wall tris** on a many-curve style (Voronoi 82 curves): the `FeatureConformingTriangulator` vertMap V8 16.7M-entry cap crashes at L14. This is a SEPARATE, lower ceiling than the STL byte cap and is a real productionization blocker for loci-heavy styles at CAD density.
+
+### 6. GN-OVERSTATEMENT CAVEAT (Gyroid + Voronoi are tangled lattices)
+
+`perFaceTrue3DSag` single-seed GN overstates true-3D up to ~7× on tangled lattices (E-2026-07-02-STEEP-HETEROGENEITY). Cross-checked with `bruteAnchoredRedPerp` (labkit, worst-40 centroid, coarse 2048×400 + fine tie-break): Gyroid L12 baseline gnP99 0.078 → **trusted 0.0208 (3.75× overstated)**. At the CLOSED configs (GY-E, VO-G) `nRed==0` at redMm 0.02 — **there is no facet even above 0.02mm radial**, so the closing MAX (0.00892 / 0.00666) has nothing left for GN to overstate and is trustworthy. Gyroid's absolute baseline 0.11192 is an UPPER BOUND; the same-ruler close RATIO (0.11192→0.00892, 12.5×) is honest.
+
+**RECOMMENDATION.** (a) **For these three styles, raise `maxLevel` + tighten `analyticSagMm` — do NOT touch nRing** (bit-identical no-op; their rim rows are clean and K≤1). (b) **GeoStar / Gyroid CLOSE at L13/L14 aSag 0.004** but pay heavy slivers (32.6% / 50.6% <20°) and their full solids need **3MF** (>21.4M). Price Gyroid's sliver fraction before shipping. (c) **Voronoi CLOSES at L14 aSag 0.002 with loci OFF** (0.00666, sliver-clean 1.1% <20°, fits STL) — and this is the recommended config: the `general-curve` insertion is counter-productive here (caps maxLevel at L13 via the CDT Map ceiling). (d) **Fix or bound the `FeatureConformingTriangulator` vertMap** (swap the Map for the sorted-key scheme `nonManRawBigStats` uses, or cap curve density) before any loci-heavy style ships at L14+. (e) **Cheatsheet correction**: "nRing = the DOMINANT term (9.1×)" is Crystalline-specific (rim-reaching relief); for deep-interior-residual styles (GeoStar/Gyroid/Voronoi) nRing is inert and `maxLevel` is the lever.
+
+**REGRESSION / SAFETY.** ZERO src edits — all four levers were pre-landed default-OFF (`__pfConformingAnalyticScore`, `__pfConformingPinBandRelax`, `geoStarExactLoci`, nRing/maxLevel opts); `flagOff.byteIdentical` is unaffected (nothing in `src/` changed). Pre-existing `MultiCurveCellPolicy.test.ts` failure BASELINED at HEAD (1/16, `fanRepair introduces NO new boundary edge` at (0.4384,0.4421) — the concurrent workstream's `ConstrainedCellTriangulator.ts`, which this probe does not touch or depend on). New probe `tsc --noEmit` clean; `eslint --max-warnings=0` clean (the `vitest.lsc.config.ts` "File ignored" note is identical to every shipped `vitest.*.config.ts` — configs are outside the lint glob).
+
+**LEDGER.** Probe (research-only, no src): `research/bridge/_leverStackClose.test.ts` (PF_LSC=1; PROBE=routing/insert/arm; PF_LSC_STYLE/LEVEL/NRING/LOCI/SCORE/MODE/ASAG/MINEDGE/CAP/BRUTE/DUMP; ndjson-checkpointed per arm) + `vitest.lsc.config.ts`. Launcher (scratchpad, AboveNormal priority): `lsc.ps1`. Data (git-ignored): `research/exchange/_leverStackClose/scorecard.ndjson` (15 arms) + `routing.ndjson` + per-tag `.log`. Renders: `research/exchange/_leverStackClose/voronoi_analyticscore_ab.png`, `gyroid_analyticscore_ab.png` (both true-3D heatmaps, render agrees with metric). Rulers: `perFaceTrue3DSag`, `bruteAnchoredRedPerp`, `nonManRawBigStats`, `triangleQualityDistribution` (all labkit). Result commit: this one.
+
+**CAVEAT (honest).** (i) All arms are OUTER WALL only (surfaceId 0); the full-solid triangle counts in §5 are INFERRED (1.8–2×), not measured. (ii) Triangle counts are at a 12–60M budget cap with `chosenScale 1` in every arm (never budget-limited — surface-driven). (iii) Gyroid/Voronoi absolute true-3D is a GN upper bound on the tangled lattice; the CLOSED configs have `nRed==0` so their closing MAX is trustworthy, but the intermediate deep-interior numbers (e.g. Gyroid 0.11192) are overstated (§6). (iv) VO-F's crash is the V8 Map cap, an implementation ceiling, not a geometric limit — the plain path reaches L14 fine.
+
+---
+
 ## E-2026-07-24-PINBAND — is the `levelCap` PIN-GRADED BAND the mechanism that FREEZES the analytic-scored conforming mesh above 0.01mm, and does relaxing the grading (keeping ONLY the t=0/t=1 rim ROWS pinned) close it? [BUILD+PROVE; src edit `PeriodicBalancedQuadtree.ts` + `ConformingWall.ts`, flag-gated `__pfConformingPinBandRelax` default-OFF byte-identical; env-gated probe PF_PINBAND]
 
 **HYPOTHESIS (as tasked, falsifiable).** H1 (mechanism): every surviving >0.01mm facet of the analytic-scored mesh sits in a cell whose level EQUALS `levelCap(level,it) = min(maxLevel, pin + floor(nearEdge·2^pin))` — CAP-limited, not sag-satisfied — while the exact-analytic criterion still exceeds its target there and the `minEdgeMm` floor is far away; since the cap does not depend on `maxLevel` inside the band, the residual is DENSITY-INVARIANT by construction. H2 (fix): relaxing the grading in the band INTERIOR while keeping only the t=0/t=1 rows pinned drops the whole-mesh true-3D MAX.
