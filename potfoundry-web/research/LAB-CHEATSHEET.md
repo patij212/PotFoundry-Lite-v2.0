@@ -63,11 +63,23 @@ The sizing field commands edges **4.8–22.6× too long** (h_cmd/h_req at a 0.01
   HarmonicRipple 0.102→0.0133 — at EQUAL budget. p99 tracks `analyticSagMm` 1:1 (it CONVERGES).
   Cost 3.7–4.3× tris; sliver cost is style-dependent (Gyroid %<20° 6.7→25.4; Crystalline/Ripple zero).
   NO-OP where analytic FEATURE LINES already refine the locus to `featureLevel` (GeoStar: −1.2%).
-- **The `levelCap` PIN-GRADED BAND is the next wall, and it defeats EVERY criterion:**
-  `levelCap = min(maxLevel, pin + floor(nearEdge·2^pin))`, `pin = log2(nRing) − uBias`. At nRing 256 /
-  uBias 2 the whole band `t<0.078` is capped at level ≤7. It is DENSITY-INVARIANT by construction — if
-  your worst facet sits at `t≈0.00x` or `t≈0.99x`, raise `nRing` before theorising (GeoStar MAX
-  0.11998→0.03226 from nRing 256→2048 alone). Report MAX with the band excluded, and say so.
+- **The `levelCap` PIN-GRADED BAND — SOLVED, and it was TWO mechanisms (E-2026-07-24-PINBAND):**
+  `levelCap = min(maxLevel, pin + floor(nearEdge·2^pin))`, `pin = log2(nRing) − uBias`. Both are
+  DENSITY-INVARIANT **by construction** (the cap doesn't read `maxLevel` inside the band), so a sweep
+  can never move them. Separate them by `pinRow = floor(min(t,1−t)·2^pin)`:
+  - **rows 1..K−1 (the graded band), K = maxLevel − pin** → the GRADING. Lever
+    `globalThis.__pfConformingPinBandRelax = 'geometric'` (tight 2:1-legal staircase, band ≤2 rows at
+    ANY maxLevel, ZERO quality cost) or `'rowsOnly'` (frees row 1 too: prod nRing 256 off-rim MAX
+    0.31449→**0.02978, 10.6×**, but minAngle 11.1°→0.9°). Default OFF ⇒ byte-identical.
+    **INERT when K ≤ 1** — check K before theorising (that's why GeoStar/Gyroid are exact no-ops).
+  - **row 0 (the pinned rim row itself)** → the PIN LEVEL, i.e. `nRing`. No grading can touch it: it
+    IS the shared-ring contract. **U-DOMINATED — t-refinement of that row buys 0%** (1×16 split:
+    0.1403→0.1431), so a `tExtra` axis is a dead end; u alone stalls at 0.017, u×16+t×4 reaches
+    0.0094. Crystalline whole-mesh MAX **0.07369 → 0.01661 (nRing 8192) → 0.00807 (32768)**, 0.00%
+    over-0.01, +9% tris, zero sliver cost ⇒ CLOSED.
+  - **The plain triangulator handles ARBITRARY hanging nodes** (`QuadtreeTopology.readH/readV` collect
+    every grid-line point on a side — the "one mid-edge" in the module header is stale). A k-level
+    jump is sealed by a (2^k+3)-gon: watertight, but it fans into slivers. Don't assume cracks — audit.
 
 ## Kernel knobs (`InhouseMeshOpts`, `buildInhouseMetricMesh`)
 `tolMm` (chord target), `hMin`/`hMax` (edge clamp mm), `sizeRes` (curvature-grid res — band-limited, blind to

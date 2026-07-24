@@ -10,6 +10,89 @@ Engines: **gmsh 4.13.1** / **triangle 20230923**. Python venv: `research/oracle/
 
 ---
 
+## E-2026-07-24-PINBAND — is the `levelCap` PIN-GRADED BAND the mechanism that FREEZES the analytic-scored conforming mesh above 0.01mm, and does relaxing the grading (keeping ONLY the t=0/t=1 rim ROWS pinned) close it? [BUILD+PROVE; src edit `PeriodicBalancedQuadtree.ts` + `ConformingWall.ts`, flag-gated `__pfConformingPinBandRelax` default-OFF byte-identical; env-gated probe PF_PINBAND]
+
+**HYPOTHESIS (as tasked, falsifiable).** H1 (mechanism): every surviving >0.01mm facet of the analytic-scored mesh sits in a cell whose level EQUALS `levelCap(level,it) = min(maxLevel, pin + floor(nearEdge·2^pin))` — CAP-limited, not sag-satisfied — while the exact-analytic criterion still exceeds its target there and the `minEdgeMm` floor is far away; since the cap does not depend on `maxLevel` inside the band, the residual is DENSITY-INVARIANT by construction. H2 (fix): relaxing the grading in the band INTERIOR while keeping only the t=0/t=1 rows pinned drops the whole-mesh true-3D MAX.
+
+**KILL-CRITERION (pre-registered, in the probe header before any arm ran).** H1 CONFIRMED iff level == levelCap AND analytic dev > sagMm AND longestEdge > minEdgeMm, at ≥2 maxLevels with an IDENTICAL cap; REFUTED iff level < levelCap. H2 CONFIRMED iff whole-mesh MAX ≤ 0.5× flag-OFF with rings intact and nonMan unchanged; CLOSED iff MAX ≤ 0.01; REFUTED iff MAX ≥ 0.9×; **NO-OP-ON-MAX** (pre-registered third outcome) iff the band residual improves but the MAX is unmoved because the worst facet is in the PINNED ROW ITSELF — in which case the NEXT mechanism must be named with its own density-invariance demonstration.
+
+**VERDICT: H1 CONFIRMED. H2 = the pre-registered NO-OP-ON-MAX branch, then CLOSED by the named next mechanism. The band and the rim ROW are TWO SEPARABLE mechanisms. The relaxation owns the band (production nRing 256: off-rim-row MAX 0.31449 → 0.02978, 10.6×); the rim row is owned by the PIN LEVEL (nRing) and is U-DOMINATED. Together: Crystalline FULL-mesh true-3D MAX 0.07369 → 0.00807, 0.00% over 0.01mm, watertight, rings intact, ZERO sliver cost, +9.0% triangles ⇒ CLOSED. Three premises of the handover were MEASURED FALSE and are corrected below.**
+
+### 1. H1 — the frozen facet is CAP-LIMITED (`_pinBandRelax.test.ts` PF_PB_PROBE=capproof; Crystalline PROD dims H120/Rb45/Rt70/expn1.1, nRing 2048 ⇒ uBias 2, pin 9; exact `buildAnalyticRadiusFn`, no mesh build needed)
+
+| locus (from the ANALYTIC-SCORE scorecard) | cell | nearEdge | pin-row | LINEAR cap @maxLevel 11/12/13/14 | cap-limited? | cell arc × height | longestEdge vs `minEdgeMm` 0.02 | exact-vs-bilinear dev vs target 0.01 |
+|---|---|---|---|---|---|---|---|---|
+| **A** = the whole-mesh MAX facet (0.07369, frozen at L11–L14) | level 9, it 511 | **0** | **0** | **9 / 9 / 9 / 9** | **YES** | 0.2177 × 0.2344 mm | 0.2412 — floor NOT binding | **0.14048 — WANTS DEEPER** |
+| **B** = the worst band-interior facet at L13/L14 (0.01517) | level 12, it 4069 | 0.006348 | 3 | 11 / **12 / 12 / 12** | **YES** | 0.0384 × 0.0382 mm | 0.0384 — floor NOT binding | **0.01844 — WANTS DEEPER** |
+
+Both cells are AT their cap, the cap is IDENTICAL across maxLevel (density-invariant **by construction**, not by measurement luck), the analytic scorer wants ~14× (A) and ~1.8× (B) more accuracy there, and the `minEdgeMm` floor is 10× away. **H1 CONFIRMED.** The GEOMETRIC grading (below) moves B's cap to 13/14 and leaves A at 9 — the first sign that A and B are different mechanisms.
+
+**THE U-vs-T DECOMPOSITION (the measurement that redirected the fix).** Max sub-cell deviation of locus A under an (mu × mt) split:
+
+| split | 1×1 | **1×2** | **1×4** | **1×8** | **1×16** | **2×1** | **4×1** | **8×1** | **16×1** | **32×1** | 4×4 | 8×8 | **16×4** | 16×16 | 32×32 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| dev (mm) | 0.1403 | 0.1425 | 0.1427 | 0.1430 | 0.1431 | 0.0453 | 0.0334 | 0.0199 | 0.0168 | 0.0172 | 0.0338 | 0.0187 | **0.0094** | 0.0095 | 0.0048 |
+
+**t-refinement of the pinned row reduces the error by 0% (it gets marginally WORSE); u-refinement alone STALLS at ~0.017; only u×16 with t×4 reaches ≤0.01.** This KILLS the obvious "split the pinned row in t only (a `tExtra`), keep the ring in u" design before building it — the rim residual is a U-resolution problem, and the rim's u-resolution IS `nRing` (the shared-ring contract). That is why the next mechanism is the PIN LEVEL, not a new anisotropy axis.
+
+### 2. THE FIX (src, flag-gated, default-OFF byte-identical)
+
+New `pinBandGrading` option on `PeriodicBalancedQuadtree` (default `'linear'` = the shipped law):
+- **`'geometric'`** — the TIGHT cap that still admits a 2:1 staircase down to the immovable pinned row: a level-`pin+j` cell needs only `nearEdge ≥ (2 − 2^(1−j))/2^pin` (the pinned row's own height plus the geometric series of the intermediate rows). The capped band is therefore **≤ 2 pinned-row heights at ANY `maxLevel`**, versus the shipped `(maxLevel−pin)/2^pin` which GROWS as you refine. `nearEdge == 0` still returns exactly `pin`.
+- **`'rowsOnly'`** — the handover's literal proposal: pin ONLY the rows, free every interior cell to `maxLevel`.
+
+Threaded through `ConformingWall.buildQuadtreeAtScale` behind `globalThis.__pfConformingPinBandRelax` (`true`/`'geometric'`/`'rowsOnly'`; **anything else fails closed**). `levelCap` is private with 3 call sites, all inside `PeriodicBalancedQuadtree.ts`; the only production construction site is `buildQuadtreeAtScale`.
+
+### 3. THE A/B (`_pinBandRelax.test.ts` PF_PB_PROBE=ab; ONE lever = the flag; analytic scoring ON in EVERY arm with the same `analyticRA`/dims/sizing/budget cap/nRing/uBias; ONE ruler both meshes = `perFaceTrue3DSag` preFilter 0.004 lifted with the exact `buildAnalyticRadiusFn`; `auditNonManByIndex` + `triangleQualityDistribution` from labkit)
+
+**(a) PRODUCTION nRing 256 (pin 6, maxLevel 11 ⇒ K = 5 — the cheatsheet's flagged config; the band is 7.8% of the wall):**
+
+| mode | tris | MAX | **MAX off the pinned row** | p99.9 | over0.03 | over0.1 | nonMan | %<20° | minAngle | rings |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **off (linear)** | 1,686,666 | 0.52112 | **0.31449** | 0.04521 | 0.19% | 0.038% | 0 | 0.5 | 11.1 | 256/256 ✓ |
+| geometric | 1,754,522 (+4.0%) | 0.52112 | **0.20069** (1.57×) | 0.03186 | — | 0.028% | 0 | 0.5 | **11.1** | 256/256 ✓ |
+| **rowsOnly** | 1,789,432 (+6.1%) | 0.52112 | **0.02978 (10.6×)** | 0.02903 | 0.10% | 0.029% | 0 | 0.7 | 0.9 | 256/256 ✓ |
+
+**RENDER AGREES WITH THE METRIC** (`pinband_prod256.png`, true-3D heatmap, identical colour scale): the flag-off mesh draws a THICK saturated-red band ~5 rows deep along the whole rim; the `rowsOnly` mesh collapses it to a single sawtooth fringe on the pinned row itself, and whole-mesh %>0.03 halves (0.19% → 0.10%).
+
+**(b) nRing 2048, maxLevel 13 (K = 4):** off 2,483,384 tris / MAX 0.07369 / off-row 0.04973 / minAngle 8.9 → geometric 2,488,678 / 0.07369 / 0.04973 / 8.9 → **rowsOnly 2,490,960 / 0.07369 / 0.01532 (3.2×) / minAngle 2.3**. `geometric` clears rows ≥2 (rows 2 and 3 leave the worst-row list); only `rowsOnly` clears row 1, whose cap is `pin+1` under BOTH graded laws.
+
+**(c) The NEXT MECHANISM — the PIN LEVEL (nRing), with its own density-invariance demonstration.** `levelCap(pin, boundary row) = pin` for EVERY `maxLevel`, so the rim row is frozen by contract; the only lever is `pin = log2(nRing) − uBias`. Crystalline, maxLevel 13, analyticSag 0.004, one lever = nRing:
+
+| nRing | pin | mode | tris | **whole-mesh MAX** | MAX in rim row | MAX elsewhere | p99 | **over 0.01** | nonMan | %<20° | minAngle | rings |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| **2048** | 9 | off | 5,476,402 | **0.07369** | 0.07369 | 0.04973 | 0.00336 | 0.00% | 0 | 0.8 | 9.3 | ✓ |
+| 8192 | 11 | off | 5,579,186 | 0.01661 | 0.01661 | **0.01079** | 0.00334 | 0.00% | 0 | 0.8 | 9.3 | ✓ |
+| 8192 | 11 | rowsOnly | 5,579,692 | 0.01661 | 0.01661 | **0.00807** | 0.00334 | 0.00% | 0 | 0.8 | 5.6 | ✓ |
+| **32768** | 13 | rowsOnly | 5,966,484 | **0.00807** | **0.00620** | 0.00807 | 0.00329 | **0.00%** | 0 | **0.8** | **9.3** | ✓ |
+| 32768 | 13 | off | 5,966,484 | **0.00807** | 0.00620 | 0.00807 | 0.00329 | **0.00%** | 0 | 0.8 | 9.3 | ✓ |
+
+**CLOSED: 0.07369 → 0.00807 (9.1×), 0.00% of 5.97M facets over 0.01mm, whole-mesh, at +9.0% triangles and ZERO sliver cost** (%<20° 0.8 and minAngle 9.3 are IDENTICAL to the flag-off baseline). The last two rows are a deliberate vacuity control: at `pin == maxLevel` the cap is vacuous, so the mode is irrelevant and the two arms are numerically IDENTICAL — the 32768 win is attributable to `nRing` alone, and the relaxation's isolated contribution is visible only at K ≥ 2 (nRing 8192: 0.01079 → 0.00807, removing the last 2 over-0.01 facets outside the rim row).
+
+**(d) GeometricStar (`geoStarExactLoci`, feature path) and GyroidManifold — EXACT NO-OPs, with a named reason.** All three modes produce BIT-IDENTICAL triangle counts and metrics (GeoStar 1,938,200 tris / MAX 0.03187 / %<20° 33.0; Gyroid 1,947,056 / 0.11192 / %<20° 25.4). Reason: both run at `pin = 10` with `maxLevel` 11/12 ⇒ **K = maxLevel − pin ≤ 2**, where the linear grading already reaches `maxLevel` in row 1. And their rim rows are CLEAN: **MAX in the pinned row is 0.00041 (GeoStar) and 0.00045 (Gyroid)** — their relief fades before the rim, so neither mechanism is theirs at all.
+
+### 4. THREE HANDOVER PREMISES MEASURED FALSE (corrections)
+
+1. **"the quadtree's 2:1 balance already handles the resulting T-junctions" — the reasoning is wrong but the conclusion is right, for a different reason.** `balance()` CANNOT fix a violation against the pinned row (it repairs by splitting the COARSE side, which is immovable), and `'rowsOnly'` does leave real >2:1 jumps (asserted in `PinBandRelax.test.ts`). The mesh nevertheless stays watertight because **`QuadtreeTopology`'s `readH`/`readV` collect EVERY grid-line point inside a leaf side — a general hanging-node collector, not the single mid-edge the `QuadtreeTriangulator` module header describes.** A k-level jump is sealed by a (2^k+3)-gon. MEASURED: `rowsOnly` boundary edges == 2·nRing exactly and nonManifold == 0 at every scale tested, including the WHOLE-SOLID assembly (`assembleWatertight`, boundaryEdges 0 / nonManifoldEdges 0 / `auditNonManByIndex` 0, identical to flag-off). **The real cost of `rowsOnly` is triangle SHAPE, and it scales with K**: minAngle 11.1° → 0.9° at K=5, 8.9° → 2.3° at K=4, 9.3° → 5.6° at K=2, 9.3° → 9.3° (no cost) at K≤1.
+2. **"EVERY surviving >0.01mm facet lives in that band."** False as stated. At nRing 2048/L13/aSag 0.01 the over-0.01 population is dominated by the DEEP INTERIOR at the `analyticSagMm` floor (rows 88/215/216/228 at ~0.0148–0.0153, hundreds of facets each), not by the band; the band owns the MAX and the p99.9 tail. The interior floor converges with `analyticSagMm` (0.01 → 0.0153; 0.004 → 0.00807), exactly as E-2026-07-24-ANALYTIC-SCORE §3.3 predicted.
+3. **"It also explains a GeoStar result (nRing 256→2048 alone moved 0.120→0.032 — the seam-clip residual was AMPLIFIED by this cap)."** Not at nRing 2048 it doesn't: GeoStar's pinned-row MAX is 0.00041 and all three grading modes are bit-identical. Whatever the 256→2048 gain was, at nRing 2048 GeoStar's 0.03187 is a deep-interior residual (rows 292/475), not a pin-band artifact — so **GeoStar does NOT drop further from this fix (0.03187 → 0.03187)**, and the honest answer to task item (b) is "no, and here is why".
+
+### 5. SLIVER PRICING (task item 4) — the pin band is NOT the source
+
+GyroidManifold's %<20° is **25.4 in all three modes**, with a bit-identical mesh: the analytic-scoring sliver regression (6.7 → 25.4, E-2026-07-24-ANALYTIC-SCORE §3.7) is **NOT caused by the pin band and is not affected by relaxing it**. The relaxation's OWN sliver cost is the `rowsOnly` transition-gon fan quantified in §4.1 (`geometric` costs ZERO — minAngle and %<20° unchanged in every arm — because it preserves the 2:1 invariant). At the CLOSED config (nRing 32768, K=0) the relaxation is inert and slivers are identical to baseline.
+
+**REGRESSION GATES.** New `PinBandRelax.test.ts` **6/6**: flag-OFF byte-identical with the analytic lever armed (vertices + indices elementwise) INCLUDING an unrecognised flag value (fail-closed); `'geometric'` non-vacuous; both shared rings exactly `nRing`, strictly ascending U, at exactly `U = i/nRing`; `'geometric'` keeps the 2:1 level invariant (`neighbors()`) AND only the 2·nRing rim boundary edges with zero non-manifold; `'rowsOnly'` breaks 2:1 yet stays watertight, with a measured min-angle regression. Full conforming suite: **no test that passed before fails now.** Baselined at HEAD BEFORE any edit: **4 failed / 640 passed / 51 skipped** (`AnalyticCurvatureFloor` ×3 + `MultiCurveCellPolicy` ×1). After: **1 failed / 649 passed / 51 skipped** = the same `MultiCurveCellPolicy` failure + my 6 new gates. The 3 `AnalyticCurvatureFloor` failures RECOVERED mid-session because the concurrent workstream rewrote its uncommitted `ConstrainedCellTriangulator.ts` at 03:06:59 (a file this change does not touch and has no runtime dependency on) — attributing that recovery here would be dishonest. `tsc --noEmit`: zero errors in either edited file (461 pre-existing repo-wide, none in the edited files). `eslint --max-warnings=0` clean on every edited file. Rings verified `nRing`-long and ascending-U in **every** measured arm (256, 2048, 8192, 32768).
+
+**PRODUCTION SAFETY.** `__pfConformingPinBandRelax` is a `globalThis` read, DEFAULT OFF; unset (or any unrecognised value) ⇒ `pinBandGrading` undefined ⇒ `'linear'` ⇒ the shipped `levelCap` expression, byte-identical. `src/` imports nothing from `research/`.
+
+**RECOMMENDATION.** (a) **Raise `nRing` before touching the grading** — it is the only lever on the rim row, it is the dominant term (9.1× vs 10.6× on a band that owns less of the mesh), and it costs nothing in quality. The cap ring inflation is the price: nRing 32768 ⇒ 32,768-vertex shared rings and ~+9% triangles. (b) **Ship `'geometric'` as the grading, not `'rowsOnly'`**, if a grading ships at all: it is the tight 2:1-legal bound, costs ZERO quality, and makes the frozen band `maxLevel`-INDEPENDENT (the shipped law's band WIDENS as you refine — the root pathology). `'rowsOnly'` buys 6.8× more band fidelity but pays minAngle 11.1° → 0.9° at K=5; take it only where slivers are known not to matter. (c) **The grading is inert at K = maxLevel − pin ≤ 1** — check K before theorising about the band. (d) `'rowsOnly'` must NEVER ship: it is a DIAGNOSTIC that deliberately violates the 2:1 invariant `Gap1DirectionalRefine.test.ts` asserts. (e) **Cheatsheet correction**: "the `levelCap` PIN-GRADED BAND … defeats EVERY criterion" is now two mechanisms with two different levers, and the pinned ROW's residual is U-dominated (t-refinement buys 0%).
+
+**LEDGER.** src (flag-gated, default-off byte-identical): `potfoundry-web/src/renderers/webgpu/parametric/conforming/PeriodicBalancedQuadtree.ts` (`PinBandGrading` + `levelCap` branch) + `ConformingWall.ts` (`conformingPinBandGrading`, threaded in `buildQuadtreeAtScale`) + `PinBandRelax.test.ts` (6 gates). Probe: `research/bridge/_pinBandRelax.test.ts` (PF_PINBAND, `PF_PB_PROBE` capproof/ab/asm, `PF_PB_STYLE`/`MODE`/`LEVEL`/`NRING`/`ASAG`/`LOCI`/`DUMP`/`COLSCALE`, ndjson-checkpointed per arm) + `vitest.pinband.config.ts`. Data (git-ignored): `research/exchange/_pinBandRelax/capproof.ndjson` (2 rows) + `scorecard.ndjson` (21 rows) + render bins. Renders: `research/exchange/_pinBandRelax/pinband_prod256.png` (the decisive one), `pinband_crystalline.png`. Rulers: `perFaceTrue3DSag`, `auditNonManByIndex`, `triangleQualityDistribution` (all labkit). Pre-registration + fix commit `a4115ee0`; result commit: this one.
+
+**CAVEAT (honest).** (i) The nRing 32768 CLOSED arm was measured at `maxLevel 13` where `pin == maxLevel`; a config with `maxLevel > pin` was not re-measured at that nRing (the cap is vacuous either way, so no result depends on it). (ii) Triangle cost is reported at a fixed 12M budget cap with `chosenScale 1` in every arm (never budget-limited), so the +6.1%/+9.0% figures are surface-driven, not budget-driven. (iii) GyroidManifold is a tangled lattice where the single-seed GN projector OVERSTATES true-3D up to ~7× (E-2026-07-02-STEEP-HETEROGENEITY); its numbers are used here only as a WITHIN-style no-op comparison, which is ruler-independent.
+
+---
+
 ## E-2026-07-24-ANALYTIC-SCORE — is the conforming refiner STRUCTURALLY BLIND because it scores against the bilinear `styleSampler` grid, and does scoring the refinement decision against the EXACT analytic surface let refinement CONVERGE where sampler scoring diverged? [BUILD+PROVE; src edit `PeriodicBalancedQuadtree.ts` + `ConformingWall.ts`, flag-gated `__pfConformingAnalyticScore` default-OFF byte-identical; env-gated probes PF_SBLIND / PF_ANLSC]
 
 **HYPOTHESIS (as tasked, falsifiable).** The conforming sag refiner sizes/refines against `styleSampler` — a pre-evaluated BILINEAR grid. If that grid's own error exceeds the 0.01mm standard, the refiner is blind to any finer relief and no budget can close it. Scoring the refinement DECISION against the exact `buildAnalyticRadiusFn` surface (the established "grid-bound is the wrong surface" meta-fix, already used by tierC `refineToZeroOutliers` under `surfaceSource:'analytic'`) should make the residual CONVERGE.

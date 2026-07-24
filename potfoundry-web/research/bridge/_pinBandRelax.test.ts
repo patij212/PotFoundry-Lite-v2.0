@@ -315,7 +315,7 @@ describe.skipIf(process.env.PF_PINBAND !== '1')('levelCap pin-graded band — me
     appendFileSync(NDJSON, JSON.stringify(row) + '\n');
     if (process.env.PF_PB_DUMP === '1') {
       dumpRenderBins(OUT, `${STYLE}_${MODE}_L${LEVEL}_n${NRING}`, Float32Array.from(xyz), idx, {
-        colors: vertErrColors(sag.vertErr, 0.05),
+        colors: vertErrColors(sag.vertErr, Number(process.env.PF_PB_COLSCALE ?? 0.05)),
         meta: {
           ruler: 'true3d', worstMm: sag.worstMm, p99Mm: q(0.99), pctOver0_03: 100 * sag.fracOver(0.03),
           mode: MODE, level: LEVEL, tris: idx.length / 3, nonMan,
