@@ -142,6 +142,9 @@ interface Arm {
   maxPoints?: number;
   robust?: boolean;
   segLen?: number;
+  /** Inject the graph vertices as PINNED seed points but NO constraint edges — the Delaunay triangulates around
+   *  them (junctions become natural degree-k vertices) with zero constraint recovery to fail. */
+  pointsOnly?: boolean;
 }
 const ARMS: Arm[] = [
   // conform FIRST: its alignment self-check prints before the (slow) mesh, so a target/CPU desync is caught early.
@@ -152,6 +155,9 @@ const ARMS: Arm[] = [
   { key: 'plain-1p4m', conform: false, maxPoints: 1_400_000, note: 'plain sizing @ 1.4M points (budget sweep)' },
   // Salvage the graph: robust recovery + coarser edges (the GeoStar mitigation for 57% recovery failure).
   { key: 'conform-robust', conform: true, robust: true, segLen: 0.02, note: 'coarser graph (segLen 0.02) + recoveryRobust + guardRecoveryManifold' },
+  // NO-RECOVERY path: inject the bisector+junction vertices as PINNED seed points, no constraint edges — sidesteps
+  // the recovery wall entirely; the Delaunay fans junctions naturally + chord-Steiner splits the crease tail.
+  { key: 'points-only', conform: true, pointsOnly: true, segLen: 0.006, note: 'dense bisector+junction points as pinned seeds, NO constraint edges (no recovery)' },
 ];
 
 describe('STRATA-001 Voronoi via M=g/h² CDT + bisector constraint edges', () => {
@@ -173,12 +179,16 @@ describe('STRATA-001 Voronoi via M=g/h² CDT + bisector constraint edges', () =>
         if (arm.conform) {
           const g = buildVoronoiConformingGraph(arm.segLen !== undefined ? { segLen: arm.segLen } : {});
           opts.injectedPoints = g.pts;
-          opts.constraintEdges = g.edges;
           opts.pinInjected = true;
-          opts.recoverySubdivideCollinear = true;
-          if (arm.robust) {
-            opts.recoveryRobust = true;
-            opts.guardRecoveryManifold = true;
+          if (arm.pointsOnly) {
+            // No constraintEdges / recovery: seed points only.
+          } else {
+            opts.constraintEdges = g.edges;
+            opts.recoverySubdivideCollinear = true;
+            if (arm.robust) {
+              opts.recoveryRobust = true;
+              opts.guardRecoveryManifold = true;
+            }
           }
           graphPts = g.pts.length / 2;
           graphEdges = g.edges.length / 2;
