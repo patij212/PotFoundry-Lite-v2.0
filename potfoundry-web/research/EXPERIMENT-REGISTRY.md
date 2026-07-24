@@ -8184,3 +8184,21 @@ Ran every registry style through the universal solid mesher (`PF_SOLID_INIT=grid
 **CLOSED SOLIDS delivered this campaign:** Voronoi (bubble+web), HarmonicRipple (T1), BambooSegments + DragonScales (T3). All boundary 0 / non-manifold 0 / outer MAX 7um / 0 over, independently from-disk audited.
 
 **LEDGER.** Same harness, swept `PF_SOLID_STYLE` across all 20 registry keys.
+
+---
+
+## E-2026-07-24-STRATA001-S7-SHAPEAGNOSTIC (generic feature detection PROVEN; crease-conforming prototype + coverage reclassification) [BUILD+MEASURE; research-only, no src edit]
+
+**GOAL:** push toward closing all 20 styles with a perfectly shape-agnostic pipeline (spec §7 stratification from the analytic surface, zero per-style code).
+
+**RESULT: the generic feature DETECTOR is proven; the crease CONFORMING is a built-but-unverified prototype; and the coverage map was under-counting (GeoStar closes on the grid).**
+
+1. **GENERIC FEATURE DETECTOR — PROVEN (shape-agnostic Stage-1).** `_strataCreaseDetect.test.ts`: score = (scale-invariance of the directional 2nd difference of the 3D surface) × magnitude — the same two-scale idea as the z-step detector, in an arbitrary direction. Smooth ⇒ 2nd diff ∝ h² (score→0); crease ⇒ ∝ h¹; jump ⇒ ∝ h⁰. Measured maxScore across styles (384×256 grid): HarmonicRipple **22** (smooth, features = noise) vs GeometricStar **1273**, GothicArches **2076**, Crystalline **451** (46% of cells — faceted), CelticKnot **1122**. Clean smooth-vs-featured separation, ZERO per-style code. This is the missing §7 Stage-1 piece, working.
+
+2. **COVERAGE RECLASSIFICATION — GeoStar closes on the GRID.** GeometricStar was mis-filed as "needs conforming" — it was only UNDER-BUDGETED (the sweep capped ta.length at 2.5M mid-churn). At triCap 3M it closes: MAX **7.000um**, 0/1,421,464 over, non-manifold 0, on the plain grid+LEPP. So the real grid-tier count is ≥14/20 (the "over-tol" verdicts in the coverage sweep were partly budget artifacts — re-run the crease styles at ≥4M before trusting "needs conforming").
+
+3. **GENERIC CREASE-CONFORMING — BUILT, UNVERIFIED (flag `PF_SOLID_CREASE`, default OFF).** In the grid init: `edgeCrease` finds a crease crossing on each cell edge (kink of rA, accepted only if scale-invariant), cells with 2 crease edges are cut along the crease chord (generic convex-polygon split) so LEPP gets an edge ON the crease. STATUS: on GeoStar it was a NO-OP (creaseCuts=0 — the default 96×48 grid edges are too long for the kink 2nd-difference to clear the tol threshold); on GothicArches the A/B did not complete (grid runs time out at ≥900k tris under memory pressure — 28 concurrent node procs). So the mechanism is NOT yet shown to fire usefully or to help. Needs: a finer detection grid (or per-edge kink refinement) so it fires, then a clean A/B on a genuinely crease-limited style (Gothic) proving faster convergence. Default OFF ⇒ the proven pipeline is unaffected.
+
+**HONEST STATE OF "20/20 shape-agnostic":** NOT reached. Proven: the shape-agnostic feature detector (the hard conceptual piece) + 14+/20 styles closing across grid/treads/Voronoi-cells. Prototype (unverified): generic crease-conforming. Not started: generic jump-curtains for snaking-C0 (Celtic). The remaining work is engineering + verification on the conforming, not a conceptual unknown — the detector shows the features are findable generically.
+
+**LEDGER.** NEW: `research/bridge/_strataCreaseDetect.test.ts` (`PF_STRATA_CREASE=1`, `PF_CREASE_STYLE`). `_strataVoronoiSolid.test.ts`: `edgeCrease`+crease cell-cut behind `PF_SOLID_CREASE` (default OFF), `creaseCuts` debug.

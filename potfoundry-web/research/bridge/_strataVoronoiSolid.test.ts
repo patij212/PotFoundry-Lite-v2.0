@@ -93,6 +93,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     const STYLE = process.env.PF_SOLID_STYLE ?? 'Voronoi';
     const INIT = process.env.PF_SOLID_INIT ?? (STYLE === 'Voronoi' ? 'voronoi' : 'grid');
     let stepZs: number[] = []; // C0 z-steps detected in the grid init (double-valued tread bridging)
+    let creaseCuts = 0; // grid cells cut by a generic crease (shape-agnostic conforming)
     const snakeToCamel = (s: string): string => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
     const registryDefaults = (id: string): Record<string, number> => {
       const cfg = (STYLE_REGISTRY as Record<string, { params?: Record<string, { default?: unknown }>; advancedParams?: Record<string, { default?: unknown }> }>)[id];
@@ -351,15 +352,116 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
           for (let i = 0; i < gu; i += 1) row.push(addV((TWO_PI * i) / gu, z));
           vgrid.push(row);
         }
+        // GENERIC CREASE CONFORMING (shape-agnostic): where a crease (gradient discontinuity) crosses a cell edge,
+        // insert a vertex ON the crease and cut the cell along the crease chord so LEPP gets an edge on the crease
+        // (quadratic convergence) instead of chording it (linear). Off unless PF_SOLID_CREASE=1.
+        const creaseOn = process.env.PF_SOLID_CREASE === '1';
+        // Crease crossing on a grid edge (θ,z)a→b: kink of rA along it, accepted only if scale-INVARIANT (crease/jump),
+        // not a smooth curvature peak. Returns the crease vertex index, or -1.
+        const edgeCrease = (tha: number, za: number, thb: number, zb: number): number => {
+          if (!creaseOn) return -1;
+          const n = 20;
+          const rs: number[] = [];
+          for (let k = 0; k <= n; k += 1) {
+            const tk = k / n;
+            rs.push(rA(tha + (thb - tha) * tk, za + (zb - za) * tk));
+          }
+          let bi = -1;
+          let bv = 0;
+          for (let k = 1; k < n; k += 1) {
+            const d2 = Math.abs(rs[k + 1] - 2 * rs[k] + rs[k - 1]);
+            if (d2 > bv) {
+              bv = d2;
+              bi = k;
+            }
+          }
+          if (bi < 0 || bv < TOL) return -1;
+          const t = bi / n;
+          const mth = tha + (thb - tha) * t;
+          const mz = za + (zb - za) * t;
+          const dth = (thb - tha) / n;
+          const dz = (zb - za) / n;
+          const cc = rA(mth, mz);
+          const big = Math.abs(rA(mth + dth, mz + dz) - 2 * cc + rA(mth - dth, mz - dz));
+          const small = Math.abs(rA(mth + dth / 4, mz + dz / 4) - 2 * cc + rA(mth - dth / 4, mz - dz / 4));
+          // smooth ⇒ small ≈ big/16; crease ⇒ ≈ big/4; jump ⇒ ≈ big. Accept > 0.15·big AND big > tol.
+          if (big > TOL && small > 0.15 * big) return addV(mth, mz);
+          return -1;
+        };
+        const uOf = (i: number): number => (TWO_PI * i) / gu;
+        const zOfRow = (j: number): number => za + (bandH * j) / bandRows;
+        const hCache = new Map<string, number>();
+        const hEdge = (i: number, j: number): number => {
+          const i1 = (i + 1) % gu;
+          const key = `h${Math.min(i, i1)},${j}`;
+          const hit = hCache.get(key);
+          if (hit !== undefined) return hit;
+          const c = edgeCrease(uOf(i), zOfRow(j), uOf(i1), zOfRow(j));
+          hCache.set(key, c);
+          return c;
+        };
+        const vEdge = (i: number, j: number): number => {
+          const key = `v${i},${j}`;
+          const hit = hCache.get(key);
+          if (hit !== undefined) return hit;
+          const c = edgeCrease(uOf(i), zOfRow(j), uOf(i), zOfRow(j + 1));
+          hCache.set(key, c);
+          return c;
+        };
+        // Fan-triangulate a convex boundary loop of vertex indices.
+        const fan = (loop: number[]): void => {
+          for (let k = 1; k + 1 < loop.length; k += 1) addT(loop[0], loop[k], loop[k + 1]);
+        };
         for (let j = 0; j < bandRows; j += 1) {
           for (let i = 0; i < gu; i += 1) {
             const i1 = (i + 1) % gu;
-            addT(vgrid[j][i], vgrid[j][i1], vgrid[j + 1][i1]);
-            addT(vgrid[j][i], vgrid[j + 1][i1], vgrid[j + 1][i]);
+            const A = vgrid[j][i];
+            const B = vgrid[j][i1];
+            const C = vgrid[j + 1][i1];
+            const D = vgrid[j + 1][i];
+            if (!creaseOn) {
+              addT(A, B, C);
+              addT(A, C, D);
+              continue;
+            }
+            // boundary order A →(top)→ B →(right)→ C →(bottom←)→ D →(left←)→ A, inserting crease points.
+            const top = hEdge(i, j);
+            const right = vEdge(i1, j);
+            const bot = hEdge(i, j + 1);
+            const left = vEdge(i, j);
+            const bnd: number[] = [A];
+            const creaseIdx: number[] = [];
+            const push = (x: number): void => {
+              if (x >= 0) {
+                creaseIdx.push(bnd.length);
+                bnd.push(x);
+              }
+            };
+            push(top);
+            bnd.push(B);
+            push(right);
+            bnd.push(C);
+            push(bot);
+            bnd.push(D);
+            push(left);
+            if (creaseIdx.length === 2) {
+              creaseCuts += 1;
+              const [p, q] = creaseIdx;
+              fan(bnd.slice(p, q + 1)); // arc p..q + closing edge q→p
+              fan([...bnd.slice(q), ...bnd.slice(0, p + 1)]); // arc q..p (wrapping)
+            } else {
+              // 0, 1, or >2 crease hits on this cell — fall back to the plain split (LEPP still refines it).
+              addT(A, B, C);
+              addT(A, C, D);
+            }
           }
         }
       }
       cells = gu * gv;
+      if (process.env.PF_SOLID_DEBUG === '1' && process.env.PF_SOLID_CREASE === '1') {
+        // eslint-disable-next-line no-console
+        console.log(`  crease-conforming: ${creaseCuts} cells cut on the ${gu}×${gv} grid`);
+      }
     }
 
     // ---- geometry + LEPP ----
