@@ -146,6 +146,9 @@ interface Arm {
   /** Inject the graph vertices as PINNED seed points but NO constraint edges — the Delaunay triangulates around
    *  them (junctions become natural degree-k vertices) with zero constraint recovery to fail. */
   pointsOnly?: boolean;
+  /** OPT-IN anisotropic (II,I) crease-aligned metric + metric-in-circle Delaunay — sizes fine ACROSS the steep
+   *  relief groove flank, long ALONG it; auto-detects the flank from curvature (no graph, no recovery). */
+  aniso?: boolean;
 }
 const ARMS: Arm[] = [
   // conform FIRST: its alignment self-check prints before the (slow) mesh, so a target/CPU desync is caught early.
@@ -159,6 +162,9 @@ const ARMS: Arm[] = [
   // NO-RECOVERY path: inject the bisector+junction vertices as PINNED seed points, no constraint edges — sidesteps
   // the recovery wall entirely; the Delaunay fans junctions naturally + chord-Steiner splits the crease tail.
   { key: 'points-only', conform: true, pointsOnly: true, segLen: 0.006, note: 'dense bisector+junction points as pinned seeds, NO constraint edges (no recovery)' },
+  // ANISOTROPIC sizing: fine across the groove flank, long along it (auto from curvature, no graph/recovery). The
+  // cheapest path that could actually close Voronoi within the existing kernel.
+  { key: 'plain-aniso', conform: false, aniso: true, note: 'M=g/h² + ANISO crease-aligned metric + chord-Steiner, no graph' },
 ];
 
 describe('STRATA-001 Voronoi via M=g/h² CDT + bisector constraint edges', () => {
@@ -174,6 +180,7 @@ describe('STRATA-001 Voronoi via M=g/h² CDT + bisector constraint edges', () =>
         const rA = buildRadiusFn('Voronoi' as StyleId, VPARAMS, DIMS);
         const opts: InhouseMeshOpts = { ...BASE };
         if (arm.maxPoints !== undefined) opts.maxPoints = arm.maxPoints;
+        if (arm.aniso) opts.aniso = true;
         let graphPts = 0;
         let graphEdges = 0;
         let align: ReturnType<typeof alignmentCheck> | null = null;
