@@ -18,6 +18,37 @@
 - ESLint 0-warnings hook fires after every TS edit — fix before moving on.
 - Caps on every accumulation/recursion in kernel + harness code (Set-cap lesson); no hot-loop allocation (F-INV-5).
 
+## ⚠️ RE-SEQUENCED 2026-07-24 after S0 (`E-2026-07-24-STRATA001-S0-CORRECTION`)
+
+S0 ran and its gate fired, but its baseline was measured at `v_relief 0.04` / `v_morph 0` — the **certified roster's own** config (`_certRoster.ts:149`), which is 1/50th the registry-default relief in a non-default mode, with a **uniform** outer wall (no stations, no chords). Numbers void; process worked. Consequences for this plan:
+
+1. **S1 and S2 SWAP.** Measured: the screen is *not* the blocker — the bound converges under subdivision at real relief (depth 24→30 ⇒ 9,500,024 → 9,500,001 pm), while **uniform tessellation cannot certify at any legal density** (still short at the 262,144 tri/patch cap). The binding constraint is triangle *placement*. **Do S2 (conforming chords) first**; S1 (pivot+defect node rule) is re-evaluated afterwards on evidence — conforming makes cells *touch* rather than straddle the bisector, which is exactly failure-mode #1's test.
+2. **New mandatory S0 gate — REPRESENTATIVENESS.** Every baseline's first report line must declare *style params vs `src/styles/registry.ts` defaults* (flagging each reduced one) and *uniform vs conforming* tessellation. A certificate at reduced relief certifies a different shape. See `feedback_verify_registry_defaults`.
+3. **P1/P2 are UNREGISTERED.** Both were evaluated on de-featured data. Re-register at defaults before citing.
+4. **The independent ruler gate (was S3 Task 3.3) is promoted to a standing requirement on every fidelity claim** — the certified roster cannot serve as the scoreboard. But see the ruler caveat below: it is a **falsifier, not a certifier**, and it is *blind at creases* unless seeded with the exact feature geometry.
+5. **Thesis correction.** The campaign was written against "the validated screen can't certify piecewise-smooth fields". Measured thesis: **"the tessellator can't represent features."** §4 (conform) and §7 (tape→strata→**emitter** dispatch) carry the value; §5 (node rule) is speculative until shown necessary.
+
+### ⚠️ RULER CAVEAT — the Φ projector at 2048/1024 IS blind at creases (derived 2026-07-24)
+
+**A grid-sampled ruler has the same defect as a grid-built mesh.** The max of `|mesh − surface|` across a crease sits exactly ON the crease; a grid ruler only sees the nearest sample.
+
+Worked for Voronoi at registry defaults (H32/OD30 ⇒ r 15 mm, circumference 94.2 mm; `v_scale 8` ⇒ cell ≈ 11.8 mm; `v_relief 2.0`):
+- Wall slope near a bisector: `relief · s′ · |∇f1|` = `2.0 × 1.5 × (1/11.8)` ≈ **0.25 mm/mm**; the gradient **jump** across the crease is σ ≈ **0.51 mm/mm**.
+- Error profile across the crease is a tent peaking on the crease, flanks of slope ≈ σ/2.
+- 2048 θ samples over 94.2 mm ⇒ Δ ≈ **0.046 mm**; worst crease-to-sample offset Δ/2.
+- **Under-report ≈ (σ/2)(Δ/2) ≈ 0.25 × 0.023 ≈ 0.0059 mm ≈ 6 µm** — on a 10 µm budget.
+
+So the Φ projector can read ~4 µm on a mesh whose true crease error is 10 µm. Worse, site jitter (`pcg2d`) makes crease positions incommensurate with the sample grid, so *which* creases land near a sample is luck — the reported MAX is not even stable across styles/seeds. **A grid ruler cannot arbitrate a crease at this tolerance.**
+
+**Rules that follow:**
+1. The **certificate is the authority** — it bounds over whole cells, not at points (P-INV-2: sampling is a falsifier only, never a bound). The ruler's job is to *refute*, and a passing ruler proves nothing about creases.
+2. **Seed the ruler with the exact feature geometry.** Sample densely ALONG `voronoiBisectorSegmentsUv` (and each style's crease set) in addition to the grid. The same exact geometry that drives the chords must drive the ruler's sampling — one source, two consumers — otherwise a featureless-but-smooth mesh passes.
+3. Report grid-MAX and crease-MAX **separately**. A ruler that reports one blended number hides exactly the failure mode we are chasing.
+
+**Exemplars to copy (both put triangles ON features from a COARSE base — neither uses a dense uniform grid):**
+- `WaveInterference_defaults_H32_OD30_certified` — **FULL DEFAULTS, relief 2.3 mm**, 1,267,712 tris: outer base 2^5 + 288-row rational ladder + fade-kink stations 3/20, 17/20. The existence proof that full-defaults certification is reachable.
+- `GothicArches_p1_H32_OD30_certified` — 304,808 tris from a 256×32 base + `angularStations`/`verticalStationsByPatch` + **`conformingChordsByPatch: gothicChordsForPatch(...)`** on both walls. Method-exemplary (its `gaRelief 0.2` vs default 1.5 is not).
+
 ## Phase map
 
 | Phase | Deliverable | Hard gate (invariants) | Probes |
