@@ -65,12 +65,12 @@ function distanceToGraph(u: number, v: number, segs: readonly UvSegment[]): numb
 
 describe('assembleVoronoiConformingChords', () => {
   it('emits chords for the default bubble lattice', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
     expect(chords.length).toBeGreaterThan(0);
   });
 
   it('uses one exact dyadic denominator that both grids divide', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
     const denominator = 2 ** OPTIONS.chordFractionBits;
     for (const chord of chords) {
       expect(chord.denominator).toBe(String(denominator));
@@ -89,7 +89,7 @@ describe('assembleVoronoiConformingChords', () => {
   });
 
   it('places every endpoint ON a grid line (tessellator contract)', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
     const denominator = 2 ** OPTIONS.chordFractionBits;
     const uStep = denominator / 2 ** OPTIONS.angularDivisionsLog2;
     const vStep = denominator / 2 ** OPTIONS.verticalDivisionsLog2;
@@ -105,39 +105,90 @@ describe('assembleVoronoiConformingChords', () => {
     }
   });
 
-  it('never emits a chord that runs along a grid line or is degenerate', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+  it('never emits a degenerate chord, nor one lying along a grid line', () => {
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const denominator = 2 ** OPTIONS.chordFractionBits;
+    const uStep = denominator / 2 ** OPTIONS.angularDivisionsLog2;
+    const vStep = denominator / 2 ** OPTIONS.verticalDivisionsLog2;
     for (const chord of chords) {
-      const sameU = chord.start.uNumerator === chord.end.uNumerator;
-      const sameV = chord.start.vNumerator === chord.end.vNumerator;
-      expect(sameU && sameV, 'degenerate chord').toBe(false);
-      expect(sameU || sameV, 'chord lies along a grid line').toBe(false);
+      const su = Number(chord.start.uNumerator);
+      const eu = Number(chord.end.uNumerator);
+      const sv = Number(chord.start.vNumerator);
+      const ev = Number(chord.end.vNumerator);
+      expect(su === eu && sv === ev, 'degenerate chord').toBe(false);
+      // Kernel rule :1045-1050 — refused only when the shared axis is a STATION
+      // on both ends. A shared SNAPPED coordinate is a legitimate cut.
+      const alongColumn = su === eu && su % uStep === 0 && eu % uStep === 0;
+      const alongRow = sv === ev && sv % vStep === 0 && ev % vStep === 0;
+      expect(alongColumn || alongRow, 'chord lies along a grid line').toBe(false);
     }
   });
 
-  it('tracks the exact bisector graph within the snap tolerance', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+  it('emits only consecutive-crossing chords, so each bounds one common cell', () => {
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const denominator = 2 ** OPTIONS.chordFractionBits;
+    const uStep = denominator / 2 ** OPTIONS.angularDivisionsLog2;
+    const vStep = denominator / 2 ** OPTIONS.verticalDivisionsLog2;
+    // Both endpoints must touch the boundary of a single cell: their column
+    // spans and row spans may differ by at most one step.
+    for (const chord of chords) {
+      const su = Number(chord.start.uNumerator);
+      const eu = Number(chord.end.uNumerator);
+      const sv = Number(chord.start.vNumerator);
+      const ev = Number(chord.end.vNumerator);
+      expect(
+        Math.abs(Math.floor(su / uStep) - Math.floor(eu / uStep)),
+        `chord spans more than one column: u ${su} -> ${eu}`
+      ).toBeLessThanOrEqual(1);
+      expect(
+        Math.abs(Math.floor(sv / vStep) - Math.floor(ev / vStep)),
+        `chord spans more than one row: v ${sv} -> ${ev}`
+      ).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('tracks the exact bisector graph, with deviation confined to anchored chain ends', () => {
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
     const segs = voronoiBisectorSegmentsUv(LATTICE);
     const denominator = 2 ** OPTIONS.chordFractionBits;
-    // A snapped endpoint moves by at most half a chord-grid step on the free
-    // axis; the midpoint of a chord therefore stays within a few steps of the
-    // true bisector. Generous by 8x and still ~1e-3 of a lattice cell.
-    const tolerance = (8 / denominator) * Math.SQRT2;
-    let worst = 0;
+    const uStep = denominator / 2 ** OPTIONS.angularDivisionsLog2;
+    const vStep = denominator / 2 ** OPTIONS.verticalDivisionsLog2;
+    // Interior chords sit on the bisector to within the snap; the FIRST and LAST
+    // chord of each chain are deliberately pulled to a grid corner (kernel
+    // requires chains to reach the grid at both extremes), which can move them
+    // by up to half a cell. Score the two populations separately — a blended
+    // number would hide whichever one regressed.
+    const offsets: number[] = [];
+    let anchoredWorst = 0;
     for (const chord of chords) {
-      const mu =
-        (Number(chord.start.uNumerator) + Number(chord.end.uNumerator)) / (2 * denominator);
-      const mv =
-        (Number(chord.start.vNumerator) + Number(chord.end.vNumerator)) / (2 * denominator);
-      worst = Math.max(worst, distanceToGraph(mu, mv, segs));
+      const su = Number(chord.start.uNumerator);
+      const eu = Number(chord.end.uNumerator);
+      const sv = Number(chord.start.vNumerator);
+      const ev = Number(chord.end.vNumerator);
+      const mu = (su + eu) / (2 * denominator);
+      const mv = (sv + ev) / (2 * denominator);
+      const offset = distanceToGraph(mu, mv, segs);
+      const touchesCorner =
+        (su % uStep === 0 && sv % vStep === 0) || (eu % uStep === 0 && ev % vStep === 0);
+      if (touchesCorner) anchoredWorst = Math.max(anchoredWorst, offset);
+      else offsets.push(offset);
     }
-    expect(worst, `worst chord-midpoint offset ${worst} exceeds ${tolerance}`).toBeLessThan(
-      tolerance
-    );
+    const snapTolerance = (8 / denominator) * Math.SQRT2;
+    const cellDiagonal = Math.hypot(uStep / denominator, vStep / denominator);
+    expect(offsets.length, 'no interior chords to score').toBeGreaterThan(0);
+    const worstInterior = Math.max(...offsets);
+    expect(
+      worstInterior,
+      `worst INTERIOR chord offset ${worstInterior} exceeds the snap tolerance ${snapTolerance}`
+    ).toBeLessThan(snapTolerance);
+    expect(
+      anchoredWorst,
+      `anchored end chord offset ${anchoredWorst} exceeds half a cell diagonal ${cellDiagonal}`
+    ).toBeLessThanOrEqual(cellDiagonal);
   });
 
   it('shares chain vertices verbatim — no near-miss T-junctions', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
     const keys = new Set<string>();
     const points: Array<readonly [number, number]> = [];
     for (const chord of chords) {
@@ -171,22 +222,41 @@ describe('assembleVoronoiConformingChords', () => {
     expect(points.length).toBeGreaterThan(0);
   });
 
-  it('keeps endpoints out of the periodic seam interior', () => {
-    const chords = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+  // The two kernel endpoint rules, verbatim from
+  // annularSolidReferenceTessellation:1024-1043. Both bite because a snapped
+  // coordinate is almost never a station.
+  it('puts boundary-row endpoints exactly on angular stations', () => {
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
     const denominator = 2 ** OPTIONS.chordFractionBits;
     const uStep = denominator / 2 ** OPTIONS.angularDivisionsLog2;
     for (const chord of chords) {
       for (const point of [chord.start, chord.end]) {
         const u = Number(point.uNumerator);
-        // Strictly inside the first or last angular column is refused by the
-        // tessellator (seam-column rule); u must be 0, denominator, or land on
-        // a column line, or sit in a non-seam column.
-        const inFirstColumnInterior = u > 0 && u < uStep;
-        const inLastColumnInterior = u > denominator - uStep && u < denominator;
-        expect(
-          inFirstColumnInterior || inLastColumnInterior,
-          `endpoint u=${u} sits strictly inside a seam column`
-        ).toBe(false);
+        const v = Number(point.vNumerator);
+        if (v === 0 || v === denominator) {
+          expect(
+            u % uStep,
+            `boundary-row endpoint u=${u} is off-station (weld T-junction)`
+          ).toBe(0);
+        }
+      }
+    }
+  });
+
+  it('touches the periodic seam only at grid corners', () => {
+    const { chords } = assembleVoronoiConformingChords(LATTICE, OPTIONS);
+    const denominator = 2 ** OPTIONS.chordFractionBits;
+    const vStep = denominator / 2 ** OPTIONS.verticalDivisionsLog2;
+    for (const chord of chords) {
+      for (const point of [chord.start, chord.end]) {
+        const u = Number(point.uNumerator);
+        const v = Number(point.vNumerator);
+        if ((u === 0 || u === denominator) && v !== 0 && v !== denominator) {
+          expect(
+            v % vStep,
+            `seam-column endpoint v=${v} is not a station — the periodic weld cannot share it`
+          ).toBe(0);
+        }
       }
     }
   });

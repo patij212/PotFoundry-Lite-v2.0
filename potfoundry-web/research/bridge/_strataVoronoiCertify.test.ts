@@ -19,6 +19,8 @@ import {
 } from '../../src/geometry/targetSolid/singlePatchAnnularRadialSolidTarget';
 import { createStyleOuterWallTargetRegistryBinding } from '../../src/geometry/targetSolid/styleOuterWallTargetRegistry';
 import { compileValidatedResidualEvaluator } from '../../src/geometry/targetSolid/validatedResidualEvaluatorRegistry';
+import { assembleVoronoiConformingChords } from '../../src/geometry/targetSolid/voronoiConformingChords';
+import type { VoronoiLatticeParams } from '../../src/geometry/targetSolid/voronoiBisectorGuides';
 
 /*
  * STRATA-001 S0 root-cause arm (E-2026-07-23-STRATA001-S0-BASELINE, increment 2).
@@ -89,6 +91,20 @@ const BUDGET_PM = BigInt(envInt('PF_STRATA_BUDGET_PM', 9_500_000));
 // cMPD DEFAULT_MAX_WORK_CELLS=1e6, HARD_MAX=6e6. A denser reference tessellation
 // trips the default before any work happens (RESOURCE_LIMIT after 0ms).
 const MAXCELLS = envInt('PF_STRATA_MAXCELLS', 0);
+// S2: conforming chords on the order-1 bisector graph (assembleVoronoiConformingChords).
+// This is the Gothic/WaveInterference recipe — COARSE base grid + chords placed ON the
+// features — versus the roster's uniform grid, which S0 showed cannot certify at any
+// legal density. Lattice mirrors the registry defaults (v_scale 8, v_jitter 0.8,
+// v_z_stretch 1); relief/morph do not move the site lattice.
+const CHORDS = process.env.PF_STRATA_CHORDS === '1';
+const CHORD_BITS = envInt('PF_STRATA_CHORD_BITS', 16);
+const LATTICE: VoronoiLatticeParams = {
+  scale: 8,
+  jitter: 0.8,
+  pulse: 0,
+  zStretch: 1,
+  period: 8,
+};
 
 function atlas(
   styleId: string,
@@ -138,6 +154,17 @@ describe('STRATA-001 S0 increment 2: does the REAL certifier hang on Voronoi?', 
       );
       const mode = MORPH === 0 ? 'BUBBLE' : MORPH === 1 ? 'WEB' : `MORPH=${MORPH}`;
       const binding = atlas('Voronoi', { v_morph: MORPH, v_relief: RELIEF });
+      const assembly = CHORDS
+        ? assembleVoronoiConformingChords(LATTICE, {
+            angularDivisionsLog2: ALOG2,
+            verticalDivisionsLog2: VLOG2,
+            chordFractionBits: CHORD_BITS,
+            ...(envInt("PF_STRATA_CHORD_SEGS", 0) > 0
+              ? { segmentLimit: envInt("PF_STRATA_CHORD_SEGS", 0) }
+              : {}),
+          })
+        : { chords: [], droppedToJunctions: 0, contestedCells: 0 };
+      const chords = assembly.chords;
       const tessellation = tessellateAnnularRadialSolidTargetForCertification(binding, {
         angularDivisionsLog2: ALOG2,
         verticalDivisionsLog2ByPatch: {
@@ -148,6 +175,7 @@ describe('STRATA-001 S0 increment 2: does the REAL certifier hang on Voronoi?', 
           'bottom-under': 5,
           'drain-wall': 0,
         },
+        ...(CHORDS ? { conformingChordsByPatch: { 'outer-wall': chords } } : {}),
       });
       const target = createCompleteMappedGeometryTargetBindingFromSurfaceComplex(
         binding.surfaceComplex
@@ -161,6 +189,8 @@ describe('STRATA-001 S0 increment 2: does the REAL certifier hang on Voronoi?', 
         `mode: ${mode}  (v_morph=${MORPH}, v_relief=${RELIEF})`,
         `tessellation: angularLog2=${ALOG2} verticalLog2(walls)=${VLOG2}  deadline=${DEADLINE_MS}ms/patch  maxDepth=${MAXDEPTH > 0 ? MAXDEPTH : 24}`,
         `budget: ${BUDGET_PM} pm (${(Number(BUDGET_PM) / 1e6).toFixed(3)} um)`,
+        `conforming: ${CHORDS ? `ON — ${chords.length} order-1 bisector chords on outer-wall (denominator 2^${CHORD_BITS}); ${assembly.droppedToJunctions} dropped at junction cells` : 'OFF — uniform grid (the roster config S0 showed cannot certify)'}`,
+        `tessellation triangles: ${tessellation.triangleCount}`,
         '',
       ];
       let anyFailure = false;
