@@ -103,7 +103,15 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     // the z=0/z=H clip crossing is order-dependent), and the seam (θ=0≡2π) coincides in 3D. Exact-key welding splits
     // both; a merge-radius weld fuses them. WELD_MM well below the mesh min edge (verified) and far above the
     // divergence. Handles the seam for free (coincident 3D points merge).
-    const WELD_MM = envF('PF_SOLID_WELD_UM', 0.5) / 1000;
+    // Shared vertices across cells/seam are BIT-EXACT (measured: max merge dist 0nm), so the weld only needs to catch
+    // exact matches — a tiny radius. A large radius merges DISTINCT close vertices (dense web near junctions) into
+    // degenerate/non-manifold edges. WELD must be << min edge.
+    const WELD_MM = envF('PF_SOLID_WELD_UM', 0.05) / 1000;
+    // Refinement floor: a Voronoi triple-junction is a cusp tip; sag there shrinks only linearly, so LEPP chases it to
+    // nm edges (min edge → 0) unless floored. Below FLOOR the residual cusp sag is sub-nm (bounded slope × µm) — far
+    // under tol — so flooring costs no real fidelity while keeping every edge >> the weld radius.
+    const FLOOR_MM = envF('PF_SOLID_FLOOR_UM', 1.5) / 1000;
+    let maxMergeDist = 0;
     const gcell = new Map<string, number[]>();
     const gi = (v: number): number => Math.floor(v / WELD_MM);
     const addV = (thetaRaw: number, z: number): number => {
@@ -120,7 +128,11 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
             const list = gcell.get(`${cx + dx},${cy + dy},${cz + dz}`);
             if (list === undefined) continue;
             for (const j of list) {
-              if (Math.hypot(vx[j] - x, vy[j] - y, vzz[j] - z) <= WELD_MM) return j;
+              const d = Math.hypot(vx[j] - x, vy[j] - y, vzz[j] - z);
+              if (d <= WELD_MM) {
+                if (d > maxMergeDist) maxMergeDist = d;
+                return j;
+              }
             }
           }
         }
@@ -328,7 +340,9 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     while (stack.length > 0) {
       const t = stack.pop() as number;
       if (!alive[t]) continue;
-      if (sagOf(t) <= acceptTol) continue;
+      // Accept if under tol OR the longest edge is already at the floor (cusp-tip guard — see FLOOR_MM).
+      const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
+      if (sagOf(t) <= acceptTol || le < FLOOR_MM) continue;
       if (ta.length >= triCap) {
         capped = true;
         break;
@@ -587,7 +601,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       '',
       '--- OUTER-WALL FIDELITY (oracle ' + oracleN + ') ---',
       `  MAX sag ${um(maxSag)} um  ${maxSag <= TOL ? '✅' : '❌'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-0.01mm ${over}/${sags.length}`,
-      `  min edge ${um(minEdge)} um  (weld radius ${um(WELD_MM)} um — must be << min edge)  ${minEdge > 4 * WELD_MM ? '✅' : '⚠️'}`,
+      `  min edge ${um(minEdge)} um  weld radius ${um(WELD_MM)} um  max merge dist ${(maxMergeDist * 1e6).toFixed(4)} nm  ${minEdge > 4 * WELD_MM ? '✅' : '⚠️ weld ≥ min edge'}`,
       '=========================================================',
       '',
     ].join('\n');

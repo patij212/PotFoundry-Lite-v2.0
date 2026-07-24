@@ -8041,3 +8041,29 @@ Audits (both 3×3): non-manifold edges (>2 share) = 0; max edge share = 2 (clean
 **HONEST SCOPE.** OPEN outer-wall SURFACE — the boundary is the patch outline (web 3×3: 2,684 boundary edges = the outer hull, no internal holes since cracks=0). A closed PRINTABLE solid needs the inner wall + rim + base assembly and the u-seam ring weld (period 8) — the remaining pipeline work. Also: single relief (2.0) and one interior region; seam/rim cells not meshed. But the campaign's core unknown — can a structured mesh be watertight AND 0.01mm on Voronoi, where every generic mesher topped out at ~0.11mm — is answered YES.
 
 **LEDGER.** NEW: `research/bridge/_strataVoronoiLepp.test.ts` (`PF_STRATA_LEPP=1`; `PF_LEPP_MORPH`/`CXLO`/`CXHI`/`CYLO`/`CYHI`/`ORACLE`/`ACCEPT_TOL`/`TRICAP`). From-disk manifold+fidelity verify added to `_strataVoronoiStlVerify.test.ts` (`PF_STLV_*`). STLs: `research/exchange/_strataVoronoiLepp/` (gitignored artifacts). Commit `05cfb5c1` + this.
+
+---
+
+## E-2026-07-24-STRATA001-S7-SOLID (CLOSED PRINTABLE Voronoi pot solid: seam-welded ring + inner/rim/base/floor ⇒ watertight closed 2-manifold, outer wall 0.01mm) [BUILD+PROVE; research-only, no src edit]
+
+**HYPOTHESIS (falsifiable):** the watertight outer-wall patch generalizes to a full CLOSED printable pot — outer Voronoi wall around the whole circumference (seam welded) + inner wall + rim + base + cavity floor — that is a closed 2-manifold (boundary edges 0) with the outer wall still ≤0.01mm.
+
+**KILL-CRITERION:** independent from-disk audit (position-weld) shows boundary edges 0 AND non-manifold 0 AND 0 degenerate, AND outer-wall MAX ≤ 0.01mm.
+
+**VERDICT: CONFIRMED — first closed printable Voronoi solid at 0.01mm, both modes.**
+
+| mode | triangles | outer wall | caps | boundary | non-manifold | outer MAX | over 0.01mm | file |
+|---|---|---|---|---|---|---|---|---|
+| **bubble** | 125,076 | 99,464 | 25,612 | **0** | **0** | **7.000 um** | **0/99,464** | 6.25 MB |
+| **web** | 1,593,136 | 1,567,524 | 25,612 | **0** | **0** | **7.000 um** | **0/1,567,524** | 79.7 MB |
+
+Euler (bubble): V−E+F = 62,540 − 187,614 + 125,076 = **2** (genus-0). Independent from-disk audits (python, position-weld): bubble @1µm boundary 0 / non-manifold 0 / degenerate 0; web @10nm boundary 0 / non-manifold 0 / degenerate 0 (144 edges in [0.1,1]µm near junctions, 0 below 100nm).
+
+**THREE ENGINEERING FIXES, each measured:**
+1. **Seam weld** — vertices are (θ,z); θ welded canonically in [0,2π); edge midpoints take the SHORTEST arc, so a θ=0-straddling edge bisects at the seam, not the far side. Seam welds with no special case. Shared vertices across cells/seam are BIT-EXACT (max merge dist 0 nm measured) — so the weld radius only needs to catch exact matches.
+2. **Flat closed edges** — high-jitter bottom/top cells don't reach z=0/H, leaving a jagged (z 0–2mm) boundary the crack-metric flagged. Fix: mesh one extra cell row above+below (cy −1..9) and clip to [0,H] ⇒ flat z=0/z=H edges the base/rim close cleanly.
+3. **Weld radius + cusp floor** — the first weld (0.5µm) was pointlessly large (divergence is 0) and in dense WEB merged DISTINCT close vertices near junctions (where the triple-point cusp drives LEPP to nm edges) into 41 non-manifold + 2 boundary. Fix: weld 0.05µm (>> exact, << min edge) + a refinement FLOOR (stop at longest edge < 1.5µm — the residual cusp sag is sub-nm, far under tol). Web then closes with 0 defects.
+
+**HONEST SCOPE.** The OUTER WALL is the 0.01mm Voronoi feature surface; inner wall / rim / base / floor are smooth STRUCTURAL caps (correct geometry, not feature surfaces — they don't need 0.01mm). Web carries 144 sub-µm edges near junctions (valid, watertight at ≤100nm weld, but a coarse-welding slicer ~1µm might merge a few — a mesh-quality pass would coarsen them; bubble min edge 1.16µm has none). Single relief (2.0), one pot geometry.
+
+**LEDGER.** NEW: `research/bridge/_strataVoronoiSolid.test.ts` (`PF_STRATA_SOLID=1`; `PF_SOLID_MORPH`/`STAGE`(ring|solid)/`ORACLE`/`ACCEPT_TOL`/`WELD_UM`/`FLOOR_UM`/`WALLT`/`FLOORZ`/`INNERDIV`/`INNERRINGS`). STLs: `research/exchange/_strataVoronoiSolid/` (gitignored). Commits `dd69cb77` + this.
