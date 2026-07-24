@@ -7565,3 +7565,24 @@ Additional patches also fail at real relief (bottom-top tri=394, top-rim tri=742
 **OPEN CONCERN FOR THE WHOLE CERTIFIED CORPUS.** The Gothic exemplar itself used `gaRelief: 0.2` against a registry default of **1.5** (7.5x reduced). If the standard is full fidelity at parameters users can actually dial, the certified corpus needs an audit of which configs were certified at reduced relief — the same defect this row corrects, potentially sitting in prior rows.
 
 **LEDGER.** Same instruments; `_strataVoronoiCertify.test.ts` `PF_STRATA_RELIEF` (default 0.04 retained only for continuity with the rows above — **pass 2.0 for representative runs**). Registry defaults read from `src/styles/registry.ts:355-366` (Voronoi) and `:183-190` (GothicArches).
+
+**ADDENDUM — the reduced relief is IN THE CERTIFIED ROSTER, not just in my run.** `research/bridge/_certRoster.ts:149-163` (verbatim from `CERTIFIED_POTS` in `annularSolidReferenceTessellation.test.ts`, the PF_G2_POT gate's own roster):
+
+```
+name: 'Voronoi_H32_OD30_bubble',
+styleParams: { v_morph: 0, v_relief: 0.04 },     // defaults are 1.0 (Web) and 2.0 mm
+divisions: { angularDivisionsLog2: 8, 'outer-wall': 7,
+             verticalStationsByPatch: { 'inner-wall': ... } }   // OUTER WALL: no stations, NO conformingChordsByPatch
+```
+
+So the shelf's certified Voronoi (172,032 tris, roster GREEN) certifies a **1/50th-relief, non-default-mode** variant whose **outer wall is a plain uniform grid** — no stations, no conforming chords. My S0 runs reproduced the roster config faithfully; the defect is upstream of this campaign. **`Voronoi_H32_OD30_bubble` is not a meaningful certification of the Voronoi style.**
+
+**Roster relief audit (what "certified" currently means, per style):**
+
+| artifact | relief used | registry default | feature-conforming outer wall? |
+|---|---|---|---|
+| `WaveInterference_defaults_H32_OD30_certified` | **2.3 mm — FULL DEFAULTS** | — | YES (base 2^5 + 288-row rational ladder + fade-kink stations 3/20, 17/20), 1,267,712 tris |
+| `GothicArches_p1_H32_OD30_certified` | `gaRelief 0.2` | 1.5 (**7.5x reduced**) | YES (`conformingChordsByPatch` both walls + angular/vertical ladders), 304,808 tris |
+| `Voronoi_H32_OD30_bubble` | `v_relief 0.04` | 2.0 (**50x reduced**) + non-default `v_morph 0` | **NO — uniform grid**, 172,032 tris |
+
+**WaveInterference is the existence proof that the goal is reachable at full defaults** — and its method is the same family as Gothic's: coarse base + rational stations/chords placed AT the kinks. Neither exemplar uses a dense uniform grid. **The remaining roster entries need the same relief + conforming audit before any of them is cited as a style-level certification.**
