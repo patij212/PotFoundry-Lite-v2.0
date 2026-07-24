@@ -92,6 +92,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     // JSON override; PF_SOLID_MORPH still overrides vMorph for Voronoi.
     const STYLE = process.env.PF_SOLID_STYLE ?? 'Voronoi';
     const INIT = process.env.PF_SOLID_INIT ?? (STYLE === 'Voronoi' ? 'voronoi' : 'grid');
+    let stepZs: number[] = []; // C0 z-steps detected in the grid init (double-valued tread bridging)
     const snakeToCamel = (s: string): string => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
     const registryDefaults = (id: string): Record<string, number> => {
       const cfg = (STYLE_REGISTRY as Record<string, { params?: Record<string, { default?: unknown }>; advancedParams?: Record<string, { default?: unknown }> }>)[id];
@@ -284,21 +285,78 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       // triangles (linear vs quadratic convergence, per E-2026-07-24-STRATA001-S2-CONVERGENCE).
       const gu = Math.round(envF('PF_SOLID_GRIDU', 96));
       const gv = Math.round(envF('PF_SOLID_GRIDV', 48));
-      const vgrid: number[][] = [];
-      for (let j = 0; j <= gv; j += 1) {
-        const row: number[] = [];
-        for (let i = 0; i < gu; i += 1) row.push(addV((TWO_PI * i) / gu, (H * j) / gv));
-        vgrid.push(row);
+      // DOUBLE-VALUED STEP DETECTION (layered/C0 styles: Bamboo/DS/ArtDeco). rA jumps in z at each layer boundary
+      // (Bamboo asymVar keys on the integer segment). A single-valued flat mesh chords the jump ⇒ 2+mm error. Detect
+      // steps with jump > tol, mesh the smooth BANDS between them (disconnected — no strip crosses a step), then stitch
+      // structural TREAD annuli between adjacent band loops (below). This is the proven double-valued / ring-strip
+      // approach (DS/Bamboo) applied to the universal mesher.
+      const zSteps: number[] = [];
+      {
+        // TWO-SCALE discontinuity test: a true C0 jump's |Δr| is scale-invariant (d2 vs d1), a steep-SMOOTH feature
+        // (Bamboo's node bulge) shrinks ∝ δ. Step ⇔ jump(d2) > 0.5·jump(d1) AND jump(d1) > tol. Localize to the
+        // sample where jump(d2) peaks within each run.
+        const nZ = 12000;
+        const d1 = H / nZ;
+        const d2 = d1 / 8;
+        const probes = [0.21, 1.03, 2.44, 3.77, 5.29];
+        let runStartZ = -1;
+        let bestJ2 = 0;
+        let bestZ = 0;
+        const flush = (): void => {
+          if (runStartZ >= 0) {
+            zSteps.push(bestZ);
+            runStartZ = -1;
+            bestJ2 = 0;
+          }
+        };
+        for (let j = 1; j < nZ; j += 1) {
+          const z = H * (j / nZ);
+          let j1 = 0;
+          let j2 = 0;
+          for (const th of probes) {
+            j1 = Math.max(j1, Math.abs(rA(th, z + d1) - rA(th, z - d1)));
+            j2 = Math.max(j2, Math.abs(rA(th, z + d2) - rA(th, z - d2)));
+          }
+          if (j2 > 0.5 * j1 && j1 > TOL) {
+            if (runStartZ < 0) runStartZ = z;
+            if (j2 > bestJ2) {
+              bestJ2 = j2;
+              bestZ = z;
+            }
+          } else {
+            flush();
+          }
+        }
+        flush();
       }
-      for (let j = 0; j < gv; j += 1) {
-        for (let i = 0; i < gu; i += 1) {
-          const i1 = (i + 1) % gu;
-          const a = vgrid[j][i];
-          const b = vgrid[j][i1];
-          const c = vgrid[j + 1][i1];
-          const d = vgrid[j + 1][i];
-          addT(a, b, c);
-          addT(a, c, d);
+      stepZs = zSteps;
+      if (process.env.PF_SOLID_DEBUG === '1') {
+        // eslint-disable-next-line no-console
+        console.log(`  detected ${zSteps.length} z-steps: ${zSteps.map((z) => z.toFixed(2)).join(', ')}`);
+      }
+      // Band boundaries: 0, step1, ..., stepN, H. Inset ε around each step so no band reaches the jump; the tread
+      // (2ε thin, structural) later bridges r_below→r_above. ε well under tol keeps the step's geometric error < tol.
+      const stepEps = envF('PF_SOLID_STEP_EPS_UM', 4) / 1000;
+      const bounds = [0, ...zSteps, H];
+      for (let b = 0; b + 1 < bounds.length; b += 1) {
+        const za = b === 0 ? 0 : bounds[b] + stepEps;
+        const zb = b + 2 === bounds.length ? H : bounds[b + 1] - stepEps;
+        const bandH = zb - za;
+        if (bandH <= 0) continue;
+        const bandRows = Math.max(1, Math.round((gv * bandH) / H));
+        const vgrid: number[][] = [];
+        for (let j = 0; j <= bandRows; j += 1) {
+          const row: number[] = [];
+          const z = za + (bandH * j) / bandRows;
+          for (let i = 0; i < gu; i += 1) row.push(addV((TWO_PI * i) / gu, z));
+          vgrid.push(row);
+        }
+        for (let j = 0; j < bandRows; j += 1) {
+          for (let i = 0; i < gu; i += 1) {
+            const i1 = (i + 1) % gu;
+            addT(vgrid[j][i], vgrid[j][i1], vgrid[j + 1][i1]);
+            addT(vgrid[j][i], vgrid[j + 1][i1], vgrid[j + 1][i]);
+          }
         }
       }
       cells = gu * gv;
@@ -589,8 +647,54 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       }
       return { nonManifold, boundary, loops, interiorCracks };
     };
-    const outerTopo = analyze(soup);
     const loopZ = (loop: number[]): number => loop.reduce((s, i) => s + wpos[i][2], 0) / loop.length;
+    const ang = (p: P3): number => {
+      const a = Math.atan2(p[1], p[0]);
+      return a < 0 ? a + TWO_PI : a;
+    };
+    // Angle-merge stitch between two full rings (different vertex counts OK) → an annular strip pushed to the soup.
+    // Used for the rim (outer-top ↔ inner ring) and the double-valued TREADS (band-below ↔ band-above at a step).
+    const stitchRings = (loopA: P3[], loopB: P3[]): number => {
+      const a = loopA.slice().sort((p, q) => ang(p) - ang(q)).map((p) => ({ th: ang(p), p }));
+      const b = loopB.slice().sort((p, q) => ang(p) - ang(q)).map((p) => ({ th: ang(p), p }));
+      const na = a.length;
+      const nb = b.length;
+      if (na === 0 || nb === 0) return 0;
+      let ia = 0;
+      let ib = 0;
+      let n = 0;
+      while (ia < na || ib < nb) {
+        const ath = a[ia % na].th + (ia >= na ? TWO_PI : 0);
+        const bth = b[ib % nb].th + (ib >= nb ? TWO_PI : 0);
+        if (ia < na && (ib >= nb || ath <= bth)) {
+          soup.push([a[ia % na].p, a[(ia + 1) % na].p, b[ib % nb].p]);
+          ia += 1;
+        } else {
+          soup.push([a[ia % na].p, b[(ib + 1) % nb].p, b[ib % nb].p]);
+          ib += 1;
+        }
+        n += 1;
+      }
+      return n;
+    };
+
+    let outerTopo = analyze(soup);
+    // ---- DOUBLE-VALUED TREADS: bridge each C0 step (band-below ring ↔ band-above ring) with a structural annulus ----
+    // Bands are meshed disconnected (gap at each step); sorted by z the outer-wall loops are
+    // [domain-bottom, s1-below, s1-above, s2-below, s2-above, …, domain-top]. Stitch each (below,above) pair.
+    let treadTris = 0;
+    if (stepZs.length > 0) {
+      const sorted = outerTopo.loops
+        .slice()
+        .sort((p, q) => loopZ(p) - loopZ(q))
+        .map((loop) => loop.map((i) => wpos[i]));
+      for (let s = 0; s < stepZs.length; s += 1) {
+        const below = sorted[1 + 2 * s];
+        const above = sorted[2 + 2 * s];
+        if (below !== undefined && above !== undefined) treadTris += stitchRings(below, above);
+      }
+      outerTopo = analyze(soup); // re-audit: internal loops now closed ⇒ only domain top/bottom remain
+    }
     const sortedLoops = outerTopo.loops.slice().sort((p, q) => loopZ(p) - loopZ(q));
     const botLoop = (sortedLoops[0] ?? []).map((i) => wpos[i]);
     const topLoop = (sortedLoops[sortedLoops.length - 1] ?? []).map((i) => wpos[i]);
@@ -598,10 +702,6 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
 
     // ---- Stage B caps: base disk, floor disk, inner wall, rim ----
     let capTris = 0;
-    const ang = (p: P3): number => {
-      const a = Math.atan2(p[1], p[0]);
-      return a < 0 ? a + TWO_PI : a;
-    };
     if (stage === 'solid') {
       const byAngle = (loop: P3[]): P3[] => loop.slice().sort((i, j) => ang(i) - ang(j));
       const bot = byAngle(botLoop);
@@ -623,26 +723,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
         return pts;
       };
       // rim (z=H planar annulus): stitch outer top loop (variable) to the uniform inner ring by angle merge.
-      {
-        const outer = top.map((p) => ({ th: ang(p), p }));
-        const inner = innerLoopAtZ(H).map((p, d) => ({ th: (TWO_PI * d) / innerDiv, p }));
-        const no = outer.length;
-        const ni = inner.length;
-        let io = 0;
-        let ii = 0;
-        while (io < no || ii < ni) {
-          const oth = outer[io % no].th + (io >= no ? TWO_PI : 0);
-          const ith = inner[ii % ni].th + (ii >= ni ? TWO_PI : 0);
-          if (io < no && (ii >= ni || oth <= ith)) {
-            soup.push([outer[io % no].p, outer[(io + 1) % no].p, inner[ii % ni].p]);
-            io += 1;
-          } else {
-            soup.push([outer[io % no].p, inner[(ii + 1) % ni].p, inner[ii % ni].p]);
-            ii += 1;
-          }
-          capTris += 1;
-        }
-      }
+      capTris += stitchRings(top, innerLoopAtZ(H));
       // inner wall: uniform grid innerDiv × innerRings, z from H down to floorZ.
       const zrings: number[] = [];
       for (let k = 0; k <= innerRings; k += 1) zrings.push(H - ((H - floorZ) * k) / innerRings);
@@ -739,7 +820,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     const report = [
       '',
       `========== STRATA-001 S7 UNIVERSAL: ${STYLE} ${stage.toUpperCase()} (init=${INIT}) ==========`,
-      `file: ${stlName}  (${soup.length} triangles: ${outerCount} outer wall + ${capTris} caps)`,
+      `file: ${stlName}  (${soup.length} triangles: ${outerCount} outer wall + ${treadTris} treads + ${capTris} caps)${stepZs.length > 0 ? `  [${stepZs.length} C0 steps]` : ''}`,
       `${STYLE}${STYLE === 'Voronoi' ? ` ${morph === 0 ? 'BUBBLE' : 'WEB'}` : ''}, H120/Rb40/Rt50 — registry defaults · params ${JSON.stringify(styleParams)}`,
       `ring: ${cells} cells (cx 0..7 × cy ${cyLo}..${cyHi})${capped ? ' CAPPED' : ''}`,
       '',

@@ -8124,3 +8124,30 @@ Ring stage, registry-default lattice (vScale 8, vJitter 0.8), swept vRelief × v
 **PRODUCTION ENVELOPE:** ship bubble at any relief; ship web at the registry default relief (≤~2.5). Flag high-relief web as needing order-2 conforming. NOT swept (lattice-parameterization deferred): vScale, vJitter, vZStretch, vPulse — the cell decomposition is hardcoded to scale 8 / jitter 0.8; sweeping these needs the LATTICE/SCALE lifted into the run (next increment).
 
 **LEDGER.** Same harness; sweep via `PF_SOLID_MORPH` + `PF_SOLID_PARAMS='{"vRelief":R}'`. The thrash case surfaces as an assertion failure (seam-crack ≠ 0 after the cap) — an honest bad-config signal; a graceful "needs conforming" report is a polish item.
+
+---
+
+## E-2026-07-24-STRATA001-S7-TREADS (Tier-3 C0-STEP closure: generic double-valued tread bridging in the universal mesher) [BUILD+PROVE; research-only, no src edit]
+
+**HYPOTHESIS (falsifiable):** the proven double-valued / ring-strip approach (DS/Bamboo) generalizes into the universal mesher as automatic C0-step detection + structural tread bridging, closing layered z-step styles (which the plain grid cannot) to 0.01mm watertight — zero per-style code.
+
+**VERDICT: CONFIRMED for layered z-step styles (Bamboo, DragonScales). Faceted C0 (Crystalline) is a different mechanism, correctly left out.**
+
+**MECHANISM (generic, style-agnostic):**
+1. **Detect z-steps** by a TWO-SCALE test: a true C0 jump's |Δr(z±δ)| is scale-invariant; a steep-SMOOTH feature (Bamboo's node bulge) shrinks ∝ δ. Step ⇔ jump(δ/8) > 0.5·jump(δ) AND jump(δ) > tol. (The naive single-δ test conflated the two — it put steps ~1mm off and left MAX 1997um.)
+2. **Mesh smooth BANDS** between steps (disconnected — no strip crosses a jump), LEPP-refined to 0.01mm.
+3. **Bridge each step** with a structural TREAD annulus stitched between the band-below ring (r_below) and band-above ring (r_above), ε=4µm inset (geometric error < tol). Same angle-merge `stitchRings` used for the rim.
+
+| style | z-steps | outer tris | treads | MAX sag | over 0.01mm | closed |
+|---|---|---|---|---|---|---|
+| BambooSegments | 4 (24/48/72/96) | 289,008 | 6,144 | 7.000 um | 0/289,008 | **SOLID boundary 0** ✅ |
+| DragonScales | 7 (15/30/…/105) | 656,368 | 9,566 | 7.000 um | 0/656,368 | ring ✅ (solid pending) |
+| Crystalline | **0** (faceted, not layered) | — | — | 2693 um | 25,859 | ❌ needs FACET conforming |
+
+**BambooSegments CLOSED SOLID:** 321,776 tris (289,008 wall + 6,144 treads + 26,624 caps), boundary 0, non-manifold 0, seam-crack 0, outer MAX 7.000um, 0/289,008 over. Independent from-disk (python @10nm): boundary 0 / non-manifold 0 / degenerate 0 / sub-µm 0 = CLOSED WATERTIGHT, C0 steps bridged. Bamboo failed the plain grid at 2233um; the treads close it.
+
+**The FOUR-tier map now:** T1 smooth → grid; T2 crease/C1 → conforming edges; **T3 layered/C0-step → double-valued treads (THIS — automatic, generic)**; T4 faceted/C0-arbitrary (Crystalline, LowPoly) → facet-aligned conforming (existing per-style, not yet in the universal mesher). Bamboo/DS moved from "fails" to "closed" with one generic mechanism reused from the proven double-walled work.
+
+**HONEST SCOPE:** treads are structural (ε=4µm inset ⇒ step geometric error < tol; not measured by the outer-wall ruler, which covers the LEPP bands). Registry-default params. Crystalline/LowPoly (arbitrary-direction facets) still need facet conforming — the tread mechanism is z-steps only.
+
+**LEDGER.** `research/bridge/_strataVoronoiSolid.test.ts`: `detectSteps` (two-scale), band init, `stitchRings` (rim+treads), `PF_SOLID_STEP_EPS_UM`. STLs in `research/exchange/_strataVoronoiSolid/`.
