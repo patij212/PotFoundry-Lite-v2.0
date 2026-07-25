@@ -102,6 +102,8 @@ describe('STRATA conforming-bisection', () => {
     const innerRings = Math.round(envF('PF_CB_INNERRINGS', 48));
     const NOWELD = process.env.PF_CB_NOWELD !== '0'; // refuse splits whose new vertex welds onto an existing one
     const FLIP_ON = envOn('PF_CB_FLIP');            // locus-safe 2-2 edge flips to unblock refused collapses
+    const NUDGE_LADDER = (process.env.PF_CB_NUDGE ?? '0.5,0.42,0.58,0.35,0.65,0.28,0.72,0.21,0.79,0.15,0.85')
+      .split(',').map((x) => Number.parseFloat(x)).filter((x) => Number.isFinite(x) && x > 0 && x < 1);
     const DEBUG = envOn('PF_CB_DEBUG');
     const t0ms = Date.now();
 
@@ -385,11 +387,12 @@ describe('STRATA conforming-bisection', () => {
         }
       }
       const feat = vFeat[a] && vFeat[b];
-      if (bisectAt(a, b, 0.5, feat)) return true;
-      // The midpoint welded onto a pre-existing vertex and was refused. Abandoning the edge here strands the
-      // triangle forever (MEASURED: no-op splits === welded splits, and the stranded triangles were exactly the
-      // GeometricStar/Voronoi MAX loci). Nudge the split parameter off-centre and try again.
-      return bisectAt(a, b, 0.42, feat) || bisectAt(a, b, 0.58, feat);
+      // The midpoint can weld onto a pre-existing vertex, which does not subdivide the edge and is refused.
+      // Abandoning the edge strands the triangle forever (MEASURED: no-op splits === welded splits, and the
+      // stranded triangles were exactly the GeoStar/Voronoi/Gyroid MAX loci). Walk a nudge LADDER outward from the
+      // midpoint; in a saturated weld neighbourhood the first few offsets can all collide.
+      for (const tPar of NUDGE_LADDER) if (bisectAt(a, b, tPar, feat)) return true;
+      return false;
     };
 
     // LEPP walk (quality-preserving longest-edge chain) — used when DIRECTED is off.
@@ -842,6 +845,7 @@ describe('STRATA conforming-bisection', () => {
       }
     }
 
+    const headlineMax = Math.max(maxSag, maxFixed, tailMax);
     const sorted = sags.slice().sort((a, b) => a - b);
     const q = (p: number): number => sorted[Math.min(sorted.length - 1, Math.floor(p * sorted.length))];
     const over = sorted.filter((s) => s > TOL).length;
@@ -885,7 +889,10 @@ describe('STRATA conforming-bisection', () => {
       `  seam-crack edges   : ${seamCrack}  ${seamCrack === 0 ? 'OK' : 'FAIL'}`,
       `  boundary edges     : ${boundary}   ${STAGE === 'solid' ? (boundary === 0 ? 'OK — CLOSED SOLID' : 'FAIL — open') : '(ring ⇒ top+bottom only)'}   loops ${loops.length}`,
       `  soup: ${soup.length} tris = ${liveIdx.length} outer wall + ${treadTris} treads + ${capTris} caps`,
-      `--- FIDELITY (HONEST ruler: adaptive oracle, ≤${AUD_HS}mm sample pitch, n∈[${AUD_NMIN},${AUD_NMAX}]) ---`,
+      `--- FIDELITY ---`,
+      `  HEADLINE MAX ${um(headlineMax)} µm  ${headlineMax <= TOL ? 'PASS' : 'FAIL'}   = max(adaptive ${um(maxSag)}, fixed-${oracleN} ${um(maxFixed)}, tail-${tailN} ${um(tailMax)})`,
+      `  ruler spread ${(headlineMax / Math.max(1e-9, Math.min(maxSag, maxFixed))).toFixed(1)}×  ${headlineMax > 4 * Math.min(maxSag, maxFixed) ? '*** LARGE SPREAD = UNCONFORMED h0 FEATURE (a sampling grid stepped over a jump wedge) ***' : 'consistent'}`,
+      `  --- adaptive oracle (≤${AUD_HS}mm sample pitch, n∈[${AUD_NMIN},${AUD_NMAX}]) ---`,
       `  MAX ${um(maxSag)} µm  ${maxSag <= TOL ? 'PASS' : 'FAIL'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-${TOL}mm ${over}/${sorted.length}`,
       `  MAX-locus: ${locus(maxT)}`,
       `  [STRATA-comparable fixed oracle ${oracleN}]: MAX ${um(maxFixed)} µm   locus ${locus(maxFixedT)}`,

@@ -2,7 +2,17 @@
 
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
-## Verdict: 16 / 20 VERIFIED closed · 1 suspect · 2 need a curtain · 1 unmeasured
+> **UPDATE (later same day, after follow-up runs):** **17 confirmed closed.** CelticTriquetra is **promoted to closed** — its earlier CAPPED row was simply under-budget; at the full 5 M cap it converges (heap drained, adaptive 5.079 / fixed-12 5.535 / tail-44 5.771 µm, 0/1,709,365 over tol, 0 non-manifold, 0 seam-crack). Its `jump-class 6582` was the coarse classifier over-firing — a feature a drained heap converges on cannot be h⁰.
+>
+> **BasketWeave is UNRESOLVED (neither closed nor failed).** My snaking-C0 hypothesis was **refuted**: a 300×300 window probe at the locus gives two-scale ratio **0.125 = textbook smooth**, with zero jump-class and zero crease-class cells in a ±0.6 mm window; and a 700×700 reconstruction of the reported triangle shows `r` varies only **13.78 µm** across the footprint, so no reading above ~15 µm is physical there (true sag **0.956 µm**, and n=12 vs n=13 agree). But the argmax tracking is correct (`maxFixed`/`maxFixedT` update together), so the printed triangle *is* the one that scored 1987.566 µm — meaning `sagOfN` returned a value inconsistent with its own inputs. **An unexplained ruler defect, not a mesh defect** — and one that can read high must be assumed able to read low, so it is being root-caused before any row is re-blessed.
+>
+> **CelticKnot is a PROVEN h⁰ case.** MAX **584.092 µm on all three rulers** on a triangle with **0.9/0.3/1.2 µm edges** — sag invariant at the refinement floor is the jump signature *by construction*, not by inference. Localized: 5 triangles in 2.53 M, p99 5.100 µm. It is now the **only** curtain target (BasketWeave and Triquetra both eliminated).
+>
+> Ruler policy amended: headline = `max(adaptive, fixed-N, tail-N)`, with a large spread treated as an **investigation trigger** (not auto-accepted as truth — BasketWeave shows the high reading can be the bogus one). Re-checking the other 15 rows under this rule moved **none** of them.
+>
+> New instrument: `research/bridge/_strataJumpProbe.test.ts` (`PF_STRATA_JUMP=1`) — window mode classifies a locus jump/crease/smooth; `PF_JUMP_TRI` mode reconstructs a reported triangle and re-measures it densely against the r-spread bound. Settles a ruler disagreement in ~1 s.
+
+## Verdict (original sweep): 16 / 20 VERIFIED closed · 1 suspect · 2 need a curtain · 1 unmeasured
 
 "Verified" = MAX ≤ 5.1 µm, **0** triangles over 0.01 mm, 0 non-manifold, 0 seam-crack, converged (not capped), **and all independent rulers agree**.
 
