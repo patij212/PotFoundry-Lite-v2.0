@@ -149,10 +149,25 @@ describe('STRATA conforming-bisection', () => {
 
     const ta: number[] = []; const tb: number[] = []; const tc: number[] = []; const alive: boolean[] = [];
     const BIG = 1 << 27;
-    const edgeMap = new Map<number, number[]>();
+    // SHARDED edge index. Node's V8 caps a single Map at 2^23 entries (Chrome allows 2^24) — at ~1.5 unique edges
+    // per live triangle that ceilings the mesher near 5.6M live triangles with "RangeError: Map maximum size
+    // exceeded" (measured: GyroidManifold survives 7M allocated / 3.5M live, dies at 16M). Sharding by the low bits
+    // of the key (which come from the second vertex index, so they distribute well) multiplies the ceiling by
+    // EDGE_SHARDS. Drop-in: exposes the same get/set/delete the 8 call sites already use.
+    const EDGE_SHARDS = 32;
+    const edgeShards: Array<Map<number, number[]>> = Array.from({ length: EDGE_SHARDS }, () => new Map<number, number[]>());
+    const edgeMap = {
+      get: (k: number): number[] | undefined => edgeShards[k % EDGE_SHARDS].get(k),
+      set: (k: number, v: number[]): void => { edgeShards[k % EDGE_SHARDS].set(k, v); },
+      delete: (k: number): void => { edgeShards[k % EDGE_SHARDS].delete(k); },
+    };
     const eKey = (a: number, b: number): number => (a < b ? a * BIG + b : b * BIG + a);
     const eAdd = (a: number, b: number, t: number): void => { const k = eKey(a, b); const l = edgeMap.get(k); if (l === undefined) edgeMap.set(k, [t]); else l.push(t); };
-    const eDel = (a: number, b: number, t: number): void => { const l = edgeMap.get(eKey(a, b)); if (l === undefined) return; const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); };
+    // MEMORY: drop the key once its list empties. Without this, every edge EVER created leaves a permanent
+    // empty-array entry, so edgeMap grows with CUMULATIVE allocation rather than live triangles and blows V8's
+    // ~2^24 Map cap ("RangeError: Map maximum size exceeded") around 13M allocated — measured on GyroidManifold.
+    // Behaviour-identical: neighbor() treats a missing key and an empty list the same (no incident triangle).
+    const eDel = (a: number, b: number, t: number): void => { const k = eKey(a, b); const l = edgeMap.get(k); if (l === undefined) return; const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); if (l.length === 0) edgeMap.delete(k); };
     const addT = (a: number, b: number, c: number): number => {
       if (a === b || b === c || c === a) return -1;
       const t = ta.length;
