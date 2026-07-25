@@ -2,6 +2,31 @@
 
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
+> # ★ UPDATE 4 — **18/20. The θ-CURTAIN closes BasketWeave — the first h⁰ jump closed in this campaign.**
+>
+> `research/bridge/_strataCurtainClose.test.ts` (+ `_strataThetaLocusProbe.test.ts`), commit `e35dff8d`. BasketWeave ring, registry defaults, `gu=208`, DIRECTED + θ-curtain:
+>
+> ```
+> HEADLINE MAX 5.035 µm PASS = max(adaptive 4.999, fixed-12 4.999, tail-44 5.035)
+> ruler spread 1.0× CONSISTENT   (was 381.3× — the 2 mm defect is GONE, not hidden)
+> over-0.01mm 0/586,136 · 0 non-manifold · 0 seam-crack · CONVERGED (1.11M/5M)
+> LOCUS AUDIT (closure invariant) 5.102 µm PASS
+> 594,888 tris in 260 s — SMALLER and FASTER than the failing run (844,520 tris / 489 s)
+> STL byte-verified: 29,744,484 = 84 + 594,888×50
+> ```
+>
+> **Generic, not hard-coded** — the two-scale detector found all 16 loci itself (0.82 M evals) at `θ* = k·2π/16` exactly ⇒ grid columns `0,13,26,39,52,…` = 13k at `gu=208` (independently re-derived).
+>
+> **The h⁰ theorem made actionable.** Alignment alone still failed at 1906 µm *with the column landing at exactly index 182.000000*, because a jump is two-valued at its locus and one vertex can hold one branch. The curtain duplicates the locus column into r⁻/r⁺ vertex rows, binds each side's cells to its own copy, and stitches a vertical quad strip — **the z-tread mechanism rotated 90°**.
+>
+> All three predicted harness hazards handled **and measured**: 8,288 branch-tagged verts (explicit-radius creation); **3,520 branch-inherited splits** (pinning — so `splitEdge` cannot silently recompute r and collapse a curtain edge onto one branch); weld-fusion guard **branch separation MIN 1.180 µm vs weld 0.050 µm = 23.6×**, asserted; curtain/tread T-corners → 32 pinch verts + 2,368 doubled row-slots with clean topology; curtain-chord audit (8,000 branch edges @ n=64) MAX 4.767 µm PASS.
+>
+> **Notable:** conforming to a jump is *cheaper* than fighting it — refinement had been burning budget hammering a discontinuity it could never resolve.
+>
+> **Gyroid interim (env-only experiment, no code change):** the weld-radius diagnosis is **confirmed** — 50 nm → 5 nm cut weld collisions **926,638 → 1,548 (600×)** and the run CONVERGES again instead of capping. But that run also set `PF_CB_NUDGE=0.5`, which is *midpoint-only* and stripped the original 0.42/0.58 fallback, so stranding rose 8 → 48 and MAX landed at 75.1 µm (spread 1.0×, so real). The two levers are independent and were conflated; the correct combination `PF_CB_NUDGE='0.5,0.42,0.58'` + `PF_CB_WELD_UM=0.005` is still to be run (first attempt died to a concurrent-run OOM — **run heavy mesher jobs one at a time**).
+>
+> **STANDING: 18 closed / 2 open** — CelticKnot (h⁰ *snaking sinusoid*, needs the traced-polyline curtain + Y-junctions; BasketWeave's straight-line curtain is its degenerate case) and GyroidManifold (weld radius, one parameter run away).
+
 > **UPDATE 3 — BasketWeave's jump is REAL; the "ruler bug" was a rounding artifact.** Forensic dump (full-precision) at the disputed triangle: argmax at the exact midpoint of edge B–C, θ and z **provably inside** the footprint, `|n| = 0.0400` (healthy, area 20,013 µm²), and `r = 45.5446` where all three vertices sit at `r ≈ 47.5346` — a genuine **1.9900 mm** drop, exactly reproducing the reported `dd = 1.98757 mm = 1987.566 µm`. Verifiable by arithmetic alone.
 >
 > The earlier refutation failed because it reconstructed from the **printed, rounded** vertices: rounding θ by 8.3e-6 rad — **0.39 µm of arc** — stepped off the discontinuity and gave r-spread 13.78 µm / sag 0.956 µm. With full precision: r-spread **2004.62 µm**, dense sag **1990.181 µm**. **Rule: never re-measure a discontinuity from rounded coordinates** — a sub-micron parameter change flipping the answer 2000× *is* the h⁰ signature.
