@@ -143,7 +143,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const LOC_EPS = envF('PF_CB_LOC_EPS', 1e-11);       // "this sample sits ON the locus" window (rad)
     const CURT_SCAN = Math.round(envF('PF_CB_CURT_SCAN', 8192));  // θ bins for the coarse jump scan
     const CURT_ZP = Math.round(envF('PF_CB_CURT_ZP', 23));        // z probes per θ bin
-    const CURT_MERGE = envF('PF_CB_CURT_MERGE', 0.35);  // drop a uniform column within this fraction of a col pitch
+    const CURT_MERGE = envF('PF_CB_CURT_MERGE', 0.35);
+    const CURT_ZFRAC = envF('PF_CB_CURT_ZFRAC', 0.9); // a column curtain requires a z-INVARIANT locus  // drop a uniform column within this fraction of a col pitch
     const PINCH_MM = envF('PF_CB_PINCH_UM', 0.1) / 1000; // |r+ − r−| below this ⇒ the curtain closes to a point
     const t0ms = Date.now();
 
@@ -156,32 +157,39 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const canon = (t: number): number => { let x = t % TWO_PI; if (x < 0) x += TWO_PI; return x; };
 
     // ───────────────────────────── GENERIC θ-JUMP LOCUS DETECTOR (no per-style code) ─────────────────────────────
-    // Mirrors the z-step detector below, rotated into θ. Two-scale ladder: |r(θ+d) − r(θ−d)| is SCALE-INVARIANT at a
-    // jump (ratio d→d/8 stays ≈1) and ∝d at a crease or a smooth point (ratio → 8). Brackets are then bisected to
-    // machine precision by "keep the half that still carries the jump", so the locus is known to ~1e-16 rad — seven
-    // orders tighter than the ±1e-9 rad used to read the two branches.
+    // FIND, then CLASSIFY — they are different tests and must not be conflated.
+    //   FIND: cover [0,2π) with ABUTTING intervals and flag every one across which max_z |Δr| exceeds tol. Gap-free,
+    //     so no jump can hide between samples. The previous centred form (|Δr| at d vs d/8, accept if ratio ≈ 1)
+    //     was a broken finder: it only fires when the locus lands within d/8 of a bin CENTRE ⇒ ~25 % recall on an
+    //     arbitrary style. MEASURED on CelticKnot: 834 loci found → 3117 after this fix (max/row 7 → 18, and 18 is
+    //     exactly 3 columns × 3 strands × 2 silhouettes). BasketWeave was unaffected only by luck — its loci at
+    //     2πk/16 sit exactly on bin centres whenever CURT_SCAN is a multiple of 16.
+    //   CLASSIFY: bisect the bracket to machine precision, then take the ε→0 LIMIT. A jump keeps |r(θ*+ε) − r(θ*−ε)|
+    //     ≥ tol as ε→0; a crease drives it to 0 linearly. This filter is load-bearing, not cosmetic — MEASURED on
+    //     GothicArches it rejects 96/96 brackets (|Δr| 143 µm at ε=1e-3 → 0.000 µm at ε=1e-9), which is what keeps
+    //     the curtain a no-op on a style that has no h0 at all.
     const jumpLoci: number[] = [];      // θ ∈ [0,2π), ascending, of every detected h0 θ-locus
-    let curtScanEvals = 0;
+    let curtScanEvals = 0; let curtBrackets = 0; let curtRejected = 0; let curtSnaking = 0;
     if (BR_EVAL) {
       const zProbes: number[] = [];
       for (let k = 1; k <= CURT_ZP; k += 1) zProbes.push((H * k) / (CURT_ZP + 1));
-      const d1 = TWO_PI / CURT_SCAN; const d2 = d1 / 8;
+      const d1 = TWO_PI / CURT_SCAN;
       const jSpan = (x: number, y: number): number => { let m = 0; for (const z of zProbes) m = Math.max(m, Math.abs(R(y, z) - R(x, z))); return m; };
       const brackets: Array<[number, number]> = [];
       let runStart = 0; let prevIn = false;
-      for (let i = 0; i <= CURT_SCAN; i += 1) {
+      const rPrev = new Float64Array(zProbes.length);
+      for (let k = 0; k < zProbes.length; k += 1) rPrev[k] = R(0, zProbes[k]);
+      for (let i = 1; i <= CURT_SCAN; i += 1) {
         const th = (TWO_PI * i) / CURT_SCAN;
-        let j1 = 0; let j2 = 0;
-        for (const z of zProbes) {
-          j1 = Math.max(j1, Math.abs(R(canon(th + d1), z) - R(canon(th - d1), z)));
-          j2 = Math.max(j2, Math.abs(R(canon(th + d2), z) - R(canon(th - d2), z)));
-        }
-        const isIn = j2 > 0.8 * j1 && j1 > TOL;
+        let d = 0;
+        for (let k = 0; k < zProbes.length; k += 1) { const c = R(canon(th), zProbes[k]); d = Math.max(d, Math.abs(c - rPrev[k])); rPrev[k] = c; }
+        const isIn = d > TOL;
         if (isIn && !prevIn) runStart = th - d1;
-        if (!isIn && prevIn) brackets.push([runStart, th + d1]);
+        if (!isIn && prevIn) brackets.push([runStart, th]);
         prevIn = isIn;
       }
-      if (prevIn) brackets.push([runStart, TWO_PI + d1]);
+      if (prevIn) brackets.push([runStart, TWO_PI]);
+      curtBrackets = brackets.length;
       const raw: number[] = [];
       for (const [a0, b0] of brackets) {
         let lo = a0; let hi = b0;
@@ -190,7 +198,22 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           if (mid <= lo || mid >= hi) break;
           if (jSpan(canon(lo), canon(mid)) >= jSpan(canon(mid), canon(hi))) hi = mid; else lo = mid;
         }
-        raw.push(0.5 * (lo + hi));
+        const th = 0.5 * (lo + hi);
+        // VERTICALITY / FAIL-CLOSED APPLICABILITY. A doubled COLUMN can only represent a locus that is the same θ at
+        // every z. The bracket scan maxes over z, so a SNAKING locus (CelticKnot's |localU − amp·sin(v·frq+φ)| =
+        // strandW) projects onto a θ where a jump exists at only a few z — building a column there would be a lie.
+        // Require the jump at ≥ CURT_ZFRAC of the z probes; otherwise refuse and COUNT it, so the mechanism reports
+        // exactly what it cannot represent instead of silently mis-meshing it.
+        let nHit = 0;
+        for (const z of zProbes) {
+          const j9 = Math.abs(R(canon(th + 1e-9), z) - R(canon(th - 1e-9), z));
+          const j3 = Math.abs(R(canon(th + 1e-3), z) - R(canon(th - 1e-3), z));
+          if (j9 > TOL && j9 > 0.5 * j3) nHit += 1;
+        }
+        const frac = nHit / zProbes.length;
+        if (frac >= CURT_ZFRAC) raw.push(th);
+        else if (nHit > 0) { curtSnaking += 1; curtRejected += 1; }
+        else curtRejected += 1;
       }
       // canonicalize + cyclic dedup (the θ=0 locus is found twice: once at the scan start, once at 2π)
       const cyc = (a: number, b: number): number => { const d = Math.abs(a - b) % TWO_PI; return Math.min(d, TWO_PI - d); };
@@ -1205,7 +1228,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `grid ${gu}×${gv} → ${nc} cols (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `--- θ-JUMP LOCI (generic two-scale detector, ${(curtScanEvals / 1e6).toFixed(2)}M evals) ---`,
-      `  detected ${jumpLoci.length}${jumpLoci.length > 0 ? `  θ*=[${jumpLoci.slice(0, 8).map((x) => x.toFixed(9)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]  grid-col idx=[${jumpLoci.slice(0, 8).map((x) => ((x * gu) / TWO_PI).toFixed(4)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]` : ''}`,
+      `  brackets ${curtBrackets} → rejected ${curtRejected} (of which ${curtSnaking} SNAKING = jump present at <${(CURT_ZFRAC*100).toFixed(0)}% of z probes ⇒ NEEDS THE TRACED-POLYLINE CURTAIN, refused here) → detected ${jumpLoci.length}${jumpLoci.length > 0 ? `  θ*=[${jumpLoci.slice(0, 8).map((x) => x.toFixed(9)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]  grid-col idx=[${jumpLoci.slice(0, 8).map((x) => ((x * gu) / TWO_PI).toFixed(4)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]` : ''}`,
       `  curtain: ${curtainTris} init tris, ${liveCurtainTris} live, ${curtainPairs} doubled row-slots, ${pinchVerts} pinch verts (|Δr|<${(PINCH_MM * 1000).toFixed(3)} µm, init MIN |Δr| ${minBranchSepMm === Infinity ? 'n/a' : `${um(minBranchSepMm)} µm`}), ${curtainVerts} branch-tagged verts, ${branchSplits} branch-inherited splits`,
       `  branch separation (live cross-edges): MIN ${minSepLiveMm === Infinity ? 'n/a' : `${um(minSepLiveMm)} µm at ${minSepAt}`}  vs weld ${um(WELD_MM)} µm ⇒ ${minSepLiveMm === Infinity ? 'n/a' : `${(minSepLiveMm / WELD_MM).toFixed(1)}×  ${minSepLiveMm > WELD_MM ? 'OK' : '*** CURTAIN CAN WELD SHUT ***'}`}`,
       `  CURTAIN CHORD audit (${curtainEdges} branch edges @ n=${Math.round(envF('PF_CB_CURT_AUDIT_N', 64))}): MAX ${um(curtainChordMax)} µm  ${curtainChordMax <= TOL ? 'PASS' : 'FAIL'}${curtainChordE >= 0 ? `  @ θ=${vth[curtainChordE].toFixed(6)} z=${vz[curtainChordE].toFixed(3)}` : ''}`,
