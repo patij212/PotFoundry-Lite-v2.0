@@ -771,23 +771,74 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
         }
       }
     };
-    const stack: number[] = [];
-    for (let t = 0; t < ta.length; t += 1) stack.push(t);
-    let capped = false;
-    while (stack.length > 0) {
-      const t = stack.pop() as number;
-      if (!alive[t]) continue;
-      // Accept if under tol OR the longest edge is already at the floor (cusp-tip guard — see FLOOR_MM).
+    // PRIORITY refinement — max-heap keyed by SAG so the finite triangle budget attacks the WORST triangles first.
+    // A LIFO stack poured the budget into tiny FCOLS ridge-cusp cells (chasing the floor) and STARVED the wide
+    // inter-ridge cells — the audit found the ~1.5mm MAX was an UNREFINED 2mm-edge triangle at mid-wall (z=48, θ≈2.48),
+    // not a fundamental jump. Worst-first drains the MAX before over-refining ridges. Key is valid until the triangle
+    // is killed (its geometry is frozen while alive), so pop trusts it (killed neighbours are skipped via !alive).
+    const heapT: number[] = [];
+    const heapK: number[] = [];
+    const hswap = (i: number, j: number): void => {
+      const tt = heapT[i];
+      heapT[i] = heapT[j];
+      heapT[j] = tt;
+      const kk = heapK[i];
+      heapK[i] = heapK[j];
+      heapK[j] = kk;
+    };
+    const hpush = (t: number, k: number): void => {
+      heapT.push(t);
+      heapK.push(k);
+      let i = heapT.length - 1;
+      while (i > 0) {
+        const p = (i - 1) >> 1;
+        if (heapK[p] >= heapK[i]) break;
+        hswap(i, p);
+        i = p;
+      }
+    };
+    const hpop = (): number => {
+      const top = heapT[0];
+      const lt = heapT.pop() as number;
+      const lk = heapK.pop() as number;
+      if (heapT.length > 0) {
+        heapT[0] = lt;
+        heapK[0] = lk;
+        let i = 0;
+        const n = heapT.length;
+        for (;;) {
+          let big = i;
+          const l = 2 * i + 1;
+          const r = 2 * i + 2;
+          if (l < n && heapK[l] > heapK[big]) big = l;
+          if (r < n && heapK[r] > heapK[big]) big = r;
+          if (big === i) break;
+          hswap(i, big);
+          i = big;
+        }
+      }
+      return top;
+    };
+    const consider = (t: number): void => {
+      if (!alive[t]) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
-      if (sagOf(t) <= acceptTol || le < FLOOR_MM) continue;
+      if (le < FLOOR_MM) return; // floor guard (cusp tip)
+      const s = sagOf(t);
+      if (s > acceptTol) hpush(t, s);
+    };
+    let capped = false;
+    for (let t = 0; t < ta.length; t += 1) consider(t);
+    while (heapT.length > 0) {
+      const t = hpop();
+      if (!alive[t]) continue; // killed by a neighbour's LEPP propagation
       if (ta.length >= triCap) {
         capped = true;
         break;
       }
       created.length = 0;
       refineLongest(t);
-      for (const nt of created) if (alive[nt]) stack.push(nt);
-      if (alive[t]) stack.push(t);
+      for (const nt of created) consider(nt);
+      consider(t);
     }
 
     // ---- NEEDLE-SLIVER COLLAPSE (generic, style-agnostic mesh-quality pass) ----
@@ -1057,6 +1108,7 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
 
     // ---- outer-wall fidelity ----
     let maxSag = 0;
+    let maxT = -1;
     let minEdge = Infinity;
     let subMicronEdges = 0;
     const sags: number[] = [];
@@ -1064,7 +1116,10 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       if (!alive[t]) continue;
       const s = sagOf(t);
       sags.push(s);
-      if (s > maxSag) maxSag = s;
+      if (s > maxSag) {
+        maxSag = s;
+        maxT = t;
+      }
       const e0 = eLen(ta[t], tb[t]);
       const e1 = eLen(tb[t], tc[t]);
       const e2 = eLen(tc[t], ta[t]);
@@ -1083,6 +1138,23 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
     const over = sags.filter((s) => s > TOL).length;
     const um = (mm: number): string => (mm * 1000).toFixed(3);
     const q = (p: number): number => sags[Math.min(sags.length - 1, Math.floor(p * sags.length))];
+    // MAX-sag LOCUS audit — the ~1.5mm MAX is method-invariant, so find where it actually is (z near 0/H ⇒ ring-clip
+    // boundary artifact; tiny edges ⇒ floored true-jump; huge edges ⇒ coarse/unrefined region).
+    if (process.env.PF_SOLID_DEBUG === '1' && maxT >= 0) {
+      const va = ta[maxT];
+      const vb = tb[maxT];
+      const vc = tc[maxT];
+      const z3 = [vz[va], vz[vb], vz[vc]];
+      const th3 = [vth[va], vth[vb], vth[vc]];
+      const e = [eLen(va, vb), eLen(vb, vc), eLen(vc, va)].map((x) => (x * 1000).toFixed(1));
+      const zc = (z3[0] + z3[1] + z3[2]) / 3;
+      // eslint-disable-next-line no-console
+      console.log(
+        `  MAX-locus: z=[${z3.map((z) => z.toFixed(2)).join(',')}] (${((100 * zc) / H).toFixed(0)}% of H) θ=[${th3
+          .map((t) => t.toFixed(3))
+          .join(',')}] edges(um)=${e.join('/')}`
+      );
+    }
 
     // ---- emit STL ----
     const outDir = join('research', 'exchange', '_strataVoronoiSolid');
