@@ -166,15 +166,39 @@ describe('STRATA jump probe', () => {
           if (v > m1) { m1 = v; m1dir = (ang * 180) / Math.PI; }
         }
         if (m1 < 1e-9) continue;
-        // same direction, 8× smaller step
         const ca = Math.cos((m1dir * Math.PI) / 180); const sa = Math.sin((m1dir * Math.PI) / 180);
-        const m2 = Math.abs(R(t + dth(ca * d2), z + sa * d2) - R(t - dth(ca * d2), z - sa * d2));
-        const ratio = m2 / m1;
+        // BUGFIX (measured): the old test compared a ±d1 stencil against a ±d1/8 stencil CENTRED ON THE LATTICE
+        // POINT. A jump is straddled by the coarse stencil whenever the lattice point is within d1 of it (always,
+        // since the lattice pitch IS d1) but by the fine stencil only within d1/8 — ~12% of the time. When the
+        // coarse straddled and the fine did not, ratio ≈ 0 fell through BOTH branches and the jump was counted as
+        // NOTHING. That is how a ±0.6 mm window reported "smooth" over a provable 1990 µm BasketWeave jump.
+        // Correct method: LOCATE the feature by bracket-halving along the probe direction (the mesher's own
+        // locateKink), then evaluate both scales CENTRED ON THE FEATURE so they always straddle it.
+        let m2 = 0; let ratio = 0;
         if (m1 > 0.01) {
-          if (ratio > 0.62) { jumpCells += 1; jumpMags.push(m2); }
-          else if (ratio > 0.2) creaseCells += 1;
+          let lo = -d1; let hi = d1;
+          const rAtS = (u: number): number => R(t + dth(ca * u), z + sa * u);
+          let fLo = rAtS(lo); let fHi = rAtS(hi); let fMid = rAtS(0);
+          for (let it = 0; it < 26; it += 1) {
+            const mid = 0.5 * (lo + hi); const q1 = 0.5 * (lo + mid); const q3 = 0.5 * (mid + hi);
+            const fq1 = rAtS(q1); const fq3 = rAtS(q3);
+            const dL = Math.abs(fLo - 2 * fq1 + fMid); const dR = Math.abs(fMid - 2 * fq3 + fHi);
+            if (dL >= dR) { hi = mid; fHi = fMid; fMid = fq1; } else { lo = mid; fLo = fMid; fMid = fq3; }
+          }
+          const uStar = 0.5 * (lo + hi);
+          const c0 = rAtS(uStar);
+          const big = Math.abs(rAtS(uStar + d1) - 2 * c0 + rAtS(uStar - d1));
+          const small = Math.abs(rAtS(uStar + d1 / 8) - 2 * c0 + rAtS(uStar - d1 / 8));
+          ratio = big > 1e-12 ? small / big : 0;
+          m2 = small;
+          // census on the COARSE magnitude, never on the ratio — a large m1 is a feature by definition
+          if (ratio > 0.62) { jumpCells += 1; jumpMags.push(big); } else if (ratio > 0.2) creaseCells += 1;
+          if (big > best) { best = big; bTh = t; bZ = z; bRatio = ratio; bDirDeg = m1dir; }
+        } else {
+          m2 = Math.abs(R(t + dth(ca * d2), z + sa * d2) - R(t - dth(ca * d2), z - sa * d2));
+          ratio = m2 / m1;
+          if (m2 > best) { best = m2; bTh = t; bZ = z; bRatio = ratio; bDirDeg = m1dir; }
         }
-        if (m2 > best) { best = m2; bTh = t; bZ = z; bRatio = ratio; bDirDeg = m1dir; }
       }
     }
     jumpMags.sort((x, y) => y - x);
