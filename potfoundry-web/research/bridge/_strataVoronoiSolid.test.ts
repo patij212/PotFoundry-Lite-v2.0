@@ -442,16 +442,77 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
       // (2ε thin, structural) later bridges r_below→r_above. ε well under tol keeps the step's geometric error < tol.
       const stepEps = envF('PF_SOLID_STEP_EPS_UM', 4) / 1000;
       const bounds = [0, ...zSteps, H];
+      // GENERIC FEATURE-ALIGNED ROWS (z-axis mirror of feature-columns): a CURVED/diagonal crease (e.g. Gothic's
+      // arch rib at z=archZ(θ), sharp=4) is a sharp z-feature at each θ. Uniform 0.85mm rows under-resolve the peak
+      // ⇒ residual MAX ~relief. Concentrate rows in z where the detector sees z-features (equidistribution of a
+      // z-density) so the grid is adaptive in BOTH axes and LEPP closes the diagonal within budget — NO cell-cutting
+      // (the crease-cut degraded the clean column mesh). Detector-driven, zero per-style code. Off unless PF_SOLID_FROWS=1.
+      const frowsOn = process.env.PF_SOLID_FROWS === '1';
+      const Mz = 2048;
+      const scoreZ = new Float64Array(Mz + 1);
+      let szMax = 0;
+      if (frowsOn) {
+        const uLevels = [0.05, 0.2, 0.37, 0.53, 0.68, 0.84].map((f) => f * TWO_PI);
+        const hz = H / Mz;
+        for (let k = 0; k <= Mz; k += 1) {
+          const z = (H * k) / Mz;
+          let best = 0;
+          for (const th of uLevels) {
+            const r0 = rA(canon(th), z);
+            const big = Math.abs(rA(canon(th), Math.min(H, z + hz)) - 2 * r0 + rA(canon(th), Math.max(0, z - hz)));
+            const sm = Math.abs(rA(canon(th), Math.min(H, z + hz / 4)) - 2 * r0 + rA(canon(th), Math.max(0, z - hz / 4)));
+            if (big < 1e-9) continue;
+            if (sm / big > 0.2 && big > best) best = big;
+          }
+          scoreZ[k] = best;
+          if (best > szMax) szMax = best;
+        }
+      }
+      const Az = envF('PF_SOLID_FROWS_A', 40);
+      // count+1 z-positions in [za2,zb2], concentrated where scoreZ is high; band endpoints preserved (watertight bands).
+      const bandZRows = (za2: number, zb2: number, count: number): number[] => {
+        const out: number[] = [];
+        if (!frowsOn || szMax <= 0) {
+          for (let j = 0; j <= count; j += 1) out.push(za2 + ((zb2 - za2) * j) / count);
+          return out;
+        }
+        const S = 1024;
+        const rho = new Float64Array(S);
+        for (let s = 0; s < S; s += 1) {
+          const z = za2 + ((zb2 - za2) * (s + 0.5)) / S;
+          const k = Math.min(Mz, Math.max(0, Math.round((z / H) * Mz)));
+          rho[s] = 1 + (Az * scoreZ[k]) / szMax;
+        }
+        const C = new Float64Array(S + 1);
+        for (let s = 0; s < S; s += 1) C[s + 1] = C[s] + rho[s];
+        const tot = C[S] || 1;
+        out.push(za2);
+        for (let j = 1; j < count; j += 1) {
+          const target = (j / count) * tot;
+          let lo = 0;
+          let hi = S;
+          while (hi - lo > 1) {
+            const mid = (lo + hi) >> 1;
+            if (C[mid] <= target) lo = mid;
+            else hi = mid;
+          }
+          const frac = (target - C[lo]) / (rho[lo] || 1);
+          out.push(za2 + ((zb2 - za2) * (lo + frac)) / S);
+        }
+        out.push(zb2);
+        return out;
+      };
       for (let b = 0; b + 1 < bounds.length; b += 1) {
         const za = b === 0 ? 0 : bounds[b] + stepEps;
         const zb = b + 2 === bounds.length ? H : bounds[b + 1] - stepEps;
         const bandH = zb - za;
         if (bandH <= 0) continue;
         const bandRows = Math.max(1, Math.round((gv * bandH) / H));
+        const zRows = bandZRows(za, zb, bandRows);
         const vgrid: number[][] = [];
         for (let j = 0; j <= bandRows; j += 1) {
           const row: number[] = [];
-          const z = za + (bandH * j) / bandRows;
+          const z = zRows[j];
           for (let i = 0; i < gu; i += 1) row.push(addV(thetaCols[i], z));
           vgrid.push(row);
         }
@@ -463,11 +524,17 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
         // not a smooth curvature peak. Returns the crease vertex index, or -1.
         const edgeCrease = (tha: number, za: number, thb: number, zb: number): number => {
           if (!creaseOn) return -1;
+          // SHORTEST-ARC sampling: the θ=0≡2π wrap edge has tha≈2π, thb≈0; naive (thb-tha) sweeps the LONG way
+          // through the far side of the pot (θ≈π) → the crease vertex lands on the OPPOSITE wall → a domain-spanning
+          // triangle (the 41mm bug). Adjust thb by ±2π so |thbA-tha|≤π, and canon every rA θ (rA expects [0,2π)).
+          let thbA = thb;
+          if (thbA - tha > Math.PI) thbA -= TWO_PI;
+          else if (thbA - tha < -Math.PI) thbA += TWO_PI;
           const n = 20;
           const rs: number[] = [];
           for (let k = 0; k <= n; k += 1) {
             const tk = k / n;
-            rs.push(rA(tha + (thb - tha) * tk, za + (zb - za) * tk));
+            rs.push(rA(canon(tha + (thbA - tha) * tk), za + (zb - za) * tk));
           }
           let bi = -1;
           let bv = 0;
@@ -493,19 +560,19 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
               if (ti > (bi - 1.5) / n && ti < (bi + 1.5) / n) t = ti;
             }
           }
-          const mth = tha + (thb - tha) * t;
+          const mth = tha + (thbA - tha) * t;
           const mz = za + (zb - za) * t;
-          const dth = (thb - tha) / n;
+          const dth = (thbA - tha) / n;
           const dz = (zb - za) / n;
-          const cc = rA(mth, mz);
-          const big = Math.abs(rA(mth + dth, mz + dz) - 2 * cc + rA(mth - dth, mz - dz));
-          const small = Math.abs(rA(mth + dth / 4, mz + dz / 4) - 2 * cc + rA(mth - dth / 4, mz - dz / 4));
+          const cc = rA(canon(mth), mz);
+          const big = Math.abs(rA(canon(mth + dth), mz + dz) - 2 * cc + rA(canon(mth - dth), mz - dz));
+          const small = Math.abs(rA(canon(mth + dth / 4), mz + dz / 4) - 2 * cc + rA(canon(mth - dth / 4), mz - dz / 4));
           // smooth ⇒ small ≈ big/16; crease ⇒ ≈ big/4; jump ⇒ ≈ big. Accept > 0.15·big AND big > tol.
           if (big > TOL && small > 0.15 * big) return addV(mth, mz);
           return -1;
         };
         const uOf = (i: number): number => thetaCols[i % gu];
-        const zOfRow = (j: number): number => za + (bandH * j) / bandRows;
+        const zOfRow = (j: number): number => zRows[Math.max(0, Math.min(bandRows, j))];
         const hCache = new Map<string, number>();
         const hEdge = (i: number, j: number): number => {
           const i1 = (i + 1) % gu;
@@ -566,12 +633,14 @@ describe('STRATA-001 S7: closed printable Voronoi solid', () => {
             if (creaseIdx.length === 2) {
               creaseCuts += 1;
               const [p, q] = creaseIdx;
-              fan(bnd.slice(p, q + 1)); // arc p..q + closing edge q→p
+              fan(bnd.slice(p, q + 1)); // arc p..q + closing edge q→p (interior edge lies ON the crease chord)
               fan([...bnd.slice(q), ...bnd.slice(0, p + 1)]); // arc q..p (wrapping)
             } else {
-              // 0, 1, or >2 crease hits on this cell — fall back to the plain split (LEPP still refines it).
-              addT(A, B, C);
-              addT(A, C, D);
+              // 0/1/3/4 crease hits: fan the FULL boundary loop — bnd already contains every edge-crease point, and
+              // those points sit on edges SHARED with the neighbour cell (hEdge/vEdge cache), so both sides split the
+              // shared edge identically ⇒ NO T-junction (the earlier leak that gave 2193 cracks). No interior crease
+              // chord here (needs ≥2 hits), but the cell stays watertight and LEPP refines the residual.
+              fan(bnd);
             }
           }
         }
