@@ -226,6 +226,7 @@ describe('STRATA conforming-bisection', () => {
     };
 
     // ───────────────────────────── TRIANGLE SAG ORACLE ─────────────────────────────
+    let argWa = 0; let argWb = 0; let argWc = 0; let argTheta = 0; let argZ = 0; let argR = 0; let argNl = 0; let argDd = 0; let argDB = 0; let argDC = 0;
     const sagOfN = (t: number, n: number): number => {
       const a = ta[t]; const b = tb[t]; const c = tc[t];
       const ax = vx[a]; const ay = vy[a]; const az = vz[a];
@@ -243,7 +244,14 @@ describe('STRATA conforming-bisection', () => {
         const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
         const r = R(canon(theta), z);
         const dd = Math.abs((r * Math.cos(theta) - ax) * nx + (r * Math.sin(theta) - ay) * ny + (z - az) * nz);
-        if (dd > s) s = dd;
+        if (dd > s) {
+          s = dd;
+          // RULER FORENSICS: record the argmax sample so a suspicious reading can be attributed to
+          // interpolation/wrap (theta,z outside the footprint), the evaluator (r off the local surface), or a
+          // degenerate plane normal (nl). Written only on improvement, so the cost is negligible.
+          argWa = wa; argWb = wb; argWc = wc; argTheta = theta; argZ = z; argR = r; argNl = nl; argDd = dd;
+          argDB = dB; argDC = dC;
+        }
       }
       return s;
     };
@@ -782,12 +790,16 @@ describe('STRATA conforming-bisection', () => {
     // ───────────────────────────── fidelity (oracle N) + tail re-measure ─────────────────────────────
     const sags: number[] = []; let maxSag = 0; let maxT = -1; let minEdge = Infinity;
     let maxFixed = 0; let maxFixedT = -1;
+    let fWa = 0; let fWb = 0; let fWc = 0; let fTheta = 0; let fZ = 0; let fR = 0; let fNl = 0; let fDd = 0; let fDB = 0; let fDC = 0;
     for (const t of liveIdx) {
       const s = sagAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX); // HONEST ruler (absolute-bounded sampling)
       const sf = sagOfN(t, oracleN); // STRATA-comparable fixed-N ruler
       sags.push(s);
       if (s > maxSag) { maxSag = s; maxT = t; }
-      if (sf > maxFixed) { maxFixed = sf; maxFixedT = t; }
+      if (sf > maxFixed) {
+        maxFixed = sf; maxFixedT = t;
+        fWa = argWa; fWb = argWb; fWc = argWc; fTheta = argTheta; fZ = argZ; fR = argR; fNl = argNl; fDd = argDd; fDB = argDB; fDC = argDC;
+      }
       minEdge = Math.min(minEdge, eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
     }
     // ADVERSARIAL TAIL: the per-triangle barycentric oracle can UNDER-report a straddled crest (it may sample past
@@ -896,6 +908,29 @@ describe('STRATA conforming-bisection', () => {
       `  MAX ${um(maxSag)} µm  ${maxSag <= TOL ? 'PASS' : 'FAIL'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-${TOL}mm ${over}/${sorted.length}`,
       `  MAX-locus: ${locus(maxT)}`,
       `  [STRATA-comparable fixed oracle ${oracleN}]: MAX ${um(maxFixed)} µm   locus ${locus(maxFixedT)}`,
+      ...(maxFixedT >= 0 && maxFixed > 4 * maxSag
+        ? (() => {
+            const a2 = ta[maxFixedT]; const b2 = tb[maxFixedT]; const c2 = tc[maxFixedT];
+            const rv = (i: number): string => `vth=${vth[i].toPrecision(17)} vz=${vz[i].toPrecision(17)} vx=${vx[i].toPrecision(17)} vy=${vy[i].toPrecision(17)}`;
+            const inFoot = fWa >= -1e-12 && fWb >= -1e-12 && fWc >= -1e-12;
+            const thMin = Math.min(vth[a2], vth[b2], vth[c2]); const thMax = Math.max(vth[a2], vth[b2], vth[c2]);
+            const zMin = Math.min(vz[a2], vz[b2], vz[c2]); const zMax = Math.max(vz[a2], vz[b2], vz[c2]);
+            const thIn = canon(fTheta) >= thMin - 1e-9 && canon(fTheta) <= thMax + 1e-9;
+            const zIn = fZ >= zMin - 1e-9 && fZ <= zMax + 1e-9;
+            const rHere = R(canon(fTheta), fZ);
+            return [
+              '  *** RULER FORENSICS (fixed ruler exceeded adaptive by >4x) ***',
+              `    A: ${rv(a2)}`,
+              `    B: ${rv(b2)}`,
+              `    C: ${rv(c2)}`,
+              `    dB=${fDB.toPrecision(17)}  dC=${fDC.toPrecision(17)}   |n|=${fNl.toPrecision(17)}`,
+              `    argmax bary (wa,wb,wc)=(${fWa.toPrecision(17)}, ${fWb.toPrecision(17)}, ${fWc.toPrecision(17)})  barycentric-in-footprint=${inFoot}`,
+              `    argmax theta=${fTheta.toPrecision(17)} (θ-range [${thMin.toPrecision(10)}, ${thMax.toPrecision(10)}] in=${thIn})`,
+              `    argmax z=${fZ.toPrecision(17)} (z-range [${zMin.toPrecision(10)}, ${zMax.toPrecision(10)}] in=${zIn})`,
+              `    argmax r=${fR.toPrecision(17)}   re-evaluated r here=${rHere.toPrecision(17)}   dd=${fDd.toPrecision(17)}`,
+            ];
+          })()
+        : []),
       `  TAIL re-measure (worst ${order.length} @ oracle ${tailN}): MAX ${um(tailMax)} µm  ${tailMax <= TOL ? 'PASS' : 'FAIL'}`,
       `  TAIL-locus: ${locus(tailT)}`,
       ...(process.env.PF_CB_LOCUS_AUDIT === '1'

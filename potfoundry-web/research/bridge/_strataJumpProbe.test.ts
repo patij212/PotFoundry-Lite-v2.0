@@ -51,6 +51,56 @@ describe('STRATA jump probe', () => {
     const canon = (t: number): number => { let x = t % TWO_PI; if (x < 0) x += TWO_PI; return x; };
     const R = (t: number, z: number): number => rA(canon(t), Math.min(H, Math.max(0, z)));
 
+    // LINE MODE: scan r along a segment given by FULL-PRECISION endpoints. This is the instrument that window mode
+    // cannot replace: a lattice probe steps over any feature narrower than its own spacing, which is exactly how a
+    // ±0.6 mm / 4 µm-lattice window reported "smooth" over a region provably containing a 2 mm excursion. A dense
+    // 1-D scan along the offending edge resolves width AND class (jump vs narrow smooth trough) in one shot.
+    const lineSpec = process.env.PF_JUMP_LINE;
+    if (lineSpec !== undefined) {
+      const v = lineSpec.split(',').map((x) => Number.parseFloat(x));
+      const [t0, za, t1, zb] = [v[0], v[1], v[2], v[3]];
+      const M = Math.round(envF('PF_JUMP_LINEN', 200000));
+      const rAt = (u: number): number => R(t0 + (t1 - t0) * u, za + (zb - za) * u);
+      const rEnd0 = rAt(0); const rEnd1 = rAt(1);
+      const base = 0.5 * (rEnd0 + rEnd1);
+      let lo = Infinity; let hi = -Infinity; let uLo = 0; let uHi = 0;
+      let excursion = 0; // samples deviating > 0.05 mm from the endpoint baseline
+      for (let k = 0; k <= M; k += 1) {
+        const u = k / M; const r = rAt(u);
+        if (r < lo) { lo = r; uLo = u; }
+        if (r > hi) { hi = r; uHi = u; }
+        if (Math.abs(r - base) > 0.05) excursion += 1;
+      }
+      // physical length of the segment and of the excursion band
+      const P0 = [rEnd0 * Math.cos(t0), rEnd0 * Math.sin(t0), za];
+      const P1 = [rEnd1 * Math.cos(t1), rEnd1 * Math.sin(t1), zb];
+      const segLen = Math.hypot(P1[0] - P0[0], P1[1] - P0[1], P1[2] - P0[2]);
+      const bandMm = (excursion / M) * segLen;
+      // two-scale class test AT the extremum (whichever deviates more from the baseline)
+      const uStar = Math.abs(lo - base) > Math.abs(hi - base) ? uLo : uHi;
+      const cls: string[] = [];
+      for (const frac of [1e-3, 1e-4, 1e-5, 1e-6]) {
+        const d = frac;
+        const c = rAt(uStar);
+        const big = Math.abs(rAt(Math.min(1, uStar + d)) - 2 * c + rAt(Math.max(0, uStar - d)));
+        cls.push(`  |Δ²r| at ±${(d * segLen * 1000).toFixed(3)}µm = ${(big * 1000).toFixed(3)}µm`);
+      }
+      // eslint-disable-next-line no-console
+      console.log([
+        '',
+        `===== LINE SCAN: ${STYLE} =====`,
+        `  from (θ=${t0}, z=${za}) to (θ=${t1}, z=${zb})   segment length ${(segLen * 1000).toFixed(1)} µm, ${M} samples (${((segLen * 1e6) / M).toFixed(2)} nm pitch)`,
+        `  r at endpoints: ${rEnd0.toFixed(9)} / ${rEnd1.toFixed(9)}`,
+        `  r min ${lo.toFixed(9)} @u=${uLo.toFixed(6)}   max ${hi.toFixed(9)} @u=${uHi.toFixed(6)}   EXCURSION ${((hi - lo) * 1000).toFixed(2)} µm`,
+        `  samples >0.05mm off the endpoint baseline: ${excursion}/${M}  ⇒ feature width ≈ ${(bandMm * 1000).toFixed(2)} µm`,
+        '  second-difference ladder at the extremum (a JUMP holds its value as the step shrinks; smooth ∝ step²):',
+        ...cls,
+        '=========================================================',
+        '',
+      ].join('\n'));
+      return;
+    }
+
     // TRIANGLE MODE: reconstruct a specific reported triangle from its printed (θ,z) vertices and re-measure its
     // plane sag on a dense barycentric grid, reporting WHERE the maximum sits and how much r actually varies over
     // the footprint. This separates "the mesher found a real defect" from "the ruler produced a bogus number":
