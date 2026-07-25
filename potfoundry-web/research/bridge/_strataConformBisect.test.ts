@@ -41,6 +41,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
+import { baseRadius } from '../../src/geometry/profile';
 import { buildRadiusFn } from './labkit';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
@@ -94,6 +95,13 @@ describe('STRATA conforming-bisection', () => {
     const JUMP_RATIO = envF('PF_CB_JUMP_RATIO', 0.62); // small/big above this ⇒ C0 JUMP (needs a curtain, not a snap)
     const KINK_SCAN = Math.round(envF('PF_CB_KINK_SCAN', 16));
     const KINK_HALVINGS = Math.round(envF('PF_CB_KINK_HALVINGS', 24));
+    const STAGE = process.env.PF_CB_STAGE ?? 'ring'; // 'ring' (outer wall only) | 'solid' (closed printable pot)
+    const wallT = envF('PF_CB_WALLT', 4);          // inner-wall thickness (mm)
+    const floorZ = envF('PF_CB_FLOORZ', 10);       // cavity floor height (mm)
+    const innerDiv = Math.round(envF('PF_CB_INNERDIV', 256));
+    const innerRings = Math.round(envF('PF_CB_INNERRINGS', 48));
+    const NOWELD = process.env.PF_CB_NOWELD !== '0'; // refuse splits whose new vertex welds onto an existing one
+    const FLIP_ON = envOn('PF_CB_FLIP');            // locus-safe 2-2 edge flips to unblock refused collapses
     const DEBUG = envOn('PF_CB_DEBUG');
     const t0ms = Date.now();
 
@@ -108,6 +116,7 @@ describe('STRATA conforming-bisection', () => {
     // ───────────────────────────── mesh store (θ,z) with 3D spatial-hash weld ─────────────────────────────
     const vth: number[] = []; const vz: number[] = []; const vx: number[] = []; const vy: number[] = [];
     const vFeat: boolean[] = []; // vertex sits ON a detected feature locus
+    let addVNew = false;         // did the last addV CREATE a vertex, or weld onto an existing one?
     const gcell = new Map<string, number[]>();
     const gi = (v: number): number => Math.floor(v / WELD_MM);
     const addV = (thetaRaw: number, z: number, feat = false): number => {
@@ -118,9 +127,10 @@ describe('STRATA conforming-bisection', () => {
       for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) for (let dz = -1; dz <= 1; dz += 1) {
         const list = gcell.get(`${cx + dx},${cy + dy},${cz + dz}`);
         if (list === undefined) continue;
-        for (const j of list) if (Math.hypot(vx[j] - x, vy[j] - y, vz[j] - z) <= WELD_MM) { if (feat) vFeat[j] = true; return j; }
+        for (const j of list) if (Math.hypot(vx[j] - x, vy[j] - y, vz[j] - z) <= WELD_MM) { if (feat) vFeat[j] = true; addVNew = false; return j; }
       }
       const idx = vth.length;
+      addVNew = true;
       vth.push(theta); vz.push(z); vx.push(x); vy.push(y); vFeat.push(feat);
       const key = `${cx},${cy},${cz}`;
       const b = gcell.get(key); if (b === undefined) gcell.set(key, [idx]); else b.push(idx);
@@ -289,12 +299,16 @@ describe('STRATA conforming-bisection', () => {
 
     // ───────────────────────────── BISECTION ─────────────────────────────
     const created: number[] = [];
-    let nSnap = 0; let nReproj = 0; let nJump = 0;
+    let nSnap = 0; let nReproj = 0; let nJump = 0; let weldedSplits = 0;
     /** split edge (a,b) at parameter t (0..1) — splits EVERY incident triangle ⇒ watertight, no T-junctions. */
     const bisectAt = (a: number, b: number, tPar: number, feat: boolean): boolean => {
       const [mth, mz] = edgeParam(a, b, tPar);
       const m = addV(mth, mz, feat);
       if (m === a || m === b) return false; // weld collapsed the split — nothing to do
+      // A split point that WELDS onto a pre-existing vertex does not subdivide the edge: it stitches the edge to a
+      // vertex from an unrelated part of the local mesh, which is exactly how an edge ends up with >2 incident
+      // triangles (a topological pinch). Counting these is the audit; refusing them is the fix at source.
+      if (!addVNew) { weldedSplits += 1; if (NOWELD) return false; }
       const list = (edgeMap.get(eKey(a, b)) ?? []).slice();
       // DEGENERACY GUARD (measured need): if the new vertex welds onto an incident triangle's APEX, both replacement
       // triangles are degenerate — the split then DELETES geometry and the refinement churns forever without growing
@@ -370,7 +384,12 @@ describe('STRATA conforming-bisection', () => {
           }
         }
       }
-      return bisectAt(a, b, 0.5, vFeat[a] && vFeat[b]);
+      const feat = vFeat[a] && vFeat[b];
+      if (bisectAt(a, b, 0.5, feat)) return true;
+      // The midpoint welded onto a pre-existing vertex and was refused. Abandoning the edge here strands the
+      // triangle forever (MEASURED: no-op splits === welded splits, and the stranded triangles were exactly the
+      // GeometricStar/Voronoi MAX loci). Nudge the split parameter off-centre and try again.
+      return bisectAt(a, b, 0.42, feat) || bisectAt(a, b, 0.58, feat);
     };
 
     // LEPP walk (quality-preserving longest-edge chain) — used when DIRECTED is off.
@@ -414,19 +433,15 @@ describe('STRATA conforming-bisection', () => {
       const vs: Array<[number, number]> = [[ta[t], tb[t]], [tb[t], tc[t]], [tc[t], ta[t]]];
       const ls = vs.map(([a, b]) => eLen(a, b));
       const lMax = Math.max(ls[0], ls[1], ls[2]);
-      let pick = -1; let bestSag = -1;
+      const cands: Array<[number, number]> = [];
       for (let e = 0; e < 3; e += 1) {
         if (ls[e] < FLOOR_MM) continue;
         if (ls[e] * AR < lMax) continue; // aspect guard: never thin an already-short edge further
-        const s = edgeSag(vs[e][0], vs[e][1]);
-        if (s > bestSag) { bestSag = s; pick = e; }
+        cands.push([edgeSag(vs[e][0], vs[e][1]), e]);
       }
-      if (pick < 0) { // everything guarded → fall back to the longest edge
-        const e = longestE(t);
-        if (ls[e] >= FLOOR_MM) splitEdge(...eVerts(t, e));
-        return;
-      }
-      splitEdge(vs[pick][0], vs[pick][1]);
+      cands.sort((x, y) => y[0] - x[0]);
+      for (const [, e] of cands) if (splitEdge(vs[e][0], vs[e][1])) return; // best-first, but never give up on a refusal
+      for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM && splitEdge(vs[e][0], vs[e][1])) return; // drop the guard
     };
 
     // ───────────────────────────── worst-first refinement ─────────────────────────────
@@ -490,7 +505,9 @@ describe('STRATA conforming-bisection', () => {
     for (let i = 0; i < heapT.length; i += 1) if (alive[heapT[i]] && heapK[i] > heapLeftMax) heapLeftMax = heapK[i];
 
     // ───────────────────────────── needle collapse ─────────────────────────────
-    const COLLAPSE_ON = process.env.PF_CB_COLLAPSE !== '0';
+    // STRATA's naive union-find collapse MEASURABLY creates non-manifold edges (12 on GothicArches) because it
+    // ignores the link condition. It is now OPT-IN ONLY (PF_CB_NAIVE_COLLAPSE=1) and should not ship.
+    const COLLAPSE_ON = process.env.PF_CB_NAIVE_COLLAPSE === '1';
     const uf = new Int32Array(vth.length);
     for (let i = 0; i < uf.length; i += 1) uf[i] = i;
     const find = (x0: number): number => { let x = x0; while (uf[x] !== x) { uf[x] = uf[uf[x]]; x = uf[x]; } return x; };
@@ -518,9 +535,24 @@ describe('STRATA conforming-bisection', () => {
     // The naive union-find collapse used by STRATA also creates non-manifold edges (measured 12 on GothicArches).
     // The standard guarantee is the LINK CONDITION: edge (u,v) is collapsible iff N(u) ∩ N(v) is exactly the set of
     // apexes of the triangles sharing (u,v). Enforce it; refuse otherwise. Style-agnostic, geometry-agnostic.
-    let safeCollapses = 0; let refusedCollapses = 0;
+    let safeCollapses = 0; let refusedCollapses = 0; let refusedOffenders = 0; let flipsDone = 0; let flipsLocusRefused = 0;
+    // An edge lies ON a locus iff a TRANSVERSE probe through its midpoint finds a kink at the probe CENTRE.
+    // Same primitive as the detector — no per-style knowledge, no locus table to maintain.
+    const edgeOnLocus = (pv: number, qv: number): boolean => {
+      const mth = vth[pv] + dTh(pv, qv) * 0.5; const mz = (vz[pv] + vz[qv]) / 2;
+      const rMid = R(canon(mth), mz);
+      const eArc = rMid * dTh(pv, qv); const eZ = vz[qv] - vz[pv];
+      const L = Math.hypot(eArc, eZ);
+      if (L < 1e-9) return false;
+      const span = 0.5 * L;
+      const pArc = -eZ / L; const pZ = eArc / L;
+      const dth = (pArc * span) / Math.max(1e-6, rMid); const dz = pZ * span;
+      const k = locateKink(mth - dth, mz - dz, mth + dth, mz + dz);
+      return k !== null && Math.abs(2 * k.t - 1) < 0.3;
+    };
+
     const SAFE_MM = envF('PF_CB_NEEDLE_UM', 0.2) / 1000;
-    if (process.env.PF_CB_SAFE_COLLAPSE === '1') {
+    if (process.env.PF_CB_SAFE_COLLAPSE !== '0') {
       const nbr = new Map<number, Set<number>>();
       const vTris = new Map<number, Set<number>>();
       const addNbr = (p: number, q: number): void => { let s = nbr.get(p); if (s === undefined) { s = new Set(); nbr.set(p, s); } s.add(q); };
@@ -531,6 +563,38 @@ describe('STRATA conforming-bisection', () => {
         addNbr(a, b); addNbr(b, a); addNbr(b, c); addNbr(c, b); addNbr(c, a); addNbr(a, c);
         addVT(a, t); addVT(b, t); addVT(c, t);
       }
+      /** locus-safe 2-2 flip of edge (pv,qv); returns true if performed. Keeps nbr/vTris consistent. */
+      const tryFlip = (pv: number, qv: number): boolean => {
+        const inc = (edgeMap.get(eKey(pv, qv)) ?? []).filter((t) => alive[t]);
+        if (inc.length !== 2) return false;
+        const apexOf = (t: number): number => (ta[t] !== pv && ta[t] !== qv ? ta[t] : tb[t] !== pv && tb[t] !== qv ? tb[t] : tc[t]);
+        const r0 = apexOf(inc[0]); const s0 = apexOf(inc[1]);
+        if (r0 === s0) return false;
+        if ((edgeMap.get(eKey(r0, s0)) ?? []).some((t) => alive[t])) return false; // (r,s) already exists ⇒ would pinch
+        if (edgeOnLocus(pv, qv)) { flipsLocusRefused += 1; return false; }
+        // orientation check in (θ,z) shortest-arc coords around pv — both new triangles must keep the original sign
+        const P = (w: number): [number, number] => [dTh(pv, w), vz[w] - vz[pv]];
+        const cr = (A: [number, number], B: [number, number], C: [number, number]): number => (B[0] - A[0]) * (C[1] - A[1]) - (B[1] - A[1]) * (C[0] - A[0]);
+        const Pp = P(pv); const Pq = P(qv); const Pr = P(r0); const Ps = P(s0);
+        const s1 = cr(Pr, Pp, Ps); const s2 = cr(Ps, Pq, Pr);
+        const ref = cr(Pp, Pq, Pr);
+        if (ref === 0 || s1 === 0 || s2 === 0) return false;
+        if (Math.sign(s1) !== Math.sign(ref) || Math.sign(s2) !== Math.sign(ref)) return false; // non-convex quad
+        // ensure winding: inc[0] traverses pv→qv, so the quad is qv → r0 → pv → s0
+        for (const t of inc) { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); }
+        const n1 = addT(r0, pv, s0); const n2 = addT(s0, qv, r0);
+        for (const nt of [n1, n2]) {
+          if (nt < 0) continue;
+          for (const [x, y] of [[ta[nt], tb[nt]], [tb[nt], tc[nt]], [tc[nt], ta[nt]]] as Array<[number, number]>) {
+            let sx = nbr.get(x); if (sx === undefined) { sx = new Set(); nbr.set(x, sx); } sx.add(y);
+            let sy = nbr.get(y); if (sy === undefined) { sy = new Set(); nbr.set(y, sy); } sy.add(x);
+          }
+          for (const x of [ta[nt], tb[nt], tc[nt]]) { let sx = vTris.get(x); if (sx === undefined) { sx = new Set(); vTris.set(x, sx); } sx.add(nt); }
+        }
+        // (pv,qv) is gone: drop it from the neighbour sets if no surviving triangle uses it
+        if (!(edgeMap.get(eKey(pv, qv)) ?? []).some((t) => alive[t])) { nbr.get(pv)?.delete(qv); nbr.get(qv)?.delete(pv); }
+        return true;
+      };
       const shortEdges: Array<[number, number, number]> = [];
       const seenE = new Set<number>();
       for (let t = 0; t < ta.length; t += 1) {
@@ -555,9 +619,18 @@ describe('STRATA conforming-bisection', () => {
         for (const t of shared) { for (const w of [ta[t], tb[t], tc[t]]) if (w !== u && w !== v) apex.add(w); }
         const nu = nbr.get(u); const nv = nbr.get(v);
         if (nu === undefined || nv === undefined) continue;
-        let inter = 0; let ok = true;
-        for (const w of nu) if (nv.has(w)) { inter += 1; if (!apex.has(w)) { ok = false; break; } }
-        if (!ok || inter !== apex.size) { refusedCollapses += 1; continue; }
+        const offenders = (): number[] => { const out: number[] = []; for (const w of nu) if (nv.has(w) && !apex.has(w)) out.push(w); return out; };
+        let bad = offenders();
+        if (bad.length > 0 && FLIP_ON) {
+          // LOCUS-SAFE 2-2 FLIP. w ∈ N(u)∩N(v) that is not an apex of (u,v) is exactly what makes the collapse produce
+          // a >2-incidence edge. Flipping (u,w) (or (v,w)) removes w from the intersection. NEVER flip an edge that
+          // lies ON a detected locus — that would undo the conforming the whole pipeline exists to produce.
+          for (const w of bad.slice()) {
+            if (tryFlip(u, w) || tryFlip(v, w)) flipsDone += 1;
+          }
+          bad = offenders();
+        }
+        if (bad.length > 0) { refusedCollapses += 1; refusedOffenders += bad.length; continue; }
         // collapse v → u
         for (const t of shared) { alive[t] = false; collapsedTris += 1; }
         for (const t of Array.from(sv)) {
@@ -577,51 +650,131 @@ describe('STRATA conforming-bisection', () => {
     const PT = (i: number): P3 => [vx[i], vy[i], vz[i]];
     const liveIdx: number[] = [];
     for (let t = 0; t < ta.length; t += 1) if (alive[t]) { soup.push([PT(ta[t]), PT(tb[t]), PT(tc[t])]); liveIdx.push(t); }
-    const wCell = new Map<string, number[]>(); const wpos: P3[] = [];
-    const wIndex = (p: P3): number => {
-      const cx = gi(p[0]); const cy = gi(p[1]); const cz = gi(p[2]);
-      for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) for (let dz = -1; dz <= 1; dz += 1) {
-        const l = wCell.get(`${cx + dx},${cy + dy},${cz + dz}`);
-        if (l === undefined) continue;
-        for (const j of l) if (Math.hypot(wpos[j][0] - p[0], wpos[j][1] - p[1], wpos[j][2] - p[2]) <= WELD_MM) return j;
+
+    // Re-runnable position-weld topology audit (fresh weld state per call) — the ONE source of truth, exactly as
+    // _strataVoronoiSolid.analyze(): a slicer position-welds too, so this is what "watertight" means downstream.
+    interface Topo { nonManifold: number; boundary: number; loops: number[][]; seamCrack: number; wpos: P3[] }
+    const analyze = (tris: Array<[P3, P3, P3]>): Topo => {
+      const wCell = new Map<string, number[]>(); const wpos: P3[] = [];
+      const wIndex = (p: P3): number => {
+        const cx = gi(p[0]); const cy = gi(p[1]); const cz = gi(p[2]);
+        for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) for (let dz = -1; dz <= 1; dz += 1) {
+          const l = wCell.get(`${cx + dx},${cy + dy},${cz + dz}`);
+          if (l === undefined) continue;
+          for (const j of l) if (Math.hypot(wpos[j][0] - p[0], wpos[j][1] - p[1], wpos[j][2] - p[2]) <= WELD_MM) return j;
+        }
+        const idx = wpos.length; wpos.push(p);
+        const key = `${cx},${cy},${cz}`;
+        const b = wCell.get(key); if (b === undefined) wCell.set(key, [idx]); else b.push(idx);
+        return idx;
+      };
+      const ec = new Map<number, number>();
+      const WB = 1 << 25;
+      const bump = (a: number, b: number): void => { const k = a < b ? a * WB + b : b * WB + a; ec.set(k, (ec.get(k) ?? 0) + 1); };
+      for (const [a, b, c] of tris) { const ia = wIndex(a); const ib = wIndex(b); const ic = wIndex(c); bump(ia, ib); bump(ib, ic); bump(ic, ia); }
+      let nonManifold = 0; let boundary = 0;
+      const bAdj = new Map<number, number[]>();
+      for (const [k, cnt] of ec.entries()) {
+        if (cnt === 2) continue;
+        if (cnt > 2) { nonManifold += 1; continue; }
+        boundary += 1;
+        const a = Math.floor(k / WB); const b = k % WB;
+        (bAdj.get(a) ?? (bAdj.set(a, []), bAdj.get(a) as number[])).push(b);
+        (bAdj.get(b) ?? (bAdj.set(b, []), bAdj.get(b) as number[])).push(a);
       }
-      const idx = wpos.length; wpos.push(p);
-      const key = `${cx},${cy},${cz}`;
-      const b = wCell.get(key); if (b === undefined) wCell.set(key, [idx]); else b.push(idx);
-      return idx;
+      const seenB = new Set<number>(); const loopsOut: number[][] = [];
+      for (const st of bAdj.keys()) {
+        if (seenB.has(st)) continue;
+        const loop: number[] = []; let cur = st; let prev = -1; let guard = bAdj.size + 5;
+        while (guard-- > 0) {
+          loop.push(cur); seenB.add(cur);
+          let next = -1;
+          for (const n of bAdj.get(cur) ?? []) if (n !== prev && (!seenB.has(n) || n === st)) { next = n; break; }
+          if (next === -1 || next === st) break;
+          prev = cur; cur = next;
+        }
+        if (loop.length > 2) loopsOut.push(loop);
+      }
+      let sc = 0;
+      for (const loop of loopsOut) {
+        const mz = loop.reduce((sm, i) => sm + wpos[i][2], 0) / loop.length;
+        if (mz > 1e-3 && mz < H - 1e-3) sc += loop.length;
+      }
+      return { nonManifold, boundary, loops: loopsOut, seamCrack: sc, wpos };
     };
-    const ec = new Map<number, number>();
-    const WB = 1 << 25;
-    const bump = (a: number, b: number): void => { const k = a < b ? a * WB + b : b * WB + a; ec.set(k, (ec.get(k) ?? 0) + 1); };
-    for (const [a, b, c] of soup) { const ia = wIndex(a); const ib = wIndex(b); const ic = wIndex(c); bump(ia, ib); bump(ib, ic); bump(ic, ia); }
-    let nonManifold = 0; let boundary = 0;
-    const bAdj = new Map<number, number[]>();
-    for (const [k, cnt] of ec.entries()) {
-      if (cnt === 2) continue;
-      if (cnt > 2) { nonManifold += 1; continue; }
-      boundary += 1;
-      const a = Math.floor(k / WB); const b = k % WB;
-      (bAdj.get(a) ?? (bAdj.set(a, []), bAdj.get(a) as number[])).push(b);
-      (bAdj.get(b) ?? (bAdj.set(b, []), bAdj.get(b) as number[])).push(a);
-    }
-    const seen = new Set<number>(); const loops: number[][] = [];
-    for (const s of bAdj.keys()) {
-      if (seen.has(s)) continue;
-      const loop: number[] = []; let cur = s; let prev = -1; let guard = bAdj.size + 5;
-      while (guard-- > 0) {
-        loop.push(cur); seen.add(cur);
-        let next = -1;
-        for (const n of bAdj.get(cur) ?? []) if (n !== prev && (!seen.has(n) || n === s)) { next = n; break; }
-        if (next === -1 || next === s) break;
-        prev = cur; cur = next;
+
+    // ───────────────────────────── STAGE B: closure to a printable SOLID ─────────────────────────────
+    // Structure ported from _strataVoronoiSolid (stitchRings / innerLoopAtZ / cap assembly): the outer wall keeps the
+    // conforming mesh; the cavity side is a smooth surface of revolution, so it is meshed uniformly and cheaply.
+    const ang = (p: P3): number => { const a = Math.atan2(p[1], p[0]); return a < 0 ? a + TWO_PI : a; };
+    const stitchRings = (loopA: P3[], loopB: P3[]): number => {
+      const a = loopA.slice().sort((p, q) => ang(p) - ang(q)).map((p) => ({ th: ang(p), p }));
+      const b = loopB.slice().sort((p, q) => ang(p) - ang(q)).map((p) => ({ th: ang(p), p }));
+      const na = a.length; const nb = b.length;
+      if (na === 0 || nb === 0) return 0;
+      let ia = 0; let ib = 0; let n = 0;
+      while (ia < na || ib < nb) {
+        const ath = a[ia % na].th + (ia >= na ? TWO_PI : 0);
+        const bth = b[ib % nb].th + (ib >= nb ? TWO_PI : 0);
+        if (ia < na && (ib >= nb || ath <= bth)) { soup.push([a[ia % na].p, a[(ia + 1) % na].p, b[ib % nb].p]); ia += 1; }
+        else { soup.push([a[ia % na].p, b[(ib + 1) % nb].p, b[ib % nb].p]); ib += 1; }
+        n += 1;
       }
-      if (loop.length > 2) loops.push(loop);
+      return n;
+    };
+    const loopZof = (loop: number[], wp: P3[]): number => loop.reduce((s2, i) => s2 + wp[i][2], 0) / loop.length;
+
+    let outerTopo = analyze(soup);
+    // double-valued TREAD annuli bridging each detected C0 z-step (no-op when zSteps is empty, e.g. GothicArches)
+    let treadTris = 0;
+    if (zSteps.length > 0) {
+      const sortedL = outerTopo.loops.slice()
+        .sort((p, q) => loopZof(p, outerTopo.wpos) - loopZof(q, outerTopo.wpos))
+        .map((loop) => loop.map((i) => outerTopo.wpos[i]));
+      for (let sIdx = 0; sIdx < zSteps.length; sIdx += 1) {
+        const below = sortedL[1 + 2 * sIdx]; const above = sortedL[2 + 2 * sIdx];
+        if (below !== undefined && above !== undefined) treadTris += stitchRings(below, above);
+      }
+      outerTopo = analyze(soup);
     }
-    let seamCrack = 0;
-    for (const loop of loops) {
-      const mz = loop.reduce((sm, i) => sm + wpos[i][2], 0) / loop.length;
-      if (mz > 1e-3 && mz < H - 1e-3) seamCrack += loop.length;
+    const seamCrack = outerTopo.seamCrack; // OUTER-WALL cracks (caps legitimately add their own boundary loops)
+    const sortedLoops = outerTopo.loops.slice().sort((p, q) => loopZof(p, outerTopo.wpos) - loopZof(q, outerTopo.wpos));
+    const botLoop = (sortedLoops[0] ?? []).map((i) => outerTopo.wpos[i]);
+    const topLoop = (sortedLoops[sortedLoops.length - 1] ?? []).map((i) => outerTopo.wpos[i]);
+
+    let capTris = 0;
+    if (STAGE === 'solid') {
+      const rInner = (z: number): number => baseRadius(z, H, DIMS.Rb, DIMS.Rt, DIMS.expn ?? 1) - wallT;
+      const byAngle = (loop: P3[]): P3[] => loop.slice().sort((i, j) => ang(i) - ang(j));
+      const bot = byAngle(botLoop); const top = byAngle(topLoop);
+      const cBot: P3 = [0, 0, 0];
+      for (let i = 0; i < bot.length; i += 1) { soup.push([cBot, bot[(i + 1) % bot.length], bot[i]]); capTris += 1; }
+      const innerLoopAtZ = (z: number): P3[] => {
+        const r = rInner(z); const pts: P3[] = [];
+        for (let d = 0; d < innerDiv; d += 1) { const th = (TWO_PI * d) / innerDiv; pts.push([r * Math.cos(th), r * Math.sin(th), z]); }
+        return pts;
+      };
+      capTris += stitchRings(top, innerLoopAtZ(H)); // rim annulus
+      const zrings: number[] = [];
+      for (let k = 0; k <= innerRings; k += 1) zrings.push(H - ((H - floorZ) * k) / innerRings);
+      for (let k = 0; k < innerRings; k += 1) {
+        const z0 = zrings[k]; const z1 = zrings[k + 1];
+        const r0 = rInner(z0); const r1 = rInner(z1);
+        for (let d = 0; d < innerDiv; d += 1) {
+          const th0 = (TWO_PI * d) / innerDiv; const th1 = (TWO_PI * ((d + 1) % innerDiv)) / innerDiv;
+          const A: P3 = [r0 * Math.cos(th0), r0 * Math.sin(th0), z0];
+          const B: P3 = [r0 * Math.cos(th1), r0 * Math.sin(th1), z0];
+          const C: P3 = [r1 * Math.cos(th1), r1 * Math.sin(th1), z1];
+          const Dp: P3 = [r1 * Math.cos(th0), r1 * Math.sin(th0), z1];
+          soup.push([A, C, B]); soup.push([A, Dp, C]); capTris += 2; // inward-facing (cavity)
+        }
+      }
+      const cFloor: P3 = [0, 0, floorZ];
+      const floorRing = innerLoopAtZ(floorZ);
+      for (let d = 0; d < innerDiv; d += 1) { soup.push([cFloor, floorRing[d], floorRing[(d + 1) % innerDiv]]); capTris += 1; }
     }
+    const finalTopo = STAGE === 'solid' ? analyze(soup) : outerTopo;
+    const nonManifold = finalTopo.nonManifold; const boundary = finalTopo.boundary; const loops = finalTopo.loops;
 
     // ───────────────────────────── fidelity (oracle N) + tail re-measure ─────────────────────────────
     const sags: number[] = []; let maxSag = 0; let maxT = -1; let minEdge = Infinity;
@@ -703,7 +856,7 @@ describe('STRATA conforming-bisection', () => {
 
     const outDir = join('research', 'exchange', '_strataConformBisect');
     mkdirSync(outDir, { recursive: true });
-    const tag = `${STYLE.toLowerCase()}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}`;
+    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}`;
     const buf = Buffer.alloc(84 + soup.length * 50);
     buf.write('STRATA conforming-bisection', 0, 'ascii');
     buf.writeUInt32LE(soup.length, 80);
@@ -721,15 +874,17 @@ describe('STRATA conforming-bisection', () => {
 
     const report = [
       '',
-      `===== STRATA CONFORMING-BISECTION: ${STYLE} RING  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'}] =====`,
+      `===== STRATA CONFORMING-BISECTION: ${STYLE} ${STAGE.toUpperCase()}  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'}] =====`,
       `params ${JSON.stringify(styleParams)}`,
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
-      `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}   collapsed ${collapsedTris} (safe ${safeCollapses}, link-refused ${refusedCollapses})`,
+      `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
+      `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
       `heap: ${heapT.length} left, worst-left ${um(heapLeftMax)} µm, key-inversions ${keyInversions}, no-op splits ${stuck}   MAXtri@oracle${oracleRef} ${maxT >= 0 ? um(sagOfN(maxT, oracleRef)) : 'n/a'} µm`,
       '--- WATERTIGHT (3D position-weld) ---',
       `  non-manifold edges : ${nonManifold}  ${nonManifold === 0 ? 'OK' : 'FAIL'}`,
       `  seam-crack edges   : ${seamCrack}  ${seamCrack === 0 ? 'OK' : 'FAIL'}`,
-      `  boundary edges     : ${boundary}   loops ${loops.length} (ring ⇒ top+bottom only)`,
+      `  boundary edges     : ${boundary}   ${STAGE === 'solid' ? (boundary === 0 ? 'OK — CLOSED SOLID' : 'FAIL — open') : '(ring ⇒ top+bottom only)'}   loops ${loops.length}`,
+      `  soup: ${soup.length} tris = ${liveIdx.length} outer wall + ${treadTris} treads + ${capTris} caps`,
       `--- FIDELITY (HONEST ruler: adaptive oracle, ≤${AUD_HS}mm sample pitch, n∈[${AUD_NMIN},${AUD_NMAX}]) ---`,
       `  MAX ${um(maxSag)} µm  ${maxSag <= TOL ? 'PASS' : 'FAIL'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-${TOL}mm ${over}/${sorted.length}`,
       `  MAX-locus: ${locus(maxT)}`,
@@ -749,5 +904,6 @@ describe('STRATA conforming-bisection', () => {
     writeFileSync(join(outDir, `${tag}.report.txt`), report);
     expect(nonManifold).toBe(0);
     expect(seamCrack).toBe(0);
+    if (STAGE === 'solid') expect(boundary).toBe(0);
   }, 6_000_000);
 });
