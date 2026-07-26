@@ -442,6 +442,24 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const BRSKIP_TRIG = envF('PF_CB_BRSKIP_TRIG', 5 * acceptTol); // only re-measure triangles that read this badly
     let brSkipSamples = 0; let brSkipTotal = 0; let brSkipTris = 0; let brSkipNoLocus = 0;
     let skOn = false; let skL0 = 0; let skL1 = 0; let skZLo = 0; let skZHi = 0; let skSide = 0;
+    // ── LOCUS-FINDER CORRECTNESS (PF_CB_LOCFIX=0 restores the previous, broken behaviour for A/B) ──
+    // `locusThNear` answers "where is the locus"; two defects were MEASURED in it, both by WHY-BIG:
+    //   1. IT HALLUCINATES. It brackets on |Δr| > TOL between consecutive scan samples and then bisects, but never
+    //      applies the ε→0 test that `lociWinAll` ends with — so a steep-but-CONTINUOUS site is returned as a locus.
+    //      Caught red-handed: `TRUE locus θ=1.206158 (jump 0.000 µm)`. A jump finder returning a zero-jump site is
+    //      simply wrong, and every consumer downstream inherits the error.
+    //   2. IT MISSES. Its callers size the search window from the triangle's own θ-span, but the locus MOVES in θ
+    //      across that triangle's z-span, and on a snaking style the motion exceeds the span. Measured effect:
+    //      4–27 % of the triangles BRSKIP is asked to guard came back "no locus nearby" and were left unguarded.
+    // The window fix must NOT hardcode a per-style slope (the campaign's whole premise is zero per-style code), so
+    // the bound is MEASURED from the traced branches at run time (`locSlopeMax`, rad/mm) and the search additionally
+    // expands geometrically until it resolves. Both are reported so the residual miss rate is visible, not assumed.
+    const LOCFIX = process.env.PF_CB_LOCFIX !== '0';
+    const LOC_WINCAP = envF('PF_CB_LOC_WINCAP', 0.35); // rad — far above the 0.0935 rad median inter-locus gap
+    const LOC_TRIES = Math.round(envF('PF_CB_LOC_TRIES', 5));
+    let locSlopeMax = 0;              // rad/mm — max |dθ/dz| over every traced branch (0 until the tracer runs)
+    let locRejectedNoJump = 0;        // candidates the ε→0 test threw out (defect 1)
+    let locExpandUsed = 0; let locExpandFailed = 0; // window expansions needed / still unresolved (defect 2)
     let argWa = 0; let argWb = 0; let argWc = 0; let argTheta = 0; let argZ = 0; let argR = 0; let argNl = 0; let argDd = 0; let argDB = 0; let argDC = 0;
     const sagOfN = (t: number, n: number): number => {
       const a = ta[t]; const b = tb[t]; const c = tc[t];
@@ -523,12 +541,17 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const thC = th0 + (dB + dC) / 3;
       const zLo = Math.min(vz[a], vz[b], vz[c]); const zHi = Math.max(vz[a], vz[b], vz[c]);
       const spanTh = Math.max(Math.abs(dB), Math.abs(dC), Math.abs(dB - dC));
-      const win = Math.min(0.05, Math.max(2e-3, spanTh));
-      const L0 = locusThNear(zLo, canon(thC), win, 96);
-      const L1 = locusThNear(zHi, canon(thC), win, 96);
+      const dzT = zHi - zLo;
+      // The window must cover the locus's own θ-motion across the triangle's z-span, not just the triangle's θ-span.
+      const L0 = LOCFIX ? locusThNearZ(zLo, canon(thC), Math.max(2e-3, spanTh), dzT, 96) : locusThNear(zLo, canon(thC), Math.min(0.05, Math.max(2e-3, spanTh)), 96);
+      const L1 = LOCFIX ? locusThNearZ(zHi, canon(thC), Math.max(2e-3, spanTh), dzT, 96) : locusThNear(zHi, canon(thC), Math.min(0.05, Math.max(2e-3, spanTh)), 96);
       if (!Number.isFinite(L0) || !Number.isFinite(L1)) { brSkipNoLocus += 1; return false; }
       const un = (x: number): number => { let v = x; while (v - thC > Math.PI) v -= TWO_PI; while (thC - v > Math.PI) v += TWO_PI; return v; };
       skL0 = un(L0); skL1 = un(L1); skZLo = zLo; skZHi = zHi;
+      // FAIL-CLOSED CONSISTENCY. A wider window can latch the two ends onto DIFFERENT loci, and then the lerped
+      // locus is fiction and the side test would forgive samples it must not. A locus cannot move further than
+      // its measured slope allows, so refuse to guard the triangle at all when the two ends disagree by more.
+      if (LOCFIX && locSlopeMax > 0 && Math.abs(skL1 - skL0) > 2 * locSlopeMax * Math.abs(dzT) + 1e-4) { brSkipNoLocus += 1; return false; }
       const zc = (vz[a] + vz[b] + vz[c]) / 3;
       const lc = Math.abs(zHi - zLo) < 1e-12 ? skL0 : skL0 + ((skL1 - skL0) * (zc - zLo)) / (zHi - zLo);
       skSide = Math.sign(thC - lc);
@@ -622,12 +645,31 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
             if (mid <= lo || mid >= hi) break;
             if (Math.abs(R(canon(mid), z) - R(canon(lo), z)) >= Math.abs(R(canon(hi), z) - R(canon(mid), z))) hi = mid; else lo = mid;
           }
-          const c = 0.5 * (lo + hi); const d = Math.abs(c - thPred);
+          const c = 0.5 * (lo + hi);
+          // ε→0 VERIFICATION — the test `lociWinAll` already ends with and this function never had. A bracket only
+          // proves |Δr| > TOL across a finite step; a JUMP additionally keeps it as ε→0. Without this the finder
+          // returns creases and steep smooth regions as "loci" (measured: a returned site with jump 0.000 µm).
+          if (LOCFIX && Math.abs(R(canon(c + BR_EPS), z) - R(canon(c - BR_EPS), z)) <= TOL) { locRejectedNoJump += 1; pr = cur; continue; }
+          const d = Math.abs(c - thPred);
           if (d < bestD) { bestD = d; bestLo = c; }
         }
         pr = cur;
       }
       return bestLo;
+    };
+    /** locusThNear with a window that cannot be narrower than the locus's own θ-motion over `dz`, then widened
+     *  geometrically until it resolves. `locSlopeMax` is MEASURED from the traced branches — no per-style constant. */
+    const locusThNearZ = (z: number, thPred: number, win0: number, dz: number, nSamp = 0): number => {
+      if (!LOCFIX) return locusThNear(z, thPred, win0, nSamp);
+      let win = Math.min(LOC_WINCAP, Math.max(win0, win0 + locSlopeMax * Math.abs(dz)));
+      for (let tryI = 0; tryI < LOC_TRIES; tryI += 1) {
+        const r = locusThNear(z, thPred, win, nSamp);
+        if (Number.isFinite(r)) { if (tryI > 0) locExpandUsed += 1; return r; }
+        if (win >= LOC_WINCAP) break;
+        win = Math.min(LOC_WINCAP, win * 2);
+      }
+      locExpandFailed += 1;
+      return NaN;
     };
     // ───────────────────── L6: LOCUS CURVE TRACER (generic; connectivity, not per-row re-detection) ─────────────────
     const TR_RBAR = 0.5 * (DIMS.Rb + DIMS.Rt);   // mm — expresses a θ offset as arc length; no per-style content
@@ -889,6 +931,12 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           const zsA: number[] = []; const thA: number[] = [];
           for (const q of asc) { if (zsA.length > 0 && q[1] - zsA[zsA.length - 1] <= 0) continue; zsA.push(q[1]); thA.push(q[0]); }
           if (zsA.length < 2) return;
+          // MEASURE the locus slope bound |dθ/dz| from the traced polyline itself. This is what sizes the locus
+          // finder's search window (`locusThNearZ`) — measured per run from the geometry, never a per-style constant.
+          for (let q2 = 1; q2 < zsA.length; q2 += 1) {
+            const dzq = zsA[q2] - zsA[q2 - 1];
+            if (dzq > 1e-9) locSlopeMax = Math.max(locSlopeMax, Math.abs(thA[q2] - thA[q2 - 1]) / dzq);
+          }
           const mean = thA.reduce((x, y) => x + y, 0) / thA.length;
           const cand: TrBr = { zs: zsA, ths: thA, zLo: zsA[0], zHi: zsA[zsA.length - 1], mean };
           // DEDUPE by GEOMETRY, not by z-extent: every curve is traced twice (both halves round the merges) and two
@@ -2577,8 +2625,9 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
            `  LOCUS-locus: ${locus(locusT)}`]
         : []),
       `  min edge ${um(minEdge)} µm${TRACE ? `   [curtain-wall tris excluded from the graph ruler: ${curtainSkipped}]` : ''}`,
+      `  LOCUS FINDER (${LOCFIX ? 'FIXED' : '*** UNFIXED — PF_CB_LOCFIX=0 ***'}): measured slope bound |dθ/dz| ${locSlopeMax.toFixed(6)} rad/mm (= ${(locSlopeMax * TR_RBAR).toFixed(3)} mm arc per mm of z); ε→0 test REJECTED ${locRejectedNoJump} non-jump candidates; window expanded ${locExpandUsed}×, still unresolved ${locExpandFailed}`,
       ...(BRSKIP
-        ? [`  BRANCH-ATTRIBUTION: re-measured ${brSkipTris} tris (plain sag > ${um(BRSKIP_TRIG)} µm); of ${brSkipTotal} samples ${brSkipSamples} were WRONG-BRANCH inside the ±${um(BRSKIP_BAND)} µm band and skipped (${brSkipTotal > 0 ? ((100 * brSkipSamples) / brSkipTotal).toFixed(2) : '0'}%); ${brSkipNoLocus} tris had NO locus nearby and were left untouched`,
+        ? [`  BRANCH-ATTRIBUTION: re-measured ${brSkipTris} tris (plain sag > ${um(BRSKIP_TRIG)} µm); of ${brSkipTotal} samples ${brSkipSamples} were WRONG-BRANCH inside the ±${um(BRSKIP_BAND)} µm band and skipped (${brSkipTotal > 0 ? ((100 * brSkipSamples) / brSkipTotal).toFixed(2) : '0'}%); ${brSkipNoLocus} tris had NO locus nearby and were left untouched (${brSkipTris > 0 ? ((100 * brSkipNoLocus) / brSkipTris).toFixed(1) : '0'}% UNGUARDED)`,
            `    GUARD: a sample is skipped ONLY within ${um(BRSKIP_BAND)} µm of the TRUE locus, so a triangle straddling an UNMESHED locus still reads the full jump.`]
         : []),
       '=========================================================',
