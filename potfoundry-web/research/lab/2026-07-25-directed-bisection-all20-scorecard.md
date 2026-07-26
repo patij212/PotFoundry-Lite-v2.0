@@ -151,6 +151,35 @@
 > branch has no mesh near it), so it cannot hide a missing curtain; and distance-to-mesh ≤ distance-to-covering-
 > triangle, so the 19 already-closed rows can only improve under it — their PASS status is unaffected.
 
+> # UPDATE 9 — per-row columns FIX THE SHEAR (64×, at the analytic floor); the blocker moves to the GUARD's locus finder
+>
+> `PF_CB_TR_PERROW=1` (default OFF). Each row gets its own column set — branches live at that row plus per-row fillers — and consecutive rows are stitched by the **existing** angle-merge walk (`stitchWalk` refactored onto a shared `walkMergeIdx`: one stitcher, two consumers, no duplicate). Correctness condition is **anchoring** — spans run between slots live at *both* rows, so a curtain's r⁻/r⁺ pair can never be split by the merge. A dying branch simply has no column above it, so no quad is emitted into a collapsing bracket.
+>
+> | INITIAL GRID | control | reserved-room (§8, failed) | **per-row 208×140** | **per-row 208×280** |
+> |---|---|---|---|---|
+> | non-manifold / seam-crack | 0/0 | **370 / 2379** | **0 / 0** | **0 / 0** |
+> | coverage | 0/2725 PASS | — | 0/2725 PASS | 0/2737 PASS |
+> | θ-order · cycles · MINSEP-LIVE | 0·0·0 | — | 0·0·0 | 0·0·0 |
+> | **column shear** | 42,573.117 µm | 17,769.874 | **1,577.048** | **663.101** (over-1 mm **0**) |
+> | init tris | 174,912 | — | 105,884 (−39 %) | 172,900 |
+>
+> Shear is now **at the locus's own analytic floor** — 32×8 gives 10,173 µm against the `|dθ/dz| ≤ 0.0329 rad/mm` bound of 10,490 µm (0.97×) — and scales 1577 → 663 for 2× rows. Control (flag off) reproduces 42,573.117 µm to three decimals; **BasketWeave reproduces every recorded number** including `key-inversions 39778`, so the stitcher refactor is provably inert.
+>
+> **Certification run — NOT closed.** 208×280, 900 k, `BRSKIP=1 HAUS=1`, 3629 s, 541,176 tris: 0 non-manifold · 0 seam-crack · coverage PASS · placement p999 **2.854 µm** (floor 2.670 ⇒ **at the floor**) · **HAUSDORFF MAX 483.807 µm** (from 2125.821 same grid/cap ⇒ 4.4×) · plane 602.873 · **CAPPED**, heap 122,431, worst-left 597.949.
+>
+> ## TWO PREDICTIONS REFUTED BY MEASUREMENT
+> - **§8c is refuted.** It predicted `worst-left` would fall below 598 µm once the shear was gone. Shear fell **64×**; `worst-left` moved 598.001 → **597.949**. **The shear and the driver floor are INDEPENDENT defects, not coupled.**
+> - **The Hausdorff candidate-set hypothesis is refuted.** Same-mesh A/B: 1-ring 569.599 vs 3-ring 559.227 = **1.0×**. The bound was tight. Do not revisit.
+>
+> ## WHERE THE RESIDUAL ACTUALLY LIVES (`PF_CB_WHYBIG=1`, attributed not inferred)
+> Every reading puts the plane-MAX argmax **ON the locus** — 0.000–0.007 µm of arc — where `rA` is branch-arbitrary:
+> `argmax θ=2.745129 z=79.3682 · TRUE locus θ=2.745129 (jump 600.000 µm) · 0.001 µm ABOVE, centroid BELOW ⇒ WRONG-SIDE, INSIDE the 50 µm band`.
+> Not shear, not an unmeshed cliff, not the candidate set. `BRSKIP` exists to forgive exactly this and fails to fire, for **two measured bugs in `locusThNear`** (the guard's locus finder — *not* the ruler's definition):
+> 1. **No ε→0 jump verification** (which `lociWinAll` already has). Proven directly: it returned `TRUE locus θ=1.206158 (jump 0.000 µm)` — a false locus.
+> 2. **Recall 4–27 % short**: no locus found for 21,808/375,648 triangles at 280 rows (26,409/97,244 at 140). Its window `min(0.05, max(2e-3, spanTh))` is narrower than the locus's θ-motion across a large triangle's z-span — 0.046 rad over a 1.4 mm cell against a 0.03 rad window.
+>
+> **The blocker has moved out of the mesher and into the guard.** These are correctness bugs in a *finder* (it returns loci that are not loci, and misses loci that are there), not adjustments to a *ruler* — the distinction that keeps the fix honest. Validation is fixed in advance: the BasketWeave A/B must stay byte-identical.
+
 > # UPDATE 7 — the "√-cusp" diagnosis is REFUTED; the tail was IDENTITY, and a traced-contour curtain removes it
 >
 > New instruments: `research/bridge/_strataCkContour.test.ts` (`PF_STRATA_CKC=1`, contour tracer + jump-family census)

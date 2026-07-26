@@ -163,8 +163,20 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     //    is detected instead of hopped), round each merge onto its partner, cut the curve into monotone branches,
     //    give every branch its own column slot, add every corner z as a ROW so a merge is a mesh vertex, and
     //    INTERPOLATE dormant slots between their live neighbours instead of parking them on dead geometry.
+    // ── L7 PER-ROW COLUMN SET + ANGLE-MERGE ROW STITCH (PF_CB_TR_PERROW=1, requires TRACE, DEFAULT OFF) ──
+    //    The residual defect L6 could not remove is FORCED by the band model's FIXED per-band column count: a slot
+    //    that is dormant at a row still owns a column there, so it must be placed SOMEWHERE, and when the θ-bracket
+    //    holding it collapses in z (which happens at every merge corner, at every resolution) the placement rule —
+    //    park, uniform lerp, or any monotone ceiling — has to crush it. MEASURED (PF_CB_TR_TIEKEY, three keys,
+    //    byte-identical output): no allocator, ordering rule or reuse policy can move it; Kahn's co-live edges force
+    //    the linear extension. So remove the degree of freedom instead of trying to place it well: give each ROW its
+    //    OWN column set — exactly the branches LIVE at that row, plus fillers — and stitch consecutive rows with the
+    //    ANGLE-MERGE walk that already joins loops of DIFFERENT sizes (the tread annuli, the rim). A dead branch then
+    //    has no column at all: nothing is forced into a collapsing bracket, no crushed quad is emitted, and the
+    //    filler-span problem that broke the reserved-room ceiling at 140 rows disappears with it.
     const TRACE = envOn('PF_CB_TRACE');
     const CHAIN = envOn('PF_CB_CHAIN') || TRACE;
+    const PERROW = TRACE && envOn('PF_CB_TR_PERROW');
     const CHAIN_SCAN = Math.round(envF('PF_CB_CHAIN_SCAN', 16384));
     // Local re-bisection resolution. MEASURED: adjacent loci close to 1.10e-3 rad, so a 24-sample sweep of a
     // +/-0.02 rad window (1.67e-3 rad) is COARSER than the global scan and cannot separate them. 256 gives
@@ -793,6 +805,34 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const CHAIN_MATCH = envF('PF_CB_CHAIN_MATCH', 0.06);
     const CHAIN_WIN = envF('PF_CB_CHAIN_WIN', 0.02);
     const MINSEP = envF('PF_CB_CHAIN_MINSEP', 1e-5); // min theta between adjacent columns (rad); >> weld radius
+    // ───────────────────────────── THE ANGLE-MERGE WALK (one stitcher, two consumers) ─────────────────────────────
+    // This is the primitive that already stitches loop-to-loop between rings of DIFFERENT vertex counts — proven
+    // watertight on the four constant-z tread styles and on the BasketWeave curtain (`stitchWalk`, below, is now a
+    // thin P3 wrapper around it). L7 reuses it row-to-row so a band no longer needs one column count for all rows.
+    // Advance whichever side's θ lags and emit ONE triangle per step. `cyclic` closes the ring (na+nb triangles);
+    // otherwise the two sequences are OPEN polylines with pinned ends ((na−1)+(nb−1) triangles), which is what a span
+    // between two curtain anchors is. Winding matches the structured quad emitter exactly (CCW in (θ,z)): with A the
+    // LOW side and B the HIGH side, an A-step is (A[ia], A[ia+1], B[ib]) and a B-step is (A[ia], B[ib+1], B[ib]).
+    const walkMergeIdx = (
+      ua: number[], ub: number[], cyclic: boolean,
+      emitA: (ia: number, ia1: number, ib: number) => void,
+      emitB: (ia: number, ib1: number, ib: number) => void,
+    ): void => {
+      const na = ua.length; const nb = ub.length;
+      if (na === 0 || nb === 0) return;
+      const la = cyclic ? na : na - 1;
+      const lb = cyclic ? nb : nb - 1;
+      let ia = 0; let ib = 0;
+      let guard = la + lb + 8;
+      while ((ia < la || ib < lb) && guard-- > 0) {
+        const ath = ua[ia % na] + (ia >= na ? TWO_PI : 0);
+        const bth = ub[ib % nb] + (ib >= nb ? TWO_PI : 0);
+        if (ia < la && (ib >= lb || ath <= bth)) { emitA(ia % na, (ia + 1) % na, ib % nb); ia += 1; }
+        else { emitB(ia % na, (ib + 1) % nb, ib % nb); ib += 1; }
+      }
+    };
+    let perRowSheetTris = 0; let perRowCurtainTris = 0; let perRowSpans = 0; let perRowCyclic = 0;
+    let perRowMinColSepMm = Infinity; let perRowMaxColsRow = 0; let perRowMinColsRow = Infinity;
     const bounds = [0, ...zSteps, H];
     for (let b = 0; b + 1 < bounds.length; b += 1) {
       const za = b === 0 ? 0 : bounds[b] + stepEps;
@@ -808,6 +848,9 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       //    A chain that cannot be matched at a row HOLDS POSITION; the branch pair there measures |Δr|≈0 and the
       //    existing PINCH path collapses it to one vertex, so a coalesced chain costs nothing.
       let rowCols: number[][] = []; let colLocB: boolean[] = []; let ncB = nc; let chainIdx: number[] = [];
+      // L7: the slot id per (row, column). The fixed-column paths carry one global `chainIdx`; a per-row column set
+      // needs one per row, because column i is a different slot (or a filler) on different rows.
+      let rowSlotId: number[][] = [];
       // L6 adds two per-ROW quantities the column model never needed: an explicit z per row (so a merge corner can
       // BE a row) and a per-row liveness flag (so a dormant slot stops pretending to be a locus).
       let zRowB: number[] = []; let colLive: boolean[][] = [];
@@ -1084,7 +1127,12 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
                 th[k] = v; prev2 = v;
               }
             };
-            if (li.length === 0) { for (let k = 0; k < M; k += 1) th[k] = (TWO_PI * k) / M; }
+            if (PERROW) {
+              // ── L7. THERE IS NOTHING TO PLACE. A dormant slot owns no column at this row, so th[k] stays NaN and
+              //    the whole park / lerp / ceiling family of rules — every one of which was measured and reverted —
+              //    has no work to do. The row's columns are built from `li` alone, below.
+              for (let q = 0; q + 1 < li.length; q += 1) if (th[li[q + 1]] <= th[li[q]]) { trOrderViolT += 1; trBackMaxT = Math.max(trBackMaxT, (th[li[q]] - th[li[q + 1]]) * TR_RBAR); }
+            } else if (li.length === 0) { for (let k = 0; k < M; k += 1) th[k] = (TWO_PI * k) / M; }
             else {
               const first = li[0]; const last = li[li.length - 1];
               for (let q = 0; q + 1 < li.length; q += 1) fill(li[q], li[q + 1], th[li[q]], th[li[q + 1]]);
@@ -1114,6 +1162,10 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
               const prevRow = slotTh[slotTh.length - 1];
               const prevLv = slotLive[slotLive.length - 1];
               for (let k = 0; k < M; k += 1) {
+                // L7: a dormant slot has no column, so there is no translation to measure. The honest metric is the
+                // movement of a column that EXISTS at both rows — i.e. the locus's own dθ/dz·δz, which is bounded by
+                // the style's analytic slope (CelticKnot: 1.48 mm of arc per mm of z). Anything above that is a bug.
+                if (PERROW && !(prevLv[k] && live[k])) continue;
                 let d = Math.abs(th[k] - prevRow[k]) % TWO_PI;
                 d = Math.min(d, TWO_PI - d) * TR_RBAR;
                 if (d > trShearMaxT) { trShearMaxT = d; trShearAtT = `slot ${k} z=${zRowT[jr2].toFixed(3)}`; }
@@ -1164,6 +1216,50 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           }
           // ── 5. fillers + strict ordering (identical mechanism to the column path) ──
           const pitchT = TWO_PI / gu;
+          if (PERROW) {
+            // ── L7 PER-ROW COLUMNS. The row's column set is [live slot, its fillers, live slot, …] taken cyclically
+            //    over THIS row's live slots only. Two consequences, and they are the whole point:
+            //      • the filler count is sized from THIS row's gap, never from the widest row, so a filler run can
+            //        never be handed a span narrower than it needs — the failure that broke the reserved-room
+            //        ceiling at 208×140 (370 non-manifold on the INITIAL grid) is structurally absent;
+            //      • min column separation is bounded below by pitch/2 (nf = ceil(gap/pitch) ⇒ gap/nf > pitch/2)
+            //        when fillers exist, and by the MINSEP the demotion pass already enforces when they do not.
+            //        So the separation pass below is a no-op by construction; it is kept and ASSERTED, not trusted.
+            rowCols = []; colLive = []; rowSlotId = [];
+            for (let j = 0; j < slotTh.length; j += 1) {
+              const rc: number[] = []; const lv: boolean[] = []; const sid: number[] = [];
+              const li2: number[] = [];
+              for (let k = 0; k < M; k += 1) if (slotLive[j][k]) li2.push(k);
+              if (li2.length === 0) {
+                for (let i2 = 0; i2 < gu; i2 += 1) { rc.push(cut + (TWO_PI * i2) / gu); lv.push(false); sid.push(-1); }
+              } else {
+                for (let q = 0; q < li2.length; q += 1) {
+                  const k = li2[q]; const kn = li2[(q + 1) % li2.length];
+                  const a0 = slotTh[j][k] + cut;
+                  const b0 = slotTh[j][kn] + cut + (q + 1 === li2.length ? TWO_PI : 0);
+                  rc.push(a0); lv.push(true); sid.push(slotBase + k);
+                  const nf = Math.max(1, Math.ceil((b0 - a0) / pitchT - 1e-9));
+                  for (let f = 1; f < nf; f += 1) { rc.push(a0 + ((b0 - a0) * f) / nf); lv.push(false); sid.push(-1); }
+                }
+              }
+              for (let q = 1; q < rc.length; q += 1) {
+                perRowMinColSepMm = Math.min(perRowMinColSepMm, (rc[q] - rc[q - 1]) * TR_RBAR);
+                if (rc[q] >= rc[q - 1] + MINSEP) continue;
+                if (!lv[q]) { rc[q] = rc[q - 1] + MINSEP; continue; }
+                trMinsepLive += 1; trMinsepMax = Math.max(trMinsepMax, (rc[q - 1] + MINSEP - rc[q]) * TR_RBAR);
+                rc[q] = rc[q - 1] + MINSEP;
+              }
+              perRowMaxColsRow = Math.max(perRowMaxColsRow, rc.length);
+              perRowMinColsRow = Math.min(perRowMinColsRow, rc.length);
+              rowCols.push(rc); colLive.push(lv); rowSlotId.push(sid);
+            }
+            colLocB = []; chainIdx = [];
+            ncB = -1; // VARIES per row — every consumer must read rowCols[j].length
+            zRowB = zRowT;
+            slotBase += M;
+            trSlotsT += M;
+            trLog(`band ${b}: rows ${zRowT.length} (uniform ${rows + 1} + corners), PER-ROW cols ${perRowMinColsRow}..${perRowMaxColsRow}, coverage-miss ${trAudMiss}/${trAudTot}, ghost ${trGhost}/${trGhostTot}`);
+          } else {
           const nSubT: number[] = new Array<number>(M).fill(1);
           for (let k = 0; k < M; k += 1) {
             let mx = 0;
@@ -1204,6 +1300,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           slotBase += M;
           trSlotsT += M;
           trLog(`band ${b}: rows ${zRowT.length} (uniform ${rows + 1} + corners), cols ${ncB}, coverage-miss ${trAudMiss}/${trAudTot}, ghost ${trGhost}/${trGhostTot}`);
+          }
         }
       } else if (CHAIN) {
         const zsB: number[] = [];
@@ -1308,12 +1405,15 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         zRowB = []; for (let j = 0; j <= rows; j += 1) zRowB.push(za + (bandH * j) / rows);
         colLive = zRowB.map(() => colLocB);
       }
+      // Every fixed-column path carries ONE global chainIdx; normalise to the per-row form so the vertex builder has
+      // a single shape to read. (`ci` is captured once — the arrays are shared by reference, not copied.)
+      if (rowSlotId.length === 0) { const ci = chainIdx; rowSlotId = zRowB.map(() => ci); }
       const nR = zRowB.length - 1;
       const gL: number[][] = []; const gR: number[][] = [];
       for (let j = 0; j <= nR; j += 1) {
         const z = zRowB[j];
         const rowL: number[] = []; const rowR: number[] = [];
-        for (let i = 0; i < ncB; i += 1) {
+        for (let i = 0; i < rowCols[j].length; i += 1) {
           if (!colLive[j][i]) { const v = addV(rowCols[j][i], z); rowL.push(v); rowR.push(v); continue; }
           const th = rowCols[j][i];
           const rM = R(canon(th - BR_EPS), z); const rP = R(canon(th + BR_EPS), z);
@@ -1322,12 +1422,12 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           if (sep < PINCH_MM) {
             // the jump amplitude vanishes here: the curtain closes to a point. ONE vertex, tagged branch 0 so a
             // refined neighbour still inherits whichever branch the OTHER endpoint carries.
-            const v = addV(th, z, true, 0, CHAIN ? chainIdx[i] : th);
+            const v = addV(th, z, true, 0, CHAIN ? rowSlotId[j][i] : th);
             if (addVNew) pinchVerts += 1;
             rowL.push(v); rowR.push(v); continue;
           }
-          const vM = addV(th, z, true, -1, CHAIN ? chainIdx[i] : th);
-          const vP = addV(th, z, true, +1, CHAIN ? chainIdx[i] : th);
+          const vM = addV(th, z, true, -1, CHAIN ? rowSlotId[j][i] : th);
+          const vP = addV(th, z, true, +1, CHAIN ? rowSlotId[j][i] : th);
           // A style whose jump is below the weld radius would have its curtain silently welded SHUT — the one way
           // this mechanism can fail invisibly. Refuse rather than emit a lie.
           if (vM === vP) throw new Error(`curtain welded shut at θ=${th} z=${z}: |Δr|=${sep} mm ≤ weld ${WELD_MM} mm`);
@@ -1336,6 +1436,104 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         }
         gL.push(rowL); gR.push(rowR);
       }
+      if (PERROW) {
+        // ══════════ L7: ROW-TO-ROW ANGLE-MERGE STITCH ══════════
+        // Rows no longer share a column count, so the structured quad emitter does not apply. What does apply is the
+        // proven loop-to-loop walk (walkMergeIdx), run ONCE PER SPAN between consecutive CURTAIN ANCHORS.
+        //
+        // ANCHOR = a slot LIVE at BOTH rows. Anchoring is not an optimisation, it is the correctness condition the
+        // earlier attempts violated: a pure angle merge is free to pair r⁻ of one row with r⁺ of the next wherever
+        // their θ happen to interleave, and a mismatched branch pair is precisely how they produced non-manifold
+        // edges. Pinning the anchors makes each sheet terminate on its OWN chain by construction; the merge then only
+        // ever runs between two anchors, on geometry that carries no branch identity at all (fillers, plus any slot
+        // that is live on one side only — a birth or a death, which has no partner to be paired with).
+        //
+        // WATERTIGHTNESS, edge by edge (all four cases verified by the audit, not by this argument alone):
+        //   • a horizontal edge inside row j is used once by the span ABOVE (as an A-edge) and once by the span BELOW
+        //     (as a B-edge) — 2 incidences, except on the band's first/last row, which are the ring's boundary loops;
+        //   • the CROSS edge r⁻→r⁺ of a live slot is used by the curtain quad on any side where the slot is an
+        //     anchor, and is interior to the span on any side where it is not — either way exactly once per side;
+        //   • the vertical edges M0–M1 / P0–P1 of an anchor are each shared by the curtain quad and the one span that
+        //     terminates on them;
+        //   • a slot that DIES between the rows gets no curtain quad: its cross edge is simply covered by the span
+        //     above. That is the crushed quad — 42.6 mm of column shear — deleted rather than placed better.
+        interface Ring { v: number[]; th: number[]; sM: Map<number, number>; sP: Map<number, number> }
+        const rings: Ring[] = [];
+        for (let j = 0; j <= nR; j += 1) {
+          const rv: number[] = []; const rt: number[] = [];
+          const sM = new Map<number, number>(); const sP = new Map<number, number>();
+          for (let i = 0; i < rowCols[j].length; i += 1) {
+            const th = rowCols[j][i];
+            if (!colLive[j][i]) { rv.push(gL[j][i]); rt.push(th); continue; }
+            const k = rowSlotId[j][i];
+            sM.set(k, rv.length); rv.push(gL[j][i]); rt.push(th);
+            if (gR[j][i] !== gL[j][i]) { sP.set(k, rv.length); rv.push(gR[j][i]); rt.push(th); }
+            else sP.set(k, rv.length - 1); // PINCH: |Δr| below the weld radius ⇒ one vertex carries both sides
+          }
+          rings.push({ v: rv, th: rt, sM, sP });
+        }
+        /** the cyclic run of ring entries from i0 to i1 INCLUSIVE, θ unwrapped monotonically. `full` (i0 === i1, the
+         *  single-anchor case, or a pinched anchor) means "all the way round and back to the start". */
+        const spanOf = (r: Ring, i0: number, i1: number): { v: number[]; t: number[] } => {
+          const N = r.v.length;
+          const cnt = i0 === i1 ? N + 1 : ((i1 - i0 + N) % N) + 1;
+          const v: number[] = []; const t: number[] = [];
+          let add = 0;
+          for (let s = 0; s < cnt; s += 1) {
+            const i = (i0 + s) % N;
+            if (s > 0 && i === 0) add += TWO_PI;
+            v.push(r.v[i]); t.push(r.th[i] + add);
+          }
+          return { v, t };
+        };
+        const align = (ta2: number, tb2: number[]): void => {
+          let sh = 0;
+          while (tb2[0] + sh - ta2 > Math.PI) sh -= TWO_PI;
+          while (ta2 - (tb2[0] + sh) > Math.PI) sh += TWO_PI;
+          if (sh !== 0) for (let i = 0; i < tb2.length; i += 1) tb2[i] += sh;
+        };
+        for (let j = 0; j < nR; j += 1) {
+          const A = rings[j]; const B = rings[j + 1];
+          if (A.v.length === 0 || B.v.length === 0) continue;
+          const anchors: number[] = [];
+          for (const k of A.sP.keys()) if (B.sP.has(k)) anchors.push(k);
+          // The slot order IS the θ order at every row (the topological sort plus the demotion repair guarantee it),
+          // so sorting the shared slots by index puts them in ring order in BOTH rings.
+          anchors.sort((x, y) => x - y);
+          if (anchors.length === 0) {
+            // No shared locus between these rows: one cyclic merge of the two rings — the tread case verbatim.
+            perRowCyclic += 1;
+            let best = 0; let bd = Infinity;
+            for (let i = 0; i < B.v.length; i += 1) { let d = Math.abs(B.th[i] - A.th[0]) % TWO_PI; d = Math.min(d, TWO_PI - d); if (d < bd) { bd = d; best = i; } }
+            const bv: number[] = []; const bt: number[] = [];
+            for (let i = 0; i < B.v.length; i += 1) { const qi = (best + i) % B.v.length; bv.push(B.v[qi]); bt.push(B.th[qi] + (qi < best ? TWO_PI : 0)); }
+            align(A.th[0], bt);
+            walkMergeIdx(A.th, bt, true,
+              (ia, ia1, ib) => { if (addT(A.v[ia], A.v[ia1], bv[ib]) >= 0) perRowSheetTris += 1; },
+              (ia, ib1, ib) => { if (addT(A.v[ia], bv[ib1], bv[ib]) >= 0) perRowSheetTris += 1; });
+            continue;
+          }
+          for (let q = 0; q < anchors.length; q += 1) {
+            const p = anchors[q]; const r2 = anchors[(q + 1) % anchors.length];
+            const sa = spanOf(A, A.sP.get(p) as number, A.sM.get(r2) as number);
+            const sb = spanOf(B, B.sP.get(p) as number, B.sM.get(r2) as number);
+            align(sa.t[0], sb.t);
+            perRowSpans += 1;
+            walkMergeIdx(sa.t, sb.t, false,
+              (ia, ia1, ib) => { if (addT(sa.v[ia], sa.v[ia1], sb.v[ib]) >= 0) perRowSheetTris += 1; },
+              (ia, ib1, ib) => { if (addT(sa.v[ia], sb.v[ib1], sb.v[ib]) >= 0) perRowSheetTris += 1; });
+          }
+          // ── THE CURTAIN, at the anchors only. Winding is fixed by ORIENTATION CONSISTENCY, not by the sign of the
+          //    jump: the minus sheet traverses M0→M1 and the plus sheet P1→P0, so the boundary cycle is
+          //    M1 → M0 → P0 → P1. Correct for r+ > r− and r+ < r− alike; a pinch drops one or both by degeneracy.
+          for (const k of anchors) {
+            const M0 = A.v[A.sM.get(k) as number]; const P0 = A.v[A.sP.get(k) as number];
+            const M1 = B.v[B.sM.get(k) as number]; const P1 = B.v[B.sP.get(k) as number];
+            if (addT(M1, M0, P0) >= 0) { curtainTris += 1; perRowCurtainTris += 1; }
+            if (addT(M1, P0, P1) >= 0) { curtainTris += 1; perRowCurtainTris += 1; }
+          }
+        }
+      } else {
       for (let j = 0; j < nR; j += 1) for (let i = 0; i < ncB; i += 1) {
         const i1 = (i + 1) % ncB;
         addT(gR[j][i], gL[j][i1], gL[j + 1][i1]);
@@ -1355,6 +1553,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           if (addT(M1, M0, P0) >= 0) curtainTris += 1;
           if (addT(M1, P0, P1) >= 0) curtainTris += 1;
         }
+      }
       }
     }
 
@@ -1847,14 +2046,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       for (let i = 0; i < nb; i += 1) { let d = Math.abs(ang(B[i]) - a0); if (d > Math.PI) d = TWO_PI - d; if (d < bd) { bd = d; best = i; } }
       B = B.slice(best).concat(B.slice(0, best));
       const ua = unwrapFrom(A); const ub = unwrapFrom(B);
-      let ia = 0; let ib = 0; let n = 0;
-      while (ia < na || ib < nb) {
-        const ath = ua[ia % na] + (ia >= na ? TWO_PI : 0);
-        const bth = ub[ib % nb] + (ib >= nb ? TWO_PI : 0);
-        if (ia < na && (ib >= nb || ath <= bth)) { soup.push([A[ia % na], A[(ia + 1) % na], B[ib % nb]]); ia += 1; }
-        else { soup.push([A[ia % na], B[(ib + 1) % nb], B[ib % nb]]); ib += 1; }
-        n += 1;
-      }
+      // Same walk as the per-row grid stitch — ONE implementation, so a fix to either is a fix to both.
+      let n = 0;
+      walkMergeIdx(ua, ub, true,
+        (ia, ia1, ib) => { soup.push([A[ia], A[ia1], B[ib]]); n += 1; },
+        (ia, ib1, ib) => { soup.push([A[ia], B[ib1], B[ib]]); n += 1; });
       return n;
     };
     const stitchRings = (loopA: P3[], loopB: P3[]): number => {
@@ -1975,6 +2171,9 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     // true one over the whole surface (for all other triangles the plane distance — an upper bound — is already
     // under tolerance).
     let hausMax = 0; let hausT = -1; let hausTris = 0; let hausSamples = 0;
+    let hausTh = 0; let hausZ = 0; let hausCand = 0; let hausCandTot = 0;
+    let hausMax1 = 0; let hausT1 = -1;
+    const HAUS_RING = Math.round(envF('PF_CB_HAUS_RING', 1)); // 1 = the recorded 1-ring; >1 widens toward true distance-to-mesh
     if (process.env.PF_CB_HAUS === '1') {
       const vTri = new Map<number, number[]>();
       const addVT2 = (v: number, t: number): void => { const l = vTri.get(v); if (l === undefined) vTri.set(v, [t]); else l.push(t); };
@@ -2011,25 +2210,47 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         const t = liveIdx[li];
         hausTris += 1;
         const a = ta[t]; const b = tb[t]; const c = tc[t];
-        const cand = new Set<number>();
+        // CANDIDATE SET = the k-RING. The metric is distance to the MESH; restricting the search to the 1-ring
+        // computes distance to PART of the mesh, i.e. an UPPER BOUND, and it is wrong in a specific, measured way:
+        // WHY-BIG shows the argmax sample lying exactly ON a locus (0.000 µm of arc), where the correct sheet is the
+        // OTHER branch — present in the mesh, but reachable only ACROSS the curtain wall, which is two hops away.
+        // At ring 1 that sheet is invisible and the sample is charged the full 600 µm jump for geometry the mesh
+        // actually contains. Widening the ring can only ever DECREASE the reported distance toward the true one, so
+        // this is a completeness fix, not a relaxation — and sufficiency is checkable by running two depths and
+        // confirming the number has stopped moving. PF_CB_HAUS_RING=1 restores the recorded behaviour exactly.
+        let cand = new Set<number>();
         for (const v of [a, b, c]) for (const u of vTri.get(v) ?? []) if (alive[u]) cand.add(u);
+        const ring1 = new Set<number>(cand); // kept so ONE run reports both depths — the A/B, uncconfounded by grid
+        for (let ring = 1; ring < HAUS_RING; ring += 1) {
+          const nxt = new Set<number>(cand);
+          for (const u of cand) for (const v of [ta[u], tb[u], tc[u]]) for (const w of vTri.get(v) ?? []) if (alive[w]) nxt.add(w);
+          cand = nxt;
+        }
+        hausCandTot += cand.size;
         const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
         const le = Math.max(eLen(a, b), eLen(b, c), eLen(c, a));
         const n = Math.max(AUD_NMIN, Math.min(AUD_NMAX, Math.ceil(le / AUD_HS)));
-        let worst = 0;
+        let worst = 0; let wTh = 0; let wZ = 0; let worst1 = 0;
         for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
           const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
           const theta = th0 + wb * dB + wc * dC;
           const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
           const r = R(canon(theta), z);
           const px = r * Math.cos(theta); const py = r * Math.sin(theta);
-          let best = Infinity;
-          for (const u of cand) { const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]); if (d < best) best = d; }
+          let best = Infinity; let best1 = Infinity;
+          for (const u of cand) {
+            const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]);
+            if (d < best) best = d;
+            if (d < best1 && ring1.has(u)) best1 = d;
+          }
           hausSamples += 1;
-          if (best > worst) worst = best;
+          if (best > worst) { worst = best; wTh = theta; wZ = z; }
+          if (best1 > worst1) worst1 = best1;
         }
         const wsq = Math.sqrt(worst);
-        if (wsq > hausMax) { hausMax = wsq; hausT = t; }
+        if (wsq > hausMax) { hausMax = wsq; hausT = t; hausTh = wTh; hausZ = wZ; hausCand = cand.size; }
+        const wsq1 = Math.sqrt(worst1);
+        if (wsq1 > hausMax1) { hausMax1 = wsq1; hausT1 = t; }
       }
     }
 
@@ -2206,9 +2427,45 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       return `z=[${[vz[a], vz[b], vz[c]].map((x) => x.toFixed(2)).join(',')}] (${((100 * zc) / H).toFixed(0)}% H) θ=[${[vth[a], vth[b], vth[c]].map((x) => x.toFixed(4)).join(',')}] edges(µm)=${es} feat=[${[vFeat[a], vFeat[b], vFeat[c]].map((f) => (f ? 1 : 0)).join('')}] branch=[${[a, b, c].map((v) => (onLoc(v) ? (vBranch[v] > 0 ? '+' : vBranch[v] < 0 ? '-' : '0') : '.')).join('')}]`;
     };
 
+    // ───────── WHY-BIG: attribute ONE over-tolerance reading to its actual cause (PF_CB_WHYBIG=1) ─────────
+    // A ruler MAX is a number, not a diagnosis, and this residual has already survived one wrong diagnosis
+    // (§8c predicted it was coupled to the column shear; removing the shear left it at 597.97 µm). Three causes are
+    // distinguishable and only one is a mesher defect:
+    //   (a) WRONG-SIDE STRIP — the argmax sample sits on the far side of the TRUE locus, within a chord-sagitta of
+    //       it, and the correct sheet is present a few µm away. A measurement artifact; BRSKIP forgives it only
+    //       inside its band, so a strip WIDER than the band reads full-jump while still being an artifact.
+    //   (b) UNMESHED CLIFF — a genuine jump inside the triangle's footprint with NO column of its own. A real defect.
+    //   (c) INSTRUMENT GAP — the sample belongs to geometry the ruler cannot see (tread annuli and caps live in the
+    //       P3 `soup` only, so the Hausdorff 1-ring candidate set, built from `liveIdx`, excludes them entirely).
+    // Report the evidence that separates them: where the argmax is, where the true locus is, which side each is on,
+    // how big the jump is there, and how far the sample is from the nearest band boundary.
+    const WHYBIG = envOn('PF_CB_WHYBIG');
+    const whyBig = (label: string, t: number, thA: number, zA: number): string[] => {
+      if (t < 0) return [`  WHY-BIG ${label}: n/a`];
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      const thC = vth[a] + (dTh(a, b) + dTh(a, c)) / 3;
+      const nS = Math.max(64, Math.ceil((2 * PLACE_WIN) / PLACE_RES));
+      const thL = locusThNear(zA, canon(thA), PLACE_WIN, nS);
+      const zStepD = zSteps.length === 0 ? Infinity : Math.min(...zSteps.map((zs) => Math.abs(zA - zs)));
+      const zEdgeD = Math.min(zA, H - zA);
+      if (!Number.isFinite(thL)) {
+        return [`  WHY-BIG ${label}: argmax θ=${thA.toFixed(6)} z=${zA.toFixed(4)}  — NO locus within ±${PLACE_WIN} rad ⇒ NOT a jump artifact`,
+          `      nearest z-step ${zStepD === Infinity ? 'n/a' : `${zStepD.toFixed(4)} mm`}, distance to z-cap ${zEdgeD.toFixed(4)} mm, tri z-span ${(Math.max(vz[a], vz[b], vz[c]) - Math.min(vz[a], vz[b], vz[c])).toFixed(4)} mm`];
+      }
+      let dth = canon(thA) - thL; if (dth > Math.PI) dth -= TWO_PI; else if (dth < -Math.PI) dth += TWO_PI;
+      let dthC = canon(thC) - thL; if (dthC > Math.PI) dthC -= TWO_PI; else if (dthC < -Math.PI) dthC += TWO_PI;
+      const rHere = R(canon(thL), zA);
+      const jump = Math.abs(R(canon(thL + BR_EPS), zA) - R(canon(thL - BR_EPS), zA));
+      const wrongSide = Math.sign(dth) !== Math.sign(dthC) && Math.sign(dth) !== 0;
+      const arc = Math.abs(dth) * rHere;
+      return [`  WHY-BIG ${label}: argmax θ=${thA.toFixed(6)} z=${zA.toFixed(4)}; TRUE locus θ=${thL.toFixed(6)} (jump ${um(jump)} µm)`,
+        `      sample is ${um(arc)} µm of arc ${dth > 0 ? 'ABOVE' : 'BELOW'} the locus; triangle centroid is ${dthC > 0 ? 'ABOVE' : 'BELOW'} ⇒ ${wrongSide ? `WRONG-SIDE (a) — strip is ${um(arc)} µm wide vs the ${um(BRSKIP_BAND)} µm BRSKIP band ⇒ ${arc > BRSKIP_BAND ? 'OUTSIDE the band, so BRSKIP cannot forgive it' : 'inside the band'}` : 'SAME SIDE ⇒ not a wrong-side strip; suspect (b) unmeshed cliff or (c) instrument gap'}`,
+        `      nearest z-step ${zStepD === Infinity ? 'n/a' : `${zStepD.toFixed(4)} mm`}, distance to z-cap ${zEdgeD.toFixed(4)} mm, tri z-span ${(Math.max(vz[a], vz[b], vz[c]) - Math.min(vz[a], vz[b], vz[c])).toFixed(4)} mm`];
+    };
+
     const outDir = join('research', 'exchange', '_strataConformBisect');
     mkdirSync(outDir, { recursive: true });
-    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${CURTAIN ? 'C' : BR_EVAL ? 'e' : '-'}`;
+    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${CURTAIN ? 'C' : BR_EVAL ? 'e' : '-'}${PERROW ? 'P' : ''}`;
     const buf = Buffer.alloc(84 + soup.length * 50);
     buf.write('STRATA conforming-bisection', 0, 'ascii');
     buf.writeUInt32LE(soup.length, 80);
@@ -2229,17 +2486,19 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `===== STRATA CONFORMING-BISECTION: ${STYLE} ${STAGE.toUpperCase()}  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'} | ${CURTAIN ? 'θ-CURTAIN' : BR_EVAL ? 'branch-eval only (NO curtain)' : 'no-curtain'}] =====`,
       `params ${JSON.stringify(styleParams)}`,
       `grid ${gu}×${gv} → ${nc} cols (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
-      `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
+      `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}${zSteps.length > 0 ? ` @ z=[${zSteps.map((z) => z.toFixed(3)).join(', ')}]` : ''}`,
       `--- θ-JUMP LOCI (generic two-scale detector, ${(curtScanEvals / 1e6).toFixed(2)}M evals) ---`,
       `  brackets ${curtBrackets} → rejected ${curtRejected} (of which ${curtSnaking} SNAKING = jump present at <${(CURT_ZFRAC*100).toFixed(0)}% of z probes ⇒ NEEDS THE TRACED-POLYLINE CURTAIN, refused here) → detected ${jumpLoci.length}${jumpLoci.length > 0 ? `  θ*=[${jumpLoci.slice(0, 8).map((x) => x.toFixed(9)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]  grid-col idx=[${jumpLoci.slice(0, 8).map((x) => ((x * gu) / TWO_PI).toFixed(4)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]` : ''}`,
       `  chains: built ${chainsBuilt}, matched ${chainMatched}, locally RECOVERED ${chainRecovered}, HELD ${chainHeld} (${chainSlots > 0 ? ((100 * chainHeld) / chainSlots).toFixed(1) : '0'}% hold rate), of which SUSPECT (jump present at the held θ) ${chainSuspect}; terminal-snap to true death point ${chainTermSnap}`,
       `  chains: reprojected splits ${chainReproj}, reproj-FAILED ${chainReprojFail}`,
       ...(TRACE ? [`  TRACER: ${trCurvesT} curves → ${trBranchesT} monotone branches → ${trSlotsT} column slots; ${trRowsAddedT} merge-corner ROWS inserted; θ-order violations ${trOrderViolT} (worst backward step ${um(trBackMaxT)} µm arc), cycle-breaks ${trCycleBreakT}; order-repair DEMOTED ${trDemotedT}/${trLiveSlotsT} live row-slots; MINSEP moved ${trMinsepLive} LIVE columns (worst ${um(trMinsepMax)} µm arc)  ${trOrderViolT === 0 && trMinsepLive === 0 ? 'OK' : '*** SLOT ORDER INCONSISTENT ***'}`,
-      `  TRACER inter-row COLUMN SHEAR: worst ${um(trShearMaxT)} µm arc${trShearAtT === '' ? '' : ` @ ${trShearAtT}`}, over-${TR_MAXSHEAR}mm ${trShearOverT}  ${trShearOverT === 0 ? 'OK' : '*** COLUMN JUMPS BETWEEN ROWS ***'}`] : []),
+      `  TRACER inter-row COLUMN SHEAR${PERROW ? ' [co-live columns only — a dormant slot has NO column to translate]' : ''}: worst ${um(trShearMaxT)} µm arc${trShearAtT === '' ? '' : ` @ ${trShearAtT}`}, over-${TR_MAXSHEAR}mm ${trShearOverT}  ${trShearOverT === 0 ? 'OK' : '*** COLUMN JUMPS BETWEEN ROWS ***'}`] : []),
       ...(TRACE && trShearLog.length > 0
         ? [`    worst ${Math.min(12, trShearLog.length)} shear events (of ${trShearLog.length} logged over ${TR_MAXSHEAR} mm):`,
            ...trShearLog.slice().sort((x, y) => Number.parseFloat(y) - Number.parseFloat(x)).slice(0, 12).map((s) => `      ${s}`)]
         : []),
+      ...(PERROW ? [`  PER-ROW COLUMNS (L7): rows carry ${perRowMinColsRow === Infinity ? 0 : perRowMinColsRow}..${perRowMaxColsRow} columns; ${perRowSpans} anchored spans + ${perRowCyclic} anchor-free cyclic merges → ${perRowSheetTris} sheet tris + ${perRowCurtainTris} curtain tris`,
+      `  PER-ROW min COLUMN SEPARATION ${perRowMinColSepMm === Infinity ? 'n/a' : `${um(perRowMinColSepMm)} µm arc`} vs MINSEP ${um(MINSEP * TR_RBAR)} µm, weld ${um(WELD_MM)} µm  ${perRowMinColSepMm > 4 * MINSEP * TR_RBAR ? 'OK' : '*** COLUMNS CROWDED ***'}`] : []),
       ...(TRACE ? [`  TRACER internals: hops ${trHopsT}, merges ${trMergesT}, dead-ends ${trDeadT}, closed loops ${trClosedT}, per-curve budget hits ${trBudgetHitT}`] : []),
       ...(TRACE ? [`  TRACER COVERAGE (independent row scans on ${TR_AUDROWS} rows/band): loci with NO live slot within 20 µm ${trAudMiss}/${trAudTot}  ${trAudMiss === 0 ? 'PASS' : `FAIL worst ${um(trAudWorst)} µm @ ${trAudAt}`};  GHOST live slots with no locus ${trGhost}/${trGhostTot}  ${trGhost === 0 ? 'PASS' : 'FAIL'}`] : []),
       `  curtain: ${curtainTris} init tris, ${liveCurtainTris} live, ${curtainPairs} doubled row-slots, ${pinchVerts} pinch verts (|Δr|<${(PINCH_MM * 1000).toFixed(3)} µm, init MIN |Δr| ${minBranchSepMm === Infinity ? 'n/a' : `${um(minBranchSepMm)} µm`}), ${curtainVerts} branch-tagged verts, ${branchSplits} branch-inherited splits`,
@@ -2279,6 +2538,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `  --- adaptive oracle (≤${AUD_HS}mm sample pitch, n∈[${AUD_NMIN},${AUD_NMAX}]) ---`,
       `  MAX ${um(maxSag)} µm  ${maxSag <= TOL ? 'PASS' : 'FAIL'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-${TOL}mm ${over}/${sorted.length}`,
       `  MAX-locus: ${locus(maxT)}`,
+      ...(WHYBIG ? (() => { if (maxT < 0) return whyBig('plane-MAX', maxT, 0, 0); sagOfN(maxT, AUD_NMAX); return whyBig('plane-MAX', maxT, argTheta, argZ); })() : []),
       `  [STRATA-comparable fixed oracle ${oracleN}]: MAX ${um(maxFixed)} µm   locus ${locus(maxFixedT)}`,
       ...(maxFixedT >= 0 && maxFixed > 4 * maxSag
         ? (() => {
@@ -2305,8 +2565,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         : []),
       `  TAIL re-measure (worst ${order.length} @ oracle ${tailN}): MAX ${um(tailMax)} µm  ${tailMax <= TOL ? 'PASS' : 'FAIL'}`,
       ...(process.env.PF_CB_HAUS === '1'
-        ? [`  HAUSDORFF re-measure (surface → NEAREST MESH POINT, all ${hausTris} plane-over-tol tris, ${hausSamples} samples): MAX ${um(hausMax)} µm  ${hausMax <= TOL ? 'PASS' : 'FAIL'}`,
-           `  HAUS-locus: ${locus(hausT)}`]
+        ? [`  HAUSDORFF re-measure (surface → NEAREST MESH POINT, all ${hausTris} plane-over-tol tris, ${hausSamples} samples, ${HAUS_RING}-RING candidates avg ${hausTris > 0 ? (hausCandTot / hausTris).toFixed(1) : '0'}): MAX ${um(hausMax)} µm  ${hausMax <= TOL ? 'PASS' : 'FAIL'}`,
+           ...(HAUS_RING > 1 ? [`    RING A/B, same run same mesh: 1-ring MAX ${um(hausMax1)} µm  vs  ${HAUS_RING}-ring MAX ${um(hausMax)} µm  (${hausMax > 0 ? (hausMax1 / hausMax).toFixed(1) : 'n/a'}×)   — 1-ring is an UPPER BOUND on distance-to-mesh; if the two agree the wider set found nothing new and the bound was tight`,
+             `    1-ring MAX-locus: ${locus(hausT1)}`] : []),
+           `  HAUS-locus: ${locus(hausT)}   [${HAUS_RING}-ring candidates ${hausCand}; NOTE the candidate set is built from the indexed OUTER WALL only — tread annuli and caps are P3-soup and invisible to it]`,
+           ...(WHYBIG ? whyBig('HAUS-MAX', hausT, hausTh, hausZ) : [])]
         : []),
       `  TAIL-locus: ${locus(tailT)}`,
       ...(process.env.PF_CB_LOCUS_AUDIT === '1'
