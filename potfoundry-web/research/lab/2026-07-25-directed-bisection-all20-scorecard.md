@@ -173,6 +173,62 @@
 > label sits in the right position). That is a genuine re-architecture of the allocator, and two speculative fixes
 > already regressed watertightness today, so it is left as designed-not-built rather than forced.
 >
+> ## 8b. BRANCH-AWARE SAMPLE ATTRIBUTION (`PF_CB_BRSKIP=1`, default OFF) — validated on BasketWeave
+>
+> A strip sample reads 600 µm because it is **attributed to the wrong triangle**: it lies on the other branch, so it
+> belongs to the adjacent sheet a few µm away across the curtain. That is a measurement error, and because its value
+> floors at the jump height it is also what pins `worst-left ≈ 598 µm` and stops the heap draining at ANY `triCap`.
+> The rule: when sampling a triangle, skip samples whose side of the TRUE locus differs from the triangle's own side.
+>
+> **The guard is structural, not statistical.** A sample is skipped ONLY if it is within `PF_CB_BRSKIP_BAND`
+> (default 50 µm of arc, ≳2× the measured placement MAX) of the true locus — the wrong-side strip is exactly that
+> narrow, because its width IS the placement error. A triangle straddling an UNMESHED locus has wrong-branch samples
+> spread over its whole width, outside the band, not skipped, still reading the full jump. Skipped-sample counts are
+> reported. Cost is controlled by a two-pass: measure normally, re-measure only triangles reading worse than
+> `5 × acceptTol`.
+>
+> Keying the rule on "the triangle has a locus VERTEX" was considered and **rejected**: after refinement the strip
+> triangles are `feat=[000]` (all three vertices are interior split points), so a vertex-tag rule would miss exactly
+> the triangles that dominate the tail. The test must be geometric; the band is what makes it safe.
+>
+> **BasketWeave A/B (straight h⁰ locus, `PF_CB_CURTAIN=1`, 208×140, 2.5 M cap), the rule's sanity check:**
+>
+> | | BRSKIP OFF | BRSKIP ON |
+> |---|---|---|
+> | tris / alloc | 466 776 / 855 024 | identical |
+> | HEADLINE MAX | 7.429 µm | **7.429 µm** |
+> | adaptive / fixed-12 / tail-44 | 7.429 / 7.030 / 7.412 | identical |
+> | p99 / p50 / over-0.01 mm | 6.590 / 3.224 / 0 | identical |
+> | non-manifold / seam-crack | 0 / 0 | 0 / 0 |
+> | heap | 0 left, worst-left 0.000 | identical |
+>
+> **The number does not move.** 4.87 % of samples in re-measured triangles were skipped — not "near zero" — but the
+> A/B proves none of them was ever the argmax, which is what matters: on a STRAIGHT locus the strip has zero width,
+> so wrong-branch samples inside the band are ties AT the locus, where both sheets are present anyway. Only runtime
+> (111 → 321 s) and one heap tie-break (key-inversions 39778 → 39779) differ.
+>
+> ## 8c. The attribution rule works — and it PROVES items 1 and 2 are coupled
+>
+> CelticKnot, `PF_CB_TRACE=1 PF_CB_BRSKIP=1`, 208×140, 450 k cap:
+>
+> ```
+> re-measured 174 588 tris · 1 509 098 / 29 986 922 samples skipped (5.03 %) · 29 054 tris had no locus nearby
+> PLACEMENT MAX 14.209 µm (p99 8.531, p999 11.477)   [was 23.628 / 8.871 / 12.025 at the same grid]
+> non-manifold 0 · seam-crack 0 · coverage 0/2725 PASS
+> heap 57 155 left, worst-left 598.001 µm            ← STILL PINNED AT THE JUMP HEIGHT
+> ```
+>
+> **The heap did not drain, and that is informative rather than disappointing.** The rule only forgives samples
+> within 50 µm of the true locus. If the residual 598 µm survived it, the wrong-side region on those triangles is
+> WIDER than the strip — which is exactly the signature of the §8 shear: a skewed quad spanning ~1 rad crosses loci
+> in its interior, so it straddles unmeshed geometry over a wide θ range. That is a real mesh defect, not a
+> mis-attribution, and the band guard correctly refuses to forgive it.
+>
+> **Conclusion: attribution cannot unblock convergence until the allocator removes the shear.** The rule is correct,
+> validated, and now in place; it is gated behind the allocator, not the other way round. Placement did improve
+> (MAX 23.628 → 14.209 µm) because the driver now spends budget sensibly around the curtain instead of chasing a
+> floored reading.
+>
 > ## 9. "Converged, not capped" is unreachable with the plane ruler as the refinement driver
 >
 > Every run of this style ends `worst-left ≈ 598 µm` — the jump height. That is not under-budgeting: the refinement
@@ -184,6 +240,38 @@
 > **Guarantees to keep attached wherever the Hausdorff number is quoted:** (1) an unmeshed cliff still reads the full
 > jump, because the far-branch surface points have no mesh near them; (2) distance-to-mesh ≤ distance-to-covering-
 > triangle, so the 19 already-closed rows can only improve — their PASS status is unaffected by adopting it.
+>
+> ## 10. HANDOVER — the slot-reuse allocator (designed, not built)
+>
+> This is the one remaining blocker and it is a self-contained ~80-line change inside the `TRACE` branch of
+> `_strataChainCurtain.test.ts`, between "cut curves into monotone branches" and "build the per-row slot table".
+>
+> **Why the current allocator forces the shear.** Today `M = brs.length` — one permanent column slot per branch for
+> the whole band. A slot's INDEX is therefore fixed while its natural θ POSITION moves, and ~18 of ~23 slots per band
+> are dormant at any row. No per-row layout rule can remove that degree of freedom; three were tried and measured
+> (§8), and the two that touched slot ordering regressed watertightness.
+>
+> **The design.** Allocate ≈ the max simultaneous live count and let one slot host different branches at different z:
+> 1. Sweep rows bottom→top over `rowLive` (already computed).
+> 2. Maintain an ORDERED LIST OF LABELS (not indices). Each label is free or holds a branch. The list order is the
+>    column order and, once a label is placed, it never moves.
+> 3. At each row: release labels whose branch just died (they stay in the list, marked free); keep labels whose
+>    branch is still alive.
+> 4. For each newborn branch, find its θ-neighbours among the currently-live labels and take a FREE label positioned
+>    strictly between them. Only if no free label sits in that interval, INSERT a new label there (list grows).
+> 5. After the sweep, `S = labels.length` and `slotOf(branch)` is its label's index. Order-consistency is then true
+>    by construction — no topological sort, no cycle-breaking, no demotion — because a label is only ever placed in
+>    a position that was already correct at the row that placed it.
+>
+> **Expected effect.** Dormant slots per row fall from ~18 to ~(S − live), so the dormant runs the layout must
+> distribute are short and local, and a birth can no longer translate a dormant column across a background gap.
+>
+> **Gates to run it against (all already implemented, all currently green — revert on any regression):**
+> `TRACER COVERAGE` 0 misses · `non-manifold`/`seam-crack` 0/0 · `θ-order violations` 0 · `cycle-breaks` 0 ·
+> `MINSEP moved 0 LIVE columns` · and the new `inter-row COLUMN SHEAR` guard, which is the direct success metric:
+> **worst 42 573 µm today, and it must fall to the column pitch (~1.4 mm) or below.**
+> Then re-run with `PF_CB_BRSKIP=1` — §8c predicts `worst-left` finally drops below 598 µm and the heap can drain,
+> which is the precondition for ever reporting "converged".
 
 > # UPDATE 6 — CelticKnot: termination fix CONFIRMED by a pre-registered A/B (7.9× on MAX), still not closed
 >

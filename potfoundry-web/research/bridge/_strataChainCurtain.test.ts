@@ -409,6 +409,27 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const edgeSag = (a: number, b: number): number => edgeSagN(a, b, ES_N);
 
     // ───────────────────────────── TRIANGLE SAG ORACLE ─────────────────────────────
+    // ───────── BRANCH-AWARE SAMPLE ATTRIBUTION (PF_CB_BRSKIP=1, default OFF) ─────────
+    // WHY THE DRIVER IS STUCK: inside the wrong-side strip a sample lies on the OTHER branch, so measuring it
+    // against THIS triangle's plane returns the jump height. That is a mis-ATTRIBUTION, not a mesh error — the sheet
+    // that owns the sample is microns away across the curtain. Because the value floors at the jump, the split
+    // priority never falls below it and the heap refills at any triCap: every run of a curved-h0 style ends
+    // `worst-left ≈ 598 µm`. Excluding wrong-branch samples fixes the DRIVER and the AUDIT with one rule.
+    //
+    // WHY IT CANNOT HIDE A MISSING CURTAIN — the guard is STRUCTURAL, not statistical:
+    //   • a sample is only ever skipped if it is within BRSKIP_BAND of the TRUE locus (default 50 µm of arc, ≳2× the
+    //     measured placement MAX). The wrong-side strip is exactly that narrow — its width IS the placement error.
+    //   • a triangle straddling an UNMESHED locus has wrong-branch samples spread over its whole width (hundreds of
+    //     µm to mm). Those are outside the band, are NOT skipped, and still read the full 600 µm jump.
+    //   • the skipped-sample count is reported, so a rule firing more than marginally is visible.
+    // Keying on "the triangle has a locus VERTEX" was considered and rejected: after refinement the strip triangles
+    // are feat=[000] (all three vertices are interior split points), so a vertex-tag rule would miss the very
+    // triangles that dominate the tail. The test is geometric and the band is what makes it safe.
+    const BRSKIP = envOn('PF_CB_BRSKIP');
+    const BRSKIP_BAND = envF('PF_CB_BRSKIP_BAND', 0.05);   // mm arc — half-width of the forgiven strip
+    const BRSKIP_TRIG = envF('PF_CB_BRSKIP_TRIG', 5 * acceptTol); // only re-measure triangles that read this badly
+    let brSkipSamples = 0; let brSkipTotal = 0; let brSkipTris = 0; let brSkipNoLocus = 0;
+    let skOn = false; let skL0 = 0; let skL1 = 0; let skZLo = 0; let skZHi = 0; let skSide = 0;
     let argWa = 0; let argWb = 0; let argWc = 0; let argTheta = 0; let argZ = 0; let argR = 0; let argNl = 0; let argDd = 0; let argDB = 0; let argDC = 0;
     const sagOfN = (t: number, n: number): number => {
       const a = ta[t]; const b = tb[t]; const c = tc[t];
@@ -456,6 +477,12 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           const wNon = ((nonMask & 1) !== 0 ? wa : 0) + ((nonMask & 2) !== 0 ? wb : 0) + ((nonMask & 4) !== 0 ? wc : 0);
           r = wNon < 1e-12 ? R(canon(theta + locB * BR_EPS), z) : R(canon(theta), z);
         } else r = R(canon(theta), z);
+        if (skOn) {
+          const lz = Math.abs(skZHi - skZLo) < 1e-12 ? skL0 : skL0 + ((skL1 - skL0) * (z - skZLo)) / (skZHi - skZLo);
+          const dl = theta - lz;
+          brSkipTotal += 1;
+          if (Math.sign(dl) !== skSide && Math.abs(dl) * r <= BRSKIP_BAND) { brSkipSamples += 1; continue; }
+        }
         const dd = Math.abs((r * Math.cos(theta) - ax) * nx + (r * Math.sin(theta) - ay) * ny + (z - az) * nz);
         if (dd > s) {
           s = dd;
@@ -476,6 +503,40 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       const n = Math.max(nMin, Math.min(nMax, Math.ceil(le / hSample)));
       return sagOfN(t, n);
+    };
+    /** set up the skip context for triangle t; returns false if no locus is found near it. */
+    const skSetup = (t: number): boolean => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
+      const thC = th0 + (dB + dC) / 3;
+      const zLo = Math.min(vz[a], vz[b], vz[c]); const zHi = Math.max(vz[a], vz[b], vz[c]);
+      const spanTh = Math.max(Math.abs(dB), Math.abs(dC), Math.abs(dB - dC));
+      const win = Math.min(0.05, Math.max(2e-3, spanTh));
+      const L0 = locusThNear(zLo, canon(thC), win, 96);
+      const L1 = locusThNear(zHi, canon(thC), win, 96);
+      if (!Number.isFinite(L0) || !Number.isFinite(L1)) { brSkipNoLocus += 1; return false; }
+      const un = (x: number): number => { let v = x; while (v - thC > Math.PI) v -= TWO_PI; while (thC - v > Math.PI) v += TWO_PI; return v; };
+      skL0 = un(L0); skL1 = un(L1); skZLo = zLo; skZHi = zHi;
+      const zc = (vz[a] + vz[b] + vz[c]) / 3;
+      const lc = Math.abs(zHi - zLo) < 1e-12 ? skL0 : skL0 + ((skL1 - skL0) * (zc - zLo)) / (zHi - zLo);
+      skSide = Math.sign(thC - lc);
+      return skSide !== 0;
+    };
+    /** TWO-PASS so the common case pays nothing: measure normally, and only re-measure with branch attribution
+     *  when the plain reading is bad enough to be a candidate strip (its floor is the jump height). */
+    const sagBrN = (t: number, n: number): number => {
+      const s0 = sagOfN(t, n);
+      if (!BRSKIP || s0 <= BRSKIP_TRIG) return s0;
+      if (!skSetup(t)) return s0;
+      skOn = true; brSkipTris += 1;
+      const s1 = sagOfN(t, n);
+      skOn = false;
+      return Math.min(s0, s1);
+    };
+    const sagBrAdaptive = (t: number, hSample: number, nMin: number, nMax: number): number => {
+      const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
+      const n = Math.max(nMin, Math.min(nMax, Math.ceil(le / hSample)));
+      return sagBrN(t, n);
     };
     const REF_HS = envF('PF_CB_REF_HS', 0.15); const REF_NMIN = Math.round(envF('PF_CB_REF_NMIN', 6)); const REF_NMAX = Math.round(envF('PF_CB_REF_NMAX', 24));
     const AUD_HS = envF('PF_CB_AUD_HS', 0.03); const AUD_NMIN = Math.round(envF('PF_CB_AUD_NMIN', 12)); const AUD_NMAX = Math.round(envF('PF_CB_AUD_NMAX', 64));
@@ -1460,7 +1521,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       if (isCurtainTri(t)) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       if (le < FLOOR_MM) return;
-      const s = ADAPT ? sagAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagOfN(t, oracleRef);
+      const s = ADAPT ? sagBrAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagBrN(t, oracleRef);
       if (s > acceptTol) hpush(t, s);
     };
     for (let t = 0; t < ta.length; t += 1) consider(t);
@@ -1813,8 +1874,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let fWa = 0; let fWb = 0; let fWc = 0; let fTheta = 0; let fZ = 0; let fR = 0; let fNl = 0; let fDd = 0; let fDB = 0; let fDC = 0;
     for (const t of liveIdx) {
       if (isCurtainTri(t)) { curtainSkipped += 1; sags.push(0); continue; } // wall, not graph — see isCurtainTri
-      const s = sagAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX); // HONEST ruler (absolute-bounded sampling)
-      const sf = sagOfN(t, oracleN); // STRATA-comparable fixed-N ruler
+      const s = sagBrAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX); // HONEST ruler (absolute-bounded sampling)
+      const sf = sagBrN(t, oracleN); // STRATA-comparable fixed-N ruler
       sags.push(s);
       if (s > maxSag) { maxSag = s; maxT = t; }
       if (sf > maxFixed) {
@@ -1829,7 +1890,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const tailN = Math.round(envF('PF_CB_TAILN', 44));
     const order = liveIdx.map((t, i) => i).sort((p, q) => sags[q] - sags[p]).slice(0, Math.min(tailK, liveIdx.length));
     let tailMax = 0; let tailT = -1;
-    for (const i of order) { const t = liveIdx[i]; const s = sagOfN(t, tailN); if (s > tailMax) { tailMax = s; tailT = t; } }
+    for (const i of order) { const t = liveIdx[i]; const s = sagBrN(t, tailN); if (s > tailMax) { tailMax = s; tailT = t; } }
     // ───────── HAUSDORFF RE-MEASURE of the over-tolerance tail (PF_CB_HAUS=1) ─────────
     // WHY THIS IS NEEDED, AND WHY IT IS NOT A WHITEWASH.
     // sagOfN measures |analytic point − the TRIANGLE'S OWN PLANE|. At a CURVED h0 locus that instrument is
@@ -2186,6 +2247,10 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
            `  LOCUS-locus: ${locus(locusT)}`]
         : []),
       `  min edge ${um(minEdge)} µm${TRACE ? `   [curtain-wall tris excluded from the graph ruler: ${curtainSkipped}]` : ''}`,
+      ...(BRSKIP
+        ? [`  BRANCH-ATTRIBUTION: re-measured ${brSkipTris} tris (plain sag > ${um(BRSKIP_TRIG)} µm); of ${brSkipTotal} samples ${brSkipSamples} were WRONG-BRANCH inside the ±${um(BRSKIP_BAND)} µm band and skipped (${brSkipTotal > 0 ? ((100 * brSkipSamples) / brSkipTotal).toFixed(2) : '0'}%); ${brSkipNoLocus} tris had NO locus nearby and were left untouched`,
+           `    GUARD: a sample is skipped ONLY within ${um(BRSKIP_BAND)} µm of the TRUE locus, so a triangle straddling an UNMESHED locus still reads the full jump.`]
+        : []),
       '=========================================================',
       '',
     ].join('\n');
