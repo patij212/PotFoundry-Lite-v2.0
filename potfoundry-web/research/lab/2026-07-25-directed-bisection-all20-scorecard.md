@@ -2,6 +2,32 @@
 
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
+> # ★★ UPDATE 5 — **19/20. GyroidManifold CLOSED — and the fix was a COARSER-IS-WORSE inversion.**
+>
+> ```
+> grid 500×350 (350,000 init tris) → 1,132,314 tris   alloc 1,914,628/16,000,000 (12% of budget)
+> heap 0 left · no-op splits 0 · welded-splits 0 · collapsed 0 · 674s
+> non-manifold 0 · seam-crack 0
+> HEADLINE MAX 7.416 µm PASS = max(adaptive 7.000, fixed-12 7.194, tail-44 7.416)  spread 1.1×
+> over-0.01mm 0/1,132,314 · p99 6.704 · p50 0.978 · LOCUS AUDIT 0.983 µm PASS
+> ```
+>
+> **The lesson: for fine, near-uniform features a FINE STRUCTURED START beats deep adaptive cascade.** Same style, same tolerance, three attempts:
+>
+> | init grid | tris | time | result |
+> |---|---|---|---|
+> | 200×140, 7M cap | 3,523,152 | 115 min | 11.763 µm FAIL, CAPPED |
+> | 200×140, 16M cap | 7,656,000 | 204 min | crashed in cleanup |
+> | **500×350** | **1,132,314** | **11 min** | **7.416 µm PASS, converged** |
+>
+> **6.8× fewer triangles, 18× faster, and it closes.** Critically, every pathology we had been fixing *individually* went to zero at once: `welded-splits 1,406,558 → 0`, `no-op splits (stranding) → 0`, `collapsed → 0`. Those were **symptoms of over-deep adaptive refinement from too coarse a start** — LEPP was driving into the nanometre regime where split points collide with the weld radius — not independent defects. The weld-radius and nudge-ladder work was treating symptoms; it made things better but could never have closed it.
+>
+> Note this is the *opposite* prescription from the ridge styles (Gothic et al.), where adaptivity is exactly what wins. The discriminator is feature **uniformity**: near-uniform fine detail ⇒ resolve it uniformly; localized sharp features ⇒ refine adaptively.
+>
+> Three container ceilings were cleared en route (all real, all committed, none geometry-changing): the edge-index **leak** (empty keys never deleted ⇒ index grew with cumulative allocation), Node's **2^23 Map cap** (⇒ ~5.6M live-triangle ceiling; fixed by 32-way sharding — verified reaching 7.66M live), and the **2^23 Set cap** in the sliver pass (fixed by bounded dedup: length-test first, dedup only short edges). Regression-verified behaviour-neutral: LowPolyFacet reproduces exactly (137,480 tris, 5.000 µm, 0 over-tol).
+>
+> **STANDING: 19 closed / 1 open — CelticKnot only.**
+
 > # ★ UPDATE 4 — **18/20. The θ-CURTAIN closes BasketWeave — the first h⁰ jump closed in this campaign.**
 >
 > `research/bridge/_strataCurtainClose.test.ts` (+ `_strataThetaLocusProbe.test.ts`), commit `e35dff8d`. BasketWeave ring, registry defaults, `gu=208`, DIRECTED + θ-curtain:
