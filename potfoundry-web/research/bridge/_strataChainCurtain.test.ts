@@ -69,7 +69,7 @@
 // linear-fit intercept on a 20-bin scan is ~10 µm accurate — 20× too coarse. Sub-µm placement is not a polish
 // detail, it is the difference between conforming and not.
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { baseRadius } from '../../src/geometry/profile';
@@ -138,7 +138,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const DEBUG = envOn('PF_CB_DEBUG');
     // ── L4 θ-CURTAIN flags (BOTH DEFAULT OFF ⇒ this file reproduces the parent harness) ──
     const CURTAIN = envOn('PF_CB_CURTAIN');            // detect θ-jump loci, double the columns, stitch curtains
-    const BR_EVAL = CURTAIN || envOn('PF_CB_CHAIN') || envOn('PF_CB_CURTAIN_EVAL'); // branch-aware analytic evaluation (ruler + detectors)
+    const BR_EVAL = CURTAIN || envOn('PF_CB_CHAIN') || envOn('PF_CB_TRACE') || envOn('PF_CB_CURTAIN_EVAL'); // branch-aware analytic evaluation (ruler + detectors)
     const BR_EPS = envF('PF_CB_BR_EPS', 1e-9);          // branch-extraction offset in θ (rad)
     const LOC_EPS = envF('PF_CB_LOC_EPS', 1e-11);       // "this sample sits ON the locus" window (rad)
     const CURT_SCAN = Math.round(envF('PF_CB_CURT_SCAN', 8192));  // θ bins for the coarse jump scan
@@ -148,7 +148,23 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     // ── L5 TRACED-CHAIN curtain: the curved-locus generalisation of the column curtain. Measured prerequisites:
     //    the loci are ORDER-PRESERVING (0 theta-order violations at 180/360/720 rows) and each is a GRAPH over z,
     //    so a chain is just a column whose theta varies per row -- and reprojection is a 1-D theta search at fixed z.
-    const CHAIN = envOn('PF_CB_CHAIN');
+    // ── L6 TRACED-CONTOUR curtain (PF_CB_TRACE=1) — supersedes the per-row nearest-θ matcher of L5.
+    //    MEASURED (research/exchange/_strataCkContour): CelticKnot's h0 loci are ONE family, and every locus is a
+    //    GRAPH OVER z with |dθ/dz| ≤ 0.0329 rad/mm (= 1.48 mm arc per mm of z) — the analytic bound of the strand
+    //    sine. There is NO square-root cusp: a coalescence is a TRANSVERSAL corner of the union boundary
+    //    {minD ≤ strandW}, so both merging arcs have finite slope and chording them converges QUADRATICALLY. That is
+    //    exactly what the row sweep showed (p90 7.573 → 0.684 µm and p99 320.8 → 22.1 µm for 4× rows ≈ 16×). What
+    //    does NOT converge is IDENTITY and TERMINATION, and neither is a resolution problem:
+    //      • the fixed-m chain model allocates m = max loci on ONE row (18) for ~116 monotone branches, so a branch
+    //        whose life does not overlap that row can only exist by re-using a slot the matcher happens to give it;
+    //      • a dormant slot is PARKED at a dead θ and still owns a grid column;
+    //      • the greedy nearest-θ match can swap identities where two loci close below the match window.
+    //    L6 replaces the guesswork with connectivity: march each locus as a curve (slope-continuity gate ⇒ a merge
+    //    is detected instead of hopped), round each merge onto its partner, cut the curve into monotone branches,
+    //    give every branch its own column slot, add every corner z as a ROW so a merge is a mesh vertex, and
+    //    INTERPOLATE dormant slots between their live neighbours instead of parking them on dead geometry.
+    const TRACE = envOn('PF_CB_TRACE');
+    const CHAIN = envOn('PF_CB_CHAIN') || TRACE;
     const CHAIN_SCAN = Math.round(envF('PF_CB_CHAIN_SCAN', 16384));
     // Local re-bisection resolution. MEASURED: adjacent loci close to 1.10e-3 rad, so a 24-sample sweep of a
     // +/-0.02 rad window (1.67e-3 rad) is COARSER than the global scan and cannot separate them. 256 gives
@@ -369,11 +385,19 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       let locU = NaN;
       if (ovBr !== 0) { locU = ovLocU; while (locU - th0 > Math.PI) locU -= TWO_PI; while (th0 - locU > Math.PI) locU += TWO_PI; }
       else if (brT !== 0) locU = th0;
+      // A CURVED curtain edge is the branch curve itself: EVERY interior sample is meant to sit on the locus, where
+      // rA is branch-arbitrary (a floor() at an integer). Rbr only substitutes the branch limit within LOC_EPS of a
+      // FIXED locU, which is true for a straight column and false for a traced chain — so on a chain the sampler
+      // reads ±600 µm essentially at random. That is not a fidelity signal, it is an undefined evaluation, and since
+      // it drives the DIRECTED split priority it makes refinement chase curtain edges to the 1.5 µm floor forever.
+      // On the traced path, read the edge's OWN branch limit at every sample. Not a whitewash: a MISPLACED curtain
+      // then reads its true distance to the surface at those θ, and placement is measured independently.
+      const brAll = TRACE && br !== 0;
       let best = 0;
       for (let k = 1; k < N; k += 1) {
         const t = k / N;
         const th = th0 + d * t; const z = z0 + dz * t;
-        const r = Rbr(th, z, locU, br);
+        const r = brAll ? R(canon(th + br * BR_EPS), z) : Rbr(th, z, locU, br);
         const px = r * Math.cos(th) - ax; const py = r * Math.sin(th) - ay; const pz = z - az;
         const proj = (px * ex + py * ey + pz * ez) / eL2;
         const qx = px - proj * ex; const qy = py - proj * ey; const qz = pz - proj * ez;
@@ -532,6 +556,147 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       }
       return bestLo;
     };
+    // ───────────────────── L6: LOCUS CURVE TRACER (generic; connectivity, not per-row re-detection) ─────────────────
+    const TR_RBAR = 0.5 * (DIMS.Rb + DIMS.Rt);   // mm — expresses a θ offset as arc length; no per-style content
+    const TR_DZ0 = envF('PF_CB_TR_DZ0', 1.0);
+    const TR_DZFIRST = envF('PF_CB_TR_DZFIRST', 0.02);
+    const TR_DZMIN = envF('PF_CB_TR_DZMIN', 1e-7);
+    const TR_WIN0 = envF('PF_CB_TR_WIN0', 1.5e-3);    // rad — corrector half-window FLOOR (~68 µm arc)
+    const TR_WINCAP = envF('PF_CB_TR_WINCAP', 8e-3);  // rad — hard cap, well under the 0.09 rad median inter-locus gap
+    const TR_WINN = Math.round(envF('PF_CB_TR_WINN', 32));
+    const TR_SLOPETOL = envF('PF_CB_TR_SLOPETOL', 4e-3); // rad/mm
+    // A TRUE merge has its partner at distance → 0 (two arcs crossing transversally separate like Δslope·δz, so
+    // 1 µm below the death they are 7e-8 rad apart). A WIDE window therefore does not help recall — it only lets a
+    // branch that died for some other reason hop onto an unrelated neighbour 450 µm away, which then shows up as a
+    // branch that jumps in θ and puts a CYCLE in the slot-order graph.
+    const TR_MERGEWIN = envF('PF_CB_TR_MERGEWIN', 1e-4);
+    const TR_CHORD = envF('PF_CB_TR_CHORD', 0.004);   // mm arc — traced-polyline chord tolerance
+    const TR_SEEDROWS = Math.round(envF('PF_CB_TR_SEEDROWS', 24));
+    const TR_CORRWIN = envF('PF_CB_TR_CORRWIN', 5e-4); // rad — window when re-solving a branch θ at a mesh row
+    const TR_REPROJWIN = envF('PF_CB_TR_REPROJWIN', 4e-3); // rad — window when re-solving a bisected curtain midpoint
+    /** every θ-jump inside [c−w, c+w] at this z (a LOCAL scan, far finer than the global one).
+     *  The bisection CACHES its endpoint radii (1 rA eval per halving instead of 4) — the tracer calls this on every
+     *  march step, so the constant matters. */
+    const lociWinAll = (z: number, c: number, w: number, n: number): number[] => {
+      const res: number[] = [];
+      let pr = R(canon(c - w), z);
+      for (let i = 1; i <= n; i += 1) {
+        const th = c - w + (2 * w * i) / n;
+        const cur = R(canon(th), z);
+        if (Math.abs(cur - pr) > TOL) {
+          let lo = th - (2 * w) / n; let hi = th;
+          let rLo = pr; let rHi = cur;
+          for (let it = 0; it < 40; it += 1) {
+            const mid = 0.5 * (lo + hi);
+            if (mid <= lo || mid >= hi) break;
+            const rMid = R(canon(mid), z);
+            if (Math.abs(rMid - rLo) >= Math.abs(rHi - rMid)) { hi = mid; rHi = rMid; } else { lo = mid; rLo = rMid; }
+          }
+          const c2 = 0.5 * (lo + hi);
+          if (Math.abs(R(canon(c2 + BR_EPS), z) - R(canon(c2 - BR_EPS), z)) > TOL) res.push(c2);
+        }
+        pr = cur;
+      }
+      res.sort((x, y) => x - y);
+      const uq: number[] = [];
+      for (const x of res) if (!uq.some((u) => Math.abs(u - x) < 1e-11)) uq.push(x);
+      return uq;
+    };
+    const trCorrect = (z: number, thPred: number, win: number): number => {
+      const L = lociWinAll(z, thPred, win, TR_WINN);
+      let best = NaN; let bd = Infinity;
+      for (const x of L) { const d = Math.abs(x - thPred); if (d < bd) { bd = d; best = x; } }
+      return best;
+    };
+    interface TrMarch { pts: Array<[number, number]>; end: 'domain' | 'merge' | 'dead'; endTh: number; endZ: number; partner: number }
+    /** march ONE locus branch from (th0,z0) in z-direction `dir`. The SLOPE-CONTINUITY GATE is what makes this a
+     *  tracer rather than a re-detector: at a merge the partner arc has the opposite slope, so an inconsistent
+     *  candidate is a HOP and is refused — the step then shrinks until the death point is bisected exactly. */
+    const trMarch = (th0: number, z0: number, dir: number, zLo: number, zHi: number): TrMarch => {
+      const pts: Array<[number, number]> = [[th0, z0]];
+      let th = th0; let z = z0; let dz = TR_DZFIRST; let slope = 0; let haveSlope = false;
+      let guard = 400000;
+      for (;;) {
+        if (guard-- <= 0) return { pts, end: 'dead', endTh: th, endZ: z, partner: NaN };
+        let zN = z + dir * dz;
+        if (zN > zHi) zN = zHi;
+        if (zN < zLo) zN = zLo;
+        if (Math.abs(zN - z) < 1e-12) return { pts, end: 'domain', endTh: th, endZ: z, partner: NaN };
+        const pred = th + (haveSlope ? slope * (zN - z) : 0);
+        const win = Math.min(TR_WINCAP, TR_WIN0 + (haveSlope ? TR_SLOPETOL * Math.abs(zN - z) : 0));
+        const thN = trCorrect(zN, pred, win);
+        const okSlope = !haveSlope || (Number.isFinite(thN) && Math.abs((thN - th) / (zN - z) - slope) <= TR_SLOPETOL + 0.5 * Math.abs(slope));
+        if (!Number.isFinite(thN) || !okSlope) {
+          if (dz > TR_DZMIN) { dz *= 0.5; continue; }
+          let lo = z; let hi = zN; let thLast = th;
+          for (let it = 0; it < 60; it += 1) {
+            const m = 0.5 * (lo + hi);
+            if (m === lo || m === hi) break;
+            const t2 = trCorrect(m, thLast + (haveSlope ? slope * (m - lo) : 0), Math.min(TR_WINCAP, TR_WIN0 + TR_SLOPETOL * Math.abs(m - lo)));
+            if (Number.isFinite(t2) && Math.abs(t2 - thLast) < TR_WINCAP) { lo = m; thLast = t2; } else hi = m;
+          }
+          pts.push([thLast, lo]);
+          const near = lociWinAll(lo - dir * 1e-6, thLast, TR_MERGEWIN, 128).filter((x) => Math.abs(x - thLast) > 1e-11);
+          let partner = NaN; let bd = Infinity;
+          for (const x of near) { const d = Math.abs(x - thLast); if (d < bd) { bd = d; partner = x; } }
+          if (Number.isFinite(partner) && bd < TR_MERGEWIN) { trMergesT += 1; return { pts, end: 'merge', endTh: thLast, endZ: lo, partner }; }
+          trDeadT += 1;
+          return { pts, end: 'dead', endTh: thLast, endZ: lo, partner: NaN };
+        }
+        const zm = 0.5 * (z + zN);
+        const thm = trCorrect(zm, 0.5 * (th + thN), Math.min(TR_WINCAP, TR_WIN0 + TR_SLOPETOL * Math.abs(zN - z)));
+        if (Number.isFinite(thm)) {
+          const dev = Math.abs(thm - 0.5 * (th + thN)) * TR_RBAR;
+          if (dev > TR_CHORD && dz > 64 * TR_DZMIN) { dz *= 0.5; continue; }
+          if (dev < 0.15 * TR_CHORD) dz = Math.min(TR_DZ0, dz * 1.7);
+        }
+        slope = (thN - th) / (zN - z); haveSlope = true;
+        th = thN; z = zN;
+        pts.push([th, z]);
+        if (z >= zHi - 1e-12 || z <= zLo + 1e-12) return { pts, end: 'domain', endTh: th, endZ: z, partner: NaN };
+      }
+    };
+    /** the whole curve through a seed: march up rounding every merge onto its partner, then march down, then join. */
+    const trCurve = (th0: number, z0: number, zLo: number, zHi: number): Array<[number, number]> => {
+      // CLOSURE. A closed locus curve (a "dome": two arcs meeting at a bottom and a top corner) is traversed
+      // indefinitely by a merge-rounding marcher — the seed is not a corner, so it is never re-hit exactly. Close on
+      // the CORNERS instead: revisiting a corner means the loop is complete, and the downward half is then pure
+      // duplication and is skipped. Without this the tracer over-traces by ~15× (measured: 47,584 mm of arc for a
+      // locus set whose true total length is ~3,200 mm).
+      const corners: Array<[number, number]> = [];
+      let closed = false;
+      const half = (dir: number): Array<[number, number]> => {
+        const acc: Array<[number, number]> = [];
+        let th = th0; let z = z0; let d = dir; let hops = 0;
+        const evalStart = rEvals;
+        for (;;) {
+          const m = trMarch(th, z, d, zLo, zHi);
+          for (let i = 1; i < m.pts.length; i += 1) acc.push(m.pts[i]);
+          trHopsT += 1;
+          // HARD BUDGET. A tracer that ping-pongs between two nearby points would otherwise burn the whole run; cap
+          // the work per curve and COUNT the cap so a truncated trace is reported, never silently accepted.
+          if (rEvals - evalStart > TR_BUDGET) { trBudgetHitT += 1; break; }
+          if (m.end !== 'merge' || hops++ > 4000 || acc.length > 400000) break;
+          if (corners.some((c) => Math.abs(c[0] - m.endTh) < 1e-5 && Math.abs(c[1] - m.endZ) < 1e-4)) { closed = true; break; }
+          corners.push([m.endTh, m.endZ]);
+          th = m.partner; z = m.endZ; d = -d;
+          acc.push([th, z]);
+        }
+        return acc;
+      };
+      const up = half(+1);
+      if (closed) { trClosedT += 1; return [[th0, z0] as [number, number], ...up]; }
+      const dn = half(-1);
+      return [...dn.slice().reverse(), [th0, z0] as [number, number], ...up];
+    };
+    /** live progress for a job whose stdout the fork pool buffers until the test ends (PF_CB_TR_LOG=1). */
+    const TR_LOG = envOn('PF_CB_TR_LOG');
+    const trLogPath = join('research', 'exchange', '_strataConformBisect', `trace_${STYLE.toLowerCase()}.log`);
+    const trLog = (m: string): void => {
+      if (!TR_LOG) return;
+      mkdirSync(join('research', 'exchange', '_strataConformBisect'), { recursive: true });
+      appendFileSync(trLogPath, `${((Date.now() - t0ms) / 1000).toFixed(1)}s ${(rEvals / 1e6).toFixed(1)}M | ${m}\n`);
+    };
     // ── COLUMN SET: uniform columns, with every detected jump locus FORCED to be a column. A uniform column that
     //    falls inside CURTAIN_MERGE of a locus is dropped in the locus's favour (else the pair makes a sliver
     //    column). When gu already aligns (BasketWeave at gu=208: loci at 13k) this is a same-count substitution.
@@ -553,6 +718,14 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let curtainTris = 0; let pinchVerts = 0; let curtainPairs = 0; let minBranchSepMm = Infinity;
     let chainsBuilt = 0; let chainMatched = 0; let chainHeld = 0; let chainReproj = 0; let chainReprojFail = 0;
     let chainRecovered = 0; let chainSuspect = 0; let chainSlots = 0; let chainTermSnap = 0;
+    let trCurvesT = 0; let trBranchesT = 0; let trRowsAddedT = 0; let trOrderViolT = 0; let trSlotsT = 0; let slotBase = 0;
+    let trAudTot = 0; let trAudMiss = 0; let trAudWorst = 0; let trAudAt = ''; let trGhost = 0; let trGhostTot = 0;
+    let trHopsT = 0; let trMergesT = 0; let trDeadT = 0; let trDomT = 0; let trClosedT = 0; let trBudgetHitT = 0;
+    let trCycleBreakT = 0; let trBackMaxT = 0; let trMinsepLive = 0; let trMinsepMax = 0; let trDemotedT = 0; let trLiveSlotsT = 0;
+    const TR_AUDROWS = Math.round(envF('PF_CB_TR_AUDROWS', 16));
+    const TR_BUDGET = Math.round(envF('PF_CB_TR_BUDGET', 4e6)); // rA evals per traced curve
+    const TR_DEDUPE = envF('PF_CB_TR_DEDUPE', 0.2);  // mm arc — two branches this close at a shared z are one branch
+    const TR_TIE = envF('PF_CB_TR_TIE', 0.01);       // mm arc — closer than this, the θ order is noise: no constraint
     const TERM_BISECT = Math.round(envF('PF_CB_TERM_BISECT', 14));
     const CHAIN_MATCH = envF('PF_CB_CHAIN_MATCH', 0.06);
     const CHAIN_WIN = envF('PF_CB_CHAIN_WIN', 0.02);
@@ -572,7 +745,303 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       //    A chain that cannot be matched at a row HOLDS POSITION; the branch pair there measures |Δr|≈0 and the
       //    existing PINCH path collapses it to one vertex, so a coalesced chain costs nothing.
       let rowCols: number[][] = []; let colLocB: boolean[] = []; let ncB = nc; let chainIdx: number[] = [];
-      if (CHAIN) {
+      // L6 adds two per-ROW quantities the column model never needed: an explicit z per row (so a merge corner can
+      // BE a row) and a per-row liveness flag (so a dormant slot stops pretending to be a locus).
+      let zRowB: number[] = []; let colLive: boolean[][] = [];
+      if (TRACE) {
+        // ── 1. TRACE the locus curves of this band by connectivity ──
+        const seedsT: Array<[number, number]> = [];
+        for (let s = 0; s < TR_SEEDROWS; s += 1) {
+          const zs = za + (bandH * (s + 0.5)) / TR_SEEDROWS;
+          for (const th of lociAtZ(zs)) seedsT.push([th, zs]);
+        }
+        const polys: Array<Array<[number, number]>> = [];
+        const nearPoly = (th: number, z: number): number => {
+          let best = Infinity;
+          for (const p of polys) for (let i = 0; i + 1 < p.length; i += 1) {
+            const a = p[i]; const c2 = p[i + 1];
+            if (z < Math.min(a[1], c2[1]) - 1e-9 || z > Math.max(a[1], c2[1]) + 1e-9) continue;
+            const u = Math.abs(c2[1] - a[1]) < 1e-12 ? 0 : (z - a[1]) / (c2[1] - a[1]);
+            best = Math.min(best, Math.abs(a[0] + (c2[0] - a[0]) * u - th) * TR_RBAR);
+          }
+          return best;
+        };
+        trLog(`band ${b} z=[${za.toFixed(3)},${zb.toFixed(3)}] seeds ${seedsT.length}`);
+        for (const [th, zs] of seedsT) {
+          if (nearPoly(th, zs) < 0.05) continue;
+          const e0 = rEvals;
+          const pc = trCurve(th, zs, za, zb);
+          polys.push(pc);
+          trLog(`  curve ${polys.length}: ${pc.length} nodes, ${((rEvals - e0) / 1e3).toFixed(0)}k evals, seed θ=${th.toFixed(5)} z=${zs.toFixed(3)}`);
+        }
+        // ── 2. cut each curve into MONOTONE-in-z branches; the cut points ARE the merge corners ──
+        interface TrBr { zs: number[]; ths: number[]; zLo: number; zHi: number; mean: number }
+        const brs: TrBr[] = [];
+        const pushSeg = (s: Array<[number, number]>): void => {
+          if (s.length < 2) return;
+          const asc = s[s.length - 1][1] >= s[0][1] ? s : s.slice().reverse();
+          const zsA: number[] = []; const thA: number[] = [];
+          for (const q of asc) { if (zsA.length > 0 && q[1] - zsA[zsA.length - 1] <= 0) continue; zsA.push(q[1]); thA.push(q[0]); }
+          if (zsA.length < 2) return;
+          const mean = thA.reduce((x, y) => x + y, 0) / thA.length;
+          const cand: TrBr = { zs: zsA, ths: thA, zLo: zsA[0], zHi: zsA[zsA.length - 1], mean };
+          // DEDUPE by GEOMETRY, not by z-extent: every curve is traced twice (both halves round the merges) and two
+          // seeds on one curve give the same branch, but the two copies can differ slightly at the ends. Comparing
+          // (zLo,zHi,mean) therefore lets near-duplicates through — and a duplicate pair is CO-LIVE at the SAME θ,
+          // which makes their relative order arbitrary and puts a CYCLE in the slot-order constraint graph. Compare
+          // where it is unambiguous: θ at the middle of the z-overlap.
+          for (const e of brs) {
+            const zA = Math.max(e.zLo, cand.zLo); const zB = Math.min(e.zHi, cand.zHi);
+            if (zB <= zA) continue;
+            const zm2 = 0.5 * (zA + zB);
+            const at = (br: TrBr): number => {
+              let lo = 0; let hi = br.zs.length - 1;
+              while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (br.zs[mid] <= zm2) lo = mid; else hi = mid; }
+              const d2 = br.zs[hi] - br.zs[lo];
+              const u = Math.abs(d2) < 1e-15 ? 0 : Math.max(0, Math.min(1, (zm2 - br.zs[lo]) / d2));
+              return br.ths[lo] + (br.ths[hi] - br.ths[lo]) * u;
+            };
+            if (Math.abs(at(e) - at(cand)) * TR_RBAR < TR_DEDUPE) return;
+          }
+          brs.push(cand);
+        };
+        for (const p of polys) {
+          let start = 0; let dir = 0;
+          for (let i = 1; i < p.length; i += 1) {
+            const d = Math.sign(p[i][1] - p[i - 1][1]);
+            if (d === 0) continue;
+            if (dir === 0) { dir = d; continue; }
+            if (d !== dir) { pushSeg(p.slice(start, i)); start = i - 1; dir = d; }
+          }
+          pushSeg(p.slice(start));
+        }
+        brs.sort((x, y) => x.mean - y.mean);
+        const M = brs.length;
+        trLog(`band ${b}: ${polys.length} curves → ${M} branches (hops ${trHopsT}, merges ${trMergesT}, dead ${trDeadT}, closed ${trClosedT}, budget-hits ${trBudgetHitT})`);
+        trCurvesT += polys.length; trBranchesT += M;
+        if (M === 0) {
+          zRowB = []; for (let j = 0; j <= rows; j += 1) zRowB.push(za + (bandH * j) / rows);
+          rowCols = zRowB.map(() => colTh.slice()); colLocB = colTh.map(() => false); ncB = colTh.length;
+          chainIdx = colTh.map(() => -1); colLive = zRowB.map(() => colLocB);
+        } else {
+          // ── 3. ROWS = uniform ∪ every branch endpoint (so a merge corner is a mesh vertex, not a chord shortcut) ──
+          const zSet: Array<[number, boolean]> = []; // z, isCorner
+          for (let j = 0; j <= rows; j += 1) zSet.push([za + (bandH * j) / rows, false]);
+          for (const br of brs) for (const zc of [br.zLo, br.zHi]) if (zc > za + 1e-3 && zc < zb - 1e-3) { zSet.push([zc, true]); trRowsAddedT += 1; }
+          zSet.sort((x, y) => x[0] - y[0]);
+          // MIN ROW SPACING is a WELD guard, not a nicety: two arcs meeting at a corner separate like Δslope·δz, so a
+          // row δz below a corner puts the two branch columns ~0.066·δz rad apart. At δz = 1e-3 mm that is 3 µm of arc
+          // = 60× the weld radius; any closer and the two columns would position-weld into one.
+          // COLLISION RULE: when a corner lands within δz of a uniform row the CORNER WINS — dropping it would put the
+          // branch termination up to 1.48·δz mm of arc away from the true merge, which is the very error being fixed.
+          const zRowT: number[] = []; const zRowC: boolean[] = [];
+          for (const [zz, isC] of zSet) {
+            const n2 = zRowT.length;
+            if (n2 === 0 || zz - zRowT[n2 - 1] > 1e-3) { zRowT.push(zz); zRowC.push(isC); continue; }
+            if (isC && !zRowC[n2 - 1] && (n2 < 2 || zz - zRowT[n2 - 2] > 1e-3)) { zRowT[n2 - 1] = zz; zRowC[n2 - 1] = true; }
+          }
+          if (zRowT[zRowT.length - 1] < zb - 1e-9) zRowT[zRowT.length - 1] = zb;
+          // ── 4. per-row slot θ: LIVE slots read their own branch; DORMANT slots are INTERPOLATED between their live
+          //       neighbours (never parked on dead geometry, which is what made a dead column look like a locus) ──
+          const brThAt = (br: TrBr, z: number): number => {
+            let lo = 0; let hi = br.zs.length - 1;
+            while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (br.zs[mid] <= z) lo = mid; else hi = mid; }
+            const dzs = br.zs[hi] - br.zs[lo];
+            const u = Math.abs(dzs) < 1e-15 ? 0 : Math.max(0, Math.min(1, (z - br.zs[lo]) / dzs));
+            const thI = br.ths[lo] + (br.ths[hi] - br.ths[lo]) * u;
+            const c2 = trCorrect(z, thI, TR_CORRWIN);
+            return Number.isFinite(c2) ? c2 : thI;
+          };
+          // ── 4a. SLOT ORDER by TOPOLOGICAL SORT of the observed per-row θ order.
+          // Sorting branches by MEAN θ is NOT order-consistent: two branches alive at the same row can have means in
+          // the opposite order (arcs travel up to 0.42 rad in θ). MEASURED: 1,183 order violations on CelticKnot at
+          // 355 branches — and a violated order is not cosmetic, because the MINSEP pass then rewrites every
+          // offending column to `previous + 1e-5 rad`, compressing hundreds of columns into a sliver and leaving one
+          // 1.19 rad gap (a 52 mm triangle appeared in the mesh). The order the grid needs is exactly the partial
+          // order the rows impose, so take that: an edge a→b for every pair adjacent in θ on every row, then Kahn.
+          // The cylinder is cut at the widest θ gap that no branch ever enters, which makes the cyclic order linear.
+          let cut = 0;
+          {
+            const allTh: number[] = [];
+            for (const br of brs) for (const t2 of br.ths) allTh.push(canon(t2));
+            allTh.sort((x, y) => x - y);
+            let bestG = -1;
+            for (let i = 0; i < allTh.length; i += 1) {
+              const nx = i + 1 === allTh.length ? allTh[0] + TWO_PI : allTh[i + 1];
+              const g = nx - allTh[i];
+              if (g > bestG) { bestG = g; cut = canon(allTh[i] + g / 2); }
+            }
+          }
+          const key = (t2: number): number => canon(t2 - cut);
+          const rowLive: Array<Array<[number, number]>> = []; // per row: [branch, key(θ)] ascending
+          for (const z of zRowT) {
+            const L2: Array<[number, number]> = [];
+            for (let k = 0; k < M; k += 1) {
+              if (z < brs[k].zLo - 1e-12 || z > brs[k].zHi + 1e-12) continue;
+              L2.push([k, key(brThAt(brs[k], z))]);
+            }
+            L2.sort((x, y) => x[1] - y[1]);
+            rowLive.push(L2);
+          }
+          const adj: Array<Set<number>> = Array.from({ length: M }, () => new Set<number>());
+          const indeg = new Array<number>(M).fill(0);
+          // TIE TOLERANCE: two branches converging on a merge can correct onto θ values a few nm apart, where the
+          // sort order is noise. Constraining a noise-ordered pair is how a CYCLE gets into the graph, so only
+          // constrain pairs that are unambiguously separated (1 µm of arc).
+          for (const L2 of rowLive) for (let q = 0; q + 1 < L2.length; q += 1) {
+            const a = L2[q][0]; const c3 = L2[q + 1][0];
+            if ((L2[q + 1][1] - L2[q][1]) * TR_RBAR < TR_TIE) continue;
+            if (!adj[a].has(c3)) { adj[a].add(c3); indeg[c3] += 1; }
+          }
+          const order: number[] = [];
+          {
+            const ready: number[] = [];
+            for (let k = 0; k < M; k += 1) if (indeg[k] === 0) ready.push(k);
+            const meanKey = brs.map((br) => key(br.mean));
+            const done = new Array<boolean>(M).fill(false);
+            while (order.length < M) {
+              if (ready.length === 0) {
+                // A residual cycle means the rows genuinely disagree. Break it at the smallest-θ survivor rather
+                // than appending the rest arbitrarily, and COUNT it so a scrambled grid can never pass silently.
+                let bestK = -1;
+                for (let k = 0; k < M; k += 1) if (!done[k] && (bestK < 0 || meanKey[k] < meanKey[bestK])) bestK = k;
+                if (bestK < 0) break;
+                trCycleBreakT += 1; indeg[bestK] = 0; ready.push(bestK);
+              }
+              ready.sort((x, y) => meanKey[x] - meanKey[y]);
+              const k = ready.shift() as number;
+              if (done[k]) continue;
+              done[k] = true; order.push(k);
+              for (const nx of adj[k]) { indeg[nx] -= 1; if (indeg[nx] <= 0 && !done[nx]) ready.push(nx); }
+            }
+          }
+          const slotOf = new Array<number>(M).fill(-1);
+          for (let sIdx = 0; sIdx < M; sIdx += 1) slotOf[order[sIdx]] = sIdx;
+          const slotTh: number[][] = []; const slotLive: boolean[][] = [];
+          for (let jr2 = 0; jr2 < zRowT.length; jr2 += 1) {
+            const th = new Array<number>(M).fill(NaN);
+            const live = new Array<boolean>(M).fill(false);
+            const li: number[] = [];
+            for (const [k, tk] of rowLive[jr2]) { th[slotOf[k]] = tk; live[slotOf[k]] = true; trLiveSlotsT += 1; }
+            // ORDER REPAIR = the fail-closed contract for the grid. If the topological order still puts two live
+            // slots out of θ order at this row, the MINSEP pass downstream would rewrite the offender to
+            // `previous + 1e-5 rad`, compressing the columns and opening a huge gap elsewhere (measured: a 92 mm
+            // triangle and a 14.6 mm backward step). DEMOTE the offender to inert instead: the grid stays sound and
+            // the cost is one un-curtained locus at one row, which is COUNTED and reported rather than hidden.
+            {
+              let prev = -Infinity;
+              for (let k = 0; k < M; k += 1) {
+                if (!live[k]) continue;
+                if (th[k] <= prev + MINSEP) { live[k] = false; th[k] = NaN; trDemotedT += 1; continue; }
+                prev = th[k];
+              }
+            }
+            for (let k = 0; k < M; k += 1) if (live[k]) li.push(k);
+            if (li.length === 0) { for (let k = 0; k < M; k += 1) th[k] = (TWO_PI * k) / M; }
+            else {
+              const first = li[0]; const last = li[li.length - 1];
+              // DORMANT SLOTS ARE PARKED, NOT RE-INTERPOLATED PER ROW. A pure lerp between the live anchors makes an
+              // inert column's θ depend on WHICH slots happen to be live at that row, so a birth or death one row
+              // above can move that column by ~1 rad in a single row step — a 49 mm skewed quad. The plane ruler is
+              // blind to it (the triangle is thin, so its plane passes near the surface) but the Hausdorff ruler
+              // caught it at 6.0 mm, which is exactly r·(1−cos) for a 1.05 rad chord. Park each dormant slot on ITS
+              // OWN branch, evaluated at the nearest z it was alive at: that is stationary in z by construction.
+              // Fall back to the lerp per-run when the parked values are not strictly ordered inside the run.
+              const fill = (a: number, c2: number, thA: number, thB: number): void => {
+                const n2 = c2 - a;
+                if (n2 <= 1) return;
+                const park: number[] = [];
+                let ok = true; let prev2 = thA;
+                for (let k = a + 1; k < c2; k += 1) {
+                  const br = brs[order[((k % M) + M) % M]];
+                  const p2 = key(brThAt(br, Math.max(br.zLo, Math.min(br.zHi, zRowT[jr2]))));
+                  let pv = p2; while (pv < prev2 - Math.PI) pv += TWO_PI; while (pv > prev2 + Math.PI) pv -= TWO_PI;
+                  if (!(pv > prev2 + MINSEP)) { ok = false; break; }
+                  park.push(pv); prev2 = pv;
+                }
+                if (ok && prev2 + MINSEP < thB) { for (let k = a + 1; k < c2; k += 1) th[k] = park[k - a - 1]; return; }
+                const span = Math.max(MINSEP * n2, thB - thA);
+                for (let k = a + 1; k < c2; k += 1) th[k] = thA + (span * (k - a)) / n2;
+              };
+              for (let q = 0; q + 1 < li.length; q += 1) fill(li[q], li[q + 1], th[li[q]], th[li[q + 1]]);
+              const hiT = th[first] + TWO_PI;
+              const wrapN = first + (M - 1 - last) + 1;
+              {
+                // the run that crosses the cut: slots last+1 … M−1 … 0 … first−1, anchored by th[last] and th[first]+2π
+                const idx = (q: number): number => (last + q) % M;
+                const park: number[] = []; let ok = true; let prev2 = th[last];
+                for (let q = 1; q < wrapN; q += 1) {
+                  const br = brs[order[idx(q)]];
+                  let pv = key(brThAt(br, Math.max(br.zLo, Math.min(br.zHi, zRowT[jr2]))));
+                  while (pv < prev2 - Math.PI) pv += TWO_PI;
+                  while (pv > prev2 + Math.PI) pv -= TWO_PI;
+                  if (!(pv > prev2 + MINSEP)) { ok = false; break; }
+                  park.push(pv); prev2 = pv;
+                }
+                const use = ok && prev2 + MINSEP < hiT;
+                const span = Math.max(MINSEP * wrapN, hiT - th[last]);
+                for (let q = 1; q < wrapN; q += 1) {
+                  const k = idx(q);
+                  const v = use ? park[q - 1] : th[last] + (span * q) / wrapN;
+                  th[k] = k > last ? v : v - TWO_PI;
+                }
+              }
+              for (let q = 0; q + 1 < li.length; q += 1) if (th[li[q + 1]] <= th[li[q]]) { trOrderViolT += 1; trBackMaxT = Math.max(trBackMaxT, (th[li[q]] - th[li[q + 1]]) * TR_RBAR); }
+            }
+            slotTh.push(th); slotLive.push(live);
+          }
+          // ── 4b. COVERAGE AUDIT = the tracer's own closure invariant, in BOTH directions. A locus with no LIVE slot
+          //       is an unmeshed 600 µm cliff that no refinement can ever remove; a live slot with no locus is a
+          //       GHOST curtain planted on continuous geometry. Both are silent failures without this check.
+          for (let s = 0; s < TR_AUDROWS; s += 1) {
+            const jr = Math.min(zRowT.length - 1, Math.floor(((s + 0.5) * zRowT.length) / TR_AUDROWS));
+            const z = zRowT[jr];
+            const L = lociAtZ(z);
+            const dcy = (x: number, y: number): number => { const d = Math.abs(x - y) % TWO_PI; return Math.min(d, TWO_PI - d); };
+            for (const thq of L) {
+              let bd = Infinity;
+              for (let k = 0; k < M; k += 1) if (slotLive[jr][k]) bd = Math.min(bd, dcy(slotTh[jr][k] + cut, thq));
+              trAudTot += 1;
+              if (bd * TR_RBAR > 0.02) { trAudMiss += 1; if (bd * TR_RBAR > trAudWorst) { trAudWorst = bd * TR_RBAR; trAudAt = `θ=${thq.toFixed(6)} z=${z.toFixed(4)}`; } }
+            }
+            // GHOST test must be DIRECT, not "is there a locus in the row-scan list": the global scan bins θ at
+            // 2π/16384 = 17 µm of arc, so two loci converging toward a merge collapse into ONE bracket and the second
+            // live slot would be mis-reported as a ghost. Ask the surface instead — a live slot is honest iff its own
+            // ε→0 two-sided difference really is a jump.
+            for (let k = 0; k < M; k += 1) {
+              if (!slotLive[jr][k]) continue;
+              trGhostTot += 1;
+              if (Math.abs(R(canon(slotTh[jr][k] + cut + BR_EPS), z) - R(canon(slotTh[jr][k] + cut - BR_EPS), z)) <= TOL) trGhost += 1;
+            }
+          }
+          // ── 5. fillers + strict ordering (identical mechanism to the column path) ──
+          const pitchT = TWO_PI / gu;
+          const nSubT: number[] = new Array<number>(M).fill(1);
+          for (let k = 0; k < M; k += 1) {
+            let mx = 0;
+            for (let j = 0; j < slotTh.length; j += 1) { const nx = slotTh[j][(k + 1) % M] + (k + 1 === M ? TWO_PI : 0); mx = Math.max(mx, nx - slotTh[j][k]); }
+            nSubT[k] = Math.max(1, Math.ceil(mx / pitchT - 1e-9));
+          }
+          rowCols = []; colLive = [];
+          for (let j = 0; j < slotTh.length; j += 1) {
+            const rc: number[] = []; const lv: boolean[] = [];
+            for (let k = 0; k < M; k += 1) {
+              const a0 = slotTh[j][k] + cut; const b0 = slotTh[j][(k + 1) % M] + cut + (k + 1 === M ? TWO_PI : 0);
+              rc.push(a0); lv.push(slotLive[j][k]);
+              for (let q = 1; q < nSubT[k]; q += 1) { rc.push(a0 + ((b0 - a0) * q) / nSubT[k]); lv.push(false); }
+            }
+            for (let q = 1; q < rc.length; q += 1) if (rc[q] < rc[q - 1] + MINSEP) { if (lv[q]) { trMinsepLive += 1; trMinsepMax = Math.max(trMinsepMax, (rc[q - 1] + MINSEP - rc[q]) * TR_RBAR); } rc[q] = rc[q - 1] + MINSEP; }
+            rowCols.push(rc); colLive.push(lv);
+          }
+          colLocB = []; chainIdx = [];
+          for (let k = 0; k < M; k += 1) { colLocB.push(true); chainIdx.push(slotBase + k); for (let q = 1; q < nSubT[k]; q += 1) { colLocB.push(false); chainIdx.push(-1); } }
+          ncB = colLocB.length;
+          zRowB = zRowT;
+          slotBase += M;
+          trSlotsT += M;
+          trLog(`band ${b}: rows ${zRowT.length} (uniform ${rows + 1} + corners), cols ${ncB}, coverage-miss ${trAudMiss}/${trAudTot}, ghost ${trGhost}/${trGhostTot}`);
+        }
+      } else if (CHAIN) {
         const zsB: number[] = [];
         for (let j = 0; j <= rows; j += 1) zsB.push(za + (bandH * j) / rows);
         const per = zsB.map(lociAtZ);
@@ -669,12 +1138,19 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         for (let j = 0; j <= rows; j += 1) rowCols.push(colTh);
         colLocB = colLoc; ncB = nc; chainIdx = colTh.map(() => -1);
       }
+      // Non-TRACE paths keep exactly the previous behaviour: uniform row z, liveness ≡ the static column flag. So
+      // with PF_CB_TRACE unset this file is byte-identical to the recorded chain/column instrument.
+      if (!TRACE) {
+        zRowB = []; for (let j = 0; j <= rows; j += 1) zRowB.push(za + (bandH * j) / rows);
+        colLive = zRowB.map(() => colLocB);
+      }
+      const nR = zRowB.length - 1;
       const gL: number[][] = []; const gR: number[][] = [];
-      for (let j = 0; j <= rows; j += 1) {
-        const z = za + (bandH * j) / rows;
+      for (let j = 0; j <= nR; j += 1) {
+        const z = zRowB[j];
         const rowL: number[] = []; const rowR: number[] = [];
         for (let i = 0; i < ncB; i += 1) {
-          if (!colLocB[i]) { const v = addV(rowCols[j][i], z); rowL.push(v); rowR.push(v); continue; }
+          if (!colLive[j][i]) { const v = addV(rowCols[j][i], z); rowL.push(v); rowR.push(v); continue; }
           const th = rowCols[j][i];
           const rM = R(canon(th - BR_EPS), z); const rP = R(canon(th + BR_EPS), z);
           const sep = Math.abs(rP - rM);
@@ -696,7 +1172,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         }
         gL.push(rowL); gR.push(rowR);
       }
-      for (let j = 0; j < rows; j += 1) for (let i = 0; i < ncB; i += 1) {
+      for (let j = 0; j < nR; j += 1) for (let i = 0; i < ncB; i += 1) {
         const i1 = (i + 1) % ncB;
         addT(gR[j][i], gL[j][i1], gL[j + 1][i1]);
         addT(gR[j][i], gL[j + 1][i1], gR[j + 1][i]);
@@ -706,7 +1182,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       //    M1 → M0 → P0 → P1. Correct for r+ > r− and r+ < r− alike; degenerate corners are dropped by addT.
       if (CURTAIN || CHAIN) for (let i = 0; i < ncB; i += 1) {
         if (!colLocB[i]) continue;
-        for (let j = 0; j < rows; j += 1) {
+        for (let j = 0; j < nR; j += 1) {
+          // A curtain quad exists only where the slot is a LIVE locus at BOTH rows. Where the branch dies, the two
+          // sheets already meet at the single vertex of the dormant row, so the strip closes with one triangle from
+          // the row below; emitting a quad past the death is exactly the "wrong-side strip" this rewrite removes.
+          if (TRACE && !colLive[j][i] && !colLive[j + 1][i]) continue;
           const M0 = gL[j][i]; const M1 = gL[j + 1][i]; const P0 = gR[j][i]; const P1 = gR[j + 1][i];
           if (addT(M1, M0, P0) >= 0) curtainTris += 1;
           if (addT(M1, P0, P1) >= 0) curtainTris += 1;
@@ -732,7 +1212,9 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       // midpoint back onto the locus makes conforming IMPROVE with refinement instead of decaying.
       let mthUse = mth;
       if (br !== 0 && CHAIN) {
-        const thL = locusThNear(mz, canon(mth), CHAIN_WIN);
+        // TRACE tightens this window by 5×: a traced chord is within ~10 µm arc (2e-4 rad) of its own branch, so a
+        // 0.02 rad search is 100× wider than it needs to be and can re-solve onto a NEIGHBOURING locus near a merge.
+        const thL = locusThNear(mz, canon(mth), TRACE ? TR_REPROJWIN : CHAIN_WIN);
         if (Number.isFinite(thL)) { mthUse = thL; chainReproj += 1; } else chainReprojFail += 1;
       }
       const m = br !== 0 ? addV(mthUse, mz, true, br, vLocTh[a]) : addV(mth, mz, feat);
@@ -914,8 +1396,28 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       }
       return top;
     };
+    // A CURTAIN triangle spans the cliff: its three vertices sit on ONE locus but on DIFFERENT branches, so its
+    // (θ,z) footprint is a 1-D segment — measure zero on the surface — and it represents the vertical wall, which is
+    // not part of the graph r(θ,z) at all. Ruling it against the graph is undefined: on a STRAIGHT column every
+    // sample lands at the column θ and reads ~0 (a blind spot), while on a CURVED chain the samples walk along the
+    // locus where rA is branch-arbitrary and read ±½·jump at random. In the A-run that noise consumed 47 % of the
+    // refinement budget (3,968 of 8,426 splits) chasing a number that means nothing.
+    // Exclude them from the graph ruler and the heap — and note what still covers them, so this is a definition, not
+    // a blind spot: (1) the CURTAIN CHORD audit rules each branch edge against its own branch curve; (2) the
+    // PLACEMENT audit rules the chord against the true locus; (3) the HAUSDORFF re-measure rules the analytic
+    // surface against the mesh; (4) the branch edges are still refined, driven by the SHEET triangles that share
+    // them. Surface coverage is unaffected: a measure-zero footprint carries no analytic surface.
+    let curtainSkipped = 0;
+    const isCurtainTri = (t: number): boolean => {
+      if (!TRACE) return false;
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      if (!onLoc(a) || vLocTh[a] !== vLocTh[b] || vLocTh[b] !== vLocTh[c]) return false;
+      const A = vBranch[a]; const B = vBranch[b]; const C = vBranch[c];
+      return !(A === B && B === C);
+    };
     const consider = (t: number): void => {
       if (t < 0 || !alive[t]) return;
+      if (isCurtainTri(t)) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       if (le < FLOOR_MM) return;
       const s = ADAPT ? sagAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagOfN(t, oracleRef);
@@ -1270,6 +1772,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let maxFixed = 0; let maxFixedT = -1;
     let fWa = 0; let fWb = 0; let fWc = 0; let fTheta = 0; let fZ = 0; let fR = 0; let fNl = 0; let fDd = 0; let fDB = 0; let fDC = 0;
     for (const t of liveIdx) {
+      if (isCurtainTri(t)) { curtainSkipped += 1; sags.push(0); continue; } // wall, not graph — see isCurtainTri
       const s = sagAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX); // HONEST ruler (absolute-bounded sampling)
       const sf = sagOfN(t, oracleN); // STRATA-comparable fixed-N ruler
       sags.push(s);
@@ -1287,6 +1790,85 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const order = liveIdx.map((t, i) => i).sort((p, q) => sags[q] - sags[p]).slice(0, Math.min(tailK, liveIdx.length));
     let tailMax = 0; let tailT = -1;
     for (const i of order) { const t = liveIdx[i]; const s = sagOfN(t, tailN); if (s > tailMax) { tailMax = s; tailT = t; } }
+    // ───────── HAUSDORFF RE-MEASURE of the over-tolerance tail (PF_CB_HAUS=1) ─────────
+    // WHY THIS IS NEEDED, AND WHY IT IS NOT A WHITEWASH.
+    // sagOfN measures |analytic point − the TRIANGLE'S OWN PLANE|. At a CURVED h0 locus that instrument is
+    // structurally inflating, for a reason that has nothing to do with mesh quality: a straight mesh edge cannot lie
+    // on a curved cliff, so between the curtain chord and the true locus there is always a strip — of width exactly
+    // the chord sagitta — in which a surface sample belongs to the branch on the OTHER side of the chord. Its
+    // distance to THIS triangle's plane is the full jump (600 µm on CelticKnot), while its distance to the MESH is
+    // the strip width, because the correct sheet is present in the adjacent triangle, a few µm away. No density
+    // removes the strip: it shrinks quadratically but is never empty, so a plane-distance MAX can never reach 10 µm
+    // on a curved cliff at ANY finite budget. Every previously-closed h0 style (BasketWeave's constant-θ column,
+    // the four constant-z tread styles) has an EXACTLY representable straight locus and therefore no strip at all —
+    // which is why this has not appeared before.
+    // The product bar is "MAX perpendicular distance mesh → exact analytic surface", i.e. one-sided Hausdorff, so
+    // re-measure the tail against the MESH (closest point on any triangle of the local 1-ring), not against one
+    // plane. This CANNOT hide a missing curtain: if a cliff is unmeshed, the far-branch surface points have no mesh
+    // anywhere near them and still read the full jump. It only declines to charge the mesh 600 µm for geometry it
+    // actually contains 3 µm away.
+    // Rigour: every triangle whose plane-sag exceeds TOL is re-measured, so the reported Hausdorff MAX bounds the
+    // true one over the whole surface (for all other triangles the plane distance — an upper bound — is already
+    // under tolerance).
+    let hausMax = 0; let hausT = -1; let hausTris = 0; let hausSamples = 0;
+    if (process.env.PF_CB_HAUS === '1') {
+      const vTri = new Map<number, number[]>();
+      const addVT2 = (v: number, t: number): void => { const l = vTri.get(v); if (l === undefined) vTri.set(v, [t]); else l.push(t); };
+      for (const t of liveIdx) { addVT2(ta[t], t); addVT2(tb[t], t); addVT2(tc[t], t); }
+      /** squared distance from p to triangle (a,b,c) — Ericson's closest-point-on-triangle, clamped to the face. */
+      const d2Tri = (px: number, py: number, pz: number, ia: number, ib: number, ic: number): number => {
+        const ax = vx[ia]; const ay = vy[ia]; const az = vz[ia];
+        const abx = vx[ib] - ax; const aby = vy[ib] - ay; const abz = vz[ib] - az;
+        const acx = vx[ic] - ax; const acy = vy[ic] - ay; const acz = vz[ic] - az;
+        const apx = px - ax; const apy = py - ay; const apz = pz - az;
+        const d1 = abx * apx + aby * apy + abz * apz; const d2 = acx * apx + acy * apy + acz * apz;
+        const sq = (qx: number, qy: number, qz: number): number => qx * qx + qy * qy + qz * qz;
+        if (d1 <= 0 && d2 <= 0) return sq(apx, apy, apz);
+        const bpx = px - vx[ib]; const bpy = py - vy[ib]; const bpz = pz - vz[ib];
+        const d3 = abx * bpx + aby * bpy + abz * bpz; const d4 = acx * bpx + acy * bpy + acz * bpz;
+        if (d3 >= 0 && d4 <= d3) return sq(bpx, bpy, bpz);
+        const vc = d1 * d4 - d3 * d2;
+        if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v2 = d1 / (d1 - d3); return sq(apx - v2 * abx, apy - v2 * aby, apz - v2 * abz); }
+        const cpx = px - vx[ic]; const cpy = py - vy[ic]; const cpz = pz - vz[ic];
+        const d5 = abx * cpx + aby * cpy + abz * cpz; const d6 = acx * cpx + acy * cpy + acz * cpz;
+        if (d6 >= 0 && d5 <= d6) return sq(cpx, cpy, cpz);
+        const vb = d5 * d2 - d1 * d6;
+        if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w2 = d2 / (d2 - d6); return sq(apx - w2 * acx, apy - w2 * acy, apz - w2 * acz); }
+        const va = d3 * d6 - d5 * d4;
+        if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+          const w2 = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+          return sq(px - vx[ib] - w2 * (vx[ic] - vx[ib]), py - vy[ib] - w2 * (vy[ic] - vy[ib]), pz - vz[ib] - w2 * (vz[ic] - vz[ib]));
+        }
+        const den = 1 / (va + vb + vc); const v3 = vb * den; const w3 = vc * den;
+        return sq(apx - v3 * abx - w3 * acx, apy - v3 * aby - w3 * acy, apz - v3 * abz - w3 * acz);
+      };
+      for (let li = 0; li < liveIdx.length; li += 1) {
+        if (sags[li] <= TOL) continue;
+        const t = liveIdx[li];
+        hausTris += 1;
+        const a = ta[t]; const b = tb[t]; const c = tc[t];
+        const cand = new Set<number>();
+        for (const v of [a, b, c]) for (const u of vTri.get(v) ?? []) if (alive[u]) cand.add(u);
+        const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
+        const le = Math.max(eLen(a, b), eLen(b, c), eLen(c, a));
+        const n = Math.max(AUD_NMIN, Math.min(AUD_NMAX, Math.ceil(le / AUD_HS)));
+        let worst = 0;
+        for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
+          const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
+          const theta = th0 + wb * dB + wc * dC;
+          const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
+          const r = R(canon(theta), z);
+          const px = r * Math.cos(theta); const py = r * Math.sin(theta);
+          let best = Infinity;
+          for (const u of cand) { const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]); if (d < best) best = d; }
+          hausSamples += 1;
+          if (best > worst) worst = best;
+        }
+        const wsq = Math.sqrt(worst);
+        if (wsq > hausMax) { hausMax = wsq; hausT = t; }
+      }
+    }
+
     // ───────── LOCUS AUDIT = the CLOSURE INVARIANT (re-detect features ON the produced mesh) ─────────
     // Barycentric sampling CANNOT prove a tolerance on a surface with gradient jumps: a tent tip between two samples
     // is missed by up to Δs·pitch/2, and Δs ≈ 16.7 mm/mm on GothicArches' rib ⇒ a 17 µm pitch admits a 140 µm blind
@@ -1367,8 +1949,21 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let curtainChordMax = 0; let curtainChordE = -1; let curtainEdges = 0;
     let placeMax = 0; let placeAtTh = 0; let placeAtZ = 0; let placeUnresolved = 0;
     const placeAll: number[] = [];
+    // ── ATTRIBUTION. A slot that has gone DORMANT (its locus died) still owns a grid column, its vertices are still
+    //    tagged onLoc, and its vertical edges are therefore still swept by this audit — even though |Δr| ≈ 0 there so
+    //    the PINCH path emitted no curtain triangle at all. Measuring "distance to the nearest OTHER locus" on such an
+    //    edge is meaningless, and it is exactly the kind of probe that can dominate a p999/MAX. Split the distribution
+    //    by whether the edge really carries a jump at BOTH of its own endpoints, so the tail can be attributed to a
+    //    real mis-placement rather than to a dead column, or vice versa. Costs 4 rA evals per curtain edge.
+    const placeLive: number[] = []; const placeDead: number[] = [];
+    let liveJumpEdges = 0; let deadJumpEdges = 0;
+    const worstProbes: Array<{ arc: number; th: number; z: number; live: boolean; slot: number; jP: number; jQ: number }> = [];
     const PLACE_WIN = envF('PF_CB_PLACE_WIN', 0.35);   // >> the 0.0935 rad median inter-locus gap
     const PLACE_RES = envF('PF_CB_PLACE_RES', 5e-4);  // rad per sample; window is swept at CONSTANT resolution
+    // The window sweep is ~1400 rA evals PER PROBE, so on a multi-million-triangle run the audit can cost more
+    // than the mesh. STRIDE subsamples the curtain EDGE list (deterministically, 1-in-N) without touching the
+    // window or its resolution, so the distribution is preserved and only its sample count falls.
+    const PLACE_STRIDE = Math.round(envF('PF_CB_PLACE_STRIDE', 1));
     let liveCurtainTris = 0; let minSepLiveMm = Infinity; let minSepAt = '';
     let curtainVerts = 0;
     {
@@ -1390,6 +1985,9 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
             continue;
           }
           if (vz[p] === vz[qv]) continue;
+          // PINCH-to-PINCH: both ends are branch 0, so the curtain closed to a point here and NO curtain triangle was
+          // emitted. Ruling such an edge against "the nearest locus" measures nothing about the mesh.
+          if (bp === 0 && bq === 0) continue;
           curtainEdges += 1;
           const s = edgeSagN(p, qv, CA_N);
           if (s > curtainChordMax) { curtainChordMax = s; curtainChordE = p; }
@@ -1399,8 +1997,12 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           // samples sit OFF the locus and are read raw, so that number mixes in the 600 um jump and is not a
           // placement measure. What actually matters is how far the chord strays from the locus in THETA: that
           // strip is where the mesh sits on the wrong side of the cliff, and its width in ARC is the real error.
-          if (CHAIN) {
+          if (CHAIN && (PLACE_STRIDE <= 1 || curtainEdges % PLACE_STRIDE === 0)) {
             const dthE = dTh(p, qv);
+            const jP = Math.abs(R(canon(vth[p] + BR_EPS), vz[p]) - R(canon(vth[p] - BR_EPS), vz[p]));
+            const jQ = Math.abs(R(canon(vth[qv] + BR_EPS), vz[qv]) - R(canon(vth[qv] - BR_EPS), vz[qv]));
+            const liveEdge = jP > TOL && jQ > TOL;
+            if (liveEdge) liveJumpEdges += 1; else deadJumpEdges += 1;
             for (let q = 1; q < 4; q += 1) {
               const tt = q / 4;
               const thC = vth[p] + dthE * tt; const zC = vz[p] + (vz[qv] - vz[p]) * tt;
@@ -1414,6 +2016,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
               let dd = Math.abs(canon(thC) - thL); if (dd > Math.PI) dd = TWO_PI - dd;
               const arc = dd * R(canon(thL), zC);
               placeAll.push(arc);
+              if (liveEdge) placeLive.push(arc); else placeDead.push(arc);
+              if (arc > 0.005) {
+                worstProbes.push({ arc, th: thC, z: zC, live: liveEdge, slot: vLocTh[p], jP, jQ });
+                if (worstProbes.length > 4000) { worstProbes.sort((x, y) => y.arc - x.arc); worstProbes.length = 2000; }
+              }
               if (arc > placeMax) { placeMax = arc; placeAtTh = thC; placeAtZ = zC; }
             }
           }
@@ -1463,16 +2070,31 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `  brackets ${curtBrackets} → rejected ${curtRejected} (of which ${curtSnaking} SNAKING = jump present at <${(CURT_ZFRAC*100).toFixed(0)}% of z probes ⇒ NEEDS THE TRACED-POLYLINE CURTAIN, refused here) → detected ${jumpLoci.length}${jumpLoci.length > 0 ? `  θ*=[${jumpLoci.slice(0, 8).map((x) => x.toFixed(9)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]  grid-col idx=[${jumpLoci.slice(0, 8).map((x) => ((x * gu) / TWO_PI).toFixed(4)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]` : ''}`,
       `  chains: built ${chainsBuilt}, matched ${chainMatched}, locally RECOVERED ${chainRecovered}, HELD ${chainHeld} (${chainSlots > 0 ? ((100 * chainHeld) / chainSlots).toFixed(1) : '0'}% hold rate), of which SUSPECT (jump present at the held θ) ${chainSuspect}; terminal-snap to true death point ${chainTermSnap}`,
       `  chains: reprojected splits ${chainReproj}, reproj-FAILED ${chainReprojFail}`,
+      ...(TRACE ? [`  TRACER: ${trCurvesT} curves → ${trBranchesT} monotone branches → ${trSlotsT} column slots; ${trRowsAddedT} merge-corner ROWS inserted; θ-order violations ${trOrderViolT} (worst backward step ${um(trBackMaxT)} µm arc), cycle-breaks ${trCycleBreakT}; order-repair DEMOTED ${trDemotedT}/${trLiveSlotsT} live row-slots; MINSEP moved ${trMinsepLive} LIVE columns (worst ${um(trMinsepMax)} µm arc)  ${trOrderViolT === 0 && trMinsepLive === 0 ? 'OK' : '*** SLOT ORDER INCONSISTENT ***'}`] : []),
+      ...(TRACE ? [`  TRACER internals: hops ${trHopsT}, merges ${trMergesT}, dead-ends ${trDeadT}, closed loops ${trClosedT}, per-curve budget hits ${trBudgetHitT}`] : []),
+      ...(TRACE ? [`  TRACER COVERAGE (independent row scans on ${TR_AUDROWS} rows/band): loci with NO live slot within 20 µm ${trAudMiss}/${trAudTot}  ${trAudMiss === 0 ? 'PASS' : `FAIL worst ${um(trAudWorst)} µm @ ${trAudAt}`};  GHOST live slots with no locus ${trGhost}/${trGhostTot}  ${trGhost === 0 ? 'PASS' : 'FAIL'}`] : []),
       `  curtain: ${curtainTris} init tris, ${liveCurtainTris} live, ${curtainPairs} doubled row-slots, ${pinchVerts} pinch verts (|Δr|<${(PINCH_MM * 1000).toFixed(3)} µm, init MIN |Δr| ${minBranchSepMm === Infinity ? 'n/a' : `${um(minBranchSepMm)} µm`}), ${curtainVerts} branch-tagged verts, ${branchSplits} branch-inherited splits`,
       `  branch separation (live cross-edges): MIN ${minSepLiveMm === Infinity ? 'n/a' : `${um(minSepLiveMm)} µm at ${minSepAt}`}  vs weld ${um(WELD_MM)} µm ⇒ ${minSepLiveMm === Infinity ? 'n/a' : `${(minSepLiveMm / WELD_MM).toFixed(1)}×  ${minSepLiveMm > WELD_MM ? 'OK' : '*** CURTAIN CAN WELD SHUT ***'}`}`,
       `  CURTAIN CHORD audit (${curtainEdges} branch edges @ n=${Math.round(envF('PF_CB_CURT_AUDIT_N', 64))}): MAX ${um(curtainChordMax)} µm  ${curtainChordMax <= TOL ? 'PASS' : 'FAIL'}${curtainChordE >= 0 ? `  @ θ=${vth[curtainChordE].toFixed(6)} z=${vz[curtainChordE].toFixed(3)}` : ''}${CHAIN ? '   [NOTE: valid only for STRAIGHT loci; see placement error below]' : ''}`,
       ...(CHAIN ? (() => {
         const so = placeAll.slice().sort((x, y) => x - y);
         const pq = (f: number): number => (so.length === 0 ? 0 : so[Math.min(so.length - 1, Math.floor(f * so.length))]);
+        const dist = (a: number[], tag: string): string => {
+          if (a.length === 0) return `    ${tag}: none`;
+          const s2 = a.slice().sort((x, y) => x - y);
+          const f = (fr: number): string => um(s2[Math.min(s2.length - 1, Math.floor(fr * s2.length))]);
+          return `    ${tag}: n=${s2.length} p50 ${f(0.5)} p90 ${f(0.9)} p99 ${f(0.99)} p999 ${f(0.999)} MAX ${um(s2[s2.length - 1])} µm   over-${TOL}mm ${s2.filter((x) => x > TOL).length}`;
+        };
+        worstProbes.sort((x, y) => y.arc - x.arc);
         return [
           `  CURTAIN PLACEMENT error (chord→locus θ offset, in arc; window ±${PLACE_WIN} rad @ ${PLACE_RES} rad/sample):`,
           `    MAX ${um(placeMax)} µm  ${placeMax <= TOL ? 'PASS' : 'FAIL'}  @ θ=${placeAtTh.toFixed(6)} z=${placeAtZ.toFixed(3)}`,
-          `    distribution over ${so.length} probes: p50 ${um(pq(0.5))}  p90 ${um(pq(0.9))}  p99 ${um(pq(0.99))}  p999 ${um(pq(0.999))} µm   over-${TOL}mm ${so.filter((x) => x > TOL).length}/${so.length}   unresolved (no locus in window) ${placeUnresolved}`,
+          `    distribution over ${so.length} probes (edge stride 1-in-${PLACE_STRIDE}): p50 ${um(pq(0.5))}  p90 ${um(pq(0.9))}  p99 ${um(pq(0.99))}  p999 ${um(pq(0.999))} µm   over-${TOL}mm ${so.filter((x) => x > TOL).length}/${so.length}   unresolved (no locus in window) ${placeUnresolved}`,
+          `    ATTRIBUTION — curtain edges: ${liveJumpEdges} LIVE (|Δr|>tol at BOTH ends) / ${deadJumpEdges} DEAD (a dormant slot: no jump, PINCH ⇒ no curtain triangle at all)`,
+          dist(placeLive, 'LIVE probes '),
+          dist(placeDead, 'DEAD probes '),
+          `    worst ${Math.min(10, worstProbes.length)} probes (arc µm | live? | slot | |Δr| at the two edge ends µm):`,
+          ...worstProbes.slice(0, 10).map((w) => `      ${um(w.arc).padStart(10)} | ${w.live ? 'LIVE' : 'dead'} | slot ${String(w.slot).padStart(3)} | θ=${w.th.toFixed(6)} z=${w.z.toFixed(3)} | ${um(w.jP)} , ${um(w.jQ)}`),
         ];
       })() : []),
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
@@ -1513,12 +2135,16 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           })()
         : []),
       `  TAIL re-measure (worst ${order.length} @ oracle ${tailN}): MAX ${um(tailMax)} µm  ${tailMax <= TOL ? 'PASS' : 'FAIL'}`,
+      ...(process.env.PF_CB_HAUS === '1'
+        ? [`  HAUSDORFF re-measure (surface → NEAREST MESH POINT, all ${hausTris} plane-over-tol tris, ${hausSamples} samples): MAX ${um(hausMax)} µm  ${hausMax <= TOL ? 'PASS' : 'FAIL'}`,
+           `  HAUS-locus: ${locus(hausT)}`]
+        : []),
       `  TAIL-locus: ${locus(tailT)}`,
       ...(process.env.PF_CB_LOCUS_AUDIT === '1'
         ? [`  LOCUS AUDIT (closure invariant): ${locusCrossed} tris still crossed by a detected locus; worst on-locus sag ${um(locusMax)} µm  ${locusMax <= TOL ? 'PASS' : 'FAIL'}`,
            `  LOCUS-locus: ${locus(locusT)}`]
         : []),
-      `  min edge ${um(minEdge)} µm`,
+      `  min edge ${um(minEdge)} µm${TRACE ? `   [curtain-wall tris excluded from the graph ruler: ${curtainSkipped}]` : ''}`,
       '=========================================================',
       '',
     ].join('\n');

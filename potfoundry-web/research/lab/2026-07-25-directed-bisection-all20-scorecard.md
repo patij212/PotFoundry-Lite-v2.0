@@ -2,6 +2,122 @@
 
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
+> # UPDATE 7 — the "√-cusp" diagnosis is REFUTED; the tail was IDENTITY, and a traced-contour curtain removes it
+>
+> New instruments: `research/bridge/_strataCkContour.test.ts` (`PF_STRATA_CKC=1`, contour tracer + jump-family census)
+> and a `PF_CB_TRACE=1` path in `_strataChainCurtain.test.ts` (default OFF).
+> `_strataConformBisect.test.ts` — the instrument behind the 19 confirmed rows — is **not touched at all**. Inside
+> `_strataChainCurtain.test.ts` the only mesh-affecting additions are gated on `TRACE`; the per-row z and per-row
+> liveness arrays reduce to the previous constants when it is off. Two MEASUREMENT-only changes do apply to the chain
+> path and are stated so no number is compared across them: the placement/chord audit now skips PINCH-to-PINCH edges
+> (both ends branch 0 ⇒ no curtain triangle was ever emitted there), and `PF_CB_PLACE_STRIDE` (default 1 = no change)
+> can subsample the probed edge list.
+>
+> ## 1. There is no parameterization singularity. The loci are gentle sines.
+>
+> The contour census measures the locus TANGENT at every z-jump site (the direction along which the two-sided
+> difference vanishes). Minimum tangent angle **34.0°** ⇒ **|dθ/dz| ≤ 0.0329 rad/mm** = 1.48 mm of arc per mm of z.
+> That is exactly the analytic bound of CelticKnot's strand sine, `(2π/3)/2 · amp · dv/dz` = 0.03290 rad/mm. A
+> coalescence is therefore a **transversal corner** of ∂{minD ≤ strandW}, where both arcs have finite slope — not a
+> parabola with dθ/dz → ∞. Chording it converges QUADRATICALLY, and the whole row sweep is predicted by one number:
+>
+> | rows | δz | predicted chord sagitta `r·θ''·δz²/8` | measured placement |
+> |---|---|---|---|
+> | 140 (chain) | 0.857 mm | 10.7 µm | p90 **7.573** ✓ · MAX 1130.5 ✗ (**106×**) |
+> | 560 (chain) | 0.214 mm | 0.667 µm | p90 **0.684** ✓ · MAX 1786.2 ✗ (**2666×**) |
+> | 40 (TRACE) | 3.000 mm | 130.8 µm | MAX **123.2** ✓ (**0.94×**) |
+>
+> The p50/p90 always tracked the sagitta model; the MAX never did. The tracer removes the entire non-sagitta term.
+>
+> ## 2. What the tail actually was — measured, not inferred
+>
+> The A-run (chain path, 140×208, 120 k cap) reproduces UPDATE 6 exactly (MAX 1130.516 µm, p999 837.396). Splitting
+> the placement probes by whether the curtain edge carries a real jump at BOTH ends:
+> `LIVE 6065 edges MAX 1129.632 µm` / `DEAD 1775 edges MAX 1130.516 µm`. So it is **not** a dead-column artifact: a
+> LIVE edge with a genuine 600 µm cliff at each endpoint is 1.13 mm of arc from the nearest locus — i.e. ONE chain
+> edge joins two DIFFERENT branches ~0.05 rad apart, implying |dθ/dz| = 0.059 rad/mm, **1.8× the physical maximum**.
+> That is the greedy nearest-θ matcher swapping identity where two loci close below its window. Three failure modes,
+> one cause: identity, termination, and coverage (m = 18 slots allocated for ~116–252 monotone branches).
+>
+> ## 3. The mechanism: trace by CONNECTIVITY, not by per-row re-detection
+>
+> March each locus in z with a **slope-continuity gate** (at a merge the partner arc has the opposite slope, so an
+> inconsistent candidate is a HOP and is refused; the step then shrinks until the death z is bisected exactly), round
+> each merge onto its partner, cut the curve into monotone branches, give every branch its own column slot, make every
+> merge corner a mesh ROW, and order the slots by a **topological sort of the per-row θ order** (a mean-θ sort is not
+> order-consistent — 1183 violations, and MINSEP then compressed the grid and left a 92 mm triangle).
+> Traps found and fixed by measurement, each worth recording:
+> * a corrector window that scales with the step (0.14 rad) exceeds the 0.09 rad inter-locus gap ⇒ silent hopping;
+> * a merge-rounding marcher never re-hits its seed, so a closed curve must be closed on its **corners** (else 15×
+>   over-tracing);
+> * a wide merge window buys no recall (a true partner is 7e-8 rad away 1 µm below the death) but does admit spurious
+>   hops that put CYCLES in the slot-order graph;
+> * dormant slots must be **parked on their own branch**, not re-interpolated per row — otherwise an inert column
+>   moves ~1 rad in one row step, and the plane ruler is blind to the resulting 49 mm skewed quad.
+>
+> ## 4. A ruler finding that matters beyond CelticKnot
+>
+> `sagOfN` measures |analytic point − the triangle's own PLANE|. On a **curved** h⁰ locus that is structurally
+> inflating: a straight mesh edge cannot lie on a curved cliff, so between the curtain chord and the true locus there
+> is always a strip of width = the chord sagitta in which a sample belongs to the branch on the other side of the
+> chord. Its distance to THIS plane is the full 600 µm jump; its distance to the MESH is the strip width, because the
+> correct sheet is a few µm away. **No density empties the strip**, so a plane-distance MAX can never reach 10 µm on a
+> curved cliff at any finite budget. Every previously-closed h⁰ style (BasketWeave's constant-θ column, the four
+> constant-z tread styles) has an exactly representable STRAIGHT locus and therefore no strip — which is why this has
+> not appeared before. The product bar is one-sided Hausdorff, so `PF_CB_HAUS=1` re-measures every plane-over-tol
+> triangle against the nearest point of the local mesh. It cannot hide a missing curtain (an unmeshed cliff has no
+> mesh near it and still reads the full jump), and it is strictly more sensitive to slivers than the plane ruler —
+> it is what found the 49 mm quad the plane ruler missed.
+>
+> ## 5. Measured — `PF_CB_TRACE=1`, registry defaults, ring, 208×280, 900 k cap, 1718 s
+>
+> ```
+> 252 curves → 252 monotone branches → 252 column slots; 108 merge-corner ROWS inserted
+> θ-order violations 0 · cycle-breaks 0 · order-repair demoted 101/6639 live row-slots
+> TRACER COVERAGE: 0/2737 loci without a live slot  PASS   ·  ghost live slots 7/3067
+> branch separation MIN 23.150 µm vs weld 0.050 µm = 463×   ·   0 non-manifold · 0 seam-crack
+> CURTAIN PLACEMENT  p50 0.000  p90 0.011  p99 2.110  p999 2.844 µm   MAX 24.181 µm
+>                    over-0.01 mm 37/56 622 probes (0.065 %)
+> HEADLINE (plane ruler) MAX 700.493 µm  ·  p50 0.498  ·  CAPPED (86 110 left, worst-left 597.98)
+> ```
+>
+> **Placement p999 = 2.844 µm against a predicted sagitta bound of 2.670 µm** — 99.9 % of the curtain is at the
+> theoretical floor for 280 rows, versus 1130 µm (106× the bound) on the chain path. Against the A-run at the same
+> style and tolerance the tail improves ~400× at p99 (319.1 → 2.110 µm) and ~46× at MAX.
+>
+> ## 6. Placement A/B at the SAME grid (208×140) — chain vs traced contour
+>
+> | | chain (A-run, 120 k) | TRACE + parking (450 k) | |
+> |---|---|---|---|
+> | p99 | 319.146 µm | **8.871 µm** | 36× |
+> | p999 | 837.396 µm | **12.025 µm** | 70× |
+> | MAX | 1130.516 µm | **23.628 µm** | 48× |
+> | over-0.01 mm | 1035/23 520 (4.4 %) | 142/27 069 (0.52 %) | 8.5× |
+>
+> Predicted sagitta bound at 140 rows is 10.678 µm; measured p999 is 12.025 µm (1.13×). The three worst probes sit on
+> edges whose OWN jump is only 58.187/32.994, 28.607/58.190 and 28.462/52.254 µm — i.e. the residual tail is
+> concentrated where the cliff is already fading toward a merge, not on the 600 µm body of a strand. The worst
+> full-600 µm probe is 14.209 µm.
+>
+> ## 7. Not closed — one defect remains, and it is NOT the curtain
+>
+> Both TRACE runs still carry a **~1.08 rad θ offset between two ADJACENT rows at the same column index**
+> (`HAUS-locus edges 181.3 / 50052.1 / 50207.7 µm`, `θ = [1.2956, 1.2993, 2.3756]`, `z = [112.92, 112.92, 113.33]`,
+> `feat=[000]`), sitting in the background gap between two strand clusters. It is a per-row COLUMN LAYOUT defect: the
+> position of a dormant column depends on which slots are live at that row, so when the live-anchor set changes across
+> a row the interpolation fallback can translate the column by a full background gap. Parking dormant slots on their
+> own branch (§3) removes most of it but not this case — the run still falls back to the lerp there. Consequences:
+> * the plane-ruler headline (836.975 µm) and the Hausdorff re-measure (6624.482 µm ≈ `r·(1−cos)` for a 1.08 rad
+>   chord, i.e. exactly this quad) are BOTH dominated by it, not by the curtain;
+> * the plane ruler is *blind* to it (a thin skewed quad has a plane that passes near the surface) — the Hausdorff
+>   instrument is what surfaced it;
+> * both runs are also CAPPED (`worst-left 598.06 µm`), so neither headline is a converged number.
+>
+> **Verdict: the h⁰ curtain mechanism for a CURVED, snaking locus is built and measured** — connectivity tracing,
+> merge-exact rows, per-branch slots, topological slot order, dormant-slot demotion — and it drives placement to the
+> chord-sagitta floor with 0 non-manifold, 0 seam-crack, a passing coverage invariant and 463× weld margin. **The
+> remaining work is the column-layout defect above plus one converged full-budget run**, not another mechanism.
+
 > # UPDATE 6 — CelticKnot: termination fix CONFIRMED by a pre-registered A/B (7.9× on MAX), still not closed
 >
 > The prediction was registered **before** the numbers existed: *"placement error should drop hard on the ~2.7 % coalescence rows and leave the other 97.3 % flat — p999/MAX fall substantially while p50/p90 stay put."* Identical config, chain path, 120k cap:

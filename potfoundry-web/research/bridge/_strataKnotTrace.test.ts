@@ -126,6 +126,7 @@ describe('STRATA knot trace', () => {
     const countHist = new Map<number, number>();
     const gaps: number[] = [];
     let rowsTight = 0;
+    const sagArc: number[] = [];
     const bandLines: string[] = [];
     for (let b = 0; b + 1 < bounds.length; b += 1) {
       const za = b === 0 ? 0 : bounds[b] + stepEps;
@@ -150,6 +151,22 @@ describe('STRATA knot trace', () => {
         if (mg < 0.01) rowsTight += 1;
       }
       if (mMin === mMax) bandsConstM += 1; else bandsVarM += 1;
+      // CHORD SAGITTA — the number that decides whether a piecewise-linear curtain is viable at all.
+      // A chord between two locus samples is DISPLACED from the true curved locus by delta; inside that strip the
+      // mesh sits on the wrong side of a 600 um cliff. Measure delta directly: for each consecutive row TRIPLE the
+      // middle sample is exactly the midpoint of the outer two, so r*|th_mid - (th_prev+th_next)/2| is the sagitta
+      // over a span of 2 row-pitches. Reported in ARC mm, which is the unit the tolerance is stated in.
+      for (let j = 1; j + 1 < perRow.length; j += 1) {
+        const A = perRow[j - 1]; const M = perRow[j]; const B = perRow[j + 1];
+        for (const m of M) {
+          let na = -1; let da = Infinity; let nb = -1; let db = Infinity;
+          for (let k = 0; k < A.length; k += 1) { const d = Math.abs(A[k].th - m.th); if (d < da) { da = d; na = k; } }
+          for (let k = 0; k < B.length; k += 1) { const d = Math.abs(B[k].th - m.th); if (d < db) { db = d; nb = k; } }
+          if (na < 0 || nb < 0 || da > 0.12 || db > 0.12) continue;
+          const rHere = R(m.th, za + ((zb - za) * j) / rows);
+          sagArc.push(rHere * Math.abs(m.th - 0.5 * (A[na].th + B[nb].th)));
+        }
+      }
       // link consecutive rows by nearest θ (cyclic); count births/deaths and order violations
       let localChains = mMax;
       for (let j = 0; j + 1 < perRow.length; j += 1) {
@@ -190,6 +207,10 @@ describe('STRATA knot trace', () => {
     const gq = (p: number): number => gaps[Math.min(gaps.length - 1, Math.floor(p * gaps.length))];
     out.push(`adjacent-locus θ-gap over ${gaps.length} pairs: min ${gq(0).toExponential(2)}  p1 ${gq(0.01).toExponential(2)}  p50 ${gq(0.5).toFixed(4)}  max ${gq(0.999).toFixed(4)} rad`);
     out.push(`  rows whose MIN adjacent gap < 0.01 rad (a coalescence in progress) : ${rowsTight}/${totRows}`);
+    sagArc.sort((a, b) => a - b);
+    const sq = (pp: number): number => sagArc[Math.min(sagArc.length - 1, Math.floor(pp * sagArc.length))];
+    const rowPitch = H / nRows;
+    out.push(`CHORD SAGITTA over a ${(2 * rowPitch).toFixed(3)} mm span (${sagArc.length} samples): p50 ${(sq(0.5) * 1000).toFixed(3)} um  p99 ${(sq(0.99) * 1000).toFixed(3)} um  MAX ${(sq(0.9999) * 1000).toFixed(3)} um`);
     out.push('=========================================================', '');
     // eslint-disable-next-line no-console
     console.log(out.join('\n'));
