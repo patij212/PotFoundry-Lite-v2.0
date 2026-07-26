@@ -626,11 +626,17 @@ describe('STRATA conforming-bisection', () => {
       for (let t = 0; t < ta.length; t += 1) {
         if (!alive[t]) continue;
         for (const [p, qv] of [[ta[t], tb[t]], [tb[t], tc[t]], [tc[t], ta[t]]] as Array<[number, number]>) {
+          // BOUNDED DEDUP: length-test FIRST, and only dedup the SHORT edges. Deduping every edge put ~1.5 entries
+          // per live triangle into the Set and blew V8's 2^23 Set cap ("RangeError: Set maximum size exceeded")
+          // at ~7.7M live triangles — measured on GyroidManifold, and the same failure mode already fixed once in
+          // detectSelfIntersections. Short edges are rare by construction, so the Set stays tiny. Identical result:
+          // the same unique short edges are collected; eLen is just evaluated once per incident triangle.
+          const L = eLen(p, qv);
+          if (L >= SAFE_MM) continue;
           const k = eKey(p, qv);
           if (seenE.has(k)) continue;
           seenE.add(k);
-          const L = eLen(p, qv);
-          if (L < SAFE_MM) shortEdges.push([L, p, qv]);
+          shortEdges.push([L, p, qv]);
         }
       }
       shortEdges.sort((x, y) => x[0] - y[0]);
