@@ -2,6 +2,155 @@
 
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
+> # UPDATE 8 — §10's slot-reuse allocator is BUILT and REFUTED. The shear's real mechanism is MEASURED (it IS a parking bug, contrary to §8) — and the obvious repair is refuted too, at 140 rows but not at 40
+>
+> Pre-registered target (§10): inter-row column shear **42 573 µm → ~1 400 µm**, all revert gates held. **Not met.**
+> **Four attempts, all measured, all reverted. No mesh-affecting change is kept** — the harness reproduces its
+> recorded numbers exactly. What is kept is instrumentation (a shear forensics dump; a tie-break falsification knob)
+> and four things now known rather than assumed: §10's reuse has nothing to reuse (§2); §10's sweep is not
+> order-consistent (§3); the shear's dominant term is a parking bug in the dormant-slot LAYOUT (§4); and the residual
+> is forced by the mesher's fixed per-band column count, not by the allocator (§5).
+> `_strataConformBisect.test.ts` was not touched. CelticKnot stays open — **19 closed / 1 open**.
+>
+> ## 1. Attempt D — the reserved-room ceiling: a clean win at 64×40, a broken grid at 208×140. REVERTED.
+>
+> CelticKnot ring, registry defaults, 200 k cap, `PF_CB_HAUS=1`:
+>
+> | 64×40 | baseline (HEAD) | reserved-room ceiling | |
+> |---|---|---|---|
+> | inter-row COLUMN SHEAR, worst | 42 573.117 µm | **17 769.874 µm** | 2.4× |
+> | **HAUSDORFF MAX** (product ruler) | 1 942.268 µm | **1 019.065 µm** | 1.91× |
+> | worst skewed edge at the HAUS locus | 12 171.7 µm | **2 172.5 µm** | 5.6× |
+> | plane HEADLINE MAX · p50 · spread | 691.173 µm · 2.056 · 1.1× | 641.272 µm · 1.619 · 1.0× | |
+> | non-manifold / seam-crack | 0 / 0 | 0 / 0 | gate ✓ |
+> | coverage · θ-order · cycle-breaks · MINSEP-moved-LIVE | 0/2612 PASS · 0 · 0 · 0 | 0/2612 PASS · 0 · 0 · 0 | gates ✓ |
+> | order-repair demoted · branch separation | 101/2452 · 463× | 101/2452 · 463× | unchanged |
+> | CURTAIN PLACEMENT MAX | 132.461 µm | 132.461 µm | identical |
+> | shear events over 1 mm | 1159 | 1259 | *worse* |
+>
+> Every gate green, two rulers improved, the curtain untouched. **Then the same code at 208×140, 450 k, `PF_CB_BRSKIP=1`:**
+>
+> ```
+> non-manifold 784  FAIL   ·   seam-crack 2477  FAIL   ·   boundary 2863, loops 22     (baseline: 0 · 0 · 571, 2)
+> and at 159 k cap — essentially NO refinement, so this is the INITIAL GRID:
+> non-manifold 370  FAIL   ·   seam-crack 2379  FAIL   ·   boundary 2769, loops 22
+> ```
+>
+> Cause: bunching dormant slots at the ceiling collapses the spans the FILLER columns must occupy, and the filler
+> count `nSubT` is sized from the WIDEST row — so a slot needing ~9 fillers at gu=208 is handed a span of a few
+> MINSEP. Same failure class as attempts B and C, invisible below ~140 rows.
+>
+> **METHOD NOTE, worth more than the attempt: a 64×40 fast probe CANNOT gate a column-layout change.** The watertight
+> failure is row-count-dependent — 0/0 at 40 rows, 370/2379 at 140. §8's attempts A and B were also judged at 64×40.
+> Any future layout change must clear 208×140 on the INITIAL grid before its fidelity numbers mean anything.
+>
+> ## 2. §10's premise does not hold: there is nothing to reuse
+>
+> The allocator was built exactly as specified (ordered label list, release on death, newborn takes a free label
+> between its θ-neighbours, list grows only when none fits) plus the two constraints a reuse needs to not become a
+> new shear source (a one-row cooldown, so a curtain quad can never span two tenancies — asserted at emission — and
+> a per-row translation budget). It ran clean and stayed watertight. It also did **nothing**:
+>
+> ```
+> 252 branches → 251 column LABELS   ·   1 reused / 251 fresh   ·   compression 1.00×
+> max simultaneous live 18           ·   SHEAR 42 573.117 µm — UNCHANGED to three decimals
+> order-repair DEMOTED 101 → 307     ·   tracer COVERAGE 0/2612 PASS → 104/2612 FAIL (worst 14 639.9 µm)
+> ```
+>
+> **Why:** `M = brs.length` is per BAND, and CelticKnot's bands hold 18–36 branches with **14–18 live at every row**
+> (per-band counts 24,24,18,24,18,36,24,24,18,24,18 — the "252 slots" in the report is the sum over 11 bands, not one
+> band's allocation). Branch lifetimes overlap almost completely, so "≈ the max simultaneous live count" is 18 against
+> M = 24–36: a 1.3–2× ceiling, and 1.00× achieved. §10's "~18 of ~23 slots per band are dormant at any row" inverts
+> the measured ratio — ~60 % of slots are LIVE.
+>
+> ## 3. The sweep is not order-consistent by construction — and the reason is structural
+>
+> Tried separately, as an ORDERING rule replacing the topological sort (same insertion rule, ties between co-born
+> siblings broken by dθ/dz): **DEMOTED 101 → 243/1942, COVERAGE 0/2550 PASS → 86/2550 FAIL, shear unmoved.**
+>
+> A newborn's position relative to a label that is dormant NOW but live LATER is decided with no co-live evidence — it
+> compares a θ at this z against a θ at that branch's own birth z, which is precisely the "mean θ is not
+> order-consistent" trap the topological sort exists to avoid. The decision is then permanent, so every later row
+> where the two are co-live in the opposite order costs a demotion, and a demoted slot is an unmeshed locus. Reverted.
+>
+> ## 4. What the shear actually is — read off a forensic dump, not inferred
+>
+> New instrument (kept): every over-budget shear event now records liveness at both rows, the two LIVE anchors
+> bracketing the slot, and the live count. The baseline's twelve worst events are all the same shape — a slot going
+> **LIVE → dormant**, i.e. a branch DEATH:
+>
+> ```
+> 42573.1 µm  slot 12  z 46.6667→46.6775  θ 7.0974→6.1513  live L→.  bracket 11@5.6784 .. 14@7.0971
+>             5.6784 + (7.0971 − 5.6784)/3 = 6.1513   ← exactly the uniform-lerp share
+> ```
+>
+> The dying slot's park **is** its death θ (7.0974), and a death is a MERGE, so the right place for that label is
+> immediately beside the partner it merged into. `min(park_k, lerp_k)` — attempt C, §8 — refuses to leave it there,
+> because park > lerp whenever the run's upper anchor is that partner.
+>
+> **So item 1 IS a parking bug, contradicting §8's "NOT a parking bug" conclusion.** The earlier reasoning was right
+> that no *ceiling of that form* could fix it, and wrong to generalise that to all layout rules. But the correction
+> is narrow: the repair that follows from it (attempt D, §1) is itself refuted at 140 rows. What survives is the
+> attribution — this half of the shear lives in the DORMANT-SLOT LAYOUT, not in the allocator, and it is worth
+> 42 573 → 17 770 µm and 1 942 → 1 019 µm of Hausdorff to whoever finds a form of it that stays watertight.
+>
+> ## 5. The residual is FORCED — falsified, not assumed
+>
+> Under attempt D (i.e. with the death-side half of the shear removed) every worst event changes class to a **birth
+> crushing a dormant run**:
+>
+> ```
+> 17769.9 µm  slots 17..20 dormant  z 46.6667→46.6775  θ 7.5394→7.1445  live .→.
+>             bracket 15@7.1445 .. 22@7.7257   →   15@7.1442 .. 21@7.1448     (slot 21 BORN at 7.1448)
+> ```
+>
+> Four never-co-live slots stranded between an anchor and a newborn that lands beside the anchor *below* them, then
+> crushed as that bracket collapses to 27 µm of arc. That looks like allocation freedom, so it was **tested**:
+> `PF_CB_TR_TIEKEY` runs Kahn with the branch's birth θ (0), its mean θ (1, default) or a deterministic pseudo-random
+> key (2). Kahn honours every co-live edge whatever the key, so the key selects a linear extension and nothing else.
+>
+> **All three keys give byte-identical output** — shear 17 769.874 µm / 959 events, demoted 101/1942, coverage
+> 0/2550 PASS. The linear extension is not free: the co-live edges force it. **No allocator, ordering rule or reuse
+> policy can move the residual.** It is the fixed per-band COLUMN COUNT meeting a θ-interval that genuinely collapses
+> in z, and it is resolution-independent because the collapse happens at merge-corner rows (δz ≈ 0.01 mm), which
+> exist at every grid density.
+>
+> ## 6. HANDOVER — the refined design
+>
+> **The residual (§5) is a MESHER limitation, not an allocator one.** The band model requires one column count for
+> all its rows, so a run of dormant columns trapped inside a bracket that collapses **must** compress into it, and
+> compressing it is what breaks either the shear (uniform lerp) or the fillers (any bunching ceiling). Two ways out:
+>
+> 1. **Per-row column count with an angle-merge stitch between consecutive rows.** The machinery already exists — the
+>    tread annuli stitch loop-to-loop by angle merge between loops of DIFFERENT sizes. Applying it row-to-row inside
+>    a band lets a dormant column be *dropped* at the row where its bracket collapses instead of being crushed into
+>    it, which removes the crushed quad AND the filler-span problem that killed attempt D in one move. This is the
+>    architecturally correct answer, and it is a mesher change, not an allocator change.
+> 2. **Split the band at the collapse z.** Cheap to state, but bands are meshed disconnected and re-stitched, and that
+>    stitch is only sound at a genuine C0 z-step — an arbitrary split would open a crack. Needs the same angle-merge
+>    stitch as (1), so (1) subsumes it.
+>
+> Do **not** revisit: slot reuse (§2), the ordered-label sweep as an ordering rule (§3), full-order constraints (§8
+> attempt A), the bare-anchor clamp (§8 attempt B), the reserved-room ceiling (§1 attempt D), or Kahn tie-break keys
+> (§5). And do not judge the next one at 64×40.
+>
+> **§8c's prediction remains untestable.** Under attempt D — half the shear removed — `worst-left` was still
+> 598.071 µm (64×40) and 597.982 µm (208×140 with `PF_CB_BRSKIP=1`). That is consistent with §8c's own reasoning:
+> the wrong-side region on the crushed quads is wider than the 50 µm attribution band, so the guard correctly refuses
+> to forgive it. Convergence stays blocked behind item 1 above.
+>
+> ## 7. Gates, stated plainly
+>
+> **Shipped state = HEAD behaviour.** Verified after the revert (32×8): shear 42 573.117 µm, non-manifold 0,
+> seam-crack 0, coverage 0/2550 PASS, θ-order 0, cycle-breaks 0, MINSEP moved 0 LIVE columns, demoted 101/1942 —
+> i.e. the instrument reproduces its recorded numbers and only gained measurement output.
+> Not met: shear 42 573 µm vs the ~1 400 µm target; Hausdorff 1 942 µm vs ≤ 10 µm; still CAPPED, not converged.
+> Pre-existing and untouched: GHOST live slots 12/2978 FAIL.
+>
+> **When quoting the Hausdorff number, carry both caveats:** an unmeshed cliff still reads the full jump (the far
+> branch has no mesh near it), so it cannot hide a missing curtain; and distance-to-mesh ≤ distance-to-covering-
+> triangle, so the 19 already-closed rows can only improve under it — their PASS status is unaffected.
+
 > # UPDATE 7 — the "√-cusp" diagnosis is REFUTED; the tail was IDENTITY, and a traced-contour curtain removes it
 >
 > New instruments: `research/bridge/_strataCkContour.test.ts` (`PF_STRATA_CKC=1`, contour tracer + jump-family census)

@@ -783,7 +783,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let trAudTot = 0; let trAudMiss = 0; let trAudWorst = 0; let trAudAt = ''; let trGhost = 0; let trGhostTot = 0;
     let trHopsT = 0; let trMergesT = 0; let trDeadT = 0; let trDomT = 0; let trClosedT = 0; let trBudgetHitT = 0;
     let trCycleBreakT = 0; let trBackMaxT = 0; let trMinsepLive = 0; let trMinsepMax = 0; let trDemotedT = 0; let trLiveSlotsT = 0;
-    let trShearMaxT = 0; let trShearOverT = 0; let trShearAtT = '';
+    let trShearMaxT = 0; let trShearOverT = 0; let trShearAtT = ''; const trShearLog: string[] = [];
     const TR_MAXSHEAR = envF('PF_CB_TR_MAXSHEAR', 1.0); // mm arc — a column may not translate further between rows
     const TR_AUDROWS = Math.round(envF('PF_CB_TR_AUDROWS', 16));
     const TR_BUDGET = Math.round(envF('PF_CB_TR_BUDGET', 4e6)); // rA evals per traced curve
@@ -920,8 +920,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           // the opposite order (arcs travel up to 0.42 rad in θ). MEASURED: 1,183 order violations on CelticKnot at
           // 355 branches — and a violated order is not cosmetic, because the MINSEP pass then rewrites every
           // offending column to `previous + 1e-5 rad`, compressing hundreds of columns into a sliver and leaving one
-          // 1.19 rad gap (a 52 mm triangle appeared in the mesh). The order the grid needs is exactly the partial
-          // order the rows impose, so take that: an edge a→b for every pair adjacent in θ on every row, then Kahn.
+          // 1.19 rad gap (a 52 mm triangle appeared in the mesh).
           // The cylinder is cut at the widest θ gap that no branch ever enters, which makes the cyclic order linear.
           let cut = 0;
           {
@@ -946,16 +945,28 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
             L2.sort((x, y) => x[1] - y[1]);
             rowLive.push(L2);
           }
-          const adj: Array<Set<number>> = Array.from({ length: M }, () => new Set<number>());
-          const indeg = new Array<number>(M).fill(0);
-          // MEASURED AND REJECTED: constraining the FULL per-row order (live at its locus, dormant at its parked θ)
-          // to stop a dormant slot sitting on the wrong side of a later birth. A dormant branch's parked θ is fixed
-          // while the live loci move, so the induced total order FLIPS between rows and the graph becomes cyclic:
-          // cycle-breaks 0 → 93, demoted live row-slots 101 → 311, tracer coverage 0/2612 PASS → 158/2612 FAIL, and
-          // watertight 0/0 → 146 non-manifold / 1028 seam-crack. Only CO-LIVE pairs carry a real ordering constraint.
+          // MEASURED AND REJECTED (kept so it is not retried): constraining the FULL per-row order — live slots at
+          // their locus, dormant slots at their parked θ — to stop a dormant slot sitting on the wrong side of a
+          // later birth. A dormant branch's parked θ is fixed while the live loci move, so the induced total order
+          // FLIPS between rows and the constraint graph goes cyclic: cycle-breaks 0 → 93, demoted 101 → 311,
+          // coverage 0/2612 PASS → 158/2612 FAIL, watertight 0/0 → 264 non-manifold / 1255 seam-crack.
+          // MEASURED AND REJECTED — the ORDERED-LABEL SWEEP of scorecard §10 (bottom→top; each newborn inserted
+          // between its live θ-neighbours, at the position where its θ fits among the parked θ of the dormant labels
+          // already there; ties between co-born siblings broken by dθ/dz). It is NOT order-consistent by
+          // construction, and the reason is structural rather than a detail of this implementation: a newborn's
+          // position relative to a label that is dormant NOW but live LATER is decided with no co-live evidence —
+          // it compares a θ at this z against a θ at that branch's own birth z, which is exactly the "mean θ is not
+          // order-consistent" trap the topological sort exists to avoid. Once fixed, that position is permanent, so
+          // every later row where the two are co-live in the opposite order costs a demotion, and a demoted slot is
+          // an unmeshed locus. MEASURED at 32×8: order-repair DEMOTED 101 → 243 of 1942 live row-slots, tracer
+          // COVERAGE 0/2550 PASS → 86/2550 FAIL, and the shear did not move (17 757 → 17 769 µm). Reverted.
+          // The order the grid needs is exactly the partial order the ROWS impose, so take that: an edge a→b for
+          // every pair adjacent in θ on every row, then Kahn. Only CO-LIVE pairs carry a real ordering constraint.
           // TIE TOLERANCE: two branches converging on a merge can correct onto θ values a few nm apart, where the
           // sort order is noise. Constraining a noise-ordered pair is how a CYCLE gets into the graph, so only
           // constrain pairs that are unambiguously separated (1 µm of arc).
+          const adj: Array<Set<number>> = Array.from({ length: M }, () => new Set<number>());
+          const indeg = new Array<number>(M).fill(0);
           for (const L2 of rowLive) for (let q = 0; q + 1 < L2.length; q += 1) {
             const a = L2[q][0]; const c3 = L2[q + 1][0];
             if ((L2[q + 1][1] - L2[q][1]) * TR_RBAR < TR_TIE) continue;
@@ -965,7 +976,21 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           {
             const ready: number[] = [];
             for (let k = 0; k < M; k += 1) if (indeg[k] === 0) ready.push(k);
-            const meanKey = brs.map((br) => key(br.mean));
+            // Kahn respects every co-live edge whatever the tie-break key, so the key can only choose among LINEAR
+            // EXTENSIONS — it can never create an order violation. That freedom was the last candidate explanation
+            // for the residual shear, whose worst events (after the ceiling fix below) all look like this:
+            //     slots 17..20 dormant, z 46.6667→46.6775, θ 7.5394 → 7.1445 (0.395 rad = 17.77 mm)
+            //     bracket 15@7.1445 .. 22@7.7257  →  15@7.1442 .. 21@7.1448   (slot 21 BORN at 7.1448)
+            // i.e. four never-co-live slots stranded between an anchor and a newborn that lands beside the anchor
+            // BELOW them, then crushed as that bracket collapses to 27 µm.
+            // PF_CB_TR_TIEKEY is therefore a FALSIFICATION knob, not a tuning knob: 1 = mean θ (default, the
+            // recorded behaviour), 0 = the branch's θ at its own birth, 2 = a deterministic pseudo-random key.
+            // MEASURED at 32×8, all three keys: shear 17769.874 µm / 959 events, demoted 101/1942, coverage
+            // 0/2550 PASS — BYTE-IDENTICAL. The linear extension is NOT free here: the co-live edges force it. So
+            // no allocator, ordering rule or slot-reuse policy can move the residual — it is the fixed per-band
+            // COLUMN COUNT meeting a θ-interval that genuinely collapses in z. Kept as the standing evidence.
+            const TIEKEY = Math.round(envF('PF_CB_TR_TIEKEY', 1));
+            const meanKey = brs.map((br, i2) => (TIEKEY === 1 ? key(br.mean) : TIEKEY === 2 ? ((i2 * 2654435761) % 1000) / 1000 : key(br.ths[0])));
             const done = new Array<boolean>(M).fill(false);
             while (order.length < M) {
               if (ready.length === 0) {
@@ -1023,6 +1048,27 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
             // v_k ≤ lerp_k always — because prev ≤ lerp_{k−1} and lerp_k − lerp_{k−1} = span/n ≥ MINSEP — so the array
             // is bounded by exactly the sequence the old code emitted. Strictly no worse, and each slot that CAN sit
             // on its own branch does.
+            //
+            // ── MEASURED AND REJECTED — the RESERVED-ROOM ceiling (attempt D). The forensics below proved that this
+            // uniform-lerp ceiling IS the 42.6 mm shear: every one of the twelve worst events is a slot going LIVE →
+            // dormant (a branch DEATH) and landing exactly on its lerp share instead of its park, which for a dying
+            // branch is its death θ beside the partner it merged into —
+            //     slot 12, z 46.6667→46.6775, θ 7.0974 → 6.1513, live L→., bracket 11@5.6784 .. 14@7.0971
+            //     ⇒ 5.6784 + (7.0971 − 5.6784)/3 = 6.1513 exactly.   0.946 rad = 42.573 mm of arc.
+            // So item 1 IS a parking bug, contrary to §8 — but the obvious repair still does not survive. Reserving
+            // room for every dormant slot still to come instead of imposing a uniform share,
+            //     v_q = max(v_{q−1} + MINSEP, min(park_q, cap − (n−q)·MINRES)),  cap = max(thA + n·MINRES, thB),
+            // is monotone by induction and never overshoots the LIVE anchor while the bracket can hold its slots.
+            // At 64×40 it looked like a clean win — shear 42 573 → 17 770 µm, HAUSDORFF 1 942.268 → 1 019.065 µm,
+            // worst skewed edge 12 171.7 → 2 172.5 µm, and EVERY gate green (0 non-manifold, 0 seam-crack, coverage
+            // 0/2612 PASS, 0 θ-order violations, 0 cycle-breaks, MINSEP moved 0 LIVE columns, placement identical).
+            // At 208×140 the INITIAL GRID is already broken: 370 non-manifold / 2379 seam-crack / 22 boundary loops
+            // at 162 k tris with essentially no refinement (784 / 2477 at full 450 k). Bunching dormant slots at the
+            // ceiling collapses the spans the FILLER columns have to occupy, and the filler count nSubT is sized from
+            // the WIDEST row, so a slot needing ~9 fillers is handed a span of a few MINRES — the same failure class
+            // as attempts B and C, only invisible below ~140 rows.
+            // METHOD NOTE, worth more than the attempt: a 64×40 fast probe CANNOT gate a column-layout change. The
+            // watertight failure is row-count-dependent and 64×40 shows 0/0 while 208×140 shows 370/2379.
             const fill = (a: number, c2: number, thA: number, thB: number): void => {
               const n2 = c2 - a;
               if (n2 <= 1) return;
@@ -1066,11 +1112,28 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
             // column may translate more than TR_MAXSHEAR of arc between adjacent rows. Report the worst, always.
             if (slotTh.length > 0) {
               const prevRow = slotTh[slotTh.length - 1];
+              const prevLv = slotLive[slotLive.length - 1];
               for (let k = 0; k < M; k += 1) {
                 let d = Math.abs(th[k] - prevRow[k]) % TWO_PI;
                 d = Math.min(d, TWO_PI - d) * TR_RBAR;
                 if (d > trShearMaxT) { trShearMaxT = d; trShearAtT = `slot ${k} z=${zRowT[jr2].toFixed(3)}`; }
-                if (d > TR_MAXSHEAR) trShearOverT += 1;
+                if (d <= TR_MAXSHEAR) continue;
+                trShearOverT += 1;
+                // FORENSICS. A shear number alone cannot say WHICH degree of freedom moved, and this defect had
+                // already survived three fixes aimed at the wrong one. Record the whole local state of every
+                // over-budget event — liveness at both rows, the two LIVE anchors bracketing the slot, and the live
+                // count — so the mechanism is read off the data. (This is what showed every worst event is a slot
+                // going LIVE → dormant and landing exactly on its uniform-lerp share.)
+                if (trShearLog.length < 20000) {
+                  const brk = (row: number[], lv: boolean[]): string => {
+                    let lo = -1; let hi = -1;
+                    for (let q = k - 1; q >= 0; q -= 1) if (lv[q]) { lo = q; break; }
+                    for (let q = k + 1; q < M; q += 1) if (lv[q]) { hi = q; break; }
+                    const f = (i2: number): string => (i2 < 0 ? 'wrap' : `${i2}@${(row[i2] + cut).toFixed(4)}`);
+                    return `${f(lo)}..${f(hi)}`;
+                  };
+                  trShearLog.push(`${(d * 1000).toFixed(1)} µm  band ${b} slot ${k}/${M}  z ${zRowT[jr2 - 1].toFixed(4)}→${zRowT[jr2].toFixed(4)}  θ ${(prevRow[k] + cut).toFixed(4)}→${(th[k] + cut).toFixed(4)}  live ${prevLv[k] ? 'L' : '.'}→${live[k] ? 'L' : '.'}  nLive ${prevLv.filter(Boolean).length}→${li.length}  bracket ${brk(prevRow, prevLv)} → ${brk(th, live)}`);
+                }
               }
             }
             slotTh.push(th); slotLive.push(live);
@@ -2173,6 +2236,10 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `  chains: reprojected splits ${chainReproj}, reproj-FAILED ${chainReprojFail}`,
       ...(TRACE ? [`  TRACER: ${trCurvesT} curves → ${trBranchesT} monotone branches → ${trSlotsT} column slots; ${trRowsAddedT} merge-corner ROWS inserted; θ-order violations ${trOrderViolT} (worst backward step ${um(trBackMaxT)} µm arc), cycle-breaks ${trCycleBreakT}; order-repair DEMOTED ${trDemotedT}/${trLiveSlotsT} live row-slots; MINSEP moved ${trMinsepLive} LIVE columns (worst ${um(trMinsepMax)} µm arc)  ${trOrderViolT === 0 && trMinsepLive === 0 ? 'OK' : '*** SLOT ORDER INCONSISTENT ***'}`,
       `  TRACER inter-row COLUMN SHEAR: worst ${um(trShearMaxT)} µm arc${trShearAtT === '' ? '' : ` @ ${trShearAtT}`}, over-${TR_MAXSHEAR}mm ${trShearOverT}  ${trShearOverT === 0 ? 'OK' : '*** COLUMN JUMPS BETWEEN ROWS ***'}`] : []),
+      ...(TRACE && trShearLog.length > 0
+        ? [`    worst ${Math.min(12, trShearLog.length)} shear events (of ${trShearLog.length} logged over ${TR_MAXSHEAR} mm):`,
+           ...trShearLog.slice().sort((x, y) => Number.parseFloat(y) - Number.parseFloat(x)).slice(0, 12).map((s) => `      ${s}`)]
+        : []),
       ...(TRACE ? [`  TRACER internals: hops ${trHopsT}, merges ${trMergesT}, dead-ends ${trDeadT}, closed loops ${trClosedT}, per-curve budget hits ${trBudgetHitT}`] : []),
       ...(TRACE ? [`  TRACER COVERAGE (independent row scans on ${TR_AUDROWS} rows/band): loci with NO live slot within 20 µm ${trAudMiss}/${trAudTot}  ${trAudMiss === 0 ? 'PASS' : `FAIL worst ${um(trAudWorst)} µm @ ${trAudAt}`};  GHOST live slots with no locus ${trGhost}/${trGhostTot}  ${trGhost === 0 ? 'PASS' : 'FAIL'}`] : []),
       `  curtain: ${curtainTris} init tris, ${liveCurtainTris} live, ${curtainPairs} doubled row-slots, ${pinchVerts} pinch verts (|Δr|<${(PINCH_MM * 1000).toFixed(3)} µm, init MIN |Δr| ${minBranchSepMm === Infinity ? 'n/a' : `${um(minBranchSepMm)} µm`}), ${curtainVerts} branch-tagged verts, ${branchSplits} branch-inherited splits`,
