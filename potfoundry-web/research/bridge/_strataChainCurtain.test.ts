@@ -149,7 +149,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     //    the loci are ORDER-PRESERVING (0 theta-order violations at 180/360/720 rows) and each is a GRAPH over z,
     //    so a chain is just a column whose theta varies per row -- and reprojection is a 1-D theta search at fixed z.
     const CHAIN = envOn('PF_CB_CHAIN');
-    const CHAIN_SCAN = Math.round(envF('PF_CB_CHAIN_SCAN', 16384));  // drop a uniform column within this fraction of a col pitch
+    const CHAIN_SCAN = Math.round(envF('PF_CB_CHAIN_SCAN', 16384));
+    // Local re-bisection resolution. MEASURED: adjacent loci close to 1.10e-3 rad, so a 24-sample sweep of a
+    // +/-0.02 rad window (1.67e-3 rad) is COARSER than the global scan and cannot separate them. 256 gives
+    // 1.56e-4 rad -- seven times finer than the closest approach we measured.
+    const CHAIN_LOCN = Math.round(envF('PF_CB_CHAIN_LOCN', 256));  // drop a uniform column within this fraction of a col pitch
     const PINCH_MM = envF('PF_CB_PINCH_UM', 0.1) / 1000; // |r+ − r−| below this ⇒ the curtain closes to a point
     const t0ms = Date.now();
 
@@ -507,8 +511,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     };
     /** REPROJECT: the locus theta at this z, nearest to a predicted theta. This is what keeps a chord vertex ON the
      *  curve when refinement bisects a chain edge -- the piece the earlier crease-cut prototype lacked. */
-    const locusThNear = (z: number, thPred: number, win: number): number => {
-      const N = 24;
+    const locusThNear = (z: number, thPred: number, win: number, nSamp = 0): number => {
+      const N = nSamp > 0 ? nSamp : CHAIN_LOCN;
       let bestLo = NaN; let bestD = Infinity;
       let pr = R(canon(thPred - win), z);
       for (let i = 1; i <= N; i += 1) {
@@ -548,6 +552,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     const nc = colTh.length;
     let curtainTris = 0; let pinchVerts = 0; let curtainPairs = 0; let minBranchSepMm = Infinity;
     let chainsBuilt = 0; let chainMatched = 0; let chainHeld = 0; let chainReproj = 0; let chainReprojFail = 0;
+    let chainRecovered = 0; let chainSuspect = 0; let chainSlots = 0; let chainTermSnap = 0;
+    const TERM_BISECT = Math.round(envF('PF_CB_TERM_BISECT', 14));
     const CHAIN_MATCH = envF('PF_CB_CHAIN_MATCH', 0.06);
     const CHAIN_WIN = envF('PF_CB_CHAIN_WIN', 0.02);
     const MINSEP = envF('PF_CB_CHAIN_MINSEP', 1e-5); // min theta between adjacent columns (rad); >> weld radius
@@ -578,14 +584,52 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           chain[ref] = per[ref].slice();
           const cyd = (x: number, y: number): number => { const d = Math.abs(x - y) % TWO_PI; return Math.min(d, TWO_PI - d); };
           const prop = (from: number, to: number, step: number): void => {
+            const wasHeld: boolean[] = new Array<boolean>(m).fill(false);
             for (let j = from; j !== to; j += step) {
-              const prev = chain[j]; const cand = per[j + step].slice();
+              const prev = chain[j]; const prev2 = chain[j - step]; const cand = per[j + step].slice();
+              const zNext = zsB[j + step];
               const used = new Set<number>(); const outR: number[] = new Array(m);
               for (let k = 0; k < m; k += 1) {
+                // PREDICT one step, then FREEZE. A chain is a graph over z, so the next row's theta is the previous one plus
+                // the recent slope. Freezing a stale theta is the one thing that must not happen: it plants a
+                // curtain where the locus no longer is, and that wrong-branch strip is an h0 error refinement can
+                // never remove (MEASURED: chord audit 2540 um exactly where chains were held).
+                // Extrapolate only from a row that was itself RESOLVED, and cap the step. An unresolved chain that
+                // keeps re-applying its last slope drifts linearly and runs off the geometry (MEASURED: chord audit
+                // 2540 -> 16106 um when the slope was allowed to compound). One step of prediction buys the recall;
+                // freezing after that keeps a dormant chain parked where it vanished, which SUSPECT=0 shows is safe.
+                let pred = prev[k];
+                if (prev2 !== undefined && !wasHeld[k]) {
+                  let sl = prev[k] - prev2[k];
+                  if (sl > CHAIN_MATCH) sl = CHAIN_MATCH; else if (sl < -CHAIN_MATCH) sl = -CHAIN_MATCH;
+                  pred = prev[k] + sl;
+                }
+                chainSlots += 1;
                 let best = -1; let bd = Infinity;
-                for (let c = 0; c < cand.length; c += 1) { if (used.has(c)) continue; const d = cyd(cand[c], prev[k]); if (d < bd) { bd = d; best = c; } }
-                if (best >= 0 && bd < CHAIN_MATCH) { used.add(best); outR[k] = cand[best]; chainMatched += 1; }
-                else { outR[k] = prev[k]; chainHeld += 1; }
+                for (let c = 0; c < cand.length; c += 1) { if (used.has(c)) continue; const d = cyd(cand[c], pred); if (d < bd) { bd = d; best = c; } }
+                if (best >= 0 && bd < CHAIN_MATCH) { used.add(best); outR[k] = cand[best]; wasHeld[k] = false; chainMatched += 1; continue; }
+                // RECOVERY: the global per-row scan merges two brackets when adjacent loci close below its bin
+                // width. A LOCAL re-bisection around the predicted theta is far finer, so try that before giving up.
+                const rec = locusThNear(zNext, canon(pred), CHAIN_WIN);
+                if (Number.isFinite(rec)) { outR[k] = rec; wasHeld[k] = false; chainRecovered += 1; continue; }
+                // TERMINATION GEOMETRY. A dormant chain must not be parked at an EXTRAPOLATED theta: the terminal
+                // branch edge then chords straight from the last live locus point to a position the locus never
+                // reached, cutting the corner as the curve bends away. Instead bisect in z for the point where the
+                // locus actually ENDS, tracking theta down to it, and park there — so the terminal segment aims at
+                // the true death point and its residual is the one-row sagitta rather than a whole slope step.
+                let zLo = zsB[j]; let zHi = zNext; let thLast = prev[k]; let found = false;
+                for (let it = 0; it < TERM_BISECT; it += 1) {
+                  const zm = 0.5 * (zLo + zHi);
+                  const t2 = locusThNear(zm, canon(thLast), CHAIN_WIN);
+                  if (Number.isFinite(t2)) { zLo = zm; thLast = t2; found = true; } else zHi = zm;
+                }
+                if (found) chainTermSnap += 1;
+                outR[k] = found ? thLast : prev[k];
+                wasHeld[k] = true; chainHeld += 1;
+                // AUDIT: an unresolved slot is only SAFE if there is genuinely no jump at the placed theta -- then
+                // the branch pair measures |dr|~0 and the existing PINCH path collapses it to one vertex. If a jump
+                // IS there, we have placed a curtain on the wrong locus; surface it instead of baking it in.
+                if (Math.abs(R(canon(outR[k] + BR_EPS), zNext) - R(canon(outR[k] - BR_EPS), zNext)) > TOL) chainSuspect += 1;
               }
               for (let k = 1; k < m; k += 1) if (outR[k] < outR[k - 1] + MINSEP) outR[k] = outR[k - 1] + MINSEP;
               chain[j + step] = outR;
@@ -1321,6 +1365,10 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     // true is: (1) each branch CURVE r∓(θ*,z) is followed to tolerance by the chord between consecutive curtain
     // vertices, and (2) the two copies never come closer than the weld radius. Measure both directly.
     let curtainChordMax = 0; let curtainChordE = -1; let curtainEdges = 0;
+    let placeMax = 0; let placeAtTh = 0; let placeAtZ = 0; let placeUnresolved = 0;
+    const placeAll: number[] = [];
+    const PLACE_WIN = envF('PF_CB_PLACE_WIN', 0.35);   // >> the 0.0935 rad median inter-locus gap
+    const PLACE_RES = envF('PF_CB_PLACE_RES', 5e-4);  // rad per sample; window is swept at CONSTANT resolution
     let liveCurtainTris = 0; let minSepLiveMm = Infinity; let minSepAt = '';
     let curtainVerts = 0;
     {
@@ -1345,6 +1393,30 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           curtainEdges += 1;
           const s = edgeSagN(p, qv, CA_N);
           if (s > curtainChordMax) { curtainChordMax = s; curtainChordE = p; }
+          // CURTAIN PLACEMENT ERROR — the honest metric for a CURVED locus, and the one that must reach tolerance.
+          // edgeSagN reads the branch only where |theta - theta0| < LOC_EPS. For a straight column (dTh = 0) that is
+          // every sample, so its number is meaningful (BasketWeave: 4.767 um). For a traced chain the interior
+          // samples sit OFF the locus and are read raw, so that number mixes in the 600 um jump and is not a
+          // placement measure. What actually matters is how far the chord strays from the locus in THETA: that
+          // strip is where the mesh sits on the wrong side of the cliff, and its width in ARC is the real error.
+          if (CHAIN) {
+            const dthE = dTh(p, qv);
+            for (let q = 1; q < 4; q += 1) {
+              const tt = q / 4;
+              const thC = vth[p] + dthE * tt; const zC = vz[p] + (vz[qv] - vz[p]) * tt;
+              // UN-CEILED: the previous +/-0.02 rad window (900 um of arc) CLIPPED the measurement -- anything worse
+              // came back "unresolved" and the MAX pinned at the window edge, so a fix that halved the error and one
+              // that did nothing both read ~988 um. Sweep a window far wider than the 0.0935 rad median inter-locus
+              // gap, at constant angular resolution, and keep the whole distribution rather than just the MAX.
+              const nS = Math.max(64, Math.ceil((2 * PLACE_WIN) / PLACE_RES));
+              const thL = locusThNear(zC, canon(thC), PLACE_WIN, nS);
+              if (!Number.isFinite(thL)) { placeUnresolved += 1; continue; }
+              let dd = Math.abs(canon(thC) - thL); if (dd > Math.PI) dd = TWO_PI - dd;
+              const arc = dd * R(canon(thL), zC);
+              placeAll.push(arc);
+              if (arc > placeMax) { placeMax = arc; placeAtTh = thC; placeAtZ = zC; }
+            }
+          }
         }
       }
       for (let v = 0; v < vth.length; v += 1) if (onLoc(v)) curtainVerts += 1;
@@ -1389,10 +1461,20 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `--- θ-JUMP LOCI (generic two-scale detector, ${(curtScanEvals / 1e6).toFixed(2)}M evals) ---`,
       `  brackets ${curtBrackets} → rejected ${curtRejected} (of which ${curtSnaking} SNAKING = jump present at <${(CURT_ZFRAC*100).toFixed(0)}% of z probes ⇒ NEEDS THE TRACED-POLYLINE CURTAIN, refused here) → detected ${jumpLoci.length}${jumpLoci.length > 0 ? `  θ*=[${jumpLoci.slice(0, 8).map((x) => x.toFixed(9)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]  grid-col idx=[${jumpLoci.slice(0, 8).map((x) => ((x * gu) / TWO_PI).toFixed(4)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]` : ''}`,
-      `  chains: built ${chainsBuilt}, row-matches ${chainMatched}, HELD (coalesced/undetected) ${chainHeld}, reprojected splits ${chainReproj}, reproj-FAILED ${chainReprojFail}`,
+      `  chains: built ${chainsBuilt}, matched ${chainMatched}, locally RECOVERED ${chainRecovered}, HELD ${chainHeld} (${chainSlots > 0 ? ((100 * chainHeld) / chainSlots).toFixed(1) : '0'}% hold rate), of which SUSPECT (jump present at the held θ) ${chainSuspect}; terminal-snap to true death point ${chainTermSnap}`,
+      `  chains: reprojected splits ${chainReproj}, reproj-FAILED ${chainReprojFail}`,
       `  curtain: ${curtainTris} init tris, ${liveCurtainTris} live, ${curtainPairs} doubled row-slots, ${pinchVerts} pinch verts (|Δr|<${(PINCH_MM * 1000).toFixed(3)} µm, init MIN |Δr| ${minBranchSepMm === Infinity ? 'n/a' : `${um(minBranchSepMm)} µm`}), ${curtainVerts} branch-tagged verts, ${branchSplits} branch-inherited splits`,
       `  branch separation (live cross-edges): MIN ${minSepLiveMm === Infinity ? 'n/a' : `${um(minSepLiveMm)} µm at ${minSepAt}`}  vs weld ${um(WELD_MM)} µm ⇒ ${minSepLiveMm === Infinity ? 'n/a' : `${(minSepLiveMm / WELD_MM).toFixed(1)}×  ${minSepLiveMm > WELD_MM ? 'OK' : '*** CURTAIN CAN WELD SHUT ***'}`}`,
-      `  CURTAIN CHORD audit (${curtainEdges} branch edges @ n=${Math.round(envF('PF_CB_CURT_AUDIT_N', 64))}): MAX ${um(curtainChordMax)} µm  ${curtainChordMax <= TOL ? 'PASS' : 'FAIL'}${curtainChordE >= 0 ? `  @ θ=${vth[curtainChordE].toFixed(6)} z=${vz[curtainChordE].toFixed(3)}` : ''}`,
+      `  CURTAIN CHORD audit (${curtainEdges} branch edges @ n=${Math.round(envF('PF_CB_CURT_AUDIT_N', 64))}): MAX ${um(curtainChordMax)} µm  ${curtainChordMax <= TOL ? 'PASS' : 'FAIL'}${curtainChordE >= 0 ? `  @ θ=${vth[curtainChordE].toFixed(6)} z=${vz[curtainChordE].toFixed(3)}` : ''}${CHAIN ? '   [NOTE: valid only for STRAIGHT loci; see placement error below]' : ''}`,
+      ...(CHAIN ? (() => {
+        const so = placeAll.slice().sort((x, y) => x - y);
+        const pq = (f: number): number => (so.length === 0 ? 0 : so[Math.min(so.length - 1, Math.floor(f * so.length))]);
+        return [
+          `  CURTAIN PLACEMENT error (chord→locus θ offset, in arc; window ±${PLACE_WIN} rad @ ${PLACE_RES} rad/sample):`,
+          `    MAX ${um(placeMax)} µm  ${placeMax <= TOL ? 'PASS' : 'FAIL'}  @ θ=${placeAtTh.toFixed(6)} z=${placeAtZ.toFixed(3)}`,
+          `    distribution over ${so.length} probes: p50 ${um(pq(0.5))}  p90 ${um(pq(0.9))}  p99 ${um(pq(0.99))}  p999 ${um(pq(0.999))} µm   over-${TOL}mm ${so.filter((x) => x > TOL).length}/${so.length}   unresolved (no locus in window) ${placeUnresolved}`,
+        ];
+      })() : []),
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
       `heap: ${heapT.length} left, worst-left ${um(heapLeftMax)} µm, key-inversions ${keyInversions}, no-op splits ${stuck}   MAXtri@oracle${oracleRef} ${maxT >= 0 ? um(sagOfN(maxT, oracleRef)) : 'n/a'} µm`,
       '--- WATERTIGHT (3D position-weld) ---',

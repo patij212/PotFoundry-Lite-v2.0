@@ -2,6 +2,25 @@
 
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
+> # UPDATE 6 — CelticKnot: termination fix CONFIRMED by a pre-registered A/B (7.9× on MAX), still not closed
+>
+> The prediction was registered **before** the numbers existed: *"placement error should drop hard on the ~2.7 % coalescence rows and leave the other 97.3 % flat — p999/MAX fall substantially while p50/p90 stay put."* Identical config, chain path, 120k cap:
+>
+> | placement error | before | after | |
+> |---|---|---|---|
+> | p50 | 0.005 µm | 0.004 µm | **flat** ✓ |
+> | p90 | 8.571 µm | 7.573 µm | **flat** ✓ |
+> | p99 | 3204.923 µm | **320.755 µm** | **10.0×** ✓ |
+> | p999 | 7603.617 µm | **837.396 µm** | **9.1×** ✓ |
+> | MAX | 8958.470 µm | **1130.516 µm** | **7.9×** ✓ |
+> | over-0.01 mm | 1888/24078 | **1035/23310** | −45 % |
+>
+> `terminal-snap to true death point` fired **126** times; hold rate 9.9 % → 5.1 % (RECOVERED 396 → 488). The **chord audit stayed flat** (2546.788 → 2481.579 µm), independently confirming it measures nothing on curved loci — the reason it was replaced.
+>
+> **Mechanism validated: chording across a curving locus into the pinch was the dominant error**, and following the locus to its true death point removes ~90 % of it. Same "conform to the curve, don't chord it" principle that closed the h¹ tier.
+>
+> **Still open.** Placement MAX 1130 µm on the remaining 4.4 % of probes (coalescence rows), and the run is CAPPED at 120k (heap 59,832 left, worst-left 598.647 µm) so fidelity is unchanged at **HEADLINE 604.173 µm — UNKNOWN, not a failure**. Watertight throughout (0 non-manifold, 0 seam-crack, 2 loops). Two things stand between here and closure: finish the coalescence placement tail, then one full-budget run.
+
 > # ★★ UPDATE 5 — **19/20. GyroidManifold CLOSED — and the fix was a COARSER-IS-WORSE inversion.**
 >
 > ```
