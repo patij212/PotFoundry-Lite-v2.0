@@ -341,6 +341,34 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     };
     const killT = (t: number): void => { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); };
     const eLen = (a: number, b: number): number => Math.hypot(vx[a] - vx[b], vy[a] - vy[b], vz[a] - vz[b]);
+    /** squared distance from p to triangle (a,b,c) — Ericson's closest-point-on-triangle, clamped to the face.
+     *  Hoisted out of the Hausdorff audit so the refinement DRIVER and the AUDIT share one implementation. */
+    const d2Tri = (px: number, py: number, pz: number, ia: number, ib: number, ic: number): number => {
+      const ax = vx[ia]; const ay = vy[ia]; const az = vz[ia];
+      const abx = vx[ib] - ax; const aby = vy[ib] - ay; const abz = vz[ib] - az;
+      const acx = vx[ic] - ax; const acy = vy[ic] - ay; const acz = vz[ic] - az;
+      const apx = px - ax; const apy = py - ay; const apz = pz - az;
+      const d1 = abx * apx + aby * apy + abz * apz; const d2 = acx * apx + acy * apy + acz * apz;
+      const sq = (qx: number, qy: number, qz: number): number => qx * qx + qy * qy + qz * qz;
+      if (d1 <= 0 && d2 <= 0) return sq(apx, apy, apz);
+      const bpx = px - vx[ib]; const bpy = py - vy[ib]; const bpz = pz - vz[ib];
+      const d3 = abx * bpx + aby * bpy + abz * bpz; const d4 = acx * bpx + acy * bpy + acz * bpz;
+      if (d3 >= 0 && d4 <= d3) return sq(bpx, bpy, bpz);
+      const vc = d1 * d4 - d3 * d2;
+      if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v2 = d1 / (d1 - d3); return sq(apx - v2 * abx, apy - v2 * aby, apz - v2 * abz); }
+      const cpx = px - vx[ic]; const cpy = py - vy[ic]; const cpz = pz - vz[ic];
+      const d5 = abx * cpx + aby * cpy + abz * cpz; const d6 = acx * cpx + acy * cpy + acz * cpz;
+      if (d6 >= 0 && d5 <= d6) return sq(cpx, cpy, cpz);
+      const vb = d5 * d2 - d1 * d6;
+      if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w2 = d2 / (d2 - d6); return sq(apx - w2 * acx, apy - w2 * acy, apz - w2 * acz); }
+      const va = d3 * d6 - d5 * d4;
+      if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+        const w2 = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return sq(px - vx[ib] - w2 * (vx[ic] - vx[ib]), py - vy[ib] - w2 * (vy[ic] - vy[ib]), pz - vz[ib] - w2 * (vz[ic] - vz[ib]));
+      }
+      const den = 1 / (va + vb + vc); const v3 = vb * den; const w3 = vc * den;
+      return sq(apx - v3 * abx - w3 * acx, apy - v3 * aby - w3 * acy, apz - v3 * abz - w3 * acz);
+    };
 
     // ───────────────────────────── THE GENERIC 1-D KINK LOCATOR ─────────────────────────────
     // Segment (th0,z0) → (th1,z1) in (θ,z). Returns the parameter of the gradient discontinuity + its class.
@@ -1826,12 +1854,95 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const A = vBranch[a]; const B = vBranch[b]; const C = vBranch[c];
       return !(A === B && B === C);
     };
+    // ───────── DISTANCE-TO-MESH REFINEMENT DRIVER (PF_CB_DRIVE_MESH=1, default OFF) ─────────
+    // WHY THE PLANE DRIVER CANNOT WORK HERE, as a proof rather than an observation. The split priority is the
+    // sample's distance to the triangle's own PLANE. Inside the wrong-side strip that value floors at the JUMP
+    // HEIGHT, so the heap refills at any triCap and every run of this style ends `worst-left ≈ 598 µm`. The guard
+    // family that tried to forgive those samples is closed off by measurement: the strip has collapsed to ~5 nm
+    // while the guard's own linear model of the locus is wrong by ~146 nm over the same span — 30× coarser than the
+    // region it must classify — and the strip shrinks QUADRATICALLY with refinement while the model error does not,
+    // so the guard degrades with budget. No side test can be made to work.
+    // THE FIX IS TO CHANGE THE MEASURE, not to patch the guard: score a sample by its distance to the local MESH,
+    // which is what the audit already reports and what the product bar actually names. A sample whose correct sheet
+    // sits microns away across the curtain then scores microns and stops dominating the queue, while a sample over
+    // genuinely UNDER-RESOLVED surface still scores its full error because no triangle is near it.
+    // Two measurements make this cheap: the 1-ring candidate set is sufficient (1-ring 569.599 vs 3-ring 559.227 =
+    // 1.0×, so a wider search buys nothing), and the `rA` call already dominates per-sample cost — point-to-triangle
+    // over a handful of neighbours is pure arithmetic on top. Only samples that the plane measure already flags as
+    // over-tolerance pay for it, so the clean bulk of the mesh costs exactly what it did before.
+    const DRIVE_MESH = envOn('PF_CB_DRIVE_MESH');
+    const DRIVE_RING = Math.round(envF('PF_CB_DRIVE_RING', 2)); // edge-adjacency depth (2 ⇒ ~10 tris, ≈ the audit's 14.7)
+    const DRIVE_TRIG = envF('PF_CB_DRIVE_TRIG', acceptTol);
+    let driveMeshTris = 0; let driveMeshSamples = 0; let driveRingTot = 0;
+    /** the local mesh around t, by EDGE adjacency to `depth`. Edge adjacency is maintained incrementally by
+     *  addT/killT, so this works DURING refinement where the audit's vertex→triangle map does not exist yet.
+     *  Depth 1 already reaches the curtain wall: a sheet triangle's two locus vertices span the curtain's vertical
+     *  edge, so the curtain quad — which bridges the full jump — is an edge-neighbour. */
+    const ringBuf: number[] = [];
+    const localRing = (t: number, depth: number): number[] => {
+      ringBuf.length = 0;
+      ringBuf.push(t);
+      let start = 0;
+      for (let d = 0; d < depth; d += 1) {
+        const end = ringBuf.length;
+        for (let i = start; i < end; i += 1) {
+          const u = ringBuf[i];
+          const vs: Array<[number, number]> = [[ta[u], tb[u]], [tb[u], tc[u]], [tc[u], ta[u]]];
+          for (const [p, q] of vs) {
+            const l = edgeMap.get(eKey(p, q));
+            if (l === undefined) continue;
+            for (const w of l) if (alive[w] && !ringBuf.includes(w)) ringBuf.push(w);
+          }
+        }
+        start = end;
+        if (ringBuf.length === start) break;
+      }
+      return ringBuf;
+    };
+    /** max over barycentric samples of the distance to the LOCAL MESH. Samples already under tolerance by the
+     *  (cheaper) plane measure keep their plane value — they cannot be the argmax of a driver whose job is to find
+     *  the worst triangle, and skipping them is what keeps the clean bulk at its previous cost. */
+    const meshSagOfN = (t: number, n: number): number => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      const ax = vx[a]; const ay = vy[a]; const az = vz[a];
+      let nx = (vy[b] - ay) * (vz[c] - az) - (vz[b] - az) * (vy[c] - ay);
+      let ny = (vz[b] - az) * (vx[c] - ax) - (vx[b] - ax) * (vz[c] - az);
+      let nz = (vx[b] - ax) * (vy[c] - ay) - (vy[b] - ay) * (vx[c] - ax);
+      const nl = Math.hypot(nx, ny, nz);
+      if (nl < 1e-18) return 0;
+      nx /= nl; ny /= nl; nz /= nl;
+      const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
+      const ring = localRing(t, DRIVE_RING);
+      driveRingTot += ring.length;
+      const rr = ring.slice();
+      let best = 0;
+      for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
+        const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
+        const theta = th0 + wb * dB + wc * dC;
+        const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
+        const r = R(canon(theta), z);
+        const px = r * Math.cos(theta); const py = r * Math.sin(theta);
+        const dd = Math.abs((px - ax) * nx + (py - ay) * ny + (z - az) * nz);
+        if (dd <= acceptTol) { if (dd > best) best = dd; continue; }
+        let d2 = Infinity;
+        for (const u of rr) { const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]); if (d < d2) d2 = d; }
+        driveMeshSamples += 1;
+        const md = Math.sqrt(d2);
+        if (md > best) best = md;
+      }
+      return best;
+    };
     const consider = (t: number): void => {
       if (t < 0 || !alive[t]) return;
       if (isCurtainTri(t)) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       if (le < FLOOR_MM) return;
-      const s = ADAPT ? sagBrAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagBrN(t, oracleRef);
+      let s = ADAPT ? sagBrAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagBrN(t, oracleRef);
+      if (DRIVE_MESH && s > DRIVE_TRIG) {
+        const n = ADAPT ? Math.max(REF_NMIN, Math.min(REF_NMAX, Math.ceil(le / REF_HS))) : oracleRef;
+        driveMeshTris += 1;
+        s = meshSagOfN(t, n);
+      }
       if (s > acceptTol) hpush(t, s);
     };
     for (let t = 0; t < ta.length; t += 1) consider(t);
@@ -2226,33 +2337,6 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const vTri = new Map<number, number[]>();
       const addVT2 = (v: number, t: number): void => { const l = vTri.get(v); if (l === undefined) vTri.set(v, [t]); else l.push(t); };
       for (const t of liveIdx) { addVT2(ta[t], t); addVT2(tb[t], t); addVT2(tc[t], t); }
-      /** squared distance from p to triangle (a,b,c) — Ericson's closest-point-on-triangle, clamped to the face. */
-      const d2Tri = (px: number, py: number, pz: number, ia: number, ib: number, ic: number): number => {
-        const ax = vx[ia]; const ay = vy[ia]; const az = vz[ia];
-        const abx = vx[ib] - ax; const aby = vy[ib] - ay; const abz = vz[ib] - az;
-        const acx = vx[ic] - ax; const acy = vy[ic] - ay; const acz = vz[ic] - az;
-        const apx = px - ax; const apy = py - ay; const apz = pz - az;
-        const d1 = abx * apx + aby * apy + abz * apz; const d2 = acx * apx + acy * apy + acz * apz;
-        const sq = (qx: number, qy: number, qz: number): number => qx * qx + qy * qy + qz * qz;
-        if (d1 <= 0 && d2 <= 0) return sq(apx, apy, apz);
-        const bpx = px - vx[ib]; const bpy = py - vy[ib]; const bpz = pz - vz[ib];
-        const d3 = abx * bpx + aby * bpy + abz * bpz; const d4 = acx * bpx + acy * bpy + acz * bpz;
-        if (d3 >= 0 && d4 <= d3) return sq(bpx, bpy, bpz);
-        const vc = d1 * d4 - d3 * d2;
-        if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v2 = d1 / (d1 - d3); return sq(apx - v2 * abx, apy - v2 * aby, apz - v2 * abz); }
-        const cpx = px - vx[ic]; const cpy = py - vy[ic]; const cpz = pz - vz[ic];
-        const d5 = abx * cpx + aby * cpy + abz * cpz; const d6 = acx * cpx + acy * cpy + acz * cpz;
-        if (d6 >= 0 && d5 <= d6) return sq(cpx, cpy, cpz);
-        const vb = d5 * d2 - d1 * d6;
-        if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w2 = d2 / (d2 - d6); return sq(apx - w2 * acx, apy - w2 * acy, apz - w2 * acz); }
-        const va = d3 * d6 - d5 * d4;
-        if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
-          const w2 = (d4 - d3) / ((d4 - d3) + (d5 - d6));
-          return sq(px - vx[ib] - w2 * (vx[ic] - vx[ib]), py - vy[ib] - w2 * (vy[ic] - vy[ib]), pz - vz[ib] - w2 * (vz[ic] - vz[ib]));
-        }
-        const den = 1 / (va + vb + vc); const v3 = vb * den; const w3 = vc * den;
-        return sq(apx - v3 * abx - w3 * acx, apy - v3 * aby - w3 * acy, apz - v3 * abz - w3 * acz);
-      };
       for (let li = 0; li < liveIdx.length; li += 1) {
         if (sags[li] <= TOL) continue;
         const t = liveIdx[li];
@@ -2625,6 +2709,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
            `  LOCUS-locus: ${locus(locusT)}`]
         : []),
       `  min edge ${um(minEdge)} µm${TRACE ? `   [curtain-wall tris excluded from the graph ruler: ${curtainSkipped}]` : ''}`,
+      `  REFINEMENT DRIVER: ${DRIVE_MESH ? `DISTANCE-TO-MESH (edge-ring depth ${DRIVE_RING}, avg ${driveMeshTris > 0 ? (driveRingTot / driveMeshTris).toFixed(1) : '0'} tris/ring); ${driveMeshTris} triangles re-keyed, ${driveMeshSamples} samples measured against the mesh` : 'plane-distance sag (floors at the jump height on a curved h0 locus — see §9)'}`,
       `  LOCUS FINDER (${LOCFIX ? 'FIXED' : '*** UNFIXED — PF_CB_LOCFIX=0 ***'}): measured slope bound |dθ/dz| ${locSlopeMax.toFixed(6)} rad/mm (= ${(locSlopeMax * TR_RBAR).toFixed(3)} mm arc per mm of z); ε→0 test REJECTED ${locRejectedNoJump} non-jump candidates; window expanded ${locExpandUsed}×, still unresolved ${locExpandFailed}`,
       ...(BRSKIP
         ? [`  BRANCH-ATTRIBUTION: re-measured ${brSkipTris} tris (plain sag > ${um(BRSKIP_TRIG)} µm); of ${brSkipTotal} samples ${brSkipSamples} were WRONG-BRANCH inside the ±${um(BRSKIP_BAND)} µm band and skipped (${brSkipTotal > 0 ? ((100 * brSkipSamples) / brSkipTotal).toFixed(2) : '0'}%); ${brSkipNoLocus} tris had NO locus nearby and were left untouched (${brSkipTris > 0 ? ((100 * brSkipNoLocus) / brSkipTris).toFixed(1) : '0'}% UNGUARDED)`,
