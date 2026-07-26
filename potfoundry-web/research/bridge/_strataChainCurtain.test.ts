@@ -1870,38 +1870,67 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     // 1.0×, so a wider search buys nothing), and the `rA` call already dominates per-sample cost — point-to-triangle
     // over a handful of neighbours is pure arithmetic on top. Only samples that the plane measure already flags as
     // over-tolerance pay for it, so the clean bulk of the mesh costs exactly what it did before.
-    const DRIVE_MESH = envOn('PF_CB_DRIVE_MESH');
-    const DRIVE_RING = Math.round(envF('PF_CB_DRIVE_RING', 2)); // edge-adjacency depth (2 ⇒ ~10 tris, ≈ the audit's 14.7)
+    // ── ATTEMPT 6 (REFUTED, kept reproducible): the GLOBAL ring — every edge-neighbour is a candidate.
+    //    It broke the 598 µm floor (worst-left 598.029 → 380.559) but converged neither and UNDER-REFINED, because
+    //    distance-to-mesh is not a property of the triangle being split — it is a property of the triangle plus its
+    //    neighbours, so a triangle whose error a neighbour happens to cover never splits. Measured signature:
+    //    no-op splits 0 → 21 002, MAX-locus a 1.28 mm UNREFINED triangle, and BasketWeave 7.429 → 19.838 µm (2.7×).
+    // ── ATTEMPT 7: the CURTAIN-ONLY ring. Same repair, but the candidate set may only be reached by crossing a
+    //    LOCUS edge — the double-valued wall is the one place the plane measure is structurally wrong; everywhere
+    //    else it is correct and is kept verbatim. Three safety properties hold BY CONSTRUCTION, not by measurement:
+    //      • a triangle with NO locus edge has an EMPTY candidate set and is never re-scored ⇒ smooth regions keep
+    //        the plane key bit-for-bit, so a straight-locus style cannot move;
+    //      • a triangle straddling an UNMESHED locus has no curtain to cross, so it is likewise never re-scored and
+    //        stays prioritized ⇒ the driver cannot hide a missing curtain;
+    //      • the re-score is min(plane, ·), so it can only LOWER a key. A curtain-adjacent triangle whose error is
+    //        genuine under-resolution has its far sheet ~600 µm away across the jump, so min() returns the plane
+    //        value unchanged. The measure is self-limiting.
+    //    The WALL ITSELF is a stepping stone, never a candidate: a curtain triangle is not part of the graph
+    //    r(θ,z) at all (`isCurtainTri` already excludes it from the ruler), and it contains the sample's own locus
+    //    edge, so scoring against it would forgive by proximity to geometry that carries no surface.
+    const DRIVE_MESH = envOn('PF_CB_DRIVE_MESH');        // attempt 6 — global ring, REFUTED
+    const DRIVE_CURTAIN = envOn('PF_CB_DRIVE_CURTAIN');  // attempt 7 — locus-edge ring only
+    const DRIVE_ANY = DRIVE_MESH || DRIVE_CURTAIN;
+    const DRIVE_RING = Math.round(envF('PF_CB_DRIVE_RING', DRIVE_CURTAIN ? 3 : 2)); // t → curtain → curtain → far sheet
     const DRIVE_TRIG = envF('PF_CB_DRIVE_TRIG', acceptTol);
-    let driveMeshTris = 0; let driveMeshSamples = 0; let driveRingTot = 0;
-    /** the local mesh around t, by EDGE adjacency to `depth`. Edge adjacency is maintained incrementally by
-     *  addT/killT, so this works DURING refinement where the audit's vertex→triangle map does not exist yet.
-     *  Depth 1 already reaches the curtain wall: a sheet triangle's two locus vertices span the curtain's vertical
-     *  edge, so the curtain quad — which bridges the full jump — is an edge-neighbour. */
+    let driveMeshTris = 0; let driveMeshSamples = 0; let driveRingTot = 0; let driveNoRing = 0;
+    /** an edge lies ON a locus iff both ends carry the SAME locus tag — the existing generic branch tags, no
+     *  per-style content and no geometric side test. */
+    const isLocusEdge = (p: number, q: number): boolean => onLoc(p) && vLocTh[p] === vLocTh[q];
+    /** the candidate sheet around t. Edge adjacency is maintained incrementally by addT/killT, so this works DURING
+     *  refinement, where the audit's vertex→triangle map does not exist yet. */
     const ringBuf: number[] = [];
-    const localRing = (t: number, depth: number): number[] => {
+    const ringSeen = new Set<number>();
+    const localRing = (t: number, depth: number, locusOnly: boolean): number[] => {
       ringBuf.length = 0;
-      ringBuf.push(t);
-      let start = 0;
+      ringSeen.clear();
+      ringSeen.add(t);
+      if (!locusOnly) ringBuf.push(t);
+      let frontier: number[] = [t];
       for (let d = 0; d < depth; d += 1) {
-        const end = ringBuf.length;
-        for (let i = start; i < end; i += 1) {
-          const u = ringBuf[i];
+        const next: number[] = [];
+        for (const u of frontier) {
           const vs: Array<[number, number]> = [[ta[u], tb[u]], [tb[u], tc[u]], [tc[u], ta[u]]];
           for (const [p, q] of vs) {
+            if (locusOnly && !isLocusEdge(p, q)) continue;
             const l = edgeMap.get(eKey(p, q));
             if (l === undefined) continue;
-            for (const w of l) if (alive[w] && !ringBuf.includes(w)) ringBuf.push(w);
+            for (const w of l) {
+              if (!alive[w] || ringSeen.has(w)) continue;
+              ringSeen.add(w); next.push(w);
+              if (!locusOnly || !isCurtainTri(w)) ringBuf.push(w);
+            }
           }
         }
-        start = end;
-        if (ringBuf.length === start) break;
+        frontier = next;
+        if (frontier.length === 0) break;
       }
       return ringBuf;
     };
-    /** max over barycentric samples of the distance to the LOCAL MESH. Samples already under tolerance by the
-     *  (cheaper) plane measure keep their plane value — they cannot be the argmax of a driver whose job is to find
-     *  the worst triangle, and skipping them is what keeps the clean bulk at its previous cost. */
+    /** the driver key. Samples under tolerance keep their (cheaper) plane value; a sample already OVER tolerance is
+     *  re-scored as min(plane, distance to the candidate sheet). Returns −1 when there is no candidate sheet at all,
+     *  which is the signal to keep the plane key verbatim — the by-construction escape for smooth regions and for
+     *  triangles straddling an unmeshed locus. */
     const meshSagOfN = (t: number, n: number): number => {
       const a = ta[t]; const b = tb[t]; const c = tc[t];
       const ax = vx[a]; const ay = vy[a]; const az = vz[a];
@@ -1912,7 +1941,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       if (nl < 1e-18) return 0;
       nx /= nl; ny /= nl; nz /= nl;
       const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
-      const ring = localRing(t, DRIVE_RING);
+      const ring = localRing(t, DRIVE_RING, DRIVE_CURTAIN);
+      if (ring.length === 0) { driveNoRing += 1; return -1; } // no candidate sheet ⇒ keep the plane key verbatim
       driveRingTot += ring.length;
       const rr = ring.slice();
       let best = 0;
@@ -1927,7 +1957,10 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         let d2 = Infinity;
         for (const u of rr) { const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]); if (d < d2) d2 = d; }
         driveMeshSamples += 1;
-        const md = Math.sqrt(d2);
+        // min(plane, sheet): the re-score can only LOWER a key. Where the far sheet is genuinely far — an
+        // under-resolved curtain-adjacent triangle, whose far sheet is a whole jump away — this returns the plane
+        // value unchanged, so the measure is self-limiting rather than uniformly permissive.
+        const md = Math.min(dd, Math.sqrt(d2));
         if (md > best) best = md;
       }
       return best;
@@ -1938,10 +1971,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       if (le < FLOOR_MM) return;
       let s = ADAPT ? sagBrAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagBrN(t, oracleRef);
-      if (DRIVE_MESH && s > DRIVE_TRIG) {
+      if (DRIVE_ANY && s > DRIVE_TRIG) {
         const n = ADAPT ? Math.max(REF_NMIN, Math.min(REF_NMAX, Math.ceil(le / REF_HS))) : oracleRef;
         driveMeshTris += 1;
-        s = meshSagOfN(t, n);
+        const sm = meshSagOfN(t, n);
+        if (sm >= 0) s = sm; // −1 ⇒ no candidate sheet, plane key kept verbatim
       }
       if (s > acceptTol) hpush(t, s);
     };
@@ -2709,7 +2743,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
            `  LOCUS-locus: ${locus(locusT)}`]
         : []),
       `  min edge ${um(minEdge)} µm${TRACE ? `   [curtain-wall tris excluded from the graph ruler: ${curtainSkipped}]` : ''}`,
-      `  REFINEMENT DRIVER: ${DRIVE_MESH ? `DISTANCE-TO-MESH (edge-ring depth ${DRIVE_RING}, avg ${driveMeshTris > 0 ? (driveRingTot / driveMeshTris).toFixed(1) : '0'} tris/ring); ${driveMeshTris} triangles re-keyed, ${driveMeshSamples} samples measured against the mesh` : 'plane-distance sag (floors at the jump height on a curved h0 locus — see §9)'}`,
+      `  REFINEMENT DRIVER: ${DRIVE_ANY ? `${DRIVE_CURTAIN ? 'CURTAIN-ONLY distance-to-far-sheet' : 'GLOBAL distance-to-mesh [REFUTED — under-refines]'} (ring depth ${DRIVE_RING}, avg ${driveMeshTris - driveNoRing > 0 ? (driveRingTot / (driveMeshTris - driveNoRing)).toFixed(1) : '0'} tris/ring); ${driveMeshTris} over-tol triangles examined, ${driveNoRing} had NO candidate sheet and kept the plane key VERBATIM (${driveMeshTris > 0 ? ((100 * driveNoRing) / driveMeshTris).toFixed(1) : '0'}%), ${driveMeshSamples} samples re-scored` : 'plane-distance sag (floors at the jump height on a curved h0 locus — see §9)'}`,
       `  LOCUS FINDER (${LOCFIX ? 'FIXED' : '*** UNFIXED — PF_CB_LOCFIX=0 ***'}): measured slope bound |dθ/dz| ${locSlopeMax.toFixed(6)} rad/mm (= ${(locSlopeMax * TR_RBAR).toFixed(3)} mm arc per mm of z); ε→0 test REJECTED ${locRejectedNoJump} non-jump candidates; window expanded ${locExpandUsed}×, still unresolved ${locExpandFailed}`,
       ...(BRSKIP
         ? [`  BRANCH-ATTRIBUTION: re-measured ${brSkipTris} tris (plain sag > ${um(BRSKIP_TRIG)} µm); of ${brSkipTotal} samples ${brSkipSamples} were WRONG-BRANCH inside the ±${um(BRSKIP_BAND)} µm band and skipped (${brSkipTotal > 0 ? ((100 * brSkipSamples) / brSkipTotal).toFixed(2) : '0'}%); ${brSkipNoLocus} tris had NO locus nearby and were left untouched (${brSkipTris > 0 ? ((100 * brSkipNoLocus) / brSkipTris).toFixed(1) : '0'}% UNGUARDED)`,
