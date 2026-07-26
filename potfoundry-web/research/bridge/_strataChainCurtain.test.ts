@@ -722,6 +722,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let trAudTot = 0; let trAudMiss = 0; let trAudWorst = 0; let trAudAt = ''; let trGhost = 0; let trGhostTot = 0;
     let trHopsT = 0; let trMergesT = 0; let trDeadT = 0; let trDomT = 0; let trClosedT = 0; let trBudgetHitT = 0;
     let trCycleBreakT = 0; let trBackMaxT = 0; let trMinsepLive = 0; let trMinsepMax = 0; let trDemotedT = 0; let trLiveSlotsT = 0;
+    let trShearMaxT = 0; let trShearOverT = 0; let trShearAtT = '';
+    const TR_MAXSHEAR = envF('PF_CB_TR_MAXSHEAR', 1.0); // mm arc — a column may not translate further between rows
     const TR_AUDROWS = Math.round(envF('PF_CB_TR_AUDROWS', 16));
     const TR_BUDGET = Math.round(envF('PF_CB_TR_BUDGET', 4e6)); // rA evals per traced curve
     const TR_DEDUPE = envF('PF_CB_TR_DEDUPE', 0.2);  // mm arc — two branches this close at a shared z are one branch
@@ -885,6 +887,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           }
           const adj: Array<Set<number>> = Array.from({ length: M }, () => new Set<number>());
           const indeg = new Array<number>(M).fill(0);
+          // MEASURED AND REJECTED: constraining the FULL per-row order (live at its locus, dormant at its parked θ)
+          // to stop a dormant slot sitting on the wrong side of a later birth. A dormant branch's parked θ is fixed
+          // while the live loci move, so the induced total order FLIPS between rows and the graph becomes cyclic:
+          // cycle-breaks 0 → 93, demoted live row-slots 101 → 311, tracer coverage 0/2612 PASS → 158/2612 FAIL, and
+          // watertight 0/0 → 146 non-manifold / 1028 seam-crack. Only CO-LIVE pairs carry a real ordering constraint.
           // TIE TOLERANCE: two branches converging on a merge can correct onto θ values a few nm apart, where the
           // sort order is noise. Constraining a noise-ordered pair is how a CYCLE gets into the graph, so only
           // constrain pairs that are unambiguously separated (1 µm of arc).
@@ -937,56 +944,73 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
               }
             }
             for (let k = 0; k < M; k += 1) if (live[k]) li.push(k);
+            // DORMANT SLOTS ARE PARKED, NOT RE-INTERPOLATED PER ROW where that is possible: a pure lerp between the
+            // live anchors makes an inert column's θ depend on WHICH slots are live at that row, so a birth or death
+            // one row above can translate that column by a whole background gap. Parking each dormant slot on ITS OWN
+            // branch (its nearest live endpoint θ) is stationary in z by construction; the lerp remains the fallback
+            // when the parked values are not strictly ordered inside the run.
+            //
+            // MEASURED AND REJECTED (kept here so it is not retried): replacing the all-or-nothing fallback with a
+            // PER-SLOT monotone clamp into the bracket. When a bracket is narrower than MINSEP × (dormant slots it
+            // must hold) — routine with 252 slots and ~18 live — the clamp overshoots its upper anchor, the column
+            // array stops being strictly increasing, and vertices weld: 264 non-manifold / 1255 seam-crack, from 0/0.
+            // The uniform overshoot below is what keeps the array monotone by construction.
+            // PER-SLOT DEGRADATION UNDER A PROVABLE CEILING. The all-or-nothing form above dumps a whole run back onto
+            // the lerp as soon as ONE slot is mis-placed; the naive per-slot clamp overshoots its upper anchor and
+            // welds vertices (264 non-manifold, measured). Take the park value but clamp it under the uniform-overshoot
+            // LERP sequence: v_k = max(prev + MINSEP, min(park_k, lerp_k)). Monotonicity is then by construction, and
+            // v_k ≤ lerp_k always — because prev ≤ lerp_{k−1} and lerp_k − lerp_{k−1} = span/n ≥ MINSEP — so the array
+            // is bounded by exactly the sequence the old code emitted. Strictly no worse, and each slot that CAN sit
+            // on its own branch does.
+            const fill = (a: number, c2: number, thA: number, thB: number): void => {
+              const n2 = c2 - a;
+              if (n2 <= 1) return;
+              const span = Math.max(MINSEP * n2, thB - thA);
+              let prev2 = thA;
+              for (let q = 1; q < n2; q += 1) {
+                const k = a + q;
+                const br = brs[order[((k % M) + M) % M]];
+                let pv = key(brThAt(br, Math.max(br.zLo, Math.min(br.zHi, zRowT[jr2]))));
+                while (pv < prev2 - Math.PI) pv += TWO_PI;
+                while (pv > prev2 + Math.PI) pv -= TWO_PI;
+                const v = Math.max(prev2 + MINSEP, Math.min(pv, thA + (span * q) / n2));
+                th[k] = v; prev2 = v;
+              }
+            };
             if (li.length === 0) { for (let k = 0; k < M; k += 1) th[k] = (TWO_PI * k) / M; }
             else {
               const first = li[0]; const last = li[li.length - 1];
-              // DORMANT SLOTS ARE PARKED, NOT RE-INTERPOLATED PER ROW. A pure lerp between the live anchors makes an
-              // inert column's θ depend on WHICH slots happen to be live at that row, so a birth or death one row
-              // above can move that column by ~1 rad in a single row step — a 49 mm skewed quad. The plane ruler is
-              // blind to it (the triangle is thin, so its plane passes near the surface) but the Hausdorff ruler
-              // caught it at 6.0 mm, which is exactly r·(1−cos) for a 1.05 rad chord. Park each dormant slot on ITS
-              // OWN branch, evaluated at the nearest z it was alive at: that is stationary in z by construction.
-              // Fall back to the lerp per-run when the parked values are not strictly ordered inside the run.
-              const fill = (a: number, c2: number, thA: number, thB: number): void => {
-                const n2 = c2 - a;
-                if (n2 <= 1) return;
-                const park: number[] = [];
-                let ok = true; let prev2 = thA;
-                for (let k = a + 1; k < c2; k += 1) {
-                  const br = brs[order[((k % M) + M) % M]];
-                  const p2 = key(brThAt(br, Math.max(br.zLo, Math.min(br.zHi, zRowT[jr2]))));
-                  let pv = p2; while (pv < prev2 - Math.PI) pv += TWO_PI; while (pv > prev2 + Math.PI) pv -= TWO_PI;
-                  if (!(pv > prev2 + MINSEP)) { ok = false; break; }
-                  park.push(pv); prev2 = pv;
-                }
-                if (ok && prev2 + MINSEP < thB) { for (let k = a + 1; k < c2; k += 1) th[k] = park[k - a - 1]; return; }
-                const span = Math.max(MINSEP * n2, thB - thA);
-                for (let k = a + 1; k < c2; k += 1) th[k] = thA + (span * (k - a)) / n2;
-              };
               for (let q = 0; q + 1 < li.length; q += 1) fill(li[q], li[q + 1], th[li[q]], th[li[q + 1]]);
               const hiT = th[first] + TWO_PI;
               const wrapN = first + (M - 1 - last) + 1;
               {
                 // the run that crosses the cut: slots last+1 … M−1 … 0 … first−1, anchored by th[last] and th[first]+2π
                 const idx = (q: number): number => (last + q) % M;
-                const park: number[] = []; let ok = true; let prev2 = th[last];
-                for (let q = 1; q < wrapN; q += 1) {
-                  const br = brs[order[idx(q)]];
-                  let pv = key(brThAt(br, Math.max(br.zLo, Math.min(br.zHi, zRowT[jr2]))));
-                  while (pv < prev2 - Math.PI) pv += TWO_PI;
-                  while (pv > prev2 + Math.PI) pv -= TWO_PI;
-                  if (!(pv > prev2 + MINSEP)) { ok = false; break; }
-                  park.push(pv); prev2 = pv;
-                }
-                const use = ok && prev2 + MINSEP < hiT;
                 const span = Math.max(MINSEP * wrapN, hiT - th[last]);
+                let prev2 = th[last];
                 for (let q = 1; q < wrapN; q += 1) {
                   const k = idx(q);
-                  const v = use ? park[q - 1] : th[last] + (span * q) / wrapN;
+                  const br = brs[order[k]];
+                  let pv = key(brThAt(br, Math.max(br.zLo, Math.min(br.zHi, zRowT[jr2])))) + (last + q >= M ? TWO_PI : 0);
+                  while (pv < prev2 - Math.PI) pv += TWO_PI;
+                  while (pv > prev2 + Math.PI) pv -= TWO_PI;
+                  const v = Math.max(prev2 + MINSEP, Math.min(pv, th[last] + (span * q) / wrapN));
                   th[k] = k > last ? v : v - TWO_PI;
+                  prev2 = v;
                 }
               }
               for (let q = 0; q + 1 < li.length; q += 1) if (th[li[q + 1]] <= th[li[q]]) { trOrderViolT += 1; trBackMaxT = Math.max(trBackMaxT, (th[li[q]] - th[li[q + 1]]) * TR_RBAR); }
+            }
+            // TEMPORAL GUARD — the invariant the whole fix exists to enforce, asserted rather than assumed: no
+            // column may translate more than TR_MAXSHEAR of arc between adjacent rows. Report the worst, always.
+            if (slotTh.length > 0) {
+              const prevRow = slotTh[slotTh.length - 1];
+              for (let k = 0; k < M; k += 1) {
+                let d = Math.abs(th[k] - prevRow[k]) % TWO_PI;
+                d = Math.min(d, TWO_PI - d) * TR_RBAR;
+                if (d > trShearMaxT) { trShearMaxT = d; trShearAtT = `slot ${k} z=${zRowT[jr2].toFixed(3)}`; }
+                if (d > TR_MAXSHEAR) trShearOverT += 1;
+              }
             }
             slotTh.push(th); slotLive.push(live);
           }
@@ -1030,7 +1054,23 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
               rc.push(a0); lv.push(slotLive[j][k]);
               for (let q = 1; q < nSubT[k]; q += 1) { rc.push(a0 + ((b0 - a0) * q) / nSubT[k]); lv.push(false); }
             }
-            for (let q = 1; q < rc.length; q += 1) if (rc[q] < rc[q - 1] + MINSEP) { if (lv[q]) { trMinsepLive += 1; trMinsepMax = Math.max(trMinsepMax, (rc[q - 1] + MINSEP - rc[q]) * TR_RBAR); } rc[q] = rc[q - 1] + MINSEP; }
+            // SEPARATION PASS. A LIVE column is a locus: moving it IS the placement error this whole path exists to
+            // remove (measured: 32 live columns pushed, worst 4.785 µm of arc). Fillers carry no geometry, so when a
+            // span is too tight to hold them they are the ones that must absorb it — walk BACK and compress the
+            // preceding fillers instead of pushing the live column forward. Only if the fillers run out of room does
+            // a live column move, and that is counted.
+            for (let q = 1; q < rc.length; q += 1) {
+              if (rc[q] >= rc[q - 1] + MINSEP) continue;
+              if (!lv[q]) { rc[q] = rc[q - 1] + MINSEP; continue; }
+              let need = rc[q - 1] + MINSEP - rc[q];
+              for (let p2 = q - 1; p2 >= 1 && need > 0 && !lv[p2]; p2 -= 1) {
+                const room = rc[p2] - rc[p2 - 1] - MINSEP;
+                if (room <= 0) continue;
+                const take = Math.min(room, need);
+                rc[p2] -= take; need -= take;
+              }
+              if (need > 0) { trMinsepLive += 1; trMinsepMax = Math.max(trMinsepMax, need * TR_RBAR); rc[q] = rc[q - 1] + MINSEP; }
+            }
             rowCols.push(rc); colLive.push(lv);
           }
           colLocB = []; chainIdx = [];
@@ -2070,7 +2110,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `  brackets ${curtBrackets} → rejected ${curtRejected} (of which ${curtSnaking} SNAKING = jump present at <${(CURT_ZFRAC*100).toFixed(0)}% of z probes ⇒ NEEDS THE TRACED-POLYLINE CURTAIN, refused here) → detected ${jumpLoci.length}${jumpLoci.length > 0 ? `  θ*=[${jumpLoci.slice(0, 8).map((x) => x.toFixed(9)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]  grid-col idx=[${jumpLoci.slice(0, 8).map((x) => ((x * gu) / TWO_PI).toFixed(4)).join(', ')}${jumpLoci.length > 8 ? ', …' : ''}]` : ''}`,
       `  chains: built ${chainsBuilt}, matched ${chainMatched}, locally RECOVERED ${chainRecovered}, HELD ${chainHeld} (${chainSlots > 0 ? ((100 * chainHeld) / chainSlots).toFixed(1) : '0'}% hold rate), of which SUSPECT (jump present at the held θ) ${chainSuspect}; terminal-snap to true death point ${chainTermSnap}`,
       `  chains: reprojected splits ${chainReproj}, reproj-FAILED ${chainReprojFail}`,
-      ...(TRACE ? [`  TRACER: ${trCurvesT} curves → ${trBranchesT} monotone branches → ${trSlotsT} column slots; ${trRowsAddedT} merge-corner ROWS inserted; θ-order violations ${trOrderViolT} (worst backward step ${um(trBackMaxT)} µm arc), cycle-breaks ${trCycleBreakT}; order-repair DEMOTED ${trDemotedT}/${trLiveSlotsT} live row-slots; MINSEP moved ${trMinsepLive} LIVE columns (worst ${um(trMinsepMax)} µm arc)  ${trOrderViolT === 0 && trMinsepLive === 0 ? 'OK' : '*** SLOT ORDER INCONSISTENT ***'}`] : []),
+      ...(TRACE ? [`  TRACER: ${trCurvesT} curves → ${trBranchesT} monotone branches → ${trSlotsT} column slots; ${trRowsAddedT} merge-corner ROWS inserted; θ-order violations ${trOrderViolT} (worst backward step ${um(trBackMaxT)} µm arc), cycle-breaks ${trCycleBreakT}; order-repair DEMOTED ${trDemotedT}/${trLiveSlotsT} live row-slots; MINSEP moved ${trMinsepLive} LIVE columns (worst ${um(trMinsepMax)} µm arc)  ${trOrderViolT === 0 && trMinsepLive === 0 ? 'OK' : '*** SLOT ORDER INCONSISTENT ***'}`,
+      `  TRACER inter-row COLUMN SHEAR: worst ${um(trShearMaxT)} µm arc${trShearAtT === '' ? '' : ` @ ${trShearAtT}`}, over-${TR_MAXSHEAR}mm ${trShearOverT}  ${trShearOverT === 0 ? 'OK' : '*** COLUMN JUMPS BETWEEN ROWS ***'}`] : []),
       ...(TRACE ? [`  TRACER internals: hops ${trHopsT}, merges ${trMergesT}, dead-ends ${trDeadT}, closed loops ${trClosedT}, per-curve budget hits ${trBudgetHitT}`] : []),
       ...(TRACE ? [`  TRACER COVERAGE (independent row scans on ${TR_AUDROWS} rows/band): loci with NO live slot within 20 µm ${trAudMiss}/${trAudTot}  ${trAudMiss === 0 ? 'PASS' : `FAIL worst ${um(trAudWorst)} µm @ ${trAudAt}`};  GHOST live slots with no locus ${trGhost}/${trGhostTot}  ${trGhost === 0 ? 'PASS' : 'FAIL'}`] : []),
       `  curtain: ${curtainTris} init tris, ${liveCurtainTris} live, ${curtainPairs} doubled row-slots, ${pinchVerts} pinch verts (|Δr|<${(PINCH_MM * 1000).toFixed(3)} µm, init MIN |Δr| ${minBranchSepMm === Infinity ? 'n/a' : `${um(minBranchSepMm)} µm`}), ${curtainVerts} branch-tagged verts, ${branchSplits} branch-inherited splits`,

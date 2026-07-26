@@ -115,8 +115,75 @@
 >
 > **Verdict: the h⁰ curtain mechanism for a CURVED, snaking locus is built and measured** — connectivity tracing,
 > merge-exact rows, per-branch slots, topological slot order, dormant-slot demotion — and it drives placement to the
-> chord-sagitta floor with 0 non-manifold, 0 seam-crack, a passing coverage invariant and 463× weld margin. **The
-> remaining work is the column-layout defect above plus one converged full-budget run**, not another mechanism.
+> chord-sagitta floor with 0 non-manifold, 0 seam-crack, a passing coverage invariant and 463× weld margin.
+>
+> ## 7b. CERTIFICATION RUN — all fixes in, 208×280, 900 k cap, registry defaults, ring
+>
+> ```
+> 252 curves → 252 branches → 252 slots · 108 merge-corner rows · θ-order violations 0 · cycle-breaks 0
+> COVERAGE 0/2737 loci without a live slot  PASS   ·  branch separation 23.150 µm vs weld 0.050 = 463×
+> non-manifold 0  OK   ·   seam-crack 0  OK   ·   boundary 576 (ring = top+bottom), 2 loops
+> PLACEMENT   p50 0.000  p90 0.010  p99 2.106  p999 2.853 µm   MAX 24.181   over-0.01 mm 42/58 563 (0.072 %)
+> PLANE  MAX 599.192 µm  spread 1.0× consistent   p50 0.558   MAXtri@oracle8 0.886 µm
+> HAUSDORFF MAX 2125.821 µm            [CAPPED — heap 89 225 left, worst-left 597.971 µm; see §9]
+> ```
+>
+> Against the same configuration before §8's fixes: plane MAX 700.493 → **599.192**, Hausdorff 6701.983 → **2125.821
+> (3.2×)**, live columns moved by the separation pass 32 → 22, placement unchanged at 24.181 (no regression).
+> `p999 = 2.853 µm` against a predicted sagitta floor of 2.670 µm — 99.9 % of the curtain is at the theoretical floor.
+>
+> **Where the two rulers now point is itself the finding.** The plane MAX-locus is `edges = 0.4 / 705.4 / 705.1 µm` —
+> a 0.4 µm NEEDLE whose plane normal is garbage — while the Hausdorff MAX-locus is a 30 mm skewed quad from the shear
+> of §8. Neither is the curtain. The two instruments are blind in opposite directions and both are needed.
+>
+> ## 8. The column-layout defect is ALLOCATION-entangled — two fixes tried, both refuted by measurement
+>
+> New instrument first: an **inter-row column shear** guard now reports the largest θ translation of any column
+> between adjacent rows (`PF_CB_TR_MAXSHEAR`, default 1 mm). Baseline at 64×40: **worst 48 824 µm, 1196 rows over
+> 1 mm** — the defect made into a number instead of an anecdote.
+>
+> **Attempt A — constrain the FULL per-row order** (live slots at their locus θ, dormant slots at their parked θ), so
+> a dormant slot can never sit on the wrong side of a later birth. **REFUTED.** A dormant branch's parked θ is fixed
+> while the live loci move, so the induced total order flips between rows and the constraint graph becomes cyclic:
+>
+> | | before | attempt A |
+> |---|---|---|
+> | cycle-breaks | 0 | **93** |
+> | demoted live row-slots | 101/2452 | **311/2452** |
+> | tracer coverage | 0/2612 PASS | **158/2612 FAIL** |
+> | non-manifold / seam-crack | 0 / 0 | **264 / 1255** |
+> | worst shear | 48 824 µm | **26 139 µm, still 1311 rows over** |
+>
+> **Attempt B — per-slot monotone clamp into the live bracket** instead of the all-or-nothing park→lerp fallback.
+> **REFUTED as written**: when a bracket is narrower than MINSEP × (dormant slots it must hold), the clamp overshoots
+> its upper anchor, the column array stops being strictly increasing and vertices weld — 264 non-manifold / 1255
+> seam-crack from 0/0.
+>
+> **Attempt C — per-slot park under a provable LERP CEILING: `v_k = max(prev+MINSEP, min(park_k, lerp_k))`. KEPT.**
+> Monotone by construction and `v_k ≤ lerp_k` always (because `prev ≤ lerp_{k−1}` and `lerp_k − lerp_{k−1} = span/n ≥
+> MINSEP`), so the array is bounded by exactly the sequence the old code emitted — strictly no worse, while every slot
+> that *can* sit on its own branch does. Measured at 64×40: watertight **0/0**, coverage **0/2612 PASS**,
+> **Hausdorff 5997.252 → 1942.268 µm (3.1×)**, worst skewed edge 48 862 → 12 172 µm. Shear only 48 824 → 42 573 µm.
+>
+> **Conclusion (asked for explicitly, so stated plainly): item 1 is NOT a parking bug.** The band allocates one
+> permanent column slot per branch, so a slot's *index* is fixed for the whole band while its natural θ *position* is
+> not — and no per-row layout rule can remove that degree of freedom. The fix is **slot REUSE**: allocate ≈ the max
+> simultaneous live count per band and let one slot host different branches at different z, inserting a newborn into a
+> free label positioned between its θ-neighbours (an ordered-label sweep, growing the label list only when no free
+> label sits in the right position). That is a genuine re-architecture of the allocator, and two speculative fixes
+> already regressed watertightness today, so it is left as designed-not-built rather than forced.
+>
+> ## 9. "Converged, not capped" is unreachable with the plane ruler as the refinement driver
+>
+> Every run of this style ends `worst-left ≈ 598 µm` — the jump height. That is not under-budgeting: the refinement
+> priority is the plane-distance sag, which on a curved cliff has an **irreducible floor equal to the jump** inside
+> the wrong-side strip (§4). The heap therefore refills with strip triangles no matter how large `PF_CB_TRICAP` is.
+> Reaching a drained heap on a curved h⁰ locus requires the refinement DRIVER to use the distance-to-mesh measure,
+> not just the final audit. Recording this so the CAPPED label on these rows is read as structural, not as budget.
+>
+> **Guarantees to keep attached wherever the Hausdorff number is quoted:** (1) an unmeshed cliff still reads the full
+> jump, because the far-branch surface points have no mesh near them; (2) distance-to-mesh ≤ distance-to-covering-
+> triangle, so the 19 already-closed rows can only improve — their PASS status is unaffected by adopting it.
 
 > # UPDATE 6 — CelticKnot: termination fix CONFIRMED by a pre-registered A/B (7.9× on MAX), still not closed
 >
