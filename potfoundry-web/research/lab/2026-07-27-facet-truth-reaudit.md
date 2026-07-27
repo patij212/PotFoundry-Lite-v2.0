@@ -5,6 +5,46 @@
 (BasketWeave) is confined to the ring's open rim row**. H1 certificates: 2 done, 17 pending a second pass.
 Every refuted number is a *floor* (refinement truncated), so those rows can only get worse.
 
+## 0. THE ANSWER, for anyone who reads only this
+
+**The "19/20 closed" scorecard cannot be read as 0.01 mm true-3D fidelity.** Re-measured by an independent
+auditor against the true surface, on the exact meshes those verdicts were based on:
+
+> **19 claimed closed → 12 survive H2 → 5 survive both directions.**
+>
+> Clean in both: **LowPolyFacet · SuperellipseMorph · SuperformulaBlossom · RippleInterference · FourierBloom**
+
+The old ruler was not lying about its own quantity — plane-distance on its lattice really is ~5 µm on these
+meshes. It was measuring something that is **not the product bar**, with no error bound, at a pitch capped
+3× coarser than the bar, using the same sampler that drives refinement. So a facet spanning a feature it
+cannot see was never refined *and* never flagged.
+
+**Proven deterministically, not argued:** on a mesh missing 400 µm of relief, the old ruler reads
+**5.552 µm "clean"** while the new one reads **391.661 µm** (V5). The crest is placed provably between the
+old ruler's computable sample positions; nothing about it is luck.
+
+**Three things a reader should not over-read:**
+
+1. **BasketWeave's 93.662 µm — the largest number here — is RIM ONLY.** All 22 160 exceedances lie in
+   z ∈ [115,120] of a *ring* mesh whose top edge is an open boundary the solid stage caps differently.
+   Do not quote it as "BasketWeave is 93 µm wrong". **GothicArches is the worst genuine row** (2 372
+   exceedances spread wall-wide, peaking at the arch rib).
+2. **Passes are provisional; refutations are sound.** Every exceedance is an exact point-to-triangle
+   distance, brute-force confirmed. But H2 is a witnessed lower bound with ~11.5 µm resolving power, and
+   H1's certificate is loose. A row that "holds" holds *as far as this instrument can see*.
+3. **The instrument had eight defects of its own**, four capable of a false PASS (§5b, §9). All were caught
+   by measurements disagreeing with each other — **none by reading the code**. The validation suite
+   (`PF_STRATA_FTV=1`, 9/9) is synthetic-only: cylinders, ridges, steps. No case is built from a real
+   style's `rA`.
+
+**The most actionable finding is §7**: at every refuted row's worst locus the mesh is **coarse, not
+floored** (74-1383 µm triangles against a 1.5 µm floor) and the mesher **stopped with budget unspent and a
+drained heap**. It was not out of mechanism. It stopped because its ruler told it there was nothing left to
+do. Whether that is fixable by a bounded accept test is pre-registered there, together with the strongest
+prior evidence against it.
+
+---
+
 ## 1. Why the scorecard is being re-opened
 
 Vertex placement in STRATA-001 is genuinely exact — that work stands and nothing here disputes it. The
@@ -391,3 +431,46 @@ test does. If the bounded run also leaves the max pinned, §7 is dead and the me
 **This sharpens the pre-registered prediction rather than weakening it**: the discriminator is not "does
 the triangle count rise" but "does the MAX move". §7 predicted GeometricStar's H2 drops below 10 µm; the
 prior art says watch the max specifically, because that is what previously refused to move.
+
+## 10. GPU THROUGHPUT ON THE SOUND COMPUTATION (`research/gpu/gpuRuler.js`)
+
+The binding cost of a certificate is `area / tol²` — ~1.4 ms/triangle on CPU, 30 min for GeometricStar.
+The fix is throughput, **not** a cheaper metric: a ray-gap measure would trade the guarantee away, since a
+ray gap is the perpendicular distance divided by cos(incidence), unbounded at grazing angles — worst
+exactly on the steep features where every failure here lives. So the *same* computation was ported, not
+replaced.
+
+**Prerequisite, measured before anything was built on it.** A GPU screen filters against whatever surface
+the GPU thinks it has, so GPU `style_radius` must equal CPU `STYLE_FUNCTIONS` — and this repo already
+carried finding **F1: CPU `styles.ts` sf_strength divergence**. Result over 73 k samples × 20 styles:
+
+| | |
+|---|---|
+| all 20 styles, away from jump loci | **≤ 0.4813 µm** (worst: GyroidManifold), **0 samples over 1 µm** |
+| BasketWeave sampled ON its 16 θ-jumps | 1999.967 µm |
+| BasketWeave with the grid shifted off them | **0.042 µm**, 0 over 1 µm |
+
+The on-grid argmax sits **1.72e-7 rad from θ = k·2π/16** — i.e. exactly on the discontinuity, where the
+surface is genuinely two-valued and the two implementations may legitimately pick different branches. So
+this is a **tie-break at a measure-zero locus, not a disagreement about the surface**, and jump loci are
+handled by the closure rather than by the screen. A 1 µm f32 margin covers the real divergence 2× over.
+
+**Verified throughput** (compile once, one dispatch, compute timed separately from readback, output
+spot-checked against the CPU function so a dropped pass cannot masquerade as speed):
+
+| batch | dispatch | compute | throughput | spot-check |
+|---|---|---|---|---|
+| 8 388 608 | 65535 × 3 | **51.06 ms** | **164 289 228 evals/s** | 842/842 non-zero, max diff 0.2412 µm |
+
+**~100× over the CPU harness.** GeometricStar's 4 414 M-sample H1, which cost 1779 s on CPU, is ~27 s of
+GPU compute.
+
+**A trap worth recording.** `maxComputeWorkgroupsPerDimension` is 65535, so a 1-D dispatch silently caps at
+4 194 240 invocations — exceeding it does not raise where you can see it, the pass is simply **dropped and
+the output stays zero**. Measured as "8.7 billion evals/sec" with an all-zero buffer. Any GPU throughput
+figure that is not accompanied by a verified non-zero output is worthless; `dispatchDims()` now handles it.
+
+**The soundness argument for the screen** (implemented, not yet wired into the audit loop): the radial foot
+is a genuine surface point, so its distance is an UPPER bound on `dist(p, S)`. Therefore
+`gpuMax + covRad/n + margin ≤ tol` **certifies a triangle clean with no false negatives**, and only the
+survivors need the exact CPU treatment. On these meshes the overwhelming majority clears.
