@@ -1,8 +1,9 @@
 # STRATA-001 RE-AUDIT — the "19/20 closed" scorecard, re-measured by an independent two-sided ruler
 
-**Status: H2 sweep COMPLETE, all 19 rows. 12 within tolerance, 7 REFUTED.** H1 certificates: 2 done,
-17 pending a second pass. Every refuted number is a *floor* — refinement was truncated — so those rows can
-only get worse, never better.
+**Status: H2 sweep COMPLETE, all 19 rows, plus an exceedance census locating every failure.**
+12 within tolerance, 7 over the 0.01 mm bar — of which **6 are genuine interior defects and 1
+(BasketWeave) is confined to the ring's open rim row**. H1 certificates: 2 done, 17 pending a second pass.
+Every refuted number is a *floor* (refinement truncated), so those rows can only get worse.
 
 ## 1. Why the scorecard is being re-opened
 
@@ -152,6 +153,39 @@ Read together with §3: the old ruler was not lying about *its own* quantity —
 really is ~5 µm on these meshes. It was measuring something that is not the product bar. On the twelve
 smooth/layered rows the two rulers agree, which is what makes the disagreement on the other seven
 meaningful rather than a systematic offset.
+
+
+### Where the failures actually live — the census (this changes the reading of the table)
+
+Every H2 sample over tolerance is counted and binned by z (24 bins, base -> rim). Six of the seven
+refutations are genuine INTERIOR defects; exactly one is a boundary artifact, and it is the one with the
+most alarming headline number.
+
+| refuted row | H2 (floor) | samples over tol | where they are | character |
+|---|---|---|---|---|
+| **GothicArches** | 20.077 | **2 372** / 30.6 M | bins 5-24, peak bin 12 (z 55-60) | **wall-wide**, mid-wall peak = the arch rib |
+| **GyroidManifold** | 17.299 | 189 / 37.4 M | bins 2-23, everywhere | **wall-wide**, uniformly distributed |
+| **CelticTriquetra** | 17.837 | 73 / 32.6 M | bins 10, 16-20 (z 45-50, 75-100) | interior, multi-locus, upper wall |
+| **GeometricStar** | 12.675 | 40 / 33.1 M | bin 3 only (z 10-15) | interior, ONE cluster |
+| **Voronoi** | 11.906 | 26 / 44.8 M | bins 4, 8, 11, 12 | interior, scattered loci |
+| **Crystalline** | 10.302 | 3 / 40.8 M | bin 14 only (z 65-70) | interior, ONE locus, 3 samples — marginal |
+| **BasketWeave** | 93.662 | 22 160 / 88.2 M | **bin 24 ONLY** (z 115-120) | **RIM BAND ONLY — the wall is clean** |
+
+**BasketWeave must be read differently from the other six.** Its 93.662 µm argmax sits at exactly
+z = 120.000, the ring's open top boundary, and *not one* of its 22 160 exceedances lies below z = 115. This
+is a boundary-row defect of the **ring** stage. The solid stage caps the rim differently, so it is an open
+question whether this exists in the exported product at all — it must not be quoted as "BasketWeave is
+93 µm wrong" without that qualifier.
+
+**GothicArches is the most serious row**, not BasketWeave: 2 372 exceedances spread across nearly the whole
+wall with a peak exactly where the arch rib lives. That is a distributed tessellation failure, which is the
+hardest kind. GyroidManifold is second: fewer samples but spread uniformly over every bin.
+
+**Crystalline is marginal and should be labelled so**: 3 samples out of 40.8 M, at 10.302 µm against a
+10.000 µm bar. It is over, but it is over by 3 %.
+
+Severity order for anyone acting on this: **GothicArches > GyroidManifold > CelticTriquetra > GeometricStar
+> Voronoi > Crystalline**, with **BasketWeave separate** as a ring-boundary question.
 
 ### Rows that hold, with their caveats
 
