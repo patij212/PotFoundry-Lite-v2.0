@@ -287,11 +287,26 @@ export function certifyTriangle(
     samples += ((n + 1) * (n + 2)) / 2;
     const rho = cov / n;
     if (mx + rho <= tol) break;
-    // The radial foot over-states d on a slope, and an over-statement here costs a factor of 4 in work,
-    // so tighten the witness with the local polish before deciding to subdivide again.
-    if (mx > tol * 0.25) {
-      const pol = distLocal(rA, H, mxx, mxy, mxz, Math.atan2(mxy, mxx), mxz < 0 ? 0 : mxz > H ? H : mxz, Math.max(mx, tol), 40, opts.zJumps ?? [], opts.thJumps ?? []);
+    // TWO-TIER, AND THE TIERS MATTER. The lattice pass uses the RADIAL foot: one rA eval, and always an
+    // upper bound on dist(p,S), so anything it clears is genuinely clear. But radial = perpendicular /
+    // cos(tilt), so on a slope it over-states — 41% at 45 degrees (V9) — and an over-statement here costs a
+    // factor of 4 in work AND inflates the reported error. So whenever the radial reading fails to certify,
+    // re-measure that sample with the TRUE PERPENDICULAR distance (Newton on the orthogonality conditions)
+    // before spending another subdivision. Previously this fired only above tol/4, which left every reading
+    // under ~2.5 um radial — and the certified bound was built from those inflated values.
+    if (mx + rho > tol) {
+      // DESCENT FIRST, THEN NEWTON — each for what it is good at. Newton converges to the nearest
+      // STATIONARY point, which is not always the global minimum: seeded at the radial foot of a facet
+      // spanning a ridge, that foot sits ON the crest ~400 um away, so Newton polishes a flank solution and
+      // never finds the base surface 8 um sideways (measured: V3's thin ridge read 409 um instead of 12).
+      // The coordinate descent is globally better behaved because its first steps are large; Newton is
+      // locally exact. So descend to locate the well, then Newton to make the foot truly perpendicular.
+      const seed = distLocal(rA, H, mxx, mxy, mxz, Math.atan2(mxy, mxx), mxz < 0 ? 0 : mxz > H ? H : mxz, Math.max(mx, tol), 40, opts.zJumps ?? [], opts.thJumps ?? []);
+      if (seed.d < mx) mx = seed.d;
+      const pol = distPerpFrom(rA, H, mxx, mxy, mxz, seed.th, seed.z);
       if (pol.d < mx) mx = pol.d;
+      for (const zj of opts.zJumps ?? []) { const dw = distToZWall(rA, zj, mxx, mxy, mxz); if (dw < mx) mx = dw; }
+      for (const tj of opts.thJumps ?? []) { const dw = distToThetaWall(rA, tj, mxx, mxy, mxz, H); if (dw < mx) mx = dw; }
       if (mx + rho <= tol) break;
     }
     if (mx > tol) break;                    // witnessed exceedance — more resolution cannot change the verdict
@@ -574,4 +589,141 @@ export function surfaceToMeshMax(
     secs: (Date.now() - tStart) / 1000,
     hotLeaves,
   };
+}
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// TRUE PERPENDICULAR DISTANCE — solved, not approximated
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// `distRadial` is the RADIAL gap, which equals the perpendicular distance divided by cos(tilt). It
+// over-states, and it over-states most on steep geometry — exactly where every failure in this campaign
+// lives. `distLocal` only narrows it by coordinate descent, and only fires once a sample already reads
+// above tol/4, so anything under ~2.5 um was being reported radially and the certified bound was built from
+// inflated values. Neither routine ever CHECKED that the foot it returned was perpendicular to anything.
+//
+// The closest point on S satisfies orthogonality against both tangents:
+//        F(th,z) = [ (p - P)·P_th , (p - P)·P_z ] = 0
+// with  P(th,z) = (r cos th, r sin th, z),  r = rA(th,z)
+//        P_th   = (r_th cos th - r sin th,  r_th sin th + r cos th,  0)
+//        P_z    = (r_z cos th,  r_z sin th,  1)
+// Newton on that 2x2 system converges quadratically. It needs only rA and finite differences of it — no
+// per-style knowledge, no feature detector, no envelope. That is what makes it shape-agnostic.
+//
+// SELF-VERIFYING. `ortho` is returned with every measurement: the residual of the orthogonality conditions,
+// normalised by |p-P| and the tangent lengths, i.e. the sine of the angle by which the foot deviates from
+// perpendicular. A caller can assert on it. Nothing in the previous ruler could tell you whether its answer
+// was perpendicular at all.
+export interface PerpResult { d: number; th: number; z: number; ortho: number; iters: number; converged: boolean }
+
+/** Surface point and its two tangents at (th,z), with r derivatives by central difference. */
+function frame(rA: RadiusFn, H: number, th: number, z: number, hTh: number, hZ: number): {
+  P: [number, number, number]; Pth: [number, number, number]; Pz: [number, number, number];
+} {
+  const zc = z < 0 ? 0 : z > H ? H : z;
+  const r = rA(th, zc);
+  const rTh = (rA(th + hTh, zc) - rA(th - hTh, zc)) / (2 * hTh);
+  const zp = Math.min(H, zc + hZ); const zm = Math.max(0, zc - hZ);
+  const rZ = zp > zm ? (rA(th, zp) - rA(th, zm)) / (zp - zm) : 0;
+  const c = Math.cos(th); const s = Math.sin(th);
+  return {
+    P: [r * c, r * s, zc],
+    Pth: [rTh * c - r * s, rTh * s + r * c, 0],
+    Pz: [rZ * c, rZ * s, 1],
+  };
+}
+
+/**
+ * True perpendicular distance from p to the radial surface, by damped Newton on the orthogonality
+ * conditions, started from the supplied seed. Returns the residual so the caller can verify the foot.
+ */
+export function distPerpFrom(
+  rA: RadiusFn, H: number, px: number, py: number, pz: number,
+  seedTh: number, seedZ: number, maxIter = 40,
+): PerpResult {
+  const rNom = Math.max(1e-6, Math.hypot(px, py));
+  const hTh = 1e-5 / rNom;      // ~10 nm of arc — well inside f64, well outside FD noise
+  const hZ = 1e-5;
+  let th = seedTh; let z = Math.min(H, Math.max(0, seedZ));
+  let best = Infinity; let bTh = th; let bZ = z;
+  let it = 0; let converged = false;
+  for (; it < maxIter; it += 1) {
+    const f = frame(rA, H, th, z, hTh, hZ);
+    const dx = px - f.P[0]; const dy = py - f.P[1]; const dz = pz - f.P[2];
+    const d = Math.hypot(dx, dy, dz);
+    if (d < best) { best = d; bTh = th; bZ = z; }
+    const F1 = dx * f.Pth[0] + dy * f.Pth[1] + dz * f.Pth[2];
+    const F2 = dx * f.Pz[0] + dy * f.Pz[1] + dz * f.Pz[2];
+    // numerical 2x2 Jacobian of F — cheaper and far more robust than analytic second derivatives on the
+    // hashed / piecewise style functions in this registry
+    const e = 1e-6;
+    const fa = frame(rA, H, th + e / rNom, z, hTh, hZ);
+    const fb = frame(rA, H, th, Math.min(H, z + e), hTh, hZ);
+    const Fof = (fr: ReturnType<typeof frame>): [number, number] => {
+      const ax = px - fr.P[0]; const ay = py - fr.P[1]; const az = pz - fr.P[2];
+      return [ax * fr.Pth[0] + ay * fr.Pth[1] + az * fr.Pth[2], ax * fr.Pz[0] + ay * fr.Pz[1] + az * fr.Pz[2]];
+    };
+    const [F1a, F2a] = Fof(fa); const [F1b, F2b] = Fof(fb);
+    const j11 = (F1a - F1) / (e / rNom); const j12 = (F1b - F1) / e;
+    const j21 = (F2a - F2) / (e / rNom); const j22 = (F2b - F2) / e;
+    const det = j11 * j22 - j12 * j21;
+    if (!Number.isFinite(det) || Math.abs(det) < 1e-30) break;
+    let dTh = -(j22 * F1 - j12 * F2) / det;
+    let dZ = -(-j21 * F1 + j11 * F2) / det;
+    // damp: never move more than a tenth of a radian of arc / mm per step, so a bad Jacobian on a kinked
+    // style cannot fling the iterate across the pot
+    const cap = 0.1;
+    const mag = Math.max(Math.abs(dTh) * rNom, Math.abs(dZ));
+    if (mag > cap) { const k = cap / mag; dTh *= k; dZ *= k; }
+    th += dTh; z = Math.min(H, Math.max(0, z + dZ));
+    if (Math.max(Math.abs(dTh) * rNom, Math.abs(dZ)) < 1e-11) { converged = true; it += 1; break; }
+  }
+  const f = frame(rA, H, bTh, bZ, hTh, hZ);
+  const dx = px - f.P[0]; const dy = py - f.P[1]; const dz = pz - f.P[2];
+  const d = Math.hypot(dx, dy, dz);
+  const lTh = Math.hypot(f.Pth[0], f.Pth[1], f.Pth[2]);
+  const lZ = Math.hypot(f.Pz[0], f.Pz[1], f.Pz[2]);
+  const ortho = d < 1e-12 ? 0 : Math.max(
+    Math.abs(dx * f.Pth[0] + dy * f.Pth[1] + dz * f.Pth[2]) / (d * Math.max(lTh, 1e-12)),
+    Math.abs(dx * f.Pz[0] + dy * f.Pz[1] + dz * f.Pz[2]) / (d * Math.max(lZ, 1e-12)),
+  );
+  return { d, th: bTh, z: bZ, ortho, iters: it, converged };
+}
+
+/**
+ * Perpendicular distance with global seeding: coarse sweep, then Newton from the best few seeds plus the
+ * radial foot, plus any detected discontinuity walls. Returns the best (smallest) result, which is the one
+ * that is genuinely perpendicular; every candidate is an upper bound, so taking the min is always correct.
+ */
+export function distPerp(
+  rA: RadiusFn, H: number, px: number, py: number, pz: number,
+  opts: { nu?: number; nv?: number; zJumps?: number[]; thJumps?: number[] } = {},
+): PerpResult {
+  const nu = opts.nu ?? 180; const nv = opts.nv ?? 120;
+  const TAU = 2 * Math.PI;
+  const seeds: [number, number][] = [[Math.atan2(py, px), pz < 0 ? 0 : pz > H ? H : pz]];
+  let b1 = Infinity; let b2 = Infinity; let s1: [number, number] = seeds[0]; let s2: [number, number] = seeds[0];
+  for (let i = 0; i < nu; i += 1) {
+    const th = (TAU * i) / nu; const ct = Math.cos(th); const st = Math.sin(th);
+    for (let j = 0; j <= nv; j += 1) {
+      const z = (H * j) / nv;
+      const r = rA(th, z);
+      const dx = px - r * ct; const dy = py - r * st; const dz = pz - z;
+      const v = dx * dx + dy * dy + dz * dz;
+      if (v < b1) { b2 = b1; s2 = s1; b1 = v; s1 = [th, z]; } else if (v < b2) { b2 = v; s2 = [th, z]; }
+    }
+  }
+  seeds.push(s1, s2);
+  // the descent's answer is a further seed: it is globally better behaved than Newton and costs little
+  const dl = distLocal(rA, H, px, py, pz, seeds[0][0], seeds[0][1], Math.max(1, Math.hypot(px, py) * 0.05), 40, opts.zJumps ?? [], opts.thJumps ?? []);
+  seeds.push([dl.th, dl.z]);
+  let best: PerpResult = { d: Infinity, th: 0, z: 0, ortho: 1, iters: 0, converged: false };
+  for (const [sth, sz] of seeds) {
+    const r = distPerpFrom(rA, H, px, py, pz, sth, sz);
+    if (r.d < best.d) best = r;
+  }
+  // discontinuity walls are part of the printed boundary; they are flat, so their distance is exact
+  for (const zj of opts.zJumps ?? []) {
+    const dw = distToZWall(rA, zj, px, py, pz);
+    if (dw < best.d) best = { d: dw, th: Math.atan2(py, px), z: zj, ortho: 0, iters: 0, converged: true };
+  }
+  return best;
 }

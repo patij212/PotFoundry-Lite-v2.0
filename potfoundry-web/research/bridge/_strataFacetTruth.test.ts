@@ -52,7 +52,7 @@ import { buildRadiusFn } from './labkit';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
-import { certifyTriangle, detectThetaJumps, detectZJumps, distGlobal, pickLocatorCell, surfaceToMeshMax } from './_facetTruthLib';
+import { certifyTriangle, detectThetaJumps, detectZJumps, distPerp, pickLocatorCell, surfaceToMeshMax } from './_facetTruthLib';
 
 const RUN = process.env.PF_STRATA_FT === '1';
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -181,7 +181,7 @@ describe('STRATA facet truth', () => {
       }
       const ord = offD.map((d, i) => [d, i] as [number, number]).sort((p, q) => q[0] - p[0]).slice(0, TOPK);
       const conf = ord.map(([, i]) => {
-        const g = distGlobal(rA, H, offP[i * 3], offP[i * 3 + 1], offP[i * 3 + 2]);
+        const g = distPerp(rA, H, offP[i * 3], offP[i * 3 + 1], offP[i * 3 + 2], { zJumps, thJumps });
         return { tri: offTri[i], fast: offD[i], truth: g.d, th: g.th, z: g.z };
       });
       // THE HEADLINE MUST BE THE BEST ESTIMATE THE TOOL HAS, NOT THE CHEAPEST ONE. The per-triangle value
@@ -192,11 +192,11 @@ describe('STRATA facet truth', () => {
       // true one, the smaller number is always the better one, so the argmax is re-measured globally and
       // that is what the headline quotes.
       if (worstWitTri >= 0) {
-        const g = distGlobal(rA, H, wx, wy, wz);
+        const g = distPerp(rA, H, wx, wy, wz, { zJumps, thJumps });
         if (g.d < worstWit) worstWit = g.d;
       }
       lines.push('',
-        '--- H1  MESH -> SURFACE   (certified: bound = witnessed + covering radius) ---',
+        '--- H1  MESH -> SURFACE   (certified: bound = witnessed + covering radius; TRUE PERPENDICULAR distance) ---',
         `  ${(samples / 1e6).toFixed(1)}M lattice samples   ${((Date.now() - tH1) / 1000).toFixed(0)}s   audited ${audited}/${nTri} triangles${capped ? '   *** INCOMPLETE — budget/time cap hit, the unseen triangles are UNKNOWN, not passing ***' : ''}`,
         `  CERTIFIED UPPER BOUND : ${um(worstUB)} um   ${capped ? 'INCOMPLETE (partial mesh)' : worstUB <= TOL ? 'PASS' : 'NOT CERTIFIED'}`,
         '    (the bound is built from the per-triangle LOCAL estimate, which over-states; so PASS is sound,',

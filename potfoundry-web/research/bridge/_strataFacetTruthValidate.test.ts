@@ -15,7 +15,7 @@
 //   V6  agreement on an honest mesh   — a mesh that DOES resolve the ridge reads small in both directions,
 //                                       so V4/V5 are detecting the defect and not an instrument bias
 import { describe, it, expect } from 'vitest';
-import { certifyTriangle, covRadius, detectZJumps, distRadial, pickLocatorCell, surfaceToMeshMax, type RadiusFn } from './_facetTruthLib';
+import { certifyTriangle, covRadius, detectZJumps, distPerp, distRadial, pickLocatorCell, surfaceToMeshMax, type RadiusFn } from './_facetTruthLib';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 
 const RUN = process.env.PF_STRATA_FTV === '1';
@@ -328,5 +328,64 @@ describe('facet-truth closure must not forgive a NARROW FEATURE', () => {
       // has wrongly opened, the reading collapses well below that.
       expect(d).toBeGreaterThan((halfUm / 1000) * 0.6);
     }
+  });
+});
+
+describe('perpendicular ruler', () => {
+  it.runIf(RUN)('V8: cylinder — exact |r-R|, and the foot is provably perpendicular', () => {
+    // On a cylinder the perpendicular distance is |r_p - R| in closed form, and radial == perpendicular
+    // because the surface has no z-slope. This is the case that CANNOT distinguish the two rulers, so it
+    // only checks the solver's accuracy and its self-reported orthogonality.
+    for (const off of [0.4, 0.05, 0.004]) {
+      const rp = R0 - off;
+      const th = 1.1; const z = 47;
+      const r = distPerp(cylinder, H, rp * Math.cos(th), rp * Math.sin(th), z, { nu: 64, nv: 48 });
+      // eslint-disable-next-line no-console
+      console.log(`V8 offset ${off * 1000} um -> d ${(r.d * 1000).toFixed(6)} um  ortho ${r.ortho.toExponential(2)}  iters ${r.iters}`);
+      expect(Math.abs(r.d - off)).toBeLessThan(1e-7);
+      expect(r.ortho).toBeLessThan(1e-6);
+    }
+  });
+
+  it.runIf(RUN)('V9: a SLOPED surface — radial over-states, perpendicular is exact cos(slope)', () => {
+    // r(z) = R0 + k*z is an exact cone. For a point on the axis-parallel line through a surface point, the
+    // radial gap and the perpendicular distance differ by exactly cos(atan(k)) — a closed form, so this
+    // measures whether the ruler is genuinely perpendicular rather than radial.
+    for (const k of [0.2, 0.5, 1.0]) {
+      const cone: RadiusFn = (_th, z) => R0 + k * z;
+      const th = 0.7; const z = 50;
+      const gap = 0.3;
+      const rp = cone(th, z) - gap;                       // pushed straight inward (radially)
+      const p: [number, number, number] = [rp * Math.cos(th), rp * Math.sin(th), z];
+      const radial = distRadial(cone, H, p[0], p[1], p[2]);
+      const perp = distPerp(cone, H, p[0], p[1], p[2], { nu: 128, nv: 96 });
+      const expected = gap / Math.sqrt(1 + k * k);        // = gap * cos(slope)
+      // eslint-disable-next-line no-console
+      console.log(`V9 slope k=${k}: radial ${(radial * 1000).toFixed(3)} um, perpendicular ${(perp.d * 1000).toFixed(3)} um, closed form ${(expected * 1000).toFixed(3)} um, ortho ${perp.ortho.toExponential(2)}`);
+      expect(Math.abs(radial - gap)).toBeLessThan(1e-9);            // radial reads the raw gap
+      expect(Math.abs(perp.d - expected) / expected).toBeLessThan(1e-4); // perpendicular reads gap*cos
+      expect(perp.ortho).toBeLessThan(1e-5);
+      expect(radial / perp.d).toBeGreaterThan(1.0);                 // radial ALWAYS over-states on a slope
+    }
+  });
+
+  it.runIf(RUN)('V10: perpendicular <= radial always, on a real feature-bearing surface', () => {
+    // The inequality is structural (radial = perpendicular / cos(tilt)), so any violation is a solver bug.
+    const rA = ridged(1.9, 0.02 / R0, 0.4);
+    let worstRatio = 0; let maxOrtho = 0; let n = 0;
+    for (let i = 0; i < 40; i += 1) {
+      const th = 1.9 + (i - 20) * 0.0008;
+      const z = 40 + i * 0.7;
+      const rp = rA(th, z) - 0.05;
+      const p: [number, number, number] = [rp * Math.cos(th), rp * Math.sin(th), z];
+      const radial = distRadial(rA, H, p[0], p[1], p[2]);
+      const perp = distPerp(rA, H, p[0], p[1], p[2], { nu: 256, nv: 64 });
+      expect(perp.d).toBeLessThanOrEqual(radial + 1e-9);
+      worstRatio = Math.max(worstRatio, radial / Math.max(perp.d, 1e-12));
+      maxOrtho = Math.max(maxOrtho, perp.ortho); n += 1;
+    }
+    // eslint-disable-next-line no-console
+    console.log(`V10 ${n} probes on a ridged surface: worst radial/perpendicular ${worstRatio.toFixed(3)}x, worst ortho ${maxOrtho.toExponential(2)}`);
+    expect(worstRatio).toBeGreaterThan(1.0);
   });
 });
