@@ -474,3 +474,52 @@ figure that is not accompanied by a verified non-zero output is worthless; `disp
 is a genuine surface point, so its distance is an UPPER bound on `dist(p, S)`. Therefore
 `gpuMax + covRad/n + margin ≤ tol` **certifies a triangle clean with no false negatives**, and only the
 survivors need the exact CPU treatment. On these meshes the overwhelming majority clears.
+
+
+## 11. THE PERPENDICULAR RULER — and what it does to the numbers above
+
+The product bar is error measured **perpendicular to the true 3-D surface**. `dist(p, S)` is exactly that
+quantity — the closest-point vector is orthogonal to the surface at its foot — but §2's implementation was
+not computing it:
+
+- `distRadial`, the **radial** gap, was the primary per-sample measure. Radial = perpendicular / cos(tilt),
+  so it over-states, and it over-states most on steep geometry — precisely where every failure here lives.
+- The polish fired only above `tol/4`, so every reading under ~2.5 µm was radial.
+- The certified bound was therefore **built from inflated values**.
+- Nothing anywhere verified that a returned foot was perpendicular to anything at all.
+
+**Now solved rather than approximated.** The closest point satisfies orthogonality against both tangents,
+`F(θ,z) = [(p−P)·P_θ, (p−P)·P_z] = 0`, and damped Newton with a numerical 2×2 Jacobian converges
+quadratically to it. It needs only `rA` and finite differences — no per-style code, no feature detector, no
+envelope. **That is what makes it shape-agnostic.** Every measurement returns `ortho`, the orthogonality
+residual: the sine of the angle by which the foot deviates from perpendicular, so a caller can assert on it.
+
+| validation | result |
+|---|---|
+| V8 cylinder, offsets 400 / 50 / 4 µm | exact to 1e-7 mm, ortho **1e-15** |
+| V9 cone of slope k | radial **300.000** µm vs perpendicular **294.174 / 268.328 / 212.132** µm = closed form `gap·cos(slope)`; radial over-states **41 % at 45°** |
+| V10 ridged surface, 40 probes | worst radial/perpendicular **19.871×**, worst ortho 2.70e-7 |
+
+**A regression caught during the build, recorded because the lesson generalises.** Newton alone converges
+to the nearest **stationary** point, not the global minimum. Seeded at the radial foot of a facet spanning a
+ridge — a foot that sits *on the crest*, ~400 µm away — it polished a flank solution and never found the
+base surface 8 µm sideways: V3's thin ridge read **409 µm** where the truth is 12.041. Fixed by
+**descent first, then Newton**: the coordinate descent is globally better behaved because its first steps
+are large, Newton is locally exact. V10's ratio moving 1.000× → 19.871× on that fix shows the earlier
+apparent "agreement" between radial and perpendicular was simply the solver failing to find the
+perpendicular foot at all.
+
+### What this does to §5 and §8
+
+Radial **over-states**, so every H1 figure reported above is an upper bound on the truth:
+
+- the five **PASS** rows stay sound — passing on an over-estimate is still passing;
+- the H1 **failures** (SpiralRidges 10.602 · WaveInterference 10.784 · HarmonicRipple 13.963 ·
+  ArtDeco 23.360 · BambooSegments 35.039 · HexagonalHive 40.260 · DragonScales 63.177 ·
+  GeometricStar 193.846) were all measured on the old path and **may be materially inflated**.
+
+They are being re-run. **None of them should be treated as a verdict until it lands**, and the marginal ones
+(SpiralRidges, WaveInterference) could plausibly cross back under the bar.
+
+H2 is unaffected: it measures exact point-to-triangle distances from surface samples to the mesh, which
+were never radial.
