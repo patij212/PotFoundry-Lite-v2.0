@@ -297,6 +297,8 @@ export interface SurfaceToMeshOpts {
   /** samples per structure line. Default 48. */ structN?: number;
   /** number of rows and of columns in the structure cross. Default 5. */ structLines?: number;
   /** wall-clock ceiling for phase B, ms. Phase A always completes. Default 900000. */ timeBudgetMs?: number;
+  /** restrict the audited z band (mm). Lets a rim/base defect be separated from a wall defect. */ zMin?: number;
+  /** @see zMin */ zMax?: number;
   /** max locator queries in phase B before it stops (phase A always completes) */ budget?: number;
   onProgress?: (fracDone: number, queries: number, max: number) => void;
 }
@@ -311,6 +313,9 @@ export interface SurfaceToMeshResult {
   /** phase-A structure pitch, uniform over the whole surface — this is the actual resolving-power GUARANTEE */ structPitchUniform: number;
   /** cells that were still hot when the refinement floor was reached */ hotLeaves: number;
   secs: number;
+  /** how many sampled surface points exceeded tol */ overCount: number;
+  /** z-histogram (24 bins over the audited band) of those exceedances — separates a rim/base defect from a wall defect */ overZHist: number[];
+  /** the audited z band actually used */ zLo: number; zHi: number;
 }
 
 export function surfaceToMeshMax(
@@ -325,6 +330,11 @@ export function surfaceToMeshMax(
   const structN = opts.structN ?? 48;
   const structLines = opts.structLines ?? 5;
   const timeBudgetMs = opts.timeBudgetMs ?? 900000;
+  const zLo = opts.zMin ?? 0;
+  const zHi = opts.zMax ?? H;
+  const NZB = 24;
+  const overZHist = new Array<number>(NZB).fill(0);
+  let overCount = 0;
   const tStart = Date.now();
   const budget = opts.budget ?? 2e8;
   let queries = 0; let rEvalsStruct = 0; let capped = false;
@@ -339,7 +349,13 @@ export function surfaceToMeshMax(
   const D = (th: number, z: number): number => {
     const r = rA(th, z);
     queries += 1;
-    return distToMesh(r * Math.cos(th), r * Math.sin(th), z);
+    const d = distToMesh(r * Math.cos(th), r * Math.sin(th), z);
+    if (d > tol) {
+      overCount += 1;
+      const b = Math.min(NZB - 1, Math.max(0, Math.floor(((z - zLo) / Math.max(1e-9, zHi - zLo)) * NZB)));
+      overZHist[b] += 1;
+    }
+    return d;
   };
 
   /**
@@ -399,13 +415,13 @@ export function surfaceToMeshMax(
   // (unaffordable) uniform sweep at the finest pitch — the second way this routine produced a false PASS by
   // running out of budget. Refinement is therefore WORST-FIRST over an optimistic key.
   const U = 512; const V = 256;
-  const uniformStruct = Math.max((TAU * rNom) / U / structN, H / V / structN);
+  const uniformStruct = Math.max((TAU * rNom) / U / structN, (zHi - zLo) / V / structN);
   const qTh0: number[] = []; const qTh1: number[] = []; const qZ0: number[] = []; const qZ1: number[] = [];
   const qPitch: number[] = []; const qKey: number[] = [];
   for (let i = 0; i < U; i += 1) {
     for (let j = 0; j < V; j += 1) {
       const a0 = (TAU * i) / U; const a1 = (TAU * (i + 1)) / U;
-      const b0 = (H * j) / V; const b1 = (H * (j + 1)) / V;
+      const b0 = zLo + ((zHi - zLo) * j) / V; const b1 = zLo + ((zHi - zLo) * (j + 1)) / V;
       const s = scan(a0, a1, b0, b1, pitch0);
       // Optimistic key: what this cell could still turn out to hold. `bulge` is how far the true surface
       // departs from the cell's corner interpolant, measured on an rA-only lattice far finer than the query
@@ -471,6 +487,7 @@ export function surfaceToMeshMax(
     max, th: mTh, z: mZ, queries, rEvalsStruct, capped,
     structPitch: Number.isFinite(finestStruct) ? finestStruct : pitch0 / structN,
     structPitchUniform: uniformStruct,
+    overCount, overZHist, zLo, zHi,
     secs: (Date.now() - tStart) / 1000,
     hotLeaves,
   };

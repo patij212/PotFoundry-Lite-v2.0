@@ -113,6 +113,8 @@ describe('STRATA facet truth', () => {
     const H2STRUCTN = Math.round(envF('PF_FT_H2STRUCTN', 48));
     const H2LINES = Math.round(envF('PF_FT_H2LINES', 5));
     const H2SECS = envF('PF_FT_H2SECS', 900);
+    const H2ZMIN = envF('PF_FT_ZMIN', 0);
+    const H2ZMAX = envF('PF_FT_ZMAX', H);
     const tag = process.env.PF_FT_TAG ?? STYLE;
     if (stlPath === '') throw new Error('PF_FT_STL is required');
 
@@ -196,6 +198,7 @@ describe('STRATA facet truth', () => {
       const h2 = surfaceToMeshMax(rA, loc.dist, {
         H, tol: TOL, coveragePitch: H2PITCH, minPitch: H2MINPITCH, structN: H2STRUCTN,
         structLines: H2LINES, budget: H2BUDGET, timeBudgetMs: H2SECS * 1000,
+        zMin: H2ZMIN, zMax: H2ZMAX,
         onProgress: (frac, q, mx) => {
           if (Math.round(frac * 512) % 64 !== 0) return;
           // eslint-disable-next-line no-console
@@ -216,7 +219,9 @@ describe('STRATA facet truth', () => {
         `  WITNESSED max : ${um(h2.max)} um   ${h2.max <= TOL ? 'within TOL' : 'EXCEEDS TOL'}   [brute-force re-check of this point: ${um(brute)} um]`,
         `    at th=${h2.th.toFixed(6)} z=${h2.z.toFixed(5)}  r=${rw.toFixed(5)}  nearest tri ${dt.tri}`,
         `    nearest-tri locus ${locus(dt.tri)}`,
-        `  leaf cells still over TOL at max depth : ${h2.hotLeaves}`);
+        `  leaf cells still over TOL at max depth : ${h2.hotLeaves}`,
+        `  audited z band ${h2.zLo.toFixed(2)}..${h2.zHi.toFixed(2)} mm   samples over TOL: ${h2.overCount} / ${h2.queries}`,
+        `  z-histogram of exceedances (24 bins, base -> rim): ${h2.overZHist.join(' ')}`);
     }
 
     // ══════════════════ A/B against the old ruler on the same triangles ══════════════════
