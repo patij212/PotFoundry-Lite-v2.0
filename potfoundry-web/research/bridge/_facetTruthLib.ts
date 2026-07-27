@@ -31,6 +31,8 @@ export interface FacetTruthOpts {
   sampleCap?: number;
   /** C0 z-steps from `detectZJumps`; the closure includes the tread wall at each */
   zJumps?: number[];
+  /** C0 theta-jumps from `detectThetaJumps`; the closure includes the curtain at each */
+  thJumps?: number[];
 }
 
 /** Exact farthest-point-from-the-three-vertices radius: circumradius if acute, else half the longest edge. */
@@ -96,6 +98,42 @@ export function detectZJumps(rA: RadiusFn, H: number, minJump = 5e-4, nScan = 20
 }
 
 /**
+ * Locate genuine C0 THETA-jumps of rA (curtain loci), the theta analogue of `detectZJumps`.
+ *
+ * Needed for the same reason: at a theta-jump the solid carries a vertical CURTAIN spanning [r-, r+], the
+ * mesher emits it, and scoring those facets against the bare graph reports about the jump height as error.
+ * Without this, H1 over-states on any style whose features are theta-discontinuous.
+ */
+export function detectThetaJumps(rA: RadiusFn, H: number, minJump = 5e-4, nScan = 20000): number[] {
+  const probes = [0.07 * H, 0.31 * H, 0.53 * H, 0.77 * H, 0.94 * H];
+  const eps = 1e-7;
+  const TAU2 = 2 * Math.PI;
+  const out: number[] = [];
+  let runBest = -1; let runVal = 0;
+  for (let i = 0; i < nScan; i += 1) {
+    const th = (TAU2 * i) / nScan;
+    let j = 0;
+    for (const z of probes) j = Math.max(j, Math.abs(rA(th + eps, z) - rA(th - eps, z)));
+    if (j > minJump) {
+      if (j > runVal) { runVal = j; runBest = th; }
+    } else if (runBest >= 0) { out.push(runBest); runBest = -1; runVal = 0; }
+  }
+  if (runBest >= 0) out.push(runBest);
+  return out;
+}
+
+/** Distance from p to the vertical CURTAIN at a theta-jump: the closure spans every radius between limits. */
+function distToThetaWall(rA: RadiusFn, thJump: number, px: number, py: number, pz: number, H: number): number {
+  const rp = Math.hypot(px, py);
+  const zc = pz < 0 ? 0 : pz > H ? H : pz;
+  const e = 1e-7;
+  const a = rA(thJump + e, zc); const b = rA(thJump - e, zc);
+  const lo = Math.min(a, b); const hi = Math.max(a, b);
+  const r = rp < lo ? lo : rp > hi ? hi : rp;
+  return Math.hypot(px - r * Math.cos(thJump), py - r * Math.sin(thJump), pz - zc);
+}
+
+/**
  * Distance from p to the vertical TREAD WALL at a C0 z-step: the solid's boundary there spans every radius
  * between the one-sided limits, and the mesher emits exactly that annulus. Correct geometry, not error.
  */
@@ -125,6 +163,7 @@ export function distLocal(
   px: number, py: number, pz: number,
   seedTh: number, seedZ: number, step0: number, iters: number,
   zJumps: number[] = [],
+  thJumps: number[] = [],
 ): LocalResult {
   let th = seedTh; let z = seedZ;
   const rNom = Math.hypot(px, py) || 1;
@@ -154,6 +193,10 @@ export function distLocal(
   for (const zj of zJumps) {
     const dw = distToZWall(rA, zj, px, py, pz);
     if (dw < best) { best = dw; z = zj; th = Math.atan2(py, px); }
+  }
+  for (const tj of thJumps) {
+    const dw = distToThetaWall(rA, tj, px, py, pz, H);
+    if (dw < best) { best = dw; th = tj; z = pz < 0 ? 0 : pz > H ? H : pz; }
   }
   return { d: best, th, z };
 }
@@ -247,7 +290,7 @@ export function certifyTriangle(
     // The radial foot over-states d on a slope, and an over-statement here costs a factor of 4 in work,
     // so tighten the witness with the local polish before deciding to subdivide again.
     if (mx > tol * 0.25) {
-      const pol = distLocal(rA, H, mxx, mxy, mxz, Math.atan2(mxy, mxx), mxz < 0 ? 0 : mxz > H ? H : mxz, Math.max(mx, tol), 40, opts.zJumps ?? []);
+      const pol = distLocal(rA, H, mxx, mxy, mxz, Math.atan2(mxy, mxx), mxz < 0 ? 0 : mxz > H ? H : mxz, Math.max(mx, tol), 40, opts.zJumps ?? [], opts.thJumps ?? []);
       if (pol.d < mx) mx = pol.d;
       if (mx + rho <= tol) break;
     }

@@ -52,7 +52,7 @@ import { buildRadiusFn } from './labkit';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
-import { certifyTriangle, detectZJumps, distGlobal, pickLocatorCell, surfaceToMeshMax } from './_facetTruthLib';
+import { certifyTriangle, detectThetaJumps, detectZJumps, distGlobal, pickLocatorCell, surfaceToMeshMax } from './_facetTruthLib';
 
 const RUN = process.env.PF_STRATA_FT === '1';
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -127,6 +127,7 @@ describe('STRATA facet truth', () => {
 
     const { xyz, nTri } = readBinarySTL(stlPath);
     const zJumps = detectZJumps(rA, H);
+    const thJumps = detectThetaJumps(rA, H);
     const t0 = Date.now();
     const locus = (t: number): string => {
       if (t < 0) return 'n/a';
@@ -142,7 +143,15 @@ describe('STRATA facet truth', () => {
     const lines: string[] = ['', `===== STRATA FACET TRUTH: ${STYLE} =====`,
       `stl: ${stlPath}  (${nTri} triangles)`,
       `params ${JSON.stringify(styleParams)}`,
-      `TOL ${um(TOL)} um   detected C0 z-steps: ${zJumps.length}${zJumps.length > 0 ? ` at z=${zJumps.map((z) => z.toFixed(3)).join(',')}` : ''}`];
+      `TOL ${um(TOL)} um   detected C0 z-steps: ${zJumps.length}   theta-jumps: ${thJumps.length}`];
+    // PF_FT_PROBE=1 — report only the located discontinuities and stop. Cheap enough to ask "does this
+    // style even have theta-jumps?" without paying for a full audit.
+    if (process.env.PF_FT_PROBE === '1') {
+      // eslint-disable-next-line no-console
+      console.log(`PROBE ${STYLE}: zSteps ${zJumps.length} [${zJumps.map((z) => z.toFixed(2)).join(' ')}]  thetaJumps ${thJumps.length} [${thJumps.slice(0, 12).map((t) => t.toFixed(4)).join(' ')}${thJumps.length > 12 ? ' ...' : ''}]`);
+      expect(nTri).toBeGreaterThan(0);
+      return;
+    }
 
     // ══════════════════ H1 — MESH -> SURFACE, certified 1-Lipschitz bound ══════════════════
     if (DO_H1) {
@@ -156,7 +165,7 @@ describe('STRATA facet truth', () => {
         const o = t * 9;
         const v = certifyTriangle(rA,
           xyz[o], xyz[o + 1], xyz[o + 2], xyz[o + 3], xyz[o + 4], xyz[o + 5], xyz[o + 6], xyz[o + 7], xyz[o + 8],
-          { H, tol: TOL, nMax: NMAX, sampleCap: 4e6, zJumps });
+          { H, tol: TOL, nMax: NMAX, sampleCap: 4e6, zJumps, thJumps });
         samples += v.samples;
         if (v.bound > worstUB) { worstUB = v.bound; worstUBTri = t; }
         if (v.witnessed > worstWit) { worstWit = v.witnessed; worstWitTri = t; wx = v.px; wy = v.py; wz = v.pz; }
