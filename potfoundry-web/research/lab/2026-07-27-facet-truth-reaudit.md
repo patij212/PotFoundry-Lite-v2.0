@@ -121,17 +121,42 @@ _(table filled as rows complete — no row's status changes before its number is
 Sweep config: TOL 10 µm · H2 coverage pitch 40 µm · H2 refinement floor 2.5 µm · H2 phase-B wall-clock cap
 300 s (so an H2 number marked *truncated* is a floor, not a converged value) · old-ruler A/B on every row.
 
-| style | tris | old ruler | H1 certified bound | H2 witnessed | verdict |
-|---|---|---|---|---|---|
-| LowPolyFacet | 137,480 | 5.000 | **10.000 PASS** (0 over, 0 uncertified) | **4.307** (brute-confirmed; truncated, floor) | **stands** |
+| style | tris | old ruler | H1 certified bound | H2 witnessed (floor) | H2 resolving power | verdict |
+|---|---|---|---|---|---|---|
+| LowPolyFacet | 137,480 | 5.000 | **10.000 PASS** — 0 over, 0 uncertified, 137,480/137,480 audited | **4.307** (brute-confirmed) | 5.24 µm | **stands** |
+| SuperellipseMorph | 155,824 | 4.999 | **10.000 PASS** — 0 over, 0 uncertified, 155,824/155,824 audited | **5.009** (brute-confirmed) | 12.86 µm | **stands** |
 
-**LowPolyFacet stands.** Both directions clear 10 µm, and the H1 certificate is genuine — every triangle
-carries a rigorous bound, none was left uncertified. Worth stating plainly because it is evidence about the
-instrument as much as the mesh: this ruler does not simply read high on everything (V6 made the same point
-synthetically). Cost 276 s / 390 M `rA` evals for 137 k triangles.
+Both rows clear 10 µm in both directions with a genuine certificate: every triangle carries a rigorous
+bound and none was left uncertified. Worth stating plainly, because it is evidence about the instrument as
+much as about the meshes — this ruler does not simply read high on everything, which V6 also showed
+synthetically. On these two smooth styles the old ruler was not wrong.
 
-Caveat carried with the number: H2's resolving power here was 5.24 µm, so the claim is "no unrepresented
-feature materially wider than ~5 µm", not "no unrepresented feature".
+### Sequencing change, and why
+
+H1's certificate cost 609 s for SuperellipseMorph's 156 k triangles, which extrapolates to ~2.2 h on the
+2 M-triangle rows — a full-certificate sweep across nineteen styles would not finish. H1 is also **not**
+where the suspected defect lives: V3 established that H1 under-reports absent relief by the feature's
+width/height ratio. So H2 now runs across all nineteen rows first, and H1 certificates follow as a second
+pass. The certificates already earned are preserved as `<style>.h1h2.report.txt`.
+
+## 5b. Defects found in THIS auditor (recorded, because they are the same failure class)
+
+Four, three of them capable of producing a false PASS. They are listed because "the ruler was never
+validated" is precisely what put the original scorecard in question, and this instrument should not be
+granted the trust that was wrongly extended to the last one.
+
+1. **H1 reported a partial sweep as PASS.** On hitting the sample cap it broke out of the triangle loop and
+   still printed `0 / nTri` exceedances. Now reports `audited/nTri` and downgrades to INCOMPLETE — an
+   unseen triangle is *unknown*, not passing.
+2. **Two H2 sampler drafts reported a false PASS by budget starvation** (§3): depth-first refinement that
+   never finished covering the domain. Phase-A coverage is now unconditional.
+3. **Three sweeps ran concurrently** — `pkill` does not exist on Git Bash, so the kill silently failed.
+   They competed for CPU and clobbered each other's logs; one style produced no report at all. The sweep
+   now takes a `mkdir` lock and refuses to start a second copy. Everything measured under that contention
+   was discarded and re-run.
+4. **The locator's buckets were sized from triangle scale, not memory budget** — 2.68 mm buckets holding
+   ~33 triangles each, so every nearest-point query brute-forced ~890 triangle tests at 24 µs. A
+   performance bug, not a correctness one, but it was about to turn the sweep into a multi-day run.
 
 ## 6. The fix that follows from the diagnosis (designed, NOT yet measured)
 

@@ -64,6 +64,9 @@ for row in "${ROWS[@]}"; do
   PF_FT_TAG="$style" \
   PF_FT_TOL_UM="${PF_FT_TOL_UM:-10}" \
   PF_FT_OLDRULER="${PF_FT_OLDRULER:-0}" \
+  PF_FT_H1="${PF_FT_H1:-1}" \
+  PF_FT_H2="${PF_FT_H2:-1}" \
+  PF_FT_H1SECS="${PF_FT_H1SECS:-1500}" \
   PF_FT_H2SECS="${PF_FT_H2SECS:-300}" \
   PF_FT_H2MINPITCH_UM="${PF_FT_H2MINPITCH_UM:-2.5}" \
   npx vitest run --config vitest.strata.config.ts research/bridge/_strataFacetTruth.test.ts \

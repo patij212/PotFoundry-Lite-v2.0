@@ -211,7 +211,7 @@ describe('STRATA facet truth', () => {
       const brute = loc.bruteDist(wxp, wyp, h2.z);
       lines.push('',
         '--- H2  SURFACE -> MESH   (witnessed lower bound; every reading is an exact point-to-triangle distance) ---',
-        `  ${(h2.queries / 1e6).toFixed(1)}M locator queries, ${(h2.rEvalsStruct / 1e6).toFixed(0)}M structure evals, ${h2.secs.toFixed(0)}s   structure pitch ${um(h2.structPitch)} um (resolving power)   locator cell ${cell.toFixed(3)} mm`,
+        `  ${(h2.queries / 1e6).toFixed(1)}M locator queries, ${(h2.rEvalsStruct / 1e6).toFixed(0)}M structure evals, ${h2.secs.toFixed(0)}s   structure pitch ${um(h2.structPitchUniform)} um UNIFORM (the resolving-power guarantee) / ${um(h2.structPitch)} um finest reached   locator cell ${cell.toFixed(3)} mm`,
         `  ${h2.capped ? 'phase-B refinement TRUNCATED by budget (phase-A coverage of the whole surface still completed, so this is a floor)' : 'refinement ran to exhaustion — no cell left that could beat the reported max'}`,
         `  WITNESSED max : ${um(h2.max)} um   ${h2.max <= TOL ? 'within TOL' : 'EXCEEDS TOL'}   [brute-force re-check of this point: ${um(brute)} um]`,
         `    at th=${h2.th.toFixed(6)} z=${h2.z.toFixed(5)}  r=${rw.toFixed(5)}  nearest tri ${dt.tri}`,

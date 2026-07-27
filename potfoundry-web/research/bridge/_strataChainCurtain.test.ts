@@ -2410,11 +2410,98 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
     let hausMax = 0; let hausT = -1; let hausTris = 0; let hausSamples = 0;
     let hausTh = 0; let hausZ = 0; let hausCand = 0; let hausCandTot = 0;
     let hausMax1 = 0; let hausT1 = -1;
+    let bfDone = 0; let bfWorstDiff = 0; let hausRingCap = 0; let hausSpatial = false; let hausPruned = 0;
     const HAUS_RING = Math.round(envF('PF_CB_HAUS_RING', 1)); // 1 = the recorded 1-ring; >1 widens toward true distance-to-mesh
     if (process.env.PF_CB_HAUS === '1') {
+      // ═══════════ SPATIAL candidate search — the fix for a defect that survived eight rounds ═══════════
+      // The candidate set used to be the n-RING, i.e. TOPOLOGICAL neighbours. On a double-valued wall the two sheets
+      // are 3 nm apart SPATIALLY but far apart TOPOLOGICALLY: they connect only the long way round, through the
+      // curtain strip and possibly around a merge. So the triangle holding the correct sheet was never in the 1-ring
+      // OR the 3-ring — which is exactly why widening the ring bought 1.0× and looked like "the bound is tight".
+      // It was not tight; it was searching the wrong space.
+      // DEMONSTRATED, not argued: brute force over all 182,710 triangles of the emitted STL puts the plane-MAX
+      // argmax's own P⁺ surface point 0.003 µm from triangle #165230 (edges 36.9/490.5/498.5 µm) — character for
+      // character the triangle this audit had been charging 598.071 µm. See research/bridge/_strataArgmaxTruth.test.ts.
+      // THIS CANNOT HIDE A MISSING SHEET, and the reason is the same one that made the ring version safe: an unmeshed
+      // cliff has no mesh anywhere near it — spatially or otherwise — so it still reads the full jump. A spatial
+      // search only ever finds geometry the mesh ACTUALLY CONTAINS; it cannot invent a sheet that is not there.
+      // AND IT IS VALIDATED AGAINST BRUTE FORCE IN-RUN (PF_CB_HAUS_BF=K): K queries are answered both ways and the
+      // worst disagreement is reported. A spatial search lowers numbers across the board, which is also what a
+      // goalpost-move would do — agreement with an independent exhaustive search is what separates the two.
+      const HCELL = envF('PF_CB_HAUS_CELL', 1.0);       // mm — uniform grid cell
+      const HBF = Math.round(envF('PF_CB_HAUS_BF', 0)); // validate this many queries against brute force
+      let gxLo = Infinity; let gyLo = Infinity; let gzLo = Infinity;
+      let gxHi = -Infinity; let gyHi = -Infinity; let gzHi = -Infinity;
+      for (const t of liveIdx) for (const v of [ta[t], tb[t], tc[t]]) {
+        if (vx[v] < gxLo) gxLo = vx[v]; if (vx[v] > gxHi) gxHi = vx[v];
+        if (vy[v] < gyLo) gyLo = vy[v]; if (vy[v] > gyHi) gyHi = vy[v];
+        if (vz[v] < gzLo) gzLo = vz[v]; if (vz[v] > gzHi) gzHi = vz[v];
+      }
+      const gnx = Math.max(1, Math.ceil((gxHi - gxLo) / HCELL) + 1);
+      const gny = Math.max(1, Math.ceil((gyHi - gyLo) / HCELL) + 1);
+      const gnz = Math.max(1, Math.ceil((gzHi - gzLo) / HCELL) + 1);
+      const cix = (x: number): number => Math.max(0, Math.min(gnx - 1, Math.floor((x - gxLo) / HCELL)));
+      const ciy = (y: number): number => Math.max(0, Math.min(gny - 1, Math.floor((y - gyLo) / HCELL)));
+      const ciz = (z: number): number => Math.max(0, Math.min(gnz - 1, Math.floor((z - gzLo) / HCELL)));
+      const cellIdx = (ix: number, iy: number, iz: number): number => (ix * gny + iy) * gnz + iz;
+      const nCells = gnx * gny * gnz;
+      const triBox = (t: number): [number, number, number, number, number, number] => {
+        const a2 = ta[t]; const b2 = tb[t]; const c2 = tc[t];
+        return [cix(Math.min(vx[a2], vx[b2], vx[c2])), cix(Math.max(vx[a2], vx[b2], vx[c2])),
+          ciy(Math.min(vy[a2], vy[b2], vy[c2])), ciy(Math.max(vy[a2], vy[b2], vy[c2])),
+          ciz(Math.min(vz[a2], vz[b2], vz[c2])), ciz(Math.max(vz[a2], vz[b2], vz[c2]))];
+      };
+      const counts = new Int32Array(nCells + 1);
+      for (const t of liveIdx) { const [x0, x1, y0, y1, z0, z1] = triBox(t); for (let ix = x0; ix <= x1; ix += 1) for (let iy = y0; iy <= y1; iy += 1) for (let iz = z0; iz <= z1; iz += 1) counts[cellIdx(ix, iy, iz)] += 1; }
+      const starts = new Int32Array(nCells + 1);
+      for (let i = 0; i < nCells; i += 1) starts[i + 1] = starts[i] + counts[i];
+      const items = new Int32Array(starts[nCells]);
+      const fillPos = starts.slice(0, nCells);
+      for (const t of liveIdx) { const [x0, x1, y0, y1, z0, z1] = triBox(t); for (let ix = x0; ix <= x1; ix += 1) for (let iy = y0; iy <= y1; iy += 1) for (let iz = z0; iz <= z1; iz += 1) { const c2 = cellIdx(ix, iy, iz); items[fillPos[c2]] = t; fillPos[c2] += 1; } }
+      const stamp = new Int32Array(ta.length); let gen = 0;
+      /** exact nearest distance over the whole mesh: expand Chebyshev rings until the best found cannot be beaten.
+       *  A cell at ring r has every point at least (r−1)·h away, so once best ≤ r·h nothing unscanned can win. */
+      hausSpatial = true;
+      const nearestSpatial = (px: number, py: number, pz: number): number => {
+        const jx = cix(px); const jy = ciy(py); const jz = ciz(pz);
+        gen += 1;
+        let best = Infinity;
+        const maxR = Math.max(gnx, gny, gnz);
+        for (let r = 0; r <= maxR; r += 1) {
+          for (let ix = jx - r; ix <= jx + r; ix += 1) {
+            if (ix < 0 || ix >= gnx) continue;
+            const onX = ix === jx - r || ix === jx + r;
+            for (let iy = jy - r; iy <= jy + r; iy += 1) {
+              if (iy < 0 || iy >= gny) continue;
+              const onY = iy === jy - r || iy === jy + r;
+              for (let iz = jz - r; iz <= jz + r; iz += 1) {
+                if (iz < 0 || iz >= gnz) continue;
+                if (r > 0 && !onX && !onY && iz !== jz - r && iz !== jz + r) continue; // shell only
+                const c2 = cellIdx(ix, iy, iz);
+                for (let k = starts[c2]; k < starts[c2 + 1]; k += 1) {
+                  const u = items[k];
+                  if (stamp[u] === gen) continue;
+                  stamp[u] = gen;
+                  const d = d2Tri(px, py, pz, ta[u], tb[u], tc[u]);
+                  if (d < best) best = d;
+                }
+              }
+            }
+          }
+          if (best <= (r * HCELL) * (r * HCELL)) return Math.sqrt(best);
+          if (r === maxR) hausRingCap += 1;
+        }
+        return Math.sqrt(best);
+      };
+      // vertex→triangle map, retained ONLY to compute the topological 1-ring number for the search-space A/B.
       const vTri = new Map<number, number[]>();
       const addVT2 = (v: number, t: number): void => { const l = vTri.get(v); if (l === undefined) vTri.set(v, [t]); else l.push(t); };
       for (const t of liveIdx) { addVT2(ta[t], t); addVT2(tb[t], t); addVT2(tc[t], t); }
+      const nearestBrute = (px: number, py: number, pz: number): number => {
+        let best = Infinity;
+        for (const u of liveIdx) { const d = d2Tri(px, py, pz, ta[u], tb[u], tc[u]); if (d < best) best = d; }
+        return Math.sqrt(best);
+      };
       for (let li = 0; li < liveIdx.length; li += 1) {
         if (sags[li] <= TOL) continue;
         const t = liveIdx[li];
@@ -2428,15 +2515,11 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         // actually contains. Widening the ring can only ever DECREASE the reported distance toward the true one, so
         // this is a completeness fix, not a relaxation — and sufficiency is checkable by running two depths and
         // confirming the number has stopped moving. PF_CB_HAUS_RING=1 restores the recorded behaviour exactly.
-        let cand = new Set<number>();
-        for (const v of [a, b, c]) for (const u of vTri.get(v) ?? []) if (alive[u]) cand.add(u);
-        const ring1 = new Set<number>(cand); // kept so ONE run reports both depths — the A/B, uncconfounded by grid
-        for (let ring = 1; ring < HAUS_RING; ring += 1) {
-          const nxt = new Set<number>(cand);
-          for (const u of cand) for (const v of [ta[u], tb[u], tc[u]]) for (const w of vTri.get(v) ?? []) if (alive[w]) nxt.add(w);
-          cand = nxt;
-        }
-        hausCandTot += cand.size;
+        // The 1-RING is still computed, but only so ONE run reports BOTH searches on the SAME mesh. That A/B is the
+        // evidence that the change is a search-space correction and not a relaxation of the metric.
+        const ring1 = new Set<number>();
+        for (const v of [a, b, c]) for (const u of vTri.get(v) ?? []) if (alive[u]) ring1.add(u);
+        hausCandTot += ring1.size;
         const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
         const le = Math.max(eLen(a, b), eLen(b, c), eLen(c, a));
         const n = Math.max(AUD_NMIN, Math.min(AUD_NMAX, Math.ceil(le / AUD_HS)));
@@ -2447,18 +2530,27 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
           const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
           const r = R(canon(theta), z);
           const px = r * Math.cos(theta); const py = r * Math.sin(theta);
-          let best = Infinity; let best1 = Infinity;
-          for (const u of cand) {
-            const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]);
-            if (d < best) best = d;
-            if (d < best1 && ring1.has(u)) best1 = d;
-          }
+          // EXACT PRUNE, not an approximation: triangle t is itself part of the mesh, so
+          // distance-to-mesh ≤ distance-to-t. If that bound is already below the running worst, this sample cannot
+          // raise the maximum and the spatial query can be skipped outright. Most samples sit close to their own
+          // triangle, so this is what makes a whole-mesh search affordable at a converging budget.
+          const dSelf = Math.sqrt(d2Tri(px, py, z, a, b, c));
           hausSamples += 1;
-          if (best > worst) { worst = best; wTh = theta; wZ = z; }
+          // the topological 1-ring value, kept only for the search-space A/B on this same mesh
+          let best1 = Infinity;
+          for (const u of ring1) { const d = d2Tri(px, py, z, ta[u], tb[u], tc[u]); if (d < best1) best1 = d; }
           if (best1 > worst1) worst1 = best1;
+          if (dSelf <= worst) { hausPruned += 1; continue; }
+          const best = nearestSpatial(px, py, z);
+          if (HBF > 0 && bfDone < HBF && ((i * (n + 1) + j) % 97 === 0)) {
+            bfDone += 1;
+            const bf = nearestBrute(px, py, z);
+            const diff = Math.abs(bf - best);
+            if (diff > bfWorstDiff) bfWorstDiff = diff;
+          }
+          if (best > worst) { worst = best; wTh = theta; wZ = z; }
         }
-        const wsq = Math.sqrt(worst);
-        if (wsq > hausMax) { hausMax = wsq; hausT = t; hausTh = wTh; hausZ = wZ; hausCand = cand.size; }
+        if (worst > hausMax) { hausMax = worst; hausT = t; hausTh = wTh; hausZ = wZ; hausCand = ring1.size; }
         const wsq1 = Math.sqrt(worst1);
         if (wsq1 > hausMax1) { hausMax1 = wsq1; hausT1 = t; }
       }
@@ -2659,7 +2751,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const zStepD = zSteps.length === 0 ? Infinity : Math.min(...zSteps.map((zs) => Math.abs(zA - zs)));
       const zEdgeD = Math.min(zA, H - zA);
       if (!Number.isFinite(thL)) {
-        return [`  WHY-BIG ${label}: argmax θ=${thA.toFixed(6)} z=${zA.toFixed(4)}  — NO locus within ±${PLACE_WIN} rad ⇒ NOT a jump artifact`,
+        return [`  WHY-BIG ${label}: argmax θ=${thA.toPrecision(17)} z=${zA.toPrecision(17)}  — NO locus within ±${PLACE_WIN} rad ⇒ NOT a jump artifact`,
           `      nearest z-step ${zStepD === Infinity ? 'n/a' : `${zStepD.toFixed(4)} mm`}, distance to z-cap ${zEdgeD.toFixed(4)} mm, tri z-span ${(Math.max(vz[a], vz[b], vz[c]) - Math.min(vz[a], vz[b], vz[c])).toFixed(4)} mm`];
       }
       let dth = canon(thA) - thL; if (dth > Math.PI) dth -= TWO_PI; else if (dth < -Math.PI) dth += TWO_PI;
@@ -2668,7 +2760,7 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       const jump = Math.abs(R(canon(thL + BR_EPS), zA) - R(canon(thL - BR_EPS), zA));
       const wrongSide = Math.sign(dth) !== Math.sign(dthC) && Math.sign(dth) !== 0;
       const arc = Math.abs(dth) * rHere;
-      return [`  WHY-BIG ${label}: argmax θ=${thA.toFixed(6)} z=${zA.toFixed(4)}; TRUE locus θ=${thL.toFixed(6)} (jump ${um(jump)} µm)`,
+      return [`  WHY-BIG ${label}: argmax θ=${thA.toPrecision(17)} z=${zA.toPrecision(17)}; TRUE locus θ=${thL.toPrecision(17)} (jump ${um(jump)} µm)`,
         `      sample is ${um(arc)} µm of arc ${dth > 0 ? 'ABOVE' : 'BELOW'} the locus; triangle centroid is ${dthC > 0 ? 'ABOVE' : 'BELOW'} ⇒ ${wrongSide ? `WRONG-SIDE (a) — strip is ${um(arc)} µm wide vs the ${um(BRSKIP_BAND)} µm BRSKIP band ⇒ ${arc > BRSKIP_BAND ? 'OUTSIDE the band, so BRSKIP cannot forgive it' : 'inside the band'}` : 'SAME SIDE ⇒ not a wrong-side strip; suspect (b) unmeshed cliff or (c) instrument gap'}`,
         `      nearest z-step ${zStepD === Infinity ? 'n/a' : `${zStepD.toFixed(4)} mm`}, distance to z-cap ${zEdgeD.toFixed(4)} mm, tri z-span ${(Math.max(vz[a], vz[b], vz[c]) - Math.min(vz[a], vz[b], vz[c])).toFixed(4)} mm`];
     };
@@ -2746,7 +2838,8 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
       `  boundary edges     : ${boundary}   ${STAGE === 'solid' ? (boundary === 0 ? 'OK — CLOSED SOLID' : 'FAIL — open') : '(ring ⇒ top+bottom only)'}   loops ${loops.length}`,
       `  soup: ${soup.length} tris = ${liveIdx.length} outer wall + ${treadTris} treads + ${capTris} caps`,
       `--- FIDELITY ---`,
-      `  HEADLINE MAX ${um(headlineMax)} µm  ${headlineMax <= TOL ? 'PASS' : 'FAIL'}   = max(adaptive ${um(maxSag)}, fixed-${oracleN} ${um(maxFixed)}, tail-${tailN} ${um(tailMax)})`,
+      `  HEADLINE MAX ${um(headlineMax)} µm  ${headlineMax <= TOL ? 'PASS' : 'FAIL'}   = max(adaptive ${um(maxSag)}, fixed-${oracleN} ${um(maxFixed)}, tail-${tailN} ${um(tailMax)})   [PLANE ruler]`,
+      `  NOTE ON THE PLANE RULER: it measures |analytic point − the triangle's OWN plane|. On a curved DOUBLE-VALUED wall it structurally over-reads by up to the full jump height, because a sample that has crossed to the other sheet is charged to a triangle that does not own it. DEMONSTRATED: brute force puts the plane-MAX triangle 0.003 µm from the surface point it was charged ${um(TOL * 60)}+ µm for. It is kept in the headline unchanged so the other 19 rows stay comparable; the Hausdorff line below is the product bar.`,
       `  ruler spread ${(headlineMax / Math.max(1e-9, Math.min(maxSag, maxFixed))).toFixed(1)}×  ${headlineMax > 4 * Math.min(maxSag, maxFixed) ? '*** LARGE SPREAD = UNCONFORMED h0 FEATURE (a sampling grid stepped over a jump wedge) ***' : 'consistent'}`,
       `  --- adaptive oracle (≤${AUD_HS}mm sample pitch, n∈[${AUD_NMIN},${AUD_NMAX}]) ---`,
       `  MAX ${um(maxSag)} µm  ${maxSag <= TOL ? 'PASS' : 'FAIL'}   p99 ${um(q(0.99))}  p50 ${um(q(0.5))}  over-${TOL}mm ${over}/${sorted.length}`,
@@ -2778,7 +2871,10 @@ describe('STRATA conforming-bisection + θ-curtain', () => {
         : []),
       `  TAIL re-measure (worst ${order.length} @ oracle ${tailN}): MAX ${um(tailMax)} µm  ${tailMax <= TOL ? 'PASS' : 'FAIL'}`,
       ...(process.env.PF_CB_HAUS === '1'
-        ? [`  HAUSDORFF re-measure (surface → NEAREST MESH POINT, all ${hausTris} plane-over-tol tris, ${hausSamples} samples, ${HAUS_RING}-RING candidates avg ${hausTris > 0 ? (hausCandTot / hausTris).toFixed(1) : '0'}): MAX ${um(hausMax)} µm  ${hausMax <= TOL ? 'PASS' : 'FAIL'}`,
+        ? [`  HAUSDORFF re-measure (surface → NEAREST MESH POINT, all ${hausTris} plane-over-tol tris, ${hausSamples} samples, ${hausSpatial ? 'SPATIAL grid search over the WHOLE mesh' : 'topological ring'}): MAX ${um(hausMax)} µm  ${hausMax <= TOL ? 'PASS' : 'FAIL'}`,
+           `    SEARCH-SPACE A/B on the SAME mesh: topological 1-ring ${um(hausMax1)} µm  vs  SPATIAL ${um(hausMax)} µm (${hausMax > 0 ? (hausMax1 / hausMax).toFixed(1) : 'n/a'}×). The two sheets of a double-valued wall are nanometres apart SPATIALLY but far apart TOPOLOGICALLY, so no ring reaches the correct sheet — which is why widening the ring bought 1.0× and looked tight.`,
+           `    VALIDATION vs exhaustive BRUTE FORCE over every live triangle: ${bfDone} queries cross-checked (${hausPruned} samples pruned by the exact distance-to-own-triangle bound), worst disagreement ${um(bfWorstDiff)} µm  ${bfDone === 0 ? '(not run — set PF_CB_HAUS_BF=K)' : bfWorstDiff <= 1e-9 ? 'EXACT MATCH' : bfWorstDiff <= 1e-6 ? 'match to 1 nm' : '*** SPATIAL SEARCH DISAGREES WITH BRUTE FORCE ***'}${hausRingCap > 0 ? `; ring-cap hits ${hausRingCap}` : ''}`,
+           `    A spatial search cannot hide a missing sheet: an unmeshed cliff has no mesh anywhere near it, spatially or otherwise, and still reads the full jump. It only ever finds geometry the mesh actually contains.`,
            ...(HAUS_RING > 1 ? [`    RING A/B, same run same mesh: 1-ring MAX ${um(hausMax1)} µm  vs  ${HAUS_RING}-ring MAX ${um(hausMax)} µm  (${hausMax > 0 ? (hausMax1 / hausMax).toFixed(1) : 'n/a'}×)   — 1-ring is an UPPER BOUND on distance-to-mesh; if the two agree the wider set found nothing new and the bound was tight`,
              `    1-ring MAX-locus: ${locus(hausT1)}`] : []),
            `  HAUS-locus: ${locus(hausT)}   [${HAUS_RING}-ring candidates ${hausCand}; NOTE the candidate set is built from the indexed OUTER WALL only — tread annuli and caps are P3-soup and invisible to it]`,

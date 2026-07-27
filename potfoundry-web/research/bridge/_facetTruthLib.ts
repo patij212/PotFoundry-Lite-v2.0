@@ -226,7 +226,7 @@ export function certifyTriangle(
  * buckets so a sliver-heavy mesh cannot blow up memory.
  */
 export function pickLocatorCell(
-  xyz: ArrayLike<number>, idx: ArrayLike<number>, nF: number, maxBuckets = 1.2e7,
+  xyz: ArrayLike<number>, idx: ArrayLike<number>, nF: number, maxBuckets = 4e7,
 ): number {
   const stride = Math.max(1, Math.floor(nF / 2000));
   const lens: number[] = [];
@@ -247,14 +247,15 @@ export function pickLocatorCell(
   }
   lens.sort((p, q) => p - q);
   const med = lens.length > 0 ? lens[Math.floor(lens.length / 2)] : 1;
-  let cell = Math.min(3.0, Math.max(0.1, 3 * med));
   const dx = maxX - minX; const dy = maxY - minY; const dz = maxZ - minZ;
-  for (let k = 0; k < 40; k += 1) {
-    const buckets = (dx / cell + 2) * (dy / cell + 2) * (dz / cell + 2);
-    if (buckets <= maxBuckets) break;
-    cell *= 1.3;
-  }
-  return cell;
+  // Size the bucket as SMALL as the memory cap allows, not from the triangle scale. The locator's query
+  // cost is (buckets visited) x (triangles per bucket), and a mesh shell only occupies a thin sliver of its
+  // bounding box, so a bucket sized at a few median edges holds tens of triangles and every query
+  // degenerates towards brute force — measured at 24 us/query, ~15x off. The binding constraint is the
+  // bucket-count budget; the only reason not to go finer is that a triangle much larger than a bucket gets
+  // inserted into many of them, so keep a floor of half a median edge.
+  const cellFromBudget = Math.cbrt((dx * dy * dz) / maxBuckets);
+  return Math.max(cellFromBudget, 0.5 * med, 1e-3);
 }
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -306,7 +307,8 @@ export interface SurfaceToMeshResult {
   queries: number;
   rEvalsStruct: number;
   capped: boolean;
-  /** finest rA spacing actually used (mm) — the instrument's stated resolving power */ structPitch: number;
+  /** finest rA spacing reached anywhere (mm) — a best case, NOT a guarantee */ structPitch: number;
+  /** phase-A structure pitch, uniform over the whole surface — this is the actual resolving-power GUARANTEE */ structPitchUniform: number;
   /** cells that were still hot when the refinement floor was reached */ hotLeaves: number;
   secs: number;
 }
@@ -397,6 +399,7 @@ export function surfaceToMeshMax(
   // (unaffordable) uniform sweep at the finest pitch — the second way this routine produced a false PASS by
   // running out of budget. Refinement is therefore WORST-FIRST over an optimistic key.
   const U = 512; const V = 256;
+  const uniformStruct = Math.max((TAU * rNom) / U / structN, H / V / structN);
   const qTh0: number[] = []; const qTh1: number[] = []; const qZ0: number[] = []; const qZ1: number[] = [];
   const qPitch: number[] = []; const qKey: number[] = [];
   for (let i = 0; i < U; i += 1) {
@@ -415,6 +418,11 @@ export function surfaceToMeshMax(
     opts.onProgress?.((i + 1) / U, queries, max);
   }
 
+  // The phase-B clock starts HERE, not at entry. Sharing one deadline with phase A meant that on any style
+  // whose coverage pass ran long, the very first phase-B iteration was already over budget and refinement
+  // never ran at all — the run then reported "truncated" while having done zero worst-first work, which
+  // reads as a weaker result than it is and hides that the refinement stage was skipped entirely.
+  const tPhaseB = Date.now();
   // ── PHASE B — WORST-FIRST REFINEMENT of whatever budget remains. Binary max-heap over the optimistic
   // key; popping stops as soon as the best remaining key cannot beat the witnessed max, which is both the
   // correct termination and a large saving on well-meshed styles.
@@ -446,7 +454,7 @@ export function surfaceToMeshMax(
   };
   for (let i = 0; i < qKey.length; i += 1) push(qKey[i], qTh0[i], qTh1[i], qZ0[i], qZ1[i], qPitch[i]);
   while (hKey.length > 0) {
-    if (queries > budget || Date.now() - tStart > timeBudgetMs) { capped = true; break; }
+    if (queries > budget || Date.now() - tPhaseB > timeBudgetMs) { capped = true; break; }
     const key = hKey[0]; const a0 = hA0[0]; const a1 = hA1[0];
     const b0 = hB0[0]; const b1 = hB1[0]; const pitch = hP[0];
     pop();
@@ -462,6 +470,7 @@ export function surfaceToMeshMax(
   return {
     max, th: mTh, z: mZ, queries, rEvalsStruct, capped,
     structPitch: Number.isFinite(finestStruct) ? finestStruct : pitch0 / structN,
+    structPitchUniform: uniformStruct,
     secs: (Date.now() - tStart) / 1000,
     hotLeaves,
   };
