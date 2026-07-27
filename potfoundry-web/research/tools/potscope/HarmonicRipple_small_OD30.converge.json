@@ -1,0 +1,99 @@
+{
+  "magic": "potscope-converge/v1",
+  "variant": "HarmonicRipple_small_OD30",
+  "style": "HarmonicRipple",
+  "depth": 2,
+  "coarseStep": 1,
+  "fineDivisions": {
+    "angularDivisionsLog2": 8,
+    "verticalDivisionsLog2ByPatch": {
+      "outer-wall": 3,
+      "inner-wall": 3,
+      "top-rim": 3,
+      "bottom-top": 4,
+      "bottom-under": 4,
+      "drain-wall": 0
+    }
+  },
+  "coarseDivisions": {
+    "angularDivisionsLog2": 7,
+    "verticalDivisionsLog2ByPatch": {
+      "outer-wall": 2,
+      "inner-wall": 2,
+      "top-rim": 2,
+      "bottom-top": 3,
+      "bottom-under": 3,
+      "drain-wall": 0
+    }
+  },
+  "fineTrisTotal": 29184,
+  "coarseTrisTotal": 7424,
+  "fineGlobalMaxMm": 0.01057805125042296,
+  "coarseGlobalMaxMm": 0.04144912186861988,
+  "fineMs": 16261,
+  "coarseMs": 4184,
+  "fallbackCount": 0,
+  "calibration": {
+    "certGlobalMaxMm": 0.009999999776482582,
+    "certPerPatchMaxMm": {
+      "bottom-top": 0.004999999888241291,
+      "bottom-under": 0.004999999888241291,
+      "drain-wall": 0.0024999999441206455,
+      "inner-wall": 0.004999999888241291,
+      "outer-wall": 0.009999999776482582,
+      "top-rim": 0.004999999888241291
+    },
+    "calibrationRatio": 1.0578051486860836,
+    "tolerance": 2.5
+  },
+  "perPatch": {
+    "bottom-top": {
+      "fineMaxMm": 0.003801970878131623,
+      "coarseMaxMm": 0.01514677864102074,
+      "ratio": 3.9839281063784,
+      "verdict": "responsive",
+      "fineTris": 8192,
+      "coarseTris": 2048
+    },
+    "bottom-under": {
+      "fineMaxMm": 0.005184452551713164,
+      "coarseMaxMm": 0.02067485487048338,
+      "ratio": 3.9878568979576303,
+      "verdict": "responsive",
+      "fineTris": 8192,
+      "coarseTris": 2048
+    },
+    "drain-wall": {
+      "fineMaxMm": 0.0005523749233183465,
+      "coarseMaxMm": 0.0022088116980335574,
+      "ratio": 3.9987544777816932,
+      "verdict": "responsive",
+      "fineTris": 512,
+      "coarseTris": 256
+    },
+    "inner-wall": {
+      "fineMaxMm": 0.00470292756981759,
+      "coarseMaxMm": 0.01863126482872254,
+      "ratio": 3.9616312503501265,
+      "verdict": "responsive",
+      "fineTris": 4096,
+      "coarseTris": 1024
+    },
+    "outer-wall": {
+      "fineMaxMm": 0.01057805125042296,
+      "coarseMaxMm": 0.04144912186861988,
+      "ratio": 3.91840811576353,
+      "verdict": "responsive",
+      "fineTris": 4096,
+      "coarseTris": 1024
+    },
+    "top-rim": {
+      "fineMaxMm": 0.005123360733883263,
+      "coarseMaxMm": 0.02044448126696724,
+      "ratio": 3.990443446965972,
+      "verdict": "responsive",
+      "fineTris": 4096,
+      "coarseTris": 1024
+    }
+  }
+}

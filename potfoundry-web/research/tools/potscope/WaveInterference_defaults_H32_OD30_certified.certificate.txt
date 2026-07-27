@@ -1,0 +1,7 @@
+WaveInterference FULL DEFAULTS (relief 2.3 mm, edge fade 0.5 ACTIVE), H32/OD30/drain6 — CERTIFIED 2026-07-18
+certificate: CONVERGED 9,499,990 pm two-sided (geometric budget 9,500,000 pm; plusReserved 9,999,990 <= 10,000,000 pm = 0.01 mm), structural TRUE
+triangles=1267712 bytes=63385684
+artifactByteSha256=d359079b4ce8003586ae48ddc965c1f292a61e10f63e4b2ab193bb26289c2ed9
+parsedTriangleSetSha256=d24c6cdf55c0d75024a3a626659a26ddfacfe42a851a009a646b062d2d48d644
+config: 10xr288 — angular 2^10; outer wall base 2^5 + uniform 288-row rational ladder (odd factor 9) + fade-kink stations 3/20, 17/20 (290 rows); inner wall plain 2^8; envelope v5
+measured demand: vertical 87 um at 2^6 (knife-edge 9.5000005 um at 2^8), angular <= 10 um at 2^10; fade kinks certified via exact rational stations

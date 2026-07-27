@@ -1,0 +1,7 @@
+GothicArches p=1 (gaPointiness 1, gaDiamond 0, gaRelief 0.2), H32/OD30/drain6 — CERTIFIED 2026-07-17
+certificate: CONVERGED 9,499,997 pm two-sided (geometric budget 9,500,000 pm; plusReserved 9,999,997 <= 10,000,000 pm = 0.01 mm), structural TRUE
+triangles=304808 bytes=15240484
+artifactByteSha256=c0e7026dc5865b1dcc4b7a40f81923e16eff5d661a63ecc46bf063592b71f0f9
+parsedTriangleSetSha256=21f532a57a14bfa75f2abc06d28741e8e8cfae09c315f64b1d22143aef057dab
+config: gothic-p1-a8w5-chain (spike harness) + envelope v4 + maxDepth 30 + compiler v14 triangle-exact screen; matrix Addendum 20
+methodNote=3756ccaa566f387d

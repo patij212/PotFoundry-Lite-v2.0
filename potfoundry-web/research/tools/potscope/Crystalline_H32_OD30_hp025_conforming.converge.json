@@ -1,0 +1,1521 @@
+{
+  "magic": "potscope-converge/v1",
+  "variant": "Crystalline_H32_OD30_hp025_conforming",
+  "style": "Crystalline",
+  "depth": 2,
+  "coarseStep": 1,
+  "fineDivisions": {
+    "angularDivisionsLog2": 8,
+    "angularStations": {
+      "log2Denominator": 9,
+      "numerators": [
+        0,
+        3,
+        6,
+        12,
+        18,
+        24,
+        30,
+        32,
+        36,
+        42,
+        48,
+        54,
+        60,
+        61,
+        64,
+        66,
+        67,
+        72,
+        78,
+        84,
+        90,
+        96,
+        102,
+        108,
+        114,
+        120,
+        125,
+        126,
+        128,
+        131,
+        132,
+        138,
+        144,
+        150,
+        156,
+        160,
+        162,
+        168,
+        174,
+        180,
+        186,
+        189,
+        192,
+        195,
+        198,
+        204,
+        210,
+        216,
+        222,
+        224,
+        228,
+        234,
+        240,
+        246,
+        252,
+        253,
+        256,
+        258,
+        259,
+        264,
+        270,
+        276,
+        282,
+        288,
+        294,
+        300,
+        306,
+        312,
+        317,
+        318,
+        320,
+        323,
+        324,
+        330,
+        336,
+        342,
+        348,
+        352,
+        354,
+        360,
+        366,
+        372,
+        378,
+        381,
+        384,
+        387,
+        390,
+        396,
+        402,
+        408,
+        414,
+        416,
+        420,
+        426,
+        432,
+        438,
+        444,
+        445,
+        448,
+        450,
+        451,
+        456,
+        462,
+        468,
+        474,
+        480,
+        486,
+        492,
+        498,
+        504,
+        509,
+        510,
+        512,
+        515,
+        516,
+        522,
+        528,
+        534,
+        540,
+        544,
+        546,
+        552,
+        558,
+        564,
+        570,
+        573,
+        576,
+        579,
+        582,
+        588,
+        594,
+        600,
+        606,
+        608,
+        612,
+        618,
+        624,
+        630,
+        636,
+        637,
+        640,
+        642,
+        643,
+        648,
+        654,
+        660,
+        666,
+        672,
+        678,
+        684,
+        690,
+        696,
+        701,
+        702,
+        704,
+        707,
+        708,
+        714,
+        720,
+        726,
+        732,
+        736,
+        738,
+        744,
+        750,
+        756,
+        762,
+        765,
+        768,
+        771,
+        774,
+        780,
+        786,
+        792,
+        798,
+        800,
+        804,
+        810,
+        816,
+        822,
+        828,
+        829,
+        832,
+        834,
+        835,
+        840,
+        846,
+        852,
+        858,
+        864,
+        870,
+        876,
+        882,
+        888,
+        893,
+        894,
+        896,
+        899,
+        900,
+        906,
+        912,
+        918,
+        924,
+        928,
+        930,
+        936,
+        942,
+        948,
+        954,
+        957,
+        960,
+        963,
+        966,
+        972,
+        978,
+        984,
+        990,
+        992,
+        996,
+        1002,
+        1008,
+        1014,
+        1020,
+        1021,
+        1024,
+        1026,
+        1027,
+        1032,
+        1038,
+        1044,
+        1050,
+        1056,
+        1062,
+        1068,
+        1074,
+        1080,
+        1085,
+        1086,
+        1088,
+        1091,
+        1092,
+        1098,
+        1104,
+        1110,
+        1116,
+        1120,
+        1122,
+        1128,
+        1134,
+        1140,
+        1146,
+        1149,
+        1152,
+        1155,
+        1158,
+        1164,
+        1170,
+        1176,
+        1182,
+        1184,
+        1188,
+        1194,
+        1200,
+        1206,
+        1212,
+        1213,
+        1216,
+        1218,
+        1219,
+        1224,
+        1230,
+        1236,
+        1242,
+        1248,
+        1254,
+        1260,
+        1266,
+        1272,
+        1277,
+        1278,
+        1280,
+        1283,
+        1284,
+        1290,
+        1296,
+        1302,
+        1308,
+        1312,
+        1314,
+        1320,
+        1326,
+        1332,
+        1338,
+        1341,
+        1344,
+        1347,
+        1350,
+        1356,
+        1362,
+        1368,
+        1374,
+        1376,
+        1380,
+        1386,
+        1392,
+        1398,
+        1404,
+        1405,
+        1408,
+        1410,
+        1411,
+        1416,
+        1422,
+        1428,
+        1434,
+        1440,
+        1446,
+        1452,
+        1458,
+        1464,
+        1469,
+        1470,
+        1472,
+        1475,
+        1476,
+        1482,
+        1488,
+        1494,
+        1500,
+        1504,
+        1506,
+        1512,
+        1518,
+        1524,
+        1530,
+        1533,
+        1536
+      ],
+      "oddDenominatorFactor": 3
+    },
+    "verticalDivisionsLog2ByPatch": {
+      "outer-wall": 4,
+      "inner-wall": 4,
+      "top-rim": 3,
+      "bottom-top": 4,
+      "bottom-under": 4,
+      "drain-wall": 0
+    },
+    "conformingLinesByPatch": {
+      "outer-wall": [
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 2
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 4
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 6
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 8
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 10
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 12
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 14
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 16
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 18
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 20
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 22
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 24
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 26
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 28
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 30
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 32
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 34
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 36
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 38
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 40
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 42
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 44
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 46
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 48
+        }
+      ],
+      "inner-wall": [
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1475
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1411
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1347
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1283
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1219
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1155
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1091
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1027
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 963
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 899
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 835
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 771
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 707
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 643
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 579
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 515
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 451
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 387
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 323
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 259
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 195
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 131
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 67
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 3
+        }
+      ],
+      "drain-wall": [
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1472
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1408
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1344
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1280
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1216
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1152
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1088
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1024
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 960
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 896
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 832
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 768
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 704
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 640
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 576
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 512
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 448
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 384
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 320
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 256
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 192
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 128
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 64
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 0
+        }
+      ]
+    }
+  },
+  "coarseDivisions": {
+    "angularDivisionsLog2": 7,
+    "angularStations": {
+      "log2Denominator": 9,
+      "numerators": [
+        0,
+        3,
+        6,
+        12,
+        18,
+        24,
+        30,
+        32,
+        36,
+        42,
+        48,
+        54,
+        60,
+        61,
+        64,
+        66,
+        67,
+        72,
+        78,
+        84,
+        90,
+        96,
+        102,
+        108,
+        114,
+        120,
+        125,
+        126,
+        128,
+        131,
+        132,
+        138,
+        144,
+        150,
+        156,
+        160,
+        162,
+        168,
+        174,
+        180,
+        186,
+        189,
+        192,
+        195,
+        198,
+        204,
+        210,
+        216,
+        222,
+        224,
+        228,
+        234,
+        240,
+        246,
+        252,
+        253,
+        256,
+        258,
+        259,
+        264,
+        270,
+        276,
+        282,
+        288,
+        294,
+        300,
+        306,
+        312,
+        317,
+        318,
+        320,
+        323,
+        324,
+        330,
+        336,
+        342,
+        348,
+        352,
+        354,
+        360,
+        366,
+        372,
+        378,
+        381,
+        384,
+        387,
+        390,
+        396,
+        402,
+        408,
+        414,
+        416,
+        420,
+        426,
+        432,
+        438,
+        444,
+        445,
+        448,
+        450,
+        451,
+        456,
+        462,
+        468,
+        474,
+        480,
+        486,
+        492,
+        498,
+        504,
+        509,
+        510,
+        512,
+        515,
+        516,
+        522,
+        528,
+        534,
+        540,
+        544,
+        546,
+        552,
+        558,
+        564,
+        570,
+        573,
+        576,
+        579,
+        582,
+        588,
+        594,
+        600,
+        606,
+        608,
+        612,
+        618,
+        624,
+        630,
+        636,
+        637,
+        640,
+        642,
+        643,
+        648,
+        654,
+        660,
+        666,
+        672,
+        678,
+        684,
+        690,
+        696,
+        701,
+        702,
+        704,
+        707,
+        708,
+        714,
+        720,
+        726,
+        732,
+        736,
+        738,
+        744,
+        750,
+        756,
+        762,
+        765,
+        768,
+        771,
+        774,
+        780,
+        786,
+        792,
+        798,
+        800,
+        804,
+        810,
+        816,
+        822,
+        828,
+        829,
+        832,
+        834,
+        835,
+        840,
+        846,
+        852,
+        858,
+        864,
+        870,
+        876,
+        882,
+        888,
+        893,
+        894,
+        896,
+        899,
+        900,
+        906,
+        912,
+        918,
+        924,
+        928,
+        930,
+        936,
+        942,
+        948,
+        954,
+        957,
+        960,
+        963,
+        966,
+        972,
+        978,
+        984,
+        990,
+        992,
+        996,
+        1002,
+        1008,
+        1014,
+        1020,
+        1021,
+        1024,
+        1026,
+        1027,
+        1032,
+        1038,
+        1044,
+        1050,
+        1056,
+        1062,
+        1068,
+        1074,
+        1080,
+        1085,
+        1086,
+        1088,
+        1091,
+        1092,
+        1098,
+        1104,
+        1110,
+        1116,
+        1120,
+        1122,
+        1128,
+        1134,
+        1140,
+        1146,
+        1149,
+        1152,
+        1155,
+        1158,
+        1164,
+        1170,
+        1176,
+        1182,
+        1184,
+        1188,
+        1194,
+        1200,
+        1206,
+        1212,
+        1213,
+        1216,
+        1218,
+        1219,
+        1224,
+        1230,
+        1236,
+        1242,
+        1248,
+        1254,
+        1260,
+        1266,
+        1272,
+        1277,
+        1278,
+        1280,
+        1283,
+        1284,
+        1290,
+        1296,
+        1302,
+        1308,
+        1312,
+        1314,
+        1320,
+        1326,
+        1332,
+        1338,
+        1341,
+        1344,
+        1347,
+        1350,
+        1356,
+        1362,
+        1368,
+        1374,
+        1376,
+        1380,
+        1386,
+        1392,
+        1398,
+        1404,
+        1405,
+        1408,
+        1410,
+        1411,
+        1416,
+        1422,
+        1428,
+        1434,
+        1440,
+        1446,
+        1452,
+        1458,
+        1464,
+        1469,
+        1470,
+        1472,
+        1475,
+        1476,
+        1482,
+        1488,
+        1494,
+        1500,
+        1504,
+        1506,
+        1512,
+        1518,
+        1524,
+        1530,
+        1533,
+        1536
+      ],
+      "oddDenominatorFactor": 3
+    },
+    "verticalDivisionsLog2ByPatch": {
+      "outer-wall": 3,
+      "inner-wall": 3,
+      "top-rim": 2,
+      "bottom-top": 3,
+      "bottom-under": 3,
+      "drain-wall": 0
+    },
+    "conformingLinesByPatch": {
+      "outer-wall": [
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 2
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 4
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 6
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 8
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 10
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 12
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 14
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 16
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 18
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 20
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 22
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 24
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 26
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 28
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 30
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 32
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 34
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 36
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 38
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 40
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 42
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 44
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 46
+        },
+        {
+          "aNumerator": 48,
+          "bNumerator": 1,
+          "cNumerator": 48
+        }
+      ],
+      "inner-wall": [
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1475
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1411
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1347
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1283
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1219
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1155
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1091
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 1027
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 963
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 899
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 835
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 771
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 707
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 643
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 579
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 515
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 451
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 387
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 323
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 259
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 195
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 131
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 67
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -29,
+          "cNumerator": 3
+        }
+      ],
+      "drain-wall": [
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1472
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1408
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1344
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1280
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1216
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1152
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1088
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 1024
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 960
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 896
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 832
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 768
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 704
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 640
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 576
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 512
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 448
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 384
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 320
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 256
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 192
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 128
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 64
+        },
+        {
+          "aNumerator": 1536,
+          "bNumerator": -3,
+          "cNumerator": 0
+        }
+      ]
+    }
+  },
+  "fineTrisTotal": 50544,
+  "coarseTrisTotal": 25840,
+  "fineGlobalMaxMm": 0.007044856712838103,
+  "coarseGlobalMaxMm": 0.010283889528280856,
+  "fineMs": 34712,
+  "coarseMs": 18044,
+  "fallbackCount": 0,
+  "calibration": {
+    "certGlobalMaxMm": 0.004999999888241291,
+    "certPerPatchMaxMm": {
+      "bottom-top": 0.004999999888241291,
+      "bottom-under": 0.004999999888241291,
+      "drain-wall": 0.0024999999441206455,
+      "inner-wall": 0.0024999999441206455,
+      "outer-wall": 0.0024999999441206455,
+      "top-rim": 0.004999999888241291
+    },
+    "calibrationRatio": 1.408971374060585,
+    "tolerance": 2.5
+  },
+  "perPatch": {
+    "bottom-top": {
+      "fineMaxMm": 0.0042334014976091825,
+      "coarseMaxMm": 0.006901291778560149,
+      "ratio": 1.6302001552315932,
+      "verdict": "partial",
+      "fineTris": 10752,
+      "coarseTris": 5376
+    },
+    "bottom-under": {
+      "fineMaxMm": 0.005212428323797541,
+      "coarseMaxMm": 0.00958223676198077,
+      "ratio": 1.8383440820150372,
+      "verdict": "partial",
+      "fineTris": 10752,
+      "coarseTris": 5376
+    },
+    "drain-wall": {
+      "fineMaxMm": 0.0005523282274350111,
+      "coarseMaxMm": 0.0005523282274350111,
+      "ratio": 1,
+      "verdict": "irreducible",
+      "fineTris": 688,
+      "coarseTris": 688
+    },
+    "inner-wall": {
+      "fineMaxMm": 0.004486877212190485,
+      "coarseMaxMm": 0.00460235494807226,
+      "ratio": 1.025736772017748,
+      "verdict": "irreducible",
+      "fineTris": 11696,
+      "coarseTris": 5936
+    },
+    "outer-wall": {
+      "fineMaxMm": 0.0056180850921542895,
+      "coarseMaxMm": 0.006756108283333765,
+      "ratio": 1.2025642496530955,
+      "verdict": "irreducible",
+      "fineTris": 11280,
+      "coarseTris": 5776
+    },
+    "top-rim": {
+      "fineMaxMm": 0.007044856712838103,
+      "coarseMaxMm": 0.010283889528280856,
+      "ratio": 1.4597727033312322,
+      "verdict": "irreducible",
+      "fineTris": 5376,
+      "coarseTris": 2688
+    }
+  }
+}

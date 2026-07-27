@@ -174,10 +174,23 @@ describe('STRATA facet truth', () => {
         const g = distGlobal(rA, H, offP[i * 3], offP[i * 3 + 1], offP[i * 3 + 2]);
         return { tri: offTri[i], fast: offD[i], truth: g.d, th: g.th, z: g.z };
       });
+      // THE HEADLINE MUST BE THE BEST ESTIMATE THE TOOL HAS, NOT THE CHEAPEST ONE. The per-triangle value
+      // comes from a LOCAL descent seeded at the radial foot; stage 3 sweeps the whole domain and polishes
+      // several wells, and on the smooth styles it came back roughly 2x lower (WaveInterference 20.671 ->
+      // 10.784, SpiralRidges 20.597 -> 10.602, HarmonicRipple 23.955 -> 13.963). Reporting the local value
+      // as "witnessed max" overstates the defect. Since every candidate distance is an UPPER bound on the
+      // true one, the smaller number is always the better one, so the argmax is re-measured globally and
+      // that is what the headline quotes.
+      if (worstWitTri >= 0) {
+        const g = distGlobal(rA, H, wx, wy, wz);
+        if (g.d < worstWit) worstWit = g.d;
+      }
       lines.push('',
         '--- H1  MESH -> SURFACE   (certified: bound = witnessed + covering radius) ---',
         `  ${(samples / 1e6).toFixed(1)}M lattice samples   ${((Date.now() - tH1) / 1000).toFixed(0)}s   audited ${audited}/${nTri} triangles${capped ? '   *** INCOMPLETE — budget/time cap hit, the unseen triangles are UNKNOWN, not passing ***' : ''}`,
         `  CERTIFIED UPPER BOUND : ${um(worstUB)} um   ${capped ? 'INCOMPLETE (partial mesh)' : worstUB <= TOL ? 'PASS' : 'NOT CERTIFIED'}`,
+        '    (the bound is built from the per-triangle LOCAL estimate, which over-states; so PASS is sound,',
+        '     while NOT CERTIFIED may be pessimistic — compare the global confirm below before believing it)',
         `    bound-locus   ${locus(worstUBTri)}`,
         `  WITNESSED max         : ${um(worstWit)} um   ${worstWit <= TOL ? 'within TOL' : 'EXCEEDS TOL'}`,
         `    witness-locus ${locus(worstWitTri)}   at xyz ${wx.toFixed(5)},${wy.toFixed(5)},${wz.toFixed(5)}`,

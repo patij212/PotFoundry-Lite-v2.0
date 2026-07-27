@@ -305,3 +305,45 @@ a discontinuity stay a jump-height apart in 3-D no matter how fine the parameter
 will refine to the floor and remain flagged — which is the correct and useful behaviour, because it names
 exactly the loci that need a curtain rather than density. That is the closure invariant the original brief
 asked for in its §5.6, obtained for free.
+
+## 8. BOTH DIRECTIONS TOGETHER — the picture is worse than the H2 table alone
+
+H1 refutes rows that H2 passes, and it must, because the two directions catch different defects. A facet
+that **spans a feature** has its interior far from the surface while the surface itself stays covered by
+neighbouring facets: H1 sees it, H2 cannot. That is the purest form of the defect this campaign is about.
+
+H1 headline figures below are the **stage-3 globally confirmed** values, not the cheaper per-triangle local
+estimates. That distinction is not cosmetic — the local estimates over-stated by roughly 2x
+(WaveInterference 20.671 → 10.784, SpiralRidges 20.597 → 10.602, HarmonicRipple 23.955 → 13.963), and
+quoting them would have inflated the failures. Every candidate distance is an upper bound on the truth, so
+the smaller number is always the better one.
+
+| style | H2 (surface→mesh) | H1 (mesh→surface) | clean in BOTH? |
+|---|---|---|---|
+| LowPolyFacet | 5.000 | **10.000 PASS** | ✅ |
+| SuperellipseMorph | 5.019 | **10.000 PASS** | ✅ |
+| SuperformulaBlossom | 4.997 | **10.000 PASS** | ✅ |
+| RippleInterference | 5.001 | **9.999 PASS** | ✅ |
+| FourierBloom | 5.157 | **10.000 PASS** | ✅ |
+| SpiralRidges | 5.151 | 10.602 | ❌ H1 |
+| WaveInterference | 5.006 | 10.784 | ❌ H1 |
+| HarmonicRipple | 5.997 | 13.963 | ❌ H1 |
+| ArtDeco | 5.771 | 23.360 | ❌ H1 |
+| BambooSegments | 7.457 | _re-running_ | ? |
+| DragonScales | 8.853 | _re-running_ | ? |
+| HexagonalHive | 5.555 | _re-running_ | ? |
+| Crystalline | **10.302** | not run | ❌ H2 |
+| Voronoi | **11.906** | not run | ❌ H2 |
+| GeometricStar | **12.675** | not run | ❌ H2 |
+| GyroidManifold | **17.299** | not run | ❌ H2 |
+| CelticTriquetra | **17.837** | not run | ❌ H2 |
+| GothicArches | **20.077** | not run | ❌ H2 |
+| BasketWeave | **93.662** (rim only) | not run | ❌ H2 (ring boundary) |
+
+**Five rows are currently clean in both directions.** Not twelve, and not nineteen. Three are pending and
+seven have only ever been measured in one direction — the H1 pass has not run on the H2-refuted rows, so
+their two-sided status is unknown and could only get worse.
+
+The four H1-only failures (SpiralRidges, WaveInterference, HarmonicRipple, ArtDeco) sit at 10.6-23.4 µm on
+ordinary wall triangles of 400-1200 µm — again far above the 1.5 µm floor, again with the heap drained.
+Same driver-limited signature as §7.

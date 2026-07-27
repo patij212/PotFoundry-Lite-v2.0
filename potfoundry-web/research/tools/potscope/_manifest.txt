@@ -1,0 +1,17 @@
+PF_G2_POT certified roster -> binary STL (tessellation.stlBytes, the exact bytes the gate certifies)
+Roster: 12 pots / 10 styles, as of commit d42c1b88 (slice 11, envelope v3).
+STALE = STL present but NOT in the current roster (no certificate) — safe to delete.
+
+[roster] Crystalline_H32_OD30_hp025_conforming       tris=  50544  2.41MB
+[roster] Crystalline_small_OD30_fract                tris=  31008  1.48MB
+[roster] FourierBloom_small_OD30_defaults            tris= 206848  9.86MB
+[roster] GeometricStar_H32_OD30_fract                tris= 176128  8.40MB
+[roster] HarmonicRipple_production_OD140             tris= 155648  7.42MB
+[roster] HarmonicRipple_small_OD30                   tris=  29184  1.39MB
+[roster] RippleInterference_small_OD30_dyadicOffsets tris=  86528  4.13MB
+[roster] SpiralRidges_small_OD30                     tris=  53760  2.56MB
+[roster] SuperellipseMorph_small_OD30_defaults       tris= 107520  5.13MB
+[roster] SuperformulaBlossom_small_OD30_positivity   tris=  53760  2.56MB
+[roster] Voronoi_H32_OD30_bubble                     tris= 172032  8.20MB
+[STALE ] Voronoi_small_OD30                          tris=  86528  4.13MB
+[roster] WaveInterference_H32_OD30_smoothDense       tris= 411648  19.63MB

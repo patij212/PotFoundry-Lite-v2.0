@@ -1,0 +1,233 @@
+{
+  "magic": "potscope-converge/v1",
+  "variant": "gs_cert_repro",
+  "style": "GeometricStar",
+  "configSource": "arbitrary",
+  "depth": 3,
+  "coarseStep": 1,
+  "fineDivisions": {
+    "angularDivisionsLog2": 9,
+    "verticalDivisionsLog2ByPatch": {
+      "outer-wall": 6,
+      "inner-wall": 6,
+      "top-rim": 3,
+      "bottom-top": 4,
+      "bottom-under": 4,
+      "drain-wall": 0
+    },
+    "verticalStationsByPatch": {
+      "inner-wall": {
+        "log2Denominator": 6,
+        "numerators": [
+          0,
+          29,
+          58,
+          87,
+          116,
+          145,
+          174,
+          203,
+          232,
+          261,
+          290,
+          319,
+          320,
+          348,
+          377,
+          406,
+          435,
+          464,
+          493,
+          522,
+          551,
+          580,
+          609,
+          638,
+          667,
+          696,
+          725,
+          754,
+          783,
+          812,
+          832,
+          841,
+          870,
+          899,
+          928,
+          957,
+          986,
+          1015,
+          1044,
+          1073,
+          1102,
+          1131,
+          1160,
+          1189,
+          1218,
+          1247,
+          1276,
+          1305,
+          1334,
+          1344,
+          1363,
+          1392,
+          1421,
+          1450,
+          1479,
+          1508,
+          1537,
+          1566,
+          1595,
+          1624,
+          1653,
+          1682,
+          1711,
+          1740,
+          1769,
+          1798,
+          1827,
+          1856
+        ],
+        "oddDenominatorFactor": 29
+      }
+    }
+  },
+  "coarseDivisions": {
+    "angularDivisionsLog2": 8,
+    "verticalDivisionsLog2ByPatch": {
+      "outer-wall": 5,
+      "inner-wall": 5,
+      "top-rim": 2,
+      "bottom-top": 3,
+      "bottom-under": 3,
+      "drain-wall": 0
+    },
+    "verticalStationsByPatch": {
+      "inner-wall": {
+        "log2Denominator": 6,
+        "numerators": [
+          0,
+          58,
+          116,
+          174,
+          232,
+          290,
+          320,
+          377,
+          435,
+          493,
+          551,
+          609,
+          667,
+          725,
+          783,
+          832,
+          870,
+          928,
+          986,
+          1044,
+          1102,
+          1160,
+          1218,
+          1276,
+          1334,
+          1363,
+          1421,
+          1479,
+          1537,
+          1595,
+          1653,
+          1711,
+          1769,
+          1827,
+          1856
+        ],
+        "oddDenominatorFactor": 29
+      }
+    }
+  },
+  "fineTrisTotal": 176128,
+  "coarseTrisTotal": 44544,
+  "fineGlobalMaxMm": 0.004045602173152279,
+  "coarseGlobalMaxMm": 0.4742799863324824,
+  "fineMs": 540240,
+  "coarseMs": 138243,
+  "fallbackCount": 0,
+  "calibration": null,
+  "selfCalibration": {
+    "method": "verdict-stability",
+    "depthsRun": [
+      2,
+      3
+    ],
+    "finalDepth": 3,
+    "perPatchStable": {
+      "bottom-top": true,
+      "bottom-under": true,
+      "drain-wall": true,
+      "inner-wall": true,
+      "outer-wall": true,
+      "top-rim": true
+    },
+    "stable": true,
+    "reason": "converged"
+  },
+  "coarsenedAxes": {
+    "outer-wall": "angular+vertical",
+    "inner-wall": "angular+vertical",
+    "top-rim": "angular+vertical",
+    "bottom-top": "angular+vertical",
+    "bottom-under": "angular+vertical",
+    "drain-wall": "angular"
+  },
+  "perPatch": {
+    "bottom-top": {
+      "fineMaxMm": 0.0015127545768855615,
+      "coarseMaxMm": 0.005216094430906527,
+      "ratio": 3.4480771108591526,
+      "verdict": "responsive",
+      "fineTris": 16384,
+      "coarseTris": 4096
+    },
+    "bottom-under": {
+      "fineMaxMm": 0.001890671813083759,
+      "coarseMaxMm": 0.007557757644011515,
+      "ratio": 3.9973926684211363,
+      "verdict": "responsive",
+      "fineTris": 16384,
+      "coarseTris": 4096
+    },
+    "drain-wall": {
+      "fineMaxMm": 0.000119392238252482,
+      "coarseMaxMm": 0.00047707646939113756,
+      "ratio": 3.9958750784305677,
+      "verdict": "responsive",
+      "fineTris": 1024,
+      "coarseTris": 512
+    },
+    "inner-wall": {
+      "fineMaxMm": 0.003604976836829477,
+      "coarseMaxMm": 0.4742799863324824,
+      "ratio": 131.5625613699101,
+      "verdict": "responsive",
+      "fineTris": 68608,
+      "coarseTris": 17408
+    },
+    "outer-wall": {
+      "fineMaxMm": 0.004045602173152279,
+      "coarseMaxMm": 0.009487179726950758,
+      "ratio": 2.3450599739910847,
+      "verdict": "partial",
+      "fineTris": 65536,
+      "coarseTris": 16384
+    },
+    "top-rim": {
+      "fineMaxMm": 0.0014388098939894123,
+      "coarseMaxMm": 0.005750652731713917,
+      "ratio": 3.996812056781863,
+      "verdict": "responsive",
+      "fineTris": 8192,
+      "coarseTris": 2048
+    }
+  }
+}
