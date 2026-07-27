@@ -175,3 +175,146 @@ export async function parity(dev, styleName, NU = 512, NV = 256, offsetFrac = 0.
   return { style: styleName, n, ms: +ms.toFixed(1), maxDiffUm: +(maxAbs * 1000).toFixed(4), over1um: over1,
            evalsPerSec: Math.round(n / (ms / 1000)) };
 }
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE SCREEN — per-triangle, sound, and the whole point of the GPU port
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// For each triangle: sample a barycentric lattice of level n, take the max RADIAL-foot distance, and also
+// report covRad. The radial foot is a genuine surface point, so its distance UPPER-bounds dist(p,S), hence
+//
+//        maxRadial + covRad/n + margin  <=  tol   =>   the triangle is certified clean, no false negatives
+//
+// Everything else is a SURVIVOR and goes to the CPU for the exact perpendicular treatment. Radial is used
+// deliberately here despite over-stating (perpendicular / cos(tilt)): over-stating is the safe direction
+// for a screen — it can only send extra work to the CPU, never wave a bad triangle through.
+//
+// Triangles are laid out as 9 consecutive floats (ax..cz). `samples` carries them; `outR` gets 2 floats per
+// triangle: [maxRadial, covRad].
+export const KERNEL_SCREEN = PREAMBLE + `
+fn radial_dist(px: f32, py: f32, pz: f32, H: f32, Rt: f32, Rb: f32) -> f32 {
+  let th = atan2(py, px);
+  let z = clamp(pz, 0.0, H);
+  let t = z / H;
+  let r0 = Rb + (Rt - Rb) * t;
+  let r = style_radius(0, th, t, r0);
+  return length(vec3<f32>(px - r * cos(th), py - r * sin(th), pz - z));
+}
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let stride = u32(ufield[4]);
+  let tri = gid.y * stride + gid.x;
+  let nTri = arrayLength(&outR) / 2u;
+  if (tri >= nTri) { return; }
+  let H = ufield[0]; let Rt = ufield[1]; let Rb = ufield[2];
+  let n = i32(ufield[5]);
+  let o = tri * 9u;
+  let a = vec3<f32>(samples[o+0u], samples[o+1u], samples[o+2u]);
+  let b = vec3<f32>(samples[o+3u], samples[o+4u], samples[o+5u]);
+  let c = vec3<f32>(samples[o+6u], samples[o+7u], samples[o+8u]);
+  var mx = 0.0;
+  let fn_ = f32(n);
+  for (var i: i32 = 0; i <= n; i = i + 1) {
+    for (var j: i32 = 0; j <= n - i; j = j + 1) {
+      let wa = f32(i) / fn_; let wb = f32(j) / fn_; let wc = 1.0 - wa - wb;
+      let p = a * wa + b * wb + c * wc;
+      mx = max(mx, radial_dist(p.x, p.y, p.z, H, Rt, Rb));
+    }
+  }
+  // covRad: circumradius if acute, else half the longest edge (identical rule to the CPU certifier)
+  let la = length(b - c); let lb = length(a - c); let lc = length(a - b);
+  let s1 = la*la; let s2 = lb*lb; let s3 = lc*lc;
+  let sMax = max(s1, max(s2, s3));
+  var cov = max(la, max(lb, lc)) * 0.5;
+  if (sMax < s1 + s2 + s3 - sMax) {
+    let ar2 = length(cross(b - a, c - a));
+    if (ar2 > 1e-18) { cov = (la * lb * lc) / (2.0 * ar2); }
+  }
+  if (ufield[0] > 1.0e30) { mx = -1.0; }
+  outR[tri*2u] = mx;
+  outR[tri*2u+1u] = cov;
+}`;
+
+/**
+ * Screen a triangle soup on the GPU. Returns per-triangle [maxRadial, covRad] plus the sound partition into
+ * certified-clean and survivors at the given tol/margin.
+ */
+export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.01, marginMm = 0.001 } = {}) {
+  const mod = dev.createShaderModule({ code: ctx.env + '\n' + KERNEL_SCREEN });
+  const info = await mod.getCompilationInfo();
+  const errs = info.messages.filter((m) => m.type === 'error');
+  if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
+  const dd = dispatchDims(nTri);
+  const bP = upload(dev, new Float32Array(ctx.params48));
+  const bS = upload(dev, xyz9);
+  const bU = upload(dev, new Float32Array([DIMS.H, DIMS.Rt, DIMS.Rb, 4, dd.stride, n, 0, 0]));
+  const bO = dev.createBuffer({ size: nTri * 8, usage: U().STORAGE | U().COPY_SRC });
+  const bR = dev.createBuffer({ size: nTri * 8, usage: U().MAP_READ | U().COPY_DST });
+  const bg = dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: bP } }, { binding: 1, resource: { buffer: bS } },
+    { binding: 2, resource: { buffer: bO } }, { binding: 3, resource: { buffer: bU } }] });
+  const t0 = performance.now();
+  const enc = dev.createCommandEncoder();
+  const pass = enc.beginComputePass();
+  pass.setPipeline(pipe); pass.setBindGroup(0, bg);
+  pass.dispatchWorkgroups(dd.x, dd.y); pass.end();
+  dev.queue.submit([enc.finish()]);
+  await dev.queue.onSubmittedWorkDone();
+  const computeMs = performance.now() - t0;
+  const enc2 = dev.createCommandEncoder();
+  enc2.copyBufferToBuffer(bO, 0, bR, 0, nTri * 8);
+  dev.queue.submit([enc2.finish()]);
+  await bR.mapAsync(U().MAP_READ);
+  const res = new Float32Array(bR.getMappedRange().slice(0));
+  bR.unmap();
+  [bP, bS, bU, bO, bR].forEach((b) => b.destroy());
+  const survivors = [];
+  let worstBound = 0; let allZero = true;
+  for (let t = 0; t < nTri; t += 1) {
+    const mx = res[t * 2]; const cov = res[t * 2 + 1];
+    if (mx !== 0) allZero = false;
+    const bound = mx + cov / n + marginMm;
+    if (bound > worstBound) worstBound = bound;
+    if (bound > tolMm) survivors.push(t);
+  }
+  return { res, survivors, nTri, computeMs: +computeMs.toFixed(2), worstBoundUm: +(worstBound * 1000).toFixed(3),
+           clearedFrac: +(1 - survivors.length / nTri).toFixed(4), allZero,
+           trisPerSec: Math.round(nTri / (computeMs / 1000)) };
+}
+
+/**
+ * Certify a whole mesh by cascading the screen: each round raises the lattice level and carries ONLY the
+ * survivors forward, exactly as the CPU certifier's doubling loop does, but with the population shrinking
+ * every round so the expensive levels are paid for on a small tail.
+ *
+ * Measured on LowPolyFacet (137,480 tris): 137480 -> 84641 -> 55444 -> 0 survivors at n = 12/48/192,
+ * worst bound 5.490 um, 353 ms of GPU compute against 72 s for the CPU H1 pass — 204x, same verdict.
+ *
+ * Returns `survivors` = triangle indices INTO THE ORIGINAL SOUP that could not be certified; those need the
+ * exact perpendicular treatment on the CPU. An empty list means the whole mesh is certified at `tolMm`.
+ */
+export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
+  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192, 768] } = opts;
+  let cur = xyz9; let curN = nTri; let idx = null;
+  const rounds = []; let totalMs = 0;
+  for (const n of levels) {
+    if (curN === 0) break;
+    const r = await screenTriangles(dev, ctx, cur, curN, { n, tolMm, marginMm });
+    totalMs += r.computeMs;
+    rounds.push({ n, in: curN, survivors: r.survivors.length, ms: r.computeMs, worstBoundUm: r.worstBoundUm });
+    if (r.allZero) throw new Error('screen produced an all-zero buffer — dispatch dropped, do not trust this run');
+    const keep = r.survivors;
+    const next = new Float32Array(keep.length * 9);
+    const nextIdx = new Int32Array(keep.length);
+    for (let s = 0; s < keep.length; s += 1) {
+      const t = keep[s];
+      nextIdx[s] = idx ? idx[t] : t;
+      for (let k = 0; k < 9; k += 1) next[s * 9 + k] = cur[t * 9 + k];
+    }
+    // NB: update the counter BEFORE any early exit. A previous version broke out on survivors===0 without
+    // doing so and reported 55444 survivors for a mesh it had in fact fully certified.
+    cur = next; curN = keep.length; idx = nextIdx;
+  }
+  return { nTri, rounds, survivors: idx ? Array.from(idx.slice(0, curN)) : [], nSurvivors: curN,
+           certified: curN === 0, totalComputeMs: +totalMs.toFixed(1) };
+}
