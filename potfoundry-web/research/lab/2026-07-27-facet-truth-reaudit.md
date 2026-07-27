@@ -523,3 +523,39 @@ They are being re-run. **None of them should be treated as a verdict until it la
 
 H2 is unaffected: it measures exact point-to-triangle distances from surface samples to the mesh, which
 were never radial.
+
+## 12. GPU SCREEN — all 19 rows, 13.3 M triangles, 84 % certified without touching the CPU
+
+| batch | tris | wall | outcome |
+|---|---|---|---|
+| 14 smaller styles | 6.51 M | **29 s** | 4 rows FULLY certified, 0 survivors |
+| 5 largest styles | 6.80 M | **12 min** | chunked, no device loss |
+
+**Fully certified end-to-end, zero survivors:** LowPolyFacet 5.49 · SuperformulaBlossom 7.026 ·
+RippleInterference 7.405 · SuperellipseMorph 7.608 µm.
+
+**~2.12 M survivors of 13.3 M triangles — 84 % cleared by the GPU**, leaving ~1.9 h of CPU perpendicular
+work instead of the 10.4 h a full CPU sweep would have cost.
+
+Survivor rates are **deliberately pessimistic** and must not be read as failure rates: the screen measures
+raw radial distance to the bare graph with **no closure**, so every tread and curtain facet survives by
+construction (BasketWeave 19 %, GeometricStar 35 %, Gyroid 37 %). Adding the z-/θ-jump closure to the
+kernel would cut those sharply. The screen can only ever send extra work to the CPU, never clear a bad
+triangle — that is the property that makes it sound.
+
+**TDR is a correctness constraint, not a tuning knob.** A single dispatch running ~2 s trips the Windows GPU
+watchdog and the device is LOST, taking every subsequent style with it — measured: GeometricStar ran
+2633 ms at n=192 and the next five styles all died with `[Device] is lost`. Chunking by sample count fixed
+it; the five largest styles then completed with no loss.
+
+### The perpendicular re-runs resolved the outstanding risk
+
+§11 flagged that the H1 failures might be inflated because the old path measured radially. Tested on the
+two most likely candidates — one smooth, one steep with 8 z-steps — and **both returned identical numbers**:
+
+| | old path | perpendicular ruler |
+|---|---|---|
+| WaveInterference | 20.671 / 10.784 / 6 over | **identical** |
+| ArtDeco | 33.294 / 23.360 / 212 over | **identical** |
+
+The risk was real and correctly raised; it did not materialise. **The H1 failure list stands as reported.**

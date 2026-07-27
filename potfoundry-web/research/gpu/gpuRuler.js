@@ -294,14 +294,29 @@ export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.
  * exact perpendicular treatment on the CPU. An empty list means the whole mesh is certified at `tolMm`.
  */
 export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
-  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192, 768] } = opts;
+  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192, 768], chunkSamples = 4e8 } = opts;
   let cur = xyz9; let curN = nTri; let idx = null;
   const rounds = []; let totalMs = 0;
   for (const n of levels) {
     if (curN === 0) break;
-    const r = await screenTriangles(dev, ctx, cur, curN, { n, tolMm, marginMm });
+    // CHUNKING IS A CORRECTNESS REQUIREMENT ON WINDOWS, not a tuning knob. A single dispatch that runs for
+    // ~2 s trips the OS GPU watchdog (TDR) and the device is LOST — taking every subsequent style with it.
+    // Measured: GeometricStar at n=192 ran 2633 ms and the next five styles all died with
+    // "[Device] is lost". Cost per triangle is ~(n+1)(n+2)/2 rA evals, so cap the samples per dispatch.
+    const perTri = ((n + 1) * (n + 2)) / 2;
+    const maxTri = Math.max(1024, Math.floor(chunkSamples / perTri));
+    const r = { survivors: [], computeMs: 0, worstBoundUm: 0, allZero: true };
+    for (let base = 0; base < curN; base += maxTri) {
+      const cnt = Math.min(maxTri, curN - base);
+      const part = cur.subarray(base * 9, (base + cnt) * 9);
+      const pr = await screenTriangles(dev, ctx, part, cnt, { n, tolMm, marginMm });
+      r.computeMs += pr.computeMs;
+      r.worstBoundUm = Math.max(r.worstBoundUm, pr.worstBoundUm);
+      if (!pr.allZero) r.allZero = false;
+      for (const t of pr.survivors) r.survivors.push(base + t);
+    }
     totalMs += r.computeMs;
-    rounds.push({ n, in: curN, survivors: r.survivors.length, ms: r.computeMs, worstBoundUm: r.worstBoundUm });
+    rounds.push({ n, in: curN, survivors: r.survivors.length, ms: +r.computeMs.toFixed(1), worstBoundUm: r.worstBoundUm });
     if (r.allZero) throw new Error('screen produced an all-zero buffer — dispatch dropped, do not trust this run');
     const keep = r.survivors;
     const next = new Float32Array(keep.length * 9);
@@ -317,4 +332,104 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
   }
   return { nTri, rounds, survivors: idx ? Array.from(idx.slice(0, curN)) : [], nSurvivors: curN,
            certified: curN === 0, totalComputeMs: +totalMs.toFixed(1) };
+}
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// H2's LIMIT, MADE MEASURABLE — the surface STRUCTURE MAP
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// H2 (surface -> mesh) is a WITNESSED lower bound, not a certificate, and it always will be until something
+// supplies a modulus of continuity for rA: you cannot certify a sampled function without knowing how fast
+// it can move between samples. Interval arithmetic on rA would do it, but the in-repo envelopes are
+// per-style (Gothic, WI), so that is not a general answer today.
+//
+// What IS generally answerable, and what actually bounds the risk, is: *how much structure does this
+// surface have below the pitch H2 sampled at?* That is a pure rA question — no mesh, no BVH — so it is
+// exactly the part the GPU can take. For each cell of a coarse grid this evaluates rA on a K x K
+// sub-lattice and reports the largest departure from the cell's own bilinear corner interpolant. A feature
+// that hides from H2 must live inside a cell AND be taller than tol; this map says, at a stated sub-pitch,
+// whether any such feature exists anywhere on the surface.
+//
+// So it does not convert H2 into a certificate. It converts "resolving power ~11.5 um, unknown what is
+// below that" into a measured statement about what is below it.
+export const KERNEL_STRUCT = PREAMBLE + `
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let stride = u32(ufield[4]);
+  let cell = gid.y * stride + gid.x;
+  let nCell = arrayLength(&outR);
+  if (cell >= nCell) { return; }
+  let H = ufield[0]; let Rt = ufield[1]; let Rb = ufield[2];
+  let NU = u32(ufield[5]); let NV = u32(ufield[6]); let K = i32(ufield[7]);
+  let cu = cell % NU; let cv = cell / NU;
+  let TAU2 = 6.2831853071795864;
+  let th0 = TAU2 * f32(cu) / f32(NU); let th1 = TAU2 * f32(cu + 1u) / f32(NU);
+  let z0 = H * f32(cv) / f32(NV);    let z1 = H * f32(cv + 1u) / f32(NV);
+  let rAt = fn_r(th0, z0, H, Rt, Rb);
+  let r00 = rAt;
+  let r10 = fn_r(th1, z0, H, Rt, Rb);
+  let r01 = fn_r(th0, z1, H, Rt, Rb);
+  let r11 = fn_r(th1, z1, H, Rt, Rb);
+  var worst = 0.0;
+  for (var i: i32 = 0; i <= K; i = i + 1) {
+    let a = f32(i) / f32(K);
+    let th = th0 + (th1 - th0) * a;
+    for (var j: i32 = 0; j <= K; j = j + 1) {
+      let b = f32(j) / f32(K);
+      let z = z0 + (z1 - z0) * b;
+      let lin = (1.0-a)*(1.0-b)*r00 + a*(1.0-b)*r10 + (1.0-a)*b*r01 + a*b*r11;
+      worst = max(worst, abs(fn_r(th, z, H, Rt, Rb) - lin));
+    }
+  }
+  if (ufield[0] > 1.0e30) { worst = -1.0; }
+  outR[cell] = worst;
+}
+fn fn_r(th: f32, z: f32, H: f32, Rt: f32, Rb: f32) -> f32 {
+  let t = clamp(z, 0.0, H) / H;
+  return style_radius(0, th, t, Rb + (Rt - Rb) * t);
+}`;
+
+/**
+ * Surface structure map. Returns the per-cell max departure of rA from its bilinear corner interpolant,
+ * measured on a K x K sub-lattice, plus the sub-pitch that departure was measured at.
+ */
+export async function structureMap(dev, ctx, { nu = 1024, nv = 512, K = 32 } = {}) {
+  const mod = dev.createShaderModule({ code: ctx.env + '\n' + KERNEL_STRUCT });
+  const info = await mod.getCompilationInfo();
+  const errs = info.messages.filter((m) => m.type === 'error');
+  if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
+  const nCell = nu * nv;
+  const dd = dispatchDims(nCell);
+  const bP = upload(dev, new Float32Array(ctx.params48));
+  const bS = upload(dev, new Float32Array(16));
+  const bU = upload(dev, new Float32Array([DIMS.H, DIMS.Rt, DIMS.Rb, 4, dd.stride, nu, nv, K]));
+  const bO = dev.createBuffer({ size: nCell * 4, usage: U().STORAGE | U().COPY_SRC });
+  const bR = dev.createBuffer({ size: nCell * 4, usage: U().MAP_READ | U().COPY_DST });
+  const bg = dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
+    { binding: 0, resource: { buffer: bP } }, { binding: 1, resource: { buffer: bS } },
+    { binding: 2, resource: { buffer: bO } }, { binding: 3, resource: { buffer: bU } }] });
+  const t0 = performance.now();
+  const enc = dev.createCommandEncoder();
+  const pass = enc.beginComputePass();
+  pass.setPipeline(pipe); pass.setBindGroup(0, bg);
+  pass.dispatchWorkgroups(dd.x, dd.y); pass.end();
+  dev.queue.submit([enc.finish()]);
+  await dev.queue.onSubmittedWorkDone();
+  const ms = performance.now() - t0;
+  const enc2 = dev.createCommandEncoder();
+  enc2.copyBufferToBuffer(bO, 0, bR, 0, nCell * 4);
+  dev.queue.submit([enc2.finish()]);
+  await bR.mapAsync(U().MAP_READ);
+  const map = new Float32Array(bR.getMappedRange().slice(0));
+  bR.unmap();
+  [bP, bS, bU, bO, bR].forEach((b) => b.destroy());
+  let max = 0; let arg = 0; let nz = 0;
+  for (let i = 0; i < nCell; i += 1) { if (map[i] !== 0) nz += 1; if (map[i] > max) { max = map[i]; arg = i; } }
+  const rNom = 50;
+  const subPitchUm = Math.max((2 * Math.PI * rNom) / nu / K, DIMS.H / nv / K) * 1000;
+  return { map, nCell, ms: +ms.toFixed(1), evals: nCell * (K + 1) * (K + 1),
+           maxBulgeUm: +(max * 1000).toFixed(3), argCell: arg, nonZeroCells: nz,
+           subPitchUm: +subPitchUm.toFixed(3),
+           argTheta: +((2 * Math.PI * (arg % nu)) / nu).toFixed(5),
+           argZ: +((DIMS.H * Math.floor(arg / nu)) / nv).toFixed(3) };
 }
