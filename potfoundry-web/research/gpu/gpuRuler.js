@@ -104,6 +104,34 @@ export async function styleContext(styleName) {
   };
 }
 
+/**
+ * Run `fn` with a validation error scope and THROW if WebGPU rejected anything inside it.
+ *
+ * WHY THIS IS NOT OPTIONAL. WebGPU validation failures are asynchronous and non-fatal: an invalid bind group
+ * does not throw at the call site, it makes the subsequent dispatch a no-op and leaves the output buffer at
+ * its initial zeros. That is indistinguishable from a real measurement of zero, and this file has now been
+ * bitten by it twice — once by a 1-D dispatch exceeding maxComputeWorkgroupsPerDimension (reported as
+ * "8.7 billion evals/sec"), once by `layout:'auto'` dropping an unreferenced binding (the structure map read
+ * 0.000 um bulge for all 20 styles, including ones with 2 mm of relief). Both were silent.
+ *
+ * An error scope converts that entire class into a loud failure at the point of origin, with Dawn's own
+ * message. It costs one round-trip per dispatch and it is the difference between a wrong number and no number.
+ */
+async function guardValidation(dev, label, fn) {
+  dev.pushErrorScope('validation');
+  let out;
+  let thrown = null;
+  try {
+    out = await fn();
+  } catch (e) {
+    thrown = e;
+  }
+  const err = await dev.popErrorScope();
+  if (err) throw new Error(`${label}: WebGPU validation — ${err.message}`);
+  if (thrown) throw thrown;
+  return out;
+}
+
 function upload(dev, arr) {
   const b = dev.createBuffer({ size: Math.max(16, arr.byteLength), usage: U().STORAGE | U().COPY_DST, mappedAtCreation: true });
   new Float32Array(b.getMappedRange()).set(arr);
@@ -117,6 +145,7 @@ export async function dispatch(dev, ctx, kernel, samples, nOut) {
   const info = await mod.getCompilationInfo();
   const errs = info.messages.filter((m) => m.type === 'error');
   if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  return guardValidation(dev, 'dispatch', async () => {
   const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
   const bP = upload(dev, new Float32Array(ctx.params48));
   const bS = upload(dev, samples);
@@ -138,6 +167,7 @@ export async function dispatch(dev, ctx, kernel, samples, nOut) {
   bR.unmap();
   [bP, bS, bU, bO, bR].forEach((b) => b.destroy());
   return out;
+  });
 }
 
 /**
@@ -243,6 +273,7 @@ export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.
   const info = await mod.getCompilationInfo();
   const errs = info.messages.filter((m) => m.type === 'error');
   if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  return guardValidation(dev, 'screenTriangles', async () => {
   const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
   const dd = dispatchDims(nTri);
   const bP = upload(dev, new Float32Array(ctx.params48));
@@ -280,6 +311,7 @@ export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.
   return { res, survivors, nTri, computeMs: +computeMs.toFixed(2), worstBoundUm: +(worstBound * 1000).toFixed(3),
            clearedFrac: +(1 - survivors.length / nTri).toFixed(4), allZero,
            trisPerSec: Math.round(nTri / (computeMs / 1000)) };
+  });
 }
 
 /**
@@ -355,11 +387,16 @@ export const KERNEL_STRUCT = PREAMBLE + `
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let stride = u32(ufield[4]);
-  let cell = gid.y * stride + gid.x;
-  let nCell = arrayLength(&outR);
-  if (cell >= nCell) { return; }
+  // CHUNKED, for the same TDR reason as the screen: this kernel costs (K+1)^2 rA evals per cell, so a
+  // full 1024x512 grid at K=32 is ~571 M evals in one dispatch (~3.5 s at the measured 164 M/s) and the
+  // Windows watchdog kills the device well before that. ufield[8] carries the chunk's first cell index;
+  // `outR` is sized to the CHUNK, so the bound test is local and the surface index is global.
+  let local = gid.y * stride + gid.x;
+  if (local >= arrayLength(&outR)) { return; }
+  let cell = u32(ufield[8]) + local;
   let H = ufield[0]; let Rt = ufield[1]; let Rb = ufield[2];
   let NU = u32(ufield[5]); let NV = u32(ufield[6]); let K = i32(ufield[7]);
+  if (cell >= NU * NV) { return; }
   let cu = cell % NU; let cv = cell / NU;
   let TAU2 = 6.2831853071795864;
   let th0 = TAU2 * f32(cu) / f32(NU); let th1 = TAU2 * f32(cu + 1u) / f32(NU);
@@ -380,8 +417,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       worst = max(worst, abs(fn_r(th, z, H, Rt, Rb) - lin));
     }
   }
-  if (ufield[0] > 1.0e30) { worst = -1.0; }
-  outR[cell] = worst;
+  // KEEPS BINDING 1 LIVE — same trick as KERNEL_EVAL's ufield guard, and it is load-bearing for the SAME
+  // reason. This kernel has no other reason to read \`samples\`, so \`layout:'auto'\` dropped binding 1 from the
+  // pipeline layout, createBindGroup failed validation, the bind group was invalid and the dispatch was
+  // silently discarded — the map read 0.000 um bulge for all 20 styles including 2 mm-relief ones. The
+  // dropped-dispatch failure mode is now caught loudly by \`guardValidation\` regardless, but the reference
+  // must stay: without it the pass does not run at all.
+  if (ufield[0] > 1.0e30) { worst = samples[0] - 1.0; }
+  outR[local] = worst;
 }
 fn fn_r(th: f32, z: f32, H: f32, Rt: f32, Rb: f32) -> f32 {
   let t = clamp(z, 0.0, H) / H;
@@ -397,6 +440,7 @@ export async function structureMap(dev, ctx, { nu = 1024, nv = 512, K = 32 } = {
   const info = await mod.getCompilationInfo();
   const errs = info.messages.filter((m) => m.type === 'error');
   if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  return guardValidation(dev, 'structureMap', async () => {
   const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
   const nCell = nu * nv;
   const dd = dispatchDims(nCell);
@@ -425,6 +469,10 @@ export async function structureMap(dev, ctx, { nu = 1024, nv = 512, K = 32 } = {
   [bP, bS, bU, bO, bR].forEach((b) => b.destroy());
   let max = 0; let arg = 0; let nz = 0;
   for (let i = 0; i < nCell; i += 1) { if (map[i] !== 0) nz += 1; if (map[i] > max) { max = map[i]; arg = i; } }
+  // An all-zero map over an entire real style surface is not a measurement, it is a dropped dispatch. Every
+  // registry style has relief, so some cell must depart from its own bilinear interpolant. Refuse to return
+  // a number that would read as "this surface has no sub-pitch structure".
+  if (nz === 0) throw new Error('structureMap produced an all-zero map — dispatch dropped, do not trust this run');
   const rNom = 50;
   const subPitchUm = Math.max((2 * Math.PI * rNom) / nu / K, DIMS.H / nv / K) * 1000;
   return { map, nCell, ms: +ms.toFixed(1), evals: nCell * (K + 1) * (K + 1),
@@ -432,4 +480,5 @@ export async function structureMap(dev, ctx, { nu = 1024, nv = 512, K = 32 } = {
            subPitchUm: +subPitchUm.toFixed(3),
            argTheta: +((2 * Math.PI * (arg % nu)) / nu).toFixed(5),
            argZ: +((DIMS.H * Math.floor(arg / nu)) / nv).toFixed(3) };
+  });
 }

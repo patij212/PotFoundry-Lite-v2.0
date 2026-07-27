@@ -989,7 +989,9 @@ describe('STRATA conforming-bisection', () => {
 
     const outDir = join('research', 'exchange', '_strataConformBisect');
     mkdirSync(outDir, { recursive: true });
-    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}`;
+    // BOUNDED gets its own suffix: without it this would overwrite the exact baseline STLs the
+    // 2026-07-27 re-audit measured, destroying the comparison the experiment exists to make.
+    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${BOUNDED ? 'B' : ''}`;
     const buf = Buffer.alloc(84 + soup.length * 50);
     buf.write('STRATA conforming-bisection', 0, 'ascii');
     buf.writeUInt32LE(soup.length, 80);

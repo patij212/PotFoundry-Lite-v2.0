@@ -559,3 +559,41 @@ two most likely candidates — one smooth, one steep with 8 z-steps — and **bo
 | ArtDeco | 33.294 / 23.360 / 212 over | **identical** |
 
 The risk was real and correctly raised; it did not materialise. **The H1 failure list stands as reported.**
+
+## 13. §7 VERDICT — REFUTED. The sharp-locus rows are MECHANISM-limited, not driver-limited.
+
+```
+GeometricStar, PF_CB_BOUNDED=1, grid 200x140, 9 M cap, registry defaults, ring
+  -> 4,521,424 tris   alloc 9,000,000/9,000,000  *** CAPPED ***   1856 s, 3626 M rA evals
+  heap 5,182,239 LEFT, worst-left 228.279 um
+  HEADLINE MAX 192.067 um FAIL    over-0.01 mm 87,696 / 4,521,424
+  non-manifold 0 . seam-crack 0   min edge 0.131 um
+```
+
+§7 pre-registered: *"if the style still reads over 10 µm at the floor, **or the triangle count explodes
+past budget**, then the locus genuinely needs conforming and the mechanism premise was right after all."*
+
+**Both conditions fired.** The bounded accept test built **5.1× the baseline's triangles** (4.52 M vs
+885 k), **exhausted the entire 9 M budget** — the baseline used 19 % of it — and still had 5.18 M queued
+at a worst-left of 228 µm.
+
+The lever itself behaved exactly as designed: it refuses to accept a triangle its own sampling has not
+resolved, and it stayed watertight (0 non-manifold, 0 seam-crack) while doing so. What it demonstrates is
+that **GeometricStar cannot be closed by density at any feasible budget.**
+
+**So the hypothesis is dead and the campaign's original premise is vindicated.** The sharp-locus styles
+need the conforming machinery — curtains, chains, junctions, feature-conforming edges. Better-driven
+refinement does not substitute for it. This also agrees with the independent prior evidence logged in the
+§7 addendum before the run: the raycast-oracle spike found Gyroid's single worst facet **pinned at 0.0 %
+change** under refinement.
+
+**What §7 was right about, and what it was wrong about.** Right: the driver IS blind — it accepted on an
+unbounded witness, stopped with a drained heap and unspent budget, and its 5.000 µm readings were the
+accept threshold reflected back. Wrong: that blindness was not the whole story. Fixing the accept test
+exposes the real gap rather than closing it — which is still progress, because an honest driver that
+refuses to converge names exactly the loci that need a mechanism.
+
+**Consequence for the roadmap.** Do not pursue "close the refuted rows by refining harder". The bounded
+accept test should be kept as an INSTRUMENT (it turns silent acceptance into a visible refusal), not as a
+fix. The route to 0.01 mm on the seven refuted rows runs through feature-conforming, and the auditor built
+here is what will tell the truth about whether any given attempt worked.
