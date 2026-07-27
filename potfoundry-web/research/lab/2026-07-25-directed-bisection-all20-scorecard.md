@@ -1,5 +1,37 @@
 # All-20 scorecard — directed-bisection universal mesher (2026-07-25)
 
+> # ⛔ SUPERSEDED 2026-07-27 — "19 closed" DOES NOT MEAN 0.01 mm TRUE-3D. Read the re-audit first.
+>
+> **`research/lab/2026-07-27-facet-truth-reaudit.md`.**
+>
+> Every "closed" verdict below was produced by `sagOfN`, which samples a **fixed** barycentric lattice
+> (`n = clamp(ceil(longestEdge/0.03mm), 12, 64)`) and measures distance to a triangle's **infinite plane**.
+> It has no error bound, its pitch is capped at 0.03 mm against a 0.01 mm bar, and — decisively — **it is
+> the same sampler that drives refinement**, so a facet spanning a feature it cannot see is never refined
+> *and* never flagged. The sixteen rows reading exactly `MAX 5.000 µm` are reporting `ACCEPT` back, not
+> measuring the mesh. This was demonstrated deterministically, not argued: on a mesh missing 400 µm of
+> relief, this ruler reads **5.552 µm "clean"** while an independent two-sided auditor reads **391.661 µm**.
+>
+> Re-measured against the true surface on these exact meshes, **6 of the 19 carry genuine interior
+> tessellation defects** and one more fails only at the ring's open rim:
+>
+> | row | this scorecard | re-audit (floor) | where |
+> |---|---|---|---|
+> | GothicArches | 5.856 PASS | **20.077** | wall-wide, 2 372 samples, peak at the arch rib |
+> | CelticTriquetra | 5.079 PASS | **17.837** | interior, upper wall |
+> | GyroidManifold | 7.416 PASS | **17.299** | wall-wide, uniform |
+> | GeometricStar | 4.999 PASS | **12.675** | interior, one cluster at z 10-15 |
+> | Voronoi | 5.000 PASS | **11.906** | interior, scattered |
+> | Crystalline | 5.000 PASS | **10.302** | interior, marginal (3 samples, +3 %) |
+> | BasketWeave | 7.034 PASS | **93.662** | **RIM BAND ONLY** — ring boundary, wall is clean |
+>
+> The twelve remaining rows do hold (worst: DragonScales 8.853, BambooSegments 7.457 — both floors). The
+> split is not noise: it is exactly smooth/layered vs **sharp-locus** styles, and on the twelve holding rows
+> both rulers agree, which is what makes the disagreement on the others meaningful.
+>
+> Nothing below is deleted — the mesher work, and the vertex placement in particular, is not in dispute.
+> What is withdrawn is the claim that these numbers certify 0.01 mm true-3D fidelity.
+
 **One pipeline, zero per-style code.** `research/bridge/_strataConformBisect.test.ts` (`PF_STRATA_CB=1`), `PF_CB_DIRECTED=1`, grid 200×140, ruler ≡ audit ruler (`REF_HS=0.03 REF_NMIN=12 REF_NMAX=64`), `ACCEPT=0.005`, `TRICAP=5M`, `LOCUS_AUDIT=1`, **registry defaults**, `ring` stage unless noted.
 
 > # UPDATE 8 — §10's slot-reuse allocator is BUILT and REFUTED. The shear's real mechanism is MEASURED (it IS a parking bug, contrary to §8) — and the obvious repair is refuted too, at 140 rows but not at 40
