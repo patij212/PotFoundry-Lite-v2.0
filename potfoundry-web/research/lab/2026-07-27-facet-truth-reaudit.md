@@ -253,3 +253,55 @@ arc length `s` moves at most `s` in 3-D. Consequences:
 The cost is real and should not be hidden: certifying at 10 µm means a sample pitch of order 10 µm, so
 sample count scales as `area / tol²` rather than with triangle count. That is the honest price of a
 certificate, and it is the number to put in front of a ship decision — not a cheaper ruler.
+
+## 7. PRE-REGISTERED: are the refuted rows mechanism-limited or driver-limited?
+
+Registered **before** the experiment exists, so the answer cannot be fitted afterwards.
+
+### The observation
+
+At every refuted row's worst locus the mesh is **coarse, not floored**, and the mesher **had budget left**:
+
+| row | tris / cap | budget used | worst-triangle edges (µm) | heap at stop |
+|---|---|---|---|---|
+| GyroidManifold | 1.91 M / 16 M | 12 % | 140 / 267 / 206 | 0 left |
+| Voronoi | 1.56 M / 9 M | 17 % | 74 / 75 / 142 | 0 left |
+| GeometricStar | 1.72 M / 9 M | 19 % | 197 / 129 / 265 | 0 left |
+| BasketWeave | 0.86 M / 2.5 M | 34 % | 997 / 813 / 1382 | 0 left |
+| Crystalline | 2.27 M / 5 M | 45 % | 296 / 138 / 159 | 0 left |
+| GothicArches | 3.90 M / 6 M | 65 % | 433 / 353 / 535 | 0 left |
+| CelticTriquetra | 3.36 M / 5 M | 67 % | 82 / 396 / 316 | 0 left |
+
+The refinement floor is `FLOOR_MM = 1.5 µm`. Every one of these triangles is **50×–900× above it**, and every
+run ended with a **drained heap** — the driver believed it was converged. It was not out of room, out of
+budget, or out of mechanism. It stopped because `sagAdaptive` told it these triangles were within 5 µm.
+
+### The hypothesis
+
+**These rows are DRIVER-limited, not MECHANISM-limited.** The campaign has been building per-style
+conforming machinery (curtains, chains, junctions, treads) on the premise that the sharp-locus styles need
+new mechanisms. At the measured worst loci that premise is not what is binding: the mesh is simply coarse
+there, and the driver had both budget and floor headroom to fix it.
+
+### The prediction (falsifiable, and stated in advance)
+
+Re-running a refuted style with an accept test that a triangle cannot pass **unless its own sampling
+resolves it** — `witnessed + coveringRadius ≤ acceptTol` rather than `witnessed ≤ acceptTol` — should:
+
+1. drive H2 on that style **below 10 µm**, measured by the independent auditor, with **no new mechanism**;
+2. do so **within the existing triangle budget** (GeometricStar used 19 % of 9 M);
+3. leave the twelve holding rows **unchanged** when the flag is off (byte-identical output).
+
+**What refutes it:** if the style still reads over 10 µm at the floor, or the triangle count explodes past
+budget, then the locus genuinely needs conforming and the mechanism premise was right after all.
+
+**Target: GeometricStar** — one interior cluster (40 samples, z 10-15), 12.675 µm, coarsest headroom
+(19 % of budget), so it is the cleanest discriminator. If it does not move, the hypothesis is dead.
+
+### The known limit of the fix
+
+The covering-radius term cannot be satisfied at a genuine **C0 jump**: adjacent surface samples straddling
+a discontinuity stay a jump-height apart in 3-D no matter how fine the parameter lattice. Such triangles
+will refine to the floor and remain flagged — which is the correct and useful behaviour, because it names
+exactly the loci that need a curtain rather than density. That is the closure invariant the original brief
+asked for in its §5.6, obtained for free.

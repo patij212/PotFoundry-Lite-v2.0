@@ -280,6 +280,102 @@ describe('STRATA conforming-bisection', () => {
       return sagOfN(t, n);
     };
     const REF_HS = envF('PF_CB_REF_HS', 0.15); const REF_NMIN = Math.round(envF('PF_CB_REF_NMIN', 6)); const REF_NMAX = Math.round(envF('PF_CB_REF_NMAX', 24));
+
+    // ───────────────── L4  BOUNDED ACCEPT (PF_CB_BOUNDED=1, default OFF) ─────────────────
+    // WHY. `sagAdaptive` returns a WITNESSED value on a lattice whose level is clamped at 64, and `consider`
+    // accepts a triangle when that witness is under `acceptTol`. A witness is a lower bound with no error
+    // control, so "accepted" means only "no sample I happened to take read high" — which is why 16 of the
+    // 19 scorecard rows land at exactly ACCEPT, and why the 2026-07-27 re-audit found seven of them over
+    // the product bar with the heap DRAINED and most of the budget unspent (see
+    // research/lab/2026-07-27-facet-truth-reaudit.md §7).
+    //
+    // THE RULE. A triangle may be accepted only if its own sampling actually RESOLVED it:
+    //        witnessed + coveringRadius  <=  acceptTol
+    // Distance-to-a-set is 1-Lipschitz, so a surface point lying between samples cannot be further from the
+    // triangle than (nearest sample's distance + the 3-D spacing to that sample). Two deliberate changes
+    // from `sagOfN` beyond the extra term:
+    //   * distance to the TRIANGLE, not to its infinite plane — the plane is not the thing being printed;
+    //   * the covering term is the MEASURED 3-D spacing of adjacent surface samples, not a parameter-space
+    //     quantity. On a cliff that spacing stays large however fine the parameter lattice gets, so a
+    //     feature-spanning facet can never be accepted — it refines to the floor and stays flagged, which
+    //     is the correct answer (it names the loci that need a curtain rather than density).
+    //
+    // The point-triangle distance below is deliberately NOT shared with the auditor in
+    // research/bridge/_facetTruthLib.ts. Duplication is protective here: the whole value of that auditor is
+    // that it shares no machinery with the mesher it judges.
+    const BOUNDED = envOn('PF_CB_BOUNDED');
+    const BND_N = Math.round(envF('PF_CB_BND_N', 12)); // lattice level for the bounded probe
+
+    /** exact squared point-to-triangle distance (Ericson closest-point) */
+    const ptTri2 = (px: number, py: number, pz: number, a: number, b: number, c: number): number => {
+      const ax = vx[a]; const ay = vy[a]; const az = vz[a];
+      const bx = vx[b]; const by = vy[b]; const bz = vz[b];
+      const cx = vx[c]; const cy = vy[c]; const cz = vz[c];
+      const abx = bx - ax; const aby = by - ay; const abz = bz - az;
+      const acx = cx - ax; const acy = cy - ay; const acz = cz - az;
+      const apx = px - ax; const apy = py - ay; const apz = pz - az;
+      const d1 = abx * apx + aby * apy + abz * apz;
+      const d2 = acx * apx + acy * apy + acz * apz;
+      const sq = (qx: number, qy: number, qz: number): number => (px - qx) * (px - qx) + (py - qy) * (py - qy) + (pz - qz) * (pz - qz);
+      if (d1 <= 0 && d2 <= 0) return sq(ax, ay, az);
+      const bpx = px - bx; const bpy = py - by; const bpz = pz - bz;
+      const d3 = abx * bpx + aby * bpy + abz * bpz;
+      const d4 = acx * bpx + acy * bpy + acz * bpz;
+      if (d3 >= 0 && d4 <= d3) return sq(bx, by, bz);
+      const vc = d1 * d4 - d3 * d2;
+      if (vc <= 0 && d1 >= 0 && d3 <= 0) { const v = d1 / (d1 - d3); return sq(ax + abx * v, ay + aby * v, az + abz * v); }
+      const cpx = px - cx; const cpy = py - cy; const cpz = pz - cz;
+      const d5 = abx * cpx + aby * cpy + abz * cpz;
+      const d6 = acx * cpx + acy * cpy + acz * cpz;
+      if (d6 >= 0 && d5 <= d6) return sq(cx, cy, cz);
+      const vb = d5 * d2 - d1 * d6;
+      if (vb <= 0 && d2 >= 0 && d6 <= 0) { const w = d2 / (d2 - d6); return sq(ax + acx * w, ay + acy * w, az + acz * w); }
+      const va = d3 * d6 - d5 * d4;
+      if (va <= 0 && d4 - d3 >= 0 && d5 - d6 >= 0) {
+        const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+        return sq(bx + (cx - bx) * w, by + (cy - by) * w, bz + (cz - bz) * w);
+      }
+      const den = 1 / (va + vb + vc); const v = vb * den; const w = vc * den;
+      return sq(ax + abx * v + acx * w, ay + aby * v + acy * w, az + abz * v + acz * w);
+    };
+
+    /**
+     * Bounded error estimate for one triangle: max over sampled surface points of their distance to the
+     * TRIANGLE, plus the measured 3-D spacing of those samples. Never under-states, so a triangle it lets
+     * through has genuinely been resolved at this sampling.
+     */
+    const sagBounded = (t: number): number => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
+      const n = BND_N;
+      const gx: number[] = []; const gy: number[] = []; const gz: number[] = [];
+      let worst = 0;
+      for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
+        const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
+        const theta = th0 + wb * dB + wc * dC;
+        const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
+        const r = R(canon(theta), z);
+        const qx = r * Math.cos(theta); const qy = r * Math.sin(theta);
+        gx.push(qx); gy.push(qy); gz.push(z);
+        const d2 = ptTri2(qx, qy, z, a, b, c);
+        if (d2 > worst) worst = d2;
+      }
+      // covering term: the largest 3-D gap between lattice-adjacent surface samples. On a smooth patch this
+      // shrinks with n; across a cliff it does not, which is exactly the signal we want to keep.
+      let gap = 0; let k = 0;
+      for (let i = 0; i <= n; i += 1) {
+        const rowLen = n - i;
+        for (let j = 0; j <= rowLen; j += 1) {
+          if (j < rowLen) {
+            const p = k; const q = k + 1;
+            const g = (gx[p] - gx[q]) ** 2 + (gy[p] - gy[q]) ** 2 + (gz[p] - gz[q]) ** 2;
+            if (g > gap) gap = g;
+          }
+          k += 1;
+        }
+      }
+      return Math.sqrt(worst) + Math.sqrt(gap);
+    };
     const AUD_HS = envF('PF_CB_AUD_HS', 0.03); const AUD_NMIN = Math.round(envF('PF_CB_AUD_NMIN', 12)); const AUD_NMAX = Math.round(envF('PF_CB_AUD_NMAX', 64));
 
     // ───────────────────────────── INIT: uniform θ×z grid, C0 z-bands ─────────────────────────────
@@ -497,7 +593,7 @@ describe('STRATA conforming-bisection', () => {
       if (t < 0 || !alive[t]) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       if (le < FLOOR_MM) return;
-      const s = ADAPT ? sagAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagOfN(t, oracleRef);
+      const s = BOUNDED ? sagBounded(t) : ADAPT ? sagAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagOfN(t, oracleRef);
       if (s > acceptTol) hpush(t, s);
     };
     for (let t = 0; t < ta.length; t += 1) consider(t);

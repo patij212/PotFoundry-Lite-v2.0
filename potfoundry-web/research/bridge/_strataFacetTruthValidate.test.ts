@@ -256,3 +256,52 @@ describe('facet-truth ruler validation', () => {
     expect(res.max).toBeLessThan(amp * 0.1);
   });
 });
+
+/**
+ * Cylinder with a single C0 z-step at zStep: radius jumps by `jump`. The printed solid carries a vertical
+ * TREAD WALL there, which the mesher emits and which is correct geometry — but it is not on the bare graph.
+ */
+function stepped(zStep: number, jump: number): RadiusFn {
+  return (_th: number, z: number) => (z < zStep ? R0 : R0 + jump);
+}
+
+describe('facet-truth closure at discontinuities', () => {
+  it.runIf(RUN)('V7: a TREAD WALL facet is correct geometry and must not read as an error', () => {
+    // A tread annulus quad: it lies in the plane z = zStep and spans the full radial jump. Scored against
+    // the bare graph it reads ~the jump height; scored against the CLOSURE of the graph — which is what the
+    // solid's boundary actually is — it reads ~0.
+    //
+    // This is the case that the first closure attempt silently failed: it probed a fixed z +/- 1e-6, so the
+    // interval only opened if a probe landed within a micron of the step. H2 never exercised it (H2 samples
+    // the surface), so it went unnoticed until H1 ran on ArtDeco and returned 2086 um on exactly this shape.
+    const zStep = 60; const jump = 2.0;
+    const rA = stepped(zStep, jump);
+    const th0 = 0.4; const th1 = 0.4 + 0.09;              // ~4 mm of arc, like the real ArtDeco tread
+    const rLo = R0; const rHi = R0 + jump;
+    const v = certifyTriangle(rA,
+      rLo * Math.cos(th0), rLo * Math.sin(th0), zStep,
+      rHi * Math.cos(th0), rHi * Math.sin(th0), zStep,
+      rHi * Math.cos(th1), rHi * Math.sin(th1), zStep,
+      { H, tol: 0.01, nMax: 512 });
+    // eslint-disable-next-line no-console
+    console.log(`V7 tread wall across a ${jump * 1000} um step: H1 witnessed ${(v.witnessed * 1000).toFixed(3)} um`);
+    expect(v.witnessed).toBeLessThan(jump * 0.05);
+  });
+
+  it.runIf(RUN)('V7b: the closure must NOT forgive a genuinely misplaced facet on a smooth surface', () => {
+    // Same machinery, but no discontinuity anywhere near: a facet pushed 0.4 mm off a plain cylinder must
+    // still read 0.4 mm. If the two-scale test were sloppy it would widen the interval on ordinary slope
+    // and quietly forgive real error — the failure direction that actually matters.
+    const off = 0.4;
+    const th0 = 0.4; const th1 = 0.4 + 0.02;
+    const r = R0 - off;
+    const v = certifyTriangle(cylinder,
+      r * Math.cos(th0), r * Math.sin(th0), 50,
+      r * Math.cos(th1), r * Math.sin(th1), 50,
+      r * Math.cos(th0), r * Math.sin(th0), 51,
+      { H, tol: 0.01, nMax: 512 });
+    // eslint-disable-next-line no-console
+    console.log(`V7b facet ${off * 1000} um inside a smooth cylinder: H1 witnessed ${(v.witnessed * 1000).toFixed(3)} um`);
+    expect(v.witnessed).toBeGreaterThan(off * 0.9);
+  });
+});

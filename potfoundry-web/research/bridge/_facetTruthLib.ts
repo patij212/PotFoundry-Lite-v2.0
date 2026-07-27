@@ -62,22 +62,57 @@ export function distRadial(rA: RadiusFn, H: number, px: number, py: number, pz: 
 
 export interface LocalResult { d: number; th: number; z: number }
 
-/** Half-width of the one-sided probe used to close the graph at a discontinuity (mm / rad). */
-const CLOSURE_EPS = 1e-6;
+/**
+ * Radial interval of the CLOSURE of the graph at (th,z), probed over a window of half-width `w`.
+ *
+ * The printed object's boundary is the closure of `r = rA(th,z)`: at a C0 z-step the solid carries a
+ * vertical tread wall spanning `[r-, r+]`, and the mesher emits exactly that. A point ON such a wall is
+ * correct geometry, but it is not on the bare graph, so scoring it against the graph reports about the
+ * jump height as an error.
+ *
+ * THE FIRST ATTEMPT AT THIS WAS USELESS AND IT MATTERS WHY. It probed a fixed `z +/- 1e-6`, so the
+ * interval only opened when a search probe happened to land within a micron of the jump — which never
+ * happens. It went unnoticed because H2 samples the SURFACE, where the question never arises; it surfaced
+ * only when H1 ran on the layered styles and returned 2086 um on an ArtDeco tread annulus.
+ *
+ * The window must therefore scale with the search, and a jump must be told apart from a steep slope, or
+ * widening the interval on a slope would UNDER-state distance and could fabricate a pass. That is a
+ * two-scale test: sample the range of rA over `w` and over `w/4`. A slope's range falls by ~4x; a jump's
+ * does not. Only when the range survives the shrink is a discontinuity present and the interval opened.
+ */
+function closureInterval(rA: RadiusFn, H: number, th: number, z: number, w: number, rNom: number): { lo: number; hi: number } {
+  const r0 = rA(th, z);
+  if (!(w > 0)) return { lo: r0, hi: r0 };
+  const rangeOver = (hw: number): { lo: number; hi: number } => {
+    let lo = r0; let hi = r0;
+    for (let i = -2; i <= 2; i += 1) {
+      if (i === 0) continue;
+      const dz = (hw * i) / 2;
+      const zz = Math.min(H, Math.max(0, z + dz));
+      const a = rA(th, zz);
+      if (a < lo) lo = a; if (a > hi) hi = a;
+      const b = rA(th + dz / rNom, z);
+      if (b < lo) lo = b; if (b > hi) hi = b;
+    }
+    return { lo, hi };
+  };
+  const wide = rangeOver(w);
+  const narrow = rangeOver(w / 4);
+  const vWide = wide.hi - wide.lo;
+  const vNarrow = narrow.hi - narrow.lo;
+  // smooth: the range shrinks with the window (~4x). jump: it survives. 0.5 sits well clear of both.
+  if (vWide <= 0 || vNarrow < 0.5 * vWide) return { lo: r0, hi: r0 };
+  return narrow;
+}
 
 /**
  * Local polish: 8-neighbour coordinate descent in (arc, z) from a seed, halving the step when stuck.
  * Every probe is a genuine surface point, so the result is still an upper bound on d(p) — polishing can
  * only tighten the estimate, never fabricate a pass.
  *
- * CLOSURE AT DISCONTINUITIES. The printed object's outer boundary is the CLOSURE of the graph
- * r = rA(theta,z), not the graph itself: at a C0 z-step the solid has a vertical tread wall, and at a
- * theta-jump a vertical curtain, and both are correct geometry that the mesher deliberately emits. Scoring
- * such a wall against the bare graph would report about half the jump height as an error on every layered
- * style — a false FAIL on correct triangles. So at each candidate (theta,z) the surface footprint is taken
- * to be the RADIAL SEGMENT spanned by the one-sided limits, and the query point's radius is clamped into
- * it. On a smooth patch the limits coincide to within slope*1e-6 mm, so this is a no-op everywhere except
- * exactly at a jump, which is where it is the correct model.
+ * CLOSURE AT DISCONTINUITIES is handled by `closureInterval` (see there): the query radius is clamped into
+ * the radial interval the closure spans at that (theta,z), so a point on a tread wall or theta-curtain is
+ * scored against geometry that actually exists rather than against the bare graph.
  */
 export function distLocal(
   rA: RadiusFn, H: number,
@@ -87,15 +122,12 @@ export function distLocal(
   let th = seedTh; let z = seedZ;
   const rNom = Math.hypot(px, py) || 1;
   const rp = Math.hypot(px, py);
+  // The closure window tracks the CURRENT step: a jump only counts as a closer candidate if it lies within
+  // the distance we are already claiming, and as the descent narrows so does the window.
+  let win = step0;
   const at = (t: number, zz: number): number => {
     const zc = zz < 0 ? 0 : zz > H ? H : zz;
-    const e = CLOSURE_EPS;
-    const r0 = rA(t, zc);
-    let lo = r0; let hi = r0;
-    for (const rr of [rA(t, Math.min(H, zc + e)), rA(t, Math.max(0, zc - e)), rA(t + e / rNom, zc), rA(t - e / rNom, zc)]) {
-      if (rr < lo) lo = rr;
-      if (rr > hi) hi = rr;
-    }
+    const { lo, hi } = closureInterval(rA, H, t, zc, win, rNom);
     const r = rp < lo ? lo : rp > hi ? hi : rp;
     return Math.hypot(px - r * Math.cos(t), py - r * Math.sin(t), pz - zc);
   };
@@ -113,7 +145,7 @@ export function distLocal(
       const v = at(ct, cz);
       if (v < best - 1e-13) { best = v; th = ct; z = cz; improved = true; }
     }
-    if (!improved) { s *= 0.5; if (s < 1e-8) break; }
+    if (!improved) { s *= 0.5; win = s; if (s < 1e-8) break; }
   }
   return { d: best, th, z };
 }
