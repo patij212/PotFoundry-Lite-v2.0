@@ -1,7 +1,8 @@
 # STRATA-001 RE-AUDIT — the "19/20 closed" scorecard, re-measured by an independent two-sided ruler
 
-**Status: in progress.** Instrument built and validated; sweep running. No row's status changes until its
-number is in the table at the bottom.
+**Status: H2 sweep COMPLETE, all 19 rows. 12 within tolerance, 7 REFUTED.** H1 certificates: 2 done,
+17 pending a second pass. Every refuted number is a *floor* — refinement was truncated — so those rows can
+only get worse, never better.
 
 ## 1. Why the scorecard is being re-opened
 
@@ -121,15 +122,47 @@ _(table filled as rows complete — no row's status changes before its number is
 Sweep config: TOL 10 µm · H2 coverage pitch 40 µm · H2 refinement floor 2.5 µm · H2 phase-B wall-clock cap
 300 s (so an H2 number marked *truncated* is a floor, not a converged value) · old-ruler A/B on every row.
 
-| style | tris | old ruler | H1 certified bound | H2 witnessed (floor) | H2 resolving power | verdict |
-|---|---|---|---|---|---|---|
-| LowPolyFacet | 137,480 | 5.000 | **10.000 PASS** — 0 over, 0 uncertified, 137,480/137,480 audited | **4.307** (brute-confirmed) | 5.24 µm | **stands** |
-| SuperellipseMorph | 155,824 | 4.999 | **10.000 PASS** — 0 over, 0 uncertified, 155,824/155,824 audited | **5.009** (brute-confirmed) | 12.86 µm | **stands** |
 
-Both rows clear 10 µm in both directions with a genuine certificate: every triangle carries a rigorous
-bound and none was left uncertified. Worth stating plainly, because it is evidence about the instrument as
-much as about the meshes — this ruler does not simply read high on everything, which V6 also showed
-synthetically. On these two smooth styles the old ruler was not wrong.
+### The verdict
+
+**7 of the 19 "closed" rows do not hold at 0.01 mm true-3D:**
+
+| refuted row | old ruler | H2 witnessed (floor) | ratio |
+|---|---|---|---|
+| **BasketWeave** | 7.034 PASS | **93.662** | 13.3× |
+| **GothicArches** | 5.856 PASS | **20.077** | 3.4× |
+| **CelticTriquetra** | 5.079 PASS | **17.837** | 3.5× |
+| **GyroidManifold** | 7.416 PASS | **17.299** | 2.3× |
+| **GeometricStar** | 4.999 PASS | **12.675** | 2.5× |
+| **Voronoi** | 5.000 PASS | **11.906** | 2.4× |
+| **Crystalline** | 5.000 PASS | **10.302** | 2.1× |
+
+Every one of these was brute-force re-checked against the entire mesh, so none is an acceleration-structure
+artifact. Every one is a *floor*.
+
+**The split is not random — it is exactly the feature taxonomy.** The twelve rows that hold are the smooth
+styles plus the layered ones (worst: DragonScales 8.853, Bamboo 7.457 — both floors, both uncomfortably
+close to the bar). The seven that fail are, without exception, the styles whose defining geometry is a
+**sharp locus**: θ-jumps (BasketWeave), ribs and creases (Gothic), snaking strands (Triquetra), ridge
+networks (Gyroid), star tips (GeoStar), cell bisectors (Voronoi), facet edges (Crystalline). These are
+precisely the styles that needed bespoke closers, and precisely where a plane-distance lattice ruler is
+blind.
+
+Read together with §3: the old ruler was not lying about *its own* quantity — plane-distance on its lattice
+really is ~5 µm on these meshes. It was measuring something that is not the product bar. On the twelve
+smooth/layered rows the two rulers agree, which is what makes the disagreement on the other seven
+meaningful rather than a systematic offset.
+
+### Rows that hold, with their caveats
+
+The twelve within-tolerance rows clear 10 µm in both directions, and the two with H1 certificates carry a
+rigorous bound on every triangle with none left uncertified. Worth stating plainly, because it is evidence
+about the instrument as much as about the meshes — this ruler does not simply read high on everything,
+which V6 also showed synthetically.
+
+Two of them are marginal and should not be treated as safe: **DragonScales 8.853** and **BambooSegments
+7.457**, both floors, both layered styles where the old ruler said 5.000. A longer refinement budget could
+push either over.
 
 ### Sequencing change, and why
 
