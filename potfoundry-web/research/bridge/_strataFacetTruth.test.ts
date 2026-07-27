@@ -102,14 +102,17 @@ describe('STRATA facet truth', () => {
     const DO_H1 = process.env.PF_FT_H1 !== '0';
     const DO_H2 = process.env.PF_FT_H2 !== '0';
     const NMAX = Math.round(envF('PF_FT_NMAX', 2048));
-    const BUDGET = envF('PF_FT_BUDGET', 8e8);
+    const BUDGET = envF('PF_FT_BUDGET', 1.2e10);
+    const H1SECS = envF('PF_FT_H1SECS', 1500);
     const OLD = envOn('PF_FT_OLDRULER');
     const TOPK = Math.round(envF('PF_FT_TOPK', 24));
     // H2 adaptive sampler controls
     const H2BUDGET = envF('PF_FT_H2BUDGET', 1.5e8);         // phase-B refinement budget (phase A is unconditional)
     const H2PITCH = envF('PF_FT_H2PITCH_UM', 40) / 1000;    // phase-A uniform coverage pitch
     const H2MINPITCH = envF('PF_FT_H2MINPITCH_UM', 1.25) / 1000;
-    const H2STRUCTN = Math.round(envF('PF_FT_H2STRUCTN', 32));
+    const H2STRUCTN = Math.round(envF('PF_FT_H2STRUCTN', 48));
+    const H2LINES = Math.round(envF('PF_FT_H2LINES', 5));
+    const H2SECS = envF('PF_FT_H2SECS', 900);
     const tag = process.env.PF_FT_TAG ?? STYLE;
     if (stlPath === '') throw new Error('PF_FT_STL is required');
 
@@ -140,7 +143,8 @@ describe('STRATA facet truth', () => {
 
     // ══════════════════ H1 — MESH -> SURFACE, certified 1-Lipschitz bound ══════════════════
     if (DO_H1) {
-      let samples = 0; let capped = false;
+      const tH1 = Date.now();
+      let samples = 0; let capped = false; let audited = 0;
       let worstUB = 0; let worstUBTri = -1;
       let worstWit = 0; let worstWitTri = -1; let wx = 0; let wy = 0; let wz = 0;
       let nOver = 0; let nUncert = 0;
@@ -157,7 +161,11 @@ describe('STRATA facet truth', () => {
           nOver += 1;
           if (offTri.length < TOPK * 8) { offTri.push(t); offD.push(v.witnessed); offP.push(v.px, v.py, v.pz); }
         } else if (!v.certified) nUncert += 1;
-        if (samples > BUDGET) { capped = true; break; }
+        audited += 1;
+        // Stopping early leaves triangles UNSEEN, and an unseen triangle is not a passing triangle. The
+        // audited count is reported alongside nTri and the verdict is downgraded to INCOMPLETE, because a
+        // partial sweep that prints PASS is exactly the failure this instrument exists to eliminate.
+        if (samples > BUDGET || Date.now() - tH1 > H1SECS * 1000) { capped = true; break; }
       }
       const ord = offD.map((d, i) => [d, i] as [number, number]).sort((p, q) => q[0] - p[0]).slice(0, TOPK);
       const conf = ord.map(([, i]) => {
@@ -166,12 +174,12 @@ describe('STRATA facet truth', () => {
       });
       lines.push('',
         '--- H1  MESH -> SURFACE   (certified: bound = witnessed + covering radius) ---',
-        `  ${(samples / 1e6).toFixed(1)}M lattice samples${capped ? '   *** CAPPED ***' : ''}`,
-        `  CERTIFIED UPPER BOUND : ${um(worstUB)} um   ${worstUB <= TOL ? 'PASS' : 'NOT CERTIFIED'}`,
+        `  ${(samples / 1e6).toFixed(1)}M lattice samples   ${((Date.now() - tH1) / 1000).toFixed(0)}s   audited ${audited}/${nTri} triangles${capped ? '   *** INCOMPLETE — budget/time cap hit, the unseen triangles are UNKNOWN, not passing ***' : ''}`,
+        `  CERTIFIED UPPER BOUND : ${um(worstUB)} um   ${capped ? 'INCOMPLETE (partial mesh)' : worstUB <= TOL ? 'PASS' : 'NOT CERTIFIED'}`,
         `    bound-locus   ${locus(worstUBTri)}`,
         `  WITNESSED max         : ${um(worstWit)} um   ${worstWit <= TOL ? 'within TOL' : 'EXCEEDS TOL'}`,
         `    witness-locus ${locus(worstWitTri)}   at xyz ${wx.toFixed(5)},${wy.toFixed(5)},${wz.toFixed(5)}`,
-        `  triangles with a witnessed exceedance : ${nOver} / ${nTri}`,
+        `  triangles with a witnessed exceedance : ${nOver} / ${audited} audited`,
         `  triangles left UNCERTIFIED            : ${nUncert}`,
         `  stage-3 global confirm of worst ${conf.length}: ${um(conf.reduce((m, c) => Math.max(m, c.truth), 0))} um`,
         ...conf.slice(0, 8).map((c) => `    tri ${c.tri}  fast ${um(c.fast)} -> global ${um(c.truth)} um  @th=${c.th.toFixed(5)} z=${c.z.toFixed(4)}`));
@@ -186,7 +194,8 @@ describe('STRATA facet truth', () => {
       const cell = pickLocatorCell(xyz, idx, nTri);
       const loc = buildRefLocator(ref, cell);
       const h2 = surfaceToMeshMax(rA, loc.dist, {
-        H, tol: TOL, coveragePitch: H2PITCH, minPitch: H2MINPITCH, structN: H2STRUCTN, budget: H2BUDGET,
+        H, tol: TOL, coveragePitch: H2PITCH, minPitch: H2MINPITCH, structN: H2STRUCTN,
+        structLines: H2LINES, budget: H2BUDGET, timeBudgetMs: H2SECS * 1000,
         onProgress: (frac, q, mx) => {
           if (Math.round(frac * 512) % 64 !== 0) return;
           // eslint-disable-next-line no-console
@@ -202,7 +211,7 @@ describe('STRATA facet truth', () => {
       const brute = loc.bruteDist(wxp, wyp, h2.z);
       lines.push('',
         '--- H2  SURFACE -> MESH   (witnessed lower bound; every reading is an exact point-to-triangle distance) ---',
-        `  ${(h2.queries / 1e6).toFixed(1)}M locator queries   structure pitch ${um(h2.structPitch)} um (resolving power)`,
+        `  ${(h2.queries / 1e6).toFixed(1)}M locator queries, ${(h2.rEvalsStruct / 1e6).toFixed(0)}M structure evals, ${h2.secs.toFixed(0)}s   structure pitch ${um(h2.structPitch)} um (resolving power)   locator cell ${cell.toFixed(3)} mm`,
         `  ${h2.capped ? 'phase-B refinement TRUNCATED by budget (phase-A coverage of the whole surface still completed, so this is a floor)' : 'refinement ran to exhaustion — no cell left that could beat the reported max'}`,
         `  WITNESSED max : ${um(h2.max)} um   ${h2.max <= TOL ? 'within TOL' : 'EXCEEDS TOL'}   [brute-force re-check of this point: ${um(brute)} um]`,
         `    at th=${h2.th.toFixed(6)} z=${h2.z.toFixed(5)}  r=${rw.toFixed(5)}  nearest tri ${dt.tri}`,

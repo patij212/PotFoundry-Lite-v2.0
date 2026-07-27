@@ -118,8 +118,20 @@ Sweep: `bash research/bridge/_facetTruthSweep.sh` (one style at a time). Reports
 
 _(table filled as rows complete — no row's status changes before its number is here)_
 
+Sweep config: TOL 10 µm · H2 coverage pitch 40 µm · H2 refinement floor 2.5 µm · H2 phase-B wall-clock cap
+300 s (so an H2 number marked *truncated* is a floor, not a converged value) · old-ruler A/B on every row.
+
 | style | tris | old ruler | H1 certified bound | H2 witnessed | verdict |
 |---|---|---|---|---|---|
+| LowPolyFacet | 137,480 | 5.000 | **10.000 PASS** (0 over, 0 uncertified) | **4.307** (brute-confirmed; truncated, floor) | **stands** |
+
+**LowPolyFacet stands.** Both directions clear 10 µm, and the H1 certificate is genuine — every triangle
+carries a rigorous bound, none was left uncertified. Worth stating plainly because it is evidence about the
+instrument as much as the mesh: this ruler does not simply read high on everything (V6 made the same point
+synthetically). Cost 276 s / 390 M `rA` evals for 137 k triangles.
+
+Caveat carried with the number: H2's resolving power here was 5.24 µm, so the claim is "no unrepresented
+feature materially wider than ~5 µm", not "no unrepresented feature".
 
 ## 6. The fix that follows from the diagnosis (designed, NOT yet measured)
 

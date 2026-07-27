@@ -293,7 +293,9 @@ export interface SurfaceToMeshOpts {
   tol: number;
   /** uniform query lattice spacing, mm of arc and of z (phase A). Default 4x tol. */ coveragePitch?: number;
   /** refinement floor for the query lattice (phase B). Default tol/8. */ minPitch?: number;
-  /** side of the rA-only structure lattice per cell. Default 32. */ structN?: number;
+  /** samples per structure line. Default 48. */ structN?: number;
+  /** number of rows and of columns in the structure cross. Default 5. */ structLines?: number;
+  /** wall-clock ceiling for phase B, ms. Phase A always completes. Default 900000. */ timeBudgetMs?: number;
   /** max locator queries in phase B before it stops (phase A always completes) */ budget?: number;
   onProgress?: (fracDone: number, queries: number, max: number) => void;
 }
@@ -306,6 +308,7 @@ export interface SurfaceToMeshResult {
   capped: boolean;
   /** finest rA spacing actually used (mm) — the instrument's stated resolving power */ structPitch: number;
   /** cells that were still hot when the refinement floor was reached */ hotLeaves: number;
+  secs: number;
 }
 
 export function surfaceToMeshMax(
@@ -316,8 +319,11 @@ export function surfaceToMeshMax(
   const TAU = 2 * Math.PI;
   const { H, tol } = opts;
   const pitch0 = opts.coveragePitch ?? 4 * tol;
-  const minPitch = opts.minPitch ?? tol / 8;
-  const structN = opts.structN ?? 32;
+  const minPitch = opts.minPitch ?? tol / 4;
+  const structN = opts.structN ?? 48;
+  const structLines = opts.structLines ?? 5;
+  const timeBudgetMs = opts.timeBudgetMs ?? 900000;
+  const tStart = Date.now();
   const budget = opts.budget ?? 2e8;
   let queries = 0; let rEvalsStruct = 0; let capped = false;
   let max = 0; let mTh = 0; let mZ = 0; let hotLeaves = 0;
@@ -339,19 +345,28 @@ export function surfaceToMeshMax(
    * interpolant, measured on a lattice `structOver` times finer than the query lattice. This is what betrays
    * a ridge, groove or facet edge living strictly between query samples.
    */
+  // A FULL structN x structN lattice per cell is unaffordable: phase B visits millions of cells and a
+  // 33x33 scan on each turned the smallest style in the roster into an hour-long run. Scan a CROSS of
+  // `structLines` rows and `structLines` columns instead — O(2*L*N) instead of O(N^2), ~7x cheaper at the
+  // same along-line pitch. A feature that SPANS the cell (which is exactly the feature-spanning-facet case
+  // this instrument exists for) must cross a mid-line, so the cheaper probe loses very little of what
+  // matters while making the sweep finish.
   const structure = (th0: number, th1: number, z0: number, z1: number): number => {
-    const su = structN; const sv = structN;
-    finestStruct = Math.min(finestStruct, Math.max(((th1 - th0) * rNom) / su, (z1 - z0) / sv));
+    finestStruct = Math.min(finestStruct, Math.max(((th1 - th0) * rNom) / structN, (z1 - z0) / structN));
     const r00 = rA(th0, z0); const r10 = rA(th1, z0); const r01 = rA(th0, z1); const r11 = rA(th1, z1);
+    const lin = (a: number, b: number): number => (1 - a) * (1 - b) * r00 + a * (1 - b) * r10 + (1 - a) * b * r01 + a * b * r11;
     let worst = 0;
-    for (let i = 0; i <= su; i += 1) {
-      const a = i / su; const th = th0 + (th1 - th0) * a;
-      for (let j = 0; j <= sv; j += 1) {
-        const b = j / sv; const z = z0 + (z1 - z0) * b;
-        const lin = (1 - a) * (1 - b) * r00 + a * (1 - b) * r10 + (1 - a) * b * r01 + a * b * r11;
-        rEvalsStruct += 1;
-        const d = Math.abs(rA(th, z) - lin);
-        if (d > worst) worst = d;
+    for (let L = 1; L <= structLines; L += 1) {
+      const t = L / (structLines + 1);
+      const zRow = z0 + (z1 - z0) * t;
+      const thCol = th0 + (th1 - th0) * t;
+      for (let i = 0; i <= structN; i += 1) {
+        const a = i / structN;
+        rEvalsStruct += 2;
+        const dRow = Math.abs(rA(th0 + (th1 - th0) * a, zRow) - lin(a, t));
+        if (dRow > worst) worst = dRow;
+        const dCol = Math.abs(rA(thCol, z0 + (z1 - z0) * a) - lin(t, a));
+        if (dCol > worst) worst = dCol;
       }
     }
     return worst;
@@ -431,7 +446,7 @@ export function surfaceToMeshMax(
   };
   for (let i = 0; i < qKey.length; i += 1) push(qKey[i], qTh0[i], qTh1[i], qZ0[i], qZ1[i], qPitch[i]);
   while (hKey.length > 0) {
-    if (queries > budget) { capped = true; break; }
+    if (queries > budget || Date.now() - tStart > timeBudgetMs) { capped = true; break; }
     const key = hKey[0]; const a0 = hA0[0]; const a1 = hA1[0];
     const b0 = hB0[0]; const b1 = hB1[0]; const pitch = hP[0];
     pop();
@@ -447,6 +462,7 @@ export function surfaceToMeshMax(
   return {
     max, th: mTh, z: mZ, queries, rEvalsStruct, capped,
     structPitch: Number.isFinite(finestStruct) ? finestStruct : pitch0 / structN,
+    secs: (Date.now() - tStart) / 1000,
     hotLeaves,
   };
 }

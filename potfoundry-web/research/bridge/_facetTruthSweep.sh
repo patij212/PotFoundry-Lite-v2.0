@@ -14,6 +14,16 @@ D=research/exchange/_strataConformBisect
 OUT=research/exchange/_strataFacetTruth
 mkdir -p "$OUT"
 
+# SINGLE-INSTANCE LOCK. Three copies of this script once ran concurrently (a `pkill` that does not exist on
+# Git Bash silently failed to stop the first two), and they competed for CPU and overwrote each other's logs
+# — one style produced no report at all. Concurrent heavy runs have also OOM'd this box before. Refuse to
+# start a second copy rather than produce results nobody can trust.
+LOCK="$OUT/.sweep.lock"
+if ! mkdir "$LOCK" 2>/dev/null; then
+  echo "REFUSING TO START: another sweep holds $LOCK (remove it if that sweep is definitely dead)"; exit 3
+fi
+trap 'rmdir "$LOCK" 2>/dev/null' EXIT INT TERM
+
 ROWS=(
   "LowPolyFacet:$D/lowpolyfacet_ring_D--.stl"
   "SuperellipseMorph:$D/superellipsemorph_ring_D--.stl"
@@ -53,7 +63,9 @@ for row in "${ROWS[@]}"; do
   PF_FT_STL="$stl" \
   PF_FT_TAG="$style" \
   PF_FT_TOL_UM="${PF_FT_TOL_UM:-10}" \
-  PF_FT_OLDRULER="${PF_FT_OLDRULER:-1}" \
+  PF_FT_OLDRULER="${PF_FT_OLDRULER:-0}" \
+  PF_FT_H2SECS="${PF_FT_H2SECS:-300}" \
+  PF_FT_H2MINPITCH_UM="${PF_FT_H2MINPITCH_UM:-2.5}" \
   npx vitest run --config vitest.strata.config.ts research/bridge/_strataFacetTruth.test.ts \
     > "$OUT/$style.run.log" 2>&1
   echo "    exit $?  ->  $OUT/$style.report.txt"
