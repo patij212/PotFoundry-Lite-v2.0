@@ -15,7 +15,7 @@
 //   V6  agreement on an honest mesh   — a mesh that DOES resolve the ridge reads small in both directions,
 //                                       so V4/V5 are detecting the defect and not an instrument bias
 import { describe, it, expect } from 'vitest';
-import { certifyTriangle, covRadius, distRadial, pickLocatorCell, surfaceToMeshMax, type RadiusFn } from './_facetTruthLib';
+import { certifyTriangle, covRadius, detectZJumps, distRadial, pickLocatorCell, surfaceToMeshMax, type RadiusFn } from './_facetTruthLib';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 
 const RUN = process.env.PF_STRATA_FTV === '1';
@@ -282,9 +282,9 @@ describe('facet-truth closure at discontinuities', () => {
       rLo * Math.cos(th0), rLo * Math.sin(th0), zStep,
       rHi * Math.cos(th0), rHi * Math.sin(th0), zStep,
       rHi * Math.cos(th1), rHi * Math.sin(th1), zStep,
-      { H, tol: 0.01, nMax: 512 });
+      { H, tol: 0.01, nMax: 512, zJumps: detectZJumps(rA, H) });
     // eslint-disable-next-line no-console
-    console.log(`V7 tread wall across a ${jump * 1000} um step: H1 witnessed ${(v.witnessed * 1000).toFixed(3)} um`);
+    console.log(`V7 tread wall across a ${jump * 1000} um step: H1 witnessed ${(v.witnessed * 1000).toFixed(3)} um  (steps found: ${detectZJumps(rA, H).length})`);
     expect(v.witnessed).toBeLessThan(jump * 0.05);
   });
 
@@ -303,5 +303,30 @@ describe('facet-truth closure at discontinuities', () => {
     // eslint-disable-next-line no-console
     console.log(`V7b facet ${off * 1000} um inside a smooth cylinder: H1 witnessed ${(v.witnessed * 1000).toFixed(3)} um`);
     expect(v.witnessed).toBeGreaterThan(off * 0.9);
+  });
+});
+
+describe('facet-truth closure must not forgive a NARROW FEATURE', () => {
+  it.runIf(RUN)('V7c: a narrow ridge is NOT a discontinuity and must not widen the closure', () => {
+    // REGRESSION LOCK. The two-scale jump test compares the radius range over a window w and over w/4. If w
+    // is much wider than the feature, BOTH ranges saturate at the full relief, the ratio is 1, and a narrow
+    // ridge is mistaken for a jump — so the closure widens and quietly forgives real error. That is the
+    // unsound direction: it turns a missing feature into a pass.
+    //
+    // V7b does not catch it (smooth cylinder, no feature) and V3's threshold had been relaxed for an
+    // unrelated reason, so the regression rode in green. Measured: an 8 um half-width, 400 um ridge read
+    // 12.040 um before the closure rewrite and 9.000 um after — i.e. under a 10 um bar.
+    //
+    // A ridge is CONTINUOUS. Its closure interval must stay degenerate however wide the search window is.
+    const thc = 0.5; const amp = 0.4;
+    for (const halfUm of [8, 30, 120]) {
+      const rA = ridged(thc, halfUm / 1000 / R0, amp);
+      const d = certifyTriangleAcross(rA, thc, 0.02);
+      // eslint-disable-next-line no-console
+      console.log(`V7c ridge half-width ${halfUm} um, relief ${amp * 1000} um: H1 ${(d * 1000).toFixed(3)} um`);
+      // H1 legitimately reads about the ridge HALF-WIDTH (see V3) — never materially less. If the closure
+      // has wrongly opened, the reading collapses well below that.
+      expect(d).toBeGreaterThan((halfUm / 1000) * 0.6);
+    }
   });
 });

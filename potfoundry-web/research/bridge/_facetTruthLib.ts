@@ -29,6 +29,8 @@ export interface FacetTruthOpts {
   nMax?: number;
   /** stop raising n once this many samples have been spent on one triangle */
   sampleCap?: number;
+  /** C0 z-steps from `detectZJumps`; the closure includes the tread wall at each */
+  zJumps?: number[];
 }
 
 /** Exact farthest-point-from-the-three-vertices radius: circumradius if acute, else half the longest edge. */
@@ -63,46 +65,49 @@ export function distRadial(rA: RadiusFn, H: number, px: number, py: number, pz: 
 export interface LocalResult { d: number; th: number; z: number }
 
 /**
- * Radial interval of the CLOSURE of the graph at (th,z), probed over a window of half-width `w`.
+ * Locate genuine C0 z-steps of rA, once per style.
  *
- * The printed object's boundary is the closure of `r = rA(th,z)`: at a C0 z-step the solid carries a
- * vertical tread wall spanning `[r-, r+]`, and the mesher emits exactly that. A point ON such a wall is
- * correct geometry, but it is not on the bare graph, so scoring it against the graph reports about the
- * jump height as an error.
+ * WHY NOT INFER THEM LOCALLY. The previous attempt asked, at each query point, whether the radius range
+ * over a window `w` survived shrinking to `w/4` — the idea being that a slope's range falls ~4x while a
+ * jump's does not. With `w` tied to the search step (~0.4 mm) that test is wrong for any feature NARROWER
+ * than the window: an 8 um ridge saturates the range at BOTH scales, so the ratio is 1 and a perfectly
+ * continuous ridge is declared a discontinuity. The closure then widens and FORGIVES the error — an 8 um,
+ * 400 um-tall missing ridge read 9.000 um, i.e. under a 10 um bar. Locked by V7c.
  *
- * THE FIRST ATTEMPT AT THIS WAS USELESS AND IT MATTERS WHY. It probed a fixed `z +/- 1e-6`, so the
- * interval only opened when a search probe happened to land within a micron of the jump — which never
- * happens. It went unnoticed because H2 samples the SURFACE, where the question never arises; it surfaced
- * only when H1 ran on the layered styles and returned 2086 um on an ArtDeco tread annulus.
- *
- * The window must therefore scale with the search, and a jump must be told apart from a steep slope, or
- * widening the interval on a slope would UNDER-state distance and could fabricate a pass. That is a
- * two-scale test: sample the range of rA over `w` and over `w/4`. A slope's range falls by ~4x; a jump's
- * does not. Only when the range survives the shrink is a discontinuity present and the interval opened.
+ * A discontinuity is a w -> 0 property, so it must be probed at a scale far below any real feature, and the
+ * only thing that needs searching is WHERE. Scanning z once per style is cheap and does that exactly.
  */
-function closureInterval(rA: RadiusFn, H: number, th: number, z: number, w: number, rNom: number): { lo: number; hi: number } {
-  const r0 = rA(th, z);
-  if (!(w > 0)) return { lo: r0, hi: r0 };
-  const rangeOver = (hw: number): { lo: number; hi: number } => {
-    let lo = r0; let hi = r0;
-    for (let i = -2; i <= 2; i += 1) {
-      if (i === 0) continue;
-      const dz = (hw * i) / 2;
-      const zz = Math.min(H, Math.max(0, z + dz));
-      const a = rA(th, zz);
-      if (a < lo) lo = a; if (a > hi) hi = a;
-      const b = rA(th + dz / rNom, z);
-      if (b < lo) lo = b; if (b > hi) hi = b;
-    }
-    return { lo, hi };
-  };
-  const wide = rangeOver(w);
-  const narrow = rangeOver(w / 4);
-  const vWide = wide.hi - wide.lo;
-  const vNarrow = narrow.hi - narrow.lo;
-  // smooth: the range shrinks with the window (~4x). jump: it survives. 0.5 sits well clear of both.
-  if (vWide <= 0 || vNarrow < 0.5 * vWide) return { lo: r0, hi: r0 };
-  return narrow;
+export function detectZJumps(rA: RadiusFn, H: number, minJump = 5e-4, nScan = 20000): number[] {
+  const probes = [0.21, 1.03, 2.44, 3.77, 5.29];
+  const eps = 1e-7;
+  const out: number[] = [];
+  let runBest = -1; let runVal = 0;
+  for (let i = 1; i < nScan; i += 1) {
+    const z = (H * i) / nScan;
+    if (z - eps < 0 || z + eps > H) continue;
+    let j = 0;
+    for (const th of probes) j = Math.max(j, Math.abs(rA(th, z + eps) - rA(th, z - eps)));
+    if (j > minJump) {
+      if (j > runVal) { runVal = j; runBest = z; }
+    } else if (runBest >= 0) { out.push(runBest); runBest = -1; runVal = 0; }
+  }
+  if (runBest >= 0) out.push(runBest);
+  return out;
+}
+
+/**
+ * Distance from p to the vertical TREAD WALL at a C0 z-step: the solid's boundary there spans every radius
+ * between the one-sided limits, and the mesher emits exactly that annulus. Correct geometry, not error.
+ */
+function distToZWall(rA: RadiusFn, zJump: number, px: number, py: number, pz: number): number {
+  const th = Math.atan2(py, px);
+  const rp = Math.hypot(px, py);
+  const e = 1e-7;
+  const a = rA(th, zJump + e); const b = rA(th, zJump - e);
+  const lo = Math.min(a, b); const hi = Math.max(a, b);
+  const rGap = rp < lo ? lo - rp : rp > hi ? rp - hi : 0;
+  const dz = pz - zJump;
+  return Math.hypot(rGap, dz);
 }
 
 /**
@@ -110,25 +115,22 @@ function closureInterval(rA: RadiusFn, H: number, th: number, z: number, w: numb
  * Every probe is a genuine surface point, so the result is still an upper bound on d(p) — polishing can
  * only tighten the estimate, never fabricate a pass.
  *
- * CLOSURE AT DISCONTINUITIES is handled by `closureInterval` (see there): the query radius is clamped into
- * the radial interval the closure spans at that (theta,z), so a point on a tread wall or theta-curtain is
- * scored against geometry that actually exists rather than against the bare graph.
+ * CLOSURE AT DISCONTINUITIES: pass `zJumps` from `detectZJumps` and the result is the better of the graph
+ * distance and the distance to any detected tread wall, so a point on a wall is scored against geometry
+ * that actually exists. KNOWN GAP: theta-jumps (BasketWeave's curtains) are not yet located, so H1 on such
+ * a style will over-state on its curtain facets — over-stating is the safe direction, but it is not zero.
  */
 export function distLocal(
   rA: RadiusFn, H: number,
   px: number, py: number, pz: number,
   seedTh: number, seedZ: number, step0: number, iters: number,
+  zJumps: number[] = [],
 ): LocalResult {
   let th = seedTh; let z = seedZ;
   const rNom = Math.hypot(px, py) || 1;
-  const rp = Math.hypot(px, py);
-  // The closure window tracks the CURRENT step: a jump only counts as a closer candidate if it lies within
-  // the distance we are already claiming, and as the descent narrows so does the window.
-  let win = step0;
   const at = (t: number, zz: number): number => {
     const zc = zz < 0 ? 0 : zz > H ? H : zz;
-    const { lo, hi } = closureInterval(rA, H, t, zc, win, rNom);
-    const r = rp < lo ? lo : rp > hi ? hi : rp;
+    const r = rA(t, zc);
     return Math.hypot(px - r * Math.cos(t), py - r * Math.sin(t), pz - zc);
   };
   let best = at(th, z);
@@ -145,7 +147,13 @@ export function distLocal(
       const v = at(ct, cz);
       if (v < best - 1e-13) { best = v; th = ct; z = cz; improved = true; }
     }
-    if (!improved) { s *= 0.5; win = s; if (s < 1e-8) break; }
+    if (!improved) { s *= 0.5; if (s < 1e-8) break; }
+  }
+  // The printed boundary is the CLOSURE of the graph: at each detected C0 z-step the solid carries a
+  // vertical tread wall, which the mesher emits and which is correct geometry. Take the better of the two.
+  for (const zj of zJumps) {
+    const dw = distToZWall(rA, zj, px, py, pz);
+    if (dw < best) { best = dw; z = zj; th = Math.atan2(py, px); }
   }
   return { d: best, th, z };
 }
@@ -239,7 +247,7 @@ export function certifyTriangle(
     // The radial foot over-states d on a slope, and an over-statement here costs a factor of 4 in work,
     // so tighten the witness with the local polish before deciding to subdivide again.
     if (mx > tol * 0.25) {
-      const pol = distLocal(rA, H, mxx, mxy, mxz, Math.atan2(mxy, mxx), mxz < 0 ? 0 : mxz > H ? H : mxz, Math.max(mx, tol), 40);
+      const pol = distLocal(rA, H, mxx, mxy, mxz, Math.atan2(mxy, mxx), mxz < 0 ? 0 : mxz > H ? H : mxz, Math.max(mx, tol), 40, opts.zJumps ?? []);
       if (pol.d < mx) mx = pol.d;
       if (mx + rho <= tol) break;
     }
