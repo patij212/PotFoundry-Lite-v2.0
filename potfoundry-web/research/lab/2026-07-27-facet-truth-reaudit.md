@@ -329,9 +329,9 @@ the smaller number is always the better one.
 | WaveInterference | 5.006 | 10.784 | ❌ H1 |
 | HarmonicRipple | 5.997 | 13.963 | ❌ H1 |
 | ArtDeco | 5.771 | 23.360 | ❌ H1 |
-| BambooSegments | 7.457 | _re-running_ | ? |
-| DragonScales | 8.853 | _re-running_ | ? |
-| HexagonalHive | 5.555 | _re-running_ | ? |
+| BambooSegments | 7.457 | 35.039 | ❌ H1 |
+| DragonScales | 8.853 | 63.177 | ❌ H1 |
+| HexagonalHive | 5.555 | 40.260 | ❌ H1 |
 | Crystalline | **10.302** | not run | ❌ H2 |
 | Voronoi | **11.906** | not run | ❌ H2 |
 | GeometricStar | **12.675** | not run | ❌ H2 |
@@ -340,10 +340,54 @@ the smaller number is always the better one.
 | GothicArches | **20.077** | not run | ❌ H2 |
 | BasketWeave | **93.662** (rim only) | not run | ❌ H2 (ring boundary) |
 
-**Five rows are currently clean in both directions.** Not twelve, and not nineteen. Three are pending and
-seven have only ever been measured in one direction — the H1 pass has not run on the H2-refuted rows, so
-their two-sided status is unknown and could only get worse.
+**Five rows are clean in both directions.** Not twelve, and not nineteen:
+
+> LowPolyFacet · SuperellipseMorph · SuperformulaBlossom · RippleInterference · FourierBloom
+
+The trajectory of this audit is worth stating plainly rather than letting it arrive in pieces:
+**19 claimed closed → 12 surviving H2 → 5 surviving both directions.** The seven rows still pending an H1
+number already fail H2, so they can only move down.
+
+The layered rows were re-measured after the closure was fixed (§9); their z-steps were located correctly —
+ArtDeco 8 at z=3/27/33/57/63/87/93/117, BambooSegments 4 at 24/48/72/96, DragonScales 7 at 15..105 — and
+HexagonalHive has **none**, so its number never depended on the closure at all.
 
 The four H1-only failures (SpiralRidges, WaveInterference, HarmonicRipple, ArtDeco) sit at 10.6-23.4 µm on
 ordinary wall triangles of 400-1200 µm — again far above the 1.5 µm floor, again with the heap drained.
 Same driver-limited signature as §7.
+
+### §7 addendum — PRIOR ART, including the strongest evidence AGAINST the hypothesis
+
+Logged before running the experiment, not after.
+
+`research/lab/2026-07-12-raycast-oracle-fidelity.md` already asked "can raycast make a perfect 0.01 mm
+mesh?" and answered it with a GPU raycast oracle, validated by a vertex-parity proof
+(`referenceTrusted=true`, vertexMax ≤ 0.5 µm). Phase 2, perpendicular metric, ~2 M tris:
+
+| style | cert max | cert p99 |
+|---|---|---|
+| GyroidManifold | 0.7241 mm | 0.1346 |
+| GothicArches | 0.4401 mm | 0.1289 |
+| SpiralRidges | 0.0469 mm | 0.0041 |
+
+Its verdict — *"NONE of the 3 frontier styles reach 0.01 mm max EVERYWHERE (4.7×–72× over)"* — is the same
+class of finding as this re-audit, from a completely independent instrument, and it predates it by a
+fortnight. **But it is NOT numerical corroboration**: it measured the PRODUCTION parametric GPU pipeline,
+not the `_strataConformBisect` meshes audited here. Gothic reads 0.4401 mm there against 0.0201 mm here —
+22× apart, because they are different meshes from different meshers. It corroborates the class and the
+direction, nothing more.
+
+**The counter-evidence, stated plainly.** For GyroidManifold that spike reports: *"the single worst facet
+is PINNED at the same (θ,z) across all 3 conditions"* — verdict-refine moved p99 by −35 % and the max by
+**0.0 %**. A maximum that does not move under refinement is the signature of a **mechanism** limit, which
+is the opposite of §7's hypothesis.
+
+**Why the hypothesis may still survive it** — and this is an argument, not a measurement, which is exactly
+why it is being written down in advance: that refinement was (a) subdivision-only with no
+feature-conforming edges, and (b) scoped to `general-curve` feature lines, therefore **inert on Gothic and
+SpiralRidges entirely**. A pinned max under feature-blind subdivision does not test what a bounded accept
+test does. If the bounded run also leaves the max pinned, §7 is dead and the mechanism premise was right.
+
+**This sharpens the pre-registered prediction rather than weakening it**: the discriminator is not "does
+the triangle count rise" but "does the MAX move". §7 predicted GeometricStar's H2 drops below 10 µm; the
+prior art says watch the max specifically, because that is what previously refused to move.
