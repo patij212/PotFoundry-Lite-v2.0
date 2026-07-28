@@ -476,7 +476,15 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
     // is self-calibrating per style, per kernel and per GPU, and needs no cost model to be correct.
     let maxTri = Math.max(1, Math.floor(chunkSamples / perTri));
     const r = { survivors: [], computeMs: 0, worstBoundUm: 0, allZero: true };
-    for (let base = 0; base < curN; base += maxTri) {
+    // ADVANCE BY WHAT WAS ACTUALLY PROCESSED. A `for (…; base += maxTri)` header is a correctness bug once
+    // maxTri is adaptive: the header reads the value AFTER the body mutated it, so the cursor and the batch
+    // disagree. Shrinking re-screens triangles (inflated survivor counts — MEASURED: SuperellipseMorph read
+    // 3927 where the fixed-chunk run read 2563); growing SKIPS them, and a skipped triangle never enters
+    // `survivors`, i.e. it is silently reported as certified. That is a FALSE PASS, the exact failure class
+    // this auditor exists to catch. Caught only because chunking changed a number it cannot legitimately
+    // change — the same "measurements disagreeing" signal as every other defect found in this campaign.
+    let base = 0;
+    while (base < curN) {
       const cnt = Math.min(maxTri, curN - base);
       const part = cur.subarray(base * 9, (base + cnt) * 9);
       const pr = await screenTriangles(dev, ctx, part, cnt, { n, tolMm, marginMm, closureEps, gnIters });
@@ -484,8 +492,9 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
       r.worstBoundUm = Math.max(r.worstBoundUm, pr.worstBoundUm);
       if (!pr.allZero) r.allZero = false;
       for (const t of pr.survivors) r.survivors.push(base + t);
+      base += cnt;
       // Adapt from what that dispatch ACTUALLY cost. Growth is capped at 2x per step so a fast first chunk
-      // cannot overshoot into the watchdog; shrink is unbounded so a slow one is corrected immediately.
+      // cannot overshoot into the watchdog; shrink is faster so a slow one is corrected immediately.
       if (pr.computeMs > 0) {
         const scale = Math.min(2, Math.max(0.25, targetMs / pr.computeMs));
         maxTri = Math.max(1, Math.min(Math.round(maxTri * scale), maxTriCap));

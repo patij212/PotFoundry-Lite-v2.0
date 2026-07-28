@@ -1212,3 +1212,41 @@ positive had already occurred earlier from a **timezone mismatch** (sink stamped
 Chrome throttles `setInterval` in hidden tabs. So a heartbeat gap is a HINT, never proof of death. The
 threshold is now 8 minutes and the trustworthy signals are the event lines (ROW-DONE / ROW-ERR / HALTED),
 not the pulse. Verify a suspected stall by querying the page, not by trusting the timer.
+
+### 15k. A FALSE-PASS bug I introduced into the auditor, and the test that caught it
+
+Making dispatch chunking adaptive (§15i-d) produced a genuine ~42x speedup **and** a correctness bug:
+
+```js
+for (let base = 0; base < curN; base += maxTri) {   // header reads maxTri AFTER the body mutated it
+  const cnt = Math.min(maxTri, curN - base);        // batch sized by the OLD value
+```
+
+Cursor and batch disagree. Shrinking re-screens triangles; **growing SKIPS them — and a skipped triangle
+never enters `survivors`, so it is silently reported as CERTIFIED.** A false PASS, introduced into the
+instrument whose entire purpose is catching false passes. Fixed to a `while` loop advancing by `cnt`, the
+count actually processed.
+
+**What caught it was not code review.** Chunking is pure batching, so it cannot legitimately change a
+survivor count — and it did: SuperellipseMorph read 3927 where the fixed-chunk run read 2563, and
+RippleInterference 2418 against 2270. Same signal as every other defect in this campaign: two measurements
+that must agree, disagreeing.
+
+**The regression test, now the standing gate for this code path.** Run both paths on the same input and
+assert equality of the RESULT, not merely that the fast path completes. The slow path stays callable for
+exactly this (`targetMs: 1e9, maxTriCap: <fixed>`):
+
+| row | reference (pre-bug fixed chunk) | adaptive | fixed re-run | adaptive wall | fixed wall |
+|---|---|---|---|---|---|
+| RippleInterference | 2 270 | **2 270** | 2 270 | **13.0 s** | 555.9 s |
+| SuperellipseMorph | 2 563 | **2 563** | 2 563 | **13.9 s** | ~569 s |
+
+Byte-identical, 42x faster. The external review was right that large headroom existed at n<=192 and right
+that deferring it was wrong; it was wrong about the lever (a 10x larger constant, justified by the same
+eval model §15i-d shows is off by 6x). Closing the loop on measured time finds the headroom without needing
+the model to be correct — but it must be paired with the invariant assertion above, because a fast
+instrument that can miscount is worth less than a slow one that cannot.
+
+**All twelve rows of the sweep that ran on the buggy loop are VOID** and are not recorded anywhere as
+results. Only the pre-bug fixed-chunk values stand: LowPolyFacet and SuperformulaBlossom CERTIFIED with
+0 survivors, RippleInterference 2 270, SuperellipseMorph 2 563.
