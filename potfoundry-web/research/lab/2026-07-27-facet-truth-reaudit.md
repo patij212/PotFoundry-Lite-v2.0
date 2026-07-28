@@ -1195,3 +1195,20 @@ counter-arithmetic that doing so would trip the watchdog were computed from that
 neither was entitled to a conclusion. `certifyMeshGpu` now steers dispatch size by **measured wall-time**
 (`targetMs`, default 400 ms) with growth capped at 2x per step; `chunkSamples` only seeds the first dispatch.
 Self-calibrating per style, per kernel and per GPU — no cost model required to be correct.
+
+### 15j. OPERATIONAL: never edit a dev-server-served file while a browser-side job is running
+
+The sweep died mid-row and the stall watchdog caught it. Cause: **editing `research/gpu/gpuRuler.js` while
+the sweep was using it.** Vite HMR reloads the page on any change to a served file, so the edit destroyed
+the loop it was meant to improve. `window.__cert` was gone; the checkpoints in localStorage survived.
+
+This is the same shape as the earlier loss — a long job depending on state that something else can move
+underneath it — and it has a simple rule: **while a browser-side job is running, do not touch anything under
+the dev server's root.** Queue the edit, or accept that it restarts the run. Node-side background jobs are
+immune (vitest reads the file once at launch); browser jobs are not.
+
+Second lesson, from the same incident: the stall watchdog fired at 264 s, and was RIGHT — but a false
+positive had already occurred earlier from a **timezone mismatch** (sink stamped UTC, shell read local), and
+Chrome throttles `setInterval` in hidden tabs. So a heartbeat gap is a HINT, never proof of death. The
+threshold is now 8 minutes and the trustworthy signals are the event lines (ROW-DONE / ROW-ERR / HALTED),
+not the pulse. Verify a suspected stall by querying the page, not by trusting the timer.
