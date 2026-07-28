@@ -45,6 +45,7 @@ import { baseRadius } from '../../src/geometry/profile';
 import { buildRadiusFn } from './labkit';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
+import { openGpuRank, type GpuRank } from './_gpuRankBridge';
 
 const RUN = process.env.PF_STRATA_CB === '1';
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
@@ -72,7 +73,7 @@ function registryDefaults(id: string): Record<string, number> {
 }
 
 describe('STRATA conforming-bisection', () => {
-  it.runIf(RUN)('meshes any style by feature-directed conforming bisection', () => {
+  it.runIf(RUN)('meshes any style by feature-directed conforming bisection', async () => {
     const STYLE = process.env.PF_CB_STYLE ?? 'GothicArches';
     const TOL = envF('PF_CB_TOL', 0.01);
     const acceptTol = envF('PF_CB_ACCEPT', 0.007);
@@ -417,6 +418,52 @@ describe('STRATA conforming-bisection', () => {
     };
     const AUD_HS = envF('PF_CB_AUD_HS', 0.03); const AUD_NMIN = Math.round(envF('PF_CB_AUD_NMIN', 12)); const AUD_NMAX = Math.round(envF('PF_CB_AUD_NMAX', 64));
 
+    // ───────────────── L5  GPU RANK (PF_CB_GPU_RANK=1, default OFF) ─────────────────
+    // WHAT IT CHANGES, AND ONLY THIS. The key the heap is ordered by, and the quantity `acceptTol` is tested
+    // against. Nothing else — same splitter, same locus machinery, same accept THRESHOLD, same final audit.
+    //
+    // WHY. The 2026-07-28 diagnosis (research/lab/2026-07-28-strata001-handoff.md §0) closed on this ruler:
+    // `sagOfN` reports the distance from an analytic point to the triangle's INFINITE PLANE, and that number
+    // is small for exactly the facet that spans a feature. Five independent measurements ruled out the
+    // alternatives — the surface is density-closable (no plateau as h→0), the driver had 35-81 % of its
+    // budget unspent, 72-96 % of the failures are well-shaped rather than slivers, and 0.0-0.5 % of them lie
+    // within 10x of the refinement floor. What is left is that GeometricStar's MEDIAN failing facet is
+    // 1.7 mm across sitting 252 µm off the surface while the driver read it as passing. The driver cannot see
+    // what it is failing to refine.
+    //
+    // The replacement is the quantity the product bar is actually written in: max over points OF THE TRIANGLE
+    // of the true perpendicular distance TO THE SURFACE. research/gpu/gpuRuler.js computes it (radial foot,
+    // one-sided-limit jump closure, Gauss-Newton tightening), cross-validates against the independent CPU
+    // auditor to within 2 points, and runs ~42x faster than the CPU ruler it replaces.
+    //
+    // WITNESSED, NOT CERTIFIED — DELIBERATELY. The screen also returns covRad, and `mx + covRad/n + margin`
+    // is a sound upper bound (distance-to-a-set is 1-Lipschitz). Using that as the accept test would ALSO
+    // make the driver sound — and would confound the experiment, because at n=12 the covering term alone is
+    // ~L/12, so every triangle with edges above ~84 µm would be refused on sampling grounds regardless of how
+    // well it fits. That is the measured failure of the L4 escalating-accept lever (§14f: 93 % refused at
+    // n=12 vs 47 % at n=192, 46 points of it pure artifact). So the default keeps the SAME witness semantics
+    // as `sagAdaptive` and changes only the quantity measured, which is the pre-registered hypothesis.
+    // PF_CB_GPU_COVFRAC=1 adds the full covering term back for anyone who wants the sound variant.
+    const GPU_RANK = envOn('PF_CB_GPU_RANK');
+    const GR_N = Math.round(envF('PF_CB_GPU_N', 12));
+    const GR_GN = Math.round(envF('PF_CB_GPU_GN', 2));
+    const GR_COVFRAC = envF('PF_CB_GPU_COVFRAC', 0);
+    const GR_MARGIN = envF('PF_CB_GPU_MARGIN_UM', 0) / 1000;
+    // BATCH SIZE IS AN EXPERIMENTAL CONTROL, NOT A PERFORMANCE KNOB. Every queued candidate is invisible to
+    // the heap until its batch flushes, so a large batch quietly converts worst-first into breadth-first —
+    // and then a disappointing result could not be attributed to the ranking function, which is the whole
+    // point of the run. MEASURED round-trip cost: 113 flushes = 1 s of transport, i.e. ~9 ms each, so at 512
+    // (a flush every ~128 splits) a full run pays ~70 s to keep the ordering approximately honest. Cheap.
+    const GR_BATCH = Math.round(envF('PF_CB_GPU_BATCH', 512));
+    let gpu: GpuRank | null = null;
+    let gpuScored = 0;
+    let gpuFlushes = 0;
+    // Pass the mesher's OWN rA to the bridge: its startup parity guard then compares the two functions that
+    // must agree — the surface the driver refines against and the surface the GPU scores against — and
+    // refuses to open if they differ. A ranking function steering against a different pot would produce a
+    // plausible mesh that is wrong everywhere, silently.
+    if (GPU_RANK) gpu = await openGpuRank({ style: STYLE, params: styleParams, cpuRadius: rA, n: GR_N, gnIters: GR_GN });
+
     // ───────────────────────────── INIT: uniform θ×z grid, C0 z-bands ─────────────────────────────
     const zSteps: number[] = [];
     {
@@ -628,12 +675,41 @@ describe('STRATA conforming-bisection', () => {
       }
       return top;
     };
+    // GPU-RANK CANDIDATE QUEUE. A GPU round trip only pays for itself in bulk — one triangle per dispatch is
+    // ~2 orders off — so `consider` DEFERS under the flag and the batch is scored on the way round the loop.
+    // The cost is that a freshly split child enters the heap up to GR_BATCH candidates late, i.e. worst-first
+    // becomes worst-first-modulo-a-batch. That is a real approximation and it is reported (`key-inversions`
+    // already counts it; the baseline run logged 175 924 of them with the CPU ruler, so the discipline was
+    // never exact to begin with).
+    const pend: number[] = [];
     const consider = (t: number): void => {
       if (t < 0 || !alive[t]) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
       if (le < FLOOR_MM) return;
+      if (GPU_RANK) { pend.push(t); return; }
       const s = BOUNDED ? sagBounded(t) : ADAPT ? sagAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagOfN(t, oracleRef);
       if (s > acceptTol) hpush(t, s);
+    };
+    /** score every queued candidate on the GPU and push the ones that miss `acceptTol`. */
+    const flushGpu = async (): Promise<void> => {
+      if (gpu === null || pend.length === 0) return;
+      const batch: number[] = [];
+      for (const t of pend) if (alive[t]) batch.push(t); // a candidate can die between queueing and flushing
+      pend.length = 0;
+      if (batch.length === 0) return;
+      const xyz = new Float32Array(batch.length * 9);
+      for (let i = 0; i < batch.length; i += 1) {
+        const t = batch[i]; const a = ta[t]; const b = tb[t]; const c = tc[t]; const o = i * 9;
+        xyz[o] = vx[a]; xyz[o + 1] = vy[a]; xyz[o + 2] = vz[a];
+        xyz[o + 3] = vx[b]; xyz[o + 4] = vy[b]; xyz[o + 5] = vz[b];
+        xyz[o + 6] = vx[c]; xyz[o + 7] = vy[c]; xyz[o + 8] = vz[c];
+      }
+      const res = await gpu.score(xyz, batch.length);
+      for (let i = 0; i < batch.length; i += 1) {
+        const s = res[i * 2] + (GR_COVFRAC * res[i * 2 + 1]) / GR_N + GR_MARGIN;
+        if (s > acceptTol) hpush(batch[i], s);
+      }
+      gpuScored += batch.length; gpuFlushes += 1;
     };
     for (let t = 0; t < ta.length; t += 1) consider(t);
     const initTris = ta.length;
@@ -650,7 +726,12 @@ describe('STRATA conforming-bisection', () => {
     const MAXSECS = envF('PF_CB_MAXSECS', 0);
     const PROGRESS = process.env.PF_CB_PROGRESS ?? '';
     let timeCapped = false;
-    while (heapT.length > 0) {
+    while (heapT.length > 0 || pend.length > 0) {
+      // Flush when the batch is full, or when the heap has run dry and the only work left is queued. The
+      // second clause is what makes termination correct: an unscored candidate is not an absent one, and
+      // exiting on `heapT.length === 0` alone would silently certify everything still in the queue.
+      if (GPU_RANK && (pend.length >= GR_BATCH || heapT.length === 0)) await flushGpu();
+      if (heapT.length === 0) break;
       if (MAXSECS > 0 && (iters & 1023) === 0 && (Date.now() - t0ms) / 1000 > MAXSECS) { timeCapped = true; break; }
       const kTop = heapK[0];
       const t = hpop();
@@ -671,7 +752,7 @@ describe('STRATA conforming-bisection', () => {
       if ((DEBUG || PROGRESS !== '') && iters % 50000 === 0) {
         let al = 0; for (let k = 0; k < alive.length; k += 1) if (alive[k]) al += 1;
         let wl = 0; for (let i = 0; i < heapK.length; i += 1) if (heapK[i] > wl) wl = heapK[i];
-        const line = `${((Date.now() - t0ms) / 1000).toFixed(0)}s splits=${iters} alive=${al} alloc=${ta.length} heap=${heapT.length} worstLeft=${(wl * 1000).toFixed(1)}um rA=${(rEvals / 1e6).toFixed(0)}M`;
+        const line = `${((Date.now() - t0ms) / 1000).toFixed(0)}s splits=${iters} alive=${al} alloc=${ta.length} heap=${heapT.length} worstLeft=${(wl * 1000).toFixed(1)}um rA=${(rEvals / 1e6).toFixed(0)}M${GPU_RANK ? ` pend=${pend.length} gpuScored=${gpuScored} gpuS=${((gpu?.stats.wallMs ?? 0) / 1000).toFixed(0)}` : ''}`;
         // eslint-disable-next-line no-console
         if (DEBUG) console.log(`   … ${line}`);
         if (PROGRESS !== '') { try { appendFileSync(PROGRESS, `${line}\n`); } catch { /* progress logging must never kill the run */ } }
@@ -680,6 +761,12 @@ describe('STRATA conforming-bisection', () => {
 
     let heapLeftMax = 0;
     for (let i = 0; i < heapT.length; i += 1) if (alive[heapT[i]] && heapK[i] > heapLeftMax) heapLeftMax = heapK[i];
+
+    // Release the browser as soon as refinement is done — the audit phase below can run for many minutes and
+    // has no use for it. `parityUm` and the counters are captured first because the handle goes away.
+    const gpuLine = gpu === null ? '' :
+      `gpu-rank: n=${GR_N} gn=${GR_GN} covfrac=${GR_COVFRAC} margin=${(GR_MARGIN * 1000).toFixed(3)}µm  scored ${gpuScored} in ${gpuFlushes} flushes / ${gpu.stats.batches} dispatches   ${(gpu.stats.gpuMs / 1000).toFixed(0)}s GPU + ${((gpu.stats.wallMs - gpu.stats.gpuMs) / 1000).toFixed(0)}s transport   rA parity ${gpu.parityUm.toFixed(3)}µm   device-losses ${gpu.stats.deviceLosses}`;
+    if (gpu !== null) { await gpu.close(); gpu = null; }
 
     // ───────────────────────────── needle collapse ─────────────────────────────
     // STRATA's naive union-find collapse MEASURABLY creates non-manifold edges (12 on GothicArches) because it
@@ -1073,6 +1160,10 @@ describe('STRATA conforming-bisection', () => {
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
       `heap: ${heapT.length} left, worst-left ${um(heapLeftMax)} µm, key-inversions ${keyInversions}, no-op splits ${stuck}   MAXtri@oracle${oracleRef} ${maxT >= 0 ? um(sagOfN(maxT, oracleRef)) : 'n/a'} µm`,
+      ...(gpuLine === '' ? [] : [gpuLine,
+        '  NB the FIDELITY block below is the DRIVER SELF-REPORT on the plane ruler this lever replaced. It is',
+        '  kept only so the run stays comparable with the committed baselines; it is NOT the verdict. Judge with',
+        '  research/bridge/_strataFacetTruth.test.ts at FULL coverage.']),
       '--- WATERTIGHT (3D position-weld) ---',
       `  non-manifold edges : ${nonManifold}  ${nonManifold === 0 ? 'OK' : 'FAIL'}`,
       `  seam-crack edges   : ${seamCrack}  ${seamCrack === 0 ? 'OK' : 'FAIL'}`,
