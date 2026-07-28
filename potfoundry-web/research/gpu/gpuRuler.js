@@ -424,7 +424,10 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
   // LEVELS STOP AT 192 BY DESIGN — see the note on per-thread cost below. Anything still uncertified is
   // returned as a survivor for the CPU perpendicular pass, which is sound: the screen never clears a bad
   // triangle, it only declines to certify one.
-  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192], chunkSamples = 4e8, closureEps = 1e-6, gnIters = 0 } = opts;
+  // targetMs is the REAL safety knob — dispatches are steered to this measured wall-time, well under the
+  // ~2 s watchdog. chunkSamples now only seeds the first dispatch of each level.
+  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192], chunkSamples = 4e7,
+          closureEps = 1e-6, gnIters = 0, targetMs = 400, maxTriCap = 4096 } = opts;
   let cur = xyz9; let curN = nTri; let idx = null;
   const rounds = []; let totalMs = 0;
   for (const n of levels) {
@@ -465,7 +468,13 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
     // forces ~1.9e9 evals — about 11 s — straight through the watchdog. MEASURED: with the floor in place
     // the device was lost on the third style even after the budget itself was corrected. One triangle per
     // dispatch is ~45 ms and perfectly acceptable; a slow sweep beats a dead device.
-    const maxTri = Math.max(1, Math.floor(chunkSamples / perTri));
+    // The eval count is only a SEED. It is a poor time proxy: MEASURED on two completed rows at identical
+    // settings it implies 138 M evals/s (RippleInterference) and 867 M (LowPolyFacet) — the latter 5x above
+    // the measured hardware peak of 164 M/s. Early exits, divergence and per-style rA cost make the model
+    // wrong by ~6x in either direction, so ANY fixed budget derived from it is guesswork wearing arithmetic.
+    // So: seed from it, then CLOSE THE LOOP on observed dispatch wall-time, steering toward targetMs. That
+    // is self-calibrating per style, per kernel and per GPU, and needs no cost model to be correct.
+    let maxTri = Math.max(1, Math.floor(chunkSamples / perTri));
     const r = { survivors: [], computeMs: 0, worstBoundUm: 0, allZero: true };
     for (let base = 0; base < curN; base += maxTri) {
       const cnt = Math.min(maxTri, curN - base);
@@ -475,6 +484,12 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
       r.worstBoundUm = Math.max(r.worstBoundUm, pr.worstBoundUm);
       if (!pr.allZero) r.allZero = false;
       for (const t of pr.survivors) r.survivors.push(base + t);
+      // Adapt from what that dispatch ACTUALLY cost. Growth is capped at 2x per step so a fast first chunk
+      // cannot overshoot into the watchdog; shrink is unbounded so a slow one is corrected immediately.
+      if (pr.computeMs > 0) {
+        const scale = Math.min(2, Math.max(0.25, targetMs / pr.computeMs));
+        maxTri = Math.max(1, Math.min(Math.round(maxTri * scale), maxTriCap));
+      }
     }
     totalMs += r.computeMs;
     rounds.push({ n, in: curN, survivors: r.survivors.length, ms: +r.computeMs.toFixed(1), worstBoundUm: r.worstBoundUm });

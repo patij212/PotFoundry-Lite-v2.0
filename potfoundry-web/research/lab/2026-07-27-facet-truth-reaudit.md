@@ -1159,3 +1159,39 @@ is the quantitative form of the §1 argument, and it is now measured on all nine
 1200 s cap); only BasketWeave is complete. The twelve older H1 values are stage-3 globally confirmed. Every
 H2 value is a witnessed lower bound whose blind spot is bounded per style by §15b — and for the nine styles
 listed there with zero cells over the bar, that blind spot is smaller than the bar.
+
+### 15i. Corrections from external review (2026-07-28)
+
+**(a) §15e's projection does NOT describe the sweep that is running, and the ~40 min CPU estimate is void.**
+§15e computed 2.46 M → 824 k survivors and "~1.9 h → ~40 min" at **gnIters=3 with n=768 in the cascade**.
+The live sweep runs **gnIters=2, levels=[12,48,192]**. Both changes move survivors UP and neither is
+quantified: dropping 768 converts every triangle that needed it into a survivor, and §15d measured Gyroid at
+14.73 % (GN×1) and 5.83 % (GN×3) — the ×2 point is unmeasured, on precisely the row that keeps improving to
+the third step. **The resulting table is therefore not comparable to the projection it was meant to
+validate.** Early rows are consistent with that: RippleInterference 1.33 % and SuperellipseMorph 1.64 %
+against §15e's 1.16 % and 1.54 %.
+
+**(b) The H1/H2 ratio column in §15h is INDICATIVE, not a measured multiple.** Every H2 value in §5 is a
+refinement-truncated floor, and six of the seven H1 values in §15g are floors audited at 19-73 %. A ratio of
+two independent lower bounds is not a measurement. The qualitative finding is what is supported and it is
+strong enough on its own: **the refuted rows are 87-652 µm out, not marginally over a 10 µm bar.** Read the
+column as "H1 is very much larger", never as "32x".
+
+**(c) BasketWeave's 651.879 µm is more likely a RULER-DOMAIN artifact than geometry.** The auditor's surface
+model is the **outer wall** — that is why the sweep script uses Gothic's ring file rather than its solid.
+BasketWeave's H1 argmax sits at **z = 120.000**, exactly the ring's open top boundary, and every case in the
+stage-3 global confirm is at z = 120.0000. An open boundary row is where the auditor's domain ends, so the
+distance it reports there is not necessarily a defect in the mesh. Settling it needs either a re-measure on
+the SOLID stage (which caps the rim) or an explicit exclusion of the boundary row. **Until then, BasketWeave's
+H1 number should not be quoted as a wall defect in either direction** — consistent with §5's H2 caveat, and
+now for a sharper reason than "it is at the rim": the ruler may not be entitled to an opinion there.
+
+**(d) The chunking cost model is not a time proxy, and adaptive chunking replaces it.** §15f budgeted
+dispatches in `rA` evals rather than samples, which was a real improvement — but the model is still wrong by
+~6x in either direction. Derived from two completed rows at identical settings: RippleInterference implies
+**138 M model-evals/s**, LowPolyFacet **867 M** — the latter 5x above the measured 164 M/s hardware peak, so
+the model cannot be predicting time. Both the review's proposal to raise the budget 10x and this author's
+counter-arithmetic that doing so would trip the watchdog were computed from that same broken proxy, and
+neither was entitled to a conclusion. `certifyMeshGpu` now steers dispatch size by **measured wall-time**
+(`targetMs`, default 400 ms) with growth capped at 2x per step; `chunkSamples` only seeds the first dispatch.
+Self-calibrating per style, per kernel and per GPU — no cost model required to be correct.
