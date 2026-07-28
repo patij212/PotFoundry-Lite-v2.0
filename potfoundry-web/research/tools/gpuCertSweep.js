@@ -33,6 +33,15 @@ export const ROWS = [
   ['HarmonicRipple', 'harmonicripple_D--.stl'],
   ['ArtDeco', 'artdeco_ring_D--.stl'],
   ['DragonScales', 'dragonscales_ring_D--.stl'],
+  // The seven rows the 2026-07-27 re-audit refuted in BOTH directions. They screen the same way; they just
+  // leave far more survivors, which is the point — the residue is what the CPU perpendicular pass costs.
+  ['GyroidManifold', 'gyroidmanifold_ring_D--.stl'],
+  ['Voronoi', 'voronoi_ring_D--.stl'],
+  ['GeometricStar', 'geometricstar_ring_D--.stl'],
+  ['Crystalline', 'crystalline_ring_D--.stl'],
+  ['GothicArches', 'gothicarches_D--.stl'],
+  ['CelticTriquetra', 'celtictriquetra_ring_D--.stl'],
+  ['BasketWeave', 'basketweave_ring_D--C.stl'],
 ];
 
 const post = (s) => { try { fetch(SINK, { method: 'POST', body: s, mode: 'cors', keepalive: true }).catch(() => {}); } catch { /* sink is optional */ } };

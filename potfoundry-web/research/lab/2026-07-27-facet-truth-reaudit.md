@@ -1250,3 +1250,90 @@ instrument that can miscount is worth less than a slow one that cannot.
 **All twelve rows of the sweep that ran on the buggy loop are VOID** and are not recorded anywhere as
 results. Only the pre-bug fixed-chunk values stand: LowPolyFacet and SuperformulaBlossom CERTIFIED with
 0 survivors, RippleInterference 2 270, SuperellipseMorph 2 563.
+
+## 16. REF_HS — the driver's ranking pitch fixes CONVERGENCE, not FIDELITY
+
+Pre-registered before the run: the driver ranks with `sagAdaptive` at `REF_HS=0.15, NMAX=24`, which on the
+1.185 mm triangle that carries GothicArches' true worst error gives `n=8` — a **148 µm sample pitch**,
+coarser than a Gothic rib. Falsifier stated in advance: *if that triangle survives unrefined at a finer
+pitch, pitch is not the mechanism and the infinite-plane term is.*
+
+Run: `PF_CB_REF_HS=0.03 PF_CB_REF_NMIN=12 PF_CB_REF_NMAX=64`, GothicArches ring, DIRECTED, 6 M cap
+(`_REF003`). The same triangle now gets `n=40`, a 30 µm pitch.
+
+### What it changed — real, and structural
+
+| | baseline `D--` | **REF003** |
+|---|---|---|
+| stop reason | ruler satisfied, budget left | **heap DRAINED to 0** |
+| triangles | 1 979 816 | **1 493 004** (−25 %) |
+| allocations | 3.90 M / 6 M (65 %) | **2.93 M / 6 M (49 %)** |
+| wall | 1468 s | **1048 s** |
+| rA evals | 1679 M | **1110 M** |
+| own-ruler MAX | — | 7.858 µm PASS, 0 / 1 493 004 over bar |
+| watertight | yes | yes |
+
+**This is the only run in the whole campaign whose heap drained.** Every other one — baseline, bounded,
+escalating — grew its queue monotonically and stopped by cap or clock. That is a fact about the driver and
+does not depend on any ruler being accurate.
+
+### What it did NOT change — measured at FULL coverage by the independent screen
+
+| | baseline | REF003 |
+|---|---|---|
+| triangles | 1 979 816 | 1 493 004 |
+| **uncertifiable** | **263 939 (13.33 %)** | **275 906 (18.48 %)** |
+
+**REF003 is WORSE.** More uncertifiable triangles in absolute count (+11 967) despite a quarter fewer
+triangles, and a 39 % higher rate. Same screen, same settings, both meshes, 34 s each.
+
+**So: converging and being right are different properties, and this session conflated them.** A finer
+ranking pitch made the driver's ruler self-consistent enough to declare itself finished — and it finished on
+a mesh a larger fraction of which cannot be certified. The falsifier resolves against pitch: it was a real
+constraint on CONVERGENCE, and is not the mechanism behind the FIDELITY failure.
+
+### A sampling trap that would have produced the opposite headline
+
+CPU H1 on the REF003 mesh reported **7.051 µm, 0 exceedances** — against the baseline's 362.888 µm. On
+**2.2 % of the mesh** (32 349 / 1 493 004), almost certainly index-ordered and therefore one spatial region.
+The baseline needed 22 % coverage before its worst triangle appeared. Reported as a verdict, that number
+would have read "GothicArches closed by a one-line config change"; 34 s of full coverage contradicts it.
+**H1 coverage percentages must be quoted with every H1 number** — §15g's rows range from 19 % to 100 %.
+
+Note also what is NOT the defect: REF003 still contains 1.6 mm triangles measuring ≤ 7 µm, because they sit
+on locally flat wall. Size is not the problem. **Spanning is.**
+
+## 17. THE SLIVER CENSUS — a shape defect no distance ruler was measuring
+
+Prompted by a user render of `gothicarches_ring_D--_REF003.stl` showing sharp facet spikes fanning along a
+crease, with the note that **every STRATA-001 mesh has them**. Measured directly from the STLs
+(min angle per triangle, and aspect = longest edge / 2·inradius):
+
+| mesh | <20° | <5° | **<1°** | worst angle | worst aspect |
+|---|---|---|---|---|---|
+| GeometricStar | 60.3 % | 31.6 % | **14.44 %** | **0.00002°** | **3 567 552** |
+| GothicArches baseline | 58.3 % | 19.9 % | 3.05 % | 0.0027° | 21 711 |
+| GothicArches REF003 | 57.1 % | 18.2 % | 2.46 % | 0.020° | 2 914 |
+| **LowPolyFacet** | 29.1 % | 0.46 % | **0.00 %** | **3.66°** | **23.3** |
+
+GeoStar's worst triangle has edges **0.5 / 561.2 / 560.6 µm** — a half-micron edge against half-millimetre
+ones, and 70 344 of its triangles (7.9 %) are under 0.1°. Those are the rendered spikes.
+
+**LowPolyFacet is the control and it is decisive.** It is the ONLY row that fully certified (0 survivors,
+every triangle) and the ONLY row with zero triangles under 1° and an aspect ratio in double digits rather
+than millions.
+
+**Why every distance ruler missed this.** `sagOfN` measures distance to the triangle's INFINITE PLANE. At
+0.00002° the normal is numerically meaningless, so the ruler is not under-sampling these — it is computing a
+garbage quantity and ranking on it. No pitch refinement can fix that, which is exactly why REF003 improved
+everything except this (58.3 % → 57.1 % under 20°).
+
+**Suspect in the driver**, stated as a hypothesis to test rather than a finding: `refineDirected` splits the
+edge of largest chord sag rather than the longest edge, abandoning LEPP's quality guarantee — and when its
+aspect-guarded pass fails it explicitly **drops the guard and splits anyway**
+(`// drop the guard`, `_strataConformBisect.test.ts`).
+
+**The correlation worth testing next.** GeometricStar has **122 305** H1 exceedances (of 648 543 audited)
+and **127 864** triangles under 1°. If the exceedance set largely IS the sliver set, then the seven refuted
+rows need a mesher that does not emit needles — not per-style conforming machinery — and the unwired
+M=g/h² surface-metric work (recorded at GeoStar 18.2 % → 5.8 % under 20°) is the existing lever.
