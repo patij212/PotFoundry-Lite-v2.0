@@ -82,7 +82,53 @@ That is the same wall §14c hit from the other side, now stated per-triangle rat
 | **F3** flagged mesh differs from unflagged | **PASS** — the lever is wired, meshes differ |
 | **F5** budget honesty | **FIRED** — every flagged arm ended `[CAPPED]`; all flagged numbers are trajectories |
 | **F2** over-10 µm rate falls ≥2× | **FALSIFIED** — see below |
-| **F1** H1 max falls ≥2× | pending |
+| **F1** H1 max falls ≥2× | **FALSIFIED** — GeoStar judged at 100 % coverage; Gothic's flagged audit still running |
+
+### P1, THE PRE-REGISTERED JUDGE — GeometricStar, independent CPU auditor, both at 100 % coverage
+
+| | triangles audited | witnessed max | exceedances |
+|---|---|---|---|
+| baseline | 885 400/885 400 = 100 %, 1896 s | **193.846 µm** | 149 044 = **16.833 %** |
+| flagged, equal budget | 884 560/884 560 = 100 %, 12 477 s | **194.876 µm** | 641 627 = **72.537 %** |
+
+P1 required < 96.9 µm. The max did not fall — it ROSE 0.5 %. **P1 is falsified.** Both pre-registered
+predictions are now refuted by the independent instrument at full coverage.
+
+**The ranking function is vindicated as an INSTRUMENT by this table.** The GPU screen read 16.894 % / 72.549 %
+on these same two meshes; the CPU auditor reads 16.833 % / 72.537 % — agreement to **0.012 points** on the
+flagged mesh, 0.06 on the baseline. That licenses every GPU rate quoted in this document.
+
+**The GPU's MAX is NOT a proxy for the CPU's max, and must never be quoted as one.** The screen said GeoStar's
+max fell 16 % (1195.107 → 974.528 µm); the auditor says it was flat (193.846 → 194.876 µm). The
+over-statement ratio drifted from 6.16× to 5.00× between the two meshes, so it cannot be calibrated away.
+Rates transfer between the two instruments; maxima do not.
+
+**The same feature defeats both drivers.** Baseline worst facet at z = 101.405–101.655, θ = 0.5437; flagged at
+z = 101.143–102.000, θ = 2.1236. Δθ = 1.580 ≈ π/2 — the same structural feature one symmetry copy over on an
+8-point star. Whatever is at z ≈ 101.5 mm is untouched by either ranking function and is the thing to name
+next.
+
+### The P1 comparators, both re-measured at FULL coverage (the pre-reg figures were partial)
+
+| independent CPU auditor, H1 | coverage | witnessed max | exceedances | P1 threshold for the flagged arm |
+|---|---|---|---|---|
+| GothicArches baseline | **1 979 816/1 979 816 = 100 %**, 8766 s | **362.888 µm** | 154 828 = **7.821 %** | < 181.4 µm |
+| GeometricStar baseline | **885 400/885 400 = 100 %**, 1896 s | **193.846 µm** | 149 044 = **16.833 %** | < 96.9 µm |
+
+Both maxima are unchanged from their partial-coverage readings (22.4 % and 73.2 %), i.e. the worst facet had
+already been found — but the EXCEEDANCE COUNTS could only be obtained at full coverage, and they are the
+numbers that matter here.
+
+**Screen-vs-auditor calibration, on the same meshes, both at 100 % coverage:** GeoStar 16.894 % (GPU) vs
+16.833 % (CPU) — 0.06 points; Gothic 10.774 % vs 7.821 % — 2.95 points. The screen over-flags, which is the
+safe direction for an upper bound, and it never under-flags. That is what licenses using the GPU rate as the
+P2 statistic while the CPU audits of the flagged meshes finish.
+
+**Honest note on the cost of judging the flagged arms.** `certifyTriangle` escalates its lattice hardest on
+triangles it cannot certify, so audit cost scales with the exceedance rate — which is precisely what the
+flagged meshes have more of (79 % vs 7.8 % on Gothic). The Gothic baseline took 8766 s at 7.8 %; the flagged
+mesh at 79 % is an order of magnitude worse. Those audits are running; if one caps, its report will say
+INCOMPLETE and the coverage will be quoted with the number, never without.
 
 ### P2, as pre-registered (GeoStar, matched triangle count, GPU screen, 100 % coverage)
 
