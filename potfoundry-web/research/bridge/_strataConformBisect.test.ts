@@ -38,7 +38,7 @@
 // linear-fit intercept on a 20-bin scan is ~10 µm accurate — 20× too coarse. Sub-µm placement is not a polish
 // detail, it is the difference between conforming and not.
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { baseRadius } from '../../src/geometry/profile';
@@ -304,7 +304,10 @@ describe('STRATA conforming-bisection', () => {
     // research/bridge/_facetTruthLib.ts. Duplication is protective here: the whole value of that auditor is
     // that it shares no machinery with the mesher it judges.
     const BOUNDED = envOn('PF_CB_BOUNDED');
-    const BND_N = Math.round(envF('PF_CB_BND_N', 12)); // lattice level for the bounded probe
+    const BND_N = Math.round(envF('PF_CB_BND_N', 12)); // STARTING lattice level for the bounded probe
+    // Max level the escalation may reach. Default 12 == BND_N == no escalation, so an unset environment
+    // reproduces the 2026-07-27 run byte-for-byte; set PF_CB_BND_NMAX=192 to get what §6 actually specified.
+    const BND_NMAX = Math.round(envF('PF_CB_BND_NMAX', 12));
 
     /** exact squared point-to-triangle distance (Ericson closest-point) */
     const ptTri2 = (px: number, py: number, pz: number, a: number, b: number, c: number): number => {
@@ -344,37 +347,73 @@ describe('STRATA conforming-bisection', () => {
      * TRIANGLE, plus the measured 3-D spacing of those samples. Never under-states, so a triangle it lets
      * through has genuinely been resolved at this sampling.
      */
-    const sagBounded = (t: number): number => {
+    const sagBoundedAtN = (t: number, n: number): { wit: number; gap: number } => {
       const a = ta[t]; const b = tb[t]; const c = tc[t];
       const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
-      const n = BND_N;
-      const gx: number[] = []; const gy: number[] = []; const gz: number[] = [];
-      let worst = 0;
-      for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
-        const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
-        const theta = th0 + wb * dB + wc * dC;
-        const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
-        const r = R(canon(theta), z);
-        const qx = r * Math.cos(theta); const qy = r * Math.sin(theta);
-        gx.push(qx); gy.push(qy); gz.push(z);
-        const d2 = ptTri2(qx, qy, z, a, b, c);
-        if (d2 > worst) worst = d2;
-      }
-      // covering term: the largest 3-D gap between lattice-adjacent surface samples. On a smooth patch this
-      // shrinks with n; across a cliff it does not, which is exactly the signal we want to keep.
-      let gap = 0; let k = 0;
+      // The covering term is the largest 3-D gap between lattice-adjacent surface samples: on a smooth patch
+      // it shrinks with n, across a cliff it does not, which is exactly the signal we want to keep.
+      // Computed INCREMENTALLY against the previous point in the row rather than by storing the lattice —
+      // identical set of adjacent pairs, so the value is unchanged, but it removes an O(n^2) allocation that
+      // at n=192 was ~450 kB of array churn PER CALL and dominated both the runtime and the heap.
+      let worst = 0; let gap = 0;
       for (let i = 0; i <= n; i += 1) {
-        const rowLen = n - i;
-        for (let j = 0; j <= rowLen; j += 1) {
-          if (j < rowLen) {
-            const p = k; const q = k + 1;
-            const g = (gx[p] - gx[q]) ** 2 + (gy[p] - gy[q]) ** 2 + (gz[p] - gz[q]) ** 2;
+        let px = 0; let py = 0; let pz = 0; let have = false;
+        for (let j = 0; j <= n - i; j += 1) {
+          const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
+          const theta = th0 + wb * dB + wc * dC;
+          const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
+          const r = R(canon(theta), z);
+          const qx = r * Math.cos(theta); const qy = r * Math.sin(theta);
+          const d2 = ptTri2(qx, qy, z, a, b, c);
+          if (d2 > worst) worst = d2;
+          if (have) {
+            const g = (px - qx) ** 2 + (py - qy) ** 2 + (pz - z) ** 2;
             if (g > gap) gap = g;
           }
-          k += 1;
+          px = qx; py = qy; pz = z; have = true;
         }
       }
-      return Math.sqrt(worst) + Math.sqrt(gap);
+      return { wit: Math.sqrt(worst), gap: Math.sqrt(gap) };
+    };
+
+    /**
+     * ESCALATING bounded estimate. §6 designed this as "n is raised until the bound clears the tolerance"
+     * and called the fixed clamp "unnecessary and harmful"; the first implementation nevertheless pinned
+     * n = BND_N = 12 and never escalated. MEASURED consequence on the 2026-07-27 GeometricStar run: the
+     * covering term alone is ~L/n, so at n=12 EVERY triangle with edges above ~75 µm is refused regardless
+     * of how well it fits. On a random sample of 400 baseline triangles that is **93.0 % refused at n=12
+     * vs 47.0 % with n escalated to 192**, against only 27.3 % whose WITNESS alone exceeds tol. So 46 points
+     * of the refusal rate were pure sampling artifact, the run was forced into a global ~75 µm edge length
+     * (~12 M triangles for this pot, above the 9 M cap) and CAPPED before fidelity ever entered.
+     *
+     * Escalating is not more expensive than the splits it avoids: certifying an L-sized triangle needs
+     * n >= L/tol, i.e. ~(L/tol)^2/2 samples, and splitting it into four children each needs (L/2/tol)^2/2 —
+     * the same total, but it also doubles the triangle count. Two early exits keep it honest:
+     *   - if the WITNESS alone already exceeds acceptTol, no n can rescue the triangle: refuse at once.
+     *   - the gap term falls ~1/n, so once gap is already under tol there is nothing left to buy.
+     */
+    const sagBounded = (t: number): number => {
+      let n = BND_N;
+      let r = sagBoundedAtN(t, n);
+      // witness alone over tol => the triangle genuinely does not fit; escalating only costs time.
+      // PREDICT the level instead of climbing to it. The gap term is the max spacing of a lattice of level
+      // n over a fixed patch, so it falls as ~1/n: to reach a residual of (acceptTol - wit) the level needed
+      // is about n * gap / (acceptTol - wit). A doubling ladder pays for every rung below the answer —
+      // 12+24+48+96+192 costs 25 115 samples where 192 alone costs 18 721, ~34 % pure overhead — so jump
+      // straight to the prediction and keep the ladder only as the fallback when the prediction undershoots.
+      // Soundness is unaffected: wit + gap is a valid bound at EVERY level (1-Lipschitz), so stopping at any
+      // n is sound and escalating only tightens.
+      if (r.wit <= acceptTol && r.wit + r.gap > acceptTol && n < BND_NMAX) {
+        const want = (n * r.gap) / Math.max(acceptTol - r.wit, 1e-9);
+        const pow2 = 2 ** Math.ceil(Math.log2(Math.max(want, n * 2)));
+        n = Math.min(BND_NMAX, Math.max(n * 2, pow2));
+        r = sagBoundedAtN(t, n);
+      }
+      while (r.wit <= acceptTol && r.wit + r.gap > acceptTol && n < BND_NMAX) {
+        n = Math.min(BND_NMAX, n * 2);
+        r = sagBoundedAtN(t, n);
+      }
+      return r.wit + r.gap;
     };
     const AUD_HS = envF('PF_CB_AUD_HS', 0.03); const AUD_NMIN = Math.round(envF('PF_CB_AUD_NMIN', 12)); const AUD_NMAX = Math.round(envF('PF_CB_AUD_NMAX', 64));
 
@@ -603,7 +642,16 @@ describe('STRATA conforming-bisection', () => {
     let stuck = 0;
     let lastKey = Infinity;
     let keyInversions = 0;
+    // WALL-CLOCK BUDGET (PF_CB_MAXSECS, 0 = off). An escalating accept test costs ~6.6 k rA evals per
+    // triangle, so a run can outlive the session that launched it and then report NOTHING — the loop only
+    // exits on an empty heap or the triangle cap, and the STL/report are written after it. Stopping on time
+    // and SAYING SO turns "no result" into a measured trajectory (tris so far, heap left, worst left), which
+    // is what actually distinguishes converging from exploding.
+    const MAXSECS = envF('PF_CB_MAXSECS', 0);
+    const PROGRESS = process.env.PF_CB_PROGRESS ?? '';
+    let timeCapped = false;
     while (heapT.length > 0) {
+      if (MAXSECS > 0 && (iters & 1023) === 0 && (Date.now() - t0ms) / 1000 > MAXSECS) { timeCapped = true; break; }
       const kTop = heapK[0];
       const t = hpop();
       if (kTop > lastKey + 1e-12) keyInversions += 1;
@@ -616,10 +664,17 @@ describe('STRATA conforming-bisection', () => {
       if (created.length > 0) consider(t);
       iters += 1;
       if (created.length === 0) stuck += 1; // split produced nothing (weld collapse) — do not spin on it
-      if (DEBUG && iters % 200000 === 0) {
+      // PROGRESS TO A FILE (PF_CB_PROGRESS=<path>), not just to stdout. Vitest buffers a worker's stdout
+      // until the test ends, so on a multi-hour run console.log tells you NOTHING while it matters — and
+      // the only question that matters mid-run is whether the heap is DRAINING or GROWING. `heap` and
+      // `worstLeft` here are that answer, sampled over time: a converging run shows both falling.
+      if ((DEBUG || PROGRESS !== '') && iters % 50000 === 0) {
         let al = 0; for (let k = 0; k < alive.length; k += 1) if (alive[k]) al += 1;
+        let wl = 0; for (let i = 0; i < heapK.length; i += 1) if (heapK[i] > wl) wl = heapK[i];
+        const line = `${((Date.now() - t0ms) / 1000).toFixed(0)}s splits=${iters} alive=${al} alloc=${ta.length} heap=${heapT.length} worstLeft=${(wl * 1000).toFixed(1)}um rA=${(rEvals / 1e6).toFixed(0)}M`;
         // eslint-disable-next-line no-console
-        console.log(`   … ${iters} splits, ${al} alive, heap ${heapT.length}, ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA`);
+        if (DEBUG) console.log(`   … ${line}`);
+        if (PROGRESS !== '') { try { appendFileSync(PROGRESS, `${line}\n`); } catch { /* progress logging must never kill the run */ } }
       }
     }
 
@@ -991,7 +1046,10 @@ describe('STRATA conforming-bisection', () => {
     mkdirSync(outDir, { recursive: true });
     // BOUNDED gets its own suffix: without it this would overwrite the exact baseline STLs the
     // 2026-07-27 re-audit measured, destroying the comparison the experiment exists to make.
-    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${BOUNDED ? 'B' : ''}`;
+    // PF_CB_TAG_SUFFIX exists for the same reason as the BOUNDED 'B' above: two runs that differ only by an
+    // env knob (e.g. PF_CB_BND_NMAX) would otherwise share a filename and the second would silently destroy
+    // the first, which is the comparison the experiment exists to make.
+    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${BOUNDED ? 'B' : ''}${process.env.PF_CB_TAG_SUFFIX ?? ''}`;
     const buf = Buffer.alloc(84 + soup.length * 50);
     buf.write('STRATA conforming-bisection', 0, 'ascii');
     buf.writeUInt32LE(soup.length, 80);
@@ -1011,7 +1069,7 @@ describe('STRATA conforming-bisection', () => {
       '',
       `===== STRATA CONFORMING-BISECTION: ${STYLE} ${STAGE.toUpperCase()}  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'}] =====`,
       `params ${JSON.stringify(styleParams)}`,
-      `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
+      `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
       `heap: ${heapT.length} left, worst-left ${um(heapLeftMax)} µm, key-inversions ${keyInversions}, no-op splits ${stuck}   MAXtri@oracle${oracleRef} ${maxT >= 0 ? um(sagOfN(maxT, oracleRef)) : 'n/a'} µm`,

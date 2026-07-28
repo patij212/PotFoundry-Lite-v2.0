@@ -117,6 +117,35 @@ export async function styleContext(styleName) {
  * An error scope converts that entire class into a loud failure at the point of origin, with Dawn's own
  * message. It costs one round-trip per dispatch and it is the difference between a wrong number and no number.
  */
+/**
+ * Compile-once pipeline cache, keyed by device then by WGSL source.
+ *
+ * WHY. `screenTriangles` used to `createShaderModule` + `createComputePipeline` on EVERY call, and the
+ * cascade calls it once per CHUNK. That was tolerable while chunks held thousands of triangles, but the
+ * eval-budget fix (§15f) correctly shrank them: at n=768 with Gauss-Newton one triangle costs ~7.4 M rA
+ * evals, so a 4e7-eval chunk holds ~5 triangles — meaning a style with 50 000 survivors at that level
+ * recompiled the same shader ~10 000 times. MEASURED: RippleInterference lost the device 12 minutes in,
+ * three times running, on settings that were otherwise safe.
+ *
+ * The two fixes interact, which is why the first one alone did not help: making chunks smaller is right for
+ * the watchdog, but it multiplies compile count unless the pipeline is cached. WeakMap on the device so a
+ * lost device's pipelines are collectable rather than pinned.
+ */
+const PIPE_CACHE = new WeakMap();
+async function getPipeline(dev, code) {
+  let byCode = PIPE_CACHE.get(dev);
+  if (byCode === undefined) { byCode = new Map(); PIPE_CACHE.set(dev, byCode); }
+  const hit = byCode.get(code);
+  if (hit !== undefined) return hit;
+  const mod = dev.createShaderModule({ code });
+  const info = await mod.getCompilationInfo();
+  const errs = info.messages.filter((m) => m.type === 'error');
+  if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
+  byCode.set(code, pipe);
+  return pipe;
+}
+
 async function guardValidation(dev, label, fn) {
   dev.pushErrorScope('validation');
   let out;
@@ -141,12 +170,8 @@ function upload(dev, arr) {
 
 /** Run a compute kernel over `samples` (3 floats each) and read back one f32 per sample. */
 export async function dispatch(dev, ctx, kernel, samples, nOut) {
-  const mod = dev.createShaderModule({ code: ctx.env + '\n' + kernel });
-  const info = await mod.getCompilationInfo();
-  const errs = info.messages.filter((m) => m.type === 'error');
-  if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+  const pipe = await getPipeline(dev, ctx.env + '\n' + kernel);
   return guardValidation(dev, 'dispatch', async () => {
-  const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
   const bP = upload(dev, new Float32Array(ctx.params48));
   const bS = upload(dev, samples);
   const dd = dispatchDims(nOut);
@@ -221,13 +246,85 @@ export async function parity(dev, styleName, NU = 512, NV = 256, offsetFrac = 0.
 // Triangles are laid out as 9 consecutive floats (ax..cz). `samples` carries them; `outR` gets 2 floats per
 // triangle: [maxRadial, covRad].
 export const KERNEL_SCREEN = PREAMBLE + `
-fn radial_dist(px: f32, py: f32, pz: f32, H: f32, Rt: f32, Rb: f32) -> f32 {
-  let th = atan2(py, px);
-  let z = clamp(pz, 0.0, H);
-  let t = z / H;
-  let r0 = Rb + (Rt - Rb) * t;
-  let r = style_radius(0, th, t, r0);
-  return length(vec3<f32>(px - r * cos(th), py - r * sin(th), pz - z));
+fn fr_at(th: f32, z: f32, H: f32, Rt: f32, Rb: f32) -> f32 {
+  let t = clamp(z, 0.0, H) / H;
+  return style_radius(0, th, t, Rb + (Rt - Rb) * t);
+}
+// THE CLOSURE. The printed boundary is the CLOSURE of the graph r = rA(th,z), not the graph itself: at a C0
+// z-step the solid carries a vertical TREAD WALL and at a theta-jump a CURTAIN. Both are correct geometry
+// the mesher deliberately emits, and both are absent from the bare graph — so scoring a tread facet against
+// the graph reports about half the jump height as an error. That is why the un-closed screen sent 19-37 % of
+// BasketWeave / GeoStar / Gyroid to the CPU: those were DEFERRALS, not failures.
+//
+// Rather than locate the jumps (per-style, and the thing this campaign is trying to stop doing), take the
+// one-sided limits at +-eps in BOTH parameters and clamp the query radius into the interval they span. On a
+// smooth patch the limits coincide to within slope*eps, so it is a no-op; exactly at a jump the interval IS
+// the wall, so a point on the wall scores ~0. Shape-agnostic, no feature detector, 4 extra rA evals.
+//
+// SOUNDNESS. At a jump every radius in the interval is a genuine boundary point, so the distance is exact.
+// At a smooth point the interval adds points lying at most slope*eps off the surface, so the reading can
+// under-state by at most that — with eps = 1e-6 mm/rad that is <= 1e-6 mm = 0.001 um, which is folded into
+// \`marginMm\` (default 1 um, i.e. 1000x cover). Without that term the screen would not be sound.
+// Distance from p to the closure-clamped surface at a GIVEN parameter (th, z). The surface footprint there
+// is the radial segment [rmin, rmax] spanned by the one-sided limits; the closest point of that segment to p
+// is at radius clamp(p . u_th, rmin, rmax) where u_th is the radial direction. For th = atan2(py,px) this
+// reduces to the plain radial foot, so it generalises the old radial_dist rather than replacing it.
+fn surf_dist(p: vec3<f32>, th: f32, zRaw: f32, H: f32, Rt: f32, Rb: f32, eps: f32) -> f32 {
+  let z = clamp(zRaw, 0.0, H);
+  let ct = cos(th); let st = sin(th);
+  let r0 = fr_at(th, z, H, Rt, Rb);
+  var rmin = r0;
+  var rmax = r0;
+  if (eps > 0.0) {
+    let a = fr_at(th, z - eps, H, Rt, Rb);
+    let b = fr_at(th, z + eps, H, Rt, Rb);
+    let c = fr_at(th - eps, z, H, Rt, Rb);
+    let d = fr_at(th + eps, z, H, Rt, Rb);
+    rmin = min(min(r0, min(a, b)), min(c, d));
+    rmax = max(max(r0, max(a, b)), max(c, d));
+  }
+  let rc = clamp(p.x * ct + p.y * st, rmin, rmax);
+  return length(p - vec3<f32>(rc * ct, rc * st, z));
+}
+// GAUSS-NEWTON TIGHTENING. The radial foot over-states dist(p,S) by 1/cos(tilt) — MEASURED at 19.871x on a
+// ridged surface (V10) — which is why the screen's survivor rate is ~0 % on smooth styles and 35-37 % on
+// exactly the steep ones. It is NOT the jump closure: GeoStar and Gyroid contain zero tread facets.
+//
+// One Gauss-Newton step on the closest-point problem, seeded at the radial foot, recovers most of that gap
+// for ~5 extra rA evals: build the tangents P_th, P_z by central differences, solve the 2x2 normal equations
+// for the parameter step, and evaluate there.
+//
+// SOUNDNESS IS FREE HERE. Any surface point gives an UPPER bound on dist(p,S), so the Newton point is a valid
+// bound however badly the step behaves, and min(radial, newton) is a valid bound too. A bad step can only
+// fail to help — it can never wave a bad triangle through. That is why no globalisation (descent-first) is
+// needed for a SCREEN, unlike distPerp, which must find the true global foot.
+fn tightened_dist(p: vec3<f32>, H: f32, Rt: f32, Rb: f32, eps: f32, iters: i32) -> f32 {
+  var th = atan2(p.y, p.x);
+  var z = clamp(p.z, 0.0, H);
+  var best = surf_dist(p, th, z, H, Rt, Rb, eps);
+  let hT = 2.0e-4;
+  let hZ = 2.0e-4 * H;
+  for (var k: i32 = 0; k < iters; k = k + 1) {
+    let rC = fr_at(th, z, H, Rt, Rb);
+    let P = vec3<f32>(rC * cos(th), rC * sin(th), z);
+    let rTp = fr_at(th + hT, z, H, Rt, Rb); let rTm = fr_at(th - hT, z, H, Rt, Rb);
+    let rZp = fr_at(th, z + hZ, H, Rt, Rb); let rZm = fr_at(th, z - hZ, H, Rt, Rb);
+    let Pt = (vec3<f32>(rTp * cos(th + hT), rTp * sin(th + hT), z)
+            - vec3<f32>(rTm * cos(th - hT), rTm * sin(th - hT), z)) / (2.0 * hT);
+    let Pz = (vec3<f32>(rZp * cos(th), rZp * sin(th), z + hZ)
+            - vec3<f32>(rZm * cos(th), rZm * sin(th), z - hZ)) / (2.0 * hZ);
+    let d = p - P;
+    let a11 = dot(Pt, Pt); let a12 = dot(Pt, Pz); let a22 = dot(Pz, Pz);
+    let b1 = dot(d, Pt); let b2 = dot(d, Pz);
+    let det = a11 * a22 - a12 * a12;
+    if (abs(det) < 1e-20) { break; }
+    let dth = (b1 * a22 - b2 * a12) / det;
+    let dz = (a11 * b2 - a12 * b1) / det;
+    th = th + dth;
+    z = clamp(z + dz, 0.0, H);
+    best = min(best, surf_dist(p, th, z, H, Rt, Rb, eps));
+  }
+  return best;
 }
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
@@ -237,6 +334,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   if (tri >= nTri) { return; }
   let H = ufield[0]; let Rt = ufield[1]; let Rb = ufield[2];
   let n = i32(ufield[5]);
+  let eps = ufield[6];
+  let gnIters = i32(ufield[7]);
   let o = tri * 9u;
   let a = vec3<f32>(samples[o+0u], samples[o+1u], samples[o+2u]);
   let b = vec3<f32>(samples[o+3u], samples[o+4u], samples[o+5u]);
@@ -247,7 +346,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     for (var j: i32 = 0; j <= n - i; j = j + 1) {
       let wa = f32(i) / fn_; let wb = f32(j) / fn_; let wc = 1.0 - wa - wb;
       let p = a * wa + b * wb + c * wc;
-      mx = max(mx, radial_dist(p.x, p.y, p.z, H, Rt, Rb));
+      mx = max(mx, tightened_dist(p, H, Rt, Rb, eps, gnIters));
     }
   }
   // covRad: circumradius if acute, else half the longest edge (identical rule to the CPU certifier)
@@ -268,17 +367,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
  * Screen a triangle soup on the GPU. Returns per-triangle [maxRadial, covRad] plus the sound partition into
  * certified-clean and survivors at the given tol/margin.
  */
-export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.01, marginMm = 0.001 } = {}) {
-  const mod = dev.createShaderModule({ code: ctx.env + '\n' + KERNEL_SCREEN });
-  const info = await mod.getCompilationInfo();
-  const errs = info.messages.filter((m) => m.type === 'error');
-  if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.01, marginMm = 0.001, closureEps = 1e-6, gnIters = 0 } = {}) {
+  const pipe = await getPipeline(dev, ctx.env + '\n' + KERNEL_SCREEN);
   return guardValidation(dev, 'screenTriangles', async () => {
-  const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
   const dd = dispatchDims(nTri);
   const bP = upload(dev, new Float32Array(ctx.params48));
   const bS = upload(dev, xyz9);
-  const bU = upload(dev, new Float32Array([DIMS.H, DIMS.Rt, DIMS.Rb, 4, dd.stride, n, 0, 0]));
+  const bU = upload(dev, new Float32Array([DIMS.H, DIMS.Rt, DIMS.Rb, 4, dd.stride, n, closureEps, gnIters]));
   const bO = dev.createBuffer({ size: nTri * 8, usage: U().STORAGE | U().COPY_SRC });
   const bR = dev.createBuffer({ size: nTri * 8, usage: U().MAP_READ | U().COPY_DST });
   const bg = dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
@@ -326,7 +421,10 @@ export async function screenTriangles(dev, ctx, xyz9, nTri, { n = 12, tolMm = 0.
  * exact perpendicular treatment on the CPU. An empty list means the whole mesh is certified at `tolMm`.
  */
 export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
-  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192, 768], chunkSamples = 4e8 } = opts;
+  // LEVELS STOP AT 192 BY DESIGN — see the note on per-thread cost below. Anything still uncertified is
+  // returned as a survivor for the CPU perpendicular pass, which is sound: the screen never clears a bad
+  // triangle, it only declines to certify one.
+  const { tolMm = 0.01, marginMm = 0.001, levels = [12, 48, 192], chunkSamples = 4e8, closureEps = 1e-6, gnIters = 0 } = opts;
   let cur = xyz9; let curN = nTri; let idx = null;
   const rounds = []; let totalMs = 0;
   for (const n of levels) {
@@ -335,13 +433,44 @@ export async function certifyMeshGpu(dev, ctx, xyz9, nTri, opts = {}) {
     // ~2 s trips the OS GPU watchdog (TDR) and the device is LOST — taking every subsequent style with it.
     // Measured: GeometricStar at n=192 ran 2633 ms and the next five styles all died with
     // "[Device] is lost". Cost per triangle is ~(n+1)(n+2)/2 rA evals, so cap the samples per dispatch.
-    const perTri = ((n + 1) * (n + 2)) / 2;
-    const maxTri = Math.max(1024, Math.floor(chunkSamples / perTri));
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // WHY `levels` STOPS AT 192, AND WHY CHUNKING CANNOT RAISE IT
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // KERNEL_SCREEN walks the whole barycentric lattice INSIDE ONE THREAD (`for i… for j…`). Per-thread
+    // work is therefore O(n^2) and depends on `n` ALONE — the batch size sets how many threads run, not how
+    // long any one of them takes. At n=768 a single invocation performs 296 065 iterations x ~25 rA evals
+    // with transcendentals = ~7.4 M serial evals, which exceeds the ~2 s watchdog on its own.
+    //
+    // MEASURED, after four failed fixes that all reduced thread count (eval-based budget, removed dispatch
+    // floor, pipeline cache, device re-acquisition): a calibration sweep on RippleInterference completed
+    // n=12 @ 4000 tris (606 ms), n=48 @ 1000 (72 ms), n=192 @ 40 (406 ms), n=192 @ 80 (266 ms) — and then
+    // LOST THE DEVICE at **n=768 with a batch of TWO triangles**. That is the proof that batch size is the
+    // wrong knob.
+    //
+    // THE REAL FIX, not done here: split the lattice across threads (one workgroup per triangle, each
+    // invocation taking a stripe of (i,j), then a workgroup reduction for the max and the gap). That makes
+    // per-thread cost O(n^2 / workgroupSize) and removes the ceiling. It is a kernel redesign, so until then
+    // the cascade stops at 192 and hands the rest to the CPU — a stated limitation, not a silent one.
+    // ────────────────────────────────────────────────────────────────────────────────────────────────
+    // COST PER SAMPLE IS NOT 1 rA EVAL. The closure adds 4 one-sided probes and each Gauss-Newton iteration
+    // adds ~10 (centre + 4 tangent differences + a clamped re-evaluation). `chunkSamples` is a budget in
+    // rA EVALS, so it must be divided by that multiplier — otherwise adding GN silently multiplies the
+    // dispatch length by ~35x and trips the TDR watchdog. MEASURED the hard way: a cascade that had been
+    // chunked safely for the radial kernel lost the device on the second style with gnIters=3, and every
+    // style after it died with "[Device] is lost". TDR is a correctness constraint, not a tuning knob.
+    const evalsPerSample = 1 + (closureEps > 0 ? 4 : 0) + 10 * gnIters;
+    const perTri = (((n + 1) * (n + 2)) / 2) * evalsPerSample;
+    // NO FLOOR. A minimum triangles-per-dispatch silently OVERRIDES the eval budget exactly where the budget
+    // matters most: at n=768 with GN a single triangle already costs ~7.4 M rA evals, so a floor of 256
+    // forces ~1.9e9 evals — about 11 s — straight through the watchdog. MEASURED: with the floor in place
+    // the device was lost on the third style even after the budget itself was corrected. One triangle per
+    // dispatch is ~45 ms and perfectly acceptable; a slow sweep beats a dead device.
+    const maxTri = Math.max(1, Math.floor(chunkSamples / perTri));
     const r = { survivors: [], computeMs: 0, worstBoundUm: 0, allZero: true };
     for (let base = 0; base < curN; base += maxTri) {
       const cnt = Math.min(maxTri, curN - base);
       const part = cur.subarray(base * 9, (base + cnt) * 9);
-      const pr = await screenTriangles(dev, ctx, part, cnt, { n, tolMm, marginMm });
+      const pr = await screenTriangles(dev, ctx, part, cnt, { n, tolMm, marginMm, closureEps, gnIters });
       r.computeMs += pr.computeMs;
       r.worstBoundUm = Math.max(r.worstBoundUm, pr.worstBoundUm);
       if (!pr.allZero) r.allZero = false;
@@ -390,7 +519,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   // CHUNKED, for the same TDR reason as the screen: this kernel costs (K+1)^2 rA evals per cell, so a
   // full 1024x512 grid at K=32 is ~571 M evals in one dispatch (~3.5 s at the measured 164 M/s) and the
   // Windows watchdog kills the device well before that. ufield[8] carries the chunk's first cell index;
-  // `outR` is sized to the CHUNK, so the bound test is local and the surface index is global.
+  // outR is sized to the CHUNK, so the bound test is local and the surface index is global.
   let local = gid.y * stride + gid.x;
   if (local >= arrayLength(&outR)) { return; }
   let cell = u32(ufield[8]) + local;
@@ -435,38 +564,42 @@ fn fn_r(th: f32, z: f32, H: f32, Rt: f32, Rb: f32) -> f32 {
  * Surface structure map. Returns the per-cell max departure of rA from its bilinear corner interpolant,
  * measured on a K x K sub-lattice, plus the sub-pitch that departure was measured at.
  */
-export async function structureMap(dev, ctx, { nu = 1024, nv = 512, K = 32 } = {}) {
-  const mod = dev.createShaderModule({ code: ctx.env + '\n' + KERNEL_STRUCT });
-  const info = await mod.getCompilationInfo();
-  const errs = info.messages.filter((m) => m.type === 'error');
-  if (errs.length) throw new Error(`WGSL: ${errs[0].lineNum}: ${errs[0].message}`);
+export async function structureMap(dev, ctx, { nu = 1024, nv = 512, K = 32, chunkSamples = 1.5e8 } = {}) {
+  const pipe = await getPipeline(dev, ctx.env + '\n' + KERNEL_STRUCT);
   return guardValidation(dev, 'structureMap', async () => {
-  const pipe = dev.createComputePipeline({ layout: 'auto', compute: { module: mod, entryPoint: 'main' } });
   const nCell = nu * nv;
-  const dd = dispatchDims(nCell);
+  const map = new Float32Array(nCell);
   const bP = upload(dev, new Float32Array(ctx.params48));
   const bS = upload(dev, new Float32Array(16));
-  const bU = upload(dev, new Float32Array([DIMS.H, DIMS.Rt, DIMS.Rb, 4, dd.stride, nu, nv, K]));
-  const bO = dev.createBuffer({ size: nCell * 4, usage: U().STORAGE | U().COPY_SRC });
-  const bR = dev.createBuffer({ size: nCell * 4, usage: U().MAP_READ | U().COPY_DST });
-  const bg = dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
-    { binding: 0, resource: { buffer: bP } }, { binding: 1, resource: { buffer: bS } },
-    { binding: 2, resource: { buffer: bO } }, { binding: 3, resource: { buffer: bU } }] });
-  const t0 = performance.now();
-  const enc = dev.createCommandEncoder();
-  const pass = enc.beginComputePass();
-  pass.setPipeline(pipe); pass.setBindGroup(0, bg);
-  pass.dispatchWorkgroups(dd.x, dd.y); pass.end();
-  dev.queue.submit([enc.finish()]);
-  await dev.queue.onSubmittedWorkDone();
-  const ms = performance.now() - t0;
-  const enc2 = dev.createCommandEncoder();
-  enc2.copyBufferToBuffer(bO, 0, bR, 0, nCell * 4);
-  dev.queue.submit([enc2.finish()]);
-  await bR.mapAsync(U().MAP_READ);
-  const map = new Float32Array(bR.getMappedRange().slice(0));
-  bR.unmap();
-  [bP, bS, bU, bO, bR].forEach((b) => b.destroy());
+  const perCell = (K + 1) * (K + 1);
+  const maxCells = Math.max(4096, Math.floor(chunkSamples / perCell));
+  let ms = 0;
+  for (let base = 0; base < nCell; base += maxCells) {
+    const cnt = Math.min(maxCells, nCell - base);
+    const dd = dispatchDims(cnt);
+    const bU = upload(dev, new Float32Array([DIMS.H, DIMS.Rt, DIMS.Rb, 4, dd.stride, nu, nv, K, base]));
+    const bO = dev.createBuffer({ size: cnt * 4, usage: U().STORAGE | U().COPY_SRC });
+    const bR = dev.createBuffer({ size: cnt * 4, usage: U().MAP_READ | U().COPY_DST });
+    const bg = dev.createBindGroup({ layout: pipe.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: { buffer: bP } }, { binding: 1, resource: { buffer: bS } },
+      { binding: 2, resource: { buffer: bO } }, { binding: 3, resource: { buffer: bU } }] });
+    const t0 = performance.now();
+    const enc = dev.createCommandEncoder();
+    const pass = enc.beginComputePass();
+    pass.setPipeline(pipe); pass.setBindGroup(0, bg);
+    pass.dispatchWorkgroups(dd.x, dd.y); pass.end();
+    dev.queue.submit([enc.finish()]);
+    await dev.queue.onSubmittedWorkDone();
+    ms += performance.now() - t0;
+    const enc2 = dev.createCommandEncoder();
+    enc2.copyBufferToBuffer(bO, 0, bR, 0, cnt * 4);
+    dev.queue.submit([enc2.finish()]);
+    await bR.mapAsync(U().MAP_READ);
+    map.set(new Float32Array(bR.getMappedRange().slice(0)), base);
+    bR.unmap();
+    [bU, bO, bR].forEach((b) => b.destroy());
+  }
+  [bP, bS].forEach((b) => b.destroy());
   let max = 0; let arg = 0; let nz = 0;
   for (let i = 0; i < nCell; i += 1) { if (map[i] !== 0) nz += 1; if (map[i] > max) { max = map[i]; arg = i; } }
   // An all-zero map over an entire real style surface is not a measurement, it is a dropped dispatch. Every
