@@ -1337,3 +1337,38 @@ aspect-guarded pass fails it explicitly **drops the guard and splits anyway**
 and **127 864** triangles under 1°. If the exceedance set largely IS the sliver set, then the seven refuted
 rows need a mesher that does not emit needles — not per-style conforming machinery — and the unwired
 M=g/h² surface-metric work (recorded at GeoStar 18.2 % → 5.8 % under 20°) is the existing lever.
+
+### 17b. REFUTED — the H1 exceedances are NOT the slivers
+
+§17 proposed that the fidelity failures might largely BE the sliver population, which would have redirected
+the roadmap at the mesher's triangle quality. **Measured, and it does not hold.**
+
+Method note, because the obvious test is circular: correlating slivers with SCREEN SURVIVORS would prove
+nothing. `covRad` is the circumradius, which diverges as the minimum angle → 0, so a sliver fails the bound
+`mx + covRad/n + margin <= tol` **by construction at any n**, regardless of its actual error. The test
+therefore uses the MEASURED distance `mx` (radial tightened by 2 Gauss-Newton steps), not the bound.
+20 000 stride-sampled triangles per style, screened at n=192:
+
+| | GeometricStar | GothicArches REF003 |
+|---|---|---|
+| slivers (min angle < 1°) | 14.77 % | 2.38 % |
+| over-tolerance (measured) | 16.75 % | 15.13 % |
+| P(bad \| sliver) | 31.52 % | 27.31 % |
+| P(bad \| NOT sliver) | 14.20 % | 14.83 % |
+| **lift** | **2.22x** | **1.84x** |
+| **fraction of failures that are slivers** | **27.78 %** | **4.30 %** |
+
+**Slivers are enriched among failures but are not the cause of them.** The lift is real and not noise — a
+sliver is about twice as likely to be over tolerance — but **72 % of GeoStar's failures and 96 % of
+Gothic's are well-shaped triangles.** Gothic REF003 carries only 2.38 % slivers and still fails 15.13 %.
+
+So "fix the needles and the refuted rows close" is FALSE. Removing slivers would eliminate the rendered
+spikes and 4-28 % of the fidelity failures — worth doing on print-quality grounds — but the dominant failure
+is well-shaped triangles too far from the surface, which points back at ALLOCATION exactly as §14c's
+surface-side measurement implied. The unwired M=g/h² work remains valuable for shape; it is not the
+fidelity lever.
+
+**Bonus: the two instruments agree.** GeoStar reads 16.75 % over-tolerance on the GPU against the CPU
+auditor's 18.9 % H1 exceedance rate (122 305 / 648 543 audited) — two instruments sharing no code within
+two points. That is the first independent cross-validation of the GPU screen's `mx` against CPU H1, and it
+makes the GPU figure usable as a proxy for the far more expensive CPU pass.
