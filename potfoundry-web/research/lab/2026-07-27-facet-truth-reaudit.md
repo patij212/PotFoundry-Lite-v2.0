@@ -1372,3 +1372,47 @@ fidelity lever.
 auditor's 18.9 % H1 exceedance rate (122 305 / 648 543 audited) — two instruments sharing no code within
 two points. That is the first independent cross-validation of the GPU screen's `mx` against CPU H1, and it
 makes the GPU figure usable as a proxy for the far more expensive CPU pass.
+
+### 17c. The failures are LARGE, WELL-SHAPED, and nowhere near the floor — the chain closes
+
+Restricting to well-shaped triangles (min angle >= 1°, i.e. excluding everything §17b covered), and
+comparing those over tolerance against those under it. Same 20 000 stride-sampled triangles, n=192:
+
+| | GeometricStar | GothicArches REF003 |
+|---|---|---|
+| failing / passing (well-shaped) | 2 420 / 14 626 | 2 895 / 16 629 |
+| **median longest edge, FAILING** | **1714.3 µm** | **356.9 µm** |
+| median longest edge, passing | 312.2 µm | 189.3 µm |
+| p90 edge, failing | 2193.6 µm | 904.0 µm |
+| **median error, failing** | **251.9 µm** | 28.6 µm |
+| max error, failing | 1237.6 µm | 823.2 µm |
+| **failing triangles within 10x of the 1.5 µm floor** | **0.00 %** | **0.48 %** |
+
+**The failing triangles are 1.9-5.5x LARGER than the passing ones, and essentially none are at the floor.**
+GeometricStar's MEDIAN failing facet is 1.7 mm across and sits 252 µm from the surface — three orders of
+magnitude above the refinement floor, in a run with budget available.
+
+### The diagnostic chain, now complete and entirely measured
+
+Each link independently established, several of them by refuting an earlier hypothesis of mine:
+
+1. **The surface is density-closable** — chord error falls 1.45-3.2x per halving with no plateau, and at
+   20 µm cells only 0.002-0.53 % of the wall is over the bar (§14c).
+2. **The driver is not out of budget** — baseline runs used 19-65 % of cap; the bounded run that DID cap
+   produced a byte-identical mesh (§14b, §14f).
+3. **The failures are not slivers** — 72-96 % of them are well-shaped (§17b).
+4. **The failures are not at the mechanism floor** — 0.00 % / 0.48 % lie within 10x of it (this section).
+5. **The failures are LARGE facets** — 1.9-5.5x bigger than passing ones, carrying 29-252 µm median error.
+
+**Therefore the defect is the driver's RANKING FUNCTION.** Large, well-shaped, badly-wrong triangles sat
+unrefined while budget remained, because `sagOfN` measures distance to a triangle's INFINITE PLANE on a
+coarse lattice — a quantity that is small for exactly the facet that spans a feature. Nothing about
+mechanism, budget, triangle quality or surface representability explains these. The driver could not see
+them.
+
+**This makes the GPU screen-as-ranking-function the single highest-value piece of work available.** The
+instrument already exists, is validated against the CPU auditor to within 2 points (§17b), measures TRUE
+perpendicular distance rather than plane distance, and runs at ~42x the CPU cost of the ruler it would
+replace. The obstacle is process topology, not algorithms: the mesher runs in Node under vitest, WebGPU
+needs a browser, and there is no Node binding in this repo. The bridge pattern is already proven here —
+invert `research/tools/statusSink.cjs` so the driver POSTs candidate batches and receives bounds.
