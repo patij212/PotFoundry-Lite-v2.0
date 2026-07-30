@@ -1,0 +1,1507 @@
+# STRATA-001 — performance / precision / convergence worklog (2026-07-29 overnight)
+
+GOAL: much faster meshing with NO fidelity loss. Then use the speed to answer the convergence
+question that the pipeline currently cannot afford to ask.
+
+---
+## *** STOP — RETRACTION. EVERY FIDELITY NUMBER BELOW IS ONE-SIDED AND MISLEADING. ***
+
+A VISUAL INSPECTION of the D51 mesh (a user looked at it in a viewer) found thin flat BLADE triangles
+protruding from the surface along the feature loci, many rendering BACK-FACING, i.e. the surface FOLDS
+OVER ITSELF and cuts through features. Every automated check tonight missed them. I then ran the
+direction I had switched off:
+
+| instrument | D51 verdict |
+|---|---|
+| driver self-report (plane ruler) | **MAX 4.058 um PASS, 0 / 1,433,982 over tol** |
+| H2 surface -> mesh (what I reported all night) | 15.508 um, 263 / 40M samples over tol |
+| **H1 mesh -> surface (what I switched off)** | **WITNESSED 444.881 um, certified bound 612.638 um, 3,032 of 40,000 audited triangles = 7.58% OVER TOL** |
+
+**7.58% of the mesh's triangles are more than 10 um from the surface — about 108,000 triangles — while
+the driver reports zero and H2 reports 0.00066%.** The witness sits at z=109.7 mm on a facet with edges
+250/1560/1420 um; the certified-bound locus at z=79.7 with edges 1003/557/1215 um. These are LARGE
+facets far off the surface, i.e. the blades.
+
+WHY ALL THREE INSTRUMENTS MISSED IT — three independent blind spots that happened to align:
+ 1. **H2 CANNOT SEE PROTRUDING GEOMETRY.** It asks whether every surface point has mesh near it. A
+    blade sticking outward covers everything it should and ADDS geometry that should not exist. I ran
+    H2 alone on every large mesh tonight for speed, having written in this very file that neither
+    direction alone suffices. That is the methodological error.
+ 2. **A FOLD IS MANIFOLD AND CONSISTENTLY ORIENTED.** analyze()'s incidence check and the directed-edge
+    orientation check added tonight both correctly report 0. SELF-INTERSECTION is the gate that catches
+    a fold, it was flagged in the first review of this campaign, and it was never built.
+ 3. **THE PLANE RULER IS NOT MERELY 2.5-3.8x BLIND — IT IS ~110x BLIND HERE (4.058 vs 444.881).** And
+    the mechanism is worse than "it measures distance to a plane": sagOfN/sagAdaptive sample ANALYTIC
+    SURFACE points over a triangle's (theta,z) PARAMETRIC FOOTPRINT. A folded or blade facet's
+    parametric footprint does not correspond to its actual 3-D extent, so the ruler is not measuring
+    that triangle at all. Every "ratio" in the tables below (2.47x / 2.81x / 3.82x) was computed on
+    meshes carrying this defect and describes nothing stable.
+
+WHAT SURVIVES: the convergence behaviour (heap DRAINS, is criterion-limited not budget-limited), R2's
+feasibility calculator (it predicted D51's 1.43M triangle count), the C0 persistence detector, the
+parallelisation (byte-identical), and the FIFO refutation. Those do not depend on the audit direction.
+WHAT DOES NOT: **every H2-only fidelity figure, including the "126.028 -> 15.508 um, 8.1x" trajectory.**
+Do not quote it. A two-sided number on a blade-free mesh is the only thing that means anything.
+
+### DIAGNOSED. **THE BISECTION ITSELF MANUFACTURES THE BLADES, AND THE DRIVER'S RULER REWARDS THEM.**
+
+My "indices spaced 6 apart => one emitter" lead was WRONG. gridU=200 with gaCounts=12 gives gcd 4, so
+the run has exact 4-fold rotational symmetry and every defect appears as 4 congruent copies; the four
+"identical" triangles are the SAME triangle rotated by pi/2 (thetas differ by pi/2 to 8 digits). Blade
+index residues mod 6 are uniform. The real signature is RUNS: 20,386 of 48,130 blades are adjacent to
+another blade.
+
+IT IS A SHAPE DEFECT, NOT A PLACEMENT DEFECT. Every blade vertex lies on the analytic surface to
+**<= 9 nm**. A blade is a facet whose PARAMETRIC area collapses while its edges stay long. Two families:
+CAP 62% (all three edges long, p50 longest 400 um, min altitude p50 4.8 um) and NEEDLE 37.6% (two
+vertices nearly coincident, min edge p50 3.08 um). 2.22% of the mesh (31,842 facets) is additionally
+INVERTED in (theta,z) — the parametrisation folds and the surface overlaps itself. They render as
+blades because three near-collinear vertices give an ill-conditioned normal: a ~1 um altitude across a
+~1 mm base, so the normal points anywhere. Hence "tangent", "protruding", "back-facing".
+
+**THE ARITHMETIC.** bisectAt(a,b,t) gives children that keep the parent's height over ab and take bases
+t|ab| and (1-t)|ab|, so   **childAR / parentAR ~= 1 / min(t, 1-t)**.
+That is bounded ONLY when (i) the split edge is the LONGEST and (ii) t = 1/2 — precisely the two
+hypotheses of Rivara longest-edge bisection, which is what guarantees the smallest angle never falls
+below half the initial one. **THE DRIVER'S TWO HEADLINE LEVERS DELETE BOTH HYPOTHESES ON PURPOSE:**
+  L1 DIRECTED splits the max-edge-SAG edge, NOT the longest one;
+  L2 SNAP     splits at the located crossing, t in [SNAP_ALPHA, 1-SNAP_ALPHA] = [0.12, 0.88].
+MEASURED per-split amplification (geometric mean over 58,880 splits): longest-edge+midpoint **x0.99**
+(neutral, the Rivara case) | middle-edge **x2.31** (max x145) | shortest-edge **x4.00** (max x91) |
+SNAP **x1.77** (max x214). Peak parametric amplification x8.2 at t=0.1223 = exactly 1/SNAP_ALPHA, as
+the formula predicts.
+
+TWO FURTHER VIOLATIONS, both measured:
+ * **THE GUARD IS IN THE WRONG PLACE.** bisectAt splits EVERY triangle incident to the chosen edge, but
+   refineDirected's aspect cap (PF_CB_AR=8) is evaluated only for the triangle that was POPPED. For the
+   neighbour that same edge may be its shortest. **68% of blade births (1,142 of 1,688) damage a
+   NEIGHBOUR**, and the neighbour columns carry all the large amplification (x42/x145/x91/x214).
+ * **METRIC MISMATCH.** The edge is SELECTED by 3-D length (eLen) but the point is PLACED at the
+   parametric midpoint of (theta,z) and lifted. On 1.5 mm relief those differ: measured, the parametric
+   midpoint lands at 3-D parameter ~0.41/0.59 (gmean 0.819), so a "midpoint" split is systematically
+   off-centre in the metric the print actually has.
+
+IT COMPOUNDS AND IS SELF-SUSTAINING. Blade fraction over one run climbs monotonically
+0.58 -> 0.63 -> 0.68 -> 1.43 -> 1.85 -> 2.26 -> 2.43 -> 2.86 -> 2.98 -> 3.12 -> 3.32 -> 3.36 -> 3.74 ->
+4.08 -> 4.27 %, worst parametric AR 364 -> 7,798, with 2,380 INHERITED blade emissions against 1,688
+births — a blade's children are blades. And refinement is deepest exactly at feature loci, which is
+where SNAP fires and where the max-sag edge is systematically NOT the longest (an edge ACROSS a rib
+carries all the sag, one ALONG it carries none — that is the anisotropy lever's entire purpose). So the
+amplification is concentrated precisely where the driver works hardest.
+
+WHERE: at locus JUNCTIONS, not along loci. 20.5% of facets in z in [110,115] and 5.8% in z in [80,85],
+confined to bay-centre theta phase — the two X-crossings of the diamond lattice, the upper one
+coinciding with the bandRim crease at z=111.4 mm, i.e. a TRIPLE junction, 6x hotter than the other.
+Blades occupy only 3.2% of the (phase,z) map.
+
+WHY EVERY CHECK MISSED IT — four independent blindnesses, all measured:
+ (a) **NO SHAPE CHECK EXISTS ANYWHERE** — not in consider(), not in analyze(), not in _facetTruthLib.
+     The one shape-adjacent constant, PF_CB_AR=8, gates edge SELECTION and never the emitted triangle.
+ (b) **THE RULER REWARDS THEM.** On the 2,000 worst facets the driver's plane ruler reads p50 0.63 um /
+     p95 2.91 um — BELOW acceptTol 3.5 um. A blade's vertices are on the surface and near-collinear, so
+     the strip of surface beneath it is within ~1 um of that line and any plane through them hugs it.
+     consider() accepts a blade ON FIRST SIGHT and never re-queues it. The honest point-to-triangle
+     ruler is blind for the same reason — and so is H2, for the same structural reason.
+ (c) **COMBINATORIALLY THE MESH IS PERFECT**: non-manifold 0, orientation-mismatch 0, boundary 1,200
+     (the two ring rims), Euler V-E+F = 717,591 - 2,151,573 + 1,433,982 = 0. A folded sheet is still a
+     consistently-oriented 2-manifold.
+ (d) **THE CLEANUP CANNOT REACH THEM**: collapse fires below PF_CB_NEEDLE_UM = 0.2 um but needle
+     min-edge p05 is 0.471 um (>95% above threshold), and CAPS have all edges long by construction.
+     The census is byte-identical before and after the collapse/flip pass. PF_CB_FLIP defaults OFF, so
+     tryFlip — the natural repair for a cap — never ran.
+
+=> THE FIX IS A SHAPE TERM IN THE EMIT PATH, CHECKED FOR EVERY INCIDENT TRIANGLE, plus placing the
+   split point at the 3-D midpoint rather than the parametric one, plus a shape gate in the auditor so
+   this can never again be invisible. IN FLIGHT.
+
+### *** D52 — BLADES ELIMINATED. AND THE PIPELINE NOW TELLS THE TRUTH, WHICH IS WORSE THAN IT SAID. ***
+
+Same config as D51, shape fixes ON. Every D51 number below was RE-MEASURED on the same instrument, not
+copied — all reproduced exactly.
+
+|  | D51 (guard OFF) | D52 (fixes ON) | |
+|---|---|---|---|
+| triangles | 1,433,982 | 1,260,218 | -12.1% |
+| wall / rA | 1287 s / 1220 M | 1051 s / 1075 M | **1.22x FASTER** |
+| **BLADES AR>50** | 48,130 (3.3564%) | **19 (0.0015%)** | **2,533x fewer** |
+| worst AR | 19,285.793 | 50.144 | 385x lower |
+| **INVERTED in (theta,z)** | 31,842 (2.2205%) | **6 (0.0005%)** | **5,307x fewer** |
+| fold components / largest | 6,047 / 29 facets | 4 / 2 facets | |
+| inward normals | 32,560 (2.27%) | 479 (0.038%) | 68x fewer |
+| min edge | 0.104 um | 0.722 um | |
+| driver self-report | **4.058 um PASS** | **55.890 um FAIL** | |
+| unresolved | 0 | **9,794** (worst 53.1 um) | |
+| **H1 facets over tol** | 3,032/40,000 = **7.58%** | 1,675/40,000 = **4.19%** | **1.81x BETTER** |
+| H1 witnessed / certified | 444.881 / 612.638 um | 549.196 / **559.195 um** | max worse, bound -8.7% |
+| H2 max | 15.508 um | 15.354 um | unchanged |
+| H2 samples over tol | 263 (0.00066%) | 1,217 (0.00304%) | 4.6x worse |
+
+**THE SHAPE DEFECT IS GONE AND IT COST NOTHING** — 12% fewer triangles, 22% less wall time. The guard
+pays for itself by refusing splits whose children would be degenerate (18,326 welded-split refusals in
+the control went to ZERO: those weld collisions were blades colliding with themselves).
+
+**BUT FIDELITY DID NOT IMPROVE, AND THE HONEST NUMBERS GOT WORSE.** That is the point, not a setback:
+D51 printed `4.058 um PASS` on a mesh with 7.58% of facets over tolerance and 48,130 blades. D52 prints
+`55.890 um FAIL` with 9,794 unresolved. **The pipeline stopped lying.**
+
+>> THE DECISIVE DETAIL — WHERE THE H1 WITNESS MOVED TO.
+>>   D51 witness: z=109.72, edges 250/1560/1420 um, **AR 8.2** — a blade-ish facet.
+>>   D52 witness: z=81.65, edges 725/888/857 um, **AR ~1.2** — a WELL-SHAPED, ordinary facet, 549 um
+>>   from the surface.
+>> With blades removed the residual error is on GOOD triangles. That is genuine under-refinement, not
+>> an artefact. And the guard refused **54.5% of all split candidates on aspect** (968,731 of
+>> 1,778,625) — **more than half the refinement the driver wants to do would create a blade.**
+>>
+>> THAT IS THE REAL FINDING OF THE NIGHT: the driver's refinement strategy and shape quality are in
+>> direct conflict. DIRECTED's whole value is splitting the max-SAG edge (across a rib), and that is
+>> exactly the split that degenerates the neighbour. You cannot have anisotropic feature-conforming
+>> refinement AND bounded aspect ratio from longest-edge bisection alone. The 9,794 unresolved facets
+>> are the driver correctly refusing to trade shape for fidelity — and having no third option.
+>> THE THIRD OPTION IS A DIFFERENT PRIMITIVE for those regions: the M=g/h^2 anisotropic kernel already
+>> certified in this repo as an unwired asset, and/or conforming curtain geometry at the loci. Not
+>> more bisection.
+>>
+>> H2's witness moved to the SAME z and r with theta differing by EXACTLY pi/2 — the 4-fold rotational
+>> copy of ONE unrepresented feature. The remaining H2 defect is a single feature, four times.
+
+THE AUDITOR NOW CANNOT HIDE THIS AGAIN. An unconditional MESH SHAPE CENSUS runs on every audit: AR
+distribution + blade count, (theta,z) fold count, inward normals, min edge, worst-by-AR list, decade
+histogram, welded topology. It has NO off switch; a compact `[SHAPE: ...]` stamp is appended to EVERY
+fidelity headline (H1 bound, H1 witnessed, H2, the old-ruler A/B); and the topology block is now
+labelled `necessary, NOT sufficient — a folded sheet passes all of it`. Its arithmetic is TRANSCRIBED
+from the diagnostic tools rather than imported from the mesher's guard, deliberately: a guard and an
+auditor sharing a definition cannot disagree. Cross-checked digit-for-digit against both tools on three
+meshes. Cost 9.2 s on 1.43M facets.
+
+WHY AR=50, measured not chosen: it is the LOOSEST cap that zeroes the census (100 leaves 938 blades),
+it is the census's own blade definition, and it sits ~4x above the control's p90 (12.99) so ordinary
+DIRECTED anisotropy is untouched, while below p99 (92.94) so it binds on the named population.
+tryFlip as a cap repair was IMPLEMENTED, MEASURED, AND LEFT OFF: it repairs 38.3% of caps, never
+reaches the worst facet, and costs +29% on the plane ruler — "preventing the birth is the fix; this is
+a dressing."
+
+
+> **EDITOR'S NOTE (2026-07-30, the executing session).** The two PART sections below were written on
+> 2026-07-29 by a read-only session and are appended VERBATIM as pre-registered; they PRE-DATE the
+> `### *** D52 — BLADES ELIMINATED ***` section above, which was measured later the same night on a
+> different lineage. Their `_D52`/`_D52CTRL` tags were EXECUTED AS `_D53`/`_D53CTRL` because the `_D52`
+> tag was already taken by that artifact (RESUME reconciliation 1); read every `_D52` below as `_D53`.
+> Execution results, including the P1-P8 scoring, are in the `### 2026-07-30 — EXECUTION` section
+> further down.
+
+APPEND VERBATIM to research/lab/2026-07-29-strata-perf-convergence-worklog.md, immediately AFTER the
+"=> THE FIX IS A SHAPE TERM IN THE EMIT PATH ... IN FLIGHT." line (i.e. before "### PHASE 2").
+
+---
+### 2026-07-29 — PART A: THE JUDGE HARDENING. **BUILT, STAGED, NOT VERIFIED — NOTHING WAS EXECUTED.**
+
+**READ THIS BEFORE QUOTING ANYTHING BELOW.** The session that wrote this could not run a single command
+(Bash/PowerShell/Write into the repo were all refused: "SideChat fork: … read-only"). So:
+  * the HARD GATE was NOT run — 12/12 is UNCONFIRMED for these changes;
+  * eslint / tsc were NOT run — the staged files are UNCOMPILED;
+  * A4 was NOT demonstrated live, and its driver fixtures DO NOT EXIST;
+  * Part B (D52 + D52CTRL + the two-sided audits) was NOT started.
+Treat every file below as a REVIEWABLE DRAFT, not as a landed change. The first three things the next
+session does are: apply, `npx tsc --noEmit` + eslint, then the hard gate.
+
+STAGED FILES (mirror-path copies under the session scratchpad, apply into potfoundry-web/):
+  research/bridge/_judgeVerdict.ts          NEW  A3 — the one entry point; GateResult/DirectionReading types
+  research/bridge/_judgeShape.ts            NEW  A1 — census (moved out of the auditor) + fold/blade/topology gates
+  research/bridge/_judgeNormal.ts           NEW  A2 — facet normal vs the ANALYTIC normal + its gate
+  research/bridge/_judgeNegativeControl.test.ts NEW A4 — layer 1 synthetic (runs today), layer 2 fixtures (blocked)
+  research/bridge/_judge.config.ts          NEW  vitest config, the _blade.config.ts pattern
+  research/bridge/_strataFacetTruth.test.ts EDIT integration; census delegated; verdict routed
+No file outside that list was touched. _facetTruthLib.ts, _sharp3dRef.ts, _shapeGuard.ts and every
+_facetTruth*/_h2*/_sweep*/_phase2* file are byte-untouched, so the hard gate cannot move by construction —
+but "cannot move by construction" is exactly the claim this campaign has twice found to be worth checking.
+
+WHAT EACH ITEM ACTUALLY DOES, AND WHAT IT DOES NOT
+ A1 REPRESENTATION VALIDITY AS A HARD GATE (expected 0). The driver emits a LIFTED GRAPH over (theta,z), so
+    "is a graph" IS its validity condition, and one consistent sign of the parametric signed area is an exact
+    certificate of it — no tolerance, no acceleration structure. **This subsumes the triangle-triangle
+    self-intersection check flagged in the first review and never built**: for a graph, self-intersection
+    REQUIRES a fold, because two surface points over one (theta,z) is double-valuedness and the lift is
+    continuous. O(n) and exact instead of O(n log n) and tolerance-bound.
+    TWO REFINEMENTS OVER THE .mjs TOOLS. (i) the gate counts MINORITY sign, not `< 0` — the stated condition
+    is consistency, and `< 0` is correct only because this driver happens to wind positively (identical on
+    D51: 31,842 either way; `nFoldRaw` is retained verbatim for comparability). (ii) above 25 % minority the
+    gate reports AMBIGUOUS and REFUSES, because that is what a NON-GRAPH mesh looks like, not a defect.
+    **THE SHORTCUT DOES NOT EXTEND TO THE DOUBLE-VALUED TREAD MESHES** (src/geometry/doubleValued/) OR TO
+    STAGE=solid's inner wall and floor. PF_FT_GRAPH=0 declares that, the gate reports NOT APPLICABLE, and
+    NOT APPLICABLE IS NOT A PASS — judge() then refuses to certify. Those meshes still need the pairwise
+    test, and it is still unbuilt.
+ A2 AN EXTRINSIC INSTRUMENT. Facet normal vs the ANALYTIC normal at the facet's parametric centroid, five
+    rA evals per facet. N = (r cos + r_t sin, r sin - r_t cos, -r*r_z), so N.rhat = r > 0 by construction.
+    THE GATE IS A SIGN TEST — deviation >= 90 deg against the MOST FAVOURABLE of five candidates (central,
+    and the four one-sided combinations of r_theta and r_z). No tuned constant; it is exactly the human's
+    "renders back-facing"; and a crease of ANY dihedral < 180 deg cannot produce it, because the one-sided
+    candidates ARE the flank normals. Facets straddling a detected C0 locus are reported and EXCLUDED (for
+    GothicArches that is 0 facets, so the exclusion cannot quietly be carrying the result).
+    IT IS MEASURED NON-EMPTY AND THE OLD PROXY UNDERSTATES IT: D51's crude `n.rhat < 0` already read 32,560
+    (2.2706 %) while the driver said 4.058 um PASS. rhat is the surface normal only where r_theta = r_z = 0.
+    NOT GATED, REPORTED: counts at 15/30/45/60/90/120/150 deg and a 12-bin histogram. Those are the
+    CALIBRATION DATA for a tighter gate; adopt nothing tighter until the guard-ON/OFF pair separates on them.
+ A3 ONE ENTRY POINT. judge() emits PASS only when BOTH directions ran, both covered their domain in full,
+    and H1 carries a certified bound under TOL. It emits FAIL from WHATEVER RAN, including one direction:
+    a failed shape gate and a witnessed exceedance are both evidence of a defect that EXISTS, and the
+    missing direction could only have added more (that asymmetry was the first review's finding 1; the first
+    draft withheld the verdict and printed the failures as a footnote). A clean one-sided run gets an
+    explicit NOT-A-VERDICT banner and no verdict word anywhere. An EMPTY gate list blocks PASS — zero gates
+    evaluated is not "all gates pass" (finding 2). H1/H2's own section headers now read "MEASUREMENTS, NOT A
+    VERDICT" and their PASS/"EXCEEDS TOL" wording is demoted to "within TOL"/"OVER TOL". Gates are
+    direction-independent and print unconditionally.
+ A4 NEGATIVE CONTROL. LAYER 1 (synthetic, runs today, proves the WIRING only, every expectation provable by
+    construction): a clean fine tessellation of a real ribbed surface passes all gates; ONE reversed facet
+    gives EXACTLY 1 fold-gate count and EXACTLY 1 back-facing count and leaves the blade gate clean; a needle
+    trips the blade gate and not the fold gate; a half-reversed soup makes the fold gate REFUSE rather than
+    report nonsense; and judge() is exercised across all five verdict paths.
+    **LAYER 2 — THE REAL NEGATIVE CONTROL — IS NOT DONE.** The two driver fixtures (PF_CB_SHAPE=0
+    PF_CB_MID3D=0 PF_CB_LONGFALL=0 vs defaults, 40x28 / 120 k, exact commands in the test's header) were
+    never generated. Note `*.stl` is in .gitignore, so freezing means `git add -f`. And note the open risk:
+    the 40x28/120k guard-OFF control is known to carry 1,540 blades but its FOLD count is UNMEASURED — folds
+    compound with depth. If that fixture carries no fold, DEEPEN THE FIXTURE; do not weaken the assertion.
+
+>> **THE CAVEAT THAT MUST TRAVEL WITH EVERY GUARD-ON NUMBER, INCLUDING INTO EVERY TABLE ABOVE.**
+>> S3 (PF_CB_MID3D) places the split point at the 3-D chord midpoint instead of the parametric one, and it
+>> does so for EVERY SIZE-ROUTE SPLIT. Guard-ON meshes are therefore a DIFFERENT LINEAGE from every
+>> pre-2026-07-29 table in this file — not the same mesh with defects removed. NO GUARD-ON FIGURE MAY BE
+>> COMPARED AGAINST A PRE-GUARD NUMBER WITHOUT A SAME-SESSION FLAG-OFF CONTROL, and the committed baselines
+>> in this repo are independently known not to be reproducible. Every A/B from here is guard-ON vs a control
+>> re-made in the same session, or it is not an A/B.
+
+WHAT THE EXISTING D51 ARTIFACT ALREADY SAYS, RE-READ (research/exchange/_strataFacetTruth/D51_SHAPE.report.txt):
+  * 31,842 folds, **0 of them well-shaped in parameter space (parametric AR <= 8)**, 6,047 components,
+    largest 29 facets. The fold set is NOT a coherent flap — it is thousands of tiny degenerate slivers.
+    That is evidence for PREVENTING THE BIRTH over repairing a flap, and against any flip/collapse dressing.
+  * fold z-histogram: 4,532 in z 80-85 and 27,274 in z 110-115, i.e. 86 % of all folds sit in ONE 5 mm band
+    at the bandRim triple junction. Blades are far more spread (24 bins occupied) than folds.
+  * min edge 0.104 um and AR max 19,286 on a facet with edges 529.166 / 0.104 / 529.266 um at z=112.4.
+
+### KNOWN DRIVER GAP — **THE SHAPE GUARD COVERS SPLITS AND NOTHING ELSE.** (review finding 4; UNFIXED)
+Not fixable from this session (read-only) and not fixable in the auditor at all — it is a DRIVER gap, and it
+is recorded here so a clean P1/P2 is not mistaken for a guaranteed one. All line numbers are
+research/bridge/_strataConformBisect.test.ts as of 2026-07-29.
+
+  WHERE THE GUARD IS.   `shapeAdmits` (:1003-1031) is called from `bisectAt` (:1043) BEFORE any mutation, and
+    refuses the split if either child of ANY live incident triangle exceeds PF_CB_SHAPE_AR (S1) or flips the
+    parent's (theta,z) sign (S2). `shapeAdmitsBest` (:1033-1036) drives the S4 edge-choice probes at :1205
+    and :1563. That is the whole of it: **the guard is a property of SPLITS.**
+
+  WHAT RUNS AFTERWARDS, UNGUARDED. The refinement loop ends and three things can still rewrite facets:
+   1. THE LINK-CONDITION-SAFE NEEDLE COLLAPSE, :2031-2143, **DEFAULT ON** (`PF_CB_SAFE_COLLAPSE !== '0'`).
+      The collapse at :2132-2142 moves vertex v onto u for every triangle in v's star. It is guarded for
+      TOPOLOGY (the link condition, offenders at :2120) and for NOTHING ELSE: no `aspect3` test, no
+      `signedAreaParam` test. Moving a vertex can raise a neighbour's AR above the cap or invert it, and no
+      instrument in the driver would notice.
+   2. `tryFlip`, :2049-2089, called from the collapse loop at :2127 WITHOUT its `gate` argument (only when
+      PF_CB_FLIP=1, default OFF). It checks the (theta,z) sign of both new triangles (:2066-2073), so this
+      path cannot manufacture a FOLD — but nothing there bounds ASPECT, so it can manufacture a BLADE.
+   3. THE INITIAL GRID. Its cells are right-isoceles at AR 2.414, so this is the least likely source, but it
+      is never scored and it is reachable in principle at an extreme gu:gv.
+  NOT a gap: the S5 cap repair (:2162-2181, PF_CB_SHAPE_FLIP=1, default OFF) passes `tryFlip` an improvement
+  gate (:2174-2177) that requires the pair's worst AR to strictly DECREASE, so it cannot make shape worse.
+  Also not a gap under defaults: `shapeAdmits` scores the pre-weld point while `addV` may weld the emitted
+  vertex onto an existing one within WELD_MM = 50 nm — but PF_CB_NOWELD defaults ON and REFUSES exactly those
+  splits (:1050), so scored point == emitted point. **With PF_CB_NOWELD=0 that identity is gone.**
+
+  THE DRIVER ALREADY SAYS THIS FROM ITS OWN SIDE, at :2559-2562: "*** N facets over the cap survived a run
+  with the guard ON. The guard covers SPLITS; these can only have come from the INITIAL GRID or from the
+  collapse pass, and both are reachable. ***" So a guard-ON run that still reports blades is a POST-LOOP
+  finding, and the run report already prices it (`cap repair: ... BEFORE n (worst x) -> AFTER m`, :2558).
+
+  WHAT THE AUDITOR CAN AND CANNOT DO ABOUT IT.
+  CAN, and now does: `bladeGate(sc, guardAR)` takes the driver run's PF_CB_SHAPE_AR (auditor-side
+    PF_FT_GUARD_AR, unset by default) and states the EXACT inference — the guard refuses any split child above
+    `guardAR`, this gate counts facets above `arCap`, and the two metrics are the SAME expression
+    (`_shapeGuard.aspect3` == the census's AR), so at arCap >= guardAR **no facet in the count can be a
+    guard-admitted split child**; every one came from the initial grid or an unguarded post-loop pass. Free,
+    exact, no heuristic. Float32 caveat: the STL is float32 and the guard scored float64, so facets within
+    ~0.1 % of the cap can tip either way; that moves individuals, not the population.
+  CANNOT: attribute a facet to a SPECIFIC post-loop pass. A finished STL carries no per-facet provenance and
+    the auditor does not invent one. The honest cross-read is the driver's own ":2551 worst child AR the guard
+    ever ADMITTED" against this gate's AR MAX — that is an upper bound on what refinement could have produced.
+  MEASURED CONTEXT, so this is not read as more alarming than it is: on D51 (guard OFF) "the census is
+    byte-identical before and after the collapse/flip pass" (worklog, WHY EVERY CHECK MISSED IT (d)) — the
+    post-loop passes were inert on that lineage because collapse fires below 0.2 um and needle min-edge p05
+    is 0.471 um. The gap is LATENT there. It becomes reachable precisely when the guard is ON, because the
+    split path stops manufacturing the needles that used to dominate the population.
+  ACTION for a writable session: score `aspect3` and `signedAreaParam` around the collapse at :2132 and inside
+  `tryFlip` before :2076, refuse the move when either would breach, and count the refusals in the run report.
+
+### PART B — PRE-REGISTERED, **NOT RUN**
+Registered here BEFORE any run, per the campaign's own discipline. Nothing below has been executed.
+
+  RUN A (guard ON = defaults), tag `_D52`   -> gothicarches_ring_DS-H_D52.stl
+  RUN B (control, PF_CB_SHAPE=0 PF_CB_MID3D=0 PF_CB_LONGFALL=0), tag `_D52CTRL`
+                                            -> gothicarches_ring_DS-_D52CTRL.stl
+  (the 'H' suffix appears only when a shape lever is on — that is what keeps A and B off each other's file)
+  Both: PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+        PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 PF_CB_ACCEPT=0.0035 PF_CB_TAILK=800
+        PF_CB_MAXSECS=5400 PF_CB_RANK=plane, NODE_OPTIONS=--max-old-space-size=16384,
+        --config vitest.strata.config.ts. Bump node PriorityClass to AboveNormal after each spawn.
+  THEN audit BOTH, TWO-SIDED, through the hardened entry point: PF_FT_H1=1 PF_FT_H2=1,
+        PF_FT_WORKERS=8 PF_FT_H1MAX=40000, PF_FT_H2BUDGET=40000000, and PF_FT_GUARD_AR=50 on RUN A so the
+        blade gate can attribute any surviving blade to the post-loop passes (see the driver-gap note above;
+        do NOT set it on RUN B, which had no guard at all).
+  EXPECT NOT-A-VERDICT ON BOTH, AND IT IS NOT A FINDING. PF_FT_H1MAX=40000 caps the H1 walk at 40 k of
+  ~1.4 M facets, so H1 coverage is INCOMPLETE by construction and PASS is blocked whatever the mesh is. These
+  runs exist for the NUMBERS, not for a certificate. A PASS would require an uncapped H1 walk (~46 h serial,
+  hence the pool) and is a separate, later run. Stated here so the banner is not read as a defect of D52.
+
+PRE-REGISTERED PREDICTIONS AND THE NUMBER THAT DECIDES THE ARCHITECTURE:
+  P1 FOLD GATE on D52: count 0. (Any non-zero refutes S2 outright — it refuses a sign flip at birth.)
+  P2 BLADE CENSUS on D52: 0. **THIS IS A PRECONDITION, NOT THE HEADLINE.** The guard metric is VERBATIM the
+     census metric (aspect3, AR > 50), so census-zero proves THE PLUMBING WORKS and nothing about whether
+     the mesh is good. Reporting it as a result would be the same category error as the driver's self-report.
+  P3 NORMAL GATE on D52: 0 back-facing. On D52CTRL: expected non-zero (D51's crude proxy read 2.27 %).
+     If the control's normal gate reads 0, the instrument is broken, not the mesh.
+  P4 TWO-SIDED H1+H2 on both, vs the D51 baseline (H1 444.881 um witnessed / 612.638 certified / 7.58 %
+     over tol; H2 15.508 um / 263 of 40M). **D51 is a DIFFERENT LINEAGE — the D52CTRL control is the
+     comparison; D51 is context only.**
+  P5 **THE ARCHITECTURE DECIDER: the COUNT, the LOCATION and the RESIDUAL ERROR of shape-refused /
+     unresolved sites.** The cap sweep already measured 56 unresolved at cap 50 on a 40x28/120k run and 220
+     at cap 25 — a guard that refuses splits necessarily strands triangles, and a stranded triangle is an
+     admission that bisection cannot fix that site. IF THOSE SITES CLUSTER AT JUNCTIONS AND STAY OVER
+     TOLERANCE, THAT IS A RESULT, NOT A FAILURE: it is the measured trigger to route junction regions to
+     structured patches or to the certified M=g/h^2 anisotropic kernel instead of refining further.
+  P6 Honest reporting rule agreed in advance: if H1 is still in the hundreds of microns, SAY SO. A partial
+     fix reported honestly beats a clean-looking number; this campaign has produced four useful refutations
+     already and a fifth is not a defeat.
+  P7 **THE NET-REGRESSION CRITERION. WHAT WOULD MAKE THIS GUARD A LOSS — DECIDED BEFORE THE RUN.**
+     (Review finding 6. The pre-registration above had no such line, which meant both outcomes were
+     rationalisable after the fact: "H2 got worse but shape got better" and "H2 got worse so the guard is
+     wrong" are the same data.) THE MECHANISM IS REAL, NOT HYPOTHETICAL: the guard buys shape by REFUSING
+     splits, a refusal strands the site (P5 measured 56 unresolved at cap 50, 220 at cap 25 on 40x28/120k),
+     and a stranded site is UNDER-REFINED — which is an H2 (surface -> mesh) defect. So H2 CAN legitimately
+     get worse. All ratios are D52 (guard ON) vs the SAME-SESSION D52CTRL, two-sided, never vs D51.
+     THE FOUR ROWS ARE EVALUATED IN THIS ORDER and the first one that matches is the verdict, so they are
+     disjoint by construction and no run can be argued into two of them:
+       1 REFUTATION  H1 witnessed is within +/-20% of the control. The blade population was then NOT what
+                     drove H1 = 444.881 um and the 2026-07-29 diagnosis is refuted — a result, and the fifth
+                     of them. Nothing about H2 changes that reading.
+       2 REGRESSION  H2 witnessed rises by >= 1.5x, OR the H2 over-tol SAMPLE FRACTION rises by >= 5x. The
+                     guard AS CONFIGURED (cap 50, refuse-and-strand) is a net loss whatever H1 did, and must
+                     not be defaulted ON. The next lever is the cap VALUE and the stranded-site route of P5,
+                     not more refinement.
+       3 WIN         H1 falls by >= 2.0x AND H2 rises by <= 1.10x AND the H2 over-tol sample fraction rises
+                     by <= 2.0x.
+       4 TRADE       everything else — typically H1 much better, H2 mildly worse. The guard is right and
+                     INCOMPLETE: it does not ship default-ON until the stranded sites of P5 are routed
+                     (structured patch, or the certified M=g/h^2 anisotropic kernel). Report it as a trade,
+                     with both numbers in the SAME row of the SAME table.
+     A run that cannot be placed in one of these four rows is a run whose report is incomplete.
+  P8 **THE COST OF THE GUARD, PRE-REGISTERED SO IT CANNOT BE DISCOVERED AFTERWARDS AND CALLED EXPECTED.**
+     (Review finding 7.) THE CAP BINDS ON LEGITIMATE GEOMETRY BY CONSTRUCTION. D51's measured 3-D AR is
+     p50 3.929 / p90 18.990 / **p99 115.686** / max 19,285.793 (D51_SHAPE.report.txt), so the cap of 50 sits
+     BELOW the p99: more than 1% of that lineage's facets are above it, and not all of them are defects. A
+     straight rib genuinely wants a long thin facet — that is the anisotropy lever's entire purpose, stated
+     in the diagnosis as "an edge ACROSS a rib carries all the sag, one ALONG it carries none" — and an
+     isotropic cap forces it to be subdivided along its length for no fidelity gain.
+     [CORRECTION carried from the review: the review quoted "the measured p99 of 92.9". 92.903 is
+      `worst-left 92.903 um` from _strataConformBisect/gothicarches_ring_DS-_BASE.report.txt:8 — a fidelity
+      number in MICRONS, not an aspect ratio. The correct AR p99 is 115.686, and the finding is stronger with
+      it, so the conclusion stands unchanged.]
+     PREDICTED, at equal PF_CB_ACCEPT, D52 vs D52CTRL:
+       TRIANGLE COUNT  ratio in [1.10, 1.60].
+                       <= 1.02 => THE GUARD DID NOT BIND and the run does not test the hypothesis; check
+                       `refused: N on aspect` in the run report before interpreting anything else.
+                       >= 2.00 => the cap at 50 is the wrong lever; the indicated route is anisotropic
+                       (M=g/h^2) elements at junctions, NOT a tighter cap.
+       WALL TIME       ratio in [1.15, 1.80]: the triangle inflation above, plus the guard's own scoring
+                       cost of 2 `aspect3` evaluations per child per live incident triangle, which the run
+                       report already prices as "guard: N split candidates scored, M child facets".
+       ALSO RECORD     nShapeRefusedAR, nShapeRefusedFold, shape-unresolved/stranded count and their z,
+                       `worst child AR the guard ever ADMITTED` (must be <= 50 or the guard is broken), and
+                       cap-BEFORE/AFTER — every one of them is already printed; the requirement is that they
+                       appear in the SAME table as the quality numbers, not in a separate paragraph.
+
+### REVIEW FINDINGS APPLIED (2026-07-29, a second read-only session). **STILL NOTHING WAS EXECUTED.**
+A read-only review of the staged draft raised seven defects. All seven were checked against the real code
+before being acted on; six produced code or worklog changes, one was confirmed already-mitigated and got a
+hardening instead of a fix. No tsc, no eslint, no vitest, no driver run — the staged files remain UNCOMPILED
+and the numbers below are all pre-existing measurements, not new ones.
+
+ 1 FIXED — _judgeVerdict.ts. `judge()` returned NOT-A-VERDICT whenever a direction was missing, EVEN WITH
+   SHAPE GATES FAILED, and printed the failures underneath the banner as a "diagnostic". A mesh with 31,842
+   proven folds audited one-sided therefore read "inconclusive", in flat contradiction of the file's own
+   stated principle. FAIL is now decided FIRST, from evidence that survives one-sidedness — failed gates
+   (direction-independent by construction) and witnessed exceedances (real measured distances) — and the
+   !bothRan banner is reached only when nothing failed. The banner now says so in its own output.
+   SCOPE NOTE, deliberate and easily narrowed: the review named only GATES. A witnessed exceedance was
+   promoted alongside them because the file's principle names both in the same breath and neither can be
+   retracted by auditing the other direction; a one-sided FAIL cannot produce a false clean bill of health,
+   which is the only failure this entry point exists to prevent. If a future session disagrees, delete the
+   two `witnessedMm > tolMm` lines from the FAIL block — the gate half of the fix is independent of them.
+ 2 FIXED — _judgeVerdict.ts. `gatesPass` was computed, returned and never consulted, so an EMPTY gate list
+   (a wiring bug, or a skipped gate block) produced PASS with ZERO gates evaluated. The PASS blocker is now
+   driven off `gatesPass` itself and names the empty case explicitly. `renderGates([])` had the same defect
+   in its own `pass` seed and printed "GATES: ALL PASS" over nothing; fixed and asserted.
+ 3 FIXED — _judgeVerdict.ts + _strataFacetTruth.test.ts. `h2.complete` WAS keyed on `h2.capped`, and
+   `capped` is assigned in exactly ONE place: inside the phase-B loop of `_facetTruthLib.surfaceToMeshMax`.
+   It means "worst-first refinement ran out of budget", which is true of essentially every real run — so
+   PASS was DEAD CODE and the blocker text ("H2 refinement truncated by budget") described that faithfully.
+   H2's actual coverage guarantee is PHASE A, which sweeps the whole band and cannot be truncated. `complete`
+   is now `h2.zLo <= 0 && h2.zHi >= H` — phase-A coverage of the FULL band — because the one thing that can
+   genuinely break H2's coverage is a PF_FT_ZMIN/ZMAX SUB-BAND audit. STATED PLAINLY, since the difference is
+   the point: **we now certify AT A STATED RESOLVING POWER instead of never certifying at all.** Phase-B
+   truncation is therefore a resolving-power fact and travels in `coverage`, which judge() reprints inside
+   the PASS block so the number cannot be quoted without it.
+ 4 DOCUMENTED (driver, unfixable here) + a free exact discriminator added. See the KNOWN DRIVER GAP section
+   above for the code sites. In the auditor, `bladeGate` gained an optional `guardAR` (PF_FT_GUARD_AR, unset
+   by default and never guessed): since the guard metric and the census metric are the SAME expression, at
+   arCap >= guardAR NO counted facet can be a guard-admitted split child. Finer per-pass attribution is NOT
+   cheaply possible and is not attempted — a finished STL carries no per-facet provenance and a heuristic
+   here would be worse than silence.
+ 5 VERIFIED already-mitigated, and HARDENED anyway — _judgeNormal.ts. The C0-locus exclusion is correctly
+   justified and was NOT removed. It was already reported, but on one quiet line. Named BasketWeave in the
+   header as the case to watch (7,872 jump cells, 100% persisting, 8,294 of 8,294 mm^2 of curtain area —
+   against GothicArches' 56 of 759), and the gate now SHOUTS a non-zero exclusion, prints the back-facing
+   count inside it, and tells the reader to treat the gate as PARTIAL. The real closure for a curtain-bearing
+   style is a double-valued-aware instrument, which is the same gap the fold gate declares NOT APPLICABLE
+   for and is still unbuilt.
+ 6 FIXED — this file, P7 above. The Part B pre-registration had NO criterion for the guard being a NET
+   REGRESSION, so both outcomes were rationalisable after the fact. Four numeric rows now decide it.
+ 7 FIXED — this file, P8 above, WITH A CORRECTION TO THE FINDING. The review cited "the measured p99 of
+   92.9"; 92.903 is `worst-left 92.903 um` from gothicarches_ring_DS-_BASE.report.txt:8 — a fidelity number
+   in microns, not an aspect ratio. The measured AR p99 is 115.686 (D51_SHAPE.report.txt), so the cap of 50
+   sits even further below it and the finding is strengthened, not weakened. Triangle-count and wall-time
+   costs are now pre-registered with both a "did not bind" floor and a "wrong lever" ceiling.
+
+WHAT A FUTURE SESSION MUST VERIFY FIRST (these are the risks the review created, not the ones it closed):
+  * `tsc --noEmit` + eslint on all six files. Nothing here has been compiled. The likeliest breakages are
+    the new optional parameter on `bladeGate` and the `renderGates` import added to the negative control.
+  * Layer 1e of _judgeNegativeControl.test.ts now pins findings 1, 2 and 3 — including that a PASS is
+    REACHABLE. If that assertion fails, finding 3's re-keying did not take effect end to end.
+  * Layer 2 now runs both fixtures through `judge()` with H1 and H2 both NOT RUN: the guard-OFF fixture must
+    return FAIL and the guard-ON one NOT-A-VERDICT. Those two expectations are what finding 1 changed.
+  * The H2 `complete` re-keying is the only change that can turn a former NOT-A-VERDICT into a PASS. Re-read
+    the first PASS this pipeline ever emits with that in mind, and check its printed resolving power.
+---
+
+### 2026-07-30 — EXECUTION. Everything staged on 2026-07-29 was landed and validated in one writable session.
+
+Runbook: STAGE/RESUME.md, followed in order. STAGE = the 2026-07-29 session scratchpad. Every command below
+ran from potfoundry-web/ on tree f76c37c4 (+ uncommitted work); vitest gate runs used
+--testTimeout=1800000 --hookTimeout=600000 throughout.
+
+**ORDER 0 — THE FOLD DIAGNOSIS IS CONFIRMED BY MEASUREMENT.** STAGE/foldProbe.mjs on D52:
+all six "folds" are SIGN-INDETERMINATE under the STL's own f32 half-ulp bound — ratios |sPar|/delta =
+0.0066 / 0.318 / 0.117 / 0.141 / 0.279 / 0.029, all < 1, kill criterion (any > 3) nowhere near tripped.
+Predictions 1, 2, 4, 5 of FOLD-ANOMALY §8 hold exactly (parAR 1.6e5-9.9e6; max theta-span = 2pi/200 exactly;
+all six in z 112.6-112.8). Prediction 3 half-missed IN THE DIRECTION THAT STRENGTHENS THE THEOREM: 54
+indeterminate facets (not 8-20), split 6 neg / 48 pos rather than even — exactly what "true areas strictly
+positive" implies; a symmetric split would have meant truth centred on zero. The D52 mesh has zero folds;
+the six were read-back artefacts. CONSEQUENCE, measured on the other two artifacts: D51's published 31,842
+folds collapse to **29 DETERMINED** (31,813 indeterminate, near-even 31,813neg/31,648pos split = the
+symmetric-noise signature); shCTLdeep's 19,372 collapse to **13 DETERMINED**. The guard-OFF lineage DOES
+fold, ~three orders of magnitude less than the raw census said.
+
+**THE APPLIER ITSELF HAD A SYNTAX BUG** — unescaped backticks inside its final console.log template
+(the exact backtick failure mode from feedback_gpu_dropped_dispatch). Escaped in place; no logic touched.
+Nothing else in either batch needed a single edit to run: eslint 0 warnings on all files, ad-hoc
+`tsc --noEmit --strict` 0 errors on the three new modules (RISKS #2's two named breakages did not exist).
+
+**STEP-BY-STEP RESULTS (all EXPECTs met; no step aborted):**
+| step | result |
+|---|---|
+| 0 pre-flight | 5/5 md5 exact, driver 2690 lines, HEAD f76c37c4, 13/13 anchors exactly once |
+| 1 baseline gate | 12/12, every value exact (V1 2.249981/2.249981 ... V7c 12.041/39.767/142.668) |
+| 2 SAGPRE | 261s, safe-collapse 0, md5 f574c61bdfc9df7cdec953138bd8837f (matches the driver header's recorded value — reassurance only) |
+| 3 apply | 13 hunks + 3 modules, CRLF preserved, driver 2690 -> 3014 lines |
+| 4 types | eslint clean; tsc --strict clean on _sagKernel/_auditPool/_auditWorker |
+| 5 SAGPOST | **BYTE-IDENTICAL to SAGPRE** — the ruler extraction did not move the default heap key (RISKS #1 cleared) |
+| 6 gate again | 12/12, all values identical to step 1 |
+| 7 pool | **W1 == W8 == WV == P0 STL md5 = 8a59fb37a9115600b13262254380ccb0**; report diff confined to wall + audit block; rA total identical 264M both arms; worker identity 141,320 comparisons 0 differ; audit 61,120 facets ~115s serial -> 14.2s pooled (~8x audit-phase, 1.50x wall: 303s -> 202s); PF_CB_AUDIT_VERIFY=1 did not throw |
+| 8 S6 A/B | pre-registered ZERO delta CONFIRMED, and the report names why: `collapse: 0 tested, refused 0` (no live call site at this config — RESUME reconciliation 2). initial grid census: 0 of 2240 over cap, worst AR 2.79 (matches RISKS #15's hand analysis). worst admitted child AR 49.92 <= 50. refused 11,516 on aspect. unresolved 56, worst 405.4 um — the same 56 the cap sweep measured |
+| 9 judge + layer 1 | landed; 5/5 passed, layer 2 correctly skipped when unset |
+| 10 fixtures | defect_guardOFF.stl = NEGDEEP md5 17ba2b2cb657824cc1563aa5dc1377ae (700k guard-OFF, 13 determined folds); guarded_guardON.stl = GONDEEP md5 4aa1f6dd86a56f828b0fc54e70871c1f (700k guard-ON, depth-matched) — both `git add -f` past /.gitignore:34 |
+| 11 layer 2 | defect arm: every assertion held (FOLD 13 / NORMAL 17,038 / BLADE 26,643 -> FAIL). Guarded arm: fold+blade CLEAN, NORMAL gate FAILS — and the failure is TRUE (see the sliver-class finding below). Control re-encoded to the measured truth; 6/6 green on re-run |
+| 12 Part B | _D53 byte-identical to committed D52 (md5 40693e1b…); _D53CTRL reproduces D51's counts; ratios tris 0.88 / wall 0.90 — full block below |
+| 13 audits | two-sided, both arms, hardened judge + pooled H1: verdict table + P1–P8 scoring below |
+
+**TWO RUNBOOK HOLES WERE CLOSED BEFORE THE RUNS THAT NEEDED THEM:**
+1. **REPROJECT splitter now runs the S1/S2 shape gate** (_strataConformBisect.test.ts, the hand-copy of
+   bisectAt): scored BEFORE addV on the exact vertex addV would produce (canon-first, liftAt's arithmetic);
+   SHAPE=0 path takes zero extra rA evals, so every legacy configuration is bit-unchanged. Inert at
+   defaults; the hole was live only under PF_CB_REPROJECT=1.
+2. **The judge's fold and blade gates carry the f32 SIGN-DETERMINACY BAND** (FOLD-ANOMALY §7, arithmetic
+   transcribed from STAGE/foldProbe.mjs): per-facet half-ulp bound delta on sPar; sPar < -delta = FOLD
+   (the gate count), |sPar| <= delta = SIGN NOT DETERMINED BY THE STL (own report line, never a defect),
+   analogously a blade counts only if the LOWER bound on its true AR under half-ulp noise still exceeds
+   the cap. Historical raw counts (nFoldRaw, minority+zero, raw blades) are all still printed for
+   D51-comparability. A bare `folds == 0` gate was unmeasurable as specified — measured tonight: D52's 6,
+   D51's 31,842 and shCTLdeep's 19,372 raw folds are 100%/99.91%/99.93% below the STL's own noise floor.
+
+**THE FIXTURE DEPTH STORY (layer 2).** The pre-registered defect fixture (40x28/120k guard-OFF) measures
+**ZERO folds — raw or determined** (foldProbe, 61,120 tris): that lineage does not fold at 120k depth, blades
+only. Per the runbook's own contingency ("deepen, never weaken") the defect fixture was regenerated at
+PF_CB_TRICAP=700000 (tag _NEGDEEP, patched driver, same session): 350,976 tris, 19,372 raw folds, **13
+DETERMINED** — a usable fold-gate discriminator. Note NEGDEEP (accept 3.5 um) and the committed shCTLdeep
+(accept 7 um) have byte-DIFFERENT STLs but IDENTICAL shape censuses to the last digit: a cap-bound mesh is
+determined by the ranking function, not by accept; only construction order differs.
+
+**THE NORMAL GATE'S "EXPECTED 0" WAS UNMEASURABLE AS SPECIFIED — SAME DISEASE AS THE FOLD GATE, DIFFERENT
+ORGAN.** The staged gate scored the facet normal against the analytic normal AT THE CENTROID only. Measured:
+on guard-ON meshes the >=90-deg count GROWS with refinement depth — 1,792 of 61,120 (2.9%) at 120k -> 14,890
+of 351,120 (4.2%) at 700k, with folds and blades both 0 — because it is dominated by chords across steep C1
+walls, a 1-D locus population that scales like 1/h. The gate now samples the analytic normal at the facet's
+own three vertex parameter points as well (lazy, only for the >=90 tail) and counts a facet only if it is
+back-facing against ALL of them; centroid-back-but-footprint-front facets are reported as FEATURE-SPANNING,
+never defects. The one-sided-difference candidates handle a crease AT a sample point; the vertex samples
+handle a crease crossing the footprint BETWEEN sample points — the case the staged comment wrongly claimed
+could not occur.
+
+**THE SLIVER-PINCH CLASS SURVIVES THE GUARD, AND THAT IS THE REAL LAYER-2 RESULT — CONFIRMED BY EYE, GATE
+AND CENSUS INDEPENDENTLY (2026-07-30).** With the footprint test in place the guard-ON fixtures STILL fail
+the normal gate, and the failure is genuine:
+  * guard-ON 700k (GONDEEP): 4,236 facets back-facing against their entire footprint field;
+  * **D52 itself — the deepest, best guard-ON mesh (1.26M tris): 7,838 = 0.62% back-facing (gate FAIL),
+    + 13,447 feature-spanning, worst deviations 166-169 deg at z=77.7 (X-crossing) and z=107.9-109.8
+    (bandRim collar)** — while its determined folds and determined blades are both exactly 0 (and its 54
+    sign-indeterminate facets and 19 cap-indeterminate blades match STAGE/foldProbe.mjs digit for digit);
+  * the user inspected these STLs in a viewer the same day and saw red back-facing slivers on D52 at
+    exactly those loci — the same human instrument that opened this campaign's retraction, now pointing
+    at the residual class.
+MECHANISM: S1-S6 cap 3-D AR at 50 and forbid parametric sign flips, but NOTHING BOUNDS PARAMETRIC AR
+(D52: parAR p50 4.4 / p99 313 / max 9.9e6) and nothing forbids a sub-cap sliver lying across a junction.
+The 2026-07-29 "BLADES ELIMINATED" headline stands for what it measured — AR>50 blades and folds — and
+does NOT extend to the visible artifact family. The negative control now encodes this measured truth:
+guard-OFF fails on folds+normals+blades, guard-ON fails on the sliver class alone; a driver mesh that
+clears every gate does not exist yet.
+
+
+**PART B EXECUTED (retagged _D53/_D53CTRL per reconciliation 1) — THE VERDICT IS P7 ROW 4: TRADE, and the
+sting is that the fidelity half of the 2026-07-29 diagnosis is refuted a fortiori.**
+
+Build (200x140, cap 8M, accept 3.5 um, rank plane, AUDIT_WORKERS=4 on both arms, sequential and otherwise
+unloaded):
+| | _D53 (guard ON, defaults) | _D53CTRL (guard OFF) | ratio |
+|---|---|---|---|
+| triangles | 1,260,218 | 1,433,982 | **0.88** |
+| wall | 1022 s | 1134 s | **0.90** |
+| refused on aspect | 968,731 (54.5% of candidates) | 0 | — |
+| unresolved / worst | 9,794 / 53.1 um | 0 / — | — |
+| self-report | 55.890 um FAIL (honest) | **4.058 um PASS (the lie, reproduced)** | — |
+
+**_D53 IS BYTE-IDENTICAL TO THE COMMITTED D52 STL (md5 40693e1b987efcad60ac1b14cdec704f), and _D53CTRL
+reproduces D51's counts exactly** (1,433,982 tris; its audit numbers below are D51's to the third decimal).
+Every same-session control this session reproduced its committed baseline (SAGPRE = the driver header's md5
+too). The standing "committed baselines are not reproducible" note dates from older lineage drift; the
+CURRENT driver is deterministic at these configs — and the D52-vs-D51 comparisons in the D52 section above
+are therefore retroactively same-lineage-valid.
+
+Two-sided audits (hardened entry point, H1MAX=40000, H2BUDGET=40M, W=8; GUARD_AR=50 declared on the
+guard-ON arm only):
+| | _D53 (guard ON) | _D53CTRL (guard OFF) | ratio |
+|---|---|---|---|
+| H1 witnessed | **549.196 um** | 444.881 um | **x1.23 WORSE** |
+| H1 certified bound | 559.195 um | 612.638 um | x0.91 |
+| H1 facets over tol | 1,675/40,000 = **4.19%** | 3,032/40,000 = 7.58% | **x0.55 (1.81x fewer)** |
+| H2 witnessed | 15.354 um | 15.508 um | x0.99 |
+| H2 samples over tol | 1,217/40.0M = 0.00304% | 263/40.0M = 0.00066% | **x4.63 WORSE** |
+| determined folds | **0** (+54 f32-indet) | **29** (+63,461 f32-indet) | — |
+| determined blades | **0** (+19 f32-indet) | 48,055 (+75) | — |
+| back-facing (footprint) | 7,838 (+13,447 feature-span) | 20,766 (+33,564) | x0.38 |
+| verdict | FAIL (NORMAL gate + witnessed H1/H2) | FAIL (FOLD+NORMAL+BLADE + witnessed) | — |
+
+(The runbook expected NOT-A-VERDICT banners; the hardened judge instead prints FAIL — correctly: a witnessed
+exceedance and a failed gate are direction-independent PROOF of defect, and H1MAX's incomplete coverage
+blocks only PASS. The "INCOMPLETE COVERAGE" banner rides on the H1 line as designed.)
+
+PRE-REGISTERED SCORING, first matching row wins:
+* P1 fold gate = 0 on the guard arm: **HOLDS, as made measurable by the delta-band** — the raw "6" is
+  entirely f32-indeterminate (foldProbe ratios 0.007-0.32), determined count exactly 0.
+* P2 blade census 0: **HOLDS** (0 determined; the 19 raws sit inside the +0.22-0.65% read-back band at the
+  cap, as FOLD-ANOMALY §5 predicted).
+* P3 normal gate 0 on the guard arm: **REFUTED — 7,838 back-facing against their own footprint field**
+  (the sliver-class finding above); control non-zero (20,766) so the instrument is sane.
+* P5 **THE ARCHITECTURE TRIGGER FIRES**: the control's determined-fold mass sits in exactly two z bands —
+  4,532 in z=[80,85) (the diamond X-crossings) and 27,274 in z=[110,115) (the bandRim triple junction);
+  the guard arm's 7,838 back-facing cluster at z 77.7 / 107.9-109.8; the 9,794 stranded sites cap out at
+  53.1 um. THE SITES CLUSTER AT JUNCTIONS AND STAY OVER TOLERANCE. Per the pre-registration this is the
+  measured trigger to route junction regions to structured patches or the certified M=g/h^2 anisotropic
+  kernel — WITH the operator's same-day caveat on style scale (loci are small on GothicArches; BasketWeave's
+  C0 area is its entire feature set), and with one cheaper intermediate named below (S6 collapse-and-resume)
+  that must be A/B'd first.
+* P6 honored: **H1 is still in the hundreds of microns: 549 um.** Say so — said.
+* P7 rows in order: row 1 misses by a hair (+23.4% vs the +/-20% band) — but in the DAMNING direction:
+  removing all 48,055 blades left the worst H1 error HIGHER, so "the blade population drove H1=444.881" is
+  refuted A FORTIORI. Row 2 no (H2 max flat; fraction x4.63 < x5, at 92% of the line). Row 3 no.
+  **Row 4: TRADE.** The guard buys shape (blades and folds to zero, back-facing x0.38, honest self-report)
+  and the H1 BULK (1.81x fewer over-tol facets), pays on the H1 MAX (+23%, now on well-shaped stranded
+  facets) and the H2 over-tol fraction (x4.63 — the stranding cost P7 anticipated mechanically).
+  Per the pre-registration: right and INCOMPLETE; does not ship default-ON until the stranded sites are
+  routed or repaired.
+* P8 REFUTED LOW, both quantities: triangle ratio 0.88 (predicted 1.10-1.60), wall 0.90 (predicted
+  1.15-1.80) — with 968,731 aspect-refusals the "did not bind" reading is excluded; the guard binds hard
+  and SAVES budget, because refusing a blade also refuses the blade-children a blade always spawns
+  (D51 measured 2,380 inherited blade emissions against 1,688 births).
+
+**SHAPE AND FIDELITY HAVE FORMALLY DECOUPLED.** The guard fixed the shape defect and the honesty defect;
+the residual fidelity defect (549 um max, 4.19% of facets, 0.00304% of surface samples) lives at REFUSED
+sites, on WELL-SHAPED facets, at the two junction bands. The blade story of 2026-07-29 stands as a shape
+story and falls as a fidelity story.
+
+**NEXT EXPERIMENT, PRE-REGISTERED (from the refusal-deadlock arithmetic): S6 COLLAPSE-AND-RESUME.**
+S4's own counter proves a MUTUAL-PROTECTION DEADLOCK in sliver trains: of 12,466 refused splits where the
+longest-edge fallback was tested, only 640 fired — in ~95% of cases BOTH candidate edges were inadmissible,
+because in a train along a locus your longest edge is your degenerate neighbour's short edge. Meanwhile the
+one primitive that removes a sliver — the S6 shape-gated collapse — is merged and PROVABLY DEAD (`collapse:
+0 tested` on every measured config; only sub-0.2 um needles are ever tested and a guard-ON mesh's min edge
+is 0.722 um). PILOT: flag-gated (default OFF), post-loop offender set = the footprint back-facing facets +
+AR>K stranded parents; try shortest-edge collapse through the EXISTING postCollapseAdmits gate (it already
+refuses folds and over-cap children, so the pilot cannot reintroduce the defect class); re-queue collapsed
+neighbourhoods and resume refinement. A/B at 40x28/120k guard-ON vs same-session control; yardsticks:
+footprint back-facing count (4,236 on the 700k guard-ON fixture is the number to beat toward 0), unresolved
+count/worst, H1/H2 two-sided, byte-identity of the flag-OFF path at the _SAGPRE config. PREDICTIONS, stated
+so they can fail: (i) flag-OFF is byte-identical (md5 f574c61bdfc9df7cdec953138bd8837f); (ii) flag-ON
+reduces back-facing by >=5x and unresolved by >=2x at equal cap; (iii) H2 over-tol fraction does NOT rise
+(collapse removes redundant geometry over already-covered surface); (iv) if (ii) holds but H1 max does not
+fall below ~100 um, the junction demand is real anisotropy and the P5 routing decision stands unchanged.
+
+### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
+
+New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
+_phase2Field.test.ts (8 pinning tests, runs by default), _phase2Loop.mjs (the 5.4 outer loop with all
+five exits), _phase2Vitest.config.ts. Driver gains PF_CB_TIGHTEN=<loci.json>.
+
+END-TO-END, 2 iterations, deliberately coarse (12x8 grid, tol 150 um, so the chain runs in minutes):
+  iter 1: 69,738 tris, self-report 166.013 um, **H2 231.202 um**, 24/1,179,648 over tol
+          -> 11 clusters, 35.3 mm^2 = **0.08% of the surface**, tolScale 2x
+  iter 2: 70,976 tris (**+1.8%**), **H2 147.914 um**, **0/1,179,648 over tol -> PASS**
+1.56x on the true-3D max for 1,238 extra triangles. **And the driver's own plane self-report did not
+move at all (166.013 both times)** — the extra triangles went exactly where the certificate said and
+nowhere else. That is the mechanism working, and it is the answer to "global acceptTol tightening has
+diminishing returns": Phase 2 pays only at the 0.08% that is actually wrong.
+
+DISCIPLINE WORTH KEEPING: no proven file was touched (the emission is a pure decorator on distToMesh,
+so _facetTruthLib/_h2*/_facetTruth*/_sweep* are byte-untouched and the gate could not move by
+construction — the agent declined the one exception it was offered). Unset path byte-identical, md5 +
+cmp, twice. Provenance is REFUSED not warned. The recorder self-checks (queriesSeen === h2.queries AND
+rawCount === h2.overCount) so a wrapper that missed a call path fails loudly instead of emitting a
+silent partial. Two of its own pinning tests failed on first draft and caught probe sets that missed
+every locus.
+
+AND IT REFUSES TO RUN POOLED, ON PURPOSE: a pooled phase A rebuilds distToMesh INSIDE each worker,
+where a caller-side recorder never runs — "the max and overCount would look perfectly normal while
+three quarters of the loci silently went missing". So the emitting audit is serial and slower. That is
+the correct trade and exactly the class of failure that has bitten this campaign all night.
+
+>> **INTERACTION THAT MATTERS: PHASE 2 AND THE BLADE FIX MUST LAND TOGETHER, BLADE FIX FIRST.**
+>> Blades are an H1 defect and invisible to H2, so Phase 2's H2-driven loci are NOT blade artefacts —
+>> they are genuine coverage gaps. BUT Phase 2 concentrates refinement precisely at feature loci, and
+>> the diagnosis shows that is exactly where the bisection manufactures blades (SNAP fires there, and
+>> the max-sag edge is systematically not the longest there). Running Phase 2 on today's driver would
+>> buy true-3D coverage while multiplying the shape defect. Do not run the full D25 Phase-2 loop until
+>> the shape guard is in.
+>> NOT SHOWN, and the agent said so itself: that Phase 2 closes the real 19.247 -> sub-10 um gap. The
+>> smoke ran at 150 um on a 12x8 grid. Mechanism demonstrated; result not claimed.
+
+---
+## READ THIS FIRST — the six things that changed tonight
+
+1. **The "~100x triangle shortfall" is wrong by ~2.5 orders.** Conforming adaptive demand is
+   0.09-1.07x the EXISTING 2.5M cap. The old figure priced a UNIFORM mesh for an ADAPTIVE problem.
+   Capacity is not the first-order constraint (want ~2x headroom; GeoStar is at the cap isotropically).
+   ALLOCATION is the constraint.
+2. **THE ACCEPT-QUANTITY "FIX" MUST BE REVERTED AS A RANKER.** Three independent A/Bs — LEPP,
+   DIRECTED+SNAP, and a matched-budget three-way — all say the cheap PLANE ruler builds the better
+   mesh by the true-3D instrument. Final three-way, H2 max / % of surface over tol:
+   **plane 126.0 um / 46.6%** | ptperp 444.1 um / 81.7% | bounded 698.2 um / 84.1%.
+   Removing the covering term helped a lot (698 -> 444) so the size-bias diagnosis was real, but the
+   honest point-to-triangle QUANTITY mis-allocates on its own. THE REASON: plane distance measures how
+   NON-FLAT a patch is (curvature x size^2) = how much a split will IMPROVE it; point-to-triangle
+   measures how BAD it currently is. Refinement needs the first. Ranking by badness pours budget into
+   creases (h^1, split buys 2x) and jumps (h^0, split buys nothing) — exactly where bisection cannot
+   help. **Cheap biased ranker in the loop, honest certificate once at the end.** Putting the
+   certificate quantity in the loop cost 6x wall time to build a measurably worse mesh.
+3. **The driver already detects the h^0 regime and throws it away.** `locateKink` returns a `jump`
+   class; it is counted as `nJump` and never routed on. The 58 unsubdividable facets demand 50 nm
+   resolution to fix 1368 um of error — 27,000:1, which no C^1 surface asks for. They need a CURTAIN,
+   and sagBounded's own comment says so.
+4. **A shape-agnostic C0 detector now exists and works from a SINGLE grid.** Genuine cliffs survive a
+   probe-pitch halving; masquerading creases evaporate. BasketWeave keeps 100% of 8294 mm^2 (genuine
+   C0 -> 0.191M-triangle curtain); GothicArches keeps 7.4% then 0.00% (h^1 -> fixable). Validated
+   against a purpose-built ramp fixture that a naive detector would misroute.
+5. **The auditor is ~8x faster and now completes.** H1 worker pool 5.26x at W=8 / 7.97x at W=16, plus
+   a 1.50x running-max guard, all byte-identical to serial. Full-mesh H1 went from "does not complete"
+   (46 h, ~0.9% coverage at budget) to an overnight run.
+6. **Two speedups were REJECTED for changing numbers**, and that is the process working: an iteration
+   truncation "measured bit-identical over 442 points" moved V3's thin ridge 12.041 -> 27.103 um, and
+   a 1.92x driver guard is implemented but left OFF because it changes the heap key.
+
+WHAT TO DO NEXT is at the end: "THE ARCHITECTURE THIS ALL POINTS AT" — Phase 0 arithmetic, a Phase 1
+FIFO sweep on a local threshold predicate (no heap, no ranking key at all), Phase 2 one batched
+certificate with feedback. The spec is in 2026-07-29-quota-driver-spec.md.
+---
+
+## HARD GATE — applies to every change in this log
+
+    cd potfoundry-web
+    PF_STRATA_FTV=1 npx vitest run research/bridge/_strataFacetTruthValidate.test.ts \
+      --testTimeout=1800000 --hookTimeout=600000
+
+**THE TIMEOUT FLAGS ARE NOT OPTIONAL** (or use `-c vitest.strata.config.ts`, which sets them). V4/V5/V6
+legitimately run 60-120 s each; under vitest's default 5 s deadline they expire AFTER printing the
+correct numbers, and the run reports 9/12. TWO separate agents tonight reported "gate 9/12" with every
+value exact and spent effort hunting a regression that did not exist. If you see 9/12, check whether
+V4/V5/V6 failed on a deadline before believing anything.
+
+ALSO: a gate run taken WHILE another agent is mid-edit on the shared tree is meaningless —
+_strataFacetTruthValidate imports _facetTruthLib, and a half-written file fails in ways that look
+like regressions. Re-run serially before believing a failure.
+
+Must stay 12/12 AND reproduce these exact values. They are why a "measured bit-identical" claim is not
+enough:
+
+| fixture | value |
+|---|---|
+| V1 cylinder sagitta | exact 2.249981 / witnessed 2.249981 |
+| V3 wide ridge | 197.167 um |
+| V3 thin ridge | **12.041 um** |
+| V4 H2 unrepresented ridge | 502.615 um |
+| V5 blind-spot crest | OLD 5.552 / H2 391.661 |
+| V6 resolved-ridge control | 0.617 um |
+| V7 tread wall | **0.000 um** |
+| V7b misplaced facet | 402.230 um |
+| V7c ridges 8/30/120 um | **12.041 / 39.767 / 142.668** |
+| V8 / V9 / V10 | exact, ortho < 3e-7 |
+
+PRECEDENT, 2026-07-29: a profiling pass measured distLocal 40->8 + distPerpFrom 40->16 as
+"bit-identical, 0.0000 nm over 442 above-threshold points" and it was WRONG — V3 thin ridge moved
+12.041 -> 27.103 um. The 442 points came from one production mesh and contained no wrong-well facet.
+A speedup verified on a sample that omits the hard regime is not verified. REVERTED.
+
+## STATE AT START OF THE NIGHT
+
+Measured, this session, GothicArches ring, 60x40 init grid, 400k triangle cap, LEPP (not DIRECTED):
+
+| | A = repaired accept | B = control (plane ruler) |
+|---|---|---|
+| triangles | 202,210 (capped) | 202,204 (capped) |
+| mesher wall | 667 s | 135 s |
+| rA evals | 723 M | 103 M |
+| LEPP splits | 9,590 | 13,336 |
+| H2 witnessed max (true 3D, 100% coverage) | **928.049 um** | **837.495 um** |
+| H2 samples over 10 um | 75.2 % | 67.9 % |
+
+NEGATIVE RESULT: at equal triangle budget the control produced the BETTER mesh in 1/5 the time.
+
+>> MY EXPLANATION OF THIS WAS WRONG. Recorded because the wrong reason was load-bearing for a plan.
+>> I wrote "a stricter ruler you can only afford to consult a third as often loses". At EQUAL TRIANGLE
+>> BUDGET affordability cannot be the variable — both arms hit the same cap. Two real confounds:
+>>
+>> C1  THE KEY MIS-RANKS. `sagBounded` returns wit + gap with gap ~ L/n, a function of triangle SIZE,
+>>     not of fit. Ranking on it turns worst-first into LARGEST-first, i.e. a uniform sweep in
+>>     disguise — the same "halves everything once instead of finishing anything" already measured on
+>>     2026-07-28 with the GPU key, and consistent with this file's own §14f (covering term alone
+>>     drove refusals 27.3% -> 47-93%). The plane ruler's bias accidentally correlates with curvature,
+>>     so it concentrates budget where bisection actually pays. The A/B compared two RANKINGS, not two
+>>     levels of honesty.
+>> C2  THE MECHANISM WAS OFF. Both arms ran LEPP with SNAP off (tag `l--`). The honest ruler correctly
+>>     sees crease-spanning error — error that isotropic longest-edge bisection cannot fix efficiently
+>>     (crease tier is h^1: ~2x/halving at best, vs the 14x anisotropy win this file's own header
+>>     claims for DIRECTED). So it truthfully found error, handed it to a mechanism that cannot act on
+>>     it, and was billed for that mechanism's failure.
+>>
+>> => The experiment measured "honest ruler + wrong mechanism vs blind ruler + wrong mechanism" and I
+>>    drew a conclusion about rulers. It must be re-run with DIRECTED+SNAP before it means anything.
+
+WHAT SURVIVES: the accept-quantity fix itself is still right, and for a reason worth keeping separate
+from the A/B. The plane ruler's blindness is STRUCTURAL — a crest above a tent of near-coincident
+infinite planes reads ~0 at ANY n. A point-to-triangle witness's blindness is only SAMPLING — it
+shrinks as triangles shrink. Structural bias poisons everything downstream; sampling bias is
+manageable. Keep ptTri2 as the measured quantity.
+
+THE ARCHITECTURAL POINT (this is the real lesson): three roles were conflated, and they need
+different soundness.
+  * RANKING KEY   — consulted constantly. Needs only CORRELATION with error. Bias is fine, cheap is
+                    everything. Certificate-grade covering bounds do not belong here.
+  * STOP RULE     — must never end the run while unresolved facets remain. Already provided by the
+                    NOT-CONVERGED / unresolved bookkeeping added today.
+  * CERTIFICATE   — must be sound exactly ONCE, on the final mesh. Batched, parallel, GPU-shaped.
+The driver may be as biased as it likes so long as it is never BELIEVED. The report block was already
+demoted to "DRIVER SELF-REPORT ... NOT the verdict" today; finish that separation architecturally and
+the honest-vs-cheap dilemma dissolves.
+
+Cost structure, measured:
+* H1 is ~98% of the audit cycle. ~186 ms/facet => full coverage of 885k facets ~= 46 HOURS.
+  At the default PF_FT_H1SECS=1500 the audit reaches ~0.9% of a mesh and caps. It does not complete.
+* single-core JS: 1.08 M rA evals/s. GPU screen, measured: 164 M/s. 152x.
+* 16 logical cores (8 physical). Exactly 1 in use — vitest pool 'forks', singleFork: true.
+
+## LEDGER
+
+### DONE
+- [x] running-max guard in certifyTriangle pass 2 — skip tighten() when the cheap reading is already
+      <= the running max. tighten() only lowers, so such a point provably cannot become the max.
+      1.50x on ~98% of the cycle. Exact argument, not sampled. GATE 12/12.
+- [x] REJECTED distLocal/distPerpFrom iteration truncation (see PRECEDENT above). Refutation left
+      in-code so it is not re-derived.
+- [x] golden-ratio stride in the H1 walk. A coprime stride covers everything over the FULL walk, but
+      this walk is nearly always cut short, and a SMALL stride makes a prefix a low-index band —
+      measured: stride 27, 21 facets => indices 0..540 of 202,210, reported as "uniform sample of the
+      whole mesh". Now round(nTri*phi)|1: max gap 1.17-2.04x ideal at any prefix length.
+
+### STATE AT HANDOFF (2026-07-29 ~09:45). Hard gate 12/12, all values exact, run serially with agents quiet.
+
+DONE TONIGHT, all working-tree, NOTHING COMMITTED:
+  [x] R1  ruler A/B re-run with DIRECTED+SNAP  -> honest accept loses again
+  [x] R1b three-arm ranking-key experiment + replicate -> HYPOTHESIS REFUTED, mechanism identified
+  [x] **PF_CB_RANK default REVERTED to 'plane'** on that evidence. Verified: 0 weld refusals,
+      0 stranded facets. `PF_CB_RANK=bounded|ptperp` still available; legacy PF_CB_BOUNDED honoured.
+  [x] R2  sizing-field feasibility calculator -> the ~100x gap is ~2.5 orders wrong
+  [x] Phase 0 per-cell artifact + single-grid C0 persistence detector, with a ramp fixture proving
+      the discriminator
+  [x] P1  H1 worker pool — 5.26x @ W=8, 7.97x @ W=16, byte-identical to serial, rA re-verified
+      per worker against a 16,513-point lattice before it certifies anything
+  [x] P2  driver hot-loop rewrite 1.11x (byte-identical, one STL md5 across 6 runs);
+      PF_CB_BND_DOOM 1.92x implemented but DEFAULT OFF (changes the heap key)
+  [x] running-max guard in certifyTriangle pass 2 — 1.50x, exact argument
+  [x] golden-ratio stride so a capped H1 walk is a low-discrepancy sample, not a low-index band
+  [x] quota-driver spec written: research/lab/2026-07-29-quota-driver-spec.md
+  [x] REJECTED and documented: iteration truncation (moved V3 12.041 -> 27.103)
+
+NEXT, in order — the evidence now points one way:
+  1. BUILD THE PHASE-1 FIFO SWEEP per the spec. The ranking-key question is CLOSED (don't rank at
+     all); the predicate must be improvement-shaped + class-routed, and jump-class must STOP-AND-ROUTE
+     instead of being counted as nJump and discarded.
+  2. Wire Phase 0's per-cell artifact in as the termination predicate + curtain router.
+  3. Then, and only then, a real convergence study — now affordable on both ends.
+  4. GPU as the batched end-of-run certificate engine (workgroup-per-triangle design is specced).
+  5. Interval arithmetic for H2 stays DEFERRED until a style is near-passing.
+
+### ORDER OF WORK — REVISED after the confound was found. Compute before engineering.
+- [ ] **R1 RE-RUN THE RULER A/B WITH THE MECHANISM ON.** DIRECTED+SNAP, both rulers, equal triangle
+      budget. Pure compute, zero engineering. Either rescues the honest ruler or refutes it cleanly.
+      BUILD NOTHING ELSE ON THIS QUESTION UNTIL IT RUNS.
+- [ ] **R1b THIRD ARM: cheap-honest ptTri.** The honest QUANTITY at the blind ruler's COST —
+      `sagAdaptive` with ptTri2 substituted for the plane distance, absolute pitch, NO covering term,
+      NO escalation. Needs a small driver change (a third PF_CB_BOUNDED mode), so it lands after P2's
+      agent releases that file.
+- [ ] **R2 SIZING-FIELD FEASIBILITY CALCULATOR.** The cheapest possible version of the convergence
+      question: measure the local error-vs-h slope per region (already known: 1.45-3.2x/halving, no
+      plateau), derive a target edge-length field h(theta,z), integrate to a predicted triangle count,
+      compare against the cap BEFORE refining anything. Turns "does it converge" from a 46-hour
+      marathon into arithmetic, and yields the per-band allocation gap (prior estimate ~100x).
+- [ ] P1 H1 worker_threads pool — KEEP, mechanical, everything downstream needs the auditor. But
+      scope it honestly: 46 h / 9.5 ~= 5 h per full-coverage audit is "definitive runs overnight",
+      NOT "routine". Routine triage should be the GPU screen (already cross-validated to 0.012 points
+      at 100% coverage) with CPU H1 confirming the argmax and the V-fixtures.
+- [ ] P2 driver escalation deferral — IN FLIGHT, let it land, then STOP investing here. If the probe
+      moves out of the loop (below) this largely dissolves; a cheaper bounded probe still helps the
+      end-of-run certificate pass, so the work is not wasted.
+- [ ] **P4' DRIVER RESTRUCTURE (replaces the old P2/P4 framing).** Cheap honest ptTri rank in-loop;
+      SNAP/locateKink for sub-pitch features as designed; sizing-field QUOTAS instead of a global
+      worst-first heap (for an L-inf target, ordering barely matters — every over-tol triangle must be
+      fixed, so the heap only buys an anytime property that is worthless when 400 um and 900 um are
+      equally unshippable, and greedy-on-current-error ranks by how BAD a triangle is rather than how
+      much a split IMPROVES it, which diverges exactly at creases h^1 vs smooth h^2 vs jumps h^0);
+      then ONE batched certificate pass at the end.
+- [ ] P3 GPU — RE-AIMED. Not an in-loop ranker (risky) but the CERTIFICATE ENGINE for that batched
+      end-of-run pass: static batches, embarrassingly parallel, much smaller risk surface. Fix the
+      missing `dims` FIRST, then the workgroup-per-triangle kernel.
+- [ ] P5 H2 as a certificate — DEFERRED, deliberately. A certificate distinguishes 0.010 from 0.012;
+      these meshes are at 0.9 and the witnessed lower bound alone already reads 84-93x over the bar,
+      so it changes no decision this month. Build it when the first style is near-passing. Cheaper
+      than feared when it comes: per-cell radial enclosure [r_lo,r_hi] + 1-Lipschitz gives
+      d(q,mesh) <= d(center,mesh) + halfdiag(box), one interval rA eval + one locator query per cell,
+      cell count adapting to feature complexity rather than area/tol^2. MVP ~200-line interval lib,
+      closed-form styles only, hash styles (Voronoi/HexagonalHive) declared witnessed-only. MUST be
+      gated by a containment fuzz test (scalar rA in interval at ~1e6 points/style) — an interval twin
+      is a SECOND implementation of every style, exactly the shape of the Voronoi hash-desync bug.
+
+## LOG
+(append below, newest last)
+
+### R1 — THE A/B RE-RUN WITH THE MECHANISM ON (DIRECTED + SNAP). The confound was real.
+
+Same 60x40 grid, same 400k triangle cap, GothicArches ring. Both arms CAPPED, neither converged.
+
+| | A2 honest accept | B2 plane ruler |
+|---|---|---|
+| triangles | 201,614 | 202,400 |
+| wall | 1202 s | 193 s |
+| rA evals | 1185 M | 194 M |
+| splits / snaps | 98,882 / 23,836 | 98,866 / 14,259 |
+| welded-splits REFUSED | **574,025** | **0** |
+| unresolved (splitter could not subdivide) | **58**, worst 1368.3 um | 0 |
+| heap left / worst-left | 228,063 / 1025.9 um | 177,777 / 58.7 um |
+| plane-ruler MAX (driver self-report) | 739.187 um | **84.217 um** |
+| plane-ruler p50 | **0.000 um** | 17.813 um |
+| plane-ruler over-0.01mm | **19,326 (9.6%)** | 139,375 (68.9%) |
+
+READ IT CAREFULLY — the MAX column is CIRCULAR. Both headline numbers are computed with the PLANE
+ruler, which is the exact quantity B2 optimised. B2 winning on it is not evidence.
+
+The non-circular columns, on B2's own ruler, invert the LEPP result:
+  * median triangle: A2 = 0.000 um, B2 = 17.813 um. B2's MEDIAN facet is above the 10 um bar.
+  * over-tolerance facets: A2 9.6% vs B2 68.9% — the honest accept produced 7.2x FEWER bad facets.
+So with the mechanism enabled the honest ruler builds a mesh that is overwhelmingly better in bulk,
+and worse only in the extreme tail. That is the opposite of the LEPP conclusion, exactly as predicted.
+
+THE NEW FINDING, and it is a mechanism finding, not a ruler finding:
+  A2 refused 574,025 splits to weld collisions (B2: ZERO) and finished with 58 facets the splitter
+  COULD NOT SUBDIVIDE AT ALL, worst 1368.3 um.
+A2's residual is not "the ruler is too slow" and not "the ruler is wrong". It is that the honest ruler
+correctly demands refinement in places where `addV` welds onto an existing vertex within WELD_MM =
+0.05 um and NOWELD refuses the split. It is asking for sub-0.05-um resolution. That is the h^0 regime:
+across a true C0 jump, chord error does not fall with h at all — only conforming geometry (curtains /
+treads) fixes it, and no amount of bisection ever will. `jump-class 60` snaps and `feat=[011]` loci in
+the same run corroborate.
+
+=> The honest ruler is doing its job: it refuses to accept those facets and reports NOT-CONVERGED with
+   an explicit unresolved count. B2 accepts them silently and prints a low max because its ruler
+   cannot see them. THE BLOCKER HAS MOVED from the ranking key to the SPLITTER.
+
+### R1 VERDICT — H2 true-3D, 100% coverage, identical instrument. THE HONEST ACCEPT LOSES AGAIN.
+
+| | A2 honest accept | B2 plane ruler |
+|---|---|---|
+| H2 witnessed max | **698.164 um** | **165.474 um** |
+| surface samples over 10 um | **86.3 %** (42.66M/49.43M) | **56.8 %** (23.33M/41.10M) |
+| mesher wall | 1202 s | 193 s |
+
+B2 wins by 4.2x on the max and by 30 points on coverage, in 1/6 the time. TWO INDEPENDENT A/Bs NOW
+AGREE (LEPP, and DIRECTED+SNAP): at equal triangle budget the honest-accept driver produces the WORSE
+mesh by the true-3D instrument. Fable's confound C2 (mechanism off) is REFUTED as the explanation —
+the mechanism was on this time and the result held.
+
+C1 SURVIVES AND IS NOW THE DIAGNOSIS. `sagBounded` returns wit + gap with gap ~ L/n — a function of
+triangle SIZE, not of fit — so ranking on it is largest-first, a uniform sweep in disguise. The A2 run
+shows exactly that signature and it is unmistakable:
+  * plane-ruler p50 0.000 um and only 9.6% of TRIANGLES over tol  — the facets it built sit ON the
+    surface beautifully;
+  * H2 says 86.3% of the SURFACE is more than 10 um from the mesh — it never went where the surface is;
+  * 574,025 weld-refused splits and 58 unsubdividable facets — it drove refinement down to sub-0.05 um
+    in the places it did visit.
+A mesh whose facets are perfect and whose surface is unrepresented is the signature of budget spent
+uniformly instead of where the features are. That is a RANKING failure, not a quantity failure.
+
+>> CONCLUSION, and it is the actionable one:
+>>   the honest QUANTITY (ptTri2) is right and stays — the plane ruler's blindness is structural;
+>>   the honest KEY (wit + gap) is WRONG and must not rank — the covering term dominates it and turns
+>>   worst-first into largest-first.
+>> NEXT EXPERIMENT (R1b) is therefore exactly Fable's prescription and is now strongly motivated by
+>> measurement rather than by argument: rank on the CHEAP-HONEST ptTri witness — absolute pitch, NO
+>> covering term, NO escalation — and keep `sagBounded` only as an end-of-run certificate pass.
+>> Predicted: A2's bulk quality (p50 0.000, 9.6% over tol) with B2's allocation, at B2-ish cost.
+
+### R2 — THE FEASIBILITY ANSWER. **THE ~100x ALLOCATION GAP IS WRONG BY ~2.5 ORDERS.**
+
+New tools (new files, nothing imports them): research/bridge/_sizingFeasibilityLib.ts +
+research/tools/sizingFeasibility.mjs. Same buildRadiusFn / registry defaults / dims as the auditor.
+tol 0.01mm, cap PF_CB_TRICAP = 2.5e6. Two grids: 240x160 -> 480x320.
+
+| style | conf+iso demand | x cap | +DIRECTED (AR=8) | x cap | worst h | classes |
+|---|---|---|---|---|---|---|
+| GothicArches | 1.345M -> 2.049M | 0.82x | 0.197M | 0.08x | 37.6 um | 4% sm / 90% crease / 6% jump |
+| GeometricStar | 2.224M -> 2.670M | **1.07x** | 0.290M | 0.12x | 30.8 um | 57 / 43 / 0 |
+| BasketWeave | 0.359M -> 0.229M | 0.09x | 0.060M | 0.02x | 216.5 um | 20 / 0 / **80 jump** |
+| Voronoi | 1.037M -> 0.988M | 0.40x | 0.165M | 0.07x | 64.7 um | 97 / 3 / 0 |
+| HarmonicRipple | 0.421M -> 0.420M | 0.17x | 0.060M | 0.02x | 263.6 um | 100 smooth |
+| SpiralRidges | 0.603M -> 0.602M | 0.24x | 0.121M | 0.05x | 204.1 um | 100 smooth |
+
+**THE TRIANGLE BUDGET IS SUFFICIENT.** Conforming adaptive demand is 0.09x-1.07x the existing cap.
+Only GeometricStar exceeds it at all, and only isotropically (1.07x); the directed lever takes it to
+0.12x. The prior "~100x allocation gap" was a UNIFORM-DENSITY reading: uniform 10 um triangles would
+need 749M-1167M = 300-467x cap. Adaptive sizing alone is worth 3x-39x of that; conforming and
+direction buy the rest.
+
+>> THIS CLOSES THE LOOP WITH R1. R1 shows the driver MIS-ALLOCATES (facets perfect, 86.3% of the
+>> SURFACE unrepresented); R2 shows correct allocation fits in budget. The campaign's framing — "we
+>> are ~100x short of the triangles we need" — was wrong, and wrong because it priced a UNIFORM mesh
+>> for an ADAPTIVE problem.
+>>
+>> BUT I OVERSTATED IT AND THE CORRECTION MATTERS. "Capacity was never the constraint" is too strong.
+>> R2 is a 1-D EDGE-sagitta instrument, so every count is a LOWER bound on the facet-interior quantity
+>> the auditor actually judges; the three feature-bearing styles are NOT grid-converged (+/-50% by the
+>> tool's own admission); and the flattering directed column assumes the mesher can lay AR-8
+>> anisotropic facets, which `refineDirected`'s aspect guard actively fights today.
+>> DEFENSIBLE CLAIM: capacity is not the FIRST-ORDER constraint, with roughly 2x headroom wanted over
+>> the printed numbers — and GeometricStar is already AT the cap isotropically (1.07x). Price the
+>> bisection driver against the ISOTROPIC column (0.09-1.07x), not the directed one. The directed
+>> column is the case for eventually productionising the M=g/h^2 anisotropic kernel, not a number the
+>> current splitter can cash.
+
+A PREDICTION MADE BEFORE THE RUN AND HELD: the NON-conforming column must diverge under grid
+refinement exactly where a C0 jump exists (h ~ 2 x distance-to-cliff, integral ~ 1/delta), and be
+grid-independent where none does. Measured 240x160 -> 480x320: GothicArches 4.95x, BasketWeave 1.91x
+(both carry a jump class); Voronoi / HarmonicRipple / SpiralRidges all exactly 1.00x (none do).
+
+UNBOUNDED, NOT LARGE — and it separates two styles the campaign has always lumped together:
+  * BasketWeave carries GENUINE C0. Cliff area 8294 -> 8933 mm^2 and jump share 87.8% -> 80.1% under
+    refinement: it does not wash out. Its honest demand is a CURTAIN (0.138M triangles), not smaller
+    triangles. No bisection driver will ever close it.
+  * GothicArches' C0 content is NOT established. Jump share fell 31.4% -> 6.1% and cliff area
+    759 -> 117 mm^2 under refinement — most of what read as "jump" was steep CREASE the coarse grid
+    could not resolve. It is an h^1 problem, and h^1 is fixable.
+
+HONEST LIMITS OF THE INSTRUMENT (stated by the tool, not discovered later): it measures 1-D EDGE
+sagitta while the auditor's verdict is point-to-triangle over a facet INTERIOR, so every count is a
+LOWER bound. Class shares are grid-dependent (GeometricStar's smooth share moved 0.9% -> 57.1%
+between grids) — never quote a class share from one grid. The three jump-free styles are converged
+(0.95-1.00x); the three feature-bearing ones are not (0.64x / 1.20x / 1.52x) — quote them +/-50%.
+
+DEFECT FOUND IN A FILE THE AGENT DID NOT OWN (reported, not fixed): _strataBudgetProbe.test.ts
+bisects h LINEARLY on [2e-4, 4], giving ~+/-61 um absolute resolution — ~+/-100% at the 30-45 um
+values these styles actually produce — and its budget integral uses r*dtheta*dz for area, which
+under-counts the true surface by 7.4% (GothicArches) to 41.8% (SpiralRidges). Any budget number ever
+quoted from that probe should be re-derived.
+
+OPS LESSON: an agent reported the hard gate at 9/12 while every documented VALUE reproduced exactly.
+Re-run serially it is 12/12. Root cause turned out to be the missing --testTimeout (see HARD GATE
+above), compounded by concurrent edits. Both are now documented at the top of this file.
+
+### P1 — H1 WORKER POOL. LANDED, GATE 12/12, VALUES EXACT.
+
+New files: _facetTruthRA.ts (the ONE definition of the audited surface — parent and worker import the
+same wrapper, so bit-identity is by construction, not by two copies staying in sync),
+_facetTruthH1.ts (the shared walk kernel — serial and pooled call the SAME loop body, so
+certifyTriangle gets a byte-identical argument list either way), _facetTruthH1Worker.ts,
+_facetTruthPool.ts. New levers: PF_FT_WORKERS (default 8 = physical cores, 1 = serial),
+PF_FT_H1MAX (cap the walk at N facets — this is what makes serial-vs-pooled an EXACT comparison
+rather than a race between two clock-capped runs that audited different prefixes).
+
+Measured on 512 facets of gothicarches_ring_l--B, identical audited set:
+  W=1  279 s  (1.83 facets/s)      W=4  87 s (3.21x)
+  W=8   53 s  (5.26x, default)     W=16 35 s (7.97x)
+Whole-process wall 284.9 s -> 59.7 s at W=8. Results byte-identical to serial at all four counts.
+rA is re-verified per worker against a 16,513-point lattice (brackets around every C0 locus) BEFORE
+it certifies a single facet — 264,208 comparisons, max deviation 0.000e+0 — and the pool refuses to
+run on any deviation. Golden-ratio stride walk preserved verbatim, so a capped pooled run is still a
+low-discrepancy sample of the whole mesh.
+
+Note it did NOT raise the default to 16 despite measuring it 1.51x faster than 8 — correct call: the
+box is 8 physical cores and the extra is SMT, which does not hold on scalar libm under memory
+pressure. PF_FT_WORKERS=16 is available for a dedicated run.
+
+### P2 — DRIVER. TWO ALWAYS-ON WINS, ONE BIG WIN HELD BACK ON PURPOSE.
+
+* sagBoundedAtN hot-loop rewrite (ALWAYS ON, arithmetically a no-op): inlined the Ericson solve that
+  was re-deriving ab/ac and allocating a fresh closure on EVERY lattice sample — 18,721 closures per
+  call at n=192. 1.179x at n=192, 1.112x end to end. Byte-identity established three ways, including
+  6 full runs producing ONE STL md5.
+* Re-queue the survivor without re-measuring (ALWAYS ON): sagBounded is a pure function of three
+  vertex indices and their coordinates, neither of which changes during refinement, so the post-split
+  `consider(t)` necessarily returned the key it was popped at. Free; matters in DIRECTED mode where
+  splits are refused often.
+* **PF_CB_BND_DOOM — 1.92x wall (92 s -> 48 s), 3.28x on the probe — IMPLEMENTED, DEFAULT OFF.**
+  Root cause it removes: 3,351 triangles escalate straight to n=192 and burn 63.1M of the 71.6M probe
+  evals (88%) PURELY TO CONFIRM A REFUSAL, on keys near acceptTol at the bottom of a heap the run
+  never drains to. The guard proves the refusal at the coarse level instead (three lemmas: row i=0
+  endpoints are exactly vertices B and C so gap(n) >= |BC|/n at every level; and when BND_N divides
+  BND_NMAX the coarse lattice is contained in the fine one with bit-identical parameters). The
+  accept/reject DECISION is provably preserved and was falsified empirically too (VERIFY mode replayed
+  all 2,660 skipped escalations: accepted-anyway 0).
+  It is off because it changes the heap KEY — the level-12 bound is still sound but ~16x looser in its
+  covering term, and on a deeper drain the reordering would change the mesh.
+
+>> MY READ ON THAT LAST DECISION, which the agent could not have made: it held the guard off to
+>> preserve byte-identity with the current mesh. But R1 says THE CURRENT MESH-PRODUCING BEHAVIOUR IS
+>> WRONG — the key's covering term is exactly what makes refinement largest-first. Byte-identity with
+>> a baseline we have just refuted is not a virtue. The doom guard's key change belongs in the R1b
+>> family (keys WITHOUT a dominant covering term) and should be evaluated there, on H2 true-3D, not
+>> against the old STL's md5.
+
+Rejected correctly by P2: early-exit within a level (the value IS the heap key, so truncating it
+changes refinement order and the mesh) and a plane-distance running-max guard (unsound).
+
+### *** D50 — THE RESIDUAL IS STRUCTURAL, NOT RESOURCE-LIMITED. AND A SCALE CAVEAT ON EVERYTHING ELSE. ***
+
+Prompted by a fair challenge: are these meshes simply too coarse to decide anything on?
+MEASURED on the D25 mesh: 903,506 tris over 49,462 mm^2, mean edge 356 um, longest-edge p50 288 um,
+p90 1,281 um, p99 3,010 um, max 6,087 um. **14.1% of triangles carry edges over 1 mm; only 0.5% sit in
+the 25-50 um band R2 says the features need (worst h = 37.6 um).** So yes — coarse in absolute terms.
+
+TEST: re-run with a PRODUCTION init grid (200x140 = 56,000 init tris, 12x finer than the 60x40 the
+experiments used) and DOUBLE the cap headroom.
+
+| run | init grid | cap | live tris | alloc used | wall | self-report | **H2 true-3D** | over tol | ratio |
+|---|---|---|---|---|---|---|---|---|---|
+| D25 | 60x40 | 2.5M | 903,506 | 1.80M | 1229 s | 7.806 um PASS | **19.247 um** | 1,730 | 2.47x |
+| D50 | 200x140 | 5.0M | 750,702 | **1.45M of 5M** | 776 s | 7.898 um PASS | **22.155 um** | 1,449 | 2.81x |
+
+**NEITHER RUN WAS EVER CAPPED.** D50 used 1.45M of a 5M budget and stopped; D25 used 1.80M of 2.5M.
+The driver halts because ITS OWN RULER is satisfied, not because it runs out of triangles. A 12x finer
+init grid and 2x more headroom moved H2 by nothing (19.2 -> 22.2 um, slightly WORSE) while converging
+to FEWER triangles in LESS time (750k/776 s vs 903k/1229 s — a better start means less LEPP cascading).
+
+>> SO: THE MESH IS NOT BUDGET-STARVED, IT IS CRITERION-STARVED. "Throw more triangles at it" is retired
+>> as an option. And the blindness is a STABLE MULTIPLIER on a converged mesh — 2.47x and 2.81x across
+>> two very different configurations — which makes the next test one-variable: if it is a calibration
+>> offset, acceptTol 7.0 -> 3.5 um should land the truth near 9-10 um. If H2 instead PLATEAUS near 20 um,
+>> the blindness is not a scalar and only Phase 2's targeted feedback can reach it. (D51 running.)
+
+### D51 — THE CALIBRATION HYPOTHESIS IS REFUTED. THE BLINDNESS GROWS AS THE MESH REFINES.
+
+Halve acceptTol 7.0 -> 3.5 um, production init grid, 8M cap. Prediction if the ~2.65x gap were a
+CALIBRATION OFFSET: H2 lands near 10 um. It did not.
+
+| run | acceptTol | live tris | alloc used | self-report | **H2 true-3D** | **ratio** | samples over tol |
+|---|---|---|---|---|---|---|---|
+| D25 | 7.0 um | 903,506 | 1.80M / 2.5M | 7.806 um | 19.247 um | 2.47x | 1,730 |
+| D50 | 7.0 um | 750,702 | 1.45M / 5M | 7.898 um | 22.155 um | 2.81x | 1,449 |
+| D51 | **3.5 um** | **1,433,982** | 2.81M / 8M | 4.058 um | **15.508 um** | **3.82x** | **263** |
+
+Halving the ask improved H2 by only 1.43x (22.155 -> 15.508), not the 2x a scalar offset predicts —
+**and the ratio WORSENED, 2.47 -> 2.81 -> 3.82.** The blindness is not a constant multiplier: it GROWS
+with refinement. Mechanically that is what you would expect — as the mesh refines, the plane ruler gets
+better at the thing it CAN see (flatness) while the residual concentrates in the thing it CANNOT
+(feature interiors), so the gap widens even as both numbers fall.
+
+>> BUT LOOK AT THE LAST COLUMN, BECAUSE IT IS THE ARGUMENT FOR PHASE 2. Exceedances fell 1,730 -> 1,449
+>> -> **263 of 40,006,240 samples = 0.00066%**, and they are now concentrated in TWO z-bands (bin 8:
+>> 136, bin 12: 93 of 263). Closing that by GLOBAL acceptTol reduction needs ~2 more halvings ~= 5.7M
+>> triangles — 3-4x R2's predicted demand, i.e. paying everywhere for a defect that lives in two bands.
+>> Closing it by LOCAL tightening at 263 loci costs almost nothing. That is precisely Phase 2, and D51
+>> converts it from "the remaining architecture item" into "the obviously correct next move".
+
+TRAJECTORY ACROSS THE NIGHT, one style, one instrument (H2, 40M samples, brute-force re-checked):
+  best-before-tonight  126.028 um, 46.6% of surface over tol
+  D25                   19.247 um, 0.0043%
+  D51                   15.508 um, **0.00066%**
+That is 8.1x on the max and ~70,000x on the fraction of surface out of tolerance. Still NOT a pass
+(15.5 um against a 10 um bar), and I am not calling it one.
+
+### SCALE CAVEAT — WHICH OF TONIGHT'S CONCLUSIONS SURVIVE, AND WHICH ARE PROVISIONAL
+
+Every A/B tonight except D25/D50 was run at a 400k cap where NOTHING DRAINED. I have direct proof that
+this regime inverts: the FIFO looked like it was winning on trajectory at 400k and lost decisively at
+2.5M. The same logic indicts the three-arm ranking experiment.
+
+TRUST: D25/D50 (large scale, 40M-sample audits, brute-force re-checked) | R2's feasibility numbers
+(they predicted D25's triangle count before it ran) | the C0 persistence detector (corroborated by two
+independent mechanisms) | the parallelisation (byte-identical acceptance tests) | the FIFO refutation
+(tested at BOTH scales, lost at the larger).
+
+PROVISIONAL: **the three-arm ranking conclusion** (plane 126 / ptperp 444 / bounded 698). Measured at a
+cap where nothing drained. It is supported by the 400k A/B plus the single fact that `plane` drains at
+2.5M — but NOBODY HAS SHOWN the honest-ranker arms fail to drain at 2.5M, only that they strand facets
+at 400k. Re-run `bounded` at drain scale before treating "plane wins as a ranker" as settled.
+
+### PARALLELISATION — BOTH TRACKS LANDED, BOTH PROVEN BYTE-EQUAL. ONE IS ON A REFUTED DRIVER.
+
+H2 PHASE A (PF_FT_H2WORKERS, default = physical cores). New _h2PhaseA.ts / _h2PhaseAWorker.ts /
+_h2Pool.ts; surfaceToMeshMax phase A now runs through a shared kernel that the serial path, the
+workers AND phases B/C all use, so there is no second copy to drift. Equivalence is proven, not
+asserted: 131,072 per-cell heap keys Object.is-equal, every SurfaceToMeshResult field byte-equal across
+no-pool / W=1 / W=8 (max 1150.365034 um at the same th/z/r, queries 1,200,096, overCount 1,135,423, all
+24 bins), reproduced across two processes 7 minutes apart. rA bit-identical over 132,104 comparisons,
+locator over 190,896. And E3 DESYNCHRONISES a worker (wrong style; mesh scaled 1.0005) and requires the
+pool to REFUSE — it does. Argmax tie-break is (value desc, CELL INDEX asc), exact because Atomics.add
+is monotone so each worker sees an increasing subsequence. Gate 12/12.
+
+SWEEP PREDICATE (PF_CB_SWEEP_WORKERS). Byte-identical STLs — `cmp`, not just md5 — at three scales
+plus BasketWeave plus a non-power-of-2 worker count; every order-sensitive counter matched too
+(memo 450,875 hits, class-flips 993, curtain 968 at 192 sites). New permanent pinning test
+_sweepPredicateIdentity.test.ts: 28,200 edges across 5 styles, 20,304 with a kink, 9,791 crossing the
+theta seam, 5,640 degenerate — 0 mismatches, with non-vacuity assertions so a test comparing nothing
+cannot pass. The pool's syncVertices() re-checks the append-only vertex invariant EVERY generation and
+throws if a coordinate ever moves — that is the tripwire for the day spec 4.3's vertex move lands.
+
+>> HONEST ASSESSMENT OF THE SWEEP TRACK: the workers did 11.5M rA evals against 75.0M on the main
+>> thread at 60k tris — **13% of the work**, with 20-24% speculation waste — because most edges are
+>> CREATED mid-sweep and miss the generation prefetch. Combined with the FIFO being refuted at drain
+>> scale (below), this is well-engineered work on the wrong target. Keep it (it is proven and inert
+>> unless PF_CB_DRIVER=sweep); do not invest further until the FIFO earns its place.
+>> THE PARALLELISATION THAT WOULD PAY IS THE HEAP DRIVER'S — the one that actually converges.
+
+### *** D25 — THE FIRST CONVERGENT RUN IN THIS CAMPAIGN. GothicArches 126.0 -> 19.2 um. ***
+
+Matched budget at DRAIN SCALE (the comparison the 400k A/B could not make), GothicArches ring,
+60x40 init, TRICAP=2.5M, DIRECTED+SNAP.
+
+| | arm 1 HEAP + PLANE | arm 2 FIFO sweep (router off) |
+|---|---|---|
+| triangles / alloc | 903,506 / **1,802,980 of 2.5M** | 1,252,400 / 2,500,000 **CAPPED** |
+| wall / rA evals | 1229 s / 1318 M | 443 s / 403 M |
+| heap or queue left | **0 — DRAINED** | capped, not drained |
+| unresolved | **0** | 0 |
+| driver self-report | **MAX 7.806 um PASS, over-0.01mm 0 / 903,506** | MAX 741.7 um FAIL, 133,183 over |
+| **H2 TRUE-3D max** | **19.247 um** (brute-force re-check 19.247) | not audited — already refuted |
+| **surface samples over tol** | **1,730 / 40,008,064 = 0.0043 %** | — |
+
+**THE HEAP + PLANE DRIVER CONVERGED.** Zero triangles over tolerance on its own ruler, heap fully
+drained, and it did it with budget to spare — 1.80M of 2.5M allocations, in 20 minutes.
+
+**R2's FEASIBILITY CALCULATOR PREDICTED THIS AND WAS RIGHT.** It priced GothicArches conforming demand
+at 1.345-2.049M triangles. The run drained at 1.80M allocations — inside the predicted band, by a
+completely independent mechanism. The instrument built to answer "does this fit in budget" answered
+correctly before the run was made.
+
+**AND THE FIFO IS REFUTED AT DRAIN SCALE.** Its 400k trajectory advantage (1.06% over tol at 2.5M in
+the earlier probe) did NOT survive a matched comparison: capped, 711 um, 133,183 over tol. The earlier
+comparison was measuring the CAP, not the driver. That is the fourth hypothesis refuted by measurement
+tonight, and the third of mine.
+
+>> BUT IT IS NOT A PASS, AND THE GAP IS EXACTLY THE THING THIS CAMPAIGN IS ABOUT.
+>>   driver self-report (PLANE ruler) : 7.806 um  PASS
+>>   H2 true-3D                        : 19.247 um  EXCEEDS TOL
+>> The plane ruler under-reported by 2.5x on a CONVERGED mesh. That is its blindness, measured at
+>> production scale for the first time — and far milder than the V5 fixture's 70x, because on a
+>> converged mesh there is little left for it to be blind ABOUT.
+>> Residual: 1,730 exceeding samples out of 40M (0.0043%), argmax at th=4.4416 z=59.609 r=44.662,
+>> z-histogram peaked in bin 11 (682 of 1,730) around z~55-60 mm. This is the h^1 CREASE content R2
+>> attributed 90% of GothicArches to — the interior/feature error the plane ruler structurally cannot
+>> see, now isolated to a handful of loci instead of smeared over the mesh.
+>>
+>> SCALE OF THE MOVE: best previously measured H2 on this style was 126.028 um with 46.6% of the
+>> surface over tol. Now 19.247 um with 0.0043%. That is 6.5x on the max and ~10,800x on coverage.
+>>
+>> WHAT CLOSES THE LAST 1.92x: NOT a better driver ruler — the driver converged on its own criterion
+>> and has nothing left to do. It is spec 5.2-5.4, PHASE 2: run the honest certificate on the drained
+>> mesh, feed its failures back as local h tightening using the measured 1.45-3.2x/halving slope, and
+>> re-sweep only those neighbourhoods. Two or three outer iterations. That is the ONE piece of the
+>> architecture still unbuilt, and it is now the only thing between this style and a certified 0.01mm.
+
+### FIFO SWEEP DRIVER — BUILT (PF_CB_DRIVER=sweep). LOSES AT MATCHED BUDGET; WINS ON TRAJECTORY.
+
+Gate 12/12 exact after both agents' edits. Old path proven untouched: SWEEP appears at 10 sites, the
+only one in shared code is `eDel`'s cache eviction (inert under heap), and the control arm reproduced
+the 2026-07-29 reference TO THE LAST DIGIT (126.028 um / 46.6% / 0 refusals / 455 s vs 456 s).
+
+MATCHED BUDGET, GothicArches ring 60x40, 400k cap, DIRECTED+SNAP:
+
+| | heap + plane (control) | FIFO sweep | FIFO, router OFF (ablation) |
+|---|---|---|---|
+| wall / rA evals | 455 s / 525 M | **159 s / 179 M** | 183 s / 178 M |
+| unresolved | 0 | 13,311 (100% move-deferred) | 0 |
+| **H2 true-3D max** | **126.028 um** | 1533.728 um | 1024.633 um |
+| **surface over tol** | 46.6 % | 44.4 % | **27.2 %** |
+
+**PLAIN ANSWER: AT MATCHED BUDGET THE FIFO DRIVER LOSES** — 12.2x on the max, a 2.2-point wash on
+coverage, for 2.9x the speed. Nothing was tuned to soften that.
+
+THE LOSS DECOMPOSES, BY ABLATION NOT ARGUMENT:
+ (a) **THE CLASS ROUTER IS A NET REGRESSION TODAY** — turning it off improves the max 1.5x AND
+     coverage by 17.2 points. Mechanism, measured: 5,198 conform splits against 24,105 move-deferred =
+     an **82.3% REFUSAL RATE** on the conform route, stranding 13,311 triangles — including UNTOUCHED
+     60x40 initial-grid facets (arm 2's own H2 argmax is triangle #64, edges 4548/3010/5472 um).
+     => THE DEFERRED VERTEX MOVE (spec 4.3) IS A BLOCKER, NOT AN INCREMENT. The class router is
+     non-shippable until it lands. I scoped the move out on the spec's own advice about not landing it
+     with the memo; that was right for safety and wrong about its importance.
+ (b) The rest is the anytime property, given up deliberately (spec 6.4) — the ablation strands nothing
+     and still reads 1024.6 um on a well-shaped 649/809/496 um facet still sitting in a 131,885-entry
+     queue. Genuine under-refinement, not a sink.
+
+**THE MATCHED COMPARISON CANNOT TEST THE DESIGN'S CLAIM, AND THE SPEC SAID SO IN ADVANCE (6.2.3).**
+"Ordering cannot move the fixed point" holds only for a run that DRAINS. R2 prices GothicArches at
+1.345-2.049M triangles = 3.4-5.1x the 400k cap this A/B ran at. TRAJECTORY at 6.25x budget (ablation
+config, 2.5M cap, 422 s): H2 max 1024.6 -> **240.987 um** (4.25x fall), surface over tol 27.2% ->
+**1.06%** (25.7x fall), NO PLATEAU. For scale — and stated as UNMATCHED — no heap arm has ever measured
+below 46.6% (R1b's three keys spanned 46.6-84.1%).
+AND THE COST MODEL INVERTS: rA per allocated triangle is 1313 for the plane heap, 445 then **161** for
+the FIFO, because the memo hit rate rises as the mesh grows. Spec 1.4's prediction, measured.
+
+TWO DEFECTS FOUND DURING VERIFICATION, both of the "plausible but wrong science" class:
+ * the memo was keyed by an UNDIRECTED edge key while `locateKink` parameterises t from its FIRST
+   endpoint — and the two triangles incident to an interior edge traverse it in OPPOSITE directions.
+   ~46% of cache hits returned a MIRRORED crossing, so the conforming vertex would have landed at the
+   reflection of the feature. Caught by the spec's own 6.5 verification gate: 178,153 mismatches on
+   383,200 hits. Now 0.
+ * `qPush`'s doubling rebased qHead/qTail to origin 0 but left `qGenEnd` on the OLD origin, so every
+   buffer growth SWALLOWED A SWEEP BOUNDARY — which silently demotes genuine h^0 sites to crease
+   (stickiness requires a jump on the IMMEDIATELY PREVIOUS sweep) and refines them into the weld wall.
+   Fired in every run at this scale (queue reaches 75k-556k against a 65,536 start).
+
+INDEPENDENT CORROBORATION OF PHASE 0, FROM THE ROUTER ITSELF: BasketWeave 254/254 kinks jump-class,
+**0 class-flips** (perfectly stable); GothicArches 489 class-flips with most jumps never confirmed.
+That is Phase 0's genuine-C0-vs-h^1 split reproduced by a completely different mechanism.
+
+OPEN, AND HONEST: a drained FIFO can still print PASS — the verdict falls through to
+`headlineMax <= TOL` and headlineMax is the PLANE self-report, which spec 6.1 proves under-calls
+(V5: 5.552 um on the interior ruler vs 391.661 um by H2). "Drained is not a pass" currently rests on
+Phase 2, which is NOT built. The report block says it in words; the verdict expression does not.
+Also: a curtain-tagged triangle leaves the queue with its SIZE error unaddressed and nothing revisits
+it (187 tris / 51 sites here; it will not be small on BasketWeave).
+
+### R1b — THE THREE-ARM RANKING-KEY EXPERIMENT. **HYPOTHESIS REFUTED. THIS IS THE KEY RESULT.**
+
+GothicArches ring, DIRECTED+SNAP, 60x40 grid, equal 400k triangle cap. H2 true-3D, 100% coverage,
+identical instrument, ~40.0M locator queries each. Every max brute-force re-checked and exact.
+
+| rank mode | H2 witnessed max | samples over 10 um | % |
+|---|---|---|---|
+| **plane** (the "blind" control) | **126.028 um** | 18,648,775 / 40,008,064 | **46.6 %** |
+| **ptperp** (honest quantity, NO covering term, NO escalation) | 444.114 um | 32,686,310 / 40,010,152 | 81.7 % |
+| **bounded** (honest quantity + covering term, escalating) | 698.164 um | 33,628,416 / 40,004,164 | 84.1 % |
+
+PARTIAL CONFIRMATION: stripping the covering term moved 698 -> 444 um (1.57x), so gap ~ L/n really was
+costing something.
+
+>> BUT C1 AS I WROTE IT IS WRONG, AND I AM CORRECTING MY OWN CORRECTION. I described the mechanism as
+>> "the covering term makes worst-first into LARGEST-first". The ptperp arm removed the covering term
+>> ENTIRELY, removed the escalation, and fixed the pitch size-independently — and the failure
+>> reproduced. Largest-first is not the mechanism. **The mechanism is a WORST-FIRST SINK:** an honest
+>> quantity reports true-C0 (h^0) facets as permanently worst, a split never improves them, so they sit
+>> at the head of the heap forever and absorb the budget.
+>> THE SMOKING GUN: the ptperp arm's own H2 argmax facet still carries edges of **1953/3239/3318 um**
+>> at z~20 mm — essentially the UNTOUCHED 60x40 INITIAL GRID. After 100,832 splits it never went
+>> there. And its H2 z-histogram is higher than plane's in ALL 24 BINS, so the starvation is global,
+>> not confined to one band. The driver spent everything in the sink.
+
+BUT THE HYPOTHESIS IS REFUTED. ptperp was predicted to reach or beat the plane arm. It is 3.5x WORSE
+on the max and 35 points worse on coverage. Fable's pre-registered refutation condition was exactly
+this shape, and it has fired: **the honest point-to-triangle QUANTITY itself mis-allocates.** The
+covering term made it worse; it was not the cause.
+
+>> WHY, AND THIS IS THE THING WORTH KEEPING FROM TONIGHT:
+>> * PLANE distance from surface points to a facet's plane measures how NON-FLAT the local patch is —
+>>   curvature x size^2. That is an ESTIMATE OF HOW MUCH A SPLIT WILL IMPROVE THINGS.
+>> * POINT-TO-TRIANGLE distance measures how far the surface currently is from the mesh. That is an
+>>   ESTIMATE OF HOW BAD THINGS ARE.
+>> For refinement you want the FIRST. Ranking by badness pours budget into whatever is worst right
+>> now — which at a crease (h^1, split buys 2x) and at a jump (h^0, split buys NOTHING) is exactly
+>> where bisection cannot help. The plane ruler's "bias" is not noise that happens to be tolerable; it
+>> is an accidental improvement-rate estimator, and that is why it wins. THREE independent A/Bs now
+>> agree (LEPP, DIRECTED+SNAP, and this three-way at matched budget). Stop fighting the measurement.
+>>
+>> THE ROLE SEPARATION IS NOW EMPIRICAL, NOT ARGUED:
+>>   RANKER      -> keep the plane ruler (or better: an explicit improvement-rate estimate). Cheap,
+>>                  biased, never believed.
+>>   CERTIFICATE -> the honest point-to-triangle / H1-H2 auditor. Sound, expensive, run ONCE at the end.
+>> Putting the certificate quantity in the loop was the mistake, and it cost 6x wall time to build a
+>> measurably worse mesh. The accept-quantity "fix" that started this thread should be REVERTED as a
+>> RANKER (PF_CB_RANK=plane as the default) and retained only as the end-of-run judge.
+>>
+>> WHAT THIS DOES TO THE ARCHITECTURE BELOW: it strengthens it. The Phase-1 predicate must be a
+>> THRESHOLD on a cheap improvement-shaped quantity plus class routing — NOT a rank on an error
+>> estimate of any kind, honest or otherwise. The FIFO design was already right for the L-inf target;
+>> this says the predicate feeding it must be improvement-shaped too.
+
+### AND THE WELD WALL IS SETTLED — IT IS INDUCED BY THE ACCEPT QUANTITY, NOT BY THE GEOMETRY.
+
+Same three arms, driver-side diagnostics:
+
+| arm | welded-splits REFUSED | unresolved (stranded) | wall | rA evals | self-report MAX | H2 true-3D |
+|---|---|---|---|---|---|---|
+| plane | **0** | **0** | 456 s | 527 M | 45.3 um | 126.0 um |
+| ptperp | 696,052 | 2,002 (worst 629 um) | 769 s | 887 M | 452.6 um | 444.1 um |
+| bounded | 574,025 | 58 (worst 1368 um) | 1031 s | 1188 M | 739.2 um | 698.2 um |
+
+THE PLANE ARM HITS THE WELD WALL EXACTLY ZERO TIMES AND STRANDS EXACTLY ZERO FACETS. Both honest arms
+drive straight into it. So the wall is not a property of the surface and not (mainly) a guard artifact
+— it is INDUCED BY THE QUESTION THE ACCEPT TEST ASKS:
+  * "flatten this patch" (plane) is ALWAYS SATISFIABLE by splitting. Bisection can always reduce
+    curvature x size^2. The driver therefore never demands resolution it cannot obtain.
+  * "put mesh within tol of the surface" (honest) is NOT satisfiable by splitting at a crease or a
+    jump. The driver keeps demanding, the demand becomes sub-WELD_MM, NOWELD refuses, and the facet is
+    stranded. ptperp — with no covering term to eventually saturate — demands LONGER and strands 35x
+    MORE facets (2,002 vs 58) than the bounded arm.
+This retires Fable's floor-vs-artifact question: neither, exactly. It is a control-law pathology.
+The h^0 floor is real for the truly-C0 cells (BasketWeave), but GothicArches' 2,002 stranded facets
+are ~90% crease and are only stranded because the accept test asked bisection for something bisection
+cannot deliver, instead of routing them.
+
+>> AND THE ROLE SEPARATION IS NOW VISIBLE IN ONE COLUMN PAIR. Compare each arm's self-report to H2:
+>>   plane   45.3 vs 126.0 um  — under-reports by 2.8x. A BAD CERTIFICATE.
+>>   ptperp 452.6 vs 444.1 um  — tracks to 2%.   A GOOD CERTIFICATE.
+>>   bounded 739.2 vs 698.2 um — tracks to 6%.   A GOOD CERTIFICATE.
+>> The honest quantity is an EXCELLENT judge and a BAD driver. The plane quantity is an EXCELLENT
+>> driver and a BAD judge. That is not a compromise to be split — it is two different jobs, and the
+>> whole campaign has been trying to do both with one number.
+
+### PHASE 0 — THE SHAPE-AGNOSTIC C0 DETECTOR. Works, and from a SINGLE grid.
+
+New: _sizingFieldArtifact.ts (schema + writer + reader with provenance verification),
+persistence in _sizingFeasibilityLib.ts, `--emit`/`--read` in the CLI, artifacts in
+research/exchange/sizingFeas/cells/. The verdict costs ONE extra probe scan (~27 rA evals against
+~1000 for the direction solves) because g1 is shared between the coarse and fine exponents.
+
+240x160, tol 0.01, cap 2.5M — jump cells / PERSIST / persisted curtain area / demand split:
+
+| style | jump cells | persist | curtain mm^2 | bisection + curtain | x cap | conv |
+|---|---|---|---|---|---|---|
+| GothicArches | 3696 | 168 (4.5%) | 56 of 759 | 1.340M + 0.005M | 0.54x | no |
+| GeometricStar | 0 | — | 0 | 2.224M + 0 | 0.89x | no |
+| **BasketWeave** | 7872 | **7872 (100%)** | **8294 of 8294** | 0.170M + **0.191M** | 0.14x | no |
+| Voronoi | 1 | 0 | 0 | 1.037M + 0 | 0.41x | yes |
+| HarmonicRipple | 0 | — | 0 | 0.421M + 0 | 0.17x | yes |
+| SpiralRidges | 0 | — | 0 | 0.603M + 0 | 0.24x | yes |
+
+This REPRODUCES the expensive two-grid experiment from one grid, and the two halves of it are computed
+from different quantities (a class test vs an area-element excess) yet agree on the split — an
+independent check, not a restatement. BasketWeave keeps 100% of its cliff area (2x re-run agrees,
+1.08x); GothicArches keeps 7.4% at base and 0.00% at 2x, matching the worklog's 31.4% -> 6.1%.
+=> BasketWeave is GENUINE C0 and its honest demand is a 0.191M-triangle CURTAIN. GothicArches is h^1.
+
+TWO METHODOLOGICAL RESULTS WORTH MORE THAN THE TABLE:
+* **THE INVARIANT IS CURTAIN AREA, NOT CELL COUNT.** The self-test expected >80% of jump CELLS to
+  persist for a true C0 rib and got exactly 50.0% — while keeping 100.0% of the curtain AREA. Cause is
+  geometric: the centre scan reaches +/-(span/2 + L/2), so the coarse probe sees a cliff 0.75*span away
+  and the fine one only 0.5625*span; every cliff-BEARING cell persists and every merely-ADJACENT one
+  drops. Halving the pitch therefore ALSO narrows the over-wide class band — an unplanned second
+  benefit. Read the area. The agent found this by asserting the wrong thing and being contradicted by
+  its own fixture, which is the correct way for it to have gone.
+* **THE DISCRIMINATOR IS DEMONSTRATED, NOT ASSUMED.** A new `rampRadiusFn` fixture — a linear ramp with
+  the SAME 1.0 mm rise as the square rib, width set at 0.11x cell span from the arithmetic (max sag is
+  J/2 for probe L >= 2w and J*L/(4w) below it, so the class flips exactly when the pitch drops through
+  2w) — reads JUMP on 2304 cells at cell pitch and ZERO persisted at half pitch: 0 of 5217 mm^2 of
+  curtain it would otherwise have been billed. That is the synthetic GothicArches. A detector that
+  cannot separate it from a real cliff cannot be trusted to route a real cell.
+
+The honesty caveats are FIELDS IN THE ARTIFACT (countsAreLowerBound, classSharesAreGridDependent,
+computedAtGrid, gridConverged, persistenceIsNotAProof, notACertificate), surfaced by caveatLines(),
+so a consumer cannot read the numbers without the limits. `verifyProvenance` returns the list of
+MISMATCHES rather than throwing, and a stale .bin beside a fresh .json is a hard error, never a silent
+fallback to the rounded JSON columns.
+
+### CORRECTIONS TO MY OWN READING (second Fable consult). Read these before quoting anything above.
+
+1. **R1 IS STILL NOT A CLEAN RULER A/B, even with the mechanism on.** A2's budget was part-consumed by
+   the weld-wall pathology — a guard interaction, not the key. C1 stands as the diagnosis, but the
+   4.2x H2 margin must NOT be quoted as "the price of honest ranking".
+2. **574,025 IS NOT 574k DEMANDS.** NUDGE_LADDER retries up to 11 offsets per stranded edge and counts
+   every collision. The true figure is plausibly ~60-100k distinct SITES. Report distinct sites.
+3. **THE WELD WALL IS TWO DIFFERENT THINGS AND OUR DATA CAN SEPARATE THEM.**
+   * The 58 unsubdividable facets are almost certainly a REAL h^0 floor: 1368 um of error at a
+     demanded resolution of 50 nm is a 27,000:1 feature-to-element ratio; no C^1 surface asks for that.
+     The covering-term accept was DESIGNED to Zeno there — sagBounded's own comment says a
+     feature-spanning facet can never be accepted and "names the loci that need a curtain rather than
+     density". The code knew; the driver spent budget on the flag instead of routing it.
+   * The 574k refusals are probably mostly ARTIFACT, via a specific Zeno mechanism: SNAP_ALPHA=0.12
+     rejects a kink crossing within 12% of an endpoint, so once a vertex sits NEAR a crease every
+     later crossing has its kink near an endpoint, SNAP declines, and fallback midpoint bisection
+     marches geometrically into the 50 nm weld wall. The conforming mechanism switches itself off
+     precisely when it has nearly succeeded. R2 says Gothic is ~90% crease / 6% jump, i.e. most
+     refusal sites are h^1 = FIXABLE.
+   * DISCRIMINATORS, all one-line logging changes: per refusal, the locateKink class and whether the
+     colliding vertex is vFeat (jump-class onto a feature vertex = floor; crease/smooth = artifact);
+     the fraction of refusals where a kink existed but t was inside the SNAP_ALPHA band; the
+     (edge length L, popped error E) scatter — error frozen while size collapses is h^0, error falling
+     while placement fails is topology. Control arm: WELD_UM / 10. If the 58 worst errors do not move,
+     it is a floor.
+4. **THE DRIVER ALREADY DETECTS h^0 AND THROWS IT AWAY.** `locateKink` returns a `jump` class; it is
+   counted as `nJump` and never used as a control signal. The missing piece was never detection, and
+   not even the ranking alone — it is that jump-class must be a STOP-AND-ROUTE rule: stop refining,
+   tag for the curtain stage, move on. R1's entire pathology is the driver treating h^0 facets as work.
+5. **PRE-REGISTERED, so a partial win is not booked as a refutation:** R1b is expected to beat the
+   plane arm on COVERAGE and BULK but may NOT close the MAX, because a witness at 0.03 mm pitch
+   under-samples thin ridges (V7c's 8 um ridge is the fixture that proves it). Without the covering
+   term that blindness returns as SAMPLING bias — acceptable in-loop precisely because the end-of-run
+   certificate catches it. PASS BAR FOR R1b: "beats the plane arm on H2 max AND coverage at comparable
+   cost". NOT "closes to 0.01".
+
+### THE ARCHITECTURE THIS ALL POINTS AT (build tomorrow, on whichever way R1b breaks)
+
+Since demand fits the cap, the sizing field is no longer a RATIONING device — it is a TERMINATION
+PREDICATE. That makes the design simpler than the quota scheme first proposed:
+* PHASE 0, arithmetic, before any refinement: R2's calculator gives per-cell target h, per-cell class,
+  predicted count vs cap, and the two-grid PERSISTENCE verdict. If demand exceeds the cap the answer
+  is never "loosen h" (0.01 everywhere, no concessions) — it is raise the cap or tile.
+* PHASE 1, the sweep: do NOT materialise and interpolate h — the field is not grid-converged at
+  feature scale. Use the LOCAL on-demand equivalent: a triangle needs work iff some edge has
+  edgeSag > tol, or locateKink finds an unconformed crossing. Tens of rA evals, not sagBounded's
+  ~6.6k. Smooth -> bisect to size. Crease -> DIRECTED+SNAP. **Jump -> stop, tag for curtain, move on.**
+  THE WORK LIST IS A PLAIN FIFO, NOT A HEAP: for an L-inf target ordering is worthless (every
+  violating triangle must be fixed; 400 um and 900 um are equally unshippable), and the predicate is
+  a THRESHOLD, not a rank — so the key question that has consumed this campaign simply evaporates.
+* PHASE 2: one batched honest certificate pass (GPU screen for 100% triage, CPU H1 on the argmax and
+  the V-fixtures). Failures feed back: tighten h locally using the measured 1.45-3.2x/halving slope
+  and re-sweep those neighbourhoods. Two or three outer iterations. **The soundness of the whole
+  architecture lives ONLY here** — the field and the predicate need only be roughly right.
+* SHAPE-AGNOSTIC still holds: "no style-keyed dispatch", not "one mechanism for all local behaviour".
+  Every routing decision derives from measured local surface properties — locateKink's two-scale ratio
+  pointwise, R2's persistence test regionally. BasketWeave's curtain is a STAGE keyed by a detected
+  feature, exactly like compileFeatureCurtain / the DS ring-strip emitter already are.

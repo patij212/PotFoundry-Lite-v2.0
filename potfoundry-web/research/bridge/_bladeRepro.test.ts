@@ -57,29 +57,13 @@ import {
 } from './_sweepPredicate';
 import { thetaJumpProbe } from './_sweepRA';
 import { SweepPool, resolveSweepWorkers, type SweepPoolStats } from './_sweepPool';
-// THE SHAPE TERM (2026-07-29 blade fix). Pure functions, no mesh state — see _shapeGuard.ts's header for
-// why `aspect3` is the census's own metric and why that identity is the point.
-import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shapeGuard';
-// THE ONE DEFINITION of the barycentric sag ruler (2026-07-29 audit-pool extraction). `sagOfN` and
-// `sagAdaptive` below are now one-line wrappers over these bodies, transcribed VERBATIM, so the driver's
-// serial audit and every audit WORKER THREAD run the same arithmetic instead of two copies that must be kept
-// in sync. Same discipline and the same reason as _sweepPredicate.ts's extraction of edgeSag / locateKink —
-// and it matters MORE here, because `sagAdaptive` is also the DEFAULT heap key (PF_CB_RANK=plane), so the
-// extraction is only admissible if the STL comes out byte-identical. That is the first acceptance test.
-import { sagOfNRaw, sagAdaptiveRaw, makeSagArgmax, type SagMesh } from './_sagKernel';
-// PARALLEL POST-LOOP AUDIT (PF_CB_AUDIT_WORKERS, default = physical cores; 1 = today's exact serial path).
-// READ-ONLY against the mesh and against rA, so it cannot move a vertex and the STL cannot change.
-import {
-  resolveAuditWorkers, mirrorAuditMesh, packAuditTris, runAuditPool, AUDIT_MAIN_STRIDE,
-  type AuditJob, type AuditOutcome,
-} from './_auditPool';
 // PHASE 2 (spec §5.2-5.4). The certificate tells the driver WHERE to look; this is the consumer side.
 import {
   PHASE2_RUN_SCHEMA, buildTightenField, phase2Key, readLociFile, verifyLociProvenance, writeJsonFile,
   type Phase2RunManifest, type TightenField,
 } from './_phase2Loci';
 
-const RUN = process.env.PF_STRATA_CB === '1';
+const RUN = process.env.PF_BLADE === '1';
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
 const H = 120;
 const TWO_PI = 2 * Math.PI;
@@ -104,8 +88,8 @@ function registryDefaults(id: string): Record<string, number> {
   return out;
 }
 
-describe('STRATA conforming-bisection', () => {
-  it.runIf(RUN)('meshes any style by feature-directed conforming bisection', async () => {
+describe('BLADE repro (instrumented clone of STRATA conforming-bisection)', () => {
+  it.runIf(RUN)('records the birth of every degenerate facet', async () => {
     const STYLE = process.env.PF_CB_STYLE ?? 'GothicArches';
     const TOL = envF('PF_CB_TOL', 0.01);
     const acceptTol = envF('PF_CB_ACCEPT', 0.007);
@@ -150,155 +134,6 @@ describe('STRATA conforming-bisection', () => {
     const NUDGE_LADDER = (process.env.PF_CB_NUDGE ?? '0.5,0.42,0.58,0.35,0.65,0.28,0.72,0.21,0.79,0.15,0.85')
       .split(',').map((x) => Number.parseFloat(x)).filter((x) => Number.isFinite(x) && x > 0 && x < 1);
     const DEBUG = envOn('PF_CB_DEBUG');
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // L5  THE SHAPE TERM — four levers, ALL DEFAULT ON, each individually reachable so the DEFECT stays
-    //     reproducible. Diagnosis: research/lab/2026-07-29-strata-perf-convergence-worklog.md, "DIAGNOSED".
-    //     Maths and metric justification: research/bridge/_shapeGuard.ts's header.
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // PF_CB_SHAPE=0 PF_CB_MID3D=0 PF_CB_LONGFALL=0 together restore the pre-2026-07-29 splitter EXACTLY —
-    // no extra rA evaluation, no extra branch taken — which is what makes the blade census a valid A/B.
-    // VERIFIED, NOT ASSERTED: with those three off, GothicArches ring 40x28 / 120 k / DIRECTED+SNAP /
-    // PF_CB_ACCEPT=0.0035 reproduces the pre-change baseline gothicarches_ring_DS-.stl BYTE-FOR-BYTE
-    // (md5 f574c61bdfc9df7cdec953138bd8837f), with every report line identical down to `heap: 58545 left`
-    // and `min edge 1.892 um`. The defect therefore stays exactly reproducible for comparison.
-    //
-    //  S1 SHAPE GUARD (PF_CB_SHAPE, default ON). Before a split is committed, compute `aspect3` of EVERY
-    //     child that would be produced, on BOTH sides of the edge (bisectAt splits every incident triangle,
-    //     while the old PF_CB_AR cap was evaluated only for the POPPED triangle — MEASURED: 68 % of blade
-    //     births, 1 142 of 1 688, damaged a NEIGHBOUR, and the neighbour columns carried all the large
-    //     amplification x42/x145/x91/x214). Refuse if any child exceeds PF_CB_SHAPE_AR.
-    //
-    //     THE DEFAULT, 50, IS THE CENSUS'S OWN BLADE DEFINITION, AND IT IS THE LOOSEST CAP THAT ZEROES THE
-    //     CENSUS. research/tools/_bladeCensus.mjs calls a facet a blade at AR > 50 and every number in the
-    //     diagnosis is quoted at that threshold, so the guard's contract is checkable in one line: after
-    //     this fix the census's blade count is 0.
-    //
-    //     THE MEASURED DISTRIBUTION it sits in. 40x28 / 120 k DIRECTED+SNAP control, 61 120 facets:
-    //         p50 4.03   p90 12.99   p99 92.94   p99.9 233.6   max 521.4      (AR > 50 = 2.52 %)
-    //     and on the 1.43 M-facet D51 run: p50 3.93  p90 18.99  p99 115.7  max 19 286  (AR > 50 = 3.36 %).
-    //     50 is ~4x above the 90th percentile, so ordinary DIRECTED anisotropy — an edge ALONG a rib is
-    //     long, the one ACROSS it is short, and that asymmetry is the lever's entire value — is nowhere
-    //     near it; and it is below the 99th, so it genuinely binds on the population the diagnosis named.
-    //
-    //     THE CAP SWEEP, one flag apart, same 40x28 / 120 k config, census at ITS OWN threshold of 50:
-    //       cap     census AR>50      folds   unresolved   plane-ruler MAX   min edge   wall
-    //       OFF     1 540 (2.520 %)   0       0            295.802 um        1.892 um   284 s
-    //       100       938 (1.535 %)   0       0            207.311 um        7.165 um   283 s
-    //       50          0 (0.000 %)   0       56           405.396 um       12.575 um   278 s
-    //       25          0 (0.000 %)   0       220          398.629 um       22.756 um   271 s
-    //     100 is NOT enough — it still leaves 938 blades by the instrument's own definition. 25 buys
-    //     nothing further on that instrument and quadruples the triangles the guard strands. 50 is the
-    //     knee, and it is the knee because it IS the definition. (The plane-ruler column is the driver's
-    //     own SELF-REPORT and the blade diagnosis proved it ~110x blind on exactly these facets — it is
-    //     printed for completeness and must NOT be read as a fidelity ranking; the control's 295.802 um is
-    //     measured on a mesh with 1 540 blades in it.)
-    //
-    //  S2 FOLD GUARD (PF_CB_SHAPE_FOLD, default ON, sub-lever of S1). Refuse a split that would flip a
-    //     child's (theta,z) orientation relative to its parent. Targets the 2.22 % INVERTED population
-    //     directly. Compared against the PARENT's sign, not against a fixed sign, so a mesh that already
-    //     carries inverted facets (any guard-OFF run) can still be refined rather than deadlocking.
-    //
-    //  S3 3-D MIDPOINT (PF_CB_MID3D, default ON). The edge is CHOSEN by 3-D length; place the point so it
-    //     is the midpoint in that same metric. SNAP's crossing placement is EXEMPT — it must land on the
-    //     locus. See _shapeGuard.ts `chordParam`.
-    //
-    //  S4 LONGEST-EDGE PREFERENCE (PF_CB_LONGFALL, default ON). DIRECTED's max-sag choice is valuable and
-    //     is NOT deleted: it is overridden only when the max-sag edge's split would violate S1 AT ITS BEST
-    //     PLACEMENT (the midpoint) and the longest edge's would not. That is exactly Rivara's pair of
-    //     hypotheses — longest edge, midpoint — recovered in the cases where they are needed and nowhere
-    //     else. Counted (`shape-longfall`), so "how often does the lever actually get overridden" is a
-    //     measured number rather than a hope.
-    const SHAPE = process.env.PF_CB_SHAPE !== '0';
-    const SHAPE_AR = envF('PF_CB_SHAPE_AR', 50);
-    const SHAPE_FOLD = process.env.PF_CB_SHAPE_FOLD !== '0';
-    const MID3D = process.env.PF_CB_MID3D !== '0';
-    const MID3D_ITERS = Math.round(envF('PF_CB_MID3D_ITERS', 24));
-    // Bound on how far the 3-D solve may move a placement away from the parametric target. The MEASURED
-    // bias is ~0.09 (0.41/0.59 against 0.5), so 0.25 never binds on the observed population; it exists so a
-    // pathological r(theta,z) cannot hand the guard a t=0.02 placement — i.e. so the FIX cannot become the
-    // defect. Clamps are COUNTED and printed; a run where this fires is a finding, not a tuning knob.
-    const MID3D_MAXSHIFT = envF('PF_CB_MID3D_MAXSHIFT', 0.25);
-    const LONGFALL = process.env.PF_CB_LONGFALL !== '0';
-    // ─────────────────── S5 CAP-TARGETED FLIP REPAIR — DEFAULT **OFF**, ON MEASUREMENT ───────────────────
-    // The brief asked whether enabling tryFlip repairs CAP facets. Two separate answers, both measured on
-    // the 40x28 / 120 k DIRECTED+SNAP control (1 540 facets over AR 50), three arms differing in ONE flag:
-    //
-    //  (a) PF_CB_FLIP=1 ALONE CANNOT REPAIR A CAP, and the reason is structural, not statistical. tryFlip is
-    //      reachable ONLY from the needle-collapse loop, which iterates `shortEdges` — edges below
-    //      PF_CB_NEEDLE_UM (0.2 um) — and only for the offenders blocking a collapse. A cap has all three
-    //      edges long by construction (measured p50 longest 400 um), so it never enters that list and
-    //      tryFlip is never called on it. MEASURED: the control reports `flips 0`, cap count unchanged.
-    //
-    //  (b) A cap-TARGETED entry point (this pass) does fire, and it is a PARTIAL mitigation that BUYS SHAPE
-    //      WITH FIDELITY. MEASURED, control vs control+PF_CB_SHAPE_FLIP=1, identical in every other flag:
-    //          facets over cap  1 540 -> 950   (38.3 % repaired; 1 463 tried, 640 performed)
-    //          WORST AR         521.4 -> 521.4 (it never reaches the facet that matters)
-    //          plane-ruler MAX  295.802 -> 382.775 um  (+29 %, attributable to those 640 flips alone)
-    //      156 further flips were correctly refused for lying ON a locus.
-    //
-    // So it is left implemented, flag-gated and OFF. Turning it on would be exactly the "enable it hopefully"
-    // the brief warns against: it fixes a third of the symptom, never the worst case, at a measured fidelity
-    // cost — and with the S1 guard on there is nothing left for it to repair anyway (0 candidates, 0 flips).
-    // PREVENTING THE BIRTH IS THE FIX; THIS IS A DRESSING.
-    const SHAPE_FLIP = envOn('PF_CB_SHAPE_FLIP');
-    // ══════════════ S6  THE POST-LOOP SHAPE INVARIANT (PF_CB_POST_SHAPE, DEFAULT ON) — 2026-07-29 ══════════════
-    // S1-S4 guard `bisectAt`, and `bisectAt` ONLY. That is the whole of the guard: it is a property of SPLITS.
-    // The passes that run AFTER the refinement loop are not covered, and two of them rewrite facets:
-    //
-    //   1. THE LINK-CONDITION-SAFE NEEDLE COLLAPSE (below, DEFAULT ON). Moving vertex v onto u rewrites every
-    //      surviving triangle in v's star. It is guarded for TOPOLOGY (the link condition) and for NOTHING
-    //      ELSE — no `aspect3` test, no `signedAreaParam` test — so it can raise a neighbour's aspect ratio
-    //      above the cap, or invert it in (theta,z), and no instrument in this file would notice.
-    //   2. `tryFlip`, called from the collapse loop WITHOUT its `gate` argument (PF_CB_FLIP=1, default OFF).
-    //      It sign-checks both new triangles, so it CANNOT manufacture a fold — but nothing there bounds
-    //      ASPECT, so it can manufacture a blade.
-    //   (The S5 cap repair is NOT a gap: it already passes `tryFlip` an improvement gate.)
-    //
-    // CONSEQUENCE, and it is a MEASUREMENT defect before it is a mesh defect: a mesh whose refinement was
-    // perfectly guarded can still fail the blade gate, and the failure would be attributed to the split guard,
-    // which cannot have caused it. This lever closes that gap.
-    //
-    // THE INVARIANT. For the facets an operation TOUCHES — the live triangles it REWRITES, each compared
-    // against itself after the rewrite — the operation is admitted iff BOTH hold:
-    //        max aspect3 AFTER          <=  max aspect3 BEFORE      (never make the worst one worse)
-    //        count(aspect3 > cap) AFTER <=  count BEFORE            (never add an over-cap facet)
-    // Facets the operation DELETES appear on NEITHER side: deleting a facet can only help, and counting a
-    // deleted blade on the `before` side would license the operation to raise a survivor to that blade's AR.
-    // The second clause is not implied by the first — an operation can lower the worst AR of a pair while
-    // pushing a clean facet over the cap, (60,3) -> (55,55) — and the second clause is what the blade GATE
-    // actually counts, so both are enforced. When the touched set is clean (worst BEFORE <= cap) the first
-    // clause alone already forbids any over-cap result, which is exactly "may not push a facet above the cap".
-    //
-    // THE CAP AND THE METRIC ARE THE SPLIT GUARD'S, VERBATIM: PF_CB_SHAPE_AR and `_shapeGuard.aspect3`, the
-    // same expression research/tools/_bladeCensus.mjs computes. That identity is precisely what lets the blade
-    // gate attribute a counted facet to a code path; a post-loop guard scored on any other quantity would
-    // refuse the wrong facets and still leave the census reading blades.
-    //
-    // FOLD TOO, AND ONLY WHERE IT IS MISSING. The collapse also gets an S2-style (theta,z) sign test (sub-lever
-    // PF_CB_SHAPE_FOLD, as for splits); `tryFlip` already has one and is not given a second.
-    //
-    // IT IS A SUB-LEVER OF S1. With PF_CB_SHAPE=0 this is INERT, so the guard-OFF control
-    // (PF_CB_SHAPE=0 PF_CB_MID3D=0 PF_CB_LONGFALL=0) stays byte-unchanged and the blade defect stays exactly
-    // reproducible. PF_CB_POST_SHAPE=0 turns it off on its own, with the split guard still on, which is the
-    // A/B that prices it. NOTE both arms of that A/B carry the same 'H' tag suffix — use PF_CB_TAG_SUFFIX or
-    // the second run silently overwrites the first.
-    const POST_SHAPE = SHAPE && process.env.PF_CB_POST_SHAPE !== '0';
-    // ══════════════ PARALLEL POST-LOOP AUDIT (PF_CB_AUDIT_WORKERS) — see _auditPool.ts ══════════════
-    // MEASURED: a 2.5 M-cap run spent ~1229 s in total, and at 200x140 / 5 M cap the post-loop audit dominates
-    // once refinement has finished. Every facet's score is a pure function of its three vertex coordinates and
-    // of rA, READ-ONLY against the mesh, so the MEASUREMENT is evaluated in a worker pool while every
-    // REDUCTION stays on this thread in the original order. 1 = today's exact serial path and no worker is
-    // spawned; default = physical cores. THE ACCEPTANCE TEST is that 1 and N produce an IDENTICAL report,
-    // including the rA eval total — a measurement that depends on thread scheduling is not a measurement.
-    const AUDIT_WORKERS = resolveAuditWorkers();
-    const AUDIT_CHUNK = Math.round(envF('PF_CB_AUDIT_CHUNK', 1024));
-    const AUDIT_HEAP_MB = Math.round(envF('PF_CB_AUDIT_HEAP_MB', 1024));
-    // PF_CB_AUDIT_VERIFY=1 — re-score EVERY pooled facet on the main thread with the driver's own
-    // `sagAdaptive` / `sagOfN` and Object.is-compare. ~2x cost. The per-facet companion to the rA lattice
-    // check the pool runs before it will start, and the same gate PF_CB_SWEEP_VERIFY is for the predicate.
-    // Its extra evaluations are counted separately and EXCLUDED from the reported total, so a VERIFY run
-    // still prints the same cost line as a plain one.
-    const AUDIT_VERIFY = envOn('PF_CB_AUDIT_VERIFY');
     // ───────────────────── DRIVER SELECT — PF_CB_DRIVER (added 2026-07-29, spec §7.1) ─────────────────────
     // 'heap'  DEFAULT. Today's driver, unchanged and byte-reproducible: a binary max-heap keyed by PF_CB_RANK,
     //         popped worst-first. It is the CONTROL for every comparison, so nothing below may perturb it.
@@ -531,23 +366,44 @@ describe('STRATA conforming-bisection', () => {
       edgeSagRaw(R, vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vth[a], dTh(a, b), PRED);
 
     // ───────────────────────────── TRIANGLE SAG ORACLE ─────────────────────────────
-    // THE BODY MOVED TO _sagKernel.ts, VERBATIM — same expressions, same operand order, same forensics, and
-    // `canon`/`dTh` still resolve to _sweepPredicate's `canonTheta`/`dThRaw` — so this driver and the audit
-    // WORKER THREADS run the SAME ruler rather than two copies that must be kept in sync. `SAGM` holds
-    // REFERENCES to the live arrays, which grow in place, so it is built once and never rebuilt.
-    const SAGM: SagMesh = { ta, tb, tc, vth, vz, vx, vy };
-    // The ten `argWa..argDC` closure variables, moved into ONE record the kernel writes into. Read at exactly
-    // one place: the RULER FORENSICS block in the report.
-    const ARG = makeSagArgmax();
-    const sagOfN = (t: number, n: number): number => sagOfNRaw(R, SAGM, t, n, ARG);
+    let argWa = 0; let argWb = 0; let argWc = 0; let argTheta = 0; let argZ = 0; let argR = 0; let argNl = 0; let argDd = 0; let argDB = 0; let argDC = 0;
+    const sagOfN = (t: number, n: number): number => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      const ax = vx[a]; const ay = vy[a]; const az = vz[a];
+      let nx = (vy[b] - ay) * (vz[c] - az) - (vz[b] - az) * (vy[c] - ay);
+      let ny = (vz[b] - az) * (vx[c] - ax) - (vx[b] - ax) * (vz[c] - az);
+      let nz = (vx[b] - ax) * (vy[c] - ay) - (vy[b] - ay) * (vx[c] - ax);
+      const nl = Math.hypot(nx, ny, nz);
+      if (nl < 1e-18) return 0;
+      nx /= nl; ny /= nl; nz /= nl;
+      const th0 = vth[a]; const dB = dTh(a, b); const dC = dTh(a, c);
+      let s = 0;
+      for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
+        const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
+        const theta = th0 + wb * dB + wc * dC;
+        const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
+        const r = R(canon(theta), z);
+        const dd = Math.abs((r * Math.cos(theta) - ax) * nx + (r * Math.sin(theta) - ay) * ny + (z - az) * nz);
+        if (dd > s) {
+          s = dd;
+          // RULER FORENSICS: record the argmax sample so a suspicious reading can be attributed to
+          // interpolation/wrap (theta,z outside the footprint), the evaluator (r off the local surface), or a
+          // degenerate plane normal (nl). Written only on improvement, so the cost is negligible.
+          argWa = wa; argWb = wb; argWc = wc; argTheta = theta; argZ = z; argR = r; argNl = nl; argDd = dd;
+          argDB = dB; argDC = dC;
+        }
+      }
+      return s;
+    };
     // RESOLUTION-BOUNDED oracle. MEASURED TRAP: a FIXED barycentric sample count under-reports by up to 11× on a
     // coarse triangle straddling a thin sharp feature (GothicArches rib: 110 µm @ n=8, 790 µm @ n=12, 1257 µm @ n=44
     // — same triangle). That corrupts the priority queue (worst triangles look mild ⇒ never popped) AND the verdict.
     // Sampling must be bounded in ABSOLUTE mm, not in triangle fractions.
-    // BODY MOVED TO _sagKernel.ts alongside `sagOfN`, VERBATIM — including the argument ORDER inside
-    // Math.max, which is what fixes the winning double on a tie and therefore the lattice level `n`.
-    const sagAdaptive = (t: number, hSample: number, nMin: number, nMax: number): number =>
-      sagAdaptiveRaw(R, SAGM, t, hSample, nMin, nMax, ARG);
+    const sagAdaptive = (t: number, hSample: number, nMin: number, nMax: number): number => {
+      const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
+      const n = Math.max(nMin, Math.min(nMax, Math.ceil(le / hSample)));
+      return sagOfN(t, n);
+    };
     // (REF_HS / REF_NMIN / REF_NMAX — the pitch this and `edgeSag` both sample at — are declared above.)
 
     // ───────────────── L4  BOUNDED ACCEPT (PF_CB_BOUNDED=0 to disable, DEFAULT ON) ─────────────────
@@ -992,146 +848,97 @@ describe('STRATA conforming-bisection', () => {
       }
     }
 
-    // ───────── S6  INITIAL-GRID SHAPE CENSUS. MEASUREMENT ONLY — nothing is refused here. ─────────
-    // The grid is emitted BEFORE any guard exists and it cannot be refused: it IS the mesh. So it is COUNTED,
-    // in the census's own metric, and printed — because a facet BORN over the cap is a blade-gate failure the
-    // split guard can never have caused and can never fix, and it must not be attributed to the guard.
-    //
-    // AND IT IS WORSE THAN "cannot fix": an over-cap grid facet is FROZEN. S1 refuses any split whose children
-    // exceed the cap, and a blade's children are blades, so the facet is never subdivided and survives into
-    // the STL. (The one-line change that would let it out — admit a split that strictly IMPROVES the worst
-    // child AR even while still over the cap — is deliberately NOT made here. It changes the SPLIT guard, it
-    // needs its own A/B, and this pass is about the post-loop gap.)
-    //
-    // COMPUTED, NOT GUESSED, for the two standard configurations at H=120 Rb=40 Rt=50 on a style with NO
-    // detected z-step (GothicArches): one band, rows = gv, and each cell is a right triangle whose legs are
-    // the horizontal chord and the vertical chord. aspect3 of a right triangle with legs a,b and hypotenuse c
-    // is c(a+b+c)/(2ab):
-    //   200x140:  a 1.5708  b 0.8601 mm at r=50  =>  2.798        (a 1.2566  b 0.8601 at r=40  =>  2.564)
-    //   60x40:    a 5.2336  b 3.0104 mm at r=50  =>  2.737        (a 4.1869  b 3.0104 at r=40  =>  2.527)
-    // i.e. ~18x BELOW the cap of 50 — and that is the smooth profile, before any relief. With a radial
-    // excursion D between ADJACENT grid vertices there is a rigorous bound: the horizontal edge has NO
-    // z-component, so the perpendicular component of the vertical edge is at least dz and the area is at least
-    // e1*dz/2; and the longest edge is at most e1+e2, the perimeter at most 2(e1+e2). Hence
-    //        aspect3  <=  (e1 + e2)^2 / (e1 * dz),   e1 = hypot(chord, D),  e2 = hypot(D, dz).
-    // That bound stays under 50 up to D ~ 10 mm at 200x140 and D ~ 40 mm at 60x40 — both far outside anything
-    // reachable at these dims, where the pot radius itself is only 40-50 mm.
-    // ⇒ FOR BOTH STANDARD CONFIGURATIONS THE INITIAL GRID CANNOT EXCEED THE CAP.
-    //
-    // IT CAN IN GENERAL, AND HERE IS EXACTLY WHEN. A THIN C0 BAND gets rows = max(1, round(gv*bandH/H)) = 1,
-    // so its vertical pitch is the whole band while the horizontal chord is unchanged, and aspect3 -> chord/dz.
-    // Over the cap once dz < chord/50, i.e. once bandH < chord/50 + 2*PF_CB_STEP_EPS_UM: about 39 um at
-    // gu=200, about 113 um at gu=60. GothicArches has NO detected z-step, so this cannot fire on the
-    // pre-registered runs — but a LAYERED style with two detected steps within ~40 um WILL be born over the
-    // cap, and this census is how that becomes visible instead of being blamed on the guard.
-    let gridOverCap = 0; let gridWorstAR = 0;
-    for (let t = 0; t < ta.length; t += 1) {
-      const ar = aspect3(
-        vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]],
-      );
-      if (ar > SHAPE_AR) gridOverCap += 1;
-      if (ar > gridWorstAR) gridWorstAR = ar;
-    }
-
     // ───────────────────────────── BISECTION ─────────────────────────────
     const created: number[] = [];
     let nSnap = 0; let nReproj = 0; let nJump = 0; let weldedSplits = 0;
 
-    // ══════════════════════ L5 SHAPE TERM — the guard, the solver, and their counters ══════════════════════
-    let nShapeChecks = 0; let nShapeChildren = 0;
-    let nShapeRefusedAR = 0; let nShapeRefusedFold = 0;
-    let shapeWorstAdmitted = 0;      // the largest child AR this run ever COMMITTED to (bounded by SHAPE_AR)
-    let nMid3dSolves = 0; let nMid3dClamped = 0; let mid3dShiftSum = 0; let mid3dShiftMax = 0;
-    let nLongFallTested = 0; let nLongFallFired = 0;
-    /** Why the LAST bisectAt refused. Read (never written) by tryBisect, exactly as `addVNew` is. */
-    let lastBisectShape: 'none' | 'ar' | 'fold' = 'none';
-
-    /**
-     * The point `addV` WOULD create at parametric s on edge (a,b), computed WITHOUT inserting it.
-     * Arithmetic copied from `addV` operand-for-operand — canon first, rA at the canonical theta, cos/sin of
-     * that same canonical theta — so the guard scores the exact vertex the split will produce, not a
-     * near-copy of it. (The one case where they differ is a WELD: `addV` may return an existing vertex
-     * within WELD_MM instead. PF_CB_NOWELD, on by default, refuses that split anyway, and with NOWELD off
-     * the two points are within 50 nm, four orders below the shortest edge the driver keeps.)
-     */
-    const liftAt = (a: number, b: number, s: number): LiftedPoint => {
-      const [th, z] = edgeParam(a, b, s);
-      const theta = canon(th);
-      const r = R(theta, z);
-      return { x: r * Math.cos(theta), y: r * Math.sin(theta), z, th: theta };
+    // ═════════════ BLADE WATCH — diagnostic instrumentation, NOT part of the production driver ═════════════
+    // A "blade" is a facet that is degenerate IN THE (theta,z) PARAMETER DOMAIN — the domain this driver
+    // actually triangulates. Measuring degeneracy there, with theta converted to arc length at the local
+    // radius, removes the SURFACE's own curvature from the number: a large, well-shaped facet that merely
+    // spans a cliff does NOT count, and a genuine zero-area sliver does. (Confirmed against the shipped STL:
+    // 100 % of the folded/blade facets there have parametric AR > 128 and ZERO have parAR <= 8.)
+    const parARof = (a: number, b: number, c: number): number => {
+      const rM = (Math.hypot(vx[a], vy[a]) + Math.hypot(vx[b], vy[b]) + Math.hypot(vx[c], vy[c])) / 3;
+      const ux = dTh(a, b) * rM; const uy = vz[b] - vz[a];
+      const wx = dTh(a, c) * rM; const wy = vz[c] - vz[a];
+      const s = Math.abs(ux * wy - uy * wx);
+      const e0 = Math.hypot(ux, uy); const e1 = Math.hypot(wx - ux, wy - uy); const e2 = Math.hypot(wx, wy);
+      const per = e0 + e1 + e2; const L = Math.max(e0, e1, e2);
+      return s > 0 ? (L * per) / (2 * s) : Infinity;
     };
-    /**
-     * S3. The parameter whose LIFTED point sits at 3-D chord fraction `frac` along the edge. Returns `frac`
-     * itself when MID3D is off, so the legacy path takes zero extra rA evaluations and stays byte-identical.
-     */
-    const placeAt = (a: number, b: number, frac: number): number => {
-      if (!MID3D) return frac;
-      nMid3dSolves += 1;
-      const s = chordParam((u) => liftAt(a, b, u), vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], frac, MID3D_ITERS);
-      const shift = Math.abs(s - frac);
-      mid3dShiftSum += shift; if (shift > mid3dShiftMax) mid3dShiftMax = shift;
-      if (shift <= MID3D_MAXSHIFT) return s;
-      nMid3dClamped += 1;
-      return s > frac ? frac + MID3D_MAXSHIFT : frac - MID3D_MAXSHIFT;
+    /** 3-D aspect ratio (longest edge / 2*inradius) — the quantity the RENDER shows. */
+    const ar3Dof = (a: number, b: number, c: number): number => {
+      const e0 = eLen(a, b); const e1 = eLen(b, c); const e2 = eLen(c, a);
+      const ux = vx[b] - vx[a]; const uy = vy[b] - vy[a]; const uz = vz[b] - vz[a];
+      const wx = vx[c] - vx[a]; const wy = vy[c] - vy[a]; const wz = vz[c] - vz[a];
+      const area = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+      const L = Math.max(e0, e1, e2);
+      return area > 0 ? (L * (e0 + e1 + e2)) / (4 * area) : Infinity;
     };
-    /** the two endpoints of edge (a,b) IN triangle t's traversal order — bisectAt's own `oa/ob` rule. */
-    const orientedEnds = (t: number, a: number, b: number): [number, number] => {
-      const seq = [ta[t], tb[t], tc[t]];
-      for (let i = 0; i < 3; i += 1) {
-        if (seq[i] === a && seq[(i + 1) % 3] === b) return [a, b];
-        if (seq[i] === b && seq[(i + 1) % 3] === a) return [b, a];
-      }
-      return [a, b];
+    const BLADE_AR = envF('PF_BLADE_AR', 128);
+    let bladeSrc = 'init';   // which refiner asked for the split
+    let bladePlace = 'init'; // where splitEdge put the point
+    // WHICH TRIANGLE IS BEING DAMAGED. `refineDirected` applies its aspect guard (PF_CB_AR) to the POPPED
+    // triangle only, but `bisectAt` splits EVERY triangle incident to the chosen edge — and for the
+    // neighbour that edge may be its shortest. If most blades are born in NEIGHBOURS the guard is in the
+    // wrong place; if they are born in the OWNER the guard itself is too loose.
+    let bladeOwner = -1;
+    const bladeBirths = new Map<string, number>();
+    const bladeEdgeRank = new Map<string, number>(); // was the split edge the parent's longest / mid / shortest?
+    const bladeSamples: string[] = [];
+    // AMPLIFICATION LEDGER — the quantity that decides whether blades are a cascade or a one-off.
+    // For a bisection of edge (a,b) at parameter t inside a triangle of parametric height h over ab, the two
+    // children have bases t|ab| and (1-t)|ab| at the SAME height h, so
+    //     childAR / parentAR  ~  1/min(t, 1-t)                                                        (A1)
+    // i.e. every split at an extreme t multiplies aspect ratio. Longest-edge (LEPP) bisection bounds this by
+    // always halving the longest edge; DIRECTED bisection does not. Recorded per (which edge of the parent,
+    // which placement rule) so the two levers can be separated.
+    interface Amp { n: number; sumLog: number; max: number; maxT: number }
+    const ampBy = new Map<string, Amp>();
+    const noteAmp = (key: string, ratio: number, tPar: number): void => {
+      if (!Number.isFinite(ratio) || ratio <= 0) return;
+      let a = ampBy.get(key);
+      if (a === undefined) { a = { n: 0, sumLog: 0, max: 0, maxT: 0 }; ampBy.set(key, a); }
+      a.n += 1; a.sumLog += Math.log(Math.max(1e-6, ratio));
+      if (ratio > a.max) { a.max = ratio; a.maxT = tPar; }
     };
-    /**
-     * S1 + S2. Would splitting edge (a,b) at the (already lifted) point `p` produce a child worse than
-     * SHAPE_AR, or one whose (theta,z) orientation is flipped relative to its parent?
-     *
-     * CHECKED FOR EVERY LIVE INCIDENT TRIANGLE AND BOTH OF ITS CHILDREN. That is the entire correction to
-     * PF_CB_AR, which gated only the POPPED triangle's edge SELECTION and never an emitted facet, on either
-     * side. No mesh state is touched, so a refusal costs nothing to undo.
-     */
-    const shapeAdmits = (a: number, b: number, p: LiftedPoint): boolean => {
-      if (!SHAPE) return true;
-      const list = edgeMap.get(eKey(a, b));
-      if (list === undefined) return true;
-      nShapeChecks += 1;
-      let worst = 0;
-      for (const t of list) {
-        if (!alive[t]) continue;
-        const apex = ta[t] !== a && ta[t] !== b ? ta[t] : tb[t] !== a && tb[t] !== b ? tb[t] : tc[t];
-        const [oa, ob] = orientedEnds(t, a, b);
-        nShapeChildren += 2;
-        const ar1 = aspect3(vx[oa], vy[oa], vz[oa], p.x, p.y, p.z, vx[apex], vy[apex], vz[apex]);
-        const ar2 = aspect3(p.x, p.y, p.z, vx[ob], vy[ob], vz[ob], vx[apex], vy[apex], vz[apex]);
-        if (ar1 > SHAPE_AR || ar2 > SHAPE_AR) { nShapeRefusedAR += 1; lastBisectShape = 'ar'; return false; }
-        if (ar1 > worst) worst = ar1;
-        if (ar2 > worst) worst = ar2;
-        if (!SHAPE_FOLD) continue;
-        // Anchored at the APEX for parent and both children alike, so the three signs are the same object
-        // measured three times rather than three differently-anchored objects compared.
-        const sPar = signedAreaParam(vth[apex], vz[apex], vth[oa], vz[oa], vth[ob], vz[ob]);
-        const s1 = signedAreaParam(vth[apex], vz[apex], vth[oa], vz[oa], p.th, p.z);
-        const s2 = signedAreaParam(vth[apex], vz[apex], p.th, p.z, vth[ob], vz[ob]);
-        if (Math.sign(s1) !== Math.sign(sPar) || Math.sign(s2) !== Math.sign(sPar)) {
-          nShapeRefusedFold += 1; lastBisectShape = 'fold'; return false;
+    const noteChild = (child: number, parentAR: number, extra: string, rank: string): void => {
+      if (child < 0) return;
+      const ar = parARof(ta[child], tb[child], tc[child]);
+      if (!(ar > BLADE_AR)) return;
+      const born = !(parentAR > BLADE_AR);
+      const k = `${bladeSrc}/${bladePlace}${born ? '  *BORN*' : '  (inherited)'}`;
+      bladeBirths.set(k, (bladeBirths.get(k) ?? 0) + 1);
+      if (born) {
+        bladeEdgeRank.set(rank, (bladeEdgeRank.get(rank) ?? 0) + 1);
+        if (bladeSamples.length < 40) {
+          const a = ta[child]; const b = tb[child]; const c = tc[child];
+          bladeSamples.push(`${k}  parAR ${parentAR.toFixed(1)} -> ${ar.toFixed(0)}  splitEdgeWas=${rank}  ${extra}  feat=${vFeat[a] ? 1 : 0}${vFeat[b] ? 1 : 0}${vFeat[c] ? 1 : 0}  th=[${vth[a].toFixed(7)},${vth[b].toFixed(7)},${vth[c].toFixed(7)}] z=[${vz[a].toFixed(5)},${vz[b].toFixed(5)},${vz[c].toFixed(5)}]`);
         }
       }
-      if (worst > shapeWorstAdmitted) shapeWorstAdmitted = worst;
-      return true;
     };
-    /** S4's question: could edge (a,b) be split SAFELY AT ALL — i.e. at its best (mid-chord) placement? */
-    const shapeAdmitsBest = (a: number, b: number): boolean => {
-      if (!SHAPE) return true;
-      return shapeAdmits(a, b, liftAt(a, b, placeAt(a, b, 0.5)));
+    /** mesh-wide blade census — run at each pipeline checkpoint so births can be attributed to a stage. */
+    const bladeCensus = (label: string): void => {
+      let live = 0; let blades = 0; let needles = 0; let caps = 0; let worst = 0; let ar3hi = 0;
+      for (let t = 0; t < ta.length; t += 1) {
+        if (!alive[t]) continue;
+        live += 1;
+        const a = ta[t]; const b = tb[t]; const c = tc[t];
+        if (ar3Dof(a, b, c) > 50) ar3hi += 1;
+        const ar = parARof(a, b, c);
+        if (!(ar > BLADE_AR)) continue;
+        blades += 1;
+        if (ar > worst && Number.isFinite(ar)) worst = ar;
+        const l0 = eLen(a, b); const l1 = eLen(b, c); const l2 = eLen(c, a);
+        const L = Math.max(l0, l1, l2); const S = Math.min(l0, l1, l2);
+        if (S < 0.02 * L) needles += 1; else caps += 1;
+      }
+      console.log(`[BLADE ${label}] live ${live}  parAR>${BLADE_AR}: ${blades} (${(100 * blades / Math.max(1, live)).toFixed(3)}%)  3D-AR>50: ${ar3hi} (${(100 * ar3hi / Math.max(1, live)).toFixed(3)}%)  needle ${needles}  cap ${caps}  worst parAR ${worst.toFixed(0)}`);
     };
 
     /** split edge (a,b) at parameter t (0..1) — splits EVERY incident triangle ⇒ watertight, no T-junctions. */
     const bisectAt = (a: number, b: number, tPar: number, feat: boolean): boolean => {
-      lastBisectShape = 'none';
-      // S1/S2 GATE — BEFORE addV, so a refusal leaves no orphan vertex in the weld grid and cannot perturb
-      // any later weld. This is the whole fix: `bisectAt` is the ONE choke point every split goes through.
-      if (SHAPE && !shapeAdmits(a, b, liftAt(a, b, tPar))) return false;
       const [mth, mz] = edgeParam(a, b, tPar);
       const m = addV(mth, mz, feat);
       if (m === a || m === b) return false; // weld collapsed the split — nothing to do
@@ -1157,9 +964,38 @@ describe('STRATA conforming-bisection', () => {
           if (seq[i] === a && seq[(i + 1) % 3] === b) { oa = a; ob = b; break; }
           if (seq[i] === b && seq[(i + 1) % 3] === a) { oa = b; ob = a; break; }
         }
+        // BLADE WATCH: measure the parent BEFORE it dies, and rank the edge we are about to split against
+        // the parent's own three edges. `bisectAt` splits EVERY incident triangle at the same point, so for
+        // one of them (a,b) may well be its SHORTEST edge — the classic aspect-destroying case that LEPP's
+        // longest-edge rule exists to prevent and that DIRECTED refinement abandons.
+        const pAR = parARof(ta[t], tb[t], tc[t]);
+        const p3D = ar3Dof(ta[t], tb[t], tc[t]);
+        const pl = [eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t])].sort((x, y) => y - x);
+        const lab = eLen(a, b);
+        const rank = `${lab >= pl[0] - 1e-12 ? 'longest' : lab <= pl[2] + 1e-12 ? 'SHORTEST' : 'middle'}@${t === bladeOwner ? 'OWNER' : 'neighbour'}`;
         killT(t);
-        created.push(addT(oa, m, apex));
-        created.push(addT(m, ob, apex));
+        const c1 = addT(oa, m, apex); const c2 = addT(m, ob, apex);
+        created.push(c1);
+        created.push(c2);
+        const ex = `t=${tPar.toFixed(4)} |ab|=${(lab * 1000).toFixed(2)}um parentEdges=${pl.map((q) => (q * 1000).toFixed(1)).join('/')}um`;
+        noteChild(c1, pAR, ex, rank);
+        noteChild(c2, pAR, ex, rank);
+        if (Number.isFinite(pAR) && pAR > 0) {
+          const worstChild = Math.max(c1 >= 0 ? parARof(ta[c1], tb[c1], tc[c1]) : 0, c2 >= 0 ? parARof(ta[c2], tb[c2], tc[c2]) : 0);
+          noteAmp(`${bladeSrc}/${bladePlace.replace(/#\d+/, '#n')} [${rank}]`, worstChild / pAR, tPar);
+          noteAmp('ALL', worstChild / pAR, tPar);
+        }
+        // …and the SAME ratio in the 3-D metric the render shows. The split point is chosen and placed in
+        // (theta,z) but the edge is SELECTED by 3-D length (`eLen`), so on a high-relief surface the
+        // "midpoint" of an edge is NOT its 3-D midpoint — a mismatch that shows up only in this column.
+        if (Number.isFinite(p3D) && p3D > 0) {
+          const worst3 = Math.max(c1 >= 0 ? ar3Dof(ta[c1], tb[c1], tc[c1]) : 0, c2 >= 0 ? ar3Dof(ta[c2], tb[c2], tc[c2]) : 0);
+          noteAmp(`3D ${bladeSrc}/${bladePlace.replace(/#\d+/, '#n')} [${rank}]`, worst3 / p3D, tPar);
+          noteAmp('3D ALL', worst3 / p3D, tPar);
+          // where does the parametric split point land in 3-D arc length along the edge?
+          const t3 = eLen(a, m) / Math.max(1e-12, eLen(a, m) + eLen(m, b));
+          noteAmp(`t3D-vs-t  ${bladePlace.replace(/#\d+/, '#n')}`, Math.min(t3, 1 - t3) / Math.max(1e-9, Math.min(tPar, 1 - tPar)), tPar);
+        }
         made = true;
       }
       return made;
@@ -1171,9 +1007,13 @@ describe('STRATA conforming-bisection', () => {
         if (k !== null && k.t > SNAP_ALPHA && k.t < 1 - SNAP_ALPHA) {
           if (k.jump) nJump += 1;
           nSnap += 1;
+          // BLADE WATCH: a SNAP split is also the ONLY path that can put the new vertex on a locus that BOTH
+          // endpoints already sit on — record whether the edge being snapped already ran ALONG a locus.
+          bladePlace = `SNAP${vFeat[a] && vFeat[b] ? '-alongLocus' : ''}${k.jump ? '-jump' : ''}`;
           if (bisectAt(a, b, k.t, true)) return true;
         }
       }
+      bladePlace = 'REPROJ';
       if (REPROJ && vFeat[a] && vFeat[b]) {
         // edge runs ALONG a locus: re-solve the midpoint transversally so conforming survives refinement
         const [mth, mz] = edgeParam(a, b, 0.5);
@@ -1191,50 +1031,34 @@ describe('STRATA conforming-bisection', () => {
           if (k !== null && !k.jump && Math.abs(2 * k.t - 1) < 0.5) {
             const off = 2 * k.t - 1; // −1..1 across the transverse probe
             nReproj += 1;
-            // S1/S2 SHAPE GATE — MIRRORED FROM `bisectAt` (2026-07-30). The weld and apex guards below were
-            // mirrored into this hand-copy when they were found missing; the SHAPE gate was NOT, which left
-            // this the one facet-creation site that bypassed shapeAdmits entirely (FOLD-ANOMALY §3(c): inert
-            // at defaults, a live hole the moment PF_CB_REPROJECT=1). Scored BEFORE addV — on the exact
-            // vertex addV would produce: canon first, R at the canonical theta, cos/sin of that same theta,
-            // liftAt's own arithmetic — so a refusal leaves no orphan vertex in the weld grid. With SHAPE
-            // off the block is skipped whole: zero extra rA evaluations on the legacy path.
-            let reprojAdmit = true;
-            if (SHAPE) {
-              const thNew = canon(mth + off * dth);
-              const zNew = mz + off * dz;
-              const rNew = R(thNew, zNew);
-              reprojAdmit = shapeAdmits(a, b, { x: rNew * Math.cos(thNew), y: rNew * Math.sin(thNew), z: zNew, th: thNew });
-            }
-            if (reprojAdmit) {
-              const m = addV(mth + off * dth, mz + off * dz, true);
-              const list = (edgeMap.get(eKey(a, b)) ?? []).slice();
-              // GUARDS MIRRORED FROM `bisectAt` — this splitter is a hand-copy of it that had NEITHER, so the
-              // REPROJECT lever manufactured exactly the two failures those guards exist to stop: a split point
-              // that WELDS onto a pre-existing vertex does not subdivide the edge, it stitches the edge to an
-              // unrelated vertex (the >2-incidence topological pinch), and a point landing on an incident
-              // triangle's APEX makes both replacement triangles degenerate, so the split DELETES geometry and
-              // refinement churns without growing. Refuse both; the caller falls through to the nudge ladder.
-              if (!addVNew) weldedSplits += 1;
-              let apexHit = false;
-              for (const t of list) { if (alive[t] && (ta[t] === m || tb[t] === m || tc[t] === m)) { apexHit = true; break; } }
-              if (m !== a && m !== b && (addVNew || !NOWELD) && !apexHit) {
-                let made = false;
-                for (const t of list) {
-                  if (!alive[t]) continue;
-                  const apex = ta[t] !== a && ta[t] !== b ? ta[t] : tb[t] !== a && tb[t] !== b ? tb[t] : tc[t];
-                  const seq = [ta[t], tb[t], tc[t]];
-                  let oa = a; let ob = b;
-                  for (let i = 0; i < 3; i += 1) {
-                    if (seq[i] === a && seq[(i + 1) % 3] === b) { oa = a; ob = b; break; }
-                    if (seq[i] === b && seq[(i + 1) % 3] === a) { oa = b; ob = a; break; }
-                  }
-                  killT(t);
-                  created.push(addT(oa, m, apex));
-                  created.push(addT(m, ob, apex));
-                  made = true;
+            const m = addV(mth + off * dth, mz + off * dz, true);
+            const list = (edgeMap.get(eKey(a, b)) ?? []).slice();
+            // GUARDS MIRRORED FROM `bisectAt` — this splitter is a hand-copy of it that had NEITHER, so the
+            // REPROJECT lever manufactured exactly the two failures those guards exist to stop: a split point
+            // that WELDS onto a pre-existing vertex does not subdivide the edge, it stitches the edge to an
+            // unrelated vertex (the >2-incidence topological pinch), and a point landing on an incident
+            // triangle's APEX makes both replacement triangles degenerate, so the split DELETES geometry and
+            // refinement churns without growing. Refuse both; the caller falls through to the nudge ladder.
+            if (!addVNew) weldedSplits += 1;
+            let apexHit = false;
+            for (const t of list) { if (alive[t] && (ta[t] === m || tb[t] === m || tc[t] === m)) { apexHit = true; break; } }
+            if (m !== a && m !== b && (addVNew || !NOWELD) && !apexHit) {
+              let made = false;
+              for (const t of list) {
+                if (!alive[t]) continue;
+                const apex = ta[t] !== a && ta[t] !== b ? ta[t] : tb[t] !== a && tb[t] !== b ? tb[t] : tc[t];
+                const seq = [ta[t], tb[t], tc[t]];
+                let oa = a; let ob = b;
+                for (let i = 0; i < 3; i += 1) {
+                  if (seq[i] === a && seq[(i + 1) % 3] === b) { oa = a; ob = b; break; }
+                  if (seq[i] === b && seq[(i + 1) % 3] === a) { oa = b; ob = a; break; }
                 }
-                if (made) return true;
+                killT(t);
+                created.push(addT(oa, m, apex));
+                created.push(addT(m, ob, apex));
+                made = true;
               }
+              if (made) return true;
             }
           }
         }
@@ -1244,10 +1068,10 @@ describe('STRATA conforming-bisection', () => {
       // Abandoning the edge strands the triangle forever (MEASURED: no-op splits === welded splits, and the
       // stranded triangles were exactly the GeoStar/Voronoi/Gyroid MAX loci). Walk a nudge LADDER outward from the
       // midpoint; in a saturated weld neighbourhood the first few offsets can all collide.
-      // S3: the ladder's rungs are CHORD fractions now, not parametric ones. `placeAt` is the identity when
-      // PF_CB_MID3D=0, so the legacy ladder is reproduced exactly. SNAP (above) and REPROJECT (above) are
-      // both EXEMPT — their placements are locus placements and must not be re-centred.
-      for (const tPar of NUDGE_LADDER) if (bisectAt(a, b, placeAt(a, b, tPar), feat)) return true;
+      for (let ni = 0; ni < NUDGE_LADDER.length; ni += 1) {
+        bladePlace = ni === 0 ? 'MIDPOINT' : `NUDGE#${ni}`;
+        if (bisectAt(a, b, NUDGE_LADDER[ni], feat)) return true;
+      }
       return false;
     };
 
@@ -1299,23 +1123,9 @@ describe('STRATA conforming-bisection', () => {
         cands.push([edgeSag(vs[e][0], vs[e][1]), e]);
       }
       cands.sort((x, y) => y[0] - x[0]);
-      // ─── S4 LONGEST-EDGE PREFERENCE WHEN SHAPE IS AT RISK ───
-      // DIRECTED deliberately picks the max-SAG edge and that lever stays. It is overridden ONLY when the
-      // max-sag edge cannot be split safely AT ITS BEST PLACEMENT (mid-chord — no other placement on that
-      // edge can beat it, since childAR/parentAR ~= 1/min(t,1-t) is minimised at the middle) and the LONGEST
-      // edge can. Both Rivara hypotheses are then in force for exactly the split that needed them.
-      // The `!== e0` test keeps this free in the common case where DIRECTED already chose the longest edge.
-      if (SHAPE && LONGFALL && cands.length > 1) {
-        const eL = longestE(t);
-        if (cands[0][1] !== eL) {
-          nLongFallTested += 1;
-          if (!shapeAdmitsBest(vs[cands[0][1]][0], vs[cands[0][1]][1]) && shapeAdmitsBest(vs[eL][0], vs[eL][1])) {
-            const i = cands.findIndex(([, e]) => e === eL);
-            if (i > 0) { cands.unshift(cands.splice(i, 1)[0]); nLongFallFired += 1; }
-          }
-        }
-      }
+      bladeSrc = 'directed';
       for (const [, e] of cands) if (splitEdge(vs[e][0], vs[e][1])) return; // best-first, but never give up on a refusal
+      bladeSrc = 'directed-ARguardDROPPED';
       for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM && splitEdge(vs[e][0], vs[e][1])) return; // drop the guard
     };
 
@@ -1339,10 +1149,7 @@ describe('STRATA conforming-bisection', () => {
     type SizingClass = 'smooth' | 'crease' | 'jump';
     type Need = 'none' | 'conform' | 'size';
     /** What one pop actually did. Only 'split' and 'proximity' are PROGRESS; the rest are unresolved reasons. */
-    // 'shape-refused' joins the UNRESOLVED reasons, never the progress ones: a split the S1/S2 guard
-    // declined has produced nothing, so a triangle with no other admissible edge must leave the queue
-    // VISIBLE. Silently dropping it is precisely the failure mode `unresolved` was added to end.
-    type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused';
+    type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain';
     const MEMO_VERIFY = envOn('PF_CB_MEMO_VERIFY');
     const CELL_MM = envF('PF_CB_CELL_MM', 0.1);          // site-quantisation pitch for §3.3 stickiness
     const SITE_CAP = Math.round(envF('PF_CB_SITE_CAP', 4_000_000)); // keeps the site map under V8's Map cap
@@ -1540,19 +1347,11 @@ describe('STRATA conforming-bisection', () => {
     let nConformSplit = 0; let nSizeSplit = 0; let nProximity = 0; let nMoveDeferred = 0;
     let nSmoothWeldBug = 0; let nCreaseSizeWeld = 0; let nFloorRefused = 0; let nNoIncident = 0;
     const weldBugLog: string[] = [];
-    // R5 = the S1/S2 SHAPE GUARD declined. It is a FIFTH refusal, deliberately not folded into any of the
-    // four weld refusals: a weld refusal says two points coincided, R5 says the geometry the split would
-    // have emitted is unprintable. Routing it through `weldWall` would count real shape refusals as
-    // splitter weld bugs and bury the new signal in an old one.
-    type Refusal = 'R1' | 'R2' | 'R3' | 'R4' | 'R5' | 'R0';
-    let nShapeUnresolved = 0;
+    type Refusal = 'R1' | 'R2' | 'R3' | 'R4' | 'R0';
     const tryBisect = (a: number, b: number, tPar: number, feat: boolean): { ok: boolean; refusal: Refusal } => {
       const wBefore = weldedSplits;
       const ok = bisectAt(a, b, tPar, feat);
       if (ok) return { ok: true, refusal: 'R0' };
-      // The guard runs BEFORE addV, so neither `weldedSplits` nor `addVNew` moved — the two observables the
-      // classification below reads. `lastBisectShape` is the third, set by the same call.
-      if (lastBisectShape !== 'none') return { ok: false, refusal: 'R5' };
       // R1 (`m === a || m === b`) returns BEFORE the weldedSplits bump, so a refusal that did not bump it and
       // left addVNew false is exactly R1. A bump under NOWELD is R2 (the partner is an unrelated vertex); with
       // NOWELD off the flow continues and a later refusal is the apex-degeneracy guard R3. Neither bumped and
@@ -1630,16 +1429,9 @@ describe('STRATA conforming-bisection', () => {
         // SNAP_ALPHA in its ONLY surviving role: a guard on WHERE the vertex may be placed. Outside the band is
         // refusal R4 — the dominant Zeno case, and the one §4.3's move exists to answer.
         if (k.t > SNAP_ALPHA && k.t < 1 - SNAP_ALPHA) {
-          // k.t IS the locus. S3 does not touch it — placing a crossing anywhere but ON the crossing is
-          // the one thing SNAP exists to prevent.
           const r = tryBisect(a, b, k.t, true);
           if (r.ok) { nConformSplit += 1; nSnap += 1; if (k.jump) nJump += 1; return 'split'; }
           if (r.refusal === 'R0') { nNoIncident += 1; return 'no-incident'; }
-          // R5 BEFORE weldWall. weldWall's conform route treats anything that is not R4/R1 as "conformed by
-          // proximity" — a MONOTONE state change that would mark this edge done forever. A shape refusal is
-          // the opposite of done: nothing was placed, the locus is still uncrossed, and the honest record is
-          // `unresolved`.
-          if (r.refusal === 'R5') { nShapeUnresolved += 1; return 'shape-refused'; }
           return weldWall(t, a, b, nd.cls, r.refusal, 'conform');
         }
         return weldWall(t, a, b, nd.cls, 'R4', 'conform');
@@ -1649,44 +1441,22 @@ describe('STRATA conforming-bisection', () => {
       // NONE passes the aspect guard drop it rather than strand the triangle — exactly refineDirected's own
       // two-tier fallback (L897). PF_CB_DIRECTED=0 is the ABLATION arm: longest edge instead of max sag.
       const lMax = Math.max(ls[0], ls[1], ls[2]);
+      let be = -1; let bk = -1;
       const keyOf = (e: number): number => (DIRECTED ? edgeVerdict(es[e][0], es[e][1]).sag : ls[e]);
-      // The two tiers, as an ORDERED LIST rather than a single argmax, so an S1/S2 refusal on the best edge
-      // can FALL THROUGH to the next one instead of stranding the triangle. With the shape levers off the
-      // list's head is bit-for-bit the old `be`: Array.prototype.sort is stable, so a key tie keeps ascending
-      // edge index — exactly what the old strict `key > bk` scan did — and only order[0] is ever tried.
-      let order: number[] = [];
-      for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM && ls[e] * AR >= lMax) order.push(e);
-      if (order.length === 0) for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM) order.push(e);
-      if (order.length === 0) { nFloorRefused += 1; return 'floor'; }
-      order = order.map((e) => [keyOf(e), e] as [number, number]).sort((x, y) => y[0] - x[0]).map(([, e]) => e);
-      // S4, same rule as refineDirected's: override the max-sag choice ONLY when its best placement is
-      // inadmissible and the longest edge's is not.
-      if (SHAPE && LONGFALL && order.length > 1) {
-        let eL = 0; for (let e = 1; e < 3; e += 1) if (ls[e] > ls[eL]) eL = e;
-        if (order[0] !== eL && order.includes(eL)) {
-          nLongFallTested += 1;
-          const [ha, hb] = canonEdge(es[order[0]][0], es[order[0]][1]);
-          const [la, lb] = canonEdge(es[eL][0], es[eL][1]);
-          if (!shapeAdmitsBest(ha, hb) && shapeAdmitsBest(la, lb)) {
-            order = [eL, ...order.filter((e) => e !== eL)]; nLongFallFired += 1;
-          }
-        }
+      for (let e = 0; e < 3; e += 1) {
+        if (ls[e] < FLOOR_MM || ls[e] * AR < lMax) continue;
+        const key = keyOf(e); if (key > bk) { bk = key; be = e; }
       }
-      for (const be of order) {
-        const [a, b] = canonEdge(es[be][0], es[be][1]); // 0.5 is direction-free; canonical anyway so weldWall's edgeVerdict hits
-        const r = tryBisect(a, b, placeAt(a, b, 0.5), false);
-        if (r.ok) { nSizeSplit += 1; return 'split'; }
-        // A SHAPE refusal is edge-local — another edge of the same triangle may still be splittable — so it
-        // is the ONLY refusal that continues. Every weld refusal keeps its existing terminal handling, since
-        // those are statements about the mesh's vertex set rather than about this edge's geometry.
-        if (r.refusal === 'R5') continue;
-        if (r.refusal === 'R0') { nNoIncident += 1; return 'no-incident'; }
-        return weldWall(t, a, b, nd.cls, r.refusal, 'size');
+      if (be < 0) for (let e = 0; e < 3; e += 1) {
+        if (ls[e] < FLOOR_MM) continue;
+        const key = keyOf(e); if (key > bk) { bk = key; be = e; }
       }
-      // R5 is the ONLY refusal that continues the loop, so reaching here means every candidate edge was
-      // shape-refused. The triangle violated and no mechanism could act on it ⇒ `unresolved`, never dropped.
-      nShapeUnresolved += 1;
-      return 'shape-refused';
+      if (be < 0) { nFloorRefused += 1; return 'floor'; }
+      const [a, b] = canonEdge(es[be][0], es[be][1]); // 0.5 is direction-free; canonical anyway so weldWall's edgeVerdict hits
+      const r = tryBisect(a, b, 0.5, false);
+      if (r.ok) { nSizeSplit += 1; return 'split'; }
+      if (r.refusal === 'R0') { nNoIncident += 1; return 'no-incident'; }
+      return weldWall(t, a, b, nd.cls, r.refusal, 'size');
     };
 
     // ─── §2.2 THE WORK LIST: a ring buffer over Int32Array, grown by DOUBLING (never Array.shift(), which is
@@ -2007,6 +1777,11 @@ describe('STRATA conforming-bisection', () => {
       if (!alive[t]) continue;
       if (ta.length >= triCap) { capped = true; break; }
       created.length = 0;
+      bladeSrc = DIRECTED ? 'directed' : 'lepp';
+      bladeOwner = t;
+      // TRAJECTORY: is the blade population a one-off or does it COMPOUND with refinement? Sampled on a
+      // fixed iteration stride so the curve is comparable across arms.
+      if (iters % 2000 === 0) bladeCensus(`iter ${iters}`);
       if (DIRECTED) refineDirected(t); else refineLepp(t);
       for (const nt of created) consider(nt);
       // RE-QUEUE THE SURVIVOR WITHOUT RE-MEASURING IT. `consider(t)` here re-ran the whole bounded probe on a
@@ -2080,6 +1855,8 @@ describe('STRATA conforming-bisection', () => {
       `gpu-rank: n=${GR_N} gn=${GR_GN} covfrac=${GR_COVFRAC} margin=${(GR_MARGIN * 1000).toFixed(3)}µm  scored ${gpuScored} in ${gpuFlushes} flushes / ${gpu.stats.batches} dispatches   ${(gpu.stats.gpuMs / 1000).toFixed(0)}s GPU + ${((gpu.stats.wallMs - gpu.stats.gpuMs) / 1000).toFixed(0)}s transport   rA parity ${gpu.parityUm.toFixed(3)}µm   device-losses ${gpu.stats.deviceLosses}`;
     if (gpu !== null) { await gpu.close(); gpu = null; }
 
+    bladeCensus('after refinement loop');
+
     // ───────────────────────────── needle collapse ─────────────────────────────
     // STRATA's naive union-find collapse MEASURABLY creates non-manifold edges (12 on GothicArches) because it
     // ignores the link condition. It is now OPT-IN ONLY (PF_CB_NAIVE_COLLAPSE=1) and should not ship.
@@ -2112,65 +1889,6 @@ describe('STRATA conforming-bisection', () => {
     // The standard guarantee is the LINK CONDITION: edge (u,v) is collapsible iff N(u) ∩ N(v) is exactly the set of
     // apexes of the triangles sharing (u,v). Enforce it; refuse otherwise. Style-agnostic, geometry-agnostic.
     let safeCollapses = 0; let refusedCollapses = 0; let refusedOffenders = 0; let flipsDone = 0; let flipsLocusRefused = 0;
-    // S5 CAP-REPAIR instrumentation (see PF_CB_SHAPE_FLIP above).
-    let capBefore = 0; let capAfter = 0; let capFlipTried = 0; let capFlipDone = 0;
-    let capWorstBefore = 0; let capWorstAfter = 0;
-    // ───────── S6  POST-LOOP SHAPE INVARIANT — counters, then the collapse's admission test ─────────
-    // Every refusal is COUNTED and every count is PRINTED. A refusal that leaves a facet over the cap is
-    // reported on its own (`nPostCollapseRefusedDirty`), because "the guard declined and the blade stayed"
-    // is a different fact from "the guard declined and the mesh is clean", and only the first one explains a
-    // blade-gate count.
-    let nPostCollapseTested = 0; let nPostCollapseRefusedAR = 0; let nPostCollapseRefusedFold = 0;
-    let nPostCollapseRefusedDirty = 0;   // ... of the aspect refusals, how many left a facet ALREADY over the cap
-    let nPostFlipTested = 0; let nPostFlipRefusedAR = 0;
-    let postWorstAdmitted = 0;           // the largest AR any ADMITTED post-loop operation left behind
-    /**
-     * S6. Would collapsing v onto u make the shape of the facets it TOUCHES worse?
-     *
-     * TOUCHED = the live triangles in v's star that SURVIVE the collapse, i.e. every triangle containing v
-     * except those that also contain u (the `dying` set — those are deleted outright). Each is compared
-     * against ITSELF with v rewritten to u, so a deleted blade can never license raising a survivor to its
-     * aspect ratio. See the invariant note at PF_CB_POST_SHAPE for why both clauses are needed.
-     *
-     * A triangle in the star but not dying cannot contain u (a triangle containing both u and v is shared by
-     * definition), so the rewritten corners are always three distinct vertices; `aspect3` returning Infinity
-     * here would mean a genuinely zero-area facet, which the test then correctly refuses.
-     *
-     * Returns 'ok' | 'ar' | 'fold'. NO MESH STATE IS TOUCHED, so a refusal costs nothing to undo — the same
-     * property that lets `shapeAdmits` refuse before `addV`.
-     */
-    const postCollapseAdmits = (
-      u: number, v: number, star: Iterable<number>, dying: ReadonlySet<number>,
-    ): 'ok' | 'ar' | 'fold' => {
-      let wB = 0; let wA = 0; let nB = 0; let nA = 0; let fold = false;
-      for (const t of star) {
-        if (!alive[t] || dying.has(t)) continue;
-        const a0 = ta[t]; const b0 = tb[t]; const c0 = tc[t];
-        const a1 = a0 === v ? u : a0; const b1 = b0 === v ? u : b0; const c1 = c0 === v ? u : c0;
-        const arB = aspect3(vx[a0], vy[a0], vz[a0], vx[b0], vy[b0], vz[b0], vx[c0], vy[c0], vz[c0]);
-        const arA = aspect3(vx[a1], vy[a1], vz[a1], vx[b1], vy[b1], vz[b1], vx[c1], vy[c1], vz[c1]);
-        if (arB > wB) wB = arB;
-        if (arA > wA) wA = arA;
-        if (arB > SHAPE_AR) nB += 1;
-        if (arA > SHAPE_AR) nA += 1;
-        if (SHAPE_FOLD && !fold) {
-          // Same test S2 applies at a split, on the same anchoring: the triangle's own corner order, before
-          // and after. A sign change is a FOLD by construction — the mesh is a triangulation of the (theta,z)
-          // cylinder, so the sign IS the orientation.
-          const sB = signedAreaParam(vth[a0], vz[a0], vth[b0], vz[b0], vth[c0], vz[c0]);
-          const sA = signedAreaParam(vth[a1], vz[a1], vth[b1], vz[b1], vth[c1], vz[c1]);
-          if (Math.sign(sA) !== Math.sign(sB)) fold = true;
-        }
-      }
-      if (fold) return 'fold';
-      if (wA > wB || nA > nB) { if (nB > 0) nPostCollapseRefusedDirty += 1; return 'ar'; }
-      if (wA > postWorstAdmitted) postWorstAdmitted = wA;
-      return 'ok';
-    };
-    /** the mesh triangle's own `aspect3`, i.e. the census's AR read off the live arrays. */
-    const arTri = (t: number): number => aspect3(
-      vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]],
-    );
     // An edge lies ON a locus iff a TRANSVERSE probe through its midpoint finds a kink at the probe CENTRE.
     // Same primitive as the detector — no per-style knowledge, no locus table to maintain.
     const edgeOnLocus = (pv: number, qv: number): boolean => {
@@ -2198,14 +1916,8 @@ describe('STRATA conforming-bisection', () => {
         addNbr(a, b); addNbr(b, a); addNbr(b, c); addNbr(c, b); addNbr(c, a); addNbr(a, c);
         addVT(a, t); addVT(b, t); addVT(c, t);
       }
-      /**
-       * locus-safe 2-2 flip of edge (pv,qv); returns true if performed. Keeps nbr/vTris consistent.
-       *
-       * `gate` (added 2026-07-29 for the S5 cap repair) is consulted AFTER every validity test and BEFORE
-       * any mutation, with the two apexes the flip would join. Omitted ⇒ the collapse path's behaviour is
-       * unchanged, which matters because that path is the one PF_CB_FLIP has always driven.
-       */
-      const tryFlip = (pv: number, qv: number, gate?: (r0: number, s0: number) => boolean): boolean => {
+      /** locus-safe 2-2 flip of edge (pv,qv); returns true if performed. Keeps nbr/vTris consistent. */
+      const tryFlip = (pv: number, qv: number): boolean => {
         const inc = (edgeMap.get(eKey(pv, qv)) ?? []).filter((t) => alive[t]);
         if (inc.length !== 2) return false;
         const apexOf = (t: number): number => (ta[t] !== pv && ta[t] !== qv ? ta[t] : tb[t] !== pv && tb[t] !== qv ? tb[t] : tc[t]);
@@ -2230,7 +1942,6 @@ describe('STRATA conforming-bisection', () => {
         const ref = cr(Pp, Pq, Pr);
         if (ref === 0 || s1 === 0 || s2 === 0) return false;
         if (Math.sign(s1) !== Math.sign(ref) || Math.sign(s2) !== Math.sign(ref)) return false; // non-convex quad
-        if (gate !== undefined && !gate(r0, s0)) return false; // S5: caller-supplied improvement test
         // winding: r0 is now the apex of the pv→qv triangle (checked above), so the quad is qv → r0 → pv → s0
         for (const t of inc) { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); }
         const n1 = addT(r0, pv, s0); const n2 = addT(s0, qv, r0);
@@ -2245,39 +1956,6 @@ describe('STRATA conforming-bisection', () => {
         // (pv,qv) is gone: drop it from the neighbour sets if no surviving triangle uses it
         if (!(edgeMap.get(eKey(pv, qv)) ?? []).some((t) => alive[t])) { nbr.get(pv)?.delete(qv); nbr.get(qv)?.delete(pv); }
         return true;
-      };
-      /**
-       * S6 for the COLLAPSE-DRIVEN flip — the one `tryFlip` call site that passes no gate at all.
-       *
-       * `tryFlip` already refuses a FOLD (it sign-checks both new triangles in (theta,z) against the pair's
-       * reference sign), so this adds only the ASPECT half, which nothing bounded before.
-       *
-       * The two emitted triangles are (r0,pv,s0) and (s0,qv,r0) — the winding `tryFlip` commits to below —
-       * and the two `aspect3` calls are the S5 cap-repair gate's expressions VERBATIM, in the same operand
-       * order, so the two gates measure the same object the same way.
-       *
-       * Returns `undefined` when the lever is off, which is the exact un-gated call this site has always
-       * made: `tryFlip` skips its `gate !== undefined` branch entirely and the path is byte-identical.
-       */
-      const postFlipGate = (pv: number, qv: number): ((r0: number, s0: number) => boolean) | undefined => {
-        if (!POST_SHAPE) return undefined;
-        return (r0: number, s0: number): boolean => {
-          nPostFlipTested += 1;
-          let wB = 0; let nB = 0;
-          for (const x of edgeMap.get(eKey(pv, qv)) ?? []) {
-            if (!alive[x]) continue;
-            const ar = arTri(x);
-            if (ar > wB) wB = ar;
-            if (ar > SHAPE_AR) nB += 1;
-          }
-          const a1 = aspect3(vx[r0], vy[r0], vz[r0], vx[pv], vy[pv], vz[pv], vx[s0], vy[s0], vz[s0]);
-          const a2 = aspect3(vx[s0], vy[s0], vz[s0], vx[qv], vy[qv], vz[qv], vx[r0], vy[r0], vz[r0]);
-          const wA = Math.max(a1, a2);
-          const nA = (a1 > SHAPE_AR ? 1 : 0) + (a2 > SHAPE_AR ? 1 : 0);
-          if (wA > wB || nA > nB) { nPostFlipRefusedAR += 1; return false; }
-          if (wA > postWorstAdmitted) postWorstAdmitted = wA;
-          return true;
-        };
       };
       const shortEdges: Array<[number, number, number]> = [];
       const seenE = new Set<number>();
@@ -2316,32 +1994,11 @@ describe('STRATA conforming-bisection', () => {
           // a >2-incidence edge. Flipping (u,w) (or (v,w)) removes w from the intersection. NEVER flip an edge that
           // lies ON a detected locus — that would undo the conforming the whole pipeline exists to produce.
           for (const w of bad.slice()) {
-            // S6: the shape gate. `postFlipGate` returns undefined when PF_CB_POST_SHAPE is off, which is the
-            // exact un-gated call this line has always made — so the OFF path is byte-identical.
-            if (tryFlip(u, w, postFlipGate(u, w)) || tryFlip(v, w, postFlipGate(v, w))) flipsDone += 1;
+            if (tryFlip(u, w) || tryFlip(v, w)) flipsDone += 1;
           }
           bad = offenders();
         }
         if (bad.length > 0) { refusedCollapses += 1; refusedOffenders += bad.length; continue; }
-        // ───────── S6: the collapse is TOPOLOGY-safe by here; make it SHAPE-safe too ─────────
-        // Everything above proves the LINK CONDITION and nothing above looks at the geometry the collapse
-        // produces — yet moving v onto u rewrites every surviving triangle in v's star. This is the guard the
-        // 2026-07-29 review named as UNFIXED. It runs BEFORE any mutation, so a refusal costs nothing to undo.
-        //
-        // ONE CARVE-OUT, AND IT IS NOT A COMPROMISE. A collapse of an edge SHORTER THAN WELD_MM is never
-        // refused on shape. Below the weld radius the two endpoints are literally ONE POINT to `analyze()`
-        // and to any downstream slicer (both position-weld at exactly this WELD_MM), so declining the
-        // collapse preserves nothing: it leaves the pair for the position weld to merge, which is what turns
-        // the shared edges NON-MANIFOLD — the measured 215-edge failure this whole pass exists to prevent,
-        // and the thing `expect(nonManifold).toBe(0)` at the end of this file asserts against. A sub-weld
-        // collapse is a topology obligation, not a shape decision. (PF_CB_NEEDLE_UM is 0.2 um and WELD_MM is
-        // 0.05 um, so the carve-out covers the bottom quarter of the collapse band, not the whole of it.)
-        if (POST_SHAPE && eLen(u, v) >= WELD_MM) {
-          nPostCollapseTested += 1;
-          const shapeVerdict = postCollapseAdmits(u, v, sv, new Set(shared));
-          if (shapeVerdict === 'ar') { nPostCollapseRefusedAR += 1; continue; }
-          if (shapeVerdict === 'fold') { nPostCollapseRefusedFold += 1; continue; }
-        }
         // collapse v → u
         for (const t of shared) { alive[t] = false; collapsedTris += 1; }
         for (const t of Array.from(sv)) {
@@ -2354,45 +2011,21 @@ describe('STRATA conforming-bisection', () => {
         nu.delete(v);
         safeCollapses += 1;
       }
-
-      // ───────── S5  CAP-TARGETED SHAPE REPAIR (PF_CB_SHAPE_FLIP) — and the measurement that prices it ─────────
-      // The diagnosis observed "PF_CB_FLIP defaults OFF, so tryFlip — the natural repair for a cap — never
-      // ran". Enabling PF_CB_FLIP does NOT fix that, and the reason is structural rather than empirical:
-      // tryFlip is reachable ONLY from the loop above, which iterates `shortEdges` — edges shorter than
-      // PF_CB_NEEDLE_UM (0.2 um) — and only for the offenders blocking a collapse. A CAP blade has all three
-      // edges long by construction (measured p50 longest 400 um), so it never enters that list and tryFlip
-      // is never called on it, whatever PF_CB_FLIP is set to. `flips 0` in the run report is that fact.
-      //
-      // So the repair needs its OWN entry point, which is this pass: for every facet still over the cap,
-      // attempt the locus-safe 2-2 flip of its LONGEST edge — for a cap (one near-straight-angle vertex)
-      // that is the edge opposite the flat vertex, and swapping the quad's diagonal is the textbook repair.
-      // The flip is GATED on actually improving the pair's worst AR, so it can only ever make the mesh
-      // better by the census's own metric; and `capBefore`/`capAfter` are reported so "does it repair caps"
-      // is answered with a number in every run instead of being assumed.
-      // tryFlip's existing refusals all stand: not exactly 2 incident, apexes equal, the opposite edge
-      // already present (which would pinch), the edge lying ON a locus (that would undo the conforming this
-      // pipeline exists to produce), a non-convex quad, and an inconsistently-wound pair.
-      for (let t = 0; t < ta.length; t += 1) if (alive[t]) { const ar = arTri(t); if (ar > SHAPE_AR) capBefore += 1; if (ar > capWorstBefore) capWorstBefore = ar; }
-      if (SHAPE_FLIP && capBefore > 0) {
-        const bad: Array<[number, number]> = [];
-        for (let t = 0; t < ta.length; t += 1) if (alive[t] && arTri(t) > SHAPE_AR) bad.push([arTri(t), t]);
-        bad.sort((x, y) => y[0] - x[0]); // worst first
-        for (const [, t] of bad) {
-          if (!alive[t]) continue; // a previous flip may already have re-meshed it
-          const e = longestE(t); const [pv, qv] = eVerts(t, e);
-          const inc = (edgeMap.get(eKey(pv, qv)) ?? []).filter((x) => alive[x]);
-          if (inc.length !== 2) continue;
-          const arOld = Math.max(arTri(inc[0]), arTri(inc[1]));
-          capFlipTried += 1;
-          const ok = tryFlip(pv, qv, (r0, s0) => Math.max(
-            aspect3(vx[r0], vy[r0], vz[r0], vx[pv], vy[pv], vz[pv], vx[s0], vy[s0], vz[s0]),
-            aspect3(vx[s0], vy[s0], vz[s0], vx[qv], vy[qv], vz[qv], vx[r0], vy[r0], vz[r0]),
-          ) < arOld);
-          if (ok) capFlipDone += 1;
-        }
-      }
-      for (let t = 0; t < ta.length; t += 1) if (alive[t]) { const ar = arTri(t); if (ar > SHAPE_AR) capAfter += 1; if (ar > capWorstAfter) capWorstAfter = ar; }
     }
+
+    bladeCensus('after collapse/flip pass');
+    console.log('\n════════════ BLADE BIRTH LEDGER (parametric AR > ' + String(BLADE_AR) + ') ════════════');
+    console.log('  key = <refiner>/<placement>   *BORN* = the PARENT was well-shaped, the CHILD is not');
+    for (const [k, v] of [...bladeBirths.entries()].sort((x, y) => y[1] - x[1])) console.log(`  ${String(v).padStart(9)}  ${k}`);
+    console.log('  --- of the *BORN* blades, the split edge was the parent triangle\'s: ---');
+    for (const [k, v] of [...bladeEdgeRank.entries()].sort((x, y) => y[1] - x[1])) console.log(`  ${String(v).padStart(9)}  ${k} edge`);
+    console.log('  --- ASPECT AMPLIFICATION per split: worstChildAR / parentAR (geometric mean) ---');
+    for (const [k, a] of [...ampBy.entries()].sort((x, y) => y[1].n - x[1].n)) {
+      console.log(`  ${String(a.n).padStart(9)}  gmean x${Math.exp(a.sumLog / a.n).toFixed(3)}   max x${a.max.toFixed(1)} (at t=${a.maxT.toFixed(4)})   ${k}`);
+    }
+    console.log('  --- samples ---');
+    for (const s of bladeSamples) console.log(`   ${s}`);
+    console.log('════════════════════════════════════════════════════════════\n');
 
     // ───────────────────────────── soup + watertight audit (3D position weld) ─────────────────────────────
     const soup: Array<[P3, P3, P3]> = [];
@@ -2551,120 +2184,27 @@ describe('STRATA conforming-bisection', () => {
     const orientMismatch = finalTopo.orientMismatch;
 
     // ───────────────────────────── fidelity (oracle N) + tail re-measure ─────────────────────────────
-    // PF_CB_TAILK / PF_CB_TAILN are READ HERE rather than below the main loop (their only move in this hunk):
-    // the pooled job descriptor is one object and it carries every level the pool may be asked for. Both are
-    // pure `envF` reads with no dependency on anything between, so the values are unchanged.
-    const tailK = Math.round(envF('PF_CB_TAILK', 3000));
-    const tailN = Math.round(envF('PF_CB_TAILN', 44));
-    // ═════════ PARALLEL POST-LOOP AUDIT (PF_CB_AUDIT_WORKERS > 1). Everything below is _auditPool.ts. ═════════
-    // WHAT IS PARALLEL: the per-facet MEASUREMENT, which is a pure function of three vertex coordinates and of
-    // rA and is read-only against the mesh. WHAT IS NOT: every REDUCTION — the two argmaxes, `sags[]`, the
-    // percentile sort, the tail ordering, the over-tol count — all of which stay on this thread, in the
-    // original `liveIdx` order, reading a finished result block. Slot i is written by exactly one worker, so
-    // that block is a pure function of the input list and NOTHING here can depend on interleaving. The
-    // argmax rule is therefore not "given a tie-break": it is the original strict-`>` scan, unmoved.
-    // PF_CB_AUDIT_WORKERS=1 spawns nothing and runs the identical serial lines.
-    const auditPooled = AUDIT_WORKERS > 1 && liveIdx.length > 0;
-    // Computed only when pooling, so the serial arm does not pay ~4 k probe evaluations for nothing. `rA` and
-    // not `R` — the lattice is the pool's own verification cost and is not billed to the mesher's count.
-    const auditThJumps: number[] = auditPooled ? thetaJumpProbe(rA, H) : [];
-    let auditMesh: ReturnType<typeof mirrorAuditMesh> | null = null;
-    let auditMain: AuditOutcome | null = null;
-    let auditTail: AuditOutcome | null = null;
-    let auditForensicEvals = 0; let auditVerifyEvals = 0; let auditVerifyChecked = 0;
-    const auditCfgFor = (
-      mesh: ReturnType<typeof mirrorAuditMesh>, tris: ReturnType<typeof packAuditTris>, job: AuditJob,
-    ) => ({
-      workers: AUDIT_WORKERS, chunkMax: AUDIT_CHUNK, workerHeapMb: AUDIT_HEAP_MB,
-      style: STYLE, styleParams, dims: DIMS, H,
-      zJumps: zSteps, thJumps: auditThJumps, refRadius: rA,
-      mesh, tris, job,
-    });
-    if (auditPooled) {
-      // THE MIRROR IS TAKEN HERE, not earlier: the collapse/flip pass above is the last thing that rewrites a
-      // corner index, and nothing between this line and the end of the audit mutates the mesh.
-      auditMesh = mirrorAuditMesh(vth, vz, vx, vy);
-      auditMain = await runAuditPool(auditCfgFor(auditMesh, packAuditTris(liveIdx, ta, tb, tc), {
-        kind: 'main', count: liveIdx.length, audHs: AUD_HS, audNmin: AUD_NMIN, audNmax: AUD_NMAX, oracleN, tailN,
-      }));
-      // The workers' evaluations are the SAME evaluations the serial arm makes on this thread — same
-      // triangles, same levels — so folding them in keeps the reported `M rA evals` IDENTICAL between the two
-      // arms. Lattice-verification evals are excluded by the worker and reported on their own line.
-      rEvals += auditMain.rEvals;
-    }
     const sags: number[] = []; let maxSag = 0; let maxT = -1; let minEdge = Infinity;
     let maxFixed = 0; let maxFixedT = -1;
     let fWa = 0; let fWb = 0; let fWc = 0; let fTheta = 0; let fZ = 0; let fR = 0; let fNl = 0; let fDd = 0; let fDB = 0; let fDC = 0;
-    for (let li = 0; li < liveIdx.length; li += 1) {
-      const t = liveIdx[li];
-      const s = auditMain === null
-        ? sagAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX)      // HONEST ruler (absolute-bounded sampling)
-        : auditMain.out[li * AUDIT_MAIN_STRIDE];
-      const sf = auditMain === null
-        ? sagOfN(t, oracleN)                              // STRATA-comparable fixed-N ruler
-        : auditMain.out[li * AUDIT_MAIN_STRIDE + 1];
+    for (const t of liveIdx) {
+      const s = sagAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX); // HONEST ruler (absolute-bounded sampling)
+      const sf = sagOfN(t, oracleN); // STRATA-comparable fixed-N ruler
       sags.push(s);
       if (s > maxSag) { maxSag = s; maxT = t; }
       if (sf > maxFixed) {
         maxFixed = sf; maxFixedT = t;
-        // In the pooled arm the argmax SAMPLE lives in a worker's scratch record; it is recovered below by
-        // re-running the ruler on the single winning triangle. The reduction itself is unchanged either way.
-        if (auditMain === null) {
-          fWa = ARG.wa; fWb = ARG.wb; fWc = ARG.wc; fTheta = ARG.theta; fZ = ARG.z; fR = ARG.r; fNl = ARG.nl; fDd = ARG.dd; fDB = ARG.dB; fDC = ARG.dC;
-        }
+        fWa = argWa; fWb = argWb; fWc = argWc; fTheta = argTheta; fZ = argZ; fR = argR; fNl = argNl; fDd = argDd; fDB = argDB; fDC = argDC;
       }
       minEdge = Math.min(minEdge, eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
     }
-    if (auditMain !== null && maxFixedT >= 0) {
-      // RULER FORENSICS, RECOVERED EXACTLY. `sagOfN` is pure and no vertex has moved, so re-running it on the
-      // winner reproduces the identical ten doubles the serial arm captured inline. Its evaluations are
-      // EXCLUDED from `rEvals` (snapshot and restore) so both arms print the same cost, and counted on their
-      // own line so the recomputation is still visible rather than hidden.
-      const saveF = rEvals;
-      sagOfN(maxFixedT, oracleN);
-      auditForensicEvals = rEvals - saveF;
-      rEvals = saveF;
-      fWa = ARG.wa; fWb = ARG.wb; fWc = ARG.wc; fTheta = ARG.theta; fZ = ARG.z; fR = ARG.r; fNl = ARG.nl; fDd = ARG.dd; fDB = ARG.dB; fDC = ARG.dC;
-    }
-    if (auditMain !== null && AUDIT_VERIFY) {
-      // PF_CB_AUDIT_VERIFY=1 — THE PER-FACET IDENTITY GATE, the companion to the pool's rA lattice check and
-      // the exact analogue of PF_CB_SWEEP_VERIFY. Re-score every facet HERE with the driver's own closures and
-      // Object.is-compare. A mismatch THROWS: a pooled audit that disagrees with the serial one is not
-      // "close", it is a different measurement, and every number below it would be meaningless.
-      const saveV = rEvals;
-      for (let li = 0; li < liveIdx.length; li += 1) {
-        const t = liveIdx[li];
-        const a2 = sagAdaptive(t, AUD_HS, AUD_NMIN, AUD_NMAX);
-        const f2 = sagOfN(t, oracleN);
-        auditVerifyChecked += 1;
-        if (!Object.is(a2, auditMain.out[li * AUDIT_MAIN_STRIDE]) || !Object.is(f2, auditMain.out[li * AUDIT_MAIN_STRIDE + 1])) {
-          throw new Error(
-            `PF_CB_AUDIT_VERIFY: the pooled score for live triangle ${t} (slot ${li}) is NOT bit-identical to a `
-            + `main-thread re-measurement. pooled adaptive=${auditMain.out[li * AUDIT_MAIN_STRIDE]} `
-            + `fixed=${auditMain.out[li * AUDIT_MAIN_STRIDE + 1]}; main adaptive=${a2} fixed=${f2}. `
-            + `The pooled audit would report a different mesh quality than the serial one. Refusing to continue.`);
-        }
-      }
-      auditVerifyEvals = rEvals - saveV;
-      rEvals = saveV;
-    }
     // ADVERSARIAL TAIL: the per-triangle barycentric oracle can UNDER-report a straddled crest (it may sample past
     // the tent tip). Re-measure the worst K at a much denser oracle so a PASS cannot be a sampling artifact.
+    const tailK = Math.round(envF('PF_CB_TAILK', 3000));
+    const tailN = Math.round(envF('PF_CB_TAILN', 44));
     const order = liveIdx.map((_t, i) => i).sort((p, q) => sags[q] - sags[p]).slice(0, Math.min(tailK, liveIdx.length));
-    if (auditPooled && auditMesh !== null && order.length > 0) {
-      const tailIds = new Int32Array(order.length);
-      for (let j = 0; j < order.length; j += 1) tailIds[j] = liveIdx[order[j]];
-      auditTail = await runAuditPool(auditCfgFor(auditMesh, packAuditTris(tailIds, ta, tb, tc), {
-        kind: 'tail', count: order.length, audHs: AUD_HS, audNmin: AUD_NMIN, audNmax: AUD_NMAX, oracleN, tailN,
-      }));
-      rEvals += auditTail.rEvals;
-    }
     let tailMax = 0; let tailT = -1;
-    for (let j = 0; j < order.length; j += 1) {
-      const t = liveIdx[order[j]];
-      const s = auditTail === null ? sagOfN(t, tailN) : auditTail.out[j];
-      if (s > tailMax) { tailMax = s; tailT = t; }
-    }
+    for (const i of order) { const t = liveIdx[i]; const s = sagOfN(t, tailN); if (s > tailMax) { tailMax = s; tailT = t; } }
     // ───────── LOCUS AUDIT = the CLOSURE INVARIANT (re-detect features ON the produced mesh) ─────────
     // Barycentric sampling CANNOT prove a tolerance on a surface with gradient jumps: a tent tip between two samples
     // is missed by up to Δs·pitch/2, and Δs ≈ 16.7 mm/mm on GothicArches' rib ⇒ a 17 µm pitch admits a 140 µm blind
@@ -2757,14 +2297,8 @@ describe('STRATA conforming-bisection', () => {
     // TIGHTEN SUFFIX: 'T'. Same reason as B/G/P/W — a Phase-2 tightened run is a DIFFERENT MESH from the
     // control with otherwise identical flags, and it must not land on the control's filename. The control is
     // the thing every A/B in this campaign is measured against; overwriting it destroys the comparison.
-    // SHAPE SUFFIX: 'H'. Same reason as B/G/P/W/T, and it is the most important one yet — the shape levers
-    // default ON, so an unflagged run of this file after 2026-07-29 is a DIFFERENT MESH from every committed
-    // baseline. Without this suffix the first such run would silently overwrite the exact STLs the blade
-    // diagnosis was measured on. A control (PF_CB_SHAPE=0 PF_CB_MID3D=0 PF_CB_LONGFALL=0) drops the letter
-    // and lands back on the historical filename, which is what makes the before/after census an A/B.
     const RANK_SUFFIX: Record<RankMode, string> = { bounded: 'B', plane: '', ptperp: 'P' };
-    const SHAPE_SUFFIX = SHAPE || MID3D || LONGFALL ? 'H' : '';
-    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${SWEEP ? 'W' : RANK_SUFFIX[RANK]}${SHAPE_SUFFIX}${BND_DOOM ? 'G' : ''}${tighten === null ? '' : 'T'}${process.env.PF_CB_TAG_SUFFIX ?? ''}`;
+    const tag = `${STYLE.toLowerCase()}_${STAGE}_${DIRECTED ? 'D' : 'l'}${SNAP ? 'S' : '-'}${REPROJ ? 'R' : '-'}${SWEEP ? 'W' : RANK_SUFFIX[RANK]}${BND_DOOM ? 'G' : ''}${tighten === null ? '' : 'T'}${process.env.PF_CB_TAG_SUFFIX ?? ''}`;
     const buf = Buffer.alloc(84 + soup.length * 50);
     buf.write('STRATA conforming-bisection', 0, 'ascii');
     buf.writeUInt32LE(soup.length, 80);
@@ -2844,44 +2378,6 @@ describe('STRATA conforming-bisection', () => {
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
-      // ─── L5 SHAPE TERM. Printed ALWAYS, including when every lever is off, so a control run says so in
-      // its own report rather than by the absence of a block. ───
-      `--- SHAPE (L5, 2026-07-29 blade fix) ---`,
-      `  levers: PF_CB_SHAPE=${SHAPE ? `1 cap AR>${SHAPE_AR}` : '0 *** GUARD OFF — this run REPRODUCES the blade defect ***'}` +
-        `  fold=${SHAPE_FOLD ? 1 : 0}  mid3d=${MID3D ? `1 (${MID3D_ITERS} halvings, |shift| cap ${MID3D_MAXSHIFT})` : '0 (parametric midpoint — the measured 0.819 off-centre bias is BACK)'}  longfall=${LONGFALL ? 1 : 0}`,
-      `  guard: ${nShapeChecks} split candidates scored, ${nShapeChildren} child facets (BOTH sides of every edge)`,
-      `  refused: ${nShapeRefusedAR} on aspect (>${SHAPE_AR}), ${nShapeRefusedFold} on (θ,z) FOLD${SWEEP ? `   ⇒ shape-unresolved ${nShapeUnresolved}` : '   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path'}`,
-      // "ADMITTED", not "committed": the S4 probe scores candidate placements it may never take, so this is
-      // an UPPER bound on the worst child that actually landed. That is the direction that makes it a
-      // useful invariant — it must never exceed the cap.
-      `  worst child AR the guard ever ADMITTED: ${SHAPE ? `${shapeWorstAdmitted.toFixed(2)} (must be <= ${SHAPE_AR})` : 'n/a — guard off, nothing was scored'}`,
-      `  3-D midpoint: ${nMid3dSolves} solves, mean |s-frac| ${nMid3dSolves > 0 ? (mid3dShiftSum / nMid3dSolves).toFixed(5) : 'n/a'}, max ${mid3dShiftMax.toFixed(5)}, clamped ${nMid3dClamped}`,
-      `  longest-edge preference: tested ${nLongFallTested}, FIRED ${nLongFallFired} (max-sag edge inadmissible AND longest edge admissible)`,
-      // ─── S6 POST-LOOP INVARIANT. Printed ALWAYS, including when the lever is off, so a control run says so
-      // in its own report rather than by the absence of a block — the same convention as the SHAPE block. ───
-      `  post-loop guard: PF_CB_POST_SHAPE=${POST_SHAPE ? 1 : 0}${SHAPE ? '' : ' (INERT — PF_CB_SHAPE=0, so the control is byte-unchanged)'}   cap AR>${SHAPE_AR}, metric = _shapeGuard.aspect3 (the census's own)`,
-      `    initial grid: ${gridOverCap} of ${initTris} facets over the cap, worst AR ${gridWorstAR.toFixed(2)}`
-        + `${gridOverCap > 0 ? '   *** BORN OVER THE CAP. No split guard can have caused these and none can repair them — S1 refuses their splits, so they are FROZEN into the STL. Expect the blade gate to count them. ***' : ''}`,
-      `    collapse: ${nPostCollapseTested} tested, refused ${nPostCollapseRefusedAR} on aspect + ${nPostCollapseRefusedFold} on (θ,z) FOLD`
-        + `${nPostCollapseRefusedDirty > 0 ? `   *** ${nPostCollapseRefusedDirty} of the aspect refusals LEFT A FACET ALREADY OVER THE CAP in place — visible, not silent ***` : ''}`,
-      `    flip (collapse-driven, PF_CB_FLIP=${FLIP_ON ? 1 : 0}): ${nPostFlipTested} gate calls, refused ${nPostFlipRefusedAR} on aspect   [tryFlip sign-checks (θ,z) itself, so this path cannot fold]`,
-      `    worst AR any ADMITTED post-loop operation left behind: ${POST_SHAPE ? postWorstAdmitted.toFixed(2) : 'n/a — lever off, nothing was scored'}`,
-      // S5. The two counts either side of the pass are the ANSWER to "does tryFlip repair caps", measured on
-      // this run's own mesh. `cap-before` is also the honest final blade count in the census's metric.
-      ...(process.env.PF_CB_SAFE_COLLAPSE === '0'
-        ? ['  cap repair: NOT MEASURED — PF_CB_SAFE_COLLAPSE=0 disables the block this census lives in.']
-        : [`  cap repair: PF_CB_SHAPE_FLIP=${SHAPE_FLIP ? 1 : 0}   facets over cap BEFORE ${capBefore} (worst ${capWorstBefore.toFixed(1)}) → AFTER ${capAfter} (worst ${capWorstAfter.toFixed(1)})   flips tried ${capFlipTried}, done ${capFlipDone}`]),
-      ...(capBefore > 0 && SHAPE
-        ? (POST_SHAPE
-          ? [`  *** ${capBefore} facets over the cap survived a run with BOTH guards ON. S1 covers bisectAt and S6`,
-             '      covers the collapse and the collapse-driven flip, so a survivor can only be (a) BORN in the',
-             `      INITIAL GRID — ${gridOverCap} were, see the post-loop guard block above — or (b) a float32 tie:`,
-             '      the STL is float32 while both guards score float64, so a facet within ~0.1 % of the cap can',
-             '      tip either way. That moves individuals, never the population. ***']
-          : [`  *** ${capBefore} facets over the cap survived a run with the SPLIT guard ON. It covers SPLITS; these`,
-             '      can only have come from the INITIAL GRID or from the collapse pass, and both are reachable.',
-             '      PF_CB_POST_SHAPE=1 (the default) closes the second of those — this run had it OFF. ***'])
-        : []),
       ...(SWEEP ? [] : [`heap: ${heapT.length} left, worst-left ${um(heapLeftMax)} µm, key-inversions ${keyInversions}, no-op splits ${stuck}   MAXtri@oracle${oracleRef} ${maxT >= 0 ? um(sagOfN(maxT, oracleRef)) : 'n/a'} µm`]),
       ...(SWEEP ? [
         `queue: ${queueLeft} live left after ${sweep} sweeps (${qDropped} dead entries compacted out), no-op actions ${stuck}   MAXtri@oracle${oracleRef} ${maxT >= 0 ? um(sagOfN(maxT, oracleRef)) : 'n/a'} µm`,
@@ -2994,24 +2490,6 @@ describe('STRATA conforming-bisection', () => {
         : []),
       `  TAIL re-measure (worst ${order.length} @ oracle ${tailN}): MAX ${um(tailMax)} µm  ${tailMax <= TOL ? 'PASS' : 'FAIL'}`,
       `  TAIL-locus: ${locus(tailT)}`,
-      // AUDIT COST, AND ITS IDENTITY GUARANTEES. Read the eval columns as COST. The FIDELITY numbers above are
-      // claimed INDEPENDENT of the worker count: slot i is written by exactly one worker and every reduction
-      // runs on the main thread in the original order, so PF_CB_AUDIT_WORKERS=1 vs N must reproduce this whole
-      // report byte-for-byte except the wall clock and this block. That is the acceptance test, not a hope.
-      ...(auditMain === null
-        ? [`  audit: SERIAL (PF_CB_AUDIT_WORKERS=${AUDIT_WORKERS}) — the unchanged code path; set >1 to score facets in a worker pool.`]
-        : [
-          `  audit: PARALLEL, ${auditMain.workers} workers   main ${liveIdx.length} facets in ${(auditMain.wallMs / 1000).toFixed(1)}s (chunk ${auditMain.chunk})`
-            + `${auditTail === null ? '   tail: none' : `   tail ${order.length} facets in ${(auditTail.wallMs / 1000).toFixed(1)}s (chunk ${auditTail.chunk})`}`,
-          `    rA evals: ${((auditMain.rEvals + (auditTail?.rEvals ?? 0)) / 1e6).toFixed(1)}M in workers — INCLUDED in the total above, because they are the same evaluations a serial run makes`,
-          `      + ${((auditMain.latEvals + (auditTail?.latEvals ?? 0)) / 1e3).toFixed(1)}k identity-lattice and ${auditForensicEvals} forensic re-evals, both EXCLUDED so both arms print the same total`,
-          `    rA identity: ${auditMain.latPoints} (worker × lattice) comparisons, ${auditMain.latDiffCount} differ, worst ${(auditMain.latMaxDev * 1000).toFixed(6)} µm — checked BEFORE any facet was scored, run refused on any deviation`,
-          `    shared buffers: ${((auditMesh?.bytes ?? 0) / (1 << 20)).toFixed(1)} MB vertices + ${((liveIdx.length * 12) / (1 << 20)).toFixed(1)} MB corners + ${((liveIdx.length * 16) / (1 << 20)).toFixed(1)} MB results (the mesh is SHARED, never copied per worker)`,
-          `    ${AUDIT_VERIFY
-            ? `PF_CB_AUDIT_VERIFY ON: ${auditVerifyChecked} facets re-scored on the main thread and Object.is-compared on both rulers (a mismatch THROWS); ${(auditVerifyEvals / 1e6).toFixed(1)}M extra rA evals, EXCLUDED`
-            : 'PF_CB_AUDIT_VERIFY=1 to re-score every facet on the main thread and gate bit-identity per facet'}`,
-          '    NB the LOCUS AUDIT (PF_CB_LOCUS_AUDIT=1) is NOT pooled — it is off by default and stays serial.',
-        ]),
       ...(process.env.PF_CB_LOCUS_AUDIT === '1'
         ? [`  LOCUS AUDIT (closure invariant): ${locusCrossed} tris still crossed by a detected locus; worst on-locus sag ${um(locusMax)} µm  ${locusMax <= TOL ? 'PASS' : 'FAIL'}`,
            `  LOCUS-locus: ${locus(locusT)}`]

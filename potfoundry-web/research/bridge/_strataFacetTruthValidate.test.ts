@@ -250,7 +250,20 @@ describe('facet-truth ruler validation', () => {
     cols.sort((p, q) => p - q);
     const mesh = structuredMesh(rA, cols, 200);
     const loc = buildRefLocator(mesh, pickLocatorCell(mesh.xyz, mesh.idx, mesh.nF));
-    const res = surfaceToMeshMax(rA, loc.dist, { H, tol: 0.05, u0: 512, v0: 128, maxDepth: 10, budget: 8e6 });
+    // This control named its configuration `u0: 512, v0: 128, maxDepth: 10`. None of the three is a member of
+    // SurfaceToMeshOpts, so all three were SILENTLY DROPPED and V6 in fact ran at library defaults
+    // (coveragePitch = 4*tol = 0.2 mm, minPitch = tol/8 = 6.25 um). The one test whose job is to show that
+    // V4/V5 read a real defect rather than an instrument bias cannot itself run at an unstated configuration.
+    // Same intent, in the options that exist: u0/v0 were a QUERY-LATTICE RESOLUTION and `coveragePitch` is one
+    // scalar in mm of arc AND of z, so take the finer axis (theta binds: 2*pi*45.4/512 = 0.557 mm against
+    // 120/128 = 0.938 mm) and neither axis is coarser than named; `maxDepth` was REFINEMENT LEVELS, i.e. the
+    // refinement floor after 10 halvings of that pitch.
+    // CHANGES WHAT V6 MEASURES relative to every run published before this: phase-A coverage becomes 2.8x
+    // coarser than the default it had been silently using, and the phase-B floor 11x finer.
+    const rNom = R0 + amp;
+    const coveragePitch = Math.min((TAU * rNom) / 512, H / 128);
+    const minPitch = coveragePitch / 2 ** 10;
+    const res = surfaceToMeshMax(rA, loc.dist, { H, tol: 0.05, coveragePitch, minPitch, budget: 8e6 });
     // eslint-disable-next-line no-console
     console.log(`V6 resolved-ridge mesh: H2 ${(res.max * 1000).toFixed(3)} um (must be far below the ${amp * 1000} um relief)`);
     expect(res.max).toBeLessThan(amp * 0.1);

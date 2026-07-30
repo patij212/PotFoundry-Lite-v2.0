@@ -140,7 +140,55 @@ export interface RefLocator {
   bruteDist: (px: number, py: number, pz: number) => number;
 }
 
-/** squared point-to-triangle distance in 3D (exact; Ericson/real-time-collision-detection closest-point). */
+/** squared point-to-segment distance; a zero-length segment collapses to its endpoint, never a 0/0. */
+function pointSegDist2(
+  px: number, py: number, pz: number,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+): number {
+  const ex = bx - ax, ey = by - ay, ez = bz - az;
+  const fx = px - ax, fy = py - ay, fz = pz - az;
+  const ee = ex * ex + ey * ey + ez * ez;
+  let t = ee > 0 ? (ex * fx + ey * fy + ez * fz) / ee : 0;
+  if (t < 0) t = 0; else if (t > 1) t = 1;
+  const dx = fx - t * ex, dy = fy - t * ey, dz = fz - t * ez;
+  return dx * dx + dy * dy + dz * dz;
+}
+
+/**
+ * exact squared distance to a ZERO-AREA facet. The union of a degenerate triangle's three edges IS its
+ * convex hull (the longest edge), so the min over the three segments is the exact answer for any collapse —
+ * coincident pair, coincident triple, or collinear-but-distinct.
+ */
+function degenTriDist2(
+  px: number, py: number, pz: number,
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+): number {
+  return Math.min(
+    pointSegDist2(px, py, pz, ax, ay, az, bx, by, bz),
+    pointSegDist2(px, py, pz, bx, by, bz, cx, cy, cz),
+    pointSegDist2(px, py, pz, cx, cy, cz, ax, ay, az),
+  );
+}
+
+/**
+ * squared point-to-triangle distance in 3D (exact; Ericson/real-time-collision-detection closest-point).
+ *
+ * DEGENERATE-FACET HARDENED. Every division in the textbook routine is by a quantity that is EXACTLY zero on
+ * a zero-area facet: `d1-d3` = |ab|², `d2-d6` = |ac|², `(d4-d3)+(d5-d6)` = |bc|², and `va+vb+vc` = |ab×ac|².
+ * The mesher's sliver-collapse stage really does emit coincident-vertex facets, so those zeros are reached —
+ * MEASURED: a b-onto-a collapse returns NaN for ~49% of query directions (the other collapses happen to
+ * escape through an early-out, but only for the query points that route there, which is not a property to
+ * rely on). The NaN is not merely inaccurate: `d2 < best` is FALSE for NaN, so the facet is silently skipped;
+ * if a query's only nearby facets are degenerate, `best` stays Infinity, the locator's ring test
+ * `(ring*cell)² > best` never fires, the query scans the ENTIRE grid and then returns Infinity, which H2
+ * records as its max. Every zero denominator is therefore routed to `degenTriDist2`, which is EXACT rather
+ * than merely finite — clamping to the branch's endpoint instead would over-report (9 read as 10 on the
+ * b-onto-a case). In a watertight mesh a degenerate facet's edges belong to its real neighbours too, so
+ * those neighbours already win the min: no correct measurement moves, only the Infinity path is removed.
+ */
 function pointTriDist2(
   px: number, py: number, pz: number,
   ax: number, ay: number, az: number,
@@ -159,7 +207,9 @@ function pointTriDist2(
   if (d3 >= 0 && d4 <= d3) return bpx * bpx + bpy * bpy + bpz * bpz;
   const vc = d1 * d4 - d3 * d2;
   if (vc <= 0 && d1 >= 0 && d3 <= 0) {
-    const v = d1 / (d1 - d3);
+    const dAB = d1 - d3;                                  // = |ab|² exactly (d3-d1 = ab·(a-b))
+    if (!(dAB > 0)) return degenTriDist2(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz);
+    const v = d1 / dAB;
     const qx = ax + v * abx, qy = ay + v * aby, qz = az + v * abz;
     const dx = px - qx, dy = py - qy, dz = pz - qz; return dx * dx + dy * dy + dz * dz;
   }
@@ -169,18 +219,35 @@ function pointTriDist2(
   if (d6 >= 0 && d5 <= d6) return cpx * cpx + cpy * cpy + cpz * cpz;
   const vb = d5 * d2 - d1 * d6;
   if (vb <= 0 && d2 >= 0 && d6 <= 0) {
-    const w = d2 / (d2 - d6);
+    const dAC = d2 - d6;                                  // = |ac|² exactly (d6-d2 = ac·(a-c))
+    if (!(dAC > 0)) return degenTriDist2(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz);
+    const w = d2 / dAC;
     const qx = ax + w * acx, qy = ay + w * acy, qz = az + w * acz;
     const dx = px - qx, dy = py - qy, dz = pz - qz; return dx * dx + dy * dy + dz * dz;
   }
   const va = d3 * d6 - d5 * d4;
   if (va <= 0 && (d4 - d3) >= 0 && (d5 - d6) >= 0) {
-    const w = (d4 - d3) / ((d4 - d3) + (d5 - d6));
+    const dBC = (d4 - d3) + (d5 - d6);                    // = |bc|² exactly (= bc·(c-b))
+    if (!(dBC > 0)) return degenTriDist2(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz);
+    const w = (d4 - d3) / dBC;
     const qx = bx + w * (cx - bx), qy = by + w * (cy - by), qz = bz + w * (cz - bz);
     const dx = px - qx, dy = py - qy, dz = pz - qz; return dx * dx + dy * dy + dz * dz;
   }
+  // The face region. `va+vb+vc` = |ab×ac|², exactly zero on any exactly-degenerate facet — 1/0 = Infinity and
+  // the barycentric point comes back NaN. VALIDATE THE SOLUTION rather than test the denominator: reaching
+  // this branch implies v ≥ 0, w ≥ 0, v+w ≤ 1 in exact arithmetic, so a violation means the facet carries no
+  // usable face and the answer lies on an edge — which is also the right answer for a REAL facet whose
+  // barycentric solve lands marginally out of range near an edge. NaN and ±Infinity both fail it.
+  //
+  // A NEEDLE (thickness ~1e-16 of its length, i.e. not degenerate, merely unresolvable) still gets through
+  // with in-range v,w that are numerical garbage — MEASURED 0.82 mm of error on a 3.7 mm needle. That is
+  // pre-existing and is left alone deliberately: in-range v,w make q a convex combination of the vertices,
+  // hence a point ON the facet, so such a facet can only ever read OVER the truth (measured worst under-read
+  // across 50k probes: 8.9e-16, i.e. rounding). Over-reading loses the min to the real neighbours; it cannot
+  // manufacture the false PASS this instrument exists to catch.
   const denom = 1 / (va + vb + vc);
   const v = vb * denom, w = vc * denom;
+  if (!(v >= 0 && w >= 0 && v + w <= 1)) return degenTriDist2(px, py, pz, ax, ay, az, bx, by, bz, cx, cy, cz);
   const qx = ax + abx * v + acx * w, qy = ay + aby * v + acy * w, qz = az + abz * v + acz * w;
   const dx = px - qx, dy = py - qy, dz = pz - qz; return dx * dx + dy * dy + dz * dz;
 }
@@ -225,11 +292,19 @@ export function buildRefLocator(ref: RefMesh, cell = 3.0): RefLocator {
   for (let i = 0; i < nCells; i++) counts[i + 1] += counts[i];
   const total = counts[nCells];
   const items = new Int32Array(total);
-  const cursor = counts.slice(0, nCells);
+  // Fill with `counts` ITSELF as the write cursor, then shift the table back. The previous
+  // `counts.slice(0, nCells)` was a full second copy of the offset table: `pickLocatorCell` budgets 4e7
+  // buckets, so on a production pot that is ~161 MB live PLUS ~161 MB transient — for a grid that is ~80%
+  // empty, because a pot shell occupies a thin sliver of its bounding box. The algorithm is unchanged and
+  // the resulting `counts`/`items` are bit-identical to the copy version; `bruteDist` remains the check.
   for (let f = 0; f < nF; f++) {
     const lx = tlx[f], hx = thx[f], ly = tly[f], hy = thy[f], lz = tlz[f], hz = thz[f];
-    for (let ix = lx; ix <= hx; ix++) for (let iy = ly; iy <= hy; iy++) for (let iz = lz; iz <= hz; iz++) { const c = cid(ix, iy, iz); items[cursor[c]++] = f; }
+    for (let ix = lx; ix <= hx; ix++) for (let iy = ly; iy <= hy; iy++) for (let iz = lz; iz <= hz; iz++) { const c = cid(ix, iy, iz); items[counts[c]++] = f; }
   }
+  // The cursor advanced counts[c] to the END of cell c, i.e. the table is now shifted left by one slot.
+  // counts[nCells] was never a cursor, so it still holds `total`. Shift right and re-seat the origin.
+  for (let c = nCells; c > 0; c--) counts[c] = counts[c - 1];
+  counts[0] = 0;
 
   const triDist2 = (f: number, px: number, py: number, pz: number): number => {
     const a = idx[3 * f], b = idx[3 * f + 1], c = idx[3 * f + 2];
@@ -261,6 +336,12 @@ export function buildRefLocator(ref: RefMesh, cell = 3.0): RefLocator {
           }
         }
       }
+      // TERMINATION IS EXACT, clamping included. p lies inside cell (cx,cy,cz) and the scanned box reaches
+      // `ring` cells past it on every axis, so any point within ring*cell of p has a cell index within `ring`
+      // of (cx,cy,cz), and any triangle owning such a point is in one of those buckets (triangles are
+      // inserted over their whole AABB cell range). When `ixOf` CLAMPS — p outside the mesh bbox — the bound
+      // still holds: p is then at least as far outside as the clamping shifted it, so the index range a
+      // ring*cell displacement can reach only shrinks. Hence nothing unseen can beat `best` here.
       if (bestTri >= 0 && (ring * cell) * (ring * cell) > best && ring > 0) break;
       if (!anyCell && ring > 0) break;
     }

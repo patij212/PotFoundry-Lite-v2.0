@@ -19,12 +19,18 @@
 // and the device is then refused. `channel: 'chrome'` uses the installed browser, which has the DXC runtime.
 // MEASURED here: bundled → device refused; channel 'chrome' headless → nvidia/turing, real device.
 //
-// THE PARITY GUARD IS NOT OPTIONAL. The GPU evaluates `style_radius` over a base radius it reconstructs as
-// Rb + (Rt-Rb)*t, while the mesher evaluates `buildRadiusFn`, which routes through `baseRadius(z,H,Rb,Rt,
-// expn,opts)`. Those are the same function today for every registry style, but nothing enforces it, and a
-// ranking function scoring a DIFFERENT surface from the mesher it steers would produce a plausible mesh that
-// is wrong everywhere. So the bridge measures the disagreement at startup over a lattice and REFUSES to open
-// if it exceeds `parityTolUm`. When two measurements that must agree disagree, that is the bug report.
+// THE PARITY GUARD IS NOT OPTIONAL. The GPU evaluates `style_radius` over a base radius it derives from the
+// dispatched dims, while the mesher evaluates `buildRadiusFn`, which routes through `baseRadius(z,H,Rb,Rt,
+// expn,opts)`. Those must be the same function, and nothing but this guard enforces it: a ranking function
+// scoring a DIFFERENT surface from the mesher it steers would produce a plausible mesh that is wrong
+// everywhere. So the bridge measures the disagreement at startup over a lattice and REFUSES to open if it
+// exceeds `parityTolUm`. When two measurements that must agree disagree, that is the bug report.
+//
+// 2026-07-29: the guard used to hand the GPU its own r0 (computed here as the LINEAR `Rb + (Rt-Rb)*z/H`),
+// which quietly narrowed it to a style_radius comparison and made it blind to the base profile — the exact
+// place the missing `expn` was hiding. It now runs KERNEL_EVAL in `baseFromDims` mode, so the GPU derives r0
+// through the same `r_base` the screen uses and the guard covers the WHOLE surface: geometry, flare
+// exponent, bell and style. That is the only version of this check that is worth the name.
 import { chromium, type Browser, type Page } from 'playwright';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { buildRadiusFn } from './labkit';
@@ -34,6 +40,13 @@ import type { StyleId } from '../../src/geometry/types';
 /** Vite dev server that serves both the app modules and research/. */
 export const GPU_ORIGIN = process.env.PF_GPU_ORIGIN ?? 'http://127.0.0.1:3001';
 
+/**
+ * DEFAULT geometry, overridable per call via `GpuRankOpts.dims`. The GPU reconstructs its base radius from
+ * these numbers, so they ARE the surface the ranking function scores against. While they were unreachable the
+ * bridge always scored an H=120 pot whatever the mesher was building, and the parity guard could not catch it:
+ * the guard compares rA VALUES between GPU and CPU, so a geometry mismatch shows up only as a side effect of
+ * the lattice sampling z over the wrong range, not as the mismatch it is.
+ */
 const DIMS: StyleDims = { H: 120, Rb: 40, Rt: 50, expn: 1 };
 const TWO_PI = 2 * Math.PI;
 
@@ -56,6 +69,8 @@ export interface GpuRankOpts {
   params?: Record<string, number>;
   /** the mesher's OWN radius function, so the parity guard compares the two things that must agree */
   cpuRadius?: (th: number, z: number) => number;
+  /** pot geometry the GPU scores against; MUST match the geometry the mesh under test was built at */
+  dims?: StyleDims;
   /** barycentric lattice level for the screen (per-thread cost is O(n^2) — see gpuRuler's n<=192 note) */
   n?: number;
   gnIters?: number;
@@ -73,11 +88,21 @@ export interface GpuRankOpts {
 export interface GpuRank {
   /** max |GPU rA − CPU rA| over the startup lattice, in µm */
   readonly parityUm: number;
+  /** the geometry the GPU is scoring against — echoed so a caller can assert it, not merely hope */
+  readonly dims: StyleDims;
   /** score a triangle soup: returns 2 floats per triangle, [maxPerpDist, covRad], both in mm */
   score(xyz9: Float32Array, nTri: number): Promise<Float32Array>;
   close(): Promise<void>;
   readonly stats: { batches: number; tris: number; gpuMs: number; wallMs: number; deviceLosses: number };
 }
+
+/**
+ * Is this failure worth rebuilding the browser for? A lost/destroyed device, a dropped dispatch or a dead
+ * Playwright target are transient and a fresh page fixes them. A guard throw from gpuRuler — wrong geometry,
+ * short buffer, dims disagreement — is a statement about the ARGUMENTS and survives any number of retries.
+ */
+const isDeviceFailure = (e: unknown): boolean =>
+  /\bis lost\b|\bdevice lost\b|\bdestroyed\b|\badapter\b|dispatch dropped|out of memory|Target (page|closed)|Protocol error|browser has been closed/i.test(String(e));
 
 const b64encode = (a: Float32Array): string => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString('base64');
 const b64decode = (s: string): Float32Array => {
@@ -94,17 +119,27 @@ const b64decode = (s: string): Float32Array => {
 // reach the browser as a string, so it is built at runtime where no AST transform can see it.
 const pageImport = "return (new Function('u', 'return import(u)'))";
 
-/** page-side setup: import the ruler, get a device and the style context, park them on window. */
-async function installPageRuler(page: Page, style: string, params: Record<string, number>): Promise<void> {
-  await page.evaluate(async ([styleName, explicit, impSrc]) => {
+/**
+ * page-side setup: import the ruler, get a device and the style context, park them on window.
+ *
+ * It RETURNS the dims the context actually ended up holding, and the caller compares them. `dims` crosses
+ * into the page through Playwright's serialiser, which drops `undefined` properties, and `styleContext`
+ * defaults a missing argument to its own module constant — so "I passed dims" and "the kernels will use my
+ * dims" are two different claims with a silent gap between them. That gap is the whole bug this file's
+ * header is about; measure it rather than assume it closed.
+ */
+async function installPageRuler(
+  page: Page, style: string, params: Record<string, number>, dims: StyleDims,
+): Promise<StyleDims> {
+  return await page.evaluate(async ([styleName, explicit, impSrc, d]) => {
     const w = window as unknown as Record<string, unknown>;
     const imp = new Function(impSrc as string)() as (u: string) => Promise<Record<string, unknown>>;
     const G = await imp('/research/gpu/gpuRuler.js') as unknown as {
       makeDevice: () => Promise<unknown>;
-      styleContext: (s: string) => Promise<{ merged: Record<string, number>; params48: number[] }>;
+      styleContext: (s: string, dm: unknown) => Promise<{ merged: Record<string, number>; params48: number[]; dims: { H: number; Rb: number; Rt: number; expn?: number } }>;
     };
     const dev = await G.makeDevice();
-    const ctx = await G.styleContext(styleName as string);
+    const ctx = await G.styleContext(styleName as string, d);
     // OVERRIDE the page's own defaults with the params the MESHER is actually using. styleContext derives
     // registry defaults independently; that is the right default but the wrong answer whenever the caller
     // meshed with something else (PF_CB_PARAMS). The packed payload is what the kernel reads, so it has to be
@@ -117,7 +152,17 @@ async function installPageRuler(page: Page, style: string, params: Record<string
     ctx.params48 = params48;
     ctx.merged = merged;
     w.__pfGr = { G, dev, ctx };
-  }, [style, params, pageImport] as const);
+    return ctx.dims;
+  }, [style, params, pageImport, dims] as const);
+}
+
+/** Throw unless the geometry that reached the page is the geometry the caller asked for. */
+function assertPageDims(want: StyleDims, got: StyleDims): void {
+  const same = Object.is(+want.H, +got.H) && Object.is(+want.Rb, +got.Rb) && Object.is(+want.Rt, +got.Rt)
+    && Object.is(+(want.expn ?? 1), +(got.expn ?? 1));
+  if (!same) {
+    throw new Error(`gpuRank: the page's style context holds ${JSON.stringify(got)} but this bridge was opened for ${JSON.stringify(want)}. Every kernel reads the context, so the GPU would be scoring a pot nobody asked for.`);
+  }
 }
 
 export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
@@ -131,8 +176,18 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
   const origin = o.origin ?? GPU_ORIGIN;
   const log = o.onPageLog ?? ((l: string): void => { process.stderr.write(`${l}\n`); });
   let chunk = o.chunk ?? 4096;
+  const dims: StyleDims = { ...(o.dims ?? DIMS), expn: (o.dims ?? DIMS).expn ?? 1 };
 
-  const cpuRadius = o.cpuRadius ?? buildRadiusFn(style as StyleId, params, DIMS);
+  // A SUPPLIED cpuRadius CARRIES ITS OWN GEOMETRY, AND NOTHING HERE CAN SEE IT. `buildRadiusFn` closes over
+  // the mesher's H/Rb/Rt/expn; passing that closure while leaving `dims` unset silently pairs the mesher's
+  // pot with the module default on the GPU side. The parity guard below does catch it — an H mismatch moves
+  // every t and the disagreement is enormous — but it reports "the two rulers disagree", which is a much
+  // worse diagnosis than "you forgot to say what pot this is". Say the second one first.
+  if (o.cpuRadius !== undefined && o.dims === undefined) {
+    log(`  [gpuRank] cpuRadius supplied without dims — the GPU will score ${JSON.stringify(DIMS)}. If the mesh was built at anything else, pass { dims } too.`);
+  }
+
+  const cpuRadius = o.cpuRadius ?? buildRadiusFn(style as StyleId, params, dims);
 
   const launch = async (): Promise<{ browser: Browser; page: Page }> => {
     // channel 'chrome' — the bundled Chromium has no dxil.dll and its device request is refused. Failing to
@@ -143,7 +198,9 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
     page.on('pageerror', (e) => log(`  [gpuRank page error] ${String(e).slice(0, 300)}`));
     page.on('console', (m) => { if (m.type() === 'error') log(`  [gpuRank page] ${m.text().slice(0, 300)}`); });
     await page.goto(`${origin}/`, { waitUntil: 'domcontentloaded' });
-    await installPageRuler(page, style, params);
+    // Checked on EVERY launch, not just the first — `launch()` is also the device-loss recovery path, and a
+    // recovery that quietly rebuilt the page on default geometry would change the surface mid-run.
+    assertPageDims(dims, await installPageRuler(page, style, params, dims));
     return { browser, page };
   };
 
@@ -157,13 +214,15 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
   const samples = new Float32Array(nS * 3);
   const cpu = new Float64Array(nS);
   {
-    const { H, Rb, Rt } = DIMS;
+    const { H } = dims;
     let k = 0;
     for (let i = 0; i < NU; i += 1) {
       for (let j = 0; j < NV; j += 1) {
         const th = (TWO_PI * (i + off)) / NU;
         const z = (H * j) / (NV - 1);
-        samples[k * 3] = th; samples[k * 3 + 1] = z / H; samples[k * 3 + 2] = Rb + ((Rt - Rb) * z) / H;
+        // slot 2 is IGNORED in baseFromDims mode — the kernel derives r0 itself. Left at 0 rather than
+        // filled with a plausible-looking base radius, so nobody reads this loop as still supplying one.
+        samples[k * 3] = th; samples[k * 3 + 1] = z / H; samples[k * 3 + 2] = 0;
         cpu[k] = cpuRadius(th, z);
         k += 1;
       }
@@ -176,8 +235,8 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
     const u8 = new Uint8Array(bin.length);
     for (let i = 0; i < bin.length; i += 1) u8[i] = bin.charCodeAt(i);
     const f = new Float32Array(u8.buffer);
-    const dispatch = G.dispatch as (d: unknown, c: unknown, k: unknown, s: Float32Array, m: number) => Promise<Float32Array>;
-    const out = await dispatch(dev, ctx, G.KERNEL_EVAL, f, count as number);
+    const dispatch = G.dispatch as (d: unknown, c: unknown, k: unknown, s: Float32Array, m: number, op?: unknown) => Promise<Float32Array>;
+    const out = await dispatch(dev, ctx, G.KERNEL_EVAL, f, count as number, { baseFromDims: true });
     let s = '';
     const bytes = new Uint8Array(out.buffer);
     for (let i = 0; i < bytes.length; i += 8192) s += String.fromCharCode(...bytes.subarray(i, i + 8192));
@@ -190,7 +249,7 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
   }
   if (!(parityUm <= parityTolUm)) {
     await browser.close();
-    throw new Error(`gpuRank parity guard: GPU rA disagrees with the mesher's CPU rA by ${parityUm.toFixed(3)} µm over ${nS} samples (limit ${parityTolUm} µm). The ranking function would be steering the mesher against a different surface — do not run.`);
+    throw new Error(`gpuRank parity guard: GPU rA disagrees with the mesher's CPU rA by ${parityUm.toFixed(3)} µm over ${nS} samples (limit ${parityTolUm} µm) at dims ${JSON.stringify(dims)}. This compares the FULL surface — geometry, expn, bell and style — so a large disagreement most often means the dims passed here are not the dims the cpuRadius closure was built at. Do not run.`);
   }
 
   const stats = { batches: 0, tris: 0, gpuMs: 0, wallMs: 0, deviceLosses: 0 };
@@ -233,8 +292,12 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
       try {
         r = await dispatchOne(part, cnt);
       } catch (e) {
-        // One re-acquisition attempt. A lost device is otherwise terminal for a multi-hour run, and the
-        // page-side state (device + pipeline cache) is exactly what has to be rebuilt.
+        // RE-ACQUIRE ONLY FOR DEVICE FAILURES. This used to retry on ANY throw, which is wrong for the
+        // guard class the ruler now raises: a geometry mismatch or a short buffer is a property of the CALL,
+        // so tearing down Chrome and rebuilding the page just runs the same bad call again, doubling the
+        // wall-time and burying the real message under a device-loss line. Retry the transient, surface the
+        // permanent immediately.
+        if (!isDeviceFailure(e)) throw e;
         stats.deviceLosses += 1;
         log(`  [gpuRank] dispatch failed (${String(e).slice(0, 140)}) — re-acquiring the device`);
         try { await browser.close(); } catch { /* already gone */ }
@@ -256,6 +319,7 @@ export async function openGpuRank(o: GpuRankOpts): Promise<GpuRank> {
 
   return {
     parityUm,
+    dims,
     score,
     close: async (): Promise<void> => { await browser.close(); },
     stats,
