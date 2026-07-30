@@ -708,6 +708,238 @@ Pilot levers stay in the driver flag-OFF: PF_CB_SLIVER_COLLAPSE / PF_CB_SLIVER_A
 / PF_CB_SLIVER_RESUME_BUDGET / PF_CB_CONF_FLIP. Artifacts: _S6ID/_S6C/_S6CR/_CTLPLUS/_S7ID/_S7F in
 research/exchange/_strataConformBisect/ with pilot*.log audit evidence beside them.
 
+### 2026-07-30 (the following session) — S8 PILOT PRE-REGISTRATION: CASCADE-SPLIT AT THE CROSSING.
+Registered BEFORE the cascade arm ran (the identity arm and the hard gate were in flight when this was
+written; no cascade mesh existed yet). Implements the fix the S6/S7 refutations point at, verbatim:
+the fossil's crossing edge is SPLIT AT THE CROSSING — the exact split SNAP was refused — with the
+neighbour-degradation refusal discharged by CASCADING to the protecting neighbour.
+
+MECHANISM UNDER TEST. S4's counter measured the deadlock: in ~95% of refused splits BOTH candidate edges
+were inadmissible, because in a sliver train along a locus your longest edge is your degenerate
+neighbour's SHORT edge — a MUTUAL PROTECTION the one-edge-at-a-time guard cannot see past. The discharge
+is Rivara's own: before splitting the blocked edge, midpoint-split the protecting triangle's LONGEST edge
+(the measured ×0.99-amplification move), recursively and depth-capped, then retry. Two obligation kinds:
+  * PROTECTOR — the offender's longest edge is midpoint-split first (recursive, LEPP-as-CONFORMITY-
+    OBLIGATION at fossil sites; the 2026-07-29 LEPP refutation was about RANKING and does not touch this);
+  * RETREAT — when the offender's longest edge IS the blocked edge (crossing too far off-centre for the
+    pair's own children: childAR/parentAR ≈ 1/min(t,1−t)), midpoint-split the crossing edge and re-locate
+    the crossing on the child that carries it (t′ ≈ 2t re-centres geometrically; if the crossing lands
+    within SNAP_ALPHA of a vertex at child scale the site counts BY-PROXIMITY, reported separately —
+    proximity is NOT conformity at product tolerance; H2 prices what it is worth).
+Every split goes through `bisectAt`, so S1/S2 score every child on both sides — the pass CANNOT emit an
+over-cap facet or a fold, by the same construction the refinement loop relies on. Enumeration is S7's
+VERBATIM (longest edge of a live facet, exactly-2 incidence, locateKink interior crease crossing inside
+the SNAP_ALPHA band), so the two pilots name the same population. POST-LOOP, like S6/S7: fossils are
+repaired after acceptance; if this wins, wiring the same cascade into the in-loop SNAP path (preventing
+the birth) is the follow-up lever, deliberately NOT bundled here.
+
+LEVERS (all default OFF / inert): PF_CB_FOSSIL_CASCADE=1 gates the pass; PF_CB_FOSSIL_DEPTH (12)
+protector obligations per site; PF_CB_FOSSIL_BUDGET (40000) gross allocations for the pass;
+PF_CB_FOSSIL_PASSES (3) outer sweeps; shared resume budget/loop unchanged (PF_CB_SLIVER_RESUME_BUDGET).
+Driver-only change; the auditor, _facetTruthLib, _shapeGuard and every judge file are byte-untouched.
+One accounting change under pilot flags only: resume-budget usage is now measured from the resume's own
+start (`resumeBase`), so S8's pass allocations are not billed to the resume; flag-OFF reports unchanged.
+
+COMMANDS (all from potfoundry-web/, -c vitest.strata.config.ts):
+  identity  PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_GRIDU=40 PF_CB_GRIDV=28
+            PF_CB_TRICAP=120000 PF_CB_ACCEPT=0.0035 PF_CB_DIRECTED=1 PF_CB_SNAP=1 PF_CB_TAG_SUFFIX=_S8ID
+  cascade   same + PF_CB_FOSSIL_CASCADE=1, PF_CB_TAG_SUFFIX=_S8F
+  audits    PF_STRATA_FT=1 PF_FT_STYLE=GothicArches PF_FT_STL=<arm stl>; shape-only (PF_FT_H1=0
+            PF_FT_H2=0) for the fast read, then fidelity at the RECORDED pilot depth (PF_FT_H1MAX=15000
+            PF_FT_H2BUDGET=10000000). Judged against the RECORDED W1 audits (pilot_shape_W1.log /
+            pilot_fid_W1.log) — same instrument, same depth; PR1 makes the recorded numbers same-lineage.
+
+YARDSTICKS (W1, shallow depth, read directionally): back-facing 211 (+1,581 feature-span), AR>25
+offenders 1,888, unresolved 56 worst 405.396 um, H1 witnessed 1,213.409 um / 75.91% facets over,
+H2 witnessed 350.163 um / 69.36% samples over. CTLPLUS (equal-extra-budget control, cap 140k, flag OFF):
+back-facing 294 — generic extra refinement makes the class WORSE, so budget inflation alone cannot
+explain a win on the class metric.
+
+PREDICTIONS, all falsifiable, decided before any cascade number existed:
+  PR1 IDENTITY. Flag-OFF at the W1 config reproduces md5 8a59fb37a9115600b13262254380ccb0 byte-exact.
+      The edited `shapeAdmits`/`bisectAt` write one diagnostic closure variable on the hot path; "an
+      assignment moves no byte" is VERIFIED here, not asserted. A mismatch aborts the pilot outright.
+  PR2 MECHANISM. >=60% of crossing-edge candidates end CONFORMED or by-proximity; DEADLOCKED <=20%.
+      (S7 enumerated 2,181 candidates; the enumeration is identical, so expect a similar count.)
+  PR3 THE CLASS (headline). Footprint back-facing 211 -> <=42 (>=5x fall). REFUTED if >105 (<2x).
+  PR4 FIDELITY GUARD. H1 witnessed does not rise >10% (<=1,335 um); H2 witnessed max FALLS (mechanism:
+      the crossing vertex puts mesh ON the crest, the H2-costly direction); H2 over-tol fraction falls.
+  PR5 UNRESOLVED. 56 -> <=28, OR worst 405.396 -> <=270 um. (The stranded set and the deadlock are the
+      same phenomenon; discharging one must move the other.)
+  PR6 SHAPE INVARIANT — PRECONDITION, NOT A RESULT. Determined blades 0, determined folds 0 on the
+      cascade arm; driver's worst ADMITTED child AR <= 50. Any non-zero refutes the S1/S2-through-cascade
+      plumbing, whatever the class numbers say.
+  PR7 COST. Pass <=40k gross allocs (budget-capped is a finding, not a failure); mesh wall <= 1.6x W1.
+  PR8 VERDICT ROWS, first match wins, disjoint by construction:
+      1 REFUTATION   back-facing falls <2x — splitting at the crossing does not repair the class; the
+                     fossil diagnosis (or the primitive) is wrong. A result, the fourth of this family.
+      2 REGRESSION   H1 witnessed rises >=1.5x OR H2 max rises >=1.2x OR PR6 fails — conformity bought
+                     at a fidelity/shape price; must not default ON.
+      3 WIN          back-facing >=5x fall AND H2 max falls AND H1 within +10%.
+      4 TRADE        everything else — both numbers in the SAME row of the SAME table.
+
+RESULTS AS THEY LANDED (each line written when its number arrived, before the next existed):
+  PR1 HOLDS — _S8ID md5 8a59fb37a9115600b13262254380ccb0, `cmp` byte-identical to W1. Hard gate 12/12,
+      all values exact (233.9 s). eslint clean; ad-hoc strict tsc: only the three pre-existing
+      StyleDims/Phase2Dims lines.
+  PR2 HOLDS DECISIVELY — 2,699 candidates: 2,547 CONFORMED + 12 by-proximity = 94.8%; deadlocked 140
+      (5.2%); other-refused 0; splits 2,895 (protector 104, retreat 244), deepest site 4; +11,580 of
+      40,000 gross allocs; mesh wall 237 s (< W1's 303 s). The deadlock discharges almost everywhere.
+  PR6 HOLDS — census on _S8F: 0 determined blades (raw 0), 0 determined folds, AR max 49.924, worst
+      admitted child 49.93; watertight, 0 reversed. S1/S2-through-cascade plumbing is sound.
+  PR7 HOLDS — +11,580 pass allocs, wall under bar.
+  **PR3 REFUTED AS CONFIGURED — THE CLASS GREW: back-facing 211 -> 363 (x1.72 WORSE), feature-span
+      1,581 -> 2,067.** PR8 row 1 fires at the pre-registered budgets.
+  THE MEASURED CONFOUND, read before any re-run: this pilot config is BUDGET-STARVED ON BOTH ARMS.
+      W1's own report leaves **62,510 heap entries undrained** (52% of its demand) at the 120k cap;
+      _S8F leaves 79,653 with the resume RESUME-CAPPED at +20,000 — the conforming wave released
+      ~17k entries of new, legitimate refinement demand (bay->crest flank children) that nothing can
+      drain at this cap. An unrefined flank child is exactly what the footprint gate counts. So the
+      pilot cannot distinguish "the mechanism feeds the class" (S7's failure mode) from "the repair's
+      children are transient and starved" — the two regimes differ in kind: PRODUCTION DRAINS
+      (criterion-limited; D52 strands fossils via the DEADLOCK with budget to spare), the pilot CANNOT.
+      The S8F fidelity audit (recorded below when it lands) prices what the starved mesh does to H1/H2.
+  **PR4 HOLDS ON ALL THREE CLAUSES — ON THE STARVED MESH** (FID_S8F.report.txt, same instrument/depth
+      as pilot_fid_W1.log; 1569 s):
+        | | W1 | _S8F | |
+        |---|---|---|---|
+        | H1 witnessed | 1,213.409 um | 1,212.565 um | flat (same top-rim/junction population) |
+        | H1 certified bound | 1,570.271 um | 1,381.113 um | −12% |
+        | H1 facets over tol | 75.91% | 74.95% | − 1 pt |
+        | **H2 witnessed max** | **350.163 um** | **269.113 um** | **x1.30 BETTER** |
+        | H2 samples over tol | 69.36% | 66.03% | −3.3 pts |
+      So the pre-registered rows split: the CLASS metric fires row 1 (back-facing x1.72 WORSE) while
+      every FIDELITY clause moved the way the mechanism predicts — real conforming (H2 max −23%) plus
+      unrefined flank children (the back-facing growth). That combination is exactly the starved-
+      transient signature and is NOT S7's (S7 made the class worse with H2 max better ONLY via resume
+      triangles and H1 UNTOUCHED at the worst site; here the H1 BOUND fell too). PILOT VERDICT AS
+      CONFIGURED: row 1 REFUTATION on the class, with fidelity evidence FOR the mechanism — the
+      production run (registered above, in flight when this landed) decides which reading survives.
+
+### S8-PROD PRE-REGISTRATION — the decisive run, registered BEFORE it started.
+The committed D52 is the control BY CONSTRUCTION: PR1 proves this driver lineage byte-reproduces it
+flag-OFF (and _D53 already reproduced it same-session on 2026-07-30). One cascade arm therefore gives a
+clean production A/B against D52's RECORDED two-sided audits (H1MAX=40000, H2BUDGET=40M).
+  COMMAND (deviations from defaults are the pilot's measured starvation lesson, applied, not tuning):
+    PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+    PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 PF_CB_ACCEPT=0.0035 PF_CB_TAILK=800
+    PF_CB_MAXSECS=5400 PF_CB_RANK=plane PF_CB_FOSSIL_CASCADE=1 PF_CB_FOSSIL_BUDGET=400000
+    PF_CB_SLIVER_RESUME_BUDGET=1500000 PF_CB_TAG_SUFFIX=_S8P
+  (FOSSIL_BUDGET and RESUME_BUDGET are raised so the pass and its refinement wave CANNOT be starved —
+   the run drains at production, so unspent budget costs nothing; spent budget is printed and priced.)
+  PREDICTIONS vs D52 recorded (back-facing 7,838 +13,447 feature-span; H1 549.196 um / 4.19% facets
+  over; H2 15.354 um / 0.00304% samples over; unresolved 9,794 worst 53.1 um; 1,260,218 tris / 1051 s):
+    PP1 PRECONDITION: 0 determined blades, 0 determined folds, worst admitted child <= 50.
+    PP2 MECHANISM AT SCALE: >=80% of crossing candidates end CONFORMED or by-proximity.
+    PP3 THE HEADLINE: footprint back-facing 7,838 -> <=1,568 (>=5x). REFUTED if >3,919 (<2x fall).
+        If production ALSO grows the class, the mechanism is refuted OUTRIGHT, pilot regime
+        notwithstanding, and the P5 junction-routing decision stands as the only remaining route.
+    PP4 H1: witnessed 549.196 um does not rise >10%; facets-over 4.19% falls (the stranded population
+        and the fossil population overlap).
+    PP5 H2: witnessed max 15.354 um does not rise >20%; samples-over 0.00304% does not rise >2x.
+        (Conforming vertices are pure H2 gain; the risk is unrefined children — the resume budget
+        exists to retire exactly that risk.)
+    PP6 UNRESOLVED: 9,794 -> <=4,900 (>=2x), worst 53.1 um falls.
+    PP7 COST: live tris <= 1.55M; wall <= 1,900 s (1.8x D52).
+    PP8 VERDICT ROWS, first match wins: 1 REFUTATION back-facing falls <2x | 2 REGRESSION H1 witnessed
+        rises >=1.5x OR H2 max rises >=1.5x OR PP1 fails | 3 WIN back-facing >=5x fall AND H1 max
+        within +10% AND H2 max within +20% | 4 TRADE everything else, both numbers in the same row.
+
+S8-PROD RESULTS (each line written as its number arrived):
+  BUILD (_S8P, 1538 s incl. concurrent-audit contention; heap DRAINED 0 left; 1,277,904 tris = D52
+  +1.4%): fossil pass at production found **20,967 candidates — 10x the pilot's population — and
+  CONFORMED only 2,851 + 8 = 13.6%; DEADLOCKED 18,100 (86.3%) at FOSSIL_DEPTH=12**, deepest successful
+  site 11, +30,044 of 400k allocs; resume used just +5,328 of 1.5M (the drain absorbed the wave).
+  unresolved 9,794 worst 53.114 um — BYTE-LEVEL UNCHANGED from D52. Self-report improved 55.890 ->
+  44.988 um. min edge 0.722 -> **0.068 um** (a cascade split landed ~weld-radius from an existing
+  vertex — new, watch it in H1). Guard held: worst admitted child 50.00, 0 folds.
+  PP1 HOLDS — census: 0 determined blades (+16 f32-indet at cap; D52 had +19), 0 determined folds.
+  PP2 REFUTED — 13.6% << 80%. The production trains are DEEPER than 12 protector obligations; the
+  pilot's 94.8% was a property of a 61k-facet mesh whose trains are short.
+  **PP3 REFUTED — PP8 ROW 1 FIRES AT PRODUCTION: back-facing 7,838 -> 8,213 (+4.8%), feature-span
+  13,447 -> 17,182.** Starvation-by-refinement is EXCLUDED this time (heap drained, resume 0.4% used).
+  AND THE SHARPER FACT: parametric AR census is unchanged-to-worse (p99 313 -> 474, max 9.9e6 -> 9.9e6)
+  — the class the eye sees is the PARAMETRIC-AR sliver-pinch population, which the cascade does not
+  address and nothing in the driver bounds (the known S1-S6 gap, 2026-07-30).
+  PP4 + PP5 HOLD — the deep two-sided audit (FID_S8P.report.txt, Part-B depth H1MAX=40000/H2BUDGET=40M,
+  985 s) reads the cascade arm as FIDELITY-NEUTRAL against D52's recorded audit:
+    | | D52 (recorded) | _S8P (depth 12) | |
+    |---|---|---|---|
+    | H1 witnessed | 549.196 um | 546.432 um | flat |
+    | H1 certified bound | 559.195 um | 595.190 um | +6% |
+    | H1 facets over tol | 4.19% | 4.66% | +0.5 pt (under every bar) |
+    | H2 witnessed | 15.354 um | **15.354 um — THE SAME POINT** | identical |
+    | H2 samples over | 0.00304% | 0.00297% | flat |
+  The H2 argmax is BYTE-THE-SAME unrepresented-feature locus as D52's (th 5.635, z 44.9) — the residual
+  H2 defect is not fossil material and the cascade rightly never touched it. The 0.068 um min edge did
+  not surface in H1. So S8 at production, as configured: fidelity-neutral, class-neutral (+4.8%),
+  conform 13.6%.
+  TWO READINGS SURVIVE THE ROW-1 FIRE, and they are separable by ONE registered probe:
+    (a) MECHANISM WRONG — conforming fossil crossings does not remove the visible class even where it
+        succeeds (2,851 sites conformed; back-facing FLAT, not even 2,851 lower).
+    (b) DEPTH-STARVED — the 18,100 deadlocked sites are exactly the diseased junction trains; the
+        2,851 that conformed were the shallow benign end. (Consistent with the z of the worst
+        offenders: 77.6 mm, the X-crossing band, all deadlock country.)
+
+### S8-PROD2 PRE-REGISTRATION — the depth probe, registered before it ran.
+  Driver change first: the single `fossilDeadlocked` counter splits into DEPTH / ATTEMPTS / SELF-BLOCK
+  causes (flag-ON path only; flag-OFF bytes untouched by construction). Then:
+    same command as S8-PROD but PF_CB_FOSSIL_DEPTH=48 PF_CB_FOSSIL_PASSES=4, tag _S8P2.
+  PREDICTIONS: (i) conform+proximity rises to >=60% — else the deadlock is not depth-shaped and the
+  cause counters say what it is; (ii) IF conform >=60% AND back-facing then falls <2x, THE MECHANISM
+  IS REFUTED OUTRIGHT — conforming the crossings, even deep, does not remove the class; the class is
+  the parametric-AR pinch and the standing P5 junction-routing decision (M=g/h^2 kernel / structured
+  patches) is the only remaining route, with S8 retiring to a diagnostic. (iii) IF back-facing falls
+  >=5x, depth was the whole story and S8 ships gated behind the depth lever. Costs and H1/H2 rows as
+  in PP4/PP5/PP7, same instruments.
+
+### *** S8-PROD2 RESULT — THE DEADLOCK IS NOT DEPTH-SHAPED. IT IS SELF-BLOCK, 18,102 OF 18,102. ***
+Depth 48 / 4 passes moved NOTHING: candidates 20,968, CONFORMED 2,850 + 8 (13.6%, same ±1 site as
+depth 12), deepest successful site still 11, mesh differs from _S8P by 12 triangles, census identical
+(back-facing 8,213, feature-span 17,185, folds 0). And the cause counters give the sentence:
+**DEADLOCKED 18,102 = depth 0 / attempts 0 / SELF-BLOCK 18,102.** Not one site died on the depth cap.
+
+WHAT SELF-BLOCK MEANS, precisely: the refused split's offender is an incident triangle whose LONGEST
+edge IS the crossing edge — i.e. the fossil pair itself — and the retreat's mid-chord split of that
+edge is refused with the same self-shaped offender. Mid-chord is the OPTIMAL placement
+(childAR/parentAR ≈ 1/min(t,1−t), minimised at ½), so if IT breaches the cap, NO admissible split
+point exists on that edge; and splitting the pair's SHORT edges instead amplifies (measured ×4.00,
+the shortest-edge column of the 2026-07-29 arithmetic). Under the S1 cap, bisection cannot touch a
+near-cap pair — by construction, now measured at scale.
+
+WHY THE PILOT SAID 94.8% AND PRODUCTION SAYS 13.6% — A SELECTION EFFECT, stated once so nobody
+re-derives it: production's main loop refines/conforms every pair fat enough to split legally
+(1.7M aspect refusals happened DURING refinement); the pairs that SURVIVE to the post-loop pass are
+survivors precisely because they sit at the cap boundary (3-D AR just under 50, parametric AR
+unbounded). The pilot's shallow mesh (61k facets) hasn't run that selection: its fossils sit at
+AR 6-23 and split freely. **The fossil population at production is CENSORED AT THE CAP.**
+
+>> THE VERDICT, per the pre-registrations (PP8 row 1, confirmed by the PROD2 discriminator):
+>> **REFUTATION — conforming the crossing edges does not remove the production artifact class.** The
+>> class the eye sees is the sub-cap PINCH-PAIR population (parametric AR p99 474 / max 9.9e6,
+>> unchanged through every arm), and it is now bracketed by FOUR refutation-grade measurements:
+>>   CTLPLUS  — generic extra refinement FEEDS it (211 -> 294);
+>>   S6       — collapse has ZERO candidates (100% long-edged);
+>>   S7       — diagonal rotation FEEDS it (×1.44);
+>>   S8       — conforming-by-split cannot reach it: 86.3% SELF-BLOCKED under the shape cap, and the
+>>              13.6% it can reach are fidelity-neutral and class-neutral at production.
+>> No bisection-family primitive removes this class while the AR cap stands, and the cap must stand
+>> (dropping it is D51: 48,130 blades and a ~110x-blind self-report). THE P5 TRIGGER HAS NOW FIRED
+>> FOUR TIMES. The junction bands need a DIFFERENT PRIMITIVE — the certified-but-unwired M=g/h^2
+>> anisotropic kernel, or structured curtain/patch geometry at detected junctions. That is the next
+>> campaign, and it starts with a measured target list: the 8,213 back-facing + 9,794 unresolved
+>> sites, which this session's instruments now enumerate per run.
+>>
+>> WHAT S8 IS FOR, going forward (kept merged, DEFAULT OFF — row 1 forbids default-ON):
+>>   * a WORKING conforming primitive where trains are shallow — the pilot regime conformed 94.8%
+>>     and moved TRUE fidelity on a starved mesh (H2 max 350.163 -> 269.113 um, ×1.30) — i.e. the
+>>     right tool for coarse/preview meshes and for any future driver whose population is not
+>>     cap-censored;
+>>   * a DIAGNOSTIC that measures the self-blocked pinch population per run (the cause-split
+>>     counters), which is exactly the P5 routing's input list;
+>>   * the byte-identity discipline held throughout: flag-OFF md5 8a59fb37... reproduced, gate 12/12
+>>     twice, zero determined blades/folds on every arm — the guard was never traded away.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

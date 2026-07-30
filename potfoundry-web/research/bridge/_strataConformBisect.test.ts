@@ -1045,6 +1045,10 @@ describe('STRATA conforming-bisection', () => {
     let nLongFallTested = 0; let nLongFallFired = 0;
     /** Why the LAST bisectAt refused. Read (never written) by tryBisect, exactly as `addVNew` is. */
     let lastBisectShape: 'none' | 'ar' | 'fold' = 'none';
+    /** WHICH incident triangle `shapeAdmits` was protecting when it refused. Read only by the S8 cascade
+     *  pass (it follows the protector); written on every shape refusal. Assigning a closure number moves
+     *  no byte of any mesh, so every flag-OFF path stays byte-identical by construction. */
+    let lastShapeOffenderT = -1;
 
     /**
      * The point `addV` WOULD create at parametric s on edge (a,b), computed WITHOUT inserting it.
@@ -1104,7 +1108,7 @@ describe('STRATA conforming-bisection', () => {
         nShapeChildren += 2;
         const ar1 = aspect3(vx[oa], vy[oa], vz[oa], p.x, p.y, p.z, vx[apex], vy[apex], vz[apex]);
         const ar2 = aspect3(p.x, p.y, p.z, vx[ob], vy[ob], vz[ob], vx[apex], vy[apex], vz[apex]);
-        if (ar1 > SHAPE_AR || ar2 > SHAPE_AR) { nShapeRefusedAR += 1; lastBisectShape = 'ar'; return false; }
+        if (ar1 > SHAPE_AR || ar2 > SHAPE_AR) { nShapeRefusedAR += 1; lastBisectShape = 'ar'; lastShapeOffenderT = t; return false; }
         if (ar1 > worst) worst = ar1;
         if (ar2 > worst) worst = ar2;
         if (!SHAPE_FOLD) continue;
@@ -1114,7 +1118,7 @@ describe('STRATA conforming-bisection', () => {
         const s1 = signedAreaParam(vth[apex], vz[apex], vth[oa], vz[oa], p.th, p.z);
         const s2 = signedAreaParam(vth[apex], vz[apex], p.th, p.z, vth[ob], vz[ob]);
         if (Math.sign(s1) !== Math.sign(sPar) || Math.sign(s2) !== Math.sign(sPar)) {
-          nShapeRefusedFold += 1; lastBisectShape = 'fold'; return false;
+          nShapeRefusedFold += 1; lastBisectShape = 'fold'; lastShapeOffenderT = t; return false;
         }
       }
       if (worst > shapeWorstAdmitted) shapeWorstAdmitted = worst;
@@ -1129,6 +1133,7 @@ describe('STRATA conforming-bisection', () => {
     /** split edge (a,b) at parameter t (0..1) — splits EVERY incident triangle ⇒ watertight, no T-junctions. */
     const bisectAt = (a: number, b: number, tPar: number, feat: boolean): boolean => {
       lastBisectShape = 'none';
+      lastShapeOffenderT = -1;
       // S1/S2 GATE — BEFORE addV, so a refusal leaves no orphan vertex in the weld grid and cannot perturb
       // any later weld. This is the whole fix: `bisectAt` is the ONE choke point every split goes through.
       if (SHAPE && !shapeAdmits(a, b, liftAt(a, b, tPar))) return false;
@@ -2146,6 +2151,32 @@ describe('STRATA conforming-bisection', () => {
     const CONF_FLIP = envOn('PF_CB_CONF_FLIP') && !SWEEP && !GPU_RANK;
     let confFlipRan = false;
     let confFlipCand = 0; let confFlipDone = 0; let confFlipRefused = 0; let confFlipPasses = 0;
+    // ── S8-PILOT (2026-07-30, third iteration): CASCADE-SPLIT of fossil crossing edges AT the crossing.
+    // The three refutation-grade measurements that force this design: CTLPLUS (more refinement alone GROWS
+    // the class, 211 → 294), S6 (the class contains ZERO collapsible needles — 100% long-edged), S7
+    // (rotating the crossing edge feeds the class ×1.44 — a fossil quad's OTHER diagonal is also a
+    // bay-to-bay bridge). What a fossil needs is its crossing edge SPLIT AT THE CROSSING — which is what
+    // SNAP has always tried — with the neighbour-degradation refusal resolved by CASCADING the split to
+    // the protecting neighbour. S4's own counter measured the deadlock this discharges: in ~95% of refused
+    // splits BOTH candidate edges were inadmissible, because in a sliver train along a locus your longest
+    // edge is your degenerate neighbour's SHORT edge — a mutual protection the one-edge-at-a-time guard
+    // cannot see past. The cascade is Rivara's own resolution (LEPP as a CONFORMITY OBLIGATION at fossil
+    // sites, not as a ranking policy — the 2026-07-29 LEPP refutation was about RANKING): midpoint-split
+    // the protector's LONGEST edge first (the measured ×0.99-amplification move), recursively and
+    // depth-capped, then retry the crossing split. Every split goes through `bisectAt`, so S1/S2 score
+    // every child on both sides and the pass CANNOT manufacture the defect class it repairs.
+    const FOSSIL_CASCADE = envOn('PF_CB_FOSSIL_CASCADE') && !SWEEP && !GPU_RANK;
+    const FOSSIL_DEPTH = Math.round(envF('PF_CB_FOSSIL_DEPTH', 12));      // max protector obligations per site
+    const FOSSIL_BUDGET = Math.round(envF('PF_CB_FOSSIL_BUDGET', 40000)); // gross allocs the pass may add
+    const FOSSIL_PASSES = Math.round(envF('PF_CB_FOSSIL_PASSES', 3));     // outer sweeps (S7 convention)
+    let fossilRan = false; let fossilPasses = 0;
+    let fossilCand = 0; let fossilConformed = 0; let fossilProximity = 0;
+    let fossilSplits = 0; let fossilCascadeSplits = 0; let fossilRetreatSplits = 0;
+    let fossilDeadlocked = 0; let fossilRefusedOther = 0; let fossilDepthMax = 0;
+    // deadlock CAUSE split (S8-PROD2): depth cap hit / attempt cap hit / self-blocked (a triangle whose
+    // own longest edge is the blocked edge refused even the Rivara midpoint). Sums to fossilDeadlocked.
+    let fossilDeadDepth = 0; let fossilDeadAttempts = 0; let fossilDeadSelf = 0;
+    let fossilAllocUsed = 0; let fossilBudgetCapped = false;
     /**
      * S6. Would collapsing v onto u make the shape of the facets it TOUCHES worse?
      *
@@ -2542,13 +2573,142 @@ describe('STRATA conforming-bisection', () => {
         }
       }
 
-      // RESUME (shared by S6-collapse and S7-flip): re-seed the repaired neighbourhoods and the still-alive
-      // unresolved set, then drain the heap under the explicit extra budget — the heap driver's pop step
-      // verbatim (pop → refineDirected/refineLepp → consider children → survivor re-queue → unresolved
-      // bookkeeping). Termination: every pop either splits (budget-bounded) or lands in `unresolved` and is
-      // never re-queued.
-      if ((SLIVER_COLLAPSE || CONF_FLIP) && SLIVER_RESUME_BUDGET > 0 && sliverCollapsed + confFlipDone > 0) {
-        const resumeCap = triCap + SLIVER_RESUME_BUDGET;
+      // ───────── S8-PILOT: CASCADE-SPLIT of fossil crossing edges (PF_CB_FOSSIL_CASCADE=1; default OFF) ─────────
+      // See the S8 note at the counter block. Candidate enumeration is S7's VERBATIM (longest edge of a live
+      // facet, exactly 2 incident, locateKink interior crease crossing inside the SNAP_ALPHA band) so the two
+      // pilots name the same population. Per site the pass owes ONE conformity split — `bisectAt` at the
+      // located crossing, the exact split SNAP was refused — and discharges a shape refusal by OBLIGATION:
+      //   * PROTECTOR obligation: the offending incident triangle's LONGEST edge is midpoint-split first
+      //     (Rivara's ×0.99-amplification move), recursively, depth-capped — then the blocked split retries;
+      //   * RETREAT obligation: when the offender's longest edge IS the blocked edge (the crossing sits too
+      //     far off-centre for the pair's own children), midpoint-split the crossing edge and re-locate the
+      //     crossing on the child that carries it — t' ≈ 2t re-centres geometrically, so a few retreats exit
+      //     the SNAP_ALPHA band, or the crossing lands within α of a vertex at child scale and the site is
+      //     counted CONFORMED BY PROXIMITY (the vertex is within α·L/2^k of the locus, shrinking each level).
+      // Every split goes through `bisectAt` ⇒ S1/S2 score every child on BOTH sides of every edge, exactly as
+      // in the refinement loop, so the pass cannot emit an over-cap child or a fold. Budgets are EXPLICIT and
+      // separate: FOSSIL_BUDGET gross allocations for the pass, then the shared resume budget below.
+      if (FOSSIL_CASCADE) {
+        fossilRan = true;
+        const taStart = ta.length;
+        const fossilCap = taStart + FOSSIL_BUDGET;
+        /** the vertex the successful `bisectAt` just inserted on (a,b): its construction pushes
+         *  addT(oa, m, apex) then addT(m, ob, apex), so tb[created[0]] === ta[created[1]] === m.
+         *  Checked, not assumed — a -1 (degenerate addT) or a mismatch returns -1 and the caller refuses. */
+        const splitVertexOf = (): number => {
+          if (created.length < 2 || created[0] < 0 || created[1] < 0) return -1;
+          const m = tb[created[0]];
+          return ta[created[1]] === m ? m : -1;
+        };
+        /** discharge one fossil site: the crossing split plus whatever obligations it takes. */
+        const conformSite = (a0: number, b0: number, t0: number): boolean => {
+          // obligation stack, parallel arrays (top = next split owed). Slot 0 is ALWAYS the crossing split;
+          // obT >= 0 marks a crossing placement (feat=true, exempt from re-centring, exactly as SNAP's).
+          const obA: number[] = [a0]; const obB: number[] = [b0]; const obT: number[] = [t0];
+          let depth = 0;
+          let attempts = 0;
+          const ATTEMPT_CAP = 4 * FOSSIL_DEPTH + 8; // a retried split can re-fail with a NEW offender; bound the site outright
+          for (;;) {
+            if (ta.length >= fossilCap) { fossilBudgetCapped = true; return false; }
+            attempts += 1;
+            if (attempts > ATTEMPT_CAP) { fossilDeadlocked += 1; fossilDeadAttempts += 1; return false; }
+            const i = obA.length - 1;
+            const av = obA[i]; const bv = obB[i]; const tv = obT[i];
+            if (!(edgeMap.get(eKey(av, bv)) ?? []).some((x) => alive[x])) {
+              // a deeper obligation re-meshed this edge away (bisectAt splits every incident triangle).
+              // For a protector that is a discharge; for the crossing edge itself it should be unreachable
+              // (protector splits never touch it) — refuse defensively rather than mis-count a conform.
+              if (i === 0) { fossilRefusedOther += 1; return false; }
+              obA.pop(); obB.pop(); obT.pop();
+              continue;
+            }
+            created.length = 0;
+            const isCrossing = tv >= 0;
+            if (bisectAt(av, bv, isCrossing ? tv : placeAt(av, bv, 0.5), isCrossing ? true : vFeat[av] && vFeat[bv])) {
+              fossilSplits += 1;
+              for (const nt of created) if (nt >= 0) pilotReseed.push(nt);
+              if (i === 0) { fossilConformed += 1; if (depth > fossilDepthMax) fossilDepthMax = depth; return true; }
+              fossilCascadeSplits += 1;
+              obA.pop(); obB.pop(); obT.pop();
+              continue;
+            }
+            if (lastBisectShape === 'none') { fossilRefusedOther += 1; return false; } // weld/apex — no ladder here, the placement is the point
+            const off = lastShapeOffenderT;
+            if (off < 0 || !alive[off]) { fossilRefusedOther += 1; return false; }
+            if (depth >= FOSSIL_DEPTH) { fossilDeadlocked += 1; fossilDeadDepth += 1; return false; }
+            const [pv, qv] = eVerts(off, longestE(off));
+            if (eKey(pv, qv) !== eKey(av, bv)) {
+              // PROTECTOR: the offender must be refined before (av,bv) may split. Rivara's move is ITS
+              // longest edge at the midpoint — the one split whose children provably stay well-shaped.
+              obA.push(pv); obB.push(qv); obT.push(-1); depth += 1;
+              continue;
+            }
+            // The offender's longest edge IS the blocked edge.
+            if (!isCrossing) { fossilDeadlocked += 1; fossilDeadSelf += 1; return false; } // a midpoint split refused at its own longest edge is a true dead end
+            // RETREAT: midpoint-split the crossing edge, then chase the crossing into the child.
+            created.length = 0;
+            if (!bisectAt(av, bv, placeAt(av, bv, 0.5), vFeat[av] && vFeat[bv])) {
+              // `lastShapeOffenderT < 0` subsumes the `'none'` case: bisectAt resets the offender to -1 on
+              // entry and ONLY the two shape refusals set it, so a weld/apex refusal reads -1 here. (The
+              // explicit `'none'` test is not repeated because TS's flow analysis cannot see bisectAt
+              // mutate the closure variable past the narrowing check above.)
+              if (lastShapeOffenderT < 0 || !alive[lastShapeOffenderT]) { fossilRefusedOther += 1; return false; }
+              const [p2, q2] = eVerts(lastShapeOffenderT, longestE(lastShapeOffenderT));
+              if (eKey(p2, q2) === eKey(av, bv)) { fossilDeadlocked += 1; fossilDeadSelf += 1; return false; }
+              obA.push(p2); obB.push(q2); obT.push(-1); depth += 1;
+              continue;
+            }
+            const m = splitVertexOf();
+            fossilSplits += 1; fossilRetreatSplits += 1; depth += 1;
+            for (const nt of created) if (nt >= 0) pilotReseed.push(nt);
+            if (m < 0) { fossilRefusedOther += 1; return false; }
+            let carried = false;
+            for (const [ca, cb] of [[av, m], [m, bv]] as Array<[number, number]>) {
+              const ck = locateKink(vth[ca], vz[ca], vth[ca] + dTh(ca, cb), vz[cb]);
+              if (ck !== null && !ck.jump && ck.t > SNAP_ALPHA && ck.t < 1 - SNAP_ALPHA) {
+                obA[0] = ca; obB[0] = cb; obT[0] = ck.t;
+                carried = true;
+                break;
+              }
+            }
+            if (!carried) { fossilProximity += 1; if (depth > fossilDepthMax) fossilDepthMax = depth; return true; }
+          }
+        };
+        // Enumeration dedups across passes (S7's counting semantics: a candidate edge is counted ONCE and
+        // attempted once); later passes exist to pick up NEW candidates born from this pass's own splits.
+        const tried = new Set<number>();
+        let budgetStop = false;
+        for (let pass = 0; pass < FOSSIL_PASSES && !budgetStop; pass += 1) {
+          fossilPasses += 1;
+          let didAny = false;
+          for (let t0 = 0; t0 < ta.length; t0 += 1) {
+            if (!alive[t0]) continue;
+            if (ta.length >= fossilCap) { fossilBudgetCapped = true; budgetStop = true; break; }
+            const [pv, qv] = eVerts(t0, longestE(t0));
+            const k0 = eKey(pv, qv);
+            if (tried.has(k0)) continue;
+            const inc = (edgeMap.get(k0) ?? []).filter((x) => alive[x]);
+            if (inc.length !== 2) continue;
+            const kk = locateKink(vth[pv], vz[pv], vth[pv] + dTh(pv, qv), vz[qv]);
+            if (kk === null || kk.jump) continue;
+            if (kk.t <= SNAP_ALPHA || kk.t >= 1 - SNAP_ALPHA) continue;
+            tried.add(k0);
+            fossilCand += 1;
+            if (conformSite(pv, qv, kk.t)) didAny = true;
+          }
+          if (!didAny) break;
+        }
+        fossilAllocUsed = ta.length - taStart;
+      }
+
+      // RESUME (shared by S6-collapse, S7-flip and S8-cascade): re-seed the repaired neighbourhoods and the
+      // still-alive unresolved set, then drain the heap under the explicit extra budget — the heap driver's
+      // pop step verbatim (pop → refineDirected/refineLepp → consider children → survivor re-queue →
+      // unresolved bookkeeping). Termination: every pop either splits (budget-bounded) or lands in
+      // `unresolved` and is never re-queued.
+      if ((SLIVER_COLLAPSE || CONF_FLIP || FOSSIL_CASCADE) && SLIVER_RESUME_BUDGET > 0 && sliverCollapsed + confFlipDone + fossilSplits > 0) {
+        const resumeCap = (FOSSIL_CASCADE ? Math.max(triCap, ta.length) : triCap) + SLIVER_RESUME_BUDGET;
+        const resumeBase = ta.length; // gross allocs at resume start, so the S8 pass's own splits are not billed to the resume
         for (const t of pilotReseed) if (alive[t]) consider(t);
         for (const [t] of unresolved) if (alive[t]) consider(t);
         while (heapT.length > 0) {
@@ -2566,9 +2726,9 @@ describe('STRATA conforming-bisection', () => {
             if (alive[t]) consider(t);
           } else unresolved.set(t, kTop);
         }
-        sliverResumeBudgetUsed = Math.max(0, ta.length - triCap);
+        sliverResumeBudgetUsed = Math.max(0, ta.length - resumeBase);
       }
-      if (SLIVER_COLLAPSE || CONF_FLIP) {
+      if (SLIVER_COLLAPSE || CONF_FLIP || FOSSIL_CASCADE) {
         for (let t = 0; t < ta.length; t += 1) if (alive[t]) { if (arTri(t) > SLIVER_AR) sliverOffendersAfter += 1; }
         for (const [t, k] of unresolved) if (alive[t]) { sliverUnresolvedAfter += 1; if (k > sliverUnresolvedWorstAfter) sliverUnresolvedWorstAfter = k; }
       }
@@ -3057,6 +3217,12 @@ describe('STRATA conforming-bisection', () => {
         `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
         `    crossing-edge candidates ${confFlipCand}, flipped ${confFlipDone}, refused ${confFlipRefused} (AR gate + tryFlip validity: 2-incidence, convexity, winding, on-locus)`,
         `    offenders (AR > ${SLIVER_AR}) AFTER ${sliverOffendersAfter}   resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
+      ...(envOn('PF_CB_FOSSIL_CASCADE') ? [
+        `  S8-PILOT fossil cascade-split (crossing edges, Rivara obligations): ${fossilRan ? `RAN, ${fossilPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
+        `    crossing-edge candidates ${fossilCand}: CONFORMED ${fossilConformed} + ${fossilProximity} by-proximity (crossing within SNAP_ALPHA of a vertex at child scale), DEADLOCKED ${fossilDeadlocked} (depth ${fossilDeadDepth} / attempts ${fossilDeadAttempts} / self-block ${fossilDeadSelf}; depth cap ${FOSSIL_DEPTH}), other-refused ${fossilRefusedOther}`,
+        `    splits ${fossilSplits} (protector ${fossilCascadeSplits}, retreat ${fossilRetreatSplits})   deepest site ${fossilDepthMax}   +${fossilAllocUsed} of ${FOSSIL_BUDGET} gross allocs${fossilBudgetCapped ? '  [BUDGET-CAPPED]' : ''}`,
+        `    resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
       ] : []),
       // S5. The two counts either side of the pass are the ANSWER to "does tryFlip repair caps", measured on
       // this run's own mesh. `cap-before` is also the honest final blade count in the census's metric.
