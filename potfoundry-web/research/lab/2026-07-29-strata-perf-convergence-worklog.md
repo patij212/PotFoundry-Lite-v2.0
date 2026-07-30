@@ -659,6 +659,55 @@ reduces back-facing by >=5x and unresolved by >=2x at equal cap; (iii) H2 over-t
 (collapse removes redundant geometry over already-covered surface); (iv) if (ii) holds but H1 max does not
 fall below ~100 um, the junction demand is real anisotropy and the P5 routing decision stands unchanged.
 
+### 2026-07-30 (same session, later) — TWO REPAIR PILOTS EXECUTED AND REFUTED; THE ARTIFACT CLASS IS NAMED.
+
+The operator asked for the sliver artifacts to be killed at the source. Two flag-gated pilots were wired
+into the driver (both default OFF; flag-OFF byte-identity proven by md5 before each arm ran), A/B'd at
+40x28/120k guard-ON against the _W1 baseline (back-facing 211, feature-span 1,581, AR>25 offenders 1,888,
+unresolved 56 worst 405.4 um, H1 1,213.409 um / 75.91% facets over, H2 350.163 um / 69.36% samples over,
+at PF_FT_H1MAX=15000 PF_FT_H2BUDGET=10M — SHALLOW-DEPTH numbers, read directionally only). An
+equal-total-budget control (_CTLPLUS, flag OFF, cap 140k) measured back-facing 294: MORE refinement makes
+the class WORSE on its own.
+
+**S6 PILOT — SLIVER COLLAPSE-AND-RESUME (PF_CB_SLIVER_COLLAPSE): REFUTED, zero live candidates.**
+All 1,888 AR>25 offenders refused on the 5 um motion bound (shortest edges 60+ um); zero collapses, mesh
+byte-identical to baseline (S6C = S6CR = W1 = 8a59fb37...). THE MEASUREMENT: the artifact class at this
+config contains ZERO collapsible needles — it is 100% long-edged.
+
+**THE CLASS IS IDENTIFIED: FOSSILS OF THE INITIAL GRID.** Operator screenshots + the worst-lists agree:
+the artifacts are pairs sharing one long edge that CROSSES a locus — original grid edges (lengths
+quantized at grid-pitch/2^k: ~675–725 um at gu=200; four theta-copies per gcd(200,12)=4; z-trains at the
+grid row pitch) whose interiors were conformed by SNAP while the crossing edges themselves survived every
+generation, protected by the S4-measured refusal deadlock. Bay-to-bay chords under a raised rib: H1-cheap,
+H2-costly, back-facing in a viewer, born in generation zero.
+
+**S7 PILOT — CONFORMING FLIP of crossing edges (PF_CB_CONF_FLIP): REFUTED, and it made the class worse.**
+Enumeration by locateKink interior crossing on longest edges found the class (2,181 candidates); 403
+flipped through the S5 AR-improvement gate; identity arm byte-exact. Outcome vs W1:
+| | W1 | S7F (flip + resume 20k) |
+|---|---|---|
+| back-facing (footprint) | 211 | **303 (x1.44 WORSE)** |
+| feature-span | 1,581 | 1,902 |
+| AR>25 offenders | 1,888 | 2,223 |
+| unresolved / worst | 56 / 405.396 um | **116 / 405.396 um (worst UNTOUCHED)** |
+| H1 witnessed / facets over | 1,213.409 / 75.91% | 1,213.409 (unchanged) / 76.97% |
+| H2 witnessed / samples over | 350.163 / 69.36% | **281.937 (x0.81) / 66.13%** |
+| tris | 61,120 | 70,718 (+15.7%) |
+MECHANISM OF THE REFUTATION: a fossil quad's OTHER diagonal is also a bay-to-bay bridge — the flip rotates
+the bridge without conforming anything, and the AR gate optimizes the wrong quantity (shape, not
+orientation/conformity). The H2 gain belongs to the RESUME's extra triangles, not to the flips.
+
+**WHERE THIS LEAVES THE FIX.** Confirmed by three refutation-grade measurements in one night: (1) more
+refinement grows the class (CTLPLUS), (2) collapse has no candidates (S6), (3) diagonal rotation feeds it
+(S7). What a fossil needs is its crossing edge SPLIT AT THE CROSSING — which is what SNAP has always tried
+— with the neighbour-degradation refusal resolved by CASCADING the split to the protecting neighbour
+(LEPP-style propagation applied AT fossil sites as a conformity obligation, not as a ranking policy — the
+2026-07-29 LEPP refutation was about RANKING) — or by routing the junction regions outright (P5). Both are
+next-session designs with the pilot harness (identity arm + 4-audit A/B, ~15 min/hypothesis) now standing.
+Pilot levers stay in the driver flag-OFF: PF_CB_SLIVER_COLLAPSE / PF_CB_SLIVER_AR / PF_CB_SLIVER_MAXEDGE_UM
+/ PF_CB_SLIVER_RESUME_BUDGET / PF_CB_CONF_FLIP. Artifacts: _S6ID/_S6C/_S6CR/_CTLPLUS/_S7ID/_S7F in
+research/exchange/_strataConformBisect/ with pilot*.log audit evidence beside them.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

@@ -2124,6 +2124,28 @@ describe('STRATA conforming-bisection', () => {
     let nPostCollapseRefusedDirty = 0;   // ... of the aspect refusals, how many left a facet ALREADY over the cap
     let nPostFlipTested = 0; let nPostFlipRefusedAR = 0;
     let postWorstAdmitted = 0;           // the largest AR any ADMITTED post-loop operation left behind
+    // ───────── S6-PILOT (2026-07-30, PRE-REGISTERED): SLIVER COLLAPSE-AND-RESUME — flags + counters ─────────
+    // Default OFF; heap driver only (the resume loop mirrors its pop step, so SWEEP/GPU_RANK are excluded).
+    const SLIVER_COLLAPSE = envOn('PF_CB_SLIVER_COLLAPSE') && !SWEEP && !GPU_RANK;
+    const SLIVER_AR = envF('PF_CB_SLIVER_AR', SHAPE_AR / 2);
+    const SLIVER_MAX_MM = envF('PF_CB_SLIVER_MAXEDGE_UM', 5) / 1000;
+    const SLIVER_RESUME_BUDGET = Math.round(envF('PF_CB_SLIVER_RESUME_BUDGET', 20000));
+    let sliverRan = false;
+    let sliverTested = 0; let sliverCollapsed = 0; let sliverRefusedLen = 0; let sliverRefusedOther = 0;
+    let sliverResumeSplits = 0; let sliverResumeBudgetUsed = 0; let sliverResumeCapped = false;
+    let sliverOffendersBefore = 0; let sliverOffendersAfter = 0;
+    let sliverUnresolvedAfter = 0; let sliverUnresolvedWorstAfter = 0;
+    // ── S7-PILOT (2026-07-30, second iteration — same session): CONFORMING FLIP of fossil crossing edges.
+    // The S6 pilot measured the offender class as 100% long-edged (1,888/1,888 refused on the 5 µm motion
+    // bound; zero needles): the artefacts are FOSSILS of the initial grid — bay-to-bay edges that CROSS a
+    // locus, surviving as bridge pairs while refinement built the conforming corridor beside them (edge
+    // lengths quantized at grid-pitch/2^k: ~675-725 µm; four θ-copies; human-visible as red sliver trains).
+    // The repair primitive for a bridged crossing is the 2-2 FLIP of the crossing edge: zero vertex motion
+    // (zero H1 risk, zero budget), conforming restored, pair AR improved. tryFlip already exists with locus
+    // safety and winding checks — S5 just never calls it below AR 50, and the fossils live at AR 6-23.
+    const CONF_FLIP = envOn('PF_CB_CONF_FLIP') && !SWEEP && !GPU_RANK;
+    let confFlipRan = false;
+    let confFlipCand = 0; let confFlipDone = 0; let confFlipRefused = 0; let confFlipPasses = 0;
     /**
      * S6. Would collapsing v onto u make the shape of the facets it TOUCHES worse?
      *
@@ -2392,6 +2414,164 @@ describe('STRATA conforming-bisection', () => {
         }
       }
       for (let t = 0; t < ta.length; t += 1) if (alive[t]) { const ar = arTri(t); if (ar > SHAPE_AR) capAfter += 1; if (ar > capWorstAfter) capWorstAfter = ar; }
+
+      // ───────── S6-PILOT: SLIVER COLLAPSE-AND-RESUME (PF_CB_SLIVER_COLLAPSE=1; default OFF) ─────────
+      // Pre-registered 2026-07-30 (worklog, EXECUTION §). MECHANISM UNDER TEST: sliver trains along loci
+      // deadlock the split guard — S4's own counter measured that in ~95% of refused splits BOTH candidate
+      // edges were inadmissible, because in a train your longest edge is your degenerate neighbour's short
+      // edge — while the one primitive that removes a sliver (the S6-gated collapse above) is dead code at
+      // every measured config (needle threshold 0.2 µm < guard-ON min edge 0.722 µm). This pass gives it a
+      // TARGETED live call site and then lets refinement resume where the removals un-protected neighbours.
+      // BOUNDS, so the pass cannot manufacture what it exists to remove:
+      //   * only edges shorter than PF_CB_SLIVER_MAXEDGE_UM (default 5 µm = TOL/2) collapse — the largest
+      //     vertex motion stays below half the product tolerance, so no single collapse can create an H1
+      //     violation. CAP-family blades (all edges long) are deliberately OUT OF SCOPE for this pass.
+      //   * the survivor is the FEATURE endpoint when exactly one endpoint carries vFeat, so conforming
+      //     vertices are never dragged off their loci.
+      //   * every collapse goes through the SAME link condition and the SAME postCollapseAdmits (AR+fold)
+      //     gate as the needle pass; every resume split goes through refineDirected → splitEdge → bisectAt,
+      //     so S1–S4 apply unchanged.
+      //   * the resume budget is EXPLICIT (PF_CB_SLIVER_RESUME_BUDGET gross allocations beyond PF_CB_TRICAP,
+      //     default 20000) — the A/B design pairs it with a flag-OFF control at TRICAP+BUDGET.
+      // Unlike the needle pass, the relabel here maintains edgeMap coherently (eDel old / eAdd new): the
+      // resume loop consults incident lists through bisectAt, and a stale list would split phantom edges.
+      /** repaired-neighbourhood seeds for the shared resume loop (collapse survivors + flip products) */
+      const pilotReseed: number[] = [];
+      if (SLIVER_COLLAPSE) {
+        sliverRan = true;
+        const off: Array<[number, number]> = [];
+        for (let t = 0; t < ta.length; t += 1) if (alive[t]) { const ar = arTri(t); if (ar > SLIVER_AR) off.push([ar, t]); }
+        sliverOffendersBefore = off.length;
+        off.sort((x, y) => y[0] - x[0]); // worst first
+        for (const [, t0] of off) {
+          if (!alive[t0]) continue; // an earlier collapse may have removed or re-meshed it
+          sliverTested += 1;
+          const es: Array<[number, number, number]> = [
+            [eLen(ta[t0], tb[t0]), ta[t0], tb[t0]],
+            [eLen(tb[t0], tc[t0]), tb[t0], tc[t0]],
+            [eLen(tc[t0], ta[t0]), tc[t0], ta[t0]],
+          ];
+          es.sort((x, y) => x[0] - y[0]);
+          const [sL, p0, q0] = es[0];
+          if (sL >= SLIVER_MAX_MM) { sliverRefusedLen += 1; continue; }
+          // survivor preference: keep the locus vertex; with none (or both) on a locus, try both directions
+          const dirs: Array<[number, number]> = vFeat[p0] && !vFeat[q0] ? [[p0, q0]]
+            : vFeat[q0] && !vFeat[p0] ? [[q0, p0]]
+              : [[p0, q0], [q0, p0]];
+          let done = false;
+          for (const [u, v] of dirs) {
+            const su = vTris.get(u); const sv = vTris.get(v);
+            if (su === undefined || sv === undefined) continue;
+            const shared: number[] = [];
+            for (const t of su) if (alive[t] && sv.has(t)) shared.push(t);
+            if (shared.length === 0) continue;
+            const apex = new Set<number>();
+            for (const t of shared) { for (const w of [ta[t], tb[t], tc[t]]) if (w !== u && w !== v) apex.add(w); }
+            const nu = nbr.get(u); const nv = nbr.get(v);
+            if (nu === undefined || nv === undefined) continue;
+            let linkBad = false;
+            for (const w of nu) if (nv.has(w) && !apex.has(w)) { linkBad = true; break; }
+            if (linkBad) continue;
+            nPostCollapseTested += 1;
+            const shapeVerdict = postCollapseAdmits(u, v, sv, new Set(shared));
+            if (shapeVerdict === 'ar') { nPostCollapseRefusedAR += 1; continue; }
+            if (shapeVerdict === 'fold') { nPostCollapseRefusedFold += 1; continue; }
+            // collapse v → u. killT keeps edgeMap live for the dying pair; survivors relabel with explicit
+            // eDel/eAdd so the resume loop's incident lists are the true ones.
+            for (const t of shared) { killT(t); collapsedTris += 1; }
+            for (const t of Array.from(sv)) {
+              if (!alive[t]) continue;
+              const a0 = ta[t]; const b0 = tb[t]; const c0 = tc[t];
+              eDel(a0, b0, t); eDel(b0, c0, t); eDel(c0, a0, t);
+              if (ta[t] === v) ta[t] = u; if (tb[t] === v) tb[t] = u; if (tc[t] === v) tc[t] = u;
+              eAdd(ta[t], tb[t], t); eAdd(tb[t], tc[t], t); eAdd(tc[t], ta[t], t);
+              addVT(u, t);
+              pilotReseed.push(t);
+            }
+            for (const w of nv) { if (w === u) continue; const nw = nbr.get(w); if (nw !== undefined) { nw.delete(v); nw.add(u); } addNbr(u, w); }
+            nbr.delete(v); vTris.delete(v);
+            nu.delete(v);
+            sliverCollapsed += 1;
+            done = true;
+            break;
+          }
+          if (!done) sliverRefusedOther += 1; // link/shape refusals — the shared S6 counters above carry the split
+        }
+      }
+
+      // ───────── S7-PILOT: CONFORMING FLIP of fossil crossing edges (PF_CB_CONF_FLIP=1; default OFF) ─────────
+      // See the S7 note at the counter block. Candidate = an edge, shared by exactly two live facets, whose
+      // OWN 1-D profile carries an interior crease kink (locateKink — the SNAP primitive — with t inside the
+      // SNAP_ALPHA band and not jump-class): the signature of a bay-to-bay chord CROSSING a locus. An edge
+      // ALONG a locus is smooth along itself and never matches; tryFlip's own edgeOnLocus check backstops
+      // that anyway. The flip is gated on strictly improving the pair's worst AR (the S5 gate, verbatim), so
+      // the pass can only improve the census metric, moves no vertex, and costs no triangle budget.
+      // Enumeration dedups CANDIDATES only (rare), not all edges — the Set stays far below V8's 2^23 cap
+      // (the detectSelfIntersections lesson); the price is at most a second locateKink on a shared edge.
+      if (CONF_FLIP) {
+        confFlipRan = true;
+        const flippedKeys = new Set<number>();
+        for (let pass = 0; pass < 3; pass += 1) {
+          let didAny = false;
+          confFlipPasses += 1;
+          for (let t = 0; t < ta.length; t += 1) {
+            if (!alive[t]) continue;
+            const e0 = longestE(t);
+            const [pv, qv] = eVerts(t, e0);
+            const k = eKey(pv, qv);
+            if (flippedKeys.has(k)) continue;
+            const inc = (edgeMap.get(k) ?? []).filter((x) => alive[x]);
+            if (inc.length !== 2) continue;
+            const kk = locateKink(vth[pv], vz[pv], vth[pv] + dTh(pv, qv), vz[qv]);
+            if (kk === null || kk.jump) continue;
+            if (kk.t <= SNAP_ALPHA || kk.t >= 1 - SNAP_ALPHA) continue; // endpoint kink — already conformed there
+            flippedKeys.add(k);
+            confFlipCand += 1;
+            const arOld = Math.max(arTri(inc[0]), arTri(inc[1]));
+            const before = ta.length;
+            const ok = tryFlip(pv, qv, (r0, s0) => Math.max(
+              aspect3(vx[r0], vy[r0], vz[r0], vx[pv], vy[pv], vz[pv], vx[s0], vy[s0], vz[s0]),
+              aspect3(vx[s0], vy[s0], vz[s0], vx[qv], vy[qv], vz[qv], vx[r0], vy[r0], vz[r0]),
+            ) < arOld);
+            if (ok) {
+              confFlipDone += 1; didAny = true;
+              for (let nt = before; nt < ta.length; nt += 1) pilotReseed.push(nt);
+            } else confFlipRefused += 1;
+          }
+          if (!didAny) break;
+        }
+      }
+
+      // RESUME (shared by S6-collapse and S7-flip): re-seed the repaired neighbourhoods and the still-alive
+      // unresolved set, then drain the heap under the explicit extra budget — the heap driver's pop step
+      // verbatim (pop → refineDirected/refineLepp → consider children → survivor re-queue → unresolved
+      // bookkeeping). Termination: every pop either splits (budget-bounded) or lands in `unresolved` and is
+      // never re-queued.
+      if ((SLIVER_COLLAPSE || CONF_FLIP) && SLIVER_RESUME_BUDGET > 0 && sliverCollapsed + confFlipDone > 0) {
+        const resumeCap = triCap + SLIVER_RESUME_BUDGET;
+        for (const t of pilotReseed) if (alive[t]) consider(t);
+        for (const [t] of unresolved) if (alive[t]) consider(t);
+        while (heapT.length > 0) {
+          if (ta.length >= resumeCap) { sliverResumeCapped = true; break; }
+          if (MAXSECS > 0 && (Date.now() - t0ms) / 1000 > MAXSECS) { timeCapped = true; break; }
+          const kTop = heapK[0];
+          const t = hpop();
+          if (!alive[t]) continue;
+          created.length = 0;
+          if (DIRECTED) refineDirected(t); else refineLepp(t);
+          for (const nt of created) consider(nt);
+          if (created.length > 0) {
+            sliverResumeSplits += 1;
+            unresolved.delete(t);
+            if (alive[t]) consider(t);
+          } else unresolved.set(t, kTop);
+        }
+        sliverResumeBudgetUsed = Math.max(0, ta.length - triCap);
+      }
+      if (SLIVER_COLLAPSE || CONF_FLIP) {
+        for (let t = 0; t < ta.length; t += 1) if (alive[t]) { if (arTri(t) > SLIVER_AR) sliverOffendersAfter += 1; }
+        for (const [t, k] of unresolved) if (alive[t]) { sliverUnresolvedAfter += 1; if (k > sliverUnresolvedWorstAfter) sliverUnresolvedWorstAfter = k; }
+      }
     }
 
     // ───────────────────────────── soup + watertight audit (3D position weld) ─────────────────────────────
@@ -2866,6 +3046,18 @@ describe('STRATA conforming-bisection', () => {
         + `${nPostCollapseRefusedDirty > 0 ? `   *** ${nPostCollapseRefusedDirty} of the aspect refusals LEFT A FACET ALREADY OVER THE CAP in place — visible, not silent ***` : ''}`,
       `    flip (collapse-driven, PF_CB_FLIP=${FLIP_ON ? 1 : 0}): ${nPostFlipTested} gate calls, refused ${nPostFlipRefusedAR} on aspect   [tryFlip sign-checks (θ,z) itself, so this path cannot fold]`,
       `    worst AR any ADMITTED post-loop operation left behind: ${POST_SHAPE ? postWorstAdmitted.toFixed(2) : 'n/a — lever off, nothing was scored'}`,
+      // S6-PILOT block — printed ONLY when requested, so every flag-off report stays byte-identical to today.
+      ...(envOn('PF_CB_SLIVER_COLLAPSE') ? [
+        `  S6-PILOT sliver collapse-and-resume: ${sliverRan ? 'RAN' : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
+        `    offenders (AR > ${SLIVER_AR}): BEFORE ${sliverOffendersBefore} → AFTER ${sliverOffendersAfter}   tested ${sliverTested}, collapsed ${sliverCollapsed}`,
+        `    refused: ${sliverRefusedLen} on shortest-edge >= ${(SLIVER_MAX_MM * 1000).toFixed(1)} um (CAP family — out of scope BY DESIGN, motion is capped at TOL/2), ${sliverRefusedOther} on link/shape (split carried by the S6 collapse counters above)`,
+        `    resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
+      ...(envOn('PF_CB_CONF_FLIP') ? [
+        `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
+        `    crossing-edge candidates ${confFlipCand}, flipped ${confFlipDone}, refused ${confFlipRefused} (AR gate + tryFlip validity: 2-incidence, convexity, winding, on-locus)`,
+        `    offenders (AR > ${SLIVER_AR}) AFTER ${sliverOffendersAfter}   resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
       // S5. The two counts either side of the pass are the ANSWER to "does tryFlip repair caps", measured on
       // this run's own mesh. `cap-before` is also the honest final blade count in the census's metric.
       ...(process.env.PF_CB_SAFE_COLLAPSE === '0'
