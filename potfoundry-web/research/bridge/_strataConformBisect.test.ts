@@ -43,6 +43,8 @@ import { join } from 'node:path';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { baseRadius } from '../../src/geometry/profile';
 import { buildRadiusFn } from './labkit';
+import { traceLoci, DEFAULT_TRACE_OPTS, LOCUS_SCHEMA, type LocusArtifact } from './_strataLocusTrace';
+import { buildAlignedSeedRepaired, DEFAULT_SEED_OPTS, type AlignedSeed } from './_strataAlignedSeed';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 import { openGpuRank, type GpuRank } from './_gpuRankBridge';
@@ -952,6 +954,27 @@ describe('STRATA conforming-bisection', () => {
     // plausible mesh that is wrong everywhere, silently.
     if (GPU_RANK) gpu = await openGpuRank({ style: STYLE, params: styleParams, cpuRadius: rA, n: GR_N, gnIters: GR_GN });
 
+    // ══════════ S10 — ALIGNED CONSTRAINED SEED (2026-07-30). ALL DEFAULT OFF ══════════
+    // PF_CB_ALIGNED_SEED=1 replaces the uniform gu x gv grid with a constrained triangulation whose edges
+    // lie ALONG the traced C0/crease loci. See _strataAlignedSeed.ts for the construction and
+    // _strataLocusTrace.ts for the tracer; the tracer's negative control is
+    // research/bridge/_strataLocusTraceNegControl.test.ts and its bars are pre-registered in the worklog.
+    const ALIGNED_SEED = envOn('PF_CB_ALIGNED_SEED') && !SWEEP && !GPU_RANK;
+    const AL_NU = Math.round(envF('PF_CB_ALIGNED_NU', 400));      // tracer seeding lattice
+    const AL_NV = Math.round(envF('PF_CB_ALIGNED_NV', 280));
+    const AL_HREF = envF('PF_CB_ALIGNED_HREF', 0.35);             // element size the junction disks assume
+    const AL_ALONG = envF('PF_CB_ALIGNED_ALONG', 1.0);            // along-locus spacing / background cell
+    const AL_ACROSS = envF('PF_CB_ALIGNED_ACROSS', 0.35);         // offset-chain distance / background cell
+    const AL_FIELD = process.env.PF_CB_ALIGNED_FIELD !== '0';     // modulate spacing by R2's sizing field
+    const AL_ROUNDS = Math.round(envF('PF_CB_ALIGNED_ROUNDS', 6));
+    const AL_MEASURE = process.env.PF_CB_ALIGNED_MEASURE !== '0';
+    // LAYER-2 NEGATIVE CONTROL: push every traced locus this far along its own normal before seeding. A
+    // non-zero value builds a DELIBERATELY MISTRACED seed, which must produce a census-visible defect —
+    // proving the pipeline would catch a tracer regression instead of shipping a misplaced constraint.
+    const AL_MISTRACE = envF('PF_CB_ALIGNED_MISTRACE_UM', 0);
+    if (AL_MISTRACE !== 0 && !ALIGNED_SEED) {
+      throw new Error('PF_CB_ALIGNED_MISTRACE_UM is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
+    }
     // ───────────────────────────── INIT: uniform θ×z grid, C0 z-bands ─────────────────────────────
     const zSteps: number[] = [];
     {
@@ -972,6 +995,74 @@ describe('STRATA conforming-bisection', () => {
     }
     const stepEps = envF('PF_CB_STEP_EPS_UM', 4) / 1000;
     const bounds = [0, ...zSteps, H];
+    // ═══════════ S10 — THE ALIGNED CONSTRAINED SEED (PF_CB_ALIGNED_SEED=1, DEFAULT OFF) ═══════════
+    // Replaces the uniform grid with a constrained triangulation whose edges LIE ALONG the traced feature
+    // loci, so no seed edge crosses a locus BY CONSTRUCTION. The uniform-grid block below is untouched and
+    // runs verbatim when the lever is off, so the flag-OFF path is byte-identical by construction as well
+    // as by the measured md5.
+    //
+    // WHY IT IS SEPARATE FROM S9a AND NOT STACKED WITH IT: S9a (PF_CB_CONFORM_FIRST) SPLITS grid edges at
+    // their crossings; this DELETES the crossings. Running both makes the arm untestable as "aligned
+    // alone" — the counter that would report the effect would also be the lever that changes it. So the
+    // aligned arm measures the same quantity WITHOUT mutating: `alignedSeedCrossings` runs the S9a
+    // enumeration (locateKink, interior, non-jump, outside the SNAP_ALPHA band) over every seed edge and
+    // only counts. The two levers remain composable; this arm just does not compose them.
+    let alignedLoci: LocusArtifact | null = null;
+    let alignedStats: AlignedSeed['stats'] | null = null;
+    let alignedRounds = 0; let alignedBanned = 0;
+    let alignedSeedCrossings = -1; let alignedSeedEdges = 0; let alignedTraceMs = 0;
+    if (ALIGNED_SEED) {
+      if (zSteps.length > 0) {
+        // The seed triangulates ONE (theta,z) rectangle. A style with a detected C0 z-step needs one chart
+        // per band plus tread annuli between them, which is not built. Refuse rather than silently seed a
+        // single chart across a cliff — the PF_CB_RANK / PF_CB_SWEEP_WORKERS precedent for an inert lever.
+        throw new Error(
+          `PF_CB_ALIGNED_SEED=1 is not implemented for a style with detected C0 z-steps (${zSteps.length} found at `
+          + `z=${zSteps.map((z) => z.toFixed(3)).join(',')}). The aligned seed triangulates one (theta,z) chart; `
+          + `banded seeding + tread annuli are unbuilt. Run without the lever, or extend the seed per band.`,
+        );
+      }
+      const tTrace = Date.now();
+      alignedLoci = traceLoci(rA, {
+        ...DEFAULT_TRACE_OPTS, H, pred: PRED,
+        nu: AL_NU, nv: AL_NV, hRefMm: AL_HREF,
+      });
+      alignedTraceMs = Date.now() - tTrace;
+      const rep = buildAlignedSeedRepaired(rA, alignedLoci, {
+        ...DEFAULT_SEED_OPTS, H, gu, gv,
+        alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
+        mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
+      }, AL_ROUNDS);
+      alignedStats = rep.seed.stats; alignedRounds = rep.roundsUsed; alignedBanned = rep.banned;
+      // Constraint vertices are marked `feat` — they ARE on a detected locus, which is exactly what SNAP
+      // marks when it lands a vertex on one. The seam closes through `addV`'s own 3-D weld: canonTheta(2pi)
+      // is 0, so a vertex emitted at (2pi, z) IS the vertex at (0, z), exactly and not to a tolerance.
+      const onCon = new Set<number>();
+      for (const [a, b] of rep.seed.constraints) { onCon.add(a); onCon.add(b); }
+      const idx = rep.seed.pts.map(([th, z], i) => addV(th, z, onCon.has(i)));
+      for (const [a, b, c] of rep.seed.tris) addT(idx[a], idx[b], idx[c]);
+      // THE LEVER'S HEADLINE, measured by the DRIVER'S OWN detector rather than by the seed builder's
+      // internal geometry — the seed builder's crossing count is self-referential (it tests against the
+      // very chains it placed) and would read LOW on a deliberately mistraced seed, which is precisely the
+      // case the layer-2 negative control exists to catch.
+      if (AL_MEASURE) {
+        const seenAl = new Set<number>();
+        let cross = 0; let tested = 0;
+        for (let t = 0; t < ta.length; t += 1) {
+          if (!alive[t]) continue;
+          for (const [pv, qv] of [[ta[t], tb[t]], [tb[t], tc[t]], [tc[t], ta[t]]] as Array<[number, number]>) {
+            const k0 = eKey(pv, qv);
+            if (seenAl.has(k0)) continue;
+            seenAl.add(k0); tested += 1;
+            const kk = locateKink(vth[pv], vz[pv], vth[pv] + dTh(pv, qv), vz[qv]);
+            if (kk === null || kk.jump) continue;
+            if (kk.t <= SNAP_ALPHA || kk.t >= 1 - SNAP_ALPHA) continue;
+            cross += 1;
+          }
+        }
+        alignedSeedCrossings = cross; alignedSeedEdges = tested;
+      }
+    } else {
     for (let b = 0; b + 1 < bounds.length; b += 1) {
       const za = b === 0 ? 0 : bounds[b] + stepEps;
       const zb = b + 2 === bounds.length ? H : bounds[b + 1] - stepEps;
@@ -990,6 +1081,7 @@ describe('STRATA conforming-bisection', () => {
         addT(grid[j][i], grid[j][i1], grid[j + 1][i1]);
         addT(grid[j][i], grid[j + 1][i1], grid[j + 1][i]);
       }
+    }
     }
 
     // ───────── S6  INITIAL-GRID SHAPE CENSUS. MEASUREMENT ONLY — nothing is refused here. ─────────
@@ -3288,6 +3380,41 @@ describe('STRATA conforming-bisection', () => {
     }
     writeFileSync(join(outDir, `${tag}.stl`), buf);
 
+    // ─── S10: THE TRACED LOCI + JUNCTION DISKS, written beside the STL. This is P5's INPUT and it is a
+    // deliverable whether or not the A/B wins: the junction disks are the enumerated target list the
+    // junction-routing campaign needs, and nothing else in the pipeline produces them. Each disk carries a
+    // REGION description — centre, radius, branch count, the minimum angle between branches, the measured
+    // scatter of the evidence, and the branch DIRECTIONS with the point at which each leaves the disk — so
+    // a router can consume it directly instead of re-deriving geometry from a bare point. ───
+    if (alignedLoci !== null) {
+      const rMidJ = 45;
+      const disks = alignedLoci.junctions.map((j) => {
+        const branches: Array<{ dirTheta: number; dirZ: number; exitTheta: number; exitZ: number }> = [];
+        for (const id of j.lociIds) {
+          const P = alignedLoci.loci[id]?.pts ?? [];
+          for (let i = 0; i + 1 < P.length; i += 1) {
+            const mTh = 0.5 * (P[i][0] + P[i + 1][0]); const mZ = 0.5 * (P[i][1] + P[i + 1][1]);
+            const dth = dThRaw(canon(mTh), j.theta);
+            const dd = Math.hypot(rMidJ * dth, mZ - j.z);
+            if (dd > j.radiusMm * 1.25 || dd < j.radiusMm * 0.75) continue;
+            const ux = rMidJ * dThRaw(j.theta, canon(mTh)); const uy = mZ - j.z;
+            const n = Math.hypot(ux, uy) || 1;
+            branches.push({ dirTheta: ux / n, dirZ: uy / n, exitTheta: canon(mTh), exitZ: mZ });
+          }
+        }
+        return { ...j, branchDirs: branches.slice(0, 8) };
+      });
+      writeFileSync(join(outDir, `${tag}.loci.json`), JSON.stringify({
+        schema: LOCUS_SCHEMA,
+        run: { style: STYLE, params: styleParams, dims: DIMS, stage: STAGE, tag, gu, gv, tolMm: TOL, mistraceUm: AL_MISTRACE },
+        meta: alignedLoci.meta,
+        counts: alignedLoci.counts,
+        seed: alignedStats,
+        loci: alignedLoci.loci,
+        junctions: disks,
+      }, null, 1));
+    }
+
     // ─── §5.4 THE RUN MANIFEST. Written beside the STL, ALWAYS (it does not touch a byte of the STL).
     // Nothing else ties an STL to the surface it was built on: DIMS is a file-local constant, STYLE defaults
     // to 'GothicArches', and the STL header carries a fixed string. The auditor currently has to be TOLD the
@@ -3385,6 +3512,24 @@ describe('STRATA conforming-bisection', () => {
         `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
         `    crossing-edge candidates ${confFlipCand}, flipped ${confFlipDone}, refused ${confFlipRefused} (AR gate + tryFlip validity: 2-incidence, convexity, winding, on-locus)`,
         `    offenders (AR > ${SLIVER_AR}) AFTER ${sliverOffendersAfter}   resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
+      ...(ALIGNED_SEED && alignedStats !== null && alignedLoci !== null ? [
+        `  S10 ALIGNED CONSTRAINED SEED: PF_CB_ALIGNED_SEED=1   trace ${AL_NU}x${AL_NV} in ${(alignedTraceMs / 1000).toFixed(0)}s`
+          + `${AL_MISTRACE !== 0 ? `   *** MISTRACED BY ${AL_MISTRACE} um — LAYER-2 NEGATIVE CONTROL, NOT A PRODUCTION MESH ***` : ''}`,
+        `    traced loci: ${alignedLoci.loci.length} components, ${alignedLoci.counts.polylinePts} points, ${alignedLoci.counts.totalLengthMm.toFixed(1)} mm total`
+          + `   junctions ${alignedLoci.junctions.length} (from ${alignedLoci.counts.rawJunctions} raw)   jump-class crossings EXCLUDED ${alignedLoci.counts.jumpExcluded}`,
+        `    seed: ${alignedStats.points} points -> ${alignedStats.tris} tris   constraints ${alignedStats.constraints} RECOVERED ${alignedStats.constraintsRecovered}`
+          + ` (conditioned ${alignedStats.constraintsConditioned}, decimated ${alignedStats.decimated}, degenerate dropped ${alignedStats.degenerateDropped})`
+          + `   repair rounds ${alignedRounds}, banned ${alignedBanned}`,
+        `    spacing: along ${(alignedStats.alongMm * 1000).toFixed(0)} um / across ${(alignedStats.acrossMm * 1000).toFixed(0)} um`
+          + `   background kept ${alignedStats.bgKept} dropped ${alignedStats.bgDropped}   offset points ${alignedStats.offsetPts}`
+          + `   sizing field ${AL_FIELD ? 'ON' : 'OFF'} (${alignedStats.fieldEvals} rA evals)`,
+        `    seed shape census: ${alignedStats.overCap} of ${alignedStats.tris} over the cap (worst AR ${alignedStats.worstAR.toFixed(2)}, worst PARAMETRIC AR ${alignedStats.worstParAR.toFixed(1)})`,
+        ...(alignedSeedCrossings >= 0 ? [
+          `    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink:`
+            + ` ${alignedSeedCrossings} of ${alignedSeedEdges} edges (${((100 * alignedSeedCrossings) / Math.max(1, alignedSeedEdges)).toFixed(3)}%).`
+            + ` The uniform grid at this config had 10,641 (S9a's gen-0 enumeration, live grid, multi-pass). ***`,
+        ] : []),
       ] : []),
       ...(envOn('PF_CB_CONFORM_FIRST') || envOn('PF_CB_SNAP_CASCADE') ? [
         `  S9 conformity-at-birth: PF_CB_CONFORM_FIRST=${CONFORM_FIRST ? 1 : 0}  PF_CB_SNAP_CASCADE=${SNAP_CASCADE ? 1 : 0}   depth ${S9_DEPTH}, shared budget ${S9_BUDGET} gross allocs`,

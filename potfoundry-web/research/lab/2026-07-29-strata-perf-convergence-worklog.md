@@ -1068,6 +1068,400 @@ WHAT THE WHOLE FOSSIL CAMPAIGN (S6..S9) ESTABLISHES, each by refutation-grade me
     curtain/patch geometry. Conformity-at-birth (S9a) is the right substrate for it: the loci arrive
     pre-conformed and the fossil load the router must absorb is 16% smaller with an 18x tamer tail.
 
+### S10 PRE-REGISTRATION — THE LOCUS TRACER + ALIGNED CONSTRAINED SEED. Registered BEFORE any S10 mesh existed.
+Design rationale (the operator's fitted-seed / role-separation idea) is documented separately in
+`research/lab/2026-07-30-fitted-seed-role-separation-brief.md` — a DESIGN NOTE carrying no new
+measurements; S10 is the first partial test of the architecture it describes.
+
+THE STEP, from the S9 closing recommendation verbatim: "build the locus tracer + aligned constrained seed
+(with its negative control), A/B it against `_S9A` — that's the cheapest decisive step, and everything it
+produces (traced loci, junction disks) is input P5 needs anyway."
+
+WHAT IS NEW, AND WHY IT IS NOT S9a AGAIN. S6/S7/S8 repaired fossils POST-LOOP; S9a SPLIT the grid's
+crossing edges at generation zero and moved the class x0.84. All four operate on a mesh that ALREADY
+contains edges crossing the loci. S10 removes the birth channel instead: the seed is a constrained
+triangulation whose edges LIE ALONG the traced loci, so no seed edge crosses a locus BY CONSTRUCTION.
+  * NEW FILE `research/bridge/_strataLocusTrace.ts` — turns the driver's POINTWISE `locateKink` into
+    ORDERED POLYLINES: theta-periodic seeding lattice, continuation with adaptive step (halve above
+    turnMaxDeg, grow below turnMinDeg), seam carried in UNWRAPPED theta with `dThRaw` deltas, junctions by
+    polyline intersection clustered to a centroid, and a disk radius per junction. Jump-class is excluded
+    EXACTLY as the S9a sweep excludes it (`kk === null || kk.jump`) and the exclusions are COUNTED.
+    It calls `locateKinkRaw` and nothing else, so a traced locus is the same object SNAP conforms to.
+  * NEW FILE `research/bridge/_strataAlignedSeed.ts` — the CDT seed (cdt2d), constraints = the traced
+    polylines, Steiner spacing LONG along / SHORT across, seam cut at theta=0 with an identical z-set on
+    both columns so `addV`'s 3-D weld closes it EXACTLY (canonTheta(2pi) === 0).
+  * NEW LEVER `PF_CB_ALIGNED_SEED=1`, DEFAULT OFF, plus PF_CB_ALIGNED_{NU,NV,HREF,ALONG,ACROSS,FIELD,
+    ROUNDS,MEASURE,MISTRACE_UM}. The uniform-grid block is byte-untouched and runs verbatim when off.
+
+**THE ARM IS ALIGNED-ALONE: `PF_CB_CONFORM_FIRST=0`. DECIDED AND STATED BEFORE THE RUN.**
+S9a splits grid edges at their crossings; the aligned seed deletes the crossings. Stacking them makes the
+arm untestable as "aligned alone" — the lever that would change the number is also the counter that would
+report it, and S9a's gen-0 pass would mutate the very seed under test. Instead the aligned path measures
+the same quantity WITHOUT mutating: `alignedSeedCrossings` runs S9a's own enumeration (locateKink,
+interior, non-jump, outside the SNAP_ALPHA band) over every seed edge and only COUNTS. The two levers stay
+composable; this arm does not compose them. The comparison is therefore ALIGNED SEED (no gen-0 splitting)
+vs UNIFORM GRID + gen-0 splitting (_S9A) — the two rival answers to the same birth channel.
+
+COMMAND (production arm, tag `_S10A`):
+  PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+  PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 PF_CB_ACCEPT=0.0035 PF_CB_TAILK=800
+  PF_CB_MAXSECS=5400 PF_CB_RANK=plane PF_CB_ALIGNED_SEED=1 PF_CB_TAG_SUFFIX=_S10A
+  NODE_OPTIONS=--max-old-space-size=16384, -c vitest.strata.config.ts, --testTimeout=1800000
+  --hookTimeout=600000. Audit two-sided through the hardened judge at Part-B depth
+  (PF_FT_H1=1 PF_FT_H2=1 PF_FT_WORKERS=8 PF_FT_H1MAX=40000 PF_FT_H2BUDGET=40000000 PF_FT_GUARD_AR=50).
+
+CONTROL = the committed `gothicarches_ring_DS-H_S9A.stl` and its RECORDED deep audits
+(research/exchange/_strataFacetTruth/FID_S9A.report.txt + SHAPE_S9A.report.txt). YARDSTICKS:
+  back-facing 6,613 | feature-spanning 12,522 | off-locus deviation tail >=15 73,287 / >=30 61,049 /
+  >=45 53,854 / >=90 19,135 | parametric AR p50 4.365 p90 14.982 p99 291.324 MAX 548,637.8 |
+  3-D AR p99 43.693 MAX 50.033 | H1 witnessed 524.567 um, certified 611.100 um, facets over
+  1,398/40,000 = 3.50% at 40,000/1,284,820 coverage (INCOMPLETE by construction) | H2 witnessed
+  17.069 um, samples over 1,825/40,001,464 = 0.00456% | unresolved 9,995 worst 40.971 um |
+  self-report 41.236 um | tris 1,284,820 | wall 923 s | determined blades 0 (+15 f32-indet) /
+  determined folds 0 (+36 f32-indet) | gen-0: 10,641 grid crossings, 8,507+8 conformed, 2,126 DEADLOCKED.
+
+>> H1-MAX IS A GUARD BAR, NOT A WIN CONDITION, and the reason is measured, not stylistic. _S9A's H1
+>> witness sits at z~27.97 on a WELL-SHAPED mm-scale chord (edges 800/2,016/1,544 um, AR~2.5) and the
+>> top-24 witnesses spread over z~27.9/46.7/99.5/119.3 — mostly OFF the junction bands (80-85, 110-115).
+>> That is the 2026-07-28 handoff's RANKING-FUNCTION class (the plane ruler scores that facet ~41 um), and
+>> an aligned SEED has no mechanism to move it. A flat H1 max is therefore NOT evidence against the seed.
+>> The decisive axes are the CLASS metric (back-facing / feature-span / parametric-AR tail) and the
+>> SEED-CROSSING count against the uniform grid's 10,641.
+
+PREDICTIONS AND BARS, all decided before the run:
+  SA1 IDENTITY. Flag-OFF at the W1 config (GRIDU=40 GRIDV=28 TRICAP=120000, rest per the S8 pilot)
+      reproduces md5 8a59fb37a9115600b13262254380ccb0 byte-exact, and the hard gate reads 12/12 with every
+      documented value exact. A mismatch ABORTS the session.
+  SA2 THE BIRTH CHANNEL. `alignedSeedCrossings` (driver-measured, locateKink, non-mutating) <= 500 seed
+      edges crossing a locus, against the uniform grid's 10,641. >2,000 refutes the construction itself —
+      a "constrained" seed whose edges still cross the constraints is not aligned, whatever it recovered.
+  SA3 THE CLASS (headline). Footprint back-facing 6,613 -> <=1,323 (>=5x fall) is the WIN bar.
+      REFUTED if >3,307 (<2x fall).
+  SA4 H1 GUARD. witnessed <= 577.0 um (+10%); facets-over <= 7.00% (2x). Reported with COVERAGE, always.
+  SA5 H2 GUARD. witnessed max <= 20.48 um (+20%); samples-over <= 0.00912% (2x).
+  SA6 PRECONDITIONS, one of which is a DECLARED DEVIATION, stated here so it cannot be discovered
+      afterwards and called expected:
+        P-A determined FOLDS = 0. Any non-zero refutes S2-through-the-seed outright.
+        P-B determined BLADES <= 5, **NOT 0**. The aligned seed's own census measures 4 facets over AR 50
+            (worst 88.79) out of 81,656 — born in the seed, therefore FROZEN (the driver's initial-grid
+            census prints and attributes exactly this). Their cause is enumerated: near-collinear triples
+            on the seam column and at two locus approaches, after repair passes took the count
+            1,218 -> 4 and the worst PARAMETRIC AR 1.5e15 -> 114.2. A count ABOVE 5 means something other
+            than the seed manufactured blades, which refutes the plumbing.
+        P-C worst child AR the guard ever ADMITTED <= 50.
+        P-D constraint recovery 100% — ASSERTED IN CODE; the build THROWS otherwise. (2026-07-24
+            precedent: generic CDT arms recovered 21-42% of a dense constraint graph, and an unrecovered
+            locus constraint is a fossil reintroduced with a clean report.)
+  SA7 COST. live tris <= 1.9M; wall <= 1,850 s (2x _S9A) INCLUDING the tracer (~85 s) and seed (~50 s).
+  SA8 VERDICT ROWS, evaluated IN ORDER, first match wins, disjoint by construction:
+      1 REFUTATION  back-facing falls <2x (>3,307). Deleting the birth channel does not remove the class;
+                    the class is not seeded-crossing material and P5 is the only remaining route.
+      2 REGRESSION  H1 witnessed >=1.5x (>=786.9 um) OR H2 witnessed >=1.5x (>=25.60 um) OR P-A fails OR
+                    P-B fails (>5 determined blades) OR P-C fails. Must not default ON.
+      3 WIN         back-facing <=1,323 (>=5x) AND H1 <= 577.0 um AND H2 <= 20.48 um.
+      4 TRADE       everything else — both numbers in the SAME row of the SAME table.
+  SA9 THE RESIDUAL, reported either way because it is P5's input and the reason this step was chosen:
+      the junction-disk population (count, locations, radii, min branch angles, branch directions) written
+      to `research/exchange/_strataConformBisect/<tag>.loci.json`. THE EXPECTED CEILING, STATED IN ADVANCE:
+      alignment is well defined ALONG a locus and ill defined WHERE TWO LOCI CROSS, so this step shrinks
+      the problem to the junction disks and does NOT solve them. It composes with P5; it does not replace
+      it. A row-1 fire is therefore consistent with the mechanism working exactly as designed.
+
+THE TRACER'S OWN BARS — because a mistraced curve is a MISPLACED CONSTRAINT, i.e. a brand-new artifact
+class manufactured with the same confidence as a correct one, and invisible to every instrument the
+campaign owns (the shape census scores triangles, not whether they sit on the feature).
+  LAYER 1 (synthetic, closed form; bars written into
+  `research/bridge/_strataLocusTraceNegControl.test.ts` BEFORE its first execution):
+    T1 every traced vertex within 25 um of the nearest analytic locus (max, surface metric);
+    T2 every analytic sample within 50 um of the nearest traced polyline segment (the other direction);
+    T3 the component COUNT exactly as the closed form says — accuracy bars alone are passable by a tracer
+       that finds ONE locus and traces it perfectly;
+    T4 a 200 um normal perturbation must FAIL T1 and T2 (expect-nonzero: an instrument that cannot fail is
+       not an instrument), and a 0 um perturbation must still PASS (so the check is sensitive, not
+       trivially failing);
+    T5 junctions within 100 um of the closed-form crossing, count exact, and NOT over-produced
+       (<= 1.5x the true count — a tracer reporting 20x too many junctions would over-trigger P5 on
+       phantom sites);
+    plus: a true C0 JUMP surface must yield ZERO loci with the exclusions COUNTED.
+  LAYER 2 (the real one): the aligned seed built from a DELIBERATELY MISTRACED locus
+  (PF_CB_ALIGNED_MISTRACE_UM=500, W1 config, against the same config with the lever correct) must produce
+  a CENSUS-VISIBLE defect, proving the pipeline would catch a tracer regression rather than ship a
+  misplaced constraint. Bars — at least TWO of three must fire:
+    L2a the mistraced seed's initial-grid over-cap census >= 5x the correct seed's;
+    L2b the mistraced arm's driver-measured `alignedSeedCrossings` >= 5x the correct arm's;
+    L2c the finished mesh's footprint back-facing count >= 1.5x the correct arm's.
+  If FEWER than two fire, the pipeline cannot see a 500 um tracer error and the aligned seed must not be
+  trusted at any depth — that is a REFUTATION of the approach, not of the control.
+
+ALSO REPORTED (not gated, at the review session's request, and neither changes a bar above): the off-locus
+deviation TAIL counts (>=15 / >=30 / >=45 deg) alongside the gated >=90 back-facing count, because the tail
+is what the operator's eye actually sees; and whether the top-24 H1 witness loci (z~27.9/46.7/99.5 on
+_S9A) move under the aligned seed.
+
+S10 RESULTS AS THEY LANDED (each line written when its number arrived, before the next existed):
+  SA1 HOLDS, BOTH HALVES. Flag-OFF at the W1 config after every S10 edit reproduced
+      md5 8a59fb37a9115600b13262254380ccb0 and `cmp` byte-identical to _S8ID/W1 (214.8 s). Hard gate
+      12/12 with every documented value exact (V7c 12.041 / 39.767 / 142.668). The same identity was also
+      taken BEFORE any edit (tag _S10ID0, same md5, 201.5 s), so the pre-edit tree is on record too.
+  LAYER 1 PASSES 6/6, and the bars did their job — they caught three real tracer defects during bring-up,
+      every one of which would have produced MISPLACED CONSTRAINTS with a clean-looking report:
+        (i)  closed loci wrapped the pot FIVE times before closing (1,342.9 mm of polyline for a 268.6 mm
+             loop) because loop closure was a POINT test and the adaptive step steps OVER the start; the
+             five-fold overlap then produced hundreds of phantom self-intersections, i.e. hundreds of
+             phantom junctions. Fixed by testing whether the STEP CROSSED the start, and snapping the
+             closing vertex onto it in the current unwrapped frame.
+        (ii) two ANTIPODAL parallel loci (theta 0.570 and 3.712, exactly pi apart) reported 183 phantom
+             junctions along their whole length: `dThRaw` folds at pi, so one endpoint wrapped to the far
+             side of the chart and a 1 mm segment became a 283 mm SPANNER that crossed everything. This is
+             the same failure mode as the 2026-07-13 cdt2d `upperIds` crash, reproduced inside my own
+             intersection test. Fixed by REFUSING deltas beyond pi/2 rather than wrapping them.
+        (iii) junction POSITION was averaging exact polyline crossings with coarse lattice-cell centroids,
+             putting 16 of 48 junctions over the 100 um bar (worst 105.0 um). A cell is a DETECTION, not a
+             measurement; position now comes from the 'cross' raws alone.
+      FINAL LAYER-1 NUMBERS (bars in brackets): fixture A vertical creases 16/16 components, vertex error
+      0.00 um [<=25], curve error 0.00 um [<=50]; fixture B helical creases across the seam 12/12, 0.00 /
+      0.00 um, 12 seam crossings, worst |dtheta| on a seam-split chain segment 0.0251 rad [<< pi];
+      fixture C curved creases 12/12, 1.50 / 5.52 um; fixture D X-crossings 48 found / 48 true, worst
+      offset 0.0 um [<=100], median min-angle 90.0 deg [>70], count within [48, 72]; the 200 um
+      PERTURBATION FAILS at 200.08 / 200.00 um as required and a 0 um perturbation still PASSES; a true C0
+      JUMP surface yields 0 loci with 1,932 crossings EXCLUDED and COUNTED.
+  TRACER ON THE REAL SURFACE — an independent check the synthetic fixtures cannot give, run before the
+      seed was built on it: 394 locus components, 11,083 points, 6,738.2 mm total, 235 junctions (from
+      1,559 raw), 94 jump-class crossings excluded, 86 s / 18.8M rA evals at a 400x280 seeding lattice.
+      Cross-validated against THE DRIVER'S OWN gen-0 enumeration on the production 200x140 grid (7,653
+      interior non-jump crease crossings): distance from each crossing to the nearest traced polyline is
+      p50 2.1 um, p90 10.6 um, p99 158.4 um, max 1,975 um — **98.51% within 50 um, 99.75% within 500 um,
+      19 of 7,653 beyond it.** The traced curves are where the driver's own detector says the loci are.
+
+### *** S10 RESULT — THE CLASS METRIC CLEARS ITS WIN BAR BY 6.9x, THE BIGGEST MOVEMENT OF THE CAMPAIGN,
+### AND THE RUN STILL SCORES SA8 ROW 2 (REGRESSION) ON H2. BOTH FACTS ARE THE RESULT. ***
+
+_S10A (PF_CB_ALIGNED_SEED=1 alone) vs the _S9A recorded audits, same instruments, Part-B depth
+(H1MAX=40000, H2BUDGET=40M, W=8, GUARD_AR=50). Both arms sequential and otherwise unloaded.
+
+| | _S9A (control) | _S10A (aligned seed) | |
+|---|---|---|---|
+| **back-facing (footprint gate)** | 6,613 | **959** | **x0.145 = 6.90x FALL** |
+| feature-spanning | 12,522 | 4,075 | x0.33 |
+| off-locus deviation >=15 deg | 73,287 | 28,118 | x0.38 |
+| off-locus >=30 / >=45 / >=90 | 61,049 / 53,854 / 19,135 | 21,402 / 17,766 / 5,034 | x0.35 / x0.33 / **x0.26** |
+| **parametric AR p99 / MAX** | 291.324 / 548,637.8 | **106.734 / 125,886.9** | p99 x0.37, tail **x4.4 smaller** |
+| 3-D AR p99 / MAX | 43.693 / 50.033 | 43.176 / **85.129** | max WORSE — the frozen seed blades, see P-B |
+| **H1 witnessed** | 524.567 um | **422.995 um** | **x0.806 — BETTER** |
+| H1 certified bound | 611.100 um | 568.463 um | x0.93 |
+| **H1 facets over tol** | 1,398/40,000 = 3.50% | **661/40,000 = 1.65%** | **x0.47** |
+| H1 coverage | 40,000 / 1,284,820 | 40,000 / 1,010,503 (stride 624,525) | INCOMPLETE both, by construction |
+| **H2 witnessed** | 17.069 um | **37.899 um** | **x2.22 WORSE** |
+| **H2 samples over tol** | 1,825/40.0M = 0.00456% | 4,969/40.0M = **0.01242%** | **x2.72 WORSE** |
+| unresolved / worst | 9,995 / 40.971 um | **5,576** / 47.245 um | count **x0.56**, worst x1.15 |
+| determined blades / folds | 0 / 0 | **2** / **0** | P-B declared <=5; P-A holds |
+| triangles | 1,284,820 | **1,010,503** | **x0.79** |
+| wall | 923 s | **758 s** | **x0.82 — FASTER** |
+| refused on aspect | 972,983 | 596,693 | x0.61 |
+| driver self-report | 41.236 um | 47.297 um | x1.15 |
+| **watertight** | seam-cracks 0, loops 2, Euler 0 | **seam-cracks 3 FAIL, loops 3, Euler -1** | **NEW DEFECT — see below** |
+
+SA-SCORING, first match wins, against the rows as REGISTERED (not as hoped):
+  SA1 **HOLDS** — identity md5 8a59fb37... byte-exact before and after every edit; gate 12/12 exact.
+  SA2 **MISSED ITS BAR, construction NOT refuted.** `alignedSeedCrossings` = **963 of 123,951 seed edges
+      (0.777%)**, against a registered bar of <=500 and a refutation line of >2,000. Against the uniform
+      grid's 10,641 that is **x0.090 — an 11.0x reduction in the birth channel**, but it is not zero and I
+      registered <=500, so this reads MISSED. WHERE THE 963 ARE is the point: alignment is ill-defined
+      exactly where two loci cross, and the seed cannot place an edge along both.
+  SA3 **CLEARS ITS WIN BAR: 6,613 -> 959, x0.145 (6.90x fall) against a >=5x WIN bar of <=1,323.** The
+      largest movement of the class any arm has produced — for scale, every prior arm: CTLPLUS x1.39
+      WORSE, S7 x1.44 WORSE, S8 x1.05 WORSE, S9a **x0.84**, S10 **x0.145**.
+  SA4 **HOLDS ON BOTH CLAUSES AND IMPROVES BOTH** — H1 witnessed 422.995 um (bar <=577.0, control
+      524.567); facets over tol 1.65% (bar <=7.00%, control 3.50%). Quoted with coverage, as required:
+      40,000 of 1,010,503 facets, stride 624,525, INCOMPLETE by construction.
+  SA5 **FAILS BOTH CLAUSES** — H2 witnessed 37.899 um (bar <=20.48); samples over tol 0.01242%
+      (bar <=0.00912%).
+  SA6 **ALL FOUR PRECONDITIONS HOLD.** P-A determined folds 0. P-B determined blades **2 <= 5**, the
+      DECLARED deviation, and the driver attributes them itself: 4 born over the cap in the seed, cap
+      repair BEFORE 2 -> AFTER 2 (worst 85.1). P-C worst admitted child AR 50.00. P-D constraint recovery
+      6,369 of 6,369 = 100%.
+  SA7 **HOLDS** — 1,010,503 live tris (bar <=1.9M) and 758 s (bar <=1,850 s), INCLUDING a 29 s trace and
+      the seed build. The aligned arm is FASTER and SMALLER than the control, not more expensive.
+  SA8 rows in order: row 1 does NOT fire (959 is a 6.90x fall, not <2x). **Row 2 FIRES on its H2 clause:
+      37.899 um >= the registered 25.60 um regression line.**
+      >> **VERDICT: SA8 ROW 2 — REGRESSION. PF_CB_ALIGNED_SEED STAYS DEFAULT OFF.** <<
+      Row 3's own back-facing and H1 clauses are both satisfied; it is unreachable because row 2 is
+      evaluated first and that ordering was fixed before the run. Recording it any other way would be the
+      exact after-the-fact rationalisation P7 was written to prevent.
+
+**WHY H2 REGRESSED, AND WHY IT IS THE KNOWN CLASS RATHER THAN A NEW ONE.** The aligned arm DRAINED its
+heap (0 left) with **21% FEWER triangles** at the same acceptTol, 39% fewer aspect refusals and 44% fewer
+stranded sites. The plane ruler accepts an aligned facet sooner — a facet that runs ALONG a rib has almost
+no chord sag — so the driver reaches its own fixed point earlier and stops. H2 (surface -> mesh) then
+correctly reads a thinner mesh as covering the surface less well. The decisive corroboration is the
+argmax: **H2's witness sits at th=5.637379, z=44.170 — the SAME unrepresented-feature locus D52 and _S8P
+both reported (th 5.635, z 44.9)**, which S8 already established is not fossil material and which the
+cascade "rightly never touched". So the H2 loss is the 2026-07-28 RANKING-FUNCTION class getting a smaller
+budget, not a defect alignment introduced. That reading is testable and is the obvious next arm: rerun the
+aligned seed at a tightened acceptTol (or under the Phase-2 tightening field, which exists precisely to
+spend triangles where the certificate says they are missing) and see whether H2 returns to control while
+the class metric holds its 6.9x. **NOT DONE, NOT CLAIMED.**
+
+**AND THE H1 WITNESSES MOVED INTO THE JUNCTION BANDS — the predicted signature, measured.** _S9A's H1
+witness AND its certified-bound locus were the SAME off-band facet at z=27.97 (edges 800/2,016/1,544 um,
+AR~2.5) — the well-shaped mm-scale chord the pre-registration named as "no mechanism can move this".
+_S10A's witness is at **z=112.49** (the bandRim triple junction) and its bound-locus at **z=81.74** (the
+diamond X-crossing). The off-band chords are gone from the top of the list and what remains is junction
+material. That is what "the aligned seed fixes the along-locus chords and leaves the junctions" looks
+like in the instrument, and it is why H1 max fell 19% on a metric the pre-registration only guarded.
+
+**A NEW DEFECT THE RUN FOUND, NOT PRE-REGISTERED, RECORDED BECAUSE IT IS REAL: THE SEAM DOES NOT CLOSE
+PERFECTLY.** `seam-crack edges 3 FAIL`, boundary loops 3 (control 2), Euler V-E+F = **-1** (control 0),
+non-manifold 0, orientation-mismatch 0. The seed's design claim was that closure is EXACT by construction
+— `canonTheta(2pi) === 0`, so a vertex emitted at (2pi, z) IS the vertex at (0, z) under `addV`'s 3-D
+weld — and that claim is now falsified at 3 edges out of 1,516,340. The mechanism is almost certainly the
+seam z-set: chain endpoints landing on ONE seam column need a partner at the same z on the OTHER, and the
+dedupe that drops a background row near a chain endpoint (added to kill collinear seam triples) can drop
+the row that WAS that partner. 3 cracks do not change any gate above — folds 0, non-manifold 0, the STL is
+otherwise sound — but a mesh with a crack is not shippable and this must be fixed before the lever is ever
+proposed for default-ON. It is recorded here rather than quietly patched because the identity/gate
+discipline says a claim of "exact by construction" is worth checking, and this campaign has now found that
+to be true three times.
+
+**THE OPERATOR'S EYE — the founding instrument of this campaign, and the qualitative bar SP4/SA3 stand in
+for.** RELAYED to this session by the review session at ~18:50 (screenshots delivered to the main session;
+I did not view them myself, and this is recorded as a relayed observation, not as my own measurement): on
+_S10A the operator reports "almost perfect mesh... almost no blades visible cutting the features;
+remaining artefacts are rare blade or bad triangles within the surface", with a close-up showing sparse
+thin slivers, some back-facing, lying WITHIN a rib-flank groove. That is consistent digit-for-digit with
+the census: 959 back-facing + 2 frozen seed blades, junction/flank population. The same human instrument
+that opened this campaign's retraction now reports the class essentially gone at whole-pot scale, on the
+arm whose gated verdict is REGRESSION. Both statements are true and neither cancels the other: the class
+the eye sees fell 6.9x; the surface -> mesh certificate got worse because the mesh got 21% thinner.
+
+### S10 LAYER-2 NEGATIVE CONTROL — PASSES ITS REGISTERED BAR (2 of 3), AND THE CLAUSE THAT DID **NOT**
+### FIRE IS THE MOST USEFUL THING IN IT.
+
+CONFIG CHANGE, declared: layer 2 ran at the PRODUCTION SEED config (gu=200 gv=140) with PF_CB_TRICAP
+reduced to 200,000, NOT at the W1 pilot config the pre-registration named. Reason, measured: at
+gu=40/gv=28 the aligned seed's own constraint-recovery assertion fires (1 of 1,498 segments unrecoverable)
+and the build REFUSES — the assertion working exactly as designed. Testing the seed that is actually under
+test is the better control anyway, so the change is a strengthening, not a weakening. Both arms identical
+in every other flag; correct arm `_S10L2OK`, mistraced arm `_S10L2BAD`.
+
+**FIRST FINDING, BEFORE ANY BAR: AT MOST MAGNITUDES THE MISTRACED SEED WILL NOT BUILD AT ALL.** Seed-only
+sweep at the production config, mistrace in um: **0 BUILDS | 50 REFUSES | 100 REFUSES | 200 BUILDS |
+300 BUILDS | 500 REFUSES.** Every refusal is the constraint-recovery assertion (e.g. 500 um: 5,112 of
+5,113 segments recovered, 1 missing). A locus displaced off the surface's real crease drags its chain into
+its neighbours and the PSLG stops being recoverable. That is the hardest possible catch — the pipeline
+does not ship a misplaced constraint, it REFUSES TO SEED — but it is NOT the catch I registered, because
+L2a/L2b/L2c all presuppose the mistraced arm produces a mesh. So the registered bars were scored at
+**200 um**, the smallest tested magnitude that builds, which is still 8x the tracer's own validated 25 um
+accuracy bar.
+
+| | correct `_S10L2OK` | mistraced 200 um `_S10L2BAD` | |
+|---|---|---|---|
+| **seed over-cap census** | 4 of 82,463 | **203 of 75,349** | **x50.75** |
+| seed worst AR | 88.79 | 186.25 | x2.10 |
+| **seed worst PARAMETRIC AR** | 98.6 | **5,242,013,869** | **x5.3e7** |
+| **`alignedSeedCrossings`** | 963 / 123,951 = 0.777% | **6,136 / 113,046 = 5.428%** | **x6.37** |
+| determined blades (finished mesh) | 3 / 141,232 | **181 / 137,676** | x60.3 |
+| parametric AR MAX (finished mesh) | 456.571 | **Infinity** | — |
+| **back-facing (footprint gate)** | 176 | **70** | **x0.40 — FELL** |
+| feature-spanning | 145 | 439 | x3.03 |
+| off-locus >=15 / >=90 | 5,618 / 176 | 7,203 / 509 | x1.28 / x2.89 |
+| unresolved / worst | 0 / 0.000 um | **183 / 617.748 um** | — |
+| determined folds | 0 | 0 | — |
+
+SCORING, "at least TWO of three must fire":
+  **L2a FIRES, 10x over its bar** — seed over-cap census x50.75 (bar >=5x).
+  **L2b FIRES** — driver-measured `alignedSeedCrossings` x6.37 (bar >=5x).
+  **L2c DOES NOT FIRE** — footprint back-facing x0.40; it FELL where the bar wanted >=1.5x.
+  **=> 2 of 3. LAYER 2 PASSES. The pipeline catches a 200 um tracer regression**, and catches a 50, 100
+  or 500 um one by refusing to build at all.
+
+>> **WHY L2c FAILING MATTERS MORE THAN L2a AND L2b PASSING, AND WHAT IT SAYS ABOUT READING SA3.**
+>> The back-facing gate COUNTED DOWN on a mesh that is unambiguously worse by every other measure
+>> (181 determined blades against 3, parametric AR MAX Infinity against 456, 183 stranded sites against 0,
+>> worst stranded error 617.7 um against 0.0). The population did not improve; it MOVED — into
+>> feature-spanning (x3.03) and into blades, whose slivers are too small for the footprint test to gate.
+>> **So the class headline this whole campaign has steered by can fall for a bad reason.** That is exactly
+>> why three bars were registered and only two required, and it is the single most useful thing this
+>> control produced.
+>> IT ALSO TELLS US HOW TO READ SA3's 6.90x, and the reading survives: on `_S10A` the class fall is
+>> CORROBORATED ON EVERY OTHER AXIS IN THE SAME DIRECTION — parametric AR p99 x0.37 and its tail x4.4
+>> smaller, off-locus deviation tails x0.26 to x0.38, feature-spanning x0.33, determined blades 2 and
+>> folds 0, stranded sites x0.56 — whereas on the mistraced arm every one of those axes moved the OTHER
+>> way while back-facing fell. The two cases are separable by the census, and `_S10A` is the good one.
+
+ALSO MEASURED ON BOTH ARMS: `seam-crack edges 3` appears on the correct arm AND the mistraced arm AND on
+_S10A, i.e. the seam defect is a property of the seed CONSTRUCTION and is independent of the trace. See
+the S10 result section above; it is the one unambiguous bug this session leaves open.
+
+### S10 SA9 — THE MEASURED RESIDUAL: P5's TARGET LIST, ENUMERATED PER RUN FOR THE FIRST TIME.
+Artifact: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S10A.loci.json` (913 kB), written
+beside the STL on every aligned run. Deliverable REGARDLESS of the verdict, and the reason this step was
+chosen as the cheapest decisive one: nothing else in the pipeline produces it.
+
+CONTENTS: 394 locus components (11,083 points, 6,738.2 mm total, 0 closed, 9 seam crossings, 94 jump-class
+crossings excluded and counted) + **235 JUNCTION DISKS**, each carrying centre (theta,z), radius, branch
+count, the MINIMUM ANGLE between incident branches, the measured scatter of the evidence it was clustered
+from, the ids of the loci that meet there, and up to 8 branch directions with the point at which each
+leaves the disk — a REGION description a router can consume, not a bare point.
+
+| quantity | value |
+|---|---|
+| junction disks | **235** |
+| total disk area | **1,370.5 mm^2 = 4.039% of the 33,929 mm^2 outer wall** |
+| radius p10 / p50 / p90 / max | 0.350 / 0.350 / 2.366 / 4.000 mm (18 at the clamp) |
+| min branch angle p10 / p50 | **18.7 deg** / 90.0 deg |
+| branch count 2 / 4 / >=6 | 111 / 105 / **19** |
+| provenance: polyline crossing / lattice cell | 226 / 9 |
+
+Z-BAND HISTOGRAM (5 mm bins) — **and it does NOT peak where this campaign has been looking**:
+    z   0-5   26 | z  15-20   2 | z  25-30  **35** | z  35-40   2 | z  40-45   3 | z  45-50   2
+    z  50-55   2 | z  60-65  **38** | z  65-70   8 | z  70-75   4 | z  75-80   9 | z  80-85  **17**
+    z  85-90   8 | z  90-95   7 | z 95-100   9 | z 105-110  4 | z 110-115 **15** | z 115-120  12
+    z 120      32  (the top rim)
+  named bands: X-crossing z 77-82 = **14 disks**; bandRim triple junction z 107-113 = **5 disks**.
+
+>> THE SURPRISE, STATED AS A MEASUREMENT. Every localisation this campaign has done — D51's fold mass
+>> (4,532 in z 80-85, 27,274 in z 110-115), D52's back-facing clusters (77.7 and 107.9-109.8), S8's worst
+>> offenders (77.6) — put the junction demand in TWO bands. The tracer says the LOCUS TOPOLOGY peaks
+>> somewhere else: **z 60-65 (38 disks) and z 25-30 (35 disks)**, with the two famous bands carrying 14
+>> and 5. Those are not contradictory readings, they are different quantities — the old bands are where
+>> BISECTION MANUFACTURED artifacts, this is where the loci actually cross — but P5 must be given the
+>> second list, not the first, or it will route the wrong 4% of the surface.
+>>
+>> THE 19 DISKS WITH >=6 BRANCHES AND THE 15.1-16.5 deg MINIMUM ANGLES ARE THE HARD CORE. The tightest 20
+>> all sit at z ~64.6-99.7 with 4 to 16 branches meeting; at 15.1 deg an element aligned to one branch is
+>> at ~1/sin(15.1 deg) = 3.8x parametric aspect against the next, before any refinement. That is the
+>> anisotropy demand the AR cap cannot express and the M=g/h^2 kernel exists for, now with coordinates.
+
+TOP 8 TIGHTEST (smallest branch angle = worst anisotropy demand), th / z / minAngle / radius / branches:
+  2.0720 / 67.272 / 15.1 / 4.000 / 16    2.6193 / 95.474 / 15.1 / 4.000 / 16
+  4.7324 / 67.010 / 15.1 / 4.000 / 16    6.2216 / 66.874 / 15.1 / 4.000 / 16
+  1.1417 / 67.011 / 15.1 / 1.329 /  4    5.1450 / 93.903 / 15.2 / 4.000 / 16
+  0.5117 / 97.412 / 15.2 / 4.000 / 16    1.4096 / 79.035 / 15.5 / 4.000 / 16
+
+### S10 CLOSING — WHAT THIS SESSION ESTABLISHES, AND WHAT IT LEAVES OPEN.
+ 1 **The birth channel is real and it is deletable.** Seed edges crossing a locus fall 10,641 -> 963
+   (x0.090) by CONSTRUCTION rather than by discharge, and the visible class follows: back-facing x0.145,
+   the largest movement any arm has produced, corroborated on every other census axis in the same
+   direction. S6/S7/S8 all made the class WORSE; S9a moved it x0.84; alignment moves it x0.145.
+ 2 **And it is not sufficient.** The registered verdict is SA8 ROW 2, REGRESSION, on H2 witnessed
+   37.899 um against a 25.60 um line. The lever stays DEFAULT OFF. The mechanism is measured, not
+   hypothesised: the aligned mesh DRAINS its heap with 21% fewer triangles because the plane ruler accepts
+   an along-locus facet sooner, and H2's argmax is the SAME unrepresented-feature locus (th 5.637,
+   z 44.17) that D52 and _S8P both reported — the 2026-07-28 ranking-function class, on a smaller budget.
+   The obvious next arm is aligned seed + a tightened accept (or the Phase-2 tightening field, which
+   exists precisely to spend triangles where the certificate says they are missing). NOT RUN, NOT CLAIMED.
+ 3 **The tracer is an instrument, with a negative control that can fail and did.** Layer 1 6/6 against
+   closed form, three real defects caught by its own bars during bring-up; layer 2 passes 2 of 3, and the
+   clause that failed proved the class headline can fall for a bad reason — the most useful single result
+   of the control.
+ 4 **One unambiguous open bug: `seam-crack edges 3`** on every aligned arm. The "closure is exact by
+   construction" claim is falsified at 3 edges of 1,516,340 (Euler -1, boundary loops 3 vs 2). Non-manifold
+   0, folds 0, orientation-mismatch 0 — but a cracked mesh is not shippable and this must be fixed before
+   the lever is proposed for default-ON.
+ 5 **P5 finally has coordinates**: 235 disks, 4.039% of the surface, with branch angles down to 15.1 deg —
+   and they are NOT concentrated in the two bands this campaign has been quoting.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

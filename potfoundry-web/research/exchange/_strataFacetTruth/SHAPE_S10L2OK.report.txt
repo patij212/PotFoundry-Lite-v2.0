@@ -1,0 +1,120 @@
+
+===== STRATA FACET TRUTH: GothicArches =====
+stl: research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S10L2OK.stl  (141232 triangles)
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+TOL 10.000 um   detected C0 z-steps: 0   theta-jumps: 0
+
+--- MESH SHAPE CENSUS (unconditional; every facet; computed from the audited STL itself) ---
+  AR = longest*perimeter/(4*area) = longest edge / (2*inradius).  1.0 equilateral, higher = thinner.
+  3-D ASPECT RATIO      p50 2.745   p90 5.850   p99 12.722   MAX 85.129
+  BLADES (AR > 50)     : 3 DETERMINED / 141232  (0.0021%)   *** SHAPE DEFECT ***   +0 f32-indeterminate at the cap (raw 3)
+    zero-area facets    : 0     min edge 6.208 um  (tri 134575)
+    AR max-locus  z=[18.000,18.028,18.000] th=[-2.4981,-2.5527,-2.5597] edges(um)=2265.034/295.455/2558.755
+  FOLDS — facets INVERTED in (theta,z), i.e. the surface doubles back over itself:
+    DETERMINED          : 0 / 141232  (0.0000%)   CLEAN   majority(det) +
+    f32-INDETERMINATE   : 0  (0 read neg / 0 read pos, incl. 0 exact-zero) — sign below the STL's own noise floor, NOT defects (FOLD-ANOMALY 2026-07-29)
+    raw minority+zero   : 0
+    historical '<0'     : 0   of which AR>50: 0   (the D51-comparable number)
+    after exact-bit weld: 0   well-shaped (parametric AR <= 8, so NOT float noise): 0
+    fold components 0   largest 0 facets
+    facet normal radially INWARD (n.rhat < 0, the CRUDE proxy): 0  (0.0000%)   of which AR>50: 0
+  PARAMETRIC (arc,z) AR p50 2.792   p90 7.023   p99 16.251   MAX 456.571
+  AR decade histogram (log10 floor -> count): 1e0:137835  1e1:3397
+  z-histogram of blades (24 bins, base -> rim): 0 0 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  z-histogram of folds  (24 bins, base -> rim): 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  census 1.0s
+  WORST 3 BY AR:
+    tri     17934  AR 8.513e+1  L 2558.755 S 295.455 um  area 3.85e+4 um^2  forward
+    tri     18006  AR 8.453e+1  L 1850.662 S 356.455 um  area 2.03e+4 um^2  forward
+    tri     17872  AR 6.511e+1  L 1850.660 S 355.764 um  area 2.63e+4 um^2  forward
+
+--- EXTRINSIC ORIENTATION CENSUS (facet normal vs the ANALYTIC normal at the facet centroid) ---
+  THE ONLY INSTRUMENT HERE NOT MEDIATED BY THE (theta,z) PARAMETRISATION. A render shows a NORMAL;
+  this is the automated form of the human inspection that found the defect all four others missed.
+  deviation (deg)       p50 1.5808   p90 9.8483   p99 38.8464   MAX 167.6581
+    max-locus  z=[80.908,80.704,80.956] th=[-1.3105,-1.3098,-1.3102] edges(um)=252.496/468.350/254.035
+  off-locus counts      >=15 5618   >=30 1995   >=45 1137   >=60 715   >=90 176   >=120 66   >=150 26
+  histogram, 12 bins of 15 deg: 135614 3623 858 422 337 202 66 44 17 23 23 3
+  mesh winds OUTWARD (99.91% of a 8192-facet stride sample)
+  facets straddling a detected C0 locus: 0 — NOTHING excluded, the gate saw every facet
+  0.7M rA evals   0.8s   step h_theta 1.0e-6 rad  h_z 1.0e-6 mm
+
+===== HARD GATES (expected count 0; NOT APPLICABLE is NOT a pass) =====
+  [FOLD] PASS   count 0 (expected 0)
+        REPRESENTATION VALIDITY — consistent (theta,z) orientation (a graph is single-valued)
+      parametric signed area (raw): 141232 positive, 0 negative, 0 EXACTLY ZERO   majority (determined) +
+      DETERMINED folds (|sPar| > per-facet f32 half-ulp bound, sign against majority) = 0 / 141232  (0.0000%)   <-- THE GATE COUNT
+      sign NOT determined by the STL's f32 coordinates: 0 (0 read neg / 0 read pos, incl. 0 exact zero)
+        ^ REPORTED, NOT DEFECTS — a fold verdict below this floor is not measurable from an STL (FOLD-ANOMALY 2026-07-29:
+          D52's six "folds" were all sub-floor artefacts of atan2(f32) read-back; the driver's f64 mesh was provably clean)
+      historical raw '<0' count (comparable to _bladeCensus / _bladeFolds and the D51 baseline): 0   minority+zero raw: 0
+      after exact-float32-bit weld: 0   well-shaped (parametric AR <= 8, so NOT float noise): 0
+      fold components (determined set) 0   largest 0 facets
+      z-histogram of folds (24 bins, base -> rim): 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  [NORMAL] *** FAIL ***   count 31 (expected 0)
+        EXTRINSIC ORIENTATION — facet normal vs the ANALYTIC normal at the facet centroid
+      deviation (degrees) p50 1.5808   p90 9.8483   p99 38.8464   MAX 167.6581 (tri 95473)
+      mesh winds OUTWARD (99.91% of a 8192-facet stride sample)
+      off-locus counts   >=15 5618   >=30 1995   >=45 1137   >=60 715   >=90 176   >=120 66   >=150 26
+      histogram, 12 bins of 15 deg (off-locus): 135614 3623 858 422 337 202 66 44 17 23 23 3
+      zero-area facets (no normal at all, gated as 180 deg): 0
+      FEATURE-SPANNING chords (>= 90 deg at the centroid, front-facing at one of their own vertices): 145
+        ^ REPORTED, NOT DEFECTS — a chord across a steep C1 wall legitimately reads back-facing at a mid-wall
+          sample point; its fidelity price is H1/H2's to charge. Measured 2026-07-30: this population GROWS
+          with refinement depth (1,792 @ 61k -> 14,890 @ 351k guard-ON tris; folds and blades both 0), i.e. a
+          centroid-only >= 90 gate is unmeasurable-as-specified on feature-bearing styles.
+      facets straddling a detected C0 locus: 0 — NOTHING was excluded, this gate saw every facet of the mesh
+      step h_theta 1.0e-6 rad, h_z 1.0e-6 mm   0.7M rA evals   0.8s
+      GATE = back-facing (>= 90 deg) against the MOST FAVOURABLE of five candidate analytic normals (central
+      and both one-sided differences in each of theta and z), AT EVERY SAMPLED POINT OF THE FACET'S OWN
+      FOOTPRINT — centroid and all three vertex parameter points. A sign test, not a tuned threshold. The
+      one-sided candidates handle a crease AT a sample point; the vertex samples handle a crease that crosses
+      the footprint BETWEEN sample points (the case a centroid-only probe mis-reads, measured above).
+      WORST BY DEVIATION (centroid angle):
+        tri     95473  167.658 deg  th -1.31015  z 80.8562  [FEATURE-SPANNING — reported, not gated]
+        tri     81775  167.535 deg  th 2.35981  z 80.3996  [FEATURE-SPANNING — reported, not gated]
+        tri    106221  166.692 deg  th 2.87866  z 80.6641  [FEATURE-SPANNING — reported, not gated]
+        tri     76736  163.064 deg  th 0.78653  z 81.0075  [FEATURE-SPANNING — reported, not gated]
+        tri      3748  163.046 deg  th -0.00147  z 97.1092  [FEATURE-SPANNING — reported, not gated]
+        tri    132400  162.726 deg  th -2.91283  z 83.8817  [FEATURE-SPANNING — reported, not gated]
+        tri    111786  162.716 deg  th 0.24136  z 78.7609  [FEATURE-SPANNING — reported, not gated]
+        tri    125765  162.579 deg  th -2.86362  z 79.1199  [FEATURE-SPANNING — reported, not gated]
+        tri     96332  162.114 deg  th -0.78788  z 80.5935  [FEATURE-SPANNING — reported, not gated]
+        tri     11630  161.995 deg  th 0.00155  z 97.1109  [FEATURE-SPANNING — reported, not gated]
+        tri    106965  160.295 deg  th 1.85124  z 78.9346  [FEATURE-SPANNING — reported, not gated]
+        tri    139874  160.248 deg  th 0.78808  z 81.1136  [FEATURE-SPANNING — reported, not gated]
+  [BLADE] *** FAIL ***   count 3 (expected 0)
+        FACET SHAPE — aspect ratio <= 50 (longest edge / (2 * inradius))
+      AR p50 2.745  p90 5.850  p99 12.722  MAX 85.129
+      DETERMINED blades (lower-bound AR under f32 half-ulp noise still > 50) = 3 / 141232  (0.0021%)   <-- THE GATE COUNT
+      AR-at-cap INDETERMINATE at f32 (raw AR > 50 but inside the read-back band): 0   raw total 3
+      zero-area facets 0   min edge 6.208 um
+      z-histogram of blades (raw, 24 bins, base -> rim): 0 0 0 3 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+      *** NONE OF THESE 3 DETERMINED FACETS CAME FROM A GUARDED SPLIT. The driver guard (PF_CB_SHAPE_AR=50)
+          refuses any split whose child exceeds 50, this gate counts facets above 50 >= 50, and
+          the two metrics are the SAME expression. So every facet here came from the INITIAL GRID or from a
+          post-loop pass that is NOT shape-guarded — the needle collapse, or a 2-2 flip called without its
+          improvement gate. Code sites: see the FINDING 4 driver-gap note in the 2026-07-29 worklog. ***
+          (f32-vs-f64 borderline facets are already EXCLUDED from the count by the read-back band: the
+           0 raw-over-cap facets inside it are reported above, not attributed to anything.)
+  [TOPOLOGY] PASS   count 0 (expected 0)
+        TOPOLOGY — manifold + consistently oriented (NECESSARY, NOT SUFFICIENT: a folded sheet passes it)
+      welded verts 70907   edges 212140   non-manifold 0   boundary 584   orientation-mismatch 0   Euler V-E+F = -1
+      D51 read 0 / 0 / 0 and V-E+F = 0 EXACTLY while 31,842 of its facets were inverted. This block is
+      reported so that fact stays visible instead of being mistaken for a clean bill of health.
+  GATES: NOT ALL PASSED — see above
+
+===== VERDICT =====
+  H1  mesh -> surface: NOT RUN
+  H2  surface -> mesh: NOT RUN
+  TOL 10.000 um   gates: 2 failed, 0 not applicable
+
+  *** FAIL ***   gate NORMAL failed: 31 (expected 0); gate BLADE failed: 3 (expected 0)
+  FAIL is sound under partial coverage AND from a single direction: a witnessed exceedance is a real
+  exceedance and a failed shape gate is a real defect. Neither can be argued away by auditing more of
+  the mesh, or by auditing the direction that did not run.
+  ONE-SIDED: H1 (mesh -> surface) and H2 (surface -> mesh) did not run. That withholds a PASS; it does not withhold
+  this FAIL. The missing direction can only ADD defects to the list above, never remove one from it.
+
+2s   2.9M rA evals
+=========================================================
