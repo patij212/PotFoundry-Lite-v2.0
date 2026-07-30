@@ -100,19 +100,64 @@ across a feature that turns over in ~80 um.
 
 ## 3. THE BUILD ORDER (unchanged from the brief except for scope)
 
-**STEP 1 — JUDGE PROVENANCE EXTENSION. Instrument work, fork-independent, do it first.**
-A structured patch will legitimately contain facets the blade gate would flag. The gate must therefore
-learn provenance WITHOUT losing its teeth:
-  * declared-patch regions carry provenance into the audit;
-  * the blade gate exempts **ONLY declared facets** and **SHOUTS the exemption count** on every run;
-  * an **undeclared** AR>50 facet still FAILS, exactly as today;
-  * **negative control, mandatory:** an undeclared over-cap facet must still be counted, and a declared
-    region must not silently widen — assert both, expect-nonzero discipline, in the same style as
-    `_judgeNegativeControl.test.ts`.
-  * Touches `_judgeShape.ts`. The standing rule requires writing down WHY before touching a judge file:
-    the reason is that a patch emitter cannot be A/B'd at all if its own geometry trips the gate that
-    measures it, and the alternative (loosening the cap) is D51. `_facetTruthLib.ts`, `_sharp3dRef.ts` and
-    `_shapeGuard.ts` stay byte-untouched.
+**STEP 1 — JUDGE PROVENANCE EXTENSION. *** DONE 2026-07-30 (S14). Nothing to rebuild. ***
+The blade gate now understands declared patch regions:
+  * `CensusOptions.patches?: PatchRegion[]` — `{ id, theta, z, radiusMm }`, in `_judgeShape.ts`;
+  * a determined blade whose CENTROID is inside a declared region is EXEMPT and counted as
+    `nBladeDeclared`; everything else is `nBladeUndeclared`, and THAT is the gate count;
+  * the exemption is **SHOUTED** with a per-region tally (`PATCH_A=7`) and the gate title names it;
+  * an **undeclared** over-cap facet still FAILS, exactly as before;
+  * **DEFAULT-INERT, verified by measurement rather than by argument:** with no regions declared the gate
+    count is the original `nBlade`, no provenance line prints, and the shape census on `_S11A` reproduces
+    its recorded numbers exactly (AR p99 43.177 / MAX 85.129, blades 2 determined + 11 indeterminate,
+    parametric AR p99 106.769 / MAX 125,886.870, folds 0, Euler 0, boundary 1167) with BLADE still
+    FAILing at count 2.
+  * **Negative control: 9 passed / 1 skipped, covering BOTH exemption directions.** PROVENANCE 1 a
+    covering region exempts and shouts; **PROVENANCE 2 a MIS-REGISTERED region (same size, declared 10 mm
+    away) exempts NOTHING and the gate still FAILS** — the provenance analogue of a mistraced locus, same
+    expect-nonzero treatment as S10 layer 2; PROVENANCE 3 with two blades, declaring one leaves the other
+    counted; PROVENANCE 4 with nothing declared the gate is what it always was.
+  * Touched `_judgeShape.ts` + `_judgeNegativeControl.test.ts` ONLY. WHY, as the standing rule requires:
+    a patch emitter cannot be A/B'd at all if its own geometry trips the gate that measures it, and the
+    alternative — loosening the cap — is D51 (48,130 blades and a ~110x-blind self-report).
+    `_facetTruthLib.ts`, `_sharp3dRef.ts` and `_shapeGuard.ts` are byte-untouched. Hard gate 12/12 with
+    every documented value exact after the change.
+
+**STEP 1b — THE CHEAPEST THING TO TRY BEFORE BUILDING AN EMITTER AT ALL. MEASURED 2026-07-30, NOT RUN.**
+The autopsy asked what across-locus spacing the aligned seed actually placed at sites A and B. The answer
+is not what anyone expected, and it names a one-line lever:
+
+| quantity | site A | site B |
+|---|---|---|
+| **R2's h ACROSS the locus** (the sizing field's own answer) | **44.7 um** | **44.8 um** |
+| MEASURED crease turnover (half-drop half-width) | 106.0 um | 106.0 um |
+| R2-across / turnover | **0.42x** — correctly SUB-feature | 0.42x |
+| **what the SEED actually placed** | **192.6 um** | **192.6 um** |
+| seed / R2-across | **4.31x TOO COARSE** | 4.30x |
+| seed / turnover | **1.82x — it STRADDLES the V** | 1.82x |
+
+**R2 IS NOT THE PROBLEM — R2 GOT IT RIGHT.** The seed's own `fieldRange` clamp is the problem: the
+sizing field enters as a RELATIVE modulator, `acrossBase * clamp(h/hMedian, 1/2, 2)`, so with
+`acrossBase = 385.3 um` the across-spacing can never go below **192.6 um** no matter what the field says.
+At a sharp crease the field says 44.7 um and the clamp throws it away. (The clamp exists for a stated
+reason — adopting R2's absolute scale everywhere would put ~180,000 points on the loci — but it is a
+GLOBAL clamp answering a LOCAL question.)
+=> **LEVER: widen `fieldRange` (or floor the across-spacing on measured turnover rather than on the
+background pitch) so sharp creases get ~45-105 um across-spacing while smooth regions keep the coarse
+base.** This is a parameter change in `_strataAlignedSeed.ts`, an A/B, and no new geometry kernel. It
+attacks the ACCEPTED-BLIND population directly and at the birth channel: the carrier facet's short edge is
+357 um across a V that turns over in 106 um, and shortening the across-chord is exactly what makes a chord
+across a V converge. **TRY THIS BEFORE THE EMITTER.** Pre-register the triangle-count cost — the loci run
+6,738 mm, so halving the across-spacing along all of them is not free.
+
+**STEP 1c — THE FALLBACK, RECORDED SO THE RECORD CARRIES IT. NOT RUN, AND PRICED AS UGLY.**
+Phase-2 tolScale escalation to **>= 4.36x (site A) and >= 8.40x (site B)** would eventually QUEUE the blind
+carriers, and once queued they ARE splittable — AR 2.68 and 5.71, far under the cap, h^1 creases with no
+C0 content. So the accepted-blind population is brute-force closable IN PRINCIPLE. It is priced as ugly
+and ranked below Steps 1b/2-4 because: the escalation applies to ALL 772+ clusters, not just these two; it
+takes 2-3 more outer iterations at ~35 min each; the class already grew x1.10 for a 2x ball; and it means
+fighting a 47-96x structural blindness with brute force rather than removing it. **But it is a real second
+exit and it should not be forgotten if the strip emitter stalls.**
 
 **STEP 2 — REGION EXTRACTION.** Top disks by measured back-facing load (start with the X-crossing band,
 the 60%-in-disk core), PLUS locus-strip segments around the two named sites. Both come from the same
@@ -157,3 +202,22 @@ tracer 26-29 s; aligned seed build ~52 s; full autopsy at probe scale ~3 min.
   47-96x blind ruler. P5 was chosen over it on that arithmetic. **If P5's locus strips also fail, the
   remaining honest option is a different RANKING QUANTITY in the loop** — and the 2026-07-29 R1/R1b arms
   already refuted the obvious substitutes, so that would be new work, not a retry.
+
+---
+
+## 6. THE ONE THING TO KNOW FIRST
+
+**Do STEP 1b before you build anything.**
+
+The two worst sites in the mesh are not a junction problem, not a shape-guard problem, and not a
+tolerance problem. They are a **192.6 um across-locus seed spacing straddling a crease that turns over in
+106 um** — while the sizing field, correctly, asked for 44.7 um and was overruled by a global clamp in my
+own seed builder. That is one parameter and one A/B, and it attacks the birth channel of the population
+that owns the worst error in the mesh.
+
+If it works, the emitter's job shrinks to the junction disks it was originally scoped for — where 61% of
+the visible class provably lives, stable across four arms. If it does not work, you will have spent one
+run to learn that the across-width is not the mechanism, and the emitter build starts with that ruled out
+instead of assumed.
+
+Everything else in this document is ready and measured. This is the cheap one, and it is first.

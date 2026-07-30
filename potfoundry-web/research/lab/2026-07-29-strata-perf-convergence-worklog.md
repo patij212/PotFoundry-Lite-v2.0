@@ -2164,6 +2164,60 @@ disks.** tolScale 4 is arithmetically inert; tolScale 8-16 is reachable but expe
 and still leaves an h^1 crease to bisect with a 47-96x blind ruler. The two worst sites in the mesh are
 3 um from a traced locus that S10 already enumerates. That is where the geometry should be placed.
 
+### S13 ADDENDUM + S14 (PHASE C STEP 1) — THE ACROSS-SPACING ANSWER, AND THE JUDGE LEARNS PROVENANCE.
+
+**THE ACROSS-SPACING AUTOPSY LINE — and it exonerates R2 and indicts my own seed.** The question was
+whether the accepted-blind population is born from R2 UNDER-ALLOCATING the across-locus spacing at sharp
+C1 creases (the +/-50% lower-bound caveat cashing out). Measured at both sites:
+
+| quantity | site A | site B |
+|---|---|---|
+| **R2's h ACROSS the locus** | **44.7 um** | **44.8 um** |
+| MEASURED crease turnover (half-drop half-width) | 106.0 um | 106.0 um |
+| R2-across / turnover | **0.42x — correctly SUB-feature** | 0.42x |
+| **what the SEED actually placed** | **192.6 um** | **192.6 um** |
+| seed / R2-across | **4.31x too coarse** | 4.30x |
+| seed / turnover | **1.82x — it STRADDLES the V** | 1.82x |
+| (context) R2 h ALONG the locus | 2,239.0 um | 2,374.2 um |
+
+**R2 IS NOT THE PROBLEM. R2 GOT IT RIGHT.** The defect is in `_strataAlignedSeed.ts`, and it is mine: the
+sizing field enters as a RELATIVE modulator, `acrossBase * clamp(h/hMedian, 1/2, 2)`, with
+`acrossBase = 385.3 um` and `hMedian = 993.6 um`. At a sharp crease the field asks for 44.7 um, the clamp
+floors it at **192.6 um**, and every locus in the seed gets the same floor. The clamp exists for a stated
+and still-valid reason — adopting R2's absolute scale everywhere would put ~180,000 points on the loci
+before a single split — but it is a GLOBAL clamp answering a LOCAL question.
+=> **NAMED LEVER, NOT RUN, and it is now the cheapest next thing in the campaign:** widen `fieldRange`, or
+floor the across-spacing on measured crease turnover rather than on the background pitch, so sharp creases
+get ~45-105 um across while smooth regions keep the coarse base. It attacks the ACCEPTED-BLIND population
+at its birth channel — the carrier's short edge is 357 um across a V that turns over in 106 um — and it is
+a parameter change plus an A/B, no new geometry kernel. Cost must be pre-registered: the loci run
+6,738.2 mm, so halving the across-spacing along all of them is not free.
+
+**S14 — PHASE C STEP 1: THE JUDGE LEARNS PATCH PROVENANCE. DONE.**
+A structured patch will legitimately carry facets a bisection-shaped cap flags, so the blade gate had to
+learn provenance without losing its teeth. `_judgeShape.ts` gains `CensusOptions.patches?: PatchRegion[]`
+(`{id, theta, z, radiusMm}`): a determined blade whose CENTROID lies in a declared region is exempt and
+counted as `nBladeDeclared`; everything else is `nBladeUndeclared` and IS the gate count; the exemption is
+SHOUTED with a per-region tally and named in the gate title; an undeclared over-cap facet still FAILS.
+  WHY A JUDGE FILE WAS TOUCHED, as the standing rule requires it be written down first: a patch emitter
+  cannot be A/B'd at all if its own geometry trips the gate that measures it, and the alternative —
+  loosening the cap — is D51 (48,130 blades, ~110x-blind self-report). `_facetTruthLib.ts`,
+  `_sharp3dRef.ts` and `_shapeGuard.ts` are BYTE-UNTOUCHED; only `_judgeShape.ts` and its negative control
+  changed.
+  **NEGATIVE CONTROL — 9 passed / 1 skipped, BOTH exemption directions, expect-nonzero throughout:**
+    P1 a covering region exempts the blade, gate passes, exemption shouted with `PATCH_A=<n>`;
+    **P2 a MIS-REGISTERED region (same size, declared 10 mm away) exempts NOTHING and the gate still
+       FAILS** — the provenance analogue of a mistraced locus (S10 layer 2), same risk, same treatment;
+    P3 with two blades, declaring one leaves the other counted and the gate still fails;
+    P4 with nothing declared the gate is byte-for-byte what it always was.
+    (P4's first draft asserted `nBladeUndeclared === 0` with nothing declared and FAILED — correctly: with
+    nothing declared every blade IS undeclared. The assertion was wrong about the semantics, not the code,
+    and is recorded here rather than quietly corrected.)
+  **DEFAULT-INERT, VERIFIED BY MEASUREMENT:** the shape-only audit of `_S11A` after the change reproduces
+  its recorded census exactly — AR p99 43.177 / MAX 85.129, blades 2 determined + 11 indeterminate,
+  parametric AR p99 106.769 / MAX 125,886.870, folds 0, boundary 1,167, Euler 0 — with `[BLADE] FAIL
+  count 2` and NO provenance line printed. **Hard gate 12/12, every documented value exact.**
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

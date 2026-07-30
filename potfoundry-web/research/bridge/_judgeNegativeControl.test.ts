@@ -215,6 +215,80 @@ describe('judge — negative control (A4)', () => {
     expect(foldGate(sc, true).pass).toBe(true);   // the needle winds positively — the gates are independent
   });
 
+  // ── LAYER 1c-bis: PATCH PROVENANCE (P5). BOTH EXEMPTION DIRECTIONS, because a mis-registered region is
+  // the provenance analogue of a mistraced locus (S10 layer 2) — same artifact-class risk, and a gate that
+  // can be silenced by a badly-placed claim is worse than no gate. Same expect-nonzero discipline. ──
+  const needleCentre = { theta: (0.5 + 0.52 + 0.52) / 3, z: 50 };
+
+  it('PROVENANCE 1 — a DECLARED region covering the blade exempts it, and SHOUTS the exemption', () => {
+    const base = buildPatch(48, 48, 0.4, 0.9, 40, 60);
+    const { xyz, nTri } = withNeedle(base.xyz, base.nTri, 0.5, 50);
+    const bare = meshShapeCensus(xyz, nTri, CENSUS);
+    const sc = meshShapeCensus(xyz, nTri, {
+      ...CENSUS, patches: [{ id: 'PATCH_A', theta: needleCentre.theta, z: needleCentre.z, radiusMm: 2 }],
+    });
+    expect(bare.nBlade).toBeGreaterThanOrEqual(1);
+    expect(sc.nBlade).toBe(bare.nBlade);                    // the census still SEES every blade
+    expect(sc.nBladeDeclared).toBe(bare.nBlade);            // all of them are inside the declared region
+    expect(sc.nBladeUndeclared).toBe(0);
+    const g = bladeGate(sc);
+    expect(g.count).toBe(0);
+    expect(g.pass).toBe(true);
+    // the exemption must be LOUD and attributable, never a quiet subtraction
+    expect(g.detail.join(' ')).toContain('PATCH PROVENANCE ACTIVE');
+    expect(g.detail.join(' ')).toContain(`PATCH_A=${bare.nBlade}`);
+    expect(g.title).toContain('DECLARED patch region');
+  });
+
+  it('PROVENANCE 2 — a MIS-REGISTERED region exempts NOTHING and the gate still FAILS', () => {
+    const base = buildPatch(48, 48, 0.4, 0.9, 40, 60);
+    const { xyz, nTri } = withNeedle(base.xyz, base.nTri, 0.5, 50);
+    const bare = meshShapeCensus(xyz, nTri, CENSUS);
+    // a region of the SAME size, declared 10 mm away in z — the analogue of a mistraced locus
+    const sc = meshShapeCensus(xyz, nTri, {
+      ...CENSUS, patches: [{ id: 'PATCH_MISPLACED', theta: needleCentre.theta, z: needleCentre.z + 10, radiusMm: 2 }],
+    });
+    expect(sc.nBladeDeclared).toBe(0);                       // it covers nothing it did not earn
+    expect(sc.nBladeUndeclared).toBe(bare.nBlade);
+    const g = bladeGate(sc);
+    expect(g.count).toBe(bare.nBlade);
+    expect(g.pass).toBe(false);                              // *** THE GATE KEEPS ITS TEETH ***
+    expect(g.detail.join(' ')).toContain('PATCH_MISPLACED=0');
+  });
+
+  it('PROVENANCE 3 — with two blades, declaring ONE leaves the other counted', () => {
+    const base = buildPatch(48, 48, 0.4, 0.9, 40, 60);
+    const one = withNeedle(base.xyz, base.nTri, 0.5, 50);
+    const two = withNeedle(one.xyz, one.nTri, 1.7, 50);      // a second needle elsewhere
+    const bare = meshShapeCensus(two.xyz, two.nTri, CENSUS);
+    expect(bare.nBlade).toBeGreaterThanOrEqual(2);
+    const sc = meshShapeCensus(two.xyz, two.nTri, {
+      ...CENSUS, patches: [{ id: 'PATCH_A', theta: needleCentre.theta, z: 50, radiusMm: 2 }],
+    });
+    expect(sc.nBladeDeclared).toBeGreaterThanOrEqual(1);
+    expect(sc.nBladeUndeclared).toBeGreaterThanOrEqual(1);
+    expect(sc.nBladeDeclared + sc.nBladeUndeclared).toBe(bare.nBlade);
+    const g = bladeGate(sc);
+    expect(g.count).toBe(sc.nBladeUndeclared);
+    expect(g.pass).toBe(false);                              // an UNDECLARED blade still fails
+  });
+
+  it('PROVENANCE 4 — with NO regions declared the gate is byte-for-byte what it always was', () => {
+    const base = buildPatch(48, 48, 0.4, 0.9, 40, 60);
+    const { xyz, nTri } = withNeedle(base.xyz, base.nTri, 0.5, 50);
+    const sc = meshShapeCensus(xyz, nTri, CENSUS);
+    expect(sc.nBladeDeclared).toBe(0);
+    // with nothing declared, every blade IS undeclared — that is the honest reading, and the first draft
+    // of this assertion said 0, which was wrong about the semantics rather than about the code.
+    expect(sc.nBladeUndeclared).toBe(sc.nBlade);
+    expect(sc.declaredHits).toHaveLength(0);
+    const g = bladeGate(sc);
+    expect(g.count).toBe(sc.nBlade);                         // the ORIGINAL gate count, unchanged
+    expect(g.pass).toBe(false);
+    expect(g.detail.join(' ')).not.toContain('PATCH PROVENANCE');
+    expect(g.title).not.toContain('DECLARED');
+  });
+
   // ── LAYER 1d: THE GATE REFUSES RATHER THAN LIES on a mesh that is not a graph. ──
   it('the fold gate refuses (NOT APPLICABLE, which is NOT a pass) on a non-graph mesh', () => {
     const { xyz, nTri } = buildPatch(64, 64, 0.4, 0.9, 40, 60);

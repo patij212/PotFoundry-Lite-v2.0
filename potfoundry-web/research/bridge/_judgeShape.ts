@@ -147,6 +147,12 @@ export interface ShapeCensus {
   /** blades: nBlade is DETERMINED above the cap (beyond the f32 area-uncertainty band at the cap boundary); */
   /** nBladeIndet sits inside the band (raw AR > cap but not determinable); nBladeRaw = nBlade + nBladeIndet */
   nBladeIndet: number; nBladeRaw: number;
+  /** determined blades whose centroid lies inside a DECLARED patch region (exempt from the gate count) */
+  nBladeDeclared: number;
+  /** determined blades NOT covered by any declared region — THE GATE COUNT when patches are declared */
+  nBladeUndeclared: number;
+  /** per-region exemption tally, in declaration order; parallel to the `patches` option */
+  declaredHits: ReadonlyArray<{ id: string; count: number }>;
 }
 
 export interface CensusOptions {
@@ -160,7 +166,27 @@ export interface CensusOptions {
   nFoldWorst?: number;
   /** minority fraction above which the gate refuses to certify (default 0.25) */
   ambiguousFrac?: number;
+  /**
+   * DECLARED PATCH REGIONS (P5). A structured patch emitter legitimately lays facets a bisection-shaped
+   * cap would flag, so the gate must learn provenance — but it must not lose its teeth, because the one
+   * thing this gate exists to prevent is a blade population being explained away. THE CONTRACT:
+   *   * a determined blade whose CENTROID lies inside a declared region is EXEMPT and counted separately;
+   *   * an UNDECLARED determined blade still FAILS the gate, exactly as today;
+   *   * the exemption count is SHOUTED on every run, per region, never a quiet subtraction;
+   *   * a region exempts ONLY facets inside its own bounds — a mis-registered region is the provenance
+   *     analogue of a mistraced locus (S10 layer 2), the same artifact-class risk, and the negative
+   *     control asserts both directions.
+   * Omit entirely (the default) and the gate behaves EXACTLY as it did before: nDeclared is 0 and the
+   * gate count is the full determined-blade count.
+   */
+  patches?: readonly PatchRegion[];
 }
+
+/**
+ * A region a patch emitter DECLARES it owns, in (theta, z) with a radius in mm on the surface.
+ * `id` is carried into the report so an exemption can always be traced back to the thing that claimed it.
+ */
+export interface PatchRegion { id: string; theta: number; z: number; radiusMm: number }
 
 /**
  * Facet-shape census of a triangle soup. Reads nothing but `xyz` — the same soup H1 and H2 are scored
@@ -186,6 +212,9 @@ export function meshShapeCensus(xyz: Float64Array, nTri: number, opts: CensusOpt
   const bladeZHist = new Array<number>(24).fill(0);
   const worstHeap: ShapeWorst[] = [];
   let nBlade = 0; let nBladeIndet = 0; let nBladeRaw = 0;
+  const patches = opts.patches ?? [];
+  const declaredCount = new Array<number>(patches.length).fill(0);
+  let nBladeDeclared = 0; let nBladeUndeclared = 0;
   let nDegenerate = 0; let nFoldRaw = 0; let nFoldRawBlade = 0;
   let nInward = 0; let nInwardBlade = 0;
   let nParPos = 0; let nParNeg = 0; let nParZero = 0;
@@ -239,6 +268,7 @@ export function meshShapeCensus(xyz: Float64Array, nTri: number, opts: CensusOpt
     // radial component of the facet normal: the analytic surface always has n . rhat = r > 0
     const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
     const gr = Math.hypot(gx, gy);
+    const gth = Math.atan2(gy, gx);
     const radDot = gr > 0 && nl > 0 ? (nx * gx + ny * gy) / (nl * gr) : 0;
     const zc = (az + bz + cz) / 3;
     const zb = Math.max(0, Math.min(23, Math.floor((zc / H_) * 24)));
@@ -256,7 +286,21 @@ export function meshShapeCensus(xyz: Float64Array, nTri: number, opts: CensusOpt
       const dvB = Math.hypot(halfUlp32(bx), halfUlp32(by), halfUlp32(bz));
       const dvC = Math.hypot(halfUlp32(cx), halfUlp32(cy), halfUlp32(cz));
       const dArea = 0.5 * (e1 * dvA + e2 * dvB + e0 * dvC); // |d area| <= 1/2 sum |opp edge|*|dv|
-      if ((L * per) / (4 * (area + dArea)) > arCap) nBlade += 1; else nBladeIndet += 1;
+      if ((L * per) / (4 * (area + dArea)) > arCap) {
+        nBlade += 1;
+        // PROVENANCE: is this determined blade inside a region something DECLARED it owns? The test is on
+        // the facet's own centroid and on the region's own radius — no slack, no growth factor. A region
+        // covers what it covers.
+        let owner = -1;
+        for (let q = 0; q < patches.length; q += 1) {
+          const pr = patches[q];
+          let dth = gth - pr.theta;
+          while (dth > Math.PI) dth -= 2 * Math.PI;
+          while (dth < -Math.PI) dth += 2 * Math.PI;
+          if (Math.hypot(gr * dth, zc - pr.z) <= pr.radiusMm) { owner = q; break; }
+        }
+        if (owner >= 0) { nBladeDeclared += 1; declaredCount[owner] += 1; } else nBladeUndeclared += 1;
+      } else nBladeIndet += 1;
       bladeZHist[zb] += 1;
       if (sPar < 0) nFoldRawBlade += 1;
       if (radDot < 0) nInwardBlade += 1;
@@ -415,6 +459,8 @@ export function meshShapeCensus(xyz: Float64Array, nTri: number, opts: CensusOpt
     nParPos, nParNeg, nParZero, majoritySign, nMinoritySign, minorityFrac, ambiguous,
     foldWorst,
     nIndeterminate, nIndetNeg, nIndetPos, nFoldDetermined, nBladeIndet, nBladeRaw,
+    nBladeDeclared, nBladeUndeclared,
+    declaredHits: patches.map((pr, q) => ({ id: pr.id, count: declaredCount[q] })),
   };
 }
 
@@ -533,10 +579,30 @@ export function bladeGate(sc: ShapeCensus, guardAR: number | null = null): GateR
       );
     }
   }
+  // ── PATCH PROVENANCE (P5). Default-inert: with no declared regions nBladeDeclared is 0 and the gate
+  // counts exactly what it always counted. With regions declared, the gate counts only UNDECLARED blades
+  // and SHOUTS the exemption — the number that could hide a defect is never allowed to be quiet.
+  const gateCount = sc.nBladeDeclared > 0 ? sc.nBladeUndeclared : sc.nBlade;
+  if (sc.declaredHits.length > 0) {
+    detail.push(
+      `*** PATCH PROVENANCE ACTIVE — ${sc.declaredHits.length} DECLARED REGION(S). ${sc.nBladeDeclared} determined`,
+      `    blade(s) EXEMPTED because their centroid lies inside a declared region; ${sc.nBladeUndeclared} UNDECLARED`,
+      '    blade(s) remain and ARE the gate count. An exemption is a CLAIM by whatever emitted that region,',
+      '    not a finding by this gate: it means "something declared it owns this geometry", nothing more. ***',
+      `    per region: ${sc.declaredHits.map((h) => `${h.id}=${h.count}`).join('  ')}`,
+    );
+    if (sc.nBladeDeclared > 0 && sc.nBladeUndeclared === 0) {
+      detail.push(
+        '    NOTE the whole determined-blade population is inside declared regions. That is exactly the shape',
+        '    a mis-registered region would also produce, so it is stated rather than passed over.',
+      );
+    }
+  }
   return {
     id: 'BLADE',
-    title: `FACET SHAPE — aspect ratio <= ${sc.arCap} (longest edge / (2 * inradius))`,
-    applicable: true, count: sc.nBlade, expected: 0, pass: sc.nBlade === 0,
+    title: `FACET SHAPE — aspect ratio <= ${sc.arCap} (longest edge / (2 * inradius))`
+      + (sc.declaredHits.length > 0 ? `, EXCLUDING ${sc.nBladeDeclared} facet(s) in ${sc.declaredHits.length} DECLARED patch region(s)` : ''),
+    applicable: true, count: gateCount, expected: 0, pass: gateCount === 0,
     detail,
   };
 }
