@@ -2016,6 +2016,154 @@ site does not move.
 >> the loop, or geometry the bisection family cannot express (P5 junction routing / a curtain). That is an
 >> operator decision and the STOP condition exists precisely so it is taken as one.
 
+### S13 — THE SITE AUTOPSY. Decision table registered BEFORE any number was read.
+Probe scale only: existing artifacts, no new mesher runs, no new audits.
+
+THE TWO IMMOVABLE SITES, each byte-identical across every arm that has measured it:
+  **A** th 5.637379, z 44.16992 = **37.899 um** — the POOLED Part-B argmax on _S10A, _S10B, _S11A, _S12i2.
+  **B** th 4.062906, z 45.38896 = **40.006 um** — the EMITTING audit's argmax on S12 iterations 1 and 2,
+      70.86 mm away from A, found by a different sampling and equally immovable (0.000000 mm).
+
+THE FORK THIS DECIDES: tolScale 4 (a third Phase-2 iteration) vs P5 (junction/locus routing). Decidable by
+measurement, not preference.
+
+THE FOUR MEASUREMENTS:
+ 1 **IDENTITY OF THE CARRIER.** The nearest facet to each witness point in each of the four arm STLs
+   (_S10A, _S10B, _S11A, _S12i2), dumped vertex-by-vertex. Vertex-identical across arms => the local mesh
+   at that site has been FROZEN since the seed on every arm, through a x1.63 triangle change (S10B), a
+   topology fix (S11A) and a certificate-driven local tightening (S12i2).
+ 2 **WHAT THE DRIVER DID THERE.** _S12i2 carried a tolScale-2 ball of radius 500 um centred 14.9 um from
+   site A, and the driver reports 21,886 splits queued ONLY because of the field. So the carrier was
+   QUEUED. The question is whether anything was EXECUTED on it. The decisive artifact-only test: if the
+   carrier is vertex-identical between _S11A (no field) and _S12i2 (field), then it was queued and NOTHING
+   HAPPENED — i.e. every candidate split was REFUSED. Corroborating counters: unresolved 5,576 -> 6,621
+   (+1,045) and aspect refusals 596,693 -> 697,935 (+101,242) across that same pair. Also recorded: the
+   carrier's 3-D and parametric aspect ratio against the S1 cap of 50 — a carrier sitting AT the cap is
+   the S8 self-block signature (18,102 of 18,102), where mid-chord is the optimal placement and still
+   breaches, so NO admissible split point exists on that edge.
+ 3 **IS IT ON THE LOCUS GRAPH.** Distance from each site to the nearest traced locus polyline (the 394
+   components in the run's own loci.json), whether `locateKink` finds a non-jump crease on short transects
+   through it, and whether it lies inside any of the 235 junction disks.
+ 4 **WHAT THE FEATURE IS.** Fine-pitch 1-D rA transects in theta and in z through each site, at several
+   pitches, giving the two-scale ratio (the driver's own crease/jump discriminator), the feature width, and
+   the local facet size for comparison.
+
+**DECISION TABLE — REGISTERED NOW, first match wins:**
+  **ROW 1 — tolScale 4 REFUTED ON MECHANISM; THE FORK IS P5.**
+    Fires if EITHER: (a) the carrier is FROZEN (vertex-identical across arms) AND the splits were REFUSED
+    rather than executed — because a fourth iteration would then pour more demand into the same refusals,
+    which is precisely the S8 self-block and CTLPLUS lesson this campaign has already paid for twice;
+    OR (b) the site is ABSENT from the locus graph, since a certificate field that steers refinement
+    cannot help where the driver has no feature to conform to.
+    **If the sites are OUTSIDE every junction disk, that is recorded as a SCOPE FINDING: P5 must include
+    locus-strip / curtain patches along traced-locus SEGMENTS, not junction disks alone** — S10's tracer
+    already enumerates that geometry (394 components, 6,738.2 mm), so the scope change costs no new
+    instrument.
+  **ROW 2 — HALT, NEW MECHANISM, TO THE OPERATOR.**
+    Fires if splits were EXECUTED at the site (the carrier genuinely refined between arms) and the error
+    is STILL frozen at a site that is smooth and comfortably sub-cap. That would be a mechanism this
+    campaign has never seen — error immune to local refinement without a shape refusal or a feature to
+    blame — and it must not be built past.
+  **ROW 3 — INDETERMINATE.** The artifacts cannot distinguish refused from executed. Then, and only then,
+    say so and name the one cheap run that would.
+  Rows are disjoint and evaluated in order. Whichever fires, the two sites are reported with their feature
+  classification and their locus/disk membership either way, because that is P5's input regardless.
+
+PREDICTION, stated so it can be wrong: **ROW 1(a).** The carrier will be frozen and the splits refused.
+Reasoning from what is already measured: the H2 over-tol FRACTION has fallen under every intervention
+(x0.82 global, x0.81 local) while the MAX has not moved at all — bulk refinement works everywhere except
+here — and `unresolved` rose by 1,045 in exactly the arm that tightened this site. That is the signature of
+demand arriving and being refused, not of demand never arriving.
+
+### *** S13 RESULT — THE AUTOPSY. tolScale 4 IS REFUTED BY ARITHMETIC, NOT BY OPINION: THE DRIVER'S OWN
+### ACCEPT RULER READS 0.80 um ON A FACET 37.9 um OFF THE SURFACE. THE FORK IS P5 — AND ITS SCOPE IS
+### WRONG AS CURRENTLY WRITTEN. ***
+Probe scale, existing artifacts, no new mesher runs. Both immovable sites autopsied on all four arms.
+
+**1+2. THE CARRIER IS FROZEN — AND IT IS NOT SHAPE-REFUSED.**
+The nearest facet to each witness point is **VERTEX-IDENTICAL across _S10A, _S10B, _S11A and _S12i2** —
+same three vertices to six decimals, same edges, same aspect — through a x1.63 triangle change, a topology
+fix and a certificate-driven local tightening. Only its INDEX moves (292037 / 118081 / 292009 / 285346).
+
+| site | carrier 3-D AR | parametric AR | edges3d (um) | distance to witness |
+|---|---|---|---|---|
+| A th 5.637379 z 44.16992 | **5.71** | 43.29 | 1367.1 / 1549.8 / 357.3 | 38.061 um |
+| B th 4.062906 z 45.38896 | **2.68** | 15.72 | 422.9 / 239.8 / 476.2 | 40.006 um |
+
+>> **AND THAT KILLS MY OWN PREDICTION.** I registered ROW 1(a) — "the carrier will be frozen and the splits
+>> REFUSED" — reasoning from the S8 self-block. **WRONG.** Site B's carrier is an ordinary well-shaped
+>> triangle at **3-D AR 2.68**; splitting it at mid-chord yields children near AR 5, nowhere near the cap
+>> of 50. **S1 CANNOT have refused it.** Site A's AR 5.71 says the same. These facets were never refused —
+>> **they were never ATTEMPTED**, because the driver's accept test accepted them.
+
+**THE NUMBER THAT DECIDES THE FORK.** Running the driver's OWN accept ruler (`sagAdaptive`, the same
+arithmetic `consider()` uses, at the same REF_HS/NMIN/NMAX) on the frozen carriers:
+
+| site | driver's ruler | TRUE surface->mesh | **BLINDNESS** | tolScale needed to even QUEUE it |
+|---|---|---|---|---|
+| A | **0.8031 um** (n=52) | 37.899 um | **47.2x** | **4.36x** |
+| B | **0.4165 um** (n=16) | 40.006 um | **96.1x** | **8.40x** |
+
+>> **tolScale 4 IS REFUTED BY ARITHMETIC.** Phase 2 applied 2x and escalated to 4x. A third iteration would
+>> set localTol = 3.5/4 = **0.875 um** at site A, and the ruler reads **0.8031 um** there — **still
+>> accepted, with 9% to spare.** Site B would need 8.40x. This is not a forecast; it is the accept test
+>> evaluated directly on the facet. **A third iteration changes NOTHING at either site.**
+>> Phase 2 *could* reach them at tolScale 8 and 16 (maxScale is 64), but only by escalating over two to
+>> three more iterations at ~35 min each, applying that tightening to ALL 772+ clusters — and the class
+>> already grew x1.10 for a 2x ball. And even then it would be bisecting a V-shaped crease, the h^1 regime
+>> where chord error falls like h: closing 40 um -> 10 um needs ~4x the density AT the site, and the ruler
+>> that must ask for it is 47-96x blind.
+
+**3. THE SITES ARE ON THE LOCUS GRAPH AND OUTSIDE EVERY JUNCTION DISK.**
+| site | nearest traced locus | nearest junction disk | inside any disk? |
+|---|---|---|---|
+| A | **2.8 um** — ON the graph | #210 at 16.599 mm | **NO** |
+| B | **3.1 um** — ON the graph | #171 at 1.951 mm | **NO** |
+>> **THIS IS THE SCOPE FINDING, AND IT FIRES.** The S10 tracer put these sites on the locus graph to
+>> within 3 um — the geometry is already enumerated — but they are 1.95 mm and 16.6 mm from the nearest
+>> junction disk. **P5 SCOPED AS "JUNCTION ROUTING" WOULD NOT TOUCH EITHER OF THE TWO WORST SITES IN THE
+>> MESH.** P5 must include LOCUS-STRIP / curtain patches along traced-locus SEGMENTS, not junction disks
+>> alone. That costs no new instrument: S10's tracer already emits 394 components and 6,738.2 mm of locus
+>> polyline per run, and the disks are a subset of that same artifact.
+
+**4. WHAT THE FEATURE IS: A SHARP C1 CREASE, RESOLVED AT EVERY SCALE PROBED.**
+Both sites read **CREASE (C1)** on every transect — two-scale ratio 0.25-0.39 against the jump threshold
+of 0.62 — in theta and in z, at half-widths of 2 mm, 0.5 mm and 0.125 mm. Not a C0 jump: a curtain is not
+required and density does converge, in the h^1 sense. The r profile is a sharp V: at site A, r falls
+**630.6 um within 83 um** of the centre in theta and 1,505 um by 0.5 mm; in z it falls 106 um in 83 um.
+**The carrier facet spans 1,367-1,550 um across a feature that turns over in ~80 um.** It is a chord across
+a V, and the plane ruler reads it as flat for exactly the reason the 2026-07-28 handoff gave: a plane
+through three points that straddle a symmetric V hugs the V's average.
+
+**SCORING AGAINST THE REGISTERED TABLE — AND THE TABLE WAS INCOMPLETE.**
+  ROW 1(a) does NOT fire: it required splits REFUSED; they were never attempted (AR 2.68 cannot be
+    refused by a cap of 50).
+  ROW 1(b) does NOT fire: it required the site ABSENT from the locus graph; both are ON it, to 3 um.
+  ROW 2 does NOT fire: it required splits EXECUTED; the carrier is frozen.
+  **=> ROW 3 (INDETERMINATE) fires ON THE LETTER, and I record that as a defect of my own table rather
+  than of the measurement.** The artifacts were not indeterminate at all — they determined a THIRD state I
+  failed to enumerate: **frozen because ACCEPTED, not frozen because REFUSED.** My table had only two
+  boxes because I had assumed the S8 self-block; the correct third box is "the accept test never asked".
+  Row 3 obliges me to "name the one cheap run that would" distinguish — no run is needed; the accept
+  ruler evaluated directly on the facet settles it, and that is what the table above reports.
+
+>> **THE DISTINCTION THIS AUTOPSY BUYS, AND IT IS NEW: THERE ARE TWO RESIDUAL POPULATIONS, NOT ONE.**
+>> This campaign has been treating "the residual" as a single thing. It is not:
+>>   * the **STRANDED** population — 5,576 (S11A) / 6,621 (S12i2) facets, genuinely S1-refused, sitting AT
+>>     the cap, worst 47.245 um and PINNED. That is the S8 self-block, and it is real.
+>>   * the **ACCEPTED-BLIND** population — the H2 argmax carriers, sub-cap (AR 2.68-5.71), well-shaped,
+>>     never queued, 47-96x under-read by the driver's ruler. **The worst surface error in the mesh is in
+>>     THIS population, not in the stranded one**, and no shape lever, no cap change and no accept
+>>     tightening short of 8-16x will reach it.
+>> They need different fixes. The stranded set needs a primitive that can lay anisotropic elements under
+>> the cap (M=g/h^2). The accepted-blind set needs geometry that CONFORMS to the crease regardless of what
+>> the ruler thinks — a locus strip — or a ranking quantity that can see a chord across a V.
+
+**THE FORK, DECIDED BY MEASUREMENT: P5 — with its scope corrected to locus strips as well as junction
+disks.** tolScale 4 is arithmetically inert; tolScale 8-16 is reachable but expensive, applies globally,
+and still leaves an h^1 crease to bisect with a 47-96x blind ruler. The two worst sites in the mesh are
+3 um from a traced locus that S10 already enumerates. That is where the geometry should be placed.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
