@@ -940,6 +940,134 @@ AR 6-23 and split freely. **The fossil population at production is CENSORED AT T
 >>   * the byte-identity discipline held throughout: flag-OFF md5 8a59fb37... reproduced, gate 12/12
 >>     twice, zero determined blades/folds on every arm — the guard was never traded away.
 
+### S9 PRE-REGISTRATION — CONFORMITY AT BIRTH. Registered before any S9 mesh existed.
+THE OPERATOR'S REFRAME, after inspecting the meshes: "the blades still exist. we didn't stop them from
+FORMING." Correct — S6/S7/S8 were all POST-LOOP REPAIR, applied after refinement walled the fossils in
+and censored the survivors against the cap. The formation mechanism, assembled from tonight's own
+measurements: (1) conformity is a RANKED CHOICE — the plane ruler under-ranks crossing chords, so their
+splits arrive LATE; (2) by then the corridor has refined and thinned the neighbourhood — the S4 deadlock
+develops progressively; (3) refused sites strand, and the corridor censors the survivors against the
+AR cap, where S8 proved no split is legal (18,102/18,102 self-block). But the S8 pilot ALSO measured the
+counterfactual: at first encounter — before wall-in — 94.8% of sites conform freely. So: discharge the
+conformity obligation THE MOMENT IT EXISTS, both at generation zero and in the loop.
+
+TWO LEVERS, both default OFF, both through `bisectAt` (S1/S2 hold for every child):
+  S9a PF_CB_CONFORM_FIRST — before seeding, sweep every grid edge; split each interior crease crossing
+      AT the crossing (cascade-backed; the raw grid's worst AR is 3.40, so refusals should be ~absent).
+      Multi-pass (children edges can re-cross); jump-class untouched (curtain material).
+  S9b PF_CB_SNAP_CASCADE — when in-loop SNAP's conformity split is shape-refused, cascade AT FIRST
+      ENCOUNTER instead of stranding; on deadlock the ladder proceeds unchanged, and any protector
+      splits already made count as progress so the survivor re-queues instead of stranding.
+  Shared: PF_CB_S9_DEPTH (12), PF_CB_S9_BUDGET (600000 gross allocs, one ceiling for both levers).
+
+COMMAND (production arm, S8's config family; post-loop S8 OFF — prevention only):
+  PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+  PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 PF_CB_ACCEPT=0.0035 PF_CB_TAILK=800
+  PF_CB_MAXSECS=5400 PF_CB_RANK=plane PF_CB_CONFORM_FIRST=1 PF_CB_SNAP_CASCADE=1 PF_CB_TAG_SUFFIX=_S9P
+Control = committed D52 + its recorded audits (same-lineage by the standing byte-identity proof,
+re-established for these edits by the _S9ID identity arm below).
+
+PREDICTIONS, decided before the run:
+  SP1 IDENTITY: flag-OFF W1-config arm reproduces md5 8a59fb37a9115600b13262254380ccb0; gate 12/12.
+  SP2 S9a: >=95% of gen-0 crossing candidates end CONFORMED or by-proximity; deadlocked ~0. A non-tiny
+      deadlock count on a FAT grid refutes the formation story itself — read the cause before anything.
+  SP3 S9b: >=60% of fired refusals discharge (the first-encounter regime is the pilot's, which read 94.8%).
+  SP4 THE HEADLINE: footprint back-facing 7,838 -> <=1,568 (>=5x). REFUTED if >3,919 (<2x). The
+      operator's screenshots (thorn rows along rib flanks; fins at the X-crossings; red at the pinch)
+      are the qualitative bar the number stands in for.
+  SP5 H1: witnessed <=604 um (549.196 +10%); facets-over <=4.7%; unresolved EXPECTED to fall (the
+      discharge attacks the same deadlock that strands) — hoped <=4,900, reported either way.
+  SP6 H2: witnessed max <=18.4 um (15.354 +20%); over-fraction <=0.0061% (2x).
+  SP7 PRECONDITION: 0 determined blades, 0 determined folds, worst admitted child <=50.
+  SP8 COST: live tris <=1.9M; wall <=2x D52 uncontended.
+  SP9 VERDICT ROWS, first match wins: 1 REFUTATION back-facing falls <2x | 2 REGRESSION H1 >=1.5x OR
+      H2 >=1.5x OR SP7 fails | 3 WIN back-facing >=5x fall AND H1 within +10% AND H2 within +20% |
+      4 TRADE everything else, both numbers in the same row.
+
+S9 ARM 1 (_S9P) — RESULTS + A MEASURED DEFECT IN MY OWN BUDGET ACCOUNTING:
+  SP1 HELD (md5 8a59fb37... byte-exact; gate 12/12, 215.7 s). Driver: gen-0 found 10,641 grid crossings,
+  CONFORMED 8,507+8 (80.0%), deadlocked 2,126 (20.0% — SP2 MISSED its >=95% bar; on a fat grid these can
+  only be the shallow-angle/junction crossings whose children are genuinely sliver-along-locus — the P5
+  class introducing itself at generation zero); splits 9,142, +36,520 allocs before seeding. DOWNSTREAM
+  EFFECTS of gen-0 conformity, all favourable: snaps 80,843 -> 46,251 (the corridor no longer discovers
+  the crossings late), aspect refusals 1,703,693 -> 959,939 (-44% — the wall-in pressure itself), wall
+  1051 -> 909 s (0.86x, FASTER than D52), rA 1283M -> 1081M, unresolved worst 53.114 -> 45.203 um,
+  self-report 55.890 -> 45.959 um, tris +1.9%.
+  **CENSUS: back-facing 7,838 -> 6,437 (x0.82) — THE FIRST ARM EVER TO MOVE THE CLASS DOWN — and the
+  parametric-AR pathology collapsed: p99 474 -> 291, MAX 9.9e6 -> 5.5e5 (18x). Folds 0. min edge 0.452 um.**
+  BUT S9b RAN CRIPPLED, by a defect in MY accounting, and the report shows it: fired 34,728, outcomes
+  recorded only 838 — the "shared budget" was an ABSOLUTE ta.length ceiling anchored at gen-0 (~656k),
+  so the in-loop lever went dead as soon as the MAIN LOOP's own growth passed the anchor. ~33.9k refusals
+  silently hit the wall and stranded exactly as before. The 18% fall is therefore S9a-mostly-alone.
+  FIX (S9.1, this session): the budget now meters allocations ATTRIBUTABLE to cascade splits; every
+  budget-stopped site is counted (`budget-stopped N` + `S9 attributable allocations: X of Y` report
+  lines). eslint/tsc clean; flag-OFF byte-identity re-verified (_S9ID2) before the rerun.
+  RERUN PRE-REGISTERED as _S9Q, same command + corrected accounting, predictions SP2-SP9 unchanged
+  (SP4's >=5x bar stands; SP3 now actually testable since the lever will run).
+
+S9 ARM 2 (_S9Q, corrected accounting) — **S9b IS REFUTED BY ITS OWN FULL RUN; S9a-ALONE IS THE WINNER.**
+  S9b fired on 35,121 refusals with the budget barely touched (74,700 of 600k): CONFORMED 1,264+1
+  (3.6%), **DEADLOCKED 33,795 (96.2%)**. So "in the loop" is NOT the pilot's shallow regime: by the time
+  the heap surfaces a crossing chord (the plane ruler under-ranks them — formation step (1)), DIRECTED
+  has already thinned the corridor. The ranking delay dominates; prevention works ONLY at generation
+  zero. And the census prices S9b's failed attempts: back-facing 6,653 / feature-span 15,583 / parAR
+  p99 369 — every one WORSE than _S9P's near-pure-S9a numbers (6,437 / 12,859 / 291). Touching the
+  censored trains with splits feeds the class — the fifth independent measurement saying so.
+  THE CROSS-ARM TABLE (census, production, same instrument):
+    | arm | back-facing | feature-span | parAR p99 / max | wall |
+    | D52 control        | 7,838 | 13,447 | 313 / 9.9e6 | 1051 s |
+    | _S8P post-loop     | 8,213 | 17,182 | 474 / 9.9e6 | (contended) |
+    | _S9P g0 (+stub S9b)| **6,437** | **12,859** | **291 / 5.5e5** | **909 s** |
+    | _S9Q g0 + full S9b | 6,653 | 15,583 | 369 / 6.3e5 | 931 s |
+  SHIP CANDIDATE = PURE S9a. _S9P carries 1,148 S9b-leaked splits, and "approximately pure" is not a
+  control. PRE-REGISTERED _S9A: PF_CB_CONFORM_FIRST=1 alone, same command family. EXPECT census within
+  noise of _S9P (back-facing ~6.4k); ship-gates on the deep audit = SP5/SP6 verbatim (H1 <=604 um,
+  H2 max <=18.4 um, fractions within bars); PP-style precondition 0 determined blades/folds. If it
+  clears: S9a is a strict all-metric improvement and the default-ON question goes to the operator
+  (it changes every mesh, so it is an operator decision, not an agent one). The residual ~6.4k
+  back-facing + the 2,126 gen-0 shallow-angle deadlocks are the measured P5 junction demand.
+
+### *** S9 FINAL — PURE S9a (_S9A) DEEP-AUDITED. A STRICT PARETO IMPROVEMENT; THE CLASS ITSELF LANDS
+### ROW 1 AGAIN. THE FOSSIL CAMPAIGN CLOSES WITH THE JUNCTION DEMAND MEASURED FIVE INDEPENDENT WAYS. ***
+_S9A (PF_CB_CONFORM_FIRST=1 alone) vs the D52 recorded audits, same instruments, Part-B depth:
+  | | D52 | _S9A | |
+  |---|---|---|---|
+  | back-facing (footprint gate) | 7,838 | 6,613 | x0.84 |
+  | feature-spanning | 13,447 | 12,522 | x0.93 |
+  | parametric AR p99 / MAX | 313 / 9.9e6 | 291 / **5.5e5** | tail x18 smaller |
+  | **H1 witnessed** | 549.196 um | **524.567 um** | **x0.955 — the first H1-max fall of any arm** |
+  | H1 certified bound | 559.195 um | 611.100 um | +9% (the pessimistic side of the estimate) |
+  | H1 facets over tol | 4.19% | **3.50%** | x0.84 |
+  | H2 witnessed | 15.354 um | 17.069 um | x1.11 (bar was <=1.20) |
+  | H2 samples over | 0.00304% | 0.00456% | x1.50 (bar was <=2.0) |
+  | unresolved / worst | 9,794 / 53.114 um | 9,995 / **40.971 um** | worst x0.77 |
+  | driver self-report | 55.890 um | **41.236 um** | x0.74 |
+  | wall | 1051 s | ~915 s | x0.87 |
+  | determined blades / folds | 0 / 0 | 0 / 0 | SP7 holds |
+SP-SCORING: SP1 Y, SP2 N (80.0% not >=95% — the 2,126 gen-0 deadlocks are shallow-angle junction
+crossings, the P5 class introducing itself on a FAT grid), SP3 N (S9b refuted at 3.6% discharge),
+SP4 N (x0.84 < 2x => SP9 ROW 1 by the bar), SP5 Y (H1 witnessed FELL), SP6 Y, SP7 Y, SP8 Y.
+
+THE HONEST SENTENCE: **conformity-at-birth does not RESOLVE the artifact class either — it shrinks it
+16% and deletes its extreme tail — while strictly improving every other axis of the pipeline at
+NEGATIVE cost** (faster, fewer refusals, better self-report, better H1 max AND bulk, smaller
+unresolved-worst). S9b (in-loop discharge) is REFUTED and stays OFF. S9a ships merged, DEFAULT OFF —
+row 1 forbids selling it as the class fix, and defaulting it ON changes every mesh, which is an
+operator decision; as a lever it is a pure win on every measured axis with H2 inside its
+pre-registered bars.
+
+WHAT THE WHOLE FOSSIL CAMPAIGN (S6..S9) ESTABLISHES, each by refutation-grade measurement:
+  1 the visible class is not collapsible (S6), not flippable (S7), not conformable post-loop (S8
+    self-block 18,102/18,102, population censored at the cap), only fractionally conformable at
+    birth (S9a x0.84) and NOT conformable in-loop (S9b 96.2% deadlock — the ranking delay dominates);
+  2 the residual population — ~6.6k back-facing + 2,126 shallow-angle gen-0 crossings + ~10k
+    unresolved, clustered at the X-crossing and bandRim junction bands — is GENUINE ANISOTROPY DEMAND
+    that no bisection-family primitive can express under the (necessary) AR cap;
+  3 => THE NEXT CAMPAIGN IS P5 AND ONLY P5: route the enumerated junction sites (the instruments now
+    list them per run) to the certified-but-unwired M=g/h^2 anisotropic kernel or structured
+    curtain/patch geometry. Conformity-at-birth (S9a) is the right substrate for it: the loci arrive
+    pre-conformed and the fossil load the router must absorb is 16% smaller with an 18x tamer tail.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

@@ -1177,6 +1177,25 @@ describe('STRATA conforming-bisection', () => {
           if (k.jump) nJump += 1;
           nSnap += 1;
           if (bisectAt(a, b, k.t, true)) return true;
+          // ── S9b: discharge the conformity refusal AT FIRST ENCOUNTER (PF_CB_SNAP_CASCADE, default OFF).
+          // A shape-refused SNAP split is the fossil's birth certificate: stranded here, the crossing edge
+          // survives while the corridor refines around it, and by the time anything retries, the pair is
+          // censored at the cap (S8's measured self-block). Trains are still SHALLOW at first encounter
+          // (the S8 pilot conformed 94.8% in exactly this regime), so cascade NOW. Jump-class is curtain
+          // material and is never cascaded. On 'deadlock'/'refused' the ladder below proceeds unchanged —
+          // any protector splits the cascade DID make stay in `created`, so the pop loop sees progress and
+          // re-queues the survivor instead of stranding it.
+          if (SNAP_CASCADE && !k.jump && lastBisectShape !== 'none') {
+            scFired += 1;
+            const oc = cascadeConform(a, b, k.t);
+            scSplits += cascadeStat.splits;
+            if (oc === 'budget') { scBudget += 1; scBudgetStopped = true; }
+            else if (oc === 'conformed') scConformed += 1;
+            else if (oc === 'proximity') scProximity += 1;
+            else if (oc === 'deadlock') scDeadlocked += 1;
+            else scRefusedOther += 1;
+            if (oc === 'conformed' || oc === 'proximity') return true;
+          }
         }
       }
       if (REPROJ && vFeat[a] && vFeat[b]) {
@@ -1270,6 +1289,114 @@ describe('STRATA conforming-bisection', () => {
       for (const o of l) if (o !== t && alive[o]) return o;
       return -1;
     };
+
+    // ══════════ S9 — CONFORMITY AT BIRTH (2026-07-30, second iteration of the fossil campaign) ══════════
+    // S8 measured why POST-LOOP repair cannot work at production: by the time a fossil's conformity split
+    // is retried, refinement has walled it in and the survivors sit AT the AR cap — 18,102 of 18,102
+    // deadlocks were SELF-BLOCK (the population is CENSORED at the cap). But the same cascade conformed
+    // 94.8% of sites on the shallow pilot mesh: every site is conformable WHEN FIRST ENCOUNTERED. So stop
+    // the birth instead of repairing the fossil — discharge the conformity obligation the moment it exists:
+    //   S9a PF_CB_CONFORM_FIRST — BEFORE seeding, split every initial-grid edge at its located interior
+    //       crease crossing. At generation zero everything is fat (measured grid worst AR 3.40), the guard
+    //       admits essentially every crossing split, and no ranking delay exists to wall anything in.
+    //   S9b PF_CB_SNAP_CASCADE  — IN the loop, when SNAP's crossing split is shape-refused, discharge the
+    //       refusal by cascade AT FIRST ENCOUNTER (trains are still shallow) instead of stranding the
+    //       triangle into `unresolved`, where the corridor then censors it against the cap.
+    // Both default OFF. Every split still goes through `bisectAt`, so S1/S2 score every child on both
+    // sides — neither lever can emit an over-cap facet or a fold, by the refinement loop's own argument.
+    const CONFORM_FIRST = envOn('PF_CB_CONFORM_FIRST') && !SWEEP && !GPU_RANK;
+    const SNAP_CASCADE = envOn('PF_CB_SNAP_CASCADE') && !SWEEP && !GPU_RANK;
+    const S9_DEPTH = Math.round(envF('PF_CB_S9_DEPTH', 12));
+    const S9_BUDGET = Math.round(envF('PF_CB_S9_BUDGET', 600000)); // ceiling on S9's OWN gross allocations (S9a+S9b)
+    // S9.1 ACCOUNTING FIX (measured defect of the first S9 arm): the budget was an ABSOLUTE ta.length
+    // ceiling anchored at gen-0, so the in-loop lever went dead the moment TOTAL allocations passed the
+    // anchor (~656k of a 2.5M run) — S9b processed only ~838 of its 34,728 refusals and 'budget' returns
+    // were invisible in the outcome counters. The budget now meters allocations ATTRIBUTABLE to cascade
+    // splits alone, and every budget-stopped site is COUNTED.
+    let s9AllocsUsed = 0;
+    let g0Cand = 0; let g0Conformed = 0; let g0Proximity = 0; let g0Deadlocked = 0; let g0RefusedOther = 0;
+    let g0Budget = 0; let g0Splits = 0; let g0Passes = 0; let g0Allocs = 0;
+    let scFired = 0; let scConformed = 0; let scProximity = 0; let scDeadlocked = 0; let scRefusedOther = 0;
+    let scBudget = 0; let scSplits = 0; let scBudgetStopped = false;
+    /** per-call stats `cascadeConform` fills (reset each call) — call sites fold them into their own counters. */
+    const cascadeStat = { splits: 0, depth: 0 };
+    /**
+     * Discharge ONE conformity obligation: split (a0,b0) AT parametric t0 (a located crossing), resolving
+     * shape refusals by Rivara obligation — midpoint-split the protecting triangle's LONGEST edge first,
+     * recursively and depth-capped — or by retreat-toward-the-crossing when the pair itself blocks an
+     * off-centre placement. The logic mirrors the S8 post-loop `conformSite` (kept verbatim below for that
+     * experiment's reproducibility); THIS live variant never touches `created.length` — the caller owns
+     * that array (the pop loop considers everything pushed into it; the S9a pass clears it after its sweep).
+     */
+    const cascadeConform = (a0: number, b0: number, t0: number): 'conformed' | 'proximity' | 'deadlock' | 'refused' | 'budget' => {
+      cascadeStat.splits = 0; cascadeStat.depth = 0;
+      const obA: number[] = [a0]; const obB: number[] = [b0]; const obT: number[] = [t0];
+      let depth = 0;
+      let attempts = 0;
+      const attemptCap = 4 * S9_DEPTH + 8;
+      for (;;) {
+        if (s9AllocsUsed >= S9_BUDGET) return 'budget';
+        attempts += 1;
+        if (attempts > attemptCap) return 'deadlock';
+        const i = obA.length - 1;
+        const av = obA[i]; const bv = obB[i]; const tv = obT[i];
+        if (!(edgeMap.get(eKey(av, bv)) ?? []).some((x) => alive[x])) {
+          // a deeper obligation re-meshed this edge away; for the crossing edge itself that is unreachable
+          // (protector splits never touch it) — refuse defensively rather than mis-count a conform.
+          if (i === 0) return 'refused';
+          obA.pop(); obB.pop(); obT.pop();
+          continue;
+        }
+        const isCrossing = tv >= 0;
+        const taBeforeMain = ta.length;
+        if (bisectAt(av, bv, isCrossing ? tv : placeAt(av, bv, 0.5), isCrossing ? true : vFeat[av] && vFeat[bv])) {
+          cascadeStat.splits += 1;
+          s9AllocsUsed += ta.length - taBeforeMain;
+          if (i === 0) { cascadeStat.depth = depth; return 'conformed'; }
+          obA.pop(); obB.pop(); obT.pop();
+          continue;
+        }
+        // `lastShapeOffenderT < 0` subsumes the weld/apex case: bisectAt resets it to -1 on entry and only
+        // the two shape refusals set it (see the S8 note on TS narrowing of the closure variable).
+        if (lastShapeOffenderT < 0 || !alive[lastShapeOffenderT]) return 'refused';
+        if (depth >= S9_DEPTH) return 'deadlock';
+        const [pv, qv] = eVerts(lastShapeOffenderT, longestE(lastShapeOffenderT));
+        if (eKey(pv, qv) !== eKey(av, bv)) {
+          // PROTECTOR obligation — the offender is refined before (av,bv) may split.
+          obA.push(pv); obB.push(qv); obT.push(-1); depth += 1;
+          continue;
+        }
+        // The offender's longest edge IS the blocked edge.
+        if (!isCrossing) return 'deadlock'; // a midpoint split refused at its own longest edge is a true dead end
+        // RETREAT: midpoint-split the crossing edge, then chase the crossing into the child that carries it.
+        const cBefore = created.length;
+        const taBeforeRetreat = ta.length;
+        if (!bisectAt(av, bv, placeAt(av, bv, 0.5), vFeat[av] && vFeat[bv])) {
+          if (lastShapeOffenderT < 0 || !alive[lastShapeOffenderT]) return 'refused';
+          const [p2, q2] = eVerts(lastShapeOffenderT, longestE(lastShapeOffenderT));
+          if (eKey(p2, q2) === eKey(av, bv)) return 'deadlock';
+          obA.push(p2); obB.push(q2); obT.push(-1); depth += 1;
+          continue;
+        }
+        cascadeStat.splits += 1; depth += 1;
+        s9AllocsUsed += ta.length - taBeforeRetreat;
+        // the new vertex: bisectAt pushed its batch at cBefore, first two are addT(oa,m,apex), addT(m,ob,apex)
+        const c0 = created[cBefore]; const c1 = created[cBefore + 1];
+        const m = created.length >= cBefore + 2 && c0 >= 0 && c1 >= 0 && tb[c0] === ta[c1] ? tb[c0] : -1;
+        if (m < 0) return 'refused';
+        let carried = false;
+        for (const [ca, cb] of [[av, m], [m, bv]] as Array<[number, number]>) {
+          const ck = locateKink(vth[ca], vz[ca], vth[ca] + dTh(ca, cb), vz[cb]);
+          if (ck !== null && !ck.jump && ck.t > SNAP_ALPHA && ck.t < 1 - SNAP_ALPHA) {
+            obA[0] = ca; obB[0] = cb; obT[0] = ck.t;
+            carried = true;
+            break;
+          }
+        }
+        if (!carried) { cascadeStat.depth = depth; return 'proximity'; }
+      }
+    };
+
     const refineLepp = (t0: number): void => {
       let guard = 200_000;
       while (alive[t0] && guard-- > 0) {
@@ -1833,6 +1960,47 @@ describe('STRATA conforming-bisection', () => {
       }
       gpuScored += batch.length; gpuFlushes += 1;
     };
+    // ───────── S9a: CONFORM-FIRST (PF_CB_CONFORM_FIRST=1; default OFF) — runs BEFORE seeding ─────────
+    // Sweep every live edge of the raw grid; split each interior crease crossing AT the crossing, cascade-
+    // backed (rarely needed here: the grid's measured worst AR is 3.40 and everything splits legally).
+    // Multi-pass, because a conformity split's child edges can themselves cross a neighbouring locus.
+    // Conformity thereby stops being a RANKED CHOICE the plane ruler can defer until the corridor has
+    // walled the site in — it is discharged while discharge is still possible. Children created here are
+    // ordinary live triangles when the seeding loop below runs, so they enter the heap like grid facets.
+    if (CONFORM_FIRST) {
+      const taStart = ta.length;
+      for (let pass = 0; pass < 4; pass += 1) {
+        g0Passes += 1;
+        let did = false;
+        const seenE9 = new Set<number>();
+        for (let t0 = 0; t0 < ta.length; t0 += 1) {
+          if (!alive[t0]) continue;
+          if (s9AllocsUsed >= S9_BUDGET) break;
+          const es9: Array<[number, number]> = [[ta[t0], tb[t0]], [tb[t0], tc[t0]], [tc[t0], ta[t0]]];
+          for (const [pv, qv] of es9) {
+            const k0 = eKey(pv, qv);
+            if (seenE9.has(k0)) continue;
+            seenE9.add(k0);
+            if (!(edgeMap.get(k0) ?? []).some((x) => alive[x])) continue; // re-meshed earlier this pass
+            const kk = locateKink(vth[pv], vz[pv], vth[pv] + dTh(pv, qv), vz[qv]);
+            if (kk === null || kk.jump) continue; // jump-class is curtain material, never a snap
+            if (kk.t <= SNAP_ALPHA || kk.t >= 1 - SNAP_ALPHA) continue;
+            g0Cand += 1;
+            const oc = cascadeConform(pv, qv, kk.t);
+            g0Splits += cascadeStat.splits;
+            if (oc === 'conformed') g0Conformed += 1;
+            else if (oc === 'proximity') g0Proximity += 1;
+            else if (oc === 'deadlock') g0Deadlocked += 1;
+            else if (oc === 'budget') g0Budget += 1;
+            else g0RefusedOther += 1;
+            if (cascadeStat.splits > 0) did = true;
+          }
+        }
+        if (!did) break;
+      }
+      g0Allocs = ta.length - taStart;
+      created.length = 0; // children are live triangles; the seeding loop below considers every one
+    }
     // §2.3 seeding. Under `sweep` the whole initial grid goes into the FIFO unmeasured — the predicate is
     // evaluated at POP, not at push, so there is no up-front ranking pass to pay for.
     if (SWEEP) { for (let t = 0; t < ta.length; t += 1) qPush(t); qGenEnd = qTail; }
@@ -3217,6 +3385,16 @@ describe('STRATA conforming-bisection', () => {
         `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
         `    crossing-edge candidates ${confFlipCand}, flipped ${confFlipDone}, refused ${confFlipRefused} (AR gate + tryFlip validity: 2-incidence, convexity, winding, on-locus)`,
         `    offenders (AR > ${SLIVER_AR}) AFTER ${sliverOffendersAfter}   resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
+      ...(envOn('PF_CB_CONFORM_FIRST') || envOn('PF_CB_SNAP_CASCADE') ? [
+        `  S9 conformity-at-birth: PF_CB_CONFORM_FIRST=${CONFORM_FIRST ? 1 : 0}  PF_CB_SNAP_CASCADE=${SNAP_CASCADE ? 1 : 0}   depth ${S9_DEPTH}, shared budget ${S9_BUDGET} gross allocs`,
+        ...(CONFORM_FIRST ? [
+          `    S9a gen-0 conformity: ${g0Cand} crossing edges in ${g0Passes} sweep(s): CONFORMED ${g0Conformed} + ${g0Proximity} by-proximity, deadlocked ${g0Deadlocked}, budget-stopped ${g0Budget}, other ${g0RefusedOther}   splits ${g0Splits} (+${g0Allocs} allocs BEFORE seeding)`,
+        ] : []),
+        ...(SNAP_CASCADE ? [
+          `    S9b in-loop discharge: fired on ${scFired} refused SNAP splits: CONFORMED ${scConformed} + ${scProximity} by-proximity, deadlocked ${scDeadlocked}, budget-stopped ${scBudget}, other ${scRefusedOther}   splits ${scSplits}${scBudgetStopped ? '  [S9 BUDGET REACHED]' : ''}`,
+        ] : []),
+        `    S9 attributable allocations: ${s9AllocsUsed} of ${S9_BUDGET}`,
       ] : []),
       ...(envOn('PF_CB_FOSSIL_CASCADE') ? [
         `  S8-PILOT fossil cascade-split (crossing edges, Rivara obligations): ${fossilRan ? `RAN, ${fossilPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
