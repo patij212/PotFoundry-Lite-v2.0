@@ -1,0 +1,58 @@
+
+===== STRATA CONFORMING-BISECTION: GothicArches RING  [DIRECTED | SNAP | no-reproj] =====
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+rank/accept: PF_CB_RANK=plane — sagAdaptive: INFINITE-PLANE distance, absolute pitch 0.03mm, n∈[12,64]   acceptTol 1.750 µm
+grid 200×140 (82463 init tris) → 1642566 tris (alloc 3202669/8000000)   1054s, 1300M rA evals
+splits 797980   snaps 90049 (jump-class 0)   transverse re-solves 0   z-steps 0
+cleanup: collapsed 0 tris (safe-collapse 0, link-refused 0 with 0 offenders, flips 0, flips-refused-on-locus 0)   welded-splits 3 (REFUSED)
+--- SHAPE (L5, 2026-07-29 blade fix) ---
+  levers: PF_CB_SHAPE=1 cap AR>50  fold=1  mid3d=1 (24 halvings, |shift| cap 0.25)  longfall=1
+  guard: 2788253 split candidates scored, 8636390 child facets (BOTH sides of every edge)
+  refused: 1683365 on aspect (>50), 0 on (θ,z) FOLD   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path
+  worst child AR the guard ever ADMITTED: 50.00 (must be <= 50)
+  3-D midpoint: 2698204 solves, mean |s-frac| 0.05254, max 0.52032, clamped 127230
+  longest-edge preference: tested 347969, FIRED 16815 (max-sag edge inadmissible AND longest edge admissible)
+  post-loop guard: PF_CB_POST_SHAPE=1   cap AR>50, metric = _shapeGuard.aspect3 (the census's own)
+    initial grid: 4 of 82463 facets over the cap, worst AR 88.79   *** BORN OVER THE CAP. No split guard can have caused these and none can repair them — S1 refuses their splits, so they are FROZEN into the STL. Expect the blade gate to count them. ***
+    collapse: 0 tested, refused 0 on aspect + 0 on (θ,z) FOLD
+    flip (collapse-driven, PF_CB_FLIP=0): 0 gate calls, refused 0 on aspect   [tryFlip sign-checks (θ,z) itself, so this path cannot fold]
+    worst AR any ADMITTED post-loop operation left behind: 0.00
+  S10 ALIGNED CONSTRAINED SEED: PF_CB_ALIGNED_SEED=1   trace 400x280 in 26s
+    traced loci: 394 components, 11083 points, 6738.2 mm total   junctions 235 (from 1559 raw)   jump-class crossings EXCLUDED 94
+    seed: 41631 points -> 82463 tris   constraints 6369 RECOVERED 6369 (conditioned 863, decimated 0, degenerate dropped 508)   repair rounds 1, banned 1
+    spacing: along 1101 um / across 385 um   background kept 23904 dropped 3896   offset points 10927   sizing field ON (1285072 rA evals)
+    seed shape census: 4 of 82463 over the cap (worst AR 88.79, worst PARAMETRIC AR 98.6)
+    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink: 963 of 123951 edges (0.777%). The uniform grid at this config had 10,641 (S9a's gen-0 enumeration, live grid, multi-pass). ***
+  cap repair: PF_CB_SHAPE_FLIP=0   facets over cap BEFORE 2 (worst 85.1) → AFTER 2 (worst 85.1)   flips tried 0, done 0
+  *** 2 facets over the cap survived a run with BOTH guards ON. S1 covers bisectAt and S6
+      covers the collapse and the collapse-driven flip, so a survivor can only be (a) BORN in the
+      INITIAL GRID — 4 were, see the post-loop guard block above — or (b) a float32 tie:
+      the STL is float32 while both guards score float64, so a facet within ~0.1 % of the cap can
+      tip either way. That moves individuals, never the population. ***
+heap: 0 left, worst-left 0.000 µm, key-inversions 110676, no-op splits 17343   MAXtri@oracle8 45.135 µm
+unresolved: 16403 live over-tol triangles the splitter could NOT subdivide, worst 47.245 µm   *** an EMPTY HEAP DOES NOT MEAN CLOSURE — these left the queue unrefined ***
+--- WATERTIGHT (3D position-weld) ---
+  non-manifold edges : 0  OK
+  reversed facets    : 0  OK
+  seam-crack edges   : 3  FAIL
+  boundary edges     : 1684   (ring ⇒ top+bottom only)   loops 3
+  soup: 1642566 tris = 1642566 outer wall + 0 treads + 0 caps
+--- FIDELITY (DRIVER SELF-REPORT on the PLANE ruler — NOT the verdict; judge with
+             research/bridge/_strataFacetTruth.test.ts at FULL coverage) ---
+  HEADLINE MAX 47.297 µm  FAIL   = max(adaptive 47.245, fixed-12 47.297, tail-44 47.207)
+  ruler spread 1.0×  consistent
+  --- adaptive oracle (≤0.03mm sample pitch, n∈[12,64]) ---
+  MAX 47.245 µm  FAIL   p99 1.750  p50 0.833  over-0.01mm 676/1642566
+  MAX-locus: z=[18.00,18.00,18.02] (15% H) θ=[0.9733,1.0178,0.9819] edges(µm)=1850.7/1495.0/356.5 feat=[111]
+  [STRATA-comparable fixed oracle 12]: MAX 47.297 µm   locus z=[18.00,18.00,18.02] (15% H) θ=[0.9733,1.0178,0.9819] edges(µm)=1850.7/1495.0/356.5 feat=[111]
+  TAIL re-measure (worst 800 @ oracle 44): MAX 47.207 µm  FAIL
+  TAIL-locus: z=[18.00,18.00,18.02] (15% H) θ=[0.9733,1.0178,0.9819] edges(µm)=1850.7/1495.0/356.5 feat=[111]
+  audit: PARALLEL, 8 workers   main 1642566 facets in 57.7s (chunk 1024)   tail 800 facets in 0.3s (chunk 1)
+    rA evals: 409.8M in workers — INCLUDED in the total above, because they are the same evaluations a serial run makes
+      + 282.6k identity-lattice and 91 forensic re-evals, both EXCLUDED so both arms print the same total
+    rA identity: 141320 (worker × lattice) comparisons, 0 differ, worst 0.000000 µm — checked BEFORE any facet was scored, run refused on any deviation
+    shared buffers: 25.1 MB vertices + 18.8 MB corners + 25.1 MB results (the mesh is SHARED, never copied per worker)
+    PF_CB_AUDIT_VERIFY=1 to re-score every facet on the main thread and gate bit-identity per facet
+    NB the LOCUS AUDIT (PF_CB_LOCUS_AUDIT=1) is NOT pooled — it is off by default and stays serial.
+  min edge 0.363 µm
+=========================================================

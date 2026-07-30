@@ -1462,6 +1462,246 @@ TOP 8 TIGHTEST (smallest branch angle = worst anisotropy demand), th / z / minAn
  5 **P5 finally has coordinates**: 235 disks, 4.039% of the surface, with branch angles down to 15.1 deg —
    and they are NOT concentrated in the two bands this campaign has been quoting.
 
+### S10B PRE-REGISTRATION — ALIGNED SEED + TIGHTENED ACCEPT. Registered BEFORE any _S10B mesh existed.
+Operator instruction, relayed verbatim by the review session: "run the H2 arm: aligned seed + tightened
+accept". This is the arm the S10 close-out named and did not run.
+
+WHY THIS ARM AND NOT ANOTHER. S10A scored SA8 ROW 2 (REGRESSION) on H2 witnessed 37.899 um while the class
+metric cleared its WIN bar at x0.145. The S10 close-out gave a MECHANISM for that H2 loss and it is
+testable: the aligned mesh DRAINED its heap with 21% FEWER triangles (1,010,503 vs 1,284,820) at the same
+acceptTol, because the plane ruler accepts an along-locus facet sooner — a facet running ALONG a rib has
+almost no chord sag. If that is the whole story, giving the aligned substrate the budget the control spent
+should recover H2. If it is NOT the whole story, H2 will not move, and the reason will be the
+2026-07-28 diagnosis: the plane ruler is STRUCTURALLY blind at the argmax locus, so no amount of uniform
+tightening steers budget there. Those two readings are separated by one number, registered below.
+
+**ONE VARIABLE, AND IT IS PROVABLE.** The aligned seed is a pure function of (rA, traced loci, gu, gv,
+alongMul, acrossFrac, useField, PF_CB_TOL, shapeAR, weldMm, pslgEpsMm). **`PF_CB_ACCEPT` IS NOT AMONG
+THEM** — the seed builder is handed `tolMm: TOL` (PF_CB_TOL, default 0.01), never the accept. So the
+_S10B seed must be BIT-IDENTICAL to _S10A's, and that is CHECKED rather than asserted: the report prints
+seed tris / constraints / conditioned / over-cap / worst AR / worst parametric AR, and all six must
+reproduce 82,463 / 6,369 / 863 / 4 / 88.79 / 98.6 exactly. **A mismatch means accept leaked into the seed
+and the A/B is not one-variable — that ABORTS the reading.**
+
+ACCEPT VALUE: **0.0035 -> 0.00175, one halving.** The D51 precedent for a one-variable accept move, and the
+smallest step that is unambiguously outside the noise of a criterion-limited drain. Not chosen for cost:
+S10A left 6.06M of its 8M allocation cap unspent, so the budget is not the binding constraint and a
+halving is affordable. A second halving is deliberately NOT bundled — if one halving moves H2 partway,
+the slope is the interesting quantity and it needs two points, not one big jump.
+
+COMMAND (tag `_S10B`), S10 family otherwise unchanged:
+  PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+  PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 **PF_CB_ACCEPT=0.00175** PF_CB_TAILK=800
+  PF_CB_MAXSECS=5400 PF_CB_RANK=plane PF_CB_ALIGNED_SEED=1 PF_CB_TAG_SUFFIX=_S10B
+  then the two-sided audit at Part-B depth: PF_FT_H1=1 PF_FT_H2=1 PF_FT_WORKERS=8 PF_FT_H1MAX=40000
+  PF_FT_H2BUDGET=40000000 PF_FT_GUARD_AR=50 PF_FT_TAG=FID_S10B.
+CONTROLS: `_S10A` recorded (the same-lineage one-variable control) and `_S9A` recorded (the campaign
+yardstick). No rebuild — the byte-identity chain (md5 8a59fb37..., held before and after every S10 edit)
+covers the lineage.
+
+YARDSTICKS. _S10A: back-facing 959 (949 per million facets), feature-span 4,075, off-locus >=15 28,118 /
+>=30 21,402 / >=45 17,766 / >=90 5,034, parametric AR p99 106.7 MAX 125,887, H1 witnessed 422.995 um /
+1.65% of 40,000 audited (coverage 40,000 of 1,010,503, INCOMPLETE by construction), H2 witnessed
+37.899 um / 0.01242%, unresolved 5,576 worst 47.245 um, tris 1,010,503, wall 758 s, blades 2 folds 0,
+seam-cracks 3. _S9A: back-facing 6,613 (5,147 per million), H2 17.069 um / 0.00456%, H1 524.567 um / 3.50%.
+
+── QUESTION A: DOES TIGHTENING CLOSE THE H2 REGRESSION? ──
+  HB1 H2 witnessed <= 20.48 um  (the original SA5 bar, i.e. within +20% of _S9A's 17.069).
+  HB2 H2 samples over tol <= 0.00912% (the original SA5 fraction bar, 2x _S9A's 0.00456%).
+  HB3 **THE SHARPEST CLAUSE, and the one that separates the two readings.** _S10A's H2 argmax sits at
+      th=5.637379, z=44.16992 — the SAME unrepresented-feature locus D52 and _S8P both reported
+      (th 5.635, z 44.9), which S8 established is not fossil material. PREDICT: the argmax MOVES AWAY from
+      that locus, or its value falls below 20.48 um. **IF THE ARGMAX STAYS AT th~5.637 z~44.17 AND ITS
+      VALUE IS WITHIN +/-20% OF 37.899 um, TIGHTENING HAS NOT TOUCHED IT** — and that is a positive
+      result, not a null one: it confirms the 2026-07-28 ranking-function diagnosis directly, because a
+      uniform accept tightening is exactly the intervention that cannot steer budget to a site the plane
+      ruler scores as already good. Report the z-distribution of the over-tol samples either way.
+  MY PREDICTION, stated so it can be wrong: **H2 falls but does NOT clear HB1.** The mechanism named in
+  the S10 close-out (fewer triangles) is real and worth something, but the argmax is a ranking-blindness
+  site and uniform tightening is the wrong instrument for it. I expect H2 in the 20-32 um range with the
+  argmax still in the z 40-50 band.
+
+── QUESTION B: THE CTLPLUS LAW TEST — DOES EXTRA REFINEMENT STILL FEED THE CLASS? ──
+  THE LAW, as measured on the GRID substrate: more refinement makes the visible class WORSE. _CTLPLUS
+  (flag OFF, cap 140k vs 120k) read back-facing 211 -> 294. That single measurement is one of the five
+  refutation-grade brackets the whole P5 argument rests on. It has never been tested on a substrate whose
+  crossing-edge population was deleted rather than discharged.
+  **MY PREDICTION, STATED BEFORE THE RUN: THE LAW IS A PROPERTY OF THE FOSSIL SUBSTRATE, NOT OF
+  REFINEMENT, AND IT WILL BREAK.** The arithmetic behind the prediction: the class tracks the crossing-edge
+  population almost proportionally — 10,641 -> 963 crossings (x0.090) went with 6,613 -> 959 back-facing
+  (x0.145). Refinement feeds the class by manufacturing sub-cap pinch pairs AT crossing sites; with 11x
+  less crossing material there is 11x less to feed. THE COUNTER-MECHANISM, stated too: the 235 junction
+  disks survive by construction, refinement concentrates exactly there, and a junction is where alignment
+  is undefined — so growth is possible and would localise to the disks.
+  CL1 **back-facing <= 1,323** (the SA3 WIN bar, unchanged) => the law BREAKS on an aligned substrate.
+  CL2 **back-facing > 1,918** (>2x _S10A's 959) => the law SURVIVES: refinement feeds the class regardless
+      of substrate, and that is a major result on its own — it would mean the class is a property of
+      REFINEMENT AT LOCI and not of the fossils, and it would put a ceiling on every alignment strategy.
+  CL3 1,323 < back-facing <= 1,918 => WEAKENED but alive.
+  CL4 deviation tail guard: off-locus >=15 <= 42,177 (1.5x _S10A's 28,118); report >=30/>=45/>=90 too.
+  ALSO REPORTED, because CTLPLUS itself compared two different caps and absolute counts can mislead when
+  the triangle count moves: back-facing PER MILLION FACETS (_S9A 5,147/M, _S10A 949/M). The BAR is the
+  ABSOLUTE count, matching SA3 and CTLPLUS; the density is context.
+
+── PRECONDITIONS AND COST ──
+  PB1 determined FOLDS = 0.
+  PB2 determined BLADES <= 4 — the seed's own born-over-cap count (S10A: 4 born, 2 survived into the STL).
+  PB3 worst child AR the guard ever ADMITTED <= 50.
+  PB4 seed identity: the six seed statistics reproduce _S10A's exactly (see "ONE VARIABLE" above).
+  PB5 seam-crack edges RECORDED PER ARM. The 3-crack defect is known and OPEN; it is recorded, not fixed
+      mid-experiment, because changing the seed builder would break PB4 and void the one-variable A/B.
+  PB6 COST: live tris <= 2.5M (a halving of a chord-sag criterion is ~2x triangles; 2.5M is that plus
+      headroom, and S10A left 6.06M allocations unspent). Wall <= 2,400 s. A MAXSECS stop at 5,400 s
+      prints a TIME-CAPPED partial and is a TRAJECTORY, not a verdict.
+  PB7 H1 GUARD: witnessed < 1.5x _S10A's 422.995 um = 634.5 um. H1 coverage % quoted with every H1 number.
+
+── VERDICT ROWS, evaluated IN ORDER, first match wins, disjoint by construction ──
+  1 **REMEDY REFUTED**  H2 witnessed >= 25.60 um (i.e. it does not even clear the S10A regression line).
+    Tightening does not close the regression; the H2 defect is not budget-limited on an aligned substrate
+    and the ranking-function blindness is confirmed as the cause. A result, and the one my prediction
+    leans toward.
+  2 **REGRESSION**      back-facing > 1,918 (CL2) OR PB1/PB2/PB3/PB4 fails OR H1 witnessed >= 634.5 um.
+  3 **WIN**             H2 <= 20.48 um AND H2 fraction <= 0.00912% AND back-facing <= 1,323.
+  4 **TRADE**           everything else — both numbers in the SAME row of the SAME table.
+
+### *** S10B RESULT — ROW 1, REMEDY REFUTED. AND HB3 FIRED IN THE CONFIRMING DIRECTION SO HARD THAT THE
+### H2 ARGMAX IS BYTE-IDENTICAL AFTER 1.63x THE TRIANGLES. ***
+
+_S10B (aligned seed + PF_CB_ACCEPT 0.0035 -> 0.00175) vs _S10A recorded, one variable, same instruments.
+
+**PB4 FIRST, BECAUSE EVERYTHING ELSE DEPENDS ON IT: THE SEED IS BIT-IDENTICAL.** All six registered seed
+statistics reproduce exactly — 82,463 tris / 6,369 constraints / 863 conditioned / 4 over cap / worst AR
+88.79 / worst parametric AR 98.6 — and `alignedSeedCrossings` is 963 of 123,951 on both arms. Accept did
+not leak into the seed. **The one-variable proof stands and the A/B is clean.**
+
+| | _S10A | _S10B (accept halved) | |
+|---|---|---|---|
+| **H2 witnessed** | 37.899 um | **37.899 um** | **IDENTICAL** |
+| **H2 argmax** | th 5.637379, z 44.16992 | **th 5.637379, z 44.16992** | **BYTE-IDENTICAL** (brute-force re-checked 37.899 both) |
+| H2 samples over tol | 4,969/40.0M = 0.01242% | 4,083/40.0M = **0.01021%** | x0.82 — the BULK fell, the MAX did not move |
+| **H1 witnessed** | 422.995 um | **311.371 um** | **x0.736** |
+| **H1 certified bound** | 568.463 um | **346.862 um** | **x0.610** |
+| H1 facets over tol | 661/40,000 = 1.65% | 627/40,000 = **1.57%** | coverage 40,000/1,642,566, stride 1,015,163, INCOMPLETE |
+| **back-facing** | 959 | **1,887** | **x1.97** (per million: 949 -> 1,149, x1.21) |
+| feature-spanning | 4,075 | 9,527 | x2.34 |
+| off-locus >=15 / >=30 / >=45 / >=90 | 28,118 / 21,402 / 17,766 / 5,034 | 47,564 / 39,487 / 34,896 / 11,414 | x1.69 / x1.85 / x1.96 / x2.27 |
+| parametric AR p99 / MAX | 106.7 / 125,887 | 155.9 / **5,492,492** | tail x43.6 WORSE |
+| determined blades / folds | 2 / 0 | **2 / 0** | PB2, PB1 hold |
+| worst admitted child AR | 50.00 | 50.00 | PB3 holds |
+| unresolved / worst | 5,576 / 47.245 um | **16,403** / **47.245 um** | count x2.94, worst **PINNED** |
+| seam-crack edges | 3 | **3** | PB5 — unchanged, and independent of accept |
+| triangles / wall | 1,010,503 / 758 s | 1,642,566 / 1,054 s | x1.63 / x1.39 |
+| refused on aspect | 596,693 | 1,683,365 | x2.82 |
+
+SCORING, first match wins, against the rows as REGISTERED:
+  **ROW 1 FIRES — REMEDY REFUTED.** H2 witnessed 37.899 um >= the registered 25.60 um line. Tightening the
+  accept does NOT close the S10A H2 regression. Rows 2-4 are unreachable and are not evaluated.
+  HB1 **NO** (37.899 > 20.48). HB2 **NO** (0.01021% > 0.00912%, though the fraction did FALL x0.82).
+  **HB3 FIRED IN THE CONFIRMING DIRECTION, AND MAXIMALLY.** The registered clause read: "IF THE ARGMAX
+  STAYS AT th~5.637 z~44.17 AND ITS VALUE IS WITHIN +/-20% OF 37.899 um, TIGHTENING HAS NOT TOUCHED IT —
+  and that is a positive result, not a null one." It did not land within 20%. **It is IDENTICAL, to the
+  digit, at the identical (th,z), after 632,063 extra triangles and 1.09M extra aspect refusals.** A
+  uniform accept tightening bought EXACTLY ZERO movement at that site.
+  **MY REGISTERED PREDICTION WAS WRONG, in the informative direction.** I predicted "H2 falls but does not
+  clear HB1 — 20-32 um with the argmax still in the z 40-50 band". The LOCATION was right; the VALUE did
+  not fall at all. I expected partial credit from the extra budget and got none.
+
+>> **WHAT THIS PROVES, AND IT IS THE CLEANEST DEMONSTRATION OF THE 2026-07-28 DIAGNOSIS THIS CAMPAIGN HAS
+>> PRODUCED.** The handoff's §0 says the defect is the RANKING FUNCTION: "sagOfN measures distance to a
+>> triangle's INFINITE PLANE... That quantity is small for exactly the facet that spans a feature. The
+>> driver cannot see what it is failing to refine." Until now that was inferred from A/Bs. Here it is
+>> exhibited directly: the accept threshold — the ONE knob that controls how hard the driver works — was
+>> halved, the driver responded with 63% more triangles and 182% more refusals, the heap DRAINED again,
+>> and the worst surface-to-mesh error did not move by one part in 10^5, at a locus the driver's own plane
+>> ruler scores as already acceptable. **The site is not under-refined because the budget ran out. It is
+>> under-refined because the ruler cannot see it.** No accept value fixes that; only a different ranking
+>> quantity or a certificate-driven feedback loop does — which is precisely what PHASE 2 is
+>> (`PF_CB_TIGHTEN`, the H2-driven tightening field, already built and demonstrated). **THE NEXT ARM IS
+>> ALIGNED SEED + PHASE 2, NOT ALIGNED SEED + A SMALLER ACCEPT.** Not run, not claimed.
+>> AND THE COROLLARY THAT MATTERS FOR COST: the H2 over-tol FRACTION fell x0.82 while the MAX stood still.
+>> Tightening bought real bulk coverage and zero tail. That is the same shape as every other uniform
+>> intervention in this log.
+
+**H1 IS THE OPPOSITE STORY, AND IT IS A REAL GAIN: witnessed 422.995 -> 311.371 um (x0.736), certified
+bound 568.463 -> 346.862 um (x0.610).** H1 measures mesh -> surface, i.e. facets sitting off the surface,
+and those ARE ruler-visible — the plane ruler scores a facet that bulges off a crest, so tightening
+reaches them. So the two directions separate cleanly under the same intervention: **tightening fixes what
+the ruler can see (H1, x0.74) and does nothing at all for what it cannot (H2 max, x1.000).** That is the
+ranking-function diagnosis stated as an experiment rather than as an argument.
+
+── QUESTION B: THE CTLPLUS LAW TEST — **CL3, WEAKENED BUT ALIVE, BY 31 FACETS** ──
+  back-facing 959 -> **1,887**, x1.97, against CL2's >1,918 line. Thirty-one facets from "the law
+  survives". CL1 (<=1,323, the law breaks) missed; CL3 fires.
+  **MY REGISTERED PREDICTION WAS WRONG.** I predicted the law would BREAK on an aligned substrate, from
+  the near-proportionality of class to crossing-edge population. It did not break: extra refinement still
+  feeds the class, at very nearly 1:1 with the triangle count (tris x1.63, class x1.97, density x1.21).
+  CL4 **BREACHED**: off-locus >=15 tail 47,564 > the 42,177 guard (x1.69).
+  CONTEXT, as registered: per-million density 949 -> 1,149 (x1.21). So the class does NOT merely track
+  triangle count — it grows slightly faster than the mesh does. On the GRID substrate CTLPLUS measured
+  211 -> 294 (x1.39) for a x1.17 cap increase, i.e. density x1.19. **The two substrates give the SAME
+  density slope (x1.21 vs x1.19) — the law is substrate-INDEPENDENT.** Alignment moved the class down by
+  a factor of 6.9 in LEVEL and did not change its SLOPE at all.
+
+── THE DISK-LOCALISATION ANSWER (the counter-mechanism I registered) ──
+  Measured with a classifier that reproduces the judge's own gate EXACTLY — validated before use: it
+  returns GATED back-facing 959 on _S10A and 1,887 on _S10B, matching the judge digit for digit.
+  | | _S10A | _S10B |
+  |---|---|---|
+  | back-facing INSIDE a junction disk | **589 of 959 = 61.4%** | **1,135 of 1,887 = 60.1%** |
+  | disks containing at least one | 68 of 235 | 77 of 235 |
+  | disk area share of the surface | 4.039% | 4.039% |
+  **THE ENRICHMENT IS ~15x AND IT IS STABLE: 60-61% of the entire visible class lives in 4.039% of the
+  surface, on both arms.** The 235 traced junction disks are, quantitatively, where the class is.
+  **BUT MY REGISTERED COUNTER-MECHANISM IS ALSO WRONG:** the growth did NOT localise to the disks. In-disk
+  went 589 -> 1,135 (x1.93) and out-of-disk 370 -> 752 (x2.03) — the out-of-disk population grew very
+  slightly FASTER. Refinement feeds the class uniformly across the surface; it does not preferentially
+  pile into the junctions. So the disks are where the class IS, not where it GROWS.
+  z-histogram of the gated population (5 mm bins), _S10A -> _S10B: z 60-65 173 -> 346 | z 80-85 189 -> 411
+  | z 95-100 160 -> 267 | z 110-115 148 -> 270 | z 75-80 51 -> 89 | z 115-120 39 -> 103 | z 25-30 24 -> 42.
+  The four peaks coincide with the disk-count peaks (z 60-65: 38 disks, z 80-85: 17, z 110-115: 15,
+  z 95-100: 9) — EXCEPT z 25-30, which carries 35 disks and only 42 back-facing facets. Disk COUNT is not
+  proportional to artifact count; the P5 router should weight by measured artifact load, not by disk count.
+
+── PRECONDITIONS ──
+  PB1 folds 0 HOLDS. PB2 determined blades 2 <= 4 HOLDS (the same 2 seed-born facets as _S10A; the seed is
+  identical, so this is the same pair). PB3 worst admitted child 50.00 HOLDS. PB4 seed identity HOLDS
+  (six-for-six). PB5 seam-cracks 3 on both arms — RECORDED, still OPEN, and now shown to be independent of
+  accept as well as of the trace. PB6 tris 1,642,566 <= 2.5M and wall 1,054 s <= 2,400 s, both HOLD.
+  PB7 H1 witnessed 311.371 um < 634.5 um HOLDS, with coverage 40,000 of 1,642,566 (INCOMPLETE).
+  ALSO: unresolved 5,576 -> 16,403 (x2.94) with the worst **PINNED at 47.245 um on the same stranded
+  site** — tightening strands three times as many facets and does not improve the worst one, which is the
+  S1-cap stranding mechanism P5/P7 already priced.
+
+### OPS TRAP 11 — **A COMPLETED BACKGROUND TASK DOES NOT WAKE AN IDLE AGENT SESSION.** (2026-07-30, S10)
+Twice in one session the pipeline stalled with every artifact already on disk and the agent silent. Both
+times the operator or the review session had to poke it. The cause is the same both times and it is NOT
+handoff trap #4 ("long jobs must be durable at launch") — the jobs WERE durable and they DID complete.
+
+MEASURED, from the second stall: the mesher+audit chain wrote its last line at **20:30:30**; the armed
+waiter (`until grep -q "S10B DONE" ...; done`) matched and exited **0 at 20:31:54**, one minute later,
+exactly as designed. Its completion notification was then delivered to the session at **20:50**, attached
+to the next tool call the session happened to make. Nineteen minutes of nothing, with the answer sitting
+in a file the whole time.
+
+ROOT CAUSE: **a background task finishing does not itself re-invoke the session. The notification is
+QUEUED and delivered on the session's next invocation.** So "I'll end my turn and resume when the waiter
+fires" is a deadlock by construction — the waiter fires into a queue, nothing reads the queue, and only an
+external message (an operator, a reviewer) restarts the loop. The first stall (the layer-2 chain, 18:05
+-> 18:53) has the same shape, with an extra wrinkle: that chain had ALSO thrown on its mistraced arm, so
+the log's failure sentinel was there to be read and nobody read it.
+
+THE FIX, and it is one line of habit:
+  * **For a result you must act on, run the long command in the FOREGROUND of your own tool call** with a
+    large `timeout`. A single long-running command is allowed; only CHAINED SLEEPS are refused by the
+    harness. The call returns the moment the work finishes and the turn continues with the numbers in
+    hand. This is what the earlier S10 identity/gate steps did, and those never stalled.
+  * Use background + waiter ONLY for work whose result you do not need in order to continue.
+  * If you do background something critical, do not end the turn on it — keep the session alive.
+  * Any chain that can throw must write a FAILURE SENTINEL its watcher greps for (the S10B script does:
+    `*** S10B MESHER PRODUCED NO REPORT ***`), because a chain that dies silently and a chain that is
+    still running look identical from outside.
+COST OF NOT KNOWING THIS: ~19 min the first time, ~19 min the second, plus two operator interventions.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
