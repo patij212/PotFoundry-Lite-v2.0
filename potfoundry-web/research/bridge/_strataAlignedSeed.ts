@@ -88,6 +88,8 @@ export interface AlignedSeedOpts {
   shapeAR: number;
   /** weld radius for coincident chain points, mm. */
   weldMm: number;
+  /** chart-area threshold below which a cdt2d output triangle is dropped as a collinear hull sliver. */
+  chartAreaEpsMm2?: number;
   /**
    * PSLG conditioning tolerance, mm: a vertex within this of a constraint's INTERIOR splits it.
    *
@@ -156,6 +158,10 @@ export interface AlignedSeed {
     degenerateDropped: number;
     /** chain vertices omitted because a previous repair round banned them. */
     banApplied: number;
+    /** constraint segments added for the four domain sides (seam columns + the two rims). */
+    boundaryConstraints: number;
+    /** degenerate triangles KEPT because dropping them would have opened a non-rim boundary edge. */
+    dropRefused: number;
     /** SEED EDGES THAT STILL CROSS A LOCUS — the whole point of the lever, measured. */
     edgesCrossingLocus: number;
     edgesTested: number;
@@ -530,6 +536,16 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   }
 
   // 3b. domain boundary. The two seam columns MUST carry an identical z set.
+  //
+  // AND THEY MUST BE **CONSTRAINED**, not merely populated. MEASURED (S10A/S10B, every aligned arm):
+  // `seam-crack edges 3`, boundary loops 3, Euler V-E+F = -1 — one triangular hole, and the seed carries
+  // it BEFORE a single refinement split (seed Euler -1 with 513 boundary edges against 510 in the two rim
+  // loops). The offending edge runs from (theta=0, z=119.1429) to (theta=2pi, z=119.5882): a CHART-
+  // SPANNING edge, 282.74 mm across a 282.74 mm chart. cdt2d triangulates a FLAT rectangle and has no way
+  // to know its left and right edges are the same meridian, so nothing stopped it from connecting them;
+  // the resulting triangle is near-collinear in the chart, gets dropped as degenerate, and its edges lose
+  // their second facet. Constraining the four domain sides removes the freedom that creates it — the same
+  // remedy the 2026-07-13 cdt2d note reaches for, and the same idiom ConstrainedTriangulator uses.
   // The seam column carries the chain endpoints that reached it PLUS the background lattice rows. A
   // lattice row landing within the minimum separation of a chain endpoint makes a collinear near-zero-area
   // triple ON the seam — measured, an AR-177 facet whose three vertices all sat at theta=2pi. The chain
@@ -542,12 +558,30 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     seamZ.add(z);
   }
   const seamZs = [...seamZ].filter((z) => z >= 0 && z <= H).sort((a, b) => a - b);
-  for (const z of seamZs) { addPt(0, z); addPt(TWO_PI, z); }
+  const col0: number[] = []; const col1: number[] = [];
+  for (const z of seamZs) { col0.push(addPt(0, z)); col1.push(addPt(TWO_PI, z)); }
+  const rim0: number[] = []; const rimH: number[] = [];
   for (let i = 0; i <= o.gu; i += 1) {
     const th = (TWO_PI * i) / o.gu;
     if (!nearPt(th, 0, clearMm * 0.5) && !nearSeg(th, 0, clearMm * 0.5)) addPt(th, 0);
     if (!nearPt(th, H, clearMm * 0.5) && !nearSeg(th, H, clearMm * 0.5)) addPt(th, H);
   }
+  // Every point that ended up ON a domain side becomes part of that side's constraint chain, in order.
+  // Built AFTER all boundary points exist so nothing is left out of the chain.
+  const sideEps = 1e-9;
+  const collectSide = (pick: (i: number) => boolean, sortKey: (i: number) => number): number[] => {
+    const ids: number[] = [];
+    for (let i = 0; i < pth.length; i += 1) if (pick(i)) ids.push(i);
+    ids.sort((a, b) => sortKey(a) - sortKey(b));
+    return ids;
+  };
+  void col0; void col1; void rim0; void rimH;
+  const boundaryChains: number[][] = [
+    collectSide((i) => pth[i] <= sideEps, (i) => pz[i]),
+    collectSide((i) => pth[i] >= TWO_PI - sideEps, (i) => pz[i]),
+    collectSide((i) => pz[i] <= sideEps, (i) => pth[i]),
+    collectSide((i) => pz[i] >= H - sideEps, (i) => pth[i]),
+  ];
 
   const freeFrom = px.length;   // every point added from here on is a FREE Steiner point
   const freeKey = (th: number, z: number): string => `f:${Math.round(rRef * th * 1e6)}:${Math.round(z * 1e6)}`;
@@ -589,6 +623,17 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       const th = (TWO_PI * i) / o.gu;
       if (nearPt(th, z, clearMm) || nearSeg(th, z, clearMm)) { bgDropped += 1; continue; }
       addFree(th, z); bgKept += 1;
+    }
+  }
+
+  // 3f. the four domain sides as CONSTRAINT CHAINS (see 3b). Each is one segment between consecutive
+  // points on that side, so nothing has to be "recovered" — the same pre-split discipline the loci use.
+  let boundaryConstraints = 0;
+  for (const chain of boundaryChains) {
+    for (let i = 0; i + 1 < chain.length; i += 1) {
+      if (chain[i] === chain[i + 1]) continue;
+      constraints.push([chain[i], chain[i + 1]]);
+      boundaryConstraints += 1;
     }
   }
 
@@ -669,7 +714,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   const ek = (a: number, b: number): number => (a < b ? a * 33554432 + b : b * 33554432 + a);
   // Zero-chart-area output triangles are dropped below; an edge that exists ONLY inside one of them is not
   // in the mesh, so recovery is checked against the SURVIVING triangles, not against cdt2d's raw output.
-  const CHART_AREA_EPS0 = 1e-7;
+  const CHART_AREA_EPS0 = o.chartAreaEpsMm2 ?? 1e-7;
   const kept = raw.filter((t) => Math.abs((px[t[1]] - px[t[0]]) * (py[t[2]] - py[t[0]]) - (py[t[1]] - py[t[0]]) * (px[t[2]] - px[t[0]])) / 2 >= CHART_AREA_EPS0);
   const edgeSet = new Set<number>();
   for (const t of kept) { edgeSet.add(ek(t[0], t[1])); edgeSet.add(ek(t[1], t[2])); edgeSet.add(ek(t[2], t[0])); }
@@ -711,11 +756,41 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // them along z=0 and z=H, several with a theta=2pi vertex whose 3-D lift coincides with theta=0, giving
   // a 0.000 um edge and AR 2.8e9. They cover no area, so dropping them cannot open a hole; leaving them in
   // would freeze an unrepairable blade into the STL and poison the blade gate.
-  const CHART_AREA_EPS = 1e-7;
+  const CHART_AREA_EPS = o.chartAreaEpsMm2 ?? 1e-7;
+  // ── THE DROP IS TOPOLOGICALLY GUARDED. ──────────────────────────────────────────────────────────
+  // Dropping a zero-area triangle is safe ONLY where its edges are still carried by a neighbour, or lie
+  // along a domain side (where a boundary edge is CORRECT — a ring has two rim loops). MEASURED: the
+  // unguarded drop opened exactly one triangular hole, and it is the whole of the `seam-crack edges 3 /
+  // Euler -1` defect that every aligned arm has carried. With nothing dropped the seed reads boundary 0 /
+  // Euler 2 (the rim slivers falsely close the rims); with the drop guarded it reads two rim loops and
+  // Euler 0, which is what an annulus is.
+  const dropEK = (a: number, b: number): number => (a < b ? a * 33554432 + b : b * 33554432 + a);
+  const edgeUse = new Map<number, number>();
+  for (const t of raw) for (const [u, v] of [[t[0], t[1]], [t[1], t[2]], [t[2], t[0]]]) {
+    const k = dropEK(u, v); edgeUse.set(k, (edgeUse.get(k) ?? 0) + 1);
+  }
+  // ONLY z=0 and z=H are real rims. The theta=0 and theta=2pi columns are NOT boundary — they are the
+  // SAME meridian, welded into interior edges by `addV`, so a seam-column edge orphaned in the chart is an
+  // interior hole in the mesh. Exempting them (the first draft did) is exactly why the guard reported
+  // `dropRefused 0` while the crack survived: the pairing that matters is invisible in the flat chart.
+  const onSide = (i: number, j: number): boolean => (
+    (pz[i] <= 1e-9 && pz[j] <= 1e-9) || (pz[i] >= H - 1e-9 && pz[j] >= H - 1e-9)
+  );
+  let dropRefused = 0;
   for (const t of raw) {
     let [a, b, c] = t;
     const chA = Math.abs((px[b] - px[a]) * (py[c] - py[a]) - (py[b] - py[a]) * (px[c] - px[a])) / 2;
-    if (chA < CHART_AREA_EPS) { degenerateDropped += 1; continue; }
+    if (chA < CHART_AREA_EPS) {
+      let safe = true;
+      for (const [u, v] of [[a, b], [b, c], [c, a]]) {
+        if ((edgeUse.get(dropEK(u, v)) ?? 0) - 1 === 1 && !onSide(u, v)) { safe = false; break; }
+      }
+      if (safe) {
+        for (const [u, v] of [[a, b], [b, c], [c, a]]) edgeUse.set(dropEK(u, v), (edgeUse.get(dropEK(u, v)) ?? 1) - 1);
+        degenerateDropped += 1; continue;
+      }
+      dropRefused += 1;
+    }
     const s = signedAreaParam(pth[a], pz[a], pth[b], pz[b], pth[c], pz[c]);
     if (s === 0) { negArea += 1; continue; }
     if (s < 0) { const tmp = b; b = c; c = tmp; }
@@ -830,7 +905,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       lociUsed, chains: chains2.length, chainPts, crossingsSplit, seamZ: seamZs.length,
       bgKept, bgDropped, offsetPts, points: pth.length, tris: tris.length,
       constraints: constraints.length, constraintsRecovered: recovered, constraintsConditioned,
-      decimated, boundarySnapped, degenerateDropped, banApplied,
+      decimated, boundarySnapped, degenerateDropped, banApplied, boundaryConstraints, dropRefused,
       edgesCrossingLocus, edgesTested,
       overCap, worstAR, worstParAR, negArea,
       alongMm: alongBase, acrossMm: acrossBase,

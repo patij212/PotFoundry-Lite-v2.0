@@ -1695,12 +1695,140 @@ THE FIX, and it is one line of habit:
     large `timeout`. A single long-running command is allowed; only CHAINED SLEEPS are refused by the
     harness. The call returns the moment the work finishes and the turn continues with the numbers in
     hand. This is what the earlier S10 identity/gate steps did, and those never stalled.
+  * **CORRECTION MEASURED IN PHASE A: the foreground timeout caps at 600 s, which is SHORTER THAN THE
+    MESHER (758-1,054 s) AND THE DEEP AUDIT (~965 s).** So the long runs CANNOT be pure foreground. The
+    pattern that actually works, and the one Phase A used end to end: background the job with a failure
+    sentinel, then issue REPEATED FOREGROUND `until <sentinel>; do sleep 45; done` waits, each with a
+    600 s timeout. Each wait either returns (done) or is moved to the background at 600 s, at which point
+    you IMMEDIATELY issue the next one. The session never goes idle, so the notification queue is never
+    the thing you are depending on. Do not end the turn between waits.
   * Use background + waiter ONLY for work whose result you do not need in order to continue.
   * If you do background something critical, do not end the turn on it — keep the session alive.
   * Any chain that can throw must write a FAILURE SENTINEL its watcher greps for (the S10B script does:
     `*** S10B MESHER PRODUCED NO REPORT ***`), because a chain that dies silently and a chain that is
     still running look identical from outside.
 COST OF NOT KNOWING THIS: ~19 min the first time, ~19 min the second, plus two operator interventions.
+
+### S11 (PHASE A) PRE-REGISTRATION — THE SEAM-CRACK FIX. Registered BEFORE the verification run.
+Operator drive, phase A. The open bug from the S10 close-out: `seam-crack edges 3`, boundary loops 3,
+Euler V-E+F = -1 on EVERY aligned arm — _S10A, _S10B, _S10L2OK and _S10L2BAD alike, i.e. independent of
+both the trace and the accept.
+
+**DIAGNOSIS FIRST, BECAUSE THE FIRST TWO CANDIDATES WERE BOTH WRONG AND BOTH WERE CHEAP TO KILL.**
+  1 Located the defect: one 3-edge interior boundary loop at z 119.14-119.59 on the theta=0 meridian
+    (`findCrack`), i.e. ONE TRIANGULAR HOLE — and Euler -1 says exactly one.
+  2 REFUTED "the two seam columns carry different z-sets": measured 144 points on each column with a
+    symmetric difference of ZERO. Not a column mismatch.
+  3 Established the hole is **BORN IN THE SEED**, before a single refinement split: the seed alone reads
+    Euler -1 with 513 boundary edges against 510 in its two rim loops.
+  4 REFUTED "cdt2d spans the chart because the domain sides are unconstrained": constraining all four
+    sides changed the triangle count by ZERO — those edges were already hull/Delaunay edges. (Kept anyway
+    as hygiene: 796 boundary constraint segments, all recovered.)
+  5 FOUND IT by ablation: with the chart-degenerate drop DISABLED the seed reads boundary 0 / Euler 2 —
+    the zero-area rim slivers falsely CLOSE the rims — and with it enabled, Euler -1. **The drop is the
+    cause.** It is still the right thing to do (those slivers lift to AR 2.8e9 blades and a ring must have
+    two open rims), but it was unguarded.
+  6 THE ACTUAL BUG, and it is a one-line conceptual error: the first guard exempted any edge lying on a
+    "domain side", INCLUDING the theta=0 and theta=2pi columns. **The seam columns are not boundary.**
+    They are the SAME meridian, welded into INTERIOR edges by `addV` (canonTheta(2pi) === 0), so an
+    orphaned seam-column edge is an interior hole. That pairing is invisible in the flat chart, which is
+    why the guard reported `dropRefused 0` while the crack survived. Only z=0 and z=H are real rims.
+
+THE FIX (research/bridge/_strataAlignedSeed.ts, seed builder only — the driver, the auditor,
+_facetTruthLib, _shapeGuard and every judge file are BYTE-UNTOUCHED):
+  * the chart-degenerate drop is now TOPOLOGICALLY GUARDED — a triangle is dropped only if none of its
+    edges would be left with exactly one incident facet unless that edge lies on the z=0 or z=H rim;
+  * the four domain sides are emitted as constraint chains (hygiene; measured no-op on the triangulation);
+  * `dropRefused` is counted and reported.
+MEASURED ON THE SEED, before any production run: non-manifold 0, boundary 510, **loops 2, Euler 0** — an
+annulus, which is what a ring is. Previously loops 2 + 3 dangling edges, Euler -1.
+
+**SEED RE-BASELINE (the pre-registration allows this; recording old -> new so PB4-style identity checks
+have a new anchor).** The six seed statistics move because the point set moved by one point:
+  points 41,631 -> **41,630** | tris 82,463 -> **82,462** | constraints 6,369 -> **6,806** (+796 domain
+  sides, minus dedupe) | conditioned 863 -> **864** | over cap **4 -> 4** (unchanged) | worst AR
+  **88.79 -> 88.79** (unchanged) | worst parametric AR **98.6 -> 98.6** (unchanged) | degenerate dropped
+  508 -> 507 | repair rounds 1, banned 1 -> 2 | `alignedSeedCrossings` to be re-measured by the run.
+The three SHAPE statistics are unchanged, which is the point: this is a topology fix, not a shape change.
+
+PREDICTIONS, decided before the verification run:
+  SC1 **IDENTITY (STOP CONDITION).** Flag-OFF at the W1 config reproduces md5
+      8a59fb37a9115600b13262254380ccb0 byte-exact and the hard gate reads 12/12 with every documented value
+      exact. The seed builder is only reachable under PF_CB_ALIGNED_SEED=1, so this is identity by
+      construction — and this campaign has found "by construction" worth checking three times.
+  SC2 **THE HEADLINE: seam-crack edges 0, boundary loops 2, Euler V-E+F = 0** on a rebuilt aligned
+      production arm (`_S11A`, the _S10A command verbatim). Any non-zero crack count means the guard is
+      incomplete and Phase A is not done.
+  SC3 CENSUS MOVEMENT BEYOND THE SEAM NEIGHBOURHOOD ~= 0. The fix keeps ONE extra triangle and moves one
+      point, so the mesh must be materially the same. Bars vs _S10A: back-facing within +/-5% of 959
+      (i.e. 911-1,007); determined blades 2; determined folds 0; parametric AR p99 within +/-10% of 106.7.
+      A larger move means the fix changed something it had no business changing.
+  SC4 FIDELITY NEUTRALITY: H1 witnessed within +/-10% of 422.995 um and H2 witnessed within +/-10% of
+      37.899 um. Reported with H1 coverage, as always. This is a topology fix; it is not expected to buy
+      fidelity and it must not cost any.
+  SC5 PRECONDITIONS: worst admitted child AR <= 50; constraint recovery 100% (asserted in code);
+      initial-grid over-cap 4 (unchanged from the re-baseline).
+  SC6 COST: wall within +/-15% of _S10A's 758 s; tris within +/-5% of 1,010,503.
+  VERDICT: Phase A is DONE iff SC1 and SC2 hold and SC3/SC4 stay inside their bars. Anything else is
+  reported as a partial fix and Phase B does not start on it.
+
+### *** S11 (PHASE A) RESULT — THE SEAM CRACK IS CLOSED. Euler 0, cracks 0, and the census is unchanged
+### to the digit on every axis that matters. ***
+_S11A = the _S10A command verbatim on the fixed seed builder. Sequential, otherwise unloaded.
+
+  SC1 **HOLDS.** Flag-OFF at the W1 config -> md5 8a59fb37a9115600b13262254380ccb0, `cmp` byte-identical
+      to _S8ID/W1 (197.9 s). Hard gate **12/12**, every documented value exact (V1 2.249981, V3 thin
+      12.041, V7c 12.041 / 39.767 / 142.668).
+  SC2 **HOLDS — THE HEADLINE.** `seam-crack edges 0 OK`, boundary edges 1,167 in **loops 2**, and the
+      auditor's INDEPENDENT topology block reads **Euler V-E+F = 0** (welded verts 505,801, edges
+      1,516,236, non-manifold 0, orientation-mismatch 0). Was: cracks 3, loops 3, Euler -1.
+
+| | _S10A (cracked) | _S11A (fixed) | |
+|---|---|---|---|
+| **seam-crack edges / loops / Euler** | **3 / 3 / -1** | **0 / 2 / 0** | **FIXED** |
+| back-facing (footprint gate) | 959 | **959** | identical |
+| feature-spanning | 4,075 | 4,075 | identical |
+| off-locus >=15 / >=30 / >=45 / >=90 | 28,118 / 21,402 / 17,766 / 5,034 | 28,118 / 21,402 / 17,766 / 5,034 | **identical** |
+| parametric AR p99 / MAX | 106.734 / 125,886.87 | 106.769 / 125,886.87 | +0.03% / identical |
+| 3-D AR p99 / MAX | 43.176 / 85.129 | 43.177 / 85.129 | identical |
+| determined blades / folds | 2 / 0 | 2 / 0 | identical |
+| H2 witnessed / samples over | 37.899 um / 0.01242% | **37.899 um / 0.01242%** | **identical** |
+| H1 witnessed / certified | 422.995 / 568.463 um | 344.205 / 354.199 um | see the caveat below |
+| H1 facets over tol | 1.65% | 1.63% | coverage 40,000/1,010,435, INCOMPLETE |
+| unresolved / worst | 5,576 / 47.245 um | 5,576 / 47.245 um | identical |
+| triangles / wall | 1,010,503 / 758 s | 1,010,435 / 818 s | -0.007% / +7.9% |
+| worst admitted child AR | 50.00 | 50.00 | SC5 |
+| constraint recovery | 6,369/6,369 | 6,806/6,806 | 100% both |
+
+  SC3 **HOLDS, and more tightly than its bar asked.** The bar allowed back-facing 911-1,007 and parametric
+      AR p99 within +/-10%; the measured movement is ZERO on back-facing, ZERO on all four deviation-tail
+      counts, ZERO on feature-spanning, ZERO on unresolved, and +0.03% on parametric p99. A one-point,
+      one-triangle change to the seed moved nothing else — which is exactly what a topology fix should do.
+  SC4 **H2 EXACTLY NEUTRAL; the H1 clause breached, and the breach is a SAMPLING artefact, not a gain.**
+      H2 witnessed and its over-tol fraction are IDENTICAL to _S10A digit for digit. H1 witnessed reads
+      344.205 um against 422.995 (-18.6%, outside the +/-10% bar) — **and this campaign's trap #7 says
+      quote H1 coverage with every H1 number, so: both arms audit 40,000 facets of ~1.01M, INCOMPLETE, at
+      strides 624,525 (_S10A) and 624,483 (_S11A).** The triangle count changed by 68, so the stride
+      changed, so **the two arms audited DIFFERENT 3.96% subsets of the mesh.** An H1 max taken over a
+      low-discrepancy sample is not comparable across two different samples, and no mechanism in a
+      topology fix that touched one point and one triangle can move the worst facet in the mesh by 79 um.
+      **NO FIDELITY GAIN IS CLAIMED HERE.** The honest reading is that H1's sampled max has ~20% spread
+      between subsets at this coverage, which is itself worth knowing and is a caution on every capped H1
+      comparison in this log — including S10B's x0.736, which now needs the same caveat attached.
+  SC5 **HOLDS** — worst admitted child AR 50.00; constraint recovery 6,806 of 6,806 = 100% (asserted in
+      code); initial-grid over-cap 4, worst AR 88.79, worst parametric AR 98.6, all matching the
+      re-baseline exactly.
+  SC6 **HOLDS** — 1,010,435 tris (-0.007%, bar +/-5%) and 818 s (+7.9%, bar +/-15%). The wall cost is the
+      seed builder's extra work (796 domain-side constraints + the topological drop guard), paid once.
+
+>> **PHASE A VERDICT: DONE.** SC1 and SC2 hold, SC3/SC5/SC6 hold inside their bars, SC4's H2 clause is
+>> exact and its H1 clause is a measurement-coverage artefact with no claim attached. The aligned seed now
+>> produces a watertight annulus. `_S11A` replaces `_S10A` as the aligned substrate for Phase B.
+>> THE ONE THING THAT CHANGED AND WHY IT IS SMALL: the fix keeps ONE extra degenerate triangle whose
+>> removal would have orphaned a seam-column edge. That is the entire repair. The bug was never in the
+>> seam z-sets (measured symmetric, 144/144, zero difference) nor in unconstrained domain sides (measured
+>> no-op) — it was that the degenerate-drop treated the theta=0/2pi columns as BOUNDARY when the weld
+>> makes them INTERIOR. Two wrong hypotheses, each killed by one measurement, before the right one.
 
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
