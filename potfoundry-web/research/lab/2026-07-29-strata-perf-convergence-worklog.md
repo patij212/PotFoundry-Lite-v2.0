@@ -1830,6 +1830,192 @@ _S11A = the _S10A command verbatim on the fixed seed builder. Sequential, otherw
 >> no-op) — it was that the degenerate-drop treated the theta=0/2pi columns as BOUNDARY when the weld
 >> makes them INTERIOR. Two wrong hypotheses, each killed by one measurement, before the right one.
 
+### S12 (PHASE B) PRE-REGISTRATION — ALIGNED SUBSTRATE + PHASE 2. Registered BEFORE iteration 1's field.
+Operator drive, phase B. The last named owner of the ranking-blind tail.
+
+THE QUESTION, and it is the sharpest one left in this campaign. The H2 argmax at **th 5.637379,
+z 44.16992 = 37.899 um** is now BYTE-IDENTICAL across THREE production arms — _S10A, _S10B (accept halved,
+x1.63 triangles) and _S11A (seam fixed). Halving the accept, the one knob that controls how hard the driver
+works, moved it by ZERO. The 2026-07-28 diagnosis says why: the plane ruler scores that facet as already
+acceptable, so no UNIFORM intervention can steer budget there. **Phase 2 is the only built instrument that
+steers by the CERTIFICATE instead of by the ruler** — it audits, emits the loci where H2 actually exceeded,
+and re-meshes with acceptTol tightened LOCALLY at those loci. If that does not move this site, nothing in
+the current architecture does, and the site belongs to P5 or to a curtain.
+
+**THREE STRUCTURAL FACTS ABOUT THE LOOP, DECLARED BEFORE RUNNING SO NO MID-LOOP NUMBER CAN TEMPT A MOVING
+BAR.**
+ 1 **`_phase2Loop.mjs` WILL EXIT `NOT-CONVERGED` AFTER ITERATION 1 ON ANY ALIGNED ARM, AND THAT IS ITS
+   CORRECT BEHAVIOUR.** Its `driverClean` gate is `unresolvedLeft === 0 && !capped && !timeCapped`, and
+   every aligned production arm strands **5,576** facets. That count is not an unfinished mesh: it is the
+   S1 aspect cap refusing splits at feature loci, measured on every arm since D52 (9,794 there), owned by
+   P5/P7, and pinned at worst 47.245 um across _S10A/_S10B/_S11A. Gating Phase 2 on it would make Phase 2
+   untestable on every production mesh this campaign has ever built.
+   => I therefore drive the iterations BY HAND from the loop's own components (the mesher with
+   `PF_CB_TIGHTEN`, then `_phase2Audit.test.ts` with `PF_FT_H2WORKERS=1`), **and I evaluate and REPORT all
+   five of the loop's exits at every iteration exactly as the loop would.** The NOT-CONVERGED exit fires at
+   iteration 1 and I record it as fired; continuing past it is a DECLARED DEVIATION with the reason above,
+   not a silent one.
+ 2 **ITERATION 1 IS `_S11A`, REUSED, NOT REBUILT.** The loop's iteration-1 mesh environment is exactly the
+   _S11A configuration (200x140, cap 8M, TOL 10 um, accept 3.5 um, rank plane, directed+snap, no field);
+   the driver is deterministic in (style, params, flags, loci file), so re-running it would reproduce
+   _S11A. Reusing it saves ~14 min and removes a needless source of drift.
+ 3 **THE EMITTING AUDIT IS SERIAL BY DESIGN AND TIME-CAPPED.** `PF_FT_H2WORKERS=1` because a pooled phase A
+   rebuilds `distToMesh` inside each worker where the caller-side recorder never runs — "the max and
+   overCount would look perfectly normal while three quarters of the loci silently went missing". Default
+   `PF_P2_SECS=900`, `PF_P2_BUDGET=1.5e8`. Phase-A coverage of the full band is what the field needs and
+   phase A cannot be truncated; a phase-B truncation is a resolving-power fact and travels in the report.
+
+**H1 SUBSET DISCIPLINE, per the caveat Phase A measured.** `PF_FT_H1MAX=40000` is FIXED for every Phase-B
+reading, and so is the stride base (the auditor's golden-ratio walk). **But identical facet subsets are
+IMPOSSIBLE across iterations, because the meshes genuinely differ** — the stride is a function of nTri, so
+a different mesh is a different 4%-ish sample. Phase A measured that spread at ~20% on the H1 MAX between
+two subsets of the SAME mesh size. Therefore, registered now:
+  * the **H1 over-tol FRACTION is the comparable Phase-B statistic** (a rate over a low-discrepancy sample
+    is stable where a max is not);
+  * the **H1 MAX is DIRECTIONAL ONLY** and is never used to fire a verdict row;
+  * coverage is quoted with every H1 number, always.
+
+COMMANDS. Iteration n>=2 mesh: the _S11A command verbatim **plus** `PF_CB_TIGHTEN=<iteration n-1 loci>`
+and `PF_CB_TAG_SUFFIX=_S12i<n>`. Emitting audit each iteration:
+`PF_P2_AUDIT=1 PF_P2_RUN=<arm run.json> PF_P2_OUT=research/exchange/_phase2/<tag>.loci.json
+PF_FT_H2WORKERS=1`, `-c research/bridge/_phase2Vitest.config.ts`. Final two-sided deep audit on the best
+mesh at Part-B depth (H1MAX=40000, H2BUDGET=40M, W=8, GUARD_AR=50) for the cross-arm table.
+
+YARDSTICKS. _S11A: back-facing 959 (949 per million), feature-span 4,075, off-locus >=15 28,118, parAR p99
+106.769 / MAX 125,886.87, H1 witnessed 344.205 um / fraction 1.63% at 40,000 of 1,010,435, H2 witnessed
+37.899 um / 0.01242%, unresolved 5,576 worst 47.245 um, tris 1,010,435, wall 818 s, blades 2 folds 0,
+cracks 0, disk-share of the class 60-61%. _S9A: H2 17.069 um / 0.00456%.
+
+PREDICTIONS AND BARS:
+  PB1 **THE DECISIVE CLAUSE (STOP CONDITION).** The th 5.637379 / z 44.16992 argmax must MOVE MATERIALLY:
+      either its value falls to **<= 30.32 um** (a >=20% fall from 37.899) OR the argmax relocates more
+      than **1.0 mm** from that (th,z) in the surface metric. **If NEITHER holds — the site reads within
+      +/-5% of 37.899 um at the same locus — that is the registered STOP CONDITION: HALT AND REPORT.**
+      It would mean the certificate-driven field cannot reach the last ranking-blind site, which retires
+      the last named owner of it and needs operator input.
+      MY PREDICTION, so it can be wrong: it MOVES. This site is by construction IN the emitted exceedance
+      set (it is the H2 argmax), so the field tightens exactly there. I expect a materially lower H2 max
+      with the argmax RELOCATING to a different locus.
+  PB2 H2 vs _S9A: witnessed <= **20.48 um**; samples over tol <= **0.00912%**.
+  PB3 CLASS GUARD, both bars registered as absolute numbers per the substrate-independent CTLPLUS slope
+      (density x~1.2 per refinement unit; Phase 2's own demo added only +1.8% triangles for a 1.56x H2
+      gain, so triangle growth should be small): **back-facing <= 1,500** absolute AND **<= 1,300 per
+      million facets**. Reported per iteration with the deviation tails (>=15/>=30/>=45/>=90).
+  PB4 **THE DISK EARLY-WARNING INSTRUMENT.** In/out-disk split of the gated back-facing population per
+      iteration, via the classifier validated against the judge (reproduces 959 and 1,887 exactly).
+      Phase 2 concentrates refinement at loci and the disks ARE the loci's crossings, so a rising in-disk
+      SHARE is the first sign the field is feeding the class. Reported, not gated — I have no principled
+      bar for it yet and inventing one now would be a bar fitted to a hope.
+  PB5 H1: over-tol FRACTION <= **3.26%** (2x _S11A's 1.63%), with coverage. MAX directional only.
+  PB6 PRECONDITIONS: determined folds 0; determined blades <= 2 (the seed-born pair); worst admitted child
+      AR <= 50; **seam-crack edges 0** (Phase A's fix must survive the field).
+  PB7 COST: per iteration live tris <= 2.5M and mesher wall <= 1,800 s; emitting audit <= 1,200 s; whole
+      phase <= 3 h. Outer iterations 2-3.
+  PB8 THE LOOP'S FIVE EXITS are evaluated and reported at EVERY iteration exactly as `_phase2Loop.mjs`
+      computes them — PASS / DEFERRED-TO-CURTAIN / NOT-CONVERGED / NON-MONOTONE / INFEASIBLE-AT-CAP —
+      including the NOT-CONVERGED that fires at iteration 1 on the unresolved count.
+  PB9 VERDICT ROWS, evaluated IN ORDER, first match wins, disjoint by construction:
+      1 **STOP — RANKING-BLIND SITE UNREACHABLE**  PB1 fails. Halt, report, do not iterate past it.
+      2 **REGRESSION**  back-facing > 1,500 OR > 1,300/M OR PB6 fails OR H1 fraction > 3.26%.
+      3 **WIN**  H2 witnessed <= 20.48 um AND fraction <= 0.00912% AND PB3 holds.
+      4 **TRADE**  everything else — both numbers in the SAME row of the SAME table.
+
+### *** S12 (PHASE B) RESULT — ROW 1: STOP. THE RANKING-BLIND SITE IS UNREACHABLE BY THE CERTIFICATE-
+### DRIVEN FIELD, AND THE FIELD PROVABLY TARGETED IT. HALTED AND REPORTED AS REGISTERED. ***
+
+Iteration 1 = `_S11A` reused (declared in the registration). Iteration 2 = `_S12i2`, the same command plus
+`PF_CB_TIGHTEN=research/exchange/_phase2/S12i1.loci.json`.
+
+**PB1, THE DECISIVE CLAUSE — FAILS, AND WITH THE STRONGEST EVIDENCE THE HARNESS CAN PRODUCE.**
+Part-B deep audit of `_S12i2`, the same instrument that produced 37.899 um on three previous arms:
+  **H2 WITNESSED 37.899 um at th=5.637379 z=44.16992** — brute-force re-checked 37.899 —
+  **BYTE-IDENTICAL to _S10A, _S10B and _S11A. Movement: 0.000 mm, 0.000 um. FOURTH consecutive arm.**
+Registered bar: value <= 30.32 um OR argmax relocating > 1.0 mm. Neither. **ROW 1 FIRES.**
+
+>> **AND THE FIELD DEMONSTRABLY TARGETED IT — this is not mis-targeting, it is exhaustion.** Checked
+>> before claiming anything, because "Phase 2 never aimed there" and "Phase 2 aimed and failed" are
+>> different findings:
+>>   * iteration 1's emitted field contains a cluster **14.9 um** from (5.637379, 44.16992) — the ball
+>>     radius is 500 um, so the site sits deep inside it — built from **1,223 exceedance samples** with a
+>>     recorded max of 39.617 um, at **tolScale 2** (acceptTol 3.5 -> 1.75 um locally);
+>>   * the driver APPLIED it: 112,733 `consider()` calls landed inside a ball and **21,886 splits were
+>>     queued ONLY because of the field**; the mesh grew 1,010,435 -> 1,035,605 (+2.5%);
+>>   * iteration 2's audit found the SAME cluster still exceeding, with its sample count doubled
+>>     (1,223 -> 2,446) and its tolScale **ESCALATED 2 -> 4**;
+>>   * **581 of the 772 tightened clusters exceeded again and were escalated.** The field is working as
+>>     designed and the sites are not yielding.
+>> SO THE SITE HAS NOW BEEN GIVEN A HALVED ACCEPT TWICE, BY TWO INDEPENDENT ROUTES — globally in S10B
+>> (x1.63 triangles, x2.82 aspect refusals) and locally here (a 0.5 mm ball, 2x divisor) — and moved by
+>> ZERO both times. That is what "the ruler cannot see it" means, stated as an experiment.
+>> WHAT IS *NOT* CLAIMED: a third iteration would apply tolScale **4** at that site (a full halving of h),
+>> which has not been tried. The STOP condition forbids me from iterating past this point, and it is the
+>> right call — the operator decides whether a 4x divisor at a site that ignored two 2x divisors is worth
+>> another 35 minutes, or whether the site belongs to P5 / a curtain.
+
+| | _S9A | _S11A (iter 1) | **_S12i2 (iter 2, field applied)** | |
+|---|---|---|---|---|
+| **H2 witnessed** | 17.069 um | 37.899 um | **37.899 um** | **identical, 4th arm** |
+| **H2 argmax** | — | th 5.637379 / z 44.16992 | **th 5.637379 / z 44.16992** | **0.000 mm** |
+| H2 samples over tol | 0.00456% | 0.01242% | **0.01003%** | x0.81 — the BULK falls again |
+| back-facing (gated) | 6,613 | 959 | **1,054** | x1.10 (bar <=1,500) |
+| back-facing per million | 5,147 | 949 | **1,018** | x1.07 (bar <=1,300) |
+| feature-spanning | 12,522 | 4,075 | 4,509 | x1.11 |
+| off-locus >=15 / >=30 / >=45 / >=90 | 73,287 / 61,049 / 53,854 / 19,135 | 28,118 / 21,402 / 17,766 / 5,034 | 29,527 / 22,657 / 18,870 / 5,563 | x1.05-1.11 |
+| parametric AR p99 / MAX | 291.3 / 548,638 | 106.769 / 125,886.87 | 120.721 / 125,886.87 | p99 x1.13, tail identical |
+| **in-disk share of the class** | — | 61.4% (_S10A) / 60.1% (_S10B) | **61.5%** (648 of 1,054) | **stable across every arm** |
+| H1 over-tol FRACTION | 3.50% | 1.63% | **1.64%** | flat (bar <=3.26%) |
+| H1 witnessed (DIRECTIONAL ONLY) | 524.567 | 344.205 | 379.292 | different subsets — see below |
+| H1 coverage | 40,000/1,284,820 | 40,000/1,010,435 (stride 624,483) | 40,000/1,035,605 (stride 640,039) | INCOMPLETE, all |
+| determined blades / folds | 0 / 0 | 2 / 0 | **2 / 0** | PB6 |
+| seam-cracks / Euler | 0 / 0 | 0 / 0 | **0 / 0** | Phase A's fix SURVIVED the field |
+| unresolved / worst | 9,995 / 40.971 | 5,576 / 47.245 | 6,621 / **47.245** | worst still PINNED |
+| triangles / mesher wall | 1,284,820 / 923 s | 1,010,435 / 818 s | 1,035,605 / 851 s | +2.5% / +4% |
+
+SCORING, first match wins, against the rows as REGISTERED:
+  **ROW 1 FIRES — STOP: RANKING-BLIND SITE UNREACHABLE.** Rows 2-4 unreachable and not evaluated.
+  PB2 **NO on both clauses** — 37.899 um > 20.48; 0.01003% > 0.00912%. The FRACTION fell x0.81, as it did
+      under S10B's global tightening (x0.82). Bulk coverage improves, the tail does not move. Third time
+      this exact shape has appeared in this log.
+  PB3 **HOLDS** — back-facing 1,054 (bar <=1,500) and 1,018 per million (bar <=1,300). Phase 2 concentrates
+      refinement AT loci and the class grew only x1.10 for x1.025 triangles; the substrate-independent
+      CTLPLUS slope (density x~1.2 per refinement unit) would have predicted ~x1.03 density and measured
+      x1.07. Slightly worse than the slope, comfortably inside the bar.
+  PB4 **REPORTED, and it is the quiet result of the phase: the in-disk share is 61.5%, against 61.4%
+      (_S10A) and 60.1% (_S10B).** Four arms, three interventions, triangle counts from 1.01M to 1.64M —
+      and ~61% of the entire visible class sits in the same 4.039% of the surface every time. The junction
+      disks are not a feature of one mesh; they are where this class lives.
+  PB5 **HOLDS** — H1 over-tol fraction 1.64% (bar <=3.26%). The H1 MAX moved 344.205 -> 379.292 um and is
+      DIRECTIONAL ONLY, exactly as registered: the strides are 624,483 and 640,039, so the two arms
+      audited different ~4% subsets, and Phase A measured ~20% spread from that alone.
+  PB6 **HOLDS** — determined folds 0, determined blades 2 (the seed-born pair), worst admitted child AR
+      50.00, **seam-crack edges 0 with Euler 0**: Phase A's topology fix survived a field-driven re-mesh.
+  PB7 **HOLDS** — 1,035,605 tris (bar 2.5M), mesher 851 s (bar 1,800), emitting audits 1,124 s and 1,125 s
+      (bar 1,200), whole phase ~1 h 15 (bar 3 h).
+  PB8 **THE LOOP'S FIVE EXITS, evaluated as `_phase2Loop.mjs` computes them:**
+      iteration 1 -> **NOT-CONVERGED** (unresolved 5,576; H2 40.006 um > TOL so no PASS; predicted
+      1,017,291 << 8M cap so not INFEASIBLE-AT-CAP; NON-MONOTONE needs two priors);
+      iteration 2 -> **NOT-CONVERGED** (unresolved 6,621; H2 40.006 um unchanged; predicted 1,053,167 <<
+      cap; NON-MONOTONE would not fire anyway — triangles grew x1.025, far under its 1.5x trigger).
+      The NOT-CONVERGED exits are the loop's correct behaviour on the S1-cap stranding, as declared.
+
+**A SECOND, INDEPENDENT WITNESS TO THE SAME FACT, from the emitting audit rather than the pooled one.**
+The emitting audit has its own argmax — th 4.062906, z 45.38896, **40.006 um** — 70.86 mm away from the
+pooled audit's site and found by a different sampling. **It too is byte-identical between iterations 1 and
+2: 0.000000 mm of movement and the same value to 14 significant figures.** Two different instruments, two
+different worst sites, both immovable under the same intervention. The pooled and emitting audits disagree
+about WHICH site is worst (37.899 vs 40.006 um — both are witnessed LOWER bounds at different sampling, so
+disagreeing is legitimate and the higher one is the better bound); they agree completely that the worst
+site does not move.
+
+>> **WHAT PHASE B ESTABLISHES.** Phase 2 is not broken and it is not mis-aimed: it saw the site with 1,223
+>> samples, put a 0.5 mm ball on it, made the driver do 21,886 extra splits, watched it exceed again and
+>> escalated it. The site did not move. Combined with S10B, the ranking-blind tail has now resisted:
+>> aligned seeding, seam repair, a global accept halving, and a local certificate-driven accept halving.
+>> **Every named owner of that site in the current architecture has now been tried and has failed.** What
+>> is left is what this campaign has been pointing at since 2026-07-28: a different RANKING QUANTITY in
+>> the loop, or geometry the bisection family cannot express (P5 junction routing / a curtain). That is an
+>> operator decision and the STOP condition exists precisely so it is taken as one.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

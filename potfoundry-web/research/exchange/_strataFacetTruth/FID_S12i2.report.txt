@@ -1,0 +1,167 @@
+
+===== STRATA FACET TRUTH: GothicArches =====
+stl: research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S12i2.stl  (1035605 triangles)
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+TOL 10.000 um   detected C0 z-steps: 0   theta-jumps: 0
+
+--- MESH SHAPE CENSUS (unconditional; every facet; computed from the audited STL itself) ---
+  AR = longest*perimeter/(4*area) = longest edge / (2*inradius).  1.0 equilateral, higher = thinner.
+  3-D ASPECT RATIO      p50 3.825   p90 13.741   p99 43.894   MAX 85.129
+  BLADES (AR > 50)     : 2 DETERMINED / 1035605  (0.0002%)   *** SHAPE DEFECT ***   +14 f32-indeterminate at the cap (raw 16)
+    zero-area facets    : 0     min edge 0.753 um  (tri 1018969)
+    AR max-locus  z=[18.000,18.028,18.000] th=[-2.4981,-2.5527,-2.5597] edges(um)=2265.034/295.455/2558.755
+  FOLDS — facets INVERTED in (theta,z), i.e. the surface doubles back over itself:
+    DETERMINED          : 0 / 1035605  (0.0000%)   CLEAN   majority(det) +
+    f32-INDETERMINATE   : 6  (0 read neg / 6 read pos, incl. 0 exact-zero) — sign below the STL's own noise floor, NOT defects (FOLD-ANOMALY 2026-07-29)
+    raw minority+zero   : 0
+    historical '<0'     : 0   of which AR>50: 0   (the D51-comparable number)
+    after exact-bit weld: 0   well-shaped (parametric AR <= 8, so NOT float noise): 0
+    fold components 0   largest 0 facets
+    facet normal radially INWARD (n.rhat < 0, the CRUDE proxy): 33  (0.0032%)   of which AR>50: 0
+  PARAMETRIC (arc,z) AR p50 4.437   p90 17.935   p99 120.721   MAX 125886.870
+  AR decade histogram (log10 floor -> count): 1e0:875926  1e1:159679
+  z-histogram of blades (24 bins, base -> rim): 0 0 0 2 0 0 0 0 0 1 0 1 0 2 0 0 2 1 1 3 0 0 2 1
+  z-histogram of folds  (24 bins, base -> rim): 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  census 7.8s
+  WORST 12 BY AR:
+    tri      2862  AR 8.513e+1  L 2558.755 S 295.455 um  area 3.85e+4 um^2  forward
+    tri      2901  AR 8.453e+1  L 1850.662 S 356.455 um  area 2.03e+4 um^2  forward
+    tri    815450  AR 5.018e+1  L 43.827 S 20.009 um  area 1.91e+1 um^2  forward
+    tri    902519  AR 5.007e+1  L 110.683 S 49.980 um  area 1.22e+2 um^2  forward
+    tri   1001590  AR 5.005e+1  L 190.756 S 95.056 um  area 3.64e+2 um^2  forward
+    tri    448184  AR 5.005e+1  L 117.601 S 55.580 um  area 1.38e+2 um^2  forward
+    tri    893629  AR 5.004e+1  L 185.090 S 49.902 um  area 3.42e+2 um^2  forward
+    tri   1022948  AR 5.002e+1  L 97.352 S 2.283 um  area 9.53e+1 um^2  forward
+    tri    923800  AR 5.002e+1  L 519.346 S 84.781 um  area 2.70e+3 um^2  forward
+    tri   1031932  AR 5.002e+1  L 92.577 S 35.007 um  area 8.57e+1 um^2  forward
+    tri    809274  AR 5.002e+1  L 264.402 S 80.095 um  area 6.99e+2 um^2  forward
+    tri    704773  AR 5.001e+1  L 241.569 S 49.905 um  area 5.84e+2 um^2  forward
+
+--- EXTRINSIC ORIENTATION CENSUS (facet normal vs the ANALYTIC normal at the facet centroid) ---
+  THE ONLY INSTRUMENT HERE NOT MEDIATED BY THE (theta,z) PARAMETRISATION. A render shows a NORMAL;
+  this is the automated form of the human inspection that found the defect all four others missed.
+  deviation (deg)       p50 0.9243   p90 3.1623   p99 78.1841   MAX 173.0941
+    max-locus  z=[49.634,49.741,50.040] th=[0.3851,0.3849,0.3842] edges(um)=116.534/304.171/408.436
+  off-locus counts      >=15 29527   >=30 22657   >=45 18870   >=60 15801   >=90 5563   >=120 2719   >=150 1039
+  histogram, 12 bins of 15 deg: 1006078 6870 3787 3069 4139 6099 1906 938 782 898 689 350
+  mesh winds OUTWARD (99.58% of a 8192-facet stride sample)
+  facets straddling a detected C0 locus: 0 — NOTHING excluded, the gate saw every facet
+  5.3M rA evals   5.7s   step h_theta 1.0e-6 rad  h_z 1.0e-6 mm
+
+===== HARD GATES (expected count 0; NOT APPLICABLE is NOT a pass) =====
+  [FOLD] PASS   count 0 (expected 0)
+        REPRESENTATION VALIDITY — consistent (theta,z) orientation (a graph is single-valued)
+      parametric signed area (raw): 1035605 positive, 0 negative, 0 EXACTLY ZERO   majority (determined) +
+      DETERMINED folds (|sPar| > per-facet f32 half-ulp bound, sign against majority) = 0 / 1035605  (0.0000%)   <-- THE GATE COUNT
+      sign NOT determined by the STL's f32 coordinates: 6 (0 read neg / 6 read pos, incl. 0 exact zero)
+        ^ REPORTED, NOT DEFECTS — a fold verdict below this floor is not measurable from an STL (FOLD-ANOMALY 2026-07-29:
+          D52's six "folds" were all sub-floor artefacts of atan2(f32) read-back; the driver's f64 mesh was provably clean)
+      historical raw '<0' count (comparable to _bladeCensus / _bladeFolds and the D51 baseline): 0   minority+zero raw: 0
+      after exact-float32-bit weld: 0   well-shaped (parametric AR <= 8, so NOT float noise): 0
+      fold components (determined set) 0   largest 0 facets
+      z-histogram of folds (24 bins, base -> rim): 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+  [NORMAL] *** FAIL ***   count 1054 (expected 0)
+        EXTRINSIC ORIENTATION — facet normal vs the ANALYTIC normal at the facet centroid
+      deviation (degrees) p50 0.9243   p90 3.1623   p99 78.1841   MAX 173.0941 (tri 1007476)
+      mesh winds OUTWARD (99.58% of a 8192-facet stride sample)
+      off-locus counts   >=15 29527   >=30 22657   >=45 18870   >=60 15801   >=90 5563   >=120 2719   >=150 1039
+      histogram, 12 bins of 15 deg (off-locus): 1006078 6870 3787 3069 4139 6099 1906 938 782 898 689 350
+      zero-area facets (no normal at all, gated as 180 deg): 0
+      FEATURE-SPANNING chords (>= 90 deg at the centroid, front-facing at one of their own vertices): 4509
+        ^ REPORTED, NOT DEFECTS — a chord across a steep C1 wall legitimately reads back-facing at a mid-wall
+          sample point; its fidelity price is H1/H2's to charge. Measured 2026-07-30: this population GROWS
+          with refinement depth (1,792 @ 61k -> 14,890 @ 351k guard-ON tris; folds and blades both 0), i.e. a
+          centroid-only >= 90 gate is unmeasurable-as-specified on feature-bearing styles.
+      facets straddling a detected C0 locus: 0 — NOTHING was excluded, this gate saw every facet of the mesh
+      step h_theta 1.0e-6 rad, h_z 1.0e-6 mm   5.3M rA evals   5.7s
+      GATE = back-facing (>= 90 deg) against the MOST FAVOURABLE of five candidate analytic normals (central
+      and both one-sided differences in each of theta and z), AT EVERY SAMPLED POINT OF THE FACET'S OWN
+      FOOTPRINT — centroid and all three vertex parameter points. A sign test, not a tuned threshold. The
+      one-sided candidates handle a crease AT a sample point; the vertex samples handle a crease that crosses
+      the footprint BETWEEN sample points (the case a centroid-only probe mis-reads, measured above).
+      WORST BY DEVIATION (centroid angle):
+        tri   1007476  173.094 deg  th 0.38473  z 49.8052  [FEATURE-SPANNING — reported, not gated]
+        tri   1022351  173.081 deg  th -1.43357  z 49.2201  [FEATURE-SPANNING — reported, not gated]
+        tri   1033954  172.904 deg  th -3.00564  z 48.8030  [FEATURE-SPANNING — reported, not gated]
+        tri    778622  172.857 deg  th -0.37907  z 51.7788  [FEATURE-SPANNING — reported, not gated]
+        tri    444031  172.780 deg  th -2.88079  z 113.3633  [FEATURE-SPANNING — reported, not gated]
+        tri    850465  172.715 deg  th 0.65944  z 48.7694  [FEATURE-SPANNING — reported, not gated]
+        tri   1008957  172.647 deg  th -0.13406  z 48.1464  [FEATURE-SPANNING — reported, not gated]
+        tri   1003855  172.581 deg  th -0.11066  z 40.3967  [FEATURE-SPANNING — reported, not gated]
+        tri   1001487  172.572 deg  th 0.37345  z 53.7101  [FEATURE-SPANNING — reported, not gated]
+        tri   1029016  172.442 deg  th -0.41396  z 40.0924  [FEATURE-SPANNING — reported, not gated]
+        tri   1029336  172.441 deg  th 0.41399  z 40.0844  [FEATURE-SPANNING — reported, not gated]
+        tri    444604  172.425 deg  th -0.92105  z 45.4540  [FEATURE-SPANNING — reported, not gated]
+  [BLADE] *** FAIL ***   count 2 (expected 0)
+        FACET SHAPE — aspect ratio <= 50 (longest edge / (2 * inradius))
+      AR p50 3.825  p90 13.741  p99 43.894  MAX 85.129
+      DETERMINED blades (lower-bound AR under f32 half-ulp noise still > 50) = 2 / 1035605  (0.0002%)   <-- THE GATE COUNT
+      AR-at-cap INDETERMINATE at f32 (raw AR > 50 but inside the read-back band): 14   raw total 16
+      zero-area facets 0   min edge 0.753 um
+      z-histogram of blades (raw, 24 bins, base -> rim): 0 0 0 2 0 0 0 0 0 1 0 1 0 2 0 0 2 1 1 3 0 0 2 1
+      *** NONE OF THESE 2 DETERMINED FACETS CAME FROM A GUARDED SPLIT. The driver guard (PF_CB_SHAPE_AR=50)
+          refuses any split whose child exceeds 50, this gate counts facets above 50 >= 50, and
+          the two metrics are the SAME expression. So every facet here came from the INITIAL GRID or from a
+          post-loop pass that is NOT shape-guarded — the needle collapse, or a 2-2 flip called without its
+          improvement gate. Code sites: see the FINDING 4 driver-gap note in the 2026-07-29 worklog. ***
+          (f32-vs-f64 borderline facets are already EXCLUDED from the count by the read-back band: the
+           14 raw-over-cap facets inside it are reported above, not attributed to anything.)
+  [TOPOLOGY] PASS   count 0 (expected 0)
+        TOPOLOGY — manifold + consistently oriented (NECESSARY, NOT SUFFICIENT: a folded sheet passes it)
+      welded verts 518386   edges 1553991   non-manifold 0   boundary 1167   orientation-mismatch 0   Euler V-E+F = 0
+      D51 read 0 / 0 / 0 and V-E+F = 0 EXACTLY while 31,842 of its facets were inverted. This block is
+      reported so that fact stays visible instead of being mistaken for a clean bill of health.
+  GATES: NOT ALL PASSED — see above
+
+--- H1  MESH -> SURFACE   (certified: bound = witnessed + covering radius; TRUE PERPENDICULAR distance) ---
+  MEASUREMENTS, NOT A VERDICT — the verdict block at the end of this report is the only place a
+  PASS or FAIL may be read from, and it requires BOTH directions to have run.
+  POOLED: 8 worker threads, atomic cursor, chunk 78 facets, esbuild worker bundle 259 ms
+    per-worker rA rebuilt from (style, params, dims) and VERIFIED bit-identical to the parent's BEFORE the walk — 132104 (worker x lattice-point) comparisons over 16513 points (C0-bracketed + clamp boundaries): 0 differing, max deviation 0.000e+0 mm
+  101.5M lattice samples   539s   audited 40000/1035605 triangles (stride 640039, uniform sample of the whole mesh)   [walk capped at PF_FT_H1MAX=40000 facets]   *** INCOMPLETE — budget/time/facet cap hit, the unseen triangles are UNKNOWN, not passing ***
+  throughput 74.17 facets/s   13.5 ms/facet   2858.3M rA evals in H1
+  CERTIFIED UPPER BOUND : 449.380 um   OVER TOL   [SHAPE: AR p99 43.89 max 85.1, blades(AR>50) 2 det+14 f32indet (0.000%), folds 0 det+6 f32indet (0.0000%), back-facing 1054 (+4509 feature-span)]
+    (the bound is built from the per-triangle LOCAL estimate, which over-states; so "within TOL" is
+     sound, while "OVER TOL" may be pessimistic — compare the global confirm below before believing it)
+    bound-locus   z=[81.741,81.730,81.716] th=[-2.8899,-2.8826,-2.8715] edges(um)=747.740/624.580/931.978
+  WITNESSED max         : 379.292 um   OVER TOL   (max over the globally-confirmed top 24)   [SHAPE: AR p99 43.89 max 85.1, blades(AR>50) 2 det+14 f32indet (0.000%), folds 0 det+6 f32indet (0.0000%), back-facing 1054 (+4509 feature-span)]
+    facets outside the confirmed top 24 are bounded by 49.326 um (their unconfirmed local readings)
+    witness-locus z=[81.741,81.730,81.716] th=[-2.8899,-2.8826,-2.8715] edges(um)=747.740/624.580/931.978   at xyz -45.64293,-12.22414,81.72691
+  triangles with a witnessed exceedance : 655 / 40000 audited = 1.64% OVER TOL
+  triangles left UNCERTIFIED            : 0
+  facets whose witnessed value is NOT a converged max (short-circuit or cap): 655 / 40000
+  stage-3 global confirm of worst 24 (genuine top-24 by value): 379.292 um
+    tri 671102  fast 439.428 -> global 379.292 um  @th=-2.87278 z=81.5710
+    tri 830316  fast 145.281 -> global 38.845 um  @th=-2.63666 z=97.2724
+    tri 863494  fast 136.338 -> global 136.338 um  @th=0.26591 z=112.4575
+    tri 81309  fast 104.471 -> global 14.632 um  @th=-1.16610 z=42.7484
+    tri 318401  fast 92.612 -> global 9.465 um  @th=0.26092 z=80.7784
+    tri 127002  fast 82.261 -> global 82.261 um  @th=0.79688 z=81.6335
+    tri 800071  fast 66.940 -> global 21.741 um  @th=-0.50273 z=97.2714
+    tri 998746  fast 66.933 -> global 23.631 um  @th=-0.78649 z=80.9328
+
+--- H2  SURFACE -> MESH   (witnessed lower bound; every reading is an exact point-to-triangle distance) ---
+  MEASUREMENTS, NOT A VERDICT — see the verdict block at the end of this report.
+  40.0M locator queries, 67M structure evals, 385s   structure pitch 28.259 um UNIFORM (the resolving-power guarantee; across-line gap) / 28.259 um along-line / 7.065 um finest reached   locator cell 0.313 mm
+  phase-B refinement TRUNCATED by budget (phase-A coverage still completed in full over the audited band, so this is a floor)
+  WITNESSED max : 37.899 um   OVER TOL   [brute-force re-check of this point: 37.899 um]   [SHAPE: AR p99 43.89 max 85.1, blades(AR>50) 2 det+14 f32indet (0.000%), folds 0 det+6 f32indet (0.0000%), back-facing 1054 (+4509 feature-span)]
+    at th=5.637379 z=44.16992  r=45.17935  nearest tri 285346
+    nearest-tri locus z=[44.067,45.420,43.923] th=[-0.6456,-0.6498,-0.6460] edges(um)=1367.137/1549.828/357.284
+  leaf cells still over TOL at max depth : 0
+  audited z band 0.00..120.00 mm   samples over TOL: 4014 / 40002028 = 0.01003%
+  z-histogram of exceedances (24 bins, base -> rim): 0 0 0 91 0 121 241 222 509 1202 1078 406 43 8 0 4 84 0 0 2 0 0 3 0
+
+===== VERDICT =====
+  H1  mesh -> surface: witnessed 379.292 um   certified bound 449.380 um   *** INCOMPLETE COVERAGE ***
+        audited 40000/1035605 triangles (stride 640039), walk capped at PF_FT_H1MAX=40000 — INCOMPLETE
+  H2  surface -> mesh: witnessed 37.899 um   NO CERTIFIED BOUND (witnessed only)   complete coverage
+        40.0M queries; phase-A UNIFORM coverage of z 0.00..120.00 mm (the FULL band) at structure pitch 28.259 um; phase-B refinement TRUNCATED by budget, so the max is a floor AT THAT RESOLVING POWER
+  TOL 10.000 um   gates: 2 failed, 0 not applicable
+
+  *** FAIL ***   gate NORMAL failed: 1054 (expected 0); gate BLADE failed: 2 (expected 0); H1 witnessed 379.292 um > TOL 10.000 um; H2 witnessed 37.899 um > TOL 10.000 um
+  FAIL is sound under partial coverage AND from a single direction: a witnessed exceedance is a real
+  exceedance and a failed shape gate is a real defect. Neither can be argued away by auditing more of
+  the mesh, or by auditing the direction that did not run.
+
+939s   2974.0M rA evals
+=========================================================
