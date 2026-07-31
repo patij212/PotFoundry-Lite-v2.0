@@ -100,7 +100,7 @@
 // PF_FT_H1MAX caps the walk at N facets, which is what makes serial-vs-pooled an EXACT comparison rather
 // than a race between two time-capped runs that audited different prefixes.
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import type { StyleDims } from './labkit';
@@ -109,7 +109,7 @@ import { detectThetaJumps, detectZJumps, distPerp, pickLocatorCell, surfaceToMes
 import { runH1Walk, type H1Job, type H1Partial } from './_facetTruthH1';
 import { buildAuditRadiusFn, radiusLattice } from './_facetTruthRA';
 import { readMeshFloat64, resolveWorkerCount, runH1Pool } from './_facetTruthPool';
-import { bladeGate, foldGate, meshShapeCensus, topologyGate } from './_judgeShape';
+import { bladeGate, foldGate, meshShapeCensus, topologyGate, type PatchRegion } from './_judgeShape';
 import { facetNormalCensus, normalGate } from './_judgeNormal';
 import { judge, renderGates, NOT_RUN, type DirectionReading, type GateResult } from './_judgeVerdict';
 
@@ -265,8 +265,24 @@ describe('STRATA facet truth', () => {
     // state EXACTLY which facets the driver guard could not have emitted — see bladeGate in _judgeShape.ts and
     // the FINDING 4 driver-gap note in research/lab/2026-07-29-strata-perf-convergence-worklog.md.
     const GUARD_AR = process.env.PF_FT_GUARD_AR === undefined ? null : envF('PF_FT_GUARD_AR', 50);
+    // S18 / P5 STEP 3 — DECLARED PATCH PROVENANCE. PF_FT_PATCHES=<tag>.patches.json, DEFAULT UNSET.
+    // The blade gate has understood declared regions since S14; this is the path that hands them to it.
+    // DEFAULT-INERT BY CONSTRUCTION: unset leaves `patches` undefined and `meshShapeCensus` takes the
+    // `opts.patches ?? []` branch, i.e. the gate count is the original nBlade and no provenance line prints.
+    // The file is REFUSED, never warned about, if its schema is wrong — a mis-registered provenance
+    // declaration is the exact failure the judge's own PROVENANCE-2 negative control exists to catch.
+    const ftPatchPath = process.env.PF_FT_PATCHES ?? '';
+    let ftPatches: PatchRegion[] | undefined;
+    if (ftPatchPath !== '') {
+      const pj = JSON.parse(readFileSync(ftPatchPath, 'utf8')) as { schema?: string; patches?: PatchRegion[] };
+      if (pj.schema !== 'pf.strata.patches/1') {
+        throw new Error(`PF_FT_PATCHES: expected schema pf.strata.patches/1, got ${String(pj.schema)}.`);
+      }
+      ftPatches = pj.patches ?? [];
+    }
     const sc = meshShapeCensus(xyz, nTri, {
       arCap: ARCAP, H, nWorst: Math.max(1, Math.round(envF('PF_FT_SHAPE_TOPK', 12))),
+      ...(ftPatches === undefined ? {} : { patches: ftPatches }),
     });
     const nc = facetNormalCensus(rA, xyz, nTri, {
       H, zJumps, thJumps, nWorst: Math.max(1, Math.round(envF('PF_FT_NORM_TOPK', 12))),

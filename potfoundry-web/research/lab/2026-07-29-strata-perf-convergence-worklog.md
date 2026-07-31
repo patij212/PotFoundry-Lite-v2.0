@@ -2981,10 +2981,143 @@ One variable: the patch emitter. Bars are on COMPONENTS per the metric note, nev
   P6 **PRECONDITIONS.** folds 0; worst admitted child AR <= 50; recovery 100%; seam-cracks 0, loops 2,
      Euler 0; seed over-cap <= 5.
   P7 **COST.** seed points <= 47,000 / tris <= 93,000; live tris <= **1.20 M**; wall <= **1,000 s**.
+  P4b **THE ANNULUS COMPONENT — REPORT-AND-EXPLAIN, NOT A GATE.** S17's R5 located the whole out-of-disk
+     rise in one band, 100-400 um from the locus (100-200: 156 -> **735**; 200-400: 41 -> **316** on
+     `_S15A`), and named a candidate: the empty annulus around every locus widened from [192.6, 330.2] to
+     [50.0, 330.2] um, x2.04, when S15 moved the ring and left `clearMm` at 330.2. **THIS ARM IS A FREE,
+     FALSIFIABLE TEST OF THAT ATTRIBUTION, AND THE PREDICTION IS REGISTERED HERE: the emitter adds points
+     ONLY INSIDE routed disks, and the annulus population is by definition OUT of disk, so both bins must
+     come back essentially FLAT — within +/-5% (100-200: 698-772; 200-400: 300-332).** If they move
+     materially, the annulus is not an out-of-disk-only phenomenon and the `clearMm` attribution is wrong —
+     which is worth more than a confirmation. Either way it is REPORTED and EXPLAINED; no verdict row fires
+     on it, because a component whose mechanism is still a hypothesis is not a bar.
   P8 **VERDICT ROWS — in order, first match wins:** 1 REFUTATION (P2 refuted) | 2 REGRESSION (P6 fails, or
      any P4 component fails, or P3 fails, or P5's undeclared-blade clause fails, or P7 breached) |
      3 WIN (P2 win AND P3 AND P4 AND P5 AND P6 AND P7) | 4 TRADE (everything else, both numbers in the
      same row of the same table).
+  P9 **THE PHASE-D SUBSTRATE SELECTION RULE — REGISTERED BEFORE ANY STEP-4 NUMBER EXISTS, so the
+     certificate's substrate is never a post-hoc "best mesh" judgement.** First match wins:
+       (a) P8 row 3 **WIN** -> Phase D runs on **`_S18A`**.
+       (b) P8 row 4 **TRADE** *and* the FIDELITY clauses hold (P2's win clause AND P3 entire) -> Phase D
+           runs on **`_S18A`**. A trade paid in a barred component but not in fidelity still leaves the
+           better mesh to certify, and the certificate is a fidelity instrument.
+       (c) P8 row 1 **REFUTATION** or row 2 **REGRESSION** -> Phase D runs on **`_S15A`**.
+       (d) any TRADE not covered by (b) -> Phase D runs on **`_S15A`**. The tie goes to the arm whose
+           numbers are already recorded.
+     **PROVENANCE FOLLOWS THE SUBSTRATE:** `PF_FT_PATCHES` is passed **only** if `_S18A` is selected,
+     because only `_S18A` has declared regions. On `_S15A` the flag is unset and the blade gate is exactly
+     what it always was — the S14 default-inert path, verified by measurement rather than by argument.
+
+### *** S18 STAGE-1 RESULT + S19 PRE-BUILD DECOMPOSITION — THE OPERATOR REJECTED THE LINEAGE VISUALLY,
+### AND THE DECOMPOSITION SAYS HE IS RIGHT AND WHY. THE EMITTER WORKS WHERE IT IS APPLIED (x0.686 ON THE
+### EYE-METRIC IN ROUTED DISKS) AND COVERAGE IS NOT THE GAP. THE BLADES ARE ON THE RIB FLANKS. ***
+
+**OPERATOR VERDICT, 2026-07-31, WITH A SCREENSHOT — THIS IS THE FOUNDING INSTRUMENT AND IT OVERRULES THE
+NUMBERS.** "all the attempts produced blade artefacts all the way to S18A." Several mm-scale thin blades
+cutting ACROSS the rib flanks at an X-crossing, at least two rendering back-facing. **THE SHIP GATE IS NOW
+OPERATOR-KEYED**: raw >=90, the >=15/>=30/>=45 tails (absolute + density), and the operator's eye. The
+gated-minus-exemption quantity is DEAD as a headline and is printed for continuity only. **PHASE D IS HELD**
+— a 5 h certificate on a visually-rejected mesh decides nothing.
+
+**STEP 4 SCORED EXACTLY AS REGISTERED. `_S18A` vs `_S15A`, one variable (the patch emitter).**
+
+| | `_S15A` | `_S18A` | bar | |
+|---|---|---|---|---|
+| **P2 routed target th 1.308997 z 113.45994** | **24.280 um** | **6.980 um** | <=12.14 | **WIN x0.287** |
+| P3 H2 witnessed | 24.281 um | **31.429 um** @ th 4.974188 | <= 24.281 | **FAILS** |
+| P3 site A / site B | 0.667 / 3.816 um | **0.667 / 3.816 um** | <=1.0 / <=5.0 | HOLDS, byte-identical |
+| P3 H1 facets-over | 1.13% | 1.17% | <=1.30% | HOLDS |
+| P4 raw >=90 | 5,156 | **4,873** | <=5,414 | HOLDS |
+| P4 feature-spanning | 3,310 | 3,195 | >=3,145 | HOLDS |
+| P4 tails >=15/>=30/>=45/>=60 | 26,599/18,919/15,556/12,646 | **25,531/18,189/15,009/12,177** | x1.05 each | ALL BETTER |
+| **P4b annulus 100-200 / 200-400** | 735 / 316 | **725 / 314** | 698-772 / 300-332 | **PREDICTION HOLDS** |
+| P5 provenance | — | 26 declared, **0 exempted**, 2 undeclared = gate | undeclared <=3 | HOLDS |
+| P6 folds / admitted AR / recovery / cracks / Euler | 0 / 50.00 / 100% / 0 / 0 | 0 / 50.00 / 7,147 of 7,147 / 0 / 0 | | HOLDS |
+| P7 seed / live tris / wall | 43,303-85,808 / 1,046,234 / 820 s | 45,975-91,152 / 1,043,882 / 819 s | | HOLDS |
+| (continuity only) gated | 1,846 | 1,678 | not a bar | |
+
+>> **P8 ROW 2 — REGRESSION**, on one clause: P3's H2 witnessed, 24.281 -> 31.429 um. Row 1 does not fire
+>> (P2's WIN clause fired at x0.287). **P9 therefore selects `_S15A`** as the Phase-D substrate — and Phase D
+>> is held regardless by the operator's verdict.
+>> **THE MECHANISM OF THE H2 REGRESSION, MEASURED, AND IT MATTERS FOR S19.** The new argmax th 4.974188
+>> z 113.45994 is a CONGRUENT COPY of the routed target (7 periods of 2pi/12 away, same z) and it sits
+>> INSIDE routed disk #25. Its true error was **0.008 um on `_S15A`** and is **31.429 um on `_S18A`**; its
+>> carrier went from edges 86.2/133.8/215.6 um (AR 10.07) to 185.6/601.3/784.5 um (AR 30.58). **The patch
+>> made the mesh COARSER there.** The polar set replaces the background lattice inside the disk, and where
+>> the driver would have refined harder than the polar grading, routing COSTS resolution. The emitter is
+>> not uniformly beneficial inside a routed disk: it fixed one congruent copy x3.5 and broke another.
+
+**S19 PRE-BUILD DECOMPOSITION — the eye-population by locality, SAME 26 routed regions on BOTH arms, so
+the routed/unrouted comparison is within-disk before/after and not a selection artefact.**
+
+| class | facets | `_S15A` >=90 | `_S18A` >=90 | per 1k, `_S15A` -> `_S18A` | `_S15A` >=15 | `_S18A` >=15 |
+|---|---|---|---|---|---|---|
+| **ROUTED disk (26)** | 36,036 | **757** | **517** | **20.93 -> 14.35 (x0.686)** | 2,731 | **1,861 (x0.681)** |
+| UNROUTED disk (209) | 119,170 | 1,340 | 1,317 | 11.17 -> 11.05 (x0.989) | 6,065 | 5,982 (x0.986) |
+| ANNULUS 100-400 um | 467,086 | 1,488 | 1,457 | 3.18 -> 3.12 (x0.981) | 10,834 | 10,684 (x0.986) |
+| ON-LOCUS <=100 um | 145,719 | 1,494 | 1,506 | 10.26 -> 10.33 (x1.007) | 5,773 | 5,811 (x1.007) |
+| FAR >400 um | 275,871 | 74 | 73 | 0.27 -> 0.26 | 1,193 | 1,189 |
+| TOTAL | 1,043,882 | 5,153 | 4,870 | | 26,596 | 25,527 |
+
+  **3a — THE EMITTER WORKS, AND COVERAGE IS NOT THE GAP. Both halves are measured.**
+    * **IT WORKS:** inside the 26 routed disks the physical >=90 population falls **x0.686** and the >=15
+      tail **x0.681**, while every other class moves by less than 2%. One variable, clean attribution.
+      The emitter is NOT refuted on the eye-metric — it is refuted as a SUFFICIENT remedy.
+    * **COVERAGE IS NOT THE GAP, and this is arithmetic rather than judgement.** Unrouted disks carry
+      1,317 of 4,870 >=90 (27.0%) and 5,982 of 25,527 >=15 (23.4%). Routing all 235 at the SAME measured
+      effectiveness would take >=90 to **~4,459 (x0.915)** and >=15 to **~23,619 (x0.925)**. The registered
+      win shape is **>=3x**. Full-coverage routing buys ~8%. **It is not the answer; it is a rounding error
+      against the bar.**
+    * WHERE THE POPULATION ACTUALLY IS, on `_S18A`: >=90 — ON-LOCUS 30.9%, ANNULUS 29.9%, UNROUTED disk
+      27.0%, ROUTED disk 10.6%, FAR 1.5%. >=15 — **ANNULUS 41.9%**, UNROUTED disk 23.4%, ON-LOCUS 22.8%,
+      ROUTED 7.3%, FAR 4.7%. **The tail the eye sees is a FLANK population, not a junction population.**
+
+  **3b — THE SCREENSHOT CLASS, LOCATED. 269 facets with deviation >=45 deg AND area > 0.02 mm^2:**
+    ANNULUS **140 (52%)** | FAR **96 (36%)** | UNROUTED disk 15 | ROUTED disk 12 | ON-LOCUS 6.
+    The worst by (area x deviation) are all the same animal:
+
+| tri | dev | area mm^2 | edges3d (um) | **parAR** | class | d(locus) | (th, z) |
+|---|---|---|---|---|---|---|---|
+| 742695 | 94.7 | 0.2146 | 641 / 747 / 1181 | **2,762** | FAR | 531 um | 1.83220, 82.095 |
+| 69856 | 94.7 | 0.2037 | 441 / 1027 / 1283 | **2,959** | FAR | 476 um | 2.88377, 79.231 |
+| 413496 | 94.6 | 0.1726 | 618 / 689 / 1165 | **2,603** | FAR | 543 um | 1.30952, 82.091 |
+| 450830 | 94.7 | 0.1519 | 590 / 729 / 1220 | **3,989** | FAR | 570 um | 1.83334, 82.201 |
+| 876321 | 85.3 | 0.1218 | 227 / 1096 / 1165 | **16,073** | FAR | 423 um | 1.30649, 82.055 |
+
+>> **THIS IS THE 2026-07-29 BLADE SHAPE, ALIVE AND UNGATED.** Every one of them: **mm-scale edges
+>> (600-1,200 um), deviation 85-95 deg, parametric AR in the THOUSANDS, 3-D AR under the cap of 50.** That
+>> is the original diagnosis verbatim — "a facet whose PARAMETRIC area collapses while its edges stay long"
+>> — and the AR-50 gate cannot see it because the gate is 3-D. They sit at **z 79.2-82.2**, the X-crossing
+>> band, but **400-632 um from the nearest locus and OUTSIDE every disk**: on the rib FLANKS between loci,
+>> not at the crossings. **No junction emitter can reach them.**
+>> **LINEAGE:** the FAR and ANNULUS classes are flat across the arms (74 -> 73 and 1,488 -> 1,457), so this
+>> population is INHERITED from `_S15A` and before, not manufactured by the patch. Stated at class level;
+>> per-facet vertex identity was not run.
+>> **THE BAND IS WIDER THAN S17 SAID.** The offenders sit at **380-632 um**, straddling the ANNULUS/FAR
+>> boundary at 400 um. The real gap is **[50, ~650] um** — the empty annulus [50, 330] plus the first
+>> background ring, whose pitch is 1,101 um. A chord from the offset ring at 50 um to the background
+>> lattice spans the whole flank with no intermediate vertex, and 1,101 um of pitch on a wall that turns
+>> over in 106 um IS the 744 um-chord regime S15 removed at ring zero and nowhere else.
+
+  **3c — THE ANNULUS PREDICTION HOLDS, EXACTLY AS REGISTERED.** P4b predicted both bins flat within +/-5%
+     because the emitter adds points only INSIDE routed disks while the annulus is by definition outside:
+     100-200 um **735 -> 725** (bar 698-772), 200-400 um **316 -> 314** (bar 300-332). **The `clearMm`
+     attribution survives its first falsifiable test** — the annulus population is out-of-disk-only and did
+     not respond to in-disk geometry. It is now the leading named carrier, and S17's arithmetic stands:
+     S15 moved the ring 192.6 -> 50.0 um and left `clearMm` at 330.2, widening the void x2.04.
+
+>> **WHAT THIS DECOMPOSITION SAYS S19 MUST BE, stated as the measurement's conclusion and not as a
+>> preference.** The eye-population is a FLANK population living in [50, ~650] um off the loci, carrying
+>> parametric AR in the thousands at mm scale, invisible to a 3-D AR cap. Junction routing addresses 10.6%
+>> of >=90 and 7.3% of >=15 and is measured at x0.686 where applied — real, attributable, and an order too
+>> small. **Full-coverage routing is priced at ~8% and is NOT the next arm.** The carrier the measurement
+>> names is the GRADED-FIELD COMPLETION: geometric across-grading through the whole 50 -> 330 um void
+>> instead of a single ring, plus an along-spacing bounded by the local crease turnover so the 1,101 um
+>> background pitch never lands a chord across a 106 um feature. It costs points only near loci, and — as
+>> in S15 — the across half costs none at all. **S19 is NOT registered here: the operator reads this
+>> decomposition first, and the coordinating session's instruction is that this report decides S19's
+>> design.**
+
 
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
