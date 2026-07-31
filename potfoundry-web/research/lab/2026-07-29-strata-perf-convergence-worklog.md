@@ -4889,6 +4889,50 @@ here before the re-score, exactly as S20.1 registered its amendment before re-ru
 >>   **NOTHING ELSE MOVES. M1/M2 and the 50% bar are untouched, `MET_AR` stays derived by the registered
 >>     rule, and the FD sweep stays as registered.**
 
+### **M0'(ii) HOLDS. M0'(i) DOES NOT, AND IT IS THE SAME ERROR IN A NEW COSTUME — AMENDMENT M0'', AND**
+### **THE STANDING LESSON THAT GOES WITH IT. STILL NO METRIC FRACTION QUOTED.**
+
+>> **M0'(ii) HOLDS ON BOTH CLAUSES, AND THE SECOND ONE IS S20.1-GRADE.** Count **3,848 = 89.3% of 4,307**,
+>> inside the registered [80%, 100%]. And the driver's own adaptive-oracle argmax carrier was **located on
+>> the shipped mesh to the decimal** — edges **26.2 / 704.2 / 723.7 um** against the report's
+>> 26.2 / 704.2 / 723.7, at |dz| 7.7e-3 — reading `aspect3` **42.19** (under the cap, as its being accepted
+>> requires) and `arM` **237.06**. **Its three edges read REFUSED / ADMISSIBLE / ADMISSIBLE.** That is the
+>> subset argument confirmed on the named facet rather than argued: the driver tried its two edges, both
+>> failed, it went to `unresolved` at 95.473 um — **and a third admissible edge it never tried is why the
+>> stricter reconstruction correctly does not contain it.**
+
+**M0'(i) FAILED AT 8 OF 19, AND THE DIAGNOSIS IS THAT I REPEATED CLAUSE 3'S MISTAKE.** Two causes, both
+mine, both the same shape:
+  1. **THE DECLARED-SURVIVOR LOG IS ALSO A PASS-TIME ARTIFACT.** `deshardRefusedLog` is written during the
+     pass's stage (i); stages (ii) 1,402 flips and (iii) 403 on-locus splits, and then the shared resume's
+     **482 further splits on +1,928 triangles**, all run afterwards. **10 of the 11 failures are not
+     blocking disagreements at all — they are NOT LOCATABLE**, matching at scores 0.32-1.20 with the wrong
+     AR3 and the wrong longest edge (declared AR3 47.0 / long 1,066 um matches a facet at AR3 5.4 / long
+     282 um). Those facets no longer exist; something later split or flipped them.
+  2. **AND THE ONE THAT *IS* LOCATABLE EXPOSES A REAL MIS-SPECIFICATION IN MY BAR.** Declared tri 2132762,
+     AR3 22.1, long 1,017 um, matched at score **0.00060** with AR3 22.1 and long 1,017 um — the same
+     facet, still shipped. My reconstruction says it is not `BLOCKED`. **Both are right: `REFUSED[ar]` in
+     the de-shard pass means its LONGEST EDGE was refused, and `BLOCKED` means ALL THREE were.** I compared
+     a longest-edge refusal to an all-edges refusal and called the difference a failure.
+
+>> **M0'' — THE FINAL FORM OF THE PRECONDITION. REGISTERED BEFORE THE RE-SCORE.**
+>>   **M0''(i)** Of the declared `REFUSED[ar]` survivors that are still **LOCATABLE** on the shipped mesh —
+>>     match score < **0.01** on vertex A's (theta, z) plus the longest edge plus 0.01 x AR3, all three of
+>>     which the driver prints — **100% must have their LONGEST EDGE refused by the reconstruction.** That
+>>     is the driver's own test (the de-shard pass splits the longest edge), on the same facet, through the
+>>     same gate. The locatable count is reported, and if it is **0** the clause is VACUOUS and says so.
+>>   **M0''(ii)** unchanged, and already HOLDING as measured above.
+>>   **M0''(iii)** unchanged: withdrawn, reported with no band.
+>>   **M1/M2 and the 50% bar remain untouched.**
+
+>> **THE STANDING LESSON, AND IT IS WORTH MORE THAN THIS ARM: A PASS-TIME COUNTER CANNOT BE VALIDATED
+>> AGAINST A SHIPPED MESH.** Three of my four precondition clauses failed for one reason — 324 entered
+>> sites, 313 self-blocked, and the 19-line survivor log are all written DURING a pass that then keeps
+>> mutating the mesh. The artifact carries survivors, not history. **The only clauses that worked are the
+>> ones anchored on quantities the shipped file actually contains** — a facet count, and a named facet's
+>> own edge lengths. Write preconditions on those, or arrange for the driver to emit the history as an
+>> artifact, but do not register a bar that no artifact can answer.
+
 **AND ONE FINDING THAT IS OUT OF THIS ARM'S SCOPE BUT MUST BE ON THE RECORD BEFORE IT IS USED: THE
 CERTIFIED KERNEL'S `eigSym2` IS NUMERICALLY UNSOUND ON THIS SURFACE, AND THE TRANSCRIPTION HAD TO REPAIR
 IT.** `tierC/surfaceMetricField.ts` takes the eigenvector of a symmetric 2x2 as `(b, l1 - a)`. On a
