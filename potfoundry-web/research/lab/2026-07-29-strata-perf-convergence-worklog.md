@@ -4022,6 +4022,186 @@ three simultaneous, checkable conditions.**
 >> **STOP AFTER SCORING. The operator eyeballs the mesh again before Phase D.**
 
 
+### *** S21B RESULT — Z7' ROW 5, TRADE. THE COMPOSITION IS PROVEN: JUDGE READS 0 WITH ROUTING AND
+### *** ADMISSION RUNNING TOGETHER, GATED BLADES AT THE VISIBLE FLOOR 11 -> 0, P4 FINALLY MOVED
+### *** 21 -> 7 — AND THE PLATE COUNT ONLY FELL x0.821 BECAUSE THE POPULATION RELOCATED AGAIN. ***
+`_S21B` = `_S21A`'s command with the asserted 43-region coverage artifact (`TOPN=0`, all ids named) +
+`PF_CB_ADMIT_NORMAL=1 PF_CB_ADMIT_NORMAL_SPLIT=1 PF_CB_ADMIT_SHIPPED=1`. STL:
+`research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S21B.stl` (1,247,786 facets).
+Audit `FID_S21B.report.txt`. Strands `gothicarches_ring_DS-H_S21B.strands.json` (**0 entries**).
+
+| bar | `_S19A` | `_S21A` | **`_S21B`** | line | |
+|---|---|---|---|---|---|
+| **Z-ADM judge footprint-back among ACCEPTED** | 1,074 | 866 | **0** | 0 outside strands+regions | **HOLDS** |
+| Z-ADM driver admission-stranded | — | — | **0** of 1,247,786 | | agrees with the judge |
+| Z1' global plates (0.02 mm^2, 50 um) | 200 | 67 | **55** | >=5x fall from 67 | **NOT met (x0.821)** |
+| Z1' P1 / P2 / P3 | 44 / 32 / 12 | 0 / 0 / 0 | **0 / 0 / 0** | | held |
+| **Z1' P4 — NOW ACTUALLY COVERED** | 21, worst 378.4 | 21, worst 378.4 | **7, worst 136.3** | | **x0.333 count, x0.360 worst (2.78x)** |
+| Z1' four primaries total | 109, worst 639.3 | 21, worst 378.4 | **7, worst 136.3** | all four read 0 | not met (7) |
+| Z1' routed footprint, abs / per 1k | 108 / 2.578 | 1 / 0.016 | **6 / 0.085** | | 43 regions, 70,976 facets |
+| **Z2' gated blades at the visible floor** | 35 | 11 | **0** | reported | **the class is GONE at the visible scale** |
+| Z2' feature-spanning | 3,898 | 3,944 | **4,373** | reported | +10.9% |
+| **Z3'(a) H2 over-tol FRACTION** | 0.00128% | 0.00129% | **0.00140%** | <= 1.2x = **0.001548%** | **HOLDS (1.085x)** |
+| **Z3'(b) H2 witnessed** | 21.379 | 25.063 | **25.063 um** | classify or fire | **RESIDUAL GRADING DEMAND** |
+| Z3'(c) unresolved count / worst | 3,701 / 47.245 | 3,683 / 47.245 | **4,307 / 95.473 um** | <=8,000 / <=250.0 | **HOLDS** |
+| **Z3'(d) H1 witnessed / facets-over** | 482.131 / 1.11% | 124.525 / 1.22% | **70.988 um / 1.22%** | <=1.30% | **HOLDS — x0.147 vs `_S19A`** |
+| Z4' folds / blades / AR / recovery / cracks / Euler | 0/2/50.00/100%/0/0 | 0/2/50.00/100%/0/0 | **0/2/50.00/100%/0/0** | | **HOLDS** |
+| Z6' rA evals / wall / live tris | 906M / 795 s / 1,217,485 | 912M / 769 s / 1,242,079 | **916M (+1.1%) / 937 s / 1,247,786** | <=+15% / <=2,400 s / <=3.0M | **HOLDS** |
+
+H1: **40,000 of 1,247,786, stride 771,175, walk capped at `PF_FT_H1MAX=40000` — INCOMPLETE, the unseen
+triangles are UNKNOWN, not passing.** Driver counters: 5,307,969 admission checks, **0 accepts refused**,
+26,434 splits refused, refusal-storm NOT fired. Grading fix: 119 rings bound, 250 sub-rings, ratio 9.26x,
+guard never clipped.
+
+**Z3'(b) CLASSIFIED AGAINST THE THREE REGISTERED CONDITIONS, ALL THREE MEASURED.** The argmax is tri
+244073 at **th 6.021386 z 113.45994** — (i) the SAME facet family as `_S21A`'s, exactly 9 periods of
+2pi/12 from `_S15A`'s argmax at the same z to five decimals, a **congruent copy**; (ii) carrier area
+**0.005430 mm^2, edges 389.9/349.5/50.0 um — BELOW the 0.02 mm^2 visible floor**; (iii) 25.063 um <=
+2x 25.063 = 50.126. **All three hold, so it does not fire and is quoted as RESIDUAL GRADING DEMAND — the
+number the Phase-2 targeted-tightening pass must close.** It did not move by a micron between `_S21A` and
+`_S21B`, which is itself the evidence that neither routing nor admission reaches it.
+
+>> **Z7' ROW 5 — TRADE.** Row 1 (INFEASIBLE) did not fire: recovery 12,806/12,806, Euler 0, cracks 0.
+>> **Row 2 (REFUTATION OF THE COMPOSITION) did not fire, and that is the arm's headline:** with routing and
+>> admission running together the judge reads `[NORMAL] PASS count 0` against an EMPTY strand list.
+>> **The two mechanisms compose without interacting.** Row 3 (REGRESSION) did not fire — Z3', Z4' and Z6'
+>> all hold. Row 4 (WIN) is not reached because Z1's win shape needs a >=5x global fall and all four
+>> primaries at 0; measured x0.821 and P4 = 7. **Row 5 TRADE.**
+>>
+>> **WHAT IS ESTABLISHED.**
+>>   * **THE COMPOSITION IS PROVEN.** 1,074 -> 866 -> **0**. Routing alone left 866; adding the S20B
+>>     admission wiring on top of routing takes it to zero with **0 admission-stranded** and no refusal
+>>     storm. Neither arm alone could show this.
+>>   * **THE OPERATOR-VISIBLE ORIENTATION CLASS IS GONE: gated blades at the 0.02 mm^2 floor 35 -> 11 -> 0.**
+>>   * **COVERAGE WORKS WHERE IT REACHES, AGAIN.** P4 — untouched through two arms — was covered for the
+>>     first time and fell **21 -> 7 plates, worst standoff 378.4 -> 136.3 um (2.78x)**. Same mechanism,
+>>     same result, third demonstration.
+>>   * **H1 WITNESSED IS NOW 70.988 um, x0.147 OF `_S19A`'s 482.131.** Three arms, monotone: 482 -> 125 -> 71.
+>>   * **AND THE FRONTIER LAW HELD AGAIN.** Global plates fell only x0.821 because the survivors are at NEW
+>>     sites: the top-rim band (z 119.98-119.99 at th 0.859, 2.430, 0.858, 2.428, 2.272, 0.702, -0.869,
+>>     -2.440 — a 12-fold congruent family) and z 113.46-113.85. **We routed the enumerated 67 and the
+>>     population reappeared just outside them.** Refinement relocates the frontier; it does not remove it.
+
+**THE INSTRUMENT GAP, AND IT IS THE REAL FINDING OF THIS SESSION.** The operator's S21B verdict
+(screenshot, timestamped): **"S21B is better but the tessellation is still not perfect. i think we need to
+eliminate this sharded meshing."** They photographed a radiating fan of long thin slivers converging on a
+point, several reading red/back-facing in the render, with long yellow shards nearby — **while the gated
+census reads 0 at the visible floor.** Both are true. **Every census in this campaign keys on AREA x
+STANDOFF; the eye keys on LENGTH.** A 2 mm x 15 um needle carries 0.000015 mm^2 — a thousandth of the
+visible-AREA floor — and glints across a render. **That is why the operator can still see a class that
+every instrument here reports as closed.**
+
+**THE LENGTH-KEYED SHARD CENSUS (`research/bridge/out/s22shard.ts`), MEASURED ON `_S21B`.** 201,315 facets
+carry a long edge >= 500 um. Longest edge p50 **857** / p90 **1,147** / p99 **1,790** / MAX **2,921 um**;
+3-D AR p50 **2.8** / p90 **9.9** / p99 **30.0** / MAX **85.1**.
+
+| long >= | AR3 >= 8 | AR3 >= 12 | AR3 >= 20 |
+|---|---|---|---|
+| 1.0 mm | 3,875 | 2,197 | 954 |
+| 1.5 mm | 784 | 201 | **123** |
+| 2.0 mm | 101 | 38 | 23 |
+
+**A THRESHOLD TRAP THAT MUST BE RECORDED BEFORE ANYONE SETS A BAR HERE: `AR3 >= 12` CATCHES THE BACKGROUND
+LATTICE ITSELF.** Six of the fifteen longest shards read AR3 **12.0** at area **0.212 mm^2** and deviation
+**0.12-0.26 deg** — those are the seed's DESIGNED anisotropic elements on smooth wall (along 1,101 um /
+across 385 um), not defects. **A shard bar at AR3 >= 12 would declare the mesh's own intended anisotropy a
+defect and could never be satisfied.** Hence the registered quantity below uses **AR3 >= 20 at long >= 1.5
+mm (123 facets)**, which excludes the lattice band by measurement rather than by assertion.
+
+**THE FAN IS LOCATED, AND ITS BIRTH MECHANISM IS NAMED FROM COORDINATES.** 297 vertices are shared by >= 12
+facets carrying a long edge. The twelve highest-degree (25, 23, 23, 21, 20, 20, 20, 20, 19, 19, 19, 19) sit
+at **z = 98.571, 99.429, 95.143, 113.460, 113.143, 68.571, 114.000, 67.714** and **th = -0.50265, 0.56549,
+0.53407, -0.78540, -0.31416, -0.03142, -0.21991, 0.97389**. Divide through by the background grid pitch
+(`dz = 120/140 = 0.857142`, `dth = 2pi/200 = 0.0314159`) and every one is an **exact integer**: z-index
+115, 116, 111, 132, 133, 80, 79 and th-index -16, 18, 17, -25, -10, -1, -7, 31.
+**THE FAN CENTRES ARE BACKGROUND-GRID NODES — not patch centres, not locus points.** Eleven of the twelve
+lie **1.33-2.59 mm from the nearest declared region**, i.e. just OUTSIDE a routed radius (cap 1.5 mm).
+**MECHANISM: a background-grid vertex adjacent to a refined region becomes a high-degree hub.** The refined
+side contributes many short edges; the unrefined background side contributes long ones; the vertex ends up
+the apex of a fan of 19-25 long facets. **It is the refinement-to-background transition, anchored on the
+grid node rather than on the patch ring.** Classification of the 2,198-facet band at the loose thresholds:
+**gated 0** (admission closed that class), feature-spanning **38**, **inside a declared region 0** (so
+none is provenance-exempt), and **253 (11.5%) below the visible-AREA floor** — invisible to every prior
+census, which is exactly the population the operator is photographing.
+
+**RIM-ROW CAVEAT, MANDATORY, BasketWeave PRECEDENT.** The worst plate offender on `_S21B` is at **z 119.990**
+and **40 of the shards touch an open boundary row** (z >= 119.9 or z <= 0.1). **A facet on the open rim has
+no material beyond it, so a radial standoff there is partly a RULER-DOMAIN artifact and MUST NOT be quoted
+as a wall defect.** Settle it by scoring the rim on the SOLID stage or by excluding the boundary row.
+**2,158 of the 2,198 shards are interior wall and carry no such caveat** — the class is real regardless.
+
+
+### S22 (PHASE D-PREP) — THE DE-SHARD FINISHING ARM. **REGISTERED. NOT BUILT, NOT RUN.**
+Registered at the S21B close on the operator's "eliminate this sharded meshing" verdict.
+
+**THE ONE-LINE STATEMENT.** Every census this campaign has run keys on AREA; the operator's eye keys on
+LENGTH; S21B closed the area-visible classes to zero and the operator still sees shards. S22 adds the
+length-keyed instrument and a finishing pass that targets it.
+
+**1. THE NEW INSTRUMENT (the ship gate for texture, alongside the existing censuses).**
+`SHARD := longest 3-D edge >= L_vis AND (deviation >= D OR 3-D AR >= K)`, with **L_vis = 1.5 mm, D = 45 deg,
+K = 20** — derived from the `_S21B` distribution above (p99 longest 1,790 um, p99 AR3 30.0) and set to
+exclude the AR3~12 background-lattice band by measurement. **`_S21B` baseline: 123 shards.**
+`FAN := a vertex shared by >= 12 facets each carrying a long edge >= 500 um`. **`_S21B` baseline: 297.**
+Both are REPORTED with the rim-row split (interior vs open-boundary) every time.
+
+**2. THE PASS — post-loop finishing, DEFAULT OFF, its own flag.**
+  * **(i) LENGTH-DRIVEN SUBDIVISION.** Any shard over the length bar is split at its LONG edge,
+    recursively, and **every child goes through the COMPOSED gates**: S1 aspect, S2 parametric fold,
+    footprint-normal admission evaluated on SHIPPED f32 values (the `PF_CB_ADMIT_SHIPPED` quantisation),
+    and a fidelity re-queue. A child that fails any gate is refused and the parent is recorded, never
+    silently kept.
+  * **(ii) IMPROVEMENT-GATED FLIPS over fan configurations.** Gate: **worst-AR strictly decreases AND both
+    children admissible** — the S5 improvement gate plus admission. Fans are enumerated by the FAN
+    instrument, so the pass acts where the census points and nowhere else.
+  * **WHY THIS IS SAFE NOW WHEN REFINEMENT AND FLIPS HISTORICALLY FED THIS CLASS, AND THIS SENTENCE BELONGS
+    IN THE RECORD:** CTLPLUS measured that generic extra refinement made the artifact class WORSE
+    (211 -> 294) and S7's conforming flip made it worse x1.44 — both because refinement and flipping BIRTH
+    orientation defects at exactly the feature loci they target. **`_S21B` has now demonstrated that with
+    `PF_CB_ADMIT_NORMAL_SPLIT` + `PF_CB_ADMIT_SHIPPED` running, the orientation class is UNBIRTHABLE: the
+    split-side guard refused 26,434 candidate children and the post-loop sweep found 0 survivors of
+    1,247,786, judge-confirmed at PASS count 0.** The CTLPLUS law is defused BY CONSTRUCTION rather than
+    by hope — a refinement pass can no longer feed the class it used to feed. **That is the precondition
+    S22 depends on, it is measured rather than assumed, and if a future arm turns admission off, this
+    justification lapses with it.**
+
+**3. BARS. Registered before any number exists. CONTROL = `_S21B` recorded. First match, disjoint.**
+  W1 **THE SHARD CENSUS IS THE PRIMARY.** **WIN: interior shards (rim row excluded) fall to <= 12, i.e.
+     >=10x from `_S21B`'s 123, AND fans fall >=3x from 297.** **REFUTED: interior shards >= x0.95 of 123.**
+  W2 **THE AREA-KEYED CLASSES MUST NOT PAY FOR IT.** gated at the visible floor stays **0**; physical >=90
+     and the >=15/>=30/>=45 tails flat-or-better vs `_S21B`; plates <= **55**. Reported with density.
+  W3 **PLATE RESIDUE.** P4's remaining **7** and the **6** in-routed residues are mopped or explained
+     individually with provenance. A surviving plate must be declared, never silently present.
+  W4 **FIDELITY.** Z3's redesign carries over verbatim: (a) H2 over-tol FRACTION <= **1.2x of 0.00140%**
+     = **0.00168%**, mechanism-blind hard tripwire; (b) H2 witnessed reported with the SAME three-condition
+     relocation classification, firing by default; (c) unresolved <= **8,000** / worst <= **250.0 um**;
+     (d) H1 facets-over <= **1.30%**, quoted with coverage and stride, carrying no claim.
+  W5 **PRECONDITIONS.** folds **0**; determined blades <= **3**; worst admitted child AR <= **50**;
+     constraint recovery **100%**; seam-cracks **0**, **Euler 0**; judge NORMAL **0**.
+  W6 **COST — DERIVED, not guessed.** The pass subdivides at most the 123 shards plus their recursive
+     children; at a bound of 4 levels that is <= ~2,000 new triangles, i.e. **< 0.2%** of 1,247,786. So:
+     live tris <= **1,300,000**; wall <= **1,400 s** (`_S21B` ran 937 s and the pass is post-loop over a
+     123-facet worklist); rA evals <= **+15%** of 906M.
+  W7 **IDENTITY + GATE.** md5 `8a59fb37a9115600b13262254380ccb0` byte-exact, hard gate **12/12** every
+     value exact, taken AFTER the edit. New flag DEFAULT OFF, unset path byte-identical.
+  W8 **VERDICT ROWS — disjoint, IN ORDER, first match wins:**
+     1 **INFEASIBLE-AS-WIRED** — the pass cannot discharge the worklist (refusal rate > 50% of shard
+       candidates, or it cannot terminate inside the recursion bound). Report the worklist and STOP.
+     2 **REGRESSION** — W5 fails, or W4 fires, or W6 breached, or W2's gated count leaves 0.
+     3 **WIN** — W1's win shape AND W2 AND W4 AND W5 AND W6 AND W7.
+     4 **TRADE** — everything else, both numbers in the same row of the same table.
+
+>> **THE HONEST PROSPECT, REGISTERED SO IT CANNOT BE CLAIMED AFTERWARDS AS EXPECTED.** The frontier law has
+>> now held on five instruments across seven arms: refining any band moves the frontier and does not remove
+>> it. **S22 targets a LENGTH population for the first time, so the law has not yet been tested on this
+>> quantity** — but the prior is that shards will relocate rather than vanish, most likely to just outside
+>> wherever the pass acts, exactly as the plates did in S21B. **A REFUTATION HERE IS THE MOST VALUABLE
+>> OUTCOME AVAILABLE**: it would say the visible-texture class is not reachable by local finishing either,
+>> and that sends the campaign to the ranking/stopping rule with FOUR mechanisms ruled out instead of three.
+
+>> **STOP AFTER SCORING. The operator eyeballs the mesh before Phase D.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
