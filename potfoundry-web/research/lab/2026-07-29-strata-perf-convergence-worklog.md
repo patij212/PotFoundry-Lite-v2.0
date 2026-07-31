@@ -4850,6 +4850,64 @@ independent instrument, it is a different experiment.
 >> **STAGE 0 IS THE GATE. NOTHING IS WIRED UNTIL M2 FIRES.**
 
 
+### S23-M STAGE 0 — **M0 FIRED, AND IT IS A DEFECT OF MY OWN PRECONDITION, NOT OF THE MEASUREMENT.**
+### **AMENDMENT M0', REGISTERED BEFORE THE RE-SCORE. NO METRIC FRACTION IS QUOTED IN THIS BLOCK.**
+The tool ran on `_S22B` and `_S22C` (`S23M_STAGE0_{S22B,S22C}.log`). All four transcription checks passed.
+**M0 fired on two of its three clauses, and both are mis-specifications I wrote, of the same kind the S13
+decision table had — a box I failed to enumerate.** Recorded as such, with the replacement bars registered
+here before the re-score, exactly as S20.1 registered its amendment before re-running.
+
+  **CLAUSE 1 HELD.** `BLOCKED`-and-over-tol reproduced **3,848** against the registered band 3,661-4,953.
+  **CLAUSE 2 FAILED: worst 82.821 um, not 95.473 um.** **THE CAUSE IS THAT MY `BLOCKED` IS STRICTER THAN
+  THE DRIVER'S RULE, AND THE INCLUSION GOES THE SAFE WAY.** `BLOCKED` requires ALL THREE edges refused at
+  their best placement. The driver tries at most TWO — the max-sag edge (DIRECTED), then `LONGFALL` to the
+  longest edge if that one is inadmissible — and lands in `unresolved` when both fail, **without ever
+  testing the third edge.** So `BLOCKED and over-tol` is a PROPER SUBSET of `unresolved`, which is exactly
+  what 3,848 of 4,307 (89.3%) says, and the argmax carrier of 95.473 um is in the difference.
+  **CLAUSE 3 FAILED: 147 self-blocked, not 266-360.** **THE BAND ITSELF WAS UNSOUND AND I RETRACT IT.** It
+  compared a **PASS-TIME** counter to a **SHIPPED-MESH** census. S22C's 324 sites entered were accumulated
+  ACROSS the pass, whose own 995 + 982 splits regenerate candidates that are re-tested and then cease to
+  exist as such. The shipped mesh can only carry SURVIVORS. On `_S22C` the de-shard bar leaves **209**
+  candidates, 147 of them blocked. No shipped artifact can reproduce 324, and registering that it must was
+  an error in the registration, not a finding about the mesh.
+
+>> **M0' — THE REPLACEMENT PRECONDITION. REGISTERED BEFORE THE RE-SCORE, BARS FIRST.**
+>>   **M0'(i) DECLARED-SURVIVOR AGREEMENT — the only refusal IDENTITIES the artifact actually carries.**
+>>     The driver's own report DECLARES its de-shard survivors by triangle, with the gate that kept them
+>>     (`REFUSED[ar] tri ... AR3 ... long ... th ... z ...`). **Every declared `REFUSED[ar]` survivor must be
+>>     `BLOCKED` in the reconstruction. The bar is 100%, and it is the S20.1 standard (108 of 108, exempting
+>>     none)** — these are named facets, on the shipped mesh, refused by the gate being reconstructed.
+>>   **M0'(ii) THE SUBSET, CHECKED RATHER THAN ASSUMED.** count in **[0.80, 1.00] x 4,307** (3,446-4,307);
+>>     **AND** the driver's own adaptive-oracle argmax carrier — z=[76.40,76.38,75.97], th=[1.3593,1.3590,
+>>     1.3588], edges 26.2/704.2/723.7 um, the facet that carries the 95.473 um — must be located on the
+>>     mesh and shown to have an **ADMISSIBLE THIRD EDGE**, which is precisely what excludes it from the
+>>     stricter set. **If it is BLOCKED instead, the subset argument is refuted, M0 stands, and Stage 0
+>>     stops.**
+>>   **M0'(iii) CLAUSE 3 IS WITHDRAWN, NOT WEAKENED.** The de-shard-bar census on `_S22C` and its blocked
+>>     fraction are REPORTED with no band, because no band on a shipped mesh can be checked against a
+>>     pass-time counter.
+>>   **NOTHING ELSE MOVES. M1/M2 and the 50% bar are untouched, `MET_AR` stays derived by the registered
+>>     rule, and the FD sweep stays as registered.**
+
+**AND ONE FINDING THAT IS OUT OF THIS ARM'S SCOPE BUT MUST BE ON THE RECORD BEFORE IT IS USED: THE
+CERTIFIED KERNEL'S `eigSym2` IS NUMERICALLY UNSOUND ON THIS SURFACE, AND THE TRANSCRIPTION HAD TO REPAIR
+IT.** `tierC/surfaceMetricField.ts` takes the eigenvector of a symmetric 2x2 as `(b, l1 - a)`. On a
+near-cylindrical wall the first fundamental form is near-diagonal — measured `F = -6.1e-14` against
+`E = 1.7e3`, `G = 1.0` — so `b` is at the rounding floor AND `l1 - a` carries ~1e-10 of cancellation error
+against a true value of ~1e-30. **Both components are noise and the eigenvector comes out as the wrong
+axis.** Measured consequence at th 5.706267 z 14.935075, where `II = diag(-41.1, -9.5e-12)`: the kernel
+reports **kappa2 = -38.06** where the true value is **-9.4e-12**, i.e. the two principal directions are
+exchanged and `mu2` lands on the wrong clamp. **Declared adaptation 3** replaces the nested
+`I^{1/2}` / `eigSym2` route with the identity `M = SUM_i mu_i (I v_i)(I v_i)^T / (v_i^T I v_i)` solved
+directly from `II v = kappa I v` — the SAME object (the derivation is in the tool header), assembled with
+no matrix square root. **It is verified three ways and all three pass on the production mesh:** the
+defining equation `M v_i = mu_i I v_i` to **3.089e-8**; a metric-equilateral element reads
+**arM = 1.732 to 2.634e-9**; and of **80 of 4,011** probes where this copy differs from the certified src,
+**80 of 80 are attributed** to that decomposition — src either carries the same `mu` set with different
+directions, or is not a stable function of its own input there (a 1e-12 perturbation of its FD step moves
+it by more than 1e-6). **Unattributed: 0.** The src file is NOT touched by this arm; the defect is filed.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
