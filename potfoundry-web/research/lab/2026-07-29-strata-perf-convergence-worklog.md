@@ -4323,6 +4323,121 @@ the pass is refusing to trade the census it is scored on for the one it is not.*
 >> **STOP AFTER SCORING. The operator eyeballs the de-sharded mesh before anything else.**
 
 
+### S22B — THE REACH EXTENSION ONTO THE PHOTOGRAPHED POPULATION. **REGISTERED. NOT BUILT, NOT RUN.**
+Registered at the S22 close on the coordinator's reading of S22's own honest-limit paragraph: the
+registered band fell x0.236 while the LOOSE band read x0.969 and its sub-visible-floor part 253 -> 232.
+**The operator's directive is not satisfied BY CONSTRUCTION OF THE BAR, and S22's own report predicted the
+render would still show shards.** S22B closes that gap with the same mechanism and a bar DERIVED from the
+photographed population rather than guessed.
+
+**1. THE MEASUREMENT, TAKEN FIRST AND ON `_S22A` (`research/bridge/out/s22bDerive.ts`,
+`S22B_DERIVE_S22A.log`). THE BAR IS READ OFF THIS TABLE.**
+The photographed population is the S22 handoff's own set: loose-band members (long >= 1.0 mm AND
+(dev >= 45 deg OR AR3 >= 12)) BELOW the 0.02 mm^2 visible-AREA floor. On `_S22A` it numbers **232**
+(204 interior, 28 rim-row, 50 incident to a fan hub).
+
+| quantity | p05 | p10 | p50 | p90 | MAX |
+|---|---|---|---|---|---|
+| longest edge um | **1,010** | **1,017** | 1,105 | 1,186 | **1,285** |
+| shortest edge um | 33.9 | 34.1 | 428.3 | 524.9 | 587.5 |
+| 3-D AR | **28.7** | **30.0** | 39.0 | 47.8 | 49.9 |
+| deviation deg | 0.2 | 0.3 | 3.1 | 103.9 | 155.7 |
+| area mm^2 | 0.01134 | 0.01205 | 0.01600 | 0.01911 | 0.01997 |
+
+>> **THE ARITHMETIC THAT EXPLAINS S22 IN ONE LINE: the photographed population's LONGEST facet is 1,285 um
+>> and S22's registered bar was 1,500 um. The bar sat ABOVE the entire population. S22 could not have
+>> touched a single one of these facets, and that is why the loose band moved x0.969.** Not a failure of
+>> the mechanism — a failure of reach, and it was visible in the numbers before the arm ran.
+
+**2. *** THE DESIGNED-ANISOTROPY TRAP, MEASURED ON THE SHIPPED MESH AND CLEARED. THIS IS THE GO/NO-GO AND
+IT IS ANSWERED BEFORE THE RUN, AS ASKED. *** ** The seed's intended lattice (isolated on `_S22A` by its own
+signature — area >= 0.15 mm^2, deviation < 1 deg, long >= 1 mm) is **36,846 facets**: longest p10 1,068 /
+p50 1,143 / MAX 2,921 um; **AR3 p50 2.9 / p90 4.8 / MAX 12.3**; area p05 0.155 / MAX 1.025 mm^2.
+
+| axis | photographed | designed lattice | separable? |
+|---|---|---|---|
+| LENGTH | 1,010 .. 1,285 um | 1,068 .. 2,921 um | **NO — they overlap** |
+| AREA | max **0.01997** mm^2 | min **0.15002** mm^2 | **YES — disjoint, 7.5x gap** |
+| 3-D AR | min ~**28.7** | max **12.3** | **YES — disjoint, 2.3x gap** |
+
+>> **SO THE OPERATOR'S TARGET DOES NOT INCLUDE INTENDED GEOMETRY, AND S22B IS A PASS PARAMETER RATHER THAN
+>> A DESIGN CONVERSATION.** Length alone would NOT have settled this — a bar low enough to reach the
+>> photographed set catches designed lattice cells on length. **It is the AR clause, not the length clause,
+>> that protects the lattice**, and the sweep proves it: at K = 12 the bar catches **7** lattice elements
+>> (worst AR3 12.3); at K = 20 it catches **0**, with **1.63x** of clearance. The S21B threshold trap is
+>> therefore not merely avoided by inheritance — it is re-measured on this mesh and cleared with a margin.
+
+**3. THE DERIVED BAR. `SHARD_B := longest 3-D edge >= 1.0 mm AND (deviation >= 45 deg OR 3-D AR >= 20)`.**
+`L_B = 1.0 mm` is set at the photographed population's own p05/p10 floor of 1,010/1,017 um, so it covers
+**232 of 232 = 100%** of them — comfortably the registered ">= p90 of the photographed members' lengths".
+No AREA clause is needed or wanted: AR3 >= 20 already excludes the lattice, and an area clause would carve
+the visual class in two at a threshold the eye does not use. **`_S22A` baseline: 838 candidates**
+(802 interior, 36 rim-row, 232 sub-floor, 151 fan-incident) — an **8.3x** worklist vs S22's 101.
+
+**4. THE PASS, EXTENDED — same flag `PF_CB_DESHARD`, same gates, DEFAULT OFF, three registered changes.**
+  * **(a) THE BAR IS LOWERED** to `L_B` above. Subdivision, hub flips and the composed gates are unchanged:
+    every child still goes through `bisectAt` => S1 aspect + S2 fold + split-side footprint-normal
+    admission on the SHIPPED f32 values, plus the fidelity re-queue.
+  * **(b) THE CEILINGS ARE RAISED AND ARE MEANT TO BE SPENT.** S22 terminated at depth 1 of 4 having used
+    **7%** of its 2,000-triangle budget. New budget **8,000 new LIVE triangles**, derived: S22 converted
+    101 candidates into 72 splits and +144 live (1.43 live per candidate), so 838 candidates project to
+    ~1,200 and 8,000 is 6.7x headroom at +0.64% of the mesh. Fan sweeps **3 -> 6**, and the per-hub
+    one-action-per-sweep limit is REMOVED so a degree-25 hub can discharge inside a single sweep.
+    **THE RECURSION BOUND IS REGISTERED AS NON-BINDING AND THAT IS A PREDICTION, NOT A HEDGE:** one split at
+    the long edge takes a 1.0-1.3 mm facet to 0.5-0.65 mm, below `L_B` by construction, so depth 1-2 is the
+    expected behaviour and depth 4 is a guard. **Reaching depth >= 3 would be a finding and must be reported
+    as one.**
+  * **(c) THE ON-LOCUS FLIP REFUSALS GET A SECOND PATH.** S22 measured **594** flip attempts refused because
+    the spoke lies ON a detected locus — correctly, since rotating it would undo the conforming the whole
+    pipeline exists to produce. **A fan anchored on a locus cannot rotate its edges but it can SHORTEN
+    them:** where the flip is locus-refused, the spoke is instead SUBDIVIDED at its midpoint through the
+    same composed gates. This is not a loophole in the locus rule — a midpoint split moves no vertex off
+    its locus and adds one ON it. It reduces the FAN census for the right reason: the census counts
+    vertices carrying **>= 12 facets with an edge >= 500 um**, so halving a 900 um spoke drops that facet
+    out of the long-edged set. **Counted on its own line (`locus-split`), never merged with the flips.**
+
+**5. BARS. Registered before any number exists. CONTROL = `_S22A` recorded. First match, disjoint.**
+  X1 **THE PHOTOGRAPHED POPULATION IS THE PRIMARY — this is the operator's actual target.**
+     **WIN: the sub-floor loose-band set falls >=5x, i.e. 232 -> <= 46, AND the loose band itself falls
+     >=2x, i.e. 2,129 -> <= 1,065.** **REFUTED: sub-floor >= x0.95 of 232, i.e. >= 221.**
+  X2 **THE AREA-KEYED CLASSES MUST NOT PAY FOR IT.** gated at the visible floor stays **0**; plates
+     <= **53**. The off-locus tails >=15/>=30/>=45 and physical >=90 must not rise more than **+2.0%** vs
+     `_S22A`, reported with density. **That ceiling is DERIVED, not softened:** S22 measured +0.12-0.24%
+     for 72 splits + 486 flips, S22B's worklist is 8.3x larger, so a proportionate rise is ~+1.0-2.0% and a
+     "flat" bar would be unachievable by construction rather than by damage. Breach = REGRESSION.
+  X3 **PLATE RESIDUE.** P4's **7** and the **6** in-routed declared or explained individually. Expected
+     unchanged: S22B is a LENGTH instrument and those are AREA x STANDOFF offenders at AR3 2.4-4.7.
+  X4 **FIDELITY, S22's clauses carried over verbatim against the new control.** (a) H2 over-tol FRACTION
+     <= **1.2x of 0.00139% = 0.001668%**, mechanism-blind hard tripwire; (b) H2 witnessed reported with the
+     SAME three-condition relocation classification, firing by default; (c) unresolved <= **8,000** /
+     worst <= **250.0 um**; (d) H1 facets-over <= **1.30%**, quoted with coverage and stride, carrying no
+     claim — and the full-coverage adaptive-oracle control quoted beside it, per S22's stride lesson.
+  X5 **PRECONDITIONS.** folds **0**; determined blades <= **3**; worst admitted child AR <= **50**;
+     constraint recovery **100%**; seam-cracks **0**, **Euler 0**; judge NORMAL **0**.
+  X6 **COST.** live tris <= **1,300,000**; wall <= **1,400 s**; rA evals <= **+15%** of 906M = **1,042M**.
+     Headroom is real: `_S22A` used 1,248,594 / 934 s / 926M.
+  X7 **IDENTITY + GATE.** md5 `8a59fb37a9115600b13262254380ccb0` byte-exact, hard gate **12/12** every
+     value exact, BOTH re-taken AFTER the edit. Flag stays DEFAULT OFF; unset path byte-identical.
+     **The admission precondition enforcement carries over unchanged: `PF_CB_DESHARD=1` without composed
+     admission REFUSES to run and its mesh is byte-identical to `_W1`.**
+  X8 **VERDICT ROWS — disjoint, IN ORDER, first match wins:**
+     1 **INFEASIBLE-AS-WIRED** — refusal rate > 50% of candidates, or the pass cannot terminate inside the
+       recursion bound. Report the worklist and STOP.
+     2 **REGRESSION** — X5 fails, or X4 fires, or X6 breached, or X2 breached (gated leaves 0, plates > 53,
+       or a tail rises more than +2.0%).
+     3 **WIN** — X1's win shape AND X2 AND X4 AND X5 AND X6 AND X7.
+     4 **TRADE** — everything else, both numbers in the same row of the same table.
+
+>> **THE PROSPECT, REGISTERED SO IT CANNOT BE CLAIMED AFTERWARDS AS EXPECTED.** S22 broke the frontier law
+>> on the 1.5 mm band — every z-bin flat or lower, nothing relocated. **That is one arm on one band and it
+>> is NOT yet a general result.** The 1.0 mm band is 8.3x larger and sits much closer to the background
+>> lattice pitch (1,101 um along), so it is the harder test by construction: there is far less clean wall
+>> to relocate INTO at 1.5 mm, and far more at 1.0 mm. **If the law re-asserts itself anywhere, this is
+>> where.** Report the z-histogram bin-by-bin either way.
+
+>> **STOP AFTER SCORING. The operator's eyeball lands on S22B, not S22A.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
