@@ -3711,6 +3711,94 @@ classifier, not a fidelity number**.
 >> junction-cage plate census above, which is the artifact S21 must consume.
 
 
+### S21 (PHASE D-PREP) — THE ROUTING BUILD OVER THE PLATE CENSUS. **REGISTRATION ONLY. NOTHING BUILT OR RUN.**
+Registered 2026-07-31 by the S20.1 session, under the operator's amended standing order ("you can go ahead
+once the review lands") which waives the pre-build pause but NOT the pre-registration discipline and NOT the
+post-arm eyeball gate. **NO CODE HAS BEEN CHANGED FOR S21.**
+
+**THE ONE-LINE STATEMENT.** Every band remedy and the accept rule have now been tried; S20.1 closed the
+orientation class to ZERO and moved fidelity by NOTHING. The residual the operator photographs is the
+PROTRUSION class — large, well-shaped, admission-invisible chords standing off the surface inside the
+junction cage — and it has never been routed. S21 routes it.
+
+**1. SUBSTRATE, AND WHY IT IS NOT `_S20B`.** Build on the **`_S19A` command family** (aligned seed +
+`ALIGNED_ACROSS_ABS` + `RINGS=7` + `TURN_MUL=9`, **admission flags OFF**). CONTROL = **`_S19A` recorded**
+(H2 21.379 um / 0.00128%, physical >=90 4,972, unresolved 3,701 worst 47.245 um). S20.1's own verdict is the
+reason: the invariant fires a fidelity ceiling it did not cause, so **routing lands first and admission is
+re-enabled in a later arm on top of it**. Turning `PF_CB_ADMIT_SHIPPED` on here would confound the two.
+
+**2. TARGET LIST — MEASURED, LOAD-WEIGHTED, AND THE PRIMARIES ARE NAMED.** From `s201plates.ts` on `_S20A`
+and `_S20B` (213-223 plates at the visible scale, 82% inside a traced junction disk, standoff p50 197.1 um /
+max 639.3 um, 3-D AR 1.8-8.9, deviation 85-95 deg). Weight by **measured artifact load**, never by disk
+count (S17's lesson). **THE FOUR PRIMARY SITES, stable across both arms to the digit:**
+
+| id | theta | z | worst standoff | character |
+|---|---|---|---|---|
+| **P1** | -0.2663 | 79.31 - 79.59 | **639.3 um** | the X-crossing flap cluster — the largest population and the operator's headline |
+| **P2** | -1.8327 | 81.585 - 81.594 | **528.7 um** | the paired plate cluster |
+| **P3** | -0.2654 | 114.42 - 114.43 | **413.2 um** | the rim-band flap |
+| **P4** | +0.5674 | 97.31 | **334.9 um** | the isolated flank plate |
+
+**STAGE 0, PRE-FLIGHT, NO BAR SCORED: re-run `s201plates.ts` on `_S19A` and confirm the four primaries
+transfer.** They are expected to (the class is site-anchored across two seed families and four arms) but
+the target list must be read off the arm's OWN substrate, not assumed from a sibling. **If P1-P4 do not
+appear on `_S19A`, S21 does not start** — the census would then be an admission-arm artefact, which is a
+result and not a target list.
+
+**3. MECHANISM.** M=g/h^2 anisotropic elements and/or declared structured patches over the demand regions,
+composed **free-Steiner with no stitch, through the single CDT call**, per the S18 design that is already
+built and seed-validated (watertight by construction, zero constraint edges, no over-cap facet added).
+  * **THE EMITTER GRADING FIX IS MANDATORY AND IT IS ALREADY SPECIFIED:** patch interior sizing =
+    **`min(polar grading, sizing field)`**. S18 measured the defect it repairs — the polar set REPLACES the
+    background lattice, so a routed disk can be COARSER than what the driver would have built, and disk #25's
+    congruent copy went **0.008 -> 31.429 um**. **Routing must never under-resolve what the driver would
+    have refined.** An arm without this fix is invalid, not merely worse.
+  * Provenance regions DECLARED into `<tag>.patches.json` and handed to the judge via `PF_FT_PATCHES`. The
+    exemption stays sharp: **undeclared over-cap still FAILS, and a mis-registered region exempts nothing**
+    (the judge's PROVENANCE-2 negative control already pins both directions).
+  * Heed the cdt2d spanner lesson: no constraint edge may span the chart, and after a seam weld the
+    theta=0/2pi columns are INTERIOR, not boundary.
+
+**4. BARS. Registered before any number exists. First match, disjoint.**
+  Z1 **THE PRIMARY IS THE PROTRUSION CLASS AT THE ROUTED SITES, because that is what the operator sees.**
+     Top offenders by (area x interior standoff) at P1-P4, same instrument as S20.1's census, same 0.02 mm^2
+     visible-area floor and 50 um standoff line. **WIN: the plate count at the routed primaries falls >=5x
+     AND the worst standoff at each primary falls >=2x.** **REFUTED: plate count at the primaries >= x0.95.**
+     A plate that survives must be **declared and exempted with provenance — never silently present.**
+  Z2 **THE EYE-METRIC, REPORTED WITH DENSITY, NO WIN BAR (the frontier law's standing treatment).** Physical
+     >=90 and the >=15/>=30/>=45 tails, absolute and per 1k, in-disk and out, with feature-spanning beside
+     them. `_S19A`: 4,972 (4.08 per 1k) / 24,997 (20.5 per 1k).
+  Z3 **FIDELITY GUARDS vs `_S19A`.** H2 witnessed <= **21.379 um**; H2 fraction <= **0.00128%**; H1 facets-
+     over <= **1.30%** quoted with coverage and stride and carrying no claim. **REGRESSION-STOP CEILINGS,
+     first match: H2 witnessed > 42.76 um OR unresolved worst > 250.0 um OR unresolved count > 8,000 =>
+     STOP and report.** Same numbers S20.1 carried; the routing does not get a looser ceiling than the
+     invariant did.
+  Z4 **PRECONDITIONS.** determined folds **0**; determined blades <= **3** (seed-born, declared); worst
+     admitted child AR <= **50**; constraint recovery **100%**; seam-cracks **0**, loops **2**, **Euler 0**.
+  Z5 **IDENTITY + GATE.** md5 `8a59fb37a9115600b13262254380ccb0` byte-exact at the W1 config and hard gate
+     **12/12** with every documented value exact, taken AFTER the edit. All new flags DEFAULT OFF and the
+     unset path byte-identical.
+  Z6 **COST.** rA evals <= **+15%** of `_S19A`'s 906M; wall <= **2,400 s**; live tris <= **3.0 M**.
+  Z7 **VERDICT ROWS — disjoint, evaluated IN ORDER, first match wins:**
+     1 **INFEASIBLE-AS-WIRED** — the emitter cannot lay the demand (constraint recovery < 100%, or a
+       watertightness/Euler break, or the patch set exceeds the triangle cap on its own). Report the demand
+       and STOP; the next question is the primitive, not the region list.
+     2 **REGRESSION STOP** — Z3's stop ceilings fire.
+     3 **REGRESSION** — Z4 fails, or Z3's guards fail, or Z6 breached.
+     4 **WIN** — Z1's win shape AND Z3 AND Z4 AND Z5 AND Z6. Z2 reported, not required.
+     5 **TRADE** — everything else, both numbers in the same row of the same table.
+
+>> **WHAT WOULD MAKE S21 WORTH RUNNING EVEN IF Z1 IS REFUTED.** The plate class is the last untried
+>> mechanism against the only population the operator has ever vetoed on. Five band remedies, one accept
+>> rule and one invariant have now been measured against it; **every one of them left the plates at the same
+>> four sites with the same magnitudes to the digit.** A refutation here would say the protrusion class is
+>> not reachable by routed geometry either, and that is the finding that sends the campaign to the ranking/
+>> stopping rule the frontier law has been pointing at since S19 — with three mechanisms ruled out instead
+>> of assumed.
+
+>> **STOP AFTER SCORING. The operator eyeballs the routed mesh before Phase D — that gate is NOT waived.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
