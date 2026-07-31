@@ -4543,6 +4543,82 @@ third consecutive arm on which the sampled H1 witness moved while the full-cover
 >> **STOP AFTER SCORING. The operator's eyeball lands on S22B.**
 
 
+### S22C — THE WIRING ARM: S8's PROTECTOR CASCADE INTO THE DE-SHARD PASS. **REGISTERED. NOT BUILT, NOT RUN.**
+S22B named this itself: *"the fix is already built in this file and was not wired to this pass: S8's
+`conformSite` protector cascade. That is the registered first item for any S22C, and it is a wiring job,
+not a new mechanism."* **Nothing new is invented here. `conformSite`'s protector ladder is given to the
+de-shard subdivision so that an S1 aspect refusal discharges its PROTECTOR before the blocked split is
+abandoned.** Target, named: **S22B's 1.5 mm census of 44 must FALL.**
+
+**1. THE MECHANISM BEING WIRED, AND EXACTLY THE HALF OF IT THAT APPLIES.** `conformSite` has two
+obligations. The **PROTECTOR** obligation — when `shapeAdmits` refuses, midpoint-split the OFFENDING
+incident triangle's longest edge first (Rivara's x0.99-amplification move), recursively, depth-capped,
+then retry the blocked split — **is what S22C wires in.** The **RETREAT** obligation — when the offender's
+longest edge IS the blocked edge, split the blocked edge and chase the crossing into the child — **does
+NOT apply and is deliberately not wired**, because S8's retreat exists only to re-centre an OFF-CENTRE SNAP
+crossing (t in [0.12, 0.88]). The de-shard split is already at the MIDPOINT of the LONGEST edge. That case
+is `fossilDeadSelf` and it stays a true dead end here.
+
+>> **2. *** THE PREDICTION, AND IT IS PESSIMISTIC ON PURPOSE, BECAUSE THIS FILE ALREADY MEASURED THE ANSWER
+>> ONCE AND THE OPTIMISTIC NUMBER IS THE ONE THAT DOES NOT TRANSFER. *** ** The S8 pilot conformed
+>> **94.8%** (2,547 + 12 of 2,699) on a **61k-facet** mesh. **At PRODUCTION the same code conformed 13.6%,
+>> with 86.3% SELF-BLOCKED under the shape cap**, and this log already wrote down why: production's main
+>> loop refines every pair fat enough to split legally, so **the pairs that SURVIVE to a post-loop pass are
+>> survivors precisely because they sit at the cap boundary.** The de-shard survivors are that same
+>> censored population — 219 of S22B's 242 refusals were on aspect.
+>> **AND S22C IS STRUCTURALLY WORSE OFF THAN S8 WAS, WHICH MUST BE SAID BEFORE THE RUN, NOT AFTER:**
+>> S8's blocked splits were off-centre SNAP crossings with amplification up to 1/min(t,1-t) ~ 8x, so
+>> re-centring alone could rescue some. **A de-shard split is already at the amplification-MINIMISING
+>> point**, and this file's own S8 note states the consequence: *"if IT breaches the cap, NO admissible
+>> split point exists on that edge."* The cascade can therefore only help by making the NEIGHBOUR thinner,
+>> never by moving the split.
+>> **SO, REGISTERED: cascade conform rate <= 30% of the aspect refusals** (S8-production says ~14%; the
+>> protector path is real, so a little above it is allowed). **Expected depth 4-10 of 12** — deeper than
+>> S22B's 3, because a protector ladder is depth by construction. **Expected 1.5 mm census: falls from 44
+>> toward `_S22A`'s 29; I do NOT predict it beats 29.**
+>> **A REFUTATION IS THE MOST VALUABLE OUTCOME AND IS EXPLICITLY IN SCOPE.** If the cascade cannot
+>> discharge these, that closes the bisection-family question on the LENGTH class exactly as S8 closed it
+>> on the crossing class — a FIFTH firing of the P5 trigger, and the strongest possible argument for the
+>> reconstruction pass (S23) over any further local finishing.
+
+**3. THE PASS.** Same flag `PF_CB_DESHARD`, DEFAULT OFF, same bar family as S22B (`L_B` 1.0 mm, K 20,
+D 45 deg), same composed gates, same admission precondition enforcement (refuse-to-run, byte-identical to
+`_W1`). New: `PF_CB_DESHARD_CASCADE` (default ON WHEN the de-shard flag is on — it is a sub-behaviour of an
+already-default-OFF lever, and `PF_CB_DESHARD_CASCADE=0` reproduces `_S22B` exactly), `PF_CB_DESHARD_CASDEPTH`
+default **12** (S8's own `FOSSIL_DEPTH`). The cascade fires **only on an `ar` refusal** — an `admit` refusal
+is a back-facing child and no amount of neighbour refinement changes it, so cascading there would be
+budget spent on a gate that is not the one blocking. Applied to BOTH the (i) subdivision and the (iii)
+on-locus spoke paths, counted separately on each. Budget **8,000 -> 12,000** new live triangles: protector
+ladders are the cost, and `_S22B` used 2,796 of 8,000, so the headroom is for the ladders and nothing else.
+
+**4. BARS. CONTROL = `_S22B` recorded. First match, disjoint. Tripwires carried over VERBATIM.**
+  Y1 **THE NAMED TARGET IS S22B's OWN REGRESSION.** **WIN: the 1.5 mm registered census falls 44 -> <= 29**
+     (i.e. at least back to `_S22A`) **AND the photographed set does not rise above 97 AND the loose band
+     does not rise above 984.** **REFUTED: 1.5 mm census >= x0.95 of 44, i.e. >= 42.**
+  Y2 **THE CASCADE MUST BE SHOWN TO HAVE ACTED.** Conform rate REPORTED against the registered <= 30%
+     prediction, with depth histogram and the self-blocked count. **A pass that reports 0 protector splits
+     is a WIRING FAILURE, not a refutation, and must be reported as INFEASIBLE row 1.**
+  Y3 **AREA-KEYED CLASSES.** gated stays **0**; plates <= **51**; tails >=15/>=30/>=45 and physical >=90
+     <= **+2.0%** vs `_S22B`.
+  Y4 **FIDELITY.** (a) H2 over-tol FRACTION <= **1.2x of 0.00139% = 0.001668%**; (b) H2 witnessed with the
+     SAME three-condition relocation classification, firing by default; (c) unresolved <= **8,000** /
+     worst <= **250.0 um**; (d) H1 facets-over <= **1.30%**, quoted with coverage and stride AND with the
+     full-coverage adaptive-oracle control beside it.
+  Y5 **PRECONDITIONS.** folds **0**; determined blades <= **3**; worst admitted child AR <= **50**;
+     recovery **100%**; seam-cracks **0**, **Euler 0**; judge NORMAL **0**.
+  Y6 **COST.** live tris <= **1,300,000**; wall <= **1,400 s**; rA evals <= **1,042M**.
+  Y7 **IDENTITY + GATE.** md5 `8a59fb37a9115600b13262254380ccb0` byte-exact; hard gate **12/12** exact;
+     both re-taken AFTER the edit. Flag DEFAULT OFF; unset path byte-identical.
+  Y8 **VERDICT ROWS — disjoint, IN ORDER, first match wins:**
+     1 **INFEASIBLE-AS-WIRED** — the cascade reports 0 protector splits (wiring failure), or refusal rate
+       > 50% of candidates, or it cannot terminate inside the depth bound. Report and STOP.
+     2 **REGRESSION** — Y5 fails, or Y4 fires, or Y6 breached, or Y3 breached.
+     3 **WIN** — Y1's win shape AND Y2 AND Y3 AND Y4 AND Y5 AND Y6 AND Y7.
+     4 **TRADE** — everything else, both numbers in the same row of the same table.
+
+>> **STOP AFTER SCORING. S22C's mesh supersedes S22B's for the operator's eyeball if it is clean.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
