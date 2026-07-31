@@ -3293,6 +3293,135 @@ has named as its worst since S11, now the true worst as well.
 >> an argument.
 
 
+### *** THE FRONTIER RESULT — A STANDING LAW OF THIS CAMPAIGN, NAMED 2026-07-31 AFTER S19. ***
+**THE EYE-POPULATION IS THE FRONTIER BETWEEN RESOLVED AND UNRESOLVED MATERIAL. REFINING ANY BAND MOVES THE
+FRONTIER; IT DOES NOT REMOVE IT.** Three arms, one variable each, the same shape every time:
+
+| arm | what it refined | that band's >=90 | where it went | TOTAL >=90 |
+|---|---|---|---|---|
+| `_S15A` | ring zero (across 192.6 -> 50 um) | ring-zero sites CLOSED (38.061 -> 0.667 um) | out to the FLANKS | 5,156 |
+| `_S18A` | 26 junction disks (structured patch) | routed disks **x0.686** | nowhere visible | 4,870 |
+| `_S19A` | the whole flank band [50, 650] um | annulus **x0.094**, far **x0.185** | back to LOCI + DISKS | 4,972 |
+
+**THE TOTAL IS CONSERVED TO ~5,000 ACROSS ALL THREE WHILE EVERY BAND-LOCAL METRIC MOVED BY UP TO 10x, AND
+WHILE FIDELITY IMPROVED MONOTONICALLY** (H2 witnessed 37.899 -> 24.281 -> 21.379 um; the over-tol fraction
+0.01242% -> 0.00251% -> 0.00128%). Refinement relocates the frontier because the frontier is defined by
+where refinement STOPS, not by where geometry is placed. S19's W3 clauses landing at x0.094/x0.161 while
+its primaries were REFUTED is not a contradiction — it is the law's prediction, stated as a bar before the
+run and confirmed.
+**CONSEQUENCE, AND IT IS WHY S20 IS SHAPED THE WAY IT IS:** no amount of BAND geometry can close this class.
+The quantity that decides where the frontier sits is the ACCEPT RULE, and the accept rule has never once
+been asked whether the facet it is accepting points the right way. Every intervention so far has changed
+WHERE geometry goes; S20 changes WHAT MAY BE ACCEPTED.
+
+### S20 (PHASE C) — EMIT-TIME FOOTPRINT-NORMAL ADMISSION. **REGISTRATION ONLY. NOTHING IS BUILT OR RUN.**
+Posted for operator review. The arm does not start without their word.
+
+**THE ONE-LINE STATEMENT.** The auditor's A2 footprint-normal instrument — the only instrument in this repo
+that has ever agreed with the operator's eye — moves INTO the driver, and becomes an ADMISSION condition
+rather than a post-hoc census. **A facet that points the wrong way against its own footprint may not be
+accepted.** It refines, or it strands and is enumerated.
+
+**1. DESIGN — TWO WIRINGS, ONE QUANTITY.**
+The quantity is A2's, transcribed and not re-invented: `bestDot` over the **five candidate analytic normals**
+(central difference plus both one-sided differences in each of theta and z) evaluated at **four sample
+points** — the centroid and the three vertex parameter points. Semantics carry over EXACTLY, including the
+exemption:
+  * FOOTPRINT-BACK-FACING (the refusable class) = back-facing at the centroid **AND** at all three vertices.
+  * FEATURE-SPANNING (admissible, unchanged) = back-facing at the centroid but FRONT-facing at one of its
+    own vertices — a legitimate chord across a steep wall. **The bar is the gate's bar and not one micron
+    tighter**; if these two definitions ever diverge the arm is invalid, so the driver's copy is transcribed
+    from `_judgeNormal` with the constants named in-line.
+  * **(a) ACCEPT-SIDE (`PF_CB_ADMIT_NORMAL=1`).** `consider()` may not mark a footprint-back-facing facet
+    ACCEPTED. It stays queued and keeps refining under the existing ranking; if no admissible split exists
+    it lands in a NEW `admissionStranded` bucket, distinct from the AR-cap `unresolved` bucket.
+  * **(b) SPLIT-SIDE (`PF_CB_ADMIT_NORMAL_SPLIT=1`).** Children are scored at `bisectAt` alongside S1
+    (aspect) and S2 (parametric fold), for **both** triangles incident to the split edge — the 2026-07-29
+    lesson that 68% of blade births damage a NEIGHBOUR — and a split whose child would be
+    footprint-back-facing is REFUSED exactly as S1 refuses.
+  * The two are INDEPENDENT flags so the A/B can attribute. Both DEFAULT OFF; the uniform path is
+    byte-untouched when unset.
+
+**2. STRANDS ARE THE PRODUCT, NOT A FAILURE.** Every admission-stranded site is enumerated per run into
+`<tag>.strands.json`: position (theta, z), carrier geometry (3-D edges, 3-D AR, parametric AR), the local
+crease turnover, distance to the nearest traced locus, and junction-disk membership. **That list IS the
+routed-demand input** for M=g/h^2 elements and declared patches — the emitter's fix spec
+(`min(polar grading, sizing field)`) is already recorded above and consumes exactly this shape.
+**EXPECTED MAGNITUDE, REGISTERED HONESTLY FROM THE S19 CENSUSES RATHER THAN GUESSED:** the footprint-back
+class is the judge's GATED count, which reads **1,846 / 1,678 / 1,074** on `_S15A` / `_S18A` / `_S19A`. Those
+facets carry 3-D AR **3.3-5.1** (S19 decomposition), i.e. most are freely splittable and should REFINE
+rather than strand. So the honest expectation is **strands well under 1,074**, with the S1-stranded
+population (`unresolved` 3,701 on `_S19A`) unchanged as a separate bucket. **A strand count ABOVE the
+current gated count would mean admission is manufacturing demand it cannot discharge**, which is the
+INFEASIBLE row below.
+
+**3. SAFEGUARDS — REGISTERED BEFORE ANY NUMBER EXISTS.**
+  S-a **REFUSAL-STORM CRITERION.** If admission refusals exceed **25% of accepts**, OR `admissionStranded`
+      exceeds **5,000** (4.7x the `_S19A` gated count and comparable to the existing 3,701 S1-strands), the
+      arm prints **INFEASIBLE-AS-WIRED**, writes its strand list, and STOPS. It does not loop harder. This
+      is the S8 self-block lesson wired in as a stop rather than discovered as a deadlock.
+  S-b **COST, AND MY ARITHMETIC DISAGREES WITH THE ESTIMATE I WAS GIVEN — recorded before the run so the
+      discrepancy cannot be discovered afterwards and called expected.** `bestDot` needs r at (th,z) and at
+      th+-h, z+-h: the centre value is already known for a lifted vertex, so **4 extra rA evals per sample
+      point, 4 sample points = 16 per facet**. Accept-side costs 16 per considered facet; split-side costs
+      16 x 4 child facets = **64 per split candidate**. Against `_S15A`'s 1,019,242 candidates and 906M
+      total evals that is **~+7%** for split-side alone, not the ~+3-5% the coordinating session estimated
+      from ~5 evals/candidate. **REGISTERED BAR: total rA evals <= +15%** of the matched control, reported
+      as measured. If a cheaper wiring is wanted, the honest one is to reuse the vertex radii the lift
+      already computed and probe only the centroid — but that is a DIFFERENT quantity from A2's and would
+      break the "bar is the gate's bar" clause, so it is not proposed.
+  S-c **WALL CAP <= 2,400 s** (`_S19A` ran 795 s; a refusal-heavy arm may run much longer).
+  S-d **IDENTITY (STOP).** md5 `8a59fb37a9115600b13262254380ccb0` byte-exact and hard gate **12/12** with
+      every documented value exact, taken AFTER the edit. Flags default OFF and byte-identical when unset.
+  S-e **NO JUDGE FILE IS TOUCHED.** The driver gets its own transcription; `_judgeNormal`, `_judgeShape`,
+      `_facetTruthLib`, `_sharp3dRef` and `_shapeGuard` stay byte-untouched, so the instrument that scores
+      the arm is not the instrument the arm was built from. A guard and an auditor sharing an implementation
+      cannot disagree; these two must be able to.
+
+**4. BARS. Substrate `_S19A` (the best standing mesh on fidelity). CONTROL = `_S19A` recorded.**
+  X1 **THE INVARIANT IS THE HEADLINE, AND IT IS AN INVARIANT AND NOT A TARGET.** SHIPPED footprint-back-
+     facing facets among ACCEPTED facets = **0 BY CONSTRUCTION**. **VERIFIED BY THE INDEPENDENT JUDGE:**
+     `_judgeNormal`'s gated back-facing count on the finished STL must read **0** outside the enumerated
+     strand set and any declared patch regions. `_S19A` reads **1,074**. **Any non-zero count that is not
+     in the strand list refutes the wiring outright** — it would mean a facet was accepted that the
+     admission test should have refused, i.e. the two transcriptions disagree, which is S-e's whole point.
+  X2 **THE EYE-METRIC, REPORTED WITH DENSITY, COMPONENTS SEPARATE.** Physical >=90 (`_S19A` 4,972, 4.08 per
+     1k) and the >=15 tail (`_S19A` 24,997, 20.5 per 1k). **NO WIN BAR IS SET ON THESE AND THAT IS
+     DELIBERATE:** the frontier law says a mechanism that changes the accept rule may move them a great
+     deal or not at all, and X1 is the claim being tested. They are reported, with the feature-spanning
+     count beside them, and they inform the operator's eye — they do not fire a row.
+  X3 **FIDELITY GUARDS vs `_S19A`.** H2 witnessed <= **21.379 um**; H2 fraction <= **0.00128%**; sites A and
+     B within tolerance (<= **10.0 um** each — A stands at 5.698 and B at 0.000; the tighter S19 clause is
+     dropped because admission may legitimately move them); H1 facets-over <= **1.30%**, quoted with
+     coverage and stride and carrying no claim.
+  X4 **PRECONDITIONS.** determined folds **0**; determined blades <= **3**; worst admitted child AR <= **50**;
+     constraint recovery **100%**; seam-cracks **0**, loops **2**, **Euler 0**.
+  X5 **COST.** rA evals <= +15% of control; wall <= 2,400 s; live tris <= **3.0 M**.
+  X6 **VERDICT ROWS — disjoint, evaluated IN ORDER, first match wins:**
+     1 **INFEASIBLE-AS-WIRED** — S-a fires (refusals > 25% of accepts, or strands > 5,000). Report the
+       strand list and STOP. The admission quantity is right and this wiring cannot discharge it; the next
+       question is the primitive, not the rule.
+     2 **REFUTATION OF THE WIRING** — X1 fails: the judge finds accepted footprint-back-facing facets
+       outside the strand set. The two transcriptions disagree and nothing else in the arm may be believed.
+     3 **REGRESSION** — X4 fails, or X3 fails, or X5 breached.
+     4 **WIN** — X1 holds (judge reads 0 outside strands) AND X3 AND X4 AND X5. **X2 is reported, not
+       required**: the invariant is the result, and whether the eye-metric follows it is the finding.
+     5 **TRADE** — everything else, both numbers in the same row of the same table.
+
+**5. parAR — REPORTING ONLY, AND THE CAVEAT TRAVELS WITH IT.** The census runs on the arm and its
+distribution is reported beside X2. **The ADMISSION QUANTITY IS THE NORMAL DEVIATION ITSELF AND NEVER THE
+parAR PROXY.** S19 measured why: the eye set's minimum parAR fell **51.6 -> 34.4** between two arms, so a
+fixed parAR line does not track the population it was calibrated on. parAR is a lens, not a gate, and it is
+not wired into any refusal here.
+
+>> **WHAT WOULD MAKE THIS ARM WORTH RUNNING EVEN IF X2 DOES NOT MOVE:** X1 converts the operator's eye from
+>> an after-the-fact veto into a driver invariant, and the strand list converts "there are blades" into an
+>> enumerated, positioned, geometry-carrying work order for the M=g/h^2 primitive. This campaign has
+>> refuted five band-shaped remedies; the frontier law says the sixth would fail too. **This is the first
+>> intervention that changes the accept rule rather than the geometry, and it is the first that cannot
+>> relocate the population — because a relocated facet is still refused.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
