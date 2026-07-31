@@ -3422,6 +3422,70 @@ not wired into any refusal here.
 >> relocate the population — because a relocated facet is still refused.**
 
 
+### *** S20 RESULT — X6 ROW 2, REFUTATION OF THE WIRING. THE INVARIANT MISSED BY 108 FACETS OF 1,218,088
+### (x0.101 ON THE CLASS) AND S-e IS EXACTLY WHY WE KNOW. THE ACCEPT-SIDE TEST NEVER FIRED ONCE. ***
+`_S20A` = `_S19A` + `PF_CB_ADMIT_NORMAL=1 PF_CB_ADMIT_NORMAL_SPLIT=1`. Both wirings, one arm, as registered.
+STL: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S20A.stl` (1,218,088 facets).
+Strands: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S20A.strands.json` (**0 entries**).
+
+| bar | `_S19A` | `_S20A` | line | |
+|---|---|---|---|---|
+| **X1 judge-side footprint-back among accepted** | 1,074 | **108** | **0 outside strands** | **FAILS (x0.101)** |
+| X1 driver-side admission-stranded | — | **0** of 1,218,088 | — | driver says clean |
+| X2 physical >=90 / >=15 (reported, no bar) | 4,972 / 24,997 | 4,651 / 25,253 | — | x0.935 / x1.010 |
+| X2 feature-spanning | 3,898 | 4,543 | — | +16.5% |
+| X3 H2 witnessed / fraction | 21.379 um / 0.00128% | **55.652 um / 0.00200%** | <=21.379 / <=0.00128% | **FAILS** |
+| X4 folds / blades / admitted AR / cracks / Euler | 0/2/50.00/0/0 | **0/2/50.00/0/0** | | HOLDS |
+| X5 rA evals / wall / tris | 906M / 795 s / 1,217,485 | **909M (+0.3%)** / 811 s / 1,218,088 | <=+15% / <=2,400 s / <=3.0M | **HOLDS EASILY** |
+| S-a refusal storm | — | 0 forced pushes, 0 strands | refusals>25% or strands>5,000 | NOT fired |
+| S-d identity + gate | — | md5 8a59fb37 byte-exact, **12/12** | | HOLDS |
+| (driver counters) | — | 5,313,594 checks, **0 accepts refused**, **38,133 splits refused** | | |
+
+>> **X6 ROW 2 — REFUTATION OF THE WIRING.** Rows are disjoint and evaluated in order: row 1 (INFEASIBLE)
+>> did not fire — the refusal-storm criterion was nowhere near, with zero forced pushes and zero strands.
+>> Row 2 fires because the judge finds **108 accepted footprint-back-facing facets outside an EMPTY strand
+>> set**. X3 would also have failed row 3. **The lever stays DEFAULT OFF.**
+>>
+>> **S-e IS THE REASON THIS IS A CLEAN REFUTATION RATHER THAN A FALSE PASS.** The registration refused to
+>> import `_judgeNormal` precisely so the two implementations could disagree, and they did — by
+>> **108 of 1,218,088 facets (0.0089%)**. Had the driver imported the judge's function, the arm would have
+>> reported a perfect invariant and the judge would have agreed with it by construction. The disagreement
+>> is the instrument working.
+>> **THE NAMED CAUSE CANDIDATES, in the order I would test them, none measured yet:**
+>>   1. **A COVERAGE HOLE IN MY WIRING, and I believe this is the one.** `consider()` returns EARLY for any
+>>      facet whose longest edge is below `FLOOR_MM` — before the admission test runs. Sub-floor facets are
+>>      therefore never admission-tested at all, and a sub-floor facet is exactly the kind that ends up
+>>      pointing the wrong way. The accept-side test firing **ZERO** times across 5.3M checks is the
+>>      corroborating signature: it was never reached on the population that matters.
+>>   2. float32 STL versus float64 driver at the >=90 boundary — the standing f32-indeterminate band, which
+>>      moves individuals and never populations, so it cannot explain 108 on its own.
+>>   3. theta recomputed by the judge from `atan2` of the written coordinates versus the driver's stored
+>>      `vth`.
+>>
+>> **WHAT THE ARM ESTABLISHED ANYWAY, and it is not small:**
+>>   * **THE CLASS FELL x0.101 — 1,074 -> 108.** Ten-fold, on the quantity that has resisted every band
+>>     remedy in this campaign, from a change to the ACCEPT RULE rather than to geometry. The frontier law
+>>     said band geometry could not do this; the accept rule did it in one arm.
+>>   * **THE SPLIT-SIDE WIRING IS WHERE ALL THE WORK HAPPENED: 38,133 splits refused, 0 accepts refused.**
+>>     The footprint-back population is BORN IN BISECTION, not admitted at accept time. That is the
+>>     2026-07-29 blade diagnosis confirmed a second way, on a different instrument, seventeen arms later.
+>>   * **THE COST ESTIMATE I REGISTERED WAS WRONG IN THE SAFE DIRECTION AND THE RECORD SHOULD SAY SO.** I
+>>     registered ~+7% rA evals against the coordinating session's ~+3-5%; the measured cost is **+0.3%**
+>>     (909M vs 906M). The check runs only AFTER S1/S2 have already passed, so it is reached far less often
+>>     than the candidate count suggests. My arithmetic priced the wrong denominator.
+>>   * **FIDELITY PAID, AND HARD: H2 21.379 -> 55.652 um** with `unresolved` 3,701 -> 4,485 and its worst
+>>     47.245 -> **175.831 um**. Refusing splits on admission strands material the AR cap alone would have
+>>     let through. **The two guards COMPOSE INTO A TIGHTER CAGE than either alone** — which is the S8
+>>     self-block in a new costume, and the reason the emitter/M=g/h^2 primitive is not optional.
+>>
+>> **WHAT THE NEXT SESSION SHOULD DO FIRST, and it is cheap:** fix cause 1 (move the admission test ahead of
+>> the `FLOOR_MM` early return, or test admission on every live facet in a post-loop sweep and route the
+>> failures to the strand list) and re-run. If X1 then reads 0, the invariant is real and the arm is a WIN
+>> on its headline with a known fidelity cost to price. **NOT DONE HERE: the registration is the contract,
+>> the contract said score and report, and changing the wiring after seeing the number is exactly what
+>> pre-registration exists to prevent.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

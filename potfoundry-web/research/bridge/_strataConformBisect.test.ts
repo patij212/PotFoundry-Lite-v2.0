@@ -1255,6 +1255,64 @@ describe('STRATA conforming-bisection', () => {
      * PF_CB_AR, which gated only the POPPED triangle's edge SELECTION and never an emitted facet, on either
      * side. No mesh state is touched, so a refusal costs nothing to undo.
      */
+    // ═══════════ S20 — EMIT-TIME FOOTPRINT-NORMAL ADMISSION (PF_CB_ADMIT_NORMAL*, DEFAULT OFF) ═══════════
+    // The auditor's A2 instrument — the only one in this repo that has ever agreed with the operator's eye —
+    // as an ADMISSION condition instead of a post-hoc census. TRANSCRIBED from `_judgeNormal`, deliberately
+    // NOT imported: a guard and an auditor sharing an implementation cannot disagree, and X1 needs them to
+    // be able to. Constants named in-line so the two can be diffed by eye.
+    const ADMIT_NORMAL = envOn('PF_CB_ADMIT_NORMAL');
+    const ADMIT_NORMAL_SPLIT = envOn('PF_CB_ADMIT_NORMAL_SPLIT');
+    const ADM_H = 1e-6;                       // _judgeNormal's step, theta (rad) and z (mm)
+    let admitChecks = 0; let admitRefusedSplit = 0; let admitForcedPush = 0;
+    /** max dot of the facet normal with the FIVE candidate analytic normals at (th,z) — _judgeNormal's rule. */
+    const admBestDot = (th: number, z: number, fx: number, fy: number, fz: number): number => {
+      const r0 = rA(th, z);
+      const rTp = rA(th + ADM_H, z); const rTm = rA(th - ADM_H, z);
+      const rZp = rA(th, z + ADM_H); const rZm = rA(th, z - ADM_H);
+      const ct = Math.cos(th); const st = Math.sin(th);
+      const cands: Array<[number, number]> = [
+        [(rTp - rTm) / (2 * ADM_H), (rZp - rZm) / (2 * ADM_H)],
+        [(rTp - r0) / ADM_H, (rZp - r0) / ADM_H], [(rTp - r0) / ADM_H, (r0 - rZm) / ADM_H],
+        [(r0 - rTm) / ADM_H, (rZp - r0) / ADM_H], [(r0 - rTm) / ADM_H, (r0 - rZm) / ADM_H],
+      ];
+      let best = -Infinity;
+      for (const [rt, rz] of cands) {
+        const nx = r0 * ct + rt * st; const ny = r0 * st - rt * ct; const nz = -r0 * rz;
+        const n = Math.hypot(nx, ny, nz) || 1;
+        const d = (fx * nx + fy * ny + fz * nz) / n;
+        if (d > best) best = d;
+      }
+      return best;
+    };
+    /**
+     * FOOTPRINT-BACK-FACING, A2 semantics EXACTLY: back-facing at the CENTROID **and** at all three vertex
+     * parameter points. A facet that is centroid-back but FRONT-facing at one of its own vertices is
+     * FEATURE-SPANNING and stays admissible — the bar is the gate's bar and not one micron tighter.
+     */
+    const footBack = (
+      px: number, py: number, pz: number, qx: number, qy: number, qz: number, sx: number, sy: number, sz: number,
+      pth: number, qth: number, sth: number,
+    ): boolean => {
+      admitChecks += 1;
+      let fx = (qy - py) * (sz - pz) - (qz - pz) * (sy - py);
+      let fy = (qz - pz) * (sx - px) - (qx - px) * (sz - pz);
+      let fz = (qx - px) * (sy - py) - (qy - py) * (sx - px);
+      const fl = Math.hypot(fx, fy, fz);
+      if (!(fl > 0)) return false;                       // zero-area: S1/S2's business, not this gate's
+      fx /= fl; fy /= fl; fz /= fl;
+      const cth = canonTheta(Math.atan2((py + qy + sy) / 3, (px + qx + sx) / 3));
+      if (admBestDot(cth, (pz + qz + sz) / 3, fx, fy, fz) >= 0) return false;   // front at the centroid
+      if (admBestDot(canonTheta(pth), pz, fx, fy, fz) >= 0) return false;       // FEATURE-SPANNING exemption
+      if (admBestDot(canonTheta(qth), qz, fx, fy, fz) >= 0) return false;
+      if (admBestDot(canonTheta(sth), sz, fx, fy, fz) >= 0) return false;
+      return true;
+    };
+    /** the same test on a LIVE triangle index. */
+    const footBackT = (t: number): boolean => footBack(
+      vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]],
+      vth[ta[t]], vth[tb[t]], vth[tc[t]],
+    );
+
     const shapeAdmits = (a: number, b: number, p: LiftedPoint): boolean => {
       if (!SHAPE) return true;
       const list = edgeMap.get(eKey(a, b));
@@ -1279,6 +1337,19 @@ describe('STRATA conforming-bisection', () => {
         const s2 = signedAreaParam(vth[apex], vz[apex], p.th, p.z, vth[ob], vz[ob]);
         if (Math.sign(s1) !== Math.sign(sPar) || Math.sign(s2) !== Math.sign(sPar)) {
           nShapeRefusedFold += 1; lastBisectShape = 'fold'; lastShapeOffenderT = t; return false;
+        }
+      }
+      // S20 (b) SPLIT-SIDE — children scored alongside S1/S2, for BOTH triangles incident to the edge (the
+      // 2026-07-29 lesson: 68% of blade births damage a NEIGHBOUR). Refusal is S1's refusal.
+      if (ADMIT_NORMAL_SPLIT) {
+        for (const t of list) {
+          if (!alive[t]) continue;
+          const apex = ta[t] !== a && ta[t] !== b ? ta[t] : tb[t] !== a && tb[t] !== b ? tb[t] : tc[t];
+          const [oa, ob] = orientedEnds(t, a, b);
+          if (footBack(vx[oa], vy[oa], vz[oa], p.x, p.y, p.z, vx[apex], vy[apex], vz[apex], vth[oa], p.th, vth[apex])
+            || footBack(p.x, p.y, p.z, vx[ob], vy[ob], vz[ob], vx[apex], vy[apex], vz[apex], p.th, vth[ob], vth[apex])) {
+            admitRefusedSplit += 1; lastBisectShape = 'admit'; lastShapeOffenderT = t; return false;
+          }
         }
       }
       if (worst > shapeWorstAdmitted) shapeWorstAdmitted = worst;
@@ -2093,6 +2164,10 @@ describe('STRATA conforming-bisection', () => {
         : RANK === 'ptperp' ? sagPtPerp(t)
           : ADAPT ? sagAdaptive(t, REF_HS, REF_NMIN, REF_NMAX) : sagOfN(t, oracleRef);
       const at = localAcceptTol(t);
+      // S20 (a) ACCEPT-SIDE — a facet that points the wrong way against its own footprint may NOT be
+      // accepted, whatever the ruler says. It stays in the queue and keeps refining; if it ends the run
+      // still footprint-back-facing it is an ADMISSION STRAND and is enumerated, which is the product.
+      if (s <= at && ADMIT_NORMAL && footBackT(t)) { admitForcedPush += 1; hpush(t, s); return; }
       if (s > at) { if (at !== acceptTol && s <= acceptTol) tightenPushes += 1; hpush(t, s); }
     };
     /** score every queued candidate on the GPU and push the ones that miss `acceptTol`. */
@@ -3492,6 +3567,47 @@ describe('STRATA conforming-bisection', () => {
       }, null, 1));
     }
 
+    // ═══ S20 — THE STRAND LIST. THE PRODUCT, NOT A FAILURE REPORT. ═══
+    // Every facet that ends the run still footprint-back-facing is an ADMISSION STRAND: the admission test
+    // asked for geometry the bisection primitive could not deliver. Enumerated with everything the routed
+    // demand needs — position, carrier geometry, and the locus/disk membership — so the M=g/h^2 primitive
+    // and the declared-patch emitter consume a work order instead of a complaint.
+    let admitStranded = 0; let admitAccepted = 0;
+    if (ADMIT_NORMAL || ADMIT_NORMAL_SPLIT) {
+      const strands: Array<Record<string, number | string>> = [];
+      for (let t = 0; t < ta.length; t += 1) {
+        if (!alive[t]) continue;
+        admitAccepted += 1;
+        if (!footBackT(t)) continue;
+        admitStranded += 1;
+        if (strands.length >= 20000) continue;                 // the list is evidence, not a memory leak
+        const A = ta[t]; const B = tb[t]; const C = tc[t];
+        const e3 = [
+          Math.hypot(vx[B] - vx[A], vy[B] - vy[A], vz[B] - vz[A]),
+          Math.hypot(vx[C] - vx[B], vy[C] - vy[B], vz[C] - vz[B]),
+          Math.hypot(vx[A] - vx[C], vy[A] - vy[C], vz[A] - vz[C]),
+        ].sort((x, y) => x - y);
+        strands.push({
+          tri: t,
+          theta: Number(canonTheta(Math.atan2((vy[A] + vy[B] + vy[C]) / 3, (vx[A] + vx[B] + vx[C]) / 3)).toFixed(6)),
+          z: Number(((vz[A] + vz[B] + vz[C]) / 3).toFixed(5)),
+          ar3: Number(aspect3(vx[A], vy[A], vz[A], vx[B], vy[B], vz[B], vx[C], vy[C], vz[C]).toFixed(3)),
+          shortUm: Number((e3[0] * 1000).toFixed(1)),
+          longUm: Number((e3[2] * 1000).toFixed(1)),
+        });
+      }
+      writeFileSync(join(outDir, `${tag}.strands.json`), JSON.stringify({
+        schema: 'pf.strata.strands/1',
+        run: { style: STYLE, params: styleParams, dims: DIMS, stage: STAGE, tag },
+        wiring: { accept: ADMIT_NORMAL, split: ADMIT_NORMAL_SPLIT },
+        counts: {
+          liveFacets: admitAccepted, stranded: admitStranded, listed: strands.length,
+          admitChecks, admitRefusedSplit, admitForcedPush,
+        },
+        strands,
+      }, null, 1));
+    }
+
     // ─── §5.4 THE RUN MANIFEST. Written beside the STL, ALWAYS (it does not touch a byte of the STL).
     // Nothing else ties an STL to the surface it was built on: DIMS is a file-local constant, STYLE defaults
     // to 'GothicArches', and the STL header carries a fixed string. The auditor currently has to be TOLD the
@@ -3584,6 +3700,15 @@ describe('STRATA conforming-bisection', () => {
         `    offenders (AR > ${SLIVER_AR}): BEFORE ${sliverOffendersBefore} → AFTER ${sliverOffendersAfter}   tested ${sliverTested}, collapsed ${sliverCollapsed}`,
         `    refused: ${sliverRefusedLen} on shortest-edge >= ${(SLIVER_MAX_MM * 1000).toFixed(1)} um (CAP family — out of scope BY DESIGN, motion is capped at TOL/2), ${sliverRefusedOther} on link/shape (split carried by the S6 collapse counters above)`,
         `    resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
+      ...(ADMIT_NORMAL || ADMIT_NORMAL_SPLIT ? [
+        `  S20 EMIT-TIME FOOTPRINT-NORMAL ADMISSION: accept-side ${ADMIT_NORMAL ? 'ON' : 'off'}, split-side ${ADMIT_NORMAL_SPLIT ? 'ON' : 'off'}`
+          + `   (A2 semantics: >=90 deg against the MOST FAVOURABLE of five candidate normals at the centroid AND all three vertex`
+          + ` parameter points; centroid-back + vertex-front is FEATURE-SPANNING and stays admissible)`,
+        `    ${admitChecks} admission checks   ${admitForcedPush} accepts REFUSED and re-queued   ${admitRefusedSplit} splits REFUSED on admission`
+          + `   ADMISSION-STRANDED at the end: ${admitStranded} of ${admitAccepted} live facets`
+          + `   ${admitStranded > 5000 || (admitAccepted > 0 && admitForcedPush > 0.25 * admitAccepted) ? '*** INFEASIBLE-AS-WIRED — refusal-storm criterion FIRED (registered: refusals > 25% of accepts, or strands > 5,000) ***' : '[refusal-storm criterion NOT fired]'}`,
+        `    strand list: ${tag}.strands.json — the ROUTED-DEMAND input for M=g/h^2 elements and declared patches, not a failure report`,
       ] : []),
       ...(envOn('PF_CB_CONF_FLIP') ? [
         `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
