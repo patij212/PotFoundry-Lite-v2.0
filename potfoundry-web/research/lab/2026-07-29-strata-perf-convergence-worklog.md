@@ -5469,6 +5469,93 @@ because "the two numbers agree" would have been the easier and wronger sentence.
 >> **A2 IS DISCHARGED. THE KERNEL IS VALIDATED BEFORE ANY PLACEMENT USES IT, AS REGISTERED.**
 
 
+### S23B — **THE FIELD-PREPARATION DECISION, REGISTERED BEFORE THE BUILD.** The S23B handoff §3 left ONE
+### thing open on purpose; this block closes it, with the reasoning written and the cost measured FIRST.
+The handoff's words: *"Register the choice — limit or not, and at what Lipschitz constant — as a declared
+variable before the run, because it will move both the cost and the shard census."* and *"the build still
+has to decide what to do at those cells, and clamping is the only option the seed permits."*
+**NOTHING IS BUILT AND NOTHING IS RUN IN THIS BLOCK.** New files: `research/bridge/_strataReconField.ts`
+(the ONE definition of the prepared field — the cost predictor and the seed builder consume the same
+object, so the number registered here and the field the build honours cannot drift), and
+`research/tools/s23ReconDecide.ts` (artifact-only, reads the field, writes nothing).
+
+**THE INSTRUMENT VALIDATES ITSELF BEFORE IT IS BELIEVED.** `impliedTris` is transcribed operand-for-operand
+from `s23Density.ts`'s own `D6b` block, and on the RAW field it returns **1,761,257** — Stage 0's registered
+number, **to the digit**. Every row below is therefore comparable with the registration's own D6.
+
+| setting | N_tri | x`_S22B` | % of the 2.0 M ceiling | ~points | nbr size-ratio p99 | MAX |
+|---|---|---|---|---|---|---|
+| RAW (Stage 0 as written) | 1,761,257 | x1.4073 | 88.1% | 880,629 | 5.0173 | 27.9376 |
+| FLOOR only | 1,704,327 | x1.3618 | 85.2% | 852,163 | 4.9843 | 26.0117 |
+| FLOOR + alpha 2.00 | 1,705,120 | x1.3624 | 85.3% | 852,560 | 4.7004 | 18.4566 |
+| **FLOOR + alpha 1.00 — REGISTERED** | **1,723,299** | **x1.3769** | **86.2%** | **861,650** | **3.6528** | **10.7129** |
+| FLOOR + alpha 0.50 | 1,828,105 | x1.4607 | 91.4% | 914,053 | 2.7475 | 5.8564 |
+| FLOOR + alpha 0.25 | 2,214,735 | x1.7696 | **110.7% — OVER THE CEILING** | 1,107,368 | 2.0516 | 3.4282 |
+
+(The size-ratio census is over 0.25 mm GRID steps, not over elements — at the floor scale one grid step is
+seven elements, which is why an `alpha = 1` field still shows a 10.7 grid-step ratio. The per-ELEMENT bound
+is exactly `1 + alpha`, and that is the quantity the decision is made on.)
+
+>> **DECISION 1 — THE FLOOR IS TAKEN AT 36.4 um, AND IT IS NOT A PREFERENCE.** `_strataAlignedSeed.ts:398`
+>> asserts `acrossMinMm * 0.55 > pslgEpsMm` with a THROW, and — independently of that assertion — every
+>> free-point emitter in the file floors its segment clearance at `1.5 * pslgEpsMm` = 30 um, so the
+>> constructor physically refuses to place a free point closer than that to a traced constraint. The floor
+>> is therefore structural in two places, not one.
+>>   **THE ALTERNATIVE WAS CONSIDERED AND IS REFUSED ON MEASUREMENT, NOT ON TASTE.** Lowering `pslgEpsMm`
+>>   moves the floor; the seed's own recorded note says that at `pslgEpsMm = 4 um`, **92 of 8,762 locus
+>>   constraints were unrecoverable at production**, and a constraint-recovery shortfall is a REGISTERED S7
+>>   INFEASIBLE tripwire. That trades a measured density deficit for a risk of total build failure.
+>>   **THE DEFICIT IS REPORTED, NOT ABSORBED: 273 of 542,880 field cells (0.0503% of AREA) are clamped,
+>>   raw min 13.744 um.** The Stage-0 vertex-weighted figure stands beside it unchanged — **4.527% of
+>>   source vertices by `hA`, 20.046% by `hMin`** — and the gap between 0.05% and 4.5% is itself the
+>>   finding: the sub-floor demand is concentrated on a vanishing fraction of the WALL and a material
+>>   fraction of the bisected mesh's VERTICES, which is what "bisection texture" means measured two ways.
+>>   Flooring is cost-NEGATIVE (1,761,257 -> 1,704,327, **-3.2%**), so it buys the arm nothing it would
+>>   otherwise have had to pay for. It is a density deficit and it is scored as one.
+>> **DECISION 2 — THE FIELD IS GRADIENT-LIMITED, AT `alpha = 1.0`: `h(y) <= h(x) + 1.0 * d(x,y)`.**
+>>   **WHY LIMIT AT ALL.** THE CLAUSE is the primary bar and it has no partial credit. The mechanism that
+>>   births a shard is a refinement-to-background TRANSITION, and the raw field admits one by arithmetic:
+>>   at the floor scale a 27.94x ratio across one 0.25 mm cell is a **x4.9 size change between NEIGHBOURING
+>>   ELEMENTS**, which a constructor honouring the field would place deliberately. `alpha` bounds that
+>>   ratio at `1 + alpha` at EVERY scale, which a per-mm Lipschitz constant does not.
+>>   **WHY 1.0 AND NOT TIGHTER.** `alpha = 0.25` costs **110.7% of the registered 2.0 M ceiling** — the
+>>   gradation constant can by itself produce an INFEASIBLE row, which is the sharpest possible argument
+>>   that this is a declared variable and not an implementation detail. `alpha = 0.5` costs 91.4%.
+>>   **WHY 1.0 AND NOT LOOSER.** `alpha = 2.0` bounds neighbouring elements at x3 and touches only 1.97% of
+>>   cells, for a cost difference of **0.9 of a percentage point of the ceiling** (85.3% vs 86.2%). Paying
+>>   0.9 points to halve the worst transition is the trade this campaign has taken five times.
+>>   **1.0 IS THE LOOSEST CONSTANT THAT BOUNDS NEIGHBOURING ELEMENTS AT x2** — the factor the designed
+>>   lattice already satisfies, and the reason the constructed transition elements cannot be worse than the
+>>   design's own (`arM` p99 **16.61**, the bar `MET_AR = 27` was derived from).
+>>   **ORDER IS FLOOR-THEN-GRADE, AND IT IS LOAD-BEARING.** Grading first would let a sub-floor well pull
+>>   its neighbourhood down to a size the constructor is then forbidden to place — paying for a feature it
+>>   cannot build. Flooring first grades the field the constructor can actually honour.
+>>   The envelope is MONOTONE-DOWNWARD (`hOut <= hIn` everywhere, by construction), so it can only refine
+>>   and can never move a feature. `alpha = Infinity` returns the raw field bit for bit.
+>> **DECISION 3 — HOW THE FIELD ENTERS THE CONSTRUCTOR: FREE STEINER INFILL ONLY. ZERO NEW CONSTRAINTS.**
+>>   The declared geometry keeps its declared rules **unchanged** — the traced chains and their along/across
+>>   spacing (S15/S16/S19), the offset ring progression, the 43 routed patch disks, the 1,101/385 designed
+>>   lattice. The extracted field drives ONE new stage: a **greedy minimum-distance infill of FREE points**
+>>   at local radius `beta * h`, run LAST, refusing any candidate within `beta*h` of anything already
+>>   placed and within `max(0.55*beta*h, 1.5*pslgEpsMm)` of any constraint segment.
+>>   **THREE REASONS, ALL OF THEM THINGS THIS CAMPAIGN HAS ALREADY PAID FOR:**
+>>   (i) **CONSTRAINT COUNT IS UNCHANGED AT 12,806, RECOVERED 12,806.** S15 Stage 0 watched the recovery
+>>       assertion fire twice when the chains densified; densifying them again at final density is the most
+>>       likely way to buy an INFEASIBLE row for nothing. The S18 argument is taken literally: what the
+>>       field adds is zero constraints.
+>>   (ii) **THE DESIGNED-LATTICE CENSUS IS PRESERVED BY CONSTRUCTION, WHICH IS WHAT P-b ASKS FOR.** The
+>>       infill is monotone-downward: where the field is coarser than the lattice pitch no candidate is
+>>       accepted, so the smooth wall is the SAME emitter placing the SAME points from the SAME rule.
+>>   (iii) **PROVENANCE STAYS DECLARABLE.** Free points add no geometry the judge cannot attribute.
+>>   `beta` is a CALIBRATION, not a design choice: it converts a target element size into a packing radius
+>>   and its value is measured on the low-density probe against the predicted point count, then registered.
+
+>> **THE COST REGISTERED BEFORE THE RUN: `N_tri = 1,723,299` (x1.3769 of `_S22B`, **86.2%** of the 2.0 M
+>> ceiling), ~**861,650** placed points.** If the built mesh lands materially above this the field was not
+>> honoured as prepared, and if it lands over 2.0 M that is a registered INFEASIBLE row — not a reason to
+>> trim quality silently.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

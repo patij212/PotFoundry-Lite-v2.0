@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@webgpu/types"],
+    "noEmit": true
+  },
+  "include": [
+    "./s23ReconDecide.ts",
+    "../bridge/_strataReconField.ts",
+    "../bridge/_strataAlignedSeed.ts",
+    "../bridge/_strataConformBisect.test.ts"
+  ]
+}
