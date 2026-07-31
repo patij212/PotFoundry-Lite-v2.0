@@ -4438,6 +4438,111 @@ the visual class in two at a threshold the eye does not use. **`_S22A` baseline:
 >> **STOP AFTER SCORING. The operator's eyeball lands on S22B, not S22A.**
 
 
+### *** S22B RESULT — X8 ROW 4, TRADE. THE REACH EXTENSION WORKED ON EVERY POPULATION IT WAS AIMED AT
+### *** (photographed 232 -> 97, loose band 2,129 -> 984, FAN HUBS 93 -> 31, fan members 1,231 -> 391)
+### *** AND IT PUT 15 FACETS BACK ONTO S22'S OWN 1.5 mm BAR, 29 -> 44, ALL IN ONE z-BIN. ***
+`_S22B` = `_S22A`'s command + `PF_CB_DESHARD_LMM=1.0 PF_CB_DESHARD_BUDGET=8000 PF_CB_DESHARD_FANPASSES=6`.
+STL: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S22B.stl` (1,251,546 facets).
+Audit `FID_S22B.report.txt`. Censuses `S22B_DERIVE_S22B.log`, `S22_SHARD_S22B.log`, `S21_PLATES_S22B.log`.
+
+| bar | `_S22A` | **`_S22B`** | line | |
+|---|---|---|---|---|
+| **X1 PHOTOGRAPHED (sub-floor loose band)** | 232 | **97** | WIN <=46, REFUTED >=221 | **x0.418 — neither** |
+| **X1 loose band (long >=1.0, dev>=45 or AR3>=12)** | 2,129 | **984** | WIN <= 1,065 | **MET — x0.462 (2.16x)** |
+| X1 photographed interior / rim-row | 204 / 28 | 63 / 34 | reported | the residue is rim-shifted |
+| **FAN HUBS** | 93 | **31** | reported | **x0.333** (and x0.104 from `_S21B`'s 297) |
+| **FAN MEMBERS / of those over 1.5 mm** | 1,231 / 111 | **391 / 8** | reported | **x0.318 / x0.072** |
+| **S22's OWN 1.5 mm registered census** | 29 | **44** | *not an X-bar* | **ROSE x1.52 — see below** |
+| X2 gated at the visible floor | 0 | **0** | stay 0 | HOLDS |
+| X2 plates | 53 | **51** | <= 53 | HOLDS |
+| X2 tails >=15 / >=30 / >=45 | 24,204/17,840/15,247 | 24,208/17,848/15,255 | <= +2.0% | **HOLDS (+0.017/+0.045/+0.052%)** |
+| X2 physical >=90 | 4,382 | **4,381** | <= +2.0% | HOLDS — it FELL |
+| X3 P4 residue / in-routed | 7 @136.3 / 6 | **7 @136.3 / 6** | declare or explain | UNCHANGED — declared |
+| **X4(a) H2 over-tol FRACTION** | 0.00139% | **0.00139%** | <= 0.001668% | **HOLDS — identical** |
+| **X4(b) H2 witnessed** | 25.063 | **25.063 um** | classify or fire | **RESIDUAL GRADING DEMAND** |
+| X4(c) unresolved / worst | 4,307 / 95.473 | **4,307 / 95.473** | <=8,000 / <=250.0 | HOLDS — identical |
+| X4(d) H1 facets-over / witnessed | 1.23% / 95.949 | **1.08% / 139.354 um** | <=1.30%, no claim | **HOLDS — and facets-over IMPROVED** |
+| X5 folds/blades/AR/recovery/cracks/Euler/judge | 0/2/50.00/100%/0/0/0 | **0/2/50.00/100%/0/0/0** | | HOLDS |
+| X6 live tris / wall / rA | 1,248,594 / 934 s / 926M | **1,251,546 / 939 s / 928M** | <=1.30M / <=1,400 s / <=1,042M | HOLDS |
+| X7 md5 / gate | — | `8a59fb37…` / **12/12** | byte-exact / exact | HOLDS, both re-taken |
+
+**THE PASS'S COUNTERS.** (i) subdivision: 1,237 candidates attempted, **995 split, 242 REFUSED** (219
+aspect / 0 fold / 23 admission / 0 weld-apex), refusal rate **19.6%**, **+2,796 live triangles of the 8,000
+budget (35%, never capped)**. (ii) fan flips: **6 of 6 sweeps, 6,194 candidates, 1,402 FLIPPED**, 2,303
+refused on the improvement gate, 1 on admission. (iii) **THE NEW ON-LOCUS PATH: 666 spokes lie on a locus,
+403 SPLIT at the midpoint, 172 refused by the composed gates, 91 already below the 500 um threshold.**
+
+>> **X8 ROW 4 — TRADE.** Row 1 (INFEASIBLE) did not fire: 19.6% against the registered 50%, and the pass
+>> discharged its worklist without hitting the budget. Row 2 (REGRESSION) did not fire: X2, X4, X5 and X6
+>> all hold — and X2 holds by a wide margin. Row 3 (WIN) is not reached: X1's win shape needs the
+>> photographed set at <=46 and measured **97**. **Row 4.**
+
+**THE REGISTERED DEPTH PREDICTION WAS WRONG, AND IT WAS REGISTERED AS A FINDING IF IT WAS.** S22B predicted
+depth 1-2 because "one split at the long edge takes a 1.0-1.3 mm facet to 0.5-0.65 mm, below the bar by
+construction". **Measured: max depth 3 of 4.** The prediction was about the SPLIT FACET and forgot the
+NEIGHBOUR: `bisectAt` splits every triangle incident to the edge, so a 1.0 mm parent's children are below
+the bar but the neighbour's children inherit the neighbour's other two edges, which can still be over it.
+The recursion is over the incident star, not over one facet's own length.
+
+>> *** THE ONE ADVERSE MOVEMENT, REPORTED IN FULL BECAUSE IT IS A REGRESSION ON THE PREVIOUS ARM'S PRIMARY
+>> INSTRUMENT EVEN THOUGH NO X-BAR COVERS IT. *** S22's registered 1.5 mm census went **29 -> 44 (x1.52)**.
+>> Bin-by-bin it is not diffuse — it is **one z-bin**:
+>> `_S22A` `0 0 0 6 16 0 2 0 0 0 0 0 3 2 0 …` -> `_S22B` `0 0 0 6 31 0 2 0 0 0 0 0 3 2 0 …`
+>> **Every bin identical except z 20-25, which went 16 -> 31.** Two mechanisms could do that, and one is
+>> now largely ruled out by measurement:
+>>   * **FLIP-MANUFACTURE (largely REFUTED).** The flip gate is on AR, not on LENGTH, so a flip that
+>>     strictly improves aspect could still emit a longer edge — and S22B ran 2.9x more flips than S22A.
+>>     **But only 8 of `_S22B`'s 391 fan members are over 1.5 mm at all**, so at most 8 of the 44 can be
+>>     fan-adjacent and >=36 cannot. Flips are not where these came from.
+>>   * **MUTUAL-PROTECTION DEADLOCK (the leading explanation, and it is already in this file).** S4's own
+>>     counter measured that in ~95% of refused splits BOTH candidate edges were inadmissible, "because in
+>>     a sliver train your longest edge is your degenerate neighbour's SHORT edge". S22B refines the
+>>     1.0-1.5 mm band FIRST (depth-first over an 8.3x larger worklist); a freshly refined neighbour is a
+>>     thinner PROTECTOR, and S1 then refuses the shared-edge split of the >=1.5 mm parent that S22A had
+>>     been free to take. **Refining more of the band can protect the worst of it.** 219 of the 242
+>>     refusals were on aspect, which is the signature.
+>> **THE FIX IS ALREADY BUILT IN THIS FILE AND WAS NOT WIRED TO THIS PASS: S8's `conformSite` protector
+>> cascade** — split the protector's longest edge first, recursively, depth-capped, then retry the blocked
+>> split. That is the registered first item for any S22C, and it is a wiring job, not a new mechanism.
+
+**X4(d) — H1 WITNESSED ROSE AGAIN, AND THE FULL-COVERAGE CONTROL IS NOW THREE-FOR-THREE.** Sampled witness
+70.988 -> 95.949 -> **139.354 um** across `_S21B`/`_S22A`/`_S22B`, at strides 771,175 / 771,677 / **773,501**
+over 40,000 of ~1.25M — **3.2% coverage, INCOMPLETE, and the stride is a function of `nTri`, so it re-draws
+whenever the mesh grows.** The driver's adaptive oracle runs at FULL coverage over every facet and reads
+**MAX 95.473 um at z=[76.40,76.38,75.97] th=[1.3593,1.3590,1.3588] on ALL THREE ARMS**, to three decimals
+and at the same locus, with over-0.01mm 512 -> 481 -> 486. **And `_S22B`'s sampled witness locus is
+z = 119.964-119.972 — THE OPEN RIM ROW**, which the standing BasketWeave caveat says must never be quoted
+as a wall defect. Meanwhile the registered quantity, facets-over, **IMPROVED 1.23% -> 1.08%**. This is the
+third consecutive arm on which the sampled H1 witness moved while the full-coverage instrument did not.
+
+>> **THE FRONTIER LAW: 20 OF 21 NON-EMPTY BINS FELL OR HELD, AND EXACTLY ONE GREW.** Loose-band
+>> z-histogram, `_S22A` -> `_S22B`: 151->21, 669->236, 96->50, 112->28, 107->53, 51->25, 47->36, 69->38,
+>> 63->36, 167->110, 256->135, 5->5, 9->8, 15->10, 2->2, 31->23, 174->93, 16->16, 8->6, 42->10, and
+>> **39 -> 43 in the top bin (z 115-120)**. So the law DID re-assert, weakly, exactly once — and it did so
+>> **in the open rim row, the one band this campaign already declines to score as wall.** S22 broke the law
+>> on a 123-facet band with little clean wall to relocate into; S22B, on a band 8.3x larger and sitting at
+>> the background lattice pitch, still removed in place across the whole interior wall and relocated only
+>> onto the rim. **Two arms, two bands, and the relocation prior has now failed on the interior both times.**
+
+**WHAT THE ARM ESTABLISHES.**
+  * **THE REACH FIX WORKED, AND THE BAR WAS THE WHOLE PROBLEM.** S22 could not touch the photographed
+    population because its 1.5 mm bar sat above that population's 1,285 um maximum. Lowering the bar to the
+    measured p05 took it 232 -> 97 and the loose band 2,129 -> 984, at +2,952 facets (+0.24%) and +5 s.
+  * **THE FAN CLASS IS ESSENTIALLY DISMANTLED: hubs 297 -> 93 -> 31 (x0.104 over two arms), fan members
+    1,231 -> 391, and fan members long enough to read as spokes 111 -> 8.** Removing the per-hub
+    one-action-per-sweep cap and adding the on-locus split path are what did it: **403 of the 1,805 fan
+    actions came from the new path, and it reached fans no flip was ever allowed to touch.**
+  * **THE COMPOSITION HELD FOR A THIRD ARM, UNDER 3.9x THE WORK.** 995 splits + 1,402 flips + 403 locus
+    splits, and the judge still reads `[NORMAL] PASS count 0`, 0 admission-stranded of 1,251,546, gated at
+    the visible floor 0, determined blades 2, determined folds 0. **23 of the pass's own candidates were
+    refused ON ADMISSION** — the gate is live and biting, not decorative.
+  * **AND THE COST BARS WERE NEVER CLOSE.** +0.24% triangles, 939 s of a 1,400 s ceiling, 928M of 1,042M
+    rA evals, 35% of the triangle budget. **The binding constraint on this class is the S1 aspect cap, not
+    budget, not time, and not the recursion bound.**
+
+>> **STOP AFTER SCORING. The operator's eyeball lands on S22B.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

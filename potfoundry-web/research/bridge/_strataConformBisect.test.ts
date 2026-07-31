@@ -2655,14 +2655,26 @@ describe('STRATA conforming-bisection', () => {
     // admission off the justification lapses with it and this pass becomes the CTLPLUS experiment again.
     const DESHARD_REQ = ADMIT_NORMAL && ADMIT_NORMAL_SPLIT && ADMIT_SHIPPED;
     const DESHARD = envOn('PF_CB_DESHARD') && !SWEEP && !GPU_RANK && DESHARD_REQ;
-    const DESHARD_L = envF('PF_CB_DESHARD_LMM', 1.5);          // L_vis — the registered length bar
-    const DESHARD_AR = envF('PF_CB_DESHARD_AR', 20);           // K — registered ABOVE the seed's designed
-    const DESHARD_DEV = envF('PF_CB_DESHARD_DEV', 45);         //     lattice anisotropy band (AR3 ~ 12)
+    // S22B (2026-07-31) — THE BAR IS LOWERED 1.5 -> 1.0 mm, AND IT IS DERIVED, NOT GUESSED. `_S22A` fell
+    // 123 -> 29 on the 1.5 mm bar while the LOOSE band moved only x0.969, because — measured on `_S22A` —
+    // the photographed sub-floor population's LONGEST facet is 1,285 um and the bar was 1,500 um. **The bar
+    // sat above the entire population it was meant to reach.** Their length p05/p10 is 1,010/1,017 um, so
+    // L_B = 1.0 mm covers 232 of 232 = 100%. `PF_CB_DESHARD_LMM=1.5` reproduces `_S22A`'s bar exactly.
+    // K STAYS AT 20 AND THAT CLAUSE IS NOW LOAD-BEARING IN A WAY IT WAS NOT AT 1.5 mm: the designed lattice
+    // spans 1,068-2,921 um, so at 1.0 mm the LENGTH clause no longer separates intended geometry from
+    // defects and only the AR clause does. Measured on `_S22A`: the bar catches 7 lattice elements at
+    // K = 12 (worst AR3 12.3) and ZERO at K = 20 — 1.63x of clearance. Do not lower K.
+    const DESHARD_L = envF('PF_CB_DESHARD_LMM', 1.0);          // L_B — DERIVED from the photographed set
+    const DESHARD_AR = envF('PF_CB_DESHARD_AR', 20);           // K — the ONLY thing separating the designed
+    const DESHARD_DEV = envF('PF_CB_DESHARD_DEV', 45);         //     1,101/385 um lattice from a defect
     const DESHARD_DEPTH = Math.round(envF('PF_CB_DESHARD_DEPTH', 4));    // registered recursion bound
-    const DESHARD_BUDGET = Math.round(envF('PF_CB_DESHARD_BUDGET', 2000)); // registered worklist ceiling
+    // S22B: 2,000 -> 8,000 NEW LIVE triangles. Derived, not inflated: `_S22A` converted 101 candidates into
+    // 72 splits and +144 live (1.43 live per candidate), so 838 candidates project to ~1,200 and 8,000 is
+    // 6.7x headroom at +0.64% of the mesh. S22 spent 7% of its budget; this one is meant to be spent.
+    const DESHARD_BUDGET = Math.round(envF('PF_CB_DESHARD_BUDGET', 8000));
     const DESHARD_FANDEG = Math.round(envF('PF_CB_DESHARD_FANDEG', 12));
     const DESHARD_FANLONG = envF('PF_CB_DESHARD_FANLONG_UM', 500) / 1000;
-    const DESHARD_FANPASSES = Math.round(envF('PF_CB_DESHARD_FANPASSES', 3));
+    const DESHARD_FANPASSES = Math.round(envF('PF_CB_DESHARD_FANPASSES', 6));
     let deshardRan = false;
     let deshardBefore = 0; let deshardAfter = 0;
     let deshardTried = 0; let deshardSplits = 0; let deshardRefused = 0;
@@ -2680,6 +2692,16 @@ describe('STRATA conforming-bisection', () => {
     let deshardFanBefore = 0; let deshardFanAfter = 0; let deshardFanPassesRun = 0;
     let deshardFanCand = 0; let deshardFanFlipped = 0;
     let deshardFanRefAR = 0; let deshardFanRefAdmit = 0; let deshardFanRefValid = 0;
+    // S22B (c) — THE ON-LOCUS SPOKE PATH, counted on its own lines and never merged with the flips.
+    // `_S22A` measured 594 flip attempts refused because the spoke lies ON a detected locus. That refusal
+    // is CORRECT — rotating a locus edge undoes the conforming corridor the whole pipeline exists to
+    // produce — but it left those fans untreated. A fan anchored on a locus cannot ROTATE its edges; it
+    // can SHORTEN them. A midpoint split of an on-locus spoke moves no vertex off its locus and adds one
+    // ON it, and it reduces the FAN census for the right reason rather than by evading it: the census
+    // counts vertices carrying >= 12 facets with an edge >= 500 um, so halving a 900 um spoke drops that
+    // facet out of the long-edged set because the edge really is shorter.
+    let deshardFanLocus = 0; let deshardFanLocusSplit = 0;
+    let deshardFanLocusShort = 0; let deshardFanLocusRefused = 0;
     /** the parents the pass could NOT discharge — printed, so a survivor is declared and never silent. */
     const deshardRefusedLog: string[] = [];
     /**
@@ -3367,6 +3389,24 @@ describe('STRATA conforming-bisection', () => {
               const inc = (edgeMap.get(eKey(hub, w)) ?? []).filter((x) => alive[x]);
               if (inc.length !== 2) { deshardFanRefValid += 1; continue; }
               deshardFanCand += 1;
+              // ── S22B (c): ON-LOCUS SPOKE ⇒ SHORTEN INSTEAD OF ROTATE ────────────────────────────────
+              // Tested BEFORE `tryFlip` rather than inferred from its refusal, so the two paths are
+              // disjoint by construction and each candidate is billed to exactly one of them.
+              if (edgeOnLocus(hub, w)) {
+                deshardFanLocus += 1;
+                // A spoke already below the census's own long-edge threshold is not what the operator
+                // sees, and splitting it would spend budget to remove nothing from the instrument.
+                if (eLen(hub, w) < DESHARD_FANLONG) { deshardFanLocusShort += 1; continue; }
+                if (deshardLiveAdded >= DESHARD_BUDGET) { deshardBudgetCapped = true; continue; }
+                created.length = 0;
+                if (bisectAt(hub, w, placeAt(hub, w, 0.5), vFeat[hub] && vFeat[w])) {
+                  deshardFanLocusSplit += 1;
+                  deshardLiveAdded += created.filter((nt) => nt >= 0).length / 2;
+                  for (const nt of created) if (nt >= 0) pilotReseed.push(nt);
+                  didAny = true;
+                } else deshardFanLocusRefused += 1;
+                continue;
+              }
               const arOld = Math.max(arTri(inc[0]), arTri(inc[1]));
               const before = ta.length;
               const ok = tryFlip(hub, w, (r0, s0) => {
@@ -3387,7 +3427,11 @@ describe('STRATA conforming-bisection', () => {
               if (ok) {
                 deshardFanFlipped += 1; didAny = true;
                 for (let nt = before; nt < ta.length; nt += 1) pilotReseed.push(nt);
-                break;                                    // the star changed under us; re-derive it
+                // S22B: the per-hub `break` that used to sit here is REMOVED. It capped a hub at ONE action
+                // per sweep, so a degree-25 hub needed 13 sweeps to fall under the census threshold and got
+                // 3 — which is a large part of why `_S22A` left 93 hubs standing. Continuing is safe
+                // because every remaining spoke is re-validated against the LIVE `edgeMap` at the top of
+                // this loop and again inside `tryFlip`; the stale star can only cost a cheap refusal.
               }
             }
           }
@@ -4086,9 +4130,13 @@ describe('STRATA conforming-bisection', () => {
           + `   max recursion depth ${deshardDepthMax} of ${DESHARD_DEPTH}`
           + `   refusal rate ${deshardTried > 0 ? ((100 * deshardRefused) / deshardTried).toFixed(1) : '0.0'}%`
           + `${deshardTried > 0 && deshardRefused > 0.5 * deshardTried ? '   *** INFEASIBLE-AS-WIRED — registered criterion FIRED (refusals > 50% of shard candidates) ***' : '   [INFEASIBLE criterion NOT fired]'}`,
-        `    (ii) fan flips: ${deshardFanPassesRun} sweep(s), ${deshardFanCand} candidates, ${deshardFanFlipped} FLIPPED`
+        `    (ii) fan flips: ${deshardFanPassesRun} of ${DESHARD_FANPASSES} sweep(s), ${deshardFanCand} candidates, ${deshardFanFlipped} FLIPPED`
           + `   refused ${deshardFanRefAR} on the improvement gate (worst-AR must STRICTLY decrease),`
           + ` ${deshardFanRefAdmit} on admission, ${deshardFanRefValid} on 2-incidence`,
+        `    (iii) ON-LOCUS SPOKES — shortened, never rotated: ${deshardFanLocus} spokes lie ON a locus,`
+          + ` ${deshardFanLocusSplit} SPLIT at the midpoint, ${deshardFanLocusRefused} refused by the composed gates,`
+          + ` ${deshardFanLocusShort} already below the ${(DESHARD_FANLONG * 1000).toFixed(0)} um census threshold`
+          + `   [a midpoint split moves no vertex OFF its locus and adds one ON it — the conforming corridor is preserved, not evaded]`,
         `    budget (billed in NEW LIVE TRIANGLES — W6's own quantity): subdivision +${deshardLiveAdded} of ${DESHARD_BUDGET}`
           + `${deshardBudgetCapped ? '  *** BUDGET-CAPPED — the worklist was NOT discharged ***' : ''}`
           + `   flips +0 by construction (2 killed, 2 emitted, no vertex moved)`,
