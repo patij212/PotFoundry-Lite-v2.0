@@ -4202,6 +4202,127 @@ Both are REPORTED with the rim-row split (interior vs open-boundary) every time.
 >> **STOP AFTER SCORING. The operator eyeballs the mesh before Phase D.**
 
 
+### *** S22 RESULT — W8 ROW 4, TRADE. THE SHARD CLASS FELL x0.236 AND THE FAN CLASS x0.313 FOR
+### *** +808 FACETS (+0.065%) AND 934 s — AND THE POPULATION DID NOT RELOCATE, WHICH IS THE FIRST
+### *** TIME IN THIS CAMPAIGN THAT A TREATED CLASS DID NOT REAPPEAR JUST OUTSIDE THE TREATMENT. ***
+`_S22A` = `_S21B`'s command family VERBATIM + `PF_CB_DESHARD=1`. STL:
+`research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S22A.stl` (1,248,594 facets).
+Audit `FID_S22A.report.txt`. Censuses `S22_SHARD_S22A.log`, `S21_PLATES_S22A.log`.
+
+| bar | `_S21B` | **`_S22A`** | line | |
+|---|---|---|---|---|
+| **W1 SHARDS (registered: long >=1.5 mm AND (dev>=45 OR AR3>=20)), interior** | 123 | **29** | WIN <=12, REFUTED >=117 | **x0.236 — NOT the win shape, and NOT refuted** |
+| **W1 FANS (vertex on >=12 long-edged facets)** | 297 | **93** | WIN >=3x fall | **MET — x0.313 (3.19x)**; max degree 25 -> 22 |
+| W1 fans interior / rim-row | 293 / 4 | 89 / 4 | reported | rim row unchanged |
+| W1 shards below the visible-AREA floor / gated / routed | 0 / 0 / 0 | 0 / 0 / 0 | reported | none is provenance-exempt |
+| W2 **gated blades at the visible floor** | 0 | **0** | must stay 0 | **HOLDS** |
+| W2 global plates (0.02 mm^2, 50 um) | 55 | **53** | <= 55 | **HOLDS** |
+| W2 off-locus tails >=15 / >=30 / >=45 | 24,176 / 17,812 / 15,210 | 24,204 / 17,840 / 15,247 | flat-or-better | **NOT met (+0.12 / +0.16 / +0.24%)** |
+| W2 physical >=90 (feature-spanning) | 4,373 | 4,382 | flat-or-better | **NOT met (+0.21%)** |
+| W3 P4 residue / in-routed residue | 7, worst 136.3 / 6 | **7, worst 136.3 / 6** | mopped or explained | **UNCHANGED — declared below** |
+| **W4(a) H2 over-tol FRACTION** | 0.00140% | **0.00139%** (556/40,008,064) | <= 1.2x = **0.00168%** | **HOLDS — and it FELL (x0.993)** |
+| **W4(b) H2 witnessed** | 25.063 | **25.063 um** | classify or fire | **RESIDUAL GRADING DEMAND** |
+| W4(c) unresolved count / worst | 4,307 / 95.473 | **4,307 / 95.473 um** | <=8,000 / <=250.0 | **HOLDS — identical** |
+| W4(d) H1 facets-over / witnessed | 1.22% / 70.988 | **1.23% / 95.949 um** | <=1.30%, no claim | **HOLDS** — see the stride note |
+| W5 folds / blades / AR / recovery / cracks / Euler / judge NORMAL | 0/2/50.00/100%/0/0/0 | **0/2/50.00/100%/0/0/0** | | **HOLDS** |
+| W6 live tris / wall / rA evals | 1,247,786 / 937 s / 916M | **1,248,594 / 934 s / 926M** | <=1.30M / <=1,400 s / <=1,042M | **HOLDS (+0.065% / -0.3% / +2.2%)** |
+| W7 flag-OFF md5 / hard gate | — | `8a59fb37a9115600b13262254380ccb0` / **12/12** | byte-exact / every value exact | **HOLDS, taken AFTER the edit** |
+
+**THE PASS'S OWN COUNTERS.** (i) subdivision: 101 candidates attempted of the 123 (22 were re-meshed by a
+neighbour's split before they were popped), **72 split, 29 REFUSED — all 29 on ASPECT, 0 on fold, 0 on
+admission, 0 on weld/apex**; max recursion depth **1 of 4**; **+144 new live triangles of the 2,000
+budget**, never capped. (ii) fan flips: 3 sweeps, 2,536 candidates, **486 FLIPPED**, 717 refused on the
+improvement gate, **1 on admission**, 24 on 2-incidence, and **594 refused because the edge lies ON a
+locus** — the conforming corridor was never rotated away. Resume: 332 splits on +1,328 of 20,000.
+
+>> **W8 ROW 4 — TRADE.** Row 1 (INFEASIBLE-AS-WIRED) did not fire: refusal rate **28.7%** against the
+>> registered 50%, and the pass terminated at depth 1 of 4 having used 7% of its budget. Row 2 (REGRESSION)
+>> did not fire: W5 holds every clause, W4 does not fire on any of (a)-(d), W6 is inside all three ceilings,
+>> and W2's gated count stayed at 0. Row 3 (WIN) is not reached — W1's win shape needs interior shards <=12
+>> and measured **29**, and W2's deviation tails rose by 0.12-0.24% instead of staying flat. **Row 4.**
+
+**W4(b) CLASSIFIED AGAINST THE THREE REGISTERED CONDITIONS, ALL THREE MEASURED, AND IT IS THE SAME FACET.**
+The argmax is at **th 6.021386 z 113.45994** — the same point to five decimals as `_S21A` and `_S21B`, now
+carried by tri 243668 (was 244073; the index moved because the mesh grew, the facet did not). (i) congruent
+copy of a routed target, **and this arm proves it harder than either predecessor: a pass that split 72
+facets and flipped 486 within the same mesh did not move it by a micron**; (ii) carrier area **0.005430
+mm^2, edges 389.9/349.5/50.0 um — BELOW the 0.02 mm^2 visible floor**, identical; (iii) 25.063 <= 50.126.
+**All three hold. RESIDUAL GRADING DEMAND, and it is now the only fidelity number left standing.**
+
+**W4(d) — THE H1 WITNESSED MOVE 70.988 -> 95.949 um IS A SAMPLING MOVE, AND THERE IS A FULL-COVERAGE
+CONTROL INSIDE THE SAME RUN THAT SETTLES IT.** The registered bar is facets-over (1.22% -> 1.23%, HOLDS)
+and the witnessed number carries no claim — this is why. H1 audits **40,000 of 1,248,594, stride 771,677,
+INCOMPLETE**; the stride is derived from `nTri`, so growing the mesh by 808 facets re-draws WHICH 40,000
+are walked. `_S21B`'s sample happened to top out on a facet at **z = 120.0000 — the OPEN RIM ROW** (70.988
+um, tri 128387); `_S22A`'s sample caught an interior facet at z 113.761 (95.949 um). **The control is the
+driver's own adaptive oracle, which runs at FULL coverage over every facet and is not a sample: it reads
+MAX 95.473 um at z=[76.40,76.38,75.97] th=[1.3593,1.3590,1.3588] on BOTH arms, to three decimals and at the
+same locus, while its over-0.01mm count FELL 512 -> 481 (x0.94).** The mesh's worst mesh->surface facet did
+not move; the 3.2%-coverage walk found it this time and did not last time. **Quoting the sampled witness as
+a regression would have been the S21B rim-row error in a new costume.**
+
+**W3 — THE PLATE RESIDUE IS DECLARED, NOT MOPPED, AND THE REASON IS STRUCTURAL.** P4's **7 plates / 136.3
+um worst** and the **6 in-routed residues** are unchanged to the digit, as are the 20 worst offenders by
+(area x standoff) — the same top-10 rows at the same th/z. **This is the instrument boundary doing exactly
+what it should: S22 is a LENGTH instrument and these are AREA x STANDOFF offenders.** The worst four sit at
+z 119.990-119.992 (rim row, BasketWeave caveat) and z 113.505-113.846 at AR3 2.4-4.7 — well-shaped, short-
+edged facets standing off the surface. **No length-keyed pass can reach them and none should claim to.**
+They are Phase-2 grading demand, filed with the 25.063 um copy.
+
+>> **AND THE FRONTIER LAW DID NOT HOLD ON THIS QUANTITY. THIS IS THE REGISTERED PROSPECT COMING OUT THE
+>> OTHER WAY, AND IT MUST BE STATED AS PRECISELY AS THE PREDICTION WAS.** The registration wrote: *"the
+>> prior is that shards will relocate rather than vanish, most likely to just outside wherever the pass
+>> acts, exactly as the plates did in S21B."* Measured, 24-bin z-histogram of the registered shard set,
+>> `_S21B` -> `_S22A`:
+>> `0 0 0 6 60 3 2 0 0 0 4 0 42 2 0 0 0 0 0 4 0 0 0 0` -> `0 0 0 6 16 0 2 0 0 0 0 0 3 2 0 0 0 0 0 0 0 0 0 0`
+>> **EVERY BIN IS FLAT OR LOWER. NOT ONE BIN GREW.** The residue is a proper sub-population of the original
+>> bands (z 15-25 and z 60-65), not a new population beside them. Contrast S21B, where routing the
+>> enumerated 67 plates left 55 because the survivors appeared at NEW sites. **On a LENGTH population, local
+>> finishing removed in place instead of relocating.** The law is not repealed — it has held on five
+>> instruments across seven arms — but it now has a measured exception, and the exception is the first
+>> quantity the campaign ever attacked with a gate composed to make the defect class unbirthable.
+
+>> **THE HONEST LIMIT OF THIS ARM, AND IT IS THE THING THE OPERATOR WILL SEE FIRST.** The REGISTERED band
+>> fell 123 -> 29. **The LOOSE band did not: 2,198 -> 2,129 (x0.969), and its sub-visible-floor part
+>> 253 -> 232 (x0.917).** The S22 entry handoff named that 253 — the facets below the 0.02 mm^2 area floor —
+>> as *"the population the operator is photographing"*, and this pass barely touched it, because the
+>> registered length bar of 1.5 mm sits above almost all of it. **So the census the operator's eye is
+>> closest to moved by 8%, while the census S22 registered moved by 76%.** If the render still shows
+>> shards, that is where they are, it was predictable from the numbers before the run, and the next bar
+>> should be set on the sub-floor band rather than on the one already discharged.
+
+**THE 29 SURVIVORS ARE DECLARED, WITH THE GATE THAT KEPT THEM.** All 29 were refused by **S1 aspect** —
+splitting them at the long edge would have emitted a child over AR 50, so the composed shape gate refused
+and the parent stayed. They are AR3 22.2-49.3 at longest edge 1,528-1,730 um, and they arrive in CONGRUENT
+FAMILIES: th 0.25863 / 1.82943 / 3.40023 / 4.97103 at z 21.57 and th 1.30898 / 2.87978 / 4.45057 / 6.02136
+at z 20.22 — four-fold sets at 2pi/4 spacing, the same congruent-copy motif as every other class in this
+campaign. **A shard that cannot be split without manufacturing a blade is a genuine frontier, not a bug:
+the pass is refusing to trade the census it is scored on for the one it is not.**
+
+**WHAT THE ARM ESTABLISHES.**
+  * **THE DE-SHARD MECHANISM WORKS AND IS CHEAP.** x0.236 shards and x0.313 fans for **+808 live facets
+    (+0.065%)**, **-3 s of wall**, and **+2.2% rA evals**. The registered cost ceiling was 1.30 M tris and
+    1,400 s; the pass used 7% of its own triangle budget.
+  * **THE COMPOSITION SURVIVED A REFINEMENT-AND-FLIP PASS RUNNING ON TOP OF IT.** Judge `[NORMAL] PASS
+    count 0`, **0 admission-stranded of 1,248,594**, refusal storm not fired, gated-at-the-visible-floor
+    still **0**, determined blades still **2**, determined folds still **0**. The CTLPLUS law predicted a
+    pass of exactly this shape would FEED the orientation class (211 -> 294) and S7's flip fed it x1.44;
+    **72 splits and 486 flips later the class has not moved at all.** That is the S22 precondition paying
+    out, and it is the first direct test of it.
+  * **READ THE DRIVER'S REFUSAL COUNTERS CORRECTLY — THE RISE IS THE RESUME, NOT THE PASS.** Main-loop
+    `splits` is **512,182 on both arms, to the digit** (the de-shard pass is post-loop and cannot touch it).
+    But aspect refusals **450,250 -> 722,759**, snaps **48,972 -> 57,598** and split-side admission refusals
+    **26,434 -> 38,770** — all of that is the SHARED RESUME re-draining a heap re-seeded with the pass's
+    children plus the 4,307 `unresolved`, and the unresolved population fails its gate on every re-attempt
+    by definition. **The de-shard pass's own admission refusals were 0 of 101 candidates.** Quoting the
+    +12,336 as "the pass fought admission" would be wrong.
+  * **AND THE PRECONDITION IS ENFORCED, NOT ASSUMED.** `PF_CB_DESHARD=1` with admission off REFUSES to run
+    and prints why; the control mesh is **byte-identical to `_W1`** (`cmp` clean), so the flag alone moves
+    no bytes. The justification cannot silently lapse.
+
+>> **STOP AFTER SCORING. The operator eyeballs the de-sharded mesh before anything else.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

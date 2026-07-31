@@ -1208,7 +1208,19 @@ describe('STRATA conforming-bisection', () => {
     let nMid3dSolves = 0; let nMid3dClamped = 0; let mid3dShiftSum = 0; let mid3dShiftMax = 0;
     let nLongFallTested = 0; let nLongFallFired = 0;
     /** Why the LAST bisectAt refused. Read (never written) by tryBisect, exactly as `addVNew` is. */
-    let lastBisectShape: 'none' | 'ar' | 'fold' = 'none';
+    // ('admit' has been ASSIGNED by the S20 split-side gate since that gate landed; the annotation simply
+    //  did not list it, and nothing read the value narrowly enough to notice. S22's pass classifies its own
+    //  refusals by this field, so the union is widened to what the code already writes. Type-only: no
+    //  runtime byte moves, so every flag-OFF path stays byte-identical by construction.)
+    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' = 'none';
+    /**
+     * Read `lastBisectShape` at its DECLARED type. The checker's flow analysis narrows the variable to its
+     * initializer `'none'` at every read in this scope, because the only writer is `bisectAt` — a closure
+     * the checker cannot see mutate it (the same limitation the S8 cascade documents at its retreat step,
+     * where it works around it by not repeating the test). Reading through a function boundary drops the
+     * narrowing, so S22 can classify a refusal by the gate that caused it instead of guessing.
+     */
+    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' => lastBisectShape;
     /** WHICH incident triangle `shapeAdmits` was protecting when it refused. Read only by the S8 cascade
      *  pass (it follows the protector); written on every shape refusal. Assigning a closure number moves
      *  no byte of any mesh, so every flag-OFF path stays byte-identical by construction. */
@@ -2618,6 +2630,58 @@ describe('STRATA conforming-bisection', () => {
     // own longest edge is the blocked edge refused even the Rivara midpoint). Sums to fossilDeadlocked.
     let fossilDeadDepth = 0; let fossilDeadAttempts = 0; let fossilDeadSelf = 0;
     let fossilAllocUsed = 0; let fossilBudgetCapped = false;
+    // ══════ S22 (2026-07-31) — THE DE-SHARD FINISHING PASS (PF_CB_DESHARD, DEFAULT OFF) ══════
+    // REGISTERED BEFORE IT WAS BUILT (worklog "S22 (PHASE D-PREP)"), on the operator's `_S21B` verdict:
+    // "S21B is better but the tessellation is still not perfect. i think we need to eliminate this sharded
+    // meshing." Every census in this campaign keys on AREA x STANDOFF and reads 0 at the 0.02 mm^2 visible
+    // floor; the eye keys on LENGTH. A 2 mm x 15 um needle carries a thousandth of the visible-AREA floor
+    // and glints across a render. So the pass targets the LENGTH-keyed population directly:
+    //   (i)  SUBDIVISION — a facet over the length bar is split at its LONGEST edge, recursively, and every
+    //        child goes through `bisectAt` => S1 aspect + S2 (theta,z) fold + the S20 split-side
+    //        footprint-normal admission on the SHIPPED f32 values. A refused parent is RECORDED with its
+    //        reason, never silently kept.
+    //   (ii) IMPROVEMENT-GATED FLIPS over the FAN worklist — the census's own high-degree hubs. Gate:
+    //        worst-AR STRICTLY decreases AND both children are admissible. Zero vertex motion, zero live
+    //        triangle growth, so a flip cannot buy shape with fidelity.
+    //
+    // *** WHY THIS IS SAFE NOW WHEN REFINEMENT AND FLIPS HISTORICALLY FED THIS EXACT CLASS. *** CTLPLUS
+    // measured that generic extra refinement made the artifact class WORSE (211 -> 294) and S7's conforming
+    // flip made it worse x1.44 — both because refinement and flipping BIRTH orientation defects at exactly
+    // the feature loci they target. `_S21B` then measured the orientation class UNBIRTHABLE under composed
+    // admission: 26,434 candidate children REFUSED by the split-side guard, 0 survivors of 1,247,786, judge
+    // -confirmed [NORMAL] PASS count 0 against an EMPTY strand list. The CTLPLUS law is defused BY
+    // CONSTRUCTION, not by hope. **THAT PRECONDITION IS THEREFORE ENFORCED AND NOT ASSUMED**: the pass
+    // REFUSES TO RUN unless ADMIT_NORMAL + ADMIT_NORMAL_SPLIT + ADMIT_SHIPPED are all on, because with
+    // admission off the justification lapses with it and this pass becomes the CTLPLUS experiment again.
+    const DESHARD_REQ = ADMIT_NORMAL && ADMIT_NORMAL_SPLIT && ADMIT_SHIPPED;
+    const DESHARD = envOn('PF_CB_DESHARD') && !SWEEP && !GPU_RANK && DESHARD_REQ;
+    const DESHARD_L = envF('PF_CB_DESHARD_LMM', 1.5);          // L_vis — the registered length bar
+    const DESHARD_AR = envF('PF_CB_DESHARD_AR', 20);           // K — registered ABOVE the seed's designed
+    const DESHARD_DEV = envF('PF_CB_DESHARD_DEV', 45);         //     lattice anisotropy band (AR3 ~ 12)
+    const DESHARD_DEPTH = Math.round(envF('PF_CB_DESHARD_DEPTH', 4));    // registered recursion bound
+    const DESHARD_BUDGET = Math.round(envF('PF_CB_DESHARD_BUDGET', 2000)); // registered worklist ceiling
+    const DESHARD_FANDEG = Math.round(envF('PF_CB_DESHARD_FANDEG', 12));
+    const DESHARD_FANLONG = envF('PF_CB_DESHARD_FANLONG_UM', 500) / 1000;
+    const DESHARD_FANPASSES = Math.round(envF('PF_CB_DESHARD_FANPASSES', 3));
+    let deshardRan = false;
+    let deshardBefore = 0; let deshardAfter = 0;
+    let deshardTried = 0; let deshardSplits = 0; let deshardRefused = 0;
+    let deshardRefAR = 0; let deshardRefFold = 0; let deshardRefAdmit = 0; let deshardRefOther = 0;
+    // THE BUDGET IS BILLED IN **NEW LIVE TRIANGLES**, WHICH IS THE REGISTERED QUANTITY (W6: "<= ~2,000 new
+    // triangles, i.e. < 0.2% of 1,247,786" and "live tris <= 1,300,000"). Gross allocations are NOT the
+    // same number and billing them would silently halve the budget: `bisectAt` kills each incident triangle
+    // and emits two per side, so an interior split allocates 4 and adds 2. The flip sub-pass allocates 2 and
+    // adds 0 — it is net-zero in the registered quantity by construction — so gross allocations are reported
+    // SEPARATELY for each sub-pass rather than summed into one misleading total. (Measured on the T1 smoke,
+    // where the summed form read "+6,536 of 2,000 BUDGET-CAPPED" while the subdivision had in fact stopped
+    // dead on its budget and the other 4,536 were the flips' churn.)
+    let deshardDepthMax = 0; let deshardLiveAdded = 0; let deshardBudgetCapped = false;
+    let deshardAllocSub = 0; let deshardAllocFan = 0;
+    let deshardFanBefore = 0; let deshardFanAfter = 0; let deshardFanPassesRun = 0;
+    let deshardFanCand = 0; let deshardFanFlipped = 0;
+    let deshardFanRefAR = 0; let deshardFanRefAdmit = 0; let deshardFanRefValid = 0;
+    /** the parents the pass could NOT discharge — printed, so a survivor is declared and never silent. */
+    const deshardRefusedLog: string[] = [];
     /**
      * S6. Would collapsing v onto u make the shape of the facets it TOUCHES worse?
      *
@@ -2665,6 +2729,68 @@ describe('STRATA conforming-bisection', () => {
     const arTri = (t: number): number => aspect3(
       vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]],
     );
+    /**
+     * S22. The LENGTH-KEYED SHARD instrument, as a live predicate on triangle `t`.
+     *
+     *     SHARD := longest 3-D edge >= L_vis  AND  (deviation >= D  OR  3-D AR >= K)
+     *
+     * with the REGISTERED constants L_vis = 1.5 mm, D = 45 deg, K = 20. Length is what makes a facet
+     * VISIBLE; the second clause is what makes it a DEFECT rather than a legitimately long facet on a flat
+     * region — without it the bar would condemn every large well-shaped element on smooth wall.
+     *
+     * WHY K = 20 AND NOT 12, AND IT IS A MEASUREMENT: on `_S21B`, six of the fifteen longest facets read
+     * AR3 exactly 12.0 at area 0.212 mm^2 and deviation 0.12-0.26 deg — the aligned seed's DESIGNED
+     * anisotropic elements (along 1,101 um / across 385 um). A bar at AR3 >= 12 would declare the mesh's
+     * own intended anisotropy a defect and could never be satisfied. K = 20 sits above that band and below
+     * the p99 of 30.0, so it is derived from the distribution rather than chosen.
+     *
+     * THE AR IS `arTri` — i.e. `_shapeGuard.aspect3`, longestEdge * perimeter / (4 * area) — which is
+     * VERBATIM the offline census's AR3. Guard and instrument therefore measure the same object, which is
+     * this campaign's standing rule ("the refinement ruler must equal the audit ruler").
+     *
+     * The deviation clause is evaluated ONLY when the AR clause has already failed (it costs five rA evals
+     * and the AR clause costs none), and on the SHIPPED f32 values when PF_CB_ADMIT_SHIPPED is on — the
+     * S20.1 finding is that an f32 ulp on z ~ 80 mm is seven times `admBestDot`'s 1e-6 stencil, so a
+     * deviation read on f64 vertices is a reading about a mesh that never leaves the process.
+     */
+    const shardOf = (t: number): boolean => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      if (Math.max(eLen(a, b), eLen(b, c), eLen(c, a)) < DESHARD_L) return false;
+      if (arTri(t) >= DESHARD_AR) return true;
+      if (!(DESHARD_DEV < 180)) return false;
+      const qz = (v: number): number => (ADMIT_SHIPPED ? f32(v) : v);
+      const px = qz(vx[a]); const py = qz(vy[a]); const pz = qz(vz[a]);
+      const qx = qz(vx[b]); const qy = qz(vy[b]); const qq = qz(vz[b]);
+      const sx = qz(vx[c]); const sy = qz(vy[c]); const sz = qz(vz[c]);
+      let fx = (qy - py) * (sz - pz) - (qq - pz) * (sy - py);
+      let fy = (qq - pz) * (sx - px) - (qx - px) * (sz - pz);
+      let fz = (qx - px) * (sy - py) - (qy - py) * (sx - px);
+      const fl = Math.hypot(fx, fy, fz);
+      if (!(fl > 0)) return false;                       // zero-area is S1/S2's business, not this bar's
+      fx /= fl; fy /= fl; fz /= fl;
+      const cth = canonTheta(Math.atan2((py + qy + sy) / 3, (px + qx + sx) / 3));
+      const d = admBestDot(cth, (pz + qq + sz) / 3, fx, fy, fz);
+      return Math.acos(Math.max(-1, Math.min(1, d))) * (180 / Math.PI) >= DESHARD_DEV;
+    };
+    /** S22. Does `t` carry a long edge at the FAN instrument's threshold (>= 500 um by default)? */
+    const fanLong = (t: number): boolean =>
+      Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t])) >= DESHARD_FANLONG;
+    /** S22. The FAN census: vertices shared by >= FANDEG live facets that each carry a long edge. */
+    const fanCensus = (): Map<number, number> => {
+      const deg = new Map<number, number>();
+      for (let t = 0; t < ta.length; t += 1) {
+        if (!alive[t] || !fanLong(t)) continue;
+        for (const v of [ta[t], tb[t], tc[t]]) deg.set(v, (deg.get(v) ?? 0) + 1);
+      }
+      for (const [v, d] of deg) if (d < DESHARD_FANDEG) deg.delete(v);
+      return deg;
+    };
+    /** S22. The live shard count — the pass's own before/after reading of the registered instrument. */
+    const shardCensus = (): number => {
+      let n = 0;
+      for (let t = 0; t < ta.length; t += 1) if (alive[t] && shardOf(t)) n += 1;
+      return n;
+    };
     // An edge lies ON a locus iff a TRANSVERSE probe through its midpoint finds a kink at the probe CENTRE.
     // Same primitive as the detector — no per-style knowledge, no locus table to maintain.
     const edgeOnLocus = (pv: number, qv: number): boolean => {
@@ -3142,13 +3268,151 @@ describe('STRATA conforming-bisection', () => {
         fossilAllocUsed = ta.length - taStart;
       }
 
-      // RESUME (shared by S6-collapse, S7-flip and S8-cascade): re-seed the repaired neighbourhoods and the
+      // ───────── S22: THE DE-SHARD FINISHING PASS (PF_CB_DESHARD=1; default OFF) ─────────
+      // See the registration note at the counter block for the design and for the admission precondition
+      // this pass refuses to run without. Two sub-passes, in this order and for this reason: SUBDIVISION
+      // first, because splitting a shard changes the degree of the vertices it hangs from and therefore
+      // changes the FAN worklist; enumerating fans first would act on a worklist the other sub-pass is
+      // about to invalidate.
+      if (DESHARD) {
+        deshardRan = true;
+        const taStart = ta.length;
+        deshardBefore = shardCensus();
+        // ── (i) LENGTH-DRIVEN SUBDIVISION AT THE LONG EDGE, RECURSIVELY ────────────────────────────────
+        // The split is at the LONGEST edge at the MIDPOINT — Rivara's two hypotheses, the ONE placement
+        // this file has measured as amplification-neutral (x0.99 geometric mean over 58,880 splits, vs
+        // x2.31 middle edge / x4.00 shortest / x1.77 SNAP). A de-shard pass that split anywhere else would
+        // manufacture the shape class it exists to remove, which is precisely the CTLPLUS failure.
+        const stackT: number[] = []; const stackD: number[] = [];
+        for (let t = 0; t < ta.length; t += 1) if (alive[t] && shardOf(t)) { stackT.push(t); stackD.push(0); }
+        while (stackT.length > 0) {
+          if (deshardLiveAdded >= DESHARD_BUDGET) { deshardBudgetCapped = true; break; }
+          const t = stackT.pop() as number; const d = stackD.pop() as number;
+          // a neighbour's split re-meshes BOTH sides of its edge, so a queued facet may already be gone or
+          // already be under the bar. Re-testing is not defensive noise: it is what keeps the recursion
+          // finite when two shards share their long edge.
+          if (!alive[t] || !shardOf(t)) continue;
+          deshardTried += 1;
+          const [pv, qv] = eVerts(t, longestE(t));
+          created.length = 0;
+          if (bisectAt(pv, qv, placeAt(pv, qv, 0.5), vFeat[pv] && vFeat[qv])) {
+            deshardSplits += 1;
+            // `bisectAt` kills each live incident triangle and emits two in its place, so the LIVE growth is
+            // exactly half the number of children it created — counted, not assumed from an edge-degree.
+            deshardLiveAdded += created.filter((nt) => nt >= 0).length / 2;
+            if (d > deshardDepthMax) deshardDepthMax = d;
+            for (const nt of created) {
+              if (nt < 0) continue;
+              pilotReseed.push(nt);                       // the registered FIDELITY RE-QUEUE
+              if (d + 1 < DESHARD_DEPTH && alive[nt] && shardOf(nt)) { stackT.push(nt); stackD.push(d + 1); }
+            }
+          } else {
+            // REFUSED. `bisectAt` sets `lastBisectShape` on every refusal path, so the parent is classified
+            // by the gate that stopped it rather than lumped into one number. A refusal is a RESULT: it
+            // says the composed gates would not let this facet be repaired here, and the facet stays in
+            // the census as a declared survivor.
+            deshardRefused += 1;
+            const why = bisectRefusal();
+            if (why === 'ar') deshardRefAR += 1;
+            else if (why === 'fold') deshardRefFold += 1;
+            else if (why === 'admit') deshardRefAdmit += 1;
+            else deshardRefOther += 1;
+            if (deshardRefusedLog.length < 20 && alive[t]) {
+              deshardRefusedLog.push(`      REFUSED[${why}] tri ${t}  AR3 ${arTri(t).toFixed(1)}`
+                + `  long ${(Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t])) * 1000).toFixed(0)} um`
+                + `  th ${vth[ta[t]].toFixed(5)}  z ${vz[ta[t]].toFixed(3)}  depth ${d}`);
+            }
+          }
+        }
+        // ── (ii) IMPROVEMENT-GATED FLIPS OVER THE FAN WORKLIST ─────────────────────────────────────────
+        // A fan hub is a background-grid vertex adjacent to a refined region: the refined side contributes
+        // many short edges, the unrefined background side contributes long ones, and the vertex ends up the
+        // apex of a fan of 19-25 long facets (measured on `_S21B`: 11 of the 12 highest-degree hubs sit
+        // 1.33-2.59 mm out, i.e. just OUTSIDE the 1.5 mm routed radius, on EXACT integer grid nodes).
+        // Flipping a spoke (hub,w) rewrites the quad hub-r0-w-s0 onto the diagonal (r0,s0), which drops the
+        // hub's degree by exactly one and moves no vertex at all. `tryFlip` already refuses a locus edge, a
+        // non-convex quad, a pinch, an inconsistent pair and a >2-incidence edge; the gate below adds the
+        // registered pair — worst-AR STRICTLY decreases AND both children admissible.
+        deshardAllocSub = ta.length - taStart;
+        const taFan = ta.length;
+        const hubs0 = fanCensus();
+        deshardFanBefore = hubs0.size;
+        // THE WORKLIST IS THE CENSUS AT PASS START AND IS NOT RE-RANKED BETWEEN PASSES — "the pass acts
+        // where the census points and nowhere else". Later passes exist to retry hubs whose star has since
+        // changed, not to chase hubs the instrument did not name.
+        const hubList = [...hubs0.entries()].sort((x, y) => y[1] - x[1]).map(([v]) => v);
+        const hubSet = new Set(hubList);
+        for (let pass = 0; pass < DESHARD_FANPASSES; pass += 1) {
+          let didAny = false;
+          deshardFanPassesRun += 1;
+          // ONE sweep per pass builds every hub's star of long-edged facets. Per-hub sweeps would be
+          // hubs x passes x |ta| and this mesh has 1.2 M live facets in ~2.3 M allocations. The star can go
+          // stale WITHIN a pass as flips land; that is harmless and deliberate — every candidate is
+          // re-validated against the live `edgeMap` below and again inside `tryFlip`, so a stale entry
+          // costs one cheap refusal and never a wrong mutation.
+          const star = new Map<number, number[]>();
+          for (let t = 0; t < ta.length; t += 1) {
+            if (!alive[t] || !fanLong(t)) continue;
+            for (const v of [ta[t], tb[t], tc[t]]) {
+              if (!hubSet.has(v)) continue;
+              const l = star.get(v); if (l === undefined) star.set(v, [t]); else l.push(t);
+            }
+          }
+          for (const hub of hubList) {
+            const st = star.get(hub);
+            if (st === undefined || st.length < DESHARD_FANDEG) continue; // an earlier flip discharged it
+            const spokes = new Set<number>();
+            for (const t of st) { if (!alive[t]) continue; for (const w of [ta[t], tb[t], tc[t]]) if (w !== hub) spokes.add(w); }
+            for (const w of spokes) {
+              const inc = (edgeMap.get(eKey(hub, w)) ?? []).filter((x) => alive[x]);
+              if (inc.length !== 2) { deshardFanRefValid += 1; continue; }
+              deshardFanCand += 1;
+              const arOld = Math.max(arTri(inc[0]), arTri(inc[1]));
+              const before = ta.length;
+              const ok = tryFlip(hub, w, (r0, s0) => {
+                const a1 = aspect3(vx[r0], vy[r0], vz[r0], vx[hub], vy[hub], vz[hub], vx[s0], vy[s0], vz[s0]);
+                const a2 = aspect3(vx[s0], vy[s0], vz[s0], vx[w], vy[w], vz[w], vx[r0], vy[r0], vz[r0]);
+                const wA = Math.max(a1, a2);
+                if (!(wA < arOld)) { deshardFanRefAR += 1; return false; }   // STRICTLY decreases
+                // ADMISSION ON THE PAIR THE FLIP WOULD EMIT, in `tryFlip`'s own winding — addT(r0,pv,s0)
+                // then addT(s0,qv,r0) — and through the SAME `footBack` choke point every other admission
+                // call uses, so the PF_CB_ADMIT_SHIPPED quantisation applies here too.
+                if (footBack(vx[r0], vy[r0], vz[r0], vx[hub], vy[hub], vz[hub], vx[s0], vy[s0], vz[s0],
+                  vth[r0], vth[hub], vth[s0])
+                  || footBack(vx[s0], vy[s0], vz[s0], vx[w], vy[w], vz[w], vx[r0], vy[r0], vz[r0],
+                    vth[s0], vth[w], vth[r0])) { deshardFanRefAdmit += 1; return false; }
+                if (wA > postWorstAdmitted) postWorstAdmitted = wA;
+                return true;
+              });
+              if (ok) {
+                deshardFanFlipped += 1; didAny = true;
+                for (let nt = before; nt < ta.length; nt += 1) pilotReseed.push(nt);
+                break;                                    // the star changed under us; re-derive it
+              }
+            }
+          }
+          if (!didAny) break;
+        }
+        // NOTE: the after-censuses are NOT taken here. They are taken after the shared resume below, so the
+        // reported number is the one the STL will carry rather than the one this pass happened to leave.
+        deshardAllocFan = ta.length - taFan;
+      }
+
+      // RESUME (shared by S6-collapse, S7-flip, S8-cascade and S22 de-shard): re-seed the repaired neighbourhoods and the
       // still-alive unresolved set, then drain the heap under the explicit extra budget — the heap driver's
       // pop step verbatim (pop → refineDirected/refineLepp → consider children → survivor re-queue →
       // unresolved bookkeeping). Termination: every pop either splits (budget-bounded) or lands in
       // `unresolved` and is never re-queued.
-      if ((SLIVER_COLLAPSE || CONF_FLIP || FOSSIL_CASCADE) && SLIVER_RESUME_BUDGET > 0 && sliverCollapsed + confFlipDone + fossilSplits > 0) {
-        const resumeCap = (FOSSIL_CASCADE ? Math.max(triCap, ta.length) : triCap) + SLIVER_RESUME_BUDGET;
+      if ((SLIVER_COLLAPSE || CONF_FLIP || FOSSIL_CASCADE || DESHARD) && SLIVER_RESUME_BUDGET > 0
+        && sliverCollapsed + confFlipDone + fossilSplits + deshardSplits + deshardFanFlipped > 0) {
+        // S22: the de-shard resume is capped at the pass's OWN allocation base + budget, NOT at
+        // PF_CB_TRICAP. On this arm TRICAP is 8 M against ~2.3 M allocations, so the legacy expression is
+        // not a binding cap at all and the registered cost ceiling (live tris <= 1.30 M) would rest on the
+        // heap draining rather than on a bound. Only reachable with the flag on, so the OFF path is
+        // byte-identical.
+        const resumeCap = DESHARD
+          ? ta.length + SLIVER_RESUME_BUDGET
+          : (FOSSIL_CASCADE ? Math.max(triCap, ta.length) : triCap) + SLIVER_RESUME_BUDGET;
         const resumeBase = ta.length; // gross allocs at resume start, so the S8 pass's own splits are not billed to the resume
         for (const t of pilotReseed) if (alive[t]) consider(t);
         for (const [t] of unresolved) if (alive[t]) consider(t);
@@ -3169,10 +3433,13 @@ describe('STRATA conforming-bisection', () => {
         }
         sliverResumeBudgetUsed = Math.max(0, ta.length - resumeBase);
       }
-      if (SLIVER_COLLAPSE || CONF_FLIP || FOSSIL_CASCADE) {
+      if (SLIVER_COLLAPSE || CONF_FLIP || FOSSIL_CASCADE || DESHARD) {
         for (let t = 0; t < ta.length; t += 1) if (alive[t]) { if (arTri(t) > SLIVER_AR) sliverOffendersAfter += 1; }
         for (const [t, k] of unresolved) if (alive[t]) { sliverUnresolvedAfter += 1; if (k > sliverUnresolvedWorstAfter) sliverUnresolvedWorstAfter = k; }
       }
+      // S22: the census AFTER the resume, because the resume's own splits are refinement acting on the same
+      // facets and the ship gate is read on the STL, not on the state the pass happened to leave behind.
+      if (DESHARD) { deshardAfter = shardCensus(); deshardFanAfter = fanCensus().size; }
     }
 
     // ───────────────────────────── soup + watertight audit (3D position weld) ─────────────────────────────
@@ -3802,6 +4069,35 @@ describe('STRATA conforming-bisection', () => {
         `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,
         `    crossing-edge candidates ${confFlipCand}, flipped ${confFlipDone}, refused ${confFlipRefused} (AR gate + tryFlip validity: 2-incidence, convexity, winding, on-locus)`,
         `    offenders (AR > ${SLIVER_AR}) AFTER ${sliverOffendersAfter}   resume: ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET} budget${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}   unresolved AFTER ${sliverUnresolvedAfter} (worst ${(sliverUnresolvedWorstAfter * 1000).toFixed(3)} um)`,
+      ] : []),
+      // S22 DE-SHARD block — printed ONLY when requested, so every flag-off report stays byte-identical.
+      ...(envOn('PF_CB_DESHARD') ? [
+        `  S22 DE-SHARD FINISHING PASS: ${deshardRan ? 'RAN' : `REQUESTED BUT NOT RUN — ${!DESHARD_REQ
+          ? '*** ADMISSION IS NOT COMPOSED (needs PF_CB_ADMIT_NORMAL=1 + PF_CB_ADMIT_NORMAL_SPLIT=1 + PF_CB_ADMIT_SHIPPED=1). The pass REFUSES to run: `_S21B` measured the orientation class UNBIRTHABLE only under composed admission, and without it this pass is the CTLPLUS experiment that made the class WORSE 211 -> 294. ***'
+          : 'needs the heap driver (no SWEEP/GPU_RANK) and PF_CB_SAFE_COLLAPSE not 0'}`}`,
+        `    instrument: SHARD = longest edge >= ${DESHARD_L} mm AND (deviation >= ${DESHARD_DEV} deg OR AR3 >= ${DESHARD_AR})`
+          + `   FAN = vertex on >= ${DESHARD_FANDEG} facets carrying an edge >= ${(DESHARD_FANLONG * 1000).toFixed(0)} um`,
+        `    *** SHARDS ${deshardBefore} -> ${deshardAfter}`
+          + `${deshardBefore > 0 ? ` (x${(deshardAfter / deshardBefore).toFixed(3)})` : ''}`
+          + `   FANS ${deshardFanBefore} -> ${deshardFanAfter}`
+          + `${deshardFanBefore > 0 ? ` (x${(deshardFanAfter / deshardFanBefore).toFixed(3)})` : ''} ***`,
+        `    (i) subdivision: ${deshardTried} candidates attempted, ${deshardSplits} split, ${deshardRefused} REFUSED`
+          + ` (${deshardRefAR} aspect / ${deshardRefFold} fold / ${deshardRefAdmit} admission / ${deshardRefOther} weld-apex)`
+          + `   max recursion depth ${deshardDepthMax} of ${DESHARD_DEPTH}`
+          + `   refusal rate ${deshardTried > 0 ? ((100 * deshardRefused) / deshardTried).toFixed(1) : '0.0'}%`
+          + `${deshardTried > 0 && deshardRefused > 0.5 * deshardTried ? '   *** INFEASIBLE-AS-WIRED — registered criterion FIRED (refusals > 50% of shard candidates) ***' : '   [INFEASIBLE criterion NOT fired]'}`,
+        `    (ii) fan flips: ${deshardFanPassesRun} sweep(s), ${deshardFanCand} candidates, ${deshardFanFlipped} FLIPPED`
+          + `   refused ${deshardFanRefAR} on the improvement gate (worst-AR must STRICTLY decrease),`
+          + ` ${deshardFanRefAdmit} on admission, ${deshardFanRefValid} on 2-incidence`,
+        `    budget (billed in NEW LIVE TRIANGLES — W6's own quantity): subdivision +${deshardLiveAdded} of ${DESHARD_BUDGET}`
+          + `${deshardBudgetCapped ? '  *** BUDGET-CAPPED — the worklist was NOT discharged ***' : ''}`
+          + `   flips +0 by construction (2 killed, 2 emitted, no vertex moved)`,
+        `    gross allocations, reported separately so neither sub-pass is billed for the other:`
+          + ` subdivision ${deshardAllocSub}, flips ${deshardAllocFan}`
+          + `   resume ${sliverResumeSplits} splits on +${sliverResumeBudgetUsed} of ${SLIVER_RESUME_BUDGET}${sliverResumeCapped ? '  [RESUME-CAPPED]' : ''}`,
+        ...(deshardRefusedLog.length > 0
+          ? ['    SURVIVORS — the parents the composed gates would not let this pass repair. DECLARED, never silent:', ...deshardRefusedLog]
+          : ['    SURVIVORS: none — every attempted candidate was discharged.']),
       ] : []),
       ...(ALIGNED_SEED && alignedStats !== null && alignedLoci !== null ? [
         `  S10 ALIGNED CONSTRAINED SEED: PF_CB_ALIGNED_SEED=1   trace ${AL_NU}x${AL_NV} in ${(alignedTraceMs / 1000).toFixed(0)}s`
