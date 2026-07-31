@@ -977,8 +977,16 @@ describe('STRATA conforming-bisection', () => {
     const AL_ACROSS_ABS = envOn('PF_CB_ALIGNED_ACROSS_ABS');
     const AL_ACROSS_MIN = envF('PF_CB_ALIGNED_ACROSS_MIN_UM', 50) / 1000;
     const AL_SEED_AR = envF('PF_CB_ALIGNED_SEED_AR', 24);
+    // S16 STEP 1b': where the across rule binds, shorten the along span until the traced locus's own BOW
+    // over that span fits inside PF_CB_ALIGNED_BOW_FRAC x across, so an offset-ring chord cannot cut the
+    // locus it hugs. Default 0 = OFF. S15 measured the defect this repairs: seed edges crossing a locus
+    // 963 -> 3,425 with the ring at 50 um.
+    const AL_BOW_FRAC = envF('PF_CB_ALIGNED_BOW_FRAC', 0);
     if (AL_ACROSS_ABS && !ALIGNED_SEED) {
       throw new Error('PF_CB_ALIGNED_ACROSS_ABS=1 is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
+    }
+    if (AL_BOW_FRAC !== 0 && !AL_ACROSS_ABS) {
+      throw new Error('PF_CB_ALIGNED_BOW_FRAC is inert without PF_CB_ALIGNED_ACROSS_ABS=1. Unset it, or enable the across rule.');
     }
     // LAYER-2 NEGATIVE CONTROL: push every traced locus this far along its own normal before seeding. A
     // non-zero value builds a DELIBERATELY MISTRACED seed, which must produce a census-visible defect —
@@ -1043,7 +1051,7 @@ describe('STRATA conforming-bisection', () => {
       const rep = buildAlignedSeedRepaired(rA, alignedLoci, {
         ...DEFAULT_SEED_OPTS, H, gu, gv,
         alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
-        acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR,
+        acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR, bowFrac: AL_BOW_FRAC,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
       }, AL_ROUNDS);
       alignedStats = rep.seed.stats; alignedRounds = rep.roundsUsed; alignedBanned = rep.banned;
@@ -3543,6 +3551,11 @@ describe('STRATA conforming-bisection', () => {
             + `   BOUND at ${alignedStats.acrossBoundPts} chain points (along shortened at ${alignedStats.alongBoundPts})`
             + `   across placed: min ${(alignedStats.acrossMinPlacedMm * 1000).toFixed(1)} um / p50 ${(alignedStats.acrossP50PlacedMm * 1000).toFixed(1)} um`
             + `   (the relative rule floors at ${((alignedStats.acrossMm * 1000) / 2).toFixed(1)} um) ***`,
+          ...(AL_BOW_FRAC > 0 ? [
+            `    *** S16 STEP 1b' BOW RULE ON: PF_CB_ALIGNED_BOW_FRAC=${AL_BOW_FRAC}   along shortened at`
+              + ` ${alignedStats.bowShortenedPts} further chain points so the traced locus's own bow fits inside`
+              + ` ${(AL_BOW_FRAC * 100).toFixed(0)}% of the offset ring — an offset-ring chord may not cut the locus it hugs ***`,
+          ] : []),
         ] : []),
         ...(alignedSeedCrossings >= 0 ? [
           `    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink:`

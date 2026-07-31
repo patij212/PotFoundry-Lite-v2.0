@@ -88,6 +88,15 @@
 //        along := min(along, seedARmax * across)
 // which is the one place this rule may add points. That cost is measured and pre-registered, never assumed.
 //
+// S16 STEP 1b' ADDS ONE MORE CLAUSE TO THE SAME RULE, `bowFrac`, DEFAULT 0 = OFF. S15 measured the cost of
+// its own fix: `alignedSeedCrossings` 963 -> 3,425, because the ring at 50 um is now nearer the locus than
+// the locus's own BOW over the along-span (bow exceeds 50 um on 6.0% of 1,200 um chords; it exceeded the
+// old 192.6 um ring on only 1.4% of the old 2,202 um chords). The ring hugs the CHAIN; the chord between
+// two consecutive ring points is straight and the locus between them is not, so where the bow wins, that
+// chord cuts the locus. The repair shortens the ALONG span until the bow fits inside `bowFrac * across`,
+// which costs points only where the locus actually curves. The other repair — raising the across floor to
+// k x bow — is REFUSED: it re-coarsens the ring exactly at junction approaches, where the geometry is worst.
+//
 // PRECONDITION, asserted rather than commented: `acrossMinMm * 0.55 > pslgEpsMm`. Stage 3e re-routes a
 // constraint through ANY point within `pslgEpsMm` of its interior, and its correctness note leans on free
 // Steiner points being kept far away by the `nearSeg` clearance. For the offset ring that clearance is
@@ -126,6 +135,12 @@ export interface AlignedSeedOpts {
   acrossMinMm: number;
   /** where the across rule binds, bound the along spacing so the seed's local aspect stays under this. */
   seedARmax: number;
+  /**
+   * S16 STEP 1b', DEFAULT 0 = OFF. Where the across rule binds, shorten the along spacing until the
+   * TRACED POLYLINE's bow over that span is at most `bowFrac * across` — so a chord between two
+   * consecutive offset-ring points cannot cut the locus it hugs. Active only when `acrossAbs` is on.
+   */
+  bowFrac: number;
   /** chord tolerance for the sizing solve, mm. */
   tolMm: number;
   /** LAYER-2 NEGATIVE CONTROL: push every locus this far along its own normal before seeding, um. */
@@ -164,6 +179,7 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   acrossAbs: false,
   acrossMinMm: 0.050,
   seedARmax: 24,
+  bowFrac: 0,
   tolMm: 0.01,
   mistraceUm: 0,
   shapeAR: 50,
@@ -224,6 +240,8 @@ export interface AlignedSeed {
     acrossBoundPts: number;
     /** S15: chain points where the anisotropy guard then shortened the along spacing. */
     alongBoundPts: number;
+    /** S16: chain points where the BOW rule shortened the along spacing further. */
+    bowShortenedPts: number;
     /** S15: the across spacing ACTUALLY placed, over all chain points — min / p50, mm. */
     acrossMinPlacedMm: number;
     acrossP50PlacedMm: number;
@@ -363,7 +381,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   interface ChainPt { th: number; z: number; nx: number; ny: number; along: number; across: number; fixed?: boolean }
   const chains: ChainPt[][] = [];
   let chainPts = 0;
-  let acrossBoundPts = 0; let alongBoundPts = 0;
+  let acrossBoundPts = 0; let alongBoundPts = 0; let bowShortenedPts = 0;
   const acrossPlaced: number[] = [];
   for (const P of chainsRaw) {
     // arc-length parameterise in the chart
@@ -384,6 +402,30 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       const tx = X[i] - X[i - 1]; const ty = Y[i] - Y[i - 1];
       const n = Math.hypot(tx, ty) || 1;
       out.push({ th, z, nx: -ty / n, ny: tx / n, along: alongBase, across: acrossBase });
+    };
+    // ── S16: the chart point at arc-length `sv`, and the BOW of the polyline over a chord. ──────────
+    // Read off the TRACED POLYLINE itself, so no curvature model enters. Used only by the bow rule.
+    const at = (sv: number): [number, number] => {
+      let i = 1;
+      while (i < cum.length - 1 && cum[i] < sv) i += 1;
+      const f = cum[i] === cum[i - 1] ? 0 : (sv - cum[i - 1]) / (cum[i] - cum[i - 1]);
+      return [X[i - 1] + (X[i] - X[i - 1]) * f, Y[i - 1] + (Y[i] - Y[i - 1]) * f];
+    };
+    const bowOver = (s0: number, s1: number): number => {
+      const A = at(s0); const B = at(s1);
+      const ux = B[0] - A[0]; const uy = B[1] - A[1];
+      const l2 = ux * ux + uy * uy;
+      if (l2 < 1e-18) return 0;
+      let worst = 0;
+      for (let i = 0; i < cum.length; i += 1) {
+        if (cum[i] <= s0) continue;
+        if (cum[i] >= s1) break;
+        let t = ((X[i] - A[0]) * ux + (Y[i] - A[1]) * uy) / l2;
+        t = t < 0 ? 0 : t > 1 ? 1 : t;
+        const d = Math.hypot(X[i] - (A[0] + t * ux), Y[i] - (A[1] + t * uy));
+        if (d > worst) worst = d;
+      }
+      return worst;
     };
     let s = 0;
     emit(0);
@@ -411,6 +453,24 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
             // sub-cap; it is also the only place this rule can add points, which is why it is counted.
             const aBound = o.seedARmax * cr;
             if (aBound < a) { a = aBound; alongBoundPts += 1; }
+            // ── S16 STEP 1b': THE BOW RULE. The offset ring hugs the CHAIN, but the chord between two
+            //    consecutive ring points is straight while the locus between them is not. Where the BOW
+            //    exceeds the ring radius that chord CUTS the locus it was placed to hug — measured in S15
+            //    as `alignedSeedCrossings` 963 -> 3,425 with the ring at 50 um, against a bow that exceeds
+            //    50 um on 6.0% of 1,200 um chords. Shorten the span until the bow fits INSIDE the ring.
+            //    The other repair — raising the across floor to k x bow — is REFUSED on purpose: it pushes
+            //    the ring back out exactly where the locus curves hardest, i.e. at junction approaches,
+            //    undoing the gain precisely where it matters. See the S16 registration in the worklog.
+            if (o.bowFrac > 0) {
+              const aMin = Math.max(o.weldMm * 4, acrossBase * 0.5) * 1.05;   // just above the decimator
+              let shortened = false;
+              for (let k = 0; k < 12 && a > aMin; k += 1) {
+                if (bowOver(s, Math.min(total, s + a)) <= o.bowFrac * cr) break;
+                a = Math.max(aMin, a * 0.75);
+                shortened = true;
+              }
+              if (shortened) bowShortenedPts += 1;
+            }
           }
         }
         last.across = cr;
@@ -1000,6 +1060,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       alongMm: alongBase, acrossMm: acrossBase,
       acrossBoundPts,
       alongBoundPts,
+      bowShortenedPts,
       // reduce, not Math.min(...arr): the array is one entry per chain point (tens of thousands) and a
       // spread that long overflows the argument stack.
       acrossMinPlacedMm: acrossPlaced.length > 0 ? acrossPlaced.reduce((m, v) => (v < m ? v : m), Infinity) : acrossBase,

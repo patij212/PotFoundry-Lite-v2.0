@@ -2554,6 +2554,201 @@ PREDICTIONS AND BARS, all decided before the run:
 >> tripled out-of-disk gated count and a new 24.281 um junction site. The next move on this lever is the
 >> bow-keyed across floor, and it is cheap for the same reason this one was: it places no points.
 
+### METRIC NOTE (instrument design, adopted 2026-07-31 after S15) — **NEVER BAR A DIFFERENCE. BAR THE
+### COMPONENTS.** Binding on every registration from here: the bow arm, Steps 2-4, and Phase D context.
+The campaign's class bar has been `gated back-facing`, and S15 established BY MEASUREMENT that this is an
+ACCOUNTING QUANTITY, not a physical one. The judge computes it as a difference, exactly, on both arms:
+      `gated = (facets >= 90 deg off the analytic normal) - (feature-spanning exemptions)`
+      `_S11A`  5,034 - 4,075 = 959        `_S15A`  5,156 - 3,310 = 1,846
+S15 moved that difference x1.925 — a REGRESSION by the registered bar — while the raw >=90 population moved
+**+2.4%**, every deviation tail from >=15 to >=60 and from >=120 to >=150 IMPROVED, and the true
+surface->mesh error at the two worst sites in the mesh fell **57x and 10.5x**. The whole of the x1.93 was
+the EXEMPTION falling 18.8%, and the exemption falls precisely BECAUSE the mesh got finer across the
+feature: a facet earns it only by reading back-facing at its centroid and FRONT-facing at one of its own
+vertices, i.e. by being a chord thrown across a whole wall. Sharpen the across-width and fewer facets span
+a wall. **So the metric can move against fidelity by construction, and it just did.** The judge's own
+report has carried the warning since 2026-07-30 ("this population GROWS with refinement depth, 1,792 @ 61k
+-> 14,890 @ 351k tris ... a centroid-only >= 90 gate is unmeasurable-as-specified on feature-bearing
+styles"); S15 is the first arm where the difference and the fidelity moved in OPPOSITE directions, which is
+what turns a warning into a rule.
+**THE RULE: register bars on the IDENTITY COMPONENTS SEPARATELY — the raw >=90 count, the feature-spanning
+count, and the deviation tails (>=15/>=30/>=45/>=60/>=120/>=150) — plus the in-disk / out-of-disk split.
+The difference may be REPORTED; it must never be the thing a verdict row fires on alone.** S15's own row-2
+verdict STANDS as registered: a bar re-drawn after the reading is not a bar. This note changes what gets
+registered NEXT, not what was scored.
+**SURFACED TO THE OPERATOR, NOT DECIDED HERE:** whether the eventual SHIP gate should be render-based (what
+the eye sees) or tail-based (the >=15..>=60 histogram). Both are defensible; neither is an agent's call.
+Not blocking — the component bars above are enough to run every remaining step.
+
+### S16 (PHASE C STEP 1b') — THE BOW-KEYED ALONG SPACING. Timeboxed side-arm: ONE registration, ONE arm.
+Authorized by the coordinating session after S15 with an explicit hard timebox: **if it lands cleanly it
+becomes the substrate for Step 2; if anything is murky it is PARKED WITH ITS NUMBERS and Step 2 proceeds on
+`_S15A`. No iteration.** Registered here in full before anything was built or run.
+
+**THE DEFECT S15 MEASURED IN ITS OWN FIX.** `alignedSeedCrossings` rose 963 -> 3,425 (x3.56) because the
+offset ring at 50 um now sits nearer the locus than the locus's own BOW over the along-span: a chord between
+two consecutive ring points is straight, the locus between them is not, and where the bow exceeds the ring
+radius that chord CUTS the locus it was placed to hug. Measured on the traced artifact:
+
+| chord span | bow p50 | p90 | p99 | max | bow > 50 um | bow > 192.6 um |
+|---|---|---|---|---|---|---|
+| 2,202 um (`_S11A`'s along) | 0.7 | 45.4 | 208.1 | 350.6 um | 9.0% | **1.4%** |
+| 1,200 um (`_S15A`'s along) | 0.2 | 26.9 | 112.3 | 250.6 um | **6.0%** | 0.2% |
+
+**THE FIX, AND WHY THIS DIRECTION AND NOT THE OTHER.** Two repairs exist and only one is admissible:
+  * RAISE the across floor to k x bow — this pushes the ring back OUT to 200+ um exactly where the locus
+    curves hardest, i.e. at junction approaches, which is where the geometry is already worst. It undoes
+    S15's gain precisely where S15's gain matters. **REJECTED, and recorded so it is not re-proposed.**
+  * SHORTEN the along spacing until the bow FITS INSIDE the ring. `bow ~ L^2/(8R)`, so this costs points
+    only where the locus actually curves — 6.0% of chords — and keeps the ring at 50 um everywhere.
+    **ADOPTED.** And it is measured, not modelled: the bow is read off the TRACED POLYLINE between the
+    current chain point and the candidate next one, so no curvature estimate enters anywhere.
+THE RULE (`bowFrac`, env `PF_CB_ALIGNED_BOW_FRAC`, default 0 = OFF; active only where the across rule binds):
+      while (bow(polyline, s, s+a) > bowFrac * across  &&  a > alongMin)  a *= 0.75
+MONOTONE-DOWNWARD in `a`, bounded below by `alongMin`, bounded in iterations. Default `bowFrac = 0.5`: the
+crossing threshold is bow = across, so half-radius is 2x margin — chosen because S15's exceedance rate was
+4.3x the control's and half-radius takes the predicted exceedance to ~0.
+
+**STAGE 0 — SEED-SCALE PRE-FLIGHT. IT IS NOT THE AUTHORIZED ITERATION.** It builds no mesh and scores no
+fidelity. It exists because S15's Stage 0 caught two settings that THREW the constraint-recovery assertion
+(AR 20 at 7,268 constraints, AR 16 at 7,614), and the single authorized arm must not be spent discovering a
+third. Bars, registered before it ran:
+  B0a the flag-OFF arm reproduces the `_S11A` seed exactly (41,630 / 82,462 / 6,806 / conditioned 864 /
+      dropped 507 / over-cap 4 / worst AR 88.79 / worst parAR 98.6 / offset 10,927 / bg 23,904 / rounds 1
+      banned 2). The edit is inert or nothing else in this section counts.
+  B0b the `_S15A` setting (across rule on, bowFrac 0) reproduces `_S15A`'s seed exactly: 43,303 / 85,808 /
+      7,108 constraints / over-cap 5 / worst AR 85.13.
+  B0c bowFrac 0.5 does NOT throw, and seed points <= **46,000** / tris <= **92,000** (x1.063 / x1.072 on
+      the S15 seed). Above either, the arm is not run at this setting.
+  B0d the two named sites KEEP their S15 containing facets (shortest 3-D edge <= 250 um at both) — the bow
+      rule must not undo the thing S15 bought.
+
+**STAGE 1 — THE ARM. `_S16A` = the `_S15A` command verbatim + `PF_CB_ALIGNED_BOW_FRAC=0.5`. One variable.
+CONTROL = `_S15A` (recorded), NOT `_S11A`.** Same instrument, same Part-B depth, same lineage.
+YARDSTICKS (`_S15A`): `alignedSeedCrossings` **3,425 / 128,967 (2.656%)** | raw >=90 **5,156** |
+feature-spanning **3,310** | gated back-facing 1,846 (in-disk 611 / out-of-disk 1,235) | tails >=15
+**26,599** / >=30 **18,919** / >=45 **15,556** / >=60 **12,646** / >=120 1,954 / >=150 558 | H2 witnessed
+**24.281 um** @ th 1.308997 z 113.45994, samples over 0.00251% | **site A 0.667 um, site B 3.816 um** |
+H1 witnessed 129.703 um / facets-over **1.13%** at 40,000 of 1,046,234, stride 646,609, INCOMPLETE |
+unresolved **3,035** worst 47.245 um | tris 1,046,234 | wall 820 s | blades 2 / folds 0 / admitted AR 50.00
+/ cracks 0 / loops 2 / Euler 0 | seed 43,303 pts, 85,808 tris, over-cap 5, worst AR 85.13.
+
+BARS — **COMPONENTS, NOT DIFFERENCES**, per the metric note directly above. All decided before the run:
+  B1 **IDENTITY (STOP CONDITION).** Flag-OFF at the W1 config -> md5 8a59fb37a9115600b13262254380ccb0,
+     `cmp`-exact, hard gate 12/12 with every documented value exact. Taken THIS session, after the edit.
+     A mismatch aborts.
+  B2 **THE MECHANISM (headline).** `alignedSeedCrossings` **<= 1,500** of ~129,000 (>=2.28x fall from
+     3,425, i.e. back inside ~1.2% of edges). **REFUTED if > 2,740** (<1.25x fall) — then shortening the
+     along-span does not remove the ring-chord crossings and the diagnosed mechanism is wrong.
+  B3 **THE COMPONENTS MUST NOT DEGRADE** (this is where the metric note binds): raw >=90 <= **5,414**
+     (x1.05 of 5,156); feature-spanning >= **3,145** (x0.95 of 3,310 — the exemption must not fall
+     further); every tail >=15 / >=30 / >=45 / >=60 <= x1.05 of its `_S15A` value (27,929 / 19,865 /
+     16,334 / 13,278). The gated DIFFERENCE and the in-disk / out-of-disk split are REPORTED, and no
+     verdict row fires on them alone.
+  B4 **FIDELITY FLAT-OR-BETTER.** H2 witnessed <= **24.281 um** (no upward tolerance — this arm is a defect
+     repair, not a trade); **sites A and B <= 1.0 / 5.0 um** (they must stay closed); H1 facets-over
+     <= **1.30%** (x1.15). H1 witnessed quoted with coverage and stride, carrying no claim either way.
+  B5 **PRECONDITIONS.** determined folds **0**; determined blades <= **3**; worst admitted child AR <= 50;
+     constraint recovery **100%** (asserted in code; it throws); seam-cracks **0**, loops **2**,
+     **Euler 0**; seed over-cap <= **5**.
+  B6 **COST.** seed points <= 46,000 / tris <= 92,000; live tris <= **1.15 M**; wall <= **1,000 s**.
+  B7 **VERDICT ROWS — evaluated IN ORDER, first match wins:**
+     1 **REFUTATION** — B2 refuted (crossings > 2,740). The bow is not the mechanism. PARK; Step 2 on
+       `_S15A`.
+     2 **REGRESSION** — B5 fails, OR any B3 component fails, OR B4 fails, OR B6 breached. PARK with the
+       numbers; Step 2 on `_S15A`; lever stays default OFF.
+     3 **CLEAN — ADOPT AS SUBSTRATE** — B2 met AND all B3 components flat-or-better AND B4 flat-or-better
+       AND B5 AND B6. `_S16A` replaces `_S15A` as the substrate Step 2 routes over.
+     4 **MURKY** — anything else. Per the timebox: PARK WITH THE NUMBERS, proceed to Step 2 on `_S15A`,
+       DO NOT ITERATE.
+
+### *** S16 RESULT — PARKED AT PRE-FLIGHT, B7 ROW 4. THE BOW RULE IS REAL AND NEARLY INERT (42 OF 7,472
+### CHAIN POINTS), AND STAGE 0 CORRECTED TWO NUMBERS IN MY OWN S15 RECORD — INCLUDING THE COST IT WAS
+### BUILT TO REPAIR. STAGE 1 WAS NOT RUN, AND THAT IS A DECLARED DEVIATION. ***
+Seed-scale only. 8 minutes of seed builds, no mesher run, no fidelity number.
+
+  B1 **HOLDS — and it was taken AFTER the S16 edit, this session, unlike S15's.** Flag-OFF at the W1 config
+     -> md5 **8a59fb37a9115600b13262254380ccb0**, `cmp` byte-identical to `_S8ID`/W1 (tag `_S16ID`). Hard
+     gate **12/12**, every documented value exact (V3 thin **12.041**, V7c **12.041 / 39.767 / 142.668**).
+     Both the across rule and the bow rule are unreachable with the flags off, and the bow rule is
+     additionally unreachable without the across rule (the driver throws on that combination).
+  B0a **HOLDS.** Flags OFF reproduces the `_S11A` seed exactly: 41,630 / 82,462 / 6,806 recovered 6,806 /
+      conditioned 864 / dropped 507 / over-cap 4 / worst AR 88.79 / worst parAR 98.6 / offset 10,927 /
+      bg 23,904 / rounds 1 banned 2. The S16 edit is inert with the flag off, at seed scale.
+  B0b **HOLDS.** The `_S15A` setting reproduces `_S15A`'s seed exactly: 43,303 / 85,808 / 7,108 / over-cap
+      5 / worst AR 85.13 / acrossBound 5,417 / alongBound 831 / across min 50.0 p50 50.0.
+  B0c **PASSES ITS LETTER AND FAILS ITS PURPOSE.** bowFrac 0.5 does not throw and is well inside the size
+      ceiling — 43,266 points (BELOW `_S15A`'s 43,303) and 85,732 tris. But:
+
+| | `_S11A` | `_S15A` (bow 0) | **bow 0.5** | bow 1.0 |
+|---|---|---|---|---|
+| points / tris | 41,630 / 82,462 | 43,303 / 85,808 | **43,266 / 85,732** | 43,209 / 85,620 |
+| **chain points the BOW rule shortened** | — | **0** | **42 of 7,472 (0.56%)** | 14 |
+| seed-builder `edgesCrossingLocus` | 2,771 / 117,285 (**2.363%**) | 3,042 / 122,002 (**2.493%**) | **3,044 / 121,902 (2.497%)** | 3,078 (2.528%) |
+| over-cap / worst parAR | 4 / 98.6 | 5 / 116.7 | **6 / 207.0** | 3 / 98.6 |
+| site A / site B shortest edge | 1941.0 / 1853.3 um | 199.8 / 223.1 um | **199.8 / 223.1 um** | 199.8 / 223.1 um |
+
+  B0d **HOLDS** — both sites keep their `_S15A` containing facets to the digit (199.8 / 223.1 um).
+
+>> **WHY IT IS INERT, and the answer is in the seed's own numbers rather than in an argument.** The bow rule
+>> can only fire where the across rule binds (5,431 points), and `bow ~ L^2`, so it needs a LONG span to
+>> have anything to cut. But the along spacing is ALREADY short at almost all of those points: the
+>> anisotropy guard was the binding constraint at only **834** of 5,431, meaning at the other **4,597** the
+>> sizing field itself had already asked for less than 1,200 um. Over a span that short the bow is a few
+>> um, far under the 25 um threshold. So the rule has 834 candidate points and fires on **42**.
+>> **AND THE DECISIVE ONE: the seed's own crossing instrument does not move — 3,042 -> 3,044, +2 edges.**
+>> There is no path from a 0.56% perturbation of the chain to B2's registered `<= 1,500` (a 2.28x fall from
+>> 3,425). Running Stage 1 would spend the authorized 35-minute arm to confirm noise.
+
+>> **CORRECTION 1 TO MY OWN S15 RECORD — THE BOW STATISTIC WAS OVER-READ ~2.11x.** The S15 probe walked
+>> chords in WHOLE-VERTEX steps ("advance b until the span is reached"), so a nominal 1,200 um chord was
+>> actually **1,744 um on average**, and bow ~ L^2. Re-measured with TRUE fixed-span chords and interpolated
+>> endpoints — the same estimator the seed builder uses:
+
+| span | estimator | p50 | p90 | p99 | max | > 25 um | > 50 um | > 192.6 um |
+|---|---|---|---|---|---|---|---|---|
+| 1,200 um (`_S15A`) | S15's, vertex-quantised (actual mean 1,744) | 0.2 | 26.9 | 112.3 | 250.6 | 10.95% | 5.99% | 0.16% |
+| 1,200 um | **TRUE fixed span** | 0.2 | **14.4** | **56.7** | 403.0 | **6.19%** | **2.10%** | 0.22% |
+| 2,202 um (`_S11A`) | S15's, vertex-quantised (actual mean 2,402) | 0.7 | 45.4 | 208.1 | 350.6 | 14.34% | 9.04% | 1.42% |
+| 2,202 um | **TRUE fixed span** | 1.3 | 46.0 | 173.1 | 560.1 | 14.99% | 9.37% | **0.67%** |
+
+>> So the S15 claim "6.0% vs 1.4%, a 4.3x rise in ring-chord exceedance" is corrected to **2.10% vs 0.67%,
+>> a 3.1x rise**. Same sign, same order, and the S15 verdict is untouched by it — but the number in the log
+>> was mine and it was wrong, so it is corrected here rather than left to be quoted.
+>>
+>> **CORRECTION 2, AND IT IS THE BIGGER ONE: THE S15 CROSSING RISE IS MOSTLY A PROXIMITY-BAND EFFECT, NOT
+>> NEW CROSSINGS.** Two instruments count "seed edges crossing a locus" and they disagree in a way I did
+>> not read carefully enough in S15:
+>>   the SEED BUILDER tests each non-constraint edge for a PROPER CROSSING with a chain segment;
+>>   the DRIVER runs `locateKink` and counts a crease strictly inside the edge **with t outside the
+>>   SNAP_ALPHA band [0.12, 0.88]** — crossings nearer than 12% to an end are treated as conformed-by-
+>>   proximity and NOT counted.
+>> As rates: `_S11A` seed-builder **2.363%** vs driver **0.777%** — the driver was absorbing two thirds of
+>> them. `_S15A` seed-builder **2.493%** vs driver **2.656%** — they now agree. **The seed builder says the
+>> number of edges crossing a locus rose x1.055. The driver says x3.42.** The difference is not new
+>> crossings; it is that with the ring at 50 um the crossings sit MID-EDGE instead of near an end, so the
+>> proximity exclusion stops absorbing them. **S15's headline cost is therefore ~5% in the quantity, not
+>> 256%** — and the bow rule was aimed at a defect roughly a twentieth of the size the S15 write-up gave it.
+>> STATED PRECISELY, because the two tests are not the same predicate: this is four measured rates and the
+>> pattern they make, not a proof that the populations are identical.
+
+>> **VERDICT: B7 ROW 4 — MURKY, PARKED WITH ITS NUMBERS. Step 2 proceeds on `_S15A`. No iteration.**
+>> **DECLARED DEVIATION, so it cannot be discovered later and called procedure:** my registered Stage-0
+>> exits were "it throws" and "it is too big". bowFrac 0.5 does neither — it passes B0a-B0d as written. I
+>> am declining to run Stage 1 anyway, on the ground that Stage 0 measured the lever perturbing 0.56% of
+>> the chain and its own crossing instrument by +2 edges, which cannot reach a bar of x2.28. That is a
+>> judgement, it is mine, and it is recorded as one. The coordinating session's timebox says park anything
+>> murky rather than iterate; this is parked one stage earlier than the timebox anticipated, for 8 minutes
+>> instead of 35.
+>> **THE LEVER STAYS IN THE TREE, DEFAULT OFF (`PF_CB_ALIGNED_BOW_FRAC=0`), with its numbers** — the S6/S7/
+>> S8 precedent: a measured-and-refuted lever is kept so the next session does not rebuild it. If a future
+>> arm ever raises the along spacing near loci (a bigger `seedARmax`, or a coarser field), the bow rule
+>> becomes live again and its threshold is already calibrated.
+>> **WHAT REPLACES IT AS THE OPEN QUESTION:** not the bow. The out-of-disk gated rise (370 -> 1,235) is now
+>> unexplained — the bow hypothesis was its leading candidate and correction 2 has removed it. It is
+>> recorded as OPEN, it is a COMPONENT question under the metric note above, and it belongs to whoever
+>> registers Step 4's A/B, not to a side-arm.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
