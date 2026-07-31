@@ -151,6 +151,22 @@ export interface AlignedSeedOpts {
    * (`_strataRegionExtract`), whose per-disk record is a superset of this shape.
    */
   patchRoute?: PatchRegion[];
+  /**
+   * S19 — GRADED ACROSS-COMPLETION. Number of offset RINGS per chain point. 1 = the single ring this file
+   * has always placed (the default, and then every S19 clause below is arithmetically absent). >1 fills the
+   * measured void between the innermost ring and the background lattice with a geometric progression.
+   */
+  acrossRings: number;
+  /** ring-to-ring radius ratio for the progression; also sets the ALONG stride, so elements stay similar. */
+  acrossGrade: number;
+  /** outermost ring radius, mm — where the progression is expected to meet the background lattice. */
+  acrossMaxMm: number;
+  /**
+   * S19 — bound the ALONG spacing by `turnMul * hAc` wherever the across rule binds. CALIBRATION, measured:
+   * at the two named sites R2's across answer hAc = 44.7 um against a MEASURED crease turnover of 106.0 um,
+   * so hAc = 0.42 x turnover and `turnMul` = k / 0.42 for a bound of k x turnover. 0 = OFF.
+   */
+  turnMul: number;
   /** cap on the routed radius, mm — the 4.000 mm radius-capped clusters get their core routed, not all of it. */
   patchMaxMm: number;
   /** innermost ring radius, mm. */
@@ -198,6 +214,10 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   acrossMinMm: 0.050,
   seedARmax: 24,
   bowFrac: 0,
+  acrossRings: 1,
+  acrossGrade: 1.6,
+  acrossMaxMm: 0.65,
+  turnMul: 0,
   patchMaxMm: 1.5,
   patchInnerMm: 0.05,
   patchGrade: 1.6,
@@ -271,6 +291,9 @@ export interface AlignedSeed {
     alongBoundPts: number;
     /** S16: chain points where the BOW rule shortened the along spacing further. */
     bowShortenedPts: number;
+    /** S19: chain points where the crease-turnover bound shortened the along spacing, and rings used. */
+    turnBoundPts: number;
+    offsetRingsUsed: number;
     /** S18: routed junctions, structured points emitted, rings laid, and points the guards refused. */
     patchRegions: number;
     patchPts: number;
@@ -416,7 +439,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   interface ChainPt { th: number; z: number; nx: number; ny: number; along: number; across: number; fixed?: boolean }
   const chains: ChainPt[][] = [];
   let chainPts = 0;
-  let acrossBoundPts = 0; let alongBoundPts = 0; let bowShortenedPts = 0;
+  let acrossBoundPts = 0; let alongBoundPts = 0; let bowShortenedPts = 0; let turnBoundPts = 0;
   const acrossPlaced: number[] = [];
   for (const P of chainsRaw) {
     // arc-length parameterise in the chart
@@ -488,6 +511,14 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
             // sub-cap; it is also the only place this rule can add points, which is why it is counted.
             const aBound = o.seedARmax * cr;
             if (aBound < a) { a = aBound; alongBoundPts += 1; }
+            // S19 — ALONG BOUNDED BY THE LOCAL CREASE TURNOVER. The background pitch is 1,101 um and the
+            // flank turns over in ~106 um, so an unbounded along spacing lands mm-scale chords across the
+            // wall everywhere except at ring zero. `hAc` IS a local feature-scale measurement (0.42 x the
+            // measured turnover at both named sites), so this needs no new rA evals.
+            if (o.turnMul > 0) {
+              const aTurn = o.turnMul * hAc;
+              if (aTurn < a) { a = aTurn; turnBoundPts += 1; }
+            }
             // ── S16 STEP 1b': THE BOW RULE. The offset ring hugs the CHAIN, but the chord between two
             //    consecutive ring points is straight while the locus between them is not. Where the BOW
             //    exceeds the ring radius that chord CUTS the locus it was placed to hug — measured in S15
@@ -782,19 +813,44 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     }
     return false;
   };
+  // S19 — THE PROGRESSION, not a single ring. MEASURED REASON (S19 decomposition, 2026-07-31): 52% of the
+  // large tilted offenders sit in [100, 400] um and another 36% in [400, ~650] um, i.e. in the EMPTY BAND
+  // between the innermost ring and the background lattice. With one ring at 50 um and `clearMm` = 330 um
+  // that band is 280 um of nothing, and the first background point beyond it sits on a 1,101 um pitch — so
+  // a chord from the ring to the lattice crosses the whole flank, which turns over in 106 um, with no
+  // intermediate vertex. Those chords ARE the operator's blades: mm-scale edges, 85-95 deg off the analytic
+  // normal, parametric AR in the thousands, 3-D AR under the cap and therefore invisible to every gate.
+  // THE STRIDE IS WHAT KEEPS IT AFFORDABLE AND IT IS DERIVED, NOT CHOSEN: ring j sits at across*g^j and its
+  // radial spacing grows like g^j, so emitting it every g^j-th chain point keeps the element ASPECT
+  // constant at every radius while the point cost falls geometrically — sum(g^-j) converges instead of
+  // multiplying the ring count.
+  let offsetRingsUsed = 0;
   for (const C of chains2) {
-    for (const p of C) {
+    for (let ci2 = 0; ci2 < C.length; ci2 += 1) {
+      const p = C[ci2];
       if (inDisk(p.th, p.z)) continue;
-      for (const sgn of [1, -1]) {
-        const th = p.th + (sgn * p.across * p.nx) / rRef;
-        const z = p.z + sgn * p.across * p.ny;
-        if (th < 0 || th > TWO_PI || z < 0 || z > H) continue;
-        if (nearPt(th, z, p.across * 0.35)) continue;
-        // The segment clearance is FLOORED at 1.5x the PSLG conditioning radius when the across rule is
-        // live. A no-op on the OFF path by arithmetic, not by measurement: there across >= acrossBase /
-        // fieldRange = 192.6 um, so across*0.55 >= 105.9 um >> 1.5*pslgEps = 30 um and the max never binds.
-        if (nearSeg(th, z, o.acrossAbs ? Math.max(p.across * 0.55, o.pslgEpsMm * 1.5) : p.across * 0.55)) continue;
-        addFree(th, z); offsetPts += 1;
+      const J = Math.max(1, Math.round(o.acrossRings));
+      for (let j = 0; j < J; j += 1) {
+        const rj = p.across * (o.acrossGrade ** j);
+        if (j > 0 && rj > o.acrossMaxMm) break;
+        // STRIDE CAPPED AT 4. Uncapped it is g^j, which keeps the element aspect exactly constant but sends
+        // the OUTER rings to a 6.8 mm along-spacing — chords that long run along a locus that curves, and
+        // the proximity guards test points, not chord crossings. 4 keeps the outermost ring at ~1.6 mm,
+        // which is the along-spacing this seed has always used at ring zero.
+        const stride = Math.min(4, Math.max(1, Math.round(o.acrossGrade ** j)));
+        if (ci2 % stride !== 0) continue;
+        if (j + 1 > offsetRingsUsed) offsetRingsUsed = j + 1;
+        for (const sgn of [1, -1]) {
+          const th = p.th + (sgn * rj * p.nx) / rRef;
+          const z = p.z + sgn * rj * p.ny;
+          if (th < 0 || th > TWO_PI || z < 0 || z > H) continue;
+          if (nearPt(th, z, rj * 0.35)) continue;
+          // The segment clearance is FLOORED at 1.5x the PSLG conditioning radius when the across rule is
+          // live. A no-op on the OFF path by arithmetic, not by measurement: there across >= acrossBase /
+          // fieldRange = 192.6 um, so across*0.55 >= 105.9 um >> 1.5*pslgEps = 30 um and the max never binds.
+          if (nearSeg(th, z, o.acrossAbs ? Math.max(rj * 0.55, o.pslgEpsMm * 1.5) : rj * 0.55)) continue;
+          addFree(th, z); offsetPts += 1;
+        }
       }
     }
   }
@@ -1164,6 +1220,8 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       acrossBoundPts,
       alongBoundPts,
       bowShortenedPts,
+      turnBoundPts,
+      offsetRingsUsed,
       patchRegions: patchEmitted.length,
       patchPts,
       patchRings,

@@ -996,6 +996,17 @@ describe('STRATA conforming-bisection', () => {
     // SELECTION IS THE UNION OF TWO CRITERIA, and S17 measured why one is not enough: the top N by class
     // load, PLUS any ids named explicitly. Disk #39 carries the mesh's worst surface error (24.281 um) and
     // is rank 68 of 235 by class load with gated = 0 — the class ranking does not rank the fidelity target.
+    // ── S19 — GRADED ACROSS-COMPLETION + THE CREASE-TURNOVER ALONG BOUND. Both DEFAULT OFF.
+    // PF_CB_ALIGNED_RINGS=1 is the single ring this file has always placed; >1 fills the measured void
+    // between the innermost ring and the background lattice. PF_CB_ALIGNED_TURN_MUL=0 leaves the along
+    // spacing to the anisotropy guard alone. Both are inert without the across rule and the driver throws.
+    const AL_RINGS = Math.round(envF('PF_CB_ALIGNED_RINGS', 1));
+    const AL_RGRADE = envF('PF_CB_ALIGNED_RING_GRADE', 1.6);
+    const AL_RMAX = envF('PF_CB_ALIGNED_RING_MAX_UM', 650) / 1000;
+    const AL_TURN_MUL = envF('PF_CB_ALIGNED_TURN_MUL', 0);
+    if ((AL_RINGS !== 1 || AL_TURN_MUL !== 0) && !AL_ACROSS_ABS) {
+      throw new Error('PF_CB_ALIGNED_RINGS / PF_CB_ALIGNED_TURN_MUL are inert without PF_CB_ALIGNED_ACROSS_ABS=1.');
+    }
     const AL_PATCH = process.env.PF_CB_ALIGNED_PATCH ?? '';
     const AL_PATCH_TOPN = Math.round(envF('PF_CB_ALIGNED_PATCH_TOPN', 25));
     const AL_PATCH_IDS = (process.env.PF_CB_ALIGNED_PATCH_IDS ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
@@ -1086,6 +1097,7 @@ describe('STRATA conforming-bisection', () => {
         alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
         acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR, bowFrac: AL_BOW_FRAC,
         patchRoute, patchMaxMm: AL_PATCH_MAX,
+        acrossRings: AL_RINGS, acrossGrade: AL_RGRADE, acrossMaxMm: AL_RMAX, turnMul: AL_TURN_MUL,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
       }, AL_ROUNDS);
       alignedStats = rep.seed.stats; alignedRounds = rep.roundsUsed; alignedBanned = rep.banned;
@@ -3600,6 +3612,13 @@ describe('STRATA conforming-bisection', () => {
               + ` ${alignedStats.bowShortenedPts} further chain points so the traced locus's own bow fits inside`
               + ` ${(AL_BOW_FRAC * 100).toFixed(0)}% of the offset ring — an offset-ring chord may not cut the locus it hugs ***`,
           ] : []),
+        ] : []),
+        ...(AL_RINGS !== 1 || AL_TURN_MUL !== 0 ? [
+          `    *** S19 GRADED ACROSS-COMPLETION: PF_CB_ALIGNED_RINGS=${AL_RINGS} grade ${AL_RGRADE} max ${(AL_RMAX * 1000).toFixed(0)} um`
+            + `  (rings actually used ${alignedStats.offsetRingsUsed})   PF_CB_ALIGNED_TURN_MUL=${AL_TURN_MUL}`
+            + ` bound the along spacing at ${alignedStats.turnBoundPts} chain points`
+            + `   — the empty band between the innermost ring and the 1,101 um background lattice is where 88% of the`
+            + ` large tilted offenders lived (S19 decomposition) ***`,
         ] : []),
         ...(alignedStats.patchRegions > 0 ? [
           `    *** S18 STEP 3 X-CROSSING PATCH EMITTER ON: ${AL_PATCH}   top${AL_PATCH_TOPN} by measured load`

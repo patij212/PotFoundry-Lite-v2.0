@@ -3119,6 +3119,97 @@ the routed/unrouted comparison is within-disk before/after and not a selection a
 >> design.**
 
 
+### S19 (PHASE C) — THE GRADED-FIELD COMPLETION. Registered BEFORE the arm. ONE VARIABLE.
+Coordinating session's GO after the S19 decomposition, designed exactly as the measurement named it.
+
+**RECORDED, NOT BUNDLED — THE EMITTER'S FIX SPEC.** S18 measured a real defect in the patch emitter: the
+polar set REPLACES the background lattice inside a routed disk, so where the driver would have refined
+harder than the polar grading, routing COSTS resolution (disk #25's congruent copy, **0.008 -> 31.429 um**).
+**THE FIX, specified here so it is not re-derived: the patch interior sizing must be
+`min(polar grading, sizing field)` — a routed disk may never be coarser than what the field asks for there.**
+It is NOT in this arm. The emitter returns as its own arm after S19 **if the graded field leaves it work to
+do**, and that is measured rather than assumed: routed disks contain flanks too, so S19 may shrink the
+in-disk population on its own. Measure before rebuilding.
+
+**THE DESIGN, from the decomposition and nothing else.** 88% of the large tilted offenders live in
+[100, ~650] um off the loci — the empty band between the single offset ring and the background lattice —
+carrying mm-scale edges, 85-95 deg deviation and **parametric AR in the thousands at 3-D AR 3.3-5.1**.
+  * **GRADED ACROSS-COMPLETION** (`PF_CB_ALIGNED_RINGS`): a geometric ring progression `across * g^j` from
+    50 um outward, so there is no annulus a chord can span. **THE STRIDE IS DERIVED:** ring j's radial
+    spacing grows like `g^j`, so emitting it every `g^j`-th chain point holds the element ASPECT constant at
+    every radius while the point cost falls geometrically. Capped at 4 — uncapped it sends the outer rings
+    to a 6.8 mm along-spacing, and the proximity guards test points, not chord crossings.
+  * **ALONG BOUNDED BY THE LOCAL CREASE TURNOVER** (`PF_CB_ALIGNED_TURN_MUL`): `along <= turnMul * hAc`
+    wherever the across rule binds. CALIBRATION, measured: hAc = 44.7 um at both named sites against a
+    measured turnover of 106.0 um, so hAc = 0.42 x turnover and turnMul 9 bounds along at ~3.8 x turnover
+    (~402 um). This kills the 1,101 um-pitch / 744 um-chord regime EVERYWHERE, not only at ring zero.
+Both DEFAULT OFF (`RINGS=1`, `TURN_MUL=0`) and both inert without the across rule; the driver throws.
+
+**STAGE-0 PRE-FLIGHT (seed scale, registered as pre-flight, no bar scored — the S15/S16 pattern).**
+
+| arm | points | tris | chainPts | offsetPts | rings used | turnBound | constraints | overCap / worstAR / worstParAR |
+|---|---|---|---|---|---|---|---|---|
+| CONTROL (`_S15A`) | 43,303 | 85,808 | 7,461 | 12,081 | 1 | 0 | 7,108/7,108 | 5 / 85.13 / 116.7 |
+| **R7 turn9 (the arm)** | **93,802 (x2.17)** | **186,804 (x2.18)** | 36,237 | 58,275 | **6** | 33,321 | **12,615/12,615** | **3 / 85.13 / 98.6** |
+| R7 turn12 | 87,035 | 173,272 | 26,920 | 52,411 | 6 | 23,481 | 11,601/11,601 | 3 / 85.13 / 158.6 |
+| R5 turn9 | 89,612 | 178,424 | 36,237 | 53,669 | 5 | 33,321 | 12,615/12,615 | 3 / 85.13 / 98.6 |
+
+The CONTROL reproduces the `_S15A` seed exactly. **R7/turn9 is chosen on measured seed QUALITY, not on
+size**: it is the only setting simultaneously best on over-cap (**3**, down from 5), worst parametric AR
+(**98.6**, down from 116.7) and repair effort (**1 round / 8 bans**, down from 5 / 176), at 100% constraint
+recovery on **12,615** segments — 1.77x the constraint count that THREW in S15/S16 Stage 0.
+
+**THE ARM. `_S19A` = the `_S15A` command + `PF_CB_ALIGNED_RINGS=7 PF_CB_ALIGNED_TURN_MUL=9`. PATCHES OFF.**
+CONTROL = `_S15A` (recorded). One variable: the graded field.
+
+**PRIMARY BARS — OPERATOR-KEYED, absolute AND density, components separately (the metric note):**
+  W1 **PHYSICAL >=90 <= 1,700** (>=3x fall from `_S15A`'s 5,156), density <= 1.63 per 1k facets
+     (`_S15A` 4.93). **REFUTED if > 4,125 (<1.25x).**
+  W2 **>=15 TAIL <= 8,900** (>=3x fall from 26,599), density <= 8.5 per 1k (`_S15A` 25.4).
+     **REFUTED if > 21,300 (<1.25x).**
+  W3 **NAMED COMPONENT PREDICTIONS — the clearMm attribution's SECOND falsifiable test.** The annulus
+     populations must COLLAPSE: 100-200 um **735 -> <= 250** and 200-400 um **316 -> <= 110** (both >=2.9x).
+     The 269-facet large-offender flank set (dev>=45 AND area>0.02 mm^2) must fall **>=3x, to <= 90**.
+     If the tails fall but the annulus does not, the attribution is wrong and the mechanism is unnamed again.
+  W4 **FIDELITY MUST NOT PAY.** sites A/B <= **1.0 / 5.0 um** (they stay closed); H2 witnessed
+     <= **24.281 um**; H2 fraction <= **0.00251%**; H1 facets-over <= 1.30%, quoted with coverage + stride.
+  W5 **PRECONDITIONS.** folds **0**; determined blades <= **3** (seed-born; Stage 0 says over-cap FELL 5->3);
+     worst admitted child AR <= **50**; constraint recovery **100%** (asserted, throws); seam-cracks **0**,
+     loops **2**, **Euler 0**.
+  W6 **IDENTITY (STOP).** md5 8a59fb37a9115600b13262254380ccb0 byte-exact + hard gate **12/12** with every
+     documented value exact, taken AFTER the edit.
+  W7 **COST.** seed points <= **100,000** / tris <= **200,000** (Stage 0: 93,802 / 186,804);
+     live tris <= **3.0 M**; wall <= **2,400 s**.
+  W8 **VERDICT ROWS — disjoint, in order, first match wins:**
+     1 **REFUTATION** — W1 or W2 refuted (<1.25x). The flank band is not the carrier of the eye-population.
+     2 **REGRESSION** — W5 fails, or W4 fails, or W7 breached.
+     3 **WIN** — W1 AND W2 AND W4 AND W5 AND W7. (W3 is reported and explained; it names the mechanism, and
+       a mechanism that misses while the primaries win is a finding, not a failure.)
+     4 **TRADE** — everything else, both numbers in the same row of the same table.
+  W9 **AFTER SCORING: STOP.** No S20, no Phase D. The operator eyeballs the mesh; their verdict gates
+     everything downstream. The STL path ships in the report.
+
+**THE parAR INSTRUMENT — AUDITOR-SIDE ONLY, CALIBRATED ON `_S18A` BEFORE THIS ARM RAN.**
+NEW FILE `research/bridge/_strataParARCensus.ts`. Standalone rather than an addition to `_judgeShape`: the
+hard gate is this campaign's spine and a reporting-only instrument does not justify putting it at risk.
+**NO driver-side refusal is wired in this arm, on purpose** — legitimate steep-wall anisotropy carries high
+parametric AR by construction, so a cap would refuse exactly the elements S10-S15 learned to place, and it
+needs its own A/B.
+CALIBRATION ON `_S18A` (1,043,882 facets): parAR p50 **4.49**, p90 15.37, p99 99.2, MAX 81,933.
+Counts above candidate lines: 50 -> 22,138 (2.121%) | 100 -> 10,340 (0.991%) | 200 -> 3,685 (0.353%) |
+400 -> 1,043 (0.100%) | 800 -> 319 | 1,600 -> 103 | 3,200 -> 34.
+**THE EYE SET (dev>=45 AND area>=0.02 mm^2, n=269): parAR min 51.6, p05 125.8, p50 486.0 — while their
+3-D AR is 3.3 to 5.1.** Near-equilateral in 3-D and parametrically degenerate: **the AR-50 cap is
+STRUCTURALLY blind to them, and parAR sees every one.**
+**REGISTERED EXPECTATION, met by the calibration itself: every one of the 269 named offenders lands above
+parAR 50.** PROPOSED GATE VALUE, reported for the operator and NOT adopted: **parAR 50 catches 100% of the
+eye set at 2.121% of the mesh; parAR 100 catches ~95% at 0.991%.** (The tool's own `proposedGate` field
+floors to a decade and prints 10; the honest line is the eye set's own minimum, 51.6, i.e. **50**. Recorded
+so the field is never quoted as the recommendation.)
+On `_S19A` the same census is re-run and the movement of the >=50 and >=100 populations is REPORTED beside
+the eye-metric bars — the instrument deliverable of this arm.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
