@@ -2877,6 +2877,115 @@ BARS, decided before the run:
 
   R6 **AUTO-START CONDITION MET** — R1 exact, R2 found, no throw. Step 3 proceeds without waiting.
 
+### S18 (PHASE C STEP 3) — THE X-CROSSING PATCH EMITTER. BUILT AND SEED-VALIDATED; THE ARM IS NOT RUN.
+Auto-started from S17's R6 without waiting for an ack, as the coordinating session directed.
+
+**PROCESS DEVIATION, DECLARED FIRST BECAUSE IT IS MINE AND IT IS REAL.** S18's Stage-0 pre-flight was RUN
+BEFORE ITS BARS WERE WRITTEN. The campaign's standing rule is register-then-run and I inverted it. So the
+Stage-0 numbers below are reported as **MEASUREMENTS WITH NO BAR SCORED AGAINST THEM** — I am not going to
+write bars around numbers I have already seen and call them predictions. **Stage 1's bars, further down, are
+registered before the arm and nothing about Stage 1 has been run.**
+
+**THE DESIGN, AND THE ONE DECISION THAT MATTERS.** The emitter places a deterministic GRADED POLAR point
+set per routed junction — the centre plus concentric rings from `patchInnerMm` out to the routed radius,
+geometric with ratio at most `patchGrade` — as **FREE STEINER POINTS, NOT CONSTRAINTS**, inside the aligned
+seed's existing stage 3, before the background lattice. Four reasons, and the first is the whole point:
+  * **WATERTIGHT BY CONSTRUCTION, WITH NO STITCH AT ALL.** Everything goes through the SAME `addPt` weld and
+    the SAME single cdt2d call as the rest of the seed. There is no separate patch mesh to sew in, so there
+    is no seam to leak. This is the S11 argument unchanged, and it is why the emitter lives in the seed
+    rather than being a post-pass — the alternative is the ring-strip/curtain stitch, which is a real
+    precedent but a much larger surface for exactly the defect S11 spent a phase closing.
+  * **THE 2026-07-13 cdt2d SPANNER LESSON IS SATISFIED TRIVIALLY:** this stage adds **ZERO constraint
+    edges**, so no constraint can span the chart and the theta=0/2pi weld is untouched. The lesson said no
+    constraint edge may span the chart; the strongest form of compliance is to add none.
+  * **CONSTRAINT RECOVERY IS THE FRAGILE PART AND IT THROWS.** S15 and S16 Stage 0 measured it failing at
+    7,268 and 7,614 segments. Ring constraints would add ~2,400 more and put the whole build on that edge
+    for nothing the Delaunay does not already give on a graded polar set.
+  * **ALIGNMENT TO THE BRANCHES COMES FREE.** The locus chains already pass THROUGH the disk as constraints,
+    so the triangulation must respect every branch without this stage naming any of them. Nothing depends
+    on `branchDirs` being correct — which matters, because a mis-stated branch direction would be the
+    provenance analogue of a mistraced locus.
+**M = 16 POINTS PER RING IS DERIVED, NOT CHOSEN:** for near-isotropic elements the arc spacing must match
+the radial spacing, so `M = 2*pi/(1 - 1/grade)` = 16.75 at grade 1.6, and because both scale with r one M
+serves every ring. **GUARDS:** the same two the offset ring uses, at each ring's own local scale, with the
+segment clearance FLOORED at `1.5 * pslgEpsMm` — a patch point nearer than that to a locus constraint would
+be re-routed INTO it by stage 3e, the free-point-bends-a-traced-locus failure the across rule's precondition
+already exists to prevent. Near the centre the rings are ~20 um apart, so that floor genuinely binds here.
+**PROVENANCE:** the seed returns `patches: PatchRegion[]` declared at the **ROUTED** radius, never the
+requested one, and the driver writes `<tag>.patches.json` beside the mesh — written even when EMPTY, so
+"nothing was declared" is a recorded fact rather than a missing file. `PatchRegion` is a **type-only import
+from `_judgeShape`**, so there is exactly one definition in the repo and a drift between what the emitter
+declares and what the blade gate exempts is a COMPILE error, not a silent exemption. No judge file changed.
+**SELECTION, per S17:** the UNION of the top-N by measured class load and any ids named explicitly. S17
+measured why one criterion is not enough — disk #39 carries the mesh's worst surface error and is rank 68 of
+235 by class load with `gated` = 0.
+**LEVERS, ALL DEFAULT OFF/UNSET:** `PF_CB_ALIGNED_PATCH=<regions.json>` (unset = the stage is unreachable,
+not merely inert), `PF_CB_ALIGNED_PATCH_TOPN` (25), `PF_CB_ALIGNED_PATCH_IDS` (empty),
+`PF_CB_ALIGNED_PATCH_MAX_MM` (1.5). The driver refuses a region file whose schema is not
+`pf.strata.regions/1`, and refuses `PF_CB_ALIGNED_PATCH` without `PF_CB_ALIGNED_SEED=1`.
+
+**STAGE-0 MEASUREMENTS (seed scale, no mesh, no bar scored).** Substrate: `_S11A`'s loci artifact, the
+`_S15A` seed setting, routing read from `_S15A`'s `regions.json`.
+
+| | control (`_S15A` setting, no patch) | **top25 + id 39** | id 39 alone |
+|---|---|---|---|
+| routed disks | 0 | **26** | 1 |
+| points / tris | 43,303 / 85,808 | **45,975 / 91,152 (x1.062)** | 43,365 / 85,932 (x1.001) |
+| constraints / recovered | 7,108 / 7,108 | **7,147 / 7,147** | 7,119 / 7,119 |
+| patch points / rings | 0 / 0 | **2,769 / 212** | 62 / 6 |
+| refused pt / seg | 0 / 0 | 62 / 573 | 0 / 34 |
+| **over-cap / worst AR / worst parAR** | 5 / 85.13 / 116.7 | **5 / 85.13 / 116.7** | 5 / 85.13 / 116.7 |
+| negArea / dropRefused | 0 / 0 | 0 / 0 | 0 / 0 |
+| seed edgesCrossingLocus | 2.493% | 2.504% | 2.501% |
+| **ARGMAX site: nearest pt / facet shortest** | **90.0 um / 664.3 um** | **47.3 um / 185.2 um (x0.279)** | 47.3 um / 185.2 um |
+| site A / site B facet shortest | 199.8 / 223.1 um | **199.8 / 223.1 um** | 199.8 / 223.1 um |
+
+  * the OFF path reproduces the `_S15A` seed on every recorded statistic exactly — the emitter is inert
+    with an empty route;
+  * **the patch adds NO over-cap facets at all**: over-cap 5, worst AR 85.13 and worst parametric AR 116.7
+    are byte-identical to the control on all three arms. A structured graded polar set is well-shaped, which
+    is the entire reason for preferring it to more bisection;
+  * constraint recovery stays **100%** (7,147 of 7,147); the +39 constraints are stage-3e conditioning
+    splits the new points triggered, not new constraint geometry;
+  * **it does not disturb what S15 bought** — sites A and B keep their containing facets to the digit;
+  * the whole of the movement at the fidelity target comes from routing **disk #39 alone** (62 points):
+    the top-25 by class load contributes nothing there, which is S17's ranking finding cashed out.
+
+**STAGE 1 — THE ARM, REGISTERED NOW AND NOT RUN. `_S18A` = the `_S15A` command verbatim +
+`PF_CB_ALIGNED_PATCH=<_S15A regions.json> PF_CB_ALIGNED_PATCH_IDS=39`. CONTROL = `_S15A` (recorded).**
+One variable: the patch emitter. Bars are on COMPONENTS per the metric note, never on the gated difference.
+  P1 **IDENTITY (STOP). ALREADY TAKEN AND IT HOLDS** — the one Stage-1 clause that can be settled without
+     the arm, so it was, immediately after the emitter landed. Flag-OFF at the W1 config -> md5
+     **8a59fb37a9115600b13262254380ccb0**, `cmp` byte-identical to `_S8ID`/W1 (tag `_S18ID`). Hard gate
+     **12/12**, every documented value exact (V3 thin **12.041**, V7c **12.041 / 39.767 / 142.668**). Three
+     nested unreachability conditions now stand between the default build and this code: no
+     `PF_CB_ALIGNED_SEED`, no `PF_CB_ALIGNED_ACROSS_ABS`, no `PF_CB_ALIGNED_PATCH` — and the driver THROWS
+     rather than silently ignoring any of the three used without its parent.
+  P2 **THE DECISIVE CLAUSE — THE ROUTED TARGET.** True surface->mesh error at th 1.308997, z 113.45994
+     (`_S15A`: **24.280 um**, carrier AR 45.49). **WIN: <= 12.14 um (>=2x fall).** **REFUTED: > 21.85 um
+     (<10% movement)** — then a structured patch at the junction does not reach the junction residual, and
+     the M=g/h^2 kernel is the only remaining primitive.
+  P3 **GLOBAL FIDELITY MUST NOT PAY FOR IT.** H2 witnessed <= **24.281 um** (flat or better); sites A and B
+     <= **1.0 / 5.0 um** (they stay closed); H1 facets-over <= **1.30%** (x1.15 of 1.13%). H1 witnessed
+     quoted with coverage and stride, no claim.
+  P4 **COMPONENTS (metric note).** raw >=90 <= **5,414** (x1.05 of 5,156); feature-spanning >= **3,145**
+     (x0.95 of 3,310); tails >=15/>=30/>=45/>=60 each <= x1.05 of `_S15A` (27,929 / 19,865 / 16,334 /
+     13,278). Gated difference and in-disk/out-of-disk REPORTED, not barred. **Additionally: in-disk gated
+     load in the 26 ROUTED disks specifically, against their `_S15A` total of 495 + 0 = 495 — a >=5x fall
+     in routed disks is the WIN shape the handoff named, and it is the number the emitter is for.**
+  P5 **PROVENANCE MUST BEHAVE.** `<tag>.patches.json` carries exactly 26 regions at their routed radii.
+     Through the hardened judge: `nBladeUndeclared` is the gate count, the exemption is SHOUTED with a
+     per-region tally, and **any UNDECLARED over-cap facet still FAILS**. Determined blades outside the
+     declared regions <= **3**. If the patch needs an exemption to pass, that is REPORTED as an exemption
+     used, never as a pass.
+  P6 **PRECONDITIONS.** folds 0; worst admitted child AR <= 50; recovery 100%; seam-cracks 0, loops 2,
+     Euler 0; seed over-cap <= 5.
+  P7 **COST.** seed points <= 47,000 / tris <= 93,000; live tris <= **1.20 M**; wall <= **1,000 s**.
+  P8 **VERDICT ROWS — in order, first match wins:** 1 REFUTATION (P2 refuted) | 2 REGRESSION (P6 fails, or
+     any P4 component fails, or P3 fails, or P5's undeclared-blade clause fails, or P7 breached) |
+     3 WIN (P2 win AND P3 AND P4 AND P5 AND P6 AND P7) | 4 TRADE (everything else, both numbers in the
+     same row of the same table).
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

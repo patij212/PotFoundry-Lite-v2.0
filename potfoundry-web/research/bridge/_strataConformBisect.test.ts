@@ -38,13 +38,15 @@
 // linear-fit intercept on a 20-bin scan is ~10 µm accurate — 20× too coarse. Sub-µm placement is not a polish
 // detail, it is the difference between conforming and not.
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
+import { mkdirSync, writeFileSync, appendFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { baseRadius } from '../../src/geometry/profile';
 import { buildRadiusFn } from './labkit';
 import { traceLoci, DEFAULT_TRACE_OPTS, LOCUS_SCHEMA, type LocusArtifact } from './_strataLocusTrace';
 import { buildAlignedSeedRepaired, DEFAULT_SEED_OPTS, type AlignedSeed } from './_strataAlignedSeed';
+import { REGION_SCHEMA, type RegionArtifact } from './_strataRegionExtract';
+import type { PatchRegion } from './_judgeShape';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 import { openGpuRank, type GpuRank } from './_gpuRankBridge';
@@ -988,6 +990,36 @@ describe('STRATA conforming-bisection', () => {
     if (AL_BOW_FRAC !== 0 && !AL_ACROSS_ABS) {
       throw new Error('PF_CB_ALIGNED_BOW_FRAC is inert without PF_CB_ALIGNED_ACROSS_ABS=1. Unset it, or enable the across rule.');
     }
+    // ── S18 / P5 STEP 3 — THE X-CROSSING PATCH EMITTER. PF_CB_ALIGNED_PATCH=<regions.json>, DEFAULT UNSET.
+    // The routing list is an INPUT, not a computation: measured artifact load can only be read off a
+    // FINISHED mesh, so Step 2's `_strataRegionExtract` produces `<tag>.regions.json` and this consumes it.
+    // SELECTION IS THE UNION OF TWO CRITERIA, and S17 measured why one is not enough: the top N by class
+    // load, PLUS any ids named explicitly. Disk #39 carries the mesh's worst surface error (24.281 um) and
+    // is rank 68 of 235 by class load with gated = 0 — the class ranking does not rank the fidelity target.
+    const AL_PATCH = process.env.PF_CB_ALIGNED_PATCH ?? '';
+    const AL_PATCH_TOPN = Math.round(envF('PF_CB_ALIGNED_PATCH_TOPN', 25));
+    const AL_PATCH_IDS = (process.env.PF_CB_ALIGNED_PATCH_IDS ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
+    const AL_PATCH_MAX = envF('PF_CB_ALIGNED_PATCH_MAX_MM', 1.5);
+    let patchRoute: PatchRegion[] = [];
+    if (AL_PATCH !== '') {
+      if (!ALIGNED_SEED) throw new Error('PF_CB_ALIGNED_PATCH is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
+      const regArt = JSON.parse(readFileSync(AL_PATCH, 'utf8')) as RegionArtifact;
+      if (regArt.schema !== REGION_SCHEMA) {
+        throw new Error(`PF_CB_ALIGNED_PATCH: expected schema ${REGION_SCHEMA}, got ${String(regArt.schema)}. `
+          + 'A region list from a different producer is a mis-registered provenance declaration waiting to happen.');
+      }
+      // `regions` is written in DESCENDING measured load, so the top-N slice IS the load-weighted set.
+      const chosen = new Map<number, { id: number; theta: number; z: number; radiusMm: number }>();
+      for (const r of regArt.regions.slice(0, Math.max(0, AL_PATCH_TOPN))) chosen.set(r.id, r);
+      for (const idStr of AL_PATCH_IDS) {
+        const r = regArt.regions.find((x) => x.id === Number(idStr));
+        if (r === undefined) throw new Error(`PF_CB_ALIGNED_PATCH_IDS names disk ${idStr}, which is not in ${AL_PATCH}.`);
+        chosen.set(r.id, r);
+      }
+      patchRoute = [...chosen.values()]
+        .sort((a, b) => a.id - b.id)
+        .map((r) => ({ id: `D${r.id}`, theta: r.theta, z: r.z, radiusMm: r.radiusMm }));
+    }
     // LAYER-2 NEGATIVE CONTROL: push every traced locus this far along its own normal before seeding. A
     // non-zero value builds a DELIBERATELY MISTRACED seed, which must produce a census-visible defect —
     // proving the pipeline would catch a tracer regression instead of shipping a misplaced constraint.
@@ -1029,6 +1061,7 @@ describe('STRATA conforming-bisection', () => {
     // only counts. The two levers remain composable; this arm just does not compose them.
     let alignedLoci: LocusArtifact | null = null;
     let alignedStats: AlignedSeed['stats'] | null = null;
+    let alignedPatches: PatchRegion[] = [];
     let alignedRounds = 0; let alignedBanned = 0;
     let alignedSeedCrossings = -1; let alignedSeedEdges = 0; let alignedTraceMs = 0;
     if (ALIGNED_SEED) {
@@ -1052,9 +1085,11 @@ describe('STRATA conforming-bisection', () => {
         ...DEFAULT_SEED_OPTS, H, gu, gv,
         alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
         acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR, bowFrac: AL_BOW_FRAC,
+        patchRoute, patchMaxMm: AL_PATCH_MAX,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
       }, AL_ROUNDS);
       alignedStats = rep.seed.stats; alignedRounds = rep.roundsUsed; alignedBanned = rep.banned;
+      alignedPatches = rep.seed.patches;
       // Constraint vertices are marked `feat` — they ARE on a detected locus, which is exactly what SNAP
       // marks when it lands a vertex on one. The seam closes through `addV`'s own 3-D weld: canonTheta(2pi)
       // is 0, so a vertex emitted at (2pi, z) IS the vertex at (0, z), exactly and not to a tolerance.
@@ -3434,6 +3469,15 @@ describe('STRATA conforming-bisection', () => {
         loci: alignedLoci.loci,
         junctions: disks,
       }, null, 1));
+      // S18: the DECLARED PATCH PROVENANCE, beside the mesh it describes. This is exactly the shape
+      // `_judgeShape`'s `CensusOptions.patches` consumes; Step 4's A/B hands this file to the blade gate.
+      // Written even when EMPTY, so "no patches were declared" is a recorded fact rather than a missing file.
+      writeFileSync(join(outDir, `${tag}.patches.json`), JSON.stringify({
+        schema: 'pf.strata.patches/1',
+        run: { style: STYLE, params: styleParams, dims: DIMS, stage: STAGE, tag },
+        source: AL_PATCH === '' ? null : { regions: AL_PATCH, topN: AL_PATCH_TOPN, ids: AL_PATCH_IDS, maxMm: AL_PATCH_MAX },
+        patches: alignedPatches,
+      }, null, 1));
     }
 
     // ─── §5.4 THE RUN MANIFEST. Written beside the STL, ALWAYS (it does not touch a byte of the STL).
@@ -3556,6 +3600,15 @@ describe('STRATA conforming-bisection', () => {
               + ` ${alignedStats.bowShortenedPts} further chain points so the traced locus's own bow fits inside`
               + ` ${(AL_BOW_FRAC * 100).toFixed(0)}% of the offset ring — an offset-ring chord may not cut the locus it hugs ***`,
           ] : []),
+        ] : []),
+        ...(alignedStats.patchRegions > 0 ? [
+          `    *** S18 STEP 3 X-CROSSING PATCH EMITTER ON: ${AL_PATCH}   top${AL_PATCH_TOPN} by measured load`
+            + `${AL_PATCH_IDS.length > 0 ? ` + ids [${AL_PATCH_IDS.join(',')}] (the FIDELITY targets — S17 measured that the class ranking does not rank them)` : ''}`
+            + `   routed radius cap ${AL_PATCH_MAX.toFixed(2)} mm ***`,
+          `      ${alignedStats.patchRegions} regions DECLARED, ${alignedStats.patchPts} structured points on ${alignedStats.patchRings} graded rings`
+            + `   (refused ${alignedStats.patchRefusedPt} on point clearance, ${alignedStats.patchRefusedSeg} on constraint clearance)`
+            + `   — free Steiner points ONLY: zero constraint edges added, so no constraint can span the chart and the`
+            + ` patch is watertight through the SAME single cdt2d call as the rest of the seed`,
         ] : []),
         ...(alignedSeedCrossings >= 0 ? [
           `    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink:`

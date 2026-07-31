@@ -107,6 +107,10 @@ import cdt2d from 'cdt2d';
 import { canonTheta, dThRaw, type SweepRadiusFn } from './_sweepPredicate';
 import { aspect3, signedAreaParam } from './_shapeGuard';
 import { splitAtSeam, type LocusArtifact } from './_strataLocusTrace';
+// TYPE-ONLY, so it emits no runtime code and the seed builder's execution is untouched. One definition of
+// a declared patch region exists in this repo and it is the JUDGE's, so a drift between what the emitter
+// declares and what the blade gate exempts becomes a COMPILE error rather than a silent exemption.
+import type { PatchRegion } from './_judgeShape';
 
 const TWO_PI = Math.PI * 2;
 
@@ -141,6 +145,20 @@ export interface AlignedSeedOpts {
    * consecutive offset-ring points cannot cut the locus it hugs. Active only when `acrossAbs` is on.
    */
   bowFrac: number;
+  /**
+   * S18 / P5 STEP 3 — the junction disks to ROUTE with a structured patch. EMPTY = OFF (the default), and
+   * the stage is then not merely inert but unreachable. Ordinarily filled from a run's `regions.json`
+   * (`_strataRegionExtract`), whose per-disk record is a superset of this shape.
+   */
+  patchRoute?: PatchRegion[];
+  /** cap on the routed radius, mm — the 4.000 mm radius-capped clusters get their core routed, not all of it. */
+  patchMaxMm: number;
+  /** innermost ring radius, mm. */
+  patchInnerMm: number;
+  /** ring-to-ring radius ratio; `patchM` is derived from it (see the emitter). */
+  patchGrade: number;
+  /** points per ring. */
+  patchM: number;
   /** chord tolerance for the sizing solve, mm. */
   tolMm: number;
   /** LAYER-2 NEGATIVE CONTROL: push every locus this far along its own normal before seeding, um. */
@@ -180,6 +198,10 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   acrossMinMm: 0.050,
   seedARmax: 24,
   bowFrac: 0,
+  patchMaxMm: 1.5,
+  patchInnerMm: 0.05,
+  patchGrade: 1.6,
+  patchM: 16,
   tolMm: 0.01,
   mistraceUm: 0,
   shapeAR: 50,
@@ -200,6 +222,13 @@ export interface AlignedSeed {
    * over-cap triangle, and which is redundant to within `pslgEpsMm` of the chord across it.
    */
   suggestedBans: string[];
+  /**
+   * S18: the patch regions this seed ACTUALLY emitted geometry into, at the radius it actually routed —
+   * the provenance the blade gate consumes as `CensusOptions.patches`. Empty unless `patchRoute` was given.
+   * Declared at the ROUTED radius, never at the requested one: a region declared larger than the geometry
+   * it covers would exempt blades the emitter did not create.
+   */
+  patches: PatchRegion[];
   stats: {
     lociUsed: number;
     chains: number;
@@ -242,6 +271,12 @@ export interface AlignedSeed {
     alongBoundPts: number;
     /** S16: chain points where the BOW rule shortened the along spacing further. */
     bowShortenedPts: number;
+    /** S18: routed junctions, structured points emitted, rings laid, and points the guards refused. */
+    patchRegions: number;
+    patchPts: number;
+    patchRings: number;
+    patchRefusedPt: number;
+    patchRefusedSeg: number;
     /** S15: the across spacing ACTUALLY placed, over all chain points — min / p50, mm. */
     acrossMinPlacedMm: number;
     acrossP50PlacedMm: number;
@@ -764,6 +799,73 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     }
   }
 
+  // ── 3c-bis. S18 / P5 STEP 3 — THE X-CROSSING PATCH EMITTER. Default OFF (empty `patchRoute`). ──────
+  //
+  // WHAT IT EMITS: a deterministic GRADED POLAR point set per routed junction — the centre plus concentric
+  // rings from `patchInnerMm` out to the routed radius, geometric with a ratio of at most `patchGrade`.
+  //
+  // WHY POINTS AND NOT CONSTRAINTS, which is the whole design decision:
+  //   * WATERTIGHT BY CONSTRUCTION. Everything here goes through the SAME `addPt` weld and the SAME single
+  //     cdt2d call as the rest of the seed, so there is no stitch to get wrong — the S11 argument, unchanged.
+  //     There is no separate patch mesh to sew in, and therefore no seam to leak.
+  //   * THE 2026-07-13 cdt2d SPANNER LESSON IS SATISFIED TRIVIALLY: this stage adds ZERO constraint edges,
+  //     so no constraint can span the chart and the theta=0/2pi weld is untouched.
+  //   * CONSTRAINT RECOVERY IS ALREADY THE FRAGILE PART. It is an assertion that THROWS, and S15/S16
+  //     Stage 0 measured it failing at 7,268 and 7,614 segments. Adding ~2,400 ring constraints would put
+  //     the whole build on that edge for no gain the Delaunay does not already give on a graded polar set.
+  //   * ALIGNMENT TO THE BRANCHES COMES FREE. The locus chains already pass THROUGH the disk as
+  //     constraints, so the triangulation is forced to respect every branch without this stage naming any
+  //     of them. Nothing here depends on `branchDirs` being right.
+  //
+  // WHY M = 16 POINTS PER RING, derived rather than chosen: for near-isotropic elements the arc spacing
+  // must match the radial spacing. Radial spacing at ring i is r_i - r_{i-1} = r_i (1 - 1/grade), arc
+  // spacing is 2*pi*r_i/M, so M = 2*pi/(1 - 1/grade) = 16.75 at grade 1.6. Both scale with r_i, so ONE M
+  // serves every ring.
+  //
+  // GUARDS: the same two the offset ring uses, at the ring's own local scale, with the segment clearance
+  // FLOORED at 1.5x `pslgEpsMm` — a patch point closer than that to a locus constraint would be re-routed
+  // INTO it by stage 3e, which is the free-point-bends-a-traced-locus failure the across rule's precondition
+  // exists to prevent. Near the centre the rings are ~20 um apart, so this floor genuinely binds here.
+  let patchPts = 0; let patchRings = 0; let patchRefusedPt = 0; let patchRefusedSeg = 0;
+  const patchEmitted: PatchRegion[] = [];
+  for (const reg of o.patchRoute ?? []) {
+    const R = Math.min(reg.radiusMm, o.patchMaxMm);
+    const rIn = Math.min(o.patchInnerMm, R * 0.5);
+    if (!(R > 0) || !(rIn > 0)) continue;
+    const K = Math.max(1, Math.ceil(Math.log(R / rIn) / Math.log(o.patchGrade)));
+    const M = Math.max(6, Math.round(o.patchM));
+    let emittedHere = 0;
+    // the junction centre itself — the one point that is ON the crossing
+    {
+      const gp = rIn * 0.35; const gs = Math.max(rIn * 0.55, o.pslgEpsMm * 1.5);
+      if (reg.z >= 0 && reg.z <= H && !nearPt(reg.theta, reg.z, gp) && !nearSeg(reg.theta, reg.z, gs)) {
+        addFree(canonTheta(reg.theta), reg.z); patchPts += 1; emittedHere += 1;
+      }
+    }
+    for (let i = 0; i <= K; i += 1) {
+      const r = rIn * ((R / rIn) ** (i / K));
+      const prev = i === 0 ? rIn / o.patchGrade : rIn * ((R / rIn) ** ((i - 1) / K));
+      const ds = Math.max(1e-6, r - prev);                       // this ring's own radial spacing
+      const gp = ds * 0.35; const gs = Math.max(ds * 0.55, o.pslgEpsMm * 1.5);
+      const phase = (i % 2) * (Math.PI / M);                     // stagger alternate rings
+      patchRings += 1;
+      for (let k = 0; k < M; k += 1) {
+        const a = phase + (2 * Math.PI * k) / M;
+        const th = canonTheta(reg.theta + (r * Math.cos(a)) / rRef);
+        const z = reg.z + r * Math.sin(a);
+        if (z < 0 || z > H) continue;
+        if (nearPt(th, z, gp)) { patchRefusedPt += 1; continue; }
+        if (nearSeg(th, z, gs)) { patchRefusedSeg += 1; continue; }
+        addFree(th, z); patchPts += 1; emittedHere += 1;
+      }
+    }
+    // PROVENANCE: declared at the ROUTED radius, which is what the emitter actually touched. A region
+    // declared larger than the geometry it covers would exempt blades it did not create — the judge's
+    // PROVENANCE-2 negative control (a mis-registered region exempts nothing) is the other direction of
+    // the same discipline.
+    if (emittedHere > 0) patchEmitted.push({ id: reg.id, theta: canonTheta(reg.theta), z: reg.z, radiusMm: R });
+  }
+
   // 3d. background lattice — the control's own density, minus anything the constraints already own
   let bgKept = 0; let bgDropped = 0;
   for (let j = 1; j < o.gv; j += 1) {
@@ -1050,6 +1152,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     tris,
     constraints,
     suggestedBans: [...suggested],
+    patches: patchEmitted,
     stats: {
       lociUsed, chains: chains2.length, chainPts, crossingsSplit, seamZ: seamZs.length,
       bgKept, bgDropped, offsetPts, points: pth.length, tris: tris.length,
@@ -1061,6 +1164,11 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       acrossBoundPts,
       alongBoundPts,
       bowShortenedPts,
+      patchRegions: patchEmitted.length,
+      patchPts,
+      patchRings,
+      patchRefusedPt,
+      patchRefusedSeg,
       // reduce, not Math.min(...arr): the array is one entry per chain point (tens of thousands) and a
       // spread that long overflows the argument stack.
       acrossMinPlacedMm: acrossPlaced.length > 0 ? acrossPlaced.reduce((m, v) => (v < m ? v : m), Infinity) : acrossBase,
