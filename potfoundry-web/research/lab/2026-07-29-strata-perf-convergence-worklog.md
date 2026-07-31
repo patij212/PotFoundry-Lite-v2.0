@@ -3210,6 +3210,89 @@ On `_S19A` the same census is re-run and the movement of the >=50 and >=100 popu
 the eye-metric bars — the instrument deliverable of this arm.
 
 
+### *** S19 RESULT — W8 ROW 1, REFUTATION. AND IT IS THE MOST INFORMATIVE REFUTATION OF THE DRIVE: THE
+### FLANK BAND WAS ANNIHILATED EXACTLY AS PREDICTED (ANNULUS x0.094, FAR x0.185) AND THE EYE-POPULATION
+### DID NOT FALL — IT RELOCATED INTO THE LOCI AND THE JUNCTION DISKS. ***
+`_S19A` = the `_S15A` command + `PF_CB_ALIGNED_RINGS=7 PF_CB_ALIGNED_TURN_MUL=9`, patches OFF. One variable.
+STL: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S19A.stl` (1,217,485 facets).
+
+| bar | `_S15A` | `_S19A` | line | |
+|---|---|---|---|---|
+| **W1 physical >=90** | 5,156 | **4,972** | <=1,700 win / >4,125 refuted | **REFUTED (x0.964)** |
+| **W2 >=15 tail** | 26,599 | **24,997** | <=8,900 win / >21,300 refuted | **REFUTED (x0.940)** |
+| W3 annulus 100-200 | 735 | **109** | <=250 | **MET x0.148** |
+| W3 annulus 200-400 | 316 | **51** | <=110 | **MET x0.161** |
+| W3 large-offender set | 269 | 188 | <=90 | MISSED (x0.699) |
+| W4 site A / site B | 0.667 / 3.816 | **5.698** / 0.000 | <=1.0 / <=5.0 | A FAILS, B holds |
+| W4 H2 witnessed / fraction | 24.281 um / 0.00251% | **21.379 um / 0.00128%** | <=24.281 / <=0.00251% | **BOTH BETTER** |
+| W4 H1 facets-over | 1.13% | 1.11% | <=1.30% | HOLDS (stride 645157 vs 646609, INCOMPLETE) |
+| W5 folds / blades / admitted AR / cracks / Euler | 0 / 2 / 50.00 / 0 / 0 | **0 / 2 / 50.00 / 0 / 0** | | HOLDS |
+| W7 seed / live tris / wall | 43,303-85,808 / 1,046,234 / 820 s | 93,802-186,804 / 1,217,485 / **795 s** | <=100k-200k / <=3.0M / <=2,400 s | HOLDS |
+
+>> **W8 ROW 1 — REFUTATION**, on both primaries. Rows are disjoint and row 1 fires first; W4's site-A clause
+>> would also have failed row 2. **The lever stays DEFAULT OFF.**
+
+**WHERE IT WENT — the same decomposition instrument, same 26 reference regions, three arms.**
+
+| class | facets `_S19A` | >=90 `_S15A` -> `_S18A` -> **`_S19A`** | per 1k `_S15A` -> **`_S19A`** | >=15 `_S15A` -> **`_S19A`** |
+|---|---|---|---|---|
+| ROUTED disk (26) | 44,341 (+23%) | 757 -> 517 -> **1,066** | 20.93 -> **24.04** | 2,731 -> **3,938** |
+| UNROUTED disk (209) | 153,312 (+29%) | 1,340 -> 1,317 -> **2,017** | 11.17 -> **13.16** | 6,065 -> **9,391** |
+| **ANNULUS 100-400 um** | 533,356 | 1,488 -> 1,457 -> **160** | 3.18 -> **0.30 (x0.094)** | 10,834 -> **1,233 (x0.114)** |
+| ON-LOCUS <=100 um | 232,290 (+59%) | 1,494 -> 1,506 -> **1,714** | 10.26 -> **7.38** | 5,773 -> **10,334** |
+| **FAR >400 um** | 254,186 | 74 -> 73 -> **13** | 0.27 -> **0.05 (x0.185)** | 1,193 -> **100 (x0.084)** |
+| TOTAL | 1,217,485 | 5,153 -> 4,870 -> **4,970** | | 26,596 -> **24,996** |
+
+>> **THE MECHANISM WAS RIGHT AND THE THEORY OF THE DEFECT WAS WRONG, AND THE ARITHMETIC SEPARATES THEM
+>> CLEANLY.** The graded field did exactly what S17/S19 said it would: the flank band it was built to fill
+>> **collapsed by an order of magnitude** — ANNULUS >=90 x0.094 and >=15 x0.114, FAR >=90 x0.185 and >=15
+>> x0.084, and the registered W3 annulus predictions were met with 2x margin to spare. **The `clearMm`
+>> attribution is now CONFIRMED twice: once by S18's null (in-disk geometry left it untouched) and once
+>> here by its removal.** That question is closed.
+>> **BUT THE TOTAL DID NOT MOVE**, because the population RELOCATED: annulus + far fell by **-1,389** while
+>> routed disks + unrouted disks + on-locus rose by **+1,206**. Net x0.964. The extra 171k triangles went
+>> where the field asked — ON-LOCUS facets +59%, disk facets +23/+29% — and the >=90 density fell on-locus
+>> (10.26 -> 7.38) while RISING in both disk classes (20.93 -> 24.04, 11.17 -> 13.16).
+>> **SO THE EYE-POPULATION IS NOT A PROPERTY OF ANY ONE BAND. It is the FRONTIER between resolved and
+>> unresolved material, and refining a band moves the frontier rather than removing it.** Every arm of this
+>> campaign has now moved that frontier and none has shrunk it: S15 cleared ring zero and pushed it to the
+>> flanks; S18 cleared 26 junctions and pushed it nowhere it could be seen; S19 cleared the flanks and
+>> pushed it back onto the loci and into the junctions. **That is a structural finding about the metric and
+>> the mechanism together, and it is the first time the campaign has had three arms to see it in.**
+
+**FIDELITY IMPROVED WHILE THE EYE-METRIC DID NOT — worth stating plainly because it is the same divergence
+the metric note predicted.** H2 witnessed **24.281 -> 21.379 um** and the over-tol fraction **halved**
+(0.00251% -> 0.00128%); H1 facets-over 1.13% -> 1.11%; site B **3.816 -> 0.000 um**; the `_S18A` argmax site
+M **31.429 -> 0.026 um**; the routed-disk target N **24.280 -> 11.190 um** with NO patch at all. Site A
+regressed **0.667 -> 5.698 um** (still 1.8x inside the 10 um tolerance) and breaks its registered clause.
+The new H2 argmax is **21.379 um at th 1.003990 z 18.00781** — the z=18 locus the driver's own self-report
+has named as its worst since S11, now the true worst as well.
+
+**THE parAR INSTRUMENT — the arm's deliverable, and it moved in the right direction on every axis.**
+
+| | `_S18A` | `_S19A` |
+|---|---|---|
+| p50 / p90 / p99 / MAX | 4.49 / 15.37 / 99.2 / 81,933 | **4.34 / 11.85 / 69.0 / 18,954** |
+| above 50 | 22,138 (2.121%) | **18,159 (1.492%)** |
+| above 100 | 10,340 (0.991%) | **7,700 (0.632%)** |
+| above 400 / 1,600 | 1,043 / 103 | **829 / 100** |
+| EYE set n / parAR min / p05 / p50 | 269 / 51.6 / 125.8 / 486.0 | **188** / 34.4 / 130.6 / 651.4 |
+
+>> The whole parametric tail is lighter and its MAX fell **4.3x**. **CAVEAT THAT MUST TRAVEL WITH THE
+>> PROPOSED LINE: the eye set's minimum parAR fell 51.6 -> 34.4, so a fixed line at 50 no longer catches
+>> every one of them on this arm.** A parAR gate is therefore a REPORTING instrument as registered and not
+>> yet a ship gate at a fixed value; the honest reading is that the line must be derived per-mesh from the
+>> eye set, or paired with the area/deviation predicate rather than used alone. Recorded before anyone
+>> quotes "parAR 50" as a gate.
+
+>> **W9: STOP. No S20, no Phase D.** The mesh is on disk for the operator's eye:
+>> **`research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S19A.stl`**
+>> Their verdict gates everything downstream. What the measurement leaves on the table, unregistered and
+>> unrun: the frontier finding says the next lever is not another BAND but the ranking/stopping rule that
+>> decides where the frontier sits — and the campaign has three arms of evidence for that now rather than
+>> an argument.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
