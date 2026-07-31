@@ -5279,6 +5279,82 @@ never compressing the discipline.
 >> **STAGE 0 IS THE GATE. NOTHING IS BUILT UNTIL E2 FIRES.**
 
 
+### S23 STAGE 0 — **E1 FIRED ON D2 AND D4, AND BOTH ARE MIS-SPECIFICATIONS I WROTE, NOT PROPERTIES OF**
+### **THE FIELD. AMENDMENTS D2', D4' AND A NEW BAR D7, ALL REGISTERED BEFORE THE RE-SCORE.**
+Tool `research/tools/s23Density.ts` (new, standalone, artifact-only; eslint clean, and under
+`research/tools/tsconfig.s23d.json` it adds **zero** errors to the identical 3-error pre-existing baseline
+the committed S23-M tool carries). Log `S23_STAGE0_S22B.log`. **No mesher run, no driver edit, no `src/`
+edit, no default flipped.** The first pass scored **D0 HOLDS · D1 HOLDS · D2 FAILS · D3 HOLDS · D4 FAILS ·
+D5 HOLDS · D6 HOLDS**, i.e. E1 NO-GO as registered. It is not reported as one, and here is why, stated
+before the re-score in the S20.1 / S23-M-M0' form.
+
+>> **DISCLOSURE, BECAUSE IT CHANGES HOW MUCH THESE AMENDMENTS ARE WORTH: THE FIRST-PASS NUMBERS WERE IN
+>> VIEW WHEN I WROTE THEM.** That is the same position M0' and M0'' were written from, and the same
+>> discount applies. What follows is a repair of how the question was ASKED; the reader is entitled to
+>> weigh it as such, and every measured number stays on the record whether the amended bar likes it or not.
+
+**D2 FAILED ON ITS MONOTONICITY CLAUSE, AND THE DESIGN IS NOT MONOTONE.** Measured `hA` p50 by distance to
+the nearest traced locus SEGMENT: `[0,50] 104.5` · `[50,100] 133.6` · `[100,200] 95.0` · `[200,400] 94.6` ·
+`[400,650] 130.9` · `>650 **586.8**` um. I registered "strictly monotone rising across [0,50] ... [400,650]"
+from S19's *"a geometric ring progression `across * g^j` from 50 um outward, so there is no annulus a chord
+can span"*. **The rings' RADII are geometric; their ALONG-spacing is not.** `_strataAlignedSeed.ts:859`
+emits ring `j` every `stride = min(4, max(1, round(g^j)))`-th chain point, and at `g = 1.6` the stride
+saturates at **4 from ring 3 (204.8 um) onward** — radii 50 / 80 / 128 / 204.8 / 327.7 / 524.3 um at strides
+1 / 2 / 3 / 4 / 4 / 4. **So the design's own element size FLATTENS beyond ~200 um, which is exactly where
+the measurement flattens.** On top of that the bisection driver then refined the whole band on curvature
+demand, which does not fall off monotonically with locus distance. **I encoded "the extraction must see the
+feature" as a monotonicity property the demand map does not have, and it failed for a reason that is not
+the failure mode the bar exists to catch.** The smearing failure would be the near-locus field reading the
+same as the far field; measured, the contrast is **5.61x** and the across floor is resolved to **10.0 um**
+at `hMin` p10. The field sees the feature sharply.
+
+**D4 FAILED ON A LANDMARK THE CAMPAIGN'S OWN RECORD HAD ALREADY RETIRED, AND I CARRIED IT FORWARD FROM A
+SUMMARY WITHOUT CHECKING IT AGAINST THE ARM I WAS MEASURING.** I registered "z 40-60 tighter" on the two
+named demand sites at z **44.16992** and z **45.38896**. **Those sites were CLOSED by S15** — site A
+38.061 -> 0.667 um, site B 40.006 -> 3.816 um — **and the argmax MOVED.** `_S22B`'s own report line 83
+reads `MAX-locus: z=[76.40,76.38,75.97] (64% H)`. Measured, the field's finest 5 mm z-bins are **z 80-85 at
+76.2 um** and **z 75-80 at 90.3 um** — **the field reproduces `_S22B`'s ACTUAL demand location to the bin,
+and my bar was pointed at where the demand used to be.** (The whole-wall p50 of 113.5 um is itself
+depressed by the featured region: z 0-15 reads **~650 um**, which is the designed lattice — that is
+undecorated wall, and it is D1's 687.6 um showing up in the z profile exactly where it should.)
+
+>> **D2' — THE REPLACEMENT. THE SAME QUESTION, CORRECTLY ASKED: CONTRAST, NOT MONOTONICITY.**
+>>   (i) unchanged and already HOLDING: `hMin` p50 in `d in [0,50] um` **<= 100 um** (the across rule placed
+>>       min 50.0 / p50 50.0 um on this arm).
+>>   (ii) **`hA` p50(`d > 650 um`) / `hA` p50(`d in [0,50] um`) >= 2.0x.** The contrast is placed where the
+>>       design puts it — the rings top out at 650 um and the background lattice lies beyond — rather than
+>>       inside a band whose along-spacing the design itself saturates.
+>>   (iii) NEW, and it is the smearing test stated directly: **`hMin` p10 in `d in [0,50] um` <= 50.0 um**,
+>>       i.e. the extraction must RESOLVE the placed across floor and not average it away.
+>>   **THE NON-MONOTONICITY IS NOT WITHDRAWN — it is reported as a FINDING**, because it says something the
+>>   arm needs: the constructor's own ring stride saturates at 4, so a reconstruction that honours the
+>>   extracted field in the [200,650] um band will place FINER material there than the S19 rings do.
+>> **D4' — THE REPLACEMENT, ANCHORED ON THE ARM'S OWN ARGMAX INSTEAD OF A RETIRED ONE.**
+>>   (i) the field's **finest 5 mm z-bin must lie within +-10 mm of z = 76.40**, `_S22B`'s own reported
+>>       MAX-locus. (5 of 24 bins — a bar a wrong field fails ~79% of the time.)
+>>   (ii) `hA` p50 over `z in [70,85]` **strictly below** the whole-wall `hA` p50.
+>>   **The historical z[40,60] reading is REPORTED, not barred**, and the reason it is not a finding against
+>>   the field is on the record above: S15 closed those sites.
+>> **D7 — NEW, AND IT IS THE MOST IMPORTANT THING THE FIRST PASS PRODUCED. CONSTRUCTIBILITY AGAINST THE
+>> CONSTRUCTOR'S OWN HARD FLOOR.** The first pass measured **125,560 of 626,348 source vertices (20.05%)
+>> whose `hMin` is below 36.4 um** — the floor `_strataAlignedSeed.ts:398` ASSERTS with a throw
+>> (`acrossMinMm * 0.55 > pslgEpsMm`). **A field the constructor is architecturally forbidden to honour is
+>> not a usable field, and D0-D6 do not test for that at all** — an omission in my own registration, and
+>> the third one this stage has found.
+>>   **THE BAR IS ON `hA`, NOT `hMin`, AND THE REASON IS REGISTERED:** `hMin` is the ACROSS scale of a
+>>   deliberately anisotropic element, and a 50 x 400 um designed element has `hMin` 50 by construction;
+>>   `hA` is the DENSITY scalar the constructor is actually priced by. **BAR: `hA` below 36.4 um at <= 5.0%
+>>   of source vertices.** Above that the constructed mesh would be systematically coarser than the oracle
+>>   priced it over a material fraction of the wall, which refutes the architecture's own claim that the
+>>   constructed mesh CARRIES the oracle's density.
+>>   **THIS ONE IS A GENUINE COIN-FLIP AND I AM SAYING SO BEFORE THE RE-SCORE:** the first pass printed
+>>   `hA` p01 **19.3 um** and p10 **49.1 um**, so the answer is bounded between 1% and 10% and the bar at
+>>   5.0% sits in the middle of what is known. The `hMin` fractions below 36.4 and 50.0 um are REPORTED
+>>   beside it, unbarred.
+>> **NOTHING ELSE MOVES. D0, D1, D3, D5, D6 and the E0/E1/E2 structure are untouched, and every one of them
+>> was scored on the first pass before any of this was written.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
