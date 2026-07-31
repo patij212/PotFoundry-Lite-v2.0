@@ -1262,6 +1262,27 @@ describe('STRATA conforming-bisection', () => {
     // be able to. Constants named in-line so the two can be diffed by eye.
     const ADMIT_NORMAL = envOn('PF_CB_ADMIT_NORMAL');
     const ADMIT_NORMAL_SPLIT = envOn('PF_CB_ADMIT_NORMAL_SPLIT');
+    // ═══════════ S20.1 — ASSERT ADMISSION ON THE VALUES THAT SHIP (PF_CB_ADMIT_SHIPPED, DEFAULT OFF) ═══════════
+    // MEASURED, not assumed (S20.1 diagnostic, on a mesh byte-identical to `_S20A`): the same sweep over the
+    // same 1,218,088 facets answers 0 on the driver's f64 vertices and 108 on the f32 vertices it WRITES —
+    // and 108 is exactly the judge's gated count, facet for facet. The channel is the whole of it.
+    // WHY IT IS AN O(1) FLIP AND NOT A BOUNDARY WOBBLE, which is where S20.1's registered prediction was
+    // WRONG: the flipped facets are not marginal (deviation p50 113.9 deg, max 161.8 deg, and no f32-ulp
+    // perturbation moves any of them). The sensitivity is not in the FACET normal, it is in the ANALYTIC one.
+    // `admBestDot` builds its five candidates from difference quotients at ADM_H = 1e-6 mm, while one f32 ulp
+    // on z ~ 80 mm is ~7.6e-6 mm — SEVEN TIMES THE STENCIL. Rounding a vertex therefore does not nudge the
+    // reference normal, it can carry the entire 1 nm stencil across a crease onto the other flank, where all
+    // five candidates agree on the wrong side. A finer step would not fix it: the artifact simply cannot
+    // resolve where the sample point is to better than an f32 ulp.
+    // SO THE HONEST TEST IS THE SHIPPED ONE. The product is the STL. Asserting an invariant on an f64 mesh
+    // that never leaves the process is asserting it about nothing, and X1 is judged on the file.
+    // THETA COMES FROM THE ROUNDED COORDINATES TOO, and that clause is load-bearing: rounding coordinates
+    // alone catches 105 of the 108 (measured), because a consumer of the STL recovers theta by atan2 from the
+    // very coordinates that were rounded. Keeping the f64 `vth` beside f32 x,y is a mismatched pair that
+    // exists nowhere downstream. This is still the DRIVER'S OWN transcription — `_judgeNormal` is not
+    // imported and S-e stands; it is fed the inputs any reader of the file would have.
+    const ADMIT_SHIPPED = envOn('PF_CB_ADMIT_SHIPPED');
+    const f32 = Math.fround;
     const ADM_H = 1e-6;                       // _judgeNormal's step, theta (rad) and z (mm)
     let admitChecks = 0; let admitRefusedSplit = 0; let admitForcedPush = 0;
     /** max dot of the facet normal with the FIVE candidate analytic normals at (th,z) — _judgeNormal's rule. */
@@ -1290,10 +1311,23 @@ describe('STRATA conforming-bisection', () => {
      * FEATURE-SPANNING and stays admissible — the bar is the gate's bar and not one micron tighter.
      */
     const footBack = (
-      px: number, py: number, pz: number, qx: number, qy: number, qz: number, sx: number, sy: number, sz: number,
-      pth: number, qth: number, sth: number,
+      px0: number, py0: number, pz0: number, qx0: number, qy0: number, qz0: number, sx0: number, sy0: number, sz0: number,
+      pth0: number, qth0: number, sth0: number,
     ): boolean => {
       admitChecks += 1;
+      // S20.1 — THE ONE PLACE THE QUANTISATION HAPPENS. `footBack` is the single choke point every admission
+      // call goes through (accept-side `footBackT`, both split-side children), so quantising here fixes all
+      // three at once and leaves exactly one branch to reason about. Flag OFF => the eleven names below are
+      // the arguments themselves and the arithmetic is the byte-identical S20 path.
+      const px = ADMIT_SHIPPED ? f32(px0) : px0; const py = ADMIT_SHIPPED ? f32(py0) : py0;
+      const pz = ADMIT_SHIPPED ? f32(pz0) : pz0;
+      const qx = ADMIT_SHIPPED ? f32(qx0) : qx0; const qy = ADMIT_SHIPPED ? f32(qy0) : qy0;
+      const qz = ADMIT_SHIPPED ? f32(qz0) : qz0;
+      const sx = ADMIT_SHIPPED ? f32(sx0) : sx0; const sy = ADMIT_SHIPPED ? f32(sy0) : sy0;
+      const sz = ADMIT_SHIPPED ? f32(sz0) : sz0;
+      const pth = ADMIT_SHIPPED ? Math.atan2(py, px) : pth0;
+      const qth = ADMIT_SHIPPED ? Math.atan2(qy, qx) : qth0;
+      const sth = ADMIT_SHIPPED ? Math.atan2(sy, sx) : sth0;
       let fx = (qy - py) * (sz - pz) - (qz - pz) * (sy - py);
       let fy = (qz - pz) * (sx - px) - (qx - px) * (sz - pz);
       let fz = (qx - px) * (sy - py) - (qy - py) * (sx - px);
@@ -3573,11 +3607,53 @@ describe('STRATA conforming-bisection', () => {
     // demand needs — position, carrier geometry, and the locus/disk membership — so the M=g/h^2 primitive
     // and the declared-patch emitter consume a work order instead of a complaint.
     let admitStranded = 0; let admitAccepted = 0;
+    // ═══ S20.1 DIAGNOSTIC — PF_CB_ADMIT_DIAG=1, DEFAULT OFF, CHANGES NO DECISION. ═══
+    // The registered D1/D2 discriminators were specified as artifact-only, and D2's quantity — |atan2(y,x) -
+    // vth| — is NOT IN THE ARTIFACT: an STL carries positions and no parametric theta. This block supplies
+    // exactly that missing quantity and nothing else. It runs AFTER the STL has been written, touches no mesh
+    // state, and feeds no accept/split/strand decision; `admitChecks` is snapshotted and restored around every
+    // diagnostic call so the reported counter is bit-identical to a run without the flag.
+    // THREE ANSWERS TO ONE QUESTION, so the disagreeing CHANNEL is named rather than guessed:
+    //   A  f64 coordinates + stored vth        — what the driver's sweep answers today
+    //   B  f32-round-tripped coordinates + vth — the values that SHIP, driver thetas (D1's fix, as registered)
+    //   C  f32-round-tripped coordinates + atan2 thetas — exactly the judge's own inputs
+    const ADMIT_DIAG = envOn('PF_CB_ADMIT_DIAG');
+    const diag = { A: 0, B: 0, C: 0, AneB: 0, AneC: 0, BneC: 0, dThMax: 0, dThMaxV: -1 };
+    if (ADMIT_DIAG) {
+      // D2's registered quantity, measured over every vertex the mesh actually uses.
+      for (let i = 0; i < vth.length; i += 1) {
+        let d = Math.abs(dThRaw(canon(Math.atan2(vy[i], vx[i])), vth[i]));
+        if (!Number.isFinite(d)) d = 0;
+        if (d > diag.dThMax) { diag.dThMax = d; diag.dThMaxV = i; }
+      }
+    }
+    /** the same test on a live triangle, but on the values that SHIP and/or on the judge's own thetas. */
+    const footBackShipped = (t: number, judgeTheta: boolean): boolean => {
+      const A = ta[t]; const B = tb[t]; const C = tc[t];
+      const px = f32(vx[A]); const py = f32(vy[A]); const pz = f32(vz[A]);
+      const qx = f32(vx[B]); const qy = f32(vy[B]); const qz = f32(vz[B]);
+      const sx = f32(vx[C]); const sy = f32(vy[C]); const sz = f32(vz[C]);
+      return footBack(px, py, pz, qx, qy, qz, sx, sy, sz,
+        judgeTheta ? Math.atan2(py, px) : vth[A],
+        judgeTheta ? Math.atan2(qy, qx) : vth[B],
+        judgeTheta ? Math.atan2(sy, sx) : vth[C]);
+    };
     if (ADMIT_NORMAL || ADMIT_NORMAL_SPLIT) {
       const strands: Array<Record<string, number | string>> = [];
       for (let t = 0; t < ta.length; t += 1) {
         if (!alive[t]) continue;
         admitAccepted += 1;
+        if (ADMIT_DIAG) {
+          const keep = admitChecks;
+          const a = footBackT(t); const b = footBackShipped(t, false); const c = footBackShipped(t, true);
+          admitChecks = keep;                           // the sweep's own single check below is the only one counted
+          if (a) diag.A += 1;
+          if (b) diag.B += 1;
+          if (c) diag.C += 1;
+          if (a !== b) diag.AneB += 1;
+          if (a !== c) diag.AneC += 1;
+          if (b !== c) diag.BneC += 1;
+        }
         if (!footBackT(t)) continue;
         admitStranded += 1;
         if (strands.length >= 20000) continue;                 // the list is evidence, not a memory leak
@@ -3604,6 +3680,7 @@ describe('STRATA conforming-bisection', () => {
           liveFacets: admitAccepted, stranded: admitStranded, listed: strands.length,
           admitChecks, admitRefusedSplit, admitForcedPush,
         },
+        ...(ADMIT_DIAG ? { diag } : {}),
         strands,
       }, null, 1));
     }
@@ -3709,6 +3786,13 @@ describe('STRATA conforming-bisection', () => {
           + `   ADMISSION-STRANDED at the end: ${admitStranded} of ${admitAccepted} live facets`
           + `   ${admitStranded > 5000 || (admitAccepted > 0 && admitForcedPush > 0.25 * admitAccepted) ? '*** INFEASIBLE-AS-WIRED — refusal-storm criterion FIRED (registered: refusals > 25% of accepts, or strands > 5,000) ***' : '[refusal-storm criterion NOT fired]'}`,
         `    strand list: ${tag}.strands.json — the ROUTED-DEMAND input for M=g/h^2 elements and declared patches, not a failure report`,
+        ...(ADMIT_DIAG ? [
+          '    *** S20.1 DIAGNOSTIC (PF_CB_ADMIT_DIAG=1) — the same sweep answered three ways. NO DECISION USED IT. ***',
+          `      A f64 coords + stored vth        : ${diag.A}   <- what the strand count above reports`,
+          `      B f32-SHIPPED coords + stored vth: ${diag.B}   (differs from A on ${diag.AneB} facets)`,
+          `      C f32-SHIPPED coords + atan2 theta: ${diag.C}   (differs from A on ${diag.AneC}, from B on ${diag.BneC})`,
+          `      D2's registered quantity, worst over ${vth.length} vertices: |atan2(vy,vx) - vth| = ${diag.dThMax.toExponential(3)} rad (vertex ${diag.dThMaxV})`,
+        ] : []),
       ] : []),
       ...(envOn('PF_CB_CONF_FLIP') ? [
         `  S7-PILOT conforming flip (fossil crossing edges): ${confFlipRan ? `RAN, ${confFlipPasses} sweep(s)` : 'REQUESTED BUT NOT RUN (needs the heap driver: no SWEEP/GPU_RANK, and PF_CB_SAFE_COLLAPSE not 0)'}`,

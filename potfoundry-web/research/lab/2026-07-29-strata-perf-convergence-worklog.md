@@ -3550,6 +3550,167 @@ the discriminator names. CONTROL = `_S20A` (recorded) and `_S19A` (fidelity refe
 >> (M=g/h^2 / declared patches over the strand list) needs S20.1's priced strand list as its work order.
 
 
+### *** S20.1 RESULT — Y7 ROW 2, REGRESSION STOP. THE INVARIANT IS REAL AND IT NOW HOLDS: THE JUDGE READS
+### *** ZERO. THE PRICE FIRED THE CEILING. AND THE REGISTRATION'S OWN PREMISE IS RETRACTED — THE TWO
+### *** TRANSCRIPTIONS NEVER DISAGREED. ***
+`_S20B` = `_S20A`'s command + `PF_CB_ADMIT_SHIPPED=1`. One variable, as registered.
+STL: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S20B.stl` (1,218,348 facets).
+Strands: `gothicarches_ring_DS-H_S20B.strands.json` (**0 entries**). Audit: `FID_S20B.report.txt`.
+
+**THE DISCRIMINATORS FIRST, BECAUSE THEY DID NOT LAND WHERE THE REGISTRATION EXPECTED.**
+
+**D1's REGISTERED PREDICTION IS REFUTED, AND IT WAS REGISTERED SO IT COULD BE.** The prediction was ">=90 of
+the 108 land inside 89.5-90.5 deg". Measured on `_S20A`'s own f32 coordinates: **4 of 108**. The gated
+population is not marginal at all — deviation **min 90.012, p25 101.685, p50 113.909, p75 130.714, max
+161.829 deg**, and a +-1-ulp f32 perturbation flips **0 of 108** (worst centroid-dot movement 2.093e-4
+against dots that run to 9.501e-1). The 108 are deep, robust flips, not boundary wobble.
+
+**D2 IS REFUTED BY MEASUREMENT, AND THE CHANNEL IS EMPTY BY CONSTRUCTION.** `addV` stores
+`vth.push(canon(thetaRaw))` and lifts `x = r*cos(theta), y = r*sin(theta)` from that same value, so
+`atan2(y,x)` and `vth` are the same number. Measured over all **609,621** vertices of the arm:
+**max |atan2(vy,vx) - vth| = 8.882e-16 rad**. Seam-adjacency, D2's registered signature, is **0 of 108**.
+
+**AND THE PREMISE THE AMENDMENT WAS BUILT ON IS WRONG. THE TWO TRANSCRIPTIONS AGREE.** S20.1 asserted that
+"the driver's copy of the test genuinely disagrees with the judge's on those 108 facets". Run the driver's
+`footBack` — verbatim, and under the driver's OWN raw `rA` wrapper as well as the judge's — on `_S20A`'s
+shipped f32 coordinates and it flags **108 of 1,218,088, agreeing with the judge on 108 of 108, exempting
+none**. The instruments never disagreed. What disagreed was the driver's in-run sweep against its own test
+replayed on its own output, and that is a different fact with a different cause.
+
+**THE CAUSE, MEASURED ON A MESH BYTE-IDENTICAL TO `_S20A` (md5 `d2a0c7afdc83a29dc8cefb5e7bff0024`, `cmp`
+clean).** The registered discriminators were specified as artifact-only, and D2's quantity is **not in the
+artifact** — an STL carries positions and no parametric theta. So `PF_CB_ADMIT_DIAG=1` was added: default
+OFF, decision-free, running after the STL is written, with `admitChecks` snapshotted and restored so the
+reported counter is unchanged. It answers the same sweep three ways:
+
+| the same 1,218,088 live facets, asked three ways | count |
+|---|---|
+| **A** f64 coordinates + stored `vth` — what the sweep reported | **0** |
+| **B** f32-SHIPPED coordinates + stored `vth` | **105** (differs from A on 105) |
+| **C** f32-SHIPPED coordinates + `atan2` theta — the judge's own inputs | **108** (differs from A on 108, from B on 15) |
+
+**C IS THE JUDGE'S 108, FACET FOR FACET.** The channel is the f32 write and nothing else.
+
+**WHY IT IS AN O(1) FLIP AND NOT A ROUNDING WOBBLE — this is the part D1 named correctly and explained
+wrongly, and the record should carry the mechanism rather than the guess.** The sensitivity is not in the
+FACET normal (a 2.4 nm corner move tilts a micron-scale facet by ~0.07 deg, which is why the ulp test flips
+nothing). It is in the **ANALYTIC** normal. `admBestDot` builds its five candidates from difference
+quotients at `ADM_H = 1e-6` mm, while **one f32 ulp on z ~ 80 mm is ~7.6e-6 mm — SEVEN TIMES THE STENCIL**.
+Rounding a vertex therefore does not nudge the reference normal; it can carry the entire 1 nm stencil across
+a crease onto the other flank, where all five candidates agree on the wrong side. A finer step cannot fix
+it: the artifact cannot resolve where the sample point is to better than an f32 ulp.
+
+**THE FIX, AS REGISTERED AND ONE CLAUSE MORE. `PF_CB_ADMIT_SHIPPED=1`, DEFAULT OFF.** Quantisation happens
+in `footBack` itself — the single choke point all three call sites (accept-side, both split-side children)
+go through — so there is exactly one branch to reason about and the flag-OFF path is the byte-identical S20
+arithmetic. **Theta is recovered by `atan2` from the ROUNDED coordinates, and that clause is load-bearing
+and measured: rounding coordinates alone catches 105 of 108.** Keeping an f64 `vth` beside f32 x,y is a
+mismatched pair that exists nowhere downstream — every consumer of the file recovers theta from the
+coordinates it was given. This is still the DRIVER'S OWN transcription; `_judgeNormal` is not imported and
+**S-e stands**. What changed is the inputs, not the instrument.
+
+**BARS, SCORED EXACTLY AS REGISTERED, FIRST MATCH.** CONTROL = `_S20A` (recorded), `_S19A` (fidelity ref).
+
+| bar | `_S19A` | `_S20A` | **`_S20B`** | line | |
+|---|---|---|---|---|---|
+| **Y1 judge-side footprint-back among ACCEPTED** | 1,074 | 108 | **0** | **0 outside strands** | **HOLDS** |
+| Y1 driver-side admission-stranded | — | 0 | **0** | — | now AGREES with the judge |
+| Y2 physical >=90 (per 1k) | 4,972 (4.08) | 4,651 (3.82) | **4,641 (3.81)** | reported, no bar | x0.934 vs S19A |
+| Y2 >=15 / >=30 / >=45 / >=60 | 24,997 / — | 25,253 / 18,444 / 15,698 / 12,872 | **25,357 / 18,537 / 15,757 / 12,925** | reported | x1.004 vs S20A |
+| Y2 feature-spanning | 3,898 | 4,543 | **4,641** | reported | +2.2% |
+| **Y3 H2 witnessed / fraction** | 21.379 um / 0.00128% | 55.652 um / 0.00200% | **55.652 um / 0.00205%** | **> 42.76 um STOPS** | **FIRES** |
+| Y3 unresolved count / worst | 3,701 / 47.245 um | 4,485 / 175.831 um | **4,560 / 175.831 um** | <=8,000 / <=250.0 um | holds |
+| Y4 refusal storm | — | 0 pushes, 0 strands | **0 pushes, 0 strands** | >25% accepts, or >5,000 | **NOT fired** |
+| Y5 folds / blades / admitted AR / cracks / Euler | 0/2/50.00/0/0 | 0/2/50.00/0/0 | **0/2/50.00/0/0** | | HOLDS |
+| Y5 identity + gate | — | md5 8a59fb37, 12/12 | **md5 8a59fb37 byte-exact, 12/12** | | HOLDS |
+| Y6 rA evals / wall / live tris | 906M / 795 s / 1,217,485 | 909M / 811 s / 1,218,088 | **909M (+0.0%) / 830 s / 1,218,348** | <=+15% / <=2,400 s / <=3.0M | **HOLDS EASILY** |
+| (driver counters) | — | 5,313,594 / 0 / 38,133 | **5,320,213 checks / 0 accepts refused / 40,717 splits refused** | | |
+| H1 (COVERAGE-QUALIFIED, carries no claim) | 443/40,000 = 1.11% | 487/40,000 = 1.22% | **501/40,000 = 1.25%**, witnessed 433.699 um, bound 504.295 um | <=1.30% | holds |
+
+H1 is quoted with its coverage as the standing rule requires: **40,000 of 1,218,348 facets, stride 752,981,
+walk capped at `PF_FT_H1MAX=40000` — INCOMPLETE, the unseen triangles are UNKNOWN, not passing.** H2 is the
+witnessed lower bound at 40.0M queries with phase-A uniform coverage of the full z band and phase-B
+truncated by budget, i.e. a floor at that resolving power. Neither is a driver self-report.
+
+>> **Y7 ROW 2 — REGRESSION STOP.** Rows are disjoint and evaluated in order. Row 1 (INFEASIBLE) did not
+>> fire: zero forced pushes, zero strands, nowhere near the storm criterion. **Row 2 fires on Y3's first
+>> clause — H2 witnessed 55.652 um against a 42.76 um ceiling.** Rows 3 and 4 are never reached, and that
+>> ordering is doing real work here rather than being a formality, because **Y1 would have passed**: the
+>> judge's gated back-facing count on the shipped file is **0** against an empty strand list. The
+>> registration said what this outcome means and it says it exactly: **the M=g/h^2 routing must land BEFORE
+>> the invariant can ship.** The lever stays **DEFAULT OFF**.
+>>
+>> **WHAT IS ESTABLISHED, AND IT IS THE HEADLINE THE CAMPAIGN HAS BEEN CHASING SINCE S15.**
+>>   * **THE INVARIANT IS REAL. 1,074 -> 108 -> 0.** An accept-rule change closed a class that five band
+>>     remedies could not move, and the independent judge confirms it on the shipped file, with the driver's
+>>     own sweep agreeing for the first time. `[NORMAL] PASS count 0 (expected 0)`.
+>>   * **IT COST NOTHING TO COMPUTE. 909M rA evals — the SAME figure as `_S20A`, +0.0%**, 830 s against a
+>>     2,400 s cap. The registered +15% headroom was never approached, and my S20 arithmetic was wrong in
+>>     the safe direction for the second arm running.
+>>   * **THE ACCEPT SIDE HAS STILL NEVER FIRED — 0 of 5,320,213 — AND THE MECHANISM IS NOW PROVEN, NOT
+>>     INFERRED.** The population is born in bisection and dies there: the split-side guard refused **40,717**
+>>     candidate children, and the post-loop sweep — which has NO `FLOOR_MM` and covers every one of the
+>>     1,218,348 live facets — then finds **zero survivors**. The accept side is a backstop for a population
+>>     that never reaches accept time. (On `_S20A` its zero had a second, uglier cause: the f64 test could
+>>     not see the 108 at all.)
+>>   * **THE FIDELITY PRICE DID NOT MOVE, WHICH IS ITSELF THE FINDING.** H2 witnessed is **55.652 um on both
+>>     `_S20A` and `_S20B` — the same argmax carrier, to the micron.** Closing the last 108 orientation
+>>     defects did not touch it. The H2 argmax is NOT an orientation defect and admission was never going to
+>>     reach it. The +34.3 um over `_S19A` was already paid by S20's split-side cage; S20.1 added 2,584 more
+>>     refusals, 75 more unresolved facets, and **zero** further fidelity cost.
+>>   * **THE FRONTIER LAW HOLDS AGAIN, AND ON A NEW QUANTITY.** Total physical >=90 moved 4,651 -> 4,641
+>>     (-0.2%) while the GATED subclass inside it went 108 -> 0 and feature-spanning went 4,543 -> 4,641.
+>>     The population did not shrink; **it moved across the exemption boundary**. Refining the accept rule
+>>     relocates the frontier exactly as refining a band does.
+
+**THE OPERATOR'S OBSERVATION, RECORDED AS THE VERDICT FOR THIS BOUNDARY (screenshots, 2026-07-31).**
+  1. **SITE PERSISTENCE ACROSS LINEAGES.** The operator reports the SAME blades at the SAME sites in
+     `_S201ID` (uniform grid, 120k cap, flags OFF) and `_S20A` (aligned seed, 1.2M). Those arms share no
+     facets and not even a seed family. **The surviving class anchors to surface landmarks — the junction
+     cage and specific flank spots — not to a mesh.** That is the Frontier law's prediction confirmed by eye.
+  2. **TWO DISTINCT RESIDUAL CLASSES, AND THEY HAVE DIFFERENT OWNERS.** (a) thin orientation blades —
+     admission's population; (b) **large outward-facing PLATES standing off the surface**, mm-scale flaps
+     below an X-crossing, which **pass footprint-normal admission BY DESIGN** and belong to the H1/cage
+     population the routing owns.
+
+**THE CHEAP CHECK, ON EXISTING ARTIFACTS, AND IT SIZES THE ROUTING'S MANDATE.** `s201plates.ts`, no mesh
+run. Facets at or above the operator-visible area floor (**0.02 mm^2**; 262k of 1.22M), classified
+orientation-vs-protrusion. **The protrusion instrument cannot be the normal and it is worth saying why:
+every vertex this driver emits is LIFTED ONTO the analytic surface by `addV`, so a facet cannot stand off at
+its corners — a plate is a large CHORD whose INTERIOR departs.** So (b) is measured by sampling the facet's
+own interior: `standoff = r_facet - rA(theta,z)`, an UPPER bound on true distance and therefore **a
+classifier, not a fidelity number**.
+
+| operator-visible class (area >= 0.02 mm^2) | `_S20A` | `_S20B` |
+|---|---|---|
+| (a) ORIENTATION blades, gated | **1** | **0** |
+| (b) PROTRUSION plates, \|interior standoff\| >= 50 um | **223** | **213** |
+| plates the admission invariant CANNOT address | 222 (99.6%) | **213 (100.0%)** |
+| plate standoff p50 / p90 / MAX | 197.1 / 444.4 / **639.3 um** | 197.1 / 447.4 / **639.3 um** |
+| plates OUTWARD / INWARD | 214 / 9 | 209 / 4 |
+| plates inside a traced junction disk | 182 of 223 (**81.6%**) | 175 of 213 (**82.2%**) |
+
+>> **THE MANDATE SPLIT, STATED AS THE FRACTION IT IS: of the operator-visible offenders on `_S20A`, the
+>> admission invariant can address 0.4% and CANNOT address 99.6%. On `_S20B` it is 0% and 100%.** Only ONE
+>> of the 108 gated facets was ever large enough to see; the other 107 were sub-visible. **The class the
+>> operator is actually photographing is the plate class, and admission was never its instrument.**
+>>
+>> **AND THE PLATES DID NOT MOVE — SAME SITES, SAME MAGNITUDES, TO THE DIGIT, ACROSS THE FIX.** The worst
+>> offenders sit at `th -1.83271 / z 81.587` (523.8 um), `th -1.83134 / z 81.585` (528.7), `th -0.26633 /
+>> z 79.546` (613.5), `th -0.26647 / z 79.315` (435.7), `th -0.26538 / z 114.422` (374.4) on BOTH arms.
+>> Their 3-D AR is **1.8 - 8.9** — well-shaped, far under the cap, long edges 776-1,401 um — and their
+>> deviation clusters at **85-95 deg**, i.e. nearly TANGENT to the local normal. That is the signature of a
+>> chord across a deep valley, and it is the **ACCEPTED-BLIND population of the P5 handoff** (carriers at AR
+>> 2.68 / 5.71 with the driver's ruler 47-96x blind) measured a third way. The 639.3 um worst standoff is
+>> the handoff's own `-630.6 um within 83 um of centre in theta` V-profile. **Same feature, same sites,
+>> three instruments, four arms. This is S21's target list and it is already enumerated.**
+
+>> **WHAT S20.1 LEAVES ON THE TABLE, said plainly:** the invariant is shippable-in-principle and blocked in
+>> practice by a fidelity ceiling it did not cause and cannot cure. Nothing here reduces the plate class,
+>> and the strand list is EMPTY — so the routing's work order is NOT the strand list after all. It is the
+>> junction-cage plate census above, which is the artifact S21 must consume.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
