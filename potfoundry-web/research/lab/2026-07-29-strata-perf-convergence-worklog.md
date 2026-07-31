@@ -3486,6 +3486,70 @@ Strands: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S20A.str
 >> pre-registration exists to prevent.**
 
 
+### S20.1 — AMENDMENT. **AND THE FIRST THING IT DOES IS RETRACT MY OWN DIAGNOSIS OF S20.**
+Registered 2026-07-31. Authorized as the completion of the approved build, not new scope.
+
+**RETRACTION — CAUSE 1 IS REFUTED BY EVIDENCE THE S20 ARM ALREADY CARRIED, AND I MISSED IT.** S20's write-up
+named "a coverage hole: `consider()` returns early below `FLOOR_MM`, so sub-floor facets are never
+admission-tested" as the leading cause of X1's 108, and the coordinating session authorized S20.1 to close
+it. **That cause cannot be right, and my own instrument says so.** The strand enumeration is a POST-LOOP
+SWEEP OVER EVERY LIVE FACET (`for t in ta.length: if alive[t] ... footBackT(t)`) — it does not go through
+`consider()` and it has no floor. It tested all 1,218,088 facets and returned **0**. So there is no
+untested population: **the driver's copy of the test genuinely disagrees with the judge's on those 108
+facets.** The zero-accept-side-firings figure is a separate (real) fact about where the population is born;
+it is not evidence for a coverage hole.
+**THE ORDERED CANDIDATES ARE THEREFORE THE REMAINING TWO, and the order is now the reverse of what S20
+wrote.** Each with the measured discriminator that settles it, to be run BEFORE any re-mesh:
+  D1 **float32 STL versus float64 driver — the leading candidate now.** The judge scores the STL, which is
+     f32; the driver scores f64 vertices. A facet whose footprint deviation sits within f32 half-ulp of the
+     90 deg boundary tips either way, and the campaign has a precedent population for exactly this (the
+     standing `f32-indeterminate at the cap` band on blades and folds, which the normal gate does NOT have).
+     **DISCRIMINATOR, artifact-only, minutes:** run the driver's `footBack` on the `_S20A` STL's own f32
+     coordinates and compare facet-by-facet against the judge's gated set. If the 108 are all within a
+     narrow deviation band of 90 deg, D1 is the cause. **PREDICTED, so it can be wrong: >=90 of the 108
+     land inside 89.5-90.5 deg.**
+  D2 **theta from `atan2` of written coordinates versus the driver's stored `vth`.** Same discriminator run
+     reports, for each of the 108, `|atan2(y,x) - vth|`; a seam-adjacent facet is the signature.
+**THE FIX FOLLOWS THE CAUSE AND IS NOT WRITTEN UNTIL THE DISCRIMINATOR HAS RUN.** If D1: the driver must
+test admission on the values that will actually be SHIPPED — f32-round-trip the three vertices before
+`footBack` — so the invariant is asserted on the mesh that leaves the building rather than on the one in
+memory. That is a real semantic change and it belongs in the registration, not in a patch after the fact.
+**NO CODE HAS BEEN CHANGED FOR S20.1.**
+
+**S20.1 BARS, registered before any number exists.** Arm `_S20B` = `_S20A`'s command with the fix, whatever
+the discriminator names. CONTROL = `_S20A` (recorded) and `_S19A` (fidelity reference).
+  Y1 **THE CLAIM UNDER TEST, cleanly:** judge-side footprint-back-facing among ACCEPTED facets = **0**
+     outside the enumerated strand set. `_S20A` reads **108** against an empty strand set.
+  Y2 **THE FIDELITY PRICE IS REPORTED, NOT BARRED AS A WIN** — the composed cage (AR cap + admission) is
+     expected to cost, and pricing it IS the deliverable.
+  Y3 **REGRESSION STOP — the numbers, said here as instructed.** If **H2 witnessed > 42.76 um** (2x
+     `_S19A`'s 21.379) **OR `unresolved` worst > 250.0 um** (1.42x `_S20A`'s 175.831, which is already
+     3.7x `_S19A`'s 47.245) **OR `unresolved` count > 8,000** (1.78x `_S20A`'s 4,485), the arm **STOPS and
+     reports**. That outcome is not a failure of the invariant — it means **the M=g/h^2 routing must land
+     BEFORE the invariant can ship**, and the strand list is its work order.
+  Y4 **LIVE-FIRE SAFEGUARDS, unchanged and now real for the first time.** Accept-side has never fired
+     (0 of 5.3M, because the population is born in bisection). With the fix live it may. Refusal-storm:
+     refusals > **25% of accepts** OR strands > **5,000** => **INFEASIBLE-AS-WIRED**, write the strand list,
+     STOP. **A storm is the S8-cage signal, not a bug** — it would mean admission is demanding geometry
+     bisection cannot lay, which is precisely the M=g/h^2 case.
+  Y5 **PRECONDITIONS + IDENTITY**, as ever: folds 0, blades <= 3, admitted AR <= 50, cracks 0, Euler 0;
+     md5 `8a59fb37a9115600b13262254380ccb0` byte-exact and gate **12/12** after the edit; flags default OFF.
+  Y6 **COST.** rA evals <= +15% of `_S20A`'s 909M; wall <= 2,400 s; live tris <= 3.0 M.
+  Y7 **VERDICT ROWS — disjoint, first match:**
+     1 **INFEASIBLE-AS-WIRED** — Y4 fires. Report the strand list; the routing build is next, not a re-run.
+     2 **REGRESSION STOP** — Y3 fires. Same conclusion, priced: routing lands before the invariant ships.
+     3 **REFUTATION OF THE WIRING** — Y1 still nonzero outside strands after the fix. Work D2, then stop.
+     4 **WIN** — Y1 reads 0 AND Y5 AND Y6. The fidelity price is reported beside it, whatever it is.
+     5 **TRADE** — everything else.
+
+>> **WHY THIS AMENDMENT IS WORTH RUNNING EVEN THOUGH S20 SCORED ROW 2.** S20 moved the class **x0.101** from
+>> an accept-rule change after five band remedies moved it by nothing, and it did so at **+0.3%** cost. The
+>> only thing standing between that and a shippable invariant is 108 facets of 1,218,088 whose cause is now
+>> narrowed to two candidates with a minutes-long artifact-only discriminator between them. **That is the
+>> cheapest decisive step left in the campaign**, and the routing decision the whole drive is converging on
+>> (M=g/h^2 / declared patches over the strand list) needs S20.1's priced strand list as its work order.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
