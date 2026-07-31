@@ -173,8 +173,14 @@ export interface AlignedSeedOpts {
   patchInnerMm: number;
   /** ring-to-ring radius ratio; `patchM` is derived from it (see the emitter). */
   patchGrade: number;
-  /** points per ring. */
+  /** points per ring, at the polar grading's own spacing; the S21 field cap scales it up where it binds. */
   patchM: number;
+  /**
+   * S21 — THE GRADING FIX'S ONLY GUARD. Maximum sub-rings the sizing-field cap may insert between two
+   * consecutive polar rings. It exists so a pathologically small field answer cannot make the patch set
+   * unbounded; when it CLIPS it is counted into `patchSubCapped` and reported, never absorbed silently.
+   */
+  patchSubMax: number;
   /** chord tolerance for the sizing solve, mm. */
   tolMm: number;
   /** LAYER-2 NEGATIVE CONTROL: push every locus this far along its own normal before seeding, um. */
@@ -222,6 +228,7 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   patchInnerMm: 0.05,
   patchGrade: 1.6,
   patchM: 16,
+  patchSubMax: 16,
   tolMm: 0.01,
   mistraceUm: 0,
   shapeAR: 50,
@@ -300,6 +307,18 @@ export interface AlignedSeed {
     patchRings: number;
     patchRefusedPt: number;
     patchRefusedSeg: number;
+    /**
+     * S21 — THE GRADING FIX. Polar rings where the SIZING FIELD asked for less than the polar grading and
+     * therefore bound the interior sizing, the sub-rings that bound inserted, and the number of times the
+     * `patchSubMax` guard CLIPPED the refinement. A non-zero `patchSubCapped` means the fix could not be
+     * fully applied somewhere and the routed disk may still be coarser than the field there — it is
+     * reported rather than silently absorbed.
+     */
+    patchFieldBoundRings: number;
+    patchSubRings: number;
+    patchSubCapped: number;
+    /** S21: the worst ratio polar/field over all rings — how far the polar set was from the field's answer. */
+    patchWorstRatio: number;
     /** S15: the across spacing ACTUALLY placed, over all chain points — min / p50, mm. */
     acrossMinPlacedMm: number;
     acrossP50PlacedMm: number;
@@ -882,14 +901,49 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // FLOORED at 1.5x `pslgEpsMm` — a patch point closer than that to a locus constraint would be re-routed
   // INTO it by stage 3e, which is the free-point-bends-a-traced-locus failure the across rule's precondition
   // exists to prevent. Near the centre the rings are ~20 um apart, so this floor genuinely binds here.
+  // ── S21 — THE GRADING FIX. `patch interior sizing = min(polar grading, sizing field)`. ─────────────
+  //
+  // THE DEFECT IT REPAIRS, MEASURED IN S18 AND NOT RE-DERIVED HERE: the polar set REPLACES the background
+  // lattice inside a routed disk, so where the driver would have refined HARDER than the polar grading,
+  // routing COSTS resolution. Disk #25's congruent copy went **0.008 -> 31.429 um** and its carrier went
+  // from edges 86.2/133.8/215.6 um (AR 10.07) to 185.6/601.3/784.5 um (AR 30.58). Routing must never
+  // under-resolve what the driver would have refined; an arm without this fix is invalid, not merely worse.
+  //
+  // HOW IT IS APPLIED, AND WHY THIS SHAPE RATHER THAN A REWRITE OF THE PROGRESSION. The polar radii are
+  // left EXACTLY where they were and the fix only INSERTS between them. Per polar ring the field's own
+  // answer `hLoc` is compared with that ring's radial spacing `dsPolar`; `nSub = ceil(dsPolar / hLoc)`
+  // sub-rings then span the same gap, and the arc count is scaled by the SAME factor so the elements stay
+  // as isotropic as the M-derivation above makes them. **nSub === 1 wherever the field does not bind, and
+  // then every radius, every M, every phase and every guard radius is arithmetically what it was** — the
+  // fix is MONOTONE-DOWNWARD exactly like the S15 across rule: it can only refine, never move or coarsen.
+  //
+  // `hLoc` IS A MINIMUM OVER THE RING, not a value at a point, because the requirement is that the disk is
+  // never coarser than the field ANYWHERE on it. Four cardinal probes x both chart directions; the solve is
+  // the same `solveHDir` the across rule uses, at the same `tolMm`, so no new sizing quantity enters.
   let patchPts = 0; let patchRings = 0; let patchRefusedPt = 0; let patchRefusedSeg = 0;
+  let patchFieldBoundRings = 0; let patchSubRings = 0; let patchSubCapped = 0; let patchWorstRatio = 1;
   const patchEmitted: PatchRegion[] = [];
+  /** the sizing field's own answer at radius `r` about a routed centre — min over 4 probes x 2 directions. */
+  const patchFieldAt = (cth: number, cz: number, r: number): number => {
+    let h = Infinity;
+    for (let p = 0; p < 4; p += 1) {
+      const a = (Math.PI / 2) * p;
+      const th = canonTheta(cth + (r * Math.cos(a)) / rRef);
+      const z = cz + r * Math.sin(a);
+      if (z < 0 || z > H) continue;
+      const rr = rAt(th, z);
+      const hA = solveHDir(rA, th, z, 1, 0, rr, o.tolMm, 14, 2e-4, 4, bump);
+      const hB = solveHDir(rA, th, z, 0, 1, rr, o.tolMm, 14, 2e-4, 4, bump);
+      h = Math.min(h, hA, hB);
+    }
+    return Number.isFinite(h) ? h : Infinity;
+  };
   for (const reg of o.patchRoute ?? []) {
     const R = Math.min(reg.radiusMm, o.patchMaxMm);
     const rIn = Math.min(o.patchInnerMm, R * 0.5);
     if (!(R > 0) || !(rIn > 0)) continue;
     const K = Math.max(1, Math.ceil(Math.log(R / rIn) / Math.log(o.patchGrade)));
-    const M = Math.max(6, Math.round(o.patchM));
+    const M0 = Math.max(6, Math.round(o.patchM));
     let emittedHere = 0;
     // the junction centre itself — the one point that is ON the crossing
     {
@@ -901,18 +955,60 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     for (let i = 0; i <= K; i += 1) {
       const r = rIn * ((R / rIn) ** (i / K));
       const prev = i === 0 ? rIn / o.patchGrade : rIn * ((R / rIn) ** ((i - 1) / K));
-      const ds = Math.max(1e-6, r - prev);                       // this ring's own radial spacing
+      const dsPolar = Math.max(1e-6, r - prev);                  // this ring's own radial spacing
+      // ── THE FIX: min(polar grading, sizing field), as a refinement factor on the SAME progression ──
+      // THE FIELD IS READ THROUGH THE SAME FLOOR THE REST OF THE SEED USES, AND THAT CLAUSE IS
+      // LOAD-BEARING RATHER THAN COSMETIC. `acrossAbs` places `max(acrossMinMm, hAc)` — it never goes
+      // below 50 um — so an unfloored patch would be resolving the SAME surface an order finer than the
+      // chains beside it. Measured on the first probe of this arm: unfloored, the field asks for ~15 um
+      // against a 0.56 mm outer polar spacing (ratio 36.44x), the emitter tries to fill 1.5 mm disks at
+      // that pitch, and cdt2d dies in `mergeHulls` on the resulting point set. Floored, the routed disk is
+      // never coarser than the field AND never finer than the seed's own established resolution.
+      const hLoc = Math.max(o.acrossMinMm, patchFieldAt(reg.theta, reg.z, r));
+      const ratio = dsPolar / Math.max(1e-9, hLoc);
+      if (ratio > patchWorstRatio) patchWorstRatio = ratio;
+      // THE WELD IS THE HARD FLOOR ON REFINEMENT, AND IT IS MEASURED RATHER THAN ASSUMED. `addPt` welds
+      // anything within `weldMm` (2 um), so a sub-ring spacing below ~3x that collapses whole rings onto a
+      // handful of surviving points and hands cdt2d a degenerate, near-collinear set — which it does not
+      // refuse, it CRASHES in `mergeHulls`. Measured here on the first probe of this arm. So both the
+      // radial subdivision AND the arc count are weld-bounded, and every clip is counted into
+      // `patchSubCapped` so a routed disk that could NOT be brought down to the field's answer says so.
+      const WELD_MIN = 3 * o.weldMm;
+      let nSub = 1;
+      if (ratio > 1) {
+        patchFieldBoundRings += 1;
+        const nWant = Math.ceil(ratio);
+        const nWeld = Math.max(1, Math.floor(dsPolar / WELD_MIN));
+        nSub = Math.min(nWant, Math.max(1, Math.round(o.patchSubMax)), nWeld);
+        if (nSub < nWant) patchSubCapped += 1;
+      }
+      patchSubRings += nSub - 1;
+      const ds = dsPolar / nSub;                                 // the EFFECTIVE radial spacing placed
       const gp = ds * 0.35; const gs = Math.max(ds * 0.55, o.pslgEpsMm * 1.5);
-      const phase = (i % 2) * (Math.PI / M);                     // stagger alternate rings
-      patchRings += 1;
-      for (let k = 0; k < M; k += 1) {
-        const a = phase + (2 * Math.PI * k) / M;
-        const th = canonTheta(reg.theta + (r * Math.cos(a)) / rRef);
-        const z = reg.z + r * Math.sin(a);
-        if (z < 0 || z > H) continue;
-        if (nearPt(th, z, gp)) { patchRefusedPt += 1; continue; }
-        if (nearSeg(th, z, gs)) { patchRefusedSeg += 1; continue; }
-        addFree(th, z); patchPts += 1; emittedHere += 1;
+      for (let s = 1; s <= nSub; s += 1) {
+        // s === nSub lands exactly on the polar radius `r`; nSub === 1 is that radius and nothing else.
+        const rs = prev + (r - prev) * (s / nSub);
+        // ARC COUNT. `nSub === 1` keeps `M0` EXACTLY — that is what makes the whole fix monotone-downward
+        // and the unbound path arithmetically untouched. Where the field DID bind, the arc spacing is
+        // matched to the effective radial spacing (isotropy, the same derivation as M0's) and then bounded
+        // so no two neighbours on a ring are inside the weld.
+        let M = M0;
+        if (nSub > 1) {
+          const mIso = Math.ceil((2 * Math.PI * rs) / ds);
+          const mWeld = Math.max(6, Math.floor((2 * Math.PI * rs) / WELD_MIN));
+          M = Math.max(6, Math.min(Math.max(M0, mIso), mWeld));
+        }
+        const phase = ((i + s - 1) % 2) * (Math.PI / M);         // stagger alternate rings
+        patchRings += 1;
+        for (let k = 0; k < M; k += 1) {
+          const a = phase + (2 * Math.PI * k) / M;
+          const th = canonTheta(reg.theta + (rs * Math.cos(a)) / rRef);
+          const z = reg.z + rs * Math.sin(a);
+          if (z < 0 || z > H) continue;
+          if (nearPt(th, z, gp)) { patchRefusedPt += 1; continue; }
+          if (nearSeg(th, z, gs)) { patchRefusedSeg += 1; continue; }
+          addFree(th, z); patchPts += 1; emittedHere += 1;
+        }
       }
     }
     // PROVENANCE: declared at the ROUTED radius, which is what the emitter actually touched. A region
@@ -1227,6 +1323,10 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       patchRings,
       patchRefusedPt,
       patchRefusedSeg,
+      patchFieldBoundRings,
+      patchSubRings,
+      patchSubCapped,
+      patchWorstRatio,
       // reduce, not Math.min(...arr): the array is one entry per chain point (tens of thousands) and a
       // spread that long overflows the argument stack.
       acrossMinPlacedMm: acrossPlaced.length > 0 ? acrossPlaced.reduce((m, v) => (v < m ? v : m), Infinity) : acrossBase,

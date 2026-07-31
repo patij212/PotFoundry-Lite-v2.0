@@ -3799,6 +3799,137 @@ built and seed-validated (watertight by construction, zero constraint edges, no 
 >> **STOP AFTER SCORING. The operator eyeballs the routed mesh before Phase D — that gate is NOT waived.**
 
 
+### *** S21A RESULT — Z7 ROW 3, REGRESSION. THE ROUTING WORKS WHERE IT IS APPLIED — 88 -> 0 PLATES AT
+### *** P1/P2/P3 AND H1 WITNESSED x0.258 — AND IT FAILS Z3 BY 3.68 um OF H2 THAT IT DID NOT PUT THERE.
+### *** THE FOURTH PRIMARY WAS NEVER COVERED, AND THAT IS A REGION-PLACEMENT MISS, NOT A MECHANISM ONE. ***
+`_S21A` = the `_S19A` command + `PF_CB_ALIGNED_PATCH=<_S19A regions.json> PF_CB_ALIGNED_PATCH_IDS=34,44,49,72`,
+admission flags OFF as registered. STL: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S21A.stl`
+(1,242,079 facets). Audit `FID_S21A.report.txt`. Patches `gothicarches_ring_DS-H_S21A.patches.json` (26 declared).
+
+**STAGE 0 PASSED AND IT WAS NOT A FORMALITY.** The census re-run on `_S19A` transfers all four primaries:
+P1 th -0.26685 z 79.543 **639.3 um** (exact), P2 th -1.83295 z 81.587 (family worst **438.3**), P3 th
+-0.26538 z 114.422 (**374.4**), P4 th 0.56742 z 97.313 (**334.9**, exact). `_S19A` carries **200 plates /
+35 gated** at the 0.02 mm^2 floor, p50 185.5 / max 639.3 um, 89.5% in-cage.
+
+**THE EMITTER GRADING FIX, AND THE DEFECT IT REPAIRS IS NOW MEASURED ON THIS ARM RATHER THAN INHERITED.**
+`PF_CB_ALIGNED_PATCH_SUBMAX=1` reproduces the S18 emitter exactly and was run as the control: the sizing
+field bound the polar grading on **114 of 207 rings, worst polar/field ratio 36.44x**, and none of it could
+be acted on. With the fix: **93 rings bound, 218 sub-rings inserted, worst ratio 9.26x, and the `patchSubMax`
+guard never clipped — the fix applied in full.** Structured points 2,679 -> **20,473**; seed 96,398 ->
+114,184 points; constraint recovery **12,785 / 12,785 = 100%** either way.
+
+**TWO DEFECTS IN MY OWN FIX WERE FOUND BY A PROBE AND NOT BY THE ARM, WHICH IS THE POINT OF THE PROBE.**
+  1. Scaling the arc count by the sub-ring factor drove ring arc spacing BELOW the 2 um weld radius near the
+     centre; `addPt` welded whole rings onto a handful of survivors and **cdt2d died in `mergeHulls`**. The
+     arc count is now derived from the EFFECTIVE radial spacing and weld-bounded, and `nSub === 1` keeps the
+     original `M` exactly — so the unbound path is arithmetically untouched.
+  2. The field was read UNFLOORED while the rest of the seed floors at `acrossMinMm` = 50 um. Unfloored it
+     asked for ~15 um against a 0.56 mm outer polar spacing and tried to fill 1.5 mm disks at that pitch.
+     **The fix reads the field through the same 50 um floor the across rule uses**, which is what took the
+     worst ratio from 36.44x to 9.26x and made the arm feasible.
+
+**BARS, SCORED AS REGISTERED, FIRST MATCH. CONTROL = `_S19A` recorded.** Plate numbers on both arms come
+from the SAME instrument over the SAME 26 declared regions, so the routed comparison is within-region
+before/after and not a selection artefact.
+
+| bar | `_S19A` | **`_S21A`** | line | |
+|---|---|---|---|---|
+| **Z1 plates at the ROUTED primaries P1+P2+P3** | 44+32+12 = **88** | **0 / 0 / 0** | >=5x fall | **WIN SHAPE MET** |
+| **Z1 P4 — SELECTED BUT NEVER COVERED** | 21, worst **378.4** | **21, worst 378.4** | | **UNCHANGED TO THE DIGIT** |
+| Z1 all four primaries as registered | 109, worst 639.3 | **21, worst 378.4** | >=5x count AND >=2x worst EACH | count x0.193 (**5.19x, met**); worst x0.591 (**1.69x, NOT met**) |
+| Z1 global plates (0.02 mm^2, 50 um) | 200 | **67** | | x0.335 |
+| Z1 routed footprint, abs / per 1k | 108 / **2.578** | **1 / 0.016** | | **x0.0093 / x0.0062** |
+| Z1 outside the footprint, abs / per 1k | 92 / 0.078 | 66 / 0.056 | | x0.717 |
+| Z2 gated blades at the visible floor | 35 | **11** | reported, no bar | x0.314 |
+| Z2 judge NORMAL / feature-spanning | 1,074 / 3,898 | **866 / 3,944** | reported | x0.806 / +1.2% |
+| **Z3 H2 witnessed / fraction** | 21.379 um / 0.00128% | **25.063 um / 0.00129%** | <=21.379 / <=0.00128% | **FAILS (x1.172)** |
+| **Z3 H1 witnessed / certified bound** | 482.131 / 591.762 um | **124.525 / 143.072 um** | no bar, carries no claim | **x0.258 / x0.242** |
+| Z3 H1 facets-over | 443/40,000 = 1.11% | **489/40,000 = 1.22%** | <=1.30% | holds |
+| Z3 REGRESSION-STOP ceilings | — | H2 25.063 (<=42.76); unresolved worst 47.245 (<=250.0); count 3,683 (<=8,000) | | **NOT fired** |
+| Z4 folds / blades / admitted AR / recovery / cracks / Euler | 0/2/50.00/100%/0/0 | **0/2/50.00/100%/0/0** | | **HOLDS** |
+| Z5 identity + gate | — | **md5 8a59fb37 byte-exact (`cmp` clean), 12/12 every value exact** | | **HOLDS** |
+| Z6 rA evals / wall / live tris | 906M / 795 s / 1,217,485 | **912M (+0.66%) / 769 s / 1,242,079** | <=+15% / <=2,400 s / <=3.0M | **HOLDS EASILY** |
+
+H1 is quoted with its coverage as the standing rule requires: **40,000 of 1,242,079 facets, stride 767,647,
+walk capped at `PF_FT_H1MAX=40000` — INCOMPLETE, the unseen triangles are UNKNOWN, not passing.** H2 is the
+witnessed floor at 40.0M queries. Neither is a driver self-report; the driver's own 47.245 um is not fidelity.
+
+>> **Z7 ROW 3 — REGRESSION.** Rows are disjoint and evaluated in order. **Row 1 (INFEASIBLE) did not fire:**
+>> constraint recovery is 100%, Euler 0, seam-cracks 0, and the patch set is 227,568 seed triangles against
+>> an 8M cap — the emitter laid the demand comfortably. **Row 2 (REGRESSION STOP) did not fire:** H2 25.063
+>> um is well under the 42.76 um ceiling and both unresolved clauses hold. **Row 3 fires on Z3's guard
+>> clauses** — H2 witnessed 21.379 -> 25.063 um and the fraction 0.00128% -> 0.00129%. Rows 4 (WIN) and 5
+>> (TRADE) are never reached, and that ordering is doing real work here rather than being a formality,
+>> because **Z1's win shape WAS met wherever the geometry actually landed.**
+>>
+>> **WHAT IS ESTABLISHED, AND IT IS THE FIRST TIME THE OPERATOR'S CLASS HAS MOVED AT ALL.**
+>>   * **THE PLATE CLASS IS ROUTABLE. 88 -> 0 at P1/P2/P3, and 108 -> 1 across the whole routed footprint
+>>     (2.578 -> 0.016 per 1k, x0.0062 by density).** Five band remedies, one accept rule and one admission
+>>     invariant left this population at the same four sites with the same magnitudes to the digit. Routed
+>>     geometry removed it where it was applied. **The frontier law's consequence — "no amount of BAND
+>>     geometry can close this class" — is not violated: this is not band geometry, it is targeted routing.**
+>>   * **AND THE CONTROL IS INSIDE THE ARM.** P4 was SELECTED (disk #72, rank 3 by class load) and never
+>>     COVERED: the emitter caps its routed radius at `patchMaxMm` = 1.5 mm and P4 sits **2.510 mm** from
+>>     #72's centre. Its 21 plates, its 378.4 um worst standoff and its 55.9431 worst (area x standoff) are
+>>     **identical on both arms**. One arm therefore carries both the treatment and the untreated control at
+>>     matched sites. **A SELECTED DISK IS NOT A COVERED SITE, and a per-disk score would have reported that
+>>     miss as a clean zero — it was caught only by scoring the SITE.**
+>>   * **H1 FELL BY A FACTOR OF FOUR: witnessed 482.131 -> 124.525 um, certified bound 591.762 -> 143.072.**
+>>     `_S19A`'s H1 witness-locus was `z=[79.496,79.499,79.633] th=[-0.2751,-0.2747,-0.2508]` — **that is P1**.
+>>     The worst mesh->surface error in the mesh and the operator's headline plate were the same feature, and
+>>     routing P1 removed both. This is the strongest single number in the arm and it has no bar on it.
+>>   * **THE H2 PRICE IS THE FRONTIER LAW ON THE FIDELITY INSTRUMENT, AND THE ARGMAX SAYS SO.** `_S21A`'s H2
+>>     max sits at **th 6.021386, z 113.45994** with a carrier of edges 389.9/349.5/50.0 um — area ~0.0088
+>>     mm^2, **BELOW the 0.02 mm^2 visible floor**. `_S15A`'s argmax was th 1.308997 at **z 113.45994, the
+>>     same z to five decimals, exactly 9 periods of 2pi/12 away**. It is a CONGRUENT COPY, which is the
+>>     identical mechanism S18 recorded at disk #25. **The routing did not create this facet; it removed the
+>>     larger errors that were masking it, and the argmax relocated to a sub-visible congruent copy.** That
+>>     is why H1 (worst-case, mesh->surface) improved 3.9x while H2 (worst-case, surface->mesh) worsened 17%.
+>>   * **THE COST ESTIMATE WAS RIGHT THIS TIME AND THE RECORD SHOULD SAY SO.** +0.66% rA evals, 769 s
+>>     against a 2,400 s cap, 1,242,079 live tris against 3.0M. Routing 26 disks with the grading fix is
+>>     cheap; the registered +15% headroom was never approached.
+>>
+>> **WHAT THIS DOES NOT ESTABLISH, said plainly.** Z1's registered win required the worst standoff at EACH
+>> primary to fall >=2x, and P4's did not fall at all because P4 was never routed. **The arm does not clear
+>> its own WIN row and it is not scored as one.** The honest claim is narrower and stronger than a WIN
+>> would have been: *routing removes the plate class wherever the geometry lands, at a fidelity price paid
+>> on a sub-visible congruent copy the routing did not create.*
+>>
+>> **AND THE SURVIVING PLATES ARE NOT DECLARED.** Z1 requires a surviving plate to be *declared and exempted
+>> with provenance, never silently present*. 66 of the 67 survivors sit OUTSIDE every declared region, so
+>> they are silently present and that clause is **unmet**. The judge confirms the other direction is clean:
+>> `PATCH PROVENANCE ACTIVE — 26 DECLARED REGION(S), 0 determined blade(s) EXEMPTED, 2 UNDECLARED blade(s)
+>> remain and ARE the gate count` — the emitter's own geometry claimed no exemption it had not earned.
+
+**S21B COVERAGE ARTIFACT — BUILT AND ASSERTED, NOT RUN.** `research/bridge/out/s21bCover.ts` sweeps the
+67-offender census on `_S21A`, keeps all 26 regions `_S21A` routed (or P1/P2/P3 would regress) and adds
+**17 new regions** by single-linkage at 0.45 mm, writing `gothicarches_ring_DS-H_S21B.regions.json`
+(**43 regions**). It **THROWS rather than writing** if any offender centroid falls outside a declared
+region; it asserts **67 / 67 covered**. **No cluster needs more than `patchMaxMm`** — the largest is P4's at
+radius **0.501 mm** — so there is no radius exceedance to register. The P4 cluster is
+**id 1000, th 0.56692, z 97.210, r 0.501, 21 offenders, worst 378.4 um**.
+
+**THE INWARD CLASS, CLASSIFIED BECAUSE IT WAS ASKED FOR AND IT IS A DIFFERENT ANIMAL.** 6 of the 67 have
+standoff <= -50 um, i.e. **the mesh sits INSIDE the surface**. The th 3.1366/3.1367, z 18.157/18.158 pair
+is **-202.6 um on both**, matched areas 0.0504/0.0506, with deviations **59.45 and 120.11 deg** — two
+triangles of ONE quad, tilted oppositely about a common edge. That is a chord BRIDGING a concave feature,
+not a flap standing off a convex one: same "chord across a feature the mesh does not resolve" mechanism as
+a plate, opposite sign. It sits at z ~ 18.16, the same base band as `_S19A`'s AR max-locus (z ~ 18.0-18.03)
+and its H2 argmax (z 18.008). **It is covered by S21B region 1006 and should be reported separately from
+the outward plates, because a remedy that adds resolution to a bridged valley and a remedy that removes a
+standing flap are not obviously the same remedy.**
+
+>> **NOT RUN HERE, AND THE REASON IS THE REGISTRATION'S OWN. S21B was specified to compose the routing with
+>> `PF_CB_ADMIT_SHIPPED=1`.** Two things stop it at this session's boundary. **(1) S21A scored a REGISTERED
+>> REGRESSION ROW**, and the standing instruction treats a registered regression row as a stop-and-report,
+>> not as a base to build the next arm on. **(2) `PF_CB_ADMIT_SHIPPED` is held DEFAULT OFF "until routing
+>> lands — OPERATOR DECISION".** Routing has now landed *as a regression on the fidelity guard*, which is
+>> materially different from the condition the hold anticipated, and the release of an operator hold is the
+>> operator's to give. The coverage artifact is built, asserted and ready so that arm can start immediately
+>> on the operator's word. **Composing a second mechanism on top of an arm that just breached its fidelity
+>> guard, without re-registering bars, is exactly what pre-registration exists to prevent.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

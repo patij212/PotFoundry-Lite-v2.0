@@ -1011,6 +1011,10 @@ describe('STRATA conforming-bisection', () => {
     const AL_PATCH_TOPN = Math.round(envF('PF_CB_ALIGNED_PATCH_TOPN', 25));
     const AL_PATCH_IDS = (process.env.PF_CB_ALIGNED_PATCH_IDS ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
     const AL_PATCH_MAX = envF('PF_CB_ALIGNED_PATCH_MAX_MM', 1.5);
+    // S21 — the grading fix's only knob. 1 REPRODUCES THE S18 EMITTER EXACTLY (no sub-rings, so patch
+    // interior sizing is the bare polar grading again) and exists so the fix can be A/B'd against the
+    // arithmetic it replaces rather than asserted. Default 16 = the fix active.
+    const AL_PATCH_SUBMAX = Math.round(envF('PF_CB_ALIGNED_PATCH_SUBMAX', 16));
     let patchRoute: PatchRegion[] = [];
     if (AL_PATCH !== '') {
       if (!ALIGNED_SEED) throw new Error('PF_CB_ALIGNED_PATCH is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
@@ -1096,7 +1100,7 @@ describe('STRATA conforming-bisection', () => {
         ...DEFAULT_SEED_OPTS, H, gu, gv,
         alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
         acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR, bowFrac: AL_BOW_FRAC,
-        patchRoute, patchMaxMm: AL_PATCH_MAX,
+        patchRoute, patchMaxMm: AL_PATCH_MAX, patchSubMax: AL_PATCH_SUBMAX,
         acrossRings: AL_RINGS, acrossGrade: AL_RGRADE, acrossMaxMm: AL_RMAX, turnMul: AL_TURN_MUL,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
       }, AL_ROUNDS);
@@ -3837,6 +3841,15 @@ describe('STRATA conforming-bisection', () => {
             + `   (refused ${alignedStats.patchRefusedPt} on point clearance, ${alignedStats.patchRefusedSeg} on constraint clearance)`
             + `   — free Steiner points ONLY: zero constraint edges added, so no constraint can span the chart and the`
             + ` patch is watertight through the SAME single cdt2d call as the rest of the seed`,
+          `      S21 GRADING FIX (patch interior sizing = min(polar grading, sizing field)):`
+            + ` the field BOUND the polar grading on ${alignedStats.patchFieldBoundRings} rings,`
+            + ` inserting ${alignedStats.patchSubRings} sub-rings; worst polar/field ratio`
+            + ` ${alignedStats.patchWorstRatio.toFixed(2)}x`
+            + `   — S18 measured the defect this repairs: disk #25's congruent copy 0.008 -> 31.429 um because the polar`
+            + ` set REPLACED a finer background lattice. ${alignedStats.patchSubCapped === 0
+              ? 'The patchSubMax guard never clipped, so the fix applied in full.'
+              : `*** THE patchSubMax GUARD CLIPPED ON ${alignedStats.patchSubCapped} RINGS — the routed disk may STILL be`
+                + ' coarser than the field there, and that is reported rather than absorbed. ***'}`,
         ] : []),
         ...(alignedSeedCrossings >= 0 ? [
           `    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink:`
