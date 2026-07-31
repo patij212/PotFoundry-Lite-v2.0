@@ -5054,6 +5054,231 @@ S21's territory and Phase 2's, not a bisection-gate one.
 >> gate.**
 
 
+### S23 — THE RECONSTRUCTION PASS. **REGISTERED IN FULL. NOTHING BUILT, NOTHING RUN, NO NUMBER READ.**
+Registered 2026-08-01, formalising `2026-07-31-S23-entry-handoff.md` §2 (which was SKETCH). It is entered
+because the two roads out of S22C are now one: local finishing is closed (S22C, the fifth P5 firing) and the
+**gate change is refuted** (S23-M Stage 0, M1 NO-GO, the sixth). S23-M's own forward line names this arm.
+
+**THE ONE-LINE STATEMENT, unchanged from the sketch.** *Bisection texture never ships because bisection
+output never ships — only its DENSITY MAP does.* The refinement driver is demoted to an ORACLE that prices
+the wall; the aligned-CDT machinery rebuilds the ENTIRE wall in ONE construction pass at that price.
+
+**THE FOUR ROLES, and this is the 2026-07-30 role-separation brief's own design completed:**
+`ORACLE PRICES` (bisection, run once, already run — `_S22B` is the artifact) · `CONSTRUCTOR PLACES`
+(`_strataAlignedSeed.ts` at final density) · `GATES ACCEPT` (S1 aspect + S2 fold + S20 footprint-normal
+admission on f32 values + ALT_FLOOR) · `JUDGE CERTIFIES` (`_strataFacetTruth` Part-B, `_judgeNormal`,
+`_judgeShape`, the plate/shard/fan/parAR/metric censuses). *The driver may be as biased as it likes so long
+as it is never BELIEVED* — here it is not even carried: **its geometry is discarded and only its `h` survives.**
+
+#### THE THREE ADDENDA S23-M BINDS ONTO THIS ARM, adopted here so they cannot be quietly dropped
+  **A1 — `arM` IS AN ACCEPTANCE CENSUS AND A RANKING KEY, NOT AN UNSTRANDING GATE.** S23-M measured metric-AR
+  flagging **51 of 51** plates where `aspect3` flags **0 of 51**, and measured *why* it cannot be a gate (it
+  is strictly MORE severe than `aspect3` essentially everywhere: whole-mesh `aspect3` p50 3.40 / p99 39.04
+  against `arM` p50 11.58 / p99 239.13). **S23 scores shard/plate/orientation acceptance with it as a CENSUS
+  and a RANKING, and wires no refusal on it.** That is S23-M's own instruction, taken literally.
+  **A2 — THE PREREQUISITE DEFECT FIX IS TRANSCRIBED, NOT IMPORTED, AND IT IS VALIDATED FIRST.** Certified
+  `tierC/surfaceMetricField.ts` `eigSym2` returns the wrong principal direction on a near-diagonal `I`
+  (measured: `kappa2` reads **-38.06** where the true value is **-9.4e-12**). The stable replacement —
+  declared adaptation 3, `M = SUM_i mu_i (I v_i)(I v_i)^T / (v_i^T I v_i)` solved from `II v = kappa I v`
+  with no matrix square root — is written and verified in `research/tools/s23mPreflight.ts`. **S23 transcribes
+  it and re-runs the preflight's OWN identities T1a (`M v_i = mu_i I v_i` < 1e-6) and T3 (a
+  metric-equilateral element must read 1.732 < 1e-6) inside the S23 tool, before any placement or census
+  uses it.** `src/` is byte-untouched; the standing file rules hold.
+  **A3 — `ALT_FLOOR = 0.7629 um` IS CARRIED INTO ACCEPTANCE.** `k = 100` f32 ulp (`ulp = 2^-17 = 7.6294e-6`
+  mm, `z` binding), bounding the shipped facet-normal error at **`dPhi <= 0.992 deg`**. It is known to bite:
+  `_S22B` reports `min edge 0.682 um` and **162 of 1,251,546 (0.0129%)** of its facets already sit below it.
+  In S23 it is not a repair — it is an admission condition on CONSTRUCTED elements, which is the one place
+  it can act, because a constructed element is placed once and never inherited.
+
+#### STAGE 0 — DENSITY-FIELD EXTRACTABILITY. **THE #1 REGISTERED RISK, MEASURED BEFORE ANYTHING IS BUILT.**
+The entry handoff's own risk 1: *"the refined mesh's local edge length is a noisy estimator near creases.
+Smooth it, and you lose the feature; do not, and you import the bisection texture through the back door."*
+**This stage is artifact-only: no mesher run, no driver edit, no `src/` edit.** New standalone tool
+`research/tools/s23Density.ts`. It reads the SHIPPED `_S22B` STL as **f32** (the S20.1 lesson), welds by
+exact f32 position and recovers theta by `atan2` from those same coordinates — the reader transcribed from
+`s23mPreflight.ts`. Its only imports are the analytic surface (`_facetTruthRA` + `_gpuRankBridge` registry
+defaults), the same two every scratch census in this campaign uses. It also reads `_S22B.loci.json` (394
+components / 11,083 points / 6,738.2 mm — the traced loci the seed itself consumed) and `_S22B.patches.json`
+(the 43 declared regions), because the demand map is checked AGAINST THE DECLARATIONS THAT PRODUCED IT.
+
+  **THE ESTIMATOR, DEFINED BEFORE IT IS MEASURED.** Per welded vertex `v`, over its incident edges `E(v)`
+  and incident facets `F(v)`:
+  * `hMin(v)` = min 3-D edge length in `E(v)` — **the ACROSS scale**, the one the S15 floor sets;
+  * `hMed(v)` = median 3-D edge length in `E(v)` — the mixed scale;
+  * `hA(v)` = `sqrt( 2 * A(v) / sqrt3 )`, `A(v) = (1/3) * SUM_{f in F(v)} area(f)` — **the DENSITY-PRESERVING
+    scalar.** Derivation, because the bar depends on it: a uniform equilateral mesh of edge `h` owns
+    `(sqrt3/2) h^2` of area per vertex, so `hA` is exactly the `h` at which an equilateral mesh has this
+    mesh's local vertex density, and `N_tri = (4/sqrt3) * INTEGRAL dA / h^2` follows with no further
+    assumption. **`hA` is the field the constructor is priced by; `hMin`/`hMed` are what make the ANISOTROPY
+    visible instead of averaged away.** Three estimators, reported side by side, one of them primary.
+  **THE FIELD IS SCATTERED, NOT GRIDDED, AND THAT IS THE ANSWER TO THE RISK.** A fixed cell grid cannot be
+  both fine enough to resolve a 50 um across-ring and coarse enough to be populated on smooth wall — that is
+  the risk restated as arithmetic. So the PRIMARY field is `h(th,z) := hA` of the NEAREST source vertex in
+  the `(arc, z)` metric at `rRef = 45` (0.5 mm bucket hash, ring search). Its resolution is proportional to
+  the local density BY CONSTRUCTION: 50 um near a locus, ~700 um on smooth wall — which is the demand map
+  itself. A **0.25 mm reporting grid** is built beside it purely as the instrument the landmarks are read on.
+
+  >> **THE BARS. REGISTERED BEFORE A SINGLE NUMBER IS READ. FIRST MATCH WINS.**
+  >>   **D0 COVERAGE (precondition).** Over a 0.25 mm probe lattice on the whole wall, the max
+  >>     nearest-source-vertex distance must be **<= 2.0 mm**. A hole means the field cannot be queried and
+  >>     Stage 0 is INDETERMINATE.
+  >>   **D1 THE DESIGNED LATTICE REPRODUCES — 1,101 um along / 385 um across.** On the smooth-wall class
+  >>     isolated by S22B's OWN signature (facet area >= 0.15 mm^2, deviation < 1 deg, longest edge >= 1 mm;
+  >>     the same separation test S22B and the S23-M preflight both used, unchanged): `hA` p50 must land in
+  >>     **[500, 950] um**. THE TARGET IS DERIVED, NOT CHOSEN: a 1,101 x 385 um parallelogram splits into two
+  >>     triangles of 211,942 um^2, whose equal-area equilateral has edge **699.6 um**; the band is +-~30% of
+  >>     that. AND `hMin` p50 must land in **[193, 770] um** (0.5x to 2.0x the placed 385).
+  >>   **D2 THE LOCI ACROSS-WIDTHS AND THE S19 RING PROGRESSION.** Bin every vertex by distance `d` to the
+  >>     nearest traced locus point (`_S22B.loci.json`, the seed's own input). Two clauses:
+  >>     (i) in `d in [0,50] um`: `hMin` p50 **<= 100 um** — within 2x of the across rule's placed
+  >>         **min 50.0 / p50 50.0 um** (S15, bound at 34,197 chain points on this arm);
+  >>     (ii) the `hA` p50 profile must be **STRICTLY MONOTONE RISING** across `[0,50] < [50,100] <
+  >>         [100,200] < [200,400] < [400,650]` um, with `[400,650]` at least **2.0x** `[0,50]` — the S19
+  >>         graded ring band (`RINGS=7` grade 1.6 max 650 um, 6 rings used). **A FLAT PROFILE IS THE
+  >>         SMEARING FAILURE THE RISK NAMES AND IS A NO-GO**: it would mean the extraction cannot see the
+  >>         feature it must rebuild.
+  >>   **D3 THE JUNCTION DISKS ARE SMALL.** Inside the 43 declared regions (`_S22B.patches.json`, radius
+  >>     `min(r, 1.5)` mm), `hA` p50 must be **<= 0.5x** the designed-lattice class's `hA` p50.
+  >>   **D4 THE z 40-60 PHASE-2 BAND IS TIGHTER.** Over 5 mm z-bins, `hA` p50 in `z in [40,60]` must be
+  >>     **strictly below** the whole-wall `hA` p50, and that band must not contain the coarsest bin. The
+  >>     record puts the campaign's two named demand sites at z **44.16992** and z **45.38896**.
+  >>   **D5 THE FIELD IS A FIELD, NOT BISECTION TEXTURE.** Over 0.25 mm reporting cells holding >= 4 source
+  >>     vertices, the within-cell `hA` **p90/p10** dispersion: median **<= 3.0**. `hA` is an AREA scalar, so
+  >>     dispersion in it is NOT the mesh's designed anisotropy (that lives in `hMin` vs `hMax`) — it is
+  >>     exactly the refinement texture, and a field a constructor cannot honour is not a field.
+  >>     The inter-cell Lipschitz statistic `|log(h_i/h_j)| / dist` is REPORTED beside it, not barred.
+  >>   **D6 THE COST THE FIELD IMPLIES, PREDICTED FROM THE FIELD ALONE.** `N_tri = (4/sqrt3) * SUM_cells
+  >>     cellArea / hA_cell^2`. Report against `_S22B`'s own **1,251,546**. Density-faithful is
+  >>     **[0.7, 1.5]x**; **> 3.0x is a NO-GO** (the run would not be affordable and it would not be the same
+  >>     mesh's density).
+  >>   **E0 INDETERMINATE** — D0 fails. Report and STOP.
+  >>   **E1 NO-GO** — any of D1, D2, D3, D4 fails, or D5 > 3.0, or D6 > 3.0x. **Report as a RESULT and STOP.
+  >>     The reconstruction is NOT built.** A NO-GO here says the density map is not extractable from a
+  >>     bisected mesh at usable resolution, which retires the oracle-and-constructor architecture as such —
+  >>     that is worth more than a mesh, and it is why this is registered as the first thing.
+  >>   **E2 GO** — D0-D6 all hold. Build.
+
+#### THE BUILD — ONE CONSTRUCTION PASS OVER THE WHOLE WALL
+NEW LEVER `PF_CB_RECON=<field.json>`, **DEFAULT UNSET**. Unset, the driver path is byte-identical (W1
+identity, md5 `8a59fb37a9115600b13262254380ccb0`, proven AFTER the edit). Set, the driver:
+  1. builds the aligned seed through `_strataAlignedSeed.ts` with the sizing field REPLACED by the extracted
+     `h` — tracer chains (reused from `_S22B.loci.json`; the trace is density-independent, 25 s), junction
+     disks, the 43 declared patch regions, the graded across-field, the designed lattice, all at final `h`;
+  2. emits every point through **THE SINGLE `cdt2d` CALL** — the S18 no-stitch argument: there is no second
+     mesh and nothing is sewn, so watertightness is by construction;
+     >> **A CORRECTION TO MY OWN SKETCH, MADE BEFORE THE BUILD RATHER THAN DISCOVERED IN IT.** The entry
+     >> handoff's phrase *"free Steiner points only, watertight through ONE cdt2d call"* is true of the
+     >> PATCH EMITTER and of the OFFSET RINGS, and I carried it forward as if it described the seed. It does
+     >> not. `_strataAlignedSeed.ts:1114` calls `cdt2d(ptArray, constraints, {interior:true, exterior:true})`
+     >> with `constraints` NON-EMPTY: the traced locus chain segments (line 766) and the four domain sides
+     >> (line 1038) — **12,806 of them on `_S22B`, recovered 12,806.** The seed is a genuine CDT, its
+     >> recovery is asserted with a THROW (lines 1140-1147), and at final density that assertion is a live
+     >> failure mode (S15 Stage 0 saw it fire twice when the chains densified). **What the patch emitter adds
+     >> is zero constraints; what the seed carries is thousands.** Registered here so the S7 tripwire is
+     >> aimed at the right thing.
+  3. lifts every vertex onto `R(theta,z)`;
+  4. passes every facet through the COMPOSED ACCEPTANCE — S1 `aspect3 <= 50` and S2 `(theta,z)` fold
+     (transcribed, the census's own metric), **footprint-normal admission on f32-ROUND-TRIPPED values** (the
+     S20.1 lesson: the test must see the bytes that ship), and **`ALT_FLOOR` 0.7629 um**;
+  5. **STOPS. It hands off to nobody** — no refinement loop, no post-loop pass, no de-shard pass;
+  6. closes the theta seam per the **S11 lesson**: seam columns weld to the interior, identical z-set on both
+     sides, and no constraint edge may span the chart (the 2026-07-13 `cdt2d` spanner lesson).
+The metric census (A1) runs as a REPORT over the constructed mesh. No `arM` refusal is wired.
+
+  **THE LEVERS, NAMED, SO THE ARM IS REPRODUCIBLE AND SO THE COST DERIVATION HAS SOMETHING TO ACT ON.**
+  The seed's ABSOLUTE SCALE is one number: `pitchMean = sqrt(pitchTh * pitchZ)` (`_strataAlignedSeed.ts:416`)
+  with `pitchTh = 2*pi*rRef/gu`, `pitchZ = H/gv`, `rRef = 45` hardcoded. At the production config
+  `gu = 200 / gv = 140 / H = 120` that is **1.10080 mm — the 1,101 um of the record**, and `acrossBase =
+  acrossFrac * pitchMean = 0.35 * 1.10080 = 385.3 um — the 385 of the record.** Everything else in the seed
+  (`alongBase`, `clearMm`, `minSepMm`, `snapMm`, the hash cell, the segment bucket) is a multiple of it.
+  **So "run the constructor at FINAL density" is: lower `pitchMean` and let the extracted `h` drive the
+  local pitch.** Two facts that bound how:
+  * the seed's existing sizing field is `solveHDir` (an analytic one-sided-sagitta solve at `tolMm =
+    PF_CB_TOL = 0.01 mm`), and it enters through a clamp `cl(x) = max(1/fieldRange, min(fieldRange, x))` with
+    `fieldRange = 2.0` and **NO env var** (line 518). **A +-2x clamp cannot express a 50 um -> 1,101 um
+    demand range**, which is precisely why S15's `acrossAbs` and S19's rings exist as separate absolute
+    rules. The extracted field therefore enters as an ABSOLUTE rule of the same family, not through `cl()`.
+  * `pslgEpsMm = 0.02 mm` and `weldMm = 0.002 mm` are ABSOLUTE and do not scale with pitch, and the seed
+    THROWS unless `acrossMinMm * 0.55 > pslgEpsMm` — i.e. **no across floor below 36.4 um at this config.**
+    **REGISTERED AS A HARD FLOOR ON WHAT S23 CAN ASK FOR**, and Stage 0 reports how much of the extracted
+    field sits under it.
+  Because `fieldRange`, `clearFrac`, `patchGrade`, `patchM`, `weldMm`, `pslgEpsMm` have no env var, S23 calls
+  `buildAlignedSeedRepaired` with its own opts object rather than driving it through `PF_CB_*` alone.
+
+#### BARS — THE HONEST ONES
+  **S1 THE PRIMARY: SHARD / FAN / PLATE / ORIENTATION ~0 BY CONSTRUCTION.** Outside declared geometry (the
+    designed 1,101/385 lattice and the 43 declared regions) a constructed mesh has no
+    refinement-to-background transition, so **there is no mechanism to birth a fan hub.** Instrument
+    UNCHANGED (`out/s22shard.ts`, the scored instrument — editing it would end comparability): shard = long
+    >= 1.0 mm AND (dev >= 45 deg OR AR3 >= 20); fan = vertex on >= 12 facets carrying an edge >= 500 um.
+    **CONTROL = `_S22B`: 205 shards / 31 hubs / 97 photographed / 51 plates.**
+    >> **AND THE CLAUSE STANDS, WITH NO PARTIAL CREDIT: A WIN THAT IS NOT ~0 IS A REFUTATION OF THE
+    >> CONSTRUCTION ARGUMENT.** The claim is "by construction". A nonzero count outside declared geometry
+    >> means the mechanism was NOT removed, only moved — and this campaign has measured relocation five
+    >> times (THE FRONTIER RESULT). It is scored as a refutation, in the first verdict row.
+    **~0 IS DEFINED BEFORE IT IS READ: <= 5 shards and <= 2 fan hubs outside declared geometry.** (Not
+    literally 0, because `_S22B` itself carries 3 seed-born over-cap facets that any seed at any density can
+    reproduce; 5 is that population's own scale and nothing more.)
+  **S2 FIDELITY, TWO-SIDED, WITHIN THE `_S22B` ENVELOPE.** Part-B depth, full instrument:
+    H2 over-tol fraction **<= 1.2x of 0.00139%**; H2 witnessed max **relocation-classified** on the same
+    three conditions; unresolved <= 8,000 / worst <= 250.0 um; **H1 facets-over <= 1.30%** quoted WITH
+    coverage and stride AND with the full-coverage adaptive-oracle control beside it — four arms now show
+    the sampled H1 witness moving while the oracle reads 95.473 um at the same locus, and the **capped-H1 /
+    rim-row caveat** applies to every H1 number in this arm.
+  **S3 WATERTIGHT.** seam-crack edges **0**, non-manifold **0**, reversed **0**, boundary loops **2**,
+    auditor's independent **Euler V-E+F = 0**, constraint recovery **100%** (asserted, throws).
+  **S4 COST — DERIVED, NOT GUESSED, AND STATED BEFORE THE RUN.** Measured inputs: seed **116,931 points ->
+    233,062 tris**; locus trace **400x280 in 25 s** (density-independent, and REUSED from the artifact, so
+    it is ~0 here); the full production arm **939 s** of which the seed+trace is ~30 s and **the rest is
+    512,182 bisection splits and 928M rA evals**. Final density is ~**1.25M triangles**, i.e. **x5.37** the
+    seed's triangle count and ~**x5.36** its point count (~627k points). `cdt2d` is O(n log n), so the seed
+    build scales by `5.36 * log(627k)/log(117k) = 5.36 * 1.146 = x6.14` over its own share.
+    **REGISTERED CEILING: total wall <= 600 s** (~x0.64 of `_S22B`'s 939 s), of which the seed build
+    <= 450 s. **THE PRIOR, REGISTERED AS FALSIFIABLE: reconstruction should be CHEAPER than refinement,
+    because 512,182 splits and 928M rA evals are replaced by ONE triangulation. If it is not cheaper, that
+    is a finding and it is reported as one.** Live tris **<= 2.0 M**.
+  **S5 DETERMINISM.** Same inputs -> **byte-identical** output STL, proven **twice** (md5 + `cmp`).
+  **S6 IDENTITY + GATE (STOP).** flag-OFF driver path byte-exact md5 `8a59fb37a9115600b13262254380ccb0`;
+    hard gate **12/12** with every documented value exact, taken **BEFORE and AFTER** any shared-file edit.
+  **S7 TRIPWIRES / INFEASIBLE.** `cdt2d` at ~627k points is UNTESTED here and S21B already caught a
+    `mergeHulls` crash at 300k TRICAP (entry-handoff risk 2). **A `cdt2d` throw, a constraint-recovery
+    shortfall, or a seed build over 900 s is INFEASIBLE — report and stop; do not tune around it.**
+  **S8 VERDICT ROWS — FIVE, DISJOINT, IN ORDER, FIRST MATCH WINS. INFEASIBLE IS FIRST.**
+    1 **INFEASIBLE** — S7 fires, or Stage 0 returns E0/E1. Nothing is scored beyond the cause.
+    2 **REFUTATION OF THE CONSTRUCTION ARGUMENT** — S1 misses (> 5 shards or > 2 hubs outside declared
+      geometry). The mesh may be excellent on every other axis; the ARGUMENT is refuted and that is the row.
+    3 **REGRESSION** — S3 fails, or S2 fails, or S4/S5/S6 breached.
+    4 **WIN** — S1 AND S2 AND S3 AND S4 AND S5 AND S6.
+    5 **TRADE** — everything else, both numbers in the same row of the same table.
+  **S9 AFTER SCORING: STOP for the operator's eyeball.** Mesh STL path FIRST LINE of the report.
+
+#### PREDICTIONS THAT CAN FAIL, REGISTERED SO THEY CANNOT BE CLAIMED AFTERWARDS
+  **P-a THE PINNED 25.063 um CONGRUENT COPY IS EXPECTED TO SURVIVE.** th **6.021386** z **113.45994**,
+    carrier **0.005430 mm^2**. It has outlived a seed change, a graded-field completion, an accept-rule
+    change, an admission invariant, a routing arm and three de-shard arms. **It is a DENSITY-and-CERTIFICATE
+    question for Phase 2, not a construction question, and S23 does not claim it. If it VANISHES, that is a
+    SURPRISE and is reported as one** — because a construction pass has no mechanism to close a demand the
+    density field does not price.
+  **P-b THE DESIGNED LATTICE CENSUS IS UNCHANGED.** The 1,101/385 lattice is placed by the same emitter from
+    the same rule; its facet count and its `arM` distribution (p99 **16.61**, the bar `MET_AR = 27` was
+    derived from) must not move materially. If it does, the constructor was not run at the same design.
+  **P-c THE METRIC CENSUS's WHOLE-MESH p99 FALLS DRAMATICALLY.** `_S22B` reads `arM` p50 **11.58** /
+    p99 **239.13**. **THE BAR: p99 <= 60**, i.e. at least a **4x** fall, and p50 <= 11.58. A constructed
+    mesh whose elements are placed in the metric's own directions should not carry a 239 tail; if it does,
+    the placement is not doing what the construction argument says it does.
+  **P-d THE FRONTIER LAW IS NOT REPEALED AND NO RIM-ROW WIN IS REGISTERED.** S22B's loose band GREW in the
+    top rim bin (39 -> 43). A constructed mesh removes the refinement-transition mechanism; it does not
+    obviously remove whatever produces the rim row. **No rim-row claim is made in advance.**
+
+#### STOP CONDITIONS, CARRIED FROM THE CHARTER
+Stage-0 E0/E1 (a RESULT — report it) · identity or hard-gate break · S7 INFEASIBLE · any touch of
+`_facetTruthLib.ts`, `_sharp3dRef.ts`, `_shapeGuard.ts`, `_judgeShape.ts`, `_judgeNormal.ts` or `src/`
+(transcribe, never import or edit) · flipping any default ON · context tightening -> handoff per convention,
+never compressing the discipline.
+
+>> **STAGE 0 IS THE GATE. NOTHING IS BUILT UNTIL E2 FIRES.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
