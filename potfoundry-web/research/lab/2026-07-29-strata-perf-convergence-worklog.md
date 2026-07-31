@@ -4703,6 +4703,153 @@ The registered quantity, facets-over, is 1.14% against a 1.30% bar.
 >> operator's mesh unless they prefer the marginally different one.**
 
 
+### S23-M — THE METRIC-ADMISSIBILITY ARM. **STAGE 0 REGISTERED. NOTHING BUILT, NOTHING RUN, NO NUMBER READ.**
+Registered 2026-07-31 at the S22C close, on the operator's own reframe. **This is NOT the S23 RECONSTRUCTION
+sketched in `2026-07-31-S23-entry-handoff.md` §2** — that remains a separate, un-registered fallback. S23-M
+replaces the direction-blind isotropic shape gate with shape measured in the LOCAL METRIC, inside bisection.
+
+**THE PREMISE, ADOPTED VERBATIM FROM THE OPERATOR.** The AR-50 cap is direction-blind and the record refutes
+it in BOTH directions at once:
+  * the **PLATES** — the worst visible artifacts, the class the operator vetoes on — carry 3-D AR **1.8-8.9**
+    (S20.1 plate census). They are near-isotropic and they **sail under the cap**;
+  * the **STRANDED** demand — 4,307 sites, worst **95.473 um** — is ALIGNED ANISOTROPY the cap refuses.
+**In metric space an element long-along / short-across a crease is ROUND; a chord across that crease is a
+monster whatever its 3-D AR.** S23-M caps MISALIGNMENT, not magnitude.
+
+>> **1. *** THE FIRST THING STAGE 0 MUST SETTLE IS THAT `M = g/h²` AS LITERALLY WRITTEN CANNOT DO THIS, AND
+>> IT IS A DERIVATION, NOT A MEASUREMENT. *** ** `M = g/h²` divides the first fundamental form by a per-node
+>> SCALAR. Aspect ratio is scale-invariant — `_shapeGuard.ts`'s own header says so in as many words ("it is
+>> SCALE-INVARIANT (a pure ratio)") — so the `h²` cancels identically and shape under `M = g/h²` is shape
+>> under `g`. And the `g`-length of a parameter vector `d` is `sqrt(dᵀ g d) = |J d|`, the LINEARISED 3-D
+>> length. **So an isotropic-`M` shape gate IS the current gate**, up to the difference between the
+>> linearisation at the centroid and the true chord. It is direction-blind for exactly the reason the
+>> premise names, and swapping it in would be a certified no-op.
+>> **THE DIRECTION-AWARE MEMBER OF THE SAME CERTIFIED KERNEL IS THE ONE THE ARM NEEDS**, and it is in the
+>> same file: `src/renderers/webgpu/parametric/conforming/tierC/surfaceMetricField.ts`,
+>> `anisoCurvatureMetric` — the crease-aligned `(II,I)` metric
+>> `M = I^{1/2}·(R·diag(mu1,mu2)·Rᵀ)·I^{1/2}`, `mu_i = clamp(|kappa_i|/(8·tol), 1/hMax², 1/hMin²)`, which
+>> **reduces EXACTLY to `g/h²` when `kappa1 = kappa2`**. Fine ACROSS the steep flank, long ALONG it. That is
+>> the object in which an aligned element is round, and it is what this registration means by "the metric"
+>> from here on. **The name `M=g/h²` is kept for continuity with the record; the branch used is the aniso
+>> one, and Stage 0 measures the isotropic branch beside it to prove the no-op claim rather than assert it.**
+
+**2. THE KERNEL'S CERTIFICATION, READ BEFORE ANY TRANSCRIPTION — and it is a MOVES, not a CLOSE.**
+`E-2026-07-19-DS-CONVERGE-B-FLANK` (EXPERIMENT-REGISTRY, commit `d23b8cbe`): at equal 500k budget, one
+variable, DragonScales near-ring flank composite MAX **0.343 -> 0.102 mm (3.4x)**, p99 **0.295 -> 0.040
+(7.4x)**, and the isotropic BODY plateau broke too (p99 0.0199 -> 0.0112). Watertight preserved both arms.
+Guarded by `tierC/surfaceMetricAniso.test.ts` (PD + axis-aligned + directional + byte-identical-off, green)
+with the `tierC` core 26/26 green flag-off. **THE THREE COSTS ARE ON THE RECORD AND ARE NOT NEW HERE:**
+(i) it did NOT close the flank to 0.01 (a convergence FLOOR, budget-independent — HD confirm bit-identical
+at 2x cap); (ii) build cost 5.6x, **all of it in the metric-in-circle FLIP, not in the metric**; (iii) real
+slivers by the isotropic ruler (47.8% under 20 deg), 36.8% even by the metric's own ruler.
+>> **AND THAT IS WHY S23-M USES IT AS A RULER AND NOT AS A MESHER, WHICH MUST BE SAID BEFORE THE BUILD.**
+>> Every one of the three costs is a cost of the aniso *region kernel* — the `chordSteiner`/metric-in-circle
+>> *mesh generator* built on top of the metric. **S23-M imports none of that.** It takes the metric TENSOR
+>> only, evaluates it pointwise, and uses it to SCORE a shape that bisection proposes. There is no flip, no
+>> in-circle, no budget loop, so costs (ii) and (iii) cannot transfer by construction. Cost (i) — the
+>> along-flank convergence floor — is a statement about what that mesher could reach and is silent about a
+>> gate. **The certification that DOES transfer is the only one the arm relies on: the tensor is PD,
+>> axis-aligned on an axis-aligned surface, directional, and reduces to `g/h²` when curvature is isotropic.**
+
+**3. THE HISTORICAL NOTE, BECAUSE THE RECORD SAYS THE OPPOSITE AND WAS RIGHT WHEN IT SAID IT.** The
+2026-07-28 handoff §0 closes with: *"The unwired M=g/h² work is a **shape** lever, not the fidelity lever."*
+**That was correct then and it is correct now — and it is the reason to run this arm, not against it.** On
+2026-07-28 the open question was FIDELITY (the ranking function is blind; §17c's 1.7 mm facets 252 um off
+the surface), and a shape lever does not answer a ranking question. Since then the campaign has closed the
+orientation class to zero (S20.1), moved the plate class (S21A/S21B), dismantled the fan class (S22/S22B),
+and arrived — five P5 firings deep — at a residue whose cause is **named as a SHAPE refusal**: 96.6%
+self-blocked at the aspect cap on a second independent population (S22C). **The lever did not change; the
+question did. 2026-07-28 filed it under the wrong heading because the campaign had not yet reached the
+heading it belongs to. Its moment is now.**
+
+**4. STAGE 0 — THE PREMISE PRE-FLIGHT. ARTIFACT-ONLY, NO BUILD, NO MESHER RUN. THIS IS THE GO/NO-GO.**
+A NEW standalone tool, `research/bridge/out/s23mPreflight.ts`. It reads the SHIPPED `_S22B` / `_S22C` STLs —
+**f32, the values that left the building, per the S20.1 lesson** — recovers theta by `atan2` from those same
+coordinates, welds by position, and re-scores three populations. **The metric kernel is TRANSCRIBED, never
+imported; `_facetTruthLib` / `_sharp3dRef` / `_shapeGuard` / `_judgeNormal` / `_judgeShape` are byte-untouched.**
+The only imports are the analytic surface itself (`_facetTruthRA`, `_gpuRankBridge` registry defaults) — the
+same two every scratch census in this campaign already uses, because measuring a different surface is not an
+independent instrument, it is a different experiment.
+
+  **THE REFUSAL RECONSTRUCTION, stated so it can be checked.** For every live facet, for each of its three
+  edges, the tool places the split point where the driver would (3-D chord midpoint, `chordParam`, 24
+  halvings, |shift| cap 0.25 — `PF_CB_MID3D` is ON in this arm family), lifts it by `rA`, and scores BOTH
+  children of BOTH incident triangles with `aspect3`. A facet is **BLOCKED** when all three of its edges are
+  S1-refused at their best placement — the exact self-block condition S8 and S22C measured.
+  **THE TRANSCRIPTION IS SELF-CHECKED AGAINST THE DRIVER'S OWN REPORTED COUNTERS, and that check is
+  registered as a precondition rather than a bonus:** the `BLOCKED` set intersected with the driver's own
+  accept ruler (`_sagKernel.sagAdaptiveRaw`, `REF_HS=0.03`, `n in [12,64]`, `acceptTol 3.5 um`) must
+  reproduce **4,307 +- 15%** with worst **95.473 um**, and the de-shard-bar subset on `_S22C` must reproduce
+  **313 +- 15%** of **324**. **If it does not, Stage 0 reports INDETERMINATE and stops — a metric fraction
+  computed on a population that is not the one the driver refused is a number about nothing.**
+
+  **METRIC ADMISSIBILITY, DEFINED BEFORE IT IS MEASURED.** At a child's centroid `(th, z)` assemble the
+  aniso `(II,I)` metric `M` in `(theta, z)` coordinates, factor `M = LᵀL`, map the child's two parametric
+  edge vectors through `L`, and take `aspect3` of the resulting planar triangle. Call it `arM`.
+  `arM = 1.732` is metric-equilateral (perfectly aligned AND perfectly sized); `arM` equals the Euclidean
+  `aspect3` wherever curvature is isotropic, by the kernel's own reduction. **METRIC-ADMISSIBLE :=
+  `arM <= MET_AR` AND `minAltitude >= ALT_FLOOR`.** `MET_AR` is **DERIVED IN STAGE 0 from the designed
+  lattice's own `arM` distribution, exactly as S22B derived `L_B` and `K` from the photographed population** —
+  the bar must exclude the seed's intended anisotropy by MEASUREMENT (S21B's threshold trap, re-paid).
+  Parameters, registered: `tol = 0.0035 mm` (the driver's own `acceptTol`, so the metric asks for the chord
+  the accept rule asks for), `hMin = 0.02 mm`, `hMax = 8 mm` (the CONVERGE-B config), curvature FD step
+  **25 um in arc and in z** — SUB-FEATURE by construction, because S13 measured the crease turning over in
+  83-106 um and the src kernel's own default step (0.0022 in (u,t) = 0.62 mm of arc) would average it away.
+  **The FD step is swept and the sweep is reported, because a metric that cannot see the crease cannot
+  measure alignment to it.**
+
+>> **5. *** THE ABSOLUTE ALTITUDE FLOOR, DERIVED FROM f32 ARITHMETIC AND REGISTERED HERE. *** **
+>> **THE QUANTITY THE AR CAP WAS REALLY PROTECTING IS NOT SHAPE, IT IS NORMAL CONDITIONING.** The 2026-07-29
+>> diagnosis says it exactly: a blade renders wrong because "three near-collinear vertices give an
+>> ill-conditioned normal: a ~1 um altitude across a ~1 mm base, so the normal points anywhere". Aspect ratio
+>> is a PROXY for that. If the shape cap is to be relaxed in aligned directions, the thing it was standing in
+>> for must be bounded DIRECTLY, and on the SHIPPED bytes.
+>> **THE GOVERNING ULP.** The STL is f32. Over the shipped coordinate range: `z in [0,120] mm` reaches the
+>> `[64,128)` binade, `ulp = 2^-17 = 7.6294e-6 mm`; `x,y` at `r = 40-50 mm` sit in `[32,64)`,
+>> `ulp = 2^-18 = 3.8147e-6 mm`. **The binding value is `ulp = 7.6294e-6 mm`, and it is `z` that binds** —
+>> the same 7.6e-6 mm that S20.1 measured as "SEVEN TIMES THE STENCIL" of `ADM_H`.
+>> **THE BOUND.** Half-ulp per coordinate gives a vertex displacement `|d| <= (sqrt3/2)·ulp = 6.607e-6 mm`.
+>> A vertex displaced by `|d|` perpendicular to its opposite edge tilts the facet normal by `|d| / a`, where
+>> `a` is that vertex's altitude; two vertices can add, so conservatively
+>> **`dPhi <= 2|d| / a_min = sqrt3 · ulp / a_min`**. Writing `a_min = k · ulp` gives **`dPhi <= sqrt3 / k`
+>> radians — the ulp cancels, and `k` alone sets the normal-error bound.**
+>> **THE TARGET, STATED SO THE CHOICE IS ARGUABLE: `dPhi <= 1.0 deg`.** Justified against the two numbers the
+>> campaign has measured on this axis: S20.1 measured the existing population's f32 tilt sensitivity at
+>> **~0.07 deg** (a 2.4 nm corner move on a micron-scale facet), so 1 deg is a loose bound on healthy
+>> geometry; and the admission gate's own decision quantity separates its classes at **~10 deg** (the gated
+>> population runs deviation p25 101.7 / p50 113.9 deg against a 90 deg boundary), so 1 deg is a 10x margin
+>> on the decision the floor exists to keep meaningful.
+>> **=> `k = sqrt3 / 0.0174533 = 99.24`, REGISTERED AT `k = 100`, i.e.**
+>> **`ALT_FLOOR = 100 x 7.6294e-6 mm = 7.629e-4 mm = 0.7629 um`, bounding the shipped facet-normal error at
+>> `dPhi <= 0.992 deg`.**
+>> **IT IS ALREADY KNOWN TO BITE, AND THAT IS DELIBERATE:** `_S22B` reports `min edge 0.682 um`, BELOW the
+>> floor. So the floor is a live gate on new children from the moment it is wired, it can only refuse and
+>> never repair (the "born over the cap" structure), and Stage 0 REPORTS the existing altitude distribution
+>> so the operator sees the cost before the arm exists.
+
+>> **6. *** THE GO/NO-GO BAR. REGISTERED BEFORE A SINGLE NUMBER HAS BEEN READ. FIRST MATCH WINS. *** **
+>>   **M0 INDETERMINATE — the reconstruction did not reproduce the driver.** The `BLOCKED`-and-over-tol count
+>>      misses `4,307 +- 15%` (i.e. outside 3,661-4,953), or its worst is not `95.473 um`, or the `_S22C`
+>>      de-shard-bar subset misses `313 +- 15%` (266-360). **Report and STOP. No metric fraction is quoted.**
+>>   **M1 NO-GO — THE PREMISE IS REFUTED.** Fewer than **50%** of (a)'s refused children are
+>>      metric-admissible, OR fewer than **50%** of (c)'s. **Report as a RESULT and STOP; the S23
+>>      RECONSTRUCTION is then the road, and this arm is not built.**
+>>   **M2 GO — the premise holds.** `>= 50%` of (a) AND `>= 50%` of (c) metric-admissible. Register the full
+>>      arm and build.
+>>   **(b) — the 48 cap-censored `>= 1.5 mm` shards (`_S22C`; `_S22B`'s 44) — is REPORTED, NOT BARRED**, and
+>>      the reason is that it is 48 facets: a fraction on a population that small cannot carry a go/no-go and
+>>      pretending otherwise would be the S13 table's error again. It is the operator-visible sanity read.
+>>   **ALSO REPORTED, ALWAYS, WHATEVER FIRES:** the isotropic-branch no-op check (predicted: `arM_iso` equals
+>>      `aspect3` to within the linearisation, i.e. the isotropic gate refuses the SAME children); the
+>>      designed-lattice `arM` distribution that `MET_AR` is derived from; the PLATE class's `arM` (predicted
+>>      **HIGH** — they are near-isotropic in 3-D and near-TANGENT to the local normal, so the premise says
+>>      the metric should call them monsters even though AR-50 calls them fine; **if the plates' `arM` is LOW
+>>      the premise is wrong in its second direction and that must be reported as loudly as M1**); the
+>>      existing altitude distribution against `ALT_FLOOR`; and the FD-step sweep.
+
+>> **STAGE 0 IS THE GATE. NOTHING IS WIRED UNTIL M2 FIRES.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
