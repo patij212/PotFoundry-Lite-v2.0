@@ -57,6 +57,42 @@
 // would put ~180,000 points on the loci BEFORE a single split — a seed larger than the control's finished
 // mesh. The seed's job is topology and initial anisotropy; reaching h is the refinement loop's job. So the
 // spacings are `mul * backgroundPitch * clamp(h/hMedian, 1/fieldRange, fieldRange)`.
+//
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// S15 / PHASE C STEP 1b — THE ACROSS-SPACING RULE. `acrossAbs`, DEFAULT OFF.
+// ────────────────────────────────────────────────────────────────────────────────────────────────────────
+// THE DEFECT THE S13 ADDENDUM NAMED, IN THIS FILE AND NOWHERE ELSE. The paragraph above is right about the
+// ALONG spacing and wrong about the ACROSS one, and the arithmetic separates them cleanly:
+//   * the ~180,000-point explosion is an ALONG-spacing cost — 6,738.2 mm of locus divided by an absolute
+//     h of 37.6 um. It is real.
+//   * the ACROSS spacing places NO NEW POINTS. The offset ring is two points PER CHAIN POINT (stage 3c);
+//     `across` sets only HOW FAR OFF THE LOCUS they sit. Shrinking it moves the ring inward at zero
+//     point cost.
+// So one global clamp was priced on the along-cost and then applied to the across-question too. Measured
+// consequence (worklog, S13 addendum): at the mesh's two worst fidelity sites R2's field asks for 44.7 um
+// ACROSS against a MEASURED crease turnover of 106.0 um — correctly sub-feature, 0.42x — and the clamp
+// floors it at `acrossBase / fieldRange` = 385.3/2 = **192.6 um, 1.82x the turnover, straddling the V**.
+// A global clamp answering a local question.
+//
+// THE RULE, when `acrossAbs` is on. Per chain point, with `hAc` = R2's own across answer there:
+//        across := max(acrossMinMm, min(acrossBase * clamp(hAc/hMedian, ...), hAc))
+// It is MONOTONE-DOWNWARD by construction (the `min` with today's value), so it can only ever REFINE, and
+// it binds ONLY where hAc < acrossBase/fieldRange. Smooth regions are untouched — bit-for-bit, not
+// approximately: for hAc >= 192.6 um the `min` selects today's value and nothing downstream sees a change.
+//
+// AND IT CARRIES ITS OWN ANISOTROPY GUARD, because the seed IS the mesh. A locus element is
+// (along x across) and `aspect3` of a thin triangle is ~ along/across, so shrinking across alone drives the
+// seed's own AR up in proportion: at across 50 um with along left at its field value of 2,201.6 um the
+// element would sit at AR ~44 against a cap of 50, and a facet BORN over the cap is FROZEN (S1 refuses its
+// splits). So WHERE THE ACROSS RULE BINDS, AND ONLY THERE, the along spacing is bounded by
+//        along := min(along, seedARmax * across)
+// which is the one place this rule may add points. That cost is measured and pre-registered, never assumed.
+//
+// PRECONDITION, asserted rather than commented: `acrossMinMm * 0.55 > pslgEpsMm`. Stage 3e re-routes a
+// constraint through ANY point within `pslgEpsMm` of its interior, and its correctness note leans on free
+// Steiner points being kept far away by the `nearSeg` clearance. For the offset ring that clearance is
+// `across * 0.55`, so an across floor small enough to break the inequality would let a free point bend a
+// traced locus. The build refuses instead.
 
 import cdt2d from 'cdt2d';
 import { canonTheta, dThRaw, type SweepRadiusFn } from './_sweepPredicate';
@@ -80,6 +116,16 @@ export interface AlignedSeedOpts {
   useField: boolean;
   /** clamp on the field modulation: spacing multiplier stays in [1/fieldRange, fieldRange]. */
   fieldRange: number;
+  /**
+   * S15 STEP 1b, DEFAULT OFF. Key the ACROSS-locus spacing to R2's ABSOLUTE answer where that answer is
+   * sharper than the relative rule, instead of to the global `1/fieldRange` floor. See the header block.
+   * Monotone-downward: it can only refine, and it binds only where `hAc < acrossBase / fieldRange`.
+   */
+  acrossAbs: boolean;
+  /** hard floor on the across spacing, mm. Must satisfy `acrossMinMm * 0.55 > pslgEpsMm` (asserted). */
+  acrossMinMm: number;
+  /** where the across rule binds, bound the along spacing so the seed's local aspect stays under this. */
+  seedARmax: number;
   /** chord tolerance for the sizing solve, mm. */
   tolMm: number;
   /** LAYER-2 NEGATIVE CONTROL: push every locus this far along its own normal before seeding, um. */
@@ -115,6 +161,9 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   clearFrac: 0.30,
   useField: true,
   fieldRange: 2.0,
+  acrossAbs: false,
+  acrossMinMm: 0.050,
+  seedARmax: 24,
   tolMm: 0.01,
   mistraceUm: 0,
   shapeAR: 50,
@@ -171,6 +220,13 @@ export interface AlignedSeed {
     negArea: number;
     alongMm: number;
     acrossMm: number;
+    /** S15: chain points where the ABSOLUTE across rule bound (i.e. R2 asked for less than the clamp). */
+    acrossBoundPts: number;
+    /** S15: chain points where the anisotropy guard then shortened the along spacing. */
+    alongBoundPts: number;
+    /** S15: the across spacing ACTUALLY placed, over all chain points — min / p50, mm. */
+    acrossMinPlacedMm: number;
+    acrossP50PlacedMm: number;
     fieldEvals: number;
     wallMs: number;
   };
@@ -240,6 +296,19 @@ function segParams(
 
 export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: AlignedSeedOpts): AlignedSeed {
   const t0 = Date.now();
+  // S15 PRECONDITION — see the header. Stage 3e re-routes a constraint through any point within
+  // `pslgEpsMm` of its interior; the offset ring's own clearance to a constraint segment is `across*0.55`.
+  // An across floor that breaks this inequality would let a FREE Steiner point bend a TRACED LOCUS, which
+  // is the misplaced-constraint failure the whole layer-2 negative control exists to catch. Refuse.
+  if (o.acrossAbs && o.acrossMinMm * 0.55 <= o.pslgEpsMm) {
+    throw new Error(
+      `ALIGNED SEED: acrossMinMm ${(o.acrossMinMm * 1000).toFixed(1)} um is too small for pslgEpsMm `
+      + `${(o.pslgEpsMm * 1000).toFixed(1)} um — the offset ring's segment clearance (across*0.55 = `
+      + `${(o.acrossMinMm * 550).toFixed(1)} um) must EXCEED the PSLG conditioning radius, or a free Steiner `
+      + `point can bend a traced locus constraint. Raise acrossMinMm above `
+      + `${((o.pslgEpsMm / 0.55) * 1000).toFixed(1)} um, or lower pslgEpsMm.`,
+    );
+  }
   const H = o.H;
   const rRef = 45;                                   // isotropic chart: x = rRef * theta, y = z
   let fieldEvals = 0;
@@ -294,6 +363,8 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   interface ChainPt { th: number; z: number; nx: number; ny: number; along: number; across: number; fixed?: boolean }
   const chains: ChainPt[][] = [];
   let chainPts = 0;
+  let acrossBoundPts = 0; let alongBoundPts = 0;
+  const acrossPlaced: number[] = [];
   for (const P of chainsRaw) {
     // arc-length parameterise in the chart
     const X = P.map((p) => rRef * p[0]);
@@ -328,7 +399,22 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
         const cl = (x: number): number => Math.max(1 / o.fieldRange, Math.min(o.fieldRange, x));
         a = alongBase * cl(hAl / hMedian);
         cr = acrossBase * cl(hAc / hMedian);
+        // ── S15 STEP 1b: the LOCALLY-KEYED across rule (see the header). Monotone-downward, so the OFF
+        //    path and every point where R2 does NOT ask for less are arithmetically untouched. ────────
+        if (o.acrossAbs) {
+          const crAbs = Math.max(o.acrossMinMm, hAc);
+          if (crAbs < cr) {
+            cr = crAbs;
+            acrossBoundPts += 1;
+            // ANISOTROPY GUARD — the seed IS the mesh, and aspect3 of a thin (along x across) element is
+            // ~along/across. Bounding along HERE, and only here, is what keeps the sharpened elements
+            // sub-cap; it is also the only place this rule can add points, which is why it is counted.
+            const aBound = o.seedARmax * cr;
+            if (aBound < a) { a = aBound; alongBoundPts += 1; }
+          }
+        }
         last.across = cr;
+        acrossPlaced.push(cr);
       }
       last.along = a;
       s = Math.min(total, s + a);
@@ -609,7 +695,10 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
         const z = p.z + sgn * p.across * p.ny;
         if (th < 0 || th > TWO_PI || z < 0 || z > H) continue;
         if (nearPt(th, z, p.across * 0.35)) continue;
-        if (nearSeg(th, z, p.across * 0.55)) continue;
+        // The segment clearance is FLOORED at 1.5x the PSLG conditioning radius when the across rule is
+        // live. A no-op on the OFF path by arithmetic, not by measurement: there across >= acrossBase /
+        // fieldRange = 192.6 um, so across*0.55 >= 105.9 um >> 1.5*pslgEps = 30 um and the max never binds.
+        if (nearSeg(th, z, o.acrossAbs ? Math.max(p.across * 0.55, o.pslgEpsMm * 1.5) : p.across * 0.55)) continue;
         addFree(th, z); offsetPts += 1;
       }
     }
@@ -909,6 +998,14 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       edgesCrossingLocus, edgesTested,
       overCap, worstAR, worstParAR, negArea,
       alongMm: alongBase, acrossMm: acrossBase,
+      acrossBoundPts,
+      alongBoundPts,
+      // reduce, not Math.min(...arr): the array is one entry per chain point (tens of thousands) and a
+      // spread that long overflows the argument stack.
+      acrossMinPlacedMm: acrossPlaced.length > 0 ? acrossPlaced.reduce((m, v) => (v < m ? v : m), Infinity) : acrossBase,
+      acrossP50PlacedMm: acrossPlaced.length > 0
+        ? acrossPlaced.slice().sort((x, y) => x - y)[Math.floor(acrossPlaced.length / 2)]
+        : acrossBase,
       fieldEvals, wallMs: Date.now() - t0,
     },
   };

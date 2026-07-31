@@ -207,6 +207,17 @@ tracer 26-29 s; aligned seed build ~52 s; full autopsy at probe scale ~3 min.
 
 ## 6. THE ONE THING TO KNOW FIRST
 
+> **STATUS AMENDMENT, 2026-07-31 (the S15 session). STEP 1b IS DONE. DO NOT RE-RUN IT.** The question below
+> was asked and answered: **the across-width IS the birth channel.** Sites A and B went **38.061 -> 0.667 um**
+> and **40.006 -> 3.816 um**, both under the 10 um bar, on a seed-parameter change (`_S15A`). The registered
+> verdict is nevertheless **ROW 2 REGRESSION** — one clause of five, the gated back-facing class metric
+> (959 -> 1,846) — so the lever `PF_CB_ALIGNED_ACROSS_ABS` stays **DEFAULT OFF**. The residual H2 argmax
+> moved from the locus strips into the **junction band (th 1.308997, z 113.45994, 24.281 um)**, i.e. the
+> branch this document called for is open: **the emitter's scope shrinks to the junction disks.** Full
+> pre-registration, Stage-0 probe and results are in the `S15` sections of
+> `2026-07-29-strata-perf-convergence-worklog.md`. Read them before Step 2. Everything below is the
+> original text, unchanged.
+
 **Do STEP 1b before you build anything.**
 
 The two worst sites in the mesh are not a junction problem, not a shape-guard problem, and not a

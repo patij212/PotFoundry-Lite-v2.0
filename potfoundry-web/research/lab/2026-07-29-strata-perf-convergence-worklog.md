@@ -2218,6 +2218,338 @@ SHOUTED with a per-region tally and named in the gate title; an undeclared over-
   parametric AR p99 106.769 / MAX 125,886.870, folds 0, boundary 1,167, Euler 0 — with `[BLADE] FAIL
   count 2` and NO provenance line printed. **Hard gate 12/12, every documented value exact.**
 
+### S15 (PHASE C STEP 1b) — THE ACROSS-WIDTH FIX. STAGE 0: THE DESIGN PROBE, REGISTERED BEFORE IT RAN.
+Entry point: `research/lab/2026-07-30-P5-entry-handoff.md` §6, "do STEP 1b before you build anything".
+
+**THE ARITHMETIC THAT SEPARATES THE TWO COSTS, and it is the whole reason this lever is cheap.** The seed
+header prices the field's absolute scale at ~180,000 points (6,738.2 mm of locus / 37.6 um) and then applies
+the resulting global clamp to BOTH spacings. But those are different questions:
+  * the ALONG spacing sets HOW MANY chain points there are. 6,738.2 mm / h. The 180k figure is an
+    ALONG-spacing figure and it is correct.
+  * the ACROSS spacing sets nothing of the kind. Stage 3c emits **two offset points PER CHAIN POINT**;
+    `across` is only HOW FAR OFF THE LOCUS they sit. **Moving the ring inward costs ZERO extra points.**
+So the explosion argument never applied to the across-question. It was priced on the along-cost and then
+spent on the across-clamp — which is the same category error the S13 addendum named ("a GLOBAL clamp
+answering a LOCAL question"), one level further down.
+
+**THE RULE (`_strataAlignedSeed.ts`, `acrossAbs`, DEFAULT OFF, env `PF_CB_ALIGNED_ACROSS_ABS=1`):**
+      across := max(acrossMinMm, min( acrossBase * clamp(hAc/hMedian, 1/2, 2), hAc ))
+MONOTONE-DOWNWARD by construction, so it can only refine, and — this is arithmetic, not a measurement —
+it binds ONLY where `hAc < acrossBase/fieldRange = 192.6 um`. For `hAc >= 192.6` the `min` selects today's
+value and nothing downstream changes. Smooth regions keep the coarse base exactly.
+**AND IT CARRIES ITS OWN ANISOTROPY GUARD**, because the seed IS the mesh and `aspect3` of a thin
+(along x across) element is ~ along/across: at across 50 um with along at its field value of 2,201.6 um the
+element sits at AR ~44 against a cap of 50, and a facet born over the cap is FROZEN (S1 refuses its splits).
+So WHERE THE ACROSS RULE BINDS, AND ONLY THERE, `along := min(along, seedARmax * across)`. **That bound is
+the only place this rule can add points**, which is exactly why it is counted and pre-registered.
+PRECONDITION, ASSERTED IN CODE (throws): `acrossMinMm * 0.55 > pslgEpsMm`. Stage 3e re-routes a constraint
+through any point within `pslgEpsMm` (20 um) of its interior, and its correctness note leans on free Steiner
+points being held away by the `nearSeg` clearance — which for the offset ring IS `across * 0.55`. An across
+floor below 36.4 um would let a FREE point bend a TRACED LOCUS, i.e. manufacture the misplaced-constraint
+defect the layer-2 negative control exists to catch. The build refuses rather than allowing it.
+
+**STAGE 0 — THE DESIGN PROBE. Seed-only, no mesher run, no fidelity number, no verdict.** It exists because
+the production A/B cannot honestly register a triangle ceiling that has not been measured, and because a
+2-minute seed build can refute the premise before a 20-minute mesher run is spent on it.
+`research/bridge/out/step1bProbe.ts` (scratch) rebuilds the seed from `_S11A`'s own `loci.json` — the same
+394 components / 11,083 points / 6,738.2 mm the run traced — at five settings.
+BARS, REGISTERED BEFORE THE RUN:
+  Q1 **INERTNESS AT SEED SCALE (a STOP condition for the edit, not for the campaign).** The flag-OFF arm
+     must reproduce the `_S11A` seed EXACTLY: points 41,630 | tris 82,462 | constraints 6,806 recovered
+     6,806 | conditioned 864 | decimated 0 | degenerate dropped 507 | overCap 4 | worst AR 88.79 | worst
+     parametric AR 98.6 | offset points 10,927 | background kept 23,904 dropped 3,896 | repair rounds 1,
+     banned 2. ANY difference means the edit is not inert and nothing else in this section may be believed.
+  Q2 **THE RULE BINDS WHERE IT SHOULD.** `acrossBoundPts > 0`, and the across spacing PLACED at its
+     minimum reaches the floor (50 um at the default) rather than stopping at 192.6 um.
+  Q3 **THE CEILING (this is what the A/B must register).** points and tris vs the control's 41,630 /
+     82,462. A rise above **2.0x** on either is a REFUSAL to run the production arm at that setting — the
+     lever's whole claim is that the across-question is nearly free, and 2x is already ten times the
+     movement the S11 topology fix was allowed.
+  Q4 **THE SEED CENSUS MUST NOT DEGRADE.** overCap <= 4 and worst AR <= 88.79 (the control's own values).
+     A rise means the anisotropy guard is set wrong and the setting is discarded, not shipped.
+  Q5 **THE DECISIVE DESIGN READ, and it can refute Step 1b here for the price of a seed build.** The seed
+     facet CONTAINING site A (th 5.637379, z 44.16992) and site B (th 4.062906, z 45.38896), by its 3-D
+     edges. If the containing facet's SHORTEST edge does not fall materially under the rule, then the
+     across-width is not what determines the local element at those sites, and the production A/B is not
+     worth its 20 minutes — record the refutation and go to the emitter with the mechanism ruled out.
+  ARMS: control (OFF) | floor 50 um AR 24 | floor 50 um AR 16 | floor 100 um AR 24 | floor 50 um AR 999
+  (the along bound disabled, to price the guard's own cost separately and to show what it prevents).
+
+### *** S15 STAGE-0 RESULT — THE RULE IS NEARLY FREE (x1.041 TRIANGLES) AND IT MOVES BOTH NAMED SITES.
+### AND THE MECHANISM IS NOT THE ONE THE HANDOFF NAMED: THE RING WAS NEVER THERE TO BE MOVED. ***
+Seed-only, `_S11A`'s own loci.json, no mesher run. Every number below is a seed statistic.
+
+  Q1 **HOLDS, EXACTLY.** The flag-OFF arm reproduces the `_S11A` seed to the digit on every recorded
+     statistic: points **41,630** | tris **82,462** | constraints **6,806 recovered 6,806** | conditioned
+     **864** | decimated **0** | degenerate dropped **507** | dropRefused **0** | overCap **4** | worst AR
+     **88.79** | worst parametric AR **98.6** | offset points **10,927** | background kept **23,904** of
+     27,800 | repair rounds **1**, banned **2**. Also recorded for the first time (no prior control):
+     chainPts 7,119, crossingsSplit 1,012, the seed builder's self-referential edgesCrossingLocus
+     2,771/117,285 (NOT the driver's 963/123,948 — different instrument, see the seed header).
+  Q2 **HOLDS.** At floor 50 / AR 24 the rule binds at **5,417 of 7,461 chain points (72.6%)** and the
+     across spacing placed reads min **50.0** um, p50 **50.0** um against the clamp's 192.6. The loci of
+     GothicArches are sharp across along nearly three quarters of their length — which is what a locus is.
+  Q3 **HOLDS WITH ~50x MARGIN, and this is the number the handoff asked to be registered.**
+
+| arm | points | tris | chainPts | offsetPts | constraints | rounds/banned | wall |
+|---|---|---|---|---|---|---|---|
+| CONTROL (flag OFF) | 41,630 | 82,462 | 7,119 | 10,927 | 6,806 | 1 / 2 | 40 s |
+| **floor 50 / AR 24** | **43,303 (x1.040)** | **85,808 (x1.041)** | 7,461 | 12,081 | 7,108 | 5 / 176 | 115 s |
+| floor 75 / AR 24 | 42,563 (x1.022) | 84,328 (x1.023) | 7,191 | 11,456 | 6,879 | 2 / 31 | 57 s |
+| floor 50 / AR 999 | 42,469 (x1.020) | 84,140 (x1.020) | 7,119 | 11,489 | 6,807 | 4 / 142 | 98 s |
+| floor 50 / AR 20 | **THREW** — constraint recovery 7,267 of 7,268 | | | | | | |
+| floor 50 / AR 16 | **THREW** — constraint recovery 7,613 of 7,614 | | | | | | |
+
+     **4.1%, not 4.3x.** The bar was 2.0x. The across-question is free exactly as the arithmetic said it
+     would be, because it places no points; the 4.1% is the anisotropy guard's along-bound, entirely.
+     AND THE TWO THROWS ARE A REAL BOUND, not a nuisance: below AR ~24 the chains densify until one locus
+     segment is unrecoverable, and the seed REFUSES (the 2026-07-24 assertion earning its keep for the
+     third time). **AR 24 is at the edge of what the PSLG tolerates at this config** — registered as such,
+     with floor 75 / AR 24 as the fallback if the production arm throws.
+  Q4 **BREACHED BY ONE FACET, and it is recorded as a breach rather than re-drawn.** overCap **4 -> 5** at
+     floor 50 / AR 24 (and 6 at floor 75 / AR 24), against a bar of `<= 4`. Everything else improves or
+     holds: worst AR **88.79 -> 85.13**, worst parametric AR 98.6 -> 116.7 (+18.4%). **Every over-cap facet
+     in EVERY arm is a CONSTRAINT+CONSTRAINT+CONSTRAINT triple** — the bow-cap family the seed's own §6b
+     repair already names and already fails to clear on 4 of them; the rule adds a fifth of the same
+     family at z 64.42 and removes the z 83.2 worst. This carries into the production arm as a DECLARED
+     DEVIATION (determined blades <= 3, not <= 2), exactly as S10's SA6 P-B declared 4 seed-born over-cap
+     facets in advance rather than discovering them.
+  Q5 **THE DECISIVE READ FIRES, AND HARD.** The seed facet CONTAINING each site, by its 3-D edges:
+
+| site | CONTROL | floor 50 / AR 24 | shortest edge |
+|---|---|---|---|
+| **A** th 5.637379 z 44.16992 | 1941.0 / 1986.7 / 2205.7 um, AR 1.89 — apex a **BACKGROUND lattice point 839.8 um off the locus** | **199.8** / 1200.2 / 1218.9 um, AR 6.66 — apex an **OFFSET point at 50.0 um** | **1941.0 -> 199.8 um, x0.103** |
+| **B** th 4.062906 z 45.38896 | 1853.3 / 2205.5 / 2213.6 um, AR 1.87 — apex a **BACKGROUND point 951.1 um off** | **223.1** / 1200.2 / 1219.0 um, AR 6.01 — apex an **OFFSET point at 50.0 um** | **1853.3 -> 223.1 um, x0.120** |
+
+>> **AND THE AUTOPSY LINE IN THE S13 ADDENDUM IS INCOMPLETE — I am correcting my predecessor's mechanism,
+>> not its arithmetic.** "The seed placed 192.6 um across" was computed FROM THE FORMULA. Measured ON THE
+>> BUILT SEED, the nearest vertex of each kind to the two sites is:
+>>   site A — nearest CONSTRAINT 938.8 um, nearest OFFSET **957.8 um**, nearest BACKGROUND **744.3 um**
+>>   site B — nearest CONSTRAINT 944.4 um, nearest OFFSET **936.9 um**, nearest BACKGROUND **463.0 um**
+>> **THERE IS NO 192.6 um RING AT EITHER SITE. The nearest vertex of any kind is a BACKGROUND lattice
+>> point 744.3 / 463.0 um away.** The reason is that `across` sets how far the ring sits OFF the locus and
+>> `along` sets how often it is SAMPLED — and the clamp saturates `along` at 2x, giving 2,201.6 um. An
+>> offset ring 192.6 um out but sampled every 2,201.6 um is 11.4x sparser than it is close, so over almost
+>> the whole span of every constraint edge the nearest non-locus vertex is the background lattice at
+>> ~750-950 um. **A feature that turns over in 106.0 um is being resolved by a 744 um chord.**
+>> TWO CONSEQUENCES, both load-bearing:
+>>   1. the across-width and the along-spacing are NOT separable at a sharp crease, and Step 1b's rule is
+>>      correct only because it carries the anisotropy guard. **PROVEN BY THE ARM THAT ISOLATES IT:** floor
+>>      50 with the guard DISABLED (AR 999) moves the ring to 50.0 um and leaves BOTH site facets
+>>      byte-unchanged at 1941.0 / 1853.3 um. The guard is not a side-condition; it is half the mechanism.
+>>   2. floor 75 / AR 24 moves site A (1941.0 -> 472.2) and does NOT move site B (1768.7, still a
+>>      background apex). **Floor 50 is not decoration; 75 is already too coarse for site B.**
+>> ALSO REFUTED, cheaply, before it could become folklore: "the ring is dropped against a neighbouring
+>> locus." Measured — the next locus component is **1,252.8 um (A) / 1,243.3 um (B)** away, and every
+>> offset candidate at 192.6 / 75 / 50 um clears its `nearSeg` guard by more than 10x. Nothing is dropped.
+>> The ring is simply not sampled often enough to be near anything.
+
+### S15 (PHASE C STEP 1b) — STAGE 1: THE PRODUCTION A/B. Registered BEFORE any `_S15A` mesh existed.
+ONE VARIABLE: the across-spacing rule (`PF_CB_ALIGNED_ACROSS_ABS=1`, floor 50 um, seed AR 24 — the
+defaults). Everything else is the `_S11A` command verbatim. CONTROL = the recorded `_S11A` run and its
+recorded deep audits (`FID_S11A.report.txt`), same instrument, same Part-B depth, same lineage.
+
+COMMANDS (from potfoundry-web/, `-c vitest.strata.config.ts`, `--testTimeout=1800000 --hookTimeout=600000`,
+`NODE_OPTIONS=--max-old-space-size=16384`):
+  identity  PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_GRIDU=40 PF_CB_GRIDV=28
+            PF_CB_TRICAP=120000 PF_CB_ACCEPT=0.0035 PF_CB_DIRECTED=1 PF_CB_SNAP=1 PF_CB_TAG_SUFFIX=_S15ID
+  arm       PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+            PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 PF_CB_ACCEPT=0.0035 PF_CB_TAILK=800
+            PF_CB_MAXSECS=5400 PF_CB_RANK=plane PF_CB_ALIGNED_SEED=1 **PF_CB_ALIGNED_ACROSS_ABS=1**
+            PF_CB_TAG_SUFFIX=_S15A
+  audit     PF_STRATA_FT=1 PF_FT_STYLE=GothicArches PF_FT_STL=<_S15A stl> PF_FT_TAG=FID_S15A
+            PF_FT_H1=1 PF_FT_H2=1 PF_FT_WORKERS=8 PF_FT_H1MAX=40000 PF_FT_H2BUDGET=40000000
+            PF_FT_GUARD_AR=50   (Part-B depth, identical to `_S11A`'s)
+
+YARDSTICKS (`_S11A`, recorded): back-facing **959** (+4,075 feature-span) | off-locus tails >=15 **28,118**
+/ >=30 **21,402** / >=45 **17,766** / >=90 5,034 | parametric AR p99 106.769 MAX 125,886.870 | 3-D AR p99
+43.177 MAX 85.129 | determined blades **2**, determined folds **0** | **H2 witnessed 37.899 um at
+th 5.637379 z 44.16992**, samples over 0.01242% | H1 witnessed 344.205 um / certified 354.199 um / 1.63%
+facets over, at 40,000 of 1,010,435 coverage, stride 624,483, INCOMPLETE | unresolved 5,576 worst
+47.245 um | tris 1,010,435 | wall 818 s | seam-cracks 0, boundary 1,167 in 2 loops, Euler 0.
+
+**H1 IS A GUARD, NOT A WIN CONDITION, AND THE REASON IS NOW MEASURED TWICE.** `_S15A` will have a
+different triangle count, hence a different golden-ratio stride, hence a DIFFERENT 3.96% subset — the
+exact artefact that moved `_S11A`'s H1 max 18.6% against `_S10A` for a one-point topology fix (SC4).
+Every H1 number below is quoted with coverage and stride and carries no fidelity claim either way.
+**THE DECISIVE INSTRUMENT IS H2**, which samples the SURFACE at 40M points and is subset-stable: it has
+returned 37.899 um at the same (theta,z) to six decimals on four consecutive arms.
+
+PREDICTIONS AND BARS, all decided before the run:
+  T1 **IDENTITY (STOP CONDITION).** Flag-OFF at the W1 config reproduces md5
+     8a59fb37a9115600b13262254380ccb0 byte-exact and `cmp`-identical to `_S8ID`/W1, and the hard gate reads
+     **12/12** with every documented value exact (V1 2.249981, V3 thin 12.041, V7c 12.041/39.767/142.668),
+     taken BOTH before and after the edit. A mismatch ABORTS the session. The new code is reachable only
+     under `PF_CB_ALIGNED_ACROSS_ABS=1`, and the across rule is additionally monotone-downward inside
+     `PF_CB_ALIGNED_SEED=1` — identity twice over by construction, and this campaign has found "by
+     construction" worth checking four times.
+  T2 **THE SEED CEILING (checked BEFORE the loop, from the driver's own printed census).** seed points
+     <= **45,000** and seed tris <= **90,000** (Stage 0 measured 43,303 / 85,808). Over either, the run is
+     ABANDONED rather than reported — the lever's entire claim is that the across-question is nearly free.
+  T3 **THE DECISIVE CLAUSE — THE TWO NAMED SITES.** `_S11A`'s H2 argmax has been byte-identical at
+     **37.899 um, th 5.637379, z 44.16992** across `_S10A`, `_S10B`, `_S11A` and `_S12i2`, and site B at
+     **40.006 um, th 4.062906, z 45.38896** on two more. This is the FIRST intervention aimed at their
+     birth channel. **WIN: H2 witnessed <= 18.95 um (>=2x fall) AND the argmax no longer sits at either
+     named (theta,z).** **REFUTED: H2 witnessed > 34.11 um (<10% movement) OR the argmax is still at a
+     named site to six decimals** — then the across-width is not the mechanism, it is recorded as ruled
+     out, and the emitter's scope stays as the handoff wrote it.
+  T4 **CLASS GUARDS (this is added refinement, so the class is expected to rise; the question is how far).**
+     Gated back-facing <= **1,151** (x1.2 of 959, the CTLPLUS slope) for a CLEAN win; > **1,438** (x1.5)
+     is a REGRESSION. Quoted three ways, as the handoff requires: the ABSOLUTE count; the DENSITY
+     (per 1M triangles, against `_S11A`'s 949) because a bigger mesh may legitimately carry more; and the
+     IN-DISK / OUT-DISK split from `research/bridge/out/diskLocalise.ts`, against the 61.4 / 60.1 / 61.5%
+     in-disk share that has held on three arms. Deviation TAILS (>=15 / >=30 / >=45 deg) reported beside
+     the gated count, always — the tail is what the operator's eye sees.
+  T5 **PRECONDITIONS.** determined FOLDS **0** (any non-zero refutes the seed outright). determined BLADES
+     <= **3** — a **DECLARED DEVIATION** from `_S11A`'s 2, registered here in advance with its cause: the
+     seed's over-cap census rises 4 -> 5 (Stage 0, Q4), all five CONSTRAINT-triple bow-caps, worst AR
+     88.79 -> 85.13. Worst admitted child AR <= **50**. Constraint recovery **100%** (asserted in code;
+     the build throws, and it threw twice in Stage 0). seam-crack edges **0**, boundary loops **2**,
+     **Euler V-E+F = 0**.
+  T6 **COST.** live tris <= **1.5 M** (x1.48 of 1,010,435); wall <= **1,400 s** (x1.71 of 818); seed build
+     <= **200 s** (Stage 0 measured 115 s at 5 repair rounds). Wall-time contention noted with the number.
+  T7 **VERDICT ROWS — evaluated IN ORDER, FIRST MATCH WINS, disjoint by construction:**
+     1 **REFUTATION** — T3's refuted clause fires (H2 > 34.11 um OR the argmax still at a named site).
+       The accepted-blind population is not born from the across-width. Record it, keep the lever default
+       OFF, and the strip-emitter scope stays exactly as the P5 handoff wrote it.
+     2 **REGRESSION** — T5 fails (folds > 0, blades > 3, admitted AR > 50, cracks != 0, Euler != 0) OR
+       back-facing > 1,438 OR H1 witnessed >= 516.3 um (1.5x, coverage-caveated) OR T6 breached.
+       Must not default ON; report and stop.
+     3 **WIN** — T3's win clause AND back-facing <= 1,151 AND T5 AND T6.
+     4 **TRADE** — everything else, with both numbers in the SAME row of the SAME table.
+  T8 **REPORTED EITHER WAY, because it is the next step's input:** the unresolved (STRANDED) count and its
+     worst, against 5,576 / 47.245 um — the across rule has no mechanism to reach the AR-capped population
+     and a change there would mean something unmodelled happened; and the driver's own
+     `alignedSeedCrossings` against 963 of 123,948, which must not rise materially (a denser chain must not
+     re-introduce crossings).
+
+>> **WHAT IS AT STAKE, STATED SO IT CANNOT BE RE-READ AFTERWARDS.** If T3 wins, the accepted-blind
+>> population is a SEED defect that was mis-priced in my own builder, the emitter's scope collapses to the
+>> junction disks where 61% of the visible class provably lives, and Step 1c (tolScale 8-16) is dead. If T3
+>> is refuted, one 20-minute run has removed the across-width from the list of candidate mechanisms and the
+>> emitter starts with it ruled out instead of assumed — which is the trade the handoff priced and accepted.
+
+### *** S15 STAGE-1 RESULT — THE TWO IMMOVABLE SITES ARE CLOSED (38.061 -> 0.667 um AND 40.006 -> 3.816 um)
+### AND THE REGISTERED VERDICT IS ROW 2 REGRESSION, ON ONE CLAUSE, FIRED BY THE CLASS METRIC. BOTH ARE
+### THE RESULT, AND THE SECOND IS THE MORE INTERESTING ONE. ***
+`_S15A` = the `_S11A` command verbatim + `PF_CB_ALIGNED_ACROSS_ABS=1`. One variable. Both arms sequential.
+
+  T1 **HOLDS, BOTH HALVES.** Flag-OFF at the W1 config -> md5 **8a59fb37a9115600b13262254380ccb0**, `cmp`
+     byte-identical to `_S8ID`/W1 (178 s). Hard gate **12/12**, every documented value exact
+     (V1 2.249981/2.249981, V3 wide 197.167, V3 thin **12.041**, V7c **12.041 / 39.767 / 142.668**).
+  T2 **HOLDS, TO THE POINT.** The driver's own seed census reads **43,303 points -> 85,808 tris** — the
+     Stage-0 probe's numbers exactly, against bars of 45,000 / 90,000. The rule bound at **5,417** chain
+     points (along shortened at **831**); across placed min **50.0** um / p50 **50.0** um.
+  T5 **HOLDS, INCLUDING THE DECLARED DEVIATION.** determined folds **0**; determined blades **2** (bar 3 —
+     the declared 4->5 seed over-cap did NOT produce a third determined blade; the two that survive are
+     `_S11A`'s own); worst admitted child AR **50.00**; constraint recovery **7,108 of 7,108**; seam-crack
+     edges **0**, boundary **1,106** in **2** loops, auditor's independent **Euler V-E+F = 0**.
+  T6 **HOLDS.** 1,046,234 tris (x1.035, bar 1.5 M); wall **820 s** (x1.002 of 818, bar 1,400).
+     INSTRUMENT GAP, recorded: the driver report does not print the seed build's own wall, so the <=200 s
+     clause is checked only through the total, which rose by 2 s while the loop did 13,555 MORE splits.
+
+| | `_S11A` (control) | `_S15A` (across rule) | |
+|---|---|---|---|
+| seed points / tris | 41,630 / 82,462 | 43,303 / 85,808 | x1.040 / x1.041 |
+| seed over-cap / worst AR / worst parAR | 4 / 88.79 / 98.6 | 5 / **85.13** / 116.7 | declared in advance |
+| across placed (min / p50) | 192.6 / 192.6 um | **50.0 / 50.0 um** | bound at 5,417 of 7,461 |
+| live tris / wall | 1,010,435 / 818 s | 1,046,234 / 820 s | x1.035 / x1.002 |
+| split candidates / **aspect refusals** | 1,253,536 / **596,692** | 1,019,242 / **340,300** | x0.813 / **x0.570** |
+| **H2 WITNESSED** | **37.899 um** @ th 5.637379 z 44.16992 | **24.281 um** @ th **1.308997 z 113.45994** | **x0.641, ARGMAX MOVED** |
+| H2 samples over TOL | 0.01242% | **0.00251%** | **x0.202** |
+| **site A true surface->mesh** | **38.061 um** | **0.667 um** | **x0.018 — CLOSED** |
+| **site B true surface->mesh** | **40.006 um** | **3.816 um** | **x0.095 — CLOSED** |
+| site N (the NEW argmax) | 3.297 um | **24.280 um** | **x7.4 WORSE** |
+| H1 witnessed / certified | 344.205 / 354.199 um | 129.703 / 141.052 um | DIFFERENT STRIDE — no claim |
+| H1 facets over TOL | 1.63% (651/40,000) | **1.13%** (451/40,000) | x0.693, same coverage 3.8-4.0% |
+| **GATED back-facing** | **959** | **1,846** | **x1.925 — THE BAR THAT FIRES** |
+| over-90 / feature-spanning | 5,034 / 4,075 | 5,156 / 3,310 | **+2.4% / -18.8%** |
+| **in-disk back-facing** | **589 (61.4%)** | **611 (33.1%)** | **+3.7% — essentially FLAT** |
+| **out-of-disk back-facing** | **370** | **1,235** | **x3.34 — the whole rise** |
+| off-locus >=15 / >=30 / >=45 / >=60 | 28,118 / 21,402 / 17,766 / 14,877 | 26,599 / 18,919 / 15,556 / 12,646 | **all BETTER** |
+| off-locus >=90 / >=120 / >=150 | 5,034 / 2,452 / 896 | 5,156 / 1,954 / 558 | +2.4% / x0.797 / x0.623 |
+| deviation p50 / p90 / p99 / MAX | 0.945 / 3.167 / 77.194 / 173.267 | 1.015 / 3.446 / **70.531** / 173.558 | |
+| 3-D AR p50 / p90 / p99 / MAX | 3.787 / 13.370 / 43.177 / 85.129 | 3.863 / **11.417** / **37.448** / 85.129 | |
+| parametric AR p99 / MAX | 106.769 / 125,886.870 | 102.048 / **85,542.705** | x0.956 / **x0.679** |
+| determined blades / folds | 2 / 0 | 2 / 0 | identical |
+| **unresolved (STRANDED) / worst** | **5,576** / 47.245 um | **3,035** / 47.245 um | **x0.544** / identical |
+| seam-cracks / loops / Euler | 0 / 2 / 0 | 0 / 2 / 0 | identical |
+| `alignedSeedCrossings` | 963 / 123,948 (0.777%) | **3,425 / 128,967 (2.656%)** | **x3.56 — a real cost, named below** |
+
+  T3 **THE DECISIVE CLAUSE — WON AT THE SITES, MISSED AT THE GLOBAL MAX, AND THE GAP BETWEEN THOSE TWO IS
+     THE RESULT.** Measured directly (exact point-to-triangle from the analytic surface point at each named
+     (theta,z) to the nearest facet of each arm's STL):
+       **site A: 38.061 -> 0.667 um. Site B: 40.006 -> 3.816 um. Both now UNDER the 10 um bar.**
+     The site that returned **37.899 um at th 5.637379, z 44.16992 to six decimals on FOUR consecutive
+     arms** — through a x1.63 triangle change, a topology fix and a certificate-driven local tightening —
+     moved on the FIRST intervention aimed at its birth channel. Its carrier's across-chord went 357.3 ->
+     316.1 um and, decisively, the seed under it went from a 1,941 um background triangle to a 199.8 um
+     locus element. **The ACCEPTED-BLIND population named in S13 is a SEED defect, and the defect was mine.**
+     T3's win clause nevertheless does NOT fire, because it required the GLOBAL H2 max to halve and it fell
+     only x0.641 (37.899 -> 24.281). T3's refuted clause does not fire either (24.281 < 34.11, and the
+     argmax is not at a named site). **A DIFFERENT SITE TOOK OVER**: th 1.308997, z 113.45994, which read
+     **3.297 um on the control and 24.280 um here** — a genuine new regression, at the z 110-115 band, i.e.
+     the upper X-crossing coinciding with the bandRim crease at z 111.4, the TRIPLE junction this campaign
+     measured as 6x hotter than the other. Its carrier is AR **45.49**, edges 33.8 / 681.5 / 711.3 um —
+     a near-cap element. **The residual argmax has moved OUT of the locus strips and INTO the junction
+     disks**, which is exactly the ceiling the aligned seed stated in advance ("alignment is well-defined
+     ALONG a locus and ILL-DEFINED WHERE TWO LOCI CROSS") and exactly what P5's emitter was scoped for.
+  T4 **BREACHED — AND THE BREACH IS AN ARITHMETIC IDENTITY, NOT AN OPINION.** Gated back-facing 959 ->
+     **1,846** (x1.925) against a regression line of 1,438. Density 949 -> 1,764 per 1M triangles (x1.86).
+     The judge's gate is, on BOTH arms exactly, `gated = over90 - featureSpanning`:
+        `_S11A` 5,034 - 4,075 = 959.    `_S15A` 5,156 - 3,310 = 1,846.
+     **The over-90 population moved +2.4%. The EXEMPTION fell 18.8%, and that is the whole of the x1.93.**
+     A "feature-spanning" facet is one that reads back-facing at its centroid but FRONT-facing at one of its
+     own vertices — a chord thrown across a steep wall. Sharpen the across-width and fewer facets span a
+     whole wall, so 765 of them lose the exemption and are counted. The judge's own report has warned since
+     2026-07-30 that this population "GROWS with refinement depth (1,792 @ 61k -> 14,890 @ 351k tris)" and
+     that "a centroid-only >= 90 gate is unmeasurable-as-specified on feature-bearing styles". **THE BAR
+     STANDS AS REGISTERED AND THE VERDICT IS SCORED ON IT** — a bar re-drawn after seeing the number is not
+     a bar. But the localisation says plainly what moved: **in-disk 589 -> 611 (+3.7%, flat), out-of-disk
+     370 -> 1,235 (x3.34)**, and every deviation tail from >=15 to >=60 and from >=120 to >=150 IMPROVED.
+  T8 **REPORTED, AND ONE HALF OF IT BREACHED ITS OWN WORDING.** unresolved (the STRANDED population) fell
+     **5,576 -> 3,035, x0.544**, with its worst byte-identical at 47.245 um — 2,541 facets left the
+     self-blocked set, which no across-rule was predicted to touch, and the aspect-refusal count fell x0.570
+     in the same arm. But `alignedSeedCrossings` rose **963 -> 3,425 (0.777% -> 2.656%, x3.56)** against a
+     clause that said it "must not rise materially". It did. **CAUSE MEASURED, not guessed** — bow depth of
+     the traced loci over one along-span, from the artifact:
+
+| chord span | bow p50 | p90 | p99 | max | chords bowing deeper than 50 um | than 192.6 um |
+|---|---|---|---|---|---|---|
+| 2,202 um (control's along) | 0.7 | 45.4 | 208.1 | 350.6 um | 9.0% | **1.4%** |
+| 1,200 um (`_S15A`'s along) | 0.2 | 26.9 | 112.3 | 250.6 um | **6.0%** | 0.2% |
+
+>> **THE OFFSET RING IS NOW CLOSER TO THE LOCUS THAN THE LOCUS'S OWN BOW.** The ring hugs the chain, but a
+>> chord between two consecutive ring points is straight while the locus between them is not; where the bow
+>> exceeds the ring radius, that chord CUTS the locus it was placed to hug. Control: ring 192.6 um, bow
+>> exceeds it on **1.4%** of chords. `_S15A`: ring 50 um, bow exceeds it on **6.0%** — **4.3x more**, against
+>> a measured crossing rise of **x3.56**. Same order, same sign, and it names the next refinement of the
+>> rule exactly: **the across floor must also be keyed to the LOCAL BOW over the local along-spacing**
+>> (`across >= k x bow`), or the along-spacing must be curvature-limited, not merely aspect-limited. It is
+>> also the leading candidate for the out-of-disk back-facing rise, since a ring chord that cuts the crease
+>> lands with both endpoints on the SAME flank — which is precisely a facet that reads back-facing at every
+>> one of its own four sample points and therefore loses the feature-spanning exemption. **STATED AS A
+>> HYPOTHESIS, NOT A RESULT: the bow arithmetic is measured; the link to the exemption loss is not.**
+
+>> **REGISTERED VERDICT: T7 ROW 2 — REGRESSION.** Rows evaluated in order. Row 1 does not fire (H2
+>> 24.281 <= 34.11 and the argmax is not at a named site). Row 2 fires on **exactly one clause of five**:
+>> gated back-facing 1,846 > 1,438. Every other row-2 trigger passes — T5 entire, H1 witnessed 129.703 vs
+>> the 516.3 line, T6 entire. Per the registration: **the lever stays DEFAULT OFF and this is reported, not
+>> shipped.**
+>>
+>> **AND THE FINDING THE VERDICT DOES NOT CARRY, WHICH IS THE ONE THAT MATTERS FOR THE BUILD ORDER.** The
+>> handoff's §6 asked one question — "is the across-width the birth channel of the accepted-blind
+>> population?" — and set the fork on the answer. **THE ANSWER IS YES.** Two sites that were byte-identical
+>> across four production arms, that a global accept halving could not move, that a certificate-driven local
+>> tightening could not move, and that the driver's own ruler under-read by 47x and 96x, went to **0.667 um
+>> and 3.816 um** on a seed-parameter change. The residual global maximum is now a JUNCTION site with a
+>> near-cap carrier, and the in-disk share of the visible class is unchanged in count. **So the branch the
+>> handoff wrote — "IF Step 1b closes the accepted-blind sites, the emitter's scope shrinks to the junction
+>> disks" — is the branch that is now open**, and it is open on measurement rather than on assumption.
+>> WHAT MUST NOT BE LOST: this arm is NOT a shippable mesh. It trades a closed locus-strip population for a
+>> tripled out-of-disk gated count and a new 24.281 um junction site. The next move on this lever is the
+>> bow-keyed across floor, and it is cheap for the same reason this one was: it places no points.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

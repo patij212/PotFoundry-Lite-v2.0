@@ -968,6 +968,18 @@ describe('STRATA conforming-bisection', () => {
     const AL_FIELD = process.env.PF_CB_ALIGNED_FIELD !== '0';     // modulate spacing by R2's sizing field
     const AL_ROUNDS = Math.round(envF('PF_CB_ALIGNED_ROUNDS', 6));
     const AL_MEASURE = process.env.PF_CB_ALIGNED_MEASURE !== '0';
+    // ── S15 / PHASE C STEP 1b — THE ACROSS-SPACING RULE. DEFAULT OFF, like every lever in this campaign.
+    // The relative modulator floors the across-locus spacing at acrossBase/fieldRange = 192.6 um while R2's
+    // field asks for 44.7 um at the mesh's two worst fidelity sites, whose crease turns over in 106.0 um
+    // (worklog, S13 addendum). PF_CB_ALIGNED_ACROSS_ABS=1 keys the across spacing to R2's ABSOLUTE answer
+    // where that is sharper, floored at PF_CB_ALIGNED_ACROSS_MIN_UM, with the along spacing bounded at
+    // PF_CB_ALIGNED_SEED_AR x across wherever the rule binds so the seed cannot be born over the cap.
+    const AL_ACROSS_ABS = envOn('PF_CB_ALIGNED_ACROSS_ABS');
+    const AL_ACROSS_MIN = envF('PF_CB_ALIGNED_ACROSS_MIN_UM', 50) / 1000;
+    const AL_SEED_AR = envF('PF_CB_ALIGNED_SEED_AR', 24);
+    if (AL_ACROSS_ABS && !ALIGNED_SEED) {
+      throw new Error('PF_CB_ALIGNED_ACROSS_ABS=1 is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
+    }
     // LAYER-2 NEGATIVE CONTROL: push every traced locus this far along its own normal before seeding. A
     // non-zero value builds a DELIBERATELY MISTRACED seed, which must produce a census-visible defect —
     // proving the pipeline would catch a tracer regression instead of shipping a misplaced constraint.
@@ -1031,6 +1043,7 @@ describe('STRATA conforming-bisection', () => {
       const rep = buildAlignedSeedRepaired(rA, alignedLoci, {
         ...DEFAULT_SEED_OPTS, H, gu, gv,
         alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
+        acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
       }, AL_ROUNDS);
       alignedStats = rep.seed.stats; alignedRounds = rep.roundsUsed; alignedBanned = rep.banned;
@@ -3525,6 +3538,12 @@ describe('STRATA conforming-bisection', () => {
           + `   background kept ${alignedStats.bgKept} dropped ${alignedStats.bgDropped}   offset points ${alignedStats.offsetPts}`
           + `   sizing field ${AL_FIELD ? 'ON' : 'OFF'} (${alignedStats.fieldEvals} rA evals)`,
         `    seed shape census: ${alignedStats.overCap} of ${alignedStats.tris} over the cap (worst AR ${alignedStats.worstAR.toFixed(2)}, worst PARAMETRIC AR ${alignedStats.worstParAR.toFixed(1)})`,
+        ...(AL_ACROSS_ABS ? [
+          `    *** S15 STEP 1b ACROSS RULE ON: PF_CB_ALIGNED_ACROSS_ABS=1  floor ${(AL_ACROSS_MIN * 1000).toFixed(1)} um  seed AR bound ${AL_SEED_AR.toFixed(0)}`
+            + `   BOUND at ${alignedStats.acrossBoundPts} chain points (along shortened at ${alignedStats.alongBoundPts})`
+            + `   across placed: min ${(alignedStats.acrossMinPlacedMm * 1000).toFixed(1)} um / p50 ${(alignedStats.acrossP50PlacedMm * 1000).toFixed(1)} um`
+            + `   (the relative rule floors at ${((alignedStats.acrossMm * 1000) / 2).toFixed(1)} um) ***`,
+        ] : []),
         ...(alignedSeedCrossings >= 0 ? [
           `    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink:`
             + ` ${alignedSeedCrossings} of ${alignedSeedEdges} edges (${((100 * alignedSeedCrossings) / Math.max(1, alignedSeedEdges)).toFixed(3)}%).`
