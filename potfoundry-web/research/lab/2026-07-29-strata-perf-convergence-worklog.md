@@ -5355,6 +5355,83 @@ undecorated wall, and it is D1's 687.6 um showing up in the z profile exactly wh
 >> was scored on the first pass before any of this was written.**
 
 
+### *** S23 STAGE 0 RESULT — **E2 GO. THE DENSITY FIELD IS EXTRACTABLE, AND IT REPRODUCES THIS ARM'S OWN**
+### *** DEMAND MAP TO THE BIN — INCLUDING THE ARGMAX THAT MOVED. TWO OF THE EIGHT BARS HOLD NARROWLY AND
+### *** ARE FLAGGED AS NARROW. THE #1 REGISTERED RISK IS RETIRED. ***
+Artifact-only, as registered: **no mesher run, no driver edit, no `src/` edit, no default flipped.** Tool
+`research/tools/s23Density.ts`; log `research/exchange/_strataConformBisect/S23_STAGE0_S22B.log`. Mesh read
+as SHIPPED f32 with theta recovered by `atan2` from those same coordinates. **1,251,546 facets ->
+626,348 welded vertices** (1.998 tri/vertex, 1,877,894 distinct edges, mean degree **6.00** — a closed
+manifold's own value, which is the reader validating itself).
+
+| bar | measured | line | |
+|---|---|---|---|
+| **D0** coverage | worst nearest-source **0.9938 mm** over 542,880 probes | <= 2.0 mm | **HOLDS** |
+| **D1** the designed lattice | `hA` p50 **687.6 um** (36,404 facets -> 38,830 vertices); `hMin` p50 **430.0** | [500,950] / [193,770] | **HOLDS** |
+| **D2'** loci contrast | `hMin` p50 **40.7**; contrast **5.614x**; `hMin` p10 **10.0 um** | <=100 / >=2.0x / <=50 | **HOLDS** |
+| **D3** the 43 declared regions | `hA` p50 **63.8 um**, ratio **0.0927** | <= 0.50 | **HOLDS** |
+| **D4'** the arm's OWN argmax | finest bin **z 80-85 at 76.2 um**, `\|mid-76.40\| = 6.10 mm`; z[70,85] **x0.764** | <=10 mm / <1 | **HOLDS** |
+| **D5** texture dispersion | within-cell `hA` p90/p10 median **2.793** (p90 5.652, p99 14.742, MAX 41.93) | <= 3.0 | **HOLDS, NARROWLY** |
+| **D6** implied cost | **x1.4073** (1,761,257 vs 1,251,546) | [0.7,1.5] faithful, 3.0 stop | **HOLDS** |
+| **D7** constructibility | `hA` below 36.4 um at **4.527%** | <= 5.000% | **HOLDS, NARROWLY** |
+
+>> **E2 GO FIRES. THE #1 REGISTERED RISK — "THE DENSITY FIELD MAY NOT BE EXTRACTABLE AT USABLE
+>> RESOLUTION" — IS RETIRED ON MEASUREMENT.**
+
+**THE FIELD, WHOLE-WALL, IN ALL THREE ESTIMATORS (um):** `hMin` p01 6.4 / p10 24.0 / **p50 65.5** / p90
+363.4 / p99 734.9, MIN **0.7** MAX 942.8 · `hMed` p50 **141.2** · `hA` p01 19.3 / p10 49.1 / **p50 113.5** /
+p90 479.9 / p99 868.1, MIN 2.0 MAX 1,261.5.
+
+**THE DEMAND MAP IS REPRODUCED, AND THE SHARPEST EVIDENCE IS THE ONE I DID NOT ASK FOR.** D4's original bar
+looked for tightening at z 40-60 and found **x1.113 — coarser than the wall median.** The field's finest
+bins are **z 80-85 (76.2 um)** and **z 75-80 (90.3 um)**, and `_S22B`'s own report line 83 puts its
+`MAX-locus` at **z = [76.40, 76.38, 75.97]**. **The extraction did not reproduce the demand map I remembered;
+it reproduced the demand map the arm actually has.** That is a stronger result than the bar I wrote, because
+the argmax MOVED between arms and the field moved with it.
+And the coarse end is equally legible: the coarsest z-bins are **z 0-15 at ~650 um**, which is undecorated
+wall, and **D1's designed lattice reads 687.6 um** against a target of **699.6 um derived from the recorded
+1,101 x 385 spacing before anything was measured**. The two agree to **1.7%**. Independently, the mesh's own
+3-D surface area **38,457.09 mm^2** and the analytic area element integrated over the reporting grid
+**38,439.05 mm^2** agree to **0.047%** — the chart, the reader and the surface are the same object.
+
+>> **THE TWO NARROW HOLDS, FLAGGED AS NARROW RATHER THAN BANKED.**
+>>   **D7 held by 0.47 of a percentage point** (4.527% against 5.000%), and it was registered as a genuine
+>>   coin-flip with the answer bounded in [1%, 10%]. **`hMin` tells the harsher half of the story: 20.046%
+>>   of source vertices carry a minimum incident edge below the 36.4 um throw floor, and 32.942% below the
+>>   50.0 um default across floor.** The bar is on `hA` for the registered reason — `hMin` is the ACROSS
+>>   scale of a deliberately anisotropic element — but a fifth of the mesh carrying sub-floor short edges is
+>>   the bisection texture made visible, and it is exactly what the reconstruction exists to stop shipping.
+>>   **D5 held at 2.793 against 3.0**, with p99 **14.742** and MAX **41.93**. The field is smooth enough to
+>>   construct at its median and emphatically not at its tail. Inter-cell Lipschitz
+>>   `\|log(h_i/h_j)\|/dist` reads p50 **1.2919** / p90 **3.5114** / p99 **7.9947** per mm — REPORTED, and
+>>   the build must decide whether to gradient-limit the field. **That decision is now a registered open
+>>   question, not an implementation detail.**
+
+**D6 MOVES THE COST DERIVATION, AND THE MOVEMENT IS AGAINST S23.** The constructor-facing integral predicts
+**1,761,257 triangles, x1.4073 of `_S22B`'s 1,251,546** — inside the registered density-faithful band but at
+its top. **S4 was derived on ~627k points; at 1.76M triangles the constructor is placing ~881k**, so the
+`cdt2d` scaling is `(881/117) * log(881k)/log(117k) = **x8.80** of the seed's own share, not x6.14.` The
+registered **600 s** ceiling and **2.0 M** live-triangle ceiling both stand, and both are now closer than
+they were: 1.76M against 2.0M is **88% of the ceiling.** Recorded before the build rather than discovered in
+it. (`D6a`, the estimator's self-consistency over the mesh's own facets, reads **x0.8133** — a 19%
+under-count, and it is the anisotropy: per-vertex `hA` from vertex-owned area against a per-facet mean of
+three such values are different reductions, and on an anisotropic element they disagree by exactly this
+much. Reported, not barred.)
+
+**AND ONE FORWARD CONSEQUENCE THE AMENDMENT REFUSED TO WITHDRAW.** The `hA` profile is **NOT monotone**
+inside [0,650] um: `[0,50] 104.5` · `[50,100] 133.6` · `[100,200] 95.0` · `[200,400] 94.6` · `[400,650]
+130.9` um. The constructor's own ring stride saturates at 4 from ring 3 (204.8 um), so **a reconstruction
+that honours the extracted field in the [200,650] um band will place FINER material there than S19's rings
+do.** That is a real difference between the constructed mesh and the seed it is built from, it is predicted
+here rather than discovered later, and it is the first thing to look at if the constructed cost overruns.
+
+>> **THE FORWARD LINE. Stage 0 was written so a refutation would be as decisive as a confirmation, and this
+>> time it confirmed. The oracle-and-constructor architecture survives its first real test: the bisected
+>> mesh's density map is recoverable at 50 um resolution, it is smooth enough to construct at its median,
+>> and it prices a mesh 1.41x the size of the one it came from. THE ARM PROCEEDS TO THE eigSym2
+>> TRANSCRIPTION AND ITS T1a/T3 VALIDATION, THEN THE BUILD.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),

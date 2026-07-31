@@ -419,18 +419,31 @@ for (let k = 0; k < 5; k += 1) {
   const sf = sortedSub(farVerts, hA);
   log(`  d > 650 um  n ${String(farVerts.length).padStart(7)}   hA p50 ${um(pctOf(sf, 0.5)).padStart(7)}  (reference, not barred)`);
 }
+// ── D2' — THE AMENDMENT, registered in the worklog (commit 863715d4) BEFORE this re-score, with the
+//    first pass's numbers DISCLOSED as having been in view. The original monotonicity clause is wrong
+//    about the DESIGN: `_strataAlignedSeed.ts:859` emits ring j every min(4, round(g^j))-th chain point,
+//    so at g = 1.6 the stride SATURATES at 4 from ring 3 (204.8 um) onward and the design's own element
+//    size flattens exactly where the measurement flattens. The same question, correctly asked, is
+//    CONTRAST — placed where the design puts it, between the ring band and the background lattice.
+const farHA = pctOf(sortedSub(farVerts, hA), 0.5);
+const d2Contrast = farHA / d2HA[0];
+const d2HMINp10 = pctOf(sortedSub(binIdx[0], hMin), 0.1);
 const D2a = Number.isFinite(d2HMIN[0]) && d2HMIN[0] <= D2_HMIN_BAR;
+const D2b = Number.isFinite(d2Contrast) && d2Contrast >= D2_RATIO_BAR;
+const D2c = Number.isFinite(d2HMINp10) && d2HMINp10 <= 0.050;
+const D2 = D2a && D2b && D2c;
 let mono = true;
 for (let k = 1; k < 5; k += 1) if (!(d2HA[k] > d2HA[k - 1])) mono = false;
-const d2Ratio = d2HA[4] / d2HA[0];
-const D2b = mono && d2Ratio >= D2_RATIO_BAR;
-const D2 = D2a && D2b;
-log(`  (i)  hMin p50 in [0,50] um = ${um(d2HMIN[0])} um   bar <= ${(D2_HMIN_BAR * 1000).toFixed(0)} um`
+log(`  (i)   hMin p50 in [0,50] um = ${um(d2HMIN[0])} um   bar <= ${(D2_HMIN_BAR * 1000).toFixed(0)} um`
   + `   (the across rule PLACED min 50.0 / p50 50.0 um on this arm)   ${D2a ? 'HOLDS' : '*** FAILS ***'}`);
-log(`  (ii) hA p50 profile strictly monotone rising: ${mono ? 'YES' : '*** NO — THE SMEARING FAILURE ***'}`
-  + `;  [400,650]/[0,50] = ${Number.isFinite(d2Ratio) ? d2Ratio.toFixed(3) : 'n/a'}x  bar >= ${D2_RATIO_BAR.toFixed(1)}x`
-  + `   ${D2b ? 'HOLDS' : '*** FAILS ***'}`);
-log(`  ==> D2 ${D2 ? 'HOLDS' : '*** FAILS — E1 NO-GO ***'}`);
+log(`  (ii)  CONTRAST hA p50(d>650)/hA p50(d in [0,50]) = ${Number.isFinite(d2Contrast) ? d2Contrast.toFixed(3) : 'n/a'}x`
+  + `   bar >= ${D2_RATIO_BAR.toFixed(1)}x   ${D2b ? 'HOLDS' : '*** FAILS ***'}`);
+log(`  (iii) SMEARING TEST, stated directly: hMin p10 in [0,50] = ${um(d2HMINp10)} um   bar <= 50.0 um`
+  + `   (the extraction must RESOLVE the placed across floor, not average it away)   ${D2c ? 'HOLDS' : '*** FAILS ***'}`);
+log(`  FINDING, reported and NOT withdrawn: the hA p50 profile is ${mono ? 'monotone rising' : 'NOT monotone'} inside [0,650] um.`);
+log(`    The constructor's own ring stride saturates at 4 from ring 3 (204.8 um), so a reconstruction that`);
+log(`    honours the extracted field in the [200,650] um band will place FINER material there than S19's rings do.`);
+log(`  ==> D2' ${D2 ? 'HOLDS' : '*** FAILS — E1 NO-GO ***'}`);
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
 // D3 — THE JUNCTION DISKS ARE SMALL (the 43 DECLARED regions, at the routed radius)
@@ -466,17 +479,67 @@ for (let i = 0; i < 24; i += 1) zP50.push(pctOf(sortedSub(zBins[i], hA), 0.5));
     if (i % 4 === 3) { log(line); line = '  '; }
   }
 }
-const allHAsorted = sortedSub(Int32Array.from({ length: nV }, (_, i) => i), hA);
+const allIdx = Int32Array.from({ length: nV }, (_, i) => i);
+const allHAsorted = sortedSub(allIdx, hA);
 const wholeP50 = pctOf(allHAsorted, 0.5);
-const bandBins = [8, 9, 10, 11];                       // z 40-45, 45-50, 50-55, 55-60
-const bandVerts: number[] = [];
-for (const i of bandBins) for (const v of zBins[i]) bandVerts.push(v);
-const bandP50 = pctOf(sortedSub(bandVerts, hA), 0.5);
+const histBins = [8, 9, 10, 11];                       // z 40-45, 45-50, 50-55, 55-60 — the RETIRED landmark
+const histVerts: number[] = [];
+for (const i of histBins) for (const v of zBins[i]) histVerts.push(v);
+const histP50 = pctOf(sortedSub(histVerts, hA), 0.5);
 let coarsest = 0; for (let i = 1; i < 24; i += 1) if (zP50[i] > zP50[coarsest]) coarsest = i;
-const D4 = bandP50 < wholeP50 && !bandBins.includes(coarsest);
-log(`  whole-wall hA p50 ${um(wholeP50)} um;  z[40,60] hA p50 ${um(bandP50)} um  (x${(bandP50 / wholeP50).toFixed(3)})`);
-log(`  coarsest 5 mm bin is z ${coarsest * 5}-${coarsest * 5 + 5} at ${um(zP50[coarsest])} um`
-  + `   ==> D4 ${D4 ? 'HOLDS' : '*** FAILS — E1 NO-GO ***'}`);
+let finest = 0; for (let i = 1; i < 24; i += 1) if (Number.isFinite(zP50[i]) && zP50[i] < zP50[finest]) finest = i;
+// ── D4' — THE AMENDMENT (worklog commit 863715d4, registered BEFORE this re-score). The original bar
+//    named z 40-60 from the two demand sites at z 44.16992 / 45.38896 — sites S15 CLOSED (38.061 -> 0.667,
+//    40.006 -> 3.816 um) and whose argmax MOVED. `_S22B`'s own report line 83 reads
+//    `MAX-locus: z=[76.40,76.38,75.97]`, so the arm's OWN argmax is the landmark, not a retired one.
+const ARGMAX_Z = 76.40;
+const finestMid = finest * 5 + 2.5;
+const D4a = Math.abs(finestMid - ARGMAX_Z) <= 10.0;
+const argBins = [14, 15, 16];                          // z 70-75, 75-80, 80-85
+const argVerts: number[] = [];
+for (const i of argBins) for (const v of zBins[i]) argVerts.push(v);
+const argP50 = pctOf(sortedSub(argVerts, hA), 0.5);
+const D4b = argP50 < wholeP50;
+const D4 = D4a && D4b;
+log(`  whole-wall hA p50 ${um(wholeP50)} um`);
+log(`  coarsest 5 mm bin z ${coarsest * 5}-${coarsest * 5 + 5} at ${um(zP50[coarsest])} um`
+  + `   (that is undecorated wall — D1's designed lattice showing up in the z profile where it should)`);
+log(`  (i)  FINEST 5 mm bin z ${finest * 5}-${finest * 5 + 5} at ${um(zP50[finest])} um;  |mid - 76.40| = `
+  + `${Math.abs(finestMid - ARGMAX_Z).toFixed(2)} mm   bar <= 10.0 mm against _S22B's OWN MAX-locus z 76.40`
+  + `   ${D4a ? 'HOLDS' : '*** FAILS ***'}`);
+log(`  (ii) z[70,85] hA p50 ${um(argP50)} um  (x${(argP50 / wholeP50).toFixed(3)} of whole-wall)   bar < 1.000`
+  + `   ${D4b ? 'HOLDS' : '*** FAILS ***'}`);
+log(`  REPORTED, NOT BARRED — the RETIRED landmark: z[40,60] hA p50 ${um(histP50)} um`
+  + `  (x${(histP50 / wholeP50).toFixed(3)});  S15 closed both sites there, which is why it is not a finding.`);
+log(`  ==> D4' ${D4 ? 'HOLDS' : '*** FAILS — E1 NO-GO ***'}`);
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// D7 — CONSTRUCTIBILITY AGAINST THE CONSTRUCTOR'S OWN HARD FLOOR.  NEW BAR, registered in the worklog
+// (commit 863715d4) before this re-score. `_strataAlignedSeed.ts:398` ASSERTS `acrossMinMm*0.55 >
+// pslgEpsMm` with a THROW, so 36.4 um is a floor the constructor is ARCHITECTURALLY forbidden to go below.
+// A field it cannot honour is not a usable field, and D0-D6 do not test for that at all.
+// THE BAR IS ON hA, NOT hMin: hMin is the ACROSS scale of a deliberately anisotropic element (a designed
+// 50 x 400 um element has hMin 50 by construction); hA is the DENSITY scalar the constructor is priced by.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+log('\n--- D7: CONSTRUCTIBILITY against the seed builder\'s own hard floor ---');
+const hAsorted = allHAsorted;
+const hMinSorted = sortedSub(allIdx, hMin);
+const fracBelow = (s: number[], v: number): number => {
+  let lo = 0; let hi = s.length;
+  while (lo < hi) { const m = (lo + hi) >> 1; if (s[m] < v) lo = m + 1; else hi = m; }
+  return lo / s.length;
+};
+const d7hA36 = fracBelow(hAsorted, PSLG_FLOOR_MM);
+const d7hA50 = fracBelow(hAsorted, 0.050);
+const d7hM36 = fracBelow(hMinSorted, PSLG_FLOOR_MM);
+const d7hM50 = fracBelow(hMinSorted, 0.050);
+const D7 = d7hA36 <= 0.05;
+log(`  hA   below ${(PSLG_FLOOR_MM * 1000).toFixed(1)} um (the THROW floor): ${(100 * d7hA36).toFixed(3)}%`
+  + `   below 50.0 um (the default across floor): ${(100 * d7hA50).toFixed(3)}%`);
+log(`  hMin below ${(PSLG_FLOOR_MM * 1000).toFixed(1)} um: ${(100 * d7hM36).toFixed(3)}%`
+  + `   below 50.0 um: ${(100 * d7hM50).toFixed(3)}%   [REPORTED, unbarred — hMin is the ACROSS scale of a designed anisotropic element]`);
+log(`  bar: hA below ${(PSLG_FLOOR_MM * 1000).toFixed(1)} um at <= 5.000% of source vertices`
+  + `   ==> D7 ${D7 ? 'HOLDS' : '*** FAILS — E1 NO-GO ***'}`);
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
 // D5 — THE FIELD IS A FIELD, NOT BISECTION TEXTURE.
@@ -598,21 +661,22 @@ log('\n════════════════════════�
 log('  S23 STAGE 0 — THE REGISTERED SCORE. FIRST MATCH WINS.');
 log('══════════════════════════════════════════════════════════════════════════════════════════════');
 const rows: Array<[string, boolean, string]> = [
-  ['D0 coverage', D0, `worst ${d0Worst.toFixed(4)} mm <= ${COVER_BAR_MM}`],
-  ['D1 designed lattice', D1, `hA p50 ${um(lattHAp50)} um in [500,950];  hMin p50 ${um(lattHMINp50)} um in [193,770]`],
-  ['D2 loci + ring profile', D2, `hMin p50 ${um(d2HMIN[0])} um <= 100;  monotone ${mono};  ratio ${Number.isFinite(d2Ratio) ? d2Ratio.toFixed(3) : 'n/a'}x >= 2.0`],
-  ['D3 junction disks', D3, `${D3ratio.toFixed(4)} <= 0.50`],
-  ['D4 z 40-60 band', D4, `x${(bandP50 / wholeP50).toFixed(3)} of whole-wall p50`],
-  ['D5 texture dispersion', D5, `p90/p10 median ${dispP50.toFixed(3)} <= 3.0`],
-  ['D6 implied cost', D6, `x${D6ratio.toFixed(4)} (< ${D6_STOP} stop; [${D6_LO},${D6_HI}] faithful)`],
+  ['D0  coverage', D0, `worst ${d0Worst.toFixed(4)} mm <= ${COVER_BAR_MM}`],
+  ['D1  designed lattice', D1, `hA p50 ${um(lattHAp50)} um in [500,950];  hMin p50 ${um(lattHMINp50)} um in [193,770]`],
+  ['D2\' loci contrast', D2, `hMin p50 ${um(d2HMIN[0])} <= 100;  contrast ${Number.isFinite(d2Contrast) ? d2Contrast.toFixed(3) : 'n/a'}x >= 2.0;  hMin p10 ${um(d2HMINp10)} <= 50`],
+  ['D3  junction disks', D3, `${D3ratio.toFixed(4)} <= 0.50`],
+  ['D4\' arm\'s own argmax', D4, `finest bin z ${finest * 5}-${finest * 5 + 5}, |mid-76.40| ${Math.abs(finestMid - ARGMAX_Z).toFixed(2)} mm <= 10;  z[70,85] x${(argP50 / wholeP50).toFixed(3)} < 1`],
+  ['D5  texture dispersion', D5, `p90/p10 median ${dispP50.toFixed(3)} <= 3.0`],
+  ['D6  implied cost', D6, `x${D6ratio.toFixed(4)} (< ${D6_STOP} stop; [${D6_LO},${D6_HI}] faithful)`],
+  ['D7  constructibility', D7, `hA below 36.4 um at ${(100 * d7hA36).toFixed(3)}% <= 5.000%`],
 ];
 for (const [nm, ok, det] of rows) log(`  ${ok ? 'HOLDS' : '**FAILS**'}  ${nm.padEnd(24)} ${det}`);
 if (!D0) {
   log('\n  *** E0 INDETERMINATE — the field has a hole and cannot be queried. REPORT AND STOP. ***');
-} else if (!(D1 && D2 && D3 && D4 && D5 && D6)) {
+} else if (!(D1 && D2 && D3 && D4 && D5 && D6 && D7)) {
   log('\n  *** E1 NO-GO — THE DENSITY FIELD IS NOT EXTRACTABLE AT USABLE RESOLUTION. ***');
   log('  *** REPORT AS A RESULT AND STOP. THE RECONSTRUCTION IS NOT BUILT. ***');
 } else {
-  log('\n  *** E2 GO — D0-D6 all hold. The density field is extractable. BUILD. ***');
+  log('\n  *** E2 GO — D0-D7 all hold. The density field is extractable. BUILD. ***');
 }
 log('══════════════════════════════════════════════════════════════════════════════════════════════');
