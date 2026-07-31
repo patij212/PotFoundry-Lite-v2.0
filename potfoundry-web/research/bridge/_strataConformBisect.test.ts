@@ -2671,7 +2671,11 @@ describe('STRATA conforming-bisection', () => {
     // S22B: 2,000 -> 8,000 NEW LIVE triangles. Derived, not inflated: `_S22A` converted 101 candidates into
     // 72 splits and +144 live (1.43 live per candidate), so 838 candidates project to ~1,200 and 8,000 is
     // 6.7x headroom at +0.64% of the mesh. S22 spent 7% of its budget; this one is meant to be spent.
-    const DESHARD_BUDGET = Math.round(envF('PF_CB_DESHARD_BUDGET', 8000));
+    const DESHARD_BUDGET = Math.round(envF('PF_CB_DESHARD_BUDGET', 12000));
+    // S22C — S8's PROTECTOR CASCADE, WIRED. Default ON, but only reachable when PF_CB_DESHARD (itself
+    // DEFAULT OFF) is on, so no default moves; `PF_CB_DESHARD_CASCADE=0` reproduces `_S22B` exactly.
+    const DESHARD_CASCADE = process.env.PF_CB_DESHARD_CASCADE !== '0';
+    const DESHARD_CASDEPTH = Math.round(envF('PF_CB_DESHARD_CASDEPTH', 12));   // S8's own FOSSIL_DEPTH
     const DESHARD_FANDEG = Math.round(envF('PF_CB_DESHARD_FANDEG', 12));
     const DESHARD_FANLONG = envF('PF_CB_DESHARD_FANLONG_UM', 500) / 1000;
     const DESHARD_FANPASSES = Math.round(envF('PF_CB_DESHARD_FANPASSES', 6));
@@ -2702,6 +2706,14 @@ describe('STRATA conforming-bisection', () => {
     // facet out of the long-edged set because the edge really is shorter.
     let deshardFanLocus = 0; let deshardFanLocusSplit = 0;
     let deshardFanLocusShort = 0; let deshardFanLocusRefused = 0;
+    // S22C — the protector cascade's own counters. `casConformed` is the number the registered <= 30%
+    // prediction is scored against; `casSelfBlocked` is S8's measured production failure mode (the
+    // offender's longest edge IS the blocked edge, so there is no protector to refine and no re-centring
+    // available at a midpoint split); `casDepthHist` shows whether the ladder actually climbed.
+    let casSites = 0; let casConformed = 0; let casProtectorSplits = 0;
+    let casSelfBlocked = 0; let casDepthCapped = 0; let casAttemptCapped = 0; let casOther = 0;
+    let casDepthMax = 0; const casDepthHist = new Array<number>(16).fill(0);
+    let deshardSplitsViaCascade = 0; let deshardFanLocusViaCascade = 0;
     /** the parents the pass could NOT discharge — printed, so a survivor is declared and never silent. */
     const deshardRefusedLog: string[] = [];
     /**
@@ -3296,6 +3308,71 @@ describe('STRATA conforming-bisection', () => {
       // first, because splitting a shard changes the degree of the vertices it hangs from and therefore
       // changes the FAN worklist; enumerating fans first would act on a worklist the other sub-pass is
       // about to invalidate.
+      /**
+       * S22C. Discharge ONE blocked de-shard split by S8's PROTECTOR obligation.
+       *
+       * This is `conformSite`'s ladder with the RETREAT half deliberately removed. S8 needed retreat
+       * because its blocked splits were OFF-CENTRE SNAP crossings (t in [0.12, 0.88], amplification up to
+       * 1/min(t,1-t) ~ 8x) that could sometimes be rescued by re-centring. **A de-shard split is already at
+       * the midpoint of the longest edge — Rivara's amplification-minimising point — so there is nowhere to
+       * retreat TO**, and this file's own S8 note states the consequence: if the best placement on an edge
+       * breaches the cap, no admissible placement exists on it. The only remaining lever is to make the
+       * OFFENDING NEIGHBOUR thinner and retry, which is exactly the protector obligation.
+       *
+       * Every split still goes through `bisectAt`, so S1/S2 and the split-side admission gate score every
+       * child on both sides — the ladder cannot manufacture the class it is climbing to remove.
+       */
+      const deshardConform = (a0: number, b0: number): boolean => {
+        const obA: number[] = [a0]; const obB: number[] = [b0];
+        let depth = 0; let attempts = 0;
+        const ATTEMPT_CAP = 4 * DESHARD_CASDEPTH + 8;   // a retried split can re-fail with a NEW offender
+        casSites += 1;
+        for (;;) {
+          if (deshardLiveAdded >= DESHARD_BUDGET) { deshardBudgetCapped = true; return false; }
+          attempts += 1;
+          if (attempts > ATTEMPT_CAP) { casAttemptCapped += 1; return false; }
+          const i = obA.length - 1;
+          const av = obA[i]; const bv = obB[i];
+          if (!(edgeMap.get(eKey(av, bv)) ?? []).some((x) => alive[x])) {
+            // a deeper obligation re-meshed this edge away. For a protector that is a discharge; for the
+            // TARGET edge it should be unreachable (protector splits never touch it), so refuse
+            // defensively rather than mis-count a conform.
+            if (i === 0) { casOther += 1; return false; }
+            obA.pop(); obB.pop();
+            continue;
+          }
+          created.length = 0;
+          if (bisectAt(av, bv, placeAt(av, bv, 0.5), vFeat[av] && vFeat[bv])) {
+            deshardLiveAdded += created.filter((nt) => nt >= 0).length / 2;
+            for (const nt of created) if (nt >= 0) pilotReseed.push(nt);
+            if (i === 0) {
+              casConformed += 1;
+              if (depth > casDepthMax) casDepthMax = depth;
+              casDepthHist[Math.min(15, depth)] += 1;
+              return true;                            // the blocked split finally landed
+            }
+            casProtectorSplits += 1;
+            obA.pop(); obB.pop();
+            continue;
+          }
+          // Only an ASPECT refusal names a protector worth chasing. An `admit` refusal is a BACK-FACING
+          // child and no amount of neighbour refinement changes its orientation, so climbing there would
+          // spend budget against a gate that is not the one blocking.
+          if (bisectRefusal() !== 'ar') { casOther += 1; return false; }
+          const off = lastShapeOffenderT;
+          if (off < 0 || !alive[off]) { casOther += 1; return false; }
+          if (depth >= DESHARD_CASDEPTH) { casDepthCapped += 1; return false; }
+          const [pv2, qv2] = eVerts(off, longestE(off));
+          if (eKey(pv2, qv2) === eKey(av, bv)) {
+            // THE S8 PRODUCTION FAILURE MODE, and the one this arm expects to dominate: the offender's own
+            // longest edge IS the blocked edge, so there is no protector to refine and (unlike S8) no
+            // off-centre placement to re-centre. A true dead end under the S1 cap.
+            casSelfBlocked += 1; return false;
+          }
+          obA.push(pv2); obB.push(qv2); depth += 1;
+        }
+      };
+
       if (DESHARD) {
         deshardRan = true;
         const taStart = ta.length;
@@ -3317,15 +3394,26 @@ describe('STRATA conforming-bisection', () => {
           deshardTried += 1;
           const [pv, qv] = eVerts(t, longestE(t));
           created.length = 0;
-          if (bisectAt(pv, qv, placeAt(pv, qv, 0.5), vFeat[pv] && vFeat[qv])) {
-            deshardSplits += 1;
+          let landed = bisectAt(pv, qv, placeAt(pv, qv, 0.5), vFeat[pv] && vFeat[qv]);
+          let viaCascade = false;
+          if (landed) {
             // `bisectAt` kills each live incident triangle and emits two in its place, so the LIVE growth is
             // exactly half the number of children it created — counted, not assumed from an edge-degree.
             deshardLiveAdded += created.filter((nt) => nt >= 0).length / 2;
+            for (const nt of created) if (nt >= 0) pilotReseed.push(nt);  // the registered FIDELITY RE-QUEUE
+          } else if (DESHARD_CASCADE && bisectRefusal() === 'ar') {
+            // S22C: the S1 refusal NAMES the neighbour it was protecting. Discharge that protector and
+            // retry instead of abandoning the parent. `deshardConform` does its own budget and reseed
+            // accounting, and leaves `created` holding the TARGET split's children on success.
+            landed = deshardConform(pv, qv);
+            viaCascade = landed;
+          }
+          if (landed) {
+            deshardSplits += 1;
+            if (viaCascade) deshardSplitsViaCascade += 1;
             if (d > deshardDepthMax) deshardDepthMax = d;
             for (const nt of created) {
               if (nt < 0) continue;
-              pilotReseed.push(nt);                       // the registered FIDELITY RE-QUEUE
               if (d + 1 < DESHARD_DEPTH && alive[nt] && shardOf(nt)) { stackT.push(nt); stackD.push(d + 1); }
             }
           } else {
@@ -3399,12 +3487,15 @@ describe('STRATA conforming-bisection', () => {
                 if (eLen(hub, w) < DESHARD_FANLONG) { deshardFanLocusShort += 1; continue; }
                 if (deshardLiveAdded >= DESHARD_BUDGET) { deshardBudgetCapped = true; continue; }
                 created.length = 0;
-                if (bisectAt(hub, w, placeAt(hub, w, 0.5), vFeat[hub] && vFeat[w])) {
-                  deshardFanLocusSplit += 1;
+                let okL = bisectAt(hub, w, placeAt(hub, w, 0.5), vFeat[hub] && vFeat[w]);
+                if (okL) {
                   deshardLiveAdded += created.filter((nt) => nt >= 0).length / 2;
                   for (const nt of created) if (nt >= 0) pilotReseed.push(nt);
-                  didAny = true;
-                } else deshardFanLocusRefused += 1;
+                } else if (DESHARD_CASCADE && bisectRefusal() === 'ar') {
+                  okL = deshardConform(hub, w);       // S22C: same protector ladder on the locus path
+                  if (okL) deshardFanLocusViaCascade += 1;
+                }
+                if (okL) { deshardFanLocusSplit += 1; didAny = true; } else deshardFanLocusRefused += 1;
                 continue;
               }
               const arOld = Math.max(arTri(inc[0]), arTri(inc[1]));
@@ -4137,6 +4228,14 @@ describe('STRATA conforming-bisection', () => {
           + ` ${deshardFanLocusSplit} SPLIT at the midpoint, ${deshardFanLocusRefused} refused by the composed gates,`
           + ` ${deshardFanLocusShort} already below the ${(DESHARD_FANLONG * 1000).toFixed(0)} um census threshold`
           + `   [a midpoint split moves no vertex OFF its locus and adds one ON it — the conforming corridor is preserved, not evaded]`,
+        `    (iv) S22C PROTECTOR CASCADE (PF_CB_DESHARD_CASCADE=${DESHARD_CASCADE ? 1 : 0}, depth cap ${DESHARD_CASDEPTH}): ${casSites} blocked sites entered,`
+          + ` ${casConformed} CONFORMED (${casSites > 0 ? ((100 * casConformed) / casSites).toFixed(1) : '0.0'}% — registered prediction was <= 30%),`
+          + ` ${casProtectorSplits} protector splits, max depth ${casDepthMax}`
+          + `${casSites > 0 && casProtectorSplits === 0 ? '   *** INFEASIBLE-AS-WIRED — 0 PROTECTOR SPLITS IS A WIRING FAILURE, NOT A REFUTATION (Y2) ***' : ''}`,
+        `      dead ends: ${casSelfBlocked} SELF-BLOCKED (the offender's own longest edge IS the blocked edge — no protector to refine and, unlike S8, no off-centre placement to re-centre),`
+          + ` ${casDepthCapped} depth-capped, ${casAttemptCapped} attempt-capped, ${casOther} weld/apex/admit`,
+        `      cascade depth histogram (0..15): ${casDepthHist.join(' ')}`
+          + `   splits that ONLY landed via the ladder: ${deshardSplitsViaCascade} subdivision + ${deshardFanLocusViaCascade} on-locus`,
         `    budget (billed in NEW LIVE TRIANGLES — W6's own quantity): subdivision +${deshardLiveAdded} of ${DESHARD_BUDGET}`
           + `${deshardBudgetCapped ? '  *** BUDGET-CAPPED — the worklist was NOT discharged ***' : ''}`
           + `   flips +0 by construction (2 killed, 2 emitted, no vertex moved)`,

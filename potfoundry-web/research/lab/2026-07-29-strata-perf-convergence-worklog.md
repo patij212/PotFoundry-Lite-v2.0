@@ -4619,6 +4619,90 @@ ladders are the cost, and `_S22B` used 2,796 of 8,000, so the headroom is for th
 >> **STOP AFTER SCORING. S22C's mesh supersedes S22B's for the operator's eyeball if it is clean.**
 
 
+### *** S22C RESULT — Y8 ROW 4 TRADE, AND Y1 IS **REFUTED**. THE PROTECTOR CASCADE IS WIRED, IT RAN, AND
+### *** IT CONFORMED 3.4% OF 324 BLOCKED SITES — **96.6% SELF-BLOCKED**, WORSE THAN S8's OWN PRODUCTION
+### *** 13.6%. THE 1.5 mm CENSUS WENT 44 -> 48. THE P5 TRIGGER HAS NOW FIRED A FIFTH TIME. ***
+`_S22C` = `_S22B`'s command + `PF_CB_DESHARD_CASCADE=1 PF_CB_DESHARD_CASDEPTH=12 BUDGET=12000`. STL:
+`research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S22C.stl` (1,251,544 facets, md5
+`803f6f92fc7f3c15ea44476b579502e6`). Audit `FID_S22C.report.txt`.
+
+| bar | `_S22A` | `_S22B` | **`_S22C`** | line | |
+|---|---|---|---|---|---|
+| **Y1 THE NAMED TARGET — 1.5 mm census** | 29 | 44 | **48** | WIN <=29, **REFUTED >=42** | *** **REFUTED** *** |
+| Y1 photographed (sub-floor) | 232 | 97 | **97** | must not exceed 97 | held, to the facet |
+| Y1 loose band | 2,129 | 984 | **988** | must not exceed 984 | +4 |
+| shards at the 1.0 mm bar | — | 205 | **209** | reported | +4 |
+| fan hubs / members | 93 / 1,231 | 31 / 391 | **31 / 391** | reported | unchanged |
+| **Y2 cascade conform rate** | — | — | **11 / 324 = 3.4%** | predicted <= 30% | **prediction HELD, by 9x** |
+| **Y2 SELF-BLOCKED** | — | — | **313 / 324 = 96.6%** | S8-production was 86.3% | **worse than S8** |
+| Y2 protector splits / max depth | — | — | **13 / depth 1** | predicted depth 4-10 | **prediction WRONG** |
+| Y3 gated / plates | 0 / 53 | 0 / 51 | **0 / 51** | 0 / <=51 | HOLDS |
+| Y3 tails >=15/>=30/>=45, physical >=90 | — | 24,208/17,848/15,255, 4,381 | **identical, to the facet** | <= +2.0% | **HOLDS — zero change** |
+| Y4(a) H2 over-tol FRACTION | 0.00139% | 0.00139% | **0.00139%** | <= 0.001668% | HOLDS — identical |
+| Y4(b) H2 witnessed | 25.063 | 25.063 | **25.063 um** | classify or fire | RESIDUAL GRADING DEMAND |
+| Y4(c) unresolved / worst | 4,307/95.473 | 4,307/95.473 | **4,307/95.473** | <=8,000 / <=250.0 | HOLDS — identical |
+| Y4(d) H1 facets-over | 1.23% | 1.08% | **1.14%** | <=1.30% | HOLDS |
+| Y5 folds/blades/AR/recovery/cracks/Euler/judge | — | 0/2/50.00/100%/0/0/0 | **0/2/50.00/100%/0/0/0** | | HOLDS |
+| Y6 live tris / wall / rA | 1,248,594/934/926M | 1,251,546/939/928M | **1,251,544 / 1,017 s / 928M** | <=1.30M / <=1,400 s / <=1,042M | HOLDS |
+| Y7 md5 / gate | — | — | `8a59fb37…` / **12/12** | byte-exact / exact | HOLDS, both re-taken |
+
+>> **Y8 ROW 4 — TRADE, and Y1 REFUTED.** Row 1 (INFEASIBLE-AS-WIRED) did **not** fire, and that distinction
+>> is the whole value of the arm: Y2 was written so that *"a pass that reports 0 protector splits is a WIRING
+>> FAILURE, not a refutation"*. **It reported 13 protector splits, 324 sites entered and 11 conforms at
+>> depth 1 — the ladder is wired, it climbed, and it still could not discharge the population.** Row 2 did
+>> not fire (Y3/Y4/Y5/Y6 all hold, several to the facet). Row 3 needs Y1's win shape. **Row 4.**
+
+**THE MEASUREMENT THAT MATTERS, AND IT WAS REGISTERED IN ADVANCE.** The registration predicted conform rate
+<= 30% on the grounds that *"a de-shard split is already at the amplification-MINIMISING point, so there is
+nowhere to retreat to; the cascade can only help by making the NEIGHBOUR thinner"*. **Measured 3.4%, with
+313 of 324 sites SELF-BLOCKED — the offender's own longest edge IS the blocked edge.** The direction was
+right and the magnitude was nine times worse than the pessimistic bound. **Max depth 1, not the predicted
+4-10: the ladder almost never had a second rung to climb**, because in 96.6% of cases there was no
+protector distinct from the target.
+
+>> *** AND THIS REFUTES S22B's OWN LEADING HYPOTHESIS, WHICH IS THE POINT OF RUNNING IT. *** S22B attributed
+>> its 29 -> 44 rise to the **MUTUAL-PROTECTION DEADLOCK** — "refining the 1.0-1.5 mm band first makes
+>> thinner neighbours, and S1 then refuses the shared-edge split of the >=1.5 mm parent". **S22C wired that
+>> deadlock's own registered fix and the census got WORSE, 44 -> 48.** If neighbour-protection were the
+>> mechanism, discharging protectors would have helped; instead 96.6% of sites had **no neighbour to
+>> blame**. **The correct diagnosis is the one S8 already wrote down and this arm now confirms on a second,
+>> independent population: THE SURVIVORS ARE CENSORED AT THE CAP.** They sit at 3-D AR just under 50; the
+>> midpoint split of their longest edge — the best placement that exists on that edge — would emit a child
+>> over 50, so S1 refuses, and no neighbour refinement and no re-placement can change that. **S22B's
+>> hypothesis is withdrawn. The S8 census-at-the-cap explanation stands for both classes.**
+
+**AND THE ONE BAND WHERE THE FRONTIER LAW HOLDS FOR THIS CLASS IS NOW A THREE-POINT MONOTONE SERIES.** The
+1.5 mm census differs between all three arms in exactly ONE z-bin, z 20-25, and it tracks how much de-shard
+work was done there: **16 (S22A, 72 splits) -> 31 (S22B, 995 splits) -> 35 (S22C, 982 + 13 protector
+splits)**, every other bin identical to the facet across all three. **More local finishing in that band
+produces more 1.5 mm-class facets in that band.** That is the frontier law, stated as a dose-response
+rather than as an anecdote, and it is the cleanest instance this campaign has measured.
+
+**H1 witnessed 139.354 -> 181.316 um, and for the FOURTH consecutive arm it is a stride artifact on the rim
+row.** `_S22C`'s sampled witness locus is **z = 119.965-119.986** — the open boundary row the BasketWeave
+caveat forbids quoting as a wall defect. The full-coverage adaptive oracle reads **MAX 95.473 um at
+z=[76.40,76.38,75.97] on all FOUR arms** (`_S21B`/`_S22A`/`_S22B`/`_S22C`), over-0.01mm 512/481/486/486.
+The registered quantity, facets-over, is 1.14% against a 1.30% bar.
+
+>> **THE P5 TRIGGER HAS FIRED A FIFTH TIME, AND THE BISECTION-FAMILY QUESTION IS NOW CLOSED ON TWO
+>> INDEPENDENT DEFECT CLASSES.** The tally, all refutation-grade and all in this file:
+>>   CTLPLUS — generic extra refinement FEEDS the class (211 -> 294);
+>>   S6 — collapse has ZERO candidates (100% long-edged);
+>>   S7 — diagonal rotation FEEDS it (x1.44);
+>>   S8 — conforming-by-split cannot reach the CROSSING class: 86.3% self-blocked at production;
+>>   **S22C — protector-cascaded conforming-by-split cannot reach the LENGTH class either: 96.6%
+>>   self-blocked, 3.4% conformed, and the named target moved the wrong way.**
+>> **No bisection-family primitive removes these classes while the S1 aspect cap stands, and the cap must
+>> stand** (dropping it is D51: 48,130 blades and a ~110x-blind self-report). **What S22/S22B DID achieve is
+>> not in doubt and is not retracted** — photographed 232 -> 97, loose band 2,129 -> 984, fan hubs 297 -> 31,
+>> fan members over 1.5 mm 111 -> 8, all at +0.3% cost with every fidelity and area-class tripwire holding.
+>> **The remaining residue is the cap-censored tail, and it is not reachable by local finishing.** That is
+>> the argument for S23 RECONSTRUCTION over any further de-shard arm, and S22C is its evidence.
+
+>> **STOP AFTER SCORING. `_S22C` is a 4-facet-worse `_S22B` on the named target; `_S22B` remains the
+>> operator's mesh unless they prefer the marginally different one.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
