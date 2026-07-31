@@ -68,9 +68,9 @@ type ChordOpts = {
    * OPT-IN ANISOTROPIC (II,I) CURVATURE metric (E-2026-07-19-DS-CONVERGE-B / project_msurf_accelerator). Instead of
    * the isotropic M = g/h₃D² (h₃D sized by the MAX principal curvature and applied EQUALLY in every direction — even
    * 3D SHAPE), assemble the crease-aligned metric that sizes EACH principal direction by ITS OWN |κ_i|: fine ACROSS
-   * the steep flank (high κ), long ALONG it (low κ). M = I^{1/2}·(R·diag(μ₁,μ₂)·Rᵀ)·I^{1/2}, μ_i =
-   * clamp(|κ_i|/(8·tol), 1/hMax², 1/hMin²), where (κ_i, R) are the eigenpairs of the SYMMETRIC shape operator
-   * B = I^{-1/2}·II·I^{-1/2} (the (II,I) generalized eigenproblem). Reduces EXACTLY to g/h² when κ₁=κ₂ ⇒ isotropic
+   * the steep flank (high κ), long ALONG it (low κ). M = Σ_i μ_i (I v_i)(I v_i)ᵀ / (v_iᵀ I v_i), μ_i =
+   * clamp(|κ_i|/(8·tol), 1/hMax², 1/hMin²), where (κ_i, v_i) solve the (II,I) generalized eigenproblem
+   * II·v_i = κ_i·I·v_i (assembled STABLY — see {@link anisoCurvatureMetric}). Reduces EXACTLY to g/h² when κ₁=κ₂ ⇒ isotropic
    * zones are untouched; only anisotropic-curvature zones (the DragonScales near-ring flank, GeometricStar chevron)
    * get the directional coarsening — the SAME chord-sag guarantee at far fewer points across the sag axis. The shape
    * operator uses the {@link ChordOpts.curvatureFineStep} FD step when set (sub-cell relief), else a grid-scale step.
@@ -139,42 +139,27 @@ export function gradeSizeField(h: Float64Array, resU: number, resT: number, beta
   }
 }
 
-// ── 2×2 symmetric-matrix helpers for the ANISOTROPIC (II,I) metric (packed [s00, s01, s11]) ─────────────
-// Ported verbatim from the proven research onDemandMetric.creaseMetricAt (E-2026-07-13-MSURF-ACCELERATOR): the
-// crease-aligned metric that reduces EXACTLY to g/h² in the isotropic-curvature case (unit-test-guarded).
+// Packed symmetric 2×2 [s00, s01, s11] — the ANISOTROPIC (II,I) metric's tensor layout.
 type Sym2 = [number, number, number];
-/** Eigen-decomposition of the symmetric 2×2 [[a,b],[b,c]] → eigenvalues l1≥l2 + orthonormal eigenvectors. */
-function eigSym2(a: number, b: number, c: number): { l1: number; l2: number; e1: [number, number]; e2: [number, number] } {
-  const tr = a + c, det = a * c - b * b, disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
-  const l1 = tr / 2 + disc, l2 = tr / 2 - disc;
-  let ex: number, ey: number;
-  if (Math.abs(b) > 1e-300) { ex = b; ey = l1 - a; const el = Math.hypot(ex, ey); if (el > 1e-300) { ex /= el; ey /= el; } else { ex = 1; ey = 0; } }
-  else if (a >= c) { ex = 1; ey = 0; } else { ex = 0; ey = 1; }
-  return { l1, l2, e1: [ex, ey], e2: [-ey, ex] };
-}
-/** Reassemble a symmetric 2×2 from eigenvalues + orthonormal eigenvectors. */
-function reconstructSym2(l1: number, l2: number, e1: [number, number], e2: [number, number]): Sym2 {
-  return [l1 * e1[0] * e1[0] + l2 * e2[0] * e2[0], l1 * e1[0] * e1[1] + l2 * e2[0] * e2[1], l1 * e1[1] * e1[1] + l2 * e2[1] * e2[1]];
-}
-/** Symmetric-matrix power (±1/2) of [[a,b],[b,c]] via its eigen-decomposition. */
-function powSym2(a: number, b: number, c: number, sign: 0.5 | -0.5): Sym2 {
-  const { l1, l2, e1, e2 } = eigSym2(a, b, c);
-  const p1 = sign === 0.5 ? Math.sqrt(l1) : 1 / Math.sqrt(l1), p2 = sign === 0.5 ? Math.sqrt(l2) : 1 / Math.sqrt(l2);
-  return reconstructSym2(p1, p2, e1, e2);
-}
-/** Congruence s·x·s for symmetric s,x (s symmetric ⇒ s = sᵀ). */
-function congruenceSym2(s: Sym2, x: Sym2): Sym2 {
-  const [s0, s1, s2] = s, [x0, x1, x2] = x;
-  const t00 = s0 * x0 + s1 * x1, t01 = s0 * x1 + s1 * x2, t10 = s1 * x0 + s2 * x1, t11 = s1 * x1 + s2 * x2;
-  return [t00 * s0 + t01 * s1, t00 * s1 + t01 * s2, t10 * s1 + t11 * s2];
-}
 
 /**
  * ANISOTROPIC crease-aligned (II,I) curvature metric at (u,t), packed [M00, M01, M11]. Sizes EACH principal
  * direction by its OWN principal curvature: μ_i = clamp(|κ_i|/(8·tol), 1/hMax², 1/hMin²) — fine ACROSS the steep
  * flank, long ALONG it — vs the isotropic g/h²'s single MAX-curvature size in every direction. hFD is the central-
  * difference step for the shape operator (small ⇒ resolves sub-cell relief). Reduces to the g/h² metric when the two
- * principal curvatures are equal (isotropic zones untouched). Byte-faithful to research onDemandMetric.creaseMetricAt.
+ * principal curvatures are equal (isotropic zones untouched).
+ *
+ * STABLE ASSEMBLY (2026-08-01, the s23mPreflight "DECLARED ADAPTATION 3" identity): solving the generalized
+ * eigenproblem II·v_i = κ_i·I·v_i directly gives, identically,
+ *     M = Σ_i μ_i (I v_i)(I v_i)ᵀ / (v_iᵀ I v_i)
+ * — the SAME tensor as the former I^{1/2}·(R·diag(μ)·Rᵀ)·I^{1/2} route, with no matrix square root and no nested
+ * eigen-decomposition. The former route's eigSym2 picked the eigenvector as (b, l1−a), and on a NEAR-DIAGONAL
+ * form (F at the f64 rounding floor — most of a near-cylindrical pot wall) both components sit at cancellation
+ * noise, exchanging/rotating the principal directions: measured on GothicArches, the flat-axis target read
+ * h_z 3.72mm where the correct answer is the hMax clamp 8.0mm, and κ₂ read -38.06 (θz chart) where the true
+ * value is -9.4e-12. κ_i come from the characteristic quadratic (EG−F²)κ² − (EN+GL−2FM)κ + (LN−M²) = 0 with the
+ * cancellation-free root formula; v_i from the better-conditioned column of (II − κ_i·I). Umbilic points take
+ * the exact μ·g reduction. Guarded by the near-diagonal + hFD-stability regressions in surfaceMetricAniso.test.ts.
  */
 export function anisoCurvatureMetric(
   rA: AnalyticRadiusFn, H: number, u: number, t: number, tol: number, hMin: number, hMax: number, hFD: number,
@@ -197,12 +182,34 @@ export function anisoCurvatureMetric(
   if (nl < 1e-30 || !(E * G - F * F > 1e-30)) return [muMin, 0, muMin];
   n = [n[0] / nl, n[1] / nl, n[2] / nl];
   const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
-  const Ihalf = powSym2(E, F, G, 0.5), Iinvhalf = powSym2(E, F, G, -0.5);
-  const B = congruenceSym2(Iinvhalf, [L, Mn, N]);   // symmetric shape operator; eigenvalues = principal curvatures
-  const eb = eigSym2(B[0], B[1], B[2]);
-  const mu1 = Math.min(Math.max(Math.abs(eb.l1) / (8 * tol), muMin), muMax);
-  const mu2 = Math.min(Math.max(Math.abs(eb.l2) / (8 * tol), muMin), muMax);
-  return congruenceSym2(Ihalf, reconstructSym2(mu1, mu2, eb.e1, eb.e2));
+  // Principal curvatures κ_i: roots of det(II − κ·I) = 0, taken with the cancellation-free quadratic formula
+  // (qq carries the sign of qb so the subtractive root is qc/qq, never qb−disc). qa > 1e-30 by the guard above.
+  const qa = E * G - F * F;
+  const qb = -(E * N + G * L - 2 * F * Mn);
+  const qc = L * N - Mn * Mn;
+  const disc = Math.sqrt(Math.max(0, qb * qb - 4 * qa * qc));
+  const qq = -0.5 * (qb + (qb >= 0 ? disc : -disc));
+  const k1 = qq !== 0 ? qq / qa : -qb / (2 * qa);
+  const k2 = qq !== 0 ? qc / qq : -qb / (2 * qa);
+  const mu1 = Math.min(Math.max(Math.abs(k1) / (8 * tol), muMin), muMax);
+  const mu2 = Math.min(Math.max(Math.abs(k2) / (8 * tol), muMin), muMax);
+  // UMBILIC: equal principal curvatures ⇒ any I-orthogonal basis reconstructs μ·I congruently, so M = μ·g exactly
+  // — the g/h² reduction is taken, not approximated.
+  if (Math.abs(k1 - k2) <= 1e-12 * (Math.abs(k1) + Math.abs(k2) + 1e-300)) return [mu1 * E, mu1 * F, mu1 * G];
+  const out: Sym2 = [0, 0, 0];
+  for (const [kk, mu] of [[k1, mu1], [k2, mu2]] as Array<[number, number]>) {
+    // v_i ⟂ both columns of (II − κ_i·I); take the better-conditioned column (rank-1 at an exact eigenvalue).
+    const p = L - kk * E, q = Mn - kk * F, r = N - kk * G;
+    let v0: number, v1: number;
+    if (Math.hypot(p, q) >= Math.hypot(q, r)) { v0 = -q; v1 = p; } else { v0 = -r; v1 = q; }
+    const vl = Math.hypot(v0, v1);
+    if (!(vl > 0)) { v0 = 1; v1 = 0; } else { v0 /= vl; v1 /= vl; }
+    const iv0 = E * v0 + F * v1, iv1 = F * v0 + G * v1;
+    const den = E * v0 * v0 + 2 * F * v0 * v1 + G * v1 * v1;
+    if (!(den > 0)) continue;
+    out[0] += (mu * iv0 * iv0) / den; out[1] += (mu * iv0 * iv1) / den; out[2] += (mu * iv1 * iv1) / den;
+  }
+  return out;
 }
 
 export function buildSurfaceMetricField(rA: AnalyticRadiusFn, H: number, opts: SurfaceMetricOpts): SurfaceMetricField {
