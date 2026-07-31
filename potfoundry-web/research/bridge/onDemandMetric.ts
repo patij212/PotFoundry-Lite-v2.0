@@ -13,29 +13,6 @@ type Sym2 = [number, number, number];
 
 export interface OnDemandMetricOpts { tolMm: number; hMin: number; hMax: number; fdStep?: number }
 
-// --- 2x2 symmetric helpers (same construction as creaseAlignedMetric, inlined to stay self-contained) ---
-function eigSym2(a: number, b: number, c: number): { l1: number; l2: number; e1: [number, number]; e2: [number, number] } {
-  const tr = a + c, det = a * c - b * b, disc = Math.sqrt(Math.max(0, tr * tr / 4 - det));
-  const l1 = tr / 2 + disc, l2 = tr / 2 - disc;
-  let ex: number, ey: number;
-  if (Math.abs(b) > 1e-300) { ex = b; ey = l1 - a; const el = Math.hypot(ex, ey); if (el > 1e-300) { ex /= el; ey /= el; } else { ex = 1; ey = 0; } }
-  else if (a >= c) { ex = 1; ey = 0; } else { ex = 0; ey = 1; }
-  return { l1, l2, e1: [ex, ey], e2: [-ey, ex] };
-}
-function reconstruct(l1: number, l2: number, e1: [number, number], e2: [number, number]): Sym2 {
-  return [l1 * e1[0] * e1[0] + l2 * e2[0] * e2[0], l1 * e1[0] * e1[1] + l2 * e2[0] * e2[1], l1 * e1[1] * e1[1] + l2 * e2[1] * e2[1]];
-}
-function powSym2(a: number, b: number, c: number, sign: 0.5 | -0.5): Sym2 {
-  const { l1, l2, e1, e2 } = eigSym2(a, b, c);
-  const p1 = sign === 0.5 ? Math.sqrt(l1) : 1 / Math.sqrt(l1), p2 = sign === 0.5 ? Math.sqrt(l2) : 1 / Math.sqrt(l2);
-  return reconstruct(p1, p2, e1, e2);
-}
-function congruence(s: Sym2, x: Sym2): Sym2 {
-  const [s0, s1, s2] = s, [x0, x1, x2] = x;
-  const t00 = s0 * x0 + s1 * x1, t01 = s0 * x1 + s1 * x2, t10 = s1 * x0 + s2 * x1, t11 = s1 * x1 + s2 * x2;
-  return [t00 * s0 + t01 * s1, t00 * s1 + t01 * s2, t10 * s1 + t11 * s2];
-}
-
 /** Sample S and its 1st/2nd derivatives at (u,t) by fine central differences (step h). */
 function derivs(rA: AnalyticRadiusFn, H: number, u: number, t: number, h: number): { E: number; F: number; G: number; L: number; M: number; N: number; ok: boolean } {
   const S = (uu: number, tt: number): V3 => { const th = TAU * uu, z = tt * H, r = rA(th, z); return [r * Math.cos(th), r * Math.sin(th), z]; };
@@ -70,16 +47,44 @@ export function surfaceMetricAt(rA: AnalyticRadiusFn, H: number, u: number, t: n
   return [d.E * inv, d.F * inv, d.G * inv];
 }
 
-/** CREASE-ALIGNED anisotropic metric (II,I generalized eigenproblem) at (u,t), on-demand. */
+/**
+ * CREASE-ALIGNED anisotropic metric (II,I generalized eigenproblem) at (u,t), on-demand.
+ *
+ * STABLE ASSEMBLY (2026-08-01): M = Σ_i μ_i (I v_i)(I v_i)ᵀ / (v_iᵀ I v_i) with II·v_i = κ_i·I·v_i solved
+ * directly — κ_i from the cancellation-free characteristic quadratic, v_i from the better-conditioned column
+ * of (II − κ_i·I) — the same port as tierC/surfaceMetricField.anisoCurvatureMetric. The former
+ * I^{1/2}·(R·diag(μ)·Rᵀ)·I^{1/2} route went through an eigSym2 whose (b, l1−a) eigenvector is cancellation
+ * noise on near-diagonal forms and exchanged/rotated principal directions (registry
+ * E-2026-07-19-DS-CONVERGE-B-FLANK amendment). NOTE: this function is the metric-min-angle RULER of
+ * _dsFlankAniso/_dsAnisoRing — metricPct20/metricMinAng rows recorded BEFORE this port used the legacy route.
+ */
 export function creaseMetricAt(rA: AnalyticRadiusFn, H: number, u: number, t: number, o: OnDemandMetricOpts): Sym2 {
   const h = o.fdStep ?? 1e-3;
   const muMin = 1 / (o.hMax * o.hMax), muMax = 1 / (o.hMin * o.hMin);
   const d = derivs(rA, H, u, t, h);
   if (!d.ok || !(d.E * d.G - d.F * d.F > 1e-30)) return [muMin, 0, muMin];
-  const Ihalf = powSym2(d.E, d.F, d.G, 0.5), Iinvhalf = powSym2(d.E, d.F, d.G, -0.5);
-  const B = congruence(Iinvhalf, [d.L, d.M, d.N]);
-  const eb = eigSym2(B[0], B[1], B[2]);
-  const mu1 = Math.min(Math.max(Math.abs(eb.l1) / (8 * o.tolMm), muMin), muMax);
-  const mu2 = Math.min(Math.max(Math.abs(eb.l2) / (8 * o.tolMm), muMin), muMax);
-  return congruence(Ihalf, reconstruct(mu1, mu2, eb.e1, eb.e2));
+  const qa = d.E * d.G - d.F * d.F;
+  const qb = -(d.E * d.N + d.G * d.L - 2 * d.F * d.M);
+  const qc = d.L * d.N - d.M * d.M;
+  const disc = Math.sqrt(Math.max(0, qb * qb - 4 * qa * qc));
+  const qq = -0.5 * (qb + (qb >= 0 ? disc : -disc));
+  const k1 = qq !== 0 ? qq / qa : -qb / (2 * qa);
+  const k2 = qq !== 0 ? qc / qq : -qb / (2 * qa);
+  const mu1 = Math.min(Math.max(Math.abs(k1) / (8 * o.tolMm), muMin), muMax);
+  const mu2 = Math.min(Math.max(Math.abs(k2) / (8 * o.tolMm), muMin), muMax);
+  // UMBILIC: equal principal curvatures ⇒ M = μ·g exactly (the g/h² reduction, taken not approximated).
+  if (Math.abs(k1 - k2) <= 1e-12 * (Math.abs(k1) + Math.abs(k2) + 1e-300)) return [mu1 * d.E, mu1 * d.F, mu1 * d.G];
+  const out: Sym2 = [0, 0, 0];
+  for (const [kk, mu] of [[k1, mu1], [k2, mu2]] as Array<[number, number]>) {
+    const p = d.L - kk * d.E, q = d.M - kk * d.F, r = d.N - kk * d.G;
+    let v0: number, v1: number;
+    if (Math.hypot(p, q) >= Math.hypot(q, r)) { v0 = -q; v1 = p; } else { v0 = -r; v1 = q; }
+    const vl = Math.hypot(v0, v1);
+    if (!(vl > 0)) { v0 = 1; v1 = 0; } else { v0 /= vl; v1 /= vl; }
+    const iv0 = d.E * v0 + d.F * v1, iv1 = d.F * v0 + d.G * v1;
+    const den = d.E * v0 * v0 + 2 * d.F * v0 * v1 + d.G * v1 * v1;
+    if (!(den > 0)) continue;
+    out[0] += (mu * iv0 * iv0) / den; out[1] += (mu * iv0 * iv1) / den; out[2] += (mu * iv1 * iv1) / den;
+  }
+  return out;
 }

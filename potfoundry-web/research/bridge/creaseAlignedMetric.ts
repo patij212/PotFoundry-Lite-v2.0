@@ -8,14 +8,19 @@
 // shape operator I⁻¹·II — NOT the eigenvectors of II alone (the bug in metricField.ts: it eigendecomposes II in
 // the raw frame, so on a skewed surface, F≠0, its sizes don't map to true 3D chord).
 //
-// The fix: whiten to the orthonormal tangent frame via the symmetric square root of I. With B = I^{-1/2}·II·I^{-1/2}
-// (symmetric ⇒ ORTHOGONAL eigenvectors), B's eigenvalues are exactly the principal curvatures k1,k2 and its
-// eigenvectors are the principal directions expressed in the whitened frame. A chord tolerance tol caps a facet
-// of physical size h spanning a direction of curvature |k| at h ≈ √(8·tol/|k|), i.e. the per-direction physical
-// metric eigenvalue is |k|/(8·tol). Clamp to [1/hMax², 1/hMin²] (flat → coarse hMax, very curved → fine hMin),
-// then pull the physical metric back to the (u,t) frame with I^{1/2} on both sides:
-//                       M_uv = I^{1/2} · ( |B| / (8·tol)  clamped )_eigen · I^{1/2}
-// A unit-M_uv edge then has 3D chord ≈ tol in EVERY direction (long-along-crease, short-across-crease).
+// The construction: a chord tolerance tol caps a facet of physical size h spanning a direction of curvature
+// |k| at h ≈ √(8·tol/|k|), i.e. the per-direction physical metric eigenvalue is μ = |k|/(8·tol), clamped to
+// [1/hMax², 1/hMin²] (flat → coarse hMax, very curved → fine hMin). STABLE ASSEMBLY (2026-08-01): with the
+// generalized eigenpairs II·v_i = k_i·I·v_i taken directly — k_i from the cancellation-free characteristic
+// quadratic (EG−F²)k² − (EN+GL−2FM)k + (LN−M²) = 0, v_i from the better-conditioned column of (II − k_i·I) —
+// the metric is, identically,
+//                       M_uv = Σ_i μ_i (I v_i)(I v_i)ᵀ / (v_iᵀ I v_i)
+// with no matrix square root and no nested eigen-decomposition. The former route (whiten by I^{±1/2}, then
+// eigSym2 with the (b, l1−a) eigenvector) exchanged/rotated the principal directions on NEAR-DIAGONAL forms —
+// F at the f64 rounding floor, most of a near-cylindrical pot wall — because both eigenvector components sit
+// at cancellation noise (registry E-2026-07-19-DS-CONVERGE-B-FLANK amendment 2026-08-01; the same port as
+// tierC/surfaceMetricField.anisoCurvatureMetric). A unit-M_uv edge has 3D chord ≈ tol in EVERY direction
+// (long-along-crease, short-across-crease).
 //
 // Packed [M00, M01, M11] per (u,t) node, identical layout to surfaceMetricField.ts / metricField.ts so the gmsh
 // BAMG adapter consumes it. Dev-only research module — nothing here ships.
@@ -25,63 +30,9 @@ const TAU = 2 * Math.PI;
 type V3 = [number, number, number];
 /** Symmetric 2x2 as [a, b, c] = [[a,b],[b,c]]. */
 type Sym2 = [number, number, number];
-/** Eigen-decomposition of a symmetric 2x2: orthonormal eigenvectors e1,e2 with eigenvalues l1,l2. */
-interface Eig2 { l1: number; l2: number; e1: [number, number]; e2: [number, number]; }
 
 /** Per-node symmetric 2x2 crease-aligned chord metric, packed [M00, M01, M11] per (u,t) grid node. */
 export interface CreaseAlignedMetricField { resU: number; resT: number; m: Float64Array; }
-
-/** Eigen-decompose symmetric [[a,b],[b,c]] into orthonormal eigenpairs (e2 = e1 rotated +90°). */
-function eigSym2(a: number, b: number, c: number): Eig2 {
-  const tr = a + c;
-  const det = a * c - b * b;
-  const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
-  const l1 = tr / 2 + disc;
-  const l2 = tr / 2 - disc;
-  // Eigenvector for l1: normalize([b, l1 - a]); if b≈0 the matrix is diagonal — pick the axis matching l1.
-  let ex: number, ey: number;
-  if (Math.abs(b) > 1e-300) {
-    ex = b; ey = l1 - a;
-    const el = Math.hypot(ex, ey);
-    if (el > 1e-300) { ex /= el; ey /= el; } else { ex = 1; ey = 0; }
-  } else {
-    // Diagonal: l1 is the larger of a,c → eigenvector is the corresponding axis.
-    if (a >= c) { ex = 1; ey = 0; } else { ex = 0; ey = 1; }
-  }
-  return { l1, l2, e1: [ex, ey], e2: [-ey, ex] };
-}
-
-/** Reconstruct a symmetric 2x2 from orthonormal eigenpairs: Σ λ_i e_i e_iᵀ. */
-function reconstructSym2(l1: number, l2: number, e1: [number, number], e2: [number, number]): Sym2 {
-  const a = l1 * e1[0] * e1[0] + l2 * e2[0] * e2[0];
-  const b = l1 * e1[0] * e1[1] + l2 * e2[0] * e2[1];
-  const c = l1 * e1[1] * e1[1] + l2 * e2[1] * e2[1];
-  return [a, b, c];
-}
-
-/** Symmetric square root (sign=+0.5) or inverse square root (sign=-0.5) of PD symmetric [[a,b],[b,c]]. */
-function powSym2(a: number, b: number, c: number, sign: 0.5 | -0.5): Sym2 {
-  const { l1, l2, e1, e2 } = eigSym2(a, b, c);
-  const p1 = sign === 0.5 ? Math.sqrt(l1) : 1 / Math.sqrt(l1);
-  const p2 = sign === 0.5 ? Math.sqrt(l2) : 1 / Math.sqrt(l2);
-  return reconstructSym2(p1, p2, e1, e2);
-}
-
-/** Symmetric product Sᵀ·X·S = S·X·S for symmetric S=[[s0,s1],[s1,s2]] and symmetric X=[[x0,x1],[x1,x2]]. */
-function congruenceSym2(s: Sym2, x: Sym2): Sym2 {
-  const [s0, s1, s2] = s;
-  const [x0, x1, x2] = x;
-  // T = S·X (general 2x2)
-  const t00 = s0 * x0 + s1 * x1;
-  const t01 = s0 * x1 + s1 * x2;
-  const t10 = s1 * x0 + s2 * x1;
-  const t11 = s1 * x1 + s2 * x2;
-  // R = T·S (symmetric since S,X symmetric) → keep [R00, R01, R11]
-  const r00 = t00 * s0 + t01 * s1;
-  const r01 = t00 * s1 + t01 * s2;
-  const r11 = t10 * s1 + t11 * s2;
-  return [r00, r01, r11];
-}
 
 export function buildCreaseAlignedMetric(
   rA: AnalyticRadiusFn, H: number,
@@ -119,20 +70,36 @@ export function buildCreaseAlignedMetric(
     n = [n[0] / nl, n[1] / nl, n[2] / nl];
     const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
 
-    // Whiten: B = I^{-1/2}·II·I^{-1/2} (symmetric) — eigenvalues are the principal curvatures k1,k2.
-    const Ihalf = powSym2(E, F, G, 0.5);
-    const Iinvhalf = powSym2(E, F, G, -0.5);
-    const B = congruenceSym2(Iinvhalf, [L, Mn, N]);
-
-    // Physical metric in B's eigenbasis: |k|/(8·tol), clamped to [1/hMax², 1/hMin²].
-    const eb = eigSym2(B[0], B[1], B[2]);
-    const mu1 = Math.min(Math.max(Math.abs(eb.l1) / (8 * tolMm), muMin), muMax);
-    const mu2 = Math.min(Math.max(Math.abs(eb.l2) / (8 * tolMm), muMin), muMax);
-    const Mphys = reconstructSym2(mu1, mu2, eb.e1, eb.e2);
-
-    // Back to the (u,t) cotangent frame: M_uv = I^{1/2}·Mphys·I^{1/2}.
-    const Muv = congruenceSym2(Ihalf, Mphys);
-    m[base] = Muv[0]; m[base + 1] = Muv[1]; m[base + 2] = Muv[2];
+    // Principal curvatures k_i: roots of det(II − k·I) = 0, cancellation-free quadratic (qq carries qb's sign
+    // so the subtractive root is qc/qq, never qb−disc). detI > 1e-30 by the guard above.
+    const qa = detI;
+    const qb = -(E * N + G * L - 2 * F * Mn);
+    const qc = L * N - Mn * Mn;
+    const disc = Math.sqrt(Math.max(0, qb * qb - 4 * qa * qc));
+    const qq = -0.5 * (qb + (qb >= 0 ? disc : -disc));
+    const k1 = qq !== 0 ? qq / qa : -qb / (2 * qa);
+    const k2 = qq !== 0 ? qc / qq : -qb / (2 * qa);
+    const mu1 = Math.min(Math.max(Math.abs(k1) / (8 * tolMm), muMin), muMax);
+    const mu2 = Math.min(Math.max(Math.abs(k2) / (8 * tolMm), muMin), muMax);
+    // UMBILIC: equal principal curvatures ⇒ M = μ·g exactly (the isotropic reduction, taken not approximated).
+    if (Math.abs(k1 - k2) <= 1e-12 * (Math.abs(k1) + Math.abs(k2) + 1e-300)) {
+      m[base] = mu1 * E; m[base + 1] = mu1 * F; m[base + 2] = mu1 * G;
+      continue;
+    }
+    let o0 = 0, o1 = 0, o2 = 0;
+    for (const [kk, mu] of [[k1, mu1], [k2, mu2]] as Array<[number, number]>) {
+      // v_i ⟂ both columns of (II − k_i·I); take the better-conditioned column (rank-1 at an exact eigenvalue).
+      const p = L - kk * E, q = Mn - kk * F, r = N - kk * G;
+      let v0: number, v1: number;
+      if (Math.hypot(p, q) >= Math.hypot(q, r)) { v0 = -q; v1 = p; } else { v0 = -r; v1 = q; }
+      const vl = Math.hypot(v0, v1);
+      if (!(vl > 0)) { v0 = 1; v1 = 0; } else { v0 /= vl; v1 /= vl; }
+      const iv0 = E * v0 + F * v1, iv1 = F * v0 + G * v1;
+      const den = E * v0 * v0 + 2 * F * v0 * v1 + G * v1 * v1;
+      if (!(den > 0)) continue;
+      o0 += (mu * iv0 * iv0) / den; o1 += (mu * iv0 * iv1) / den; o2 += (mu * iv1 * iv1) / den;
+    }
+    m[base] = o0; m[base + 1] = o1; m[base + 2] = o2;
   }
   return { resU, resT, m };
 }

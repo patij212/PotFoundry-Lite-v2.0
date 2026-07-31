@@ -90,7 +90,13 @@ function minAlt(
   const L = Math.max(e0, e1, e2);
   return L > 0 ? (2 * area) / L : 0;
 }
-/** the symmetric-2x2 eigen-solver, used ONLY to BUILD T3's probe element — never inside the metric. */
+/**
+ * the symmetric-2x2 eigen-solver, used ONLY to BUILD T3's probe element — never inside the metric.
+ * LEGACY-DEFECTIVE eigenvector (b, l1−a): cancellation noise on NEAR-DIAGONAL input (the defect this whole
+ * file exists to route around — registry E-2026-07-19-DS-CONVERGE-B-FLANK amendment 2026-08-01). KEPT here
+ * unchanged BY DESIGN: this file reproduces recorded S23 numbers, T3's probe points are well-conditioned
+ * (its own <1e-6 bar guards that), and the metric below never calls this.
+ */
 function eigSym2(a: number, b: number, c: number): { l1: number; l2: number; e1: [number, number]; e2: [number, number] } {
   const tr = a + c; const det = a * c - b * b; const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
   const l1 = tr / 2 + disc; const l2 = tr / 2 - disc;

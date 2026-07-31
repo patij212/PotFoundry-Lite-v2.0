@@ -32,37 +32,12 @@ type V3 = [number, number, number];
 /** Symmetric 2x2 as [a,b,c] = [[a,b],[b,c]]. */
 export type Sym2 = [number, number, number];
 
-// ── symmetric-2x2 linear algebra (verbatim from creaseAlignedMetric, single-point form) ──
-interface Eig2 { l1: number; l2: number; e1: [number, number]; e2: [number, number]; }
-function eigSym2(a: number, b: number, c: number): Eig2 {
-  const tr = a + c, det = a * c - b * b;
-  const disc = Math.sqrt(Math.max(0, (tr * tr) / 4 - det));
-  const l1 = tr / 2 + disc, l2 = tr / 2 - disc;
-  let ex: number, ey: number;
-  if (Math.abs(b) > 1e-300) {
-    ex = b; ey = l1 - a; const el = Math.hypot(ex, ey);
-    if (el > 1e-300) { ex /= el; ey /= el; } else { ex = 1; ey = 0; }
-  } else if (a >= c) { ex = 1; ey = 0; } else { ex = 0; ey = 1; }
-  return { l1, l2, e1: [ex, ey], e2: [-ey, ex] };
-}
-function reconstructSym2(l1: number, l2: number, e1: [number, number], e2: [number, number]): Sym2 {
-  return [
-    l1 * e1[0] * e1[0] + l2 * e2[0] * e2[0],
-    l1 * e1[0] * e1[1] + l2 * e2[0] * e2[1],
-    l1 * e1[1] * e1[1] + l2 * e2[1] * e2[1],
-  ];
-}
-function powSym2(a: number, b: number, c: number, sign: 0.5 | -0.5): Sym2 {
-  const { l1, l2, e1, e2 } = eigSym2(a, b, c);
-  const p1 = sign === 0.5 ? Math.sqrt(l1) : 1 / Math.sqrt(l1);
-  const p2 = sign === 0.5 ? Math.sqrt(l2) : 1 / Math.sqrt(l2);
-  return reconstructSym2(p1, p2, e1, e2);
-}
-function congruenceSym2(s: Sym2, x: Sym2): Sym2 {
-  const [s0, s1, s2] = s, [x0, x1, x2] = x;
-  const t00 = s0 * x0 + s1 * x1, t01 = s0 * x1 + s1 * x2, t10 = s1 * x0 + s2 * x1, t11 = s1 * x1 + s2 * x2;
-  return [t00 * s0 + t01 * s1, t00 * s1 + t01 * s2, t10 * s1 + t11 * s2];
-}
+// ── the (II,I) metric assembly — STABLE form (2026-08-01), same port as tierC anisoCurvatureMetric ──
+// The former whiten-by-I^{±1/2} + eigSym2 route took the eigenvector as (b, l1−a), which is cancellation
+// noise on near-diagonal forms and exchanged/rotated the principal frame (and through it the reported kappa)
+// — registry E-2026-07-19-DS-CONVERGE-B-FLANK amendment. Here the generalized eigenpairs II·v = k·I·v are
+// solved directly: k from the cancellation-free characteristic quadratic, v from the better-conditioned
+// column of (II − k·I), and M = Σ μ_i (I v_i)(I v_i)ᵀ/(v_iᵀ I v_i).
 
 /** Options for the curvature-adapted anisotropic chord metric (creaseAlignedMetric's clamps). */
 export interface AnisoMetricOpts { tolMm: number; hMin: number; hMax: number; }
@@ -97,15 +72,36 @@ export function metricsAt(rA: AnalyticRadiusFn, H: number, uu: number, tt: numbe
   if (nl < 1e-30) return { firstForm, creaseAligned: isoFallback, kappa: [0, 0], anisotropy: 1 };
   n = [n[0] / nl, n[1] / nl, n[2] / nl];
   const L = dot(Suu, n), Mn = dot(Sut, n), N = dot(Stt, n);
-  const Ihalf = powSym2(E, F, G, 0.5);
-  const Iinvhalf = powSym2(E, F, G, -0.5);
-  const B = congruenceSym2(Iinvhalf, [L, Mn, N]);
-  const eb = eigSym2(B[0], B[1], B[2]);
-  const mu1 = Math.min(Math.max(Math.abs(eb.l1) / (8 * tolMm), muMin), muMax);
-  const mu2 = Math.min(Math.max(Math.abs(eb.l2) / (8 * tolMm), muMin), muMax);
-  const Mphys = reconstructSym2(mu1, mu2, eb.e1, eb.e2);
-  const creaseAligned = congruenceSym2(Ihalf, Mphys);
-  return { firstForm, creaseAligned, kappa: [eb.l1, eb.l2], anisotropy: Math.sqrt(Math.max(mu1, mu2) / Math.min(mu1, mu2)) };
+  // Principal curvatures: roots of det(II − k·I) = 0 (cancellation-free), sorted descending to keep the old
+  // kappa = [l1, l2] (l1 ≥ l2) contract.
+  const qa = detI;
+  const qb = -(E * N + G * L - 2 * F * Mn);
+  const qc = L * N - Mn * Mn;
+  const disc = Math.sqrt(Math.max(0, qb * qb - 4 * qa * qc));
+  const qq = -0.5 * (qb + (qb >= 0 ? disc : -disc));
+  const kA = qq !== 0 ? qq / qa : -qb / (2 * qa);
+  const kB = qq !== 0 ? qc / qq : -qb / (2 * qa);
+  const [k1, k2] = kA >= kB ? [kA, kB] : [kB, kA];
+  const mu1 = Math.min(Math.max(Math.abs(k1) / (8 * tolMm), muMin), muMax);
+  const mu2 = Math.min(Math.max(Math.abs(k2) / (8 * tolMm), muMin), muMax);
+  const anisotropy = Math.sqrt(Math.max(mu1, mu2) / Math.min(mu1, mu2));
+  // UMBILIC: equal principal curvatures ⇒ M = μ·g exactly.
+  if (Math.abs(k1 - k2) <= 1e-12 * (Math.abs(k1) + Math.abs(k2) + 1e-300)) {
+    return { firstForm, creaseAligned: [mu1 * E, mu1 * F, mu1 * G], kappa: [k1, k2], anisotropy };
+  }
+  const out: Sym2 = [0, 0, 0];
+  for (const [kk, mu] of [[k1, mu1], [k2, mu2]] as Array<[number, number]>) {
+    const p = L - kk * E, q = Mn - kk * F, r = N - kk * G;
+    let v0: number, v1: number;
+    if (Math.hypot(p, q) >= Math.hypot(q, r)) { v0 = -q; v1 = p; } else { v0 = -r; v1 = q; }
+    const vl = Math.hypot(v0, v1);
+    if (!(vl > 0)) { v0 = 1; v1 = 0; } else { v0 /= vl; v1 /= vl; }
+    const iv0 = E * v0 + F * v1, iv1 = F * v0 + G * v1;
+    const den = E * v0 * v0 + 2 * F * v0 * v1 + G * v1 * v1;
+    if (!(den > 0)) continue;
+    out[0] += (mu * iv0 * iv0) / den; out[1] += (mu * iv0 * iv1) / den; out[2] += (mu * iv1 * iv1) / den;
+  }
+  return { firstForm, creaseAligned: out, kappa: [k1, k2], anisotropy };
 }
 
 /** M-inner-product aᵀ·M·b for symmetric M=[a,b;b,c] and 2-vectors. */
