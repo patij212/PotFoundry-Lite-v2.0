@@ -5432,6 +5432,43 @@ here rather than discovered later, and it is the first thing to look at if the c
 >> TRANSCRIPTION AND ITS T1a/T3 VALIDATION, THEN THE BUILD.**
 
 
+### *** S23 PREREQUISITE (ADDENDUM A2) — **THE STABLE METRIC KERNEL IS TRANSCRIBED AND VALIDATED, AND THE
+### *** TRANSCRIPTION REPRODUCES EVERY ONE OF S23-M's RECORDED CENSUS NUMBERS TO THE DIGIT. ***
+New tool `research/tools/s23Metric.ts` (standalone; eslint clean, zero errors added to the pre-existing
+3-error baseline). Log `S23_METRIC_S22B.log`. **`src/` is not touched and not imported; the filed defect
+stays filed against the certified file and this arm neither repairs it there nor depends on it.**
+
+| check | measured | bar | |
+|---|---|---|---|
+| **T1a** `M v_i = mu_i I v_i`, 128 eigenpairs over 64 probes | **1.139e-11** | < 1e-6 | **SOUND** |
+| **T3** a metric-equilateral element must read 1.732 | **2.634e-9** | < 1e-6 | **SOUND** |
+| whole-mesh `aspect3` p50 / p99 | **3.40 / 39.04** | S23-M: 3.40 / 39.04 | **EXACT** |
+| whole-mesh `arM` p50 / p99 | **11.58 / 239.13** | S23-M: 11.58 / 239.13 | **EXACT** |
+| designed-lattice `arM` p99 -> `MET_AR` | **16.61 -> 27** | S23-M: 16.61 -> 27 | **EXACT** |
+| facets already below `ALT_FLOOR` 0.7629 um | **162 of 1,251,546 (0.0129%)** | S23-M: 162 (0.0129%) | **EXACT** |
+
+**THE VALIDATION THAT MATTERS IS THE SECOND HALF OF THAT TABLE, NOT THE FIRST.** T1a and T3 are the
+preflight's own identities and it would be surprising if a faithful copy failed them. **The independent
+evidence is that a separately-written census, on the same shipped bytes, returns S23-M's four recorded
+population numbers to every digit printed** — `arM` p50 11.58 and p99 239.13 among them, which is the
+control for prediction **P-c** (constructed p99 <= 60). The instrument S23 will score its own mesh with is
+the same instrument that scored `_S22B`, demonstrated rather than asserted.
+**T3 landing on 2.634e-9 — the preflight's own recorded value, to four digits — is the sharpest single line
+here**, because that number is a property of the arithmetic and not of the mesh.
+
+**ONE HONEST DISCREPANCY ON THE NAMED PROBE, RECORDED RATHER THAN SMOOTHED.** At th 5.706267 z 14.935075
+this copy reads `I = [1.7011e3, -1.611e-12, 1.0069]`, `II = [-4.1102e1, 6.730e-11, -3.090e-12]`, giving
+`kappa1 -2.4162e-2` / `kappa2 **-3.0685e-12**`. **S23-M recorded `II = diag(-41.1, -9.5e-12)` and a true
+`kappa2` of `-9.4e-12`.** `L` agrees to the digit; `N` does not, and it should not be expected to — both
+values sit at the rounding floor of a second difference whose own scale is 41, and the two copies take
+different theta steps (the preflight's T1 block uses one COMMON `(u,t)` step so both charts sample the same
+points; this census uses the arc-based `hTh = FD/rRef`). **The claim being validated is unaffected and is
+confirmed: `kappa2` is at the noise floor, NOT the `-38.06` the certified `eigSym2` returns.** Recorded
+because "the two numbers agree" would have been the easier and wronger sentence.
+
+>> **A2 IS DISCHARGED. THE KERNEL IS VALIDATED BEFORE ANY PLACEMENT USES IT, AS REGISTERED.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
