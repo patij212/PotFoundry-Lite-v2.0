@@ -4952,6 +4952,108 @@ directions, or is not a stable function of its own input there (a 1e-12 perturba
 it by more than 1e-6). **Unattributed: 0.** The src file is NOT touched by this arm; the defect is filed.
 
 
+### *** S23-M STAGE 0 RESULT — **M1 NO-GO. THE PREMISE IS REFUTED IN ITS FIRST DIRECTION AND CONFIRMED**
+### *** IN ITS SECOND, AND THE TWO HALVES POINT OPPOSITE WAYS. THE STRANDED SET IS NOT ALIGNED ANISOTROPY
+### *** THE CAP MISJUDGES — IT IS 16.7% ADMISSIBLE IN THE METRIC TOO. THE PLATES ARE 51 OF 51. ***
+Artifact-only, as registered: **no driver edit, no `src/` edit, no mesher run.** Tool
+`research/bridge/out/s23mPreflight.ts` (new, standalone, transcribed); logs
+`S23M_STAGE0_{S22B,S22C}.log` and `S23M_STAGE0_S22B_FD{10,50,100}.log` in
+`research/exchange/_strataConformBisect/`. Meshes read as SHIPPED f32 with theta recovered by `atan2`
+from those same coordinates.
+
+| bar | measured | line | |
+|---|---|---|---|
+| **T1a** the defining equation `M v_i = mu_i I v_i` | **3.089e-8** | < 1e-6 | SOUND |
+| **T1b** vs the certified `src` tensor | 80 of 4,011 differ; **80 of 80 attributed**, **0 unattributed** | 0 unattributed | HOLDS |
+| **T3** a metric-equilateral element must read 1.732 | **2.634e-9** | < 1e-6 | SOUND |
+| **T2** the isotropic branch vs `aspect3` | ratio p50 **1.000020** / p90 1.051 / p99 6.58 | reported | see below |
+| **M0''(i)** declared survivors, longest edge refused | **9 of 9** (`_S22B`) · **13 of 13** (`_S22C`) | 100% | **HOLDS** |
+| **M0''(ii)** the stranded count | **3,848 = 89.3%** of the driver's 4,307 | 80-100% | **HOLDS** |
+| **M0''(ii)** the 95.473 um carrier | located, edges **26.2/704.2/723.7 um** exact; **REFUSED/ADM/ADM** | must have an admissible edge | **HOLDS** |
+| `MET_AR` DERIVED | **27** = ceil(1.6 x the designed lattice's own `arM` p99 of 16.61) | S22B's rule | — |
+| **M1 (a) THE STRANDED SET** | **3,338 of 19,949 = 16.7%** metric-admissible | **>= 50%** | *** **REFUTED** *** |
+| **M1 (c) THE SELF-BLOCKED DE-SHARD SITES** | **272 of 720 = 37.8%** | **>= 50%** | *** **REFUTED** *** |
+| (b) the cap-censored >= 1.5 mm shards | **91 of 127 = 71.7%** (30 of 44 / 48 are BLOCKED) | reported, NOT barred | above, on 30 sites |
+| **THE PLATES** | **51 of 51 = 100%** metric-INADMISSIBLE | `aspect3 > 50` calls **0 of 51** | *** **PREMISE DIRECTION 2 CONFIRMED** *** |
+| `ALT_FLOOR` | **0.7629 um**; **162 of 1,251,546 (0.0129%)** already below it | derived, k = 100 ulp | reported |
+| the FD-step sweep, (a) | **9.6 / 16.7 / 15.8 / 17.5%** at 10 / 25 / 50 / 100 um | — | **verdict INVARIANT** |
+
+>> **M1 NO-GO FIRES. STAGE 0 STOPS AS REGISTERED. NOTHING WAS WIRED, NO DEFAULT WAS FLIPPED, AND THE
+>> DRIVER IS BYTE-UNTOUCHED.**
+
+**THE FIRST DIRECTION IS REFUTED, AND IT IS REFUTED BY A WIDE MARGIN RATHER THAN A NARROW ONE.** The
+premise was that the stranded demand is *aligned anisotropy the cap refuses* — elements that are long
+along a crease and short across it, which are ROUND in the metric and monsters only to a direction-blind
+ruler. **Measured: their AR-refused children read `arM` p10 18.07 / p50 101.16 / p90 895.62, against a
+designed-lattice p99 of 16.61.** The median refused child is **6.1x worse than the seed's own intended
+anisotropy** in the metric that was supposed to exonerate it. **They are not aligned-and-misjudged. They
+are misaligned, and the metric says so more emphatically than the cap does.**
+
+>> **AND THE SWEEP CLOSES THE ESCAPE ROUTE BEFORE ANYONE TAKES IT.** The obvious response to 16.7% is
+>> "then the bar is too tight". It is not, and the registered sweep is why:
+>>
+>> | `MET_AR` | 3 | 5 | 10 | 20 | **27** | 50 | 111 | 200 | 500 | 1000 |
+>> |---|---|---|---|---|---|---|---|---|---|---|
+>> | (a) admissible % | 0.1 | 1.6 | 3.5 | 12.0 | **16.7** | 32.2 | 52.3 | 64.5 | 82.1 | 91.4 |
+>> | (c) admissible % | 0.4 | 3.5 | 22.8 | 33.6 | **37.8** | 43.1 | 52.5 | 58.3 | 76.9 | 88.6 |
+>> | designed lattice KEPT % | 20.6 | 47.6 | 83.0 | 99.5 | **100.0** | 100.0 | 100.0 | 100.0 | 100.0 | 100.0 |
+>>
+>> **(a) reaches 50% only at `MET_AR` ~ 111 — 6.7x the designed lattice's own p99, and 20x its p50.** A bar
+>> that loose is not "capping misalignment"; it is admitting elements a hundred times worse than anything
+>> the seed was built to lay, which is D51 with a new name. **There is no setting of the bar at which the
+>> premise's first direction is true and the gate is still a gate.**
+
+>> *** **THE SECOND DIRECTION IS CONFIRMED, AND IT IS THE MOST VALUABLE THING THIS ARM PRODUCED.** *** The
+>> operator's other claim was that the PLATES — the class they actually veto on — sail under the cap
+>> because it is direction-blind. **Measured, on the 51 protrusion plates of `_S22B`: `aspect3` p50 8.27,
+>> MAX 47.55, so the AR-50 cap calls 0 of 51 inadmissible. `arM` p10 114.88, p50 1,180.71, MAX 1,014,679 —
+>> the metric calls 51 of 51 inadmissible, and the BEST of them is already 7x the designed lattice's p99.**
+>> **The metric is a strictly better instrument for the class the operator photographs, and the AR cap is
+>> blind to it exactly as claimed.** That is a real result and it survives this arm's refutation intact.
+
+**WHY BOTH CAN BE TRUE, STATED AS THE MECHANISM RATHER THAN AS A PARADOX.** The metric is a
+*relief-aware* ruler: it measures a facet in the tangent frame at its centroid, weighted by the local
+principal curvatures. **A chord across a V is short in 3-D and enormous in the metric** — that is the plate
+result, and it is the same fact S13 measured from the other side (carrier AR 2.68-5.71 sitting 37.9-40.0 um
+off the surface, with the driver's plane ruler 47-96x blind). **A cap-censored sliver is enormous in
+both.** So the metric is strictly MORE severe than `aspect3`, essentially everywhere: whole-mesh `aspect3`
+p50 3.40 / p99 39.04 against `arM` p50 11.58 / p99 239.13. **A gate that swaps `aspect3` for `arM` at any
+bar tight enough to catch the plates refuses vastly MORE than the AR-50 cap does — it cannot unstrand the
+stranded set, because the stranded set is exactly the population that is bad in every ruler.**
+
+**T2 — THE ISOTROPIC NO-OP CLAIM, MEASURED, AND IT IS A THIRD THING RATHER THAN A CONFIRMATION.** The
+registration derived that `M = g/h^2` is shape-blind because the `h^2` cancels. **The cancellation is
+exact and the claim is still not quite right, and the residual is informative:** `arM_iso / aspect3` reads
+p50 **1.000020** — so on the bulk of the mesh the isotropic metric IS the current gate, as derived — but
+p90 **1.051** and p99 **6.58**. The gap is the LINEARISATION: `arM` measures in the tangent plane at the
+centroid while `aspect3` measures true 3-D chords, and on a facet that spans relief those differ. **So even
+the isotropic branch is not a no-op on the crease-spanning population — it is a mildly relief-aware ruler,
+and the anisotropic branch is a strongly relief-aware one. The record should carry that, because "M=g/h^2
+is a no-op" would be the wrong lesson to take from a correct derivation.**
+
+**WHAT THE 2026-07-28 NOTE GOT RIGHT, RESTATED WITH THE MEASUREMENT BEHIND IT.** That handoff filed the
+unwired M=g/h^2 work as *"a shape lever, not the fidelity lever"*. The registration argued its moment had
+come because the residue's cause is now named as a shape refusal. **Stage 0 says the note was right and the
+registration's reasoning was wrong, and the distinction is precise: it IS a shape lever, and the stranded
+set's problem is not that the shape ruler is pointed the wrong way.** The cap and the metric agree about
+the stranded set. What they disagree about is the PLATES — and that is a fidelity/routing class, which is
+S21's territory and Phase 2's, not a bisection-gate one.
+
+>> **THE FORWARD LINE, AND IT IS THE ONE THE S23 ENTRY HANDOFF ALREADY NAMED.** Stage 0 was written so a
+>> refutation would be as decisive as a confirmation, and it is: **no relaxation of the shape gate reaches
+>> the cap-censored tail, because that tail is not cap-censored by mistake.** This is the SIXTH independent
+>> firing of the P5 trigger — CTLPLUS, S6, S7, S8, S22C, and now S23-M — and the first one that rules out a
+>> *gate* change rather than a *pass*. **The S23 RECONSTRUCTION (handoff §2) is the road**, and it is
+>> strengthened rather than merely left standing: reconstruction does not have to unstrand this population,
+>> it never creates it.
+>> **AND THERE IS A SECOND, SMALLER FORWARD ITEM THAT THIS ARM EARNED AND SHOULD NOT BE LOST:** `arM` is
+>> the first instrument in this campaign that flags **51 of 51** of the operator's plate class while every
+>> existing shape gate flags **0 of 51**. It is not a bisection gate, but it is a candidate CENSUS and a
+>> candidate RANKING KEY — and the ranking key is the open question the 2026-07-28 handoff, the P5 handoff
+>> §5 and the R1/R1b refutations all converge on. **Register it as a census before anyone proposes it as a
+>> gate.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
