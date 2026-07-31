@@ -2580,6 +2580,21 @@ registered NEXT, not what was scored.
 the eye sees) or tail-based (the >=15..>=60 histogram). Both are defensible; neither is an agent's call.
 Not blocking — the component bars above are enough to run every remaining step.
 
+**SECOND CLAUSE, added 2026-07-31 from S16's correction 2 — A RATE WHOSE DENOMINATOR REGIME SHIFTS UNDER THE
+INTERVENTION IS NOT A COST METRIC.** The same shape has now turned up in a second instrument, and it is not
+the same failure as the difference above; it earns its own sentence. `alignedSeedCrossings` counts a crease
+strictly inside a seed edge **with t outside the SNAP_ALPHA proximity band [0.12, 0.88]** — a crossing nearer
+than 12% to an end is treated as conformed-by-proximity and never counted. S15 sharpened the element geometry
+near loci, which moved crossings from NEAR AN END to MID-EDGE, and the driver's count rose **x3.42** while
+the seed builder's direct proper-crossing test on the same seeds rose **x1.055**. The population barely
+moved; the exclusion stopped absorbing it. **So: a quantity that is a raw count MINUS an exclusion, where the
+intervention changes what falls inside the exclusion, measures the intervention's effect on the EXCLUSION.**
+BOTH of this campaign's cost metrics have that shape — `gated back-facing` (minus the feature-spanning
+exemption) and `alignedSeedCrossings` (minus the proximity band). **Rule, same as above: register the raw
+count and the exclusion count SEPARATELY; and where two instruments measure the same population by different
+predicates, quote BOTH rates.** S15's write-up quoted only the driver's and called a x1.055 population change
+a "x3.56 cost". Corrected in the S16 section below.
+
 ### S16 (PHASE C STEP 1b') — THE BOW-KEYED ALONG SPACING. Timeboxed side-arm: ONE registration, ONE arm.
 Authorized by the coordinating session after S15 with an explicit hard timebox: **if it lands cleanly it
 becomes the substrate for Step 2; if anything is murky it is PARKED WITH ITS NUMBERS and Step 2 proceeds on
@@ -2748,6 +2763,119 @@ Seed-scale only. 8 minutes of seed builds, no mesher run, no fidelity number.
 >> unexplained — the bow hypothesis was its leading candidate and correction 2 has removed it. It is
 >> recorded as OPEN, it is a COMPONENT question under the metric note above, and it belongs to whoever
 >> registers Step 4's A/B, not to a side-arm.
+
+### S17 (PHASE C STEP 2) — LOAD-WEIGHTED REGION EXTRACTION. Registered BEFORE the extractor was run.
+No mesher run, no fidelity number, no A/B. An EXTRACTION: it turns the tracer's 235 junction disks and the
+judge's visible-artifact census into a RANKED, MACHINE-READABLE target list that Step 3's emitter consumes.
+Substrate `_S15A` (the coordinating session confirmed disk-only scope after S15 closed the locus strips).
+
+NEW FILE `research/bridge/_strataRegionExtract.ts` — re-runs the judge's own five-candidate normal gate over
+a finished STL, localises every gated facet into the disk containing its centroid, and ranks the disks by
+MEASURED LOAD. **Never by disk count**: measured, z 25-30 carries 35 disks and 42 back-facing facets while
+z 80-85 carries 17 disks and 411 (P5 handoff §2). Emits `<tag>.regions.json`, schema `pf.strata.regions/1`,
+whose per-disk record is a superset of `_judgeShape`'s `PatchRegion` (`{id, theta, z, radiusMm}`) so Step 3
+can declare provenance from the same object it routes.
+
+BARS, decided before the run:
+  R1 **SELF-VALIDATION, and the extractor refuses without it.** The recomputed **GATED** count must equal the
+     judge's published count EXACTLY on both arms (`_S11A` 959, `_S15A` 1,846). `over90` / `featureSpanning`
+     carry the recorded classifier delta (11 facets on `_S11A`, 3 on `_S15A`, always inside the exempt
+     population, so the gate count is unaffected) and must not exceed it. A classifier that does not
+     reproduce the instrument it extends is measuring something else.
+  R2 **THE PRIMARY TARGET MUST BE FOUND.** The `_S15A` H2 argmax — **th 1.308997, z 113.45994, 24.281 um,
+     carrier AR 45.49** — must land INSIDE a traced disk, and that disk is Step 3's named primary target.
+     **SURPRISE CONDITION, reported immediately and Step 3 does NOT auto-start: if it is OUTSIDE every disk**,
+     then the residual is neither locus-strip nor junction-disk material and the emitter's scope is wrong
+     again. S13 found exactly this for sites A and B; it must be CHECKED, not assumed, for this one.
+  R3 **CONCENTRATION.** Report the share of in-disk load carried by the top 10 / 25 / 50 disks. The emitter
+     is only worth building if the load concentrates; a flat distribution over 235 disks is a different
+     problem and is reported as such.
+  R4 **COMPONENTS, per the metric note.** Every per-disk record carries `gated`, `over90` and
+     `featureSpanning` separately, plus the facet count in the disk. Ranking may use the difference;
+     nothing is BARRED on it.
+  R5 **REPORT-ONLY ADDITION (coordinating session's request, free during extraction):** the 1,235
+     out-of-disk gated facets binned by distance to the nearest traced locus, with an ON-LOCUS BAND
+     (<= 200 um) versus OFF split. This is the first discriminator for the OPEN out-of-disk question that
+     S16's correction 2 left without a candidate mechanism, and Step 4's registration must carry it.
+     Reported, not gated, and no mechanism is claimed from it here.
+  R6 **STEP 3 AUTO-START CONDITION, stated in advance:** R1 exact AND R2 found AND no throw. Anything else
+     is reported immediately instead.
+
+### *** S17 RESULT — THE TARGET LIST EXISTS, THE PRIMARY TARGET IS 4.2 um FROM A TRACED JUNCTION CENTRE,
+### AND THE LOAD RANKING DOES NOT RANK IT. THE OUT-OF-DISK QUESTION HAS A NEW, MEASURED LOCATION. ***
+6 s per arm, no mesher run. `<tag>.regions.json` written for `_S15A`, 235 regions, schema
+`pf.strata.regions/1`.
+
+  R1 **HOLDS, EXACT ON BOTH ARMS.** Recomputed GATED = **959** (`_S11A`) and **1,846** (`_S15A`), matching
+     the judge digit for digit. `over90` / `featureSpanning` carry the recorded delta and no more (11 on
+     `_S11A`, 3 on `_S15A`, both inside the exempt population). In-disk / out-of-disk now reproduces the
+     validated `diskLocalise` classifier exactly as well — **589 / 370** and **611 / 1,235** — after a
+     defect of my own was fixed mid-extraction: the disk bucket lookup was NOT SEAM-SAFE, so a disk whose
+     bounding box crossed theta=0 missed facet centroids at the far end of the chart. Cost before the fix:
+     1 facet misfiled on `_S11A`, 4 on `_S15A`. Small, and exactly the class of error that stays invisible
+     until something depends on it. Recorded rather than quietly corrected.
+  R2 **HOLDS — AND IT IS THE STRONGEST CONFIRMATION OF THE DISK-ONLY SCOPE THE CAMPAIGN HAS.** The `_S15A`
+     H2 argmax (th 1.308997, z 113.45994, **24.281 um**, carrier AR 45.49) is **INSIDE disk #39 — 4.2 um
+     from its centre.** Disk #39: th 1.30897, z 113.45600, radius **0.522 mm**, **4 branches**, min branch
+     angle **49.8 deg**. Compare S13, where sites A and B sat 1.951 mm and 16.599 mm OUTSIDE every disk and
+     forced the locus-strip scope change. The residual has moved from "3 um from a locus, 16 mm from any
+     junction" to "4 um from a junction CENTRE". The surprise condition did not fire.
+  R3 **HOLDS, AND THE LOAD CONCENTRATES.** Only **64 of 235 disks carry any gated load at all** on `_S15A`
+     (68 on `_S11A`). Share of in-disk load: **top 10 = 47.8%, top 25 = 81.0%, top 50 = 97.4%.** Routing
+     the top 25 captures four fifths of the in-disk class; routing 50 captures essentially all of it.
+
+| rank | id | theta | z | radius | branches | minAng | gated | over90 | featSpan | facets | gated/mm^2 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 32 | 0.26322 | 113.124 | 1.418 | 4 | 50.0 | 39 | 66 | 27 | 3,198 | 6.2 |
+| 2 | 72 | 0.51169 | 97.412 | 4.000 | 16 | 15.2 | 34 | 114 | 80 | 6,441 | 0.7 |
+| 3 | 25 | 4.97726 | 113.766 | 1.371 | 4 | 50.0 | 34 | 67 | 33 | 2,616 | 5.8 |
+| 4 | 57 | 2.11374 | 98.028 | 4.000 | 14 | 16.3 | 32 | 109 | 77 | 6,608 | 0.6 |
+| 5 | 96 | 3.40563 | 80.972 | 1.355 | 4 | 50.9 | 30 | 70 | 40 | 2,177 | 5.2 |
+| 6 | 107 | 3.92698 | 80.759 | 0.420 | 4 | 49.3 | 28 | 38 | 10 | 917 | **50.6** |
+| 7 | 87 | 2.07205 | 67.272 | 4.000 | 16 | 15.1 | 27 | 76 | 49 | 3,771 | 0.5 |
+| 8 | 44 | 6.02365 | 80.547 | 1.526 | 4 | 49.9 | 26 | 61 | 35 | 2,348 | 3.6 |
+| 9 | 93 | 0.78528 | 80.747 | 0.421 | 4 | 49.1 | 23 | 42 | 19 | 908 | **41.3** |
+| 10 | 46 | 4.97752 | 81.107 | 0.813 | 4 | 49.5 | 19 | 50 | 31 | 1,488 | 9.1 |
+| 11 | 43 | 3.40326 | 113.472 | 0.538 | 4 | 50.0 | 19 | 31 | 12 | 1,046 | 20.9 |
+| **68** | **39** | **1.30897** | **113.456** | **0.522** | **4** | **49.8** | **0** | 6 | 6 | 1,046 | **0.0** |
+
+>> **THE FINDING THAT CHANGES STEP 3's TARGET SELECTION, AND IT IS NOT WHAT LOAD-WEIGHTING ALONE WOULD
+>> HAVE PICKED. THE CLASS RANKING AND THE FIDELITY RANKING DISAGREE.** Disk #39 carries the worst surface
+>> error in the mesh — 24.281 um, the H2 argmax, on a carrier at AR 45.49 — and it is **rank 68 of 235 by
+>> class load, with `gated` = 0**. On `_S11A` the same disk was rank 11 with gated 16, so the S15 across
+>> rule cleared its VISIBLE class while leaving its FIDELITY defect in place. Ranking by measured artifact
+>> load is right and stays (it is what the handoff measured and what the coordinating session confirmed),
+>> but it is NOT sufficient on its own: **Step 3 routes the union of the top-N by class load AND the
+>> fidelity target(s).** Registered here so the selection rule cannot be reverse-engineered later.
+>> Two structural families are visible in the table and they want different treatment: the **4-branch,
+>> ~50 deg, sub-1.5 mm** disks (ranks 1, 3, 5, 6, 8, 9, 10, 11 — and #39) are true X-crossings, and the
+>> **14-16 branch, 4.000 mm, ~15 deg** disks (ranks 2, 4, 7) are the radius-capped clusters where the
+>> tracer merged many crossings. The X-crossing family is what Step 3 is scoped for.
+
+  R5 **REPORT-ONLY, AND IT RELOCATES THE OPEN QUESTION S16 LEFT OPEN.** Out-of-disk gated facets binned by
+     distance to the nearest traced locus:
+
+| bin (um) | <=25 | <=50 | <=100 | <=200 | <=400 | <=800 | >800 | ON-LOCUS BAND (<=200) | OFF |
+|---|---|---|---|---|---|---|---|---|---|
+| `_S11A` | 59 | 30 | 76 | 156 | 41 | 8 | 0 | **321 of 370 = 86.8%** | 49 |
+| `_S15A` | 55 | 13 | 95 | **735** | **316** | 21 | 0 | **898 of 1,235 = 72.7%** | 337 |
+| ratio | 0.93 | 0.43 | 1.25 | **x4.71** | **x7.71** | x2.6 | — | x2.80 | x6.88 |
+
+>> **THE WHOLE OF THE OUT-OF-DISK RISE LIVES IN ONE ANNULUS: 100-400 um FROM THE LOCUS.** The <=25 um bin
+>> is FLAT (59 -> 55) and the 25-50 um bin FELL (30 -> 13) — on the locus itself S15 made things better,
+>> which is what its site measurements already said. **NAMED CANDIDATE MECHANISM, and it is arithmetic
+>> rather than a guess: S15 moved the offset ring from 192.6 um to 50.0 um and left the background
+>> clearance at `clearFrac * pitchMean` = 330.2 um untouched. So the EMPTY ANNULUS around every locus —
+>> no offset point, no background point — widened from [192.6, 330.2] = 137.6 um to [50.0, 330.2] =
+>> 280.2 um, x2.04.** The new gated facets are the chords that span it: from the ring at 50 um to the
+>> background lattice at 330+ um, across a wall that turns over in 106 um, with no intermediate vertex.
+>> **STATED AS A HYPOTHESIS WITH A MEASURED LOCATION, NOT AS A RESULT.** It replaces the bow hypothesis
+>> that S16's correction 2 killed. Its test is one line and it costs no along-spacing, exactly as S15 did:
+>> a SECOND offset ring inside the clearance band, or `clearMm` graded to the local across. **Step 4's
+>> registration must carry it. It is NOT run here** — the coordinating session's sequence is Step 3 next
+>> and side-arms are not to be iterated.
+
+  R6 **AUTO-START CONDITION MET** — R1 exact, R2 found, no throw. Step 3 proceeds without waiting.
 
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
