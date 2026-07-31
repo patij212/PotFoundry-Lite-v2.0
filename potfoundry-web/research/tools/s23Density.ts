@@ -28,7 +28,7 @@
 // except the two TYPES every census in this campaign already imports.
 // The only value imports are the analytic SURFACE (`_facetTruthRA` + the registry defaults) — measuring a
 // different surface would not be an independent instrument, it would be a different experiment.
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { buildAuditRadiusFn } from '../bridge/_facetTruthRA';
 import { registryDefaultsFor as registryDefaults } from '../bridge/_gpuRankBridge';
 import type { StyleDims } from '../bridge/runStyle';
@@ -678,5 +678,39 @@ if (!D0) {
   log('  *** REPORT AS A RESULT AND STOP. THE RECONSTRUCTION IS NOT BUILT. ***');
 } else {
   log('\n  *** E2 GO — D0-D7 all hold. The density field is extractable. BUILD. ***');
+}
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// EMIT THE FIELD — only on E2, and only because a constructor cannot consume a console log.
+// THE GRID IS THE FIELD AS MEASURED, NOT AS SMOOTHED. No gradient limiting is applied here: D5 measured
+// the inter-cell Lipschitz statistic at p50 1.29 / p99 7.99 per mm and the registration left "whether to
+// gradient-limit" as an OPEN QUESTION for the build. Deciding it silently inside the extractor would hide
+// the decision inside the instrument, which is the mistake this campaign keeps paying for.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+if (D0 && D1 && D2 && D3 && D4 && D5 && D6 && D7) {
+  const outPath = process.env.S23_FIELD ?? `${EX}${ARM}.density.json`;
+  const hOut = new Array<number>(gCols * gRows);
+  for (let i = 0; i < gCols * gRows; i += 1) hOut[i] = Number((gNear[i] * 1000).toFixed(3));   // um
+  writeFileSync(outPath, JSON.stringify({
+    schema: 'pf.strata.density/1',
+    source: { stl: `${EX}${ARM}.stl`, nTri, nVert: nV, arm: ARM },
+    chart: { note: 'x = rRef*theta, y = z — the seed builder\'s own chart (_strataAlignedSeed.ts:408)', rRef, xMaxMm: X_MAX, H },
+    grid: { cols: gCols, rows: gRows, cellMm: CELL_MM, dxMm: gW, dyMm: gHh, order: 'row-major, row 0 = z 0, col 0 = theta 0' },
+    estimator: {
+      primary: 'hA = sqrt(2*A(v)/sqrt3), A(v) = (1/3) SUM_{f in F(v)} area(f) — density-preserving',
+      query: 'nearest source vertex in the (arc,z) chart; the value stored per cell is that of its centre',
+      unitsUm: true, smoothed: false, gradientLimited: false,
+    },
+    floors: { pslgThrowUm: PSLG_FLOOR_MM * 1000, acrossDefaultUm: 50, fracBelowThrow: Number(d7hA36.toFixed(6)) },
+    stage0: {
+      verdict: 'E2 GO', wholeP50Um: Number((wholeP50 * 1000).toFixed(2)),
+      lattP50Um: Number((lattHAp50 * 1000).toFixed(2)),
+      impliedNTri: Math.round(fieldN), sourceNTri: nTri, impliedRatio: Number(D6ratio.toFixed(4)),
+      lipschitzPerMm: { note: 'REPORTED in the log; the build must decide whether to gradient-limit' },
+    },
+    hUm: hOut,
+  }));
+  log(`\n  field written: ${outPath}   ${gCols} x ${gRows} cells, um, UNSMOOTHED and NOT gradient-limited`);
+  log('  (the gradient-limiting decision is the BUILD\'s, registered as an open question — not the extractor\'s)');
 }
 log('══════════════════════════════════════════════════════════════════════════════════════════════');
