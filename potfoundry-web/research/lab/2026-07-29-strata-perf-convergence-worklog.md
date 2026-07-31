@@ -2437,6 +2437,10 @@ PREDICTIONS AND BARS, all decided before the run:
   T1 **HOLDS, BOTH HALVES.** Flag-OFF at the W1 config -> md5 **8a59fb37a9115600b13262254380ccb0**, `cmp`
      byte-identical to `_S8ID`/W1 (178 s). Hard gate **12/12**, every documented value exact
      (V1 2.249981/2.249981, V3 wide 197.167, V3 thin **12.041**, V7c **12.041 / 39.767 / 142.668**).
+     **DEVIATION FROM MY OWN REGISTRATION, recorded rather than glossed:** T1 said "taken BOTH before and
+     after the edit". **I took only the AFTER.** The PRE-edit reading is S14's, one commit earlier
+     (75919175) on this same tree with no other change intervening — a legitimate chain, but it is S14's
+     measurement and not mine, and the distinction is exactly the kind this log exists to keep.
   T2 **HOLDS, TO THE POINT.** The driver's own seed census reads **43,303 points -> 85,808 tris** — the
      Stage-0 probe's numbers exactly, against bars of 45,000 / 90,000. The rule bound at **5,417** chain
      points (along shortened at **831**); across placed min **50.0** um / p50 **50.0** um.
