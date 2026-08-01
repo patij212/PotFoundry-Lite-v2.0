@@ -52,6 +52,21 @@ import { readFileSync } from 'node:fs';
 
 export const RECON_SCHEMA = 'pf.strata.density/1';
 export const RECON_SCHEMA_2 = 'pf.strata.density/2';
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// S23-T — SCHEMA `/3`: A FIELD WITH NO ORACLE IN IT.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// `/1` and `/2` both carry a field EXTRACTED FROM `_S22B`. R1 measured the ceiling that puts on the whole
+// architecture and stated it as a law: *"THE ORACLE-AND-CONSTRUCTOR ARCHITECTURE IS BOUNDED BY THE
+// ORACLE'S OWN CONVERGENCE, NOT BY THE FIELD'S EXTRACTABILITY OR ITS SERIALIZATION"* — x2.46 of a x3.45
+// under-price, the residual after both the serialization and the estimator fixes.
+// `/3` (`research/tools/s23TrueField.ts`) solves `h` off the ANALYTIC surface at the driver's own
+// `PF_CB_TOL`, so that term is absent by construction rather than reduced.
+//
+// **THE READER CHANGES BY EXACTLY ONE THING: THIS STRING IS ACCEPTED.** A `/3` artifact carries a grid
+// and no scatter, so `source` defaults to `grid` and the bilinear read below is the one that answers —
+// which is the correct query for an analytic field sampled on a lattice, and is the same code path `/1`
+// has always used. No preparation, no statistic and no integral is altered for any schema.
+export const RECON_SCHEMA_3 = 'pf.strata.density/3';
 
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
 // S23B-R / R1 — THE SCATTERED FIELD IS THE FIELD. THE GRID IS A FALLBACK.
@@ -415,8 +430,8 @@ function buildScatter(
 
 export function loadReconField(path: string, o: ReconFieldOpts): ReconField {
   const art = JSON.parse(readFileSync(path, 'utf8')) as DensityArtifact;
-  if (art.schema !== RECON_SCHEMA && art.schema !== RECON_SCHEMA_2) {
-    throw new Error(`PF_CB_RECON: expected schema ${RECON_SCHEMA} or ${RECON_SCHEMA_2}, `
+  if (art.schema !== RECON_SCHEMA && art.schema !== RECON_SCHEMA_2 && art.schema !== RECON_SCHEMA_3) {
+    throw new Error(`PF_CB_RECON: expected schema ${RECON_SCHEMA}, ${RECON_SCHEMA_2} or ${RECON_SCHEMA_3}, `
       + `got ${String(art.schema)}. `
       + 'A density field from a different producer is a mis-priced constructor waiting to happen.');
   }

@@ -824,6 +824,13 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   const chainIdx: number[][] = [];
   const seamZ = new Set<number>();
   const ownerChain: number[] = []; const ownerIdx: number[] = []; const ownerFixed: boolean[] = [];
+  // S23-T — THE WELD DISCRIMINATOR, registered in the R4 close-out as *"count hubs whose incident chain
+  // vertices carry two different `ownerChain` values"*. `ownerChain` alone CANNOT answer it: line 844 only
+  // writes the FIRST claimer and never overwrites, so a point two chains welded into is indistinguishable
+  // from a point one chain placed. This map records the SET of chains that welded into each point id, and
+  // it is the whole of the instrument. **Built ONLY under `PF_S10_SEED_DIAG`; `null` otherwise and no
+  // branch reads it** — the same discipline as the R4 provenance markers 30 lines below.
+  const weldOwners: Map<number, Set<number>> | null = process.env.PF_S10_SEED_DIAG === '1' ? new Map() : null;
   let ci = -1;
   for (const C of chains2) {
     ci += 1;
@@ -842,6 +849,11 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       const id = addPt(th, p.z, minSepMm);
       while (ownerChain.length <= id) { ownerChain.push(-1); ownerIdx.push(-1); ownerFixed.push(false); }
       if (ownerChain[id] < 0) { ownerChain[id] = ci; ownerIdx[id] = pi; ownerFixed[id] = p.fixed === true; }
+      if (weldOwners !== null) {
+        let sset = weldOwners.get(id);
+        if (sset === undefined) { sset = new Set<number>(); weldOwners.set(id, sset); }
+        sset.add(ci);
+      }
       ids.push(id);
       if (th <= 1e-12 || th >= TWO_PI - 1e-12) seamZ.add(p.z);
     }
@@ -855,6 +867,26 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // inferred mechanism is the guess this campaign keeps refusing to make. No branch reads these.
   const provChainEnd = px.length;
   const provChainConstraints = constraints.length;
+
+  // S23-T — THE WELD CENSUS, EMITTED. One line per multi-chain weld, in the chart the hub census reports
+  // its own loci in, so the two lists can be matched by an outside reader with no inference in between.
+  if (weldOwners !== null) {
+    let multi = 0; let worst = 1;
+    const rows: string[] = [];
+    for (const [id, s] of weldOwners) {
+      if (s.size > 1) { multi += 1; if (s.size > worst) worst = s.size; }
+      // EVERY welded chain point is emitted, not only the multi-chain ones, because the discriminator is
+      // worthless without its own negative control: "hubs sit near a chain vertex" is vacuous at a
+      // junction, and only the SINGLE-chain population can show whether "two different owners" separates
+      // anything. The reader gets both lists from one dump and does not have to trust a threshold.
+      rows.push(`  WELDPT ${pth[id].toFixed(6)} ${pz[id].toFixed(6)} ${s.size}`);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`  WELDDIAG minSepUm ${(minSepMm * 1000).toFixed(2)}  chainPts ${chainPts}  distinctIds ${weldOwners.size}`
+      + `  MULTI-CHAIN WELDS ${multi}  worst-fan ${worst}`);
+    // eslint-disable-next-line no-console
+    for (const r of rows) console.log(r);
+  }
 
   // 3b. domain boundary. The two seam columns MUST carry an identical z set.
   //

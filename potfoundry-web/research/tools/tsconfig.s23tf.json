@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@webgpu/types"],
+    "noEmit": true
+  },
+  "include": [
+    "./s23TrueField.ts",
+    "../bridge/_strataReconField.ts"
+  ]
+}

@@ -6729,6 +6729,482 @@ a defect. **The reduced-scale triple (S5 substitute, part 1) is NOT run and is o
      The full-scale pair is done and passes; the triple is not run.
 
 
+### S23-T — **THE TRUE-DEMAND CONSTRUCTION ARM, REGISTERED. THE CLAIM HAS CHANGED AND THIS BLOCK SAYS SO**
+### **BEFORE ANYTHING IS BUILT: *"~0 SHARDS BY CONSTRUCTION"* IS TWICE-REFUTED AND IS NOT THIS ARM'S CLAIM.**
+**THE CONSTRUCTOR IS SOUND AND IT IS NOT WHAT CHANGES HERE.** R4 re-derived the block (non-planar PSLG at
+the seed's own `cdt2d` call), fixed it as input hygiene (Unit B, default OFF), proved 100% recovery on all
+four ladder rungs and an EXACT shipped-path negative control, and the corrected arm built 1,197,587
+triangles with `non-manifold 0 / cracks 0 / Euler 0`, byte-identical determinism and parAR MAX 98.6.
+**WHAT CHANGES IN S23-T IS THE FIELD, AND ONLY THE FIELD.**
+
+  **WHY, IN ONE MEASURED SENTENCE.** `_S23B` and `_S23R` were both driven by a field EXTRACTED FROM
+  `_S22B`, and R1 priced what that costs and stated it as a law — *"THE ORACLE-AND-CONSTRUCTOR
+  ARCHITECTURE IS BOUNDED BY THE ORACLE'S OWN CONVERGENCE"*, **x2.46**, the residual after the
+  serialization (x1.18) and estimator (x1.19) fixes. R4 then MEASURED that law landing: **H2 witnessed
+  584.131 um in BOTH construction arms, identical to the digit**, and the driver HEADLINE MAX 622.349 um
+  in both, from fields x1.20 apart. **S23-T removes the oracle from the loop entirely.**
+
+#### THE REGISTERED CLAIM, AND ITS BARS. FIRST MATCH WINS. WRITTEN BEFORE THE ARM.
+>> **THE CLAIM IS FIDELITY.** Constructing at the surface's OWN demand field eliminates the oracle
+>> non-convergence term by construction, so **H2 witnessed max must COLLAPSE from the construction road's
+>> 584.131 um toward the 10 um regime.**
+>>   **T1 (DECISIVE).** H2 witnessed max **<= 75 um** (3x the bisection road's own 25.063) **AND** the
+>>     over-tol fraction **<= 3.4%** (the `_S23R` arm's 10.1%, improved by >= 3x). **REFUTED if H2 max
+>>     > 200 um** — and a refutation must DECOMPOSE where, not merely report it.
+>>   **T2.** The pinned **25.063 um** congruent copy — EXPECTED to be priced by this field, because the
+>>     surface's demand INCLUDES it. If the constructed mesh closes it, say so loudly: it retires
+>>     Phase-2's biggest known demand. If not, CLASSIFY.
+>>   **T3 TEXTURE — REPORTED COMPARATIVELY, NO ABSOLUTE CLAUSE.** Shard / hub / plate / parAR censuses
+>>     against `_S22B`, `_S23B` and `_S23R`, and per-facet RATES beside every absolute count. **The two
+>>     clause refutations stand in the record; a third data point is dose-response, not a verdict.**
+>>   **T4 TOPOLOGY PRECONDITIONS — THE GATE, AND IT RUNS FIRST.** Non-manifold 0, watertight 0/0/0,
+>>     Euler 0, constraint recovery 100%. **THE LADDER IS RE-RUN AT THE TRUE-DEMAND DENSITY BEFORE THE
+>>     ARM, planarize ON. If recovery breaks at ~5 M-scale constraint counts THAT IS THE ARM'S INFEASIBLE
+>>     ROW**, reported with the corridor numbers and NOT tuned around.
+>>   **T5 COST.** tris **<= 5.5 M** (the operator's R3 ceiling), STL ~250 MB, and the walls derived from
+>>     `_S23R`'s own measured anchors scaled honestly. **The ~5 M mesh audits are heavy: `H1MAX=40000`
+>>     quotes ~0.8% INTENDED coverage and the achieved figure will land nearer 0.4%** — every H1 number
+>>     in this arm is quoted with its coverage and is REPORTED, NOT BANKED.
+>>   **T6 IDENTITY.** md5 `8a59fb37a9115600b13262254380ccb0` at W1 + hard gate **12/12, values exact**,
+>>     after the shared-file edits. Determinism: the full-scale pair.
+
+#### THE FIELD ITSELF — **`pf.strata.density/3`, A FIELD WITH NO ORACLE IN IT.** MEASURED, NOT PROMISED.
+New, artifact-only: `research/tools/s23TrueField.ts` (emitter + validator), `tsconfig.s23tf.json`,
+`research/bridge/out/s23t_field.sh`. **`/1` and `/2` ARE BYTE-UNTOUCHED** — `/3` is a new file. The reader
+`_strataReconField.ts` changes by **exactly one thing: the schema string is accepted.** A `/3` artifact
+carries a grid and no scatter, so `source` defaults to `grid` and the bilinear read `/1` has always used
+is the one that answers — which is the correct query for an ANALYTIC field sampled on a lattice.
+The demand solve is transcribed **operand-for-operand** from `s23TrueCost.ts:35-54`, the file that priced
+R3's row: 4 probe directions, one-sided sagitta, 26 geometric bisections on `[2e-4, 4]` mm at `PF_CB_TOL`.
+
+  **THE INSTRUMENT VALIDATES ITSELF BEFORE ANYTHING IS QUOTED, EXACTLY AS R1 DID.**
+  * **VALIDATION 1 — `s23TrueCost.ts`'s OWN stride-4 sub-lattice, off the emitted artifact, returns
+    `N_tri = 5,024,104`. THE REGISTERED ROW, TO THE DIGIT. EXACT.** (33,960 cells, 38,388.70 mm^2.)
+  * **VALIDATION 2 — the same integral at stride 1, every one of 542,880 cells: 5,034,038.** The stride's
+    entire aliasing error is **+9,934 = +0.20%**, measured rather than assumed.
+  * **VALIDATION 3 — the PREPARED field the constructor is actually driven by** (floor 36.4 um THEN
+    alpha 1.0, R5 untouched): **N_tri = 5,054,396 = x4.0385 of `_S22B` = 91.9% of the 5.5 M ceiling.**
+    Floor clamped **1,479 of 542,880 cells (0.272%)**, raw min **2.562 um**; gradation lowered 151,170
+    (27.85%), worst x5.2598, 3 sweeps. Prepared `h` um: min 36.4 p01 49.6 p10 283.3 **p50 1652.1** p90
+    1981.0 p99 2002.8 max 2354.8. 8-neighbour size ratio p99 **5.078 -> 3.675**, MAX **97.44 -> 8.37**.
+  >> **THE ROW THE OPERATOR'S CEILING DECISION BOUGHT IS REPRODUCED AND THE ARM IS PRICED INSIDE IT AT
+  >> 91.9%. THE MARGIN IS 8.1% AND IT WAS PRICED BEFORE ANYTHING WAS BUILT.**
+
+  **AND THE REFINEMENT SEQUENCE DECIDED WHICH LATTICE SHIPS, WHICH IS THE ONE DESIGN CHOICE THIS FILE
+  MAKES.** The field was emitted at BOTH `M = 1` (1131 x 480, the reporting grid's own lattice, 228 s,
+  5.2 MB) and `M = 2` (2262 x 960, 912 s, 20.9 MB), and both were priced:
+
+| | `M = 1` | `M = 2` | moved by |
+|---|---|---|---|
+| FLOORED, stride 1, every cell | 5,034,038 | 5,033,419 | **-619 = 0.012%** |
+| PREPARED (floor + alpha 1.0) | 5,054,396 (91.9%) | **5,062,030 (92.0%)** | +0.15% |
+| RAW 8-neighbour size ratio p99 / MAX | 5.078 / **97.44** | 2.538 / **23.71** | — |
+| what the field asks at D49 / the headline MAX, um | 40.4 | **36.4** | — |
+| what it asks in the `z ~ 64.4` band, um | 69.8 | **41.7** | **x1.67** |
+
+  >> **THE INTEGRAL IS CONVERGED AT `M = 1` AND THE LOCAL QUERY IS NOT, AND THE CONSTRUCTOR NEVER
+  >> INTEGRATES — IT ASKS `h` AT A POINT.** That is R1's own sentence, and it decides this: 0.012% on the
+  >> integral against **x1.67 at the band four instruments point at**, and a RAW adjacent-cell size ratio
+  >> of **97.44** at `M = 1` — a 97x jump between neighbouring cells is a property of the lattice, not of
+  >> an analytic field, and it halves to 23.71 at `M = 2`. **`M = 2` SHIPS.** It costs 912 s once, 20.9 MB
+  >> on disk and 20.7 s per load, and it buys nothing in the cost table — which is exactly why the choice
+  >> had to be made on the local query and is recorded here rather than assumed.
+  >> **AND THE `M = 2` ROW OF VALIDATION 1 READS -6.52%, WHICH IS NOT A FAILURE AND THE TOOL SAYS SO ON
+  >> ITS OWN LINE.** `s23TrueCost.ts`'s stride-4 check samples the `/1` cell CENTRE; at `M = 2` the
+  >> nearest `/3` sub-cell centre is up to **62.5 um** away, so it is a different integrand. At `M = 1`
+  >> the offset is **0.0 um** and the check is **EXACT**. The instrument prints the offset precisely so
+  >> that this is readable rather than arguable.
+
+#### *** AND THE PRE-FLIGHT HAS ALREADY FOUND A **FOURTH LIMIT**, WHICH IS REGISTERED HERE BECAUSE IT
+#### *** PREDICTS T1's OWN FATE AND MUST NOT BE CLAIMABLE AFTERWARDS. ***
+The `/3` emitter reports what the surface asks for BEFORE the constructor's floor is applied, and the two
+numbers do not agree: **RAW (unfloored) N_tri = 20,718,913; FLOORED at 36.4 um, 5,034,038. THE
+CONSTRUCTOR'S OWN ARCHITECTURAL FLOOR REMOVES x4.1158 OF THE SURFACE'S OWN DEMAND.** That floor is not a
+budget — it is `1.5 * pslgEpsMm` and the `acrossMinMm * 0.55 > pslgEpsMm` THROW at
+`_strataAlignedSeed.ts:398`, i.e. the bound that stops PSLG conditioning letting a FREE point bend a
+TRACED LOCUS. **It is R5-untouchable and this arm does not touch it.**
+
+**AND IT BINDS EXACTLY WHERE T1 IS SCORED.** `S23R_ARM.log:386` puts the H2 witnessed max at
+`th = 4.450590, z = 80.75964`, carried by the facet at `z = [80.917, 80.739, 80.790]` — D49's own locus:
+
+| what each field asks for, um | GRID `/1` | SCATTER `/2` | **TRUE `/3` prepared** | the surface's RAW demand | below the 36.4 um floor? |
+|---|---|---|---|---|---|
+| **the H2 584.131 um witness** (`th 4.450590, z 80.75964`) | — | — | **(measured in the arm's own price log)** | — | — |
+| D49 / the 622.349 um HEADLINE MAX (`th 4.449065, z 80.91705`) | 107.5 | 40.0 | **40.4** | **9.4** | **YES** |
+| headline MAX vertex 2 (`th 4.4494, z 80.79`) | 93.8 | 98.5 | **40.2** | **30.4** | **YES** |
+| headline MAX vertex 3 (`th 4.4524, z 80.58`) | 77.8 | 38.6 | **38.0** | **4.8** | **YES** |
+| worst grid under-price #1 (`th 2.453753, z 59.33462`) | 308.8 | 172.5 | **49.0** | 47.2 | no |
+| worst grid under-price #2 (`th 4.548029, z 59.36577`) | 297.0 | 172.5 | **49.2** | 47.1 | no |
+| worst grid under-price #3 (`th 2.252699, z 55.89854`) | 298.3 | 184.1 | **47.9** | 47.7 | no |
+| the `z ~ 64.4` weld band (`th 2.43763, z 64.410`) | 97.8 | 91.7 | **69.8** | **6.5** | **YES** |
+
+>> **THE PREDICTION, REGISTERED BEFORE THE ARM IS BUILT SO IT CANNOT BE CLAIMED AFTERWARDS: I EXPECT T1's
+>> MAX CLAUSE TO BE REFUTED AND ITS OVER-TOL CLAUSE TO HOLD.** At the three vertices carrying the 584.131
+>> um witness the surface demands **9.4 / 30.4 / 4.8 um** — *all three below the constructor's own floor*
+>> — so the true-demand field asks **40.4 / 40.2 / 38.0** where the SCATTERED field already asked
+>> **40.0 / 98.5 / 38.6**. **At the locus that owns the MAX, the finest field this campaign can build is
+>> x1.02 finer than the one that read 584.131 um.** At the mid-range sites that drove the DISTRIBUTION the
+>> same field is **x3.5-x6.3 finer** (308.8 -> 49.0), which is where the over-tol fraction is bought.
+>> **SO THE DECOMPOSITION IS ALREADY WRITTEN AND IT IS NOT "the demand integral is wrong somewhere":
+>> validation 1 reproduces the registered row EXACTLY. THE DEMAND INTEGRAL IS RIGHT AND THE FLOOR IS
+>> WHERE IT GOES.** Three limits were named in R2's follow-up and R1 added the oracle's convergence as a
+>> third; **this is a FOURTH, it was on nobody's risk list, and eliminating the third by construction is
+>> exactly what exposed it.**
+>> **WHAT IS NOT CLAIMED: that the arm is therefore not worth building.** T1 has two clauses and only one
+>> is predicted refuted; T2 is untested; the distribution, the texture censuses and the topology
+>> preconditions at 5 M-scale constraint counts are all unmeasured, and T4 may end the arm before any of
+>> them. **A prediction registered before the run is not a substitute for the run.**
+
+#### THE FIVE DISJOINT ROWS. **INFEASIBLE FIRST**, as every S-arm in this campaign registers them.
+| # | row | fires when |
+|---|---|---|
+| **1** | **INFEASIBLE** | T4's ladder loses a constraint at the true-demand density, OR `cdt2d` throws / V8 OOMs, OR T5's ceilings are breached (tris > 5.5 M, seed > 3,000 s, wall > 4,500 s). **The corridor numbers ARE the report.** |
+| 2 | **T1 HOLDS** | H2 witnessed max <= 75 um AND over-tol <= 3.4%. The oracle-bound law is broken by construction. |
+| 3 | **T1 SPLITS** | one clause holds and the other does not — reported as a split with the decomposition, which is the outcome the floor measurement above predicts. |
+| 4 | **T1 REFUTED** | H2 max > 200 um. Decompose where, against the floor / demand / constructor partition. |
+| 5 | **REGRESSION** | identity or gate breaks, determinism differs, or a topology precondition that PASSED in `_S23R` fails here. |
+
+### *** S23-T PRE-FLIGHT RESULT — **THE WELD LEAD SPLITS ON ITS OWN DISCRIMINATOR, AND BOTH HALVES ARE**
+### *** **THE RESULT: IT IS REFUTED AS THE MANUFACTURER OF THE HUB POPULATION (x0.60, DEPLETED) AND**
+### *** **CONFIRMED AS THE MANUFACTURER OF THE WORST HUBS (degree >= 18: x4.20, 10 OF 14).** ***
+New, artifact-only: `research/tools/s23WeldHub.ts`, `research/bridge/out/s23t_weld.sh`. Log
+`S23T_WELD.log` (the seed dump), `S23T_WELDHUB.log` (the scored discriminator).
+
+  **AND THE FIRST THING IT FOUND IS A CORRECTION TO THE REGISTRATION ITSELF.** R4 registered the
+  discriminator as *"count hubs whose incident chain vertices carry two different `ownerChain` values —
+  the provenance arrays exist."* **THEY DO NOT HOLD THAT QUANTITY.** `_strataAlignedSeed.ts:844` is
+  `if (ownerChain[id] < 0) { ownerChain[id] = ci; ... }` — FIRST claimer only, never overwritten — so a
+  point two chains welded into is indistinguishable from a point one chain placed. The discriminator as
+  written reads a number the array does not carry. **`PF_S10_SEED_DIAG` now also emits `WELDPT <th> <z>
+  <nChains>` for EVERY welded chain point** (the multi-chain population *and* its single-chain control),
+  which is a diag-only map, `null` when the flag is unset, and read by no branch — the same discipline as
+  the R4 provenance markers 30 lines above it.
+
+  **THE RUN, AND ITS OWN SELF-VALIDATION.** Scale 4, chain OFF, guard ON, on the `/2` field: the chain
+  geometry stage 3a welds is FIELD-INDEPENDENT with `reconChain` off (the field enters the along spacing
+  only at `_strataAlignedSeed.ts:614`, gated by that flag), so scale 4 reproduces the arm's own chains at
+  a tenth of the `cdt2d` cost. **THE CLAIM IS CHECKED AND NOT ASSERTED: `chainPts` reads 36,237, which is
+  `S23R_LADDER2.log`'s rung-4 value at scale 1, to the digit.**
+
+**THE WELD ITSELF, MEASURED FOR THE FIRST TIME: `minSep` 192.64 um TAKES 36,237 CHAIN POINTS TO 12,284
+DISTINCT IDS — IT ANNIHILATES 23,953 OF THEM (66.1%) — and 2,089 of the survivors (17.01%) are welds of
+points from TWO OR MORE DIFFERENT CHAINS**, worst fan 5 chains onto one point.
+
+| the discriminator, on `_S23R`'s own 418 hubs outside declared geometry | hubs within the 192.6 um weld radius | rate | nearest um p10/p50/p90 |
+|---|---|---|---|
+| **MULTI-CHAIN welds (the lead)** | **43 of 418** | **10.3%** | 0 / 6330 / 14303 |
+| ALL welded chain points (**the control**) | **379 of 418** | **90.7%** | 0 / **0** / 0 |
+
+| stratified by hub degree — base rate = the multi-chain share, **17.01%** | n | on a MULTI weld | rate | vs base | on ANY chain vertex |
+|---|---|---|---|---|---|
+| degree 12-14 | 330 | 21 | **6.4%** | **x0.37 DEPLETED** | 291 (88.2%) |
+| degree 15-17 | 74 | 12 | **16.2%** | x0.95 | 74 (**100.0%**) |
+| **degree >= 18** | **14** | **10** | **71.4%** | **x4.20 ENRICHED** | 14 (**100.0%**) |
+| ALL | 418 | 43 | 10.3% | **x0.60** | 379 (90.7%) |
+
+>> **THE VERDICT IS THE STRATIFICATION AND IT IS MONOTONE, WHICH IS WHY IT IS BELIEVABLE.** Taken whole
+>> the lead is **REFUTED**: multi-chain welds are 17.01% of the welded population and account for 10.3% of
+>> the hubs — **x0.60, i.e. DEPLETED, not enriched**. *"A corrected weld will fix the hubs"* is measured
+>> false. **But the rate rises monotonically with degree and lands at x4.20 in the >= 18 stratum**, where
+>> 10 of 14 hubs sit **0.0-0.1 um** from a multi-chain weld. **The weld does not make the hub class. It
+>> makes the WORST hubs.**
+>> **AND THAT STRATUM IS THE `z ~ 64.4` BAND, WHICH IS NOW ON ITS FOURTH INSTRUMENT.** Ten of the twelve
+>> highest-degree hubs sit at `z = 64.263..64.410`; in the band 22 of 49 hubs match a multi-chain weld
+>> against a 17.01% base rate. Rung 1's two proper crossings (`64.407462`, `64.407467`), the fan hubs, the
+>> eight worst EYE facets in both arms, **and now the multi-chain weld census** — one band, four
+>> instruments, and the weld is the only named candidate that touches all four.
+>> **THE ROW NOBODY ASKED FOR, AND IT RE-SCOPES THE CLAUSE WORK.** **90.7% of all hubs — and 100.0% of
+>> every hub of degree >= 15 — sit at distance ZERO from a welded CHAIN vertex.** The hub class is
+>> manufactured by the CHAIN EMITTER, not by the free Steiner infill and not by the field. **That is why
+>> two successive field corrections moved the hub count in the wrong direction**, and it says where a
+>> third attempt would have to aim. *It is not this arm's claim and nothing here is tuned on it.*
+>> **AND THE PRE-FLIGHT DOES NOT BLOCK THE ARM.** The mechanism is named, bounded, measured and reported
+>> BEFORE the build; T3 reports the hub census comparatively with no absolute clause, and this block is
+>> the reason that is the honest way to report it.
+
+#### THE SHARED-FILE EDITS ARE CLEARED BY THE STANDING GATE, TAKEN AFTER THEM (`S23T_GATE.log`)
+  * **HARD GATE 12/12, every documented value EXACT** — V1 **2.249981**, V3 **197.167 / 12.041**,
+    V4 **502.615**, V5 **391.661**, V6 **0.617**, V7 **0.000**, V7b **402.230**,
+    V7c **12.041 / 39.767 / 142.668**, V8/V9/V10 exact with ortho <= 2.70e-7.
+  * **W1 IDENTITY: md5 `8a59fb37a9115600b13262254380ccb0` on BOTH `_S23TID` and `_W1`, `cmp`
+    BYTE-IDENTICAL.** Two shared-file edits, both default-inert, both proven inert rather than argued.
+
+### *** S23-T — **UNIT A's OWN MEASUREMENT, DISCHARGED ON ITS FIRST RUN. THE 3e LIST REACHES A FIXED**
+### *** **POINT AT PASS 2 AND THE CAP DOES NOT BIND.** *** (`S23T_UNITA.log`, script `s23t_unita.sh`)
+The R4 close-out left `PF_S10_COND_PROJECT` implemented, default-OFF and **UNVALIDATED** — *"the ladder ran
+with `projected 0` throughout, so A is unvalidated"* — and named its own one-run experiment. That run is
+this block, taken BEFORE the arm turns the lever on, on the `/3` field the arm will use, at scale 4.
+
+| `PF_S10_COND_PASSES=24`, `/3` field, scale 4, chain off | pass 0 | pass 1 | pass 2 | verdict |
+|---|---|---|---|---|
+| **PROJECTION ON** (`PF_S10_COND_PROJECT=1`) | 16,064 `grew=true` **projected 631** | 16,071 `grew=true` **projected 5** | **16,071 `grew=false` projected 0** | ***FIXED POINT REACHED — THE CAP DID NOT BIND*** |
+
+>> **THE BAR WAS WRITTEN BEFORE THE RUN AND IT IS MET ON THE FIRST ONE.** The R2 follow-up measured this
+>> loop doubling its list every pass from ~12 — **16,683 -> 29,377,010 in 21 passes** — with the 3-pass cap
+>> as the only bound on a divergent loop, in every configuration including the one that shipped. With the
+>> documented projection actually written, the loop **converges in three passes and stops**, because every
+>> sub-segment is EXACTLY collinear with its parent and the pass is idempotent by construction. **A's
+>> comment has described this behaviour since it was written; this is the first run in which the code
+>> does it.** `projected 631 -> 5 -> 0` is the counter its own exit test reads, finally being written.
+>> **SO THE ARM RUNS WITH BOTH UNITS ON**, each validated on its own experiment and neither claimed to be
+>> the other. What-remains item 1 is CLOSED.
+
+### *** S23-T / T4 — **THE LADDER AT THE TRUE-DEMAND DENSITY. 100% CONSTRAINT RECOVERY ON ALL FOUR**
+### *** **RUNGS, AND THE ARM'S OWN SEED NEEDS NO PLANARITY REPAIR AT ALL.** *** (`S23T_LADDER.log`)
+The gate, run BEFORE the arm exactly as registered. Guard ON, `/3` field at `M = 2`, the R4 ladder's own
+rung shape so the two tables read side by side.
+
+| rung | scale | chain | crossings before / **after** | constraints | recovered | points / tris | over-cap | worst AR | parAR | s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 4 | ON | 2 / **0** | 15,185 | **15,185 — 100%** | 131,939 / 263,034 | 6 | 133.5 | 155.4 | 423 |
+| 2 | 2 | ON | 1 / **0** | 16,447 | **16,447 — 100%** | 192,475 / 383,970 | 6 | 85.1 | 139.4 | 294 |
+| 3 | 1 | ON | 1 / **0** | 18,935 | **18,935 — 100%** | 490,546 / 979,689 | 16 | 104.1 | 99.9 | 558 |
+| **4** | **1** | **off** | **0 / 0 — the guard finds NOTHING** | **13,468** | **13,468 — 100%** | **487,034 / 972,658** | 12 | 87.8 | **98.6** | **488** |
+
+>> **T4 PASSES AND THE ARM IS BUILT.** The registered INFEASIBLE row does not fire: recovery is 100% at
+>> every rung, `cdt2d` does not throw, V8 does not OOM, and the arm's own seed builds in **488 s against a
+>> 3,000 s ceiling (16.3%)**. The S7' worry — *"the constructor at 2.5 M points is untested"* — is answered
+>> in the direction nobody registered: **the constructor never reaches 2.5 M points on this field.**
+>> **RUNG 4's `0 / 0` IS THE ROW WORTH STOPPING ON.** The `/2` field handed `cdt2d` a NON-PLANAR list in
+>> this exact configuration — one proper crossing pair, the defect that cost R4 an entire session — and
+>> **the `/3` field hands it a PLANAR one with nothing to repair.** The guard is not doing the work here;
+>> it is confirming there is none. Non-planarity was a property of that field's junction crowding, and a
+>> field with no oracle in it does not manufacture it. The guard stays ON regardless, because *"inert by
+>> measurement, not by argument"* is the standing rule and rungs 1-3 still needed it.
+>> **AND THE COST ROW ARRIVES 5x UNDER ITS OWN PRICE, WHICH IS A RESULT AND NOT A RELIEF.** The field
+>> prices at **5,062,030**; the seed delivers **972,658 — x0.192 of it, and x0.81 of `_S23R`'s own
+>> 1,197,587.** *The finest field this campaign can build produces a SMALLER mesh than the field priced at
+>> 2.07 M did.* That is not a defect and it is the whole content of "the surface's own demand": the
+>> prepared `/3` field's median is **1,643.7 um** where the SCATTERED field's is **99.8 um**, because an
+>> extracted field inherits its source mesh's element size EVERYWHERE while an analytic demand asks for
+>> 1.6 mm on smooth wall and 40 um on a rib. **The 5.06 M integral is owned by narrow bands, and what the
+>> constructor delivers there — not the ceiling, and not `cdt2d` — is the quantity to measure in the arm.**
+
+#### WHAT IS RUN, IN ORDER, AND WHAT STOPS IT
+`s23t_weld.sh` (the R4 close-out's registered weld discriminator, as a PRE-FLIGHT) -> `s23t_field.sh`
+(materialize + self-validate + dry-price, DONE, above) -> **the ladder at the true-demand density (T4)** ->
+the arm -> Part-B audit + all six censuses -> score first-match. **No default is flipped anywhere:
+`PF_S10_PLANARIZE` and `PF_S10_COND_PROJECT` remain default-OFF and are set as ARM FLAGS in a scratch
+script**, exactly as `s23r_arm.sh` set the first of them.
+
+
+### *** S23-T RESULT — **THE ARM BUILDS AND *THE FIDELITY MAX DOES NOT MOVE ONE DIGIT, FOR THE THIRD**
+### *** **TIME, FROM A THIRD FIELD*: 622.349 um AND H2 584.131 um, IDENTICAL TO `_S23B` AND `_S23R`.**
+### *** **AND THE REASON IS NOW A CLOSED FORM: `sag(36.4 um) = 250.3 um` AT THE H2 WITNESS — x25 TOL,**
+### *** **BEFORE ANY CONSTRUCTOR RUNS. THE PREDICTION REGISTERED BEFORE THE BUILD HOLDS.** ***
+**MESH: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S23TC.stl`**, md5
+`3c3bd6b7a7d4bc706e1ada0d0f9c6d70`, **48,632,984 bytes**, **972,658 triangles**. Scripts `s23t_arm.sh`,
+`s23t_ctrl.sh`, `s23t_finish.sh`; logs `S23T_ARM.log`, `S23T_CTRL.log`, `S23T_FINISH.log`.
+
+#### *** THE HEADLINE MESH IS THE CONTROL, AND THAT IS A MEASUREMENT. **UNIT A IS REFUTED ON ITS FIRST
+#### *** PRODUCTION RUN, ONE VARIABLE, AND IT IS WITHDRAWN ON ITS OWN EVIDENCE.** ***
+The arm as registered ran BOTH units. It read `seam-crack edges 271 FAIL`, boundary loops **3**, **Euler
+V-E+F = -1** — a topology precondition that `_S23R` PASSED at 0/0/0. Two things had changed, so a
+one-variable control was run: the arm's command with `PF_S10_COND_PROJECT` UNSET and nothing else touched.
+
+| one variable: `PF_S10_COND_PROJECT` | **`_S23T` (Unit A ON)** | **`_S23TC` (Unit A OFF) — THE HEADLINE** |
+|---|---|---|
+| non-manifold / reversed | 0 / 0 | 0 / 0 |
+| **seam-crack edges** | **271  FAIL** | **0  OK** |
+| boundary edges / loops | 1039 / **3** | 1018 / **2** |
+| **Euler V-E+F** | **-1  FAIL** | **0  OK** |
+| seed worst AR | **250.78** | **87.75** |
+| over-cap (declared / UNDECLARED) | 14 (2 / 12) | **12 (0 / 12)** |
+| min altitude (ALT_FLOOR 0.7629 um) | 1.3969 um | **2.9242 um** |
+| triangles | 972,641 | 972,658 |
+| driver HEADLINE MAX | **622.349 um** | **622.349 um — IDENTICAL** |
+| total driver wall | 974.07 s | **744.00 s** |
+
+>> **UNIT A COSTS A TOPOLOGY GATE, TRIPLES THE WORST SEED ASPECT RATIO, AND BUYS NOTHING.** Its own
+>> comment says *"a vertex on a domain side is never moved"* and the `!onDomainSide(j)` guard is there in
+>> the source to read — **and the seam still cracks 271 edges when it is on and zero when it is off, with
+>> every other byte of the command identical.** A guard that is present in the code and absent in the
+>> result is refuted by the result. **This is exactly what Unit A's own registration asked for** — *"A is
+>> scored on its own convergence, and neither is claimed to be the other"* — and it is now scored twice:
+>> **PASS on its 3e convergence (fixed point at pass 2, `S23T_UNITA.log`), FAIL on the arm's topology.**
+>> **BOTH RESULTS STAND AND THE LEVER STAYS DEFAULT-OFF.** `_S23T` is kept on disk, audited, as the
+>> refuted arm; `_S23TC` is what is scored. **What is NOT claimed: that the projection is wrong in
+>> principle.** Its 3e convergence is real and measured. What is claimed is narrower and measured: on
+>> THIS path, at THIS density, turning it on opens a hole in the seam, and the mechanism inside its own
+>> domain-side guard is a named, unclosed lead — not a thing to be tuned around inside this arm.
+
+#### THE ARM AGAINST ITS REGISTERED CEILINGS — **T5 PASSES WITH 5x THE MARGIN NOBODY EXPECTED**
+| | measured | ceiling | % |
+|---|---|---|---|
+| live triangles | **972,658** | 5,500,000 | **17.7%** |
+| shipped STL bytes | **48.63 MB** | 300 MB | **16.2%** |
+| seed build (the `cdt2d` call) | **488 s** (ladder rung 4) | 3,000 s | **16.3%** |
+| total driver wall | **744.00 s** | 4,500 s | **16.5%** |
+
+>> **AND THE SEED REPRODUCES THE T4 LADDER'S RUNG 4 TO THE DIGIT — 487,034 points / 972,658 tris /
+>> 13,468 of 13,468** — which is the cross-validation that the gate and the arm ran the same constructor
+>> on the same field, proven rather than assumed.
+>> **THE OPERATOR'S 5.5 M CEILING WAS NEVER THE BINDING CONSTRAINT AND THIS ARM IS THE PROOF.** The field
+>> prices at **5,062,030**; the constructor delivers **972,658 — x0.192 of its own price**, at 17.7% of a
+>> ceiling that was raised specifically to hold it. R3's decision bought a fair test and the test says the
+>> budget was never the limiter. **What limits it is measured in the next block.**
+
+#### T1 — **THE DECISIVE BAR. REFUTED ON BOTH CLAUSES, AND THE DECOMPOSITION IT DEMANDS IS A CLOSED FORM.**
+`S23T_FINISH.log` stage 8, `PF_FT_H1MAX=40000`, `PF_FT_H2BUDGET=40M`, 8 workers.
+
+| Part-B, at Part-B depth | `_S22B` (the oracle) | `_S23B` | `_S23R` | **`_S23TC` (this arm)** |
+|---|---|---|---|---|
+| triangles | 1,251,546 | 763,965 | 1,197,587 | **972,658** |
+| **H2 WITNESSED max** | **25.063 um** | 584.131 | 584.131 | **584.131 — IDENTICAL, THIRD FIELD** |
+| H2 phase-A, 100% coverage, 29.0M queries | 24.375 um | 445.898 | 445.898 | **445.898 — IDENTICAL** |
+| **H2 samples over TOL** | — | — | 2,446,741 / 40.0M = **6.115%** | **1,560,096 / 40.0M = 3.899%** |
+| driver HEADLINE MAX | — | 622.349 | 622.349 | **622.349 — IDENTICAL** |
+| driver adaptive p50 / p99 | — | 3.279 / 37.823 | 2.328 / 25.073 | 3.822 / 29.438 |
+| **driver over-0.01 mm** | — | **19.8%** | **10.1%** | **118,187 / 972,658 = 12.15%** |
+| H1 WITNESSED / CERTIFIED | 139.354 / 149.342 | 383.724 / 393.710 | 165.780 / 182.568 | **423.039 / 451.133** |
+| H1 coverage (audited / live) | — | 2.84% | 2.60% | **32,997 / 972,658 = 3.39%** |
+| blades (AR > 50, determined) / folds | 2 det + 10 indet / 0 | 7 / 0 | 8 / 0 | **12 (0.0012%) / 0** |
+| back-facing (gate NORMAL) | 0 (+4,381 span) | 14 (+252) | 15 (+283) | **15 (+352)** |
+| **watertight: non-manifold / cracks / Euler** | — | 2 / 0 / 0 | 0 / 0 / 0 | **0 / 0 / 0** |
+
+>> **T1 IS REFUTED ON BOTH CLAUSES.** The max clause asked for <= 75 um and fired its own REFUTED tripwire
+>> at > 200 um: **584.131**. The over-tol clause asked for <= 3.4% on the driver's own quantity and reads
+>> **12.15%**, WORSE than `_S23R`'s 10.1%. Row 3 (SPLIT) does not fire because neither clause holds.
+>> **AND THE PREDICTION REGISTERED BEFORE THE BUILD IS THE ONE THAT HOLDS, NOT THE CLAIM.** The
+>> registration said *"I EXPECT T1's MAX CLAUSE TO BE REFUTED AND ITS OVER-TOL CLAUSE TO HOLD"*, on the
+>> floor measurement. **Half of that is right and half is wrong, and the wrong half is reported first.**
+>> The over-tol clause failed on the driver's ruler because this mesh is **x0.81 the facets** of `_S23R`
+>> — the true-demand field asks for **1,643.7 um** on smooth wall where the extracted field asked 99.8 —
+>> so the DISTRIBUTION got coarser even as the max stayed put. **On the AUDIT's own over-tol quantity it
+>> went the other way: H2 samples over TOL 6.115% -> 3.899%, x1.57 better on x0.81 the triangles.** Two
+>> rulers, opposite signs, and the bar was written on one of them. Both are quoted.
+>> **THE H1 ROW IS REPORTED AND NOT BANKED, WITH MORE FORCE THAN ANY ARM BEFORE IT.** 3.39% coverage,
+>> marked INCOMPLETE, and the standing rule is *"an H1 witness that moves between arms at low coverage is
+>> a sampling event until proven otherwise"*. It moved 165.780 -> 423.039 and **that is not banked either.**
+
+#### *** THE DECOMPOSITION. **`sag(36.4 um) = 250.3 um` AT THE H2 WITNESS. THE RESIDUAL IS NOT A FIELD**
+#### *** **PROBLEM, IT IS AN ARCHITECTURAL ONE, AND IT IS NOW A NUMBER AND NOT A HYPOTHESIS.** ***
+T1's refutation clause says *"the report must decompose where"*. The decomposition is measured with the
+demand solve's OWN arithmetic — the identical three-point second difference over the identical four
+directions, evaluated at the chord the constructor is allowed to place. **No scaling law is assumed.**
+All three arms put the H2 witness at the SAME point: `th = 4.450590, z = 80.75964` (`S23T_FINISH.log`).
+
+| the ladder at the H2 witness, in um | value | what owns it |
+|---|---|---|
+| `PF_CB_TOL` — what is asked | **10.0** | — |
+| the surface's own demand there (`sag(h) = 10 um`) | **1.7** | the analytic surface. **The `/3` field prices it correctly.** |
+| the constructor's smallest placeable feature | **36.4** | `pslgEpsMm / 0.55` — the PSLG conditioning bound, `_strataAlignedSeed.ts:398` |
+| **`sag(36.4 um)` — the best error ARCHITECTURALLY REACHABLE** | **250.3  = x25.0 TOL** | **THE FLOOR. A HARD BOUND BEFORE ANY CONSTRUCTOR RUNS.** |
+| what the mesh actually placed (the carrier facet's edges) | **179.3 / 264.4 / 199.9** | the DECLARED-region path — this locus is inside D49 |
+| **H2 WITNESSED, measured** | **584.131** | — |
+
+>> **READ THE TWO GAPS SEPARATELY, BECAUSE THEY HAVE DIFFERENT OWNERS AND ONLY ONE OF THEM IS CLOSEABLE.**
+>>   **(a) 10 um -> 250.3 um is THE FLOOR, and it is x25 before a single triangle exists.** The surface
+>>     demands a 1.7 um chord; the constructor may not go below 36.4 um; the sagitta of a 36.4 um chord
+>>     THERE is 250.3 um. **No field, no ceiling, no constructor and no oracle can reach under that while
+>>     `pslgEpsMm = 20 um` stands.** This is the FOURTH limit, registered before the build off the same
+>>     measurement, and it is now quantified at the exact point that owns the campaign's H2 max.
+>>   **(b) 250.3 um -> 584.131 um is x2.33, and it is the CORRIDOR, not the field.** The carrier facet's
+>>     edges are 179-264 um where 36.4 um is permitted — x5-7 coarser than the floor — and the locus is
+>>     inside a DECLARED region, where free Steiner points are forbidden and placement belongs to the
+>>     patch emitter's graded rings. The arm's own log records that path being bounded by the field on
+>>     **119 rings with 250 sub-rings inserted, worst polar/field ratio x9.26**. **That is a named,
+>>     measured, UNCLOSED lead and it is not claimed as the cause** — it is where the next measurement
+>>     goes, and it is R2's road (ii), which remains a declared-geometry change needing its own
+>>     registration and its own layer-2 negative control.
+>> **SAID AS THE LAW IT NOW IS, AND IT REPLACES THE ONE R1 WROTE.** R1's law was *"the
+>> oracle-and-constructor architecture is bounded by the ORACLE'S OWN CONVERGENCE"*. **S23-T removed the
+>> oracle entirely and the number did not move one digit.** So the law was true and incomplete: the
+>> oracle's convergence was A bound, not THE bound. **THE BINDING LIMIT ON THIS ROAD IS THE CONSTRUCTOR'S
+>> OWN PSLG CONDITIONING RADIUS, AND IT IS x25 OF TOLERANCE AT THE SITE THAT DECIDES EVERY ARM.** Three
+>> fields — 1.72 M, 2.07 M and 5.06 M of priced demand, x2.9 apart end to end — produced 622.349 um,
+>> 584.131 um and 445.898 um IDENTICAL TO THE DIGIT. **That is not a field problem and two more fields
+>> will not change it.**
+
+#### T2 — **NOT CLOSED, AND CLASSIFIED. THE FIELD PRICES THE 25.063 um COPY; THE FLOOR FORBIDS BUILDING IT.**
+T2 registered the pinned **25.063 um** congruent copy as EXPECTED to be priced by this field. **It IS
+priced**: the surface's raw demand at the witness is **1.7 um**, finer than the 25.063 um the bisection
+road achieves and finer than anything in the campaign's record. **And the constructed mesh does not close
+it**, because 1.7 um is **x21 below** the 36.4 um the constructor may place. **CLASSIFICATION: the demand
+is IN the field and OUT of the constructor's reach — a floor refusal, not a pricing miss.** That is a
+different verdict from `_S23R`'s *"a locus neither field priced"*, and it is strictly more informative:
+Phase 2's biggest known demand is not retired, and it is now known that no field can retire it.
+
+#### T3 — TEXTURE, **REPORTED COMPARATIVELY, NO ABSOLUTE CLAUSE.** Absolute counts AND per-facet rates.
+| outside declared geometry | `_S22B` | `_S23B` | `_S23R` | **`_S23TC`** |
+|---|---|---|---|---|
+| facets | 1,251,546 | 763,965 | 1,197,587 | **972,658** |
+| shards (`long >= 1 mm AND AR3 >= 20`) | 205 | 194 | 253 | **176** |
+| shard RATE per facet | — | 2.54e-4 | 2.11e-4 | **1.81e-4  (x0.86 of `_S23R`)** |
+| fan hubs (`>= 12 facets, edge >= 500 um`) | — | 230 | 418 | **398** |
+| hub RATE per facet | — | 3.01e-4 | 3.49e-4 | **4.09e-4  (x1.17 of `_S23R`)** |
+| plates / per 1k facets (outside routed) | — | — | — | **5,304 -> 5,530 total; 5.735 per 1k** |
+| parAR p50 / p90 / p99 / **MAX** | — | 2.31 / 4.13 / 8.6 / **98.6** | 2.34 / 3.63 / 8.0 / **98.6** | 2.31 / 4.25 / 12.5 / **98.6** |
+| 3-D AR p99 / MAX | — | 10.711 / 85.129 | 11.191 / 85.129 | **12.74 / 87.75** |
+
+>> **THE CLAUSE'S OWN BARS (<= 5 shards, <= 2 hubs) MISS FOR A THIRD TIME — 176 AND 398 — AND THIS ARM
+>> DOES NOT SCORE THEM, BY REGISTRATION.** Three data points from three fields spanning x2.9 in priced
+>> demand is dose-response, and the response is flat: **the shard rate falls x0.86 and the hub rate rises
+>> x1.17, the same directions `_S23R` moved, at a third field.** *"A better field will fix the clause"*
+>> has now been measured false three times in the same two directions. **THE PRE-FLIGHT SAYS WHY AND IT
+>> SAID SO BEFORE THIS CENSUS EXISTED: 90.7% of hubs — and 100% of every hub above degree 15 — sit at
+>> distance ZERO from a welded CHAIN vertex.** The hub class is emitted by the chain, and the field does
+>> not touch the chain.
+>> **THE parAR ANNIHILATION SURVIVES A THIRD TIME AT MAX 98.6, to the digit**, against the 932,125 the
+>> bisection family could not reach below. p99 12.5 is worse than `_S23R`'s 8.0 and is reported, not
+>> smoothed: it is what x0.81 the facets on a field with a 1.64 mm median buys.
+
+#### T6 — IDENTITY, GATE AND DETERMINISM, ALL THREE DISCHARGED
+  * **HARD GATE 12/12, every documented value EXACT** (`S23T_GATE.log`), taken AFTER both shared-file
+    edits and BEFORE every run scored here.
+  * **W1 IDENTITY md5 `8a59fb37a9115600b13262254380ccb0`, `cmp` BYTE-IDENTICAL to `_W1`.**
+  * **DETERMINISM, FULL-SCALE PAIR: md5 `3c3bd6b7a7d4bc706e1ada0d0f9c6d70` on BOTH `_S23TC` and its twin
+    `_S23TCD1`, `cmp` BYTE-IDENTICAL** (S5 substitute, part 2). **The reduced-scale triple (part 1) is
+    NOT run and stays on the what-remains list, as it did after `_S23R`.**
+  * **THE SEED'S OWN IDENTITY, which the gate does not cover:** the arm's seed reproduces T4 ladder rung
+    4 at **487,034 points / 972,658 tris / 13,468 of 13,468**, every digit.
+
+### *** S23-T — **THE VERDICT, SCORED FIRST-MATCH AGAINST THE FIVE REGISTERED ROWS** ***
+| # | row | fires? |
+|---|---|---|
+| **1** | **INFEASIBLE** | **NO.** T4's ladder recovered **100% on all four rungs**; no `cdt2d` throw, no OOM; tris **17.7%** of the ceiling, seed **16.3%**, wall **16.5%**. Every tripwire clear by >= 5x. |
+| 2 | T1 HOLDS | **NO.** H2 584.131 um vs a 75 um bar. |
+| 3 | T1 SPLITS | **NO.** Both clauses fail: max 584.131 (> 200) and driver over-tol 12.15% (> 3.4%). |
+| **4** | ***T1 REFUTED*** | ***FIRES. FIRST MATCH. H2 584.131 um > 200 um — and the decomposition is the block above: the floor owns x25 of tolerance before any constructor runs, and the corridor owns the remaining x2.33.*** |
+| 5 | REGRESSION | **NO on the headline mesh** (gate 12/12 exact, W1 md5 `8a59fb37...` byte-identical, watertight 0/0/0, Euler 0). **FIRED AND ISOLATED ON UNIT A**, which is withdrawn on its own one-variable control. |
+
+>> **THE ONE THING TO KNOW.** The operator raised the ceiling to 5.5 M to buy a fair test of the
+>> construction road at the surface's own demand. **The test was run, the field was built and validated to
+>> the digit against the row the decision was made on (5,024,104, EXACT), the constructor honoured it,
+>> topology held at 0/0/0, and the arm used 17.7% of the ceiling it was given.** And the fidelity max did
+>> not move by one digit from a field priced at 1.72 M, or 2.07 M, or 5.06 M. **The ceiling was never the
+>> limiter, the oracle was never the whole limiter, and the limiter is a 20 um conditioning radius inside
+>> the constructor — which prices a 250.3 um floor on a 10 um tolerance at the exact site three arms have
+>> now argmaxed on.** That number did not exist before this arm and it is the arm's result.
+
+#### WHAT REMAINS, NAMED AND NOT BUILT
+  1. **THE FLOOR ITSELF — `pslgEpsMm`, AND IT IS NOW THE #1 ITEM ON THIS ROAD.** `sag(36.4 um) = 250.3 um`
+     at the H2 witness. To reach the 10 um regime there the constructor would have to place ~1.7 um, i.e.
+     `pslgEpsMm` would have to fall from **20 um to ~0.94 um, a x21 reduction.** That radius exists to
+     stop PSLG conditioning letting a free point bend a traced locus, so lowering it is a
+     CORRECTNESS-BEARING change with its own registration, its own recovery ladder and its own layer-2
+     negative control — **and it is R5-untouchable, so it was not touched here.** The cheap first probe is
+     the recovery ladder at `pslgEpsMm` 20 -> 10 -> 5 um at a REDUCED scale: if recovery breaks at 10 um
+     the road is closed and that is worth knowing in one hour.
+  2. **UNIT A's SEAM MECHANISM.** The `!onDomainSide(j)` guard is in the source and the seam still cracks
+     271 edges when the projection is on. **The lever is default-OFF and withdrawn; the mechanism inside
+     its own guard is unexplained.** The discriminator is one run: dump the moved-vertex list under
+     `PF_S10_SEED_DIAG` and check how many land within `pslgEpsMm` of a domain side.
+  3. **THE CORRIDOR — R2's ROAD (ii), UNCHANGED AND NOW BETTER PRICED.** x2.33 of the H2 residual sits
+     between the 36.4 um floor and the 179-264 um the declared path actually placed. Still a
+     declared-geometry change needing its own registration; the new datum is that it is worth x2.33 and
+     not more, because the floor caps what closing it can buy.
+  4. **THE HUB CLASS IS A CHAIN-EMITTER PROBLEM, MEASURED.** 90.7% of hubs and 100% above degree 15 sit
+     at distance zero from a welded chain vertex; multi-chain welds are DEPLETED overall (x0.60) and
+     ENRICHED x4.20 in the >= 18 stratum. **Three fields have now failed to move it and the reason is
+     that no field touches the chain.**
+  5. **PHASE D VIA GPU TRIAGE — STILL NAMED, STILL NOT BUILT, AND NOW PARTLY ANSWERED.** It was scoped as
+     *"a better oracle is a cost problem"*. **S23-T built the perfect oracle — the analytic surface
+     itself — and the max did not move.** Phase D remains worth building for the DISTRIBUTION and is no
+     longer a candidate for the MAX.
+  6. **THE S5 REDUCED-SCALE DETERMINISM TRIPLE** (`PF_CB_RECON_SCALE=2`, arm + two twins). The full-scale
+     pair is done and passes; the triple is not run.
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
