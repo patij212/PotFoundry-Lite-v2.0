@@ -1,15 +1,24 @@
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════
-// *** THIS FILE HAS NEVER BEEN EXECUTED, TYPE-CHECKED OR LINTED. DO NOT TRUST IT BECAUSE IT IS IN THE  ***
-// *** TREE. ***  The S28 session that wrote it could not run ANY program — `node <script>`, `sh <script>`
-// and `npx` were all denied by the session's permission layer (the denial table is in the S28 RESULT block
-// of research/lab/2026-07-29-strata-perf-convergence-worklog.md). It is committed UNVALIDATED, deliberately
-// and with this header, under the same disposition `_S23R`/`_S23TC` gave the reduced-scale triple: it is
-// DECLARED NOT RUN and it is never claimed unrun.
+// *** VALIDATED 2026-08-01 BY THE S28 FINISHING-LOOP SESSION. The header this file carried until then said
+// *** it had NEVER been executed, type-checked or linted — written by an S28 session whose permission layer
+// *** denied every program. That header discharged its own first order, and this block replaces it with what
+// *** running it actually found. It is NOT a claim that the file was right; it is the record of two ways it
+// *** was wrong.
 //
-// *** THE FIRST THING THE NEXT SESSION MUST DO IS RUN THE SELF-CHECKS AND THE EXPECT-NONZERO PROBE BELOW,
-// *** PLUS `tsc --noEmit` (research/tools/tsconfig.s28.json) AND eslint, BEFORE ANY MESHER RUN.
-// If a check fails, FIX OR REPLACE THIS FILE. A field builder that cannot fail is not an instrument —
-// `_phase2Field.test.ts` caught exactly that class twice on its own first draft.
+//   tsc --noEmit -p research/tools/tsconfig.s28.json   THREE ERRORS, TS18048 x3 at line 187. `fail` was
+//     declared `const fail = (m: string): never => ...`, and TypeScript only treats a call as a control-flow
+//     terminator when the callee's type comes from an EXPLICIT annotation at the DECLARATION site — so
+//     `if (c === undefined) fail(...)` narrowed nothing. FIXED by annotating the const.
+//   eslint                                             CLEAN on the first run, and still clean.
+//   the self-checks + the expect-nonzero probe          RUN. S1-S4, S5a, S5b all PASS on `_S24i2`.
+//     S5c ADDED, because S5b as written could not fail: its probes sit at 10*(radiusMm+1), which exceeds
+//     radiusMm for every radius, so no input could ever bring one inside a locus. S5c puts the same probes
+//     through the same procedure against a field built ON them and requires all 128 to tighten. A check that
+//     asserts a zero is worth nothing until something has been seen to make it fire.
+//   THE INPUT CONTRACT WAS WRONG.                      The tool refused its own default artifact, and it was
+//     RIGHT to: `CERTD_S24i2.residual.json` serializes 4,096 of 14,569 rows and carries no per-facet bound.
+//     Both defects are fixed by `research/tools/s28BoundCol.ts` (S28-U0), whose `*.residual2.json` this file
+//     now consumes by default.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════
 //
 // S28 FIELD BUILDER — CERTD H1 RESIDUAL  ->  PHASE-2 TIGHTENING FIELD (`pf.phase2Loci/1`).
@@ -59,7 +68,7 @@
 //
 // USAGE
 //   node <bundle> [residual.json] [run.json] [out.loci.json]
-//   defaults: research/exchange/_strataCertD/CERTD_S24i2.residual.json
+//   defaults: research/exchange/_strataCertD/CERTD_S24i2.residual2.json  (schema /2 — see S28-U0)
 //             research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.run.json
 //             research/exchange/_phase2/S28i1.loci.json
 //   env: PF_S28_RADIUS_UM (500) PF_S28_CLUSTER_UM (250) PF_S28_FACTOR (2) PF_S28_MAXSCALE (64)
@@ -84,7 +93,9 @@ import {
 const log = console.log;
 const TWO_PI = 2 * Math.PI;
 
-const RESIDUAL = process.argv[2] ?? 'research/exchange/_strataCertD/CERTD_S24i2.residual.json';
+// THE DEFAULT IS THE `/2` ARTIFACT, NOT THE `/1` ONE THIS FILE WAS FIRST WRITTEN AGAINST. `/1` is serialized
+// truncated at 4,096 rows and carries no bound column, so the tool refuses it — correctly, and by design.
+const RESIDUAL = process.argv[2] ?? 'research/exchange/_strataCertD/CERTD_S24i2.residual2.json';
 const RUNJ = process.argv[3] ?? 'research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.run.json';
 const OUT = process.argv[4] ?? 'research/exchange/_phase2/S28i1.loci.json';
 
@@ -110,31 +121,67 @@ const TRICAP = 8000000;
 interface ResidualRow {
   tri: number; witnessedUm: number; owner: string;
   ar: number; longestUm: number; zMin: number; zMax: number; theta: number;
+  /** schema /2 only — the per-facet CERTIFIED bound S28-U0 added. Absent on /1 and never invented. */
+  boundUm?: number;
+}
+interface SplitBlock {
+  interior: { certifiedBoundUm: number; attainedBy: string; cpuBoundUm: number; cpuBoundTri: number; witnessedUm: number; witnessedTri: number };
+  rimRow: { certifiedBoundUm: number; certifiedBoundTri: number; witnessedUm: number; witnessedTri: number; survivors: number };
 }
 interface ResidualFile {
   schema: string; stl: string; nTri: number; tolUm: number;
-  screen: { nCertified: number; nSurvivors: number; maxCertBoundUm: number };
-  cpu: { nAudited: number; nOver: number; nUncert: number; maxBoundUm: number; maxWitnessedUm: number };
+  screen: { nCertified: number; nSurvivors: number; maxCertBoundUm: number } | null;
+  cpu: { nAudited: number; nOver: number; nUncert: number; maxBoundUm?: number; maxWitnessedUm?: number };
   enumerationComplete: boolean;
-  byOwner: Record<string, { count: number; maxUm: number }>;
+  byOwner: Record<string, { count: number; maxUm: number; maxBoundUm?: number }>;
   rows: ResidualRow[];
+  /** schema /2 only */
+  rowsAreComplete?: boolean;
+  split?: SplitBlock;
 }
 
-const fail = (msg: string): never => {
+// THE TYPE ANNOTATION IS ON THE CONST, NOT ONLY ON THE ARROW, AND THAT IS LOAD-BEARING RATHER THAN STYLISTIC.
+// TypeScript only uses a call as a control-flow terminator when the callee's type is known from an EXPLICIT
+// annotation at the declaration site; `const fail = (m: string): never => ...` infers the type instead, so
+// `if (c === undefined) fail(...)` narrowed nothing and `c` stayed possibly-undefined three lines later.
+// That was TS18048 x3 — the only three errors this file had on its first type-check, found by running it.
+const fail: (msg: string) => never = (msg) => {
   log(`\n*** S28 FIELD BUILDER FAILED: ${msg} ***\n`);
   process.exit(1);
   throw new Error(msg); // unreachable; keeps the return type honest
 };
 
 const res = JSON.parse(readFileSync(RESIDUAL, 'utf8')) as ResidualFile;
-if (res.schema !== 'pf.strata.certD.residual/1') fail(`${RESIDUAL}: schema '${res.schema}'`);
+const SCHEMA1 = 'pf.strata.certD.residual/1';
+const SCHEMA2 = 'pf.strata.certD.residual/2';
+if (res.schema !== SCHEMA1 && res.schema !== SCHEMA2) fail(`${RESIDUAL}: schema '${res.schema}'`);
 // PROPERTY 3. A field built from an INCOMPLETE enumeration is a field with unknown holes in it, and the
 // whole point of this input is that its completeness is proven rather than sampled.
 if (!res.enumerationComplete) fail(`${RESIDUAL}: enumerationComplete is false — refusing to build a field from a partial residual`);
 if (!Array.isArray(res.rows) || res.rows.length === 0) fail(`${RESIDUAL}: no rows`);
+// THE TRUNCATION REFUSAL, AND WHY IT FIRED ON THE ARTIFACT THIS TOOL WAS WRITTEN FOR.
+// `_strataCertD.test.ts:616` serializes `table.rows.slice(0, 4096)` while `cpu.nOver` reports the whole
+// enumeration, so `CERTD_S24i2.residual.json` carries 4,096 of 14,569 rows — a 28% prefix by value. The
+// ENUMERATION is complete (byOwner is computed before the slice and its counts sum to nOver); the
+// SERIALIZATION is not. A field built from the prefix would tighten the worst 28% and silently leave the
+// rest, which is a different arm from the registered one. So this refuses, and names the fix rather than
+// just complaining: `s28BoundCol.ts` (S28-U0) re-emits the residual COMPLETE and with the bound column.
 if (res.rows.length !== res.cpu.nOver) {
-  fail(`${RESIDUAL}: rows ${res.rows.length} != cpu.nOver ${res.cpu.nOver} — the residual is truncated`);
+  fail(`${RESIDUAL}: rows ${res.rows.length} != cpu.nOver ${res.cpu.nOver} — the residual is SERIALIZED TRUNCATED `
+    + `(the enumeration is complete, the file is not). Re-emit it with research/tools/s28BoundCol.ts, which `
+    + `writes every row plus the per-facet boundUm, and pass the resulting *.residual2.json instead.`);
 }
+if (res.schema === SCHEMA2 && res.rowsAreComplete !== true) {
+  fail(`${RESIDUAL}: schema /2 without rowsAreComplete — refusing`);
+}
+const HAS_BOUNDS = res.schema === SCHEMA2 && res.split !== undefined;
+
+// The two schemas name the same two scalars differently — /1's `maxWitnessedUm` is the STAGE-3 CONFIRMED
+// witness, /2's `maxWitnessedRawUm` is the raw local reading Stage 3 then confirms. Both are read here and
+// neither is invented: if a file carries neither, the audit block gets 0 and says so rather than a guess.
+const cpuAny = res.cpu as unknown as Record<string, number | undefined>;
+const CPU_MAXWIT_UM = cpuAny.maxWitnessedUm ?? cpuAny.maxWitnessedRawUm ?? 0;
+const CPU_MAXBOUND_UM = cpuAny.maxBoundUm ?? 0;
 
 const run = readRunManifest(RUNJ);
 const STL = res.stl;
@@ -228,7 +275,7 @@ const file: Phase2LociFile = {
     tolMm,
     coveragePitchMm: 0,
     minPitchMm: 0,
-    maxMm: res.cpu.maxWitnessedUm / 1000,
+    maxMm: CPU_MAXWIT_UM / 1000,
     maxTh: 0, maxZ: 0, maxR: 0, maxOnWall: false,
     queries: res.nTri,
     overCount: res.cpu.nOver,
@@ -252,8 +299,17 @@ const file: Phase2LociFile = {
     + `z=0 or z=H) and are NOT in this field. Rim-row worst ${rimMaxUm.toFixed(3)} um; interior worst `
     + `${interiorMaxUm.toFixed(3)} um. The standing open-boundary caveat forbids scoring the rim row as a `
     + 'wall defect, so tightening it would move the headline for a reason the diagnosis rejects.',
-    'INTERIOR CERTIFIED BOUND UNKNOWN: residual.json serializes per-facet WITNESSED only, never the '
-    + 'per-facet certified bound, so every magnitude here is a WITNESS. See S28-U0 in the worklog.',
+    HAS_BOUNDS && res.split !== undefined
+      ? `INTERIOR CERTIFIED BOUND, MEASURED (S28-U0 CLOSED): ${res.split.interior.certifiedBoundUm.toFixed(3)} um `
+        + `at tri ${res.split.interior.cpuBoundTri} (attained by the ${res.split.interior.attainedBy} half); rim-row `
+        + `certified ${res.split.rimRow.certifiedBoundUm.toFixed(3)} um at tri ${res.split.rimRow.certifiedBoundTri}. `
+        + 'The CLUSTER MAGNITUDES below are still WITNESSES, deliberately: the bound carries the covering '
+        + 'radius, which is a property of the certifier\'s resolution rather than of the mesh, and a field '
+        + 'priced on it would spend triangles proportionally to how hard a facet was to certify. The bound is '
+        + 'what C1 is SCORED on; the witness is what the field is BUILT on. Both are named, neither substitutes.'
+      : 'INTERIOR CERTIFIED BOUND UNKNOWN: this residual serializes per-facet WITNESSED only, never the '
+        + 'per-facet certified bound, so every magnitude here is a WITNESS and C1 cannot be scored from it. '
+        + 'Re-emit with research/tools/s28BoundCol.ts (S28-U0) before scoring anything.',
     'CLUSTER MAGNITUDES ARE PER-FACET WITNESSES AT FACET CENTROIDS, not surface samples: an H1 witness is '
     + 'the far point of a facet from the surface, so the ball is centred on the facet, not on the surface.',
   ],
@@ -272,8 +328,16 @@ const check = (name: string, ok: boolean, detail: string): void => {
 
 log('\n===== S28 FIELD BUILDER =====');
 log(`residual ${RESIDUAL}   run ${RUNJ}   stl ${STL}`);
+log(`schema ${res.schema}${HAS_BOUNDS ? '  (carries the S28-U0 per-facet bound column)' : '  (NO bound column — C1 is not scorable from this file)'}`);
 log(`rows ${res.rows.length}  (cpu.nOver ${res.cpu.nOver}, uncertified ${res.cpu.nUncert}, `
-  + `certified bound ${res.cpu.maxBoundUm.toFixed(3)} um, witnessed ${res.cpu.maxWitnessedUm.toFixed(3)} um)`);
+  + `certified bound ${CPU_MAXBOUND_UM.toFixed(3)} um, witnessed ${CPU_MAXWIT_UM.toFixed(3)} um)`);
+if (HAS_BOUNDS && res.split !== undefined) {
+  log(`*** C1's DECISIVE QUANTITY: INTERIOR CERTIFIED BOUND ${res.split.interior.certifiedBoundUm.toFixed(3)} um `
+    + `(tri ${res.split.interior.cpuBoundTri}, ${res.split.interior.attainedBy} half); interior witnessed `
+    + `${res.split.interior.witnessedUm.toFixed(3)} um (tri ${res.split.interior.witnessedTri}) ***`);
+  log(`    rim row, scored separately and never charged: certified ${res.split.rimRow.certifiedBoundUm.toFixed(3)} um `
+    + `(tri ${res.split.rimRow.certifiedBoundTri}), witnessed ${res.split.rimRow.witnessedUm.toFixed(3)} um`);
+}
 log(`RIM-ROW EXCLUDED ${nRim} of ${res.rows.length}  ->  ${raw.length} facets enter the field`);
 log(`owner census of the INPUT: ${Object.entries(res.byOwner).map(([k, v]) => `${k} ${v.count}`).join(', ')}`);
 log(`clusters ${clusters.length}   clusterMm ${clusterMm} (coarsenings ${coarsenings})   radiusMm ${RADIUS_MM}`);
@@ -334,6 +398,30 @@ for (const [px, py, pz] of missProbes) if (fld.scaleForSphere(px, py, pz, 0) > 1
 check('S5b MISS probe (EXPECT-NONZERO discipline) — a probe set that misses every locus must NOT tighten',
   falseHits === 0, `${missProbes.length} probes ${away.toFixed(2)} mm outside the field, ${falseHits} tightened`);
 
+// ── S5c, THE NEGATIVE CONTROL THAT GIVES S5b TEETH. ────────────────────────────────────────────────────
+// S5b ASSERTS A ZERO, and a check that asserts a zero is exactly the shape that passes when the thing it
+// measures is broken. Worse, S5b as written CANNOT fail by geometry alone: the probes sit at
+// `away = 10*(radiusMm + 1)`, which is greater than `radiusMm` for every radius, so no setting of
+// PF_S28_RADIUS_UM can ever bring a probe inside a locus. Everything S5b really tests is whether
+// `scaleForSphere` returns 1 for points it does not cover — which is a real defect class, and precisely the
+// one `_phase2Field.test.ts` hit twice, but a reader is entitled to see the check FIRE before believing it.
+//
+// So the SAME probe points go through the SAME `buildTightenField` / `scaleForSphere` procedure against a
+// throwaway field whose loci are placed AT those points. That field must tighten EVERY ONE of them. If it
+// does not, the probe procedure is inert, S5b's zero means nothing, and this build is void — which is the
+// whole content of the expect-nonzero discipline. The control field is never written and never leaves here.
+const ctrlClusters: Phase2Cluster[] = missProbes.map(([px, py, pz]) => ({
+  th: ((Math.atan2(py, px) % TWO_PI) + TWO_PI) % TWO_PI,
+  z: pz, r: Math.hypot(px, py), x: px, y: py,
+  count: 1, maxErrMm: 10 * tolMm, tolScale: 2,
+}));
+const ctrlFld = buildTightenField({ ...file, clusters: ctrlClusters });
+let ctrlHits = 0;
+for (const [px, py, pz] of missProbes) if (ctrlFld.scaleForSphere(px, py, pz, 0) > 1) ctrlHits += 1;
+check('S5c NEGATIVE CONTROL — the same probes against a field built ON them MUST all tighten (proves S5b can fire)',
+  ctrlHits === missProbes.length,
+  `${ctrlHits} of ${missProbes.length} tightened by the control field; S5b's zero is meaningful only if this is ${missProbes.length}`);
+
 log(`\nfield: ${fld.clusters} clusters, cellMm ${fld.cellMm}, maxScale ${fld.maxScale}, linear scans ${fld.linearScans()}`);
 
 if (failures > 0) fail(`${failures} self-check(s) failed — the field is NOT written`);
@@ -343,7 +431,7 @@ if (DRYRUN) {
 } else {
   writeJsonFile(OUT, file);
   log(`\nWROTE ${OUT}  (${clusters.length} clusters)`);
-  log(`NEXT: sh research/bridge/out/s24_iter.sh <N> ${OUT}  — but read the S28 registration first: the`);
+  log(`NEXT: sh research/bridge/out/s28_iter.sh <N> ${OUT}  — but read the S28 registration first: the`);
   log('mesher command must carry PF_CB_DESHARD_CASCADE=0, and the header diff must be taken.');
 }
 log('===== END S28 FIELD BUILDER =====\n');
