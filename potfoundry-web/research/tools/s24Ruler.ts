@@ -48,6 +48,13 @@ const REF_HS = 0.03; const REF_NMIN = 12; const REF_NMAX = 64;   // the driver's
 // has been the campaign's H2 max since `_S21A` — F1's decisive target.
 const SITES: Array<[string, number, number, number]> = [
   ['PINNED congruent copy (the F1 target)', 6.021386, 113.45994, 25.063],
+  // THE SITE THAT TOOK OVER AT ITERATION 2. It is NOT a new discovery — it is the locus the driver's own
+  // FULL-COVERAGE adaptive oracle has reported as its worst on `_S21B`, `_S22A` and `_S22B` alike
+  // (MAX 95.473 um at z=[76.40,76.38,75.97] th=[1.3593,1.3590,1.3588], edges 26.2/704.2/723.7 um), and the
+  // same locus its `unresolved` list names as its own worst. So the question this row answers is the one
+  // that decides F2's MECHANISM: is the new argmax ACCEPTED-BLIND (Phase 2 can reach it) or S1-STRANDED
+  // (Phase 2 cannot, and S13's two-population distinction is the answer)?
+  ['NEW argmax after iteration 2 — the driver\'s own unresolved worst', 1.358340, 76.21094, 24.375],
   ['S13 site A (S12 substrate, for continuity)', 5.637379, 44.16992, 37.899],
   ['S13 site B (S12 substrate, for continuity)', 4.062906384574188, 45.388962765957444, 40.006],
 ];
@@ -186,16 +193,25 @@ for (const [name, sth, sz, h2um] of SITES) {
   };
   const sagRef = sagAdaptiveRaw(R, M, 0, REF_HS, REF_NMIN, REF_NMAX, makeSagArgmax()) * 1000;
   const need = ACCEPT_UM / sagRef;
+  // *** THE TRUE ERROR IS `best`, MEASURED ON THIS ITERATE — NOT the campaign's recorded value. ***
+  // Blindness and the required tolScale are ratios AGAINST the true error, so once Phase 2 has moved a
+  // locus they MUST be recomputed against this iterate's own number. Dividing a fresh ruler by a stale
+  // 25.063 would print a 62x blindness at a locus that is actually 0.062 um off the surface, i.e. the exact
+  // class of error the S13 continuity rows are flagged for. Both are printed, and which is which is stated.
+  const trueUm = best * 1000;
+  const needTrue = ACCEPT_UM / sagRef;
+  const blindTrue = trueUm / sagRef;
   // the loop escalates x2 per re-exceedance starting at 2 -> the field APPLIED at outer iteration k is 2^(k-1)
   let k = 1; while (2 ** k < need && k < 12) k += 1;
   log(`--- ${name}   th ${sth} z ${sz} ---`);
   log(`  carrier tri ${bestTri}   witness->carrier ${(best * 1000).toFixed(3)} um`);
   log(`  edges3d ${e.map((x) => (x * 1000).toFixed(1)).join(' / ')} um   area ${area.toFixed(6)} mm^2   3-D AR ${ar3.toFixed(2)} (S1 cap 50)   parAR ${parAR.toFixed(2)}`);
   log(`  carrier vertices: ${[0, 3, 6].map((o2) => `(${V[o2].toFixed(6)},${V[o2 + 1].toFixed(6)},${V[o2 + 2].toFixed(6)})`).join(' ')}`);
+  log(`  *** TRUE surface->mesh at this locus, THIS iterate: ${trueUm.toFixed(3)} um ***   ${trueUm <= 10 ? 'WITHIN TOL (10 um)' : 'OVER TOL'}   [campaign record here: ${h2um} um]`);
   log(`  DRIVER'S ACCEPT RULER (sagAdaptive, plane): ${sagRef.toFixed(4)} um`);
-  log(`  recorded H2 there: ${h2um} um   =>  BLINDNESS ${(h2um / sagRef).toFixed(1)}x`);
-  log(`  tolScale needed to QUEUE it: ${need.toFixed(2)}x  =>  first power of two that queues it: ${2 ** k}x`);
-  log(`  => the field is 2^(k-1) at outer iteration k, so it is first APPLIED at OUTER ITERATION ${k + 1}`);
+  log(`  BLINDNESS vs the TRUE error on this iterate: ${blindTrue.toFixed(1)}x   (vs the recorded ${h2um} um it would read ${(h2um / sagRef).toFixed(1)}x — STALE unless the locus has not moved)`);
+  log(`  tolScale needed to QUEUE this carrier: ${needTrue.toFixed(2)}x  =>  first power of two: ${2 ** k}x, i.e. first APPLIED at OUTER ITERATION ${k + 1}`);
+  void need;
   const dTh = demandUm(sth, sz, 1, 0, 10);
   const dZ = demandUm(sth, sz, 0, 1, 10);
   const dD = demandUm(sth, sz, 1, 1, 10);

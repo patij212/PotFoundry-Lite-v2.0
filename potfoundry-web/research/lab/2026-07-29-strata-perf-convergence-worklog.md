@@ -7640,6 +7640,43 @@ and `_strataConformBisect.test.ts:2727` says so in as many words: ***"`PF_CB_DES
 >> to expect. **A sub-lever of a default-off flag is still a default that can move under a saved command.**
 >> The check that finds it is diffing the two headers, and it costs nothing.
 
+#### **S24 — THE ITERATION-2 PREDICTION, WRITTEN AFTER ITERATION 2 AND *BEFORE* ITERATION 3's NUMBERS**
+#### **EXIST. F1 HAS ALREADY CLOSED; THIS BLOCK SAYS WHAT I EXPECT THE REST OF THE LADDER TO DO AND WHY.**
+Iteration 2 is measured. **F1 CLOSES: the pinned copy went 25.062 -> 0.062 um**, and the H2 argmax
+**RELOCATED** for the first time since `_S21A` — to **th 1.358340, z 76.21094, 24.375 um**.
+
+**THE NEW ARGMAX IS NOT A NEW SITE, AND IT IS NOT ACCEPTED-BLIND. MEASURED ON BOTH ARMS:**
+| | `_S22B` | **`_S24i2`** |
+|---|---|---|
+| TRUE surface->mesh at th 1.35834 z 76.21094 | **24.376 um** | **24.376 um — IDENTICAL to three decimals** |
+| carrier edges3d | 135.1 / 34.8 / 112.4 um | 135.1 / **264.3** / 130.5 um |
+| carrier 3-D AR (S1 cap 50) | 5.93 | **19.88** |
+| **the driver's own accept ruler there** | 2.1765 um | ***14.0805 um — 4.0x ABOVE acceptTol 3.5*** |
+| tolScale needed to QUEUE it | 1.61x | ***0.25x — it needs NO field at all*** |
+| the field's cluster there | 2x, count 4 | ***escalated to 4x, count 8 — the field IS aimed at it*** |
+
+>> ***SO THE BINDING SITE HAS CHANGED POPULATION, AND THAT IS S13's DISTINCTION ARRIVING AS A RESULT.***
+>> S13 separated two residual populations and said they need different fixes:
+>>   * the **ACCEPTED-BLIND** set — sub-cap, well-shaped, never queued because the plane ruler under-reads.
+>>     **Phase 2 was built for exactly this set, and iteration 2 closed it: 25.062 -> 0.062 um at the pinned
+>>     copy, 106 of 149 loci did not re-exceed, and the over-tol FRACTION fell 0.00139% -> 0.00051% (x0.365).**
+>>   * the **STRANDED** set — genuinely S1-refused, sitting at the shape gate. **The new argmax is in THIS
+>>     set.** On `_S24i2` its carrier's ruler reads **14.0805 um against an acceptTol of 3.5** — the driver
+>>     is already asking to split it, at 4x over threshold, with no field required. It is one of the
+>>     **4,675 `unresolved` live over-tol triangles the splitter COULD NOT subdivide**, and its locus is the
+>>     one the driver's own FULL-COVERAGE oracle has named its worst on `_S21B`, `_S22A` and `_S22B` alike.
+>> **PREDICTION, REGISTERED NOW SO IT CAN BE WRONG: ITERATION 3 APPLIES tolScale 4 AT THIS SITE (localTol
+>> 0.875 um, i.e. 16x below what its ruler already reads) AND THE SITE WILL NOT MOVE. Iteration 4 applies 8
+>> and it will not move either.** The reason is arithmetic, not opinion: **`PF_CB_TIGHTEN` scales
+>> `acceptTol`, and `acceptTol` is the ACCEPT test. This facet is not accepted — it is REFUSED, downstream,
+>> by `bisectAt`'s S1 aspect guard.** A field can only ever make the driver ASK more often; it cannot make
+>> the shape gate say yes. **If the site DOES move, this reading is refuted and the refusal was not the
+>> binding constraint** — which would be the more interesting outcome and is why it is written down.
+>> **WHAT I EXPECT THE LADDER TO BUY ANYWAY:** the FRACTION should keep falling as the remaining 43
+>> escalated loci close, and the H2 MAX should sit at ~24.376 um. **So F1 closes and F2 fails, with the
+>> failure owned by a named population that Phase 2 provably cannot reach** — and the fix for it is S13's
+>> own: a primitive that can lay anisotropic elements under the cap (`M = g/h^2`), not more accept pressure.
+
 #### **S24 AMENDMENT B — THE DRIVER OWNS THE TAG AND THE HARNESS MUST NOT CONSTRUCT IT.**
 With `PF_CB_TIGHTEN` on, the driver appends **`T`** to the flag block: the mesh is
 `gothicarches_ring_DS-H**T**_S24iN.stl`, not `DS-H_`. The first firing reported ***"PRODUCED NO STL"***
