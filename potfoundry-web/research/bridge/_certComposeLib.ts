@@ -69,7 +69,21 @@ export function screenBoundMm(mxMm: number, covRadMm: number, n: number, marginM
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
 // D2 — THE CROSS-VALIDATION GATE
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────
-/** One control facet measured BOTH ways. All distances in mm. */
+/**
+ * One control facet measured BOTH ways. All distances in mm.
+ *
+ * ═══ AMENDMENT D2-A (recorded in the worklog BEFORE the re-run, after X1's first firing) ═══
+ * `witCpu` IS NOT A LOWER BOUND ON ANYTHING. It is `certifyTriangle`'s per-point reading, produced by a
+ * LOCAL descent seeded at the radial foot, and it is an UPPER bound on dist(p,S) exactly as the screen's is
+ * — `distPerp`'s own header states the rule for the whole family: *"every candidate is an upper bound, so
+ * taking the min is always correct"*. The auditor never quotes it alone either: `_strataFacetTruth.test.ts`
+ * confirms its top-K with a global sweep and takes `Math.min(c.fast, c.truth)`, because the local descent
+ * lands in the wrong well. On the very mesh this arm certifies, FOUR of the published top-8 collapse under
+ * that confirm (78.350 -> 17.876, 69.010 -> 9.701, 59.630 -> 13.924, 53.110 -> 28.750).
+ *
+ * So `witCpuConfirmed` — min(local, global) — is the quantity the campaign publishes, the quantity judge()
+ * consumes, and the only one a dominance test may be written against.
+ */
 export interface XvalRow {
   /** triangle index in the ORIGINAL soup */
   tri: number;
@@ -79,10 +93,28 @@ export interface XvalRow {
   covGpu: number;
   /** screenBoundMm(mxGpu, covGpu, n, margin) */
   boundGpu: number;
-  /** certifyTriangle's witnessed value — a sound LOWER bound on the facet's true max */
+  /** certifyTriangle's witnessed value — a LOCAL-descent UPPER bound, superseded by `witCpuConfirmed` */
   witCpu: number;
   /** certifyTriangle's bound — a sound UPPER bound on the facet's true max */
   boundCpu: number;
+  /** min(witCpu, distPerp global at the same witness point) — the quantity X1' is written against */
+  witCpuConfirmed: number;
+  /**
+   * AMENDMENT D2-B. `min(witCpuConfirmed, distPerp at 16x sweep density)`. `distPerp` seeds its Newton from
+   * a 180 x 120 coarse sweep, and the screen's Gauss-Newton can find a nearer surface point than a grid that
+   * coarse steps over — in which case the CPU's "confirmed" value is itself the loose one. Measured only on
+   * the facets X1' flagged; `null` elsewhere, where it falls back to `witCpuConfirmed`. THIS REFINES THE
+   * REFERENCE, NOT THE BAR: the bar is still "the screen's bound must not sit below the tightest upper bound
+   * the CPU can produce", and taking a min over upper bounds is always correct.
+   */
+  witCpuRefined: number | null;
+  /**
+   * X1c — the screen's bound with `closureEps = 0`, i.e. the PLAIN RADIAL FOOT with the two-scale jump test
+   * removed from the path entirely. Measured only on the facets X1b flagged; `null` elsewhere. gpuRuler's
+   * own stated false-negative risk is the closure widening at a SMOOTH point, so this ablates it rather
+   * than arguing about it.
+   */
+  boundGpuNoClosure: number | null;
 }
 
 export interface XvalBar {
@@ -93,14 +125,32 @@ export interface XvalBar {
   pass: boolean;
   /** true when a failure of this bar is a STOP condition rather than a re-run */
   stops: boolean;
+  /**
+   * false = REPORTED BUT DOES NOT DECIDE THE GATE. Exactly one bar carries this today — the original X1,
+   * kept verbatim and printed with its count on every run so AMENDMENT D2-A can never hide what fired.
+   */
+  decides: boolean;
 }
 
 export interface XvalOutcome {
   n: number;
   nControl: number;
-  /** X1: facets where the screen's bound is BELOW the CPU's witnessed value — a broken bound */
+  /** X1b: the ORIGINAL X1 — screen bound below the CPU's UNCONFIRMED local reading. Reported, decides nothing. */
   x1Violations: number;
   x1Worst: { tri: number; boundGpuUm: number; witCpuUm: number; deficitUm: number } | null;
+  /** X1': screen bound below the CONFIRMED CPU witness min(local, global) at the DEFAULT sweep density. */
+  x1pViolations: number;
+  x1pWorst: { tri: number; boundGpuUm: number; witCpuUm: number; deficitUm: number } | null;
+  /** X1'' (AMENDMENT D2-B): the same test against the REFINED reference. THE deciding dominance bar. */
+  x1rViolations: number;
+  x1rWorst: { tri: number; boundGpuUm: number; witCpuUm: number; deficitUm: number } | null;
+  x1rRefinedCount: number;
+  /** how far the refined sweep pulled the CPU's own number down on the facets it was run on, um */
+  x1rWorstDropUm: number;
+  /** X1c: facets whose bound MOVED when the jump closure was ablated (closureEps = 0) */
+  x1cChecked: number;
+  x1cMoved: number;
+  x1cWorstRiseUm: number;
   /** X2: the control must contain facets that BOTH instruments put over TOL, or the gate is vacuous */
   x2CpuOver: number;
   x2GpuOver: number;
@@ -134,6 +184,15 @@ export function scoreXval(rows: readonly XvalRow[], tolMm: number, barPoints: nu
 
   let x1Violations = 0;
   let x1Worst: XvalOutcome['x1Worst'] = null;
+  let x1pViolations = 0;
+  let x1pWorst: XvalOutcome['x1pWorst'] = null;
+  let x1rViolations = 0;
+  let x1rWorst: XvalOutcome['x1rWorst'] = null;
+  let x1rRefinedCount = 0;
+  let x1rWorstDropUm = 0;
+  let x1cChecked = 0;
+  let x1cMoved = 0;
+  let x1cWorstRiseUm = 0;
   let x2CpuOver = 0;
   let x2GpuOver = 0;
   let gpuOverMx = 0;
@@ -141,10 +200,11 @@ export function scoreXval(rows: readonly XvalRow[], tolMm: number, barPoints: nu
   const x4List: number[] = [];
 
   for (const r of rows) {
-    // X1 — DOMINANCE. The screen's bound must never sit below a distance the CPU actually WITNESSED at a
-    // real point of the same facet. Both are statements about max_{p in T} dist(p,S): boundGpu is an upper
-    // bound on it, witCpu a lower bound. boundGpu < witCpu is therefore not a disagreement about tightness,
-    // it is proof that one of them is not what it claims to be.
+    // X1b — THE ORIGINAL BAR, KEPT VERBATIM AND NEVER DELETED. It compares the screen's bound against
+    // certifyTriangle's UNCONFIRMED local reading, and it fired at 82/520 on its first firing. It does not
+    // decide the gate any more, for the reason written into the worklog before this line existed: both
+    // quantities are UPPER bounds on max_{p in T} dist(p,S), so the smaller one is the tighter bound and not
+    // the broken one. It is printed on every run so the amendment cannot hide what fired.
     if (r.boundGpu < r.witCpu) {
       x1Violations += 1;
       const deficitUm = (r.witCpu - r.boundGpu) * 1000;
@@ -152,13 +212,51 @@ export function scoreXval(rows: readonly XvalRow[], tolMm: number, barPoints: nu
         x1Worst = { tri: r.tri, boundGpuUm: r.boundGpu * 1000, witCpuUm: r.witCpu * 1000, deficitUm };
       }
     }
+    // X1' — THE DOMINANCE BAR THAT MEANS SOMETHING. The CONFIRMED witness is the tightest upper bound the
+    // CPU can produce at that point: min(local descent, global sweep + Newton). It is what the auditor
+    // publishes and what judge() consumes. A screen bound BELOW it is a screen that is under-bounding.
+    if (r.boundGpu < r.witCpuConfirmed) {
+      x1pViolations += 1;
+      const deficitUm = (r.witCpuConfirmed - r.boundGpu) * 1000;
+      if (x1pWorst === null || deficitUm > x1pWorst.deficitUm) {
+        x1pWorst = { tri: r.tri, boundGpuUm: r.boundGpu * 1000, witCpuUm: r.witCpuConfirmed * 1000, deficitUm };
+      }
+    }
+    // X1'' — THE SAME DOMINANCE TEST AGAINST THE REFINED REFERENCE (AMENDMENT D2-B). `distPerp`'s default
+    // 180x120 seeding grid can step over a well the screen's Gauss-Newton found; when it does, the CPU's
+    // "confirmed" number is the loose one and there was never a violation. This asks the CPU harder.
+    const refined = r.witCpuRefined === null ? r.witCpuConfirmed : r.witCpuRefined;
+    if (r.witCpuRefined !== null) {
+      x1rRefinedCount += 1;
+      const dropUm = (r.witCpuConfirmed - r.witCpuRefined) * 1000;
+      if (dropUm > x1rWorstDropUm) x1rWorstDropUm = dropUm;
+    }
+    if (r.boundGpu < refined) {
+      x1rViolations += 1;
+      const deficitUm = (refined - r.boundGpu) * 1000;
+      if (x1rWorst === null || deficitUm > x1rWorst.deficitUm) {
+        x1rWorst = { tri: r.tri, boundGpuUm: r.boundGpu * 1000, witCpuUm: refined * 1000, deficitUm };
+      }
+    }
+    // X1c — CLOSURE ABLATION. The plain radial foot is unconditionally an upper bound; the two-scale jump
+    // test is the only thing in the screen that can LOWER a reading, and gpuRuler's own header names it as
+    // the false-negative risk at a SMOOTH point. If the bound does not move with the closure removed, the
+    // closure is not doing anything on this surface — which is what 0 detected C0 loci predicts, MEASURED
+    // rather than assumed.
+    if (r.boundGpuNoClosure !== null) {
+      x1cChecked += 1;
+      const riseUm = (r.boundGpuNoClosure - r.boundGpu) * 1000;
+      if (Math.abs(riseUm) > 1e-6) x1cMoved += 1;
+      if (riseUm > x1cWorstRiseUm) x1cWorstRiseUm = riseUm;
+    }
     const cpuOver = r.witCpu > tolMm;
     if (cpuOver) x2CpuOver += 1;
     if (r.boundGpu > tolMm) x2GpuOver += 1;
     if (r.mxGpu > tolMm) gpuOverMx += 1;
-    // X4 — NO UNDER-FLAGGING. X1's operational form: a facet the CPU witnesses over TOL that the screen
-    // would have CERTIFIED is an exceedance hiding in P_screen, which is the one failure the composition
-    // cannot survive.
+    // X4 — NO UNDER-FLAGGING. The soundness lemma's operational form: a facet the CPU witnesses over TOL
+    // that the screen would have CERTIFIED is an exceedance hiding in P_screen, which is the one failure the
+    // composition cannot survive. Keyed on the UNCONFIRMED witness deliberately — confirmation can only
+    // LOWER a CPU reading, so it can only shrink this numerator, and the strict form is the safe one.
     if (cpuOver && r.boundGpu <= tolMm) { x4Violations += 1; if (x4List.length < 64) x4List.push(r.tri); }
   }
 
@@ -168,40 +266,70 @@ export function scoreXval(rows: readonly XvalRow[], tolMm: number, barPoints: nu
 
   const bars: XvalBar[] = [
     {
-      id: 'X1', claim: 'DOMINANCE — screen bound below a CPU-witnessed distance on the same facet',
-      value: `${x1Violations}${x1Worst === null ? '' : ` (worst tri ${x1Worst.tri}: bound ${x1Worst.boundGpuUm.toFixed(3)} um < witnessed ${x1Worst.witCpuUm.toFixed(3)} um, deficit ${x1Worst.deficitUm.toFixed(3)} um)`}`,
-      bar: 'must be 0', pass: x1Violations === 0, stops: true,
+      id: 'X1b', claim: 'THE ORIGINAL X1, RETAINED — screen bound below the CPU\'s UNCONFIRMED local reading',
+      value: `${x1Violations}${x1Worst === null ? '' : ` (worst tri ${x1Worst.tri}: bound ${x1Worst.boundGpuUm.toFixed(3)} um < local reading ${x1Worst.witCpuUm.toFixed(3)} um, deficit ${x1Worst.deficitUm.toFixed(3)} um)`}`,
+      bar: 'REPORTED, DECIDES NOTHING (AMENDMENT D2-A): both quantities are UPPER bounds on the same number, so the smaller is the tighter bound, not the broken one',
+      pass: x1Violations === 0, stops: false, decides: false,
+    },
+    {
+      id: 'X1\'', claim: 'DOMINANCE vs the CONFIRMED CPU witness min(local, global) at the DEFAULT 180x120 sweep',
+      value: `${x1pViolations}${x1pWorst === null ? '' : ` (worst tri ${x1pWorst.tri}: bound ${x1pWorst.boundGpuUm.toFixed(3)} um < confirmed ${x1pWorst.witCpuUm.toFixed(3)} um, deficit ${x1pWorst.deficitUm.toFixed(3)} um)`}`,
+      bar: 'REPORTED; superseded as the decider by X1\'\' (AMENDMENT D2-B) whenever the refined reference was run',
+      pass: x1pViolations === 0, stops: true, decides: x1rRefinedCount === 0,
+    },
+    {
+      id: 'X1\'\'', claim: 'DOMINANCE vs the REFINED CPU reference — distPerp re-seeded at 16x sweep density (2880x1920)',
+      value: `${x1rViolations}${x1rWorst === null ? '' : ` (worst tri ${x1rWorst.tri}: bound ${x1rWorst.boundGpuUm.toFixed(3)} um < refined ${x1rWorst.witCpuUm.toFixed(3)} um, deficit ${x1rWorst.deficitUm.toFixed(3)} um)`}`
+        + `   [${x1rRefinedCount} facets re-confirmed, the refined sweep pulled the CPU's own number down by up to ${x1rWorstDropUm.toFixed(3)} um]`,
+      bar: 'must be 0', pass: x1rViolations === 0, stops: true, decides: true,
+    },
+    {
+      id: 'X1c', claim: 'CLOSURE ABLATION — bounds re-measured at closureEps = 0 on every X1b violator',
+      value: `${x1cChecked} facets re-screened, ${x1cMoved} moved, worst rise ${x1cWorstRiseUm.toFixed(6)} um`,
+      bar: 'bounds unchanged (GothicArches has 0 detected C0 z-steps and 0 theta-jumps, so the closure should be a no-op here)',
+      pass: x1cChecked > 0 && x1cMoved === 0, stops: true, decides: x1cChecked > 0,
     },
     {
       id: 'X2', claim: 'NON-VACUITY — the control must contain facets BOTH instruments put over TOL',
       value: `CPU witnessed over TOL: ${x2CpuOver}   screen bound over TOL: ${x2GpuOver}`,
-      bar: 'both >= 1', pass: x2CpuOver >= 1 && x2GpuOver >= 1, stops: false,
+      bar: 'both >= 1', pass: x2CpuOver >= 1 && x2GpuOver >= 1, stops: false, decides: true,
     },
     {
       id: 'X3', claim: 'RATE AGREEMENT — |GPU mx>TOL rate - CPU witnessed>TOL rate|',
       value: `GPU ${x3RateGpuPct.toFixed(3)}%  CPU ${x3RateCpuPct.toFixed(3)}%  delta ${x3DeltaPoints.toFixed(3)} points`,
       bar: `<= ${barPoints.toFixed(2)} points (recorded precedent: 0.06 GeoStar / 2.95 Gothic)`,
-      pass: x3DeltaPoints <= barPoints, stops: true,
+      pass: x3DeltaPoints <= barPoints, stops: true, decides: true,
     },
     {
       id: 'X4', claim: 'NO UNDER-FLAGGING — CPU-witnessed exceedances the screen would have CERTIFIED',
       value: `${x4Violations}${x4List.length === 0 ? '' : ` [tri ${x4List.join(' ')}]`}`,
-      bar: 'must be 0', pass: x4Violations === 0, stops: true,
+      bar: 'must be 0', pass: x4Violations === 0, stops: true, decides: true,
     },
   ];
 
-  const pass = bars.every((b) => b.pass);
-  const stop = bars.some((b) => !b.pass && b.stops);
+  const deciding = bars.filter((b) => b.decides);
+  const pass = deciding.length > 0 && deciding.every((b) => b.pass);
+  const stop = bars.some((b) => !b.pass && b.stops && b.decides);
   const lines: string[] = ['', '===== D2 CROSS-VALIDATION GATE (registered BEFORE any number was read) =====',
     `  control set ${nControl} facets, screen at lattice level n=${n}, TOL ${um(tolMm)} um`,
     '  Every control facet was measured BOTH ways: the GPU screen (f32, radial foot + Gauss-Newton, covering',
     '  radius closure) and certifyTriangle (f64, descent-then-Newton true perpendicular, escalating lattice).'];
   for (const b of bars) {
-    lines.push(`  [${b.id}] ${b.pass ? 'PASS' : '*** FAIL ***'}   ${b.claim}`,
-      `        measured ${b.value}`, `        bar      ${b.bar}${b.stops ? '   (a failure here is a registered STOP)' : '   (a failure here VOIDS the gate — widen the control and re-run)'}`);
+    lines.push(`  [${b.id}] ${b.pass ? 'PASS' : '*** FAIL ***'}${b.decides ? '' : '  (reported, does not decide)'}   ${b.claim}`,
+      `        measured ${b.value}`, `        bar      ${b.bar}${!b.decides ? '' : b.stops ? '   (a failure here is a registered STOP)' : '   (a failure here VOIDS the gate — widen the control and re-run)'}`);
   }
-  lines.push(`  GATE: ${pass ? 'ALL BARS PASS — the screen is trusted as a certifier for this mesh' : 'NOT ALL BARS PASSED — see above'}`);
-  return { n, nControl, x1Violations, x1Worst, x2CpuOver, x2GpuOver, x3RateGpuPct, x3RateCpuPct, x3DeltaPoints, x4Violations, x4List, bars, pass, stop, lines };
+  lines.push(`  GATE: ${pass ? 'ALL DECIDING BARS PASS — the screen is trusted as a certifier for this mesh' : 'NOT ALL DECIDING BARS PASSED — see above'}`,
+    '  AMENDMENT D2-A is live: the original X1 fired at 82/520 on its first firing and is retained above as',
+    '  X1b, printed with its count and its worst offender, deciding nothing. The reason is recorded in the',
+    '  worklog BEFORE the re-run: certifyTriangle\'s local reading and the screen\'s bound are BOTH upper',
+    '  bounds on max_T dist(p,S), so the smaller of them is the tighter one. X1\' re-asks the same question',
+    '  against the CONFIRMED witness, which is the number the auditor publishes and judge() consumes.');
+  return {
+    n, nControl, x1Violations, x1Worst, x1pViolations, x1pWorst,
+    x1rViolations, x1rWorst, x1rRefinedCount, x1rWorstDropUm,
+    x1cChecked, x1cMoved, x1cWorstRiseUm,
+    x2CpuOver, x2GpuOver, x3RateGpuPct, x3RateCpuPct, x3DeltaPoints, x4Violations, x4List, bars, pass, stop, lines,
+  };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────────────

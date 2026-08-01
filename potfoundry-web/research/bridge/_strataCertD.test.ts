@@ -51,7 +51,7 @@ import { STYLE_REGISTRY } from '../../src/styles/registry';
 import type { StyleDims } from './labkit';
 import { buildRefLocator, type RefMesh } from './_sharp3dRef';
 import {
-  certifyTriangle, detectThetaJumps, detectZJumps, pickLocatorCell, surfaceToMeshMax,
+  certifyTriangle, detectThetaJumps, detectZJumps, distPerp, pickLocatorCell, surfaceToMeshMax,
 } from './_facetTruthLib';
 import { type H1Job } from './_facetTruthH1';
 import { buildAuditRadiusFn, radiusLattice } from './_facetTruthRA';
@@ -155,14 +155,33 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
     expect(judge({ tolMm: TOL, gates, h1: bad.reading, h2: NOT_RUN }).verdict).toBe('FAIL');
 
     // (f) THE CROSS-VALIDATION GATE MUST BE ABLE TO FAIL. A screen that cannot fail is not an instrument.
-    const row = (tri: number, mx: number, cov: number, wit: number, bnd: number): XvalRow =>
-      ({ tri, mxGpu: mx, covGpu: cov, boundGpu: screenBoundMm(mx, cov, 192, 0.001), witCpu: wit, boundCpu: bnd });
-    // X1/X4 fire on a screen bound that sits below a distance the CPU actually witnessed.
+    //     AMENDMENT D2-A: X1b is retained and reported, X1' decides, X1c ablates the closure.
+    const row = (tri: number, mx: number, cov: number, wit: number, bnd: number, conf = wit, noClo: number | null = null, refined: number | null = null): XvalRow =>
+      ({ tri, mxGpu: mx, covGpu: cov, boundGpu: screenBoundMm(mx, cov, 192, 0.001), witCpu: wit, boundCpu: bnd, witCpuConfirmed: conf, witCpuRefined: refined, boundGpuNoClosure: noClo });
+    // X1' and X4 fire on a screen bound that sits below the CONFIRMED CPU witness.
     const broken = scoreXval([row(1, 0.001, 0.01, 0.05, 0.06), row(2, 0.2, 0.01, 0.2, 0.21)], TOL, 3, 192);
-    expect(broken.x1Violations).toBe(1);
+    expect(broken.x1pViolations).toBe(1);
     expect(broken.x4Violations).toBe(1);
     expect(broken.pass).toBe(false);
     expect(broken.stop).toBe(true);
+    // ... and X1b FIRES WITHOUT DECIDING when the CPU's LOCAL reading over-states but the CONFIRMED one does
+    //     not. That is the 2026-08-01 first firing, in miniature: tri 135194 read 59.630 locally and 13.924
+    //     globally, against a screen bound of 17.641. X1b counts it; the gate must still pass.
+    //     Its closure ablation returns the SAME bound, which is X1c passing: the closure did nothing.
+    const bSup = screenBoundMm(0.0166, 0.01, 192, 0.001);
+    const superseded = scoreXval([row(1, 0.0166, 0.01, 0.0596, 0.07, 0.0139, bSup), row(2, 0.0001, 0.001, 0.00005, 0.0002)], TOL, 3, 192);
+    expect(superseded.x1cChecked).toBe(1);
+    expect(superseded.x1cMoved).toBe(0);
+    expect(superseded.x1Violations).toBe(1);
+    expect(superseded.x1pViolations).toBe(0);
+    expect(superseded.pass).toBe(true);
+    expect(superseded.bars.find((b) => b.id === 'X1b')?.decides).toBe(false);
+    // X1c fires when ablating the jump closure RAISES a bound — the closure was widening at a smooth point,
+    // which is gpuRuler's own stated false-negative risk and a real screen defect.
+    const closureBad = scoreXval([row(1, 0.0166, 0.01, 0.0596, 0.07, 0.0139, 0.9), row(2, 0.5, 0.01, 0.4, 0.52)], TOL, 3, 192);
+    expect(closureBad.x1cMoved).toBe(1);
+    expect(closureBad.pass).toBe(false);
+    expect(closureBad.stop).toBe(true);
     // X2 fires when nothing in the control is over TOL — the gate is VACUOUS, not passed.
     const vacuous = scoreXval([row(1, 0.0001, 0.001, 0.0002, 0.0003)], TOL, 3, 192);
     expect(vacuous.x2CpuOver).toBe(0);
@@ -173,10 +192,26 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
       row(3, 0.5, 0.01, 0.0001, 0.5), row(4, 0.5, 0.01, 0.0001, 0.5)], TOL, 3, 192);
     expect(skew.x3DeltaPoints).toBeGreaterThan(3);
     expect(skew.pass).toBe(false);
-    // A clean, non-vacuous control passes every bar.
+    // A clean, non-vacuous control passes every deciding bar.
     const good = scoreXval([row(1, 0.5, 0.01, 0.4, 0.52), row(2, 0.0001, 0.001, 0.00005, 0.0002)], TOL, 3, 192);
     expect(good.pass).toBe(true);
     expect(good.stop).toBe(false);
+    // X1'' (AMENDMENT D2-B): when the REFINED reference pulls the CPU's own number below the screen's
+    // bound, X1' fired on a loose reference and there was never a violation — the gate must pass, and X1'
+    // must stop deciding while still being printed. This is the H-b path, in miniature.
+    const hb = scoreXval([row(1, 0.1176, 0.01, 0.11899, 0.13, 0.11899, screenBoundMm(0.1176, 0.01, 192, 0.001), 0.1180),
+      row(2, 0.0001, 0.001, 0.00005, 0.0002)], TOL, 3, 192);
+    expect(hb.x1pViolations).toBe(1);
+    expect(hb.x1rViolations).toBe(0);
+    expect(hb.x1rRefinedCount).toBe(1);
+    expect(hb.pass).toBe(true);
+    expect(hb.bars.find((b) => b.id === "X1'")?.decides).toBe(false);
+    // ... and the H-a path: a refined reference that does NOT move keeps the violation and the STOP stands.
+    const ha = scoreXval([row(1, 0.1176, 0.01, 0.11899, 0.13, 0.11899, screenBoundMm(0.1176, 0.01, 192, 0.001), 0.11899),
+      row(2, 0.0001, 0.001, 0.00005, 0.0002)], TOL, 3, 192);
+    expect(ha.x1rViolations).toBe(1);
+    expect(ha.pass).toBe(false);
+    expect(ha.stop).toBe(true);
     // An EMPTY control is a wiring bug, not a pass.
     expect(() => scoreXval([], TOL, 3, 192)).toThrow(/EMPTY/);
   });
@@ -248,11 +283,17 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
     // ── the CPU-side certifier, one call, used by both the cross-validation gate and (via runH1Walk) the
     //    survivor confirm. The argument list is the one the pooled walk uses, so the two are bit-identical.
     const cpuOpts = { H, tol: TOL, nMax: NMAX, sampleCap: 4e6, zJumps, thJumps };
-    const cpuCertify = (t: number): { witnessed: number; bound: number } => {
+    // AMENDMENT D2-A. `certifyTriangle.witnessed` is a LOCAL-descent reading and the auditor never quotes it
+    // alone: _strataFacetTruth.test.ts confirms its top-K with `distPerp` — a global sweep of the whole
+    // (theta,z) domain plus Newton from the best wells — and takes `Math.min(c.fast, c.truth)`. Every
+    // candidate distance is an upper bound, so the min is always correct. The CONFIRMED value is what the
+    // campaign publishes and what judge() consumes, so it is what a dominance bar must be written against.
+    const cpuCertify = (t: number): { witnessed: number; bound: number; confirmed: number } => {
       const o = t * 9;
       const v = certifyTriangle(rA, xyz[o], xyz[o + 1], xyz[o + 2], xyz[o + 3], xyz[o + 4], xyz[o + 5],
         xyz[o + 6], xyz[o + 7], xyz[o + 8], cpuOpts);
-      return { witnessed: v.witnessed, bound: v.bound };
+      const g = distPerp(rA, H, v.px, v.py, v.pz, { zJumps, thJumps });
+      return { witnessed: v.witnessed, bound: v.bound, confirmed: Math.min(v.witnessed, g.d) };
     };
 
     // f32 view of the soup for the GPU. The STL stores f32 and readMeshFloat64 widened it to f64, so this
@@ -261,7 +302,7 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
     for (let i = 0; i < nTri * 9; i += 1) f32[i] = xyz[i];
 
     /** Screen a set of ORIGINAL triangle indices at one lattice level. Opens, measures, closes. */
-    const screenAt = async (level: number, idx: Int32Array, seedChunk: number): Promise<{ res: Float32Array; parityUm: number; gpuMs: number; wallMs: number }> => {
+    const screenAt = async (level: number, idx: Int32Array, seedChunk: number, closure = CLOSURE): Promise<{ res: Float32Array; parityUm: number; gpuMs: number; wallMs: number }> => {
       const part = new Float32Array(idx.length * 9);
       for (let s = 0; s < idx.length; s += 1) {
         const o = idx[s] * 9;
@@ -270,11 +311,11 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
       const w0 = Date.now();
       const gr = await openGpuRank({
         style: STYLE, params: styleParams, cpuRadius: rA, dims: DIMS,
-        n: level, gnIters: GN, closureEps: CLOSURE, chunk: seedChunk, targetMs: 250, parityTolUm: 2,
+        n: level, gnIters: GN, closureEps: closure, chunk: seedChunk, targetMs: 250, parityTolUm: 2,
         onPageLog: (l) => say(`  page: ${l.trim().slice(0, 200)}`),
       });
       try {
-        say(`  screen n=${level}: parity ${gr.parityUm.toFixed(4)} um; dispatching ${idx.length} facets (seed chunk ${seedChunk})`);
+        say(`  screen n=${level} closureEps=${closure}: parity ${gr.parityUm.toFixed(4)} um; dispatching ${idx.length} facets (seed chunk ${seedChunk})`);
         const res = await gr.score(part, idx.length);
         return { res, parityUm: gr.parityUm, gpuMs: gr.stats.gpuMs, wallMs: Date.now() - w0 };
       } finally {
@@ -304,13 +345,50 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
     for (let i = 0; i < control.length; i += 1) {
       const mx = xg.res[i * 2]; const cov = xg.res[i * 2 + 1];
       const c = cpuCertify(control[i]);
-      xrows.push({ tri: control[i], mxGpu: mx, covGpu: cov, boundGpu: screenBoundMm(mx, cov, topLevel, MARGIN), witCpu: c.witnessed, boundCpu: c.bound });
+      xrows.push({
+        tri: control[i], mxGpu: mx, covGpu: cov, boundGpu: screenBoundMm(mx, cov, topLevel, MARGIN),
+        witCpu: c.witnessed, boundCpu: c.bound, witCpuConfirmed: c.confirmed,
+        witCpuRefined: null, boundGpuNoClosure: null,
+      });
+    }
+    // X1'' — AMENDMENT D2-B. Re-confirm every X1' violator's witness point at 16x sweep density. `distPerp`
+    // seeds its Newton from a 180x120 grid, and the screen's Gauss-Newton can find a well that grid steps
+    // over; when it does, the CPU's "confirmed" number is the loose one and there was never a violation.
+    // Refines the REFERENCE, not the bar — a min over upper bounds is always correct.
+    {
+      const NU = envI('PF_D_REFINE_NU', 2880); const NV = envI('PF_D_REFINE_NV', 1920);
+      const need = xrows.filter((r) => r.boundGpu < r.witCpuConfirmed);
+      if (need.length > 0) {
+        say(`X1'': re-confirming ${need.length} X1' violators with distPerp at ${NU}x${NV} (16x the default seeding density)`);
+        for (const r of need) {
+          const o = r.tri * 9;
+          const v = certifyTriangle(rA, xyz[o], xyz[o + 1], xyz[o + 2], xyz[o + 3], xyz[o + 4], xyz[o + 5],
+            xyz[o + 6], xyz[o + 7], xyz[o + 8], cpuOpts);
+          const g = distPerp(rA, H, v.px, v.py, v.pz, { zJumps, thJumps, nu: NU, nv: NV });
+          r.witCpuRefined = Math.min(r.witCpuConfirmed, g.d);
+          say(`    tri ${r.tri}: screen bound ${um(r.boundGpu)} um   CPU confirmed ${um(r.witCpuConfirmed)} -> refined ${um(r.witCpuRefined)} um`);
+        }
+      }
+    }
+    // X1c — CLOSURE ABLATION on every X1b violator. Re-screen them at closureEps = 0, which removes the
+    // two-scale jump test from the kernel path entirely and leaves the plain radial foot, which is
+    // unconditionally an upper bound. The closure is the ONLY thing in the screen that can lower a reading,
+    // and gpuRuler's own header names it as the false-negative risk at a smooth point — so ablate it and
+    // measure, rather than argue from "GothicArches has no detected C0 loci".
+    const ablate = xrows.filter((r) => r.boundGpu < r.witCpu).map((r) => r.tri);
+    if (ablate.length > 0) {
+      say(`X1c: re-screening ${ablate.length} X1b violators at closureEps=0 (jump closure ABLATED)`);
+      const abIdx = Int32Array.from(ablate);
+      const ag = await screenAt(topLevel, abIdx, Math.max(8, Math.min(64, abIdx.length)), 0).catch(fail);
+      const byTri = new Map<number, number>();
+      for (let i = 0; i < abIdx.length; i += 1) byTri.set(abIdx[i], screenBoundMm(ag.res[i * 2], ag.res[i * 2 + 1], topLevel, MARGIN));
+      for (const r of xrows) { const b = byTri.get(r.tri); if (b !== undefined) r.boundGpuNoClosure = b; }
     }
     const xval = scoreXval(xrows, TOL, XVAL_BAR, topLevel);
     lines.push(...xval.lines,
       `  GPU-vs-CPU rA parity at startup: ${xg.parityUm.toFixed(4)} um over 32,768 samples of the WHOLE surface`,
       `  (recorded precedent for this style: 0.303 um. The screen's margin is ${um(MARGIN)} um.)`);
-    say(`D2 ${xval.pass ? 'PASS' : 'FAIL'}  X1 ${xval.x1Violations}  X2 cpu ${xval.x2CpuOver}/gpu ${xval.x2GpuOver}  X3 ${xval.x3DeltaPoints.toFixed(3)} pts  X4 ${xval.x4Violations}`);
+    say(`D2 ${xval.pass ? 'PASS' : 'FAIL'}  X1b ${xval.x1Violations} (reported)  X1' ${xval.x1pViolations}  X1'' ${xval.x1rViolations} (${xval.x1rRefinedCount} refined, worst drop ${xval.x1rWorstDropUm.toFixed(3)} um)  X1c ${xval.x1cMoved}/${xval.x1cChecked} moved (worst rise ${xval.x1cWorstRiseUm.toFixed(6)} um)  X2 cpu ${xval.x2CpuOver}/gpu ${xval.x2GpuOver}  X3 ${xval.x3DeltaPoints.toFixed(3)} pts  X4 ${xval.x4Violations}`);
     // eslint-disable-next-line no-console
     console.log(xval.lines.join('\n'));
 
@@ -418,7 +496,7 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
     const nSurv = survivors.length;
     const cpuT0 = Date.now();
     let cpu: CpuSummary;
-    let kD: number[] = []; let kTri: number[] = [];
+    let kD: number[] = []; let kTri: number[] = []; let kP: number[] = [];
     if (nSurv === 0) {
       cpu = { nSurvivors: 0, nAudited: 0, maxBoundMm: 0, maxBoundTri: -1, maxWitnessedMm: 0, maxWitnessedTri: -1, nOver: 0, nUncert: 0, nMax: NMAX, workers, facetsPerSec: 0, wallMs: 0 };
     } else {
@@ -443,7 +521,7 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
       }).catch(fail);
       const m = out.merged;
       const wall = Date.now() - cpuT0;
-      kD = m.kD; kTri = m.kTri;
+      kD = m.kD; kTri = m.kTri; kP = m.kP;
       cpu = {
         nSurvivors: nSurv, nAudited: m.audited,
         maxBoundMm: m.worstUB, maxBoundTri: m.worstUBTri >= 0 ? survivors[m.worstUBTri] : -1,
@@ -457,6 +535,53 @@ describe('STRATA PHASE D — the composed full-coverage certificate', () => {
         + ` — ${out.latPoints} (worker x lattice-point) comparisons, ${out.latDiffCount} differing, max deviation ${out.latMaxDev.toExponential(3)} mm`);
       say(`STAGE 2 DONE: audited ${m.audited}/${nSurv} in ${(wall / 1000).toFixed(1)}s (${cpu.facetsPerSec.toFixed(2)} facets/s); bound ${um(m.worstUB)} um, witnessed ${um(cpu.maxWitnessedMm)} um, over ${m.nOver}, uncert ${m.nUncert}`);
     }
+
+    // ── STAGE 3 — THE GLOBAL CONFIRM, AT BOTH SEEDING DENSITIES ─────────────────────────────────────────
+    // The auditor's own stage 3, reproduced verbatim in structure: confirm the top-K by value with
+    // `distPerp` and take `max_i min(fast_i, truth_i)`. The per-facet reading comes from a LOCAL descent and
+    // over-states when it lands in the wrong well, so the max must be re-taken over the CONFIRMED set and
+    // never lowered in place.
+    //
+    // AND AT TWO DENSITIES, WHICH IS THIS ARM'S ADDITION. D2's discriminator measured `distPerp`'s DEFAULT
+    // 180x120 seeding grid over-stating by 30.902 um at tri 690730 — a facet FID_S24i2 published as
+    // `fast 118.993 -> global 118.993`, where local and global agreeing was read as the facet being well
+    // resolved. It was not: both were seeded on the same grid, so they could not disagree about a well that
+    // grid steps over. Both numbers are printed here so the improvement is visible rather than assumed.
+    const NCONF = Math.min(kD.length, envI('PF_D_CONF_N', 64));
+    const NCONF_R = Math.min(NCONF, envI('PF_D_CONF_REFINED_N', 24));
+    const RNU = envI('PF_D_REFINE_NU', 2880); const RNV = envI('PF_D_REFINE_NV', 1920);
+    let confDefault = 0; let confDefaultTri = -1;
+    let confRefined = 0; let confRefinedTri = -1; let worstDropUm = 0;
+    const confRows: string[] = [];
+    if (NCONF > 0) {
+      say(`STAGE 3: global confirm of the top ${NCONF} by value (default 180x120), of which the top ${NCONF_R} also at ${RNU}x${RNV}`);
+      for (let i = 0; i < NCONF; i += 1) {
+        const px = kP[i * 3]; const py = kP[i * 3 + 1]; const pz = kP[i * 3 + 2];
+        const g = distPerp(rA, H, px, py, pz, { zJumps, thJumps });
+        const vDef = Math.min(kD[i], g.d);
+        let vRef = vDef;
+        if (i < NCONF_R) {
+          const gr2 = distPerp(rA, H, px, py, pz, { zJumps, thJumps, nu: RNU, nv: RNV });
+          vRef = Math.min(vDef, gr2.d);
+          if ((vDef - vRef) * 1000 > worstDropUm) worstDropUm = (vDef - vRef) * 1000;
+        }
+        const tri = survivors[kTri[i]];
+        if (vDef > confDefault) { confDefault = vDef; confDefaultTri = tri; }
+        if (vRef > confRefined) { confRefined = vRef; confRefinedTri = tri; }
+        if (i < 12) confRows.push(`    tri ${String(tri).padStart(9)}  fast ${um(kD[i]).padStart(10)} -> global ${um(vDef).padStart(10)}${i < NCONF_R ? ` -> refined ${um(vRef).padStart(10)}` : ''} um  @th=${g.th.toFixed(5)} z=${g.z.toFixed(4)}`);
+      }
+      lines.push('',
+        `  STAGE-3 GLOBAL CONFIRM of the worst ${NCONF} survivors (the auditor's own procedure: max over the confirmed set of min(local, global))`,
+        `    at distPerp's DEFAULT 180x120 seeding  : ${um(confDefault)} um   (facet ${confDefaultTri})`,
+        `    at a REFINED ${RNU}x${RNV} seeding, top ${NCONF_R}: ${um(confRefined)} um   (facet ${confRefinedTri})   — the refined sweep pulled readings down by up to ${worstDropUm.toFixed(3)} um`,
+        `    facets outside the confirmed top ${NCONF} are bounded by ${um(kD.length > NCONF ? kD[NCONF] : 0)} um (their unconfirmed local readings)`,
+        ...confRows);
+      say(`STAGE 3 DONE: confirmed max ${um(confDefault)} um (default) / ${um(confRefined)} um (refined), worst drop ${worstDropUm.toFixed(3)} um`);
+    }
+    // THE COMPOSED WITNESS IS THE CONFIRMED ONE — the tightest the CPU can produce — exactly as the auditor
+    // publishes it. It can only be SMALLER than the raw local reading, so using it is the conservative move
+    // for a FAIL claim and the honest one for a magnitude.
+    if (NCONF > 0) { cpu.maxWitnessedMm = confRefined; cpu.maxWitnessedTri = confRefinedTri; }
 
     // ═════════════════════════════════════════════════════════════════════════════════════════════════════
     // D1 — THE COMPOSITION

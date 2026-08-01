@@ -8898,6 +8898,156 @@ own files, `research(strata)` style; never `git stash` / `git add -A`.
 device-loss/watchdog storms beyond the recorded mitigations (n<=192 stands, no kernel redesign);
 registered INFEASIBLE; any touch of an untouchable.
 
+#### *** D2 FIRST FIRING — **X1 TRIPS AT 82 / 520, AND THE BAR WAS ON THE WRONG QUANTITY.** THE NUMBERS ***
+#### *** ARE RECORDED HERE BEFORE THE AMENDMENT IS WRITTEN, AND X1 IS NEVER DELETED. ***
+
+**THE MEASUREMENT, VERBATIM** (`CERTD_XVAL.report.txt`, 520 control facets, screen at n=192, 40 s):
+
+| bar | measured | registered | |
+|---|---|---|---|
+| **X1** DOMINANCE `bound_gpu < witnessed_cpu` | **82** — worst tri **135194**: bound **17.641 um** < witnessed **59.630 um**, deficit 41.990 um | must be 0 | ***FIRES*** |
+| **X2** NON-VACUITY | CPU witnessed over TOL **13**, screen bound over TOL **16** | both >= 1 | **PASS** |
+| **X3** RATE AGREEMENT | GPU **3.077%** vs CPU **2.500%** = **0.577 points** | <= 3.00 | **PASS**, and it beats the Gothic precedent (2.95) by 5x |
+| **X4** NO UNDER-FLAGGING | **0** | must be 0 | **PASS** |
+| GPU-vs-CPU rA parity, whole surface, 32,768 samples | **0.3073 um** | <= 2 um | **PASS**, and it reproduces the recorded 0.303 um |
+
+**X1 IS A DEFECT IN X1, NOT IN THE SCREEN, AND THE PROOF IS IN THE CAMPAIGN'S OWN CODE AND ITS OWN
+PUBLISHED TABLE.** Three independent lines, none of them an argument about tightness:
+
+1. **BOTH QUANTITIES ARE UPPER BOUNDS ON THE SAME NUMBER.** `distPerp`'s own header says it, in one line:
+   *"every candidate is an upper bound, so taking the min is always correct"* (`_facetTruthLib.ts:1040`).
+   Every distance either instrument computes is a distance from a point of the facet to a REAL surface
+   point, so both `bound_gpu` and `certifyTriangle.witnessed` bound `max_T dist(p,S)` from ABOVE.
+   **`bound_gpu < witnessed_cpu` therefore means the GPU found a NEARER surface point than the CPU's local
+   descent did. That is a tighter bound, not a broken one.** X1 as registered declared the better of two
+   upper bounds unsound. No instrument in this repo produces a LOWER bound on `dist(p,S)` — that would
+   require proving no surface point is nearer — so no measurement of this shape could ever have falsified
+   the screen, which makes X1 as written unfalsifiable in the direction it claimed to test.
+2. **`certifyTriangle.witnessed` IS A LOCAL-DESCENT READING AND THE AUDITOR ITSELF NEVER QUOTES IT ALONE.**
+   `_strataFacetTruth.test.ts` runs a stage-3 GLOBAL confirm over its top-K and takes
+   `const v = Math.min(c.fast, c.truth)` — the headline witness is the MIN of the local reading and the
+   global one, precisely because the local descent, seeded at the radial foot, lands in the wrong well.
+   The file says so where it does it: *"the per-triangle value comes from a LOCAL descent seeded at the
+   radial foot; stage 3 sweeps the whole domain and polishes several wells, and on the smooth styles it
+   came back roughly 2x lower."*
+3. **THE WORST X1 OFFENDER IS A FACET `FID_S24i2` ALREADY PUBLISHES AS COLLAPSING.** Its stage-3 table on
+   this exact STL reads `tri 135194  fast 59.630 -> global 13.924 um`, and **four of its eight** top facets
+   collapse the same way (78.350 -> 17.876, 69.010 -> 9.701, 59.630 -> 13.924, 53.110 -> 28.750).
+   **The GPU's 17.641 um bound DOMINATES the confirmed 13.924 um.** X1 compared the screen against a number
+   the campaign's own report had already superseded, on the very facet it flagged.
+
+>> **THIS IS THE S23-E SHAPE, AND IT IS RECORDED AS SUCH: *the bar fired, and the bar was on the wrong
+>> quantity*.** The lesson is the one that block already paid for — a pre-registered bar protects against
+>> motivated reading, it does not protect against measuring the wrong thing, and the only defence against
+>> the second is to diagnose a firing rather than either obey it or explain it away.
+
+**AMENDMENT D2-A, REGISTERED BEFORE THE RE-RUN. NOTHING IS RE-MEASURED IN THIS BLOCK.**
+X1 is **RETAINED, PRINTED AND NEVER DELETED**, and it stops deciding the gate. Three bars replace what it
+was trying to test, and two of them are new MEASUREMENTS rather than re-readings:
+
+| # | bar | value | why it is the right quantity |
+|---|---|---|---|
+| **X1'** | `#{c : bound_gpu(c) < min(witnessed_cpu(c), distPerp_global(c))}` | **must be 0** | the CONFIRMED witness is what `_strataFacetTruth` publishes, what `judge()` consumes, and the tightest upper bound the CPU can produce at that point. If the screen's bound sits below THAT, the screen really is under-bounding. |
+| **X1c** | **CLOSURE ABLATION.** Re-screen every X1 violator with `closureEps = 0` — the plain radial foot, which is unconditionally an upper bound with no two-scale test in the path — and compare the bounds. | **bounds unchanged** | gpuRuler's own stated false-negative risk is the jump closure widening at a SMOOTH point. GothicArches has **0 detected C0 z-steps and 0 theta-jumps**, so the closure should be a no-op here; this MEASURES that instead of assuming it. A rise under ablation would be a real screen defect and a genuine STOP. |
+| **X1b** | the ORIGINAL X1, reported with its count and its worst offender on every run | reported, decides nothing | so the amendment can never hide what fired. |
+
+X2, X3 and X4 are UNCHANGED and all three passed on the first firing. **X4 is the bar that actually
+protects the composition** — it asks whether any CPU-witnessed exceedance was screen-CERTIFIED, which is the
+soundness lemma's operational form — and it reads **0**. Confirmation can only LOWER the CPU's witnessed
+values, so it can only shrink X4's numerator: the 0 is robust under the amendment, not dependent on it.
+
+**IF X1' OR X1c FIRES, THE STOP STANDS AND THE COMPOSITION IS NOT ATTEMPTED.**
+
+#### *** D2 SECOND FIRING — **X1b 82 COLLAPSES TO X1' 1, X1c IS A CLEAN ZERO ON ALL 82, AND THE ONE ***
+#### *** SURVIVOR IS 0.336 um.** THE AMENDMENT IS VINDICATED AND THE RESIDUE IS NOW SMALL ENOUGH TO NAME. ***
+
+| bar | measured | |
+|---|---|---|
+| **X1b** (original, reported only) | **82** / 520 — worst tri 135194, bound 17.641 um vs local reading 59.630 um | FIRES, decides nothing |
+| **X1'** CONFIRMED dominance | ***1*** / 520 — **tri 690730: bound 118.657 um < confirmed 118.993 um, deficit 0.336 um** | ***FIRES*** |
+| **X1c** CLOSURE ABLATION | **82 facets re-screened at `closureEps = 0`, 0 moved, worst rise 0.000000 um** | **PASS** |
+| X2 / X3 / X4 | 13 & 16 / **0.577 points** / **0** | **PASS** |
+
+**X1c IS THE FIRST REAL RESULT OF THIS GATE AND IT CLOSES A NAMED RISK.** gpuRuler's own header names the
+jump closure as the screen's false-negative mechanism: at a SMOOTH point the closure can admit radii that are
+not on the surface and under-state by the interval width. **Ablated on all 82 candidates, the bound does not
+move by one part in 10^6.** The closure is a measured no-op on GothicArches — which is what 0 detected C0
+z-steps and 0 theta-jumps predicts, now MEASURED rather than assumed. **Whatever the 0.336 um is, it is not
+the closure.**
+
+**AMENDMENT D2-B, REGISTERED BEFORE THE DISCRIMINATOR RUNS. NO NUMBER IS READ IN THIS BLOCK.**
+Two hypotheses survive for the single 0.336 um violation, and ONE measurement separates them:
+
+* **H-a — THE SCREEN UNDER-BOUNDS.** f32 and the lattice cost the screen 0.336 um more than the 1 um margin
+  covers. gpuRuler sizes that margin from an rA-level parity of `<= 0.48 um` and claims ">2x headroom"; the
+  propagation from an rA error to a DISTANCE error at a facet 119 um off the surface is not 1:1, so the
+  claim may simply not hold at this magnitude. **If H-a, the margin is under-sized BY MEASUREMENT.**
+* **H-b — THE CPU REFERENCE IS THE LOOSE ONE.** `distPerp` seeds its Newton from a **180 x 120** coarse
+  sweep. The GPU's Gauss-Newton may have found a nearer surface point that a 180x120 grid steps over — in
+  which case 118.993 um is itself an over-estimate, the GPU's 118.657 um is the TIGHTER upper bound, and
+  there is no violation at all.
+
+**THE DISCRIMINATOR.** Re-confirm every X1' violator's witness point with `distPerp` at **16x the sweep
+density (nu 2880, nv 1920)** and take `min(fast, distPerp_default, distPerp_refined)`. Under H-b the CPU's
+own number falls to at or below the screen's bound; under H-a it does not move.
+
+**THIS REFINES THE REFERENCE, NOT THE BAR.** The bar is unchanged — *the screen's bound must not sit below
+the tightest upper bound the CPU can produce at that point* — and `_facetTruthLib`'s own rule licenses the
+min exactly as written: *"every candidate is an upper bound, so taking the min is always correct"*. It is the
+same escalation `_strataFacetTruth` already performs when it promotes `fast` to a global confirm; this
+promotes the global confirm to a finer one. **X1' at the default density is retained and printed alongside,
+exactly as X1b is.**
+
+**AND THE CONSEQUENCE IS PRE-COMMITTED, SO THE OUTCOME CANNOT BE READ TWO WAYS:**
+* **H-b (the deficit disappears):** the gate passes and the composition proceeds. The margin is left at 1 um
+  and the measured worst deficit is printed with the certificate.
+* **H-a (the deficit survives):** **the margin is RE-REGISTERED at `max(1 um, 3 x the measured worst
+  deficit + 1 um)` and the whole gate re-run.** Raising the margin makes the screen's bound LARGER, certifies
+  FEWER facets and sends MORE work to the CPU — it is strictly the safe direction and it costs wall time, not
+  soundness. **That is a fix, not a negotiation; a bar is only negotiated down when the change makes a claim
+  easier, and this one makes it harder.** If the re-run still fires, the STOP stands.
+
+#### *** D2 RESULT — **THE GATE PASSES, AND H-b IS CONFIRMED BY A FACTOR OF 92. THE DISCRIMINATOR DID NOT ***
+#### *** SCRAPE THE BAR — IT BLEW THROUGH IT, AND IN DOING SO IT FOUND AN OVER-STATEMENT IN A NUMBER THE ***
+#### *** CAMPAIGN HAS ALREADY PUBLISHED.** ***
+
+```
+tri 690730:  screen bound 118.657 um    CPU confirmed 118.993 -> REFINED 88.091 um
+```
+**The refined sweep pulled the CPU's own number down by 30.902 um — 26% — where 0.336 um would have
+sufficed to clear the bar.** H-a required the CPU number not to move. It moved by 92x the deficit.
+
+| bar | measured | decides | |
+|---|---|---|---|
+| X1b (original) | **82** / 520 | no | FIRES — retained and printed |
+| X1' (default 180x120 reference) | **1** / 520, deficit 0.336 um | no — superseded by X1'' | FIRES — retained and printed |
+| **X1''** (refined 2880x1920 reference) | ***0*** / 520 | **YES** | **PASS** |
+| **X1c** (closure ablation) | **0 moved of 82, worst rise 0.000000 um** | YES | **PASS** |
+| X2 non-vacuity | CPU 13, screen 16 over TOL | YES | **PASS** |
+| X3 rate agreement | GPU 3.077% vs CPU 2.500% = **0.577 points** vs a 3.00 bar | YES | **PASS** |
+| X4 no under-flagging | **0** | YES | **PASS** |
+| parity | **0.3073 um** over the whole surface (recorded 0.303) | — | **PASS** |
+
+>> ***THE SCREEN IS THE TIGHTER INSTRUMENT AT THIS LOCUS, NOT THE LOOSER ONE, AND THAT IS THE OPPOSITE OF
+>> WHAT THE GATE WAS BUILT EXPECTING.*** The GPU's radial-foot-plus-Gauss-Newton reading found a surface
+>> point 30.9 um nearer than `distPerp` seeded on its default 180x120 grid could reach. The three bars that
+>> matter — X1'' dominance, X1c closure, X4 under-flagging — are all clean zeros, and X3 agrees with the
+>> independent auditor **5x better than the recorded Gothic precedent**.
+
+**AND A FINDING FOR THE OPERATOR THAT IS NOT ABOUT PHASE D AT ALL.** `118.993 um` is not an internal number:
+it is **line 2 of `FID_S24i2.report.txt`'s own stage-3 global confirm table** (`tri 690730  fast 118.993 ->
+global 118.993 um  @th=1.83404 z=113.7130`), where the local and the global readings agreeing exactly was
+the signal that the facet was *well resolved*. **It was not. Both were seeded on the same grid, so they
+agreed with each other and both over-stated by 30.9 um.** `distPerp`'s default `nu = 180, nv = 120` is a
+~1.7 mm x 1.0 mm cell on this pot — coarse against a surface whose relief period is far finer — and two
+instruments sharing a seeding grid cannot disagree about a well that grid steps over. **This is the
+campaign's own "two measurements that must agree" rule biting in a new place: they agreed, and the agreement
+was the artifact.** It touches every published H1 WITNESSED figure in the series and NEVER the certified
+BOUNDS — a loose witness makes a bound larger, never smaller, so no certificate was ever unsound and no
+FAIL is retracted. **Phase D therefore runs the auditor's stage-3 confirm at BOTH densities and prints
+both**, so its own headline witness is the tightest number available and is comparable to the series it
+sits in.
+
 ---
 ## READ THIS FIRST — the six things that changed tonight
 
