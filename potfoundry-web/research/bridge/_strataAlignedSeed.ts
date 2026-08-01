@@ -208,6 +208,46 @@ export interface AlignedSeedOpts {
    * triangulator ACTUALLY built rather than on predicted ones.
    */
   banned?: Set<string>;
+  /**
+   * S23 — THE EXTRACTED ABSOLUTE DENSITY FIELD. `undefined` = OFF (the default), and then every S23
+   * clause in this file is arithmetically absent — no branch taken, no point emitted, no eval spent.
+   *
+   * IT ENTERS AS AN ABSOLUTE RULE OF THE `acrossAbs` / offset-ring FAMILY AND NOT THROUGH `useField`'s
+   * `cl()` CLAMP, and the reason is measured: `cl` is `max(1/fieldRange, min(fieldRange, x))` at
+   * `fieldRange = 2`, and a +-2x clamp cannot express a 50 um -> 1,101 um demand range. That is the same
+   * reason S15's `acrossAbs` and S19's rings exist as separate absolute rules (S23 registration, 95cd8662).
+   *
+   * WHAT IT DRIVES, AND — MORE IMPORTANTLY — WHAT IT DOES NOT. It drives ONE new stage: a greedy
+   * minimum-distance infill of FREE STEINER POINTS (3g below) and the boundary densification that stage
+   * needs to reach the four domain sides. It drives NO constraint, NO chain spacing, NO ring radius and
+   * NO patch grading — those keep their declared rules unchanged, so the constraint count and the
+   * designed-lattice census are preserved BY CONSTRUCTION rather than by measurement. Registered
+   * 2026-08-01 in the worklog block "S23B — THE FIELD-PREPARATION DECISION" with all three reasons.
+   */
+  reconField?: { hAt: (th: number, z: number) => number; floorMm: number; dxMm: number };
+  /**
+   * S23 — the packing radius as a fraction of the local field demand. A maximal minimum-distance point
+   * set at radius `r` carries a vertex density of ~0.8/r^2 against an equilateral mesh of edge `h`'s
+   * 2/(sqrt3 h^2) = 1.1547/h^2, so `beta = sqrt(0.8/1.1547) = 0.83` is the CALIBRATION that makes the
+   * placed density equal the demanded one. It is a unit conversion, not a design choice, and its value is
+   * measured on the low-density probe against the registered point count before the production arm.
+   */
+  reconBeta: number;
+  /**
+   * S23B AMENDMENT, DEFAULT FALSE. Let the extracted field bound the chain ALONG spacing as well as the
+   * free infill. Registered as an amendment, with the measurement that forced it, before the re-score:
+   * free-Steiner infill alone cannot reach the corridor the across rule owns, so the declared along
+   * spacing (up to 1,200 um beside a locus) caps the achievable fidelity no matter how dense the field is.
+   * IT IS THE ONE THING THAT ADDS CONSTRAINTS, so the S7 tripwire is aimed straight at it: a
+   * constraint-recovery shortfall here is INFEASIBLE and is reported, not tuned around.
+   */
+  reconChain: boolean;
+  /**
+   * S23 — candidate lattice fineness: candidates inside a field cell are placed at `h / reconCand`, so the
+   * greedy set is maximal to within `h/reconCand`. 3 is the registered value; below ~2 the set stops being
+   * maximal and the largest empty circle (hence the worst element) grows.
+   */
+  reconCand: number;
 }
 
 export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
@@ -234,6 +274,9 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   shapeAR: 50,
   weldMm: 0.002,
   pslgEpsMm: 0.02,
+  reconBeta: 0.83,
+  reconCand: 3,
+  reconChain: false,
 };
 
 export interface AlignedSeed {
@@ -322,6 +365,24 @@ export interface AlignedSeed {
     /** S15: the across spacing ACTUALLY placed, over all chain points — min / p50, mm. */
     acrossMinPlacedMm: number;
     acrossP50PlacedMm: number;
+    /**
+     * S23 — THE FIELD INFILL, measured rather than asserted. `reconCandidates` is how many free-point
+     * candidates the field asked for; `reconPts` how many the greedy minimum-distance test ACCEPTED;
+     * `reconRefusedPt` / `reconRefusedSeg` why the rest were refused. `reconBoundaryPts` is the boundary
+     * densification (rim rows + the two seam columns, identical z-set on both, per S11).
+     * `reconFloorHits` counts candidates whose field demand was already AT the prepared floor — the
+     * population the constructor is architecturally forbidden to resolve any finer, reported so the
+     * density deficit is visible in the built mesh and not only in the field.
+     */
+    reconPts: number;
+    reconCandidates: number;
+    /** S23B amendment: chain points whose ALONG spacing the extracted field shortened. */
+    reconAlongBoundPts: number;
+    reconRefusedPt: number;
+    reconRefusedSeg: number;
+    reconBoundaryPts: number;
+    reconFloorHits: number;
+    reconMs: number;
     fieldEvals: number;
     wallMs: number;
   };
@@ -459,6 +520,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   const chains: ChainPt[][] = [];
   let chainPts = 0;
   let acrossBoundPts = 0; let alongBoundPts = 0; let bowShortenedPts = 0; let turnBoundPts = 0;
+  let reconAlongBoundPts = 0;
   const acrossPlaced: number[] = [];
   for (const P of chainsRaw) {
     // arc-length parameterise in the chart
@@ -537,6 +599,21 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
             if (o.turnMul > 0) {
               const aTurn = o.turnMul * hAc;
               if (aTurn < a) { a = aTurn; turnBoundPts += 1; }
+            }
+            // ── S23B AMENDMENT — THE EXTRACTED FIELD BOUNDS THE ALONG SPACING TOO. DEFAULT OFF.
+            // Exactly the shape of the two clauses above it (`seedARmax * cr`, `turnMul * hAc`): a
+            // monotone-downward absolute bound on `a`, taken only where the across rule already binds, so
+            // the OFF path and every point the rule does not touch are arithmetically unchanged.
+            // WHY IT HAD TO EXIST, MEASURED BEFORE IT WAS WRITTEN: with free Steiner infill alone the
+            // constructed mesh read HEADLINE 622.349 um against `_S22B`'s 95.484 — and read the SAME
+            // 622.349 at 1/4, 1/2 and full field density, i.e. the residual does not move when the mesh
+            // gets three times denser. The witness sits on DECLARED geometry, whose along spacing is
+            // scale-independent by construction: the field asks for ~76-104 um beside a locus while the
+            // declared rule places chain vertices up to 1,200 um apart there. A free point cannot repair
+            // that, because the corridor beside a constraint belongs to the across rule.
+            if (o.reconChain && o.reconField !== undefined) {
+              const aFld = Math.max(o.acrossMinMm, o.reconField.hAt(last.th, last.z));
+              if (aFld < a) { a = aFld; reconAlongBoundPts += 1; }
             }
             // ── S16 STEP 1b': THE BOW RULE. The offset ring hugs the CHAIN, but the chord between two
             //    consecutive ring points is straight while the locus between them is not. Where the BOW
@@ -708,11 +785,17 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // were exactly this. Clearance must be measured to the CONSTRAINT, which is a segment.
   const segBuckets = new Map<string, number[]>();
   const segAx: number[] = []; const segAy: number[] = []; const segBx: number[] = []; const segBy: number[] = [];
+  // S23 — the ACROSS spacing the design PLACED beside this segment, i.e. the radius of its own innermost
+  // offset ring. Read only by the field infill (3g), which uses it as a clearance floor: a free point
+  // closer to a constraint than the design's own innermost ring is a point the design deliberately did
+  // not place, and it makes the thin lens the across rule exists to forbid.
+  const segAcr: number[] = [];
   for (const C of chains2) {
     for (let i = 0; i + 1 < C.length; i += 1) {
       const ax = rRef * C[i].th; const ay = C[i].z; const bx = rRef * C[i + 1].th; const by = C[i + 1].z;
       const si = segAx.length;
       segAx.push(ax); segAy.push(ay); segBx.push(bx); segBy.push(by);
+      segAcr.push(Math.min(C[i].across, C[i + 1].across));
       for (let gx = Math.floor(Math.min(ax, bx) / BS); gx <= Math.floor(Math.max(ax, bx) / BS); gx += 1) {
         for (let gy = Math.floor(Math.min(ay, by) / BS); gy <= Math.floor(Math.max(ay, by) / BS); gy += 1) {
           const k = `${gx},${gy}`; const l = segBuckets.get(k); if (l === undefined) segBuckets.set(k, [si]); else l.push(si);
@@ -788,6 +871,35 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     if (chainSeamZ.some((cz) => Math.abs(cz - z) < minSepMm)) continue;
     seamZ.add(z);
   }
+  // ── 3b-S23. THE BOUNDARY DENSIFICATION. Default OFF (`reconField` undefined) and then this block is
+  //    arithmetically absent. Without it the four domain sides stay at the DESIGNED pitch while the
+  //    interior is rebuilt at the field's, and every element touching a rim or the seam spans that
+  //    mismatch — which is the rim row the campaign already carries, manufactured on purpose.
+  //    THE SEAM IS DENSIFIED AS A z-SET, NOT AS TWO COLUMNS. Both columns are then built from the SAME
+  //    sorted list below, so they carry an identical z set BY CONSTRUCTION — the S11 lesson, unchanged:
+  //    a seam column vertex welds to its twin in 3-D, and a z present on one side only is a crack.
+  let reconBoundaryPts = 0;
+  if (o.reconField !== undefined) {
+    const base = [...seamZ].filter((z) => z >= 0 && z <= H).sort((a, b) => a - b);
+    for (let i = 0; i + 1 < base.length; i += 1) {
+      const zb = base[i + 1];
+      let z = base[i];
+      for (let g = 0; g < 200000; g += 1) {
+        // THE STEP IS FLOORED AT THE CONDITIONING RADIUS, NOT AT THE WELD. MEASURED, at full density on
+        // the first probe: a densified boundary row placed 18 um from a chain-crossing vertex that sat
+        // 2.3 um off the rim CONSTRAINT produced a configuration cdt2d triangulated inconsistently — TWO
+        // NON-MANIFOLD EDGES at th 2.4344, z 119.98, and the watertight assertion caught it. Stage 3e
+        // re-routes a constraint through any vertex within `pslgEpsMm` of its interior, so anything this
+        // side of 1.5x that radius is a sliver waiting to be constrained into existence. Every other
+        // free-point emitter in this file already floors its clearance there; so does this one now.
+        const step = Math.max(o.pslgEpsMm * 1.5, o.reconBeta * o.reconField.hAt(0, z));
+        const zn = z + step;
+        if (zn >= zb - step) break;
+        seamZ.add(zn); reconBoundaryPts += 1;
+        z = zn;
+      }
+    }
+  }
   const seamZs = [...seamZ].filter((z) => z >= 0 && z <= H).sort((a, b) => a - b);
   const col0: number[] = []; const col1: number[] = [];
   for (const z of seamZs) { col0.push(addPt(0, z)); col1.push(addPt(TWO_PI, z)); }
@@ -796,6 +908,32 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     const th = (TWO_PI * i) / o.gu;
     if (!nearPt(th, 0, clearMm * 0.5) && !nearSeg(th, 0, clearMm * 0.5)) addPt(th, 0);
     if (!nearPt(th, H, clearMm * 0.5) && !nearSeg(th, H, clearMm * 0.5)) addPt(th, H);
+  }
+  // the two RIMS, at the field's own pitch. Same rule as the seam, walked in arc length; the existing
+  // rim row is left exactly where it is and this only fills the gaps between its points.
+  if (o.reconField !== undefined) {
+    for (const zr of [0, H]) {
+      const on: number[] = [];
+      for (let i = 0; i < pth.length; i += 1) if (Math.abs(pz[i] - zr) <= 1e-9) on.push(pth[i]);
+      on.sort((a, b) => a - b);
+      for (let i = 0; i + 1 < on.length; i += 1) {
+        const xb = rRef * on[i + 1];
+        let x = rRef * on[i];
+        for (let g = 0; g < 200000; g += 1) {
+          const th = x / rRef;
+          const step = Math.max(o.pslgEpsMm * 1.5, o.reconBeta * o.reconField.hAt(th, zr));
+          const xn = x + step;
+          if (xn >= xb - step) break;
+          const thn = xn / rRef;
+          // the point clearance is floored at the same conditioning radius, for the same measured reason
+          const gp = Math.max(step * 0.5, o.pslgEpsMm * 1.5);
+          if (!nearPt(thn, zr, gp) && !nearSeg(thn, zr, Math.max(step * 0.55, o.pslgEpsMm * 1.5))) {
+            addPt(thn, zr); reconBoundaryPts += 1;
+          }
+          x = xn;
+        }
+      }
+    }
   }
   // Every point that ended up ON a domain side becomes part of that side's constraint chain, in order.
   // Built AFTER all boundary points exist so nothing is left out of the chain.
@@ -1027,6 +1165,174 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       if (nearPt(th, z, clearMm) || nearSeg(th, z, clearMm)) { bgDropped += 1; continue; }
       addFree(th, z); bgKept += 1;
     }
+  }
+
+  // ── 3g. S23 — THE EXTRACTED ABSOLUTE FIELD, AS FREE STEINER INFILL. Default OFF; with `reconField`
+  //    undefined not one branch below is taken and the seed is arithmetically what it was.
+  //
+  // IT RUNS LAST, ON PURPOSE. Every declared emitter above has already placed its points under its own
+  // declared rule — the traced chains, the graded offset rings, the routed polar disks, the 1,101/385
+  // designed lattice. This stage only fills what the field says is still empty. That ordering is what
+  // makes the rule MONOTONE-DOWNWARD in the S15 sense: where the field is coarser than what the design
+  // already placed, NO candidate survives the minimum-distance test and the emitted set is bit-for-bit
+  // the set the design emitted. The designed-lattice census is preserved by construction, not by luck.
+  //
+  // IT ADDS ZERO CONSTRAINTS, which is the S18 argument taken literally: constraint recovery is the
+  // fragile part (an assertion that THROWS; S15/S16 Stage 0 watched it fail at 7,268 and 7,614 segments),
+  // so the one thing a density change must not do is put more load on it.
+  //
+  // THE TEST IS A GREEDY MINIMUM-DISTANCE (maximal Poisson-disk) ACCEPTANCE at radius `beta * h`. Its
+  // property is the one the shard census needs: no two points closer than `r` AND no empty disk of radius
+  // `r + candidate pitch`, so the Delaunay of the result has bounded circumradius-to-edge everywhere the
+  // field is smooth — and the field was made smooth on purpose, at `alpha = 1.0`, before it got here.
+  let reconPts = 0; let reconCandidates = 0; let reconRefusedPt = 0; let reconRefusedSeg = 0;
+  let reconFloorHits = 0; let reconMs = 0;
+  if (o.reconField !== undefined) {
+    const t3g = Date.now();
+    const RF = o.reconField;
+    const beta = Math.max(1e-3, o.reconBeta);
+    const nCand = Math.max(1, Math.round(o.reconCand));
+    const X_MAX = rRef * TWO_PI;
+    // ── the multi-level point hash. ONE fixed cell size cannot serve a query radius that spans 30 um to
+    //    1.1 mm: sized for the small end a coarse query scans thousands of cells, sized for the large end
+    //    a fine query scans a cell holding hundreds of points. Levels at powers of two, every point in
+    //    every level, and each query takes the smallest level whose cell covers its own radius — so every
+    //    query is a 3x3 scan over cells that hold O(1) points at that query's own scale.
+    const L0 = 0.03; const NL = 7;                       // 0.03 .. 1.92 mm
+    const lvl: Array<Map<number, number[]>> = [];
+    for (let l = 0; l < NL; l += 1) lvl.push(new Map<number, number[]>());
+    const cellOf = (l: number): number => L0 * (1 << l);
+    const keyOf = (x: number, y: number, s: number): number => (
+      (Math.floor(x / s) + 4096) * 16384 + Math.floor(y / s)
+    );
+    const hx: number[] = []; const hy: number[] = [];
+    const hInsert = (x: number, y: number): void => {
+      const id = hx.length; hx.push(x); hy.push(y);
+      for (let l = 0; l < NL; l += 1) {
+        const k = keyOf(x, y, cellOf(l));
+        const b = lvl[l].get(k); if (b === undefined) lvl[l].set(k, [id]); else b.push(id);
+      }
+    };
+    // THE SEAM WRAPS AND THE CHART DOES NOT. theta = 0 and theta = 2pi are the SAME meridian, so a point
+    // 20 um to the right of the seam and one 20 um to its left are NEIGHBOURS in the mesh and xMax apart
+    // in the chart. Every point within `WRAP` of a seam gets a GHOST at the mirrored x, so the
+    // minimum-distance test sees across the seam. Without this the infill manufactures a duplicate column
+    // exactly where S11 spent a whole arm closing a crack.
+    const WRAP = 2.0;
+    const hInsertWrapped = (x: number, y: number): void => {
+      hInsert(x, y);
+      if (x < WRAP) hInsert(x + X_MAX, y);
+      else if (x > X_MAX - WRAP) hInsert(x - X_MAX, y);
+    };
+    for (let i = 0; i < px.length; i += 1) hInsertWrapped(px[i], py[i]);
+    const nearLocal = (x: number, y: number, r: number): boolean => {
+      let l = 0; while (l < NL - 1 && cellOf(l) < r) l += 1;
+      const s = cellOf(l); const M = lvl[l];
+      const cx = Math.floor(x / s) + 4096; const cy = Math.floor(y / s);
+      const r2 = r * r;
+      for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) {
+        const b = M.get((cx + dx) * 16384 + (cy + dy));
+        if (b === undefined) continue;
+        for (const j of b) { const ex = hx[j] - x; const ey = hy[j] - y; if (ex * ex + ey * ey <= r2) return true; }
+      }
+      return false;
+    };
+    // ── candidates, generated per FIELD CELL in row-major order — deterministic, and it lets the
+    //    segment-clearance gather be amortised over the whole cell instead of paid per candidate.
+    const cw = RF.dxMm;
+    const cols = Math.max(1, Math.round(X_MAX / cw));
+    const rows = Math.max(1, Math.round(H / cw));
+    const dxc = X_MAX / cols; const dyc = H / rows;
+    const KMAX = 96;
+    const segLocal: number[] = [];
+    for (let rr = 0; rr < rows; rr += 1) {
+      const y0 = rr * dyc;
+      for (let cc = 0; cc < cols; cc += 1) {
+        const x0 = cc * dxc;
+        // the cell's own demand: the MINIMUM over centre and corners, so the candidate pitch is fine
+        // enough for the finest thing the cell is asked to carry, and the max sets the gather radius.
+        let hMin = Infinity; let hMax = 0;
+        for (const [ux, uy] of [[0.5, 0.5], [0, 0], [1, 0], [0, 1], [1, 1]] as Array<[number, number]>) {
+          const hv = RF.hAt((x0 + ux * dxc) / rRef, y0 + uy * dyc);
+          if (hv < hMin) hMin = hv;
+          if (hv > hMax) hMax = hv;
+        }
+        const k = Math.max(1, Math.min(KMAX, Math.ceil((dxc * nCand) / hMin)));
+        // the gather must cover the LARGEST clearance any segment can impose, which is now the design's
+        // own across — bounded above by `acrossBase` — and not merely `beta * h`.
+        const rGather = Math.max(beta * hMax, acrossBase);
+        // gather the constraint segments that can possibly bind anywhere in this cell, ONCE
+        segLocal.length = 0;
+        {
+          const pad = rGather + 1e-9;
+          const gx0 = Math.floor((x0 - pad) / BS); const gx1 = Math.floor((x0 + dxc + pad) / BS);
+          const gy0 = Math.floor((y0 - pad) / BS); const gy1 = Math.floor((y0 + dyc + pad) / BS);
+          const seen = new Set<number>();
+          for (let gx = gx0; gx <= gx1; gx += 1) for (let gy = gy0; gy <= gy1; gy += 1) {
+            for (const si of segBuckets.get(`${gx},${gy}`) ?? []) {
+              if (seen.has(si)) continue;
+              seen.add(si);
+              // keep only segments whose distance to the cell's box can be under the gather radius
+              const bxLo = Math.min(segAx[si], segBx[si]); const bxHi = Math.max(segAx[si], segBx[si]);
+              const byLo = Math.min(segAy[si], segBy[si]); const byHi = Math.max(segAy[si], segBy[si]);
+              const ddx = Math.max(0, Math.max(bxLo - (x0 + dxc), x0 - bxHi));
+              const ddy = Math.max(0, Math.max(byLo - (y0 + dyc), y0 - byHi));
+              if (ddx * ddx + ddy * ddy > pad * pad) continue;
+              segLocal.push(si);
+            }
+          }
+        }
+        for (let a = 0; a < k; a += 1) {
+          const x = x0 + ((a + 0.5) * dxc) / k;
+          for (let b = 0; b < k; b += 1) {
+            const y = y0 + ((b + 0.5) * dyc) / k;
+            const th = x / rRef;
+            const hv = RF.hAt(th, y);
+            const r = beta * hv;
+            // STRICTLY INTERIOR TO ALL FOUR DOMAIN SIDES, at the same clearance the locus constraints get.
+            // The four sides are CONSTRAINT CHAINS (3f) and `nearSeg` never tested against them — it is
+            // built from the locus chains alone — so a candidate 20 um from the seam column would make
+            // exactly the thin lens beside a constraint that the 0.55x clearance exists to forbid. The
+            // seam and rim rows are densified at the field's own pitch by 3b-S23, so the band this leaves
+            // is one element wide and is filled by the side's own points.
+            const gsSide = Math.max(0.55 * r, o.pslgEpsMm * 1.5);
+            if (y < gsSide || y > H - gsSide) continue;
+            if (x < gsSide || x > X_MAX - gsSide) continue;
+            reconCandidates += 1;
+            if (hv <= RF.floorMm + 1e-9) reconFloorHits += 1;
+            if (nearLocal(x, y, r)) { reconRefusedPt += 1; continue; }
+            // THE CONSTRAINT CLEARANCE IS FLOORED AT THE DESIGN'S OWN INNERMOST RING, PER SEGMENT.
+            // MEASURED, at full density on the first probe: with the clearance at 1.5*pslgEpsMm = 30 um
+            // the infill placed free points 35-88 um from a chain whose own offset ring sits at 50 um,
+            // and the triangle each made with two chain vertices 280-1160 um apart read aspect3 100-146.
+            // 97 facets, ALL of them, and every one clustered on a 12-fold symmetric feature site — i.e.
+            // a mechanism, not a tail. The floor is LOCAL (the across the design actually placed there),
+            // not a global constant, which is the whole point of the absolute-field rule.
+            const gsBase = Math.max(0.55 * r, o.pslgEpsMm * 1.5);
+            let blocked = false;
+            for (const si of segLocal) {
+              const gs = Math.max(gsBase, segAcr[si]);
+              const ux = segBx[si] - segAx[si]; const uy = segBy[si] - segAy[si];
+              const l2 = ux * ux + uy * uy;
+              let t = l2 < 1e-18 ? 0 : ((x - segAx[si]) * ux + (y - segAy[si]) * uy) / l2;
+              t = t < 0 ? 0 : t > 1 ? 1 : t;
+              const ex = x - (segAx[si] + t * ux); const ey = y - (segAy[si] + t * uy);
+              if (ex * ex + ey * ey <= gs * gs) { blocked = true; break; }
+            }
+            if (blocked) { reconRefusedSeg += 1; continue; }
+            // ACCEPT. The infill's own minimum distance is `r >= beta * floorMm` = 30 um, which is four
+            // orders above `weldMm` (2 um), so `addPt`'s weld scan cannot fire and is not paid for.
+            const idx = px.length;
+            px.push(x); py.push(y); pth.push(th); pz.push(y);
+            const gk = `${Math.floor(x / CELL)},${Math.floor(y / CELL)}`;
+            const gb = hash.get(gk); if (gb === undefined) hash.set(gk, [idx]); else gb.push(idx);
+            hInsertWrapped(x, y);
+            reconPts += 1;
+          }
+        }
+      }
+    }
+    reconMs = Date.now() - t3g;
   }
 
   // 3f. the four domain sides as CONSTRAINT CHAINS (see 3b). Each is one segment between consecutive
@@ -1333,6 +1639,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       acrossP50PlacedMm: acrossPlaced.length > 0
         ? acrossPlaced.slice().sort((x, y) => x - y)[Math.floor(acrossPlaced.length / 2)]
         : acrossBase,
+      reconPts, reconCandidates, reconAlongBoundPts, reconRefusedPt, reconRefusedSeg, reconBoundaryPts, reconFloorHits, reconMs,
       fieldEvals, wallMs: Date.now() - t0,
     },
   };

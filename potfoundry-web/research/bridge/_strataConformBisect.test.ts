@@ -45,6 +45,9 @@ import { baseRadius } from '../../src/geometry/profile';
 import { buildRadiusFn } from './labkit';
 import { traceLoci, DEFAULT_TRACE_OPTS, LOCUS_SCHEMA, type LocusArtifact } from './_strataLocusTrace';
 import { buildAlignedSeedRepaired, DEFAULT_SEED_OPTS, type AlignedSeed } from './_strataAlignedSeed';
+// S23 — the extracted absolute density field. Value import, but reachable ONLY when PF_CB_RECON is set;
+// with the lever unset `loadReconField` is never called and no field is ever read.
+import { loadReconField, type ReconField } from './_strataReconField';
 import { REGION_SCHEMA, type RegionArtifact } from './_strataRegionExtract';
 import type { PatchRegion } from './_judgeShape';
 import type { StyleDims } from './labkit';
@@ -1015,6 +1018,37 @@ describe('STRATA conforming-bisection', () => {
     // interior sizing is the bare polar grading again) and exists so the fix can be A/B'd against the
     // arithmetic it replaces rather than asserted. Default 16 = the fix active.
     const AL_PATCH_SUBMAX = Math.round(envF('PF_CB_ALIGNED_PATCH_SUBMAX', 16));
+    // ══════════ S23 — THE RECONSTRUCTION PASS. PF_CB_RECON=<field.json>, DEFAULT UNSET ══════════
+    // UNSET, NOTHING BELOW EXECUTES AND THE DRIVER PATH IS BYTE-IDENTICAL (W1 identity, md5
+    // 8a59fb37a9115600b13262254380ccb0, re-taken after this edit). SET, the driver stops being a refiner:
+    // the aligned seed is built at FINAL density against the extracted absolute field, every vertex is
+    // lifted onto R, every facet goes through the composed acceptance as a CENSUS, and the run HANDS OFF
+    // TO NOBODY — no refinement loop, no post-loop pass, no de-shard pass. Registered in full at 95cd8662
+    // ("THE BUILD — ONE CONSTRUCTION PASS OVER THE WHOLE WALL"), with the field-preparation decision
+    // registered separately on 2026-08-01 before this code ran.
+    //
+    // THE PREPARATION CONSTANTS ARE LEVERS BECAUSE THEY ARE DECLARED VARIABLES, and a declared variable
+    // that cannot be moved from the command line is not reproducible — the arm's own command has to be a
+    // complete statement of what it built.
+    const RECON = process.env.PF_CB_RECON ?? '';
+    const RECON_FLOOR = envF('PF_CB_RECON_FLOOR_UM', 36.4) / 1000;
+    const RECON_ALPHA = envF('PF_CB_RECON_ALPHA', 1.0);
+    const RECON_BETA = envF('PF_CB_RECON_BETA', 0.83);
+    const RECON_CAND = Math.round(envF('PF_CB_RECON_CAND', 3));
+    // S23B AMENDMENT, DEFAULT OFF. Let the field bound the chain ALONG spacing too — the one clause that
+    // adds constraints, and therefore the one the S7 tripwire is aimed at.
+    const RECON_CHAIN = envOn('PF_CB_RECON_CHAIN');
+    // THE PROBE KNOB, AND IT IS THE HANDOFF'S OWN RULE MADE EXECUTABLE: "probe the SEED at low density,
+    // never the POPULATION". Scaling the field UP by k rebuilds the identical construction at 1/k^2 the
+    // point count, so the probe prices cdt2d and the infill on the same code path the production arm uses.
+    // 1 = the production arm.
+    const RECON_SCALE = envF('PF_CB_RECON_SCALE', 1);
+    let reconField: ReconField | null = null;
+    if (RECON !== '') {
+      if (!ALIGNED_SEED) throw new Error('PF_CB_RECON is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
+      if (SWEEP || GPU_RANK) throw new Error('PF_CB_RECON is not implemented for the sweep or gpu-rank drivers.');
+      reconField = loadReconField(RECON, { floorMm: RECON_FLOOR, alpha: RECON_ALPHA });
+    }
     let patchRoute: PatchRegion[] = [];
     if (AL_PATCH !== '') {
       if (!ALIGNED_SEED) throw new Error('PF_CB_ALIGNED_PATCH is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
@@ -1103,6 +1137,17 @@ describe('STRATA conforming-bisection', () => {
         patchRoute, patchMaxMm: AL_PATCH_MAX, patchSubMax: AL_PATCH_SUBMAX,
         acrossRings: AL_RINGS, acrossGrade: AL_RGRADE, acrossMaxMm: AL_RMAX, turnMul: AL_TURN_MUL,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
+        // S23 — the extracted absolute field, as free Steiner infill. `undefined` when the lever is unset,
+        // and then the seed builder's S23 clauses are arithmetically absent.
+        ...(reconField === null ? {} : {
+          reconField: {
+            floorMm: RECON_SCALE * reconField.floorMm, dxMm: reconField.dxMm,
+            // RECON_SCALE = 1 is the identity and multiplies nothing away: the closure is only installed
+            // when the lever is set at all, and the probe's own scale is printed in the report.
+            hAt: (th: number, z: number): number => RECON_SCALE * (reconField as ReconField).hAt(th, z),
+          },
+          reconBeta: RECON_BETA, reconCand: RECON_CAND, reconChain: RECON_CHAIN,
+        }),
       }, AL_ROUNDS);
       alignedStats = rep.seed.stats; alignedRounds = rep.roundsUsed; alignedBanned = rep.banned;
       alignedPatches = rep.seed.patches;
@@ -2288,7 +2333,13 @@ describe('STRATA conforming-bisection', () => {
     }
     // §2.3 seeding. Under `sweep` the whole initial grid goes into the FIFO unmeasured — the predicate is
     // evaluated at POP, not at push, so there is no up-front ranking pass to pay for.
-    if (SWEEP) { for (let t = 0; t < ta.length; t += 1) qPush(t); qGenEnd = qTail; }
+    // S23 — THE CONSTRUCTION PASS HANDS OFF TO NOBODY. Under PF_CB_RECON the seed IS the mesh, so it is
+    // never seeded into the heap: the refinement loop below finds an empty heap and exits on its first
+    // test, the collapse/flip/de-shard passes are already default-OFF and stay off, and everything from
+    // the watertight audit onward runs on the constructed mesh verbatim. Refusing to SEED (rather than
+    // breaking out of the loop) is what makes that true without touching one line of the loop itself.
+    if (RECON !== '') { /* the constructed seed is the product; nothing is refined */ }
+    else if (SWEEP) { for (let t = 0; t < ta.length; t += 1) qPush(t); qGenEnd = qTail; }
     else for (let t = 0; t < ta.length; t += 1) consider(t);
     const initTris = ta.length;
     let capped = false;
@@ -4091,6 +4142,84 @@ describe('STRATA conforming-bisection', () => {
       }, null, 1));
     }
 
+    // ═══ S23 — THE COMPOSED ACCEPTANCE, RUN AS A CENSUS OVER CONSTRUCTED ELEMENTS ═══
+    // WHY A CENSUS AND NOT A GATE, stated so it cannot be mistaken for a weakening. In the refinement
+    // driver S1/S2/admission are SPLIT guards: they refuse a placement and the loop tries another. A
+    // construction pass has no other placement to try — a constructed element is placed once and never
+    // inherited (addendum A3's own words) — so the composed acceptance can only be an ADMISSION CONDITION
+    // measured on what was built. Every facet is tested by all four clauses, on the values that SHIP, and
+    // the result is written beside the STL as evidence rather than folded into a pass/fail line.
+    //   S1  aspect3 <= PF_CB_SHAPE_AR (50), on f32-round-tripped coordinates
+    //   S2  the (theta,z) FOLD — signed parametric area, anchored at the facet's own first vertex and
+    //       measured through `dTh` so a seam-spanning facet is measured across the seam and not around it
+    //   S20 footprint-normal admission, on the JUDGE's own inputs (f32 coords + atan2 thetas)
+    //   A3  ALT_FLOOR 0.7629 um = 100 f32 ulp of z, bounding the shipped facet-normal error at 0.992 deg
+    // PROVENANCE, transcribed from the seed's own `inDisk` (chart distance at rRef = 45, routed radius):
+    // an over-cap facet inside a DECLARED region is a declared blade; one outside is a silent gate failure
+    // and it is the number the preconditions bar.
+    const ALT_FLOOR_MM = 0.0007629;
+    const rcPatches = alignedPatches.map((p) => ({ th: p.theta, z: p.z, r: p.radiusMm }));
+    const rcDeclared = (th: number, z: number): boolean => {
+      for (const p of rcPatches) {
+        if (Math.hypot(45 * dThRaw(canon(th), p.th), z - p.z) <= p.r) return true;
+      }
+      return false;
+    };
+    const rc = {
+      facets: 0, s1Over: 0, s1OverDeclared: 0, s1OverUndeclared: 0,
+      worstAR: 0, worstARUndeclared: 0, s2Fold: 0, s2Zero: 0,
+      admitBack: 0, altBelow: 0, altBelowDeclared: 0, altMinUm: Infinity, declaredFacets: 0,
+      worstARSite: { th: 0, z: 0, ar: 0 },
+    };
+    if (RECON !== '') {
+      for (let t = 0; t < ta.length; t += 1) {
+        if (!alive[t]) continue;
+        const A = ta[t]; const B = tb[t]; const C = tc[t];
+        const ax = f32(vx[A]); const ay = f32(vy[A]); const az = f32(vz[A]);
+        const bx = f32(vx[B]); const by = f32(vy[B]); const bz = f32(vz[B]);
+        const cx2 = f32(vx[C]); const cy2 = f32(vy[C]); const cz2 = f32(vz[C]);
+        rc.facets += 1;
+        const cth = canon(Math.atan2((ay + by + cy2) / 3, (ax + bx + cx2) / 3));
+        const czc = (az + bz + cz2) / 3;
+        const dec = rcDeclared(cth, czc);
+        if (dec) rc.declaredFacets += 1;
+        // S1
+        const ar = aspect3(ax, ay, az, bx, by, bz, cx2, cy2, cz2);
+        if (ar > rc.worstAR) { rc.worstAR = ar; rc.worstARSite = { th: Number(cth.toFixed(6)), z: Number(czc.toFixed(5)), ar: Number(ar.toFixed(3)) }; }
+        if (ar > SHAPE_AR) { rc.s1Over += 1; if (dec) rc.s1OverDeclared += 1; else rc.s1OverUndeclared += 1; }
+        if (!dec && ar > rc.worstARUndeclared) rc.worstARUndeclared = ar;
+        // S2 — anchored at A, through dTh, so the seam is crossed the short way
+        const t0 = vth[A];
+        const sPar = signedAreaParam(t0, vz[A], t0 + dTh(A, B), vz[B], t0 + dTh(A, C), vz[C]);
+        if (sPar < 0) rc.s2Fold += 1; else if (sPar === 0) rc.s2Zero += 1;
+        // S20 — the judge's own inputs
+        if (footBackShipped(t, true)) rc.admitBack += 1;
+        // A3 — minimum altitude = 2*area / longest edge, on the shipped values
+        const e0 = Math.hypot(bx - ax, by - ay, bz - az);
+        const e1 = Math.hypot(cx2 - bx, cy2 - by, cz2 - bz);
+        const e2 = Math.hypot(ax - cx2, ay - cy2, az - cz2);
+        const ux = bx - ax; const uy = by - ay; const uz = bz - az;
+        const wx = cx2 - ax; const wy = cy2 - ay; const wz = cz2 - az;
+        const area2 = Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+        const alt = area2 / Math.max(1e-30, Math.max(e0, e1, e2));
+        if (alt < rc.altMinUm) rc.altMinUm = alt;
+        if (alt < ALT_FLOOR_MM) { rc.altBelow += 1; if (dec) rc.altBelowDeclared += 1; }
+      }
+      rc.altMinUm = Number.isFinite(rc.altMinUm) ? rc.altMinUm * 1000 : -1;
+      writeFileSync(join(outDir, `${tag}.accept.json`), JSON.stringify({
+        schema: 'pf.strata.accept/1',
+        run: { style: STYLE, params: styleParams, dims: DIMS, stage: STAGE, tag },
+        field: {
+          path: RECON, floorUm: RECON_FLOOR * 1000, alpha: RECON_ALPHA,
+          beta: RECON_BETA, cand: RECON_CAND, scale: RECON_SCALE,
+          stats: reconField === null ? null : reconField.stats,
+        },
+        bars: { shapeAR: SHAPE_AR, altFloorUm: ALT_FLOOR_MM * 1000 },
+        declaredRegions: rcPatches.length,
+        census: rc,
+      }, null, 1));
+    }
+
     // ─── §5.4 THE RUN MANIFEST. Written beside the STL, ALWAYS (it does not touch a byte of the STL).
     // Nothing else ties an STL to the surface it was built on: DIMS is a file-local constant, STYLE defaults
     // to 'GothicArches', and the STL header carries a fixed string. The auditor currently has to be TOLD the
@@ -4293,6 +4422,32 @@ describe('STRATA conforming-bisection', () => {
               ? 'The patchSubMax guard never clipped, so the fix applied in full.'
               : `*** THE patchSubMax GUARD CLIPPED ON ${alignedStats.patchSubCapped} RINGS — the routed disk may STILL be`
                 + ' coarser than the field there, and that is reported rather than absorbed. ***'}`,
+        ] : []),
+        ...(RECON !== '' && reconField !== null ? [
+          `    *** S23 RECONSTRUCTION — ONE CONSTRUCTION PASS, HANDS OFF TO NOBODY. PF_CB_RECON=${RECON}`
+            + `${RECON_SCALE !== 1 ? `   *** PROBE at PF_CB_RECON_SCALE=${RECON_SCALE} — NOT a production mesh ***` : ''}`,
+          `      field: floor ${(RECON_FLOOR * 1000).toFixed(1)} um (clamped ${reconField.stats.flooredCells} of ${reconField.stats.nCells} cells,`
+            + ` raw min ${reconField.stats.rawMinUm} um), gradation alpha ${RECON_ALPHA}`
+            + ` (lowered ${reconField.stats.gradedCells} cells, worst x${reconField.stats.worstGradeRatio}, ${reconField.stats.sweeps} sweeps)`,
+          `      prepared h um: min ${reconField.stats.min} p01 ${reconField.stats.p01} p10 ${reconField.stats.p10}`
+            + ` p50 ${reconField.stats.p50} p90 ${reconField.stats.p90} p99 ${reconField.stats.p99} max ${reconField.stats.max}`
+            + `   8-neighbour size ratio p99 ${reconField.stats.ratioRawP99} -> ${reconField.stats.ratioP99} (MAX ${reconField.stats.ratioRawMax} -> ${reconField.stats.ratioMax})`,
+          `      CHAIN ALONG BOUND BY THE FIELD (PF_CB_RECON_CHAIN=${RECON_CHAIN ? 1 : 0}): shortened at`
+            + ` ${alignedStats.reconAlongBoundPts} chain points   — the ONE clause that adds constraints;`
+            + ` recovery ${alignedStats.constraintsRecovered} of ${alignedStats.constraints} is the S7 tripwire`,
+          `      INFILL (free Steiner points ONLY — ZERO constraints added): ${alignedStats.reconPts} placed`
+            + ` from ${alignedStats.reconCandidates} candidates at beta ${RECON_BETA} / cand ${RECON_CAND}`
+            + `   refused ${alignedStats.reconRefusedPt} on point clearance, ${alignedStats.reconRefusedSeg} on constraint clearance`
+            + `   in ${(alignedStats.reconMs / 1000).toFixed(0)}s`,
+          `      boundary densification (rim rows + BOTH seam columns from ONE z-set, per S11): ${alignedStats.reconBoundaryPts} points`
+            + `   candidates whose demand was already AT the floor: ${alignedStats.reconFloorHits}`
+            + `   — the population the constructor is architecturally forbidden to resolve finer, reported not absorbed`,
+          `      COMPOSED ACCEPTANCE over ${rc.facets} constructed facets, on the values that SHIP:`
+            + `   S1 over-cap ${rc.s1Over} (declared ${rc.s1OverDeclared} / UNDECLARED ${rc.s1OverUndeclared}),`
+            + ` worst AR ${rc.worstAR.toFixed(2)} (worst UNDECLARED ${rc.worstARUndeclared.toFixed(2)})`,
+          `        S2 folds ${rc.s2Fold} (zero-area ${rc.s2Zero})   S20 footprint-back ${rc.admitBack}`
+            + `   ALT_FLOOR 0.7629 um: ${rc.altBelow} below (declared ${rc.altBelowDeclared}), min altitude ${rc.altMinUm.toFixed(4)} um`
+            + `   ${rc.declaredFacets} facets inside the ${rcPatches.length} declared regions`,
         ] : []),
         ...(alignedSeedCrossings >= 0 ? [
           `    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink:`

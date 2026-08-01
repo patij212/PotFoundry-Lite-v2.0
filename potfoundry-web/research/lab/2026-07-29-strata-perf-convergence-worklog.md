@@ -5756,6 +5756,163 @@ sagitta stays under `PF_CB_TOL` = 10 um, four directions):
 >> field that prices 95.9 um and an oracle that placed 13.5 um.
 
 
+### *** S23B RESULT — **ROW 2: REFUTATION OF THE CONSTRUCTION ARGUMENT.** THE CLAUSE MISSES BY 194 SHARDS
+### *** AND 230 FAN HUBS OUTSIDE DECLARED GEOMETRY, AND 100% OF THEM SIT INSIDE THE DECLARED CORRIDOR.
+### *** THE MESH IS DETERMINISTIC, CHEAPER THAN REFINEMENT, AND ANNIHILATES THE PARAMETRIC-BLADE TAIL. ***
+Mesh: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S23B.stl` (763,965 facets, 39.2 MB).
+Chain `out/s23b_arm.sh`, all ten stages, log `S23B_ARM.log`. Command in full in the beta block above.
+
+**THE VERDICT ROWS, FIRST MATCH, INFEASIBLE FIRST, AS REGISTERED:**
+  1 **INFEASIBLE** — S7 fires or Stage 0 returns E0/E1. Stage 0 was **E2 GO**; `cdt2d` triangulated
+    382,576 points; **constraint recovery 13,220 of 13,220**; the whole driver run was **539 s**, against
+    the 900 s S7 bar. **DOES NOT FIRE.** (It DID fire on the Amendment-C variant — 16,544 of 16,545 — and
+    that variant is not shipped; registered at `659cd8fd`.)
+  2 **REFUTATION OF THE CONSTRUCTION ARGUMENT** — S1 misses. **194 shards and 230 fan hubs outside
+    declared geometry against bars of <= 5 and <= 2. *** FIRES. THIS IS THE ROW. *****
+    **THE CLAUSE HAS NO PARTIAL CREDIT AND IT IS NOT BEING GIVEN ANY.** The mesh is excellent on several
+    other axes — determinism, identity, cost, the parametric-AR tail — and the ARGUMENT is still refuted.
+
+| bar | `_S23B` | control `_S22B` | |
+|---|---|---|---|
+| **S1 shards outside declared geometry** | **194** (0 rim-row, 194 interior) | 205 | bar <= 5 — **MISSES** |
+| **S1 fan hubs outside declared geometry** | **230** | 31 | bar <= 2 — **MISSES, and WORSE than the substrate** |
+| S2 HEADLINE H2 | **622.349 um** | 95.484 | x6.52 — **FAILS** |
+| S2 judge H2, FULL coverage, 29.0M queries | **445.898 um** | — | |
+| S2 driver over-0.01mm | 151,442 / 763,965 = **19.82%** | 486 / 1,251,546 = 0.0388% | **FAILS** |
+| S2 H1 | worst **383.724 um**, audited 21,726/763,965 = **2.84%**, INCOMPLETE | | capped-H1 caveat applies |
+| **S3 non-manifold edges** | **2** | 0 | **FAILS** |
+| S3 seam-crack / reversed / boundary loops | **0 / 0 / 2** | 0 / 0 / 2 | HOLDS |
+| S3 constraint recovery | **13,220 / 13,220 = 100%** | 12,806/12,806 | HOLDS |
+| S4 live triangles | **763,965** = **38.2%** of the 2.0 M ceiling | 1,251,546 | HOLDS |
+| S4 wall | **545 s** (ceiling 600 s) | 939 s | HOLDS — **x0.58, CHEAPER: the registered prior HOLDS** |
+| **S4 density vs the field's own price** | **x0.4433** of 1,723,299 | — | **the architecture's own claim MISSES** |
+| **S5 determinism** | md5 `588d93706d8b0144ec070a7d0242985b` on **all three** STLs, `cmp` byte-identical **twice** | | **HOLDS** |
+| **S6 identity** | md5 `8a59fb37a9115600b13262254380ccb0` = `_W1`, `cmp` byte-identical | | **HOLDS** |
+| **S6 hard gate** | **12/12, every documented value exact** (V1 2.249981, V3 12.041, V4 502.615, V5 391.661, V6 0.617, V7 0.000, V7b 402.230, V7c 12.041/39.767/142.668) | | **HOLDS** |
+| judge FOLD | **0** | 0 | **PASS** |
+| judge NORMAL | **14** | 0 | **FAIL** |
+| judge BLADE (determined) | **7** — **0 exempted, 7 UNDECLARED** | 3 | **FAIL** |
+| judge TOPOLOGY | **2** | 0 | **FAIL** |
+| ALT_FLOOR 0.7629 um breaches | **0** (min altitude **1.594 um**) | 162 | **HOLDS** |
+| S2 (theta,z) folds | **0** | | **HOLDS** |
+| plates | **30,220** (worst 496.7 um; routed 338, outside 29,882) | 51 | **x593** |
+| gated orientation blades | 6 | 0 | |
+| S22-registered >= 1.5 mm band | **25** | 44 | **IMPROVED** |
+| **parAR** p50 / p99 / MAX | **2.31 / 8.6 / 98.6** | 4.28 / 65.1 / **932,125.1** | **THE TAIL IS ANNIHILATED** |
+| parAR above 50 | **11 (0.001%)** | 17,573 (1.404%) | **x0.0006** |
+| **P-c** `arM` p50 / p99 | **12.01 / 201.43** | 11.58 / 239.13 | bar p99 <= 60 — **FAILS** (x1.19, not x4) |
+| P-b designed-lattice shard class | **0** | 0 | unchanged |
+| P-d rim row | **0** rim-row shards | 40 | no rim-row win was registered, and none is claimed |
+
+>> **THE ONE UNAMBIGUOUS WIN, AND IT IS NOT THE ONE THE ARM WAS FOR.** The parametric-AR tail — S19's
+>> *"mm-scale edges, 85-95 deg off the analytic normal, parametric AR in the thousands, 3-D AR under the
+>> cap and therefore invisible to every gate"* — **is gone. MAX 932,125.1 -> 98.6, above-50 17,573 ->
+>> 11.** That population was never reachable by any bisection-family primitive and a construction pass
+>> removed it in one pass. It is banked, and it does not buy the clause.
+
+#### THE MECHANISM ATTRIBUTION — THREE CANDIDATES, EACH CHECKED, NONE ASSUMED
+Tool `research/tools/s23Attrib.ts`, over the 194 shard sites that actually refuted the clause.
+
+  **(a) THE SERIALIZED-GRID UNDER-PRICING IS SYSTEMIC. CONFIRMED.** The shipped 0.25 mm grid under-prices
+  at **174 of 194 sites (89.7%)** — median **x3.45**, p90 **x5.34**, MAX **x6.54**, and by more than x3 at
+  121 of them. **D49's separately-measured x3.48 sits at the 53rd percentile: it was a TYPICAL member of
+  this population, not the outlier I found it as.**
+  **AND THE SHARPER FORM OF IT, WHICH THE TRUE-COST INTEGRAL EXPOSED:** the true demand at the driver's
+  own 10 um tolerance reads **p10 290.0 / p50 1,805.9 / p90 1,987.6 um** against the extracted grid's
+  **p10 190.1 / p50 646.4 / p90 842.4**. **The grid is OVER-priced on smooth wall (646 against 1,806) and
+  UNDER-priced at features — wrong in BOTH directions, with an integral that lands at a plausible x1.4.**
+  A per-vertex incident-area average on a 0.25 mm lattice is a low-pass filter, and a low-pass filter is
+  exactly the wrong instrument for a demand map whose whole content is its tails.
+  **(b) THE CORRIDOR IS THE PLACEMENT MECHANISM. CONFIRMED, AND IT IS TOTAL.** Distance from each shard
+  site to the nearest traced constraint: p10 **115**, p50 **252**, p90 **499**, MAX **593 um**.
+  **194 of 194 — ONE HUNDRED PERCENT — lie within `acrossMaxMm` = 650 um, the outermost declared offset
+  ring, and 148 of 194 (76.3%) lie within `acrossBase` = 385.3 um, the corridor Amendment B hands back to
+  the across rule. NOT ONE SHARD IS ON OPEN WALL.** The refuting population is entirely inside the region
+  the free-Steiner infill is FORBIDDEN to enter, and the only mechanism that can reach it — Amendment C —
+  is INFEASIBLE at 16,545 constraint segments.
+  **(c) D5 DISPERSION IS *NOT* THE MECHANISM. THE REGISTERED SUSPECT IS REFUTED.** Local raw-field
+  dispersion at the shard sites reads p50 **2.43** / p90 **3.73** / MAX **7.23** — **BELOW the whole-field
+  median of 2.793 at 68.6% of sites, and ZERO sites above the whole-field p99 of 14.742.** The shards are
+  not sitting where the field is noisy. The parAR census says the same thing from the other side: there is
+  no texture chatter in this mesh at all.
+  **(d) AND MY OWN PRE-RUN EXPECTATION IS REFUTED, WHICH IS WORTH MORE THAN IF IT HAD HELD.** I registered
+  that *"the cost bar binds before the density claim is even half discharged"*. **It did not bind.** The
+  shipped arm came in at **38.2% of the triangle ceiling and 545 s of a 600 s wall** — under EVERY
+  registered cost ceiling — and still delivered **44%** of the density the field priced. **The limiter is
+  geometric, not budgetary**, and no value of `beta` could have found it, because no free point may enter
+  the corridor where 100% of the deficit lives.
+
+#### THE TWO NON-MANIFOLD EDGES, LOCATED
+Both at **th 2.4344, z 119.98**, edges 20.6 and 30.7 um, of 1,146,317 edges. Amendment A did NOT clear
+them: the participating vertices are a SNAPPED chain vertex on the rim (th 2.434564, z 120.000000 — not a
+lattice column, 2.434564 / (2pi/200) = 77.494) and a chain CROSSING-SPLIT vertex **2.3 um** below the rim
+constraint, both PRE-EXISTING seed geometry, with one infill point at z 119.96392 completing the
+configuration. **It is density-gated — scales 4 and 2 read 0 — and it is deterministic: all three STLs
+carry it identically.** Reported and handed forward; it is NOT tuned around, because the row is already
+decided and the registration says so.
+
+
+### S23B-R — **THE CORRECTED RE-RUN, REGISTERED. NOTHING IS BUILT, NOTHING IS RUN, NO NUMBER IS READ.**
+Derived entirely from the attribution above, and every clause names the measurement that forces it.
+
+  **R1 — SHIP THE SCATTERED FIELD. THE STAGE-0 SERIALIZATION ONE-LINER, AND IT IS THE FIRST THING.**
+  Stage 0 identified this exact hazard, solved it by making the PRIMARY field SCATTERED (nearest source
+  vertex, resolution proportional to local density by construction), and then emitted the **0.25 mm
+  reporting GRID** as the durable artifact — the instrument, not the answer. **The build was priced by the
+  instrument.** Measured consequence: 89.7% of the refuting sites under-priced, median x3.45; over-priced
+  on smooth wall by x2.8 in the other direction. `s23Density.ts` already computes the scattered field; it
+  must SERIALIZE it (or a grid fine enough that the p10 of the true demand, 290 um, is resolved — the
+  current 250 um cell is marginal by construction and the vertex-area average defeats it anyway).
+  **This touches no constructor, changes no gate, and is the cheapest item on this list.**
+  **R2 — THE CORRIDOR IS THE REAL LIMIT, AND THE TWO ROADS OUT ARE NAMED, NOT CHOSEN.** 100% of the
+  refuting population lives inside the declared across corridor. Free Steiner points cannot enter it
+  (Amendment B, correctly). Densifying the chains reaches it and is **INFEASIBLE at 16,545 segments**
+  (Amendment C, S7). So the next arm must pick one and register it with its own negative control:
+    (i) **MAKE THE CONSTRAINT GRAPH RECOVERABLE AT HIGHER DENSITY.** This is a CDT problem, not a mesher
+        one — the failure is one segment of 16,545, and the literature for it is constraint recovery by
+        construction (Shewchuk-style segment splitting to a guaranteed-recoverable PSLG) rather than the
+        assert-and-throw this file does. **Naming it as a CDT problem is the most transferable thing this
+        arm produced.**
+    (ii) **PRICE THE CORRIDOR ITSELF BY THE FIELD** — the innermost offset ring radius becomes
+        `min(across, h)` rather than `max(acrossMinMm, hAc)`. This is a DECLARED-GEOMETRY change, it
+        invalidates the S15/S19 A/Bs it inherits, and it needs its own registration and its own layer-2
+        negative control. **It is NOT a tuning of S23B and must not be smuggled in as one.**
+  **R3 — THE COST, SAID AS A NUMBER, BECAUSE THAT IS THE OPERATOR'S DECISION AND NOT MINE.**
+  The registered D6 integral, re-evaluated with `h` = the surface's OWN demand at the driver's own
+  `PF_CB_TOL` = 10 um (stride 4 over the same reporting grid, 33,960 cells recovering **99.87%** of the
+  analytic area, floored at 36.4 um):
+
+  | the field the constructor is priced by | N_tri | x `_S22B` | % of the 2.0 M ceiling |
+  |---|---|---|---|
+  | RAW extracted grid (Stage 0) | 1,761,257 | x1.4073 | 88.1% |
+  | PREPARED grid (floor 36.4, alpha 1.0) | 1,723,299 | x1.3769 | 86.2% |
+  | **THE SURFACE'S OWN DEMAND at 10 um** | **5,024,104** | **x4.0143** | **251.2%** |
+  | what S23B actually built | 763,965 | x0.6104 | 38.2% |
+
+  >> **HONOURING THE TRUE DEMAND BREACHES THE REGISTERED 2.0 M LIVE-TRIANGLE CEILING BY x2.51.**
+  >> **THAT IS AN OPERATOR DECISION ABOUT THE CEILING, NOT A REASON TO CLAMP**, and it is stated as a
+  >> number so it can be decided rather than absorbed. The ceiling was derived in S4 from a 1.25 M mesh
+  >> and a 600 s wall; the surface asks for 5.02 M at the driver's own tolerance. One of those two numbers
+  >> has to move, and choosing which is not a mesher's call.
+  **R4 — THE TWO NON-MANIFOLD EDGES ARE A PRECONDITION, NOT A POLISH ITEM.** A chain crossing-split vertex
+  2.3 um off a domain-side constraint is inside stage 3e's 20 um re-routing radius; the fix belongs in the
+  seed's snap/split ordering (crossing splits currently run AFTER the boundary snap and are never
+  re-snapped), not in the infill. Registered as the first thing the next arm's gate must read 0 on.
+  **R5 — WHAT MUST NOT CHANGE.** The floor 36.4 um, the gradation alpha 1.0, FLOOR-THEN-GRADE, `beta` at
+  its derived 0.83, THE CLAUSE's bar and its no-partial-credit rule, and the five verdict rows. **None of
+  them is implicated by the attribution, and re-opening a settled variable to chase a refuted row is how
+  a campaign loses its own control.**
+
+>> **THE ONE THING TO KNOW: THE ARCHITECTURE'S FIRST CLAIM SURVIVED AND ITS SECOND ONE DID NOT.**
+>> *Bisection texture never ships because bisection output never ships* — the parametric-blade tail,
+>> unreachable by five bisection-family primitives across five arms, went **932,125 -> 98.6 in one
+>> construction pass.** But *only its DENSITY MAP does* is now measured to be false in the form that was
+>> shipped: the map under-prices 89.7% of the sites that refuted the clause, the constructor is forbidden
+>> to reach 100% of them anyway, and the true demand is x2.51 over the ceiling the arm was priced against.
+>> **Extractability was never the risk. Serialization and constraint recovery were, and neither was on the
+>> registered risk list.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
