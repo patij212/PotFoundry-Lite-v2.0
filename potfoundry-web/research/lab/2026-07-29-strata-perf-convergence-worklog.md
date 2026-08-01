@@ -5627,6 +5627,35 @@ verdict rows, THE CLAUSE's bar and the 2.0 M ceiling are untouched, and the regi
 **1,723,299 / ~861,650** stands as written — the arm is scored against it either way.
 
 
+### *** S23B AMENDMENT-C RESULT — **S7 FIRED, ON ITS FIRST BUILD, EXACTLY WHERE THE AMENDMENT AIMED IT.**
+### *** THE CHAIN-BOUND VARIANT IS **INFEASIBLE**, AND IT IS THE MOST INFORMATIVE THING IN THIS ARM. ***
+A/B on the seed harness, matched `beta` 0.83, matched trace, one process so the 33 s trace is the same
+object in both arms:
+
+| variant | points | tris | x prediction | over-cap (worst AR) | constraint recovery | seed build |
+|---|---|---|---|---|---|---|
+| **C ON** — field bounds the chain along spacing | — | — | — | — | **16,544 of 16,545 — 1 MISSING** | **THREW** |
+| **C OFF** — free Steiner infill only (as registered) | 382,576 | 763,965 | **x0.4433** | **7** (85.1) | **13,220 of 13,220** | **347 s** |
+
+>> **THE THROW IS THE RESULT, AND IT IS NOT TUNED AROUND.** `ALIGNED SEED: constraint recovery INCOMPLETE
+>> — 16544 of 16545 locus segments are edges of the triangulation (1 missing).` One segment of 16,545.
+>> The registration wrote the tripwire for exactly this and said what to do with it: **report and stop; do
+>> not tune around it.** The lever stays DEFAULT OFF and the arm ships without it.
+>> **WHAT IT ESTABLISHES, WHICH IS BIGGER THAN THE ARM: THE CONSTRUCTOR'S CONSTRAINT-RECOVERY ASSERTION IS
+>> THE BINDING LIMIT ON HOW MUCH OF THE ORACLE'S DENSITY MAP A CONSTRUCTED MESH CAN CARRY.** The field
+>> asks for ~76 um beside the loci; the only mechanism that can place material there is densifying the
+>> traced chains; densifying them past ~16.5 k segments loses a constraint at production density. The
+>> oracle-and-constructor architecture is not limited by the field's extractability — Stage 0 retired that
+>> risk — it is limited by the CDT's ability to recover a dense constraint graph. That is a different
+>> problem with a different literature, and naming it is worth more than the mesh.
+
+**AND AMENDMENT B IS CONFIRMED BY THE SAME TABLE.** Over-cap facets fell **97 -> 7** and the worst
+undeclared `aspect3` fell **145.85 -> 85.13** — which is `_S22B`'s OWN seed-born worst, to the digit, i.e.
+the amended infill adds nothing the seed did not already carry. `dropRefused 0`, degenerate dropped 737.
+Infill refusals on constraint clearance went 70,579 -> 200,620, which is the corridor being handed back to
+the across rule, counted.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
