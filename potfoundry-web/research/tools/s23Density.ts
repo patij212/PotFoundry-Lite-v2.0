@@ -687,18 +687,72 @@ if (!D0) {
 // gradient-limit" as an OPEN QUESTION for the build. Deciding it silently inside the extractor would hide
 // the decision inside the instrument, which is the mistake this campaign keeps paying for.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// S23B-R / R1 — THE SERIALIZATION FIX. **THE SCATTERED FIELD IS NOW THE DURABLE ARTIFACT.**
+//
+// WHAT WENT WRONG THE FIRST TIME, in one sentence: this registration made the PRIMARY field SCATTERED
+// (nearest source vertex, "its resolution is proportional to the local density BY CONSTRUCTION"), built a
+// 0.25 mm grid beside it "purely as the instrument the landmarks are read on" — and then serialized THE
+// INSTRUMENT. The build was priced by the instrument. Measured consequence (S23B attribution): the
+// shipped grid UNDER-PRICES 174 of the 194 sites that refuted the clause (89.7%), median x3.45, MAX
+// x6.54, while OVER-pricing smooth wall (p50 646 um against a true demand of 1,806).
+//
+// THE ARITHMETIC OF WHY A 0.25 mm CELL CANNOT CARRY THIS FIELD, so this is a bound and not a story:
+// one 0.0625 mm^2 cell holds ONE value. Where the oracle placed 50 um material, ~25 source vertices fall
+// inside that cell and 24 of them are discarded; which one survives is decided by which is nearest the
+// CELL CENTRE, a quantity with no physical meaning. D49 is the worked example: the oracle placed 13.5 um
+// edges there and the grid reported 95.9 um.
+//
+// SO THE ARTIFACT NOW CARRIES THE SOURCE VERTICES THEMSELVES — chart position and hA, plus the mesh's
+// own EDGE GRAPH, which is the metric the gradation is entitled to be computed in (the oracle's own
+// connectivity: the field is graded along the mesh that measured it). The 0.25 mm grid is KEPT, and is
+// DEMOTED IN WRITING to a fallback / diagnostic: every number this campaign recorded off it stays
+// reproducible, and nothing new is priced by it.
+// **NO PREPARATION IS APPLIED HERE.** The floor and the gradation remain declared variables prepared in
+// `_strataReconField.ts`, exactly as registered — moving them into the extractor would be the same
+// mistake in the other direction.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
 if (D0 && D1 && D2 && D3 && D4 && D5 && D6 && D7) {
   const outPath = process.env.S23_FIELD ?? `${EX}${ARM}.density.json`;
   const hOut = new Array<number>(gCols * gRows);
   for (let i = 0; i < gCols * gRows; i += 1) hOut[i] = Number((gNear[i] * 1000).toFixed(3));   // um
+  // THE SCATTERED FIELD. Chart position to 1e-6 mm (1 nm) and hA to 1e-3 um.
+  // THE PRECISION IS NOT A TASTE DECISION AND IT WAS MEASURED. At 1e-4 mm the artifact reproduced the
+  // grid's own 1,761,257 only to 0.037% (1,761,907), because a 0.1 um quantisation of the source
+  // positions flips the nearest-vertex assignment in cells where two sources are equidistant to within
+  // that. The value is unaffected — the exact Voronoi identity still returned 2*nV to the digit — but an
+  // instrument that validates against its predecessor to 0.037% WITH A STORY is worth less than one that
+  // validates to the digit, and 1 nm is below the f32 STL's own ~4e-6 mm resolution at r = 45.
+  const sX = new Array<number>(nV); const sY = new Array<number>(nV); const sH = new Array<number>(nV);
+  // `hMin` RIDES ALONG AS A DIAGNOSTIC AND IS NOT THE DRIVING FIELD. The registration prices the
+  // constructor by `hA` and D6's whole derivation depends on that (`hA` is the ONLY one of the three
+  // estimators for which `N_tri = (4/sqrt3) INT dA/h^2` follows with no further assumption). But `hA` is
+  // an AREA scalar, so where the oracle placed ANISOTROPIC material it reports the area-equivalent size
+  // and averages the anisotropy away — and separating "the oracle never resolved this" from "`hA`
+  // averaged away what the oracle did place" needs both numbers at the same point. Carried so that
+  // question can be MEASURED instead of named.
+  const sHmin = new Array<number>(nV);
+  for (let v = 0; v < nV; v += 1) {
+    sX[v] = Number(cxArr[v].toFixed(6));
+    sY[v] = Number(cyArr[v].toFixed(6));
+    sH[v] = Number((hA[v] * 1000).toFixed(3));
+    sHmin[v] = Number(((Number.isFinite(hMin[v]) ? hMin[v] : hA[v]) * 1000).toFixed(3));
+  }
+  const eFlat = new Array<number>(nE * 2);
+  for (let i = 0; i < nE; i += 1) { eFlat[i * 2] = eA[i]; eFlat[i * 2 + 1] = eB[i]; }
   writeFileSync(outPath, JSON.stringify({
-    schema: 'pf.strata.density/1',
-    source: { stl: `${EX}${ARM}.stl`, nTri, nVert: nV, arm: ARM },
+    schema: 'pf.strata.density/2',
+    source: { stl: `${EX}${ARM}.stl`, nTri, nVert: nV, nEdge: nE, arm: ARM },
     chart: { note: 'x = rRef*theta, y = z — the seed builder\'s own chart (_strataAlignedSeed.ts:408)', rRef, xMaxMm: X_MAX, H },
     grid: { cols: gCols, rows: gRows, cellMm: CELL_MM, dxMm: gW, dyMm: gHh, order: 'row-major, row 0 = z 0, col 0 = theta 0' },
     estimator: {
       primary: 'hA = sqrt(2*A(v)/sqrt3), A(v) = (1/3) SUM_{f in F(v)} area(f) — density-preserving',
-      query: 'nearest source vertex in the (arc,z) chart; the value stored per cell is that of its centre',
+      query: 'SCATTERED: h(th,z) = hA of the NEAREST SOURCE VERTEX in the (arc,z) chart. This is the '
+        + 'field the S23 registration defined as PRIMARY, and from schema /2 it is the field that ships.',
+      gridRole: 'FALLBACK / DIAGNOSTIC ONLY. The 0.25 mm grid is the instrument the Stage-0 landmarks '
+        + 'were read on. S23B priced a build by it and the attribution measured the cost: 89.7% of the '
+        + 'refuting sites under-priced, median x3.45. It is kept for reproducibility, not for pricing.',
+      scatterBucketMm: BUCKET_MM,
       unitsUm: true, smoothed: false, gradientLimited: false,
     },
     floors: { pslgThrowUm: PSLG_FLOOR_MM * 1000, acrossDefaultUm: 50, fracBelowThrow: Number(d7hA36.toFixed(6)) },
@@ -708,9 +762,19 @@ if (D0 && D1 && D2 && D3 && D4 && D5 && D6 && D7) {
       impliedNTri: Math.round(fieldN), sourceNTri: nTri, impliedRatio: Number(D6ratio.toFixed(4)),
       lipschitzPerMm: { note: 'REPORTED in the log; the build must decide whether to gradient-limit' },
     },
+    // THE SCATTERED FIELD — the artifact's primary payload from schema /2 on.
+    scatter: {
+      note: 'xMm/yMm are the CHART coordinates of the welded source vertices (x = rRef*theta, y = z); '
+        + 'hUm is hA at that vertex; edges is the mesh\'s own edge graph, flat [a0,b0,a1,b1,...], which '
+        + 'is the metric a gradation over this field is computed in.',
+      xMm: sX, yMm: sY, hUm: sH, hMinUm: sHmin, edges: eFlat,
+    },
+    // THE 0.25 mm REPORTING GRID — kept, demoted, still bit-for-bit what schema /1 shipped.
     hUm: hOut,
   }));
-  log(`\n  field written: ${outPath}   ${gCols} x ${gRows} cells, um, UNSMOOTHED and NOT gradient-limited`);
+  log(`\n  field written: ${outPath}   schema pf.strata.density/2`);
+  log(`    SCATTERED (primary): ${nV} source vertices + ${nE} graph edges, um, UNSMOOTHED and NOT gradient-limited`);
+  log(`    0.25 mm grid (FALLBACK/DIAGNOSTIC): ${gCols} x ${gRows} cells — kept for reproducibility, not for pricing`);
   log('  (the gradient-limiting decision is the BUILD\'s, registered as an open question — not the extractor\'s)');
 }
 log('══════════════════════════════════════════════════════════════════════════════════════════════');

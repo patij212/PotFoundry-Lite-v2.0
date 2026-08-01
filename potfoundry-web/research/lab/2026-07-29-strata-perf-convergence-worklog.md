@@ -6011,6 +6011,91 @@ combined. **REGISTERED SUBSTITUTE:**
 >> acts and this block only does the first.
 
 
+### *** S23B-R / R1 RESULT — **THE SCATTERED FIELD SHIPS, AND THE DRY RE-PRICING REFUTES THE EXPECTATION
+### *** IT WAS BUILT ON. THE CORRECTED FIELD PRICES AT 2,069,338 — NOT ~5.02 M — AND THE UNDER-PRICE
+### *** DECOMPOSES: SERIALIZATION OWNS x1.18 OF IT, THE ESTIMATOR x1.19, AND **THE ORACLE'S OWN
+### *** NON-CONVERGENCE OWNS x2.46**, WHICH NO SERIALIZATION FIX CAN REACH. ***
+R1 said *"ship the SCATTERED field ... this touches no constructor, changes no gate, and is the cheapest
+item on this list"*, then *"report the number against the new ceiling BEFORE building anything."* Both
+done. **Nothing is built.** New/changed, all artifact-only: `research/tools/s23Density.ts` (emits schema
+`pf.strata.density/2`), `research/bridge/_strataReconField.ts` (reads it), `research/tools/s23Reprice.ts`
++ `tsconfig.s23rep.json` (new), `research/bridge/out/s23r_reprice.sh`. Logs `S23R_STAGE0_S22B.log`,
+`S23R_REPRICE.log`. **The schema-/1 artifact is BYTE-UNTOUCHED** — the new field is a new file
+(`..._S22B.density2.json`, 51.7 MB) — so every number this campaign banked off the grid stays
+reproducible against the artifact it was measured on.
+
+**THE INSTRUMENT VALIDATES ITSELF TWICE AND BOTH ARE EXACT, WHICH IS THE ONLY REASON ANYTHING BELOW IS
+QUOTED.** (i) the GRID path read off the NEW artifact returns **1,761,257** raw and **1,723,299** prepared
+— Stage 0's and S23B's own registered numbers, to the digit. (ii) the RAW SCATTERED field integrated at
+`k = 1` (one sample per 0.25 mm cell CENTRE, which *is* `gNear`) returns **1,761,257**, and its exact
+Voronoi integral returns **1,252,696 = 2·nV**, the Euler identity with no discretisation anywhere.
+>> **AND VALIDATION (ii) FAILED TWICE FIRST, BOTH TIMES ON ME, AND BOTH ARE ON THE RECORD.** The first
+>> draft compared PREPARED scatter against RAW grid — a mis-specification, not a defect. The second
+>> missed by **650 of 1,761,257 (0.037%)** because I serialized the chart coordinates at 1e-4 mm and a
+>> 0.1 um quantisation flips the nearest-vertex assignment where two sources are equidistant to within
+>> it. **The fix was to remove the cause (1e-6 mm, below the f32 STL's own ~4e-6 mm at r = 45), not to
+>> explain the 0.037% away.** An instrument that validates to the digit is worth more than one that
+>> validates to 0.037% with a story attached.
+
+#### WHAT THE CORRECTED FIELD COSTS — THE NUMBER, AGAINST THE RAISED CEILING
+| the field the constructor is priced by | N_tri | x `_S22B` | % of 2.0 M (old) | % of 5.5 M (raised) |
+|---|---|---|---|---|
+| RAW 0.25 mm grid (what Stage 0 serialized) | 1,761,257 | x1.4073 | 88.1% | 32.0% |
+| PREPARED 0.25 mm grid (what S23B was priced by) | 1,723,299 | x1.3769 | 86.2% | 31.3% |
+| **PREPARED SCATTERED field, EXACT (R1)** | **2,069,338** | **x1.6534** | **103.5%** | **37.6%** |
+| THE SURFACE'S OWN DEMAND at 10 um (R3's row) | 5,024,104 | x4.0143 | 251.2% | 91.3% |
+| what S23B actually BUILT | 763,965 | x0.6104 | 38.2% | 13.9% |
+
+Convergence of the same D6 integral, sampling the scattered field `k x k` per reporting cell:
+`k=1` **2,132,972** · `k=2` **2,131,965** · `k=4` **2,147,018** — converging to within **3.7%** of the
+exact Voronoi value, which is the analytic-area vs mesh-area difference and nothing else.
+Preparation: **28,350 of 626,348** vertices floored (**4.526%**, raw min 13.744 um — the Stage-0
+vertex-weighted figure, reproduced); the gradation lowered **186,703 (29.808%)**, worst **x9.0114**;
+edge-wise size ratio over the oracle's own graph p99 **6.0228 -> 3.0248**, MAX **72.56 -> 20.30**.
+The gradation metric's own bias, MEASURED (accumulated graph walk vs the straight chart line it stands
+for): p50 **1.0** / p99 **1.2877** / MAX **17.85** — MORE permissive, the same direction the grid path's
+chamfer note declares its own ~8%, and reported for the same reason.
+
+>> **THE EXPECTATION THIS ARM INHERITED IS REFUTED BY ITS OWN DRY RUN, AND THAT IS WHY THE RUN EXISTS.**
+>> The charter expected *"~5.0M facets (~250 MB STL)"*. The corrected field prices at **2.07 M**. The
+>> **5,024,104** of R3's table is the SURFACE'S OWN demand at 10 um, measured off the analytic surface —
+>> it was never the extracted field's price, and the extracted field is what drives the constructor.
+>> **THE RAISE WAS STILL LOAD-BEARING AND ONLY JUST: 2,069,338 is 103.5% of the old 2.0 M ceiling.** At
+>> the old ceiling the corrected arm would have opened with a registered INFEASIBLE row before it built
+>> anything. It does not, and it now sits at 37.6% of the raised one.
+
+#### AND THE PART THAT MATTERS MORE THAN THE COST — WHO ACTUALLY OWNS THE UNDER-PRICE
+The constructor never integrates; it asks `h` AT A POINT. So the honest test of R1 is the LOCAL query at
+the 194 sites that refuted THE CLAUSE, against the attribution's own quantity:
+
+| what is asked at the 194 refuting sites | h um p10 / p50 / p90 | ratio to the surface's own 10 um demand | under-pricing |
+|---|---|---|---|
+| the shipped 0.25 mm GRID (S23B) | 145.0 / 202.4 / 308.8 | p50 **x3.45**, MAX x6.54 | 174/194 (**89.7%**) |
+| **the SCATTERED field (R1)** | 110.9 / **170.3** / 287.5 | p50 **x2.92**, MAX x6.86 | 172/194 (**88.7%**) |
+| **the ORACLE'S OWN `hMin` at the same vertex** | 60.4 / **150.8** / 283.6 | p50 **x2.46**, MAX x6.20 | 166/194 (**85.6%**) |
+
+>> **THE DECOMPOSITION, AND IT IS THE RESULT OF THIS BLOCK.** `3.45 -> 2.92 -> 2.46 -> 1.0`:
+>> **SERIALIZATION owns x1.18** of the excess (3.45/2.92) — real, fixed, and the cheapest of the three.
+>> **THE ESTIMATOR owns x1.19** (2.92/2.46) — `hA` is an AREA scalar and averages away anisotropy the
+>> oracle did place; `hMin` is now carried in the artifact as a DIAGNOSTIC so this could be measured
+>> rather than named, and it is NOT the driving field (D6's derivation holds for `hA` alone).
+>> **THE ORACLE'S OWN NON-CONVERGENCE OWNS x2.46 — the largest term and the residual after both fixes.**
+>> `_S22B`'s own shortest incident edge at those sites is 150.8 um where the surface demands ~58 um at
+>> the driver's own tolerance. **No serialization change, no estimator change and no constructor can
+>> reach that, because the demand was never in the map.** `_S22B` is a mesh whose own H2 reads 95.484 um
+>> against a 10 um TOL; a density map extracted from it cannot price a feature it never resolved.
+>> **SAID AS A LAW, BECAUSE IT GENERALISES BEYOND THIS ARM: THE ORACLE-AND-CONSTRUCTOR ARCHITECTURE IS
+>> BOUNDED BY THE ORACLE'S OWN CONVERGENCE, NOT BY THE FIELD'S EXTRACTABILITY OR ITS SERIALIZATION.**
+>> Stage 0 retired extractability. R1 has now retired serialization — and measured that retiring it buys
+>> x1.18 of a x3.45 problem. *Only its DENSITY MAP ships* is true, and the map is only as good as the
+>> mesh that priced it. **That is a THIRD limit, alongside the corridor and constraint recovery, and it
+>> was not on the registered risk list either.**
+>> **WHAT IS NOT CLAIMED:** that R1 was not worth doing. It was registered, it is correct, it removed a
+>> measured defect, the grid is demoted in writing rather than deleted, and D49's own pinned witness went
+>> **107.5 um -> 40.0 um** at the point where the residual block found it. What is claimed is the size of
+>> what it bought, and the size is x1.18.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
