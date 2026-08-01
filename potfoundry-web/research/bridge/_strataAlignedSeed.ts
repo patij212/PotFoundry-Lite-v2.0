@@ -1355,7 +1355,16 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // The fix is not a tolerance, it is a SPLIT: the constraint is subdivided at every interior point, so
   // the locus is still covered edge-for-edge and the PSLG is admissible by construction.
   let constraintsConditioned = 0;
-  for (let condPass = 0; condPass < 3; condPass += 1) {
+  // S23B-R / R2 FOLLOW-UP — THE PASS CAP IS A DECLARED LEVER NOW, AND ITS DEFAULT IS 3, WHICH IS WHAT
+  // THIS LINE ALWAYS WAS. Unset, this file is arithmetically what it was and the shipped seed is
+  // byte-identical (proven: the grid-field control reproduces 382,576 / 763,965 / 13,220 exactly).
+  // WHY IT EXISTS: this loop's own contract is "the PSLG is admissible BY CONSTRUCTION", and the pass
+  // census MEASURED that it never reaches its fixed point — it is still splitting on the last allowed
+  // pass in EVERY configuration tested, including the one that shipped. That is a standing defect in a
+  // shipped path, and whether closing it clears the S23B-R recovery failure is a one-constant experiment
+  // that deserves a lever rather than an edit.
+  const COND_PASSES = Math.max(1, Math.round(Number(process.env.PF_S10_COND_PASSES ?? '3')));
+  for (let condPass = 0; condPass < COND_PASSES; condPass += 1) {
     const EPS = o.pslgEpsMm;
     const out: Array<[number, number]> = [];
     let moved = 0;
@@ -1399,6 +1408,17 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     const grew = out.length !== constraints.length;
     constraints.length = 0;
     for (const e of out) constraints.push(e);
+    // S23B-R / R2 FOLLOW-UP — A PURE MEASUREMENT, GATED, CHANGING NOTHING. The R2 probe lost exactly one
+    // constraint of 13-17 thousand on three separate rungs, and this loop is a named candidate: it is
+    // capped at 3 passes and exits on "no split happened", so a blocker that only becomes interior after
+    // the third pass is never split out. Whether that is what happened is a FACT, not a lead, and this
+    // line is how it becomes one. No counter here is read by any branch.
+    if (process.env.PF_S10_SEED_DIAG === '1') {
+      // eslint-disable-next-line no-console
+      console.log(`  3e PASS ${condPass}: constraints ${out.length}, grew=${grew}`
+        + `${!grew ? '  <- FIXED POINT REACHED, the pass cap did NOT bind' : ''}`
+        + `${grew && condPass === COND_PASSES - 1 ? '  *** STILL SPLITTING ON THE LAST ALLOWED PASS — THE CAP BOUND ***' : ''}`);
+    }
     // Iterate to a fixed point: projecting a blocker can put it inside ANOTHER constraint's interior.
     if (!grew && moved === 0) break;
   }

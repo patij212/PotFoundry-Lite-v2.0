@@ -6246,6 +6246,90 @@ of a single run.
 >> problem. That is the campaign's own lesson arriving on its own arm.
 
 
+### *** S23B-R / R2 FOLLOW-UP — **THE CONDITIONER LEAD IS CLOSED BY MEASUREMENT, AND CLOSING IT FOUND A
+### *** BIGGER DEFECT THAN THE ONE IT WAS CHASING. STAGE 3e HAS NO FIXED POINT: IT DOUBLES ITS CONSTRAINT
+### *** LIST EVERY PASS, 16,683 -> 29,377,010 IN 21 PASSES, AND **THE 3-PASS CAP IS THE ONLY THING
+### *** BOUNDING A DIVERGENT LOOP.** IT IS STILL NOT WHAT LOSES THE SEGMENT. ***
+The R2 block offered the 3-pass cap as **a lead, written as one**. It is now a fact, and the fact is not
+what the lead predicted. Logs `S23R_COND.log` (census, no behaviour change) and `S23R_COND2.log` (the
+experiment). Seed-only; **no arm was built.**
+
+**STEP 1 — THE CENSUS, WHICH CHANGED NOTHING.** A gated counter behind the seed's OWN
+`PF_S10_SEED_DIAG`. Stage 3e is **still splitting on its last allowed pass in EVERY configuration** —
+the corrected field (16,598 -> 16,649 -> 16,683, cap bound) **AND the GRID field that shipped**
+(16,412 -> 16,458 -> 16,484, cap bound). So the loop never reaches the fixed point its own comment
+claims (*"Iterate to a fixed point"*), and it never has, including on `_S23B`.
+>> **AND THE CENSUS HANDED BACK AN UNPLANNED NEGATIVE CONTROL WORTH MORE THAN IT COST.** The grid-field
+>> rung, read through the R1-modified reader off the schema-/1 artifact, reproduced `_S23B`'s seed
+>> **EXACTLY**: **382,576 points / 763,965 tris / 13,220 of 13,220 recovered / over-cap 7 / worst AR
+>> 85.1 / worst parAR 98.6**. **R1's reader is byte-inert on the grid path, proven rather than argued.**
+
+**STEP 2 — THE EXPERIMENT, BEHIND A DEFAULT-UNCHANGED LEVER.** `PF_S10_COND_PASSES`, default **3**,
+which is the constant that was hard-coded there. At **24**:
+
+| pass | 0 | 3 | 6 | 9 | 12 | 15 | 18 | 21 | 23 |
+|---|---|---|---|---|---|---|---|---|---|
+| constraints (corrected field) | 16,598 | 16,709 | 16,936 | 18,534 | 31,108 | 131,490 | 934,336 | 7,356,894 | **29,377,010** |
+| constraints (GRID field) | 16,412 | 16,500 | 16,609 | 17,305 | 22,705 | 65,737 | 409,825 | 3,162,361 | **12,599,561** |
+
+>> **IT DOES NOT CONVERGE. IT DOUBLES.** From ~pass 12 the list grows by a factor of ~2 per pass in both
+>> configurations, and `grew` is therefore true forever — which is exactly why the census read "cap
+>> bound" everywhere. **THE CAP AT 3 IS NOT A COST CHOICE. IT IS THE ONLY BOUND ON A DIVERGENT LOOP**,
+>> and nothing in the file says so.
+>> **THE GROWTH IS DOMINATED BY DUPLICATES, AND THE DEDUPE AFTERWARDS HIDES IT.** The post-3e dedupe
+>> collapses 12,599,561 back to **13,223** — against **13,220** at the default. So 24 passes of a loop
+>> that appeared to explode by x763 produced **three** genuinely new splits, and **the built geometry is
+>> IDENTICAL: 382,576 points / 763,965 triangles, unchanged to the digit.** The cap was never
+>> load-bearing for the shipped mesh either. **A loop whose termination test is `grew` while its output
+>> accumulates duplicates has a termination test that cannot fire.**
+>> **AND THE CORRECTNESS NOTE DESCRIBES CODE THAT IS NOT THERE.** 3e's own comment says the blocker is
+>> *"PROJECT[ED] ONTO THE CONSTRAINT ... splitting at the FOOT leaves the constraint geometrically
+>> UNCHANGED"*. The foot `(fx, fy)` is computed and then discarded — **`void fx; void fy;`
+>> (`_strataAlignedSeed.ts`, stage 3e)** — and the split is taken at the BLOCKER's own position. So each
+>> sub-segment is a *new* line, slightly off the original, which can acquire *new* blockers within
+>> `pslgEpsMm`. That is the divergence, and it is a documented invariant the code does not implement.
+
+**STEP 3 — THE ANSWER TO THE QUESTION THAT WAS ACTUALLY ASKED: NO.** At 24 passes and 29.4 M
+intermediate constraints, the corrected field **still loses exactly the same segment**:
+`(12913, 93746)`, `A = (109.669765, 119.978565) -> B = (109.684280, 120.000000)`, **25.89 um**, on the
+top rim. Recovery `13,415 of 13,416`. **The pass cap is NOT the cause, and the lead is closed.**
+
+>> **SO R4 IS THE ONLY CANDIDATE LEFT STANDING, AND IT IS NOW THE WHOLE BLOCK.** The lost segment is a
+>> rim-terminating chain segment; R4 names *"crossing splits currently run AFTER the boundary snap and
+>> are never re-snapped"* and points at the same rim, the same pairing and the same 20 um tube. Two
+>> independent failures — the two non-manifold edges and the one unrecovered constraint — now point at
+>> one ordering defect. **R4 is not step four of anything. It is the precondition for every road out of
+>> here, road (ii) included.**
+>> **AND IT IS NOT ATTEMPTED IN THIS SESSION, ON PURPOSE.** A snap/split reordering inside
+>> `_strataAlignedSeed.ts` moves DECLARED geometry: it needs its own registration, its own pinning test,
+>> a negative control that the grid-field seed still reproduces 382,576 / 763,965 / 13,220 to the digit,
+>> and a re-run of this whole ladder. **Landing it half-validated at the end of a session is how a
+>> campaign loses its own control**, and the S23B handoff was taken at a clean boundary for exactly this
+>> reason. It is handed forward with the segment, the rim, the micron and the two candidate mechanisms
+>> already named.
+
+**WHAT THIS SESSION LEAVES IN THE TREE, AND ALL OF IT IS DEFAULT-INERT.** `_strataAlignedSeed.ts` gains
+`PF_S10_COND_PASSES` (default **3** = the hard-coded constant) and one `PF_S10_SEED_DIAG`-gated log line
+that no branch reads. `_strataReconField.ts` reads schema `/2` and defaults to `grid` on a `/1` artifact,
+so every existing caller is arithmetically unchanged — **proven by the grid control above, not asserted.**
+No default is flipped. `src/` is byte-untouched by this session.
+
+**AND BOTH SHARED-FILE EDITS ARE CLEARED BY THE STANDING GATE, TAKEN AFTER THEM** (`S23R_GATE.log`):
+  * **HARD GATE 12/12, every documented value EXACT** — V1 **2.249981**, V3 **12.041**, V4 **502.615**,
+    V5 **391.661**, V6 **0.617**, V7 **0.000**, V7b **402.230**, V7c **12.041 / 39.767 / 142.668**.
+  * **W1 IDENTITY: md5 `8a59fb37a9115600b13262254380ccb0`, `cmp` BYTE-IDENTICAL to `_W1`.**
+  * **THE SEED'S OWN IDENTITY, which the gate does not cover and which these edits could have moved:**
+    the grid-field control reproduces `_S23B`'s seed at **382,576 / 763,965 / 13,220 of 13,220**, and it
+    reproduces it again UNCHANGED at 24 conditioner passes. Three independent readings, same digits.
+
+>> **A NOTE FOR WHOEVER READS THE TREE, NOT A FINDING OF THIS ARM.** Four `src/` files were already
+>> modified in the working tree when this session opened — `geometry/conformingTopologyGate.test.ts`,
+>> `geometry/realMeshExport.test.ts`, and `renderers/webgpu/parametric/conforming/
+>> ConstrainedCellTriangulator{.ts,.test.ts}` (a `hasInteriorHole` addition). **They are NOT mine, they
+>> are NOT this arm's, and they are neither committed nor reverted here** — the standing rule is
+>> transcribe-never-edit for `src/`, and an operator-side session's work is not an executor's to touch.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
