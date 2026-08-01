@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "@webgpu/types"],
+    "noEmit": true
+  },
+  "include": [
+    "../bridge/_certComposeLib.ts",
+    "../bridge/_strataCertD.test.ts"
+  ]
+}
