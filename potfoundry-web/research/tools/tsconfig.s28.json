@@ -4,5 +4,5 @@
     "types": ["node", "@webgpu/types"],
     "noEmit": true
   },
-  "include": ["./s28Field.ts", "./s28BoundCol.ts"]
+  "include": ["./s28Field.ts", "./s28BoundCol.ts", "./s28NormalWho.ts"]
 }
