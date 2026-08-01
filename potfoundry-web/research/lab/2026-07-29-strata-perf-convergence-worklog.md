@@ -7848,7 +7848,7 @@ margin and in the good direction: 0.00139% -> 0.00051%, x0.365, against a tripwi
 | **full-coverage control (driver's adaptive oracle)** | **95.473 um** @ z 76.40/76.38/75.97 | **95.473 um @ the SAME locus** | **UNMOVED, 4th arm** |
 | over-0.01mm (full coverage) | 486 | 490 | reported |
 | `unresolved` / worst | 4,307 / 95.473 um | **4,675 / 95.473 um** | <= 8,000 / <= 250.0 — **HOLDS** |
-| strands artifact | `_S22B.strands.json` | `_S24i2.strands.json` | the M=g/h^2 routing input |
+| strands artifact | `_S22B.strands.json` | `_S24i2.strands.json` | ~~the M=g/h^2 routing input~~ **WRONG — see the 2026-08-01 correction directly below. The strands artifact is EMPTY BY DESIGN and is a different population from the 4,675.** |
 
 >> **THE RIM-ROW CAVEAT IS LIVE AND IT APPLIES TO THIS ARM TOO.** `_S24i2`'s sampled H1 witness locus is
 >> **z = [119.969, 119.971, 120.000] — THE OPEN RIM ROW**, exactly as `_S22B`'s was at z 119.964-119.972.
@@ -7858,6 +7858,58 @@ margin and in the good direction: 0.00139% -> 0.00051%, x0.365, against a tripwi
 >> **THE CAGE GREW AS REGISTERED AND IT IS NOT A REGRESSION: `unresolved` 4,307 -> 4,675 -> 5,013 -> 5,566.**
 >> That is exactly what F4 said to expect — tightening pushes more candidates into the S1 cap — and it is
 >> the same population F2's argmax belongs to. **The worst entry never moved: 95.473 um on every arm.**
+
+##### *** CORRECTION (2026-08-01, written by the S25 executor before anything was built) — **THE F4 ROW
+##### ABOVE NAMES THE WRONG ARTIFACT, AND THE TWO NUMBERS IT CONFLATES ARE DIFFERENT POPULATIONS.** ***
+S24's close-out row `| strands artifact | ... | the M=g/h^2 routing input |` and the closing paragraph
+("whose input — `_S24i2.strands.json`, 4,675 facets — this arm emits") assert that the 4,675 lives in
+the strands artifact. **IT DOES NOT, AND NO ARTIFACT IN THE TREE CARRIES IT.** Verified by reading, not
+inferred:
+* `gothicarches_ring_DS-HT_S24i2.strands.json` is **676 bytes**, md5 `ccaba94692b98be7b688aab10052392e`,
+  and its body is `"strands": []` with `counts: { liveFacets 1260110, stranded 0, listed 0,
+  admitChecks 5408249, admitRefusedSplit 43317, admitForcedPush 0 }`. `_S24i3`'s is the same shape
+  (1,266,934 / 0 / 0). **Zero entries, on both.**
+* That file is written by the emitter at `_strataConformBisect.test.ts:4098-4142`, whose membership test
+  is `if (!footBackT(t)) continue;` at **:4114** — the **S20 FOOTPRINT-BACK admission criterion**. So its
+  population is ADMISSION-STRANDED facets, and **0 of 1,260,110 is a PASS, exactly as F5 and the S20/S21B/
+  S22 rows record it** (`| X1 driver-side admission-stranded | 0 of 1,218,088 |`, and the same clause at
+  lines 4307 / 4536). An empty strands file is this campaign's success signal. It was read as a manifest.
+* The **4,675 is the `unresolved` map**, declared at **:2350** (`const unresolved = new Map<number,
+  number>(); // triangle → the key it was popped at`) and filled by SHAPE-REFUSED outcomes — the driver
+  says so in its own report line, `S24_ITER3.log:23`: *"a fully-refused triangle lands in `unresolved` via
+  the no-op-split path"*. Its scalar is `S24_ITER2.log:85` (**4,675** live over-tol, worst **95.473 µm**)
+  and `S24_ITER3.log:85` (**5,013**, worst **95.473 µm**) — which is where the F4 row's own left-hand
+  numbers came from. **Same numbers, different file, different predicate.**
+* **`unresolved` IS NEVER SERIALIZED PER-FACET ANYWHERE IN THE TREE.** The driver has exactly six writers
+  (`:4015` .stl, `:4041` .loci.json, `:4053` .patches.json, `:4132` .strands.json, `:4209` .accept.json,
+  `:4630` .report.txt) and not one consumes the Map. It is reduced at **:2562-2563** to two scalars
+  (`unresolvedLeft`, `unresolvedMax`, survivors only) and at **:2569-2583** to a by-reason histogram
+  (`unresolvedByWhy`, counts only). **All 146 `PF_CB_*` flags were enumerated: none emits it.**
+
+**WHERE THE MISLABEL CAME FROM — IT WAS NOT A SLIP OF THE PEN, IT WAS TRANSCRIBED FROM THE DRIVER.**
+`_strataConformBisect.test.ts:4323` prints, on every run and with no reference to the list's length:
+`    strand list: ${tag}.strands.json — the ROUTED-DEMAND input for M=g/h^2 elements and declared patches, not a failure report`
+`S24_ITER2.log:34` carries it verbatim, two lines under its own `ADMISSION-STRANDED at the end: 0 of
+1260110 live facets`. **The driver asserts the artifact's ROLE unconditionally, and asserted it about an
+empty file.** S24's close-out believed the driver, which is the one thing this campaign has a standing
+rule against — and the rule was written for FIDELITY numbers ("never quote driver self-report as
+fidelity"). **This extends it: NEVER QUOTE DRIVER SELF-REPORT AS ROLE EITHER.** A report line that names
+what an artifact is FOR is an unverified claim about a downstream consumer that does not exist yet, and
+it survives into the log with the authority of a measurement. The line is corrected in the S25 serializer
+unit below — it now states the count and points at the artifact that actually carries the routed demand.
+
+**CONSEQUENCE, AND WHY THIS IS RECORDED AS A RESULT RATHER THAN A TYPO.** S25 was briefed to extract
+routing coverage from "the 4,675-facet list". That list had no existence, so extraction step 0 failed on
+a precondition — correctly. Had the mislabel gone unnoticed, S25 would have registered its bars over an
+EMPTY array: every "fraction of routed sites" clause would have read 0/0 and passed vacuously, and the
+arm would have reported a full-coverage routing win having routed nothing. **A registration quantifying
+over an empty list is unfalsifiable, and unfalsifiable is the one failure mode this campaign's method
+exists to prevent.** The fix is not a re-label: the serializer has to be BUILT before S25 can be
+registered at all. That is S25's first unit, and the re-sequenced arm is below.
+**This note changes what gets registered NEXT. S24's own verdict — ROW 3, TEXTURE TRIP, with F1 closed —
+STANDS EXACTLY AS SCORED.** Nothing in it depended on the artifact's identity: F1, F2, F3a, F4 and F5 were
+all measured from the mesh, the audit and the driver's report. The mislabel is a forward-looking claim
+about what the NEXT arm could consume, and it is the only thing retracted here.
 
 #### **F5 — PRECONDITIONS. ALL SIX DISCHARGED, BOTH SIDES.**
 | clause | `_S22B` | **`_S24i2`** |
@@ -7929,8 +7981,11 @@ S1-cap stranding) **and was declared as such in the registration rather than re-
 >>    cannot see"* — it is **one shape-refused facet class**, the driver already asks to split it at 4x over
 >>    threshold, and the refusal is the S1 aspect cap. **No accept-side lever can reach it: that is now
 >>    measured at rungs 4, 8 and 16, to the sample.** S13 named the fix three sessions ago and S24 has now
->>    earned it: **anisotropic elements under the cap (`M = g/h^2`)**, whose input — `_S24i2.strands.json`,
->>    4,675 facets — this arm emits.
+>>    earned it: **anisotropic elements under the cap (`M = g/h^2`)**, whose input — ~~`_S24i2.strands.json`,
+>>    4,675 facets — this arm emits.~~ **[CORRECTED 2026-08-01: THIS ARM EMITS NO SUCH INPUT. The 4,675 is
+>>    the `unresolved` map, which is never serialized per-facet; `_S24i2.strands.json` is the empty
+>>    ADMISSION artifact and its 0 entries are a PASS. See the correction note under F4. The routing input
+>>    has to be BUILT — it is S25's first unit — before the M=g/h^2 arm can be registered against it.]**
 >> **4. THE TEXTURE PRICE IS REAL, SMALL, AND POINTED AT ONE CLASS.** The deviation tails grew ~2% per
 >>    facet because Phase 2 refines precisely where chords cross steep C1 walls. **Everything the operator
 >>    photographs went the other way** (fan hubs x0.865, fan members x0.863, plates and the 1.5 mm shard
@@ -7978,6 +8033,228 @@ the correct trade and exactly the class of failure that has bitten this campaign
 >> the shape guard is in.
 >> NOT SHOWN, and the agent said so itself: that Phase 2 closes the real 19.247 -> sub-10 um gap. The
 >> smoke ran at 150 um on a 12x8 grid. Mechanism demonstrated; result not claimed.
+
+---
+
+### *** S25 — **INFEASIBLE-AS-BRIEFED. THE ARM CANNOT BE REGISTERED AS HANDED TO IT, AND THE REASON IS A**
+### *** **MISSING ARTIFACT RATHER THAN A MISSING MECHANISM.** THE VERDICT IS RECORDED FIRST AND THE ARM IS
+### *** **RE-SEQUENCED BEHIND THE ONE UNIT THAT HAS TO EXIST BEFORE ANY BAR CAN BE WRITTEN.** ***
+
+**THE VERDICT, STATED BEFORE ANYTHING WAS BUILT.** S25 was handed a coverage extraction over "the
+4,675-facet routing input, `gothicarches_ring_DS-HT_S24i2.strands.json`". **That file is 676 bytes and its
+`strands` array is empty.** The full derivation, the artifact bytes, the line numbers and the provenance of
+the mislabel are in the dated CORRECTION under S24's F4 table above; it is not repeated here. The
+consequence for THIS arm is the part that belongs in this section:
+
+* **S25's extraction step 0 failed on a precondition, and failing was correct.** Two executors have now
+  stopped at it. The first could not commit its finding; this section is that finding, verified
+  independently against the tree rather than inherited on trust — every number in the correction note above
+  was re-read from the artifact or the source before it was written down.
+* **THE REGISTRATION S25 WAS ASKED TO WRITE WOULD HAVE BEEN UNFALSIFIABLE.** Its bars quantify over the
+  routed set: "coverage of the routed sites", "the leave-list's worst", "routed over-cap facets DECLARED".
+  Over an empty array every one of those reads 0/0 and PASSES. The arm would have reported a full-coverage
+  routing result having routed nothing, and it would have done so with all five gate rows green. **This is
+  the failure mode the campaign's whole method exists to prevent, and it was one command away.**
+* **THE FIX IS NOT A RE-LABEL.** No artifact in the tree carries the population, and no flag emitted it:
+  all 146 `PF_CB_*` flags were enumerated and the driver's six writers were read. The list had to be
+  BUILT. That is S25's first unit and it is below. **Until it existed, S25 had no data, and an arm with no
+  data has no registration — so the honest order is verdict, then serializer, then a production iterate to
+  produce the list, and only THEN the bars.**
+
+>> **WHAT THIS COSTS AND WHAT IT BUYS.** It costs S25 its original shape: this session does not deliver a
+>> routed mesh. It buys the thing the routing arm actually needed and never had — **a measured population to
+>> register against**, with per-facet geometry, the driver's own two rulers, the refusal reason and the
+>> declared-region bit. **G1's bar cannot be stated honestly without it either**: "the 24.375 um argmax goes
+>> <= 10 via routed geometry" is only falsifiable if the argmax carrier is demonstrably IN the routed set,
+>> and until now there was no set to check it against.
+
+#### **UNIT 1 — THE SERIALIZER. `PF_CB_EMIT_UNRESOLVED=1`, DEFAULT OFF. BUILT, LINTED, TYPECHECKED, GATED**
+#### **BEFORE AND AFTER, AND ITS FLAG-ON MESH IS BYTE-IDENTICAL TO THE ARM IT DESCRIBES.**
+
+`_strataConformBisect.test.ts` is a SHARED FILE, so the standing discipline applies: gate before, gate
+after, and the identity claim is the STL, not the report.
+
+**WHAT IT EMITS**, to `<tag>.unresolved.json` (schema `pf.strata.unresolved/1`), per facet: triangle index,
+(theta, z) centroid, the three 3-D edges in um, `ar3`, `parAR`, the popped key, the refusal reason, and the
+DECLARED-region bit. Cap 20,000 entries on the 4,116-line convention the strands emitter already uses ("the
+list is evidence, not a memory leak"). Written even when empty, so "nothing was unresolved" is a recorded
+fact rather than a missing file — the same rule `patches.json` follows.
+
+**THREE DESIGN DECISIONS THAT ARE MEASUREMENTS, NOT PREFERENCES:**
+1. **TWO POPULATIONS ARE EMITTED, NOT ONE, BECAUSE THE MAP IS MUTATED AFTER THE NUMBER THE LOG QUOTES.**
+   `unresolvedLeft` is computed once over survivors right after the main loop — that is the 4,675 in every
+   worklog row. The de-shard RESUME pass then runs and calls `unresolved.delete` / `.set` on the way
+   through; on `_S24i2` it made **504 further splits** (`S24_ITER2.log`: "resume 504 splits on +2016 of
+   20000"). So the reduction-point set and the set still unresolved in the SHIPPED mesh are **not the same
+   population**. Both are emitted, with `atReduction` as the reconciliation anchor and `diedSinceReduction`
+   / `addedSinceReduction` itemising the difference. **Quoting one while the log quotes the other is
+   precisely the class of confound that produced this whole section.**
+2. **`parAR` IS THE OFFLINE CENSUS'S ARITHMETIC, TRANSCRIBED VERBATIM** (`_strataParARCensus`: R_REF 45,
+   shortest-arc deltas anchored at the first vertex), computed on the **f32 values that SHIP**. The column
+   is therefore directly comparable to the parAR census every arm is scored with, instead of being a second
+   definition that drifts.
+3. **H1 AND H2 ARE DELIBERATELY ABSENT, AND THE ARTIFACT SAYS SO IN A `rulers` FIELD.** Neither is cheap in
+   this process and both are the AUDIT's instruments. Computing an approximation here would create a THIRD
+   ruler that nothing has validated, against the standing rule that the refinement ruler must equal the
+   audit ruler. What is emitted instead are the driver's own two — `keyUm` (what it believed when it gave
+   up) and `sagNowUm` (the same edge ruler re-read on the final mesh) — **each labelled DRIVER SELF-REPORT,
+   NEVER A FIDELITY NUMBER in the artifact itself**, so a consumer cannot quote them as error.
+
+**THE REPORT LINE THAT CAUSED ALL THIS IS FIXED IN THE SAME EDIT.** `:4323` asserted the strand list was
+"the ROUTED-DEMAND input for M=g/h^2 elements" on every run regardless of length. It now prints the COUNT,
+says in as many words that an empty list is a PASS and not a missing list, and names `unresolved.json` and
+its flag as the file that actually carries the routed demand. **This changes the report text on all paths
+and that is intended and declared** — the byte-identity claim in this campaign is the STL, and the report
+is where a run explains itself. A line that misexplains a run is the defect being repaired.
+
+| check | result |
+|---|---|
+| eslint, edited file | **clean, exit 0** |
+| explicit typecheck (`tsc --strict`, node + webgpu types) | **error set BYTE-IDENTICAL to HEAD** — 6 pre-existing (cdt2d + delaunator missing decls, one implicit `any` in the untouchable `_strataAlignedSeed`, three `StyleDims`/`Phase2Dims` `expn` mismatches). The two shifted lines move by **exactly** the +141 lines this edit inserts. **Zero new errors.** |
+| HARD GATE **before** the edit | **12/12, 224.9 s**, every documented value exact (`S25_GATE_PRE.log`) |
+| W1 identity **before** the edit | **md5 `8a59fb37a9115600b13262254380ccb0`**, `cmp` byte-identical to `_W1` |
+| HARD GATE **after** the edit | **12/12, 218.6 s** (`S25_GATE_POST.log`). V3 thin 12.041, V6 0.617, V7 tread **0.000**, V7c **12.041 / 39.767 / 142.668** — exact |
+| W1 identity **after** the edit | **md5 `8a59fb37a9115600b13262254380ccb0`**, `cmp` byte-identical to `_W1` |
+| flag-OFF emitter inertness | **no `.unresolved.json` written beside the flag-OFF mesh.** Checked explicitly, because for a NEW emitter "the STL did not move" is not the whole identity claim — a zero-byte artifact appearing beside it would still be a behaviour change |
+
+#### **UNIT 2 — THE PRODUCTION ITERATE. `_S25X` = THE `_S24i2` COMMAND FAMILY + ONE VARIABLE, AND ITS MESH**
+#### **COMES OUT BYTE-IDENTICAL TO THE ARM IT DESCRIBES.** (`S25_EXTRACT.log`, `s25_extract.sh`)
+
+Same style/stage/grid/cap/accept/tailk/maxsecs/rank/aligned levers/patch ids/admission gates/de-shard
+levers, the same input field `S24i1.loci.json`, `PF_CB_DESHARD_CASCADE=0` carried for the reason S24's
+amendment A gives at length. **One variable: `PF_CB_EMIT_UNRESOLVED=1`.** 938 s.
+
+| check | result |
+|---|---|
+| **FLAG-ON MESH IDENTITY** | **md5 `c96da03c08eefbc081a304093c95a364`, `cmp` BYTE-IDENTICAL to `_S24i2`.** This is a stricter claim than flag-OFF identity — that only proves the OFF path is dead code, this proves the emitter is **read-only on the mesh while running**. It is simultaneously a **THIRD determinism replicate** of the arm (after `_S24i2` and `_S24i2D1`). |
+| **MESHER HEADER DIFF vs `_S24i2`** | taken, not assumed. **Three differences, all accounted for:** the two corrected strand-list lines; audit wall time 48.8 -> 49.1 s (machine noise); and **rA evals 934M -> 935M — the emitter's own cost**, `worstEdgeSag` re-read on 4,584 facets to fill `sagNowUm`. **Declared, ~0.1%, and it moves no vertex — the md5 above is the proof.** Every other header line is character-identical. |
+| A1 `atReduction` | **4,675 — EXACT against `S24_ITER2.log:85`** |
+| A2 worst key | **95.473 um — EXACT.** Unmoved on a fifth arm. |
+| A3 argmax carrier PRESENT | **YES, matched BY GEOMETRY** (never by index — the ruler indexes the STL, this emitter indexes the driver's arrays including dead triangles). tri 651601, th 1.358284, z 76.28079, edges **130.5/135.1/264.3 um**, **ar3 19.877**, **parAR 19.858** against `S24_FINAL.log`'s recorded 19.88 / 19.86. Its `keyUm` **14.0815** against the ruler's independently-computed 14.0805. |
+| A4 worst-key facet is DISTINCT | **YES** — tri 303446, th 1.359008 z 76.25038, key 95.4727 um, ar3 42.192, parAR 27.242. The list is the population, not just its max. |
+| reconciliation | atReduction 4,675 - **187 died** + **96 added** = **final 4,584**, listed 4,584 of cap 20,000, **not truncated** |
+
+>> **A DEFECT IN THE INSTRUMENT, FOUND BY BUILDING IT — THE REFUSAL REASON IS NOT RECORDED ON THIS DRIVER.**
+>> All 4,584 read `why: unknown`. Mechanism, traced: `unresolvedWhy` is written at `:2492`, but on the heap
+>> driver this population arrives via the **no-op-split path at `:2543`** (`if (created.length === 0) { stuck
+>> += 1; unresolved.set(t, kTop); }`) and via the resume at `:3618`, **neither of which records a reason.**
+>> The `unresolvedByWhy` histogram that would have exposed this is SWEEP-gated at `:2570` and every
+>> production arm in this campaign is the heap driver — **so the gap has been invisible for the whole
+>> campaign, and the driver's own line "a fully-refused triangle lands in `unresolved` via the no-op-split
+>> path" describes exactly the path that drops it.** NOT FIXED HERE, deliberately: the tree is in a
+>> gate-clean state and a second shared-file edit after the gate would have to re-take both gates. It is a
+>> named next unit. **It does not block the arm** — `M = g/h^2` routes on GEOMETRY (`ar3`, `parAR`, the key),
+>> all of which are present; the reason was diagnostic colour, and its absence is now recorded rather than
+>> assumed to be 'shape-refused'.
+
+#### **UNIT 3 — S25 RE-REGISTERED AGAINST THE REAL LIST, AND SCORED. `INFEASIBLE-AS-DESIGNED` FIRES ON THE**
+#### **PRE-REGISTRATION ARITHMETIC, *BEFORE* THE ARM WAS BUILT.** (`S25_SITES.log`, `S25_FEASIBLE.log`)
+
+**G5's INFEASIBLE row is scored FIRST, as registered.** The measured demand is now in hand, so the question
+"can the declared-patch mechanism express it?" is arithmetic rather than opinion — and it is answered
+before spending ~940 s building a mesh that would fail its own preconditions.
+
+**THE MEASURED LOAD DISTRIBUTION** (site = 0.5 mm cell in the (arc, z) chart at rRef 45 — the same chart the
+declared patches, the strand emitter and the parAR census all use; **site-scoring, not disk-scoring**):
+
+| quantity | measured |
+|---|---|
+| facets / sites | **4,584 facets in 1,596 sites** |
+| load per site | max **65**, p95 **9**, p50 **2**, min 1 |
+| sites carrying exactly ONE facet | **715 of 1,596 (44.8%)** — a routed element each |
+| **facets inside the declared set** | **780 of 4,584 = 17.0%.  3,804 (83.0%) are OUTSIDE.** |
+| **sites fully declared** | **92 of 1,596 = 5.8%.  1,504 (94.2%) are outside or only partly inside.** |
+| z-distribution | spread over the whole wall (z 10-120), peaks z 80-90 (**926**) and z 60-70 (**714**), rim band z 110-120 (**623**). **NOT a rim artifact.** |
+
+**THE ROUTE / LEAVE ENUMERATION, with the leave-list's worst — the number G1's bar must be stated against:**
+
+| load cut-off | sites routed | facets routed | coverage | facets left | **LEAVE WORST** | **routed-UNDECLARED sites** |
+|---|---|---|---|---|---|---|
+| >= 1 (full) | 1,596 | 4,584 | 100.0% | 0 | 0.000 um | **1,504** |
+| >= 2 | 881 | 3,869 | 84.4% | 715 | 38.393 um | **809** |
+| >= 3 | 467 | 3,041 | 66.3% | 1,543 | 47.245 um | **412** |
+| >= 5 | 219 | 2,215 | 48.3% | 2,369 | 47.245 um | **182** |
+| >= 12 | 50 | 1,033 | 22.5% | 3,551 | 50.790 um | **35** |
+| >= 20 | 16 | 520 | 11.3% | 4,064 | **95.473 um** | **5** |
+
+>> **READ THE LAST COLUMN. THERE IS NO CUT-OFF AT WHICH THE ROUTED SET IS DECLARED.** Full coverage routes
+>> **1,504 undeclared sites**; the most conservative cut-off in the table still routes 5. G4 bars an over-cap
+>> facet outside a declared region as a **silent gate failure**, so every row of this table either fails G4
+>> or forces the declaration to grow.
+
+**AND THE TWO SITES THE WHOLE CAMPAIGN TURNS ON ARE BOTH OUTSIDE IT.** The worst unresolved site
+(**95.473 um at th 1.359008, z 76.2504**) reads `declared: false`, and the H2 argmax carrier
+(**th 1.358284, z 76.28079** — 0.03 mm away, the same neighbourhood) reads `declared: false`. **So even the
+minimal intervention — route the argmax and nothing else — requires a new declaration. G1 cannot be
+satisfied inside the declaration as it stands, at any coverage.**
+
+**THE FEASIBILITY ARITHMETIC, AND IT IS NOT CLOSE:**
+
+| quantity | measured |
+|---|---|
+| pot lateral surface (H 120, Rb 40, Rt 50) | **34,047 mm^2** |
+| regions artifact | **43 disks TOTAL, 43 with load** — radii 0.250-1.500 mm. **All 43 are already declared**; there is no reserve to add. |
+| **declared area today** | **122.8 mm^2 = 0.36% of the wall** |
+| new disks to cover the undeclared demand | **664** at the 1.5 mm routed radius cap — a **greedy-cover LOWER BOUND**, not an estimate |
+| declaration growth | **x16.4 the disk count**; area **122.8 -> 4,816 mm^2 = 14.1% of the wall (x39)** |
+
+#### *** THE VERDICT — SCORED FIRST-MATCH, INFEASIBLE FIRST AS REGISTERED ***
+| # | row | fires? |
+|---|---|---|
+| **1** | ***INFEASIBLE-AS-DESIGNED*** | ***FIRES. FIRST MATCH.*** **The declared-patch mechanism cannot express the measured demand.** 83.0% of demand facets and 94.2% of demand sites lie outside a declared set that is ALREADY COMPLETE at 43 disks / 0.36% of the wall. Legalising full routing needs **>= 664 new disks (x16.4), taking the exemption to 14.1% of the wall**. **A declaration covering 14.1% of the mesh is not a declaration** — its entire function is to name a BOUNDED set so the blade gate can still fail everywhere else. At that size G4 would pass **by construction rather than by measurement**, which is the same unfalsifiability that voided the original briefing. |
+| 2 | G1 argmax <= 10 um via routed geometry | **NOT REACHED** — and would have failed on its own terms: the argmax carrier is `declared: false`, so no coverage setting routes it legally. |
+| 3 | G2 route/leave by measured load | **ENUMERATED ABOVE, NOT SCORED** — the table is the evidence for row 1, not a result of its own. |
+| 4 | G3 texture vs `_S24i2` | **NOT REACHED** — no `_S25` mesh was built. `_S25X` **is** `_S24i2` byte-for-byte, so there is nothing to compare. |
+| 5 | G4 / G5 preconditions, identity, cost | **PARTIALLY DISCHARGED**: identity byte-exact **twice**, both gates **12/12 exact**, determinism replicated a **third** time, cost 938 s as estimated. G4's provenance clause is what row 1 fires on. |
+
+>> ***WHAT S25 ESTABLISHES, STATED FOR THE OPERATOR.***
+>> **1. THE 10 um QUESTION IS CLOSED FOR THIS MECHANISM, ON MEASURED GROUNDS.** Not "we ran out of time" and
+>>    not "it looked hard" — **the demand was extracted, counted, located and scored against the mechanism's
+>>    own precondition, and it does not fit.** That is a result, and it is the one the campaign's method is
+>>    designed to be able to produce.
+>> **2. THE COST OF LEARNING IT WAS ~16 MINUTES OF COMPUTE, NOT AN ARM.** The feasibility arithmetic ran on
+>>    a 4,584-line artifact. Building the routing arm first and discovering G4 fails afterwards would have
+>>    cost a full production iterate plus a two-sided audit at Part-B depth **to reach the same conclusion**.
+>> **3. THE DEMAND IS A WALL POPULATION, NOT A FEATURE-LOCUS POPULATION, AND THAT IS WHY PATCHES CANNOT HOLD
+>>    IT.** The 43 declared disks were placed at S17/S18's FIDELITY TARGETS — a small named set of feature
+>>    loci. The unresolved population is spread across the whole wall with 44.8% of its sites carrying a
+>>    single facet. **A mechanism designed to name a few bad places cannot express a defect that is
+>>    everywhere-but-thin.** That mismatch — not the geometry and not the cap — is what this arm measured.
+>> **4. WHAT DID NOT MOVE, AGAIN: 95.473 um.** Fifth consecutive arm. It is now also located, characterised
+>>    (ar3 42.192, parAR 27.242) and known to be undeclared, which is more than any previous arm could say.
+
+>> **STOP. NO MESH WAS PRODUCED BY THIS ARM AND NONE SHOULD HAVE BEEN.** `_S25X` is `_S24i2` byte-for-byte;
+>> the operator's eyeball stays on `gothicarches_ring_DS-HT_S24i2.stl`, unchanged since S24.
+
+#### **WHAT REMAINS — NAMED, NOT BUILT. THE OPERATOR CHOOSES; NONE OF THIS IS AN AGENT'S CALL.**
+
+**THE FORK ROW 1 CREATES.** `INFEASIBLE-AS-DESIGNED` is a verdict on the DECLARED-PATCH MECHANISM, not on
+the 10 um target. Three roads lead out of it and they are not equivalent:
+1. **CHANGE WHAT A DECLARATION IS.** The blade gate's exemption is currently a disk list. The measured
+   demand is thin and wall-wide, which is the shape a **band** or a **field-valued** exemption expresses
+   cheaply and a disk list cannot. This is a change to `_judgeShape`'s contract — an **UNTOUCHABLE** file —
+   so it is a registration, not an edit, and it needs the operator.
+2. **ACCEPT THE ANISOTROPY INSTEAD OF ROUTING IT.** The population's parAR runs p50 **27.8**, p95 **241.1**,
+   max **1344.3** against ar3 p50 44.4 — i.e. these are elements that are *legitimately* long in the chart
+   and are being condemned by an ISOTROPIC cap. **S13's `M = g/h^2` was always the metric answer**; what
+   this arm shows is that its delivery vehicle cannot be per-site declared patches. A metric-aware S1 cap
+   is the same idea without the declaration problem.
+3. **STOP AT 24.375 um AND SAY SO.** Defensible on the evidence: the campaign has moved the H2 argmax from
+   the 400+ um era to 24.375 um, the pinned 25.063 um copy is closed to 0.062 um, and the residual is now a
+   located, characterised, 4,584-facet population rather than a mystery.
+
+**PHASE D VIA GPU TRIAGE — NAMED, NOT BUILT, AND NOW WITH A CONCRETE FIRST JOB.** The standing forward line
+holds. What S25 adds is that Phase D no longer has to triage blind: **`unresolved.json` is a 4,584-entry
+work list with per-facet geometry**, which is exactly the input a GPU screen wants. `PF_CB_GPU_RANK` and the
+`_gpuRankBridge` already exist and already report rA parity. The first Phase-D unit is therefore small and
+well-posed: **score the 4,584 on the GPU, check parity against the CPU keys this artifact already carries,
+and use the agreement as the gate on whether GPU triage can be trusted at production scale.** That is a
+measurement with a control built into it, which is the only kind this campaign accepts.
+
+**THE INSTRUMENT REPAIR, carried forward:** `unresolvedWhy` is not written on the heap driver's no-op-split
+path (`:2543`) or its resume path (`:3618`), so every reason on a production arm reads `unknown`. One-line
+fix at each site; needs both gates re-taken because it touches the shared file. **Do it at the START of the
+next arm, not the end of this one.**
 
 ---
 ## READ THIS FIRST — the six things that changed tonight

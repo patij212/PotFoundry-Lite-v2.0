@@ -2361,6 +2361,29 @@ describe('STRATA conforming-bisection', () => {
     // Why the unresolved reasons are kept separately: `unresolved` must stay EXACTLY the Map the survivor
     // filter and the NOT-CONVERGED verdict already consume (spec §2.5), so the diagnosis rides alongside.
     const unresolvedWhy = new Map<number, Outcome>();
+    // ═══════════════ S25 — PER-FACET `unresolved` EMISSION (PF_CB_EMIT_UNRESOLVED=1, DEFAULT OFF) ═══════════════
+    // WHY THIS EXISTS, stated so it is not mistaken for a convenience dump. S24's close-out named
+    // `<tag>.strands.json` as "the M=g/h^2 routing input, 4,675 facets". IT IS NOT, AND THE 4,675 HAD NO
+    // SERIALIZED FORM ANYWHERE IN THE TREE. `strands.json` carries the ADMISSION-stranded population
+    // (emitter below, gated on `footBackT`), which is 0 BY DESIGN and whose emptiness is a PASS. The 4,675
+    // is THIS map — shape-refused facets the splitter could not subdivide — and until this flag landed it
+    // was reduced to two scalars (`unresolvedLeft` / `unresolvedMax`) and a by-reason histogram and then
+    // thrown away. A routing arm registered against a list that does not exist is unfalsifiable, which is
+    // why the extraction had to be BUILT before S25 could be registered at all.
+    //
+    // THE SNAPSHOT, AND WHY IT IS NOT THE SAME THING AS THE LIVE MAP AT WRITE TIME. `unresolvedLeft` is
+    // computed once, right after the main loop, over SURVIVORS only. The de-shard / flip / cascade RESUME
+    // pass then runs and MUTATES this map (`unresolved.delete` / `.set` in the resume loop) — on `_S24i2`
+    // that pass made 504 further splits. So there are two honest populations and they are not equal:
+    //   * the REDUCTION-POINT set — what the report's headline `unresolved: N` line counts, and the number
+    //     every S2x row in the worklog quotes (4,675 on `_S24i2`, 5,013 on `_S24i3`);
+    //   * the FINAL set — what is still unresolved and still alive in the mesh that actually SHIPS, which
+    //     is the population a routing arm has to act on.
+    // BOTH ARE EMITTED, with the reduction-point count as the reconciliation anchor, because quoting one
+    // while the log quotes the other is exactly the class of confound that produced this file's existence.
+    const EMIT_UNRESOLVED = envOn('PF_CB_EMIT_UNRESOLVED');
+    /** (tri, popped key) captured AT THE REDUCTION POINT, before the resume pass can mutate the map. */
+    const unresolvedSnap: Array<[number, number]> = [];
 
     // ══════════════ PARALLEL PREDICATE PREFETCH (PF_CB_SWEEP_WORKERS > 1, sweep driver only) ══════════════
     // Evaluate in parallel, apply serially. At each generation boundary the pending region is a FIXED list of
@@ -2560,7 +2583,13 @@ describe('STRATA conforming-bisection', () => {
     // Only the SURVIVORS count: a recorded triangle can still have been re-meshed afterwards by a neighbouring
     // edge split (bisectAt splits every incident triangle), and those are genuinely resolved.
     let unresolvedLeft = 0; let unresolvedMax = 0;
-    for (const [t, k] of unresolved) if (alive[t]) { unresolvedLeft += 1; if (k > unresolvedMax) unresolvedMax = k; }
+    // S25: the snapshot rides along in this exact loop, so the emitted `atReduction` count is the SAME
+    // traversal that produces the reported scalar and cannot drift from it. Push only — no mesh state is
+    // read or written — so the flag-OFF path is unchanged and the ON path cannot move a vertex.
+    for (const [t, k] of unresolved) if (alive[t]) {
+      unresolvedLeft += 1; if (k > unresolvedMax) unresolvedMax = k;
+      if (EMIT_UNRESOLVED) unresolvedSnap.push([t, k]);
+    }
     // §2.5 "worst-left" GENUINELY DISAPPEARS UNDER `sweep` AND THAT IS A REAL LOSS. With no key, a capped run
     // cannot report the worst residual for free. Replacement: ONE bounded pass over the live remainder of the
     // queue, reported as `worst-left (edge ruler, LOWER BOUND)` — NEVER as a residual estimate. §6.4: the
@@ -4220,6 +4249,118 @@ describe('STRATA conforming-bisection', () => {
       }, null, 1));
     }
 
+    // ═══════════════ S25 — THE `unresolved` LIST, PER FACET (PF_CB_EMIT_UNRESOLVED=1) ═══════════════
+    // The population the S24 close-out believed `strands.json` carried. See the declaration site for why
+    // the two are different things and why an empty strands file is a PASS rather than a missing list.
+    //
+    // PLACED HERE, AFTER `rcDeclared`, ON PURPOSE: the routing arm's G4 precondition is that an over-cap
+    // routed facet must be inside a DECLARED region, so the declaration bit has to ride with the facet or
+    // the arm would have to re-derive it from a second copy of the patch geometry. One definition, used by
+    // the accept census and by this list.
+    //
+    // WHAT IS DELIBERATELY *NOT* HERE: H2 and H1. Neither is cheap in this process — H2 needs the
+    // surface->mesh sampler and H1 the certified-bound machinery, both of which live in the audit and are
+    // the instruments every arm in this campaign is scored on. Computing an approximation of either here
+    // would create a THIRD ruler that nothing has validated, against the standing rule that the refinement
+    // ruler must equal the audit ruler. What IS emitted is the driver's own two rulers, named as such:
+    // `keyUm` (the sag key this facet was popped at, i.e. what the driver believed when it gave up) and
+    // `sagNowUm` (the same edge ruler re-read on the FINAL mesh). The audit reads the true error; these two
+    // say what the driver could see. The gap between them is the blindness this campaign keeps measuring.
+    if (EMIT_UNRESOLVED) {
+      const uCap = 20000;
+      const facets: Array<Record<string, number | string | boolean>> = [];
+      // The FINAL set: still in the map AND still alive in the mesh that ships.
+      let finalCount = 0; let finalWorst = 0; let whyUnknown = 0; let declaredCount = 0; let overCapCount = 0;
+      const snapIds = new Set<number>();
+      for (const [t] of unresolvedSnap) snapIds.add(t);
+      const finalIds = new Set<number>();
+      for (const [t, k] of unresolved) {
+        if (!alive[t]) continue;
+        finalCount += 1; finalIds.add(t);
+        if (k > finalWorst) finalWorst = k;
+        if (facets.length >= uCap) continue;             // the list is evidence, not a memory leak
+        const A = ta[t]; const B = tb[t]; const C = tc[t];
+        const ax = f32(vx[A]); const ay = f32(vy[A]); const az = f32(vz[A]);
+        const bx = f32(vx[B]); const by = f32(vy[B]); const bz = f32(vz[B]);
+        const cx2 = f32(vx[C]); const cy2 = f32(vy[C]); const cz2 = f32(vz[C]);
+        const e3 = [
+          Math.hypot(bx - ax, by - ay, bz - az),
+          Math.hypot(cx2 - bx, cy2 - by, cz2 - bz),
+          Math.hypot(ax - cx2, ay - cy2, az - cz2),
+        ].sort((x, y) => x - y);
+        const cth = canonTheta(Math.atan2((ay + by + cy2) / 3, (ax + bx + cx2) / 3));
+        const czc = (az + bz + cz2) / 3;
+        const ar = aspect3(ax, ay, az, bx, by, bz, cx2, cy2, cz2);
+        // parAR — VERBATIM `_strataParARCensus`'s arithmetic (R_REF = 45, shortest-arc deltas anchored at
+        // the first vertex), on the f32 values that SHIP, so this column is directly comparable to the
+        // offline parAR census every arm is scored with rather than being a second definition.
+        const th0 = canonTheta(Math.atan2(ay, ax));
+        const th1 = canonTheta(Math.atan2(by, bx));
+        const th2 = canonTheta(Math.atan2(cy2, cx2));
+        const pe = [
+          Math.hypot(45 * dThRaw(th0, th1), bz - az),
+          Math.hypot(45 * dThRaw(th1, th2), cz2 - bz),
+          Math.hypot(45 * dThRaw(th2, th0), az - cz2),
+        ];
+        const sp2 = Math.abs(45 * (dThRaw(th0, th1) * (cz2 - az) - dThRaw(th0, th2) * (bz - az)));
+        const parAR = sp2 > 0 ? (Math.max(...pe) * (pe[0] + pe[1] + pe[2])) / (2 * sp2) : Infinity;
+        const why = unresolvedWhy.get(t) ?? 'unknown';
+        if (why === 'unknown') whyUnknown += 1;
+        const dec = rcDeclared(cth, czc);
+        if (dec) declaredCount += 1;
+        if (ar > SHAPE_AR) overCapCount += 1;
+        facets.push({
+          tri: t,
+          theta: Number(cth.toFixed(6)),
+          z: Number(czc.toFixed(5)),
+          shortUm: Number((e3[0] * 1000).toFixed(1)),
+          midUm: Number((e3[1] * 1000).toFixed(1)),
+          longUm: Number((e3[2] * 1000).toFixed(1)),
+          ar3: Number(ar.toFixed(3)),
+          parAR: Number.isFinite(parAR) ? Number(parAR.toFixed(3)) : -1,
+          keyUm: Number((k * 1000).toFixed(4)),
+          sagNowUm: Number((worstEdgeSag(t) * 1000).toFixed(4)),
+          why,
+          declared: dec,
+          inSnapshot: snapIds.has(t),
+        });
+      }
+      let diedSinceReduction = 0;
+      for (const [t] of unresolvedSnap) if (!alive[t] || !unresolved.has(t)) diedSinceReduction += 1;
+      let addedSinceReduction = 0;
+      for (const t of finalIds) if (!snapIds.has(t)) addedSinceReduction += 1;
+      writeFileSync(join(outDir, `${tag}.unresolved.json`), JSON.stringify({
+        schema: 'pf.strata.unresolved/1',
+        run: { style: STYLE, params: styleParams, dims: DIMS, stage: STAGE, tag, tolMm: TOL, acceptTolMm: acceptTol },
+        // The two populations, both named, so a consumer cannot quote one believing it is the other.
+        // `atReduction` is the number the run's own `unresolved:` report line prints and the number every
+        // worklog row quotes. `final` is what is still unresolved in the SHIPPED mesh. They differ by the
+        // resume pass and the difference is itemised rather than reconciled silently.
+        counts: {
+          atReduction: unresolvedLeft,
+          atReductionWorstUm: Number((unresolvedMax * 1000).toFixed(3)),
+          final: finalCount,
+          finalWorstUm: Number((finalWorst * 1000).toFixed(3)),
+          diedSinceReduction,
+          addedSinceReduction,
+          listed: facets.length,
+          cap: uCap,
+          truncated: finalCount > uCap,
+          declaredOfListed: declaredCount,
+          overShapeCapOfListed: overCapCount,
+          whyUnknownOfListed: whyUnknown,
+        },
+        bars: { shapeAR: SHAPE_AR, declaredRegions: rcPatches.length },
+        // Named so the artifact cannot be read as a fidelity claim. See the block comment above.
+        rulers: {
+          keyUm: 'the driver sag key this facet was popped at — DRIVER SELF-REPORT, never a fidelity number',
+          sagNowUm: 'the same edge ruler re-read on the final mesh — DRIVER SELF-REPORT',
+          h1h2: 'NOT COMPUTED HERE. The audit is the instrument; a third ruler in this file would be unvalidated.',
+        },
+        facets,
+      }, null, 1));
+    }
+
     // ─── §5.4 THE RUN MANIFEST. Written beside the STL, ALWAYS (it does not touch a byte of the STL).
     // Nothing else ties an STL to the surface it was built on: DIMS is a file-local constant, STYLE defaults
     // to 'GothicArches', and the STL header carries a fixed string. The auditor currently has to be TOLD the
@@ -4320,7 +4461,15 @@ describe('STRATA conforming-bisection', () => {
         `    ${admitChecks} admission checks   ${admitForcedPush} accepts REFUSED and re-queued   ${admitRefusedSplit} splits REFUSED on admission`
           + `   ADMISSION-STRANDED at the end: ${admitStranded} of ${admitAccepted} live facets`
           + `   ${admitStranded > 5000 || (admitAccepted > 0 && admitForcedPush > 0.25 * admitAccepted) ? '*** INFEASIBLE-AS-WIRED — refusal-storm criterion FIRED (registered: refusals > 25% of accepts, or strands > 5,000) ***' : '[refusal-storm criterion NOT fired]'}`,
-        `    strand list: ${tag}.strands.json — the ROUTED-DEMAND input for M=g/h^2 elements and declared patches, not a failure report`,
+        // S25 CORRECTION. This line used to read "the ROUTED-DEMAND input for M=g/h^2 elements and declared
+        // patches, not a failure report" — UNCONDITIONALLY, including on the runs where the list is empty,
+        // which is every run where admission is clean. S24's close-out transcribed it and booked a 4,675-facet
+        // routing input that does not exist in this file (the 4,675 is `unresolved`, a different population,
+        // emitted separately under PF_CB_EMIT_UNRESOLVED). A report line that asserts what an artifact is FOR
+        // is a claim about a consumer, not a measurement, and it inherited a measurement's authority. It now
+        // states the COUNT and names the file that actually carries the routed demand.
+        `    strand list: ${tag}.strands.json — ${admitStranded} ADMISSION-stranded facet(s) listed${admitStranded === 0 ? '  [EMPTY = the S20 admission criterion is clean; this is a PASS, not a missing list]' : ''}`,
+        `      NOT the M=g/h^2 routing input. That population is \`unresolved\` (shape-refused, ${unresolvedLeft} at the reduction point) and is emitted to ${tag}.unresolved.json only under PF_CB_EMIT_UNRESOLVED=1${EMIT_UNRESOLVED ? '  [ON — written]' : '  [OFF — not written this run]'}`,
         ...(ADMIT_DIAG ? [
           '    *** S20.1 DIAGNOSTIC (PF_CB_ADMIT_DIAG=1) — the same sweep answered three ways. NO DECISION USED IT. ***',
           `      A f64 coords + stored vth        : ${diag.A}   <- what the strand count above reports`,
