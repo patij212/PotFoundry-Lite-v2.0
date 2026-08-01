@@ -7608,6 +7608,49 @@ imported by nothing.
 >> mesh) is NAMED and NOT BUILT — the operator rejected the 39.8 h raw walk; triage is ~1-2 h and its
 >> registration is the next block, not this one.**
 
+#### **S24 AMENDMENT A — *"`_S22B`'s COMMAND VERBATIM" DOES NOT REPRODUCE `_S22B` ANY MORE.* A DEFAULT**
+#### **LANDED ON BETWEEN THE TWO ARMS. WRITTEN BEFORE ITERATION 2's NUMBERS EXIST; THE FIRST ITERATE WAS**
+#### **DISCARDED AND ITS LOG KEPT.**
+The registration above says the mesher command is `s22b_arm.sh` STAGE 2 **verbatim** plus `PF_CB_TIGHTEN`.
+**That was wrong, and the first firing of iteration 2 measured it.** `_S24i2`'s mesher header carried a block
+`_S22B`'s does not:
+```
+(iv) S22C PROTECTOR CASCADE (PF_CB_DESHARD_CASCADE=1, depth cap 12): 302 blocked sites entered,
+     10 CONFORMED (3.3%), 12 protector splits, max depth 1
+     dead ends: 292 SELF-BLOCKED, 0 depth-capped, 0 attempt-capped, 0 weld/apex/admit
+     splits that ONLY landed via the ladder: 7 subdivision + 3 on-locus
+```
+**S22C wired S8's protector cascade into the de-shard pass and landed it DEFAULT ON.** That was a legitimate
+call — it is reachable only when `PF_CB_DESHARD` (itself default OFF) is on, so no top-level default moved —
+and `_strataConformBisect.test.ts:2727` says so in as many words: ***"`PF_CB_DESHARD_CASCADE=0` reproduces
+`_S22B` exactly."*** **But `_S22B` was built before S22C existed, so re-running its command TODAY builds
+`_S22B` + S22C, and a Phase-2 arm scored against `_S22B` would have carried a second mechanism.**
+
+>> **THE CORRECTION: `PF_CB_DESHARD_CASCADE=0` IS ADDED, AND IT IS NOT A TUNING CHOICE — IT IS WHAT MAKES
+>> THIS RUN `_S22B`'s LINEAGE.** The confounded iterate is **DISCARDED**, not scored, and its log is kept as
+>> `S24_ITER2_CASCADE_CONFOUND.log`. Cost of the correction: **946 s**, paid deliberately.
+>> **AND THE DIFF WAS TAKEN RATHER THAN ASSUMED.** The two mesher headers were diffed line by line before
+>> anything was re-run: **the cascade block is the ONLY structural difference.** Every other lever — the
+>> aligned seed, the across rule, the 7 rings, turn-mul 9, the 43 declared patch IDs, all three admission
+>> flags, the de-shard bar/budget/depth/fan-passes, the shape guard, the post-loop guard — reads identically
+>> on both arms. **One variable, verified, not asserted.**
+>> **THE STANDING LESSON, because this class has bitten this campaign before.** *"Pass every lever
+>> explicitly, even where it is now the default"* is the discipline `s22b_arm.sh` itself opens with — and it
+>> is exactly what caught this, because an explicit command printed a block a verbatim re-run had no reason
+>> to expect. **A sub-lever of a default-off flag is still a default that can move under a saved command.**
+>> The check that finds it is diffing the two headers, and it costs nothing.
+
+#### **S24 AMENDMENT B — THE DRIVER OWNS THE TAG AND THE HARNESS MUST NOT CONSTRUCT IT.**
+With `PF_CB_TIGHTEN` on, the driver appends **`T`** to the flag block: the mesh is
+`gothicarches_ring_DS-H**T**_S24iN.stl`, not `DS-H_`. The first firing reported ***"PRODUCED NO STL"***
+beside a complete and correct 63 MB mesh. `_phase2Loop.mjs`'s own rule — *"the driver owns the tag; the loop
+must not guess it"* — is now applied in the shell harness too: paths are RESOLVED, never constructed.
+**AND THE CENSUS TOOLS ARE NOT EDITED TO MATCH.** `s21plates.ts`, `s22shard.ts`, `s22bDerive.ts` and
+`s19par.ts` all hardcode `DS-H_`. Teaching four census tools a new prefix would change the INSTRUMENT
+between this arm and the recorded `_S21B`/`_S22A`/`_S22B`/`_S23*` series, and the entire value of those
+numbers is that they are the same instrument on every arm. **The ARTIFACT is aliased to the name the
+instrument already expects (md5 recorded on both names), and not one line of any census is touched.**
+
 ---
 
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.

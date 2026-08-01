@@ -17,7 +17,7 @@
 //     2 first queues the facet.
 //
 // ARTIFACT-ONLY. No mesher run, no audit, no file under src/ and no proven bridge file is touched.
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { buildRadiusFn } from '../bridge/labkit';
 import { registryDefaultsFor as registryDefaults } from '../bridge/_gpuRankBridge';
 import type { StyleId, StyleDims } from '../../src/geometry/types';
@@ -32,7 +32,14 @@ const log = console.log;
 
 const EX = 'research/exchange/_strataConformBisect/';
 const ARM = process.argv[2] ?? 'S22B';
-const STL = `${EX}gothicarches_ring_DS-H_${ARM}.stl`;
+// The driver appends `T` to the flag block when PF_CB_TIGHTEN is on, so a tightened iterate is `DS-HT_` and
+// the control is `DS-H_`. Resolve rather than construct — the driver owns the tag.
+const STL = ((): string => {
+  for (const p of [`${EX}gothicarches_ring_DS-HT_${ARM}.stl`, `${EX}gothicarches_ring_DS-H_${ARM}.stl`]) {
+    if (existsSync(p)) return p;
+  }
+  throw new Error(`no STL for arm ${ARM} under ${EX} (tried DS-HT_ and DS-H_)`);
+})();
 
 const ACCEPT_UM = 3.5;              // PF_CB_ACCEPT=0.0035, `_S22B`'s own
 const REF_HS = 0.03; const REF_NMIN = 12; const REF_NMAX = 64;   // the driver's own lattice constants
@@ -131,8 +138,12 @@ for (const [name, sth, sz, h2um] of SITES) {
     const o = 84 + t * 50 + 12;
     const ax = buf.readFloatLE(o); const ay = buf.readFloatLE(o + 4); const az = buf.readFloatLE(o + 8);
     // cheap reject on the first vertex before the full point-triangle
+    // EXACT reject, not a heuristic: the mesh's longest edge is 2,921 um (the designed lattice's own MAX,
+    // S22B derivation), so a facet whose FIRST vertex is > 5 mm from P has no point closer than
+    // 5 - 2.921 = 2.079 mm. Rejecting only once `best` is already under 2.0 mm therefore cannot lose the
+    // true nearest facet. (Cross-checked: this reads 25.062 um where the Part-B auditor reads 25.063.)
     const dx = ax - P[0]; const dy = ay - P[1]; const dz = az - P[2];
-    if (dx * dx + dy * dy + dz * dz > 9 && best < 3) continue;
+    if (dx * dx + dy * dy + dz * dz > 25 && best < 2.0) continue;
     const A = [ax, ay, az];
     const B = [buf.readFloatLE(o + 12), buf.readFloatLE(o + 16), buf.readFloatLE(o + 20)];
     const C = [buf.readFloatLE(o + 24), buf.readFloatLE(o + 28), buf.readFloatLE(o + 32)];
@@ -151,6 +162,23 @@ for (const [name, sth, sz, h2um] of SITES) {
   const area = Math.sqrt(Math.max(0, s * (s - e[0]) * (s - e[1]) * (s - e[2])));
   const inr = area / Math.max(1e-12, s);
   const ar3 = Math.max(...e) / Math.max(1e-12, 2 * inr);
+  // PARAMETRIC aspect, in the (rRef*theta, z) plane at the campaign's own rRef = 45 (the seed's hardcoded
+  // reference radius, _strataAlignedSeed.ts:408). Reported beside the 3-D AR because S13's table did, and
+  // because the S1 cap is on the 3-D quantity while the census's tail lives on the parametric one.
+  const RREF = 45;
+  const pth = [0, 3, 6].map((o2) => canonTheta(Math.atan2(V[o2 + 1], V[o2])));
+  // unwrap the three thetas onto one branch before differencing
+  const base = pth[0];
+  const pu = pth.map((t) => { let d = t - base; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return (base + d) * RREF; });
+  const pv = [V[2], V[5], V[8]];
+  const pe = [
+    Math.hypot(pu[1] - pu[0], pv[1] - pv[0]),
+    Math.hypot(pu[2] - pu[1], pv[2] - pv[1]),
+    Math.hypot(pu[0] - pu[2], pv[0] - pv[2]),
+  ];
+  const ps = (pe[0] + pe[1] + pe[2]) / 2;
+  const pArea = Math.sqrt(Math.max(0, ps * (ps - pe[0]) * (ps - pe[1]) * (ps - pe[2])));
+  const parAR = Math.max(...pe) / Math.max(1e-12, 2 * (pArea / Math.max(1e-12, ps)));
   const M: SagMesh = {
     ta: [0], tb: [1], tc: [2],
     vx: [V[0], V[3], V[6]], vy: [V[1], V[4], V[7]], vz: [V[2], V[5], V[8]],
@@ -162,7 +190,8 @@ for (const [name, sth, sz, h2um] of SITES) {
   let k = 1; while (2 ** k < need && k < 12) k += 1;
   log(`--- ${name}   th ${sth} z ${sz} ---`);
   log(`  carrier tri ${bestTri}   witness->carrier ${(best * 1000).toFixed(3)} um`);
-  log(`  edges3d ${e.map((x) => (x * 1000).toFixed(1)).join(' / ')} um   area ${area.toFixed(6)} mm^2   3-D AR ${ar3.toFixed(2)} (S1 cap 50)`);
+  log(`  edges3d ${e.map((x) => (x * 1000).toFixed(1)).join(' / ')} um   area ${area.toFixed(6)} mm^2   3-D AR ${ar3.toFixed(2)} (S1 cap 50)   parAR ${parAR.toFixed(2)}`);
+  log(`  carrier vertices: ${[0, 3, 6].map((o2) => `(${V[o2].toFixed(6)},${V[o2 + 1].toFixed(6)},${V[o2 + 2].toFixed(6)})`).join(' ')}`);
   log(`  DRIVER'S ACCEPT RULER (sagAdaptive, plane): ${sagRef.toFixed(4)} um`);
   log(`  recorded H2 there: ${h2um} um   =>  BLINDNESS ${(h2um / sagRef).toFixed(1)}x`);
   log(`  tolScale needed to QUEUE it: ${need.toFixed(2)}x  =>  first power of two that queues it: ${2 ** k}x`);
