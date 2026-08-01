@@ -5656,6 +5656,45 @@ Infill refusals on constraint clearance went 70,579 -> 200,620, which is the cor
 the across rule, counted.
 
 
+### S23B — **`beta` IS REGISTERED AT ITS DERIVED VALUE 0.83, AND THE SWEEP THAT SAYS WHY IS THE REASON.**
+### **THE DENSITY DEFICIT IS STRUCTURAL, NOT A MIS-SET CONSTANT. Written BEFORE the arm was scored.**
+`beta` was registered as *"a CALIBRATION, not a design choice ... measured on the low-density probe against
+the predicted point count"*. Measured, at scale 1, chain-bound OFF, rounds 1, same trace:
+
+| `beta` | points | tris | x prediction | over-cap (worst AR) | recovery | seed build |
+|---|---|---|---|---|---|---|
+| **0.83 — DERIVED, and REGISTERED** | 382,576 | 763,965 | **x0.4433** | 7 (85.1) | 13,220/13,220 | **347 s** |
+| 0.65 | 557,837 | 1,114,265 | x0.6466 | 3 (85.1) | 13,446/13,446 | **590 s** |
+
+>> **THE CALIBRATION IS NOT TAKEN, AND THE REASON IS THIS CAMPAIGN'S OWN STANDING LAW.** `beta` converts a
+>> demanded element size into a packing radius; its derivation — a maximal minimum-distance set at radius
+>> `r` carries ~0.8/r^2 against an equilateral mesh of edge `h`'s 1.1547/h^2, so
+>> `beta = sqrt(0.8/1.1547) = 0.83` — assumes FREE SPACE. The space is not free: the declared geometry is
+>> already there, and Amendment B has just (correctly) handed the corridor beside every constraint back to
+>> the across rule. **Lowering `beta` to hit the predicted count would over-refine the free wall by 2.3x to
+>> compensate for under-refining a corridor it is forbidden to enter — a GLOBAL clamp answering a LOCAL
+>> question, which is the S15 lesson the whole absolute-field rule exists to encode.** So the derived value
+>> ships and the deficit is reported as a measurement.
+>> **AND THE SWEEP PRICES WHAT CLOSING IT WOULD COST ANYWAY: `beta` 0.65 buys x0.647 of the demanded
+>> density for a seed build of 590 s against the registered 450 s ceiling** — i.e. the cost bar binds
+>> before the density claim is even half discharged. Both facts are the result and neither is a knob.
+
+**THE ARM'S COMMAND, IN FULL, so the log is a complete statement of what was built** (`out/s23b_arm.sh`,
+scratch and gitignored; this is the record):
+```
+PF_STRATA_CB=1 PF_CB_STYLE=GothicArches PF_CB_STAGE=ring PF_CB_DIRECTED=1 PF_CB_SNAP=1
+PF_CB_GRIDU=200 PF_CB_GRIDV=140 PF_CB_TRICAP=8000000 PF_CB_ACCEPT=0.0035
+PF_CB_MAXSECS=5400 PF_CB_RANK=plane PF_CB_ALIGNED_SEED=1 PF_CB_ALIGNED_ACROSS_ABS=1
+PF_CB_ALIGNED_RINGS=7 PF_CB_ALIGNED_TURN_MUL=9
+PF_CB_ALIGNED_PATCH=<...>_S21B.regions.json PF_CB_ALIGNED_PATCH_TOPN=0 PF_CB_ALIGNED_PATCH_IDS=<the 43>
+PF_CB_ALIGNED_ROUNDS=2
+PF_CB_ADMIT_NORMAL=1 PF_CB_ADMIT_NORMAL_SPLIT=1 PF_CB_ADMIT_SHIPPED=1
+PF_CB_RECON=<...>_S22B.density.json PF_CB_RECON_FLOOR_UM=36.4 PF_CB_RECON_ALPHA=1.0
+PF_CB_RECON_BETA=0.83 PF_CB_RECON_CAND=3 PF_CB_RECON_SCALE=1
+PF_CB_TAG_SUFFIX=_S23B      (PF_CB_RECON_CHAIN unset — Amendment C is INFEASIBLE and stays OFF)
+```
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
