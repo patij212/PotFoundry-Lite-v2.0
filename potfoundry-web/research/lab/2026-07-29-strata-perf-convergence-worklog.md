@@ -7677,6 +7677,32 @@ Iteration 2 is measured. **F1 CLOSES: the pinned copy went 25.062 -> 0.062 um**,
 >> failure owned by a named population that Phase 2 provably cannot reach** — and the fix for it is S13's
 >> own: a primitive that can lay anisotropic elements under the cap (`M = g/h^2`), not more accept pressure.
 
+#### **S24 AMENDMENT C — WHICH ITERATE GETS THE EXPENSIVE INSTRUMENT. WRITTEN AFTER ITERATION 3, BEFORE**
+#### **ITERATION 4 EXISTS, AND IT CHANGES A REGISTERED CHOICE — SO IT SAYS WHY, ON MEASUREMENT.**
+The registration sends the full two-sided Part-B audit to *"the final iterate"*. **Iteration 3 makes that
+the wrong mesh, and the reason is a measurement, not a preference:**
+
+| | `_S24i2` (tolScale 2 applied) | `_S24i3` (tolScale 4 applied) |
+|---|---|---|
+| **H2 witnessed** | **24.375 um** @ th 1.358340 z 76.21094 | **24.375 um @ th 1.358340 z 76.21094 — IDENTICAL** |
+| **samples over TOL** | **203 / 40,008,064** | **203 / 40,008,064 — IDENTICAL, not one sample** |
+| live triangles | **1,260,110** | 1,266,934 (**+6,824**) |
+| `unresolved` | **4,675** | 5,013 (**+338**) |
+| escalated clusters | 43 -> 4x | the **SAME 43** -> 8x |
+
+>> **ITERATION 3 SPENT 6,824 TRIANGLES AND 338 MORE STRANDED FACETS AND BOUGHT *EXACTLY ZERO* — not on the
+>> max, not on the count, not on one sample of 40 million.** That is the registered prediction confirmed on
+>> its first firing, and it is S13's *"tolScale 4 is arithmetically inert"* promoted from a computation on
+>> one facet to a measurement at production on the whole field.
+>> **SO `_S24i2` DOMINATES `_S24i3` ON EVERY AXIS AT ONCE**: identical fidelity, fewer triangles, fewer
+>> stranded facets. **The expensive instrument goes on `_S24i2`, because that is the mesh that would
+>> actually ship**, and auditing a strictly-worse mesh to satisfy the word "final" would be scoring the arm
+>> on a mesh nobody would choose. **Iterations 3 and 4 are still run to their registered budget and are
+>> still reported in full** — on the emitting certificate, the carrier probe, triangle count and
+>> `unresolved` — because the point of running rung 8 is to show that rung 4's inertness was not a fluke.
+>> **If iteration 4 improves on `_S24i2` by any of these numbers, it takes the Part-B audit instead.**
+>> That condition is written before `_S24i4` exists.
+
 #### **S24 AMENDMENT B — THE DRIVER OWNS THE TAG AND THE HARNESS MUST NOT CONSTRUCT IT.**
 With `PF_CB_TIGHTEN` on, the driver appends **`T`** to the flag block: the mesh is
 `gothicarches_ring_DS-H**T**_S24iN.stl`, not `DS-H_`. The first firing reported ***"PRODUCED NO STL"***
