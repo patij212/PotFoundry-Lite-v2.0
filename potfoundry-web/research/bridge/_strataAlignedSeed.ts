@@ -848,6 +848,13 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     chainIdx.push(ids);
     for (let i = 0; i + 1 < ids.length; i += 1) if (ids[i] !== ids[i + 1]) constraints.push([ids[i], ids[i + 1]]);
   }
+  // S23B-R / R4 — PROVENANCE MARKERS. Four integers, written where each emitter stage ends and read ONLY
+  // by the `PF_S10_SEED_DIAG` failure block at stage 5. THE REASON THEY EXIST: the R2 probe located the
+  // lost segment to the micron but could not say WHICH EMITTER placed either endpoint, and "same rim, same
+  // pairing" as the two non-manifold edges was an INFERENCE, not a measurement. A fix registered on an
+  // inferred mechanism is the guess this campaign keeps refusing to make. No branch reads these.
+  const provChainEnd = px.length;
+  const provChainConstraints = constraints.length;
 
   // 3b. domain boundary. The two seam columns MUST carry an identical z set.
   //
@@ -1011,6 +1018,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       }
     }
   }
+  const provOffEnd = px.length;                                   // R4 provenance marker (see 3a)
 
   // ── 3c-bis. S18 / P5 STEP 3 — THE X-CROSSING PATCH EMITTER. Default OFF (empty `patchRoute`). ──────
   //
@@ -1155,6 +1163,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     // the same discipline.
     if (emittedHere > 0) patchEmitted.push({ id: reg.id, theta: canonTheta(reg.theta), z: reg.z, radiusMm: R });
   }
+  const provPatEnd = px.length;                                   // R4 provenance marker (see 3a)
 
   // 3d. background lattice — the control's own density, minus anything the constraints already own
   let bgKept = 0; let bgDropped = 0;
@@ -1166,6 +1175,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       addFree(th, z); bgKept += 1;
     }
   }
+  const provBgEnd = px.length;                                    // R4 provenance marker (see 3a)
 
   // ── 3g. S23 — THE EXTRACTED ABSOLUTE FIELD, AS FREE STEINER INFILL. Default OFF; with `reconField`
   //    undefined not one branch below is taken and the seed is arithmetically what it was.
@@ -1364,6 +1374,45 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // shipped path, and whether closing it clears the S23B-R recovery failure is a one-constant experiment
   // that deserves a lever rather than an edit.
   const COND_PASSES = Math.max(1, Math.round(Number(process.env.PF_S10_COND_PASSES ?? '3')));
+  // S23B-R / R4 — THE DOCUMENTED PROJECTION, IMPLEMENTED, BEHIND A **DEFAULT-OFF** LEVER.
+  // The correctness note six lines below has always described code that is not there: it says the blocker
+  // is "PROJECT[ED] ONTO THE CONSTRAINT ... splitting at the FOOT leaves the constraint geometrically
+  // UNCHANGED ... and moves only the blocker, by at most EPS", and `moved` is the counter its own exit
+  // test reads. The foot was computed and discarded (`void fx; void fy;`) and `moved` was never written,
+  // so the split was taken at the BLOCKER's own position: each sub-segment is a NEW line, off the parent
+  // by the blocker's offset, which can acquire NEW blockers and NEW crossings. MEASURED consequences, both
+  // on the record: the loop DOUBLES its list from ~pass 12 (16,683 -> 29,377,010 in 21 passes) and never
+  // reaches the fixed point its comment claims; and on the arm's own seed it OSCILLATES between
+  // (12913,93746) and (93746,93747), each a blocker 13.9 / 18.4 um inside the other, re-manufacturing the
+  // segment that is then lost. With the projection ON, the split vertex is EXACTLY on the parent segment,
+  // so every sub-segment is collinear with it and the pass is idempotent by construction.
+  // A BOUNDARY vertex is NEVER moved: the two seam columns must carry an identical z set and a rim vertex
+  // must stay at z=H exactly, so a point on a domain side is left where it is and only its split is taken.
+  const COND_PROJECT = process.env.PF_S10_COND_PROJECT === '1';
+  const onDomainSide = (i: number): boolean => (px[i] <= 0 || px[i] >= rRef * TWO_PI || py[i] <= 0 || py[i] >= H);
+  const moveTo = (j: number, nx: number, ny: number): void => {
+    const ocx = Math.floor(px[j] / CELL); const ocy = Math.floor(py[j] / CELL);
+    const ncx = Math.floor(nx / CELL); const ncy = Math.floor(ny / CELL);
+    if (ocx !== ncx || ocy !== ncy) {
+      const ol = hash.get(`${ocx},${ocy}`);
+      if (ol !== undefined) { const p = ol.indexOf(j); if (p >= 0) ol.splice(p, 1); }
+      const k = `${ncx},${ncy}`; const nl = hash.get(k); if (nl === undefined) hash.set(k, [j]); else nl.push(j);
+    }
+    px[j] = nx; py[j] = ny; pth[j] = nx / rRef; pz[j] = ny;
+  };
+  let condProjected = 0;
+  // S23B-R / R4 — PARENTAGE OF EVERY 3e SPLIT PRODUCT. Built ONLY under `PF_S10_SEED_DIAG`; the two maps
+  // are `null` otherwise and every write below is inside `if (PROV !== null)`. It answers the one question
+  // the R2 localisation could not: whether the lost segment is a TRACED LOCUS segment or a piece of one
+  // that 3e manufactured, and which constraint it descends from.
+  const PROV = process.env.PF_S10_SEED_DIAG === '1' ? new Map<number, number>() : null;   // child -> parent
+  const provRootKind = new Map<number, string>();                                          // root  -> kind
+  const provK = (a: number, b: number): number => (a < b ? a * 33554432 + b : b * 33554432 + a);
+  if (PROV !== null) {
+    for (let i = 0; i < constraints.length; i += 1) {
+      provRootKind.set(provK(constraints[i][0], constraints[i][1]), i < provChainConstraints ? 'CHAIN' : 'BOUNDARY');
+    }
+  }
   for (let condPass = 0; condPass < COND_PASSES; condPass += 1) {
     const EPS = o.pslgEpsMm;
     const out: Array<[number, number]> = [];
@@ -1393,7 +1442,9 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
             // which is 330 um — so what this does is make two loci that pass within 20 um SHARE a vertex,
             // which is what "they meet here" means. MEASURED need: at 4 um, 92 of 8,762 constraints were
             // unrecoverable at production and 1 of 1,515 at the pilot config; the assertion caught both.
-            void fx; void fy;
+            if (COND_PROJECT && !onDomainSide(j)) {
+              if (px[j] !== fx || py[j] !== fy) { moveTo(j, fx, fy); moved += 1; condProjected += 1; }
+            } else { void fx; void fy; }
             hits.push([t, j]);
           }
         }
@@ -1402,8 +1453,12 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       hits.sort((p, q) => p[0] - q[0]);
       constraintsConditioned += 1;
       let prev = a;
-      for (const [, j] of hits) { if (j !== prev) out.push([prev, j]); prev = j; }
-      if (prev !== b) out.push([prev, b]);
+      const pk = PROV === null ? 0 : provK(a, b);
+      for (const [, j] of hits) {
+        if (j !== prev) { out.push([prev, j]); if (PROV !== null) PROV.set(provK(prev, j), pk); }
+        prev = j;
+      }
+      if (prev !== b) { out.push([prev, b]); if (PROV !== null) PROV.set(provK(prev, b), pk); }
     }
     const grew = out.length !== constraints.length;
     constraints.length = 0;
@@ -1415,12 +1470,17 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     // line is how it becomes one. No counter here is read by any branch.
     if (process.env.PF_S10_SEED_DIAG === '1') {
       // eslint-disable-next-line no-console
-      console.log(`  3e PASS ${condPass}: constraints ${out.length}, grew=${grew}`
-        + `${!grew ? '  <- FIXED POINT REACHED, the pass cap did NOT bind' : ''}`
-        + `${grew && condPass === COND_PASSES - 1 ? '  *** STILL SPLITTING ON THE LAST ALLOWED PASS — THE CAP BOUND ***' : ''}`);
+      console.log(`  3e PASS ${condPass}: constraints ${out.length}, grew=${grew}, projected ${moved}`
+        + `${!grew && moved === 0 ? '  <- FIXED POINT REACHED, the pass cap did NOT bind' : ''}`
+        + `${(grew || moved !== 0) && condPass === COND_PASSES - 1 ? '  *** STILL SPLITTING ON THE LAST ALLOWED PASS — THE CAP BOUND ***' : ''}`);
     }
     // Iterate to a fixed point: projecting a blocker can put it inside ANOTHER constraint's interior.
     if (!grew && moved === 0) break;
+  }
+  if (COND_PROJECT && process.env.PF_S10_SEED_DIAG === '1') {
+    // eslint-disable-next-line no-console
+    console.log(`  3e PROJECTION: ${condProjected} blockers moved onto their constraint (<= pslgEps = `
+      + `${(o.pslgEpsMm * 1000).toFixed(1)} um each); domain-side vertices were never moved`);
   }
   // dedupe (two chains meeting at a junction can produce the same segment twice)
   {
@@ -1433,6 +1493,139 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     }
     constraints.length = 0;
     for (const e of out) constraints.push(e);
+  }
+
+  // ── 3h. S23B-R / R4 RE-DIAGNOSIS — THE PLANARITY CENSUS OF THE PSLG ACTUALLY HANDED TO cdt2d. ────
+  // A PURE MEASUREMENT behind the seed's own `PF_S10_SEED_DIAG`; `xMap` is `null` otherwise and no branch
+  // reads it. WHY IT EXISTS: cdt2d's precondition is a PLANAR straight-line graph — two constraints that
+  // properly cross violate it, and the 2026-07-13 `upperIds` note measured that exact class (2,965 proper
+  // crossings, 99.4% from one spanner family) crashing `mergeHulls`. The R2/R4 failures do not crash; they
+  // lose EXACTLY ONE constraint of 13-17 thousand, which is what a triangulator does when it recovers one
+  // arm of a crossing pair and cannot recover the other. Whether the lost segment is in such a pair is a
+  // FACT, and this is how it becomes one. Stage 2 planarizes the CHAINS; nothing has ever checked the list
+  // that leaves 3e.
+  // Every proper crossing in a constraint list, bucketed by the chart cell the segment covers. ONE
+  // predicate, shared by the guard below and the census after it, so the census cannot certify a
+  // planarity the guard measured differently.
+  const findProperCrossings = (cons: Array<[number, number]>): Array<[number, number]> => {
+    const cbk = new Map<string, number[]>();
+    for (let s = 0; s < cons.length; s += 1) {
+      const [a, b] = cons[s];
+      for (let gx = Math.floor(Math.min(px[a], px[b]) / BS); gx <= Math.floor(Math.max(px[a], px[b]) / BS); gx += 1) {
+        for (let gy = Math.floor(Math.min(py[a], py[b]) / BS); gy <= Math.floor(Math.max(py[a], py[b]) / BS); gy += 1) {
+          const k = `${gx},${gy}`; const l = cbk.get(k); if (l === undefined) cbk.set(k, [s]); else l.push(s);
+        }
+      }
+    }
+    const pairs: Array<[number, number]> = [];
+    const seenX = new Set<number>();
+    for (const [, list] of cbk) {
+      for (let i = 0; i < list.length; i += 1) for (let j = i + 1; j < list.length; j += 1) {
+        const s = list[i]; const t = list[j];
+        const pk = s < t ? s * 33554432 + t : t * 33554432 + s;
+        if (seenX.has(pk)) continue;
+        seenX.add(pk);
+        const [a, b] = cons[s]; const [c, d] = cons[t];
+        if (a === c || a === d || b === c || b === d) continue;
+        if (segParams(px[a], py[a], px[b], py[b], px[c], py[c], px[d], py[d]) === null) continue;
+        pairs.push([s, t]);
+      }
+    }
+    return pairs;
+  };
+
+  // ── 3h. THE PSLG PLANARITY GUARD. **DEFAULT OFF** (`PF_S10_PLANARIZE` unset) — the shipped path is ──
+  // arithmetically what it was, and the grid-field control proves it rather than asserting it.
+  //
+  // WHAT IT ENFORCES: cdt2d's own documented precondition, on the list actually handed to it. Stage 2
+  // planarizes the CHAINS, in chain space, BEFORE the point set exists — and stage 3a's `addPt` then welds
+  // at `minSepMm` (192.6 um here), which can annihilate the very crossing vertex stage 2 created, onto a
+  // DIFFERENT existing point for each of the two chains that met there. Stage 3e then splits constraints
+  // at the BLOCKER's own position rather than at the projected foot, so every sub-segment is a new line
+  // that can cross a neighbour. **Both manufacture proper crossings AFTER the only planarization this file
+  // has**, which is why the guard belongs here, at the last moment, and not earlier.
+  //
+  // THE SPLIT IS AT A SHARED VERTEX, computed ONCE from the first segment's own parametrisation and used
+  // for both arms, welded only at `weldMm` — never at `minSepMm`, which is the radius that destroyed the
+  // stage-2 crossing vertex in the first place. Sub-segments are collinear with their parent by
+  // construction, so the pass cannot manufacture the defect it removes; it iterates to zero and reports
+  // its residual rather than assuming one pass is enough. This is the 2026-07-13 `planarizeChartMM`
+  // remedy applied at the seed's own cdt2d call site, and it is an INPUT-HYGIENE rule: the cdt2d library
+  // is not touched.
+  const PLANARIZE = process.env.PF_S10_PLANARIZE === '1';
+  let planarSplits = 0; let planarPasses = 0; let planarResidual = 0; let planarPts = 0; let planarMs = 0;
+  const planarFrom0 = px.length;
+  if (PLANARIZE) {
+    const tP = Date.now();
+    const PLANAR_PASSES = Math.max(1, Math.round(Number(process.env.PF_S10_PLANAR_PASSES ?? '8')));
+    for (planarPasses = 0; planarPasses < PLANAR_PASSES; planarPasses += 1) {
+      const pairs = findProperCrossings(constraints);
+      planarResidual = pairs.length;
+      if (pairs.length === 0) break;
+      const cut = new Map<number, Array<[number, number]>>();      // constraint index -> [param, vertex]
+      for (const [s, t] of pairs) {
+        const [a, b] = constraints[s]; const [c, d] = constraints[t];
+        const r = segParams(px[a], py[a], px[b], py[b], px[c], py[c], px[d], py[d]);
+        if (r === null) continue;
+        const xx = px[a] + r[0] * (px[b] - px[a]); const yy = py[a] + r[0] * (py[b] - py[a]);
+        const v = addPt(xx / rRef, yy, o.weldMm);
+        if (v >= planarFrom0) planarPts += 1;
+        for (const [si, pr] of [[s, r[0]] as const, [t, r[1]] as const]) {
+          const [u, w] = constraints[si];
+          if (v === u || v === w) continue;
+          const l = cut.get(si); if (l === undefined) cut.set(si, [[pr, v]]); else l.push([pr, v]);
+        }
+      }
+      if (cut.size === 0) break;
+      const out: Array<[number, number]> = [];
+      for (let si = 0; si < constraints.length; si += 1) {
+        const l = cut.get(si);
+        if (l === undefined) { out.push(constraints[si]); continue; }
+        l.sort((p, q) => p[0] - q[0]);
+        let prev = constraints[si][0];
+        for (const [, v] of l) { if (v !== prev) { out.push([prev, v]); planarSplits += 1; } prev = v; }
+        if (prev !== constraints[si][1]) out.push([prev, constraints[si][1]]);
+      }
+      const seenE = new Set<number>();
+      constraints.length = 0;
+      for (const [a, b] of out) {
+        const k = a < b ? a * 33554432 + b : b * 33554432 + a;
+        if (seenE.has(k)) continue;
+        seenE.add(k); constraints.push([a, b]);
+      }
+    }
+    planarMs = Date.now() - tP;
+    if (process.env.PF_S10_SEED_DIAG === '1') {
+      // eslint-disable-next-line no-console
+      console.log(`  3h PSLG PLANARITY GUARD: ${planarPasses} pass(es), ${planarSplits} sub-segments from`
+        + ` ${planarPts} new shared vertices, residual crossings ${planarResidual}, constraints now`
+        + ` ${constraints.length}, ${planarMs} ms`
+        + `${planarResidual === 0 ? '  <- PLANAR BY CONSTRUCTION' : '  *** RESIDUAL CROSSINGS REMAIN ***'}`);
+    }
+  }
+
+  // ── 3i. S23B-R / R4 RE-DIAGNOSIS — THE PLANARITY CENSUS OF THE PSLG ACTUALLY HANDED TO cdt2d. ────
+  // A PURE MEASUREMENT behind the seed's own `PF_S10_SEED_DIAG`; `xMap` is `null` otherwise and no branch
+  // reads it. WHY IT EXISTS: cdt2d's precondition is a PLANAR straight-line graph — two constraints that
+  // properly cross violate it, and the 2026-07-13 `upperIds` note measured that exact class (2,965 proper
+  // crossings, 99.4% from one spanner family) crashing `mergeHulls`. The R2/R4 failures do not crash; they
+  // lose EXACTLY ONE constraint of 13-17 thousand, which is what a triangulator does when it recovers one
+  // arm of a crossing pair and cannot recover the other. Whether the lost segment is in such a pair is a
+  // FACT, and this is how it becomes one. Stage 2 planarizes the CHAINS; nothing has ever checked the list
+  // that leaves 3e.
+  const xMap: Map<number, number[]> | null = process.env.PF_S10_SEED_DIAG === '1' ? new Map() : null;
+  const xPairs: Array<[number, number]> = [];
+  if (xMap !== null) {
+    const tX = Date.now();
+    for (const [s, t] of findProperCrossings(constraints)) {
+      xPairs.push([s, t]);
+      const ls = xMap.get(s); if (ls === undefined) xMap.set(s, [t]); else ls.push(t);
+      const lt = xMap.get(t); if (lt === undefined) xMap.set(t, [s]); else lt.push(s);
+    }
+    // eslint-disable-next-line no-console
+    console.log(`  3i PSLG PLANARITY CENSUS: ${constraints.length} constraints, ${xPairs.length} PROPER CROSSING PAIRS`
+      + ` (${xMap.size} constraints involved) in ${Date.now() - tX} ms`
+      + `${xPairs.length === 0 ? '  <- PLANAR' : '  *** NON-PLANAR — cdt2d PRECONDITION VIOLATED ***'}`);
   }
 
   // ── 4. TRIANGULATE ──────────────────────────────────────────────────────────────────────────────
@@ -1449,11 +1642,104 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   for (const t of kept) { edgeSet.add(ek(t[0], t[1])); edgeSet.add(ek(t[1], t[2])); edgeSet.add(ek(t[2], t[0])); }
   let recovered = 0;
   for (const [a, b] of constraints) if (edgeSet.has(ek(a, b))) recovered += 1;
+  // S23B-R / R4 — WHICH EMITTER PLACED THIS POINT. The ranges are the provenance markers written at the
+  // end of each emitter stage; `ownerFixed` is the seed's own crossing-split / chain-endpoint flag.
+  const cls = (i: number): string => {
+    if (i < provChainEnd) {
+      const f = i < ownerFixed.length && ownerFixed[i] ? 'FIXED(crossing-split|chain-end)' : 'chain-vertex';
+      return `CHAIN[${ownerChain[i] ?? -1}:${ownerIdx[i] ?? -1}] ${f}`;
+    }
+    if (i < freeFrom) return 'BOUNDARY(3b: seam col / rim row / recon densification)';
+    if (i < provOffEnd) return 'FREE-OFFSET(3c)';
+    if (i < provPatEnd) return 'FREE-PATCH(3c-bis)';
+    if (i < provBgEnd) return 'FREE-LATTICE(3d)';
+    return 'FREE-RECON-INFILL(3g)';
+  };
+  // S23B-R / R4 RE-DIAGNOSIS — EVERY CROSSING PAIR, RESOLVED AGAINST THE TRIANGULATION, ON PASSING RUNS
+  // TOO. The census alone cannot separate the two things a non-planar PSLG can do: LOSE one arm (the S7
+  // throw) or "recover" BOTH, which is a locally non-manifold triangulation reported as a clean seed.
+  // The GRID field recovers 13,220 of 13,220 AND reads one crossing pair, so this distinction is not
+  // hypothetical and printing it only on failure would have hidden it.
+  if (xMap !== null && xPairs.length > 0) {
+    for (const [s, t] of xPairs.slice(0, 8)) {
+      const [a, b] = constraints[s]; const [c, d] = constraints[t];
+      const r = segParams(px[a], py[a], px[b], py[b], px[c], py[c], px[d], py[d]);
+      const rec = (u: number, v: number): string => (edgeSet.has(ek(u, v)) ? 'RECOVERED' : '*** LOST ***');
+      // eslint-disable-next-line no-console
+      console.log(`  3h CROSSING PAIR  (${a},${b}) ${rec(a, b)}  X  (${c},${d}) ${rec(c, d)}`
+        + `  at chart (${(px[a] + (r?.[0] ?? 0) * (px[b] - px[a])).toFixed(6)},${(py[a] + (r?.[0] ?? 0) * (py[b] - py[a])).toFixed(6)})`
+        + ` t=${(r?.[0] ?? -1).toFixed(4)} u=${(r?.[1] ?? -1).toFixed(4)}`);
+      // eslint-disable-next-line no-console
+      console.log(`       A ${cls(a)}  B ${cls(b)}   |   C ${cls(c)}  D ${cls(d)}`);
+    }
+  }
   if (recovered !== constraints.length && process.env.PF_S10_SEED_DIAG === '1') {
-    for (const [a, b] of constraints) {
+    const onSide = (i: number): string => {
+      const d = [px[i], rRef * TWO_PI - px[i], py[i], H - py[i]];
+      const nm = ['th=0', 'th=2pi', 'z=0', 'z=H'];
+      let k = 0; for (let m = 1; m < 4; m += 1) if (d[m] < d[k]) k = m;
+      return `${nm[k]} at ${(d[k] * 1000).toFixed(3)}um`;
+    };
+    // S23B-R / R4 RE-DIAGNOSIS — the RAW edge set, BEFORE the zero-chart-area filter. An edge present here
+    // but absent from `edgeSet` was recovered by cdt2d and then dropped by this file's own sliver filter,
+    // which is a DIFFERENT defect from a recovery failure and must not be attributed to cdt2d.
+    const rawEdge = new Set<number>();
+    for (const t of raw) { rawEdge.add(ek(t[0], t[1])); rawEdge.add(ek(t[1], t[2])); rawEdge.add(ek(t[2], t[0])); }
+    for (let si = 0; si < constraints.length; si += 1) {
+      const [a, b] = constraints[si];
       if (edgeSet.has(ek(a, b))) continue;
       // eslint-disable-next-line no-console
       console.log(`  UNRECOVERED (${a},${b}) chart A=(${px[a].toFixed(6)},${py[a].toFixed(6)}) B=(${px[b].toFixed(6)},${py[b].toFixed(6)}) len=${Math.hypot(px[b]-px[a],py[b]-py[a]).toExponential(3)}`);
+      // eslint-disable-next-line no-console
+      console.log(`     IN RAW cdt2d OUTPUT (pre-sliver-filter): ${rawEdge.has(ek(a, b)) ? 'YES — recovered then DROPPED by the chart-area filter' : 'NO — cdt2d never made it an edge'}`);
+      {
+        const xs = xMap === null ? [] : (xMap.get(si) ?? []);
+        // eslint-disable-next-line no-console
+        console.log(`     PROPER CROSSINGS with other constraints: ${xs.length}`);
+        for (const t of xs.slice(0, 6)) {
+          const [c, d] = constraints[t];
+          const r = segParams(px[a], py[a], px[b], py[b], px[c], py[c], px[d], py[d]);
+          // eslint-disable-next-line no-console
+          console.log(`       X (${c},${d}) at t=${(r?.[0] ?? -1).toFixed(4)} u=${(r?.[1] ?? -1).toFixed(4)}`
+            + ` chart X=(${(px[a] + (r?.[0] ?? 0) * (px[b] - px[a])).toFixed(6)},${(py[a] + (r?.[0] ?? 0) * (py[b] - py[a])).toFixed(6)})`
+            + `  C ${cls(c)}  D ${cls(d)}  ${rawEdge.has(ek(c, d)) ? '[the CROSSER WAS recovered]' : '[the crosser was NOT recovered either]'}`);
+        }
+      }
+      {
+        // blockers still inside this constraint's interior — what 3e was supposed to have split out
+        const ux = px[b] - px[a]; const uy = py[b] - py[a]; const l2 = ux * ux + uy * uy;
+        const bl: string[] = [];
+        for (let j = 0; j < px.length && bl.length < 6; j += 1) {
+          if (j === a || j === b || l2 <= 1e-18) continue;
+          const t = ((px[j] - px[a]) * ux + (py[j] - py[a]) * uy) / l2;
+          if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+          const dd = Math.hypot(px[j] - (px[a] + t * ux), py[j] - (py[a] + t * uy));
+          if (dd > o.pslgEpsMm) continue;
+          bl.push(`${j}@t=${t.toFixed(4)} off=${(dd * 1000).toFixed(3)}um ${cls(j)}`);
+        }
+        // eslint-disable-next-line no-console
+        console.log(`     BLOCKERS still within pslgEps of the INTERIOR (3e should have split these out): ${bl.length === 0 ? 'none' : bl.join(' | ')}`);
+      }
+      // eslint-disable-next-line no-console
+      console.log(`     A ${a}: ${cls(a)}  nearest side ${onSide(a)}`);
+      // eslint-disable-next-line no-console
+      console.log(`     B ${b}: ${cls(b)}  nearest side ${onSide(b)}`);
+      let k = ek(a, b); const chainUp: string[] = [];
+      for (let g = 0; g < 8; g += 1) {
+        const p = PROV === null ? undefined : PROV.get(k);
+        if (p === undefined) break;
+        const pa = Math.floor(p / 33554432); const pb = p - pa * 33554432;
+        chainUp.push(`(${pa},${pb})`); k = p;
+      }
+      const kind = provRootKind.get(k);
+      // eslint-disable-next-line no-console
+      console.log(`     ORIGIN: ${chainUp.length === 0 ? 'THIS IS AN ORIGINAL CONSTRAINT (not produced by 3e)'
+        : `3e SPLIT PRODUCT, ancestry ${chainUp.join(' <- ')}`}  root kind ${kind ?? 'UNKNOWN'}`);
+      if (chainUp.length > 0) {
+        const ra = Math.floor(k / 33554432); const rb = k - ra * 33554432;
+        // eslint-disable-next-line no-console
+        console.log(`     ROOT (${ra},${rb}) A=(${px[ra].toFixed(6)},${py[ra].toFixed(6)}) [${cls(ra)}] B=(${px[rb].toFixed(6)},${py[rb].toFixed(6)}) [${cls(rb)}] len=${Math.hypot(px[rb]-px[ra],py[rb]-py[ra]).toExponential(3)}`);
+      }
       const nb: number[] = [];
       for (let j = 0; j < px.length; j += 1) {
         if (j === a || j === b) continue;
@@ -1461,6 +1747,13 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       }
       // eslint-disable-next-line no-console
       console.log(`     neighbours within 0.5mm: ${nb.length}  ${nb.slice(0, 8).map((j) => `${j}:(${px[j].toFixed(6)},${py[j].toFixed(6)})`).join(' ')}`);
+      // the CLOSEST eight, with their class — the crowd that actually decides recoverability
+      const near = nb.map((j) => ({ j, d: Math.min(Math.hypot(px[j] - px[a], py[j] - py[a]), Math.hypot(px[j] - px[b], py[j] - py[b])) }))
+        .sort((u, v) => u.d - v.d).slice(0, 8);
+      for (const { j, d } of near) {
+        // eslint-disable-next-line no-console
+        console.log(`       ${(d * 1000).toFixed(3)}um  ${j}:(${px[j].toFixed(6)},${py[j].toFixed(6)})  ${cls(j)}`);
+      }
     }
   }
   if (recovered !== constraints.length) {

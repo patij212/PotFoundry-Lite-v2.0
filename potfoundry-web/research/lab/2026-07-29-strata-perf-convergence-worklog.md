@@ -6330,6 +6330,216 @@ No default is flipped. `src/` is byte-untouched by this session.
 >> transcribe-never-edit for `src/`, and an operator-side session's work is not an executor's to touch.
 
 
+### S23B-R / R4 STEP 1 — **THE PROVENANCE DIAG, AND IT REFUTES THE INHERITED R4 MECHANISM ON ITS OWN**
+### **SECOND ROW. THE TWO LOSSES ARE NOT ONE CONFIGURATION. REGISTERED CANDIDATE TABLE, WITH ITS**
+### **DISCRIMINATORS, WRITTEN BEFORE ANY FIX IS ATTEMPTED.**
+`S23R_R4DIAG.log`, produced by the seed's own `PF_S10_SEED_DIAG` now carrying EMITTER PROVENANCE (which
+stage placed each endpoint) and **3e ANCESTRY** (whether the lost segment is a traced locus segment or one
+3e manufactured, and from what). Seed-only; no arm, no STL, no judge.
+
+| | RUNG 4 — chain OFF, scale 1, **the arm's own seed** | RUNG 1 — chain ON, scale 4 |
+|---|---|---|
+| lost segment | `(12913,93746)` | `(10561,10562)` |
+| chart | A **(109.684280, 120.000000)** — ON the rim | th **200.264**, z **64.2457 -> 64.6206** |
+| length | **25.89 um** | **374.9 um** |
+| A / B emitter | **BOUNDARY(3b rim row)** / **FREE-PATCH(3c-bis)** | **CHAIN[45:116]** / **CHAIN[45:118]** |
+| origin | **3e SPLIT PRODUCT**, ancestry CYCLIC, root kind UNKNOWN | **AN ORIGINAL CONSTRAINT**, root kind **CHAIN** |
+| distance to the rim | **0.000 um** | **55,754 um — 55.4 mm** |
+| crowd | 105 neighbours <0.5 mm, free-patch at **11.4/18.5/19.5/27.8 um** | **14** neighbours, nearest interesting **CHAIN[56:10] at 230.4 um** |
+
+>> **THE INHERITED MECHANISM IS REFUTED AS THE SINGLE CAUSE, BY THE DIAG THAT WAS RUN TO CONFIRM IT.**
+>> R4 says *"crossing splits currently run AFTER the boundary snap and are never re-snapped"* — a RIM-ROW
+>> ordering defect. **Rung 1 loses an ORIGINAL CHAIN constraint 55.4 mm from the rim, with no 3e product
+>> anywhere in its ancestry and no boundary vertex within half a millimetre.** No ordering of snap and
+>> split can produce it. The R2 block's own sentence — *"two distinct local configurations both losing
+>> exactly one segment is the finding"* — was the correct reading, and the follow-up block's *"R4 is the
+>> only candidate left standing"* over-collapsed it. **This is written before the fix, so it cannot be
+>> claimed afterwards that the refutation was known.**
+>> **AND THE RUNG-4 ANCESTRY IS ITSELF A MEASUREMENT, NOT A DIAGNOSTIC ARTEFACT.** It reads
+>> `(93746,93747) <- (12913,93746) <- (93746,93747) <- ...`, alternating, 8 deep. Checked by hand against
+>> the printed coordinates: **12913 lies 18.4 um off the interior of (93746,93747) at t=0.932, and 93747
+>> lies 13.9 um off the interior of (12913,93746) at t=0.470** — each is a blocker inside the other, both
+>> inside `pslgEpsMm` = 20 um. **3e ping-pongs between the two segments forever and re-manufactures each
+>> from the other.** That is the R2-follow-up's divergence, caught in the act on the segment that is lost.
+
+#### THE REGISTERED CANDIDATE TABLE. FIRST MATCH WINS. NO FIX IS TOUCHED UNTIL A ROW IS SCORED.
+  **C1 — THE 3e PHANTOM PROJECTION MANUFACTURES RUNG 4.** 3e's own correctness note says the blocker is
+  *"PROJECT[ED] ONTO THE CONSTRAINT ... splitting at the FOOT leaves the constraint geometrically
+  UNCHANGED"*; the foot is computed and **discarded (`void fx; void fy;`)** and the split is taken at the
+  blocker's own position, so every sub-segment is a NEW line that can acquire NEW blockers. The `moved`
+  counter that the loop's own exit test reads (`if (!grew && moved === 0) break;`) is **assigned 0 and
+  never written** — it is the dead half of the documented algorithm.
+  **DISCRIMINATOR:** implement the documented projection behind a **default-OFF** flag; re-run rung 4.
+  The fragment either never forms or is recovered.
+  **C2 — A CHAIN-CHAIN NEAR-INTERACTION MANUFACTURES RUNG 1.** `CHAIN[45]` segment with a `CHAIN[56]`
+  vertex 230 um off its interior, four consecutive chain-45 vertices collinear to 0.5 um over 1.12 mm.
+  **DISCRIMINATOR:** a geometry read of chains 45/56 at that chart location — do they CROSS?
+  **C3 — BOTH ARE SURFACE SYMPTOMS OF ONE cdt2d ENFORCEMENT PROPERTY.** *"Exactly one segment of 13-17
+  thousand, every time, in four different configurations"* is not the signature of two independent local
+  accidents. **THE ONE PROPERTY BOTH ANATOMIES COULD SHARE AND THAT NOTHING HAS EVER MEASURED IS cdt2d's
+  OWN PRECONDITION: a PLANAR straight-line graph.** Stage 2 planarizes the CHAINS, before the point set
+  exists; **the list that leaves 3e has never been checked**. A triangulator handed a properly-crossing
+  pair recovers one arm and cannot recover the other — **which is exactly one lost segment per crossing
+  pair.** The 2026-07-13 `upperIds` note measured this same class (2,965 proper crossings, 99.4% from one
+  spanner family) in the *other* cdt2d call site, where it CRASHED instead of losing an edge.
+  **DISCRIMINATOR:** a proper-crossing census of the final constraint list, behind `PF_S10_SEED_DIAG`,
+  on both failing rungs **AND on the GRID-field rung that recovers 13,220 of 13,220**. If the failing
+  rungs read >0 and the passing control reads 0, C3 is the mechanism and C1/C2 are its two MANUFACTURERS.
+>> **THE PREDICTION, REGISTERED BEFORE THE RUN: I EXPECT C3 TO FIRE, WITH THE LOST SEGMENT ITSELF IN A
+>> CROSSING PAIR.** If the census reads 0 crossings on a failing rung, C3 is refuted outright and C1/C2
+>> are scored on their own discriminators instead.
+`research/bridge/out/s23r_planar.sh`, log `S23R_PLANAR.log`. The census is a gated `console.log`; `xMap`
+is `null` unless `PF_S10_SEED_DIAG=1` and no branch reads it.
+
+
+### *** S23B-R / R4 STEP 2 RESULT — **C3 FIRES, AND IT FIRES HARDER THAN IT WAS REGISTERED. THE PSLG THIS**
+### *** **FILE HANDS cdt2d IS NON-PLANAR IN EVERY CONFIGURATION MEASURED — INCLUDING THE ONE THAT SHIPPED.**
+### *** **A PROPER CROSSING DOES NOT ALWAYS LOSE A SEGMENT: cdt2d EITHER LOSES ONE ARM (the S7 throw) OR**
+### *** **KEEPS BOTH (a locally NON-MANIFOLD triangulation, reported as a clean seed). BOTH OUTCOMES ARE**
+### *** **MEASURED HERE, AND THE SECOND ONE IS R4's TWO NON-MANIFOLD EDGES, TO 10 um.** ***
+Logs `S23R_PLANAR.log` (census) and `S23R_PAIRS.log` (every pair resolved against the triangulation, on
+the PASSING run too). Seed-only; **no arm was built.**
+
+| rung | constraints | **proper crossing pairs** | recovery | what the pair(s) did |
+|---|---|---|---|---|
+| 1 — chain ON, scale 4, SCATTERED | 13,515 | **2** | 13,514 of 13,515 | one pair **BOTH RECOVERED**; the other **LOSES ITS FIRST ARM** |
+| 4 — chain off, scale 1, SCATTERED (the arm's own seed) | 13,412 | **1** | 13,411 of 13,412 | **LOSES ITS FIRST ARM** |
+| control — chain off, scale 1, **GRID** (`_S23B`'s shipped seed) | 13,220 | **1** | **13,220 of 13,220** | **BOTH RECOVERED** |
+
+>> **THE SCORED TABLE. FIRST MATCH WINS, AND IT IS C3.**
+>>   **C3 — CONFIRMED, AND IT IS THE MECHANISM.** In BOTH failing rungs the lost segment is one arm of a
+>>     proper crossing pair, and **its crosser was recovered** — one segment lost per crossing pair, which
+>>     is where *"EXACTLY ONE of 13-17 thousand, four times, non-monotone in density"* comes from. The
+>>     diag also prints `IN RAW cdt2d OUTPUT: **NO**` on both, so this is a genuine recovery failure and
+>>     **not** this file's own zero-chart-area sliver filter — a candidate that had to be excluded and now
+>>     is. **C1 and C2 are not competing explanations. They are the two MANUFACTURERS of C3**, and both
+>>     are confirmed below with their own fingerprints.
+>>   **C2 — CONFIRMED AS RUNG 1's MANUFACTURER, WITH A 4-OF-4 FINGERPRINT NOBODY WAS LOOKING FOR.** Both
+>>     of rung 1's pairs are CHAIN x CHAIN, and **every one of the four constraints skips exactly one
+>>     chain index**: `CHAIN[39:96]->[39:98]`, `CHAIN[58:12]->[58:14]`, `CHAIN[45:116]->[45:118]`,
+>>     `CHAIN[56:10]->[56:12]`. **The missing vertex is stage 2's own crossing-split vertex**, and stage 3a
+>>     annihilated it: `addPt` welds at `minSepMm` = `max(weldMm*4, acrossBase*0.5)` = **192.65 um**, and
+>>     the crossing at chart `(200.264114, 64.407462)` is **161.8 um** from `10561` and **163.9 um** from
+>>     `11206` — *both* inside the weld radius. **`addPt` returns the FIRST point inside the radius in
+>>     hash-cell order, not the NEAREST**, so the two chains' copies of the SAME junction weld to DIFFERENT
+>>     existing points, the shared vertex ceases to exist, and the two segments properly cross again.
+>>     **The file's own comment at stage 3a says this cannot happen** — *"the displacement bound is minSep,
+>>     which only ever binds where two loci are that close, i.e. at a junction approach"*. It binds
+>>     EXACTLY at a junction, which is the one place the shared vertex may not move.
+>>   **C1 — CONFIRMED AS RUNG 4's MANUFACTURER.** Its crosser `(93747,93757)` is **FREE-PATCH x FREE-PATCH**
+>>     — 3c-bis emits ZERO constraints, so that segment exists only because **3e manufactured it**, by
+>>     splitting at the BLOCKER's own position instead of the projected foot. The same diag line shows 3e
+>>     left **two blockers inside the lost segment's own interior** (`93747` at 13.880 um, `93757` at
+>>     11.355 um), which is the 3-pass cap and the oscillation caught together.
+>>   **AND THE ONE THAT WAS NOT REGISTERED AND MATTERS MOST — THE PASSING CONTROL IS NON-PLANAR TOO.**
+>>     `_S23B`'s shipped seed carries one crossing pair, `(93584,93575) x (93576,12859)`, FREE-PATCH x
+>>     BOUNDARY(rim row), at chart **(109.558562, 119.995244)** — and **BOTH ARMS READ RECOVERED**, so the
+>>     recovery assertion passes and the seed ships. **R4's two non-manifold edges are at `th 2.4344,
+>>     z 119.98`; at `rRef` = 45 mm that is `x` = **109.548 mm**. The crossing is at `x` = **109.5586 mm**,
+>>     `z` = **119.99524**. Same defect, 10 um in `x` and 15 um in `z`.**
+>>     **R4's CONCLUSION WAS RIGHT AND ITS MECHANISM WAS WRONG.** It said *"two independent failures now
+>>     point at one ordering defect"* and named snap/split ordering at the rim. The one defect is real and
+>>     it is **cdt2d's PLANARITY PRECONDITION, violated by the list this file hands it**; the rim is where
+>>     the free-patch crowd is dense enough to manufacture a crossing, not the cause of one. **A fix
+>>     registered on the inherited mechanism would have re-ordered a snap that rung 1 proves is not
+>>     involved** — rung 1's loss is 55.4 mm from the rim, with no boundary vertex within half a mm.
+
+#### WHY THIS WAS INVISIBLE FOR FOUR ARMS, SAID PLAINLY
+Stage 2 planarizes the **CHAINS**, in chain space, **before the point set exists**. Everything that can
+un-planarize the graph runs AFTER it: stage 3a's weld (C2), stage 3e's split-at-blocker (C1). **Nothing
+has ever checked the list that actually reaches `cdt2d(...)`** — and the seed's own recovery assertion
+cannot see the failure mode that keeps both arms, which is the one that shipped. The 2026-07-13
+`upperIds` note found this same class at the OTHER `cdt2d` call site, measured 2,965 proper crossings, and
+fixed it with a pre-triangulation guard (`planarizeChartMM`). **The seed path was explicitly reasoned to
+be safe there** — *"the seed path never hits this — its constraints are clipped to [0,1] and planarized by
+`morseComplex.planarizeMM`"* — and that reasoning does not cover THIS builder, which planarizes its own
+chains and then welds, splits and infills on top of the result.
+
+
+### *** S23B-R / R4 FIX **UNIT B** — **THE PSLG PLANARITY GUARD. THE TWO FAILING RUNGS RECOVER 100% AND**
+### *** **THE SHIPPED-PATH NEGATIVE CONTROL IS EXACT TO THE DIGIT.** ***
+`PF_S10_PLANARIZE`, **default OFF**. It enforces cdt2d's own precondition on the list actually handed to
+it: find every proper crossing, split BOTH arms at a **shared** vertex computed once from the first arm's
+own parametrisation and welded only at `weldMm` (2 um) — **never at `minSepMm`, which is the radius that
+destroyed the stage-2 crossing vertex in the first place** — then iterate to zero and report the residual.
+Sub-segments are collinear with their parent by construction, so the pass cannot manufacture the defect
+it removes. **It is an INPUT-HYGIENE rule at this file's own call site; the `cdt2d` library is not
+touched.** This is the 2026-07-13 `planarizeChartMM` remedy, applied where the reasoning that exempted the
+seed path does not hold.
+
+| pinning test (log `S23R_FIX1.log`) | crossings before | crossings after | recovery before | **recovery after** |
+|---|---|---|---|---|
+| RUNG 1 — chain ON, scale 4 | 2 | **0** | 13,514 of 13,515 **THREW** | **13,517 of 13,517 — 100%** |
+| RUNG 4 — chain off, scale 1, **the arm's own seed** | 1 | **0** | 13,411 of 13,412 **THREW** | **13,412 of 13,412 — 100%** |
+
+  Guard cost, measured: rung 1 **1 pass, 4 sub-segments from 2 new shared vertices, 98 ms**; rung 4
+  **1 pass, 2 sub-segments from 1 new shared vertex, 91 ms** — against a 641 s seed build. Rung 4 now
+  builds **599,472 points / 1,197,587 triangles**, over-cap **8**, worst AR **85.1**, worst parAR **98.6**.
+  **THE AR NUMBERS DID NOT MOVE**: 85.1 / 98.6 are `_S23B`'s own, so the new vertices did not buy recovery
+  with a shape regression — which was the live risk, the guard's split landing 4.8 um off a rim row.
+
+>> **THE NEGATIVE CONTROL, AT EVERY LEVER'S DEFAULT, IS EXACT:** the GRID-field seed reads
+>> **382,576 points / 763,965 triangles / 13,220 of 13,220 / over-cap 7 / worst AR 85.1 / parAR 98.6** —
+>> every documented digit. **And its census still reads 1 PROPER CROSSING PAIR**, which is the point: with
+>> the guard off the shipped path is byte-for-byte what it was, non-planarity included. **Inert by
+>> measurement, not by argument.**
+
+### S23B-R / R4 FIX **UNIT A** — **THE DOCUMENTED 3e PROJECTION, IMPLEMENTED. `PF_S10_COND_PROJECT`,**
+### **DEFAULT OFF. REGISTERED AS ITS OWN UNIT AND NOT BUNDLED WITH B.**
+3e's correctness note has always described code that is not there: *"PROJECT[ED] ONTO THE CONSTRAINT ...
+splitting at the FOOT leaves the constraint geometrically UNCHANGED ... and moves only the blocker, by at
+most EPS"*, with `moved` as the counter its own exit test reads. The foot was computed and discarded
+(`void fx; void fy;`) and `moved` was never written. **Unit A writes both**: the blocker is moved onto the
+constraint (<= `pslgEpsMm` = 20 um) and the split is taken there, so every sub-segment is EXACTLY collinear
+with its parent and the pass is idempotent by construction. **A vertex on a domain side is never moved** —
+the two seam columns must carry an identical `z` set and a rim vertex must stay at `z = H` exactly.
+**WHY IT IS A SEPARATE UNIT FROM B AND NOT A BUNDLE:** B enforces the precondition whatever violates it;
+A removes ONE of the two things that violate it (and, separately, closes the divergence measured in the
+R2 follow-up — the list that doubles every pass from ~12 and has no fixed point). **B is what the ladder
+is scored on. A is scored on its own convergence, and neither is claimed to be the other.**
+**AND A IS *NOT* CLAIMED TO BE VALIDATED BY THE LADDER BELOW, WHICH RAN WITH `projected 0` ON EVERY PASS
+OF EVERY RUNG** — the lever was off, exactly as registered. Landing A's own measurement is on the
+what-remains list, not in this block.
+
+### *** S23B-R / R4 — **THE FULL LADDER, RE-RUN. 100% CONSTRAINT RECOVERY ON ALL FOUR RUNGS, AND THE**
+### *** **NEGATIVE CONTROL IS EXACT.** ***
+Log `S23R_LADDER2.log`, script `s23r_ladder2.sh`. Bar registered before it ran: 100% on all four rungs,
+**and rung 2, which HELD before, must still hold** — a guard that fixes three rungs and breaks the one
+that worked is not a fix.
+
+| rung | scale | chain | crossings before / **after** | constraints | recovered | points / tris | over-cap | worst AR | parAR | s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | 4 | ON | 2 / **0** | 13,517 | **13,517 — 100%** | 135,386 / 269,927 | 6 | 85.1 | 98.6 | 160 |
+| 2 | 2 | ON | **0 / 0 — the guard is a NO-OP here** | 14,740 | **14,740 — 100%** | 215,098 / 429,200 | 6 | 85.1 | 99.9 | 233 |
+| 3 | 1 | ON | 1 / **0** | 16,920 | **16,920 — 100%** | 601,631 / 1,201,899 | 12 | 92.7 | 102.2 | 645 |
+| 4 | 1 | off | 1 / **0** | 13,412 | **13,412 — 100%** | **599,472 / 1,197,587** | 8 | 85.1 | 98.6 | 696 |
+| control | 1 | off | GRID field, **every lever at its default** | 13,220 | **13,220 of 13,220** | **382,576 / 763,965** | **7** | **85.1** | **98.6** | 364 |
+
+>> **RUNG 2 IS THE RESULT THAT MATTERS MOST AND IT WAS NOT DESIGNED TO BE.** It is the ONE rung of four
+>> that recovered 100% before the fix — and it is the ONE rung whose census reads **ZERO proper crossings**,
+>> so the guard finds nothing, splits nothing, and its row comes back **215,098 / 429,200 / over-cap 6**,
+>> the R2 ladder's own numbers. **The mechanism predicts exactly which rung needs no repair, and the
+>> ladder agrees.** That is not a fix that happens to correlate with the failures; it is a fix whose
+>> detector partitions the ladder the way the failures already did.
+>> **AND THE NON-MONOTONICITY THAT REFUTED G2's PREMISE IS NOW EXPLAINED.** 13,515 fails / 14,740 holds /
+>> 16,920 fails / 13,412 fails looked like a recovery limit that ignores density. It is not a limit at
+>> all: **it is whether that particular field produced a proper crossing**, which is a LOCAL accident of
+>> where two loci meet and where the free-patch crowd lands — monotone in nothing.
+>> **THE ARM'S OWN SEED NOW BUILDS: 599,472 points / 1,197,587 triangles in 696 s**, against the
+>> registered 3,000 s seed-build ceiling (**23.2%** of it) and worst AR / parAR **85.1 / 98.6**, which are
+>> `_S23B`'s own digits. **The block R2 reported — *"the corrected field cannot be seeded at all"* — is
+>> lifted.**
+
+#### THE SHARED-FILE EDITS ARE CLEARED BY THE STANDING GATE, TAKEN AFTER THEM (`S23R_GATE2.log`)
+  * **HARD GATE 12/12, every documented value EXACT** — V1 **2.249981**, V3 **12.041**, V4 **502.615**,
+    V5 **391.661**, V6 **0.617**, V7b **402.230**, V7c **12.041 / 39.767 / 142.668**.
+  * **W1 IDENTITY: md5 `8a59fb37a9115600b13262254380ccb0`, `cmp` BYTE-IDENTICAL to `_W1`.**
+  * **THE SEED'S OWN IDENTITY, which the gate does not cover:** the grid-field control reproduces
+    `_S23B`'s seed at **382,576 / 763,965 / 13,220 of 13,220 / over-cap 7 / AR 85.1 / parAR 98.6**, and
+    rung 2 reproduces the R2 ladder's own **215,098 / 429,200 / over-cap 6** with the guard ON and finding
+    nothing to do. **Three shared-file levers, all default-OFF, all inert by measurement.**
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
