@@ -5913,6 +5913,104 @@ Derived entirely from the attribution above, and every clause names the measurem
 >> registered risk list.**
 
 
+### S23B-R — **THE OPERATOR'S R3 DECISION, RECORDED WITH ITS PROVENANCE, AND THE AMENDED COST CEILINGS**
+### **DERIVED FROM IT. REGISTRATION ONLY: NOTHING IS BUILT, NOTHING IS RUN, NO NUMBER IS READ.**
+R3 stated the cost as a number *"because that is the operator's decision and not mine"* and left the arm
+BLOCKED on it. **The decision is made and it is recorded here before anything else happens in this arm.**
+
+  **THE DECISION, WITH ITS PROVENANCE.** Instrument `AskUserQuestion`, 2026-08-01, question = R3's own
+  table (the surface's own demand at the driver's own `PF_CB_TOL` = 10 um is **5,024,104** triangles,
+  **x4.0143** of `_S22B`, **251.2%** of the registered 2.0 M live-triangle ceiling). **Operator's answer:
+  "Raise to ~5.5M (Recommended)".** So: **THE LIVE-TRIANGLE CEILING IS RAISED FROM 2,000,000 TO
+  5,500,000**, to honour the measured true demand rather than clamp it. R3 said *"one of those two numbers
+  has to move, and choosing which is not a mesher's call."* The operator moved the ceiling.
+  >> **WHAT THE RAISE DOES AND DOES NOT BUY, SAID BEFORE THE ARM SO IT CANNOT BE CLAIMED AFTERWARDS.**
+  >> It buys a FAIR TEST OF THE CLAUSE: S23B built 38.2% of a 2.0 M ceiling and still refuted the
+  >> construction argument, and the attribution says the limiter was GEOMETRIC not budgetary. Raising the
+  >> ceiling removes the only remaining budgetary excuse. **THE CLAUSE ITSELF IS UNCHANGED — <= 5 shards
+  >> and <= 2 fan hubs outside declared geometry, no partial credit** — and R5's untouchables (floor
+  >> 36.4 um, alpha 1.0, FLOOR-THEN-GRADE, `beta` 0.83, the five verdict rows) are untouched.
+
+#### THE AMENDED CEILINGS. Every one derived from a MEASURED anchor, and the anchor is named.
+Anchors, all measured and all on the record: `_S22B` 1,251,546 tri / 626,348 verts / 939 s. `_S23B`
+382,576 points -> 763,965 tri, **seed build 347 s**, driver wall **545 s**, Part-B audit **1,830 s**
+(H1 **1,506 s**, H2 **309 s**), six censuses **43 s**, W1 identity **199 s**, hard gate **240 s**.
+Target: **~5.02 M triangles -> ~2.512 M placed points** (the mesh's own 2 tri/vertex, measured at 1.998).
+
+| ceiling | was | **amended** | the derivation, from which anchor |
+|---|---|---|---|
+| live triangles | 2.0 M | **5.5 M** | the operator's decision above; expected ~5.02 M = **91.3%** of it |
+| shipped STL bytes | — | **<= 300 MB** | `84 + 50*5,024,104` = **251.2 MB**; 101.4 GB free — no threat |
+| seed build (the `cdt2d` call) | 450 s | **3,000 s** | see the two derivations below; **2,612 s** + 15% |
+| total driver wall | 600 s | **4,500 s** | 2,612 s seed + (545-347) s non-seed x6.58 in facets = **3,915 s** |
+| Part-B audit wall | ~830 s | **2,700 s** | H1 **1,506 s** (TIME-capped, does not grow), H2 309 x log-ratio = **346 s**, per-facet censuses 15 x6.58 = **99 s**, 251 MB read ~10 s => **1,961 s** |
+| six censuses | 60-90 s | **600 s** | 43 s x6.58 = **283 s** |
+| `PF_FT_H1MAX` | 40000 | **40000 — UNCHANGED** | and the coverage it buys is thinner: see the caveat below |
+| `PF_FT_H2BUDGET` | 40 M | **40 M — UNCHANGED** | budget-bound, so the resolving power is preserved, not the fraction |
+
+  **THE SEED-BUILD SCALING, DERIVED TWICE, AND THE TWO DERIVATIONS DISAGREE BY x3.2. I TAKE THE LARGER
+  AND SAY WHY.** `cdt2d` is O(n log n), so the factor is `(n/n0) * log(n)/log(n0)`.
+  * **From Stage-0's own cost table** (the registered **x8.80** form, `(881/117) * log(881k)/log(117k)`),
+    re-evaluated at 2,512 k over the seed's 116,931: `21.483 * 14.7370/11.6694` = **x27.13** of the seed's
+    own ~30 s share = **814 s**.
+  * **From `_S23B`'s MEASURED seed build** (347 s at 382,576 points): `(2512/382.6) *
+    log(2.512M)/log(382,576)` = `6.566 * 1.1464` = **x7.528** = **2,612 s**.
+  >> **THE MEASURED ANCHOR WINS AND IT IS NOT CLOSE.** The 30 s figure was measured with NO infill stage,
+  >> NO boundary densification and NO repair rounds — it prices a different constructor. 347 s prices
+  >> THIS one, on THIS path, at THIS field's family. Registering the ceiling on the cheaper derivation
+  >> would be registering a ceiling I already know is wrong. **3,000 s it is.**
+  **AND `PF_CB_MAXSECS` MOVES 5400 -> 10800 IN THE CHAIN SCRIPT**, because a driver that self-aborts at
+  5,400 s would turn a cost measurement into a truncation. That is a lever in a scratch script, not a
+  default: no default is flipped by this arm.
+
+  **THE H1 COVERAGE CAVEAT, QUOTED UP FRONT RATHER THAN IN A FOOTNOTE.** `H1MAX=40000` on 5,024,104
+  facets is **0.796% INTENDED coverage** (against `_S23B`'s 2.84% and `_S22B`'s own). `_S23B` did not even
+  reach its cap — the walk is TIME-bound and completed 21,726 of 40,000 — so the ACHIEVED coverage at
+  5.02 M will land between **0.43%** (same facet count, same time) and 0.796% (smaller facets are cheaper
+  per facet). **Every H1 number in this arm is quoted with its coverage percentage and carries the
+  standing capped-H1 and rim-row caveats, with MORE force than in any arm before it. An H1 witness that
+  moves between arms at 0.4% coverage is a sampling event until proven otherwise** — four arms have now
+  shown exactly that while the full-coverage adaptive oracle read 95.473 um at the same locus.
+
+#### DETERMINISM — S5 IS EXPENSIVE AT FULL SCALE AND I AM REGISTERING A DEVIATION RATHER THAN A DODGE
+S5 as registered is *"byte-identical output STL, proven TWICE (md5 + `cmp`)"* — three full builds. At
+3,915 s each that is **11,745 s of determinism alone**, more than the arm, the audit and every census
+combined. **REGISTERED SUBSTITUTE:**
+  1. **THE FULL TRIPLE AT A STATED REDUCED SCALE** — `PF_CB_RECON_SCALE=2` (the field doubled, ~half the
+     linear density), arm + two twins, md5 AND `cmp`, exactly as S5 asks.
+  2. **PLUS FULL-SCALE md5 + `cmp` BETWEEN THE ARM AND ONE FULL-SCALE TWIN** — the two builds the arm
+     requires anyway, at the density that actually ships.
+  **THE JUSTIFICATION, AND IT IS AN ARGUMENT AND NOT A BUDGET.** (i) Determinism on this path is a
+  property of the ALGORITHM: candidates are generated row-major over field cells, the point hash is
+  insertion-ordered, there is no RNG and no worker pool anywhere in the seed path — so a non-determinism
+  would have to come from floating-point non-associativity, whose MECHANISM is scale-invariant. (ii)
+  `_S23B` already measured byte-identity across THREE builds at 382,576 points, and its 622.349 um
+  residual was identical **to the digit** at scales 4, 2 and 1. (iii) The full-scale pair still tests it
+  where it ships.
+  >> **AND IT IS SCORED AS A DEVIATION, NOT AS A PASS. If the full-scale PAIR differs, that is a
+  >> REGRESSION row no matter what the reduced-scale triple did**, and the reduced-scale triple may never
+  >> be quoted as evidence about the shipped mesh's bytes.
+
+#### THE INFEASIBLE ROWS, AMENDED. STILL FIRST, STILL NOT TUNED AROUND.
+  **S7' — THE CONSTRUCTOR AT 2.5 M POINTS IS UNTESTED AND THIS IS WHERE IT BREAKS IF IT BREAKS.** The
+  largest `cdt2d` call this campaign has ever completed is **392,265 points** (the S23B probe ladder).
+  2.512 M is **x6.4 beyond any measured point**, and S21B already caught a `cdt2d` `mergeHulls` crash at
+  300 k TRICAP. **A `cdt2d` throw, a V8 OOM at `--max-old-space-size=16384` on a 31.9 GB box, or a
+  constraint-recovery shortfall is INFEASIBLE: report the cause and stop.**
+  **S4' — THE AMENDED COST CEILINGS ARE TRIPWIRES, NOT TARGETS.** Live tris > 5.5 M, seed build > 3,000 s,
+  or total driver wall > 4,500 s is an **INFEASIBLE row**, registered here, reported as the arm's result.
+  **AND THE PRE-ARM GATE IS R2's OWN PROBE, WHICH OUTRANKS ALL OF THIS.** If constraint recovery is not
+  100% at the corrected field's corridor density, **THE ARM IS NOT BUILT** — that is a RESULT, reported
+  with the corridor-pricing road (ii) scoped, not a build to be attempted and watched to fail.
+
+>> **WHAT THIS BLOCK IS NOT: A PREDICTION THAT THE ARM WILL COST 5.02 M.** 5,024,104 is the SURFACE'S OWN
+>> demand at 10 um, measured by `s23TrueCost.ts` off the analytic surface — it is NOT the extracted
+>> field's price, and the extracted field is what the constructor is driven by. **The corrected field's
+>> own price is measured in R1's dry re-pricing, BEFORE anything is built, and the number that comes back
+>> governs — not this expectation.** Registering the ceiling and predicting the cost are two different
+>> acts and this block only does the first.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
