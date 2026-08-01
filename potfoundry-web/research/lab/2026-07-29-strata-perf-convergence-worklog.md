@@ -8256,6 +8256,141 @@ path (`:2543`) or its resume path (`:3618`), so every reason on a production arm
 fix at each site; needs both gates re-taken because it touches the shared file. **Do it at the START of the
 next arm, not the end of this one.**
 
+#### **S25.2 — THE ROAD-(2) DISCRIMINATOR. REGISTERED IN FULL BEFORE ANYTHING WAS RUN AND BEFORE ANY**
+#### **NUMBER WAS READ. ARTIFACT-ONLY: no driver edit, no mesher run, no gate owed.**
+
+**WHY THIS PROBE EXISTS.** S25's road (2) — a metric-aware S1 cap — collides head-on with **S23-M Stage 0's
+M1 NO-GO**, which measured the AR-refused CHILDREN at `_S22B`'s stranded sites as **3,338 of 19,949 = 16.7%**
+metric-admissible (`arM` p10 18.07 / p50 **101.16** / p90 895.62 against a designed-lattice p99 of 16.61),
+and whose registered bar was **>= 50%**. **The collision is not yet a refutation, because the two arms
+measure different objects.** S25's parAR p50 27.8 / p95 241 / max 1344 describes the **PARENT** facets;
+S23-M's 16.7% describes their **CHILDREN**. A parent can be an unroutable monster whose children are fine —
+that is what a split IS — so the parent distribution cannot decide road (2) either way.
+
+**THE OPEN QUESTION, STATED AS ONE SENTENCE.** At the S24 unresolved sites — **post-Phase-2 field, a
+substrate S23-M never saw** — do the demanded splits' CHILDREN score metric-admissible?
+
+**METHOD, and the transcription rule.** The recorded instrument is `s23mPreflight.ts`. **It is NOT edited**
+— the census-tool rule (`s24_final.sh`: "the whole value of these numbers is that they are the same
+instrument on every arm"). Two runs of the UNMODIFIED tool, via the `DS-HT -> DS-H` alias S24 already made:
+1. **`S22B` — the CONTINUITY CHECK.** Must reproduce `MET_AR` 27, (a) **16.7%**, `arM` p50 **101.16**. If it
+   does not, the environment has moved and no comparison is admissible. **This is scored first.**
+2. **`S24i2` — THE MEASUREMENT.** Same instrument, post-Phase-2 substrate.
+Scoring is the tool's own `scorePop`: per site, per refused edge, synthesize the children the driver would
+place (`splitPoint` = the 3-D chord midpoint, MID3D 24 halvings, |shift| cap 0.25 — the shipped placement),
+keep **only the children the AR cap refuses** (`ar <= SHAPE_AR` are skipped — S1 was content with them), and
+score `arM` against `MET_AR` **and** the altitude against `ALT_FLOOR` 0.7629 um. Denominator = AR-refused
+children, exactly as S23-M's 19,949 was.
+3. **THE EXACT-POPULATION ARM.** The tool derives its `stranded` set from the mesh (BLOCKED ∧ over-tol); on
+   `_S22B` that reproduced **89.3%** of the driver's 4,307, i.e. it is a close PROXY and not the set itself.
+   S25 now has the set itself. So the population keyed by `unresolved.json` is scored too, mapped to STL
+   triangles **BY GEOMETRY** (centroid theta 6 dp, z 5 dp, plus the three sorted edges) — never by index,
+   because the driver's array index counts dead triangles and the STL's does not. **If the two disagree by
+   more than a few percent the geometric mapping is not trustworthy and the exact-population number is
+   withdrawn, not defended.**
+
+**THE REGISTERED READ — WRITTEN NOW, SO IT CANNOT BE DRAWN AFTER THE NUMBER.**
+| measured admissible fraction | verdict |
+|---|---|
+| **>= 50%** at the load-weighted top | **ROAD (2) OPENS.** S23-M's NO-GO was POPULATION-SPECIFIC, and the write-up must then say **why the populations differ** — a mechanism, not a shrug. Phase 2's field changed the substrate, and the claim would be that it changed it in a way that makes the residual splittable. |
+| **<= ~20%** | **ROAD (2) IS DEAD — refuted by the same measurement twice, on two different substrates.** The operator's choice collapses from three roads to two: **(1)** the band/field-valued declaration registration, or **(3)** stop at 24.375 um and say so. |
+| 20-50% | **INDETERMINATE.** Reported with both tails, no verdict, handed to the operator. A bar re-drawn after the reading is not a bar. |
+
+**"LOAD-WEIGHTED TOP" IS DEFINED NOW, NOT LATER:** the sites carrying **>= 5 facets** — **219 sites, 2,215
+facets, 48.3% of the demand** — because a routing arm that pays a structured element for a 1-facet site is
+uneconomic by construction, and 44.8% of sites carry exactly one. **BOTH numbers are reported**: the whole
+population and the load-weighted top. The headline read is on the load-weighted top, as registered above.
+**The two named critical sites are reported individually and are not allowed to hide inside a mean**: the
+95.473 um worst (th 1.359008, z 76.2504) and the H2 argmax carrier (th 1.358284, z 76.28079).
+
+### *** S25.2 RESULT — **ROAD (2) IS DEAD. THE SAME MEASUREMENT, ON A SUBSTRATE S23-M NEVER SAW, RETURNS**
+### *** **THE SAME NUMBER TO THE DIGIT: 16.7%. AND AT THE LOAD-WEIGHTED TOP — THE ONLY SITES A ROUTING ARM**
+### *** **WOULD ACTUALLY ACT ON — IT IS *WORSE*, NOT BETTER: 12.1%.** *** (`S25_CHILD*.log`, `s25_child.sh`)
+
+**THE CONTINUITY CHECK PASSES TO THE DIGIT, so the comparison is admissible.** The unmodified recorded
+instrument, re-run on `_S22B` today, reproduces **every** S23-M Stage-0 number: `MET_AR` **27**, (a) **3,848
+sites / 19,949 AR-refused children / 3,338 admissible = 16.7%**, `arM` p10 **18.07** p50 **101.16** p90
+**895.62**, (b) **71.7%**, (c) **272 of 720 = 37.8%**, M0''(ii) **89.3% IN BAND**, M1 NO-GO fires. The
+environment has not drifted.
+
+| population | substrate | sites | AR-refused children | metric-admissible | `arM` p50 | SITE-LEVEL |
+|---|---|---|---|---|---|---|
+| (a) reconstruction | `_S22B` (recorded, reproduced) | 3,848 | 19,949 | **3,338 = 16.7%** | 101.16 | 21.2% |
+| (a) reconstruction | **`_S24i2`, post-Phase-2** | 3,867 | 20,070 | **3,349 = 16.7%** | **101.31** | **21.2%** |
+| **(U) the EXACT `unresolved` set** | `_S24i2` | 4,584 | 22,594 | **3,636 = 16.1%** | 105.44 | 28.2% |
+| **(U-top) LOAD-WEIGHTED TOP (>= 5)** | `_S24i2` | 2,215 | 11,107 | ***1,342 = 12.1%*** | **160.88** | 28.1% |
+
+**THE EXACT-POPULATION ARM IS ADMISSIBLE AND DID NOT HAVE TO BE WITHDRAWN: the geometric mapping reached
+4,584 of 4,584 = 100.00%, zero misses, zero ambiguous.** Every facet in the driver's own list was located on
+the shipped STL by centroid + sorted edges, so this is the driver's population and not a proxy for it. (The
+tool's `sites` column counts population MEMBERS; for (U) and (U-top) those are facets.)
+
+>> **THE REGISTERED READ FIRES ON ITS `<= ~20%` BRANCH, AND NOT NARROWLY.** 12.1% at the load-weighted top,
+>> 16.1% whole, against a 50% bar. **Road (2) is refuted by the same measurement twice, on two substrates,
+>> and the second reading is a near-exact replicate of the first (16.7 -> 16.7, p50 101.16 -> 101.31,
+>> site-level 21.2 -> 21.2).** Phase 2's field moved the mesh's fidelity a great deal and moved this
+>> distribution not at all.
+>> **AND THE DIRECTION IS THE WRONG WAY ROUND, WHICH IS THE PART THAT CLOSES IT.** The load-weighted top —
+>> the 48.3% of demand a routing arm would actually pay for — is **LESS** metric-admissible than the tail
+>> (12.1% vs 16.1%), with `arM` p50 rising **105.44 -> 160.88**. **The busiest sites are the worst ones.**
+>> There is no subset of this population where the metric is kinder, so there is no scoping of road (2) that
+>> rescues it.
+
+**THE TWO NAMED CRITICAL SITES, AND THE SECOND ONE IS A FINDING IN ITS OWN RIGHT.**
+
+| site | STL tri | ar3 | parAR | key | AR-refused children | admissible | their `arM` |
+|---|---|---|---|---|---|---|---|
+| **the 95.473 um WORST** (th 1.359008, z 76.2504) | 94649 | 42.192 | 27.242 | 95.4727 um | **2** | ***0 = 0.0%*** | min **448.72**, max 449.89 |
+| **the H2 ARGMAX carrier** (th 1.358284, z 76.28079) | 135048 | 19.877 | 19.858 | 14.0815 um | ***0*** | — | ***none — NOT CAP-BLOCKED*** |
+
+>> **THE WORST SITE IS 16.6x OVER THE BAR AT ITS *BEST* CHILD** (448.72 against `MET_AR` 27). A metric-aware
+>> cap does not merely fail to help there — it refuses harder than the aspect cap does.
+>> *** **AND THE H2 ARGMAX CARRIER HAS NO AR-REFUSED CHILD AT ALL. THE ASPECT CAP IS NOT WHAT REFUSED IT.** ***
+>> Its `ar3` is 19.877, comfortably under the 50 cap, and the reconstruction finds at least one edge it would
+>> split happily — yet the driver left it `unresolved` carrying 14.0815 um. **So the single facet G1 is about
+>> is not owned by the S1 cap, which means road (2) could not have reached it even if the population had
+>> scored 90%.** S24's close-out read the remaining gap as "one shape-refused facet class"; for the ARGMAX
+>> specifically **that reading is now refuted by measurement.** What refused it is unrecorded — which is
+>> exactly the `unresolvedWhy` plumbing hole S25.1 found, and this is what that hole was costing.
+
+>> **THE ESCAPE ROUTE IS CLOSED THE SAME WAY IT WAS IN S23-M.** The sweep: (U) reaches 50% only at
+>> `MET_AR` ~ **111** (51.3%) and (U-top) not until ~**200** (54.1%) — 6.7x and 12x the designed lattice's
+>> own `arM` p99 of 16.61. A bar that loose admits elements two orders worse than anything the seed was
+>> built to lay. **There is still no setting at which the premise is true and the gate is still a gate.**
+
+| `MET_AR` | 3 | 10 | 20 | **27** | 50 | 111 | 200 | 500 | 1000 |
+|---|---|---|---|---|---|---|---|---|---|
+| (U) admissible % | 0.1 | 3.3 | 11.6 | **17.5** | 31.3 | 51.3 | 63.2 | 81.0 | 90.7 |
+| (U-top) admissible % | 0.0 | 1.8 | 8.9 | **14.0** | 27.2 | 42.9 | 54.1 | 72.1 | 85.7 |
+
+**A NOTE ON THE INSTRUMENT, because the transcription check did not come out byte-identical and saying so
+matters more than the convenience of claiming it did.** `s25mChild.ts` is `s23mPreflight.ts` with the exact
+-population phase APPENDED and nothing above it touched. Run inert on `_S22B` it differs from the recorded
+`_run_s23m.cjs` on **exactly two lines, both in check T1b**, and **every scored number is identical**: the
+recorded bundle reported *80 of 4,011 probes differ, worst 9.055e-2* against the certified `src` tensor,
+while a bundle built today reports **0 of 4,011, worst 2.294e-10**. The S23-M-era bundle was built against
+an older `src/renderers/.../tierC/surfaceMetricField`; the transcription now agrees with the shipped tensor
+essentially exactly. **T1b got STRONGER, the scoring path did not move, and none of the four dirty `src`
+files is involved.** Reported rather than smoothed over.
+
+#### *** THE ROAD DECISION, REDUCED FROM THREE TO TWO — FOR THE OPERATOR ***
+**Road (2), a metric-aware S1 cap, is CLOSED on measurement, twice, on two substrates.** It was the road
+that would have been cheapest to build, and it is the one the evidence rules out most firmly. What remains:
+
+* **ROAD (1) — CHANGE WHAT A DECLARATION IS.** S25.1 measured the demand as thin, wall-wide, 94.2% outside
+  a complete 43-disk declaration, needing >= 664 new disks / 14.1% of the wall to express as disks. A
+  **band** or **field-valued** exemption is the shape that fits it. Touches `_judgeShape`'s contract — an
+  UNTOUCHABLE — so it is a registration, not an edit, and it is the operator's call.
+* **ROAD (3) — STOP AT 24.375 um AND SAY SO.** Now better supported than when S25 opened: the residual is a
+  located, characterised, 4,584-facet population with a per-facet artifact; the argmax is known **not** to
+  be cap-owned; and both remaining mechanisms have been priced.
+
+>> **WHAT S25.2 ADDS THAT S25.1 COULD NOT:** S25.1 showed the declared-patch DELIVERY VEHICLE cannot express
+>> the demand. S25.2 shows the METRIC ITSELF would not admit the demand even if a vehicle existed. **Those
+>> are independent failures of road (2), and together they mean no amount of work on the routing side
+>> reaches 10 um through this mechanism.** That is the strongest form the negative result can take, and it
+>> cost one artifact-only probe on top of an artifact that already existed.
+
 ---
 ## READ THIS FIRST — the six things that changed tonight
 
