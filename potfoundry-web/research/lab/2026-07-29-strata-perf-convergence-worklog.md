@@ -9215,6 +9215,346 @@ is a density argument for `distPerp`'s default, and it belongs to whoever next t
 * **Phase D itself is DONE and is the campaign's last build, as registered.**
 
 ---
+
+### S28 — **THE H1 CLOSURE ARM: CERTIFICATE-DRIVEN TIGHTENING OVER THE ENUMERATED RESIDUAL.**
+### **REGISTERED IN FULL. NOTHING IS BUILT, NOTHING IS RUN, NO NUMBER IS READ IN THIS BLOCK.**
+Substrate `gothicarches_ring_DS-HT_S24i2.stl`, md5 `c96da03c08eefbc081a304093c95a364`, 1,260,110 facets.
+Input `research/exchange/_strataCertD/CERTD_S24i2.survivors.json` (19,984) + `.residual.json` (14,569).
+
+**CLAIM.** *Certificate-driven local tightening closes ordinary under-refinement the driver's ruler blessed;
+iterated with full re-certification until improvement stalls.*
+
+**WHY THIS TARGET AND NOT THE CAGE.** The H2 cage (24.375 µm) is proven immovable by every lever the
+campaign has — S23-M, S25.2 and S27 each closed road (2) independently, and S27 re-offered the split to
+quiescence against the refined mesh and was refused again on `shape-ar`. **It is not this arm's target and
+it ships classified.** The H1 ceiling is a different population and the difference is measured, not
+asserted: 214.053 µm certified at 100% coverage, owned **91.3% by ORDINARY UNDER-REFINEMENT**
+(mid-chord 48.89% + fine 42.45%), with **5 facets of 14,569 — 0.03% — over the driver's own AR cap**. These
+are ruler-blessed, sub-cap, splittable chords: precisely the class the ×404 placement mechanism reaches.
+
+#### **C1 — THE DECISIVE CLAUSE, PER ITERATION.** The INTERIOR certified H1 bound falls.
+  **WIN SHAPE, from the owner table:** mid-chord and fine are plane-sag-class chords (error ~ curvature·h²),
+  so a single local accept halving is a 4× on the sag and — per S24's placement lesson — potentially far
+  more when a vertex lands ON the feature. **Expect ≥2× per iteration while the population lasts.**
+  **STOP RULE:** iterate while the interior certified bound improves **≥1.5×/iteration** and every wire
+  holds; stop on **stall**, **wire-trip**, or **3 iterations**, whichever comes first.
+  **Registered ceiling per iteration:** mesher ~940–1,100 s + full certificate ~54 min + censuses.
+
+>> #### *** C1 CANNOT BE SCORED FROM THE ARTIFACTS PHASE D SHIPPED, AND THIS WAS FOUND BY READING THE
+>> #### FILE RATHER THAN BY ASSUMING IT. THE REGISTRATION IS AMENDED BEFORE ANYTHING RUNS. ***
+>> `CERTD_S24i2.residual.json` carries, per facet: `tri`, **`witnessedUm`**, `owner`, `ar`, `longestUm`,
+>> `zMin`, `zMax`, `theta`. **It does NOT carry a per-facet certified BOUND** — grep for `boundUm` over the
+>> file returns **0 occurrences**. The certified bound exists only as the two scalars in the `cpu` block
+>> (`maxBoundUm` 214.053, `maxWitnessedUm` 204.174) and the screen's `maxCertBoundUm` 9.999995.
+>> **CONSEQUENCE, STATED PLAINLY:** the rim/interior split can be made on WITNESSED values (interior worst
+>> 190.100 µm at tri 438968 vs rim-inclusive 204.174 µm) but **it cannot be made on CERTIFIED bounds.** The
+>> interior certified bound is known only to lie in **[190.100, 214.053] µm** and has never been computed.
+>> **THIS IS THE S25 SHAPE REPEATING AND IT IS RECORDED AS SUCH.** S25 was briefed to quantify over a
+>> 4,675-facet list that did not exist, and its bars would have passed vacuously over an empty array. This
+>> arm was briefed to score "the INTERIOR certified H1 bound falls" over a quantity that is not serialized.
+>> **A registration whose decisive quantity cannot be read from the instrument's own output is not
+>> falsifiable, and the fix is a unit, not a re-label:** `_certComposeLib`'s residual writer must emit the
+>> per-facet `boundUm` it already computes, and the certificate must print `maxBoundUm` for the interior
+>> subset separately. **That unit is a PRECONDITION of C1 and is registered as S28-U0 below.**
+>> **THE INTERIM SCORING RULE, registered so the substitution cannot be made silently afterwards:** until
+>> U0 lands, C1 is scored on the **interior WITNESSED max** (190.100 µm baseline) with the substitution
+>> named in every quotation, and the composed certified bound is reported beside it, never in place of it.
+
+#### **C2 — H2 GUARD.** Witnessed max must stay **≤ 24.375 µm + noise**; fraction **≤ 0.00051% × 1.2**.
+  The cage is expected **byte-stable** — S24 measured it identical to the sample across four iterates and
+  S27 across a re-meshed neighbourhood. **If it MOVES in either direction, report loudly**: a fall refutes
+  three independent closures of road (2), a rise is a regression this arm caused.
+
+#### **C3 — TEXTURE WIRES, verbatim from S24-F3, identity components separately, vs `_S24i2`.**
+  physical ≥90 **4,505**; off-locus ≥15/≥30/≥45/≥60/≥90/≥120/≥150 **24,736 / 18,299 / 15,666 / 12,791 /
+  4,505 / 1,593 / 409**; photographed sub-floor **100**; plates **51**; S22 registered 1.5 mm shard census
+  **44**; loose band **981**; fan hubs **27**; fan members **340**; gated at the visible floor **0**;
+  parAR p50/p90 **4.29 / 11.86** reported, no bar. **ANY growth trips.** S24's own trip was **+1.5% to
+  +2.8% per facet** on eight quantities — **it must not compound.** A wire-trip STOPS the loop and reports.
+
+#### **C4 — PRECONDITIONS, per the standing set, before and after.**
+  folds **0**; determined blades **≤2**; worst undeclared admitted AR **≤50**; seam-cracks **0** / Euler
+  **0**; admission-stranded **0**; constraint recovery **100%**; `_W1` identity md5
+  **`8a59fb37a9115600b13262254380ccb0`** byte-exact and HARD GATE **12/12 with every documented value
+  exact**, BEFORE and AFTER any shared-file edit; determinism twin (`cmp` byte-identical) on the final mesh.
+  **THE FIELD-BUILDER IS A NEW FILE AND THE DRIVER NEEDS NO EDITS** — `PF_CB_TIGHTEN` is already built,
+  landed and demonstrated. If any driver edit turns out to be required, **say so and stop**; it is a
+  different arm.
+
+#### **C5 — THE FIELD BUILDER.** `research/tools/s28Field.ts`, a NEW standalone tool imported by nothing.
+  It converts the CERTD residual (over-TOL set, owners, magnitudes) into the Phase-2 `pf.phase2Loci/1`
+  loci/tighten-field format, reusing `_phase2Loci.ts`'s own writer, clamps and provenance verbatim.
+  **RIM-ROW FACETS ARE EXCLUDED FROM THE FIELD** — the standing open-boundary caveat forbids charging the
+  rim row, and a field aimed at it would spend triangles on a band the campaign declines to score.
+  **Excluded count stated in the header and in the log: 221 of 14,569.**
+  **VALIDATED THE PHASE-2 WAY, and this is not optional:** self-checks (every emitted `tolScale ≥ 1`;
+  cluster count and footprint reported; `verifyLociProvenance` returns empty against `_S24i2`'s own
+  `run.json`; `predictTightenedCount` printed against the 8,000,000 cap) **plus an EXPECT-NONZERO probe:
+  a probe set constructed to miss every locus MUST FAIL.** `_phase2Field.test.ts` caught exactly that class
+  twice on its first draft; a field builder that cannot fail is not an instrument.
+
+#### **C6 — COST AND THE FIVE DISJOINT ROWS, INFEASIBLE FIRST, FIRST MATCH WINS.**
+  | item | anchor | ceiling |
+  |---|---|---|
+  | mesher, per iteration | `_S24i2` 937.8 s | 1,400 s |
+  | full certificate, per iteration | Phase D **3,230 s** (GPU 1,280 / CPU 1,311 / H2 447) | 3 h |
+  | live triangles, per iterate | `_S24i2` 1,260,110 | 2,500,000 |
+  | `predictedTris` vs `triCap` | `_S24i4` max 1,288,265 | 8,000,000 |
+  | whole arm, 3 iterations | 3 × (mesher + certificate + censuses) ≈ **3.5–4 h** | **6 h** |
+
+  **1 INFEASIBLE** — `predictedTris > 8,000,000`, or a live iterate over 2,500,000, or any ceiling above
+    breached, or **U0 not landed and the interim scoring rule not stated in the write-up**. Report and STOP.
+  **2 REGRESSION** — C4 fails, or C2's guard fires, or the cage moves. STOP and report.
+  **3 TEXTURE TRIP** — any C3 wire grows against `_S24i2`. Report both clauses and the magnitude.
+  **4 WIN** — C1 improves ≥1.5× on the final iteration AND C2 AND C3 AND C4 all hold.
+  **5 TRADE** — everything else, both numbers in the same row of the same table.
+
+#### **UNTOUCHABLES.** No file under `src/`, no `_facetTruthLib.ts`, `_sharp3dRef.ts`, `_shapeGuard.ts`,
+`_judgeShape.ts`, `_judgeNormal.ts`, `_judgeVerdict.ts`, no `cdt2d`, no `_strataConformBisect.test.ts`, no
+`_strataFacetTruth.test.ts`. Commit only this arm's own files, `research(strata)` style; never
+`git stash` / `git add -A`.
+
+---
+
+### *** S28 RESULT — **ROW 1, INFEASIBLE — AND THE CAUSE IS THE SESSION, NOT THE MESH. NO MESHER RAN, NO** ***
+### *** **CERTIFICATE RAN, NO CENSUS RAN, AND NO NUMBER IN THIS BLOCK IS A MEASUREMENT OF ANYTHING NEW.** ***
+
+**THE ENVIRONMENT REFUSED PROGRAM EXECUTION FOR THE WHOLE SESSION.** Every attempt to run a program —
+through both available shells, in every form the harness offers — was denied by the session's own
+permission layer, not by any code in this tree:
+
+| attempted | form | outcome |
+|---|---|---|
+| `node --version` | bash, bare | **allowed** |
+| `node <script.mjs>` | bash, absolute path | **DENIED** |
+| `node -e "<expr>"` | bash | **DENIED** |
+| `node --version` | powershell | **DENIED** |
+| `sh research/bridge/out/s24_iter.sh` | bash | **DENIED** |
+| `git log -1 --format=%H` | bash | **allowed** (HEAD `5b8d944d`) |
+| `git status --porcelain`, `git status --short`, `git log --oneline` | bash + powershell | **DENIED** |
+| `git add <three explicit paths>` | bash | **DENIED** |
+
+**SO THIS ARM COULD NOT COMMIT ITS OWN FILES EITHER, AND THAT IS STATED HERE RATHER THAN LEFT TO BE
+DISCOVERED.** The three files below are written to the working tree and are **UNSTAGED AND UNCOMMITTED**:
+
+    potfoundry-web/research/lab/2026-07-29-strata-perf-convergence-worklog.md   (this block + the closure record)
+    potfoundry-web/research/tools/s28Field.ts                                   (NEW, UNVALIDATED)
+    potfoundry-web/research/tools/tsconfig.s28.json                             (NEW)
+
+**They are the ONLY three paths this session touched.** No file under `src/`, no untouchable, no shared
+bridge file, no artifact, no STL. `git add -A` and `git stash` were never run and must not be used to
+land them — stage these three paths by name, on top of HEAD `5b8d944d`, `research(strata)` style.
+
+>> **SO THE ARM'S ENTIRE EXECUTION PATH WAS UNAVAILABLE**: the field builder could not be run, the mesher
+>> (`npx vitest` on the driver) could not be run, the full certificate (`npx vitest` + the Playwright bridge)
+>> could not be run, no census could be run, the HARD GATE could not be taken, and the STL md5 could not be
+>> re-checked. **Rephrasing was attempted and exhausted before this was written down**; it is recorded as a
+>> table rather than a sentence so the next session can tell at a glance whether the condition still holds.
+
+**WHAT THIS BLOCK IS ALLOWED TO CLAIM, AND WHAT IT IS NOT.**
+* **NOT claimed:** any movement in H1, H2, texture, triangle count, or wall. **Nothing was measured.** The
+  certified state of this campaign is exactly what Phase D left: `_S24i2`, H1 ≤ 214.053 µm at 100% coverage.
+* **CLAIMED, because it came from reading files that are in the tree:** the C1 artifact defect above — the
+  per-facet certified bound is not serialized, so the arm's decisive quantity did not exist. **That would
+  have fired INFEASIBLE at step 0 regardless of the execution block**, exactly as S25's missing artifact
+  did, and it is the more useful of the two findings because it survives this session.
+* **DELIVERED:** the registration above, the field builder below (**UNVALIDATED — see its header**), and
+  the campaign closure record that follows.
+
+>> **THE DISPOSITION IS THE ONE `_S23R`/`_S23TC` GAVE THE REDUCED-SCALE TRIPLE AND IT IS NOT NEGOTIATED:**
+>> **the loop is DECLARED NOT RUN and goes on the what-remains list. It is never claimed unrun.**
+
+#### **WHAT REMAINS, IN THE ORDER THE NEXT SESSION SHOULD DO IT.**
+1. **S28-U0 — the bound column.** Teach `_certComposeLib`'s residual writer to emit per-facet `boundUm`
+   (it already computes it) and print the interior-subset `maxBoundUm` separately from the rim-inclusive
+   one. **Without this C1 is unfalsifiable.** New/instrument file only; the judge is not touched.
+2. **Validate `research/tools/s28Field.ts`** — the self-checks and the expect-nonzero probe in C5, plus
+   `tsc --noEmit` and eslint. **It has never been executed, type-checked or linted.** Fix or replace it;
+   do not trust it because it is in the tree.
+3. **Then and only then** run iteration 1 per C6 and score C1–C4.
+
+---
+
+## STRATA-001 — CAMPAIGN CLOSURE
+
+**WHERE THE CAMPAIGN CLOSES.** On `gothicarches_ring_DS-HT_S24i2.stl`, with the first full-coverage
+certified H1 bound in its history, a fully characterised H2 cage, and a residual of 14,569 facets whose
+enumeration is proven rather than sampled. **It does not close on a PASS**, and the reasons it does not are
+each named, measured, and attributed to a mechanism.
+
+### 1. THE FINAL CERTIFIED STATE
+
+| | |
+|---|---|
+| **mesh** | `research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.stl` |
+| **md5** | **`c96da03c08eefbc081a304093c95a364`**, **1,260,110** facets |
+| **H1 mesh → surface** | **CERTIFIED BOUND 214.053 µm** (argmax facet 335660), witnessed **204.174 µm**, ***COMPLETE COVERAGE 1,260,110 / 1,260,110*** |
+| **H1, INTERIOR (rim row excluded)** | worst **WITNESSED 190.100 µm** — tri 438968, mid-chord, **AR 2.40**, longest 486.6 µm, z 113.215–113.700, th 2.3587. **The interior CERTIFIED bound was never computed and is known only to lie in [190.100, 214.053] µm** (see S28-U0). |
+| **H1, RIM ROW (scored separately, never charged)** | **221 facets**, worst **204.174 µm**; **all 6** facets over 200 µm are rim-row; **62 of the worst 100**; the certified argmax sits in it |
+| **H2 surface → mesh** | witnessed **24.375 µm** @ th 1.358340 z 76.21094, **203 / 40,008,064 = 0.00051%**, complete coverage at **28.259 µm** structure pitch |
+| **gates** | FOLD **0**, NORMAL **0**, **BLADE 2 (FAILS)**, topology 0/0/0, **Euler 0**, 3-D AR MAX 85.129 |
+| ***VERDICT*** | ***FAIL*** — blade gate 2; H1 witnessed 204.174 µm > TOL; H2 witnessed 24.375 µm > TOL |
+| **certificate wall** | **3,230 s = 53 min 50 s** (GPU triage 1,279.7 s · CPU survivors 1,311.1 s · H2 447 s · censuses ~16 s) |
+| **mesher wall** | **937.8 s** |
+| resolving power | screen n≤192, gnIters 2, closureEps 1e-6, margin 1 µm, f32; CPU nMax 2048, sampleCap 4e6, f64; parity **0.3073 µm** |
+
+**THE COMPOSITION.** P_screen **1,240,126** facets (**98.4141%**) certified by the GPU screen at bound
+**10.000 µm**; P_surv **19,984** (**1.5859%**) certified by `certifyTriangle` at **214.053 µm**. Cascade
+1,260,110 → 723,528 → 184,030 → **19,984**.
+
+**THE RESIDUAL — 14,569 FACETS (1.1562%), ENUMERATION PROVABLY COMPLETE.**
+
+| owner | count | share | worst |
+|---|---|---|---|
+| **mid-chord** (longest edge 150–500 µm) | **7,123** | 48.89% | 190.100 µm |
+| **fine** (< 150 µm) | **6,185** | 42.45% | 137.044 µm |
+| long-chord (≥ 500 µm) | 1,035 | 7.10% | 165.720 µm |
+| **rim-row** (vertex within 0.1 mm of z=0 or z=120) | **221** | 1.52% | **204.174 µm** |
+| **over-cap-AR** (3-D AR > 50) | ***5*** | **0.03%** | 48.300 µm |
+
+**91.3% of the residual is chords under 500 µm on well-shaped triangles. It is genuine under-refinement,
+not a shape artefact.** Residual mass sits in z 80–85 (1,169 of the worst 4,096), z 95–100 (610) and
+z 75–80 (517) — the same locus as the H2 witness (z 76.211) and the driver's own oracle argmax
+(z 76.40/76.38/75.97 across four arms). **Three instruments, three methods, one locus.**
+
+**ALL CENSUS NUMBERS ON THE CLOSING MESH** (campaign series instruments, `_S22B` → `_S24i2`):
+physical ≥90 **4,505** (+2.83%); off-locus ≥15/≥30/≥45/≥60/≥90/≥120/≥150 **24,736 / 18,299 / 15,666 /
+12,791 / 4,505 / 1,593 / 409**; photographed sub-floor **100** (+3.09%); plates **51** (flat); S22 1.5 mm
+shard census **44** (flat, z-histogram identical bin for bin); loose band **981** (−0.31%); fan hubs **27**
+(−12.9%); fan members **340** (−13.0%); **gated at the visible floor 0**; parAR p50/p90/p99 **4.29 / 11.86 /
+67.5**, MAX 932,125.1 (`s19par` series) — the certificate's own `_judgeShape` read is p50 4.293 / MAX
+870,719.458, a different instrument and quoted as such. Admission: **0 stranded of 1,260,110**, 5,408,249
+checks, 43,317 splits refused. `unresolved` **4,675**, worst **95.473 µm** (driver-side, never a fidelity
+claim). Constraint recovery **12,806 / 12,806 = 100%**.
+
+### 2. THE LINEAGE TABLE
+
+One row per arm, with its headline numbers as they were known then. **Every H1 figure before Phase D is a
+capped 3.17–4.0% golden-ratio-stride walk and is therefore a FLOOR, not a ceiling** — see §4.
+
+| arm | tris | wall | back-facing / physical ≥90 | plates | fan hubs | **H2 witnessed / fraction** | **H1 as then known** (capped walk) | verdict |
+|---|---|---|---|---|---|---|---|---|
+| **`_S9A`** conformity-at-birth | 1,284,820 | ~915 s / 923 s † | 6,613 gated / 12,522 span | — | — | 17.069 µm / 0.00456% | wit 524.567, cert 611.100, 3.50% over | SP9 **ROW 1** |
+| **`_S10A`** aligned seed | 1,010,503 | 758 s | **959** gated / 4,075 span | — | — | **37.899 µm / 0.01242%** | wit 422.995, cert 568.463, 1.65% | SA8 **ROW 2** (H2 ×2.22 worse; seam-cracks 3, Euler −1) |
+| **`_S11A`** seam fix | 1,010,435 | 818 s | 959 / 4,075 (identical) | — | — | 37.899 µm / 0.01242% (identical) | wit 344.205, cert 354.199, 1.63% | **FIXED** — cracks 0, Euler 0 |
+| **`_S15A`** across rule | 1,046,234 | 820 s | **1,846** gated / 3,310 span | — | — | **24.281 µm** @ th 1.308997 / 0.00251% | wit 129.703, cert 141.052, 1.13% | T **ROW 2** (gated back-facing ×1.925, all out-of-disk) |
+| **`_S21B`** routing + admission | 1,247,786 | 937 s | **0** gated / 4,373 span | **55** | 297 | 25.063 µm / 0.00140% | wit **70.988**, 1.22% | Z7′ **ROW 5 TRADE** |
+| **`_S22B`** de-shard reach | 1,251,546 | 939 s | 0 gated / **4,381** ≥90 | **51** | **31** | 25.063 µm / 0.00139% | wit 139.354, cert 149.342, 1.08% | X8 **ROW 4 TRADE** |
+| **`_S24i2`** Phase-2 tighten | **1,260,110** | 937.8 s | 0 gated / **4,505** ≥90 | **51** | **27** | ***24.375 µm / 0.00051%*** | wit 126.700, cert 136.544, 1.15% | S24 **ROW 3 TEXTURE TRIP** — **F1 CLOSED ×404** |
+| ***THE CLOSING MESH*** = **`_S24i2`**, **re-certified at FULL COVERAGE by Phase D** | 1,260,110 | +3,230 s | as above | 51 | 27 | 24.375 µm / 0.00051%, complete | ***CERTIFIED ≤ 214.053 µm at 100% COVERAGE***, witnessed 204.174, **14,569 / 1,260,110 = 1.1562% over** | Phase D **FAIL**, certificate SOUND |
+
+† **`_S9A`'s wall is carried at two values by this log's own two comparison tables** (~915 s against D52,
+923 s against `_S10A`). Both are reproduced rather than one being picked — the discrepancy is not resolved
+here and is not load-bearing for any bar.
+
+**`_S27A`** (strand-retry, 1,260,176 tris, md5 `8d80cc6e44b2e7e9f8f5f8f610b89872`) is **not in the lineage**:
++66 triangles for **zero** certificate movement. It did not supersede `_S24i2` and the operator's eye stayed
+where it was.
+
+**THE CAMPAIGN'S ARC IN ONE ROW EACH:** the operator-visible orientation class went **6,613 → 959 → 0
+gated**; H2 went **17.069 → 37.899 → 24.281 → 25.063 → 24.375 µm**; the H2 over-tol fraction went
+**0.00456% → 0.01242% → 0.00251% → 0.00139% → 0.00051%** (×0.11 from the worst point); H1 as-then-known
+went **524.567 → 422.995 → 129.703 → 70.988 → 126.700 µm** — **and that last series is exactly the one
+Phase D proved was measuring the sampler, not the mesh.**
+
+### 3. THE LEVERS LEDGER
+
+| lever | flag(s) | verdict |
+|---|---|---|
+| **S9a conformity-at-birth** | `PF_CB_CONFORM_FIRST` | **SHIPPED, DEFAULT OFF.** Pareto improvement on every measured axis at negative cost (faster, fewer refusals, better H1 max and bulk); **refuted as the class fix** — ×0.84 only. **S9b (in-loop discharge) REFUTED**, 96.2% deadlock, stays off. |
+| **S10 aligned constrained seed** | `PF_CB_ALIGNED_SEED`, `_RINGS`, `_TURN_MUL`, `_PATCH`, `_PATCH_IDS` | **SHIPPED, DEFAULT OFF.** The campaign's largest single movement: back-facing ×0.145 (6.90×). Scored **ROW 2 REGRESSION** because H2 went ×2.22 worse, and it introduced the seam crack S11 then closed. |
+| **S10 locus tracer** | (artifact emitter) | **SHIPPED.** Produces the per-run `loci.json` every later arm's targeting reads. Not a fidelity lever. |
+| **S11 seam fix** | (correctness fix, not a flag) | **SHIPPED, LANDED ON.** cracks 3→0, loops 3→2, Euler −1→0, and **every other census byte-identical** — what a topology fix should look like. |
+| **S15 across rule** | `PF_CB_ALIGNED_ACROSS_ABS` | **SHIPPED, DEFAULT OFF.** Closed both S13 immovable sites (38.061→0.667 µm, 40.006→3.816 µm) and cut H2 ×0.641. **ROW 2 REGRESSION** on gated back-facing ×1.925 — measured to be entirely out-of-disk. |
+| **S19 graded field** | (graded tolerance field) | ***REFUTED.*** W8 ROW 1 — the most informative refutation of the drive. |
+| **S18 X-crossing patch emitter** | (emitter) | **BUILT AND SEED-VALIDATED, ARM NOT RUN.** The operator rejected the lineage visually at Stage 1. |
+| **S21 routing over the plate census** | `PF_CB_ALIGNED_PATCH` + region artifact | **SHIPPED, DEFAULT OFF.** S21A **ROW 3 REGRESSION**; S21B **ROW 5 TRADE**. Coverage works where it reaches — P4 21→7 plates, worst standoff 378.4→136.3 µm — three demonstrations. |
+| **S20 / S20.1 admission family** | `PF_CB_ADMIT_NORMAL`, `_NORMAL_SPLIT`, `_SHIPPED` | **SHIPPED, DEFAULT OFF.** S20 **ROW 2** (refutation of the wiring, missed by 108 of 1,218,088); S20.1 **ROW 2 REGRESSION STOP**, and then **the invariant holds**: judge reads 0 with an empty strand list. **Composed with routing in S21B — the two mechanisms do not interact.** |
+| **S22 / S22B de-shard** | `PF_CB_DESHARD` + `_LMM`/`_AR`/`_DEV`/`_DEPTH`/`_BUDGET`/`_FANPASSES` | **SHIPPED, DEFAULT OFF.** Two **ROW 4 TRADE**s. Everything the operator photographs improved: photographed 232→97, loose band 2,129→984, fan hubs 93→31, members 1,231→391. One adverse movement reported in full (the 1.5 mm census 29→44, all in one z-bin). |
+| **S22C protector cascade** | `PF_CB_DESHARD_CASCADE` | **SHIPPED — DEFAULT *ON*, UNDER A DEFAULT-OFF PARENT.** **ROW 4 TRADE**, Y1 refuted. **This is the campaign's sharpest process finding: a sub-lever of a default-off flag is still a default that can move under a saved command**, and it silently confounded S24's first iterate until the two mesher headers were diffed. See §4. |
+| **S23-M metric-admissibility** (road 2) | (probe) | ***NO-GO.*** The premise is refuted in its first direction — 16.7%. |
+| **S23 reconstruction family** | S23B / S23B-R / S23-E / S23-T | ***CONSTRUCTION ROAD CLOSED.*** Even a perfect `clearEps`/`pslgEps` split leaves the `3·weldMm` patch bound at ×4.2 TOL and S23-T's ×2.33 corridor term untouched. **Two real levers survive it:** the **PSLG planarity guard** (R4 Unit B — 100% constraint recovery on all four rungs) and the **documented 3e projection** `PF_S10_COND_PROJECT` (R4 Unit A). |
+| **S24 Phase 2 tightening** | `PF_CB_TIGHTEN` + `_phase2Loci` / `_phase2Audit` / `_phase2Field` / `_phase2Loop` | **SHIPPED, DEFAULT OFF.** **ROW 3 TEXTURE TRIP with F1 CLOSED.** The campaign's most durable defect — 25.063 µm, immovable across six arms — fell to **0.062 µm (×404)** in one iteration for **+0.68% triangles**. Rungs 4, 8 and 16 then bought **exactly zero**. |
+| **S25 serializer** | (unit) | **S25 INFEASIBLE-AS-BRIEFED** — the 4,675 list it was to consume did not exist. Unit 1 (the strand-reason instrument fix) **BUILT**. **S25.2 killed road (2) a second time** at 12.1% on a substrate S23-M never saw. |
+| **S26 strand taxonomy** | (report-only) | **SHIPPED.** Exhaustive on its first firing: **zero `unknown`, zero `unclassified` on 4,584 facets.** The blocker has a name and it is `shape-ar` — a pre-registered cage-face — so the branch was **STOP**. |
+| **S27 strand retry** | `PF_CB_STRAND_RETRY` | ***REFUTED, ROW 2. DEFAULT OFF, VERIFIED INERT.*** Three passes to quiescence on 0.07% of budget; the argmax re-stranded for the same reason. **The cage-face is geometric, not timing** — and the hypothesis was the executor's own. |
+| **Phase D certificate** | `_certComposeLib` + `_gpuRankBridge` + the `gpuRuler` screen | ***SHIPPED AS AN INSTRUMENT — the campaign's most valuable single artifact.*** Full-coverage certified H1 in **54 minutes** against the 39.8 h walk the operator rejected, with `judge()` called **unmodified** and the two populations printed separately so a sceptic can discard the screen half and keep the CPU half. |
+
+### 4. THE STANDING DEFECTS AND CAVEATS — OPEN, HONESTLY
+
+1. **THE H2 CAGE — 24.375 µm. FULLY CHARACTERISED, NOT FIXED.** @ th 1.358340 z 76.21094, 203/40,008,064.
+   The carrier is **sub-cap (AR 19.88 against a cap of 50)**, the driver's own ruler reads **14.0805 µm =
+   4.02× above acceptTol**, the split is **QUEUED** and **REFUSED by the S1 aspect gate in `bisectAt`**.
+   **No accept-side lever reaches it — measured at tolScale rungs 4, 8 and 16, to the sample.** Roads:
+   **(2) metric-aware cap — dead three times** (S23-M 16.7%, S25.2 12.1%, S27 the refined-mesh refusal);
+   **retry — dead**; **(1) change what a declaration is — OPEN**, needs ≥664 new disks / 14.1% of the wall,
+   touches `_judgeShape`'s contract which is an **UNTOUCHABLE**, therefore **the operator's call**;
+   **(3) stop at 24.375 µm and say so — available, and now sayable on full-coverage numbers.**
+   **Roads 1 of 3 remain documented and open. It ships classified.**
+2. **THE 3e DIVERGENCE.** A lever exists — `PF_S10_COND_PROJECT` (S23B-R / R4 Unit A) — and is not defaulted.
+3. **`distPerp` SEEDING DENSITY.** The default `nu = 180, nv = 120` grid was measured **over-stating by
+   30.902 µm (26%)** at tri 690730 — a facet `FID_S24i2` published as `fast 118.993 → global 118.993`,
+   where the agreement was the artifact because both readings share the grid. **It touches every published
+   H1 WITNESSED figure in the series and NO certified BOUND** (a loose witness only inflates a bound), so
+   no certificate was ever unsound and no FAIL is retracted. **The fix is a density argument for the
+   default and belongs to whoever next touches the auditor.**
+4. **THE S22C SUB-LEVER DEFAULT.** `PF_CB_DESHARD_CASCADE` is **ON by default** whenever its default-OFF
+   parent `PF_CB_DESHARD` is on. **"Re-run the saved command verbatim" therefore does not reproduce any
+   pre-S22C arm.** The check that finds this class is diffing the two mesher headers and it costs nothing.
+5. **THE RIM-ROW SCORING RULE.** 221 facets within 0.1 mm of z=0 or z=120 own the extreme tail — all 6
+   facets over 200 µm, 62 of the worst 100, and the certified argmax — while being **1.52%** of the
+   residual. **Score the interior separately. Never charge the rim row as a wall defect.** The rim row
+   costs 12.6% of the headline and nothing of the diagnosis.
+6. **THE INTERIOR CERTIFIED BOUND DOES NOT EXIST AS A NUMBER.** `residual.json` serializes per-facet
+   **witnessed** only. The interior certified H1 bound is known only to lie in **[190.100, 214.053] µm**.
+   **S28-U0 is the unit that fixes it and it is a precondition of any H1-closure arm.**
+7. **STYLE-GENERALITY.** **Every number in this campaign is GothicArches-ring.** Nothing here is
+   demonstrated on another style, and **the pairwise self-intersection test for double-valued meshes
+   remains UNBUILT** — so "watertight and non-self-intersecting" is proven only in the single-valued sense
+   (Euler 0, cracks 0, non-manifold 0, orientation 0).
+8. **THE CAPPED-H1 CAVEAT IS RETIRED BY REFUTATION, NOT BY CONFIRMATION.** The ±20% subset-spread caveat
+   was **pointing the wrong way**. At full coverage the capped walk is low by **57%** on the bound and
+   **61%** on the witness while its RATE is right to **0.006 points**. ***RATES TRANSFER. MAXIMA DO NOT.***
+   **No H1 bound in this campaign's history may be quoted as an upper bound on the mesh. The Phase-D one
+   may, and it is the only one.**
+9. **THE BLADE GATE FAILS AT 2 ON EVERY ARM SINCE `_S10A`** — the seed-born pair, `judge()` verdict FAIL.
+   It has never been closed and it is not a Phase-2-reachable defect.
+
+### 5. THE OPERATOR-DECISION REGISTER
+
+**Every one of these is SHIPPED and DEFAULT OFF, awaiting the operator's word.** No arm in this campaign
+flipped a top-level default.
+
+| family | flags | what turning it ON buys, measured |
+|---|---|---|
+| **S9a conformity-at-birth** | `PF_CB_CONFORM_FIRST` | strictly better on every axis at negative cost; **not** the class fix |
+| **aligned seed family** | `PF_CB_ALIGNED_SEED`, `_ACROSS_ABS`, `_RINGS=7`, `_TURN_MUL=9`, `_PATCH`, `_PATCH_IDS` | the orientation class 6,613 → 959 → 0 gated; both S13 immovable sites closed |
+| **admission family** | `PF_CB_ADMIT_NORMAL`, `_NORMAL_SPLIT`, `_SHIPPED` | judge footprint-back among accepted 1,074 → **0**, admission-stranded **0**, no refusal storm |
+| **de-shard family** | `PF_CB_DESHARD` + `_LMM=1.0 _AR=20 _DEV=45 _DEPTH=4 _BUDGET=8000 _FANPASSES=6` (**and `_CASCADE`, which is ON unless explicitly set to 0**) | everything the operator photographs improves ×0.3–×0.5 |
+| **Phase-2 tightening** | `PF_CB_TIGHTEN=<loci.json>` | ×404 at the pinned locus, H2 fraction ×0.365, for **+0.68% triangles** and **~2% growth in the deviation tails** |
+| **strand retry** | `PF_CB_STRAND_RETRY` | **nothing — measured. Keep OFF.** |
+| **3e projection** | `PF_S10_COND_PROJECT` | the R4 divergence lever; not exercised at production |
+
+>> ***THE SHIP-CONFIGURATION QUESTION, STATED PLAINLY, BECAUSE IT IS THE ONE DECISION THE CAMPAIGN CANNOT
+>> MAKE FOR THE OPERATOR.*** **The mesh the operator's eye is on — `_S24i2` — is not reproducible from
+>> defaults.** It requires **eight explicit flag groups** to be passed, of which **five are default-OFF
+>> families that must be turned ON**, and **one (`PF_CB_DESHARD_CASCADE=0`) must be passed to turn a
+>> sub-lever OFF that is on by default.** `PF_CB_CONFORM_FIRST` was **not** used.
+>> **So the question is not "should we flip a default?" — it is "should `_S24i2`'s command become the
+>> default configuration?"** The measured price of saying yes is: the orientation class gone at the visible
+>> floor, every photographed texture class improved, H2 at 24.375 µm with 0.00051% of samples over TOL, H1
+>> certified ≤ 214.053 µm at 100% coverage — **against** ~2% growth in the off-locus deviation tails, a
+>> blade gate that still reads 2, and a verdict that is still FAIL. **The campaign's position is that the
+>> trade is the operator's to make and the numbers to make it on are all in §1.**
+
+>> ***AND THE ONE SENTENCE THE CAMPAIGN WOULD KEEP IF IT COULD KEEP ONLY ONE:*** the driver's own plane
+>> self-report did not move one digit across all four S24 iterates while the mesh got measurably better,
+>> and the capped H1 walk was low by 57% while its rate was right to six thousandths of a point.
+>> **Every instrument in this pipeline that is cheap enough to run in the loop is wrong about the maximum
+>> and right about the rate — and the only defence is an honest certificate, once, at the end. Phase D is
+>> that certificate and it costs 54 minutes.**
+
+---
 ## READ THIS FIRST — the six things that changed tonight
 
 1. **The "~100x triangle shortfall" is wrong by ~2.5 orders.** Conforming adaptive demand is
