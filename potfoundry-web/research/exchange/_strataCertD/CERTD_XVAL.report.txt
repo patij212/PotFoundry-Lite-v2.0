@@ -1,0 +1,31 @@
+
+===== STRATA PHASE D — COMPOSED FULL-COVERAGE CERTIFICATE: GothicArches =====
+stl: research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.stl  (1260110 triangles)
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+TOL 10.000 um   detected C0 z-steps: 0   theta-jumps: 0
+REGISTERED IN FULL BEFORE THIS FILE WAS WRITTEN — see the PHASE D block in
+research/lab/2026-07-29-strata-perf-convergence-worklog.md. The expected verdict is FAIL; the value
+of this arm is the CERTIFIED H1 BOUND AT 100% COVERAGE and the enumerated residual, not the verdict word.
+
+===== D2 CROSS-VALIDATION GATE (registered BEFORE any number was read) =====
+  control set 520 facets, screen at lattice level n=192, TOL 10.000 um
+  Every control facet was measured BOTH ways: the GPU screen (f32, radial foot + Gauss-Newton, covering
+  radius closure) and certifyTriangle (f64, descent-then-Newton true perpendicular, escalating lattice).
+  [X1] *** FAIL ***   DOMINANCE — screen bound below a CPU-witnessed distance on the same facet
+        measured 82 (worst tri 135194: bound 17.641 um < witnessed 59.630 um, deficit 41.990 um)
+        bar      must be 0   (a failure here is a registered STOP)
+  [X2] PASS   NON-VACUITY — the control must contain facets BOTH instruments put over TOL
+        measured CPU witnessed over TOL: 13   screen bound over TOL: 16
+        bar      both >= 1   (a failure here VOIDS the gate — widen the control and re-run)
+  [X3] PASS   RATE AGREEMENT — |GPU mx>TOL rate - CPU witnessed>TOL rate|
+        measured GPU 3.077%  CPU 2.500%  delta 0.577 points
+        bar      <= 3.00 points (recorded precedent: 0.06 GeoStar / 2.95 Gothic)   (a failure here is a registered STOP)
+  [X4] PASS   NO UNDER-FLAGGING — CPU-witnessed exceedances the screen would have CERTIFIED
+        measured 0
+        bar      must be 0   (a failure here is a registered STOP)
+  GATE: NOT ALL BARS PASSED — see above
+  GPU-vs-CPU rA parity at startup: 0.3073 um over 32,768 samples of the WHOLE surface
+  (recorded precedent for this style: 0.303 um. The screen's margin is 1.000 um.)
+
+*** D2 CROSS-VALIDATION FAILED. THE SCREEN IS NOT TRUSTED AS A CERTIFIER ON THIS MESH AND THE
+*** COMPOSITION IS NOT ATTEMPTED. This is a RESULT, not an error: it is the registered stop condition.

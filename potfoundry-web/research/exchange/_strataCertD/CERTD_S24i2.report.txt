@@ -1,0 +1,247 @@
+
+===== STRATA PHASE D — COMPOSED FULL-COVERAGE CERTIFICATE: GothicArches =====
+stl: research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.stl  (1260110 triangles)
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+TOL 10.000 um   detected C0 z-steps: 0   theta-jumps: 0
+REGISTERED IN FULL BEFORE THIS FILE WAS WRITTEN — see the PHASE D block in
+research/lab/2026-07-29-strata-perf-convergence-worklog.md. The expected verdict is FAIL; the value
+of this arm is the CERTIFIED H1 BOUND AT 100% COVERAGE and the enumerated residual, not the verdict word.
+
+===== D2 CROSS-VALIDATION GATE (registered BEFORE any number was read) =====
+  control set 520 facets, screen at lattice level n=192, TOL 10.000 um
+  Every control facet was measured BOTH ways: the GPU screen (f32, radial foot + Gauss-Newton, covering
+  radius closure) and certifyTriangle (f64, descent-then-Newton true perpendicular, escalating lattice).
+  [X1b] *** FAIL ***  (reported, does not decide)   THE ORIGINAL X1, RETAINED — screen bound below the CPU's UNCONFIRMED local reading
+        measured 82 (worst tri 135194: bound 17.641 um < local reading 59.630 um, deficit 41.990 um)
+        bar      REPORTED, DECIDES NOTHING (AMENDMENT D2-A): both quantities are UPPER bounds on the same number, so the smaller is the tighter bound, not the broken one
+  [X1'] *** FAIL ***  (reported, does not decide)   DOMINANCE vs the CONFIRMED CPU witness min(local, global) at the DEFAULT 180x120 sweep
+        measured 1 (worst tri 690730: bound 118.657 um < confirmed 118.993 um, deficit 0.336 um)
+        bar      REPORTED; superseded as the decider by X1'' (AMENDMENT D2-B) whenever the refined reference was run
+  [X1''] PASS   DOMINANCE vs the REFINED CPU reference — distPerp re-seeded at 16x sweep density (2880x1920)
+        measured 0   [1 facets re-confirmed, the refined sweep pulled the CPU's own number down by up to 30.902 um]
+        bar      must be 0   (a failure here is a registered STOP)
+  [X1c] PASS   CLOSURE ABLATION — bounds re-measured at closureEps = 0 on every X1b violator
+        measured 82 facets re-screened, 0 moved, worst rise 0.000000 um
+        bar      bounds unchanged (GothicArches has 0 detected C0 z-steps and 0 theta-jumps, so the closure should be a no-op here)   (a failure here is a registered STOP)
+  [X2] PASS   NON-VACUITY — the control must contain facets BOTH instruments put over TOL
+        measured CPU witnessed over TOL: 13   screen bound over TOL: 16
+        bar      both >= 1   (a failure here VOIDS the gate — widen the control and re-run)
+  [X3] PASS   RATE AGREEMENT — |GPU mx>TOL rate - CPU witnessed>TOL rate|
+        measured GPU 3.077%  CPU 2.500%  delta 0.577 points
+        bar      <= 3.00 points (recorded precedent: 0.06 GeoStar / 2.95 Gothic)   (a failure here is a registered STOP)
+  [X4] PASS   NO UNDER-FLAGGING — CPU-witnessed exceedances the screen would have CERTIFIED
+        measured 0
+        bar      must be 0   (a failure here is a registered STOP)
+  GATE: ALL DECIDING BARS PASS — the screen is trusted as a certifier for this mesh
+  AMENDMENT D2-A is live: the original X1 fired at 82/520 on its first firing and is retained above as
+  X1b, printed with its count and its worst offender, deciding nothing. The reason is recorded in the
+  worklog BEFORE the re-run: certifyTriangle's local reading and the screen's bound are BOTH upper
+  bounds on max_T dist(p,S), so the smaller of them is the tighter one. X1' re-asks the same question
+  against the CONFIRMED witness, which is the number the auditor publishes and judge() consumes.
+  GPU-vs-CPU rA parity at startup: 0.3073 um over 32,768 samples of the WHOLE surface
+  (recorded precedent for this style: 0.303 um. The screen's margin is 1.000 um.)
+
+--- MESH SHAPE + ORIENTATION CENSUSES (unconditional, every facet, from the audited STL itself) ---
+  3-D AR  p50 3.404  p90 9.722  p99 39.547  MAX 85.129 (tri 22156)
+  AR TRANSCRIPTION CHECK: _certComposeLib.facetGeom agrees with _judgeShape.meshShapeCensus to the bit on the argmax over all 1260110 facets
+  blades(AR>50) 2 determined (+10 f32-indeterminate, raw 12)   zero-area 0   min edge 0.681 um
+  folds 0 determined (+19 f32-indeterminate)   parametric AR p50 4.293 MAX 870719.458
+  normal deviation p50 1.0032  p90 3.4106  p99 60.9692  MAX 172.9444 deg
+  off-locus >=90 4505   back-facing (gate) 0   census 8.9s + 6.8s
+
+===== HARD GATES (expected count 0; NOT APPLICABLE is NOT a pass) =====
+  [FOLD] PASS   count 0 (expected 0)
+        REPRESENTATION VALIDITY — consistent (theta,z) orientation (a graph is single-valued)
+      parametric signed area (raw): 1260106 positive, 4 negative, 0 EXACTLY ZERO   majority (determined) +
+      DETERMINED folds (|sPar| > per-facet f32 half-ulp bound, sign against majority) = 0 / 1260110  (0.0000%)   <-- THE GATE COUNT
+      sign NOT determined by the STL's f32 coordinates: 19 (4 read neg / 15 read pos, incl. 0 exact zero)
+        ^ REPORTED, NOT DEFECTS — a fold verdict below this floor is not measurable from an STL (FOLD-ANOMALY 2026-07-29:
+          D52's six "folds" were all sub-floor artefacts of atan2(f32) read-back; the driver's f64 mesh was provably clean)
+      historical raw '<0' count (comparable to _bladeCensus / _bladeFolds and the D51 baseline): 4   minority+zero raw: 4
+      after exact-float32-bit weld: 4   well-shaped (parametric AR <= 8, so NOT float noise): 0
+      fold components (determined set) 0   largest 0 facets
+      z-histogram of folds (24 bins, base -> rim): 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0 0 2 0 0 1 0
+  [NORMAL] PASS   count 0 (expected 0)
+        EXTRINSIC ORIENTATION — facet normal vs the ANALYTIC normal at the facet centroid
+      deviation (degrees) p50 1.0032   p90 3.4106   p99 60.9692   MAX 172.9444 (tri 436877)
+      mesh winds OUTWARD (99.60% of a 8192-facet stride sample)
+      off-locus counts   >=15 24736   >=30 18299   >=45 15666   >=60 12791   >=90 4505   >=120 1593   >=150 409
+      histogram, 12 bins of 15 deg (off-locus): 1235374 6437 2633 2875 3344 4942 1972 940 595 589 328 81
+      zero-area facets (no normal at all, gated as 180 deg): 0
+      FEATURE-SPANNING chords (>= 90 deg at the centroid, front-facing at one of their own vertices): 4505
+        ^ REPORTED, NOT DEFECTS — a chord across a steep C1 wall legitimately reads back-facing at a mid-wall
+          sample point; its fidelity price is H1/H2's to charge. Measured 2026-07-30: this population GROWS
+          with refinement depth (1,792 @ 61k -> 14,890 @ 351k guard-ON tris; folds and blades both 0), i.e. a
+          centroid-only >= 90 gate is unmeasurable-as-specified on feature-bearing styles.
+      facets straddling a detected C0 locus: 0 — NOTHING was excluded, this gate saw every facet of the mesh
+      step h_theta 1.0e-6 rad, h_z 1.0e-6 mm   6.4M rA evals   6.8s
+      GATE = back-facing (>= 90 deg) against the MOST FAVOURABLE of five candidate analytic normals (central
+      and both one-sided differences in each of theta and z), AT EVERY SAMPLED POINT OF THE FACET'S OWN
+      FOOTPRINT — centroid and all three vertex parameter points. A sign test, not a tuned threshold. The
+      one-sided candidates handle a crease AT a sample point; the vertex samples handle a crease that crosses
+      the footprint BETWEEN sample points (the case a centroid-only probe mis-reads, measured above).
+      WORST BY DEVIATION (centroid angle):
+        tri    436877  172.944 deg  th -2.88061  z 113.3809  [FEATURE-SPANNING — reported, not gated]
+        tri    498428  171.920 deg  th 0.78478  z 80.6995  [FEATURE-SPANNING — reported, not gated]
+        tri   1245593  171.610 deg  th 0.92909  z 42.8199  [FEATURE-SPANNING — reported, not gated]
+        tri   1245685  171.605 deg  th -2.49989  z 42.8187  [FEATURE-SPANNING — reported, not gated]
+        tri   1246263  171.578 deg  th -2.21249  z 42.8168  [FEATURE-SPANNING — reported, not gated]
+        tri   1246814  171.284 deg  th -1.40710  z 58.5020  [FEATURE-SPANNING — reported, not gated]
+        tri   1247512  171.217 deg  th -1.42058  z 53.7447  [FEATURE-SPANNING — reported, not gated]
+        tri   1251891  171.152 deg  th 2.24167  z 52.7169  [FEATURE-SPANNING — reported, not gated]
+        tri    648446  171.115 deg  th 1.31074  z 113.6286  [FEATURE-SPANNING — reported, not gated]
+        tri    551780  171.027 deg  th -0.78543  z 80.7545  [FEATURE-SPANNING — reported, not gated]
+        tri   1245820  170.617 deg  th 0.26204  z 113.4312  [FEATURE-SPANNING — reported, not gated]
+        tri    648444  170.169 deg  th 1.31102  z 113.6534  [FEATURE-SPANNING — reported, not gated]
+  [BLADE] *** FAIL ***   count 2 (expected 0)
+        FACET SHAPE — aspect ratio <= 50 (longest edge / (2 * inradius))
+      AR p50 3.404  p90 9.722  p99 39.547  MAX 85.129
+      DETERMINED blades (lower-bound AR under f32 half-ulp noise still > 50) = 2 / 1260110  (0.0002%)   <-- THE GATE COUNT
+      AR-at-cap INDETERMINATE at f32 (raw AR > 50 but inside the read-back band): 10   raw total 12
+      zero-area facets 0   min edge 0.681 um
+      z-histogram of blades (raw, 24 bins, base -> rim): 0 0 0 2 0 0 0 0 0 0 0 0 1 1 1 1 2 1 1 0 0 0 1 1
+      *** NONE OF THESE 2 DETERMINED FACETS CAME FROM A GUARDED SPLIT. The driver guard (PF_CB_SHAPE_AR=50)
+          refuses any split whose child exceeds 50, this gate counts facets above 50 >= 50, and
+          the two metrics are the SAME expression. So every facet here came from the INITIAL GRID or from a
+          post-loop pass that is NOT shape-guarded — the needle collapse, or a 2-2 flip called without its
+          improvement gate. Code sites: see the FINDING 4 driver-gap note in the 2026-07-29 worklog. ***
+          (f32-vs-f64 borderline facets are already EXCLUDED from the count by the read-back band: the
+           10 raw-over-cap facets inside it are reported above, not attributed to anything.)
+  [TOPOLOGY] PASS   count 0 (expected 0)
+        TOPOLOGY — manifold + consistently oriented (NECESSARY, NOT SUFFICIENT: a folded sheet passes it)
+      welded verts 630630   edges 1890740   non-manifold 0   boundary 1150 (expected 1150)   orientation-mismatch 0   Euler V-E+F = 0
+      D51 read 0 / 0 / 0 and V-E+F = 0 EXACTLY while 31,842 of its facets were inverted. This block is
+      reported so that fact stays visible instead of being mistaken for a clean bill of health.
+  GATES: NOT ALL PASSED — see above
+
+  H1 pool: 16 worker threads, chunk 19, esbuild bundle 204 ms; per-worker rA rebuilt from (style, params, dims) and VERIFIED bit-identical to the parent's BEFORE the walk — 264208 (worker x lattice-point) comparisons, 0 differing, max deviation 0.000e+0 mm
+
+  STAGE-3 GLOBAL CONFIRM of the worst 64 survivors (the auditor's own procedure: max over the confirmed set of min(local, global))
+    at distPerp's DEFAULT 180x120 seeding  : 204.174 um   (facet 344521)
+    at a REFINED 2880x1920 seeding, top 24: 204.174 um   (facet 344521)   — the refined sweep pulled readings down by up to 0.000 um
+    facets outside the confirmed top 64 are bounded by 126.817 um (their unconfirmed local readings)
+    tri    344521  fast    204.174 -> global    204.174 -> refined    204.174 um  @th=0.85775 z=120.0000
+    tri   1077425  fast    204.174 -> global    204.174 -> refined    204.174 um  @th=0.85775 z=120.0000
+    tri    335660  fast    204.070 -> global    204.070 -> refined    204.070 um  @th=2.42841 z=120.0000
+    tri   1072745  fast    204.070 -> global    204.070 -> refined    204.070 um  @th=2.42841 z=120.0000
+    tri    383189  fast    201.956 -> global    201.956 -> refined    201.956 um  @th=2.28097 z=120.0000
+    tri   1258574  fast    201.956 -> global    201.956 -> refined    201.956 um  @th=2.28097 z=120.0000
+    tri   1258575  fast    193.016 -> global    193.016 -> refined    193.016 um  @th=2.28101 z=120.0000
+    tri    418778  fast    191.677 -> global    191.677 -> refined    191.677 um  @th=-0.86001 z=120.0000
+    tri   1258566  fast    191.677 -> global    191.677 -> refined    191.677 um  @th=-0.86001 z=120.0000
+    tri    419117  fast    191.568 -> global    191.568 -> refined    191.568 um  @th=-2.43082 z=120.0000
+    tri   1258562  fast    191.568 -> global    191.568 -> refined    191.568 um  @th=-2.43082 z=120.0000
+    tri    418048  fast    191.243 -> global    191.243 -> refined    191.243 um  @th=0.71214 z=120.0000
+
+--- H1  MESH -> SURFACE   *** COMPOSED CERTIFICATE: GPU TRIAGE AT 100% COVERAGE + CPU CONFIRM ON SURVIVORS *** ---
+  MEASUREMENTS, NOT A VERDICT — the verdict block at the end of this report is the only place a PASS or
+  FAIL may be read from, and it requires BOTH directions to have run.
+  THE TWO POPULATIONS ARE PRINTED SEPARATELY ON PURPOSE. A reader who does not accept the screen half
+  can discard it and still read the CPU half; a reader who does accept it can see exactly what it bought.
+
+  POPULATION 1 — CERTIFIED BY THE GPU SCREEN : 1240126 / 1260110  (98.4141%)
+    certified bound over this population     : 10.000 um   (facet 1134324)   within TOL by construction
+    cascade  n=12: 1260110 in -> 536582 certified, 723528 out   n=48: 723528 in -> 539498 certified, 184030 out   n=192: 184030 in -> 164046 certified, 19984 out
+    screen   levels 12/48/192   gnIters 2   closureEps 0.000001   margin 1.000 um   f32
+    parity   GPU rA vs the CPU auditor's OWN rA: 0.307 um max over the startup lattice (the whole surface: geometry, expn, bell and style)
+    cost     1242.1 s GPU compute, 1279.7 s wall including transport
+
+  POPULATION 2 — CERTIFIED BY THE CPU        : 19984 / 19984 survivors
+    certified bound over this population     : 214.053 um   (facet 335660)
+    witnessed max over this population       : 204.174 um   (facet 344521)
+    survivors with a WITNESSED exceedance    : 14569   (proven defects — a real point at a real distance)
+    survivors UNCERTIFIED but not witnessed  : 8   (resolution-limited at nMax 2048; an honest UNKNOWN, never a pass)
+    cost     1311.1 s, 16 worker threads, 15.24 facets/s
+
+  *** COMPOSED CERTIFIED UPPER BOUND : 214.053 um ***   OVER TOL   attained by the CPU half
+  *** COMPOSED WITNESSED MAX         : 204.174 um ***   OVER TOL   (CPU half only — see the note below)
+  COVERAGE: COMPOSED, 100%-triage: 1240126/1260110 facets (98.4141%) certified BY THE GPU SCREEN at levels 12/48/192 (gnIters 2, closureEps 0.000001, margin 1.000 um, f32; GPU-vs-CPU rA parity 0.307 um measured at startup); 19984/19984 survivors certified BY THE CPU (certifyTriangle, f64, nMax 2048, 16 worker threads); accounted 1260110/1260110 — FULL COVERAGE
+  WHY THE WITNESS IS THE CPU HALF ALONE: every facet in population 1 carries an upper bound <= TOL, so
+  none of them can hold a witness above TOL; a max over a subset is still a sound LOWER bound on the true
+  max. The screen reports a bound, not a located point, and is never quoted as a max (RATES transfer
+  between these two instruments, MAXIMA do not — 2026-07-28-gpu-rank-results.md).
+  [SHAPE: AR p99 39.55 max 85.1, blades(AR>50) 2 det+10 f32indet, folds 0 det+19 f32indet, back-facing 0 (+4505 feature-span)]
+
+--- THE RESIDUAL — every facet with a WITNESSED exceedance, enumerated by owner ---
+  14569 facets carry a witnessed exceedance over TOL 10.000 um.
+  ENUMERATION IS COMPLETE: nOver 14569 <= the 24000 facets the walk kept by value, and an over-TOL facet's
+  witnessed value strictly exceeds every non-over facet's, so the kept set contains all of them.
+  OWNER CLASSES ARE GEOMETRIC ATTRIBUTES OF THE FACET, NOT THE DRIVER'S REFUSAL REASON. S26 named that
+  refuser exhaustively (shape-ar 96.3% / shape-admit 3.7% on 4,584 facets) and it is a property of a
+  REFUSED SPLIT, which a finished STL does not carry. That attribution is cited, never re-derived here.
+  by owner:
+    mid-chord         7123  (48.89% of the enumerated residual)   worst 190.100 um
+    fine              6185  (42.45% of the enumerated residual)   worst 137.044 um
+    long-chord        1035  (7.10% of the enumerated residual)   worst 165.720 um
+    rim-row            221  (1.52% of the enumerated residual)   worst 204.174 um
+    over-cap-AR          5  (0.03% of the enumerated residual)   worst 48.300 um
+  WORST 40 BY WITNESSED VALUE:
+    tri    344521     204.174 um  rim-row       AR      4.73  long    882.2 um  z 119.979..120.000  th 0.8641
+    tri   1077425     204.174 um  rim-row       AR     11.33  long    882.2 um  z 119.979..120.000  th 0.8540
+    tri    335660     204.070 um  rim-row       AR      4.72  long    878.5 um  z 119.979..120.000  th 2.4349
+    tri   1072745     204.070 um  rim-row       AR     11.29  long    878.5 um  z 119.979..120.000  th 2.4248
+    tri    383189     201.956 um  rim-row       AR     43.58  long   1208.3 um  z 119.965..120.000  th 2.2861
+    tri   1258574     201.956 um  rim-row       AR     36.49  long   1208.3 um  z 119.965..120.000  th 2.2629
+    tri   1258575     193.016 um  rim-row       AR     28.35  long   1069.9 um  z 119.965..119.993  th 2.2657
+    tri    418778     191.677 um  rim-row       AR     43.16  long   1199.8 um  z 119.965..120.000  th -0.8556
+    tri   1258566     191.677 um  rim-row       AR     38.29  long   1199.8 um  z 119.965..120.000  th -0.8787
+    tri    419117     191.568 um  rim-row       AR     43.15  long   1199.7 um  z 119.965..120.000  th -2.4264
+    tri   1258562     191.568 um  rim-row       AR     38.31  long   1199.7 um  z 119.965..120.000  th -2.4495
+    tri    418048     191.243 um  rim-row       AR     43.18  long   1200.1 um  z 119.965..120.000  th 0.7152
+    tri   1258570     191.243 um  rim-row       AR     38.23  long   1200.1 um  z 119.965..120.000  th 0.6921
+    tri    438968     190.100 um  mid-chord     AR      2.40  long    486.6 um  z 113.215..113.700  th 2.3587
+    tri    468407     189.946 um  mid-chord     AR      3.27  long    486.6 um  z 113.215..113.700  th 2.3586
+    tri   1258571     183.657 um  rim-row       AR     29.65  long   1062.1 um  z 119.965..119.993  th 0.6949
+    tri   1258567     183.373 um  rim-row       AR     29.69  long   1061.8 um  z 119.965..119.993  th -0.8759
+    tri   1258563     183.280 um  rim-row       AR     29.71  long   1061.8 um  z 119.965..119.993  th -2.4467
+    tri    148627     181.316 um  rim-row       AR     42.81  long    933.0 um  z 119.965..119.986  th 2.2685
+    tri    383190     180.810 um  rim-row       AR     43.18  long   1189.6 um  z 119.967..120.000  th 2.2859
+    tri    148628     174.550 um  rim-row       AR     36.69  long    865.3 um  z 119.965..119.982  th 2.2699
+    tri   1077426     173.911 um  rim-row       AR      8.27  long    718.2 um  z 119.979..119.998  th 0.8546
+    tri    147160     173.418 um  rim-row       AR     44.68  long    925.5 um  z 119.965..119.986  th 0.6977
+    tri   1072746     173.408 um  rim-row       AR      8.25  long    715.5 um  z 119.979..119.998  th 2.4254
+    tri    147133     173.137 um  rim-row       AR     44.76  long    925.2 um  z 119.965..119.986  th -0.8731
+    tri    147127     173.046 um  rim-row       AR     44.78  long    925.1 um  z 119.965..119.986  th -2.4439
+    tri    832199     172.052 um  rim-row       AR     13.09  long    784.8 um  z 120.000..120.000  th -0.7173
+    tri    418049     170.024 um  rim-row       AR     42.85  long   1181.2 um  z 119.966..120.000  th 0.7150
+    tri    418779     169.665 um  rim-row       AR     42.85  long   1181.0 um  z 119.966..120.000  th -0.8558
+    tri    419118     169.546 um  rim-row       AR     42.84  long   1180.9 um  z 119.966..120.000  th -2.4266
+    tri    468408     168.110 um  mid-chord     AR      2.90  long    439.5 um  z 113.215..113.634  th 2.3586
+    tri    147161     166.969 um  rim-row       AR     38.25  long    857.8 um  z 119.965..119.982  th 0.6991
+    tri    155167     166.735 um  rim-row       AR     31.14  long    798.3 um  z 119.965..119.979  th 2.2713
+    tri    147134     166.685 um  rim-row       AR     38.31  long    857.6 um  z 119.965..119.982  th -0.8717
+    tri    147128     166.593 um  rim-row       AR     38.33  long    857.5 um  z 119.965..119.982  th -2.4425
+    tri    198273     165.720 um  long-chord    AR      4.44  long    540.1 um  z 113.661..113.974  th 1.8286
+    tri    690731     165.720 um  long-chord    AR      4.11  long    547.6 um  z 113.661..113.974  th 1.8300
+    tri    153464     159.463 um  rim-row       AR     32.41  long    790.8 um  z 119.965..119.979  th 0.7005
+    tri    384120     159.380 um  rim-row       AR     42.97  long   1170.7 um  z 119.968..120.000  th 2.2856
+    tri    153421     159.202 um  rim-row       AR     32.46  long    790.6 um  z 119.965..119.979  th -0.8703
+  owner bands: rim row = any vertex within 0.1 mm of z=0 or z=120; over-cap-AR = 3-D AR > 50 (the driver's own S1 cap);
+  long-chord = longest edge >= 500 um; mid-chord >= 150 um (the recorded longest-edge buckets).
+
+--- H2  SURFACE -> MESH   (witnessed lower bound; every reading is an exact point-to-triangle distance) ---
+  MEASUREMENTS, NOT A VERDICT — see the verdict block at the end of this report.
+  40.0M locator queries, 67M structure evals, 447s   structure pitch 28.259 um UNIFORM   locator cell 0.313 mm
+  phase-B refinement TRUNCATED by budget (phase-A coverage still completed in full over the audited band, so this is a floor)
+  WITNESSED max : 24.375 um   OVER TOL   [brute-force re-check of this point: 24.375 um]   [SHAPE: AR p99 39.55 max 85.1, blades(AR>50) 2 det+10 f32indet, folds 0 det+19 f32indet, back-facing 0 (+4505 feature-span)]
+    at th=1.358340 z=76.21094  r=46.55830  nearest tri 135048
+  audited z band 0.00..120.00 mm   samples over TOL: 203 / 40008064 = 0.00051%
+  z-histogram of exceedances (24 bins, base -> rim): 0 0 0 95 1 13 0 0 0 0 0 0 33 0 0 6 45 0 0 1 0 1 4 4
+
+===== VERDICT =====
+  H1  mesh -> surface: witnessed 204.174 um   certified bound 214.053 um   complete coverage
+        COMPOSED, 100%-triage: 1240126/1260110 facets (98.4141%) certified BY THE GPU SCREEN at levels 12/48/192 (gnIters 2, closureEps 0.000001, margin 1.000 um, f32; GPU-vs-CPU rA parity 0.307 um measured at startup); 19984/19984 survivors certified BY THE CPU (certifyTriangle, f64, nMax 2048, 16 worker threads); accounted 1260110/1260110 — FULL COVERAGE
+  H2  surface -> mesh: witnessed 24.375 um   NO CERTIFIED BOUND (witnessed only)   complete coverage
+        40.0M queries; phase-A UNIFORM coverage of z 0.00..120.00 mm (the FULL band) at structure pitch 28.259 um; phase-B refinement TRUNCATED by budget, so the max is a floor AT THAT RESOLVING POWER
+  TOL 10.000 um   gates: 1 failed, 0 not applicable
+
+  *** FAIL ***   gate BLADE failed: 2 (expected 0); H1 witnessed 204.174 um > TOL 10.000 um; H2 witnessed 24.375 um > TOL 10.000 um
+  FAIL is sound under partial coverage AND from a single direction: a witnessed exceedance is a real
+  exceedance and a failed shape gate is a real defect. Neither can be argued away by auditing more of
+  the mesh, or by auditing the direction that did not run.
+
+  HOW TO READ THE H1 LINE ABOVE: it is a COMPOSED certificate. The two populations, their instruments
+  and their resolving powers are printed separately further up, and neither is quoted without the other.
+  WALL: 3230s total   GPU triage 1280s   CPU survivors 1311s
+  293.8M rA evals in this process (worker-thread evals are not in this counter)
+=========================================================

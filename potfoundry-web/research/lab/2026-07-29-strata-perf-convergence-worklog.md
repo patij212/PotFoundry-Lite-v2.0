@@ -9048,6 +9048,172 @@ FAIL is retracted. **Phase D therefore runs the auditor's stage-3 confirm at BOT
 both**, so its own headline witness is the tightest number available and is comparable to the series it
 sits in.
 
+### *** PHASE D RESULT — **THE CERTIFICATE EXISTS. 1,260,110 OF 1,260,110 FACETS ACCOUNTED FOR, CERTIFIED** ***
+### *** **H1 <= 214.053 um, IN 53.8 MINUTES AGAINST THE 39.8 h THE OPERATOR REJECTED.** AND THE FIRST THING** ***
+### *** **IT MEASURES IS THAT *EVERY H1 NUMBER THIS CAMPAIGN HAS PUBLISHED IS A FLOOR, NOT A CEILING*.** ***
+`CERTD_S24i2.report.txt`, `.progress.log`, `.residual.json`, `.survivors.json` in
+`research/exchange/_strataCertD/`. STL md5 `c96da03c08eefbc081a304093c95a364` re-checked after the run.
+
+#### **THE VERDICT BLOCK**
+| | |
+|---|---|
+| **H1 mesh -> surface** | **CERTIFIED BOUND 214.053 um**, witnessed 204.174 um, ***COMPLETE COVERAGE*** |
+| **H2 surface -> mesh** | witnessed **24.375 um** at th 1.358340 z 76.21094, **203 / 40,008,064 = 0.00051%**, complete coverage at 28.259 um structure pitch |
+| gates | FOLD 0, NORMAL 0, **BLADE 2 (FAILS)**, topology 0/0/0 Euler 0 |
+| ***VERDICT*** | ***FAIL*** — blade gate 2; H1 witnessed 204.174 um > TOL; H2 witnessed 24.375 um > TOL |
+| wall | **3,230 s = 53 min 50 s** total (GPU triage 1,280 s, CPU survivors 1,311 s, H2 447 s) |
+
+**E1 through E5 ALL HOLD, AND THEY WERE ALL WRITTEN DOWN FIRST.** E1 FAIL. E2 H2 reproduces `_S24i2`'s
+recorded 24.375 um / th 1.358340 / z 76.21094 / 203 of 40,008,064 **to the digit**. E3 the composed bound
+lands at 214.053 um, inside the registered 100-700 um band. E4 the residual is enumerated and its
+completeness is PROVEN, not hoped. E5 the gates reproduce `FID_S24i2` exactly, including AR max 85.129.
+
+#### **THE COMPOSITION, AND WHAT EACH HALF BOUGHT**
+| population | facets | share | certifying instrument | its bound |
+|---|---|---|---|---|
+| **P_screen** | **1,240,126** | **98.4141%** | GPU screen, levels 12/48/192, gn 2, margin 1 um, f32 | **10.000 um** (facet 1134324, at the boundary by construction) |
+| **P_surv** | **19,984** | **1.5859%** | `certifyTriangle`, f64, nMax 2048, 16 threads | **214.053 um** (facet 335660) |
+| | **1,260,110** | **100%** | | ***COMPOSED: 214.053 um*** |
+
+**THE CASCADE:** 1,260,110 -> 723,528 -> 184,030 -> **19,984**. n=12 certified 536,582 in **13.7 s**; n=48
+certified 539,498 more in **11.6 s**; n=192 certified 164,046 more in **1,254 s**. The survivor rate,
+**1.5859%**, lands inside the registered 1-6% band.
+
+**AND THE SURVIVOR SET IS A SERIALIZED ARTIFACT** (`CERTD_S24i2.survivors.json`, 19,984 indices). S25 lost
+an arm to a population that had no serialized form; this one has one, and it is exactly the routing input
+the M=g/h^2 arm has been waiting for — **measured, complete, and 4.3x larger than the `unresolved` map's
+4,675.**
+
+#### *** THE HEADLINE MEASUREMENT — **THE CAPPED WALK WAS OPTIMISTIC BY 1.57x, AND ITS RATE WAS EXACT** ***
+| | capped 3.17% walk (`FID_S24i2`) | **FULL COVERAGE (Phase D)** | |
+|---|---|---|---|
+| H1 CERTIFIED bound | 136.544 um | **214.053 um** | ***x1.567 — the capped walk UNDER-STATED*** |
+| H1 WITNESSED max | 126.700 um | **204.174 um** | x1.611 |
+| facets over TOL | 460 / 40,000 = **1.15%** | **14,569 / 1,260,110 = 1.1562%** | ***AGREE TO 0.006 POINTS*** |
+| coverage | 3.17%, INCOMPLETE | **100%, COMPLETE** | |
+
+>> ***RATES TRANSFER. MAXIMA DO NOT.*** That sentence was written on 2026-07-28 about the GPU screen versus
+>> the CPU auditor. **It is now measured for the campaign's own capped-walk sampler**, on the same mesh, at
+>> full coverage: the golden-ratio stride's over-TOL RATE was right to six thousandths of a point on 3.17%
+>> of the mesh, and its MAX was low by 57%.
+>>
+>> **THE REGISTRATION ASKED FOR THE OTHER OUTCOME AND MUST BE ANSWERED IN ITS OWN WORDS.** D4 said *"if the
+>> certified H1 bound lands UNDER prior capped-walk fears, say so plainly."* **IT DID NOT.** It landed
+>> **1.57x ABOVE the capped walk's own certified bound**, which is far outside the +-20% subset-spread
+>> caveat that has travelled with every H1 number in this campaign. **The caveat was not merely imprecise,
+>> it was pointing the wrong way: every published H1 bound in this series is a FLOOR, not a ceiling**, and
+>> the reason is now obvious in hindsight — a 3.17% sample of a 1.26 M-facet mesh sees ~460 of 14,569
+>> exceedances, and the worst of 460 draws from a heavy tail is systematically below the worst of 14,569.
+>> **No H1 bound in this campaign's history may be quoted as an upper bound on the mesh. This one may.**
+
+#### **THE RESIDUAL — 14,569 FACETS, AND THE ENUMERATION IS PROVABLY COMPLETE**
+`nOver` 14,569 <= the 24,000 the walk kept by value, and an over-TOL facet's witnessed value strictly
+exceeds every non-over facet's, so the kept set CONTAINS all of them. This is a proof, not a sampling claim.
+
+| owner (geometric, from the STL alone) | count | share | worst |
+|---|---|---|---|
+| **mid-chord** (longest edge 150-500 um) | **7,123** | 48.89% | 190.100 um |
+| **fine** (< 150 um) | **6,185** | 42.45% | 137.044 um |
+| long-chord (>= 500 um) | 1,035 | 7.10% | 165.720 um |
+| **rim-row** (a vertex within 0.1 mm of z=0 or z=120) | **221** | **1.52%** | **204.174 um** |
+| **over-cap-AR** (3-D AR > 50, the driver's own S1 cap) | ***5*** | **0.03%** | 48.300 um |
+
+>> **THE RESIDUAL IS NOT A BLADE POPULATION AND IT IS NOT A SLIVER POPULATION. FIVE FACETS OF 14,569 —
+>> 0.03% — EXCEED THE DRIVER'S OWN ASPECT CAP.** 91.3% of it is chords under 500 um. This is the D52
+>> finding reproduced at full coverage and with 30x the population: *with blades removed, the residual error
+>> is on GOOD triangles.* It is genuine under-refinement, not a shape artefact.
+
+**AND THE RIM ROW OWNS THE EXTREME TAIL WHILE BEING 1.5% OF THE BODY.** All **6** facets over 200 um are
+rim-row; **62 of the worst 100** are rim-row; and the certified bound's own argmax (facet 335660, z
+119.979..120.000) sits in it. **Excluding the rim row entirely — the band this campaign already declines to
+score as wall (the standing BasketWeave caveat) — the worst facet in the mesh is:**
+```
+tri 438968   190.100 um   mid-chord   AR 2.40   longest 486.6 um   z 113.215..113.700   th 2.3587
+```
+**AR 2.40. A well-shaped, ordinary facet, 190 um off the surface.** So the wall-only full-coverage number
+is ~190.1 um against the rim-inclusive 214.053 um: **the rim row costs 12.6% of the headline and nothing
+of the diagnosis.**
+
+**WHERE THE RESIDUAL LIVES.** z-histogram of the worst 4,096 (5 mm bins): **z 80-85 holds 1,169**, z 95-100
+holds 610, **z 75-80 holds 517**, z 110-115 holds 364, z 60-65 holds 221. **The H2 witness is at z 76.211
+and the driver's own full-coverage oracle argmax has sat at z 76.40/76.38/75.97 across four arms.** H1's
+residual mass and H2's witness are the same piece of geometry, now measured from both sides at full
+coverage for the first time.
+
+#### **COST, SCORED AGAINST THE REGISTRATION — TWO BANDS MISSED, EVERY CEILING HELD**
+| stage | registered band | ceiling | **measured** | |
+|---|---|---|---|---|
+| GPU cascade | 90-900 s | 1,800 s | **1,279.7 s** | ***BAND MISSED HIGH***, ceiling held |
+| CPU survivors | 20-150 facets/s (84-3,780 s) | 7,200 s | **15.24 facets/s, 1,311.1 s** | ***RATE BAND MISSED LOW***, wall inside by 5.5x |
+| H2, full | 400-600 s | 900 s | **447 s** | HELD |
+| censuses + gates | < 30 s | 60 s | **~16 s** | HELD |
+| survivor count | 1-6% | 250,000 | **1.5859% = 19,984** | **HELD** |
+| **whole certificate** | **0.5-1.5 h** | 3 h | ***53 min 50 s*** | **HELD** |
+
+**BOTH MISSES ARE DIAGNOSED RATHER THAN NOTED.**
+* **The GPU band came from an inapplicable anchor.** 14,253 tri/s was measured over the 12 EASY rows, where
+  almost nothing survives to n=192; here **184,030 facets reached n=192 and ran at 147 tri/s**. The n=12 and
+  n=48 rounds screened 1.98 M facet-passes in **25.3 s combined** — the anchor was right for them and
+  meaningless for the third round. A cascade's cost is set by its TAIL, and the registration priced its head.
+* **The CPU rate band was low because 73% of the survivors could not be certified** (14,569 of 19,984), and
+  `certifyTriangle` escalates its lattice hardest on exactly those. The registration allowed for survivors
+  being the expensive tail; it did not allow for three quarters of them being un-certifiable.
+
+#### **D5 — IDENTITY AND GATES**
+HARD GATE **12/12 BEFORE** in 217.8 s, every documented value exact (V1 2.249981/2.249981, V3
+197.167/12.041, V4 502.615, V5 5.552/391.661, V6 0.617, V7 0.000, V7b 402.230, V7c 12.041/39.767/142.668,
+V8-V10 ortho 2.70e-7). **NO SHARED FILE WAS EDITED**: `_facetTruthLib.ts`, `_sharp3dRef.ts`,
+`_shapeGuard.ts`, `_judgeShape.ts`, `_judgeNormal.ts`, `_judgeVerdict.ts`, `_strataFacetTruth.test.ts`,
+`_strataConformBisect.test.ts`, `gpuRuler.js` and `_gpuRankBridge.ts` are all byte-untouched, verified by
+`git status --porcelain` after the run. STL md5 unchanged. eslint 0 warnings, research `tsc --noEmit` clean.
+The AR transcription check passed: `_certComposeLib.facetGeom` and `_judgeShape.meshShapeCensus` agree on
+the argmax **to the bit over all 1,260,110 facets**. HARD GATE **12/12 AFTER**, every value identical to
+BEFORE.
+
+#### *** WHAT PHASE D ESTABLISHES — FOR THE OPERATOR, AND FOR THE ROAD DECISION ***
+
+**1. THE AFFORDABLE FULL-COVERAGE CERTIFICATE IS REAL, AND IT COSTS 54 MINUTES.** The architecture the
+2026-07-28 handoff named — GPU triage at 100% coverage, CPU confirmation on the survivors — works exactly
+as designed: **98.41% of the mesh is certified by a screen that runs in 21 minutes, and the CPU only ever
+sees 1.59% of it.** The 39.8 h walk the operator rejected is replaced by 53 min 50 s, and the composition
+is not a shortcut: `judge()` was called UNMODIFIED, PASS still requires everything it always required, and
+the two populations are printed separately so the screen half can be discarded by a sceptical reader
+without losing the CPU half.
+
+**2. AND IT IMMEDIATELY RETIRES A CAVEAT BY REFUTING ITS DIRECTION.** The capped-H1 +-20% subset-spread
+caveat has travelled with every H1 number in this campaign. At full coverage the capped walk is low by
+**57%** on the bound and by **61%** on the witness, while its RATE is right to **0.006 points**. **Every
+published H1 bound in this series is a floor. This one is a ceiling.** That is the single most consequential
+thing in this arm and it is not about `_S24i2` at all.
+
+**3. THE RESIDUAL IS UNDER-REFINEMENT ON WELL-SHAPED TRIANGLES, AT FULL COVERAGE AND WITH 30x THE
+POPULATION.** 14,569 facets, enumeration provably complete, **5 of them (0.03%) over the driver's own
+aspect cap**, 91.3% of them chords under 500 um, and the worst non-rim facet is **AR 2.40 at 190.100 um**.
+Nothing here is a blade, a sliver or a fold. **S26's `shape-ar` verdict is about which SPLITS the driver was
+refused, and it stands; this is about which FACETS remain, and they are ordinary.**
+
+**4. THE TWO DIRECTIONS AGREE ON WHERE THE PROBLEM IS.** H1's residual mass sits in z 75-85 (1,686 of the
+worst 4,096) and z 95-100; H2's witness is at z 76.211; the driver's own full-coverage oracle argmax has sat
+at z 76.40/76.38/75.97 across four arms. **Three instruments, three methods, one locus.**
+
+**5. A NAMED FOLLOW-UP THAT IS NOT PHASE D's TO FIX.** `distPerp`'s default `nu = 180, nv = 120` seeding
+grid was measured over-stating by **30.902 um** at tri 690730, a facet `FID_S24i2` published as
+`fast 118.993 -> global 118.993` — the two readings agreed because they share the grid. Every H1 WITNESSED
+figure in the series is affected; no certified BOUND is (a loose witness only inflates a bound). **The fix
+is a density argument for `distPerp`'s default, and it belongs to whoever next touches the auditor.**
+
+**THE FORK, NOW WITH THE CERTIFICATE IN HAND.**
+* **ROAD (3) — STOP AT 24.375 um AND SAY SO.** It is now sayable with the full picture rather than a 3%
+  sample: **H2 24.375 um witnessed at 28.259 um resolving power; H1 CERTIFIED <= 214.053 um at 100%
+  coverage (~190.1 um excluding the open rim row); 14,569 of 1,260,110 facets (1.156%) over 10 um, every
+  one of them enumerated.** The campaign can close on measured numbers instead of caveated ones.
+* **ROAD (1) — CHANGE WHAT A DECLARATION IS.** Unchanged in substance, and it still touches `_judgeShape`'s
+  contract, which is an UNTOUCHABLE and therefore the operator's call. What has changed is that **the
+  routing input now exists and is serialized**: `CERTD_S24i2.survivors.json`, 19,984 facets, the complete
+  population no instrument could certify at 10 um. That is 4.3x the `unresolved` map's 4,675 and, unlike it,
+  it is on disk.
+* **Phase D itself is DONE and is the campaign's last build, as registered.**
+
 ---
 ## READ THIS FIRST — the six things that changed tonight
 

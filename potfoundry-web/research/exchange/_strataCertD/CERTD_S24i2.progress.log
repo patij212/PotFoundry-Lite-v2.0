@@ -1,0 +1,31 @@
+19:36:00 +0s  START stage=full stl=research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.stl style=GothicArches TOL=10.000 um levels=12/48/192 gn=2 margin=1.000 um
+19:36:02 +2s  mesh 1260110 facets; C0 z-steps 0, theta-jumps 0
+19:36:02 +2s  D2 control set: 520 facets (8 seeded from FID_S24i2's published top-8, rest a golden-stride sample)
+19:36:04 +4s    page: [gpuRank page] Failed to load resource: the server responded with a status of 404 (Not Found)
+19:36:05 +5s    screen n=192 closureEps=0.000001: parity 0.3073 um; dispatching 520 facets (seed chunk 64)
+19:36:49 +49s  X1'': re-confirming 1 X1' violators with distPerp at 2880x1920 (16x the default seeding density)
+19:36:53 +53s      tri 690730: screen bound 118.657 um   CPU confirmed 118.993 -> refined 88.091 um
+19:36:53 +53s  X1c: re-screening 82 X1b violators at closureEps=0 (jump closure ABLATED)
+19:36:55 +55s    page: [gpuRank page] Failed to load resource: the server responded with a status of 404 (Not Found)
+19:36:56 +56s    screen n=192 closureEps=0: parity 0.3073 um; dispatching 82 facets (seed chunk 64)
+19:37:01 +61s  D2 PASS  X1b 82 (reported)  X1' 1  X1'' 0 (1 refined, worst drop 30.902 um)  X1c 0/82 moved (worst rise 0.000000 um)  X2 cpu 13/gpu 16  X3 0.577 pts  X4 0
+19:37:17 +77s  censuses + gates done: fold 0, blade 2, normal 0, AR max 85.129
+19:37:19 +79s    page: [gpuRank page] Failed to load resource: the server responded with a status of 404 (Not Found)
+19:37:20 +80s    screen n=12 closureEps=0.000001: parity 0.3073 um; dispatching 1260110 facets (seed chunk 8192)
+19:37:31 +91s    cascade n=12: 1260110 in -> 536582 certified, 723528 survivors  (13.7s wall, 6.0s GPU)
+19:37:33 +93s    page: [gpuRank page] Failed to load resource: the server responded with a status of 404 (Not Found)
+19:37:34 +94s    screen n=48 closureEps=0.000001: parity 0.3073 um; dispatching 723528 facets (seed chunk 1024)
+19:37:43 +103s    cascade n=48: 723528 in -> 539498 certified, 184030 survivors  (11.6s wall, 6.3s GPU)
+19:37:45 +104s    page: [gpuRank page] Failed to load resource: the server responded with a status of 404 (Not Found)
+19:37:46 +105s    screen n=192 closureEps=0.000001: parity 0.3073 um; dispatching 184030 facets (seed chunk 64)
+19:58:38 +1358s    cascade n=192: 184030 in -> 164046 certified, 19984 survivors  (1254.4s wall, 1229.8s GPU)
+19:58:38 +1358s  STAGE 1 DONE: 1240126/1260110 certified by the screen (98.4141%), 19984 survivors (1.5859%), 1279.7s
+19:58:38 +1358s  STAGE 2: 19984 survivors -> CPU, 16 worker threads, stride 12351, topK 24000, deadline 7200s
+20:20:29 +2669s  STAGE 2 DONE: audited 19984/19984 in 1311.1s (15.24 facets/s); bound 214.053 um, witnessed 204.174 um, over 14569, uncert 8
+20:20:29 +2669s  STAGE 3: global confirm of the top 64 by value (default 180x120), of which the top 24 also at 2880x1920
+20:22:23 +2782s  STAGE 3 DONE: confirmed max 204.174 um (default) / 204.174 um (refined), worst drop 0.000 um
+20:22:23 +2782s  residual: 14569 witnessed exceedances, enumeration COMPLETE
+20:22:23 +2783s  H2: locator cell 0.313 mm, budget 40000000
+20:29:50 +3230s  H2 DONE: 24.375 um at th 1.358340 z 76.21094, 203/40008064 over TOL, 448s
+20:29:50 +3230s  VERDICT FAIL — gate BLADE failed: 2 (expected 0); H1 witnessed 204.174 um > TOL 10.000 um; H2 witnessed 24.375 um > TOL 10.000 um
+20:29:50 +3230s  DONE total 3230s
