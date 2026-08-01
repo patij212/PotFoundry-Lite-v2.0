@@ -8555,6 +8555,176 @@ histogram, and it is NOT a road — it is a probe:** the strand-time-vs-shipped-
 no metric and no declaration — only when a stranded facet is reconsidered.** It should be run BEFORE the
 operator commits to road (1) or (3), and it needs one registered arm, not a decision.
 
+### S27 — **THE STRAND-RETRY PROBE. REGISTERED IN FULL. NOTHING IS BUILT, NOTHING IS RUN, NO NUMBER IS READ.**
+
+**THE CLAIM, STATED PLAINLY SO IT CAN BE WRONG.** The argmax carrier's cage-face is a **TIMING** property,
+not a geometric one. The S1 cap refused it **at strand time**, against a neighbourhood that has **since
+refined**; re-considered against the **CURRENT** mesh it may be admissible. If so, the residual is not held
+by the shape gate at all — it is held by the fact that **nothing ever looks again.**
+
+**THE EVIDENCE THAT MOTIVATES IT, all already measured, none of it new:**
+1. **The facet's own ruler moved.** `keyUm` **14.0815** (recorded when the driver gave up) against
+   `sagNowUm` **20.9242** (the same edge ruler on the shipped mesh) — **x1.49**. Vertices are NEVER moved in
+   this driver, so a facet's own edge ruler can only move if its NEIGHBOURS moved. They did, after it was
+   stranded.
+2. **S25.2 measured ZERO AR-refused children at this carrier on the SHIPPED mesh.** The reconstruction that
+   scores the cap says the cap would not refuse it now.
+3. **Retry demonstrably works on part of this population.** The resume pass re-considered the unresolved
+   set, made **504 splits** and **resolved 187** of them.
+
+**AND THE HONEST WEAKNESS OF THE PRECEDENT, STATED BEFORE IT IS USED:** the resume ALREADY does a
+single-shot retry (`for (const [t] of unresolved) if (alive[t]) consider(t)` then drain). **So the resume is
+a partial precedent, and S27's delta is ITERATION, not the idea of retrying.** Within one drain, a facet
+popped EARLY and re-stranded is never re-popped, even though later splits in that same drain change its
+neighbourhood. **A second pass gives every facet another look after everything else has moved.** If the
+effect is real it should appear as a pass-over-pass decay; if the resume already extracted all of it, pass 2
+resolves ~nothing and the claim is refuted cheaply.
+
+**THE DESIGN.** A post-loop **STRAND-RETRY** pass behind `PF_CB_STRAND_RETRY=1` (**default OFF**), placed
+AFTER the de-shard/resume block so it sees the most refined mesh the run ever has.
+* **Iterate until quiet or budget:** repeat passes until a pass resolves ZERO facets, or the pass cap
+  (`PF_CB_STRAND_RETRY_PASSES`, default 8) or the allocation budget (`PF_CB_STRAND_RETRY_BUDGET`, default
+  200,000 gross allocations) is reached.
+* **Each pass re-pops every live unresolved facet** and re-runs the **FULL current admission ladder** — the
+  driver's own `refineDirected`/`refineLepp` → `splitEdge` → `bisectAt`, so S1 (aspect), S2 ((theta,z) fold)
+  and the S20/S21B/S22 composed admission all score on **shipped values** exactly as they do in the main
+  loop. **No gate is weakened, no placement rule is changed, no default is flipped.** The ONLY thing that
+  changes is WHEN a stranded facet is reconsidered.
+* **Per-reason resolved / re-stranded counters**, so the answer is not a single fraction: a facet that was
+  `shape-ar` and resolves is the claim; a facet that was `shape-ar` and re-strands `shape-ar` refutes it.
+* **BUDGET BOOKKEEPING PER THE RESUME'S OWN PRECEDENT:** metered **attributably** (gross allocations charged
+  to this pass alone, anchored at its own start, not to `PF_CB_TRICAP`), and **every budget-stopped site is
+  COUNTED** — the S9.1 accounting fix's rule, adopted verbatim so a silently-dead lever cannot recur.
+* The post-retry `unresolved` count and worst are **recomputed and reported separately** from the headline
+  `unresolvedLeft`, which is taken before the resume and must not silently change meaning.
+
+#### **THE REGISTERED PREDICTIONS. Falsifiable, and P1 is the decisive one.**
+| # | prediction | bar |
+|---|---|---|
+| **P1** | ***THE ARGMAX CARRIER RESOLVES ON RETRY*** — the facet with tri-651601 geometry (edges 130.5/135.1/264.3 um, ar3 19.877, th 1.358284, z 76.28079), matched BY GEOMETRY, leaves `unresolved`. | ***DECISIVE. This clause alone decides the probe.*** |
+| **P2** | resolved fraction over the 4,584 **>= the resume baseline rate** (187 of the set it saw), with the `shape-ar` / `shape-admit` split reported separately | >= baseline |
+| **P3** | **FIDELITY = G1's BAR, VERBATIM**, scored on the retried mesh's Part-B audit: **H2 witnessed <= 12 um** AND over-tol **fraction <= 0.00051% x 1.2** | both clauses |
+| **P4** | **TEXTURE, S24's F3 family VERBATIM, components separately** — physical >= 90, the deviation tails, sub-floor, plates, the 1.5 mm shard census, fans: flat-or-better; gated 0; parAR reported. The retry refines under the composed gates and the CTLPLUS defusal applies — **but it is MEASURED, not assumed** | flat-or-better |
+| **P5** | **PRECONDITIONS**: folds **0**, blades **<= 2**, worst undeclared admitted AR **<= 50**, seam-cracks **0** / Euler **0**, constraint recovery **100%**, admission-stranded **0** | all |
+| **P6** | **IDENTITY + GATE 12/12 both sides**; determinism; cost within S24's anchors (~940 s mesh + audit) | all |
+
+#### *** THE VERDICT ROWS — DISJOINT, INFEASIBLE FIRST, SCORED FIRST-MATCH ***
+| # | row | fires when |
+|---|---|---|
+| **1** | **INFEASIBLE** | the pass cannot run inside its budget/cost ceilings, or the retry explodes the triangle count past S24's anchors |
+| **2** | ***CAGE-FACE IS REAL, NOT TIMING*** | **the argmax RE-STRANDS against the CURRENT mesh for the SAME reason (`shape-ar`).** P1 fails. **The hypothesis is refuted by the cleanest possible measurement** — it was re-offered the split against the refined neighbourhood and the gate refused again. **Roads (1)/(3) go to the operator with THAT measurement attached**, which is strictly more than S26 could hand them. |
+| **3** | **REGRESSION** | P1 holds but P5 fails, or identity/gate/determinism fails |
+| **4** | **TEXTURE TRIP** | P1 + P3 + P5 hold, P4 trips. Reported, not traded — S24's precedent. |
+| **5** | ***WIN*** | **P1 + P2 + P3 + P4 + P5 + P6.** The retried mesh becomes the operator's eyeball mesh and **Phase D's GPU-triage registration is the only block left.** |
+| 6 | PARTIAL | P1 holds, P3 does not. The mechanism is demonstrated and the 10 um bar still is not met — reported as a mechanism result, never as a fidelity win. |
+
+>> **WHY ROW 2 IS WORTH RUNNING FOR EVEN IF IT FIRES.** S26 could only say the argmax's refuser is `shape-ar`
+>> and that S25.2's shipped-mesh reconstruction disagrees. **Row 2 resolves that disagreement by experiment**:
+>> the driver is made to re-offer the split against the very mesh S25.2 scored. **Either the cage-face is a
+>> bookkeeping artifact and the campaign has been blocked by an omission, or it is geometric and every
+>> remaining road is a declaration/stop decision.** Both answers are worth one iterate.
+
+### *** S27 RESULT — **ROW 2. THE CAGE-FACE IS REAL, NOT TIMING. P1 FAILS ON THE CLEANEST MEASUREMENT THE**
+### *** **CAMPAIGN COULD MAKE: THE DRIVER WAS MADE TO RE-OFFER THE SPLIT AGAINST THE REFINED NEIGHBOURHOOD,**
+### *** **THREE TIMES, TO QUIESCENCE — AND THE GATE REFUSED AGAIN, FOR THE SAME REASON.** ***
+`_S27A` = `_S26X`'s command + **one variable**, `PF_CB_STRAND_RETRY=1`. 967 s, 965M rA evals.
+**1,260,176 tris (+66 on `_S24i2`'s 1,260,110)**, md5 `8d80cc6e44b2e7e9f8f5f8f610b89872`.
+
+#### **THE RETRY RAN TO TRUE QUIESCENCE AND IT WAS NOT BUDGET-BOUND. THE PROBE GOT ITS FAIR TEST.**
+| quantity | measured |
+|---|---|
+| passes | **3 of 8** — stopped because a pass resolved **zero**, not because it ran out |
+| resolved per pass | ***24 -> 1 -> 0*** |
+| unresolved | 4,584 -> **4,563**  (**RESOLVED 25 = 0.5%**) |
+| **worst** | **95.473 -> 95.473 um — UNMOVED** |
+| resolved by the reason they carried | `shape-ar` **24**, `shape-admit` **1** |
+| re-stranded after retry | `shape-ar` **4,395**, `shape-admit` **168** |
+| budget | **33 splits on +132 of 200,000** gross allocations — **0.07% of budget.** NOT budget-stopped, NOT pass-capped, NOT time-capped |
+
+>> **THE DECAY IS THE ANSWER, AND IT IS THE OPPOSITE OF THE ONE PREDICTED.** The registration said a real
+>> effect would show as a pass-over-pass decay. **It decayed to nothing in two passes** — 24, then 1, then 0
+>> — **on 0.07% of the allocation budget.** There is no interpretation in which the pass was starved: it was
+>> offered 200,000 allocations and used 132. **The population is not waiting for a better neighbourhood.**
+
+#### *** P1 — THE DECISIVE CLAUSE. **FAILS.** ***
+The argmax carrier, matched **BY GEOMETRY at 0.0 um** from the recorded locus (th 1.358284, z 76.28079,
+tri 651601, edges 130.5/135.1/264.3 um, ar3 19.877, parAR 19.858, `declared: false`):
+>> ***IT IS STILL IN THE LIST, AND ITS REASON IS STILL `shape-ar`.*** Re-offered the split three times
+>> against the most refined mesh the run ever holds, the S1 aspect cap refused it every time.
+The 95.473 um driver-side worst (tri 303446, edges 26.2/704.2/723.7 um) likewise re-stranded, reason
+`shape-admit`, unchanged. **Taxonomy still exhaustive: zero `unknown`, zero `unclassified`, on 4,563.**
+
+#### **THE FIDELITY DID NOT MOVE ONE DIGIT — WHICH IS EXACTLY WHAT A REFUTATION LOOKS LIKE.**
+| | `_S24i2` | **`_S27A`** | G1's bar |
+|---|---|---|---|
+| **H2 witnessed max** *(judge; certificate-relevant)* | 24.375 um | ***24.375 um*** | <= 12 um — **FAILS** |
+| **over-tol fraction** | 0.00051% (203/40,008,064) | ***0.00051% (203 / 40,008,064)*** | <= 0.00061% — holds |
+| H1 witnessed *(capped coverage **40,000 / 1,260,176 = 3.17%**, stride ~778,832 — **INCOMPLETE**)* | 126.700 um | **201.956 um** | no claim |
+| H1 facets-over | 1.15% | **1.17% (466/40,000)** | reported |
+
+>> **THE RIM-ROW CAVEAT IS LIVE AND BINDING ON THE H1 NUMBER ABOVE.** `_S27A`'s sampled H1 witness sits at
+>> **z = [120.000, 119.993, 119.965] — THE OPEN RIM ROW** — with edges 142.8/1069.9/1208.3 um. The standing
+>> BasketWeave caveat forbids quoting it as a wall defect, and the stride is a function of `nTri` so it
+>> re-draws whenever the mesh grows. **It is reported, not charged to this arm.**
+>> **THE MESH GREW BY 66 TRIANGLES AND THE CERTIFICATE DID NOT MOVE BY ONE DIGIT.** 25 facets resolved and
+>> **not one of them mattered** — the strongest possible statement that this population is not where the
+>> 10 um question lives.
+
+#### **P5 PRECONDITIONS — ALL HOLD. P6 IDENTITY/GATE — HOLD.**
+folds **0** / 1,260,176 · determined blades **2** · **admission-stranded 0 of 1,260,176** · non-manifold **0**
+· reversed **0** · seam-cracks **0** · refusal-storm **not fired**. HARD GATE **12/12 before** and **12/12
+after** (`S25_GATE_S27POST.log`, and re-taken at the end of the arm); **W1 identity md5
+`8a59fb37a9115600b13262254380ccb0` byte-exact**; the retry pass is **default-OFF and verified inert**.
+**Texture, reported not traded:** PLATES **51** (`_S22B` read 51), **0 gated orientation blades**, shards 981
+(43 carrying the rim-row caveat, 938 interior), parAR p50 **4.29** / p90 11.86.
+
+#### *** THE VERDICT — FIRST-MATCH AGAINST THE ROWS REGISTERED BEFORE THE RUN ***
+| # | row | fires? |
+|---|---|---|
+| 1 | INFEASIBLE | **NO.** 33 splits on 0.07% of budget, +66 triangles, 967 s — inside every S24 anchor. |
+| **2** | ***CAGE-FACE IS REAL, NOT TIMING*** | ***FIRES. FIRST MATCH.*** The argmax re-stranded against the CURRENT mesh for the SAME reason (`shape-ar`), after three passes to quiescence on 0.07% of budget. **P1 fails. The hypothesis is refuted by experiment.** |
+| 3 | REGRESSION | not reached (and would not have fired — P5 holds, gates and identity hold) |
+| 4 | TEXTURE TRIP | not reached |
+| 5 | WIN | not reached — P3 fails: H2 witnessed **24.375 um** against a 12 um bar |
+| 6 | PARTIAL | not reached |
+
+>> ***WHAT S27 ESTABLISHES.***
+>> **1. THE TIMING HYPOTHESIS IS DEAD, AND IT WAS MY OWN.** S26 raised it, registered it as a hypothesis
+>>    rather than acting on it, and S27 killed it in one iterate. **The cage-face is geometric.** The S1 cap
+>>    refuses this facet against the refined neighbourhood just as it did against the original one.
+>> **2. THE COST OF KILLING IT WAS ONE ITERATE, BECAUSE IT WAS REGISTERED WITH A DECISIVE CLAUSE.** P1 was
+>>    named as decisive before the run, so the arm did not need P2-P6 to reach a verdict — they are reported
+>>    as characterisation, not as a scorecard hunting for something that passed.
+>> **3. AND IT CORRECTS S25.2's READING, WHICH IS THE PART THAT MUST NOT BE LOST.** S25.2 measured "ZERO
+>>    AR-refused children" at this carrier on the shipped mesh and concluded it was **not cap-owned**. The
+>>    driver, re-offered the split on that same mesh, **refuses on AR**. `shapeAdmits` was read to check the
+>>    obvious reconciliation and it is NOT the cause — it is a plain `ar1 > cap || ar2 > cap` test on the two
+>>    children, the same test the tool models, with no monotonicity clause. **So the discrepancy is a
+>>    PLACEMENT one:** `s23mPreflight`'s `childrenOf` scores ONE placement (the 3-D chord midpoint) while the
+>>    driver with `PF_CB_SNAP=1` offers the located kink FIRST and then walks the nudge ladder, and
+>>    `shapeAdmits` scores whichever point is actually offered. **Which rung the driver ends on here is NOT
+>>    measured by this arm and is a named follow-up — but the direction is now known: the reconstruction
+>>    OVER-PREDICTS admissibility, so S25.2's 12.1%/16.1% are if anything OPTIMISTIC for road (2), which
+>>    only strengthens that refutation.**
+
+>> **STOP. THE MESH IS `gothicarches_ring_DS-HT_S27A.stl` AND IT IS *NOT* AN IMPROVEMENT** — +66 triangles
+>> for zero certificate movement. **The operator's eyeball stays on `gothicarches_ring_DS-HT_S24i2.stl`**,
+>> which remains the best mesh this campaign has produced.
+
+#### **THE ROAD STATE, FINAL — FOR THE OPERATOR.**
+**Every probe is now spent and the decision is genuinely two-way.**
+* **Road (2), metric-aware S1 cap** — closed three times: S23-M (16.7%), S25.2 (12.1% at the load-weighted
+  top, and now known to be an optimistic reconstruction), and S27 (the cap refuses on the refined mesh too).
+* **The retry probe** — closed. Not a road; the cage-face is geometric.
+* **ROAD (1) — CHANGE WHAT A DECLARATION IS.** Band or field-valued exemption. The demand is 94.2% outside a
+  complete 43-disk declaration and would need >= 664 new disks / 14.1% of the wall as disks. Touches
+  `_judgeShape`'s contract — an UNTOUCHABLE — so it is a REGISTRATION and the operator's call.
+* **ROAD (3) — STOP AT 24.375 um AND SAY SO.** The residual is now fully characterised: 4,563 facets, every
+  one attributed to a named gate (`shape-ar` 96.3% / `shape-admit` 3.7%), 83% undeclared, the argmax located,
+  measured, and proven immovable by every lever this campaign has left.
+**Phase D via GPU triage remains named and not built.** If road (1) is not taken, Phase D's registration is
+the only block left before the campaign closes on road (3).
+
 ---
 ## READ THIS FIRST — the six things that changed tonight
 

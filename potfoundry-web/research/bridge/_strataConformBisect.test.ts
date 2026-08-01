@@ -3717,6 +3717,87 @@ describe('STRATA conforming-bisection', () => {
       if (DESHARD) { deshardAfter = shardCensus(); deshardFanAfter = fanCensus().size; }
     }
 
+    // ═══════════════ S27 — THE STRAND-RETRY PASS (PF_CB_STRAND_RETRY=1, DEFAULT OFF) ═══════════════
+    // THE CLAIM THIS TESTS. S26 named the argmax carrier's refuser as `shape-ar` — the S1 aspect cap — while
+    // S25.2 measured ZERO AR-refused children at that same carrier ON THE SHIPPED MESH. Both are right: the
+    // driver recorded its refusal AT STRAND TIME and the tool scored the FINAL mesh. The artifact proves the
+    // states differ from the facet's own two rulers (keyUm 14.0815 -> sagNowUm 20.9242, x1.49, and vertices
+    // are never moved here, so only neighbours can have changed). So the cage-face may be a TIMING property:
+    // refused against a neighbourhood that has since refined, and never looked at again.
+    //
+    // WHAT IS AND IS NOT NEW. The resume above ALREADY re-considers the unresolved set once and resolved 187
+    // of them — so retrying is not the new idea. **The new idea is ITERATION.** Inside one drain, a facet
+    // popped early and re-stranded is never re-popped, even though later splits in that same drain change
+    // its neighbourhood. Each pass here gives every survivor another look after everything else has moved.
+    // If the effect is real it shows as a pass-over-pass decay; if the resume already took all of it, pass 2
+    // resolves nothing and the claim is refuted for the price of one pass.
+    //
+    // NO GATE IS WEAKENED. Each retry runs the driver's own `refineDirected`/`refineLepp` -> `splitEdge` ->
+    // `bisectAt`, so S1 (aspect), S2 ((theta,z) fold) and the S20/S21B/S22 composed admission all score on
+    // shipped values exactly as in the main loop. The ONLY thing that changes is WHEN a facet is reconsidered.
+    //
+    // BUDGET BOOKKEEPING FOLLOWS THE RESUME'S PRECEDENT AND S9.1's ACCOUNTING FIX: the cap is anchored at
+    // THIS pass's own allocation base (never at PF_CB_TRICAP, which is not binding here), it meters
+    // allocations attributable to the retry alone, and a budget-stopped pass is COUNTED and reported rather
+    // than dying silently — the exact failure S9.1 was written to end.
+    const STRAND_RETRY = envOn('PF_CB_STRAND_RETRY');
+    const SR_PASSES = Math.round(envF('PF_CB_STRAND_RETRY_PASSES', 8));
+    const SR_BUDGET = Math.round(envF('PF_CB_STRAND_RETRY_BUDGET', 200000));
+    let srPassesRun = 0; let srResolved = 0; let srSplits = 0; let srBudgetUsed = 0;
+    let srBudgetStopped = false; let srTimeCapped = false;
+    let srBefore = 0; let srBeforeWorst = 0; let srAfter = 0; let srAfterWorst = 0;
+    const srResolvedBy = new Map<string, number>();
+    const srPerPass: number[] = [];
+    const srBeforeBy = new Map<string, number>();
+    const srAfterBy = new Map<string, number>();
+    if (STRAND_RETRY && SR_BUDGET > 0) {
+      for (const [t, k] of unresolved) if (alive[t]) {
+        srBefore += 1; if (k > srBeforeWorst) srBeforeWorst = k;
+        const w = unresolvedWhy.get(t) ?? 'unknown';
+        srBeforeBy.set(w, (srBeforeBy.get(w) ?? 0) + 1);
+      }
+      const srBase = ta.length;
+      const srCap = ta.length + SR_BUDGET;
+      for (let pass = 0; pass < SR_PASSES; pass += 1) {
+        let seeded = 0;
+        for (const [t] of unresolved) if (alive[t]) { consider(t); seeded += 1; }
+        if (seeded === 0) break;
+        srPassesRun += 1;
+        let resolvedThisPass = 0;
+        while (heapT.length > 0) {
+          if (ta.length >= srCap) { srBudgetStopped = true; break; }
+          if (MAXSECS > 0 && (Date.now() - t0ms) / 1000 > MAXSECS) { srTimeCapped = true; break; }
+          const kTop = heapK[0];
+          const t = hpop();
+          if (!alive[t]) continue;
+          const wasWhy = unresolvedWhy.get(t) ?? 'unknown';
+          const wasStranded = unresolved.has(t);
+          created.length = 0;
+          if (DIRECTED) refineDirected(t); else refineLepp(t);
+          for (const nt of created) consider(nt);
+          if (created.length > 0) {
+            srSplits += 1;
+            // Count a RESOLUTION only for a facet that was actually on the stranded list — the drain also
+            // pops this pass's own children, and billing those as "resolved strands" would inflate the one
+            // number the probe turns on.
+            if (wasStranded) { resolvedThisPass += 1; srResolved += 1; srResolvedBy.set(wasWhy, (srResolvedBy.get(wasWhy) ?? 0) + 1); }
+            unresolved.delete(t); unresolvedWhy.delete(t);
+            if (alive[t]) consider(t);
+          } else { unresolved.set(t, kTop); unresolvedWhy.set(t, classifyStrand(t)); }
+        }
+        srPerPass.push(resolvedThisPass);
+        if (resolvedThisPass === 0 || srBudgetStopped || srTimeCapped) break;
+      }
+      srBudgetUsed = Math.max(0, ta.length - srBase);
+      for (const [t, k] of unresolved) if (alive[t]) {
+        srAfter += 1; if (k > srAfterWorst) srAfterWorst = k;
+        const w = unresolvedWhy.get(t) ?? 'unknown';
+        srAfterBy.set(w, (srAfterBy.get(w) ?? 0) + 1);
+      }
+      // The headline `unresolvedLeft` / `unresolvedMax` are taken BEFORE the resume and must not silently
+      // change meaning, so the retry's effect is recomputed and reported on its own lines below.
+    }
+
     // ───────────────────────────── soup + watertight audit (3D position weld) ─────────────────────────────
     const soup: Array<[P3, P3, P3]> = [];
     const PT = (i: number): P3 => [vx[i], vy[i], vz[i]];
@@ -4712,6 +4793,21 @@ describe('STRATA conforming-bisection', () => {
         "      S26 wired `unresolvedWhy` on the no-op-split and resume paths and widened the taxonomy to every",
         '      `bisectAt` refusal. An `unknown` survivor means a stranding route neither of those covers, and it is',
         '      a REGISTERED DEFECT of the taxonomy rather than a property of the mesh. Find the route. ***'] : []),
+      // ═══ S27 — THE STRAND-RETRY PASS. Reported on its OWN lines because the headline `unresolved:` above
+      // is taken BEFORE the resume and must not silently change meaning. ═══
+      ...(STRAND_RETRY ? [
+        `strand-retry: ${srPassesRun} pass(es) of ${SR_PASSES}   unresolved ${srBefore} -> ${srAfter} (RESOLVED ${srResolved}, ${srBefore > 0 ? ((100 * srResolved) / srBefore).toFixed(1) : '0.0'}%)`
+          + `   worst ${um(srBeforeWorst)} -> ${um(srAfterWorst)} µm`,
+        `  resolved per pass: ${srPerPass.length === 0 ? 'none' : srPerPass.join(' → ')}   ${srPerPass.length > 1 && srPerPass[1] === 0 ? '*** PASS 2 RESOLVED ZERO — the resume had already taken all of it; ITERATION buys nothing ***' : '(a decaying series is the signature the probe predicted)'}`,
+        `  resolved BY THE REASON THEY CARRIED: ${srResolvedBy.size === 0 ? 'none' : [...srResolvedBy.entries()].sort((x, y) => y[1] - x[1]).map(([w, c]) => `${w} ${c}`).join('  ')}`,
+        `  re-stranded by reason AFTER retry: ${srAfterBy.size === 0 ? 'none' : [...srAfterBy.entries()].sort((x, y) => y[1] - x[1]).map(([w, c]) => `${w} ${c}`).join('  ')}`,
+        `  before, by reason: ${srBeforeBy.size === 0 ? 'none' : [...srBeforeBy.entries()].sort((x, y) => y[1] - x[1]).map(([w, c]) => `${w} ${c}`).join('  ')}`,
+        `  budget: ${srSplits} splits on +${srBudgetUsed} of ${SR_BUDGET} gross allocations (metered to THIS pass, anchored at its own base)`
+          + `${srBudgetStopped ? '   *** BUDGET-STOPPED — the pass did not reach quiescence and the numbers above are a LOWER BOUND ***' : ''}`
+          + `${srTimeCapped ? '   *** TIME-CAPPED ***' : ''}`,
+        ...(srPassesRun >= SR_PASSES && !srBudgetStopped ? [
+          `  *** PASS-CAPPED at ${SR_PASSES} — still resolving when it stopped, so the numbers are a LOWER BOUND. Raise PF_CB_STRAND_RETRY_PASSES. ***`] : []),
+      ] : []),
       ...((unresolvedByWhy.get('unclassified') ?? 0) > 0 ? [
         `  *** ${unresolvedByWhy.get('unclassified')} facets read 'unclassified' — \`classifyStrand\` ran but matched no known`,
         '      refusal: an edge was above the floor, the cap was not hit, and BOTH refusal channels read none. That is a',
