@@ -8391,6 +8391,170 @@ that would have been cheapest to build, and it is the one the evidence rules out
 >> reaches 10 um through this mechanism.** That is the strongest form the negative result can take, and it
 >> cost one artifact-only probe on top of an artifact that already existed.
 
+### S26 — **NAME THE REFUSER. REGISTERED IN FULL BEFORE THE HISTOGRAM WAS READ.**
+
+**WHY THIS COMES BEFORE ROADS (1)/(3) GO TO THE OPERATOR.** S25.2 established that the one facet the
+certificate cares about — the H2 argmax carrier, tri 135048, `ar3` 19.877, driver key 14.0815 um — has
+**ZERO AR-refused children**. It is **not cap-owned**, so neither the S1 cap nor road (2) is its owner, and
+**what actually refused it is unrecorded**. A road decision taken with the certificate's own blocker
+unnamed would be a decision taken in the dark.
+
+#### **UNIT 1 — THE INSTRUMENT FIX (the unit S25.1 named and deliberately deferred).**
+`unresolvedWhy` was written at `:2516` only. The heap driver — **every production arm in this campaign** —
+strands via the no-op-split path and the resume, neither of which recorded anything, and the histogram that
+would have shown it was built **inside `if (SWEEP)`**. Three changes:
+1. **A PLACEMENT channel beside the existing SHAPE one.** `lastBisectShape` names which `shapeAdmits` gate
+   refused ('ar'/'fold'/'admit') and stays `'none'` for a PLACEMENT refusal — and that `'none'` bucket was
+   the whole `unknown` population. `lastBisectPlace` now names `bisectAt`'s four non-shape false-returns:
+   **`weld-collapse`** (the split point welded onto an endpoint), **`weld`** (welded onto a pre-existing
+   vertex, refused by `NOWELD`), **`apex`** (welded onto an incident triangle's apex), **`no-incident`** (no
+   live incident triangle left). **Assignment only, on paths that already returned false** — the same
+   byte-identity argument `lastShapeOffenderT` makes.
+2. **`classifyStrand(t)`, called at both stranding sites.** Floor test FIRST, and that order is the claim:
+   `refineDirected` only offers an edge at or above `FLOOR_MM`, so when all three are under it **no
+   `splitEdge` call is made at all** and the channels would still hold the PREVIOUS triangle's reason.
+   Testing the floor first makes that case name itself instead of inheriting a neighbour's. Then the cap,
+   then shape, then placement. Sound because `splitEdge` cannot return false without running its entire
+   NUDGE_LADDER through `bisectAt` — the ladder is the last thing it does — so the channels always describe
+   THIS facet's last refused placement.
+3. **The histogram is UN-GATED from `SWEEP`** and printed on every driver, report-only.
+**EXHAUSTIVENESS IS ENFORCED, NOT ASSERTED.** `'unclassified'` is deliberately reachable, and both it and a
+surviving `'unknown'` print a `*** REGISTERED DEFECT ***` block naming themselves. **If either appears, the
+taxonomy is wrong and the report says so rather than rounding it away.**
+
+#### **THE BRANCH — REGISTERED BEFORE THE NUMBER, INCLUDING WHICH REASONS COUNT AS WHICH.**
+The coordinator's rule is: a FIXABLE mechanism earns a targeted fix and one more iterate scored on G1; a
+genuine cage-face stops the arm. **That rule is only honest if the mapping is fixed in advance**, so:
+
+| reason | class, REGISTERED NOW | why |
+|---|---|---|
+| `weld-collapse` | **FIXABLE** | the weld radius is a lever (`PF_CB_WELD_UM`), and R1's diagnosis already named the weld wall as ~90% artifact |
+| `weld` | **FIXABLE** | `NOWELD` refusal — both the flag and the radius are levers |
+| `apex` | **FIXABLE** | a placement pathology; the ladder has other rungs and the radius is a lever |
+| `no-incident` | **FIXABLE** | bookkeeping — an edge with no live incident triangle is a state defect, not geometry |
+| `shape-admit` | **FIXABLE** | the coordinator's named "admission interplay" family; S20/S21B/S22 compose here |
+| `tricap` | **FIXABLE** | raise the cap (not expected to bind: 2.29 M allocations against an 8 M cap) |
+| `shape-ar` | ***CAGE-FACE*** | this IS road (2), refuted twice by S23-M and S25.2. No honest lever removes it. |
+| `shape-fold` | ***CAGE-FACE*** | a (theta,z) fold is a real defect; admitting it is D51 with a new name |
+| `floor` | ***CAGE-FACE*** | h⁰. Lowering `PF_CB_FLOOR_UM` buys nothing if the demand is below the floor — and S24's ruler measured this carrier at **x62.2 ABOVE** the floor, so `floor` here would REFUTE that reading and must be reported as such |
+| `unknown` / `unclassified` | **REGISTERED DEFECT** | not a verdict either way; the taxonomy is wrong and gets fixed before anything is concluded |
+
+**THE TWO QUANTITIES STAY APART IN THE WRITE-UP, as instructed and as this campaign's standing rule
+requires:** the **judge's H2 witnessed** (certificate-relevant, what G1 is scored on) and the **driver's
+adaptive-oracle worst** (driver-side context, never a fidelity claim). The 95.473 um is the SECOND kind.
+**If the fix runs, G1's bar is S24's verbatim: H2 witnessed <= 12 um AND over-tol fraction <= 0.00051% x 1.2,
+with the texture wires per S24's F3 — physical >= 90 / tails / sub-floor / plates / shards / fans
+flat-or-better, gated 0, parAR reported.**
+
+### *** S26 RESULT — **THE REFUSER HAS A NAME AND THE TAXONOMY IS EXHAUSTIVE ON ITS FIRST FIRING: ZERO**
+### *** **`unknown`, ZERO `unclassified`, ON 4,584 FACETS. THE CERTIFICATE'S BLOCKER IS `shape-ar` — A**
+### *** **REGISTERED CAGE-FACE — SO THE BRANCH IS *STOP*, AND IT STOPS ON THE BAR THAT WAS SET FIRST.** ***
+
+#### **UNIT 1 — THE INSTRUMENT FIX, GATED BOTH SIDES.**
+| check | result |
+|---|---|
+| eslint | **clean, exit 0** |
+| explicit typecheck | **error set identical to HEAD** — same 6 pre-existing; the two shifted lines move by exactly this edit's insertions. **Zero new.** |
+| HARD GATE **before** | **12/12** — S25.1's POST gate, and the tree was **verified byte-identical to it by `git diff HEAD`** before the first edit, so it is this arm's before-gate rather than a stale one |
+| HARD GATE **after** | **12/12, 218.9 s** (`S25_GATE_S26POST.log`) |
+| W1 identity **after** | **md5 `8a59fb37a9115600b13262254380ccb0`**, `cmp` byte-identical |
+| flag-OFF emitter inertness | no `.unresolved.json` beside the flag-OFF mesh |
+
+#### **UNIT 2 — `_S26X`: THE SAME ARM AGAIN, AND THE MESH DID NOT MOVE FOR THE FOURTH TIME.**
+md5 **`c96da03c08eefbc081a304093c95a364`**, `cmp` byte-identical to `_S24i2` — a **FOURTH determinism
+replicate** (`_S24i2`, `_S24i2D1`, `_S25X`, `_S26X`) and proof that recording a reason moves no vertex.
+Header diffed, not assumed: the only changes are the two corrected strand-list lines, wall-clock/rA noise
+(938 -> 942 s, 934M -> 935M), and **one new line** — `unresolved by reason: shape-ar 4493  shape-admit 182`.
+Anchors: atReduction **4,675 exact**, worst **95.473 um exact**, argmax carrier present by geometry.
+
+#### **THE HISTOGRAM. TWO REASONS. NOTHING ELSE.**
+| reason | reduction-point (4,675) | listed/final (4,584) | declared | undeclared | ar3 > 50 | p50 ar3 |
+|---|---|---|---|---|---|---|
+| **`shape-ar`** | **4,493** | **4,417 = 96.4%** | 765 | **3,652** | 4 | 44.55 |
+| **`shape-admit`** | **182** | **167 = 3.6%** | 15 | **152** | 0 | 35.17 |
+| `unknown` / `unclassified` | **0** | **0** | — | — | — | — |
+
+>> **THE TAXONOMY IS EXHAUSTIVE ON ITS FIRST FIRING AND THAT WAS NOT GUARANTEED.** The registration made
+>> `unclassified` reachable and made both it and a surviving `unknown` print a `*** REGISTERED DEFECT ***`
+>> block naming themselves. **Neither fired.** Every one of the 4,584 facets the heap driver stranded is now
+>> attributed to a specific gate — and the whole population is SHAPE refusals. **Not one placement refusal:
+>> zero `weld-collapse`, zero `weld`, zero `apex`, zero `no-incident`, zero `floor`, zero `tricap`.**
+>> **THAT IS ITSELF A RESULT, AND IT RETIRES A LEAD THE CAMPAIGN HAS CARRIED SINCE R1.** The weld wall was
+>> diagnosed as "~90% artifact, a Zeno mechanism in SNAP_ALPHA" and named as the likely owner of the
+>> stranded population. **On this arm it owns none of it.** No amount of weld-radius or NOWELD work touches
+>> these facets, and the `floor` count of zero equally retires the h⁰ reading for this population — every
+>> stranded facet had an edge above the refinement floor and was refused on SHAPE, not on size.
+
+#### **THE TWO NAMED CRITICAL SITES, AND THE TWO QUANTITIES KEPT APART.**
+
+**(1) THE H2 ARGMAX CARRIER — the certificate's blocker.** `judge H2 witnessed 24.375 um` (S24's audit;
+this is the certificate-relevant quantity and the only one G1 is scored on).
+tri 651601, th 1.358284, z 76.28079, matched **0.0 um** from the recorded locus. edges 130.5/135.1/264.3 um,
+ar3 **19.877**, parAR 19.858, **`declared: false`**. Driver self-report, context only and never fidelity:
+keyUm 14.0815, sagNowUm 20.9242.
+>> ***REASON: `shape-ar`.*** **Registered in advance as a CAGE-FACE. The branch says STOP, and it stops.**
+
+**(2) THE 95.473 um UNRESOLVED WORST — driver-side adaptive-oracle context, NOT a certificate number.**
+tri 303446, th 1.359008, z 76.25038, matched 0.0 um. edges **26.2/704.2/723.7 um**, ar3 **42.192**, parAR
+27.242, **`declared: false`**. Driver self-report: keyUm 95.4727, sagNowUm 101.6542.
+>> ***REASON: `shape-admit`*** — the S20 footprint-normal admission gate, registered in advance as FIXABLE.
+>> **AND THE GEOMETRY CROSS-VALIDATES ACROSS THREE INDEPENDENT INSTRUMENTS AND THREE SESSIONS:** S23-M
+>> located this carrier at `edges 26.2 / 704.2 / 723.7 um, aspect3 42.19`; S25.2's tool re-read it at the
+>> same values with `arM 237.06`; S26's driver-side emitter reports 26.2/704.2/723.7 and ar3 42.192.
+>> **Same facet, three rulers, no drift.**
+
+#### **THE TENSION WITH S25.2, STATED AND RESOLVED BY MEASUREMENT RATHER THAN ARGUED AWAY.**
+S25.2 measured the argmax carrier as having **ZERO AR-refused children** — "not cap-blocked". S26's driver
+says its refuser was **`shape-ar`** — the cap. **Both are correct, and they are not measuring the same mesh.**
+* S25.2's tool reconstructs splits on the **SHIPPED** mesh.
+* S26's `classifyStrand` records the refusal **AT STRAND TIME**, mid-run.
+* **THE ARTIFACT PROVES THE TWO STATES DIFFER, from its own two rulers:** `keyUm` (recorded when the driver
+  gave up) **14.0815** against `sagNowUm` (the same edge ruler re-read on the final mesh) **20.9242** —
+  **x1.49**. For the 95.473 carrier, 95.4727 -> 101.6542. **A facet's own edge ruler cannot move unless its
+  neighbourhood moved**, and vertices are never moved in this driver, so neighbours were refined AFTER these
+  facets were stranded. Strand-time mesh != shipped mesh, measured, not assumed.
+
+>> *** **THE LEAD THIS OPENS — REGISTERED AS A HYPOTHESIS, DELIBERATELY NOT ACTED ON.** *** If the cap
+>> refused the argmax at strand time and would NOT refuse it on the shipped mesh, then its cage-face may be
+>> a **TIMING** property rather than a geometric one: stranded early into a hostile neighbourhood, never
+>> reconsidered once the neighbourhood improved. **That would make it fixable by retry policy, not by any
+>> shape lever.** IT IS NOT SCORED HERE AND MUST NOT BE. It is an inference from two instruments, it is not
+>> the reason the taxonomy returned, and **a bar re-drawn after the reading is not a bar** — S15's rule,
+>> which this campaign has applied to itself twice already. **It is the first unit of the next arm, with its
+>> own registration and its own control**, and the obvious control already exists: the RESUME pass re-considers
+>> the unresolved set (`for (const [t] of unresolved) if (alive[t]) consider(t)`), made 504 splits, and
+>> resolved 187 of them — so retry demonstrably works on SOME of this population and the question is why not
+>> on this facet.
+
+#### *** THE VERDICT — SCORED FIRST-MATCH AGAINST THE BRANCH REGISTERED BEFORE THE HISTOGRAM WAS READ ***
+| # | row | fires? |
+|---|---|---|
+| **1** | ***ARGMAX REASON IS A CAGE-FACE => STOP*** | ***FIRES.*** `shape-ar`, registered as a cage-face before the number was read, and refuted as a road twice already (S23-M 16.7%, S25.2 12.1% at the load-weighted top). **No targeted fix is registered and no further iterate is run.** |
+| 2 | argmax reason is FIXABLE => targeted fix + G1 iterate | **DOES NOT FIRE.** The FIXABLE reason (`shape-admit`) belongs to the **driver-side** 95.473 worst, not to the certificate's blocker. **G1 is not scored on it and no G1 verdict is claimed by this arm.** |
+| 3 | taxonomy defect (`unknown`/`unclassified` > 0) | **DOES NOT FIRE — 0 and 0.** |
+
+>> ***WHAT S26 ESTABLISHES.***
+>> **1. THE INSTRUMENT HOLE IS CLOSED AND IT CLOSED CLEAN.** Every production arm from here reports why it
+>>    stranded what it stranded, on every driver. The hole had been open the whole campaign.
+>> **2. THE POPULATION IS 100% SHAPE-REFUSED — WELD AND FLOOR OWN NONE OF IT.** Two long-standing leads
+>>    (the weld wall as ~90% artifact; h⁰ at the floor) are retired for this population by direct count.
+>> **3. THE CERTIFICATE'S BLOCKER AND THE DRIVER'S WORST ARE DIFFERENT FACETS WITH DIFFERENT OWNERS.** The
+>>    argmax is `shape-ar`; the 95.473 is `shape-admit`. **Conflating them would have pointed the next arm at
+>>    the wrong gate** — which is precisely what the "keep the two quantities apart" rule exists to prevent.
+>> **4. THE 10 um QUESTION IS UNCHANGED AND THE ROAD DECISION IS UNCHANGED.** S26 was never going to move
+>>    G1; it was going to name the blocker so the decision is taken in the light. It is named.
+
+>> **STOP. NO MESH WAS PRODUCED. `_S26X` IS `_S24i2` BYTE-FOR-BYTE** — the operator's eyeball stays on
+>> `gothicarches_ring_DS-HT_S24i2.stl`, unchanged since S24.
+
+**THE ROAD DECISION AS IT NOW STANDS — for the operator, with the refuser named.** Road (2) is closed
+twice over. **Road (1)** (band / field-valued declaration) and **Road (3)** (stop at 24.375 um and say so)
+remain, exactly as S25.2 left them. **What S26 adds is a fourth option that did not exist before the
+histogram, and it is NOT a road — it is a probe:** the strand-time-vs-shipped-mesh retry hypothesis above.
+**If it survives its own registration it would be far cheaper than either road, because it changes no gate,
+no metric and no declaration — only when a stranded facet is reconsidered.** It should be run BEFORE the
+operator commits to road (1) or (3), and it needs one registered arm, not a decision.
+
 ---
 ## READ THIS FIRST — the six things that changed tonight
 

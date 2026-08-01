@@ -1266,6 +1266,18 @@ describe('STRATA conforming-bisection', () => {
      * narrowing, so S22 can classify a refusal by the gate that caused it instead of guessing.
      */
     const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' => lastBisectShape;
+    // ═══ S26 — THE PLACEMENT half of the refusal channel. `lastBisectShape` names the SHAPE gate that
+    // refused; it stays 'none' when the refusal was a PLACEMENT one, and until S26 that 'none' bucket was
+    // the whole reason `unresolvedWhy` read `unknown` on every production arm. S25.2 measured what that
+    // cost: the H2 argmax carrier (tri 135048, ar3 19.877) has ZERO AR-refused children — it is NOT
+    // cap-owned — so the one facet the certificate cares about was stranded by a mechanism nothing
+    // recorded. These four are `bisectAt`'s own non-shape false-returns, named at the point each is taken.
+    // Assignment only, on paths that already returned false, so no flag-OFF byte can move by construction —
+    // the same argument `lastShapeOffenderT` makes directly below.
+    type PlaceRefusal = 'none' | 'weld-collapse' | 'weld' | 'apex' | 'no-incident';
+    let lastBisectPlace: PlaceRefusal = 'none';
+    /** Read `lastBisectPlace` at its DECLARED type — same flow-analysis dodge as `bisectRefusal`. */
+    const bisectPlacement = (): PlaceRefusal => lastBisectPlace;
     /** WHICH incident triangle `shapeAdmits` was protecting when it refused. Read only by the S8 cascade
      *  pass (it follows the protector); written on every shape refusal. Assigning a closure number moves
      *  no byte of any mesh, so every flag-OFF path stays byte-identical by construction. */
@@ -1459,24 +1471,25 @@ describe('STRATA conforming-bisection', () => {
     /** split edge (a,b) at parameter t (0..1) — splits EVERY incident triangle ⇒ watertight, no T-junctions. */
     const bisectAt = (a: number, b: number, tPar: number, feat: boolean): boolean => {
       lastBisectShape = 'none';
+      lastBisectPlace = 'none';
       lastShapeOffenderT = -1;
       // S1/S2 GATE — BEFORE addV, so a refusal leaves no orphan vertex in the weld grid and cannot perturb
       // any later weld. This is the whole fix: `bisectAt` is the ONE choke point every split goes through.
       if (SHAPE && !shapeAdmits(a, b, liftAt(a, b, tPar))) return false;
       const [mth, mz] = edgeParam(a, b, tPar);
       const m = addV(mth, mz, feat);
-      if (m === a || m === b) return false; // weld collapsed the split — nothing to do
+      if (m === a || m === b) { lastBisectPlace = 'weld-collapse'; return false; } // weld collapsed the split — nothing to do
       // A split point that WELDS onto a pre-existing vertex does not subdivide the edge: it stitches the edge to a
       // vertex from an unrelated part of the local mesh, which is exactly how an edge ends up with >2 incident
       // triangles (a topological pinch). Counting these is the audit; refusing them is the fix at source.
-      if (!addVNew) { weldedSplits += 1; if (NOWELD) return false; }
+      if (!addVNew) { weldedSplits += 1; if (NOWELD) { lastBisectPlace = 'weld'; return false; } }
       const list = (edgeMap.get(eKey(a, b)) ?? []).slice();
       // DEGENERACY GUARD (measured need): if the new vertex welds onto an incident triangle's APEX, both replacement
       // triangles are degenerate — the split then DELETES geometry and the refinement churns forever without growing
       // (SNAP+LEPP ablation: 6 M allocations, 68 k alive). Refuse the split so the caller falls back.
       for (const t of list) {
         if (!alive[t]) continue;
-        if (ta[t] === m || tb[t] === m || tc[t] === m) return false;
+        if (ta[t] === m || tb[t] === m || tc[t] === m) { lastBisectPlace = 'apex'; return false; }
       }
       let made = false;
       for (const t of list) {
@@ -1493,6 +1506,7 @@ describe('STRATA conforming-bisection', () => {
         created.push(addT(m, ob, apex));
         made = true;
       }
+      if (!made) lastBisectPlace = 'no-incident';   // S26: the edge had no LIVE incident triangle left
       return made;
     };
     /** where to split edge (a,b): feature crossing (SNAP) → transverse re-solve (REPROJECT) → midpoint. */
@@ -1800,7 +1814,46 @@ describe('STRATA conforming-bisection', () => {
     // 'shape-refused' joins the UNRESOLVED reasons, never the progress ones: a split the S1/S2 guard
     // declined has produced nothing, so a triangle with no other admissible edge must leave the queue
     // VISIBLE. Silently dropping it is precisely the failure mode `unresolved` was added to end.
-    type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused';
+    // S26 widens this union so the HEAP driver can name its refusals too. The sweep driver's `refineOne`
+    // already returned a reason; the heap driver's `refineDirected`/`refineLepp` are void and recorded
+    // NOTHING, which is why every production arm's histogram read `unknown` (S25.2's finding). The new
+    // members are exactly `bisectAt`'s own refusal paths, split by which gate took them — shape refusals
+    // keep their gate ('ar' / 'fold' / 'admit', the three `shapeAdmits` writes) and placement refusals keep
+    // theirs. 'unclassified' is deliberately reachable: if it ever appears in a histogram that is a
+    // REGISTERED DEFECT of this taxonomy, not a shrug, and it names itself so it cannot hide.
+    type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused'
+      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
+    /**
+     * S26 — NAME THE REFUSER for a facet the heap driver could not split.
+     *
+     * Called ONLY where the driver has already decided to strand `t` (refinement returned and `created` is
+     * empty), so it runs on ~5k facets of a 1.26M mesh and costs three edge lengths each. It reads, never
+     * writes: `bisectAt` resets both channels on entry and sets one of them on every false-return, and
+     * `splitEdge` cannot return false without running its whole NUDGE_LADDER through `bisectAt` (the ladder
+     * is the last thing it does), so the channels describe THIS facet's last refused placement and are
+     * never stale from an earlier triangle.
+     *
+     * THE FLOOR TEST COMES FIRST AND THAT ORDER IS THE CLAIM. `refineDirected` only ever offers an edge
+     * with `ls[e] >= FLOOR_MM`; if all three edges are under the floor it makes no `splitEdge` call at all
+     * and the refusal channels would still hold whatever the PREVIOUS triangle wrote. Testing the floor
+     * first makes that case name itself instead of inheriting a neighbour's reason — and 'floor' is the h⁰
+     * verdict this campaign has been trying to separate from artifact refusals since R1.
+     */
+    const classifyStrand = (t: number): Outcome => {
+      const l0 = eLen(ta[t], tb[t]); const l1 = eLen(tb[t], tc[t]); const l2 = eLen(tc[t], ta[t]);
+      if (l0 < FLOOR_MM && l1 < FLOOR_MM && l2 < FLOOR_MM) return 'floor';
+      if (ta.length >= triCap) return 'tricap';
+      const sh = bisectRefusal();
+      if (sh === 'ar') return 'shape-ar';
+      if (sh === 'fold') return 'shape-fold';
+      if (sh === 'admit') return 'shape-admit';
+      const pl = bisectPlacement();
+      if (pl === 'weld-collapse') return 'weld-collapse';
+      if (pl === 'weld') return 'weld';
+      if (pl === 'apex') return 'apex';
+      if (pl === 'no-incident') return 'no-incident';
+      return 'unclassified';
+    };
     const MEMO_VERIFY = envOn('PF_CB_MEMO_VERIFY');
     const CELL_MM = envF('PF_CB_CELL_MM', 0.1);          // site-quantisation pitch for §3.3 stickiness
     const SITE_CAP = Math.round(envF('PF_CB_SITE_CAP', 4_000_000)); // keeps the site map under V8's Map cap
@@ -2563,7 +2616,7 @@ describe('STRATA conforming-bisection', () => {
       // simply gone: `consider` is only ever called on split PRODUCTS, so it is never re-queued and "heap: 0
       // left" then reads as convergence. MEASURED: 563 600 dropped = 20.1 % of split attempts. Record it with
       // the key it was popped at instead of re-queueing — re-queueing spins forever on the same refusal.
-      if (created.length === 0) { stuck += 1; unresolved.set(t, kTop); }
+      if (created.length === 0) { stuck += 1; unresolved.set(t, kTop); unresolvedWhy.set(t, classifyStrand(t)); }
       // PROGRESS TO A FILE (PF_CB_PROGRESS=<path>), not just to stdout. Vitest buffers a worker's stdout
       // until the test ends, so on a multi-hour run console.log tells you NOTHING while it matters — and
       // the only question that matters mid-run is whether the heap is DRAINING or GROWING. `heap` and
@@ -2596,6 +2649,16 @@ describe('STRATA conforming-bisection', () => {
     // anytime property is given up for real here, and it must not be papered over.
     let queueLeft = 0; let queueWorstSag = 0;
     const unresolvedByWhy = new Map<string, number>();
+    // ═══ S26 — THE REASONS HISTOGRAM IS UN-GATED FROM `SWEEP`. ═══
+    // It was built inside the `if (SWEEP)` block below, so it only ever ran on the sweep driver — while
+    // EVERY production arm in this campaign is the HEAP driver. The histogram that would have shown the
+    // `unknown` bucket was therefore dark on exactly the runs that had one. REPORT-ONLY: it reads the map
+    // and writes a counter, touching no mesh state, so it cannot move a byte on any path.
+    for (const [t] of unresolved) {
+      if (!alive[t]) continue;
+      const why = unresolvedWhy.get(t) ?? 'unknown';
+      unresolvedByWhy.set(why, (unresolvedByWhy.get(why) ?? 0) + 1);
+    }
     if (SWEEP) {
       const size = qTail - qHead;
       for (let i = 0; i < size; i += 1) {
@@ -2605,11 +2668,8 @@ describe('STRATA conforming-bisection', () => {
         const s = worstEdgeSag(t);
         if (s > queueWorstSag) queueWorstSag = s;
       }
-      for (const [t] of unresolved) {
-        if (!alive[t]) continue;
-        const why = unresolvedWhy.get(t) ?? 'unknown';
-        unresolvedByWhy.set(why, (unresolvedByWhy.get(why) ?? 0) + 1);
-      }
+      // S26: the reasons histogram that used to be built HERE now runs unconditionally above, because this
+      // block only ever executed on the sweep driver and every production arm is the heap driver.
     }
 
     // Release the browser as soon as refinement is done — the audit phase below can run for many minutes and
@@ -3644,7 +3704,7 @@ describe('STRATA conforming-bisection', () => {
             sliverResumeSplits += 1;
             unresolved.delete(t);
             if (alive[t]) consider(t);
-          } else unresolved.set(t, kTop);
+          } else { unresolved.set(t, kTop); unresolvedWhy.set(t, classifyStrand(t)); }   // S26: the resume strands too, and it used to do so anonymously
         }
         sliverResumeBudgetUsed = Math.max(0, ta.length - resumeBase);
       }
@@ -4643,6 +4703,19 @@ describe('STRATA conforming-bisection', () => {
         '  worst-left had a key to read and the FIFO does not. §6.4: the anytime property is genuinely given up.)',
       ] : []),
       `unresolved: ${unresolvedLeft} live over-tol triangles the splitter could NOT subdivide, worst ${um(unresolvedMax)} µm${unresolvedLeft > 0 ? '   *** an EMPTY HEAP DOES NOT MEAN CLOSURE — these left the queue unrefined ***' : ''}`,
+      // S26: printed on EVERY driver now. It used to live inside the `SWEEP` block below, so the one thing
+      // that could have named the heap driver's refusals was dark on every heap run — which is every
+      // production arm this campaign has scored.
+      `  unresolved by reason: ${unresolvedByWhy.size === 0 ? 'none' : [...unresolvedByWhy.entries()].sort((x, y) => y[1] - x[1]).map(([w, c]) => `${w} ${c}`).join('  ')}`,
+      ...((unresolvedByWhy.get('unknown') ?? 0) > 0 ? [
+        `  *** ${unresolvedByWhy.get('unknown')} facets read reason 'unknown' — A PATH STRANDS WITHOUT NAMING ITSELF.`,
+        "      S26 wired `unresolvedWhy` on the no-op-split and resume paths and widened the taxonomy to every",
+        '      `bisectAt` refusal. An `unknown` survivor means a stranding route neither of those covers, and it is',
+        '      a REGISTERED DEFECT of the taxonomy rather than a property of the mesh. Find the route. ***'] : []),
+      ...((unresolvedByWhy.get('unclassified') ?? 0) > 0 ? [
+        `  *** ${unresolvedByWhy.get('unclassified')} facets read 'unclassified' — \`classifyStrand\` ran but matched no known`,
+        '      refusal: an edge was above the floor, the cap was not hit, and BOTH refusal channels read none. That is a',
+        "      `splitEdge` exit the taxonomy does not model. REGISTERED DEFECT, same standing as 'unknown'. ***'"] : []),
       ...(SWEEP ? [
         // §5.1 A DRAINED FIFO IS A PREDICATE FIXED POINT, NOT A CERTIFICATE. The predicate is a 1-D edge
         // sagitta at REF_HS pitch plus a 16-bin kink probe: a LOWER bound on the facet-interior point-to-
@@ -4668,7 +4741,7 @@ describe('STRATA conforming-bisection', () => {
           `    ${SWEEP_VERIFY ? `PF_CB_SWEEP_VERIFY ON: ${preVerified} prefetched edges re-measured on the main thread and Object.is-compared on all 7 fields (a mismatch THROWS)` : 'PF_CB_SWEEP_VERIFY=1 to re-measure every prefetched edge on the main thread and gate bit-identity'}`,
           `    shared buffers peak ${(sweepStats.peakBytes / (1 << 20)).toFixed(1)} MB   ${sweepStats.verticesMirrored} vertices mirrored (append-only invariant re-checked every generation)`,
         ]),
-        `  unresolved by reason: ${unresolvedByWhy.size === 0 ? 'none' : [...unresolvedByWhy.entries()].sort((x, y) => y[1] - x[1]).map(([w, c]) => `${w} ${c}`).join('  ')}`,
+        // S26: the `unresolved by reason` line that used to be HERE is now printed unconditionally above.
         ...(nMoveDeferred > 0 ? ['  *** move-deferred = the crossing landed inside the SNAP_ALPHA band or welded onto an endpoint. Spec §4.3',
           '      answers this by MOVING that endpoint onto the crossing (conforms exactly, creates no vertex, terminates',
           '      in ONE step). NOT IMPLEMENTED — §1.5 forbids landing it in the same commit as the per-edge memo. These',
