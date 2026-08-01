@@ -6096,6 +6096,60 @@ the 194 sites that refuted THE CLAUSE, against the attribution's own quantity:
 >> what it bought, and the size is x1.18.
 
 
+### S23B-R / R2 — **THE RECOVERY PROBE, REGISTERED BEFORE IT RUNS. THIS IS THE ARM'S GO/NO-GO AND NOT A**
+### **DIAGNOSTIC. NOTHING IS BUILT, NOTHING IS RUN, NO NUMBER IS READ IN THIS BLOCK.**
+R2 named two roads out of the corridor and chose neither: **(i)** make the constraint graph recoverable at
+higher density, **(ii)** price the corridor itself by the field, as a DECLARED-GEOMETRY change with its
+own registration and its own layer-2 negative control. This probe tests **(i)**, at the corrected field.
+
+**THE QUESTION, IN ONE LINE.** 100% of the refuting population lives inside the declared across corridor;
+free Steiner points are forbidden there (Amendment B, correctly); **the ONLY mechanism that can place
+material there is Amendment C** — the field bounding the chain ALONG spacing, `a = min(a,
+max(acrossMinMm, h(th,z)))`, `_strataAlignedSeed.ts:614`. At the 0.25 mm GRID field that produced 16,545
+constraint segments and lost exactly one: **INFEASIBLE**. **So: at the SCATTERED field's corridor density,
+does CDT constraint recovery stay 100%?**
+
+**THE INSTRUMENT IS THE PRODUCTION CODE PATH, NOT A MODEL OF IT.** `research/tools/s23ReconProbe.ts` —
+`traceLoci` + `buildAlignedSeedRepaired` with the driver's own options object, now reading the schema-/2
+field (`S23_FIELD_PATH` / `S23_FIELD_SRC`, defaulting to the scattered one). Two changes and no others:
+the field is parameterised, and **the recovery THROW is caught and reported as a ROW** — a dead process
+loses the segment counts, and the segment counts are the only transferable thing a failure carries.
+**No STL, no audit, no judge. The seed is built and thrown away.**
+
+**THE LADDER, AND IT IS THE REGISTERED PROBE RULE TAKEN LITERALLY** — *"probe the SEED at low density,
+never the POPULATION"*: `PF_CB_RECON_SCALE` **4 -> 2 -> 1** with **CHAIN ON**, then **CHAIN OFF at scale
+1** as the negative control (which is also the arm's own seed if road (i) closes). `beta` stays at its
+derived **0.83**, the floor at **36.4 um**, `alpha` at **1.0** — R5 is not re-opened to chase this.
+
+>> **THE BARS. FIRST MATCH WINS. WRITTEN BEFORE ANY NUMBER IS READ.**
+>>   **G0 — `cdt2d` THROWS, or V8 OOMs, before recovery is even reached.** S7' INFEASIBLE. Report the
+>>     cause and stop; the point count at which it happened is the result.
+>>   **G1 — RECOVERY IS 100% AT SCALE 1 WITH CHAIN ON.** Road (i) is OPEN at the corrected field.
+>>     **THE ARM IS BUILT**, chain-bound ON, at the raised ceiling.
+>>   **G2 — RECOVERY BREAKS AT SCALE 1 BUT HOLDS AT 2 OR 4.** The CDT's recovery limit is LOCATED as a
+>>     function of segment count, which is worth more than a boolean. **THE ARM IS NOT BUILT AT A REDUCED
+>>     FIELD TO GET AROUND IT** — that is a GLOBAL clamp answering a LOCAL question, refused here for
+>>     exactly the reason `beta` 0.65 was refused. Report the located limit and scope road (ii).
+>>   **G3 — RECOVERY BREAKS EVEN AT SCALE 4.** Road (i) is closed outright at the corrected field.
+>>     Report and scope road (ii).
+>>   **In G2 and G3 the answer is a RESULT and the arm stops there.** Road (ii) is a DECLARED-GEOMETRY
+>>     change that *"invalidates the S15/S19 A/Bs it inherits and needs its own registration and its own
+>>     layer-2 negative control"* — it is explicitly **NOT a tuning of S23B and must not be smuggled in
+>>     as one**, least of all by an executor who has just watched (i) fail.
+
+>> **THE PREDICTION, REGISTERED SO IT CANNOT BE CLAIMED AFTERWARDS: I EXPECT G2 OR G3.** At the grid
+>> field Amendment C reached 16,545 segments and lost one. The scattered field is finer in exactly the
+>> place the along bound reads it — corridor `h` p10 **190.1 -> 46.5 um**, p50 **646.4 -> 99.8 um** — so
+>> the bound is 2-4x tighter and the segment count should land somewhere in **30 k-70 k**. Recovery
+>> already failed at 16.5 k. **IF IT HOLDS, THAT IS A SURPRISE AND IT IS REPORTED AS ONE**, and the arm
+>> is built on it.
+>> **AND THE CHAIN-OFF CONTROL IS NOT A FORMALITY.** S23B's refuting shards are long spans reaching from
+>> the corridor out to a 170-650 um infill. The corrected field refines the infill right up to the
+>> corridor's edge (p50 646 -> 100 um), which SHORTENS exactly those spans without placing one point
+>> inside the corridor. **Whether that alone satisfies THE CLAUSE is an open question this probe prices
+>> but does not answer**, and it is the only remaining road that is not a declared-geometry change.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
