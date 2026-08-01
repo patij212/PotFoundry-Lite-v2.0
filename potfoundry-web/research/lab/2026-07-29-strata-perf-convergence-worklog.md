@@ -6150,6 +6150,102 @@ derived **0.83**, the floor at **36.4 um**, `alpha` at **1.0** — R5 is not re-
 >> but does not answer**, and it is the only remaining road that is not a declared-geometry change.
 
 
+### *** S23B-R / R2 RESULT — **G2 FIRES, AND THE READING I ATTACHED TO IT IS REFUTED BY ITS OWN LADDER.**
+### *** RECOVERY IS **NOT MONOTONE IN DENSITY** — SCALE 4 FAILS, SCALE 2 HOLDS, SCALE 1 FAILS — AND
+### *** **THE CHAIN-OFF CONTROL FAILS TOO**, SO THE CORRECTED ARM IS BLOCKED WITH OR WITHOUT ROAD (i).
+### *** EVERY FAILURE LOSES **EXACTLY ONE** SEGMENT OF 13-17 THOUSAND, AND THE ONE IT LOSES IS **R4's**. ***
+Ladder `research/bridge/out/s23r_recov.sh`, log `S23R_RECOV.log`; localisation `s23r_locate.sh`, log
+`S23R_LOCATE.log`, using the seed's OWN existing `PF_S10_SEED_DIAG=1` diagnostic — nothing new was
+instrumented. Seed-only: **no STL, no audit, no judge, and NO ARM WAS BUILT.**
+
+| rung | scale | chain | constraint segments | recovered | points / tris | seed s | |
+|---|---|---|---|---|---|---|---|
+| 1 | 4 | **ON** | 13,515 | **13,514 — 1 MISSING** | — | 70 | **THREW** |
+| 2 | 2 | **ON** | 14,740 | **14,740 — 100%** | 215,098 / 429,200 | 231 | **HELD** |
+| 3 | 1 | **ON** | 16,920 | **16,919 — 1 MISSING** | — | 318 | **THREW — THE BAR** |
+| 4 | 1 | off | **13,412** | **13,411 — 1 MISSING** | — | 393 | **THREW — the control** |
+| — | (S23B, GRID field, chain off) | off | 13,220 | 13,220 — 100% | 382,576 / 763,965 | 347 | held |
+
+**FIRST MATCH: G2 FIRES** (recovery breaks at scale 1, holds at 2). **AND G2's OWN SENTENCE — *"the CDT's
+recovery limit is LOCATED as a function of segment count"* — IS REFUTED BY THE TABLE THAT FIRES IT.**
+13,515 fails; 14,740 holds; 16,920 fails; **13,412 fails while 14,740 held**. There is no monotone
+threshold. **I registered a bar whose premise was that recovery degrades with density, and the ladder
+says it does not.** That is worth more than the bar, and it is the reason a ladder was registered instead
+of a single run.
+
+>> **AND THE FOURTH RUNG IS THE ONE THAT DECIDES THE ARM.** Rung 4 is the arm's OWN seed — the corrected
+>> field, free-Steiner infill only, chain-bound OFF, exactly as R5 leaves it — and **it fails too, at
+>> 13,412 segments, where S23B's grid-field seed recovered 13,220 of 13,220 and built.** So the block is
+>> NOT road (i). **The corrected field cannot be seeded at all**, with or without Amendment C.
+>> **THE 192 EXTRA SEGMENTS ARE THE MECHANISM AND THEY ARE MINE.** `13,220 -> 13,412` is the BOUNDARY
+>> DENSIFICATION, whose step is `max(1.5*pslgEpsMm, beta*h)` — 30 um floored. Against the GRID field the
+>> rim reads ~600-900 um and the row lands at ~500-750 um spacing; against the SCATTERED field the rim
+>> reads far finer and the row lands AT ITS 30 um FLOOR. **R1 refined the rim row, the rim row is what
+>> breaks recovery, and R1 could not have known that because the grid never asked for it.**
+
+#### THE LOST SEGMENT, LOCATED IN BOTH FAILING CONFIGURATIONS
+  **RUNG 4 (the arm's own seed) — IT IS R4's CONFIGURATION, AT R4's RIM, TO THE MICRON.**
+  Unrecovered `(12913, 93746)`: chart **A = (109.684280, 120.000000)** — **exactly ON the top rim** — to
+  **B = (109.669765, 119.978565)**, length **25.89 um**, diving off the rim at 34 deg from vertical.
+  **105 neighbouring vertices within 0.5 mm**, and every one the diagnostic printed sits at
+  `z = 120.000000` — the densified rim row, at 30.2-45.1 um spacing.
+  >> **COMPARE R4, WRITTEN BEFORE THIS RAN:** the two non-manifold edges are at `th 2.4344, z 119.98`,
+  >> between *"a SNAPPED chain vertex on the rim (z 120.000000)"* and *"a chain CROSSING-SPLIT vertex
+  >> 2.3 um below the rim constraint"*, with a boundary point 18 um away. **Same rim. Same pairing —
+  >> a rim-snapped chain vertex and its neighbour a few tens of um below. Same 20 um `pslgEpsMm` tube.**
+  >> R4 called this *"a precondition, not a polish item"* and named the cause: *"crossing splits currently
+  >> run AFTER the boundary snap and are never re-snapped."* **THE PROBE HAS NOW MEASURED THAT THE SAME
+  >> CONFIGURATION IS WHAT FIRES S7.** R4 is not step four of anything. **It is the block.**
+  **RUNG 1 (chain ON, scale 4) — A SECOND, DIFFERENT LOCAL CONFIGURATION, AND IT IS NOT THE RIM.**
+  Unrecovered `(10561, 10562)`: **A = (200.264191, 64.245682) -> B = (200.264012, 64.620617)**, length
+  **374.9 um**. Its two chain neighbours are `10560 (200.264367, 63.877993)` and
+  `10563 (200.263831, 64.999047)`: **four consecutive chain vertices collinear to within 0.5 um over
+  1.12 mm** — `dx` of 0.176 / 0.179 / 0.181 um against `dz` of 367 / 375 / 378 um. Only **14** neighbours
+  within 0.5 mm. **A near-collinear constraint run, not a crowded one.** Reported and NOT diagnosed
+  further: two distinct local configurations both losing exactly one segment is the finding, and
+  attributing the second one on this evidence would be the guess this campaign keeps refusing to make.
+
+  **AND ONE NAMED, CHECKABLE CANDIDATE IN THE CONDITIONER ITSELF, offered as a lead and not as a cause.**
+  Stage 3e (`_strataAlignedSeed.ts:1349`) does the right thing — it SPLITS a constraint at every blocker
+  within `pslgEpsMm` rather than moving anything — but it iterates **`for (condPass < 3)`** and its exit
+  test is *"no split happened this pass"*. `moved` is assigned 0 and never written, so the condition is
+  `!grew`. **A blocker that only becomes interior after the third pass is never split out**, and a
+  30 um-spaced rim row against a 25.89 um segment is exactly the crowding that makes a third pass
+  insufficient. **That is a one-constant change with a measurable before/after and it is the first thing
+  to try — but it is a LEAD, and it is written here as one.**
+
+#### WHAT THIS MEANS, AND WHAT IS *NOT* DONE ABOUT IT IN THIS SESSION
+  **THE ARM IS NOT BUILT.** The registered stop condition is *"R2-probe recovery failure (a result —
+  report with the corridor-pricing road scoped)"*, and G2/G3's own text says the arm stops there.
+  **AND THE THING I AM MOST TEMPTED TO DO IS THE THING THE REGISTRATION FORBIDS.** Rung 2 HOLDS, at
+  scale 2, 215,098 points, 429,200 triangles, 231 s, recovery 14,740/14,740, over-cap 6. It would build.
+  **It is refused**, in the registration's own words: building at a reduced field to get around a
+  recovery break is a GLOBAL clamp answering a LOCAL question — the same refusal `beta` 0.65 got, for the
+  same reason, and a mesh at half the field's density would be scored against THE CLAUSE as if it were
+  the corrected arm. It is not.
+  **ROAD (ii) IS SCOPED, NOT ENTERED.** Pricing the corridor as declared geometry
+  (`min(across, h)` for the innermost offset ring) invalidates the S15/S19 A/Bs it inherits and needs its
+  own registration and its own layer-2 negative control. **It also does not obviously survive this
+  result** — road (ii) puts MORE declared geometry in the corridor, and the corridor is where the
+  conditioner is already losing segments. **Any road (ii) registration must clear R4 first**, or it will
+  buy an S7 row before it buys a clause row.
+
+>> **THE THREE LIMITS, NOW ALL MEASURED, AND THE ORDER THEY MUST BE PAID IN.** Stage 0 retired
+>> EXTRACTABILITY. R1 retired SERIALIZATION and measured that it was worth **x1.18** of a **x3.45**
+>> problem. What is left is:
+>>   **(1) CONSTRAINT RECOVERY — and it is not a density limit, it is a LOCAL CONFIGURATION at the rim
+>>       and at near-collinear chain runs, losing exactly one segment of 13-17 thousand every time.
+>>       R4 IS THIS. IT IS FIRST, IT IS CHEAP, AND NOTHING ELSE CAN BE BUILT UNTIL IT LANDS.**
+>>   **(2) THE CORRIDOR** — 194 of 194 refuting shards inside it, free Steiner forbidden, Amendment C
+>>       INFEASIBLE. Road (ii), after (1).
+>>   **(3) THE ORACLE'S OWN CONVERGENCE — x2.46 of the under-price, unreachable by ANY constructor
+>>       change**, because the demand was never in the map. `_S22B`'s own H2 is 95.484 um against a
+>>       10 um TOL. **A better mesh needs a better ORACLE, and that is Phase 2's question, not S23's.**
+>> **THE ARCHITECTURE HAS NOW FAILED THREE TIMES IN THREE DIFFERENT PLACES AND NONE OF THEM WAS ON THE
+>> REGISTERED RISK LIST.** The registered risk was extractability, and extractability was never the
+>> problem. That is the campaign's own lesson arriving on its own arm.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
