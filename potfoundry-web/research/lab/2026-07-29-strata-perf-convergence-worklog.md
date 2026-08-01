@@ -5695,6 +5695,67 @@ PF_CB_TAG_SUFFIX=_S23B      (PF_CB_RECON_CHAIN unset — Amendment C is INFEASIB
 ```
 
 
+### *** S23B — **THE SCALE-INVARIANT 622.349 um RESIDUAL, LOCATED AND CLASSIFIED. FOUR CANDIDATE OWNERS,**
+### *** **THREE REFUTED ON MEASUREMENT, AND THE SURVIVOR CARRIES AN UPSTREAM CONTRIBUTOR NOBODY ASKED FOR.**
+Asked for by the coordinating session at the checkpoint, on the grounds that a residual identical to the
+digit across x4 density is one of four things with four different owners. Read-only, artifact-only, on the
+probe meshes: `research/tools/s23Residual.ts` + `s23Residual2.ts`, log `S23B_RESIDUAL.log`. **Density was
+not used to chase it; S7 already answered that road.**
+
+**FIRST, THE WITNESS IS PINNED, AND IT IS THE SAME OBJECT EVERY TIME.** Searching all three probe meshes
+for the reported argmax returns tri **20650 / 22109 / 28170** with **byte-identical vertices**:
+`th [4.449065, 4.449410, 4.452377]`, `z [80.91705, 80.79443, 80.57988]`, edges **124.9/259.6/376.2 um**,
+`feat=[101]` (two vertices ON a traced locus, one free). Its footprint is **0.157 x 0.337 mm**.
+
+| candidate | measured | verdict |
+|---|---|---|
+| **(3) seam / rim-row ruler artifact** | **82.48 mm** of arc from the seam; **39.24 mm** from the nearest rim (band is z >= 119.9 or <= 0.1) | **REFUTED** |
+| **(1) misplaced constraint** (S10 layer-2 class) | nearest TRACED vertex **74.4 um** from the centroid; tracer layer-1 bar 25 um, PSLG displacement <= 20 um; seed is a genuine CDT, recovery 13,220/13,220 | **REFUTED** |
+| **(2) genuine C0 / curtain** | style has **NO detected C0 z-steps at all** (the aligned seed THROWS on any, and it ran). Two-scale test at the footprint's radial MIN: `j1(+-20um) 135.23 um -> j2(+-2.5um) 16.89 um`, **ratio 0.1249** — clean `h^1`, a C1 crease | **REFUTED** |
+| **(4) representable geometry the DECLARED rule under-resolves** | INSIDE declared region **D49**, 0.316 mm from routed junction #49; surface swings **899.8 um** in radius across the facet's own footprint while its three vertices span **55.7 um**, leaving the surface **608.5 um** outside the facet | **HOLDS** |
+
+>> **THE ONE READING THAT LOOKS LIKE A C0 IS NOT ONE, AND SAYING SO IS THE POINT OF QUOTING IT.** At the
+>> footprint's radial MAXIMUM the two-scale ratio reads 0.8957 (along z) and 1.1522 (along theta) — above
+>> the 0.8 bar. **But `j1` there is 1.60 um and 4.60 um**, an order BELOW the driver's own `j1 > TOL`
+>> (10 um) gate, so its rule does not even apply. That is a smooth ridge CREST, where the first derivative
+>> vanishes and a second difference is measuring rounding. Reported rather than banked, because "ratio
+>> 1.15, therefore C0" would have been the easier and wronger sentence.
+
+**AND THE SURVIVOR CARRIES AN UPSTREAM CONTRIBUTOR — THIS IS THE PART NOBODY ASKED FOR.**
+At the site, measured off the surface with the driver's own quantity (largest chord whose two-sided
+sagitta stays under `PF_CB_TOL` = 10 um, four directions):
+
+| quantity | value |
+|---|---|
+| what the EXTRACTED FIELD prices the site at (raw and prepared agree) | **95.9 um** |
+| the surface's OWN demand at the driver's own 10 um tolerance | **27.5 um** |
+| **the field's under-price** | **x3.48** |
+| what `_S22B` — the oracle that PRODUCED the field — actually carries within 0.5 mm | 1,650 facets, longest edge **min 13.5 / mean 118.7 / max 625.5 um**, hA-equivalent **67.5 um** |
+
+>> **THE ORACLE PLACED 13.5 um MATERIAL AT THIS SITE AND THE DURABLE FIELD REPORTS 95.9 um.** Stage 0
+>> identified this exact hazard and solved it — *"A fixed cell grid cannot be both fine enough to resolve a
+>> 50 um across-ring and coarse enough to be populated on smooth wall"* — by making the PRIMARY field
+>> SCATTERED (nearest source vertex) and the 0.25 mm grid *"the instrument the landmarks are read on"*.
+>> **But the artifact it emitted is the 0.25 mm GRID, and the grid is what this build was handed and
+>> priced by.** The scattered field was the answer to the risk and it did not survive serialisation.
+>> **This is a measured counter-example to the arm's one-line claim in its strongest form.** *Only the
+>> density map ships* — and at this site the density map under-prices the demand by 3.48x, so a
+>> constructor honouring it perfectly still ships a 600 um error. It is exactly the P-a language, arriving
+>> at a site P-a did not name: *a construction pass has no mechanism to close a demand the density field
+>> does not price.*
+
+>> **THE OWNER IS PHASE 2, AND THE UPSTREAM FIX IS A STAGE-0 ONE-LINER.** Not the tracer (the trace is
+>> where the feature is), not a curtain (there is no C0 here or anywhere in this style), not an excluded
+>> row (82 mm from the seam, 39 mm from a rim). It is routed-disk interior resolution inside D49 —
+>> the same class, and the same 12-fold rib family, as `_S22B`'s own H2 argmax, which sits at
+>> **th 4.4491, z 76.40 — the SAME meridian, 4.36 mm below in z.** And it is 77.9 mm from the pinned
+>> 25.063 um congruent copy, so **P-a's site is untouched by this and the congruent-copy prediction is
+>> not disturbed.**
+>> **FORWARD, AND IT IS CHEAP: emit the SCATTERED field (or a materially finer grid) as the durable
+>> artifact.** That is a Stage-0 change, it touches no constructor, and it is the difference between a
+>> field that prices 95.9 um and an oracle that placed 13.5 um.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
