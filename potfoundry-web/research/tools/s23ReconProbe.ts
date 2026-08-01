@@ -40,12 +40,27 @@ const CHAIN = (process.argv[5] ?? '0') === '1';
 // grid is reachable on request so the S23B rows in this same table stay reproducible against it.
 const FIELD_PATH = process.env.S23_FIELD_PATH ?? `${EX}S22B.density2.json`;
 const FIELD_SRC = (process.env.S23_FIELD_SRC ?? 'scatter') as 'scatter' | 'grid';
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// S23-E — `pslgEpsMm` AS A LADDER RUNG. **ONE PHYSICAL CONSTANT, TWO PLACES IT APPEARS.**
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// S23-T measured the construction road's fidelity ceiling as `sag(pslgEpsMm/0.55)` — 250.1 um at the site
+// all three arms argmax on, against a 10 um tolerance. The probe that decides the road is whether
+// CONSTRAINT RECOVERY survives as that radius falls.
+// The floor is DERIVED from eps (`_strataAlignedSeed.ts:459` asserts `acrossMinMm*0.55 > pslgEpsMm`, and
+// its own throw message names `pslgEpsMm/0.55` as the required value), so a ladder that lowers eps while
+// leaving the FIELD floor at 36.4 um would change the conditioner and nothing else — the point set would
+// not move and recovery would hold trivially. **Both therefore move together, because they are the same
+// constant read in two places.** `S23_FLOOR_UM` can pin the floor independently for a null control.
+// UNSET, both default to exactly what every prior run used (20 um / 36.4 um), so the OFF path is
+// arithmetically identical and every S23B/S23R/S23T number in this log stays reproducible here.
+const PSLG_EPS_UM = Number(process.env.S23_PSLG_EPS_UM ?? '20');
+const FLOOR_UM = Number(process.env.S23_FLOOR_UM ?? String(PSLG_EPS_UM / 0.55));
 // the arm's own routed-disk list, verbatim
 const IDS = '0,25,32,34,39,42,43,44,46,47,49,51,53,54,57,59,65,68,72,77,87,92,93,96,97,107,1000,1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015,1016'.split(',');
 const PRED_TRI = 1723299; const PRED_PTS = 861650;      // registered before the build, 2026-08-01
 
 const { rA } = buildAuditRadiusFn(STYLE, { ...registryDefaults(STYLE) }, DIMS, 120);
-const field = loadReconField(FIELD_PATH, { floorMm: 0.0364, alpha: 1.0, source: FIELD_SRC });
+const field = loadReconField(FIELD_PATH, { floorMm: FLOOR_UM / 1000, alpha: 1.0, source: FIELD_SRC });
 
 const regArt = JSON.parse(readFileSync(`${EX}S21B.regions.json`, 'utf8')) as {
   regions: Array<{ id: number; theta: number; z: number; radiusMm: number }> };
@@ -62,7 +77,10 @@ log(FIELD_SRC === 'scatter'
     + ` p90 ${field.stats.sP90} p99 ${field.stats.sP99} max ${field.stats.sMax}`
   : `    prepared GRID h um: min ${field.stats.min} p10 ${field.stats.p10} p50 ${field.stats.p50}`
     + ` p90 ${field.stats.p90} p99 ${field.stats.p99} max ${field.stats.max}`);
-log(`  registered prediction: ${PRED_TRI} triangles / ~${PRED_PTS} placed points (floor 36.4 um, alpha 1.0)`);
+log(`  registered prediction: ${PRED_TRI} triangles / ~${PRED_PTS} placed points (S23B's grid field; a`
+  + ' STALE reference kept only so the "x pred" columns stay comparable across this campaign\'s logs)');
+log(`  *** S23-E RUNG: pslgEpsMm ${PSLG_EPS_UM} um  ->  derived floor ${FLOOR_UM.toFixed(3)} um`
+  + `  (floor = eps/0.55; both moved together because they are the same constant) ***`);
 log(`  routed disks ${patchRoute.length} of ${IDS.length} requested`);
 
 // THE PREDICATE CONSTANT, transcribed from the driver's own `PRED` at the arm's config
@@ -87,6 +105,11 @@ for (const beta of BETAS) {
   try {
     rep = buildAlignedSeedRepaired(rA, loci, {
     ...DEFAULT_SEED_OPTS, H, gu: 200, gv: 140,
+    // S23-E: the ONE varied constant. `acrossMinMm` is DELIBERATELY LEFT AT S15's declared 50 um — the
+    // assert only requires `acrossMinMm*0.55 > pslgEpsMm`, which LOWERING eps can only make safer, so
+    // this ladder never has to touch a declared-geometry constant to run. One variable, and the corridor
+    // stays exactly where every scored arm put it.
+    pslgEpsMm: PSLG_EPS_UM / 1000,
     alongMul: 1.0, acrossFrac: 0.35, useField: true,
     acrossAbs: true, acrossMinMm: 0.050, seedARmax: 24, bowFrac: 0,
     patchRoute, patchMaxMm: 1.5, patchSubMax: 16,

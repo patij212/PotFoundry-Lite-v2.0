@@ -128,7 +128,63 @@ const q = (a: number[] | Float64Array, p: number): number => {
   return s[Math.min(s.length - 1, Math.max(0, Math.floor(p * s.length)))];
 };
 
-if (MODE === 'probe') {
+if (MODE === 'floors') {
+  // ══ S23-E — THE ROAD'S FIDELITY CEILING, PER `pslgEpsMm`, COMPUTED BEFORE ANY LADDER RUNS. ═══════
+  // `sag(L)` at the argmax is the smallest one-sided sagitta reachable with a chord of length `L`, so a
+  // FLOOR on placeable `L` IS a floor on achievable error. This block prices every floor the constructor
+  // carries, at the site all three arms argmax on, with the demand solve's own arithmetic.
+  const TH = 4.450590; const Z = 80.75964;
+  const dem = demand(TH, Z) * 1000;
+  log('=== S23-E — THE CONSTRUCTION ROAD\'S FIDELITY CEILING, PER pslgEpsMm ===');
+  log(`  the site: th ${TH}, z ${Z} — the H2 witness in ALL THREE construction arms (584.131 um each)`);
+  log(`  the surface's own demand there: ${dem.toFixed(2)} um   (PF_CB_TOL = 10.0 um)`);
+  log('');
+  log('--- THE THREE FLOORS THE CONSTRUCTOR CARRIES, AND ONLY TWO OF THEM MOVE WITH eps ---');
+  log('  (1) acrossMinMm >= pslgEpsMm/0.55   — asserted at _strataAlignedSeed.ts:459.   MOVES with eps.');
+  log('  (2) free-point segment clearance = 1.5 * pslgEpsMm — every emitter floors there. MOVES with eps.');
+  log('  (3) patch sub-ring collapse bound = 3 * weldMm = 6.0 um (_strataAlignedSeed.ts:1154).  DOES NOT.');
+  log('      >> THE ARGMAX SITE IS INSIDE DECLARED REGION D49, WHERE PLACEMENT BELONGS TO THE PATCH');
+  log('      >> EMITTER. SO (3) IS THE FLOOR THAT ACTUALLY GOVERNS THERE, AND eps DOES NOT MOVE IT.');
+  log('');
+  log('  | pslgEpsMm um | floor = eps/0.55 um | sag(floor) um | x TOL | 1.5*eps um | sag(1.5*eps) um |');
+  log('  |---|---|---|---|---|---|');
+  for (const e of [20, 10, 5, 2, 0.94]) {
+    const fl = e / 0.55;
+    log(`  | **${e}** | ${fl.toFixed(2)} | **${(sagAt(TH, Z, fl / 1000) * 1000).toFixed(1)}** |`
+      + ` **x${((sagAt(TH, Z, fl / 1000) * 1000) / 10).toFixed(1)}** | ${(1.5 * e).toFixed(2)}`
+      + ` | ${(sagAt(TH, Z, (1.5 * e) / 1000) * 1000).toFixed(1)} |`);
+  }
+  log('');
+  const w6 = sagAt(TH, Z, 0.006) * 1000;
+  log(`  THE eps-INDEPENDENT FLOOR (3): 3*weldMm = 6.00 um -> sag = **${w6.toFixed(1)} um = x${(w6 / 10).toFixed(1)} TOL**`);
+  log(`  the chord that would actually reach TOL here: ${dem.toFixed(2)} um`
+    + `  => eps would have to be ${(0.55 * dem).toFixed(3)} um for floor (1) alone to permit it`);
+  log('');
+  log('--- THE f32 SEPARABILITY BOUND, DERIVED FROM THE SHIPPED FORMAT BEFORE THE LAST RUNG RUNS ---');
+  // The STL ships binary float32. Two vertices closer than one ulp in the binding coordinate cannot
+  // survive the round trip as distinct points, so no floor below that is REACHABLE no matter what
+  // cdt2d does. The ulp is magnitude-dependent; the site's own r and z are what bind.
+  const ulp = (m: number): number => Math.pow(2, Math.floor(Math.log2(Math.abs(m))) - 23);
+  const r0 = rA(canon(TH), Z);
+  const uR = ulp(r0); const uZ = ulp(Z);
+  const uBind = Math.max(uR, uZ);
+  log(`  at this site r = ${r0.toFixed(5)} mm, z = ${Z} mm`);
+  log(`  f32 ulp(r) = ${(uR * 1000).toExponential(4)} um   f32 ulp(z) = ${(uZ * 1000).toExponential(4)} um`
+    + `   BINDING = ${(uBind * 1000).toExponential(4)} um`);
+  log(`  => the smallest separation two SHIPPED vertices can carry is ${(uBind * 1000).toFixed(5)} um,`);
+  log(`     so floor (1) is f32-reachable only while eps > 0.55 * ${(uBind * 1000).toFixed(5)}`
+    + ` = **${(0.55 * uBind * 1000).toExponential(3)} um**`);
+  log(`  >> THE TARGET eps 0.94 um IS x${(0.94 / (0.55 * uBind * 1000)).toFixed(0)} ABOVE THAT BOUND.`);
+  log('  >> **f32 IS NOT THE OWNER AT THE VALUE THAT MATTERS.** If the ladder stops before 0.94 um the');
+  log('  >> owner is cdt2d or the conditioner, NOT the shipped format — a different owner and a different');
+  log('  >> forward line, and it is derived here BEFORE the rung runs so it cannot be assigned afterwards.');
+  log('');
+  log(`  AND ONE MORE BOUNDARY, NAMED: addPt welds at weldMm = 2.00 um, so at eps <= 2 um the CONDITIONING`);
+  log(`  radius drops BELOW the point set's own resolution — two distinct vertices can never be closer than`);
+  log(`  2 um, so the vertex-on-segment interiority test operates finer than anything it can find. Rungs at`);
+  log(`  eps 2 and 0.94 cross that boundary and it is a registered tripwire, not a surprise.`);
+  log('=== DONE ===');
+} else if (MODE === 'probe') {
   // ── TIMING, MEASURED, so the emit is scheduled against a number and not a guess ────────────────────
   const N = 400;
   const t0 = Date.now();

@@ -7205,6 +7205,197 @@ Phase 2's biggest known demand is not retired, and it is now known that no field
   6. **THE S5 REDUCED-SCALE DETERMINISM TRIPLE** (`PF_CB_RECON_SCALE=2`, arm + two twins). The full-scale
      pair is done and passes; the triple is not run.
 
+### S23-E — **THE `pslgEpsMm` RECOVERY LADDER, REGISTERED. THIS PROBE DECIDES THE ROAD, AND THE**
+### **CEILING IT WOULD BUY IS COMPUTED HERE BEFORE A SINGLE RUNG RUNS.**
+S23-T's decomposition put the construction road's fidelity ceiling at `sag(pslgEpsMm/0.55)` — **250.1 um
+against a 10 um tolerance**, at the site all three arms argmax on. **So what is unknown is not the VALUE
+of a lower `eps`. That is arithmetic and it is done below. What is unknown is whether the constructor
+survives it.** Nothing is built on any outcome; the result goes to the operator with the road decision.
+
+#### *** THE CEILING TABLE, COMPUTED FIRST (`S23E_FLOORS.log`, `s23TrueField.ts floors`). ***
+Site `th 4.450590, z 80.75964`; the surface's own demand there is **1.68 um** against `PF_CB_TOL` 10.0.
+`sag(L)` is the demand solve's OWN arithmetic evaluated at the chord the constructor may place — **a floor
+on placeable `L` IS a floor on achievable error**, and no scaling law is assumed anywhere.
+
+| `pslgEpsMm` um | floor = eps/0.55 um | **`sag(floor)` um** | **x TOL** | 1.5*eps um | `sag(1.5*eps)` um |
+|---|---|---|---|---|---|
+| **20  (today)** | 36.36 | **250.1** | **x25.0** | 30.00 | 208.5 |
+| **10** | 18.18 | **128.4** | **x12.8** | 15.00 | 106.2 |
+| **5** | 9.09 | **64.2** | **x6.4** | 7.50 | 52.7 |
+| **2** | 3.64 | **24.5** | **x2.4** | 3.00 | 19.8 |
+| **0.94** | 1.71 | **10.2** | **x1.0** | 1.41 | **8.0** |
+
+  **THE EXACT VALUE THAT REACHES TOLERANCE IS `eps = 0.922 um`**, and the close-out's ~0.94 um is
+  confirmed by the arithmetic rather than by memory. **x21 below today's 20 um.**
+
+#### **THERE ARE THREE FLOORS AND ONLY TWO OF THEM MOVE WITH `eps`. THE THIRD IS REGISTERED HERE BECAUSE
+#### IT BOUNDS WHAT EVEN A PERFECT LADDER CAN BUY.**
+  1. `acrossMinMm >= pslgEpsMm/0.55` — asserted at `_strataAlignedSeed.ts:459`. **MOVES.**
+  2. free-point segment clearance `= 1.5 * pslgEpsMm` — every emitter floors there. **MOVES.**
+  3. **the patch sub-ring collapse bound `= 3 * weldMm = 6.00 um`** (`_strataAlignedSeed.ts:1154`, *"a
+     sub-ring spacing below ~3x that collapses whole rings onto a point"*). **DOES NOT MOVE WITH `eps`.**
+     `sag(6.00 um)` at the argmax is **41.8 um = x4.2 TOL.**
+  >> **SO THE BEST CASE IS ALREADY BOUNDED BEFORE THE LADDER RUNS: even at `eps -> 0`, the declared path's
+  >> own weld-derived floor prices x4.2 TOL at this site.** The argmax sits inside declared region D49,
+  >> where the patch emitter places on graded rings. **THIS IS SCOPE, NOT A PREDICTION** — the free-infill
+  >> path is governed by (1) and (2) and is not bounded at 6 um, and which path actually places the carrier
+  >> facet is a measurement this probe does not take. It is registered so that an OPENS verdict cannot be
+  >> claimed past a bound that was visible beforehand.
+  >> **AND THE FLOORS ARE NECESSARY, NOT SUFFICIENT.** `_S23TC` placed **179-264 um** edges at this site
+  >> — **x30-x44 above even the 6 um bound** — so lowering `eps` raises the CEILING of what is reachable
+  >> and does not by itself move the placement. That gap is S23-T's x2.33 corridor term and it is a
+  >> separate, already-named road. **This probe answers "is the road open", the table says "what the road
+  >> is worth if it is", and neither answers the other.**
+
+#### THE LADDER, AND WHY ITS SATURATION IS DECLARED IN ADVANCE
+`s23e_eps.sh`, log `S23E_EPS.log`. **`eps` 20 -> 10 -> 5 -> 2 -> 0.94 um**, reduced scale **2**, chain
+OFF (the arm's own configuration at half linear density), **`PF_S10_PLANARIZE=1`** — the R4-fixed
+pipeline. **ONE VARIABLE:** `pslgEpsMm` and the field floor move together because they are the same
+constant read in two places; leaving the field floor at 36.4 um would change the conditioner and nothing
+else, the point set would not move, and recovery would hold trivially. **`acrossMinMm` STAYS AT S15's
+DECLARED 50 um** — lowering `eps` can only make its assert safer, so this ladder never touches a
+declared-geometry constant. Both levers default to exactly what every prior run used, so every S23B /
+S23R / S23T number in this log stays reproducible on this harness.
+  >> **THE SATURATION IS STATED BEFORE THE RUN SO A RUNG THAT HOLDS BECAUSE NOTHING CHANGED IS NOT READ AS
+  >> A RUNG THAT PASSED.** The `/3` field's own minimum `h` is 2.535 um; at scale 2 that is **5.07 um**, so
+  >> the derived floor BINDS down to `eps = 2.79 um` and saturates below it. **Rungs 2 and 0.94 therefore
+  >> test the CONDITIONER and the CLEARANCES alone, not a denser point set**, and are read that way.
+
+>> **THE TRIPWIRES. ALL KNOWN FAMILIES, NONE OF THEM A SURPRISE, EACH ASSIGNED ITS OWNER IN ADVANCE.**
+>>   **T-A — RECOVERY < 100%.** The rung FAILS. The first failing rung is the answer; report and STOP.
+>>   **T-B — PLANARIZE MUST TERMINATE.** Its iterate-to-zero is unbounded by construction. **Pass count
+>>     and residual crossings are recorded PER RUNG**; a guard that does not reach 0 is a FAIL.
+>>   **T-C — `eps <= weldMm` (2 um).** Below that the conditioning radius drops UNDER the point set's own
+>>     resolution: `addPt` welds anything closer than 2 um, so two distinct vertices can never be closer
+>>     than 2 um and the vertex-on-segment interiority test operates finer than anything it can find.
+>>     **Rungs 2 and 0.94 cross that boundary.** Recorded, not tuned around.
+>>   **T-D — f32 SEPARABILITY, DERIVED BEFORE THE LAST RUNG RUNS, AS REGISTERED.** The shipped STL is
+>>     binary float32. At this site `r = 48.15251` and `z = 80.75964`, so `ulp(r) = 3.8147e-3 um` and
+>>     `ulp(z) = 7.6294e-3 um`; **the binding separation two SHIPPED vertices can carry is 7.6294e-3 um**,
+>>     and floor (1) is format-reachable while `eps > 0.55 x 7.6294e-3 = 4.196e-3 um`. **THE TARGET
+>>     0.94 um IS x224 ABOVE THAT BOUND.** So **f32 is NOT the owner at the value that matters**: if the
+>>     ladder stops early the owner is `cdt2d` or the conditioner, which is a different owner and a
+>>     different forward line. **Assigned now so it cannot be assigned afterwards.**
+>>   **T-E — COST.** A rung whose seed exceeds ~1,800 s or 3 M points is INFEASIBLE at that `eps`,
+>>     reported with its corridor numbers and not retried smaller.
+
+>> **THE VERDICT SHAPE, FIRST MATCH, WRITTEN BEFORE ANY RUNG IS READ.**
+>>   **OPENS** — recovery 100% at an `eps` whose implied `sag` ceiling is **<= TOL** at the argmax demand.
+>>     **State the `eps` that achieves it.** The construction road's fidelity ceiling is a constant, not
+>>     an architecture, and the road is open.
+>>   **PARTIALLY OPENS** — recovery holds to some `eps`; the ceiling falls but stays **> TOL**. **Quote the
+>>     new ceiling.** The road improves by a measured factor and does not reach tolerance.
+>>   **CLOSES** — recovery breaks ABOVE the `eps` that would matter. **The construction road's fidelity
+>>     ceiling is ARCHITECTURAL**, the campaign's fidelity answer reverts to the bisection road + Phase-2,
+>>     and construction retires to what it has actually proved: **topology and per-facet texture.**
+
+### *** S23-E RESULT — **THE ROAD *OPENS* ON THE BAR THAT WAS REGISTERED, AND THE BAR WAS ON THE WRONG**
+### *** **QUANTITY. RECOVERY IS 100% AT EVERY `eps` DOWN TO 0.94 um — IT NEVER BREAKS. WHAT BREAKS IS**
+### *** **ELEMENT SHAPE: worst AR 85.1 -> 2202.3 AND parAR 139.4 -> 2318.0, MONOTONE, x26 AND x16.6.** ***
+Log `S23E_EPS.log`, script `s23e_eps.sh`. Reduced scale 2, chain off, guard ON, one variable.
+
+| `eps` um | derived floor um | **`sag(floor)` = the road's ceiling** | constraints | **recovered** | points / tris | over-cap | **worst AR** | **worst parAR** | guard: passes / sub-segs / residual | s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| **20** (today) | 36.364 | **250.1 um  x25.0** | 13,008 | **13,008 — 100%** | 184,211 / 367,444 | 3 | **85.1** | **139.4** | 1 / 2 / **0** | 250 |
+| **10** | 18.182 | **128.4 um  x12.8** | 12,935 | **12,935 — 100%** | 187,729 / 374,480 | 5 | **94.5** | **139.4** | 1 / 4 / **0** | 251 |
+| **5** | 9.091 | **64.2 um  x6.4** | 12,921 | **12,921 — 100%** | 188,820 / 376,662 | 10 | 168.2 | 638.4 | 1 / 6 / **0** | 253 |
+| **2** | 3.636 | **24.5 um  x2.4** | 12,955 | **12,955 — 100%** | 189,170 / 377,362 | 33 | 912.7 | 1157.1 | 1 / 12 / **0** | 257 |
+| **0.94** | 1.709 | **10.2 um  x1.0** | 12,992 | **12,992 — 100%** | 189,183 / 377,388 | **82** | **2202.3** | **2318.0** | 1 / 24 / **0** | 253 |
+
+#### THE TRIPWIRES, EACH SCORED AGAINST WHAT IT WAS REGISTERED FOR
+  * **T-A (recovery < 100%) — NEVER FIRES.** 100% on all five rungs, across a **x21 range of `eps`**.
+  * **T-B (planarize must terminate) — CLEAR ON EVERY RUNG.** 1 pass, residual crossings **0**, every time.
+    **And its workload doubles as `eps` halves — 2 -> 4 -> 6 -> 12 -> 24 sub-segments** — which is the
+    mechanism showing itself: as the conditioning radius tightens, 3e splits fewer blockers out and more
+    genuine crossings survive to 3h. **Unit B absorbs all of them in one pass at every rung.** The R4 fix
+    is robust across the whole range, which nothing before this probe had tested.
+  * **T-C (`eps <= weldMm` = 2 um) — CROSSED at rungs 2 and 0.94, and recovery still held.** Below 2 um
+    the conditioning radius is finer than the point set's own resolution and the interiority test can find
+    nothing new; the rungs are read as testing the CLEARANCES alone, exactly as registered.
+  * **T-D (f32 separability) — NOT THE OWNER, and it was assigned before the run.** The bound is
+    `eps > 4.196e-3 um`; the ladder reached **0.94 um, x224 above it**, without stopping. The question of
+    whether the format owns the floor does not arise, and could not have been claimed afterwards.
+  * **T-E (cost) — NEVER FIRES.** Every rung ~250 s and ~189 k points; the point count moves **2.7%
+    across the whole ladder** (184,211 -> 189,183). The saturation registered in advance is visible: the
+    `/3` field's own fine tail is 0.271% of cells, so lowering the floor buys almost no extra material.
+
+>> **THE VERDICT, FIRST MATCH, ON THE CRITERION AS WRITTEN: *OPENS*. `eps = 0.94 um` HOLDS RECOVERY AT
+>> 100% AND ITS IMPLIED CEILING IS 10.2 um, WHICH IS TOLERANCE.** State the value, as registered: **0.94
+>> um — and the exact break-even is 0.922 um.**
+>> **AND THE SAME BREATH HAS TO SAY THAT THE BAR WAS ON THE WRONG QUANTITY, BECAUSE THAT IS THE REAL
+>> RESULT.** The probe was registered on RECOVERY because recovery is what R2 and R4 spent two sessions
+>> on. **Recovery was never what would break.** What breaks is **element shape, monotonically, on every
+>> rung**: over-cap facets **3 -> 82 (x27)**, worst AR **85.1 -> 2202.3 (x25.9)**, worst parAR
+>> **139.4 -> 2318.0 (x16.6)**. The campaign's own headline — *"the parAR annihilation SURVIVES at MAX
+>> 98.6"*, held to the digit across `_S23B`, `_S23R` and `_S23TC` — **does not survive `eps = 0.94 um`.**
+>> **AN "OPENS" THAT SHIPS parAR 2318 IS NOT A ROAD, AND CALLING IT ONE WOULD BE SCORING THE CLAUSE I
+>> WROTE INSTEAD OF THE MESH I MEASURED.**
+
+#### *** WHY SHAPE BREAKS, AND IT IS ONE CONSTANT DOING TWO JOBS — WHICH IS THE FORWARD LINE ***
+`pslgEpsMm` is read in two unrelated roles, and lowering it moves **both**:
+  1. **THE CONDITIONING RADIUS.** 3e re-routes a constraint through any vertex within `eps` of its
+     interior. **This wants to be SMALL** — it is the fidelity term, and `eps/0.55` is the floor S23-T
+     priced at 250.1 um.
+  2. **THE UNIVERSAL FREE-POINT CLEARANCE FLOOR, `1.5 * pslgEpsMm`** — `_strataAlignedSeed.ts:1340`,
+     `:1353` (infill), `:1047` (offset ring), `:1128`, `:1165` (patch rings), `:968` (boundary). Every
+     emitter floors its segment clearance there, and its measured reason is on the record: *"with the
+     clearance at 1.5*pslgEpsMm = 30 um the infill placed free points 35-88 um from a chain whose own
+     offset ring sits at 50 um, and the triangle each made read aspect3 100-146 ... 97 facets, ALL of
+     them, on a 12-fold symmetric feature site — i.e. a mechanism, not a tail."* **THIS WANTS TO BE
+     LARGE.** It is the only thing standing between a free Steiner point and a thin lens beside a
+     constraint.
+  >> **SO THE LADDER IS NOT MEASURING A LIMIT. IT IS MEASURING A COLLISION BETWEEN TWO REQUIREMENTS THAT
+  >> SHARE A VARIABLE**, and the clearance term is the one that fails first. The effective clearance is
+  >> `max(0.55*beta*h, 1.5*eps)`; in the fine bands `0.55*beta*h` is tiny, so once `1.5*eps` stops
+  >> carrying the floor there is nothing under it. **97 facets at AR 100-146 was the measured cost of that
+  >> floor being absent once. At `eps = 0.94 um` it is absent everywhere.**
+  >> **THE CHANGE THIS NAMES IS ONE CONSTANT AND IT IS NOT BUILT HERE: SPLIT THE TWO ROLES.** A separate
+  >> `clearEpsMm`, pinned at today's 20 um, would let the conditioning radius fall for fidelity while
+  >> every emitter's clearance floor stays exactly where it is — **the fidelity term and the shape term
+  >> stop being the same number.** It is a mechanical separation of two uses of one variable, it changes
+  >> no default while `clearEpsMm == pslgEpsMm`, and **this ladder is the evidence for it**: recovery is
+  >> already proven at 100% across a x21 range, so the only thing standing between the road and a x25
+  >> ceiling improvement is a clearance that never needed to move.
+
+#### WHAT THE ROAD IS WORTH **TODAY**, WITHOUT ANY NEW CONSTANT
+  **`eps = 10 um` IS THE USABLE RUNG AND IT IS FREE.** Ceiling **250.1 -> 128.4 um (x1.95)**, recovery
+  100%, worst AR **85.1 -> 94.5 (x1.11)**, **parAR UNCHANGED at 139.4**, over-cap 3 -> 5, same wall clock.
+  `eps = 5 um` buys **x3.9** on the ceiling and is where shape starts to go (AR 168.2, parAR 638.4) — it
+  is the first rung that trades. **Below 5 um nothing is usable without the split above.**
+  >> **AND NONE OF THIS REACHES TOLERANCE ANYWAY, WHICH THE REGISTRATION SAID BEFOREHAND.** The
+  >> `3*weldMm = 6.00 um` patch sub-ring bound does not move with `eps` and prices **41.8 um = x4.2 TOL**
+  >> at the argmax; and `_S23TC` placed **179-264 um** there, **x30-x44 above even that**. **The ceiling
+  >> is necessary and not sufficient**, exactly as registered — S23-T's x2.33 corridor term is untouched
+  >> by this probe and remains its own road.
+
+### *** S23-E — **THE VERDICT AND THE ROAD DECISION, FOR THE OPERATOR** ***
+| row | verdict |
+|---|---|
+| **the registered first-match criterion** | ***OPENS.*** Recovery **100% at `eps = 0.94 um`**, whose implied ceiling is **10.2 um <= TOL**. Break-even 0.922 um. |
+| **recovery (T-A)** | **NEVER BREAKS.** 100% on all five rungs across a x21 range of `eps`. |
+| **the planarity guard (T-B)** | **TERMINATES ON EVERY RUNG**, 1 pass, residual 0, workload doubling 2 -> 24. The R4 fix is robust across the whole range. |
+| **f32 (T-D)** | **NOT THE OWNER**, x224 of margin, assigned before the run. |
+| **cost (T-E)** | **NEVER FIRES.** ~250 s and ~189 k points at every rung. |
+| ***what actually breaks*** | ***ELEMENT SHAPE. worst AR x25.9, parAR x16.6, over-cap x27, monotone in `eps`.*** |
+| ***the mechanism*** | ***ONE CONSTANT SERVING TWO OPPOSED ROLES*** — the conditioning radius (wants small) and the universal free-point clearance floor `1.5*eps` (wants large). |
+| **usable today, no new constant** | **`eps = 10 um`: ceiling x1.95 better, parAR unchanged, AR x1.11, free.** |
+| **to go further** | **split `clearEpsMm` from `pslgEpsMm`** — one constant, no default changed while they are equal, and this ladder is its evidence. **NAMED, NOT BUILT.** |
+
+>> **THE ROAD DECISION, STATED PLAINLY FOR THE OPERATOR.** The construction road's fidelity ceiling is
+>> **NOT architectural in the way S23-T's close-out feared** — `cdt2d` recovers 100% at a conditioning
+>> radius **x21 finer** than today's, and the R4 planarity guard holds all the way down. **The ceiling is
+>> a shared-variable problem, and the variable can be split.** But two things are true at once and both
+>> belong in the decision: **(i)** even a perfect split leaves the `3*weldMm` patch bound at **x4.2 TOL**
+>> and S23-T's **x2.33** corridor term untouched, so **the construction road does not reach 10 um on this
+>> evidence**; and **(ii)** nothing here is worth an arm — **`eps = 10 um` is a free x1.95 on the ceiling
+>> and should ride along with whatever is built next, not be built for.**
+>> **SO THE CAMPAIGN'S FIDELITY ANSWER STILL REVERTS TO THE BISECTION ROAD + PHASE-2**, exactly as the
+>> CLOSES branch would have had it — **but for a different and better-understood reason than "the road is
+>> shut".** The road is open on recovery, shape-bound by a constant that is separable, and still short of
+>> tolerance by two terms this probe did not touch. **Construction keeps what it has actually proved:
+>> topology (0/0/0, Euler 0, byte-identical determinism) and per-facet texture (parAR MAX 98.6, three
+>> arms, to the digit).**
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
