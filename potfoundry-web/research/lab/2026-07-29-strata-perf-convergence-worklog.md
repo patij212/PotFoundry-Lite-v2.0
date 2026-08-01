@@ -8726,6 +8726,179 @@ after** (`S25_GATE_S27POST.log`, and re-taken at the end of the arm); **W1 ident
 the only block left before the campaign closes on road (3).
 
 ---
+
+### PHASE D — **THE AFFORDABLE FULL-COVERAGE CERTIFICATE. REGISTERED IN FULL. NOTHING IS BUILT, NOTHING IS**
+### **RUN, NO NUMBER IS READ IN THIS BLOCK.** Substrate `gothicarches_ring_DS-HT_S24i2.stl`, md5
+### `c96da03c08eefbc081a304093c95a364`, 1,260,110 facets — the operator's standing mesh (`_S27A` did not
+### supersede it). Phase D is needed under BOTH surviving roads and is the campaign's last build.
+
+**WHAT THIS ARM IS AND IS NOT.** It is an INSTRUMENT arm. Its bars are about SOUNDNESS and COVERAGE, not
+about the mesh winning. **The expected outcome is FAIL at TOL 10 µm and it is registered here so that nobody
+can spin it**: `_S24i2` carries a witnessed H2 of 24.375 µm, a witnessed exceedance is sound from any
+coverage, and `judge()` fails on it. What the arm is FOR is the thing the campaign has never had — **a
+CERTIFIED H1 upper bound at 100% COVERAGE**, plus the complete enumerated residual with owners. Every H1
+number in this campaign's history is a capped 3.17% stride walk carrying the ±20%-subset-spread caveat
+(§1816) and the rim-row caveat; the true bound has been hidden behind both all campaign.
+
+#### **D1 — COMPOSITION SOUNDNESS. HOW GPU-TRIAGE + CPU-CONFIRM COMPOSE WITHOUT WEAKENING `judge()`.**
+
+The two populations are DISJOINT and EXHAUSTIVE over all 1,260,110 facets, and each is certified by an
+instrument that produces a RIGOROUS UPPER BOUND on the same quantity `max_{p in T} dist(p, S)`:
+
+| population | membership test | certifying instrument | what it yields |
+|---|---|---|---|
+| **P_screen** | `screenBound = mx + covRad/n + margin <= TOL` at some cascade level `n in {12,48,192}` | `gpuRuler.screenTriangles` via `_gpuRankBridge` | a certified upper bound `<= TOL`, per facet |
+| **P_surv** | everything else (`screenBound > TOL` at every level, n capped at 192) | `_facetTruthLib.certifyTriangle`, pooled | `bound = witnessed + covRad/n`, certified upper bound, per facet |
+
+**THE COMPOSED CLAIM.** `H1_certified = max( max_{P_screen} screenBound , max_{P_surv} cpuBound )`, and
+`H1_witnessed = max_{P_surv} cpuWitnessed`. Coverage is complete iff `|P_screen| + |P_surv audited| == nTri`.
+
+**WHY THE SCREEN'S BOUND IS A CERTIFICATE AND NOT A HEURISTIC** (gpuRuler's own design argument, restated
+because this arm depends on it): the screen samples a barycentric lattice of level `n` and, at each sample,
+takes the RADIAL-FOOT distance — the radial foot is a genuine point OF THE SURFACE, so its distance is an
+UPPER bound on `dist(p,S)`; Gauss-Newton tightening takes `min(radial, newton)` and any surface point is
+still an upper bound, so a bad step can only fail to help, never wave a facet through; the jump closure
+widens only when a two-scale probe says the width survives a 4x shrink, and falls back to the plain radial
+foot otherwise. `dist(.,S)` is 1-Lipschitz for ANY set, so `max_T <= max_lattice + covRad/n`. Hence
+`mx + covRad/n + margin` bounds the facet. **That is the SAME certificate structure as `certifyTriangle`'s
+`witnessed + covRad/n`, evaluated in f32 with a stated margin instead of f64.**
+
+**THE LEMMA THE WHOLE ARM RESTS ON, STATED SO IT CAN BE FALSIFIED:** *no facet with true deviation over TOL
+can be in P_screen*, because membership requires an upper bound `<= TOL`. Therefore **no exceedance can hide
+in the screened population**, and taking the witnessed max over P_surv alone is sound. D2 measures this
+rather than assuming it.
+
+**MARGIN AND RESOLVING POWER, STATED WITH THE NUMBER.** `marginMm = 0.001` (1 µm) covers f32 and the
+GPU-vs-CPU `rA` disagreement, which `_gpuRankBridge`'s parity guard MEASURES at startup over 32,768 samples
+of the whole surface (geometry, expn, bell and style) and REFUSES to open above `parityTolUm`. The recorded
+Gothic figure is **0.303 µm**; the arm registers `parityTolUm = 2` and prints the measured value with the
+certificate. The certificate is quoted at a stated resolving power: **screen n<=192, gnIters 2,
+closureEps 1e-6, margin 1 µm, f32; CPU nMax 2048, sampleCap 4e6, f64.**
+
+**IT CANNOT WEAKEN THE JUDGE.** `judge()` is called unmodified with a `DirectionReading` whose
+`certified: true`, `complete`, `boundMm` and `witnessedMm` mean exactly what they mean today. PASS still
+requires BOTH directions, FULL coverage in both, all gates, and a certified H1 bound under TOL. The only
+thing that changes is that H1's `complete` can now be **true** for the first time on a production mesh. FAIL
+is unchanged and remains sound from any witnessed exceedance. **The verdict prints coverage, resolving power,
+survivor counts and the TWO POPULATIONS' BOUNDS SEPARATELY** — a reader must be able to see what certified
+what, and must be able to reject the screen half and still read the CPU half.
+
+**H2 RUNS FULL AS EVER**, re-measured not inherited, at the campaign's standard Part-B depth
+`PF_FT_H2BUDGET=40000000` — the same computation `_S22B`, `_S23*` and `_S24i2` were scored with, so the
+number is directly comparable to the series.
+
+#### **D2 — THE CROSS-VALIDATION GATE. EXPECT-NONZERO DISCIPLINE: A SCREEN THAT CANNOT FAIL IS NOT AN**
+#### **INSTRUMENT. BARS REGISTERED BEFORE ANY NUMBER IS READ.**
+
+**CONTROL SET C**, deterministic and stated in advance:
+ (a) the first `PF_D_XVAL_N` (default **512**) facets of the campaign's OWN golden-ratio-stride walk over
+     `_S24i2` — the same low-discrepancy sampler `_strataFacetTruth` uses, so C is a uniform sample of the
+     whole mesh and not a low-index band;
+ (b) **SEEDED with the eight facets `FID_S24i2.report.txt` publishes as its stage-3 global-confirm top-8**:
+     tri 420186 (126.700 µm), 690730 (118.993), 1064879 (65.702), 1062693 (55.166), 756518 (17.876),
+     1036911 (28.750), 135194 (13.924), 721541 (9.701). **(b) exists solely to make the gate non-vacuous.**
+
+Every `c in C` is measured BOTH ways: the GPU screen at the cascade's top level n=192 (`mx_gpu`,
+`bound_gpu`) and `certifyTriangle` (`witnessed_cpu`, `bound_cpu`).
+
+| # | bar | value | if it fires |
+|---|---|---|---|
+| **X1** | **DOMINANCE — the soundness bar.** `#{c : bound_gpu(c) < witnessed_cpu(c)}` | **must be 0** | ***STOP.*** The screen's bound is not a bound. Report and do not compose. |
+| **X2** | **NON-VACUITY.** `#{c : witnessed_cpu(c) > TOL}` and `#{c : bound_gpu(c) > TOL}` | **both >= 1** | the gate is VOID — widen C and re-run. Zero here is itself a finding, since (b) alone should give >= 2. |
+| **X3** | **RATE AGREEMENT.** `abs( rate_gpu(mx > TOL) - rate_cpu(witnessed > TOL) )` over C | **<= 3.00 points** | STOP the certificate claim: the instrument is not calibrated as recorded. |
+| **X4** | **NO UNDER-FLAGGING.** `#{c : witnessed_cpu(c) > TOL AND bound_gpu(c) <= TOL}` | **must be 0** | ***STOP.*** This is X1's operational form and is the failure the composition cannot survive. |
+
+**X3's BAR IS THE RECORDED PRECEDENT, NOT A CHOICE.** `2026-07-28-gpu-rank-results.md` §2/§5 measured, on two
+meshes at 100% coverage: GeometricStar GPU 16.894% vs CPU 16.833% = **0.06 points**; GothicArches GPU
+10.774% vs CPU 7.821% = **2.95 points**. 3.00 is the worse of the two, rounded up. **The screen OVER-flags,
+which is the safe direction, and the same source records that it never under-flags.** Note also that
+document's own standing warning, which this arm obeys: **the GPU's MAX is not a proxy for the CPU's max and
+is never quoted as one — RATES transfer between the two instruments, MAXIMA do not.** Nothing here quotes a
+GPU max as an H1 max; the GPU contributes only *bounds that cleared TOL*.
+
+**TRAP 6 IS LIVE.** Correlation is on the MEASURED `mx`, never on `covRad` alone — `covRad` is the
+circumradius and diverges as the angle goes to 0, so a sliver fails a covRad-keyed test by construction.
+
+#### **D3 — DURABILITY, AND ONE REGISTERED DEVIATION FROM THE HANDOFF'S TRANSPORT.**
+
+**THE DEVIATION, DECLARED BEFORE THE BUILD.** The 2026-07-28 handoff §1 proposed inverting `statusSink.cjs`
+into an HTTP broker so a page-side sweep could be driven from Node. **That broker was superseded on
+2026-07-29 by `research/bridge/_gpuRankBridge.ts`, which is already built, already validated
+(1,000 triangles bit-identical against `screenTriangles` called directly in the page) and already in the
+tree.** It drives the INSTALLED Chrome through Playwright and `page.evaluate` IS the call — no broker, no
+long-poll, no second process, and **decisively the whole run stays a single Node job**, which is the only
+kind of job that survives between agent turns (traps #3/#4). `localStorage` checkpoints and the sink exist
+because a browser-console job has no filesystem and notifies nobody; a Node job has both. **So Phase D uses
+the bridge, writes its own progress log and failure sentinel directly to disk, and states this deviation
+rather than silently re-implementing a transport that was already replaced.** FALLBACK, registered: if
+Playwright or the installed Chrome will not grant a device, fall back to the page-console route
+(`gpuCertSweep.run()` + `statusSink.cjs` on 4599) and say so.
+
+* **TRAP 3 IS ABSOLUTE.** `research/` is served by the Vite dev server, so **NO FILE UNDER
+  `potfoundry-web/` IS EDITED WHILE THE RUN IS IN FLIGHT.** Everything — code, config, this registration —
+  is written and committed BEFORE the server starts. Results are appended only after the job exits.
+* **The dev server is started via the sanctioned route** (`.claude/launch.json`, config `dev`, port 3001 —
+  the origin `_gpuRankBridge` defaults to). Never `npm run dev` from a shell tool.
+* **TRAP 11 AMENDMENT for every long wait**: background the job with a failure sentinel, then issue REPEATED
+  FOREGROUND `until <sentinel>; do sleep 45; done` waits at 600 s each, re-issued immediately, never ending
+  the turn between them.
+* **Progress log** `research/exchange/_strataCertD/certD.progress.log`, one line per stage and per GPU
+  cascade round; **failure sentinel** `*** PHASE D FAILED ***`.
+
+**WALL, DERIVED FROM THE RECORDED ANCHORS, WITH CEILINGS AND AN INFEASIBLE ROW.**
+
+| stage | anchor | expected | ceiling | INFEASIBLE |
+|---|---|---|---|---|
+| GPU cascade, all 1,260,110 facets | recorded sweep **5,159,492 triangles in 362 s** (14,253 tri/s, levels 12/48/192, gn 2); bridge transport **8.96 M triangles = 65 s GPU + 141 s transport** | **90–900 s** | 1,800 s | > 3,600 s |
+| CPU H1 over survivors, pooled | `FID_S24i2` H1 measured **143.89 facets/s at W=8** on a *uniform* sample; survivors are the EXPENSIVE tail (per-facet cost spans 181x, and `certifyTriangle` escalates hardest on what it cannot certify), W=16 buys a further 1.51x | **20–150 facets/s**, i.e. **84–3,780 s** at the survivor band below | 7,200 s | survivors > 250,000, or > 7,200 s |
+| H2, full, Part-B depth | `FID_S24i2` **436 s / 40,008,064 queries** | 400–600 s | 900 s | > 1,800 s |
+| shape + normal censuses, gates | `FID_S24i2` **8.8 s + 6.7 s** | < 30 s | 60 s | — |
+| **whole certificate** | — | **0.5–1.5 h** | **3 h** | **> 4 h** |
+
+**THE SURVIVOR BAND, REGISTERED: 1%–6% of 1,260,110 = 12,600–75,600.** Derivation, stated so it can be
+wrong: `_S24i2`'s sampled H1 puts **1.15%** of facets over TOL *witnessed*; the recorded screen over-flags
+Gothic by **1.38x** on the rate (10.774% vs 7.821%); and the screen's membership test additionally carries
+`covRad/192 + 1 µm`, which on a 300–1000 µm facet is 1.8–3.6 µm of the 10 µm budget, so it flags facets whose
+true deviation is above roughly 6–8 µm. **If the measured survivor count lands outside 1%–6% that is a
+result about the screen's resolving power and is reported as one, not smoothed over.** The S24-era audits'
+1–4% band is the operator's prior and is recorded here alongside.
+
+**IF THE CPU LEG CANNOT FINISH INSIDE ITS CEILING** the arm reports **INFEASIBLE** with the measured survivor
+count and the implied wall, and the certificate is emitted with `complete: false` — i.e. an H1 bound over
+PART of the mesh, labelled INCOMPLETE, which `judge()` already refuses to certify. **A partial certificate is
+never quoted as a full-coverage one.** The n<=192 cascade cap STANDS; the kernel redesign is explicitly NOT
+attempted in this session and survivors simply go to the CPU.
+
+#### **D4 — THE VERDICT AND ITS REGISTERED EXPECTATIONS.**
+
+| # | registered before the run | what a miss would mean |
+|---|---|---|
+| **E1** | **verdict FAIL** at TOL 10 µm | anything else contradicts a recorded 24.375 µm witnessed exceedance on a byte-pinned STL |
+| **E2** | H2 re-measures **24.375 µm at th 1.358340 z 76.21094, 203 / 40,008,064 = 0.00051%** | the md5 is pinned, so a deviation is a finding about the INSTRUMENT, not the mesh |
+| **E3** | the composed certified H1 bound is **the first full-coverage certified H1 bound in campaign history**, and it lands in **100–700 µm** | `<= 136.544 µm` means the capped 3.17% walk had already found the worst facet — a strong statement about the stride sampler; `> 700 µm` exceeds everything recorded on this lineage and demands a locus check before it is quoted |
+| **E4** | the **complete enumerated residual**: every facet whose certified bound exceeds TOL, with locus, magnitude, 3-D AR, rim-row flag and owner | the S26 taxonomy says the owner is `shape-ar` (96.3%) / `shape-admit` (3.7%) on 4,563 facets; a residual whose population disagrees with that is a finding |
+| **E5** | the shape gates reproduce `FID_S24i2` exactly: **FOLD 0, NORMAL 0, BLADE 2, topology 0/0/0/Euler 0** | a gate that moves on a byte-identical STL is a defect in this arm's wiring |
+
+**AND THE ONE THING THIS ARM IS ALLOWED TO SAY PLAINLY IF IT MEASURES IT:** if the certified full-coverage
+bound lands UNDER the capped-walk fears, **say so** — the capped-H1 ±20% subset-spread caveat and the rim-row
+caveat have between them hidden the true bound all campaign, and retiring them is worth more than the
+verdict word.
+
+#### **D5 — IDENTITY, GATES, AND WHAT THIS ARM MAY NOT TOUCH.**
+No file under `src/`, no `_facetTruthLib.ts`, `_sharp3dRef.ts`, `_shapeGuard.ts`, `_judgeShape.ts`,
+`_judgeNormal.ts`, `_judgeVerdict.ts`, no `cdt2d`, no `_strataConformBisect.test.ts`, no
+`_strataFacetTruth.test.ts`. **This arm writes NEW bridge files only and imports every instrument
+read-only.** In particular the survivor audit calls `certifyTriangle` with the identical argument list the
+serial and pooled walks use, through the SAME `runH1Walk`, so every per-facet certificate is bit-identical
+by construction. HARD GATE **12/12 with every documented value exact, BEFORE and AFTER**. eslint clean and an
+explicit research `tsc --noEmit` on the new files. STL md5 re-checked after the run. Commit only this arm's
+own files, `research(strata)` style; never `git stash` / `git add -A`.
+
+**STOP CONDITIONS.** D2 X1/X3/X4 failure (a RESULT — report it, the instrument is not trusted);
+device-loss/watchdog storms beyond the recorded mitigations (n<=192 stands, no kernel redesign);
+registered INFEASIBLE; any touch of an untouchable.
+
+---
 ## READ THIS FIRST — the six things that changed tonight
 
 1. **The "~100x triangle shortfall" is wrong by ~2.5 orders.** Conforming adaptive demand is
