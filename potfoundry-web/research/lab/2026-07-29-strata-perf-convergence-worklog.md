@@ -7716,6 +7716,231 @@ instrument already expects (md5 recorded on both names), and not one line of any
 
 ---
 
+### *** S24 RESULT — **ROW 3, TEXTURE TRIP. AND INSIDE IT: F1 CLOSES.** THE PINNED 25.063 um COPY —
+### *** IMMOVABLE ACROSS SIX ARMS AND EVERY INTERVENTION THIS CAMPAIGN HAS TRIED — GOES **25.062 -> 0.062 um**
+### *** IN ONE PHASE-2 ITERATION, AND THE H2 ARGMAX RELOCATES FOR THE FIRST TIME SINCE `_S21A`. THE RESIDUAL
+### *** MAX THEN CHANGES **POPULATION**, AND THE NEW OWNER IS PROVABLY OUT OF PHASE-2's REACH. ***
+
+**MESH:** `research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S24i2.stl`
+md5 `c96da03c08eefbc081a304093c95a364`, 1,260,110 facets.
+Logs: `S24_STAGE0.log`, `S24_ITER3.log`, `S24_ITER4.log`, `S24_FINAL.log`, `S24_TWIN.log`,
+`S24_RULER_S22B.log`, `S24_ITER2_CASCADE_CONFOUND.log`. Fields: `research/exchange/_phase2/S24i{1..4}.loci.json`.
+
+#### **THE TRAJECTORY. Iteration 1 = `_S22B` reused, as registered. Same sampler on every row (`PF_P2_BUDGET=4e7`).**
+| it | iterate | tris | **H2 witnessed** | argmax | over / queries | fraction | scale hist | `unresolved` | mesher s | audit s |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `_S22B` | 1,251,546 | **25.063 um** | th 6.021386 z 113.45994 | 556 / 40,008,064 | 0.00139% | 2x:149 | 4,307 | 939.0 | 429 |
+| **2** | **`_S24i2`** | **1,260,110** | ***24.375 um*** | ***th 1.358340 z 76.21094 — RELOCATED*** | ***203*** / 40,008,064 | ***0.00051%*** | 2x:106 **4x:43** | 4,675 | 937.8 | 434 |
+| 3 | `_S24i3` | 1,266,934 | 24.375 um | th 1.358340 z 76.21094 | 203 / 40,008,064 | 0.00051% | 2x:106 **8x:43** | 5,013 | 954.2 | 443 |
+| 4 | `_S24i4` | 1,277,535 | 24.375 um | th 1.358340 z 76.21094 | 203 / 40,008,064 | 0.00051% | 2x:106 **16x:43** | 5,566 | 955.3 | 445 |
+
+>> **READ THE LAST THREE ROWS AS ONE FACT: rungs 4, 8 AND 16 BOUGHT NOTHING. Not the max, not the argmax,
+>> not ONE sample of forty million — while spending 17,425 triangles and 891 more stranded facets.** The
+>> ladder is a three-point dose-response and the response is a step function: **everything Phase 2 could
+>> reach, it reached at tolScale 2.**
+
+#### **F1 — THE DECISIVE CLAUSE. ***CLOSES.*** The pinned copy's carrier, iterate by iterate.**
+| arm | carrier tri | edges3d um | 3-D AR | parAR | driver's accept ruler | ***TRUE surface->mesh*** |
+|---|---|---|---|---|---|---|
+| `_S22B` | 243093 | 389.9 / 349.5 / 50.0 | 14.17 | 3.72 | 3.2055 um | ***25.062 um — OVER TOL*** |
+| **`_S24i2`** | 1241620 | **136.2 / 203.6 / 67.7** | 39.07 | 10.19 | 0.4028 um | ***0.062 um — WITHIN TOL*** |
+| `_S24i3` | 1239166 | 136.2 / 203.6 / 67.7 | 39.07 | 10.19 | 0.4028 um | **0.062 um** |
+| `_S24i4` | 1238264 | 136.2 / 203.6 / 67.7 | 39.07 | 10.19 | 0.4028 um | **0.062 um** |
+
+**x404 DOWN, AND 161x INSIDE TOLERANCE.** The field's cluster there was emitted at tolScale 2, was
+**NOT escalated at any later iteration** (it stayed 2x with count 2 while 43 others went 4 -> 8 -> 16), and
+the locus never re-exceeded. **The two S13 continuity sites came with it: site A 5.698 -> 0.001 um, site B
+0.000 -> 0.000 um.** All three historically-immovable loci now read inside TOL.
+
+>> ***AND MY OWN REGISTERED MODEL 2 IS REFUTED AT THIS LOCUS, WHICH IS THE MOST USEFUL THING HERE.*** The
+>> registration priced two competing costs and predicted *"Model 1 governs the first 2.5x and Model 2
+>> governs the last stretch"*. **Both halves are wrong, and in the same direction.** Model 2 (the analytic
+>> sagitta) said closing to 10 um needs h to fall **x246 = 7.94 halvings = x60,534 local triangles**.
+>> **Measured: the carrier's longest edge fell 389.9 -> 203.6 um — x1.9, LESS THAN ONE HALVING — and the
+>> error fell x404.** Even Model 1's h^1 law (error ~ h) predicted only x1.9. **So the 25 um was never a
+>> RESOLUTION deficit at all; it was a PLACEMENT deficit.** The old carrier was a 389.9 um chord lying
+>> across a feature that turns over inside it; one local accept halving was enough to put a **vertex on the
+>> feature**, and once a vertex sits on the crease the chord error there collapses to nothing. The
+>> surface's 1.6 um demand governs approximating the surface *between* vertices — it never governed the
+>> error *at* the witness. **That is why S23-T's 1.7 um number was decisive on the construction road and is
+>> not decisive here: the construction road could not PLACE a vertex there (36.4 um floor); the bisection
+>> road placed one at 203.6 um and was done.**
+
+#### **F2 — DOES NOT CLOSE, AND THE MECHANISM IS NAMED, MEASURED, AND WAS PREDICTED BEFORE IT WAS SEEN.**
+H2 witnessed **24.375 um** against a **<= 12 um** bar. **FAILS.** The FRACTION clause **HOLDS with a wide
+margin and in the good direction: 0.00139% -> 0.00051%, x0.365, against a tripwire of 0.00168%.**
+**THE NEW ARGMAX, ON BOTH ARMS — this is the S13-style table F1 demanded if anything failed to fall:**
+| | `_S22B` | **`_S24i2` / `_S24i3` / `_S24i4`** |
+|---|---|---|
+| TRUE surface->mesh at th 1.35834 z 76.21094 | **24.376 um** | **24.376 um — IDENTICAL on all four arms** |
+| carrier tri | 135697 | 135048 / 134763 / 134653 |
+| carrier edges3d | 135.1 / 34.8 / 112.4 um | 135.1 / **264.3** / 130.5 um |
+| 3-D AR (S1 cap **50**) | 5.93 | **19.88 — SUB-CAP** |
+| **the driver's own accept ruler** | 2.1765 um | ***14.0805 um = 4.02x ABOVE acceptTol 3.5*** |
+| **tolScale needed to QUEUE it** | 1.61x | ***0.25x — it needs NO FIELD AT ALL*** |
+| the field's cluster there | 2x, count 4 | escalated **4x -> 8x -> 16x**, count 8 |
+| local tol actually applied at i4 | — | **3.5 / 16 = 0.219 um**, i.e. **64x below what its ruler already reads** |
+| QUEUED? | yes | **yes** |
+| EXECUTED or REFUSED? | — | ***REFUSED — it is one of the 4,675 `unresolved` live over-tol triangles*** |
+| which gate refused it | — | ***S1 ASPECT, in `bisectAt`. Mesher counter: 777,726 refusals on aspect (>50), 0 on fold*** |
+
+>> ***THIS IS S13's TWO-POPULATION DISTINCTION ARRIVING AS A MEASURED RESULT, AND IT IS THE ARM'S REAL
+>> FINDING.*** S13 separated the residual into an **ACCEPTED-BLIND** set (sub-cap, well-shaped, never
+>> queued because the plane ruler under-reads) and a **STRANDED** set (genuinely S1-refused at the shape
+>> gate), and said they need different fixes. **S24 is the experiment that separates them at production:**
+>>   * **Phase 2 annihilated the accepted-blind set.** 106 of 149 loci never re-exceeded, the pinned copy
+>>     fell x404, and the over-tol fraction fell x0.365 for **+0.68% triangles**.
+>>   * **Phase 2 cannot touch the stranded set, and the reason is arithmetic rather than empirical.**
+>>     `PF_CB_TIGHTEN` scales `acceptTol`; `acceptTol` is the ACCEPT test. This facet is **not accepted** —
+>>     its ruler reads 4x OVER threshold with no field at all. **The driver has been asking to split it on
+>>     every arm and the shape gate has been saying no.** A field can only make the driver ask more often.
+>>     Dividing the accept threshold by 16 asks 64x harder for a permission that was never withheld by that
+>>     test. **The registered prediction — "iteration 3 applies 4 and it will not move; iteration 4 applies
+>>     8 and it will not move either" — held on both firings, to the digit and to the sample.**
+>> **AND THE STRANDED SITE IS THE ONE THE DRIVER HAS BEEN NAMING ALL ALONG.** Its locus is where the
+>> driver's own FULL-COVERAGE adaptive oracle has reported **MAX 95.473 um at z=[76.40,76.38,75.97]
+>> th=[1.3593,1.3590,1.3588]** on `_S21B`, `_S22A`, `_S22B` **and now `_S24i2` — four arms, three decimals,
+>> unmoved** — and it is the worst entry in the driver's own `unresolved` list on every one of them. **The
+>> mesh's worst mesh->surface facet and its worst surface->mesh sample are the same piece of geometry, and
+>> it is shape-refused.** The fix S13 already named is the fix: **a primitive that can lay anisotropic
+>> elements under the cap (`M = g/h^2`)** — not more accept pressure, at any divisor.
+
+#### **F3 — TEXTURE. *** F3a TRIPS. REPORTED, NOT TRADED. *** Identity components separately, `_S22B` -> `_S24i2`.**
+| census | `_S22B` | `_S24i2` | abs | **RATE per facet (F3b)** | F3a wire |
+|---|---|---|---|---|---|
+| **physical >= 90 (feature-spanning)** | 4,381 | **4,505** | **+2.83%** | **x1.0213** | ***TRIPS*** |
+| off-locus >= 15 | 24,208 | **24,736** | +2.18% | x1.0149 | ***TRIPS*** |
+| off-locus >= 30 | 17,848 | **18,299** | +2.53% | x1.0183 | ***TRIPS*** |
+| off-locus >= 45 | 15,255 | **15,666** | +2.69% | x1.0200 | ***TRIPS*** |
+| off-locus >= 60 / >= 120 / >= 150 | 12,479 / 1,546 / 395 | 12,791 / 1,593 / 409 | +2.50 / +3.04 / +3.54% | x1.018 / x1.023 / x1.028 | ***TRIP*** |
+| **photographed sub-floor (the operator's own target)** | 97 | **100** | **+3.09%** | **x1.0238** | ***TRIPS*** |
+| **plates** | 51 | **51** | **0** | x0.993 | **HOLDS** |
+| **S22 registered 1.5 mm shard census** | 44 | **44** | **0** | x0.993 | **HOLDS — z-histogram IDENTICAL bin for bin** |
+| **loose band (long >= 1.0, dev >= 45 or AR3 >= 12)** | 984 | **981** | **-0.31%** | x0.990 | **HOLDS — improved** |
+| **FAN HUBS** | 31 | **27** | **-12.9%** | x0.865 | **HOLDS — improved** |
+| **FAN MEMBERS** | 391 | **340** | **-13.0%** | x0.863 | **HOLDS — improved** |
+| **gated at the visible floor** | 0 | **0** | 0 | — | **HOLDS** |
+| parAR p50 / p90 / p99 / **MAX** | 4.28 / 11.76 / 65.1 / **932,125.1** | 4.29 / 11.86 / 67.5 / **932,125.1** | — | above-50: 1.404% -> 1.461% | reported, no bar |
+
+>> ***EIGHT QUANTITIES GREW AND SIX HELD OR IMPROVED, AND THE WIRE FIRES ON THE EIGHT. THAT IS THE VERDICT
+>> ROW, AND IT IS NOT NEGOTIATED DOWN.*** The registration said *"any growth trips it; a trip is REPORTED
+>> and STOPS the arm's claim on that quantity — the eye is not traded for the tail silently"*, so **S24 does
+>> not claim the deviation tails.** What F3b is for is saying **how big** the trip is, and it is small and
+>> structured: **every trip is +1.5% to +2.8% in RATE**, against a **+0.68%** growth in facet count, and
+>> S22B's own derived precedent band for a proportionate rise was **+2.0%**. So the tails grew somewhat
+>> faster than the mesh — **Phase 2 concentrates refinement exactly at feature loci, which is where chords
+>> across steep C1 walls are manufactured**, and the `>= 90` class is explicitly *"reported, not defects"*
+>> in the judge's own words. **The classes the operator actually photographs did the opposite: fan hubs
+>> x0.865, fan members x0.863, loose band x0.990, plates and the 1.5 mm shard census flat to the bin.**
+>> **AND THE MOST IMPORTANT TEXTURE NUMBER DID NOT MOVE AT ALL: gated at the visible floor stays 0, judge
+>> `[NORMAL] PASS count 0`, admission-stranded 0 of 1,260,110, with 5,408,249 admission checks and 43,317
+>> splits refused on admission.** The composed gates were live and biting through 516,845 splits, and **the
+>> orientation class remained unbirthable under a field that pushed refinement straight into the features
+>> that manufacture it. The CTLPLUS law stayed defused under the hardest test this campaign has given it.**
+
+#### **F4 — FIDELITY CONTEXT. Coverage, stride and the rim-row caveat all live.**
+| | `_S22B` | **`_S24i2`** | bar |
+|---|---|---|---|
+| **H1 facets-over** | 1.08% (434/40,000) | **1.15% (460/40,000)** | <= 1.30% — **HOLDS** |
+| H1 certified upper bound | 149.342 um | **136.544 um** | no claim — **improved** |
+| H1 witnessed | 139.354 um | **126.700 um** | no claim — **improved** |
+| H1 coverage / stride | 40,000/1,251,546 = 3.20%, stride 773,501 | 40,000/1,260,110 = **3.17%**, stride **778,791** | **INCOMPLETE, both** |
+| **full-coverage control (driver's adaptive oracle)** | **95.473 um** @ z 76.40/76.38/75.97 | **95.473 um @ the SAME locus** | **UNMOVED, 4th arm** |
+| over-0.01mm (full coverage) | 486 | 490 | reported |
+| `unresolved` / worst | 4,307 / 95.473 um | **4,675 / 95.473 um** | <= 8,000 / <= 250.0 — **HOLDS** |
+| strands artifact | `_S22B.strands.json` | `_S24i2.strands.json` | the M=g/h^2 routing input |
+
+>> **THE RIM-ROW CAVEAT IS LIVE AND IT APPLIES TO THIS ARM TOO.** `_S24i2`'s sampled H1 witness locus is
+>> **z = [119.969, 119.971, 120.000] — THE OPEN RIM ROW**, exactly as `_S22B`'s was at z 119.964-119.972.
+>> The standing BasketWeave caveat forbids quoting it as a wall defect, and the stride is a function of
+>> `nTri` so it re-draws whenever the mesh grows. **The sampled H1 witness has now moved on four consecutive
+>> arms (70.988 -> 95.949 -> 139.354 -> 126.700 um) while the full-coverage instrument has not moved once.**
+>> **THE CAGE GREW AS REGISTERED AND IT IS NOT A REGRESSION: `unresolved` 4,307 -> 4,675 -> 5,013 -> 5,566.**
+>> That is exactly what F4 said to expect — tightening pushes more candidates into the S1 cap — and it is
+>> the same population F2's argmax belongs to. **The worst entry never moved: 95.473 um on every arm.**
+
+#### **F5 — PRECONDITIONS. ALL SIX DISCHARGED, BOTH SIDES.**
+| clause | `_S22B` | **`_S24i2`** |
+|---|---|---|
+| determined folds | 0 | **0** |
+| determined blades | 2 | **2** (the seed-born pair; cap repair BEFORE 2 worst 85.1 -> AFTER 2 worst 85.1) |
+| worst admitted child AR | 50.00 | **50.00** — 777,726 aspect refusals, 0 fold refusals |
+| constraint recovery | 100% | **12,806 of 12,806 = 100%** |
+| seam-cracks / non-manifold / orientation / **Euler** | 0 / 0 / 0 / **0** | **0 / 0 / 0 / 0** (welded 630,630 v, 1,890,740 e, boundary 1,150) |
+| judge `[NORMAL]` | PASS count 0 | **PASS count 0** |
+| **`_W1` identity** | — | **md5 `8a59fb37a9115600b13262254380ccb0`, `cmp` BYTE-IDENTICAL** |
+| **HARD GATE, BEFORE** | — | **12/12, every documented value EXACT** (`S24_STAGE0.log`, 13:43:21) |
+| **HARD GATE, AFTER** | — | **12/12, every documented value EXACT** (`S24_FINAL.log`, 15:45:33) |
+| **F5f INSTRUMENT CROSS-CHECK** | — | ***EXACT: the emitting audit read 25.063 um at th 6.021386 z 113.45994 with 556 / 40,008,064 — the Part-B numbers to the digit*** |
+| recorder identities, all four iterations | — | **queries 40,008,064 === 40,008,064; rawCount === overCount (556 / 203 / 203 / 203); rawCapped false** |
+| **DETERMINISM, full-scale twin** | — | ***md5 `c96da03c08eefbc081a304093c95a364` on `_S24i2` AND `_S24i2D1`, `cmp` BYTE-IDENTICAL*** |
+
+>> **F5f IS THE ONE WORTH PAUSING ON.** Pinning the emitting audit to `PF_P2_BUDGET=4e7` made it the same
+>> computation as every arm's Part-B H2 stage, and it reproduced `_S22B`'s published numbers **exactly** —
+>> so every H2 in the trajectory table is directly comparable to the campaign's own series, and the final
+>> Part-B re-read of `_S24i2` returned **24.375 um with a brute-force re-check of 24.375**, agreeing with
+>> the emitting audit to the digit. **Two harnesses, one number.** S12's two audits disagreed (37.899 vs
+>> 40.006) purely because they ran different budgets; that ambiguity is now gone.
+>> **ONE HONEST CAVEAT CARRIED FROM THE INSTRUMENT, UNCHANGED FROM `_S22B`:** phase-B refinement was
+>> TRUNCATED by budget on every audit in this arm, exactly as it was on `_S22B`. Phase-A coverage completed
+>> in full over the whole z band at structure pitch 28.259 um, **so every H2 here is a FLOOR at that
+>> resolving power, on both arms equally.** The comparison is sound; the absolute number is a lower bound.
+
+#### **F6 — COST. Every ceiling clear, most of them by a wide margin.**
+| item | ceiling | **measured** |
+|---|---|---|
+| mesher, per iterate | 1,400 s | **937.8 / 954.2 / 955.3 s** (twin 978 s) |
+| emitting audit, per iteration | 1,200 s | **429 / 434 / 443 / 445 s** |
+| final Part-B two-sided audit | 1,400 s | **737 s** |
+| live triangles, per iterate | 2,500,000 | **max 1,277,535** (`_S24i4`) |
+| `predictedTris` vs `triCap` | 8,000,000 | **max 1,288,265 — INFEASIBLE-AT-CAP never within 6.2x** |
+| **whole arm** | **4 h** | ***2 h 29 min*** (13:39:44 -> 16:08:48), **including the 946 s discarded confound run** |
+| tightened footprint | — | **79.8 mm² of 38,457 mm² = 0.207% of the surface**, on every iteration |
+
+#### **THE FOUR SCORED LOOP EXITS — evaluated exactly as `_phase2Loop.mjs` computes them, per iteration.**
+**NONE FIRED AT ANY ITERATION.** PASS: no (`h2Pass` false throughout). DEFERRED-TO-CURTAIN: no
+(`curtainSites` 0 on every iterate). NON-MONOTONE: no — triangles grew **+0.68% / +0.54% / +0.84%** against
+a **+50%** trigger, so the exit could not fire even in principle. INFEASIBLE-AT-CAP: no — predicted
+1,254,141 / 1,263,862 / 1,272,996 / 1,288,265 against 8,000,000.
+**NOT-CONVERGED is a standing declared condition of this substrate** (`unresolvedLeft` 4,307 -> 5,566, the
+S1-cap stranding) **and was declared as such in the registration rather than re-scored as a finding.**
+
+#### *** THE VERDICT — SCORED FIRST-MATCH AGAINST THE FIVE REGISTERED ROWS ***
+| # | row | fires? |
+|---|---|---|
+| **1** | **INFEASIBLE** | **NO.** Every cost ceiling clear; `predictedTris` never within 6.2x of the cap; the arm ran in 62% of its time budget. |
+| **2** | **REGRESSION** | **NO.** F5 holds on all six clauses, both gates 12/12 exact, identity byte-exact, determinism byte-exact. F2's fraction tripwire moved the RIGHT way (x0.365). F4's ceilings hold. |
+| **3** | ***TEXTURE TRIP*** | ***FIRES. FIRST MATCH.*** The seven off-locus deviation tails and the photographed sub-floor grew, +2.2% to +3.5% absolute and +1.5% to +2.8% per facet. **Reported, not traded.** |
+| 4 | WIN | **NOT REACHED** — requires F3a, which trips. (F1 CLOSED, F2's fraction held, F4 and F5 held; **F2's max clause fails at 24.375 vs 12 um**, so the WIN row would not have fired on the max either.) |
+| 5 | TRADE | not reached |
+
+>> ***WHAT S24 ESTABLISHES, STATED FOR THE OPERATOR.***
+>> **1. PHASE 2 WORKS AT PRODUCTION, AND THE THING IT WAS BUILT TO KILL IS DEAD.** The smoke demonstrated
+>>    the mechanism at 12x8 / 150 um. **At production it took the campaign's single most durable defect —
+>>    a locus that survived S21A, S21B, S22, S22A, S22B and three S23 arms without moving one digit — from
+>>    25.062 um to 0.062 um for +0.68% triangles and 24 minutes.** The over-tol fraction fell x0.365. **106
+>>    of 149 loci closed and stayed closed.**
+>> **2. THE CERTIFICATE'S ANSWER IS WORTH MORE THAN THE DRIVER'S RULER, AND NOW BY MEASUREMENT.** The
+>>    driver's plane self-report **did not move one digit across all four iterates** (HEADLINE MAX 95.484 um
+>>    on every one). The mesh got measurably better and the driver could not see it — which is the whole
+>>    premise of Phase 2, reproduced at production exactly as the 12x8 smoke predicted.
+>> **3. THE REMAINING GAP HAS CHANGED OWNER, AND THAT IS THE RESULT THE NEXT ARM SHOULD BE BUILT ON.**
+>>    10 um is not reached: **24.375 um**. But the thing standing in the way is no longer *"a ruler that
+>>    cannot see"* — it is **one shape-refused facet class**, the driver already asks to split it at 4x over
+>>    threshold, and the refusal is the S1 aspect cap. **No accept-side lever can reach it: that is now
+>>    measured at rungs 4, 8 and 16, to the sample.** S13 named the fix three sessions ago and S24 has now
+>>    earned it: **anisotropic elements under the cap (`M = g/h^2`)**, whose input — `_S24i2.strands.json`,
+>>    4,675 facets — this arm emits.
+>> **4. THE TEXTURE PRICE IS REAL, SMALL, AND POINTED AT ONE CLASS.** The deviation tails grew ~2% per
+>>    facet because Phase 2 refines precisely where chords cross steep C1 walls. **Everything the operator
+>>    photographs went the other way** (fan hubs x0.865, fan members x0.863, plates and the 1.5 mm shard
+>>    census flat to the bin). **The wire is reported rather than argued away, and the operator's eye is the
+>>    right judge of whether +124 feature-spanning chords is worth a x404 fidelity closure.**
+
+>> **STOP AFTER SCORING. The operator's eyeball lands on `gothicarches_ring_DS-HT_S24i2.stl`.**
+
+---
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
