@@ -6539,6 +6539,195 @@ that worked is not a fix.
     rung 2 reproduces the R2 ladder's own **215,098 / 429,200 / over-cap 6** with the guard ON and finding
     nothing to do. **Three shared-file levers, all default-OFF, all inert by measurement.**
 
+#### THE FALSIFIABLE PREDICTION, WRITTEN BEFORE THE ARM'S OWN AUDIT IS READ
+The corrected arm was launched at **08:16:48** and `vitest` buffers worker stdout to the end of the run,
+so **no number from it has been seen at the time this paragraph is written.** The prediction is derived
+from `S23B_ARM.log:409` — *"non-manifold edges : 2 FAIL"* — plus the measurement above that the shipped
+seed's one crossing pair is the "BOTH ARMS RECOVERED" outcome at the same chart location.
+  >> **IF THE MECHANISM IS RIGHT, THE CORRECTED ARM'S TOPOLOGY CENSUS MUST READ `non-manifold edges: 0`**,
+  >> because the guard splits that crossing at a shared vertex and the two overlapping edges cease to
+  >> exist. **R4's registered demand — *"the first thing the next arm's gate must read 0 on"* — is
+  >> therefore a TEST OF THIS DIAGNOSIS and not a separate work item.** If the arm reads 2 again, the
+  >> unification of the two symptoms is refuted and only the recovery half of the mechanism stands.
+  >> **AND ONE OBSERVATION OFFERED AS A LEAD, NOT A CAUSE.** `_S23B`'s fan-hub census lists hubs at
+  >> `th 2.43763, z 64.410`, `th -2.79792, z 64.284`, `th 1.22728, z 64.337` — and rung 1's two proper
+  >> crossings are at `z = 64.407462` and `z = 64.407467`. A hub is *"a vertex on >= 12 facets carrying an
+  >> edge >= 500 um"*, which is what a `minSepMm` weld makes when it piles several chain vertices from two
+  >> loci onto one point at a junction. **Whether the weld that manufactures the crossings also
+  >> manufactures the hubs is a question this arm's own census prices; it is NOT claimed here.**
+
+
+### *** S23B-R / R4 — **THE CORRECTED ARM. IT BUILDS, THE PREDICTION HOLDS — R4's TWO NON-MANIFOLD EDGES**
+### *** **GO 2 -> 0 — AND *THE CLAUSE IS REFUTED A SECOND TIME, HARDER*: 253 SHARDS AND 418 FAN HUBS**
+### *** **OUTSIDE DECLARED GEOMETRY AGAINST BARS OF 5 AND 2. AND THE HEADLINE MAX DOES NOT MOVE ONE DIGIT.** ***
+**MESH: `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S23R.stl`**, md5
+`bf4c09a550aea082c3061faee326b41f`, **59,879,434 bytes**. Script `s23r_arm.sh`, log `S23R_ARM.log`.
+Two differences from `s23b_arm.sh` and no others: `PF_CB_RECON` points at the schema-`/2` artifact (so the
+reader's own default selects the SCATTERED field) and **`PF_S10_PLANARIZE=1`** — a lever in a scratch
+script. `PF_CB_MAXSECS` 5400 -> 10800 as the amended-ceilings block registered. **No default is flipped.**
+
+| the arm, against its registered ceilings | measured | ceiling | % |
+|---|---|---|---|
+| live triangles | **1,197,587** | 5,500,000 | **21.8%** |
+| shipped STL bytes | **59.88 MB** | 300 MB | **20.0%** |
+| seed build (the `cdt2d` call) | **696 s** (ladder rung 4) | 3,000 s | **23.2%** |
+| total driver wall | **900.71 s** | 4,500 s | **20.0%** |
+
+| | `_S22B` (the oracle) | `_S23B` (row 2) | **`_S23R` (this arm)** |
+|---|---|---|---|
+| triangles | 1,251,546 | 763,965 | **1,197,587** |
+| seed points -> tris | — | 382,576 -> 763,965 | **599,472 -> 1,197,587** |
+| constraint recovery | — | 13,220 of 13,220 | **13,412 of 13,412** |
+| **non-manifold edges** | — | **2  FAIL** | **0  OK** |
+| seam-crack edges / Euler / reversed | — | 0 / 0 / 0 | **0 / 0 / 0**, boundary 921, loops 2 |
+| over-cap facets (declared / undeclared) | — | 7 | **8 (0 declared / 8 undeclared)**, folds 0 |
+| 3-D AR p50 / p90 / p99 / MAX | — | 2.411 / 4.306 / 10.711 / **85.129** | 2.421 / 4.345 / 11.191 / **85.129** |
+| parametric AR p50 / p90 / p99 / MAX | — | 2.308 / 4.123 / 8.630 / 91.131 | 2.335 / **3.640** / **7.983** / 95.963 |
+| driver HEADLINE MAX | — | **622.349 um** | **622.349 um — IDENTICAL** |
+| driver adaptive p50 / p99 | — | 3.279 / 37.823 | **2.328 / 25.073** |
+| driver over-0.01 mm | — | 151,442 / 763,965 = **19.8%** | 121,120 / 1,197,587 = **10.1%** |
+
+>> **THE PREDICTION REGISTERED BEFORE THE ARM'S NUMBERS WERE SEEN IS CONFIRMED: `non-manifold edges : 0`.**
+>> `_S23B` shipped **2 FAIL**. The corrected arm reads **0 OK**, and the only thing that changed at that
+>> locus is that the guard split the crossing pair whose "BOTH ARMS RECOVERED" outcome the census had
+>> already measured at chart `(109.558562, 119.995244)`. **R4's *"first thing the next arm's gate must
+>> read 0 on"* reads 0, and it reads 0 because of a diagnosis, not because of a patch aimed at it.**
+>> **THE PARAMETRIC-AR ANNIHILATION SURVIVES** — parAR p90 **4.123 -> 3.640** and p99 **8.630 -> 7.983**
+>> against `_S22B`'s own 932,125-to-98.6 construction result. The MAX moves 91.131 -> 95.963 and that is
+>> reported, not smoothed: it is one facet, in an undeclared interior, on a 1.57x larger population.
+
+#### THE CLAUSE. THE REGISTERED BAR, THE REGISTERED NO-PARTIAL-CREDIT RULE, AND IT MISSES BY MORE
+| THE CLAUSE — outside declared geometry | `_S22B` | `_S23B` | **`_S23R`** | bar |
+|---|---|---|---|---|
+| shards `long >= 1 mm AND AR3 >= 20` (the registration's quoted control) | 205 | 194 | **253** | **<= 5** |
+| shards `long >= 1 mm AND (dev >= 45 deg OR AR3 >= 20)` | — | 242 | **295** | — |
+| **fan hubs** (vertex on >= 12 facets carrying an edge >= 500 um) | — | 230 | **418** | **<= 2** |
+| shards INSIDE a declared region | — | 1 | **1** | — |
+| of the outside-declared shards, rim-row / INTERIOR | — | 0 / 194 | **0 / 253** | — |
+
+>> **REFUTED, AND THE HONEST FORM OF THE NUMBER IS THE RATE, WHICH I AM REPORTING BOTH WAYS BECAUSE ONLY
+>> ONE OF THEM IS THE BAR.** The mesh is **x1.5676** the facets of `_S23B`. Per facet the SHARD rate falls
+>> — `2.54e-4 -> 2.11e-4`, **x0.832** — and the HUB rate RISES — `3.01e-4 -> 3.49e-4`, **x1.159**. **The
+>> bar is absolute and has no partial credit, so the verdict is REFUTED on both quantities**, and the
+>> corrected field made the absolute count of both WORSE. *"A corrected field will fix the clause"* was
+>> never registered as an expectation, and it is now measured false in the direction nobody proposed.
+>> **AND THE FAN HUBS ARE WHERE THE NEXT MECHANISM IS, IF THERE IS ONE.** Hubs are the quantity that got
+>> worse per facet, and the census lists them at `z = 64.410 / 64.284 / 64.337` — **the same `z` as rung
+>> 1's two proper crossings (`64.407462`, `64.407467`)**. A hub is *"a vertex on >= 12 facets carrying an
+>> edge >= 500 um"*, which is exactly what `addPt`'s **192.65 um** weld makes when it piles several chain
+>> vertices from two loci onto one point at a junction — the same weld this arm proved annihilates
+>> crossing vertices. **THIS IS A LEAD WITH A NAMED DISCRIMINATOR AND IT IS NOT A FINDING: count the hubs
+>> whose incident chain vertices come from two different `ownerChain` values.** The provenance arrays that
+>> answer it already exist in the seed.
+
+#### THE THIRD LIMIT LANDS EXACTLY WHERE R1 SAID IT WOULD, AND IT IS THE CLEANEST ROW IN THIS ARM
+**The driver's HEADLINE MAX is 622.349 um in BOTH arms — identical to the digit, at the identical locus**
+(`z = [80.92, 80.79, 80.58]`, 67% H, `th = [4.4491, 4.4494, 4.4524]`, edges 124.9 / 259.6 / 376.2 um).
+A x1.57 denser mesh from a x1.20 finer field moved it **not at all**.
+  >> **THAT IS R1's `x2.46` ARRIVING IN THE FIDELITY ROWS, AS THE REGISTERED HONEST EXPECTATION SAID IT
+  >> WOULD.** *"THE ORACLE'S OWN NON-CONVERGENCE OWNS x2.46 — the largest term and the residual after both
+  >> fixes ... no serialization change, no estimator change and no constructor can reach that, because the
+  >> demand was never in the map."* **The distribution is what a better field buys** — adaptive p50
+  >> `3.279 -> 2.328`, p99 `37.823 -> 25.073`, over-tol fraction `19.8% -> 10.1%` — **and the MAX is what
+  >> it cannot buy, because the MAX sits where `_S22B` itself never resolved the feature.**
+  >> **SAID AS THE LAW IT ALREADY IS: THE ORACLE-AND-CONSTRUCTOR ARCHITECTURE IS BOUNDED BY THE ORACLE'S
+  >> OWN CONVERGENCE.** Two arms have now measured the same 622.349 um from two different fields.
+
+#### THE PART-B AUDIT, TWO-SIDED, AGAINST THE `_S22B` ENVELOPE — AND THE TWO SIDES DISAGREE COMPLETELY
+`S23R_ARM.log` stage 8, `PF_FT_H1MAX=40000`, `PF_FT_H2BUDGET=40M`, 8 workers, 1,881 s.
+
+| Part-B, at Part-B depth | `_S22B` (the oracle) | `_S23B` | **`_S23R`** | `_S23R` vs the oracle |
+|---|---|---|---|---|
+| **H1 CERTIFIED UPPER BOUND** | 149.342 um | 393.710 um | **182.568 um** | **x1.22** |
+| **H1 WITNESSED max** | 139.354 um | 383.724 um | **165.780 um** | **x1.19** |
+| H1 coverage (audited / live) | — | 21,726 / 763,965 = **2.84%** | 31,128 / 1,197,587 = **2.60%** | — |
+| H1 facets with a witnessed exceedance | — | — | 3,828 / 31,128 = **12.30%** | — |
+| **H2 WITNESSED max** | **25.063 um** | 584.131 um | **584.131 um — IDENTICAL** | **x23.31** |
+| H2 phase-A, 100% coverage, 29.0M queries | 24.375 um | 445.898 um | **445.898 um — IDENTICAL** | x18.29 |
+| H2 samples over TOL | — | — | 2,446,741 / 40,011,016 = **6.115%** | — |
+| blades (AR > 50, determined) | 2 det + 10 f32indet | 7 | **8** (0.0007%) | — |
+| folds | 0 | 0 | **0** | — |
+| back-facing (gate NORMAL) | 0 (+4,381 feature-span) | 14 (+252) | **15** (+283) | — |
+| **watertight: non-manifold / cracks / Euler** | — | **2 / 0 / 0** | **0 / 0 / 0** | — |
+| gate TOPOLOGY | — | **FAIL (2)** | **PASS (0)** | — |
+
+>> **THE TWO INSTRUMENTS SAY OPPOSITE THINGS AND THAT IS THE RESULT, NOT A CONTRADICTION.** H1 asks *"is
+>> the mesh ON the surface"* and it improves by **x2.31** (383.724 -> 165.780 um), landing **x1.19** of the
+>> oracle's own witnessed max. H2 asks *"is the surface REPRESENTED by the mesh"* and it does not move by
+>> **one digit** — 584.131 um in both arms, against the oracle's 25.063 um. **A x1.57 denser mesh from a
+>> x1.20 finer field bought the whole of the first question and none of the second**, because the second
+>> one is the unrepresented-feature class (the gate's own V4 fixture), and an extracted field cannot ask
+>> for material at a feature its source mesh never resolved.
+>> **THE H1 CAVEAT IS QUOTED WITH FORCE, AS THE AMENDED-CEILINGS BLOCK REQUIRES.** H1 audited **2.60%** of
+>> the live facets and is marked *"INCOMPLETE — the unseen triangles are UNKNOWN, not passing"*. The
+>> standing rule is *"an H1 witness that moves between arms at low coverage is a sampling event until
+>> proven otherwise"* — **so the x2.31 improvement is REPORTED AND NOT BANKED.** What is banked from
+>> Part B is the pair that carries no coverage caveat: **watertight 0 / 0 / 0 with gate TOPOLOGY PASS**,
+>> and **H2 at 100% phase-A coverage, unchanged to the digit.**
+
+#### DETERMINISM, AND THE parAR ANNIHILATION, BOTH SCORED
+**FULL-SCALE PAIR (S5 substitute, part 2): `md5 bf4c09a550aea082c3061faee326b41f` on BOTH the arm and its
+twin, `cmp` BYTE-IDENTICAL.** Log `S23R_TWIN.log`; the first attempt died with its parent shell before it
+wrote an STL and was re-run whole — a harness event, reported so the gap in `S23R_ARM.log` is not read as
+a defect. **The reduced-scale triple (S5 substitute, part 1) is NOT run and is on the what-remains list.**
+
+| parAR census (S19's instrument, unchanged) | `_S23B` | **`_S23R`** |
+|---|---|---|
+| p50 / p90 / p99 / **MAX** | 2.31 / 4.13 / 8.6 / **98.6** | 2.34 / **3.63** / **8.0** / **98.6** |
+| facets above 50 | 11 (**0.001%**) | 34 (**0.003%**) |
+| EYE facets (dev >= 45 deg, area >= 0.02 mm^2) | n = 189, p50 7.7 | n = **177**, p50 10.1 |
+
+>> **THE parAR ANNIHILATION SURVIVES: MAX 98.6, to the digit, against the 932,125 the bisection family
+>> could not reach below.** p90 and p99 both improve. **The above-50 population triples in rate
+>> (0.001% -> 0.003%) and that is reported, not smoothed** — 34 facets of 1,197,587.
+>> **AND THE `z ~ 64.4` BAND IS NOW ON ITS THIRD INDEPENDENT INSTRUMENT.** Rung 1's two proper crossings
+>> (`z = 64.407462`, `64.407467`); the fan hubs (`z = 64.410 / 64.284 / 64.337`); and every one of the
+>> eight worst EYE facets in BOTH arms (`z = 64.28`..`64.49`). **Three instruments, one band, and the weld
+>> lead above is the only named candidate that touches all three.**
+
+### *** S23B-R / R4 — **THE VERDICT, AND WHAT REMAINS** ***
+| row | verdict |
+|---|---|
+| **the mechanism** | **RE-DERIVED AND MEASURED.** Non-planar PSLG at the seed's own `cdt2d` call. Two manufacturers, both with fingerprints. The inherited R4 mechanism is REFUTED. |
+| **constraint recovery (the S7 block)** | **CLEARED.** 100% on all four ladder rungs; the arm's own seed 13,412 of 13,412. |
+| **R4's two non-manifold edges** | **CLEARED — 2 -> 0**, on a prediction registered before the number was read. |
+| **the corrected arm** | **BUILT.** 1,197,587 tris, 59.88 MB, 900.71 s, 21.8% of the raised ceiling. |
+| **watertight / Euler / cracks** | **PASS — 0 / 0 / 0**, gate TOPOLOGY PASS. |
+| **determinism (full-scale pair)** | **PASS — byte-identical.** |
+| **parAR annihilation** | **SURVIVES — MAX 98.6**, p90 and p99 both improved. |
+| **THE CLAUSE (<= 5 shards, <= 2 hubs)** | ***REFUTED, AND BY MORE THAN `_S23B`: 253 and 418.*** |
+| **fidelity vs the `_S22B` envelope** | **SPLIT: H1 x1.19 of the oracle (and NOT banked — 2.60% coverage); H2 x23.31, unchanged to the digit.** |
+| **the oracle's x2.46 under-convergence** | **LANDS EXACTLY WHERE R1 REGISTERED IT** — the driver MAX and the H2 MAX both identical to `_S23B`. |
+
+>> **THE ONE THING TO KNOW.** The block was never a density limit and never an ordering defect. **It was
+>> cdt2d's PLANARITY PRECONDITION, violated by a list nobody had ever checked, in every configuration
+>> including the one that shipped** — and the same violation had been silently producing `_S23B`'s two
+>> non-manifold edges the whole time. Enforcing the precondition unblocks the arm, clears the topology
+>> gate and costs 91 ms on a 696 s seed. **And it does not move THE CLAUSE, which gets worse, or the
+>> fidelity MAX, which does not move at all.** Three limits were named in R2's follow-up; **(1) constraint
+>> recovery is now PAID**, (2) the corridor is untouched, and **(3) the oracle's own convergence is now
+>> measured twice from two different fields at the same 622.349 um.**
+
+#### WHAT REMAINS, NAMED AND NOT BUILT
+  1. **UNIT A's OWN MEASUREMENT.** `PF_S10_COND_PROJECT` is implemented and default-OFF; the ladder ran
+     with `projected 0` throughout, so **A is unvalidated**. Its own experiment is one run: the R2
+     follow-up's `PF_S10_COND_PASSES` sweep with the projection ON, showing the list reaching a FIXED
+     POINT beyond 3 passes instead of doubling to 29,377,010 at 21.
+  2. **THE WELD LEAD, WITH ITS DISCRIMINATOR ALREADY WRITTEN.** `addPt`'s `minSepMm` = 192.65 um weld
+     annihilates stage-2 crossing vertices (4 of 4, measured). **The discriminator for whether it also
+     manufactures the fan hubs: count hubs whose incident chain vertices carry two different
+     `ownerChain` values** — the provenance arrays exist. This is the only named candidate that touches
+     the `z ~ 64.4` band on all three instruments.
+  3. **PHASE 2, ON THE PINNED 25.063 um COPY.** `_S22B`'s own H2 witnessed max is **25.063 um** and
+     `_S23R`'s is 584.131 um at a locus neither field priced. Phase 2 is the mechanism that pays exactly
+     there (0.08% of the surface, measured), and it is registered as needing the shape guard first.
+  4. **PHASE D VIA GPU TRIAGE — NAMED, NOT BUILT.** The oracle's convergence is the binding limit and a
+     better oracle is a cost problem, not a correctness one: triage candidate loci on the GPU at low
+     precision, confirm the survivors on the CPU at full precision. **Named as the strategy; no line of
+     it is written here.**
+  5. **THE S5 REDUCED-SCALE DETERMINISM TRIPLE** (`PF_CB_RECON_SCALE=2`, arm + two twins, md5 AND `cmp`).
+     The full-scale pair is done and passes; the triple is not run.
+
 
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
