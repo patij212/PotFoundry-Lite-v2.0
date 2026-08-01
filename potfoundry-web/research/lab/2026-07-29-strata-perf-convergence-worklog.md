@@ -7396,6 +7396,220 @@ Log `S23E_EPS.log`, script `s23e_eps.sh`. Reduced scale 2, chain off, guard ON, 
 >> topology (0/0/0, Euler 0, byte-identical determinism) and per-facet texture (parAR MAX 98.6, three
 >> arms, to the digit).**
 
+### S24 — **PHASE 2 AT PRODUCTION, ON THE BEST BISECTION MESH. REGISTERED IN FULL. NOTHING IS BUILT AND**
+### **NO ARM HAS RUN. ONE PRE-REGISTRATION PROBE IS REPORTED BELOW BECAUSE F2's ITERATION COUNT CANNOT BE**
+### **STATED HONESTLY WITHOUT IT — AND IT REFUTES THE ESTIMATE THIS ARM WAS HANDED.**
+
+**THE ROAD DECISION IS MADE BY MEASUREMENT AND THIS ARM IS ITS CONSEQUENCE.** S23-E (`ab1e9603`) closed the
+construction road on the evidence available: recovery never breaks, but even a perfect `clearEps`/`pslgEps`
+split leaves the `3*weldMm` patch bound at **x4.2 TOL** and S23-T's **x2.33** corridor term untouched. So the
+campaign's fidelity answer is **THE BISECTION ROAD + PHASE-2**, and this is the designed last mile: the
+certificate-driven local tightening pass, at production, on `_S22B`.
+
+**CLAIM.** *Certificate-driven local tightening at production closes the H2 tail the driver's ruler cannot
+see.* This is the S13 fallback lever — *"tolScale escalation would eventually queue the blind carriers —
+brute-force closable in principle, priced as ugly"* — exercised deliberately, with the S20/S21B/S22 composed
+admission gates on so the orientation class is unbirthable and refinement is safe (the CTLPLUS law defused).
+
+---
+
+#### **THE PRE-REGISTRATION PROBE — S13's RULER AUTOPSY, RE-TAKEN ON `_S22B`. `S24_RULER_S22B.log`.**
+Artifact-only: existing STL, no mesher run, no audit. Tool `research/tools/s24Ruler.ts` ->
+`research/bridge/out/_run_s24ruler.cjs`. **It is reported here, before the bars, because F2 has to state an
+expected iteration count and S13's 4.36x/8.40x were measured on the S12 substrate — four arms ago.**
+
+| site (th, z) | carrier | edges3d um | 3-D AR | **driver's accept ruler** | recorded H2 | blindness | **tolScale to QUEUE** |
+|---|---|---|---|---|---|---|---|
+| **PINNED copy 6.021386 / 113.45994** | tri **243093** | **389.9 / 349.5 / 50.0** | **14.17** | **3.2055 um** | **25.063 um** | **7.8x** | ***1.09x*** |
+| S13 site A 5.637379 / 44.16992 | tri 379147 | 224.6 / 195.2 / 205.8 | 1.88 | 3.0916 um | *(stale: 37.899)* | *(stale)* | *1.13x* |
+| S13 site B 4.062906 / 45.38896 | tri 616263 | 30.0 / 33.9 / 15.1 | 2.96 | 0.0050 um | *(stale: 40.006)* | *(stale)* | *701.98x* |
+
+>> ***THE ESTIMATE THIS ARM WAS HANDED IS REFUTED, AND IN THE HELPFUL DIRECTION.*** The brief says *"the
+>> blind carrier queues at tolScale >= 4.36, the loop escalates x2 per re-exceedance from 2, expect ~3-4
+>> outer iterations"*. **Measured on the mesh this arm actually tightens: the pinned carrier's ruler reads
+>> 3.2055 um against an acceptTol of 3.5 um. It needs tolScale 1.09x — it is a HAIR under the accept
+>> threshold, not 47x blind.** Phase 2's FIRST field (a fixed divisor of 2, localTol 1.75 um) queues it with
+>> **1.83x to spare**, so the pinned copy is first acted on at **OUTER ITERATION 2**, not 4.
+>> **WHY THE SUBSTRATE MOVED, STATED SO IT IS NOT MISTAKEN FOR A CONTRADICTION OF S13.** S13's carrier at
+>> site A spanned **1,367 / 1,550 / 357 um** at AR 5.71 and read 0.8031 um. The carrier standing at that
+>> same (th, z) TODAY spans **224.6 / 195.2 / 205.8 um** at AR 1.88 and reads 3.0916 um. S15's across rule,
+>> S19's rings and S22/S22B's de-shard refined the neighbourhood by **x6-7 in edge length**, and a shorter
+>> chord across the same V reads a LARGER plane sagitta, not a smaller one. **S13's 47x/96x blindness was a
+>> true measurement of a mesh that no longer exists.** Both numbers are correct; only one is current.
+>> **THE TWO STALE NUMERATORS ARE FLAGGED AND NOT USED.** Sites A and B carry S12's H2 values; `_S22B`'s H2
+>> at those loci has never been measured and the "blindness" column for them is a current ruler over a
+>> stale error. **No bar in this arm depends on them.** They are printed for continuity only.
+
+#### **AND THE SECOND PRE-REGISTRATION MEASUREMENT, WHICH IS THE ONE THAT COULD KILL F1.**
+The same probe evaluates **the surface's own demand** at each locus: the chord length whose analytic sagitta
+is 10 um. This is exactly the quantity S23-T tabulated as `sag(h) = 10 um => h = 1.7 um`, re-taken here on
+the pinned site because it means a **different thing on this road**: the construction road had a hard 36.4 um
+floor (`pslgEpsMm / 0.55`) that put 1.7 um **x21 out of reach**; **the bisection driver's floor is
+`FLOOR_MM = 1.5 um`** (`PF_CB_FLOOR_UM`, `_strataConformBisect.test.ts:129`) and its weld is ~50 nm.
+
+| | pinned copy | S13 A | S13 B |
+|---|---|---|---|
+| demand for a 10 um sagitta (theta / z / diag) | **1.6 / 3.1 / 1.6 um** | 2.9 / 16.4 / 2.9 | 2.6 / 16.4 / 2.6 |
+| **BINDING demand** | **1.6 um** | 2.9 um | 2.6 um |
+| carrier longest edge | 389.9 um | 224.6 um | 33.9 um |
+| **h must fall** | **x246.0 = 7.94 halvings** | x76.4 = 6.26 | x13.1 = 3.71 |
+| implied LOCAL triangle multiplier (`4^halvings`) | **x60,534** | x5,839 | x171 |
+| vs `FLOOR_MM = 1.5 um` | **x1.07 ABOVE — REACHABLE** | x2.0 above | x1.7 above |
+
+>> ***THE ONE NUMBER THAT DECIDES THIS ARM'S CHARACTER: S23-T's 1.7 um DEMAND IS CONFIRMED AT 1.6 um, AND
+>> ON THIS ROAD IT IS INSIDE THE FLOOR RATHER THAN x21 OUTSIDE IT.*** The construction road could not build
+>> it at any price. **The bisection road CAN — the question is only what it costs**, and the two available
+>> models of that cost disagree by four orders of magnitude. **Both are registered now, as competing
+>> predictions, so whichever the loop measures cannot be claimed afterwards as the expected one:**
+>>   * **MODEL 1 — the h^1 CREASE model (S13's, measured on transects).** Both sites read CREASE (C1),
+>>     two-scale ratio 0.25-0.39 against a jump threshold of 0.62. On an h^1 crease chord error falls like
+>>     **h**, so 25.063 -> 10 um needs h to fall **x2.51 = 1.33 halvings = x6.3 local triangles.** Cheap,
+>>     and it predicts F1 closes at iteration 2 or 3.
+>>   * **MODEL 2 — the ANALYTIC SAGITTA model (the table above).** Closing to the surface's own demand needs
+>>     **x246 in h and x60,534 in local triangle count.** At the field's 500 um ball that is ~7x10^5 triangles
+>>     PER CLUSTER against a 1,251,546-triangle mesh and an 8,000,000 cap. **If Model 2 governs, the loop's
+>>     INFEASIBLE-AT-CAP exit is the correct answer and F1 fails for a reason that is a RESULT, not a miss.**
+>> **I PREDICT MODEL 1 GOVERNS THE FIRST 2.5x AND MODEL 2 GOVERNS THE LAST STRETCH**, i.e. H2 falls
+>> materially at iterations 2-3 and then stalls above 10 um with the cost curve turning over. Stated so it
+>> can be wrong. **If F1 closes outright, Model 2 is refuted at this locus and that is worth more than the
+>> certificate.**
+
+---
+
+#### **THE SUBSTRATE AND THE COMMAND. This arm tightens `_S22B`'s lineage and changes exactly ONE thing.**
+`_S22B` = `research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S22B.stl`, 1,251,546 facets,
+md5 of the `_W1` identity control `8a59fb37a9115600b13262254380ccb0`, run manifest
+`gothicarches_ring_DS-H_S22B.run.json` (`unresolvedLeft` 4,307, `capped` false, `timeCapped` false,
+`curtainSites` 0, `verdict` FAIL, `headlineMaxMm` 0.09548415551381176, 939.035 s).
+**The iteration-N command is `research/bridge/out/s22b_arm.sh` STAGE 2, verbatim, plus `PF_CB_TIGHTEN` and a
+new `PF_CB_TAG_SUFFIX`. Nothing else moves** — same 200x140 seed, same 8M cap, same acceptTol 0.0035, same
+aligned seed + across rule + 7 rings + turn-mul 9, same 43 declared patch IDs, same
+`PF_CB_ADMIT_NORMAL=1 PF_CB_ADMIT_NORMAL_SPLIT=1 PF_CB_ADMIT_SHIPPED=1`, same de-shard
+`LMM=1.0 AR=20 DEV=45 DEPTH=4 BUDGET=8000 FANPASSES=6`.
+
+**THE LOOP IS DRIVEN BY HAND AND THIS IS DECLARED, NOT DISCOVERED.** `_phase2Loop.mjs` evaluates
+`driverClean = unresolvedLeft === 0 && !capped && !timeCapped`, and `_S22B` carries **4,307 unresolved** from
+the S1 aspect cap. **Its NOT-CONVERGED exit therefore fires at EVERY iteration on this substrate, by
+construction, exactly as it did in S12/PB8.** Running the loop binary would stop after iteration 1 and
+measure nothing. So the four stages are run by hand at `_S22B`'s config and **the loop's other four exits
+(PASS / DEFERRED-TO-CURTAIN / INFEASIBLE-AT-CAP / NON-MONOTONE) are evaluated exactly as `_phase2Loop.mjs`
+computes them**, on its own numbers, and reported per iteration. NOT-CONVERGED is a standing declared
+condition of the substrate and is not re-scored as a finding.
+
+**THE EMITTING AUDIT IS PINNED TO THE CAMPAIGN'S OWN H2 SAMPLER, AND THAT IS A CHANGE FROM S12.** S12's
+emitting audits ran at `_phase2Audit`'s default `PF_P2_BUDGET = 1.5e8`, which is why they cost 1,124 s and
+why their argmax (40.006 um) disagreed with the Part-B argmax (37.899 um). **Every arm's Part-B stage runs
+`PF_FT_H2BUDGET=40000000`**, and `_S22B`'s H2 block reads *40.0M locator queries, 556 / 40,008,064 over TOL,
+25.063 um, 520 s, structure pitch 28.259 um*. Setting **`PF_P2_BUDGET=4e7`** with **`PF_P2_SECS=7200`** makes
+the emitting audit the SAME computation on the same sampler (pitch 40 / minPitch 1.25 / structN 48 /
+lines 5 / z 0..H are already its defaults), so:
+  * **iteration 1's emitting audit MUST reproduce 25.063 um at th 6.021386 z 113.45994 with 556/40,008,064.
+    That is a free instrument cross-check and it is registered as a HARD PRECONDITION (F5f): if it does not
+    reproduce, the two instruments are not the same instrument and every trajectory number below is void.**
+  * the per-iteration H2 is directly comparable to the published 25.063 um series, and
+  * `PF_P2_SECS=7200` guarantees the BUDGET binds and not the clock — **a clock-bound audit would make the
+    emitted loci set a function of machine load, i.e. not reproducible**, which is the one property
+    `_phase2Loci.ts` exists to protect.
+
+**THE FIELD IS AT ITS REGISTERED DEFAULTS AND NOTHING IS TUNED:** `PF_P2_FACTOR=2` (fixed), `PF_P2_MODE`
+fixed, `PF_P2_RADIUS_UM=500`, `PF_P2_CLUSTER_UM=250`, `PF_P2_MAXSCALE=64`, `PF_P2_CARRY` on. **The escalation
+ladder is therefore 2 -> 4 -> 8 and the largest divisor this arm ever APPLIES is 8** (localTol 0.4375 um):
+i1 emits 2x, i2 consumes 2x and emits 4x, i3 consumes 4x and emits 8x, i4 consumes 8x. Registered outer
+budget **4 iterations**, of which **i1 is `_S22B` reused** (declared, as S12 reused `_S11A`), so **3 mesher
+runs and 4 emitting audits.**
+
+---
+
+#### **THE BARS. Five disjoint rows, INFEASIBLE first, first match wins. Written before any number exists.**
+
+**F1 — THE DECISIVE CLAUSE. THE PINNED 25.063 um COPY.**
+  **CLOSES** if the true surface->mesh distance at th 6.021386 z 113.45994 falls to **<= 10.000 um** on the
+  final iterate's Part-B audit. **OR** it is reclassified with a **measured mechanism that survives
+  adversarial reading**: the carrier is sub-cap (AR 14.17 against a cap of 50) and splittable, the driver has
+  **no 36.4 um floor**, and the demand (1.6 um) is x1.07 INSIDE `FLOOR_MM`. **So "it cannot fall" is not
+  available as an answer.** If it does not fall, the block MUST name the mechanism with an S13-style table
+  carrying, per iteration: the carrier's identity and vertices, its 3-D and parametric AR against the cap,
+  the driver's own ruler on it, the local tolScale actually applied, whether splits were QUEUED, whether they
+  were EXECUTED or REFUSED and on which gate, and the refusal counters. **Anything less is a miss, not a
+  mechanism.**
+
+**F2 — THE TAIL.** H2 witnessed max **<= 12.000 um** on the final iterate. H2 over-tol FRACTION must not
+  rise above **0.00168%** (1.2x of `_S22B`'s 0.00139%) — mechanism-blind hard tripwire, the same clause S22B
+  carried. **Expected iteration count, DERIVED above and not guessed: the pinned carrier queues at
+  tolScale 2, i.e. OUTER ITERATION 2.** Registered budget 4 iterations; loop-exit budget stated honestly:
+  NOT-CONVERGED is standing and declared; PASS needs H2 <= 10 um AND `unresolvedLeft = 0`, and **the second
+  half CANNOT hold on this substrate, so a formal loop PASS is unreachable by construction and this arm does
+  not claim one.** It scores F1/F2 on the numbers, not on the loop's verdict string.
+
+**F3 — TEXTURE GUARDS, IDENTITY COMPONENTS REPORTED SEPARATELY. TWO CLAUSES, BOTH SCORED.**
+  **F3a — THE WIRE, as instructed: ANY growth trips it.** vs `_S22B`: physical >=90 **4,381**; off-locus
+  tails >=15 / >=30 / >=45 **24,208 / 17,848 / 15,255**; plates **51**; S22 registered shard census **44**;
+  loose band **984**; photographed sub-floor **97**; fan hubs **31**; fan members **391**. Gated at the
+  visible floor stays **0**. parAR p50/p90/p99/MAX reported, no bar.
+  **A trip is REPORTED and STOPS the arm's claim on that quantity. The eye is not traded for the tail
+  silently.**
+  **F3b — CONTEXT, so a trip can be READ.** the same eight censuses as RATES per facet, and against S22B's
+  own **+2.0%** precedent band (S22B derived that band because a proportionate rise on a larger worklist is
+  arithmetic, not damage). **F3b never rescues F3a — it only says how big the trip is.**
+
+**F4 — FIDELITY CONTEXT.** H1 facets-over **<= 1.30%**, quoted WITH coverage and stride and carrying no
+  claim, and **with the rim-row caveat live**: `_S22B`'s sampled H1 witness locus is z = 119.964-119.972, the
+  OPEN RIM ROW, which the standing BasketWeave caveat forbids quoting as a wall defect, and the sampled
+  witness has moved on three consecutive arms (70.988 -> 95.949 -> 139.354 um) at strides 771,175 / 771,677 /
+  773,501 while **the driver's full-coverage adaptive oracle read MAX 95.473 um at the same locus on all
+  three**. The full-coverage control is quoted beside it every time. `unresolved` count and worst reported
+  (`_S22B`: 4,307 / 95.473 um) — **the cage may GROW as tightening pushes more candidates into the S1 cap,
+  and that is expected, not a regression**; ceilings <= 8,000 / <= 250.0 um, S22B's own. Strands and refusals
+  enumerated per iteration.
+
+**F5 — PRECONDITIONS. All six, before and after.**
+  (a) determined folds **0**; (b) determined blades **<= 2** (the substrate's seed-born pair); (c) worst
+  admitted child AR **<= 50**; (d) seam-cracks **0** and **Euler 0**; (e) `_W1` identity md5
+  **`8a59fb37a9115600b13262254380ccb0`** byte-exact and HARD GATE **12/12 with every documented value exact**,
+  BOTH taken before the first run and again after the last; (f) **the instrument cross-check above: iteration
+  1's emitting audit reproduces 25.063 um / 556 / 40,008,064 on `_S22B`.**
+  **DETERMINISM, registered scheme:** the driver is a pure function of (style, params, flags, loci file) and
+  the loci file is a pure function of the audit, so the chain is reproducible by construction; **md5 recorded
+  for every iterate**, and a **full-scale twin re-run of the FINAL iterate under a second tag, `cmp`
+  byte-identical**, is run **if the F6 wall ceiling permits**. If it does not, it is DECLARED NOT RUN and put
+  on the what-remains list — the same disposition `_S23R` and `_S23TC` gave the reduced-scale triple. **It is
+  never claimed unrun.**
+
+**F6 — COST. Ceilings derived from measured anchors on this exact chain, not scaled from the smoke.**
+  | item | anchor | **ceiling** |
+  |---|---|---|
+  | mesher, per iterate | `_S22B` **939 s**; S12's Phase-2 re-mesh +4% wall for +2.5% tris | **1,400 s** (`PF_CB_MAXSECS=5400` is the hard stop) |
+  | emitting audit, per iteration | `_S22B` Part-B H2 **520 s serial at 4e7**; recorder is one compare per query | **1,200 s** (S12/PB7's own bar) |
+  | final Part-B two-sided audit | `_S22B` **852 s** | **1,400 s** |
+  | live triangles, per iterate | `_S22B` **1,251,546** | **2,500,000** (x2.0; `triCap` stays 8,000,000) |
+  | whole arm | 3 meshes + 4 audits + Part-B + censuses + 2 gates ~ **2.5 h** | **4 h** |
+  **INFEASIBLE-AT-CAP is LIVE and is the loop's own exit**: `predict.predictedTris > 8,000,000` at any
+  iteration ends the arm and is reported with the footprint and density that produced it. **NEVER loosen TOL.**
+
+#### **VERDICT ROWS — DISJOINT, IN ORDER, FIRST MATCH WINS.**
+  **1 INFEASIBLE** — `predictedTris > 8,000,000` at any iteration, OR a live iterate over 2,500,000
+    triangles, OR any per-item cost ceiling in F6 breached, OR the whole arm past 4 h. Report the field's
+    footprint, density and predicted count, and STOP.
+  **2 REGRESSION** — F5 fails (fold, blade, AR, crack, Euler, identity, gate, or the F5f cross-check), OR
+    F2's fraction tripwire fires (> 0.00168%), OR F4's unresolved ceilings breach. STOP and report.
+  **3 TEXTURE TRIP** — F3a trips: any of the eight censuses grows against `_S22B`. Report both clauses and
+    the magnitude; **do not trade the operator's eye for the tail silently.**
+  **4 WIN** — F1 CLOSES (<= 10.000 um) AND F2 (<= 12.000 um, fraction held) AND F3a AND F4 AND F5.
+  **5 TRADE** — everything else. Both numbers in the same row of the same table, and F1's mechanism table
+    if the pinned copy did not fall.
+
+#### **WHAT THIS ARM MAY NOT DO.** No file under `src/`, no `_facetTruthLib.ts`, `_sharp3dRef.ts`,
+`_shapeGuard.ts`, `_judgeShape.ts`, `_judgeNormal.ts`, no `cdt2d`. No default flipped ON. No proven bridge
+file edited — **the Phase-2 machinery and `PF_CB_TIGHTEN` are already built, landed and demonstrated, so this
+arm writes only shell scripts and one artifact-only probe.** `research/tools/s24Ruler.ts` is standalone and
+imported by nothing.
+
+>> **STOP AFTER SCORING. The operator's eyeball lands on the final iterate. Phase D (GPU triage on this
+>> mesh) is NAMED and NOT BUILT — the operator rejected the 39.8 h raw walk; triage is ~1-2 h and its
+>> registration is the next block, not this one.**
+
+---
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
