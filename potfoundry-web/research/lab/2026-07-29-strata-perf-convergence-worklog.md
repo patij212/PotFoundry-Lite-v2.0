@@ -5556,6 +5556,77 @@ is exactly `1 + alpha`, and that is the quantity the decision is made on.)
 >> trim quality silently.
 
 
+### S23B — **THE PROBE LADDER FIRED THREE TIMES, AND THE THIRD FIRING IS A DESIGN ERROR IN MY OWN**
+### **DECISION 3. AMENDMENTS A, B AND C REGISTERED BEFORE THE ARM. NO VERDICT IS QUOTED HERE.**
+The registered probe rule — *"budget a probe arm at reduced density BEFORE the full run, and probe the SEED
+at low density, never the POPULATION"* — was executed as a ladder at `PF_CB_RECON_SCALE` 4, 2 and 1. All
+three built, all three triangulated, **`cdt2d` survived 392,265 points and constraint recovery held
+13,444 of 13,444** — the S7 tripwire's two named failure modes did NOT fire. Three OTHER things did.
+
+>> **DISCLOSURE, IN THE D2'/D4'/M0' FORM AND CARRYING THE SAME DISCOUNT: THE PROBE NUMBERS WERE IN VIEW
+>> WHEN THESE AMENDMENTS WERE WRITTEN.** Every measured number below stays on the record whether the
+>> amended build likes it or not, and the arm has not been scored.
+
+**FIRING 1 — TWO NON-MANIFOLD EDGES, AND THE WATERTIGHT ASSERTION CAUGHT THEM.** At scale 1 the driver
+threw on `expect(nonManifold).toBe(0)` with **2**. Located by an independently-written reader over the
+shipped f32 bytes: both at **th 2.4344, z 119.98**, i.e. against the TOP RIM, on edges 20.6 and 30.7 um
+long. The mechanism is legible and it is mine: my boundary densification placed a rim point **18 um** from
+a chain-crossing vertex that sits **2.3 um** off the rim constraint, and stage 3e re-routes a constraint
+through any vertex within `pslgEpsMm` = 20 um of its interior. cdt2d triangulated the result
+inconsistently. **Scales 4 and 2 read non-manifold 0 — the defect is density-gated, which is exactly what
+a ladder is for.**
+>> **AMENDMENT A.** The seam and rim densification floor their step AND their point clearance at
+>> `1.5 * pslgEpsMm` = 30 um, which is the floor every other free-point emitter in this file already uses.
+>> The break condition also moves from `step*0.5` to `step`, so the minimum spacing to an existing
+>> boundary point is a full step rather than half of one.
+
+**FIRING 2 — 97 OVER-CAP FACETS, ALL UNDECLARED, WORST `aspect3` 145.85.** `_S22B`'s own seed carries
+**3** (worst 85.13). The ladder reads 4 -> 6 -> **97**: superlinear in the infill, therefore the infill.
+Enumerated: **0 rim-row, 97 interior**, long edges 280-1,160 um against short edges **35-88 um**, and the
+z-histogram puts **39 of 97 in z 65-70** and **27 in z 15-20** at theta values separated by 2*pi/6 — a
+12-fold symmetric FEATURE SITE, i.e. a mechanism and not a tail. The short edges sit exactly at the old
+clearance floor of `1.5*pslgEpsMm` = 30 um, **inside the corridor the across rule owns**: the design's own
+innermost offset ring is at 50 um there and its along spacing is up to 1,200 um, so a free point 35 um
+from the chain makes a 35 x 1,160 um lens with two chain vertices.
+>> **AMENDMENT B.** The infill's constraint clearance is floored PER SEGMENT at the ACROSS THE DESIGN
+>> ACTUALLY PLACED beside it (`min` of the two chain points' `across`), carried in a new `segAcr` array.
+>> **It is LOCAL, not a global constant** — which is the whole point of the absolute-field rule — and its
+>> statement is: *no free point may sit inside the innermost declared ring.*
+
+**FIRING 3 — AND IT IS A DESIGN ERROR IN MY OWN DECISION 3, NOT A TUNING PROBLEM.** The constructed mesh
+read **HEADLINE MAX 622.349 um** against `_S22B`'s **95.484** — and it read **622.349 at scale 4, at
+scale 2 AND at scale 1, identical to the digit.** *A residual that does not move when the mesh gets three
+times denser is not a resolution problem.* The witness is on DECLARED geometry, which is
+scale-independent by construction: `[STRATA-comparable fixed oracle 12] MAX 572.959 um, locus
+z=[80.92,80.79,80.58] (67% H), edges 124.9/259.6/376.2 um`. **The field asks for 76.2 um in the z 80-85
+bin — its own finest — and the declared rule places chain vertices up to 1,200 um apart there.**
+And the cost tells the same story from the other side: **783,239 triangles against the registered
+1,723,299, i.e. x0.4545.** The infill cannot make that up, because the corridor beside a constraint
+belongs to the across rule and Amendment B has just (correctly) locked it.
+>> **AMENDMENT C — NEW LEVER `PF_CB_RECON_CHAIN`, DEFAULT OFF.** Where the across rule already binds, the
+>> extracted field also bounds the chain ALONG spacing: `a = min(a, max(acrossMinMm, h(th,z)))`. It is
+>> **arithmetically the same shape as the two clauses it sits beside** — `seedARmax * cr` (S15) and
+>> `turnMul * hAc` (S19) — monotone-downward, taken only where the across rule binds, and inert with the
+>> lever off.
+>> **WHAT DECISION 3 GOT WRONG, SAID PLAINLY.** I wrote *"the extracted field drives ONE new stage: a
+>> greedy minimum-distance infill of FREE points"* and gave three reasons, all of which are still true
+>> and none of which is a reason to leave the ALONG spacing at the seed's density while the ACROSS
+>> spacing is at the field's. Honouring an isotropic density field with a deliberately anisotropic
+>> declared geometry whose long axis nobody re-priced is incoherent, and the 622.349 um that did not move
+>> is what incoherence measures like.
+>> **AND IT IS THE ONE CLAUSE THAT ADDS CONSTRAINTS, SO THE S7 TRIPWIRE IS AIMED STRAIGHT AT IT.**
+>> Constraint recovery is an assertion that THROWS; S15/S16 Stage 0 watched it fail at 7,268 and 7,614
+>> segments. **A recovery shortfall under Amendment C is INFEASIBLE, reported as the arm's result, and
+>> NOT tuned around** — that is why the lever exists as a lever rather than as an unconditional change.
+>> The A/B is run on the seed harness (`research/tools/s23ReconProbe.ts`, which calls `traceLoci` +
+>> `buildAlignedSeedRepaired` on the production path and reuses the 33 s trace across settings) so the
+>> chain-bound and free-infill-only builds are compared at matched `beta` before either is shipped.
+
+**NOTHING ELSE MOVES.** The floor (36.4 um), the gradation (`alpha` 1.0), the FLOOR-THEN-GRADE order, the
+verdict rows, THE CLAUSE's bar and the 2.0 M ceiling are untouched, and the registered cost prediction
+**1,723,299 / ~861,650** stands as written — the arm is scored against it either way.
+
+
 ### PHASE 2 — BUILT AND DEMONSTRATED. THE MECHANISM WORKS.
 
 New: _phase2Loci.ts (artifact + tighten field), _phase2Audit.test.ts (emitting audit),
