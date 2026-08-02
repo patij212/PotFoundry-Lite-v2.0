@@ -53,6 +53,16 @@ import type { PatchRegion } from './_judgeShape';
 import type { StyleDims } from './labkit';
 import type { StyleId } from '../../src/geometry/types';
 import { openGpuRank, type GpuRank } from './_gpuRankBridge';
+// S29 — the accept-override. Value import, but reachable ONLY when PF_CB_ACCEPT_OVERRIDE is set; with the
+// lever unset `loadS29Override` is never called, no membership is read and no perpendicular ruler runs.
+// Same shape as the S23 `loadReconField` import directly above, for the same reason.
+//
+// S-e: `research/tools/s29Perp.ts` — which `s29Accept` calls — is this arm's OWN TRANSCRIPTION of the
+// certificate's perpendicular ruler. `_facetTruthLib` is NOT imported here and is NOT edited by this arm,
+// so the instrument that scores S29 is not the instrument S29 was built from. The transcription is
+// validated against `_facetTruthLib`'s own published V8/V9/V10 fixtures — and against two falsifiers that
+// MUST fail — by `node research/bridge/out/_run_s29perp.cjs --validate`, run BEFORE this wiring existed.
+import { loadS29Override, type S29Override } from '../tools/s29Accept';
 // THE PREDICATE LIVES IN ONE FILE, imported by this driver AND by the sweep worker thread (see
 // _sweepPool.ts's header for why parallelising it cannot move the mesh). `canon` / `dTh` / `edgeSag` /
 // `locateKink` below are thin wrappers around these bodies — the bodies are verbatim transcriptions of what
@@ -369,6 +379,13 @@ describe('STRATA conforming-bisection', () => {
     if (SWEEP && process.env.PF_CB_TIGHTEN !== undefined && process.env.PF_CB_TIGHTEN !== '') {
       throw new Error(`PF_CB_TIGHTEN is a HEAP-driver lever (it scales \`consider\`'s acceptTol) and is INERT under PF_CB_DRIVER=sweep. Unset it, or run the heap driver.`);
     }
+    // ─── S29 ACCEPT-OVERRIDE — PF_CB_ACCEPT_OVERRIDE=<members.json>, NEW AND DEFAULT OFF. ───
+    // Same refusal as PF_CB_TIGHTEN and for the same reason: the override's accept-side forced push lives in
+    // `consider`, which is the HEAP driver's gate. Under `sweep` half the wiring would be silently inert and
+    // the run would report a mesh tagged S29 with no S29 in it.
+    if (SWEEP && process.env.PF_CB_ACCEPT_OVERRIDE !== undefined && process.env.PF_CB_ACCEPT_OVERRIDE !== '') {
+      throw new Error(`PF_CB_ACCEPT_OVERRIDE is a HEAP-driver lever (its accept-side forced push is in \`consider\`) and is INERT under PF_CB_DRIVER=sweep. Unset it, or run the heap driver.`);
+    }
     const t0ms = Date.now();
 
     const styleParams: Record<string, number> = { ...registryDefaults(STYLE) };
@@ -416,6 +433,34 @@ describe('STRATA conforming-bisection', () => {
         file: TIGHTEN_PATH, key: loci.run.key, clusters: tighten.clusters,
         radiusMm: tighten.radiusMm, maxScale: tighten.maxScale,
       };
+    }
+
+    // ═══════════ S29 ACCEPT-OVERRIDE — PF_CB_ACCEPT_OVERRIDE=<members.json>, DEFAULT OFF ═══════════
+    // WHAT IT CHANGES, AND ONLY THIS:
+    //     accept(t)  <=>  blindAccept(t)  AND  ( listed(t) ? perp(t) <= 10 µm : true )
+    // For a LISTED facet the blind pass becomes NECESSARY BUT NO LONGER SUFFICIENT. The heap key, the
+    // ranking, the escalation, the conformance-first ordering and `acceptTol` itself are UNTOUCHED, and an
+    // unlisted facet takes a bit-identical path — nothing below is consulted for it. `tolScale` is NOT used
+    // and `PF_CB_TIGHTEN` stays unset: this arm changes the QUANTITY, and bundling the tolerance lever would
+    // make the result unattributable.
+    //
+    // WHY THE QUANTITY AND NOT THE TOLERANCE. S10B (×1.00), S12 and S28 (×1.00) are three refutations of ONE
+    // shape — all three moved the number the blind ruler is compared against; none changed what is measured.
+    // Scaling a blind ruler's threshold does not make it see.
+    //
+    // WHY THIS IS NOT R1b. R1b refuted the honest quantity as a GLOBAL RANKER and named the mechanism: a
+    // worst-first SINK, because an honest quantity reports true-C0 facets as permanently worst and a split
+    // never improves them. Here the honest quantity ranks NOTHING — it holds a veto over ACCEPTANCE at
+    // 14,328 enumerated facets whose population EXCLUDES the h⁰/h¹ sinks by construction (cage and rim were
+    // subtracted), and the veto is bounded by a per-site split budget with a re-strand tripwire.
+    const OVERRIDE_PATH = process.env.PF_CB_ACCEPT_OVERRIDE ?? '';
+    let s29: S29Override | null = null;
+    let ovForcedPush = 0;   // `consider` calls the override kept out of the accepted set
+    let ovNeedSize = 0;     // `triangleNeed` verdicts the override turned from 'none' into 'size'
+    if (OVERRIDE_PATH !== '') {
+      s29 = loadS29Override(OVERRIDE_PATH, {
+        key: phase2Key(STYLE, styleParams, DIMS, TOL, STAGE), style: STYLE, stage: STAGE, tolMm: TOL,
+      });
     }
 
     // canon / dTh now delegate to _sweepPredicate so the worker threads apply the IDENTICAL seam handling.
@@ -2010,6 +2055,24 @@ describe('STRATA conforming-bisection', () => {
         if (s > bs) { bs = s; be = e; }
       }
       if (bs > acceptTol) return { need: 'size', edge: be as 0 | 1 | 2, cls: worstCls };
+      // ─── S29 ACCEPT-OVERRIDE. The blind ruler has PASSED; for a LISTED facet that is necessary but not
+      // sufficient. Note the position: AFTER the `worstCls === 'jump'` return above, so the override is
+      // never consulted at a confirmed h⁰ jump and can never demand refinement there — the exact demand
+      // that stranded 2,002 facets in R1b is structurally unreachable from here. AFTER the `conform` return
+      // too, so conformance-first ordering is unchanged. ───
+      if (s29 !== null) {
+        const a = ta[t]; const b = tb[t]; const c = tc[t];
+        if (s29.listed(vth[a], vth[b], vth[c], vz[a], vz[b], vz[c])
+          && !s29.perpOk(t, R, DIMS.H, vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vx[c], vy[c], vz[c])) {
+          ovNeedSize += 1;
+          // split the LONGEST edge, not the sagitta argmax: the blind sags are all under `acceptTol` here
+          // (that is why we are on this line at all), so their argmax carries no information. This is the
+          // ruler-blind case by construction — the facet reads flat and is not.
+          const l0 = eLen(a, b); const l1 = eLen(b, c); const l2 = eLen(c, a);
+          const le = l0 >= l1 && l0 >= l2 ? 0 : l1 >= l2 ? 1 : 2;
+          return { need: 'size', edge: le as 0 | 1 | 2, cls: worstCls };
+        }
+      }
       return { need: 'none', edge: 0, cls: worstCls };
     };
 
@@ -2316,6 +2379,18 @@ describe('STRATA conforming-bisection', () => {
       // accepted, whatever the ruler says. It stays in the queue and keeps refining; if it ends the run
       // still footprint-back-facing it is an ADMISSION STRAND and is enumerated, which is the product.
       if (s <= at && ADMIT_NORMAL && footBackT(t)) { admitForcedPush += 1; hpush(t, s); return; }
+      // ─── S29 ACCEPT-OVERRIDE, accept side. Mirrors the S20 line directly above, and for the same reason:
+      // a facet the blind ruler would accept is not accepted while the honest quantity says it is over the
+      // bar. It stays in the queue and keeps refining. It is pushed AT ITS BLIND KEY `s` — the honest
+      // quantity holds a veto, it does NOT rank, so the heap's ordering is untouched. That is R1b's own
+      // conclusion kept intact: "the honest quantity is an EXCELLENT judge and a BAD driver". ───
+      if (s <= at && s29 !== null) {
+        const a = ta[t]; const b = tb[t]; const c = tc[t];
+        if (s29.listed(vth[a], vth[b], vth[c], vz[a], vz[b], vz[c])
+          && !s29.perpOk(t, R, DIMS.H, vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vx[c], vy[c], vz[c])) {
+          ovForcedPush += 1; hpush(t, s); return;
+        }
+      }
       if (s > at) { if (at !== acceptTol && s <= acceptTol) tightenPushes += 1; hpush(t, s); }
     };
     /** score every queued candidate on the GPU and push the ones that miss `acceptTol`. */
@@ -4523,6 +4598,31 @@ describe('STRATA conforming-bisection', () => {
     };
     writeJsonFile(join(outDir, `${tag}.run.json`), manifest);
 
+    // ─── S29 STRAND LIST. Written whenever the override is armed, ZERO OR NOT. The registration's
+    // expect-nonzero clause is only meaningful if the count can be read either way from an artifact: "zero
+    // strands with the bound not falling means the wiring is BROKEN, not that the mesh healed". S28's
+    // toothless S5b is the precedent this refuses to repeat. ───
+    if (s29 !== null) {
+      const st = s29.stats();
+      writeFileSync(join(outDir, `${tag}.s29strands.json`), JSON.stringify({
+        schema: 'pf.strata.s29.strands/1',
+        run: { style: STYLE, params: styleParams, dims: DIMS, stage: STAGE, tag, tolMm: TOL, acceptTolMm: acceptTol },
+        override: {
+          file: OVERRIDE_PATH, barUm: s29.file.tolUm,
+          members: s29.file.counts.members, sites: s29.file.sinkGuard.sites,
+          budgetN: s29.file.sinkGuard.budgetN, fallRatio: s29.file.sinkGuard.fallRatio,
+          sourceStl: s29.file.source.stl, sourceMd5: s29.file.source.stlMd5,
+          cellFractionPct: s29.file.cellGrid.surfaceFractionPct,
+        },
+        stats: { ...st, ovForcedPush, ovNeedSize },
+        // EXPECT-NONZERO is declared IN the artifact, so a reader who never saw the registration still
+        // knows which way to read a zero.
+        expectNonzero: 'Some strands are EXPECTED on the h¹ tail. ZERO strands together with an interior '
+          + 'certified bound that did not fall is a STOP-and-diagnose (broken wiring), not a result.',
+        strands: s29.strands(),
+      }, null, 1));
+    }
+
     const report = [
       '',
       `===== STRATA CONFORMING-BISECTION: ${STYLE} ${STAGE.toUpperCase()}  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'}] =====`,
@@ -4563,6 +4663,35 @@ describe('STRATA conforming-bisection', () => {
         // means coarse triangles are dominating the queries.
         `  lookups taken linearly ${tighten.linearScans()} (whole-list scan chosen over a ${(tighten.cellMm * 1000).toFixed(0)} µm cell ring; with ${tighten.clusters} clusters that is expected)`,
       ]),
+      // ─── S29 ACCEPT-OVERRIDE. Printed ALWAYS when armed, and the STRAND COUNT is printed zero or not —
+      // the registration's expect-nonzero clause turns on being able to read it either way. ───
+      ...(s29 === null ? [] : (() => {
+        const st = s29.stats(); const str = s29.strands();
+        const f = s29.file;
+        return [
+          `--- S29 ACCEPT-OVERRIDE: ${OVERRIDE_PATH} ---`,
+          `  rule: accept ⟺ blindAccept AND (listed ? perp ≤ ${f.tolUm} µm : true).  The plane ruler still RANKS;`
+          + `  the heap key, acceptTol (${um(acceptTol)} µm) and the h⁰ jump routing are UNTOUCHED.`,
+          `  membership ${f.counts.members} facets = ${f.counts.over} over-TOL − ${f.counts.rim} rim − ${f.counts.cage} cage`
+          + `   [src ${f.source.stl} md5 ${f.source.stlMd5.slice(0, 8)}…]`,
+          `  carried as a (θ,z) REGION — ${f.cellGrid.cells} cells of ${f.cellGrid.nTheta}×${f.cellGrid.nZ}`
+          + ` = ${f.cellGrid.surfaceFractionPct.toFixed(3)}% of the domain (tri indices do not survive a from-scratch remesh)`,
+          `  listed tests ${st.listedTests}, hits ${st.listedHits}   perp evaluations ${st.perpEvals}, REJECTS ${st.perpRejects}`,
+          `  forced pushes: consider() ${ovForcedPush}   triangleNeed() 'none'→'size' ${ovNeedSize}`,
+          `  worst perpendicular reading seen ${st.maxPerpUm.toFixed(3)} µm`,
+          `  realised seed pitch (REGISTERED ≤ 2.1817e-3 rad, ≤ 0.0625 mm): dθ ${st.worstDTheta.toExponential(4)}  dz ${st.worstDz.toExponential(4)}`,
+          `  SINK GUARD: N=${f.sinkGuard.budgetN} splits/site, re-strand unless the reading falls ≥${f.sinkGuard.fallRatio}×`
+          + `   sites ${f.sinkGuard.sites}`,
+          `  *** STRANDED SITES ${st.strandedSites} (${st.strandedMembers} member facets) ***`
+          + (st.strandedSites === 0
+            ? '   — EXPECT-NONZERO: zero strands with the certified bound NOT falling means the wiring is broken, not that the mesh healed. STOP and diagnose.'
+            : '   — expected on the h¹ tail; these reverted to blind accept and the loop continued.'),
+          ...str.slice(0, 24).map((s) => `    strand θ ${s.theta.toFixed(4)} z ${s.z.toFixed(3)}`
+            + `  entry ${s.entryUm.toFixed(3)} µm → best ${s.bestUm.toFixed(3)} µm (×${s.ratio.toFixed(2)})`
+            + `  ${s.splits} splits, ${s.members} members`),
+          ...(str.length > 24 ? [`    … and ${str.length - 24} more (full list in the .s29strands.json artifact)`] : []),
+        ];
+      })()),
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,

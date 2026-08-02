@@ -9811,6 +9811,109 @@ the rim instrument decision) ARE UNSTARTED AND UNREGISTERED.**
 
 ---
 
+### *** S29 BUILT AND VALIDATED — **THE ARM EXISTS, IT FIRES, AND THE VALIDATION CAUGHT THREE DEFECTS** ***
+### *** **BEFORE THE FIRST EXPENSIVE RUN. NO ITERATE IS MEASURED IN THIS BLOCK; NO BAR IS SCORED.** ***
+
+**HANDOFF STEP 1 FIRST, AS THE HANDOFF DEMANDED.** `research/tools/s29Perp.ts` — the certificate's
+perpendicular ruler TRANSCRIBED per S-e, never imported — was built and validated **before it was wired to
+anything**. `node research/bridge/out/_run_s29perp.cjs --validate`, **14 of 14 bars PASS**:
+
+| bar | reading |
+|---|---|
+| **V8** cylinder 400/50/4 µm | **400.000000 / 50.000000 / 4.000000 µm**, ortho 1.97e-15 / 2.37e-15 / 6.98e-14 (bar < 3e-7) |
+| **V9** cone k = 0.2 / 0.5 / 1 | **294.174 / 268.328 / 212.132 µm** — the closed form to three decimals, radial 300.000 throughout |
+| **V10** ridged, 40 probes | perp ≤ radial, **0 violations**, worst ratio ×19.871 |
+| **P0/T1** registered seed pitch | full grid **2880×1920**, realised Δθ 2.1817e-3, Δz 0.0625 — the registration's own numbers |
+| **W1** *the driver's actual path* | windowed seeding == full-domain seeding to **6.28e-15** relative |
+
+>> ***AND THE TWO FALSIFIERS FIRE, WHICH IS THE POINT.*** **F1**: the mis-seeded ruler D2 refuted — a
+>> 180×120 sweep with the descent off — reads **400.000 µm where the registered density reads 12.104 µm,
+>> ×33.0 OVER-STATED**, on a thin-ridge fixture. That is D2's finding reproduced in miniature and it is why
+>> the seed density is in the registration rather than in the code. **F3**: the accept decision goes BOTH
+>> ways on geometry of known error — a 20.25 µm-sagitta facet is REJECTED at 20.248 µm, a 2.25 µm one is
+>> ACCEPTED at 2.250 µm.
+
+#### ***THREE DEFECTS THE VALIDATION CAUGHT, EACH OF WHICH WOULD HAVE SHIPPED A NUMBER THAT MEANT NOTHING.***
+1. ***V8 CANNOT TEST THE SOLVER, AND THE FIRST F2 FALSIFIER PROVED IT BY PASSING.*** Aimed at V8, a
+   deliberately broken Newton frame passed all three offsets. The cause is structural and the fixture says
+   so in its own words — *"this is the case that CANNOT distinguish the two rulers"*: on a cylinder the
+   radial foot ALREADY IS the perpendicular foot, so the seed satisfies the orthogonality system, Newton
+   never runs, and the answer is right however broken the Jacobian is. **V8 tests accuracy and orthogonality;
+   it does not test the solver.** F2 was re-aimed at **V9**, where the radial foot is 300.000 µm and the
+   answer is 294.174 µm so the reading is reachable only BY SOLVING — and there the broken frame fails
+   **3 of 3** while the real one passes 3 of 3. *(A second dead end recorded with it: sign-flipping the
+   theta tangent is algebraically a NO-OP — it negates the first Jacobian row and the determinant together
+   and the Newton step is identical. A falsifier that does not perturb the root set falsifies nothing.)*
+2. ***THE SINK GUARD COULD NOT FIRE AT ALL — S28's S5b DEFECT, AGAIN, IN NEW WIRING.*** The first version
+   updated each site's reading from EVERY evaluation. An accepted facet reads ≤ 10 µm by definition, so the
+   site's reading collapsed to ≤ 10 µm immediately and `reading > entry/1.5` was false for every site whose
+   entry exceeded 15 µm — **i.e. for essentially the whole membership.** The tripwire was decorative.
+   Restricted to the still-over-bar population it means what the registration says, and the two-sided
+   self-test now drives it both ways.
+3. ***THE GUARD HAD A HOLE IN THE POPULATION IT GUARDS.*** Sites exist only where the membership put them;
+   a facet whose centroid landed one bin off an occupied site was charged to **nothing** — not counted, not
+   observed, invisible. Caught by the G1 self-test reading **zero strands on a site engineered so it could
+   not do anything else.** The lookup now snaps to the nearest occupied site.
+
+**THE SINK-GUARD SELF-TEST** (`_run_s29accept.cjs --selftest`) — **6 of 6 PASS**, and it is two-sided:
+**G1** a site held at 20.000 µm against a 25 µm entry **RE-STRANDS at exactly N+1 = 129 splits** and then
+reverts to blind accept; **G2** the same site against a 100 µm entry (a ×5.00 fall) **does NOT strand**;
+**G3** one triangle is evaluated and charged exactly once across 500 calls; **G4** a mismatched run key is
+**refused, not warned about**.
+
+#### **MEMBERSHIP EMITTED — AND ONE DECLARED DEVIATION FROM THE REGISTRATION'S LETTER.**
+`s29Members.py --emit` reproduces every registered figure (**14,569 − 221 − 20 = 14,328**, argmax **tri
+438968 at 199.943 µm**, sites **2,168**, h² p99 **130.8** splits/site, **1.01%** of sites over N=128) and
+serializes members, sites with entry readings, and the membership region.
+>> ***THE DEVIATION, STATED PLAINLY: MEMBERSHIP CANNOT BE CARRIED BY `tri` AND IS CARRIED SPATIALLY.*** The
+>> registration names 14,328 triangle indices into `_S24i2.stl`. **The driver does not have that mesh** — it
+>> builds from scratch on a 200×140 grid and refines, which is the registration's own "WHY FROM SCRATCH AND
+>> NOT RESUMED" — so a `tri`-keyed membership is not inconvenient here, it is **undefined**. Membership is
+>> therefore a REGION in (θ,z) derived from the members' own recorded geometry, exactly as `PF_CB_TIGHTEN`
+>> carries its field and for the same reason. **Measured: 66,119 cells of 3,142×1,200 = 1.754% of the
+>> domain**, against a member facet-area share of ~1.9% — so the spatial realization is *tighter* than the
+>> facets it stands for, not a widening. Inheritance then comes free and exact: a child's footprint is
+>> contained in its parent's, so a child of a listed facet is listed and a child of an unlisted facet can
+>> never become listed.
+
+#### **PRECONDITIONS — BOTH TAKEN, AFTER THE DRIVER EDIT.**
+* ***IDENTITY HOLDS.*** Flag-OFF at the W1 config reproduces **md5 `8a59fb37a9115600b13262254380ccb0`
+  BYTE-EXACT** (`_S29ID`). **PF_CB_ACCEPT_OVERRIDE is new and DEFAULT OFF, and this is the proof.**
+* ***HARD GATE 12/12***, every documented value exact, 227.8 s: V3 **197.167 / 12.041** · V4 **502.615** ·
+  V5 **5.552 / 391.661** · V6 **0.617** · V7 **0.000** · V7b **402.230** · V7c **12.041 / 39.767 /
+  142.668** · V8–V10 exact. **NO SHARED FILE WAS EDITED** — `_facetTruthLib`, `_sharp3dRef`, `_shapeGuard`,
+  `_judgeShape`, `_judgeNormal`, `src/`, `cdt2d` are byte-untouched (S-e) — so the `_W1` identity clause's
+  own "BEFORE and AFTER any shared-file edit" trigger never fired. Stated, not skipped.
+* `tsc -p tsconfig.typecheck.json` **exit 0**; `eslint` on all three changed files **exit 0**.
+
+#### ***THE ARMED SMOKE RUN — THE WIRING IS SEEN TO FIRE BEFORE 4,500 s ARE SPENT ON IT.***
+The W1 identity config, ARMED, at 1/30th the cost of an iterate. **`_S29SMOKE` md5 `318e2b4e…` ≠ the
+flag-OFF twin's `8a59fb37…`, so the arm demonstrably changes the mesh**, and it is reproducible: two runs
+either side of the sink-guard repair produced the same md5, as they must, since the guard feeds the strand
+list and not the accept decision.
+
+| reading | value |
+|---|---|
+| listed tests / hits | 7,837 / **1,055** — the (θ,z) region is reachable from a 40×28 grid |
+| perp evaluations / ***REJECTS*** | 1,055 / ***23*** — the honest quantity DISAGREES with the blind one |
+| forced pushes `consider()` / `triangleNeed()` | **23** / 0 |
+| realised seed pitch | Δθ 2.1816e-3, Δz 6.2499e-2 — inside the registration |
+| cost | 193 s, 269 M rA evals for 61,120 tris (capped) |
+
+>> **AND ONE THING THE SMOKE MEASURED THAT THE REGISTRATION DID NOT PREDICT:** `triangleNeed()` overrode
+>> **zero** verdicts while `consider()` overrode 23. The two sites test *different rulers* — `consider`
+>> tests the triangle-level rank sag `s`, `triangleNeed` tests the max EDGE sagitta `bs` — so a facet the
+>> override pushes at `consider` is usually split at pop for the ordinary reason before the override is
+>> consulted. Both sites are wired; at this scale only one decides. Recorded so that a zero in the iterate's
+>> report is read as this, and not as a dead branch.
+
+**WHAT HAS NOT HAPPENED:** no iterate has been meshed, no certificate has been run, **and no bar in the
+registration above has been scored.** Every number in this block is from a fixture, a self-test, a
+read-only probe over committed artifacts, or a 61,120-triangle smoke run at the W1 config — **none of it is
+a measurement of the production surface.**
+
+---
+
 ## STRATA-001 — CAMPAIGN CLOSURE
 
 **WHERE THE CAMPAIGN CLOSES.** On `gothicarches_ring_DS-HT_S24i2.stl`, with the first full-coverage

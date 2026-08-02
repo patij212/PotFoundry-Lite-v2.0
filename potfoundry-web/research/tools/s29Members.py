@@ -37,13 +37,30 @@
 import json
 import math
 import collections
+import sys
 
 EX = "C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/research/exchange/"
 RESIDUAL = EX + "_strataCertD/CERTD_S24i2.residual2.json"
 CAGE = EX + "_strataConformBisect/gothicarches_ring_DS-HT_S26X.unresolved.json"
+LOCI = EX + "_phase2/S28i1.loci.json"   # source of the run-identity KEY only; no field is read from it
 TOL = 10.0          # um — the certificate's own TOL; the accept-override's bar
 TRI_CAP = 5.5e6     # the registered S29 ceiling
 PROPAGATION = 5.5   # S28 defect 11: driver growth beyond the local prediction
+
+# ---- SINK GUARD, as registered -------------------------------------------
+SITE_DTH = 0.02     # rad
+SITE_DZ = 0.5       # mm
+SINK_N = 128        # per-site split budget, calibrated to the measured h^2 p99 of 130.8
+SINK_FALL = 1.5     # the reading must fall this much or the site re-strands
+
+# ---- MEMBERSHIP CELLS ----------------------------------------------------
+# The driver's mesh is built FROM SCRATCH on a 200x140 grid and refined; its triangle indices have NOTHING
+# to do with `_S24i2`'s STL indices, so `tri` CANNOT be the membership test on the running mesh. Membership
+# is therefore carried as a REGION in (theta, z) — the same spatial discipline `PF_CB_TIGHTEN` uses, for the
+# same reason — and `tri` is retained for audit and for the sink guard's entry reading.
+CELL_DTH = 0.002    # rad  (~0.08 mm of arc at Rb=40) — finer than any member facet's own extent
+CELL_DZ = 0.1       # mm
+R_MIN = 40.0        # Rb; the smaller radius gives the LARGER angular extent, i.e. the safe direction
 
 res = json.load(open(RESIDUAL))
 cagedoc = json.load(open(CAGE))
@@ -124,3 +141,116 @@ for N in (16, 32, 64, 128, 256):
 print("  REGISTERED N = 128 -- it sits at the measured h^2 p99, so under C1's own")
 print("  win shape ~99% of sites finish inside it and a TRIP means the reading is")
 print("  not falling (the sink signature), not that the budget was mean.")
+
+# ==========================================================================
+# --emit <path> : SERIALIZE THE MEMBERSHIP FOR THE DRIVER.
+# --------------------------------------------------------------------------
+# Handoff step 2. Three products, and the third is the one the driver actually
+# tests against:
+#   members[]  the 14,328 tri values with their entry boundUm and geometry.
+#              `tri` is AUDIT ONLY -- see the CELL_DTH note above for why it
+#              cannot be the running membership test.
+#   sites[]    the sink guard's per-site entry readings (max member boundUm in
+#              the site). A site whose reading has not fallen SINK_FALL after
+#              SINK_N splits re-strands.
+#   cells[]    THE MEMBERSHIP REGION, packed (iTheta * nZ + iZ). Derived HERE,
+#              in the instrument that has been run and whose numbers are
+#              transcribed in the registration -- not re-derived inside the
+#              driver where it would be unvalidated.
+# ==========================================================================
+if "--emit" in sys.argv:
+    out_path = sys.argv[sys.argv.index("--emit") + 1]
+
+    # Run identity, taken from a COMMITTED artifact rather than retyped. S28i1.loci.json's `run` block was
+    # produced by `phase2Key(style, params, dims, tolMm, stage)` against this exact substrate
+    # (run.tag == gothicarches_ring_DS-HT_S24i2), so reusing its key makes the driver's match-or-throw the
+    # SAME comparison PF_CB_TIGHTEN performs, on the same string, with no second transcription to drift.
+    loci = json.load(open(LOCI))
+    run = loci["run"]
+    if run["tag"] != "gothicarches_ring_DS-HT_S24i2":
+        raise SystemExit(f"REFUSING: loci run.tag is {run['tag']}, not the S24i2 substrate")
+    if run["tolMm"] != 0.01 or run["stage"] != "ring" or run["style"] != "GothicArches":
+        raise SystemExit("REFUSING: loci run block is not this campaign's configuration")
+
+    n_th = int(round(2 * math.pi / CELL_DTH))
+    n_z = int(round(120.0 / CELL_DZ))
+    cells = set()
+    for r in member:
+        half = (r["longestUm"] / 1000.0) / 2.0          # facet half-extent, mm
+        dth = half / R_MIN
+        t0 = r["theta"] - dth
+        t1 = r["theta"] + dth
+        z0 = r["zMin"] - half
+        z1 = r["zMax"] + half
+        i0 = math.floor(t0 / CELL_DTH)
+        i1 = math.floor(t1 / CELL_DTH)
+        j0 = max(0, math.floor(z0 / CELL_DZ))
+        j1 = min(n_z - 1, math.floor(z1 / CELL_DZ))
+        for i in range(i0, i1 + 1):
+            ii = i % n_th                               # theta is periodic
+            for j in range(j0, j1 + 1):
+                cells.add(ii * n_z + j)
+
+    sites = {}
+    for r in member:
+        k = (round(r["theta"] / SITE_DTH), round(((r["zMin"] + r["zMax"]) / 2) / SITE_DZ))
+        e = sites.get(k)
+        if e is None:
+            sites[k] = {"iTh": k[0], "iZ": k[1], "n": 1, "entryUm": r["boundUm"]}
+        else:
+            e["n"] += 1
+            if r["boundUm"] > e["entryUm"]:
+                e["entryUm"] = r["boundUm"]
+
+    frac = 100.0 * len(cells) / (n_th * n_z)
+    doc = {
+        "schema": "pf.strata.s29.members/1",
+        "producedBy": "research/tools/s29Members.py --emit",
+        "source": {
+            "residual": "research/exchange/_strataCertD/CERTD_S24i2.residual2.json",
+            "cage": "research/exchange/_strataConformBisect/"
+                    "gothicarches_ring_DS-HT_S26X.unresolved.json",
+            "stl": "gothicarches_ring_DS-HT_S24i2.stl",
+            "stlMd5": "c96da03c08eefbc081a304093c95a364",
+            "indexValidity": "md5(S26X.stl) == md5(S24i2.stl) -- checked out of band; "
+                             "the cage subtraction is meaningless without it",
+        },
+        "run": {
+            "key": run["key"], "style": run["style"], "stage": run["stage"],
+            "tolMm": run["tolMm"], "dims": run["dims"], "params": run["params"],
+        },
+        "tolUm": TOL,
+        "complete": True,
+        "truncated": False,
+        "counts": {
+            "over": len(over), "rim": len(rim), "interior": len(interior),
+            "cage": len(in_cage), "members": len(member),
+        },
+        "cellGrid": {
+            "dTheta": CELL_DTH, "dZ": CELL_DZ, "nTheta": n_th, "nZ": n_z,
+            "cells": len(cells), "surfaceFractionPct": frac,
+        },
+        "sinkGuard": {
+            "dTheta": SITE_DTH, "dZ": SITE_DZ, "budgetN": SINK_N,
+            "fallRatio": SINK_FALL, "sites": len(sites),
+        },
+        "cells": sorted(cells),
+        "sites": sorted(sites.values(), key=lambda s: (s["iTh"], s["iZ"])),
+        "members": [
+            {"tri": r["tri"], "boundUm": r["boundUm"], "theta": r["theta"],
+             "zMin": r["zMin"], "zMax": r["zMax"], "longestUm": r["longestUm"],
+             "owner": r["owner"]}
+            for r in sorted(member, key=lambda r: r["tri"])
+        ],
+    }
+    with open(out_path, "w") as f:
+        json.dump(doc, f)
+
+    print("\n=== EMITTED ===")
+    print(f"  {out_path}")
+    print(f"  members {len(member)}  sites {len(sites)}  cells {len(cells)}"
+          f" of {n_th * n_z} = {frac:.3f}% of the (theta,z) domain")
+    print(f"  run.key {run['key'][:60]}...")
+    ent = sorted(s["entryUm"] for s in sites.values())
+    m = len(ent)
+    print(f"  site entry readings: max {ent[-1]:.3f}  p50 {ent[m // 2]:.3f}  min {ent[0]:.3f} um")
