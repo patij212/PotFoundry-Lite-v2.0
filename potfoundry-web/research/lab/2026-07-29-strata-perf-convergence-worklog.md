@@ -9564,6 +9564,253 @@ measurement and not an excuse.
 
 ---
 
+### *** S29 REGISTERED — **THE CERTIFICATE-ACCEPT REFINEMENT. THE ACCEPT *QUANTITY*, NOT ITS TOLERANCE.** ***
+### *** **NOTHING IS BUILT, NOTHING IS MESHED, NO DRIVER IS EDITED. THE PRE-REGISTRATION PROBE IS THE ONLY** ***
+### *** **THING THAT HAS RUN, AND IT READ ONLY COMMITTED ARTIFACTS.** ***
+
+**THE CLAIM.** For the enumerated interior H1 survivors, replacing the accept **QUANTITY** with the
+certificate's own ruler closes the *ruler-blindness* class that defeated uniform tightening (S10B ×1.00),
+`tolScale` (S12), and certificate-driven `tolScale` (S28 ×1.00). **Scaling a blind ruler's threshold does not
+make it see.** S10B, S12 and S28 are three independent refutations of the same shape: all three moved the
+*number the blind ruler is compared against*, none of them changed *what is measured*. S29 changes what is
+measured, at 14,328 named facets and nowhere else.
+
+#### **WHY THIS IS NOT R1b, AND THE DISTINCTION IS MEASURED RATHER THAN ARGUED.**
+R1b refuted the honest quantity as a **GLOBAL RANKER**, and the mechanism was named exactly: *a **WORST-FIRST
+SINK** — an honest quantity reports true-C0 (h⁰) facets as permanently worst, a split never improves them, so
+they sit at the head of the heap forever and absorb the budget* (ptperp's own H2 argmax still carried
+1953/3239/3318 µm edges at z≈20 mm — the untouched 60×40 initial grid — after 100,832 splits). The same arm
+drove into the weld wall: **696,052 welded splits refused, 2,002 facets stranded**, because *"put mesh within
+tol of the surface" is NOT satisfiable by splitting at a crease or a jump.* **S29 keeps R1b's verdict intact
+and takes the half of it that R1b itself prescribed** — the campaign's own open item reads *"R1b THIRD ARM:
+cheap-honest ptTri. The honest QUANTITY at the blind ruler's COST."*
+
+| R1b's refuted arm | **S29** |
+|---|---|
+| honest quantity **RANKS** the whole heap | **plane ruler still RANKS — the heap key is untouched** |
+| honest quantity gates **every** accept | honest quantity gates accept at **14,328 enumerated facets only** |
+| population **includes** h⁰/h¹ sinks | population **excludes them by construction** (cage + rim removed) |
+| unbounded demand → weld wall, 2,002 stranded | **per-site split budget + a re-strand tripwire** |
+
+>> **RANK CHEAP, ACCEPT HONEST — AT THESE SITES ONLY.** R1b's own conclusion is the design: *"the honest
+>> quantity is an EXCELLENT judge and a BAD driver; the plane quantity is an EXCELLENT driver and a BAD
+>> judge… that is not a compromise to be split — it is two different jobs."* S29 does not split it. It leaves
+>> the driver's job with the driver and gives the judge a veto over **acceptance**, which is a judging act.
+
+#### **THE ADVERSARIAL PRIOR — S28's OWN REFUTATION, QUOTED AGAINST THIS ARM BEFORE IT RUNS.**
+S28 measured the `fine` class **6,185 → 12,604 (×2.04) with its worst value UNCHANGED at 137.044 µm** and
+concluded: *"the error is not plane-sag in h²… whatever this population is, a finer accept tolerance is not
+the lever."* **That finding is real and this registration does not dispute it — but it was measured under
+BLIND GUIDANCE.** S28 tightened `acceptTol` and then accepted each child **the moment the scaled *blind*
+ruler passed**. A facet whose plane-sag reads small while its true perpendicular error reads large is
+accepted by that test at *any* tolerance — which is precisely the ruler-blindness class, and precisely what
+"split those facets and the error did not follow" looks like from the outside.
+
+>> ***THE TENSION, STATED SO IT CANNOT BE READ TWO WAYS.*** Against S28 stands the D-series/§14c evidence
+>> that this surface **is** density-closable: chord error falls **1.45–3.2× per halving with NO PLATEAU**,
+>> and the FIFO trajectory at 6.25× budget took H2 max **1024.6 → 240.987 µm (×4.25)** and surface-over-tol
+>> **27.2% → 1.06% (×25.7)**, still with no plateau. **S29 is exactly the experiment that separates the two
+>> readings**, and it is the only one that can, because it is the only arm in which a child is accepted on
+>> the quantity the certificate scores:
+>> * **"NOT DENSITY-CLOSABLE"** — truth-guided splits do not move the reading either. The listed sites strand
+>>   at the tripwire, and that is the **PLACEMENT-LIMIT result**: the residual is h⁰/h¹-like after all and
+>>   the STRONG/TRADE/REFUTED rows land honestly with the strand list as the evidence.
+>> * **"NOT CLOSABLE UNDER A BLIND ACCEPT"** — the reading falls per the D-series slope once the accept test
+>>   can see it, and the WIN/STRONG row lands.
+>> **BOTH ARE REGISTERED ROWS. The sink tripwire is the adjudicator, and it is wired as an instrument rather
+>> than assumed as an outcome.** No result of this arm is a disappointment; the only failure available is a
+>> broken wire, and the wire has its own expect-nonzero probe.
+
+#### **MEMBERSHIP — MEASURED, ALL THREE COUNTS, FROM COMMITTED ARTIFACTS ONLY.**
+Instrument: `research/tools/s29Members.py`, read-only over `CERTD_S24i2.residual2.json` (schema
+`pf.strata.certD.residual/2`, `enumerationComplete: true`, `rowsAreComplete: true`, all 14,569 rows carrying
+`boundUm`) and `gothicarches_ring_DS-HT_S26X.unresolved.json` (4,584 facets, `truncated: false`).
+**THE CAGE LIST IS INDEX-VALID ON THIS MESH AND THAT IS CHECKED, NOT ASSUMED:** `md5(S26X.stl)` ==
+`md5(S24i2.stl)` == `c96da03c08eefbc081a304093c95a364`, so triangle indices correspond exactly.
+
+| step | count |
+|---|---|
+| residual2 rows = over-TOL facets (`boundUm > 10`) | **14,569** |
+| − **rim row** (any vertex within `rimMm` 0.1 mm of z=0 or z=H=120) | **221** |
+| = **interior over-TOL** | **14,348** |
+| − **cage** (S26 unresolved ∩ interior over-TOL) | ***20*** |
+| = ***S29 ACCEPT-OVERRIDE MEMBERSHIP*** | ***14,328*** |
+
+>> ***AND THE CAGE EXCLUSION IS ALMOST VACUOUS, WHICH IS ITSELF THE RESULT THAT LICENSES THIS ARM'S SCOPE.***
+>> The S26 cage is **4,584** facets (shape-ar 4,417 / shape-admit 167) and it meets the interior H1 over-TOL
+>> set in **20 facets — 0.44% of the cage, 0.14% of the residual.** *The population that defeated four
+>> mechanisms and the population this arm addresses are very nearly disjoint.* S29 is not re-fighting the
+>> cage; it has removed it and is aimed at a population the cage never touched.
+
+By owner: **mid-chord 7,119** (max bound 199.943) · **fine 6,170** (145.911) · **long-chord 1,034** (175.513)
+· **over-cap-AR 5** (58.250). Bound distribution: **max 199.943 · p99 74.111 · p90 44.250 · p50 25.663 ·
+min 10.130**; over 30 µm **5,096**, over 50 µm **864**, over 100 µm **37**, over 150 µm **8**.
+***THE MEMBERSHIP'S ARGMAX IS tri 438968 AT 199.943 µm — the interior certified bound carrier itself.***
+The arm is aimed at the exact facet that sets the quantity C1 scores; it is not aimed near it.
+
+#### **THE PRE-REGISTRATION FEASIBILITY PROBE — R2 DISCIPLINE, AND IT MOVES `INFEASIBLE` OFF THE TABLE.**
+Same instrument. Under error ~ hᵖ, taking a facet from bound *b* to TOL needs h to fall `(b/TOL)^(1/p)`, so
+the local 2-D triangle multiplier is `(b/TOL)^(2/p)`. Summed over all 14,328 members:
+
+| model | extra tris (local) | **with S28's measured ×5.5 propagation** | total | ×base | vs 5.5 M cap |
+|---|---|---|---|---|---|
+| **h²** (C1's own win shape) | 26,446 | 145,453 | **1,405,565** | ×1.12 | **OK** |
+| h^1.5 (mixed) | 46,020 | 253,110 | **1,513,222** | ×1.20 | **OK** |
+| **h¹** (crease tier, ~2×/halving — the pessimistic bound) | 127,899 | 703,445 | **1,963,556** | ×1.56 | **OK** |
+
+>> ***THE ARM IS CHEAP, AND THE REASON IT IS CHEAP IS THE REASON IT IS WORTH RUNNING.*** The residual's p50
+>> is **25.663 µm** — about **one halving** from TOL. Even the worst member needs only **×20 local triangles
+>> under h² (2.16 halvings)** or **×400 under h¹ (4.32 halvings)**. ***COMPARE THE CAGE, priced by this same
+>> arithmetic at line 7455: h must fall ×246 = 7.94 halvings = ×60,534 LOCAL TRIANGLES.*** The two
+>> populations differ by **three orders of magnitude in cost**, measured on the same scale. That is the
+>> quantitative form of "the cage is excluded by construction", and it predicts the mesh lands between
+>> **1.29 M and 1.96 M triangles — at or below `_S28i1`'s 1,495,804** even in the pessimistic model.
+**`INFEASIBLE` is registered first and retained anyway** — the ×5.5 propagation factor is itself a measured
+under-call (defect 11) and a truth-guided accept can demand more than a tolerance-scaled one.
+
+#### **DESIGN — WHAT CHANGES, AND *ONLY* THIS.**
+A **per-facet ACCEPT-OVERRIDE list**, loaded at start behind a **NEW DEFAULT-OFF flag**
+(`PF_CB_ACCEPT_OVERRIDE=<members.json>`), following the `PF_CB_TIGHTEN` loading pattern verbatim: same
+run-identity match-or-throw, same "inert under `PF_CB_DRIVER=sweep` → throw" guard, same unset-path
+bit-identity argument. **DEFAULTS DO NOT FLIP. THE FLAG IS ARMED, NEVER DEFAULTED.**
+* **WHERE IT LIVES:** the **DRIVER** (`research/bridge/_strataConformBisect.test.ts`), at the accept test —
+  `consider`/`triangleNeed`, where `bs > acceptTol` currently decides `need: 'size'`. The untouchables
+  (`_facetTruthLib.ts`, `_sharp3dRef.ts`, `_shapeGuard.ts`, `_judgeShape.ts`, `_judgeNormal.ts`, `src/`,
+  `cdt2d`) are **not** edited; the certificate transcription lives in **my own file**.
+* **THE RULE:** `accept(t) ⟺ blindAccept(t) AND (listed(t) ? perp(t) ≤ 10 µm : true)`. For a listed facet the
+  blind pass is **necessary but no longer sufficient**. The heap key, the ranking, the escalation, the
+  conformance-first ordering and `acceptTol` itself are **untouched**; an unlisted facet takes a bit-identical
+  path. **`tolScale` is NOT used and `PF_CB_TIGHTEN` stays unset** — this arm changes the quantity, and
+  bundling the tolerance lever would make the result unattributable.
+* **INHERITANCE:** by parent→child at split, through the driver's existing bookkeeping — a child of a listed
+  facet is listed. Without inheritance the override evaporates on the first split and the arm measures nothing.
+* **h⁰ ROUTING IS UNCHANGED:** `worstCls === 'jump'` still returns `need: 'none'` **before** the override is
+  consulted. The override can never demand refinement at a confirmed jump — the exact demand that stranded
+  2,002 facets in R1b is structurally unreachable here.
+
+#### **THE TRANSCRIBED RULER, AND THE SEEDING DENSITY IS PART OF THE REGISTRATION.**
+The true-perpendicular `distPerp`/`ptTri` family is **TRANSCRIBED** into `research/tools/s29Perp.ts` per the
+S-e rule — **never imported** — and evaluated per candidate facet.
+>> ***SEED DENSELY ENOUGH, AND SAY THE DENSITY.*** `distPerp` seeds its Newton from a **180×120** sweep, and
+>> D2 measured what that costs: at tri 690730 the default reference read **118.993 µm** and the refined
+>> **2880×1920** sweep pulled it to **88.091 µm — down 30.902 µm (26%), where 0.336 µm would have sufficed to
+>> decide the gate. It moved by 92× the deficit.** **AN ACCEPT TEST BUILT ON AN OVER-STATING RULER DEMANDS
+>> SPLITS THAT ARE NOT NEEDED — it manufactures R1b's weld wall out of seeding error.** REGISTERED: the local
+>> seed grid pitch is **≤ the refined sweep's pitch — Δθ ≤ 2π/2880 = 2.1817e-3 rad, Δz ≤ 120/1920 = 0.0625 mm
+>> — with a floor of 8×8 seeds per candidate facet**, and every accept reading takes `min` over all
+>> candidates per `_facetTruthLib`'s own rule that *every candidate is an upper bound, so taking the min is
+>> always correct*. The realised worst-case seed pitch is printed with the run.
+
+#### **THE SINK GUARD — WIRED AS A TRIPWIRE, NOT ASSUMED AS AN OUTCOME.**
+Per listed **site** (grid Δθ 0.02 rad × Δz 0.5 mm → **2,168 sites**, max 133 facets/site, p50 3): track splits
+consumed and the site's current best perpendicular reading against its reading at entry.
+***A site that consumes more than N = 128 splits without its reading falling ≥1.5× RE-STRANDS into a named
+list, its facets revert to blind accept, and THE LOOP CONTINUES.***
+* **N = 128 is calibrated, not chosen:** the measured **h² p99 site cost is 130.8 splits** (p50 4.4, p90 28.2,
+  max 445.0). Under C1's own win shape **~99% of sites finish inside the budget**, so a trip is evidence that
+  the reading is not falling — the sink signature — and not evidence that the budget was mean.
+* ***EXPECT-NONZERO, AND THIS IS THE FALSIFIER FOR THE WIRING ITSELF:*** **some strands are EXPECTED** (the h¹
+  tail; 3.00% of sites exceed N=64 under h² alone). ***ZERO STRANDS WITH THE BOUND NOT FALLING MEANS THE
+  WIRING IS BROKEN, NOT THAT THE MESH HEALED*** — that combination is a **STOP-and-diagnose**, not a result.
+  A check that asserts a zero is worth nothing until something has been seen to make it fire (S28's S5b had
+  no teeth for exactly this reason); the strand counter is therefore reported every iteration, zero or not.
+
+#### **BARS — DISJOINT ROWS, `INFEASIBLE` FIRST, FIRST MATCH WINS.**
+Scored on the ***INTERIOR CERTIFIED BOUND*** from a **FULL Phase-D certificate per iteration**. Baseline
+`_S24i2` = ***199.943 µm at tri 438968***. **Capped-H1 walks are BANNED as quotable — only full certificates.**
+
+| row | fires when |
+|---|---|
+| **0 INFEASIBLE** | live tris > **5.5 M**, or > 3 iterations, or the certificate cannot be completed after the registered wedge-recovery. Report what was measured; no verdict on C1. |
+| ***1 WIN*** | interior certified bound ***≤ 10 µm*** |
+| ***2 STRONG*** | interior certified bound ***≤ 30 µm*** — **REGISTERED AS THE LIKELY LANDING** (the h¹-tail-holds outcome: the h²-closable body closes, the tail strands) |
+| **3 TRADE** | bound falls **≥1.5× (≤ 133.295 µm)** but stays > 30 µm, **and** every wire holds — booked with numbers, not adjectives |
+| **4 REFUTED** | bound does not fall ≥1.5×, **or** any texture wire trips, **or** the interior over-TOL count fails to fall monotonically |
+
+**STOP RULE:** iterate while the interior certified bound improves **≥1.5×/iteration** and every wire holds;
+**stop on stall, wire-trip, or 3 iterations, whichever comes first.** **MONOTONE GUARD:** the interior
+over-TOL count must fall every iteration (baseline **14,348**).
+
+#### **GUARDS.**
+* **H2 CAGE — expected BYTE-STABLE:** **24.375 µm @ th 1.358340 z 76.21094**, fraction **203 / 40,008,064 =
+  0.00051%**, bar ×1.2 = 0.000612%. Five arms have now failed to move it. **If it MOVES IN EITHER DIRECTION,
+  REPORT LOUDLY** — a cage that moves under an arm that excluded it is an instrument fault, not a win.
+* **TEXTURE WIRES — F3 VERBATIM**, the same 14 S28 scored, on the **RATE-per-facet** basis, `_S24i2` baselines:
+  physical ≥90 **4,505** · off-locus ≥15/30/45/60/120/150 **24,736 / 18,299 / 15,666 / 12,791 / 1,593 / 409** ·
+  photographed sub-floor **100** · loose band **981** · fan members **340** · plates **51** · S22 1.5 mm shard
+  census **44** · fan hubs **27** · **gated at the visible floor `[NORMAL]` = 0, AND IT STAYS 0.**
+* ***THE NORMAL WIRE CARRIES A REPORTING RULE THIS TIME.*** S28's 0 → 1 was **tri 1473993 at 90.144° — 0.144°
+  past a sign test** — and the mechanism is understood: **admission judges a CANDIDATE's footprint at split
+  time; the certificate judges a FINISHED facet at four points against five normal candidates**, so a
+  boundary-skimming facet can pass the first and fail the second (admission was composed and biting: 6,583,705
+  checks, 69,266 refusals, 0 stranded; `PF_CB_DESHARD_CASCADE=0` took). ***S29 REFINES INTO THE SAME BAND AND
+  MAY SHARE THIS MECHANISM. The wire stands as registered — but if it trips, THE ANGLE IS REPORTED WITH IT***,
+  so a ≤0.2°-past-the-line sign-test skim is distinguishable from a real orientation regression. **The gate is
+  not argued down either way; the distinction is recorded, not traded.**
+
+#### **PRECONDITIONS — BOTH SIDES OF ANY DRIVER EDIT.**
+* ***IDENTITY:*** flag-OFF at the W1 config reproduces **md5 `8a59fb37a9115600b13262254380ccb0`** byte-exact.
+  **This is the proof that defaults did not flip and it is run AFTER the edit as well as before.**
+* **HARD GATE 12/12** with every documented value exact (V3 thin ridge 12.041 · V7 0.000 · V7c
+  12.041/39.767/142.668 · V4 502.615 · V5 5.552/391.661 · V6 0.617 · V7b 402.230 · V8–V10 exact, ortho < 3e-7),
+  **both sides of the driver edit.**
+* **DETERMINISM TWIN on the final iterate.** Admission family composed verbatim per `s24_iter.sh`
+  (`PF_CB_ADMIT_NORMAL=1 PF_CB_ADMIT_NORMAL_SPLIT=1 PF_CB_ADMIT_SHIPPED=1`), `PF_CB_DESHARD_CASCADE=0` so the
+  S22C confound stays absent, `PF_CB_TIGHTEN` **unset**. Header-diff every iterate against S24's first.
+* Preconditions scored as C4 did: folds, determined blades, seam-cracks, non-manifold, orientation-mismatch,
+  Euler, `[TOPOLOGY]`, admission-stranded, constraint recovery, 3-D AR MAX.
+
+#### **INSTRUMENT RISK — REGISTERED BEFORE THE FIRST CERTIFICATE, NOT IMPROVISED DURING IT.**
+Defect 10, now twice-measured: **the certificate sits at this device's TDR edge at ~1.5 M facets, and
+`_gpuRankBridge`'s device-loss retry WEDGES instead of throwing** — `page.evaluate` does not reject, so a
+994 s run sat dead looking exactly like a working one and had to be killed by PID. **The feasibility probe
+predicts 1.29–1.96 M triangles, i.e. AT THE SAME EDGE.** Registered response, in order:
+1. **Shard the sweep and resume.** `gpuCertSweep` is checkpoint-resumable by design and the resume key
+   includes the config, so a wedge costs the shard, not the run.
+2. **Lower `targetMs` per chunk for the deep (n=192) cascade** — the level that has wedged both times.
+3. **PID-kill recovery is the DOCUMENTED procedure**, with the `.fail` sentinel as the outside signal.
+**TRAP 11, in the form the campaign keeps re-learning: A WEDGE IS AN *ABSENT* MEASUREMENT, NOT A SLOW ONE, AND
+THE DIFFERENCE MUST BE VISIBLE FROM OUTSIDE.** Every wait in this arm is registered with a deadline.
+**NO KERNEL REDESIGN.** The real fix — a deadline on `dispatchOne` — belongs to whoever next touches the
+bridge and is explicitly **out of this arm's scope**.
+
+#### **COST CEILINGS, FROM MEASURED ANCHORS.**
+live tris **≤ 5.5 M** · **≤ 3 iterations** · mesher **1,100–1,400 s**/iteration (`_S24i2` 937.8 s, `_S28i1`
+1,101 s) · certificate **~3,230–3,448 s** (54–57 min) · censuses ~15 min · **≈1.5 h per iteration, ≈4.5 h for
+the full loop.** Every figure is an anchor from a landed arm; none is an estimate.
+
+#### **WHAT IS *NOT* CLAIMED.**
+Not that the residual is plane-sag — **S28 measured that it is not, and this arm is built on the possibility
+that the measurement was taken through a blind accept.** Not that the cage moves; it is excluded. Not that the
+rim row is addressed; it is excluded and remains the open instrument question for step 4. Not that `_S24i2` is
+superseded — **that requires a WIN or STRONG row with every wire held, and until one lands `_S24i2` STANDS.**
+**The ship-configuration question stays open in §5 and no default is flipped by this arm.**
+
+#### **S29 EXECUTION STATE — HANDOFF. THE REGISTRATION IS COMPLETE; THE ARM IS NOT BUILT.**
+**WHAT IS DONE:** this registration, and the pre-registration probe (`research/tools/s29Members.py`,
+**validated — it was executed and reproduces every figure quoted above**, unlike `s28Field.ts`, which was
+committed unvalidated and cost the next session three type errors and a toothless self-check).
+***WHAT HAS NOT HAPPENED, STATED PLAINLY SO NOTHING HERE IS MISTAKEN FOR A RESULT: no driver was edited, no
+flag exists yet, no mesh was built, no certificate was run, and NO BAR ABOVE HAS BEEN SCORED.*** Every number
+in this block is either transcribed from a committed artifact or is arithmetic over one, and the feasibility
+table is a MODEL with its exponent stated per row — not a measurement of the surface.
+
+**THE NEXT SESSION'S ORDER OF WORK, and step 1 is the one that decides whether the rest is worth doing:**
+1. **Build `research/tools/s29Perp.ts`** — the TRANSCRIBED perpendicular ruler at the registered seed density
+   — and **validate it against `_facetTruthLib`'s own published readings BEFORE wiring it to anything.** The
+   V8/V9 fixtures are the natural bars: V8 cylinder offsets 400/50/4 µm must return 400.000/50.000/4.000 with
+   ortho < 3e-7, V9 slopes k=0.2/0.5/1 must return 294.174/268.328/212.132. **A transcription that cannot
+   reproduce those is the arm's single largest silent-failure risk** — it would mis-accept at 14,328 sites
+   and the certificate would only say so 54 minutes later.
+2. Emit the member list (`s29Members.py` extended to serialize the 14,328 `tri` values with their entry
+   `boundUm`, which the sink guard needs as its per-site entry reading).
+3. Driver edit + `PF_CB_ACCEPT_OVERRIDE`, **HARD GATE 12/12 and the flag-OFF identity md5 both sides.**
+4. Iteration 1, then score C1–C4 against the rows above.
+**STEPS 2–4 OF THE OPERATOR'S PRECISION PLAN (cage micro-declaration ≤0.5% of wall · chain-weld hub unit ·
+the rim instrument decision) ARE UNSTARTED AND UNREGISTERED.**
+
+---
+
 ## STRATA-001 — CAMPAIGN CLOSURE
 
 **WHERE THE CAMPAIGN CLOSES.** On `gothicarches_ring_DS-HT_S24i2.stl`, with the first full-coverage
