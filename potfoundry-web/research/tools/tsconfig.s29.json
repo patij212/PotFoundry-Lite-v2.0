@@ -4,5 +4,5 @@
     "types": ["node", "@webgpu/types"],
     "noEmit": true
   },
-  "include": ["./s29Perp.ts"]
+  "include": ["./s29Perp.ts", "./s29Accept.ts", "./s29PerpCli.ts", "./s29AcceptCli.ts"]
 }

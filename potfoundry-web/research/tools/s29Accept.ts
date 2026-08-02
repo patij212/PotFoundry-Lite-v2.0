@@ -72,7 +72,7 @@ export interface S29Override {
   ): boolean;
   strands(): StrandRecord[];
   stats(): {
-    listedTests: number; listedHits: number; perpEvals: number; perpRejects: number;
+    listedTests: number; listedHits: number; perpEvals: number; perpRejects: number; memoHits: number;
     rAEvals: number; strandedSites: number; strandedMembers: number;
     worstDTheta: number; worstDz: number; maxPerpUm: number;
   };
@@ -137,7 +137,8 @@ export function loadS29Override(
   let listedTests = 0; let listedHits = 0;
   let perpEvals = 0; let perpRejects = 0; let rAEvals = 0;
   let worstDTheta = 0; let worstDz = 0; let maxPerpUm = 0;
-  const memo = new Map<number, number>();
+  const memo = new Map<string, number>();
+  let memoHits = 0;
 
   /** unwrap the three vertex thetas onto a common branch, then take the box */
   const box = (thA: number, thB: number, thC: number, zA: number, zB: number, zC: number): {
@@ -214,11 +215,26 @@ export function loadS29Override(
     bx: number, by: number, bz: number,
     cx: number, cy: number, cz: number,
   ): boolean => {
-    const hit = memo.get(tri);
-    if (hit !== undefined) return hit <= bar;
+    // ── KEYED BY GEOMETRY, NOT BY TRIANGLE INDEX.
+    // The index-keyed memo missed almost everything it existed to catch. The driver's conformity and
+    // cleanup stages — collapse, flip, re-mesh, the nudge ladder — DESTROY AND RE-CREATE facets with the
+    // SAME THREE VERTICES under NEW indices, and a facet re-offered under a new index looked brand new and
+    // was re-measured from scratch at ~4,740 rA evaluations a time. `consider` is also called on the same
+    // triangle repeatedly across generations. The key is the canonical (order-independent) vertex triple,
+    // quantised to 1 nm — far below the 50 nm weld wall, so two facets that quantise together are the same
+    // facet, not merely close ones.
+    const q = (v: number): number => Math.round(v * 1e6);
+    const k1 = `${q(ax)},${q(ay)},${q(az)}`;
+    const k2 = `${q(bx)},${q(by)},${q(bz)}`;
+    const k3 = `${q(cx)},${q(cy)},${q(cz)}`;
+    const key = k1 < k2
+      ? (k2 < k3 ? `${k1}|${k2}|${k3}` : k1 < k3 ? `${k1}|${k3}|${k2}` : `${k3}|${k1}|${k2}`)
+      : (k1 < k3 ? `${k2}|${k1}|${k3}` : k2 < k3 ? `${k2}|${k3}|${k1}` : `${k3}|${k2}|${k1}`);
+    const hit = memo.get(key);
+    if (hit !== undefined) { memoHits += 1; return hit <= bar; }
     perpEvals += 1;
     const r = s29PerpTriangle(rA, ax, ay, az, bx, by, bz, cx, cy, cz, { H, tol: bar });
-    memo.set(tri, r.witnessed);
+    memo.set(key, r.witnessed);
     rAEvals += r.cost;
     if (r.worstDTheta > worstDTheta) worstDTheta = r.worstDTheta;
     if (r.worstDz > worstDz) worstDz = r.worstDz;
@@ -265,7 +281,7 @@ export function loadS29Override(
     perpOk,
     strands: () => stranded,
     stats: () => ({
-      listedTests, listedHits, perpEvals, perpRejects, rAEvals,
+      listedTests, listedHits, perpEvals, perpRejects, memoHits, rAEvals,
       strandedSites: stranded.length,
       strandedMembers: stranded.reduce((a, s) => a + s.members, 0),
       worstDTheta, worstDz, maxPerpUm,
@@ -284,7 +300,7 @@ export function loadS29Override(
 // "closable", which is the whole question this arm exists to decide.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-function selftest(): number {
+export function selftest(): number {
   /* eslint-disable no-console */
   const { writeFileSync, mkdtempSync } = require('node:fs') as typeof import('node:fs');
   const { join } = require('node:path') as typeof import('node:path');
@@ -360,8 +376,13 @@ function selftest(): number {
   //       25 um. 20.000 > 25/1.5 = 16.67, so the reading has NOT fallen and the site must re-strand.
   {
     const ov = build(25);
-    const t = tri(1.0, 60, 0.020);
+    // 200 DISTINCT facets inside ONE site. They must differ in GEOMETRY, not merely in index: the memo is
+    // keyed by the canonical vertex triple, so 200 indices of one facet is now ONE evaluation and one
+    // charge — which is precisely what the cache is for, and it made the first version of this bar read
+    // zero strands. Stepping theta by 1e-5 rad (~450 nm of arc, far above the 1 nm memo quantisation and
+    // far below the 0.02 rad site) keeps every one of them in the same site at the same 20.000 um reading.
     for (let i = 0; i < 200; i += 1) {
+      const t = tri(1.0 + i * 1e-5, 60, 0.020);
       ov.perpOk(i, cyl, H, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
     }
     const st = ov.strands();
@@ -378,22 +399,30 @@ function selftest(): number {
   //       100 um: 20.000 < 100/1.5 = 66.7, so refinement is working and no strand is recorded.
   {
     const ov = build(100);
-    const t = tri(1.0, 60, 0.020);
     for (let i = 0; i < 200; i += 1) {
+      const t = tri(1.0 + i * 1e-5, 60, 0.020);
       ov.perpOk(i, cyl, H, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
     }
     ok(ov.strands().length === 0, 'G2 a FALLING site does not strand',
       `entry 100 um, readings 20.000 um = x5.00 fall, strands ${ov.strands().length}`);
   }
 
-  // ── G3: the memo means one triangle is charged ONCE however often it is asked.
+  // ── G3: THE GEOMETRY-KEYED CACHE. The same facet offered under 500 DIFFERENT triangle indices must be
+  //       evaluated ONCE. This is the lever, not a nicety: the driver's conformity and cleanup stages
+  //       destroy and re-create facets with identical vertices under fresh indices, so an index-keyed memo
+  //       missed nearly every repeat and paid ~4,740 rA evaluations again each time.
   {
     const ov = build(25);
     const t = tri(1.0, 60, 0.020);
-    for (let i = 0; i < 500; i += 1) ov.perpOk(7, cyl, H, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
-    ok(ov.stats().perpEvals === 1 && ov.strands().length === 0,
-      'G3 one triangle is evaluated and charged exactly once',
-      `perpEvals ${ov.stats().perpEvals} of 500 calls, strands ${ov.strands().length}`);
+    for (let i = 0; i < 500; i += 1) ov.perpOk(i, cyl, H, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
+    const st = ov.stats();
+    ok(st.perpEvals === 1 && st.memoHits === 499 && ov.strands().length === 0,
+      'G3 one GEOMETRY under 500 indices is evaluated exactly once',
+      `perpEvals ${st.perpEvals}, memoHits ${st.memoHits} of 500 calls, strands ${ov.strands().length}`);
+    // vertex ORDER must not defeat the key either — the same triangle wound differently is the same triangle
+    ov.perpOk(9001, cyl, H, t[6], t[7], t[8], t[0], t[1], t[2], t[3], t[4], t[5]);
+    ok(ov.stats().perpEvals === 1, 'G3 the key is order-independent',
+      `perpEvals still ${ov.stats().perpEvals} after a re-wound triple`);
   }
 
   // ── G4: PROVENANCE IS REFUSED, NOT WARNED ABOUT.
@@ -411,5 +440,6 @@ function selftest(): number {
   /* eslint-enable no-console */
 }
 
-const s29Argv = typeof process !== 'undefined' ? process.argv.slice(2) : [];
-if (s29Argv.includes('--selftest')) process.exit(selftest() === 0 ? 0 : 1);
+// NO TOP-LEVEL CLI HERE — see the note at the foot of `s29Perp.ts`. This module IS imported by the mesher
+// driver, so module-scope `process.exit` is a live hazard rather than a theoretical one. CLI in
+// `s29AcceptCli.ts`.

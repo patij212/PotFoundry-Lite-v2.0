@@ -306,6 +306,19 @@ export interface PerpOpts {
   noDescent?: boolean;
   /** DIAGNOSTIC ONLY — F2's broken-solver lever. */
   brokenFrame?: boolean;
+  /**
+   * EARLY-OUT BAR, in mm. When the Newton candidates already return a reading at or below this, the
+   * coordinate-descent seed is SKIPPED.
+   *
+   * WHY THIS IS SOUND AND NOT A CORNER CUT. Every candidate this routine considers is a GENUINE SURFACE
+   * POINT, so every reading is an UPPER BOUND on the true distance — `_facetTruthLib`'s own rule, and the
+   * reason taking the min over candidates is always correct. Under-statement is therefore impossible. So a
+   * reading already at or below `bar` proves the true distance is at or below `bar`, and adding more seeds
+   * could only lower a number whose exact value no longer changes any decision. When the reading is ABOVE
+   * the bar the descent still runs, in full, at 40 iterations — which is the regime V3/V7c and falsifier F1
+   * exist to protect, and it is untouched.
+   */
+  bar?: number;
 }
 
 /**
@@ -341,14 +354,24 @@ export function s29PerpAt(
     }
   }
   for (const w of wells) seeds.push([w.th, w.z]);
-  if (!opts.noDescent) {
-    const dl = distLocal(rA, H, px, py, pz, seeds[0][0], seeds[0][1],
-      Math.max(1, Math.hypot(px, py) * 0.05), 40, opts.zJumps ?? [], opts.thJumps ?? []);
-    seeds.push([dl.th, dl.z]);
-  }
   let best: PerpResult = { d: Infinity, th: 0, z: 0, ortho: 1, iters: 0, converged: false };
   for (const [sth, sz] of seeds) {
     const r = distPerpFrom(rA, H, px, py, pz, sth, sz, 40, frm);
+    if (r.d < best.d) best = r;
+  }
+  // ── THE DESCENT, RUN SECOND AND ONLY WHEN IT CAN STILL CHANGE AN ANSWER.
+  // `distLocal` at 40 iterations is ~360 rA evaluations — by far the most expensive single ingredient here,
+  // and on the S29 hot path it was being paid at EVERY tightened point. It is what rescues the wrong-well
+  // regime (V3's thin ridge: the radial foot sits ON the crest ~400 µm from the true nearest point and it
+  // is the descent, not Newton, that walks the ~8 µm sideways), so it cannot simply be dropped — F1 is the
+  // standing falsifier for dropping it. But when Newton has ALREADY returned a value at or below the bar,
+  // the true distance is at or below the bar (every candidate is an upper bound), and no further seed can
+  // change the accept decision. Skip it there and pay it everywhere else.
+  if (!opts.noDescent && !(opts.bar !== undefined && best.d <= opts.bar)) {
+    const dl = distLocal(rA, H, px, py, pz, seeds[0][0], seeds[0][1],
+      Math.max(1, Math.hypot(px, py) * 0.05), 40, opts.zJumps ?? [], opts.thJumps ?? []);
+    const r = distPerpFrom(rA, H, px, py, pz, dl.th, dl.z, 40, frm);
+    if (dl.d < best.d) best = { d: dl.d, th: dl.th, z: dl.z, ortho: 1, iters: 0, converged: false };
     if (r.d < best.d) best = r;
   }
   for (const zj of opts.zJumps ?? []) {
@@ -459,19 +482,21 @@ export function s29PerpTriangle(
 
   const tighten = (px: number, py: number, pz: number, radial: number): number => {
     let d = radial;
-    // DESCENT FIRST, THEN NEWTON — each for what it is good at. Newton converges to the nearest STATIONARY
-    // point: seeded at the radial foot of a facet spanning a ridge, that foot sits ON the crest ~400 um
-    // away and Newton polishes a flank solution. The descent's first steps are large; Newton is locally
-    // exact. F1 is the standing falsifier for dropping either.
-    const seed = distLocal(rA, H, px, py, pz, Math.atan2(py, px), pz < 0 ? 0 : pz > H ? H : pz,
-      Math.max(radial, tol), 40, zJumps, thJumps);
-    if (seed.d < d) d = seed.d;
-    const pol = s29PerpAt(rA, H, px, py, pz, { win, zJumps, thJumps });
+    // ONE CALL, NOT TWO. This used to run `distLocal` here AND then `s29PerpAt`, which runs its own descent
+    // seed internally — so the 40-iteration coordinate descent was being paid TWICE per tightened point,
+    // ~720 rA evaluations where ~360 was already the expensive path. `s29PerpAt` owns the whole seeding
+    // strategy (radial foot, the registered-density sweep wells, and the descent when it is still needed);
+    // duplicating half of it here bought nothing. The bar is passed through so the descent is skipped
+    // entirely once the reading is provably under it.
+    const pol = s29PerpAt(rA, H, px, py, pz, { win, zJumps, thJumps, bar: tol });
     if (pol.d < d) d = pol.d;
     const rp = realisedPitch(pol.grid);
     if (rp.dTheta > worstDTheta) worstDTheta = rp.dTheta;
     if (rp.dz > worstDz) worstDz = rp.dz;
-    cost += 40 * 9 + (pol.grid.nu + 1) * (pol.grid.nv + 1) + 4 * 40 * 5;
+    // COST ACCOUNTING IS AN ESTIMATE AND IS LABELLED AS ONE — the authoritative figure is the driver's own
+    // `rEvals` counter, which sees every call because the driver passes its counting `R` in. Sweep +
+    // Newton-from-3-seeds; the descent's ~360 is added only when it actually ran.
+    cost += (pol.grid.nu + 1) * (pol.grid.nv + 1) + 3 * 40 * 5 + (pol.d > tol ? 40 * 9 + 40 * 5 : 0);
     for (const zj of zJumps) { const dw = distToZWall(rA, zj, px, py, pz); if (dw < d) d = dw; }
     for (const tj of thJumps) { const dw = distToThetaWall(rA, tj, px, py, pz, H); if (dw < d) d = dw; }
     return d;
@@ -546,7 +571,7 @@ function ridged(thc: number, half: number, amp: number): RadiusFn {
   };
 }
 
-function validate(): number {
+export function validate(): number {
   let fails = 0;
   const ok = (pass: boolean, label: string, detail: string): void => {
     if (!pass) fails += 1;
@@ -745,8 +770,7 @@ function validate(): number {
   return fails;
 }
 
-const argv = typeof process !== 'undefined' ? process.argv.slice(2) : [];
-if (argv.includes('--validate')) {
-  const f = validate();
-  process.exit(f === 0 ? 0 : 1);
-}
+// NO TOP-LEVEL CLI HERE, AND THAT IS DELIBERATE. This module is imported (transitively) by
+// `research/bridge/_strataConformBisect.test.ts`, the mesher driver. An `argv`-inspecting `process.exit`
+// at module scope executes on EVERY driver run, so a stray `--validate` anywhere in a vitest command line
+// would kill a 90-minute mesh with no diagnostic. The CLI lives in `s29PerpCli.ts`.

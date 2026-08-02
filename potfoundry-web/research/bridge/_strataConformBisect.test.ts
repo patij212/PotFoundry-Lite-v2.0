@@ -4677,6 +4677,9 @@ describe('STRATA conforming-bisection', () => {
           `  carried as a (θ,z) REGION — ${f.cellGrid.cells} cells of ${f.cellGrid.nTheta}×${f.cellGrid.nZ}`
           + ` = ${f.cellGrid.surfaceFractionPct.toFixed(3)}% of the domain (tri indices do not survive a from-scratch remesh)`,
           `  listed tests ${st.listedTests}, hits ${st.listedHits}   perp evaluations ${st.perpEvals}, REJECTS ${st.perpRejects}`,
+          `  geometry-keyed cache: ${st.memoHits} hits / ${st.memoHits + st.perpEvals} lookups`
+          + ` = ${st.memoHits + st.perpEvals > 0 ? ((100 * st.memoHits) / (st.memoHits + st.perpEvals)).toFixed(1) : '0.0'}%`
+          + ` — an INDEX-keyed memo missed every facet conformity re-created under a new index`,
           `  forced pushes: consider() ${ovForcedPush}   triangleNeed() 'none'→'size' ${ovNeedSize}`,
           `  worst perpendicular reading seen ${st.maxPerpUm.toFixed(3)} µm`,
           `  realised seed pitch (REGISTERED ≤ 2.1817e-3 rad, ≤ 0.0625 mm): dθ ${st.worstDTheta.toExponential(4)}  dz ${st.worstDz.toExponential(4)}`,

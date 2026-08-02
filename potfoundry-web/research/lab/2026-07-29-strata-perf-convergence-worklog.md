@@ -10018,6 +10018,106 @@ bar, and no movement in any number this campaign quotes.**
 
 ---
 
+### *** S29-R — **THE RULER IS ×1.67 CHEAPER AND THE RE-PRICE IS STILL NOT A GO. TWO PRICING PROBES** ***
+### *** **VOIDED THEMSELVES ON THEIR OWN BARS, AND THE CACHE THE PLAN CALLED THE BIG LEVER MEASURES 0.0%.** ***
+
+#### **STEP 1 — PRICE THE RULER. *** BOTH ATTEMPTS VOID. NEITHER PRODUCED A MULTIPLIER. *** **
+**S29-P1** (`GRIDU=100 GRIDV=70 TRICAP=1000000 MAXSECS=900`) fired its own **P1 VALIDITY** bar: the UNARMED
+arm came back **`[CAPPED] alloc 1000000/1000000`, 507,000 live tris in 598 s** — it did not converge, so the
+two arms would have been compared at a truncated budget. ***THAT IS THE SAME DEFECT THAT MADE THE
+120k-CAPPED SMOKE READ +2.7% AND MISLEAD THIS ARM INTO A 5,498 s ITERATE***, which is precisely why the bar
+was registered before the run. The ARMED arm then exited **127 after 569 s with no output at all** — no
+test result, no error text, banner only. **A second silent teardown death, undiagnosed.** And a third fault,
+mine: **S29-P1 used a minimal flag set, not the S24 command family the iterate runs**, so even a valid ratio
+would not have transferred.
+**S29-P2** fixed all three (S24 family verbatim, `TRICAP=4000000`, smaller grid) and **died on a hard refusal
+that no budget can fix**: `ALIGNED SEED: constraint recovery INCOMPLETE — 6312 of 6313 locus segments are
+edges (1 missing). refusing to seed.` **The aligned seed is grid-locked to 200×140.** So a cheap mid-scale
+A/B *in the iterate's own configuration* **does not exist** — the only faithful measurement of the wall
+multiplier is the 90-minute full-scale run itself. Recorded so the next session does not re-derive it.
+
+#### **STEP 2 — THE ACCEPT TEST IS CHEAPER, AND THE MEASUREMENT IS FROM THE DRIVER'S OWN rA COUNTER.**
+| | flag-OFF `_S29ID` | armed, BEFORE | armed, AFTER |
+|---|---|---|---|
+| rA evals @ 61,120 tris | 264 M | 269 M | **267 M** |
+| perp evaluations | 0 | 1,055 | 1,055 |
+| ***rA per honest accept test*** | — | ***≈ 4,740*** | ***≈ 2,844 — ×1.67 cheaper*** |
+| fixture bars | — | 14/14 | **14/14** |
+| sink-guard bars | — | 6/6 | **7/7** |
+
+*(The report rounds rA to whole millions, so the 3 M delta carries ±0.5 M — the per-test figure is
+**≈2,800 ± 470**. Stated because a number quoted to four digits off a rounded difference would be a lie.)*
+
+**WHAT BOUGHT IT — and it was not what the plan predicted:**
+* ***THE DESCENT WAS BEING PAID TWICE PER POINT.*** `tighten` called `distLocal` and then `s29PerpAt`, which
+  runs its own descent seed internally — **~720 rA where ~360 was already the expensive path.** One call now.
+* **THE DESCENT IS GATED, AND THE GATE IS PROVABLY SOUND.** Every candidate is a genuine surface point, so
+  every reading is an UPPER bound and under-statement is impossible; a Newton reading already ≤ the bar
+  therefore *proves* the true distance is ≤ the bar and no further seed can change the decision. **Above the
+  bar the descent still runs in full at 40 iterations** — the V3/V7c wrong-well regime is untouched, and F1
+  still measures the mis-seeded ruler at **×33.0 over-stated**.
+* ***THE GEOMETRY-KEYED CACHE — THE PLAN'S "LIKELY BIG LEVER" — MEASURES 0 HITS / 1,055 LOOKUPS = 0.0%.***
+  At this scale conformity never re-offered a facet the override had already tested. **It is UNPROVEN, not
+  proven**, and it must not be quoted as a saving. It is retained because production churn is a different
+  regime (`_S28i1` logged 12,806 constraint recoveries) and because it costs nothing when it does not fire —
+  but *this arm has no evidence for it*, and the self-test (G3: one geometry under 500 indices → 1
+  evaluation, order-independent) proves only that it WORKS, not that it PAYS.
+* **The import-time `process.exit` hazard is gone.** `s29Perp.ts`/`s29Accept.ts` are imported by the mesher
+  driver; an argv-inspecting `process.exit` at module scope ran on every mesh and a stray `--validate` would
+  have killed a 90-minute run silently. CLI moved to `s29PerpCli.ts`/`s29AcceptCli.ts`. ***This was also a
+  live candidate cause of the two undiagnosed silent exits above; it is now excluded rather than suspected.***
+* **`tsc` 0, `eslint` 0, and the flag-OFF identity re-taken a THIRD time: md5 `8a59fb37…` BYTE-EXACT.**
+
+>> ***AND ONE BAR HAD TO BE REPAIRED BECAUSE THE CACHE BROKE IT — WHICH IS THE CACHE PROVING ITSELF.*** G1
+>> went from PASS to FAIL the moment the memo became geometry-keyed: it drove 200 *indices* of ONE facet,
+>> which now collapses to a single evaluation and a single charge, so the tripwire never reached its budget.
+>> The bar, not the guard, was stale. It now drives **200 genuinely distinct facets** (θ stepped by 1e-5 rad
+>> ≈ 450 nm of arc — far above the 1 nm memo quantisation, far below the 0.02 rad site) and re-strands at
+>> **exactly N+1 = 129** again.
+
+#### ***STEP 3 — THE RE-PRICE. IT DOES NOT CLEAR THE MARGIN, AND THE MODEL THAT SAYS SO HAS ALREADY BEEN***
+#### ***CAUGHT UNDER-PREDICTING ONCE.***
+**THE CEILING, REGISTERED BEFORE THE MEASUREMENT:** `_S24i2` meshes in **937.8 s**. For the armed full-scale
+re-run to finish under `MAXSECS=5400` **with margin**, budget **≤ 3,600 s** (a 33% reserve — an iterate
+landing at 5,399 s is one machine-load away from being a trajectory instead of a verdict). **Required wall
+multiplier ≤ 3600/937.8 = ×3.84.**
+
+| | rA/test | ruler cost (h¹ model: 703,000 facets) | + 937.8 s baseline | vs 3,600 s |
+|---|---|---|---|---|
+| before | 4,740 | 3.3 G rA ≈ 3,050 s | ≈ 3,990 s | **over** |
+| **after** | **2,844** | **2.0 G rA ≈ 1,852 s** | ***≈ 2,790 s*** | *nominally under* |
+
+>> ***BUT THE MODEL IS KNOWN TO UNDER-PREDICT, AND BY HOW MUCH IS MEASURED.*** The pre-fix model said
+>> ≈3,990 s; **iteration 1 ran out 5,400 s and still did not converge**, so reality was **≥×1.35** the
+>> model. Applying that same measured correction to the post-fix figure gives ***≈ 3,770 s — OVER the 3,600 s
+>> margin line***, under the 5,400 s cap but with no comfortable clearance. And the bias direction of any
+>> mid-scale extrapolation is itself **unresolved**: the override's demand is set by a FIXED member region
+>> and a FIXED 10 µm target (which makes a small-grid ratio OVER-state), while a finer grid puts MORE facets
+>> inside that same region (which makes it UNDER-state). *(S29-P1's header claimed this was a clean lower
+>> bound. That was wrong and is corrected here.)*
+
+***THE HONEST VERDICT OF STEP 3: UNDECIDED, AND DELIBERATELY NOT DECIDED BY SHAVING A BAR.*** The
+registered instruction was "if the optimized ruler fits under MAXSECS=5400 **with margin**, re-run; if it
+still does not fit, that is a registered INFEASIBLE-with-mechanism". **It sits on the line**, the only
+faithful measurement is the 90-minute run itself, and the mid-scale probe that would have settled it is
+blocked by a grid-locked aligned seed. **So the loop is NOT started on a coin-flip and the bars are NOT
+moved to fit.** `_S24i2` STANDS. **S29's claim remains UNDECIDED — still not refuted, and still not shown.**
+
+#### **THE RE-RUN COMMAND, READY TO GO, FOR A SESSION WITH THE BUDGET FOR IT.**
+    # orchestration OUTSIDE the mesher's process tree — the iteration-1 lesson
+    powershell -NoProfile -Command "Start-Process -FilePath 'C:\Program Files\Git\bin\sh.exe' \
+      -ArgumentList '<abs path>/s29_iter.sh','1','<abs>/S29_members.json' -WindowStyle Hidden"
+    # then poll research/exchange/_strataConformBisect/S29_ITER1.{done,fail} from a SEPARATE shell
+`research/bridge/out/s29_iter.sh` is committed-adjacent (gitignored scratch) and unchanged: S24 family
+verbatim + `PF_CB_ACCEPT_OVERRIDE`, `PF_CB_TIGHTEN` unset, `PF_CB_DESHARD_CASCADE=0`, `MAXSECS=5400`
+**unchanged for comparability**, then the full Phase-D certificate, then the U0 bound column. Score against
+the registered rows **unmoved**: baseline **199.943 µm**, WIN ≤10, STRONG ≤30.
+***AND THE FIRST THING TO READ IS NOT THE BOUND — IT IS THE `geometry-keyed cache` LINE.*** If it is still
+near 0% at 1.5 M facets, the cache is dead weight and the remaining lever is the lattice; if it is high, the
+per-test cost falls again and the arm is comfortably inside the cap.
+
+---
+
 ## STRATA-001 — CAMPAIGN CLOSURE
 
 **WHERE THE CAMPAIGN CLOSES.** On `gothicarches_ring_DS-HT_S24i2.stl`, with the first full-coverage
