@@ -9914,6 +9914,110 @@ a measurement of the production surface.**
 
 ---
 
+### *** S29 ITERATION 1 — **ROW 0, INFEASIBLE. THE MESHER RAN OUT ITS ENTIRE 5,400 s BUDGET WITHOUT** ***
+### *** **CONVERGING AND PRODUCED NO MESH, SO NO CERTIFICATE RAN AND C1 IS NOT SCORED. THE ARM IS** ***
+### *** **AFFORDABLE IN TRIANGLES — THE REGISTRATION PRICED THOSE — AND IT IS NOT AFFORDABLE IN TIME,** ***
+### *** **WHICH THE REGISTRATION NEVER PRICED AT ALL.** ***
+
+**WHAT WAS ATTEMPTED.** `s29_iter.sh 1` — the S24 command family verbatim, `PF_CB_ACCEPT_OVERRIDE` armed,
+`PF_CB_TIGHTEN` unset, `PF_CB_DESHARD_CASCADE=0` — started 13:04:50, ended 14:36:28. **`MESH1 EXIT 1`,
+wall 5,498 s, NO STL.** The certificate was never reached. **NOTHING IN THE REGISTRATION'S BAR TABLE IS
+SCORED, and `_S24i2` STANDS at 199.943 µm interior / 214.053 µm composed.**
+
+#### **TWO CAUSES, AND THEY MUST NOT BE CONFLATED — ONE IS THE ARM, ONE IS THE SESSION.**
+1. ***THE ARM: THE DRIVER RAN TO ITS OWN `PF_CB_MAXSECS=5400` CAP WITHOUT CONVERGING.*** vitest recorded the
+   test at **5,490,753 ms**, i.e. the driver's internal loop clock reached its own 5,400 s ceiling — a limit
+   enforced inside the driver by its own timer and **wholly independent of anything the session did**. The
+   anchors are **`_S24i2` 937.8 s and `_S28i1` 1,101 s**, and the registration's own cost ceiling was
+   **1,100–1,400 s/iteration**. ***THE ARM IS AT LEAST ×4.9 OVER ITS REGISTERED MESHER CEILING AND DID NOT
+   FINISH.***
+2. **THE SESSION: the run then died at TEARDOWN with `Error: The service was stopped: write EPIPE` out of
+   `esbuild/lib/main.js`.** The harness stopped the backgrounded `s29_iter.sh` at ~62 min; that killed
+   vitest's esbuild transform sidecar but **NOT** the fork worker doing the meshing, which was observed
+   still burning CPU 11 minutes later (3,866 s → and on to completion). So the driver finished its capped
+   loop and then had no pipe to report through. ***THE TIME-CAPPED MESH AND — MUCH MORE COSTLY — ITS ENTIRE
+   S29 REPORT BLOCK WERE LOST.*** That block is the arm's whole diagnostic payload: triangle count at the
+   cap, perpendicular evaluations, rejects, and the strand list the registration made the ADJUDICATOR.
+   **5,498 s bought no number.**
+
+>> ***OPS TRAP 11, IN A COSTUME THE CAMPAIGN HAD NOT SEEN.*** The trap has always been "a chain that died
+>> and a chain still running look identical from outside". This time the truth was **BOTH AT ONCE**: the
+>> WORK was alive and the ORCHESTRATION was dead. The shell that would have started the certificate and
+>> written the sentinel was gone, while the mesher ran on for another half hour. A watcher polling the
+>> sentinel would have waited forever on a file with no writer left. **The lesson for the next session is
+>> concrete: the phase-2/phase-3 orchestration must not live in the same process tree as the phase-1
+>> mesher.** A resume driver written OUTSIDE the served root (and outside the killed tree) recovered the
+>> orchestration and is the pattern that should be used from the start.
+
+#### ***WHY IT IS SLOW, AS ARITHMETIC OVER MEASURED ANCHORS — A MODEL, LABELLED AS ONE.***
+The registration's feasibility probe priced the arm in **TRIANGLES** and was, as far as this run can tell,
+**right**: +26k to +128k local, 1.41–1.96 M total against a 5.5 M cap. **It never priced the RULER.** The
+smoke run measures that cost directly, from the two runs' own rA counters at the identical config:
+
+| | flag-OFF `_S29ID` | armed `_S29SMOKE` | delta |
+|---|---|---|---|
+| wall | 188 s | 193 s | +2.7% |
+| rA evals | 264 M | 269 M | **+5 M** |
+| perpendicular evaluations | 0 | **1,055** | — |
+| ⇒ ***cost of one honest accept test*** | — | — | ***≈ 4,740 rA evals*** |
+
+>> ***AND THAT IS WHY THE SMOKE LOOKED CHEAP AND THE ITERATE WAS NOT.*** The smoke was **CAPPED at 120,000
+>> triangles**, so the override was cut off before it could drive any refinement — it evaluated 1,055 facets
+>> and demanded 23 splits. At production scale it is not cut off: it demands refinement at every listed
+>> facet until the perpendicular reading is ≤ 10 µm, **and every facet it creates is itself a listed facet
+>> that must be evaluated.** Priced on the registration's own pessimistic h¹ row: **127,899 extra local
+>> triangles × 5.5 propagation ≈ 703,000 extra facets, each costing ≈ 4,740 rA ⇒ ≈ 3.3 G rA evals**, which
+>> at this machine's measured **1.08 M rA/s single-core** is **≈ 3,050 s of accept testing alone**, on top
+>> of the 937.8 s baseline mesh. ***≈ 4,000 s — the same order as the 5,400 s cap the run actually hit.***
+>> The heap driver is serial by construction, so there is no thread to hide this behind.
+
+#### **THE ROW, PER THE REGISTRATION, FIRST MATCH WINS.**
+| row | fires? |
+|---|---|
+| ***0 INFEASIBLE*** | ***YES — "the certificate cannot be completed". It could not be STARTED: there is no mesh. Report what was measured; NO VERDICT ON C1.*** |
+| 1 WIN / 2 STRONG / 3 TRADE / 4 REFUTED | **NOT REACHED** — every one of them is scored on an interior certified bound from a full certificate, and no certificate exists |
+
+>> **THE DISPOSITION IS THE ONE `_S23R`/`_S23TC` GAVE THE REDUCED-SCALE TRIPLE AND THE ONE S28 GAVE ITSELF,
+>> AND IT IS NOT NEGOTIATED: the loop is DECLARED NOT RUN and goes on the what-remains list. It is never
+>> claimed unrun.** **S29's CLAIM IS UNDECIDED.** The adversarial prior the registration set up — "not
+>> density-closable" versus "not closable under a blind accept" — **is exactly as open as it was before this
+>> iterate**, because the experiment that separates them did not produce a reading.
+
+#### **WHAT THIS ARM DID ESTABLISH, and it is not nothing.**
+* The transcribed ruler is **correct to the published digit** and its falsifiers fire (block above).
+* The wiring **fires and changes the mesh** (`318e2b4e…` ≠ `8a59fb37…`).
+* Defaults did **not** flip: flag-OFF identity **byte-exact**, gate **12/12**, both AFTER the edit.
+* The GPU instrument is **calibrated as recorded**: an out-of-band `PF_D_STAGE=xval` probe on `_S24i2` read
+  **rA parity 0.3073 µm** (recorded 0.303) and passed every deciding D2 bar — X1″, X1c, X2, X3, X4 — with
+  X1b/X1′ failing exactly as AMENDMENT D2-A says they should. **The certificate was ready; the mesh was not.**
+* ***AND THE COST SHAPE IS NOW MEASURED RATHER THAN ASSUMED: ≈ 4,740 rA PER HONEST ACCEPT TEST.*** That
+  number did not exist before this session and it is what any future version of this arm has to beat.
+
+#### ***WHAT THE NEXT SESSION SHOULD DO, IN ORDER. THE ARM IS BUILT; ONLY ITS COST IS UNSOLVED.***
+1. ***PRICE THE RULER BEFORE RE-RUNNING THE LOOP — a mid-scale A/B, ~30 min, that this session should have
+   run before the iterate.*** `PF_CB_GRIDU=100 GRIDV=70 TRICAP=1000000 MAXSECS=900`, armed vs unarmed. It
+   yields the override's true wall multiplier and its evaluation count at a scale where the override
+   actually drives refinement instead of being cut off by a cap. **The 120k-capped smoke's +2.7% is not
+   that number and must not be quoted as it.**
+2. **Then make the accept test cheaper, in this order** — none of these touches an untouchable, and all of
+   them are `s29Perp.ts`/`s29Accept.ts`-local:
+   (a) **the seed window is already tiny; the descent is not.** `distLocal` runs 40 iterations of an
+       8-neighbour probe = ~360 rA per tightened point. On a facet whose radial reading is already close to
+       the bar the descent is redundant with Newton. Gate it on the radial/bar ratio.
+   (b) **cache by GEOMETRY, not by triangle index.** Conformity re-creates facets with identical vertices
+       under new indices; the memo currently misses every one of them.
+   (c) **raise the lattice floor.** `nMax=8, sampleCap=64` still spends 45 radial evals on facets whose
+       three vertices are on the surface and whose sag is obviously tiny; a cheap pre-screen on the blind
+       sag would skip most of them before any lattice is built.
+3. **Only then re-run the loop**, with the orchestration OUTSIDE the mesher's process tree, and with
+   `MAXSECS` left at 5,400 so the comparison to `_S24i2` stays honest.
+
+**AND THE HONEST SUMMARY OF WHAT WAS BOUGHT:** a validated instrument, a proven-live wiring, a measured
+per-test cost, four preconditions held — **and 5,498 s of mesher that produced no mesh, no certificate, no
+bar, and no movement in any number this campaign quotes.**
+
+---
+
 ## STRATA-001 — CAMPAIGN CLOSURE
 
 **WHERE THE CAMPAIGN CLOSES.** On `gothicarches_ring_DS-HT_S24i2.stl`, with the first full-coverage
@@ -9930,6 +10034,20 @@ each named, measured, and attributed to a mechanism.
 >> tail, breaks a gate and does not move the quantity it was aimed at is not an improvement, so **the
 >> operator's eye stays where it was.** `_S28i1` is retained as a measured refutation, not deleted.
 >> **AND THE TWO NUMBERS BELOW THAT WERE UNKNOWN WHEN THIS RECORD WAS FIRST WRITTEN ARE NOW MEASURED.**
+
+>> ***AMENDED AGAIN 2026-08-02, AFTER S29. `_S24i2` STILL STANDS, AND THIS TIME IT STANDS UNCHALLENGED —
+>> NOT VINDICATED.*** S29 built the certificate-accept refinement, validated the transcribed perpendicular
+>> ruler against `_facetTruthLib`'s own V8/V9/V10 fixtures (**14/14 bars, 400.000/50.000/4.000 µm and
+>> 294.174/268.328/212.132 µm to the published digit**), proved the wiring live, and held every
+>> precondition — **flag-OFF identity md5 `8a59fb37…` byte-exact and HARD GATE 12/12, both after the driver
+>> edit.** ***THEN ITERATION 1 RAN OUT THE ENTIRE 5,400 s MESHER BUDGET WITHOUT CONVERGING AND PRODUCED NO
+>> MESH***, so no certificate ran and **ROW 0 INFEASIBLE fires: NO VERDICT ON C1.** The registration's
+>> feasibility probe priced the arm in TRIANGLES and looks right; **it never priced the RULER**, and the
+>> ruler is now measured at **≈ 4,740 rA evaluations per honest accept test** against a serial heap driver.
+>> **S29's claim is UNDECIDED, not refuted** — the adversarial prior it was built to separate ("not
+>> density-closable" vs "not closable under a blind accept") is exactly as open as before. The arm is built
+>> and committed; only its cost is unsolved. **No default was flipped and the ship-configuration question in
+>> §5 is untouched.**
 
 ### 1. THE FINAL CERTIFIED STATE
 
