@@ -84,6 +84,9 @@ import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shape
 // and it matters MORE here, because `sagAdaptive` is also the DEFAULT heap key (PF_CB_RANK=plane), so the
 // extraction is only admissible if the STL comes out byte-identical. That is the first acceptance test.
 import { sagOfNRaw, sagAdaptiveRaw, makeSagArgmax, type SagMesh } from './_sagKernel';
+// S38 — the PERPENDICULAR confirm for the certified accept veto's INFEASIBLE branch. Value import,
+// reachable ONLY when PF_CB_CERTACCEPT is set; with the lever unset it is never called.
+import { distPerpFrom } from './_facetTruthLib';
 // PARALLEL POST-LOOP AUDIT (PF_CB_AUDIT_WORKERS, default = physical cores; 1 = today's exact serial path).
 // READ-ONLY against the mesh and against rA, so it cannot move a vertex and the STL cannot change.
 import {
@@ -2721,6 +2724,7 @@ describe('STRATA conforming-bisection', () => {
     const CERTACCEPT = envOn('PF_CB_CERTACCEPT');
     const CA_NMAX = Math.round(envF('PF_CB_CERTACCEPT_NMAX', 256));
     let caAccept = 0; let caRefuseWitnessed = 0; let caRefuseUncertified = 0; let caForcedPush = 0;
+    let caScreened = 0; let caPerpCalls = 0;
     let caEvals = 0; let caEscalations = 0; let caLevelMax = 0;
     /** exact farthest-point-from-the-three-vertices radius. Transcribed from _facetTruthLib:covRadius. */
     const covRadius3 = (
@@ -2750,7 +2754,7 @@ describe('STRATA conforming-bisection', () => {
       const le = Math.max(eLen(a, b), eLen(b, c), eLen(c, a));
       let n = Math.max(REF_NMIN, Math.min(REF_NMAX, Math.ceil(le / REF_HS)));
       for (;;) {
-        let witnessed = 0;
+        let witnessed = 0; let apx = 0; let apy = 0; let apz = 0;
         for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
           const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
           // p is a point ON THE TRIANGLE (3-D barycentric), not a parametric interpolation — the H1
@@ -2763,10 +2767,28 @@ describe('STRATA conforming-bisection', () => {
           const zc = pz < 0 ? 0 : pz > H ? H : pz;
           const r = R(th, zc); caEvals += 1;
           const d = Math.hypot(px - r * Math.cos(th), py - r * Math.sin(th), pz - zc);
-          if (d > witnessed) {
-            witnessed = d;
-            if (witnessed > tol) { caRefuseWitnessed += 1; if (n > caLevelMax) caLevelMax = n; return false; }
-          }
+          if (d > witnessed) { witnessed = d; apx = px; apy = py; apz = pz; }
+        }
+        if (witnessed > tol) {
+          // ── THE INFEASIBLE BRANCH, AND THE ONE FIX S36 GOT WRONG. The radial reading is a MAX over
+          // samples, so raising n can never bring it down: this facet can NEVER certify with this
+          // ruler. S36 refused here — and S37 measured that 98.9% of those refusals were ARTIFACTS of
+          // the radial over-read (p50 3.11x, up to 13.8x). So confirm the argmax with a perpendicular
+          // solve before acting. ~360 evals, and S38 priced this branch at only 5.8% of facets at the
+          // 10 um bar, i.e. +21 evals/facet amortised (+2.7%) — the S37 fix applied WHERE IT IS CHEAP,
+          // which is exactly what S36 failed to do by applying it nowhere.
+          const sth = Math.atan2(apy, apx);
+          const sz = apz < 0 ? 0 : apz > H ? H : apz;
+          const pd = distPerpFrom(rA, DIMS.H, apx, apy, apz, sth, sz).d;
+          caPerpCalls += 1; caEvals += 360;
+          if (n > caLevelMax) caLevelMax = n;
+          if (pd > tol) { caRefuseWitnessed += 1; return false; }   // real evidence of an exceedance
+          // ⚠ ACCEPTED ON A SCREEN, NOT A CERTIFICATE. distPerpFrom over-estimates, so `pd <= tol`
+          // does prove THIS POINT is within tol — but it is one point, and no covRad/n term covers
+          // the gaps. This facet is strictly better judged than the blind plane ruler would judge it
+          // and is NOT certified. Counted separately so the run can report how much of the mesh is
+          // certified versus merely screened; never fold the two together.
+          caScreened += 1; return true;
         }
         if (witnessed + cov / n <= tol) { caAccept += 1; if (n > caLevelMax) caLevelMax = n; return true; }
         if (n >= CA_NMAX) { caRefuseUncertified += 1; if (n > caLevelMax) caLevelMax = n; return false; }
@@ -5121,8 +5143,11 @@ describe('STRATA conforming-bisection', () => {
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `    *** CERTIFIED ACCEPT VETO: PF_CB_CERTACCEPT=${CERTACCEPT ? 1 : 0}`
       + (CERTACCEPT
-        ? `   certified-ACCEPT ${caAccept}   REFUSED ${caRefuseWitnessed} on a witnessed exceedance`
+        ? `   certified-ACCEPT ${caAccept}   SCREENED-accept ${caScreened} (perp-confirmed at the argmax,`
+          + ` NOT certified — no covRad/n term covers the gaps; keep these separate from the certified count)`
+          + `   REFUSED ${caRefuseWitnessed} on a perp-CONFIRMED exceedance`
           + ` + ${caRefuseUncertified} uncertifiable at n=${CA_NMAX} (refused, never accepted)`
+          + `   perp confirms ${caPerpCalls}`
           + `   forced-pushes ${caForcedPush}   escalations ${caEscalations}   worst level ${caLevelMax}`
           + `   veto rA evals ${(caEvals / 1e6).toFixed(1)} M`
           + `   — bound = max_lattice distRadial + covRad/n, 1-Lipschitz, no smoothness assumption.`
