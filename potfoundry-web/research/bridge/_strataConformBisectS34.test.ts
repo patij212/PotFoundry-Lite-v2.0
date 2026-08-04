@@ -2186,6 +2186,34 @@ describe('STRATA conforming-bisection', () => {
     // (edges not touching v are functions of their own endpoints and stay valid). Both are dropped
     // below, together with v's stale `gcell` membership, which would otherwise hide v from a later
     // weld search and manufacture a duplicate vertex.
+    // ⚠⚠ RESULT 2026-08-04 — THIS LEVER IS BORN-DEAD IN EVERY CONFIG THIS CAMPAIGN HAS RUN, AND THE
+    // A/B PROVED IT: S34RES2 (off) vs S34M43 (on) came back BYTE-IDENTICAL — 1,142,166 tris, 774
+    // unresolved, 37,867 key-inversions, 47.282 um. It never fired and its report line never printed.
+    //
+    // WHY: everything from the "PHASE-1 SWEEP DRIVER" banner at :1857 down — `weldWall`, its R4/R1
+    // branch, the `move-deferred` outcome, and `tryLocusMove` below — is INERT unless
+    // PF_CB_DRIVER=sweep. That header says so in as many words. Every arm here runs the HEAP driver
+    // (the default, and the byte-reproducible control). The Phase-1 REPORT block is likewise wrapped
+    // in `...(SWEEP ? [...])`, so the lever was both inert and unobservable.
+    //
+    // AND THE FRAMING IN commit 20d5729d WAS WRONG, which matters more than the no-op. "15,226
+    // DEFERRED conformance events" imported SWEEP semantics into a HEAP measurement. The COUNT is
+    // real (21,782 in-band non-jump crossings in the seed; 15,226 further than confMm from an
+    // endpoint) but the heap driver has no such dead end: `splitEdge`'s SNAP needs
+    // `t > SNAP_ALPHA && t < 1-SNAP_ALPHA`, so an in-band crossing falls through to the NUDGE LADDER
+    // and is split at the MIDPOINT — which does not conform, but halves the edge, so t grows and
+    // after ~3 halvings the crossing leaves the band and SNAP takes it. Handled at a DENSITY cost,
+    // not stranded. Consistent with snaps falling 49,012 -> 6,852 once the re-solve removes them.
+    //
+    // ⇒ §4.3 IS NEITHER REFUTED NOR VALIDATED — IT IS UNTESTED. The pre-registered failure mode
+    //   (low MOVED + high shape refusals ⇒ stars already at the AR cap) never got to fire. To test:
+    //   (a) run the pair with PF_CB_DRIVER=sweep — exercises THIS code, on a driver no production
+    //       arm uses, so a win would not transfer; or
+    //   (b) implement the move in the HEAP path (`splitEdge`'s in-band fall-through) — the version
+    //       that would actually matter, and NOT what is written below.
+    //   Before either: price what the midpoint fall-through actually costs. The premise may be thin.
+    // KEPT, not reverted — this is correct code for the sweep path with the right guards, default
+    // OFF. It is the SWEEP-side implementation of §4.3, which I mislabelled as the production lever.
     const MOVE43 = envOn('PF_CB_MOVE43');
     const MOVE43_MAX = envF('PF_CB_MOVE43_MAX_UM', 50) / 1000;   // absolute displacement cap
     const MOVE43_STARMAX = Math.round(envF('PF_CB_MOVE43_STARMAX', 64));
