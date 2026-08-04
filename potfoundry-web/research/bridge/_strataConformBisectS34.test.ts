@@ -1573,9 +1573,111 @@ describe('STRATA conforming-bisection', () => {
       return made;
     };
     /** where to split edge (a,b): feature crossing (SNAP) → transverse re-solve (REPROJECT) → midpoint. */
+    // ══════════ §4.3 IN THE HEAP PATH (PF_CB_MOVE43H, DEFAULT OFF) — THE VERSION THAT MATTERS ══════════
+    // The sweep-path implementation further down is BORN-DEAD in every production config (see the RESULT
+    // block above it): `weldWall` is inert unless PF_CB_DRIVER=sweep. This is the same move wired where the
+    // heap driver actually reaches it — `splitEdge`'s IN-BAND fall-through.
+    //
+    // WHAT THE HEAP DRIVER DOES TODAY with an in-band crossing: SNAP requires `t` strictly inside
+    // (SNAP_ALPHA, 1-SNAP_ALPHA), so the crossing falls through to the NUDGE LADDER and the edge is split at
+    // its MIDPOINT. That does not conform — but it halves the edge, so `t` roughly doubles and after ~3
+    // halvings the crossing leaves the band and SNAP takes it. So this lever is NOT rescuing stranded facets;
+    // it is buying the DENSITY those halvings cost. State the claim that way and measure it that way.
+    //
+    // *** TWO INVARIANTS, AND THE SECOND IS A HEAP-ONLY TRAP THE SWEEP PATH DOES NOT HAVE. ***
+    // 1. THE EDGE-VERDICT MEMO. Every cached verdict on an edge INCIDENT to the moved vertex is stale.
+    //    Dropped below. (Edges not touching v are functions of their own endpoints and stay valid.)
+    // 2. `bsReuse` — THE POP LOOP'S RE-QUEUE SHORTCUT, whose own comment says it is licensed by
+    //    "vertices are never moved": it re-pushes a surviving triangle at `kTop`, the key it was popped at,
+    //    for ZERO rA evaluations. Move a vertex and that key is a lie. `move43hFired` forces the honest
+    //    `consider(t)` path for that pop. Without this the mesh silently refines against stale keys — the
+    //    exact shape of defect an optimisation's unasserted invariant produces.
+    // Triangles ALREADY in the heap that contain v keep stale KEYS (priority only, not behaviour: when
+    // popped, `refineDirected` re-measures through the invalidated memo). The visible signature is a rise in
+    // `key-inversions`, which the driver already counts — expect it, and read it as confirmation, not alarm.
+    const MOVE43H = envOn('PF_CB_MOVE43H');
+    const MOVE43H_MAX = envF('PF_CB_MOVE43H_MAX_UM', 50) / 1000;
+    const MOVE43H_STARMAX = Math.round(envF('PF_CB_MOVE43H_STARMAX', 64));
+    let move43hFired = false;               // read and cleared by the pop loop, per pop
+    let nMovedH = 0; let nMoveHShape = 0; let nMoveHOther = 0; let nMoveHBoundary = 0;
+    let moveHDispSum = 0; let moveHDispMax = 0;
+    const starOfH = (t0: number, v: number): number[] => {
+      const out: number[] = []; const seen = new Set<number>(); const stack = [t0];
+      while (stack.length > 0) {
+        const t = stack.pop() as number;
+        if (seen.has(t) || !alive[t]) continue;
+        if (ta[t] !== v && tb[t] !== v && tc[t] !== v) continue;
+        seen.add(t); out.push(t);
+        if (out.length > MOVE43H_STARMAX) return [];
+        for (const w of [ta[t], tb[t], tc[t]]) {
+          if (w === v) continue;
+          for (const o of edgeMap.get(eKey(v, w)) ?? []) if (o !== t && alive[o] && !seen.has(o)) stack.push(o);
+        }
+      }
+      return out;
+    };
+    /** move the nearer endpoint of (a,b) onto an IN-BAND crease crossing. Returns true if it landed. */
+    const tryLocusMoveH = (a: number, b: number, k: Kink): boolean => {
+      const dth = dTh(a, b);
+      const cth = vth[a] + dth * k.t; const cz = vz[a] + (vz[b] - vz[a]) * k.t;
+      const cc = canon(cth); const cr = R(cc, cz);
+      const px = cr * Math.cos(cc); const py = cr * Math.sin(cc);
+      const dA = Math.hypot(vx[a] - px, vy[a] - py, vz[a] - cz);
+      const dB = Math.hypot(vx[b] - px, vy[b] - py, vz[b] - cz);
+      const v = dA <= dB ? a : b;
+      const disp = Math.min(dA, dB);
+      if (!(disp > 0) || disp > MOVE43H_MAX) { nMoveHOther += 1; return false; }
+      // the ring's top/bottom loops are the watertight contract — never move a boundary vertex.
+      if (vz[v] <= 1e-9 || vz[v] >= H - 1e-9) { nMoveHBoundary += 1; return false; }
+      // an anchor for the umbrella walk: any live triangle on edge (a,b) contains v.
+      let t0 = -1;
+      for (const o of edgeMap.get(eKey(a, b)) ?? []) if (alive[o]) { t0 = o; break; }
+      if (t0 < 0) { nMoveHOther += 1; return false; }
+      const star = starOfH(t0, v);
+      if (star.length === 0) { nMoveHOther += 1; return false; }
+      for (const s of star) {
+        const A = ta[s]; const B = tb[s]; const C = tc[s];
+        const gx = (i: number): number => (i === v ? px : vx[i]);
+        const gy = (i: number): number => (i === v ? py : vy[i]);
+        const gz = (i: number): number => (i === v ? cz : vz[i]);
+        const gt = (i: number): number => (i === v ? cth : vth[i]);
+        const before = signedAreaParam(vth[A], vz[A], vth[B], vz[B], vth[C], vz[C]);
+        const after = signedAreaParam(gt(A), gz(A), gt(B), gz(B), gt(C), gz(C));
+        if (before === 0 || after === 0 || (before > 0) !== (after > 0)) { nMoveHShape += 1; return false; }
+        if (!(aspect3(gx(A), gy(A), gz(A), gx(B), gy(B), gz(B), gx(C), gy(C), gz(C)) <= SHAPE_AR)) {
+          nMoveHShape += 1; return false;
+        }
+      }
+      // ── COMMIT. Drop the stale gcell membership while the OLD coords still hold, or a later weld
+      // search cannot find v and manufactures a duplicate vertex.
+      const oldKey = `${gi(vx[v])},${gi(vy[v])},${gi(vz[v])}`;
+      const oldList = gcell.get(oldKey);
+      if (oldList !== undefined) {
+        const at = oldList.indexOf(v);
+        if (at >= 0) oldList.splice(at, 1);
+        if (oldList.length === 0) gcell.delete(oldKey);
+      }
+      vx[v] = px; vy[v] = py; vz[v] = cz; vth[v] = cth; vFeat[v] = true;
+      const newKey = `${gi(px)},${gi(py)},${gi(cz)}`;
+      const nl = gcell.get(newKey);
+      if (nl === undefined) gcell.set(newKey, [v]); else nl.push(v);
+      for (const s of star) for (const w of [ta[s], tb[s], tc[s]]) if (w !== v) edgeCache.delete(eKey(v, w));
+      for (const s of star) created.push(s);   // the pop loop drains `created` through consider()
+      move43hFired = true;
+      nMovedH += 1; moveHDispSum += disp; if (disp > moveHDispMax) moveHDispMax = disp;
+      return true;
+    };
+
     const splitEdge = (a: number, b: number): boolean => {
       if (SNAP) {
         const k = locateKink(vth[a], vz[a], vth[a] + dTh(a, b), vz[b]);
+        // ── §4.3 (heap path). The crossing is IN-BAND: too close to an endpoint for SNAP to place a vertex
+        // without making a sliver, so today it falls through to the nudge ladder and is split at the
+        // MIDPOINT. Move that endpoint onto the crossing instead — conforms exactly, adds no vertex, and
+        // spends none of the density the ~3 halvings would cost. Jump-class is curtain material, never moved.
+        if (MOVE43H && k !== null && !k.jump && (k.t <= SNAP_ALPHA || k.t >= 1 - SNAP_ALPHA)) {
+          if (tryLocusMoveH(a, b, k)) return true;
+        }
         if (k !== null && k.t > SNAP_ALPHA && k.t < 1 - SNAP_ALPHA) {
           if (k.jump) nJump += 1;
           nSnap += 1;
@@ -2809,6 +2911,7 @@ describe('STRATA conforming-bisection', () => {
       if (!alive[t]) continue;
       if (ta.length >= triCap) { capped = true; break; }
       created.length = 0;
+      move43hFired = false;   // §4.3(heap): set by tryLocusMoveH, read by the bsReuse guard below
       if (DIRECTED) refineDirected(t); else refineLepp(t);
       for (const nt of created) consider(nt);
       // RE-QUEUE THE SURVIVOR WITHOUT RE-MEASURING IT. `consider(t)` here re-ran the whole bounded probe on a
@@ -2825,7 +2928,10 @@ describe('STRATA conforming-bisection', () => {
       // stays alive, so the local threshold it was admitted under is still the threshold it would be tested
       // against. Nothing here needs to know whether a field exists.
       if (created.length > 0) {
-        if (alive[t] && !GPU_RANK && Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t])) >= FLOOR_MM) { bsReuse += 1; hpush(t, kTop); } else consider(t);
+        // `!move43hFired` — §4.3(heap) BREAKS THIS SHORTCUT'S LICENCE. The argument above rests on "vertices
+        // are never moved"; when one was, `kTop` is a stale key and re-pushing at it refines against a
+        // measurement of geometry that no longer exists. Fall through to the honest `consider(t)`.
+        if (alive[t] && !GPU_RANK && !move43hFired && Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t])) >= FLOOR_MM) { bsReuse += 1; hpush(t, kTop); } else consider(t);
         unresolved.delete(t);
       }
       iters += 1;
@@ -4839,6 +4945,16 @@ describe('STRATA conforming-bisection', () => {
       })()),
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
+      `    *** §4.3 SNAP-TO-LOCUS VERTEX MOVE (HEAP PATH): PF_CB_MOVE43H=${MOVE43H ? 1 : 0}`
+      + (MOVE43H
+        ? `  cap ${(MOVE43H_MAX * 1000).toFixed(1)} um / star<=${MOVE43H_STARMAX}   MOVED ${nMovedH}`
+          + `   refused ${nMoveHShape} on shape (fold or AR>${SHAPE_AR}) + ${nMoveHBoundary} boundary + ${nMoveHOther} other`
+          + `   displacement mean ${nMovedH > 0 ? ((moveHDispSum / nMovedH) * 1000).toFixed(2) : '0.00'}`
+          + ` / max ${(moveHDispMax * 1000).toFixed(2)} um`
+          + `   — an IN-BAND crossing otherwise falls to the nudge ladder and splits at the MIDPOINT, so what`
+          + ` this buys is the DENSITY of the ~3 halvings that would follow, not a rescue from stranding.`
+          + ` A rise in key-inversions is EXPECTED: moved vertices leave stale keys on heap entries. ***`
+        : ` (OFF) ***`),
       `cleanup: collapsed ${collapsedTris} tris (safe-collapse ${safeCollapses}, link-refused ${refusedCollapses} with ${refusedOffenders} offenders, flips ${flipsDone}, flips-refused-on-locus ${flipsLocusRefused})   welded-splits ${weldedSplits}${NOWELD ? ' (REFUSED)' : ' (allowed)'}`,
       // ─── L5 SHAPE TERM. Printed ALWAYS, including when every lever is off, so a control run says so in
       // its own report rather than by the absence of a block. ───
