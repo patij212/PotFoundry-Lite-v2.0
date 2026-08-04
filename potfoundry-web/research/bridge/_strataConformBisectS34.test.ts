@@ -1598,9 +1598,12 @@ describe('STRATA conforming-bisection', () => {
     const MOVE43H = envOn('PF_CB_MOVE43H');
     const MOVE43H_MAX = envF('PF_CB_MOVE43H_MAX_UM', 50) / 1000;
     const MOVE43H_STARMAX = Math.round(envF('PF_CB_MOVE43H_STARMAX', 64));
+    const MOVE43H_PERV = Math.round(envF('PF_CB_MOVE43H_PERV', 2));  // max moves of any ONE vertex
     let move43hFired = false;               // read and cleared by the pop loop, per pop
     let nMovedH = 0; let nMoveHShape = 0; let nMoveHOther = 0; let nMoveHBoundary = 0;
+    let nMoveHRepeat = 0;
     let moveHDispSum = 0; let moveHDispMax = 0;
+    const moveHCount = new Map<number, number>();
     const starOfH = (t0: number, v: number): number[] => {
       const out: number[] = []; const seen = new Set<number>(); const stack = [t0];
       while (stack.length > 0) {
@@ -1626,7 +1629,18 @@ describe('STRATA conforming-bisection', () => {
       const dB = Math.hypot(vx[b] - px, vy[b] - py, vz[b] - cz);
       const v = dA <= dB ? a : b;
       const disp = Math.min(dA, dB);
-      if (!(disp > 0) || disp > MOVE43H_MAX) { nMoveHOther += 1; return false; }
+      // *** THE TERMINATION GUARD. `disp > 0` IS NOT ENOUGH AND COST A 4.4 CPU-HOUR SPIN (2026-08-04).
+      // After a successful move v sits ON the locus, so `locateKink` on EVERY incident edge returns
+      // t ~ 0 — still in-band — with `disp` tiny but strictly positive. The move then fires again for
+      // a nanometre, re-enqueues the star, and never terminates. The floor is not arbitrary: at
+      // `confMm` the driver's own `edgeVerdictRaw` already sets `conformed = true`, so a crossing
+      // nearer than that needs no move BY THE DRIVER'S OWN DEFINITION. Below the floor: refuse, and
+      // let the normal path treat the edge as conformed. ***
+      if (!(disp > CONF_MM) || disp > MOVE43H_MAX) { nMoveHOther += 1; return false; }
+      // BELT AND BRACES against a different oscillation (v pulled between two nearby loci): cap how
+      // many times any one vertex may be moved. A legitimate correction lands in one.
+      const prior = moveHCount.get(v) ?? 0;
+      if (prior >= MOVE43H_PERV) { nMoveHRepeat += 1; return false; }
       // the ring's top/bottom loops are the watertight contract — never move a boundary vertex.
       if (vz[v] <= 1e-9 || vz[v] >= H - 1e-9) { nMoveHBoundary += 1; return false; }
       // an anchor for the umbrella walk: any live triangle on edge (a,b) contains v.
@@ -1663,6 +1677,7 @@ describe('STRATA conforming-bisection', () => {
       if (nl === undefined) gcell.set(newKey, [v]); else nl.push(v);
       for (const s of star) for (const w of [ta[s], tb[s], tc[s]]) if (w !== v) edgeCache.delete(eKey(v, w));
       for (const s of star) created.push(s);   // the pop loop drains `created` through consider()
+      moveHCount.set(v, prior + 1);
       move43hFired = true;
       nMovedH += 1; moveHDispSum += disp; if (disp > moveHDispMax) moveHDispMax = disp;
       return true;
@@ -2348,7 +2363,12 @@ describe('STRATA conforming-bisection', () => {
       const dB = Math.hypot(vx[b] - px, vy[b] - py, vz[b] - cz);
       const v = dA <= dB ? a : b;
       const disp = Math.min(dA, dB);
-      if (!(disp > 0) || disp > MOVE43_MAX) { nMoveRefusedOther += 1; return false; }
+      // SAME TERMINATION GUARD AS THE HEAP PATH, AND FOR THE SAME REASON — see the long note there.
+      // `disp > 0` spins: after the move v is ON the locus, every incident edge reads t ~ 0 (in band)
+      // with disp tiny but positive, so it moves again forever. `confMm` is the principled floor —
+      // below it `edgeVerdictRaw` already calls the edge conformed. This path is inert (sweep-only),
+      // so the defect never surfaced here; it is fixed anyway rather than left as a landmine.
+      if (!(disp > CONF_MM) || disp > MOVE43_MAX) { nMoveRefusedOther += 1; return false; }
       // NEVER move a domain-boundary vertex: the ring's top/bottom loops are the watertight contract.
       if (vz[v] <= 1e-9 || vz[v] >= H - 1e-9) { nMoveRefusedOther += 1; return false; }
       const star = starOf(t, v);
@@ -4948,7 +4968,8 @@ describe('STRATA conforming-bisection', () => {
       `    *** §4.3 SNAP-TO-LOCUS VERTEX MOVE (HEAP PATH): PF_CB_MOVE43H=${MOVE43H ? 1 : 0}`
       + (MOVE43H
         ? `  cap ${(MOVE43H_MAX * 1000).toFixed(1)} um / star<=${MOVE43H_STARMAX}   MOVED ${nMovedH}`
-          + `   refused ${nMoveHShape} on shape (fold or AR>${SHAPE_AR}) + ${nMoveHBoundary} boundary + ${nMoveHOther} other`
+          + `   refused ${nMoveHShape} on shape (fold or AR>${SHAPE_AR}) + ${nMoveHBoundary} boundary`
+          + ` + ${nMoveHRepeat} per-vertex-cap + ${nMoveHOther} other (incl. disp<=confMm — the spin guard)`
           + `   displacement mean ${nMovedH > 0 ? ((moveHDispSum / nMovedH) * 1000).toFixed(2) : '0.00'}`
           + ` / max ${(moveHDispMax * 1000).toFixed(2)} um`
           + `   — an IN-BAND crossing otherwise falls to the nudge ladder and splits at the MIDPOINT, so what`

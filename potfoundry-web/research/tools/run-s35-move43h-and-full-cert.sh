@@ -82,11 +82,11 @@ run_cb_arm() {
     npx vitest run --config vitest.s34resolve.config.ts || echo "*** ARM ${suffix} FAILED (continuing) ***"
 }
 
-run_cb_arm S35CTL 0
-run_cb_arm S35M43H 1
-
 # ══════════════════════ JOB B — full-budget certificate, CONTROL only ══════════════════════
-# Runs regardless of Job A's outcome: it audits an STL that already exists on disk.
+# *** ORDER REVERSED 2026-08-04. *** The first attempt ran Job A first; its treatment arm SPUN
+# (4.4 CPU-hours vs the control's 839 s) on a missing termination guard, and Job B never got to
+# start. Job B audits an STL that already exists on disk, depends on nothing else here, and is the
+# higher-value deliverable — so it goes FIRST and can no longer be starved by a Job A defect.
 echo
 echo "=============================================================="
 echo "JOB B  FULL-BUDGET CERTIFICATE — control S34CTL"
@@ -102,3 +102,12 @@ env -u PF_CB_TAG_SUFFIX \
   NODE_OPTIONS=--max-old-space-size=8192 \
   npx vitest run --config vitest.stratafacettruth.config.ts \
   || echo "*** JOB B FAILED ***"
+
+# ══════════════════════════ JOB A — §4.3 heap-path A/B (now second) ══════════════════════════
+# PF_CB_MAXSECS caps each arm's refinement loop. The spin is fixed (disp must exceed confMm, plus a
+# per-vertex move cap), but a wall-clock ceiling is cheap insurance: the control drains in ~840 s, so
+# 2400 s is ample for an honest arm and bounds any surprise at 3x rather than unbounded.
+export PF_CB_MAXSECS=2400
+
+run_cb_arm S35CTL 0
+run_cb_arm S35M43H 1
