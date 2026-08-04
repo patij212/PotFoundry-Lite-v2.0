@@ -2163,6 +2163,99 @@ describe('STRATA conforming-bisection', () => {
       }
       return -1;
     };
+    // ══════════ §4.3 — THE SNAP-TO-LOCUS VERTEX MOVE (PF_CB_MOVE43, DEFAULT OFF) ══════════
+    // The repair the R4/R1 branch below has named as "NOT IMPLEMENTED" since the spec was written.
+    // 2026-08-04 measured its population for the first time (s32RefineMech.ts): 15,226 genuinely
+    // deferred events at seed scale — 1.63x the entire published crossing count — because the
+    // driver's own headline counter SKIPS the SNAP_ALPHA band (:1409) and so had never seen them.
+    //
+    // WHY A MOVE AND NOT A SPLIT. The crossing is within SNAP_ALPHA·|e| of an endpoint. Splitting
+    // there makes a sliver; moving the endpoint ONTO the crossing conforms exactly, creates no
+    // vertex, and terminates in ONE step.
+    //
+    // *** THE FOLD TEST IS THE PLANARITY TEST HERE, AND THAT IS WHY THIS IS SAFER IN-DRIVER THAN
+    // AT SEED TIME. *** The seed's constraints are SEGMENTS not yet triangulated, so two of them
+    // can cross without anything else noticing — that is the risk s33ChainResolve had to measure
+    // explicitly. Here the mesh is already a triangulation: two edges cannot cross unless some
+    // incident triangle inverts, so a (θ,z) orientation-sign check over the whole star IS the
+    // embedding check. No separate PSLG pass is needed or possible.
+    //
+    // THE MEMO IS THE OTHER PREREQUISITE, and the driver said so first — see §6.5 at the
+    // MEMO_VERIFY block: "it is here so the §4.3 move cannot land without the check that proves
+    // the memo still holds". Moving v invalidates every cached verdict on an edge INCIDENT to v
+    // (edges not touching v are functions of their own endpoints and stay valid). Both are dropped
+    // below, together with v's stale `gcell` membership, which would otherwise hide v from a later
+    // weld search and manufacture a duplicate vertex.
+    const MOVE43 = envOn('PF_CB_MOVE43');
+    const MOVE43_MAX = envF('PF_CB_MOVE43_MAX_UM', 50) / 1000;   // absolute displacement cap
+    const MOVE43_STARMAX = Math.round(envF('PF_CB_MOVE43_STARMAX', 64));
+    let nMoved = 0; let nMoveRefusedShape = 0; let nMoveRefusedOther = 0;
+    let moveDispSum = 0; let moveDispMax = 0;
+    /** the umbrella of live triangles around v, reached from a known incident triangle. */
+    const starOf = (t0: number, v: number): number[] => {
+      const out: number[] = []; const seen = new Set<number>(); const stack = [t0];
+      while (stack.length > 0) {
+        const t = stack.pop() as number;
+        if (seen.has(t) || !alive[t]) continue;
+        if (ta[t] !== v && tb[t] !== v && tc[t] !== v) continue;
+        seen.add(t); out.push(t);
+        if (out.length > MOVE43_STARMAX) return [];              // pathological fan — refuse, do not walk it
+        for (const w of [ta[t], tb[t], tc[t]]) {
+          if (w === v) continue;
+          for (const o of edgeMap.get(eKey(v, w)) ?? []) if (o !== t && alive[o] && !seen.has(o)) stack.push(o);
+        }
+      }
+      return out;
+    };
+    const tryLocusMove = (t: number, a: number, b: number): boolean => {
+      const k = locateKink(vth[a], vz[a], vth[a] + dTh(a, b), vz[b]);
+      if (k === null || k.jump) { nMoveRefusedOther += 1; return false; }
+      const dth = dTh(a, b);
+      const cth = vth[a] + dth * k.t; const cz = vz[a] + (vz[b] - vz[a]) * k.t;
+      const cc = canon(cth); const cr = R(cc, cz);
+      const px = cr * Math.cos(cc); const py = cr * Math.sin(cc);
+      const dA = Math.hypot(vx[a] - px, vy[a] - py, vz[a] - cz);
+      const dB = Math.hypot(vx[b] - px, vy[b] - py, vz[b] - cz);
+      const v = dA <= dB ? a : b;
+      const disp = Math.min(dA, dB);
+      if (!(disp > 0) || disp > MOVE43_MAX) { nMoveRefusedOther += 1; return false; }
+      // NEVER move a domain-boundary vertex: the ring's top/bottom loops are the watertight contract.
+      if (vz[v] <= 1e-9 || vz[v] >= H - 1e-9) { nMoveRefusedOther += 1; return false; }
+      const star = starOf(t, v);
+      if (star.length === 0) { nMoveRefusedOther += 1; return false; }
+      const nth = cth; const nz = cz;
+      for (const s of star) {
+        const A = ta[s]; const B = tb[s]; const C = tc[s];
+        const gx = (i: number): number => (i === v ? px : vx[i]);
+        const gy = (i: number): number => (i === v ? py : vy[i]);
+        const gz = (i: number): number => (i === v ? nz : vz[i]);
+        const gt = (i: number): number => (i === v ? nth : vth[i]);
+        const before = signedAreaParam(vth[A], vz[A], vth[B], vz[B], vth[C], vz[C]);
+        const after = signedAreaParam(gt(A), gz(A), gt(B), gz(B), gt(C), gz(C));
+        if (before === 0 || after === 0 || (before > 0) !== (after > 0)) { nMoveRefusedShape += 1; return false; }
+        const ar = aspect3(gx(A), gy(A), gz(A), gx(B), gy(B), gz(B), gx(C), gy(C), gz(C));
+        if (!(ar <= SHAPE_AR)) { nMoveRefusedShape += 1; return false; }
+      }
+      // ── COMMIT. Order matters: drop the stale gcell membership while the OLD coords still hold.
+      const oldKey = `${gi(vx[v])},${gi(vy[v])},${gi(vz[v])}`;
+      const oldList = gcell.get(oldKey);
+      if (oldList !== undefined) {
+        const at = oldList.indexOf(v);
+        if (at >= 0) oldList.splice(at, 1);
+        if (oldList.length === 0) gcell.delete(oldKey);
+      }
+      vx[v] = px; vy[v] = py; vz[v] = nz; vth[v] = nth; vFeat[v] = true;
+      const newKey = `${gi(px)},${gi(py)},${gi(nz)}`;
+      const nl = gcell.get(newKey);
+      if (nl === undefined) gcell.set(newKey, [v]); else nl.push(v);
+      // MEMO: every cached verdict on an edge INCIDENT to v is now stale.
+      for (const s of star) for (const w of [ta[s], tb[s], tc[s]]) if (w !== v) edgeCache.delete(eKey(v, w));
+      // re-enqueue the whole star: `created` is drained into qPush by the pop loop.
+      for (const s of star) created.push(s);
+      nMoved += 1; moveDispSum += disp; if (disp > moveDispMax) moveDispMax = disp;
+      return true;
+    };
+
     /** §4.2 route a refused split by CLASS. `route` distinguishes a locus split from a plain size split. */
     const weldWall = (t: number, a: number, b: number, cls: SizingClass, refusal: Refusal, route: 'conform' | 'size'): Outcome => {
       if (cls === 'jump') { curtainDefer(t); return 'curtain'; } // defensive: triangleNeed already returned 'none'
@@ -2173,6 +2266,9 @@ describe('STRATA conforming-bisection', () => {
           // that endpoint onto the crossing, which conforms exactly, creates no vertex and terminates in ONE
           // step. Until that lands this is an HONEST DEAD END, not an accept: it goes to `unresolved`, so a
           // drained FIFO still reports NOT-CONVERGED.
+          // §4.3 IS NOW BUILT (PF_CB_MOVE43, default OFF). With the lever unset this branch is the
+          // historical honest dead end, byte-for-byte. Jump-class never reaches here (guarded above).
+          if (MOVE43 && tryLocusMove(t, a, b)) return 'proximity';
           nMoveDeferred += 1;
           return 'move-deferred';
         }
@@ -4976,6 +5072,15 @@ describe('STRATA conforming-bisection', () => {
         `  conformed-by-proximity ${nProximity}   snap-MOVES 0 (§4.3 DEFERRED — see move-deferred below)   floor-refused ${nFloorRefused}   no-incident ${nNoIncident}`,
         `  curtain-deferred ${curtainTagged} triangles at ${curtainCells.size} distinct sites (${curtainSites.length} recorded, cap ${CURTAIN_CAP})   class-flips ${nClassFlips}${siteMapSaturated ? '   *** SITE MAP SATURATED — stickiness degraded, raise PF_CB_SITE_CAP ***' : ''}`,
         `  weld-wall: smooth-midpoint BUGS ${nSmoothWeldBug} (crease-class size welds ${nCreaseSizeWeld})   move-deferred ${nMoveDeferred}`,
+        `    *** §4.3 SNAP-TO-LOCUS VERTEX MOVE: PF_CB_MOVE43=${MOVE43 ? 1 : 0}`
+        + (MOVE43
+          ? `  cap ${(MOVE43_MAX * 1000).toFixed(1)} um / star<=${MOVE43_STARMAX}   MOVED ${nMoved}`
+            + `   refused ${nMoveRefusedShape} on shape (fold or AR>${SHAPE_AR}) + ${nMoveRefusedOther} other`
+            + `   displacement mean ${nMoved > 0 ? ((moveDispSum / nMoved) * 1000).toFixed(2) : '0.00'} / max `
+            + `${(moveDispMax * 1000).toFixed(2)} um`
+            + `   — the fold sign-test over the whole star IS the embedding check; a triangulation's edges`
+            + ` cannot cross without an incident facet inverting ***`
+          : ` (OFF — the R4/R1 branch is the historical honest dead end, byte-for-byte) ***`),
         `  memo: ${memoHits} hits / ${memoMisses} misses (${((100 * memoHits) / Math.max(1, memoHits + memoMisses)).toFixed(1)}% hit)${MEMO_VERIFY ? `   PF_CB_MEMO_VERIFY mismatches ${memoMismatch} (MUST be 0)` : '   (PF_CB_MEMO_VERIFY=1 to gate it)'}`,
         // PARALLEL PREDICATE. Read the two eval columns as COST, never as fidelity: the worker column includes
         // SPECULATIVE edges (triangles killed by a neighbour's split before they were popped), so the pooled
