@@ -2653,6 +2653,93 @@ describe('STRATA conforming-bisection', () => {
       if (s > 1) tightenHits += 1;
       return acceptTol / s;
     };
+    // ══════════ SOUND ACCEPT TEST (PF_CB_CERTACCEPT, DEFAULT OFF) ══════════
+    // The heap driver's report line says it plainly: `rank/accept: PF_CB_RANK=plane`. RANK and ACCEPT
+    // are the SAME blind ruler — the defect the facet-truth auditor exists to catch, on the driver's
+    // own side. `sagAdaptive` measures a surface sample's distance to the triangle's INFINITE PLANE,
+    // which under-reads by a measured median 21.9x / p90 88x / max 541x (a facet 125 um off reads
+    // 2.255 um), for two independent reasons: the plane is not the triangle, and at n<=64 the lattice
+    // pitch on a large facet exceeds the product bar, so a narrow feature contributes nothing.
+    //
+    // THIS CHANGES ONLY THE ACCEPT SIDE, DELIBERATELY. Honest RANKING has been measured here and it
+    // was worse — plane 126.0 um / 0 stranded / 456 s vs foot-point 444.1 um / 2,002 stranded / 769 s
+    // (2026-07-29). Worst-first on an honest key halves everything once instead of finishing
+    // anything. Ranking is a heuristic about what to do NEXT; accepting is what SHIPS a facet. Only
+    // the second has to be sound. So the heap key stays `sagAdaptive` and is untouched.
+    //
+    // THE CERTIFICATE, transcribed from `_facetTruthLib` rather than invented — distance-to-a-set is
+    // 1-Lipschitz for ANY set, so a barycentric lattice of level n puts every point of T within
+    // covRad(T)/n of a sample, giving  max over T <= max over lattice + covRad/n  with NO assumption
+    // that rA is smooth, bounded or continuous, and no feature detector. Two pieces, both cheap:
+    //   * `covRadius` — exact farthest-vertex radius. ZERO rA evals, pure arithmetic.
+    //   * `distRadial` — distance to the surface point directly outward of p. ONE rA eval, and it
+    //     always OVER-estimates d(p), so a PASS built on it is sound however crude.
+    // Same one-eval-per-lattice-point budget `sagOfN` already spends; the cost is in the LEVEL, not
+    // the per-sample work — a certified pass needs n >~ covRad/tol, which is coarser-to-finer than
+    // the current n = le/30um. That is the honest price of not being blind, and it is why this
+    // escalates adaptively instead of picking one n.
+    //
+    // THE ESCALATION IS THE SAME THREE-WAY DECISION `certifyTriangle` MAKES, and it terminates:
+    //   witnessed > tol           -> REFUSE. Sound: a witnessed exceedance is a real exceedance.
+    //   witnessed + covRad/n<=tol -> ACCEPT. Sound: nothing can hide between samples.
+    //   otherwise                 -> raise n and re-measure; at the cap, REFUSE (never accept what
+    //                                could not be certified — the conservative direction).
+    const CERTACCEPT = envOn('PF_CB_CERTACCEPT');
+    const CA_NMAX = Math.round(envF('PF_CB_CERTACCEPT_NMAX', 256));
+    let caAccept = 0; let caRefuseWitnessed = 0; let caRefuseUncertified = 0; let caForcedPush = 0;
+    let caEvals = 0; let caEscalations = 0; let caLevelMax = 0;
+    /** exact farthest-point-from-the-three-vertices radius. Transcribed from _facetTruthLib:covRadius. */
+    const covRadius3 = (
+      ax: number, ay: number, az: number, bx: number, by: number, bz: number,
+      cx: number, cy: number, cz: number,
+    ): number => {
+      const la = Math.hypot(bx - cx, by - cy, bz - cz);
+      const lb = Math.hypot(ax - cx, ay - cy, az - cz);
+      const lc = Math.hypot(ax - bx, ay - by, az - bz);
+      const mx = Math.max(la, lb, lc);
+      const s1 = la * la; const s2 = lb * lb; const s3 = lc * lc;
+      const sMax = Math.max(s1, s2, s3);
+      if (sMax >= s1 + s2 + s3 - sMax - 1e-18) return mx / 2;      // right or obtuse
+      const ux = bx - ax; const uy = by - ay; const uz = bz - az;
+      const wx = cx - ax; const wy = cy - ay; const wz = cz - az;
+      const n2 = Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+      if (n2 < 1e-18) return mx / 2;
+      return (la * lb * lc) / (2 * n2);
+    };
+    /** SOUND accept decision for t against `tol`. Returns true to ACCEPT. */
+    const certifiedAccept = (t: number, tol: number): boolean => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
+      const ax = vx[a]; const ay = vy[a]; const az = vz[a];
+      const bx = vx[b]; const by = vy[b]; const bz = vz[b];
+      const cx = vx[c]; const cy = vy[c]; const cz = vz[c];
+      const cov = covRadius3(ax, ay, az, bx, by, bz, cx, cy, cz);
+      const le = Math.max(eLen(a, b), eLen(b, c), eLen(c, a));
+      let n = Math.max(REF_NMIN, Math.min(REF_NMAX, Math.ceil(le / REF_HS)));
+      for (;;) {
+        let witnessed = 0;
+        for (let i = 0; i <= n; i += 1) for (let j = 0; j <= n - i; j += 1) {
+          const wa = i / n; const wb = j / n; const wc = 1 - wa - wb;
+          // p is a point ON THE TRIANGLE (3-D barycentric), not a parametric interpolation — the H1
+          // quantity is max over p in T of dist(p, S), so the lattice must live on the facet.
+          const px = wa * ax + wb * bx + wc * cx;
+          const py = wa * ay + wb * by + wc * cy;
+          const pz = wa * az + wb * bz + wc * cz;
+          // distRadial: the surface point directly outward of p. One rA eval, always >= d(p).
+          const th = Math.atan2(py, px);
+          const zc = pz < 0 ? 0 : pz > H ? H : pz;
+          const r = R(th, zc); caEvals += 1;
+          const d = Math.hypot(px - r * Math.cos(th), py - r * Math.sin(th), pz - zc);
+          if (d > witnessed) {
+            witnessed = d;
+            if (witnessed > tol) { caRefuseWitnessed += 1; if (n > caLevelMax) caLevelMax = n; return false; }
+          }
+        }
+        if (witnessed + cov / n <= tol) { caAccept += 1; if (n > caLevelMax) caLevelMax = n; return true; }
+        if (n >= CA_NMAX) { caRefuseUncertified += 1; if (n > caLevelMax) caLevelMax = n; return false; }
+        n = Math.min(CA_NMAX, n * 2); caEscalations += 1;
+      }
+    };
+
     const consider = (t: number): void => {
       if (t < 0 || !alive[t]) return;
       const le = Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t]));
@@ -2681,6 +2768,13 @@ describe('STRATA conforming-bisection', () => {
           ovForcedPush += 1; hpush(t, s); return;
         }
       }
+      // ─── CERTIFIED ACCEPT VETO (PF_CB_CERTACCEPT). Deliberately the SAME SHAPE as the S20 and S29
+      // lines above, and pushed AT THE BLIND KEY `s` for the same two reasons: the honest quantity is
+      // a judge and not a driver (measured — honest ranking was 3.5x worse), and `s` must stay a pure
+      // function of the triangle or the pop loop's `bsReuse` re-queue shortcut loses its licence. The
+      // difference from S29 is scope: S29 vetoes only a LISTED membership, this vetoes EVERY facet the
+      // blind ruler would accept. ───
+      if (s <= at && CERTACCEPT && !certifiedAccept(t, at)) { caForcedPush += 1; hpush(t, s); return; }
       if (s > at) { if (at !== acceptTol && s <= acceptTol) tightenPushes += 1; hpush(t, s); }
     };
     /** score every queued candidate on the GPU and push the ones that miss `acceptTol`. */
@@ -4991,6 +5085,15 @@ describe('STRATA conforming-bisection', () => {
       })()),
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
+      `    *** CERTIFIED ACCEPT VETO: PF_CB_CERTACCEPT=${CERTACCEPT ? 1 : 0}`
+      + (CERTACCEPT
+        ? `   certified-ACCEPT ${caAccept}   REFUSED ${caRefuseWitnessed} on a witnessed exceedance`
+          + ` + ${caRefuseUncertified} uncertifiable at n=${CA_NMAX} (refused, never accepted)`
+          + `   forced-pushes ${caForcedPush}   escalations ${caEscalations}   worst level ${caLevelMax}`
+          + `   veto rA evals ${(caEvals / 1e6).toFixed(1)} M`
+          + `   — bound = max_lattice distRadial + covRad/n, 1-Lipschitz, no smoothness assumption.`
+          + ` Vetoes at the BLIND key so ranking and the bsReuse licence are untouched. ***`
+        : ` (OFF — accept is the blind plane ruler, same as rank) ***`),
       `    *** §4.3 SNAP-TO-LOCUS VERTEX MOVE (HEAP PATH): PF_CB_MOVE43H=${MOVE43H ? 1 : 0}`
       + (MOVE43H
         ? `  cap ${(MOVE43H_MAX * 1000).toFixed(1)} um / star<=${MOVE43H_STARMAX}   MOVED ${nMovedH}`
