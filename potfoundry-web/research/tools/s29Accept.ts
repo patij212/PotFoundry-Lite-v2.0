@@ -61,6 +61,8 @@ export interface S29MembersFile {
 export interface StrandRecord {
   iTh: number; iZ: number; theta: number; z: number;
   entryUm: number; bestUm: number; splits: number; members: number; ratio: number;
+  /** which rule fired: the registered entry-anchored test, or the re-arming window (PF_CB_SINK_WINDOW) */
+  rule: 'entry' | 'window';
 }
 
 export interface S29Override {
@@ -116,7 +118,7 @@ export function verifyMembersProvenance(
 export function loadS29Override(
   path: string,
   expect: { key: string; style: string; stage: string; tolMm: number },
-  opts: { barMm?: number; fpVeto?: boolean } = {},
+  opts: { barMm?: number; fpVeto?: boolean; sinkWindow?: boolean } = {},
 ): S29Override {
   const f = JSON.parse(readFileSync(path, 'utf8')) as S29MembersFile;
   const mism = verifyMembersProvenance(f, expect);
@@ -134,6 +136,20 @@ export function loadS29Override(
   // The lever is read from the environment when the caller does not pass one, so BOTH drivers pick it up
   // with no diff; an explicit `opts.fpVeto` always wins.
   const fpVeto = opts.fpVeto ?? (process.env.PF_CB_FPVETO === '1');
+  // ── PF_CB_SINK_WINDOW — THE RE-ARMING SINK GUARD, NEW AND DEFAULT OFF. ─────────────────────────────────
+  // MEASURED DEFECT (`_S29FPi1`): the member region was refined to 2.73x the facet count at 2.64x smaller
+  // mean area, those facets stayed OVER the 10 um bar, and the guard reported STRANDED SITES 0 of 2,168.
+  // The arithmetic, not a tuning question: `bestUm` is the MINIMUM over-bar reading ever seen and it is
+  // tested against the site's ENTRY reading forever, so a site entering at 200 um is permanently exempt
+  // after ONE fall to 133 um — 7.5% of the way to the bar. The registered rule asks "did this site EVER
+  // improve by 1.5x?"; only "is it STILL improving?" can detect a sink.
+  // The window reads the registration's own wording — "consumes more than N splits WITHOUT ITS READING
+  // FALLING >= 1.5x" — as a RATE over the last N splits: every N+1 charged splits the window's best is
+  // compared against the window's own entry, and the site either strands or re-baselines. Same trigger
+  // count as the registered rule, so the two are directly comparable.
+  // DEFAULT OFF: the registered rule ran every arm in this campaign and stays the default until the
+  // window is MEASURED against it on a real iterate.
+  const sinkWindow = opts.sinkWindow ?? (process.env.PF_CB_SINK_WINDOW === '1');
 
   const { dTheta: cdT, dZ: cdZ, nTheta: cnT, nZ: cnZ } = f.cellGrid;
   const mask = new Uint8Array(cnT * cnZ);
@@ -142,11 +158,16 @@ export function loadS29Override(
   // ── SINK GUARD state, per registered site (dTheta 0.02 rad x dZ 0.5 mm).
   const { dTheta: sdT, dZ: sdZ, budgetN, fallRatio } = f.sinkGuard;
   const siteKey = (iTh: number, iZ: number): number => iTh * 100000 + iZ;
-  const site = new Map<number, { iTh: number; iZ: number; entryUm: number; bestUm: number; splits: number; members: number; stranded: boolean }>();
+  const site = new Map<number, {
+    iTh: number; iZ: number; entryUm: number; bestUm: number; splits: number; members: number; stranded: boolean;
+    /** re-arming window state (PF_CB_SINK_WINDOW). `winEntryUm` re-baselines every time a window passes. */
+    winEntryUm: number; winBestUm: number; winSplits: number;
+  }>();
   for (const s of f.sites) {
     site.set(siteKey(s.iTh, s.iZ), {
       iTh: s.iTh, iZ: s.iZ, entryUm: s.entryUm, bestUm: Number.POSITIVE_INFINITY,
       splits: 0, members: s.n, stranded: false,
+      winEntryUm: s.entryUm, winBestUm: Number.POSITIVE_INFINITY, winSplits: 0,
     });
   }
   const stranded: StrandRecord[] = [];
@@ -288,15 +309,29 @@ export function loadS29Override(
         // them near entry, and the site re-strands.
         if (um < s.bestUm) s.bestUm = um;
         s.splits += 1;
-        // "a site that consumes more than N splits without its reading falling >= 1.5x RE-STRANDS into a
-        // named list, its facets revert to blind accept, and THE LOOP CONTINUES."
-        if (!s.stranded && s.splits > budgetN && s.bestUm > s.entryUm / fallRatio) {
+        const strand = (rule: 'entry' | 'window', anchorUm: number, cmpUm: number): void => {
           s.stranded = true;
           stranded.push({
             iTh: s.iTh, iZ: s.iZ, theta: s.iTh * sdT, z: s.iZ * sdZ,
-            entryUm: s.entryUm, bestUm: s.bestUm, splits: s.splits, members: s.members,
-            ratio: s.entryUm / Math.max(s.bestUm, 1e-9),
+            entryUm: anchorUm, bestUm: cmpUm, splits: s.splits, members: s.members,
+            ratio: anchorUm / Math.max(cmpUm, 1e-9), rule,
           });
+        };
+        if (sinkWindow) {
+          // ── THE RE-ARMING WINDOW. Every N+1 charged splits — the SAME trigger count as the registered
+          // rule below, so the two are directly comparable — the window's best is tested against the
+          // window's OWN entry. Fail => strand. Pass => re-baseline and keep going, which is what makes
+          // this a rate test rather than a one-shot exemption.
+          if (um < s.winBestUm) s.winBestUm = um;
+          s.winSplits += 1;
+          if (!s.stranded && s.winSplits > budgetN) {
+            if (s.winBestUm > s.winEntryUm / fallRatio) strand('window', s.winEntryUm, s.winBestUm);
+            else { s.winEntryUm = s.winBestUm; s.winBestUm = Number.POSITIVE_INFINITY; s.winSplits = 0; }
+          }
+        } else if (!s.stranded && s.splits > budgetN && s.bestUm > s.entryUm / fallRatio) {
+          // "a site that consumes more than N splits without its reading falling >= 1.5x RE-STRANDS into a
+          // named list, its facets revert to blind accept, and THE LOOP CONTINUES."
+          strand('entry', s.entryUm, s.bestUm);
         }
       }
     }
