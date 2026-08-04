@@ -1595,6 +1595,32 @@ describe('STRATA conforming-bisection', () => {
     // Triangles ALREADY in the heap that contain v keep stale KEYS (priority only, not behaviour: when
     // popped, `refineDirected` re-measures through the invalidated memo). The visible signature is a rise in
     // `key-inversions`, which the driver already counts — expect it, and read it as confirmation, not alarm.
+    // ⚠⚠ RESULT 2026-08-04 — *** §4.3 IS A NO-GO. IT WORKS MECHANICALLY AND DELIVERS NOTHING. ***
+    // Third attempt, first real number (attempt 1 born-dead in the sweep path, attempt 2 spun).
+    //
+    //                       S35CTL (off)   S35M43H (on)
+    //   triangles              1,142,166      1,140,696   -1,470  (-0.13%)
+    //   unresolved                   774            838      +64  (+8.3% WORSE)
+    //   wall time                    838 s          848 s        (+1.2%)
+    //   rA evals                     858 M          872 M        (+1.6%)
+    //   HEADLINE MAX              47.282 um      47.282 um       (identical)
+    //   key-inversions            37,867         38,613          (+746, as predicted)
+    //   non-manifold / reversed      0 / 0          0 / 0
+    //   lever: MOVED 4,818  |  refused 439 shape + 92 boundary + 3,402 per-vertex-cap + 17,821 other
+    //   displacement mean 7.56 um / max 49.99 um
+    //
+    // THE PRE-REGISTERED CLAIM WAS: "it buys the DENSITY of the ~3 halvings; a large MOVED with no
+    // triangle reduction means the premise was wrong." 4,818 moves bought 0.13% fewer triangles, cost
+    // 1.2% more time, and made `unresolved` WORSE. THE PREMISE WAS WRONG.
+    //
+    // AND NOT FOR THE REASON PRE-REGISTERED. The expected failure was "low MOVED + high shape refusals
+    // => stars already at the AR cap" (the jam census's corner). That did NOT happen: only 439 shape
+    // refusals against 4,818 successes. The lever is not blocked by the AR corner at all. It fails
+    // because **17,821 of the in-band population is ALREADY CONFORMED** (crossing within confMm of the
+    // endpoint — the spin guard's floor is also the diagnosis), so there was never much there to win.
+    //
+    // KEEP THE PER-VERTEX CAP: it fired 3,402 times. Those are vertices that wanted to move repeatedly,
+    // i.e. the oscillation is REAL and STRUCTURAL, not merely the `disp > 0` bug fixed in 5d3ad776.
     const MOVE43H = envOn('PF_CB_MOVE43H');
     const MOVE43H_MAX = envF('PF_CB_MOVE43H_MAX_UM', 50) / 1000;
     const MOVE43H_STARMAX = Math.round(envF('PF_CB_MOVE43H_STARMAX', 64));
