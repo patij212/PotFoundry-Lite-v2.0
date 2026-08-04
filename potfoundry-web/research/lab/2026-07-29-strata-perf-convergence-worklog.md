@@ -11174,3 +11174,103 @@ PREDICATE. That makes the design simpler than the quota scheme first proposed:
   Every routing decision derives from measured local surface properties — locateKink's two-scale ratio
   pointwise, R2's persistence test regionally. BasketWeave's curtain is a STAGE keyed by a detected
   feature, exactly like compileFeatureCurtain / the DS ring-strip emitter already are.
+
+---
+
+### *** S29-FP — **THE ACCEPT QUANTITY IS AFFORDABLE AFTER ALL, AND IT IS NOT THE MISSING MECHANISM.** ***
+### *** AND THE SINK GUARD I BUILT TO PROVE IT IS **REFUTED BY ITS OWN FIRST PRODUCTION RUN.** ***
+
+S29 died on COST — ~2,844 rA evals per honest accept test, iteration 1 burned all 5,400 s and produced NO
+mesh, so no certificate ran and its claim was left **UNDECIDED**. `PF_CB_FPVETO` (DEFAULT OFF) swaps only
+the POINT RULER under the accept veto: `s29PerpAt`'s registered sweep + 40-iteration descent + damped
+Newton, **~1,241 rA evals a POINT**, for `FootPointMetric.footPointDistance`'s Gauss-Newton at **~5 an
+iteration**. Rule, membership gate, memo, sink guard and the blind-key re-push are untouched. Gauss-Newton
+only — full Newton's Hessian carries r.S_uu with no damping and no descent check, and the case where it
+goes indefinite is exactly the Gothic crest. Reading is `min(radial, foot-point)`: `footPointDistance`
+returns its FINAL iterate, not the best visited, so the min keeps it an UPPER bound.
+
+| | S29 ruler | foot-point |
+|---|---|---|
+| smoke, per honest accept test | 3,958 | **92** (x43) |
+| smoke mesh | `318e2b4e...` | **`318e2b4e...` - BYTE-IDENTICAL** (1,055 decisions, 23 rejects, all identical) |
+| iterate, per honest accept test | ~2,844, **no mesh** | **171** (x16.6), 13.2% of 2,196M rA evals |
+| iterate | **5,400 s budget EXHAUSTED** | **CONVERGED - 2,151 s, 1,898,770 tris, non-manifold 0** |
+
+**THE COST VERDICT IS OVERTURNED.** 683,659 REJECTS, 835,682 forced pushes, 10.0M foot-points - live at
+scale, not a no-op.
+
+#### THE CONTROL THAT HAD NEVER EXISTED, AND THE FLOOR IT FOUND
+
+`_CTLi1` = the same command with the override and veto **dropped** and nothing else changed. 1,251,546 tris
+in 928 s; its certificate **PASSED the D2 gate and ran full** (3,798 s); VERDICT FAIL - BLADE 2, H1
+witnessed 204.174 um / certified 214.053 um, H2 witnessed 25.063 um.
+
+> **INTERIOR certified bound 199.943 um - `_S24i2`'s standing number TO THE DIGIT, on a DIFFERENT mesh at a
+> DIFFERENT facet** (tri 440984 vs 438968; rim 214.053 at 337271 vs 335660; witnessed 190.100 both) - and
+> `_S24i2` is `DS-HT` while `_CTLi1` is `DS-H`. **A REPRESENTATION FLOOR, NOT A DENSITY ARTIFACT**, plus an
+> incidental x1.000000 re-refutation of the tightening lever.
+
+#### *** THE CLAIM THAT THE VETO "MADE THE MESH WORSE" IS WITHDRAWN. *** IT IS A SAMPLING ARTIFACT.
+
+`_S29FPi1` reads **29.231%** of a uniform 520-facet D2 sample over 10 um against the control's **1.346%**.
+`research/tools/s29FpLocality.mjs` measures where the facets actually went - pure geometry, no certificate:
+
+```
+facets            1,251,546 -> 1,898,770   (+647,224)
+  IN  the 1.754% member region    374,637 -> 1,021,854   (x2.73, mean area x2.64 SMALLER)
+  OUT of it                       876,909 ->   876,916   (x1.000 - SEVEN facets)
+```
+
+**647,217 of 647,224 extra facets - 100.0% - landed inside the member region.** The surface outside moved
+by seven facets, so the 29.231% is a **POPULATION effect of sampling FACETS rather than AREA**. What is
+refuted is **DENSITY-CLOSURE at those loci**: 2.73x the facets, each 2.64x smaller, **still over 10 um**.
+That is S29's own h1-sink hypothesis, measured - the answer S29 was built to get and could never afford.
+
+HELD BACK: `_S29FPi1`'s own C1 is **UNSCORED**. Its certificate stopped on the registered D2 **X3** bar
+(rate agreement 3.846 pts vs <= 3.00; **X4 = 0**, no under-flagging - the screen over-flags, the safe
+direction). `_strataCertD.test.ts` was NOT edited: the instrument that scores an arm must not be the
+instrument the arm was built from.
+
+#### THE SINK GUARD COULD NOT SEE A SINK - AND THE FIX FIRES ON A CENSORING ARTIFACT
+
+`_S29FPi1` reported **STRANDED SITES 0 of 2,168** through exactly the outcome the guard exists to detect.
+Cause is arithmetic: `s.bestUm > s.entryUm / fallRatio` anchors to the site's ENTRY reading forever and
+`bestUm` only falls, so a site entering at 200 um is **permanently exempt after ONE fall to 133 um** - 7.5%
+of the way to a 10 um bar. Third instance of this defect class after S28's S5b miss-probes and the G4
+self-test bar (which read a `._p` field that never existed and caught an ENOENT instead of a key mismatch;
+both fixed). **Assume a guard is toothless until it has been SEEN to fire.**
+
+`PF_CB_SINK_WINDOW` (DEFAULT OFF) re-arms every N+1 charged splits against the window's own entry. Unit
+bars pass. `_S29FPWi1` - `_S29FPi1` + this flag - gives 1,665,006 tris in 1,726 s and **123 stranded sites**
+where the registered rule gave 0. ***AND THE STRAND POPULATION REFUTES THE CRITERION:***
+
+```
+entryUm  min 10.000  p25 10.020  median 10.061  p75 10.116  p95 10.307  MAX 11.066
+entry > 12 um: 0     > 20 um: 0     > 50 um: 0
+splits: 258 for ALL 123 - i.e. 2*(N+1), the FIRST window that can fire
+```
+
+The same run's worst perpendicular reading is **194.255 um** and those loci stranded **ZERO** times.
+
+**THE MECHANISM IS CENSORING.** The guard observes a facet ONLY while its reading is over the bar, so a
+facet that improves past the bar is accepted and **LEAVES THE SAMPLE**. The minimum over survivors
+therefore converges to bar+ at EVERY site - that is the signature of a *working* site. And the largest
+fall a site entering at E can exhibit is bounded by **E/bar**, because anything under the bar is
+unobservable: at E = 10.05 um that bound is x1.005 against a x1.5 requirement, so the site strands
+**NECESSARILY, at the first window, however well refinement is working**. A site at 194 um clears x1.5
+trivially and never strands **even if it is a true sink**. The criterion is **ANTI-CORRELATED** with
+sinking. The registered rule shares the censoring flaw; its entry-anchoring defect merely masked it.
+
+> *** THE 123 STRANDS ARE NOT 123 SINKS AND MUST NOT BE CITED AS SUCH. *** The -12.3% facet / -20% wall
+> saving is not a win either - it was bought by abandoning sites on a false positive. Default is UNMOVED:
+> `PF_CB_SINK_WINDOW` is OFF and no arm in this campaign has run with it.
+
+**NEXT, AND CHARACTERISE BEFORE BUILDING - two failed criteria is enough to stop guessing.** The statistic
+must be censoring-free. The MIN over survivors cannot work at any bar. Candidate: the **MAX over ALL facets
+measured at the site**, accepted ones included - monotone-falling at a healthy site, flat at a stuck one.
+The original "restrict to over-bar facets" note is correct ABOUT THE MIN (including accepted facets
+collapses it to <= bar immediately) and does not transfer to the max. Build the discriminating unit test
+first.
+
+Runner scripts: `research/bridge/out/s29fp_{smoke,iter1,cert,control,window}.sh` (gitignored, as
+`s29_iter.sh` always has been). Logs and strand artifacts in `research/exchange/_strataConformBisect/`.
