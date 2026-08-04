@@ -2684,6 +2684,40 @@ describe('STRATA conforming-bisection', () => {
     //   witnessed + covRad/n<=tol -> ACCEPT. Sound: nothing can hide between samples.
     //   otherwise                 -> raise n and re-measure; at the cap, REFUSE (never accept what
     //                                could not be certified — the conservative direction).
+    // ⚠⚠ RESULT 2026-08-04 — *** NO-GO AS BUILT, AND THE DESIGN ERROR IS MINE AND IS DOCUMENTED
+    // UPSTREAM. *** S36CA vs S36CTL, one variable:
+    //
+    //                      S36CTL (off)        S36CA (on)
+    //   triangles           1,142,166           712,977   [TIME-CAPPED @5400s — NOT converged]
+    //   wall                      844 s           5,472 s
+    //   rA evals                  858 M           6,061 M   (7.1x; 5,499 M = 91% inside the veto)
+    //   heap left                     0         595,029     (the control DRAINED; this never did)
+    //   verdict            drained, FAIL     TRAJECTORY, not a verdict
+    //   lever: certified-ACCEPT 137,322 | REFUSED 248,411 witnessed + 57,758 uncertifiable@256
+    //          forced-pushes 306,169 | escalations 618,861 | worst level 256
+    //
+    // THE ERROR. `_facetTruthLib`'s own soundness note says it exactly: "every candidate-based
+    // estimate OVER-estimates d. A PASS is therefore sound however crude the nearest-point search;
+    // ONLY A FAIL CAN BE A SEARCH ARTIFACT. That artifact is ruled out by re-measuring the worst
+    // facets with `distPerp`." I built the ACCEPT side on that cheap over-estimate — correct — and
+    // then let its FAILS drive refinement, which is precisely the direction it is NOT sound in.
+    // 248,411 of 443,491 decisions (56%) refused on a WITNESSED exceedance, and `distRadial` is the
+    // RADIAL foot: on a gothic rib, where dr/dtheta is large, radial distance far exceeds the true
+    // perpendicular distance. Most of those refusals are the ruler's conservatism, not real error —
+    // and they are what bought the 7.1x cost.
+    //
+    // I PRE-REGISTERED THE WRONG TRIPWIRE. I said a dominant "uncertifiable" count would mean the
+    // radial conservatism was defeating the bound and distPerp was the fix. Uncertifiable was only
+    // 13%; WITNESSED was 56% — so the conservatism struck one branch earlier than predicted, on the
+    // refusals themselves. The remedy is the same and its placement is not: distPerp must confirm
+    // every REFUSAL before it is acted on, not merely rescue the uncertifiable band.
+    //
+    // WHAT IS SOUND HERE AND WORTH KEEPING: the ACCEPT direction. 137,322 facets were CERTIFIED —
+    // those passes are trustworthy in a way nothing else in this driver is. The escalation logic and
+    // the covRad/n term are correct. What must change before another arm is the refuse path.
+    //
+    // NO FIDELITY COMPARISON IS POSSIBLE FROM THIS PAIR: the arm never drained (595,029 left), so its
+    // STL is a snapshot of an unfinished refinement. Do not certify it and do not quote its HEADLINE.
     const CERTACCEPT = envOn('PF_CB_CERTACCEPT');
     const CA_NMAX = Math.round(envF('PF_CB_CERTACCEPT_NMAX', 256));
     let caAccept = 0; let caRefuseWitnessed = 0; let caRefuseUncertified = 0; let caForcedPush = 0;
