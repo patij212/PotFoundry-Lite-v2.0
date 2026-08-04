@@ -104,7 +104,7 @@
 // traced locus. The build refuses instead.
 
 import cdt2d from 'cdt2d';
-import { canonTheta, dThRaw, type SweepRadiusFn } from './_sweepPredicate';
+import { canonTheta, dThRaw, locateKinkRaw, type SweepRadiusFn, type SweepPredConst } from './_sweepPredicate';
 import { aspect3, signedAreaParam } from './_shapeGuard';
 import { splitAtSeam, type LocusArtifact } from './_strataLocusTrace';
 // TYPE-ONLY, so it emits no runtime code and the seed builder's execution is untouched. One definition of
@@ -159,6 +159,25 @@ export interface AlignedSeedOpts {
   acrossRings: number;
   /** ring-to-ring radius ratio for the progression; also sets the ALONG stride, so elements stay similar. */
   acrossGrade: number;
+  /**
+   * S32 research shadow: maximum chain-index stride on an offset ring.
+   * Historical value 4 preserves the current graded collar exactly; 2 or 1
+   * densifies only the outer collar boundary where repeated many-to-one fans
+   * can form. Point placement, constraints, exclusions and ring radii stay fixed.
+   */
+  acrossStrideMax: number;
+  /**
+   * S32 research shadow, DEFAULT OFF. Turn the already-emitted graded offset
+   * points into a planar collar PSLG: consecutive points on each ring become
+   * rails, and matched chain/ring points become radial rungs. Every candidate
+   * is refused before insertion if it properly crosses an existing locus or
+   * collar segment, or if an existing vertex lies within the conditioning
+   * radius of its interior. The historical free-Steiner collar is unchanged
+   * when false.
+  */
+  acrossStructured: boolean;
+  /** S32 collar scope: all rails/rungs, rails only, outer rail only, or outer rail plus its inward rungs. */
+  acrossStructuredMode: 'full' | 'rails' | 'outer' | 'outer-cell';
   /** outermost ring radius, mm — where the progression is expected to meet the background lattice. */
   acrossMaxMm: number;
   /**
@@ -169,6 +188,19 @@ export interface AlignedSeedOpts {
   turnMul: number;
   /** cap on the routed radius, mm — the 4.000 mm radius-capped clusters get their core routed, not all of it. */
   patchMaxMm: number;
+  /**
+   * S30 SHADOW ONLY: raw junction ids whose offset-ring exclusion is owned by the
+   * patch geometry that was ACTUALLY routed. Empty/undefined preserves the historical
+   * rule exactly: every raw junction suppresses offset rings to its full `radiusMm`.
+   *
+   * A named id must have a matching `patchRoute` entry `D<id>` at the identical
+   * centre. Its effective exclusion becomes
+   * `min(raw radius, requested patch radius, patchMaxMm)`. This closes the otherwise
+   * unowned annulus created when a raw 4 mm disk is paired with a 1.5 mm routed cap.
+   * It is deliberately id-scoped for the S24 shadow A/B; raw clustered junctions are
+   * not trustworthy enough for a global policy.
+   */
+  patchExclusionIds?: ReadonlySet<number>;
   /** innermost ring radius, mm. */
   patchInnerMm: number;
   /** ring-to-ring radius ratio; `patchM` is derived from it (see the emitter). */
@@ -189,6 +221,45 @@ export interface AlignedSeedOpts {
   shapeAR: number;
   /** weld radius for coincident chain points, mm. */
   weldMm: number;
+  /**
+   * S31 R3a research shadow: consecutive-chain decimation distance, mm.
+   * Undefined preserves the historical coupled value
+   * `max(4*weldMm, 0.5*acrossBase)`. This changes only stage 3a's
+   * consecutive-point filter; cross-chain welding, bow floor, seam/boundary
+   * snapping, PSLG conditioning, and patch geometry keep the historical value.
+   */
+  chainDecimateMm?: number;
+  /**
+   * S31 R4 research shadow: weld radius for NON-fixed vertices from
+   * different feature chains. Undefined preserves the historical minSep
+   * coupling. Fixed intersection vertices continue to use minSep so a real
+   * junction is represented by one topological vertex.
+   */
+  chainWeldMm?: number;
+  /**
+   * S33 — SEED-TIME CHAIN RE-SOLVE. Transverse probe half-width in mm. UNDEFINED OR 0 = OFF, and
+   * with it off not one line of the pass executes, so every prior arm is byte-identical.
+   *
+   * WHY IT EXISTS. Chain vertices are interpolated onto the tracer's POLYLINE, which is a secant of
+   * the true analytic locus (tracer resample ~0.61 mm, chain resample ~1.1 mm). Measured 2026-08-04,
+   * they sit p50 4.19 um OFF the locus perpendicular — and a constraint vertex is supposed to BE on
+   * it. That placement error is what puts a crease crossing in the INTERIOR of edges radiating from
+   * the chain: 9,363 actionable crossings, 88.4% of them with exactly one constrained endpoint.
+   * Re-solving collapses them to 1,399 (-85%) at zero PSLG planarity breaks.
+   *
+   * ⚠ 0.050 IS THE MEASURED SHIPPING VALUE AND WIDER IS NOT BETTER. ±100/±200 um reduce the residual
+   * further but BREAK PSLG planarity (13 / 10 proper constraint crossings) and wreck shape (folds
+   * 24 / 89) — a wider transverse probe reaches a NEIGHBOURING locus, which is exactly the failure
+   * `_strataConformBisect.test.ts:2218-2221` documents for the same primitive. Raise this only
+   * behind a re-planarization pass. See `research/tools/s33ChainResolve.ts` for the A/B.
+   */
+  resolveSpanMm?: number;
+  /**
+   * Kink-locator constants for the re-solve probe. REQUIRED when `resolveSpanMm > 0` — there is no
+   * default on purpose: the probe must use the SAME detector the driver does, or the seed conforms
+   * to one surface and the driver measures another. Callers pass their own `PRED`.
+   */
+  resolvePred?: SweepPredConst;
   /** chart-area threshold below which a cdt2d output triangle is dropped as a collinear hull sliver. */
   chartAreaEpsMm2?: number;
   /**
@@ -262,6 +333,9 @@ export const DEFAULT_SEED_OPTS: Omit<AlignedSeedOpts, 'H' | 'gu' | 'gv'> = {
   bowFrac: 0,
   acrossRings: 1,
   acrossGrade: 1.6,
+  acrossStrideMax: 4,
+  acrossStructured: false,
+  acrossStructuredMode: 'full',
   acrossMaxMm: 0.65,
   turnMul: 0,
   patchMaxMm: 1.5,
@@ -286,6 +360,19 @@ export interface AlignedSeed {
   tris: Array<[number, number, number]>;
   /** the locus constraint segments, as vertex index pairs. */
   constraints: Array<[number, number]>;
+  /**
+   * The same final segments with the durable obligations they discharge.
+   *
+   * `constraints` remains the compact cdt2d input. This ledger is the
+   * correctness identity that used to be lost when conditioning or final
+   * planarisation split/deduplicated a bare edge pair. A coincident segment
+   * may carry more than one id; consumers must preserve the complete set when
+   * they split that edge again.
+   */
+  constraintLedger: Array<{
+    vertices: [number, number];
+    obligationIds: string[];
+  }>;
   /**
    * Chain vertices whose removal would clear an over-cap facet, as `chainIndex:vertexIndex` keys.
    * Each is a BOW-CAP apex: a non-fixed constraint vertex whose two incident constraint edges bound an
@@ -316,6 +403,10 @@ export interface AlignedSeed {
     constraintsConditioned: number;
     /** chain vertices removed for sitting closer than the minimum separation. */
     decimated: number;
+    /** S33: chain vertices MOVED onto the true locus by the seed-time re-solve (0 when the lever is off). */
+    chainResolved: number;
+    /** S33: re-solve probes rejected — no kink, jump-class, or a kink near the probe end (a DIFFERENT locus). */
+    chainResolveRefused: number;
     /** chain vertices snapped exactly onto the domain boundary or the seam. */
     boundarySnapped: number;
     /** cdt2d output triangles with ~zero chart area (collinear hull slivers) — dropped, they cover nothing. */
@@ -344,12 +435,24 @@ export interface AlignedSeed {
     /** S19: chain points where the crease-turnover bound shortened the along spacing, and rings used. */
     turnBoundPts: number;
     offsetRingsUsed: number;
+    /** S32: accepted structured-collar constraints and their preflight refusals. */
+    collarRailConstraints: number;
+    collarRungConstraints: number;
+    collarRefusedCrossing: number;
+    collarRefusedInteriorPoint: number;
     /** S18: routed junctions, structured points emitted, rings laid, and points the guards refused. */
     patchRegions: number;
     patchPts: number;
     patchRings: number;
     patchRefusedPt: number;
     patchRefusedSeg: number;
+    /** S30: named raw disks whose exclusion was reduced to actual routed coverage. */
+    patchExclusionRegions: number;
+    /** S30: chain sites reclaimed from a raw no-ring disk by the routed-coverage rule. */
+    patchExclusionReclaimedChainPts: number;
+    /** S30: intended outer-patch sectors and sectors with no point/constraint owner. */
+    patchOuterSectors: number;
+    patchOuterUncoveredSectors: number;
     /**
      * S21 — THE GRADING FIX. Polar rings where the SIZING FIELD asked for less than the polar grading and
      * therefore bound the interior sizing, the sub-rings that bound inserted, and the number of times the
@@ -450,6 +553,191 @@ function segParams(
 
 // ───────────────────────────────────────── the builder ─────────────────────────────────────────
 
+interface PatchExclusionResolution {
+  effectiveRadiusByJunction: Map<number, number>;
+  selectedIds: Set<number>;
+}
+
+export interface RoutedAnnulusCandidate {
+  junctionId: number;
+  patchId: string;
+  centerErrorMm: number;
+  rawRadiusMm: number;
+  routedRadiusMm: number;
+}
+
+export interface RoutedAnnulusDiscovery {
+  candidates: RoutedAnnulusCandidate[];
+  exactCenterMatches: number;
+  ambiguousJunctionIds: number[];
+  ambiguousPatchIds: string[];
+}
+
+/**
+ * S31 R1 research shadow: discover raw-exclusion annuli from geometry alone.
+ *
+ * A candidate is a one-to-one raw-junction/patch centre match within `centerTolMm`
+ * whose raw exclusion radius is larger than the radius the patch can actually emit.
+ * Defect scores, screenshots, raw ids, and top-N ordering are deliberately absent.
+ * Ambiguous centre matches are reported and never selected by priority.
+ */
+export function discoverRoutedAnnuli(
+  art: LocusArtifact,
+  patchRoute: readonly PatchRegion[],
+  patchMaxMm: number,
+  rRef = 45,
+  centerTolMm = 0.002,
+): RoutedAnnulusDiscovery {
+  const byJunction = new Map<number, Array<{ region: PatchRegion; errorMm: number }>>();
+  const byPatch = new Map<string, Array<{ junctionId: number; errorMm: number }>>();
+  for (const junction of art.junctions) {
+    for (const region of patchRoute) {
+      const errorMm = Math.hypot(
+        rRef * dThRaw(canonTheta(junction.theta), canonTheta(region.theta)),
+        junction.z - region.z,
+      );
+      if (errorMm > centerTolMm) continue;
+      const jl = byJunction.get(junction.id);
+      if (jl === undefined) byJunction.set(junction.id, [{ region, errorMm }]);
+      else jl.push({ region, errorMm });
+      const pl = byPatch.get(region.id);
+      if (pl === undefined) byPatch.set(region.id, [{ junctionId: junction.id, errorMm }]);
+      else pl.push({ junctionId: junction.id, errorMm });
+    }
+  }
+
+  const ambiguousJunctionIds = [...byJunction]
+    .filter(([, matches]) => matches.length !== 1)
+    .map(([id]) => id)
+    .sort((a, b) => a - b);
+  const ambiguousPatchIds = [...byPatch]
+    .filter(([, matches]) => matches.length !== 1)
+    .map(([id]) => id)
+    .sort();
+  const candidates: RoutedAnnulusCandidate[] = [];
+  for (const junction of art.junctions) {
+    const matches = byJunction.get(junction.id) ?? [];
+    if (matches.length !== 1) continue;
+    const match = matches[0];
+    if ((byPatch.get(match.region.id) ?? []).length !== 1) continue;
+    const routedRadiusMm = Math.min(match.region.radiusMm, patchMaxMm);
+    if (junction.radiusMm <= routedRadiusMm + centerTolMm) continue;
+    candidates.push({
+      junctionId: junction.id,
+      patchId: match.region.id,
+      centerErrorMm: match.errorMm,
+      rawRadiusMm: junction.radiusMm,
+      routedRadiusMm,
+    });
+  }
+  candidates.sort((a, b) => a.junctionId - b.junctionId);
+  return {
+    candidates,
+    exactCenterMatches: [...byJunction.values()].filter((matches) => matches.length === 1).length,
+    ambiguousJunctionIds,
+    ambiguousPatchIds,
+  };
+}
+
+function resolvePatchExclusions(
+  art: LocusArtifact,
+  patchRoute: readonly PatchRegion[],
+  patchMaxMm: number,
+  ids: ReadonlySet<number> | undefined,
+  rRef: number,
+  centerTolMm: number,
+): PatchExclusionResolution {
+  const selectedIds = new Set(ids ?? []);
+  const effectiveRadiusByJunction = new Map<number, number>();
+  if (selectedIds.size === 0) return { effectiveRadiusByJunction, selectedIds };
+
+  const junctionById = new Map(art.junctions.map((junction) => [junction.id, junction]));
+  const routeById = new Map(patchRoute.map((region) => [region.id, region]));
+  for (const id of selectedIds) {
+    const junction = junctionById.get(id);
+    if (junction === undefined) {
+      throw new Error(`ALIGNED SEED S30: exclusion id ${id} is not a raw locus junction`);
+    }
+    const route = routeById.get(`D${id}`);
+    if (route === undefined) {
+      throw new Error(`ALIGNED SEED S30: exclusion id ${id} has no matching patchRoute entry D${id}`);
+    }
+    const centreErrorMm = Math.hypot(
+      rRef * dThRaw(canonTheta(junction.theta), canonTheta(route.theta)),
+      junction.z - route.z,
+    );
+    if (centreErrorMm > centerTolMm) {
+      throw new Error(
+        `ALIGNED SEED S30: D${id} route centre differs from raw junction by `
+        + `${(centreErrorMm * 1000).toFixed(3)} um (limit ${(centerTolMm * 1000).toFixed(3)} um)`,
+      );
+    }
+    const effectiveRadiusMm = Math.min(junction.radiusMm, route.radiusMm, patchMaxMm);
+    if (!(effectiveRadiusMm > 0)) {
+      throw new Error(`ALIGNED SEED S30: D${id} has non-positive effective routed radius ${effectiveRadiusMm}`);
+    }
+    effectiveRadiusByJunction.set(id, effectiveRadiusMm);
+  }
+  return { effectiveRadiusByJunction, selectedIds };
+}
+
+export interface PatchOwnershipAudit {
+  rawJunctionIds: number[];
+  effectiveJunctionIds: number[];
+  requestedPatchIds: string[];
+  overriddenJunctionIds: number[];
+}
+
+/**
+ * Research-local ownership probe used to pre-register the S24 corridor A/B.
+ * `requestedPatchIds` reports geometric coverage requested by the routed patch;
+ * the seed's outer-sector audit separately proves that requested coverage was built.
+ */
+export function auditPatchOwnership(
+  art: LocusArtifact,
+  patchRoute: readonly PatchRegion[],
+  patchMaxMm: number,
+  patchExclusionIds: ReadonlySet<number> | undefined,
+  theta: number,
+  z: number,
+  rRef = 45,
+  centerTolMm = 0.002,
+): PatchOwnershipAudit {
+  const resolution = resolvePatchExclusions(
+    art,
+    patchRoute,
+    patchMaxMm,
+    patchExclusionIds,
+    rRef,
+    centerTolMm,
+  );
+  const rawJunctionIds: number[] = [];
+  const effectiveJunctionIds: number[] = [];
+  for (const junction of art.junctions) {
+    const distanceMm = Math.hypot(
+      rRef * dThRaw(canonTheta(theta), junction.theta),
+      z - junction.z,
+    );
+    if (distanceMm <= junction.radiusMm) rawJunctionIds.push(junction.id);
+    const effectiveRadiusMm = resolution.effectiveRadiusByJunction.get(junction.id) ?? junction.radiusMm;
+    if (distanceMm <= effectiveRadiusMm) effectiveJunctionIds.push(junction.id);
+  }
+  const requestedPatchIds: string[] = [];
+  for (const region of patchRoute) {
+    const distanceMm = Math.hypot(
+      rRef * dThRaw(canonTheta(theta), canonTheta(region.theta)),
+      z - region.z,
+    );
+    if (distanceMm <= Math.min(region.radiusMm, patchMaxMm)) requestedPatchIds.push(region.id);
+  }
+  return {
+    rawJunctionIds: rawJunctionIds.sort((a, b) => a - b),
+    effectiveJunctionIds: effectiveJunctionIds.sort((a, b) => a - b),
+    requestedPatchIds: requestedPatchIds.sort(),
+    overriddenJunctionIds: [...resolution.effectiveRadiusByJunction.keys()].sort((a, b) => a - b),
+  };
+}
+
 export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: AlignedSeedOpts): AlignedSeed {
   const t0 = Date.now();
   // S15 PRECONDITION — see the header. Stage 3e re-routes a constraint through any point within
@@ -465,8 +753,25 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       + `${((o.pslgEpsMm / 0.55) * 1000).toFixed(1)} um, or lower pslgEpsMm.`,
     );
   }
+  if (!Number.isInteger(o.acrossStrideMax) || o.acrossStrideMax < 1) {
+    throw new Error('ALIGNED SEED: acrossStrideMax must be a positive integer.');
+  }
+  if (o.acrossStructured && Math.round(o.acrossRings) <= 1) {
+    throw new Error('ALIGNED SEED: acrossStructured needs acrossRings > 1.');
+  }
+  if (!['full', 'rails', 'outer', 'outer-cell'].includes(o.acrossStructuredMode)) {
+    throw new Error('ALIGNED SEED: acrossStructuredMode must be full, rails, outer, or outer-cell.');
+  }
   const H = o.H;
   const rRef = 45;                                   // isotropic chart: x = rRef * theta, y = z
+  const patchExclusions = resolvePatchExclusions(
+    art,
+    o.patchRoute ?? [],
+    o.patchMaxMm,
+    o.patchExclusionIds,
+    rRef,
+    Math.max(1e-9, o.weldMm),
+  );
   let fieldEvals = 0;
   const bump = (): void => { fieldEvals += 1; };
   const rAt = (th: number, z: number): number => { fieldEvals += 1; return Math.max(1e-6, rA(canonTheta(th), z)); };
@@ -481,7 +786,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
 
   // ── 1. CHAINS: mistrace (layer-2 control), seam-split, resample by the field ─────────────────────
   const mist = o.mistraceUm / 1000;
-  const chainsRaw: Array<Array<[number, number]>> = [];
+  const chainsRaw: Array<{ pts: Array<[number, number]>; obligationId: string }> = [];
   let lociUsed = 0;
   for (const L of art.loci) {
     let pts = L.pts;
@@ -497,7 +802,13 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       });
     }
     lociUsed += 1;
-    for (const piece of splitAtSeam(pts)) chainsRaw.push(piece);
+    const pieces = splitAtSeam(pts);
+    for (let pieceIndex = 0; pieceIndex < pieces.length; pieceIndex += 1) {
+      chainsRaw.push({
+        pts: pieces[pieceIndex],
+        obligationId: `feature:locus:${L.id}:piece:${pieceIndex}`,
+      });
+    }
   }
 
   // field-modulated resample. `hMedian` is computed from a strided sample of the chain vertices so the
@@ -506,7 +817,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   if (o.useField) {
     const samp: number[] = [];
     for (let c = 0; c < chainsRaw.length; c += Math.max(1, Math.floor(chainsRaw.length / 40))) {
-      const P = chainsRaw[c];
+      const P = chainsRaw[c].pts;
       for (let i = 0; i < P.length; i += Math.max(1, Math.floor(P.length / 6))) {
         const r = rAt(P[i][0], P[i][1]);
         samp.push(solveHDir(rA, P[i][0], P[i][1], 1, 0, r, o.tolMm, 14, 2e-4, 4, bump));
@@ -518,11 +829,13 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
 
   interface ChainPt { th: number; z: number; nx: number; ny: number; along: number; across: number; fixed?: boolean }
   const chains: ChainPt[][] = [];
+  const chainObligations: string[] = [];
   let chainPts = 0;
   let acrossBoundPts = 0; let alongBoundPts = 0; let bowShortenedPts = 0; let turnBoundPts = 0;
   let reconAlongBoundPts = 0;
   const acrossPlaced: number[] = [];
-  for (const P of chainsRaw) {
+  for (const rawChain of chainsRaw) {
+    const P = rawChain.pts;
     // arc-length parameterise in the chart
     const X = P.map((p) => rRef * p[0]);
     const Y = P.map((p) => p[1]);
@@ -644,7 +957,11 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       emit(s);
       if (s >= total) break;
     }
-    if (out.length >= 2) { chains.push(out); chainPts += out.length; }
+    if (out.length >= 2) {
+      chains.push(out);
+      chainObligations.push(rawChain.obligationId);
+      chainPts += out.length;
+    }
   }
 
   // ── 1b. SNAP + DECIMATE, **BEFORE** planarization. ORDER IS LOAD-BEARING. ───────────────────────
@@ -659,7 +976,68 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   //   three near-coincident collinear points make a facet no downstream pass can repair — the seed IS the
   //   mesh. Endpoints are never removed.
   const minSepMm = Math.max(o.weldMm * 4, acrossBase * 0.5);
+  const chainDecimateMm = o.chainDecimateMm ?? minSepMm;
+  if (!(chainDecimateMm > 0) || chainDecimateMm > minSepMm) {
+    throw new Error(
+      `ALIGNED SEED S31: chainDecimateMm ${chainDecimateMm} must be in (0, historical minSep ${minSepMm}] mm`,
+    );
+  }
+  const chainWeldMm = o.chainWeldMm ?? minSepMm;
+  if (!(chainWeldMm >= o.weldMm) || chainWeldMm > minSepMm) {
+    throw new Error(
+      `ALIGNED SEED S31: chainWeldMm ${chainWeldMm} must be in [base weld ${o.weldMm}, historical minSep ${minSepMm}] mm`,
+    );
+  }
   const snapMm = Math.min(minSepMm, acrossBase * 0.5);
+
+  // ── 1a-bis. S33 SEED-TIME CHAIN RE-SOLVE (resolveSpanMm, DEFAULT OFF) ───────────────────────────
+  // Move each interior chain vertex onto the TRUE analytic locus with a transverse kink probe. The
+  // probe geometry and the end-of-probe rejection guard are transcribed from L3/REPROJECT
+  // (_strataConformBisect.test.ts:2209-2222) — the same primitive, applied here at seed time instead
+  // of mid-refinement, where planarization still gets the last word and no star is near the AR cap.
+  //
+  // POSITION IN THE PIPELINE IS LOAD-BEARING, for the reason stated at 1b directly below: this MOVES
+  // vertices, so it must run BEFORE stage 2's planarization, never after. It runs before the
+  // boundary snap and the decimation too, so snap still pins anything that lands near a boundary and
+  // decimation measures the FINAL positions.
+  //
+  // ALL DISPLACEMENTS ARE COMPUTED FROM THE PRE-PASS POSITIONS AND APPLIED AFTERWARDS. Moving P[i]
+  // and then using it as P[i+1]'s neighbour would make the result depend on iteration order and
+  // would drag a chain along itself.
+  let chainResolved = 0; let chainResolveRefused = 0;
+  if (o.resolveSpanMm !== undefined && o.resolveSpanMm > 0) {
+    if (o.resolvePred === undefined) {
+      throw new Error('ALIGNED SEED S33: resolveSpanMm requires resolvePred — the re-solve must use the '
+        + "caller's own kink-locator constants, or the seed conforms to a different surface than the driver measures.");
+    }
+    const pred = o.resolvePred;
+    const span = o.resolveSpanMm;
+    for (const P of chains) {
+      const moves: Array<[number, number, number]> = []; // index, newTh, newZ
+      for (let i = 1; i + 1 < P.length; i += 1) {        // endpoints are junction/boundary anchors — never moved
+        const p = P[i];
+        // already on a domain edge: the snap below owns it, and moving it off re-creates the
+        // micron-tall boundary sliver that snap exists to prevent.
+        const xs = rRef * p.th;
+        if (p.z <= snapMm || p.z >= H - snapMm || xs <= snapMm || xs >= rRef * TWO_PI - snapMm) continue;
+        const a = P[i - 1]; const b = P[i + 1];
+        const rMid = rAt(p.th, p.z);
+        const eArc = rMid * dThRaw(a.th, b.th); const eZ = b.z - a.z;
+        const L = Math.hypot(eArc, eZ);
+        if (!(L > 1e-9)) { chainResolveRefused += 1; continue; }
+        const pArc = -eZ / L; const pZ = eArc / L;       // unit perpendicular in (arc, z)
+        const dth = (pArc * span) / Math.max(1e-6, rMid); const dz = pZ * span;
+        const k = locateKinkRaw(rA, p.th - dth, p.z - dz, p.th + dth, p.z + dz, pred);
+        // GUARD, transcribed: a kink found near a probe END is a DIFFERENT locus. Following it drags
+        // the vertex across neighbouring geometry. Rejecting leaves the vertex exactly where it was.
+        if (k === null || k.jump || !(Math.abs(2 * k.t - 1) < 0.5)) { chainResolveRefused += 1; continue; }
+        const off = 2 * k.t - 1;
+        moves.push([i, p.th + off * dth, p.z + off * dz]);
+      }
+      for (const [i, nth, nz] of moves) { P[i].th = nth; P[i].z = nz; chainResolved += 1; }
+    }
+  }
+
   let decimated = 0; let boundarySnapped = 0; let banApplied = 0;
   for (let c = 0; c < chains.length; c += 1) {
     const P = chains[c];
@@ -671,7 +1049,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     const keep: ChainPt[] = [P[0]];
     for (let i = 1; i < P.length; i += 1) {
       const q = keep[keep.length - 1];
-      if (i !== P.length - 1 && Math.hypot(rRef * (P[i].th - q.th), P[i].z - q.z) < minSepMm) { decimated += 1; continue; }
+      if (i !== P.length - 1 && Math.hypot(rRef * (P[i].th - q.th), P[i].z - q.z) < chainDecimateMm) { decimated += 1; continue; }
       keep.push(P[i]);
     }
     chains[c] = keep;
@@ -790,17 +1168,24 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // closer to a constraint than the design's own innermost ring is a point the design deliberately did
   // not place, and it makes the thin lens the across rule exists to forbid.
   const segAcr: number[] = [];
+  const recordClearanceSegment = (
+    ax: number, ay: number, bx: number, by: number, across: number,
+  ): number => {
+    const si = segAx.length;
+    segAx.push(ax); segAy.push(ay); segBx.push(bx); segBy.push(by); segAcr.push(across);
+    for (let gx = Math.floor(Math.min(ax, bx) / BS); gx <= Math.floor(Math.max(ax, bx) / BS); gx += 1) {
+      for (let gy = Math.floor(Math.min(ay, by) / BS); gy <= Math.floor(Math.max(ay, by) / BS); gy += 1) {
+        const k = `${gx},${gy}`;
+        const l = segBuckets.get(k);
+        if (l === undefined) segBuckets.set(k, [si]); else l.push(si);
+      }
+    }
+    return si;
+  };
   for (const C of chains2) {
     for (let i = 0; i + 1 < C.length; i += 1) {
       const ax = rRef * C[i].th; const ay = C[i].z; const bx = rRef * C[i + 1].th; const by = C[i + 1].z;
-      const si = segAx.length;
-      segAx.push(ax); segAy.push(ay); segBx.push(bx); segBy.push(by);
-      segAcr.push(Math.min(C[i].across, C[i + 1].across));
-      for (let gx = Math.floor(Math.min(ax, bx) / BS); gx <= Math.floor(Math.max(ax, bx) / BS); gx += 1) {
-        for (let gy = Math.floor(Math.min(ay, by) / BS); gy <= Math.floor(Math.max(ay, by) / BS); gy += 1) {
-          const k = `${gx},${gy}`; const l = segBuckets.get(k); if (l === undefined) segBuckets.set(k, [si]); else l.push(si);
-        }
-      }
+      recordClearanceSegment(ax, ay, bx, by, Math.min(C[i].across, C[i + 1].across));
     }
   }
   const nearSeg = (th: number, z: number, rad: number): boolean => {
@@ -821,6 +1206,25 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
 
   // 3a. constraint chains first (they own their positions)
   const constraints: Array<[number, number]> = [];
+  const constraintOwners: string[][] = [];
+  const pushConstraint = (a: number, b: number, obligationIds: readonly string[]): void => {
+    if (a === b) return;
+    constraints.push([a, b]);
+    constraintOwners.push([...new Set(obligationIds)].sort());
+  };
+  const replaceConstraints = (
+    edges: Array<[number, number]>, owners: string[][],
+  ): void => {
+    if (edges.length !== owners.length) {
+      throw new Error(`ALIGNED SEED: constraint ledger desynchronised (${edges.length} edges / ${owners.length} owners).`);
+    }
+    constraints.length = 0;
+    constraintOwners.length = 0;
+    for (let i = 0; i < edges.length; i += 1) {
+      constraints.push(edges[i]);
+      constraintOwners.push([...new Set(owners[i])].sort());
+    }
+  };
   const chainIdx: number[][] = [];
   const seamZ = new Set<number>();
   const ownerChain: number[] = []; const ownerIdx: number[] = []; const ownerFixed: boolean[] = [];
@@ -835,18 +1239,18 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   for (const C of chains2) {
     ci += 1;
     const ids: number[] = [];
+    const pointIds = new Array<number>(C.length).fill(-1);
     let pi = -1;
     for (const p of C) {
       pi += 1;
       if (o.banned !== undefined && o.banned.has(`${ci}:${pi}`) && p.fixed !== true) { banApplied += 1; continue; }
       const th = Math.min(TWO_PI, Math.max(0, p.th));
-      // FIXED (crossing) points weld to each other at the minimum separation: two crossings that close
-      // together are one junction, and merging them is only ever reachable inside a junction disk.
-      // NON-fixed points weld at the same radius too — cross-chain, which the per-chain decimation above
-      // cannot see. Measured: two loci passing 9 um apart produced an AR-175 facet the seed could not undo.
-      // The displacement bound is minSep, which only ever binds where two loci are that close, i.e. at a
-      // junction approach.
-      const id = addPt(th, p.z, minSepMm);
+      // FIXED (crossing) points always weld at minSep: two crossings that close together are one junction,
+      // and merging them is only reachable inside a junction disk. Historically NON-fixed points used the
+      // same radius too — cross-chain, which per-chain decimation cannot see. S31 R4 may reduce only that
+      // non-fixed radius; the default remains minSep. Measured caution: preserving two loci only 9 um apart
+      // once produced an AR-175 facet, so every R4 arm remains behind the seed shape gate.
+      const id = addPt(th, p.z, p.fixed === true ? minSepMm : chainWeldMm);
       while (ownerChain.length <= id) { ownerChain.push(-1); ownerIdx.push(-1); ownerFixed.push(false); }
       if (ownerChain[id] < 0) { ownerChain[id] = ci; ownerIdx[id] = pi; ownerFixed[id] = p.fixed === true; }
       if (weldOwners !== null) {
@@ -855,10 +1259,13 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
         sset.add(ci);
       }
       ids.push(id);
+      pointIds[pi] = id;
       if (th <= 1e-12 || th >= TWO_PI - 1e-12) seamZ.add(p.z);
     }
-    chainIdx.push(ids);
-    for (let i = 0; i + 1 < ids.length; i += 1) if (ids[i] !== ids[i + 1]) constraints.push([ids[i], ids[i + 1]]);
+    chainIdx.push(pointIds);
+    for (let i = 0; i + 1 < ids.length; i += 1) {
+      pushConstraint(ids[i], ids[i + 1], [chainObligations[ci]]);
+    }
   }
   // S23B-R / R4 — PROVENANCE MARKERS. Four integers, written where each emitter stage ends and read ONLY
   // by the `PF_S10_SEED_DIAG` failure block at stage 5. THE REASON THEY EXIST: the R2 probe located the
@@ -993,9 +1400,9 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
 
   const freeFrom = px.length;   // every point added from here on is a FREE Steiner point
   const freeKey = (th: number, z: number): string => `f:${Math.round(rRef * th * 1e6)}:${Math.round(z * 1e6)}`;
-  const addFree = (th: number, z: number): void => {
-    if (o.banned !== undefined && o.banned.has(freeKey(th, z))) { banApplied += 1; return; }
-    addPt(th, z);
+  const addFree = (th: number, z: number): number => {
+    if (o.banned !== undefined && o.banned.has(freeKey(th, z))) { banApplied += 1; return -1; }
+    return addPt(th, z);
   };
   // 3c. offset ("short across") points hugging each locus — POINTS, not constraints: they pull the
   //     triangulation into thin elements along the locus without adding an edge that could cross anything.
@@ -1005,10 +1412,19 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   const inDisk = (th: number, z: number): boolean => {
     for (const j of jn) {
       const dth = dThRaw(canonTheta(th), j.theta);
+      const radiusMm = patchExclusions.effectiveRadiusByJunction.get(j.id) ?? j.radiusMm;
+      if (Math.hypot(rRef * dth, z - j.z) <= radiusMm) return true;
+    }
+    return false;
+  };
+  const inRawDisk = (th: number, z: number): boolean => {
+    for (const j of jn) {
+      const dth = dThRaw(canonTheta(th), j.theta);
       if (Math.hypot(rRef * dth, z - j.z) <= j.radiusMm) return true;
     }
     return false;
   };
+  let patchExclusionReclaimedChainPts = 0;
   // S19 — THE PROGRESSION, not a single ring. MEASURED REASON (S19 decomposition, 2026-07-31): 52% of the
   // large tilted offenders sit in [100, 400] um and another 36% in [400, ~650] um, i.e. in the EMPTY BAND
   // between the innermost ring and the background lattice. With one ring at 50 um and `clearMm` = 330 um
@@ -1021,19 +1437,38 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // constant at every radius while the point cost falls geometrically — sum(g^-j) converges instead of
   // multiplying the ring count.
   let offsetRingsUsed = 0;
+  interface CollarNode {
+    chainPoint: number;
+    ring: number;
+    side: 1 | -1;
+    stride: number;
+    id: number;
+    radiusMm: number;
+  }
+  interface CollarChain {
+    rows: Map<string, CollarNode[]>;
+    bySite: Map<string, CollarNode>;
+  }
+  const collarChains: CollarChain[] = [];
   for (const C of chains2) {
+    const collar: CollarChain = { rows: new Map(), bySite: new Map() };
+    collarChains.push(collar);
     for (let ci2 = 0; ci2 < C.length; ci2 += 1) {
       const p = C[ci2];
-      if (inDisk(p.th, p.z)) continue;
+      const excluded = inDisk(p.th, p.z);
+      if (!excluded && patchExclusions.selectedIds.size > 0 && inRawDisk(p.th, p.z)) {
+        patchExclusionReclaimedChainPts += 1;
+      }
+      if (excluded) continue;
       const J = Math.max(1, Math.round(o.acrossRings));
       for (let j = 0; j < J; j += 1) {
         const rj = p.across * (o.acrossGrade ** j);
         if (j > 0 && rj > o.acrossMaxMm) break;
-        // STRIDE CAPPED AT 4. Uncapped it is g^j, which keeps the element aspect exactly constant but sends
-        // the OUTER rings to a 6.8 mm along-spacing — chords that long run along a locus that curves, and
-        // the proximity guards test points, not chord crossings. 4 keeps the outermost ring at ~1.6 mm,
-        // which is the along-spacing this seed has always used at ring zero.
-        const stride = Math.min(4, Math.max(1, Math.round(o.acrossGrade ** j)));
+        // HISTORICAL STRIDE CAP 4. Uncapped it is g^j, which keeps the element aspect exactly constant but
+        // sends the OUTER rings to a 6.8 mm along-spacing — chords that long run along a locus that curves,
+        // and the proximity guards test points, not chord crossings. S32 may only LOWER this cap behind a
+        // research flag; 4 keeps the byte-compatible control and 2/1 densify the many-to-one collar edge.
+        const stride = Math.min(o.acrossStrideMax, Math.max(1, Math.round(o.acrossGrade ** j)));
         if (ci2 % stride !== 0) continue;
         if (j + 1 > offsetRingsUsed) offsetRingsUsed = j + 1;
         for (const sgn of [1, -1]) {
@@ -1045,7 +1480,15 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
           // live. A no-op on the OFF path by arithmetic, not by measurement: there across >= acrossBase /
           // fieldRange = 192.6 um, so across*0.55 >= 105.9 um >> 1.5*pslgEps = 30 um and the max never binds.
           if (nearSeg(th, z, o.acrossAbs ? Math.max(rj * 0.55, o.pslgEpsMm * 1.5) : rj * 0.55)) continue;
-          addFree(th, z); offsetPts += 1;
+          const id = addFree(th, z); offsetPts += 1;
+          if (o.acrossStructured && id >= 0) {
+            const side = sgn as 1 | -1;
+            const node: CollarNode = { chainPoint: ci2, ring: j, side, stride, id, radiusMm: rj };
+            const rowKey = `${j}:${side}`;
+            const row = collar.rows.get(rowKey);
+            if (row === undefined) collar.rows.set(rowKey, [node]); else row.push(node);
+            collar.bySite.set(`${ci2}:${j}:${side}`, node);
+          }
         }
       }
     }
@@ -1099,6 +1542,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   // never coarser than the field ANYWHERE on it. Four cardinal probes x both chart directions; the solve is
   // the same `solveHDir` the across rule uses, at the same `tolMm`, so no new sizing quantity enters.
   let patchPts = 0; let patchRings = 0; let patchRefusedPt = 0; let patchRefusedSeg = 0;
+  let patchOuterSectors = 0; let patchOuterUncoveredSectors = 0;
   let patchFieldBoundRings = 0; let patchSubRings = 0; let patchSubCapped = 0; let patchWorstRatio = 1;
   const patchEmitted: PatchRegion[] = [];
   /** the sizing field's own answer at radius `r` about a routed centre — min over 4 probes x 2 directions. */
@@ -1123,6 +1567,7 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     const K = Math.max(1, Math.ceil(Math.log(R / rIn) / Math.log(o.patchGrade)));
     const M0 = Math.max(6, Math.round(o.patchM));
     let emittedHere = 0;
+    let outerSectorsHere = 0; let outerUncoveredHere = 0;
     // the junction centre itself — the one point that is ON the crossing
     {
       const gp = rIn * 0.35; const gs = Math.max(rIn * 0.55, o.pslgEpsMm * 1.5);
@@ -1183,10 +1628,26 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
           const th = canonTheta(reg.theta + (rs * Math.cos(a)) / rRef);
           const z = reg.z + rs * Math.sin(a);
           if (z < 0 || z > H) continue;
+          const outerSector = i === K && s === nSub;
+          if (outerSector) { patchOuterSectors += 1; outerSectorsHere += 1; }
           if (nearPt(th, z, gp)) { patchRefusedPt += 1; continue; }
           if (nearSeg(th, z, gs)) { patchRefusedSeg += 1; continue; }
+          const refusedByRepairBan = o.banned?.has(freeKey(th, z)) === true;
           addFree(th, z); patchPts += 1; emittedHere += 1;
+          if (outerSector && refusedByRepairBan) {
+            patchOuterUncoveredSectors += 1;
+            outerUncoveredHere += 1;
+          }
         }
+      }
+    }
+    const rawId = /^D(\d+)$/.exec(reg.id)?.[1];
+    if (rawId !== undefined && patchExclusions.selectedIds.has(Number(rawId))) {
+      if (outerSectorsHere === 0 || outerUncoveredHere > 0) {
+        throw new Error(
+          `ALIGNED SEED S30: ${reg.id} routed coverage is incomplete `
+          + `(outer sectors ${outerSectorsHere}, uncovered ${outerUncoveredHere})`,
+        );
       }
     }
     // PROVENANCE: declared at the ROUTED radius, which is what the emitter actually touched. A region
@@ -1377,13 +1838,106 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     reconMs = Date.now() - t3g;
   }
 
+  // 3c-ter. S32 STRUCTURED FEATURE COLLAR, DEFAULT OFF.
+  //
+  // The historical collar points remain FREE Steiner points. That leaves cdt2d
+  // free to connect an outer-ring vertex to an arbitrary run of inner-ring or
+  // locus vertices, which is exactly the deterministic saw-tooth fan observed
+  // in S30C1. This shadow changes CONNECTIVITY only: point placement has already
+  // finished, then non-crossing ring rails and matched radial rungs are admitted
+  // to the same PSLG. A candidate is rejected rather than repaired if it crosses
+  // any traced/collar segment or passes through the conditioning disk of another
+  // vertex. Therefore no collar edge can bend a feature constraint in stage 3e.
+  let collarRailConstraints = 0;
+  let collarRungConstraints = 0;
+  let collarRefusedCrossing = 0;
+  let collarRefusedInteriorPoint = 0;
+  const collarConstraintKind = new Map<number, 'COLLAR-RAIL' | 'COLLAR-RUNG'>();
+  if (o.acrossStructured) {
+    const acceptedEdges = new Set<number>();
+    const candidateCrossesRecorded = (a: number, b: number): boolean => {
+      const ax = px[a]; const ay = py[a]; const bx = px[b]; const by = py[b];
+      const seen = new Set<number>();
+      for (let gx = Math.floor(Math.min(ax, bx) / BS); gx <= Math.floor(Math.max(ax, bx) / BS); gx += 1) {
+        for (let gy = Math.floor(Math.min(ay, by) / BS); gy <= Math.floor(Math.max(ay, by) / BS); gy += 1) {
+          for (const si of segBuckets.get(`${gx},${gy}`) ?? []) {
+            if (seen.has(si)) continue;
+            seen.add(si);
+            if (segParams(ax, ay, bx, by, segAx[si], segAy[si], segBx[si], segBy[si]) !== null) return true;
+          }
+        }
+      }
+      return false;
+    };
+    const candidateHasInteriorPoint = (a: number, b: number): boolean => {
+      const ax = px[a]; const ay = py[a]; const bx = px[b]; const by = py[b];
+      const ux = bx - ax; const uy = by - ay; const l2 = ux * ux + uy * uy;
+      if (l2 <= 1e-18) return true;
+      const pad = o.pslgEpsMm;
+      const seen = new Set<number>();
+      for (let gx = Math.floor((Math.min(ax, bx) - pad) / CELL); gx <= Math.floor((Math.max(ax, bx) + pad) / CELL); gx += 1) {
+        for (let gy = Math.floor((Math.min(ay, by) - pad) / CELL); gy <= Math.floor((Math.max(ay, by) + pad) / CELL); gy += 1) {
+          for (const id of hash.get(`${gx},${gy}`) ?? []) {
+            if (id === a || id === b || seen.has(id)) continue;
+            seen.add(id);
+            const t = ((px[id] - ax) * ux + (py[id] - ay) * uy) / l2;
+            if (t <= 1e-9 || t >= 1 - 1e-9) continue;
+            const ex = px[id] - (ax + t * ux); const ey = py[id] - (ay + t * uy);
+            if (ex * ex + ey * ey <= pad * pad) return true;
+          }
+        }
+      }
+      return false;
+    };
+    const admitCollar = (
+      a: number, b: number, across: number, kind: 'rail' | 'rung',
+    ): void => {
+      if (a < 0 || b < 0 || a === b) return;
+      const key = a < b ? a * 33554432 + b : b * 33554432 + a;
+      if (acceptedEdges.has(key)) return;
+      if (candidateCrossesRecorded(a, b)) { collarRefusedCrossing += 1; return; }
+      if (candidateHasInteriorPoint(a, b)) { collarRefusedInteriorPoint += 1; return; }
+      acceptedEdges.add(key);
+      collarConstraintKind.set(key, kind === 'rail' ? 'COLLAR-RAIL' : 'COLLAR-RUNG');
+      pushConstraint(a, b, [`collar:${kind}:${key}`]);
+      recordClearanceSegment(px[a], py[a], px[b], py[b], across);
+      if (kind === 'rail') collarRailConstraints += 1; else collarRungConstraints += 1;
+    };
+
+    const outerRing = offsetRingsUsed - 1;
+    for (let chain = 0; chain < collarChains.length; chain += 1) {
+      const collar = collarChains[chain];
+      for (const row of collar.rows.values()) {
+        if ((o.acrossStructuredMode === 'outer' || o.acrossStructuredMode === 'outer-cell')
+          && row[0]?.ring !== outerRing) continue;
+        row.sort((a, b) => a.chainPoint - b.chainPoint);
+        for (let i = 0; i + 1 < row.length; i += 1) {
+          const a = row[i]; const b = row[i + 1];
+          if (b.chainPoint - a.chainPoint !== a.stride) continue;
+          admitCollar(a.id, b.id, Math.min(a.radiusMm, b.radiusMm), 'rail');
+        }
+      }
+      if (o.acrossStructuredMode === 'rails' || o.acrossStructuredMode === 'outer') continue;
+      for (const node of collar.bySite.values()) {
+        if (o.acrossStructuredMode === 'outer-cell' && node.ring !== outerRing) continue;
+        if (node.ring === 0) {
+          admitCollar(chainIdx[chain]?.[node.chainPoint] ?? -1, node.id, node.radiusMm, 'rung');
+          continue;
+        }
+        const inner = collar.bySite.get(`${node.chainPoint}:${node.ring - 1}:${node.side}`);
+        if (inner !== undefined) admitCollar(inner.id, node.id, Math.min(inner.radiusMm, node.radiusMm), 'rung');
+      }
+    }
+  }
+
   // 3f. the four domain sides as CONSTRAINT CHAINS (see 3b). Each is one segment between consecutive
   // points on that side, so nothing has to be "recovered" — the same pre-split discipline the loci use.
   let boundaryConstraints = 0;
-  for (const chain of boundaryChains) {
+  for (let boundaryChain = 0; boundaryChain < boundaryChains.length; boundaryChain += 1) {
+    const chain = boundaryChains[boundaryChain];
     for (let i = 0; i + 1 < chain.length; i += 1) {
       if (chain[i] === chain[i + 1]) continue;
-      constraints.push([chain[i], chain[i + 1]]);
+      pushConstraint(chain[i], chain[i + 1], [`boundary:${boundaryChain}`]);
       boundaryConstraints += 1;
     }
   }
@@ -1442,14 +1996,18 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   const provK = (a: number, b: number): number => (a < b ? a * 33554432 + b : b * 33554432 + a);
   if (PROV !== null) {
     for (let i = 0; i < constraints.length; i += 1) {
-      provRootKind.set(provK(constraints[i][0], constraints[i][1]), i < provChainConstraints ? 'CHAIN' : 'BOUNDARY');
+      const key = provK(constraints[i][0], constraints[i][1]);
+      provRootKind.set(key, collarConstraintKind.get(key) ?? (i < provChainConstraints ? 'CHAIN' : 'BOUNDARY'));
     }
   }
   for (let condPass = 0; condPass < COND_PASSES; condPass += 1) {
     const EPS = o.pslgEpsMm;
     const out: Array<[number, number]> = [];
+    const outOwners: string[][] = [];
     let moved = 0;
-    for (const [a, b] of constraints) {
+    for (let constraintIndex = 0; constraintIndex < constraints.length; constraintIndex += 1) {
+      const [a, b] = constraints[constraintIndex];
+      const owners = constraintOwners[constraintIndex];
       const ax = px[a]; const ay = py[a]; const bx = px[b]; const by = py[b];
       const ux = bx - ax; const uy = by - ay;
       const l2 = ux * ux + uy * uy;
@@ -1481,20 +2039,27 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
           }
         }
       }
-      if (hits.length === 0) { out.push([a, b]); continue; }
+      if (hits.length === 0) { out.push([a, b]); outOwners.push(owners); continue; }
       hits.sort((p, q) => p[0] - q[0]);
       constraintsConditioned += 1;
       let prev = a;
       const pk = PROV === null ? 0 : provK(a, b);
       for (const [, j] of hits) {
-        if (j !== prev) { out.push([prev, j]); if (PROV !== null) PROV.set(provK(prev, j), pk); }
+        if (j !== prev) {
+          out.push([prev, j]);
+          outOwners.push(owners);
+          if (PROV !== null) PROV.set(provK(prev, j), pk);
+        }
         prev = j;
       }
-      if (prev !== b) { out.push([prev, b]); if (PROV !== null) PROV.set(provK(prev, b), pk); }
+      if (prev !== b) {
+        out.push([prev, b]);
+        outOwners.push(owners);
+        if (PROV !== null) PROV.set(provK(prev, b), pk);
+      }
     }
     const grew = out.length !== constraints.length;
-    constraints.length = 0;
-    for (const e of out) constraints.push(e);
+    replaceConstraints(out, outOwners);
     // S23B-R / R2 FOLLOW-UP — A PURE MEASUREMENT, GATED, CHANGING NOTHING. The R2 probe lost exactly one
     // constraint of 13-17 thousand on three separate rungs, and this loop is a named candidate: it is
     // capped at 3 passes and exits on "no split happened", so a blocker that only becomes interior after
@@ -1516,15 +2081,22 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
   }
   // dedupe (two chains meeting at a junction can produce the same segment twice)
   {
-    const seenE = new Set<number>();
+    const seenE = new Map<number, number>();
     const out: Array<[number, number]> = [];
-    for (const [a, b] of constraints) {
+    const outOwners: string[][] = [];
+    for (let constraintIndex = 0; constraintIndex < constraints.length; constraintIndex += 1) {
+      const [a, b] = constraints[constraintIndex];
       const k = a < b ? a * 33554432 + b : b * 33554432 + a;
-      if (seenE.has(k)) continue;
-      seenE.add(k); out.push([a, b]);
+      const previous = seenE.get(k);
+      if (previous !== undefined) {
+        outOwners[previous] = [...new Set([...outOwners[previous], ...constraintOwners[constraintIndex]])].sort();
+        continue;
+      }
+      seenE.set(k, out.length);
+      out.push([a, b]);
+      outOwners.push(constraintOwners[constraintIndex]);
     }
-    constraints.length = 0;
-    for (const e of out) constraints.push(e);
+    replaceConstraints(out, outOwners);
   }
 
   // ── 3h. S23B-R / R4 RE-DIAGNOSIS — THE PLANARITY CENSUS OF THE PSLG ACTUALLY HANDED TO cdt2d. ────
@@ -1610,21 +2182,41 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       }
       if (cut.size === 0) break;
       const out: Array<[number, number]> = [];
+      const outOwners: string[][] = [];
       for (let si = 0; si < constraints.length; si += 1) {
         const l = cut.get(si);
-        if (l === undefined) { out.push(constraints[si]); continue; }
+        if (l === undefined) { out.push(constraints[si]); outOwners.push(constraintOwners[si]); continue; }
         l.sort((p, q) => p[0] - q[0]);
         let prev = constraints[si][0];
-        for (const [, v] of l) { if (v !== prev) { out.push([prev, v]); planarSplits += 1; } prev = v; }
-        if (prev !== constraints[si][1]) out.push([prev, constraints[si][1]]);
+        for (const [, v] of l) {
+          if (v !== prev) {
+            out.push([prev, v]);
+            outOwners.push(constraintOwners[si]);
+            planarSplits += 1;
+          }
+          prev = v;
+        }
+        if (prev !== constraints[si][1]) {
+          out.push([prev, constraints[si][1]]);
+          outOwners.push(constraintOwners[si]);
+        }
       }
-      const seenE = new Set<number>();
-      constraints.length = 0;
-      for (const [a, b] of out) {
+      const seenE = new Map<number, number>();
+      const deduped: Array<[number, number]> = [];
+      const dedupedOwners: string[][] = [];
+      for (let outIndex = 0; outIndex < out.length; outIndex += 1) {
+        const [a, b] = out[outIndex];
         const k = a < b ? a * 33554432 + b : b * 33554432 + a;
-        if (seenE.has(k)) continue;
-        seenE.add(k); constraints.push([a, b]);
+        const previous = seenE.get(k);
+        if (previous !== undefined) {
+          dedupedOwners[previous] = [...new Set([...dedupedOwners[previous], ...outOwners[outIndex]])].sort();
+          continue;
+        }
+        seenE.set(k, deduped.length);
+        deduped.push([a, b]);
+        dedupedOwners.push(outOwners[outIndex]);
       }
+      replaceConstraints(deduped, dedupedOwners);
     }
     planarMs = Date.now() - tP;
     if (process.env.PF_S10_SEED_DIAG === '1') {
@@ -1788,9 +2380,22 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       }
     }
   }
+  if (recovered !== constraints.length && o.acrossStructured && process.env.PF_S10_SEED_DIAG !== '1') {
+    const rawEdge = new Set<number>();
+    for (const t of raw) { rawEdge.add(ek(t[0], t[1])); rawEdge.add(ek(t[1], t[2])); rawEdge.add(ek(t[2], t[0])); }
+    for (const [a, b] of constraints) {
+      const key = ek(a, b);
+      if (edgeSet.has(key)) continue;
+      // eslint-disable-next-line no-console
+      console.log(`  S32 COLLAR UNRECOVERED ${collarConstraintKind.get(key) ?? 'NON-COLLAR'} (${a},${b})`
+        + ` A=(${px[a].toFixed(6)},${py[a].toFixed(6)}) B=(${px[b].toFixed(6)},${py[b].toFixed(6)})`
+        + ` len=${(Math.hypot(px[b] - px[a], py[b] - py[a]) * 1000).toFixed(3)}um`
+        + ` raw=${rawEdge.has(key) ? 'YES-DROPPED' : 'NO'}`);
+    }
+  }
   if (recovered !== constraints.length) {
     throw new Error(
-      `ALIGNED SEED: constraint recovery INCOMPLETE — ${recovered} of ${constraints.length} locus segments `
+      `ALIGNED SEED: constraint recovery INCOMPLETE — ${recovered} of ${constraints.length} PSLG segments `
       + `are edges of the triangulation (${constraints.length - recovered} missing). A locus constraint that `
       + `is not an edge is a fossil reintroduced with a clean report; refusing to seed. `
       + `(2026-07-24 precedent: generic CDT arms recovered only 21-42% of a dense constraint graph.)`,
@@ -1954,13 +2559,18 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
     pts: pth.map((th, i) => [th, pz[i]] as [number, number]),
     tris,
     constraints,
+    constraintLedger: constraints.map((vertices, index) => ({
+      vertices: [vertices[0], vertices[1]],
+      obligationIds: [...constraintOwners[index]],
+    })),
     suggestedBans: [...suggested],
     patches: patchEmitted,
     stats: {
       lociUsed, chains: chains2.length, chainPts, crossingsSplit, seamZ: seamZs.length,
       bgKept, bgDropped, offsetPts, points: pth.length, tris: tris.length,
       constraints: constraints.length, constraintsRecovered: recovered, constraintsConditioned,
-      decimated, boundarySnapped, degenerateDropped, banApplied, boundaryConstraints, dropRefused,
+      decimated, chainResolved, chainResolveRefused,
+      boundarySnapped, degenerateDropped, banApplied, boundaryConstraints, dropRefused,
       edgesCrossingLocus, edgesTested,
       overCap, worstAR, worstParAR, negArea,
       alongMm: alongBase, acrossMm: acrossBase,
@@ -1969,11 +2579,19 @@ export function buildAlignedSeed(rA: SweepRadiusFn, art: LocusArtifact, o: Align
       bowShortenedPts,
       turnBoundPts,
       offsetRingsUsed,
+      collarRailConstraints,
+      collarRungConstraints,
+      collarRefusedCrossing,
+      collarRefusedInteriorPoint,
       patchRegions: patchEmitted.length,
       patchPts,
       patchRings,
       patchRefusedPt,
       patchRefusedSeg,
+      patchExclusionRegions: patchExclusions.effectiveRadiusByJunction.size,
+      patchExclusionReclaimedChainPts,
+      patchOuterSectors,
+      patchOuterUncoveredSectors,
       patchFieldBoundRings,
       patchSubRings,
       patchSubCapped,
