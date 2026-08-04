@@ -44,12 +44,7 @@ import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { baseRadius } from '../../src/geometry/profile';
 import { buildRadiusFn } from './labkit';
 import { traceLoci, DEFAULT_TRACE_OPTS, LOCUS_SCHEMA, type LocusArtifact } from './_strataLocusTrace';
-import {
-  buildAlignedSeedRepaired,
-  DEFAULT_SEED_OPTS,
-  discoverRoutedAnnuli,
-  type AlignedSeed,
-} from './_strataAlignedSeed';
+import { buildAlignedSeedRepaired, DEFAULT_SEED_OPTS, type AlignedSeed } from './_strataAlignedSeed';
 // S23 — the extracted absolute density field. Value import, but reachable ONLY when PF_CB_RECON is set;
 // with the lever unset `loadReconField` is never called and no field is ever read.
 import { loadReconField, type ReconField } from './_strataReconField';
@@ -82,13 +77,11 @@ import { SweepPool, resolveSweepWorkers, type SweepPoolStats } from './_sweepPoo
 // THE SHAPE TERM (2026-07-29 blade fix). Pure functions, no mesh state — see _shapeGuard.ts's header for
 // why `aspect3` is the census's own metric and why that identity is the point.
 import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shapeGuard';
-import { runFanCavities } from './_strataFanCavity';
 import {
-  planAtomicCorridorCavity,
-  type CorridorCavityMesh,
-  type CorridorConstraint,
-  type CorridorVertex,
-} from './_strataCorridorCavity';
+  defaultCavityOptions,
+  planCavityForTriangle,
+  type DriverMeshView,
+} from './_strataCavityEscalate';
 // THE ONE DEFINITION of the barycentric sag ruler (2026-07-29 audit-pool extraction). `sagOfN` and
 // `sagAdaptive` below are now one-line wrappers over these bodies, transcribed VERBATIM, so the driver's
 // serial audit and every audit WORKER THREAD run the same arithmetic instead of two copies that must be kept
@@ -175,50 +168,71 @@ describe('STRATA conforming-bisection', () => {
     const innerDiv = Math.round(envF('PF_CB_INNERDIV', 256));
     const innerRings = Math.round(envF('PF_CB_INNERRINGS', 48));
     const NOWELD = process.env.PF_CB_NOWELD !== '0'; // refuse splits whose new vertex welds onto an existing one
-    // S45: research-only prevention path. The live mesh may be changed only by a
-    // complete, preflighted local transaction; feature identities are retained
-    // from the aligned seed instead of being reduced to `vFeat:boolean`.
-    const ATOMIC_BIRTH = envOn('PF_CB_ATOMIC_BIRTH');
-    const POST_BIRTH_REPAIR_FLAGS = [
-      'PF_CB_ATOMIC_FACE',
-      'PF_CB_NAIVE_COLLAPSE',
-      'PF_CB_SLIVER_COLLAPSE',
-      'PF_CB_CONF_FLIP',
-      'PF_CB_FOSSIL_CASCADE',
-      'PF_CB_DESHARD',
-      'PF_CB_FAN_CAVITY',
-      'PF_CB_STRAND_RETRY',
-    ] as const;
-    if (ATOMIC_BIRTH) {
-      const requestedRepairs = POST_BIRTH_REPAIR_FLAGS.filter(envOn);
-      if (requestedRepairs.length > 0) {
-        throw new Error(
-          'PF_CB_ATOMIC_BIRTH is a construction-time certificate and cannot be combined with post-birth '
-          + `repair passes: ${requestedRepairs.join(', ')}. Solve the feature transaction before commit.`,
-        );
-      }
-    }
-    const BIRTH_CLOSURE = ATOMIC_BIRTH && envOn('PF_CB_ATOMIC_BIRTH_CLOSURE');
-    const BIRTH_CLOSURE_MAX = Math.max(0, Math.round(envF('PF_CB_ATOMIC_BIRTH_CLOSURE_MAX', 32)));
-    const BIRTH_CLOSURE_CONTEXT_RINGS = Math.max(
-      3, Math.round(envF('PF_CB_ATOMIC_BIRTH_CONTEXT_RINGS', 7)),
-    );
-    const BIRTH_CLOSURE_MAX_CONTEXT = Math.max(
-      32, Math.round(envF('PF_CB_ATOMIC_BIRTH_MAX_CONTEXT', 768)),
-    );
-    const BIRTH_CLOSURE_MAX_PARENTS = Math.max(
-      8, Math.round(envF('PF_CB_ATOMIC_BIRTH_MAX_PARENTS', 256)),
-    );
-    const BIRTH_CLOSURE_MAX_VERTICES = Math.max(
-      16, Math.round(envF('PF_CB_ATOMIC_BIRTH_MAX_VERTICES', 2048)),
-    );
-    const BIRTH_CLOSURE_MAX_LEB = Math.max(
-      0, Math.round(envF('PF_CB_ATOMIC_BIRTH_MAX_LEB', 2048)),
-    );
     const FLIP_ON = envOn('PF_CB_FLIP');            // locus-safe 2-2 edge flips to unblock refused collapses
     const NUDGE_LADDER = (process.env.PF_CB_NUDGE ?? '0.5,0.42,0.58,0.35,0.65,0.28,0.72,0.21,0.79,0.15,0.85')
       .split(',').map((x) => Number.parseFloat(x)).filter((x) => Number.isFinite(x) && x > 0 && x < 1);
     const DEBUG = envOn('PF_CB_DEBUG');
+    // ─────────── V2-L1  LAST-CHANCE PLACEMENT SEARCH (PF_CB_LASTCHANCE, default 0 = OFF) ───────────
+    // WHY. `splitEdge` enumerates ELEVEN fixed chord fractions and, if none is admissible, abandons the
+    // triangle forever — it lands in `unresolved` and is frozen into the STL. That ladder is an
+    // ENUMERATION, not a SEARCH, and the 2026-08-03 jam census measured what it costs
+    // (`research/exchange/_strataJamCensus/JAM_S40VFC.report.txt`, 1,180 of S40VFC's 4,283 unresolved
+    // facets audited on the driver's own composed gates):
+    //   * 1,153 (97.7 %) jammed with `selected=NONE` after a p50 of 35 placement attempts;
+    //   * refusals are 89 % ASPECT (36,089) against 4,393 normal;
+    //   * a dense 2,049-sample sweep of the SAME three edges under the SAME gates found a legal
+    //     placement on 324 — **28.1 % of the jam has a legal split the ladder never samples**. One
+    //     rescue sits 111.4 um off the surface and is legal at AR 44.6 against a cap of 50.
+    // Best achievable worst-AR over all sampled placements is p50 51.9: where a legal window exists it
+    // is a few percent wide, which is exactly why eleven fixed rungs miss it.
+    //
+    // WHERE, AND WHY NOT IN `splitEdge`. The run refused 773,079 candidates on aspect; escalating all of
+    // them to a dense sweep would cost ~1.6 G extra gate evaluations. This fires ONLY at the moment a
+    // facet is about to be abandoned — ~4,283 of them — so the whole lever costs ~0.4 M probes. It is a
+    // LAST CHANCE, not a new ranking or acceptance rule: it changes no key, no tolerance and no gate.
+    // Every placement it commits passed the identical `bisectAt` choke point every other split does.
+    //
+    // SOUNDNESS. `bisectAt` runs the S1/S2 shape gate BEFORE `addV`, and its weld-collapse / weld
+    // returns add no vertex either, so a refused probe leaves no orphan in the weld grid. Sweeping it
+    // repeatedly is therefore side-effect-free until the first acceptance.
+    const LASTCHANCE = Math.max(0, Math.round(envF('PF_CB_LASTCHANCE', 0)));
+    let lcTried = 0;    // facets that reached the last chance
+    let lcRescued = 0;  // facets it split after the ladder had given up
+    let lcProbes = 0;   // bisectAt probes it spent
+    // ─────────── V2-L2  IN-LOOP CONSTRAINED-CAVITY ESCALATION (PF_CB_CAVITY, default 0 = OFF) ──────────
+    // WHY. S46 measured that a perfect placement search is NOT enough: rescuing 1,280 jammed facets
+    // removed only 409 from `unresolved`, because the children inherit the corner and jam in their
+    // parents' place. Refinement over a FIXED CONNECTIVITY cannot reach a conforming anisotropic mesh at
+    // a crease — the jam census found NO legal single-edge split on any of three edges at any of 2,049
+    // positions for 97.7% of jammed facets, with best-achievable AR clustered at p50 51.9 against a
+    // cap of 50. The move set, not the placement, is the defect.
+    //
+    // WHAT. When both ordinary refinement AND the last-chance sweep fail, escalate to a local
+    // CONNECTIVITY change: freeze a ring boundary around the facet, keep the feature edges as PSLG
+    // constraints, and re-triangulate the interior. That is `_strataCorridorCavity`'s already-certified
+    // planner, called in the loop instead of as a post-hoc pass over 22 hand-picked regions.
+    //
+    // WHY IT IS SOUND. The planner commits nothing without its full certificate: every named edge
+    // recovered, zero proper crossings, AR <= the driver's own cap, zero admission failures, zero
+    // non-manifold edges, equal Euler characteristic, an unchanged frozen boundary and a strict visual
+    // improvement. This driver then applies the edit with its OWN `killT`/`addV`/`addT`, and every born
+    // triangle goes through `consider` exactly like a split child. No gate is relaxed.
+    //
+    // WHY IT IS AFFORDABLE. It fires once per facet that has already exhausted every cheaper move —
+    // ~4,000 of them at this config, against 1.5 M split candidates.
+    const CAVITY = Math.max(0, Math.round(envF('PF_CB_CAVITY', 0)));          // 0 = off, else patch size
+    const CAVITY_BUDGET = Math.round(envF('PF_CB_CAVITY_BUDGET', 20000));     // hard cap on escalations
+    const CAVITY_RINGS = Math.round(envF('PF_CB_CAVITY_RINGS', 2));
+    const CAVITY_ROUNDS = Math.round(envF('PF_CB_CAVITY_ROUNDS', 3));
+    let cavTried = 0; let cavAccepted = 0; let cavApplied = 0;
+    let cavRemoved = 0; let cavAdded = 0; let cavOrphanAbort = 0;
+    // / are declared far below, so the payload is COLLECTED here and written there.
+    const CAVITY_DUMP = envOn('PF_CB_CAVITY_DUMP');
+    const cavDumps: unknown[] = [];
+    let cavRounds = 0;
+    let cavPatchSum = 0; let cavChainSum = 0; let cavStepSum = 0;
+    let cavSawWitness = 0; let cavHitPatchRim = 0;
+    const cavRefusals = new Map<string, number>();
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // L5  THE SHAPE TERM — four levers, ALL DEFAULT ON, each individually reachable so the DEFECT stays
     //     reproducible. Diagnosis: research/lab/2026-07-29-strata-perf-convergence-worklog.md, "DIAGNOSED".
@@ -562,16 +576,6 @@ describe('STRATA conforming-bisection', () => {
       delete: (k: number): void => { edgeShards[k % EDGE_SHARDS].delete(k); },
     };
     const eKey = (a: number, b: number): number => (a < b ? a * BIG + b : b * BIG + a);
-    const edgeObligations = new Map<number, string[]>();
-    const featureObligations = (a: number, b: number): string[] => (
-      edgeObligations.get(eKey(a, b)) ?? []
-    ).filter((id) => id.startsWith('feature:'));
-    const putEdgeObligations = (a: number, b: number, ids: readonly string[]): void => {
-      const unique = [...new Set(ids)].sort();
-      const key = eKey(a, b);
-      if (unique.length === 0) edgeObligations.delete(key);
-      else edgeObligations.set(key, unique);
-    };
     const eAdd = (a: number, b: number, t: number): void => { const k = eKey(a, b); const l = edgeMap.get(k); if (l === undefined) edgeMap.set(k, [t]); else l.push(t); };
     // MEMORY: drop the key once its list empties. Without this, every edge EVER created leaves a permanent
     // empty-array entry, so edgeMap grows with CUMULATIVE allocation rather than live triangles and blows V8's
@@ -1047,9 +1051,6 @@ describe('STRATA conforming-bisection', () => {
     // as `sagAdaptive` and changes only the quantity measured, which is the pre-registered hypothesis.
     // PF_CB_GPU_COVFRAC=1 adds the full covering term back for anyone who wants the sound variant.
     const GPU_RANK = envOn('PF_CB_GPU_RANK');
-    if (BIRTH_CLOSURE && (SWEEP || GPU_RANK)) {
-      throw new Error('PF_CB_ATOMIC_BIRTH_CLOSURE currently supports only the serial heap driver.');
-    }
     const GR_N = Math.round(envF('PF_CB_GPU_N', 12));
     const GR_GN = Math.round(envF('PF_CB_GPU_GN', 2));
     const GR_COVFRAC = envF('PF_CB_GPU_COVFRAC', 0);
@@ -1097,27 +1098,11 @@ describe('STRATA conforming-bisection', () => {
     // locus it hugs. Default 0 = OFF. S15 measured the defect this repairs: seed edges crossing a locus
     // 963 -> 3,425 with the ring at 50 um.
     const AL_BOW_FRAC = envF('PF_CB_ALIGNED_BOW_FRAC', 0);
-    const AL_DECIMATE_RAW = process.env.PF_CB_ALIGNED_DECIMATE_UM;
-    const AL_DECIMATE_MM = AL_DECIMATE_RAW === undefined ? undefined : Number.parseFloat(AL_DECIMATE_RAW) / 1000;
-    const AL_CHAIN_WELD_RAW = process.env.PF_CB_ALIGNED_CHAIN_WELD_UM;
-    const AL_CHAIN_WELD_MM = AL_CHAIN_WELD_RAW === undefined ? undefined : Number.parseFloat(AL_CHAIN_WELD_RAW) / 1000;
     if (AL_ACROSS_ABS && !ALIGNED_SEED) {
       throw new Error('PF_CB_ALIGNED_ACROSS_ABS=1 is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
     }
     if (AL_BOW_FRAC !== 0 && !AL_ACROSS_ABS) {
       throw new Error('PF_CB_ALIGNED_BOW_FRAC is inert without PF_CB_ALIGNED_ACROSS_ABS=1. Unset it, or enable the across rule.');
-    }
-    if (AL_DECIMATE_MM !== undefined && (!Number.isFinite(AL_DECIMATE_MM) || !(AL_DECIMATE_MM > 0))) {
-      throw new Error('PF_CB_ALIGNED_DECIMATE_UM must be a positive finite distance.');
-    }
-    if (AL_DECIMATE_MM !== undefined && !ALIGNED_SEED) {
-      throw new Error('PF_CB_ALIGNED_DECIMATE_UM is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
-    }
-    if (AL_CHAIN_WELD_MM !== undefined && (!Number.isFinite(AL_CHAIN_WELD_MM) || !(AL_CHAIN_WELD_MM > 0))) {
-      throw new Error('PF_CB_ALIGNED_CHAIN_WELD_UM must be a positive finite distance.');
-    }
-    if (AL_CHAIN_WELD_MM !== undefined && !ALIGNED_SEED) {
-      throw new Error('PF_CB_ALIGNED_CHAIN_WELD_UM is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
     }
     // ── S18 / P5 STEP 3 — THE X-CROSSING PATCH EMITTER. PF_CB_ALIGNED_PATCH=<regions.json>, DEFAULT UNSET.
     // The routing list is an INPUT, not a computation: measured artifact load can only be read off a
@@ -1131,54 +1116,15 @@ describe('STRATA conforming-bisection', () => {
     // spacing to the anisotropy guard alone. Both are inert without the across rule and the driver throws.
     const AL_RINGS = Math.round(envF('PF_CB_ALIGNED_RINGS', 1));
     const AL_RGRADE = envF('PF_CB_ALIGNED_RING_GRADE', 1.6);
-    const AL_RSTRIDE_MAX = Math.round(envF('PF_CB_ALIGNED_RING_STRIDE_MAX', 4));
-    const AL_RSTRUCTURED = process.env.PF_CB_ALIGNED_COLLAR_STRUCTURED === '1';
-    const AL_RSTRUCTURED_MODE = process.env.PF_CB_ALIGNED_COLLAR_MODE ?? 'full';
     const AL_RMAX = envF('PF_CB_ALIGNED_RING_MAX_UM', 650) / 1000;
     const AL_TURN_MUL = envF('PF_CB_ALIGNED_TURN_MUL', 0);
     if ((AL_RINGS !== 1 || AL_TURN_MUL !== 0) && !AL_ACROSS_ABS) {
       throw new Error('PF_CB_ALIGNED_RINGS / PF_CB_ALIGNED_TURN_MUL are inert without PF_CB_ALIGNED_ACROSS_ABS=1.');
     }
-    if (!Number.isInteger(AL_RSTRIDE_MAX) || AL_RSTRIDE_MAX < 1) {
-      throw new Error('PF_CB_ALIGNED_RING_STRIDE_MAX must be a positive integer.');
-    }
-    if (AL_RSTRIDE_MAX !== 4 && (!ALIGNED_SEED || AL_RINGS <= 1)) {
-      throw new Error('PF_CB_ALIGNED_RING_STRIDE_MAX is inert without PF_CB_ALIGNED_SEED=1 and PF_CB_ALIGNED_RINGS>1.');
-    }
-    if (AL_RSTRUCTURED && (!ALIGNED_SEED || AL_RINGS <= 1)) {
-      throw new Error('PF_CB_ALIGNED_COLLAR_STRUCTURED is inert without PF_CB_ALIGNED_SEED=1 and PF_CB_ALIGNED_RINGS>1.');
-    }
-    if (!['full', 'rails', 'outer', 'outer-cell'].includes(AL_RSTRUCTURED_MODE)) {
-      throw new Error('PF_CB_ALIGNED_COLLAR_MODE must be full, rails, outer, or outer-cell.');
-    }
     const AL_PATCH = process.env.PF_CB_ALIGNED_PATCH ?? '';
     const AL_PATCH_TOPN = Math.round(envF('PF_CB_ALIGNED_PATCH_TOPN', 25));
     const AL_PATCH_IDS = (process.env.PF_CB_ALIGNED_PATCH_IDS ?? '').split(',').map((s) => s.trim()).filter((s) => s !== '');
     const AL_PATCH_MAX = envF('PF_CB_ALIGNED_PATCH_MAX_MM', 1.5);
-    // S30 shadow: named raw junction disks whose offset-ring exclusion is reduced to
-    // the matching patch's ACTUAL routed radius. Default empty keeps S24 byte-identical.
-    const AL_PATCH_EXCLUSION_IDS = new Set(
-      (process.env.PF_CB_ALIGNED_PATCH_EXCLUSION_IDS ?? '')
-        .split(',')
-        .map((s) => s.trim())
-        .filter((s) => s !== '')
-        .map((s) => Number(s)),
-    );
-    if ([...AL_PATCH_EXCLUSION_IDS].some((id) => !Number.isInteger(id) || id < 0)) {
-      throw new Error('PF_CB_ALIGNED_PATCH_EXCLUSION_IDS must be a comma-separated list of non-negative integer ids.');
-    }
-    if (AL_PATCH_EXCLUSION_IDS.size > 0 && AL_PATCH === '') {
-      throw new Error('PF_CB_ALIGNED_PATCH_EXCLUSION_IDS is inert without PF_CB_ALIGNED_PATCH.');
-    }
-    // S31 R1: geometry-only automatic selection of one-to-one routed annuli. This is
-    // mutually exclusive with the S30 named-id arm so the A/B changes one factor.
-    const AL_PATCH_EXCLUSION_AUTO = envOn('PF_CB_ALIGNED_PATCH_EXCLUSION_AUTO');
-    if (AL_PATCH_EXCLUSION_AUTO && AL_PATCH_EXCLUSION_IDS.size > 0) {
-      throw new Error('PF_CB_ALIGNED_PATCH_EXCLUSION_AUTO and PF_CB_ALIGNED_PATCH_EXCLUSION_IDS are mutually exclusive.');
-    }
-    if (AL_PATCH_EXCLUSION_AUTO && AL_PATCH === '') {
-      throw new Error('PF_CB_ALIGNED_PATCH_EXCLUSION_AUTO is inert without PF_CB_ALIGNED_PATCH.');
-    }
     // S21 — the grading fix's only knob. 1 REPRODUCES THE S18 EMITTER EXACTLY (no sub-rings, so patch
     // interior sizing is the bare polar grading again) and exists so the fix can be A/B'd against the
     // arithmetic it replaces rather than asserted. Default 16 = the fix active.
@@ -1234,13 +1180,6 @@ describe('STRATA conforming-bisection', () => {
         .sort((a, b) => a.id - b.id)
         .map((r) => ({ id: `D${r.id}`, theta: r.theta, z: r.z, radiusMm: r.radiusMm }));
     }
-    let patchExclusionIds = AL_PATCH_EXCLUSION_IDS;
-    let patchAnnulusDiscovery: ReturnType<typeof discoverRoutedAnnuli> | null = null;
-    if (AL_PATCH_EXCLUSION_AUTO) {
-      // Selection needs the traced artifact, so it is finalized immediately after
-      // tracing below. Keeping the placeholder here makes the report provenance explicit.
-      patchExclusionIds = new Set<number>();
-    }
     // LAYER-2 NEGATIVE CONTROL: push every traced locus this far along its own normal before seeding. A
     // non-zero value builds a DELIBERATELY MISTRACED seed, which must produce a census-visible defect —
     // proving the pipeline would catch a tracer regression instead of shipping a misplaced constraint.
@@ -1285,7 +1224,6 @@ describe('STRATA conforming-bisection', () => {
     let alignedPatches: PatchRegion[] = [];
     let alignedRounds = 0; let alignedBanned = 0;
     let alignedSeedCrossings = -1; let alignedSeedEdges = 0; let alignedTraceMs = 0;
-    let birthLedgerEdges = 0; let birthLedgerIds = 0; let birthLedgerFeatureIds = 0;
     if (ALIGNED_SEED) {
       if (zSteps.length > 0) {
         // The seed triangulates ONE (theta,z) rectangle. A style with a detected C0 z-step needs one chart
@@ -1303,34 +1241,12 @@ describe('STRATA conforming-bisection', () => {
         nu: AL_NU, nv: AL_NV, hRefMm: AL_HREF,
       });
       alignedTraceMs = Date.now() - tTrace;
-      if (AL_PATCH_EXCLUSION_AUTO) {
-        patchAnnulusDiscovery = discoverRoutedAnnuli(alignedLoci, patchRoute, AL_PATCH_MAX);
-        if (patchAnnulusDiscovery.ambiguousJunctionIds.length > 0 || patchAnnulusDiscovery.ambiguousPatchIds.length > 0) {
-          throw new Error(
-            `S31 routed-annulus discovery is ambiguous: junctions [${patchAnnulusDiscovery.ambiguousJunctionIds.join(',')}], `
-            + `patches [${patchAnnulusDiscovery.ambiguousPatchIds.join(',')}].`,
-          );
-        }
-        if (patchAnnulusDiscovery.candidates.length !== 12) {
-          throw new Error(
-            `S31 routed-annulus discovery found ${patchAnnulusDiscovery.candidates.length} candidates, expected the `
-            + 'pre-registered geometry-only population of 12.',
-          );
-        }
-        patchExclusionIds = new Set(patchAnnulusDiscovery.candidates.map((candidate) => candidate.junctionId));
-      }
       const rep = buildAlignedSeedRepaired(rA, alignedLoci, {
         ...DEFAULT_SEED_OPTS, H, gu, gv,
         alongMul: AL_ALONG, acrossFrac: AL_ACROSS, useField: AL_FIELD,
         acrossAbs: AL_ACROSS_ABS, acrossMinMm: AL_ACROSS_MIN, seedARmax: AL_SEED_AR, bowFrac: AL_BOW_FRAC,
-        ...(AL_DECIMATE_MM === undefined ? {} : { chainDecimateMm: AL_DECIMATE_MM }),
-        ...(AL_CHAIN_WELD_MM === undefined ? {} : { chainWeldMm: AL_CHAIN_WELD_MM }),
         patchRoute, patchMaxMm: AL_PATCH_MAX, patchSubMax: AL_PATCH_SUBMAX,
-        ...(patchExclusionIds.size === 0 ? {} : { patchExclusionIds }),
-        acrossRings: AL_RINGS, acrossGrade: AL_RGRADE, acrossStrideMax: AL_RSTRIDE_MAX,
-        acrossStructured: AL_RSTRUCTURED,
-        acrossStructuredMode: AL_RSTRUCTURED_MODE as 'full' | 'rails' | 'outer' | 'outer-cell',
-        acrossMaxMm: AL_RMAX, turnMul: AL_TURN_MUL,
+        acrossRings: AL_RINGS, acrossGrade: AL_RGRADE, acrossMaxMm: AL_RMAX, turnMul: AL_TURN_MUL,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
         // S23 — the extracted absolute field, as free Steiner infill. `undefined` when the lever is unset,
         // and then the seed builder's S23 clauses are arithmetically absent.
@@ -1350,47 +1266,9 @@ describe('STRATA conforming-bisection', () => {
       // marks when it lands a vertex on one. The seam closes through `addV`'s own 3-D weld: canonTheta(2pi)
       // is 0, so a vertex emitted at (2pi, z) IS the vertex at (0, z), exactly and not to a tolerance.
       const onCon = new Set<number>();
-      if (ATOMIC_BIRTH) {
-        for (const obligation of rep.seed.constraintLedger) {
-          if (!obligation.obligationIds.some((id) => id.startsWith('feature:'))) continue;
-          onCon.add(obligation.vertices[0]); onCon.add(obligation.vertices[1]);
-        }
-      } else {
-        for (const [a, b] of rep.seed.constraints) { onCon.add(a); onCon.add(b); }
-      }
+      for (const [a, b] of rep.seed.constraints) { onCon.add(a); onCon.add(b); }
       const idx = rep.seed.pts.map(([th, z], i) => addV(th, z, onCon.has(i)));
       for (const [a, b, c] of rep.seed.tris) addT(idx[a], idx[b], idx[c]);
-      if (ATOMIC_BIRTH) {
-        if (rep.seed.constraintLedger.length !== rep.seed.constraints.length) {
-          throw new Error('PF_CB_ATOMIC_BIRTH: aligned constraint ledger is not parallel to the final PSLG.');
-        }
-        const distinctIds = new Set<string>();
-        const distinctFeatureIds = new Set<string>();
-        for (const obligation of rep.seed.constraintLedger) {
-          const a = idx[obligation.vertices[0]]; const b = idx[obligation.vertices[1]];
-          if (a === b) {
-            throw new Error(
-              `PF_CB_ATOMIC_BIRTH: constraint [${obligation.obligationIds.join(',')}] collapsed during live ingestion.`,
-            );
-          }
-          if (!(edgeMap.get(eKey(a, b)) ?? []).some((t) => alive[t])) {
-            throw new Error(
-              `PF_CB_ATOMIC_BIRTH: constraint [${obligation.obligationIds.join(',')}] is absent after live ingestion.`,
-            );
-          }
-          putEdgeObligations(a, b, [
-            ...(edgeObligations.get(eKey(a, b)) ?? []),
-            ...obligation.obligationIds,
-          ]);
-          for (const id of obligation.obligationIds) {
-            distinctIds.add(id);
-            if (id.startsWith('feature:')) distinctFeatureIds.add(id);
-          }
-        }
-        birthLedgerEdges = edgeObligations.size;
-        birthLedgerIds = distinctIds.size;
-        birthLedgerFeatureIds = distinctFeatureIds.size;
-      }
       // THE LEVER'S HEADLINE, measured by the DRIVER'S OWN detector rather than by the seed builder's
       // internal geometry — the seed builder's crossing count is self-referential (it tests against the
       // very chains it placed) and would read LOW on a deliberately mistraced seed, which is precisely the
@@ -1482,13 +1360,6 @@ describe('STRATA conforming-bisection', () => {
     // ══════════════════════ L5 SHAPE TERM — the guard, the solver, and their counters ══════════════════════
     let nShapeChecks = 0; let nShapeChildren = 0;
     let nShapeRefusedAR = 0; let nShapeRefusedFold = 0;
-    let nBirthChecks = 0; let nBirthRefusedCrossing = 0; let nBirthRefusedVisual = 0;
-    let nBirthRefusedTopology = 0; let nBirthVisualWorst = 0;
-    let birthSeedVisualChecked = 0; let birthSeedVisualOver = 0; let birthSeedWorstVisual = 0;
-    let birthSeedShape = 0; let birthSeedAdmission = 0;
-    let birthClosureTried = 0; let birthClosureCommitted = 0; let birthClosureAdded = 0;
-    let birthClosureRemoved = 0; let birthClosureContextRefused = 0; let birthClosurePreflightRefused = 0;
-    const birthClosureRefusals = new Map<string, number>();
     let shapeWorstAdmitted = 0;      // the largest child AR this run ever COMMITTED to (bounded by SHAPE_AR)
     let nMid3dSolves = 0; let nMid3dClamped = 0; let mid3dShiftSum = 0; let mid3dShiftMax = 0;
     let nLongFallTested = 0; let nLongFallFired = 0;
@@ -1497,7 +1368,7 @@ describe('STRATA conforming-bisection', () => {
     //  did not list it, and nothing read the value narrowly enough to notice. S22's pass classifies its own
     //  refusals by this field, so the union is widened to what the code already writes. Type-only: no
     //  runtime byte moves, so every flag-OFF path stays byte-identical by construction.)
-    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' | 'birth' = 'none';
+    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' = 'none';
     /**
      * Read `lastBisectShape` at its DECLARED type. The checker's flow analysis narrows the variable to its
      * initializer `'none'` at every read in this scope, because the only writer is `bisectAt` — a closure
@@ -1505,7 +1376,7 @@ describe('STRATA conforming-bisection', () => {
      * where it works around it by not repeating the test). Reading through a function boundary drops the
      * narrowing, so S22 can classify a refusal by the gate that caused it instead of guessing.
      */
-    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' | 'birth' => lastBisectShape;
+    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' => lastBisectShape;
     // ═══ S26 — THE PLACEMENT half of the refusal channel. `lastBisectShape` names the SHAPE gate that
     // refused; it stays 'none' when the refusal was a PLACEMENT one, and until S26 that 'none' bucket was
     // the whole reason `unresolvedWhy` read `unknown` on every production arm. S25.2 measured what that
@@ -1595,12 +1466,6 @@ describe('STRATA conforming-bisection', () => {
     // exists nowhere downstream. This is still the DRIVER'S OWN transcription — `_judgeNormal` is not
     // imported and S-e stands; it is fed the inputs any reader of the file would have.
     const ADMIT_SHIPPED = envOn('PF_CB_ADMIT_SHIPPED');
-    if (ATOMIC_BIRTH && (!ALIGNED_SEED || !NOWELD || !ADMIT_NORMAL || !ADMIT_NORMAL_SPLIT || !ADMIT_SHIPPED)) {
-      throw new Error(
-        'PF_CB_ATOMIC_BIRTH=1 requires PF_CB_ALIGNED_SEED=1, PF_CB_NOWELD=1, PF_CB_ADMIT_NORMAL=1, '
-        + 'PF_CB_ADMIT_NORMAL_SPLIT=1 and PF_CB_ADMIT_SHIPPED=1.',
-      );
-    }
     const f32 = Math.fround;
     const ADM_H = 1e-6;                       // _judgeNormal's step, theta (rad) and z (mm)
     let admitChecks = 0; let admitRefusedSplit = 0; let admitForcedPush = 0;
@@ -1666,416 +1531,6 @@ describe('STRATA conforming-bisection', () => {
       vth[ta[t]], vth[tb[t]], vth[tc[t]],
     );
 
-    // S45 — BIRTH-TIME EDGE-STAR PREFLIGHT (research-only, default OFF).
-    //
-    // The old gate proved that each immediate child was under AR50 and not
-    // folded, but it did not ask whether the NEW spoke crossed another feature
-    // or whether a feature-local split made the independent visual witness
-    // worse. Both questions are answered on a virtual vertex before `addV`,
-    // `killT`, `addT`, `vFeat`, `gcell`, or `edgeMap` can move.
-    const BIRTH_VISUAL_MM = envF('PF_CB_BIRTH_VISUAL_UM', 10) / 1000;
-    const BIRTH_MIN_GAIN = envF('PF_CB_BIRTH_MIN_GAIN', 0.001);
-    const BIRTH_BARY = Math.max(2, Math.round(envF('PF_CB_BIRTH_BARY', 6)));
-    interface BirthPoint extends LiftedPoint { feature: boolean }
-    const birthVertex = (v: number): BirthPoint => ({
-      x: vx[v], y: vy[v], z: vz[v], th: vth[v], feature: vFeat[v],
-    });
-    const birthPointError = (x0: number, y0: number, z0: number): number => {
-      const x = f32(x0); const y = f32(y0); const z = f32(z0);
-      const th = canon(Math.atan2(y, x)); const radial = Math.hypot(x, y);
-      if (!(radial > 1e-6)) return 0;
-      const jumpEps = 1e-6;
-      const rm = R(th - jumpEps, z); const rp = R(th + jumpEps, z); const centre = R(th, z);
-      if (Math.abs(rp - rm) > 0.05) {
-        return Math.min(Math.abs(radial - rm), Math.abs(radial - rp), Math.abs(radial - centre));
-      }
-      const dz = 0.002; const dt = 2e-5;
-      const rz = (R(th, Math.min(H, z + dz)) - R(th, Math.max(0, z - dz))) / (2 * dz);
-      const rt = (R(th + dt, z) - R(th - dt, z)) / (2 * dt);
-      return Math.abs(radial - centre) / Math.sqrt(1 + rz * rz + (rt / radial) * (rt / radial));
-    };
-    const birthTriangleVisual = (p0: BirthPoint, p1: BirthPoint, p2: BirthPoint): number => {
-      const p = [p0, p1, p2].map((q) => [f32(q.x), f32(q.y), f32(q.z)] as const);
-      let worst = 0;
-      for (let i = 0; i <= BIRTH_BARY; i += 1) {
-        for (let j = 0; j <= BIRTH_BARY - i; j += 1) {
-          const k = BIRTH_BARY - i - j;
-          const wa = i / BIRTH_BARY; const wb = j / BIRTH_BARY; const wc = k / BIRTH_BARY;
-          const e = birthPointError(
-            wa * p[0][0] + wb * p[1][0] + wc * p[2][0],
-            wa * p[0][1] + wb * p[1][1] + wc * p[2][1],
-            wa * p[0][2] + wb * p[1][2] + wc * p[2][2],
-          );
-          if (e > worst) worst = e;
-        }
-      }
-      return worst;
-    };
-    const birthWeldPartner = (p: LiftedPoint): number => {
-      const cx = gi(p.x); const cy = gi(p.y); const cz = gi(p.z);
-      for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) for (let dz = -1; dz <= 1; dz += 1) {
-        for (const v of gcell.get(`${cx + dx},${cy + dy},${cz + dz}`) ?? []) {
-          if (Math.hypot(vx[v] - p.x, vy[v] - p.y, vz[v] - p.z) <= WELD_MM) return v;
-        }
-      }
-      return -1;
-    };
-    const birthFeatureLocal = (vertices: readonly [number, number, number]): boolean => (
-      vertices.some((v) => vFeat[v])
-      || featureObligations(vertices[0], vertices[1]).length > 0
-      || featureObligations(vertices[1], vertices[2]).length > 0
-      || featureObligations(vertices[2], vertices[0]).length > 0
-    );
-    const birthAdmits = (a: number, b: number, point: LiftedPoint, featureDirected: boolean): boolean => {
-      if (!ATOMIC_BIRTH) return true;
-      nBirthChecks += 1;
-      const list = (edgeMap.get(eKey(a, b)) ?? []).filter((t) => alive[t]);
-      if (list.length < 1 || list.length > 2 || birthWeldPartner(point) >= 0) {
-        nBirthRefusedTopology += 1; lastBisectShape = 'birth'; return false;
-      }
-      const p: BirthPoint = { ...point, feature: featureDirected };
-      let parentWorst = 0; let childWorst = 0;
-      const touchesFeature = featureDirected || vFeat[a] || vFeat[b]
-        || featureObligations(a, b).length > 0
-        || list.some((t) => birthFeatureLocal([ta[t], tb[t], tc[t]]));
-      for (const t of list) {
-        const vertices = [ta[t], tb[t], tc[t]];
-        if (!vertices.includes(a) || !vertices.includes(b)) {
-          nBirthRefusedTopology += 1; lastBisectShape = 'birth'; lastShapeOffenderT = t; return false;
-        }
-        const apex = vertices.find((v) => v !== a && v !== b);
-        if (apex === undefined) {
-          nBirthRefusedTopology += 1; lastBisectShape = 'birth'; lastShapeOffenderT = t; return false;
-        }
-        const kink = locateKink(point.th, point.z, point.th + dThRaw(point.th, vth[apex]), vz[apex]);
-        if (kink !== null && kink.t > SNAP_ALPHA && kink.t < 1 - SNAP_ALPHA) {
-          nBirthRefusedCrossing += 1; lastBisectShape = 'birth'; lastShapeOffenderT = t; return false;
-        }
-        if (touchesFeature) {
-          const [oa, ob] = orientedEnds(t, a, b);
-          parentWorst = Math.max(parentWorst, birthTriangleVisual(birthVertex(oa), birthVertex(ob), birthVertex(apex)));
-          childWorst = Math.max(
-            childWorst,
-            birthTriangleVisual(birthVertex(oa), p, birthVertex(apex)),
-            birthTriangleVisual(p, birthVertex(ob), birthVertex(apex)),
-          );
-        }
-      }
-      if (childWorst > nBirthVisualWorst) nBirthVisualWorst = childWorst;
-      if (touchesFeature) {
-        const allowed = parentWorst <= BIRTH_VISUAL_MM
-          ? BIRTH_VISUAL_MM
-          : parentWorst * (1 - BIRTH_MIN_GAIN);
-        if (childWorst > allowed + 1e-12) {
-          nBirthRefusedVisual += 1; lastBisectShape = 'birth'; return false;
-        }
-      }
-      return true;
-    };
-
-    // Measure the debt carried by the candidate seed before refinement. This is
-    // not a repair trigger: it lets the final certificate say whether a failure
-    // was inherited from seed construction or introduced by a later proposal.
-    if (ATOMIC_BIRTH) {
-      for (let t = 0; t < ta.length; t += 1) {
-        if (!alive[t]) continue;
-        const vertices = [ta[t], tb[t], tc[t]] as const;
-        if (birthFeatureLocal(vertices)) {
-          birthSeedVisualChecked += 1;
-          const visual = birthTriangleVisual(
-            birthVertex(vertices[0]), birthVertex(vertices[1]), birthVertex(vertices[2]),
-          );
-          if (visual > birthSeedWorstVisual) birthSeedWorstVisual = visual;
-          if (visual > BIRTH_VISUAL_MM) birthSeedVisualOver += 1;
-        }
-        const shippedAR = aspect3(
-          f32(vx[vertices[0]]), f32(vy[vertices[0]]), f32(vz[vertices[0]]),
-          f32(vx[vertices[1]]), f32(vy[vertices[1]]), f32(vz[vertices[1]]),
-          f32(vx[vertices[2]]), f32(vy[vertices[2]]), f32(vz[vertices[2]]),
-        );
-        if (!(shippedAR <= SHAPE_AR)) birthSeedShape += 1;
-        if (footBackT(t)) birthSeedAdmission += 1;
-      }
-    }
-
-    const noteBirthClosureRefusal = (reason: string): false => {
-      birthClosureRefusals.set(reason, (birthClosureRefusals.get(reason) ?? 0) + 1);
-      return false;
-    };
-
-    /**
-     * Complete a stranded feature-local refinement action in private arrays.
-     *
-     * The ordinary splitter has already refused without mutation when this is
-     * called. We copy a bounded triangle neighbourhood, carry every typed edge
-     * obligation into the cavity planner, and certify the whole replacement.
-     * Only then are new vertices allocated and the old faces exchanged in one
-     * deterministic commit. A refused proposal changes no live mesh state.
-     */
-    const tryBirthClosure = (target: number): boolean => {
-      if (!BIRTH_CLOSURE || birthClosureCommitted >= BIRTH_CLOSURE_MAX || !alive[target]) return false;
-      const targetVertices = [ta[target], tb[target], tc[target]] as const;
-      if (!birthFeatureLocal(targetVertices)) return false;
-      birthClosureTried += 1;
-
-      const context = new Set<number>([target]);
-      let frontier = [target];
-      for (let ring = 0; ring < BIRTH_CLOSURE_CONTEXT_RINGS; ring += 1) {
-        const next = new Set<number>();
-        for (const triangle of frontier) {
-          const vertices = [ta[triangle], tb[triangle], tc[triangle]] as const;
-          for (const [a, b] of [
-            [vertices[0], vertices[1]], [vertices[1], vertices[2]], [vertices[2], vertices[0]],
-          ] as const) {
-            for (const neighbour of edgeMap.get(eKey(a, b)) ?? []) {
-              if (alive[neighbour] && !context.has(neighbour)) next.add(neighbour);
-            }
-          }
-        }
-        if (context.size + next.size > BIRTH_CLOSURE_MAX_CONTEXT) {
-          birthClosureContextRefused += 1;
-          return noteBirthClosureRefusal('context-cap');
-        }
-        for (const triangle of next) context.add(triangle);
-        frontier = [...next].sort((a, b) => a - b);
-        if (frontier.length === 0) break;
-      }
-
-      const globalTriangles = [...context].sort((a, b) => a - b);
-      const localOfGlobal = new Map<number, number>();
-      const globalOfLocal: number[] = [];
-      const vertices: CorridorVertex[] = [];
-      const localVertex = (global: number): number => {
-        const prior = localOfGlobal.get(global);
-        if (prior !== undefined) return prior;
-        const local = vertices.length;
-        localOfGlobal.set(global, local); globalOfLocal.push(global);
-        vertices.push({ theta: vth[global], z: vz[global], x: vx[global], y: vy[global] });
-        return local;
-      };
-      const triangles = globalTriangles.map((triangle) => ({
-        // `as` is a restricted production — NO line terminator may precede it, or the file does not parse.
-        v: [localVertex(ta[triangle]), localVertex(tb[triangle]), localVertex(tc[triangle])] as
-          [number, number, number],
-      }));
-      const localTarget = globalTriangles.indexOf(target);
-      if (localTarget < 0) return noteBirthClosureRefusal('target-missing');
-
-      // Reconstruct stable obligation chains from the typed live-edge ledger.
-      // Junctions split paths; cycles stay cycles. The planner may subdivide a
-      // chain but can never silently exchange one original id for another.
-      const ownerEdges = new Map<string, Set<string>>();
-      const seenEdges = new Set<number>();
-      for (const triangle of globalTriangles) {
-        const tv = [ta[triangle], tb[triangle], tc[triangle]] as const;
-        for (const [a, b] of [[tv[0], tv[1]], [tv[1], tv[2]], [tv[2], tv[0]]] as const) {
-          const liveKey = eKey(a, b);
-          if (seenEdges.has(liveKey)) continue;
-          seenEdges.add(liveKey);
-          const ids = edgeObligations.get(liveKey) ?? [];
-          if (ids.length === 0) continue;
-          const la = localOfGlobal.get(a); const lb = localOfGlobal.get(b);
-          if (la === undefined || lb === undefined) continue;
-          const key = la < lb ? `${la}:${lb}` : `${lb}:${la}`;
-          for (const id of ids) {
-            const edges = ownerEdges.get(id);
-            if (edges === undefined) ownerEdges.set(id, new Set([key])); else edges.add(key);
-          }
-        }
-      }
-      const constraints: CorridorConstraint[] = [];
-      for (const [owner, edgeSet] of [...ownerEdges].sort((a, b) => a[0].localeCompare(b[0]))) {
-        const adjacent = new Map<number, number[]>();
-        for (const key of edgeSet) {
-          const [a, b] = key.split(':').map(Number);
-          const aa = adjacent.get(a); if (aa === undefined) adjacent.set(a, [b]); else aa.push(b);
-          const bb = adjacent.get(b); if (bb === undefined) adjacent.set(b, [a]); else bb.push(a);
-        }
-        for (const neighbours of adjacent.values()) neighbours.sort((a, b) => a - b);
-        const unused = new Set(edgeSet);
-        let serial = 0;
-        const walk = (start: number, first: number): void => {
-          const chain = [start];
-          let previous = start; let current = first; let closed = false;
-          for (let guard = edgeSet.size + 2; guard > 0; guard -= 1) {
-            const key = previous < current ? `${previous}:${current}` : `${current}:${previous}`;
-            if (!unused.delete(key)) break;
-            chain.push(current);
-            if (current === start) { chain.pop(); closed = true; break; }
-            const neighbours = adjacent.get(current) ?? [];
-            if (neighbours.length !== 2) break;
-            const next = neighbours.find((candidate) => {
-              if (candidate === previous) return false;
-              const nextKey = current < candidate ? `${current}:${candidate}` : `${candidate}:${current}`;
-              return unused.has(nextKey);
-            });
-            if (next === undefined) break;
-            previous = current; current = next;
-          }
-          if (chain.length >= 2) constraints.push({ id: `${owner}@${serial}`, vertices: chain, closed });
-          serial += 1;
-        };
-        for (const start of [...adjacent.keys()].filter((vertex) => (adjacent.get(vertex)?.length ?? 0) !== 2)
-          .sort((a, b) => a - b)) {
-          for (const next of adjacent.get(start) ?? []) {
-            const key = start < next ? `${start}:${next}` : `${next}:${start}`;
-            if (unused.has(key)) walk(start, next);
-          }
-        }
-        while (unused.size > 0) {
-          const [a, b] = [...unused].sort()[0].split(':').map(Number);
-          walk(a, b);
-        }
-      }
-
-      const mesh: CorridorCavityMesh = { vertices, triangles, constraints };
-      const root = triangles[localTarget].v;
-      const rootSign = Math.sign(signedAreaParam(
-        vertices[root[0]].theta, vertices[root[0]].z,
-        vertices[root[1]].theta, vertices[root[1]].z,
-        vertices[root[2]].theta, vertices[root[2]].z,
-      ));
-      const callbacks = {
-        canonTheta: canon,
-        deltaTheta: dThRaw,
-        lift: (theta: number, z: number): CorridorVertex => {
-          const cth = canon(theta); const radius = R(cth, z);
-          return { theta: cth, z, x: radius * Math.cos(cth), y: radius * Math.sin(cth) };
-        },
-        admitted: (a: CorridorVertex, b: CorridorVertex, c: CorridorVertex): boolean => (
-          Math.sign(signedAreaParam(a.theta, a.z, b.theta, b.z, c.theta, c.z)) === rootSign
-          && !footBack(
-            a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z,
-            a.theta, b.theta, c.theta,
-          )
-        ),
-        visualError: (a: CorridorVertex, b: CorridorVertex, c: CorridorVertex): number => birthTriangleVisual(
-          { ...a, th: a.theta, feature: false },
-          { ...b, th: b.theta, feature: false },
-          { ...c, th: c.theta, feature: false },
-        ),
-      };
-      let result: ReturnType<typeof planAtomicCorridorCavity> | null = null;
-      for (const rings of [1, 2, 3, 4]) {
-        result = planAtomicCorridorCavity(mesh, [localTarget], {
-          rings,
-          maxParents: BIRTH_CLOSURE_MAX_PARENTS,
-          maxNewVertices: BIRTH_CLOSURE_MAX_VERTICES,
-          maxLongestEdgeSplits: BIRTH_CLOSURE_MAX_LEB,
-          rRefMm: 45,
-          hardAr: SHAPE_AR,
-          preferredAr: Math.min(45, SHAPE_AR),
-          weldMm: WELD_MM,
-          visualThresholdMm: BIRTH_VISUAL_MM,
-          minimumVisualGain: 0.01,
-          targetEdgeScales: [1, 0.95, 0.9, 0.85, 0.8, 0.75, 0.7, 0.6, 0.5, 1.1, 1.25],
-        }, callbacks);
-        if (result.accepted) break;
-      }
-      const proposal = result?.proposal;
-      if (proposal === undefined) return noteBirthClosureRefusal(result?.refusal ?? 'no-proposal');
-
-      const proposalVertex = (vertex: number): CorridorVertex => (
-        vertex < vertices.length ? vertices[vertex] : proposal.addVertices[vertex - vertices.length]
-      );
-      const featureProposalVertices = new Set<number>();
-      const proposalObligations = new Map<string, string[]>();
-      for (const chain of proposal.featureChains) {
-        const owner = chain.obligationId.split('#')[0].split('@')[0];
-        if (owner.startsWith('feature:')) for (const vertex of chain.vertices) featureProposalVertices.add(vertex);
-        for (let i = 0; i + 1 < chain.vertices.length; i += 1) {
-          const a = chain.vertices[i]; const b = chain.vertices[i + 1];
-          const key = a < b ? `${a}:${b}` : `${b}:${a}`;
-          proposalObligations.set(key, [...new Set([...(proposalObligations.get(key) ?? []), owner])].sort());
-        }
-      }
-
-      // Wider preflight against the complete live mesh and shipped values. The
-      // cavity certificate is local; these checks make the commit globally safe.
-      for (let i = 0; i < proposal.addVertices.length; i += 1) {
-        const point = proposal.addVertices[i];
-        if (birthWeldPartner({ ...point, th: point.theta }) >= 0) {
-          birthClosurePreflightRefused += 1;
-          return noteBirthClosureRefusal('global-weld');
-        }
-        for (let j = 0; j < i; j += 1) {
-          const prior = proposal.addVertices[j];
-          if (Math.hypot(point.x - prior.x, point.y - prior.y, point.z - prior.z) <= WELD_MM) {
-            birthClosurePreflightRefused += 1;
-            return noteBirthClosureRefusal('candidate-weld');
-          }
-        }
-      }
-      const candidateEdges = new Set<string>();
-      for (const triangle of proposal.addTriangles) {
-        const [ia, ib, ic] = triangle;
-        const a = proposalVertex(ia); const b = proposalVertex(ib); const c = proposalVertex(ic);
-        const shippedAR = aspect3(
-          f32(a.x), f32(a.y), f32(a.z), f32(b.x), f32(b.y), f32(b.z), f32(c.x), f32(c.y), f32(c.z),
-        );
-        if (!(shippedAR <= SHAPE_AR) || !callbacks.admitted(a, b, c)
-          || callbacks.visualError(a, b, c) > BIRTH_VISUAL_MM) {
-          birthClosurePreflightRefused += 1;
-          return noteBirthClosureRefusal('global-facet-certificate');
-        }
-        for (const [p, q] of [[ia, ib], [ib, ic], [ic, ia]] as const) {
-          const key = p < q ? `${p}:${q}` : `${q}:${p}`;
-          if (candidateEdges.has(key)) continue;
-          candidateEdges.add(key);
-          const pv = proposalVertex(p); const qv = proposalVertex(q);
-          const kink = locateKink(pv.theta, pv.z, pv.theta + dThRaw(pv.theta, qv.theta), qv.z);
-          if (kink !== null && kink.t > SNAP_ALPHA && kink.t < 1 - SNAP_ALPHA) {
-            birthClosurePreflightRefused += 1;
-            return noteBirthClosureRefusal('global-analytic-crossing');
-          }
-        }
-      }
-
-      const liveByProposal = new Map<number, number>();
-      for (let local = 0; local < globalOfLocal.length; local += 1) liveByProposal.set(local, globalOfLocal[local]);
-      for (let i = 0; i < proposal.addVertices.length; i += 1) {
-        const virtual = vertices.length + i; const point = proposal.addVertices[i];
-        const live = addV(point.theta, point.z, featureProposalVertices.has(virtual));
-        if (!addVNew) {
-          throw new Error('PF_CB_ATOMIC_BIRTH closure preflight/commit mismatch: a certified new vertex welded.');
-        }
-        liveByProposal.set(virtual, live);
-      }
-      const touchedObligations = new Set<number>();
-      for (const localTriangle of proposal.removeTriangles) {
-        const globalTriangle = globalTriangles[localTriangle];
-        const tv = [ta[globalTriangle], tb[globalTriangle], tc[globalTriangle]] as const;
-        for (const [a, b] of [[tv[0], tv[1]], [tv[1], tv[2]], [tv[2], tv[0]]] as const) {
-          const key = eKey(a, b); if (edgeObligations.has(key)) touchedObligations.add(key);
-        }
-        killT(globalTriangle);
-      }
-      for (const triangle of proposal.addTriangles) {
-        const a = liveByProposal.get(triangle[0]); const b = liveByProposal.get(triangle[1]);
-        const c = liveByProposal.get(triangle[2]);
-        if (a === undefined || b === undefined || c === undefined) {
-          throw new Error('PF_CB_ATOMIC_BIRTH closure proposal referenced an unmapped vertex.');
-        }
-        created.push(addT(a, b, c));
-      }
-      for (const key of touchedObligations) {
-        if (!(edgeMap.get(key) ?? []).some((triangle) => alive[triangle])) edgeObligations.delete(key);
-      }
-      for (const [key, ids] of proposalObligations) {
-        const [a, b] = key.split(':').map(Number);
-        const liveA = liveByProposal.get(a); const liveB = liveByProposal.get(b);
-        if (liveA === undefined || liveB === undefined
-          || !(edgeMap.get(eKey(liveA, liveB)) ?? []).some((triangle) => alive[triangle])) {
-          throw new Error(`PF_CB_ATOMIC_BIRTH closure lost certified obligation edge ${ids.join(',')}.`);
-        }
-        putEdgeObligations(liveA, liveB, [...(edgeObligations.get(eKey(liveA, liveB)) ?? []), ...ids]);
-      }
-      birthClosureCommitted += 1;
-      birthClosureRemoved += proposal.removeTriangles.length;
-      birthClosureAdded += proposal.addTriangles.length;
-      return true;
-    };
-
     const shapeAdmits = (a: number, b: number, p: LiftedPoint): boolean => {
       if (!SHAPE) return true;
       const list = edgeMap.get(eKey(a, b));
@@ -2131,11 +1586,7 @@ describe('STRATA conforming-bisection', () => {
       lastShapeOffenderT = -1;
       // S1/S2 GATE — BEFORE addV, so a refusal leaves no orphan vertex in the weld grid and cannot perturb
       // any later weld. This is the whole fix: `bisectAt` is the ONE choke point every split goes through.
-      if (SHAPE || ATOMIC_BIRTH) {
-        const lifted = liftAt(a, b, tPar);
-        if (SHAPE && !shapeAdmits(a, b, lifted)) return false;
-        if (!birthAdmits(a, b, lifted, feat)) return false;
-      }
+      if (SHAPE && !shapeAdmits(a, b, liftAt(a, b, tPar))) return false;
       const [mth, mz] = edgeParam(a, b, tPar);
       const m = addV(mth, mz, feat);
       if (m === a || m === b) { lastBisectPlace = 'weld-collapse'; return false; } // weld collapsed the split — nothing to do
@@ -2144,7 +1595,6 @@ describe('STRATA conforming-bisection', () => {
       // triangles (a topological pinch). Counting these is the audit; refusing them is the fix at source.
       if (!addVNew) { weldedSplits += 1; if (NOWELD) { lastBisectPlace = 'weld'; return false; } }
       const list = (edgeMap.get(eKey(a, b)) ?? []).slice();
-      const inheritedObligations = edgeObligations.get(eKey(a, b)) ?? [];
       // DEGENERACY GUARD (measured need): if the new vertex welds onto an incident triangle's APEX, both replacement
       // triangles are degenerate — the split then DELETES geometry and the refinement churns forever without growing
       // (SNAP+LEPP ablation: 6 M allocations, 68 k alive). Refuse the split so the caller falls back.
@@ -2168,11 +1618,6 @@ describe('STRATA conforming-bisection', () => {
         made = true;
       }
       if (!made) lastBisectPlace = 'no-incident';   // S26: the edge had no LIVE incident triangle left
-      if (made && ATOMIC_BIRTH && inheritedObligations.length > 0) {
-        edgeObligations.delete(eKey(a, b));
-        putEdgeObligations(a, m, inheritedObligations);
-        putEdgeObligations(m, b, inheritedObligations);
-      }
       return made;
     };
     /** where to split edge (a,b): feature crossing (SNAP) → transverse re-solve (REPROJECT) → midpoint. */
@@ -2229,17 +1674,15 @@ describe('STRATA conforming-bisection', () => {
             // liftAt's own arithmetic — so a refusal leaves no orphan vertex in the weld grid. With SHAPE
             // off the block is skipped whole: zero extra rA evaluations on the legacy path.
             let reprojAdmit = true;
-            let reprojPoint: LiftedPoint | null = null;
-            if (SHAPE || ATOMIC_BIRTH) {
-              const thNew = canon(mth + off * dth); const zNew = mz + off * dz; const rNew = R(thNew, zNew);
-              reprojPoint = { x: rNew * Math.cos(thNew), y: rNew * Math.sin(thNew), z: zNew, th: thNew };
-              if (SHAPE) reprojAdmit = shapeAdmits(a, b, reprojPoint);
-              if (reprojAdmit && ATOMIC_BIRTH) reprojAdmit = birthAdmits(a, b, reprojPoint, true);
+            if (SHAPE) {
+              const thNew = canon(mth + off * dth);
+              const zNew = mz + off * dz;
+              const rNew = R(thNew, zNew);
+              reprojAdmit = shapeAdmits(a, b, { x: rNew * Math.cos(thNew), y: rNew * Math.sin(thNew), z: zNew, th: thNew });
             }
             if (reprojAdmit) {
               const m = addV(mth + off * dth, mz + off * dz, true);
               const list = (edgeMap.get(eKey(a, b)) ?? []).slice();
-              const inheritedObligations = edgeObligations.get(eKey(a, b)) ?? [];
               // GUARDS MIRRORED FROM `bisectAt` — this splitter is a hand-copy of it that had NEITHER, so the
               // REPROJECT lever manufactured exactly the two failures those guards exist to stop: a split point
               // that WELDS onto a pre-existing vertex does not subdivide the edge, it stitches the edge to an
@@ -2265,14 +1708,7 @@ describe('STRATA conforming-bisection', () => {
                   created.push(addT(m, ob, apex));
                   made = true;
                 }
-                if (made) {
-                  if (ATOMIC_BIRTH && inheritedObligations.length > 0) {
-                    edgeObligations.delete(eKey(a, b));
-                    putEdgeObligations(a, m, inheritedObligations);
-                    putEdgeObligations(m, b, inheritedObligations);
-                  }
-                  return true;
-                }
+                if (made) return true;
               }
             }
           }
@@ -2298,6 +1734,136 @@ describe('STRATA conforming-bisection', () => {
       return 2;
     };
     const eVerts = (t: number, e: number): [number, number] => (e === 0 ? [ta[t], tb[t]] : e === 1 ? [tb[t], tc[t]] : [tc[t], ta[t]]);
+
+    /**
+     * V2-L1. The last thing tried before a facet is abandoned: sweep ALL THREE edges at `LASTCHANCE`
+     * interior positions and take the first placement the driver's own gates admit.
+     *
+     * Ordered longest edge first (most sag, least aspect-degrading split), and within an edge
+     * coarse-to-fine outward from the midpoint, so when a legal placement exists near the centre — the
+     * shape-preserving one — it is found in a few probes and the committed split stays as close to
+     * Rivara's amplification-minimising point as legality allows. Edges under FLOOR_MM are skipped
+     * exactly as the refiners skip them, so this cannot drive refinement below the floor.
+     *
+     * Returns true iff it committed a split, in which case `created` holds the children.
+     */
+    const lastChanceSplit = (t: number): boolean => {
+      if (LASTCHANCE <= 0 || !alive[t]) return false;
+      lcTried += 1;
+      const order = [0, 1, 2].sort((x, y) => {
+        const [ax, bx] = eVerts(t, x); const [ay, by] = eVerts(t, y);
+        return eLen(ay, by) - eLen(ax, bx);
+      });
+      const half = Math.floor(LASTCHANCE / 2) + 1;
+      for (const e of order) {
+        const [a, b] = eVerts(t, e);
+        if (eLen(a, b) < FLOOR_MM) continue;
+        const feat = vFeat[a] && vFeat[b];
+        for (let i = 0; i < LASTCHANCE; i += 1) {
+          const step = Math.floor((i + 1) / 2);
+          const frac = 0.5 + (i % 2 === 0 ? 1 : -1) * step * (0.5 / half);
+          if (!(frac > 0 && frac < 1)) continue;
+          lcProbes += 1;
+          if (bisectAt(a, b, placeAt(a, b, frac), feat)) { lcRescued += 1; return true; }
+        }
+      }
+      return false;
+    };
+
+    /**
+     * V2-L2. The driver's window onto its own arrays, handed to the cavity planner. Built once.
+     * `dTh` here is the ANGLE-taking `dThRaw`, not the driver's vertex-index `dTh` — the planner and
+     * the patch unwrap both work in raw angles.
+     */
+    const cavityView: DriverMeshView = {
+      ta, tb, tc, vx, vy, vz, vth, alive, vFeat, edgeMap, eKey,
+      dTh: dThRaw,
+      canonTheta,
+      R,
+      // AN EDGE IS A FEATURE EDGE ONLY IF IT RUNS ALONG A LOCUS. Both endpoints being on-locus is not
+      // enough — a chord across a cell between two on-locus vertices passes that test and then walls
+      // the cavity off from its own interior. The discriminator is the MIDPOINT: probe a short segment
+      // PERPENDICULAR to the edge, centred on its midpoint. A locus running along the edge crosses that
+      // probe near its centre; a chord's midpoint sits off-locus and the probe finds nothing.
+      edgeAlongLocus: (a: number, b: number): boolean => {
+        if (!vFeat[a] || !vFeat[b]) return false;
+        const dth = dTh(a, b);
+        const dz = vz[b] - vz[a];
+        const mth = vth[a] + dth * 0.5;
+        const mz = (vz[a] + vz[b]) * 0.5;
+        const len = Math.hypot(dth, dz);
+        if (!(len > 0)) return false;
+        // A quarter of the edge length to each side: long enough to straddle the locus, short enough
+        // not to reach a neighbouring one.
+        const s = 0.25 * len;
+        const pth = (-dz / len) * s;
+        const pz = (dth / len) * s;
+        const k = locateKink(mth - pth, mz - pz, mth + pth, mz + pz);
+        return k !== null && k.t > 0.3 && k.t < 0.7;
+      },
+    };
+    const cavityOptions = defaultCavityOptions({
+      patchTriangles: CAVITY,
+      rings: CAVITY_RINGS,
+      hardAr: SHAPE_AR,
+      rRefMm: Math.max(DIMS.Rb, DIMS.Rt),
+      visualThresholdMm: TOL,
+      weldMm: WELD_MM,
+    });
+
+    /**
+     * V2-L2. Last resort: replace the facet's neighbourhood with a constrained re-triangulation.
+     * Returns true iff a certified cavity was applied, in which case `created` holds the new triangles.
+     */
+    const cavityEscalate = (t: number): boolean => {
+      if (CAVITY <= 0 || !alive[t] || cavTried >= CAVITY_BUDGET) return false;
+      cavTried += 1;
+      const planned = planCavityForTriangle(cavityView, t, cavityOptions);
+      cavPatchSum += planned.patchTriangles;
+      cavChainSum += planned.constraintChains;
+      cavStepSum += planned.adaptiveSteps;
+      if (planned.sawBlockingWitness) cavSawWitness += 1;
+      if (planned.hitPatchBoundary) cavHitPatchRim += 1;
+      if (!planned.ok || planned.edit === undefined) {
+        cavRefusals.set(planned.refusal, (cavRefusals.get(planned.refusal) ?? 0) + 1);
+        // FULL per-attempt evidence for the first few refusals. Aggregate counters told me WHAT was
+        // refused twice and WHY neither time; the planner already records the blocking triangle, its
+        // vertex kinds and its per-edge feature ids.
+        if (CAVITY_DUMP && cavDumps.length < 3) {
+          cavDumps.push({
+            seedTriangle: t,
+            refusal: planned.refusal,
+            patchTriangles: planned.patchTriangles,
+            constraintChains: planned.constraintChains,
+            adaptiveSteps: planned.adaptiveSteps,
+            selectedParents: planned.selectedParents,
+            attempts: planned.attempts,
+          });
+        }
+        return false;
+      }
+      cavAccepted += 1;
+      const edit = planned.edit;
+      // PHASE 1 — resolve the planner's new vertices through the driver's own weld. Done BEFORE any
+      // kill, so a weld collapse can abort with the mesh untouched. An unreferenced vertex left in the
+      // weld grid is harmless to the STL (facets carry coordinates, not indices) but is counted.
+      const born: number[] = edit.addVertices.map((v) => addV(v.theta, v.z, v.feature));
+      const resolve = (id: number): number => (id < 0 ? born[-1 - id] : id);
+      const resolved = edit.addTriangles.map(([a, b, c]) =>
+        [resolve(a), resolve(b), resolve(c)] as [number, number, number]);
+      // A weld that merged two corners of a replacement facet would silently delete geometry.
+      if (resolved.some(([a, b, c]) => a === b || b === c || c === a)) { cavOrphanAbort += 1; return false; }
+      // PHASE 2 — commit. Kill first so the replacements do not transiently share edges with parents.
+      for (const dead of edit.removeTriangles) if (alive[dead]) killT(dead);
+      for (const [a, b, c] of resolved) {
+        const nt = addT(a, b, c);
+        if (nt >= 0) created.push(nt);
+      }
+      cavApplied += 1;
+      cavRemoved += edit.removeTriangles.length;
+      cavAdded += resolved.length;
+      return true;
+    };
     const neighbor = (t: number, a: number, b: number): number => {
       const l = edgeMap.get(eKey(a, b));
       if (l === undefined) return -1;
@@ -2497,8 +2063,7 @@ describe('STRATA conforming-bisection', () => {
     // theirs. 'unclassified' is deliberately reachable: if it ever appears in a histogram that is a
     // REGISTERED DEFECT of this taxonomy, not a shrug, and it names itself so it cannot hide.
     type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused'
-      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'shape-birth'
-      | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
+      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
     /**
      * S26 — NAME THE REFUSER for a facet the heap driver could not split.
      *
@@ -2523,7 +2088,6 @@ describe('STRATA conforming-bisection', () => {
       if (sh === 'ar') return 'shape-ar';
       if (sh === 'fold') return 'shape-fold';
       if (sh === 'admit') return 'shape-admit';
-      if (sh === 'birth') return 'shape-birth';
       const pl = bisectPlacement();
       if (pl === 'weld-collapse') return 'weld-collapse';
       if (pl === 'weld') return 'weld';
@@ -3300,7 +2864,9 @@ describe('STRATA conforming-bisection', () => {
       if (ta.length >= triCap) { capped = true; break; }
       created.length = 0;
       if (DIRECTED) refineDirected(t); else refineLepp(t);
-      if (created.length === 0) tryBirthClosure(t);
+      // V2-L1. Last chance before this facet is frozen into the STL, and only for facets ordinary
+      // refinement has already given up on. Inert when PF_CB_LASTCHANCE=0.
+      if (created.length === 0) lastChanceSplit(t);
       for (const nt of created) consider(nt);
       // RE-QUEUE THE SURVIVOR WITHOUT RE-MEASURING IT. `consider(t)` here re-ran the whole bounded probe on a
       // triangle that refinement left ALIVE — i.e. one whose three vertex indices and whose vertex coordinates
@@ -3385,29 +2951,6 @@ describe('STRATA conforming-bisection', () => {
     const gpuLine = gpu === null ? '' :
       `gpu-rank: n=${GR_N} gn=${GR_GN} covfrac=${GR_COVFRAC} margin=${(GR_MARGIN * 1000).toFixed(3)}µm  scored ${gpuScored} in ${gpuFlushes} flushes / ${gpu.stats.batches} dispatches   ${(gpu.stats.gpuMs / 1000).toFixed(0)}s GPU + ${((gpu.stats.wallMs - gpu.stats.gpuMs) / 1000).toFixed(0)}s transport   rA parity ${gpu.parityUm.toFixed(3)}µm   device-losses ${gpu.stats.deviceLosses}`;
     if (gpu !== null) { await gpu.close(); gpu = null; }
-
-    // S32 executes at the reduction point, while the exact shape-stranded
-    // parents are still alive. The implementation is a hoisted declaration
-    // beside its detailed report below; S22 de-shard must not erase the input
-    // identities before this experiment sees them.
-    const ATOMIC_FACE_REQUESTED = envOn('PF_CB_ATOMIC_FACE');
-    const ATOMIC_FACE_READY = ADMIT_NORMAL && ADMIT_NORMAL_SPLIT && ADMIT_SHIPPED && !SWEEP && !GPU_RANK;
-    const ATOMIC_FACE = ATOMIC_FACE_REQUESTED && ATOMIC_FACE_READY;
-    const AF_BUDGET = Math.max(0, Math.round(envF('PF_CB_ATOMIC_FACE_BUDGET', 2000))); // new live faces
-    const AF_MIN_GAIN = 0.01;
-    const AF_MIN_BARY = 0.06;
-    const AF_MIX = [1, 0.75, 0.5, 0.25, 0] as const; // ruler witness -> robust centroid
-    const AF_DEPTH = Math.max(1, Math.round(envF('PF_CB_ATOMIC_FACE_DEPTH', 8)));
-    let afRan = false; let afCandidates = 0; let afCorridor = 0; let afBoundaryCrease = 0;
-    let afTried = 0; let afCommitted = 0;
-    let afRootCommitted = 0; let afDescTried = 0; let afDescCommitted = 0;
-    let afAddedLive = 0; let afBudgetStopped = false;
-    let afDepthStopped = 0; let afMaxDepth = 0; let afFinalLeaves = 0; let afFinalOverTol = 0; let afFinalWorst = 0;
-    let afRefNoCorridor = 0; let afRefWitness = 0; let afRefWeld = 0; let afRefShape = 0;
-    let afRefFold = 0; let afRefAdmission = 0; let afRefCrossing = 0; let afRefGain = 0;
-    let afParentWorst = 0; let afChildWorst = 0; let afParentSum = 0; let afChildSum = 0;
-    let afChildrenOverTol = 0; let afLadderMax = -1;
-    runAtomicFace();
 
     // ───────────────────────────── needle collapse ─────────────────────────────
     // STRATA's naive union-find collapse MEASURABLY creates non-manifold edges (12 on GothicArches) because it
@@ -3585,45 +3128,6 @@ describe('STRATA conforming-bisection', () => {
     let casSelfBlocked = 0; let casDepthCapped = 0; let casAttemptCapped = 0; let casOther = 0;
     let casDepthMax = 0; const casDepthHist = new Array<number>(16).fill(0);
     let deshardSplitsViaCascade = 0; let deshardFanLocusViaCascade = 0;
-    // S33 research shadow: delete a residual non-feature fan hub and
-    // retriangulate its complete one-ring cavity while preserving the polygon
-    // boundary. The independent mesh->surface proxy, rather than the plane
-    // ruler, decides whether the atomic cavity is allowed to commit.
-    const FAN_CAVITY_REQUESTED = envOn('PF_CB_FAN_CAVITY');
-    const FAN_CAVITY_READY = DESHARD && DESHARD_REQ && !SWEEP && !GPU_RANK
-      && alignedLoci !== null && !ATOMIC_FACE_REQUESTED;
-    const FC_MAX_HUBS = Math.max(1, Math.round(envF('PF_CB_FAN_CAVITY_MAX_HUBS', 64)));
-    const FC_MAX_DEGREE = Math.max(3, Math.round(envF('PF_CB_FAN_CAVITY_MAX_DEGREE', 64)));
-    const FC_MODE = process.env.PF_CB_FAN_CAVITY_MODE ?? 'fan';
-    if (FC_MODE !== 'fan' && FC_MODE !== 'visual') {
-      throw new Error('PF_CB_FAN_CAVITY_MODE must be fan or visual.');
-    }
-    const FC_RADIUS = envF('PF_CB_FAN_CAVITY_RADIUS_UM', 650) / 1000;
-    const FC_VISUAL = envF('PF_CB_FAN_CAVITY_VISUAL_UM', 10) / 1000;
-    const FC_MIN_GAIN = envF('PF_CB_FAN_CAVITY_MIN_GAIN', 0.01);
-    const FC_FLIP_PASSES = Math.max(0, Math.round(envF('PF_CB_FAN_CAVITY_FLIP_PASSES', 0)));
-    const FC_FLIP_BUDGET = Math.max(0, Math.round(envF('PF_CB_FAN_CAVITY_FLIP_BUDGET', 0)));
-    const FC_COLLAPSE_BUDGET = Math.max(0, Math.round(envF('PF_CB_FAN_CAVITY_COLLAPSE_BUDGET', 0)));
-    const FC_COLLAPSE_MAX = Math.max(0, envF('PF_CB_FAN_CAVITY_COLLAPSE_MAX_UM', 0)) / 1000;
-    let fcRan = false; let fcCandidates = 0; let fcNearLocus = 0; let fcVisualCandidates = 0;
-    let fcTried = 0; let fcCommitted = 0; let fcRemovedFaces = 0; let fcAddedFaces = 0;
-    let fcFansBefore = 0; let fcFansAfter = 0; let fcShardsBefore = 0; let fcShardsAfter = 0;
-    let fcRefFeatureHub = 0; let fcRefLocusSpoke = 0; let fcRefOverlap = 0;
-    let fcRefStar = 0; let fcRefDegree = 0; let fcRefBoundary = 0; let fcRefTopology = 0;
-    let fcRefTriangulation = 0; let fcRefShape = 0; let fcRefAdmission = 0;
-    let fcRefVisual = 0; let fcRefFan = 0;
-    let fcOldWorst = 0; let fcNewWorst = 0; let fcOldOver = 0; let fcNewOver = 0;
-    let fcFlipPasses = 0; let fcFlipCandidates = 0; let fcFlipTried = 0; let fcFlipCommitted = 0;
-    let fcFlipOldWorst = 0; let fcFlipNewWorst = 0; let fcFlipOldOver = 0; let fcFlipNewOver = 0;
-    let fcFlipRefLocus = 0; let fcFlipRefTopology = 0; let fcFlipRefShape = 0;
-    let fcFlipRefAdmission = 0; let fcFlipRefVisual = 0; let fcFlipRefFan = 0;
-    let fcCollapseCandidates = 0; let fcCollapseTried = 0; let fcCollapseCommitted = 0;
-    let fcCollapseRemoved = 0; let fcCollapseAdded = 0;
-    let fcCollapseOldWorst = 0; let fcCollapseNewWorst = 0;
-    let fcCollapseOldOver = 0; let fcCollapseNewOver = 0;
-    let fcCollapseRefFeature = 0; let fcCollapseRefLocus = 0; let fcCollapseRefTopology = 0;
-    let fcCollapseRefShape = 0; let fcCollapseRefAdmission = 0;
-    let fcCollapseRefVisual = 0; let fcCollapseRefFan = 0;
     /** the parents the pass could NOT discharge — printed, so a survivor is declared and never silent. */
     const deshardRefusedLog: string[] = [];
     /**
@@ -3697,11 +3201,10 @@ describe('STRATA conforming-bisection', () => {
      * S20.1 finding is that an f32 ulp on z ~ 80 mm is seven times `admBestDot`'s 1e-6 stencil, so a
      * deviation read on f64 vertices is a reading about a mesh that never leaves the process.
      */
-    const shardVertices = (a: number, b: number, c: number): boolean => {
+    const shardOf = (t: number): boolean => {
+      const a = ta[t]; const b = tb[t]; const c = tc[t];
       if (Math.max(eLen(a, b), eLen(b, c), eLen(c, a)) < DESHARD_L) return false;
-      if (aspect3(
-        vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vx[c], vy[c], vz[c],
-      ) >= DESHARD_AR) return true;
+      if (arTri(t) >= DESHARD_AR) return true;
       if (!(DESHARD_DEV < 180)) return false;
       const qz = (v: number): number => (ADMIT_SHIPPED ? f32(v) : v);
       const px = qz(vx[a]); const py = qz(vy[a]); const pz = qz(vz[a]);
@@ -3717,7 +3220,6 @@ describe('STRATA conforming-bisection', () => {
       const d = admBestDot(cth, (pz + qq + sz) / 3, fx, fy, fz);
       return Math.acos(Math.max(-1, Math.min(1, d))) * (180 / Math.PI) >= DESHARD_DEV;
     };
-    const shardOf = (t: number): boolean => shardVertices(ta[t], tb[t], tc[t]);
     /** S22. Does `t` carry a long edge at the FAN instrument's threshold (>= 500 um by default)? */
     const fanLong = (t: number): boolean =>
       Math.max(eLen(ta[t], tb[t]), eLen(tb[t], tc[t]), eLen(tc[t], ta[t])) >= DESHARD_FANLONG;
@@ -3787,53 +3289,6 @@ describe('STRATA conforming-bisection', () => {
         const r0 = apexOf(f0 ? inc[0] : inc[1]); const s0 = apexOf(f0 ? inc[1] : inc[0]);
         if (r0 === s0) return false;
         if ((edgeMap.get(eKey(r0, s0)) ?? []).some((t) => alive[t])) return false; // (r,s) already exists ⇒ would pinch
-        if (ATOMIC_BIRTH) {
-          nBirthChecks += 1;
-          if (edgeObligations.has(eKey(pv, qv))) {
-            nBirthRefusedTopology += 1; return false;
-          }
-          const crossing = locateKink(vth[r0], vz[r0], vth[r0] + dTh(r0, s0), vz[s0]);
-          if (crossing !== null && crossing.t > SNAP_ALPHA && crossing.t < 1 - SNAP_ALPHA) {
-            nBirthRefusedCrossing += 1; return false;
-          }
-          const ar1 = aspect3(
-            f32(vx[r0]), f32(vy[r0]), f32(vz[r0]),
-            f32(vx[pv]), f32(vy[pv]), f32(vz[pv]),
-            f32(vx[s0]), f32(vy[s0]), f32(vz[s0]),
-          );
-          const ar2 = aspect3(
-            f32(vx[s0]), f32(vy[s0]), f32(vz[s0]),
-            f32(vx[qv]), f32(vy[qv]), f32(vz[qv]),
-            f32(vx[r0]), f32(vy[r0]), f32(vz[r0]),
-          );
-          if (ar1 > SHAPE_AR || ar2 > SHAPE_AR
-            || footBack(
-              vx[r0], vy[r0], vz[r0], vx[pv], vy[pv], vz[pv], vx[s0], vy[s0], vz[s0],
-              vth[r0], vth[pv], vth[s0],
-            )
-            || footBack(
-              vx[s0], vy[s0], vz[s0], vx[qv], vy[qv], vz[qv], vx[r0], vy[r0], vz[r0],
-              vth[s0], vth[qv], vth[r0],
-            )) {
-            nBirthRefusedTopology += 1; return false;
-          }
-          const touchesFeature = [pv, qv, r0, s0].some((v) => vFeat[v])
-            || inc.some((t) => featureObligations(ta[t], tb[t]).length > 0
-              || featureObligations(tb[t], tc[t]).length > 0
-              || featureObligations(tc[t], ta[t]).length > 0);
-          if (touchesFeature) {
-            const before = Math.max(...inc.map((t) => birthTriangleVisual(
-              birthVertex(ta[t]), birthVertex(tb[t]), birthVertex(tc[t]),
-            )));
-            const after = Math.max(
-              birthTriangleVisual(birthVertex(r0), birthVertex(pv), birthVertex(s0)),
-              birthTriangleVisual(birthVertex(s0), birthVertex(qv), birthVertex(r0)),
-            );
-            if (after > nBirthVisualWorst) nBirthVisualWorst = after;
-            const allowed = before <= BIRTH_VISUAL_MM ? BIRTH_VISUAL_MM : before * (1 - BIRTH_MIN_GAIN);
-            if (after > allowed + 1e-12) { nBirthRefusedVisual += 1; return false; }
-          }
-        }
         if (edgeOnLocus(pv, qv)) { flipsLocusRefused += 1; return false; }
         // orientation check in (θ,z) shortest-arc coords around pv — both new triangles must keep the original sign
         const P = (w: number): [number, number] => [dTh(pv, w), vz[w] - vz[pv]];
@@ -4492,6 +3947,56 @@ describe('STRATA conforming-bisection', () => {
         deshardAllocFan = ta.length - taFan;
       }
 
+      // ───────────── V2-L2  POST-DRAIN CAVITY ESCALATION PASS ─────────────
+      // ⚠ PLACEMENT DEBT: this sits inside the enclosing `PF_CB_SAFE_COLLAPSE !== 0` block, so setting
+      // PF_CB_SAFE_COLLAPSE=0 silently disables the cavity pass too. That coupling is accidental and
+      // should be undone by hoisting this block out before the lever is trusted in an A/B that varies
+      // safe-collapse. It is harmless at the default (safe-collapse ON).
+      // WHY IT RUNS HERE AND NOT INLINE. The first build called  the instant a facet
+      // jammed. Every escalation refused, and the planner's own record said why: the blocking facet had
+      // AR 4.81 against a cap of 50 and NO feature involvement — it was blocked on VISUAL error, 127 um
+      // against a 10 um bar, on a triangle with two FROZEN-PERIMETER corners. A cavity may not split its
+      // own frozen boundary, so an inherited boundary that is itself over the bar can never certify, and
+      // growing the front only inherits a different over-the-bar boundary.
+      //
+      // That is a statement about WHEN, not about the mechanism: mid-refinement the neighbourhood has
+      // not converged yet, so no good boundary exists to freeze. S44 succeeded because it cut its
+      // cavities into an already-converged 1.26 M-facet mesh where only 22 regions were bad.
+      //
+      // So the escalation runs once the heap has DRAINED — every cheap move exhausted, the surroundings
+      // as converged as this driver can make them — but still inside the driver, before any STL is
+      // written. The products re-enter , so a cavity's children are refined like any others.
+      if (CAVITY > 0 && !capped && !timeCapped) {
+        for (let round = 0; round < CAVITY_ROUNDS; round += 1) {
+          const jammed = [...unresolved.keys()].filter((t) => alive[t]);
+          if (jammed.length === 0) break;
+          let progressed = 0;
+          for (const t of jammed) {
+            if (cavTried >= CAVITY_BUDGET) break;
+            created.length = 0;
+            if (!cavityEscalate(t)) continue;
+            progressed += 1;
+            unresolved.delete(t);
+            unresolvedWhy.delete(t);
+            for (const nt of created) consider(nt);
+          }
+          cavRounds += 1;
+          if (progressed === 0) break;
+          // Drain whatever the cavities re-queued before the next round, so the following round again
+          // sees a converged neighbourhood rather than half-refined cavity children.
+          while (heapT.length > 0 && ta.length < triCap) {
+            const t = hpop();
+            if (t < 0) break;
+            if (!alive[t]) continue;
+            created.length = 0;
+            if (DIRECTED) refineDirected(t); else refineLepp(t);
+            if (created.length === 0) lastChanceSplit(t);
+            for (const nt of created) consider(nt);
+            if (created.length === 0) { unresolved.set(t, worstEdgeSag(t)); unresolvedWhy.set(t, classifyStrand(t)); }
+          }
+        }
+      }
+
       // RESUME (shared by S6-collapse, S7-flip, S8-cascade and S22 de-shard): re-seed the repaired neighbourhoods and the
       // still-alive unresolved set, then drain the heap under the explicit extra budget — the heap driver's
       // pop step verbatim (pop → refineDirected/refineLepp → consider children → survivor re-queue →
@@ -4618,325 +4123,6 @@ describe('STRATA conforming-bisection', () => {
     }
 
     // ───────────────────────────── soup + watertight audit (3D position weld) ─────────────────────────────
-    if (FAN_CAVITY_REQUESTED && ATOMIC_FACE_REQUESTED) {
-      throw new Error('PF_CB_FAN_CAVITY and PF_CB_ATOMIC_FACE are mutually exclusive research arms.');
-    }
-    if (FAN_CAVITY_READY) {
-      fcRan = true;
-      const fc = runFanCavities({
-        theta: vth, z: vz, x: vx, y: vy, feature: vFeat,
-        a: ta, b: tb, c: tc, alive,
-        edgeKey: eKey,
-        edgeIncidents: (a, b) => edgeMap.get(eKey(a, b)) ?? [],
-        edgeLength: eLen,
-        killTriangle: killT,
-        addTriangle: addT,
-        onRemoveTriangle: (t) => { unresolved.delete(t); unresolvedWhy.delete(t); },
-      }, (alignedLoci as LocusArtifact).loci, {
-        H,
-        candidateMode: FC_MODE,
-        shapeAR: SHAPE_AR,
-        fanDegree: DESHARD_FANDEG,
-        fanLongMm: DESHARD_FANLONG,
-        maxHubs: FC_MAX_HUBS,
-        maxDegree: FC_MAX_DEGREE,
-        locusRadiusMm: FC_RADIUS,
-        visualThresholdMm: FC_VISUAL,
-        minimumVisualGain: FC_MIN_GAIN,
-        visualFlipPasses: FC_FLIP_PASSES,
-        visualFlipBudget: FC_FLIP_BUDGET,
-        visualCollapseBudget: FC_COLLAPSE_BUDGET,
-        visualCollapseMaxEdgeMm: FC_COLLAPSE_MAX,
-      }, {
-        radius: R,
-        canonTheta: canon,
-        deltaTheta: dTh,
-        crossesFeature: (a, b) => {
-          const k = locateKink(vth[a], vz[a], vth[a] + dTh(a, b), vz[b]);
-          return k !== null && k.t > 1e-5 && k.t < 1 - 1e-5;
-        },
-        edgeOnLocus,
-        triangleAdmitted: (a, b, c) => !footBack(
-          vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vx[c], vy[c], vz[c],
-          vth[a], vth[b], vth[c],
-        ),
-        triangleIsShard: shardVertices,
-        isShard: (t) => alive[t] && shardOf(t),
-      });
-      fcCandidates = fc.candidates; fcNearLocus = fc.nearLocus; fcVisualCandidates = fc.visualCandidates;
-      fcTried = fc.tried; fcCommitted = fc.committed;
-      fcRemovedFaces = fc.removedFaces; fcAddedFaces = fc.addedFaces;
-      fcFansBefore = fc.fansBefore; fcFansAfter = fc.fansAfter;
-      fcShardsBefore = fc.shardsBefore; fcShardsAfter = fc.shardsAfter;
-      fcRefFeatureHub = fc.refused.featureHub; fcRefLocusSpoke = fc.refused.locusSpoke;
-      fcRefOverlap = fc.refused.overlap; fcRefStar = fc.refused.star; fcRefDegree = fc.refused.degree;
-      fcRefBoundary = fc.refused.boundary; fcRefTopology = fc.refused.topology;
-      fcRefTriangulation = fc.refused.triangulation; fcRefShape = fc.refused.shape;
-      fcRefAdmission = fc.refused.admission; fcRefVisual = fc.refused.visual; fcRefFan = fc.refused.fan;
-      fcOldWorst = fc.committedVisual.oldWorstMm; fcNewWorst = fc.committedVisual.newWorstMm;
-      fcOldOver = fc.committedVisual.oldOver; fcNewOver = fc.committedVisual.newOver;
-      fcFlipPasses = fc.visualFlips.passes; fcFlipCandidates = fc.visualFlips.candidates;
-      fcFlipTried = fc.visualFlips.tried; fcFlipCommitted = fc.visualFlips.committed;
-      fcFlipOldWorst = fc.visualFlips.oldWorstMm; fcFlipNewWorst = fc.visualFlips.newWorstMm;
-      fcFlipOldOver = fc.visualFlips.oldOver; fcFlipNewOver = fc.visualFlips.newOver;
-      fcFlipRefLocus = fc.visualFlips.refusedLocus; fcFlipRefTopology = fc.visualFlips.refusedTopology;
-      fcFlipRefShape = fc.visualFlips.refusedShape; fcFlipRefAdmission = fc.visualFlips.refusedAdmission;
-      fcFlipRefVisual = fc.visualFlips.refusedVisual; fcFlipRefFan = fc.visualFlips.refusedFan;
-      fcCollapseCandidates = fc.visualCollapses.candidates; fcCollapseTried = fc.visualCollapses.tried;
-      fcCollapseCommitted = fc.visualCollapses.committed;
-      fcCollapseRemoved = fc.visualCollapses.removedFaces; fcCollapseAdded = fc.visualCollapses.addedFaces;
-      fcCollapseOldWorst = fc.visualCollapses.oldWorstMm; fcCollapseNewWorst = fc.visualCollapses.newWorstMm;
-      fcCollapseOldOver = fc.visualCollapses.oldOver; fcCollapseNewOver = fc.visualCollapses.newOver;
-      fcCollapseRefFeature = fc.visualCollapses.refusedFeature;
-      fcCollapseRefLocus = fc.visualCollapses.refusedLocus;
-      fcCollapseRefTopology = fc.visualCollapses.refusedTopology;
-      fcCollapseRefShape = fc.visualCollapses.refusedShape;
-      fcCollapseRefAdmission = fc.visualCollapses.refusedAdmission;
-      fcCollapseRefVisual = fc.visualCollapses.refusedVisual;
-      fcCollapseRefFan = fc.visualCollapses.refusedFan;
-    }
-
-    // S32 — ATOMIC INTERIOR-FACE FALLBACK (PF_CB_ATOMIC_FACE=1, DEFAULT OFF).
-    //
-    // `bisectAt` changes a shared edge, so S1 must admit both children on every
-    // incident face. S30C1 still has 4,460 over-tolerance faces stranded as
-    // `shape-ar`: the face needs refinement, but at least one neighbour cannot
-    // survive any offered shared-edge split. Retry and protector recursion have
-    // already falsified timing and sequential-cascade explanations.
-    //
-    // This experiment uses a topology-local 1 -> 3 insertion at the stranded
-    // face's own plane-ruler witness. Its boundary edges do not change, so it
-    // cannot make a T-junction or alter the neighbour that caused the deadlock.
-    // The final three children are preflighted as one atomic operation against:
-    // aspect/fold, shipped-value normal admission, weld collision, new proper
-    // locus crossings, and strict reduction of the same ruler that queued the
-    // parent. No candidate vertex is inserted until every gate passes.
-    function runAtomicFace(): void {
-    interface AtomicPoint extends LiftedPoint { wa: number; wb: number; wc: number }
-    const atomicPoint = (a: number, b: number, c: number, wa: number, wb: number, wc: number): AtomicPoint => {
-      const thRaw = vth[a] + wb * dTh(a, b) + wc * dTh(a, c);
-      const th = canon(thRaw); const z = wa * vz[a] + wb * vz[b] + wc * vz[c];
-      const r = R(th, z);
-      return { x: r * Math.cos(th), y: r * Math.sin(th), z, th, wa, wb, wc };
-    };
-    const atomicWeld = (p: AtomicPoint): number => {
-      const cx = gi(p.x); const cy = gi(p.y); const cz = gi(p.z);
-      for (let dx = -1; dx <= 1; dx += 1) for (let dy = -1; dy <= 1; dy += 1) for (let dz = -1; dz <= 1; dz += 1) {
-        const list = gcell.get(`${cx + dx},${cy + dy},${cz + dz}`);
-        if (list === undefined) continue;
-        for (const v of list) if (Math.hypot(vx[v] - p.x, vy[v] - p.y, vz[v] - p.z) <= WELD_MM) return v;
-      }
-      return -1;
-    };
-    const atomicCrossesFeature = (th0: number, z0: number, th1: number, z1: number): boolean => {
-      const k = locateKink(th0, z0, th0 + dThRaw(th0, th1), z1);
-      return k !== null && k.t > SNAP_ALPHA && k.t < 1 - SNAP_ALPHA;
-    };
-    const atomicCrossesCrease = (th0: number, z0: number, th1: number, z1: number): boolean => {
-      const k = locateKink(th0, z0, th0 + dThRaw(th0, th1), z1);
-      return k !== null && !k.jump && k.t > SNAP_ALPHA && k.t < 1 - SNAP_ALPHA;
-    };
-    const atomicChildSags = (a: number, b: number, c: number, p: AtomicPoint): [number, number, number] => {
-      const M: SagMesh = {
-        ta: [0, 1, 2], tb: [1, 2, 0], tc: [3, 3, 3],
-        vth: [vth[a], vth[b], vth[c], p.th], vz: [vz[a], vz[b], vz[c], p.z],
-        vx: [vx[a], vx[b], vx[c], p.x], vy: [vy[a], vy[b], vy[c], p.y],
-      };
-      return [0, 1, 2].map((lt) => sagAdaptiveRaw(
-        R, M, lt, REF_HS, REF_NMIN, REF_NMAX, makeSagArgmax(),
-      )) as [number, number, number];
-    };
-
-    if (ATOMIC_FACE && AF_BUDGET >= 2) {
-      afRan = true;
-      const targets = [...unresolved.entries()]
-        .filter(([t]) => alive[t] && unresolvedWhy.get(t) === 'shape-ar')
-        .sort((x, y) => y[1] - x[1] || x[0] - y[0]);
-      interface AtomicJob { t: number; sag: number; depth: number; root: boolean }
-      // FIFO deliberately attempts every root before spending the remaining
-      // budget recursively inside any one cavity. Fixed child order keeps the
-      // breadth-first expansion deterministic.
-      const work: AtomicJob[] = targets.map(([t, sag]) => ({ t, sag, depth: 0, root: true }));
-      let workHead = 0;
-      const leafSag = new Map<number, number>();
-      afCandidates = targets.length;
-      while (workHead < work.length) {
-        const job = work[workHead]; workHead += 1;
-        const t = job.t;
-        if (!alive[t]) continue;
-        if (afAddedLive + 2 > AF_BUDGET) { afBudgetStopped = true; break; }
-        if (!job.root && job.depth >= AF_DEPTH) { afDepthStopped += 1; continue; }
-        const a = ta[t]; const b = tb[t]; const c = tc[t];
-        if (job.root) {
-          // A conformed corridor normally puts the feature at an ENDPOINT of a
-          // spoke. Looking only for an interior edge crossing therefore misses
-          // exactly the saw-tooth fans this arm is meant to probe.
-          const featureAdjacent = vFeat[a] || vFeat[b] || vFeat[c];
-          if (!featureAdjacent) { afRefNoCorridor += 1; continue; }
-          const boundaryHasCrease = atomicCrossesCrease(vth[a], vz[a], vth[b], vz[b])
-            || atomicCrossesCrease(vth[b], vz[b], vth[c], vz[c])
-            || atomicCrossesCrease(vth[c], vz[c], vth[a], vz[a]);
-          afCorridor += 1;
-          if (boundaryHasCrease) afBoundaryCrease += 1;
-        } else {
-          afDescTried += 1;
-        }
-        afTried += 1;
-
-        const witness = makeSagArgmax();
-        const parentSag = sagAdaptiveRaw(R, SAGM, t, REF_HS, REF_NMIN, REF_NMAX, witness);
-        if (!(parentSag > acceptTol) || !(witness.wa + witness.wb + witness.wc > 0.999999)) {
-          afRefWitness += 1; continue;
-        }
-        const parentAR = aspect3(vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vx[c], vy[c], vz[c]);
-        const parentSign = Math.sign(signedAreaParam(vth[a], vz[a], vth[b], vz[b], vth[c], vz[c]));
-        let chosen: AtomicPoint | null = null; let chosenSags: [number, number, number] | null = null;
-        let chosenLadder = -1;
-        let sawWeld = false; let sawShape = false; let sawFold = false; let sawAdmission = false;
-        let sawCrossing = false; let sawGain = false;
-
-        for (let li = 0; li < AF_MIX.length; li += 1) {
-          const mix = AF_MIX[li];
-          const wa = mix * witness.wa + (1 - mix) / 3;
-          const wb = mix * witness.wb + (1 - mix) / 3;
-          const wc = mix * witness.wc + (1 - mix) / 3;
-          if (Math.min(wa, wb, wc) < AF_MIN_BARY) continue;
-          const p = atomicPoint(a, b, c, wa, wb, wc);
-          if (atomicWeld(p) >= 0) { sawWeld = true; continue; }
-
-          const childAR = [
-            aspect3(vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], p.x, p.y, p.z),
-            aspect3(vx[b], vy[b], vz[b], vx[c], vy[c], vz[c], p.x, p.y, p.z),
-            aspect3(vx[c], vy[c], vz[c], vx[a], vy[a], vz[a], p.x, p.y, p.z),
-          ];
-          const worstAR = Math.max(...childAR);
-          const beforeOver = parentAR > SHAPE_AR ? 1 : 0;
-          const afterOver = childAR.filter((ar) => ar > SHAPE_AR).length;
-          if (worstAR > Math.max(SHAPE_AR, parentAR) || afterOver > beforeOver) { sawShape = true; continue; }
-
-          const childSign = [
-            Math.sign(signedAreaParam(vth[a], vz[a], vth[b], vz[b], p.th, p.z)),
-            Math.sign(signedAreaParam(vth[b], vz[b], vth[c], vz[c], p.th, p.z)),
-            Math.sign(signedAreaParam(vth[c], vz[c], vth[a], vz[a], p.th, p.z)),
-          ];
-          if (parentSign === 0 || childSign.some((s) => s === 0 || s !== parentSign)) { sawFold = true; continue; }
-
-          // Existing boundary crossings stay unchanged; these are the only new edges.
-          if (atomicCrossesFeature(p.th, p.z, vth[a], vz[a])
-            || atomicCrossesFeature(p.th, p.z, vth[b], vz[b])
-            || atomicCrossesFeature(p.th, p.z, vth[c], vz[c])) { sawCrossing = true; continue; }
-
-          if (footBack(vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], p.x, p.y, p.z, vth[a], vth[b], p.th)
-            || footBack(vx[b], vy[b], vz[b], vx[c], vy[c], vz[c], p.x, p.y, p.z, vth[b], vth[c], p.th)
-            || footBack(vx[c], vy[c], vz[c], vx[a], vy[a], vz[a], p.x, p.y, p.z, vth[c], vth[a], p.th)) {
-            sawAdmission = true; continue;
-          }
-
-          const childSags = atomicChildSags(a, b, c, p);
-          if (Math.max(...childSags) > parentSag * (1 - AF_MIN_GAIN)) { sawGain = true; continue; }
-          chosen = p; chosenSags = childSags; chosenLadder = li; break;
-        }
-
-        if (chosen === null || chosenSags === null) {
-          if (sawGain) afRefGain += 1;
-          else if (sawAdmission) afRefAdmission += 1;
-          else if (sawCrossing) afRefCrossing += 1;
-          else if (sawFold) afRefFold += 1;
-          else if (sawShape) afRefShape += 1;
-          else if (sawWeld) afRefWeld += 1;
-          else afRefWitness += 1;
-          continue;
-        }
-
-        const m = addV(chosen.th, chosen.z, false);
-        if (!addVNew || m === a || m === b || m === c) {
-          throw new Error('PF_CB_ATOMIC_FACE: preflight promised a fresh interior vertex, but addV welded it.');
-        }
-        killT(t);
-        const nt0 = addT(a, b, m); const nt1 = addT(b, c, m); const nt2 = addT(c, a, m);
-        if (nt0 < 0 || nt1 < 0 || nt2 < 0) throw new Error('PF_CB_ATOMIC_FACE: preflight emitted a degenerate child.');
-        unresolved.delete(t); unresolvedWhy.delete(t);
-        afCommitted += 1; afAddedLive += 2;
-        if (job.root) afRootCommitted += 1; else afDescCommitted += 1;
-        afParentSum += parentSag; afChildSum += Math.max(...chosenSags);
-        if (parentSag > afParentWorst) afParentWorst = parentSag;
-        if (Math.max(...chosenSags) > afChildWorst) afChildWorst = Math.max(...chosenSags);
-        afChildrenOverTol += chosenSags.filter((s) => s > acceptTol).length;
-        if (chosenLadder > afLadderMax) afLadderMax = chosenLadder;
-        leafSag.delete(t);
-        const children = [nt0, nt1, nt2] as const;
-        for (let i = 0; i < children.length; i += 1) {
-          const child = children[i]; const sag = chosenSags[i];
-          leafSag.set(child, sag);
-          if (job.depth + 1 > afMaxDepth) afMaxDepth = job.depth + 1;
-          if (sag > acceptTol) work.push({ t: child, sag, depth: job.depth + 1, root: false });
-        }
-      }
-      for (const [t, sag] of leafSag) if (alive[t]) {
-        afFinalLeaves += 1;
-        if (sag > acceptTol) { afFinalOverTol += 1; if (sag > afFinalWorst) afFinalWorst = sag; }
-      }
-    }
-    }
-
-    // No repair pass is allowed to turn an unresolved birth obligation into a
-    // shippable-looking STL. Re-read the complete live mesh immediately before
-    // soup/export and fail closed on any missing typed edge, analytic crossing,
-    // visual exceedance, shipped-value shape failure, or admission failure.
-    let birthFinalMissingEdges = 0; let birthFinalCrossings = 0; let birthFinalVisualOver = 0;
-    let birthFinalVisualChecked = 0; let birthFinalWorstVisual = 0;
-    let birthFinalShape = 0; let birthFinalAdmission = 0;
-    if (ATOMIC_BIRTH) {
-      for (const [key] of edgeObligations) {
-        if (!(edgeMap.get(key) ?? []).some((t) => alive[t])) birthFinalMissingEdges += 1;
-      }
-      const seenBirthEdges = new Set<number>();
-      for (let t = 0; t < ta.length; t += 1) {
-        if (!alive[t]) continue;
-        const vertices = [ta[t], tb[t], tc[t]] as const;
-        const featureLocal = birthFeatureLocal(vertices);
-        if (featureLocal) {
-          birthFinalVisualChecked += 1;
-          const visual = birthTriangleVisual(
-            birthVertex(vertices[0]), birthVertex(vertices[1]), birthVertex(vertices[2]),
-          );
-          if (visual > birthFinalWorstVisual) birthFinalWorstVisual = visual;
-          if (visual > BIRTH_VISUAL_MM) birthFinalVisualOver += 1;
-        }
-        const shippedAR = aspect3(
-          f32(vx[vertices[0]]), f32(vy[vertices[0]]), f32(vz[vertices[0]]),
-          f32(vx[vertices[1]]), f32(vy[vertices[1]]), f32(vz[vertices[1]]),
-          f32(vx[vertices[2]]), f32(vy[vertices[2]]), f32(vz[vertices[2]]),
-        );
-        if (!(shippedAR <= SHAPE_AR)) birthFinalShape += 1;
-        if (footBackT(t)) birthFinalAdmission += 1;
-        for (const [a, b] of [[vertices[0], vertices[1]], [vertices[1], vertices[2]], [vertices[2], vertices[0]]] as const) {
-          const key = eKey(a, b);
-          if (seenBirthEdges.has(key)) continue;
-          seenBirthEdges.add(key);
-          const kink = locateKink(vth[a], vz[a], vth[a] + dTh(a, b), vz[b]);
-          if (kink !== null && kink.t > SNAP_ALPHA && kink.t < 1 - SNAP_ALPHA) birthFinalCrossings += 1;
-        }
-      }
-      if (birthFinalMissingEdges > 0 || birthFinalCrossings > 0 || birthFinalVisualOver > 0
-        || birthFinalShape > 0 || birthFinalAdmission > 0) {
-        throw new Error(
-          'PF_CB_ATOMIC_BIRTH refused export: '
-          + `${birthFinalMissingEdges} missing constrained edges, ${birthFinalCrossings} analytic crossings, `
-          + `${birthFinalVisualOver}/${birthFinalVisualChecked} feature-local facets over `
-          + `${(BIRTH_VISUAL_MM * 1000).toFixed(1)} um `
-          + `(worst ${(birthFinalWorstVisual * 1000).toFixed(3)} um), ${birthFinalShape} shipped AR failures, `
-          + `${birthFinalAdmission} admission failures. The live mesh was not exported; grow/solve the scratch `
-          + 'feature transaction instead of repairing these facets after birth. '
-          + `Seed debt was ${alignedSeedCrossings} analytic crossings, `
-          + `${birthSeedVisualOver}/${birthSeedVisualChecked} feature-local visual failures `
-          + `(worst ${(birthSeedWorstVisual * 1000).toFixed(3)} um), ${birthSeedShape} shipped AR failures, `
-          + `${birthSeedAdmission} admission failures. Scratch closure tried ${birthClosureTried}, committed `
-          + `${birthClosureCommitted}; refusals ${JSON.stringify(Object.fromEntries(birthClosureRefusals))}.`,
-        );
-      }
-    }
-
     const soup: Array<[P3, P3, P3]> = [];
     const PT = (i: number): P3 => [vx[i], vy[i], vz[i]];
     const liveIdx: number[] = [];
@@ -5091,19 +4277,6 @@ describe('STRATA conforming-bisection', () => {
     const finalTopo = STAGE === 'solid' ? analyze(soup) : outerTopo;
     const nonManifold = finalTopo.nonManifold; const boundary = finalTopo.boundary; const loops = finalTopo.loops;
     const orientMismatch = finalTopo.orientMismatch;
-    if (ATOMIC_BIRTH) {
-      const expectedLoops = STAGE === 'solid' ? 0 : 2;
-      const expectedBoundary = STAGE === 'solid' ? boundary === 0 : boundary > 0;
-      if (nonManifold !== 0 || orientMismatch !== 0 || seamCrack !== 0
-        || loops.length !== expectedLoops || !expectedBoundary) {
-        throw new Error(
-          'PF_CB_ATOMIC_BIRTH refused export on topology: '
-          + `${nonManifold} non-manifold edges, ${orientMismatch} orientation mismatches, `
-          + `${seamCrack} seam cracks, ${boundary} boundary edges, ${loops.length} loops `
-          + `(expected ${expectedLoops}). The invalid topology was not serialized.`,
-        );
-      }
-    }
 
     // ───────────────────────────── fidelity (oracle N) + tail re-measure ─────────────────────────────
     // PF_CB_TAILK / PF_CB_TAILN are READ HERE rather than below the main loop (their only move in this hunk):
@@ -5334,6 +4507,10 @@ describe('STRATA conforming-bisection', () => {
       buf.writeUInt16LE(0, o + 48); o += 50;
     }
     writeFileSync(join(outDir, `${tag}.stl`), buf);
+    if (cavDumps.length > 0) {
+      writeFileSync(join(outDir, `${tag}.cavity-refusals.json`), `${JSON.stringify(cavDumps, null, 2)}
+`, 'utf8');
+    }
 
     // ─── S10: THE TRACED LOCI + JUNCTION DISKS, written beside the STL. This is P5's INPUT and it is a
     // deliverable whether or not the A/B wins: the junction disks are the enumerated target list the
@@ -5797,25 +4974,33 @@ describe('STRATA conforming-bisection', () => {
       `  worst child AR the guard ever ADMITTED: ${SHAPE ? `${shapeWorstAdmitted.toFixed(2)} (must be <= ${SHAPE_AR})` : 'n/a — guard off, nothing was scored'}`,
       `  3-D midpoint: ${nMid3dSolves} solves, mean |s-frac| ${nMid3dSolves > 0 ? (mid3dShiftSum / nMid3dSolves).toFixed(5) : 'n/a'}, max ${mid3dShiftMax.toFixed(5)}, clamped ${nMid3dClamped}`,
       `  longest-edge preference: tested ${nLongFallTested}, FIRED ${nLongFallFired} (max-sag edge inadmissible AND longest edge admissible)`,
-      ...(ATOMIC_BIRTH ? [
-        `  S45 ATOMIC-BIRTH PREFLIGHT: ${nBirthChecks} complete incident edge-stars checked BEFORE mutation`,
-        `    refused ${nBirthRefusedCrossing} new feature crossings, ${nBirthRefusedVisual} visual regressions,`
-          + ` ${nBirthRefusedTopology} topology/weld proposals; worst checked feature-local child witness`
-          + ` ${(nBirthVisualWorst * 1000).toFixed(3)} um (dense bary level ${BIRTH_BARY})`,
-        `    persistent seed ledger: ${birthLedgerEdges} live constrained edges, ${birthLedgerIds} obligation ids`
-          + ` (${birthLedgerFeatureIds} feature-chain ids)`,
-        `    candidate-seed debt (measured, never repaired in-place): crossings ${alignedSeedCrossings},`
-          + ` feature-local visual ${birthSeedVisualOver}/${birthSeedVisualChecked}`
-          + ` (worst ${(birthSeedWorstVisual * 1000).toFixed(3)} um), shipped AR ${birthSeedShape},`
-          + ` admission ${birthSeedAdmission}`,
-        `    in-loop scratch closure: ${BIRTH_CLOSURE ? 'ON' : 'OFF'}; tried ${birthClosureTried},`
-          + ` committed ${birthClosureCommitted}, removed ${birthClosureRemoved}, added ${birthClosureAdded},`
-          + ` context refusals ${birthClosureContextRefused}, wider preflight refusals ${birthClosurePreflightRefused}`,
-        `    closure refusal histogram: ${JSON.stringify(Object.fromEntries(birthClosureRefusals))}`,
-        `    export certificate: missing edges ${birthFinalMissingEdges}, crossings ${birthFinalCrossings},`
-          + ` feature-local visual ${birthFinalVisualOver}/${birthFinalVisualChecked} over ${(BIRTH_VISUAL_MM * 1000).toFixed(1)} um`
-          + ` (worst ${(birthFinalWorstVisual * 1000).toFixed(3)} um), shipped AR ${birthFinalShape}, admission ${birthFinalAdmission}`,
-      ] : []),
+      `  V2-L1 LAST-CHANCE PLACEMENT SEARCH: PF_CB_LASTCHANCE=${LASTCHANCE}`
+        + (LASTCHANCE <= 0
+          ? '  [OFF — this fork is then the HEAD driver verbatim]'
+          : `  reached ${lcTried} abandoned facets, RESCUED ${lcRescued}`
+            + ` (${lcTried === 0 ? 'n/a' : `${((100 * lcRescued) / lcTried).toFixed(1)}%`})`
+            + ` in ${lcProbes} bisectAt probes   [jam census predicted ~28.1%]`),
+      `  V2-L2 IN-LOOP CONSTRAINED-CAVITY ESCALATION: PF_CB_CAVITY=${CAVITY}`
+        + (CAVITY <= 0
+          ? '  [OFF]'
+          : ` patch, rings ${CAVITY_RINGS}, budget ${CAVITY_BUDGET}\n`
+            + `    escalated ${cavTried} facets that had exhausted every cheaper move`
+            + ` → ${cavAccepted} CERTIFIED, ${cavApplied} applied`
+            + ` (${cavTried === 0 ? 'n/a' : `${((100 * cavApplied) / cavTried).toFixed(1)}%`})\n`
+            + `    connectivity: removed ${cavRemoved} triangles, added ${cavAdded}`
+            + ` (net ${cavAdded - cavRemoved >= 0 ? '+' : ''}${cavAdded - cavRemoved});`
+            + ` ${cavOrphanAbort} aborted after a weld collapse\n`
+            + `    diagnostics: patch p̄ ${cavTried === 0 ? 0 : Math.round(cavPatchSum / cavTried)} tris,`
+            + ` constraint chains p̄ ${cavTried === 0 ? 0 : (cavChainSum / cavTried).toFixed(1)},`
+            + ` adaptive steps p̄ ${cavTried === 0 ? 0 : (cavStepSum / cavTried).toFixed(1)};`
+            + ` blocking witness seen ${cavSawWitness}/${cavTried};`
+            + ` *** cavity reached the EXTRACTED PATCH RIM ${cavHitPatchRim}/${cavTried} *** (an artificial`
+            + ` boundary: a longest-edge-boundary refusal there means the patch was too small, NOT that the`
+            + ` geometry is unfixable — raise PF_CB_CAVITY)
+`
+            + `    refusals: ${[...cavRefusals].sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k}=${v}`).join('  ') || 'none'}\n`
+            + '    NB every applied cavity passed the planner\'s full certificate (constraints recovered,'
+            + ' zero proper crossings, AR ≤ cap, Euler equal, boundary frozen, visual strictly improved).'),
       // ─── S6 POST-LOOP INVARIANT. Printed ALWAYS, including when the lever is off, so a control run says so
       // in its own report rather than by the absence of a block — the same convention as the SHAPE block. ───
       `  post-loop guard: PF_CB_POST_SHAPE=${POST_SHAPE ? 1 : 0}${SHAPE ? '' : ' (INERT — PF_CB_SHAPE=0, so the control is byte-unchanged)'}   cap AR>${SHAPE_AR}, metric = _shapeGuard.aspect3 (the census's own)`,
@@ -5924,25 +5109,13 @@ describe('STRATA conforming-bisection', () => {
               + ` ${alignedStats.bowShortenedPts} further chain points so the traced locus's own bow fits inside`
               + ` ${(AL_BOW_FRAC * 100).toFixed(0)}% of the offset ring — an offset-ring chord may not cut the locus it hugs ***`,
           ] : []),
-          ...(AL_DECIMATE_MM === undefined ? [] : [
-            `    *** S31 R3a DECIMATION-ONLY SHADOW: consecutive chain points below ${(AL_DECIMATE_MM * 1000).toFixed(1)} um are removed; cross-chain weld, bow floor, boundary snap, PSLG conditioning, patches, ownership, bisection and gates remain frozen ***`,
-          ]),
-          ...(AL_CHAIN_WELD_MM === undefined ? [] : [
-            `    *** S31 R4 TOPOLOGY-ONLY SHADOW: non-fixed cross-chain weld ${(AL_CHAIN_WELD_MM * 1000).toFixed(1)} um; true fixed intersections remain at historical minSep, and decimation, bow floor, boundary snap, PSLG conditioning, patches, ownership, bisection and gates remain frozen ***`,
-          ]),
         ] : []),
         ...(AL_RINGS !== 1 || AL_TURN_MUL !== 0 ? [
           `    *** S19 GRADED ACROSS-COMPLETION: PF_CB_ALIGNED_RINGS=${AL_RINGS} grade ${AL_RGRADE} max ${(AL_RMAX * 1000).toFixed(0)} um`
-            + `  (rings actually used ${alignedStats.offsetRingsUsed}, stride cap ${AL_RSTRIDE_MAX})`
-            + `   PF_CB_ALIGNED_TURN_MUL=${AL_TURN_MUL}`
+            + `  (rings actually used ${alignedStats.offsetRingsUsed})   PF_CB_ALIGNED_TURN_MUL=${AL_TURN_MUL}`
             + ` bound the along spacing at ${alignedStats.turnBoundPts} chain points`
             + `   — the empty band between the innermost ring and the 1,101 um background lattice is where 88% of the`
             + ` large tilted offenders lived (S19 decomposition) ***`,
-        ] : []),
-        ...(AL_RSTRUCTURED ? [
-          `    *** S32 STRUCTURED FEATURE COLLAR (${AL_RSTRUCTURED_MODE}): ${alignedStats.collarRailConstraints} non-crossing rails +`
-            + ` ${alignedStats.collarRungConstraints} matched rungs; refused ${alignedStats.collarRefusedCrossing}`
-            + ` crossings and ${alignedStats.collarRefusedInteriorPoint} interior-point conflicts ***`,
         ] : []),
         ...(alignedStats.patchRegions > 0 ? [
           `    *** S18 STEP 3 X-CROSSING PATCH EMITTER ON: ${AL_PATCH}   top${AL_PATCH_TOPN} by measured load`
@@ -5952,15 +5125,6 @@ describe('STRATA conforming-bisection', () => {
             + `   (refused ${alignedStats.patchRefusedPt} on point clearance, ${alignedStats.patchRefusedSeg} on constraint clearance)`
             + `   — free Steiner points ONLY: zero constraint edges added, so no constraint can span the chart and the`
             + ` patch is watertight through the SAME single cdt2d call as the rest of the seed`,
-          ...(patchExclusionIds.size > 0 ? [
-            `      *** ${AL_PATCH_EXCLUSION_AUTO ? 'S31 AUTO ROUTED-ANNULUS OWNERSHIP' : 'S30 ROUTED-COVERAGE EXCLUSION SHADOW'}: ids [${[...patchExclusionIds].sort((a, b) => a - b).join(',')}]`
-              + `   matched regions ${alignedStats.patchExclusionRegions}; reclaimed chain sites`
-              + ` ${alignedStats.patchExclusionReclaimedChainPts}; global outer diagnostic`
-              + ` ${alignedStats.patchOuterSectors - alignedStats.patchOuterUncoveredSectors}/${alignedStats.patchOuterSectors}`
-              + ` (selected ids individually enforced complete)`
-              + `${patchAnnulusDiscovery === null ? '' : `; geometry-only one-to-one centre matches ${patchAnnulusDiscovery.exactCenterMatches}`}`
-              + `   - bisection, spacing, patch geometry, routing, minSep and gates are frozen ***`,
-          ] : []),
           `      S21 GRADING FIX (patch interior sizing = min(polar grading, sizing field)):`
             + ` the field BOUND the polar grading on ${alignedStats.patchFieldBoundRings} rings,`
             + ` inserting ${alignedStats.patchSubRings} sub-rings; worst polar/field ratio`
@@ -6065,55 +5229,6 @@ describe('STRATA conforming-bisection', () => {
           + `${srTimeCapped ? '   *** TIME-CAPPED ***' : ''}`,
         ...(srPassesRun >= SR_PASSES && !srBudgetStopped ? [
           `  *** PASS-CAPPED at ${SR_PASSES} — still resolving when it stopped, so the numbers are a LOWER BOUND. Raise PF_CB_STRAND_RETRY_PASSES. ***`] : []),
-      ] : []),
-      ...(FAN_CAVITY_REQUESTED ? [
-        `fan-cavity fallback (${FC_MODE} selector): ${fcRan ? 'RAN' : `REQUESTED BUT NOT RUN — ${!FAN_CAVITY_READY
-          ? 'requires heap driver + aligned loci + PF_CB_DESHARD=1 + composed shipped-value admission, and cannot compose with atomic-face'
-          : 'unknown readiness refusal'}`}`,
-        `  candidate vertices ${fcCandidates}; within ${(FC_RADIUS * 1000).toFixed(0)} um of a locus ${fcNearLocus};`
-          + ` carrying >${(FC_VISUAL * 1000).toFixed(1)} um independent visual error ${fcVisualCandidates}; tried ${fcTried}`,
-        `  atomic one-ring commits ${fcCommitted}; faces ${fcRemovedFaces} -> ${fcAddedFaces};`
-          + ` fans ${fcFansBefore} -> ${fcFansAfter}; shards ${fcShardsBefore} -> ${fcShardsAfter}`,
-        `  committed visual cohorts: over threshold ${fcOldOver} -> ${fcNewOver};`
-          + ` worst ${um(fcOldWorst)} -> ${um(fcNewWorst)} µm`,
-        `  protected-hub visual flips: passes ${fcFlipPasses}/${FC_FLIP_PASSES}; candidates ${fcFlipCandidates};`
-          + ` tried ${fcFlipTried}; committed ${fcFlipCommitted}/${FC_FLIP_BUDGET}`,
-        `    committed cohorts: over threshold ${fcFlipOldOver} -> ${fcFlipNewOver};`
-          + ` worst ${um(fcFlipOldWorst)} -> ${um(fcFlipNewWorst)} Âµm`,
-        `    refused: locus-edge ${fcFlipRefLocus}, topology/feature-crossing ${fcFlipRefTopology},`
-          + ` shape/shard ${fcFlipRefShape}, admission ${fcFlipRefAdmission}, visual ${fcFlipRefVisual}, fan ${fcFlipRefFan}`,
-        `  protected visual collapses: short-edge candidates ${fcCollapseCandidates}; tried ${fcCollapseTried};`
-          + ` committed ${fcCollapseCommitted}/${FC_COLLAPSE_BUDGET}; faces ${fcCollapseRemoved} -> ${fcCollapseAdded}`,
-        `    committed cohorts: over threshold ${fcCollapseOldOver} -> ${fcCollapseNewOver};`
-          + ` worst ${um(fcCollapseOldWorst)} -> ${um(fcCollapseNewWorst)} µm; max candidate edge ${(FC_COLLAPSE_MAX * 1000).toFixed(1)} µm`,
-        `    refused: feature ${fcCollapseRefFeature}, locus/crossing ${fcCollapseRefLocus},`
-          + ` topology/link ${fcCollapseRefTopology}, shape/shard ${fcCollapseRefShape},`
-          + ` admission ${fcCollapseRefAdmission}, visual ${fcCollapseRefVisual}, fan ${fcCollapseRefFan}`,
-        `  refused: feature-hub ${fcRefFeatureHub}, locus-spoke ${fcRefLocusSpoke}, overlap ${fcRefOverlap},`
-          + ` malformed-star ${fcRefStar}, degree-cap ${fcRefDegree}, boundary ${fcRefBoundary}, topology ${fcRefTopology},`
-          + ` triangulation ${fcRefTriangulation},`
-          + ` shape ${fcRefShape}, admission ${fcRefAdmission}, visual ${fcRefVisual}, fan ${fcRefFan}`,
-        `  invariant: the complete one-ring boundary is byte-unchanged; every new diagonal is feature-free;`
-          + ` collapses remove only non-feature vertices and satisfy the manifold link condition;`
-          + ` no shard, AR>20 long-facet, or fan population may increase; independent visual worst improves by >=${(FC_MIN_GAIN * 100).toFixed(1)}%.`,
-      ] : []),
-      ...(ATOMIC_FACE_REQUESTED ? [
-        `atomic-face fallback: ${afRan ? 'RAN' : `REQUESTED BUT NOT RUN — ${!ATOMIC_FACE_READY
-          ? 'requires heap driver + composed PF_CB_ADMIT_NORMAL=1, PF_CB_ADMIT_NORMAL_SPLIT=1, PF_CB_ADMIT_SHIPPED=1'
-          : `budget ${AF_BUDGET} is below the minimum +2 live faces`}`}`,
-        `  snapshot shape-ar candidates ${afCandidates}; locus-vertex-adjacent corridor ${afCorridor}`
-          + ` (still carrying an interior boundary crease ${afBoundaryCrease}); root commits ${afRootCommitted}`,
-        `  recursive cavity: descendant tried ${afDescTried}, committed ${afDescCommitted}; TOTAL COMMITTED ${afCommitted}`
-          + ` (+${afAddedLive} live faces of ${AF_BUDGET})${afBudgetStopped ? '   *** BUDGET-STOPPED ***' : ''}`,
-        `  refused before mutation: no-corridor ${afRefNoCorridor}, witness ${afRefWitness}, weld ${afRefWeld},`
-          + ` shape ${afRefShape}, fold ${afRefFold}, admission ${afRefAdmission}, new-locus-crossing ${afRefCrossing}, insufficient-gain ${afRefGain}`,
-        `  same-ruler worst parent -> worst child ${um(afParentWorst)} -> ${um(afChildWorst)} µm;`
-          + ` mean ${um(afCommitted > 0 ? afParentSum / afCommitted : 0)} -> ${um(afCommitted > 0 ? afChildSum / afCommitted : 0)} µm;`
-          + ` emitted children still over accept ${afChildrenOverTol}; deepest witness->centroid rung ${afLadderMax}`,
-        `  final cavity leaves ${afFinalLeaves}; still over accept ${afFinalOverTol}, worst ${um(afFinalWorst)} µm;`
-          + ` deepest emitted ${afMaxDepth}/${AF_DEPTH}; depth-stopped leaves ${afDepthStopped}`,
-        `  invariant: boundary edges untouched; every NEW spoke was proved free of a proper kink/jump; final children passed`
-          + ` aspect/fold, shipped-value normal admission, weld, and >=${(AF_MIN_GAIN * 100).toFixed(0)}% ruler-improvement gates before commit.`,
       ] : []),
       ...((unresolvedByWhy.get('unclassified') ?? 0) > 0 ? [
         `  *** ${unresolvedByWhy.get('unclassified')} facets read 'unclassified' — \`classifyStrand\` ran but matched no known`,

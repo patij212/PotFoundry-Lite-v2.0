@@ -1,0 +1,119 @@
+
+===== STRATA CONFORMING-BISECTION: GothicArches RING  [DIRECTED | SNAP | no-reproj] =====
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+rank/accept: PF_CB_RANK=plane — sagAdaptive: INFINITE-PLANE distance, absolute pitch 0.03mm, n∈[12,64]   acceptTol 3.500 µm
+PHASE-2 TIGHTENING FIELD: research/exchange/_phase2/S24i1.loci.json
+  149 loci, ball radius 500 µm, max tolScale 2.00×
+  ⇒ localTol = acceptTol/tolScale inside a ball, EXACTLY acceptTol outside. The field can only TIGHTEN.
+  consider() calls inside a ball 43961   of which queued ONLY because of the field 7925
+  floor-refused inside a ball 0
+  lookups taken linearly 63 (whole-list scan chosen over a 1000 µm cell ring; with 149 clusters that is expected)
+grid 200×140 (233536 init tris) → 1259626 tris (alloc 2289762/8000000)   1111s, 1154M rA evals
+splits 516369   snaps 59714 (jump-class 2)   transverse re-solves 0   z-steps 0
+cleanup: collapsed 0 tris (safe-collapse 0, link-refused 0 with 0 offenders, flips 0, flips-refused-on-locus 0)   welded-splits 0 (REFUSED)
+--- SHAPE (L5, 2026-07-29 blade fix) ---
+  levers: PF_CB_SHAPE=1 cap AR>50  fold=1  mid3d=1 (24 halvings, |shift| cap 0.25)  longfall=1
+  guard: 1499893 split candidates scored, 4835628 child facets (BOTH sides of every edge)
+  refused: 773079 on aspect (>50), 0 on (θ,z) FOLD   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path
+  worst child AR the guard ever ADMITTED: 50.00 (must be <= 50)
+  3-D midpoint: 1440179 solves, mean |s-frac| 0.06105, max 0.56172, clamped 64146
+  longest-edge preference: tested 184820, FIRED 9862 (max-sag edge inadmissible AND longest edge admissible)
+  post-loop guard: PF_CB_POST_SHAPE=1   cap AR>50, metric = _shapeGuard.aspect3 (the census's own)
+    initial grid: 3 of 233536 facets over the cap, worst AR 85.13   *** BORN OVER THE CAP. No split guard can have caused these and none can repair them — S1 refuses their splits, so they are FROZEN into the STL. Expect the blade gate to count them. ***
+    collapse: 0 tested, refused 0 on aspect + 0 on (θ,z) FOLD
+    flip (collapse-driven, PF_CB_FLIP=0): 0 gate calls, refused 0 on aspect   [tryFlip sign-checks (θ,z) itself, so this path cannot fold]
+    worst AR any ADMITTED post-loop operation left behind: 45.74
+  S20 EMIT-TIME FOOTPRINT-NORMAL ADMISSION: accept-side ON, split-side ON   (A2 semantics: >=90 deg against the MOST FAVOURABLE of five candidate normals at the centroid AND all three vertex parameter points; centroid-back + vertex-front is FEATURE-SPANNING and stays admissible)
+    5403583 admission checks   0 accepts REFUSED and re-queued   40737 splits REFUSED on admission   ADMISSION-STRANDED at the end: 0 of 1259626 live facets   [refusal-storm criterion NOT fired]
+    strand list: gothicarches_ring_DS-HT_S40VFC.strands.json — 0 ADMISSION-stranded facet(s) listed  [EMPTY = the S20 admission criterion is clean; this is a PASS, not a missing list]
+      NOT the M=g/h^2 routing input. That population is `unresolved` (shape-refused, 4627 at the reduction point) and is emitted to gothicarches_ring_DS-HT_S40VFC.unresolved.json only under PF_CB_EMIT_UNRESOLVED=1  [ON — written]
+  S22 DE-SHARD FINISHING PASS: RAN
+    instrument: SHARD = longest edge >= 1 mm AND (deviation >= 45 deg OR AR3 >= 20)   FAN = vertex on >= 12 facets carrying an edge >= 500 um
+    *** SHARDS 946 -> 201 (x0.212)   FANS 309 -> 26 (x0.084) ***
+    (i) subdivision: 1218 candidates attempted, 990 split, 228 REFUSED (205 aspect / 0 fold / 23 admission / 0 weld-apex)   max recursion depth 3 of 4   refusal rate 18.7%   [INFEASIBLE criterion NOT fired]
+    (ii) fan flips: 6 of 6 sweep(s), 5952 candidates, 1385 FLIPPED   refused 2203 on the improvement gate (worst-AR must STRICTLY decrease), 1 on admission, 24 on 2-incidence
+    (iii) ON-LOCUS SPOKES — shortened, never rotated: 646 spokes lie ON a locus, 401 SPLIT at the midpoint, 161 refused by the composed gates, 84 already below the 500 um census threshold   [a midpoint split moves no vertex OFF its locus and adds one ON it — the conforming corridor is preserved, not evaded]
+    (iv) S22C PROTECTOR CASCADE (PF_CB_DESHARD_CASCADE=0, depth cap 12): 0 blocked sites entered, 0 CONFORMED (0.0% — registered prediction was <= 30%), 0 protector splits, max depth 0
+      dead ends: 0 SELF-BLOCKED (the offender's own longest edge IS the blocked edge — no protector to refine and, unlike S8, no off-centre placement to re-centre), 0 depth-capped, 0 attempt-capped, 0 weld/apex/admit
+      cascade depth histogram (0..15): 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0   splits that ONLY landed via the ladder: 0 subdivision + 0 on-locus
+    budget (billed in NEW LIVE TRIANGLES — W6's own quantity): subdivision +2782 of 8000   flips +0 by construction (2 killed, 2 emitted, no vertex moved)
+    gross allocations, reported separately so neither sub-pass is billed for the other: subdivision 3960, flips 4374   resume 499 splits on +1996 of 20000
+    SURVIVORS — the parents the composed gates would not let this pass repair. DECLARED, never silent:
+      REFUSED[ar] tri 2277594  AR3 45.5  long 1094 um  th 5.77180  z 97.663  depth 0
+      REFUSED[ar] tri 2267809  AR3 47.6  long 1400 um  th 1.74205  z 90.665  depth 0
+      REFUSED[ar] tri 2265354  AR3 47.6  long 1117 um  th 2.45547  z 64.159  depth 0
+      REFUSED[ar] tri 2247595  AR3 37.6  long 1375 um  th 4.97663  z 21.593  depth 0
+      REFUSED[ar] tri 2246723  AR3 37.6  long 1375 um  th 3.40583  z 21.593  depth 0
+      REFUSED[ar] tri 2245036  AR3 27.8  long 1102 um  th 0.00000  z 96.000  depth 0
+      REFUSED[ar] tri 2245035  AR3 49.1  long 1480 um  th 6.26064  z 96.180  depth 0
+      REFUSED[ar] tri 2244726  AR3 50.0  long 1187 um  th 5.96903  z 113.143  depth 0
+      REFUSED[ar] tri 2241567  AR3 37.5  long 1375 um  th 0.26423  z 21.593  depth 0
+      REFUSED[ar] tri 2241459  AR3 37.5  long 1375 um  th 1.83502  z 21.593  depth 0
+      REFUSED[admit] tri 2233374  AR3 10.2  long 1046 um  th 5.72736  z 97.643  depth 0
+      REFUSED[ar] tri 2221373  AR3 46.1  long 1097 um  th 5.00803  z 80.687  depth 0
+      REFUSED[ar] tri 2217408  AR3 45.3  long 1400 um  th 1.75929  z 90.857  depth 0
+      REFUSED[ar] tri 2217407  AR3 40.2  long 1408 um  th 1.73969  z 90.653  depth 0
+      REFUSED[ar] tri 2212184  AR3 45.1  long 1125 um  th 2.48626  z 37.758  depth 0
+      REFUSED[ar] tri 2178936  AR3 30.4  long 1110 um  th 4.97447  z 67.021  depth 0
+      REFUSED[ar] tri 2175676  AR3 45.6  long 1129 um  th 0.61402  z 37.768  depth 0
+      REFUSED[ar] tri 2171107  AR3 46.5  long 1396 um  th 5.85682  z 33.227  depth 0
+      REFUSED[ar] tri 2131368  AR3 22.1  long 1017 um  th 1.83016  z 66.222  depth 0
+      REFUSED[ar] tri 2131367  AR3 49.3  long 1528 um  th 1.83126  z 67.237  depth 0
+  S10 ALIGNED CONSTRAINED SEED: PF_CB_ALIGNED_SEED=1   trace 400x280 in 23s
+    traced loci: 394 components, 11083 points, 6738.2 mm total   junctions 235 (from 1559 raw)   jump-class crossings EXCLUDED 94
+    seed: 117168 points -> 233536 tris   constraints 12806 RECOVERED 12806 (conditioned 806, decimated 21686, degenerate dropped 507)   repair rounds 2, banned 34
+    spacing: along 1101 um / across 385 um   background kept 22834 dropped 4966   offset points 58524   sizing field ON (7109123 rA evals)
+    seed shape census: 3 of 233536 over the cap (worst AR 85.13, worst PARAMETRIC AR 324.3)
+    *** S15 STEP 1b ACROSS RULE ON: PF_CB_ALIGNED_ACROSS_ABS=1  floor 50.0 um  seed AR bound 24   BOUND at 34197 chain points (along shortened at 7345)   across placed: min 50.0 um / p50 50.0 um   (the relative rule floors at 192.6 um) ***
+    *** S19 GRADED ACROSS-COMPLETION: PF_CB_ALIGNED_RINGS=7 grade 1.6 max 650 um  (rings actually used 6, stride cap 4)   PF_CB_ALIGNED_TURN_MUL=9 bound the along spacing at 33321 chain points   — the empty band between the innermost ring and the 1,101 um background lattice is where 88% of the large tilted offenders lived (S19 decomposition) ***
+    *** S18 STEP 3 X-CROSSING PATCH EMITTER ON: research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S21B.regions.json   top0 by measured load + ids [0,25,32,34,39,42,43,44,46,47,49,51,53,54,57,59,65,68,72,77,87,92,93,96,97,107,1000,1001,1002,1003,1004,1005,1006,1007,1008,1009,1010,1011,1012,1013,1014,1015,1016] (the FIDELITY targets — S17 measured that the class ranking does not rank them)   routed radius cap 1.50 mm ***
+      43 regions DECLARED, 23239 structured points on 549 graded rings   (refused 143 on point clearance, 2221 on constraint clearance)   — free Steiner points ONLY: zero constraint edges added, so no constraint can span the chart and the patch is watertight through the SAME single cdt2d call as the rest of the seed
+      *** S30 ROUTED-COVERAGE EXCLUSION SHADOW: ids [54]   matched regions 1; reclaimed chain sites 57; global outer diagnostic 2326/2331 (selected ids individually enforced complete)   - bisection, spacing, patch geometry, routing, minSep and gates are frozen ***
+      S21 GRADING FIX (patch interior sizing = min(polar grading, sizing field)): the field BOUND the polar grading on 119 rings, inserting 250 sub-rings; worst polar/field ratio 9.26x   — S18 measured the defect this repairs: disk #25's congruent copy 0.008 -> 31.429 um because the polar set REPLACED a finer background lattice. The patchSubMax guard never clipped, so the fix applied in full.
+    *** THE LEVER'S OWN MEASUREMENT — seed edges that CROSS a locus, by the driver's own locateKink: 9395 of 350559 edges (2.680%). The uniform grid at this config had 10,641 (S9a's gen-0 enumeration, live grid, multi-pass). ***
+  cap repair: PF_CB_SHAPE_FLIP=0   facets over cap BEFORE 2 (worst 85.1) → AFTER 2 (worst 85.1)   flips tried 0, done 0
+  *** 2 facets over the cap survived a run with BOTH guards ON. S1 covers bisectAt and S6
+      covers the collapse and the collapse-driven flip, so a survivor can only be (a) BORN in the
+      INITIAL GRID — 3 were, see the post-loop guard block above — or (b) a float32 tie:
+      the STL is float32 while both guards score float64, so a facet within ~0.1 % of the cap can
+      tip either way. That moves individuals, never the population. ***
+heap: 0 left, worst-left 0.000 µm, key-inversions 60348, no-op splits 4848   MAXtri@oracle8 91.359 µm
+unresolved: 4627 live over-tol triangles the splitter could NOT subdivide, worst 82.911 µm   *** an EMPTY HEAP DOES NOT MEAN CLOSURE — these left the queue unrefined ***
+  unresolved by reason: shape-ar 4460  shape-admit 167
+fan-cavity fallback (visual selector): RAN
+  candidate vertices 5991; within 650 um of a locus 220; carrying >10.0 um independent visual error 64; tried 64
+  atomic one-ring commits 11; faces 127 -> 105; fans 26 -> 26; shards 201 -> 191
+  committed visual cohorts: over threshold 48 -> 18; worst 111.810 -> 96.411 µm
+  protected-hub visual flips: passes 4/6; candidates 35368; tried 5571; committed 456/512
+    committed cohorts: over threshold 490 -> 115; worst 96.658 -> 73.614 Âµm
+    refused: locus-edge 5131, topology/feature-crossing 24666, shape/shard 1141, admission 80, visual 3894, fan 0
+  protected visual collapses: short-edge candidates 695; tried 313; committed 35/64; faces 145 -> 75
+    committed cohorts: over threshold 52 -> 13; worst 55.130 -> 48.344 µm; max candidate edge 20.0 µm
+    refused: feature 90, locus/crossing 346, topology/link 142, shape/shard 0, admission 0, visual 82, fan 0
+  refused: feature-hub 59, locus-spoke 113, overlap 18, malformed-star 25, degree-cap 0, boundary 0, topology 0, triangulation 12, shape 8, admission 6, visual 27, fan 0
+  invariant: the complete one-ring boundary is byte-unchanged; every new diagonal is feature-free; collapses remove only non-feature vertices and satisfy the manifold link condition; no shard, AR>20 long-facet, or fan population may increase; independent visual worst improves by >=1.0%.
+--- WATERTIGHT (3D position-weld) ---
+  non-manifold edges : 0  OK
+  reversed facets    : 0  OK
+  seam-crack edges   : 0  OK
+  boundary edges     : 1150   (ring ⇒ top+bottom only)   loops 2
+  soup: 1259626 tris = 1259626 outer wall + 0 treads + 0 caps
+--- FIDELITY (DRIVER SELF-REPORT on the PLANE ruler — NOT the verdict; judge with
+             research/bridge/_strataFacetTruth.test.ts at FULL coverage) ---
+  HEADLINE MAX 93.406 µm  FAIL   = max(adaptive 89.593, fixed-12 89.593, tail-44 93.406)
+  ruler spread 1.0×  consistent
+  --- adaptive oracle (≤0.03mm sample pitch, n∈[12,64]) ---
+  MAX 89.593 µm  FAIL   p99 3.435  p50 1.464  over-0.01mm 443/1259626
+  MAX-locus: z=[80.87,80.88,80.87] (67% H) θ=[5.4992,5.4983,5.4992] edges(µm)=49.9/51.2/3.1 feat=[000]
+  [STRATA-comparable fixed oracle 12]: MAX 89.593 µm   locus z=[80.87,80.88,80.87] (67% H) θ=[5.4992,5.4983,5.4992] edges(µm)=49.9/51.2/3.1 feat=[000]
+  TAIL re-measure (worst 3000 @ oracle 44): MAX 93.406 µm  FAIL
+  TAIL-locus: z=[80.87,80.88,80.87] (67% H) θ=[5.4992,5.4983,5.4992] edges(µm)=49.9/51.2/3.1 feat=[000]
+  audit: PARALLEL, 8 workers   main 1259626 facets in 42.4s (chunk 1024)   tail 3000 facets in 0.6s (chunk 5)
+    rA evals: 319.4M in workers — INCLUDED in the total above, because they are the same evaluations a serial run makes
+      + 282.6k identity-lattice and 91 forensic re-evals, both EXCLUDED so both arms print the same total
+    rA identity: 141320 (worker × lattice) comparisons, 0 differ, worst 0.000000 µm — checked BEFORE any facet was scored, run refused on any deviation
+    shared buffers: 19.2 MB vertices + 14.4 MB corners + 19.2 MB results (the mesh is SHARED, never copied per worker)
+    PF_CB_AUDIT_VERIFY=1 to re-score every facet on the main thread and gate bit-identity per facet
+    NB the LOCUS AUDIT (PF_CB_LOCUS_AUDIT=1) is NOT pooled — it is off by default and stays serial.
+  min edge 0.682 µm
+=========================================================

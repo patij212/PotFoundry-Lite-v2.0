@@ -290,13 +290,12 @@ export function assembleConformingCPU(styleId: StyleId): CpuConformingResult {
 const WELD_TOL_MM = 1e-4;
 
 describe.each(ALL_20_STYLES)('conforming goal-vector: %s', (style) => {
-  // Voronoi's conforming mesh carries a KNOWN sub-1e-3 seam crack (3 naked edges at
-  // WELD_TOL_MM=1e-4 — the 2-locus CDT / cellular-seam gap; fix queued). Pin it as
-  // known-defective with `it.fails` (the repo's self-retiring idiom) so the 1e-4 watertight bar
-  // stays HARD for the other 19 styles without falsely asserting Voronoi is clean; the day the
-  // Voronoi mesher is fixed, this flips RED → retire the pin.
-  const gate = style === 'Voronoi' ? it.fails : it;
-  gate('is watertight, manifold, oriented, sliver-free at default dims', () => {
+  // All 20 styles (incl. Voronoi) are watertight at WELD_TOL_MM=1e-4. Voronoi's
+  // former 3-naked-edge crack was a cdt2d closed-constraint-loop hole (a Voronoi
+  // junction whose loop interior was wrongly removed by `{ exterior:false }`),
+  // fixed by the full-triangulation fallback in `triangulateConstrainedCell` —
+  // so the pin (`it.fails`) is retired and this is now a HARD assertion for all 20.
+  it('is watertight, manifold, oriented, sliver-free at default dims', () => {
     const asm = assembleConformingCPU(style);
     const mesh: MeshView = { vertices: asm.vertices, indices: asm.indices };
 

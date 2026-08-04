@@ -4,9 +4,11 @@
 // pots AND the shelf. Also round-trips the compact .pack the fetch-viewer loads.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   parseStl,
@@ -39,6 +41,7 @@ function makeStl(triangles) {
 }
 
 const DIR = mkdtempSync(join(tmpdir(), 'potscope-'));
+const POTSCOPE_CLI = fileURLToPath(new URL('./potscope.mjs', import.meta.url));
 function writeStl(name, triangles) {
   const p = join(DIR, name);
   writeFileSync(p, makeStl(triangles));
@@ -158,6 +161,25 @@ test('readErrorRaw exposes per-triangle mm values + header stats', () => {
   assert.equal(header.count, 2);
   assert.ok(Math.abs(values[1] - 0.009) < 1e-6);
   assert.equal(header.budgetMm, 0.01);
+});
+
+test('view --error accepts mesh-to-surface sidecars without certification diagnostics', () => {
+  const stlPath = writeStl('mesh-to-surface.stl', TRIS_A);
+  writeErr('mesh-to-surface.stl.error.bin', [0.002, 0.009], {
+    style: 'GothicArches',
+    variant: 'mesh-to-surface',
+    semantics: 'max mesh-to-surface deviation',
+  });
+  const outPath = join(DIR, 'mesh-to-surface.error.view.html');
+  const result = spawnSync(
+    process.execPath,
+    [POTSCOPE_CLI, 'view', stlPath, '--error', '--out', outPath],
+    { encoding: 'utf8' },
+  );
+
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.ok(existsSync(outPath), 'error-view HTML is written');
+  assert.match(readFileSync(outPath, 'utf8'), /mesh-to-surface bake/);
 });
 
 // Magic guards: each reader must refuse the OTHER sidecar's envelope (provenance —

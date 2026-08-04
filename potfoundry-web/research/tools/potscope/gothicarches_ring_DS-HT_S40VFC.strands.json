@@ -1,0 +1,41 @@
+{
+ "schema": "pf.strata.strands/1",
+ "run": {
+  "style": "GothicArches",
+  "params": {
+   "gaCounts": 12,
+   "gaRelief": 1.5,
+   "gaPointiness": 1.2,
+   "gaDiamond": 0.5,
+   "gaX": 0,
+   "gaSpring": 0.15,
+   "gaArchHeight": 0.7,
+   "gaRib": 0.04,
+   "gaCol": 0.15,
+   "gaSharp": 4,
+   "gaBands": 1,
+   "gaBandW": 0.04
+  },
+  "dims": {
+   "H": 120,
+   "Rb": 40,
+   "Rt": 50,
+   "expn": 1
+  },
+  "stage": "ring",
+  "tag": "gothicarches_ring_DS-HT_S40VFC"
+ },
+ "wiring": {
+  "accept": true,
+  "split": true
+ },
+ "counts": {
+  "liveFacets": 1259626,
+  "stranded": 0,
+  "listed": 0,
+  "admitChecks": 5403583,
+  "admitRefusedSplit": 40737,
+  "admitForcedPush": 0
+ },
+ "strands": []
+}

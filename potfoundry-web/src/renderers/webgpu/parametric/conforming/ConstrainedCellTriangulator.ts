@@ -96,6 +96,38 @@ export function normalizeWinding(
   return { triangles, inversionCount, droppedCount };
 }
 
+/**
+ * True iff `triangles` leave a HOLE in the cell: some non-perimeter edge is used
+ * by only ONE triangle. In a complete triangulation of the (convex) cell
+ * rectangle every interior edge is shared by two triangles and only the boundary
+ * loop (`i↔i+1`, wrap `0↔nB-1`) is single-sided, so a lone interior edge means a
+ * triangle is missing. Numeric edge key `lo*nPoints + hi` (unique: hi < nPoints).
+ */
+function hasInteriorHole(
+  triangles: Array<[number, number, number]>,
+  nB: number,
+  nPoints: number,
+): boolean {
+  const count = new Map<number, number>();
+  const bump = (x: number, y: number): void => {
+    const key = x < y ? x * nPoints + y : y * nPoints + x;
+    count.set(key, (count.get(key) ?? 0) + 1);
+  };
+  for (const [a, b, c] of triangles) {
+    bump(a, b);
+    bump(b, c);
+    bump(c, a);
+  }
+  for (const [key, cnt] of count) {
+    if (cnt !== 1) continue;
+    const lo = Math.floor(key / nPoints);
+    const hi = key % nPoints;
+    const perim = hi < nB && (hi === lo + 1 || (lo === 0 && hi === nB - 1));
+    if (!perim) return true; // an interior edge with one triangle ⇒ hole
+  }
+  return false;
+}
+
 export function triangulateConstrainedCell(
   input: ConstrainedCellInput,
 ): ConstrainedCellResult {
@@ -118,7 +150,21 @@ export function triangulateConstrainedCell(
   for (const [a, b] of input.constraints) addEdge(a, b);
 
   const xy: Array<[number, number]> = points.map((p) => [p.u, p.t]);
-  const raw = cdt2d(xy, edges, { exterior: false });
+  let raw = cdt2d(xy, edges, { exterior: false });
+
+  // cdt2d's `{ exterior:false }` region-removal punches a HOLE when feature
+  // constraints form a CLOSED LOOP inside the cell (e.g. a Voronoi junction where
+  // 3+ cell-edges meet): it classifies the loop interior as "exterior" and drops
+  // the triangle(s) there, leaving interior naked edges — a real crack in the
+  // watertight wall (the whole cell rectangle is surface; feature edges are
+  // interior creases, not region boundaries). The point set's convex hull is
+  // exactly the cell rectangle (the 4 corners are always in `boundary`), so the
+  // FULL constrained triangulation (no exterior-removal) covers the cell with no
+  // holes. Fall back to it ONLY when a hole is detected → every already-watertight
+  // cell stays byte-identical (the common path is untouched).
+  if (hasInteriorHole(raw, nB, points.length)) {
+    raw = cdt2d(xy, edges);
+  }
 
   // Normalize winding to CCW (cdt2d emits CCW for a CCW boundary, but guard
   // against any inverted/degenerate triangle so downstream orientation holds).

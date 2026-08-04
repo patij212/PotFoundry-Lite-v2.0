@@ -3,22 +3,6 @@
 3D pottery design tool — TypeScript/React SPA on Cloudflare Pages.
 Dual WebGPU (primary) / WebGL (fallback) renderer. Auth via Supabase, payments via Stripe.
 
-## Commands
-
-```bash
-npm run dev           # Dev server → localhost:3000
-npm run build         # Production build → dist/
-npm run deploy        # build + wrangler pages deploy dist
-npm run dev:wrangler  # Local Wrangler Pages dev (edge functions)
-npm run typecheck     # tsc --noEmit
-npm run lint          # ESLint — 0 max-warnings (any warning = CI failure)
-npm run format        # Prettier
-npm run test          # Vitest unit tests (jsdom)
-npm run test:watch    # Vitest watch mode
-npm run test:coverage # Vitest + v8 coverage
-npm run test:e2e      # Playwright E2E
-```
-
 ## Environment Variables
 
 ```
@@ -32,63 +16,8 @@ Without Supabase vars, auth is disabled and all exports are allowed (dev mode).
 
 ## Architecture
 
-```
-src/
-  main.tsx                  # Entry — installs ConsolePatch before anything else
-  App.tsx                   # Root component
-  renderers/
-    factory.ts              # Auto-selects WebGPU → WebGL, handles crash recovery
-    webgpu_core.ts          # WebGPU mount entry point (called by factory.ts)
-    webgpu_geometry.ts      # Fills F32 geometry buffer from React state → GPU
-    webgpu/                 # WGSL compute shaders, parametric export pipeline
-      parametric/           # Modular parametric pipeline (extracted from monolith)
-        types.ts            # Shared types: FeatureChain, ChainPoint, FeaturePoint, etc.
-        CurvatureAnalysis.ts    # Raw curvature computation, normalization, smoothing
-        FeatureDetection.ts     # Per-row/column peak and valley detection
-        ChainLinker.ts          # Feature chain linking, dedup, re-snap, row insertion
-        GridBuilder.ts          # Adaptive grid construction, union feature grids
-        OuterWallTessellator.ts # CDT outer wall mesh generation, UV-snapping
-        MeshOptimizer.ts        # Laplacian relaxation, topology optimization
-        MeshSubdivision.ts      # Adaptive edge subdivision, chain-aware splitting
-        ChainStripOptimizer.ts  # Chain-directed diagonal flipping, strip detection
-        SurfaceEvaluator.ts     # Surface evaluation utilities
-        CurvatureSampler.ts     # Curvature sampling utilities
-        integration.test.ts     # End-to-end pipeline integration tests
-    webgl/                  # Three.js fallback (lazy-loaded)
-  styles/
-    registry.ts             # Single source of truth: style ID, shaderName, UI params
-                            # Add new styles HERE first, before touching anything else
-  geometry/                 # CPU-side mesh generation (TS port of Python geometry.py)
-    meshBuilder.ts          # Builds watertight pot mesh (outer/inner wall, rim, base, drain)
-    styles.ts               # CPU style radius functions — EXPORT PIPELINE ONLY (not rendering)
-                            # May be deprecated once export migrates fully to GPU
-    profile.ts              # Base radius + spin/twist calculations
-    types.ts                # PotDimensions, MeshQuality, StyleId, all geometry types
-    stlExport.ts            # STL + 3MF export (binary STL preferred: 80% smaller)
-    meshDecimator.ts        # LOD decimation
-    __fixtures__/           # Golden reference values for regression tests
-  state/
-    store.ts                # Zustand store — persists geometry/style/mesh/appearance
-    slices/                 # geometry, style, ui, mesh, appearance, performance
-  context/
-    AuthContext.tsx          # Supabase auth state + isPro hook
-    ControllerContext.tsx    # Renderer controller ref
-    LibraryContext.tsx       # Design library
-  hooks/
-    useExportTier.ts         # Tier gating + export recording via Supabase RPC
-  services/
-    supabase.ts             # Client (may be null — always check isSupabaseConfigured())
-    stripe.ts               # Price IDs + tier feature config
-  ui/
-    AppUI.tsx               # Main layout
-    controls/               # DimensionControls, StyleControls, MeshControls, etc.
-    auth/                   # AuthModal, UserMenu, SettingsModal
-    pricing/                # PricingModal
-    layout/                 # Sidebar, Toolbar, StatusBar, MobileBottomSheet
-    debug/                  # ConsoleOverlay (reads from ConsolePatch intercept)
-  utils/geometry/           # CDT triangulation, mesh stitching, chain constraints
-                            # → see docs/geometry.md for full file-by-file reference
-```
+`src/utils/geometry/` — CDT triangulation, mesh stitching, chain constraints.
+See `docs/geometry.md` for the full file-by-file reference.
 
 ## WebGPU Renderer Files (`src/renderers/webgpu/`)
 
@@ -275,46 +204,4 @@ and architectural decisions that must not be reverted, see `../docs/AGENT_CONTEX
 
 For agent workflow protocol and journal rules, see `../agents.md`.
 
-<!-- gitnexus:start -->
-# GitNexus — Code Intelligence
-
-This project is indexed by GitNexus as **PotFoundry-Lite-v2.0** (15144 symbols, 22328 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
-
-> If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
-
-## Always Do
-
-- **MUST run impact analysis before editing any symbol.** Before modifying a function, class, or method, run `gitnexus_impact({target: "symbolName", direction: "upstream"})` and report the blast radius (direct callers, affected processes, risk level) to the user.
-- **MUST run `gitnexus_detect_changes()` before committing** to verify your changes only affect expected symbols and execution flows.
-- **MUST warn the user** if impact analysis returns HIGH or CRITICAL risk before proceeding with edits.
-- When exploring unfamiliar code, use `gitnexus_query({query: "concept"})` to find execution flows instead of grepping. It returns process-grouped results ranked by relevance.
-- When you need full context on a specific symbol — callers, callees, which execution flows it participates in — use `gitnexus_context({name: "symbolName"})`.
-
-## Never Do
-
-- NEVER edit a function, class, or method without first running `gitnexus_impact` on it.
-- NEVER ignore HIGH or CRITICAL risk warnings from impact analysis.
-- NEVER rename symbols with find-and-replace — use `gitnexus_rename` which understands the call graph.
-- NEVER commit changes without running `gitnexus_detect_changes()` to check affected scope.
-
-## Resources
-
-| Resource | Use for |
-|----------|---------|
-| `gitnexus://repo/PotFoundry-Lite-v2.0/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/PotFoundry-Lite-v2.0/clusters` | All functional areas |
-| `gitnexus://repo/PotFoundry-Lite-v2.0/processes` | All execution flows |
-| `gitnexus://repo/PotFoundry-Lite-v2.0/process/{name}` | Step-by-step execution trace |
-
-## CLI
-
-| Task | Read this skill file |
-|------|---------------------|
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-<!-- gitnexus:end -->
+For GitNexus code-intelligence directives, see the root `../CLAUDE.md` (always loaded).

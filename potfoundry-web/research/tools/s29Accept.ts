@@ -35,8 +35,11 @@
 // "at 14,328 named facets and nowhere else" stays checkable rather than asserted.
 // ════════════════════════════════════════════════════════════════════════════════════════════════════════
 
-import { readFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { s29PerpTriangle, type RadiusFn } from './s29Perp';
+import { fpVetoTriangle } from './s29FpVeto';
 
 const TWO_PI = 2 * Math.PI;
 
@@ -75,6 +78,10 @@ export interface S29Override {
     listedTests: number; listedHits: number; perpEvals: number; perpRejects: number; memoHits: number;
     rAEvals: number; strandedSites: number; strandedMembers: number;
     worstDTheta: number; worstDz: number; maxPerpUm: number;
+    /** is the foot-point ruler running instead of the S29 sweep+descent+Newton one? (PF_CB_FPVETO) */
+    fpVeto: boolean;
+    /** lattice points tightened by Gauss-Newton. Zero under the S29 ruler. */
+    fpPoints: number;
   };
   file: S29MembersFile;
 }
@@ -109,7 +116,7 @@ export function verifyMembersProvenance(
 export function loadS29Override(
   path: string,
   expect: { key: string; style: string; stage: string; tolMm: number },
-  opts: { barMm?: number } = {},
+  opts: { barMm?: number; fpVeto?: boolean } = {},
 ): S29Override {
   const f = JSON.parse(readFileSync(path, 'utf8')) as S29MembersFile;
   const mism = verifyMembersProvenance(f, expect);
@@ -117,6 +124,16 @@ export function loadS29Override(
     throw new Error(`PF_CB_ACCEPT_OVERRIDE=${path} does not match this run:\n  ${mism.join('\n  ')}`);
   }
   const bar = opts.barMm ?? f.tolUm / 1000;
+  // ── PF_CB_FPVETO — THE FOOT-POINT RULER, NEW AND DEFAULT OFF. ──────────────────────────────────────────
+  // The rule, the membership gate, the memo, the sink guard and the re-push at the BLIND key are all
+  // unchanged; the ONLY substitution is the point ruler underneath `perpOk`. S29 is not refuted, it is
+  // re-priced: it died at ~2,844 rA evaluations per honest accept test with the mesher exhausting its whole
+  // 5,400 s budget, and `s29PerpAt` spends ~1,241 of those on ONE point (81-seed sweep + 3x40 damped Newton
+  // + a 40-iteration coordinate descent). `fpVetoTriangle` spends ~5 an iteration. See `s29FpVeto.ts` for
+  // why this is Gauss-Newton and not full Newton, and why the reading is still an upper bound.
+  // The lever is read from the environment when the caller does not pass one, so BOTH drivers pick it up
+  // with no diff; an explicit `opts.fpVeto` always wins.
+  const fpVeto = opts.fpVeto ?? (process.env.PF_CB_FPVETO === '1');
 
   const { dTheta: cdT, dZ: cdZ, nTheta: cnT, nZ: cnZ } = f.cellGrid;
   const mask = new Uint8Array(cnT * cnZ);
@@ -136,7 +153,7 @@ export function loadS29Override(
 
   let listedTests = 0; let listedHits = 0;
   let perpEvals = 0; let perpRejects = 0; let rAEvals = 0;
-  let worstDTheta = 0; let worstDz = 0; let maxPerpUm = 0;
+  let worstDTheta = 0; let worstDz = 0; let maxPerpUm = 0; let fpPoints = 0;
   const memo = new Map<string, number>();
   let memoHits = 0;
 
@@ -233,19 +250,30 @@ export function loadS29Override(
     const hit = memo.get(key);
     if (hit !== undefined) { memoHits += 1; return hit <= bar; }
     perpEvals += 1;
-    const r = s29PerpTriangle(rA, ax, ay, az, bx, by, bz, cx, cy, cz, { H, tol: bar });
-    memo.set(key, r.witnessed);
-    rAEvals += r.cost;
-    if (r.worstDTheta > worstDTheta) worstDTheta = r.worstDTheta;
-    if (r.worstDz > worstDz) worstDz = r.worstDz;
-    const um = r.witnessed * 1000;
+    let witnessed: number;
+    if (fpVeto) {
+      // The foot-point ruler has no seed grid, so `worstDTheta`/`worstDz` — the registered SEED-PITCH
+      // print — stay at zero and the report says so rather than printing a pitch nothing realised.
+      const r = fpVetoTriangle(rA, ax, ay, az, bx, by, bz, cx, cy, cz, { H, tol: bar });
+      witnessed = r.witnessed;
+      rAEvals += r.cost;
+      fpPoints += r.fpPoints;
+    } else {
+      const r = s29PerpTriangle(rA, ax, ay, az, bx, by, bz, cx, cy, cz, { H, tol: bar });
+      witnessed = r.witnessed;
+      rAEvals += r.cost;
+      if (r.worstDTheta > worstDTheta) worstDTheta = r.worstDTheta;
+      if (r.worstDz > worstDz) worstDz = r.worstDz;
+    }
+    memo.set(key, witnessed);
+    const um = witnessed * 1000;
     if (um > maxPerpUm) maxPerpUm = um;
 
     // ── SINK GUARD. Observe the reading, charge the demand, trip on a site that is not improving.
     const th = Math.atan2((ay + by + cy) / 3, (ax + bx + cx) / 3);
     const s = siteAt(th, (az + bz + cz) / 3);
     if (s !== undefined) {
-      if (r.witnessed > bar) {
+      if (witnessed > bar) {
         // *** THE SITE'S READING IS OBSERVED ONLY FROM FACETS STILL OVER THE BAR, AND THAT IS WHAT GIVES
         // *** THIS GUARD TEETH.
         // The first wiring updated `bestUm` from EVERY evaluation. An accepted facet at the site reads
@@ -272,8 +300,8 @@ export function loadS29Override(
         }
       }
     }
-    if (r.witnessed > bar) perpRejects += 1;
-    return r.witnessed <= bar;
+    if (witnessed > bar) perpRejects += 1;
+    return witnessed <= bar;
   };
 
   return {
@@ -281,7 +309,7 @@ export function loadS29Override(
     perpOk,
     strands: () => stranded,
     stats: () => ({
-      listedTests, listedHits, perpEvals, perpRejects, memoHits, rAEvals,
+      listedTests, listedHits, perpEvals, perpRejects, memoHits, rAEvals, fpVeto, fpPoints,
       strandedSites: stranded.length,
       strandedMembers: stranded.reduce((a, s) => a + s.members, 0),
       worstDTheta, worstDz, maxPerpUm,
@@ -302,9 +330,11 @@ export function loadS29Override(
 
 export function selftest(): number {
   /* eslint-disable no-console */
-  const { writeFileSync, mkdtempSync } = require('node:fs') as typeof import('node:fs');
-  const { join } = require('node:path') as typeof import('node:path');
-  const { tmpdir } = require('node:os') as typeof import('node:os');
+  // `node:fs` / `node:path` / `node:os` are imported STATICALLY at the top of this file. They used to be
+  // pulled in here with `require`, which is not defined when the module is loaded as ESM — so `selftest()`
+  // threw a ReferenceError on its first line and ran ZERO bars under `npx tsx research/tools/s29AcceptCli.ts
+  // --selftest`. A self-test that cannot start is indistinguishable from one that passes if nobody reads the
+  // exit path, which is the failure mode this whole file exists to refuse.
 
   const R0 = 45; const H = 120;
   const cyl: RadiusFn = () => R0;
@@ -336,7 +366,7 @@ export function selftest(): number {
     ];
   };
 
-  const build = (entryUm: number): S29Override => {
+  const build = (entryUm: number): { ov: S29Override; path: string } => {
     const th = 1.0; const z = 60;
     const cells: number[] = [];
     const i0 = Math.floor((th - 0.02) / CDT); const i1 = Math.floor((th + 0.02) / CDT);
@@ -358,14 +388,14 @@ export function selftest(): number {
     const dir = mkdtempSync(join(tmpdir(), 's29self-'));
     const p = join(dir, 'members.json');
     writeFileSync(p, JSON.stringify(doc));
-    return loadS29Override(p, { key: KEY, style: 'SELFTEST', stage: 'ring', tolMm: 0.01 });
+    return { ov: loadS29Override(p, { key: KEY, style: 'SELFTEST', stage: 'ring', tolMm: 0.01 }), path: p };
   };
 
   console.log('=== S29 ACCEPT-OVERRIDE — SINK GUARD SELF-TEST ===');
 
   // ── G0: membership is reachable at all, and NOT reachable outside the region.
   {
-    const ov = build(25);
+    const ov = build(25).ov;
     const inside = ov.listed(1.0, 1.0 + 1e-4, 1.0 + 5e-5, 60, 60, 60.02);
     const outside = ov.listed(4.0, 4.0 + 1e-4, 4.0 + 5e-5, 20, 20, 20.02);
     ok(inside && !outside, 'G0 membership is a REGION, not everything',
@@ -375,7 +405,7 @@ export function selftest(): number {
   // ── G1: THE GUARD FIRES. 200 distinct facets at one site, all reading 20.000 um against an entry of
   //       25 um. 20.000 > 25/1.5 = 16.67, so the reading has NOT fallen and the site must re-strand.
   {
-    const ov = build(25);
+    const ov = build(25).ov;
     // 200 DISTINCT facets inside ONE site. They must differ in GEOMETRY, not merely in index: the memo is
     // keyed by the canonical vertex triple, so 200 indices of one facet is now ONE evaluation and one
     // charge — which is precisely what the cache is for, and it made the first version of this bar read
@@ -398,7 +428,7 @@ export function selftest(): number {
   // ── G2: THE GUARD STAYS QUIET when the reading HAS fallen. Same 200 facets, same bar, but an entry of
   //       100 um: 20.000 < 100/1.5 = 66.7, so refinement is working and no strand is recorded.
   {
-    const ov = build(100);
+    const ov = build(100).ov;
     for (let i = 0; i < 200; i += 1) {
       const t = tri(1.0 + i * 1e-5, 60, 0.020);
       ov.perpOk(i, cyl, H, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
@@ -412,7 +442,7 @@ export function selftest(): number {
   //       destroy and re-create facets with identical vertices under fresh indices, so an index-keyed memo
   //       missed nearly every repeat and paid ~4,740 rA evaluations again each time.
   {
-    const ov = build(25);
+    const ov = build(25).ov;
     const t = tri(1.0, 60, 0.020);
     for (let i = 0; i < 500; i += 1) ov.perpOk(i, cyl, H, t[0], t[1], t[2], t[3], t[4], t[5], t[6], t[7], t[8]);
     const st = ov.stats();
@@ -427,12 +457,23 @@ export function selftest(): number {
 
   // ── G4: PROVENANCE IS REFUSED, NOT WARNED ABOUT.
   {
-    let threw = false;
-    try { build(25); loadS29Override(
-      (() => { const ov = build(25); return (ov as unknown as { _p?: string })._p ?? ''; })(),
-      { key: 'WRONG', style: 'SELFTEST', stage: 'ring', tolMm: 0.01 },
-    ); } catch { threw = true; }
-    ok(threw, 'G4 a mismatched run key is REFUSED', 'loadS29Override threw');
+    // *** THIS BAR USED TO PASS FOR THE WRONG REASON. *** It read `._p` off the override — a field that has
+    // never existed — so it handed `loadS29Override` an EMPTY PATH and caught the ENOENT from `readFileSync`.
+    // It proved the file system refuses '' and said nothing whatever about provenance. The path is now
+    // returned by `build`, so the file genuinely exists and the ONLY thing that can throw is the key check;
+    // and the message is inspected, so a future ENOENT cannot quietly re-take this bar's credit.
+    const { path } = build(25);
+    let msg = '';
+    try {
+      loadS29Override(path, { key: 'WRONG', style: 'SELFTEST', stage: 'ring', tolMm: 0.01 });
+    } catch (e) { msg = e instanceof Error ? e.message : String(e); }
+    ok(msg.includes('does not match this run') && msg.includes("key: file"),
+      'G4 a mismatched run key is REFUSED (on a file that EXISTS)',
+      msg === '' ? '*** loadS29Override ACCEPTED a foreign key ***' : (msg.split('\n')[1] ?? msg).trim());
+    // and the control: the SAME file with the RIGHT key loads.
+    let okLoad = true;
+    try { loadS29Override(path, { key: KEY, style: 'SELFTEST', stage: 'ring', tolMm: 0.01 }); } catch { okLoad = false; }
+    ok(okLoad, 'G4 control — the same file with the RIGHT key LOADS', 'the refusal above is the key, not the file');
   }
 
   console.log(`\n=== ${fails === 0 ? 'ALL SINK-GUARD BARS PASS' : `*** ${fails} BAR(S) FAILED ***`} ===`);

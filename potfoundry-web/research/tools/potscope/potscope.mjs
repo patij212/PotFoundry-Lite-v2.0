@@ -2303,12 +2303,29 @@ function packViewerHtml(model) {
   const ceramic = model.mode === 'ceramic';
   const errorView = model.mode === 'error';
   const um = (mm) => (mm * 1000).toFixed(mm * 1000 >= 100 ? 0 : mm * 1000 >= 10 ? 1 : 2);
+  // Mesh-to-surface sidecars predate the certification diagnostics below. Those
+  // fields are useful when present, but are not part of the error sidecar core
+  // contract, so their absence must not prevent the viewer from being written.
+  const errorDetails = errorView
+    ? [
+      `${model.errorMeta.variant ?? 'error'} bake`,
+      Number.isFinite(model.errorMeta.enclosures)
+        ? `${model.errorMeta.enclosures.toLocaleString()} enclosures`
+        : null,
+      Number.isFinite(model.errorMeta.unconverged)
+        ? `${model.errorMeta.unconverged} unconverged`
+        : null,
+      Number.isFinite(model.errorMeta.decimalFallbacks) && model.errorMeta.decimalFallbacks > 0
+        ? `${model.errorMeta.decimalFallbacks} decimal fallbacks`
+        : null,
+    ].filter(Boolean).join(' · ')
+    : '';
   const legendBlock = errorView
     ? `<div id="legend">
   <label><input type="checkbox" id="ovl" checked> error overlay <span class="dim">(press e)</span></label>
   <div id="bar"></div>
   <div id="ticks"><span>0</span><span>${um(model.errorMeta.budgetMm)}µm budget</span><span>${um(model.errorMeta.stats.maxMm)}µm max</span></div>
-  <div id="stats">${model.errorMeta.semantics === 'certifies-at-level' ? 'per-triangle certifies-at level (guaranteed bound vs analytic target)' : 'true-3D error vs certified analytic target'} — p50 ${um(model.errorMeta.stats.p50Mm)}µm · p99 ${um(model.errorMeta.stats.p99Mm)}µm · max ${um(model.errorMeta.stats.maxMm)}µm<br>${model.errorMeta.variant} bake · ${model.errorMeta.enclosures.toLocaleString()} enclosures · ${model.errorMeta.unconverged} unconverged${model.errorMeta.decimalFallbacks ? ` · ${model.errorMeta.decimalFallbacks} decimal fallbacks` : ''}</div>
+  <div id="stats">${model.errorMeta.semantics === 'certifies-at-level' ? 'per-triangle certifies-at level (guaranteed bound vs analytic target)' : 'true-3D error vs certified analytic target'} — p50 ${um(model.errorMeta.stats.p50Mm)}µm · p99 ${um(model.errorMeta.stats.p99Mm)}µm · max ${um(model.errorMeta.stats.maxMm)}µm<br>${errorDetails}</div>
 </div>`
     : '';
   const vsrc = errorView

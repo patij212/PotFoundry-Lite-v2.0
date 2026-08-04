@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Documentation index</title>
+<style>
+:root{--bg:#ffffff;--fg:#1a2029;--muted:#5a6570;--line:#e2e6ec;--accent:#2E74B5;--ink:#0B2545;
+--code-bg:#f2f5f9;--code-fg:#1F4D78;--tbl-head:#eef3f9;--tbl-alt:#f8fafc;
+--info:#2E74B5;--info-bg:#f1f6fc;--caution:#B8860B;--caution-bg:#fdf7e8;--danger:#9B1C1C;--danger-bg:#fdecec;}
+@media (prefers-color-scheme:dark){:root{--bg:#12161c;--fg:#dce3ec;--muted:#93a0b0;--line:#2a323c;
+--accent:#5aa0e6;--ink:#cbd8ea;--code-bg:#1b2028;--code-fg:#8fc4ff;--tbl-head:#1c2530;--tbl-alt:#171c23;
+--info:#5aa0e6;--info-bg:#141c26;--caution:#d7a53a;--caution-bg:#211d12;--danger:#e06666;--danger-bg:#231416;}}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--fg);
+font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;}
+.top{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--line);
+padding:10px 20px;display:flex;gap:14px;align-items:baseline;font-size:13px}
+.top a{color:var(--accent);text-decoration:none}.top a:hover{text-decoration:underline}
+.top .brand{font-weight:700;letter-spacing:.06em;color:var(--muted);text-transform:uppercase;font-size:11px}
+main{max-width:900px;margin:0 auto;padding:34px 22px 90px}
+.cover{text-align:center;border-bottom:1px solid var(--line);margin-bottom:26px;padding-bottom:22px}
+.cover .eyebrow{color:var(--caution);font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-size:12px}
+.cover .cover-title{font-size:38px;font-weight:800;color:var(--ink);margin:8px 0 2px}
+.cover .cover-subtitle{font-size:19px;color:var(--accent);margin:0 0 10px}
+.cover .cover-line{color:var(--muted);margin:2px 0;font-size:14px}
+.cover .danger-note{color:var(--danger);font-weight:700;margin-top:14px}
+h1{font-size:26px;color:var(--ink);margin:34px 0 12px;padding-bottom:6px;border-bottom:2px solid var(--accent);line-height:1.25}
+h2{font-size:20px;color:var(--accent);margin:26px 0 10px}
+h3{font-size:16px;color:var(--ink);margin:20px 0 8px}
+h1:first-child{margin-top:0}
+p{margin:10px 0}
+a{color:var(--accent)}
+code{font-family:"Consolas","SF Mono",Menlo,Consolas,monospace;background:var(--code-bg);color:var(--code-fg);
+padding:.05em .38em;border-radius:4px;font-size:.9em;font-weight:600}
+pre{background:var(--code-bg);padding:12px 14px;border-radius:8px;overflow:auto;border:1px solid var(--line)}
+pre code{background:none;padding:0;font-weight:400;color:var(--fg)}
+table{border-collapse:collapse;width:100%;margin:16px 0;font-size:14px;display:block;overflow-x:auto}
+th,td{border:1px solid var(--line);padding:8px 11px;text-align:left;vertical-align:top}
+thead th{background:var(--tbl-head);color:var(--ink);font-weight:700}
+tbody tr:nth-child(even){background:var(--tbl-alt)}
+ul,ol{margin:10px 0;padding-left:26px}li{margin:5px 0}
+blockquote{margin:16px 0;padding:10px 16px;border-left:4px solid var(--accent);background:var(--info-bg);
+color:var(--fg);border-radius:0 6px 6px 0}
+blockquote p:first-child{margin-top:0}blockquote p:last-child{margin-bottom:0}
+.callout{margin:16px 0;padding:12px 16px;border-left:5px solid var(--info);background:var(--info-bg);border-radius:0 8px 8px 0}
+.callout-caution{border-color:var(--caution);background:var(--caution-bg)}
+.callout-danger{border-color:var(--danger);background:var(--danger-bg)}
+figure{margin:20px 0;text-align:center}
+figure img{max-width:100%;height:auto;border:1px solid var(--line);border-radius:8px;background:#fff}
+.caption{color:var(--muted);font-style:italic;font-size:13px;margin-top:6px;text-align:center}
+nav.toc{background:var(--tbl-alt);border:1px solid var(--line);border-radius:10px;padding:14px 20px;margin:0 0 26px}
+nav.toc .toc-title{font-weight:700;color:var(--ink);margin-bottom:8px}
+nav.toc ol{list-style:none;padding-left:0;margin:0;counter-reset:none}
+nav.toc a{text-decoration:none}nav.toc a:hover{text-decoration:underline}
+nav.toc .l1{margin:7px 0 2px;font-weight:600}
+nav.toc .l2{margin:1px 0 1px 22px;font-size:14px}
+.chk{color:var(--accent);font-weight:700;margin-right:2px}
+.index-groups{display:grid;gap:22px}
+.index-card{border:1px solid var(--line);border-radius:12px;padding:16px 20px;background:var(--tbl-alt)}
+.index-card h2{margin-top:0}
+.index-card ul{list-style:none;padding-left:0}
+.index-card li{margin:8px 0}
+.index-card .desc{color:var(--muted);font-size:13px}
+hr{border:none;border-top:1px solid var(--line);margin:26px 0}
+</style></head>
+<body>
+<div class="top"><span class="brand">DASA Sea Ice · Phase B</span>
+<a href="index.html">&larr; All documents</a></div>
+<main>
+<h1 id="dasa-sea-ice-phase-b-documentation-index">DASA Sea Ice Phase B - documentation index</h1>
+<p><strong>Current firmware:</strong> v0.4.0<br>
+<strong>Current bench image:</strong> <code>firmware_src/dasa_sea_ice_firmware-master/release/dasa-sea-ice-v0.4.0-step4.uf2</code><br>
+<strong>Status:</strong> software/pre-bench complete; physical modification, calibration and full bench acceptance outstanding.</p>
+<h2 id="source-of-truth-order">Source-of-truth order</h2>
+<p>If documents disagree, use this precedence:</p>
+<ol>
+<li>Recorded measurements from the actual modified F3 and completed bench checklist.</li>
+<li>Active v0.4.0 source under <code>firmware_src/dasa_sea_ice_firmware-master/</code>.</li>
+<li>Current operating documents listed below.</li>
+<li>Original system architecture document for the documented Molex/S358/S403 modification evidence.</li>
+<li>Historical designs, implementation plans and v0.2.0 review packages.</li>
+</ol>
+<p>Do not field-deploy on an unresolved disagreement; update the active document and rebuild/retest the
+UF2 if firmware constants change.</p>
+<h2 id="current-operating-documents">Current operating documents</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="CHANGELOG.html"><code>../firmware_src/dasa_sea_ice_firmware-master/CHANGELOG.md</code></a></td>
+<td>Concise version-by-version changelog (v0.1.4 baseline -&gt; v0.2.0 -&gt; v0.3.0 -&gt; v0.4.0) with per-version UF2 SHAs.</td>
+</tr>
+<tr>
+<td><a href="DASA-Sea-Ice-Phase-B-Change-Report.html"><code>DASA-Sea-Ice-Phase-B-Change-Report.md</code></a></td>
+<td>Complete v0.1.4-to-v0.4.0 change/file audit and every outstanding acceptance item.</td>
+</tr>
+<tr>
+<td><a href="readme.html"><code>../firmware_src/dasa_sea_ice_firmware-master/readme.md</code></a></td>
+<td>Firmware setup, commands, deployment and release checksum.</td>
+</tr>
+<tr>
+<td><a href="HARDWARE-PINOUT.html"><code>../firmware_src/dasa_sea_ice_firmware-master/docs/HARDWARE-PINOUT.md</code></a></td>
+<td>Correct Feather assignments: D0/D4/D5/A3 and D1/D10/D11.</td>
+</tr>
+<tr>
+<td><a href="WIRING-GUIDE.html"><code>../firmware_src/dasa_sea_ice_firmware-master/docs/WIRING-GUIDE.md</code></a></td>
+<td>End-to-end power, shore divider, F3 connector, button/status and I2S wiring.</td>
+</tr>
+<tr>
+<td><a href="F3-MODIFICATION-PROCEDURE.html"><code>../firmware_src/dasa_sea_ice_firmware-master/docs/F3-MODIFICATION-PROCEDURE.md</code></a></td>
+<td>Molex SL breakout, S358/S403 mapping, solder/test sequence and stop conditions.</td>
+</tr>
+<tr>
+<td><a href="STEP4-BENCH-CHECKLIST.html"><code>../firmware_src/dasa_sea_ice_firmware-master/docs/STEP4-BENCH-CHECKLIST.md</code></a></td>
+<td>Required physical calibration, sequence, failure-path and regression acceptance.</td>
+</tr>
+<tr>
+<td><a href="STEP4-PRE-BENCH-REVIEW.html"><code>../firmware_src/dasa_sea_ice_firmware-master/docs/STEP4-PRE-BENCH-REVIEW.md</code></a></td>
+<td>Completed host tests, compile and UF2 validation evidence.</td>
+</tr>
+<tr>
+<td><a href="POST-BENCH-CLOSEOUT.html"><code>../firmware_src/dasa_sea_ice_firmware-master/docs/POST-BENCH-CLOSEOUT.md</code></a></td>
+<td>What remains after bench acceptance: final re-spin, sign-off, GitLab push and conditional follow-on work.</td>
+</tr>
+<tr>
+<td><a href="2026-07-24-step4-final-recorder-control-design.html"><code>superpowers/specs/2026-07-24-step4-final-recorder-control-design.md</code></a></td>
+<td>Current Step 4 (v0.4.0) design record: Alexis-spec recorder control - timed power, recording-vs-not LED, self-retry. Supersedes the 2026-07-21 provisional design.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="original-project-evidence">Original project evidence</h2>
+<table>
+<thead>
+<tr>
+<th>Source</th>
+<th>What remains authoritative</th>
+<th>What has been superseded</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DASA+Sea+Ice+-+Phase+B+(2025)+System+Design+_+Architecture.doc</code></td>
+<td>Existing modified F3 uses Molex SL: pin 1 GND; pin 2 record/S358; pin 3 power/S403; pin 4 status. Button signals float near 3.0 V. Status levels are approximately 0.2 V OFF, 0 V idle and 1.7 V recording/turn-on.</td>
+<td>Its Feather table labels status on D13; v0.4.0 correctly uses ADC pin A3. Short-ON/long-OFF is now Alexis's 1 s / 2 s.</td>
+</tr>
+<tr>
+<td><code>dasa sea ice block diagram - Phase B v2.4.pdf</code></td>
+<td>Shore 5V is detected before the hold-up power bank; the bank keeps the Feather/F3 powered through shore loss.</td>
+<td>TAS5634/TAS1020/USB-audio amplifier labelling is historical; v0.4.0 outputs generic 3-wire I2S.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="official-external-manuals">Official external manuals</h2>
+<ul>
+<li>Zoom F3 operation manual: https://zoomcorp.com/manuals/f3-en/</li>
+<li>Zoom F3 support, current firmware and downloadable manuals: https://zoomcorp.com/en/us/field-recorders/field-recorders/f3/f3-support/</li>
+<li>Zoom F3 Control app/manual: https://zoomcorp.com/en/us/software-product-page/software-sub-cat/f3-control/</li>
+<li>Adafruit Feather M4 pinouts: https://learn.adafruit.com/adafruit-feather-m4-express-atsamd51/pinouts</li>
+<li>Adafruit Feather M4 power management: https://learn.adafruit.com/adafruit-feather-m4-express-atsamd51/power-management</li>
+</ul>
+<p>Check the Zoom support page before updating a recorder; as of this review (2026-07-21), it lists F3
+system firmware v2.20. Firmware updates are separate from the DASA Feather firmware.</p>
+<h2 id="historical-material-do-not-use-as-current-operating-instructions">Historical material - do not use as current operating instructions</h2>
+<ul>
+<li><code>archive/DASA-Sea-Ice-Phase-B-Review/</code> and its ZIP: frozen v0.2.0 Steps 1-3 review package and UF2.</li>
+<li><code>DASA-Sea-Ice-Phase-B-Firmware-Review.md</code>: historical v0.2.0 review.</li>
+<li><code>DASA-Sea-Ice-Phase-B-Firmware-Design.md</code>: historical pre-Step-4 design evolution.</li>
+<li><code>DASA-Sea-Ice-Phase-B-Implementation-Plan.md</code>: historical implementation plan and obsolete code snippets.</li>
+<li><code>superpowers/specs/2026-07-21-step4-recorder-control-design.md</code> and <code>superpowers/plans/2026-07-21-step4-recorder-control.md</code>: the provisional v0.3.0 Step 4 design and plan, superseded by the 2026-07-24 final design; current source and operating manuals take precedence.</li>
+<li>Files under firmware <code>_archive/</code>: excluded from compilation and retained only for reference.</li>
+</ul>
+<h2 id="known-discrepancies-and-their-current-resolution">Known discrepancies and their current resolution</h2>
+<table>
+<thead>
+<tr>
+<th>Topic</th>
+<th>Historical statement</th>
+<th>Current resolution</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Status pin</td>
+<td>D13</td>
+<td><strong>A3</strong> analog input. D13 unused.</td>
+</tr>
+<tr>
+<td>Shore input</td>
+<td>Not assigned / old D5 SD-CS</td>
+<td><strong>D5</strong> through measured 22k/33k divider.</td>
+</tr>
+<tr>
+<td>F3 connector</td>
+<td>Implied in block diagram</td>
+<td>Exact Molex mapping recovered from architecture: 1 GND, 2 record/S358, 3 power/S403, 4 status.</td>
+</tr>
+<tr>
+<td>Power timing</td>
+<td>Short ON, long OFF</td>
+<td>Alexis spec: power-ON 1 s, power-OFF 2 s (bench-tune on the F3).</td>
+</tr>
+<tr>
+<td>Amplifier interface</td>
+<td>TAS5634/TAS1020/USB audio</td>
+<td>Generic I2S: D1 BCLK, D10 LRCLK, D11 DATA. Selected amplifier compatibility remains a bench item.</td>
+</tr>
+<tr>
+<td>Step 4</td>
+<td>Deferred</td>
+<td>Implemented in v0.4.0; physical acceptance remains outstanding.</td>
+</tr>
+</tbody>
+</table>
+</main></body></html>

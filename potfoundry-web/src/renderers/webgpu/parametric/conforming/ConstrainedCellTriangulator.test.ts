@@ -86,6 +86,80 @@ describe('triangulateConstrainedCell', () => {
     }
   });
 
+  /**
+   * Count edges used by exactly ONE triangle that are NOT cell-perimeter edges
+   * (boundary loop `i↔i+1`, wrap `0↔nB-1`). In a watertight cell every interior
+   * edge is shared by 2 triangles, so a non-zero count is a hole (missing triangle).
+   */
+  function interiorNakedCount(
+    tris: Array<[number, number, number]>,
+    nB: number,
+  ): number {
+    const isPerim = (lo: number, hi: number): boolean =>
+      hi < nB && (hi === lo + 1 || (lo === 0 && hi === nB - 1));
+    const count = new Map<string, number>();
+    for (const [a, b, c] of tris) {
+      for (const [x, y] of [[a, b], [b, c], [c, a]] as Array<[number, number]>) {
+        const lo = Math.min(x, y);
+        const hi = Math.max(x, y);
+        const k = `${lo}:${hi}`;
+        count.set(k, (count.get(k) ?? 0) + 1);
+      }
+    }
+    let naked = 0;
+    for (const [k, cnt] of count) {
+      if (cnt !== 1) continue;
+      const [lo, hi] = k.split(':').map(Number);
+      if (!isPerim(lo, hi)) naked++;
+    }
+    return naked;
+  }
+
+  it('fills a closed feature loop inside a cell (cdt2d exterior-removal hole)', () => {
+    // Real failing Voronoi outer-wall cell (u∈[79/128,80.5/128], t∈[14/128,15/128])
+    // dumped from assembleConformingCPU('Voronoi'). The feature constraints form a
+    // CLOSED LOOP among {7,8,9} (a Voronoi junction) plus a pendant edge 9↔5. cdt2d
+    // with { exterior:false } classifies the loop interior as "exterior" and drops
+    // the triangle (7,8,9), leaving a 3-naked-edge hole. The whole cell rectangle is
+    // real surface, so the triangulation MUST cover it — no interior naked edges.
+    const boundary: CellPoint[] = [
+      { u: 0.6171875, t: 0.109375 }, // 0 SW
+      { u: 0.619140625, t: 0.109375 }, // 1 S-mid
+      { u: 0.62109375, t: 0.109375 }, // 2 SE
+      { u: 0.62109375, t: 0.11328125 }, // 3 E-mid
+      { u: 0.62109375, t: 0.1171875 }, // 4 NE
+      { u: 0.618539683, t: 0.1171875 }, // 5 N feature crossing
+      { u: 0.6171875, t: 0.1171875 }, // 6 NW
+      { u: 0.6171875, t: 0.113502935 }, // 7 W feature crossing
+    ];
+    const interior: CellPoint[] = [
+      { u: 0.61875, t: 0.11338815 }, // 8
+      { u: 0.61875, t: 0.115210586 }, // 9
+    ];
+    // Feature edges: triangle 7-8-9 (closed loop) + pendant 9-5.
+    const constraints: Array<[number, number]> = [[8, 7], [7, 9], [9, 8], [5, 9], [9, 7]];
+    const res = triangulateConstrainedCell({ boundary, interior, constraints });
+
+    // The cell must be watertight: no interior edge left with a single triangle.
+    expect(interiorNakedCount(res.triangles, boundary.length)).toBe(0);
+
+    // Full rectangle coverage (Δu·Δt), all triangles CCW.
+    const rectArea = (0.62109375 - 0.6171875) * (0.1171875 - 0.109375);
+    expect(totalArea(res)).toBeCloseTo(rectArea, 9);
+    for (const [a, b, c] of res.triangles) {
+      expect(signedArea(res.points[a], res.points[b], res.points[c])).toBeGreaterThan(0);
+    }
+
+    // Every boundary vertex is retained (no T-junction on a shared perimeter edge).
+    const used = new Set(res.triangles.flat());
+    for (let i = 0; i < boundary.length + interior.length; i++) expect(used.has(i)).toBe(true);
+
+    // The closed-loop feature edges survive as real mesh edges (sharp creases).
+    expect(hasEdge(res.triangles, 7, 8)).toBe(true);
+    expect(hasEdge(res.triangles, 8, 9)).toBe(true);
+    expect(hasEdge(res.triangles, 7, 9)).toBe(true);
+  });
+
   it('threads a bent (multi-segment) feature through an interior vertex', () => {
     // Curve enters west edge, bends at an interior point, exits east edge.
     const boundary: CellPoint[] = [
