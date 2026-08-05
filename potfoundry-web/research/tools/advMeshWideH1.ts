@@ -1,5 +1,39 @@
 // advMeshWideH1.ts — THE ATTACK ON MY OWN REFUTATION.
 //
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// *** CORRECTION 2026-08-05: THIS FILE MEASURES H2 (surface -> mesh), NOT H1 (mesh -> surface).
+//     ITS NUMBER IS RIGHT. ITS NAME AND EVERY CONCLUSION DRAWN FROM IT AS "H1" ARE NOT. ***
+// ═════════════════════════════════════════════════════════════════════════════════════════════════
+// Two harnesses disagreed by 15.7x on the SAME STL — this one reporting "exact mesh-wide H1 =
+// 22.190 um" for S39CTL (commit 943427c6) against `certifyTriangle` at the 10 um product bar proving
+// 349.221 um on the same style. Both benign explanations were ruled out (the STL is unmodified and
+// predates both runs; the rebuilt rA sits on the mesh to 10 nanometres). The resolution is not a bug
+// in either — IT IS THAT THEY MEASURE OPPOSITE HAUSDORFF DIRECTIONS.
+//
+// Look at the sample construction below (~line 122):
+//       const r  = rA(theta, z);                       <- a point ON THE ANALYTIC SURFACE
+//       const qx = r*cos(theta); qy = r*sin(theta);
+//       ptTri2(qx, qy, z, <the triangle>)              <- its distance TO THE MESH
+// Samples lie on the SURFACE and are measured to the MESH. That is H2. `certifyTriangle` walks points
+// ON THE FACET and measures them to the SURFACE, which is H1. They are different quantities and there
+// is no reason for them to agree.
+//
+// AND THE DIFFERENCE IS EXACTLY THE DEFECT THIS CAMPAIGN IS CHASING. A facet standing off the wall —
+// a fin, a spike, the thing the operator photographed in the slicer — has points far from the surface,
+// so H1 is LARGE. Every surface point near it still has SOME facet close by, so H2 stays SMALL. *** AN
+// H2 RULER IS STRUCTURALLY INCAPABLE OF SEEING A FACET STICKING OUT INTO SPACE. *** So this file's
+// 22.190 um cannot bound that class, and the "real gain 1.33x, the 4.37x claim is over-stated 3.3x"
+// conclusion was computed in the one direction that cannot see it. (The 4.37x claim was ALSO wrong,
+// for the separate reason that it was measured on the driver's blind plane ruler. Two wrong numbers
+// do not make one right one; the H1 number is `certifyTriangle`'s.)
+//
+// The header below is the file as written and is left intact — it is honest about measuring "how far
+// is the SURFACE from the MESH", which is H2 stated in words. Only the LABEL was wrong, and a label is
+// enough: it put 22.190 into a commit subject as H1 and two agents nearly built on it.
+// WHAT THIS FILE IS GOOD FOR, unchanged: it is a sound H2 instrument and the neighbour-rescue question
+// it was built to answer (does a per-facet ptTri over-state the mesh-wide quantity?) is a real one.
+// Read its output as H2 and it is trustworthy.
+//
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // THE HOLE I AM CLOSING
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -90,7 +124,8 @@ function ptTri2(
   return (qx - ex) * (qx - ex) + (qy - ey) * (qy - ey) + (qz - ez) * (qz - ez);
 }
 
-log('===== ADV-H1 — IS ptTri OVER-STATING? Per-facet H1 vs TRUE MESH-WIDE H1 on the worst facets. =====');
+log('===== ADV-H2 — IS ptTri OVER-STATING? Per-facet ptTri vs TRUE MESH-WIDE H2 (surface->mesh). =====');
+log('*** MIS-NAMED "H1" UNTIL 2026-08-05. This is the surface->mesh direction; see the header. ***');
 log(`top ${TOPK} facets by ptTri per arm; exact nearest-facet over the WHOLE mesh, ${CELL} mm spatial hash.`);
 log('');
 
@@ -212,7 +247,9 @@ for (const tag of TAGS) {
   out.sort((p, q) => q.mesh - p.mesh);
   log(`--- ${tag}  ${nTri} tris  ${((Date.now() - t0) / 1000).toFixed(0)}s ---`);
   log(`  per-facet ptTri MAX (advSandwichRuler's number) : ${ptTriMax.toFixed(3)} um`);
-  log(`  TRUE MESH-WIDE H1 MAX, EXACT over this lattice  : ${(exactMax * 1000).toFixed(3)} um`);
+  log(`  TRUE MESH-WIDE **H2** MAX (surface->mesh), EXACT : ${(exactMax * 1000).toFixed(3)} um`);
+  log("    *** THIS IS H2, NOT H1. Samples lie on the SURFACE. It CANNOT see a facet standing off the");
+  log("        wall — for H1 (mesh->surface) use certifyTriangle at the product bar. See the header. ***");
   log(`    (every facet with ptTri > ${(Number(process.env.PF_ADVH1_BAR ?? '10')).toFixed(1)} um had ALL ${((NLAT + 1) * (NLAT + 2)) / 2} of its samples measured mesh-wide: ${exactN} facets.`);
   log(`     meshH1 <= ptTri pointwise, so no facet under the bar can host a sample over it — this max is SOUND`);
   log(`     over the n=${NLAT} lattice. EVERY facet over the bar was collected, not a top-K.)`);
