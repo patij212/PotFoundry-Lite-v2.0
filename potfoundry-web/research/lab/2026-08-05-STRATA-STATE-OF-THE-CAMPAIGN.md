@@ -121,6 +121,102 @@ Scorecard: `research/exchange/_strataConformBisect/S88_REVIEW_FINDINGS.md`.
 
 ---
 
+## 0d. *** S89/S90/S92 — THE SELECTOR IS DEAD, THE FLIP'S 3.73× IS A CENTROID ARTEFACT, AND `tighten` IS 96% OF THE MONEY ***
+
+### 0d.0 ⚠ THE FLIP'S HEADLINE IS RETIRED (S92). READ THIS BEFORE §3.
+
+`8.131% → 2.179% = 3.73×` is expressed in `landFlipPass.orientOf` = `normAngOf` — the facet-vs-surface
+normal angle **AT THE CENTROID ONLY**, which is *also the flip's own C1 accept test and its ranking
+key*. **The pass optimises the measure it is scored by**, and a re-cut diagonal is precisely the
+operation that fixes a centroid normal while the facet interior stays wrong. Re-scored on the
+**covering** ruler (`orientOfFacet`, k=8, inset 0.02), same two STLs, one 60,000-facet golden-stride
+sample scored both ways:
+
+| mesh | centroid ratio (banked) | **covering ratio** |
+|---|---|---|
+| Gothic S39CTL | 3.852× area / 3.611× count | **1.050× area / 1.219× count** |
+| Voronoi | 1.654× area / 1.325× count | **0.984× area / 1.085× count — BELOW ONE** |
+
+Level gap 5.37× / 3.00×; **Gothic's covering max is 1706.3 µm before AND after — the worst facet does
+not move.** "73.2% of the over-bar area removed" is really **4.8%**. Non-vacuity passed per mesh (the
+centroid column reproduces each banked pair) and the covering column reproduces S87's whole-mesh
+figures from a separately written tool.
+
+***THE FLIP IS A SMALL FREE LEVER, NOT A 3.73× ONE.*** What still stands: its **honest POSITION** win
+(0.458× on changed facets, **0.685× count / 0.728% area whole-mesh**), topology byte-identical, 0
+vertices moved, 0 triangles added, byte-identical flag-OFF control. It is free and it is real — it is
+just not an orientation lever.
+
+**This is the THIRD centroid-only instrument defect this session** (`s49BackFacing`, `s55OrientHeatmap`
+at 21.6× low, now `landFlipPass.orientOf`). ***A single-point normal sample is not a facet measure.
+Any orientation number in this project must state its sampling.***
+
+### 0d.1 P1 "BUILD THE SELECTOR" — REFUTED on its own pre-registered kill line
+
+Both model constants behind the 15.7–45.5× were wrong:
+
+    "certificate = 375 evals"  ->  MEASURED  40,178 (Gothic) / 329,638 (Voronoi)  =  107x / 879x
+    "selector = 5 evals"       ->  MEASURED  225 at k=8 (exactly 5(k+1)(k+2)/2)   =   45x
+    certify cost, FAIL vs PASS ->  694,324 vs 38,292                              =  18.1x
+
+***ρ(orientation key, certificate cost) = +0.20 / +0.47 — THE SELECTOR KEEPS THE EXPENSIVE FACETS.***
+On Voronoi it tests 15.05% of facets and that is **68.1% of the work**. End to end: Gothic 45.54×
+published → 12.07× on real costs → **1.39% deployable**; Voronoi **1.47× @recall 0.90** against a
+pre-registered 1.5× kill, **1.02% deployable**. And an **ORACLE CEILING of 18.09× / 8.56×** means the
+published 45.54× / 15.72× were *above what a perfect selector could achieve*.
+
+**The sound one-sided version is worth 1.02×** — `dist ≤ tan(θ)·covRadius` is sound at the required κ
+but clears only 19.75% of facets holding **2.14% of the cost**, because the bound is quadratic in
+facet size so it clears the SMALL = CHEAP ones. **And it is already dominated: Phase D's GPU screen
+sends 1.59–1.98% to the certificate at 100% coverage with `bound ≤ tol` BY CONSTRUCTION — 31–47× more
+selective, sound, and unused.** ***RUN PHASE D. DO NOT BUILD A WEAKER, UNSOUND TRIAGE IN FRONT OF IT.***
+
+**GUARANTEE, precisely:** any selector destroys `boundMm` (composeH1's coverage count refuses it) and
+preserves `witnessedMm`. It converts the certificate into a **defect-hunting screen: it can prove
+FAIL, it can never prove PASS.**
+
+**CONTAINMENT ITSELF SURVIVED** (`posFail & orientationOK = 0`): Voronoi 0 of 904 at inset 0 and 0.02,
+95% UB on the leak rate 0.331%, `frac(o2/w < 1) = 0.0000%`; **4 meshes, 3,230 failures, zero
+exceptions**, thinnest margin 1.54×. A true fact that is worth 1.02×.
+
+### 0d.2 WHERE THE MONEY ACTUALLY IS
+
+***`tighten` is 95.68% / 97.80% of ALL rA evals*** — an independent reproduction of S50's 95.22% on
+two meshes with a different instrument. **The lattice is 2–4% of the money**, and the median facet
+does exactly ONE doubling above its seed level. **Selecting WHICH facets to certify was always the
+wrong axis; the cost is inside each facet.**
+
+**PRE-REGISTERED SUCCESSOR:** point the same inequality at the object that costs the money — per
+POINT, `dist(p,S) ≤ tan(θ)·|p − nearest vertex|` is a **sound upper bound costing ZERO rA evals** once
+θ is known (15 evals/facet at k=1), as an extra `min()` in `certifyTriangle`'s pass-2 threshold test.
+**This attacks the 96% with the certificate INTACT.** KILL: `bound/witnessed` moves beyond the f64
+determinacy band on any facet, or `tighten` calls fall by <25%. Also: **k=1 beats k=8 everywhere**;
+S88 measured only k=8.
+
+### 0d.3 P2 SURVIVES BOTH MY OBJECTIONS — AND IT IS THE ONLY ARM IN THE PLAN
+
+**HUB-FREE: 15 of 19 styles** — artdeco, bamboosegments, basketweave, celticknot, dragonscales,
+fourierbloom, gothicarches, gyroidmanifold, hexagonalhive, lowpolyfacet, rippleinterference,
+spiralridges, superellipsemorph, superformulablossom, waveinterference. **HUBBED: 4** — voronoi 2550,
+celtictriquetra 1289, crystalline 1240, geometricstar 1120. *"The remaining styles may be a set of
+one" is refuted: it is **79% of the catalogue**.* (Hub-free is NECESSARY, not sufficient.)
+
+My second objection was **factually wrong** — the whole-mesh honest-position row was already published
+at `S80_LAND_FINDINGS.md:255-256`: **143 → 98 = 0.685× count, 0.728× AREA.**
+
+**P3** weakened — 4 of 19 styles, downstream prize ≤3.7%. **P4 REFUTED as a fidelity lever**: on its
+own table it buys orientation ×0.976 → ×0.970 (**+0.6%**) while child position sag MAX goes
+**10.36 → 129.86 µm (12.5×)** on parents already under the bar, plus two critical unguarded items (the
+0.05 µm 3-D weld, and `edgeParam` silently discarding the offset).
+
+**⇒ REVISED PRIORITY: (1) the flip on the 15 hub-free stems — but as a POSITION and TOPOLOGY lever
+now, scored on the COVERING ruler, not as a 3.73× orientation win. (2) Phase D when a certificate is
+needed. (3) The per-point prefilter. (4) Not P4 as fidelity.**
+
+Scorecards: `S89_PLANREVIEW_FINDINGS.md`, `S90_SELECTOR_FINDINGS.md`, `S92_FLIP_COVERING_RESCORE.md`.
+
+---
+
 ## 1. THE RULERS — what to use, what to never use again
 
 | quantity | instrument | status |
@@ -168,13 +264,13 @@ fails/10,000**; and it agrees with an independently-written second tool to the f
 
 | GothicArches S39CTL | before | after |
 |---|---|---|
-| orientation over-bar **by AREA** | 8.131% | **2.179% — 3.73×** |
+| orientation over-bar **by AREA** | 8.131% | 2.179% — 3.73× ***(CENTROID key only; covering ruler says 1.050× — see §0d.0)*** |
 | honest position on CHANGED facets | 83 fail | **38 — 0.458× count, 0.616× area** (~5σ favourable) |
 | inversions θ>90° | 1,506 | 671 |
 | topology / vertices moved / tris added | — | **identical / 0 / 0** |
 | flag-OFF control STL | — | **byte-identical to S39CTL** |
 
-It is **free** and it improves *both* rulers. Cost: caps ≥150° ×1.66. It also regularises vertex
+It is **free** and its POSITION win is real (whole-mesh 0.685× count / 0.728× area); its ORIENTATION headline is a centroid artefact (§0d.0). Cost: caps ≥150° ×1.66. It also regularises vertex
 degree (max 50 → 31). **Only proven on Gothic-class (hub-free) meshes.**
 
 **The CAVITY** (`PF_CB_CAVITY`) is the only arm of twelve that improves honest position on **both**
