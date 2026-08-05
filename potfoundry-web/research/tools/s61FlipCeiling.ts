@@ -64,7 +64,8 @@ const EMPTY = envB('PF_S61_EMPTY', true);                  // reject candidates 
  * contains p, then every one of its vertices is within D of p, so "all vertices within D" is the COMPLETE
  * candidate set. Nothing is truncated and the answer does not move with a search parameter.
  */
-const DMAX = envF('PF_S61_DMAX', 0);
+// -1 = auto: DMAX := the mesh's OWN median facet diameter (resolved once the mesh is read).
+let DMAX = envF('PF_S61_DMAX', 0);
 const CAPN = Math.round(envF('PF_S61_CAPN', 80));          // safety cap on |candidates|; bind rate reported
 const POSTOP = Math.round(envF('PF_S61_POSTOP', 5));
 const DIMS: StyleDims = { H: envF('PF_S61_H', 120), Rb: envF('PF_S61_RB', 40), Rt: envF('PF_S61_RT', 50), expn: envF('PF_S61_EXPN', 1) };
@@ -230,6 +231,7 @@ const DCAPS: Array<[string, number]> = [
   ['none', Infinity],
 ];
 log(`mesh facet diameter: p50 ${DCAPS[0][1].toFixed(4)}  p90 ${DCAPS[1][1].toFixed(4)}  p99 ${DCAPS[2][1].toFixed(4)} mm  -> the candidate diameter caps`);
+if (DMAX === -1) { DMAX = DCAPS[0][1]; log(`PF_S61_DMAX=-1 -> auto: exact mode at the mesh's own median facet diameter ${DMAX.toFixed(4)} mm`); }
 
 // ── the residual failure set
 const fails: number[] = [];
