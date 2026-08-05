@@ -1,5 +1,33 @@
 # S60 — THE CONSTRAINED FLIP (agent: FLIP)
 
+> ## >>> MESSAGE TO MAIN — read first, it changes what GUARD and AUDIT should do <<<
+> *(no agent-to-agent messaging tool was available to me; this block is the channel)*
+>
+> 1. **The constrained flip is a SHIPPABLE repair pass on GothicArches and a DEAD END on Voronoi.**
+>    Gothic 129,757 → 37,157 over-bar (**3.49×**), position 75 → **36 (better, not 4.3× worse)**, no
+>    degenerate facet, topology byte-identical, 0 vertices moved, 0 triangles added, 705 s.
+>    Voronoi 320,336 → 241,489 (**1.33×**) — the pre-registered bar was 2×. REFUTED there.
+> 2. **STOP USING THE UNCONSTRAINED FLIP (S56 `tangexc`) — it is topologically unsound.** On Voronoi it
+>    creates **131 non-manifold edges** (it flips onto a diagonal that already exists elsewhere) and
+>    manufactures **464 facets at maxAngle ≥ 179.999** whose normal is not f32-representable. It passed on
+>    Gothic by luck, not by construction.
+> 3. **NEW STANDING DEFECT NOBODY IS MEASURING: `jitterUm = 1.5·ulp(R)·diam/minAlt`,** the uncertainty of a
+>    facet normal computed in f32 from f32 coordinates. **2.91% of the shipped Voronoi mesh exceeds 10 µm on
+>    it** (10.96% exceeds 1 µm), so a slicer's normals there differ from ours, and 7.3% of the "orientation
+>    failures" are reported at a precision the coordinates cannot support. Gothic: **0 facets**. It costs
+>    zero rA evals (pure geometry). Please add it to the standing census.
+> 4. **THE CEILING (the number you asked for).** Over the EXISTING vertex set, between **47%** (candidate
+>    triangles no larger than the mesh's own median facet — exact, untruncated enumeration) and **67%**
+>    (unbounded diameter, 60 nearest vertices) of Voronoi's orientation failures can be covered by SOME
+>    admissible triangle. Greedy flips got **24.6%**. Both bounds over-estimate what one consistent
+>    triangulation can do. ⇒ **at least a third, most likely about half, of Voronoi's orientation failure
+>    needs NEW VERTICES**, and there is roughly **2× of unexploited headroom for a better connectivity
+>    SEARCH** on top of greedy.
+> 5. **It is NOT a crease problem.** 70% of the failures have a true-normal spread < 20° across the facet,
+>    and those are no more reachable (47.5%) than the crease-straddlers (45.6%). Do not spend the night on
+>    crease-aligned vertex insertion. The pricing says a **targeted ~1.6–2.6× local density increase on the
+>    failing facets** (best achievable tangExc p50 16.3 µm against a 10 µm bar), not a global re-mesh.
+
 Living log. Appended continuously. Newest section at the bottom of each phase block.
 Owner files: `research/tools/s56FlipCensus.ts`, `research/tools/s6*.ts`, `research/tools/flip*`.
 
@@ -334,3 +362,186 @@ Stated as a band, because that is what the measurement supports:
 **Consequence for the other two agents: on Voronoi, orientation cannot be closed by re-cutting diagonals.
 The lever is new vertices — and the pricing says a targeted ~1.6–2.6× local density increase on the failing
 27% of facets, not a global refinement.** On Gothic the flip pass alone already delivers 3.49×.
+
+## 4. THE S56 RETRO-AUDIT — its numbers stand, its MESH does not
+
+I re-measured the published S56 output `s56flip/S39CTL_flipped_tangexc.stl` with the S60 instruments
+(`PF_S60_ARM=none`, report `S60_FLIP_S56RETRO.report.txt`). Its orientation numbers reproduce exactly
+(tangExc p99 15.68, over-bar 36,226 — identical to what S56 printed, so the two tools agree to the digit).
+Three things S56 did not measure:
+
+```
+maxAngle max 180.000   caps>=179.999 1
+jitterUm  max Infinity   over-1um 2,501   over-10um 413      <- facets with NO f32-representable normal
+TOPO 1,713,829 edges, boundary 1,160, non-manifold 0, ORIENTATION-INCONSISTENT 467,493
+```
+
+**467,493 of 1,713,829 edges (27.3%) have their two facets traversing the shared edge in the SAME
+direction.** That is a broken winding over a quarter of the mesh — a slicer using the right-hand rule sees
+inside-out normals there. The cause is the one I predicted from reading the code before running anything:
+S56 applies `T1 <- (d,v,c); T2 <- (d,c,u)` unconditionally, which is orientation-correct **only if `t1` is
+the facet that traverses u→v**. When it is `t2`, the two new facets come out inverted.
+
+S56's *metric* is unaffected — `tangExcOf` re-orients the facet normal outward before measuring — so the
+3.58× is real. But the STL it wrote is not a usable mesh, and no gate in the campaign would have caught it:
+edge-count, boundary-count and non-manifold-count are all unchanged by an inversion.
+
+**s60 fixes it by construction** (it finds which facet traverses u→v and labels from the quad's real boundary
+cycle) and instruments it: `orientation-inconsistent` is **0 before and 0 after** on all three styles.
+Recommend the counter goes into the standing topology audit — it is 8 lines and it is currently the only
+watertightness-class defect the suite cannot see.
+
+## 5. LOWPOLYFACET — the flat control, and the pre-registered VACUITY TRAP fires
+
+`S60_FLIP_L2CON.report.txt`, 137,480 facets, constrained arm, 33 s.
+
+| | BEFORE | AFTER | |
+|---|---|---|---|
+| tangExc > 10 µm | 14,968 (10.89%) | **9,404 (6.84%)** | 1.59× |
+| tangExc p99 / max | 28.48 / 71.4 | 18.80 / 36.8 | |
+| position > 10 µm | 0 | 0 | p99 4.95 → 5.64 |
+| **caps ≥ 150°** | 10,268 | **1,087** | **9.4× BETTER** |
+| jitterUm > 1 µm | 0 | 0 | |
+| topology | 206,464 e / 488 b / 0 nm / 0 orientBad | identical | |
+
+* **K1 FAILS** (9,404 > 7,484). 1.59×, not 2×.
+* **K2's vacuity trap FIRED and I am reporting it as pre-registered: `rejPos = 0`.** The position clause
+  never bound on LowPolyFacet — on a piecewise-flat surface every candidate keeps position, so C2 is
+  genuinely inert here. The K2 PASS on this arm is therefore **unattributable** and must not be quoted as
+  evidence that C2 works. (It is attributable on Gothic, `rejPos` = 5,537, and on Voronoi, 22,956.)
+* **The maxAngle/tangExc anti-correlation is STYLE-SPECIFIC, not a law.** On LowPolyFacet the two objectives
+  move TOGETHER (caps 9.4× better while orientation improves 1.59×); on Gothic they oppose (caps 1.66×
+  worse while orientation improves 3.49×). So "Euclidean shape is a harmful objective" is true on
+  anisotropic-rib styles and false on faceted ones. Worth knowing before anyone generalises the S56 lesson.
+
+### Scoreboard so far — the constrained flip across three styles
+
+| style | facets | tangExc over-bar | ratio | position over-bar | caps ≥150 | K1 |
+|---|---|---|---|---|---|---|
+| **GothicArches** | 1,142,166 | 129,757 → **37,157** | **3.49×** | 75 → **36** | 68,684 → 113,875 | **PASS** |
+| LowPolyFacet | 137,480 | 14,968 → 9,404 | 1.59× | 0 → 0 | 10,268 → **1,087** | fail |
+| Voronoi | 806,765 | 320,336 → 241,489 | 1.33× | 0 → 0 | 234,049 → 227,650 | fail |
+
+In all three: 0 vertices moved, 0 triangles added, topology and winding exactly preserved, no facet below
+the f32 determinacy floor.
+
+## 6. PRE-REGISTRATION — H-S63, the CAVITY DP (written before `s63CavityDP.ts` was run)
+
+**The question.** Greedy constrained flips fix 24.6% of Voronoi's orientation failures; the S61 enumeration
+says 47–67% are coverable over the same vertices. Either the greedy NEIGHBOURHOOD is too small (a search
+failure — a bigger neighbourhood should recover part of the gap) or the gap is an artefact of the ceiling
+ignoring global consistency (a bigger neighbourhood buys ~nothing). One probe separates them.
+
+**The move.** An edge flip is the exact optimum over the 2 triangulations of a QUAD. The next neighbourhood
+with no interior vertices is the HEXAGON of a facet plus its three edge-neighbours (boundary a→d→b→e→c→f→a),
+which has Catalan(4) = 14 triangulations; the min-max one is computed EXACTLY by the O(k³) polygon DP. This
+is not a heuristic with more knobs — it is the exact optimum over a strictly larger neighbourhood, and the
+flip is the k=4 case of the same DP. Every S60 clause is carried over and evaluated on all four new facets
+(C2 position ≤ max(10 µm, cavity max), C3 jitter ≤ max(1 µm, cavity max), C4 no duplicate edge, every DP
+diagonal required to lie strictly inside the hexagon, orientation-correct emission).
+
+**H-S63:** applied to quiescence on top of the constrained-flip output, the cavity DP reduces the residual
+`tangExc > 10 µm` count by a further **≥ 10%**.
+
+**KILL:** `< 10%` further reduction ⇒ the lookahead-2 neighbourhood adds nothing; the greedy flip is already
+at the practical limit of LOCAL connectivity search, and the gap to the S61 ceiling is not reachable by local
+moves. That verdict is as useful as the other one.
+
+## 7. THE GOTHIC RESIDUAL — 87% unreachable, but it is CHEAP to close
+
+`S61_CEILING_CEIL_G2RESID.report.txt`, exact mode at Gothic's own median facet diameter (0.2078 mm),
+12,386 of the 37,157 residual failures sampled.
+
+```
+REACHABLE 13.13%      fracUnreachable 86.87%
+no covering triangle at all: 8,800 (71%)   <- and this one is a RESULT, not an artefact (below)
+normSpread: CREASE-STRADDLE (>=20 deg) 17.8% of failures, reachable 44.0%
+            SMOOTH          (< 20 deg) 82.2% of failures, reachable  6.3%
+best achievable tangExc on the unreachable points: p50 13.0  p90 22.8  max 189.0 um
+diameter of that best triangle: p50 0.1805 mm
+implied refinement to reach 10 um: h x 0.88 (alpha=2) => local triangle count x 1.3
+                                   h x 0.77 (alpha=1) => local triangle count x 1.7
+```
+
+**"No covering triangle at all" is the answer here, not a bug.** Under a cap at the median facet diameter, a
+failing facet *larger* than the median has no vertex anywhere inside it, so no small triangle can cover its
+centroid — which is exactly the statement "you must put a vertex there". (Caveat recorded: in exact radius
+mode the diameter-cap CURVE printed by s61 is degenerate — the candidate set is already radius-limited — so
+only the first row of that table is meaningful. Fixed in reading, not yet in the tool.)
+
+**The actionable number: Gothic's residual is a plain DENSITY problem and it is small.** 82.2% of its
+remaining failures are smooth (true-normal spread < 20° across the facet), essentially none of them are
+reachable by re-cutting diagonals, and the best locally-formable triangle reaches **13.0 µm against a 10 µm
+bar** — a 1.3× overshoot. So after the constrained flip, GothicArches needs roughly a **1.3–1.7× local
+triangle-count increase on the remaining 3.25% of facets**, i.e. of order **+1–2% total triangles**, to close
+orientation. That is a far cheaper endgame than anything in the position campaign.
+
+## 8. H-S63 REFUTED — a strictly LARGER EXACT neighbourhood buys 3.29%. Local search is finished.
+
+`S63_CAVITYDP_V_DP_AFTER_A2.report.txt`, Voronoi, starting from the A2 constrained-flip output, 12 rounds to
+near-quiescence, 730 s.
+
+```
+cavities examined 9,040,344   simple hexagons 8,151,428   DP found a strict improvement in 101,854   APPLIED 44,395
+rejections: notSimple 1,304,849   noImprove 8,049,574   dup-edge 22,521   C2 POSITION 34,938   degenerate 0
+
+ORIENT over-10um  241,489 -> 233,540    (1.034x, 3.29% further reduction)
+POSITION over-10um 0 -> 0   p99 6.40 -> 6.96   max 10.0 -> 10.0
+SHAPE caps>=150 227,650 -> 234,642      maxAngle max 179.988 -> 179.988 (unchanged)
+DETERM jitter>1um 86,310 -> 88,742      >10um 21,431 -> 19,500
+TOPO 1,210,448 edges / 601 boundary / 0 non-manifold / 0 orientation-inconsistent — IDENTICAL
+```
+
+**KILL-CRITERION: needed ≥ 10%, got 3.29%. H-S63 is REFUTED.**
+
+This is the more useful of the two possible outcomes. The DP is the EXACT min-max optimum over 14
+triangulations of a hexagon, where a flip is the exact optimum over 2 triangulations of a quad — a strictly
+larger neighbourhood, exactly solved, with every constraint carried over. It recovers 3.29%. Therefore:
+
+> **The greedy constrained flip is already at the practical limit of LOCAL connectivity search on Voronoi.
+> The gap between what flips achieve (24.6% of failures fixed) and what the S61 enumeration says is coverable
+> (47–67%) is NOT reachable by local moves. Do not build a bigger local search — build vertex insertion.**
+
+Two supporting numbers, both from the same run:
+* The accounting closes exactly: 101,854 improving cavities = 44,395 applied + 22,521 dup-edge + 34,938 C2.
+  **C2 (position) blocked 34.3% of the DP's improving cavities** — a larger neighbourhood finds more
+  orientation wins, and a third of them would have cost position. Ablation `PF_S63_POS=0` is running to
+  price that exactly; recorded below when it lands.
+* `notSimple` 1.30 M — 14.4% of cavities are not simple hexagons in (θ,z) (repeated opposite vertex or a
+  self-intersecting boundary). Those are skipped, not mishandled.
+
+## 9. ROUND-TRIP VERIFICATION of the Gothic output — the written STL is a real mesh
+
+Re-read `s60flip/gothicarches_ring_DS-HT_S39CTL_G2CON.stl` from disk and re-censused it in a fresh process
+(`S60_FLIP_G2ROUNDTRIP.report.txt`):
+
+```
+tangExc p99 16.22  max 1251.3  over-10um 37,157        <- identical to the in-memory AFTER
+maxAngle max 178.853   caps>=150 113,875   jitterUm max 1.00   over-1um 0   over-10um 0
+TOPO 1,713,829 edges, boundary 1,160, non-manifold 0, orientation-inconsistent 0
+```
+
+Every number reproduces. The f32 STL round-trip is exact (coordinates are unchanged by a flip), the winding
+is consistent, and no facet is below the determinacy floor. **This is a shippable artefact, not a lab number.**
+
+## 10. VISUAL EVIDENCE (the brief's rule: if a render disagrees with a metric, trust the render)
+
+`research/tools/s64OrientRender.ts` colours the SAME render bins by the ORIENTATION ruler instead of position
+(position is uniformly green on these meshes — p99 4.9 µm, zero over the bar — so the standing heatmap shows
+nothing at all). Window auto-selected as the (θ,z) bin with the most over-bar facets, so it is the worst
+region and not one I picked.
+
+* `s60flip/render/orient_gothic.png` — Gothic, θ 3.0925 ± 0.05, z 97.5 ± 3 mm.
+  BEFORE 2,577 facets, 454 over bar (17.6%), worst 424 µm → AFTER 2,588 facets, 163 over bar (6.3%), worst 361.
+  **The failures are visibly the long thin SLIVERS**, scattered red needles across the arch relief; after the
+  constrained flip the needles are gone and the patch is green with a few yellow facets.
+* `s60flip/renderV/orient_voronoi.png` — Voronoi, θ 3.0925 ± 0.03, z 55.5 ± 2 mm.
+  BEFORE 1,063 facets, 428 over bar (40.3%), worst 1698 µm → AFTER 1,061, 218 (20.5%), worst 1433.
+  The residual red is concentrated on the **rim where a cell wall meets the plateau** — a genuine sharp
+  feature — while the plateau interiors are green.
+
+**Two honest caveats on the pictures.** (a) The legend BAR ("0mm → ≥0.15mm") is hard-coded in
+`research/render/meshRender.cjs` and does NOT describe this ramp — mine is 0 → 50 µm tangExc, as stated in the
+per-cell label. I did not edit that shared file mid-run; it needs a `meta.scaleMm` from its owner. (b) The
+renderer auto-fits each cell's camera, so the two panels are not at identical framing; compare the colour
+fields, not the silhouettes.

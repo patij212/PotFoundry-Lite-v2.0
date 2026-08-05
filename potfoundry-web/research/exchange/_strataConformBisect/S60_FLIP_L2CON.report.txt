@@ -1,0 +1,56 @@
+===== S60 — THE CONSTRAINED FLIP (connectivity only; 0 vertices moved, 0 triangles added) =====
+style LowPolyFacet  stem lowpolyfacet_ring_D--  tag L2CON
+ARM=con   C1 tangExc-decrease=true   C2 pos<=max(10um,old)=true   C3 det-floor(jitter<=1um, mode=rel)=true   C4 dup-edge=true   LEX-plateau=false
+rA cost probe: 200k evals in 0.05 s = 4.35 M eval/s   (checksum 7901909.044)
+research/exchange/_strataConformBisect/lowpolyfacet_ring_D--.stl: 137480 facets   [0.1s]
+weld: 68984 unique vertices from 412440 corners   [0.2s]
+GATE vertex-on-surface: p50 8.57e-7  p99 2.01e-6  max 2.31e-6 mm -> TRUSTED
+
+── C3 DETERMINACY PROBE: perturb every vertex by +-1/2 ulp, compare measured |dtangExc| to predicted jitterUm
+   n=4044  measured/predicted  p50 0.355  p99 0.749  max 0.923
+   *** the predicted jitterUm is an UPPER BOUND on every sampled facet — DET_K=1.5 stands ***
+
+── BEFORE (flag-OFF control, measured in THIS process) ── (tang 0.3s, pos 18.3s over 137480 facets, stride 1)
+   ORIENT tangExc  p50 0.00  p99 28.48  max 71.4 um   over-10um 14968 (10.887%)
+   POSITION  sag   p50 0.00  p99 4.95  max 5.0 um   over-10um 0 (0.0000%)
+   SHAPE  maxAngle p50 90.9  p99 160.4  max 168.839   caps>=150 10268   >=179.999 0
+   DETERM jitterUm p99 0.139  max 0.27   over-1um 0 (0.000%)   over-10um 0
+   VALIDITY: of the 14968 facets over the tang bar, 0 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO before: 206464 edges, boundary 488, non-manifold 0, orientation-inconsistent 0
+
+FLIP ROUNDS — independent set per round; clause order: interior -> c!=d -> dup-edge -> fold -> C1 tangExc -> C3 det -> C2 pos
+  (so rejDet counts candidates that pass C1+C4, and rejPos counts candidates that pass EVERYTHING ELSE — the non-vacuity numbers)
+  round  1:   31560 flips (cum 31560)   rej: fold 20178 dup 0 noImp 101036 DET 127 POS 0   [9.6s]
+  round  2:    8334 flips (cum 39894)   rej: fold 40914 dup 4 noImp 136746 DET 155 POS 0   [1.2s]
+  round  3:    1149 flips (cum 41043)   rej: fold 49633 dup 12 noImp 152288 DET 156 POS 0   [0.8s]
+  round  4:     102 flips (cum 41145)   rej: fold 50683 dup 12 noImp 154847 DET 148 POS 0   [0.8s]
+  round  5:       0 flips (cum 41145)   rej: fold 50694 dup 12 noImp 155120 DET 150 POS 0   [0.8s]
+
+TOTAL flips 41145 = 29.93% of facets;  VERTICES MOVED 0;  TRIANGLES ADDED 0
+CLAUSE REJECTIONS (cumulative): fold 212102  dup-edge 40  no-improve 700037  C3 DET 736  C2 POS 0
+NON-VACUITY: C2 rejected 0 candidates that passed every other clause; C3 rejected 736.
+   *** K2 TRIPPED: the POSITION CLAUSE IS VACUOUS on this arm ***
+
+── AFTER ── (tang 0.2s, pos 0.0s over 137480 facets, stride 1)
+   ORIENT tangExc  p50 0.00  p99 18.80  max 36.8 um   over-10um 9404 (6.840%)
+   POSITION  sag   p50 0.00  p99 5.64  max 6.2 um   over-10um 0 (0.0000%)
+   SHAPE  maxAngle p50 90.2  p99 144.9  max 164.342   caps>=150 1087   >=179.999 0
+   DETERM jitterUm p99 0.071  max 0.19   over-1um 0 (0.000%)   over-10um 0
+   VALIDITY: of the 9404 facets over the tang bar, 0 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO after: 206464 edges, boundary 488, non-manifold 0, orientation-inconsistent 0
+
+DELTA (both rulers, always)
+   ORIENT over-10um   14968 -> 9404   (1.59x)      p99 28.48 -> 18.80 um   max 71.4 -> 36.8
+   POSITION over-10um 0 -> 0   p99 4.95 -> 5.64 um   max 5.0 -> 6.2
+   SHAPE caps>=150      10268 -> 1087    >=179.999 0 -> 0    maxAngle max 168.839 -> 164.342
+   DETERM jitter>1um    0 -> 0    >10um 0 -> 0
+
+PRE-REGISTERED KILL-CRITERIA
+   K1 tangOver_after <= 0.5*before : 9404 <= 7484 -> *** FAIL — REFUTED as a standalone fix ***
+   K2 posOver_after <= before      : 0 <= 0 -> PASS   *** but the clause is VACUOUS (rejPos=0) ***
+   K3 no facet over the det floor  : jitter>10um 0, maxAngle>=179.999 0 -> PASS
+   K4 ceiling: run s61FlipCeiling.ts on the written STL
+   C4 topology preserved           : PASS (edges 206464->206464, bnd 488->488, nonMan 0->0, orientBad 0->0)
+   flipped mesh written to research/exchange/_strataConformBisect/s60flip/lowpolyfacet_ring_D--_L2CON.stl
+
+done  [32.9s]

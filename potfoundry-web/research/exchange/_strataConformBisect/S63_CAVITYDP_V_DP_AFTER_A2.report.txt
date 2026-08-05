@@ -1,0 +1,45 @@
+===== S63 — CAVITY DP: the EXACT min-max retriangulation of a 4-facet hexagonal cavity =====
+style Voronoi   mesh research/exchange/_strataConformBisect/s60flip/voronoi_ring_D--_A2CON.stl   bar 10 um   C2 pos true   C3 jitter <= max(1um, old)
+806765 facets, 403683 welded vertices  [0.9s]
+
+── BEFORE (control, measured in THIS process) ──
+   ORIENT tangExc p99 1194.64  max 2238.7 um   over-10um 241489 (29.933%)
+   POSITION  sag  p99 6.40  max 10.0 um   over-10um 0
+   SHAPE maxAngle max 179.988  caps>=150 227650   DETERM jitter>1um 86310  >10um 21431
+   TOPO before: 1210448 edges, boundary 601, non-manifold 0, orientation-inconsistent 0
+
+CAVITY DP ROUNDS (independent set per round; the exact min-max triangulation of each 4-facet hexagon)
+  round  1:   22961 cavities retriangulated   rej: notSimple 75420 noImp 588356 dup 1382 POS 2568 degen 0   [59.4s]
+  round  2:    9864 cavities retriangulated   rej: notSimple 97576 noImp 645949 dup 1740 POS 2852 degen 0   [53.0s]
+  round  3:    4283 cavities retriangulated   rej: notSimple 107842 noImp 668834 dup 1888 POS 2922 degen 0   [47.5s]
+  round  4:    2381 cavities retriangulated   rej: notSimple 111625 noImp 676205 dup 1917 POS 2941 degen 0   [47.3s]
+  round  5:    1544 cavities retriangulated   rej: notSimple 113053 noImp 679536 dup 1937 POS 2957 degen 0   [46.0s]
+  round  6:    1099 cavities retriangulated   rej: notSimple 113816 noImp 681242 dup 1947 POS 2948 degen 0   [45.8s]
+  round  7:     784 cavities retriangulated   rej: notSimple 114084 noImp 682805 dup 1952 POS 2960 degen 0   [45.7s]
+  round  8:     539 cavities retriangulated   rej: notSimple 114219 noImp 683974 dup 1950 POS 2954 degen 0   [45.1s]
+  round  9:     378 cavities retriangulated   rej: notSimple 114293 noImp 684893 dup 1952 POS 2959 degen 0   [44.8s]
+  round 10:     258 cavities retriangulated   rej: notSimple 114294 noImp 685512 dup 1952 POS 2957 degen 0   [45.4s]
+  round 11:     181 cavities retriangulated   rej: notSimple 114304 noImp 685972 dup 1952 POS 2960 degen 0   [46.6s]
+  round 12:     123 cavities retriangulated   rej: notSimple 114323 noImp 686296 dup 1952 POS 2960 degen 0   [47.2s]
+
+cavities examined 9040344, simple hexagons 8151428, DP found a strict improvement in 101854, APPLIED 44395
+CLAUSE REJECTIONS: notSimple 1304849  noImprove 8049574  dup-edge 22521  C2 POS 34938  degenerate 0
+
+── AFTER ──
+   ORIENT tangExc p99 1112.63  max 2214.7 um   over-10um 233540 (28.948%)
+   POSITION  sag  p99 6.96  max 10.0 um   over-10um 0
+   SHAPE maxAngle max 179.988  caps>=150 234642   DETERM jitter>1um 88742  >10um 19500
+   TOPO after: 1210448 edges, boundary 601, non-manifold 0, orientation-inconsistent 0
+
+DELTA (both rulers, always)
+   ORIENT over-10um  241489 -> 233540   (1.034x, 3.29% further reduction)
+   POSITION over-10um 0 -> 0   p99 6.40 -> 6.96  max 10.0 -> 10.0
+   SHAPE caps>=150 227650 -> 234642   maxAngle max 179.988 -> 179.988
+   DETERM jitter>1um 86310 -> 88742   >10um 21431 -> 19500
+
+PRE-REGISTERED KILL-CRITERION  H-S63: >= 10% further reduction
+   3.29% -> *** FAIL — a strictly larger EXACT neighbourhood adds nothing; greedy flips are already at the practical limit of LOCAL connectivity search ***
+   C4 topology preserved: PASS
+   mesh written to research/exchange/_strataConformBisect/s60flip/V_DP_AFTER_A2_dp.stl
+
+done  [730.0s]

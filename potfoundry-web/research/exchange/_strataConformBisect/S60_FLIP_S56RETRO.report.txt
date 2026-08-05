@@ -1,0 +1,43 @@
+===== S60 — THE CONSTRAINED FLIP (connectivity only; 0 vertices moved, 0 triangles added) =====
+style GothicArches  stem s56flip/S39CTL_flipped_tangexc  tag S56RETRO
+ARM=none   C1 tangExc-decrease=false   C2 pos<=max(10um,old)=false   C3 det-floor(jitter<=1um, mode=rel)=false   C4 dup-edge=true   LEX-plateau=false
+rA cost probe: 200k evals in 0.22 s = 0.89 M eval/s   (checksum 8880671.569)
+research/exchange/_strataConformBisect/s56flip/S39CTL_flipped_tangexc.stl: 1142166 facets   [0.4s]
+weld: 571663 unique vertices from 3426498 corners   [1.7s]
+GATE vertex-on-surface: p50 1.16e-6  p99 1.05e-5  max 2.72e-5 mm -> TRUSTED
+
+── BEFORE (flag-OFF control, measured in THIS process) ── (tang 5.8s, pos 6.0s over 45687 facets, stride 25)
+   ORIENT tangExc  p50 2.24  p99 15.68  max 617.3 um   over-10um 36226 (3.172%)
+   POSITION  sag   p50 1.20  p99 3.72  max 25.0 um   over-10um 11 (0.0241%)
+   SHAPE  maxAngle p50 96.2  p99 172.4  max 180.000   caps>=150 114925   >=179.999 1
+   DETERM jitterUm p99 0.352  max Infinity   over-1um 2501 (0.219%)   over-10um 413
+   VALIDITY: of the 36226 facets over the tang bar, 8 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO before: 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 467493
+
+TOTAL flips 0 = 0.00% of facets;  VERTICES MOVED 0;  TRIANGLES ADDED 0
+CLAUSE REJECTIONS (cumulative): fold 0  dup-edge 0  no-improve 0  C3 DET 0  C2 POS 0
+NON-VACUITY: C2 rejected 0 candidates that passed every other clause; C3 rejected 0.
+   
+
+── AFTER ── (tang 5.6s, pos 0.0s over 45687 facets, stride 25)
+   ORIENT tangExc  p50 2.24  p99 15.68  max 617.3 um   over-10um 36226 (3.172%)
+   POSITION  sag   p50 1.20  p99 3.72  max 25.0 um   over-10um 11 (0.0241%)
+   SHAPE  maxAngle p50 96.2  p99 172.4  max 180.000   caps>=150 114925   >=179.999 1
+   DETERM jitterUm p99 0.352  max Infinity   over-1um 2501 (0.219%)   over-10um 413
+   VALIDITY: of the 36226 facets over the tang bar, 8 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO after: 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 467493
+
+DELTA (both rulers, always)
+   ORIENT over-10um   36226 -> 36226   (1.00x)      p99 15.68 -> 15.68 um   max 617.3 -> 617.3
+   POSITION over-10um 11 -> 11   p99 3.72 -> 3.72 um   max 25.0 -> 25.0
+   SHAPE caps>=150      114925 -> 114925    >=179.999 1 -> 1    maxAngle max 180.000 -> 180.000
+   DETERM jitter>1um    2501 -> 2501    >10um 413 -> 413
+
+PRE-REGISTERED KILL-CRITERIA
+   K1 tangOver_after <= 0.5*before : 36226 <= 18113 -> *** FAIL — REFUTED as a standalone fix ***
+   K2 posOver_after <= before      : 11 <= 11 -> PASS
+   K3 no facet over the det floor  : jitter>10um 413, maxAngle>=179.999 1 -> *** FAIL — floor broken ***
+   K4 ceiling: run s61FlipCeiling.ts on the written STL
+   C4 topology preserved           : PASS (edges 1713829->1713829, bnd 1160->1160, nonMan 0->0, orientBad 467493->467493)
+
+done  [25.8s]
