@@ -1,0 +1,61 @@
+{
+  "arm": "target",
+  "tag": "S41CTL",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S41CTL",
+  "nTri": 1255568,
+  "topK": 300,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 47.297,
+    "adaptiveMax": 47.245,
+    "overBar": 323,
+    "nTri": 1255568,
+    "found": true
+  },
+  "planeMaxMine": 47.2462331763762,
+  "planeOverMine": 323,
+  "union": {
+    "n": 562,
+    "fail": 446,
+    "pass": 116,
+    "unk": 0,
+    "areaAll": 3.5950707826783184,
+    "areaFail": 3.0750479183162027,
+    "incomplete": 446
+  },
+  "plane": {
+    "n": 300,
+    "fail": 273,
+    "pass": 27,
+    "unk": 0,
+    "areaAll": 1.3505209783015173,
+    "areaFail": 1.2526123967055767,
+    "incomplete": 273
+  },
+  "tang": {
+    "n": 300,
+    "fail": 201,
+    "pass": 99,
+    "unk": 0,
+    "areaAll": 2.69970202998352,
+    "areaFail": 2.2250824998938175,
+    "incomplete": 201
+  },
+  "honestMaxUnion": 204.17437354016823,
+  "honestMaxPlaneSel": 133.0942330787798,
+  "honestMaxTangSel": 204.17437354016823,
+  "headlineFacet": {
+    "k": 22356,
+    "area": 0.020262187871351096,
+    "tg": 611.2414830186141,
+    "p": 47.2462331763762,
+    "w": 48.29998377112056,
+    "b": 58.249777812584206,
+    "v": 1,
+    "c": 0,
+    "sel": "plane"
+  },
+  "secs": 598.707
+}

@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S41CTL",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S41CTL",
+  "nTri": 1255568,
+  "N": 25000,
+  "coverage": 0.019911307073770597,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 47.297,
+    "adaptiveMax": 47.245,
+    "overBar": 323,
+    "nTri": 1255568,
+    "found": true
+  },
+  "bucket": {
+    "n": 25000,
+    "fail": 259,
+    "pass": 24741,
+    "unk": 0,
+    "areaAll": 749.156423177259,
+    "areaFail": 0.6814975116745268,
+    "incomplete": 259
+  },
+  "failRate": 0.01036,
+  "sigmaCountRel": 0.062136976600120006,
+  "areaFailFrac": 0.0009096865362032366,
+  "sigmaAreaRel": 0.22049189209764894,
+  "scaledFail": 13007.68448,
+  "underReportRatio": 40.27146897832817,
+  "planeOverInSample": 3,
+  "witP50": 1.5765640784127526,
+  "witP99": 10.134311932471602,
+  "witMaxInSample": 133.0942330787798,
+  "secs": 132.193
+}

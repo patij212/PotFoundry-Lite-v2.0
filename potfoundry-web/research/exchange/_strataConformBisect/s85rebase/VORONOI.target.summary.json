@@ -1,0 +1,61 @@
+{
+  "arm": "target",
+  "tag": "VORONOI",
+  "style": "Voronoi",
+  "stem": "voronoi_ring_D--",
+  "nTri": 806765,
+  "topK": 300,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 5,
+    "adaptiveMax": 5,
+    "overBar": 0,
+    "nTri": 806765,
+    "found": true
+  },
+  "planeMaxMine": 6.228960361217839,
+  "planeOverMine": 0,
+  "union": {
+    "n": 600,
+    "fail": 313,
+    "pass": 287,
+    "unk": 0,
+    "areaAll": 89.68074922715732,
+    "areaFail": 11.108570657853539,
+    "incomplete": 313
+  },
+  "plane": {
+    "n": 300,
+    "fail": 13,
+    "pass": 287,
+    "unk": 0,
+    "areaAll": 78.5992496435316,
+    "areaFail": 0.027071074227780875,
+    "incomplete": 13
+  },
+  "tang": {
+    "n": 300,
+    "fail": 300,
+    "pass": 0,
+    "unk": 0,
+    "areaAll": 11.081499583625762,
+    "areaFail": 11.081499583625762,
+    "incomplete": 300
+  },
+  "honestMaxUnion": 249.84333504796615,
+  "honestMaxPlaneSel": 124.34833613062428,
+  "honestMaxTangSel": 249.84333504796615,
+  "headlineFacet": {
+    "k": 153899,
+    "area": 0.000006767253667559417,
+    "tg": 941.0747739498905,
+    "p": 6.228960361217839,
+    "w": 10.2356298836003,
+    "b": 20.096952006498128,
+    "v": 1,
+    "c": 0,
+    "sel": "plane"
+  },
+  "secs": 526.13
+}

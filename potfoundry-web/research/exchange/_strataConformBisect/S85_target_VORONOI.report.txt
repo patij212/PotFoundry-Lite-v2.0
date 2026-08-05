@@ -1,0 +1,49 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm target   tag VORONOI   style Voronoi   stem voronoi_ring_D--
+tol 10 um   nMax 512   N 0   topK 300   dims H120 Rb40 Rt50
+driver self-report: headline 5 um   adaptive MAX 5 um   over-0.01mm 0/806765   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 806765 facets loaded   [0.4s]
+whole-mesh plane ruler + tangExc pass (this is the H-R3 control) ...
+   200000/806765   [50.4s]
+   400000/806765   [95.5s]
+   600000/806765   [137.9s]
+   800000/806765   [181.2s]
+
+   ══ H-R3 NON-VACUITY CONTROL — my plane pass vs the driver's own self-report ══
+      adaptive MAX   mine 6.229 um   driver 5 um   delta 24.579%
+      over-0.01mm    mine 0                driver 0
+      *** H-R3 DOES NOT MATCH — read the two lines above before trusting anything below ***
+
+selection: 600 facets (plane top-300 U tangExc top-300, overlap 0)   [183.9s]
+RESUME: 0/600 already certified
+  certified 50/600   1.52 facet/s   [216.8s]
+  certified 100/600   2.14 facet/s   [230.5s]
+  certified 150/600   2.76 facet/s   [238.2s]
+  certified 200/600   3.30 facet/s   [244.4s]
+  certified 250/600   3.67 facet/s   [252.0s]
+  certified 300/600   4.06 facet/s   [257.7s]
+  certified 350/600   2.66 facet/s   [315.4s]
+  certified 400/600   2.23 facet/s   [363.3s]
+  certified 450/600   2.00 facet/s   [408.5s]
+  certified 500/600   1.86 facet/s   [452.3s]
+  certified 550/600   1.80 facet/s   [488.7s]
+  certified 600/600   1.75 facet/s   [526.1s]
+
+══ TARGET ARM — VORONOI — honest position on the two selectors ══
+   ALL SELECTED (union)           n    600   PROVEN-FAIL   313 (52.167%)   PROVEN-PASS    287   UNKNOWN     0   area-fail 12.38680%   witnessedComplete-false 313
+   plane top-300 (driver's own worst) n    300   PROVEN-FAIL    13 (4.333%)   PROVEN-PASS    287   UNKNOWN     0   area-fail 0.03444%   witnessedComplete-false 13
+   tangExc top-300                n    300   PROVEN-FAIL   300 (100.000%)   PROVEN-PASS      0   UNKNOWN     0   area-fail 100.00000%   witnessedComplete-false 300
+
+   honest witnessed over the union   p50 17.778  p99 226.192  MAX 249.843 um   <= a LOWER BOUND on the mesh's honest max
+   plane ruler over the union        p50 4.995  p99 5.223  MAX 6.229 um
+   on the plane selector only:  honest MAX 124.348   plane MAX 6.229 um
+   on the tangExc selector only: honest MAX 249.843 um
+
+   *** THE HEADLINE FACET ITSELF (index 153899, the plane ruler's argmax): plane 6.229 um -> honest witnessed 10.236 um (bound 20.097, verdict PROVEN-FAIL) ***
+   *** DRIVER HEADLINE 5 um  vs  HONEST MAX-OVER-UNION 249.843 um   ratio 0.020x ***
+   head-to-head on the plane selector: plane says 0/300 over bar, honest proves 13
+   head-to-head on the tangExc selector: plane says 0/300 over bar, honest proves 300
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [526.1s]

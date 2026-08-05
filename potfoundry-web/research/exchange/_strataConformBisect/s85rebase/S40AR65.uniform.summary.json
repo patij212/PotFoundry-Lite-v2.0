@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S40AR65",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S40AR65",
+  "nTri": 1140154,
+  "N": 50000,
+  "coverage": 0.04385372502311091,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 23.563,
+    "adaptiveMax": 23.547,
+    "overBar": 32,
+    "nTri": 1140154,
+    "found": true
+  },
+  "bucket": {
+    "n": 50000,
+    "fail": 101,
+    "pass": 49899,
+    "unk": 0,
+    "areaAll": 1685.004910548472,
+    "areaFail": 0.5419361720289645,
+    "incomplete": 101
+  },
+  "failRate": 0.00202,
+  "sigmaCountRel": 0.09950371902099892,
+  "areaFailFrac": 0.0003216229036700928,
+  "sigmaAreaRel": 0.18972457349540273,
+  "scaledFail": 2303.11108,
+  "underReportRatio": 71.97222125,
+  "planeOverInSample": 1,
+  "witP50": 1.648311683934256,
+  "witP99": 5.442654307326372,
+  "witMaxInSample": 240.05909771099977,
+  "secs": 1850
+}

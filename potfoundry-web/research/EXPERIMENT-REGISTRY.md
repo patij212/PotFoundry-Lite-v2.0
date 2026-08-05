@@ -9092,3 +9092,90 @@ the design + the cost model rather than leaving a half-validated instrument that
 orientation ruler I did land (`orientRuler.ts`, 11/11 two-sided fixtures, every bar seen to fail on
 purpose) stands on its own as the SELECTOR the redirect asks for, and `spreadRad` + the S74 scale test are
 the parts of it that are about the surface rather than about the disputed objective.
+
+## E-2026-08-05-S85-POSITION-REBASELINE — every published position number re-measured on ONE two-sided instrument; the AR-cap ordering survives BY COUNT and inverts BY AREA AND MAX [scorecard; kill-criteria pre-registered in the tool header]
+
+**ROLE.** The campaign's position column is `sagAdaptiveRaw`, an INFINITE-PLANE distance. Two agents had shown
+it under-reports 30–48× on these exact meshes, so no arm could be compared to another. This is the replacement
+scorecard: every quoted arm re-measured with `certifyTriangle` (`_facetTruthLib.ts`) at **tol = 0.010 mm**, the
+10 µm product bar, three buckets never folded.
+
+**TOOL / LEDGER.** `research/tools/s85PosRebase.ts` (pre-registration H-R1/H-R2/H-R3 in its header, written
+before the first run), `run-s85-pos-rebase.sh`, `s85-queue.sh`, assembler `s85Assemble.cjs`.
+Scorecard: `research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md`. Per-facet ndjson in
+`s85rebase/` — the run was killed mid-campaign and resumed with zero re-scoring.
+
+**H-R3 NON-VACUITY CONTROL — PASSED ON EVERY MESH, CHECKED BEFORE ANY VERDICT.** My whole-mesh plane pass
+reproduces each driver's own `.report.txt`: `over-0.01mm` **EXACTLY** (75 / 63 / 32 / 1 / 323 / 0) and the
+adaptive MAX to 0.001–0.006%. The two rulers are reading the same mesh with the same `rA`; their disagreement
+is geometry, not plumbing. **Cross-tool check:** my S39CTL uniform row is **143 PROVEN-FAIL / 50,000**, matching
+LAND's independent `s80HonestPos` "before" column **to the digit** (143/50,000, area 0.03534%, max 240.059 µm)
+— two tools, same construction, same answer.
+
+**SAMPLE.** Golden-ratio index stride, identical construction on every mesh (an N=8,000 row is the prefix of
+an N=50,000 row). Coverage and 1σ stated per row. Selection does not depend on any lever.
+
+### Q1 — the AR-cap sweep (the load-bearing re-measurement). UNIFORM arm, N=50,000 (~4.38%) per mesh.
+
+| cap | driver HEADLINE | driver over-bar | honest PROVEN-FAIL rate ±1σ | honest fail AREA frac ±1σ | in-sample honest max |
+|---|---|---|---|---|---|
+| 50 (S39CTL) | 47.282 µm | 75 | **0.2860% ±8.4%** | **0.03534% ±19.6%** | 240.059 µm |
+| 55 (S40AR55) | 32.317 µm | 63 | 0.2180% ±9.6% | 0.03329% ±19.8% | 240.059 µm |
+| 65 (S40AR65) | 23.563 µm | 32 | 0.2020% ±10.0% | 0.03216% ±19.0% | 240.059 µm |
+| 90 (S40AR90) | 10.830 µm | 1 | **0.1340% ±12.2%** | **0.04009% ±28.4%** | **460.513 µm** |
+
+- **COUNT: monotone 50→55→65→90, AR90/AR50 = 0.469× (kill line ≤0.50), 1σ intervals DISJOINT.**
+  ⇒ **H-R1 ("the ordering does not survive") is REFUTED ON ITS OWN PRE-REGISTERED KILL LINE.** The ordering
+  survives *by count* — but the win is **2.13×, not the 4.37× the blind headline claimed**.
+- **AREA: NOT monotone. AR90/AR50 = 1.134× — the AR-90 mesh has the LARGEST proven-fail area of the four.**
+- **MAX: AR90/AR50 = 1.918×**, from an unbiased sample (the 460.5 µm facet was hit by the 4.4% stride, not
+  cherry-picked). The targeted arm agrees: honest max over an identically-built union rises 350.5 → 350.5 →
+  370.3 → **460.5 µm** as the headline falls 47.3 → 10.8.
+- **The honest reading: 2× fewer failing facets, each of them bigger, and the worst one twice as bad.** A
+  count-only table would have reported a clean win. This is exactly the 13–184× count-vs-area gap this project
+  has recorded before.
+- **No arm is near the bar.** The mesh the driver reports as "10.830 µm, **1** facet over 10 µm" has
+  **~1,527 PROVEN-FAILING facets** and a **PROVEN 460.5 µm** exceedance — 46× the product bar.
+
+This **CONFIRMS and SHARPENS E-2026-08-05-ARCAP-ADVERSARIAL** (which measured `ptTri` MAX 245.4 → 422.5,
+1.72× worse, and "the distribution improves"). The area column is what reconciles its two halves: the
+distribution improvement is real *in count* and is paid for *in area*.
+
+### Q2 — is the under-report a constant? **NO. H-R2 CONFIRMED.**
+
+Mesh-level ratio (honest scaled fail count / driver over-bar) spans **39.5× to 1,526.7×** across the meshes
+where the driver reports a non-zero count — a **38.6× spread** against a 1.5× kill line — and meshes where the
+driver reports **0** (S48CAV90, Voronoi, LowPolyFacet) have an *undefined* ratio, so that spread understates it.
+Per facet (Table 3 of the scorecard) `witnessed/plane` has **p50 ≈ 1.001** — the plane ruler is *correct for a
+typical facet* — with **~36% of facets where it OVER-reads** and a max of **200–1,549×**. The defect is a TAIL,
+not a scale factor. **Published position numbers can be discarded, not corrected.**
+
+### Q3 — the driver's headline vs the honest re-read, TARGET arm (plane top-300 ∪ tangExc top-300)
+
+| mesh | driver HEADLINE | honest max over union | honest max on the driver's OWN top-300 | PROVEN-FAIL, plane top-300 | PROVEN-FAIL, tangExc top-300 |
+|---|---|---|---|---|---|
+| S39CTL | 47.282 | 350.457 | 105.573 | 238/300 (plane says 75) | 287/300 (plane says 19) |
+| S40AR55 | 32.317 | 350.457 | 89.730 | 217/300 (plane says 63) | 288/300 (plane says 20) |
+| S40AR65 | 23.563 | 370.300 | 90.964 | 177/300 (plane says 32) | 279/300 (plane says 14) |
+| S40AR90 | 10.830 | 460.513 | 57.370 | 53/300 (plane says 1) | 273/300 (plane says 1) |
+| S41CTL | 47.297 | 204.174 | 133.094 | 273/300 (plane says 300) | 201/300 (plane says 38) |
+| Voronoi | 5.000 PASS | 249.843 | 124.348 | 13/300 (plane says 0) | **300/300** (plane says 0) |
+
+**The facet the headline NAMES is itself mis-read, in both directions:** S40AR90's "10.829 µm" argmax is
+**13.079 µm witnessed (PROVEN-FAIL)**; Voronoi's "6.229 µm" argmax is **10.236 µm (PROVEN-FAIL)** on a mesh the
+driver reports as PASS; and on S41CTL the plane ruler calls all 300 over-bar where only 273 are provable — it
+over-reads too. **A "PASS" from this ruler is not evidence of anything.**
+
+### Housekeeping finding: 14 quoted tags are 10 distinct meshes
+
+By md5: **S39CTL ≡ S41RES ≡ S36CTL** (9d5061f1) and **S41CTL ≡ S34CTL ≡ S46CTL** (7735f7c7) are byte-identical
+STLs. Arms that were compared against each other in the worklog were in places the same file.
+
+### What is NOT measured
+
+The honest whole-mesh MAX (unreachable: `certifyTriangle` runs 1–28 facet/s here, so 1.14 M facets is 11–260
+core-hours) — Table 2's max is a lower bound over a targeted union, Table 1's is an in-sample max at the stated
+coverage. H2 (surface→mesh) — this is H1 only. Orientation. Meshes not yet run are absent, not estimated.
+
+**STATUS: confirmed (H-R2, H-R3) / refuted-on-its-own-kill-line (H-R1, count) — and the AR-cap result must be
+restated as "2× fewer, larger failures", never as a 4.37× win.**

@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S39CTL",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S39CTL",
+  "nTri": 1142166,
+  "N": 50000,
+  "coverage": 0.04377647382254418,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 47.282,
+    "adaptiveMax": 47.23,
+    "overBar": 75,
+    "nTri": 1142166,
+    "found": true
+  },
+  "bucket": {
+    "n": 50000,
+    "fail": 143,
+    "pass": 49857,
+    "unk": 0,
+    "areaAll": 1684.256816970964,
+    "areaFail": 0.5952437750857443,
+    "incomplete": 143
+  },
+  "failRate": 0.00286,
+  "sigmaCountRel": 0.08362420100070908,
+  "areaFailFrac": 0.00035341627778372593,
+  "sigmaAreaRel": 0.19631673696193022,
+  "scaledFail": 3266.59476,
+  "underReportRatio": 43.5545968,
+  "planeOverInSample": 3,
+  "witP50": 1.6543086044351336,
+  "witP99": 5.4515912049291595,
+  "witMaxInSample": 240.05909771099977,
+  "secs": 1918.014
+}
