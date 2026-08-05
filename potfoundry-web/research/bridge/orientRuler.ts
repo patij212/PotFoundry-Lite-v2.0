@@ -240,6 +240,20 @@ export interface OrientOut {
   cov: number;
   /** normRad + kappa*cov when `kappa` was supplied, else NaN. An UPPER bound on the true sup. */
   bound: number;
+  /**
+   * |f . n_S(centroid)| — how decisive the `orient:'outward'` sign flip was. 1 in `'winding'` mode
+   * (no decision taken); 0 when no analytic normal was available and the legacy XY test was used.
+   *
+   * *** READ IT. *** The predecessor of this field decided the outward sign from the facet normal's
+   * XY components, which vanish on a near-horizontal facet — so on Voronoi the `normDeg > 90`
+   * population was decided on a margin of p50 0.035, and the whole-mesh MAX moved 154.67 deg ->
+   * 179.93 deg depending on the convention. ⚠ Over-bar shares are NOT invariant either — a facet at
+   * 3 deg maps to 177, which is over a 5-deg bar (measured 20,173 vs 20,157 of 40,000 on Voronoi).
+   * Shares move a little; maxima move a lot.
+   * A small margin here means the facet's reported angle is a coin toss; aggregate it before
+   * quoting any orientation maximum.
+   */
+  signMargin: number;
   /** parameter point where the witness was attained. */
   argTh: number;
   argZ: number;
@@ -315,14 +329,57 @@ export function orientOfFacet(
   );
   if (!(fl > 0)) {
     return {
-      normRad: NaN, normDeg: NaN, tangMm: NaN, legacyTangMm: NaN, cov: 0, bound: NaN,
+      normRad: NaN, normDeg: NaN, tangMm: NaN, legacyTangMm: NaN, cov: 0, bound: NaN, signMargin: 0,
       argTh: ath, argZ: az, diam, samples: 0, kinkRad: NaN, spreadRad: NaN, meanRad: NaN, overFrac: NaN,
     };
   }
   fx /= fl; fy /= fl; fz /= fl;
+  // ── OUTWARD SIGN. FIXED 2026-08-06: the reference is the ANALYTIC SURFACE NORMAL, not the XY
+  // radial direction. ──────────────────────────────────────────────────────────────────────────
+  // WAS: `if (fx*gx + fy*gy < 0) flip`, i.e. the sign came from the facet normal's XY components
+  // against the centroid's XY position. *** ON A NEAR-HORIZONTAL FACET fx AND fy ARE ~0, SO THAT
+  // DOT PRODUCT IS NOISE. *** Measured on Voronoi: the `normDeg > 90` population decides on a margin
+  // of p50 0.035, and under the STL's own winding the whole-mesh max angle moves
+  // 154.67 deg -> 179.93 deg with 8.497% of facets changing `normDeg`.
+  //
+  // ⚠ AND A CLAIM I MADE HERE FIRST, WHICH IS FALSE — corrected by its own non-vacuity bar (S96).
+  // I wrote that over-bar COUNT and AREA are invariant under the convention "because a flip maps
+  // theta -> 180-theta, which cannot move a facet across a sub-90-degree bar". *** THAT IS WRONG. ***
+  // A facet at 3 degrees maps to 177, which IS over a 5-degree bar. The two conventions differ on
+  // exactly the inverted-winding population, and MEASURED on voronoi_ring_D-- at a 5-degree bar it is
+  // 20,173 vs 20,157 of 40,000 — small, real, and not zero.
+  // SO: SHARES MOVE A LITTLE AND MAXIMA MOVE A LOT. Neither is invariant. State which convention any
+  // orientation number was taken under.
+  //
+  // This is the fifth centroid/degenerate-sampling defect found in this project's instruments, and
+  // the third whose signature is a decision taken on a quantity that vanishes for the very population
+  // it is deciding about.
+  //
+  // THE FIX. For r = rA(theta, z) the analytic normal from `radialNormal` is outward BY
+  // CONSTRUCTION — its radial component is r > 0 — and it is well defined everywhere, including
+  // where the facet is horizontal. So take the sign from it.
+  //
+  // COST: exactly ONE extra `ns` call per facet (~2% at k=8's 45 samples). It CANNOT be recovered
+  // after the loop: flipping maps theta -> 180-theta per sample, so `best = max theta` becomes
+  // `180 - min theta`, which is not a function of `best`. The reference has to be established first.
+  //
+  // `signMargin` is returned so a caller can see when this decision was close. A guard nobody can
+  // inspect is how the old one survived.
+  let signMargin = 1;
   if (opts.orient === 'outward') {
-    const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
-    if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+    const gth = (ath + bth + cth) / 3; const gz0 = (az + bz + cz) / 3;
+    const ncRef = ns(gth, gz0, scratch);
+    if (ncRef > 0) {
+      const d = fx * scratch[0] + fy * scratch[1] + fz * scratch[2];
+      signMargin = Math.abs(d);
+      if (d < 0) { fx = -fx; fy = -fy; fz = -fz; }
+    } else {
+      // no analytic normal available at the centroid: fall back to the legacy XY test and SAY SO
+      // by reporting a zero margin, rather than silently guessing.
+      const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
+      signMargin = 0;
+      if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+    }
   }
   const rRef = opts.rRef ?? (Math.hypot(ax, ay) + Math.hypot(bx, by) + Math.hypot(cx, cy)) / 3;
   // exact covering radius of the order-k lattice in the (rRef*theta, z) parameter plane, PLUS the corner
@@ -366,6 +423,7 @@ export function orientOfFacet(
   return {
     normRad: best,
     normDeg: (best * 180) / Math.PI,
+    signMargin,
     tangMm: 2 * Math.sin(best / 2) * diam,
     legacyTangMm: Math.sin(best) * diam,
     cov,
