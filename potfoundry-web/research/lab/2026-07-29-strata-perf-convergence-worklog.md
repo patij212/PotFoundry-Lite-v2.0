@@ -1,3 +1,12 @@
+# *** SUPERSEDED IN PART — READ `2026-08-05-STRATA-STATE-OF-THE-CAMPAIGN.md` FIRST. ***
+#
+# Every `over-0.01mm` / "facets over tol" / driver-headline figure in this log is measured with
+# `sagAdaptiveRaw`, the INFINITE-PLANE ruler. It was re-baselined on 2026-08-05 against
+# `certifyTriangle` at the 10 um product bar and found to UNDER-report honest position by 21x to
+# 1,527x AND to OVER-report it 28-37% of the time. *** NO CORRECTION FACTOR EXISTS. THOSE FIGURES ARE
+# VOID, NOT SCALABLE. *** The mechanism findings, the lineage, the levers ledger and the process
+# lessons in this log all STAND; only the position numbers are withdrawn.
+#
 # STRATA-001 — performance / precision / convergence worklog (2026-07-29 overnight)
 
 GOAL: much faster meshing with NO fidelity loss. Then use the speed to answer the convergence
