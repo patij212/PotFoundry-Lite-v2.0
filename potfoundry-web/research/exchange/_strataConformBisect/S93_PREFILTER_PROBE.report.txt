@@ -1,0 +1,42 @@
+===== S93 — IS THE PER-POINT ORIENTATION PREFILTER SOUND? =====
+style GothicArches  stem gothicarches_ring_DS-HT_S39CTL  tol 0.01 mm  nMax 512
+facets 400  max checked points/facet 40  theta: cheap k=1 vs sup k=8
+reference distGlobal nu=360 nv=240   determinacy band 1e-9 mm
+1142166 facets read   [0.2s]
+  25/400 facets   checked 760 pts   [56.1s]
+  50/400 facets   checked 1618 pts   [119.6s]
+  75/400 facets   checked 2324 pts   [168.9s]
+  100/400 facets   checked 3104 pts   [223.5s]
+  125/400 facets   checked 3808 pts   [272.7s]
+  150/400 facets   checked 4631 pts   [330.1s]
+  175/400 facets   checked 5368 pts   [381.4s]
+  200/400 facets   checked 6268 pts   [443.6s]
+  225/400 facets   checked 6925 pts   [489.0s]
+  250/400 facets   checked 7646 pts   [537.7s]
+  275/400 facets   checked 8337 pts   [585.7s]
+  300/400 facets   checked 9154 pts   [642.2s]
+  325/400 facets   checked 9969 pts   [698.6s]
+  350/400 facets   checked 10676 pts   [748.2s]
+  375/400 facets   checked 11366 pts   [796.0s]
+  400/400 facets   checked 12106 pts   [846.8s]
+
+═══ RESULT ═══
+facets sampled 400, of which with >=1 pass-2 candidate: 379
+
+  ── theta from k=1  (AS PRE-REGISTERED by S90 — "15 evals/facet")
+     pass-2 candidate points checked : 12106
+     WOULD PRUNE (ub <= thresh)      : 215 (1.78%)
+     *** SOUNDNESS VIOLATIONS (ub < dTrue) : 3 (0.02%) ***
+     worst violation: ub 0.0000 um  vs  dTrue 0.0013 um   = 1.316926885723615e+24x TOO SMALL   (facet 444711)
+
+  ── theta from k=8  (higher-k sup, for contrast)
+     pass-2 candidate points checked : 12106
+     WOULD PRUNE (ub <= thresh)      : 215 (1.78%)
+     *** SOUNDNESS VIOLATIONS (ub < dTrue) : 3 (0.02%) ***
+     worst violation: ub 0.0000 um  vs  dTrue 0.0013 um   = 1.316926885723615e+24x TOO SMALL   (facet 444711)
+
+  READING: a violation means the bound is BELOW a real distance, so pruning on it would skip a point
+  that can raise `witnessed` — an unsound prune and a silent false PASS. Zero violations on this
+  sample is evidence for the sampled population, NOT a proof; `distGlobal` is itself an upper bound.
+
+done  [846.8s]
