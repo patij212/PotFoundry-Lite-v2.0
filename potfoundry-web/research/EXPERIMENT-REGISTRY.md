@@ -8956,3 +8956,45 @@ rA evaluations plus two more probes:
 ```
 The per-style mix is **LowPolyFacet 0/100/0, Voronoi 26/2/72, GothicArches 3/40/57** (combining the S70
 mis-oriented shares with the S74 C0/SMOOTH split). No single lever serves two styles.
+
+---
+
+## E-2026-08-05-S74b (amends E-2026-08-05-S74-TURN-SCALE) — THE WITHIN-MESH PROXY FOR A DENSITY SWEEP IS REFUTED AS A PROXY — the confound is structural
+
+§11 says Voronoi's turning class should be DENSITY-CLOSABLE and that a density sweep is the missing
+experiment. I could not run one (mesher arms, and the driver is configured for GothicArches), so I tried to
+substitute the mesh's own 256x spread of facet sizes: if the class converges under refinement, the SMALL
+facets in the existing mesh should already show a lower error. Re-ran the census printing the MEAN angle
+and the area fraction per octave rather than only the p99 (the §11 lesson).
+
+**Voronoi, TURNING population:**
+```
+   diam (mm)        n        normDeg p99   p50      MEAN p50   areaOver5deg   posUm p99
+   7.81e-3 .. 1.6e-2     113   134.4862   59.4557    33.5185      82.359%       4.994
+   1.56e-2 .. 3.1e-2   1,133   102.6732   39.9549    18.5782      70.495%       4.803
+   3.13e-2 .. 6.3e-2   9,607    91.9239   14.8140     7.5392      58.161%       4.859
+   6.25e-2 .. 1.3e-1  39,894    82.4239    9.6076     5.0215      37.478%       4.869
+   1.25e-1 .. 2.5e-1 118,662    76.5802    6.3478     3.2558      17.633%       4.870
+   2.50e-1 .. 5.0e-1 183,910    90.3556    5.0466     2.4746       9.675%       4.899
+   5.00e-1 .. 1.0e+0 211,891   145.6602   13.4875     6.1202      13.025%       4.851
+   1.00e+0 .. 2.0e+0  58,782   136.6055   50.2020    48.6833       7.089%       4.984
+```
+
+**The SMALL facets are the WORST ones** — MEAN p50 33.52 deg at 0.008 mm against 2.47 deg at 0.25 mm, and
+the area fraction runs the same way (82.4% -> 9.7%). That is the opposite of convergence, and it does NOT
+refute §11, because **the confound is structural and it runs in exactly this direction**: the mesher made
+those facets small BECAUSE that is where its position ruler was struggling, which is where the surface
+turns hardest. Facet size in a finished adaptive mesh is a proxy for local difficulty, not for local
+density. `posUm p99` is 4.80-4.99 in every single row — the mesher drove every octave to the same position
+tolerance, which is precisely why the sizes differ.
+
+**VERDICT: the within-mesh proxy is REFUTED as a proxy.** It cannot separate "refining helps" from "the
+mesher already refined the hard places". Only a real density sweep — the SAME surface at 2x, 4x, 8x the
+triangle budget — can answer §11's question, and I did not run one. I am recording the table anyway
+because the confound is worth knowing about: **any future attempt to read convergence off a finished
+adaptive mesh's own size distribution will hit it.**
+
+**ONE CLEAN SECONDARY READING.** In the NON-TURNING control the MEAN p50 is 0.16-0.47 deg in EVERY octave
+while the p99 climbs from 1.22 to 133.99 deg. The mean is flat and small; the p99 is a thin tail of
+catastrophically mis-oriented large facets — the sliver population of §5b, once more. Two statistics of one
+population telling opposite stories, which is the §11 lesson arriving from a third direction.

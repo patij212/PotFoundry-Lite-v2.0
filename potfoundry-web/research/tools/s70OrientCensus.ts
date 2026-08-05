@@ -288,8 +288,14 @@ for (const [style, stem] of JOBS) {
     for (const o of octs) {
       const ii = byOct.get(o) as number[];
       const s = sortedSub(aND, ii); const sp = sortedSub(aPOS, ii); const st = sortedSub(aTG, ii);
+      const sm = sortedSub(aMEAN, ii);
+      // *** p99 OF A SUP IS A TAIL STATISTIC AND CANNOT SHOW CONVERGENCE (S74 §11). *** The MEAN angle and
+      // the area fraction are what a smooth-but-under-resolved population moves on, so they are printed
+      // beside the p99 rather than instead of it.
+      let ta = 0; let ba = 0;
+      for (const i2 of ii) { ta += aAREA[i2]; ba += aAREA[i2] * aOVF[i2]; }
       p99s.push([o, pq(s, 0.99), pq(sp, 0.99), pq(st, 0.99)]);
-      log(`     diam [2^${o} = ${(2 ** o).toExponential(2)}, 2^${o + 1})  n=${String(ii.length).padStart(7)}   normDeg p99 ${pq(s, 0.99).toFixed(4).padStart(9)}   posUm p99 ${pq(sp, 0.99).toFixed(3).padStart(8)}   tangUm p99 ${pq(st, 0.99).toFixed(2).padStart(9)}`);
+      log(`     diam [2^${o} = ${(2 ** o).toExponential(2)}, 2^${o + 1})  n=${String(ii.length).padStart(7)}   normDeg p99 ${pq(s, 0.99).toFixed(4).padStart(9)}  p50 ${pq(s, 0.5).toFixed(4).padStart(8)}  MEAN p50 ${pq(sm, 0.5).toFixed(4).padStart(8)}  areaOver5deg ${((100 * ba) / Math.max(1e-12, ta)).toFixed(3).padStart(7)}%   posUm p99 ${pq(sp, 0.99).toFixed(3).padStart(7)}   tangUm p99 ${pq(st, 0.99).toFixed(2).padStart(9)}`);
     }
     if (p99s.length >= 4) {
       const lo = p99s[0][1]; const hi = p99s[p99s.length - 1][1];
