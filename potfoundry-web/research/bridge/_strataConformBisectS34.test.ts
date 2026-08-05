@@ -230,6 +230,10 @@ describe('STRATA conforming-bisection', () => {
     //     measured number rather than a hope.
     const SHAPE = process.env.PF_CB_SHAPE !== '0';
     const SHAPE_AR = envF('PF_CB_SHAPE_AR', 50);
+    // S83 FAN CAP. 0 = OFF and the arm is byte-identical to every prior one. See the block in
+    // `shapeAdmits`. A sane first value is ~64: the median vertex degree is 5 and the repo's own
+    // de-shard pass targets 19-25, so 64 is far above anything legitimate and far below the 2,550 runaway.
+    const MAXDEG = Math.round(envF('PF_CB_MAXDEG', 0));
     const SHAPE_FOLD = process.env.PF_CB_SHAPE_FOLD !== '0';
     const MID3D = process.env.PF_CB_MID3D !== '0';
     const MID3D_ITERS = Math.round(envF('PF_CB_MID3D_ITERS', 24));
@@ -531,14 +535,22 @@ describe('STRATA conforming-bisection', () => {
     interface EdgeVerdict { sag: number; kink: Kink | null; conformed: boolean; jumpConfirmed: boolean; px: number; py: number; pz: number }
     const edgeCache = new Map<number, EdgeVerdict>();
     const eDel = (a: number, b: number, t: number): void => { const k = eKey(a, b); const l = edgeMap.get(k); if (l === undefined) return; const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); if (l.length === 0) { edgeMap.delete(k); if (SWEEP) edgeCache.delete(k); } };
+    // ── LIVE PER-VERTEX DEGREE, for the S83 fan cap. O(1), maintained here so the SPLIT GUARD can see
+    // it — `vTris` is only built AFTER the refinement loop and is therefore useless to `shapeAdmits`.
+    // Sparse-safe (`?? 0`): `addV` may push a vertex this array has never seen.
+    const vDeg: number[] = [];
     const addT = (a: number, b: number, c: number): number => {
       if (a === b || b === c || c === a) return -1;
       const t = ta.length;
       ta.push(a); tb.push(b); tc.push(c); alive.push(true);
       eAdd(a, b, t); eAdd(b, c, t); eAdd(c, a, t);
+      vDeg[a] = (vDeg[a] ?? 0) + 1; vDeg[b] = (vDeg[b] ?? 0) + 1; vDeg[c] = (vDeg[c] ?? 0) + 1;
       return t;
     };
-    const killT = (t: number): void => { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); };
+    const killT = (t: number): void => {
+      alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t);
+      vDeg[ta[t]] = (vDeg[ta[t]] ?? 1) - 1; vDeg[tb[t]] = (vDeg[tb[t]] ?? 1) - 1; vDeg[tc[t]] = (vDeg[tc[t]] ?? 1) - 1;
+    };
     const eLen = (a: number, b: number): number => Math.hypot(vx[a] - vx[b], vy[a] - vy[b], vz[a] - vz[b]);
 
     // ───────────────────────────── THE GENERIC 1-D KINK LOCATOR ─────────────────────────────
@@ -1314,7 +1326,7 @@ describe('STRATA conforming-bisection', () => {
 
     // ══════════════════════ L5 SHAPE TERM — the guard, the solver, and their counters ══════════════════════
     let nShapeChecks = 0; let nShapeChildren = 0;
-    let nShapeRefusedAR = 0; let nShapeRefusedFold = 0;
+    let nShapeRefusedAR = 0; let nShapeRefusedFold = 0; let nShapeRefusedDeg = 0;
     let shapeWorstAdmitted = 0;      // the largest child AR this run ever COMMITTED to (bounded by SHAPE_AR)
     let nMid3dSolves = 0; let nMid3dClamped = 0; let mid3dShiftSum = 0; let mid3dShiftMax = 0;
     let nLongFallTested = 0; let nLongFallFired = 0;
@@ -1323,7 +1335,7 @@ describe('STRATA conforming-bisection', () => {
     //  did not list it, and nothing read the value narrowly enough to notice. S22's pass classifies its own
     //  refusals by this field, so the union is widened to what the code already writes. Type-only: no
     //  runtime byte moves, so every flag-OFF path stays byte-identical by construction.)
-    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' = 'none';
+    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' | 'deg' = 'none';
     /**
      * Read `lastBisectShape` at its DECLARED type. The checker's flow analysis narrows the variable to its
      * initializer `'none'` at every read in this scope, because the only writer is `bisectAt` — a closure
@@ -1331,7 +1343,7 @@ describe('STRATA conforming-bisection', () => {
      * where it works around it by not repeating the test). Reading through a function boundary drops the
      * narrowing, so S22 can classify a refusal by the gate that caused it instead of guessing.
      */
-    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' => lastBisectShape;
+    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' | 'deg' => lastBisectShape;
     // ═══ S26 — THE PLACEMENT half of the refusal channel. `lastBisectShape` names the SHAPE gate that
     // refused; it stays 'none' when the refusal was a PLACEMENT one, and until S26 that 'none' bucket was
     // the whole reason `unresolvedWhy` read `unknown` on every production arm. S25.2 measured what that
@@ -1500,6 +1512,32 @@ describe('STRATA conforming-bisection', () => {
         const ar1 = aspect3(vx[oa], vy[oa], vz[oa], p.x, p.y, p.z, vx[apex], vy[apex], vz[apex]);
         const ar2 = aspect3(p.x, p.y, p.z, vx[ob], vy[ob], vz[ob], vx[apex], vy[apex], vz[apex]);
         if (ar1 > SHAPE_AR || ar2 > SHAPE_AR) { nShapeRefusedAR += 1; lastBisectShape = 'ar'; lastShapeOffenderT = t; return false; }
+        // ── S83 FAN CAP (PF_CB_MAXDEG, default 0 = OFF = byte-identical to every prior arm) ──
+        // *** THE GUARD THAT WAS MISSING. *** `shapeAdmits` has only ever checked aspect3 and the
+        // (theta,z) fold. Nothing anywhere in the split path bounds a VERTEX'S DEGREE, and splitting
+        // an edge raises its APEX's degree by exactly one, every time, forever.
+        //
+        // MEASURED CONSEQUENCE (S81, voronoi_ring_D--): 32 vertices of degree >= 1000 hold 45,324
+        // facets = 5.62% OF THE WHOLE MESH, worst degree 2,550, against a MEDIAN OF 5. It is a
+        // runaway, confirmed across three meshes of the same mesher/style/params/flags: the same
+        // junction vertex (within 0.0018 mm in all three) is degree 37 / 57 / 2,550 at 285,826 /
+        // 671,823 / 806,765 triangles. Over the last +20% of triangles max degree rises 45x.
+        // Those fans ARE the mis-oriented class: caps at p50 177.3 deg, 788.8 um long x 2.795 um tall.
+        //
+        // AND THE RUNAWAY IS WHAT MAKES THE CLASS UNREPAIRABLE. A flip, the S63 cavity DP, an edge
+        // collapse and a vertex removal are ALL 1-ring operations, and the 1-ring of a degree-2,550
+        // vertex is a 2,550-gon: S81 measured `fold` firing on 494,895 of 745,470 collapse candidates
+        // and only 0.38% of the orientation defect reachable. This repo's own de-shard pass was built
+        // for degree 19-25 hubs and its comment records a degree-25 hub needing 13 sweeps.
+        // *** PREVENTING THE BIRTH IS THE FIX; EVERY REPAIR WE HAVE IS A DRESSING. ***
+        //
+        // The cap refuses the SPLIT rather than repairing the fan, so the driver must either act
+        // elsewhere or strand the facet VISIBLY in `unresolved` — which is the whole point. A
+        // runaway that shows up as 2,550 fan facets is invisible; one that shows up as a refusal is
+        // a number in the report.
+        if (MAXDEG > 0 && (vDeg[apex] ?? 0) >= MAXDEG) {
+          nShapeRefusedDeg += 1; lastBisectShape = 'deg'; lastShapeOffenderT = t; return false;
+        }
         if (ar1 > worst) worst = ar1;
         if (ar2 > worst) worst = ar2;
         if (!SHAPE_FOLD) continue;
@@ -2031,7 +2069,7 @@ describe('STRATA conforming-bisection', () => {
     // theirs. 'unclassified' is deliberately reachable: if it ever appears in a histogram that is a
     // REGISTERED DEFECT of this taxonomy, not a shrug, and it names itself so it cannot hide.
     type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused'
-      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
+      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'shape-deg' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
     /**
      * S26 — NAME THE REFUSER for a facet the heap driver could not split.
      *
@@ -2054,6 +2092,7 @@ describe('STRATA conforming-bisection', () => {
       if (ta.length >= triCap) return 'tricap';
       const sh = bisectRefusal();
       if (sh === 'ar') return 'shape-ar';
+      if (sh === 'deg') return 'shape-deg';
       if (sh === 'fold') return 'shape-fold';
       if (sh === 'admit') return 'shape-admit';
       const pl = bisectPlacement();
@@ -5213,7 +5252,7 @@ describe('STRATA conforming-bisection', () => {
       `  levers: PF_CB_SHAPE=${SHAPE ? `1 cap AR>${SHAPE_AR}` : '0 *** GUARD OFF — this run REPRODUCES the blade defect ***'}` +
         `  fold=${SHAPE_FOLD ? 1 : 0}  mid3d=${MID3D ? `1 (${MID3D_ITERS} halvings, |shift| cap ${MID3D_MAXSHIFT})` : '0 (parametric midpoint — the measured 0.819 off-centre bias is BACK)'}  longfall=${LONGFALL ? 1 : 0}`,
       `  guard: ${nShapeChecks} split candidates scored, ${nShapeChildren} child facets (BOTH sides of every edge)`,
-      `  refused: ${nShapeRefusedAR} on aspect (>${SHAPE_AR}), ${nShapeRefusedFold} on (θ,z) FOLD${SWEEP ? `   ⇒ shape-unresolved ${nShapeUnresolved}` : '   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path'}`,
+      `  refused: ${nShapeRefusedAR} on aspect (>${SHAPE_AR}), ${nShapeRefusedFold} on (θ,z) FOLD${MAXDEG > 0 ? `, ${nShapeRefusedDeg} on FAN DEGREE (>${MAXDEG})` : ''}${SWEEP ? `   ⇒ shape-unresolved ${nShapeUnresolved}` : '   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path'}`,
       // "ADMITTED", not "committed": the S4 probe scores candidate placements it may never take, so this is
       // an UPPER bound on the worst child that actually landed. That is the direction that makes it a
       // useful invariant — it must never exceed the cap.
