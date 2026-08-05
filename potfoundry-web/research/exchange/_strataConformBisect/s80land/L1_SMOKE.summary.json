@@ -1,0 +1,50 @@
+{
+  "style": "GothicArches",
+  "before": "gothicarches_ring_DS-HT_S39CTL",
+  "after": "s60flip/gothicarches_ring_DS-HT_S39CTL_G2CON",
+  "tag": "L1_SMOKE",
+  "nTri": 1142166,
+  "N": 300,
+  "tol": 0.01,
+  "nMax": 512,
+  "changed": 173,
+  "unchanged": 127,
+  "wholeB": {
+    "n": 300,
+    "fail": 1,
+    "pass": 299,
+    "unk": 0,
+    "areaAll": 8.967548036484649,
+    "areaFail": 0.0019835668017160577
+  },
+  "wholeA": {
+    "n": 300,
+    "fail": 1,
+    "pass": 299,
+    "unk": 0,
+    "areaAll": 8.967548036484649,
+    "areaFail": 0.0019835668017160577
+  },
+  "chgB": {
+    "n": 173,
+    "fail": 0,
+    "pass": 173,
+    "unk": 0,
+    "areaAll": 4.137719227989807,
+    "areaFail": 0
+  },
+  "chgA": {
+    "n": 173,
+    "fail": 0,
+    "pass": 173,
+    "unk": 0,
+    "areaAll": 4.137719227989807,
+    "areaFail": 0
+  },
+  "ratioCount": 0,
+  "ratioArea": 0,
+  "ratioCountWhole": 1,
+  "ratioAreaWhole": 1,
+  "verdict": "K-L1b FREE WIN",
+  "secs": 22.262
+}

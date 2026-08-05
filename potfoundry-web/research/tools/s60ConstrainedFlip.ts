@@ -95,6 +95,7 @@ const ck = (o: Record<string, unknown>): void => { appendFileSync(CKPT, `${JSON.
 
 log('===== S60 — THE CONSTRAINED FLIP (connectivity only; 0 vertices moved, 0 triangles added) =====');
 log(`style ${STYLE}  stem ${STEM}  tag ${TAG}`);
+log(`*** ORIENTATION KEY = ${process.env.PF_S60_KEY ?? 'chord'}  ->  ${(process.env.PF_S60_KEY ?? 'chord').toLowerCase() === 'sin' ? '*** THE OLD NON-MONOTONE sin KEY (ablation only) ***' : '2*sin(theta/2)*diam, MONOTONE (the fix)'} ***`);
 log(`ARM=${ARM}   C1 tangExc-decrease=${ARM !== 'none'}   C2 pos<=max(${BAR}um,old)=${USE_POS}   C3 det-floor(jitter<=${JBAR}um, mode=${DETMODE})=${USE_DET}   C4 dup-edge=${USE_DUP}   LEX-plateau=${LEX}`);
 
 // ── 0. rA COST PROBE — decide feasibility before burning an hour
@@ -190,7 +191,28 @@ function jitterUmOf(a: number, b: number, c: number): number {
   const minAlt = cr / Math.max(1e-300, diam);
   return (DET_K * ulpF32(R) * diam / minAlt) * 1000;
 }
-/** orientation error, um: sin(angle(n_facet, n_surface(centroid))) x diam. 5 rA evals. S56/S58 verbatim. */
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// THE RANKING KEY — FIXED 2026-08-05 BY LAND (S80-L2). PRE-REGISTERED BEFORE THE RE-RUN.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// WAS `Math.sin(Math.acos(dot)) * diam`, transcribed from S56/S58 so the numbers would be comparable.
+// `sin` is NON-MONOTONE on [0, pi]: it peaks at 90 deg and returns to ZERO at 180, so a FULLY INVERTED
+// facet — the worst case there is — scored ~6.6e-16 mm. That is not a conservative reading, it is the
+// wrong sign of wrong: the worst facets scored best. This quantity is THE RANKING KEY and THE ACCEPT TEST
+// (C1) of this pass, so the greedy search was being steered AWAY from precisely the facets it exists to
+// repair. Found by GUARD (S61 F4b) reading the formula rather than the output; already fixed in
+// s55OrientHeatmap.ts:102.
+//
+// The right quantity is the CHORD between the two unit normals, 2*sin(theta/2)*diam: monotone on [0, pi],
+// maximal (2*diam) at full inversion, and equal to sin(theta)*diam to O(theta^2) so small-angle numbers
+// stay comparable. S66 re-scored the FINISHED STLs on both keys and found over-bar ratios 1.0002-1.0045 —
+// but that is a re-score of a mesh produced BY THE OLD KEY and cannot tell you what a pass STEERED by the
+// new key would do. Hence PF_S60_KEY, defaulting to the fix, with the old key kept ONLY as an in-process
+// ablation. The live key is printed in the header; read it, do not assume it.
+// H-L2: porting the monotone key and re-running every arm does not move any published verdict.
+// K-L2: Gothic ratio leaves [3.0, 4.0] / K1,K2,K3,C4 flips PASS<->FAIL / rejPos becomes 0 on Gothic or
+//       Voronoi / topology stops being byte-identical  =>  a verdict moved and must be re-stated.
+const ORIENT_KEY = (process.env.PF_S60_KEY ?? 'chord').toLowerCase(); // chord = 2*sin(th/2)*diam (FIXED) | sin = the old non-monotone key
+/** orientation error, um: normal-CHORD 2*sin(theta/2) x diam (monotone). 5 rA evals. */
 function tangExcOf(a: number, b: number, c: number): number {
   const ax = VXa[a]; const ay = VYa[a]; const az = VZa[a];
   const bx = VXa[b]; const by = VYa[b]; const bz = VZa[b];
@@ -215,7 +237,34 @@ function tangExcOf(a: number, b: number, c: number): number {
   const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
   let dot = fx * nx + fy * ny + fz * nz; dot = dot > 1 ? 1 : dot < -1 ? -1 : dot;
   const [la, lb, lc] = sidesOf(a, b, c);
-  return Math.sin(Math.acos(dot)) * Math.max(la, lb, lc) * 1000;
+  const th = Math.acos(dot);
+  return (ORIENT_KEY === 'sin' ? Math.sin(th) : 2 * Math.sin(0.5 * th)) * Math.max(la, lb, lc) * 1000;
+}
+/** the angle itself, deg — so the pass can report whether it MANUFACTURED inversions, not just moved a scalar. */
+function normAngDegOf(a: number, b: number, c: number): number {
+  const ax = VXa[a]; const ay = VYa[a]; const az = VZa[a];
+  const bx = VXa[b]; const by = VYa[b]; const bz = VZa[b];
+  const cx = VXa[c]; const cy = VYa[c]; const cz = VZa[c];
+  let fx = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
+  let fy = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+  let fz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  const fl = Math.hypot(fx, fy, fz); if (fl < 1e-18) return 0;
+  fx /= fl; fy /= fl; fz /= fl;
+  const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
+  if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  const thA = VT[a];
+  const thc = thA + (dThRaw(thA, VT[b]) + dThRaw(thA, VT[c])) / 3;
+  const zc = Math.min(H, Math.max(0, (az + bz + cz) / 3));
+  const r = rA(thc, zc);
+  const hTh = 1e-5 / Math.max(1e-6, r); const hZ = 1e-5;
+  const rTh = (rA(thc + hTh, zc) - rA(thc - hTh, zc)) / (2 * hTh);
+  const zp = Math.min(H, zc + hZ); const zm = Math.max(0, zc - hZ);
+  const rZ = zp > zm ? (rA(thc, zp) - rA(thc, zm)) / (zp - zm) : 0;
+  const cc = Math.cos(thc); const ss = Math.sin(thc);
+  let nx = rTh * ss + r * cc; let ny = r * ss - rTh * cc; let nz = -r * rZ;
+  const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+  let dot = fx * nx + fy * ny + fz * nz; dot = dot > 1 ? 1 : dot < -1 ? -1 : dot;
+  return (Math.acos(dot) * 180) / Math.PI;
 }
 /** position sag, um — THE DRIVER'S OWN RULER, imported from _sagKernel (not re-coded). */
 const posOfSlot = (slot: number): number => sagAdaptiveRaw(rA, MESH, slot, 0.03, 12, 64, ARG) * 1000;
@@ -238,16 +287,29 @@ interface Census {
   maP50: number; maP99: number; maMax: number; cap150: number; cap179: number;
   jitP99: number; jitMax: number; jitOver1: number; jitOver10: number;
   tangOverJitBad: number;
+  nOver90: number; nOver120: number; angMax: number; tangAreaOver: number; areaAll: number;
 }
 function census(label: string): Census {
   const tS = Date.now();
   const tang = new Float64Array(nTri); const ma = new Float64Array(nTri); const jit = new Float64Array(nTri);
   let tangOver = 0; let cap150 = 0; let cap179 = 0; let jitOver1 = 0; let jitOver10 = 0; let tangOverJitBad = 0;
+  // AREA-WEIGHTING and the INVERSION counters are not decoration: facet COUNT over-states mis-oriented
+  // SURFACE by 13-184x across styles (S66 §14), and a count-only column cannot tell a pass that REMOVED
+  // inversions from one that MANUFACTURED them (the old sin key scored an inverted facet at ~0).
+  let nOver90 = 0; let nOver120 = 0; let angMax = 0; let tangAreaOver = 0; let areaAll = 0;
   for (let t = 0; t < nTri; t += 1) {
     const a = ta[t]; const b = tb[t]; const c = tc[t];
     const g = tangExcOf(a, b, c); const m = maxAngOf(a, b, c); const j = jitterUmOf(a, b, c);
     tang[t] = g; ma[t] = m; jit[t] = j;
-    if (g > BAR) { tangOver += 1; if (j > BAR) tangOverJitBad += 1; }
+    const ang = normAngDegOf(a, b, c);
+    const ux = VXa[b] - VXa[a]; const uy = VYa[b] - VYa[a]; const uz = VZa[b] - VZa[a];
+    const wx = VXa[c] - VXa[a]; const wy = VYa[c] - VYa[a]; const wz = VZa[c] - VZa[a];
+    const ar = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+    areaAll += ar;
+    if (ang > angMax) angMax = ang;
+    if (ang > 90) nOver90 += 1;
+    if (ang > 120) nOver120 += 1;
+    if (g > BAR) { tangOver += 1; tangAreaOver += ar; if (j > BAR) tangOverJitBad += 1; }
     if (m >= 150) cap150 += 1;
     if (m >= 179.999) cap179 += 1;
     if (j > 1) jitOver1 += 1;
@@ -271,6 +333,7 @@ function census(label: string): Census {
     posP50: pq(pos, 0.5), posP99: pq(pos, 0.99), posMax, posOver,
     maP50: pq(mSorted, 0.5), maP99: pq(mSorted, 0.99), maMax: mSorted[nTri - 1], cap150, cap179,
     jitP99: pq(jSorted, 0.99), jitMax: jSorted[nTri - 1], jitOver1, jitOver10, tangOverJitBad,
+    nOver90, nOver120, angMax, tangAreaOver, areaAll,
   };
   log('');
   log(`── ${label} ── (tang ${tTang.toFixed(1)}s, pos ${tPos.toFixed(1)}s over ${nPos} facets, stride ${POS_STRIDE})`);
@@ -278,6 +341,8 @@ function census(label: string): Census {
   log(`   POSITION  sag   p50 ${out.posP50.toFixed(2)}  p99 ${out.posP99.toFixed(2)}  max ${posMax.toFixed(1)} um   over-${BAR}um ${posOver} (${((100 * posOver) / nPos).toFixed(4)}%)`);
   log(`   SHAPE  maxAngle p50 ${out.maP50.toFixed(1)}  p99 ${out.maP99.toFixed(1)}  max ${out.maMax.toFixed(3)}   caps>=150 ${cap150}   >=179.999 ${cap179}`);
   log(`   DETERM jitterUm p99 ${out.jitP99.toFixed(3)}  max ${out.jitMax.toFixed(2)}   over-1um ${jitOver1} (${((100 * jitOver1) / nTri).toFixed(3)}%)   over-10um ${jitOver10}`);
+  log(`   ORIENT by AREA  over-${BAR}um covers ${((100 * tangAreaOver) / Math.max(1e-30, areaAll)).toFixed(3)}% of the SURFACE (count says ${((100 * tangOver) / nTri).toFixed(3)}% — count over-states by ${(((tangOver / nTri) * areaAll) / Math.max(1e-30, tangAreaOver)).toFixed(2)}x)`);
+  log(`   INVERSION  normal angle > 90deg ${nOver90}   > 120deg ${nOver120}   max ${angMax.toFixed(2)} deg`);
   log(`   VALIDITY: of the ${tangOver} facets over the tang bar, ${tangOverJitBad} have jitterUm > ${BAR} um (their normal is NOT f32-determined)`);
   ck({ census: label, ...out });
   return out;
@@ -466,6 +531,8 @@ log(`   ORIENT over-${BAR}um   ${before.tangOver} -> ${after.tangOver}   (${(bef
 log(`   POSITION over-${BAR}um ${before.posOver} -> ${after.posOver}   p99 ${before.posP99.toFixed(2)} -> ${after.posP99.toFixed(2)} um   max ${before.posMax.toFixed(1)} -> ${after.posMax.toFixed(1)}`);
 log(`   SHAPE caps>=150      ${before.cap150} -> ${after.cap150}    >=179.999 ${before.cap179} -> ${after.cap179}    maxAngle max ${before.maMax.toFixed(3)} -> ${after.maMax.toFixed(3)}`);
 log(`   DETERM jitter>1um    ${before.jitOver1} -> ${after.jitOver1}    >10um ${before.jitOver10} -> ${after.jitOver10}`);
+log(`   ORIENT by AREA       ${((100 * before.tangAreaOver) / Math.max(1e-30, before.areaAll)).toFixed(3)}% -> ${((100 * after.tangAreaOver) / Math.max(1e-30, after.areaAll)).toFixed(3)}% of surface   (${((before.tangAreaOver / Math.max(1e-30, before.areaAll)) / Math.max(1e-30, after.tangAreaOver / Math.max(1e-30, after.areaAll))).toFixed(2)}x)`);
+log(`   INVERSION >90deg     ${before.nOver90} -> ${after.nOver90}   >120deg ${before.nOver120} -> ${after.nOver120}   ${after.nOver90 > before.nOver90 ? '*** the pass MANUFACTURED inversions — flag it ***' : '(removed, not manufactured)'}`);
 log('');
 log('PRE-REGISTERED KILL-CRITERIA');
 const k1 = after.tangOver <= 0.5 * before.tangOver;
@@ -480,7 +547,7 @@ const topoOk = topoAfter.bnd === topoBefore.bnd && topoAfter.nm === topoBefore.n
 log(`   C4 topology preserved           : ${topoOk ? 'PASS' : '*** FAIL ***'} (edges ${topoBefore.edges}->${topoAfter.edges}, bnd ${topoBefore.bnd}->${topoAfter.bnd}, nonMan ${topoBefore.nm}->${topoAfter.nm}, orientBad ${topoBefore.orientBad}->${topoAfter.orientBad})`);
 
 writeFileSync(`${OUTDIR}/${TAG}.summary.json`, JSON.stringify({
-  style: STYLE, stem: STEM, tag: TAG, arm: ARM, nTri, NV, BAR, JBAR, DET_K, DETMODE, LEX,
+  style: STYLE, stem: STEM, tag: TAG, arm: ARM, orientKey: ORIENT_KEY, nTri, NV, BAR, JBAR, DET_K, DETMODE, LEX,
   USE_POS, USE_DET, USE_DUP, totalFlips, rej, before, after, topoBefore, topoAfter,
   k1, k2broken, k2vac, k3, topoOk, candFirstRound,
 }, null, 2));
