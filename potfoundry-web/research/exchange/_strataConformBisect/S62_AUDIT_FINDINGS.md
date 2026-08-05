@@ -651,3 +651,22 @@ was median < 0.5). But the honest reading is: **`certifyTriangle`'s per-facet `w
 should be confirmed individually, and only the AGGREGATE (251/300 vs the plane ruler's 11/300, and
 the independent 24/25) should be quoted.** Correcting all three over-states still leaves 24/25 above
 the bar with an independently confirmed max of 349.221 um, so 10c is unaffected.
+
+### 10e. THE TWO BENIGN EXPLANATIONS FOR 10c ARE BOTH RULED OUT.
+
+Before claiming a contradiction I checked the two ways it could be nothing:
+
+1. **"The STL was regenerated after that measurement."** No.
+   `gothicarches_ring_DS-HT_S39CTL.stl` mtime **2026-08-05 00:37:39**; commit `943427c6` (the 22.190)
+   is dated **2026-08-05 04:53:17** — the artefact predates the measurement by 4 h 16 m and has not
+   been written since (every run of mine is read-only). Same bytes.
+2. **"AUDIT rebuilt the wrong surface."** No.
+   The vertex-on-surface gate reads `|hypot(x,y) - rA(atan2(y,x), z)|` p50 0.00000 / **p99 0.00001** /
+   max 0.00002 mm over 50,000 sampled vertices. The mesher puts its vertices ON the surface, so the rA
+   I rebuilt (registry defaults, `DIMS {120,40,50,1}`) IS this mesh's surface to 10 nanometres. A
+   different parameter set would have failed that gate by orders of magnitude.
+
+So the contradiction is between two measurements of the same bytes against the same surface. It is a
+question about the two HARNESSES, and only the owner of the mesh-wide one can answer it. Named
+suspect, from `FacetVerdict`'s own header: a NON-EXHAUSTIVE pass, whose per-facet `witnessed` is
+"first value found over tol" rather than the facet maximum, aggregated into a "max".
