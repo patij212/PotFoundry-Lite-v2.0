@@ -225,23 +225,40 @@ VERTEX**. Measured:
 
 **32 vertices consume 5.62% of the entire triangle budget of this mesh.**
 
-### The control that makes it a bug rather than a property of the style
+### 5a. *** CORRECTION TO MY OWN FIRST STATEMENT OF THIS, MADE BEFORE IT WAS QUOTED FURTHER ***
 
-Identical instrument, same aspect3 ≥ 50 definition, other meshes on disk:
+I first wrote "another mesher run of the same style does not produce them", which reads as *an equally
+good alternative configuration exists*. **It does not.** `voronoi_D--` is the SAME mesher, SAME style,
+SAME params (`vScale 8, vJitter 0.8, vThickness 0.1, vRelief 2, vMorph 1, vZStretch 1, vPulse 0,
+vEdgeFade 0.15`) and the same `[DIRECTED | no-snap | no-reproj]` flags — it is simply a **LESS REFINED**
+run (308,261 splits vs 375,688), and it is *worse* on every other axis: 88 non-manifold edges (FAIL) and
+MAXtri 15.950 µm against the finished mesh's 0 and 5.000 µm PASS. Reading only the degree column and not
+the header would have made this a wrong claim. It is a stronger finding stated correctly:
 
 ```
-  mesh                                    tris      max vertex degree   verts deg>=100   MIS facets
-  voronoi_ring_D--   (this mesher)      806,765         2,550                69          124,245  (15.40%)
-  voronoi_D--        (SAME STYLE)       671,823            57                 0           12,652  ( 1.88%)
-  gothicarches_ring_D--                  61,120            47                 0            1,288  ( 2.11%)
-  lowpolyfacet_ring_D--                 137,480            10                 0                0  ( 0.00%)
+  mesh (same mesher, same style, same params)   tris      verts    maxDeg  deg>=100   MIS count%  MIS area%   the SAME junction vertex
+  voronoi_DS-   (SNAP, capped)                285,826   143,113       37        0        0.66%     0.0434%        degree    37
+  voronoi_D--   (no-snap, 308,261 splits)     671,823   336,169       57        0        1.88%     0.1104%        degree    57
+  voronoi_ring_D--  (no-snap, 375,688 splits) 806,765   403,683    2,550       69       15.40%     0.5920%        degree 2,550
+  --- other styles, for scale ---
+  gothicarches_ring_D--                        61,120    30,634       47        0        2.11%          –
+  lowpolyfacet_ring_D--                       137,480    68,984       10        0        0.00%          –
 ```
 
-**The same style, meshed by another configuration, has zero vertices over degree 57 and 8.2× less of the
-class as a fraction of facets.** The top hub location is geometrically real — `voronoi_D--` has a vertex at
-the *same* (θ = −3.0788, z = 54.857, r = 46.571), a genuine Voronoi junction — but it carries **degree 57
-there and degree 2,550 here.** Whatever produces the fan is in this mesher's handling of that junction,
-not in the surface.
+**All three Voronoi meshes contain the same vertex at the same place** — the nearest vertex to
+(θ = −3.0788, z = 54.857, r = 46.571) is within **0.0018 mm** (f32 rounding) in each. A genuine Voronoi
+junction. Its degree is 37, then 57, then **2,550**.
+
+**So this is a REFINEMENT RUNAWAY, not a static bug.** Over the last **+20% of triangles** (671,823 →
+806,765) the maximum vertex degree rises **45×** and the MIS class rises **8.2×**. The driver reaches a
+state in which it keeps splitting edges incident to one junction vertex, each split re-fanning to that
+same vertex, and the fan grows without bound. The signature is exactly S65's mechanism operating on a
+single hub: a bisection inserts an on-surface vertex off the old facet's plane, the child is thinner, its
+sag ranking is unchanged, and it is split again.
+
+That also predicts the thing to check next, which I have NOT checked: **whether the runaway is
+monotone in split count** (i.e. would 900k triangles give degree 5,000?). The three points above are
+consistent with it but are three different runs, not a single instrumented one.
 
 ### This is also the complete explanation of why every local lever failed
 
@@ -268,8 +285,10 @@ are **REFUTED as a remedy for this class**, and refuted with a clean topology au
 not an implementation artefact.
 
 **But the class is not a representation problem.** One third of it (36.44% by area) is 69 pathological
-super-hub vertices that another mesher run of the same style does not produce. The right next action is
-**not** a new operator — it is to find and fix whatever emits a degree-2,550 vertex.
+super-hub vertices produced by a REFINEMENT RUNAWAY in the last 20% of this mesh's splits (§5a: the same
+junction vertex is degree 37 / 57 / 2,550 across three runs of the same mesher at increasing split
+counts). The right next action is **not** a new operator — it is to find and stop whatever grows a
+degree-2,550 fan.
 
 ### What I did NOT do, named
 * **I did not find the code that creates the hubs.** I have the locations (θ/z/r of the top 32, in
