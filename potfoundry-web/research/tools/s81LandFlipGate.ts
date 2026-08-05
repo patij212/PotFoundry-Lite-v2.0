@@ -75,7 +75,8 @@ const P = Float64Array.from(xyz);
 const st = landConstrainedFlip(P, nTri, {
   rA, H, barUm: 10, jbarUm: 1, rounds: ROUNDS, posRuler: RULER, h1SelectUm: SEL,
   useDet: true, detMode: 'rel', gateMm: 0.05, nMax: 512, zJumps: zJ, thJumps: thJ, fastLevel: FAST,
-  censusPlanePos: envF('PF_LAND_PLANECENSUS', 0) === 1, log,
+  censusPlanePos: envF('PF_LAND_PLANECENSUS', 0) === 1,
+  c2ShortCircuit: envF('PF_LAND_C2SHORT', 1) === 1, log,
 });
 
 const show = (l: string, c: LandCensus): void => {
@@ -102,6 +103,7 @@ log(`WORK (fastLevel ${FAST}): body entries ${st.candBody}  score evals ${st.sco
   const other = tot - inLoop - st.msCensusBefore - st.msCensusAfter;
   log(`COST  buildEdges ${pc(st.msEdges)}  frontier ${pc(st.msFrontier)}  sweep ${pc(st.msSweep)}  censusBEFORE ${pc(st.msCensusBefore)}  censusAFTER ${pc(st.msCensusAfter)}  weld+gate+writeback ${pc(other)}   [all %% of the ${st.secs.toFixed(1)}s pass]`);
 log(`COST  of which the BANNED plane ruler (sagAdaptiveRaw, both censuses): ${pc(st.msCensusPlane)}`);
+log(`COST  C2 accept clause INSIDE the sweep (same plane ruler): ${pc(st.msC2)} over ${st.c2Calls} candidates that reached it`);
 }
 if (RULER === 'h1') log(`H1 C2: evaluated ${st.h1Evaluated} candidates, selector skipped ${st.h1Skipped} (${((100 * st.h1Skipped) / Math.max(1, st.h1Skipped + st.h1Evaluated)).toFixed(2)}%)`);
 log(`ORIENT over-bar ${st.before.orientOver} -> ${st.after.orientOver}  (${(st.before.orientOver / Math.max(1, st.after.orientOver)).toFixed(3)}x)   by AREA ${st.before.orientAreaOverPct.toFixed(3)}% -> ${st.after.orientAreaOverPct.toFixed(3)}%  (${(st.before.orientAreaOverPct / Math.max(1e-30, st.after.orientAreaOverPct)).toFixed(3)}x)`);

@@ -104,6 +104,14 @@ export interface LandFlipOpts {
    * them as such rather than as zeros.
    */
   censusPlanePos?: boolean;
+  /**
+   * Skip the `posOfSlot` pair when both candidates already clear `barUm`. **Default true.** `allow` is
+   * `max(barUm, ...)` so it is >= barUm by construction and the clause cannot fail in that case — the
+   * two extra `sagAdaptiveRaw` evaluations were being spent to compute a ceiling already cleared.
+   * Set false to restore the unconditional evaluation as an equivalence CONTROL; the verdict, every
+   * rejection counter, and the output md5 are the same either way.
+   */
+  c2ShortCircuit?: boolean;
   log?: (s: string) => void;
 }
 
@@ -125,6 +133,8 @@ export interface LandFlipStats {
   msCensusBefore: number; msCensusAfter: number;
   /** of the census time, the part spent in the BANNED plane ruler `sagAdaptiveRaw` (both censuses). */
   msCensusPlane: number;
+  /** the C2 accept clause inside the sweep (the plane ruler again), and how many candidates reached it. */
+  msC2: number; c2Calls: number;
   before: LandCensus; after: LandCensus;
 }
 export interface LandCensus {
@@ -159,6 +169,8 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   // control any future equivalence check must run against — keep it working.
   const FAST = o.fastLevel ?? 2;
   const CENSUS_PLANE = o.censusPlanePos ?? false;
+  /** default ON; `false` restores the unconditional `posOfSlot` pair as the equivalence CONTROL. */
+  const C2SHORT = o.c2ShortCircuit ?? true;
   const zJumps = o.zJumps ?? []; const thJumps = o.thJumps ?? [];
   const log = o.log ?? ((): void => { /* silent */ });
   const TOLMM = BAR / 1000;
@@ -390,6 +402,10 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   // `msEdges` is the per-round `buildEdges()` rebuild, `msFrontier` the O(nTri) star scan, `msSweep`
   // the edge walk itself. Timing only — it changes no verdict and no output.
   let msEdges = 0; let msFrontier = 0; let msSweep = 0;
+  // S89: the C2 clause inside the sweep is the SAME `sagAdaptiveRaw` the census was just relieved of.
+  // It is NOT vacuous (4,131 rejections on Voronoi), so it cannot simply be switched off — but nobody
+  // has measured what the accept ruler costs, only what the reporting ruler cost.
+  let msC2 = 0; let c2Calls = 0;
   const score = new Float64Array(nTri);
   // ── LEVEL >= 1: seed `score` ONCE. The accept path maintains it from here (see `fastLevel`).
   if (FAST >= 1) for (let t = 0; t < nTri; t += 1) { score[t] = orientOf(ta[t], tb[t], tc[t]); scoreEvals += 1; }
@@ -469,6 +485,7 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
         const jAllow = DETMODE === 'abs' ? JBAR : Math.max(JBAR, jitterUmOf(A1[0], A1[1], A1[2]), jitterUmOf(A2[0], A2[1], A2[2]));
         if (!(j1 <= jAllow && j2 <= jAllow)) { rej.det += 1; continue; }
       }
+      const tC2 = Date.now();
       if (RULER !== 'off') {
         // THE SELECTOR, and it is only sound in one direction. Skipping the honest test when the new
         // facets' ORIENTATION is small is a bet that low orientation implies low H1 position error. It is
@@ -480,11 +497,26 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
           if (RULER === 'h1') h1Evaluated += 1;
           const p1 = posOfCand(0, n1[0], n1[1], n1[2]);
           const p2 = posOfCand(1, n2[0], n2[1], n2[2]);
-          const allow = Math.max(BAR, posOfSlot(t1), posOfSlot(t2));
-          if (!(p1 <= allow && p2 <= allow)) { rej.pos += 1; continue; }
+          // ── S89 SHORT-CIRCUIT. `allow = max(BAR, ...)` is >= BAR BY CONSTRUCTION, so when both
+          // candidates already sit at or under BAR the clause CANNOT fail and the two `posOfSlot`
+          // evaluations cannot change the verdict. They were being spent unconditionally — up to two
+          // extra `sagAdaptiveRaw` calls per candidate, on the hot path, to compute a ceiling that was
+          // already cleared. Measured: C2 is 72.1% of the whole pass (220.0 s over 270,266 candidates),
+          // and it VETOES only 4,131 of them — 1.53%. This pays the full price for a rare veto.
+          //
+          // IDENTICAL BY CASE ANALYSIS, not by testing: (a) p1,p2 <= BAR <= allow => old code evaluates
+          // `allow` and accepts; new code accepts without evaluating it — same verdict. (b) otherwise the
+          // new code computes `allow` and applies the identical test. `posOfSlot`'s only side effect is
+          // populating `posC[t]`, and the accept path overwrites `posC[t1]/posC[t2]` with p1/p2 on the
+          // very next line either way, so the cache state is the same too.
+          if (!C2SHORT || !(p1 <= BAR && p2 <= BAR)) {
+            const allow = Math.max(BAR, posOfSlot(t1), posOfSlot(t2));
+            if (!(p1 <= allow && p2 <= allow)) { rej.pos += 1; msC2 += Date.now() - tC2; c2Calls += 1; continue; }
+          }
           posC[t1] = p1; posC[t2] = p2;
         }
       } else { posC[t1] = -1; posC[t2] = -1; }
+      msC2 += Date.now() - tC2; c2Calls += 1;
       ta[t1] = n1[0]; tb[t1] = n1[1]; tc[t1] = n1[2];
       ta[t2] = n2[0]; tb[t2] = n2[1]; tc[t2] = n2[2];
       score[t1] = g1; score[t2] = g2;
@@ -512,6 +544,6 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   return {
     nTri, nVert: NV, frozen, flips: totalFlips, rounds: roundsRun, secs: (Date.now() - t0) / 1000,
     rej, h1Skipped, h1Evaluated, candBody, scoreEvals, frontierSkipped, msEdges, msFrontier, msSweep,
-    msCensusBefore, msCensusAfter, msCensusPlane, before, after,
+    msCensusBefore, msCensusAfter, msCensusPlane, msC2, c2Calls, before, after,
   };
 }

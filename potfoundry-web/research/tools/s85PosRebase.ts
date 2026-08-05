@@ -116,11 +116,30 @@ const TOPK = Math.round(envF('PF_S85_TOPK', 300));
 const TOL = envF('PF_S85_TOL_MM', 0.010);
 const NMAX = Math.round(envF('PF_S85_NMAX', 512));
 const RESUME = envB('PF_S85_RESUME', true);
-// POOLING. Default 0 = the serial path this tool shipped with, byte for byte. >1 pools `certifyTriangle`.
-// It is NOT `resolveWorkerCount()`: that default (physical cores) is right for a box running one audit, and
-// this one habitually runs three or more S85 slots at once. An explicit number, chosen against the load
-// actually present, is the only honest setting here.
-const WORKERS = Math.round(envF('PF_S85_WORKERS', 0));
+// POOLING. **Default 6 since 2026-08-05 (S89), was 0.** `PF_S85_WORKERS=0` still forces the serial path.
+//
+// WHY THE DEFAULT MOVED, AND WHAT WAS ACTUALLY CHECKED. The flag shipped OFF because S87 uses this tool as
+// a BIT-EXACT cross-tool reference ("C2 ... PASSES to the exact bit" on 8,000 facets of S39CTL), so a
+// pooled path that perturbed one per-facet value would silently break someone else's passing gate. That
+// consumer's own mesh has now been run pooled and `cmp`-ed against the committed serial ndjson:
+//
+//   S39CTL uniform, N = 50,000, W = 14  ->  BYTE-IDENTICAL, 7,188,468 bytes, 143/50000 (0.286%),
+//   area-fail 0.03534%, witnessed max 240.059 um — every published figure reproduced exactly.
+//
+// W = 14 was chosen deliberately over the W = 6 the wiring was verified at: MORE shards is a STRONGER
+// test of the merge-by-walk-index, not merely a faster run. Byte-identity now holds at W = 6 (LOWPOLY +
+// S40AR90 + a target arm) and at W = 14 (S39CTL). Correctness is not worker-count-dependent — the merge
+// keys on the walk index, which one atomic cursor makes unique — so what follows is a LOAD policy, not a
+// correctness one.
+//
+// WHY 6 AND NOT 14 OR `resolveWorkerCount()`. The measured product here is LATENCY, not throughput: three
+// concurrent SERIAL slots already reach ~78.9 facet/s aggregate against one pooled arm's ~128.2, so
+// pooling buys ~1.62x on a full batch but turns a 34-minute arm into ~6.5 minutes. 6 is a value that has
+// been verified end-to-end and still leaves headroom on this 8-physical/16-logical box.
+// ** If you are launching three or more S85 slots at once, set PF_S85_WORKERS lower, or 0. ** The tool
+// cannot see the other slots, so it cannot choose for you — that is why this is an explicit number and
+// not `resolveWorkerCount()`.
+const WORKERS = Math.round(envF('PF_S85_WORKERS', 6));
 const POOL = WORKERS > 1 && typeof SharedArrayBuffer === 'function';
 // WINDOWED, not one giant claim. The pool returns rows only when its workers finish, so a single 50,000-facet
 // claim would checkpoint nothing for ~10 minutes and lose everything on a crash — and the serial path this
