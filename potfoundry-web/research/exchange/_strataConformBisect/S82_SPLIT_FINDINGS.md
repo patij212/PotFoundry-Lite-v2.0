@@ -513,3 +513,94 @@ those two do not need you.
   6.7% of Voronoi's marked facets (3,731/4,000 valid) and those are excluded from its row. A better root
   finder might change P2's numbers; it would not change the verdict, because P2's failure mode is a
   388 um p99 travel, not a missed root.
+
+## 10. VISUAL EVIDENCE FOR THE FOLD — and a BUG IN MY OWN RENDER TOOL, caught by the render disagreeing
+
+`research/tools/s104SplitFoldRender.ts`, images in
+`research/exchange/_strataConformBisect/s104fold/S104_fold_zoom.png` (2 panels, same patch, same colour
+scale: green 0 deg -> yellow 45 -> red 90 -> **MAGENTA = child inverted against its parent**).
+
+**Panel B (the mesher's P0 rule) carries a clear magenta sliver along the diagonal band. Panel C (the P4
+guard) has the same band in green/yellow with no magenta anywhere.** The folds are thin magenta lines
+rather than blobs because folded children ARE razor slivers seen edge-on — which is what the mechanism
+predicts, not a rendering artefact. The render agrees with the metric.
+
+**Two things went wrong on the way there and both are recorded because both were nearly silent:**
+
+1. **My first patch returned 0 folds in 288 children** where S101 says 7.5% of a uniform sample fold. The
+   window (z 58-62, theta ~ 0) was one I chose by hand, and it sat in the **theta = 0 SEAM COLUMN**, which
+   is a structured strip that folds nowhere. Picking a window by hand is how you get a picture that agrees
+   with whatever you wanted. The patch is now AUTO-SELECTED at the densest fold cell of a 96x32 grid.
+2. **The first census then read 8.700%, which looked like a confirmation and was a BUG.** I flipped the
+   PARENT's normal outward per facet while leaving the CHILDREN's normals as raw winding — so every
+   INWARD-winding facet reported both its children at ~180 deg. On the fold-dense patch that read **43.44%
+   "folds", and it also made the GUARD look broken (43.64%)**, which is what exposed it: the guard cannot
+   fold anything by construction. With the per-facet flip removed (S101 never had it — it fixes the winding
+   ONCE globally and never flips per facet):
+
+| whole-mesh census, every one of 806,765 facets virtually split | value |
+|---|---|
+| **INVERTED children** | **119,647 / 1,613,530 = 7.415%** |
+| parents with >= 1 folded child | 14.292% |
+| area(children)/area(parent) | 1.01954 |
+| S101's independent estimate (uniform sample, n=5,000) | **7.47%** |
+
+**7.415% whole-mesh against 7.47% sampled, from two independently written code paths.** The fold is real
+and its rate is pinned. In the fold-dense patch it is **35.19%** for P0 and **0.00%** for P4, with
+area(ch)/area(par) **2.0740 -> 1.0248**.
+
+## 11. *** THE SUPER-HUB RUNAWAY IS THE CEILING THEOREM COMPOUNDING — the co-location is confirmed, the causal reading is the OPPOSITE of "refinement manufactures the defect" ***
+
+COLLAPSE measured 32 Voronoi vertices of degree >= 1000 holding 5.6% of the mesh, one at 2,550, and the
+same junction going 37 -> 57 -> 2,550 as the mesher's own triangle count rose 2.8x. The coordinator asked
+whether that runaway sits where `s/h` says the child rotation is worst. My instrument answers it directly,
+and it gives a SHARPER test than co-location: **at a hub, what is the ACHIEVABLE improvement?**
+(`s101SplitModel_VDEG.report.txt`; my weld reads degree p50 **6**, p99 **11**, max **2,519**, 32 vertices
+>= 1000, 44,890 facets touching one = 5.564% — COLLAPSE's census reproduced.)
+
+**MARKED population, P0 = the mesher's own split rule, stratified by the facet's MAX VERTEX DEGREE:**
+
+| stratum | n | theta_par p50 | aspect3 p50 | **ACHIEVED imp p50** | **imp p90 (best case)** | ceiling rho p50 | betterMax | **fold** |
+|---|---|---|---|---|---|---|---|---|
+| maxDeg < 10 | 3,577 | 42.74 deg | 93.4 | −0.206 deg | **+5.354 deg** | 30.7 deg | 42.4% | 19.05% |
+| maxDeg 10..99 | 905 | 11.72 deg | 11.0 | −0.062 deg | +5.178 deg | 2.6 deg | 44.2% | 6.46% |
+| maxDeg 100..999 | 457 | 94.65 deg | 71.0 | **−5.729 deg** | +1.162 deg | 179.6 deg | 30.0% | **49.45%** |
+| **maxDeg >= 1000 (HUB)** | **1,061** | **95.45 deg** | 77.9 | **−3.803 deg** | **+1.019 deg** | **179.6 deg** | **24.1%** | **49.95%** |
+
+**Uniform (unmarked) control — the same split of an ordinary facet:**
+
+| stratum | n | theta_par p50 | ACHIEVED imp p50 | fold |
+|---|---|---|---|---|
+| maxDeg < 10 | 4,513 | **3.47 deg** | −0.121 deg | 4.29% |
+| **maxDeg >= 1000 (HUB)** | 339 | **94.97 deg** | **−3.781 deg** | **49.12%** |
+
+**THE ANSWER, IN THREE PARTS:**
+
+1. **CO-LOCATION CONFIRMED, and it is not subtle.** Hub facets are 5.6% of the mesh and carry a median
+   orientation error of **95 deg against 3.5 deg** for ordinary facets — a **27x** enrichment. Their fold
+   rate under the mesher's own rule is **49.1% against 4.3%**.
+2. **BUT THE ROTATION AT A HUB IS NOT A CORRECTION, IT IS A FLIP.** `rho` p50 = **179.6 deg**. The split is
+   not "manufacturing orientation error" there; it is turning a child inside out on a facet that was
+   already 95 deg wrong. The quantity that matters is the ACHIEVED improvement, and at a hub it is
+   **−3.80 deg at the median with a 90th-percentile BEST case of +1.02 deg against a 95 deg error** — five
+   times worse best-case than the low-degree stratum's +5.35 deg.
+3. **THEREFORE ONE MECHANISM DOES EXPLAIN BOTH SCALES, and it is the CEILING (§2.4), not `s/h` damage.**
+   The driver marks a facet whose error is over the bar; the split's achievable improvement there is <= 0;
+   the facet is over the bar again next round; it is split again; **every split of an edge incident to `v`
+   raises `deg(v)` by one.** A control loop with a persistent error signal and an actuator of zero
+   authority integrates without bound, and **DEGREE IS THE INTEGRATOR.** The 37 -> 57 -> 2,550 sequence is
+   that integral, and my ceiling column is the forward-looking, NON-CIRCULAR part of the claim: computed
+   from the CURRENT geometry it predicts the next round will fail too.
+
+**THE ONE THING THAT IS NOT CIRCULAR AND SHOULD BE SAID PLAINLY:** "high degree" is definitionally "the
+driver split here a lot", so a correlation between degree and failure proves nothing on its own. What is
+not definitional is that the ACHIEVABLE improvement — a property of the geometry as it stands now,
+independent of how it got there — is **negative at the median** in exactly that stratum.
+
+**AND THE GUARD SEPARATES THE TWO DEFECTS CLEANLY.** P4 at maxDeg >= 1000: fold **49.95% -> 0.00%**,
+achieved improvement **−3.803 -> +0.006 deg**, betterMax **24.1% -> 50.1%** — but `theta_par` is still
+95 deg and P4 does not move it. **The guard stops the mesher damaging the hub; it does not fix the hub.**
+Per §5 the hub facets need a child of aspect ~3,000 to be fixable by refinement, so they are not fixable by
+refinement at all. That is consistent with COLLAPSE's 0.38% reachability from the other side: the hub class
+is unreachable by refinement AND nearly unreachable by 1-ring vertex-set moves. It needs the parametrisation
+or the seeding to not create it — which is upstream of all three of us.

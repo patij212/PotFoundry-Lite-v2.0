@@ -155,6 +155,24 @@ function windNormal(a: number, b: number, c: number, o: Float64Array): number {
   if (frac < 0.5) { for (let t = 0; t < nTri; t += 1) { const s = tb[t]; tb[t] = tc[t]; tc[t] = s; } log('  -> mesh winds INWARD; swapped b/c globally (geometry unchanged)'); }
 }
 
+// ── VERTEX DEGREE (COLLAPSE's super-hub runaway, cross-checked with MY instrument).
+// COLLAPSE measured 32 vertices of degree >= 1000 holding 5.62% of the Voronoi mesh, one at degree 2,550,
+// and showed the same junction going 37 -> 57 -> 2,550 across three meshes of the SAME mesher/params as the
+// triangle count rose 2.8x. The coordinator's question is whether that runaway sits where `s/h` says the
+// child rotation is worst. My ceiling gives a SHARPER test than co-location: at a hub, is the ACHIEVABLE
+// improvement zero? A control loop with a persistent error signal and an actuator of zero authority
+// integrates without bound, and DEGREE is the integrator. So stratify every column by the facet's maximum
+// vertex degree and read the CEILING column, not the correlation.
+const VDEG = new Int32Array(NV);
+for (let t = 0; t < nTri; t += 1) { VDEG[ta[t]] += 1; VDEG[tb[t]] += 1; VDEG[tc[t]] += 1; }
+{
+  const d = Array.from(VDEG.subarray(0, NV)).sort((a, b) => a - b);
+  let nHub = 0; let fHub = 0;
+  for (let v = 0; v < NV; v += 1) if (VDEG[v] >= 1000) nHub += 1;
+  for (let t = 0; t < nTri; t += 1) if (VDEG[ta[t]] >= 1000 || VDEG[tb[t]] >= 1000 || VDEG[tc[t]] >= 1000) fHub += 1;
+  log(`vertex degree: p50 ${d[Math.floor(0.5 * NV)]}  p99 ${d[Math.floor(0.99 * NV)]}  max ${d[NV - 1]}   vertices >=1000: ${nHub}   facets touching one: ${fHub} (${((100 * fHub) / nTri).toFixed(3)}%)`);
+}
+
 const MESH: SagMesh = { ta, tb, tc, vth: VT, vz: VZ, vx: VX, vy: VY };
 const ARG = makeSagArgmax();
 const NS = fdNormals(rA, H);
@@ -205,6 +223,7 @@ if (DOCENSUS) {
 interface Row {
   t: number;
   parTheta: number; parTang: number; parSpread: number; parAsp: number; parDiam: number; parArea: number; parSag: number;
+  maxDeg: number;
   // per placement:
   ok: boolean[]; dPerp: number[]; dPar: number[]; dFull: number[]; areaInfl: number[]; nInv: number[]; nOutside: number[];
   rho: number[][]; rhoPred: number[][]; rhoPredDiam: number[][]; aPerp: number[][];
@@ -302,6 +321,7 @@ function splitOne(t: number): Row | null {
 
   const R: Row = {
     t, parTheta: po.normRad, parTang: po.tangMm * 1000, parSpread: po.spreadRad, parAsp, parDiam, parArea, parSag,
+    maxDeg: Math.max(VDEG[a], VDEG[b], VDEG[c]),
     ok: [], dPerp: [], dPar: [], dFull: [], areaInfl: [], nInv: [], nOutside: [],
     rho: [], rhoPred: [], rhoPredDiam: [], aPerp: [], chTheta: [], chTang: [], chArea: [], chDiam: [], chAsp: [], chSag: [],
   };
@@ -543,6 +563,28 @@ function runPop(name: string, pop: number[]): void {
       const sr = S(rl);
       log(`      ${label.padEnd(26)} n=${String(sub.length).padStart(5)} improve ${((100 * bc) / sub.length).toFixed(1).padStart(5)}%  over-${BAR_DEG}deg AREA ${((100 * apo) / ap2).toFixed(2).padStart(6)}% -> ${((100 * aco) / ac).toFixed(2).padStart(6)}%  rho p50 ${(pq(sr, 0.5) * DEG).toFixed(3).padStart(8)} p99 ${(pq(sr, 0.99) * DEG).toFixed(1).padStart(6)} deg  inv ${((100 * iv) / nc2).toFixed(2)}%`);
     };
+    // ── THE DEGREE STRATA. `imp` = theta_par - max theta_child (what the split ACHIEVES); `rot` = max rho
+    // (what it is ALLOWED to achieve, the ceiling). A locus where BOTH are ~0 is one refinement cannot fix
+    // and will therefore be marked again next round — the runaway.
+    const dstrat = (label: string, sel: (r: Row) => boolean): void => {
+      const sub = rs.filter(sel); if (sub.length === 0) { log(`      ${label.padEnd(26)} n=0`); return; }
+      const im: number[] = []; const ro: number[] = []; const asp: number[] = []; const th: number[] = [];
+      let iv = 0; let nc2 = 0; let bc = 0;
+      for (const r of sub) {
+        const mx = Math.max(r.chTheta[p][0], r.chTheta[p][1]);
+        im.push(r.parTheta - mx); ro.push(Math.max(r.rho[p][0], r.rho[p][1]));
+        asp.push(r.parAsp); th.push(r.parTheta);
+        for (let i = 0; i < 2; i += 1) { nc2 += 1; if (r.rho[p][i] > Math.PI / 2) iv += 1; }
+        if (mx <= r.parTheta) bc += 1;
+      }
+      const si = S(im); const sr2 = S(ro); const sa2 = S(asp); const st2 = S(th);
+      log(`      ${label.padEnd(26)} n=${String(sub.length).padStart(5)}  theta_par p50 ${(pq(st2, 0.5) * DEG).toFixed(2).padStart(7)}  aspect3 p50 ${pq(sa2, 0.5).toFixed(1).padStart(8)}  *** ACHIEVED imp p50 ${(pq(si, 0.5) * DEG).toFixed(4).padStart(9)} p90 ${(pq(si, 0.9) * DEG).toFixed(3).padStart(8)}  CEILING rho p50 ${(pq(sr2, 0.5) * DEG).toFixed(3).padStart(8)} ***  betterMax ${((100 * bc) / sub.length).toFixed(1)}%  fold ${((100 * iv) / nc2).toFixed(2)}%`);
+    };
+    log(`   ── BY MAX VERTEX DEGREE (the COLLAPSE super-hub runaway, scored by the CEILING) ──`);
+    dstrat('maxDeg < 10', (r) => r.maxDeg < 10);
+    dstrat('maxDeg 10..99', (r) => r.maxDeg >= 10 && r.maxDeg < 100);
+    dstrat('maxDeg 100..999', (r) => r.maxDeg >= 100 && r.maxDeg < 1000);
+    dstrat('maxDeg >= 1000 (HUB)', (r) => r.maxDeg >= 1000);
     strat('aspect3 < 4', (r) => r.parAsp < 4);
     strat('aspect3 4..50', (r) => r.parAsp >= 4 && r.parAsp < 50);
     strat('aspect3 >= 50 (sliver)', (r) => r.parAsp >= 50);

@@ -1,0 +1,13 @@
+===== S104 — THE PICTURE OF THE FOLD =====
+806765 facets read
+WHOLE-MESH FOLD CENSUS (every facet virtually split by the mesher rule):
+   INVERTED children 119647/1613530 = 7.415%   parents with >=1 folded child 14.292%   area(ch)/area(par) 1.01954
+   z-histogram of folding parents (24 bins, % of facets in bin): 0 28 0 1 24 12 19 10 14 34 27 14 14 0 1 1 36 22 1 22 17 1 0 0 
+AUTO-PATCH at the densest fold cell: theta 3.1743 rad, z [54.1, 54.6], 8808 folding parents in it
+patch: 56 facets in z[54.1,54.6] theta 3.1743 +-0.008 rad
+A: 56 facets
+V_B_mesher_P0: 112 children, INVERTED 3 (2.68%), area(ch)/area(par) 0.9987
+V_C_guarded_P4: 112 children, INVERTED 0 (0.00%), area(ch)/area(par) 1.0012
+
+bins in research/exchange/_strataConformBisect/s104fold — render with:
+  PF_RENDER_CELL=1100 NODE_PATH="$(pwd)/node_modules" node research/render/meshRender.cjs research/exchange/_strataConformBisect/s104fold/S104_fold.png research/exchange/_strataConformBisect/s104fold 3 V_A_asbuilt V_B_mesher_P0 V_C_guarded_P4
