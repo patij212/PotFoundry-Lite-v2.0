@@ -18,12 +18,57 @@ constrained edge flip, which is free. The binding constraint is now believed to 
 
 ---
 
+## 0b. *** THE LINEAGE WORKED. THE RULER RANKS WELL AND SIZES TERRIBLY. *** (S87, added after §0)
+
+The seven-arm lineage was re-scored end to end on honest rulers. **It improved the mesh.**
+
+| `_S9A` -> `_S24i2`, at 0.981x the triangles | |
+|---|---|
+| honest position PROVEN-FAIL **rate** | 3.5500% ±2.4% -> **1.1740% ±4.1% = 0.331x (3.02x), 14.1σ** |
+| honest position failing **AREA** | 1.25582% -> **0.10533% = 0.084x (11.9x)** |
+| from `_S8P`, the arm *before* the lineage | **3.95x / 13.2x** |
+| orientation over-bar count / **AREA** | 1.026x / **1.019x — UNTOUCHED** |
+
+***AND THE RECONCILIATION OF THIS WHOLE CAMPAIGN IS ONE NUMBER: Spearman ρ(blind, honest position) =
+0.964 across the seven arms, while the blind LEVEL is 24–45× low on every one of them.*** The plane
+ruler is an **excellent RANKER and a terrible SIZER**. That is why seven blind arms worked, and why
+every magnitude they published is void. **Keep it as the in-loop ranker; use `certifyTriangle` as the
+end-of-run sizer.** This supersedes any reading of §1 as "the plane ruler is useless" — it is not
+useless, it is *unquotable*.
+
+**ORIENTATION IS ORTHOGONAL AND NOW DOMINATES.** ρ(blind, orientation area) = **−0.357**;
+ρ(honest position, orientation area) = **−0.214**. ***Nothing that ranks position will ever find
+orientation*** — it needs its own ranking key. Orientation is the larger defect by **410× in area**,
+with **43.2% of the closing mesh's area still over bar**. The deep tail did move (>250 µm area
+1.682% -> 0.759%; area-weighted mean 35.75 -> 21.13 µm), so it is not inert — just not improving.
+
+**SECOND INSTRUMENT DEFECT, AND IT CORRECTS A NUMBER IN THIS DOC.** `s55OrientHeatmap` sampled the
+normal **only at the facet centroid**, so the campaign's published orientation figure for its own
+control mesh is **21.6× LOW: 32,468 published against 700,486 measured.** Every orientation count
+sourced from that tool is understated by ~21×; §2's "11.36% by count" is one of them.
+
+**A THIRD RETIRED LEVER THAT SHOULD BE RE-OPENED.** `_S28i1` is **the best artifact in the family by
+honest position AREA (0.604×)** and was retired on a max-at-one-facet plus a triangle count, having
+never been scored on either honest ruler. Re-open it as a **budget trade**, not as a mechanism. (That
+makes three: the cavity, S26's `shape-ar` STOP, and now S28i1.)
+
+**Controls that make the above quotable:** bit-exact agreement with the independent S85 harness on
+8,000 shared facets (0 diffs); identity twins bit-identical; and an **empirical null** taken from the
+`_S11A` no-op arm (1.018× count / 0.913× area) — which is *itself* the reason two step deltas
+(`_S21B->_S22B`, `_S22B->_S24i2`) are **unquotable** and are marked so rather than reported.
+Of the seven steps only two move at 2σ — `_S9A->_S10A` (0.459×) and `_S11A->_S15A` (0.701×) — and
+**their product, 0.322×, is the entire chain.**
+
+Scorecard: `research/exchange/_strataConformBisect/S87_LEDGER_REEXAM.md`.
+
+---
+
 ## 1. THE RULERS — what to use, what to never use again
 
 | quantity | instrument | status |
 |---|---|---|
 | **POSITION (H1, mesh→surface)** | `certifyTriangle` (`_facetTruthLib.ts`) at `tol = 0.010` | ***THE bar. Two-sided: `witnessed` = achieved, `bound` = rigorous.*** |
-| position, cheap | `sagAdaptiveRaw` / the driver headline | ***BANNED as a verdict.*** 21–1,527× under, 28–37% over. Ranking only. |
+| position, cheap | `sagAdaptiveRaw` / the driver headline | ***BANNED as a MAGNITUDE*** (21–1,527× under, 28–37% over) — but a **GOOD RANKER**: ρ = 0.964 vs honest position over 7 arms. Rank with it, never size with it. |
 | **H2 (surface→mesh)** | `advMeshWideH1.ts` (mis-named; relabelled) | Sound, but **cannot see a facet standing off the wall.** |
 | **ORIENTATION** | normal chord `2·sin(θ/2)·diam`; `orientRuler.ts` (11 fixtures, covering-certified) | Sound. `tangExc` is a **DETECTOR** (13–125× selective), **NOT a magnitude** (26× over). |
 | shape | `_shapeGuard.aspect3`, `_judgeNormal.facetNormalCensus` | Use these. **Do NOT re-derive them** — `s49BackFacing.ts` did and was unsound. |
