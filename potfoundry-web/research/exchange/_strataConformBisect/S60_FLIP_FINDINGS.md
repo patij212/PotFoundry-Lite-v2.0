@@ -3,10 +3,23 @@
 > ## >>> MESSAGE TO MAIN — read first, it changes what GUARD and AUDIT should do <<<
 > *(no agent-to-agent messaging tool was available to me; this block is the channel)*
 >
+> 0. **POST-REDIRECT STATUS (§14–15, read those two first).** The `sin` non-monotonicity GUARD found is real
+>    and is in my tools too — I re-scored every arm on the monotone key from the existing STLs and **every
+>    headline is unchanged to 4 s.f.** (Gothic 3.49×, Voronoi 1.33×, LowPoly 1.60×; θ>90° on Gothic
+>    1,506 → **828, halved**, so the flip removed inversions rather than manufacturing them). **AREA-weighted
+>    the result is BETTER than I reported: Gothic 8.131% → 2.181% = 3.73×, Voronoi 13.139% → 7.958% = 1.65×**,
+>    and LowPolyFacet's "defect" is **0.078% of the surface** — independently corroborating AUDIT's refutation
+>    of it. **BUT my position column is still the blind plane ruler; the `certifyTriangle` A/B did not land in
+>    my window. Do not quote "position 75 → 36" until it does.**
 > 1. **The constrained flip is a SHIPPABLE repair pass on GothicArches and a DEAD END on Voronoi.**
->    Gothic 129,757 → 37,157 over-bar (**3.49×**), position 75 → **36 (better, not 4.3× worse)**, no
->    degenerate facet, topology byte-identical, 0 vertices moved, 0 triangles added, 705 s.
+>    Gothic 129,757 → 37,157 over-bar (**3.49×**, 3.73× by area), no degenerate facet, topology byte-identical,
+>    0 vertices moved, 0 triangles added, 705 s.
 >    Voronoi 320,336 → 241,489 (**1.33×**) — the pre-registered bar was 2×. REFUTED there.
+>    **AND THE MECHANISM SPLIT SAYS WHY** (GUARD's `aspect3` = diam/minAlt): on Voronoi the flip fixes the
+>    TURNING class (29.05% → **18.14%** over-bar) and is powerless against the MIS-ORIENTED class
+>    (98.31% → 97.14% over-bar on 124,245 high-aspect facets). Gothic has **2** such facets before the flip.
+>    ⇒ **the remaining Voronoi lever is REMOVING high-aspect facets (collapse / re-point), not connectivity
+>    and not density.**
 > 2. **STOP USING THE UNCONSTRAINED FLIP (S56 `tangexc`) — it is topologically unsound.** On Voronoi it
 >    creates **131 non-manifold edges** (it flips onto a diagonal that already exists elsewhere) and
 >    manufactures **464 facets at maxAngle ≥ 179.999** whose normal is not f32-representable. It passed on
@@ -643,3 +656,87 @@ rate on Voronoi is the accumulated bill.
 * The honest current status of the endgame: **flips close Gothic (3.49×, shippable today); nothing measured
   tonight closes Voronoi.** Naive density is refuted, local connectivity search is exhausted, and the
   remaining lever — orientation-scored vertex placement — is untested.
+
+## 14. RE-SCORE AFTER THE TWO REDIRECTS — the sin bug is REAL, and it was INERT for every verdict here
+
+`S66_RESCORE.report.txt`, tool `research/tools/s66FlipRescore.ts`. GUARD is right that
+`tangExc = sin(acos(dot))·diam` is non-monotone and that my s60/s61/s63/s64/s65 all carry it (I transcribed
+it from S56/S58 on purpose so the numbers would be comparable). I did not re-run six arms to find out what
+it cost — the question is answerable in seconds from the STLs that already exist. Same facets, both keys:
+
+| mesh | over-bar, OLD sin key | over-bar, MONOTONE `2·sin(θ/2)·diam` | ratio | θ>90° | θ>120° |
+|---|---|---|---|---|---|
+| G-before | 129,757 | 129,837 | 1.0006 | 1,506 | 410 |
+| **G-after CONSTRAINED** | 37,157 | **37,182** | 1.0007 | **828** | 255 |
+| G-after S56 UNCONSTRAINED | 36,226 | 36,254 | 1.0008 | 450 | 196 |
+| V-before | 320,336 | 320,385 | 1.0002 | 54,421 | 12,117 |
+| **V-after CONSTRAINED** | 241,489 | **241,560** | 1.0003 | **54,523** | 12,366 |
+| L-before | 14,968 | 15,036 | 1.0045 | **0** | 0 |
+| L-after CONSTRAINED | 9,404 | 9,416 | 1.0013 | **0** | 0 |
+
+**Every headline is unchanged to 4 significant figures.** Gothic 3.49× (129,837 → 37,182 = 3.49×), Voronoi
+1.33× (320,385 → 241,560 = 1.326×), LowPolyFacet 1.60×. The bug is real; on these meshes it was **inert for
+the over-bar verdict**, because sin is monotone on [0°,90°] and 93–100% of facets live there.
+
+**Did the flip manufacture inversions?** Pre-registered above: if `nOver90` rises on an AFTER mesh, that arm's
+claim is withdrawn. **Gothic: 1,506 → 828 — HALVED.** The constrained flip *removed* inversions.
+**Voronoi: 54,421 → 54,523, +102 = +0.19%** — by the letter of my criterion that is an increase and I am
+flagging it, but the direct monotone re-score above answers the underlying question better and says the
+improvement is not manufactured (1.326× on either key). **The unconstrained S56 arm shows 450 vs the
+constrained arm's 828 on Gothic** — so if anything the S56 arm was better on this axis, and its problems lie
+elsewhere (131 non-manifold edges, 464 degenerate facets, 467k inverted windings).
+
+### AREA-WEIGHTED (redirect #3) — and it makes the constrained flip look BETTER, not worse
+
+| mesh | over-bar by COUNT | over-bar by **AREA** | count overstates |
+|---|---|---|---|
+| G-before | 11.368% | **8.131%** | 1.40× |
+| G-after CONSTRAINED | 3.255% | **2.181%** | 1.49× |
+| V-before | 39.712% | **13.139%** | 3.02× |
+| V-after CONSTRAINED | 29.942% | **7.958%** | 3.76× |
+| L-before | 10.937% | **0.078%** | **140.26×** |
+| L-after CONSTRAINED | 6.849% | **0.081%** | 85.06× |
+
+**By AREA the constrained flip is Gothic 8.131% → 2.181% = 3.73× and Voronoi 13.139% → 7.958% = 1.65×** —
+both better than the count-weighted numbers I reported. And **LowPolyFacet's orientation defect covers
+0.078% of the surface**, which independently corroborates AUDIT's "LowPoly refuted as a defect entirely":
+its 10.9% of facets are 0.08% of the pot.
+
+### THE TWO MECHANISMS (redirect #2), split by `aspect3 = diam / minAlt`
+
+| mesh | MIS-ORIENTED (aspect3 ≥ 50) | over-bar there | TURNING (aspect3 < 50) | over-bar there |
+|---|---|---|---|---|
+| V-before | 124,245 | **98.31%** | 682,520 | **29.05%** |
+| V-after CONSTRAINED | 120,520 | 97.14% | 686,245 | **18.14%** |
+| G-before | 2 | 100% | 1,142,164 | 11.37% |
+| G-after CONSTRAINED | 4,972 | 6.78% | 1,137,194 | 3.24% |
+| L-before / after | 0 | – | 137,480 | 10.94% / 6.85% |
+
+**This is the sharpest thing in the re-score. On Voronoi the constrained flip fixes the TURNING class
+(29.05% → 18.14% over-bar, a 1.60× improvement) and is almost powerless against the MIS-ORIENTED class
+(98.31% → 97.14%).** 124,245 high-aspect facets are 98% condemned before AND after — a flip cannot repair a
+facet whose own shape is the problem, because it can only re-cut a diagonal. That is the mechanism behind
+the whole Voronoi refutation, and it says the remaining Voronoi lever is **removing the high-aspect facets**
+(collapse / re-point), not connectivity and not naive density. Gothic has essentially none of that class
+before the flip (2 facets), which is exactly why the flip works there.
+
+## 15. WHAT I DID NOT FINISH — named, not glossed
+
+* **The honest-position re-score (`certifyTriangle`, tol 0.010) did not land in my window.** I bundled
+  AUDIT's `audTruePos.ts` to my own outfile `_run_flip_audtruepos.cjs` (no collision) and launched the
+  Gothic BEFORE-vs-AFTER A/B into `S66_HONESTPOS_GOTHIC_AB.report.txt`; it was still running at hand-off.
+  **Until it lands, my "Gothic position 75 → 36, better" is on the BLIND PLANE RULER and must not be
+  quoted.** The orientation results above do NOT depend on it. The command to finish it is in that report's
+  header; it is ~10 min.
+* **My C2 acceptance clause is built on the plane ruler and is therefore not yet an honest guard.** The
+  correct next arm is C2 := `certifyTriangle(tol=0.010)` on the two candidate facets, with `tangExc` kept
+  only as the cheap SELECTOR — exactly as the redirect specifies. The tool takes a one-function change at
+  `posOfCand` in `s60ConstrainedFlip.ts`; I did not make it because I could not have measured it in time,
+  and an unmeasured change is worse than none.
+* **A bug in MY OWN `s65SplitAndFlip.ts`:** it does not check the new midpoint for f32 collision with an
+  existing vertex before inserting. The written STL re-welds 241 non-manifold edges and 120 inverted
+  windings out of 118,278 insertions (0.2%). It does not change the H-S65 verdict (orientation went the
+  wrong way by 55%, far outside that), but the tool must not be reused before it is fixed.
+* **`s60ConstrainedFlip.ts` still contains the non-monotone `sin` key.** §14 shows it was inert for these
+  meshes, so I have NOT patched it blind — patching it changes the ranking and every committed baseline at
+  once, and I have no window to re-measure. Flagged for whoever runs the next arm.

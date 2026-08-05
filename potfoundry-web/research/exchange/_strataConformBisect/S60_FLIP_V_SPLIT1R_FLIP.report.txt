@@ -1,0 +1,84 @@
+===== S60 — THE CONSTRAINED FLIP (connectivity only; 0 vertices moved, 0 triangles added) =====
+style Voronoi  stem s60flip/V_SPLIT1R_split  tag V_SPLIT1R_FLIP
+ARM=con   C1 tangExc-decrease=true   C2 pos<=max(10um,old)=true   C3 det-floor(jitter<=1um, mode=rel)=true   C4 dup-edge=true   LEX-plateau=false
+rA cost probe: 200k evals in 0.16 s = 1.27 M eval/s   (checksum 8919205.106)
+research/exchange/_strataConformBisect/s60flip/V_SPLIT1R_split.stl: 1043321 facets   [0.3s]
+weld: 521763 unique vertices from 3129963 corners   [1.5s]
+GATE vertex-on-surface: p50 1.18e-6  p99 1.02e-5  max 1.68e-5 mm -> TRUSTED
+
+── BEFORE (flag-OFF control, measured in THIS process) ── (tang 4.6s, pos 162.8s over 1043321 facets, stride 1)
+   ORIENT tangExc  p50 5.50  p99 978.06  max 2109.9 um   over-10um 374372 (35.883%)
+   POSITION  sag   p50 1.31  p99 6.02  max 86.6 um   over-10um 324 (0.0311%)
+   SHAPE  maxAngle p50 128.1  p99 179.8  max 179.995   caps>=150 385616   >=179.999 0
+   DETERM jitterUm p99 21.528  max Infinity   over-1um 152680 (14.634%)   over-10um 24156
+   VALIDITY: of the 374372 facets over the tang bar, 23416 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO before: 1565041 edges, boundary 601, non-manifold 241, orientation-inconsistent 120
+
+FLIP ROUNDS — independent set per round; clause order: interior -> c!=d -> dup-edge -> fold -> C1 tangExc -> C3 det -> C2 pos
+  (so rejDet counts candidates that pass C1+C4, and rejPos counts candidates that pass EVERYTHING ELSE — the non-vacuity numbers)
+  round  1:   89847 flips (cum 89847)   rej: fold 551919 dup 14668 noImp 746602 DET 27643 POS 243   [33.4s]
+  round  2:   29586 flips (cum 119433)   rej: fold 520843 dup 33691 noImp 883495 DET 31502 POS 555   [21.0s]
+  round  3:   10920 flips (cum 130353)   rej: fold 534757 dup 35775 noImp 925942 DET 32169 POS 710   [17.0s]
+  round  4:    4774 flips (cum 135127)   rej: fold 540553 dup 35905 noImp 939452 DET 32369 POS 714   [15.9s]
+  round  5:    2511 flips (cum 137638)   rej: fold 542772 dup 36349 noImp 943916 DET 32404 POS 718   [15.0s]
+  round  6:    1524 flips (cum 139162)   rej: fold 543852 dup 36547 noImp 945810 DET 32417 POS 717   [14.9s]
+  round  7:     974 flips (cum 140136)   rej: fold 544474 dup 36659 noImp 946810 DET 32424 POS 719   [14.6s]
+  round  8:     626 flips (cum 140762)   rej: fold 544865 dup 36691 noImp 947497 DET 32434 POS 719   [14.3s]
+  round  9:     423 flips (cum 141185)   rej: fold 545202 dup 36719 noImp 947853 DET 32437 POS 719   [14.1s]
+  round 10:     267 flips (cum 141452)   rej: fold 545338 dup 36748 noImp 948120 DET 32441 POS 719   [15.0s]
+  round 11:     142 flips (cum 141594)   rej: fold 545459 dup 36742 noImp 948400 DET 32444 POS 719   [14.3s]
+  round 12:      77 flips (cum 141671)   rej: fold 545525 dup 36751 noImp 948519 DET 32445 POS 719   [13.9s]
+  round 13:      46 flips (cum 141717)   rej: fold 545567 dup 36746 noImp 948585 DET 32444 POS 719   [13.8s]
+  round 14:      26 flips (cum 141743)   rej: fold 545596 dup 36743 noImp 948614 DET 32445 POS 719   [14.6s]
+  round 15:      12 flips (cum 141755)   rej: fold 545616 dup 36744 noImp 948635 DET 32445 POS 719   [14.2s]
+  round 16:       4 flips (cum 141759)   rej: fold 545623 dup 36744 noImp 948654 DET 32445 POS 719   [14.0s]
+  round 17:       1 flips (cum 141760)   rej: fold 545624 dup 36744 noImp 948666 DET 32445 POS 719   [14.0s]
+  round 18:       0 flips (cum 141760)   rej: fold 545625 dup 36744 noImp 948666 DET 32445 POS 719   [14.5s]
+
+TOTAL flips 141760 = 13.59% of facets;  VERTICES MOVED 0;  TRIANGLES ADDED 0
+CLAUSE REJECTIONS (cumulative): fold 9779210  dup-edge 633710  no-improve 16764236  C3 DET 577798  C2 POS 12285
+NON-VACUITY: C2 rejected 12285 candidates that passed every other clause; C3 rejected 577798.
+   
+
+── AFTER ── (tang 4.3s, pos 1.2s over 1043321 facets, stride 1)
+   ORIENT tangExc  p50 4.87  p99 945.48  max 2109.9 um   over-10um 329986 (31.628%)
+   POSITION  sag   p50 1.28  p99 6.15  max 53.7 um   over-10um 121 (0.0116%)
+   SHAPE  maxAngle p50 122.4  p99 179.7  max 179.994   caps>=150 356528   >=179.999 0
+   DETERM jitterUm p99 19.543  max Infinity   over-1um 149247 (14.305%)   over-10um 21905
+   VALIDITY: of the 329986 facets over the tang bar, 21159 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO after: 1565041 edges, boundary 601, non-manifold 241, orientation-inconsistent 120
+
+DELTA (both rulers, always)
+   ORIENT over-10um   374372 -> 329986   (1.13x)      p99 978.06 -> 945.48 um   max 2109.9 -> 2109.9
+   POSITION over-10um 324 -> 121   p99 6.02 -> 6.15 um   max 86.6 -> 53.7
+   SHAPE caps>=150      385616 -> 356528    >=179.999 0 -> 0    maxAngle max 179.995 -> 179.994
+   DETERM jitter>1um    152680 -> 149247    >10um 24156 -> 21905
+
+PRE-REGISTERED KILL-CRITERIA
+   K1 tangOver_after <= 0.5*before : 329986 <= 187186 -> *** FAIL — REFUTED as a standalone fix ***
+   K2 posOver_after <= before      : 121 <= 324 -> PASS
+   K3 no facet over the det floor  : jitter>10um 21905, maxAngle>=179.999 0 -> *** FAIL — floor broken ***
+   K4 ceiling: run s61FlipCeiling.ts on the written STL
+   C4 topology preserved           : PASS (edges 1565041->1565041, bnd 601->601, nonMan 241->241, orientBad 120->120)
+node:fs:560
+  return binding.open(
+                 ^
+
+Error: ENOENT: no such file or directory, open 'C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\research\exchange\_strataConformBisect\s60flip\s60flip\V_SPLIT1R_split_V_SPLIT1R_FLIP.stl'
+[90m    at Object.openSync (node:fs:560:18)[39m
+[90m    at writeFileSync (node:fs:2429:35)[39m
+    at writeBinarySTL [90m(C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\[39mresearch\bridge\out\_run_s60.cjs:4084:37[90m)[39m
+    at Object.<anonymous> [90m(C:\Users\patij212\Downloads\PotFoundry-Lite-v2.0\potfoundry-web\[39mresearch\bridge\out\_run_s60.cjs:4701:3[90m)[39m
+[90m    at Module._compile (node:internal/modules/cjs/loader:1761:14)[39m
+[90m    at Object..js (node:internal/modules/cjs/loader:1893:10)[39m
+[90m    at Module.load (node:internal/modules/cjs/loader:1481:32)[39m
+[90m    at Module._load (node:internal/modules/cjs/loader:1300:12)[39m
+[90m    at TracingChannel.traceSync (node:diagnostics_channel:328:14)[39m
+[90m    at wrapModuleLoad (node:internal/modules/cjs/loader:245:24)[39m {
+  errno: [33m-4058[39m,
+  code: [32m'ENOENT'[39m,
+  syscall: [32m'open'[39m,
+  path: [32m'C:\\Users\\patij212\\Downloads\\PotFoundry-Lite-v2.0\\potfoundry-web\\research\\exchange\\_strataConformBisect\\s60flip\\s60flip\\V_SPLIT1R_split_V_SPLIT1R_FLIP.stl'[39m
+}
+
+Node.js v24.11.1

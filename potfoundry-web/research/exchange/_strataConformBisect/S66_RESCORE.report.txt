@@ -1,0 +1,60 @@
+===== S66 — RE-SCORE THE S60 ARMS ON THE MONOTONE KEY, AREA-WEIGHTED, SPLIT BY ASPECT =====
+bar 10 um   aspect3 split at 50 (aspect3 := diam / minAlt)
+
+── G-before  (gothicarches_ring_DS-HT_S39CTL, 1142166 facets) ──
+   OLD sin key : p99 35.91  max 1640.0 um   over-10um 129757 (11.361%)
+   MONOTONE chd: p99 36.25  max 2036.9 um   over-10um 129837 (11.368%)   [chd/sin over-bar ratio 1.0006]
+   *** theta > 90 deg (where the two keys disagree at all): 1506   > 120 deg: 410   max theta 169.82 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 8.131% of surface   vs COUNT 11.368%   -> count overstates area 1.40x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 2 facets, 2 over-bar (100.00%)   TURNING aspect3<50: 1142164 facets, 129835 over-bar (11.37%)
+
+── G-after-CONSTRAINED  (s60flip/gothicarches_ring_DS-HT_S39CTL_G2CON, 1142166 facets) ──
+   OLD sin key : p99 16.22  max 1251.3 um   over-10um 37157 (3.253%)
+   MONOTONE chd: p99 16.23  max 1682.8 um   over-10um 37182 (3.255%)   [chd/sin over-bar ratio 1.0007]
+   *** theta > 90 deg (where the two keys disagree at all): 828   > 120 deg: 255   max theta 174.82 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 2.181% of surface   vs COUNT 3.255%   -> count overstates area 1.49x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 4972 facets, 337 over-bar (6.78%)   TURNING aspect3<50: 1137194 facets, 36845 over-bar (3.24%)
+
+── G-after-S56-UNCONSTRAINED  (s56flip/S39CTL_flipped_tangexc, 1142166 facets) ──
+   OLD sin key : p99 15.68  max 617.3 um   over-10um 36226 (3.172%)
+   MONOTONE chd: p99 15.70  max 1372.8 um   over-10um 36254 (3.174%)   [chd/sin over-bar ratio 1.0008]
+   *** theta > 90 deg (where the two keys disagree at all): 450   > 120 deg: 196   max theta 174.82 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 2.188% of surface   vs COUNT 3.174%   -> count overstates area 1.45x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 7302 facets, 420 over-bar (5.75%)   TURNING aspect3<50: 1134863 facets, 35834 over-bar (3.16%)
+
+── V-before  (voronoi_ring_D--, 806765 facets) ──
+   OLD sin key : p99 1220.32  max 2346.7 um   over-10um 320336 (39.706%)
+   MONOTONE chd: p99 1786.96  max 4017.9 um   over-10um 320385 (39.712%)   [chd/sin over-bar ratio 1.0002]
+   *** theta > 90 deg (where the two keys disagree at all): 54421   > 120 deg: 12117   max theta 158.93 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 13.139% of surface   vs COUNT 39.712%   -> count overstates area 3.02x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 124245 facets, 122144 over-bar (98.31%)   TURNING aspect3<50: 682520 facets, 198241 over-bar (29.05%)
+
+── V-after-CONSTRAINED  (s60flip/voronoi_ring_D--_A2CON, 806765 facets) ──
+   OLD sin key : p99 1194.64  max 2238.7 um   over-10um 241489 (29.933%)
+   MONOTONE chd: p99 1704.89  max 4017.9 um   over-10um 241560 (29.942%)   [chd/sin over-bar ratio 1.0003]
+   *** theta > 90 deg (where the two keys disagree at all): 54523   > 120 deg: 12366   max theta 163.74 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 7.958% of surface   vs COUNT 29.942%   -> count overstates area 3.76x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 120520 facets, 117071 over-bar (97.14%)   TURNING aspect3<50: 686245 facets, 124489 over-bar (18.14%)
+
+── V-after-UNCONSTRAINED  (s60flip/voronoi_ring_D--_A1TANG, 806765 facets) ──
+   OLD sin key : p99 1154.59  max 1910.1 um   over-10um 236027 (29.256%)
+   MONOTONE chd: p99 1643.48  max 4017.9 um   over-10um 236133 (29.269%)   [chd/sin over-bar ratio 1.0004]
+   *** theta > 90 deg (where the two keys disagree at all): 52395   > 120 deg: 12151   max theta 163.74 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 7.727% of surface   vs COUNT 29.269%   -> count overstates area 3.79x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 122425 facets, 118038 over-bar (96.42%)   TURNING aspect3<50: 683876 facets, 118095 over-bar (17.27%)
+
+── L-before  (lowpolyfacet_ring_D--, 137480 facets) ──
+   OLD sin key : p99 28.48  max 71.4 um   over-10um 14968 (10.887%)
+   MONOTONE chd: p99 28.58  max 73.2 um   over-10um 15036 (10.937%)   [chd/sin over-bar ratio 1.0045]
+   *** theta > 90 deg (where the two keys disagree at all): 0   > 120 deg: 0   max theta 30.99 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 0.078% of surface   vs COUNT 10.937%   -> count overstates area 140.26x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 0 facets, 0 over-bar (0.00%)   TURNING aspect3<50: 137480 facets, 15036 over-bar (10.94%)
+
+── L-after-CONSTRAINED  (s60flip/lowpolyfacet_ring_D--_L2CON, 137480 facets) ──
+   OLD sin key : p99 18.80  max 36.8 um   over-10um 9404 (6.840%)
+   MONOTONE chd: p99 18.86  max 37.0 um   over-10um 9416 (6.849%)   [chd/sin over-bar ratio 1.0013]
+   *** theta > 90 deg (where the two keys disagree at all): 0   > 120 deg: 0   max theta 12.33 deg ***
+   AREA-WEIGHTED over-bar (monotone key): 0.081% of surface   vs COUNT 6.849%   -> count overstates area 85.06x
+   BY MECHANISM (aspect3 = diam/minAlt):  MIS-ORIENTED aspect3>=50: 0 facets, 0 over-bar (0.00%)   TURNING aspect3<50: 137480 facets, 9416 over-bar (6.85%)
+
+done
