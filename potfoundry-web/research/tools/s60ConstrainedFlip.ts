@@ -211,9 +211,76 @@ function jitterUmOf(a: number, b: number, c: number): number {
 // H-L2: porting the monotone key and re-running every arm does not move any published verdict.
 // K-L2: Gothic ratio leaves [3.0, 4.0] / K1,K2,K3,C4 flips PASS<->FAIL / rejPos becomes 0 on Gothic or
 //       Voronoi / topology stops being byte-identical  =>  a verdict moved and must be re-stated.
-const ORIENT_KEY = (process.env.PF_S60_KEY ?? 'chord').toLowerCase(); // chord = 2*sin(th/2)*diam (FIXED) | sin = the old non-monotone key
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// `cover` — THE THIRD KEY, ADDED 2026-08-05 BY STYLEFLIP (S91). DEFAULT OFF; `chord` is unchanged, so a
+// run without PF_S60_KEY is byte-identical to every arm published before today.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// *** WHY IT EXISTS: `chord` SAMPLES THE SURFACE NORMAL AT ONE POINT — THE FACET CENTROID — AND THE
+// GREEDY PASS GAMES IT. *** S91 measured, on 14 hub-free styles, that the pass moves this key by a
+// median 1.904x (up to INFINITY: SuperformulaBlossom's centroid over-bar area reaches exactly 0) while
+// the honest COVERING ruler `orientRuler.orientOfFacet` (k=8, inset 0.02) moves by a median **1.015x**,
+// 0 of 14 above 1.25x, 3 of 14 WORSE. The honest/centroid disagreement on the SAME facets GROWS under
+// the pass — Gothic 5.6x -> 21.4x, SuperellipseMorph 27.9x -> 3,809.9x — which is the signature of an
+// optimiser rotating the facet plane to match the normal at the ONE point that is scored, while the
+// facet's true sup over its footprint is untouched. (S91_STYLEFLIP_FINDINGS.md §4C.)
+//
+// `cover` replaces the single centroid sample with the MAX over the 3 VERTICES + the centroid — the
+// order-1 barycentric lattice plus its centre, which is where the sup sits whenever the normal field is
+// monotone across the footprint. 20 rA evals instead of 5, i.e. 4x the key cost. It is still a LOWER
+// bound on the true sup (a 4-point witness), not a certificate, and it is labelled as one.
+//
+// H-S91-COVER, PRE-REGISTERED BEFORE THE FIRST `cover` ARM RAN:
+//   Driving C1 and the ranking with `cover` recovers a real orientation win on the HONEST k=8 ruler.
+//   KILL: honest absolute over-bar AREA ratio stays < 1.25x  =>  the defect is NOT reachable by
+//         connectivity at all, and the flip should be landed on its POSITION result alone.
+//   CONFIRM: >= 1.5x  =>  the lever was real and was being driven by a broken key; fix the key.
+//   NON-VACUITY: the `cover` arm must differ from the `chord` arm in flip count; if the two passes make
+//         the same flips the key change is inert and nothing below is admissible.
+const ORIENT_KEY = (process.env.PF_S60_KEY ?? 'chord').toLowerCase(); // chord = 2*sin(th/2)*diam (FIXED) | sin = the old non-monotone key | cover = 4-point witness (S91)
+/** unit surface normal at (th, z) into out[0..2]. 5 rA evals. Same expression as the centroid key. */
+function surfNormalAt(thc: number, zcRaw: number, out: Float64Array): void {
+  const zc = Math.min(H, Math.max(0, zcRaw));
+  const r = rA(thc, zc);
+  const hTh = 1e-5 / Math.max(1e-6, r); const hZ = 1e-5;
+  const rTh = (rA(thc + hTh, zc) - rA(thc - hTh, zc)) / (2 * hTh);
+  const zp = Math.min(H, zc + hZ); const zm = Math.max(0, zc - hZ);
+  const rZ = zp > zm ? (rA(thc, zp) - rA(thc, zm)) / (zp - zm) : 0;
+  const cc = Math.cos(thc); const ss = Math.sin(thc);
+  let nx = rTh * ss + r * cc; let ny = r * ss - rTh * cc; let nz = -r * rZ;
+  const L = Math.hypot(nx, ny, nz) || 1;
+  out[0] = nx / L; out[1] = ny / L; out[2] = nz / L;
+}
+const COVER_N = new Float64Array(3);
+/** orientation error, um: monotone chord over a 4-POINT WITNESS (3 vertices + centroid). 20 rA evals. */
+function tangExcCover(a: number, b: number, c: number): number {
+  const ax = VXa[a]; const ay = VYa[a]; const az = VZa[a];
+  const bx = VXa[b]; const by = VYa[b]; const bz = VZa[b];
+  const cx = VXa[c]; const cy = VYa[c]; const cz = VZa[c];
+  let fx = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
+  let fy = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+  let fz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+  const fl = Math.hypot(fx, fy, fz); if (fl < 1e-18) return 0;
+  fx /= fl; fy /= fl; fz /= fl;
+  const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
+  if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  const thA = VT[a];
+  const dB = dThRaw(thA, VT[b]); const dC = dThRaw(thA, VT[c]);
+  const ths = [thA, thA + dB, thA + dC, thA + (dB + dC) / 3];
+  const zs = [az, bz, cz, (az + bz + cz) / 3];
+  let worst = 0;
+  for (let i = 0; i < 4; i += 1) {
+    surfNormalAt(ths[i], zs[i], COVER_N);
+    let dot = fx * COVER_N[0] + fy * COVER_N[1] + fz * COVER_N[2];
+    dot = dot > 1 ? 1 : dot < -1 ? -1 : dot;
+    const th = Math.acos(dot);
+    if (th > worst) worst = th;
+  }
+  const [la, lb, lc] = sidesOf(a, b, c);
+  return 2 * Math.sin(0.5 * worst) * Math.max(la, lb, lc) * 1000;
+}
 /** orientation error, um: normal-CHORD 2*sin(theta/2) x diam (monotone). 5 rA evals. */
 function tangExcOf(a: number, b: number, c: number): number {
+  if (ORIENT_KEY === 'cover') return tangExcCover(a, b, c);
   const ax = VXa[a]; const ay = VYa[a]; const az = VZa[a];
   const bx = VXa[b]; const by = VYa[b]; const bz = VZa[b];
   const cx = VXa[c]; const cy = VYa[c]; const cz = VZa[c];
