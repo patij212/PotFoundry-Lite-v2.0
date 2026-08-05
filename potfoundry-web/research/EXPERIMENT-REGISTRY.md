@@ -8213,3 +8213,120 @@ Ran every registry style through the universal solid mesher (`PF_SOLID_INIT=grid
 **HONEST STATE OF "20/20 shape-agnostic":** NOT reached. Proven: the shape-agnostic feature detector (the hard conceptual piece) + 14+/20 styles closing across grid/treads/Voronoi-cells. Prototype (unverified): generic crease-conforming. Not started: generic jump-curtains for snaking-C0 (Celtic). The remaining work is engineering + verification on the conforming, not a conceptual unknown — the detector shows the features are findable generically.
 
 **LEDGER.** NEW: `research/bridge/_strataCreaseDetect.test.ts` (`PF_STRATA_CREASE=1`, `PF_CREASE_STYLE`). `_strataVoronoiSolid.test.ts`: `edgeCrease`+crease cell-cut behind `PF_SOLID_CREASE` (default OFF), `creaseCuts` debug.
+
+---
+
+## E-2026-08-05-ARCAP-ADVERSARIAL — the AR-cap "4.37x win" is a RULER ARTEFACT: headline falls 8.6x while the honest max RISES 1.72x [REFUTATION; read-only over shipped STLs]
+
+**ROLE.** Adversarial review of the S39/S40/S48 `PF_CB_SHAPE_AR` sweep (GothicArches ring, 1.14M tris).
+Claim under test (C1): *"the STRATA residual is the AR-50 split-guard cap, not geometry"* — driver HEADLINE
+MAX 47.282 -> 10.830 um at cap 50 -> 90, at 0.25% fewer triangles.
+
+**THE DISCRIMINATOR — a three-distance sandwich on ONE lattice.** `research/tools/advSandwichRuler.ts`.
+For every facet of every shipped STL, at the arm reports' own fixed oracle n=12, on the SAME barycentric
+lattice and therefore the SAME rA evaluations, three distances from each analytic sample point:
+`plane` (distance to the triangle's INFINITE PLANE — the driver's `sagOfN`, a lower bound), `ptTri`
+(distance to the TRIANGLE — the driver's own Ericson closest-point from `sagBoundedAtN().wit`), `vert`
+(distance to the barycentrically corresponding point of the triangle — an upper bound at the sample).
+Plus the driver's own EDGE ruler (`edgeSagRaw`, imported) over EVERY facet rather than only the stranded set.
+
+**NON-VACUOUS CONTROL — PASSED ON ALL SIX ARMS.** `plane` MAX reproduces each arm report's own
+`[STRATA-comparable fixed oracle 12]` line: S39CTL 47.2814 vs 47.282, S40AR90 10.8127 vs 10.813. The STL
+reader, the theta reconstruction and rA are therefore validated; `ptTri` differs from `plane` in the
+DISTANCE FUNCTION ALONE, on identical sample points.
+
+| arm | cap | plane MAX (THE HEADLINE) | ptTri MAX | vert MAX | edgeSag MAX |
+|---|---|---|---|---|---|
+| S39CTL   | 50       | **47.281** | 245.423 | 484.3012 | 424.1433 |
+| S40AR55  | 55       | **30.652** | 236.729 | 484.3012 | 424.1433 |
+| S40AR65  | 65       | **23.480** | 296.171 | 484.3012 | 424.1433 |
+| S40AR90  | 90       | **10.813** | 422.508 | 529.1507 | 497.8986 |
+| S48CAV90 | 90+cav   | **5.506**  | 422.508 | 529.1507 | 497.8986 |
+| S48ADM90 | 90+admit | **51.588** | 423.551 | 529.1507 | 494.0100 |
+
+**RESULT — REFUTED. The lever moved the headline 8.6x and made the mesh WORSE by every honest ruler.**
+
+1. `vert` MAX and `edgeSag` MAX are **IDENTICAL TO 7 SIGNIFICANT FIGURES across caps 50 / 55 / 65**
+   (484.3012 / 424.1433). The headline fell 2.01x over that range while THE WORST FACET IS LITERALLY THE
+   SAME TRIANGLE WITH THE SAME ERROR. At cap 90 it changes — and gets worse (529.15 / 497.90).
+2. `ptTri` (honest H1 witness) 245.42 -> 422.51 = **1.72x WORSE**, against a headline claim of 4.37x better.
+3. The headline and the error live on DISJOINT FACETS. S39CTL's honest-worst facet reads plane 1.032 um
+   against ptTri 245.42 (blindness 238x); S40AR90's reads plane 0.573 against ptTri 422.51 (**737x**).
+   Worst blindness measured: **851x** (previous campaign record 541x). The plane ruler never saw either
+   facet, in either arm, so no cap can act on them.
+4. WHAT IS REAL: the DISTRIBUTION improves. ptTri p99.9 34.43 -> 13.82, >25um 1336 -> 226, >47um 915 -> 131.
+   The lever is a genuine p99.9 improvement and a MAX regression. On a MAX bar it fails.
+
+**MY OWN HYPOTHESIS FOR *WHY* THE HEADLINE FELL IS ALSO REFUTED.** I predicted the plane ruler goes blinder
+as facets thin. It does not: blindness ratio p50 is 1.003-1.012 in EVERY aspect-ratio band in both arms, and
+`ratio MAX` is 433-885x in the AR 0-5 band against 18.8x in the new AR 65-90 band. The blindness lives in
+WELL-SHAPED facets (the honest-worst 12 have AR 2.05-14.4), which independently re-confirms
+E-2026-07-28 ("failures are LARGE well-shaped facets, not slivers").
+
+**AND THE SILHOUETTE HYPOTHESIS IS REFUTED TOO.** Full-mesh `edgeSag` cross-tabbed against AR: the 1,686 NEW
+blades (AR 50-90) carry LESS chord error than the mesh body — MAX 35.9 / 27.8 um in the 50-65 / 65-90 bands
+against 497.9 um in the AR 0-5 band. The new thin facets are not where the error is.
+
+**THE A/B IS ALSO CONFOUNDED (independent of the above).** `PF_CB_SHAPE_AR` is one FLAG but TWO MECHANISMS:
+`_strataConformBisectS34.test.ts:1201` passes `shapeAR: SHAPE_AR` into `buildAlignedSeedRepaired`, whose
+repair loop (`_strataAlignedSeed.ts:2620-2635`) BANS the bow-cap apexes of over-cap seed facets and REBUILDS
+the seed. Reported: S39CTL `seed 127863 points -> 254926 tris, constraints 12854, repair rounds 2, banned 46`
+vs S40AR90 `127894 -> 254988, constraints 12880, repair rounds 1, banned 10`. The bans include CONSTRAINT-CHAIN
+vertices, so the arms do not share a locus representation. "One flag, everything else identical" is false.
+
+**COST CLAIM (C2) WEAKENED.** p50/p90/p99 are indeed untouched, but the quoted percentiles stop one decade
+short of the population the lever creates: S46 census p99.9 45.37 -> 59.42 (+31%), MAX AR 85.1 -> 90.0,
+`>65` 2 -> 886, min edge 0.755 -> 0.335 um. And `_judgeShape.bladeGate` is `pass: count === 0` at
+`PF_FT_ARCAP` default 50 — so 4 -> 1,686 is a HARD GATE FLIP, not a 0.148% line item.
+
+**s49BackFacing (secondary) — NOT SOUND AS A CROSS-ARM COMPARISON.** `research/tools/advNormalAudit.ts` runs
+the campaign's OWN `_judgeNormal.facetNormalCensus` beside it on the same STLs:
+
+| arm | s49 cos<0 | judge >=90 @centroid | judge TRUE back-facing (footprint gate) | featureSpan | PARAM FOLD | n.rhat<0 |
+|---|---|---|---|---|---|---|
+| S39CTL  | 1488 | 1506 | **623** | 883 | **0** | 2 |
+| S40AR90 |  905 |  916 | **469** | 447 | **0** | 4 |
+
+s49 re-derives an instrument that already exists and drops both corrections `_judgeNormal` was given on
+2026-07-30 after they were measured necessary: the five-candidate (central + four one-sided) normals, and
+THE FOOTPRINT TEST. 59% of s49's count is `featureSpan` — chords across steep C1 walls, which `_judgeNormal`
+records as GROWING with refinement (1,792 @61k -> 14,890 @351k tris), i.e. the metric rises when the mesh
+improves, which is disqualifying for exactly the cross-arm use s49 puts it to. s49 also evaluates at
+`atan2` of the CARTESIAN centroid where the judge uses the parametric centroid, and its z-clamped central
+difference divides a clipped interval by the full `2*hZ` (a 2x under-read of r_z on the rim rows).
+Its step sweep cannot detect any of this. Two rA-free mechanism columns settle what the class IS:
+**PARAM FOLD = 0** (no winding/topology flip anywhere) and **n.rhat<0 = 2 and 4** (the analytic normal of
+r=rA(th,z) has radial component exactly r>0, so a truly inward facet must appear here). The population is
+steep-wall chords, not flipped facets.
+
+**CLAIMS THAT SURVIVE.** C3 (the `shape-ar` label is the LAST refusal channel, not the absence of a good
+split — confirmed at :1502 / :2051 / :3152, and the floor-first ordering only covers the all-edges-under-floor
+case), C4 (radial residual is the exact membership test for a radial graph; 0/571,663 over 0.05 um),
+C6 (WeakMap keyed on the rA closure identity + `H|nu|nv`; a collision would need one closure object to mean
+two surfaces), C7 (`:3152` stores `kTop` = sagAdaptive, `:3083` stores `worstEdgeSag` — two rulers in one
+column, already documented in-source).
+
+**C5 IS CIRCULAR AS STATED.** "Reconstructing theta from the shipped position and re-running `edgeSagRaw`
+gives reported/driverN p50 1.0000" re-runs THE SAME FUNCTION, so it proves reproducibility, not correctness.
+The independent support for "the sag is real" is `fine4096/driverN` (a different sample count, p50 1.016,
+max 1.317) and my full-mesh `ptTri`, which agrees in magnitude on the same facets — so the CONCLUSION holds
+on other evidence.
+
+**PRE-REGISTRATION VIOLATION, worth recording.** `run-s40-arcap-one-arm.sh` pre-registers the comparison
+instrument in its own header: *"Compare arms on THAT column [`unresolved.json` `sagNowUm`, the EDGE ruler]
+and on its count, never on the reported worst."* The arms were then compared on the reported worst. On the
+pre-registered column the sweep reads 210.617 -> 73.288 -> 159.176 -> 108.605 um (non-monotone, best 1.94x);
+full-mesh it reads 424.14 -> 497.90 (worse). The stranded set shrinks 774 -> 110 BECAUSE the cap admits the
+splits, so `unresolved` is a bookkeeping set the lever itself empties, not a defect set.
+
+**LEDGER.** NEW read-only instruments: `research/tools/advSandwichRuler.ts`, `research/tools/advNormalAudit.ts`.
+Reports (gitignored `research/exchange/`): `_strataConformBisect/ADV_SANDWICH_RULER.report.txt`,
+`ADV_SANDWICH_RULER_SWEEP.report.txt`, `ADV_NORMAL_AUDIT.report.txt`, `ADV_SANDWICH_<tag>.json`.
+6 arms x 138M rA evals, ~130 s each, single-threaded, read-only over finished STLs.
+
+**RECOMMENDATION.** The AR cap is not the residual and the headline is not a fidelity number. Retire
+`max(sagAdaptive, sagOfN(12), tail@44)` as an arm headline — it is measurably 737-851x optimistic on the
+facets that carry the error — and promote full-mesh `ptTri` to the reported quantity (identical rA cost to
+the plane ruler; the driver already carries the code as `PF_CB_RANK=ptperp`). The open target is the
+z ~ 80.5 / 96.9 / 113.7 / 120.0 loci, which are LOCATION-STABLE across all six arms and untouched by every
+lever tried so far.
