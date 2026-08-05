@@ -74,14 +74,17 @@ log(`${nTri} facets read   [${((Date.now() - T0) / 1000).toFixed(1)}s]`);
 const P = Float64Array.from(xyz);
 const st = landConstrainedFlip(P, nTri, {
   rA, H, barUm: 10, jbarUm: 1, rounds: ROUNDS, posRuler: RULER, h1SelectUm: SEL,
-  useDet: true, detMode: 'rel', gateMm: 0.05, nMax: 512, zJumps: zJ, thJumps: thJ, fastLevel: FAST, log,
+  useDet: true, detMode: 'rel', gateMm: 0.05, nMax: 512, zJumps: zJ, thJumps: thJ, fastLevel: FAST,
+  censusPlanePos: envF('PF_LAND_PLANECENSUS', 0) === 1, log,
 });
 
 const show = (l: string, c: LandCensus): void => {
   log(`  ${l}`);
   log(`    ORIENT over-10um ${c.orientOver} (${((100 * c.orientOver) / nTri).toFixed(3)}%)  p50 ${c.orientP50.toFixed(2)} p99 ${c.orientP99.toFixed(2)} max ${c.orientMax.toFixed(1)} um   by AREA ${c.orientAreaOverPct.toFixed(3)}% of surface`);
   log(`    INVERSION >90deg ${c.over90}  >120deg ${c.over120}  max ${c.angMax.toFixed(2)} deg`);
-  log(`    POSITION (plane ruler) over-10um ${c.posOver}  p99 ${c.posP99.toFixed(2)} max ${c.posMax.toFixed(1)} um`);
+  log(c.posOver < 0
+    ? '    POSITION (plane ruler): NOT MEASURED — banned as a verdict, and 57% of the pass. PF_LAND_PLANECENSUS=1 to compute it.'
+    : `    POSITION (plane ruler) over-10um ${c.posOver}  p99 ${c.posP99.toFixed(2)} max ${c.posMax.toFixed(1)} um`);
   log(`    SHAPE maxAngle max ${c.maxAngMax.toFixed(3)}  caps>=150 ${c.cap150}   DETERM jit>1um ${c.jitOver1} >10um ${c.jitOver10}`);
   log(`    TOPO ${c.edges} edges, boundary ${c.boundary}, non-manifold ${c.nonManifold}, orientation-inconsistent ${c.orientInconsistent}`);
 };
@@ -92,9 +95,19 @@ log('');
 log(`flips ${st.flips} in ${st.rounds} rounds, ${st.secs.toFixed(1)}s   frozen off-surface ${st.frozen}`);
 log(`rej: frozen ${st.rej.frozen}  dirty ${st.rej.dirty}  dup ${st.rej.dup}  fold ${st.rej.fold}  noImprove ${st.rej.noImprove}  DET ${st.rej.det}  POS ${st.rej.pos}`);
 log(`WORK (fastLevel ${FAST}): body entries ${st.candBody}  score evals ${st.scoreEvals}  frontier-skipped ${st.frontierSkipped}`);
+{
+  const inLoop = st.msEdges + st.msFrontier + st.msSweep;
+  const tot = st.secs * 1000;
+  const pc = (m: number): string => `${(m / 1000).toFixed(1)}s (${((100 * m) / Math.max(1, tot)).toFixed(1)}%)`;
+  const other = tot - inLoop - st.msCensusBefore - st.msCensusAfter;
+  log(`COST  buildEdges ${pc(st.msEdges)}  frontier ${pc(st.msFrontier)}  sweep ${pc(st.msSweep)}  censusBEFORE ${pc(st.msCensusBefore)}  censusAFTER ${pc(st.msCensusAfter)}  weld+gate+writeback ${pc(other)}   [all %% of the ${st.secs.toFixed(1)}s pass]`);
+log(`COST  of which the BANNED plane ruler (sagAdaptiveRaw, both censuses): ${pc(st.msCensusPlane)}`);
+}
 if (RULER === 'h1') log(`H1 C2: evaluated ${st.h1Evaluated} candidates, selector skipped ${st.h1Skipped} (${((100 * st.h1Skipped) / Math.max(1, st.h1Skipped + st.h1Evaluated)).toFixed(2)}%)`);
 log(`ORIENT over-bar ${st.before.orientOver} -> ${st.after.orientOver}  (${(st.before.orientOver / Math.max(1, st.after.orientOver)).toFixed(3)}x)   by AREA ${st.before.orientAreaOverPct.toFixed(3)}% -> ${st.after.orientAreaOverPct.toFixed(3)}%  (${(st.before.orientAreaOverPct / Math.max(1e-30, st.after.orientAreaOverPct)).toFixed(3)}x)`);
-log(`POSITION (plane) over-bar ${st.before.posOver} -> ${st.after.posOver}`);
+log(st.before.posOver < 0
+  ? 'POSITION (plane): NOT MEASURED (banned as a verdict). Take position offline with certifyTriangle.'
+  : `POSITION (plane) over-bar ${st.before.posOver} -> ${st.after.posOver}`);
 log(`NON-VACUITY: C2 rejected ${st.rej.pos}, C3 rejected ${st.rej.det}. ${st.rej.pos === 0 && RULER !== 'off' ? '*** C2 IS VACUOUS ON THIS ARM ***' : ''}`);
 
 // ── WRITE + THE GATE

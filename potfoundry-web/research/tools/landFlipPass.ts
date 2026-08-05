@@ -95,6 +95,15 @@ export interface LandFlipOpts {
    * would re-order the visits and hand the win to a different edge. Same order, same winners, same mesh.
    */
   fastLevel?: 0 | 1 | 2;
+  /**
+   * Compute the PLANE-position column in the before/after census. **Default false**, on measurement:
+   * it is 57.0% of the whole pass (348.5 s of 611.6 s on Voronoi) and what it produces is
+   * `sagAdaptiveRaw`, BANNED as a verdict by the campaign. It never feeds the algorithm — it calls
+   * `posPlaneSlot` directly, not the cached `posOfSlot` the C2 clause uses — so it cannot move a flip.
+   * When false, `posOver` is -1 and `posP99`/`posMax` are NaN: NOT-MEASURED, and callers MUST print
+   * them as such rather than as zeros.
+   */
+  censusPlanePos?: boolean;
   log?: (s: string) => void;
 }
 
@@ -110,6 +119,12 @@ export interface LandFlipStats {
    * and `candBody` is equal too, the frontier did nothing and the arm is vacuous — say so, do not ship it.
    */
   candBody: number; scoreEvals: number; frontierSkipped: number;
+  /** S88 cost breakdown, ms: the per-round edge-map rebuild, the frontier star scan, the edge walk. */
+  msEdges: number; msFrontier: number; msSweep: number;
+  /** the two DIAGNOSTIC censuses (before/after) — measurement, not algorithm. */
+  msCensusBefore: number; msCensusAfter: number;
+  /** of the census time, the part spent in the BANNED plane ruler `sagAdaptiveRaw` (both censuses). */
+  msCensusPlane: number;
   before: LandCensus; after: LandCensus;
 }
 export interface LandCensus {
@@ -143,6 +158,7 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   // GothicArches S39CTL and on LowPolyFacet. `PF_LAND_FAST=0` restores the exhaustive sweep and is the
   // control any future equivalence check must run against — keep it working.
   const FAST = o.fastLevel ?? 2;
+  const CENSUS_PLANE = o.censusPlanePos ?? false;
   const zJumps = o.zJumps ?? []; const thJumps = o.thJumps ?? [];
   const log = o.log ?? ((): void => { /* silent */ });
   const TOLMM = BAR / 1000;
@@ -325,27 +341,55 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
       const j = jitterUmOf(a, b, c); if (j > 1) jit1 += 1; if (j > 10) jit10 += 1;
     }
     const pos: number[] = []; let posOver = 0; let posMax = 0;
-    for (let t = 0; t < nTri; t += 1) { const p = posPlaneSlot(t); pos.push(p); if (p > BAR) posOver += 1; if (p > posMax) posMax = p; }
+    // ── THE PLANE-POSITION CENSUS — DEFAULT OFF, and the default is a MEASUREMENT, not a preference.
+    // Measured on Voronoi (806,765 facets, 20 rounds): this loop is 348.5 s of a 611.6 s pass = 57.0%,
+    // i.e. 96% of all census time and more than the entire flip algorithm. What it computes is
+    // `sagAdaptiveRaw`, which the campaign's own state-of-the-campaign doc marks ***BANNED as a
+    // verdict*** (21-1,527x under, 28-37% over; ranking only). The pass was spending the majority of
+    // its wall clock, twice, on a number that is not admissible as a verdict.
+    //
+    // It does NOT feed the algorithm: this calls `posPlaneSlot` directly, never the cached `posOfSlot`
+    // the C2 clause uses, so switching it off cannot move a single flip. Verified by md5.
+    //
+    // WHEN OFF, THE FIELDS READ AS NOT-MEASURED (-1 / NaN) AND MUST BE PRINTED THAT WAY. Reporting 0
+    // over-bar for a ruler that never ran is the vacuous-bar failure this campaign has already been
+    // bitten by — a disabled gate that prints a passing number is worse than no gate.
+    if (CENSUS_PLANE) {
+      const tPlane = Date.now();
+      for (let t = 0; t < nTri; t += 1) { const p = posPlaneSlot(t); pos.push(p); if (p > BAR) posOver += 1; if (p > posMax) posMax = p; }
+      msCensusPlane += Date.now() - tPlane;
+    } else { posOver = -1; posMax = NaN; }
     pos.sort((x, y) => x - y);
     const os = Float64Array.from(or).sort();
     const tp = topoOf(em);
     return {
       orientOver: orOver, orientP50: pq(os, 0.5), orientP99: pq(os, 0.99), orientMax: os[nTri - 1],
       orientAreaOverPct: (100 * arOver) / Math.max(1e-30, arAll), over90: o90, over120: o120, angMax,
-      posOver, posP99: pq(pos, 0.99), posMax,
+      // `pq` returns 0 on an empty array, which would print a passing p99 for a ruler that never ran.
+      posOver, posP99: CENSUS_PLANE ? pq(pos, 0.99) : NaN, posMax,
       jitOver1: jit1, jitOver10: jit10, maxAngMax: maMax, cap150,
       edges: tp.edges, boundary: tp.bnd, nonManifold: tp.nm, orientInconsistent: tp.orientBad,
     };
   }
 
+  // Declared BEFORE the first `census()` call — `let` is hoisted but in TDZ, so putting this with the
+  // other round-loop counters below would throw on the BEFORE census.
+  let msCensusPlane = 0;
+  const tPre = Date.now();
   const emBefore = buildEdges();
   const before = census(emBefore);
+  const msCensusBefore = Date.now() - tPre;
 
   // ── THE FLIP ROUNDS
   const EPS = 1e-9;
   const rej = { dirty: 0, sameOpp: 0, dup: 0, fold: 0, noImprove: 0, det: 0, pos: 0, frozen: 0 };
   let totalFlips = 0; let roundsRun = 0; let h1Skipped = 0; let h1Evaluated = 0;
   let candBody = 0; let scoreEvals = 0; let frontierSkipped = 0;
+  // ── S88 COST BREAKDOWN. With the sweep body 6x cheaper (S86) the per-round FIXED costs are now a
+  // large share of what is left, and nobody has measured which one. Instrument before optimising:
+  // `msEdges` is the per-round `buildEdges()` rebuild, `msFrontier` the O(nTri) star scan, `msSweep`
+  // the edge walk itself. Timing only — it changes no verdict and no output.
+  let msEdges = 0; let msFrontier = 0; let msSweep = 0;
   const score = new Float64Array(nTri);
   // ── LEVEL >= 1: seed `score` ONCE. The accept path maintains it from here (see `fastLevel`).
   if (FAST >= 1) for (let t = 0; t < nTri; t += 1) { score[t] = orientOf(ta[t], tb[t], tc[t]); scoreEvals += 1; }
@@ -356,8 +400,11 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   let frontier: Set<number> | null = null;
   for (let round = 0; round < ROUNDS; round += 1) {
     roundsRun = round + 1;
+    const tEdges = Date.now();
     const em = round === 0 ? emBefore : buildEdges();
+    msEdges += Date.now() - tEdges;
     if (FAST === 0) for (let t = 0; t < nTri; t += 1) { score[t] = orientOf(ta[t], tb[t], tc[t]); scoreEvals += 1; }
+    const tFrontier = Date.now();
     // Build this round's frontier from LAST round's touched vertices, over the CURRENT triples so the
     // vertex stars are post-flip. O(nTri) index work, zero rA — cheap against a body that spends 10.
     if (FAST >= 2 && round > 0) {
@@ -373,11 +420,13 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
       }
       frontier = f;
     }
+    msFrontier += Date.now() - tFrontier;
     touchedV.fill(0);
     retry = new Set<number>();
     const dirty = new Uint8Array(nTri);
     const created = new Set<number>();
     let flips = 0;
+    const tSweep = Date.now();
     for (const [k, l] of em) {
       if (l.length !== 2) continue;
       // THE FRONTIER SKIP — placed here, inside the natural `em` walk, so the VISIT ORDER of everything
@@ -446,12 +495,15 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
       created.add(kcd);
       flips += 1;
     }
+    msSweep += Date.now() - tSweep;
     totalFlips += flips;
     log(`  landFlip round ${round + 1}: ${flips} flips (cum ${totalFlips})  rej fold ${rej.fold} dup ${rej.dup} noImp ${rej.noImprove} DET ${rej.det} POS ${rej.pos}${FAST >= 2 ? `  [frontier ${frontier === null ? 'ALL' : frontier.size} of ${em.size}, body ${candBody}]` : ''}`);
     if (flips === 0) break;
   }
 
+  const tPost = Date.now();
   const after = census(buildEdges());
+  const msCensusAfter = Date.now() - tPost;
   // ── WRITE BACK. Positions are unchanged; only the index triples moved.
   for (let t = 0; t < nTri; t += 1) {
     const v3 = [ta[t], tb[t], tc[t]];
@@ -459,6 +511,7 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   }
   return {
     nTri, nVert: NV, frozen, flips: totalFlips, rounds: roundsRun, secs: (Date.now() - t0) / 1000,
-    rej, h1Skipped, h1Evaluated, candBody, scoreEvals, frontierSkipped, before, after,
+    rej, h1Skipped, h1Evaluated, candBody, scoreEvals, frontierSkipped, msEdges, msFrontier, msSweep,
+    msCensusBefore, msCensusAfter, msCensusPlane, before, after,
   };
 }
