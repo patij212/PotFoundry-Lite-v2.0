@@ -9422,3 +9422,90 @@ its position-AREA result (0.604×, past the null) is unaffected and stands.
 and `_S39CTL`. Honest position at N = 50,000 on **9 meshes**: `_S8P` and all 8 lineage arms; plus the
 `_S39CTL` cross-tool control (N = 8,000) and the two identity twins (N = 800). `_S21C` (245,998 triangles,
 95.9% over bar) is not a full-scale artifact and is listed for completeness only — it is not compared.
+
+---
+
+# S90 — THE ORIENTATION SELECTOR: CONTAINMENT SURVIVES OFF GOTHIC, THE SPEED-UP DOES NOT (2026-08-05)
+
+Agent: SELECTOR. Research-only. Scorecard: `research/exchange/_strataConformBisect/S90_SELECTOR_FINDINGS.md`
+(gitignored). Tools: `research/tools/s90selCost.ts`, `s90selSound.ts`, `s90selAnalyze.ts`,
+`run-s90sel-{vorpos,cost,sound,analyze}.sh`. Nothing in `src/` touched; no fork of `_certComposeLib` made.
+
+**HYPOTHESIS UNDER TEST (S88 §7a / state doc §0c.1(1)):** the cheap ORIENTATION chord triages which facets
+get the expensive POSITION certificate — *"recall 0.90 at f = 5.03% / 4.68% / 0.86% ⇒ 15.72× / 16.62× /
+45.54× cheaper"* — resting on a containment measured only on GothicArches.
+
+| pre-registered kill | measured | verdict |
+|---|---|---|
+| **H-S90-1** containment: >2% of Voronoi's position failures orientation-OK | **0 of 845** (both insets); 95% UB **0.355%** | **SURVIVES** |
+| **H-S90-2** recall: f > 67% at recall 0.90 | 15.29% | SURVIVES |
+| **H-S90-3** end-to-end rA evals < **1.5×** on EITHER mesh | **Voronoi 1.47×** (fitted) / **1.02×** (deployable) | ***KILLED*** |
+| **H-S90-4** a SOUND one-sided orientation test | exists; at the required kappa it is **1.02×** | ***REFUTED as a lever*** |
+
+### 1. CONTAINMENT IS NOT GOTHIC-ONLY — 3,230 FAILURES, ZERO EXCEPTIONS, FOUR MESHES
+
+`voronoi_ring_D--` (806,765 tris, base rate **10.49%** — 36× Gothic's 0.29%), `s87LedgerReexam.ts`
+UNMODIFIED, `PF_S87_ARM=pos`, tag `s90VOR`, 8,055 golden-stride facets:
+**`posFail & orientationOK` = 0 of 845 at inset 0 AND at inset 0.02.**
+`min(o2/w)` = **1.4632** over all facets; `frac(o2/w < 1)` = **0.0000%**; the smallest `o2` on a failing
+facet is **182.04 µm = 18.2× the bar**. *Control C-S90-1: the first 8,000 rows are the IDENTICAL facets
+S85 published (same golden-stride construction) and reproduce **840 PROVEN-FAIL (10.500%) / areaFail
+1.30676%** exactly.* On Gothic the margin is thinner — smallest failing `o2` = **15.37 µm (1.54×)** on `_S9A`.
+
+### 2. BOTH CONSTANTS IN THE `5 + 375·f` COST MODEL ARE WRONG, AND `f` IS FITTED TO THE ANSWER
+
+| | model | **MEASURED (rA evals, `AR.evals()` deltas per call)** |
+|---|---|---|
+| the certificate | 375 flat | **mean 40,178** (Gothic) / **329,638** (Voronoi) = **107× / 879×** |
+| the selector | 5 | **exactly `5(k+1)(k+2)/2`** = 15/30/75/**225** for k=1/2/4/8 (min==max, 8,000 facets) |
+| `f` | quoted as a property | **the smallest top-f capturing 90% of the failures ON THAT MESH** — unavailable in production |
+
+`certifyTriangle`'s cost is quadratic in facet size (`n = ceil(covRadius/tol)`); `rho(covRadius, cost)` =
+**+0.7246** / +0.6722. **`rho(orientation key, cost)` = +0.2022 (Gothic) / +0.4747 (Voronoi): the selector
+KEEPS the expensive facets.** On Voronoi it tests 15.05% of the facets and 68.1% of the work.
+
+| end-to-end | S88 published | fitted @0.90 | fitted @1.00 | **deployable cut `o2 <= bar`** |
+|---|---|---|---|---|
+| Gothic `C2S39CTL` | 45.54× | **12.07×** (k=8) / 17.97× (k=1) | 7.59× | **1.39×** |
+| **Voronoi** | — | ***1.47×*** | 1.28× | ***1.02×*** |
+
+**k=1 (15 evals, three vertex normals) beats k=8 everywhere. S88 measured only k=8.**
+
+### 3. THE SOUND ONE-SIDED TEST EXISTS AND IS WORTH NOTHING
+
+`dist(facet,S) <= tan(theta) * covRadius` (vertices on-surface + graph condition; `covRadius` is exactly
+`max_p min_i |p - v_i|`), sound form `theta + kappa*cov_orient`. Measured: kappa = 0 required on **95.67%**
+of facets, MAX **1.902 /mm** (k=1). At kappa = 0 it clears 72.66% holding 64.51% of cost ⇒ 2.77× **but is
+demonstrably unsound (344/8,000 have `bound < witnessed`)**. At the required kappa it clears 19.75% holding
+**2.14%** of cost ⇒ **1.02×**. Same wall, one bar higher: `tan(theta+kappa*cov)*covRadius` grows
+quadratically in facet size, so a sound orientation bound can only clear SMALL facets, which are CHEAP.
+
+### 4. AND IT IS DOMINATED BY AN INSTRUMENT ALREADY BUILT
+
+Phase D's GPU screen, read from the logs on disk: `S29FP_CONTROL.log` certifies **98.4072%** and sends
+**1.5928%** to the certificate; `S28_CERT1_RETRY.log` **98.0182% / 1.9818%** — at **100% coverage** with
+`bound <= tol` **BY CONSTRUCTION**. The orientation selector's deployable cut sends **61-75%**: it is
+**31-47× less selective than the sound instrument this project already has and does not run.**
+*(No Phase D log exists for Voronoi; the Voronoi domination assumes transfer, which is the exact assumption
+this probe refuted for the orientation selector. Stated, not claimed.)*
+
+### 5. FELL OUT FREE — WHERE THE CAMPAIGN'S DOMINANT COMPUTE ACTUALLY GOES
+
+**`tighten` is 95.68% (Gothic) / 97.80% (Voronoi) of all rA evals; the lattice walk is 2-4%.**
+*(An independent reproduction of S50's 95.22% on two meshes with a different instrument.)* The median facet
+does **exactly one doubling** above its seed level (10→20 / 27→46). **So nothing about the lattice level
+matters and every triage that changes WHICH FACETS are certified is attacking the right 96%** — but the
+orientation bound is being pointed at the wrong object. Per POINT, with `v` the nearest vertex,
+`dist(p,S) <= tan(theta)*|p - v|` is a **sound upper bound costing ZERO rA evals** once theta is known
+(15 evals/facet at k=1), usable as an extra `min(...)` in `certifyTriangle`'s pass-2 threshold test.
+**NEXT EXPERIMENT, PRE-REGISTERED: fork `certifyTriangle`, add the per-point prefilter, A/B on the same
+8,000 facets. KILL: the bound or witnessed moves beyond the f64 determinacy band on any facet, OR the
+tighten-call count falls by less than 25%.**
+
+### DO NOT
+
+* Do not quote 45.54× / 15.72× / 16.62×. They use a 107×-low cost constant and a threshold fitted to the
+  answer. On real costs they are 12.07× / 5.48× / — and on a deployable cut 1.39×.
+* Do not build a stage-0 orientation triage into `_certComposeLib`. It is 1.02-1.47× on Voronoi and it
+  converts the certificate into a defect-hunting screen — it can still prove FAIL, it can never prove PASS.
+* Do not read the containment as a theorem. Margin on `_S9A` is 1.54×.
