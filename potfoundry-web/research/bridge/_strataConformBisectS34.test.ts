@@ -2916,6 +2916,19 @@ describe('STRATA conforming-bisection', () => {
     // UNRESOLVED = popped over `acceptTol`, refinement produced NOTHING, never re-queued. Kept explicitly so the
     // run can say so; `stuck` alone only counted them (see the loop body for the measurement).
     const unresolved = new Map<number, number>(); // triangle → the key it was popped at
+    // *** WHICH RULER THAT NUMBER IS. TWO DIFFERENT ONES ARE STORED IN `unresolved` AND UNTIL NOW
+    // NOTHING SAID SO. *** The sweep path stores `worstEdgeSag(t)` — the 1-D EDGE sagitta. The heap
+    // path's no-op-split site and both resume sites store `kTop` — the POP KEY, which is `sagAdaptive`,
+    // the INFINITE-PLANE facet ruler. They are not the same quantity and they do not agree: on S39CTL
+    // every one of the 774 entries came from the `kTop` branch and read a worst of 47.230 um, while the
+    // same facets' `worstEdgeSag` re-read on the shipped mesh runs to 210.617 um, with 60.6% of them
+    // over the 10 um bar. The emitted `rulers` block asserted both columns were "the same edge ruler",
+    // which was wrong for 100% of the population, and the report line quoted the plane number as the
+    // worst unresolved facet. Nine arms were steered on it.
+    // Recorded per entry rather than fixed, because BOTH readings are wanted: the pop key is what the
+    // driver believed when it gave up, the edge sag is what the shipped mesh actually carries, and the
+    // gap between them IS the blindness this campaign exists to measure.
+    const unresolvedKind = new Map<number, 'plane-pop-key' | 'edge-sag'>();
     let lastKey = Infinity;
     let keyInversions = 0;
     // WALL-CLOCK BUDGET (PF_CB_MAXSECS, 0 = off). An escalating accept test costs ~6.6 k rA evals per
@@ -3081,6 +3094,7 @@ describe('STRATA conforming-bisection', () => {
           // semantics: this triangle violated and no mechanism could act on it.
           stuck += 1;
           unresolved.set(t, worstEdgeSag(t));
+          unresolvedKind.set(t, 'edge-sag');
           unresolvedWhy.set(t, outcome);
         }
         iters += 1;
@@ -3135,7 +3149,7 @@ describe('STRATA conforming-bisection', () => {
       // simply gone: `consider` is only ever called on split PRODUCTS, so it is never re-queued and "heap: 0
       // left" then reads as convergence. MEASURED: 563 600 dropped = 20.1 % of split attempts. Record it with
       // the key it was popped at instead of re-queueing — re-queueing spins forever on the same refusal.
-      if (created.length === 0) { stuck += 1; unresolved.set(t, kTop); unresolvedWhy.set(t, classifyStrand(t)); }
+      if (created.length === 0) { stuck += 1; unresolved.set(t, kTop); unresolvedKind.set(t, 'plane-pop-key'); unresolvedWhy.set(t, classifyStrand(t)); }
       // PROGRESS TO A FILE (PF_CB_PROGRESS=<path>), not just to stdout. Vitest buffers a worker's stdout
       // until the test ends, so on a multi-hour run console.log tells you NOTHING while it matters — and
       // the only question that matters mid-run is whether the heap is DRAINING or GROWING. `heap` and
@@ -3154,12 +3168,21 @@ describe('STRATA conforming-bisection', () => {
     for (let i = 0; i < heapT.length; i += 1) if (alive[heapT[i]] && heapK[i] > heapLeftMax) heapLeftMax = heapK[i];
     // Only the SURVIVORS count: a recorded triangle can still have been re-meshed afterwards by a neighbouring
     // edge split (bisectAt splits every incident triangle), and those are genuinely resolved.
-    let unresolvedLeft = 0; let unresolvedMax = 0;
+    let unresolvedLeft = 0; let unresolvedMax = 0; let unresolvedMaxSag = 0;
     // S25: the snapshot rides along in this exact loop, so the emitted `atReduction` count is the SAME
     // traversal that produces the reported scalar and cannot drift from it. Push only — no mesh state is
     // read or written — so the flag-OFF path is unchanged and the ON path cannot move a vertex.
+    //
+    // *** `unresolvedMax` IS THE STORED KEY AND FOR A HEAP RUN THAT IS THE PLANE RULER, NOT THE EDGE ONE. ***
+    // The heap driver's no-op-split and resume sites store `kTop` = sagAdaptive; only the sweep path stores
+    // worstEdgeSag. So this scalar — the one the report line has always quoted as "worst" — is measured with
+    // the ruler this campaign has priced at median 21.9x optimistic. `unresolvedMaxSag` is the same set read
+    // with the EDGE ruler on the mesh that ships. On S39CTL: 47.230 um against 210.617 um, the same 774
+    // facets, a factor of 4.46. Both are printed from here on; neither is a fidelity verdict.
+    // worstEdgeSag is memoised through `edgeVerdict`, so this costs nothing on a population of this size.
     for (const [t, k] of unresolved) if (alive[t]) {
       unresolvedLeft += 1; if (k > unresolvedMax) unresolvedMax = k;
+      const sNow = worstEdgeSag(t); if (sNow > unresolvedMaxSag) unresolvedMaxSag = sNow;
       if (EMIT_UNRESOLVED) unresolvedSnap.push([t, k]);
     }
     // §2.5 "worst-left" GENUINELY DISAPPEARS UNDER `sweep` AND THAT IS A REAL LOSS. With no key, a capped run
@@ -4223,7 +4246,7 @@ describe('STRATA conforming-bisection', () => {
             sliverResumeSplits += 1;
             unresolved.delete(t);
             if (alive[t]) consider(t);
-          } else { unresolved.set(t, kTop); unresolvedWhy.set(t, classifyStrand(t)); }   // S26: the resume strands too, and it used to do so anonymously
+          } else { unresolved.set(t, kTop); unresolvedKind.set(t, 'plane-pop-key'); unresolvedWhy.set(t, classifyStrand(t)); }   // S26: the resume strands too, and it used to do so anonymously
         }
         sliverResumeBudgetUsed = Math.max(0, ta.length - resumeBase);
       }
@@ -4302,7 +4325,7 @@ describe('STRATA conforming-bisection', () => {
             if (wasStranded) { resolvedThisPass += 1; srResolved += 1; srResolvedBy.set(wasWhy, (srResolvedBy.get(wasWhy) ?? 0) + 1); }
             unresolved.delete(t); unresolvedWhy.delete(t);
             if (alive[t]) consider(t);
-          } else { unresolved.set(t, kTop); unresolvedWhy.set(t, classifyStrand(t)); }
+          } else { unresolved.set(t, kTop); unresolvedKind.set(t, 'plane-pop-key'); unresolvedWhy.set(t, classifyStrand(t)); }
         }
         srPerPass.push(resolvedThisPass);
         if (resolvedThisPass === 0 || srBudgetStopped || srTimeCapped) break;
@@ -4930,7 +4953,7 @@ describe('STRATA conforming-bisection', () => {
       const uCap = 20000;
       const facets: Array<Record<string, number | string | boolean>> = [];
       // The FINAL set: still in the map AND still alive in the mesh that ships.
-      let finalCount = 0; let finalWorst = 0; let whyUnknown = 0; let declaredCount = 0; let overCapCount = 0;
+      let finalCount = 0; let finalWorst = 0; let finalWorstSag = 0; let whyUnknown = 0; let declaredCount = 0; let overCapCount = 0;
       const snapIds = new Set<number>();
       for (const [t] of unresolvedSnap) snapIds.add(t);
       const finalIds = new Set<number>();
@@ -4938,6 +4961,14 @@ describe('STRATA conforming-bisection', () => {
         if (!alive[t]) continue;
         finalCount += 1; finalIds.add(t);
         if (k > finalWorst) finalWorst = k;
+        // THE SECOND WORST, AND IT IS THE ONE THAT MATTERS. `finalWorst` above is the max over the
+        // STORED key, which for the heap driver's whole population is the PLANE pop key — the ruler
+        // measured median 21.9x optimistic. `finalWorstSag` is the max over the driver's EDGE ruler
+        // re-read on the mesh that ships. Both are printed. Neither is a fidelity verdict; the gap
+        // between them is the point. Computed over EVERY live entry, not just the listed prefix, so
+        // the 20k list cap cannot truncate the maximum the way it once truncated the residual file.
+        const sNow = worstEdgeSag(t);
+        if (sNow > finalWorstSag) finalWorstSag = sNow;
         if (facets.length >= uCap) continue;             // the list is evidence, not a memory leak
         const A = ta[t]; const B = tb[t]; const C = tc[t];
         const ax = f32(vx[A]); const ay = f32(vy[A]); const az = f32(vz[A]);
@@ -4979,7 +5010,8 @@ describe('STRATA conforming-bisection', () => {
           ar3: Number(ar.toFixed(3)),
           parAR: Number.isFinite(parAR) ? Number(parAR.toFixed(3)) : -1,
           keyUm: Number((k * 1000).toFixed(4)),
-          sagNowUm: Number((worstEdgeSag(t) * 1000).toFixed(4)),
+          sagNowUm: Number((sNow * 1000).toFixed(4)),
+          keyRuler: unresolvedKind.get(t) ?? 'unknown',
           why,
           declared: dec,
           inSnapshot: snapIds.has(t),
@@ -5000,7 +5032,10 @@ describe('STRATA conforming-bisection', () => {
           atReduction: unresolvedLeft,
           atReductionWorstUm: Number((unresolvedMax * 1000).toFixed(3)),
           final: finalCount,
+        // BOTH worsts, named. finalWorstUm is the STORED key (plane, for a heap run); finalWorstSagUm is
+        // the edge ruler on the shipped mesh. They differed by 4.5x on S39CTL and only one was ever printed.
           finalWorstUm: Number((finalWorst * 1000).toFixed(3)),
+          finalWorstSagUm: Number((finalWorstSag * 1000).toFixed(3)),
           diedSinceReduction,
           addedSinceReduction,
           listed: facets.length,
@@ -5013,8 +5048,15 @@ describe('STRATA conforming-bisection', () => {
         bars: { shapeAR: SHAPE_AR, declaredRegions: rcPatches.length },
         // Named so the artifact cannot be read as a fidelity claim. See the block comment above.
         rulers: {
-          keyUm: 'the driver sag key this facet was popped at — DRIVER SELF-REPORT, never a fidelity number',
-          sagNowUm: 'the same edge ruler re-read on the final mesh — DRIVER SELF-REPORT',
+          keyUm: 'what the driver believed when it gave up. *** ITS RULER IS NAMED PER ROW IN `keyRuler` AND IS NOT ALWAYS '
+            + 'THE SAME ONE. *** `plane-pop-key` = the heap pop key, i.e. sagAdaptive, the INFINITE-PLANE facet ruler, measured '
+            + 'median 21.9x optimistic. `edge-sag` = worstEdgeSag, the 1-D EDGE sagitta. The heap driver stores the first for its '
+            + 'entire population; only the sweep path stores the second. An earlier version of this file asserted both columns were '
+            + 'the same edge ruler — wrong for 100% of a heap run. DRIVER SELF-REPORT, never a fidelity number.',
+          sagNowUm: 'worstEdgeSag re-read on the mesh that SHIPS — always the EDGE ruler, whatever `keyRuler` says. COMPARE ARMS ON '
+            + 'THIS COLUMN, NOT ON keyUm: on S39CTL keyUm topped out at 47.230 um while this ran to 210.617 um over the same 774 '
+            + 'facets, with 60.6% of them over the 10 um bar. DRIVER SELF-REPORT.',
+          keyRuler: 'which ruler `keyUm` is, per facet — `plane-pop-key` | `edge-sag` | `unknown`',
           h1h2: 'NOT COMPUTED HERE. The audit is the instrument; a third ruler in this file would be unvalidated.',
         },
         facets,
@@ -5385,7 +5427,17 @@ describe('STRATA conforming-bisection', () => {
         `  worst-left ${um(queueWorstSag)} µm  (EDGE RULER, LOWER BOUND — this is NOT a residual estimate; the heap's`,
         '  worst-left had a key to read and the FIFO does not. §6.4: the anytime property is genuinely given up.)',
       ] : []),
-      `unresolved: ${unresolvedLeft} live over-tol triangles the splitter could NOT subdivide, worst ${um(unresolvedMax)} µm${unresolvedLeft > 0 ? '   *** an EMPTY HEAP DOES NOT MEAN CLOSURE — these left the queue unrefined ***' : ''}`,
+      // TWO RULERS, BOTH NAMED. The first is the STORED key — for the heap driver that is `kTop`, the PLANE
+      // pop key. The second is the EDGE sagitta re-read on the shipped mesh. Printing only the first is how
+      // nine arms came to be steered on a number 4.46x below the one its own artifact carried.
+      // AND THE WORDING IS CORRECTED. "the splitter could NOT subdivide" was a claim the driver never
+      // established: `classifyStrand` reads the LAST refused placement, not the non-existence of a good one.
+      // S42 reproduced the guard with the surface lift over all 773 of S39CTL's entries and found 27.2% had
+      // a legal split available at cap 50 (96.1% at cap 65). "gave up on" is what is actually known.
+      `unresolved: ${unresolvedLeft} live over-tol triangles the splitter GAVE UP ON`
+        + `   worst ${um(unresolvedMax)} µm (stored key — PLANE ruler on the heap driver)`
+        + `   worst ${um(unresolvedMaxSag)} µm (EDGE ruler, re-read on the shipped mesh)`
+        + `${unresolvedLeft > 0 ? '   *** an EMPTY HEAP DOES NOT MEAN CLOSURE — these left the queue unrefined ***' : ''}`,
       // S26: printed on EVERY driver now. It used to live inside the `SWEEP` block below, so the one thing
       // that could have named the heap driver's refusals was dark on every heap run — which is every
       // production arm this campaign has scored.

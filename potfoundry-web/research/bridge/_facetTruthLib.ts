@@ -1035,6 +1035,53 @@ export function distPerpFrom(
 }
 
 /**
+ * THE SEEDING GRID, MEMOISED. `distPerp`'s coarse sweep evaluates rA on a FIXED (theta, z) lattice —
+ * th = TAU*i/nu, z = H*j/nv — and NONE of those arguments depend on the query point. Every call was
+ * therefore rebuilding the same nu x (nv+1) table of surface points from scratch: 180 x 121 = 21,780
+ * rA evaluations per call, ~99% of the function's cost, all of them identical to the previous call's.
+ *
+ * Cached per (rA identity, H, nu, nv). BIT-IDENTICAL BY CONSTRUCTION, not by test: the same rA is
+ * evaluated at the same arguments and the stored double is the one the loop would have computed. The
+ * only observable difference is the rA EVAL COUNT, which falls — that is the point, and it is called
+ * out here so a lower "M rA evals" in a report is read as this cache and not as a behaviour change.
+ *
+ * WeakMap on the rA closure so a pooled run's per-worker surfaces do not collide and nothing is
+ * retained after a worker's surface is dropped. ~870 kB per (H, nu, nv) at the default.
+ *
+ * *** AND THIS IS WHAT MAKES STANDING DEFECT #3 AFFORDABLE. *** The default nu=180, nv=120 was
+ * MEASURED over-stating by 30.902 um (26%) at tri 690730 — the seed lands in the wrong basin and the
+ * descent converges to a local foot, so the reading is an over-estimate. The fix has always been a
+ * denser grid and the reason it was never taken is that density multiplied the per-call cost. With
+ * the table built once, 360 x 240 costs the same per CALL as 180 x 120 did, and only the one-time
+ * build is 4x. Raising the default is a separate, measured decision — this change does not take it,
+ * so every existing number reproduces exactly.
+ */
+export interface PerpSeedGrid { x: Float64Array; y: Float64Array; z: Float64Array; th: Float64Array }
+const perpSeedCache = new WeakMap<RadiusFn, Map<string, PerpSeedGrid>>();
+/** EXPORTED for the equivalence bar (s45PerpCacheEquiv) only — `distPerp` is the supported entry point. */
+export function perpSeedGrid(rA: RadiusFn, H: number, nu: number, nv: number): PerpSeedGrid {
+  let byShape = perpSeedCache.get(rA);
+  if (byShape === undefined) { byShape = new Map<string, PerpSeedGrid>(); perpSeedCache.set(rA, byShape); }
+  const key = `${H}|${nu}|${nv}`;
+  const hit = byShape.get(key);
+  if (hit !== undefined) return hit;
+  const TAU = 2 * Math.PI;
+  const n = nu * (nv + 1);
+  const g: PerpSeedGrid = { x: new Float64Array(n), y: new Float64Array(n), z: new Float64Array(n), th: new Float64Array(n) };
+  let k = 0;
+  for (let i = 0; i < nu; i += 1) {
+    const th = (TAU * i) / nu; const ct = Math.cos(th); const st = Math.sin(th);
+    for (let j = 0; j <= nv; j += 1) {
+      const z = (H * j) / nv;
+      const r = rA(th, z);
+      g.x[k] = r * ct; g.y[k] = r * st; g.z[k] = z; g.th[k] = th; k += 1;
+    }
+  }
+  byShape.set(key, g);
+  return g;
+}
+
+/**
  * Perpendicular distance with global seeding: coarse sweep, then Newton from the best few seeds plus the
  * radial foot, plus any detected discontinuity walls. Returns the best (smallest) result, which is the one
  * that is genuinely perpendicular; every candidate is an upper bound, so taking the min is always correct.
@@ -1044,18 +1091,15 @@ export function distPerp(
   opts: { nu?: number; nv?: number; zJumps?: number[]; thJumps?: number[] } = {},
 ): PerpResult {
   const nu = opts.nu ?? 180; const nv = opts.nv ?? 120;
-  const TAU = 2 * Math.PI;
   const seeds: [number, number][] = [[Math.atan2(py, px), pz < 0 ? 0 : pz > H ? H : pz]];
   let b1 = Infinity; let b2 = Infinity; let s1: [number, number] = seeds[0]; let s2: [number, number] = seeds[0];
-  for (let i = 0; i < nu; i += 1) {
-    const th = (TAU * i) / nu; const ct = Math.cos(th); const st = Math.sin(th);
-    for (let j = 0; j <= nv; j += 1) {
-      const z = (H * j) / nv;
-      const r = rA(th, z);
-      const dx = px - r * ct; const dy = py - r * st; const dz = pz - z;
-      const v = dx * dx + dy * dy + dz * dz;
-      if (v < b1) { b2 = b1; s2 = s1; b1 = v; s1 = [th, z]; } else if (v < b2) { b2 = v; s2 = [th, z]; }
-    }
+  // Same traversal order as the original nested loop (i outer, j inner), so the `<` / `else if` tie-break
+  // between two equidistant seeds picks the same pair it always did.
+  const g = perpSeedGrid(rA, H, nu, nv);
+  for (let k = 0; k < g.x.length; k += 1) {
+    const dx = px - g.x[k]; const dy = py - g.y[k]; const dz = pz - g.z[k];
+    const v = dx * dx + dy * dy + dz * dz;
+    if (v < b1) { b2 = b1; s2 = s1; b1 = v; s1 = [g.th[k], g.z[k]]; } else if (v < b2) { b2 = v; s2 = [g.th[k], g.z[k]]; }
   }
   seeds.push(s1, s2);
   // the descent's answer is a further seed: it is globally better behaved than Newton and costs little
