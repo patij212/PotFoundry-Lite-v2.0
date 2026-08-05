@@ -8488,3 +8488,97 @@ flip that has to be priced separately). Stop quoting the plane headline: run `ad
 it is one n=12 pass plus a hash, ~110 s on a 1.14M-tri mesh, single-threaded — or promote H1 into the arm
 report. And re-examine every lever in this campaign that was accepted on a headline movement; the cavity
 lever is measurably worth zero and was accepted on a 1.96x.
+
+---
+
+## E-2026-08-05-S56-58 — the SECTION-9 backlog: flip-only repair, the descent tail, and a second style [3 probes, kill-criteria pre-registered in each header]
+
+Follow-on to `E-2026-08-05-S50-RULER-AUDIT`. Instruments (NEW): `research/tools/s56FlipCensus.ts`,
+`s57DescentTail.ts`, `s58SecondStyle.ts` (+ runners). Full detail:
+`research/exchange/_strataConformBisect/S50_RULER_FINDINGS.md` SECTIONS 11-14.
+
+### S56 — R4 (flip-only) REFUTED as specified, then CONFIRMED with the objective corrected
+
+Whole mesh, 1,142,166 facets welded to 571,663 vertices; legality = interior edge + strictly convex
+quad in the unwrapped (theta,z) domain + strict improvement. **Zero vertices moved, zero triangles
+added, watertight class preserved in both arms (boundary 1160 -> 1160, non-manifold 0 -> 0,
+re-derived from a rebuilt edge map).**
+
+```
+                    BEFORE      AFTER(maxAngle-greedy)   AFTER(tangExc-greedy)
+tangExc >10um      129,757         169,329  0.77x            36,226  *** 3.58x ***
+tangExc p99          35.91 um       198.53  0.18x             15.68  *** 2.29x ***
+maxAngle p99        165.5           131.0   1.26x            172.4       0.96x
+caps >=150 deg     68,684           3,350  20.50x          114,925       0.60x
+```
+
+**THE TWO OBJECTIVES ARE DIRECTLY ANTI-CORRELATED.** Minimising the Euclidean max angle crushes it
+20.5x and makes the orientation defect **5.5x WORSE**; minimising the defect itself cuts it 3.58x and
+makes the max angle 1.7x worse. This is a two-armed proof of the anisotropy account: a triangle
+stretched ALONG a rib spans almost no curvature and has small normal error despite a terrible
+Euclidean shape; "fixing" its shape turns it ACROSS the rib into the high-curvature direction.
+
+**IT CORRECTS MY OWN EARLIER SECTION 5.** The maxAngle<->normDev CORRELATION is real and universal;
+the INTERVENTION shows Euclidean maxAngle is a diagnostic that correlates and an objective that
+harms. The shape metric must be taken in the curvature metric, not in R^3 — the `M = g/h^2` lesson
+from a new direction. **And it re-explains the AR-cap sweep a third time:** the driver's shape guard
+is Euclidean, so raising it moved nothing (maxAngle p99 +0.3 deg over five arms) and tightening it
+would have made the defect worse.
+
+HONEST DEFECTS IN R4': it manufactures degenerate facets (`maxAngle` max reaches **180.00 deg**) and
+needs a constrained objective; and `tangExc` p99 lands at **15.68 um against a 10 um bar**, so flips
+are a large free PARTIAL win, not the fix.
+
+### S57 — the descent's halving tail is 2.53x recoverable, and the old refutation was CONFOUNDED
+
+9,492 real tighten-eligible lattice points, stratified by radial inflation. **ONE variable moves:
+`distLocal`'s iteration cap; Newton stays at 40.** Pre-registered: accept K only if the HARD stratum
+shows DIFFER <= 0.1% and no LOOSER > 1e-6 mm.
+
+```
+ALL   n=9492   K=40 ref 268.8 ev/pt |  K=8: 106.1 ev/pt = 2.53x, 1 differing point (0.011%), +0.0000um
+HARD  n=221    K=40 ref 352.9 ev/pt |  K=8: 115.0 ev/pt = 3.07x, ZERO differing points
+                                    |  K=6: 100.7 ev/pt = 3.50x, ZERO differing points
+```
+**K=8 ACCEPTED on the pre-registered criterion.** The descent is 84.2% of the certificate's rA budget
+(S50), so the eval count falls to 49.1% = **2.04x**; composed with the S52 rA rewrite (3.17x per eval
+on the measured 84% wall-clock share) that is **4.79x end-to-end, 8,449 s -> ~1,764 s, or ~678 s with
+Phase D**.
+
+`_facetTruthLib:390-399` records a refutation of "(40,40) -> (8,16)" by the V3/V7c thin-ridge
+fixtures. **It moved BOTH counts.** At K=8 with Newton at 40 this measures 106.1 ev/pt — LOWER than
+that note's 116.7 for (8,16) — because Newton seeded from the descent's foot converges in 2
+iterations and its own cap barely matters. The arithmetic points at NEWTON's truncation to 16 as the
+culprit, not the descent's to 8. **UNTESTED, and it gates the change:** my hardest stratum is
+inflation >= 5 while the V3 regime is ~33, so this probe's coverage of the failure mode is unverified
+and K=8 is a CANDIDATE, not a landing. Run V3/V7c directly.
+
+### S58 — *** IT IS A PIPELINE FACT, NOT A GothicArches FACT ***
+
+Blocking instrument-validity gate first (`|hypot(x,y) - rA|` over vertices): all three TRUSTED at
+p99 <= 0.00001 mm.
+
+```
+style           facets     posUm p99/max  over-10um   tangUm p99/max     over-10um        ratio
+Voronoi        806,765      4.90 /  5.5   0 (0.000%)  1222.82 / 2346.7  106,751 (39.696%)   inf
+LowPolyFacet   137,480      4.95 /  5.0   0 (0.000%)    28.48 /   71.4   14,968 (10.887%)   inf
+GothicArches 1,142,166      3.42 / 47.2  17 (0.006%)    36.05 / 1251.3   32,468 (11.371%)  1910x
+```
+
+**On two of three styles the driver's ruler reports LITERALLY ZERO facets over the bar while the
+orientation ruler reports 10.9% and 39.7%.** Voronoi's tangExc p99 is **1.22 mm**, max **2.35 mm**.
+
+**LowPolyFacet kills the "it is just curvature" reading.** Its surface is piecewise FLAT — zero
+curvature, so `kappa * R_circum` predicts zero orientation error at any triangle shape — yet 10.9% of
+facets exceed the bar. The defect is facets **STRADDLING THE C0 CREASES BETWEEN FLAT FACES**: one
+vertex on one plane, two on the next, a normal belonging to neither, and a tiny position error
+because both planes pass close. The straddle mechanism this lab already knows from chord sag,
+arriving in the normal field where it is far larger and nothing looks for it.
+
+`posUm` p99 by maxAngle bin is **FLAT on Voronoi (4.93 -> 4.63) and LowPoly (4.93 -> 2.64)** — on
+those styles the position ruler is not merely less sensitive to the defect, it is **orthogonal** to it.
+
+**VERDICT: R4 refuted / R4' confirmed-partial / K=8 accepted-pending-V3-V7c / the orientation class
+is universal.** RECOMMENDATION: develop the fix against **Voronoi** (3.5x worse by count, 34x by
+p99), constrain R4' with a degeneracy guard, and treat `tangExc` in the heap key (R3) as the
+remaining half.
