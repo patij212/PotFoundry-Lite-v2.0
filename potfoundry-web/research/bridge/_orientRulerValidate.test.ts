@@ -25,7 +25,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   orientOfFacet, exactNormals, fdNormals, fdNormalsCentral, farRadius, radialNormal,
-  type NormalSampler, type OrientOut,
+  locateTurn, type NormalSampler, type OrientOut,
 } from './orientRuler';
 
 const RUN = process.env.PF_ORIENT_FTV === '1';
@@ -368,6 +368,29 @@ describe.skipIf(!RUN)('ORIENT-FTV — the orientation ruler, on closed forms', (
     expect(Math.abs(rows[1][1])).toBeLessThan(1e-4);
     expect(Math.abs(rows[1][2])).toBeLessThan(2e-2);
     expect(Math.abs(rows[1][2])).toBeGreaterThan(Math.abs(rows[1][1]));
+  });
+
+  it('F9 — locateTurn FINDS the crease, and says so ONLY when there is one', () => {
+    const d = 45; const t0 = -0.15; const t1 = 0.15;          // crease at theta = 0
+    const S = crease(d, t0, t1);
+    const ns = exactNormals(S.r, S.rTh, S.rZ);
+    // an edge from theta=-0.07 to theta=+0.05 at constant z: the crease crosses at s = 0.07/0.12
+    const a = -0.07; const b = 0.05;
+    const sTrue = (0 - a) / (b - a);
+    const got = locateTurn(ns, a, 10, b, 10, 14);
+    log('\nF9 locateTurn  crease at s=%s  ->  located s=%s  (err %s)  turn %s deg',
+      sTrue.toFixed(9), got.s.toFixed(9), Math.abs(got.s - sTrue).toExponential(3), (got.turn * DEG).toFixed(6));
+    // 14 bisections localise to 2^-14 = 6.1e-5 of the edge; two-sided so a stub returning 0.5 fails
+    expect(Math.abs(got.s - sTrue)).toBeLessThan(2 ** -13);
+    expect(Math.abs(got.s - 0.5)).toBeGreaterThan(0.05);        // and it is NOT just returning the middle
+    // SMOOTH control: it must report a SMALL turn so a caller can tell "no crease here"
+    const SM = sinS(45, 1.5, 24);
+    const nsm = exactNormals(SM.r, SM.rTh, SM.rZ);
+    const flat = locateTurn(nsm, 0.1200, 10, 0.1215, 10, 14);   // a short edge on a smooth patch
+    log('   SMOOTH control: turn %s deg  (must be small; the crease edge read %s deg)',
+      (flat.turn * DEG).toFixed(6), (got.turn * DEG).toFixed(6));
+    expect(got.turn * DEG).toBeGreaterThan(0.9 * (t1 - t0) * DEG);
+    expect(flat.turn * DEG).toBeLessThan(0.05 * (t1 - t0) * DEG);
   });
 
   it('H2 — DENSITY: on a crease straddle the ANGLE is invariant and only the mm form falls', () => {

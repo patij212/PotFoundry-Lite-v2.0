@@ -27,6 +27,7 @@ import { canonTheta, dThRaw } from '../bridge/_sweepPredicate';
 import { readMeshFloat64 } from '../bridge/_facetTruthPool';
 import { sagAdaptiveRaw, makeSagArgmax, type SagMesh } from '../bridge/_sagKernel';
 import { orientOfFacet, fdNormals, fdNormalsCentral } from '../bridge/orientRuler';
+import { aspect3 } from '../bridge/_shapeGuard';
 import { appendFileSync, mkdirSync } from 'node:fs';
 import type { StyleId, StyleDims } from '../../src/geometry/types';
 
@@ -124,6 +125,8 @@ for (const [style, stem] of JOBS) {
   const aPOS = new Float64Array(n); const aKINK = new Float64Array(n); const aDIAM = new Float64Array(n);
   const aND1 = new Float64Array(n); const aSPR = new Float64Array(n);
   const aOVF = new Float64Array(n); const aMEAN = new Float64Array(n);
+  const aAREA = new Float64Array(n); const aOVF1 = new Float64Array(n); const aOVF30 = new Float64Array(n);
+  const aAR = new Float64Array(n);
   let evalsOrient = 0;
   for (let k = 0; k < n; k += 1) {
     const i0 = 3 * k;
@@ -175,6 +178,18 @@ for (const [style, stem] of JOBS) {
     aKINK[k] = Number.isFinite(o.kinkRad) ? o.kinkRad * DEG : 0;
     aSPR[k] = Number.isFinite(o.spreadRad) ? o.spreadRad * DEG : 0;
     aOVF[k] = Number.isFinite(o.overFrac) ? o.overFrac : 0;
+    {
+      const ux = vx[i0 + 1] - vx[i0]; const uy = vy[i0 + 1] - vy[i0]; const uz = vz[i0 + 1] - vz[i0];
+      const wx = vx[i0 + 2] - vx[i0]; const wy = vy[i0 + 2] - vy[i0]; const wz = vz[i0 + 2] - vz[i0];
+      aAREA[k] = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+    }
+    aAR[k] = aspect3(vx[i0], vy[i0], vz[i0], vx[i0 + 1], vy[i0 + 1], vz[i0 + 1], vx[i0 + 2], vy[i0 + 2], vz[i0 + 2]);
+    const o1d = orientOfFacet(nsK, vx[i0], vy[i0], vz[i0], vx[i0 + 1], vy[i0 + 1], vz[i0 + 1], vx[i0 + 2], vy[i0 + 2], vz[i0 + 2],
+      vth[i0], vth[i0 + 1], vth[i0 + 2], { k: K, inset: INSET, orient: 'outward', scratch, barRad: Math.PI / 180 });
+    aOVF1[k] = Number.isFinite(o1d.overFrac) ? o1d.overFrac : 0;
+    const o30 = orientOfFacet(nsK, vx[i0], vy[i0], vz[i0], vx[i0 + 1], vy[i0 + 1], vz[i0 + 1], vx[i0 + 2], vy[i0 + 2], vz[i0 + 2],
+      vth[i0], vth[i0 + 1], vth[i0 + 2], { k: K, inset: INSET, orient: 'outward', scratch, barRad: (30 * Math.PI) / 180 });
+    aOVF30[k] = Number.isFinite(o30.overFrac) ? o30.overFrac : 0;
     aMEAN[k] = Number.isFinite(o.meanRad) ? o.meanRad * DEG : 0;
     aDIAM[k] = o.diam;
     aPOS[k] = sagAdaptiveRaw(rA, SAGM, k, 0.03, 12, 64, ARG) * 1000;
@@ -214,6 +229,20 @@ for (const [style, stem] of JOBS) {
     log(`  AREA of the ${bad.length} facets whose SUP exceeds 5 deg: overFrac p05 ${pq(bad, 0.05).toFixed(4)}  p50 ${pq(bad, 0.5).toFixed(4)}  p95 ${pq(bad, 0.95).toFixed(4)}`);
     log(`     HAIR (<5% of the facet over 5deg) ${hair} (${((100 * hair) / Math.max(1, bad.length)).toFixed(1)}%)   BULK (>50%) ${bulk} (${((100 * bulk) / Math.max(1, bad.length)).toFixed(1)}%)`);
   }
+  // ══════════ THE AREA-TRUE HEADLINE ══════════
+  // The SUP of the angle is density-INVARIANT on a turn (S61 H2) and is therefore useless as a
+  // convergence measure. The AREA of the SURFACE whose normal the mesh gets wrong by more than a bar is
+  // not: a straddle band of width ~h around a crease has area ~ creaseLength * h, so it falls LINEARLY
+  // under refinement and to ~0 under alignment. This is the statistic S53's five-arm sweep should have
+  // read; it read the p99 of the sup and correctly found it flat.
+  {
+    let tot = 0; let b1 = 0; let b5 = 0; let b30 = 0;
+    for (let i = 0; i < n; i += 1) { tot += aAREA[i]; b1 += aAREA[i] * aOVF1[i]; b5 += aAREA[i] * aOVF[i]; b30 += aAREA[i] * aOVF30[i]; }
+    log(`  *** AREA-TRUE: fraction of the SURFACE mis-oriented by more than ...`);
+    log(`        1 deg  ${((100 * b1) / tot).toFixed(4)}%      5 deg  ${((100 * b5) / tot).toFixed(4)}%      30 deg  ${((100 * b30) / tot).toFixed(4)}%     (total area ${tot.toFixed(1)} mm^2)`);
+    log(`      compare FACET COUNTS over the same bars: ${((100 * cnt(sND, 1)) / n).toFixed(4)}% / ${((100 * cnt(sND, 5)) / n).toFixed(4)}% / ${((100 * cnt(sND, 30)) / n).toFixed(4)}%`);
+    log(`      => the facet count over-states the mis-oriented AREA by ${(cnt(sND, 5) / n / Math.max(1e-12, b5 / tot)).toFixed(2)}x at the 5 deg bar`);
+  }
   // THE DIAGNOSIS TABLE: what KIND of orientation failure is each over-bar facet?
   //   spread SMALL + normDeg LARGE  = MIS-ORIENTED against a nearly-constant normal field -> fixable by
   //                                   flip/placement at ZERO triangle cost
@@ -225,6 +254,22 @@ for (const [style, stem] of JOBS) {
       if (aSPR[i] < 0.5 * aND[i]) misOriented += 1; else turning += 1;
     }
     const bad = misOriented + turning;
+    // *** IS THE "MIS-ORIENTED" POPULATION JUST THE SLIVERS? *** A near-degenerate triangle's plane is
+    // numerically undetermined, so its normal can be anything while the surface under it barely moves.
+    // If that is what this population is, it is a SHAPE defect wearing an orientation costume and the
+    // repo's existing aspect3 guard already owns it. Cross-tabbed rather than assumed.
+    const arMis: number[] = []; const arTurn: number[] = []; const arAll: number[] = [];
+    for (let i = 0; i < n; i += 1) {
+      const v = Number.isFinite(aAR[i]) ? aAR[i] : 1e9;
+      arAll.push(v);
+      if (aND[i] <= 1) continue;
+      if (aSPR[i] < 0.5 * aND[i]) arMis.push(v); else arTurn.push(v);
+    }
+    arMis.sort((x, y) => x - y); arTurn.sort((x, y) => x - y); arAll.sort((x, y) => x - y);
+    const pa = (a: number[], f: number): number => (a.length === 0 ? 0 : a[Math.min(a.length - 1, Math.floor(f * a.length))]);
+    log(`  aspect3 by population:  WHOLE MESH p50 ${pa(arAll, 0.5).toFixed(3)} p90 ${pa(arAll, 0.9).toFixed(3)} p99 ${pa(arAll, 0.99).toFixed(2)}`);
+    log(`                          MIS-ORIENTED p50 ${pa(arMis, 0.5).toFixed(3)} p90 ${pa(arMis, 0.9).toFixed(3)} p99 ${pa(arMis, 0.99).toFixed(2)}   (n=${arMis.length})`);
+    log(`                          TURNING      p50 ${pa(arTurn, 0.5).toFixed(3)} p90 ${pa(arTurn, 0.9).toFixed(3)} p99 ${pa(arTurn, 0.99).toFixed(2)}   (n=${arTurn.length})`);
     log(`  DIAGNOSIS of the ${bad} facets over 1 deg:  MIS-ORIENTED (spread < normDeg/2) ${misOriented} (${((100 * misOriented) / Math.max(1, bad)).toFixed(1)}%)   TURNING ${turning} (${((100 * turning) / Math.max(1, bad)).toFixed(1)}%)   [clean ${clean}]`);
   }
 
@@ -265,6 +310,9 @@ for (const [style, stem] of JOBS) {
     kinkP99: pq(sKINK, 0.99), kinkOver1: cnt(sKINK, 1),
     sprP99: pq(sSPR, 0.99), sprMax: sSPR[n - 1], sprOver1: cnt(sSPR, 1),
     meanP50: pq(sMEAN, 0.5), meanP99: pq(sMEAN, 0.99),
+    areaFrac1: (() => { let t = 0; let b = 0; for (let i = 0; i < n; i += 1) { t += aAREA[i]; b += aAREA[i] * aOVF1[i]; } return b / t; })(),
+    areaFrac5: (() => { let t = 0; let b = 0; for (let i = 0; i < n; i += 1) { t += aAREA[i]; b += aAREA[i] * aOVF[i]; } return b / t; })(),
+    areaFrac30: (() => { let t = 0; let b = 0; for (let i = 0; i < n; i += 1) { t += aAREA[i]; b += aAREA[i] * aOVF30[i]; } return b / t; })(),
     evalsPerFacet: evalsOrient / n, secs: dt,
   })}\n`);
 }
