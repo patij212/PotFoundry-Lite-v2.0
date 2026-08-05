@@ -8582,3 +8582,16 @@ those styles the position ruler is not merely less sensitive to the defect, it i
 is universal.** RECOMMENDATION: develop the fix against **Voronoi** (3.5x worse by count, 34x by
 p99), constrain R4' with a degeneracy guard, and treat `tangExc` in the heap key (R3) as the
 remaining half.
+
+**CORRECTION TO THE S56 ENTRY — R4' IS A TRADE, NOT FREE (measured, S50_RULER_FINDINGS SECTION 15).**
+The flipped mesh's POSITION error was re-scored whole-mesh on `gothicarches_ring_DS-HT_FLIPTAN.stl`:
+`POSITION max 47.2 -> 70.5 um (1.49x worse), over-10um 75 -> 325 (4.3x WORSE)` against
+`ORIENTATION over-10um 129,757 -> 36,226 (3.58x better)`. Net over-bar 129,832 -> 36,551 = **3.55x
+fewer total failures**, i.e. +250 position failures buy -93,531 orientation failures. "Zero cost"
+meant zero TRIANGLES and zero VERTEX MOTION — that stands — but it did not mean zero position error
+and should not have been written without this number. Prescription: a CONSTRAINED objective (reduce
+`max(tangExc)` AND keep both facets' `posErr` under the bar AND forbid degeneracy); all three
+quantities are already in the same loop, so it costs nothing extra to evaluate. General lesson,
+which this audit keeps re-deriving: **an optimisation judged on one ruler moves the others — the
+maxAngle arm moved orientation 5.5x the wrong way, the tangExc arm moved position 4.3x the wrong way,
+and each was invisible to its own objective.**
