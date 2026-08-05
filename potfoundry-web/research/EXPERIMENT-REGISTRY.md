@@ -9236,3 +9236,154 @@ first gap), and every affected job re-run. It was MATERIAL: S41CAVRES read 45 PR
 repaired (29% overstated). **The whole AR-cap block was written before the relaunch and audited clean
 (lines == distinct == contiguous prefix), so the Q1 verdict is untouched.** `run-s85-pos-rebase.sh` now takes
 a per-(arm,tag) lock and refuses a second writer.
+
+## E-2026-08-05-S87-LEDGER-REEXAM — the STRATA lineage re-scored on honest rulers: the mesh DID improve (3.02× by count-rate, 11.9× by area), orientation did NOT, and the blind ruler RANKS at ρ=0.964 while being 24–45× wrong about the level [scorecard; kill-criteria pre-registered in the tool header]
+
+**THE QUESTION.** S85 voided every `over-0.01mm` figure this campaign published. So: did STRATA's seven-arm
+lineage — `_S9A → _S10A → _S11A → _S15A → _S21B → _S22B → _S24i2` (+ `_S28i1`, refuted) — improve the MESH,
+or a blind ruler's OPINION of it?
+
+**INSTRUMENTS, and only these.** POSITION = `certifyTriangle` (`_facetTruthLib.ts`) @ `tol = 0.010 mm`,
+`nMax = 512`, three buckets never folded, uniform golden-stride sample **N = 50,000** per mesh (3.3–4.8%
+coverage), the same construction `s85PosRebase.ts` uses. ORIENTATION = `orientOfFacet`
+(`research/bridge/orientRuler.ts`), **monotone** Gauss-map chord `2·sin(θ/2)·diam`, order-`k=8` covering,
+kink-aware one-sided FD normals, **WHOLE MESH at 100% coverage**, reported at `inset = 0` and `inset = 0.02`.
+COUNT **and** AREA on every row. Tool `research/tools/s87LedgerReexam.ts` (pre-registration in its header,
+written before the first run); scorecard `research/exchange/_strataConformBisect/S87_LEDGER_REEXAM.md`
+(gitignored), regenerated from per-mesh JSONs by `research/tools/s87Assemble.cjs`.
+
+### THE HEADLINE — `_S9A` vs `_S24i2`
+
+| | `_S9A` | `_S24i2` | ratio |
+|---|---|---|---|
+| triangles | 1,284,820 | 1,260,110 | 0.981× |
+| blind `over-0.01mm` rate | 0.1252% | 0.0389% | 0.311× |
+| **honest position PROVEN-FAIL rate** | **3.5500% ±2.4%** | **1.1740% ±4.1%** | **0.331× (3.02×), 14σ** |
+| **honest position fail AREA frac** | **1.25582% ±7.1%** | **0.10533% ±12.4%** | **0.084× (11.9×)** |
+| orientation over-bar rate (inset .02) | 60.6229% | 62.2264% | **1.026×** |
+| orientation over-bar AREA (inset .02) | 42.40962% | 43.21661% | **1.019×** |
+| orientation area over 250 µm | 1.682% | 0.759% | 0.452× |
+| orientation area-weighted mean | 35.75 µm | 21.13 µm | 0.591× |
+| honest position in-sample witnessed max | 601.122 µm | 150.375 µm | 0.250× |
+
+**THE LINEAGE IS REAL.** `_S9A → _S24i2` is a genuine 3.02× on honest position fail-rate and 11.9× on
+honest failing AREA at 0.981× the triangles. **H-L1 ("the lineage did NOT improve honest fidelity") is
+REFUTED on all four of its own pre-registered kill conditions.** The suspicion that the campaign optimised
+a ruler's opinion is **wrong for position** — its *magnitudes* were wrong by 24–45×, not its progress.
+
+### THE PRE-REGISTERED VERDICTS
+
+- **H-L1 REFUTED** — count-rate 0.331× ≤ 0.80, 1σ intervals disjoint (`_S9A` low 3.4657% vs `_S24i2` high
+  1.2225%), area also improved, orientation area not worsened by >1.10×.
+- **H-L2 PARTIAL (2 steps, not ≤1 and not ≥3)** — exactly two steps clear 2σ in the improving direction:
+  `_S9A → _S10A` **0.459×** (the aligned seed) and `_S11A → _S15A` **0.701×** (the across rule). Their
+  product 0.322× is the whole chain's 0.331×. **The count-rate win was complete three arms before the
+  campaign closed**; the last three are 1.021 × 0.924 × 1.071 = 1.010×, each inside its own 2σ.
+- **H-L3 REFUTED — and this is the most useful number in the file.** Spearman
+  **ρ(blind `over-0.01mm` rate, honest position fail-rate) = 0.964** over the seven arms (kill line ρ ≥ 0.80).
+  **The blind plane ruler RANKS almost perfectly while being 24–45× wrong about the LEVEL on every arm.**
+  That is why seven arms of optimising a blind ruler produced a real improvement: they were climbing a hill
+  whose *shape* the ruler had right. *Cheap rulers rank; honest certificates size.*
+  **But ρ(blind, orientation area) = −0.357 and ρ(honest position, orientation area) = −0.214** — the blind
+  ruler ANTI-ranks orientation and the two honest axes barely agree. **Nothing that ranks position will find
+  the orientation defect; it needs its own key.**
+- **H-L4 CONFIRMED** — orientation over-bar AREA is 1.019× across the whole lineage (kill line ≤ 0.50×).
+
+### A SECOND INSTRUMENT DEFECT, FROM AN UNPLANNED CONTROL
+
+`orientRuler.ts`'s header opens with `GothicArches 1,142,166 … 36.05 um / 32,468 (11.371%)`. That mesh is
+`gothicarches_ring_DS-HT_S39CTL`, on disk, md5-checked. Re-measured on the order-8 covering at `inset=0.02`:
+**700,486 facets (61.330%) over the same 10 µm bar, p99 129.158 µm.** Same mesh, same defect, same bar.
+
+**The campaign's published orientation count for its own control mesh is 21.6× LOW, and its p99 is 3.6× low.**
+The cause is the one `orientRuler`'s header names as its defect (1): `s55OrientHeatmap.ts:89` samples the
+surface normal **only at the facet centroid**. It is NOT the non-monotone `sin(θ)·diam` — evaluated on the
+same covering that form gives 699,837, within 0.1%. **It is the single sample.** So both of this campaign's
+sized defect classes — position (S85, 21–1527× under) and orientation (here, 21.6× under) — were sized by
+instruments that were wrong about the size.
+
+### CONTROLS (read before the verdicts; printed in full in the scorecard)
+
+- **C2 cross-tool, BIT-EXACT.** `s87` vs `s85PosRebase` on the same 8,000 facets of `_S39CTL`: 0 index
+  mismatches, 0 verdict differences, max |Δwitnessed| = |Δbound| = |Δplane| = |Δarea| = 0.000e+0.
+  s87 takes the hoisted `_raFast` twin via `buildAuditRadiusFn`; s85 called `buildRadiusFn` directly — so
+  this also proves the twin changes no answer.
+- **C3 identity twins, BIT-IDENTICAL.** All seven `*ID*` tags are one file (md5 8a59fb37). Two of them
+  scored under different tags return identical rows to every digit (fail 615, areaFail 454.438552546,
+  witMax 1369.0088646698496, orient over-bar 776).
+- **C1 non-vacuity: 8 of 10 meshes reproduce their own `.report.txt` EXACTLY on `over-0.01mm` and to <0.03%
+  on the adaptive MAX.** Two miss: `_S9A` 1607 vs 1608 (10 nm on the max) and `_S8P` 1584 vs 1588 (6 nm).
+  Priced, not waved: a binary STL is float32, one ulp at r≈40 mm is 3.81 nm, and the measured near-bar facet
+  density (~260/µm on `_S9A`) predicts 0.4–1.5 flips per mesh. Observed 1, 4, and **0 on the other six**.
+  Recorded as **not meeting the pre-registered "EXACTLY"** rather than relaxed; 0.06–0.25% cannot move a ratio.
+- **C4 vertex-straddle.** `orientRuler`'s header warns a FD sampler evaluated ON a crease false-alarms at the
+  full dihedral, and a conforming mesh puts vertices on creases on purpose — which would penalise exactly
+  these arms. Every orientation number is reported at `inset = 0` AND `inset = 0.02`; the verdict column is
+  `inset = 0.02`. The inset moves worst-point->90° counts 127,448 → 49,452 on `_S9A`, so the effect is real
+  and large and the control was necessary.
+- **THE EMPIRICAL NULL (unplanned, and it disciplines two rows).** `_S10A → _S11A` is a known fidelity no-op
+  (68 triangles of 1,010,503; the ledger's census reads byte-identical and my 100%-coverage orientation pass
+  agrees to the digit: area 38472.518 → 38472.518 mm², MAX 4451.926 → 4451.926 µm, >90° 45,523 → 45,523).
+  Because the two meshes have different `nTri`, the golden stride lands on **different facets**, so the pair
+  is two independent samples of the same mesh. **It reads 1.018× by count-rate and 0.913× by AREA.**
+  Therefore `_S21B → _S22B` (0.920×) and `_S22B → _S24i2` (0.862×) **cannot be claimed as area improvements
+  at this coverage.** The end-to-end 0.084× is far past the null and is unaffected.
+
+### THE STEP DELTAS (after/before; below 1 = improvement)
+
+| step | Δtri | blind | **honest pos COUNT-rate** | 2σ? | **honest pos AREA** | **orient COUNT-rate** | **orient AREA** | confounded |
+|---|---|---|---|---|---|---|---|---|
+| `_S9A`→`_S10A` | 0.786× | 0.542× | **0.459×** | YES | **0.307×** | 1.047× | 1.044× | **YES — changes the SEED** |
+| `_S10A`→`_S11A` | 1.000× | 1.000× | 1.018× | no | 0.913× | 1.000× | 1.000× | no (**the NULL**) |
+| `_S11A`→`_S15A` | 1.035× | 0.498× | **0.701×** | YES | 0.834× | 1.029× | 1.021× | no |
+| `_S15A`→`_S21B` | 1.193× | 1.213× | 1.021× | no | **0.452×** | 0.958× | 0.963× | **YES — changes the SEED again** |
+| `_S21B`→`_S22B` | 1.003× | 0.946× | 0.924× | no | 0.920× | 1.000× | 0.996× | no |
+| `_S22B`→`_S24i2` | 1.007× | 1.001× | 1.071× | no | 0.862× | 0.996× | 0.998× | no |
+| `_S24i2`→`_S28i1` | 1.187× | 0.853× | **1.279× (worse)** | YES | **0.604×** | 0.835× | 0.938× | yes — +19% tri |
+
+### THE LEVERS, IN ONE LINE EACH (full table + the ledger's own quotes in the scorecard §7)
+
+A ledger verdict is void here **only** if `sagAdaptiveRaw` produced it. Verdicts from H2, the topology
+census, `_judgeNormal`, the plate/standoff census, or triangle/refusal arithmetic are **NOT touched**.
+
+- **S9a conformity-at-birth — PARTLY UNSUPPORTED AND NOT RE-TESTABLE.** Its "Pareto on every measured axis"
+  included H1, whose instrument is void. **There is no flag-OFF twin on disk** (`_S9P`/`_S9Q` both run
+  `PF_CB_CONFORM_FIRST=1`); the nearest predecessor `_S8P` runs the S8-pilot fossil cascade instead, so it
+  is mechanism-vs-mechanism and is reported as that. The cost half stands (923 s vs 1,538 s).
+- **S10 aligned seed — SURVIVES, and is the campaign's largest fidelity movement** (position 0.459×/0.307×),
+  which is what the ledger said in words while scoring it ROW 2 REGRESSION on H2. Orientation 1.047×/1.044×
+  — slightly worse. **Confounded (seed).**
+- **S11 seam fix — CONFIRMED to the digit** on a 100%-coverage instrument that did not exist when it was
+  written. Doubles as the null.
+- **S15 across rule — SURVIVES** (its site closures are **H2**, `worklog:2004`, not the plane ruler);
+  second-largest position step, 0.701×/0.834×; orientation 1.029×/1.021× worse but >90° 45,523 → 34,449.
+- **S20 admission — SURVIVES.** "footprint-back among accepted = 0" is a statement about an *admission
+  predicate* and is true; it is not a statement about orientation, which is 62–65% over bar on the same meshes.
+- **S21 routing — SURVIVES, and is the ONLY step that moves the orientation tail** (MAX 4057.9 → 2314.6 µm,
+  area-weighted mean 33.05 → 21.81 µm, >250 µm area 1.168% → 0.794%) and the only one that moves position
+  AREA past the null (0.452×). It costs worst-point->90° 34,449 → 56,595. **Confounded (seed again).**
+- **S22 de-shard — SURVIVES and is a fidelity no-op** (orientation 1.000×/0.996×), which is what a shape
+  lever should be. **S22C protector cascade is a fidelity no-op too** (43.31968% vs 43.31969% area).
+- **S24 Phase-2 tightening — SURVIVES AT ITS LOCUS AND IS A NO-OP EVERYWHERE ELSE** (orientation
+  0.996×/0.998×; position area 0.862×, inside the null). The ledger's own S28 amendment already said this:
+  *"a locus is reachable; a population is not."* Now confirmed on two instruments it was not written from.
+- **S28 — the refutation stands on its own question, and the arm is the best artifact in the family by AREA
+  on BOTH honest rulers** (position area 0.604×, orientation 0.835×/0.938×) at 1.187× the triangles, while
+  being 1.279× worse by position count-rate. It was retired on **a max at one facet and a count** — the two
+  quantities this project has now shown three times to mis-rank — **and it was never scored on either honest
+  ruler before being put away.**
+
+### TWO MORE TAGS THAT ARE ONE MESH
+
+`gothicarches_ring_DS-H_CTLi1.stl` is **md5-identical to `_S22B`** (a46b914a) — a "control" and an "arm"
+are the same STL again. `_S24i2` and `_S28i1` each exist under both `DS-H_` and `DS-HT_` stems with
+identical md5. S85 found 14 tags were 10 meshes; this adds two more. **md5 first, always.**
+
+### NOT MEASURED, STATED PLAINLY
+
+The honest whole-mesh position MAX (unreachable at this budget — every position max here is an in-sample
+max and a LOWER BOUND). **H2** — `certifyTriangle` walks points ON the facet, so it is H1; a missing-material
+defect the mesh does not cover is invisible to it, and **no H2-based ledger verdict is re-opened here**.
+Reproducibility of the arms (these are the STLs on disk, not the saved commands). Any style but
+GothicArches-ring. Self-intersection. Position on `_S19A`, `_S21A`, `_S22A`, `_S22C`, `_S10B`, `_S20A/B`,
+`_S18A` — those carry orientation only, at 100% coverage.
