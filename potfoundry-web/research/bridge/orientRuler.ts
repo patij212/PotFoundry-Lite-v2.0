@@ -425,6 +425,55 @@ export function locateTurn(
   return { s: 0.5 * (lo + hi), turn: ang(n0, n1) };
 }
 
+/**
+ * SCALE-ADAPTIVE `locateTurn` — the version that must be used with a FINITE-DIFFERENCE surface.
+ *
+ * ⚠ THE DEFECT THIS EXISTS TO FIX, MEASURED 2026-08-05 (S74 smoke, LowPolyFacet). `locateTurn` above takes
+ * a FIXED sampler. Fixture F9 validates it with the EXACT sampler, where there is no step size at all — and
+ * it passes to 1.0e-5. Hand it a finite-difference sampler instead and after ~9 of its 14 bisections the
+ * bracket is SHORTER THAN THE SAMPLER'S OWN STEP `hArc`: both endpoints' finite-difference windows then
+ * straddle the crease, both return the same normal, both half-angles are 0, the `>=` tie sends it left
+ * every time and the search walks to the LEFT END instead of the crease. The symptom is silent and
+ * plausible — S74 read `turn(1e-4 mm)` as 8.5e-7 deg on facets whose dihedral is 29.9 deg, i.e. it
+ * reported "no crease here" at the exact locations the whole class lives.
+ *
+ * The fix is to make the STEP FOLLOW THE BRACKET: `h = bracket/8` at every iteration, so the two normals
+ * being compared are always computed strictly inside their own halves. Cost is identical (5 rA evals per
+ * probe, one probe per iteration); only the step schedule changes.
+ *
+ * `rA`/`H` are taken directly rather than a sampler, because a sampler that cannot be re-scaled is exactly
+ * the thing that broke.
+ */
+export function locateTurnAdaptive(
+  rA: RadiusFn, H: number,
+  ath: number, az: number, bth: number, bz: number,
+  rRef: number,
+  iters = 14,
+): { s: number; turn: number; hFinal: number } {
+  const sc = new Float64Array(12);
+  const n0 = new Float64Array(3); const n1 = new Float64Array(3); const nm = new Float64Array(3);
+  const lenMm = Math.hypot(rRef * (bth - ath), bz - az);
+  const at = (s: number, h: number, out: Float64Array): void => {
+    const ns = fdNormalsCentral(rA, H, Math.max(1e-9, h), Math.max(1e-9, h));
+    ns(ath + (bth - ath) * s, az + (bz - az) * s, sc);
+    out[0] = sc[0]; out[1] = sc[1]; out[2] = sc[2];
+  };
+  const ang = (p: Float64Array, q: Float64Array): number => {
+    let d = p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
+    d = d > 1 ? 1 : d < -1 ? -1 : d; return Math.acos(d);
+  };
+  let lo = 0; let hi = 1; let h = Math.max(1e-9, lenMm / 8);
+  at(lo, h, n0); at(hi, h, n1);
+  for (let i = 0; i < iters; i += 1) {
+    h = Math.max(1e-9, (lenMm * (hi - lo)) / 8);
+    const mid = 0.5 * (lo + hi);
+    at(lo, h, n0); at(hi, h, n1); at(mid, h, nm);
+    if (ang(n0, nm) >= ang(nm, n1)) hi = mid; else lo = mid;
+  }
+  at(lo, h, n0); at(hi, h, n1);
+  return { s: 0.5 * (lo + hi), turn: ang(n0, n1), hFinal: h };
+}
+
 /** shortest-arc theta delta (the theta = 0 == 2*pi seam), same body as `_sweepPredicate.dThRaw`. */
 export function dThShortest(a: number, b: number): number {
   let d = b - a;

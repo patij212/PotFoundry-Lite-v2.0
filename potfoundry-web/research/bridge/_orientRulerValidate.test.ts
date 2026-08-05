@@ -25,7 +25,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   orientOfFacet, exactNormals, fdNormals, fdNormalsCentral, farRadius, radialNormal,
-  locateTurn, type NormalSampler, type OrientOut,
+  locateTurn, locateTurnAdaptive, type NormalSampler, type OrientOut,
 } from './orientRuler';
 
 const RUN = process.env.PF_ORIENT_FTV === '1';
@@ -391,6 +391,38 @@ describe.skipIf(!RUN)('ORIENT-FTV — the orientation ruler, on closed forms', (
       (flat.turn * DEG).toFixed(6), (got.turn * DEG).toFixed(6));
     expect(got.turn * DEG).toBeGreaterThan(0.9 * (t1 - t0) * DEG);
     expect(flat.turn * DEG).toBeLessThan(0.05 * (t1 - t0) * DEG);
+  });
+
+  it('F10 — the FIXED-step locator FAILS on a finite-difference surface, and the ADAPTIVE one does not', () => {
+    // F9 above validates `locateTurn` with the EXACT sampler, where there is no step size at all. S74's
+    // smoke run then used it with a FINITE-DIFFERENCE sampler and it silently walked to the left end:
+    // once the bracket is shorter than the sampler's own hArc, both endpoints' FD windows straddle the
+    // crease, both half-angles are 0, and the `>=` tie sends it left every iteration. This fixture is the
+    // failure, pinned, next to its cure — because F9 alone let that ship.
+    const d = 45; const t0 = -0.15; const t1 = 0.15;
+    const S = crease(d, t0, t1);
+    const rf = S.r as (th: number, z: number) => number;
+    const a = -0.0007; const b = 0.0005;                    // a SHORT edge: ~0.054 mm of arc at r=45
+    const sTrue = (0 - a) / (b - a);
+    const rRef = 45;
+    const lenMm = Math.hypot(rRef * (b - a), 0);
+    const fixed = locateTurn(fdNormals(rf, H), a, 10, b, 10, 14);
+    const adapt = locateTurnAdaptive(rf, H, a, 10, b, 10, rRef, 14);
+    log('\nF10 SHORT EDGE (%s mm of arc), crease at s=%s', lenMm.toFixed(6), sTrue.toFixed(6));
+    log('   FIXED-step locateTurn      s=%s  err %s  turn %s deg   <- hArc 2e-4 mm vs a final bracket of %s mm',
+      fixed.s.toFixed(6), Math.abs(fixed.s - sTrue).toExponential(2), (fixed.turn * DEG).toFixed(6), (lenMm / 2 ** 14).toExponential(2));
+    log('   ADAPTIVE locateTurnAdaptive s=%s  err %s  turn %s deg   hFinal %s mm',
+      adapt.s.toFixed(6), Math.abs(adapt.s - sTrue).toExponential(2), (adapt.turn * DEG).toFixed(6), adapt.hFinal.toExponential(2));
+    // TWO-SIDED: the adaptive one must find it AND report the full dihedral ...
+    expect(Math.abs(adapt.s - sTrue)).toBeLessThan(0.02);
+    expect(adapt.turn * DEG).toBeGreaterThan(0.9 * (t1 - t0) * DEG);
+    // ... and the fixed-step one must FAIL, on the reading that actually breaks. Its POSITION error is
+    // only 1.8e-3 (it lands near the crease by luck of the bisection), but its reported `turn` collapses
+    // to 0.289 deg against a 17.189 deg dihedral — a 60x under-read, i.e. it says "no crease here" at a
+    // crease. That is what sent S74's first run to a false DENSITY-CLOSABLE verdict, so that is what the
+    // bar tests. Two-sided: the adaptive reading must be right AND the fixed one must be wrong.
+    expect(fixed.turn * DEG).toBeLessThan(0.1 * (t1 - t0) * DEG);
+    expect(adapt.turn / Math.max(1e-12, fixed.turn)).toBeGreaterThan(10);
   });
 
   it('H2 — DENSITY: on a crease straddle the ANGLE is invariant and only the mm form falls', () => {

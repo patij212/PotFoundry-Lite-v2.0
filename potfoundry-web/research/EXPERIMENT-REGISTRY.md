@@ -8873,3 +8873,86 @@ value at construction and return a fresh object, so function identity does deter
 mutating the caller's params object after the build does not move rA. The key includes H, nu and nv.
 The hazard is real only for a FUTURE rA reading state outside its own closure — the cache then serves a
 stale grid with no error and no eval-count anomaly — and that contract is written nowhere.
+
+---
+
+## E-2026-08-05-S74-TURN-SCALE (amends E-2026-08-05-S61-ORIENT-GUARD) *** S74 CORRECTS §6: "ALIGNMENT OR NOTHING" IS RIGHT FOR ONE STYLE, WRONG FOR ANOTHER ***
+
+§6 asserted that the TURNING class is ALIGNMENT-ONLY because density cannot move it. That is true of a C0
+CREASE and false of SMOOTH CURVATURE, and I had not measured which one the class is. `s74TurnScale.ts`
+measures it directly and exactly.
+
+**The discriminator is SCALE.** At a located turn point, `turn(delta) = angle(n(s*-delta), n(s*+delta))`.
+A C0 jump is INDEPENDENT of delta; smooth curvature is LINEAR in delta. So
+`rho = turn(1e-2 mm)/turn(1e-4 mm)` is ~1 for a crease and ~100 for curvature — two decades apart, nothing
+to tune. Pre-registered before the run: C0 if rho < 2, SMOOTH if rho > 20; ALIGNMENT-ONLY iff >= 60% C0,
+DENSITY-CLOSABLE iff >= 60% SMOOTH.
+
+### THE FIRST RUN WAS WRONG AND I CAUGHT IT BY READING THE NUMBER INSTEAD OF THE VERDICT
+
+It printed `VERDICT: DENSITY-CLOSABLE` with `rho p50 = 35,041,814.6` — not ~1, not ~100, and identical at
+p50 and p95 — and a CONTROL that classified 97.78% of a FLAT face as "C0". Both are impossible, so the
+verdict was not read. **Root cause:** `locateTurn` takes a FIXED sampler, and after ~9 of its 14 bisections
+the bracket is SHORTER THAN THAT SAMPLER'S OWN `hArc`; both endpoints' finite-difference windows then
+straddle the crease, both half-angles are 0, and the `>=` tie sends the search left every iteration.
+**Fixture F9 did not catch this because it validates `locateTurn` with the EXACT sampler, where there is
+no step size at all.** New fixture **F10** pins it on a short edge:
+
+```
+F10 SHORT EDGE (0.054 mm of arc), crease at s=0.583333
+   FIXED-step locateTurn       s=0.581512  err 1.82e-3  turn  0.288645 deg   <- hArc 2e-4 mm vs a final
+                                                                                bracket of 3.30e-6 mm
+   ADAPTIVE locateTurnAdaptive s=0.583344  err 1.02e-5  turn 17.188734 deg   hFinal 8.24e-7 mm
+```
+The POSITION error is only 1.8e-3 — it lands near the crease by luck — but the reported `turn` collapses to
+**0.289 deg against a 17.189 deg dihedral, a 60x under-read**: it says "no crease here" AT a crease.
+`locateTurnAdaptive` scales `h` with the bracket (`h = bracket/8`) and costs the same 5 rA evals per probe.
+**11/11 fixtures. `locateTurn` (fixed) must not be used with a finite-difference surface; the docstring now
+says so.**
+
+### THE CORRECTED RESULT
+
+```
+  style          TURNING points   rho p50   ==>  C0        AMBIG     SMOOTH     CONTROL (non-turning)
+  LowPolyFacet       17,976         1.000      100.00%     0.00%      0.00%     100.00% C0  (see note)
+  Voronoi            30,000       100.015        2.07%     0.02%     97.91%      98.82% SMOOTH
+  GothicArches       30,000        99.976       41.23%     0.17%     58.60%      88.95% SMOOTH
+  turn at delta=1e-2 mm, p50 / p95:  LowPoly 29.918/29.918 | Voronoi 1.142/13.618 | Gothic 5.832/167.450
+```
+The CONTROL comes out overwhelmingly SMOOTH on the two curved styles (98.8%, 89.0%), which is what
+validates the classifier. On LowPolyFacet the control is also C0 — correctly: that surface is piecewise
+FLAT, so the ONLY thing that can turn a normal on it IS a crease, and any control point with measurable
+turn is one.
+
+**VERDICTS, per style, on the pre-registered criterion:**
+* **LowPolyFacet — ALIGNMENT-ONLY** (100.00% C0, dihedral 29.918 deg constant at every scale). §6 holds.
+* **Voronoi — DENSITY-CLOSABLE (97.91% SMOOTH). *** §6 IS WRONG FOR THIS STYLE. ***** `rho p50 = 100.015`
+  is the textbook linear-in-delta signature. The turns are not creases; they are C1 with a very large
+  curvature (`turn(1e-2 mm) p50 = 1.142 deg` implies kappa ~ 1 rad/mm, so a 0.5 mm facet turns ~28 deg).
+* **GothicArches — MIXED** (41.23% C0 / 58.60% SMOOTH). Both levers are needed and neither alone suffices.
+
+### HOW THIS SQUARES WITH H2, AND WHAT IT REVEALS ABOUT MY OWN §7
+
+It looks like a contradiction — H2 measured Voronoi's TURNING `normDeg p99` flat (x0.990) across a 256x
+diam span — and it is not, because **p99 is a TAIL statistic and the tail is exactly the C0 2.07%.** The
+bulk is smooth and converges; the worst 1% does not, and the worst 1% is what a p99 reports. Two true
+statements about two different parts of one distribution. The lesson is the one this lab keeps re-learning:
+**a p99 of a sup is not a convergence measure**, and I published H2's octave tables with only a p99 in them.
+
+**AND IT SCOPES §7 (S72) MUCH MORE NARROWLY THAN I WROTE IT.** All six S72 arms have 1,139,357–1,142,166
+triangles: **that sweep never varied density at all.** It varied the AR cap. So S72 establishes "the AR cap
+does not move the orientation field, on any statistic" — which is a real and useful negative — and it
+establishes NOTHING about density, which is the lever S74 says should work on Voronoi. **A density sweep on
+Voronoi is the missing experiment**, and it is now the highest-value one available.
+
+### THE CORRECTED RECOMMENDATION
+
+`spreadRad` + the scale test is a two-question ROUTER, and both questions are answered from the same five
+rA evaluations plus two more probes:
+```
+   spread small, normDeg large  ->  SHAPE      (aspect3 / flip / collapse — zero new triangles)
+   spread large,  rho ~ 1 (C0)  ->  ALIGNMENT  (density is provably wasted here)
+   spread large,  rho ~ 100     ->  SIZING     (refine; it converges — and NOBODY HAS TESTED THIS YET)
+```
+The per-style mix is **LowPolyFacet 0/100/0, Voronoi 26/2/72, GothicArches 3/40/57** (combining the S70
+mis-oriented shares with the S74 C0/SMOOTH split). No single lever serves two styles.
