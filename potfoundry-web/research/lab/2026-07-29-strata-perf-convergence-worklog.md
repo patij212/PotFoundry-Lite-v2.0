@@ -11274,3 +11274,116 @@ first.
 
 Runner scripts: `research/bridge/out/s29fp_{smoke,iter1,cert,control,window}.sh` (gitignored, as
 `s29_iter.sh` always has been). Logs and strand artifacts in `research/exchange/_strataConformBisect/`.
+
+### *** S40/S41 — **THE RESIDUAL IS THE AR-50 SPLIT CAP. 47.282 → 10.830 µm AT FEWER TRIANGLES AND** ***
+### *** **LESS WALL, AND THE CAVITY MOVES THE MAX WITHOUT TOUCHING THE JAM BY ONE FACET.** ***
+
+Six arms, one variable each, two of them validity gates. Artifacts in `research/exchange/` (gitignored);
+instruments in `research/tools/s42JamLegal.ts`, `s43VertexOnSurface.ts`, `s44SagReconcile.ts`,
+`s45PerpCacheEquiv.ts`, `s46ArCensus.ts`.
+
+| arm | cap | cav | tris | wall | HEADLINE | unres | aspect-refused |
+|---|---|---|---|---|---|---|---|
+| `S41CTL` | 50 | 0 | 1,255,568 | 831 s | 47.297 | 3,980 | 446,828 |
+| `S39CTL` | 50 | — | 1,142,166 | 822 s | 47.282 | 774 | 85,775 |
+| `S41RES` | 50 | 0 | 1,142,166 | 807 s | 47.282 | 774 | 85,775 |
+| `S40AR55` | 55 | — | 1,141,205 | 816 s | 32.317 | 538 | 61,434 |
+| `S40AR65` | 65 | — | 1,140,154 | 805 s | 23.563 | 320 | 38,120 |
+| ***`S40AR90`*** | **90** | — | **1,139,357** | **750 s** | ***10.830*** | **110** | 14,361 |
+| `S41CAVRES` | 50 | 4000 | 1,145,533 | 1,062 s | 23.108 | **774** | 89,649 |
+
+**THE DIAGNOSIS THAT PRODUCED THE ARMS.** Every arm since `_S34` ends `unresolved by reason: shape-ar`
+at 100%, and the HEADLINE MAX *is* that population. `classifyStrand` never established that those
+facets are unsplittable — it reads `bisectRefusal()`, the channel from the LAST refused `bisectAt`, so
+`shape-ar` names the last placement that failed. **S42 reproduced the S1 guard WITH `liftAt` (the split
+point sits ON THE SURFACE, not on the chord) over all 773 entries, 3 edges × 97 placements against the
+driver's 3 × 11**, and swept the cap: a legal split exists for **27.2%** at cap 50, 58.3% at 55, 81.6%
+at 60, **96.1% at 65**, 99.6% at 75, 100% at 90. The population sits packed against the cap —
+best-achievable child ARs of 50.03 / 50.06 / 50.10.
+
+**THE PRICE, ON THE CENSUS'S OWN THRESHOLD (S46, `aspect3`, AR > 50 fixed).** p50 **3.24 → 3.23**, p90
+**7.91 → 7.89**, p99 20.45 → 20.57, MAX 85.1 → 90.0. **The bulk shape does not move.** The whole cost is
+**1,686 facets in the AR 50–90 band = 0.148%** (against 4 at cap 50). The loosening reaches only the
+facets that needed it, which is what the S42 model predicted.
+
+**AND THE CAP DOMINATES THE CAVITY ON EVERY AXIS** — max ×2.13 better, `unresolved` ×7.0 better, fewer
+triangles, 29% less wall.
+
+#### THE CAVITY FIRED THE PRE-REGISTERED FAILURE, WORD FOR WORD
+
+Registered in `run-s41-cavity-one-arm.sh` BEFORE the run: *"(b) THE MAX MOVES AND `unresolved` DOES NOT
+— then the cavity is not reaching the AR corner either and the 22.241 was a different population."*
+Measured: max 47.282 → 23.108 µm (×2.05), `unresolved` **774 → 774, not one facet**. The cavity and the
+cap act on **DISJOINT** populations, and the cavity's 2× has never been about the jam.
+
+**THE PORT IS PROVEN BOTH WAYS.** `S41CTL` (RESOLVE=0) reproduces `S46CTL` — 1,255,568 / 3,980 / 47.297
+/ alloc 2,278,074: **INERT** at 0. `S41RES` (RESOLVE=50) reproduces `S39CTL` — 1,142,166 / 774 / 47.282
+/ alloc 2,029,406: **FAITHFUL** through a new code path in a different fork.
+
+#### WHERE MY PRE-REGISTRATION MISSED, AND IT IS THE USEFUL PART
+
+S42 predicted `unresolved` → **~320 / ~30 / ~0** at caps 55/65/90 from its static sweep of the SHIPPED
+`S39CTL`. Measured **538 / 320 / 110**. Cap-65 is exact; the other two are 1.7× and 3.7× high, and the
+reason is structural rather than noise: **S42 asks "could THIS mesh's stranded facets be split", while
+an arm builds a DIFFERENT mesh whose jam is a different set.** The static sweep is a sound instrument
+for WHY a facet is stuck and an unsound one for HOW MANY will be.
+
+#### THREE THINGS THE DIAGNOSIS RULED OUT ON THE WAY, EACH A REFUTED HYPOTHESIS OF MINE
+
+1. ***OFF-SURFACE VERTICES — REFUTED FOR THESE MESHES.*** One rA eval per vertex,
+   `|hypot(x,y) − rA(canonTheta(atan2(y,x)), z)|`, over `S39CTL` / `S34CTL` / `S47CAV` / `S36CA`:
+   **2.2 M vertices across BOTH forks, with and without the cavity remesh, MAX 0.031 µm, ZERO above
+   0.05** against an f32 floor of 0.006. The stranded facets' vertices are indistinguishable from a
+   control sample. **WHAT THIS TEST CANNOT SEE, stated so it is not over-read:** a vertex WELDED onto a
+   neighbour is on the surface at its OWN theta and passes; and a double-valued wall cannot be
+   represented by `r = rA(theta,z)` at all, so a vertex can sit exactly on the radial graph and still be
+   off the true solid. Both remain live hypotheses this instrument does not address.
+2. ***A CHORD-BASED GUARD REPRODUCTION — MY OWN, AND WRONG.*** The first S42 pass put the split point on
+   the CHORD and reported 77.5% splittable. `bisectAt` scores `shapeAdmits(a, b, liftAt(...))` — the
+   vertex lands ON THE SURFACE. Truth is 27.2%. The file carries the correction at the top so the number
+   cannot be re-derived by the same mistake.
+3. ***THE SAG IS REAL AND THE PARAMETERS ARE SOUND (S44).*** Reconstructing theta from the SHIPPED
+   POSITION and re-running `edgeSagRaw`: **reported / driverN p50 1.0000, 773/773 agree within 2%.** The
+   surface genuinely departs the chord by 210.6 µm across a 130.6 µm edge. Feature width on the worst
+   edge: **BROAD (density closes it) 40.8%, NARROW (a spike) 41.3%**; required h p50 **47.6 µm** against
+   a current longest edge p50 269 µm — **3 halvings**, which the cap was refusing to allow.
+   *(Separately, the driver's own `esN` under-reads its OWN ruler: fine4096/driverN p50 1.016, p90
+   1.120, MAX 1.317. A sampling error, not a parameter one, and not yet swept.)*
+
+#### TWO DEFECTS FIXED, BOTH REPORT-SIDE, NEITHER MOVING A MESH
+
+* ***`unresolved` STORED TWO RULERS IN ONE COLUMN AND DECLARED IT STORED ONE.*** The sweep path stores
+  `worstEdgeSag`; the heap driver's no-op-split site and BOTH resume sites store `kTop` — `sagAdaptive`,
+  the PLANE ruler, measured median 21.9× optimistic. Every production arm is the heap driver, so **100%
+  of the emitted population carried the plane number** while the artifact's own `rulers` block asserted
+  both columns were "the same edge ruler". On `S39CTL`: reported **47.230 µm** against **210.617 µm** on
+  the edge ruler, the same 774 facets, **×4.46**, with 60.6% of them over the 10 µm bar. **Nine arms
+  were steered on the smaller number.** Now: `unresolvedKind` tagged at all four set sites, `keyRuler`
+  emitted per row, BOTH maxima printed (`finalWorstUm` + `finalWorstSagUm`), and the edge max taken over
+  EVERY live entry rather than the 20k listed prefix — the same truncation class that made
+  `residual.json` a 28% prefix in S28-U0. The wording is corrected too: *"the splitter could NOT
+  subdivide"* → *"GAVE UP ON"*, because the first was a claim the driver never established.
+  **VALIDATED:** the 40×28 / 120k smoke reproduces this log's own 2026-07-29 cap table TO THE DIGIT
+  (56 unresolved, plane MAX 405.396 µm) while the new column reads 770.528 µm — ×1.9.
+* ***`distPerp` REBUILT A QUERY-INDEPENDENT TABLE EVERY CALL.*** Its coarse sweep evaluates rA on a
+  FIXED lattice (`th = TAU*i/nu`, `z = H*j/nv`); not one of those arguments depends on the query point.
+  21,780 evals/sweep → **686, ×32**; 300 calls **6,753 ms → 266 ms, ×25.4**. **EQUIVALENCE:** the cache
+  changes exactly which two seeds go to Newton, so the bar is on those — **300/300 bit-identical under
+  `Object.is`** — plus **HARD GATE 12/12** with every published digit (V8 400.000000/50.000000/4.000000,
+  V9 294.174/268.328/212.132). *(The first equivalence bar was MINE and WRONG: it reimplemented all of
+  `distPerp` and dropped the `distLocal` fourth seed, so a 3-seed control ran against a 4-seed subject
+  and reported 82/300 "mismatches" at ~3e-11 µm. A defect in the CONTROL.)*
+  **AND IT PRICES STANDING DEFECT #3 INSTEAD OF LEAVING IT OPEN.** Density is now affordable, so it was
+  measured over two populations: UNIFORM 300 centroids — **0** readings fall at 360×240 or 540×360;
+  STRANDED 773 — **0** at 360×240 and ***1 at 540×360, by 22.81% / 6.325 µm***. The defect is REAL
+  (22.8% corroborates the original 26%), **RARE (1 in 773 of the WORST population)**, and invisible
+  below 540×360. **It is not a driver of the residual.** The default stays 180×120 so every published
+  number reproduces; raising it is now cheap and is a separate, measured decision.
+
+>> ***THE STANDING CAVEAT, AND IT IS THE WHOLE REASON S48 IS RUNNING.*** 10.830 µm is the driver's own
+>> PLANE ruler — the one measured median 21.9× optimistic, max 541×. **It is not a fidelity claim and
+>> must not be quoted as one.** No certificate has been run on any cap-raised mesh. S48 runs cap 90 +
+>> cavity (disjoint populations — do they stack?), cap 90 + the admission family (the certificate reports
+>> `gate NORMAL failed: 878 (expected 0)` and `PF_CB_ADMIT_NORMAL` is SHIPPED, DEFAULT OFF, measured
+>> taking judge footprint-back 1,074 → 0, and set by NO runner in this lineage), then a FULL-BUDGET
+>> CERTIFICATE on the winner at `PF_FT_WORKERS=16`. **The certificate is the verdict.**
