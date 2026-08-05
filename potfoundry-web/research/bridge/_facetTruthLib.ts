@@ -1084,6 +1084,12 @@ export function distPerpFrom(
  * so every existing number reproduces exactly.
  */
 export interface PerpSeedGrid { x: Float64Array; y: Float64Array; z: Float64Array; th: Float64Array }
+// IDENTITY CONTRACT, stated because an audit had to go and check it: the key is the rA CLOSURE
+// OBJECT, and correctness needs "one closure object => one surface". That holds here because every
+// builder in this repo (`buildRadiusFn`, `buildAuditRadiusFn`, `buildFastRadiusFn`) SNAPSHOTS its
+// (style, params, dims) at construction and never mutates them, so a given closure cannot come to
+// mean a different surface later. A future builder that closed over a MUTABLE params object would
+// break this cache silently — and would break far more than this cache.
 const perpSeedCache = new WeakMap<RadiusFn, Map<string, PerpSeedGrid>>();
 /** EXPORTED for the equivalence bar (s45PerpCacheEquiv) only — `distPerp` is the supported entry point. */
 export function perpSeedGrid(rA: RadiusFn, H: number, nu: number, nv: number): PerpSeedGrid {

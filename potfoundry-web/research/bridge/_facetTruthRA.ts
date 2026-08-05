@@ -17,16 +17,22 @@ import type { StyleId } from '../../src/geometry/types';
 import type { RadiusFn } from './_facetTruthLib';
 
 const TWO_PI = 2 * Math.PI;
+/** in-flight verification stride; MUST be a power of two (the check uses a bit-mask). +0.1% at 1024. */
+const FAST_STRIDE = 1024;
 
 export interface AuditRadius {
   /** the audited surface: theta canonicalised to [0,2pi), z clamped to [0,H], every call counted */
   rA: RadiusFn;
   /** rA calls made so far (the report's "M rA evals") */
   evals: () => number;
-  /** whether the S52 hoisted twin PROVED bit-identical here and is in use (3.17x when true) */
+  /** whether the twin PASSED THE UPFRONT CHECK and was selected. A SNAPSHOT of that decision — it
+   *  does NOT track a later in-flight rejection, which is what `inflightRejected()` is for. Read both. */
   fastUsed: boolean;
   /** lattice points on which the twin differed; 0 = identical, -1 = no twin exists for this style */
   fastDiffs: number;
+  /** true if an IN-FLIGHT sample caught the twin diverging and this instance reverted to the shipped
+   *  builder mid-run. A report that does not print this is not entitled to claim the twin was used. */
+  inflightRejected: () => boolean;
 }
 
 /**
@@ -59,18 +65,59 @@ export function buildAuditRadiusFn(
   let fastUsed = false; let fastDiffs = -1;
   const fast = buildFastRadiusFn(style, styleParams, dims, H);
   if (fast !== null) {
-    const lat = radiusLattice(H, [], []);
     let diffs = 0;
-    for (let i = 0; i < lat.th.length; i += 1) {
-      if (!Object.is(fast(lat.th[i], lat.z[i]), rAshipped(lat.th[i], lat.z[i]))) diffs += 1;
+    const cmp = (t: number, zz: number): void => { if (!Object.is(fast(t, zz), rAshipped(t, zz))) diffs += 1; };
+    // (a) THE LATTICE — primes, golden-ratio z walk, discontinuity brackets, out-of-domain probes.
+    const lat = radiusLattice(H, [], []);
+    for (let i = 0; i < lat.th.length; i += 1) cmp(lat.th[i], lat.z[i]);
+    // (b) *** A DENSE SWEEP, BECAUSE THE LATTICE ALONE WAS MEASURED INSUFFICIENT. ***
+    // An adversarial audit built a real divergence (the `wT` clamp, now fixed in `_raFast`) and this
+    // guard still reported fastUsed=true / fastDiffs=0 — the 16,471-point lattice simply never
+    // sampled a (theta, z) where the divergent branch was live. A guard that can miss a divergence it
+    // was built to catch is worth exactly what it caught, so the check is widened here rather than
+    // the finding merely noted. 601 x 301 = 180,901 further points at ~0.1 s, deterministic, offset
+    // off the lattice's own phase so the two do not sample the same places.
+    const NT = 601; const NZ = 301;
+    for (let i = 0; i < NT; i += 1) {
+      const t = (TWO_PI * (i + 0.37)) / NT;
+      for (let j = 0; j < NZ; j += 1) cmp(t, (H * (j + 0.11)) / NZ);
     }
     fastDiffs = diffs;
     if (diffs === 0) { rAraw = fast; fastUsed = true; }
   }
   let rEvals = 0;
+  let inflightRejected = false;
   const canon = (t: number): number => { let x = t % TWO_PI; if (x < 0) x += TWO_PI; return x; };
-  const rA = (th: number, z: number): number => { rEvals += 1; return rAraw(canon(th), z < 0 ? 0 : z > H ? H : z); };
-  return { rA, evals: () => rEvals, fastUsed, fastDiffs };
+  // ── (c) IN-FLIGHT SAMPLING, BECAUSE (a) AND (b) PROVABLY CANNOT BE SUFFICIENT ──
+  // I mutation-tested the upfront check by injecting a divergence into a small (theta,z) window and
+  // asking which half caught it:
+  //     window 0.020 rad x 0.5 mm : lattice 1 hit, dense 8 hits   -> caught
+  //     window 0.004 rad x 0.1 mm : lattice 0 hits, dense 0 hits  -> *** MISSED BY BOTH ***
+  // That is not a sample-size problem to be fixed by another 10x of points. A divergence confined to
+  // a window smaller than the sampling pitch evades ANY finite upfront sweep, so "verified by
+  // sampling (theta,z)" is a smoke test and can never be a proof of transcription equivalence.
+  //
+  // The fix is to stop trying to prove it upfront and instead CHECK THE CALLS THE RUN ACTUALLY MAKES
+  // — which is the only distribution that can affect a result. Every FAST_STRIDE'th call evaluates
+  // both and compares. A mismatch permanently reverts this instance to the shipped builder and sets
+  // `inflightRejected`, so the run CONTINUES ON THE SOUND PATH and the report can say it happened.
+  // Fail-safe rather than fail-loud: throwing here would lose a multi-hour audit over a defect whose
+  // correct handling is simply "use the slow one".
+  // Cost at the default stride of 1024: +0.1% evaluations. It cannot prove equivalence either — but
+  // it samples the ONE distribution where a divergence would do damage, which the sweeps do not.
+  const rA = fastUsed
+    ? (th: number, z: number): number => {
+      rEvals += 1;
+      const t = canon(th); const zz = z < 0 ? 0 : z > H ? H : z;
+      const v = rAraw(t, zz);
+      if ((rEvals & (FAST_STRIDE - 1)) === 0 && !Object.is(v, rAshipped(t, zz))) {
+        inflightRejected = true; fastUsed = false; rAraw = rAshipped;
+        return rAshipped(t, zz);
+      }
+      return v;
+    }
+    : (th: number, z: number): number => { rEvals += 1; return rAraw(canon(th), z < 0 ? 0 : z > H ? H : z); };
+  return { rA, evals: () => rEvals, fastUsed, fastDiffs, inflightRejected: () => inflightRejected };
 }
 
 /**

@@ -99,7 +99,16 @@ for (let k = 0; k < n; k += 1) {
     let dot = fx * nx + fy * ny + fz * nz; dot = dot > 1 ? 1 : dot < -1 ? -1 : dot;
     const diam = Math.max(
       Math.hypot(bx - cx, by - cy, bz - cz), Math.hypot(ax - cx, ay - cy, az - cz), Math.hypot(ax - bx, ay - by, az - bz));
-    tan = Math.sin(Math.acos(dot)) * diam;                              // mm
+    // *** FIXED 2026-08-05. WAS `Math.sin(Math.acos(dot)) * diam`, WHICH IS NON-MONOTONE IN THE
+    // ANGLE AND SCORES A FULLY INVERTED FACET AT ~ZERO. *** sin(theta) peaks at 90 deg and returns to
+    // 0 at 180, so a facet whose normal points exactly BACKWARDS — the worst case there is — measured
+    // 6.6e-16 mm. That is not a conservative reading, it is the wrong sign of wrong: the worst facets
+    // scored best. This quantity is used as a RANKING KEY by the S56 flip pass, so the pass was being
+    // steered away from precisely the facets it exists to repair.
+    // The right quantity is the CHORD between the two unit normals, 2*sin(theta/2), which is monotone
+    // on [0, pi] and reaches its maximum of 2 at full inversion. Found by GUARD (S61 F4b) reading the
+    // formula rather than the output.
+    tan = 2 * Math.sin(0.5 * Math.acos(dot)) * diam;                    // mm
   }
   if (pos > posMax) posMax = pos;
   if (tan > tanMax) tanMax = tan;

@@ -15,7 +15,20 @@
 // 819,867 points**, which is 2.35x on the whole certificate (8,449 s -> ~3,593 s).
 //
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// THE FIVE TRANSFORMATIONS. EVERY ONE IS EXACT. NONE TOUCHES A DOUBLE.
+// THE FIVE TRANSFORMATIONS. EACH IS EXACT *AS APPLIED*, WHICH IS NOT THE SAME CLAIM AS "EXACT".
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// ⚠ THIS HEADER FIRST SAID "EVERY ONE IS EXACT. NONE TOUCHES A DOUBLE." AN ADVERSARIAL AUDIT BROKE
+// THAT SENTENCE THE SAME NIGHT. The transformations are exact; INLINING them is only exact if every
+// clamp the inlined callee performed is reproduced. One was not — `ridge()` clamps its width to
+// max(EPS, w) internally and the `wT` site divided raw, giving a 1.68e-4 mm divergence at
+// gaX 0.8 / gaCol 1e-9. Fixed at the `wT` line, with the other six divisors checked against their
+// shipped forms rather than assumed.
+//
+// AND THE GUARD DID NOT CATCH IT, WHICH IS THE MORE USEFUL HALF. `radiusLattice` sweeps (theta, z)
+// at FIXED style params, so it can only ever prove the twin identical FOR THE PARAMS IT WAS BUILT
+// WITH. That is sufficient for its actual job — the audit builds this per run, from that run's
+// params, and refuses on any deviation — but it is NOT a proof that the transcription is universally
+// correct, and this file must not be read as claiming that. A params sweep would be the missing bar.
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 //   T1 HOIST     the 4 closure allocations, 12 `??` reads and ~20 derived constants out of the body.
 //   T2 SHARE     sin(phi1)/sin(phi2) were computed inside `ridgeSin` AND again in `cell`. Once now.
@@ -82,7 +95,21 @@ function buildGothicHoisted(params: Record<string, number>, dims: StyleDims, H: 
   const gateW = 2.0 * wZ;
   const invP = 1 / p;
   const colDen = wX; const mulDen = 0.65 * wX;
-  const wT = 0.55 * wX;
+  // *** D1 — THE ONE INEXACTNESS AUDIT FOUND, AND IT IS FIXED HERE. ***
+  // The shipped source writes `const wT = 0.55 * wX` and then calls `ridge(d, wT, sharp)`, and
+  // `ridge` clamps INTERNALLY: `const w = Math.max(EPS, wIn)`. Inlining the division without that
+  // clamp is only equal while `0.55 * wX >= EPS`. It is not, when `gaCol` is tiny: at gaX 0.8 /
+  // gaCol 1e-9 the twin and the shipped builder differ by 1.68e-4 mm, and the `radiusLattice` guard
+  // still reported `fastUsed=true, fastDiffs=0` — because the lattice does not vary the style
+  // PARAMS, only (theta, z). Not reachable at any campaign or registry-default config, and caught by
+  // an adversary rather than by the guard, which is the point worth remembering.
+  // The EFFECTIVE width the shipped path uses is max(EPS, 0.55*wX); use exactly that.
+  //
+  // I checked the other six divisors against their shipped forms rather than assuming: `colEdge` and
+  // `mullion` are written INLINE in styles.ts (`.../wX`, `.../(0.65*wX)`) with NO clamp, so the twin
+  // matches them by dividing raw; `wZ`, `bw` and `wL` are all >= EPS by their own construction, so
+  // `ridge`'s clamp is a no-op there. `wT` was the only breach.
+  const wT = Math.max(EPS, 0.55 * wX);
   const rows = 0.9 + 1.6 * diamond;
   const wL = Math.max(0.05, 2.0 * wZ);
   const bw = 1.8 * bandW;
