@@ -1,0 +1,26 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm target   tag S41CAVRES   style GothicArches   stem gothicarches_ring_DS-HT_S41CAVRES
+tol 10 um   nMax 512   N 0   topK 300   dims H120 Rb40 Rt50
+driver self-report: headline 23.108 um   adaptive MAX 21.789 um   over-0.01mm 4/1145533   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 1145533 facets loaded   [1.8s]
+RESUME: selection reloaded from research/exchange/_strataConformBisect/s85rebase/S41CAVRES.sel.json (588 facets)
+RESUME: 588/588 already certified
+
+══ TARGET ARM — S41CAVRES — honest position on the two selectors ══
+   ALL SELECTED (union)           n    588   PROVEN-FAIL   337 (57.313%)   PROVEN-PASS    251   UNKNOWN     0   area-fail 50.54252%   witnessedComplete-false 337
+   plane top-300 (driver's own worst) n    300   PROVEN-FAIL    66 (22.000%)   PROVEN-PASS    234   UNKNOWN     0   area-fail 2.67918%   witnessedComplete-false 66
+   tangExc top-300                n    300   PROVEN-FAIL   278 (92.667%)   PROVEN-PASS     22   UNKNOWN     0   area-fail 98.81401%   witnessedComplete-false 278
+
+   honest witnessed over the union   p50 14.924  p99 284.908  MAX 350.457 um   <= a LOWER BOUND on the mesh's honest max
+   plane ruler over the union        p50 3.498  p99 8.889  MAX 21.796 um
+   on the plane selector only:  honest MAX 98.779   plane MAX 21.796 um
+   on the tangExc selector only: honest MAX 350.457 um
+
+   *** THE HEADLINE FACET ITSELF (index 152052, the plane ruler's argmax): plane 21.796 um -> honest witnessed 56.530 um (bound 66.328, verdict PROVEN-FAIL) ***
+   *** DRIVER HEADLINE 23.108 um  vs  HONEST MAX-OVER-UNION 350.457 um   ratio 0.066x ***
+   head-to-head on the plane selector: plane says 4/300 over bar, honest proves 66
+   head-to-head on the tangExc selector: plane says 2/300 over bar, honest proves 278
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [1.8s]

@@ -1,0 +1,21 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm uniform   tag S41CAVRES   style GothicArches   stem gothicarches_ring_DS-HT_S41CAVRES
+tol 10 um   nMax 512   N 25000   topK 0   dims H120 Rb40 Rt50
+driver self-report: headline 23.108 um   adaptive MAX 21.789 um   over-0.01mm 4/1145533   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 1145533 facets loaded   [1.8s]
+sample: 25000 facets, golden stride, coverage 2.182%
+RESUME: 25000/25000 already scored   [1.9s]
+
+══ UNIFORM ARM — S41CAVRES — the COMPARABLE row ══
+   UNIFORM SAMPLE                 n  25000   PROVEN-FAIL    35 (0.140%)   PROVEN-PASS  24965   UNKNOWN     0   area-fail 0.02192%   witnessedComplete-false 35
+   coverage 2.1824%   PROVEN-FAIL rate 0.1400% +- 16.9% (1 sigma Poisson, 35 failures)
+   scaled to the whole mesh: 1604 PROVEN-FAIL facets  (driver's own over-0.01mm on this mesh: 4)
+   PROVEN-FAIL AREA fraction 0.02192% +- 37.2% relative
+   honest witnessed in-sample  p50 1.642  p99 5.446  max 204.070 um   (an in-sample max, NOT the mesh max)
+   plane ruler in-sample       p50 1.525  p99 3.418  max 10.852 um   over-bar 1/25000
+   *** UNDER-REPORT RATIO (honest scaled count / driver over-bar count): 400.94x ***
+   *** in-sample head-to-head: plane says 1, honest proves 35  => 35.00x ***
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [1.9s]

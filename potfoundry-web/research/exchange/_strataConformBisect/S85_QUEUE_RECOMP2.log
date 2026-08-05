@@ -1,0 +1,8 @@
+[2026-08-05 16:06:28] SLOT RECOMP2 START — 3 jobs
+[2026-08-05 16:06:28]   -> arm=uniform tag=S48ADM90 stem=gothicarches_ring_DS-HT_S48ADM90 style=GothicArches N=25000 topk=0
+[2026-08-05 16:14:05]      done (exit 0)
+[2026-08-05 16:14:05]   -> arm=target tag=S48CAV90 stem=gothicarches_ring_DS-HT_S48CAV90 style=GothicArches N=0 topk=300
+[2026-08-05 16:20:45]      done (exit 0)
+[2026-08-05 16:20:45]   -> arm=uniform tag=S48CAV90 stem=gothicarches_ring_DS-HT_S48CAV90 style=GothicArches N=25000 topk=0
+[2026-08-05 16:37:51]      done (exit 0)
+[2026-08-05 16:37:51] SLOT RECOMP2 COMPLETE

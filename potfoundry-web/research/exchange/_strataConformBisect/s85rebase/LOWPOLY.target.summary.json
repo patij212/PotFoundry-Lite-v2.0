@@ -1,0 +1,61 @@
+{
+  "arm": "target",
+  "tag": "LOWPOLY",
+  "style": "LowPolyFacet",
+  "stem": "lowpolyfacet_ring_D--",
+  "nTri": 137480,
+  "topK": 300,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 5,
+    "adaptiveMax": 5,
+    "overBar": 0,
+    "nTri": 137480,
+    "found": true
+  },
+  "planeMaxMine": 4.999798492201539,
+  "planeOverMine": 0,
+  "union": {
+    "n": 576,
+    "fail": 0,
+    "pass": 576,
+    "unk": 0,
+    "areaAll": 0.6664751031095953,
+    "areaFail": 0,
+    "incomplete": 0
+  },
+  "plane": {
+    "n": 300,
+    "fail": 0,
+    "pass": 300,
+    "unk": 0,
+    "areaAll": 0.4608555980064496,
+    "areaFail": 0,
+    "incomplete": 0
+  },
+  "tang": {
+    "n": 300,
+    "fail": 0,
+    "pass": 300,
+    "unk": 0,
+    "areaAll": 0.2425451621661349,
+    "areaFail": 0,
+    "incomplete": 0
+  },
+  "honestMaxUnion": 4.98252201161904,
+  "honestMaxPlaneSel": 4.98252201161904,
+  "honestMaxTangSel": 4.982522011612904,
+  "headlineFacet": {
+    "k": 88399,
+    "area": 0.0011397958030925036,
+    "tg": 8.863963033889416,
+    "p": 4.999798492201539,
+    "w": 4.364825430181602,
+    "b": 9.071855743684761,
+    "v": 0,
+    "c": 1,
+    "sel": "plane"
+  },
+  "secs": 22.539
+}

@@ -1,0 +1,18 @@
+[2026-08-05 14:33:11] SLOT SLOTA START — 8 jobs
+[2026-08-05 14:33:11]   -> arm=target tag=S40AR55 stem=gothicarches_ring_DS-HT_S40AR55 style=GothicArches N=0 topk=300
+[2026-08-05 14:40:33]      done (exit 0)
+[2026-08-05 14:40:33]   -> arm=uniform tag=S40AR55 stem=gothicarches_ring_DS-HT_S40AR55 style=GothicArches N=50000 topk=0
+[2026-08-05 15:13:57]      done (exit 0)
+[2026-08-05 15:13:57]   -> arm=target tag=S41CTL stem=gothicarches_ring_DS-HT_S41CTL style=GothicArches N=0 topk=300
+[2026-08-05 15:23:56]      done (exit 0)
+[2026-08-05 15:23:56]   -> arm=uniform tag=S41CTL stem=gothicarches_ring_DS-HT_S41CTL style=GothicArches N=25000 topk=0
+[2026-08-05 15:37:37] SLOT SLOTA START — 5 jobs
+[2026-08-05 15:37:37]   -> arm=uniform tag=S41CTL stem=gothicarches_ring_DS-HT_S41CTL style=GothicArches N=25000 topk=0
+[2026-08-05 15:39:41]      done (exit 0)
+[2026-08-05 15:39:41]   -> arm=target tag=S36CA stem=gothicarches_ring_DS-HT_S36CA style=GothicArches N=0 topk=300
+[2026-08-05 15:39:50]      done (exit 0)
+[2026-08-05 15:39:50]   -> arm=target tag=S36CA stem=gothicarches_ring_DS-HT_S36CA style=GothicArches N=0 topk=300
+[2026-08-05 15:47:06]      done (exit 0)
+[2026-08-05 15:47:06]   -> arm=uniform tag=S36CA stem=gothicarches_ring_DS-HT_S36CA style=GothicArches N=25000 topk=0
+[2026-08-05 15:47:10]      done (exit 0)
+[2026-08-05 15:47:10]   -> arm=uniform tag=S36CA stem=gothicarches_ring_DS-HT_S36CA style=GothicArches N=25000 topk=0

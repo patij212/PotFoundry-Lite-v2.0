@@ -15,16 +15,29 @@ INFINITE-PLANE distance. This file replaces them with a two-sided `certifyTriang
 
 My whole-mesh plane-ruler pass must REPRODUCE the driver's own self-report on the same mesh.
 If it did not, the two rulers would not be reading the same geometry and their disagreement would
-mean nothing. Result, per mesh: `over-0.01mm` reproduced **EXACTLY**, adaptive MAX within 0.006%.
+mean nothing. **Read the delta column, not this sentence** — one mesh does not pass and it is named below.
 
-| mesh | driver over-0.01mm | mine | driver adaptive MAX µm | mine | delta |
-|---|---|---|---|---|---|
-| S39CTL | 75 | 75 | 47.23 | 47.229 | 0.001% |
-| S40AR55 | 63 | 63 | 31.554 | 31.552 | 0.006% |
-| S40AR65 | 32 | 32 | 23.547 | 23.547 | 0.000% |
-| S40AR90 | 1 | 1 | 10.829 | 10.829 | 0.004% |
-| S41CTL | 323 | 323 | 47.245 | 47.246 | 0.003% |
-| VORONOI | 0 | 0 | 5 | 6.229 | 24.579% |
+| mesh | driver over-0.01mm | mine | driver adaptive MAX µm | mine | delta | H-R3 |
+|---|---|---|---|---|---|---|
+| S39CTL | 75 | 75 | 47.23 | 47.229 | 0.001% | PASS |
+| S40AR55 | 63 | 63 | 31.554 | 31.552 | 0.006% | PASS |
+| S40AR65 | 32 | 32 | 23.547 | 23.547 | 0.000% | PASS |
+| S40AR90 | 1 | 1 | 10.829 | 10.829 | 0.004% | PASS |
+| S41CTL | 323 | 323 | 47.245 | 47.246 | 0.003% | PASS |
+| S41CAVRES | 4 | 4 | 21.789 | 21.796 | 0.032% | PASS |
+| S48CAV90 | 0 | 0 | 5.643 | 5.639 | 0.077% | PASS |
+| S48ADM90 | 80 | 80 | 51.587 | 51.588 | 0.002% | PASS |
+| S47CAV | 44 | 44 | 21.075 | 21.075 | 0.000% | PASS |
+| S36CA | 76 | 76 | 47.23 | 47.229 | 0.001% | PASS |
+| VORONOI | 0 | 0 | 5 | 6.229 | 24.579% | **DOES NOT MATCH** |
+| LOWPOLY | 0 | 0 | 5 | 5.000 | 0.004% | PASS |
+
+**PASSES on 11 meshes; DOES NOT MATCH on: VORONOI.**
+On the non-matching mesh the `over-0.01mm` count still agrees (0 = 0) — only the reported MAX differs,
+so the STL reader / theta reconstruction / `rA` are still validated on it. But its driver report
+predates the current arm reports and its MAX line is NOT reproducible from the shipped STL, so the
+"driver HEADLINE" column for that mesh should be read as *what was published*, not as *what the
+plane ruler says about this file*. My own whole-mesh plane MAX for it is in the "mine" column.
 
 ## TABLE 1 — UNIFORM arm: the COMPARABLE row (unbiased golden-stride sample)
 
@@ -40,6 +53,13 @@ of an `N = 50,000` row: same construction, less coverage. Selection does NOT dep
 | S40AR65 | 1140154 | 50000 (4.385%) | 32 | 101 | 0.2020% ±10.0% | 2303 | 0 | 0.03216% ±19.0% | 240.059 | 72.0× |
 | S40AR90 | 1139357 | 50000 (4.388%) | 1 | 67 | 0.1340% ±12.2% | 1527 | 0 | 0.04009% ±28.4% | 460.513 | 1526.7× |
 | S41CTL | 1255568 | 25000 (1.991%) | 323 | 259 | 1.0360% ±6.2% | 13008 | 0 | 0.09097% ±22.0% | 133.094 | 40.3× |
+| S41CAVRES | 1145533 | 25000 (2.182%) | 4 | 35 | 0.1400% ±16.9% | 1604 | 0 | 0.02192% ±37.2% | 204.070 | 400.9× |
+| S48CAV90 | 1140947 | 25000 (2.191%) | 0 | 26 | 0.1040% ±19.6% | 1187 | 1 | 0.04067% ±37.5% | 72.810 | n/a (driver 0) |
+| S48ADM90 | 1140373 | 25000 (2.192%) | 80 | 37 | 0.1480% ±16.4% | 1688 | 0 | 0.04598% ±33.2% | 205.300 | 21.1× |
+| S47CAV | 1276899 | 25000 (1.958%) | 44 | 149 | 0.5960% ±8.2% | 7610 | 0 | 0.06489% ±27.8% | 41.659 | 173.0× |
+| S36CA | 712977 | 25000 (3.506%) | 76 | 85 | 0.3400% ±10.8% | 2424 | 0 | 0.12438% ±17.7% | 284.908 | 31.9× |
+| VORONOI | 806765 | 8000 (0.992%) | 0 | 840 | 10.5000% ±3.5% | 84710 | 0 | 1.30676% ±5.2% | 184.706 | n/a (driver 0) |
+| LOWPOLY | 137480 | 10000 (7.274%) | 0 | 0 | 0.0000% ±100.0% | 0 | 0 | 0.00000% ±100.0% | 4.983 | n/a (driver 0) |
 | S39CTL (LAND's independent run, s80HonestPos "before" column) | 1142166 | 50000 (4.378%) | 75 | 143 | 0.2860% ±8.4% | 3267 | 0 | 0.03534% ±19.6% | 240.059 | 43.6× |
 
 ## TABLE 2 — TARGET arm: the honest re-read of the DRIVER'S OWN HEADLINE
@@ -56,7 +76,13 @@ different facets; Table 1 is the lever-independent comparison.
 | S40AR65 | 23.563 | 370.300 | 0.064× | 90.964 | 177/300 | 279/300 | 5 | 23.547 → 63.227 (PROVEN-FAIL) |
 | S40AR90 | 10.83 | 460.513 | 0.024× | 57.370 | 53/300 | 273/300 | 1 | 10.829 → 13.079 (PROVEN-FAIL) |
 | S41CTL | 47.297 | 204.174 | 0.232× | 133.094 | 273/300 | 201/300 | 0 | 47.246 → 48.300 (PROVEN-FAIL) |
+| S41CAVRES | 23.108 | 350.457 | 0.066× | 98.779 | 66/300 | 278/300 | 0 | 21.796 → 56.530 (PROVEN-FAIL) |
+| S48CAV90 | 5.655 | 460.513 | 0.012× | 57.370 | 5/300 | 278/300 | 1 | 5.639 → 15.512 (PROVEN-FAIL) |
+| S48ADM90 | 51.618 | 460.513 | 0.112× | 201.956 | 255/300 | 298/300 | 1 | 51.588 → 53.671 (PROVEN-FAIL) |
+| S47CAV | 22.241 | 204.070 | 0.109× | 76.433 | 226/300 | 193/300 | 0 | 21.075 → 45.930 (PROVEN-FAIL) |
+| S36CA | 47.282 | 384.304 | 0.123× | 93.506 | 116/300 | 286/300 | 2 | 47.229 → 48.265 (PROVEN-FAIL) |
 | VORONOI | 5 | 249.843 | 0.020× | 124.348 | 13/300 | 300/300 | 0 | 6.229 → 10.236 (PROVEN-FAIL) |
+| LOWPOLY | 5 | 4.983 | 1.004× | 4.983 | 0/300 | 0/300 | 0 | 5.000 → 4.365 (PROVEN-PASS) |
 
 ## TABLE 3 — H-R2: is the under-report a CONSTANT? (per-facet `witnessed / plane`, uniform samples)
 
@@ -70,8 +96,14 @@ on others, so no single multiplier can be applied to a published number.
 | S40AR55 | 50000 | 0.909 | 0.998 | 1.001 | 1.030 | 4.599 | 528.854 | 36.4% |
 | S40AR65 | 50000 | 0.907 | 0.998 | 1.001 | 1.030 | 4.485 | 1548.999 | 36.3% |
 | S40AR90 | 50000 | 0.909 | 0.998 | 1.001 | 1.031 | 4.473 | 1042.807 | 36.3% |
-| S41CTL | 28014 | 0.894 | 0.998 | 1.001 | 1.056 | 6.813 | 202.461 | 36.1% |
-| VORONOI | 7077 | 0.848 | 0.999 | 1.002 | 1.446 | 228.585 | 440.052 | 32.7% |
+| S41CTL | 25000 | 0.895 | 0.998 | 1.001 | 1.056 | 6.813 | 202.461 | 35.9% |
+| S41CAVRES | 25000 | 0.909 | 0.998 | 1.001 | 1.029 | 4.573 | 343.389 | 36.7% |
+| S48CAV90 | 25000 | 0.907 | 0.999 | 1.001 | 1.032 | 4.529 | 146.646 | 35.6% |
+| S48ADM90 | 25000 | 0.909 | 0.998 | 1.001 | 1.028 | 4.483 | 357.566 | 36.4% |
+| S47CAV | 25000 | 0.890 | 0.998 | 1.001 | 1.042 | 6.166 | 449.347 | 37.2% |
+| S36CA | 25000 | 0.939 | 1.000 | 1.006 | 1.363 | 4.114 | 124.050 | 28.1% |
+| VORONOI | 8000 | 0.861 | 1.000 | 1.002 | 1.446 | 229.345 | 476.800 | 32.6% |
+| LOWPOLY | 10000 | 0.873 | 1.000 | 1.000 | 1.000 | 1.000 | 1.076 | 54.8% |
 
 ## THE THREE QUESTIONS — answered from the tables above, computed not transcribed
 
@@ -95,7 +127,7 @@ on others, so no single multiplier can be applied to a published number.
 
 ### Q2 — Is the under-report ratio stable enough to correct old numbers?
 
-Mesh-level ratio (honest scaled fail count / driver over-bar count) ranges **39.5× to 1526.7×** across 5 meshes — a spread of **38.7×** against a pre-registered kill line of 1.5×. Meshes where the driver reports **0** over bar have an **undefined (infinite)** ratio and are excluded from that spread, which understates it.
+Mesh-level ratio (honest scaled fail count / driver over-bar count) ranges **21.1× to 1526.7×** across 9 meshes — a spread of **72.4×** against a pre-registered kill line of 1.5×. Meshes where the driver reports **0** over bar have an **undefined (infinite)** ratio and are excluded from that spread, which understates it.
 
 **H-R2 CONFIRMED: no single correction factor exists.** Table 3 shows why at the facet level — the per-facet `witnessed/plane` ratio has p50 ≈ 1.00 (the plane ruler is *right* for a typical facet), ~36% of facets where it OVER-reads, and a max of 200–1500×. The error is not a scale factor, it is a TAIL. Published position numbers can be **discarded, not corrected**.
 
@@ -104,10 +136,17 @@ Mesh-level ratio (honest scaled fail count / driver over-bar count) ranges **39.
 | mesh | driver over-bar (its published number) | honest scaled PROVEN-FAIL | honest fail AREA frac | verdict |
 |---|---|---|---|---|
 | S39CTL | 75 | 3267 | 0.03534% | baseline |
-| S40AR55 | 63 | 2488 | 0.03329% | COUNT better, AREA not — traded many small failures for fewer larger ones |
-| S40AR65 | 32 | 2303 | 0.03216% | COUNT better, AREA not — traded many small failures for fewer larger ones |
-| S40AR90 | 1 | 1527 | 0.04009% | COUNT better, AREA not — traded many small failures for fewer larger ones |
-| S41CTL | 323 | 13008 | 0.09097% | WORSE on the honest ruler |
+| S40AR55 | 63 | 2488 | 0.03329% | count 0.76× better, area 0.94× NOT resolvably better |
+| S40AR65 | 32 | 2303 | 0.03216% | count 0.71× better, area 0.91× NOT resolvably better |
+| S40AR90 | 1 | 1527 | 0.04009% | count 0.47× better, area 1.13× NOT resolvably better |
+| S41CTL | 323 | 13008 | 0.09097% | WORSE on the honest ruler — count 3.62×, area 2.57× |
+| S41CAVRES | 4 | 1604 | 0.02192% | REAL improvement — count 0.49× AND area 0.62× |
+| S48CAV90 | 0 | 1187 | 0.04067% | count 0.36× better, area 1.15× NOT resolvably better |
+| S48ADM90 | 80 | 1688 | 0.04598% | count 0.52× better, area 1.30× NOT resolvably better |
+| S47CAV | 44 | 7610 | 0.06489% | WORSE on the honest ruler — count 2.08×, area 1.84× |
+| S36CA | 76 | 2424 | 0.12438% | WORSE on the honest ruler — count 1.19×, area 3.52× |
+| VORONOI | 0 | 84710 | 1.30676% | different style — not comparable to the Gothic baseline |
+| LOWPOLY | 0 | 0 | 0.00000% | different style — not comparable to the Gothic baseline |
 
 Every Gothic arm's published over-bar count is wrong by 39×–1527×. The ranking among them by
 honest COUNT is not the same as the ranking by honest AREA, and neither matches the blind headline.
@@ -148,4 +187,31 @@ numbers as the tables above, in completion order.
 | UNIFORM | S39CTL | GothicArches | 1142166 | 75 | 143/50000 | 0.2860% +-8.4% | 3267 | 0.03534% +-19.6% | 0 | 240.06 | 43.55x | 4.378% |
 | UNIFORM | S41CTL | GothicArches | 1255568 | 323 | 259/25000 | 1.0360% +-6.2% | 13008 | 0.09097% +-22.0% | 0 | 133.09 | 40.27x | 1.991% |
 | UNIFORM | S41CTL | GothicArches | 1255568 | 323 | 259/25000 | 1.0360% +-6.2% | 13008 | 0.09097% +-22.0% | 0 | 133.09 | 40.27x | 1.991% |
+| TARGET | S41CAVRES | GothicArches | 1145533 | 23.108 | 21.796 | 4 | 350.457 | 98.779 | 66/300 | 278/300 | 0.07x | union 588 of 1145533 (0.0513%), TARGETED not random |
+| TARGET | S41CAVRES | GothicArches | 1145533 | 23.108 | 21.796 | 4 | 350.457 | 98.779 | 66/300 | 278/300 | 0.07x | union 588 of 1145533 (0.0513%), TARGETED not random |
+| UNIFORM | VORONOI | Voronoi | 806765 | 0 | 840/8000 | 10.5000% +-3.5% | 84710 | 1.30676% +-5.2% | 0 | 184.71 | n/a | 0.992% |
+| TARGET | S36CA | GothicArches | 712977 | 47.282 | 47.229 | 76 | 384.304 | 93.506 | 116/300 | 286/300 | 0.12x | union 562 of 712977 (0.0788%), TARGETED not random |
+| TARGET | S36CA | GothicArches | 712977 | 47.282 | 47.229 | 76 | 384.304 | 93.506 | 116/300 | 286/300 | 0.12x | union 562 of 712977 (0.0788%), TARGETED not random |
+| UNIFORM | VORONOI | Voronoi | 806765 | 0 | 840/8000 | 10.5000% +-3.5% | 84710 | 1.30676% +-5.2% | 0 | 184.71 | n/a | 0.992% |
+| TARGET | LOWPOLY | LowPolyFacet | 137480 | 5 | 5.000 | 0 | 4.983 | 4.983 | 0/300 | 0/300 | 1.00x | union 576 of 137480 (0.4190%), TARGETED not random |
+| TARGET | LOWPOLY | LowPolyFacet | 137480 | 5 | 5.000 | 0 | 4.983 | 4.983 | 0/300 | 0/300 | 1.00x | union 576 of 137480 (0.4190%), TARGETED not random |
+| UNIFORM | LOWPOLY | LowPolyFacet | 137480 | 0 | 0/10000 | 0.0000% +-100.0% | 0 | 0.00000% +-100.0% | 0 | 4.98 | n/a | 7.274% |
+| UNIFORM | LOWPOLY | LowPolyFacet | 137480 | 0 | 0/10000 | 0.0000% +-100.0% | 0 | 0.00000% +-100.0% | 0 | 4.98 | n/a | 7.274% |
+| TARGET | S48ADM90 | GothicArches | 1140373 | 51.618 | 51.588 | 80 | 460.513 | 201.956 | 255/300 | 298/300 | 0.11x | union 502 of 1140373 (0.0440%), TARGETED not random |
+| TARGET | S48ADM90 | GothicArches | 1140373 | 51.618 | 51.588 | 80 | 460.513 | 201.956 | 255/300 | 298/300 | 0.11x | union 502 of 1140373 (0.0440%), TARGETED not random |
+| UNIFORM | S41CAVRES | GothicArches | 1145533 | 4 | 35/25000 | 0.1400% +-16.9% | 1604 | 0.02192% +-37.2% | 0 | 204.07 | 400.94x | 2.182% |
+| UNIFORM | S41CAVRES | GothicArches | 1145533 | 4 | 35/25000 | 0.1400% +-16.9% | 1604 | 0.02192% +-37.2% | 0 | 204.07 | 400.94x | 2.182% |
+| UNIFORM | S41CTL | GothicArches | 1255568 | 323 | 259/25000 | 1.0360% +-6.2% | 13008 | 0.09097% +-22.0% | 0 | 133.09 | 40.27x | 1.991% |
+| UNIFORM | S41CAVRES | GothicArches | 1145533 | 4 | 35/25000 | 0.1400% +-16.9% | 1604 | 0.02192% +-37.2% | 0 | 204.07 | 400.94x | 2.182% |
+| TARGET | S41CAVRES | GothicArches | 1145533 | 23.108 | 21.796 | 4 | 350.457 | 98.779 | 66/300 | 278/300 | 0.07x | union 588 of 1145533 (0.0513%), TARGETED not random |
+| TARGET | S36CA | GothicArches | 712977 | 47.282 | 47.229 | 76 | 384.304 | 93.506 | 116/300 | 286/300 | 0.12x | union 562 of 712977 (0.0788%), TARGETED not random |
+| TARGET | S48ADM90 | GothicArches | 1140373 | 51.618 | 51.588 | 80 | 460.513 | 201.956 | 255/300 | 298/300 | 0.11x | union 502 of 1140373 (0.0440%), TARGETED not random |
+| UNIFORM | VORONOI | Voronoi | 806765 | 0 | 840/8000 | 10.5000% +-3.5% | 84710 | 1.30676% +-5.2% | 0 | 184.71 | n/a | 0.992% |
+| UNIFORM | LOWPOLY | LowPolyFacet | 137480 | 0 | 0/10000 | 0.0000% +-100.0% | 0 | 0.00000% +-100.0% | 0 | 4.98 | n/a | 7.274% |
+| UNIFORM | S48ADM90 | GothicArches | 1140373 | 80 | 37/25000 | 0.1480% +-16.4% | 1688 | 0.04598% +-33.2% | 0 | 205.30 | 21.10x | 2.192% |
+| TARGET | S47CAV | GothicArches | 1276899 | 22.241 | 21.075 | 44 | 204.070 | 76.433 | 226/300 | 193/300 | 0.11x | union 571 of 1276899 (0.0447%), TARGETED not random |
+| TARGET | S48CAV90 | GothicArches | 1140947 | 5.655 | 5.639 | 0 | 460.513 | 57.370 | 5/300 | 278/300 | 0.01x | union 600 of 1140947 (0.0526%), TARGETED not random |
+| UNIFORM | S47CAV | GothicArches | 1276899 | 44 | 149/25000 | 0.5960% +-8.2% | 7610 | 0.06489% +-27.8% | 0 | 41.66 | 172.96x | 1.958% |
+| UNIFORM | S48CAV90 | GothicArches | 1140947 | 0 | 26/25000 | 0.1040% +-19.6% | 1187 | 0.04067% +-37.5% | 1 | 72.81 | n/a | 2.191% |
+| UNIFORM | S36CA | GothicArches | 712977 | 76 | 85/25000 | 0.3400% +-10.8% | 2424 | 0.12438% +-17.7% | 0 | 284.91 | 31.90x | 3.506% |
 ```

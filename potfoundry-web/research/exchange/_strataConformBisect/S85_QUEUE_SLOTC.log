@@ -1,0 +1,24 @@
+[2026-08-05 14:33:19] SLOT SLOTC START — 7 jobs
+[2026-08-05 14:33:19]   -> arm=uniform tag=S40AR90 stem=gothicarches_ring_DS-HT_S40AR90 style=GothicArches N=50000 topk=0
+[2026-08-05 15:04:04]      done (exit 0)
+[2026-08-05 15:04:04]   -> arm=target tag=VORONOI stem=voronoi_ring_D-- style=Voronoi N=0 topk=300
+[2026-08-05 15:12:51]      done (exit 0)
+[2026-08-05 15:12:51]   -> arm=uniform tag=VORONOI stem=voronoi_ring_D-- style=Voronoi N=8000 topk=0
+[2026-08-05 15:37:46] SLOT SLOTC START — 5 jobs
+[2026-08-05 15:37:46]   -> arm=uniform tag=VORONOI stem=voronoi_ring_D-- style=Voronoi N=8000 topk=0
+[2026-08-05 15:47:03]      done (exit 0)
+[2026-08-05 15:47:03]   -> arm=target tag=LOWPOLY stem=lowpolyfacet_ring_D-- style=LowPolyFacet N=0 topk=300
+[2026-08-05 15:47:10]      done (exit 0)
+[2026-08-05 15:47:10]   -> arm=target tag=LOWPOLY stem=lowpolyfacet_ring_D-- style=LowPolyFacet N=0 topk=300
+[2026-08-05 15:47:27]      done (exit 0)
+[2026-08-05 15:47:27]   -> arm=uniform tag=LOWPOLY stem=lowpolyfacet_ring_D-- style=LowPolyFacet N=10000 topk=0
+[2026-08-05 15:47:33]      done (exit 0)
+[2026-08-05 15:47:33]   -> arm=uniform tag=LOWPOLY stem=lowpolyfacet_ring_D-- style=LowPolyFacet N=10000 topk=0
+[2026-08-05 15:47:40]      done (exit 0)
+[2026-08-05 15:47:40]      done (exit 0)
+[2026-08-05 15:47:40]   -> arm=target tag=S48ADM90 stem=gothicarches_ring_DS-HT_S48ADM90 style=GothicArches N=0 topk=300
+[2026-08-05 15:47:40]   -> arm=target tag=S48ADM90 stem=gothicarches_ring_DS-HT_S48ADM90 style=GothicArches N=0 topk=300
+[2026-08-05 15:54:41]      done (exit 0)
+[2026-08-05 15:54:41]   -> arm=uniform tag=S48ADM90 stem=gothicarches_ring_DS-HT_S48ADM90 style=GothicArches N=25000 topk=0
+[2026-08-05 15:54:41]      done (exit 0)
+[2026-08-05 15:54:42]   -> arm=uniform tag=S48ADM90 stem=gothicarches_ring_DS-HT_S48ADM90 style=GothicArches N=25000 topk=0

@@ -1,0 +1,21 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm uniform   tag LOWPOLY   style LowPolyFacet   stem lowpolyfacet_ring_D--
+tol 10 um   nMax 512   N 10000   topK 0   dims H120 Rb40 Rt50
+driver self-report: headline 5 um   adaptive MAX 5 um   over-0.01mm 0/137480   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 137480 facets loaded   [0.1s]
+sample: 10000 facets, golden stride, coverage 7.274%
+RESUME: 10000/10000 already scored   [0.1s]
+
+══ UNIFORM ARM — LOWPOLY — the COMPARABLE row ══
+   UNIFORM SAMPLE                 n  10000   PROVEN-FAIL     0 (0.000%)   PROVEN-PASS  10000   UNKNOWN     0   area-fail 0.00000%   witnessedComplete-false 0
+   coverage 7.2738%   PROVEN-FAIL rate 0.0000% +- 100.0% (1 sigma Poisson, 0 failures)
+   scaled to the whole mesh: 0 PROVEN-FAIL facets  (driver's own over-0.01mm on this mesh: 0)
+   PROVEN-FAIL AREA fraction 0.00000% +- 100.0% relative
+   honest witnessed in-sample  p50 0.001  p99 4.758  max 4.983 um   (an in-sample max, NOT the mesh max)
+   plane ruler in-sample       p50 0.001  p99 4.953  max 5.000 um   over-bar 0/10000
+   *** UNDER-REPORT RATIO (honest scaled count / driver over-bar count): n/a (driver reports 0) ***
+   *** in-sample head-to-head: plane says 0, honest proves 0  => infinite (plane says 0) ***
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [0.1s]

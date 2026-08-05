@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S41CAVRES",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S41CAVRES",
+  "nTri": 1145533,
+  "N": 25000,
+  "coverage": 0.0218239020613112,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 23.108,
+    "adaptiveMax": 21.789,
+    "overBar": 4,
+    "nTri": 1145533,
+    "found": true
+  },
+  "bucket": {
+    "n": 25000,
+    "fail": 35,
+    "pass": 24965,
+    "unk": 0,
+    "areaAll": 842.2938086079907,
+    "areaFail": 0.18464261733701093,
+    "incomplete": 35
+  },
+  "failRate": 0.0014,
+  "sigmaCountRel": 0.16903085094570333,
+  "areaFailFrac": 0.0002192140265665242,
+  "sigmaAreaRel": 0.3718166947548102,
+  "scaledFail": 1603.7462,
+  "underReportRatio": 400.93655,
+  "planeOverInSample": 1,
+  "witP50": 1.6417607786957045,
+  "witP99": 5.445947099557133,
+  "witMaxInSample": 204.0698850936093,
+  "secs": 1.927
+}

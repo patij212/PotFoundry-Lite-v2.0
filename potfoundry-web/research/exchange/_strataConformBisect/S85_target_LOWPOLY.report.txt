@@ -1,0 +1,42 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm target   tag LOWPOLY   style LowPolyFacet   stem lowpolyfacet_ring_D--
+tol 10 um   nMax 512   N 0   topK 300   dims H120 Rb40 Rt50
+driver self-report: headline 5 um   adaptive MAX 5 um   over-0.01mm 0/137480   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 137480 facets loaded   [0.1s]
+whole-mesh plane ruler + tangExc pass (this is the H-R3 control) ...
+
+   ══ H-R3 NON-VACUITY CONTROL — my plane pass vs the driver's own self-report ══
+      adaptive MAX   mine 5.000 um   driver 5 um   delta 0.004%
+      over-0.01mm    mine 0                driver 0
+      *** H-R3 PASSES — the two rulers are reading the same mesh with the same rA ***
+
+selection: 576 facets (plane top-300 U tangExc top-300, overlap 24)   [22.5s]
+RESUME: 576/576 already certified
+
+══ TARGET ARM — LOWPOLY — honest position on the two selectors ══
+   ALL SELECTED (union)           n    576   PROVEN-FAIL     0 (0.000%)   PROVEN-PASS    576   UNKNOWN     0   area-fail 0.00000%   witnessedComplete-false 0
+   plane top-300 (driver's own worst) n    300   PROVEN-FAIL     0 (0.000%)   PROVEN-PASS    300   UNKNOWN     0   area-fail 0.00000%   witnessedComplete-false 0
+   tangExc top-300                n    300   PROVEN-FAIL     0 (0.000%)   PROVEN-PASS    300   UNKNOWN     0   area-fail 0.00000%   witnessedComplete-false 0
+
+   honest witnessed over the union   p50 4.567  p99 4.983  MAX 4.983 um   <= a LOWER BOUND on the mesh's honest max
+   plane ruler over the union        p50 4.990  p99 5.000  MAX 5.000 um
+   on the plane selector only:  honest MAX 4.983   plane MAX 5.000 um
+   on the tangExc selector only: honest MAX 4.983 um
+
+   *** THE HEADLINE FACET ITSELF (index 88399, the plane ruler's argmax): plane 5.000 um -> honest witnessed 4.365 um (bound 9.072, verdict PROVEN-PASS) ***
+   *** DRIVER HEADLINE 5 um  vs  HONEST MAX-OVER-UNION 4.983 um   ratio 1.004x ***
+   head-to-head on the plane selector: plane says 0/300 over bar, honest proves 0
+   head-to-head on the tangExc selector: plane says 0/300 over bar, honest proves 0
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [22.5s]
+ 4.983 um
+
+   *** THE HEADLINE FACET ITSELF (index 88399, the plane ruler's argmax): plane 5.000 um -> honest witnessed 4.365 um (bound 9.072, verdict PROVEN-PASS) ***
+   *** DRIVER HEADLINE 5 um  vs  HONEST MAX-OVER-UNION 4.983 um   ratio 1.004x ***
+   head-to-head on the plane selector: plane says 0/300 over bar, honest proves 0
+   head-to-head on the tangExc selector: plane says 0/300 over bar, honest proves 0
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [23.3s]

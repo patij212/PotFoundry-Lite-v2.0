@@ -1,0 +1,59 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm uniform   tag S36CA   style GothicArches   stem gothicarches_ring_DS-HT_S36CA
+tol 10 um   nMax 512   N 25000   topK 0   dims H120 Rb40 Rt50
+driver self-report: headline 47.282 um   adaptive MAX 47.23 um   over-0.01mm 76/712977   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 712977 facets loaded   [2.0s]
+sample: 25000 facets, golden stride, coverage 3.506%
+RESUME: 6434/25000 already scored   [2.0s]
+  scored 6500/25000   559.8 facet/s   eta 0.6 min   [13.6s]
+  scored 7000/25000   95.6 facet/s   eta 3.1 min   [75.3s]
+  scored 7500/25000   49.9 facet/s   eta 5.9 min   [152.4s]
+  scored 8000/25000   38.6 facet/s   eta 7.3 min   [209.5s]
+  scored 8500/25000   32.0 facet/s   eta 8.6 min   [267.6s]
+  scored 9000/25000   28.0 facet/s   eta 9.5 min   [323.9s]
+  scored 9500/25000   24.2 facet/s   eta 10.7 min   [394.0s]
+  scored 10000/25000   21.9 facet/s   eta 11.4 min   [458.7s]
+  scored 10500/25000   20.4 facet/s   eta 11.8 min   [515.9s]
+  scored 11000/25000   19.4 facet/s   eta 12.1 min   [570.4s]
+  scored 11500/25000   17.9 facet/s   eta 12.6 min   [644.4s]
+  scored 12000/25000   16.9 facet/s   eta 12.8 min   [710.9s]
+  scored 12500/25000   16.1 facet/s   eta 12.9 min   [776.4s]
+  scored 13000/25000   15.5 facet/s   eta 12.9 min   [841.7s]
+  scored 13500/25000   14.9 facet/s   eta 12.8 min   [906.5s]
+  scored 14000/25000   14.3 facet/s   eta 12.8 min   [979.3s]
+  scored 14500/25000   13.8 facet/s   eta 12.7 min   [1052.0s]
+  scored 15000/25000   13.5 facet/s   eta 12.3 min   [1109.1s]
+  scored 15500/25000   13.2 facet/s   eta 12.0 min   [1176.5s]
+  scored 16000/25000   12.9 facet/s   eta 11.6 min   [1241.8s]
+  scored 16500/25000   12.6 facet/s   eta 11.3 min   [1314.7s]
+  scored 17000/25000   12.2 facet/s   eta 10.9 min   [1394.8s]
+  scored 17500/25000   12.0 facet/s   eta 10.4 min   [1454.9s]
+  scored 18000/25000   11.9 facet/s   eta 9.8 min   [1518.5s]
+  scored 18500/25000   11.7 facet/s   eta 9.2 min   [1580.0s]
+  scored 19000/25000   11.6 facet/s   eta 8.6 min   [1639.5s]
+  scored 19500/25000   11.3 facet/s   eta 8.1 min   [1721.9s]
+  scored 20000/25000   11.2 facet/s   eta 7.4 min   [1787.2s]
+  scored 20500/25000   11.1 facet/s   eta 6.7 min   [1841.7s]
+  scored 21000/25000   11.0 facet/s   eta 6.1 min   [1908.3s]
+  scored 21500/25000   10.9 facet/s   eta 5.3 min   [1965.9s]
+  scored 22000/25000   10.8 facet/s   eta 4.6 min   [2036.1s]
+  scored 22500/25000   10.8 facet/s   eta 3.9 min   [2093.3s]
+  scored 23000/25000   10.7 facet/s   eta 3.1 min   [2150.5s]
+  scored 23500/25000   10.6 facet/s   eta 2.3 min   [2210.5s]
+  scored 24000/25000   10.6 facet/s   eta 1.6 min   [2271.0s]
+  scored 24500/25000   10.4 facet/s   eta 0.8 min   [2350.2s]
+  scored 25000/25000   10.4 facet/s   eta 0.0 min   [2406.5s]
+
+══ UNIFORM ARM — S36CA — the COMPARABLE row ══
+   UNIFORM SAMPLE                 n  25000   PROVEN-FAIL    85 (0.340%)   PROVEN-PASS  24915   UNKNOWN     0   area-fail 0.12438%   witnessedComplete-false 85
+   coverage 3.5064%   PROVEN-FAIL rate 0.3400% +- 10.8% (1 sigma Poisson, 85 failures)
+   scaled to the whole mesh: 2424 PROVEN-FAIL facets  (driver's own over-0.01mm on this mesh: 76)
+   PROVEN-FAIL AREA fraction 0.12438% +- 17.7% relative
+   honest witnessed in-sample  p50 4.934  p99 7.684  max 284.908 um   (an in-sample max, NOT the mesh max)
+   plane ruler in-sample       p50 2.973  p99 6.943  max 8.540 um   over-bar 0/25000
+   *** UNDER-REPORT RATIO (honest scaled count / driver over-bar count): 31.90x ***
+   *** in-sample head-to-head: plane says 0, honest proves 85  => infinite (plane says 0) ***
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [2406.5s]

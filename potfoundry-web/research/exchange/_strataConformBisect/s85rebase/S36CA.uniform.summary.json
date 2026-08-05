@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S36CA",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S36CA",
+  "nTri": 712977,
+  "N": 25000,
+  "coverage": 0.03506424470915612,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 47.282,
+    "adaptiveMax": 47.23,
+    "overBar": 76,
+    "nTri": 712977,
+    "found": true
+  },
+  "bucket": {
+    "n": 25000,
+    "fail": 85,
+    "pass": 24915,
+    "unk": 0,
+    "areaAll": 1372.1088294244898,
+    "areaFail": 1.7066685450067045,
+    "incomplete": 85
+  },
+  "failRate": 0.0034,
+  "sigmaCountRel": 0.10846522890932808,
+  "areaFailFrac": 0.0012438288482718536,
+  "sigmaAreaRel": 0.1770947885738321,
+  "scaledFail": 2424.1218,
+  "underReportRatio": 31.896339473684208,
+  "planeOverInSample": 0,
+  "witP50": 4.933852601867386,
+  "witP99": 7.683584629658115,
+  "witMaxInSample": 284.90772993426816,
+  "secs": 2406.526
+}

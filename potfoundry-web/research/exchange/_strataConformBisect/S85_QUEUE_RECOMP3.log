@@ -1,0 +1,6 @@
+[2026-08-05 16:06:33] SLOT RECOMP3 START — 2 jobs
+[2026-08-05 16:06:33]   -> arm=target tag=S47CAV stem=gothicarches_ring_DS-HT_S47CAV style=GothicArches N=0 topk=300
+[2026-08-05 16:19:06]      done (exit 0)
+[2026-08-05 16:19:06]   -> arm=uniform tag=S47CAV stem=gothicarches_ring_DS-HT_S47CAV style=GothicArches N=25000 topk=0
+[2026-08-05 16:35:27]      done (exit 0)
+[2026-08-05 16:35:27] SLOT RECOMP3 COMPLETE

@@ -1,0 +1,61 @@
+{
+  "arm": "target",
+  "tag": "S47CAV",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S47CAV",
+  "nTri": 1276899,
+  "topK": 300,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 22.241,
+    "adaptiveMax": 21.075,
+    "overBar": 44,
+    "nTri": 1276899,
+    "found": true
+  },
+  "planeMaxMine": 21.075011284674673,
+  "planeOverMine": 44,
+  "union": {
+    "n": 571,
+    "fail": 393,
+    "pass": 178,
+    "unk": 0,
+    "areaAll": 2.456975563037627,
+    "areaFail": 1.9153739691240774,
+    "incomplete": 393
+  },
+  "plane": {
+    "n": 300,
+    "fail": 226,
+    "pass": 74,
+    "unk": 0,
+    "areaAll": 0.6940268781792182,
+    "areaFail": 0.5679383227196906,
+    "incomplete": 226
+  },
+  "tang": {
+    "n": 300,
+    "fail": 193,
+    "pass": 107,
+    "unk": 0,
+    "areaAll": 1.9939648610508145,
+    "areaFail": 1.5677669849203235,
+    "incomplete": 193
+  },
+  "honestMaxUnion": 204.06988509362094,
+  "honestMaxPlaneSel": 76.43305647953302,
+  "honestMaxTangSel": 204.06988509362094,
+  "headlineFacet": {
+    "k": 183759,
+    "area": 0.002648287309422963,
+    "tg": 370.35618197768406,
+    "p": 21.075011284674673,
+    "w": 45.92981371590702,
+    "b": 55.717893897616754,
+    "v": 1,
+    "c": 0,
+    "sel": "plane"
+  },
+  "secs": 753.06
+}
