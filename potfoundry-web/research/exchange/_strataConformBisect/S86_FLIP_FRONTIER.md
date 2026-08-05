@@ -225,10 +225,39 @@ Byte-identity is **measured on two meshes**, not proven for all inputs: GothicAr
 gave identical md5, identical flip count, identical per-round sequence and identical census. The
 soundness argument is structural (see the `fastLevel` doc comment), but two meshes is two meshes.
 
-**ARM 3 — Voronoi `voronoi_ring_D--` (806,765 facets) is running now** to widen it onto the adversarial
-case: high-aspect, the class the flip is REFUTED on (1.33×), and therefore a different mix of `dup` and
-`fold` rejections than either mesh above. If ARM 3 diverges on md5, **the default flip is wrong and must
-be reverted to 0** — that is the pre-registered consequence, recorded before the result was seen.
+### ARM 3 — Voronoi `voronoi_ring_D--`, 806,765 facets, 20 rounds — **PASSES**
+
+The adversarial case: high-aspect, the class the flip is REFUTED on (1.33×), so a different mix of
+`dup`/`fold` rejections than either mesh above. The pre-registered consequence was: diverge on md5 ⇒
+the default flip is wrong and reverts to 0. It did not diverge.
+
+| level | flips | rounds | geometry md5 | candBody | scoreEvals | secs |
+|---|---|---|---|---|---|---|
+| **0 (control)** | 266,135 | 20 | `20abccf57ae1ab32fd7bd6a3196bad4d` | 23,582,669 | 16,135,300 | 696.9 |
+| **2** | 266,135 | 20 | `20abccf57ae1ab32fd7bd6a3196bad4d` | **3,929,228** | **806,765** | **534.1** |
+
+md5 identical, flips identical, per-round sequence identical across all 20 rounds, census identical
+(`ORIENT 320,385 -> 241,317 (1.328x)`, `by AREA 13.139% -> 7.960% (1.651x)`, `POSITION 0 -> 0`).
+`scoreEvals` again exactly 1/rounds. **0.766× wall clock (23.3% reduction).**
+
+⇒ **THE DEFAULT FLIP TO 2 IS CONFIRMED ON THREE MESHES**, spanning 137 k–1.14 M facets, 5–20 rounds,
+and both the class the flip repairs and the class it cannot.
+
+### The three arms together — and what they now point at
+
+| mesh | facets | rounds | candBody ratio | **wall ratio** |
+|---|---|---|---|---|
+| Gothic `S39CTL` | 1,142,166 | 19 | 0.163× | **0.620×** |
+| Voronoi | 806,765 | 20 | 0.167× | **0.766×** |
+| LowPolyFacet | 137,480 | 5 | 0.497× | 0.967× |
+
+Voronoi eliminates the same *proportion* of body entries as Gothic (6.00× vs 6.14×) but recovers only
+23.3% of wall clock against Gothic's 38.0%. **That gap is the measurement that names the next lever.**
+With the body 6× cheaper, what remains is the per-round FIXED cost — `buildEdges()` rebuilding a
+Map over every facet, plus the frontier's own O(nTri) star scan, plus the census — and Voronoi pays it
+20 times. The sweep is no longer the bottleneck of this pass; the per-round rebuild is.
+
+That is a NEW measurement, not a captured gain, and it is not claimed here. It is the file to open next.
 
 ### What was NOT wired, and why
 
