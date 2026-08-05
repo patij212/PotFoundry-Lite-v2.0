@@ -12,9 +12,12 @@ ruler. That ruler **under-reports honest position error by 21× to 1,527×, and 
 of the time.** No correction factor exists. Every `over-0.01mm` figure ever published here is void —
 not scalable, void. Re-measured honestly, the meshes are far from the 0.01 mm bar, the lever that
 looked like a 4.37× win is a 2× win by count and a **regression by area and by max**, and a second
-defect class — ORIENTATION — was never measured at all. One lever survives honest scoring: a
-constrained edge flip, which is free. The binding constraint is now believed to be the mesher's
-**vertex representation**, not its refinement rule.
+defect class — ORIENTATION — went unmeasured for the whole campaign and is now the larger defect by
+**410× in area**. What the ruler DID get right is ORDER: ρ = 0.964 against honest position, which is
+why seven blind arms genuinely improved the mesh (3.02× by count, **11.9× by area**) while every
+number they published was wrong by 24–45×. **Rank with the plane ruler; size with `certifyTriangle`.**
+One lever survives honest scoring: a constrained edge flip, which is free. The binding constraint is
+now believed to be the mesher's **vertex representation**, not its refinement rule — see §0b and §7.
 
 ---
 
@@ -90,8 +93,8 @@ Scorecard: `research/exchange/_strataConformBisect/S87_LEDGER_REEXAM.md`.
 
 | style | driver claims | **honest PROVEN-FAIL** | orientation over-bar |
 |---|---|---|---|
-| GothicArches 1,142,166 tris | 75 (0.007%) | **~3,265 (0.286%)** | 11.36% by count |
-| Voronoi 806,765 | **PASS, 0 of 806,765** | **~84,710 (10.50%)** | 39.7% → **25.7%** corrected |
+| GothicArches 1,142,166 tris | 75 (0.007%) | **~3,265 (0.286%)** | **700,486** — 43.2% of AREA (the widely-quoted 32,468 is **21.6× low**, centroid-only sampling) |
+| Voronoi 806,765 | **PASS, 0 of 806,765** | **~84,710 (10.50%)** | 39.7% → **25.7%** corrected; count over-states AREA 26× |
 | LowPolyFacet 137,480 | 0 | **0** ✔ (reverse control) | 10.9% — **not a defect**, 0 of its own 300 worst fail |
 
 *Sampling: golden-stride N=50,000 ≈ 4.38%, identical construction on all 12 meshes, ±1σ stated in the
