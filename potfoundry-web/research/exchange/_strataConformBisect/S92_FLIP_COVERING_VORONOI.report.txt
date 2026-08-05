@@ -1,0 +1,39 @@
+===== S92 — DOES THE FLIP'S 3.73x SURVIVE THE COVERING ORIENTATION RULER? =====
+style Voronoi   bar 10 um   N 60000   covering k=8 inset=0.02 (45 pts/facet)
+BEFORE research/exchange/_strataConformBisect/voronoi_ring_D--.stl
+AFTER  research/exchange/_strataConformBisect/s80land/voronoi_ring_D--_S89ORIG.stl
+BEFORE 806765 facets   AFTER 806765 facets   [0.3s]
+sample 60000 facets (7.437% coverage), golden stride
+  BEFORE: 10000/60000   [2.1s]
+  BEFORE: 20000/60000   [3.8s]
+  BEFORE: 30000/60000   [5.5s]
+  BEFORE: 40000/60000   [7.4s]
+  BEFORE: 50000/60000   [9.0s]
+  BEFORE: 60000/60000   [10.8s]
+  AFTER : 10000/60000   [12.9s]
+  AFTER : 20000/60000   [14.7s]
+  AFTER : 30000/60000   [16.3s]
+  AFTER : 40000/60000   [18.0s]
+  AFTER : 50000/60000   [19.8s]
+  AFTER : 60000/60000   [21.4s]
+
+═══ RESULT — the SAME two meshes, the SAME facets, two rulers ═══
+
+  CENTROID ruler (s60/landFlipPass `orientOf` — the currency the 3.73x is banked in)
+    BEFORE over-bar 23672/60000 (39.453%)   AREA 12.6636%   max 3632.9 um
+    AFTER  over-bar 17863/60000 (29.772%)   AREA 7.6547%   max 3452.5 um
+    *** CENTROID ratio  by AREA 1.654x   by COUNT 1.325x ***
+
+  COVERING ruler (orientOfFacet, k=8 inset=0.02, sup over the facet)
+    BEFORE over-bar 45121/60000 (75.202%)   AREA 37.9430%   max 3633.2 um
+    AFTER  over-bar 41595/60000 (69.325%)   AREA 38.5435%   max 3455.0 um
+    *** COVERING ratio  by AREA 0.984x   by COUNT 1.085x ***
+
+  LEVEL GAP (BEFORE, covering/centroid over-bar AREA): 3.00x
+
+  NON-VACUITY — the CENTROID column must reproduce this mesh's banked 13.139% -> 7.96%.
+    banked BEFORE 13.1390%  vs  measured 12.6636%   (delta -3.62%)
+    banked AFTER  7.9600%  vs  measured 7.6547%   (delta -3.84%)
+    banked ratio  1.651x  vs  measured 1.654x
+
+done  [21.4s]

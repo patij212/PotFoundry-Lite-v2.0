@@ -1,0 +1,39 @@
+===== S92 — DOES THE FLIP'S 3.73x SURVIVE THE COVERING ORIENTATION RULER? =====
+style GothicArches   bar 10 um   N 60000   covering k=8 inset=0.02 (45 pts/facet)
+BEFORE research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S39CTL.stl
+AFTER  research/exchange/_strataConformBisect/s80land/gothicarches_ring_DS-HT_S39CTL_GATE.stl
+BEFORE 1142166 facets   AFTER 1142166 facets   [0.4s]
+sample 60000 facets (5.253% coverage), golden stride
+  BEFORE: 10000/60000   [2.7s]
+  BEFORE: 20000/60000   [5.1s]
+  BEFORE: 30000/60000   [7.3s]
+  BEFORE: 40000/60000   [9.7s]
+  BEFORE: 50000/60000   [11.9s]
+  BEFORE: 60000/60000   [14.2s]
+  AFTER : 10000/60000   [16.5s]
+  AFTER : 20000/60000   [18.9s]
+  AFTER : 30000/60000   [21.1s]
+  AFTER : 40000/60000   [24.0s]
+  AFTER : 50000/60000   [26.3s]
+  AFTER : 60000/60000   [28.5s]
+
+═══ RESULT — the SAME two meshes, the SAME facets, two rulers ═══
+
+  CENTROID ruler (s60/landFlipPass `orientOf` — the currency the 3.73x is banked in)
+    BEFORE over-bar 6749/60000 (11.248%)   AREA 8.0470%   max 1381.0 um
+    AFTER  over-bar 1869/60000 (3.115%)   AREA 2.0891%   max 1116.4 um
+    *** CENTROID ratio  by AREA 3.852x   by COUNT 3.611x ***
+
+  COVERING ruler (orientOfFacet, k=8 inset=0.02, sup over the facet)
+    BEFORE over-bar 36648/60000 (61.080%)   AREA 43.2203%   max 1706.3 um
+    AFTER  over-bar 30055/60000 (50.092%)   AREA 41.1638%   max 1706.3 um
+    *** COVERING ratio  by AREA 1.050x   by COUNT 1.219x ***
+
+  LEVEL GAP (BEFORE, covering/centroid over-bar AREA): 5.37x
+
+  NON-VACUITY — the CENTROID column must reproduce this mesh's banked 8.1307% -> 2.179%.
+    banked BEFORE 8.1307%  vs  measured 8.0470%   (delta -1.03%)
+    banked AFTER  2.1790%  vs  measured 2.0891%   (delta -4.13%)
+    banked ratio  3.731x  vs  measured 3.852x
+
+done  [28.5s]
