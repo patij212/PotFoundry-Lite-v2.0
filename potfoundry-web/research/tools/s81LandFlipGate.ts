@@ -38,6 +38,8 @@ const RULER = (process.env.PF_S81_RULER ?? 'plane') as LandPosRuler;
 const SEL = envF('PF_S81_SEL_UM', 0);
 const ROUNDS = Math.round(envF('PF_S81_ROUNDS', 40));
 const CMP = process.env.PF_S81_CMP ?? '';
+/** 0 = the committed sweep (the CONTROL). 1 = hoist the score recompute. 2 = + the dirty-edge frontier. */
+const FAST = Math.round(envF('PF_LAND_FAST', 0)) as 0 | 1 | 2;
 const DIMS: StyleDims = { H: envF('PF_S81_H', 120), Rb: envF('PF_S81_RB', 40), Rt: envF('PF_S81_RT', 50), expn: 1 };
 const H = DIMS.H;
 const OUTDIR = 'research/exchange/_strataConformBisect/s80land';
@@ -58,7 +60,7 @@ const T0 = Date.now();
 mkdirSync(OUTDIR, { recursive: true });
 
 log('===== S81 — EQUIVALENCE GATE for the PACKAGED constrained flip (landFlipPass.ts) =====');
-log(`style ${STYLE}  stem ${STEM}  tag ${TAG}  C2 ruler ${RULER}  selector ${SEL} um  rounds ${ROUNDS}`);
+log(`style ${STYLE}  stem ${STEM}  tag ${TAG}  C2 ruler ${RULER}  selector ${SEL} um  rounds ${ROUNDS}  fastLevel ${FAST}`);
 
 const rAbase = buildRadiusFn(STYLE as StyleId, { ...registryDefaults(STYLE) }, DIMS);
 const rA = (th: number, z: number): number => rAbase(canonTheta(th), z < 0 ? 0 : z > H ? H : z);
@@ -71,7 +73,7 @@ log(`${nTri} facets read   [${((Date.now() - T0) / 1000).toFixed(1)}s]`);
 const P = Float64Array.from(xyz);
 const st = landConstrainedFlip(P, nTri, {
   rA, H, barUm: 10, jbarUm: 1, rounds: ROUNDS, posRuler: RULER, h1SelectUm: SEL,
-  useDet: true, detMode: 'rel', gateMm: 0.05, nMax: 512, zJumps: zJ, thJumps: thJ, log,
+  useDet: true, detMode: 'rel', gateMm: 0.05, nMax: 512, zJumps: zJ, thJumps: thJ, fastLevel: FAST, log,
 });
 
 const show = (l: string, c: LandCensus): void => {
@@ -88,6 +90,7 @@ show('AFTER ', st.after);
 log('');
 log(`flips ${st.flips} in ${st.rounds} rounds, ${st.secs.toFixed(1)}s   frozen off-surface ${st.frozen}`);
 log(`rej: frozen ${st.rej.frozen}  dirty ${st.rej.dirty}  dup ${st.rej.dup}  fold ${st.rej.fold}  noImprove ${st.rej.noImprove}  DET ${st.rej.det}  POS ${st.rej.pos}`);
+log(`WORK (fastLevel ${FAST}): body entries ${st.candBody}  score evals ${st.scoreEvals}  frontier-skipped ${st.frontierSkipped}`);
 if (RULER === 'h1') log(`H1 C2: evaluated ${st.h1Evaluated} candidates, selector skipped ${st.h1Skipped} (${((100 * st.h1Skipped) / Math.max(1, st.h1Skipped + st.h1Evaluated)).toFixed(2)}%)`);
 log(`ORIENT over-bar ${st.before.orientOver} -> ${st.after.orientOver}  (${(st.before.orientOver / Math.max(1, st.after.orientOver)).toFixed(3)}x)   by AREA ${st.before.orientAreaOverPct.toFixed(3)}% -> ${st.after.orientAreaOverPct.toFixed(3)}%  (${(st.before.orientAreaOverPct / Math.max(1e-30, st.after.orientAreaOverPct)).toFixed(3)}x)`);
 log(`POSITION (plane) over-bar ${st.before.posOver} -> ${st.after.posOver}`);

@@ -73,6 +73,27 @@ export interface LandFlipOpts {
   nMax?: number;
   zJumps?: number[];
   thJumps?: number[];
+  /**
+   * SWEEP COST LEVEL — pure work-elimination, NEVER a change to which flips are accepted.
+   *   0 (default) the committed sweep: full `score` recompute + full edge body, every round.
+   *   1  hoist the `score` recompute out of the round loop.  `score[t]` is a pure function of the index
+   *      triple (positions never move in a connectivity-only pass) and the accept path already maintains
+   *      it exactly (`score[t1] = g1` alongside `ta[t1] = n1[0]`), so recomputing it per round reproduces
+   *      the bits it already holds. Costs nTri x orientOf = nTri x 5 rA evals PER ROUND for nothing.
+   *   2  level 1 + the DIRTY-EDGE FRONTIER. An edge's verdict reads only: its two triangles' index
+   *      triples, their `score`/`posC`, `live`, membership of the opposite key in `em`/`created`, and
+   *      the per-round `dirty`. If none of those moved, last round's rejection is this round's rejection,
+   *      so the body can be skipped. The frontier is the union of (a) every edge of every triangle
+   *      touching a vertex of a flipped quad — which also covers the `em.has(kcd)` dependency, since an
+   *      edge dup-blocked by (c,d) has its triangles in the stars of c and d — and (b) the edges rejected
+   *      last round for the two PER-ROUND reasons, `dirty` and a `created` dup, which do not persist.
+   *
+   * ORDER IS PRESERVED EXACTLY. The frontier is applied as a `continue` INSIDE the existing `em`
+   * iteration, never by iterating the frontier set. The pass is greedy and order-dependent — `dirty`
+   * blocks the second of two adjacent candidates, so whoever is visited first wins — and iterating a Set
+   * would re-order the visits and hand the win to a different edge. Same order, same winners, same mesh.
+   */
+  fastLevel?: 0 | 1 | 2;
   log?: (s: string) => void;
 }
 
@@ -81,6 +102,13 @@ export interface LandFlipStats {
   rej: { dirty: number; sameOpp: number; dup: number; fold: number; noImprove: number; det: number; pos: number; frozen: number };
   /** C2 'h1' bookkeeping: candidates the selector skipped, and how many honest evaluations were spent. */
   h1Skipped: number; h1Evaluated: number;
+  /**
+   * THE WORK COUNTERS — the non-vacuity evidence for `fastLevel`. `candBody` is the number of times the
+   * expensive body was entered (the only place rA is spent); `scoreEvals` is the `score`-recompute cost.
+   * A sound A/B moves BOTH of these DOWN while `flips` and the output md5 stay EQUAL. If `flips` is equal
+   * and `candBody` is equal too, the frontier did nothing and the arm is vacuous — say so, do not ship it.
+   */
+  candBody: number; scoreEvals: number; frontierSkipped: number;
   before: LandCensus; after: LandCensus;
 }
 export interface LandCensus {
@@ -109,6 +137,7 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   const DETMODE = o.detMode ?? 'rel';
   const GATE = o.gateMm ?? 0.05;
   const NMAX = o.nMax ?? 512;
+  const FAST = o.fastLevel ?? 0;
   const zJumps = o.zJumps ?? []; const thJumps = o.thJumps ?? [];
   const log = o.log ?? ((): void => { /* silent */ });
   const TOLMM = BAR / 1000;
@@ -311,26 +340,59 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   const EPS = 1e-9;
   const rej = { dirty: 0, sameOpp: 0, dup: 0, fold: 0, noImprove: 0, det: 0, pos: 0, frozen: 0 };
   let totalFlips = 0; let roundsRun = 0; let h1Skipped = 0; let h1Evaluated = 0;
+  let candBody = 0; let scoreEvals = 0; let frontierSkipped = 0;
   const score = new Float64Array(nTri);
+  // ── LEVEL >= 1: seed `score` ONCE. The accept path maintains it from here (see `fastLevel`).
+  if (FAST >= 1) for (let t = 0; t < nTri; t += 1) { score[t] = orientOf(ta[t], tb[t], tc[t]); scoreEvals += 1; }
+  // ── LEVEL 2 frontier state. `touchedV` marks the quad vertices of this round's flips; `retry` carries
+  // the edges rejected for a PER-ROUND reason. `frontier === null` means "examine everything".
+  const touchedV = new Uint8Array(NV);
+  let retry = new Set<number>();
+  let frontier: Set<number> | null = null;
   for (let round = 0; round < ROUNDS; round += 1) {
     roundsRun = round + 1;
     const em = round === 0 ? emBefore : buildEdges();
-    for (let t = 0; t < nTri; t += 1) score[t] = orientOf(ta[t], tb[t], tc[t]);
+    if (FAST === 0) for (let t = 0; t < nTri; t += 1) { score[t] = orientOf(ta[t], tb[t], tc[t]); scoreEvals += 1; }
+    // Build this round's frontier from LAST round's touched vertices, over the CURRENT triples so the
+    // vertex stars are post-flip. O(nTri) index work, zero rA — cheap against a body that spends 10.
+    if (FAST >= 2 && round > 0) {
+      const f = new Set<number>(retry);
+      for (let t = 0; t < nTri; t += 1) {
+        const a = ta[t]; const b = tb[t]; const c3 = tc[t];
+        if (touchedV[a] === 0 && touchedV[b] === 0 && touchedV[c3] === 0) continue;
+        const v3 = [a, b, c3];
+        for (let e = 0; e < 3; e += 1) {
+          const p = v3[e]; const q = v3[(e + 1) % 3];
+          f.add(p < q ? p * EKEY + q : q * EKEY + p);
+        }
+      }
+      frontier = f;
+    }
+    touchedV.fill(0);
+    retry = new Set<number>();
     const dirty = new Uint8Array(nTri);
     const created = new Set<number>();
     let flips = 0;
     for (const [k, l] of em) {
       if (l.length !== 2) continue;
+      // THE FRONTIER SKIP — placed here, inside the natural `em` walk, so the VISIT ORDER of everything
+      // that is not skipped is bit-for-bit the order the full sweep uses.
+      if (frontier !== null && !frontier.has(k)) { frontierSkipped += 1; continue; }
       const t1 = l[0]; const t2 = l[1];
       if (live[t1] === 0 || live[t2] === 0) { rej.frozen += 1; continue; }
-      if (dirty[t1] === 1 || dirty[t2] === 1) { rej.dirty += 1; continue; }
+      if (dirty[t1] === 1 || dirty[t2] === 1) { rej.dirty += 1; retry.add(k); continue; }
+      candBody += 1;
       const u = Math.floor(k / EKEY); const v = k - u * EKEY;
       const A1 = [ta[t1], tb[t1], tc[t1]]; const A2 = [ta[t2], tb[t2], tc[t2]];
       const c = A1[0] !== u && A1[0] !== v ? A1[0] : A1[1] !== u && A1[1] !== v ? A1[1] : A1[2];
       const d = A2[0] !== u && A2[0] !== v ? A2[0] : A2[1] !== u && A2[1] !== v ? A2[1] : A2[2];
       if (c === d) { rej.sameOpp += 1; continue; }
       const kcd = c < d ? c * EKEY + d : d * EKEY + c;
-      if (em.has(kcd) || created.has(kcd)) { rej.dup += 1; continue; }
+      // Split the two dup sources: `em` is the persistent edge set (a later flip that removes (c,d) puts
+      // c and d in `touchedV`, so the star rule re-offers this edge), `created` is PER-ROUND and gone at
+      // the next round boundary — that one has to be carried in `retry` or the frontier would lose it.
+      const dupEm = em.has(kcd);
+      if (dupEm || created.has(kcd)) { rej.dup += 1; if (!dupEm) retry.add(k); continue; }
       const t0th = VT[u];
       const pux = 0; const puy = VZ[u];
       const pvx = dThRaw(t0th, VT[v]); const pvy = VZ[v];
@@ -373,11 +435,14 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
       ta[t2] = n2[0]; tb[t2] = n2[1]; tc[t2] = n2[2];
       score[t1] = g1; score[t2] = g2;
       dirty[t1] = 1; dirty[t2] = 1;
+      // The quad's FOUR vertices, not just the two triangles: an edge dup-blocked by (c,d), or made
+      // legal by the removal of (u,v), lives in the star of one of these and nowhere else.
+      touchedV[u] = 1; touchedV[v] = 1; touchedV[c] = 1; touchedV[d] = 1;
       created.add(kcd);
       flips += 1;
     }
     totalFlips += flips;
-    log(`  landFlip round ${round + 1}: ${flips} flips (cum ${totalFlips})  rej fold ${rej.fold} dup ${rej.dup} noImp ${rej.noImprove} DET ${rej.det} POS ${rej.pos}`);
+    log(`  landFlip round ${round + 1}: ${flips} flips (cum ${totalFlips})  rej fold ${rej.fold} dup ${rej.dup} noImp ${rej.noImprove} DET ${rej.det} POS ${rej.pos}${FAST >= 2 ? `  [frontier ${frontier === null ? 'ALL' : frontier.size} of ${em.size}, body ${candBody}]` : ''}`);
     if (flips === 0) break;
   }
 
@@ -389,6 +454,6 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   }
   return {
     nTri, nVert: NV, frozen, flips: totalFlips, rounds: roundsRun, secs: (Date.now() - t0) / 1000,
-    rej, h1Skipped, h1Evaluated, before, after,
+    rej, h1Skipped, h1Evaluated, candBody, scoreEvals, frontierSkipped, before, after,
   };
 }
