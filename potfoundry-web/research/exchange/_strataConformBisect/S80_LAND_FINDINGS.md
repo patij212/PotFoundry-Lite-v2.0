@@ -491,9 +491,9 @@ Arm `PF_S81_RULER=h1 PF_S81_SEL_UM=10` on the same Gothic mesh, launched at 12:4
 
 ```
 plane arm (S81 GATE):   round 1 = 76.8 s of 890 s total       (round 1 is 8.6% of the arm)
-h1 arm:                 round 1 had burned >= 1,830 s of CPU (2,002 s total - ~170 s census) and HAD
+h1 arm:                 round 1 had burned >= 2,236 s of CPU (2,406 s total - ~170 s census) and HAD
                         NOT COMPLETED at write time  =>  >= 23.8x the plane arm's round 1, still running
-                        =>  extrapolated full arm >= 21,000 s ~ 5.9 hours = >= 23x the plane arm
+                        =>  extrapolated full arm >= 26,000 s ~ 7.2 hours = >= 29x the plane arm
 ```
 
 **K-L3a was "> 4× ⇒ NO-GO as built". Measured ≥ 20×, on round 1 alone, without the selector saving
@@ -571,3 +571,9 @@ silhouettes.
   toolset this session, and I am saying so rather than claiming a check I did not perform.
 * **Not measured on any style other than GothicArches.** This lever is for well-conditioned,
   hub-free meshes (§3) and I make no claim beyond that class.
+
+> **The H-L3 arm was left RUNNING at hand-off** (`PF_S81_TAG=H1C2`). If it ever completes it writes
+> `research/exchange/_strataConformBisect/S81_LANDGATE_H1C2.report.txt` and
+> `s80land/H1C2.landgate.json`, which would supply K-L3b (yield) and K-L3-VAC (does the honest guard
+> refuse anything the plane guard accepted). Neither is claimed here. The COST verdict does not depend
+> on it: round 1 alone is already >= 29x, and the pre-registered budget was 4x.
