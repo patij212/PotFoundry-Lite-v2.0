@@ -1,0 +1,49 @@
+===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====
+arm target   tag S40AR90   style GothicArches   stem gothicarches_ring_DS-HT_S40AR90
+tol 10 um   nMax 512   N 50000   topK 300   dims H120 Rb40 Rt50
+driver self-report: headline 10.83 um   adaptive MAX 10.829 um   over-0.01mm 1/1139357   (parsed)
+closure: detectZJumps 0   detectThetaJumps 0
+mesh 1139357 facets loaded   [1.8s]
+whole-mesh plane ruler + tangExc pass (this is the H-R3 control) ...
+   200000/1139357   [30.8s]
+   400000/1139357   [56.8s]
+   600000/1139357   [98.2s]
+   800000/1139357   [137.8s]
+   1000000/1139357   [164.4s]
+
+   ══ H-R3 NON-VACUITY CONTROL — my plane pass vs the driver's own self-report ══
+      adaptive MAX   mine 10.829 um   driver 10.829 um   delta 0.004%
+      over-0.01mm    mine 1                driver 1
+      *** H-R3 PASSES — the two rulers are reading the same mesh with the same rA ***
+
+selection: 577 facets (plane top-300 U tangExc top-300, overlap 23)   [182.4s]
+RESUME: 0/577 already certified
+  certified 50/577   1.21 facet/s   [223.8s]
+  certified 100/577   1.71 facet/s   [240.9s]
+  certified 150/577   2.50 facet/s   [242.4s]
+  certified 200/577   3.17 facet/s   [245.4s]
+  certified 250/577   3.78 facet/s   [248.5s]
+  certified 300/577   4.37 facet/s   [251.1s]
+  certified 350/577   4.15 facet/s   [266.8s]
+  certified 400/577   4.13 facet/s   [279.1s]
+  certified 450/577   3.64 facet/s   [305.9s]
+  certified 500/577   3.57 facet/s   [322.3s]
+  certified 550/577   3.02 facet/s   [364.7s]
+
+══ TARGET ARM — S40AR90 — honest position on the two selectors ══
+   ALL SELECTED (union)           n    577   PROVEN-FAIL   305 (52.860%)   PROVEN-PASS    271   UNKNOWN     1   area-fail 57.15002%   witnessedComplete-false 306
+   plane top-300 (driver's own worst) n    300   PROVEN-FAIL    53 (17.667%)   PROVEN-PASS    247   UNKNOWN     0   area-fail 3.96399%   witnessedComplete-false 53
+   tangExc top-300                n    300   PROVEN-FAIL   273 (91.000%)   PROVEN-PASS     26   UNKNOWN     1   area-fail 98.90877%   witnessedComplete-false 274
+
+   honest witnessed over the union   p50 12.539  p99 378.032  MAX 460.513 um   <= a LOWER BOUND on the mesh's honest max
+   plane ruler over the union        p50 3.498  p99 8.476  MAX 10.829 um
+   on the plane selector only:  honest MAX 57.370   plane MAX 10.829 um
+   on the tangExc selector only: honest MAX 460.513 um
+
+   *** THE HEADLINE FACET ITSELF (index 228252, the plane ruler's argmax): plane 10.829 um -> honest witnessed 13.079 um (bound 23.068, verdict PROVEN-FAIL) ***
+   *** DRIVER HEADLINE 10.83 um  vs  HONEST MAX-OVER-UNION 460.513 um   ratio 0.024x ***
+   head-to-head on the plane selector: plane says 1/300 over bar, honest proves 53
+   head-to-head on the tangExc selector: plane says 1/300 over bar, honest proves 273
+
+row appended to research/exchange/_strataConformBisect/S85_POSITION_REBASELINE.md
+done  [380.0s]
