@@ -38,11 +38,20 @@
 //      defect — which is a genuinely useful result, and a different claim from the one in SECTION 14.
 //      KILL: top-K witnessed p50 / random witnessed p50 < 2 => `tangExc` is not a selective detector.
 //
-// NOTE ON `tol`. `certifyTriangle`'s FacetVerdict header warns that `witnessed` BELOW tol may
-// over-state by the radial inflation factor (points under tol are never tightened). So tol is set to
-// 0.001 mm = 1 um, well under every number of interest, and `exhaustive: true` so `witnessed`
-// converges to the facet MAXIMUM instead of stopping at the first exceedance. `witnessedComplete` is
-// reported per group; a group where it is mostly false has LOWER bounds only, and is labelled so.
+// NOTE ON `tol`, AND A COST CORRECTION MADE BEFORE ANY NUMBER WAS TAKEN. The first configuration was
+// `tol 1 um, nMax 512, exhaustive` — chasing a MAGNITUDE. It did not finish 250 facets in 10 minutes,
+// because `exhaustive` spends the full level ceiling on every failing facet (512^2/2 = 131k lattice
+// points, the ones over threshold each costing a descent + Newton). Killed and re-scoped, because the
+// question does not need a magnitude:
+//
+//   THE VERDICT IS TWO-SIDED AND CHEAP AT `tol = the product bar`. `certifyTriangle` short-circuits
+//   the moment `witnessed > tol` — and that witness is a REAL POINT at a REAL distance, so it is a
+//   PROOF OF FAILURE, not an estimate. And `certified == true` means `bound <= tol` over the WHOLE
+//   triangle, gaps included — a PROOF OF PASS. Every facet lands in `proven-fail`, `proven-pass`, or
+//   `unknown` (level/sample ceiling), and the third bucket is REPORTED, never folded into either.
+//
+// The magnitude run is kept as a small separate group (`PF_AUDTP_MAGK` facets, exhaustive at
+// tol = 0.002 mm so everything above 2 um is tightened and exact) so that one number is honest.
 //
 // Usage:  bash research/tools/run-aud-true-pos.sh
 import { STYLE_REGISTRY } from '../../src/styles/registry';
@@ -59,8 +68,11 @@ const log = console.log;
 const envF = (n: string, d: number): number => (process.env[n] === undefined ? d : Number(process.env[n]));
 const NS = Math.round(envF('PF_AUDTP_N', 250000));
 const TOPK = Math.round(envF('PF_AUDTP_TOPK', 600));
-const TOL = envF('PF_AUDTP_TOL_MM', 0.001);
+const TOL = envF('PF_AUDTP_TOL_MM', 0.010);          // THE PRODUCT BAR — the verdict tol
 const NMAX = Math.round(envF('PF_AUDTP_NMAX', 512));
+const MAGK = Math.round(envF('PF_AUDTP_MAGK', 40));  // exhaustive magnitude subset
+const MAGTOL = envF('PF_AUDTP_MAGTOL_MM', 0.002);
+const MAGNMAX = Math.round(envF('PF_AUDTP_MAGNMAX', 192));
 const OUT = 'research/exchange/_strataConformBisect/AUD_TRUEPOS.ndjson';
 const JOBS: Array<[string, string]> = (process.env.PF_AUDTP_JOBS
   ?? 'Voronoi=voronoi_ring_D--,LowPolyFacet=lowpolyfacet_ring_D--')
@@ -157,47 +169,72 @@ for (const [style, stem] of JOBS) {
     for (let q = 0; q < Math.min(TOPK, n); q += 1) ctrl.push((q * s) % n);
   }
 
+  // ── THE VERDICT PASS: three buckets, and the third one is printed rather than folded away.
   const runGroup = (idxs: number[], label: string): Record<string, number> => {
     const wit: number[] = []; const bnd: number[] = []; const pos: number[] = []; const tge: number[] = [];
-    let nComplete = 0; let nCert = 0;
+    let nFailProven = 0; let nPassProven = 0; let nUnknown = 0; let posOverBar = 0;
     const tg0 = Date.now();
     for (const k of idxs) {
       const v = certifyTriangle(rA,
         vx[3 * k], vy[3 * k], vz[3 * k],
         vx[3 * k + 1], vy[3 * k + 1], vz[3 * k + 1],
         vx[3 * k + 2], vy[3 * k + 2], vz[3 * k + 2],
-        { H, tol: TOL, nMax: NMAX, exhaustive: true, zJumps: zJ, thJumps: thJ });
+        { H, tol: TOL, nMax: NMAX, zJumps: zJ, thJumps: thJ });
       wit.push(v.witnessed * 1000); bnd.push(v.bound * 1000);
-      if (v.witnessedComplete) nComplete += 1;
-      if (v.certified) nCert += 1;
-      pos.push(sagAdaptiveRaw(rA, SAGM, k, 0.03, 12, 64, ARG) * 1000);
+      if (v.witnessed > TOL) nFailProven += 1;            // a REAL point at a REAL distance over the bar
+      else if (v.certified) nPassProven += 1;             // bound <= tol over the WHOLE triangle
+      else nUnknown += 1;                                 // level/sample ceiling — neither proven
+      const pv = sagAdaptiveRaw(rA, SAGM, k, 0.03, 12, 64, ARG) * 1000;
+      pos.push(pv); if (pv > TOL * 1000) posOverBar += 1;
       tge.push(tg[k]);
     }
     const sw = S(wit); const sb = S(bnd); const sp = S(pos); const st = S(tge);
-    const o10 = wit.reduce((s, v) => s + (v > 10 ? 1 : 0), 0);
-    const po10 = pos.reduce((s, v) => s + (v > 10 ? 1 : 0), 0);
     log(`  ── ${label} (n=${idxs.length}, ${((Date.now() - tg0) / 1000).toFixed(1)}s) ─────────────────────────────`);
     log(`     tangExc                     p50 ${pq(st, 0.5).toFixed(1).padStart(9)}  p99 ${pq(st, 0.99).toFixed(1).padStart(9)}  max ${st[st.length - 1].toFixed(1).padStart(9)} um`);
-    log(`     H1 WITNESSED (lower bound)  p50 ${pq(sw, 0.5).toFixed(2).padStart(9)}  p99 ${pq(sw, 0.99).toFixed(2).padStart(9)}  max ${sw[sw.length - 1].toFixed(2).padStart(9)} um   over-10um ${o10} (${((100 * o10) / wit.length).toFixed(2)}%)`);
-    log(`     H1 BOUND (rigorous upper)   p50 ${pq(sb, 0.5).toFixed(2).padStart(9)}  p99 ${pq(sb, 0.99).toFixed(2).padStart(9)}  max ${sb[sb.length - 1].toFixed(2).padStart(9)} um`);
-    log(`     driver plane ruler posUm    p50 ${pq(sp, 0.5).toFixed(2).padStart(9)}  p99 ${pq(sp, 0.99).toFixed(2).padStart(9)}  max ${sp[sp.length - 1].toFixed(2).padStart(9)} um   over-10um ${po10} (${((100 * po10) / pos.length).toFixed(2)}%)`);
-    log(`     witnessedComplete ${nComplete}/${idxs.length}   certified(<=${TOL * 1000}um) ${nCert}/${idxs.length}`);
-    log(`     *** H1 witnessed / plane ruler  p50 ${(pq(sw, 0.5) / Math.max(1e-9, pq(sp, 0.5))).toFixed(2)}x   max/max ${(sw[sw.length - 1] / Math.max(1e-9, sp[sp.length - 1])).toFixed(2)}x ***`);
-    log(`     *** tangExc / H1 witnessed      p50 ${(pq(st, 0.5) / Math.max(1e-9, pq(sw, 0.5))).toFixed(1)}x ***`);
+    log(`     *** H1 VERDICT at the ${(TOL * 1000).toFixed(0)} um PRODUCT BAR:  PROVEN-FAIL ${nFailProven}   PROVEN-PASS ${nPassProven}   UNKNOWN ${nUnknown}  (of ${idxs.length}) ***`);
+    log(`     H1 witnessed (>= true max at short-circuit is a LOWER bound)  p50 ${pq(sw, 0.5).toFixed(2)}  p99 ${pq(sw, 0.99).toFixed(2)}  max ${sw[sw.length - 1].toFixed(2)} um`);
+    log(`     H1 bound                     p50 ${pq(sb, 0.5).toFixed(2)}  p99 ${pq(sb, 0.99).toFixed(2)}  max ${sb[sb.length - 1].toFixed(2)} um`);
+    log(`     driver plane ruler posUm     p50 ${pq(sp, 0.5).toFixed(2)}  p99 ${pq(sp, 0.99).toFixed(2)}  max ${sp[sp.length - 1].toFixed(2)} um   over-bar ${posOverBar}/${idxs.length}`);
+    log(`     *** THE HEAD-TO-HEAD: H1 proves ${nFailProven} FAILURES where the plane ruler reports ${posOverBar} ***`);
     return {
-      witP50: pq(sw, 0.5), witP99: pq(sw, 0.99), witMax: sw[sw.length - 1], witOver10: o10,
+      failProven: nFailProven, passProven: nPassProven, unknown: nUnknown,
+      witP50: pq(sw, 0.5), witP99: pq(sw, 0.99), witMax: sw[sw.length - 1],
       bndP50: pq(sb, 0.5), bndMax: sb[sb.length - 1],
-      posP50: pq(sp, 0.5), posP99: pq(sp, 0.99), posMax: sp[sp.length - 1], posOver10: po10,
-      tgP50: pq(st, 0.5), tgMax: st[st.length - 1], nComplete, nCert, n: idxs.length,
+      posP50: pq(sp, 0.5), posP99: pq(sp, 0.99), posMax: sp[sp.length - 1], posOverBar,
+      tgP50: pq(st, 0.5), tgMax: st[st.length - 1], n: idxs.length,
     };
   };
 
   const gTop = runGroup(top, `TOP-${top.length} BY tangExc`);
   const gCtl = runGroup(ctrl, `RANDOM CONTROL, same size`);
   log('');
-  log(`  H-F selectivity: top-K witnessed p50 / control witnessed p50 = ${(gTop.witP50 / Math.max(1e-9, gCtl.witP50)).toFixed(2)}x   (kill < 2x)`);
-  log(`  H-E: top-K witnessed p50 ${gTop.witP50.toFixed(2)} um, over-10um ${gTop.witOver10}/${gTop.n}; plane ruler says ${gTop.posOver10}/${gTop.n}`);
-  appendFileSync(OUT, `${JSON.stringify({ style, stem, nTri, sampled: n, tol: TOL, nMax: NMAX, zJumps: zJ.length, thJumps: thJ.length, top: gTop, ctrl: gCtl, secs: (Date.now() - t0) / 1000 })}\n`);
+  log(`  H-F selectivity: top-K proven-fail rate / control proven-fail rate = ${((gTop.failProven / gTop.n) / Math.max(1e-9, gCtl.failProven / gCtl.n)).toFixed(2)}x   (kill < 2x)`);
+
+  // ── THE MAGNITUDE PASS: small, exhaustive, tol below everything of interest so it is exact.
+  const mag = top.slice(0, Math.min(MAGK, top.length));
+  const mw: number[] = []; const mb: number[] = []; const mt: number[] = []; let mComplete = 0;
+  const tm0 = Date.now();
+  for (const k of mag) {
+    const v = certifyTriangle(rA,
+      vx[3 * k], vy[3 * k], vz[3 * k],
+      vx[3 * k + 1], vy[3 * k + 1], vz[3 * k + 1],
+      vx[3 * k + 2], vy[3 * k + 2], vz[3 * k + 2],
+      { H, tol: MAGTOL, nMax: MAGNMAX, exhaustive: true, zJumps: zJ, thJumps: thJ });
+    mw.push(v.witnessed * 1000); mb.push(v.bound * 1000); mt.push(tg[k]);
+    if (v.witnessedComplete) mComplete += 1;
+  }
+  const smw = S(mw); const smb = S(mb); const smt = S(mt);
+  log(`  ── MAGNITUDE, exhaustive, tol ${MAGTOL * 1000} um, nMax ${MAGNMAX} (n=${mag.length}, ${((Date.now() - tm0) / 1000).toFixed(1)}s) ──`);
+  log(`     tangExc       p50 ${pq(smt, 0.5).toFixed(1)}  max ${smt[smt.length - 1].toFixed(1)} um`);
+  log(`     H1 witnessed  p50 ${pq(smw, 0.5).toFixed(2)}  p90 ${pq(smw, 0.9).toFixed(2)}  max ${smw[smw.length - 1].toFixed(2)} um   (witnessedComplete ${mComplete}/${mag.length})`);
+  log(`     H1 bound      p50 ${pq(smb, 0.5).toFixed(2)}  max ${smb[smb.length - 1].toFixed(2)} um`);
+  log(`     *** tangExc / H1 witnessed  p50 ${(pq(smt, 0.5) / Math.max(1e-9, pq(smw, 0.5))).toFixed(1)}x ***`);
+  appendFileSync(OUT, `${JSON.stringify({
+    style, stem, nTri, sampled: n, tol: TOL, nMax: NMAX, zJumps: zJ.length, thJumps: thJ.length,
+    top: gTop, ctrl: gCtl,
+    magnitude: { n: mag.length, tol: MAGTOL, nMax: MAGNMAX, witP50: pq(smw, 0.5), witMax: smw[smw.length - 1], bndP50: pq(smb, 0.5), bndMax: smb[smb.length - 1], tgP50: pq(smt, 0.5), complete: mComplete },
+    secs: (Date.now() - t0) / 1000,
+  })}\n`);
   log(`  [checkpoint appended to ${OUT}]`);
 }
 log('');

@@ -187,3 +187,158 @@ the table compares them directly.
 `tangExc` is a usable **DETECTOR** — it selects facets whose true position error is ~35x what the
 shipped ruler reports (selectivity under measurement, H-F). It is **not a MAGNITUDE**, and the class
 it points at is POSITION at the product's own bar, on a ruler that cannot see it.
+
+---
+
+## FINDING 5 — *** THE DRIVER'S PLANE RULER IS BROKEN ON VORONOI BY 46x. `certifyTriangle` PROVES 396 OF 400 FAILURES WHERE IT REPORTS ZERO. *** (and this CORRECTS my own 109x)
+
+Command: `PF_AUDTP_JOBS='Voronoi=voronoi_ring_D--' PF_AUDTP_TOPK=400 PF_AUDTP_MAGK=30 bash research/tools/run-aud-true-pos.sh`
+Log: `research/exchange/_strataConformBisect/AUD_TRUEPOS_VOR.log`. ndjson: `AUD_TRUEPOS.ndjson`.
+
+Instrument: `certifyTriangle` at `tol = 0.010 mm` = **the product bar**. It is two-sided by
+construction — `witnessed > tol` is a REAL point at a distance the tightening pass has taken to
+convergence (the header: *"values at or above tol are tightened and exact"*), and `certified` means
+`bound <= tol` over the WHOLE triangle, gaps included. Three buckets, the third one printed:
+
+```
+TOP-400 BY tangExc                                    RANDOM CONTROL, same size, golden-ratio stride
+  PROVEN-FAIL   396      PROVEN-PASS   4   UNKNOWN 0    PROVEN-FAIL   30    PROVEN-PASS 370  UNKNOWN 0
+  H1 witnessed  p50  26.56  p99 191.89  max 230.76 um   H1 witnessed  p50   2.47  p99 118.91  max 152.05
+  H1 bound      p50  35.99  p99 201.80  max 240.75 um   H1 bound      p50   8.55  p99 128.71  max 161.85
+  plane ruler   p50   3.24  p99   4.98  max   4.99 um   plane ruler   p50   1.81  p99   4.93  max   4.98
+  plane ruler over-bar 0/400                            plane ruler over-bar 0/400
+```
+
+**THE PLANE RULER'S MAXIMUM OVER THE WHOLE SAMPLE IS 4.99 um. H1 PROVES A FACET AT 230.76 um — 46x.**
+And it is not confined to the tail: **30 of 400 RANDOM facets (7.5 %) are PROVEN over the 10 um product
+bar**, which extrapolates to ~60,000 facets of the 806,765-facet mesh, every one of them reported clean.
+
+`detectZJumps 0, detectThetaJumps 0`, so no closure exclusion is carrying this.
+
+### 5a. THE CORRECTION TO MY OWN FINDING 4b — I was wrong by 4.2x, in the direction that flattered the mesh.
+
+FINDING 4b reported `truePerp / tangExc p50 = 0.0092` (a **109x** overstatement) from `distPerp`
+evaluated **at the argmax of the lattice `distRadial`**. That argmax is not the argmax of the
+perpendicular distance, so the number was a weak lower bound on the facet's true error. The exhaustive
+`certifyTriangle` pass on the top-30 (tol 2 um, nMax 192) gives:
+
+```
+tangExc p50 2171.4 um    H1 witnessed p50 83.28  p90 122.27  max 212.02 um   (witnessedComplete 0/30)
+                         H1 bound     p50 88.64                max 217.08 um
+*** tangExc / H1 witnessed  p50 26.1x ***
+```
+
+**The honest overstatement factor is ~26x, not 109x.** `witnessedComplete 0/30` means even 83.28 um is
+a LOWER bound (the level ceiling bound the search), so the true factor is **at most 26x**. My 109x is
+withdrawn; the number to quote is 26x. The qualitative conclusion is unchanged and in fact
+strengthened: `tangExc` is still not a displacement, and the facets are far worse in POSITION than the
+shipped ruler says.
+
+### 5b. H-F — REFUTED, and this is the one thing `tangExc` genuinely earns.
+
+Pre-registered kill: *"top-K proven-fail rate / control proven-fail rate < 2x => `tangExc` is not a
+selective detector."* Measured **13.20x** (99.0 % vs 7.5 %). **`tangExc` IS a strongly selective
+DETECTOR of a position defect the shipped ruler cannot see.** That is a real and useful result — and
+it is a different claim from SECTION 14's, which was that orientation is a defect class in its own
+right with position clean. Position is not clean. It is unmeasured.
+
+### 5c. WHAT THIS DOES TO THE CAMPAIGN'S POSITION NUMBERS
+
+Every "posUm over-bar = 0" in SECTION 14, and every arm headline computed with `sagAdaptiveRaw`, is
+now suspect on any style with this geometry. The two-sidedness the operator flagged (2.13x OVER at the
+S39CTL locus, up to 851x UNDER elsewhere) is confirmed at scale: **46x UNDER on Voronoi**. No constant
+correction exists.
+
+### 5d. WHAT I HAVE NOT DONE — stated, not hidden.
+
+`certifyTriangle`'s `tighten` composes radial -> descent -> Newton -> closure, each an UPPER bound on
+`d(p)`; the header asserts values at or above `tol` are "tightened and exact", and V8/V9 validate that
+machinery to 1e-7 mm against closed forms — but I have not confirmed the Voronoi witnesses against an
+instrument OUTSIDE `_facetTruthLib`. Until I do, "PROVEN-FAIL" rests on that header's claim.
+`audWitnessConfirm` (independent global brute-force oracle on the witness points) is the next run.
+
+---
+
+## FINDING 6 — THE HARD GATE: ALL TWELVE BARS SWEPT, ELEVEN WERE ONE-SIDED, AND K=8 IS NOW LOCKED.
+
+File: `research/bridge/_strataFacetTruthValidate.test.ts` (mine). Runner: `research/tools/run-aud-gate.sh`.
+Logs: `AUD_GATE_BASE.log` (pre-change), `AUD_GATE_HARD2.log` (post), `AUD_GATE_K8.log` (the mutation).
+
+### 6a. THE PROOF. The gate FAILS on purpose now.
+
+```
+                          BASELINE (PF_FT_DESCENT_K unset)     MUTATION (PF_FT_DESCENT_K=8)
+before this change        12 / 12 PASS   212.6 s               *** 12 / 12 PASS ***
+after  this change        24 / 24 PASS   211.0 s               22 pass, V10 FAIL, V11 FAIL
+```
+
+No wall-clock cost: 212.6 s to 211.0 s (V6's new negative control runs on a 200x60 mesh; V11 is 2.6 s).
+
+### 6b. AND THE CLAUSE I WAS ASKED TO ADD WOULD NOT HAVE CAUGHT IT. (Read this one.)
+
+The brief was "add a NON-VACUITY clause to V10 -- the ratio must EXCEED a floor on the ridged fixture".
+I added it (floor 5.0, baseline 19.871x). Then I fixed the FIXTURE, and the ratio clause went quiet:
+
+```
+                      worst ratio   FLANK median   separated   FLAT |ratio-1|   worst ortho
+baseline (50 probes)     20.021        19.960        11/11        1.56e-13        2.70e-7
+K=8      (50 probes)     20.021        19.960        10/11        1.56e-13     *** 6.83e-2 ***
+```
+
+Under a sound fixture the K=8 defect does not move the ratio at all. The two clauses that catch it are:
+ 1. `maxOrtho` -- the value already being COMPUTED AND PRINTED AND NEVER ASSERTED. 6.83e-2 against a
+    1e-5 bar. The solver's own report that its "perpendicular" foot is not perpendicular was sitting in
+    the log, green, all night.
+ 2. V11, the independent oracle: |distPerp - oracle| / oracle = 1.887e+1 (1,887 %) at probe 20.
+
+The famous 19.871x -> 1.000x collapse was an artefact of the ORIGINAL FIXTURE, not the general shape of
+the defect (see 6c). A ratio floor alone is a bar against one regression, already seen.
+
+### 6c. A SECOND DEFECT, FOUND BECAUSE MY OWN FIRST HARDENING ATTEMPT FAILED AT BASELINE.
+
+The first version asserted a MEDIAN ratio over V10's 40 probes. It failed with the gate healthy:
+
+```
+V10 40 probes: worst 19.871x, MEDIAN 1.000x, separated(>1.05x) 1/40
+```
+
+The ridge is 4.444e-4 rad in half-width; the probes step 8e-4 rad apart. EXACTLY ONE of the forty
+probes touched the feature at all (i=20, the crest apex); the other 39 sat on plain cylinder, where
+radial IS perpendicular and 1.000x is the correct answer. V10's entire non-vacuity signal, in every run
+this campaign ever published, was one probe. Fixed by fixing the fixture: 11 probes strictly inside the
+half-width, and the two populations scored in OPPOSITE directions --
+  * FLANK (11): radial/perp = sqrt(1+(r_theta/r)^2) ~ 20. A collapse is a 20x error and cannot hide.
+  * FLAT (39): the ratio must be 1 to within 1e-6. This catches the OPPOSITE defect, a "perpendicular"
+    ruler that under-reads on a cylinder, which no bar in the file could see before.
+
+### 6d. THE SWEEP -- eleven of the twelve bars had an unbounded side.
+
+| bar | the hole | the fix, and its measured baseline |
+|---|---|---|
+| V1  | `bound >= witnessed` only; `bound = Infinity` passed | `bound == witnessed + covRad/n` exactly: 4.598605 = 2.249981 + 2.348624 |
+| V2  | `bound <= prev + 1e-12` allowed a bound that NEVER tightens, against the test's own title | STRICT decrease: 38.3378 / 28.8178 / 19.0128 um; ceiling on `tight.witnessed` |
+| V3  | all three assertions UPPER bounds -- H1 returning 0 passed, and relief/0 = Infinity > 20 | floor 0.6x the half-width, ceiling 2.5x: 197.167 / 12.041 um |
+| V4  | `res.max > amp*0.9` only -- H2 returning 1e9 passed | ceiling amp*1.1: 502.615 vs 500 um |
+| V5  | `oldMax < 0.02` only -- an old ruler returning 0 made V5's blind-spot claim unfalsifiable | CLOSED FORM: it must READ the background chord sagitta R0(1-cos(dth/2)). 5.552 measured vs 5.552 |
+| V6  | `res.max < amp*0.1` -- UPPER BOUND ONLY. A DEAD H2 PASSED THE ONE TEST WHOSE JOB IS ANTI-BIAS. | paired NEGATIVE CONTROL at V6's own options: 402.855 vs 0.617 = 653.1x |
+| V7  | `witnessed < jump*0.05` only; step count printed, never asserted | paired run with the closure REMOVED: 0.000 WITH vs 1059.537 WITHOUT; step count + z asserted |
+| V7b | `> off*0.9` only | ceiling: 402.230 vs 400 um |
+| V7c | `> halfUm*0.6` only | ceiling 2.5x: 12.041 / 39.767 / 142.668 |
+| V8  | sound; the solver's self-report was unasserted | `converged` and `iters >= 1` asserted |
+| V9  | `radial/perp > 1.0` -- a weak floor a collapse clears at 1.0000001 | CLOSED FORM sqrt(1+k^2): 1.019804 / 1.118034 / 1.414214, exact to 1e-4 |
+| V10 | THE HOLE | ortho asserted; fixture fixed; flank + flat scored oppositely |
+| V11 | (new) | independent brute-force oracle, agreement 1.253e-12 |
+
+### 6e. MUTATION PROOFS -- M1..M11, and they run inside the gate.
+
+Every hardened clause is a pure predicate, and M1..M11 feed each one the exact degenerate value the old
+one-sided bar accepted and assert it throws. M10 is fed the literal measured K=8 numbers
+(1.000, 6.83e-2, 1.000, 0, ...). A bar that cannot be made to fail on purpose is not a bar; these can,
+and the proof runs every time the gate does (~2 ms total).
+
+### 6f. WHAT I DID NOT DO
+
+I did not touch `_facetTruthLib.ts` (not mine). The K=8 knob remains default-OFF and REFUTED; nothing
+here changes library behaviour. I have NOT swept the other gate files (`_strataFacetTruth.test.ts`,
+`_strataCertD.test.ts`, `_judgeNegativeControl.test.ts`) for the same one-sidedness -- that sweep is
+outstanding and I expect it to find more, since the hit rate here was 11 of 12.

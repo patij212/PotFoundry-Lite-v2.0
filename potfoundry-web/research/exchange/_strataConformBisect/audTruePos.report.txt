@@ -1,0 +1,29 @@
+===== AUD-TRUE-POS — certifyTriangle at the facets tangExc condemns =====
+N 250000  topK 400  tol 0.01 mm  nMax 512
+
+═════════ Voronoi  (voronoi_ring_D--, 806765 facets) ═════════
+  closure: detectZJumps 0   detectThetaJumps 0
+  ── TOP-400 BY tangExc (n=400, 252.1s) ─────────────────────────────
+     tangExc                     p50    1517.7  p99    2238.7  max    2346.7 um
+     *** H1 VERDICT at the 10 um PRODUCT BAR:  PROVEN-FAIL 396   PROVEN-PASS 4   UNKNOWN 0  (of 400) ***
+     H1 witnessed (>= true max at short-circuit is a LOWER bound)  p50 26.56  p99 191.89  max 230.76 um
+     H1 bound                     p50 35.99  p99 201.80  max 240.75 um
+     driver plane ruler posUm     p50 3.24  p99 4.98  max 4.99 um   over-bar 0/400
+     *** THE HEAD-TO-HEAD: H1 proves 396 FAILURES where the plane ruler reports 0 ***
+  ── RANDOM CONTROL, same size (n=400, 72.6s) ─────────────────────────────
+     tangExc                     p50       7.9  p99    1228.3  max    1801.1 um
+     *** H1 VERDICT at the 10 um PRODUCT BAR:  PROVEN-FAIL 30   PROVEN-PASS 370   UNKNOWN 0  (of 400) ***
+     H1 witnessed (>= true max at short-circuit is a LOWER bound)  p50 2.47  p99 118.91  max 152.05 um
+     H1 bound                     p50 8.55  p99 128.71  max 161.85 um
+     driver plane ruler posUm     p50 1.81  p99 4.93  max 4.98 um   over-bar 0/400
+     *** THE HEAD-TO-HEAD: H1 proves 30 FAILURES where the plane ruler reports 0 ***
+
+  H-F selectivity: top-K proven-fail rate / control proven-fail rate = 13.20x   (kill < 2x)
+  ── MAGNITUDE, exhaustive, tol 2 um, nMax 192 (n=30, 91.5s) ──
+     tangExc       p50 2171.4  max 2346.7 um
+     H1 witnessed  p50 83.28  p90 122.27  max 212.02 um   (witnessedComplete 0/30)
+     H1 bound      p50 88.64  max 217.08 um
+     *** tangExc / H1 witnessed  p50 26.1x ***
+  [checkpoint appended to research/exchange/_strataConformBisect/AUD_TRUEPOS.ndjson]
+
+done (RAD sentinel 57)

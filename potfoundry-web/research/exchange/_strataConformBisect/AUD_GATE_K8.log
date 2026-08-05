@@ -1,0 +1,113 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.17 [39m[90mC:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web[39m
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth ruler validation[2m > [22m[2mV1: H1 reproduces the closed-form cylinder chord sagitta
+[22m[39mV1 exact 2.249981 um   witnessed 2.249981 um   bound 4.598605 um   covRad/n 2.348624 um   n=256
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth ruler validation[2m > [22m[2mV2: the certified bound is sound, and tightens with n while it still certifies
+[22m[39mV2 bounds at tol 0.05/0.03/0.02: 38.3378 / 28.8178 / 19.0128 um
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth ruler validation[2m > [22m[2mV3: H1 UNDER-REPORTS missing relief by the feature width/height ratio
+[22m[39mV3 wide ridge (half-width 180 um, relief 500 um): H1 197.167 um
+V3 thin ridge (half-width 8 um, relief 400 um): H1 12.041 um  <-- passes a 10 um bar
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth ruler validation[2m > [22m[2mV4: H2 finds an unrepresented ridge at its true height
+[22m[39mV4 H2 witnessed 502.615 um vs true ridge height 500 um (queries 20002624, capped true)
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth ruler validation[2m > [22m[2mV5: THE BLIND SPOT, deterministically — a crest placed BETWEEN the old rulers samples
+[22m[39mV5 crest half-width 10.1 um at half-pitch offset (sample pitch 25.2 um, n=56)
+V5 OLD ruler 5.552 um   H2 391.661 um   true relief 400 um   structPitch 3.14 um
+V5 background chord sagitta closed form 5.552 um   (the old ruler must READ this, and miss only the crest)
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth ruler validation[2m > [22m[2mV6: on a mesh that DOES resolve the ridge, both directions read small
+[22m[39mV6 resolved-ridge mesh: H2 0.617 um (must be far below the 400 um relief)   queries 8002528
+V6 NEGATIVE CONTROL, same options, crest NOT resolved: H2 402.855 um   queries 588216   ratio 653.1x
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth closure at discontinuities[2m > [22m[2mV7: a TREAD WALL facet is correct geometry and must not read as an error
+[22m[39mV7 tread wall across a 2000 um step: H1 witnessed 0.000 um WITH closure, 1059.537 um WITHOUT  (steps found: 1 at z=60.0000)
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth closure at discontinuities[2m > [22m[2mV7b: the closure must NOT forgive a genuinely misplaced facet on a smooth surface
+[22m[39mV7b facet 400 um inside a smooth cylinder: H1 witnessed 402.230 um
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mfacet-truth closure must not forgive a NARROW FEATURE[2m > [22m[2mV7c: a narrow ridge is NOT a discontinuity and must not widen the closure
+[22m[39mV7c ridge half-width 8 um, relief 400 um: H1 12.041 um
+V7c ridge half-width 30 um, relief 400 um: H1 39.767 um
+V7c ridge half-width 120 um, relief 400 um: H1 142.668 um
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mperpendicular ruler[2m > [22m[2mV8: cylinder — exact |r-R|, and the foot is provably perpendicular
+[22m[39mV8 offset 400 um -> d 400.000000 um  ortho 1.97e-15  iters 1  converged true
+V8 offset 50 um -> d 50.000000 um  ortho 2.37e-15  iters 1  converged true
+V8 offset 4 um -> d 4.000000 um  ortho 2.55e-9  iters 12  converged true
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mperpendicular ruler[2m > [22m[2mV9: a SLOPED surface — radial over-states, perpendicular is exact cos(slope)
+[22m[39mV9 slope k=0.2: radial 300.000 um, perpendicular 294.174 um, closed form 294.174 um, ratio 1.019804 vs sqrt(1+k^2) 1.019804, ortho 3.42e-10
+V9 slope k=0.5: radial 300.000 um, perpendicular 268.328 um, closed form 268.328 um, ratio 1.118034 vs sqrt(1+k^2) 1.118034, ortho 2.51e-14
+V9 slope k=1: radial 300.000 um, perpendicular 212.132 um, closed form 212.132 um, ratio 1.414214 vs sqrt(1+k^2) 1.414214, ortho 5.57e-14
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mperpendicular ruler[2m > [22m[2mV10: perpendicular <= radial always, on a real feature-bearing surface
+[22m[39mV10 50 probes (11 ON the ridge flank, 39 off it): worst radial/perpendicular 20.021x; FLANK median 19.960x, separated(>1.05x) 10/11; FLAT worst |ratio-1| 1.56e-13; worst ortho 6.83e-2
+
+[90mstdout[2m | research/bridge/_strataFacetTruthValidate.test.ts[2m > [22m[2mperpendicular ruler[2m > [22m[2mV11: distPerp against an INDEPENDENT brute-force oracle (the K=8 regression lock)
+[22m[39mV11 50 probes: worst |distPerp - oracle| / oracle = 1.887e+1 (probe 20); worst ON THE FLANK 1.887e+1; mean distPerp 40.5010 um vs oracle 39.5513 um; foot on window edge: false
+
+ [31m❯[39m research/bridge/_strataFacetTruthValidate.test.ts [2m([22m[2m24 tests[22m[2m | [22m[31m2 failed[39m[2m)[22m[33m 209986[2mms[22m[39m
+     [32m✓[39m V1: H1 reproduces the closed-form cylinder chord sagitta[32m 24[2mms[22m[39m
+     [32m✓[39m V2: the certified bound is sound, and tightens with n while it still certifies[32m 33[2mms[22m[39m
+     [32m✓[39m V3: H1 UNDER-REPORTS missing relief by the feature width/height ratio[32m 61[2mms[22m[39m
+     [33m[2m✓[22m[39m V4: H2 finds an unrepresented ridge at its true height [33m 44441[2mms[22m[39m
+     [33m[2m✓[22m[39m V5: THE BLIND SPOT, deterministically — a crest placed BETWEEN the old rulers samples [33m 90966[2mms[22m[39m
+     [33m[2m✓[22m[39m V6: on a mesh that DOES resolve the ridge, both directions read small [33m 71233[2mms[22m[39m
+     [33m[2m✓[22m[39m V7: a TREAD WALL facet is correct geometry and must not read as an error [33m 400[2mms[22m[39m
+     [32m✓[39m V7b: the closure must NOT forgive a genuinely misplaced facet on a smooth surface[32m 2[2mms[22m[39m
+     [32m✓[39m V7c: a narrow ridge is NOT a discontinuity and must not widen the closure[32m 54[2mms[22m[39m
+     [32m✓[39m V8: cylinder — exact |r-R|, and the foot is provably perpendicular[32m 4[2mms[22m[39m
+     [32m✓[39m V9: a SLOPED surface — radial over-states, perpendicular is exact cos(slope)[32m 9[2mms[22m[39m
+[31m     [31m×[31m V10: perpendicular <= radial always, on a real feature-bearing surface[39m[32m 27[2mms[22m[39m
+[31m     [31m×[31m V11: distPerp against an INDEPENDENT brute-force oracle (the K=8 regression lock)[39m[33m 2717[2mms[22m[39m
+     [32m✓[39m M1: V1 rejects an unbounded certificate (old bar: `bound >= witnessed` only)[32m 3[2mms[22m[39m
+     [32m✓[39m M2: V2 rejects a bound that never tightens (old bar: `<= prev + 1e-12`)[32m 1[2mms[22m[39m
+     [32m✓[39m M3: V3 rejects an H1 that reads ZERO (old bar: three UPPER bounds, and 0.5/0 = Infinity)[32m 1[2mms[22m[39m
+     [32m✓[39m M4: V4/V5 reject an H2 that EXPLODES (old bar: `res.max > amp*0.9` only)[32m 1[2mms[22m[39m
+     [32m✓[39m M5: V5 rejects an OLD ruler that reads zero (old bar: `oldMax < 0.02` only)[32m 1[2mms[22m[39m
+     [32m✓[39m M6: V6 rejects a DEAD H2 — the worst vacuity in the file (old bar: `< amp*0.1` only)[32m 1[2mms[22m[39m
+     [32m✓[39m M7: V7 rejects a dead certifyTriangle and a missing step (old bar: `< jump*0.05` only)[32m 1[2mms[22m[39m
+     [32m✓[39m M8: V7b/V7c reject an exploding reading (old bars: lower bound only)[32m 1[2mms[22m[39m
+     [32m✓[39m M9: V9 rejects a perpendicular ruler COLLAPSED onto the radial one (old bar: `ratio > 1.0`)[32m 1[2mms[22m[39m
+     [32m✓[39m M10: V10 rejects THE ACTUAL PF_FT_DESCENT_K=8 NUMBERS (old bar passed them 12/12)[32m 2[2mms[22m[39m
+     [32m✓[39m M11: V11 rejects both a disagreeing oracle and a foot on the window edge[32m 1[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 2 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m research/bridge/_strataFacetTruthValidate.test.ts[2m > [22mperpendicular ruler[2m > [22mV10: perpendicular <= radial always, on a real feature-bearing surface
+[31m[1mAssertionError[22m: expected 0.06831801663394575 to be less than 0.00001[39m
+[36m [2m❯[22m barV10 research/bridge/_strataFacetTruthValidate.test.ts:[2m178:20[22m[39m
+    [90m176| [39m  // *** THE CLAUSE THAT WAS COMPUTED AND NEVER ASSERTED. *** Baseline…
+    [90m177| [39m  // solver's own report that its foot is not perpendicular is a FAILU…
+    [90m178| [39m  [34mexpect[39m(maxOrtho)[33m.[39m[34mtoBeLessThan[39m([34m1e-5[39m)[33m;[39m
+    [90m   | [39m                   [31m^[39m
+    [90m179| [39m  // and no single probe may carry it: the ON-FEATURE population must …
+    [90m180| [39m  [34mexpect[39m(nFlank)[33m.[39m[34mtoBeGreaterThanOrEqual[39m([34m8[39m)[33m;[39m
+[90m [2m❯[22m research/bridge/_strataFacetTruthValidate.test.ts:[2m667:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/2]⎯[22m[39m
+
+[41m[1m FAIL [22m[49m research/bridge/_strataFacetTruthValidate.test.ts[2m > [22mperpendicular ruler[2m > [22mV11: distPerp against an INDEPENDENT brute-force oracle (the K=8 regression lock)
+[31m[1mAssertionError[22m: expected 18.87052334823075 to be less than 0.001[39m
+[36m [2m❯[22m barV11 research/bridge/_strataFacetTruthValidate.test.ts:[2m191:23[22m[39m
+    [90m189| [39mexport function barV11(worstRelErr: number, footInside: boolean): void…
+    [90m190| [39m  [34mexpect[39m(footInside)[33m.[39m[34mtoBe[39m([35mtrue[39m)[33m;[39m
+    [90m191| [39m  [34mexpect[39m(worstRelErr)[33m.[39m[34mtoBeLessThan[39m([34m1e-3[39m)[33m;[39m
+    [90m   | [39m                      [31m^[39m
+    [90m192| [39m}
+    [90m193| [39m
+[90m [2m❯[22m research/bridge/_strataFacetTruthValidate.test.ts:[2m746:5[22m[39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/2]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m2 failed[39m[22m[2m | [22m[1m[32m22 passed[39m[22m[90m (24)[39m
+[2m   Start at [22m 06:17:53
+[2m   Duration [22m 210.56s[2m (transform 166ms, setup 0ms, import 208ms, tests 209.99s, environment 0ms)[22m
+
+GATE EXIT 1
