@@ -12,6 +12,7 @@
 // Bit-identity is therefore true BY CONSTRUCTION; `radiusLattice` exists so it is also CHECKED at runtime,
 // because "by construction" is an argument and this suite runs on measurements.
 import { buildRadiusFn, type StyleDims } from './runStyle';
+import { buildFastRadiusFn } from './_raFast';
 import type { StyleId } from '../../src/geometry/types';
 import type { RadiusFn } from './_facetTruthLib';
 
@@ -22,6 +23,10 @@ export interface AuditRadius {
   rA: RadiusFn;
   /** rA calls made so far (the report's "M rA evals") */
   evals: () => number;
+  /** whether the S52 hoisted twin PROVED bit-identical here and is in use (3.17x when true) */
+  fastUsed: boolean;
+  /** lattice points on which the twin differed; 0 = identical, -1 = no twin exists for this style */
+  fastDiffs: number;
 }
 
 /**
@@ -32,11 +37,40 @@ export interface AuditRadius {
 export function buildAuditRadiusFn(
   style: string, styleParams: Record<string, number>, dims: StyleDims, H: number,
 ): AuditRadius {
-  const rAraw = buildRadiusFn(style as StyleId, styleParams, dims);
+  const rAshipped = buildRadiusFn(style as StyleId, styleParams, dims);
+  // ── THE HOISTED TWIN (S52) — TAKEN ONLY IF IT PROVES BIT-IDENTICAL, HERE, NOW, EVERY PROCESS ──
+  // rA is 84% of the certificate's wall clock at 801 ns/call, and 52,736 M of those calls is 61x the
+  // whole mesher's eval budget. `_raFast` hoists the per-call closure allocations, `??` reads and
+  // derived constants that depend only on (params, dims) — measured 253 ns/call, 3.17x, and
+  // Object.is-identical on 819,867 points (S52).
+  //
+  // IT IS NOT TRUSTED ON THAT MEASUREMENT. It is re-proven in THIS process, against THIS style's
+  // params, BEFORE the caller can score a single facet, over `radiusLattice` — the same non-uniform
+  // prime/golden-ratio/discontinuity-bracketed lattice the worker pool already uses to prove a
+  // rebuilt surface identical. Any deviation at all and the shipped builder is used instead. So the
+  // worst case of this block is NO SPEEDUP; it can never be A DIFFERENT SURFACE. That matters more
+  // than the 3.17x: this repo has already paid once for a partial swap that left stale copies
+  // (the Voronoi int-hash), and the whole value of the auditor is that it is the one thing nobody
+  // has to take on trust.
+  //
+  // NOTE the twin is checked on RAW (theta, z) exactly as the wrapper will call it — canonicalised
+  // theta and clamped z — so the lattice's deliberate out-of-domain probes exercise the clamp too.
+  let rAraw = rAshipped;
+  let fastUsed = false; let fastDiffs = -1;
+  const fast = buildFastRadiusFn(style, styleParams, dims, H);
+  if (fast !== null) {
+    const lat = radiusLattice(H, [], []);
+    let diffs = 0;
+    for (let i = 0; i < lat.th.length; i += 1) {
+      if (!Object.is(fast(lat.th[i], lat.z[i]), rAshipped(lat.th[i], lat.z[i]))) diffs += 1;
+    }
+    fastDiffs = diffs;
+    if (diffs === 0) { rAraw = fast; fastUsed = true; }
+  }
   let rEvals = 0;
   const canon = (t: number): number => { let x = t % TWO_PI; if (x < 0) x += TWO_PI; return x; };
   const rA = (th: number, z: number): number => { rEvals += 1; return rAraw(canon(th), z < 0 ? 0 : z > H ? H : z); };
-  return { rA, evals: () => rEvals };
+  return { rA, evals: () => rEvals, fastUsed, fastDiffs };
 }
 
 /**
