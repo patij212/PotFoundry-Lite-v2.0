@@ -262,11 +262,10 @@ byte-identical when off, non-inert at 45,732 → 24,392 flips) reaches **1.085×
    surface area changes between arms (GeometricStar +29%). Gothic's is 0.9998× so its own self-report
    is arithmetically sound, but any cross-style area ratio from that column is not.
 
-### 0e.2 *** ORIENTATION NOW HAS NO KNOWN LEVER ***
+### 0e.2 ~~ORIENTATION HAS NO KNOWN LEVER~~ *** WITHDRAWN BY S93 (§0f) — DENSITY WORKS; the list below is CONNECTIVITY, and §0f.1 explains in one number why all of it died ***
 
 Everything tried is measured dead: **flips 1.015× median** (and 1.09× with a corrected key),
-**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ×0.9968**, **ideal split
-placement 0.00%**, **splitting provably closed on Voronoi** (required child aspect 3,009), and
+**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ~~×0.9968~~ — MIS-QUOTED, an ANGLE against a CHORD bar; it is 0.208×/level, see §0f.2**, **ideal split placement 0.00%**, **splitting provably closed on Voronoi** (required child aspect 3,009), and
 **P4/off-surface refuted as a fidelity lever on its own numbers** (+0.6% orientation for a 12.5×
 position-sag regression).
 
@@ -281,6 +280,104 @@ restate as *"3.73× on its own objective, 1.049× honest"*. **⇒ QUOTE THE COST
 Gothic. **⇒ DO NOT** build another local operator for orientation without a new representation.
 
 Scorecard: `S91_STYLEFLIP_FINDINGS.md`. Hub census independently reproduced by two tools.
+
+---
+
+---
+
+## 0f. *** S93 FRONTIER — THE CEILING THAT EXPLAINS THE WHOLE GRAVEYARD, AND "DENSITY IS DEAD" WAS A UNITS ERROR ***
+
+### 0f.1 THE CEILING — Q1 answered, and it retrodicts every refuted lever at once
+
+The smallest enclosing cone of the ANALYTIC surface normals over a facet's footprint is a **hard
+floor on `normRad` for EVERY plane through that footprint** — the mesher's, a flipped one, a
+collapsed one, a smoothed one, an off-surface one. Two-sided (`coneLB` sound lower, Badoiu–Clarkson
+`coneUB` sound upper), cross-checked against `orientOfFacet` at **max |Δ| = 0.000e+0 rad**.
+
+| over-bar AREA | Gothic | Voronoi | LowPoly |
+|---|---|---|---|
+| **IRREDUCIBLE for its own footprint** | **88.33%** | **93.97%** | **99.16%** |
+| recoverable by re-orientation | 11.03% | 5.90% | — |
+
+***THE MESHER IS ALREADY WITHIN 14–23% OF THE PER-FOOTPRINT OPTIMUM.*** That single number retrodicts
+the entire graveyard — flips 1.015×, cavity DP +3.29%, collapse 0.38%, ideal split placement 0.00%,
+P4 +0.6%. **They all died for one reason: no operator that keeps the footprint can beat the cone.**
+
+And the population is not what anyone said: **well-shaped (minAngle p50 28–29°), LARGE (diam > 1 mm
+holds 32–42%), TURNING** (spread ≥ normDeg/2 on 91–95%). ***It is a SIZING-FIELD defect — not hubs,
+not slivers, not creases, not mis-orientation.*** The only way to shrink a cone is to shrink the
+footprint.
+
+### 0f.2 *** "DENSITY IS DEAD" IS WITHDRAWN — IT WAS AN ANGLE QUOTED AGAINST A CHORD BAR ***
+
+§0e.2's `×0.9968` is a **mean ANGLE** measurement compared against a **CHORD** bar. Re-measured in one
+currency, per 1→4 level:
+
+    over-bar CHORD AREA   0.2082x / level     (against a pre-registered 0.85x kill)
+    mean ANGLE            0.635x  / level
+    NULL arm (coplanar split, geometrically identical mesh)  0.428x / 0.892x
+    => real geometric gain 0.69x / 0.71x per level
+
+***DENSITY WORKS ON ORIENTATION.*** It was never refuted; it was mis-quoted, by me, repeatedly. **This
+is the single most consequential correction in this document.**
+
+### 0f.3 Q3 — THERE IS NO IMPOSSIBILITY THEOREM
+
+The Schwarz lantern (1880) **is** this regime. Hildebrandt–Polthier–Wardetzky (2006) make normals ⟺
+area ⟺ metric ⟺ Laplace–Beltrami **equivalent GIVEN SHAPE REGULARITY**. arXiv:1911.03424 gives normal
+error **linear** in circumradius against position's **quadratic** — ***and that gap IS the measured
+`o/w ≈ 8`.*** Median minAngle 32.5° / 32.3°: these meshes **are** shape-regular, so the theorem
+applies, and the measured 0.635×/level is **the theorem being obeyed**. Convergence is available.
+
+### 0f.4 Q2 — the bar is defensible, was never chosen, and does NOT dissolve the problem
+
+`chord/witnessed` p50 = **8.03**. ***99.931% of orientation-over-bar AREA is two-sided CERTIFIED under
+the 10 µm POSITION bar*** — the two requirements are almost disjoint. The implied angular bar is
+**p50 0.666°** (~1.3° adjacent-normal) against SOLIDWORKS' 10° default, ≤5° practical, ≤1° premium.
+**Defensible — but never deliberately chosen.** And relaxing to the industry-practical 5° still leaves
+**6.4% / 9.4% over by area: no exemption.**
+
+### 0f.5 THE PRICE, AND IT SPLITS THE CATALOGUE
+
+- **Gothic: LEPP closes the 10 µm chord bar at 6.67× triangles, 0.00% uncleared.** (The position bar
+  costs 1.02×.) **This class is a density problem and density solves it.**
+- **Voronoi: 222× triangles, 15.6% uncleared** — and 106.6% / 15.0% even after excluding back-facing
+  parents, so "folds explain Voronoi" is **refuted**. Mechanism, printed: with folded parents already
+  excluded, maxAng goes **89.5° → 125.5° → 134.6°** over two levels. ***Lifting an edge midpoint onto
+  the surface FOLDS the child on a near-vertical cell wall.***
+- ⇒ **Q5 rehabilitated in its strong form: the (θ,z) chart is a co-factor of the DEFECT and a
+  decisive obstruction to the REMEDY.** Near-vertical walls are a representation problem, not a
+  density one.
+
+### 0f.6 TWO MORE REFUTATIONS AND A FIFTH INSTRUMENT DEFECT
+
+- **Q4 (tangential relaxation) PRICED DEAD BEFORE BUILDING** — its ceiling is the 5.90–11.03%
+  re-orientable share. A night saved.
+- **Anisotropic bisection REFUTED**: the turning tensor is real (p50 **104:1** / **143:1**) but
+  harvesting it by largest-normal-turn bisection is **2.76× worse than plain LEPP**, 41.5% uncleared,
+  leaf minAngle 2.9°.
+- ***FIFTH INSTRUMENT DEFECT, and it is in the shipped ruler.*** `orientOfFacet({orient:'outward'})`
+  takes a facet's sign from the XY normal, which is ~0 on near-horizontal facets: Voronoi's
+  `normDeg > 90` population has decision margin **p50 0.035**. Under the STL's own winding, whole-mesh
+  **max angle 154.67° → 179.93%** and **8.497% of facets change `normDeg`**. Over-bar count and area
+  are bit-identical under both conventions (θ → 180−θ), so ***campaign SHARES stand; every published
+  Voronoi orientation MAX does not.***
+
+### 0f.7 ⇒ THE NEXT ARM, PRE-REGISTERED
+
+**Restate the orientation requirement as an ANGLE** (the chord is ~43% satisfiable by coplanar
+bookkeeping — see the render below), and **drive the SIZING FIELD from `coneUB`**, the per-footprint
+normal-cone aperture the census already computes at 225 rA/facet. **KILL: >12× the flag-OFF triangles,
+OR over-1° AREA fails to fall below 5% on GothicArches.** **SMOOTH-RELIEF class only** — the
+near-vertical-wall class is representation, not density.
+
+**VISUAL, and it is the taxonomy in one image:** `research/exchange/_strataConformBisect/frontier/
+render/GOTH_bars.png` — same mesh, same facets, two currencies. Left (chord bar, 43.4% over): the
+whole wall is red, including large gently-curving quads that are over bar **only because they are
+BIG**. Right (1° angular bar, 29.7% over): the wall goes green and the red **collapses onto the arch
+ribs**.
+
+Scorecard: `S93_FRONTIER_FINDINGS.md`.
 
 ---
 
