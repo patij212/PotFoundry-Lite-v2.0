@@ -234,6 +234,10 @@ describe('STRATA conforming-bisection', () => {
     // `shapeAdmits`. A sane first value is ~64: the median vertex degree is 5 and the repo's own
     // de-shard pass targets 19-25, so 64 is far above anything legitimate and far below the 2,550 runaway.
     const MAXDEG = Math.round(envF('PF_CB_MAXDEG', 0));
+    // S84 3-D FOLD GUARD. 0 = OFF and the arm is byte-identical. The value is the MINIMUM fraction of
+    // the parent's signed area each child must keep when projected into the parent plane; S82's P4 used
+    // 0.5. Any value > 0 also enables the SIGN test, which is the fold itself.
+    const FOLD3D = envF('PF_CB_FOLD3D', 0);
     const SHAPE_FOLD = process.env.PF_CB_SHAPE_FOLD !== '0';
     const MID3D = process.env.PF_CB_MID3D !== '0';
     const MID3D_ITERS = Math.round(envF('PF_CB_MID3D_ITERS', 24));
@@ -1326,7 +1330,7 @@ describe('STRATA conforming-bisection', () => {
 
     // ══════════════════════ L5 SHAPE TERM — the guard, the solver, and their counters ══════════════════════
     let nShapeChecks = 0; let nShapeChildren = 0;
-    let nShapeRefusedAR = 0; let nShapeRefusedFold = 0; let nShapeRefusedDeg = 0;
+    let nShapeRefusedAR = 0; let nShapeRefusedFold = 0; let nShapeRefusedDeg = 0; let nShapeRefusedFold3D = 0;
     let shapeWorstAdmitted = 0;      // the largest child AR this run ever COMMITTED to (bounded by SHAPE_AR)
     let nMid3dSolves = 0; let nMid3dClamped = 0; let mid3dShiftSum = 0; let mid3dShiftMax = 0;
     let nLongFallTested = 0; let nLongFallFired = 0;
@@ -1335,7 +1339,7 @@ describe('STRATA conforming-bisection', () => {
     //  did not list it, and nothing read the value narrowly enough to notice. S22's pass classifies its own
     //  refusals by this field, so the union is widened to what the code already writes. Type-only: no
     //  runtime byte moves, so every flag-OFF path stays byte-identical by construction.)
-    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' | 'deg' = 'none';
+    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' | 'deg' | 'fold3d' = 'none';
     /**
      * Read `lastBisectShape` at its DECLARED type. The checker's flow analysis narrows the variable to its
      * initializer `'none'` at every read in this scope, because the only writer is `bisectAt` — a closure
@@ -1343,7 +1347,7 @@ describe('STRATA conforming-bisection', () => {
      * where it works around it by not repeating the test). Reading through a function boundary drops the
      * narrowing, so S22 can classify a refusal by the gate that caused it instead of guessing.
      */
-    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' | 'deg' => lastBisectShape;
+    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' | 'deg' | 'fold3d' => lastBisectShape;
     // ═══ S26 — THE PLACEMENT half of the refusal channel. `lastBisectShape` names the SHAPE gate that
     // refused; it stays 'none' when the refusal was a PLACEMENT one, and until S26 that 'none' bucket was
     // the whole reason `unresolvedWhy` read `unknown` on every production arm. S25.2 measured what that
@@ -1537,6 +1541,60 @@ describe('STRATA conforming-bisection', () => {
         // a number in the report.
         if (MAXDEG > 0 && (vDeg[apex] ?? 0) >= MAXDEG) {
           nShapeRefusedDeg += 1; lastBisectShape = 'deg'; lastShapeOffenderT = t; return false;
+        }
+        // ── S84 3-D FOLD GUARD (PF_CB_FOLD3D, default 0 = OFF = byte-identical to every prior arm) ──
+        // *** THE EXISTING FOLD CHECK IS IN THE WRONG SPACE. *** The clause below this one tests
+        // `signedAreaParam` on (theta, z) — PARAMETER space. The fold that actually happens is in the
+        // PARENT FACET'S PLANE in 3-D, and the two are not the same test: every arm this campaign has
+        // run reports `0 on (theta,z) FOLD`, while S82 measured **7.415% of children INVERTED**
+        // (119,647 of 1,613,530) with child/parent area 1.01954 on Voronoi — and a planar 1-to-2 split
+        // conserves area EXACTLY, so that ratio is a PROOF of non-tiling, not an estimate.
+        //
+        // MECHANISM (S82 §4): `liftAt` puts the new vertex on the surface, and its displacement from
+        // the flat midpoint is mostly IN-PLANE (dPar/dPerp p50 7.01), not perpendicular. A large enough
+        // in-plane slide pushes the point past the opposite edge, so one child inverts. In (theta, z)
+        // nothing has moved — the parameter IS the midpoint — which is exactly why the parametric test
+        // is blind to it.
+        //
+        // THE TEST. N = (ob-oa) x (apex-oa) is the parent's signed area vector; project both children
+        // onto it. s1 + s2 = sA identically for a point in the plane, so a sign flip IS the fold, and
+        // `min(s1,s2) >= FOLD3D * sA` adds a margin against the near-degenerate case. Two cross
+        // products, ZERO extra rA evaluations — the lifted point `p` is already in hand.
+        //
+        // ⚠ HOW THIS DIFFERS FROM S82's P4, WHICH I COULD NOT LAND AS SPECIFIED. P4 says: on failure,
+        // fall back to P3 — keep the perpendicular component, drop the in-plane one. THAT VERTEX IS
+        // NOT ON THE SURFACE, and `addV` derives every position from `R(theta, z)`: the driver has no
+        // representation for an off-surface vertex, and inventing one would break the on-surface
+        // invariant S43 verified at 0.031 um over 2.2M vertices. So this REFUSES instead of falling
+        // back, and the NUDGE_LADDER's remaining placements are tried — the driver's existing
+        // mechanism for exactly this. *** THEREFORE S82's MEASURED P4 NUMBERS (folds 24.55% -> 0.00%,
+        // tiling 1.2508 -> 1.0076) DO NOT TRANSFER TO THIS AND MUST NOT BE QUOTED FOR IT. *** It is a
+        // different operator with the same diagnosis behind it, and it needs its own arm.
+        if (FOLD3D > 0) {
+          const ux = vx[ob] - vx[oa]; const uy = vy[ob] - vy[oa]; const uz = vz[ob] - vz[oa];
+          const wx = vx[apex] - vx[oa]; const wy = vy[apex] - vy[oa]; const wz = vz[apex] - vz[oa];
+          const nx = uy * wz - uz * wy; const ny = uz * wx - ux * wz; const nz = ux * wy - uy * wx;
+          const sA = nx * nx + ny * ny + nz * nz;                       // = |N|^2 = 2*area*|N| > 0
+          if (sA > 0) {
+            const px = p.x - vx[oa]; const py = p.y - vy[oa]; const pz = p.z - vz[oa];
+            const s1 = (py * wz - pz * wy) * nx + (pz * wx - px * wz) * ny + (px * wy - py * wx) * nz;
+            const qx = vx[ob] - p.x; const qy = vy[ob] - p.y; const qz = vz[ob] - p.z;
+            const rx = vx[apex] - p.x; const ry = vy[apex] - p.y; const rz = vz[apex] - p.z;
+            const s2 = (qy * rz - qz * ry) * nx + (qz * rx - qx * rz) * ny + (qx * ry - qy * rx) * nz;
+            // *** THE DENOMINATOR IS THE CHILD'S OWN FLAT AREA, NOT THE PARENT'S. *** My first version
+            // tested `s1 < FOLD3D * sA` and the non-vacuity run refused 175,768 splits, stopping
+            // refinement dead at 2,532 triangles. The reason is arithmetic: s1/sA IS the child's
+            // fraction of the parent, which is exactly 0.5 at the midpoint — so a 0.5 bar rejects the
+            // midpoint itself, and every other placement even harder. S82's clause is "each child keeps
+            // >= 50% of THEIR flat area", and a child's flat area is `frac * parent` where `frac` is the
+            // split's position along the edge. `frac` is recovered by projecting p onto the segment,
+            // which costs one dot product and needs no extra argument.
+            const eu2 = ux * ux + uy * uy + uz * uz;
+            const frac = eu2 > 0 ? Math.min(1, Math.max(0, (px * ux + py * uy + pz * uz) / eu2)) : 0.5;
+            if (s1 <= 0 || s2 <= 0 || s1 < FOLD3D * frac * sA || s2 < FOLD3D * (1 - frac) * sA) {
+              nShapeRefusedFold3D += 1; lastBisectShape = 'fold3d'; lastShapeOffenderT = t; return false;
+            }
+          }
         }
         if (ar1 > worst) worst = ar1;
         if (ar2 > worst) worst = ar2;
@@ -2069,7 +2127,7 @@ describe('STRATA conforming-bisection', () => {
     // theirs. 'unclassified' is deliberately reachable: if it ever appears in a histogram that is a
     // REGISTERED DEFECT of this taxonomy, not a shrug, and it names itself so it cannot hide.
     type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused'
-      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'shape-deg' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
+      | 'shape-ar' | 'shape-fold' | 'shape-fold3d' | 'shape-admit' | 'shape-deg' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
     /**
      * S26 — NAME THE REFUSER for a facet the heap driver could not split.
      *
@@ -2093,6 +2151,7 @@ describe('STRATA conforming-bisection', () => {
       const sh = bisectRefusal();
       if (sh === 'ar') return 'shape-ar';
       if (sh === 'deg') return 'shape-deg';
+      if (sh === 'fold3d') return 'shape-fold3d';
       if (sh === 'fold') return 'shape-fold';
       if (sh === 'admit') return 'shape-admit';
       const pl = bisectPlacement();
@@ -5252,7 +5311,7 @@ describe('STRATA conforming-bisection', () => {
       `  levers: PF_CB_SHAPE=${SHAPE ? `1 cap AR>${SHAPE_AR}` : '0 *** GUARD OFF — this run REPRODUCES the blade defect ***'}` +
         `  fold=${SHAPE_FOLD ? 1 : 0}  mid3d=${MID3D ? `1 (${MID3D_ITERS} halvings, |shift| cap ${MID3D_MAXSHIFT})` : '0 (parametric midpoint — the measured 0.819 off-centre bias is BACK)'}  longfall=${LONGFALL ? 1 : 0}`,
       `  guard: ${nShapeChecks} split candidates scored, ${nShapeChildren} child facets (BOTH sides of every edge)`,
-      `  refused: ${nShapeRefusedAR} on aspect (>${SHAPE_AR}), ${nShapeRefusedFold} on (θ,z) FOLD${MAXDEG > 0 ? `, ${nShapeRefusedDeg} on FAN DEGREE (>${MAXDEG})` : ''}${SWEEP ? `   ⇒ shape-unresolved ${nShapeUnresolved}` : '   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path'}`,
+      `  refused: ${nShapeRefusedAR} on aspect (>${SHAPE_AR}), ${nShapeRefusedFold} on (θ,z) FOLD${MAXDEG > 0 ? `, ${nShapeRefusedDeg} on FAN DEGREE (>${MAXDEG})` : ''}${FOLD3D > 0 ? `, ${nShapeRefusedFold3D} on 3-D FOLD (parent-plane area < ${FOLD3D})` : ''}${SWEEP ? `   ⇒ shape-unresolved ${nShapeUnresolved}` : '   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path'}`,
       // "ADMITTED", not "committed": the S4 probe scores candidate placements it may never take, so this is
       // an UPPER bound on the worst child that actually landed. That is the direction that makes it a
       // useful invariant — it must never exceed the cap.
