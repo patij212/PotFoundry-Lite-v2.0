@@ -9589,3 +9589,73 @@ instead of the centroid sample, on GothicArches S39CTL. **KILL: the honest absol
 stays below 1.25x** => the defect is not reachable by connectivity at all and the flip should be landed
 on its position result alone. **CONFIRM: >= 1.5x** => the lever was real and was being driven by a
 broken key, and the key is the fix.
+
+---
+
+# E-2026-08-05-FRONTIER-ORIENT — *** THE ORIENTATION DEFECT IS A SIZING PROBLEM, AND DENSITY WAS MIS-REFUTED ***
+
+Agent FRONTIER (fresh). Tools `research/tools/frontier{Taxonomy,Refine,Certify,Render,Ndjson}.*`
+(+ `run-frontier-*.sh`). Full scorecard: `research/exchange/_strataConformBisect/S93_FRONTIER_FINDINGS.md`.
+Reports + per-facet ndjson: `research/exchange/_strataConformBisect/frontier/`.
+Every orientation number is the COVERING ruler (k=8, inset 0.02), **cross-checked facet-by-facet against
+`orientRuler.orientOfFacet` at max |ΔnormRad| = 0.000e+0 rad on 1,000–2,000 facets per mesh**.
+
+## THE FIVE RESULTS
+
+1. **THE 88% IS NAMED. 88.33% (Gothic) / 93.97% (Voronoi) of the over-bar orientation AREA is IRREDUCIBLE
+   for its own footprint** — `floorChordLB > bar`, where `floorChordLB = 2 sin(coneLB/2)·diam` and `coneLB`
+   = half the max pairwise analytic-normal angle over the footprint, a SOUND lower bound on what ANY plane
+   through that footprint can achieve. ***The ceiling on every re-orientation operator is 11.03% / 5.90%
+   of the defect area***, which retrodicts flips 1.015×, cavity DP +3.29%, collapse 0.38%, ideal split
+   placement 0.00%, P4 +0.6%. The mesher is already within 14–23% of the per-footprint optimum (p50
+   `normDeg/coneUB` = 1.142 / 1.227). The defect population is **well-shaped (minAngle p50 28–29°), LARGE
+   (diam>1mm holds 32–42% of it), TURNING facets (spread ≥ normDeg/2 on 91–95%)** — NOT hubs, NOT slivers,
+   NOT creases, NOT mis-orientation (0.09–2.2%). **It is a SIZING-FIELD defect.**
+2. ***"DENSITY ×0.9968" IS AN ANGLE MEASUREMENT QUOTED AGAINST A CHORD BAR.*** One level of exact 1→4
+   refinement (midpoints in (θ,z), lifted to the surface — the mesher's own `addV` contract) moves the
+   over-bar chord AREA **0.2082×** against a pre-registered kill of 0.85×, and moves the INVARIANT mean
+   ANGLE **0.635×/level**, stable over 3 levels. NULL arm (coplanar split, mesh geometrically identical)
+   gives 0.428× chord / 0.892× angle, so the real geometric gain is 0.69× / 0.71× per level.
+3. **THE PRICE, MEASURED:** adaptive refinement to the 10 µm chord bar costs **6.67× triangles with LEPP
+   longest-edge bisection** (9.09–9.72× with red 1→4), **0.00% uncleared**, on a mesh whose 10 µm POSITION
+   bar already costs 1.02×. Gothic 1.14M → 7.6M, inside the 12M budget.
+4. ***THE BAR IS A 1.25 µm POSITION BAR.*** `certifyTriangle` on 600 stratified facets: honest
+   `chord/witnessed` p50 = **8.03**; **99.931% of the orientation-over-bar AREA is two-sided CERTIFIED
+   under the 10 µm position bar** and only 12.5% passes 1.25 µm. The implied ANGULAR-deviation bar is
+   **p50 0.666°** (≈1.3° adjacent-normal) — about premium-CAD level (≤1°), 4× tighter than the practical
+   ≤5°, 8× tighter than the SOLIDWORKS 10° default. Defensible, but never chosen.
+5. **Q3 HAS AN ANSWER AND IT IS NOT AN IMPOSSIBILITY.** Schwarz lantern (1880) = Hausdorff convergence
+   without normal convergence, classical. Hildebrandt–Polthier–Wardetzky 2006: under Hausdorff
+   convergence, normals ⟺ area ⟺ metric ⟺ Laplace–Beltrami, given SHAPE REGULARITY.
+   Boissonnat–Dyer–Ghosh–Wintraecken (arXiv:1911.03424): normal error LINEAR in circumradius vs position
+   error QUADRATIC — that gap IS the measured `o/w ≈ 8`. These meshes are shape-regular and the measured
+   0.635×/level is the theorem being obeyed.
+
+## REFUTED HERE, RECORDED HONESTLY
+
+* **MY OWN anisotropic proposal.** The turning tensor III = dNᵀdN has area-wt p50 anisotropy **104:1
+  (Gothic) / 143:1 (Voronoi)** on over-bar facets, so ~100× is theoretically available. Harvesting it by
+  bisecting the largest-normal-turn edge costs **2.76× MORE than plain LEPP, leaves 41.5% uncleared, and
+  collapses leaf minAngle to 2.9° (worst 0.00°)** — §5.1's "required child aspect 3,009" reappearing. A
+  naive Gauss-metric longest-edge bisection is NOT the way to spend the anisotropy.
+* **Q4 (tangential relaxation) is priced dead before it is built**: ceiling 5.90–11.03% of the defect area.
+* **Q5 (the chart)**: steep chart is enriched only 2.0–2.6×, and on Gothic the largest single block of
+  defect area (41.76%) is in the FLATTEST slope bucket. A co-factor, not the mechanism.
+
+## THE FIFTH INSTRUMENT CONCERN (and a real bug)
+
+**The orientation chord `2 sin(θ/2)·diam` is ~43% satisfiable by BOOKKEEPING** — a coplanar 1→4 split
+changes no geometry and improves it 0.428×/level, because `diam` halves. **Any orientation bar must be an
+ANGLE.** In the angle currency the chord bar's "0.00% uncleared" becomes 20–67% uncleared, and the
+irreducible set is named: **FOLDED facets (`normDeg > 90°`, back-facing their own surface) hold 0.25% of
+Gothic's and 0.94% of Voronoi's TOTAL mesh area** and no refinement can fix them (children inherit the
+fold) — consistent with §5.4's fold guard being in the wrong space.
+
+## NEXT EXPERIMENT, PRE-REGISTERED
+
+Build the sizing field from `coneUB` (the per-footprint normal-cone aperture), i.e. size on **|II|**, and
+drive `PF_CB_*` refinement with an ANGULAR bar of 1.0° (facet-vs-surface) instead of the chord.
+**KILL: total triangles exceed 12× the flag-OFF control, OR the over-1° AREA fails to fall below 5% on
+GothicArches.** **CONFIRM: ≤12× triangles AND over-1° AREA < 5%** ⇒ the orientation class is closed by
+sizing, and the residue is exactly the FOLDED + CREASE sets, which are a fold-guard bug and the existing
+feature-conforming machinery respectively.
