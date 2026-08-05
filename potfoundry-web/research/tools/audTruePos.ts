@@ -207,8 +207,18 @@ for (const [style, stem] of JOBS) {
 
   const gTop = runGroup(top, `TOP-${top.length} BY tangExc`);
   const gCtl = runGroup(ctrl, `RANDOM CONTROL, same size`);
+  // ── THE OTHER SIDE OF THE TWO-SIDEDNESS (task 4). The tangExc tail exposes where the plane ruler
+  // UNDER-reads. To see where it OVER-reads, select on the PLANE RULER ITSELF: its own worst facets,
+  // scored by H1. The operator's S39CTL example is exactly this — plane 47.281 where the mesh is 22.190.
+  const posAll = new Float64Array(n);
+  for (let k = 0; k < n; k += 1) posAll[k] = sagAdaptiveRaw(rA, SAGM, k, 0.03, 12, 64, ARG) * 1000;
+  const topPos = Array.from({ length: n }, (_v, i) => i).sort((p, q) => posAll[q] - posAll[p]).slice(0, Math.min(TOPK, n));
+  const gPos = runGroup(topPos, `TOP-${topPos.length} BY THE PLANE RULER ITSELF (the OVER-read arm)`);
   log('');
   log(`  H-F selectivity: top-K proven-fail rate / control proven-fail rate = ${((gTop.failProven / gTop.n) / Math.max(1e-9, gCtl.failProven / gCtl.n)).toFixed(2)}x   (kill < 2x)`);
+  log(`  TWO-SIDEDNESS on this style:  plane/H1 at the plane ruler's own worst  p50 ${(gPos.posP50 / Math.max(1e-9, gPos.witP50)).toFixed(3)}x   max/max ${(gPos.posMax / Math.max(1e-9, gPos.witMax)).toFixed(3)}x`);
+  log(`                                H1/plane at the tangExc tail            p50 ${(gTop.witP50 / Math.max(1e-9, gTop.posP50)).toFixed(2)}x   max/max ${(gTop.witMax / Math.max(1e-9, gTop.posMax)).toFixed(2)}x`);
+  log(`  A single multiplicative correction exists ONLY if these two are reciprocal. Read them.`);
 
   // ── THE MAGNITUDE PASS: small, exhaustive, tol below everything of interest so it is exact.
   const mag = top.slice(0, Math.min(MAGK, top.length));
@@ -231,7 +241,7 @@ for (const [style, stem] of JOBS) {
   log(`     *** tangExc / H1 witnessed  p50 ${(pq(smt, 0.5) / Math.max(1e-9, pq(smw, 0.5))).toFixed(1)}x ***`);
   appendFileSync(OUT, `${JSON.stringify({
     style, stem, nTri, sampled: n, tol: TOL, nMax: NMAX, zJumps: zJ.length, thJumps: thJ.length,
-    top: gTop, ctrl: gCtl,
+    top: gTop, ctrl: gCtl, byPlaneRuler: gPos,
     magnitude: { n: mag.length, tol: MAGTOL, nMax: MAGNMAX, witP50: pq(smw, 0.5), witMax: smw[smw.length - 1], bndP50: pq(smb, 0.5), bndMax: smb[smb.length - 1], tgP50: pq(smt, 0.5), complete: mComplete },
     secs: (Date.now() - t0) / 1000,
   })}\n`);

@@ -532,3 +532,98 @@ median 1.0000, brute over-bar 100.0 %). The kill condition was median < 0.5.
 pair CORROBORATES rather than PROVES a lower bound on `d(p)`. The rigorous upper bound over the whole
 facet is `certifyTriangle`'s `bound` (p50 88.64, max 217.08 um on this set), which is reported. What
 this probe removes is single-instrument risk — the risk that actually bit this campaign twice tonight.
+
+---
+
+## FINDING 10 — THREE STYLES, THREE DIFFERENT ANSWERS. `tangExc` POINTS AT NOTHING ON LowPolyFacet AND AT A REAL POSITION FAILURE ON THE OTHER TWO. *** AND A COMMITTED CAMPAIGN NUMBER IS CONTRADICTED BY 15.7x. ***
+
+Command: `PF_AUDTP_JOBS='GothicArches=gothicarches_ring_DS-HT_S39CTL,LowPolyFacet=lowpolyfacet_ring_D--' PF_AUDTP_TOPK=300 PF_AUDTP_MAGK=25 bash research/tools/run-aud-true-pos.sh`
+Logs: `AUD_TRUEPOS_GOTH.log`, `AUD_WITNESS_GOTH.log`. ndjson: `AUD_TRUEPOS.ndjson`, `AUD_WITNESS.ndjson`.
+
+### 10a. THE SCORECARD — `certifyTriangle` at `tol = 0.010 mm` = THE PRODUCT BAR.
+
+```
+style          group                     PROVEN-FAIL  PROVEN-PASS  UNKNOWN | plane-ruler over-bar | H1 max um | plane max um
+Voronoi        top-400 by tangExc            396           4          0    |        0 / 400       |  230.76   |   4.99
+Voronoi        random control                 30         370          0    |        0 / 400       |  152.05   |   4.98
+GothicArches   top-300 by tangExc            251          49          0    |       11 / 300       |  349.22   |  47.23
+GothicArches   random control                  2         298          0    |        0 / 300       |   48.93   |   4.58
+GothicArches   top-300 by the PLANE RULER    106         194          0    |       17 / 300       |   88.85   |  47.23
+LowPolyFacet   top-300 by tangExc              0         300          0    |        0 / 300       |    4.98   |   5.00
+LowPolyFacet   random control                  0         300          0    |        0 / 300       |    4.84   |   4.99
+LowPolyFacet   top-300 by the PLANE RULER      0         300          0    |        0 / 300       |    4.98   |   5.00
+```
+
+**LowPolyFacet: `tangExc` condemns 10.887 % of the mesh and NOT ONE of its own 300 worst facets
+exceeds the product bar.** H1 and the plane ruler agree to **1.003x at the max** on that style.
+`tangExc / H1 witnessed` p50 = **14.3x**, selectivity **0.00x** (both groups have zero failures).
+**On LowPolyFacet the orientation number is a pure ruler artefact — SECTION 14.2's control style, the
+one used to argue the defect is "NOT curvature x size", points at nothing measurable in position.**
+
+**GothicArches and Voronoi: the defect is REAL and it is POSITION.** Selectivity 125.50x and 13.20x.
+
+### 10b. TASK 4 — THE TWO-SIDEDNESS, MEASURED. NO CONSTANT CORRECTION, AND I DID NOT FIND AN OVER-READ ARM.
+
+```
+style          plane/H1 at the PLANE RULER's own worst   H1/plane at the tangExc tail
+                          p50        max/max                    p50       max/max
+LowPolyFacet             1.079x       1.003x                    0.92x      1.00x     <- ruler is CORRECT
+GothicArches             0.675x       0.532x                   11.33x      7.39x     <- 1.5x to 11x UNDER
+Voronoi                     --           --                       --      46.2x      <- 46x UNDER
+```
+
+The plane ruler ranges from **exact (1.00x) to 46x UNDER** across three styles, and **within one style
+it is 1.5x under at its own loudest facets and 11x under where `tangExc` points**. Those two are not
+reciprocal and not equal, so **no single multiplicative correction exists** — which was the point of
+the task, and it is now a measurement rather than an inference.
+
+**What I did NOT find: an OVER-read arm.** I selected the plane ruler's OWN top-300 on both styles
+precisely to expose it, and on GothicArches those facets read 0.675x of H1 (still UNDER) and on
+LowPolyFacet 1.079x (agreement). See 10c — the cited 2.13x over-read does not survive.
+
+### 10c. *** THE CONTRADICTION. `Exact mesh-wide H1: 22.190 um` FOR S39CTL IS CONTRADICTED BY 15.7x. ***
+
+Commit `943427c6` records, for `gothicarches_ring_DS-HT_S39CTL`: *"Exact mesh-wide H1: 22.190 ->
+16.628 um"*, and the 2.13x OVER-read framing follows from comparing that to the plane ruler's 47.281.
+
+On that same STL, at registry-default GothicArches params and `DIMS {H:120, Rb:40, Rt:50, expn:1}`
+(vertex-on-surface gate p99 **0.00001 mm TRUSTED**), I measure a facet at
+
+```
+sample idx 260761   H1 witnessed 349.221 um   H1 bound 359.155 um   INDEPENDENT BRUTE 349.221 um
+```
+
+and four more above 190 um (284.908 / 209.396 / 194.338 / 91.751). The brute is a global 3072x1025
+lattice scan with 24 restarts and a plain descent that calls no `_facetTruthLib` code, evaluated at
+`certifyTriangle`'s own witness point. **Two instruments, no shared code, same value to 1 nanometre.**
+
+So either the committed mesh-wide H1 was computed on a different artifact/config, or it under-reports
+by **at least 15.7x** — and if the latter, the "plane ruler OVER-reads 2.13x at the S39CTL headline
+locus" framing inverts: the plane ruler's 47.281 would be **7.4x UNDER** the mesh's true worst.
+**I have not re-run their mesh-wide harness and cannot say which. This needs reconciliation by its
+owner before any number derived from it is used again.** The most likely mechanism, from the
+`FacetVerdict` header's own warning, is a NON-EXHAUSTIVE mesh-wide pass: *"on an arm where 72.5 % of
+facets fail, essentially every one short-circuits at its initial lattice level, so per-style H1 maxima
+built from these numbers are lower bounds with unquantified slack."*
+
+### 10d. AND A REFUTATION OF MY OWN INSTRUMENT'S PRECISION, ON GOTHIC.
+
+The Gothic witness confirmation is NOT the clean 1.0000 that Voronoi gave:
+
+```
+brute / witnessed   p10 0.3076   p50 1.0000   p90 1.0000   min 0.2437   max 1.0000
+over the 10 um bar: H1 25/25     INDEPENDENT BRUTE 24/25
+```
+
+**3 of 25 witnesses (12 %) show `certifyTriangle` OVER-STATING by 3.3x to 4.1x** — facet 52114
+witnessed 37.622 vs brute **9.169** (and 9.169 is UNDER the bar, so that one PROVEN-FAIL was wrong),
+facet 34215 48.998 vs 13.621, facet 48961 50.076 vs 15.402. That is precisely the wrong-basin failure
+`_facetTruthLib` documents for `distPerp` (*"the seed lands in the wrong basin and the descent
+converges to a local foot, so the reading is an over-estimate"*), showing up inside `tighten`.
+
+**H-J still CONFIRMS** on its pre-registered terms (median 1.0000, 96 % of brutes over-bar; the kill
+was median < 0.5). But the honest reading is: **`certifyTriangle`'s per-facet `witnessed` carries a
+~12 % rate of 3-4x over-statement on GothicArches, so per-facet PROVEN-FAIL verdicts on this style
+should be confirmed individually, and only the AGGREGATE (251/300 vs the plane ruler's 11/300, and
+the independent 24/25) should be quoted.** Correcting all three over-states still leaves 24/25 above
+the bar with an independently confirmed max of 349.221 um, so 10c is unaffected.

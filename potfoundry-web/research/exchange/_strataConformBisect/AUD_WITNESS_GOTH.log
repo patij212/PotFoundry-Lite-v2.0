@@ -1,3 +1,26 @@
+cwd: /c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web
+── bundling research/tools/audWitnessConfirm.ts -> research/bridge/out/_run_audWitnessConfirm.cjs ──
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    research/bridge/_facetTruthPool.ts:88:37:
+      88 │   const here = dirname(fileURLToPath(import.meta.url));
+         ╵                                      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "esbuild" should be marked as external for use with "require.resolve" [require-resolve-not-external]
+
+    node_modules/esbuild/lib/main.js:1653:36:
+      1653 │   const libMainJS = require.resolve("esbuild");
+           ╵                                     ~~~~~~~~~
+
+2 warnings
+
+  research\bridge\out\_run_audWitnessConfirm.cjs  197.1kb
+
+Done in 35ms
+── checking for undefined identifiers (TS2304 only) ──
+   none
 ===== AUD-WITNESS-CONFIRM — an instrument outside _facetTruthLib, on my own headline =====
 GothicArches / gothicarches_ring_DS-HT_S39CTL   K 25 witnesses   brute lattice 3072x1024 = 3.15M evals/point, 24 restarts
 closure: zJumps 0  thJumps 0
@@ -39,3 +62,5 @@ H-J KILL: median brute/witnessed < 0.5 => witnessed inflated, FINDING 5 magnitud
 H-J CONFIRM: median in [0.9,1.1] AND >=90% of brutes over 10 um => reproduced independently.
   measured median 1.0000, brute over-bar 96.0%  => CONFIRMED
 (72.6s)
+
+report written to research/exchange/_strataConformBisect/audWitnessConfirm.report.txt

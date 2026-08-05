@@ -1,3 +1,26 @@
+cwd: /c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web
+── bundling research/tools/audTruePos.ts -> research/bridge/out/_run_audTruePos.cjs ──
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    research/bridge/_facetTruthPool.ts:88:37:
+      88 │   const here = dirname(fileURLToPath(import.meta.url));
+         ╵                                      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "esbuild" should be marked as external for use with "require.resolve" [require-resolve-not-external]
+
+    node_modules/esbuild/lib/main.js:1653:36:
+      1653 │   const libMainJS = require.resolve("esbuild");
+           ╵                                     ~~~~~~~~~
+
+2 warnings
+
+  research\bridge\out\_run_audTruePos.cjs  201.6kb
+
+Done in 35ms
+── checking for undefined identifiers (TS2304 only) ──
+   none
 ===== AUD-TRUE-POS — certifyTriangle at the facets tangExc condemns =====
 N 250000  topK 300  tol 0.01 mm  nMax 512
 
@@ -72,3 +95,5 @@ N 250000  topK 300  tol 0.01 mm  nMax 512
   [checkpoint appended to research/exchange/_strataConformBisect/AUD_TRUEPOS.ndjson]
 
 done (RAD sentinel 57)
+
+report written to research/exchange/_strataConformBisect/audTruePos.report.txt
