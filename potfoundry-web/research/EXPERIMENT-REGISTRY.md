@@ -8595,3 +8595,16 @@ quantities are already in the same loop, so it costs nothing extra to evaluate. 
 which this audit keeps re-deriving: **an optimisation judged on one ruler moves the others — the
 maxAngle arm moved orientation 5.5x the wrong way, the tangExc arm moved position 4.3x the wrong way,
 and each was invisible to its own objective.**
+
+**GRAZING/SILHOUETTE RENDER (S50_RULER_FINDINGS SECTION 17).** New `research/render/meshRenderGrazing.cjs`
+(a COPY of `meshRender.cjs`, camera block only; the shared renderer is untouched): near-orthographic,
+FOV 9 deg, looking ALONG the tangent at the pot's left limb so the wall is edge-on. PNG
+`research/exchange/_strataConformBisect/s55render/S50_grazing_silhouette.png`. LEFT (position) is
+uniformly green edge to edge; RIGHT (orientation) lights up THREE structures invisible on the left —
+the arch ribs/mullions, **the horizontal BANDS** (`bandMid`/`bandBase`/`bandRim`, `styles.ts:709-711`)
+as solid yellow-orange stripes, and a yellow fringe **along the silhouette edge itself**. The oblique
+render (SECTION 10) under-showed the bands by foreshortening. So the class is not "ribs" — it is
+**every directional feature**, wherever the mesh must turn to follow one. Consistent with LowPolyFacet
+(straddling the C0 creases between flat faces) and with Voronoi being worst (creases in every
+direction, nowhere to hide). NOT closed: I have not seen the operator's Cura screenshots, so this is a
+geometric reconstruction of his viewing condition, not a frame-for-frame match.
