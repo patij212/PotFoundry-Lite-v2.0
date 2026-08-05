@@ -247,7 +247,15 @@ function distToZWall(rA: RadiusFn, zJump: number, px: number, py: number, pz: nu
  * that actually exists. KNOWN GAP: theta-jumps (BasketWeave's curtains) are not yet located, so H1 on such
  * a style will over-state on its curtain facets — over-stating is the safe direction, but it is not zero.
  */
-export function distLocal(
+export /**
+ * PF_FT_DESCENT_K — bound on CONSECUTIVE non-improving halvings in `distLocal`'s coordinate descent.
+ * 0 (the DEFAULT) = unbounded = the exact behaviour every published number in this campaign was
+ * measured on, so an unset environment reproduces every one of them. See the block at the halving
+ * site, and the DO-NOT-TRUNCATE note in `tighten`, before setting it to anything else.
+ */
+const DESCENT_K = Number(process.env.PF_FT_DESCENT_K ?? 0);
+
+function distLocal(
   rA: RadiusFn, H: number,
   px: number, py: number, pz: number,
   seedTh: number, seedZ: number, step0: number, iters: number,
@@ -263,6 +271,7 @@ export function distLocal(
   };
   let best = at(th, z);
   let s = step0;
+  let halvings = 0;
   for (let k = 0; k < iters; k += 1) {
     let improved = false;
     const dth = s / rNom;
@@ -275,7 +284,25 @@ export function distLocal(
       const v = at(ct, cz);
       if (v < best - 1e-13) { best = v; th = ct; z = cz; improved = true; }
     }
-    if (!improved) { s *= 0.5; if (s < 1e-8) break; }
+    // ── THE HALVING TAIL (PF_FT_DESCENT_K, default OFF = unbounded, i.e. exactly as before) ──
+    // A non-improving pass costs 8 rA evaluations and buys only a smaller step. S57 measured this tail
+    // at 84.2% of the certificate's whole eval budget — bounding consecutive fruitless halvings at 8
+    // took 268.8 -> 106.1 ev/pt (2.53x), with 1 differing point in 9,492 (+0.0000 um) and ZERO in the
+    // hard stratum.
+    //
+    // *** IT IS OFF BY DEFAULT AND THE REASON IS WRITTEN 20 LINES ABOVE THIS ONE. *** A previous
+    // truncation here — iters 40 -> 8 — was measured "BIT-IDENTICAL over 442 points" and was WRONG:
+    // V3's thin ridge moved 12.041 -> 27.103 um because the coordinate descent, not Newton, is what
+    // walks the ~8 um sideways off a crest to the base surface. THIS PARAMETER IS NOT THAT ONE — it
+    // bounds the fruitless SHRINKING tail, never the descent's ability to walk, and a bounded run
+    // still takes every improving step it would have taken. That is an argument, and an argument is
+    // exactly what the last attempt had. It stays off until it clears V3 and V7c, which the note
+    // above makes the standing bar for any change to this loop.
+    if (!improved) {
+      s *= 0.5; halvings += 1;
+      if (s < 1e-8) break;
+      if (DESCENT_K > 0 && halvings >= DESCENT_K) break;
+    } else halvings = 0;
   }
   // The printed boundary is the CLOSURE of the graph: at each detected C0 z-step the solid carries a
   // vertical tread wall, which the mesher emits and which is correct geometry. Take the better of the two.
