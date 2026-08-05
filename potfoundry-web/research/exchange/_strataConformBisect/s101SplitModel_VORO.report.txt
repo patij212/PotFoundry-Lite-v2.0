@@ -1,0 +1,155 @@
+===== S101 — THE `s/h` MODEL, AND THE SPLIT-PLACEMENT PARETO FRONT =====
+style Voronoi   mesh s60flip/voronoi_ring_D--_A2CON.stl   k=4 inset=0.01   bars 10um / 1deg   placements P0 PARAM-LIFT | P1 NO-LIFT | P2 PERP-FOOT | P3 PERP-ONLY
+806765 facets, 403683 welded vertices  [0.9s]
+global winding: 91.16% of 4014 sampled facets wind OUTWARD
+CONTROL (s65 key, whole mesh): over-10um 241489 (29.933%)  p99 1194.64 um  max 2238.7 um   [4.8s]
+  (s65 published BEFORE for A2CON: over 241489 / 29.933%, p99 1194.64, max 2238.7)
+populations: MARKED 5000 (of 241489)   ALL 5000 (of 806765)   [4.8s]
+
+══════════════════ MARKED (s65 would split these)  (n=5000, 14.7s) ══════════════════
+PARENTS  theta p50 64.517 p99 158.66 deg   over-1deg 99.98% count / 99.893% AREA   over-10um 100.00% / 100.000% AREA
+         aspect3 p50 44.59 p90 1218.7 p99 11282.5   diam p50 698.3 um   sag p50 1.25 p99 7.86 um
+
+── P0 PARAM-LIFT  (5000/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 0.524 p99 4.60 um   dPar(IN-PLANE) p50 3.672 p99 198.4 um   dPar/dPerp p50 7.01
+   TILING    area(children)/area(parent)  p50 1.022474 p99 86.2034 TOTAL 1.2454   splits that leave the segment 3254 (65.08%)
+   ROTATION  rho p50 2.7914 p90 179.520 p99 179.81 deg   INVERTED children (rho>90) 2503/10000 = 25.030%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 3.13e+0   NON-INVERTED p99 4.88e-12 max 4.28e-9 rad   [vacuity: vs diam p50 4.38e-2]
+   PROXY s/h rho/(sPar/diamChild) p10 0.489 p50 21.075 p90 5972.55   SPEARMAN exact 0.4568 | s/alt 0.2284 | s/diam -0.4381
+   SURFACE   improve(area-mean) 63.64%   improve(worst child) 38.82%
+   *** CEILING  theta_par - max theta_child  p50 -0.4563 p99 43.047 deg   vs  max rho  p50 70.6033 p99 179.828 deg   VIOLATIONS of (improvement <= rotation): 1/5000   slack p50 89.2135 deg ***
+   OVER-BAR  1deg AREA FRACTION 99.893% -> 97.423%  (x0.975)   ABSOLUTE AREA x1.215
+             10um  AREA FRACTION 100.000% -> 97.426%  (x0.974)   ABSOLUTE AREA x1.213   COUNT 5000 -> 9766
+   POSITION  parent sag p99 7.862 max 9.95   children p99 6.505 max 15.99 um   worse-than-parent 27.04%
+      aspect3 < 4                n=  297 improve  82.2%  over-1deg AREA 100.00% ->  92.82%  rho p50    0.552 p99   19.6 deg  inv 0.00%
+      aspect3 4..50              n= 2257 improve  76.3%  over-1deg AREA  99.85% ->  98.04%  rho p50    1.109 p99  179.8 deg  inv 11.21%
+      aspect3 >= 50 (sliver)     n= 2446 improve  49.7%  over-1deg AREA 100.00% ->  99.95%  rho p50   32.271 p99  179.8 deg  inv 40.82%
+      spread < .5*theta MIS-ORI  n= 2950 improve  51.1%  over-1deg AREA 100.00% ->  99.90%  rho p50   32.675 p99  179.8 deg  inv 41.83%
+      spread >= .5*theta TURN    n= 2050 improve  81.8%  over-1deg AREA  99.87% ->  96.25%  rho p50    0.952 p99   37.3 deg  inv 0.85%
+
+── P1 NO-LIFT  (5000/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 0.000 p99 0.00 um   dPar(IN-PLANE) p50 0.000 p99 0.0 um   dPar/dPerp p50 0.00
+   TILING    area(children)/area(parent)  p50 1.000000 p99 1.0000 TOTAL 1.0000   splits that leave the segment 0 (0.00%)
+   ROTATION  rho p50 0.0000 p90 0.000 p99 0.00 deg   INVERTED children (rho>90) 0/10000 = 0.000%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 2.98e-8   NON-INVERTED p99 2.98e-8 max 3.65e-8 rad   [vacuity: vs diam p50 0.00e+0]
+   PROXY s/h rho/(sPar/diamChild) p10 0.000 p50 0.000 p90 0.00   SPEARMAN exact 0.0000 | s/alt -0.0151 | s/diam -0.0095
+   SURFACE   improve(area-mean) 87.98%   improve(worst child) 2.68%
+   *** CEILING  theta_par - max theta_child  p50 -0.0050 p99 0.000 deg   vs  max rho  p50 0.0000 p99 0.000 deg   VIOLATIONS of (improvement <= rotation): 134/5000   slack p50 0.0050 deg ***
+   OVER-BAR  1deg AREA FRACTION 99.893% -> 97.887%  (x0.980)   ABSOLUTE AREA x0.980
+             10um  AREA FRACTION 100.000% -> 99.174%  (x0.992)   ABSOLUTE AREA x0.992   COUNT 5000 -> 9937
+   POSITION  parent sag p99 7.862 max 9.95   children p99 6.878 max 9.95 um   worse-than-parent 60.30%
+      aspect3 < 4                n=  297 improve  79.1%  over-1deg AREA 100.00% ->  93.76%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      aspect3 4..50              n= 2257 improve  87.0%  over-1deg AREA  99.85% ->  99.02%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      aspect3 >= 50 (sliver)     n= 2446 improve  89.9%  over-1deg AREA 100.00% ->  99.92%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      spread < .5*theta MIS-ORI  n= 2950 improve  91.3%  over-1deg AREA 100.00% -> 100.00%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      spread >= .5*theta TURN    n= 2050 improve  83.2%  over-1deg AREA  99.87% ->  97.47%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+
+── P2 PERP-FOOT  (4667/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 3.063 p99 388.49 um   dPar(IN-PLANE) p50 0.000 p99 0.0 um   dPar/dPerp p50 0.00
+   TILING    area(children)/area(parent)  p50 1.486144 p99 261.6962 TOTAL 1.9974   splits that leave the segment 4664 (99.94%)
+   ROTATION  rho p50 20.6256 p90 86.847 p99 89.74 deg   INVERTED children (rho>90) 0/9334 = 0.000%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 3.14e-12   NON-INVERTED p99 3.14e-12 max 9.69e-11 rad   [vacuity: vs diam p50 3.35e-1]
+   PROXY s/h rho/(sPar/diamChild) p10 0.442 p50 130.148 p90 3341.11   SPEARMAN exact 1.0000 | s/alt 0.3017 | s/diam -0.7354
+   SURFACE   improve(area-mean) 65.80%   improve(worst child) 46.52%
+   *** CEILING  theta_par - max theta_child  p50 -0.1040 p99 79.627 deg   vs  max rho  p50 56.9764 p99 89.890 deg   VIOLATIONS of (improvement <= rotation): 1/4667   slack p50 17.9150 deg ***
+   OVER-BAR  1deg AREA FRACTION 99.888% -> 97.827%  (x0.979)   ABSOLUTE AREA x1.956
+             10um  AREA FRACTION 100.000% -> 98.083%  (x0.981)   ABSOLUTE AREA x1.959   COUNT 5000 -> 9018
+   POSITION  parent sag p99 7.973 max 9.95   children p99 117.779 max 378.92 um   worse-than-parent 67.54%
+      aspect3 < 4                n=  297 improve  81.5%  over-1deg AREA 100.00% ->  91.49%  rho p50    0.518 p99   18.6 deg  inv 0.00%
+      aspect3 4..50              n= 2101 improve  78.5%  over-1deg AREA  99.84% ->  98.30%  rho p50    1.545 p99   87.8 deg  inv 0.00%
+      aspect3 >= 50 (sliver)     n= 2269 improve  52.0%  over-1deg AREA 100.00% ->  99.39%  rho p50   69.179 p99   89.9 deg  inv 0.00%
+      spread < .5*theta MIS-ORI  n= 2633 improve  52.5%  over-1deg AREA 100.00% ->  99.63%  rho p50   69.968 p99   89.9 deg  inv 0.00%
+      spread >= .5*theta TURN    n= 2034 improve  83.0%  over-1deg AREA  99.87% ->  95.55%  rho p50    0.958 p99   30.7 deg  inv 0.00%
+
+── P3 PERP-ONLY  (5000/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 0.524 p99 4.60 um   dPar(IN-PLANE) p50 0.000 p99 0.0 um   dPar/dPerp p50 0.00
+   TILING    area(children)/area(parent)  p50 1.001111 p99 15.7942 TOTAL 1.0051   splits that leave the segment 4987 (99.74%)
+   ROTATION  rho p50 1.5348 p90 28.376 p99 85.36 deg   INVERTED children (rho>90) 0/10000 = 0.000%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 4.19e-12   NON-INVERTED p99 4.19e-12 max 3.98e-10 rad   [vacuity: vs diam p50 2.29e-2]
+   PROXY s/h rho/(sPar/diamChild) p10 0.475 p50 10.548 p90 471.84   SPEARMAN exact 1.0000 | s/alt 0.8670 | s/diam -0.0674
+   SURFACE   improve(area-mean) 69.48%   improve(worst child) 48.12%
+   *** CEILING  theta_par - max theta_child  p50 -0.0480 p99 28.375 deg   vs  max rho  p50 3.5512 p99 88.113 deg   VIOLATIONS of (improvement <= rotation): 5/5000   slack p50 3.6445 deg ***
+   OVER-BAR  1deg AREA FRACTION 99.893% -> 96.560%  (x0.967)   ABSOLUTE AREA x0.972
+             10um  AREA FRACTION 100.000% -> 96.797%  (x0.968)   ABSOLUTE AREA x0.973   COUNT 5000 -> 9782
+   POSITION  parent sag p99 7.862 max 9.95   children p99 19.065 max 154.46 um   worse-than-parent 66.94%
+      aspect3 < 4                n=  297 improve  81.5%  over-1deg AREA 100.00% ->  92.94%  rho p50    0.550 p99   18.4 deg  inv 0.00%
+      aspect3 4..50              n= 2257 improve  82.8%  over-1deg AREA  99.85% ->  97.38%  rho p50    0.865 p99   22.0 deg  inv 0.00%
+      aspect3 >= 50 (sliver)     n= 2446 improve  55.7%  over-1deg AREA 100.00% ->  99.92%  rho p50    3.717 p99   88.1 deg  inv 0.00%
+      spread < .5*theta MIS-ORI  n= 2950 improve  60.0%  over-1deg AREA 100.00% ->  99.84%  rho p50    2.493 p99   87.7 deg  inv 0.00%
+      spread >= .5*theta TURN    n= 2050 improve  83.1%  over-1deg AREA  99.87% ->  95.89%  rho p50    0.935 p99   17.0 deg  inv 0.00%
+   [checkpoint -> research/exchange/_strataConformBisect/S82_split_model.ndjson]
+
+══════════════════ ALL (uniform control)  (n=5000, 24.1s) ══════════════════
+PARENTS  theta p50 4.174 p99 145.13 deg   over-1deg 76.50% count / 34.060% AREA   over-10um 70.40% / 40.778% AREA
+         aspect3 p50 4.80 p90 154.8 p99 3454.8   diam p50 556.9 um   sag p50 1.41 p99 6.29 um
+
+── P0 PARAM-LIFT  (5000/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 0.680 p99 4.24 um   dPar(IN-PLANE) p50 0.646 p99 166.1 um   dPar/dPerp p50 0.95
+   TILING    area(children)/area(parent)  p50 1.000259 p99 27.8742 TOTAL 1.0221   splits that leave the segment 2747 (54.94%)
+   ROTATION  rho p50 0.5445 p90 18.411 p99 179.74 deg   INVERTED children (rho>90) 747/10000 = 7.470%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 3.13e+0   NON-INVERTED p99 1.52e-10 max 1.17e-8 rad   [vacuity: vs diam p50 5.41e-3]
+   PROXY s/h rho/(sPar/diamChild) p10 0.174 p50 2.092 p90 92.71   SPEARMAN exact 0.9096 | s/alt 0.6968 | s/diam 0.1024
+   SURFACE   improve(area-mean) 77.06%   improve(worst child) 30.50%
+   *** CEILING  theta_par - max theta_child  p50 -0.1305 p99 13.854 deg   vs  max rho  p50 0.8731 p99 179.788 deg   VIOLATIONS of (improvement <= rotation): 1/5000   slack p50 0.9663 deg ***
+   OVER-BAR  1deg AREA FRACTION 34.060% -> 32.919%  (x0.967)   ABSOLUTE AREA x0.988
+             10um  AREA FRACTION 40.778% -> 31.788%  (x0.780)   ABSOLUTE AREA x0.797   COUNT 3520 -> 5804
+   POSITION  parent sag p99 6.290 max 9.84   children p99 4.961 max 9.56 um   worse-than-parent 33.92%
+      aspect3 < 4                n= 2158 improve  90.5%  over-1deg AREA  21.85% ->  19.98%  rho p50    0.252 p99    6.1 deg  inv 0.00%
+      aspect3 4..50              n= 2070 improve  74.7%  over-1deg AREA  79.20% ->  74.61%  rho p50    0.661 p99  179.8 deg  inv 3.45%
+      aspect3 >= 50 (sliver)     n=  772 improve  46.0%  over-1deg AREA  98.73% ->  99.73%  rho p50   26.793 p99  179.8 deg  inv 39.12%
+      spread < .5*theta MIS-ORI  n=  935 improve  51.1%  over-1deg AREA  99.94% ->  98.85%  rho p50   22.558 p99  179.8 deg  inv 39.41%
+      spread >= .5*theta TURN    n= 4065 improve  83.0%  over-1deg AREA  33.07% ->  30.50%  rho p50    0.379 p99   11.6 deg  inv 0.12%
+
+── P1 NO-LIFT  (5000/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 0.000 p99 0.00 um   dPar(IN-PLANE) p50 0.000 p99 0.0 um   dPar/dPerp p50 0.00
+   TILING    area(children)/area(parent)  p50 1.000000 p99 1.0000 TOTAL 1.0000   splits that leave the segment 0 (0.00%)
+   ROTATION  rho p50 0.0000 p90 0.000 p99 0.00 deg   INVERTED children (rho>90) 0/10000 = 0.000%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 2.98e-8   NON-INVERTED p99 2.98e-8 max 3.33e-8 rad   [vacuity: vs diam p50 0.00e+0]
+   PROXY s/h rho/(sPar/diamChild) p10 0.000 p50 0.000 p90 0.00   SPEARMAN exact 0.0000 | s/alt -0.0277 | s/diam -0.0045
+   SURFACE   improve(area-mean) 77.68%   improve(worst child) 1.42%
+   *** CEILING  theta_par - max theta_child  p50 -0.0043 p99 0.000 deg   vs  max rho  p50 0.0000 p99 0.000 deg   VIOLATIONS of (improvement <= rotation): 66/5000   slack p50 0.0043 deg ***
+   OVER-BAR  1deg AREA FRACTION 34.060% -> 31.563%  (x0.927)   ABSOLUTE AREA x0.927
+             10um  AREA FRACTION 40.778% -> 31.912%  (x0.783)   ABSOLUTE AREA x0.783   COUNT 3520 -> 5945
+   POSITION  parent sag p99 6.290 max 9.84   children p99 5.562 max 9.84 um   worse-than-parent 53.20%
+      aspect3 < 4                n= 2158 improve  68.7%  over-1deg AREA  21.85% ->  19.49%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      aspect3 4..50              n= 2070 improve  82.0%  over-1deg AREA  79.20% ->  76.10%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      aspect3 >= 50 (sliver)     n=  772 improve  91.2%  over-1deg AREA  98.73% ->  98.67%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      spread < .5*theta MIS-ORI  n=  935 improve  92.4%  over-1deg AREA  99.94% ->  98.55%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+      spread >= .5*theta TURN    n= 4065 improve  74.3%  over-1deg AREA  33.07% ->  30.56%  rho p50    0.000 p99    0.0 deg  inv 0.00%
+
+── P2 PERP-FOOT  (4912/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 1.158 p99 335.04 um   dPar(IN-PLANE) p50 0.000 p99 0.0 um   dPar/dPerp p50 0.00
+   TILING    area(children)/area(parent)  p50 1.000072 p99 72.6447 TOTAL 1.0866   splits that leave the segment 4740 (96.50%)
+   ROTATION  rho p50 0.5620 p90 62.959 p99 89.20 deg   INVERTED children (rho>90) 0/9824 = 0.000%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 1.37e-10   NON-INVERTED p99 1.37e-10 max 1.83e-8 rad   [vacuity: vs diam p50 5.18e-3]
+   PROXY s/h rho/(sPar/diamChild) p10 0.176 p50 2.015 p90 829.88   SPEARMAN exact 1.0000 | s/alt 0.6939 | s/diam 0.0344
+   SURFACE   improve(area-mean) 78.48%   improve(worst child) 33.04%
+   *** CEILING  theta_par - max theta_child  p50 -0.1180 p99 72.730 deg   vs  max rho  p50 0.8356 p99 89.578 deg   VIOLATIONS of (improvement <= rotation): 1/4912   slack p50 0.9240 deg ***
+   OVER-BAR  1deg AREA FRACTION 33.844% -> 36.756%  (x1.086)   ABSOLUTE AREA x1.180
+             10um  AREA FRACTION 40.584% -> 35.641%  (x0.878)   ABSOLUTE AREA x0.954   COUNT 3520 -> 5608
+   POSITION  parent sag p99 6.290 max 9.84   children p99 81.269 max 296.69 um   worse-than-parent 46.01%
+      aspect3 < 4                n= 2158 improve  90.7%  over-1deg AREA  21.85% ->  20.12%  rho p50    0.258 p99    6.3 deg  inv 0.00%
+      aspect3 4..50              n= 2022 improve  75.5%  over-1deg AREA  78.91% ->  76.91%  rho p50    0.688 p99   85.6 deg  inv 0.00%
+      aspect3 >= 50 (sliver)     n=  732 improve  50.8%  over-1deg AREA  98.62% ->  99.13%  rho p50   69.686 p99   89.9 deg  inv 0.00%
+      spread < .5*theta MIS-ORI  n=  847 improve  54.8%  over-1deg AREA  99.92% ->  99.09%  rho p50   69.638 p99   89.9 deg  inv 0.00%
+      spread >= .5*theta TURN    n= 4065 improve  83.4%  over-1deg AREA  33.07% ->  30.71%  rho p50    0.381 p99   12.4 deg  inv 0.00%
+
+── P3 PERP-ONLY  (5000/5000 valid) ───────────────────────────────────────────
+   LIFT      dPerp p50 0.680 p99 4.24 um   dPar(IN-PLANE) p50 0.000 p99 0.0 um   dPar/dPerp p50 0.00
+   TILING    area(children)/area(parent)  p50 1.000062 p99 4.5884 TOTAL 1.0004   splits that leave the segment 4828 (96.56%)
+   ROTATION  rho p50 0.4477 p90 4.958 p99 74.36 deg   INVERTED children (rho>90) 0/10000 = 0.000%
+   IDENTITY  |rho-atan(dPerp/aPerp)| all p99 1.21e-10   NON-INVERTED p99 1.21e-10 max 1.64e-8 rad   [vacuity: vs diam p50 4.77e-3]
+   PROXY s/h rho/(sPar/diamChild) p10 0.174 p50 2.062 p90 38.27   SPEARMAN exact 1.0000 | s/alt 0.8119 | s/diam 0.2322
+   SURFACE   improve(area-mean) 79.42%   improve(worst child) 33.74%
+   *** CEILING  theta_par - max theta_child  p50 -0.1152 p99 14.212 deg   vs  max rho  p50 0.7909 p99 82.907 deg   VIOLATIONS of (improvement <= rotation): 1/5000   slack p50 0.8284 deg ***
+   OVER-BAR  1deg AREA FRACTION 34.060% -> 31.443%  (x0.923)   ABSOLUTE AREA x0.924
+             10um  AREA FRACTION 40.778% -> 30.364%  (x0.745)   ABSOLUTE AREA x0.745   COUNT 3520 -> 5810
+   POSITION  parent sag p99 6.290 max 9.84   children p99 8.263 max 140.59 um   worse-than-parent 46.22%
+      aspect3 < 4                n= 2158 improve  90.5%  over-1deg AREA  21.85% ->  19.96%  rho p50    0.251 p99    6.2 deg  inv 0.00%
+      aspect3 4..50              n= 2070 improve  76.8%  over-1deg AREA  79.20% ->  73.55%  rho p50    0.612 p99   19.7 deg  inv 0.00%
+      aspect3 >= 50 (sliver)     n=  772 improve  55.4%  over-1deg AREA  98.73% ->  99.18%  rho p50    3.443 p99   87.9 deg  inv 0.00%
+      spread < .5*theta MIS-ORI  n=  935 improve  62.7%  over-1deg AREA  99.94% ->  97.40%  rho p50    2.377 p99   87.9 deg  inv 0.00%
+      spread >= .5*theta TURN    n= 4065 improve  83.3%  over-1deg AREA  33.07% ->  30.43%  rho p50    0.379 p99   10.1 deg  inv 0.00%
+   [checkpoint -> research/exchange/_strataConformBisect/S82_split_model.ndjson]
+
+done  [24.7s]
