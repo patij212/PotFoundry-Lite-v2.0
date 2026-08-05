@@ -1,0 +1,50 @@
+{
+  "style": "GothicArches",
+  "before": "gothicarches_ring_DS-HT_S39CTL",
+  "after": "s60flip/gothicarches_ring_DS-HT_S39CTL_G2CON",
+  "tag": "L1_GOTHIC",
+  "nTri": 1142166,
+  "N": 50000,
+  "tol": 0.01,
+  "nMax": 512,
+  "changed": 26989,
+  "unchanged": 23011,
+  "wholeB": {
+    "n": 50000,
+    "fail": 143,
+    "pass": 49857,
+    "unk": 0,
+    "areaAll": 1684.256816970964,
+    "areaFail": 0.5952437750857443
+  },
+  "wholeA": {
+    "n": 50000,
+    "fail": 98,
+    "pass": 49900,
+    "unk": 2,
+    "areaAll": 1684.256816970964,
+    "areaFail": 0.4332837368291483
+  },
+  "chgB": {
+    "n": 26989,
+    "fail": 83,
+    "pass": 26906,
+    "unk": 0,
+    "areaAll": 725.1291319052533,
+    "areaFail": 0.4223142374167558
+  },
+  "chgA": {
+    "n": 26989,
+    "fail": 38,
+    "pass": 26949,
+    "unk": 2,
+    "areaAll": 725.1291319052533,
+    "areaFail": 0.26035419916016
+  },
+  "ratioCount": 0.4578313253012048,
+  "ratioArea": 0.6164940134453307,
+  "ratioCountWhole": 0.6853146853146853,
+  "ratioAreaWhole": 0.7279097320534501,
+  "verdict": "K-L1b FREE WIN",
+  "secs": 2567.668
+}

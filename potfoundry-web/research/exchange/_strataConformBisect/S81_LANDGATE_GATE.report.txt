@@ -1,0 +1,48 @@
+===== S81 — EQUIVALENCE GATE for the PACKAGED constrained flip (landFlipPass.ts) =====
+style GothicArches  stem gothicarches_ring_DS-HT_S39CTL  tag GATE  C2 ruler plane  selector 0 um  rounds 40
+closure: detectZJumps 0  detectThetaJumps 0
+1142166 facets read   [1.9s]
+  landFlip: 1142166 facets, 571663 welded vertices, 0 FROZEN off-surface (gate 0.05 mm)
+  landFlip round 1: 257329 flips (cum 257329)  rej fold 212929 dup 3700 noImp 660809 DET 1392 POS 183
+  landFlip round 2: 102209 flips (cum 359538)  rej fold 505620 dup 17559 noImp 1718123 DET 3193 POS 416
+  landFlip round 3: 43602 flips (cum 403140)  rej fold 843176 dup 38015 noImp 2927253 DET 5288 POS 662
+  landFlip round 4: 17039 flips (cum 420179)  rej fold 1204964 dup 60771 noImp 4198359 DET 7566 POS 911
+  landFlip round 5: 6245 flips (cum 426424)  rej fold 1578548 dup 84115 noImp 5491614 DET 9945 POS 1169
+  landFlip round 6: 2692 flips (cum 429116)  rej fold 1955864 dup 107733 noImp 6791974 DET 12357 POS 1428
+  landFlip round 7: 1398 flips (cum 430514)  rej fold 2334598 dup 131373 noImp 8095337 DET 14784 POS 1687
+  landFlip round 8: 767 flips (cum 431281)  rej fold 2713886 dup 155048 noImp 9399942 DET 17225 POS 1944
+  landFlip round 9: 496 flips (cum 431777)  rej fold 3093393 dup 178743 noImp 10705105 DET 19670 POS 2201
+  landFlip round 10: 307 flips (cum 432084)  rej fold 3473044 dup 202470 noImp 12010729 DET 22119 POS 2459
+  landFlip round 11: 209 flips (cum 432293)  rej fold 3852768 dup 226200 noImp 13316584 DET 24570 POS 2717
+  landFlip round 12: 130 flips (cum 432423)  rej fold 4232548 dup 249923 noImp 14622627 DET 27023 POS 2975
+  landFlip round 13: 81 flips (cum 432504)  rej fold 4612343 dup 273650 noImp 15928812 DET 29477 POS 3233
+  landFlip round 14: 48 flips (cum 432552)  rej fold 4992168 dup 297372 noImp 17235076 DET 31931 POS 3491
+  landFlip round 15: 27 flips (cum 432579)  rej fold 5372016 dup 321086 noImp 18541396 DET 34385 POS 3749
+  landFlip round 16: 12 flips (cum 432591)  rej fold 5751877 dup 344804 noImp 19847739 DET 36839 POS 4007
+  landFlip round 17: 4 flips (cum 432595)  rej fold 6131738 dup 368523 noImp 21154106 DET 39293 POS 4265
+  landFlip round 18: 2 flips (cum 432597)  rej fold 6511599 dup 392242 noImp 22460478 DET 41747 POS 4523
+  landFlip round 19: 0 flips (cum 432597)  rej fold 6891461 dup 415961 noImp 23766854 DET 44201 POS 4781
+
+  BEFORE
+    ORIENT over-10um 129837 (11.368%)  p50 3.32 p99 36.25 max 2036.9 um   by AREA 8.131% of surface
+    INVERSION >90deg 1506  >120deg 410  max 169.82 deg
+    POSITION (plane ruler) over-10um 75  p99 3.43 max 47.2 um
+    SHAPE maxAngle max 175.626  caps>=150 68684   DETERM jit>1um 0 >10um 0
+    TOPO 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 0
+  AFTER 
+    ORIENT over-10um 37020 (3.241%)  p50 2.24 p99 16.12 max 1682.8 um   by AREA 2.179% of surface
+    INVERSION >90deg 685  >120deg 175  max 168.94 deg
+    POSITION (plane ruler) over-10um 31  p99 3.64 max 37.1 um
+    SHAPE maxAngle max 178.853  caps>=150 113804   DETERM jit>1um 0 >10um 0
+    TOPO 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 0
+
+flips 432597 in 19 rounds, 889.5s   frozen off-surface 0
+rej: frozen 0  dirty 984856  dup 415961  fold 6891461  noImprove 23766854  DET 44201  POS 4781
+ORIENT over-bar 129837 -> 37020  (3.507x)   by AREA 8.131% -> 2.179%  (3.731x)
+POSITION (plane) over-bar 75 -> 31
+NON-VACUITY: C2 rejected 4781, C3 rejected 44201. 
+
+written research/exchange/_strataConformBisect/s80land/gothicarches_ring_DS-HT_S39CTL_GATE.stl
+GEOMETRY MD5 (vertices only, normals+header excluded): abbcb74f157e1fdaa7b59baefb5ef410
+H-L4-GATE: PASS — byte-identical geometry to research/exchange/_strataConformBisect/s60flip/gothicarches_ring_DS-HT_S39CTL_G3CHORD.stl  (abbcb74f157e1fdaa7b59baefb5ef410)
+done  [892.5s]

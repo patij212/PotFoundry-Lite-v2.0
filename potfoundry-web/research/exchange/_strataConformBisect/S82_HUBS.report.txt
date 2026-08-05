@@ -1,0 +1,42 @@
+===== S82 — SUPER-HUB VERTEX CENSUS (are 1-ring operators structurally defeated?) =====
+
+═════ gothicarches_ring_DS-HT_S39CTL  (1142166 facets, 571663 welded vertices) ═════
+  facet-degree  p50 6  p99 12  p999 16  MAX 50
+  degree >=   10:    31568 vertices (5.5221%)   holding    353568 incidences = 10.3186% of the mesh
+  degree >=   20:      144 vertices (0.0252%)   holding      3276 incidences = 0.0956% of the mesh
+  degree >=   50:        1 vertices (0.0002%)   holding        50 incidences = 0.0015% of the mesh
+  degree >=  100:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >=  250:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >=  500:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >= 1000:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >= 2000:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  *** H-L5 READ: degree>=1000 vertices 0   share of mesh on degree>=100 vertices 0.0000% ***
+  => NO super-hub class: a 1-ring operator is NOT structurally defeated here.
+
+═════ s60flip/gothicarches_ring_DS-HT_S39CTL_G3CHORD  (1142166 facets, 571663 welded vertices) ═════
+  facet-degree  p50 6  p99 11  p999 13  MAX 31
+  degree >=   10:    14203 vertices (2.4845%)   holding    152811 incidences = 4.4597% of the mesh
+  degree >=   20:       17 vertices (0.0030%)   holding       385 incidences = 0.0112% of the mesh
+  degree >=   50:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >=  100:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >=  250:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >=  500:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >= 1000:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  degree >= 2000:        0 vertices (0.0000%)   holding         0 incidences = 0.0000% of the mesh
+  *** H-L5 READ: degree>=1000 vertices 0   share of mesh on degree>=100 vertices 0.0000% ***
+  => NO super-hub class: a 1-ring operator is NOT structurally defeated here.
+
+═════ voronoi_ring_D--  (806765 facets, 403683 welded vertices) ═════
+  facet-degree  p50 5  p99 13  p999 22  MAX 2550
+  degree >=   10:    18219 vertices (4.5132%)   holding    283405 incidences = 11.7095% of the mesh
+  degree >=   20:      633 vertices (0.1568%)   holding     78639 incidences = 3.2491% of the mesh
+  degree >=   50:       81 vertices (0.0201%)   holding     65605 incidences = 2.7106% of the mesh
+  degree >=  100:       69 vertices (0.0171%)   holding     64734 incidences = 2.6746% of the mesh
+  degree >=  250:       62 vertices (0.0154%)   holding     63901 incidences = 2.6402% of the mesh
+  degree >=  500:       50 vertices (0.0124%)   holding     59830 incidences = 2.4720% of the mesh
+  degree >= 1000:       32 vertices (0.0079%)   holding     45324 incidences = 1.8727% of the mesh
+  degree >= 2000:        2 vertices (0.0005%)   holding      5080 incidences = 0.2099% of the mesh
+  *** H-L5 READ: degree>=1000 vertices 32   share of mesh on degree>=100 vertices 2.6746% ***
+  => HUBS PRESENT — H-L5 REFUTED on this mesh; 1-ring operators are structurally limited.
+
+written research/exchange/_strataConformBisect/s80land/S82_HUBS.json
