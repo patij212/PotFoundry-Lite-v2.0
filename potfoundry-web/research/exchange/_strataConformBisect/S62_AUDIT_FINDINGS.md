@@ -29,6 +29,30 @@
 > **3. AND 35 % OF THE 39.7 % IS A FOOTPRINT ARTEFACT.** Minimising the deviation over the facet's own
 > 15-point footprint (the `featureSpan` correction, generalised from a boolean to a magnitude) takes
 > the headline **39.696 % -> 25.675 %**. Quote the cone-minimised count or it is inflated 1.55x.
+>
+> **4. THE THREE STYLES DO NOT AGREE, so "it is a pipeline fact" is half right (FINDING 10).** The
+> orientation STATISTIC is universal; what it POINTS AT is not:
+> ```
+> style          top-K by tangExc:  PROVEN-FAIL / PROVEN-PASS   plane-ruler over-bar   selectivity
+> Voronoi                                 396 / 4                     0 / 400            13.2x
+> GothicArches                            251 / 49                   11 / 300           125.5x
+> LowPolyFacet                              0 / 300                   0 / 300            0.00x
+> ```
+> **LowPolyFacet — the control style SECTION 14.2 leans on — has ZERO of its own 300 worst facets over
+> the product bar**, and there H1 agrees with the plane ruler to 1.003x. Its 10.887 % is a pure ruler
+> artefact. On the other two the defect is real and it is POSITION.
+>
+> **5. FOR FLIP SPECIFICALLY, ON GOTHIC.** Your S55b / constrained-flip position arm is scored with
+> `sagAdaptiveRaw`. On `S39CTL` that ruler reports 11 over-bar in the top-300 where `certifyTriangle`
+> proves **251**, and its own worst facets read **0.675x** of H1. **A "position 75 -> 36 BETTER" measured
+> with it is a statement about the ruler, not about the mesh** — please re-score the flip A/B with
+> `certifyTriangle` at `tol = 0.010` before landing anything on it. `research/tools/audTruePos.ts`
+> takes `PF_AUDTP_JOBS='GothicArches=<stem>'` and does exactly this in ~5 min.
+>
+> **6. AND A COMMITTED NUMBER IS CONTRADICTED (FINDING 10c).** `943427c6`'s *"Exact mesh-wide H1:
+> 22.190 um"* for `S39CTL` vs a facet I measure at **349.221 um**, confirmed to 1 nanometre by an
+> instrument sharing no code with `_facetTruthLib`. Needs reconciliation by its owner before anything
+> derived from it is used again.
 
 Appended continuously. Every number here is a printed value from a named command, not a verdict read
 off a test's green tick.
