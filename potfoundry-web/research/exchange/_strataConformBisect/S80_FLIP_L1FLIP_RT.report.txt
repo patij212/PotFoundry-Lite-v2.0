@@ -1,0 +1,50 @@
+===== S60 — THE CONSTRAINED FLIP (connectivity only; 0 vertices moved, 0 triangles added) =====
+style GothicArches  stem gothicarches_ring_DS-HT_L1FLIP  tag L1FLIP_RT
+*** ORIENTATION KEY = chord  ->  2*sin(theta/2)*diam, MONOTONE (the fix) ***
+ARM=none   C1 tangExc-decrease=false   C2 pos<=max(10um,old)=false   C3 det-floor(jitter<=1um, mode=rel)=false   C4 dup-edge=true   LEX-plateau=false
+rA cost probe: 200k evals in 0.21 s = 0.95 M eval/s   (checksum 8880671.569)
+research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_L1FLIP.stl: 1142166 facets   [0.4s]
+weld: 571663 unique vertices from 3426498 corners   [1.6s]
+GATE vertex-on-surface: p50 1.17e-6  p99 1.04e-5  max 2.58e-5 mm -> TRUSTED
+
+── BEFORE (flag-OFF control, measured in THIS process) ── (tang 10.2s, pos 151.2s over 1142166 facets, stride 1)
+   ORIENT tangExc  p50 2.24  p99 16.12  max 1775.3 um   over-10um 37003 (3.240%)
+   POSITION  sag   p50 1.20  p99 3.64  max 37.1 um   over-10um 32 (0.0028%)
+   SHAPE  maxAngle p50 96.2  p99 171.7  max 178.853   caps>=150 113789   >=179.999 0
+   DETERM jitterUm p99 0.320  max 1.00   over-1um 2 (0.000%)   over-10um 0
+   ORIENT by AREA  over-10um covers 2.179% of the SURFACE (count says 3.240% — count over-states by 1.49x)
+   INVERSION  normal angle > 90deg 684   > 120deg 173   max 171.11 deg
+   VALIDITY: of the 37003 facets over the tang bar, 0 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO before: 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 0
+
+TOTAL flips 0 = 0.00% of facets;  VERTICES MOVED 0;  TRIANGLES ADDED 0
+CLAUSE REJECTIONS (cumulative): fold 0  dup-edge 0  no-improve 0  C3 DET 0  C2 POS 0
+NON-VACUITY: C2 rejected 0 candidates that passed every other clause; C3 rejected 0.
+   
+
+── AFTER ── (tang 10.3s, pos 1.2s over 1142166 facets, stride 1)
+   ORIENT tangExc  p50 2.24  p99 16.12  max 1775.3 um   over-10um 37003 (3.240%)
+   POSITION  sag   p50 1.20  p99 3.64  max 37.1 um   over-10um 32 (0.0028%)
+   SHAPE  maxAngle p50 96.2  p99 171.7  max 178.853   caps>=150 113789   >=179.999 0
+   DETERM jitterUm p99 0.320  max 1.00   over-1um 2 (0.000%)   over-10um 0
+   ORIENT by AREA  over-10um covers 2.179% of the SURFACE (count says 3.240% — count over-states by 1.49x)
+   INVERSION  normal angle > 90deg 684   > 120deg 173   max 171.11 deg
+   VALIDITY: of the 37003 facets over the tang bar, 0 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO after: 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 0
+
+DELTA (both rulers, always)
+   ORIENT over-10um   37003 -> 37003   (1.00x)      p99 16.12 -> 16.12 um   max 1775.3 -> 1775.3
+   POSITION over-10um 32 -> 32   p99 3.64 -> 3.64 um   max 37.1 -> 37.1
+   SHAPE caps>=150      113789 -> 113789    >=179.999 0 -> 0    maxAngle max 178.853 -> 178.853
+   DETERM jitter>1um    2 -> 2    >10um 0 -> 0
+   ORIENT by AREA       2.179% -> 2.179% of surface   (1.00x)
+   INVERSION >90deg     684 -> 684   >120deg 173 -> 173   (removed, not manufactured)
+
+PRE-REGISTERED KILL-CRITERIA
+   K1 tangOver_after <= 0.5*before : 37003 <= 18502 -> *** FAIL — REFUTED as a standalone fix ***
+   K2 posOver_after <= before      : 32 <= 32 -> PASS
+   K3 no facet over the det floor  : jitter>10um 0, maxAngle>=179.999 0 -> PASS
+   K4 ceiling: run s61FlipCeiling.ts on the written STL
+   C4 topology preserved           : PASS (edges 1713829->1713829, bnd 1160->1160, nonMan 0->0, orientBad 0->0)
+
+done  [181.4s]

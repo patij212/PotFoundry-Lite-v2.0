@@ -424,3 +424,150 @@ on LowPolyFacet — S60 §5), so a pass that optimises orientation buys thinner 
 the f32 determinacy floor (`jitter > 1 µm` stays 0), and `maxAngle ≥ 179.999°` stays 0, so no facet's
 normal becomes non-representable — which is exactly what C3 exists to guarantee and it is non-vacuous
 (59,120 rejections).
+
+### 4.4 ROUND-TRIP VERIFICATION of the shipped L1FLIP STL — and one honest leak the f64 placement causes
+
+`S80_FLIP_L1FLIP_RT.report.txt` — the WRITTEN `gothicarches_ring_DS-HT_L1FLIP.stl` re-read from disk in
+a fresh process and re-censused (`PF_S60_ARM=none`), 181 s. This is the mesh that would ship.
+
+```
+ORIENT over-10um 37,003 (3.240%)   p99 16.12   max 1775.3 um   by AREA 2.179% of surface
+POSITION (plane) over-10um 32      p99 3.64    max 37.1 um
+INVERSION >90deg 684   >120deg 173     SHAPE maxAngle max 178.853   caps>=179.999 *** 0 ***
+DETERM jitterUm max 1.00   over-1um *** 2 ***   over-10um 0
+TOPO 1,713,829 edges, boundary 1,160, non-manifold 0, orientation-inconsistent 0
+```
+
+Everything reproduces the in-memory census to ~0.03 % (37,003 vs 37,013; 684 vs 671 inversions), and
+the topology and winding are exactly preserved. **This is a shippable artifact, not a lab number.**
+
+**The leak, named because C3 is supposed to be a guarantee: `jitter > 1 µm` is 2 on the written STL
+where the in-memory pass reported 0.** Cause: the in-driver pass runs on the **f64** soup, so it
+evaluates the determinacy bound on coordinates that are quantised to **f32** only afterwards, by the
+STL writer. Two facets of 1,142,166 land just over the 1 µm floor after rounding. It is 1.8 ppm of the
+mesh, `jitter > 10 µm` is still 0, `maxAngle ≥ 179.999°` is still 0, and the offline f32 arm has 0 —
+but **C3 is a bound on f32 geometry evaluated before the f32 rounding happens, and that is a real (if
+tiny) hole.** The fix if it ever matters is to evaluate C3 against the rounded coordinates
+(`Math.fround`) rather than the f64 ones; I did not make that change because I could not re-run both
+arms to measure it, and an unmeasured change is worse than none.
+
+### 4.5 THE PRODUCTION A/B ON THE DECIDING RULER — an INDEPENDENT confirmation of §2
+
+`s80HonestPos_L2_DRIVER.report.txt`, 1,031 s. §2 scored the OFFLINE pair (`S39CTL` vs `G2CON`). This
+scores the DRIVER pair (`L0CTL` vs `L1FLIP`) — a different AFTER mesh (f64 placement, 432,292 flips
+vs 432,597) measured by the same instrument, N = 20,000 paired indices.
+
+| | BEFORE `L0CTL` | AFTER `L1FLIP` | ratio |
+|---|---|---|---|
+| **CHANGED (10,891 = 54.45 %) H1 PROVEN-FAIL** | **37 (0.340 %)** | **23 (0.211 %)** | **0.622×** |
+| **CHANGED, by AREA** | **0.0731 %** | **0.0546 %** | **0.747×** |
+| WHOLE (20,000) H1 PROVEN-FAIL | 61 (0.305 %) | 47 (0.235 %) | 0.770× |
+| WHOLE, by AREA | 0.0357 % | 0.0279 % | 0.782× |
+| H1 witnessed max (whole) | 180.47 µm | **123.94 µm** | |
+| transitions on CHANGED | — | **22 FIXED / 8 new / 15 stayed** | net −14 |
+| witnessed improved / worsened | — | 8,663 / 2,076 | |
+| PLANE over-bar vs H1 over-bar | 2 vs **61** | 1 vs **47** | **30× under-report** |
+
+**Same verdict, independently: K-L1b.** 1σ is ±16.4 % on 37 failures, so 0.622× is ≈ 2.3σ from 1.0 —
+weaker than §2's 5σ (smaller N, smaller mesh sample) but the same sign and a consistent magnitude.
+Taking the two arms together, the honest position improvement on the touched facets is **0.46–0.62×
+by count and 0.62–0.75× by area**, and the plane ruler's under-report is **30–48×** (the spread is
+sampling noise on 2–3 plane-ruler events, and is reported as a range rather than a point).
+
+---
+
+## 5. H-L3 — THE HONEST C2 IS PRICED AND IT IS A NO-GO AS BUILT (and I can bound what it would have bought)
+
+`landFlipPass.ts` takes `posRuler: 'h1'`, replacing C2's plane ruler with `certifyTriangle`'s WITNESS
+at tol = 0.010 mm, with the monotone orientation key as the cheap SELECTOR (`h1SelectUm`). Soundness,
+stated before the run: `witnessed > tol` is a real point at a real distance, so REJECTING on it is a
+proof-driven rejection; NOT proving failure is not proving pass, so the guard is one-sided —
+**do-no-proven-harm**, never a certificate. (The campaign's scar `4db657d6` is the other direction: a
+one-sided bound driving FAILS.)
+
+### 5.1 THE COST — K-L3a TRIPPED, decisively
+
+Arm `PF_S81_RULER=h1 PF_S81_SEL_UM=10` on the same Gothic mesh, launched at 12:40.
+
+```
+plane arm (S81 GATE):   round 1 = 76.8 s of 890 s total       (round 1 is 8.6% of the arm)
+h1 arm:                 round 1 had burned >= 1,830 s of CPU (2,002 s total - ~170 s census) and HAD
+                        NOT COMPLETED at write time  =>  >= 23.8x the plane arm's round 1, still running
+                        =>  extrapolated full arm >= 21,000 s ~ 5.9 hours = >= 23x the plane arm
+```
+
+**K-L3a was "> 4× ⇒ NO-GO as built". Measured ≥ 20×, on round 1 alone, without the selector saving
+what I predicted.** The reason is now clear and is worth recording: `certifyTriangle`'s cost is set by
+the facet DIAMETER / tol (its initial lattice level is `ceil(cov/tol)`), not by the size of the error,
+so a "cheap because it fails fast" intuition is wrong — a facet only short-circuits after a full
+lattice pass at that level. The selector picks the LARGE facets, which are the expensive ones.
+
+**K-L3b (yield) and K-L3-VAC (does the honest guard reject anything the plane guard accepted) are NOT
+MEASURED — the arm did not reach quiescence in my window.** I am not going to infer them.
+
+### 5.2 BUT ITS MAXIMUM BENEFIT IS ALREADY BOUNDED, from §2's paired transitions
+
+The most an honest C2 can do is refuse the flips that CREATED a proven position failure. §2 measured
+that population directly on the changed facets: **10 newly failed against 55 fixed per 26,989**
+(§4.5's independent arm: 8 against 22 per 10,891). Whole-mesh that is ≈ **420 new failures against
+≈ 2,330 fixed**, i.e. a net of ≈ −1,910. A perfect honest C2 would move the net to ≈ −2,330.
+
+> **The blind plane C2 is already delivering ~82 % of the achievable net honest-position benefit, and
+> closing the last ~18 % costs ≥ 20× the wall time.** That is the pricing, and it says: ship the plane
+> C2, keep `posRuler: 'h1'` in the code as the measured-but-not-default option, and do not spend a
+> night on it. If it is ever wanted, the lever to make it affordable is a `sampleCap` on
+> `certifyTriangle` (bounded cost, `witnessed` still a valid lower bound, `certified` simply unavailable)
+> — NOT a bigger selector cut, which selects the expensive facets by construction.
+
+---
+
+## 6. VISUAL EVIDENCE — the driver A/B, flat-shaded, worst window auto-selected
+
+`research/exchange/_strataConformBisect/s80land/render/orient_driver_ab.png`
+(bins from `s64OrientRender.ts`, PNG from `research/render/meshRender.cjs`, flat-shaded per the lab
+rule that smooth normals hide exactly this defect). Window auto-chosen as the (θ,z) cell with the most
+over-bar facets in the FIRST mesh — θ 3.0925 ± 0.05, z 97.5 ± 3 mm — so it is the worst region and not
+one I picked.
+
+```
+LEFT  L0CTL flag OFF : 2,577 facets in window,  454 over 10 um (17.62%),  worst 424.2 um
+RIGHT L1FLIP flag ON : 2,588 facets in window,  165 over 10 um ( 6.38%),  worst 360.5 um
+```
+
+**The picture and the metric agree.** On the left the failures are visibly long thin NEEDLE slivers —
+scarlet and orange splinters scattered across the arch relief, exactly the shape you get when a facet's
+diagonal runs the wrong way across a rib. On the right they are gone: the patch is uniformly green with
+a handful of yellow facets on the rib flanks, and the surviving colour is broad and diffuse rather than
+splintered. Nothing in the render contradicts a number in this file.
+
+**Two honest caveats on the picture, both inherited and both still true.** (a) The colour-bar legend
+("chord sag (mixed rulers) 0mm → ≥0.15mm") is hard-coded in the shared `meshRender.cjs` and does NOT
+describe this ramp — mine is 0 → 50 µm `tangExc`, as stated in each per-cell label. I did not edit that
+shared file mid-run; it needs a `meta.scaleMm`/`meta.ruler` from its owner. (b) The renderer auto-fits
+each cell's camera, so the two panels are not identically framed — compare the colour fields, not the
+silhouettes.
+
+---
+
+## 7. WHAT I DID NOT DO — named, so it is not mistaken for done
+
+* **H-L3's yield and vacuity are UNMEASURED.** The honest-C2 arm was still in round 1 after ≥ 20× the
+  plane arm's round-1 cost and did not reach quiescence. I have its COST (K-L3a tripped) and an upper
+  bound on its BENEFIT derived from §2's transitions; I do not have "how many flips the honest guard
+  would refuse that the plane guard accepted", and I have not inferred it.
+* **Voronoi and LowPolyFacet were NOT re-run on the monotone key.** Only Gothic — the deliverable —
+  was re-run. S66's re-score says both are inert for the over-bar ratio on those styles too, but that
+  is a re-score of an old-key mesh, which is exactly the argument I used to justify re-running Gothic.
+  So the honest status is: **Gothic re-run and confirmed; Voronoi/LowPoly not re-run.**
+* **The AFTER mesh in §2 is the OLD-key `G2CON`,** because that is the artifact whose position claim
+  was in dispute. §4.5 re-scores the new-key driver mesh independently and agrees, so nothing hangs
+  on it, but §2's exact numbers are the old-key pass's.
+* **C3 is evaluated on f64 in the driver and the STL is written in f32**, which leaks 2 facets of
+  1,142,166 over the 1 µm determinacy floor (§4.4). The `Math.fround` fix is identified, NOT made,
+  because I could not re-run both arms to measure it.
+* **No `src/` file was touched. No production export behaviour changed.** The pass is DEFAULT OFF and
+  its flag-OFF arm is byte-identical to the committed baseline. GitNexus `impact`/`detect_changes` were
+  not run because no production symbol was edited; the GitNexus MCP tools were not available in my
+  toolset this session, and I am saying so rather than claiming a check I did not perform.
+* **Not measured on any style other than GothicArches.** This lever is for well-conditioned,
+  hub-free meshes (§3) and I make no claim beyond that class.

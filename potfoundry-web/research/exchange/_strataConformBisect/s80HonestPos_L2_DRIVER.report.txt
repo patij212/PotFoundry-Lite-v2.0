@@ -1,0 +1,92 @@
+===== S80-L1 — THE HONEST POSITION RE-SCORE (certifyTriangle H1, paired by facet index) =====
+style GothicArches   tol 10 um   nMax 512   N 20000   tag L2_DRIVER
+BEFORE  gothicarches_ring_DS-HT_L0CTL.stl
+AFTER   gothicarches_ring_DS-HT_L1FLIP.stl
+closure: detectZJumps 0   detectThetaJumps 0
+BEFORE 1142166 facets   AFTER 1142166 facets   [2.1s]
+sample: 20000 facet indices, golden stride, PAIRED (same index list scored on both meshes)
+  scored 500/20000   11.8 facet/s   eta 27.5 min   [44.4s]
+  scored 1000/20000   15.3 facet/s   eta 20.6 min   [67.3s]
+  scored 1500/20000   16.3 facet/s   eta 18.9 min   [94.0s]
+  scored 2000/20000   17.0 facet/s   eta 17.6 min   [119.7s]
+  scored 2500/20000   17.7 facet/s   eta 16.5 min   [143.4s]
+  scored 3000/20000   18.4 facet/s   eta 15.4 min   [165.4s]
+  scored 3500/20000   18.8 facet/s   eta 14.7 min   [188.6s]
+  scored 4000/20000   18.4 facet/s   eta 14.5 min   [220.0s]
+  scored 4500/20000   18.6 facet/s   eta 13.9 min   [244.3s]
+  scored 5000/20000   18.4 facet/s   eta 13.6 min   [274.5s]
+  scored 5500/20000   18.6 facet/s   eta 13.0 min   [297.5s]
+  scored 6000/20000   18.9 facet/s   eta 12.4 min   [319.7s]
+  scored 6500/20000   19.1 facet/s   eta 11.8 min   [342.8s]
+  scored 7000/20000   19.2 facet/s   eta 11.3 min   [367.1s]
+  scored 7500/20000   19.3 facet/s   eta 10.8 min   [389.7s]
+  scored 8000/20000   19.4 facet/s   eta 10.3 min   [413.6s]
+  scored 8500/20000   19.5 facet/s   eta 9.8 min   [438.7s]
+  scored 9000/20000   19.4 facet/s   eta 9.4 min   [464.9s]
+  scored 9500/20000   19.6 facet/s   eta 8.9 min   [486.3s]
+  scored 10000/20000   19.8 facet/s   eta 8.4 min   [507.9s]
+  scored 10500/20000   19.7 facet/s   eta 8.0 min   [534.0s]
+  scored 11000/20000   19.9 facet/s   eta 7.5 min   [555.5s]
+  scored 11500/20000   19.9 facet/s   eta 7.1 min   [580.9s]
+  scored 12000/20000   19.8 facet/s   eta 6.7 min   [607.7s]
+  scored 12500/20000   19.7 facet/s   eta 6.4 min   [637.8s]
+  scored 13000/20000   19.7 facet/s   eta 5.9 min   [662.6s]
+  scored 13500/20000   19.4 facet/s   eta 5.6 min   [696.7s]
+  scored 14000/20000   19.4 facet/s   eta 5.1 min   [722.9s]
+  scored 14500/20000   19.5 facet/s   eta 4.7 min   [746.5s]
+  scored 15000/20000   19.5 facet/s   eta 4.3 min   [772.2s]
+  scored 15500/20000   19.5 facet/s   eta 3.8 min   [795.6s]
+  scored 16000/20000   19.5 facet/s   eta 3.4 min   [823.8s]
+  scored 16500/20000   19.5 facet/s   eta 3.0 min   [847.4s]
+  scored 17000/20000   19.4 facet/s   eta 2.6 min   [879.8s]
+  scored 17500/20000   19.4 facet/s   eta 2.1 min   [905.0s]
+  scored 18000/20000   19.5 facet/s   eta 1.7 min   [926.5s]
+  scored 18500/20000   19.5 facet/s   eta 1.3 min   [950.9s]
+  scored 19000/20000   19.5 facet/s   eta 0.9 min   [975.1s]
+  scored 19500/20000   19.5 facet/s   eta 0.4 min   [1000.0s]
+  scored 20000/20000   19.4 facet/s   eta 0.0 min   [1031.2s]
+scoring done: 20000 facets   [1031.2s]
+
+K-L1-VAC  changed 10891 (54.45%)   unchanged 9109
+
+══ H1 HONEST POSITION (certifyTriangle, tol 10 um) — three buckets, none folded ══
+   WHOLE SAMPLE  before               n  20000   PROVEN-FAIL    61 (  0.305%)   PROVEN-PASS  19939   UNKNOWN     0   area-fail 0.0357%
+   WHOLE SAMPLE  after                n  20000   PROVEN-FAIL    47 (  0.235%)   PROVEN-PASS  19952   UNKNOWN     1   area-fail 0.0279%
+   CHANGED ONLY  before               n  10891   PROVEN-FAIL    37 (  0.340%)   PROVEN-PASS  10854   UNKNOWN     0   area-fail 0.0731%
+   CHANGED ONLY  after                n  10891   PROVEN-FAIL    23 (  0.211%)   PROVEN-PASS  10867   UNKNOWN     1   area-fail 0.0546%
+   UNCHANGED (control)                n   9109   PROVEN-FAIL    24 (  0.263%)   PROVEN-PASS   9085   UNKNOWN     0   area-fail 0.0085%
+
+   *** RATIO after/before on the CHANGED subpopulation:  COUNT 0.622x   AREA 0.747x ***
+   (whole sample, for reference: COUNT 0.770x   AREA 0.782x)
+   1-sigma Poisson on the before rate: +-16.4%  (37 failures)
+
+══ THE THREE RULERS SIDE BY SIDE, same facets ══
+   WHOLE (n=20000)
+     H1 witnessed  before p50 1.66 p99 5.46 max 180.47  ->  after p50 1.24 p99 5.40 max 123.94 um
+     PLANE  sag    before p50 1.53 p99 3.43 max 10.72  ->  after p50 1.20 p99 3.69 max 10.72 um
+     tangExc mono  before p50 3.34 p99 37.81 max 1033.3  ->  after p50 2.24 p99 16.12 max 865.1 um
+     over-bar by the PLANE ruler: 2 -> 1     by H1: 61 -> 47
+   CHANGED (n=10891)
+     H1 witnessed  before p50 2.15 p99 5.51 max 180.47  ->  after p50 0.97 p99 5.45 max 123.94 um
+     PLANE  sag    before p50 1.77 p99 3.45 max 10.69  ->  after p50 0.94 p99 4.31 max 9.70 um
+     tangExc mono  before p50 4.35 p99 48.99 max 1033.3  ->  after p50 1.95 p99 14.40 max 865.1 um
+     over-bar by the PLANE ruler: 1 -> 0     by H1: 37 -> 23
+
+══ PAIRED PER-FACET MOVEMENT on the CHANGED subpopulation ══
+   H1 verdict transitions:  new PROVEN-FAIL 8   FIXED 22   stayed failing 15   net -14
+   witnessed delta (after - before)  p01 -5.22  p50 -0.62  p99 3.83  max 23.52 um
+   worsened 2076   improved 8663   unchanged 152
+
+══ SELECTOR PRICING (for H-L3's honest C2): P(H1 proven-fail | tangExc bucket), BEFORE mesh ══
+   tangExc [0, 2) um : n   4623   proven-fail     0 (0.000%)
+   tangExc [2, 5) um : n   9291   proven-fail     2 (0.022%)
+   tangExc [5, 10) um : n   3845   proven-fail     0 (0.000%)
+   tangExc [10, 20) um : n   1612   proven-fail     1 (0.062%)
+   tangExc [20, 50) um : n    501   proven-fail     2 (0.399%)
+   tangExc [50, 100) um : n     59   proven-fail     7 (11.864%)
+   tangExc [100, inf) um : n     69   proven-fail    49 (71.014%)
+   SELECTOR at tangExc >= 10 um: covers 11.21% of facets and 96.72% of all H1 failures
+   => running the honest test only above that cut MISSES 2 of 61 failures. Stated, not hidden.
+
+PRE-REGISTERED VERDICT: K-L1b — the win SURVIVES the honest ruler
+done  [1031.3s]
