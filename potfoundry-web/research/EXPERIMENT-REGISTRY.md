@@ -9509,3 +9509,83 @@ tighten-call count falls by less than 25%.**
 * Do not build a stage-0 orientation triage into `_certComposeLib`. It is 1.02-1.47× on Voronoi and it
   converts the certificate into a defect-hunting screen — it can still prove FAIL, it can never prove PASS.
 * Do not read the containment as a theorem. Margin on `_S9A` is 1.54×.
+
+---
+
+# E-2026-08-05-S91-STYLEFLIP — *** THE CONSTRAINED FLIP IS OPTIMISING ITS OWN RULER *** (agent STYLEFLIP)
+
+**VERDICT: the orientation claim is REFUTED as a magnitude; the position claim is CONFIRMED and
+strengthened; the lever is still worth landing, for a different reason than the one it was sold on.**
+
+Scorecard: `research/exchange/_strataConformBisect/S91_STYLEFLIP_FINDINGS.md` (gitignored).
+Tools (committed): `research/tools/s91StyleCensus.ts`, `s91FlipHarvest.cjs`, `s91GeomMd5.cjs`,
+`run-s91-style-census.sh`, `run-s91-flip-arm.sh`, `s91-flip-queue{,-con}.sh`.
+
+## H-S91-HONEST (pre-registered before the run, tool header + findings §4C)
+
+> The flip's orientation win is present on the HONEST covering ruler (`orientRuler.orientOfFacet`, k=8,
+> inset 0.02, kink-aware one-sided finite differences) and is not an artifact of optimising the
+> CENTROID key that `s60ConstrainedFlip` uses as its ranking function and accept test C1.
+>
+> **K-H-KILL: honest absolute-area ratio < 1.25x on a style whose centroid ratio is >= 2.0x.**
+
+## MEASURED — 15 whole-mesh arms, both rulers, same golden-stride sample, areas in ABSOLUTE mm2
+
+| | CENTROID ruler (the pass's objective) | **HONEST covering ruler** |
+|---|---|---|
+| 14 hub-free stems, over-bar AREA ratio | median **1.904x**, max **Infinity** | ***median 1.015x, min 0.728x, max 1.212x*** |
+| how many reach 2.5x | 4 of 15 | ***0 of 14*** |
+| how many are WORSE | 2 | 3 |
+| GothicArches S39CTL (the banked arm) | **3.732x** | **1.049x** |
+| SuperellipseMorph | **117.882x** | **0.988x** |
+| SuperformulaBlossom | **Infinity** (its centroid over-bar area hits 0) | **1.010x** |
+| GeometricStar (HUBBED, reverse control) | 0.432x WORSE | 0.559x WORSE |
+
+**K-H-KILL TRIPPED on every style tested.** The honest/centroid disagreement on the SAME facets GROWS
+under the pass — Gothic 5.6x -> 21.4x, WaveInterference 4.7x -> 13.7x, SuperellipseMorph 27.9x ->
+3,809.9x. **`s60ConstrainedFlip` samples the surface normal at ONE point — the facet centroid — so the
+greedy search rotates the facet plane until it matches the normal AT THAT POINT. The facet still turns
+as much as it did; the pass moves the SAMPLE onto the crossing.** This is the orientation-dimension twin
+of the campaign's `sagAdaptiveRaw` finding, and it is worse: the flip does not merely REPORT in the
+blind ruler, it OPTIMISES it.
+
+**Controls (all pre-registered).** Reverse control: GeometricStar moves 0.559x on the honest ruler —
+it moves a long way when there is something to see. NOT saturation: the two unsaturated styles behave
+identically (LowPolyFacet, honest over-bar AREA **0.15%**, reads **0.728x WORSE**; SuperformulaBlossom,
+5.88%, reads 1.010x). K-L-GATE: the flag-OFF control (`PF_S60_ROUNDS=0`, 0 flips through the identical
+write path) is GEOMETRY-byte-identical to its input on **13 of 13** stems. Every arm's BEFORE census
+cross-checks **to the digit** against an independently written census (15/15).
+
+## WHAT SURVIVES — and it is worth productionising, on the position case
+
+* **Honest POSITION, WHOLE MESH, `certifyTriangle` @ 10 um, N = 50,000 golden-stride paired:
+  143 -> 93 = 0.650x by COUNT, 0.03534% -> 0.02083% = 0.589x by AREA** (2.6 sigma, conservative because
+  paired). L0CTL is md5-verified byte-identical to S39CTL, so the committed S85 row is its BEFORE.
+  **The flip is NOT a trade** — it improves the whole mesh, not just the 2.4% it touches. This is an
+  instrument the flip cannot game.
+* Topology identical, **0 vertices moved, 0 triangles added**, flag-OFF byte-identical: **15/15 arms.**
+* **DO NOT run it on the four HUBBED stems** (Voronoi 2,550 / CelticTriquetra 1,289 / Crystalline 1,240
+  / GeometricStar 1,120). On GeometricStar it grows total surface area **29%**, more than doubles the
+  over-bar area on BOTH rulers, and **grows the worst hub 1,120 -> 1,363** while moving MORE of the mesh
+  onto degree>=100 vertices (3.1242% -> 3.4759%).
+
+## FELL OUT — three instrument corrections
+
+1. ***s60's "orientation over-bar % of SURFACE" has a MOVING DENOMINATOR.*** A flip does not conserve
+   total area. Gothic's denominator moves 0.9998x (safe); GeometricStar's moves **1.2909x**, so the
+   percent reads 0.558x where the ABSOLUTE ratio is 0.432x. **Quote absolute mm2.**
+2. ***The aspect3>=50 "MIS-ORIENTED" class is a COUNT artifact.*** It holds **4.46%** of Voronoi's
+   over-bar AREA (0.593% of its surface); the pre-registered ">= 25% of over-bar area" criterion never
+   fires on any of 21 meshes (max 14.12%). The super-hub facets hold only 7.94%. **~88% of Voronoi's
+   over-bar defect AREA is neither high-aspect nor hub-adjacent — the 1.33x refutation is not explained
+   by either published mechanism.**
+3. **The honest/centroid ratio is NOT a constant**: Gothic 5.62x, Voronoi 2.95x, HarmonicRipple 1.01x.
+   The campaign's "21.6x" is one style at one density.
+
+## NEXT EXPERIMENT, PRE-REGISTERED
+
+Re-run the flip with C1 and the ranking key computed from **`orientOfFacet` (k>=2, the covering sup)**
+instead of the centroid sample, on GothicArches S39CTL. **KILL: the honest absolute over-bar AREA ratio
+stays below 1.25x** => the defect is not reachable by connectivity at all and the flip should be landed
+on its position result alone. **CONFIRM: >= 1.5x** => the lever was real and was being driven by a
+broken key, and the key is the fix.
