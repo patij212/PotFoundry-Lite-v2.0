@@ -8438,3 +8438,53 @@ witness (under-reports, certifiable by adding `kappa_max * cov/n`); one style, o
 
 **ONE LINE: on the mesh the driver calls 99.993% clean, 11.4% of facets are over the same 10 um bar on
 a quantity the pipeline has never measured, and the worst is 1.64 mm.**
+
+### CORRECTION TO THE ABOVE, from my own follow-up — `ptTri` IS A PER-FACET QUANTITY AND IT OVER-STATES THE MESH
+
+`research/tools/advMeshWideH1.ts`. `ptTri` asks "how far is this surface sample from THIS triangle". The
+product bar asks how far it is from THE MESH. On a steep rib the NEIGHBOURING facet is close to radial and
+can be far nearer, so `ptTri` is an upper bound on the mesh quantity, not an estimate of it. Measured
+neighbour rescue over the whole over-10um population: **p50 4.1-4.3x, max 240x.** So the "1.72x WORSE"
+statement above is WRONG and is retracted; it was an artefact of a per-facet reading.
+
+**THE EXACT MESH-WIDE H1, over the same n=12 lattice.** Every facet with ptTri > 10 um had ALL 91 of its
+samples measured against the WHOLE mesh (exact Ericson point-to-triangle, 0.5 mm spatial hash, expanding-shell
+termination). `meshH1 <= ptTri` pointwise, so no facet under the bar can host a sample over it — the maximum
+below is SOUND over this lattice, and it is a whole population (6,482 / 5,142 / 5,095 facets), not a top-K.
+
+| arm | cap | driver HEADLINE | **TRUE mesh-wide H1 MAX** | facets meshH1 > 10um | > 25um |
+|---|---|---|---|---|---|
+| S39CTL   | 50      | 47.281 | **22.190** | 28 | 0 |
+| S40AR90  | 90      | 10.813 | **16.628** | 14 | 0 |
+| S48CAV90 | 90+cav  |  5.506 | **16.628** | 14 | 0 |
+
+**WHAT THIS ACTUALLY SETTLES.**
+1. **C1's MECHANISM is partly VINDICATED, its MAGNITUDE is not.** At cap 50 the true-worst facets ARE the
+   near-cap ones — 11 of the worst 12 have AR 43.9-85.1, and the worst two sit at z=18.009 (the driver's own
+   reported MAX-locus). Raising the cap really does move the true max: 22.190 -> 16.628. But that is **1.33x**,
+   against a headline claim of 4.37x, and 8.58x once S48CAV90 is included. The headline over-states the real
+   gain by **3.3x**.
+2. **THE ABSOLUTE LEVEL IS WRONG BY 3.0x AND IN THE UNSAFE DIRECTION.** S48CAV90 reports 5.506 um (a PASS
+   against a 10 um bar). Its mesh is at **16.628 um** — 1.66x OVER the bar. The arm reads PASS and is a FAIL.
+3. **THE CAVITY LEVER IS A LITERAL NO-OP ON THE MESH.** S40AR90 -> S48CAV90 moves the headline 10.813 ->
+   5.506 (1.96x) and the true mesh-wide H1 MAX by **exactly zero** (16.628 -> 16.628, same facet, same sample,
+   same 14 over-bar facets). One lever, measured twice, in the same run family: the headline can be halved
+   while the mesh does not change at all. That is the cleanest available proof that the headline is not a
+   fidelity number.
+4. **THE PLANE RULER IS NOT SIMPLY "BLIND" — IT IS A DIFFERENT QUANTITY AND ERRS BOTH WAYS.** Against `ptTri`
+   (same facet) it UNDER-reads, up to 851x. Against `meshH1` (the mesh) it OVER-reads: at S39CTL's own
+   headline locus it reads 47.281 where the mesh is 22.190, a 2.13x over-statement. A per-facet ruler cannot
+   be corrected by a constant; it has to be replaced by a mesh query.
+
+**CAVEATS, STATED.** These are H1 (surface -> mesh) WITNESSES on a finite n=12 lattice, so they are lower
+bounds on the continuous sup, and H1 alone is not the campaign's verdict (the standing rule is "never run H1
+alone" — H2 mesh->surface is still owed). The `_strataFacetTruth` certificate is the instrument that closes
+both sides; nothing here replaces it. What these numbers DO establish, and establish soundly, is that the
+arm HEADLINE and the mesh's H1 are different quantities that move by different factors and, in the
+S40AR90 -> S48CAV90 step, in a ratio of 1.96 to 1.00.
+
+**REVISED RECOMMENDATION.** Keep the cap change (1.33x on the true quantity, cheap, and its cost is a blade-gate
+flip that has to be priced separately). Stop quoting the plane headline: run `advMeshWideH1` after each arm —
+it is one n=12 pass plus a hash, ~110 s on a 1.14M-tri mesh, single-threaded — or promote H1 into the arm
+report. And re-examine every lever in this campaign that was accepted on a headline movement; the cavity
+lever is measurably worth zero and was accepted on a 1.96x.
