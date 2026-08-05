@@ -8998,3 +8998,97 @@ adaptive mesh's own size distribution will hit it.**
 while the p99 climbs from 1.22 to 133.99 deg. The mean is flat and small; the p99 is a thin tail of
 catastrophically mis-oriented large facets — the sliver population of §5b, once more. Two statistics of one
 population telling opposite stories, which is the §11 lesson arriving from a third direction.
+
+---
+
+## E-2026-08-05-S61-REDIRECT (amends E-2026-08-05-S61-ORIENT-GUARD) — REDIRECT (accepted) — AUDIT refuted the premise; here is what of mine SURVIVES, what CONFIRMS it, and the one number that falls out of combining the two
+
+**THE REDIRECT.** AUDIT re-scored with `certifyTriangle` at the 10 um PRODUCT bar and the position column
+this task was handed is false: Voronoi top-400-by-tangExc = **396 PROVEN-FAIL** where the plane ruler said
+0/400 (H1 max 230.76 um against the plane's 4.99); Gothic top-300 = **251 PROVEN-FAIL** where the plane
+said 11 (H1 max 349.22 vs 47.23); random Voronoi control 30/370. The plane ruler under-reads 1.00x to 46x
+with no constant correction. **Position is not solved; the ruler is blind.** New instruction: do NOT
+productionize an orientation objective — apply the `kappa*cov` certification idea to POSITION, and use
+`tangExc` as the cheap SELECTOR that decides which facets deserve the expensive honest test.
+
+**ACCEPTED.** The redirect is better founded than the brief. Recording what it does to my results:
+
+### 13a. WHAT IT KILLS IN MY WORK
+
+* **§6's framing "the orientation class is the unscored defect" is withdrawn as a TARGET.** It remains
+  true that orientation is unscored; it is no longer established that it is what is broken.
+* **My AREA-TRUE numbers (§5a) are area fractions of an ORIENTATION bar, not of a defect.** They stay
+  correct as measurements of what they measure and must not be quoted as "X% of the surface is bad".
+* **The 3,600x alignment prize (§6) is now unmotivated as well as unmeasured.** It was arithmetic about a
+  quantity that may not be the objective. Do not carry it forward.
+
+### 13b. WHAT SURVIVES — AND ONE RESULT THAT INDEPENDENTLY CONFIRMS AUDIT FROM A DIFFERENT INSTRUMENT
+
+* **LowPolyFacet: I confirm AUDIT's refutation, by a route with nothing in common with it.** AUDIT: 0 of
+  its 300 worst facets exceed the honest position bar. Mine: the mis-oriented AREA is **0.1093% of the
+  surface** against **20.0058% of the facets** — an over-statement of **183.76x**, the largest of the three
+  styles — and every one of those facets has `posUm p99` pinned at 4.98-4.99 um, i.e. at the mesher's own
+  tolerance, in every diam octave. Two instruments, two mechanisms, same verdict: **LowPolyFacet's 10.9%
+  was never a defect.** This is the one place my numbers and AUDIT's can be checked against each other and
+  they agree.
+* **`tangExc` is a DETECTOR not a MAGNITUDE — and I measured TWO independent reasons why**, either of which
+  alone disqualifies it as a magnitude: (1) it is a CENTROID single sample, under-reading the sup by
+  **1.009x (Voronoi) / 2.031x (LowPoly) / 10.333x (Gothic)** — style-dependent, so uncorrectable by a
+  constant (§4, V2); (2) `sin(acos(dot))` is NON-MONOTONE and scores a fully inverted facet at
+  **6.6e-16 mm**, better than every good facet in the mesh (fixture F3). AUDIT's 26.1x/14.3x magnitude
+  error and my two mechanisms are the same finding measured from opposite ends.
+* **The `inset` finding (F4b) is the SAME artefact family as AUDIT's footprint-cone correction**, and the
+  two should not be re-derived separately: a lattice corner sitting exactly ON a crease reads the FULL
+  dihedral because the analytic normal there is undefined and any branch picks a side. A conforming mesher
+  puts vertices there on purpose. If AUDIT's cone correction moved Voronoi 39.7% -> 25.675%, my `inset`
+  is addressing the same class from the sampling side; **someone should check they are not both applied.**
+* **The guard question survives, and §5b's answer survives with it**: the class splits into MIS-ORIENTED
+  (sliver, `aspect3` p50 148.6 on Voronoi) and TURNING (`aspect3` p50 4.39, under the AR-50 cap). Whatever
+  the guard protects, that population split is a property of the mesh, not of the ruler used to find it.
+* **S74's C0-vs-smooth router survives** and is now MORE useful, because it is about the SURFACE, not about
+  which error metric is the objective: LowPolyFacet 100% C0, Voronoi 97.9% smooth, Gothic 41/59 mixed.
+
+### 13c. THE ARITHMETIC THE REDIRECT NEEDS, FROM MEASUREMENTS ALREADY IN HAND
+
+The redirect's architecture is *cheap selector -> expensive honest test*. Its value is entirely a cost
+model, and every input already exists:
+
+```
+  cheap selector (mine, S70 measured)   k=1 orientation + spreadRad   ~  5 rA evals/facet
+                                        k=4 full covering             ~ 75 rA evals/facet
+  honest test (this campaign's own)     certified accept @ true 10um  ~ 375 rA evals/facet
+  selectivity (AUDIT measured)          13.2x - 125.5x
+```
+Testing only the selected fraction `f`: `cost = 5 + 375*f`. At `f = 1/13.2` -> **33.4 evals/facet, 11.2x
+cheaper than the blind 375**; at `f = 1/125.5` -> **8.0 evals/facet, 47x cheaper**.
+
+**BUT THE BINDING CONSTRAINT IS RECALL, NOT PRECISION, AND AUDIT'S OWN CONTROL SAYS SO.** The Voronoi
+RANDOM control is **30 PROVEN-FAIL / 370 = 8.1% base rate**. A selector that only sends the top 1% of
+facets to the honest test therefore MISSES the large majority of a population that is 8.1% failing —
+the arithmetic above is only valid if the threshold is set so that `recall ~ 1`, and at an 8.1% base rate
+that threshold selects far more than 1%. **The number nobody has measured is the selector's RECALL as a
+function of its threshold**, and it — not the selectivity — decides whether this architecture is 11x or
+1.0x. That is the next experiment, it is read-only (score a facet set with both the selector and
+`certifyTriangle`, sweep the threshold, plot recall vs fraction-tested), and it should be run before any
+in-loop work.
+
+### 13d. ONE CAUTION ON "APPLY `kappa*cov` TO POSITION" — IT HAS ALREADY BEEN BUILT AND PRICED HERE
+
+The commit log immediately before this task: `e27adf04` BUILD the sound accept test (`PF_CB_CERTACCEPT`,
+a 1-Lipschitz certified bound replacing the blind plane ruler on the ACCEPT side only); `4db657d6`
+*"THE CERTIFIED ACCEPT VETO IS A NO-GO AS BUILT — 7.1x the rA evals, 91% of them inside the veto, and it
+never converged"*; `3451a0f5` re-priced it at **4.53x the blind ruler at the true 10 um bar**.
+**The bound is not the missing piece — it exists and it is sound. The price is the missing piece.** So the
+new work must be the SELECTOR (and its recall curve), not a re-derivation of the certificate; and the
+position field's Lipschitz constant is bounded by 1 for free, which is why that side was never the hard
+part. My orientation bound needed `kappa` precisely because the Gauss map has no such free constant — and
+at a C0 crease none exists at all.
+
+### 13e. WHAT I AM NOT DOING WITH THE REMAINING BUDGET
+
+Building the position selector properly needs the recall sweep above plus two-sided fixtures to AUDIT's
+new V1-V11/M1-M11 mutation standard, and I do not have the budget to do either honestly. I am stopping at
+the design + the cost model rather than leaving a half-validated instrument that reads plausibly. The
+orientation ruler I did land (`orientRuler.ts`, 11/11 two-sided fixtures, every bar seen to fail on
+purpose) stands on its own as the SELECTOR the redirect asks for, and `spreadRad` + the S74 scale test are
+the parts of it that are about the surface rather than about the disputed objective.
