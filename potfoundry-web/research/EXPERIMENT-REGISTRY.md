@@ -9688,3 +9688,12 @@ in this campaign is a reading of that ambiguity.** The over-bar COUNT and AREA a
 (bit-identical 45,121 / 37.943% under both), because a sign flip sends θ → 180°−θ and both stay over bar.
 **The project has never decided a facet sign convention; the file's winding is the only one that is not a
 heuristic.**
+
+**⚠ CROSS-LINK, ADDED AFTER SEEING S95 (`060f3cd9`).** Every Voronoi number above is measured on
+`voronoi_ring_D--.stl`. S95 reports that the aspect-gated config *"eliminates the super-hub AND is 1.52×
+more accurate by area with 39% fewer triangles"*, i.e. **the committed Voronoi artefact may be the WORSE
+mesh**, and S95's own conclusion is that *"every dead-operator result was measured on the worse mesh"*.
+**My Voronoi ≥107× price and its 9.25% back-facing parents therefore need re-measuring on the S95 mesh
+before anyone treats "NEAR-VERTICAL-WALL is not a density problem" as settled.** The Gothic column is
+unaffected. The FOLDED-class sign-convention defect (B) is a property of the ruler, not of the artefact,
+and stands either way.
