@@ -9387,3 +9387,38 @@ defect the mesh does not cover is invisible to it, and **no H2-based ledger verd
 Reproducibility of the arms (these are the STLs on disk, not the saved commands). Any style but
 GothicArches-ring. Self-intersection. Position on `_S19A`, `_S21A`, `_S22A`, `_S22C`, `_S10B`, `_S20A/B`,
 `_S18A` — those carry orientation only, at 100% coverage.
+
+### S87 ADDENDUM — three findings from the sibling sweep, added after the entry above was written
+
+**ARM 0 — `_S8P`, the arm BEFORE the lineage.** `_S8P` runs the S8-pilot fossil cascade-split where `_S9A`
+runs S9a conformity-at-birth, on the same 200×140 base grid, same driver, 1,277,904 vs 1,284,820 triangles
+(1.005×). It is the closest thing on disk to a control for the ledger's first lever — **and it is
+mechanism-against-mechanism, not on-against-off**, because `_S9P` and `_S9Q` both run
+`PF_CB_CONFORM_FIRST=1` and no off-twin exists.
+
+| | `_S8P` | `_S9A` | ratio | `_S8P` → `_S24i2` |
+|---|---|---|---|---|
+| honest position PROVEN-FAIL rate | 4.6380% ±2.1% | 3.5500% ±2.4% | **0.765× at 7.4σ** | **0.253× (3.95×)** |
+| honest position fail AREA frac | 1.38661% | 1.25582% | 0.906× — **ON the null** | **0.076× (13.2×)** |
+| orientation over-bar AREA (inset .02) | 42.258% | 42.410% | 1.004× | 1.023× |
+| worst-point >90°, as a rate | 4.6976% | 3.8489% | 0.819× | 0.989× |
+
+**So the ledger's first lever is re-priced: S9a is ONE resolvable win (count-rate 0.765×), ONE null (area),
+and ONE wash (orientation) — not the claimed "Pareto improvement on every measured axis".** And measured
+from the arm before the lineage begins, the whole campaign is **3.95× by honest position count-rate and
+13.2× by honest position area**, which is larger than the `_S9A`-anchored 3.02× / 11.9×.
+
+**THE ORIENTATION CHORD IS DENSITY-SENSITIVE, AND IT CONSTRAINS WHICH ROWS MAY BE COMPARED.**
+`2·sin(θ/2)·diam` carries a `diam` factor, so halving facet size halves the chord at unchanged angle.
+`_S10B` measures the size of that on a real mesh: it is `_S10A` at **1.626× the triangles** with orientation
+over-bar AREA **44.261% → 27.337% (0.618×) from density alone.** Therefore **an orientation delta between
+arms at different triangle counts is confounded by density.** The headline pair `_S9A` vs `_S24i2` is at
+**0.981×** — clean, and its 1.019× stands. `_S24i2` → `_S28i1` at **1.187×** is NOT clean, so S28's
+orientation movement (0.835×/0.938×) is **withdrawn as a lever claim** and read as consistent with density;
+its position-AREA result (0.604×, past the null) is unaffected and stands.
+
+**COVERAGE ACTUALLY ACHIEVED.** Orientation at **100% coverage on 21 meshes**: the 8 lineage arms, `_S8P`,
+`_S9P`, `_S9Q`, `_S10B`, `_S12i2`, `_S18A`, `_S19A`, `_S20A`, `_S20B`, `_S21A`, `_S21C`, `_S22A`, `_S22C`
+and `_S39CTL`. Honest position at N = 50,000 on **9 meshes**: `_S8P` and all 8 lineage arms; plus the
+`_S39CTL` cross-tool control (N = 8,000) and the two identity twins (N = 800). `_S21C` (245,998 triangles,
+95.9% over bar) is not a full-scale artifact and is listed for completeness only — it is not compared.

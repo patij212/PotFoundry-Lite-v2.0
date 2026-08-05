@@ -257,6 +257,16 @@ P('three vertices, and the monotone chord. It is a different, stricter reading o
 P('arm-to-arm comparison is what it is for. (iii) A 10 µm chord on a ~0.3 mm facet is θ ≈ 1.9°, so this bar');
 P('demands the facet plane be within about two degrees of the surface normal **everywhere inside it**.');
 P('');
+P('**(iv) AND THE ONE THAT CONSTRAINS WHICH ROWS MAY BE COMPARED: THE CHORD IS DENSITY-SENSITIVE.**');
+P('`2·sin(θ/2)·diam` carries a `diam` factor, so halving facet size halves the chord *at unchanged angle*.');
+P('The sibling `_S10B` proves the size of that effect on a real mesh: it is `_S10A` at **1.626× the');
+P('triangles** and its orientation over-bar AREA is **27.337% against 44.261% — 0.618×**, from density alone.');
+P('So **an orientation delta between two arms at different triangle counts is confounded by density.**');
+P('The headline pair `_S9A` (1,284,820) vs `_S24i2` (1,260,110) is at **0.981×**, so it is clean and its');
+P('1.019× stands. `_S24i2` → `_S28i1` at **1.187×** is NOT clean, and its 0.938× orientation-area movement');
+P('should be read as "consistent with density alone", not as a lever. `_S21C` (245,998 triangles, 95.9%');
+P('over bar) is not a full-scale artifact and is listed for completeness only — do not compare it.');
+P('');
 P('| arm | triangles | over-bar COUNT (rate) inset 0 | AREA inset 0 | **over-bar COUNT (rate) inset .02** | **AREA inset .02** | worst-point >90° | MAX µm | area-wtd mean µm | winding-outward |');
 P('|---|---|---|---|---|---|---|---|---|---|');
 for (const [tag] of [...CHAIN, ...SIBLINGS]) {
