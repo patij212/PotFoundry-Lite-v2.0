@@ -1,0 +1,43 @@
+===== S92 — GREEDY SEQUENTIAL COLLAPSE PASS =====
+style Voronoi  stem voronoi_ring_D--  aspect3>=50  bar 10 um  maxNewAr 50  rounds 2
+research/exchange/_strataConformBisect/voronoi_ring_D--.stl: 806765 facets, 403683 welded vertices   [0.8s]
+── CENSUS BEFORE (input mesh) ──
+   facets 806765   area 40968.49 mm2
+   MIS aspect3>=50: 124245 (15.400% count)  242.522 mm2 (0.5920% area)
+   ORIENT over 10 um: 320385 (39.712% count)  5382.91 mm2 (13.1391% AREA)
+   orientation chord (um): p10 2.086  p50 6.638  p90 948.204  p99 1786.957  max 4017.911
+MIS class at start: 124245   [8.4s]
+round 1: candidates 124245  applied 5739  live facets 795287   [39.9s]
+round 2: candidates 114188  applied 1223  live facets 792841   [70.2s]
+total collapses applied: 6962   [70.2s]
+── CENSUS AFTER (collapse pass) ──
+   facets 792841   area 41141.19 mm2
+   MIS aspect3>=50: 112464 (14.185% count)  206.302 mm2 (0.5014% area)
+   ORIENT over 10 um: 311904 (39.340% count)  5591.65 mm2 (13.5914% AREA)
+   orientation chord (um): p10 2.085  p50 6.566  p90 955.609  p99 1847.289  max 4017.911
+
+═══ H-C1 / H-C2 ═══
+   MIS class   : 124245 -> 112464 facets (1.105x)   242.522 -> 206.302 mm2 (removed 14.93% of class AREA)
+   ORIENT over-bar BY AREA : 13.1391% -> 13.5914%  (0.963x)
+   ORIENT over-bar BY COUNT: 39.712% -> 39.340%  (1.027x)
+   triangles: 806765 -> 792841 (1.73% removed)   surface area 40968.49 -> 41141.19 mm2 (0.4215% change)
+   *** H-C1 REFUTED: removed 14.93% of class area vs the 17.5% kill line (2x the single-shot LA 8.73%) ***
+   *** H-C2 REFUTED — the pass did not reduce mis-oriented AREA ***
+   refusals: fold=934350  newAr=449415  link3=2446  link4=68  zeroArea=10  link6=2  link5=2
+
+═══ H-C3 TOPOLOGY AUDIT (by welded INDEX) ═══
+   live facets 792841   live vertices 396721   edges 1189562
+   non-manifold edges 0  (must be 0)
+   boundary edges 601  (must be 601)   boundary loops 2  (must be 2)
+   inconsistent-winding edges 0  (must be 0)
+   Euler V-E+F = 0  (must be 0)
+   *** H-C3 PASS ***
+
+wrote research/exchange/_strataConformBisect/s92pass/voronoi_ring_D--_S92.stl (792841 facets)
+
+═══ H-C4 POSITION (certifyTriangle tol 10 um) — 20 of 14800 CHANGED facets ═══
+   BEFORE (same facet ids, original vertices): p10 0.766  p50 4.999  p90 131.249  p99 131.849  max 131.849   over-10um 4/20
+   AFTER                                     : p10 0.766  p50 4.871  p90 140.330  p99 143.330  max 143.330   over-10um 7/20
+   *** H-C4: honest position over-bar 4 -> 7 on the changed facets ***
+
+done   [84.1s]   checkpoints in research/exchange/_strataConformBisect/S92_PASS.ndjson

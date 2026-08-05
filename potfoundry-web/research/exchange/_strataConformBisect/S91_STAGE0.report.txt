@@ -1,0 +1,12 @@
+===== S91 — THE VERTEX-SET CEILING FOR THE MIS-ORIENTED CLASS =====
+style Voronoi  stem voronoi_ring_D--  aspect3>=50  bar 10 um  stages 0  posK 120
+research/exchange/_strataConformBisect/voronoi_ring_D--.stl: 806765 facets, 403683 welded vertices   [0.8s]
+edges 1210448   boundary/non-manifold edges 601   flagged vertices 601   [2.0s]
+MIS class: 124245 facets, 242.52 mm2 of 40968.5 (0.5920%)   [2.3s]
+
+── STAGE 0 (H-B0) — minAlt is a LOWER bound on the position error that deleting the apex introduces ──
+   minAlt (um): p10 0.289  p50 2.795  p90 10.542  p99 18.422  max 43.902
+   *** minAlt <= 10 um on 109837/124245 = 88.40% BY COUNT   58.27% BY AREA ***
+   -> the vertex-set ceiling CANNOT EXCEED this. Everything below is bounded by it.
+
+stage 1 skipped   [2.3s]

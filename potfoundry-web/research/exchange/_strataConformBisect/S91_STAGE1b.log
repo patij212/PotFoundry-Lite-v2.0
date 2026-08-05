@@ -1,0 +1,60 @@
+cwd: /c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web
+── bundling research/tools/s91CollapseCeiling.ts -> research/bridge/out/_run_s91CollapseCeiling.cjs ──
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    research/bridge/_facetTruthPool.ts:88:37:
+      88 │   const here = dirname(fileURLToPath(import.meta.url));
+         ╵                                      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "esbuild" should be marked as external for use with "require.resolve" [require-resolve-not-external]
+
+    node_modules/esbuild/lib/main.js:1653:36:
+      1653 │   const libMainJS = require.resolve("esbuild");
+           ╵                                     ~~~~~~~~~
+
+2 warnings
+
+  research\bridge\out\_run_s91CollapseCeiling.cjs  213.2kb
+
+Done in 37ms
+── checking for undefined identifiers (TS2304 only) ──
+   none
+===== S91 — THE VERTEX-SET CEILING FOR THE MIS-ORIENTED CLASS =====
+style Voronoi  stem voronoi_ring_D--  aspect3>=50  bar 10 um  stages 01  posK 120
+research/exchange/_strataConformBisect/voronoi_ring_D--.stl: 806765 facets, 403683 welded vertices   [0.8s]
+edges 1210448   boundary/non-manifold edges 601   flagged vertices 601   [2.0s]
+MIS class: 124245 facets, 242.52 mm2 of 40968.5 (0.5920%)   [2.3s]
+
+── STAGE 0 (H-B0) — minAlt is a LOWER bound on the position error that deleting the apex introduces ──
+   minAlt (um): p10 0.289  p50 2.795  p90 10.542  p99 18.422  max 43.902
+   *** minAlt <= 10 um on 109837/124245 = 88.40% BY COUNT   58.27% BY AREA ***
+   -> the vertex-set ceiling CANNOT EXCEED this. Everything below is bounded by it.
+   ... MIS-ORIENTED class 40000/124245  [12.2s]
+   ... MIS-ORIENTED class 80000/124245  [21.9s]
+   ... MIS-ORIENTED class 120000/124245  [31.5s]
+
+── STAGE 1 — MIS-ORIENTED class: 124245 facets, 242.52 mm2 (29.5s) ──
+   L0 a topologically admissible op EXISTS      : 119517 (96.19% count)   93.21% AREA
+   LA + best triangulation has max aspect3 < 50 : 6576 (5.29% count)   8.73% AREA
+   LC + best triangulation is <= 10 um chord   : 2456 (1.98% count)   1.48% AREA
+   min-max ORIENTATION chord achievable (um): p10 524.360  p50 1352.535  p90 1934.593  p99 2948.866  max 4245.751
+   min-max ASPECT3 achievable              : p10 111.292  p50 647.309  p90 2907.417  p99 21038.706  max 1619575.306
+   winning op: OP-B vertex-removal 11473   OP-A half-edge collapse 108044
+
+── STAGE 1 — TURNING control (random, same machinery): 20000 facets, 1187.69 mm2 (5.4s) ──
+   L0 a topologically admissible op EXISTS      : 19864 (99.32% count)   99.75% AREA
+   LA + best triangulation has max aspect3 < 50 : 19348 (96.74% count)   99.14% AREA
+   LC + best triangulation is <= 10 um chord   : 11518 (57.59% count)   79.09% AREA
+   min-max ORIENTATION chord achievable (um): p10 2.247  p50 8.192  p90 32.183  p99 1760.606  max 3745.700
+   min-max ASPECT3 achievable              : p10 1.317  p50 3.617  p90 12.031  p99 455.526  max 1008229.102
+   winning op: OP-B vertex-removal 14373   OP-A half-edge collapse 5491
+
+   refusal reasons on the MIS class (CANDIDATE-level, 7 candidates per facet): A:fold=494895  B:no-legal-ear-in-projection=109261  A:link-condition(3)=152  B:deg>12(cost cap)=16  A:link-condition(4)=12  A:zero-area-after=6
+   *** CONTROL CHECK: LA on the class 5.29% vs on well-shaped facets 96.74%  -> the machinery DISCRIMINATES (refusals are the mesh’s) ***
+   *** H-B1 REFUTED at the pre-registered 20%-BY-AREA kill line (LC by area 1.48%) ***
+
+stage 2 skipped   [37.4s]
+
+report written to research/exchange/_strataConformBisect/s91CollapseCeiling.report.txt
