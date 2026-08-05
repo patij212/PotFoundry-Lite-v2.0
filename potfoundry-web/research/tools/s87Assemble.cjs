@@ -25,6 +25,7 @@ const CHAIN = [
   ['S28i1', 'gothicarches_ring_DS-HT_S28i1', 'certificate-driven H1 tightening (REFUTED by the ledger)'],
 ];
 const SIBLINGS = [
+  ['S8P', 'gothicarches_ring_DS-H_S8P', 'the S8-PILOT fossil cascade — the nearest PREDECESSOR of _S9A, same 200x140 base grid, NOT a flag-OFF twin'],
   ['S9P', 'gothicarches_ring_DS-H_S9P', 'S9 sibling'],
   ['S9Q', 'gothicarches_ring_DS-H_S9Q', 'S9 sibling'],
   ['S10B', 'gothicarches_ring_DS-H_S10B', 'S10 sibling'],
@@ -94,9 +95,11 @@ if (h9p && h24p && h9o && h24o) {
     `${(1 / rc).toFixed(2)}× reduction in honest position PROVEN-FAIL *rate* and a ${(1 / ra).toFixed(1)}× reduction in honest`,
     `position failing *AREA*, at ${(h24o.nTri / h9o.nTri).toFixed(3)}× the triangles. It is ${nsig.toFixed(0)}σ, not a wobble.**`,
     ``,
-    `**AND — the lineage did NOT touch ORIENTATION AT ALL. Over-bar count-rate ${rocnt.toFixed(3)}x, over-bar AREA`,
-    `${ro.toFixed(3)}× — flat to marginally worse — with ${pct(h24o.overAreaFrac[1], 1)} of the closing mesh's surface area still`,
-    `over the same 10 µm bar on a defect class the ledger never scored.**`,
+    `**AND — the lineage did NOT move the ORIENTATION POPULATION. Over-bar count-rate ${rocnt.toFixed(3)}x, over-bar AREA`,
+    `${ro.toFixed(3)}x — flat to marginally worse — with ${pct(h24o.overAreaFrac[1], 1)} of the closing mesh's surface area still`,
+    `over the same 10 µm bar on a defect class the ledger never scored. It DID halve the orientation deep`,
+    `tail: area over 250 µm ${(100 * h9o.barAreaFrac[1][4]).toFixed(3)}% → ${(100 * h24o.barAreaFrac[1][4]).toFixed(3)}% (${(h24o.barAreaFrac[1][4] / h9o.barAreaFrac[1][4]).toFixed(3)}x) and the area-weighted mean`,
+    `${h9o.oriAreaWtMean[1].toFixed(2)} → ${h24o.oriAreaWtMean[1].toFixed(2)} µm (${(h24o.oriAreaWtMean[1] / h9o.oriAreaWtMean[1]).toFixed(3)}x). The worst orientation got better; the typical one did not.**`,
     ``,
     `The blind ruler the campaign actually optimised against moved ${blind.toFixed(3)}×. So it was **right about the`,
     `direction and roughly right about the COUNT ratio (${blind.toFixed(2)}× vs the honest ${rc.toFixed(2)}×), wrong about the AREA ratio`,
@@ -177,17 +180,27 @@ for (const [tag] of [...CHAIN, ...SIBLINGS]) {
 P('');
 P(`**C1: ${c1pass} of ${c1tot} meshes reproduce their own driver report EXACTLY on the count and to <0.5% on the max.**`);
 P('');
-P('**The one MISMATCH, quantified rather than waved at.** `_S9A` reads **1607** over the bar against the');
-P('driver\'s **1608** (0.062% of the count) and **40.961 µm** against **40.971** (a **10 nm** difference). A');
-P('binary STL stores float32 vertices; at r ≈ 40 mm one float32 ulp is **3.81 nm**, so a 10 nm disagreement is');
-P('**2.6 ulp** — the round trip through the file format, not a harness defect. It can flip a facet only when');
-P('that facet sits within a few nanometres of the bar, which is why 8 of 9 meshes match exactly. A 0.062%');
-P('count difference cannot move any ratio reported here, and `_S9A` is therefore kept, with this stated.');
+P('**The MISMATCHES, quantified rather than waved at.** Two meshes miss, both by a handful of facets:');
+P('`_S9A` reads **1607** against the driver\'s **1608** (0.062% of the count; max 40.961 vs 40.971 µm, a');
+P('**10 nm** gap) and `_S8P` reads **1584** against **1588** (0.25%; max 44.152 vs 44.146, a **6 nm** gap).');
+P('');
+P('A binary STL stores **float32** vertices; at r ≈ 40 mm one float32 ulp is **3.81 nm**, so both gaps are');
+P('1.6–2.6 ulp — the round trip through the file format. That is a *hypothesis*, so it was priced: counting');
+P('how many facets sit near the bar in the uniform samples gives a near-bar density of **~260 facets/µm**');
+P('(`_S9A`), ~380 (`_S24i2`) and ~105 (`_S15A`), so a ±4 nm perturbation should flip **0.4–1.5 facets per');
+P('mesh**. Observed: 1 on `_S9A`, 4 on `_S8P`, **0 on the other six**. Right magnitude, right rarity.');
+P('');
+P('Both mismatching meshes are the two with the *largest* over-bar populations (1,588 and 1,608 against');
+P('354–686 elsewhere), which is what that density argument predicts. **The effect is 0.06–0.25% of a count');
+P('that is itself 24–45× smaller than the honest one; it cannot move a ratio in this file.** Both meshes are');
+P('kept, with this stated, rather than dropped — and the pre-registered C1 wording ("EXACTLY") is recorded');
+P('as not met on them rather than quietly relaxed.');
 P('');
 P('**A second, unplanned control fell out of the run and it is the strongest one here.** The ledger says the');
 P('`_S11A` seam fix left "**every other census byte-identical**". Measured, `_S10A` → `_S11A`:');
-P('total mesh area 38472.518 → 38472.518 mm², orientation MAX 4451.926 → 4451.926 µm, inverted facets');
-P('45,523 → 45,523, bar sweep equal to three decimals at all five bars. **A genuine no-op reads as a no-op.**');
+P('total mesh area 38472.518 → 38472.518 mm², orientation MAX 4451.926 → 4451.926 µm, worst-point->90°');
+P('facets 45,523 → 45,523, bar sweep equal to three decimals at all five bars. **A genuine no-op reads as a');
+P('no-op.**');
 P('An instrument that manufactured differences would have manufactured one here.');
 P('');
 P('### C2 — cross-tool: this tool vs `s85PosRebase.ts` on the same 8,000 facets of the same mesh');
@@ -232,7 +245,19 @@ P('## 3. TABLE A — ORIENTATION, WHOLE MESH, 100% COVERAGE');
 P('');
 P('Monotone Gauss-map chord `2·sin(θ/2)·diam` against the same 10 µm bar. No sampling error in this table.');
 P('');
-P('| arm | triangles | over-bar COUNT (rate) inset 0 | AREA inset 0 | **over-bar COUNT (rate) inset .02** | **AREA inset .02** | inverted >90° | MAX µm | area-wtd mean µm | winding-outward |');
+P('**Three things about this table before it is read.** (i) *"worst-point >90°" is NOT "the facet is wound');
+P('backwards"* — it is `sup over the footprint of angle(facet normal, surface normal) > 90°`, i.e. the');
+P('facet\'s plane is on the wrong side of the surface *somewhere inside it*. The winding-outward column is');
+P('the separate check for backwards facets and it is ≥99.96% on every mesh. (ii) **These absolute levels are');
+P('NOT comparable to the campaign\'s published "GothicArches 11.371% over 10 µm".** That figure came from the');
+P('`s55OrientHeatmap` prototype, which `orientRuler`\'s own header records as evaluating the surface normal');
+P('**only at the facet centroid** — an *analytic* 3.00× under-read on the exact-cylinder fixture — and as');
+P('using the **non-monotone** `sin(θ)·diam`. This table uses an order-8 covering that always contains the');
+P('three vertices, and the monotone chord. It is a different, stricter reading of the same defect class; the');
+P('arm-to-arm comparison is what it is for. (iii) A 10 µm chord on a ~0.3 mm facet is θ ≈ 1.9°, so this bar');
+P('demands the facet plane be within about two degrees of the surface normal **everywhere inside it**.');
+P('');
+P('| arm | triangles | over-bar COUNT (rate) inset 0 | AREA inset 0 | **over-bar COUNT (rate) inset .02** | **AREA inset .02** | worst-point >90° | MAX µm | area-wtd mean µm | winding-outward |');
 P('|---|---|---|---|---|---|---|---|---|---|');
 for (const [tag] of [...CHAIN, ...SIBLINGS]) {
   const o = load(tag, 'orient');
@@ -266,6 +291,13 @@ P('');
 P('Sample construction identical on every mesh: the first `N` terms of the golden-ratio stride `(q·s) mod nTri`,');
 P('`s` = the odd integer nearest `nTri·0.6180339887`, bumped until coprime with `nTri`. Byte-for-byte the');
 P('construction `s85PosRebase.ts` and `s80HonestPos.ts` use, so rows here are comparable with S85\'s.');
+P('');
+P('**Two things to know before reading it.** (i) `UNKNOWN` is 0–3 facets in every sample, so the three-bucket');
+P('verdict is effectively two-bucket here and nothing is hiding in the third. (ii) `certifyTriangle` stops');
+P('refining as soon as it has a witness over `tol` — the verdict is then settled and more resolution cannot');
+P('change it — so **every PROVEN-FAIL facet is also reported `witnessedComplete: false` by construction**.');
+P('That flag means "this facet\'s MAGNITUDE is a lower bound", not "this verdict is uncertain". The two counts');
+P('track each other in every row for exactly that reason.');
 P('');
 P('| arm | triangles | N (coverage) | driver `over-0.01mm` | PROVEN-FAIL | **rate ±1σ** | **fail AREA frac ±1σ** | UNKNOWN | scaled to mesh | in-sample wit max µm | under-report |');
 P('|---|---|---|---|---|---|---|---|---|---|---|');
@@ -320,7 +352,7 @@ if (h9o && h24o && h9p && h24p) {
   P(`| **honest position** fail AREA frac | ${pct(h9p.areaFailFrac, 5)} ±${(100 * h9p.sigmaAreaRel).toFixed(1)}% | ${pct(h24p.areaFailFrac, 5)} ±${(100 * h24p.sigmaAreaRel).toFixed(1)}% | **${ratio(h24p.areaFailFrac, h9p.areaFailFrac)}** |`);
   P(`| **orientation** over-bar rate (inset .02) | ${pct(h9o.overN[1] / h9o.nTri, 4)} | ${pct(h24o.overN[1] / h24o.nTri, 4)} | **${ratio(h24o.overN[1] / h24o.nTri, h9o.overN[1] / h9o.nTri)}** |`);
   P(`| **orientation** over-bar AREA frac (inset .02) | ${pct(h9o.overAreaFrac[1], 5)} | ${pct(h24o.overAreaFrac[1], 5)} | **${ratio(h24o.overAreaFrac[1], h9o.overAreaFrac[1])}** |`);
-  P(`| orientation inverted facets (>90°) | ${h9o.invN[1].toLocaleString()} | ${h24o.invN[1].toLocaleString()} | ${ratio(h24o.invN[1] / h24o.nTri, h9o.invN[1] / h9o.nTri)} |`);
+  P(`| orientation facets with a worst-point >90° | ${h9o.invN[1].toLocaleString()} | ${h24o.invN[1].toLocaleString()} | ${ratio(h24o.invN[1] / h24o.nTri, h9o.invN[1] / h9o.nTri)} |`);
   P(`| honest position in-sample witnessed max µm | ${f(h9p.witMaxInSample, 3)} | ${f(h24p.witMaxInSample, 3)} | ${ratio(h24p.witMaxInSample, h9p.witMaxInSample)} |`);
   P(`| orientation whole-mesh MAX µm | ${f(h9o.oriMax[1], 3)} | ${f(h24o.oriMax[1], 3)} | ${ratio(h24o.oriMax[1], h9o.oriMax[1])} |`);
   P('');
@@ -347,6 +379,42 @@ if (h9o && h24o && h9p && h24p) {
     P(`**Spearman ρ(honest position, orientation area) = ${sp(rh, ro).toFixed(3)}** — whether the two honest axes even agree with each other.`);
     P('');
   }
+}
+
+// ══ PRE-REGISTERED VERDICTS, COMPUTED ═══════════════════════════════════════════════════════════════
+{
+  P('## 5b. THE PRE-REGISTERED VERDICTS, read off the tables above');
+  P('');
+  P('| hypothesis | pre-registered kill / confirm line | measured | verdict |');
+  P('|---|---|---|---|');
+  if (h9p && h24p && h9o && h24o) {
+    const rc = h24p.failRate / h9p.failRate; const ra = h24p.areaFailFrac / h9p.areaFailFrac;
+    const ro = h24o.overAreaFrac[1] / h9o.overAreaFrac[1];
+    const sig = Math.sqrt(h24p.sigmaCountRel ** 2 + h9p.sigmaCountRel ** 2);
+    const lo9 = h9p.failRate * (1 - h9p.sigmaCountRel); const hi24 = h24p.failRate * (1 + h24p.sigmaCountRel);
+    const killed = rc <= 0.80 && ra < 1 && hi24 < lo9 && ro <= 1.10;
+    P(`| **H-L1** the lineage did NOT improve honest fidelity | KILL if count-rate ratio ≤ 0.80 AND 1σ intervals disjoint AND area also improves AND orientation area not worsened >1.10× | count-rate **${rc.toFixed(3)}×**, area **${ra.toFixed(3)}×**, \`_S9A\` 1σ-low ${pct(lo9, 4)} vs \`_S24i2\` 1σ-high ${pct(hi24, 4)} (disjoint: ${hi24 < lo9 ? 'YES' : 'NO'}), orientation area ${ro.toFixed(3)}× | **${killed ? 'REFUTED' : 'not refuted'}** |`);
+    P(`| **H-L4** orientation over-bar AREA does not fall across the lineage | KILL if ≤ 0.50×; CONFIRM if ≥ 0.90× | **${ro.toFixed(3)}×** | **${ro <= 0.5 ? 'REFUTED' : ro >= 0.9 ? 'CONFIRMED' : 'partial'}** |`);
+    void sig;
+  }
+  // H-L2 — count the steps that move count-rate by more than 2 sigma in the improving direction
+  {
+    let moved = 0; let scored = 0; const detail = [];
+    for (let i = 1; i < 7; i += 1) {
+      const pb = load(CHAIN[i - 1][0], 'pos'); const pa = load(CHAIN[i][0], 'pos');
+      if (!pb || !pa) continue;
+      scored += 1;
+      const r = pa.failRate / pb.failRate;
+      const s = Math.sqrt(pa.sigmaCountRel ** 2 + pb.sigmaCountRel ** 2);
+      const imp = r < 1 && (1 - r) > 2 * s;
+      if (imp) moved += 1;
+      detail.push(`${CHAIN[i][0]} ${r.toFixed(3)}×${imp ? ' **>2σ improving**' : ''}`);
+    }
+    if (scored > 0) {
+      P(`| **H-L2** at most ONE of the six steps moves honest position by more than its own 1σ | KILL if ≥3 steps move count-rate by >2σ in the IMPROVING direction | **${moved}** of ${scored} scored steps do: ${detail.join('; ')} | **${moved >= 3 ? 'REFUTED' : moved <= 1 ? 'CONFIRMED' : 'partial (2 steps)'}** |`);
+    }
+  }
+  P('');
 }
 
 // ══ PROSE ═══════════════════════════════════════════════════════════════════════════════════════════
