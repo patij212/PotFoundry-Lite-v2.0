@@ -94,7 +94,11 @@ for (const spec of SETS) {
     const sf = sub.filter((r) => r.v === 1);
     const sa = sub.reduce((s, r) => s + r.area, 0);
     const saf = sf.reduce((s, r) => s + r.area, 0);
-    log(`   C-S90-1 first ${CTRLN} rows: PROVEN-FAIL ${sf.length} (${((100 * sf.length) / CTRLN).toFixed(3)}%)   areaFail ${((100 * saf) / Math.max(1e-30, sa)).toFixed(5)}%   <= S85 published 840 (10.500%) / 1.30676% on VORONOI`);
+    // The S85 comparison is ONLY meaningful for the Voronoi tag — S85's published 840/1.30676% is that
+    // mesh's row. Printing it beside every mesh (as the first cut of this tool did) invites exactly the
+    // mis-transcription the campaign has paid for; the reference is now tag-gated.
+    const ref = tag === 's90VOR' ? '   <= S85 published 840 (10.500%) / areaFail 1.30676% on the IDENTICAL 8,000 facets' : '   (no published reference for this tag at this N)';
+    log(`   C-S90-1 first ${CTRLN} rows: PROVEN-FAIL ${sf.length} (${((100 * sf.length) / CTRLN).toFixed(3)}%)   areaFail ${((100 * saf) / Math.max(1e-30, sa)).toFixed(5)}%${ref}`);
   } else {
     log(`   C-S90-1 pending — ${n}/${CTRLN} rows`);
   }
@@ -115,6 +119,26 @@ for (const spec of SETS) {
       log(`        LEAKED failures: worst witnessed ${wMax.toFixed(2)} um   p50 ${s[Math.floor(s.length / 2)].w.toFixed(2)} um   worst-5 (w um / o2 um / area mm2): ${s.slice(0, 5).map((r) => `${r.w.toFixed(1)}/${r.o2.toFixed(2)}/${r.area.toExponential(2)}`).join('  ')}`);
     }
     log(`        VERDICT vs the pre-registered 2.0% kill: ${100 * leakFrac > 2.0 ? '*** KILLED — containment is Gothic-only ***' : 'containment HOLDS'}`);
+  }
+
+  // ── *** WHERE CONTAINMENT WOULD BREAK *** — requested by the coordinator after PLAN-REVIEW found that the
+  //    containment is largely the BAR-CALIBRATION effect restated (median o2/w ~ 6.5-8.4, S88 §7b: chord ~ 8s).
+  //    If that is all it is, then containment is not a property of the defect at all, it is a units artifact,
+  //    and it breaks exactly where `o2/w < 1`. Report the ratio's LEFT TAIL, not its median — and report it
+  //    separately on the FAILING facets, because containment breaks iff a facet has `w > BAR` AND `o2 <= BAR`,
+  //    which forces `o2/w < 1`.
+  {
+    const rat = rows.filter((r) => r.w > 1e-9).map((r) => r.o2 / r.w);
+    const sr = rat.slice().sort((a, b) => a - b);
+    const under1 = rat.filter((v) => v < 1).length;
+    const fr = fails.filter((r) => r.w > 1e-9).map((r) => r.o2 / r.w);
+    const sf2 = fr.slice().sort((a, b) => a - b);
+    const fUnder1 = fr.filter((v) => v < 1).length;
+    const q = (a: number[], f: number): number => (a.length === 0 ? NaN : a[Math.min(a.length - 1, Math.floor(f * a.length))]);
+    log(`   *** o2/w RATIO (the bar-calibration effect, and the left tail is where containment breaks) ***`);
+    log(`        ALL facets   n ${rat.length}   MIN ${sr.length > 0 ? sr[0].toFixed(4) : 'n/a'}   p001 ${q(sr, 0.001).toFixed(3)}  p01 ${q(sr, 0.01).toFixed(3)}  p50 ${q(sr, 0.5).toFixed(3)}  p99 ${q(sr, 0.99).toFixed(1)}   *** frac(o2/w < 1) = ${((100 * under1) / Math.max(1, rat.length)).toFixed(4)}% (${under1}) ***`);
+    log(`        FAILING only n ${fr.length}   MIN ${sf2.length > 0 ? sf2[0].toFixed(4) : 'n/a'}   p01 ${q(sf2, 0.01).toFixed(3)}  p50 ${q(sf2, 0.5).toFixed(3)}   *** frac(o2/w < 1) among failures = ${((100 * fUnder1) / Math.max(1, fr.length)).toFixed(4)}% (${fUnder1}) ***`);
+    log(`        headroom: the SMALLEST o2 on any failing facet is ${fails.length > 0 ? Math.min(...fails.map((r) => r.o2)).toFixed(3) : 'n/a'} um against the ${BAR} um bar  <= containment breaks the moment this crosses ${BAR}`);
   }
 
   // ── H-S90-2 — recall curves under the FLAT S88 model (comparability only; the real cost is s90selCost).

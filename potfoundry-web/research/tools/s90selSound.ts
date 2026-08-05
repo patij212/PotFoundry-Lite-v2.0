@@ -126,6 +126,25 @@ for (const spec of SETS) {
     log(`      k=${KS[i]}   ${line.join('   ')}`);
   }
 
+  // ── WHERE THE CERTIFICATE'S OWN MONEY GOES — free, from columns already recorded.
+  //
+  //    `csamp` counts LATTICE POINTS walked (1 rA each in pass 1, 1 in pass 2), so `cEv - csamp` is the
+  //    TIGHTENING budget (descent 40 + Newton + closure walls). And `cn` is the FINAL lattice level against
+  //    a SEED level of `ceil(covRadius/tol)`. The seed matters because `certifyTriangle` sets
+  //    `thresh = tol - cov/n`, so AT THE SEED LEVEL thresh ~ 0 and EVERY lattice point is pushed into the
+  //    tightening tier. Each doubling is the only thing that makes the threshold bite.
+  {
+    const tight = rows.map((r) => Math.max(0, r.cEv - r.csamp));
+    const seedN = rows.map((r) => Math.min(512, Math.max(2, Math.ceil((r.covR / 0.010)))));
+    const dbl = rows.map((r, q) => (seedN[q] > 0 ? Math.log2(Math.max(1, r.cn / seedN[q])) : 0));
+    const sd = S(dbl);
+    log('');
+    log(`   CERTIFICATE INTERNALS (free, from the recorded columns):`);
+    log(`      TIGHTENING is ${((100 * sum(tight)) / blind).toFixed(2)}% of all rA evals; the lattice walk is ${((100 * sum(rows.map((r) => r.csamp))) / blind).toFixed(2)}%   <= S50 measured tighten at 95.22%`);
+    log(`      levels above the seed (log2(finalN/seedN)):  p50 ${pq(sd, 0.5).toFixed(2)}  p90 ${pq(sd, 0.9).toFixed(2)}  max ${sd[sd.length - 1].toFixed(2)}   seedN p50 ${S(seedN)[Math.floor(0.5 * seedN.length)]}  finalN p50 ${S(rows.map((r) => r.cn))[Math.floor(0.5 * n)]}  finalN max ${Math.max(...rows.map((r) => r.cn))}`);
+    log(`      facets that hit nMax (n = 512): ${rows.filter((r) => r.cn >= 512).length}   witnessedComplete=false: ${rows.filter((r) => r.c === 0).length}`);
+  }
+
   // ── WHERE THE COST ACTUALLY LIVES — the decile table that decides every triage question on this mesh.
   const byCost = rows.slice().sort((a, b) => b.cEv - a.cEv);
   let acc = 0; const marks = [0.001, 0.005, 0.01, 0.05, 0.10, 0.25, 0.50];
