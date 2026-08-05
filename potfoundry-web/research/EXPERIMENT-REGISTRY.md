@@ -9659,3 +9659,32 @@ drive `PF_CB_*` refinement with an ANGULAR bar of 1.0° (facet-vs-surface) inste
 GothicArches.** **CONFIRM: ≤12× triangles AND over-1° AREA < 5%** ⇒ the orientation class is closed by
 sizing, and the residue is exactly the FOLDED + CREASE sets, which are a fold-guard bug and the existing
 feature-conforming machinery respectively.
+
+## E-2026-08-05-FRONTIER-ORIENT, ADDENDUM — TWO CORRECTIONS TO MY OWN RESULT, BOTH FOUND BY TRYING TO KILL IT
+
+**(A) THE 6.67× PRICE IS GOTHIC-ONLY. VORONOI IS ≥107× AND 15% NEVER CLEARS.** Same three operators,
+Voronoi N=400 maxLev 6: red **673×/88.3% uncleared**, lepp **222×/15.6%**, turn 294×/33.5%. Excluding the
+9.25% back-facing parents halves it (339× / **106.6×**) and does **not** rescue it — so my "the folds
+explain Voronoi" hypothesis is **REFUTED as the full explanation**. **The mechanism is printed in the
+uniform sweep with folded parents already excluded: maxAng 89.49° → 125.45° → 134.58° across two levels.
+*** REFINEMENT CREATES BACK-FACING CHILDREN *** — lifting an edge midpoint onto the surface
+(`r = rA(θm,zm)`, the mesher's own `addV` contract) puts it on the far side of a near-vertical Voronoi cell
+wall. This reproduces §5.3's "7.415% of children are inverted" from a clean read-only construction.
+**⇒ Q5 IS REHABILITATED IN ITS STRONG FORM: the chart is a 2.0–2.6× co-factor of the DEFECT but a decisive
+obstruction to the REMEDY.** The catalogue splits: SMOOTH-RELIEF (Gothic) = a pure sizing problem at 6.67×;
+NEAR-VERTICAL-WALL (Voronoi, the hubbed/lattice family) = midpoint refinement is ill-posed, needs the
+representation work, not density. That is the honest reconciliation with §0e.2 — on the class the campaign
+measured most, density really is close to useless.
+
+**(B) A FIFTH INSTRUMENT DEFECT, IN THE SHIPPED RULER.** `orientOfFacet({orient:'outward'})` — the
+convention S70/S91/S92 all use — decides a facet's sign from the XY part of its normal, which is ~0 on a
+near-horizontal facet. `frontierFoldCheck.cjs`: Voronoi's `normDeg > 90` population has decision margin
+**p50 = 0.035** (|fz| p50 = 0.836), failing my pre-registered 0.1 kill line. Re-measured under the STL's
+own WINDING: folded count 4,897 → 5,928, folded AREA 0.9424% → 0.9104%, **whole-mesh max angle 154.67° →
+179.93°**, and **5,098 facets = 8.497% of COUNT (0.665% of AREA) change their `normDeg` between the two
+conventions.** *SURVIVES:* ~0.91–0.94% of Voronoi's total area (0.25% Gothic) is back-facing under EITHER
+convention. *WITHDRAWN:* any per-facet folded identification. **⇒ Every published Voronoi orientation MAX
+in this campaign is a reading of that ambiguity.** The over-bar COUNT and AREA are unaffected
+(bit-identical 45,121 / 37.943% under both), because a sign flip sends θ → 180°−θ and both stay over bar.
+**The project has never decided a facet sign convention; the file's winding is the only one that is not a
+heuristic.**

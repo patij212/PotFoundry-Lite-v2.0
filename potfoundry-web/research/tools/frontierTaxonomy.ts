@@ -84,6 +84,16 @@ const NDJSON = process.env.PF_FR_NDJSON !== '0';
 const DIMS: StyleDims = { H: envF('PF_FR_H', 120), Rb: envF('PF_FR_RB', 40), Rt: envF('PF_FR_RT', 50), expn: 1 };
 const H = DIMS.H;
 const OUTDIR = 'research/exchange/_strataConformBisect/frontier';
+/**
+ * FACET SIGN CONVENTION — added after the FOLDED class failed its own falsification test.
+ * 'outward' is the campaign's convention (`orientOfFacet({orient:'outward'})`, used by S70/S91/S92):
+ * flip the facet normal so its XY part points away from the axis. On a NEARLY-HORIZONTAL facet the XY
+ * part is ~0 and that test decides the sign on noise — `frontierFoldCheck.cjs` measures the decision
+ * margin at p50 = 0.035 on Voronoi's `normDeg > 90` population, i.e. those facets are not folded, they
+ * are horizontal and arbitrarily signed. 'winding' takes the STL's own vertex order, which is the file's
+ * statement of which side is out and needs no heuristic.
+ */
+const ORIENT = process.env.PF_FR_ORIENT === 'winding' ? 'winding' : 'outward';
 
 const snakeToCamel = (s: string): string => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
 function registryDefaults(id: string): Record<string, number> {
@@ -104,6 +114,7 @@ log('===== FRONTIER TAXONOMY — WHAT IS THE ORIENTATION DEFECT MADE OF? =====')
 log(`style ${STYLE}   tag ${TAG}   bar ${BAR_UM} um   covering k=${K} inset=${INSET} (${((K + 1) * (K + 2)) / 2} pts/facet)`);
 log(`STL ${STL}`);
 log('SAMPLING: sup over an order-k barycentric covering. NO centroid samples anywhere in this file.');
+log(`FACET SIGN CONVENTION: ${ORIENT}${ORIENT === 'outward' ? '  (the campaign convention — ILL-CONDITIONED on near-horizontal facets)' : '  (the STL winding — no heuristic)'}`);
 
 const rAbase = buildRadiusFn(STYLE as StyleId, { ...registryDefaults(STYLE) }, DIMS);
 const rA = (th: number, z: number): number => rAbase(canonTheta(th), z < 0 ? 0 : z > H ? H : z);
@@ -188,9 +199,10 @@ for (let q = 0; q < NS; q += 1) {
   F.area[q] = area; F.diam[q] = diam;
   if (!(fl > 0)) { F.normDeg[q] = NaN; continue; }
   fx /= fl; fy /= fl; fz /= fl;
-  // outward, matching S92's construction
-  const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
-  if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  if (ORIENT === 'outward') {
+    const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
+    if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  }
   // min angle from the law of cosines on the shortest edge's opposite vertex
   const s1 = Math.min(eA, eB, eC); const s3 = diam; const s2 = eA + eB + eC - s1 - s3;
   const cosMin = (s2 * s2 + s3 * s3 - s1 * s1) / Math.max(1e-300, 2 * s2 * s3);
@@ -381,7 +393,7 @@ for (let q = 0; q < NS; q += 1) {
   // ── cross-check against the published ruler on the first XCHECK facets ──
   if (q < XCHECK) {
     const ref = orientOfFacet(nsCentralRef, ax, ay, az, bx, by, bz, cx, cy, cz, thA, thB, thC,
-      { k: K, inset: INSET, orient: 'outward', scratch: scratch12 });
+      { k: K, inset: INSET, orient: ORIENT, scratch: scratch12 });
     const d = Math.abs(ref.normRad - best);
     if (d > xchkMax) xchkMax = d;
     xchkN += 1;

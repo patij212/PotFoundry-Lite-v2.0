@@ -67,6 +67,15 @@ const MAXLEV = Math.round(envF('PF_FD_MAXLEV', 8));
 /** the UNIFORM sweep is 4^L triangles per parent — it is the expensive one and only needs to show a RATE. */
 const UNILEV = Math.round(envF('PF_FD_UNILEV', 3));
 const NULLARM = process.env.PF_FD_NULL === '1';
+/**
+ * SKIP BACK-FACING PARENTS (`normDeg > 90` at level 0). Not a cosmetic filter — a folded facet's children
+ * INHERIT the fold, so its chord only clears when `2*diam <= bar`, i.e. after log2(2*diam/bar) halvings
+ * (~7.3 levels at Voronoi's p50 diam of 0.785 mm). Voronoi has 8.16% of its facets in that class against
+ * Gothic's 0.545%, and each one contributes the FULL 4^maxLevel subtree to the adaptive count. This arm
+ * measures whether that class is what makes Voronoi's price 673x against Gothic's 9x, instead of inferring
+ * it from the counts.
+ */
+const SKIPFOLD = process.env.PF_FD_SKIPFOLD === '1';
 const DIMS: StyleDims = { H: envF('PF_FD_H', 120), Rb: envF('PF_FD_RB', 40), Rt: envF('PF_FD_RT', 50), expn: 1 };
 const H = DIMS.H;
 
@@ -188,6 +197,7 @@ const LEVANG = new Float64Array(UNILEV + 1);       // area-weighted mean sup ANG
 const LEVANGMAX = new Float64Array(UNILEV + 1);
 let adaptTrisOrient = 0; let adaptTrisPos = 0; let adaptUncleared = 0; let adaptUnclearedPos = 0;
 const ANGBARS = [10, 5, 1, 0.5];
+let nSkipped = 0;
 let leppTris = 0; let leppUnc = 0; let leppAngSum = 0; let leppAngMin = 180;
 let turnTris = 0; let turnUnc = 0; let turnAngSum = 0; let turnAngMin = 180;
 /** unit surface normal at a parameter point, 5 rA evals — used by the 'turn' bisection key. */
@@ -248,6 +258,7 @@ for (let q = 0; q < NS; q += 1) {
   const root: Tri = { x: [ax, bx, cx], y: [ay, by, cy], z: [az, bz, cz], th: [thA, thB, thC] };
   const s0 = sc(root);
   if (!(s0.area > 0)) continue;
+  if (SKIPFOLD && s0.angDeg > 90) { nSkipped += 1; continue; }
   nParents += 1; parentArea += s0.area;
 
   // uniform levels
@@ -385,6 +396,7 @@ log(`  ORIENTATION bar ${BAR_UM} um:  ${adaptTrisOrient} leaves for ${nParents} 
 log(`  POSITION    bar ${BAR_UM} um:  ${adaptTrisPos} leaves for ${nParents} parents = ${(adaptTrisPos / Math.max(1, nParents)).toFixed(2)}x triangles   (uncleared: ${adaptUnclearedPos} = ${((100 * adaptUnclearedPos) / Math.max(1, adaptTrisPos)).toFixed(3)}%)`);
 log(`  *** RATIO orientation/position triangle cost: ${(adaptTrisOrient / Math.max(1, adaptTrisPos)).toFixed(2)}x ***`);
 log('');
+if (SKIPFOLD) log(`  *** PF_FD_SKIPFOLD=1: ${nSkipped} of ${nSkipped + nParents} parents (${((100 * nSkipped) / Math.max(1, nSkipped + nParents)).toFixed(2)}%) EXCLUDED as back-facing (normDeg > 90 at level 0) ***`);
 log('  *** THE FRONTIER ARM — three refinement OPERATORS to the same 10 um chord bar, same parents ***');
 log('  (conformity ignored for all three equally, so each count is a lower bound; the RATIO is the claim)');
 log(`    red  1->4 uniform-adaptive :  ${String(adaptTrisOrient).padStart(8)} leaves = ${(adaptTrisOrient / Math.max(1, nParents)).toFixed(2).padStart(7)}x   (uncleared ${((100 * adaptUncleared) / Math.max(1, adaptTrisOrient)).toFixed(2)}%)`);
