@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S48ADM90",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S48ADM90",
+  "nTri": 1140373,
+  "N": 25000,
+  "coverage": 0.021922651623635426,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 51.618,
+    "adaptiveMax": 51.587,
+    "overBar": 80,
+    "nTri": 1140373,
+    "found": true
+  },
+  "bucket": {
+    "n": 25000,
+    "fail": 37,
+    "pass": 24963,
+    "unk": 0,
+    "areaAll": 834.6542767160763,
+    "areaFail": 0.3837796598397192,
+    "incomplete": 37
+  },
+  "failRate": 0.00148,
+  "sigmaCountRel": 0.1643989873053573,
+  "areaFailFrac": 0.0004598067374071207,
+  "sigmaAreaRel": 0.3317415554699897,
+  "scaledFail": 1687.7520399999999,
+  "underReportRatio": 21.096900499999997,
+  "planeOverInSample": 1,
+  "witP50": 1.6545271488961493,
+  "witP99": 5.442791656785525,
+  "witMaxInSample": 205.30049001813472,
+  "secs": 456.084
+}

@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "LOWPOLY",
+  "style": "LowPolyFacet",
+  "stem": "lowpolyfacet_ring_D--",
+  "nTri": 137480,
+  "N": 10000,
+  "coverage": 0.07273785277858598,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 5,
+    "adaptiveMax": 5,
+    "overBar": 0,
+    "nTri": 137480,
+    "found": true
+  },
+  "bucket": {
+    "n": 10000,
+    "fail": 0,
+    "pass": 10000,
+    "unk": 0,
+    "areaAll": 2228.072771303131,
+    "areaFail": 0,
+    "incomplete": 0
+  },
+  "failRate": 0,
+  "sigmaCountRel": 1,
+  "areaFailFrac": 0,
+  "sigmaAreaRel": 1,
+  "scaledFail": 0,
+  "underReportRatio": null,
+  "planeOverInSample": 0,
+  "witP50": 0.001471066038983683,
+  "witP99": 4.757850314942208,
+  "witMaxInSample": 4.98252201161904,
+  "secs": 0.119
+}

@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "VORONOI",
+  "style": "Voronoi",
+  "stem": "voronoi_ring_D--",
+  "nTri": 806765,
+  "N": 8000,
+  "coverage": 0.0099161465854369,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 5,
+    "adaptiveMax": 5,
+    "overBar": 0,
+    "nTri": 806765,
+    "found": true
+  },
+  "bucket": {
+    "n": 8000,
+    "fail": 840,
+    "pass": 7160,
+    "unk": 0,
+    "areaAll": 404.6373525322639,
+    "areaFail": 5.287653459330159,
+    "incomplete": 840
+  },
+  "failRate": 0.105,
+  "sigmaCountRel": 0.03450327796711771,
+  "areaFailFrac": 0.013067635566117309,
+  "sigmaAreaRel": 0.05180342292072058,
+  "scaledFail": 84710.325,
+  "underReportRatio": null,
+  "planeOverInSample": 0,
+  "witP50": 2.332476683969513,
+  "witP99": 119.81925919876639,
+  "witMaxInSample": 184.70577765095757,
+  "secs": 0.326
+}

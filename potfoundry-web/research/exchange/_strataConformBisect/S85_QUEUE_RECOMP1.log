@@ -1,0 +1,18 @@
+[2026-08-05 16:06:18] SLOT RECOMP1 START — 8 jobs
+[2026-08-05 16:06:18]   -> arm=uniform tag=S41CTL stem=gothicarches_ring_DS-HT_S41CTL style=GothicArches N=25000 topk=0
+[2026-08-05 16:06:21]      done (exit 0)
+[2026-08-05 16:06:21]   -> arm=uniform tag=S41CAVRES stem=gothicarches_ring_DS-HT_S41CAVRES style=GothicArches N=25000 topk=0
+[2026-08-05 16:06:23]      done (exit 0)
+[2026-08-05 16:06:23]   -> arm=target tag=S41CAVRES stem=gothicarches_ring_DS-HT_S41CAVRES style=GothicArches N=0 topk=300
+[2026-08-05 16:06:25]      done (exit 0)
+[2026-08-05 16:06:25]   -> arm=target tag=S36CA stem=gothicarches_ring_DS-HT_S36CA style=GothicArches N=0 topk=300
+[2026-08-05 16:06:28]      done (exit 0)
+[2026-08-05 16:06:28]   -> arm=target tag=S48ADM90 stem=gothicarches_ring_DS-HT_S48ADM90 style=GothicArches N=0 topk=300
+[2026-08-05 16:06:30]      done (exit 0)
+[2026-08-05 16:06:30]   -> arm=uniform tag=VORONOI stem=voronoi_ring_D-- style=Voronoi N=8000 topk=0
+[2026-08-05 16:06:31]      done (exit 0)
+[2026-08-05 16:06:31]   -> arm=uniform tag=LOWPOLY stem=lowpolyfacet_ring_D-- style=LowPolyFacet N=10000 topk=0
+[2026-08-05 16:06:31]      done (exit 0)
+[2026-08-05 16:06:31]   -> arm=uniform tag=S36CA stem=gothicarches_ring_DS-HT_S36CA style=GothicArches N=25000 topk=0
+[2026-08-05 16:46:38]      done (exit 0)
+[2026-08-05 16:46:38] SLOT RECOMP1 COMPLETE

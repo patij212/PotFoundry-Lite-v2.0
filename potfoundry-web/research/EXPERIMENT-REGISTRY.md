@@ -9179,3 +9179,60 @@ coverage. H2 (surface→mesh) — this is H1 only. Orientation. Meshes not yet r
 
 **STATUS: confirmed (H-R2, H-R3) / refuted-on-its-own-kill-line (H-R1, count) — and the AR-cap result must be
 restated as "2× fewer, larger failures", never as a 4.37× win.**
+
+### E-2026-08-05-S85 — COMPLETION (all 12 distinct meshes; supersedes the partial tables above where they differ)
+
+**THE CONTROL THAT MATTERS MOST — the instrument does NOT manufacture failures.** LowPolyFacet
+(137,480 tris, genuinely planar facets): **0 PROVEN-FAIL in 10,000 uniform (7.27% coverage) and 0 in the
+576-facet targeted union**, honest max **4.983 µm** against the driver's 5.000 (ratio **1.004×**). Where the
+mesh really is flat, `certifyTriangle` and `sagAdaptiveRaw` agree to 0.4%. Every disagreement elsewhere is
+therefore geometry, not instrument. Per facet on LowPoly the `witnessed/plane` ratio has p99 = 1.000.
+
+**THE WORST ROW IN THE CAMPAIGN — Voronoi.** Driver: MAX 5.000 µm, **PASS, 0/806,765 over bar**.
+Honest: **840 PROVEN-FAIL / 8,000 uniform = 10.50% ±3.5%**, scaled **~84,710 failing facets**, fail AREA
+fraction **1.307% ±5.2%**, in-sample witnessed max **184.7 µm**, and **300/300 PROVEN-FAIL** on the tangExc
+top-300. A published "PASS" from this ruler is not evidence of anything.
+
+**S48CAV90 — the "best" arm by the blind ruler — is not clean either.** Driver: 5.655 µm, **0 over bar**.
+Honest: 26/25,000 = 0.104% ±19.6% (~1,187 facets), area 0.04067%, and a **PROVEN 460.5 µm** exceedance in
+the targeted union (46× the product bar) with 278/300 tangExc-selected facets proven failing.
+
+**Q3, the whole family against the S39CTL baseline** (uniform arm, count and area):
+
+| arm | driver over-bar | honest scaled fail | honest fail AREA | verdict |
+|---|---|---|---|---|
+| S39CTL (=S41RES=S36CTL) | 75 | 3,267 | 0.03534% | baseline |
+| S40AR55 | 63 | 2,488 | 0.03329% | count 0.76×, area 0.94× (not resolvable) |
+| S40AR65 | 32 | 2,303 | 0.03216% | count 0.71×, area 0.91× (not resolvable) |
+| S40AR90 | 1 | 1,527 | 0.04009% | count 0.47×, **area 1.13×** |
+| S41CTL (=S34CTL=S46CTL) | 323 | 13,008 | 0.09097% | **WORSE — count 3.62×, area 2.57×** |
+| S41CAVRES | 4 | 1,604 | 0.02192% | **the ONLY real improvement — count 0.49× AND area 0.62×** |
+| S48CAV90 | 0 | 1,187 | 0.04067% | count 0.36×, **area 1.15×** |
+| S48ADM90 | 80 | 1,688 | 0.04598% | count 0.52×, **area 1.30×** |
+| S47CAV | 44 | 7,610 | 0.06489% | **WORSE — count 2.08×, area 1.84×** |
+| S36CA | 76 | 2,424 | 0.12438% | **WORSE — count 1.19×, area 3.52×** |
+| Voronoi | 0 | 84,710 | 1.30676% | different style |
+| LowPolyFacet | 0 | 0 | 0.00000% | different style — CONTROL, driver correct |
+
+**Exactly one arm in the whole set (S41CAVRES) improves honest position on BOTH count and area.** Three are
+WORSE. The rest bought a count improvement at flat-or-worse defect area. **None of that ordering is visible in
+the driver's over-bar column** (S41CAVRES's published 4 is 401× low; S36CA's published 76 is 32× low while
+being the worst mesh by area).
+
+**H-R2, final: ratio spans 21.1× to 1,526.7× — a 72.4× spread** over the 9 meshes where the driver reports a
+non-zero count; three more meshes report 0 and have an undefined ratio. Per facet, `witnessed/plane` p50 =
+1.001 with ~28–37% of facets where the plane ruler OVER-reads and a max of 124–1,549×.
+
+**H-R3, final, read as printed:** PASSES on **11 of 12** meshes (`over-0.01mm` reproduced EXACTLY on all 12;
+adaptive MAX within 0.077%). **Voronoi DOES NOT MATCH on the MAX line** (driver 5.000, mine 6.229, 24.6%) —
+its `over-0.01mm` still agrees 0 = 0, so the STL reader / theta / `rA` are validated on it, but its published
+MAX is not reproducible from the shipped STL and must be read as *what was published*, not as a measurement.
+
+**HARNESS INCIDENT, recorded because it nearly poisoned the scorecard (commit b6a78583).** The agent harness
+reported three background queue wrappers "killed" while their child `bash` survived; relaunching produced TWO
+writers per checkpoint file. Caught by `wc -l` vs distinct facet indices (nine files), repaired by
+`research/tools/s85FixNdjson.cjs` (dedupe by index, RE-ORDER by position in the original list, truncate at the
+first gap), and every affected job re-run. It was MATERIAL: S41CAVRES read 45 PROVEN-FAIL corrupted vs **35**
+repaired (29% overstated). **The whole AR-cap block was written before the relaunch and audited clean
+(lines == distinct == contiguous prefix), so the Q1 verdict is untouched.** `run-s85-pos-rebase.sh` now takes
+a per-(arm,tag) lock and refuses a second writer.

@@ -1,0 +1,61 @@
+{
+  "arm": "target",
+  "tag": "S41CAVRES",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S41CAVRES",
+  "nTri": 1145533,
+  "topK": 300,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 23.108,
+    "adaptiveMax": 21.789,
+    "overBar": 4,
+    "nTri": 1145533,
+    "found": true
+  },
+  "planeMaxMine": 21.796060766480498,
+  "planeOverMine": 4,
+  "union": {
+    "n": 588,
+    "fail": 337,
+    "pass": 251,
+    "unk": 0,
+    "areaAll": 7.870216031625025,
+    "areaFail": 3.9778057571089116,
+    "incomplete": 337
+  },
+  "plane": {
+    "n": 300,
+    "fail": 66,
+    "pass": 234,
+    "unk": 0,
+    "areaAll": 3.960348652286723,
+    "areaFail": 0.10610490252071345,
+    "incomplete": 66
+  },
+  "tang": {
+    "n": 300,
+    "fail": 278,
+    "pass": 22,
+    "unk": 0,
+    "areaAll": 3.9444659773520674,
+    "areaFail": 3.8976851208445185,
+    "incomplete": 278
+  },
+  "honestMaxUnion": 350.4567930980062,
+  "honestMaxPlaneSel": 98.77913577596547,
+  "honestMaxTangSel": 350.4567930980062,
+  "headlineFacet": {
+    "k": 152052,
+    "area": 0.0015694887827902675,
+    "tg": 250.82398344816593,
+    "p": 21.796060766480498,
+    "w": 56.52969633580269,
+    "b": 66.32766835432483,
+    "v": 1,
+    "c": 0,
+    "sel": "plane"
+  },
+  "secs": 1.794
+}

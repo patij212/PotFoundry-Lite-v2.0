@@ -65,12 +65,25 @@ md += '  ndjson checkpoints in `s85rebase/` (a killed run resumes and re-scores 
 md += '## The non-vacuity control (H-R3), checked on every mesh before any verdict was read\n\n';
 md += 'My whole-mesh plane-ruler pass must REPRODUCE the driver\'s own self-report on the same mesh.\n';
 md += 'If it did not, the two rulers would not be reading the same geometry and their disagreement would\n';
-md += 'mean nothing. Result, per mesh: `over-0.01mm` reproduced **EXACTLY**, adaptive MAX within 0.006%.\n\n';
-md += '| mesh | driver over-0.01mm | mine | driver adaptive MAX µm | mine | delta |\n|---|---|---|---|---|---|\n';
-for (const tag of ORDER) {
-  const t = T[tag]; if (t === null) continue;
-  const d = Math.abs(t.planeMaxMine - t.driver.adaptiveMax) / Math.max(1e-9, t.driver.adaptiveMax);
-  md += `| ${tag} | ${t.driver.overBar} | ${t.planeOverMine} | ${t.driver.adaptiveMax} | ${f3(t.planeMaxMine)} | ${(100 * d).toFixed(3)}% |\n`;
+md += 'mean nothing. **Read the delta column, not this sentence** — one mesh does not pass and it is named below.\n\n';
+md += '| mesh | driver over-0.01mm | mine | driver adaptive MAX µm | mine | delta | H-R3 |\n|---|---|---|---|---|---|---|\n';
+{
+  const failed = [];
+  for (const tag of ORDER) {
+    const t = T[tag]; if (t === null) continue;
+    const d = Math.abs(t.planeMaxMine - t.driver.adaptiveMax) / Math.max(1e-9, t.driver.adaptiveMax);
+    const ok = d <= 0.005 && t.planeOverMine === t.driver.overBar;
+    if (!ok) failed.push(tag);
+    md += `| ${tag} | ${t.driver.overBar} | ${t.planeOverMine} | ${t.driver.adaptiveMax} | ${f3(t.planeMaxMine)} | ${(100 * d).toFixed(3)}% | ${ok ? 'PASS' : '**DOES NOT MATCH**'} |\n`;
+  }
+  md += `\n**${failed.length === 0 ? 'Every mesh passes.' : `PASSES on ${ORDER.filter((t) => T[t] !== null).length - failed.length} meshes; DOES NOT MATCH on: ${failed.join(', ')}.`}**\n`;
+  if (failed.length > 0) {
+    md += 'On the non-matching mesh the `over-0.01mm` count still agrees (0 = 0) — only the reported MAX differs,\n';
+    md += 'so the STL reader / theta reconstruction / `rA` are still validated on it. But its driver report\n';
+    md += 'predates the current arm reports and its MAX line is NOT reproducible from the shipped STL, so the\n';
+    md += '"driver HEADLINE" column for that mesh should be read as *what was published*, not as *what the\n';
+    md += 'plane ruler says about this file*. My own whole-mesh plane MAX for it is in the "mine" column.\n';
+  }
 }
 
 md += '\n## TABLE 1 — UNIFORM arm: the COMPARABLE row (unbiased golden-stride sample)\n\n';
@@ -160,9 +173,9 @@ md += '\n## THE THREE QUESTIONS — answered from the tables above, computed not
     let v = 'baseline';
     if (tag !== 'S39CTL' && base !== null && u.style === base.style) {
       const dc = u.failRate / base.failRate; const da = u.areaFailFrac / base.areaFailFrac;
-      v = dc < 0.9 && da < 0.9 ? 'REAL improvement (count AND area)'
-        : dc < 0.9 && da >= 0.9 ? 'COUNT better, AREA not — traded many small failures for fewer larger ones'
-          : dc >= 1.1 || da >= 1.1 ? 'WORSE on the honest ruler' : 'no resolvable change';
+      v = dc < 0.9 && da < 0.9 ? `REAL improvement — count ${dc.toFixed(2)}× AND area ${da.toFixed(2)}×`
+        : dc < 0.9 && da >= 0.9 ? `count ${dc.toFixed(2)}× better, area ${da.toFixed(2)}× NOT resolvably better`
+          : dc >= 1.1 || da >= 1.1 ? `WORSE on the honest ruler — count ${dc.toFixed(2)}×, area ${da.toFixed(2)}×` : 'no resolvable change';
     } else if (tag !== 'S39CTL') v = 'different style — not comparable to the Gothic baseline';
     md += `| ${tag} | ${u.driver.overBar} | ${Math.round(u.scaledFail)} | ${(100 * u.areaFailFrac).toFixed(5)}% | ${v} |\n`;
   }

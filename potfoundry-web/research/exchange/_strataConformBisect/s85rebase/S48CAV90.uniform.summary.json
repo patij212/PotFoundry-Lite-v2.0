@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S48CAV90",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S48CAV90",
+  "nTri": 1140947,
+  "N": 25000,
+  "coverage": 0.021911622538119648,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 5.655,
+    "adaptiveMax": 5.643,
+    "overBar": 0,
+    "nTri": 1140947,
+    "found": true
+  },
+  "bucket": {
+    "n": 25000,
+    "fail": 26,
+    "pass": 24973,
+    "unk": 1,
+    "areaAll": 839.3497135935422,
+    "areaFail": 0.3413546969428242,
+    "incomplete": 27
+  },
+  "failRate": 0.00104,
+  "sigmaCountRel": 0.19611613513818402,
+  "areaFailFrac": 0.000406689478073887,
+  "sigmaAreaRel": 0.37534934179277657,
+  "scaledFail": 1186.58488,
+  "underReportRatio": null,
+  "planeOverInSample": 0,
+  "witP50": 1.649689243791777,
+  "witP99": 5.43852191049905,
+  "witMaxInSample": 72.80974942391268,
+  "secs": 1025.972
+}

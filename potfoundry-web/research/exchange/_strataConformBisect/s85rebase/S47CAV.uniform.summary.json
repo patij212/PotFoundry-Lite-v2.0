@@ -1,0 +1,38 @@
+{
+  "arm": "uniform",
+  "tag": "S47CAV",
+  "style": "GothicArches",
+  "stem": "gothicarches_ring_DS-HT_S47CAV",
+  "nTri": 1276899,
+  "N": 25000,
+  "coverage": 0.019578682417325098,
+  "tol": 0.01,
+  "nMax": 512,
+  "driver": {
+    "headline": 22.241,
+    "adaptiveMax": 21.075,
+    "overBar": 44,
+    "nTri": 1276899,
+    "found": true
+  },
+  "bucket": {
+    "n": 25000,
+    "fail": 149,
+    "pass": 24851,
+    "unk": 0,
+    "areaAll": 766.2289298937012,
+    "areaFail": 0.49717286229896057,
+    "incomplete": 149
+  },
+  "failRate": 0.00596,
+  "sigmaCountRel": 0.08192319205190404,
+  "areaFailFrac": 0.000648856814069828,
+  "sigmaAreaRel": 0.278291238019822,
+  "scaledFail": 7610.31804,
+  "underReportRatio": 172.96177363636363,
+  "planeOverInSample": 0,
+  "witP50": 1.5237885073011181,
+  "witP99": 5.572107382560735,
+  "witMaxInSample": 41.65885068293993,
+  "secs": 980.805
+}
