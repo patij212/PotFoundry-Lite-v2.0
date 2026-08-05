@@ -208,6 +208,35 @@ meshes of different character), **CHEAP** (6.14× fewer body entries, 19× fewer
 **FAST on meshes with a convergence tail** (0.620× wall clock on Gothic; no measurable win on a
 5-round mesh, and that is stated rather than averaged away).
 
-It remains **DEFAULT 0**. Flipping the default is a separate decision that belongs with the driver's
-`PF_LAND_FLIP` owner, not with the agent that measured the cost.
+## WIRED UP — `fastLevel` DEFAULT 0 → 2 (2026-08-05, on the owner's instruction)
+
+The default is now **2**, in `landFlipPass.ts` itself, which wires BOTH consumers at once — the driver
+call site (`_strataConformBisectL.test.ts:4745`) passes no `fastLevel`, so it inherits it, and
+`s81LandFlipGate.ts` now defaults `PF_LAND_FAST` to 2.
+
+**Level 0 is retained as the equivalence CONTROL, not as a correctness fallback.** `PF_LAND_FAST=0`
+must keep working — it is the only thing that can falsify this change later, and any future edit to the
+sweep has to be re-gated against it.
+
+### What this default rests on, stated plainly
+
+Byte-identity is **measured on two meshes**, not proven for all inputs: GothicArches `S39CTL`
+(1.14 M facets, 19 rounds, 432,597 flips) and LowPolyFacet (137 k facets, 5 rounds, 41,145 flips). Both
+gave identical md5, identical flip count, identical per-round sequence and identical census. The
+soundness argument is structural (see the `fastLevel` doc comment), but two meshes is two meshes.
+
+**ARM 3 — Voronoi `voronoi_ring_D--` (806,765 facets) is running now** to widen it onto the adversarial
+case: high-aspect, the class the flip is REFUTED on (1.33×), and therefore a different mix of `dup` and
+`fold` rejections than either mesh above. If ARM 3 diverges on md5, **the default flip is wrong and must
+be reverted to 0** — that is the pre-registered consequence, recorded before the result was seen.
+
+### What was NOT wired, and why
+
+- **The `_facetTruthPool` worker pool for `s85PosRebase`** — that is a real ~2.7× on audit throughput
+  but it was never built this session, so there is nothing to enable. It stays on the list.
+- **Priority-class bumping** — investigated and REFUTED as the explanation for the observed rate spread
+  (all S85 slots were at `Normal`; the spread was within-run concurrency contention). Nothing to wire.
+- **`buildEdges()`** still rebuilds a 1.71 M-entry Map every round. Untouched deliberately: it spends no
+  rA. With the sweep now 6.14× cheaper it is a larger share of what remains, so it is the next lever —
+  but it is a new measurement, not a captured gain, and it is not being claimed here.
 

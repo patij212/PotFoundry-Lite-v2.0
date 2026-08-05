@@ -38,8 +38,9 @@ const RULER = (process.env.PF_S81_RULER ?? 'plane') as LandPosRuler;
 const SEL = envF('PF_S81_SEL_UM', 0);
 const ROUNDS = Math.round(envF('PF_S81_ROUNDS', 40));
 const CMP = process.env.PF_S81_CMP ?? '';
-/** 0 = the committed sweep (the CONTROL). 1 = hoist the score recompute. 2 = + the dirty-edge frontier. */
-const FAST = Math.round(envF('PF_LAND_FAST', 0)) as 0 | 1 | 2;
+/** 0 = the exhaustive sweep (the CONTROL). 1 = hoist the score recompute. 2 = + the dirty-edge frontier.
+ *  Defaults to the pass's own default (2 since S86); set PF_LAND_FAST=0 to re-run the control. */
+const FAST = Math.round(envF('PF_LAND_FAST', 2)) as 0 | 1 | 2;
 const DIMS: StyleDims = { H: envF('PF_S81_H', 120), Rb: envF('PF_S81_RB', 40), Rt: envF('PF_S81_RT', 50), expn: 1 };
 const H = DIMS.H;
 const OUTDIR = 'research/exchange/_strataConformBisect/s80land';

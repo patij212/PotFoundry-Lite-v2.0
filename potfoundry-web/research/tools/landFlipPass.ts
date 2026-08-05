@@ -75,7 +75,8 @@ export interface LandFlipOpts {
   thJumps?: number[];
   /**
    * SWEEP COST LEVEL — pure work-elimination, NEVER a change to which flips are accepted.
-   *   0 (default) the committed sweep: full `score` recompute + full edge body, every round.
+   * DEFAULT IS 2. Level 0 is retained as the equivalence CONTROL, not as a fallback for correctness.
+   *   0  the exhaustive sweep: full `score` recompute + full edge body, every round. THE CONTROL.
    *   1  hoist the `score` recompute out of the round loop.  `score[t]` is a pure function of the index
    *      triple (positions never move in a connectivity-only pass) and the accept path already maintains
    *      it exactly (`score[t1] = g1` alongside `ta[t1] = n1[0]`), so recomputing it per round reproduces
@@ -137,7 +138,11 @@ export function landConstrainedFlip(P: Float64Array, nTri: number, o: LandFlipOp
   const DETMODE = o.detMode ?? 'rel';
   const GATE = o.gateMm ?? 0.05;
   const NMAX = o.nMax ?? 512;
-  const FAST = o.fastLevel ?? 0;
+  // DEFAULT 2 since 2026-08-05 (S86). This is a COST default, not a behaviour default: levels 0 and 2
+  // are MEASURED byte-identical (md5, flip count, per-round flip sequence, and the whole census) on
+  // GothicArches S39CTL and on LowPolyFacet. `PF_LAND_FAST=0` restores the exhaustive sweep and is the
+  // control any future equivalence check must run against — keep it working.
+  const FAST = o.fastLevel ?? 2;
   const zJumps = o.zJumps ?? []; const thJumps = o.thJumps ?? [];
   const log = o.log ?? ((): void => { /* silent */ });
   const TOLMM = BAR / 1000;
