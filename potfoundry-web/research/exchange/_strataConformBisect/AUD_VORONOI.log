@@ -1,0 +1,59 @@
+cwd: /c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web
+── bundling research/tools/audOrientCone.ts -> research/bridge/out/_run_audOrientCone.cjs ──
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    research/bridge/_facetTruthPool.ts:88:37:
+      88 │   const here = dirname(fileURLToPath(import.meta.url));
+         ╵                                      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "esbuild" should be marked as external for use with "require.resolve" [require-resolve-not-external]
+
+    node_modules/esbuild/lib/main.js:1653:36:
+      1653 │   const libMainJS = require.resolve("esbuild");
+           ╵                                     ~~~~~~~~~
+
+2 warnings
+
+  research\bridge\out\_run_audOrientCone.cjs  202.4kb
+
+Done in 34ms
+── checking for undefined identifiers (TS2304 only) ──
+   none
+===== AUD-ORIENT-CONE — adversarial audit of tangExc =====
+N 250000  topK 1500  latticeN 24  bar 10 um
+
+
+═════════ Voronoi  (voronoi_ring_D--, 806765 facets) ═════════
+  GATE vertex-on-surface p50 0.00000 p99 0.00001 max 0.00002 mm -> TRUSTED
+  WINDING: 91.10% of 8192 stride facets agree with the analytic outward normal -> sign 1
+  sampled 268921 of 806765   (68.5s)
+
+  ── H-A: THE FOOTPRINT / NORMAL-CONE CORRECTION ──────────────────────────────────────────
+  quantity                       p50      p99      max     over-10um            vs s58
+  tangExc  s58 (centroid)       6.63  1222.82   2346.7    106751 (39.696%)   1.000x
+  tangExc  +5cand+footprint     6.37  1226.31   2355.4    104061 (38.696%)   0.975x
+  tangExc  +15pt NORMAL CONE    2.62  1226.26   2355.4     69046 (25.675%)   0.647x
+  posUm (driver plane ruler)    1.65     4.90      5.5         0 (0.000%)
+  normDeg  s58 / cent5 / foot / cone   p99 126.47 / 145.17 / 140.77 / 140.77   max 155.7 / 179.8 / 179.2 / 179.2
+
+  ── H-D: THE PER-FACET RADIAL FLIP vs THE MESH'S OWN WINDING ─────────────────────────────
+  facets >=90 deg   s58 per-facet radial flip: 18085 (6.725%)   global winding sign: 23634 (8.788%)   ratio 0.77x
+
+  ── H-C: IS tangExc THE POSITION RULER TIMES A CONSTANT ON WELL-SHAPED FACETS? ───────────
+  tangExc/posUm on maxAngle<90 (n=67209)  p10 1.30  p50 1.58  p90 2.58  p99 6.53
+
+  ── H-B: THE TRUE POSITION ERROR OF THE TOP-1500 FACETS BY tangExc (1.6s) ──
+  tangExc over those facets        p50 1327.2  p99 2171.4  max 2346.7 um
+  max-over-facet RADIAL dist (UPPER BOUND on true perp)  p50 29.65  p99 334.33  max 442.7 um
+  distPerp at the radial argmax    p50 12.48  p99 116.40  max 192.0 um
+  *** truePerp / tangExc           p50 0.0092  p90 0.0238  max 0.130 ***
+  facet ALTITUDE (2*area/diam)     p50 8.2  p99 109.3 um   (a "cap" has altitude << diam)
+  KILL-CRITERION H-B: >=0.25 => REAL POSITIONAL DEFECT (the plane ruler is what is broken).
+                      <0.05 AND radial p50 < 10 um => tangExc is not a displacement.
+  [checkpoint appended to research/exchange/_strataConformBisect/AUD_ORIENT_CONE.ndjson]
+
+done
+
+report written to research/exchange/_strataConformBisect/audOrientCone.report.txt

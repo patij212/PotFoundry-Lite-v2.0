@@ -1,0 +1,204 @@
+// audTruePos.ts — WHAT IS THE **TRUE** POSITION ERROR AT THE FACETS `tangExc` CONDEMNS?
+//
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// WHY THIS EXISTS
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// `audOrientCone` measured, on Voronoi's top-1500 facets by `tangExc` (tangExc p50 1327.2 um):
+//     max-over-lattice distRadial (an UPPER bound on d(p) at each sampled point)  p50 29.65 um
+//     distPerp at that argmax                                                     p50 12.48 um
+//     truePerp / tangExc                                                          p50 0.0092
+// but BOTH of those are lattice-sampled, and `distPerp` has a documented wrong-basin failure mode
+// (`_facetTruthLib` records a MEASURED 26% over-statement at the default nu=180,nv=120). So neither
+// is admissible as the load-bearing number.
+//
+// `certifyTriangle` IS admissible: it returns `witnessed` (a genuine achieved distance at a real
+// point => a LOWER bound on the facet's true maximum) and `bound` = witnessed + covering radius at the
+// final level (a RIGOROUS UPPER bound over the WHOLE triangle, gaps included). Two-sided, by
+// construction, and it is the same instrument every H1 number in this campaign is written against.
+//
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// PRE-REGISTERED, WRITTEN BEFORE THE FIRST RUN
+// ═══════════════════════════════════════════════════════════════════════════════════════════════════
+// H-E. On Voronoi the driver's plane ruler (`sagAdaptiveRaw`) reports posUm max 5.5 um and ZERO facets
+//      over the 10 um product bar. The claim built on that — "position over-bar is 0, so orientation is
+//      a class no ruler scores" — requires the position column to be TRUE.
+//      MEASURE: `certifyTriangle` on the top-K facets by `tangExc` and on a matched RANDOM control.
+//      KILL: if the top-K `witnessed` p50 is <= 10 um AND its max is <= 2x the plane ruler's 5.5 um,
+//      the plane ruler is vindicated on this population and H-E is REFUTED (the position arm of the
+//      SECTION 14 comparison stands).
+//      CONFIRM: if `witnessed` (a LOWER bound, so it cannot be an over-statement artefact) exceeds
+//      10 um on a material fraction of the top-K, then the mesh FAILS THE PRODUCT'S OWN POSITION BAR
+//      at exactly those facets and the shipped ruler reports 0 — i.e. the discovery is a BROKEN
+//      POSITION RULER, not a missing orientation ruler.
+//
+// H-F. THE RANDOM CONTROL IS WHAT MAKES IT NON-VACUOUS. If a random sample of facets shows the same
+//      `witnessed` distribution as the top-K, then `tangExc` is not selecting anything and the position
+//      failure is mesh-wide (still a broken ruler, but `tangExc` earns no credit for finding it).
+//      If the top-K is materially worse than random, `tangExc` IS a usable DETECTOR of a position
+//      defect — which is a genuinely useful result, and a different claim from the one in SECTION 14.
+//      KILL: top-K witnessed p50 / random witnessed p50 < 2 => `tangExc` is not a selective detector.
+//
+// NOTE ON `tol`. `certifyTriangle`'s FacetVerdict header warns that `witnessed` BELOW tol may
+// over-state by the radial inflation factor (points under tol are never tightened). So tol is set to
+// 0.001 mm = 1 um, well under every number of interest, and `exhaustive: true` so `witnessed`
+// converges to the facet MAXIMUM instead of stopping at the first exceedance. `witnessedComplete` is
+// reported per group; a group where it is mostly false has LOWER bounds only, and is labelled so.
+//
+// Usage:  bash research/tools/run-aud-true-pos.sh
+import { STYLE_REGISTRY } from '../../src/styles/registry';
+import { buildRadiusFn } from '../bridge/runStyle';
+import { canonTheta, dThRaw } from '../bridge/_sweepPredicate';
+import { readMeshFloat64 } from '../bridge/_facetTruthPool';
+import { sagAdaptiveRaw, makeSagArgmax, type SagMesh } from '../bridge/_sagKernel';
+import { certifyTriangle, detectZJumps, detectThetaJumps } from '../bridge/_facetTruthLib';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import type { StyleId, StyleDims } from '../../src/geometry/types';
+
+// eslint-disable-next-line no-console
+const log = console.log;
+const envF = (n: string, d: number): number => (process.env[n] === undefined ? d : Number(process.env[n]));
+const NS = Math.round(envF('PF_AUDTP_N', 250000));
+const TOPK = Math.round(envF('PF_AUDTP_TOPK', 600));
+const TOL = envF('PF_AUDTP_TOL_MM', 0.001);
+const NMAX = Math.round(envF('PF_AUDTP_NMAX', 512));
+const OUT = 'research/exchange/_strataConformBisect/AUD_TRUEPOS.ndjson';
+const JOBS: Array<[string, string]> = (process.env.PF_AUDTP_JOBS
+  ?? 'Voronoi=voronoi_ring_D--,LowPolyFacet=lowpolyfacet_ring_D--')
+  .split(',').map((s) => { const [a, b] = s.split('='); return [a, b] as [string, string]; });
+
+const snakeToCamel = (s: string): string => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
+function registryDefaults(id: string): Record<string, number> {
+  const cfg = (STYLE_REGISTRY as Record<string, {
+    params?: Record<string, { default?: unknown }>; advancedParams?: Record<string, { default?: unknown }>;
+  }>)[id];
+  const out: Record<string, number> = {};
+  for (const g of [cfg?.params, cfg?.advancedParams]) {
+    if (g === undefined) continue;
+    for (const [k, v] of Object.entries(g)) if (typeof v.default === 'number') out[snakeToCamel(k)] = v.default;
+  }
+  return out;
+}
+const pq = (a: number[], f: number): number => (a.length === 0 ? 0 : a[Math.min(a.length - 1, Math.floor(f * a.length))]);
+const S = (a: number[]): number[] => { const c = a.slice(); c.sort((x, y) => x - y); return c; };
+const RAD = 180 / Math.PI;
+
+log('===== AUD-TRUE-POS — certifyTriangle at the facets tangExc condemns =====');
+log(`N ${NS}  topK ${TOPK}  tol ${TOL} mm  nMax ${NMAX}`);
+mkdirSync('research/exchange/_strataConformBisect', { recursive: true });
+
+for (const [style, stem] of JOBS) {
+  const path = `research/exchange/_strataConformBisect/${stem}.stl`;
+  let mesh;
+  try { mesh = readMeshFloat64(path, false); } catch { log(`\n${style}: MISSING ${path}`); continue; }
+  const { xyz, nTri } = mesh;
+  const DIMS: StyleDims = { H: envF('PF_AUDTP_H', 120), Rb: envF('PF_AUDTP_RB', 40), Rt: envF('PF_AUDTP_RT', 50), expn: 1 };
+  const H = DIMS.H;
+  const rAbase = buildRadiusFn(style as StyleId, { ...registryDefaults(style) }, DIMS);
+  const rA = (th: number, z: number): number => rAbase(canonTheta(th), z < 0 ? 0 : z > H ? H : z);
+  const t0 = Date.now();
+  log(`\n═════════ ${style}  (${stem}, ${nTri} facets) ═════════`);
+
+  const zJ = detectZJumps(rA, H); const thJ = detectThetaJumps(rA, H);
+  log(`  closure: detectZJumps ${zJ.length}   detectThetaJumps ${thJ.length}`);
+
+  const step = Math.max(1, Math.floor(nTri / NS));
+  const n = Math.floor(nTri / step);
+  const ta = new Int32Array(n); const tb = new Int32Array(n); const tc = new Int32Array(n);
+  const vth = new Float64Array(3 * n); const vz = new Float64Array(3 * n);
+  const vx = new Float64Array(3 * n); const vy = new Float64Array(3 * n);
+  for (let k = 0; k < n; k += 1) {
+    const o = (k * step) * 9;
+    for (let v = 0; v < 3; v += 1) { vx[3 * k + v] = xyz[o + 3 * v]; vy[3 * k + v] = xyz[o + 3 * v + 1]; vz[3 * k + v] = xyz[o + 3 * v + 2]; }
+    const thA = Math.atan2(vy[3 * k], vx[3 * k]);
+    vth[3 * k] = thA;
+    vth[3 * k + 1] = thA + dThRaw(thA, Math.atan2(vy[3 * k + 1], vx[3 * k + 1]));
+    vth[3 * k + 2] = thA + dThRaw(thA, Math.atan2(vy[3 * k + 2], vx[3 * k + 2]));
+    ta[k] = 3 * k; tb[k] = 3 * k + 1; tc[k] = 3 * k + 2;
+  }
+  const SAGM: SagMesh = { ta, tb, tc, vth, vz, vx, vy }; const ARG = makeSagArgmax();
+
+  // tangExc exactly as s58 computes it (per-facet radial flip, single central-difference normal)
+  const tg = new Float64Array(n);
+  for (let k = 0; k < n; k += 1) {
+    const ax = vx[3 * k]; const ay = vy[3 * k]; const az = vz[3 * k];
+    const bx = vx[3 * k + 1]; const by = vy[3 * k + 1]; const bz = vz[3 * k + 1];
+    const cx = vx[3 * k + 2]; const cy = vy[3 * k + 2]; const cz = vz[3 * k + 2];
+    let fx = (by - ay) * (cz - az) - (bz - az) * (cy - ay);
+    let fy = (bz - az) * (cx - ax) - (bx - ax) * (cz - az);
+    let fz = (bx - ax) * (cy - ay) - (by - ay) * (cx - ax);
+    const fl = Math.hypot(fx, fy, fz); if (fl < 1e-18) { tg[k] = 0; continue; }
+    fx /= fl; fy /= fl; fz /= fl;
+    const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
+    if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+    const thc = (vth[3 * k] + vth[3 * k + 1] + vth[3 * k + 2]) / 3;
+    const zc = Math.min(H, Math.max(0, (az + bz + cz) / 3));
+    const r = rA(thc, zc);
+    const h1 = 1e-5 / Math.max(1e-6, r); const h2 = 1e-5;
+    const rTh = (rA(thc + h1, zc) - rA(thc - h1, zc)) / (2 * h1);
+    const zp = Math.min(H, zc + h2); const zm = Math.max(0, zc - h2);
+    const rZ = zp > zm ? (rA(thc, zp) - rA(thc, zm)) / (zp - zm) : 0;
+    const cc = Math.cos(thc); const ss = Math.sin(thc);
+    let nx = rTh * ss + r * cc; let ny = r * ss - rTh * cc; let nz = -r * rZ;
+    const L = Math.hypot(nx, ny, nz) || 1; nx /= L; ny /= L; nz /= L;
+    let dot = fx * nx + fy * ny + fz * nz; dot = dot > 1 ? 1 : dot < -1 ? -1 : dot;
+    const diam = Math.max(Math.hypot(bx - cx, by - cy, bz - cz), Math.hypot(ax - cx, ay - cy, az - cz), Math.hypot(ax - bx, ay - by, az - bz));
+    tg[k] = Math.sin(Math.acos(dot)) * diam * 1000;
+  }
+
+  const order = Array.from({ length: n }, (_v, i) => i).sort((p, q) => tg[q] - tg[p]);
+  const top = order.slice(0, Math.min(TOPK, n));
+  // deterministic pseudo-random control of the same size (golden-ratio stride, so it spans the mesh)
+  const ctrl: number[] = [];
+  {
+    const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
+    let s = Math.max(1, Math.round(n * 0.6180339887498949) | 1);
+    while (s > 1 && gcd(s, n) !== 1) s += 2;
+    if (s >= n) s = 1;
+    for (let q = 0; q < Math.min(TOPK, n); q += 1) ctrl.push((q * s) % n);
+  }
+
+  const runGroup = (idxs: number[], label: string): Record<string, number> => {
+    const wit: number[] = []; const bnd: number[] = []; const pos: number[] = []; const tge: number[] = [];
+    let nComplete = 0; let nCert = 0;
+    const tg0 = Date.now();
+    for (const k of idxs) {
+      const v = certifyTriangle(rA,
+        vx[3 * k], vy[3 * k], vz[3 * k],
+        vx[3 * k + 1], vy[3 * k + 1], vz[3 * k + 1],
+        vx[3 * k + 2], vy[3 * k + 2], vz[3 * k + 2],
+        { H, tol: TOL, nMax: NMAX, exhaustive: true, zJumps: zJ, thJumps: thJ });
+      wit.push(v.witnessed * 1000); bnd.push(v.bound * 1000);
+      if (v.witnessedComplete) nComplete += 1;
+      if (v.certified) nCert += 1;
+      pos.push(sagAdaptiveRaw(rA, SAGM, k, 0.03, 12, 64, ARG) * 1000);
+      tge.push(tg[k]);
+    }
+    const sw = S(wit); const sb = S(bnd); const sp = S(pos); const st = S(tge);
+    const o10 = wit.reduce((s, v) => s + (v > 10 ? 1 : 0), 0);
+    const po10 = pos.reduce((s, v) => s + (v > 10 ? 1 : 0), 0);
+    log(`  ── ${label} (n=${idxs.length}, ${((Date.now() - tg0) / 1000).toFixed(1)}s) ─────────────────────────────`);
+    log(`     tangExc                     p50 ${pq(st, 0.5).toFixed(1).padStart(9)}  p99 ${pq(st, 0.99).toFixed(1).padStart(9)}  max ${st[st.length - 1].toFixed(1).padStart(9)} um`);
+    log(`     H1 WITNESSED (lower bound)  p50 ${pq(sw, 0.5).toFixed(2).padStart(9)}  p99 ${pq(sw, 0.99).toFixed(2).padStart(9)}  max ${sw[sw.length - 1].toFixed(2).padStart(9)} um   over-10um ${o10} (${((100 * o10) / wit.length).toFixed(2)}%)`);
+    log(`     H1 BOUND (rigorous upper)   p50 ${pq(sb, 0.5).toFixed(2).padStart(9)}  p99 ${pq(sb, 0.99).toFixed(2).padStart(9)}  max ${sb[sb.length - 1].toFixed(2).padStart(9)} um`);
+    log(`     driver plane ruler posUm    p50 ${pq(sp, 0.5).toFixed(2).padStart(9)}  p99 ${pq(sp, 0.99).toFixed(2).padStart(9)}  max ${sp[sp.length - 1].toFixed(2).padStart(9)} um   over-10um ${po10} (${((100 * po10) / pos.length).toFixed(2)}%)`);
+    log(`     witnessedComplete ${nComplete}/${idxs.length}   certified(<=${TOL * 1000}um) ${nCert}/${idxs.length}`);
+    log(`     *** H1 witnessed / plane ruler  p50 ${(pq(sw, 0.5) / Math.max(1e-9, pq(sp, 0.5))).toFixed(2)}x   max/max ${(sw[sw.length - 1] / Math.max(1e-9, sp[sp.length - 1])).toFixed(2)}x ***`);
+    log(`     *** tangExc / H1 witnessed      p50 ${(pq(st, 0.5) / Math.max(1e-9, pq(sw, 0.5))).toFixed(1)}x ***`);
+    return {
+      witP50: pq(sw, 0.5), witP99: pq(sw, 0.99), witMax: sw[sw.length - 1], witOver10: o10,
+      bndP50: pq(sb, 0.5), bndMax: sb[sb.length - 1],
+      posP50: pq(sp, 0.5), posP99: pq(sp, 0.99), posMax: sp[sp.length - 1], posOver10: po10,
+      tgP50: pq(st, 0.5), tgMax: st[st.length - 1], nComplete, nCert, n: idxs.length,
+    };
+  };
+
+  const gTop = runGroup(top, `TOP-${top.length} BY tangExc`);
+  const gCtl = runGroup(ctrl, `RANDOM CONTROL, same size`);
+  log('');
+  log(`  H-F selectivity: top-K witnessed p50 / control witnessed p50 = ${(gTop.witP50 / Math.max(1e-9, gCtl.witP50)).toFixed(2)}x   (kill < 2x)`);
+  log(`  H-E: top-K witnessed p50 ${gTop.witP50.toFixed(2)} um, over-10um ${gTop.witOver10}/${gTop.n}; plane ruler says ${gTop.posOver10}/${gTop.n}`);
+  appendFileSync(OUT, `${JSON.stringify({ style, stem, nTri, sampled: n, tol: TOL, nMax: NMAX, zJumps: zJ.length, thJumps: thJ.length, top: gTop, ctrl: gCtl, secs: (Date.now() - t0) / 1000 })}\n`);
+  log(`  [checkpoint appended to ${OUT}]`);
+}
+log('');
+log(`done (RAD sentinel ${RAD.toFixed(0)})`);
