@@ -1,0 +1,27 @@
+===== S102 — H1 (facet->surface) vs H2 (surface->mesh) ACROSS REFINEMENT ROUNDS =====
+style Voronoi   tol 0.01 mm   H1 sample 1000/mesh nMax 512   H2 lattice 600x200
+closure: detectZJumps 0  detectThetaJumps 0   [0.2s]
+H2 query set: 120000 surface points, z in [0.5, 119.5]   [0.3s]
+
+═════════ R0_BEFORE  (s60flip/voronoi_ring_D--_A2CON, 806765 facets)  [0.4s] ═════════
+  H1  n=1000 (stride 806, 226.3s)   sampled area 47.92 mm2
+      *** PROVEN-FAIL 104 (10.400% count, 1.486% AREA)   PROVEN-PASS 896 (89.600%, 98.514% AREA)   UNKNOWN 0 (0.000%, 0.000% AREA) ***
+      witnessed p50 1.686 p99 120.95 max 157.33 um   bound p50 8.153 max 167.13 um
+  H2  120000 fixed surface points -> mesh (9.8s)   p50 1.146  p99 4.409  max 9.65 um   over-10um 0 (0.0000%)
+  [checkpoint -> research/exchange/_strataConformBisect/S82_split_h1h2.ndjson]
+
+═════════ R1  (s60flip/V_SPLIT1R_split, 1043321 facets)  [236.6s] ═════════
+  H1  n=1000 (stride 1043, 248.9s)   sampled area 41.52 mm2
+      *** PROVEN-FAIL 102 (10.200% count, 3.603% AREA)   PROVEN-PASS 898 (89.800%, 96.397% AREA)   UNKNOWN 0 (0.000%, 0.000% AREA) ***
+      witnessed p50 1.803 p99 110.67 max 146.75 um   bound p50 8.227 max 156.70 um
+  H2  120000 fixed surface points -> mesh (10.3s)   p50 1.141  p99 4.408  max 9.21 um   over-10um 0 (0.0000%)
+  [checkpoint -> research/exchange/_strataConformBisect/S82_split_h1h2.ndjson]
+
+═════════ R4  (s60flip/V_SPLIT1_split, 2716959 facets)  [496.1s] ═════════
+  H1  n=1000 (stride 2716, 71.8s)   sampled area 13.61 mm2
+      *** PROVEN-FAIL 46 (4.600% count, 1.025% AREA)   PROVEN-PASS 954 (95.400%, 98.975% AREA)   UNKNOWN 0 (0.000%, 0.000% AREA) ***
+      witnessed p50 0.910 p99 26.27 max 51.13 um   bound p50 8.801 max 60.88 um
+  H2  120000 fixed surface points -> mesh (7.6s)   p50 1.129  p99 4.403  max 5.99 um   over-10um 0 (0.0000%)
+  [checkpoint -> research/exchange/_strataConformBisect/S82_split_h1h2.ndjson]
+
+done  [575.5s]

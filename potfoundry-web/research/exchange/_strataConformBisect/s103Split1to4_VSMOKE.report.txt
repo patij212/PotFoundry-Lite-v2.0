@@ -1,0 +1,32 @@
+===== S103 — 1->2 vs 1->4: DOES A DIFFERENT SPLIT TOPOLOGY ESCAPE THE CEILING? =====
+style Voronoi   mesh s60flip/voronoi_ring_D--_A2CON.stl   k=4 inset=0.01   bars 10um / 1deg
+806765 facets, 403683 welded vertices  [1.0s]
+marking key: over-10um 241489 (29.933%)   [4.0s]
+MARKED population 1200 of 241489   [4.0s]
+
+── M0 1->2 LEB (mesher)  (n=1200 parents, 2400 children = 2.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 97.933%  (x0.9793)   over-1deg 100.000% -> 98.087%  (x0.9809)
+   rho ALL p50 2.6800 p90 179.510 deg   MIDDLE child p50 NaN   CORNER children p50 2.6800 deg   ratio NaNx
+   improvement (theta_par - max theta_child) p50 -0.4232 p90 3.983 deg   CEILING violations 0/1200
+   improve(area-mean) 62.83%   INVERTED children 598/2400 = 24.917%   area(ch)/area(par) TOTAL 1.2204 p50 1.023322
+   child position sag p50 0.432 p99 6.70 max 14.52 um
+── M1 1->4 PARAM-LIFT  (n=1200 parents, 4800 children = 4.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 80.821%  (x0.8082)   over-1deg 100.000% -> 84.965%  (x0.8497)
+   rho ALL p50 3.3047 p90 179.558 deg   MIDDLE child p50 178.7161   CORNER children p50 2.5344 deg   ratio 70.517x
+   improvement (theta_par - max theta_child) p50 0.0646 p90 5.963 deg   CEILING violations 0/1200
+   improve(area-mean) 75.33%   INVERTED children 1020/4800 = 21.250%   area(ch)/area(par) TOTAL 0.9283 p50 0.794789
+   child position sag p50 0.138 p99 2.85 max 9.73 um
+── M2 1->4 NO-LIFT (null)  (n=1200 parents, 4800 children = 4.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 92.005%  (x0.9201)   over-1deg 100.000% -> 93.466%  (x0.9347)
+   rho ALL p50 0.0000 p90 0.000 deg   MIDDLE child p50 0.0000   CORNER children p50 0.0000 deg   ratio 0.000x
+   improvement (theta_par - max theta_child) p50 -0.0105 p90 -0.000 deg   CEILING violations 54/1200
+   improve(area-mean) 97.83%   INVERTED children 0/4800 = 0.000%   area(ch)/area(par) TOTAL 1.0000 p50 1.000000
+   child position sag p50 1.108 p99 6.63 max 9.88 um
+── M3 1->4 PERP-ONLY  (n=1200 parents, 4800 children = 4.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 82.116%  (x0.8212)   over-1deg 100.000% -> 85.207%  (x0.8521)
+   rho ALL p50 1.8043 p90 8.526 deg   MIDDLE child p50 0.4226   CORNER children p50 2.2732 deg   ratio 0.186x
+   improvement (theta_par - max theta_child) p50 0.1080 p90 5.560 deg   CEILING violations 0/1200
+   improve(area-mean) 91.25%   INVERTED children 0/4800 = 0.000%   area(ch)/area(par) TOTAL 1.0015 p50 1.001012
+   child position sag p50 0.593 p99 4.65 max 17.37 um
+
+done  [7.1s]

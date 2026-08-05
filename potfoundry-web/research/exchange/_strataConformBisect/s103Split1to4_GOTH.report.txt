@@ -1,0 +1,36 @@
+===== S103 — 1->2 vs 1->4: DOES A DIFFERENT SPLIT TOPOLOGY ESCAPE THE CEILING? =====
+style GothicArches   mesh gothicarches_ring_DS-HT_S39CTL.stl   k=4 inset=0.01   bars 10um / 1deg
+1142166 facets, 571663 welded vertices  [1.4s]
+marking key: over-10um 129757 (11.361%)   [6.6s]
+MARKED population 4000 of 129757   [6.6s]
+
+── M0 1->2 LEB (mesher)  (n=4000 parents, 8000 children = 2.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 70.735%  (x0.7074)   over-1deg 97.176% -> 68.432%  (x0.7042)
+   rho ALL p50 2.5270 p90 9.808 deg   MIDDLE child p50 NaN   CORNER children p50 2.5270 deg   ratio NaNx
+   improvement (theta_par - max theta_child) p50 0.8643 p90 6.664 deg   CEILING violations 8/4000
+   improve(area-mean) 89.58%   INVERTED children 88/8000 = 1.100%   area(ch)/area(par) TOTAL 0.9980 p50 0.999971
+   *** CIRCUMRADIUS (arXiv:1911.03424: normal error ~ R_circ)  parent p50 0.2486 mm  child p50 0.1288 mm   RATIO child/parent p50 0.4485 p90 1.635 ***
+   child position sag p50 1.001 p99 3.42 max 27.24 um
+── M1 1->4 PARAM-LIFT  (n=4000 parents, 16000 children = 4.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 69.706%  (x0.6971)   over-1deg 97.176% -> 70.438%  (x0.7249)
+   rho ALL p50 2.8774 p90 7.715 deg   MIDDLE child p50 4.3899   CORNER children p50 2.5509 deg   ratio 1.721x
+   improvement (theta_par - max theta_child) p50 2.9862 p90 6.389 deg   CEILING violations 0/4000
+   improve(area-mean) 96.80%   INVERTED children 170/16000 = 1.063%   area(ch)/area(par) TOTAL 0.9970 p50 0.998501
+   *** CIRCUMRADIUS (arXiv:1911.03424: normal error ~ R_circ)  parent p50 0.2486 mm  child p50 0.1269 mm   RATIO child/parent p50 0.5002 p90 0.548 ***
+   child position sag p50 0.614 p99 1.75 max 9.90 um
+── M2 1->4 NO-LIFT (null)  (n=4000 parents, 16000 children = 4.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 86.612%  (x0.8661)   over-1deg 97.176% -> 82.176%  (x0.8456)
+   rho ALL p50 0.0000 p90 0.000 deg   MIDDLE child p50 0.0000   CORNER children p50 0.0000 deg   ratio 0.000x
+   improvement (theta_par - max theta_child) p50 -0.0253 p90 -0.006 deg   CEILING violations 26/4000
+   improve(area-mean) 97.15%   INVERTED children 0/16000 = 0.000%   area(ch)/area(par) TOTAL 1.0000 p50 1.000000
+   *** CIRCUMRADIUS (arXiv:1911.03424: normal error ~ R_circ)  parent p50 0.2486 mm  child p50 0.1243 mm   RATIO child/parent p50 0.5000 p90 0.500 ***
+   child position sag p50 2.181 p99 3.47 max 12.06 um
+── M3 1->4 PERP-ONLY  (n=4000 parents, 16000 children = 4.0x) ─────────────
+   over-10um AREA FRACTION 100.000% -> 69.928%  (x0.6993)   over-1deg 97.176% -> 70.593%  (x0.7265)
+   rho ALL p50 2.8169 p90 7.044 deg   MIDDLE child p50 4.2388   CORNER children p50 2.5210 deg   ratio 1.681x
+   improvement (theta_par - max theta_child) p50 2.8498 p90 6.016 deg   CEILING violations 2/4000
+   improve(area-mean) 96.92%   INVERTED children 0/16000 = 0.000%   area(ch)/area(par) TOTAL 1.0007 p50 1.001669
+   *** CIRCUMRADIUS (arXiv:1911.03424: normal error ~ R_circ)  parent p50 0.2486 mm  child p50 0.1239 mm   RATIO child/parent p50 0.4998 p90 0.500 ***
+   child position sag p50 0.621 p99 3.53 max 21.76 um
+
+done  [17.0s]

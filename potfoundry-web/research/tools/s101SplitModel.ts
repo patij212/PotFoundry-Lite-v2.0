@@ -44,6 +44,11 @@
 //      P2 PERP-FOOT   M = Mflat + s*nPar, s solved so M lies ON the surface — keeps the vertex on the
 //                     surface but removes the IN-PLANE slide entirely.
 //      P3 PERP-ONLY   M = Mflat + dPerp*nPar (P0's perpendicular component, no root-find, no extra rA).
+//      P4 GUARDED     P0 if the in-plane slide leaves BOTH children with >= 50% of their flat signed area,
+//                     else fall back to P3. ADDED AFTER RUN 2 measured P0's 25% fold rate: it keeps the
+//                     vertex ON THE SURFACE wherever that is safe (so the position bar is untouched there)
+//                     and only gives that up on the facets where the slide would fold the mesh. Two cross
+//                     products, no extra rA evaluations. This is the productionisable form.
 //
 // The split rule for P0 is s65SplitAndFlip.ts's verbatim. A CONTROL re-computes s65's own census key over
 // the whole mesh and must reproduce its published BEFORE numbers (241,489 over-bar, p99 1194.64 um) or this
@@ -78,8 +83,8 @@ const H = DIMS.H;
 const OUTDIR = 'research/exchange/_strataConformBisect';
 const NDJSON = `${OUTDIR}/S82_split_model.ndjson`;
 const DEG = 180 / Math.PI;
-const NP = 4;
-const PNAME = ['P0 PARAM-LIFT', 'P1 NO-LIFT', 'P2 PERP-FOOT', 'P3 PERP-ONLY'];
+const NP = 5;
+const PNAME = ['P0 PARAM-LIFT', 'P1 NO-LIFT', 'P2 PERP-FOOT', 'P3 PERP-ONLY', 'P4 GUARDED-LIFT'];
 
 const snakeToCamel = (s: string): string => s.replace(/_([a-z])/g, (_m, c: string) => c.toUpperCase());
 function registryDefaults(id: string): Record<string, number> {
@@ -270,11 +275,29 @@ function splitOne(t: number): Row | null {
   const dPerp0 = d0[0] * nPar[0] + d0[1] * nPar[1] + d0[2] * nPar[2];
   // P2 — perpendicular foot
   const sFoot = perpFoot(fx, fy, fz, nPar[0], nPar[1], nPar[2], 0.5 * parDiam);
+  const P3v = [fx + dPerp0 * nPar[0], fy + dPerp0 * nPar[1], fz + dPerp0 * nPar[2]];
+  // ── P4 GUARD: does P0's IN-PLANE slide keep both children non-degenerate and correctly oriented?
+  // Signed area in the parent plane = 0.5 * (edge x (q - v0)) . nPar. The flat midpoint gives each child
+  // exactly half the parent's area, so the test is "each child keeps >= 50% of parent/2".
+  let p4: number[] = P0;
+  {
+    const qx = P0[0] - dPerp0 * nPar[0]; const qy = P0[1] - dPerp0 * nPar[1]; const qz = P0[2] - dPerp0 * nPar[2];
+    const sArea = (axx: number, ayy: number, azz: number, bxx: number, byy: number, bzz: number, cxx: number, cyy: number, czz: number): number => {
+      const ux = bxx - axx; const uy = byy - ayy; const uz = bzz - azz;
+      const wx = cxx - axx; const wy = cyy - ayy; const wz = czz - azz;
+      return 0.5 * ((uy * wz - uz * wy) * nPar[0] + (uz * wx - ux * wz) * nPar[1] + (ux * wy - uy * wx) * nPar[2]);
+    };
+    const s1 = sArea(VX[u], VY[u], VZ[u], qx, qy, qz, VX[w], VY[w], VZ[w]);
+    const s2 = sArea(qx, qy, qz, VX[v], VY[v], VZ[v], VX[w], VY[w], VZ[w]);
+    const half = 0.5 * parArea;
+    if (!(s1 >= 0.5 * half && s2 >= 0.5 * half)) p4 = P3v;
+  }
   const cand: Array<number[] | null> = [
     P0,
     [fx, fy, fz],
     sFoot === null ? null : [fx + sFoot * nPar[0], fy + sFoot * nPar[1], fz + sFoot * nPar[2]],
-    [fx + dPerp0 * nPar[0], fy + dPerp0 * nPar[1], fz + dPerp0 * nPar[2]],
+    P3v,
+    p4,
   ];
 
   const R: Row = {
@@ -468,6 +491,27 @@ function runPop(name: string, pop: number[]): void {
       if (r.parTheta - mx > rmax + 1e-9) viol += 1;
     }
     const sImp = S(imp); const sRot = S(rot); const sSlack = S(slack);
+    // ── THE OBSTRUCTION, AS A NUMBER RATHER THAN AN ARGUMENT.
+    // To cancel a parent's orientation error theta you must rotate a child by theta, i.e. displace the new
+    // vertex off the parent plane by `aPerp * tan(theta)`. The new vertex must lie ON the surface, and the
+    // surface is only `s` away from the parent plane inside this footprint. So the child's altitude to the
+    // shared edge would have to be at most
+    //        aNeeded = s / tan(theta_par)
+    // and its aspect ratio at least diam/aNeeded. Print BOTH, next to the altitude the split actually got.
+    // If aNeeded is microns while the facet is hundreds of microns across, the repair is not merely absent
+    // from this rule — it is unavailable to ANY rule that puts vertices on the surface inside this facet,
+    // because the triangle that would deliver it is a needle whose own normal is unbounded
+    // (arXiv:1911.03424: normal error ~ CIRCUMRADIUS).
+    const aNeed: number[] = []; const aspNeed: number[] = [];
+    for (const r of rs) {
+      const tt = Math.tan(Math.min(r.parTheta, Math.PI / 2 - 1e-9));
+      if (!(tt > 0)) continue;
+      const an = (r.parSag / 1000) / tt;                       // mm
+      aNeed.push(an * 1000);                                    // um
+      aspNeed.push(r.parDiam / Math.max(1e-12, an));
+    }
+    const sAN = S(aNeed); const sASP = S(aspNeed);
+    const sAGot = S(rs.flatMap((r) => [r.aPerp[p][0] * 1000, r.aPerp[p][1] * 1000]));
     const infl = S(rs.map((r) => r.areaInfl[p]));
     const sDPerp = S(rs.map((r) => r.dPerp[p])); const sDPar = S(rs.map((r) => r.dPar[p]));
     const psag = S(rs.map((r) => r.parSag)); const csag = S(rs.flatMap((r) => r.chSag[p]));
@@ -482,6 +526,7 @@ function runPop(name: string, pop: number[]): void {
     log(`   PROXY s/h rho/(sPar/diamChild) p10 ${pq(sRatio, 0.1).toFixed(3)} p50 ${pq(sRatio, 0.5).toFixed(3)} p90 ${pq(sRatio, 0.9).toFixed(2)}   SPEARMAN exact ${spearman(rr, exact).toFixed(4)} | s/alt ${spearman(rr, proxAlt).toFixed(4)} | s/diam ${spearman(rr, prox).toFixed(4)}`);
     log(`   SURFACE   improve(area-mean) ${((100 * better) / rs.length).toFixed(2)}%   improve(worst child) ${((100 * betterMax) / rs.length).toFixed(2)}%`);
     log(`   *** CEILING  theta_par - max theta_child  p50 ${(pq(sImp, 0.5) * DEG).toFixed(4)} p99 ${(pq(sImp, 0.99) * DEG).toFixed(3)} deg   vs  max rho  p50 ${(pq(sRot, 0.5) * DEG).toFixed(4)} p99 ${(pq(sRot, 0.99) * DEG).toFixed(3)} deg   VIOLATIONS of (improvement <= rotation): ${viol}/${rs.length}   slack p50 ${(pq(sSlack, 0.5) * DEG).toFixed(4)} deg ***`);
+    log(`   *** OBSTRUCTION  altitude the child would NEED to cancel theta_par (= s/tan(theta)):  p50 ${pq(sAN, 0.5).toFixed(4)} p90 ${pq(sAN, 0.9).toFixed(3)} um   vs the altitude it GOT  p50 ${pq(sAGot, 0.5).toFixed(3)} um   => required child ASPECT p50 ${pq(sASP, 0.5).toFixed(0)} p90 ${pq(sASP, 0.9).toFixed(0)} ***`);
     log(`   OVER-BAR  ${BAR_DEG}deg AREA FRACTION ${parFracDeg.toFixed(3)}% -> ${chFracDeg.toFixed(3)}%  (x${(chFracDeg / Math.max(1e-9, parFracDeg)).toFixed(3)})   ABSOLUTE AREA x${((areaChOverDeg / Math.max(1e-30, aParOverDegHere))).toFixed(3)}`);
     log(`             ${BAR_UM}um  AREA FRACTION ${parFracUm.toFixed(3)}% -> ${chFracUm.toFixed(3)}%  (x${(chFracUm / Math.max(1e-9, parFracUm)).toFixed(3)})   ABSOLUTE AREA x${((areaChOverUm / Math.max(1e-30, aParOverUmHere))).toFixed(3)}   COUNT ${nParOverUm} -> ${nChOverUm}`);
     log(`   POSITION  parent sag p99 ${pq(psag, 0.99).toFixed(3)} max ${psag[psag.length - 1].toFixed(2)}   children p99 ${pq(csag, 0.99).toFixed(3)} max ${csag[csag.length - 1].toFixed(2)} um   worse-than-parent ${((100 * worsePos) / rs.length).toFixed(2)}%`);
@@ -512,6 +557,7 @@ function runPop(name: string, pop: number[]): void {
       improvePct: (100 * better) / rs.length, improveMaxPct: (100 * betterMax) / rs.length,
       parFracDeg, chFracDeg, parFracUm, chFracUm,
       absAreaRatioDeg: areaChOverDeg / Math.max(1e-30, aParOverDegHere), absAreaRatioUm: areaChOverUm / Math.max(1e-30, aParOverUmHere),
+      aNeedP50: pq(sAN, 0.5), aNeedP90: pq(sAN, 0.9), aGotP50: pq(sAGot, 0.5), aspNeedP50: pq(sASP, 0.5),
       posWorsePct: (100 * worsePos) / rs.length, chSagP99: pq(csag, 0.99), chSagMax: csag[csag.length - 1], parSagP99: pq(psag, 0.99),
       ceilViol: viol, impP50deg: pq(sImp, 0.5) * DEG, rotP50deg: pq(sRot, 0.5) * DEG, slackP50deg: pq(sSlack, 0.5) * DEG,
       secs: (Date.now() - T0) / 1000,

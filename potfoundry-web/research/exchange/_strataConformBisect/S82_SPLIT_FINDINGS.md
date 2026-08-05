@@ -274,3 +274,242 @@ not reduce `R_circ / h`. That is why density is inert here and why it always wil
 * Everything here is a VIRTUAL split of ONE round on a finished mesh. It does not model LEB propagation,
   the conformity closure, or what four rounds compound into. The P1 null and the ceiling inequality are
   round-independent; the placement table is not.
+
+## 3. PRE-REGISTRATION 2 (written before `s103Split1to4.ts` ran) — DOES A DIFFERENT TOPOLOGY ESCAPE?
+
+**A CORRECTION TO MY OWN §2.4 PROOF, MADE BEFORE THE RUN AND NOT AFTER IT.** I justified the ceiling with
+"every child shares an EDGE with the parent". That is true of a 1->2 split and it is **not what the proof
+needs**. The proof needs only that the children's footprints TILE the parent's:
+
+    for p in F_child:  angle(n_ch, n_S(p)) >= angle(n_par, n_S(p)) - rho
+    => max_i theta_ch_i >= max_i sup_{F_i} angle(n_par, n_S) - max_i rho_i = theta_par - max_i rho_i
+
+So the ceiling holds for **any** subdivision — 1->2, 1->4, 1->k. Edge-sharing is what makes it TIGHT in the
+1->2 case, because there `rho = atan(dPerp/aPerp)` with `dPerp <= s`: the anchor line pins it. The 1->4
+split's MIDDLE child (the medial triangle of three lifted midpoints) is anchored on no parent vertex, so
+nothing pins its `rho`. The ceiling still applies; its HEADROOM can be larger.
+
+* **H-S82-6** 1->4 reaches an over-bar AREA FRACTION <= **0.8x** the 1->2 value on >= 2 of 3 styles.
+  REFUTED if >= 0.95x.
+* **H-S82-7** The MIDDLE child's `rho` p50 exceeds the CORNER children's by >= 2x (it is the only unpinned
+  one, so if topology is the lever it must show up there).
+* NULL: `M2 = 1->4 NO-LIFT` — four COPLANAR children, surface bit-identical. Mandatory after §2.5.
+
+## 4. RESULT — *** THE OPERATOR IS WRONG, NOT THE PLACEMENT. LEB DOES NOT CONTROL THE CIRCUMRADIUS; 1->4 HALVES IT EXACTLY. ***
+
+`s103Split1to4_{VORO,GOTH,LOWP}.report.txt`, 4,000 marked parents per style, four modes on the SAME parents.
+
+### 4.1 The pre-registered verdicts, read from the printed numbers
+
+| over-10um AREA FRACTION (child/parent) | Voronoi | Gothic | LowPoly |
+|---|---|---|---|
+| M0 1->2 LEB param-lift (**the mesher**) | x0.9756 | x0.7074 | x0.7401 |
+| M1 1->4 param-lift | x0.8241 | x0.6971 | **x0.4124** |
+| **M2 1->4 NO-LIFT (the null)** | x0.9456 | x0.8661 | x0.7802 |
+| M3 1->4 perp-only | x0.8280 | x0.6993 | x0.4198 |
+| **H-S82-6 test: M1 / M0** | 0.845 | **0.985** | 0.557 |
+
+**H-S82-6 REFUTED** — the ratio is <= 0.8x on ONE style, not two, and on Gothic it is 0.985, inside my own
+REFUTE band. I am reporting the pre-registered verdict as it fell.
+
+**H-S82-7 REFUTED.** Middle-child `rho` p50 / corner p50: Gothic **1.72x**, LowPoly **1.00x**, Voronoi M3
+**0.19x**. The one apparent confirm — Voronoi M1 at 67.9x — is the middle child reading **178.78 deg**,
+i.e. INVERTED: a defect, not headroom. The unpinned middle child is NOT where the gain comes from.
+
+### 4.2 But the ratio-of-ratios was the WRONG statistic, and §2.5 is why
+
+M0 and M1 have DIFFERENT nulls (4-way subdivision shrinks the sup+diam metric more than 2-way does), so
+`M1/M0` conflates geometry with subdivision. The null-corrected gain — the only comparison §2.5 permits —
+is `1 - mode/null`:
+
+| REAL gain per round, over-10um AREA fraction | Voronoi | Gothic | LowPoly |
+|---|---|---|---|
+| 1->2 LEB (M0 vs its S101 null x0.992) | **1.6%** | 19.5% | 22.4% |
+| **1->4 (M1 vs M2)** | **12.9%** | 19.5% | **47.1%** |
+
+**1->4 delivers 8x the real gain on Voronoi and 2.1x on LowPoly, and ties on Gothic** — for 2x the
+triangles. I am flagging plainly that this is a DIFFERENT question from the one I pre-registered, posed
+only after S101 established the null; the pre-registered question failed and I am not re-labelling it.
+
+### 4.3 *** THE MECHANISM, AND IT IS THE PUBLISHED THEOREM MEASURED DIRECTLY ***
+
+arXiv:1911.03424 says the normal error scales with the **CIRCUMRADIUS**. So measure what each operator
+does to the circumradius. `R_circ(child)/R_circ(parent)`:
+
+| | Voronoi p50 / **p90** | Gothic p50 / **p90** | LowPoly p50 / **p90** |
+|---|---|---|---|
+| **M0 1->2 LEB (the mesher)** | 0.674 / **2.855** | 0.449 / **1.635** | 0.486 / **1.080** |
+| M1 1->4 param-lift | 0.523 / 1.687 | 0.500 / 0.548 | 0.498 / 0.505 |
+| M2 1->4 no-lift | 0.500 / 0.500 | 0.500 / 0.500 | 0.500 / 0.500 |
+| **M3 1->4 perp-only** | **0.4999 / 0.500** | **0.4998 / 0.500** | **0.4979 / 0.501** |
+
+**Read the p90 column.** A 1->4 split is a SIMILARITY refinement: every child is the parent at half scale,
+so `R_circ` halves EXACTLY — p50 and p90 both 0.500, on every style, deterministically. **Longest-edge
+bisection does not control `R_circ` at all: for more than 10% of its children it makes the circumradius
+LARGER, up to 2.86x on Voronoi.** Each child of an LEB keeps a full parent edge, and on a cap triangle
+the circumradius is set by that edge over the small opposite altitude — halving the long edge does not help
+the child that keeps the other two.
+
+So the chain closes:
+1. refinement's power over orientation is bounded by the rotation it applies (§2.4, measured);
+2. the orientation error itself scales with `R_circ` (arXiv:1911.03424);
+3. **LEB does not reduce `R_circ` and often raises it; 1->4 halves it exactly**;
+4. therefore the mesher's refinement OPERATOR — not its vertex placement, and not its density — is what
+   makes refinement inert against orientation. The fix is a topology (red / 1->4 refinement with a green
+   closure), which is standard, not novel, and is a real engineering cost (2x triangles per round, hanging
+   nodes on all three edges).
+
+Note also that the in-plane slide DESTROYS the exact halving: M1 (param-lift) reads 0.523/1.687 on Voronoi
+where M3 (perp-only) reads 0.4999/0.500. **The similarity property is only preserved if the new vertices
+stay in the parent plane's projection** — which is exactly what P3/P4 do.
+
+### 4.4 THE ONE COVERAGE DEFECT THIS EXPOSED, WHICH IS WORSE THAN A FOLD
+
+`area(children)/area(parent)` for M1 (1->4 param-lift) on Voronoi is **0.9250** — the four children cover
+**7.5% LESS** than the parent. A subdivision cannot lose area unless the pieces stop tiling: with all three
+midpoints sliding in-plane, the medial triangle inverts (rho p50 178.78 deg) and the corner children
+overlap it instead of tiling. M3 (perp-only) reads **1.0017**, M2 (null) exactly 1.0000. On Gothic and
+LowPoly the effect is small (0.997–1.018). **A 1->4 upgrade must NOT be shipped with the current
+parameter-midpoint lift; it must use a placement that preserves the parent-plane projection.**
+
+## 5. *** THE OBSTRUCTION, AS A MEASURED NUMBER — AND IT SEPARATES THE STYLES CLEANLY ***
+
+To cancel a parent's orientation error `theta` you must rotate a child by `theta`, which means displacing
+the new vertex off the parent plane by `aPerp * tan(theta)`. The vertex must lie ON the surface, and the
+surface is only `s` from the parent plane inside this footprint. So the child's altitude to the shared
+edge would have to be at most
+
+>   **aNeeded = s / tan(theta_par)**,  i.e. a child of aspect ratio at least **diam / aNeeded**.
+
+Measured on the marked population (`s101SplitModel_{VORO2,GOTH2,LOWP2}.report.txt`, 4,000 parents each):
+
+| style | theta_par p50 | s p50 | **altitude NEEDED** p50 | altitude the split GOT | **required child ASPECT** p50 / p90 |
+|---|---|---|---|---|---|
+| **GothicArches** | 7.46 deg | 2.47 um | **17.28 um** | 42.71 um | **17 / 49** |
+| **LowPolyFacet** | 20.05 deg | 4.52 um | **12.30 um** | 20.15 um | **11 / 18** |
+| **Voronoi** | 64.52 deg | 1.25 um | **0.299 um** | 24.79 um | **3,009 / 8.0e11** |
+
+**This is the whole result in one table.**
+
+* On Gothic and LowPoly the repair needs a child of aspect **11–49**. That is an ordinary triangle. So
+  refinement CAN fix those facets — and §2.5/§4.2 measure it doing exactly that, 20–22% of the over-bar
+  area per round against the null.
+* On Voronoi the repair needs a child of aspect **3,009** at the MEDIAN. A triangle that thin has an
+  unbounded circumradius, and by arXiv:1911.03424 its OWN normal error is unbounded. **The triangle that
+  would fix the orientation is a triangle whose orientation cannot be trusted.** The repair is
+  self-defeating, and it is self-defeating for EVERY rule that inserts vertices on the surface inside that
+  facet — not just for the mesher's rule, and not just for the four placements I measured.
+
+**THE OBSTRUCTION, STATED:** a facet's orientation error is repairable by refinement iff
+`s / tan(theta) ` is a usable altitude — equivalently iff `theta <~ atan(s/h)`, i.e. iff the error is
+CURVATURE-DRIVEN (`theta ~ kappa*h`, so `s ~ kappa*h^2/8` gives `atan(s/h) ~ theta/8`, the same order).
+An error that is CREASE-driven (fixed dihedral, `theta` independent of `h`) or SHAPE-driven (the facet's
+own circumradius) has no such `s` and is invariant under every refinement rule. **Refinement is a POSITION
+instrument. Orientation is owned by vertex PLACEMENT and CONNECTIVITY, and is bounded below by the shape
+of the facets you already have.** That is the redirect: Voronoi's class belongs to COLLAPSE (remove the
+sliver) or LAND (move the existing vertices onto the crease), and no amount of SPLIT work will move it.
+
+## 6. `P4 GUARDED-LIFT` — the one change I would ship, and it is nearly free
+
+The mesher's rule folds because the radial lift's IN-PLANE component can push the new vertex past the
+opposite edge. The guard is two cross products and no extra `rA` evaluations: compute the signed areas of
+the two children **in the parent plane** using `proj(M)`; accept the on-surface placement iff both keep
+>= 50% of their flat area (each child gets exactly half the parent's area when M is the flat midpoint);
+otherwise fall back to `P3` (drop the in-plane component, keep the perpendicular one).
+
+| MARKED population | P0 = the mesher | **P4 = guarded** | P1 null |
+|---|---|---|---|
+| **Voronoi** folds / tiling / over-10um area frac | **24.55%** / 1.2508 / x0.976 | **0.00%** / **1.0076** / **x0.970** | 0% / 1.0000 / x0.993 |
+| Voronoi child sag p99 / max | 7.02 / 10.36 um | 19.43 / 129.86 um | 7.29 / 9.89 um |
+| **Gothic** folds / tiling / over-10um | **1.10%** / 0.9980 / x0.707 | **0.00%** / 0.9990 / x0.708 | 0% / 1.0000 / x0.889 |
+| Gothic child sag p99 / max | 3.42 / 27.24 um | **3.97** / 55.17 um | 3.48 / 12.06 um |
+| **LowPoly** folds / tiling / over-10um | 0.00% / 1.0109 / x0.740 | 0.00% / 1.0109 / **x0.740** | 0% / 1.0000 / x0.956 |
+| LowPoly child sag p99 / max | 4.983 / 5.03 um | **4.983 / 5.03 um** | 4.991 / 5.00 um |
+
+* **LowPolyFacet: P4 is BIT-IDENTICAL to P0** (the guard never fires — there is nothing to guard).
+* **Gothic: folds 1.10% -> 0.00% for +0.55 um of child sag p99 and no orientation cost** (x0.708 vs x0.707).
+* **Voronoi: folds 24.55% -> 0.00%, tiling 1.2508 -> 1.0076, orientation slightly BETTER** — paid for with
+  child sag p99 7.0 -> 19.4 um. That cost is REAL and it is concentrated exactly on the sliver class,
+  because the facets whose slide would fold the mesh are the same facets whose vertex has to give up being
+  on the surface. **Per §5 those facets are unfixable anyway**, so the trade is "a fold-free mesh that
+  misses the 10 um bar on the sliver class" against "a folded mesh that meets it there". I am NOT calling
+  that trade; it belongs to whoever owns the product bar. What is NOT a trade is Gothic and LowPoly, where
+  the guard is free.
+
+**What I did NOT do with P4:** I did not run it through a real mesher, so LEB propagation, the conformity
+closure and multi-round compounding are unmeasured. It is a per-facet measurement on 12,000 parents.
+
+## 7. H-S82-5 (the coordinator's H1↑/H2↓ discriminator) — **REFUTED AS STATED**, and its H1 arm independently confirms the FOLD
+
+`s102SplitH1H2.ts` / `s102SplitH1H2.report.txt`. The three meshes S65 actually produced, 1,000 uniform
+facets each through `certifyTriangle(tol=0.010)` (H1: two-sided, PROVEN-FAIL / PROVEN-PASS / UNKNOWN, and
+UNKNOWN was **0** on all three so nothing is folded away), plus **the same 120,000 analytic-surface points**
+measured to each mesh (H2 — paired, so a difference is a difference in the mesh).
+
+| | facets | H1 PROVEN-FAIL by COUNT | **H1 PROVEN-FAIL by AREA** | H1 witnessed p99 / max | **H2 p99 / max / over-10um** |
+|---|---|---|---|---|---|
+| **R0 BEFORE** | 806,765 | 10.40% | **1.486%** | 120.95 / 157.33 um | 4.409 / 9.65 um / **0** |
+| **R1 (+1 round)** | 1,043,321 | 10.20% | **3.603%** | 110.67 / 146.75 um | 4.408 / 9.21 um / **0** |
+| **R4 (+4 rounds)** | 2,716,959 | 4.60% | **1.025%** | 26.27 / 51.13 um | 4.403 / 5.99 um / **0** |
+
+**PRE-REGISTERED VERDICT: REFUTED.** The criterion was "H1 area rises >= 1.3x WHILE H2 p99 falls >= 1.3x".
+H2 p99 moves **4.409 -> 4.408 -> 4.403 um — 0.14% across 3.4x the triangle count.** It is inert. The kill
+clause "REFUTED if neither moves >= 1.3x / they move the same way" fires on the H2 arm.
+
+**What the numbers actually say, which is more useful than the hypothesis:**
+
+1. **H2 is already saturated and refinement cannot touch it.** Every one of 120,000 surface points is
+   within 9.65 um of the BEFORE mesh and no point is over the 10 um bar on any of the three. The surface
+   is COVERED; the defect is entirely in the other direction.
+2. **H1 spikes at round 1 by AREA (1.486% -> 3.603%, x2.42) while its COUNT barely moves (10.40% ->
+   10.20%)** — mesh that stands off the surface, created by the split, on bigger pieces. That is exactly
+   what §2.3's fold/tent predicts (+24.5% of area that is not on the surface) and it is measured here by
+   an independent instrument, in the product's own ruler, on the real S65 output. **The one real harm in
+   S65 is the fold, and it shows up as H1 area, not as orientation.**
+3. **By round 4 it converges anyway**: H1 area 1.025% (BELOW the baseline), witnessed p99 120.95 -> 26.27 um
+   (**4.6x better**), max 157.33 -> 51.13 (3.1x). The tents get refined away.
+4. **The blind plane ruler under-reports position ~19x at p99 on this mesh.** S65's own position column
+   read `6.40 -> 6.02 -> 4.40 um`; the honest witness reads `120.95 -> 110.67 -> 26.27 um`. Both agree on
+   the DIRECTION (improving) and disagree on the LEVEL by a factor of 19. S65's position claim was
+   directionally right and quantitatively meaningless.
+
+## 8. WHAT THIS LEAVES FOR THE TEAM
+
+**For LAND and COLLAPSE — the `s/h` model you were told to build on is refuted, and here is the
+replacement in one line:** a split can improve a facet's orientation by at most the angle it rotates a
+child through, that rotation is `atan(dPerp/aPerp)` with `dPerp <= s`, and on Voronoi's failing class the
+child that would deliver the needed rotation has aspect ratio **3,009**. Refinement is a position
+instrument. **Voronoi's class is yours, not mine** — collapse the sliver or move the existing vertices.
+On Gothic and LowPoly refinement DOES work (20–22% of the over-bar area per round against the null), so
+those two do not need you.
+
+**Three things I would change in files I do not own** (writing them down rather than making them):
+1. `s65SplitAndFlip.ts` — the split rule needs the P4 guard (§6). As it stands it folds 24.55% of the
+   children it makes on Voronoi and inflates area 25%. Two cross products, no extra `rA` evaluations, and
+   BIT-IDENTICAL on LowPolyFacet.
+2. Any before/after orientation comparison across a refinement round must be quoted against the **NO-LIFT
+   NULL** (§2.5). Subdivision alone moves the metric x0.88–x0.99 with the surface bit-identical.
+3. The orientation SIZING quantity should be the **circumradius**, not the diameter (§4.3 + arXiv:1911.03424).
+   `aspect3` is already a proxy for it and is already computed; the sizing field is not.
+
+## 9. WHAT I DID NOT DO — named, not glossed
+
+* **No mesher arm.** Every number here is a VIRTUAL split on a finished STL. LEB propagation, the
+  conformity closure, hanging-node handling and multi-round compounding are unmeasured for P3/P4/1->4.
+  The only multi-round evidence is §7, and that is S65's mesh, not mine.
+* **No render.** The fold claim rests on two independent certificates — `rho > 90 deg` against the parent
+  normal (24.55% of children) and `sum(child area)/parent area = 1.2508 > 1`, which is a PROOF of
+  non-tiling since a planar 1->2 split conserves area exactly — but I did not produce a picture of one.
+  If anyone doubts the fold, that is the cheapest thing to add and I did not add it.
+* **I did not adjudicate the orientation ruler on Voronoi.** `theta_par` p50 **64.5 deg** on the marked
+  population is scored against the analytic graph `r = rA(th,z)`. Whether a facet on a near-vertical
+  Voronoi cell wall is a legitimate target for that comparison is a question for `orientRuler.ts`'s owner.
+  Every verdict of mine is a PAIRED before/after on the same facets with the same ruler, so a calibration
+  error in `theta` cancels — but the ABSOLUTE Voronoi orientation level does not come from me.
+* **The 1->4 arm is a per-facet measurement, not a refinement scheme.** Red-green closure, the cost of
+  hanging nodes on all three edges, and what 1->4 does to the sliver class over multiple rounds are all
+  unmeasured.
+* **`P2 PERP-FOOT` uses a 24-step bracket + 40 bisections along the normal.** It failed to bracket on
+  6.7% of Voronoi's marked facets (3,731/4,000 valid) and those are excluded from its row. A better root
+  finder might change P2's numbers; it would not change the verdict, because P2's failure mode is a
+  388 um p99 travel, not a missed root.
