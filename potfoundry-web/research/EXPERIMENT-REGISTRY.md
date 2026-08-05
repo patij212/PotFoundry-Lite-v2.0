@@ -9697,3 +9697,99 @@ mesh**, and S95's own conclusion is that *"every dead-operator result was measur
 before anyone treats "NEAR-VERTICAL-WALL is not a density problem" as settled.** The Gothic column is
 unaffected. The FOLDED-class sign-convention defect (B) is a property of the ruler, not of the artefact,
 and stands either way.
+
+---
+
+## S95-WALL (2026-08-06) — *** "NEAR-VERTICAL WALL" IS NOT A CLASS: THE FOLD IS A SLIVER PHENOMENON, AND THE CONFIG THAT REMOVES IT IS ALREADY DEFAULT-ON ***
+
+**Agent WALL.** Tools `research/tools/s95Wall{Share,Fold,Census,Sep}.*` + `run-s95-wall-census.sh`.
+Scorecard `research/exchange/_strataConformBisect/S95_WALL_FINDINGS.md` (gitignored, per convention).
+All orientation numbers: `orientRuler.orientOfFacet` k=8 inset 0.02 **OUTWARD, build AFTER `5698d023`**;
+`signMargin` reported. Read-only over committed STLs; no mesher arm, no flag, no `src/` edit.
+
+**W1 — THE CLASS, DEFINED FROM THE GEOMETRY AND MEASURED BY AREA.** For a radial graph,
+`n ∝ R·(1, −R_θ/R, −R_z)`, so `BETA := angle(surface normal, radial) = atan(hypot(R_θ/R, R_z))` exactly.
+Covering (k=8 lattice mean/sup), N=40,000 golden-stride:
+
+    BETA >= 60 deg holds  41.21% of Voronoi's over-bar CHORD area  (ENRICH 2.33, on 17.66% of mesh area)
+                          44.53% of its over-1deg ANGLE area       (ENRICH 2.52)
+    ==> ABOVE the pre-registered 40% kill line: H-W1 CONFIRMED ON ITS LINE.
+
+***AND REFUTED AS A STORY BY ITS OWN CONTROL: GothicArches — the style LEPP closes at 6.67× with 0.00%
+uncleared — IS THE STEEPER SURFACE.*** Max BETA **85.23° vs Voronoi's 76.10°**; mesh area above 75°
+**8.24% vs 0.92%**. The enrichment is also FLAT-TO-FALLING in BETA (2.42 at ≥15° → 2.33 at ≥60° → 1.96 at
+≥75°) — a covariate, not a class boundary. The sharp statement is the complement: `BETA < 15°` is 68.08%
+of Voronoi's area and only 22.75% of its defect area (ENRICH 0.34). Direction is opposite between the two:
+Voronoi's steep area is **AXIAL** (`r_z`-dominant) 32:1, Gothic's is **AZIMUTHAL** 15:1.
+*S93's centroid slope was NOT defective — `BETAmean/BETAcen` area-wt p50 = 1.000; its Q5 numbers stand.*
+
+**W2 — THE BRIEF'S GEOMETRY IS CORRECT AND IT IS NOT THE CAUSE.** `dPar/dPerp = tan(BETA)` measured at
+area-wt **p50 1.0186 (Voronoi) / 1.1025 (Gothic)** against a [0.80,1.25] kill ⇒ CONFIRMED; the lift
+displacement IS purely radial. The fold law, derived and measured: a child inverts once
+`δ·sin(BETA) > ½·h_min`, i.e. **`δ_crit = h_min / (2 sin BETA)`**; the predictor `φ_apex = 2|δ_apex|/h_min
+≥ 1` has **recall 0.9994 / 1.0000, precision 0.5375 / 0.5574** (the originally pre-registered
+`φ = 2δ sin BETA/h_min` fails on precision, 0.470 / 0.158). My own sub-hypothesis that the in-plane part
+is a harmless along-edge slide is **REFUTED**: `|δ_apex|/|δ_edge|` p50 = **2.839 / 2.830** — which
+independently reproduces §5.3's "perpendicular to the edge, toward the apex, unreachable by any split
+point on that edge".
+
+*** W1-FINAL — THE SEPARATING VARIABLE IS SHAPE, NOT WALL ANGLE. *** 20,000 parents / 60,000 edges each,
+one bisection per edge, fold = 3-D signed-area inversion in the PARENT plane (not `signedAreaParam`):
+
+    fold rate binned on WALL ANGLE : median Voronoi/Gothic ratio = 112.34   (does NOT collapse)
+    fold rate binned on SHAPE q=h_min/sqrt(area) : median ratio  =   0.30   (COLLAPSES, and INVERTS)
+    9,309 Voronoi edges (15.5%) sit below q=0.2.  GOTHIC HAS ZERO.
+    97.9% of Voronoi's folds are on q<0.4 facets = 27.8% of edges but 3.54% of AREA.
+
+**THE DIRECT TEST — same style, same `rA`, same params, only the mesher's aspect gate differs:**
+
+    voronoi_ring_D--          (SHAPE off)  fold 5.8933% of edges / 0.4602% AREA   BETA-dep 0.047%->10.568%
+    voronoi_ring_D--H_S94CTL  (SHAPE on)   fold 0.2050% of edges / 0.0210% AREA   BETA-dep FLAT 0.047-0.285%
+    gothicarches_ring_DS-HT_S39CTL         fold 0.1133% of edges / 0.0095% AREA
+    ==> 28.7x by count / 21.9x by area, and the wall-angle dependence VANISHES.
+
+*Validity: P(back-facing child | fold) = 0.9047 / 0.7794; P(fold | back-facing) = 0.4223 / 0.1413.*
+
+**W3 — THE `doubleValued` / `compileFeatureCurtain` ASSET DOES NOT APPLY. NOT A WIRING JOB.** Its entry
+contract is a `CliffComplexLike` with `lipsAt(s) -> {upper, lower}`: a TWO-VALUED radius on a DECLARED
+locus, split per region and bridged with wall quads. C0/C1 scan (122,500 points, 4 arclength halvings),
+**with CelticKnot as a positive control**:
+
+    CelticKnot  max|dr/ds| 62.7 -> 602.9 -> 6001.5 -> 60002.1   x9.998/decade   JUMP 0.60005 mm  => CLIFF
+    Voronoi     max|dr/ds| 4.08141 -> 4.07965 (5 s.f. flat)     x1.0000         jump 8.16e-5 mm  => C1 RAMP
+    Gothic      max|dr/ds| 9.32 -> 9.545                        x0.9998         but z one-sided gap FIXED
+                                                                                at 2.500 => a real C0 KINK
+
+Voronoi's wall is a **bounded-slope C1 ramp** (BETA_max 76.2°) — `f2−f1` through `smoothstep(0,th,·)`,
+whose derivative vanishes at the crease, so only the CURVATURE jumps. Nothing to declare, no lips, no
+regions. *(And Gothic HAS a genuine C0 kink and still closes at 6.67×, so a discontinuity is not what
+makes a style hard either.)*
+
+**W4 — PRICED.** (a) **A DIFFERENT LIFT — BUILT AS A MEASUREMENT ARM AND REFUTED.** Nearest-point-on-
+surface (project along the surface normal), edge-intrinsic hence conforming, still exactly on the surface
+so `addV`'s (θ,z) contract is untouched: fold reduction **1.126× / 1.367× / 1.838×** against a 5× kill, it
+*creates* 103/9/3 new folds, leaves the child chord distribution unchanged to 4 s.f. (over-bar AREA
+46.563% → 46.564%), and costs **5.69× rA evals per edge, measured** (5.00 → 28.47). (b) **Own chart /
+region**: the BETA≥60 region is 17.66% of mesh area, but the only thing a chart fixes is the fold, which
+is now **0.0210% of area** — 0.02% of surface for a new chart plus a new seam. (c) **A distinct primitive
+(tread/curtain)**: needs a discontinuity; W3 measured none. (d) **THE ONE ALREADY PAID FOR — the aspect
+gate**, default-ON since 2026-07-29: 28.7× fewer folds, −39% triangles, 1.52× better by honest position
+AREA (`060f3cd9`).
+
+**⇒ THE NEXT ARM, PRE-REGISTERED.** Re-run S93's three refinement operators on
+`voronoi_ring_D--H_S94CTL.stl` instead of `voronoi_ring_D--.stl`. **The `222× / 15.6% uncleared` that split
+the catalogue was measured on the mesh carrying the sliver population that produces 97.9% of the folds.**
+KILL: if LEPP on the shape-gated mesh still costs ≥100× with ≥10% uncleared, the sliver explanation is
+refuted and the class is real. One env var; cheapest decisive experiment left in this campaign.
+
+**NOT MEASURED:** the LEPP price on the shape-gated mesh (the fold rate is a per-edge ONE-LEVEL quantity —
+that 222× will fall is a PREDICTION, not a measurement); multi-level cascades; any mesher arm; the other
+17 styles; position (`certifyTriangle` was not run); σ bands. Child orientation used k=4, and only ARM
+R/ARM N *ratios* are claimed from it. w2 AREA shares are edge-weighted by parent area (each parent counted
+3×), which affects no ratio.
+
+**⚠ AN INSTRUMENT DEFECT I INTRODUCED AND CAUGHT.** Run 1 of `w2` had the wrong component in the parent
+normal's `fx` and reported a **15.5% fold rate at BETA<5° with δ/h_min = 1.7e-3** — geometrically
+impossible. The verdict lines all read plausibly ("REFUTED"); **only the printed value exposed it.** Fixed,
+noted in the source, and every number from that run (`dPar/dPerp` 2.72, fold 18.46%, ARM-N 1.009×) is void
+and quoted nowhere.
