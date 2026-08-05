@@ -1187,6 +1187,30 @@ describe('STRATA conforming-bisection', () => {
     if (AL_MISTRACE !== 0 && !ALIGNED_SEED) {
       throw new Error('PF_CB_ALIGNED_MISTRACE_UM is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
     }
+    // ══════════ S41 — SEED-TIME CHAIN RE-SOLVE, PORTED INTO V2. PF_CB_ALIGNED_RESOLVE_UM, DEFAULT 0 = OFF ══════════
+    // PORTED VERBATIM from the S34 fork (_strataConformBisectS34.test.ts:1137), which is itself the ONLY
+    // behavioural difference between that fork and its parent. The IMPLEMENTATION is not copied and does
+    // not live here: `resolveSpanMm` / `resolvePred` are optional fields of the SHARED seed builder
+    // (_strataAlignedSeed.ts:256,262), committed in 71d76c39. This is three lines of wiring, so the two
+    // forks cannot drift in the mechanism — only in whether they forward the flag.
+    //
+    // WHY: the campaign's two levers that MOVE anything live in two different forks and therefore cannot
+    // be composed by configuration. The re-solve (S34 fork) cut `unresolved` 3,980 -> 774 (-80.6%) at 9%
+    // fewer triangles and 46% less time, AND LEFT THE MAX AT 47.28. The in-loop constrained-cavity
+    // escalation (this fork, PF_CB_CAVITY) cut the HEADLINE MAX 47.297 -> 22.241 (-53%) for +1.7%
+    // triangles, AND LEFT `unresolved` at 3,571. Each fixes the half the other does not. NOBODY HAS RUN
+    // THEM TOGETHER, because until this line there was no single binary that could.
+    //
+    // ⚠ 50 IS THE MEASURED SHIPPING VALUE (s34ResolveSeedAB.ts). 100/200 cut the residual further but
+    //   BREAK PSLG planarity (13/10 breaks) — a wider transverse probe reaches a NEIGHBOURING locus.
+    //
+    // AT 0 THE OPTIONS ARE ABSENT FROM THE OBJECT, so the flag-OFF path is the unported V2's arithmetic
+    // exactly — which the control arm must demonstrate (byte-identical STL against a pre-port V2 run)
+    // before the treatment arm means anything.
+    const AL_RESOLVE_MM = envF('PF_CB_ALIGNED_RESOLVE_UM', 0) / 1000;
+    if (AL_RESOLVE_MM !== 0 && !ALIGNED_SEED) {
+      throw new Error('PF_CB_ALIGNED_RESOLVE_UM is inert without PF_CB_ALIGNED_SEED=1. Unset it, or enable the seed.');
+    }
     // ───────────────────────────── INIT: uniform θ×z grid, C0 z-bands ─────────────────────────────
     const zSteps: number[] = [];
     {
@@ -1248,6 +1272,10 @@ describe('STRATA conforming-bisection', () => {
         patchRoute, patchMaxMm: AL_PATCH_MAX, patchSubMax: AL_PATCH_SUBMAX,
         acrossRings: AL_RINGS, acrossGrade: AL_RGRADE, acrossMaxMm: AL_RMAX, turnMul: AL_TURN_MUL,
         mistraceUm: AL_MISTRACE, shapeAR: SHAPE_AR, tolMm: TOL,
+        // S41: absent at 0, so the control arm's options object is byte-identical to the pre-port V2's.
+        // `resolvePred` is PRED — the driver's OWN kink constants — because a seed conformed with
+        // different constants than the driver measures with is a silent two-surfaces bug.
+        ...(AL_RESOLVE_MM === 0 ? {} : { resolveSpanMm: AL_RESOLVE_MM, resolvePred: PRED }),
         // S23 — the extracted absolute field, as free Steiner infill. `undefined` when the lever is unset,
         // and then the seed builder's S23 clauses are arithmetically absent.
         ...(reconField === null ? {} : {
@@ -5099,6 +5127,9 @@ describe('STRATA conforming-bisection', () => {
           + `   background kept ${alignedStats.bgKept} dropped ${alignedStats.bgDropped}   offset points ${alignedStats.offsetPts}`
           + `   sizing field ${AL_FIELD ? 'ON' : 'OFF'} (${alignedStats.fieldEvals} rA evals)`,
         `    seed shape census: ${alignedStats.overCap} of ${alignedStats.tris} over the cap (worst AR ${alignedStats.worstAR.toFixed(2)}, worst PARAMETRIC AR ${alignedStats.worstParAR.toFixed(1)})`,
+        `    *** S41 SEED-TIME CHAIN RE-SOLVE (ported from the S34 fork): PF_CB_ALIGNED_RESOLVE_UM=${(AL_RESOLVE_MM * 1000).toFixed(0)}`
+          + `${AL_RESOLVE_MM === 0 ? ' (OFF — this is the control arm, and its STL must be byte-identical to a pre-port V2 run)' : ''}`
+          + `   re-solved ${alignedStats.chainResolved} chain vertices, refused ${alignedStats.chainResolveRefused} ***`,
         ...(AL_ACROSS_ABS ? [
           `    *** S15 STEP 1b ACROSS RULE ON: PF_CB_ALIGNED_ACROSS_ABS=1  floor ${(AL_ACROSS_MIN * 1000).toFixed(1)} um  seed AR bound ${AL_SEED_AR.toFixed(0)}`
             + `   BOUND at ${alignedStats.acrossBoundPts} chain points (along shortened at ${alignedStats.alongBoundPts})`
