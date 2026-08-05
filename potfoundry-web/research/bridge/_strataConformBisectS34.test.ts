@@ -551,9 +551,35 @@ describe('STRATA conforming-bisection', () => {
       vDeg[a] = (vDeg[a] ?? 0) + 1; vDeg[b] = (vDeg[b] ?? 0) + 1; vDeg[c] = (vDeg[c] ?? 0) + 1;
       return t;
     };
+    // ── S94. `killT` WAS THE ONLY PLACE `vDeg` EVER DECREMENTED, AND HALF THE KILL SITES DO NOT USE IT.
+    //
+    // `addT` raises `vDeg` for all three corners; only `killT` lowers it. But three sites retire a
+    // triangle WITHOUT going through `killT`:
+    //   * `tryFlip` (the `for (const t of inc)` inline) — kills 2 and `addT`s 2, so every accepted flip
+    //     inflated `vDeg` by a NET +6 while the real degrees are unchanged (a flip is degree-neutral:
+    //     -1,-1,+1,+1).
+    //   * the degenerate-triangle drop and the collapse path — `alive[t] = false` alone, stranding +3.
+    // So `vDeg` was not a degree at all; it was "triangles ever added minus triangles killed via killT",
+    // and it drifts UP monotonically with flip and collapse volume.
+    //
+    // WHY IT MATTERS: `vDeg` is read in exactly ONE place — the S83 fan cap at `shapeAdmits` — so the
+    // guard built to stop the degree-2,550 runaway was reading an inflated counter and would refuse
+    // splits on facets whose real degree is far below the cap. The runaway itself is NOT in doubt: the
+    // 2,550 was measured by S81/S82 census tools on the OUTPUT mesh, not from `vDeg`.
+    //
+    // THIS FIX IS BYTE-IDENTICAL AT THE DEFAULT. `vDeg` has exactly one reader and it is behind
+    // `MAXDEG > 0`, whose default is 0. With the cap off, nothing reads the counter and no arm moves.
+    //
+    // Deliberately NOT routed through `killT` at the two collapse sites: those omit `eDel` as well, and
+    // whether that omission is intentional (`alive[]` is the source of truth and `edgeMap` is treated as
+    // a superset, filtered by `if (!alive[t]) continue` at every use) is a SEPARATE question this change
+    // does not answer. Fixing only the degree accounting keeps the two issues from being confounded.
+    const vDegDrop = (t: number): void => {
+      vDeg[ta[t]] = (vDeg[ta[t]] ?? 1) - 1; vDeg[tb[t]] = (vDeg[tb[t]] ?? 1) - 1; vDeg[tc[t]] = (vDeg[tc[t]] ?? 1) - 1;
+    };
     const killT = (t: number): void => {
       alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t);
-      vDeg[ta[t]] = (vDeg[ta[t]] ?? 1) - 1; vDeg[tb[t]] = (vDeg[tb[t]] ?? 1) - 1; vDeg[tc[t]] = (vDeg[tc[t]] ?? 1) - 1;
+      vDegDrop(t);
     };
     const eLen = (a: number, b: number): number => Math.hypot(vx[a] - vx[b], vy[a] - vy[b], vz[a] - vz[b]);
 
@@ -3337,7 +3363,7 @@ describe('STRATA conforming-bisection', () => {
     if (COLLAPSE_ON) for (let t = 0; t < ta.length; t += 1) {
       if (!alive[t]) continue;
       const a = find(ta[t]); const b = find(tb[t]); const c = find(tc[t]);
-      if (a === b || b === c || c === a) { alive[t] = false; collapsedTris += 1; continue; }
+      if (a === b || b === c || c === a) { alive[t] = false; vDegDrop(t); collapsedTris += 1; continue; }
       ta[t] = a; tb[t] = b; tc[t] = c;
     }
 
@@ -3666,7 +3692,9 @@ describe('STRATA conforming-bisection', () => {
         if (Math.sign(s1) !== Math.sign(ref) || Math.sign(s2) !== Math.sign(ref)) return false; // non-convex quad
         if (gate !== undefined && !gate(r0, s0)) return false; // S5: caller-supplied improvement test
         // winding: r0 is now the apex of the pv→qv triangle (checked above), so the quad is qv → r0 → pv → s0
-        for (const t of inc) { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); }
+        // S94: `vDegDrop` added — this inline kill did everything `killT` does EXCEPT lower `vDeg`, so a
+        // flip (degree-neutral in truth: -1,-1,+1,+1) inflated the counter by a net +6 every time.
+        for (const t of inc) { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); vDegDrop(t); }
         const n1 = addT(r0, pv, s0); const n2 = addT(s0, qv, r0);
         for (const nt of [n1, n2]) {
           if (nt < 0) continue;
@@ -3777,7 +3805,7 @@ describe('STRATA conforming-bisection', () => {
           if (shapeVerdict === 'fold') { nPostCollapseRefusedFold += 1; continue; }
         }
         // collapse v → u
-        for (const t of shared) { alive[t] = false; collapsedTris += 1; }
+        for (const t of shared) { alive[t] = false; vDegDrop(t); collapsedTris += 1; }
         for (const t of Array.from(sv)) {
           if (!alive[t]) continue;
           if (ta[t] === v) ta[t] = u; if (tb[t] === v) tb[t] = u; if (tc[t] === v) tc[t] = u;
