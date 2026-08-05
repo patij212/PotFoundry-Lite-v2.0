@@ -26,6 +26,8 @@ const CHAIN = [
 ];
 const SIBLINGS = [
   ['S8P', 'gothicarches_ring_DS-H_S8P', 'the S8-PILOT fossil cascade — the nearest PREDECESSOR of _S9A, same 200x140 base grid, NOT a flag-OFF twin'],
+  ['S21C', 'gothicarches_ring_DS-H_S21C', 'routing C'],
+  ['S12i2', 'gothicarches_ring_DS-HT_S12i2', 'S12 iterate 2'],
   ['S9P', 'gothicarches_ring_DS-H_S9P', 'S9 sibling'],
   ['S9Q', 'gothicarches_ring_DS-H_S9Q', 'S9 sibling'],
   ['S10B', 'gothicarches_ring_DS-H_S10B', 'S10 sibling'],
@@ -34,10 +36,8 @@ const SIBLINGS = [
   ['S20A', 'gothicarches_ring_DS-H_S20A', 'admission A'],
   ['S20B', 'gothicarches_ring_DS-H_S20B', 'admission B'],
   ['S21A', 'gothicarches_ring_DS-H_S21A', 'routing A (ledger: ROW 3 REGRESSION)'],
-  ['S21C', 'gothicarches_ring_DS-H_S21C', 'routing C'],
   ['S22A', 'gothicarches_ring_DS-H_S22A', 'de-shard A'],
   ['S22C', 'gothicarches_ring_DS-H_S22C', 'protector cascade'],
-  ['S12i2', 'gothicarches_ring_DS-HT_S12i2', 'S12 iterate 2'],
   ['C2S39CTL', 'gothicarches_ring_DS-HT_S39CTL', 'C2 cross-tool control (an S85 mesh)'],
   ['IDA', 'gothicarches_ring_DS-H_S9ID', 'C3 identity twin A'],
   ['IDB', 'gothicarches_ring_DS-H_S24ID', 'C3 identity twin B (byte-identical to IDA)'],
@@ -341,6 +341,35 @@ for (let i = 1; i < CHAIN.length; i += 1) {
   P(`| \`_${tb}\` → \`_${ta}\` | ${dTri} | ${blind} | **${rc}** | ${res} | **${ra}** | ${roc} | ${roa} | ${CONF[ta] ?? 'no'} |`);
 }
 P('');
+{
+  // The PRE-LINEAGE reference: _S8P is the nearest predecessor of _S9A (same 200x140 base grid, same
+  // driver) running the S8-PILOT fossil cascade instead of S9a conformity-at-birth. NOT a flag-OFF twin.
+  const p8 = load('S8P', 'pos'); const o8 = load('S8P', 'orient');
+  if (p8 && o8 && h9p && h9o && h24p && h24o) {
+    P('### Arm 0 — `_S8P`, the nearest PREDECESSOR of the lineage (not a flag-OFF control)');
+    P('');
+    P('`_S8P` runs the **S8-pilot fossil cascade-split** where `_S9A` runs **S9a conformity-at-birth**, on the');
+    P('same 200×140 base grid and the same driver, at 1,277,904 vs 1,284,820 triangles (1.005×). It is the');
+    P('closest thing on disk to a control for the ledger\'s first lever, and it is mechanism-against-mechanism,');
+    P('**not on-against-off** — `_S9P` and `_S9Q` both run `PF_CB_CONFORM_FIRST=1`, so no off-twin exists.');
+    P('');
+    P('| | `_S8P` | `_S9A` | ratio | | `_S8P` → `_S24i2` |');
+    P('|---|---|---|---|---|---|');
+    P(`| honest position PROVEN-FAIL rate | ${pct(p8.failRate, 4)} ±${(100 * p8.sigmaCountRel).toFixed(1)}% | ${pct(h9p.failRate, 4)} ±${(100 * h9p.sigmaCountRel).toFixed(1)}% | **${ratio(h9p.failRate, p8.failRate)}** | | **${ratio(h24p.failRate, p8.failRate)}** |`);
+    P(`| honest position fail AREA frac | ${pct(p8.areaFailFrac, 5)} | ${pct(h9p.areaFailFrac, 5)} | ${ratio(h9p.areaFailFrac, p8.areaFailFrac)} (at the null) | | **${ratio(h24p.areaFailFrac, p8.areaFailFrac)}** |`);
+    P(`| orientation over-bar rate (inset .02) | ${pct(o8.overN[1] / o8.nTri, 4)} | ${pct(h9o.overN[1] / h9o.nTri, 4)} | ${ratio(h9o.overN[1] / h9o.nTri, o8.overN[1] / o8.nTri)} | | ${ratio(h24o.overN[1] / h24o.nTri, o8.overN[1] / o8.nTri)} |`);
+    P(`| orientation over-bar AREA (inset .02) | ${pct(o8.overAreaFrac[1], 5)} | ${pct(h9o.overAreaFrac[1], 5)} | ${ratio(h9o.overAreaFrac[1], o8.overAreaFrac[1])} | | ${ratio(h24o.overAreaFrac[1], o8.overAreaFrac[1])} |`);
+    P(`| facets with a worst-point >90°, as a rate | ${pct(o8.invN[1] / o8.nTri, 4)} | ${pct(h9o.invN[1] / h9o.nTri, 4)} | ${ratio(h9o.invN[1] / h9o.nTri, o8.invN[1] / o8.nTri)} | | ${ratio(h24o.invN[1] / h24o.nTri, o8.invN[1] / o8.nTri)} |`);
+    P('');
+    const rr = h9p.failRate / p8.failRate;
+    const ss = Math.sqrt(h9p.sigmaCountRel ** 2 + p8.sigmaCountRel ** 2);
+    P(`**S9a beats the S8 pilot on honest position count-rate at ${(Math.abs(1 - rr) / ss).toFixed(1)}σ (${rr.toFixed(3)}×), while its AREA ratio (${(h9p.areaFailFrac / p8.areaFailFrac).toFixed(3)}×)`);
+    P('sits ON the empirical null of §8b and cannot be claimed.** Orientation is a wash on the population and');
+    P(`improves ${ratio(h9o.invN[1] / h9o.nTri, o8.invN[1] / o8.nTri)} on the worst-point->90° rate. **Measured from \`_S8P\` instead of \`_S9A\`, the whole campaign is`);
+    P(`${(1 / (h24p.failRate / p8.failRate)).toFixed(2)}× by honest position count-rate and ${(1 / (h24p.areaFailFrac / p8.areaFailFrac)).toFixed(1)}× by honest position area.**`);
+    P('');
+  }
+}
 if (h9o && h24o && h9p && h24p) {
   P('### The whole chain, end to end');
   P('');
