@@ -1,0 +1,28 @@
+===== S96 — THE STRANDED TAIL ON THE HONEST RULER =====
+stem voronoi_ring_D--H_S94CTL  style Voronoi  bar 10 um  nMax 512
+closure: detectZJumps 0  detectThetaJumps 0
+unresolved records: 560
+492068 facets read   [0.3s]
+mesh area 40394.11 mm2, index keys 452854   [1.8s]
+  scored 100/560   [52.4s]
+  scored 200/560   [134.8s]
+  scored 300/560   [307.9s]
+  scored 400/560   [495.6s]
+  scored 500/560   [670.3s]
+
+═══ RESULT — the STRANDED facets, scored individually ═══
+  matched 560/560  (unmatched 0, ambiguous-key 0)
+
+  PROVEN-FAIL 472/560 (84.29%)   PROVEN-PASS 88   UNKNOWN 0
+  honest witnessed on strandees (um): p50 21.650  p90 75.452  p99 165.363  MAX 253.307  (facet 128164)
+
+  strandee AREA        8.8263 mm2 = 0.02185% of the mesh
+  strandee FAILING AREA 8.2653 mm2 = 0.02046% of the mesh
+
+  ── against S95's UNIFORM arm on the same mesh (0.86197% +-26.2% failing area, in-sample max 67.327 um)
+     the strandees contribute 0.02046% of surface, i.e. 2.37% of the uniform estimate
+     and their honest MAX is 253.3 um against the uniform sample's in-sample max of 67.327 um
+
+  driver's own view of the same facets: worst keyUm 49.910 um (plane), worst sagNowUm 263.072 um (edge)
+
+done  [720.3s]
