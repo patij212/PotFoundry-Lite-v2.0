@@ -8412,3 +8412,29 @@ R4 a FLIP-ONLY pass (zero new vertices, zero vertex motion — potentially the w
 triangle cost); R5 forbid bare maxima in the report; R10 swap the sliver metric to maxAngle.
 **NEXT ACTION = R1's validation render: `tangExc` heatmap, flat-shaded, at the grazing view — the
 one thing I could not do, and it is what confirms or refutes the whole blindness chain.**
+
+**ADDENDUM — S55, THE WHOLE-MESH NUMBER AND THE VISUAL CONFIRM (all 1,142,166 facets, no sampling).**
+`research/tools/s55OrientHeatmap.ts`; PNG `research/exchange/_strataConformBisect/s55render/S50_orientation_vs_position.png`.
+
+```
+POSITION    (sagAdaptiveRaw — the DRIVER'S OWN key)   max   47.2 um   over-10um      75  (0.007%)
+ORIENTATION (tangExc — the ruler nobody runs)         max 1640.0 um   over-10um 129,757 (11.361%)
+                                                       *** 1,730x more facets over the same bar ***
+```
+INSTRUMENT VALIDITY: the reconstructed position arm reads **47.2 um** whole-mesh against the driver's
+own reported **47.282 um** — three significant figures on an independent path (STL positions + theta
+unwrapped by `dThRaw`, fed to the imported `sagAdaptiveRaw`). The comparison is on the driver's terms.
+
+RENDER (same mesh, same 0-0.05 mm ramp, flat-shaded, both panels): the POSITION panel is uniformly
+green (`worst 0.047 · 0.01% >0.03`); the ORIENTATION panel lights up the arch RIBS with red streaks
+running lengthwise along the rib crests and orange fans flaring off the rib edges
+(`worst 1.640 · 11.36% >0.03`). Long, thin, edge-on features — the operator's reported artefact class.
+**R1's pre-registered kill-criterion (the red must land where the artefacts are) is MET.**
+
+CAVEATS: the legend's "chord sag (mixed rulers)" is a label artefact of reusing `meta.ruler` to get two
+cell titles — neither panel is a chord sag; the camera is `meshRender.cjs`'s fixed oblique relief view,
+NOT the grazing view used in Cura, so a frame-for-frame match is still open; `tangExc` is a one-point
+witness (under-reports, certifiable by adding `kappa_max * cov/n`); one style, one mesh family.
+
+**ONE LINE: on the mesh the driver calls 99.993% clean, 11.4% of facets are over the same 10 um bar on
+a quantity the pipeline has never measured, and the worst is 1.64 mm.**
