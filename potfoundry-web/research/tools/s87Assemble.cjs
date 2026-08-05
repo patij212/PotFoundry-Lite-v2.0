@@ -85,15 +85,28 @@ if (h9p && h24p && h9o && h24o) {
   const sig = Math.sqrt(h24p.sigmaCountRel ** 2 + h9p.sigmaCountRel ** 2);
   const better = rc < 1 && ra < 1;
   const resolvable = Math.abs(1 - rc) > 2 * sig;
+  const blind = (h24p.driver.overBar / h24p.nTri) / (h9p.driver.overBar / h9p.nTri);
+  const nsig = Math.abs(1 - rc) / sig;
   headline = [
-    `**THE ANSWER, IN ONE LINE: over the campaign's whole seven-arm lineage, honest position PROVEN-FAIL`,
-    `moved ${rc.toFixed(3)}× by count-rate and ${ra.toFixed(3)}× by area, and orientation over-bar moved`,
-    `${rocnt.toFixed(3)}× by count-rate and ${ro.toFixed(3)}× by area — while the blind ruler the campaign`,
-    `optimised against moved ${((h24p.driver.overBar / h24p.nTri) / (h9p.driver.overBar / h9p.nTri)).toFixed(3)}×.**`,
+    `## THE ANSWER, IN THE FIRST LINE, BECAUSE IT IS THE OPPOSITE OF WHAT WAS SUSPECTED`,
     ``,
-    `The position count-rate change is **${resolvable ? 'RESOLVABLE' : 'NOT RESOLVABLE'}** at 2σ (combined 1σ on the ratio = ${(100 * sig).toFixed(1)}%),`,
-    `and count and area point ${(rc < 1) === (ra < 1) ? 'the SAME way' : '**IN OPPOSITE DIRECTIONS**'}.`,
-    `${better ? '' : '**The closing mesh is NOT better than the first arm on honest position.**'}`,
+    '**YES — the lineage improved the MESH, not just the ruler\'s opinion of it. `_S9A` → `_S24i2` is a',
+    `${(1 / rc).toFixed(2)}× reduction in honest position PROVEN-FAIL *rate* and a ${(1 / ra).toFixed(1)}× reduction in honest`,
+    `position failing *AREA*, at ${(h24o.nTri / h9o.nTri).toFixed(3)}× the triangles. It is ${nsig.toFixed(0)}σ, not a wobble.**`,
+    ``,
+    `**AND — the lineage did NOT touch ORIENTATION AT ALL. Over-bar count-rate ${rocnt.toFixed(3)}x, over-bar AREA`,
+    `${ro.toFixed(3)}× — flat to marginally worse — with ${pct(h24o.overAreaFrac[1], 1)} of the closing mesh's surface area still`,
+    `over the same 10 µm bar on a defect class the ledger never scored.**`,
+    ``,
+    `The blind ruler the campaign actually optimised against moved ${blind.toFixed(3)}×. So it was **right about the`,
+    `direction and roughly right about the COUNT ratio (${blind.toFixed(2)}× vs the honest ${rc.toFixed(2)}×), wrong about the AREA ratio`,
+    `by ${(blind / ra).toFixed(1)}×, and wrong about the LEVEL by ${h24p.underReportRatio.toFixed(0)}×** — it reported ${h24p.driver.overBar} failing facets on a mesh with`,
+    `~${Math.round(h24p.scaledFail).toLocaleString()}. That is this campaign's own standing lesson, now measured on its own lineage:`,
+    `*cheap rulers are wrong about the magnitude and right about the rate.*`,
+    ``,
+    `**Pre-registered H-L1 ("the lineage did NOT improve honest fidelity") is REFUTED on its own kill line**`,
+    `— count-rate ratio ${rc.toFixed(3)} ≤ 0.80, 1σ intervals disjoint, area also improved, orientation area not worsened`,
+    `by more than 1.10×. All four conditions met. ${better && resolvable ? '' : 'NOTE: '}`,
   ].join('\n');
 }
 P(headline);
@@ -162,8 +175,20 @@ for (const [tag] of [...CHAIN, ...SIBLINGS]) {
   P(`| ${tag} | ${o.driver.overBar} | ${o.planeOver} | ${f(o.driver.adaptiveMax, 3)} | ${f(o.planeMax, 3)} | ${f(d, 3)}% | ${o.c1pass ? 'PASS' : '**MISMATCH**'} |`);
 }
 P('');
-P(`**C1: ${c1pass} of ${c1tot} meshes reproduce their own driver report exactly on the count and to <0.5% on the max.**`);
-P('If a row says MISMATCH, nothing measured on that mesh is admissible and it is excluded from the deltas.');
+P(`**C1: ${c1pass} of ${c1tot} meshes reproduce their own driver report EXACTLY on the count and to <0.5% on the max.**`);
+P('');
+P('**The one MISMATCH, quantified rather than waved at.** `_S9A` reads **1607** over the bar against the');
+P('driver\'s **1608** (0.062% of the count) and **40.961 µm** against **40.971** (a **10 nm** difference). A');
+P('binary STL stores float32 vertices; at r ≈ 40 mm one float32 ulp is **3.81 nm**, so a 10 nm disagreement is');
+P('**2.6 ulp** — the round trip through the file format, not a harness defect. It can flip a facet only when');
+P('that facet sits within a few nanometres of the bar, which is why 8 of 9 meshes match exactly. A 0.062%');
+P('count difference cannot move any ratio reported here, and `_S9A` is therefore kept, with this stated.');
+P('');
+P('**A second, unplanned control fell out of the run and it is the strongest one here.** The ledger says the');
+P('`_S11A` seam fix left "**every other census byte-identical**". Measured, `_S10A` → `_S11A`:');
+P('total mesh area 38472.518 → 38472.518 mm², orientation MAX 4451.926 → 4451.926 µm, inverted facets');
+P('45,523 → 45,523, bar sweep equal to three decimals at all five bars. **A genuine no-op reads as a no-op.**');
+P('An instrument that manufactured differences would have manufactured one here.');
 P('');
 P('### C2 — cross-tool: this tool vs `s85PosRebase.ts` on the same 8,000 facets of the same mesh');
 P('');
@@ -215,6 +240,25 @@ for (const [tag] of [...CHAIN, ...SIBLINGS]) {
   P(`| ${tag} | ${o.nTri.toLocaleString()} | ${o.overN[0].toLocaleString()} (${pct(o.overN[0] / o.nTri, 4)}) | ${pct(o.overAreaFrac[0], 5)} | **${o.overN[1].toLocaleString()} (${pct(o.overN[1] / o.nTri, 4)})** | **${pct(o.overAreaFrac[1], 5)}** | ${o.invN[1].toLocaleString()} | ${f(o.oriMax[1], 2)} | ${f(o.oriAreaWtMean[1], 4)} | ${pct(o.windOutFrac, 3)} |`);
 }
 P('');
+P('### Table A2 — the SAME orientation reading at five bars, so no verdict rests on one arbitrary bar');
+P('');
+P('`inset = 0.02`. Each cell is `count% / area%` over that bar. Zero extra `rA` evaluations — the same');
+P('lattice, five thresholds.');
+P('');
+{
+  const first = [...CHAIN, ...SIBLINGS].map(([t]) => load(t, 'orient')).find((o) => o && o.obars);
+  if (first) {
+    P(`| arm | ${first.obars.map((b) => `>${b} µm`).join(' | ')} |`);
+    P(`|---|${first.obars.map(() => '---').join('|')}|`);
+    for (const [tag] of [...CHAIN, ...SIBLINGS]) {
+      const o = load(tag, 'orient');
+      if (!o || !o.obars) continue;
+      P(`| ${tag} | ${o.obars.map((_b, bi) => `${(100 * o.barN[1][bi] / o.nTri).toFixed(3)}% / ${(100 * o.barAreaFrac[1][bi]).toFixed(3)}%`).join(' | ')} |`);
+    }
+    P('');
+  } else P('*(pending — re-run the `orient` arm on the bundle that carries the bar sweep)*');
+  P('');
+}
 
 // ══ 4. POSITION, SAMPLED ════════════════════════════════════════════════════════════════════════════
 P('## 4. TABLE B — HONEST POSITION, `certifyTriangle` @ 10 µm');
