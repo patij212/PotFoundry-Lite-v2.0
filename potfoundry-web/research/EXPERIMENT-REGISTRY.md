@@ -8608,3 +8608,268 @@ render (SECTION 10) under-showed the bands by foreshortening. So the class is no
 (straddling the C0 creases between flat faces) and with Voronoi being worst (creases in every
 direction, nowhere to hide). NOT closed: I have not seen the operator's Cura screenshots, so this is a
 geometric reconstruction of his viewing condition, not a frame-for-frame match.
+
+---
+
+## E-2026-08-05-S61-ORIENT-GUARD — orientation becomes a scored quantity; the class is DENSITY-INVARIANT and splits into two mechanisms, one of which `aspect3` already owns [4 probes + 10 fixtures, all kill-criteria pre-registered]
+
+Follow-on to `E-2026-08-05-S56-58`. NEW instruments: `research/bridge/orientRuler.ts` (+ its fixture suite
+`research/bridge/_orientRulerValidate.test.ts`, `PF_ORIENT_FTV=1`, 10/10, 4 s, no env, no mesh);
+`research/tools/s70OrientCensus.ts`, `s71OrientAchievable.ts`, `s72OrientArmSweep.ts`, `s73OrientRender.ts`
+(+ runners). Full detail: `research/exchange/_strataConformBisect/S61_GUARD_FINDINGS.md` (gitignored).
+
+### THE RULER — two-sided, covering-certified, and it says which side it is sound on
+
+`theta*(T) = sup over the footprint of angle(n_facet, n_S)`. `normRad` = max over an order-k barycentric
+covering = a LOWER bound ⇒ **sound for REFUSALS**. `bound = normRad + kappa*cov` = an UPPER bound ⇒
+**sound for ACCEPTS**, with `cov = rho(T)/k` EXACT (rho = circumradius if acute, else half the longest
+edge). Fixture F2 measures `gap(k=4)/gap(k=32) = 8.000000000000` — the covering term is exact, not slack.
+This is deliberately the INVERSE of the assignment that sank `PF_CB_CERTACCEPT` on 2026-08-04.
+**`kappa` does not exist at a C0 crease, so there is NO accept-side certificate on a crease style** —
+a crease-straddling facet is UNDECIDED-or-FAIL, never ACCEPT. Structural, not a gap.
+
+### FOUR DEFECTS IN THE S55 PROTOTYPE, EACH PINNED BY A FIXTURE THAT FAILS IT
+
+- **F1 CENTROID SAMPLING UNDER-READS.** On the exact cylinder the sup is `Delta/2` and one centroid sample
+  reads `Delta/6` — ratio **0.333333, analytic**. On real meshes, `normDeg p99` k=4 vs centroid:
+  **LowPolyFacet 2.031x, Voronoi 1.009x, GothicArches 10.333x (97.83 deg vs 9.47 deg).** The correction is
+  style-dependent and cannot be applied retrospectively — the S53–S58 tables have to be RE-RUN, not scaled.
+- **F3 `sin(acos(dot))*diam` IS NOT MONOTONE.** It scores a FULLY INVERTED facet at **6.6e-16 mm**, i.e. as
+  the best facet in the mesh. Any use of it as a ranking key (S56's `tangExc`-greedy flip) is being told
+  the worst facets it can make are the best. Replaced by `2*sin(a/2)*diam`.
+- **F4b NEW — THE CREASE-VERTEX FALSE ALARM.** A facet lying EXACTLY in one flat face with one vertex ON
+  the crease reads the FULL dihedral (exact sampler) / HALF (central FD). Not an FD artefact: the analytic
+  normal AT a C0 crease is undefined and any branch convention picks a side. **A conforming mesher puts
+  vertices there on purpose, so its best work scores as its worst.** `inset: 0.01` cures it (0.0 / 0.0 /
+  1.3e-4 deg) and `cov` is inflated by `inset * maxCentroidVertexDist` to keep the bound sound.
+- **`kinkRad` (h-local) READ LITERALLY ZERO** on a mesh whose orientation p99 is 20 deg — it only fires
+  within `hArc` of a kink, a set of measure ~h. The h-free `spreadRad = 2*acos(|mean n_i|)` flagged
+  exactly the right 27,504 facets. I nearly published "LowPolyFacet has no creases" off that zero.
+
+### VALIDITY GATE — the census reproduces the PUBLISHED rows in the PUBLISHED mode
+
+`legacy tangExc p99` mine/S58: LowPolyFacet **28.48/28.48 = 1.000x**, Voronoi **1220.32/1222.82 = 0.998x**,
+GothicArches **35.91/36.05 = 0.996x**; over-10um 10.887%/10.887%, 39.706%/39.696%, 11.361%/11.371%;
+position p99 to the digit. **The gate caught one of my own arms**: reproducing "centroid" by calling the
+ruler at k=1 still samples the three parameter VERTICES, which inflated Voronoi's over-10um from 39.7% to
+72.2% while leaving p99 correct. Fixed by transcribing `s55OrientHeatmap.ts:84-102` verbatim.
+
+### *** H2 CONFIRMED — THE ORIENTATION ANGLE IS DENSITY-INVARIANT ON A TURN ***
+
+Synthetic crease straddle, five halvings: **ANGLE x0.9968**, mm form **x1.9957 PER halving** (LINEAR, not
+quadratic); smooth control **x28.43**. Real mesh, LowPolyFacet TURNING population, `normDeg p99` by diam
+octave: **20.06 / 26.31 / 30.68 / 20.07 over an 8x span = x1.001**, against the NON-TURNING control's
+**x0.035 over a 64x span**. `posUm p99` is 4.98–4.99 in exactly the bins where `normDeg p99` is 20–31 deg.
+⇒ **every triangle the driver could spend on this class is wasted.**
+
+**AND IT GIVES THE CAMPAIGN'S FOUR REFUTED TIGHTENING ARMS A MECHANISM.** S10B (x1.00), S12, S28 (x1.00)
+and S29 all tightened the accept tolerance near recorded loci and all failed; S29's own words are
+*"100% of its refinement lands in-region and STILL fails — density does not close those loci."* That is
+density-invariance measured from the other side. Those are TURNING loci; tightening a tolerance buys
+density, and density is provably the one lever this class is invariant under.
+
+### *** H3-pre REFUTED — NO PLACEMENT FIXES IT EITHER *** (s71, LowPolyFacet turning facets)
+
+`normDeg` of the WORSE child, p50: PARENT **20.05** | midpoint-of-longest **21.21 (WORSE than the parent)**
+| best-of-3-midpoints **20.05** | 3 edges x 17-point grid ideal **16.25** | located-crossing **20.05** |
+**ideal 9x9 TWO-cut 15.69**. `frac(child < 1 deg) = 0.00% ON EVERY ARM.` Distinct normals over the
+footprint: p50 2, p90 3. Mechanism: a crease enters a triangle through one edge and LEAVES through
+another, so one child always keeps a crossing; and the sup is a MEASURE-ZERO target, so any epsilon of
+misplacement restores the full dihedral.
+
+### *** THE TWO NUMBERS THAT RESIZE THE CLAIM ***
+
+**(a) AREA-TRUE — the facet COUNT over-states the mis-oriented SURFACE by 13x to 184x.**
+```
+  style          AREA of surface over   1deg      5deg      30deg  |  FACET COUNT >5deg  |  over-statement
+  Voronoi                            19.8715%   3.9490%   1.45910% |      51.1938%       |     12.96x
+  GothicArches                       16.1711%   1.7958%   0.12400% |      43.0336%       |     23.96x
+  LowPolyFacet                        0.1093%   0.1089%   0.00030% |      20.0058%       |    183.76x
+```
+The failing facets are systematically the SMALL ones — the mesher already refined them, which is why they
+are small and why refining them again is wasted. This is a correction to the SIZE of the claim, not a
+rescue: Voronoi is still **3.95% of its surface over 5 deg and 1.46% over 30 deg**.
+
+**(b) THE CLASS IS TWO MECHANISMS AND `aspect3` ALREADY OWNS ONE.** `spreadRad` separates them; `aspect3`
+by population:
+```
+  style          WHOLE MESH p50/p90   MIS-ORIENTED p50/p90/p99      TURNING p50/p90/p99    share MIS
+  Voronoi          4.756 / 167.136    148.643 / 1937.148 / 19627    4.393 / 14.210 / 40.49   26.0%
+  GothicArches     3.236 /   7.912     11.852 /   31.267 /  48.45   3.453 /  7.842 / 17.05    3.0%
+  LowPolyFacet     2.664 /   6.601          — (none)                4.639 /  9.924 / 18.81    0.0%
+```
+**The MIS-ORIENTED population IS the sliver population** (median aspect3 34x the turning population's on
+Voronoi, 3.4x on Gothic — three nearly-collinear points on a locally-flat surface have a numerically
+undetermined facet plane), and **the TURNING population sits UNDER the driver's `PF_CB_SHAPE_AR = 50` cap**
+(p99 40.49 / 17.05 / 18.81). Corroboration that the guard works where it ran: `voronoi_ring_D--` 26.0%
+mis-oriented at aspect3 p50 148.6, against `gothicarches_ring_DS-HT_S39CTL` (built WITH `PF_CB_SHAPE=1`
+at cap 50) 3.0% at p50 11.9 — **8.7x fewer, 12.5x lower aspect3**. Two styles, two run families: NOT a
+controlled A/B.
+
+**THIS RE-READS S56.** The maxAngle-vs-orientation anti-correlation is a MIXTURE effect, not a proof that
+Euclidean shape is the wrong objective: improving Euclidean shape helps the sliver class (3–26%) and turns
+triangles ACROSS ribs, hurting the turning class (74–100%), so the net came out 5.5x worse.
+
+### S72 — I RE-RAN S53'S SWEEP TO OVERTURN IT AND MY OWN HYPOTHESIS WAS REFUTED
+
+Six AR-cap arms, corrected ruler + area-true. Pre-registered: CORRECTED iff area-true moves >= 2x while
+the sup p99 stays < 1.5x. **Measured: `posMax` x8.785 (independently reproduces S53's 8.4x), `normDeg p99`
+x1.194, `AREA-TRUE >5deg` x1.014, `AREA-TRUE >1deg` x1.006.** The sweep genuinely did nothing to the
+orientation field on EVERY statistic including the one capable of converging. **S53's blindness reading is
+confirmed on a better instrument** and is not an artefact of reading a density-invariant statistic.
+
+### VERDICT AND RECOMMENDATION — the answer to "what should `shapeAdmits` score instead of `aspect3`"
+
+**VERDICT: ruler CONFIRMED and landed (10/10 two-sided fixtures) | H2 CONFIRMED | H3-pre REFUTED |
+S72 (my correction to S53) REFUTED | the orientation guard as briefed is a NO-GO.**
+
+**KEEP `aspect3`** — it owns the mis-oriented class and nothing else does. **ADD `spreadRad`**, the facet's
+diameter under the GAUSS MAP: position error is controlled by the FIRST fundamental form (what `M = g/h^2`
+equalises), orientation error by the THIRD, `III = dn.dn`. Fixtures F5/F6 show it gets the anti-correlation
+right where `aspect3` gets it backwards — NEEDLE along the axis `aspect3 2000.5 / orientation 0.0127 deg`,
+CAP across `aspect3 2.414 / orientation 30.0000 deg`, i.e. **828x one way against 2360x the other**.
+
+**But NOT as a refusal guard** — refusing leaves the turning facet, refining does not move it (H2), and no
+placement fixes it (H3-pre); a sup-based guard would refuse nearly every split near a turn and drive the
+heap into the documented AR-50 jam. Use it as **(1) a CLASSIFIER at zero extra cost**, routing a facet to
+the mechanism that can fix it (`spread` small + `normDeg` large -> SHAPE/flip/collapse, zero new triangles;
+`spread` large -> ALIGNMENT and nothing else); **(2) a SIZING FIELD on the smooth part only**, gated on the
+crease test because it cannot converge on a C0 crease. **The lever for the residual is ALIGNMENT**, whose
+prize is arithmetic-not-measured: a straddle band is `creaseLength * h` of mis-oriented area against an
+aligned mesh's `creaseLength * h^2*kappa/8`, i.e. **~3,600x at h = 0.1 mm, kappa = 1/45** — against 100x
+MORE TRIANGLES for 10x by density. `locateTurn` (14 Gauss-map bisections, ~70 rA evals, fixture F9: lands
+within 1.0e-5 of the true crossing, 17.19 deg on a crease vs 0.000093 deg smooth) is a style-agnostic
+locator for it that needs no per-style loci JSON.
+
+**NEXT EXPERIMENT (ranked).** (1) Validate `locateTurn` as a crease-NETWORK extractor on a real style
+(precision/recall against a known locus set) — everything above hangs on it and it is read-only.
+(2) Feed those loci to the conforming route and measure the predicted 3,600x on AREA-TRUE, both rulers.
+(3) A controlled Voronoi arm with `PF_CB_SHAPE=1` to convert the 26.0%-vs-3.0% corroboration into a proof.
+(4) One line in `s55OrientHeatmap.ts:102` (NOT MINE, not made): `sin(acos(dot))*diam` ->
+`2*sin(0.5*acos(dot))*diam`, because the non-monotone form is currently a RANKING KEY in S56's flip pass.
+
+**NOT DONE, STATED:** no mesher arm was run and the driver was not forked (three read-only probes refuted
+the guard, the placement rule and my own S53 correction before an arm was justified); the `spreadRad`
+classifier is specified but NOT implemented and NOT A/B'd; the 3,600x is arithmetic, not a measurement;
+the accept-side certificate is fixture-validated only (no real style has a `kappa` bound in this repo);
+and the `_strataFacetTruthValidate` hard gate was not run because nothing here is reachable from the audit
+(`orientRuler.ts` is a new leaf module with no importers outside my own four tools and one test).
+
+VISUAL: `research/exchange/_strataConformBisect/s73render/S61_voronoi_3panel.png` (all 806,765 facets).
+POSITION is clean; ORIENTATION-SUP lights every Voronoi cell WALL as an unbroken ribbon and burns red at
+every triple JUNCTION with dark cell interiors; ORIENTATION-AREA shows the same structure with visibly
+NARROWER ribbons — the 12.96x over-statement as a picture. The render agrees with the metric.
+Caveats: `meshRender.cjs` auto-frames tight (a few cells, not the whole pot) and its shared colour legend
+still says "chord sag ... 0.15mm" — panels B and C are in degrees and in a 0–1 fraction respectively, per
+the per-panel `cls` labels. The shared renderer was not modified.
+
+---
+
+## E-2026-08-05-S62-AUDIT — ADVERSARIAL REVIEW OF THE ORIENTATION FINDING, THE HARD GATE, AND TWO LANDINGS
+
+Agent: AUDIT. Full scorecard: `research/exchange/_strataConformBisect/S62_AUDIT_FINDINGS.md`.
+Tools: `research/tools/audOrientCone.ts`, `audTruePos.ts`, `audRaFastDiff.ts`, `audWitnessConfirm.ts`
+(each with its own runner and its own derived bundle name). All hypotheses + kill-criteria are
+pre-registered in the tool headers before the first run.
+
+### 1. `tangExc` — WEAKENED, and the class is RE-LABELLED. (VERDICT: partially refuted.)
+
+Control: my re-implementation reproduces s58 to the digit on BOTH styles (Voronoi 39.696 %,
+LowPolyFacet 10.887 %), so every divergence below is a correction and not a different implementation.
+
+* **It is not a MAGNITUDE.** Voronoi top-30 by `tangExc`: `tangExc` p50 **2171.4 um** vs exhaustive
+  `certifyTriangle` H1 witnessed p50 **83.28 um** = **26.1x overstatement**, and `witnessedComplete
+  0/30` makes 26x an upper bound on the factor. `tangExc := sin(normDeg)*diam` is a formula; the
+  offending facets are CAPS (altitude p50 **8.2 um** on millimetre diameters) whose normals are
+  ill-conditioned — exactly the case `_judgeNormal`'s header already describes.
+* **35 % of the over-bar count is a FOOTPRINT ARTEFACT.** Minimising the deviation over the facet's own
+  15-point barycentric footprint (the `featureSpan` correction generalised from a boolean to a
+  magnitude) takes 39.696 % -> **25.675 %** on Voronoi. p99 and max do NOT move, so the extreme tail is
+  real. Quote the cone-minimised count or it is inflated 1.55x.
+* **The two "10 um bars" are not the same bar.** `tangExc/posUm` on `maxAngle < 90`: Voronoi p50 1.58,
+  LowPolyFacet p50 1.98, under a decade of spread on both; against the TRUE perpendicular distance the
+  constant is ~8 (the chord identity `sag ~ d*alpha/8` vs `tangExc ~ d*alpha`). A 10 um `tangExc` bar
+  is a ~1.2 um POSITION bar, and SECTION 14's table compares it directly against a position column read
+  at the product bar.
+* **REFUTED: the per-facet flip is not carrying it.** `>=90 deg` population 18,085 under s58's
+  `n . rhat < 0` flip vs **23,634** under the `_judgeNormal` global winding sign — the per-facet flip
+  HIDES back-facing facets rather than manufacturing them. (And `sin(180-x) = sin(x)`, so the flip could
+  never have moved `tangExc` at all.)
+* **SURVIVES: `tangExc` is a strongly SELECTIVE DETECTOR.** Proven-fail rate 99.0 % on its own top-400
+  vs 7.5 % on a matched random control = **13.20x**.
+
+### 2. *** THE DRIVER'S PLANE RULER IS BROKEN ON VORONOI BY 46x. *** (VERDICT: confirmed, new.)
+
+`certifyTriangle` at `tol = 0.010 mm` = the product bar, three buckets, none folded away:
+
+```
+TOP-400 BY tangExc              PROVEN-FAIL 396  PROVEN-PASS   4  UNKNOWN 0   witnessed max 230.76 um
+RANDOM CONTROL, same size       PROVEN-FAIL  30  PROVEN-PASS 370  UNKNOWN 0   witnessed max 152.05 um
+driver plane ruler, both groups                                   max 4.99 um, over-bar 0/400
+```
+
+**H1 proves 396 failures where the plane ruler reports 0**, and **7.5 % of RANDOM facets fail too**
+(~60,000 of 806,765 extrapolated), every one reported clean. `detectZJumps 0, detectThetaJumps 0`, so
+no closure exclusion carries it. **SECTION 14's inference — "position is clean, therefore orientation
+is a class no ruler scores" — does not follow: the position column is FALSE.** No new objective is
+needed to reach this population; a sound position ruler at the product's own bar already condemns it.
+
+**Confirmed by an instrument outside `_facetTruthLib`** (`audWitnessConfirm`: global 3072x1025 lattice,
+24 restarts, plain descent, no library code): `brute/witnessed` = **1.0000 at p10/p50/p90/min/max**
+over 30 witnesses, agreeing to 1 nanometre, **30/30 over-bar by BOTH**. Both are UPPER bounds, so a
+wrong-basin `tighten` would have made the brute read SMALLER. It did not.
+
+*Self-correction kept on the record: my first commit reported 109x (from `distPerp` at the lattice-
+RADIAL argmax, which is not the perpendicular argmax). The honest number is 26x. I was wrong by 4.2x
+in the direction that flattered the mesh.*
+
+### 3. THE HARD GATE — ELEVEN OF TWELVE BARS WERE ONE-SIDED. (VERDICT: confirmed; fixed.)
+
+`research/bridge/_strataFacetTruthValidate.test.ts`. `PF_FT_DESCENT_K=8` passed it **12/12**; it now
+fails **22/24**, and the clean run is **24/24 in 211.0 s against 212.6 s before — zero cost**.
+
+**And the ratio floor I was asked to add would not have caught it.** After fixing the FIXTURE, K=8
+leaves worst ratio 20.021 and flank median 19.960 UNCHANGED. The two clauses that catch it are
+`maxOrtho` — a value already being computed, printed and NEVER ASSERTED, 6.83e-2 against a 1e-5 bar —
+and the new V11, an independent brute-force oracle disagreeing with `distPerp` by **1,887 %**.
+
+**A second defect, found because my first hardening attempt FAILED AT BASELINE:** V10's ridge is
+4.444e-4 rad in half-width and its probes step 8e-4 rad apart, so **exactly ONE of forty probes ever
+touched the feature**. V10's entire non-vacuity signal, in every run this campaign published, was one
+probe. Fixed by fixing the fixture (11 on-feature probes) and scoring flank vs flat in OPPOSITE
+directions — flat now requires `|ratio - 1| < 1e-6`, which catches a perpendicular ruler that
+UNDER-reads on a cylinder, a direction no bar in the file could see. `M1..M11` mutation proofs run
+inside the gate and feed each hardened clause the exact degenerate value the old bar accepted.
+
+**Sweep of the sibling gate files (read-only, not mine):** `_judgeNegativeControl.test.ts` and
+`_strataCertD.test.ts` are materially BETTER — they pair positive and negative fixtures, use
+`toBe`/`toBeCloseTo`/`toThrow`, and even carry an explicit `vacuous` case. The one-sidedness was
+concentrated in the validate file. `_strataFacetTruth.test.ts` is different again: **596 lines, TWO
+assertions, both `expect(nTri).toBeGreaterThan(0)`** — it is a REPORTING harness, not a gate, and a
+reader who sees it green learns only that the run completed.
+
+### 4. THE HOISTED rA TWIN — THE RUNTIME GUARD IS BREACHABLE. (VERDICT: landing safe, safety ARGUMENT refuted.)
+
+At the campaign config the twin is bit-identical over 2,000,000 random points and 539 adversarial
+exact-boundary points, `fastUsed = true`; the 2.89x stands. But with `gaX 0.8, gaCol 1e-9` the guard
+reports `fastUsed = true` and `fastDiffs = 0` **while the twin is a different surface by 1.68e-4 mm**
+(ulp distance 2.4e10). Mechanism: shipped `ridge()` opens `const w = Math.max(EPS, wIn)`; the twin's
+`wT = 0.55 * wX` is UNCLAMPED, and `wX >= 1e-6` only gives `wT >= 5.5e-7`. **Fix: `_raFast.ts:85`
+`const wT = Math.max(EPS, 0.55 * wX);`**
+
+**General limit, and the arithmetic checks out.** `radiusLattice(H,[],[])` is 16,513 points, so it can
+only see divergences of relative measure above ~6e-5. D1 (measure 4.29e-4) predicted 7.07 lattice hits
+and got 8 — caught. D2 (measure 5.0e-7) predicted 0.008 — missed. **Every classic transcription error
+concentrates on a THIN set, which is exactly the class this guard cannot see.** NOT reachable through
+the product (`registry.ts:195` clamps `gaCol` to min 0.01, 5,500x above the threshold). Two further
+divergences, both CAUGHT: the three-term association at `styles.ts:717` is reordered (exact only
+because `bandBase`'s support and `topMask`'s support are DISJOINT at default params — raise `gaBandW`
+and 858/2,000,000 differ at 1 ulp), and the twin silently drops `bellAmp`/`bellCenter`/`bellWidth`.
+
+### 5. THE `distPerp` SEEDING-GRID WeakMap — SAFE, BY SNAPSHOT. (VERDICT: no-op; contract undocumented.)
+
+All three builders (`buildRadiusFn`, `buildAuditRadiusFn`, `_raFast.buildGothicHoisted`) capture by
+value at construction and return a fresh object, so function identity does determine the surface;
+mutating the caller's params object after the build does not move rA. The key includes H, nu and nv.
+The hazard is real only for a FUTURE rA reading state outside its own closure — the cache then serves a
+stale grid with no error and no eval-count anomaly — and that contract is written nowhere.
