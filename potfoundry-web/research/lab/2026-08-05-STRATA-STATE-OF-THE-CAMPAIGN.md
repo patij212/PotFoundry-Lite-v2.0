@@ -39,10 +39,12 @@ every magnitude they published is void. **Keep it as the in-loop ranker; use `ce
 end-of-run sizer.** This supersedes any reading of §1 as "the plane ruler is useless" — it is not
 useless, it is *unquotable*.
 
-**ORIENTATION IS ORTHOGONAL AND NOW DOMINATES.** ρ(blind, orientation area) = **−0.357**;
-ρ(honest position, orientation area) = **−0.214**. ***Nothing that ranks position will ever find
-orientation*** — it needs its own ranking key. Orientation is the larger defect by **410× in area**,
-with **43.2% of the closing mesh's area still over bar**. The deep tail did move (>250 µm area
+**ORIENTATION DOMINATES — but the ρ's here are REFUTED by §0c; read that first.** ρ(blind,
+orientation area) = −0.357 and ρ(honest position, orientation area) = −0.214 are **n=7 aggregates,
+p = 0.91, sign-unstable**; per facet the correlation is **POSITIVE (+0.38…+0.52)** and every position
+failure is also an orientation failure. The "410×" is **inflated ~16× by bar calibration** — matched,
+it is **~25×**. Orientation is still the larger defect and 43.2% of the closing mesh's area is still
+over bar; it does **not** need its own ranking key. The deep tail did move (>250 µm area
 1.682% -> 0.759%; area-weighted mean 35.75 -> 21.13 µm), so it is not inert — just not improving.
 
 **SECOND INSTRUMENT DEFECT, AND IT CORRECTS A NUMBER IN THIS DOC.** `s55OrientHeatmap` sampled the
@@ -63,6 +65,59 @@ Of the seven steps only two move at 2σ — `_S9A->_S10A` (0.459×) and `_S11A->
 **their product, 0.322×, is the entire chain.**
 
 Scorecard: `research/exchange/_strataConformBisect/S87_LEDGER_REEXAM.md`.
+
+---
+
+## 0c. *** S88 REVIEW — TWO OF MY OWN RECOMMENDATIONS REFUTED, AND THE ρ THAT MOTIVATED ONE IS NOISE ***
+
+**`ρ(honest position, orientation) = −0.214` IS AN n=7 ARM-LEVEL AGGREGATE AND IT IS NOISE.** Exact
+5,040-permutation **p = 0.9063**; the n=7 null band is **[−0.750, +0.750]**; and it is SIGN-UNSTABLE —
+re-reading the same defect off the 4% sample flips it to **+0.0714**. ***PER FACET (n=50,000, 11
+meshes) ρ is POSITIVE on every single one: +0.3818 … +0.5155.*** And the containment is absolute:
+**posFail & orientationOK = 0 on all five arms — 3,950 position failures, zero exceptions.** Every
+position failure is also an orientation failure. **The claim "nothing that ranks position will ever
+find orientation" is WITHDRAWN.**
+
+**"BUILD AN ORIENTATION RANKING KEY" — REFUTED.** Over-bar is **52–62% OF THE FACETS**. A *perfect
+oracle* key at a 1%-of-mesh budget reaches only **24–31%** of the over-bar area — ***you cannot rank
+into a majority-prevalence defect.*** And the headroom a key would unlock over the already-banked
+flip is, measured, **ZERO**: the flip needs no key (it enumerates every interior edge), the exact
+hexagon-cavity DP adds 3.29% and is also keyless, collapse's 0.38% is Voronoi-only, density is
+×0.9968, and ideal split placement is 0.00%.
+
+**"RE-OPEN `_S28i1`" — REFUTED, and S87's basis for it was false.** `s28BoundCol.ts:77` imports
+`certifyTriangle` and calls it at `:142` with Phase D's identical arg list at **COMPLETE 1,260,110 /
+1,260,110 coverage** — 30× S87's own 3.343% sample. **It WAS scored on an honest ruler.** Worse for
+the recommendation: `_S39CTL` beats it **0.336× by area at 0.76× the triangles**, and a new `_S10B`
+arm puts `α = 1.800`, predicting **0.7345×** at `_S28i1`'s own dose — *inside* its CI, so it is not
+resolvably a lever at all, just the density elasticity. ***My caution about the "0.913 empirical null"
+was also wrong***: that null is ONE DRAW whose own 95% CI is **[0.5946, 1.4430]**, which contains
+1.000. The null is 1.000.
+
+**AND DENSITY MAKES FAILURES SMALLER, NOT FEWER** — both density arms move violating COUNT the wrong
+way (+52%, +56%) while relative size falls 0.0897 → 0.0424.
+
+### 0c.1 THE TWO FINDINGS WORTH MORE THAN EITHER REVIEW
+
+**(1) THE SELECTOR ARCHITECTURE WORKS — POINTING THE OTHER WAY.** Use the cheap ORIENTATION chord to
+triage which facets get the expensive POSITION certificate: **recall 0.90 at f = 5.03% / 4.68% /
+0.86% ⇒ 15.72× / 16.62× / 45.54× cheaper** than the blind 375-eval test. The reverse — a position key
+selecting for orientation — needs f = 78.7–84.0% ⇒ **1.17×, worthless**. And the driver's plane ruler
+is a **BAD selector (1.10×)** despite ρ(p,w) = 0.84: ***ρ IS NOT RECALL.*** This is 15–45× off the
+campaign's dominant compute cost (the certificate is 61× the mesher).
+
+**(2) THE "410× IN AREA" IS INFLATED 13–18× BY A BAR-CALIBRATION EFFECT.** Median `o2/w` = 6.5–8.4 on
+all five meshes, and the reason is analytic: `s = d²k/8` while `turn = dk`, so chord ≈ 8s — **a 10 µm
+orientation bar is ~7× stricter than a 10 µm position bar on the same facet.** Bar-matched: `_S24i2`
+**409× → 24.9×**, `_S28i1` 636× → 35.4×, `_S39CTL` 1997× → 149×, `_S9A` 34× → 3.2×. Orientation is
+still the larger defect — by **~25× on the closing mesh, not 410×.**
+
+**REVISED PRIORITY:** (1) build the **selector**, not the key, and point it at the certificate;
+(2) land the flip on the remaining styles; (3) fix the super-hub runaway; (4) the vertex
+representation (§7.5) — the only item that changes an *assumption*. **DO NOT re-open `_S28i1`**, and
+re-baseline off `_S39CTL` rather than `_S24i2`.
+
+Scorecard: `research/exchange/_strataConformBisect/S88_REVIEW_FINDINGS.md`.
 
 ---
 
