@@ -1,0 +1,69 @@
+===== S60 — THE CONSTRAINED FLIP (connectivity only; 0 vertices moved, 0 triangles added) =====
+style GothicArches  stem gothicarches_ring_DS-HT_S39CTL  tag G2CON
+ARM=con   C1 tangExc-decrease=true   C2 pos<=max(10um,old)=true   C3 det-floor(jitter<=1um, mode=rel)=true   C4 dup-edge=true   LEX-plateau=false
+rA cost probe: 200k evals in 0.25 s = 0.81 M eval/s   (checksum 8880671.569)
+research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S39CTL.stl: 1142166 facets   [0.4s]
+weld: 571663 unique vertices from 3426498 corners   [1.8s]
+GATE vertex-on-surface: p50 1.17e-6  p99 1.04e-5  max 3.10e-5 mm -> TRUSTED
+
+── BEFORE (flag-OFF control, measured in THIS process) ── (tang 6.1s, pos 148.9s over 1142166 facets, stride 1)
+   ORIENT tangExc  p50 3.32  p99 35.91  max 1640.0 um   over-10um 129757 (11.361%)
+   POSITION  sag   p50 1.53  p99 3.43  max 47.2 um   over-10um 75 (0.0066%)
+   SHAPE  maxAngle p50 96.1  p99 165.5  max 175.626   caps>=150 68684   >=179.999 0
+   DETERM jitterUm p99 0.207  max 0.57   over-1um 0 (0.000%)   over-10um 0
+   VALIDITY: of the 129757 facets over the tang bar, 0 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO before: 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 0
+
+FLIP ROUNDS — independent set per round; clause order: interior -> c!=d -> dup-edge -> fold -> C1 tangExc -> C3 det -> C2 pos
+  (so rejDet counts candidates that pass C1+C4, and rejPos counts candidates that pass EVERYTHING ELSE — the non-vacuity numbers)
+  round  1:  257333 flips (cum 257333)   rej: fold 212938 dup 3718 noImp 660765 DET 1418 POS 183   [78.0s]
+  round  2:  102149 flips (cum 359482)   rej: fold 292729 dup 13964 noImp 1057326 DET 1835 POS 238   [45.8s]
+  round  3:   43540 flips (cum 403022)   rej: fold 337624 dup 20581 noImp 1209136 DET 2123 POS 241   [31.4s]
+  round  4:   16991 flips (cum 420013)   rej: fold 361862 dup 22900 noImp 1271065 DET 2303 POS 246   [24.8s]
+  round  5:    6212 flips (cum 426225)   rej: fold 373620 dup 23508 noImp 1293184 DET 2404 POS 251   [21.6s]
+  round  6:    2703 flips (cum 428928)   rej: fold 377301 dup 23707 noImp 1300257 DET 2438 POS 257   [20.9s]
+  round  7:    1377 flips (cum 430305)   rej: fold 378733 dup 23763 noImp 1303296 DET 2449 POS 257   [20.4s]
+  round  8:     717 flips (cum 431022)   rej: fold 379331 dup 23788 noImp 1304580 DET 2464 POS 255   [20.1s]
+  round  9:     456 flips (cum 431478)   rej: fold 379550 dup 23798 noImp 1305131 DET 2470 POS 256   [20.3s]
+  round 10:     280 flips (cum 431758)   rej: fold 379695 dup 23827 noImp 1305538 DET 2474 POS 257   [19.7s]
+  round 11:     165 flips (cum 431923)   rej: fold 379766 dup 23848 noImp 1305808 DET 2474 POS 257   [19.5s]
+  round 12:      82 flips (cum 432005)   rej: fold 379831 dup 23852 noImp 1305983 DET 2476 POS 259   [19.9s]
+  round 13:      45 flips (cum 432050)   rej: fold 379864 dup 23854 noImp 1306070 DET 2477 POS 258   [20.7s]
+  round 14:      23 flips (cum 432073)   rej: fold 379885 dup 23850 noImp 1306131 DET 2477 POS 258   [19.2s]
+  round 15:      21 flips (cum 432094)   rej: fold 379890 dup 23848 noImp 1306144 DET 2477 POS 258   [19.0s]
+  round 16:      12 flips (cum 432106)   rej: fold 379887 dup 23844 noImp 1306162 DET 2477 POS 258   [19.7s]
+  round 17:       9 flips (cum 432115)   rej: fold 379889 dup 23845 noImp 1306171 DET 2477 POS 258   [18.9s]
+  round 18:       6 flips (cum 432121)   rej: fold 379894 dup 23845 noImp 1306179 DET 2477 POS 258   [18.7s]
+  round 19:       2 flips (cum 432123)   rej: fold 379892 dup 23845 noImp 1306192 DET 2477 POS 258   [18.8s]
+  round 20:       1 flips (cum 432124)   rej: fold 379889 dup 23845 noImp 1306196 DET 2477 POS 258   [19.3s]
+  round 21:       1 flips (cum 432125)   rej: fold 379892 dup 23845 noImp 1306193 DET 2477 POS 258   [19.3s]
+  round 22:       0 flips (cum 432125)   rej: fold 379892 dup 23845 noImp 1306197 DET 2477 POS 258   [18.8s]
+
+TOTAL flips 432125 = 37.83% of facets;  VERTICES MOVED 0;  TRIANGLES ADDED 0
+CLAUSE REJECTIONS (cumulative): fold 8031854  dup-edge 489720  no-improve 27683704  C3 DET 52098  C2 POS 5537
+NON-VACUITY: C2 rejected 5537 candidates that passed every other clause; C3 rejected 52098.
+   
+
+── AFTER ── (tang 5.4s, pos 0.9s over 1142166 facets, stride 1)
+   ORIENT tangExc  p50 2.24  p99 16.22  max 1251.3 um   over-10um 37157 (3.253%)
+   POSITION  sag   p50 1.20  p99 3.64  max 37.1 um   over-10um 36 (0.0032%)
+   SHAPE  maxAngle p50 96.2  p99 171.7  max 178.853   caps>=150 113875   >=179.999 0
+   DETERM jitterUm p99 0.322  max 1.00   over-1um 0 (0.000%)   over-10um 0
+   VALIDITY: of the 37157 facets over the tang bar, 0 have jitterUm > 10 um (their normal is NOT f32-determined)
+   TOPO after: 1713829 edges, boundary 1160, non-manifold 0, orientation-inconsistent 0
+
+DELTA (both rulers, always)
+   ORIENT over-10um   129757 -> 37157   (3.49x)      p99 35.91 -> 16.22 um   max 1640.0 -> 1251.3
+   POSITION over-10um 75 -> 36   p99 3.43 -> 3.64 um   max 47.2 -> 37.1
+   SHAPE caps>=150      68684 -> 113875    >=179.999 0 -> 0    maxAngle max 175.626 -> 178.853
+   DETERM jitter>1um    0 -> 0    >10um 0 -> 0
+
+PRE-REGISTERED KILL-CRITERIA
+   K1 tangOver_after <= 0.5*before : 37157 <= 64879 -> PASS (H-S60 survives)
+   K2 posOver_after <= before      : 36 <= 75 -> PASS
+   K3 no facet over the det floor  : jitter>10um 0, maxAngle>=179.999 0 -> PASS
+   K4 ceiling: run s61FlipCeiling.ts on the written STL
+   C4 topology preserved           : PASS (edges 1713829->1713829, bnd 1160->1160, nonMan 0->0, orientBad 0->0)
+   flipped mesh written to research/exchange/_strataConformBisect/s60flip/gothicarches_ring_DS-HT_S39CTL_G2CON.stl
+
+done  [704.6s]

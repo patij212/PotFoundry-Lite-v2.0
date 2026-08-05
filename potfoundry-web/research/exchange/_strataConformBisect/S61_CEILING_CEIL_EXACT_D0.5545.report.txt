@@ -1,0 +1,42 @@
+===== S61 — K4: THE CONNECTIVITY CEILING (what the EXISTING VERTEX SET admits) =====
+style Voronoi   mesh research/exchange/_strataConformBisect/voronoi_ring_D--.stl   K=12 nearest vertices   bar 10 um   posCheck true   emptyTriangleFilter true
+806765 facets, 403683 welded vertices  [0.9s]
+mesh facet diameter: p50 0.5545  p90 0.9354  p99 1.4814 mm  -> the candidate diameter caps
+residual over-10um facets: 320336 (39.706%)  [4.2s]
+sampling 10011 of them (stride 32)
+grid 128x128x151 = 2473984 cells, cell 0.8 mm  [4.3s]
+swept 10011 failure points  [302.2s]
+
+── K4: THE CONNECTIVITY CEILING ──
+   failure points sampled              10011
+   candidate mode                      EXACT radius <= DMAX 0.5545 mm (complete set; nothing truncated)
+   candidates per point                mean 53.6   safety cap 80 bound on 4993 points (49.88%)
+   with NO covering triangle at all    2308   (K too small / point outside the local hull)
+   covering triangles per point        p50 17  p99 485  max 950
+   REACHABLE (some local triangle meets the 10 um orientation bar and is f32-determined)
+        4708  = 47.03%
+   REACHABLE and that triangle also meets the 10 um POSITION bar
+        4700  = 46.95%
+   *** fracUnreachable = 53.05%  — PROVABLY needs new vertices ***
+   K4 verdict: NEW VERTICES MANDATORY for the majority of the residual
+
+── THE CEILING AS A CURVE AGAINST THE CANDIDATE DIAMETER CAP (K-free: bigger K only adds vertices the cap then excludes) ──
+   diam <= p50  (0.5545 mm)   reachable 4708 = 47.03%   fracUnreachable 52.97%
+   diam <= p90  (0.9354 mm)   reachable 4708 = 47.03%   fracUnreachable 52.97%
+   diam <= p99  (1.4814 mm)   reachable 4708 = 47.03%   fracUnreachable 52.97%
+   diam <= none (unbounded)   reachable 4708 = 47.03%   fracUnreachable 52.97%
+
+── WHY: crease-straddle vs plain curvature (normSpread = max pairwise angle of the TRUE surface normal at the 3 vertices) ──
+   normSpread over the failure set: p50 11.3  p90 55.2  max 134.6 deg
+   CREASE-STRADDLE (spread >= 20 deg): 3007 (30.0%)   reachable 45.6%
+   SMOOTH          (spread <  20 deg): 7004 (70.0%)   reachable 47.5%
+   points reachable ONLY by an f32-undetermined triangle (excluded by C3): 637 (6.36%)
+
+── PRICING THE UNREACHABLE PART ──
+   best achievable tangExc on unreachable points: p50 16.3  p90 46.2  max 539.3 um
+   diameter of that best triangle:                p50 0.4249 mm
+   implied local refinement to reach 10 um:
+      if tang ~ diam^2 (smooth patch): h x 0.784  => local triangle count x 1.6
+      if tang ~ diam^1 (C0 crease):    h x 0.6148  => local triangle count x 2.6
+
+done  [302.2s]
