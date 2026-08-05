@@ -28,6 +28,21 @@ export interface H1Job {
   nTri: number;
   /** golden-ratio stride; facet k of the walk is triangle (k*stride)%nTri */
   stride: number;
+  /**
+   * OPTIONAL EXPLICIT WALK LIST — facet k of the walk is `list[k]` instead of `(k*stride)%nTri`.
+   *
+   * The stride walk is the right construction for a CAPPED audit of a whole mesh, and it stays the default.
+   * But some callers already hold an explicit, non-stride facet set — s85PosRebase's `target` arm audits the
+   * union of the driver's top-K by the plane ruler and top-K by tangExc — and a union of two top-K lists is
+   * not any arithmetic progression. Rather than leave that arm serial (or, worse, re-derive its selection
+   * inside the walk), the ONE loop body accepts the list directly. Everything downstream is unchanged: the
+   * claim protocol still hands out half-open k-ranges, the reduction is still `mergeH1`, and `certifyTriangle`
+   * still receives the identical argument list it would have received serially.
+   *
+   * Plain `number[]` so it survives the structured clone into a worker. It is cloned once per worker at
+   * spawn, so a list the size of a production mesh would cost W copies — use the stride for those.
+   */
+  list?: number[];
   /** walk indices [0,kEnd) — nTri normally, less when PF_FT_H1MAX caps the facet count for an exact A/B */
   kEnd: number;
   H: number; tol: number; nMax: number; sampleCap: number;
@@ -114,6 +129,16 @@ export class H1Acc {
 export type ChunkClaim = () => readonly [number, number] | null;
 /** Publish the samples one facet cost. Return true to stop the whole walk (global sample budget hit). */
 export type SamplePublish = (samples: number) => boolean;
+/**
+ * OPTIONAL PER-FACET EMISSION. `H1Partial` reduces to sums / argmax / top-K only, which is exactly what makes
+ * the reduction order-independent — so a caller that needs PER-FACET rows (s85PosRebase writes an ndjson
+ * checkpoint line per facet and computes area-weighted fail fractions from them) cannot get them from the
+ * accumulator without weakening it. It gets them from here instead, as a side channel that the accumulator
+ * never sees: `k` is the WALK INDEX, which is unique across the whole pool because the atomic cursor hands
+ * out disjoint ranges, so sorting the union of the shards by `k` is a TOTAL order and the merged per-facet
+ * output cannot depend on worker scheduling. `h1Before` and `mergeH1` are untouched.
+ */
+export type FacetEmit = (k: number, tri: number, v: FacetVerdict) => void;
 
 /**
  * Walk the mesh under `claim`, certifying every facet and folding it into an accumulator.
@@ -121,19 +146,22 @@ export type SamplePublish = (samples: number) => boolean;
  */
 export function runH1Walk(
   rA: RadiusFn, xyz: Float64Array, job: H1Job, claim: ChunkClaim, publish: SamplePublish, rEvals: () => number,
+  emit?: FacetEmit,
 ): H1Partial {
   const acc = new H1Acc(job.topK, job.tol);
   const opts = { H: job.H, tol: job.tol, nMax: job.nMax, sampleCap: job.sampleCap, zJumps: job.zJumps, thJumps: job.thJumps };
+  const list = job.list;
   walk: for (;;) {
     const c = claim();
     if (c === null) break;
     for (let k = c[0]; k < c[1]; k += 1) {
-      const t = (k * job.stride) % job.nTri;
+      const t = list === undefined ? (k * job.stride) % job.nTri : list[k];
       const o = t * 9;
       const v = certifyTriangle(rA,
         xyz[o], xyz[o + 1], xyz[o + 2], xyz[o + 3], xyz[o + 4], xyz[o + 5], xyz[o + 6], xyz[o + 7], xyz[o + 8],
         opts);
       acc.push(t, v);
+      if (emit !== undefined) emit(k, t, v);
       // Stopping early leaves triangles UNSEEN, and an unseen triangle is not a passing triangle — the caller
       // downgrades the verdict to INCOMPLETE whenever `audited < nTri`.
       if (publish(v.samples)) break walk;
@@ -141,6 +169,68 @@ export function runH1Walk(
     }
   }
   return acc.toPartial(rEvals());
+}
+
+/**
+ * ONE WORKER'S PER-FACET SHARD. Struct-of-arrays so it transfers rather than copies, and so a 50,000-facet
+ * run costs ~1 MB rather than 50,000 objects. `flags` bit 0 = certified, bit 1 = witnessedComplete.
+ * `witnessed`/`bound` are the RAW mm values `certifyTriangle` returned — no scaling, no thresholding, so the
+ * caller's own arithmetic (and only the caller's) decides the verdict, exactly as it did serially.
+ */
+export interface H1RowShard {
+  k: Int32Array; tri: Int32Array; witnessed: Float64Array; bound: Float64Array; flags: Uint8Array;
+}
+
+/** Growable per-facet collector for one worker. Kept here so the worker holds no per-facet policy of its own. */
+export class H1RowSink {
+  private readonly k: number[] = []; private readonly tri: number[] = [];
+  private readonly w: number[] = []; private readonly b: number[] = []; private readonly f: number[] = [];
+  readonly emit: FacetEmit = (k, tri, v) => {
+    this.k.push(k); this.tri.push(tri); this.w.push(v.witnessed); this.b.push(v.bound);
+    this.f.push((v.certified ? 1 : 0) | (v.witnessedComplete ? 2 : 0));
+  };
+  toShard(): H1RowShard {
+    return {
+      k: Int32Array.from(this.k), tri: Int32Array.from(this.tri),
+      witnessed: Float64Array.from(this.w), bound: Float64Array.from(this.b), flags: Uint8Array.from(this.f),
+    };
+  }
+}
+
+/**
+ * Merge per-facet shards into ONE list ordered by walk index.
+ *
+ * THIS IS THE DETERMINISM ARGUMENT FOR THE PER-FACET PATH, and it is a different one from `mergeH1`'s.
+ * `mergeH1` is safe because every field it touches is commutative; rows are not reduced at all, so their
+ * order is the whole question. The walk index `k` is issued by a single atomic cursor in disjoint ranges, so
+ * across the pool it is UNIQUE — which makes "sort by k" a total order with no tie-break needed and no
+ * dependence on which worker finished first. Both properties are ASSERTED here rather than assumed: a
+ * duplicate or an out-of-range k means the claim protocol leaked, and a leaked claim would double-weight a
+ * facet in the caller's area fractions. That throws instead of reporting.
+ */
+export function mergeH1Rows(shards: readonly H1RowShard[], kStart: number, kEnd: number): H1RowShard {
+  let n = 0;
+  for (const s of shards) n += s.k.length;
+  const ord: Array<[number, number, number]> = new Array(n);   // [k, shard, slot]
+  let q = 0;
+  for (let si = 0; si < shards.length; si += 1) {
+    const s = shards[si];
+    for (let i = 0; i < s.k.length; i += 1) { ord[q] = [s.k[i], si, i]; q += 1; }
+  }
+  ord.sort((a, b) => a[0] - b[0]);
+  const out: H1RowShard = {
+    k: new Int32Array(n), tri: new Int32Array(n), witnessed: new Float64Array(n),
+    bound: new Float64Array(n), flags: new Uint8Array(n),
+  };
+  for (let i = 0; i < n; i += 1) {
+    const [kk, si, sl] = ord[i];
+    if (kk < kStart || kk >= kEnd) throw new Error(`H1 rows: walk index ${kk} outside the claimed range [${kStart},${kEnd})`);
+    if (i > 0 && kk === ord[i - 1][0]) throw new Error(`H1 rows: walk index ${kk} was claimed TWICE — the pool double-counted a facet`);
+    const s = shards[si];
+    out.k[i] = kk; out.tri[i] = s.tri[sl]; out.witnessed[i] = s.witnessed[sl];
+    out.bound[i] = s.bound[sl]; out.flags[i] = s.flags[sl];
+  }
+  return out;
 }
 
 /** Reduce partials into one result. Pure, commutative, and identical for 1 partial or W. */

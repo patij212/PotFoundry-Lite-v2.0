@@ -21,7 +21,7 @@ import { readFileSync, mkdtempSync, existsSync } from 'node:fs';
 import { tmpdir, availableParallelism } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mergeH1, type H1Job, type H1Partial } from './_facetTruthH1';
+import { mergeH1, mergeH1Rows, type H1Job, type H1Partial, type H1RowShard } from './_facetTruthH1';
 import type { StyleDims } from './runStyle';
 import type { H1WorkerData, H1WorkerMsg } from './_facetTruthH1Worker';
 
@@ -85,8 +85,19 @@ let bundledEntry: string | null = null;
 /** Pre-bundle the worker entry with esbuild into a scratch .mjs. Once per process. */
 function workerBundle(): string {
   if (bundledEntry !== null && existsSync(bundledEntry)) return bundledEntry;
-  const here = dirname(fileURLToPath(import.meta.url));
-  const candidates = [join(here, '_facetTruthH1Worker.ts'), resolve('research', 'bridge', '_facetTruthH1Worker.ts')];
+  // `import.meta.url` IS NOT ALWAYS THERE. Under Vitest this file is an ES module and the sibling lookup is
+  // exact; but a research TOOL is shipped by `run-*.sh` as a SINGLE esbuild CJS bundle, where esbuild
+  // substitutes an empty `import.meta` and `fileURLToPath(undefined)` throws. That threw INSIDE the pool
+  // constructor, i.e. after the mesh had been read, which is an expensive way to learn a path is wrong.
+  // The cwd-relative candidates are what actually resolve in the bundled case (every runner cds to the
+  // package root first), so they are always tried.
+  const candidates: string[] = [];
+  try {
+    const u = import.meta.url;
+    if (typeof u === 'string' && u.length > 0) candidates.push(join(dirname(fileURLToPath(u)), '_facetTruthH1Worker.ts'));
+  } catch { /* CJS bundle — no import.meta; fall through to the cwd-relative candidates */ }
+  candidates.push(resolve('research', 'bridge', '_facetTruthH1Worker.ts'));
+  candidates.push(resolve('potfoundry-web', 'research', 'bridge', '_facetTruthH1Worker.ts'));
   const entry = candidates.find((p) => existsSync(p));
   if (entry === undefined) throw new Error(`H1 worker entry not found; looked in ${candidates.join(' , ')}`);
   const out = join(mkdtempSync(join(tmpdir(), 'pf-h1worker-')), 'h1worker.mjs');
@@ -112,6 +123,16 @@ export interface PoolConfig {
   latTh: Float64Array;
   latZ: Float64Array;
   workerHeapMb: number;
+  /**
+   * First walk index to claim. Default 0. Non-zero is how a RESUMABLE caller pools only the tail of a walk
+   * whose prefix is already on disk — s85PosRebase appends an ndjson line per facet and restarts from
+   * `rows.length`, so pooling from 0 would re-certify (and duplicate) everything it already had.
+   */
+  kStart?: number;
+  /** collect a PER-FACET row for every certified facet; merged by walk index into `PoolOutcome.rows` */
+  emitRows?: boolean;
+  /** allow `_raFast`'s hoisted twin inside the workers. Default true. See `buildAuditRadiusFn`. */
+  raFast?: boolean;
 }
 
 export interface PoolOutcome {
@@ -125,6 +146,8 @@ export interface PoolOutcome {
   chunk: number;
   workers: number;
   bundleMs: number;
+  /** per-facet rows in WALK ORDER, present only when `emitRows` was set. See `mergeH1Rows`. */
+  rows: H1RowShard | null;
 }
 
 /** Run the H1 walk across `cfg.workers` threads sharing one atomic cursor. */
@@ -142,11 +165,12 @@ export async function runH1Pool(cfg: PoolConfig): Promise<PoolOutcome> {
   // The cap still matters for the opposite regime (tiny facets at a loose
   // tolerance, where a facet costs microseconds and the atomic would dominate), so it stays as a ceiling.
   // Target >=64 chunks per worker; on a full-mesh walk that ceiling binds instead and the tail is amortised.
-  const chunk = Math.max(1, Math.min(cfg.chunkMax, Math.floor(cfg.job.kEnd / (64 * cfg.workers))));
+  const kStart = cfg.kStart ?? 0;
+  const chunk = Math.max(1, Math.min(cfg.chunkMax, Math.floor((cfg.job.kEnd - kStart) / (64 * cfg.workers))));
 
   const ctrlSab = new SharedArrayBuffer(2 * 4);
   const ctrl = new Int32Array(ctrlSab);
-  Atomics.store(ctrl, CTRL_CURSOR, 0); Atomics.store(ctrl, CTRL_STOP, 0);
+  Atomics.store(ctrl, CTRL_CURSOR, kStart); Atomics.store(ctrl, CTRL_STOP, 0);
   const sampleSab = new SharedArrayBuffer(8);
 
   // rA IDENTITY, CHECKED BEFORE THE WALK RATHER THAN AFTER IT. Each worker posts its rebuilt rA over the
@@ -166,17 +190,21 @@ export async function runH1Pool(cfg: PoolConfig): Promise<PoolOutcome> {
   };
 
   const results: H1Partial[] = [];
+  const shards: H1RowShard[] = [];
   const spawn = (): Promise<H1Partial> => new Promise((res, rej) => {
     const data: H1WorkerData = {
       meshSab: cfg.sab, ctrlSab, sampleSab, job: cfg.job, chunk, budget: cfg.budget,
       style: cfg.style, styleParams: cfg.styleParams, dims: cfg.dims,
       latTh: cfg.latTh, latZ: cfg.latZ,
+      emitRows: cfg.emitRows === true, raFast: cfg.raFast !== false,
     };
     const w = new Worker(entry, { workerData: data, resourceLimits: { maxOldGenerationSizeMb: cfg.workerHeapMb } });
     let got = false;
     w.on('message', (m: H1WorkerMsg) => {
       if (m.kind === 'lattice') { verifyLattice(m.lat); return; }
-      got = true; res(m.partial); void w.terminate();
+      got = true;
+      if (m.rows !== undefined) shards.push(m.rows);
+      res(m.partial); void w.terminate();
     });
     w.on('error', (e) => { Atomics.store(ctrl, CTRL_STOP, 1); rej(e); });
     w.on('exit', (code) => { if (!got) { Atomics.store(ctrl, CTRL_STOP, 1); rej(new Error(`H1 worker exited ${code} before reporting`)); } });
@@ -201,5 +229,6 @@ export async function runH1Pool(cfg: PoolConfig): Promise<PoolOutcome> {
     merged: mergeH1(results, cfg.job.topK, cfg.job.tol),
     latMaxDev, latDiffCount, latPoints: cfg.expectLat.length * latChecked,
     chunk, workers: cfg.workers, bundleMs,
+    rows: cfg.emitRows === true ? mergeH1Rows(shards, kStart, cfg.job.kEnd) : null,
   };
 }

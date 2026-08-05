@@ -42,7 +42,21 @@ export interface AuditRadius {
  */
 export function buildAuditRadiusFn(
   style: string, styleParams: Record<string, number>, dims: StyleDims, H: number,
+  opts?: {
+    /**
+     * Consider `_raFast`'s hoisted twin at all. DEFAULT TRUE — every existing caller is unchanged.
+     *
+     * A caller passes FALSE when its own SERIAL control was built with `buildRadiusFn` directly and its
+     * acceptance test is EXACT per-facet reproduction (s85PosRebase). The twin's three guards have never
+     * caught a divergence in production, but the mutation test recorded below proves no finite upfront sweep
+     * CAN be sufficient, so taking the twin turns "bit-identical by construction" into "bit-identical by
+     * evidence". Where the whole point of the run is to reproduce someone else's published per-facet rows,
+     * construction is the property worth having and the 3.17x is not worth trading for it.
+     */
+    allowFast?: boolean;
+  },
 ): AuditRadius {
+  const allowFast = opts?.allowFast !== false;
   const rAshipped = buildRadiusFn(style as StyleId, styleParams, dims);
   // ── THE HOISTED TWIN (S52) — TAKEN ONLY IF IT PROVES BIT-IDENTICAL, HERE, NOW, EVERY PROCESS ──
   // rA is 84% of the certificate's wall clock at 801 ns/call, and 52,736 M of those calls is 61x the
@@ -63,7 +77,7 @@ export function buildAuditRadiusFn(
   // theta and clamped z — so the lattice's deliberate out-of-domain probes exercise the clamp too.
   let rAraw = rAshipped;
   let fastUsed = false; let fastDiffs = -1;
-  const fast = buildFastRadiusFn(style, styleParams, dims, H);
+  const fast = allowFast ? buildFastRadiusFn(style, styleParams, dims, H) : null;
   if (fast !== null) {
     let diffs = 0;
     const cmp = (t: number, zz: number): void => { if (!Object.is(fast(t, zz), rAshipped(t, zz))) diffs += 1; };

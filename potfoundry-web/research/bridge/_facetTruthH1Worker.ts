@@ -13,7 +13,7 @@
 // a range that happens to hold the expensive facets and the pool finishes when that worker does — 2-3x
 // instead of ~10x. With a shared cursor every worker keeps pulling until the walk is exhausted.
 import { parentPort, workerData } from 'node:worker_threads';
-import { runH1Walk, type H1Job, type H1Partial } from './_facetTruthH1';
+import { runH1Walk, H1RowSink, type H1Job, type H1Partial, type H1RowShard } from './_facetTruthH1';
 import { buildAuditRadiusFn } from './_facetTruthRA';
 import type { StyleDims } from './runStyle';
 
@@ -34,6 +34,18 @@ export interface H1WorkerData {
   /** the (theta,z) lattice the parent will diff this worker's rebuilt rA against */
   latTh: Float64Array;
   latZ: Float64Array;
+  /** collect a PER-FACET row for every certified facet and ship it back with the result. Default off. */
+  emitRows?: boolean;
+  /**
+   * Allow `_raFast`'s hoisted twin (default true — the historical behaviour).
+   *
+   * SET IT FALSE WHEN THE CALLER'S SERIAL PATH DOES NOT USE THE TWIN AND THE ACCEPTANCE TEST IS EXACT
+   * PER-FACET REPRODUCTION. The twin is guarded three ways and has never been caught diverging, but
+   * `_facetTruthRA` documents its own mutation test showing a divergence confined to a window smaller than
+   * the sampling pitch evades every upfront sweep — so "probably identical" is a speedup argument, not a
+   * reproduction argument. A caller whose serial control used the shipped builder gets the shipped builder.
+   */
+  raFast?: boolean;
 }
 
 /**
@@ -53,6 +65,8 @@ export type H1WorkerMsg =
     partial: H1Partial;
     /** true if this worker stopped on the budget or the deadline rather than on an exhausted walk */
     stopped: boolean;
+    /** per-facet rows for the k-ranges THIS worker claimed, present only when `emitRows` was set */
+    rows?: H1RowShard;
   };
 
 const d = workerData as H1WorkerData;
@@ -60,7 +74,7 @@ const xyz = new Float64Array(d.meshSab);
 const ctrl = new Int32Array(d.ctrlSab);
 const samples = new BigInt64Array(d.sampleSab);
 
-const { rA, evals } = buildAuditRadiusFn(d.style, d.styleParams, d.dims, d.job.H);
+const { rA, evals } = buildAuditRadiusFn(d.style, d.styleParams, d.dims, d.job.H, { allowFast: d.raFast !== false });
 
 // Verification FIRST, before a single facet is certified, and REPORTED first: if the rebuilt surface is not
 // the parent's surface, nothing this worker produces means anything and the parent must be able to say so
@@ -88,9 +102,19 @@ const publish = (n: number): boolean => {
   return false;
 };
 
-const partial = runH1Walk(rA, xyz, d.job, claim, publish, () => evals() - latEvals);
+const sink = d.emitRows === true ? new H1RowSink() : null;
+const partial = runH1Walk(rA, xyz, d.job, claim, publish, () => evals() - latEvals, sink?.emit);
 // A worker that ran out of time must stop its siblings too, or the pool's wall clock is the slowest
 // worker's own deadline plus one more chunk each.
 if (Date.now() > d.job.deadlineMs) { Atomics.store(ctrl, CTRL_STOP, 1); stopped = true; }
 
-parentPort?.postMessage({ kind: 'result', partial, stopped } satisfies H1WorkerMsg);
+if (sink === null) {
+  parentPort?.postMessage({ kind: 'result', partial, stopped } satisfies H1WorkerMsg);
+} else {
+  const rows = sink.toShard();
+  // TRANSFERRED, not cloned — the shard is the one thing this worker sends back that scales with the walk.
+  // The casts are sound and narrow: `H1RowSink.toShard` builds every array with `TypedArray.from`, which
+  // always allocates a fresh non-shared ArrayBuffer; TS only sees the wider `ArrayBufferLike`.
+  const bufs = [rows.k.buffer, rows.tri.buffer, rows.witnessed.buffer, rows.bound.buffer, rows.flags.buffer] as ArrayBuffer[];
+  parentPort?.postMessage({ kind: 'result', partial, stopped, rows } satisfies H1WorkerMsg, bufs);
+}

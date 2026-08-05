@@ -32,8 +32,12 @@ mkdir -p "$OUT" "$(dirname "$REPORT")"
 
 if [ "${PF_S85_BUNDLE:-1}" = "1" ]; then
   echo "── bundling $TOOL -> $BUNDLE ──"
+  # --external:esbuild — the tool now pulls in `_facetTruthPool`, which uses esbuild's own JS API at RUNTIME
+  # to bundle the H1 worker entry. esbuild is a thin wrapper around a platform binary it locates relative to
+  # its own package, so inlining it into this bundle produces a binary that cannot find its binary. It stays
+  # a require() against node_modules, which resolves because every runner cds to the package root first.
   npx esbuild "$TOOL" --bundle --platform=node --format=cjs --target=node20 \
-    --outfile="$BUNDLE" || { echo "*** BUNDLE FAILED ***"; exit 1; }
+    --external:esbuild --outfile="$BUNDLE" || { echo "*** BUNDLE FAILED ***"; exit 1; }
 
   # TS2304 only: a full typecheck of this repo is slow and noisy, but an undefined identifier in a probe
   # is a silent wrong answer rather than a crash, so it is worth the seconds.

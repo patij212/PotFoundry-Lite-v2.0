@@ -53,17 +53,54 @@
 // L1_GOTHIC "before" column are the SAME 50,000 facets and their agreement is a cross-tool check.
 // An N=8,000 row is the 8,000-term PREFIX of the N=50,000 row: same construction, less coverage.
 //
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// S88 — THE PER-FACET CERTIFY IS POOLED (PF_S85_WORKERS, DEFAULT OFF). Added 2026-08-05, AFTER every row
+// above was published. `certifyTriangle` is >97% of this tool's wall clock and each call is independent, so
+// it now runs on the SHARED H1 worker pool (research/bridge/_facetTruthPool.ts) instead of one thread.
+//
+// WHAT MOVED, AND WHAT DELIBERATELY DID NOT. Only `certifyTriangle` moved. `areaOf`, `tangExcMono` and
+// `sagAdaptiveRaw` still run in THIS process, in walk order, off THIS process's rA — they are ~2% of the
+// cost and moving them would put three more rulers on the identity-proof hook for nothing. So a pooled row
+// differs from a serial row in exactly one respect: which thread called `certifyTriangle`.
+//
+// WHY THE DEFAULT IS OFF. Another investigation validates ITS numbers against this tool's per-facet ndjson
+// to the bit (S87's C2 control). A speedup that moves someone else's passing cross-tool check is a
+// regression wearing a stopwatch. So the serial path is not replaced, it is the DEFAULT, and the pool is a
+// flag — which also means the control is permanently available and any future divergence is provable
+// rather than argued.
+//
+// THE FOUR THINGS THAT MAKE THE POOLED ROW BIT-IDENTICAL, all checked at runtime, none assumed:
+//   1. SAME WALK. `H1Job.stride` reproduces `goldenIdx` exactly; asserted element-by-element before the run.
+//      The `target` arm is not a stride walk at all, so it goes through `H1Job.list` — same loop body.
+//   2. SAME SURFACE. Workers rebuild rA from (style, params, dims) and the pool REFUSES the run unless every
+//      worker's rA is Object.is-identical to this process's over a C0-bracketed lattice. `raFast: false`
+//      keeps them on the shipped builder, which is what the serial control used.
+//   3. SAME ARGUMENTS. `runH1Walk` is the only loop body; `sampleCap` is +Infinity here exactly as `certOne`
+//      leaves it undefined, and zJumps/thJumps are the ones THIS process detected, shipped to the workers.
+//   4. SAME ORDER. Rows come back keyed by WALK INDEX, which one atomic cursor makes unique, and are merged
+//      by sorting on it — so the ndjson byte order cannot depend on which worker finished first.
+//
+// Reproduction is not argued from those four; it is MEASURED by diffing the pooled ndjson against a serial
+// one byte for byte. See research/exchange/_strataConformBisect/S88_H1_POOL.md.
+//
 // Usage:  bash research/tools/run-s85-pos-rebase.sh
 //   env:  PF_S85_ARM=target|uniform  PF_S85_TAG  PF_S85_STYLE  PF_S85_STEM  PF_S85_N  PF_S85_TOPK
 //         PF_S85_TOL_MM(0.010)  PF_S85_NMAX(512)  PF_S85_H/RB/RT/EXPN  PF_S85_RESUME(1)  PF_S85_REPORT
+//         PF_S85_WORKERS(0=serial)  PF_S85_WINDOW(2000)  PF_S85_CHUNK(256)  PF_S85_WORKERMB(1024)
 import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { buildRadiusFn } from '../bridge/runStyle';
 import { canonTheta, dThRaw } from '../bridge/_sweepPredicate';
-import { readMeshFloat64 } from '../bridge/_facetTruthPool';
+import { readMeshFloat64, runH1Pool } from '../bridge/_facetTruthPool';
+import { radiusLattice } from '../bridge/_facetTruthRA';
+import type { H1Job } from '../bridge/_facetTruthH1';
 import { sagAdaptiveRaw, makeSagArgmax, type SagMesh } from '../bridge/_sagKernel';
 import { certifyTriangle, detectZJumps, detectThetaJumps } from '../bridge/_facetTruthLib';
 import { mkdirSync, appendFileSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
-import type { StyleId, StyleDims } from '../../src/geometry/types';
+import type { StyleId } from '../../src/geometry/types';
+// StyleDims from the BRIDGE, not from src/geometry/types — that module has no such export, so the old
+// import silently resolved to `any` and `DIMS` was unchecked everywhere it was passed. Type-only, erased by
+// esbuild, so this changes no bytes at runtime; it is here because `DIMS` is now also handed to the pool.
+import type { StyleDims } from '../bridge/runStyle';
 
 // eslint-disable-next-line no-console
 const log = console.log;
@@ -79,6 +116,20 @@ const TOPK = Math.round(envF('PF_S85_TOPK', 300));
 const TOL = envF('PF_S85_TOL_MM', 0.010);
 const NMAX = Math.round(envF('PF_S85_NMAX', 512));
 const RESUME = envB('PF_S85_RESUME', true);
+// POOLING. Default 0 = the serial path this tool shipped with, byte for byte. >1 pools `certifyTriangle`.
+// It is NOT `resolveWorkerCount()`: that default (physical cores) is right for a box running one audit, and
+// this one habitually runs three or more S85 slots at once. An explicit number, chosen against the load
+// actually present, is the only honest setting here.
+const WORKERS = Math.round(envF('PF_S85_WORKERS', 0));
+const POOL = WORKERS > 1 && typeof SharedArrayBuffer === 'function';
+// WINDOWED, not one giant claim. The pool returns rows only when its workers finish, so a single 50,000-facet
+// claim would checkpoint nothing for ~10 minutes and lose everything on a crash — and the serial path this
+// replaces appends a durable ndjson line per facet. Pooling one window at a time keeps the checkpoint, keeps
+// a progress/ETA line, and costs one worker respawn + one lattice verification per window (~0.3 s against
+// ~10 s of work at the default window).
+const WINDOW = Math.max(1, Math.round(envF('PF_S85_WINDOW', 2000)));
+const CHUNKMAX = Math.round(envF('PF_S85_CHUNK', 256));
+const WORKERMB = Math.round(envF('PF_S85_WORKERMB', 1024));
 const DIMS: StyleDims = { H: envF('PF_S85_H', 120), Rb: envF('PF_S85_RB', 40), Rt: envF('PF_S85_RT', 50), expn: envF('PF_S85_EXPN', 1) };
 const H = DIMS.H;
 const BAR = TOL * 1000;
@@ -107,6 +158,7 @@ mkdirSync(OUTDIR, { recursive: true });
 log('===== S85 POSITION RE-BASELINE — certifyTriangle at the 10 um PRODUCT bar =====');
 log(`arm ${ARM}   tag ${TAG}   style ${STYLE}   stem ${STEM}`);
 log(`tol ${BAR} um   nMax ${NMAX}   N ${NSAMP}   topK ${TOPK}   dims H${DIMS.H} Rb${DIMS.Rb} Rt${DIMS.Rt}`);
+log(`certify: ${POOL ? `POOLED on ${WORKERS} worker threads (window ${WINDOW}, chunkMax ${CHUNKMAX}, ${WORKERMB} MB/worker)` : `SERIAL, 1 thread (PF_S85_WORKERS=${WORKERS})`}`);
 
 // ── THE DRIVER'S OWN SELF-REPORT, parsed from its report so the contrast cannot be mis-transcribed.
 interface DriverSay { headline: number; adaptiveMax: number; overBar: number; nTri: number; found: boolean }
@@ -129,23 +181,36 @@ function readDriver(stem: string): DriverSay {
 const DRV = readDriver(STEM);
 log(`driver self-report: headline ${DRV.headline} um   adaptive MAX ${DRV.adaptiveMax} um   over-0.01mm ${DRV.overBar}/${DRV.nTri}   (${DRV.found ? 'parsed' : 'NOT FOUND — contrast column will be blank'})`);
 
-const rAbase = buildRadiusFn(STYLE as StyleId, { ...registryDefaults(STYLE) }, DIMS);
+// ONE params object, kept so the workers can be handed the SAME (style, params, dims) this process built its
+// rA from. Previously this was an inline spread whose value existed only inside `buildRadiusFn`'s frame.
+const PARAMS = { ...registryDefaults(STYLE) };
+const rAbase = buildRadiusFn(STYLE as StyleId, PARAMS, DIMS);
 const rA = (th: number, z: number): number => rAbase(canonTheta(th), z < 0 ? 0 : z > H ? H : z);
 const zJ = detectZJumps(rA, H); const thJ = detectThetaJumps(rA, H);
 log(`closure: detectZJumps ${zJ.length}   detectThetaJumps ${thJ.length}`);
 
-const MESH = readMeshFloat64(`${DIR}/${STEM}.stl`, false);
+const MESH = readMeshFloat64(`${DIR}/${STEM}.stl`, POOL);
 const nTri = MESH.nTri;
 log(`mesh ${nTri} facets loaded   [${el()}]`);
 if (DRV.nTri > 0 && DRV.nTri !== nTri) log(`*** WARNING: report says ${DRV.nTri} facets, STL has ${nTri}. The report may belong to another arm. ***`);
 
-/** THE sample construction. Identical to s80HonestPos so rows cross-check. */
-function goldenIdx(count: number): Int32Array {
-  const out = new Int32Array(Math.min(count, nTri));
+/**
+ * THE sample construction's stride. Factored out of `goldenIdx` UNCHANGED so the pooled path can hand the
+ * same number to `H1Job.stride` — the pool walks `(k*stride)%nTri`, which is this construction verbatim.
+ * Nothing else may use it: `goldenIdx` remains the definition, and the equality is asserted, not trusted.
+ */
+function goldenStride(): number {
   const gcd = (a: number, b: number): number => (b === 0 ? a : gcd(b, a % b));
   let s = Math.max(1, Math.round(nTri * 0.6180339887498949) | 1);
   while (s > 1 && gcd(s, nTri) !== 1) s += 2;
   if (s >= nTri) s = 1;
+  return s;
+}
+
+/** THE sample construction. Identical to s80HonestPos so rows cross-check. */
+function goldenIdx(count: number): Int32Array {
+  const out = new Int32Array(Math.min(count, nTri));
+  const s = goldenStride();
   for (let q = 0; q < out.length; q += 1) out[q] = (q * s) % nTri;
   return out;
 }
@@ -215,6 +280,78 @@ function certOne(m: SagMesh, q: number): { w: number; b: number; v: number; c: 0
   return { w: r.witnessed * 1000, b: r.bound * 1000, v: r.witnessed > TOL ? 1 : r.certified ? 0 : -1, c: r.witnessedComplete ? 1 : 0 };
 }
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+// THE POOLED CERTIFY. Same `certifyTriangle`, same arguments, W threads. Everything here exists to make the
+// per-facet output PROVABLY the serial output, not to make it fast — the fast part is one `runH1Pool` call.
+// ══════════════════════════════════════════════════════════════════════════════════════════════════════
+
+/** The pool spawns fresh workers per window; its identity proof is worth printing once, not 25 times. */
+const POOL_DIAG = { printed: false };
+
+/** The parent's OWN rA over the verification lattice. The pool refuses to report unless every worker matches. */
+function expectLattice(): { th: Float64Array; z: Float64Array; expect: Float64Array } {
+  const lat = radiusLattice(H, zJ, thJ);
+  const expect = new Float64Array(lat.th.length);
+  for (let i = 0; i < expect.length; i += 1) expect[i] = rA(lat.th[i], lat.z[i]);
+  return { th: lat.th, z: lat.z, expect };
+}
+
+/**
+ * Certify walk indices [kStart,kEnd) on the pool and return them IN WALK ORDER.
+ *
+ * `list` selects the walk: undefined = the golden stride (the `uniform` arm), an explicit array = that array
+ * (the `target` arm, whose selection is a union of two top-K lists and is not any progression). Either way
+ * the caller's `expectTri` is checked against every returned triangle index, because a walk that silently
+ * certified a DIFFERENT facet than the caller then labels the row with would be undetectable downstream.
+ */
+async function certifyPooled(
+  kStart: number, kEnd: number, expectTri: (q: number) => number, list?: number[],
+): Promise<Array<{ w: number; b: number; v: number; c: 0 | 1 }>> {
+  if (MESH.sab === null) throw new Error('pooled certify requested but the mesh was not read into a SharedArrayBuffer');
+  const lat = expectLattice();
+  const job: H1Job = {
+    nTri, stride: goldenStride(), list, kEnd,
+    H, tol: TOL, nMax: NMAX,
+    // `certOne` leaves sampleCap UNSET, so `certifyTriangle` defaults it to +Infinity. The pooled path must
+    // pass that same +Infinity explicitly or the two walks are certifying under different ceilings.
+    sampleCap: Number.POSITIVE_INFINITY,
+    zJumps: zJ, thJumps: thJ,
+    topK: 1,                                  // unused here; the pool's top-K reduction is not this tool's output
+    deadlineMs: Number.POSITIVE_INFINITY,     // this tool has no clock cap; a truncated sample is not a sample
+  };
+  const out = await runH1Pool({
+    sab: MESH.sab, job, kStart, chunkMax: CHUNKMAX, budget: Number.POSITIVE_INFINITY, workers: WORKERS,
+    style: STYLE, styleParams: PARAMS, dims: DIMS,
+    expectLat: lat.expect, latTh: lat.th, latZ: lat.z, workerHeapMb: WORKERMB,
+    emitRows: true,
+    // THE SHIPPED BUILDER, NOT THE HOISTED TWIN — this process's serial control used `buildRadiusFn`, so
+    // the workers use `buildRadiusFn`. See the `allowFast` note in _facetTruthRA.ts.
+    raFast: false,
+  });
+  const R = out.rows;
+  if (R === null) throw new Error('pooled certify: the pool returned no per-facet rows');
+  const n = kEnd - kStart;
+  if (R.k.length !== n) throw new Error(`pooled certify: ${R.k.length} rows for a ${n}-facet window — the walk did not complete`);
+  const res: Array<{ w: number; b: number; v: number; c: 0 | 1 }> = new Array(n);
+  for (let i = 0; i < n; i += 1) {
+    const q = kStart + i;
+    if (R.k[i] !== q) throw new Error(`pooled certify: row ${i} carries walk index ${R.k[i]}, expected ${q}`);
+    if (R.tri[i] !== expectTri(q)) throw new Error(`pooled certify: walk index ${q} certified triangle ${R.tri[i]}, the caller expects ${expectTri(q)}`);
+    const wit = R.witnessed[i]; const certified = (R.flags[i] & 1) !== 0;
+    // The verdict/scaling arithmetic is `certOne`'s, applied here to the raw mm the workers returned, so the
+    // thresholds and the *1000 stay in exactly one place.
+    res[i] = { w: wit * 1000, b: R.bound[i] * 1000, v: wit > TOL ? 1 : certified ? 0 : -1, c: (R.flags[i] & 2) !== 0 ? 1 : 0 };
+  }
+  if (!POOL_DIAG.printed) {
+    POOL_DIAG.printed = true;
+    log(`   POOL: ${out.workers} workers, chunk ${out.chunk} facets, worker bundle ${out.bundleMs} ms`);
+    log(`   POOL: per-worker rA rebuilt from (style, params, dims) and verified against this process's — `
+      + `${out.latPoints} (worker x lattice-point) comparisons over ${lat.expect.length} points, `
+      + `${out.latDiffCount} differing, max deviation ${out.latMaxDev.toExponential(3)} mm`);
+  }
+  return res;
+}
+
 interface Row { k: number; area: number; tg: number; p: number; w: number; b: number; v: number; c: 0 | 1; sel?: string }
 function loadRows(path: string): Row[] {
   const rows: Row[] = [];
@@ -245,10 +382,64 @@ function appendCard(line: string): void {
   appendFileSync(CARD, `${line}\n`);
 }
 
+/**
+ * THE POOLED ROW LOOP, shared by both arms.
+ *
+ * Windowed so the ndjson checkpoint and the progress line survive: the pool hands rows back only when its
+ * workers finish, and this tool's serial path appended a durable line per facet. One window at a time keeps
+ * both. `emitRow` is the caller's own row construction — `areaOf`, `tangExcMono` and `sagAdaptiveRaw` still
+ * run HERE, in walk order, off THIS process's rA, so the only thing that changed thread is `certifyTriangle`.
+ */
+async function fillPooled(
+  rows: Row[], total: number, expectTri: (q: number) => number,
+  emitRow: (q: number, c: { w: number; b: number; v: number; c: 0 | 1 }) => Row,
+  rec: string, every: number, list?: number[],
+): Promise<void> {
+  const tS = Date.now();
+  const done0 = rows.length;
+  let msCert = 0; let msRow = 0;
+  // THE NEXT WINDOW'S WORKERS ARE STARTED BEFORE THIS WINDOW'S ROWS ARE BUILT.
+  // MEASURED, and it is not a micro-optimisation: on LowPolyFacet the parent-side ruler work (`areaOf`,
+  // `tangExcMono`, `sagAdaptiveRaw` — big facets, so `sagAdaptiveRaw` runs at level 64 = 2,145 rA evals) is
+  // ~66% of the serial per-facet cost, so a pool that idles through it is Amdahl-capped at ~1.5x no matter
+  // how many threads it has. Overlapping recovers it. It cannot affect a value: the windows are DISJOINT
+  // k-ranges, each gets its own pool with its own cursor, and rows are still appended strictly in walk order.
+  let pending: Promise<Array<{ w: number; b: number; v: number; c: 0 | 1 }>> | null = null;
+  let pendBase = rows.length;
+  const kick = (base: number): void => {
+    if (base >= total) { pending = null; return; }
+    pendBase = base;
+    pending = certifyPooled(base, Math.min(total, base + WINDOW), expectTri, list);
+  };
+  kick(rows.length);
+  while (pending !== null) {
+    const base = pendBase; const end = Math.min(total, base + WINDOW);
+    const t0 = Date.now();
+    const cert = await pending;
+    msCert += Date.now() - t0;
+    kick(end);
+    const t1 = Date.now();
+    for (let q = base; q < end; q += 1) {
+      const r = emitRow(q, cert[q - base]);
+      rows.push(r); appendFileSync(rec, `${JSON.stringify(r)}\n`);
+    }
+    msRow += Date.now() - t1;
+    if (end === total || (end - done0) % every < WINDOW) {
+      const rate = (end - done0) / ((Date.now() - tS) / 1000);
+      log(`  scored ${end}/${total}   ${rate.toFixed(1)} facet/s   eta ${(((total - end) / Math.max(1e-9, rate)) / 60).toFixed(1)} min   [${el()}]`);
+    }
+  }
+  // Reported because a pooled speedup that is not attributed is not a measurement: `msRow` is the part of
+  // this tool that is STILL single-threaded, and it is what caps the ratio.
+  const tot = Math.max(1, msCert + msRow);
+  log(`  POOL SPLIT: blocked on workers ${(msCert / 1000).toFixed(1)}s (${((100 * msCert) / tot).toFixed(1)}%), `
+    + `parent-side rows/plane-ruler ${(msRow / 1000).toFixed(1)}s (${((100 * msRow) / tot).toFixed(1)}%, still serial)`);
+}
+
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
 // ARM `target` — the honest re-read of the DRIVER'S OWN HEADLINE, plus the tangExc tail it cannot see.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-if (ARM === 'target') {
+async function armTarget(): Promise<void> {
   const SELF = `${OUTDIR}/${TAG}.sel.json`;
   const REC = `${OUTDIR}/${TAG}.target.ndjson`;
   interface Sel { idx: number[]; kind: string[]; pos: number[]; tg: number[]; planeMax: number; planeOver: number; planeArgmax: number; tgMax: number }
@@ -294,14 +485,21 @@ if (ARM === 'target') {
   let rows = loadRows(REC);
   if (rows.length > sel.idx.length) rows = rows.slice(0, sel.idx.length);
   log(`RESUME: ${rows.length}/${sel.idx.length} already certified`);
-  const tS = Date.now();
-  for (let q = rows.length; q < sel.idx.length; q += 1) {
-    const c = certOne(SM, q);
-    const r: Row = { k: sel.idx[q], area: areaOf(SM, q), tg: sel.tg[q], p: sel.pos[q], w: c.w, b: c.b, v: c.v, c: c.c, sel: sel.kind[q] };
-    rows.push(r); appendFileSync(REC, `${JSON.stringify(r)}\n`);
-    if ((q + 1) % 50 === 0) {
-      const rate = (q + 1 - 0) / ((Date.now() - tS) / 1000);
-      log(`  certified ${q + 1}/${sel.idx.length}   ${rate.toFixed(2)} facet/s   [${el()}]`);
+  const mkRow = (q: number, c: { w: number; b: number; v: number; c: 0 | 1 }): Row =>
+    ({ k: sel.idx[q], area: areaOf(SM, q), tg: sel.tg[q], p: sel.pos[q], w: c.w, b: c.b, v: c.v, c: c.c, sel: sel.kind[q] });
+  if (POOL) {
+    // THE SELECTION IS NOT A STRIDE WALK — it is the union of two top-K lists — so it goes through
+    // `H1Job.list`, which is why that field exists. Same loop body, same claim protocol, same reduction.
+    await fillPooled(rows, sel.idx.length, (q) => sel.idx[q], mkRow, REC, 50, sel.idx);
+  } else {
+    const tS = Date.now();
+    for (let q = rows.length; q < sel.idx.length; q += 1) {
+      const r = mkRow(q, certOne(SM, q));
+      rows.push(r); appendFileSync(REC, `${JSON.stringify(r)}\n`);
+      if ((q + 1) % 50 === 0) {
+        const rate = (q + 1 - 0) / ((Date.now() - tS) / 1000);
+        log(`  certified ${q + 1}/${sel.idx.length}   ${rate.toFixed(2)} facet/s   [${el()}]`);
+      }
     }
   }
 
@@ -345,7 +543,7 @@ if (ARM === 'target') {
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
 // ARM `uniform` — THE COMPARABLE ROW. One construction, one N, three buckets, count AND area.
 // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-if (ARM === 'uniform') {
+async function armUniform(): Promise<void> {
   const REC = `${OUTDIR}/${TAG}.uniform.ndjson`;
   const IDX = goldenIdx(NSAMP);
   const SM = mkSag(IDX); const ARG = makeSagArgmax();
@@ -353,18 +551,34 @@ if (ARM === 'uniform') {
   let rows = loadRows(REC);
   if (rows.length > IDX.length) rows = rows.slice(0, IDX.length);
   log(`RESUME: ${rows.length}/${IDX.length} already scored   [${el()}]`);
-  const tS = Date.now();
-  for (let q = rows.length; q < IDX.length; q += 1) {
-    const c = certOne(SM, q);
-    const r: Row = {
-      k: IDX[q], area: areaOf(SM, q), tg: tangExcMono(SM, q),
-      p: sagAdaptiveRaw(rA, SM, q, 0.03, 12, 64, ARG) * 1000,
-      w: c.w, b: c.b, v: c.v, c: c.c,
-    };
-    rows.push(r); appendFileSync(REC, `${JSON.stringify(r)}\n`);
-    if ((q + 1) % 500 === 0) {
-      const rate = (q + 1 - 0) / ((Date.now() - tS) / 1000);
-      log(`  scored ${q + 1}/${IDX.length}   ${rate.toFixed(1)} facet/s   eta ${(((IDX.length - q - 1) / rate) / 60).toFixed(1)} min   [${el()}]`);
+  const mkRow = (q: number, c: { w: number; b: number; v: number; c: 0 | 1 }): Row => ({
+    k: IDX[q], area: areaOf(SM, q), tg: tangExcMono(SM, q),
+    p: sagAdaptiveRaw(rA, SM, q, 0.03, 12, 64, ARG) * 1000,
+    w: c.w, b: c.b, v: c.v, c: c.c,
+  });
+  if (POOL) {
+    // *** THE WALK-EQUALITY GATE. *** The pool walks `(k*stride)%nTri`; `goldenIdx` builds `(q*s)%nTri`.
+    // That they are the same construction is an argument, and this file's whole point is that arguments do
+    // not stand in for checks — so every index is compared before a single facet is certified. It is O(N)
+    // against a walk that costs minutes, and it is the difference between "pooled the same sample" and
+    // "pooled a sample, and the report says nothing about which one".
+    const stride = goldenStride();
+    for (let k = 0; k < IDX.length; k += 1) {
+      if ((k * stride) % nTri !== IDX[k]) {
+        throw new Error(`walk mismatch at k=${k}: pool stride gives ${(k * stride) % nTri}, goldenIdx gives ${IDX[k]} — refusing to pool a different sample`);
+      }
+    }
+    log(`   walk-equality gate: all ${IDX.length} pool stride indices match goldenIdx   [${el()}]`);
+    await fillPooled(rows, IDX.length, (q) => IDX[q], mkRow, REC, 500);
+  } else {
+    const tS = Date.now();
+    for (let q = rows.length; q < IDX.length; q += 1) {
+      const r = mkRow(q, certOne(SM, q));
+      rows.push(r); appendFileSync(REC, `${JSON.stringify(r)}\n`);
+      if ((q + 1) % 500 === 0) {
+        const rate = (q + 1 - 0) / ((Date.now() - tS) / 1000);
+        log(`  scored ${q + 1}/${IDX.length}   ${rate.toFixed(1)} facet/s   eta ${(((IDX.length - q - 1) / rate) / 60).toFixed(1)} min   [${el()}]`);
+      }
     }
   }
   const g = bucket(rows);
@@ -399,4 +613,17 @@ if (ARM === 'uniform') {
   log('');
   log(`row appended to ${CARD}`);
 }
-log(`done  [${el()}]`);
+
+// The arms became async when the certify moved onto the pool, and this tool ships as an esbuild CJS bundle
+// where top-level await is not available — hence an explicit entry point rather than two top-level `if`s.
+// A rejection must be LOUD and must set a non-zero exit code: a pooled run that dies half way through and
+// still prints "done" is exactly how a truncated sample gets reported as a sample.
+async function main(): Promise<void> {
+  if (ARM === 'target') await armTarget();
+  if (ARM === 'uniform') await armUniform();
+  log(`done  [${el()}]`);
+}
+main().catch((e: unknown) => {
+  log(`*** S85 FAILED: ${e instanceof Error ? `${e.message}\n${e.stack ?? ''}` : String(e)} ***`);
+  process.exitCode = 1;
+});
