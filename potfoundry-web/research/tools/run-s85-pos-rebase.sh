@@ -46,6 +46,18 @@ else
   echo "── reusing $BUNDLE (PF_S85_BUNDLE=0) ──"
 fi
 
+# ── THE TWO-WRITERS LOCK. MEASURED FAILURE, 2026-08-05: the agent harness reported three background queue
+# wrappers "killed" but their child bash scripts survived, so relaunching produced TWO processes per slot
+# appending to the SAME per-facet ndjson. Nine checkpoint files ended up with lines > distinct facets — a
+# silent re-weighting of the sample, caught only by `wc -l` vs unique-k. This lock makes it impossible.
+LOCK="$OUT/.s85_${PF_S85_ARM:-target}_${PF_S85_TAG:-X}.lock"
+if [ -f "$LOCK" ] && kill -0 "$(cat "$LOCK" 2>/dev/null)" 2>/dev/null; then
+  echo "*** LOCK HELD by pid $(cat "$LOCK") for ${PF_S85_ARM:-target}/${PF_S85_TAG:-X} — refusing to start a SECOND writer. ***"
+  exit 3
+fi
+echo $$ > "$LOCK"
+trap 'rm -f "$LOCK"' EXIT
+
 export NODE_OPTIONS=--max-old-space-size=6144
 node "$BUNDLE" "$@" 2>&1 | tee "$REPORT"
 echo
