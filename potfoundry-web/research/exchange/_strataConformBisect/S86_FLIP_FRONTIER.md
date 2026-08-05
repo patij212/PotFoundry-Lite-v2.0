@@ -142,9 +142,72 @@ that is the mesh the 44% estimate was derived from and the only one that can con
 ⇒ On the evidence so far: **the frontier is SOUND and it is CHEAP, but it is not yet SHOWN to be
 FAST.** No speed claim is made from this arm. `fastLevel` stays default 0.
 
-### ARM 2 — GothicArches `S39CTL`, 1,142,166 facets, 19 rounds — RUNNING
+### ARM 2 — GothicArches `S39CTL`, 1,142,166 facets, 1,713,829 edges, 19 rounds
 
-*(level 0 control then level 2, run SEQUENTIALLY on the same box so the ratio is fair; appended when
-they land. If the control does not reproduce 432,597 flips / 19 rounds, K-S86b says every ratio here is
-provisional and it will be reported that way.)*
+Level 0 then level 2, run SEQUENTIALLY on the same box so the ratio is fair.
+
+| level | flips | rounds | geometry md5 | candBody | scoreEvals | frontierSkipped | secs |
+|---|---|---|---|---|---|---|---|
+| **0 (control)** | 432,597 | 19 | `abbcb74f157e1fdaa7b59baefb5ef410` | 31,555,855 | 21,701,154 | 0 | 1056.0 |
+| **2** | 432,597 | 19 | `abbcb74f157e1fdaa7b59baefb5ef410` | **5,142,382** | **1,142,166** | 26,413,473 | **655.1** |
+
+**K-S86a — PASS on all three clauses.** Geometry md5 identical; `flips` identical at 432,597; the
+per-round flip sequence identical across all 19 rounds (`diff` of the round lines is empty). The
+downstream census is identical too: `ORIENT over-bar 129,837 -> 37,020 (3.507x), by AREA 8.131% ->
+2.179% (3.731x)`, `POSITION (plane) 75 -> 31` on BOTH arms.
+
+**The control reproduces the committed baseline exactly** — 432,597 flips / 19 rounds and md5
+`abbcb74f157e1fdaa7b59baefb5ef410`, the same md5 `S81_LANDGATE_GATE.report.txt` recorded for
+H-L4-GATE. On this mesh the baseline DOES reproduce, which is worth recording against the general
+caution in `project_strata_baselines_not_reproducible` — that warning is about arms, not about this one.
+
+**K-S86-VAC — PASS.** `scoreEvals` 21,701,154 → 1,142,166 = **exactly 1/19** (nineteen rounds of
+recompute collapsed to one seeding pass). `candBody` 31,555,855 → 5,142,382 = **0.163× (6.14× fewer)**.
+`frontierSkipped` 26,413,473.
+
+**K-S86b — LANDS. 1056.0 s → 655.1 s = 0.620×, a 38.0% wall-clock reduction (1.61× speedup).**
+
+The frontier collapses as the pass converges — this is the whole mechanism, and on a 19-round mesh it
+is visible all the way down:
+
+```
+round  8: frontier  33,014 of 1,713,829     round 15: frontier 1,048
+round  9: frontier  17,061                  round 16: frontier   551
+round 10: frontier  10,988                  round 17: frontier   304
+round 11: frontier   6,509                  round 18: frontier   105
+round 12: frontier   4,557                  round 19: frontier    69  (0.004% of edges)
+```
+
+Round 19 — the round that produces zero flips and used to cost a full 1.71 M-edge sweep — now examines
+**69 edges**.
+
+### Reconciling against the prediction, honestly
+
+The estimate that motivated this was "rounds 9–19 are ≈44% of wall clock". **Measured recovery is
+38.0%, so the prediction was optimistic by ~6 points.** The gap is accounted for and is not mysterious:
+round 1 is still a full sweep and costs ~2× a later round; rounds 2–8 still carry large frontiers; and
+the frontier itself is not free — it adds an O(nTri) star scan plus Set construction per round. 38.0%
+is the number to quote.
+
+**Why ARM 1 saw only 3.4% and ARM 2 saw 38.0% — the same lever, the same code.** LowPolyFacet converges
+in 5 rounds with 97% of flips in rounds 1–2; Gothic runs 19 rounds with 11 of them yielding 1,316 flips
+between them. The lever is priced by the LENGTH OF THE TAIL. Anyone re-measuring this on a
+short-converging mesh will conclude it does nothing, and they will be right about that mesh.
+
+### The pre-registration earned its keep
+
+The control took **1056.0 s against the committed 889.5 s** — 18.7% slower, because this box was
+concurrently running the S81 h1 gate and the S85 rebaseline queue. Scoring 655.1 s against the
+committed 889.5 s would have reported 0.736× and **understated the win**; K-S86b's same-session rule is
+what produced the correct 0.620×.
+
+## VERDICT
+
+`fastLevel = 2` is **SOUND** (byte-identical mesh, identical flip sequence, identical census, on two
+meshes of different character), **CHEAP** (6.14× fewer body entries, 19× fewer score evals), and
+**FAST on meshes with a convergence tail** (0.620× wall clock on Gothic; no measurable win on a
+5-round mesh, and that is stated rather than averaged away).
+
+It remains **DEFAULT 0**. Flipping the default is a separate decision that belongs with the driver's
+`PF_LAND_FLIP` owner, not with the agent that measured the cost.
 
