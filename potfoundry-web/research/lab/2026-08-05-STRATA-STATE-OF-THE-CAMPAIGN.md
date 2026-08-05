@@ -217,6 +217,73 @@ Scorecards: `S89_PLANREVIEW_FINDINGS.md`, `S90_SELECTOR_FINDINGS.md`, `S92_FLIP_
 
 ---
 
+---
+
+## 0e. *** S91 — THE FLIP SHIPS AS A POSITION LEVER. ITS ORIENTATION CLAIM IS DEAD ON 15/15 STYLES, AND FIXING THE KEY DOES NOT RESCUE IT. ***
+
+**THE FLIP IS PRODUCTIONIZABLE — ON ITS POSITION CASE, GATED ON THE HUB CENSUS.** Whole-mesh,
+N=50,000 paired, `certifyTriangle` @ 10 µm, flag-OFF control md5-verified byte-identical:
+
+| GothicArches S39CTL, whole mesh | before | after |
+|---|---|---|
+| honest position PROVEN-FAIL **count** | 143 | **93 — 0.650×** |
+| honest position failing **AREA** | 0.03534% | **0.02083% — 0.589×** |
+| witnessed max | 240.1 µm | **123.9 µm** |
+| topology / vertices moved / triangles added | — | **identical / 0 / 0** (15/15 arms) |
+
+It is **free**, it is **not a trade**, and it is **better than the changed-facet figure suggested**.
+***It is destructive on hubbed stems, so it must be gated on the hub census.***
+
+**⛔ ITS ORIENTATION CLAIM IS REFUTED ON EVERY STYLE.** 15 arms, absolute mm²:
+
+    centroid ruler (the pass's own key) : median 1.904x   (max infinite -- one style's over-bar area hits 0)
+    covering ruler  (orientOfFacet k=8) : median 1.015x, min 0.728x, max 1.212x
+                                          0 of 14 reach 1.25x -- and THREE ARE WORSE
+
+Gothic 3.732× → **1.049×**, matching S92's independently-derived 1.050×. **The mechanism is printed:
+honest/centroid disagreement GROWS under the pass** — Gothic 5.6 → 21.4×, SuperellipseMorph 27.9 →
+**3,809.9×** — because the single centroid sample is rotated *onto* the crossing. Controls hold: the
+reverse control (GeometricStar) is worse on both rulers, and it is **not saturation** (LowPolyFacet at
+0.15% over-bar still reads 0.728× *worse*).
+
+***AND FIXING THE KEY DOES NOT RESCUE IT.*** `PF_S60_KEY=cover` (a 4-point witness, default-off,
+byte-identical when off, non-inert at 45,732 → 24,392 flips) reaches **1.085× / 1.109×** against a
+1.5× bar. ***THE ORIENTATION DEFECT IS NOT REACHABLE BY CONNECTIVITY, WHATEVER KEY DRIVES IT.***
+
+### 0e.1 THREE CORRECTIONS THIS FORCES
+
+1. **The hub/mis-oriented story was over-weighted.** The `aspect3 ≥ 50` class holds only **4.46% of
+   Voronoi's over-bar AREA** (count over-states it 26×). ***~88% of Voronoi's defect area is neither
+   high-aspect nor hub-adjacent.*** Whatever it is, it is not the hubs.
+2. **"The flip regularises degree" is CONDITIONAL and was over-claimed.** It flattens fat tails
+   (DragonScales deg≥10 8.58% → 2.11%) but **worsens already-regular meshes** (HarmonicRipple maxDeg
+   8 → 17), and **it does not dent super-hubs — GeometricStar's worst hub GROWS 1,120 → 1,363.**
+3. **A fourth instrument defect:** `s60`'s "% of surface" area uses a **moving denominator** — total
+   surface area changes between arms (GeometricStar +29%). Gothic's is 0.9998× so its own self-report
+   is arithmetically sound, but any cross-style area ratio from that column is not.
+
+### 0e.2 *** ORIENTATION NOW HAS NO KNOWN LEVER ***
+
+Everything tried is measured dead: **flips 1.015× median** (and 1.09× with a corrected key),
+**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ×0.9968**, **ideal split
+placement 0.00%**, **splitting provably closed on Voronoi** (required child aspect 3,009), and
+**P4/off-surface refuted as a fidelity lever on its own numbers** (+0.6% orientation for a 12.5×
+position-sag regression).
+
+Two agents disagree on where to go next and **both readings are compatible**: S91 concludes the class
+needs an **off-surface vertex** because connectivity is exhausted; S89 measured that the *specific*
+P4 formulation does not pay. ***So: connectivity is exhausted AND the one representation change
+anyone has priced does not work.*** That is the honest frontier, and it is a research question, not
+an engineering one.
+
+**⇒ SHIP:** `PF_LAND_FLIP` on position, hub-gated, default-off. **⇒ WITHDRAW:** "orientation 3.73×" —
+restate as *"3.73× on its own objective, 1.049× honest"*. **⇒ QUOTE THE COST:** caps ≥150° 1.66× on
+Gothic. **⇒ DO NOT** build another local operator for orientation without a new representation.
+
+Scorecard: `S91_STYLEFLIP_FINDINGS.md`. Hub census independently reproduced by two tools.
+
+---
+
 ## 1. THE RULERS — what to use, what to never use again
 
 | quantity | instrument | status |
@@ -258,7 +325,7 @@ fails/10,000**; and it agrees with an independently-written second tool to the f
 
 ---
 
-## 3. THE ONE LEVER THAT WORKS
+## 3. THE ONE LEVER THAT WORKS — *a POSITION lever; see §0e for the retired orientation claim*
 
 **The CONSTRAINED FLIP** — `PF_LAND_FLIP`, fork `_strataConformBisectL.test.ts` + `vitest.stratal.config.ts`, DEFAULT OFF.
 
