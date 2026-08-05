@@ -104,7 +104,47 @@ levels is meaningless and is not a kill criterion. Compare the mesh and the flip
 
 ## RESULTS
 
-*(appended by the A/B when it runs — level 0 control first, then 1, then 2)*
+### ARM 1 — LowPolyFacet `lowpolyfacet_ring_D--`, 137,480 facets, 206,464 edges, C2 ruler `plane`
 
-| level | mesh | nTri | flips | rounds | geometry md5 | candBody | scoreEvals | frontierSkipped | secs |
-|---|---|---|---|---|---|---|---|---|---|
+| level | flips | rounds | geometry md5 | candBody | scoreEvals | frontierSkipped | secs |
+|---|---|---|---|---|---|---|---|
+| **0 (control)** | 41,145 | 5 | `7a3a4b2fc6d0e090378563bb5426b32f` | 954,060 | 687,400 | 0 | 71.6 |
+| **1** | 41,145 | 5 | `7a3a4b2fc6d0e090378563bb5426b32f` | 954,060 | **137,480** | 0 | 72.8 |
+| **2** | 41,145 | 5 | `7a3a4b2fc6d0e090378563bb5426b32f` | **474,542** | **137,480** | 479,518 | **69.2** |
+
+**K-S86a — PASS, at the strongest level available.** The geometry md5 is identical across all three
+levels, `flips` is identical, and the PER-ROUND flip sequence is identical:
+`31,560 / 8,334 / 1,149 / 102 / 0` on level 0 and on level 2, round for round.
+
+**K-S86-VAC — PASS.** `scoreEvals` 687,400 → 137,480 (exactly 1/5 — five rounds' worth of recompute
+collapsed to one), `candBody` 954,060 → 474,542 (**0.497×**), `frontierSkipped` 479,518 > 0.
+The frontier collapses as the pass converges, which is the mechanism working:
+
+```
+round 1: frontier ALL of 206,464   body 152,901
+round 2: frontier 195,060          body 327,726   (cum)
+round 3: frontier 114,956          body 439,892
+round 4: frontier  31,526          body 471,234
+round 5: frontier   3,308 (1.6%)   body 474,542
+```
+
+**K-S86b — the cost claim does NOT land on this mesh. 71.6 s → 69.2 s = 0.967×, a 3.4% win for a 2.01×
+reduction in body entries.** Level 1 is 71.6 → 72.8 s, i.e. *negative* — 549,920 eliminated `orientOf`
+calls (2.75 M rA evals) bought nothing measurable. Both readings are inside the noise of a box that is
+concurrently running the S81 h1 gate and the S85 rebaseline queue.
+
+**Why the work halved and the clock did not.** LowPolyFacet converges in **5 rounds**, and 97.0% of its
+flips land in rounds 1–2 where the frontier is still ~94% of all edges. The frontier only bites in
+rounds 4–5 — which are the cheap rounds. **The lever is priced by the LENGTH OF THE TAIL, and this mesh
+does not have one.** Gothic `S39CTL` runs 19 rounds with 11 of them yielding 1,316 flips between them;
+that is the mesh the 44% estimate was derived from and the only one that can confirm or refute it.
+
+⇒ On the evidence so far: **the frontier is SOUND and it is CHEAP, but it is not yet SHOWN to be
+FAST.** No speed claim is made from this arm. `fastLevel` stays default 0.
+
+### ARM 2 — GothicArches `S39CTL`, 1,142,166 facets, 19 rounds — RUNNING
+
+*(level 0 control then level 2, run SEQUENTIALLY on the same box so the ratio is fair; appended when
+they land. If the control does not reproduce 432,597 flips / 19 rounds, K-S86b says every ratio here is
+provisional and it will be reported that way.)*
+
