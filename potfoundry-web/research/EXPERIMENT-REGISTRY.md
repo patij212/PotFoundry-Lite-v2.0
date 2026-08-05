@@ -8330,3 +8330,85 @@ facets that carry the error — and promote full-mesh `ptTri` to the reported qu
 the plane ruler; the driver already carries the code as `PF_CB_RANK=ptperp`). The open target is the
 z ~ 80.5 / 96.9 / 113.7 / 120.0 loci, which are LOCATION-STABLE across all six arms and untouched by every
 lever tried so far.
+
+---
+
+## E-2026-08-05-S50-RULER-AUDIT — audit the MEASUREMENT LAYER (precision / performance / blindness / optimism) [5 read-only probes; kill-criteria pre-registered in each probe header]
+
+**FRAME.** The certificate spends 52,736 M rA evals against the mesher's 858 M (61x), so anything that
+makes measurement cheaper or truer pays 61x more there than in the driver. Separately, the operator
+reported that across cap 50/65/90/90+cavity — a sweep over which the driver's headline max fell
+47.282 -> 5.655 um (8.4x) — the visible Cura artefacts are UNCHANGED and IN THE SAME PLACES.
+
+**INSTRUMENTS (all NEW, read-only over finished STLs, single-threaded, safe beside a running arm):**
+`research/tools/s50EvalSplit.ts` (+`run-s50-eval-split.sh`), `s51TightenSeed.ts`, `s52RaCost.ts`,
+`s53NormalField.ts`, `s54G1Mechanism.ts`. Full scorecard (gitignored):
+`research/exchange/_strataConformBisect/S50_RULER_FINDINGS.md` + the five `S5x_*.report.txt`.
+
+**EVIDENCE.**
+
+- **PERFORMANCE, where the evals go (S50, N=300 facets in the certificate's own golden-stride walk,
+  tol 10 um; split recovered EXACTLY from `v.samples` with zero instrumentation of the lib):**
+  `tighten` **95.22%** / radial lattice 4.78% / re-walk waste **1.07%**. Inside `tighten`,
+  `distLocal` **266.1 evals/pt (88.4%)** vs `distPerpFrom` **35.0 (11.6%)**; Newton converges in
+  **2 iterations, 100%**, and produces the final smallest value on **96%** of points. rA is
+  **84.0% of wall-clock** at 0.50 M evals/s.
+- **P1 (cached `perpSeedGrid` replaces the 266-eval descent) REFUTED (S51, 5,196 real
+  tighten-eligible lattice points, stratified by radial inflation):** arm B is **1.4-3.6x MORE
+  expensive**, worst in the hard stratum (353 -> 950-1272 evals/pt). Cause: from a cold grid seed
+  Newton must walk at **15 evals/iteration** (3 `frame()` calls) against the descent's 8/step. The
+  shipped design is a cheap-per-step walker feeding an expensive-per-step polisher and it is the
+  right way round. Re-opens only if a Broyden Jacobian makes an iteration 5 evals.
+- **rA REWRITE: 3.17x, BIT-IDENTICAL (S52).** 801 -> 253 ns/call; `Object.is`-identical on **819,867
+  points** (the pool's own `radiusLattice`, a dense 997x402 incommensurate sweep, 400k random + the
+  exact tier-saturation boundaries). Five transformations, none touching a double: hoist the 4
+  per-call closures + 12 `??` param reads + ~20 derived constants; share the duplicated
+  `sin(phi1)/sin(phi2)`; short-circuit `pow(+0,y)=+0`; skip the tier that `smoothstep` saturation
+  multiplies by exact 0/1; drop the `gaX=0`/`bellAmp=0`/`pow(t,1)` dead terms. Amdahl on the measured
+  84.0% share => **2.35x on the certificate** (8,449 s -> ~3,593 s; ~1,382 s stacked with Phase D).
+- **BLINDNESS — *** THE HEADLINE 8.4x IS A ONE-FACET MOVE *** (S53, 200k facets/mesh, position
+  measured with the driver's OWN `sagAdaptiveRaw`):** `posUm p99` = **3.42 / 3.43 / 3.42 / 3.42 /
+  3.42 um** across all five arms — three significant figures, no movement. Only the MAX moves.
+- **BLINDNESS — the unscored class is NORMAL-FIELD (G1) error.** Across the same sweep:
+  normal deviation p99 **1.03x**, tangential excursion p99 **1.03x**, maxAngle p99 **1.00x** — all
+  FLAT, matching the unchanged visual (pre-registered: <1.5x = flat, >=5x = already-measured).
+  **`tangExc = sin(angle(n_facet,n_surface)) x diam` p99 = 33.8-35.4 um on every arm = 3.4x over the
+  10 um bar on ~11,400 facets/pot**, max 0.96-1.57 mm. No instrument in this repo scores it.
+- **MECHANISM = Babuska-Aziz max-angle (S54, 380,722 facets).** normDeg p99 by maxAngle bin:
+  `[0,90) 4.0 | [90,120) 5.3 | [120,150) 9.1 | [150,165) 73.4 | [165,175) 119.5 | [175,180) 128.2`
+  while `posUm p99` over the first four bins is `3.42 / 3.41 / 3.43 / 3.44` — **orientation error
+  rises 13.8x while the driver's ruler moves 1.009x.** maxAngle p99 = **165.1-165.5 deg** on every
+  arm. Literature: arXiv:1911.03424 — *"normal error varies linearly with a triangle's circumradius,
+  which can be much larger if it has a large angle close to 180 deg... a key distinction from
+  interpolation error, which varies quadratically"*; Babuska & Aziz 1976 (SIAM JNA 13(2):214-226).
+- **THE REPO SCORES THE WRONG ANGLE.** `minAngle<5` flags 7,776 facets at normDeg p50 **2.16 deg**
+  (mostly harmless NEEDLES); `maxAngle>=165` flags 4,124 (1.9x fewer) at normDeg p50 **4.76-36.01
+  deg**. minAngle cannot separate a needle from a cap. LAB-CHEATSHEET's "slivers by minAngle" is the
+  wrong metric for the normal field.
+- **PLACES (S54).** Jaccard of the (theta,z) cells holding >30 deg facets: **0.55-0.57**, overlap
+  **75-80%** of the smaller set. The operator's "same places" is now a number.
+- **RANKABILITY — *** THE CLASS IS UNREACHABLE, NOT UNREFINED (S54). *** ** top-1% by plane ruler vs
+  top-1% by `tangExc` share **10.2%**; the `tangExc` worst-1% reads **posUm p50 2.55 um** on the
+  driver's key (bar 10 um) — **the driver classifies its own worst orientation defects as already
+  passing**, with maxAngle p50 164.8 deg and diam p50 306 um.
+- **OPTIMISM.** The brief's hypothesis (covering term shrinking with circumradius) does not apply:
+  `sagOfNRaw` has NO covering term. The real disease is that the headline is a MAX. Also measured:
+  the AR-cap lever moved maxAngle p99 by **0.3 deg** over the whole sweep — the mechanism variable
+  never moved, so five arms tested an inert lever.
+- **SOUNDNESS.** `distRadial`/`distLocal`-descent/`distPerpFrom`/`distPerp` are all one-sided
+  (over-estimate) — the lib's claim holds. The ONE two-sided term is the C0 closure
+  (`distToZWall`/`distToThetaWall`): it only lowers a reading and is sound only if the jump detectors
+  are. INERT on GothicArches (0 jumps detected, measured). `covRadius` is EXACT, not slack.
+
+**VERDICT: CONFIRMED (blindness = G1/max-angle, mechanism + places + unrankability all measured);
+rA 3.17x bit-identical CONFIRMED; P1 grid-seed swap REFUTED.**
+
+**RECOMMENDATION (ranked, full detail in S50_RULER_FINDINGS.md SECTION 8).** R1 score orientation
+(`tangExc`, **20 evals/facet vs the plane ruler's 91-2,145 — 4.5-107x CHEAPER than what already
+runs**; certifiable by adding `kappa_max * cov/n`, the same proof shape as `bound = witnessed +
+cov/n`); R2 land the bit-identical rA twin research-side behind the existing `radiusLattice` gate;
+R3 `maxAngle` in the split guard + `tangExc` in the heap key (MESH-CHANGING, needs an A/B);
+R4 a FLIP-ONLY pass (zero new vertices, zero vertex motion — potentially the whole fix at zero
+triangle cost); R5 forbid bare maxima in the report; R10 swap the sliver metric to maxAngle.
+**NEXT ACTION = R1's validation render: `tangExc` heatmap, flat-shaded, at the grazing view — the
+one thing I could not do, and it is what confirms or refutes the whole blindness chain.**
