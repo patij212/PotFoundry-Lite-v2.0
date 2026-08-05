@@ -25,8 +25,23 @@
 >    SEARCH** on top of greedy.
 > 5. **It is NOT a crease problem.** 70% of the failures have a true-normal spread < 20° across the facet,
 >    and those are no more reachable (47.5%) than the crease-straddlers (45.6%). Do not spend the night on
->    crease-aligned vertex insertion. The pricing says a **targeted ~1.6–2.6× local density increase on the
->    failing facets** (best achievable tangExc p50 16.3 µm against a 10 µm bar), not a global re-mesh.
+>    crease-aligned vertex insertion.
+> 6. **~~The pricing says a targeted ~1.6–2.6× local density increase~~ — I MEASURED THAT AND IT IS WRONG.
+>    NAIVE REFINEMENT MAKES ORIENTATION WORSE.** One round of longest-edge bisection on the over-bar facets,
+>    new vertices placed exactly on the analytic surface: facets ×1.293, over-bar **241,489 → 374,584 (55%
+>    WORSE)**; four rounds: ×3.368, **1,596,015 (58.7% of all facets)**. Position p99 *improves* the whole
+>    time (6.40 → 6.02 → 4.40) while the orientation failure fraction doubles. **Mechanism:** the inserted
+>    vertex is on the surface but off the old facet's plane by the position sag `s`, so each sub-facet is
+>    rotated by ≈ `s / h` (h = its altitude) — **a bounded POSITION error is converted into an unbounded
+>    ORIENTATION error, and it gets worse the thinner the sub-facet is.** The driver refines on the position
+>    ruler; this is very likely where the 39.7% comes from. **Do not bolt a "refine the failing facets" pass
+>    onto the driver — measured, it costs 29% more triangles to make orientation 55% worse.**
+> 7. **Local connectivity search is EXHAUSTED, not merely un-tuned.** The EXACT min-max retriangulation of
+>    a strictly larger neighbourhood (14 triangulations of a hexagon vs 2 of a quad) adds **3.29%**. And
+>    turning the position guard OFF buys **nothing** (3.19%) while costing 4,702 position failures at
+>    105.9 µm max — the unconstrained arms were taking free damage, not making a trade.
+> 8. **Honest status of the endgame: flips CLOSE Gothic and ship today; nothing measured tonight closes
+>    Voronoi.** Naive density refuted, local search exhausted, orientation-scored vertex PLACEMENT untested.
 
 Living log. Appended continuously. Newest section at the bottom of each phase block.
 Owner files: `research/tools/s56FlipCensus.ts`, `research/tools/s6*.ts`, `research/tools/flip*`.
@@ -545,3 +560,86 @@ region and not one I picked.
 per-cell label. I did not edit that shared file mid-run; it needs a `meta.scaleMm` from its owner. (b) The
 renderer auto-fits each cell's camera, so the two panels are not at identical framing; compare the colour
 fields, not the silhouettes.
+
+## 11. PRE-REGISTRATION — H-S65, PRICING THE RECOMMENDATION (written before `s65SplitAndFlip.ts` ran)
+
+Connectivity is finished (§8). The only remaining lever is new vertices, and §3.3 PREDICTED the price from
+the S61 residual: best achievable tangExc p50 16.3 µm against a 10 µm bar ⇒ a 1.6× error overshoot ⇒ h × 0.78
+(if tang ~ diam¹) or × 0.88 (if ~ diam²) LOCALLY. A prediction with a number in it is falsifiable, so:
+
+**The move, deliberately the dumbest one that could work:** bisect the LONGEST EDGE of every facet over the
+orientation bar, place the new vertex ON the analytic surface (`r = rA(θ,z)` at the edge midpoint's
+parameter — what the mesher itself does), split BOTH incident facets so the mesh stays conforming. No sizing
+field, no feature detection, no LEPP recursion. Then re-run the S60 constrained flip on the result.
+
+**H-S65:** the combination reduces Voronoi's over-bar count by **≥ 2×** for **≤ 1.6× triangles**.
+
+**KILL:** `< 2×` reduction OR `> 1.6×` triangles ⇒ the "targeted local density" recommendation is not
+supported at that price and must be re-priced before anyone builds it into the mesher.
+
+Note the new vertices land exactly on the surface, so position cannot get worse *by construction* — it is
+measured anyway, because "cannot by construction" is precisely how this campaign has been wrong before.
+
+## 12. THE C2 ABLATION — the position constraint is FREE and LOAD-BEARING
+
+`S63_CAVITYDP_V_DP_NOPOS.report.txt` — the cavity DP re-run with C2 switched off, everything else identical.
+
+| | DP with C2 (§8) | DP with C2 OFF |
+|---|---|---|
+| orientation further reduction | **3.29%** | 3.19% |
+| position over-10 µm | **0** | **4,702** |
+| position p99 / max | 6.40 → 6.96 / 10.0 | 6.40 → 8.36 / **105.9 µm** |
+
+**Turning the position guard off does not buy any orientation** (3.19% vs 3.29% — the constrained arm is
+marginally *better*, within noise) **and it costs 4,702 position failures with a 105.9 µm worst case.** That
+is the cleanest possible statement of the paper's point: on this mesh the two objectives are not really
+trading against each other at the margin — the unconstrained arms were simply taking free damage.
+
+## 13. H-S65 REFUTED, AND THE DIRECTION IS THE FINDING: NAIVE REFINEMENT MAKES ORIENTATION WORSE
+
+`S65_SPLIT_V_SPLIT1.report.txt` (4 marking rounds) and `S65_SPLIT_V_SPLIT1R.report.txt` (1 round), both
+starting from the A2 constrained-flip output. New vertices are placed exactly on the analytic surface.
+
+| | A2 (start) | +1 split round | +4 split rounds |
+|---|---|---|---|
+| facets | 806,765 | 1,043,321 (**1.293×**) | 2,716,959 (**3.368×**) |
+| tangExc > 10 µm | 241,489 (29.9%) | **374,584 (35.9%)** | **1,596,015 (58.7%)** |
+| tangExc p99 | 1194.6 | 978.1 | 661.2 |
+| position > 10 µm | 0 | **329** | **186** |
+| position p99 / max | 6.40 / 10.0 | 6.02 / **86.7** | 4.40 / **44.2** |
+
+**KILL-CRITERION: needed ≥2× fewer over-bar for ≤1.6× triangles. Got 0.645× (i.e. 55% WORSE) at 1.293×
+triangles. H-S65 is REFUTED, and refuted in the opposite direction to the prediction.** My §3.3 pricing
+("a targeted ~1.6–2.6× local density increase") is therefore **WRONG as stated** and I am correcting it here
+rather than leaving it in the message block as if it had survived.
+
+### The mechanism, and it is worth more than the failed hypothesis
+
+Bisecting an edge inserts a vertex that lies ON the surface but OFF the old facet's plane, by up to the
+facet's position sag `s` (≤ 10 µm here). The two sub-facets must now pass through that point, so each is
+rotated away from the old, well-aligned normal by roughly
+
+        Δ∠  ≈  s / h        (h = the sub-facet's altitude from the new vertex)
+
+and since `tangExc = sin∠ × diam`, a bounded POSITION error is converted into an ORIENTATION error that
+grows as the sub-facet gets thinner. On a mesh that is already 29% caps ≥150°, the sub-facets are thin, and
+the trade goes the wrong way. The aggregate signature is exactly this: **position p99 improves (6.40 → 6.02
+→ 4.40) while the orientation failure fraction doubles (29.9% → 35.9% → 58.7%).** The tail p99 does fall
+(1194 → 978 → 661), so refinement does eventually work — but it makes far more facets marginally bad before
+it makes the worst ones good.
+
+**This is very likely why the shipped meshes look the way they do.** The driver refines on the position
+ruler. Every refinement step that reduces position sag can *increase* orientation error by `s/h`. The
+mesher has been optimising one ruler while unknowingly paying the other, and the 39.7% orientation failure
+rate on Voronoi is the accumulated bill.
+
+### What this changes for the team
+
+* **Do not bolt a "refine the over-bar facets" pass onto the existing driver.** Measured, it makes
+  orientation worse at 1.29× the triangles.
+* Refinement for orientation must place the new vertex so that the sub-facets stay *fat* (split the facet,
+  not just its longest edge; or insert at a point chosen to minimise `s/h`, not at the edge midpoint), and
+  it must be scored on the ORIENTATION ruler, not the position ruler.
+* The honest current status of the endgame: **flips close Gothic (3.49×, shippable today); nothing measured
+  tonight closes Voronoi.** Naive density is refuted, local connectivity search is exhausted, and the
+  remaining lever — orientation-scored vertex placement — is untested.

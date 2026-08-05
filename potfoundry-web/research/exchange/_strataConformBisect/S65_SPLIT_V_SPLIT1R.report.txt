@@ -1,0 +1,18 @@
+===== S65 — TARGETED LONGEST-EDGE BISECTION ON THE OVER-BAR FACETS (new vertices ON the surface) =====
+style Voronoi   mesh research/exchange/_strataConformBisect/s60flip/voronoi_ring_D--_A2CON.stl   bar 10 um   passes 1
+806765 facets, 403683 welded vertices  [0.9s]
+── BEFORE (control, measured in THIS process) ──  facets 806765   vertices 403683
+   ORIENT tangExc p99 1194.64  max 2238.7 um   over-10um 241489 (29.933%)
+   POSITION  sag  p99 6.40  max 10.0 um   over-10um 0
+   TOPO before: 1210448 edges, boundary 601, non-manifold 0, orientation-inconsistent 0
+  pass 1 round 1: marked 189265 edges, split 118278   facets now 1043321   [160.8s]
+
+TOTAL splits 118278;  facets 806765 -> 1043321 (1.293x);  vertices 521961
+── AFTER SPLIT (no flips yet) ──  facets 1043321   vertices 521961
+   ORIENT tangExc p99 978.09  max 2109.9 um   over-10um 374584 (35.903%)
+   POSITION  sag  p99 6.02  max 86.7 um   over-10um 329
+   TOPO after: 1565282 edges, boundary 601, non-manifold 0, orientation-inconsistent 0
+
+DELTA (split only)  ORIENT over-10um 241489 -> 374584 (0.645x)   POSITION over-bar 0 -> 329
+   split mesh written to research/exchange/_strataConformBisect/s60flip/V_SPLIT1R_split.stl  — now run the S60 constrained flip on it
+done  [331.5s]
