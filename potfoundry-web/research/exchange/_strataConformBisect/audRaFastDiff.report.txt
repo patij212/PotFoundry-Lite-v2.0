@@ -1,0 +1,33 @@
+===== AUD-RAFAST-DIFF — adversarial audit of the hoisted rA twin =====
+dims H 120 Rb 40 Rt 50 expn 1   random points per arm 2000000
+registry defaults for GothicArches: {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+
+arm                  fastUsed  latticeDiffs |  randomDiffs / N        worstUlp   worstAbs   |  advDiffs / N   | GUARD
+---------------------------------------------------------------------------------------------------------------------
+DEFAULTS             true                 0 |         0 / 2000000          0    0.00e+0   |      0 / 539  | n/a (identical)
+D1-OVERLAP           false                8 |       858 / 2000000          1   7.11e-15   |      0 / 539  | HOLDS (falls back)
+                       worst-abs at theta 6.277696081594 z 5.375831583515  (0.042900% of samples)
+D1-OVERLAP-2         false                9 |      1193 / 2000000          1   7.11e-15   |      0 / 539  | HOLDS (falls back)
+                       worst-abs at theta 1.218869714085 z 1.115495050326  (0.059650% of samples)
+D2-WT-CLAMP          true                 0 |         1 / 2000000  23644129424    1.68e-4   |      0 / 539  | *** BREACHED — differs but lattice sees 0 ***
+                       worst-abs at theta 0.167082963516 z 50.073717953637  (0.000050% of samples)
+T5-XTRACERY          true                 0 |         0 / 2000000          0    0.00e+0   |      0 / 539  | n/a (identical)
+D3-BELL              false            16513 |   2000000 / 2000000  1902222603006418    1.35e+1   |    539 / 539  | HOLDS (falls back)
+                       worst-abs at theta 3.655106617130 z 61.287586865947  (100.000000% of samples)
+EXPN                 true                 0 |         0 / 2000000          0    0.00e+0   |      0 / 539  | n/a (identical)
+ZERO-DIAMOND-BANDS   true                 0 |         0 / 2000000          0    0.00e+0   |      0 / 539  | n/a (identical)
+SHARP-FRACTIONAL     true                 0 |         0 / 2000000          0    0.00e+0   |      0 / 539  | n/a (identical)
+N1                   true                 0 |         0 / 2000000          0    0.00e+0   |      0 / 539  | n/a (identical)
+
+═══ 3b — perpSeedGrid WeakMap: identity vs surface ═══
+  A. same params, two builds -> same object?  false   (must be false, or two surfaces could share a cache slot)
+     different params        -> same object?  false   (must be false)
+     grids are distinct objects: true; grid[0] differs: true  (40.375000000 vs 40.750000000)
+     same rA, SAME (H,nu,nv) -> cache hit (same object): true
+     same rA, DIFFERENT H    -> distinct grid:            true
+     same rA, DIFFERENT nu   -> distinct grid:            true
+  B. mutate the caller's params object after the build: rA(0.7,60) 45.004656366472 -> 45.004656366472  SNAPSHOT (safe)
+  C. a closure reading mutable state: grid rebuilt after the state changed? false  -> *** STALE GRID SERVED (the hazard is real for such a caller) ***
+     stale grid x[1] 45.000000000 vs a fresh build 34.319805153
+
+done

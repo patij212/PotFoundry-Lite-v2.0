@@ -1,0 +1,71 @@
+cwd: /c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web
+── bundling research/tools/audWitnessConfirm.ts -> research/bridge/out/_run_audWitnessConfirm.cjs ──
+▲ [WARNING] "import.meta" is not available with the "cjs" output format and will be empty [empty-import-meta]
+
+    research/bridge/_facetTruthPool.ts:88:37:
+      88 │   const here = dirname(fileURLToPath(import.meta.url));
+         ╵                                      ~~~~~~~~~~~
+
+  You need to set the output format to "esm" for "import.meta" to work correctly.
+
+▲ [WARNING] "esbuild" should be marked as external for use with "require.resolve" [require-resolve-not-external]
+
+    node_modules/esbuild/lib/main.js:1653:36:
+      1653 │   const libMainJS = require.resolve("esbuild");
+           ╵                                     ~~~~~~~~~
+
+2 warnings
+
+  research\bridge\out\_run_audWitnessConfirm.cjs  197.1kb
+
+Done in 36ms
+── checking for undefined identifiers (TS2304 only) ──
+   none
+===== AUD-WITNESS-CONFIRM — an instrument outside _facetTruthLib, on my own headline =====
+Voronoi / voronoi_ring_D--   K 30 witnesses   brute lattice 3072x1024 = 3.15M evals/point, 24 restarts
+closure: zJumps 0  thJumps 0
+
+idx    tangExc     H1 witnessed    H1 bound     BRUTE(indep)   brute/wit   over-10um
+------------------------------------------------------------------------------------
+179388    2346.7         67.260      77.241         67.260      1.0000   YES
+138984    2345.4         66.009      75.990         66.009      1.0000   YES
+241708    2263.4         59.391      69.345         59.391      1.0000   YES
+ 44726    2238.7         84.154      94.073         84.154      1.0000   YES
+ 74540    2237.4         90.294     100.210         90.294      1.0000   YES
+ 53668    2234.2         95.753     105.730         95.753      1.0000   YES
+ 79894    2223.2        115.053     124.981        115.053      1.0000   YES
+ 87650    2219.6        117.474     127.390        117.474      1.0000   YES
+ 43546    2218.5         96.807     106.802         96.807      1.0000   YES
+ 41987    2212.7         80.074      89.989         80.074      1.0000   YES
+ 47454    2207.6         83.916      93.835         83.916      1.0000   YES
+ 78111    2198.2         95.473     105.468         95.473      1.0000   YES
+ 48351    2197.3         94.991     104.960         94.991      1.0000   YES
+ 69710    2174.4         81.780      91.699         81.780      1.0000   YES
+ 91243    2171.4         85.070      94.989         85.070      1.0000   YES
+ 86543    2090.2        122.263     132.226        122.263      1.0000   YES
+218082    2090.2         68.899      78.856         68.899      1.0000   YES
+ 86953    2090.0         79.012      88.947         79.012      1.0000   YES
+111271    2085.9        105.185     115.116        105.185      1.0000   YES
+130371    2066.9         35.606      45.550         35.606      1.0000   YES
+202543    2040.6         83.276      93.182         83.276      1.0000   YES
+209770    2031.4         55.729      65.702         55.729      1.0000   YES
+ 63563    1930.8         54.093      64.028         54.093      1.0000   YES
+215515    1926.5         71.526      81.471         71.526      1.0000   YES
+268704    1914.8         43.868      53.803         43.868      1.0000   YES
+ 62649    1910.1        155.876     165.824        155.876      1.0000   YES
+138474    1908.6         44.564      54.540         44.564      1.0000   YES
+145870    1890.1         43.372      53.297         43.372      1.0000   YES
+206020    1872.3         65.810      75.722         65.810      1.0000   YES
+ 71914    1866.6        212.018     221.923        212.018      1.0000   YES
+
+brute / witnessed        p10 1.0000   p50 1.0000   p90 1.0000   min 1.0000   max 1.0000
+H1 witnessed             p50 83.28   max 212.02 um
+INDEPENDENT brute        p50 83.28   max 212.02 um
+over the 10 um bar:      H1 30/30   INDEPENDENT BRUTE 30/30
+
+H-J KILL: median brute/witnessed < 0.5 => witnessed inflated, FINDING 5 magnitudes withdrawn.
+H-J CONFIRM: median in [0.9,1.1] AND >=90% of brutes over 10 um => reproduced independently.
+  measured median 1.0000, brute over-bar 100.0%  => CONFIRMED
+(106.9s)
+
+report written to research/exchange/_strataConformBisect/audWitnessConfirm.report.txt

@@ -4,20 +4,31 @@
 > *(I have no agent-to-agent message tool in this session; this file + the commit subject are the
 > channel. FLIP: read FINDING 4 before spending another arm optimising `tangExc` on Voronoi.)*
 >
-> **`tangExc` OVERSTATES THE TRUE POSITION ERROR BY ~100x ON ITS OWN WORST POPULATION.** On Voronoi's
-> top-1500 facets by `tangExc` (tangExc p50 **1327.2 um**), the max over a 325-point barycentric
-> lattice of `distRadial` — which `_facetTruthLib` documents as *"Always >= d(p)"*, i.e. a pointwise
-> RIGOROUS upper bound needing no solver — is p50 **29.65 um**. `tangExc / (upper bound on position
-> error)` = **44.8x at the median**, and against `distPerp` at that argmax it is **109x**.
-> `tangExc := sin(normDeg) * diam` is a FORMULA, not the length of any displacement.
+> **1. `tangExc` OVERSTATES THE TRUE POSITION ERROR BY 26x ON ITS OWN WORST POPULATION.** Voronoi's
+> top-30 facets by `tangExc`: `tangExc` p50 **2171.4 um**, `certifyTriangle` exhaustive H1 witnessed
+> p50 **83.28 um** => **26.1x**, and `witnessedComplete 0/30` means even 83.28 is a lower bound, so the
+> true factor is AT MOST 26x. `tangExc := sin(normDeg) * diam` is a FORMULA, not the length of any
+> displacement; the offending facets are CAPS (altitude p50 **8.2 um** on millimetre diameters) whose
+> normals are ill-conditioned.
+> *(SELF-CORRECTION: my first commit tonight said 109x from `distPerp` at the lattice-radial argmax.
+> That argmax is not the perpendicular argmax and the number was too flattering to the mesh by 4.2x.
+> **Quote 26x, not 109x.**)*
 >
-> **BUT THE FACETS ARE NOT INNOCENT, AND THAT IS THE REAL FINDING.** The driver's plane ruler reports
-> Voronoi at posUm **max 5.5 um, ZERO facets over the 10 um bar**. The true perpendicular distance at
-> those same facets is p50 **12.48**, p99 **116.40**, max **192.0 um**. *** The discovery is a BROKEN
-> POSITION RULER, not a missing orientation ruler. *** A sound position ruler at the product's own
-> 10 um bar already condemns this population — no new objective is needed, and an orientation
-> objective would chase a quantity ~100x off the physical error that SECTION 15 already measured to be
-> ANTI-CORRELATED with position (R4' : orientation 3.58x better, position 4.3x WORSE).
+> **2. AND THE FACETS ARE NOT INNOCENT — THIS IS THE REAL FINDING.** The driver's plane ruler reports
+> Voronoi at posUm **max 4.99 um, ZERO facets over the 10 um bar**. `certifyTriangle` at the product
+> bar returns **PROVEN-FAIL 396 / PROVEN-PASS 4 / UNKNOWN 0** on the top-400, witnessed to **230.76 um
+> = 46x the ruler's own maximum** — and **30 of 400 RANDOM facets (7.5 %) fail too**. Confirmed by an
+> instrument sharing no code with `_facetTruthLib`: **brute/witnessed = 1.0000 on all 30 checked
+> witnesses, 30/30 over-bar by BOTH** (FINDING 9).
+> *** The discovery is a BROKEN POSITION RULER, not a missing orientation ruler. *** A sound position
+> ruler at the product's own 10 um bar already condemns this population — no new objective is needed,
+> and an orientation objective would chase a quantity 26x off the physical error that SECTION 15 has
+> already measured to be ANTI-CORRELATED with position (R4': orientation 3.58x better, position 4.3x
+> WORSE).
+>
+> **3. AND 35 % OF THE 39.7 % IS A FOOTPRINT ARTEFACT.** Minimising the deviation over the facet's own
+> 15-point footprint (the `featureSpan` correction, generalised from a boolean to a magnitude) takes
+> the headline **39.696 % -> 25.675 %**. Quote the cone-minimised count or it is inflated 1.55x.
 
 Appended continuously. Every number here is a printed value from a named command, not a verdict read
 off a test's green tick.
@@ -342,3 +353,182 @@ I did not touch `_facetTruthLib.ts` (not mine). The K=8 knob remains default-OFF
 here changes library behaviour. I have NOT swept the other gate files (`_strataFacetTruth.test.ts`,
 `_strataCertD.test.ts`, `_judgeNegativeControl.test.ts`) for the same one-sidedness -- that sweep is
 outstanding and I expect it to find more, since the hit rate here was 11 of 12.
+
+---
+
+## FINDING 7 — THE HOISTED rA TWIN: *** THE RUNTIME GUARD IS BREACHABLE. I BUILT THE BREACH. ***
+
+Command: `PF_AUDRA_N=2000000 bash research/tools/run-aud-rafast-diff.sh`
+Report: `research/exchange/_strataConformBisect/audRaFastDiff.report.txt`; ndjson `AUD_RAFAST.ndjson`.
+
+The landing's safety claim is: "the failure mode of this file is no-speedup, never a-different-surface"
+— because `buildAuditRadiusFn` checks the twin against the shipped builder over `radiusLattice(H,[],[])`
+(16,471 grid points + 42 boundary probes) and falls back on ANY deviation.
+
+**The brief asked whether I could construct a (theta,z) where the twin differs and the lattice does not
+sample it. YES.**
+
+```
+arm                fastUsed  latticeDiffs |  randomDiffs / 2,000,000   worstUlp        worstAbs | GUARD
+DEFAULTS             true          0      |          0                       0         0.00e+0 | n/a (identical)
+D1-OVERLAP           false         8      |        858                       1        7.11e-15 | HOLDS (falls back)
+D1-OVERLAP-2         false         9      |       1193                       1        7.11e-15 | HOLDS (falls back)
+D2-WT-CLAMP        *** true ***    0      |          1              23,644,129,424    1.68e-4  | *** BREACHED ***
+T5-XTRACERY          true          0      |          0                       0         0.00e+0 | n/a (identical)
+D3-BELL              false     16,513     |  2,000,000        1.9e15          1.35e+1  | HOLDS (falls back)
+EXPN                 true          0      |          0                       0         0.00e+0 | n/a (identical)
+ZERO-DIAMOND-BANDS   true          0      |          0                       0         0.00e+0 | n/a (identical)
+SHARP-FRACTIONAL     true          0      |          0                       0         0.00e+0 | n/a (identical)
+N1                   true          0      |          0                       0         0.00e+0 | n/a (identical)
+```
+
+D2-WT-CLAMP (`gaX 0.8, gaCol 1e-9`): the guard reports `fastUsed = true`, `fastDiffs = 0`, and the twin
+is a DIFFERENT SURFACE by 1.68e-4 mm = 168 nanometres at theta 0.167082963516, z 50.073717953637
+(worst ulp distance 2.36e10). The auditor would have scored facets against a surface it had just
+certified identical.
+
+### 7a. THE MECHANISM — one missing clamp.
+
+```
+shipped styles.ts:610-613   const ridge = (d, wIn, sharp) => { const w = Math.max(EPS, wIn); ... }
+                            xDiag uses  ridge(s - x01, wT, sharp)     -> divides by max(EPS, wT)
+twin _raFast.ts:85,120      const wT = 0.55 * wX;                     -> divides by wT, UNCLAMPED
+                            ridgeAt(1 - Math.abs(s - x01) / wT)
+```
+
+`wX = Math.max(EPS, gaCol) >= 1e-6` only guarantees `wT >= 5.5e-7`, so for `gaCol < 1.818e-6` the two
+divide by different numbers. Verified directly (`research/bridge/out/_aud_d2probe.mjs`): they differ
+for every `gaCol <= 1.818e-6` and agree above it.
+
+THE ONE-LINE FIX, in a file I do NOT own — `_raFast.ts:85`:
+
+```ts
+const wT = Math.max(EPS, 0.55 * wX);      // was: const wT = 0.55 * wX;
+```
+
+### 7b. WHY THE LATTICE MISSED IT — a general limit on the guard, and the arithmetic checks out.
+
+`radiusLattice(H,[],[])` is 16,513 points, so it can only see a divergence whose support has relative
+measure above about `1/16,513 = 6e-5`:
+
+```
+D1-OVERLAP   divergence measure 4.29e-4  ->  expected lattice hits 16471*4.29e-4 = 7.07  ->  observed 8   CAUGHT
+D2-WT-CLAMP  divergence measure 5.0e-7   ->  expected lattice hits 0.008                 ->  observed 0   MISSED
+```
+
+A missing clamp, a wrong comparison operator, an off-by-one-ulp boundary — every classic transcription
+error concentrates its divergence on a THIN set, which is precisely the class this guard cannot see.
+The guard is strong against a wholesale error (D3-BELL: 16,513 / 16,513) and weak against exactly the
+kind it is nominally there to catch.
+
+### 7c. REACHABILITY — the breach is real but NOT reachable through the product.
+
+`src/styles/registry.ts:195` clamps `gaCol` to `min 0.01`, 5,500x above the 1.818e-6 threshold. So no
+user or preset can trigger D2. THE LANDED CHANGE IS SAFE AS SHIPPED. What is refuted is the SAFETY
+ARGUMENT, not the landing: "never a different surface" is false, and the reason it is currently
+harmless is a registry clamp in another file that nothing connects to this guard.
+
+### 7d. TWO MORE DIVERGENCES, BOTH CAUGHT, BOTH WORTH FIXING AT LEAST IN THE COMMENT.
+
+* D1 — THE THREE-TERM ASSOCIATION IS REORDERED. shipped `styles.ts:717`
+  `pattern = botMask*lower + topMask*upper + bands*0.25*bandBase` = `fl(fl(L+U)+B)`; twin
+  `pattern = B; pattern += L; pattern += U` = `fl(fl(B+L)+U)`. IEEE addition is commutative but not
+  associative, so these agree whenever at most TWO addends are live and may differ by 1 ulp when all
+  three are. At registry defaults they are NEVER all three live — `bandBase` has support
+  `t < 1.8*gaBandW = 0.072`, `topMask` is exactly 0 below `ssLo ~ 0.51`, disjoint. So T4's "EVERY ONE
+  IS EXACT" holds BECAUSE OF THE DEFAULT PARAMETERS, not because of the transformation. Measured:
+  `gaBandW 0.45` gives 858 of 2,000,000 differing, at exactly 1 ulp / 7.11e-15 mm.
+* D3 — THE TWIN SILENTLY DROPS `bellAmp` / `bellCenter` / `bellWidth`. `profile.ts:51-58` applies
+  `r *= 1 + bellAmp*exp(...)`; the twin hard-codes its absence. With `bellAmp 0.3`, 100 % of samples
+  differ by up to 13.5 mm. Caught — but it is a DIFFERENT SURFACE, not a slower one, and the header
+  lists it under "exact simplifications".
+* D4 — THE TWIN CHECK PASSES EMPTY JUMP ARRAYS: `radiusLattice(H, [], [])`. The discontinuity brackets
+  that `radiusLattice`'s own header calls "the places where a one-ULP difference would actually change
+  which side of a jump a sample lands on" are ABSENT from this verification. Harmless for GothicArches
+  (both detectors return 0) and a live trap for the next style transcribed.
+
+### 7e. WHAT SURVIVES, CLEANLY.
+
+T5's `xTracery` branch — dead at defaults, therefore never exercised by the runtime guard — is
+transcribed CORRECTLY: `gaX 0.7` alone gives 0 / 2,000,000. `expn != 1`, fractional `gaSharp`,
+`gaDiamond = gaBands = 0`, `gaCounts = 1`, and 539 adversarial exact-boundary points all give 0 diffs.
+At the campaign config the twin is bit-identical over 2,000,000 random points and 539 boundary points,
+and `fastUsed = true`. The 2.89x stands.
+
+## FINDING 8 — THE `distPerp` SEEDING-GRID WeakMap: SAFE FOR EVERY BUILDER IN THIS REPO, BY SNAPSHOT.
+
+Same command, section `3b`. The question: can two different surfaces share one closure object?
+
+```
+A. same params, two builds -> same object?   false      (no interning; each build is a fresh closure)
+   different params        -> same object?   false
+   grids distinct, grid[0] 40.375000000 vs 40.750000000 (different surfaces get different grids)
+   same rA, same (H,nu,nv) -> cache HIT      true       (the memo works)
+   same rA, DIFFERENT H    -> distinct grid  true       (H is in the key)
+   same rA, DIFFERENT nu   -> distinct grid  true       (nu is in the key)
+B. mutate the caller's params object AFTER the build: rA(0.7,60) 45.004656366472 -> 45.004656366472
+   => buildRadiusFn SNAPSHOTS via {...DEFAULT_STYLE_PARAMS[id], ...params} at build time. SAFE.
+C. a closure that reads MUTABLE state: the cache serves a STALE GRID (g1 === g2 after the state moved)
+```
+
+Verdict: SAFE AS USED. All three builders in the audit path (`buildRadiusFn`, `buildAuditRadiusFn`,
+`_raFast.buildGothicHoisted`) capture by value at construction and return a fresh object, so function
+identity does determine the surface.
+
+The hazard in (C) is real but unexercised: the cache's correctness is not a property of the cache, it
+is a property of every CALLER. A future rA that reads a `globalThis.__pf*` lever, or a builder that
+memoises its closures, would silently get a stale seeding grid — no error, no eval-count anomaly. That
+contract is not written down anywhere. Suggested comment for `_facetTruthLib.ts:1087` (not my file):
+"KEY IS FUNCTION IDENTITY: any rA whose value depends on state OUTSIDE its own closure (a global lever,
+an aliased params object) will be served a stale grid. Every builder in this repo snapshots at
+construction — audited 2026-08-05."
+
+## WRITE-IT-DOWN LIST — changes I want in files I do NOT own
+
+1. `research/bridge/_raFast.ts:85` — `const wT = Math.max(EPS, 0.55 * wX);`  (closes the D2 guard breach)
+2. `research/bridge/_raFast.ts` header — soften "EVERY ONE IS EXACT. NONE TOUCHES A DOUBLE" to name the
+   two conditions it actually rests on: the 3-term association is exact only while at most two addends
+   are live (true at registry defaults, D1), and `bellAmp`/`bellCenter`/`bellWidth` are NOT implemented
+   (D3). And "the failure mode is no speedup, never a different surface" -> "...for any divergence whose
+   support exceeds ~1/16,513 of the domain; a thin-set divergence such as a missing clamp passes (D2)."
+3. `research/bridge/_facetTruthRA.ts:62` — pass the real jump arrays to `radiusLattice` in the fast-twin
+   check, or state why empty is correct (D4).
+4. `research/bridge/_facetTruthLib.ts:1087` — the one-line WeakMap contract comment above.
+
+---
+
+## FINDING 9 — I AUDITED MY OWN HEADLINE WITH AN INSTRUMENT OUTSIDE `_facetTruthLib`. IT REPRODUCES IT EXACTLY.
+
+Command: `PF_AUDWC_K=30 bash research/tools/run-aud-witness-confirm.sh`
+Log: `research/exchange/_strataConformBisect/AUD_WITNESS_VOR.log`; ndjson `AUD_WITNESS.ndjson`.
+
+FINDING 5's "PROVEN-FAIL" rests on `FacetVerdict.witnessed` being a REAL distance, and `tighten`
+composes radial -> descent -> Newton -> closure, each an UPPER bound on `d(p)`. The header claims
+"values at or above tol are tightened and exact". **That is a claim in a comment**, and taking it on
+faith is exactly what I criticised SECTION 14 for. So the distance at `certifyTriangle`'s own witness
+point was recomputed with an instrument that shares no code with it: a GLOBAL 3072 x 1025 lattice scan
+over the whole (theta,z) domain, 24 restarts, plain 8-neighbour coordinate descent halving to 1e-13,
+written inline in `audWitnessConfirm.ts`.
+
+```
+brute / witnessed        p10 1.0000   p50 1.0000   p90 1.0000   min 1.0000   max 1.0000
+H1 witnessed             p50 83.28   max 212.02 um
+INDEPENDENT brute        p50 83.28   max 212.02 um
+over the 10 um bar:      H1 30/30    INDEPENDENT BRUTE 30/30
+```
+
+Per-witness the two agree to the printed 3 decimal places in micrometres (1 nanometre), e.g. 79.012 /
+79.012, 105.185 / 105.185, 155.876 / 155.876, 212.018 / 212.018.
+
+**Why this is a real test and not a tautology.** Both instruments return UPPER bounds on `d(p)`, so if
+`tighten` were stuck in a wrong (farther) basin my brute — which searches the WHOLE domain from 24
+restarts, far more thoroughly than a descent from the radial foot — would have found a nearer surface
+point and read SMALLER. It read identical, at every one of the 30. **`witnessed` is not inflated.**
+
+**H-J: CONFIRMED** (pre-registered: median in [0.9,1.1] AND >= 90 % of brutes over 10 um; measured
+median 1.0000, brute over-bar 100.0 %). The kill condition was median < 0.5.
+
+**THE HONEST LIMIT, restated because it has not changed.** Both instruments are UPPER bounds, so this
+pair CORROBORATES rather than PROVES a lower bound on `d(p)`. The rigorous upper bound over the whole
+facet is `certifyTriangle`'s `bound` (p50 88.64, max 217.08 um on this set), which is reported. What
+this probe removes is single-instrument risk — the risk that actually bit this campaign twice tonight.
