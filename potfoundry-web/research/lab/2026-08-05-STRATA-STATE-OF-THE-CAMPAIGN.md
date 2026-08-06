@@ -1067,7 +1067,31 @@ count and area (0.49× / 0.62×). Its published over-bar of 4 was 401× low. I p
 1. ***VORONOI IS CLOSED TO SPLITTING.*** The child altitude needed to cancel the parent's orientation
    error implies a **required child aspect of 3,009** (p90 8.0e11). The triangle that would fix it is
    a needle whose own normal is unbounded.
-2. ***EVERY 1-RING OPERATOR IS DEFEATED BY THE SUPER-HUBS.*** 32 Voronoi vertices of degree ≥1000 hold
+2. ⛔ ***"EVERY 1-RING OPERATOR IS DEFEATED BY THE SUPER-HUBS" — REFUTED 2026-08-06 BY RE-CENSUS.
+   THE SUPER-HUB CLASS DOES NOT EXIST ON THE SHAPE-GATED MESH.*** Ran `s82HubCensus.ts` **unmodified**
+   (the campaign's own instrument, exact-f32 weld) on all three artefacts:
+
+   | | max facet-degree | deg ≥ 1000 | share of mesh on deg ≥ 100 |
+   |---|---|---|---|
+   | Voronoi SHAPE-**off** (the void artefact) | **2,550** | 32 | 2.6746% |
+   | **Voronoi SHAPE-on** | ***40*** | **0** | **0.0000%** |
+   | Gothic S39CTL | 50 | 0 | 0.0000% |
+
+   ***THE SHAPE-GATED VORONOI MESH HAS A LOWER MAX DEGREE (40) THAN GOTHIC (50).*** p50 6, p99 14,
+   p999 21. There is no 2,550-gon, no super-hub class, and no structural defeat of 1-ring operators.
+
+   ⚠ ***THIS WAS ALREADY KNOWN AND NEVER PROPAGATED.*** S95 (2026-08-05) recorded that "every
+   'defeated by the 2,550-gon' result was measured on the worse mesh." It sat un-merged into this
+   section for a day while §0g–§0i were built on top of §5. **The re-census confirms an existing
+   finding rather than discovering one; the failure was documentary, not experimental.**
+
+   ⚖ **BUT DO NOT OVER-READ IT.** Killing the hub explanation does **not** resurrect the operators.
+   ***§0f.1's per-footprint cone ceiling is an independent and STRONGER bound*** — 88–94% of over-bar
+   area is irreducible for its own footprint, for *every* plane through it, hub or no hub. So: **the
+   hub story is dead; the operators remain bounded, for a better reason that depends on no artefact.**
+   What genuinely reopens is any lever that was priced dead *specifically* on the 2,550-gon.
+
+   ~~ORIGINAL CLAIM, RETAINED REFUTED:~~ 32 Voronoi vertices of degree ≥1000 hold
    5.62% of the whole mesh; worst **2,550** against a **median of 5**. A flip, a collapse, a vertex
    removal and the cavity DP are all 1-ring ops, and the 1-ring of a 2,550-degree vertex is a
    2,550-gon. `fold` fires on 494,895 of 745,470 collapse candidates.
