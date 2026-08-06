@@ -467,9 +467,17 @@ Re-run at MATCHED settings (both `uniLev 2 / maxLev 6`, N=400 golden-stride, S98
 | lepp, chord 10 µm | **4.69×**, 10.39% uncl | 9.22×, **0.00% uncl** |
 | 1° angle | **94.44×**, **4.394% uncl** | 232.69×, 15.674% uncl |
 
-**Neither style dominates.** On the CHORD bar Voronoi is genuinely easier — it clears at maxLev 6 while
-Gothic still carries 10.39% uncleared and needs maxLev 9 to reach 0.00%. On the **1° ANGLE bar Gothic
-is easier by 2.5× cost and 3.6× uncleared.** ***The core §0g finding is untouched — the catalogue does
+> ### ⛔ AND THIS TABLE IS RETIRED A SECOND TIME — SEE §0i.2
+> Matching `uniLev/maxLev` was **necessary and not sufficient.** ***Gothic at 10.39% uncleared and
+> Voronoi at 0.00% are not on the same quality line***, so no count ratio between those two columns
+> means anything. And there is no single cap that repairs it: **the cap that frees Voronoi (12) still
+> binds on Gothic.** ***That is itself the finding — Gothic needs more refinement depth than Voronoi,
+> and the two styles cannot be placed on one row at any one cap.***
+> **The rule is: only compare counts between operators that BOTH reach 0.000% uncleared.**
+
+**What survives from the table:** on the CHORD bar Voronoi genuinely clears at maxLev 6 where Gothic
+does not (independently reproduced by CONE at N=800: Voronoi **8.650× / 0.000%**, Gothic **5.289× /
+10.329%**). The 1° row is **not** a valid comparison and no style ranking should be read from it. ***The core §0g finding is untouched — the catalogue does
 not split into "closes" and "cannot close"; both styles clear the chord bar and neither clears 1° — but
 "Voronoi is the easier style" is false and was my error, not S95's.***
 
@@ -688,6 +696,115 @@ are **lower bounds** and only ratios are claimed.
 ---
 
 ---
+
+---
+
+## 0i. *** S94/CONE — THE CONE FIELD IS REFUTED, THE 1° BAR IS NOT A 12× OBJECT, AND NO LEPP MULTIPLIER IN THIS CAMPAIGN WAS EVER QUOTABLE ***
+
+### 0i.1 THE ANCHOR WAS A SINGLE-FACET LOTTERY, AND THE SPREAD IS 25×
+
+`frontierRefine`'s LEPP column was only ever run at **N=150**. Every one of these is GothicArches
+S39CTL, the 10 µm chord bar, plain LEPP:
+
+    4.69x   (N=400,  cap 12, unscoped)  10.39% uncleared   <- my "matched settings" baseline
+    5.29x   (N=800,  cap 12, unscoped)  10.33% uncleared
+    5.50x   (N=600,  cap 16, unscoped)   0.12% uncleared
+    6.67x   (N=150,  cap 16, unscoped)   0.00% uncleared   <- *** THE PUBLISHED ANCHOR ***
+    3.12x   (N=2000, cap 16, SCOPED)     0.00% uncleared
+   10.76x   (N=2000, cap 16, unscoped)  27.41% uncleared
+  116.89x   (N=2000, cap 24, unscoped)  32.24% uncleared
+
+***A 25× SPREAD ON ONE MESH, ONE BAR, ONE OPERATOR.*** The move from 5.50× to 12.71× is **one parent**
+entering the sample between N=600 and N=1200 — level-0 minAngle **2.78°**, slope 7.735 — which alone
+consumes **7,139 leaves and never clears**. The worst **1% of parents hold 74.92% of all LEPP leaves**.
+***More depth makes LEPP WORSE on both axes (cap 16 → 24: 10.8× → 116.9×, uncleared 28.8% → 32.2%): it
+does not converge on the unscoped mesh. `red` 1→4 never blows up on that parent — 0.000% uncleared at
+every N and every cap.*** **No LEPP multiplier here is quotable without its N, its cap, its scope AND
+its uncleared %. The published 6.67× carries none of the four.**
+
+### 0i.2 ⇒ THE RULE, AND IT IS STRICTER THAN THE ONE I WROTE IN §0g.2
+
+I said "diff the header lines." **That is not enough.** At a binding cap the operators are not on the
+same quality line at all — Gothic N=800 cap 6: LEPP **5.289× at 10.329% uncleared** against `cone`
+**9.014× at 0.998%**. One table would license either "a 1.70× loss" or "a 64× win."
+
+> ### ***ONLY COMPARE TRIANGLE COUNTS BETWEEN OPERATORS THAT BOTH REACH 0.000% UNCLEARED. MATCH THE RESIDUAL, NOT THE CAP.***
+
+**⚠ This retires §0g.2's table a second time.** Matching `uniLev/maxLev` was necessary and not
+sufficient: **Gothic at 10.39% uncleared and Voronoi at 0.00% are not on one quality line.** And there
+is no single cap that fixes it — ***the cap that frees Voronoi (12) still binds on Gothic.*** That is
+itself the finding: **Gothic needs more refinement depth than Voronoi**, so the two styles cannot be
+put on one row at any one cap. See §0g.2 as amended.
+
+### 0i.3 THE HYPOTHESES
+
+- **H1 (cone-driven sizing field beats LEPP): REFUTED, cross-style, and refuted the other way.**
+  Gothic scoped, cap-free: LEPP **3.120×** vs cone **4.211×** (1.35×). Voronoi shape-gated, cap-free:
+  LEPP **8.650×** vs cone **16.076×** (**1.86×**). Both sides of both comparisons clear at 0.000%, so
+  the ratios are iso-quality by §0i.2's own rule. **Mechanism, isolated not guessed:** `coneOracle`
+  (measured chord, same k-way split) is *still* 1.276× worse ⇒ the loss is in **the split, not the
+  driver**. A k-way split imposes the parent's worst-case *k* on all *k²* children at once, while
+  bisection re-tests after every doubling. ***Bisection's factor-2 granularity is already the finest a
+  subdivision operator can have — there is no granularity headroom for any field to win back inside a
+  refinement framework.***
+- **H2 (over-1° AREA below 5% at ≤12×): REFUTED by 9–13×.** The fractional-knapsack optimum of *any*
+  isotropic field needs **18.33×**; the measured threshold-driven frontier does not cross 5% below
+  **~106×** and full clearance costs **~155×** (0.013% residual). ***THE 1° BAR IS REACHABLE — IT IS
+  SIMPLY NOT A 12× OBJECT.*** Anisotropy at AR≤5 divides the full-clearance angle cost by 3.8× and is
+  still far over. For scale from the same instrument: **at the industry-practical 5° bar Gothic is only
+  6.43% over by area to begin with, and the chord bar is met at ~3×.**
+- **H3 (anisotropy ≥1.5×): CONFIRMED at 1.89× (AR≤5, chord bar) — but as a REMESH lever only.** The
+  existing facets' long axes are misaligned with the slow direction by area-wt p50 **28.43°**, so a
+  subdivision operator captures only the part its parents happen to be aligned with.
+- **H4 (`M = g/h²` remesh beats the best refinement operator): KILL LINE HIT AS SHIPPED.** At the
+  theoretically-correct tol it spends **2.931×** and is still **14.795% over bar**, while scoped LEPP
+  clears at 3.120×. ***But its SHAPE column is a large win — leaf minAngle 47.3° mean / 3.98° worst
+  against LEPP's 37.6°/1.25° (and 0.00° unscoped)*** — the memoised "closes the sliver-quality
+  frontier" property reproduced on a task it was not built for. Two separable, unasserted explanations
+  for the residual (`splitThresh 1.5` ⇒ chord up to 2.25× the design tol; 160×160 grid aliasing of
+  sub-cell relief, which the kernel's own docs record at 5–10×) are wired and testable.
+
+### 0i.4 THE STRUCTURAL FINDING — REFINEMENT IS THE WRONG FRAME, AND THREE RESULTS SAY SO
+
+Free placement would certify **the same geometry** at **1.615 leaves/parent instead of LEPP's 3.120 —
+a 1.93× prize** (measured per-leaf; corroborated to 4% by an independent per-parent analytic on the
+60,000-facet census). ***It is not a tuning loss. It is the structural cost of HALVING WHAT EXISTS
+instead of GENERATING AN ELEMENT AT THE ADMISSIBLE SIZE.*** H1's mechanism, H3's misalignment and this
+1.93× are the same fact three times: **sizing and anisotropy are GENERATION levers, not REFINEMENT
+levers.** ***That is a direct argument for the unwired `M = g/h²` kernel as the vehicle — and H4 says
+it does not deliver as shipped, so the next arm is its two knobs, not a new mechanism.***
+
+### 0i.5 THE RULER FIX, AND A SECOND ARGUMENT FOR THE ASPECT GATE
+
+`5698d023` ported into CONE's inline ruler: ***every verdict is robust to it*** (red 9.721→9.720, cone
+9.607→9.607, LEPP 10.822→10.755) ***while the ill-conditioned facet's own reading moves a lot*** — the
+killer parent's level-0 sup angle 115.707° → **123.627°**. Exactly the shape the fix predicts.
+`signMargin` on Gothic: **4.083% of triangles below 0.10, 0.125% below 0.01** — ~2× Voronoi's. And on
+the shape-gated Voronoi artefact it is **0.136% / 0.013%, 16× better conditioned than SHAPE-off**:
+***the aspect gate improves the INSTRUMENT's conditioning too, which is a second and independent
+argument for §0h.2c beyond cost.***
+
+### 0i.6 THE REFRAME THAT RECONCILES WALL, S98 AND CONE
+
+CONE's §8.3, on my seed-shape question: shape-preserving operators (`red`, all three `cone` variants)
+keep every child similar to its parent and read **0.000% uncleared at every N on both styles — on the
+same parents where bisection diverges.**
+
+> ***REFINABILITY IS A PROPERTY OF THE OPERATOR'S SHAPE BEHAVIOUR, NOT OF THE SEED'S FIDELITY.***
+
+That is the synthesis of all three agents. WALL: it is shape, not wall angle. S98: cost falls
+monotonically with parent shape. CONE: and the mechanism is that **LEPP degrades shape and diverges
+exactly where it does**, while operators that preserve shape never diverge at all. **⇒ Three remedies,
+all now priced: gate the shape (§0h.2c, cheap), change the operator (`red`: robust but 1.90× dearer on
+Voronoi), or remesh (§0i.4, the real prize, undelivered as shipped).**
+
+**DISCLOSED BY THE AGENT, UNPROMPTED:** it never varied an AR cap or re-seeded, so §8.3 is
+*observational across two committed artefacts and is not a test*; the SLACK column is invalid on angle
+rows and is quoted only for chord; and one remesh arm burned 1,218 s CPU without checkpointing a single
+row and was killed — **zero rows, no inference drawn**, and H4 rests entirely on the plain kernel run
+that completed.
+
+Scorecard: `S94_CONE_FINDINGS.md`.
 
 ---
 
