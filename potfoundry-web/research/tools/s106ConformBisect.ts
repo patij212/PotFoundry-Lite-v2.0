@@ -140,6 +140,11 @@ const CAP = 2 * MAXLEV;
 const LEGACYSIGN = envS('PF_CF_RULER', 'outward') === 'legacy';
 const WELDQ = envF('PF_CF_WELDQ', 0);
 const MAXTRI = Math.round(envF('PF_CF_MAXTRI', 60e6));
+const WATCHDOG = Math.round(envF('PF_CF_WATCHDOG', 0));
+const PROGMS = Math.round(envF('PF_CF_PROGMS', 30000));
+/** HARD depth limit on FORCED (propagation) splits. A forced split at depth >= HARDCAP is REFUSED,
+ *  which leaves a HANGING NODE. `st.refusedForced` is that count = the conformity DEFICIT, printed. */
+const HARDCAP = Math.round(envF('PF_CF_HARDCAP', 1000000));
 const SHARD = Math.round(envF('PF_CF_SHARD', 0));
 const NSHARD = Math.round(envF('PF_CF_NSHARD', 1));
 const PATCHSIZES = envS('PF_CF_PATCH', '250,1000,4000,16000,64000').split(',').map((s) => Math.round(Number(s)));
@@ -319,6 +324,14 @@ function bisectInd(t: Tri, tieTotal: boolean): Tri[] {
   const thm = 0.5 * (t.th[u] + t.th[v]); const zm = 0.5 * (t.z[u] + t.z[v]);
   const [mx, my, mz] = lift(thm, zm);
   void mz;
+  {
+    const L = Math.hypot(t.x[v] - t.x[u], t.y[v] - t.y[u], t.z[v] - t.z[u]);
+    const dU = Math.hypot(mx - t.x[u], my - t.y[u], zm - t.z[u]);
+    const dV = Math.hypot(mx - t.x[v], my - t.y[v], zm - t.z[v]);
+    const rr = Math.max(dU, dV) / Math.max(1e-300, L);
+    nsTot += 1; if (rr > nsWorst) nsWorst = rr;
+    if (rr >= 1) nsSplits += 1;
+  }
   return [
     { x: [t.x[u], mx, t.x[w]], y: [t.y[u], my, t.y[w]], z: [t.z[u], zm, t.z[w]], th: [t.th[u], thm, t.th[w]] },
     { x: [mx, t.x[v], t.x[w]], y: [my, t.y[v], t.y[w]], z: [zm, t.z[v], t.z[w]], th: [thm, t.th[v], t.th[w]] },
@@ -328,6 +341,11 @@ const scTri = (t: Tri): Score => score(t.x[0], t.y[0], t.z[0], t.x[1], t.y[1], t
   t.th[0], t.th[1], t.th[2]);
 
 let tieHits = 0; let tieTests = 0;
+// *** THE NON-SHORTENING CENSUS. `lift(0.5*(thU+thV), 0.5*(zU+zV))` is NOT a bisection: on a RADIAL
+// edge (dR >> r*dTheta) the parametric midpoint snaps onto the surface on the far side of the step and
+// the child is CONGRUENT TO ITS PARENT. `frontierRefine` never sees it because its depth cap truncates
+// the recursion. Counted here on the VERBATIM operator so the finding cannot be blamed on this tool. ***
+let nsSplits = 0; let nsTot = 0; let nsWorst = 0;
 /** independent refinement of ONE level-0 facet. Returns leaves + uncleared + hanging-node estimate. */
 function refineIndependent(root: Tri, bar: BarName, tieTotal: boolean): { tris: number; unc: number; splits: number } {
   let tris = 0; let unc = 0; let splits = 0;
@@ -414,14 +432,14 @@ class ConMesh {
   nT = 0; nV = 0;
   TA: Int32Array; TB: Int32Array; TC: Int32Array;
   N0: Int32Array; N1: Int32Array; N2: Int32Array;
-  DEP: Int16Array; ROOT: Int32Array; SCC: Uint8Array; ALIVE: Uint8Array;
+  DEP: Int32Array; ROOT: Int32Array; SCC: Uint8Array; ALIVE: Uint8Array;
   VX: Float64Array; VY: Float64Array; VZ: Float64Array;
   capT: number; capV: number;
   constructor(capT: number, capV: number) {
     this.capT = capT; this.capV = capV;
     this.TA = new Int32Array(capT); this.TB = new Int32Array(capT); this.TC = new Int32Array(capT);
     this.N0 = new Int32Array(capT); this.N1 = new Int32Array(capT); this.N2 = new Int32Array(capT);
-    this.DEP = new Int16Array(capT); this.ROOT = new Int32Array(capT); this.SCC = new Uint8Array(capT);
+    this.DEP = new Int32Array(capT); this.ROOT = new Int32Array(capT); this.SCC = new Uint8Array(capT);
     this.ALIVE = new Uint8Array(capT);
     this.VX = new Float64Array(capV); this.VY = new Float64Array(capV); this.VZ = new Float64Array(capV);
   }
@@ -429,11 +447,10 @@ class ConMesh {
     const n = Math.min(MAXTRI, Math.ceil(this.capT * 1.6));
     if (n <= this.capT) throw new Error(`TRIANGLE CAP HIT at ${this.capT} (PF_CF_MAXTRI=${MAXTRI})`);
     const gi = (a: Int32Array): Int32Array => { const b = new Int32Array(n); b.set(a); return b; };
-    const gs = (a: Int16Array): Int16Array => { const b = new Int16Array(n); b.set(a); return b; };
-    const gu = (a: Uint8Array): Uint8Array => { const b = new Uint8Array(n); b.set(a); return b; };
+        const gu = (a: Uint8Array): Uint8Array => { const b = new Uint8Array(n); b.set(a); return b; };
     this.TA = gi(this.TA); this.TB = gi(this.TB); this.TC = gi(this.TC);
     this.N0 = gi(this.N0); this.N1 = gi(this.N1); this.N2 = gi(this.N2);
-    this.DEP = gs(this.DEP); this.ROOT = gi(this.ROOT); this.SCC = gu(this.SCC); this.ALIVE = gu(this.ALIVE);
+    this.DEP = gi(this.DEP); this.ROOT = gi(this.ROOT); this.SCC = gu(this.SCC); this.ALIVE = gu(this.ALIVE);
     this.capT = n;
   }
   growV(): void {
@@ -498,7 +515,7 @@ const TH3 = new Float64Array(3);
 interface ConStats {
   finalTris: number; overBarTris: number; splits: number; forcedOverCap: number;
   boundaryTerminals: number; pairTerminals: number; leppSteps: number; leppWalks: number; maxLepp: number;
-  escapedToHalo: number; guardHits: number; mismatchTerm: number;
+  escapedToHalo: number; guardHits: number; mismatchTerm: number; maxDep: number; overCapAlive: number; refusedForced: number; nsSplits: number; nsTot: number; nsWorst: number;
 }
 
 /** build a ConMesh over `faces` (a subset of level-0 facets), weld-shared. */
@@ -536,7 +553,7 @@ function buildRegion(w: Welded, faces: Int32Array, capT: number): ConMesh {
 function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, progressEvery: number,
   progressCb: ((s: ConStats) => void) | null): ConStats {
   const st: ConStats = { finalTris: 0, overBarTris: 0, splits: 0, forcedOverCap: 0, boundaryTerminals: 0,
-    pairTerminals: 0, leppSteps: 0, leppWalks: 0, maxLepp: 0, escapedToHalo: 0, guardHits: 0, mismatchTerm: 0 };
+    pairTerminals: 0, leppSteps: 0, leppWalks: 0, maxLepp: 0, escapedToHalo: 0, guardHits: 0, mismatchTerm: 0, maxDep: 0, overCapAlive: 0, refusedForced: 0, nsSplits: 0, nsTot: 0, nsWorst: 0 };
   const nSeed = m.nT;
   for (let t = 0; t < nSeed; t += 1) m.SCC[t] = overBar(m.scoreT(t, bar), bar) ? 1 : 0;
   let stack = new Int32Array(Math.max(1024, nSeed));
@@ -557,6 +574,7 @@ function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, p
     // c2 edges: e0=(mid,v) -> set by caller ; e1=(v,p) -> nbVP ; e2=(p,mid) -> c1
     m.setNb(c2, 1, nbVP); m.setNb(c2, 2, c1); m.repoint(nbVP, t, c2);
     m.ALIVE[t] = 0; st.splits += 1;
+    if (dep > st.maxDep) st.maxDep = dep;
     if (m.DEP[t] >= CAP) st.forcedOverCap += 1;
     if (inCore !== null && inCore[root] === 0) st.escapedToHalo += 1;
     return [c1, c2];
@@ -567,6 +585,14 @@ function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, p
     const iu = (e + 1) % 3; const iv = (e + 2) % 3;
     const thm = 0.5 * (th[iu] + th[iv]); const zm = 0.5 * (m.VZ[u] + m.VZ[v]);
     const [x, y, z] = lift(thm, zm); void z;
+    {
+      const L = Math.hypot(m.VX[v] - m.VX[u], m.VY[v] - m.VY[u], m.VZ[v] - m.VZ[u]);
+      const dU = Math.hypot(x - m.VX[u], y - m.VY[u], zm - m.VZ[u]);
+      const dV = Math.hypot(x - m.VX[v], y - m.VY[v], zm - m.VZ[v]);
+      const rr = Math.max(dU, dV) / Math.max(1e-300, L);
+      st.nsTot += 1; if (rr > st.nsWorst) st.nsWorst = rr;
+      if (rr >= 1) st.nsSplits += 1;
+    }
     return m.addV(x, y, zm);
   };
   const finish = (t: number): void => {
@@ -575,58 +601,93 @@ function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, p
     if (m.SCC[t] === 1) push(t);
   };
 
-  const GUARD = 1000000;
-  let processed = 0;
+  // *** THE PATH STACK — O(L), NOT O(L^2). *** The first version of this loop re-walked the propagation
+  // path FROM THE TARGET after every terminal-pair split, which is O(L^2) per target and made the Gothic
+  // whole-mesh run compute-bound with no progress for 25 minutes (measured: CPU delta 29.8 s / 30 s wall,
+  // so it was computing, not stalled). The standard Rivara form keeps the path and BACKS UP one element
+  // after each split. *** IT PRODUCES THE SAME MESH — verified below by re-running the recorded patch
+  // sweep and requiring identical M to the digit. ***
+  const GUARD = Math.round(envF('PF_CF_GUARD', 200000));
+  let path = new Int32Array(4096); let plen = 0;
+  const ppush = (t: number): void => { if (plen >= path.length) { const p2 = new Int32Array(path.length * 2); p2.set(path); path = p2; } path[plen] = t; plen += 1; };
+  let processed = 0; let lastProg = Date.now();
   while (sp > 0) {
     sp -= 1; const target = stack[sp];
     if (m.ALIVE[target] === 0) continue;
     if (m.SCC[target] !== 1) continue;
     if (m.DEP[target] >= CAP) continue;
-    // LEPP loop: keep bisecting terminal pairs until `target` itself has been split
-    while (m.ALIVE[target] === 1) {
-      let cur = target; let steps = 0;
-      st.leppWalks += 1;
-      for (;;) {
-        const e = m.longest(cur);
-        const U = m.nb(cur, e);
-        if (U < 0) { // boundary terminal
-          st.boundaryTerminals += 1;
-          const mid = midOf(cur, e);
-          const [c1, c2] = splitAt(cur, e, mid);
-          finish(c1); finish(c2);
-          break;
-        }
-        const eU = m.longest(U);
-        if (m.nb(U, eU) === cur) { // terminal PAIR (both agree the shared edge is longest)
-          // NON-VACUITY GUARD: the two triangles must name the SAME geometric edge. If they do not,
-          // the adjacency is corrupt and every count downstream is meaningless — so it is counted,
-          // not swallowed.
-          const cu = m.corner(cur, (e + 1) % 3); const cv = m.corner(cur, (e + 2) % 3);
-          const uu = m.corner(U, (eU + 1) % 3); const uv = m.corner(U, (eU + 2) % 3);
-          if (!((cu === uu && cv === uv) || (cu === uv && cv === uu))) { st.mismatchTerm += 1; }
-          st.pairTerminals += 1;
-          const mid = midOf(cur, e);
-          const [a1, a2] = splitAt(cur, e, mid);
-          const [b1, b2] = splitAt(U, eU, mid);
-          // cross-link the four halves across the bisected edge
-          // cur: a1=(p,u,mid) has e0=(u,mid) ; a2=(p,mid,v) has e0=(mid,v)
-          // U  : its (u',v') = (v,u) so b1=(q,v,mid) e0=(v,mid) ; b2=(q,mid,u) e0=(mid,u)
-          const a1u = m.TB[a1]; // u
-          const b1u = m.TB[b1]; // U's first edge endpoint
-          if (a1u === b1u) { m.setNb(a1, 0, b1); m.setNb(b1, 0, a1); m.setNb(a2, 0, b2); m.setNb(b2, 0, a2); } else { m.setNb(a1, 0, b2); m.setNb(b2, 0, a1); m.setNb(a2, 0, b1); m.setNb(b1, 0, a2); }
-          finish(a1); finish(a2); finish(b1); finish(b2);
-          break;
-        }
-        cur = U; steps += 1; st.leppSteps += 1;
-        if (steps > st.maxLepp) st.maxLepp = steps;
-        if (steps > GUARD) { st.guardHits += 1; break; }
+    plen = 0; ppush(target);
+    st.leppWalks += 1;
+    let steps = 0;
+    // *** WATCHDOG. The Gothic whole-mesh run went compute-bound with no progress twice; a watchdog that
+    // PRINTS THE LOOPING TARGET'S STATE is the only way to tell a real pathology from a bug. ***
+    const tgtSplits0 = st.splits; let iters = 0; let wdN = 0;
+    while (plen > 0) {
+      iters += 1;
+      if (WATCHDOG > 0 && iters % WATCHDOG === 0 && wdN < 25) {
+        wdN += 1;
+        const cur0 = path[plen - 1]; const e0 = m.longest(cur0);
+        const u0 = m.corner(cur0, (e0 + 1) % 3); const v0 = m.corner(cur0, (e0 + 2) % 3);
+        const eL = Math.hypot(m.VX[v0] - m.VX[u0], m.VY[v0] - m.VY[u0], m.VZ[v0] - m.VZ[u0]);
+        // *** THE DECISIVE QUANTITY: does the parametric midpoint actually LIE BETWEEN the endpoints? ***
+        const thW = TH3; m.thetas(cur0, thW);
+        const iu0 = (e0 + 1) % 3; const iv0 = (e0 + 2) % 3;
+        const thmW = 0.5 * (thW[iu0] + thW[iv0]); const zmW = 0.5 * (m.VZ[u0] + m.VZ[v0]);
+        const [mxW, myW] = lift(thmW, zmW);
+        const dU = Math.hypot(mxW - m.VX[u0], myW - m.VY[u0], zmW - m.VZ[u0]);
+        const dV = Math.hypot(mxW - m.VX[v0], myW - m.VY[v0], zmW - m.VZ[v0]);
+        const ru = Math.hypot(m.VX[u0], m.VY[u0]); const rv = Math.hypot(m.VX[v0], m.VY[v0]);
+        log(`      MIDPOINT PROBE  |uv| ${eL.toExponential(4)}  |u-mid| ${dU.toExponential(4)}  |v-mid| ${dV.toExponential(4)}  ratio(max/|uv|) ${(Math.max(dU, dV) / Math.max(1e-300, eL)).toFixed(6)}  | dTheta ${(thW[iv0] - thW[iu0]).toExponential(3)}  dZ ${(m.VZ[v0] - m.VZ[u0]).toExponential(3)}  dR ${(rv - ru).toExponential(3)}  rMid ${rA(thmW, zmW).toFixed(9)}  rU ${ru.toFixed(9)}  rV ${rv.toFixed(9)}`);
+        const s0 = m.scoreT(target, bar);
+        log(`  *** WATCHDOG target ${target} root ${m.ROOT[target]} dep ${m.DEP[target]} alive ${m.ALIVE[target]} chord ${s0.chordUm.toFixed(3)}um area ${s0.area.toExponential(3)} | iters ${iters} plen ${plen} splitsThisTarget ${st.splits - tgtSplits0} | top ${cur0} dep ${m.DEP[cur0]} longestEdge ${eL.toExponential(4)}mm | nT ${m.nT} nV ${m.nV}  [${el()}s]`);
       }
-      if (steps > GUARD) break;
+      while (plen > 0 && m.ALIVE[path[plen - 1]] === 0) plen -= 1;
+      if (plen === 0) break;
+      const cur = path[plen - 1];
+      const e = m.longest(cur);
+      const U = m.nb(cur, e);
+      if (U < 0) { // boundary terminal
+        // ABANDON THE WHOLE TARGET. Refusing only this one split leaves the walk re-deriving the same
+        // terminal forever (measured: 4,000,000 refusals on one Gothic patch). Abandoning keeps the mesh
+        // FULLY CONFORMING — zero hanging nodes — and simply leaves the target uncleared, which is the
+        // honest reading: this target cannot be refined within the forced-split depth limit.
+        if (m.DEP[cur] >= HARDCAP) { st.refusedForced += 1; plen = 0; break; }
+        st.boundaryTerminals += 1;
+        const mid = midOf(cur, e);
+        const [c1, c2] = splitAt(cur, e, mid);
+        finish(c1); finish(c2);
+        plen -= 1; continue;
+      }
+      const eU = m.longest(U);
+      if (m.nb(U, eU) === cur) { // terminal PAIR (both agree the shared edge is longest)
+        // NON-VACUITY GUARD: the two triangles must name the SAME geometric edge. If they do not,
+        // the adjacency is corrupt and every count downstream is meaningless — so it is counted,
+        // not swallowed.
+        const cu = m.corner(cur, (e + 1) % 3); const cv = m.corner(cur, (e + 2) % 3);
+        const uu = m.corner(U, (eU + 1) % 3); const uv = m.corner(U, (eU + 2) % 3);
+        if (!((cu === uu && cv === uv) || (cu === uv && cv === uu))) { st.mismatchTerm += 1; }
+        if (m.DEP[cur] >= HARDCAP || m.DEP[U] >= HARDCAP) { st.refusedForced += 1; plen = 0; break; }
+        st.pairTerminals += 1;
+        const mid = midOf(cur, e);
+        const [a1, a2] = splitAt(cur, e, mid);
+        const [b1, b2] = splitAt(U, eU, mid);
+        // cross-link the four halves across the bisected edge
+        // cur: a1=(p,u,mid) has e0=(u,mid) ; a2=(p,mid,v) has e0=(mid,v)
+        // U  : its (u',v') = (v,u) so b1=(q,v,mid) e0=(v,mid) ; b2=(q,mid,u) e0=(mid,u)
+        const a1u = m.TB[a1]; // u
+        const b1u = m.TB[b1]; // U's first edge endpoint
+        if (a1u === b1u) { m.setNb(a1, 0, b1); m.setNb(b1, 0, a1); m.setNb(a2, 0, b2); m.setNb(b2, 0, a2); } else { m.setNb(a1, 0, b2); m.setNb(b2, 0, a1); m.setNb(a2, 0, b1); m.setNb(b1, 0, a2); }
+        finish(a1); finish(a2); finish(b1); finish(b2);
+        plen -= 1; continue;
+      }
+      ppush(U); steps += 1; st.leppSteps += 1;
+      if (plen > st.maxLepp) st.maxLepp = plen;
+      if (steps > GUARD) { st.guardHits += 1; plen = 0; break; }
     }
     processed += 1;
-    if (progressEvery > 0 && processed % progressEvery === 0 && progressCb !== null) progressCb(st);
+    if (progressEvery > 0 && progressCb !== null && Date.now() - lastProg > PROGMS) { lastProg = Date.now(); progressCb(st); }
   }
-  for (let t = 0; t < m.nT; t += 1) if (m.ALIVE[t] === 1) { st.finalTris += 1; if (m.SCC[t] === 1) st.overBarTris += 1; }
+  for (let t = 0; t < m.nT; t += 1) if (m.ALIVE[t] === 1) { st.finalTris += 1; if (m.SCC[t] === 1) st.overBarTris += 1; if (m.DEP[t] > CAP) st.overCapAlive += 1; }
   return st;
 }
 
@@ -659,7 +720,9 @@ if (MODE === 'fid') {
         tris += r.tris; unc += r.unc;
         if ((q + 1) % 500 === 0) log(`  ${tie ? 'TOTAL' : 'FIRST'}/${bar}  ${q + 1}/${idx.length}  [${el()}s]`);
       }
-      log(`FID  tie=${tie ? 'totalOrder' : 'firstMax(frontierRefine)'}  bar=${bar}: ${tris} leaves for ${np} parents = ${(tris / Math.max(1, np)).toFixed(4)}x   uncleared ${unc} = ${((100 * unc) / Math.max(1, tris)).toFixed(3)}%   tieRate ${((100 * tieHits) / Math.max(1, tieTests)).toFixed(3)}%`);
+      log(`FID  tie=${tie ? 'totalOrder' : 'firstMax(frontierRefine)'}  bar=${bar}  cap=${CAP}: ${tris} leaves for ${np} parents = ${(tris / Math.max(1, np)).toFixed(4)}x   uncleared ${unc} = ${((100 * unc) / Math.max(1, tris)).toFixed(3)}%   tieRate ${((100 * tieHits) / Math.max(1, tieTests)).toFixed(3)}%`);
+      log(`     NON-SHORTENING SPLITS (max(|u-mid|,|v-mid|) >= |uv|, i.e. the "bisection" did not shrink the edge): ${nsSplits} of ${nsTot} = ${((100 * nsSplits) / Math.max(1, nsTot)).toFixed(4)}%   worst ratio ${nsWorst.toFixed(6)}`);
+      nsSplits = 0; nsTot = 0; nsWorst = 0;
     }
   }
   log(`nScores ${nScores}   [${el()}s]  => ${(nScores / ((Date.now() - T0) / 1000)).toFixed(0)} score/s`);
@@ -722,9 +785,9 @@ if (MODE === 'fid') {
       let bE1 = 0; for (let t = 0; t < m.nT; t += 1) for (let e = 0; e < 3; e += 1) if (m.nb(t, e) < 0) bE1 += 1;
       log(`region: ${m.nT} tris, ${m.nV} verts, ${bE1} half-edges without a neighbour  [${el()}s]`);
       const progFile = `${OUTDIR}/S106_PROG_${TAG}_con.log`;
-      const stF = refineConforming(m, bar, null, 20000, (s) => {
-        appendFileSync(progFile, `${s.splits} ${m.nT} ${el()}\n`);
-        log(`  CON ${s.splits} splits, ${m.nT} tris allocated, ${(nScores / ((Date.now() - T0) / 1000)).toFixed(0)} score/s  [${el()}s]`);
+      const stF = refineConforming(m, bar, null, 1, (s) => {
+        appendFileSync(progFile, `${s.splits} ${m.nT} ${s.leppWalks} ${s.leppSteps} ${s.maxLepp} ${el()}\n`);
+        log(`  CON ${s.splits} splits, ${m.nT} alloc, walks ${s.leppWalks} steps ${s.leppSteps} (mean ${(s.leppSteps / Math.max(1, s.leppWalks)).toFixed(2)}, MAXPATH ${s.maxLepp}), ${(nScores / ((Date.now() - T0) / 1000)).toFixed(0)} score/s  [${el()}s]`);
       });
       const perRootC = new Int32Array(nTri0);
       const perRootCU = new Int32Array(nTri0);
@@ -732,7 +795,7 @@ if (MODE === 'fid') {
       writeFileSync(`${OUTDIR}/S106_CON_${TAG}_${bar}.bin`, Buffer.from(perRootC.buffer));
       writeFileSync(`${OUTDIR}/S106_CONU_${TAG}_${bar}.bin`, Buffer.from(perRootCU.buffer));
       log(`CON CENSUS bar=${bar}: ${stF.finalTris} final tris from ${nTri0} facets = ${(stF.finalTris / nTri0).toFixed(5)}x   over-bar ${stF.overBarTris} = ${((100 * stF.overBarTris) / stF.finalTris).toFixed(4)}%`);
-      log(`  splits ${stF.splits}  forcedOverCap ${stF.forcedOverCap}  leppWalks ${stF.leppWalks}  leppSteps ${stF.leppSteps} (mean ${(stF.leppSteps / Math.max(1, stF.leppWalks)).toFixed(3)}, max ${stF.maxLepp})  pairTerm ${stF.pairTerminals}  boundaryTerm ${stF.boundaryTerminals} (${((100 * stF.boundaryTerminals) / Math.max(1, stF.pairTerminals + stF.boundaryTerminals)).toFixed(4)}%)  guardHits ${stF.guardHits}  mismatchTerm ${stF.mismatchTerm}  [${el()}s]`);
+      log(`  maxDep ${stF.maxDep}  aliveOverCap ${stF.overCapAlive}  *** ABANDONED TARGETS (over bar, refused at HARDCAP ${HARDCAP}; mesh stays CONFORMING, target stays UNCLEARED) ${stF.refusedForced} ***  nonShorteningSplits ${stF.nsSplits}/${stF.nsTot} = ${((100 * stF.nsSplits) / Math.max(1, stF.nsTot)).toFixed(4)}% worst ${stF.nsWorst.toFixed(4)}  splits ${stF.splits}  forcedOverCap ${stF.forcedOverCap}  leppWalks ${stF.leppWalks}  leppSteps ${stF.leppSteps} (mean ${(stF.leppSteps / Math.max(1, stF.leppWalks)).toFixed(3)}, max ${stF.maxLepp})  pairTerm ${stF.pairTerminals}  boundaryTerm ${stF.boundaryTerminals} (${((100 * stF.boundaryTerminals) / Math.max(1, stF.pairTerminals + stF.boundaryTerminals)).toFixed(4)}%)  guardHits ${stF.guardHits}  mismatchTerm ${stF.mismatchTerm}  [${el()}s]`);
     }
   } else {
     // PATCH SWEEP
@@ -775,11 +838,11 @@ if (MODE === 'fid') {
             }
             // conforming arm over CORE u HALO
             const m = buildRegion(w, faces, Math.max(4096, faces.length * 4));
-            const st = refineConforming(m, bar, inCore, 0, null);
+            const st = refineConforming(m, bar, inCore, 1, (s) => log(`    ..P=${coreN} seed=${seeds[si]} splits ${s.splits} nT ${m.nT} maxDep ${s.maxDep} maxPath ${s.maxLepp} forcedOverCap ${s.forcedOverCap} walks ${s.leppWalks}  [${el()}s]`));
             let conCore = 0; let conCoreU = 0; let conAll = 0;
             for (let t = 0; t < m.nT; t += 1) if (m.ALIVE[t] === 1) { conAll += 1; if (inCore[m.ROOT[t]] === 1) { conCore += 1; if (m.SCC[t] === 1) conCoreU += 1; } }
             const Mx = conCore / Math.max(1, indT);
-            const row = `PATCH bar=${bar} P=${coreN} halo=${HL} seed=${seeds[si]}  I=${indT} (${(indT / Math.max(1, indP)).toFixed(4)}x, unc ${((100 * indU) / Math.max(1, indT)).toFixed(3)}%)  C_core=${conCore} (${(conCore / Math.max(1, indP)).toFixed(4)}x, unc ${((100 * conCoreU) / Math.max(1, conCore)).toFixed(3)}%)  *** M=${Mx.toFixed(4)} ***  C_all=${conAll}  boundaryTerm%=${((100 * st.boundaryTerminals) / Math.max(1, st.pairTerminals + st.boundaryTerminals)).toFixed(3)}  escapedToHalo=${st.escapedToHalo}  leppMean=${(st.leppSteps / Math.max(1, st.leppWalks)).toFixed(3)} max=${st.maxLepp}  forcedOverCap=${st.forcedOverCap}  mismatch=${st.mismatchTerm}  [${el()}s]`;
+            const row = `PATCH bar=${bar} P=${coreN} halo=${HL} seed=${seeds[si]}  I=${indT} (${(indT / Math.max(1, indP)).toFixed(4)}x, unc ${((100 * indU) / Math.max(1, indT)).toFixed(3)}%)  C_core=${conCore} (${(conCore / Math.max(1, indP)).toFixed(4)}x, unc ${((100 * conCoreU) / Math.max(1, conCore)).toFixed(3)}%)  *** M=${Mx.toFixed(4)} ***  C_all=${conAll}  boundaryTerm%=${((100 * st.boundaryTerminals) / Math.max(1, st.pairTerminals + st.boundaryTerminals)).toFixed(3)}  escapedToHalo=${st.escapedToHalo}  leppMean=${(st.leppSteps / Math.max(1, st.leppWalks)).toFixed(3)} max=${st.maxLepp}  refusedForced=${st.refusedForced}  nonShort=${st.nsSplits}/${st.nsTot}  maxDep=${st.maxDep}  mismatch=${st.mismatchTerm}  [${el()}s]`;
             log(row); rows.push(row);
             appendFileSync(`${OUTDIR}/S106_PATCH_${TAG}.ndjson`, `${JSON.stringify({ bar, P: coreN, halo: HL, seed: seeds[si], indT, indU, indP, conCore, conCoreU, conAll, M: Mx, bTerm: st.boundaryTerminals, pTerm: st.pairTerminals, escaped: st.escapedToHalo, leppSteps: st.leppSteps, leppWalks: st.leppWalks, maxLepp: st.maxLepp, forcedOverCap: st.forcedOverCap, t: Number(el()) })}\n`);
           }
