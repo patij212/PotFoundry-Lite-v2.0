@@ -1109,6 +1109,45 @@ a LOWER BOUND for a red-based scheme, and §7.1's position row IS red***; the 1�
 `turn`/`cone` operators, so ***§0i.3's 1.646×/2.358× is NOT re-priced and must not be assumed to
 survive conformity***; the Gothic chord census (still running — it can only move the FAIL further over).
 
+### 0k.6 ⇒ *** S107 — I PORTED IT, AND IT IS 11.4% CHEAPER AND 41% LESS UNCLEARED ON GOTHIC ***
+
+`research/tools/s107Mid3d.ts` — a verbatim copy of `frontierRefine.ts` that **imports the driver's own
+`chordParam`** (not a re-derivation) behind `PF_FD_MID3D`, plus an always-on non-shortening census.
+Fidelity with the flag off reproduces the parent exactly.
+
+**Gothic S39CTL, N=2000, cap 12, paired — same parents, same bar, only the split point differs:**
+
+| | MID3D=0 (parametric) | **MID3D=1 (chord solve)** |
+|---|---|---|
+| lepp | 5.33× / 17.42% uncl | ***4.72× / 10.28% uncl*** |
+| non-shortening | 3.4677% (941) | **0.9090% (221)** — 3.81× fewer |
+| leaf minAngle mean | 28.3° | **30.8°** |
+| **`red` 1→4 — CONTROL** | 8.59× / 4.39% | ***8.59× / 4.39% — BIT-IDENTICAL*** |
+
+***COST 0.886× (−11.4%) AND UNCLEARED 0.59× (−41%), with better leaf shape.*** The `red` control is
+bit-identical because it routes through `children()`, which was not patched — **the intervention is
+provably confined to the bisection path.**
+
+**BUDGET, with its assumption stated:** Gothic's independent census 6,396,921 × 0.886 ≈ 5.67 M; at
+S106's M = 2.008 that is **~11.38 M = 94.9% of the 12 M budget — which would flip Gothic FAIL → PASS.**
+⚠ ***NOT YET A PASS: M itself was measured on the defective operator and has not been re-measured.
+Do not quote Gothic as passing.***
+
+**Cap 24 / N=400 paired:** non-shortening 0.0261% → 0.0089%, uncleared 0.18% → 0.00%, and ***worst leaf
+minAngle 0.00° → 0.01° — the parametric midpoint produces exactly-degenerate leaves and the solve does
+not.***
+
+> ### ⚠ AND IT REFUTES WHAT I PUBLISHED AN HOUR EARLIER, FOR THE FOURTH TIME BY THE SAME CAUSE
+> At **N=400** I measured **+0.4% cost and slightly worse uncleared**, and wrote that the defect was
+> *"nearly free to carry"*. ***Both the magnitude and the SIGN were wrong, and the cause was sample
+> size*** — the failure mode §0j had documented three hours before I committed it.
+>
+> ***METHOD NOTE THAT GENERALISES: the non-shortening RATE is itself tail-dominated*** — 1.33% at
+> N=400, 3.47% at N=2000, S106's 4.635% at its own N, all cap 12. **PAIRED before/after at fixed N is
+> sound; the absolute rate is not. Quote the pair, never the level.** (My cap-24 N=400 arm reads
+> 0.0261% against S106's 19.281% purely because *my sample never reaches the tail parents that carry
+> the defect* — it is under-powered by construction and is reported as a pair only.)
+
 Scorecard: `S106_CONFORMITY.md`. Commits `fbd1a33e` (pre-registration), `c5cec83e`, `47905a5d`, `13c4cfe3`.
 
 ---
@@ -1354,6 +1393,9 @@ attached, and it has never been made deliberately.***
    cheapest action in this document and the one that most changes what we believe:*** it re-prices
    Gothic's 107% budget FAIL, and it removes the mechanism behind §0i.1's "LEPP does not converge."
    **Re-run Gothic's chord census immediately after.** *(Voronoi is unaffected — 0.000% non-shortening.)*
+   ✅ ***DONE AND IT PAID: `s107Mid3d.ts` measures 0.886× cost and 0.59× uncleared on Gothic at N=2000,
+   with a bit-identical `red` control — see §0k.6. What remains is re-measuring the conformity M on the
+   fixed operator, which is what decides Gothic's budget verdict.***
 
 1. ⛔ ***"DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE" IS REFUTED (§0i.3, H1).*** It is
    1.35× worse than plain LEPP on Gothic and **1.86× worse on Voronoi**, both measured iso-quality, and
