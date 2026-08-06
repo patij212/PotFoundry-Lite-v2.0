@@ -9793,3 +9793,46 @@ normal's `fx` and reported a **15.5% fold rate at BETA<5° with δ/h_min = 1.7e-
 impossible. The verdict lines all read plausibly ("REFUTED"); **only the printed value exposed it.** Fixed,
 noted in the source, and every number from that run (`dPar/dPerp` 2.72, fold 18.46%, ARM-N 1.009×) is void
 and quoted nowhere.
+
+### S95-WALL ADDENDUM (same day) — *** I RAN THE PRE-REGISTERED ARM. VORONOI CLOSES AT 9.22x WITH 0.00% UNCLEARED. THE CATALOGUE DOES NOT SPLIT. ***
+
+`research/tools/run-s95-refine-shaped.sh` runs **S93's own `frontierRefine.ts`, UNMODIFIED**, from an
+s95-owned bundle + report path. Settings pinned to S93's own Voronoi arms (`N=400, maxLev 6, uniLev 2`).
+**The only variable changed between the columns is the STL.**
+
+**NON-VACUITY CONTROL:** the SHAPE-off column below is MY run and it reproduces S93's published
+`FR_REF_VOR2` **to the leaf** — red 269,293 / 673.23× / 88.283%; lepp 88,781 / 221.95× / 15.57% /
+minAngle 0.6°–0.00°; turn 117,791 / 294.48× / 33.48%; all four angle bars identical. Same numbers,
+different bundle ⇒ the comparison is of MESHES, not of code paths.
+
+| 10 µm CHORD bar | `voronoi_ring_D--` SHAPE-off *(= S93 published)* | `voronoi_ring_D--H_S94CTL` SHAPE-on | Gothic *(S93)* |
+|---|---|---|---|
+| red 1→4 adaptive | 673.23×, **88.28% uncleared** | **21.13×, 0.00%** | 9.09×, 0.00% |
+| **lepp longest-EDGE** | **221.95×, 15.57% uncleared** | ***9.22×, 0.00%*** | **6.67×, 0.00%** |
+| turn longest-TURN | 294.48×, 33.48% | 65.27×, 21.96% | 18.43×, 41.5% |
+| position bar 10 µm | 2.04× | 1.06× | 1.02× |
+| **lepp leaf minAngle mean/worst** | **0.6° / 0.00°** | **28.0° / 0.11°** | 32.5° / 2.52° |
+| angle ≤ 5° | 688.92×, 96.57% | **38.61×, 33.04%** | 67.5×, 64.2% |
+| angle ≤ 1° | 832.17×, 83.63% | **232.69×, 15.67%** | 351×, 20.7% |
+
+    *** LEPP 221.95x -> 9.22x = 24.07x CHEAPER.  UNCLEARED 15.57% -> 0.00%. ***
+    ABSOLUTE TRIANGLES: 806,765 x 221.95 = 179.06M  ->  492,068 x 9.22 = 4.54M  = 39.5x fewer,
+    INSIDE the 12M export budget and CHEAPER THAN GOTHIC'S 7.62M. Needles gone: leaf minAngle
+    mean 0.6deg -> 28.0deg, worst 0.00deg -> 0.11deg.
+
+**⇒ RETIRED BY THIS:** (1) the **NEAR-VERTICAL-WALL class** — *"refinement is ILL-POSED, lifted midpoints
+fold, ≥107× and 15% never clears"* — **DOES NOT EXIST**; it was the SHAPE-off configuration's sliver
+population. (2) **§0f.5 "the catalogue splits"** and its conclusion that this class *"needs the
+representation work (double-valued walls / feature curtains), not density"* — **WITHDRAWN**; density
+solves it and the representation was never the constraint. (3) **"Q5 rehabilitated in its strong form —
+the (θ,z) chart is a decisive obstruction to the REMEDY"** — **WITHDRAWN**; it is the same chart in both
+columns. (4) §5.1 (*Voronoi closed to splitting, required child aspect 3,009*) and §5.3 (*the lift folds
+and no on-edge placement can fix it*) were both measured on the SHAPE-off artefact and **need
+re-deriving on the shape-gated one before being quoted again.**
+
+**CAVEATS THAT SURVIVE:** conformity ignored in all arms equally (S93's own caveat) so every count is a
+LOWER bound and only the RATIO is claimed — the absolute 4.54M must be re-measured through the real
+mesher; the two columns are different densities so the `×` bases differ (the absolute-triangle line is
+the base-free statement); **the ANGLE bar is still NOT closed** — 15.67% uncleared at 1° even on the
+shape-gated mesh, so S93's structural finding (*chord reachable by density, angle is the invariant with
+a genuinely irreducible set*) is untouched; N=400 parents (0.081%), one style, no σ band.
