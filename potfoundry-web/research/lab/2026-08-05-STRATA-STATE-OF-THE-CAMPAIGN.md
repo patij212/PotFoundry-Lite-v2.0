@@ -396,30 +396,38 @@ ribs**.
 
 Scorecard: `S93_FRONTIER_FINDINGS.md`.
 
-> # ⚠⚠ PROVISIONAL — READ BEFORE §0g AND §0h ⚠⚠
+> # ✅ BANNER RESOLVED 2026-08-06 — RE-RUN AT N=2000. VORONOI HOLDS; GOTHIC'S *UNCLEARED* DID NOT.
 >
-> ***THE S94/CONE AGENT HAS SHOWN THAT `frontierRefine`'s LEPP COLUMN IS TAIL-DOMINATED AND THAT ITS
-> PUBLISHED 6.67× GOTHIC ANCHOR IS A SINGLE-FACET LOTTERY.*** The worst **1% of parents hold 74.92% of
-> all LEPP leaves**. Swept on sample size, the same mesh reads 6.673× / 0.000% uncleared at N=150 and
-> **10.822× / 28.844% uncleared at N=2000** — and the entire jump is **one parent** entering the sample
-> between N=600 and N=1200, which alone consumes 7,139 leaves and never clears.
+> §0g/§0h were published at **N=400**, and S94/CONE then showed `frontierRefine`'s LEPP column is
+> tail-dominated (the worst **1% of parents hold 74.92% of all leaves**; its 6.67× Gothic anchor moved
+> to 10.76× at N=2000 on **one parent** entering the sample). I re-ran both styles at **N=2000**.
+> ***The counts are stable everywhere; the UNCLEARED shares are what moved, and only on Gothic:***
 >
-> ***EVERY LEPP NUMBER IN §0g AND §0h WAS TAKEN AT N=400.*** That is inside the un-converged regime, so
-> **the "0.00% uncleared" results below are exactly the same lottery** — a tail that was not sampled
-> reads as a mesh that closes. **Treat §0g/§0h triangle counts and uncleared shares as PROVISIONAL
-> until re-run at N ≥ 2000.** (Runs are queued; this banner gets resolved, not deleted.)
+> | 10 µm chord, LEPP | N=400 | **N=2000** |
+> |---|---|---|
+> | **Voronoi SHAPE-on** | 9.22× / **0.00%** | **8.47× / 0.00%** |
+> | Gothic S39CTL | 4.69× / 10.39% | **5.33× / 17.42%** |
 >
-> Two further CONE results bear on it directly: ***more depth makes LEPP WORSE on both axes***
-> (10.822× → 116.889×, uncleared 28.8% → 32.2% as the cap goes 16 → 24) — **LEPP does not converge on
-> the unscoped mesh** — while ***`red` 1→4 never blows up on the same parent, at 0.000% uncleared at
-> every N.*** The campaign's choice of bisection as *the* operator is itself now in question.
+> | 1° angle | N=400 | **N=2000** |
+> |---|---|---|
+> | Voronoi SHAPE-on | 232.69× / 15.674% | **221.73× / 14.832%** |
+> | Gothic S39CTL | 94.44× / **4.394%** | **88.99× / 11.350%** |
 >
-> ⚖ **AND THE TWO AGENTS DISAGREE, WHICH IS RECORDED, NOT RESOLVED.** WALL concludes the near-vertical
-> wall causes nothing (shape does); CONE finds **all twelve** of its worst parents are near-vertical
-> wall facets, nine already back-facing — and while the worst two are also slivers (minAngle 2.78°,
-> 3.68°), **the third and fourth are well-shaped (34.84°, 34.83°) at slope 6.2/5.9.** Those are steep,
-> well-shaped, and failing, which is the one combination WALL's shape explanation does not cover.
-> **Do not treat §0g as settled on this point.**
+> **⇒ VORONOI'S CLOSURE IS REAL.** Three samples, three tools, one answer: 9.22× (N=400, mine),
+> **8.650× (N=800, CONE, independent tool + fixed ruler)**, 8.47× (N=2000) — all at **0.00% uncleared**.
+> §0g's central claim survives at 5× the sample.
+> **⇒ POSITION SURVIVES TOO, and gets cheaper:** Gothic **1.02×**, Voronoi **1.03×**, both 0.000%.
+> **⇒ GOTHIC'S UNCLEARED SHARES WERE UNDERSTATED AT N=400** — chord 10.39% → 17.42%, and 1° **4.394% →
+> 11.350%, a 2.6× move**. ***Any Gothic uncleared figure quoted from §0g/§0h at N=400 is low.*** The
+> counts moved <13%, so cost conclusions stand and *clearance* conclusions do not.
+> **⇒ AND GOTHIC STILL DOES NOT CLEAR AT THIS CAP** (17.42% uncleared), so by §0i.2's rule it still
+> cannot be ratioed against Voronoi's 0.00%. That comparison stays retired.
+>
+> ⚖ **The WALL/CONE disagreement is NOT resolved by this re-run and stands open:** WALL concludes the
+> near-vertical wall causes nothing (facet shape does); CONE finds all twelve of its worst Gothic
+> parents are near-vertical-wall facets, nine back-facing — and its **third and fourth are WELL-SHAPED**
+> (minAngle 34.84°, 34.83°) at slope 6.2/5.9. Steep, well-shaped and failing is the one combination
+> shape alone does not explain. **Do not treat §0g as settled on that point.**
 
 ## 0g. *** S95 — THE CATALOGUE DOES NOT SPLIT. IT WAS NEVER THE WALL; IT WAS FACET SHAPE — AND THE SHAPE GUARD WAS OFF. ***
 
@@ -539,7 +547,11 @@ and the metric was right** — a sliver class has count, not area, so an area he
 Scorecard: `S95_WALL_FINDINGS.md`. Renders: `s95/render/S95_scatter_SHAPE{off,on}.png` — same criterion,
 same cell-wall pattern, n = 73,002 (18.10%) against n = 4,791 (0.974%).
 
-## 0h. *** S98 — SHAPE IS A ~10× COST LEVER AND NOT A FIDELITY LEVER. THE DEFECT LIVES ON WELL-SHAPED FACETS, AND THAT CONFIRMS THE CONE. ***
+## 0h. *** S98 — SHAPE IS A ~10× COST LEVER AND NOT A FIDELITY LEVER. THE DEFECT LIVES ON WELL-SHAPED FACETS. ***
+
+> **⚠ TITLE CLARIFICATION:** this confirms the cone **POPULATION DIAGNOSIS** of §0f.1 — the over-bar
+> facets are well-shaped, large and turning. It does **NOT** endorse the cone-driven **OPERATOR**, which
+> §0i.3 refutes cross-style. *Right diagnosis, wrong remedy.*
 
 ### 0h.1 THE INSTRUMENT, AND ITS FIDELITY CHECK
 
@@ -932,7 +944,7 @@ this project's compute goes.
 
 ---
 
-## 7. HOW TO PROCEED — RE-BASELINED 2026-08-06 AFTER S95 + S98
+## 7. HOW TO PROCEED — RE-BASELINED 2026-08-06 AFTER S95 + S98 + S94/CONE
 
 ### 7.0 *** READ THIS FIRST: THE 10 µm POSITION BAR IS NOT WHAT IS STOPPING US ***
 
