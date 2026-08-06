@@ -963,14 +963,16 @@ were true, and the ruler was answering a different question than the eye.
 
 ### 7.1 THE FRONTIER, STATED IN ONE TABLE
 
-Matched settings (`uniLev 2 / maxLev 6`, N=400 golden-stride, LEPP, conformity ignored ⇒ **lower
-bounds**):
+`uniLev 2 / maxLev 6`, **N=2000** golden-stride, LEPP, conformity ignored ⇒ **lower bounds**:
 
 | | Gothic S39CTL | Voronoi SHAPE-on |
 |---|---|---|
-| **position 10 µm** | **1.04×, 0.000% uncleared** | **1.06×, 0.000% uncleared** |
-| chord 10 µm | 4.69×, 10.39% | 9.22×, 0.00% |
-| **1° angle** | **94.44×, 4.394%** | **232.69×, 15.674%** |
+| **position 10 µm** | **1.02×, 0.000% uncleared** | **1.03×, 0.000% uncleared** |
+| chord 10 µm | 5.33×, **17.42% uncleared** | 8.47×, **0.00%** |
+| **1° angle** | **88.99×, 11.350%** | **221.73×, 14.832%** |
+
+⚠ **The two columns are NOT ratioable** (§0i.2 — Gothic does not clear at this cap). Read each column
+down, never across.
 
 **The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
 same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
