@@ -39,7 +39,28 @@ the refutation below is on COUNT, not on shape.**
 
 ---
 
-## 0. THE ONE PARAGRAPH
+## 0. THE ONE PARAGRAPH  *(final; supersedes any earlier reading of this file)*
+
+***THE 6.67× ANCHOR THE ARM WAS POINTED AT DOES NOT EXIST AS A NUMBER, AND ONCE IT IS RE-MEASURED
+PROPERLY H1 IS REFUTED IN BOTH DIRECTIONS AND ON BOTH STYLES.*** Plain LEPP on GothicArches at the same
+bar, same STL, same ruler reads **4.69× / 5.29× / 5.50× / 6.67× / 3.12× / 10.76× / 116.89×** depending
+only on N, the depth cap and the scope — a **25× spread**, with uncleared % swinging 0.00%→32.24% — and
+the entire jump from 5.50× to 12.71× is **ONE parent** (minAngle 2.78°, slope 7.735) entering the sample
+between N=600 and N=1200 (§1.1). Measured on the only rows where both operators reach **0.000%
+uncleared** — the only comparison that is iso-quality — a cone-driven sizing field is **1.350× worse
+than LEPP on Gothic (4.211× vs 3.120×) and 1.859× worse on shape-gated Voronoi (16.076× vs 8.650×)**.
+The mechanism is printed, not guessed: `coneOracle` — the same k-way split driven by the *measured*
+chord — is still 1.28×/1.81× worse, which isolates the loss to the SPLIT rather than the driver;
+bisection's factor-2 granularity is already the finest a subdivision operator can be. ***What IS real is
+a 1.93× prize no subdivision operator can reach:*** measured on LEPP's own leaves, a free-placement
+mesher certifies **the same geometry** at **1.615 leaves/parent instead of 3.120**. **H4 tested that
+directly and the `M = g/h²` kernel does NOT deliver it as shipped** — at the theoretically-correct
+tolerance it spends **2.931×** the triangles and is still **14.795%** over bar (though its leaf minAngle
+is **47.3°** against the STL's 34.5° and LEPP's 37.6°). **H2 is refuted by two independent instruments**
+(knapsack optimum 18.33×, measured >106×, against a 12× kill). **H3 is confirmed** (1.89× at AR ≤ 5) and,
+like everything else here, is a *generation* lever, not a refinement one.
+
+## 0b. THE ONE PARAGRAPH AS FIRST WRITTEN (kept — it was right about the mechanism, wrong about §1's framing)
 
 ***THE 6.67× ANCHOR THE WHOLE ARM WAS POINTED AT IS A 150-PARENT SAMPLING ARTEFACT, AND ONCE IT IS
 RE-MEASURED, H1 IS REFUTED THE OTHER WAY: A CONE-DRIVEN FIELD IS 1.28–1.44× WORSE THAN PLAIN LEPP.***
@@ -346,9 +367,58 @@ three SUPPORT the reframing — but none of them is a test of it, because I neve
 fidelity. Everything above is observational across two committed artefacts. **It is not a test and must
 not be quoted as one.**
 
----
+## 9. *** THE DEPTH CAP CONFOUNDED MY OWN CROSS-STYLE ROW TOO — AND THE FIX IS A BETTER RULE THAN "DIFF THE HEADERS" ***
 
-## WHAT I DID NOT MEASURE — stated plainly
+The coordinator's second correction (two `frontierRefine` runs compared across different level caps) hit
+me as well: my Gothic chord arm ran at `MAXDEPTH=8` (bisection cap 16) and my Voronoi arm at
+`MAXDEPTH=6` (cap 12). I ran Gothic again at Voronoi's cap to see what a cap-matched row looks like —
+**GothicArches, N=800, `MAXDEPTH=6`, `RULER=5698d023`:**
+
+| operator | leaves/par | **uncleared** | over-bar leaf AREA |
+|---|---|---|---|
+| lepp | **5.289×** | **10.329%** | 0.0194% |
+| red | 7.555× | 6.056% | 0.0154% |
+| coneFloor | 8.361× | 3.543% | 0.0115% |
+| **cone** | 9.014× | **0.998%** | 0.0036% |
+| **coneOracle** | 9.304× | **0.161%** | 0.0006% |
+
+*(This reproduces the coordinator's matched Gothic figure — their `4.69× / 10.39% uncleared` at N=400
+against my `5.289× / 10.329%` at N=800.)*
+
+***AT A BINDING CAP THE OPERATORS ARE NOT ON THE SAME QUALITY LINE AT ALL: LEPP IS 1.70× CHEAPER THAN
+`cone` WHILE LEAVING 64× MORE OF ITS LEAVES UNCLEARED (10.329% vs 0.161%).*** A count ratio taken there
+is meaningless in either direction — it would have let me claim a 1.7× loss OR a 64× win from one table.
+
+**⇒ THE RULE I NOW USE, AND IT IS STRICTER THAN DIFFING HEADERS: only compare triangle counts between
+operators that BOTH reach 0.000% uncleared.** Matching the cap NUMBER is not enough, because the cap
+that frees Voronoi (12) still binds on Gothic. Match the RESIDUAL. Both H1 refutations above are on
+cap-free rows by that test — **Gothic scoped, cap 16: lepp 3.120×/0.000% vs cone 4.211×/0.000%; Voronoi,
+cap 12: lepp 8.650×/0.000% vs cone 16.076×/0.000%.** Both sides of both comparisons clear completely, so
+both ratios are iso-quality and stand.
+
+### 9.1 And the anchor's instability is worse than §1.1 said: it is N **×** CAP
+
+Every one of these is GothicArches S39CTL, the 10 µm chord bar, plain LEPP, this tool or `frontierRefine`:
+
+    4.69x  (N=400,  cap 12, unscoped)  10.39% uncleared     <- coordinator, matched-settings baseline
+    5.29x  (N=800,  cap 12, unscoped)  10.33% uncleared     <- this file
+    5.50x  (N=600,  cap 16, unscoped)   0.12% uncleared
+    6.67x  (N=150,  cap 16, unscoped)   0.00% uncleared     <- THE PUBLISHED ANCHOR
+    3.12x  (N=2000, cap 16, SCOPED)     0.00% uncleared
+   10.76x  (N=2000, cap 16, unscoped)  27.41% uncleared
+  116.89x  (N=2000, cap 24, unscoped)  32.24% uncleared
+
+***A 25× SPREAD ON ONE MESH, ONE BAR, ONE OPERATOR.*** **No LEPP multiplier in this campaign is quotable
+without its N, its cap, its scope AND its uncleared %.** The published 6.67× carries none of the four.
+
+## 10. AN ARM I STARTED AND ABANDONED — stated so it is not silently missing
+
+`s94ConeRemesh.ts` with the kernel's DIRECT facet→surface sag guard (`chordTolMm = 0.00125`,
+`chordSampleN = 8`) was launched at `tol = 0.005` to test explanation (2) of §7. It burned **1,218 s of
+CPU without checkpointing a single row** and I stopped it to free a slot for the cap-matched arm above.
+**ZERO rows, NO inference drawn, and its `.report.txt` is an empty table.** The sag guard evaluates a
+45-point lattice per triangle per round; it needs its own budgeted run, not a slot borrowed from another
+question. **§7's H4 refutation rests entirely on the PLAIN kernel run, which completed.**
 
 * **Conformity, for any refinement operator.** Every refinement count refines each parent IN ISOLATION —
   no hanging-node propagation, no 2:1 balance, no LEPP back-propagation. All operators pay it equally so

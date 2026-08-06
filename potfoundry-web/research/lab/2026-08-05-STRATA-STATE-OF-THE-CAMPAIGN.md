@@ -16,8 +16,16 @@ defect class — ORIENTATION — went unmeasured for the whole campaign and is n
 **410× in area**. What the ruler DID get right is ORDER: ρ = 0.964 against honest position, which is
 why seven blind arms genuinely improved the mesh (3.02× by count, **11.9× by area**) while every
 number they published was wrong by 24–45×. **Rank with the plane ruler; size with `certifyTriangle`.**
-One lever survives honest scoring: a constrained edge flip, which is free. The binding constraint is
-now believed to be the mesher's **vertex representation**, not its refinement rule — see §0b and §7.
+One lever survives honest scoring: a constrained edge flip, which is free.
+
+***AND AS OF 2026-08-06 THE HEADLINE HAS CHANGED AGAIN, IN OUR FAVOUR.*** The 10 µm POSITION bar is
+**not** what is stopping us — ideal refinement closes it at **1.04×–1.06× triangles, 0.000%
+uncleared**, on both styles measured. The "near-vertical wall class that cannot be represented" **does
+not exist**: it was facet SHAPE, on an artefact built with the shape guard OFF, and with the guard on
+the same style on the same surface refines clean (§0g). ***The entire remaining problem is
+ORIENTATION at the 1° angle bar (4.4% / 15.7% uncleared), and that — not position — is what the
+persistent visible artefacts are.*** The "vertex representation is the binding constraint" reading has
+lost two of its three supports and is **on hold, not confirmed**. **Start at §7.0.**
 
 ---
 
@@ -388,6 +396,39 @@ ribs**.
 
 Scorecard: `S93_FRONTIER_FINDINGS.md`.
 
+> # ✅ BANNER RESOLVED 2026-08-06 — RE-RUN AT N=2000. VORONOI HOLDS; GOTHIC'S *UNCLEARED* DID NOT.
+>
+> §0g/§0h were published at **N=400**, and S94/CONE then showed `frontierRefine`'s LEPP column is
+> tail-dominated (the worst **1% of parents hold 74.92% of all leaves**; its 6.67× Gothic anchor moved
+> to 10.76× at N=2000 on **one parent** entering the sample). I re-ran both styles at **N=2000**.
+> ***The counts are stable everywhere; the UNCLEARED shares are what moved, and only on Gothic:***
+>
+> | 10 µm chord, LEPP | N=400 | **N=2000** |
+> |---|---|---|
+> | **Voronoi SHAPE-on** | 9.22× / **0.00%** | **8.47× / 0.00%** |
+> | Gothic S39CTL | 4.69× / 10.39% | **5.33× / 17.42%** |
+>
+> | 1° angle | N=400 | **N=2000** |
+> |---|---|---|
+> | Voronoi SHAPE-on | 232.69× / 15.674% | **221.73× / 14.832%** |
+> | Gothic S39CTL | 94.44× / **4.394%** | **88.99× / 11.350%** |
+>
+> **⇒ VORONOI'S CLOSURE IS REAL.** Three samples, three tools, one answer: 9.22× (N=400, mine),
+> **8.650× (N=800, CONE, independent tool + fixed ruler)**, 8.47× (N=2000) — all at **0.00% uncleared**.
+> §0g's central claim survives at 5× the sample.
+> **⇒ POSITION SURVIVES TOO, and gets cheaper:** Gothic **1.02×**, Voronoi **1.03×**, both 0.000%.
+> **⇒ GOTHIC'S UNCLEARED SHARES WERE UNDERSTATED AT N=400** — chord 10.39% → 17.42%, and 1° **4.394% →
+> 11.350%, a 2.6× move**. ***Any Gothic uncleared figure quoted from §0g/§0h at N=400 is low.*** The
+> counts moved <13%, so cost conclusions stand and *clearance* conclusions do not.
+> **⇒ AND GOTHIC STILL DOES NOT CLEAR AT THIS CAP** (17.42% uncleared), so by §0i.2's rule it still
+> cannot be ratioed against Voronoi's 0.00%. That comparison stays retired.
+>
+> ⚖ **The WALL/CONE disagreement is NOT resolved by this re-run and stands open:** WALL concludes the
+> near-vertical wall causes nothing (facet shape does); CONE finds all twelve of its worst Gothic
+> parents are near-vertical-wall facets, nine back-facing — and its **third and fourth are WELL-SHAPED**
+> (minAngle 34.84°, 34.83°) at slope 6.2/5.9. Steep, well-shaped and failing is the one combination
+> shape alone does not explain. **Do not treat §0g as settled on that point.**
+
 ## 0g. *** S95 — THE CATALOGUE DOES NOT SPLIT. IT WAS NEVER THE WALL; IT WAS FACET SHAPE — AND THE SHAPE GUARD WAS OFF. ***
 
 ### 0g.1 THE REFUTATION
@@ -434,9 +475,17 @@ Re-run at MATCHED settings (both `uniLev 2 / maxLev 6`, N=400 golden-stride, S98
 | lepp, chord 10 µm | **4.69×**, 10.39% uncl | 9.22×, **0.00% uncl** |
 | 1° angle | **94.44×**, **4.394% uncl** | 232.69×, 15.674% uncl |
 
-**Neither style dominates.** On the CHORD bar Voronoi is genuinely easier — it clears at maxLev 6 while
-Gothic still carries 10.39% uncleared and needs maxLev 9 to reach 0.00%. On the **1° ANGLE bar Gothic
-is easier by 2.5× cost and 3.6× uncleared.** ***The core §0g finding is untouched — the catalogue does
+> ### ⛔ AND THIS TABLE IS RETIRED A SECOND TIME — SEE §0i.2
+> Matching `uniLev/maxLev` was **necessary and not sufficient.** ***Gothic at 10.39% uncleared and
+> Voronoi at 0.00% are not on the same quality line***, so no count ratio between those two columns
+> means anything. And there is no single cap that repairs it: **the cap that frees Voronoi (12) still
+> binds on Gothic.** ***That is itself the finding — Gothic needs more refinement depth than Voronoi,
+> and the two styles cannot be placed on one row at any one cap.***
+> **The rule is: only compare counts between operators that BOTH reach 0.000% uncleared.**
+
+**What survives from the table:** on the CHORD bar Voronoi genuinely clears at maxLev 6 where Gothic
+does not (independently reproduced by CONE at N=800: Voronoi **8.650× / 0.000%**, Gothic **5.289× /
+10.329%**). The 1° row is **not** a valid comparison and no style ranking should be read from it. ***The core §0g finding is untouched — the catalogue does
 not split into "closes" and "cannot close"; both styles clear the chord bar and neither clears 1° — but
 "Voronoi is the easier style" is false and was my error, not S95's.***
 
@@ -498,7 +547,11 @@ and the metric was right** — a sliver class has count, not area, so an area he
 Scorecard: `S95_WALL_FINDINGS.md`. Renders: `s95/render/S95_scatter_SHAPE{off,on}.png` — same criterion,
 same cell-wall pattern, n = 73,002 (18.10%) against n = 4,791 (0.974%).
 
-## 0h. *** S98 — SHAPE IS A ~10× COST LEVER AND NOT A FIDELITY LEVER. THE DEFECT LIVES ON WELL-SHAPED FACETS, AND THAT CONFIRMS THE CONE. ***
+## 0h. *** S98 — SHAPE IS A ~10× COST LEVER AND NOT A FIDELITY LEVER. THE DEFECT LIVES ON WELL-SHAPED FACETS. ***
+
+> **⚠ TITLE CLARIFICATION:** this confirms the cone **POPULATION DIAGNOSIS** of §0f.1 — the over-bar
+> facets are well-shaped, large and turning. It does **NOT** endorse the cone-driven **OPERATOR**, which
+> §0i.3 refutes cross-style. *Right diagnosis, wrong remedy.*
 
 ### 0h.1 THE INSTRUMENT, AND ITS FIDELITY CHECK
 
@@ -537,9 +590,97 @@ measured in this campaign, and it is a mesher configuration choice.
 | 1.20–1.40 | 16 | 16.127 | 0.000 |
 
 ***THE LARGEST UNCLEARED POPULATION SITS AT GOOD SHAPE*** — 139 parents holding **57.5% of mesh area**
-at q ≈ 0.9, carrying **20.6% uncleared**, while the sliver bins carry **0.000%**. Uncleared is not
-monotone in q on either style. **⇒ My pre-registered kill fires as written: parent shape does NOT
-decide angle-bar clearability.**
+at q ≈ 0.9, carrying **20.6% uncleared**, while the sliver bins carry **0.000%**. **⇒ On the angle bar
+my pre-registered kill fires: parent shape does NOT decide angle-bar clearability.**
+
+### 0h.2b *** BUT ON THE MESH WHERE THE SLIVERS ACTUALLY EXIST, THE THRESHOLD IS SHARP AND THE KILL DOES NOT FIRE ***
+
+VORSHP and Gothic have almost no `q < 0.4` facets — the guard removed them — so neither could test the
+threshold. The SHAPE-**off** Voronoi mesh can. Chord bar, and it is **perfectly monotone with the top
+bin at 0.000%**, so the hypothesis passes cleanly here:
+
+| q bin | parents | mesh AREA % | leaves/par | uncleared % |
+|---|---|---|---|---|
+| 0.00–0.10 | 33 | 0.123 | **1427.12** | 18.868 |
+| 0.10–0.20 | 26 | 0.471 | 1050.58 | 13.520 |
+| 0.20–0.30 | 23 | 0.689 | 396.43 | 11.900 |
+| 0.30–0.40 | 33 | 1.841 | 115.94 | 4.051 |
+| **0.40–0.60** | 68 | 7.628 | **8.06** | **0.000** |
+| 0.60–1.40 (all) | 217 | 89.2 | 1.41–6.83 | **0.000** |
+
+    q <  0.4 :  115 parents,  759.60x leaves/parent,  15.820% uncleared
+    q >= 0.4 :  285 parents,    5.01x leaves/parent,   0.000% uncleared
+
+***3.1% OF MESH AREA GENERATES 100% OF THE CHORD-BAR FAILURE AND COSTS 152x THE PER-PARENT PRICE.***
+
+**⇒ THE RECONCILIATION, and both halves are real:** a sliver population is a **SUFFICIENT** cause of
+refinement failure, with a sharp threshold at **q = 0.4**; it is **NOT** the mechanism behind the
+residual defect on well-shaped meshes, which sits at good shape and on the angle bar. The earlier
+"kill fires" line was measured on meshes that had no slivers left to fail.
+
+### 0h.2c *** THE PRODUCTION NUMBER: `PF_CB_SHAPE_AR` SHOULD BE 12, NOT 50 ***
+
+The driver gates on `_shapeGuard.aspect3 = L·P/(4A)`, not on q. The relation is **exact algebra, not a
+fit**: `q = 2√A/L` ⇒ `A = q²L²/4` ⇒ **`aspect3 = (P/L)/q²`**, with `P/L ∈ [2,3]` for every triangle.
+Checked on all 806,765 real facets — the measured p05/p50/p95 land inside the analytic band at every q:
+
+| q ≈ | n | aspect3 p05 / p50 / p95 | analytic band |
+|---|---|---|---|
+| 0.20 | 13,921 | 42.12 / 50.35 / 60.65 | 50.0 – 75.0 |
+| 0.30 | 18,896 | 19.88 / 22.23 / 25.25 | 22.2 – 33.3 |
+| **0.40** | 25,514 | 11.60 / **12.71** / 13.88 | **12.5 – 18.7** |
+| 1.00 | 21,334 | 2.37 / 2.44 / 2.53 | 2.0 – 3.0 |
+
+    PF_CB_SHAPE_AR = 50 (CURRENT DEFAULT) : 14.345% of what it admits is in the q<0.4 band, worst q = 0.200
+    PF_CB_SHAPE_AR = 15                   :  3.758%                                        worst q = 0.366
+    *** PF_CB_SHAPE_AR = 12               :  0.000%                                        worst q = 0.410 ***
+
+***THE CURRENT DEFAULT OF 50 ADMITS EXACTLY THE CLASS THAT COSTS 152x AND NEVER CLEARS. 12 IS THE
+LARGEST VALUE THAT EXCLUDES ALL OF IT.*** Cost side: 12 admits 71.6% of facets against 50's 84.6%.
+
+**SCOPE CAVEAT CLOSED — verified on all three meshes.** The `AR → worst-admitted-q` column is
+**identical** on Voronoi-off, Voronoi-on and Gothic (50 → 0.200, 15 → 0.366, **12 → 0.410**), because
+`aspect3 = (P/L)/q²` is exact algebra — the bound is a property of the metric, not of the mesh. **12 is
+universal.** What *is* style-dependent is the price, and it is mild where it should be:
+
+| facets admitted at AR = 12 | Gothic **96.2%** | Voronoi SHAPE-on **89.2%** | Voronoi SHAPE-off 71.6% |
+|---|---|---|---|
+
+***So AR = 12 is nearly free on healthy meshes and only bites on meshes that already have a sliver
+problem — exactly what a guard should do.***
+
+### 0h.2d ⛔ ***RETRACTED WITHIN THE HOUR: "AT ITS DEFAULT THE GUARD IS A NO-OP" WAS CIRCULAR.***
+
+I wrote that `PF_CB_SHAPE_AR = 50` admitting **100.000%** of Gothic's and shape-gated Voronoi's facets
+proved the guard never fires. ***That is backwards.*** Those meshes were BUILT with the guard on at 50,
+so of course every surviving facet satisfies it. **100% compliance is evidence the guard was BINDING,
+not inert** — and the SHAPE-off mesh, at 84.6%, is the one that shows what happens without it.
+The claim is retained here refuted rather than deleted; it went out in commit `49bef793` and this is
+the correction of record.
+
+### 0h.2e ⚠ AND THE q = 0.4 THRESHOLD IS WEAKER THAN I STATED — IT IS NOT MESH-INDEPENDENT
+
+Checking the two Voronoi meshes against each other at the **same q**, which §0h.2b did not do:
+
+| q ∈ [0.30, 0.40) | leaves/parent | uncleared |
+|---|---|---|
+| Voronoi SHAPE-off | 115.94 | **4.051%** |
+| Voronoi SHAPE-on | 26.90 | **0.000%** |
+
+***The same shape band costs 4.3× more and fails on one mesh while clearing on the other.*** So `q` is
+**not** a sufficient statistic for refinability, and "q < 0.4 is catastrophic" is too strong. What
+survives, and it is still substantial:
+
+1. **Within each mesh, cost falls monotonically with q** — solid on both, and steeply (28.80× → 2.89×
+   on VORSHP; 1427× → 1.41× on VOROFF).
+2. **On the SHAPE-off mesh, uncleared falls monotonically to 0.000% at q ≥ 0.4** — that specific mesh's
+   entire chord-bar failure lives below it.
+3. **The `AR → q` mapping is exact algebra and universal** (§0h.2c). That part is untouched.
+
+**⇒ `PF_CB_SHAPE_AR = 12` still stands as a recommendation, but on the COST argument only** — it is
+nearly free on healthy meshes (96.2% / 89.2% of facets admitted) and removes the population that costs
+1427× per parent on an unhealthy one. ***It should NOT be sold as "excluding a catastrophic band",
+because that band clears fine on the shape-gated mesh.***
 
 ### 0h.3 WHAT THIS SETTLES
 
@@ -567,6 +708,115 @@ are **lower bounds** and only ratios are claimed.
 ---
 
 ---
+
+---
+
+## 0i. *** S94/CONE — THE CONE FIELD IS REFUTED, THE 1° BAR IS NOT A 12× OBJECT, AND NO LEPP MULTIPLIER IN THIS CAMPAIGN WAS EVER QUOTABLE ***
+
+### 0i.1 THE ANCHOR WAS A SINGLE-FACET LOTTERY, AND THE SPREAD IS 25×
+
+`frontierRefine`'s LEPP column was only ever run at **N=150**. Every one of these is GothicArches
+S39CTL, the 10 µm chord bar, plain LEPP:
+
+    4.69x   (N=400,  cap 12, unscoped)  10.39% uncleared   <- my "matched settings" baseline
+    5.29x   (N=800,  cap 12, unscoped)  10.33% uncleared
+    5.50x   (N=600,  cap 16, unscoped)   0.12% uncleared
+    6.67x   (N=150,  cap 16, unscoped)   0.00% uncleared   <- *** THE PUBLISHED ANCHOR ***
+    3.12x   (N=2000, cap 16, SCOPED)     0.00% uncleared
+   10.76x   (N=2000, cap 16, unscoped)  27.41% uncleared
+  116.89x   (N=2000, cap 24, unscoped)  32.24% uncleared
+
+***A 25× SPREAD ON ONE MESH, ONE BAR, ONE OPERATOR.*** The move from 5.50× to 12.71× is **one parent**
+entering the sample between N=600 and N=1200 — level-0 minAngle **2.78°**, slope 7.735 — which alone
+consumes **7,139 leaves and never clears**. The worst **1% of parents hold 74.92% of all LEPP leaves**.
+***More depth makes LEPP WORSE on both axes (cap 16 → 24: 10.8× → 116.9×, uncleared 28.8% → 32.2%): it
+does not converge on the unscoped mesh. `red` 1→4 never blows up on that parent — 0.000% uncleared at
+every N and every cap.*** **No LEPP multiplier here is quotable without its N, its cap, its scope AND
+its uncleared %. The published 6.67× carries none of the four.**
+
+### 0i.2 ⇒ THE RULE, AND IT IS STRICTER THAN THE ONE I WROTE IN §0g.2
+
+I said "diff the header lines." **That is not enough.** At a binding cap the operators are not on the
+same quality line at all — Gothic N=800 cap 6: LEPP **5.289× at 10.329% uncleared** against `cone`
+**9.014× at 0.998%**. One table would license either "a 1.70× loss" or "a 64× win."
+
+> ### ***ONLY COMPARE TRIANGLE COUNTS BETWEEN OPERATORS THAT BOTH REACH 0.000% UNCLEARED. MATCH THE RESIDUAL, NOT THE CAP.***
+
+**⚠ This retires §0g.2's table a second time.** Matching `uniLev/maxLev` was necessary and not
+sufficient: **Gothic at 10.39% uncleared and Voronoi at 0.00% are not on one quality line.** And there
+is no single cap that fixes it — ***the cap that frees Voronoi (12) still binds on Gothic.*** That is
+itself the finding: **Gothic needs more refinement depth than Voronoi**, so the two styles cannot be
+put on one row at any one cap. See §0g.2 as amended.
+
+### 0i.3 THE HYPOTHESES
+
+- **H1 (cone-driven sizing field beats LEPP): REFUTED, cross-style, and refuted the other way.**
+  Gothic scoped, cap-free: LEPP **3.120×** vs cone **4.211×** (1.35×). Voronoi shape-gated, cap-free:
+  LEPP **8.650×** vs cone **16.076×** (**1.86×**). Both sides of both comparisons clear at 0.000%, so
+  the ratios are iso-quality by §0i.2's own rule. **Mechanism, isolated not guessed:** `coneOracle`
+  (measured chord, same k-way split) is *still* 1.276× worse ⇒ the loss is in **the split, not the
+  driver**. A k-way split imposes the parent's worst-case *k* on all *k²* children at once, while
+  bisection re-tests after every doubling. ***Bisection's factor-2 granularity is already the finest a
+  subdivision operator can have — there is no granularity headroom for any field to win back inside a
+  refinement framework.***
+- **H2 (over-1° AREA below 5% at ≤12×): REFUTED by 9–13×.** The fractional-knapsack optimum of *any*
+  isotropic field needs **18.33×**; the measured threshold-driven frontier does not cross 5% below
+  **~106×** and full clearance costs **~155×** (0.013% residual). ***THE 1° BAR IS REACHABLE — IT IS
+  SIMPLY NOT A 12× OBJECT.*** Anisotropy at AR≤5 divides the full-clearance angle cost by 3.8× and is
+  still far over. For scale from the same instrument: **at the industry-practical 5° bar Gothic is only
+  6.43% over by area to begin with, and the chord bar is met at ~3×.**
+- **H3 (anisotropy ≥1.5×): CONFIRMED at 1.89× (AR≤5, chord bar) — but as a REMESH lever only.** The
+  existing facets' long axes are misaligned with the slow direction by area-wt p50 **28.43°**, so a
+  subdivision operator captures only the part its parents happen to be aligned with.
+- **H4 (`M = g/h²` remesh beats the best refinement operator): KILL LINE HIT AS SHIPPED.** At the
+  theoretically-correct tol it spends **2.931×** and is still **14.795% over bar**, while scoped LEPP
+  clears at 3.120×. ***But its SHAPE column is a large win — leaf minAngle 47.3° mean / 3.98° worst
+  against LEPP's 37.6°/1.25° (and 0.00° unscoped)*** — the memoised "closes the sliver-quality
+  frontier" property reproduced on a task it was not built for. Two separable, unasserted explanations
+  for the residual (`splitThresh 1.5` ⇒ chord up to 2.25× the design tol; 160×160 grid aliasing of
+  sub-cell relief, which the kernel's own docs record at 5–10×) are wired and testable.
+
+### 0i.4 THE STRUCTURAL FINDING — REFINEMENT IS THE WRONG FRAME, AND THREE RESULTS SAY SO
+
+Free placement would certify **the same geometry** at **1.615 leaves/parent instead of LEPP's 3.120 —
+a 1.93× prize** (measured per-leaf; corroborated to 4% by an independent per-parent analytic on the
+60,000-facet census). ***It is not a tuning loss. It is the structural cost of HALVING WHAT EXISTS
+instead of GENERATING AN ELEMENT AT THE ADMISSIBLE SIZE.*** H1's mechanism, H3's misalignment and this
+1.93× are the same fact three times: **sizing and anisotropy are GENERATION levers, not REFINEMENT
+levers.** ***That is a direct argument for the unwired `M = g/h²` kernel as the vehicle — and H4 says
+it does not deliver as shipped, so the next arm is its two knobs, not a new mechanism.***
+
+### 0i.5 THE RULER FIX, AND A SECOND ARGUMENT FOR THE ASPECT GATE
+
+`5698d023` ported into CONE's inline ruler: ***every verdict is robust to it*** (red 9.721→9.720, cone
+9.607→9.607, LEPP 10.822→10.755) ***while the ill-conditioned facet's own reading moves a lot*** — the
+killer parent's level-0 sup angle 115.707° → **123.627°**. Exactly the shape the fix predicts.
+`signMargin` on Gothic: **4.083% of triangles below 0.10, 0.125% below 0.01** — ~2× Voronoi's. And on
+the shape-gated Voronoi artefact it is **0.136% / 0.013%, 16× better conditioned than SHAPE-off**:
+***the aspect gate improves the INSTRUMENT's conditioning too, which is a second and independent
+argument for §0h.2c beyond cost.***
+
+### 0i.6 THE REFRAME THAT RECONCILES WALL, S98 AND CONE
+
+CONE's §8.3, on my seed-shape question: shape-preserving operators (`red`, all three `cone` variants)
+keep every child similar to its parent and read **0.000% uncleared at every N on both styles — on the
+same parents where bisection diverges.**
+
+> ***REFINABILITY IS A PROPERTY OF THE OPERATOR'S SHAPE BEHAVIOUR, NOT OF THE SEED'S FIDELITY.***
+
+That is the synthesis of all three agents. WALL: it is shape, not wall angle. S98: cost falls
+monotonically with parent shape. CONE: and the mechanism is that **LEPP degrades shape and diverges
+exactly where it does**, while operators that preserve shape never diverge at all. **⇒ Three remedies,
+all now priced: gate the shape (§0h.2c, cheap), change the operator (`red`: robust but 1.90× dearer on
+Voronoi), or remesh (§0i.4, the real prize, undelivered as shipped).**
+
+**DISCLOSED BY THE AGENT, UNPROMPTED:** it never varied an AR cap or re-seeded, so §8.3 is
+*observational across two committed artefacts and is not a test*; the SLACK column is invalid on angle
+rows and is quoted only for chord; and one remesh arm burned 1,218 s CPU without checkpointing a single
+row and was killed — **zero rows, no inference drawn**, and H4 rests entirely on the plain kernel run
+that completed.
+
+Scorecard: `S94_CONE_FINDINGS.md`.
 
 ---
 
@@ -694,40 +944,107 @@ this project's compute goes.
 
 ---
 
-## 7. HOW TO PROCEED
+## 7. HOW TO PROCEED — RE-BASELINED 2026-08-06 AFTER S95 + S98 + S94/CONE
 
-**IMMEDIATE (cheap, unblocks everything)**
-1. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence. Add
-   it to the arm report or run `s85PosRebase.ts` after each arm.
-2. **Withdraw every `over-0.01mm` figure in the worklog.** They cannot be corrected, only discarded.
-3. **Land the flip on the remaining styles.** It is free, it improves both rulers, and it has only
-   been proven on Gothic.
+### 7.0 *** READ THIS FIRST: THE 10 µm POSITION BAR IS NOT WHAT IS STOPPING US ***
 
-**NEXT (a bug, not a limit)**
-4. **Fix the super-hub runaway.** Degree 2,550 against a median of 5 is a pathology, not a trade-off.
-   `PF_CB_MAXDEG` exists (default 0) and makes it *visible*; the emitting site is in the last phase of
-   the split loop and has not been located. Fixing it is prerequisite to any Voronoi progress, because
-   it is what defeats every local operator.
+Ideal refinement closes the **10 µm position bar at 1.04×–1.06× triangles with 0.000% uncleared** on
+both styles measured. It is, geometrically, nearly free. **The campaign has never been blocked by
+position.** Every stuck arm, every 100-minute run that failed to converge, and every visible artefact
+has been an **ORIENTATION** problem wearing a position bar's clothes.
 
-**THE STRUCTURAL ONE — and this is the honest answer to "why are we stuck"**
-5. ***THE VERTEX REPRESENTATION IS THE BINDING CONSTRAINT.*** `addV` derives every position from
-   `R(θ,z)`, so a vertex is on the surface **by construction**. Three independent results now point at
-   the same place: P4 cannot land because its fallback needs an off-surface vertex; the in-plane fold
-   cannot be corrected because on-edge placement is the only freedom the driver has; and Voronoi's
-   orientation cannot be fixed by any triangle the driver can express.
-   **The design change is to allow a vertex OFF the surface under a bounded position budget** — trade a
-   little H1 for orientation and tiling, deliberately and measurably. That is what P4 was, and it is
-   what `_facetTruthLib`'s own two-sided certificate makes safe to attempt.
-6. **Then, and only then, revisit the operator.** 1→4 refinement halves the circumradius
-   deterministically (0.500 at p50 *and* p90) where longest-edge bisection *enlarges* it for >10% of
-   Voronoi's children (p90 2.855). Normal error scales with circumradius — arXiv:1911.03424.
+***AND THAT EXPLAINS THE ARTEFACTS THE USER KEEPS SEEING IN THE SAME PLACES.*** A 10 µm position error
+is invisible — it is 1/5 of a layer line. What the eye picks up in a slicer preview is **shading**,
+and shading is the **normal**. So a mesh can be fully closed at 10 µm position and still show exactly
+the banding and facet-edge artefacts reported, because the normal is off by degrees where the position
+is off by microns. ***The right target for making those artefacts disappear is the ANGLE bar, not a
+tighter position bar.*** This reconciles "the numbers say closed" with "I can still see it" — both
+were true, and the ruler was answering a different question than the eye.
 
-**DO NOT**
-- Do not tune `PF_CB_SHAPE_AR`, chase density, or build a fan-aware local operator. All three are
-  measured dead.
-- Do not accept a lever on a headline movement. **The cavity was accepted on a 1.96× that was worth
-  zero; the AR cap was accepted on a 4.37× that was 2.13×.** Every lever in the ledger accepted on a
-  plane-ruler movement needs re-examining.
+### 7.1 THE FRONTIER, STATED IN ONE TABLE
+
+`uniLev 2 / maxLev 6`, **N=2000** golden-stride, LEPP, conformity ignored ⇒ **lower bounds**:
+
+| | Gothic S39CTL | Voronoi SHAPE-on |
+|---|---|---|
+| **position 10 µm** | **1.02×, 0.000% uncleared** | **1.03×, 0.000% uncleared** |
+| chord 10 µm | 5.33×, **17.42% uncleared** | 8.47×, **0.00%** |
+| **1° angle** | **88.99×, 11.350%** | **221.73×, 14.832%** |
+
+⚠ **The two columns are NOT ratioable** (§0i.2 — Gothic does not clear at this cap). Read each column
+down, never across.
+
+**The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
+same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
+(§0i.3, H2): ***full clearance costs ~155× and the best any isotropic field can do at 5% over-area is
+18.33×.*** **The 1° bar is reachable — it is simply not a 12× object.** For scale, at the
+industry-practical **5°** bar Gothic starts **6.43%** over by area, against **~29%** at 1°, and the chord
+bar is met at ~3×. ***Choosing the angular bar is therefore a PRODUCT decision with a ~50× price
+attached, and it has never been made deliberately.***
+
+> ⚠ **DO NOT READ 6.43% AS "5° SOLVES IT."** It is the same number §0f.4 reported as ***"no exemption"***,
+> and §0f.4 is right: 6.43% of surface area over bar is **not zero**, and this campaign's standard is
+> not "mostly". Relaxing 1° → 5° takes the defect from ~29% to ~6% of area — **a real 4.5× improvement
+> and not a solution.** The honest statement is that the bar choice moves the problem's SIZE by ~50× in
+> cost and ~4.5× in residual, so it should be chosen deliberately — **not that any choice makes the
+> work go away.**
+
+### 7.2 DO THIS
+
+1. ⛔ ***"DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE" IS REFUTED (§0i.3, H1).*** It is
+   1.35× worse than plain LEPP on Gothic and **1.86× worse on Voronoi**, both measured iso-quality, and
+   the loss is isolated to **the split, not the driver**. Do not rebuild it. ***Its kill line for the
+   1° bar (>12×) is also now known to be unreachable by ANY isotropic field — the knapsack optimum is
+   18.33× and the measured frontier does not cross 5% below ~106×.***
+
+1b. ***THE REPLACEMENT: STOP REFINING, START GENERATING — THE `M = g/h²` REMESH.*** Three independent
+   results are the same fact (§0i.4): free placement certifies **the same geometry at 1.615 leaves/par
+   against LEPP's 3.120 — a 1.93× prize**; the cone's failure mechanism is that subdivision has no
+   granularity headroom left; and anisotropy's 1.89× is unreachable by subdivision because parent long
+   axes are misaligned by p50 28.43°. ***Sizing and anisotropy are GENERATION levers.*** **The kernel
+   exists, is certified, and is unwired.** H4 says it does **not** deliver as shipped (2.931× and still
+   14.795% over bar) — ***so the next arm is its two named knobs, not a new mechanism***:
+   `splitThresh 1.5` (a converged element can be 1.5× the target ⇒ chord 2.25× the design tol) and the
+   160×160 curvature grid aliasing sub-cell relief (its own docs record 5–10×; `curvatureFineStep` is
+   the remedy). Both are already wired in `s94ConeRemesh.ts`. **Its shape column is already a win:
+   leaf minAngle 47.3° mean / 3.98° worst against LEPP's 37.6°/1.25°.**
+2. ***SET `PF_CB_SHAPE_AR = 12` (from 50) — ON THE COST ARGUMENT ONLY.*** Derived from
+   `aspect3 = (P/L)/q²` and calibrated on 806,765 real facets (§0h.2c); the cap value is universal.
+   It is **nearly free on healthy meshes** (96.2% of Gothic's facets, 89.2% of shape-gated Voronoi's
+   still admitted) and removes the population that costs **1427× per parent** on an unhealthy one.
+   ⚠ **Do NOT justify it as "excluding a catastrophic band"** — §0h.2e retracts that; the same q band
+   clears fine on the shape-gated mesh. **It is a COST lever, not a fidelity lever.**
+3. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence.
+4. **Land the flip on the remaining styles** — free, improves both rulers, only proven on Gothic.
+
+### 7.3 THE DRIVER-VS-GEOMETRY GAP IS NOW THE SHARPEST OPEN QUESTION
+
+Ideal refinement closes position at **1.04×**. The production driver spends **~100×** and does not
+converge. ***So essentially the entire position gap is DRIVER, not geometry*** — consistent with the
+independently-derived "~100× allocation gap" and with the ranking-function diagnosis. The driver has
+five things the simulator does not: conformity propagation, the fold guard, the AR guard, a budget,
+and a ranking function. **Which of those five eats the 100× has never been measured, and it is the
+cheapest high-value experiment left.**
+
+### 7.4 WITHDRAWN FROM THE PREVIOUS VERSION OF THIS SECTION
+
+- ⛔ **"Do not tune `PF_CB_SHAPE_AR` — measured dead."** ***REFUTED.*** It was measured dead on the
+  *seed's own fidelity*, which is the wrong metric; on **cost** it is the largest lever in the campaign.
+- ⚠ **"The vertex representation is the binding constraint"** — has lost **two of its three supports**.
+  The in-plane fold and "no triangle the driver can express" were both measured on the SHAPE-off
+  artefact (§5, provenance-void). Only the P4 result still stands. **Do not spend a night on an
+  off-surface-vertex design until the §5 obstructions are re-derived on a shape-gated mesh.**
+- ⚠ **"Fix the super-hub runaway (degree 2,550)"** — same provenance. Unverified, not refuted.
+  Re-census on `voronoi_ring_D--H_S94CTL.stl` before treating it as a prerequisite for anything.
+
+### 7.5 DO NOT
+
+- Do not accept a lever on a headline movement. The cavity was accepted on a 1.96× worth zero; the AR
+  cap on a 4.37× that was 2.13×.
+- **Do not quote two `frontierRefine` numbers against each other without diffing their header lines**
+  (`uniformLevels`, `adaptiveMax`, `N`, STL). Two campaign conclusions have already died to this.
+- Do not promote a measurement taken on one artefact to a property of the surface without checking how
+  that artefact was built. ***That single mistake cost §0f.5 and all of §5.***
 
 ---
 
