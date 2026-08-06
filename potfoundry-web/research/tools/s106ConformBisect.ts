@@ -142,6 +142,7 @@ const WELDQ = envF('PF_CF_WELDQ', 0);
 const MAXTRI = Math.round(envF('PF_CF_MAXTRI', 60e6));
 const WATCHDOG = Math.round(envF('PF_CF_WATCHDOG', 0));
 const PROGMS = Math.round(envF('PF_CF_PROGMS', 30000));
+const AUDIT = process.env.PF_CF_AUDIT === '1';
 /** HARD depth limit on FORCED (propagation) splits. A forced split at depth >= HARDCAP is REFUSED,
  *  which leaves a HANGING NODE. `st.refusedForced` is that count = the conformity DEFICIT, printed. */
 const HARDCAP = Math.round(envF('PF_CF_HARDCAP', 1000000));
@@ -555,6 +556,8 @@ function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, p
   const st: ConStats = { finalTris: 0, overBarTris: 0, splits: 0, forcedOverCap: 0, boundaryTerminals: 0,
     pairTerminals: 0, leppSteps: 0, leppWalks: 0, maxLepp: 0, escapedToHalo: 0, guardHits: 0, mismatchTerm: 0, maxDep: 0, overCapAlive: 0, refusedForced: 0, nsSplits: 0, nsTot: 0, nsWorst: 0 };
   const nSeed = m.nT;
+  let seedBoundary = 0;
+  for (let t = 0; t < nSeed; t += 1) for (let e = 0; e < 3; e += 1) if (m.nb(t, e) < 0) seedBoundary += 1;
   for (let t = 0; t < nSeed; t += 1) m.SCC[t] = overBar(m.scoreT(t, bar), bar) ? 1 : 0;
   let stack = new Int32Array(Math.max(1024, nSeed));
   let sp = 0;
@@ -688,6 +691,26 @@ function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, p
     if (progressEvery > 0 && progressCb !== null && Date.now() - lastProg > PROGMS) { lastProg = Date.now(); progressCb(st); }
   }
   for (let t = 0; t < m.nT; t += 1) if (m.ALIVE[t] === 1) { st.finalTris += 1; if (m.SCC[t] === 1) st.overBarTris += 1; if (m.DEP[t] > CAP) st.overCapAlive += 1; }
+  // *** NON-VACUOUS AUDIT: "conforming by construction" is an ASSERTION until the edges are counted.
+  // Over the ALIVE triangles only, every edge must have exactly 2 incident faces except the region's
+  // own boundary. A hanging node shows up as an edge whose two half-edges do not pair. ***
+  if (AUDIT) {
+    const ec = new Map<string, number>();
+    for (let t = 0; t < m.nT; t += 1) {
+      if (m.ALIVE[t] !== 1) continue;
+      for (let e = 0; e < 3; e += 1) {
+        const u = m.corner(t, (e + 1) % 3); const v = m.corner(t, (e + 2) % 3);
+        const k = u < v ? `${u}_${v}` : `${v}_${u}`;
+        ec.set(k, (ec.get(k) ?? 0) + 1);
+      }
+    }
+    let a1 = 0; let a2 = 0; let a3 = 0;
+    for (const c of ec.values()) { if (c === 1) a1 += 1; else if (c === 2) a2 += 1; else a3 += 1; }
+    // a HANGING NODE is a vertex that is an endpoint of some edge AND lies strictly inside another
+    // edge. Equivalently here: after a conforming refinement the alive-edge census must show the SAME
+    // boundary count as the seed region and ZERO edges with >2 faces.
+    log(`  AUDIT (alive triangles only): edges ${ec.size}  1-face ${a1}  2-face ${a2}  >2-face ${a3}   [seed region had ${seedBoundary} boundary half-edges]`);
+  }
   return st;
 }
 

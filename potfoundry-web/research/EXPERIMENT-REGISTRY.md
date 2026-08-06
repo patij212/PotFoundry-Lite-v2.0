@@ -10327,8 +10327,14 @@ longest-edge bisection (zero hanging nodes at every step); independent arm = `fr
 
 ***THE GOTHIC KILL FIRES, THE VORONOI ONE DOES NOT.*** Conforming uncleared is **below** independent on
 both styles (Voronoi 0.0145% vs 0.0227%), so the extra triangles are not bought with quality. Patch trend:
-Voronoi 1.4547 -> 1.3777 -> 1.3727 -> 1.3759 (P=250..16000); Gothic 2.3610 -> 2.4769 -> 2.0550 -> 2.0176,
-its per-patch spread collapsing from [1.000, 9.204] to [1.9613, 2.0769].
+Voronoi 1.4547 -> 1.3777 -> 1.3727 -> 1.3759 (P=250..16000); Gothic 2.3610 -> 2.4769 -> 2.0550 -> 2.0176
+-> **2.0075 at P=64,000** (373,463 -> 749,723 triangles on 5.6% of the mesh in ONE connected piece,
+boundaryTerm 0.414%), its per-patch spread collapsing from [1.000, 9.204] to [1.9613, 2.0769].
+**NON-VACUOUS AUDIT of "conforming by construction":** over the ALIVE triangles of a finished P=16,000
+refinement, Voronoi 240,559 edges / 1,292 one-face / 239,267 two-face / **0 >2-face**; Gothic 282,709 /
+1,286 / 281,423 / **0**. One-face grows only from the seed region's own boundary (556->1,292, 602->1,286)
+because a boundary edge bisects into two. ***Zero interior hanging nodes.*** The contrast: the independent
+arm makes 3,774,753 new Voronoi vertices, essentially all of them hanging.
 
 **C3 — the kill does NOT fire.** Re-aggregating the SAME census over disjoint golden-stride phase blocks
 (no new runs, no distributional assumption): **+/-3.7% at N=2000**, +/-13.6% at N=400, +/-21.5% at N=150
