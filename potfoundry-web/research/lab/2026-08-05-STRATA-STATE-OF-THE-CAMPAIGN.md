@@ -349,10 +349,13 @@ the 10 µm POSITION bar*** — the two requirements are almost disjoint. The imp
 
 > ⛔ ***EVERYTHING IN THIS SUBSECTION ABOUT VORONOI WAS MEASURED ON A MESH BUILT WITH THE SHAPE
 > GUARD OFF.*** With the aspect gate on, the same style on the same surface closes at **9.22× with
-> 0.00% uncleared** — and beats Gothic on the 1° angle bar too. The catalogue does **not** split.
-> Gothic's own numbers below stand. **Read §0g before quoting any line of this.**
+> 0.00% uncleared**. The catalogue does **not** split.
+> ***AND GOTHIC'S OWN NUMBERS BELOW DO NOT STAND EITHER — §0i.1 retires the 6.67× as an N=150
+> single-facet lottery inside a 25× spread.*** **Nothing in this subsection is quotable. Read §0g and
+> §0i.1.**
 
-- **Gothic: LEPP closes the 10 µm chord bar at 6.67× triangles, 0.00% uncleared.** (The position bar
+- ⛔ ~~**Gothic: LEPP closes the 10 µm chord bar at 6.67× triangles, 0.00% uncleared.**~~ ***RETIRED —
+  N=150, and at N=2000 the same measurement reads 10.76× / 27.41% uncleared. See §0i.1.*** (The position bar
   costs 1.02×.) **This class is a density problem and density solves it.**
 - **Voronoi: 222× triangles, 15.6% uncleared** — and 106.6% / 15.0% even after excluding back-facing
   parents, so "folds explain Voronoi" is **refuted**. Mechanism, printed: with folded parents already
@@ -776,6 +779,10 @@ put on one row at any one cap. See §0g.2 as amended.
   for the residual (`splitThresh 1.5` ⇒ chord up to 2.25× the design tol; 160×160 grid aliasing of
   sub-cell relief, which the kernel's own docs record at 5–10×) are wired and testable.
 
+**⚠ AND VORONOI IS 2.5× HARDER STILL ON THE ANGLE BAR (~250–400×), SO GOTHIC IS THE *FAVOURABLE* STYLE
+THERE.** Combined with §0g (Voronoi clears the *chord* bar where Gothic does not), the ranking of the
+two styles **inverts with the bar**. ***There is no "hardest style" — only a hardest bar.***
+
 ### 0i.4 THE STRUCTURAL FINDING — REFINEMENT IS THE WRONG FRAME, AND THREE RESULTS SAY SO
 
 Free placement would certify **the same geometry** at **1.615 leaves/parent instead of LEPP's 3.120 —
@@ -816,7 +823,23 @@ rows and is quoted only for chord; and one remesh arm burned 1,218 s CPU without
 row and was killed — **zero rows, no inference drawn**, and H4 rests entirely on the plain kernel run
 that completed.
 
-Scorecard: `S94_CONE_FINDINGS.md`.
+### 0i.7 THE ENGINEERING GAP THE REMESH ARM EXPOSED, AND A HONEST GAP IN ALL OF IT
+
+***The `M = g/h²` kernel's chord mode ALREADY implements the right law for the CHORD bar*** at
+`tolMm = bar/8 = 0.00125` (from S93's `chord/witnessed` p50 = 8.03). ***An ANGLE bar would need a NEW
+`h = θ*/κ` mode that does not exist.*** So the remesh route reaches the chord bar with tuning and the
+angle bar only with new code — **budget it as such.** The `chordTolMm` direct sag guard needs a
+dedicated run: it evaluates a 45-point lattice per triangle per round and burned 1,218 s with zero
+rows when given a borrowed slot.
+
+⚠ **NO σ BANDS ON ANY MULTIPLIER IN THIS DOCUMENT.** The agent flags this itself, and the N=150 →
+N=2000 collapse is *exactly* what a confidence band would have caught before the campaign steered on
+it for weeks. **Every multiplier here is a point estimate from one golden-stride sample.**
+⚠ **No render was produced for §0i** — the verdicts are triangle-count economics at equal residual,
+cross-validated by two independent instruments. The agent states it did not need a fidelity image and
+***did not fabricate one***.
+
+Scorecard: `S94_CONE_FINDINGS.md`. Commits `5322cbf3`, `7b286307`, `bb09ed83`, `8836aeab`, `8649033b`.
 
 ---
 
@@ -1008,6 +1031,14 @@ attached, and it has never been made deliberately.***
    160×160 curvature grid aliasing sub-cell relief (its own docs record 5–10×; `curvatureFineStep` is
    the remedy). Both are already wired in `s94ConeRemesh.ts`. **Its shape column is already a win:
    leaf minAngle 47.3° mean / 3.98° worst against LEPP's 37.6°/1.25°.**
+   ***BUDGET IT PROPERLY (§0i.7): the `chordTolMm` sag guard evaluates a 45-point lattice per triangle
+   per round and burned 1,218 s with ZERO rows on a borrowed slot — it needs its own run.*** And know
+   the scope before starting: **the kernel's chord mode already implements the right law for the CHORD
+   bar; an ANGLE bar needs a NEW `h = θ*/κ` mode that does not exist.** Chord = tuning; angle = new code.
+
+1c. ***THERE IS NO "HARDEST STYLE" — ONLY A HARDEST BAR.*** Voronoi clears the chord bar where Gothic
+   does not (§0g); Gothic is 2.5× cheaper than Voronoi on the 1° angle bar (§0i.3). **The style ranking
+   inverts with the bar, so stop picking a "worst style" to optimise against and pick the bar first.**
 2. ***SET `PF_CB_SHAPE_AR = 12` (from 50) — ON THE COST ARGUMENT ONLY.*** Derived from
    `aspect3 = (P/L)/q²` and calibrated on 806,765 real facets (§0h.2c); the cap value is universal.
    It is **nearly free on healthy meshes** (96.2% of Gothic's facets, 89.2% of shape-gated Voronoi's
