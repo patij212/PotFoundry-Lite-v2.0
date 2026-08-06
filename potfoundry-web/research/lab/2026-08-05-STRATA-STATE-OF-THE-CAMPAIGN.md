@@ -604,18 +604,38 @@ universal.** What *is* style-dependent is the price, and it is mild where it sho
 ***So AR = 12 is nearly free on healthy meshes and only bites on meshes that already have a sliver
 problem — exactly what a guard should do.***
 
-### 0h.2d *** AND THE REAL INDICTMENT: AT ITS DEFAULT THE GUARD IS A NO-OP ***
+### 0h.2d ⛔ ***RETRACTED WITHIN THE HOUR: "AT ITS DEFAULT THE GUARD IS A NO-OP" WAS CIRCULAR.***
 
-`PF_CB_SHAPE_AR = 50` admits **100.000%** of Gothic's facets and **100.000%** of shape-gated Voronoi's.
-***On two of the three meshes measured, the shape guard at its shipped default NEVER FIRES.*** It has
-been carried as an active safety mechanism and priced as a lever in A/B arms while being, on those
-meshes, inert. That also explains why tuning it previously "measured dead": at 50 there was nothing to
-tune.
+I wrote that `PF_CB_SHAPE_AR = 50` admitting **100.000%** of Gothic's and shape-gated Voronoi's facets
+proved the guard never fires. ***That is backwards.*** Those meshes were BUILT with the guard on at 50,
+so of course every surviving facet satisfies it. **100% compliance is evidence the guard was BINDING,
+not inert** — and the SHAPE-off mesh, at 84.6%, is the one that shows what happens without it.
+The claim is retained here refuted rather than deleted; it went out in commit `49bef793` and this is
+the correction of record.
 
-**Remaining scope, stated honestly:** the q = 0.4 threshold itself is one style, one operator (LEPP),
-the chord bar, conformity ignored — and the guard refuses SPLITS whose CHILDREN exceed the cap, so the
-facet-population calibration maps to guard behaviour indirectly. The *cap value* is universal; the
-*threshold it is set from* still wants a second style.
+### 0h.2e ⚠ AND THE q = 0.4 THRESHOLD IS WEAKER THAN I STATED — IT IS NOT MESH-INDEPENDENT
+
+Checking the two Voronoi meshes against each other at the **same q**, which §0h.2b did not do:
+
+| q ∈ [0.30, 0.40) | leaves/parent | uncleared |
+|---|---|---|
+| Voronoi SHAPE-off | 115.94 | **4.051%** |
+| Voronoi SHAPE-on | 26.90 | **0.000%** |
+
+***The same shape band costs 4.3× more and fails on one mesh while clearing on the other.*** So `q` is
+**not** a sufficient statistic for refinability, and "q < 0.4 is catastrophic" is too strong. What
+survives, and it is still substantial:
+
+1. **Within each mesh, cost falls monotonically with q** — solid on both, and steeply (28.80× → 2.89×
+   on VORSHP; 1427× → 1.41× on VOROFF).
+2. **On the SHAPE-off mesh, uncleared falls monotonically to 0.000% at q ≥ 0.4** — that specific mesh's
+   entire chord-bar failure lives below it.
+3. **The `AR → q` mapping is exact algebra and universal** (§0h.2c). That part is untouched.
+
+**⇒ `PF_CB_SHAPE_AR = 12` still stands as a recommendation, but on the COST argument only** — it is
+nearly free on healthy meshes (96.2% / 89.2% of facets admitted) and removes the population that costs
+1427× per parent on an unhealthy one. ***It should NOT be sold as "excluding a catastrophic band",
+because that band clears fine on the shape-gated mesh.***
 
 ### 0h.3 WHAT THIS SETTLES
 
