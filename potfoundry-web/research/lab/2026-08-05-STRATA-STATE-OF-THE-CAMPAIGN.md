@@ -832,9 +832,19 @@ angle bar only with new code — **budget it as such.** The `chordTolMm` direct 
 dedicated run: it evaluates a 45-point lattice per triangle per round and burned 1,218 s with zero
 rows when given a borrowed slot.
 
-⚠ **NO σ BANDS ON ANY MULTIPLIER IN THIS DOCUMENT.** The agent flags this itself, and the N=150 →
-N=2000 collapse is *exactly* what a confidence band would have caught before the campaign steered on
-it for weeks. **Every multiplier here is a point estimate from one golden-stride sample.**
+⚠ ~~**NO σ BANDS ON ANY MULTIPLIER IN THIS DOCUMENT.**~~ ***PAID 2026-08-06 BY S105 — AND THE LADDER
+ABOVE IS ONE DISTRIBUTION.*** On 213 **disjoint** phase blocks with mesh/bar/operator/cap/scope all
+held fixed, LEPP runs **2.320× … 74.633× at N=150 (32× spread)** and **6.125× … 21.820× at N=2000**,
+pool = **11.973× at 26.121% uncleared** — and ***70% of N=150 blocks read EXACTLY 0.000% uncleared***.
+The five published rows sit at percentiles **55 / 41 / 11 / 58 / 38** of that one distribution, so
+**5.503 → 12.708 is an ORDINARY event**, not a threshold. ***By contrast the ruler fix (§0i.5) moves
+these by <0.7%.*** **WHAT SURVIVES:** the §7.1 **position** row is ±4.3% / ±4.4% (solid), and **H1's
+refutation holds in 500 of 500 blocks** — its magnitude was *understated* (Gothic **1.646×
+[1.512, 1.780]**, Voronoi **2.358× [2.093, 2.622]**, paired). **WHAT MUST CHANGE:** every
+`uncleared %` in this document is band-only (Voronoi `red` "16.09× / 0.00%" is really
+**18.68× / 3.600%**), and §0i.2's literal "0.000%" needs a tolerance. Rule + required-N table:
+`research/LAB-CHEATSHEET.md` § *Sampling*. Scorecard: `S105_BANDS.md`; registry
+`E-2026-08-06-S105-BANDS`; commits `27a1039d` (pre-registration), `70a22176`.
 ⚠ **No render was produced for §0i** — the verdicts are triangle-count economics at equal residual,
 cross-validated by two independent instruments. The agent states it did not need a fidelity image and
 ***did not fabricate one***.
