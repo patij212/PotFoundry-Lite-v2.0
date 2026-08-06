@@ -16,8 +16,16 @@ defect class — ORIENTATION — went unmeasured for the whole campaign and is n
 **410× in area**. What the ruler DID get right is ORDER: ρ = 0.964 against honest position, which is
 why seven blind arms genuinely improved the mesh (3.02× by count, **11.9× by area**) while every
 number they published was wrong by 24–45×. **Rank with the plane ruler; size with `certifyTriangle`.**
-One lever survives honest scoring: a constrained edge flip, which is free. The binding constraint is
-now believed to be the mesher's **vertex representation**, not its refinement rule — see §0b and §7.
+One lever survives honest scoring: a constrained edge flip, which is free.
+
+***AND AS OF 2026-08-06 THE HEADLINE HAS CHANGED AGAIN, IN OUR FAVOUR.*** The 10 µm POSITION bar is
+**not** what is stopping us — ideal refinement closes it at **1.04×–1.06× triangles, 0.000%
+uncleared**, on both styles measured. The "near-vertical wall class that cannot be represented" **does
+not exist**: it was facet SHAPE, on an artefact built with the shape guard OFF, and with the guard on
+the same style on the same surface refines clean (§0g). ***The entire remaining problem is
+ORIENTATION at the 1° angle bar (4.4% / 15.7% uncleared), and that — not position — is what the
+persistent visible artefacts are.*** The "vertex representation is the binding constraint" reading has
+lost two of its three supports and is **on hold, not confirmed**. **Start at §7.0.**
 
 ---
 
@@ -694,40 +702,78 @@ this project's compute goes.
 
 ---
 
-## 7. HOW TO PROCEED
+## 7. HOW TO PROCEED — RE-BASELINED 2026-08-06 AFTER S95 + S98
 
-**IMMEDIATE (cheap, unblocks everything)**
-1. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence. Add
-   it to the arm report or run `s85PosRebase.ts` after each arm.
-2. **Withdraw every `over-0.01mm` figure in the worklog.** They cannot be corrected, only discarded.
-3. **Land the flip on the remaining styles.** It is free, it improves both rulers, and it has only
-   been proven on Gothic.
+### 7.0 *** READ THIS FIRST: THE 10 µm POSITION BAR IS NOT WHAT IS STOPPING US ***
 
-**NEXT (a bug, not a limit)**
-4. **Fix the super-hub runaway.** Degree 2,550 against a median of 5 is a pathology, not a trade-off.
-   `PF_CB_MAXDEG` exists (default 0) and makes it *visible*; the emitting site is in the last phase of
-   the split loop and has not been located. Fixing it is prerequisite to any Voronoi progress, because
-   it is what defeats every local operator.
+Ideal refinement closes the **10 µm position bar at 1.04×–1.06× triangles with 0.000% uncleared** on
+both styles measured. It is, geometrically, nearly free. **The campaign has never been blocked by
+position.** Every stuck arm, every 100-minute run that failed to converge, and every visible artefact
+has been an **ORIENTATION** problem wearing a position bar's clothes.
 
-**THE STRUCTURAL ONE — and this is the honest answer to "why are we stuck"**
-5. ***THE VERTEX REPRESENTATION IS THE BINDING CONSTRAINT.*** `addV` derives every position from
-   `R(θ,z)`, so a vertex is on the surface **by construction**. Three independent results now point at
-   the same place: P4 cannot land because its fallback needs an off-surface vertex; the in-plane fold
-   cannot be corrected because on-edge placement is the only freedom the driver has; and Voronoi's
-   orientation cannot be fixed by any triangle the driver can express.
-   **The design change is to allow a vertex OFF the surface under a bounded position budget** — trade a
-   little H1 for orientation and tiling, deliberately and measurably. That is what P4 was, and it is
-   what `_facetTruthLib`'s own two-sided certificate makes safe to attempt.
-6. **Then, and only then, revisit the operator.** 1→4 refinement halves the circumradius
-   deterministically (0.500 at p50 *and* p90) where longest-edge bisection *enlarges* it for >10% of
-   Voronoi's children (p90 2.855). Normal error scales with circumradius — arXiv:1911.03424.
+***AND THAT EXPLAINS THE ARTEFACTS THE USER KEEPS SEEING IN THE SAME PLACES.*** A 10 µm position error
+is invisible — it is 1/5 of a layer line. What the eye picks up in a slicer preview is **shading**,
+and shading is the **normal**. So a mesh can be fully closed at 10 µm position and still show exactly
+the banding and facet-edge artefacts reported, because the normal is off by degrees where the position
+is off by microns. ***The right target for making those artefacts disappear is the ANGLE bar, not a
+tighter position bar.*** This reconciles "the numbers say closed" with "I can still see it" — both
+were true, and the ruler was answering a different question than the eye.
 
-**DO NOT**
-- Do not tune `PF_CB_SHAPE_AR`, chase density, or build a fan-aware local operator. All three are
-  measured dead.
-- Do not accept a lever on a headline movement. **The cavity was accepted on a 1.96× that was worth
-  zero; the AR cap was accepted on a 4.37× that was 2.13×.** Every lever in the ledger accepted on a
-  plane-ruler movement needs re-examining.
+### 7.1 THE FRONTIER, STATED IN ONE TABLE
+
+Matched settings (`uniLev 2 / maxLev 6`, N=400 golden-stride, LEPP, conformity ignored ⇒ **lower
+bounds**):
+
+| | Gothic S39CTL | Voronoi SHAPE-on |
+|---|---|---|
+| **position 10 µm** | **1.04×, 0.000% uncleared** | **1.06×, 0.000% uncleared** |
+| chord 10 µm | 4.69×, 10.39% | 9.22×, 0.00% |
+| **1° angle** | **94.44×, 4.394%** | **232.69×, 15.674%** |
+
+**The whole remaining problem is the last row.**
+
+### 7.2 DO THIS
+
+1. ***DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE.*** This is the one live arm and two
+   independent instruments now agree it is aimed at the right population: §0f.1 (cone census — the
+   over-bar facets are well-shaped, large, turning) and §0h.2 (shape binning — on Gothic the largest
+   uncleared population is at **good** shape, q ≈ 0.9, holding 57.5% of mesh area). Kill: >12× the
+   flag-OFF triangles, or over-1° AREA not below 5%.
+2. ***RE-ENABLE AND TUNE THE SHAPE GATE — AS A COST LEVER, AND SAY SO.*** Rehabilitated by S95/S98:
+   ~10× triangle cost within a mesh, 24× between meshes. **It does not improve fidelity and must never
+   again be sold as if it did** — but a 10× cost multiplier is the difference between a budget that
+   fits and one that does not.
+3. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence.
+4. **Land the flip on the remaining styles** — free, improves both rulers, only proven on Gothic.
+
+### 7.3 THE DRIVER-VS-GEOMETRY GAP IS NOW THE SHARPEST OPEN QUESTION
+
+Ideal refinement closes position at **1.04×**. The production driver spends **~100×** and does not
+converge. ***So essentially the entire position gap is DRIVER, not geometry*** — consistent with the
+independently-derived "~100× allocation gap" and with the ranking-function diagnosis. The driver has
+five things the simulator does not: conformity propagation, the fold guard, the AR guard, a budget,
+and a ranking function. **Which of those five eats the 100× has never been measured, and it is the
+cheapest high-value experiment left.**
+
+### 7.4 WITHDRAWN FROM THE PREVIOUS VERSION OF THIS SECTION
+
+- ⛔ **"Do not tune `PF_CB_SHAPE_AR` — measured dead."** ***REFUTED.*** It was measured dead on the
+  *seed's own fidelity*, which is the wrong metric; on **cost** it is the largest lever in the campaign.
+- ⚠ **"The vertex representation is the binding constraint"** — has lost **two of its three supports**.
+  The in-plane fold and "no triangle the driver can express" were both measured on the SHAPE-off
+  artefact (§5, provenance-void). Only the P4 result still stands. **Do not spend a night on an
+  off-surface-vertex design until the §5 obstructions are re-derived on a shape-gated mesh.**
+- ⚠ **"Fix the super-hub runaway (degree 2,550)"** — same provenance. Unverified, not refuted.
+  Re-census on `voronoi_ring_D--H_S94CTL.stl` before treating it as a prerequisite for anything.
+
+### 7.5 DO NOT
+
+- Do not accept a lever on a headline movement. The cavity was accepted on a 1.96× worth zero; the AR
+  cap on a 4.37× that was 2.13×.
+- **Do not quote two `frontierRefine` numbers against each other without diffing their header lines**
+  (`uniformLevels`, `adaptiveMax`, `N`, STL). Two campaign conclusions have already died to this.
+- Do not promote a measurement taken on one artefact to a property of the surface without checking how
+  that artefact was built. ***That single mistake cost §0f.5 and all of §5.***
 
 ---
 
