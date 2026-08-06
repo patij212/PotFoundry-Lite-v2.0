@@ -154,6 +154,33 @@ interface Score { chordUm: number; angDeg: number; area: number; diam: number; c
 const NXa = new Float64Array(LP); const NYa = new Float64Array(LP); const NZa = new Float64Array(LP);
 
 /**
+ * *** SIGN CONVENTION — PORTED FROM `orientRuler.ts` @ 5698d023 (2026-08-06). ***
+ * The campaign's `outward` test took a facet's sign from `f_xy . centroid_xy`, which VANISHES on a
+ * near-horizontal facet, i.e. on exactly the population it was deciding about. The shipped ruler now
+ * takes the sign from the ANALYTIC SURFACE NORMAL at the footprint centroid, which is outward by
+ * construction (its radial component is r > 0) and well-defined everywhere. This file uses the same
+ * construction and reports `signMargin` = |f . n_S(centroid)| so a close call is visible.
+ * Every S94 number tagged `RULER=5698d023` is on this convention; anything tagged `RULER=legacy` is on
+ * the old one. Shares are NOT invariant between them (a facet at 3 deg maps to 177 deg, which crosses a
+ * 5 deg bar) — the coordinator's earlier "bit-identical" claim is refuted and is not carried forward.
+ */
+function surfNormalAt(th: number, z: number): [number, number, number] {
+  const r0 = rA(th, z);
+  const hT = HARC / Math.max(1e-9, Math.abs(r0));
+  let zl = z - HZ; let zh = z + HZ;
+  if (zl < 0) { zl = 0; zh = Math.min(H, 2 * HZ); }
+  if (zh > H) { zh = H; zl = Math.max(0, H - 2 * HZ); }
+  const rt = (rA(th + hT, z) - rA(th - hT, z)) / (2 * hT);
+  const rz = zh > zl ? (rA(th, zh) - rA(th, zl)) / (zh - zl) : 0;
+  const c = Math.cos(th); const s = Math.sin(th);
+  const vx = rt * s + r0 * c; const vy = r0 * s - rt * c; const vz = -r0 * rz;
+  const L = Math.hypot(vx, vy, vz) || 1;
+  return [vx / L, vy / L, vz / L];
+}
+const LEGACYSIGN = process.env.PF_S94R_LEGACYSIGN === '1';
+let signMarginMin = 1; const signMargins: number[] = [];
+
+/**
  * ONE covering evaluation of a triangle: sup facet-vs-surface ANGLE, its CHORD, area, diam, leaf minAngle,
  * AND the smallest-enclosing-cone aperture of the surface normals over the same footprint (Badoiu-Clarkson,
  * seeded at the mean normal — the SOUND UPPER bound `coneUB` the S93 census computes). The cone costs only
@@ -178,8 +205,17 @@ function score(t: Tri): Score {
   const area = 0.5 * fl;
   if (!(fl > 0)) return { chordUm: 0, angDeg: 0, area: 0, diam, coneUBdeg: 0, minAng: 0 };
   fx /= fl; fy /= fl; fz /= fl;
-  const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
-  if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  if (LEGACYSIGN) {
+    const gx = (ax + bx + cx) / 3; const gy = (ay + by + cy) / 3;
+    if (fx * gx + fy * gy < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  } else {
+    const [rx, ry, rz2] = surfNormalAt((t.th[0] + t.th[1] + t.th[2]) / 3, (az + bz + cz) / 3);
+    const d = fx * rx + fy * ry + fz * rz2;
+    const m = Math.abs(d);
+    if (m < signMarginMin) signMarginMin = m;
+    if (signMargins.length < 200000) signMargins.push(m);
+    if (d < 0) { fx = -fx; fy = -fy; fz = -fz; }
+  }
   let best = -1;
   let sxa = 0; let sya = 0; let sza = 0;
   for (let p = 0; p < LP; p += 1) {
@@ -438,6 +474,12 @@ for (let q = 0; q < NS; q += 1) {
 }
 
 log('');
+{
+  const sm = signMargins.slice().sort((a, b) => a - b);
+  const q = (x: number): number => (sm.length === 0 ? NaN : sm[Math.min(sm.length - 1, Math.floor(x * sm.length))]);
+  log(`RULER = ${LEGACYSIGN ? 'legacy (f_xy . centroid_xy) *** the REFUTED convention ***' : '5698d023 (sign from the ANALYTIC surface normal at the footprint centroid)'}`);
+  if (!LEGACYSIGN) log(`  signMargin |f . n_S| over ${sm.length} scored triangles: min ${signMarginMin.toExponential(2)}  p01 ${q(0.01).toFixed(4)}  p50 ${q(0.5).toFixed(4)}   share < 0.10: ${((100 * sm.filter((x) => x < 0.1).length) / Math.max(1, sm.length)).toFixed(3)}%   < 0.01: ${((100 * sm.filter((x) => x < 0.01).length) / Math.max(1, sm.length)).toFixed(3)}%`);
+}
 log(`SCOPE — excluded ${nSkipFold} back-facing parents (PF_S94R_SKIPFOLD=${SKIPFOLD ? 1 : 0}) and ${nSkipSlope} parents with slope > ${MAXSLOPE} (PF_S94R_MAXSLOPE); ${nParents} of ${NS} retained = ${((100 * nParents) / Math.max(1, NS)).toFixed(2)}%`);
 log(`CONTROL — max |r_vertex - rA(theta,z)| over ${nParents * 3} sampled parent vertices: ${(vertResidMax * 1000).toExponential(3)} um`);
 log(`CONTROL — level-0 over-bar CHORD AREA ${((100 * parentOverArea) / parentArea).toFixed(3)}%  (census 43.220%, frontierRefine N=2000 42.912%)`);

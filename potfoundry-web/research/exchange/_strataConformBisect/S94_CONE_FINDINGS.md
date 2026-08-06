@@ -275,6 +275,79 @@ arms are running; whichever wins, **the finding above stands as the as-shipped n
 
 ---
 
+## 8. THE THREE COORDINATOR CORRECTIONS, ADDRESSED WITH MEASUREMENTS
+
+### 8.1 RULER `5698d023` — ported, and ***every S94 conclusion is robust to it***
+
+My tools re-implement the covering ruler inline, so they carried the *old* `outward` sign test
+(`f_xy · centroid_xy`). I ported the fix — sign from the ANALYTIC surface normal at the footprint
+centroid — and re-ran the Gothic chord arm. **N=2000, everything else identical:**
+
+| | legacy sign | **RULER=5698d023** |
+|---|---|---|
+| red | 9.721× | **9.720×** |
+| lepp | 10.822× / 28.844% unc | **10.755× / 27.411% unc** |
+| cone | 9.607× | **9.607×** |
+| coneOracle | 9.325× | **9.376×** |
+| coneFloor | 9.180× | **9.194×** |
+| the killer parent's level-0 sup angle | 115.707° | **123.627°** (chord 402.28 → 418.78 µm) |
+
+***The verdicts do not move; the ill-conditioned facet's own reading does.*** That is exactly the shape
+the fix predicts. **`signMargin` = |f · n_S(centroid)|, measured here for the first time on Gothic:**
+min 1.62e-5, p01 0.0373, p50 0.9994, **4.083% of scored triangles below 0.10 and 0.125% below 0.01** —
+i.e. Gothic's ill-conditioned share is ~2× Voronoi's published 2.205%/0.130%. On the shape-gated Voronoi
+artefact it is **0.136% / 0.013%**, 16× better conditioned than the SHAPE-off one: *the aspect gate
+improves the RULER's conditioning too, which is a second, independent argument for it.*
+
+**Convention is stated on every number in this file: all §1–§7 numbers are `RULER=legacy`; §8's Gothic
+re-run and all §8.2 Voronoi numbers are `RULER=5698d023`. Shares are NOT invariant between the two
+(a facet at 3° maps to 177°, which crosses a 5° bar) and I do not carry the retracted claim forward.**
+
+### 8.2 THE SCOPE RESTRICTION IS VOID — so I ran the VORONOI arm, and ***H1 IS REFUTED HARDER THERE***
+
+`voronoi_ring_D--H_S94CTL.stl` (the SHAPE-ON artefact, 492,068 facets), N=800 golden-stride, 10 µm
+chord bar, depth cap 6, `RULER=5698d023`, same tool, same ruler, unscoped:
+
+| operator | leaves/par | uncleared | over-bar leaf AREA | leaf minAngle mean/worst | vs lepp |
+|---|---|---|---|---|---|
+| **lepp** | **8.650×** | **0.000%** | 0.0000% | 40.5 / 0.11 | 1.000 |
+| coneOracle | 15.646× | 0.000% | 0.0000% | 29.4 / 0.11 | **1.809×** |
+| **cone** | **16.076×** | 0.000% | 0.0000% | 29.4 / 0.11 | ***1.859×*** |
+| red | 16.465× | 0.000% | 0.0000% | 29.4 / 0.11 | 1.904× |
+| coneFloor | 17.556× | 0.000% | 0.0000% | 29.4 / 0.11 | 2.030× |
+
+***THE REFUTATION IS CROSS-STYLE AND LARGER ON VORONOI (1.86×) THAN ON GOTHIC (1.35×).*** The mechanism
+is the same and it is now visible in the contrast: on Voronoi, bisection beats 1→4 by **1.90×**
+(8.650 vs 16.465), so the granularity advantage a cone field would have to overcome is *bigger* there,
+not smaller. **A cone-driven k-way field is worse on both styles this campaign has artefacts for.**
+
+*I independently reproduce S95's shape-gated result: `lepp 8.650×` here against their `9.22×` at N=400
+(different N, different tool, both 0.000% uncleared) — and I confirm their saturation warning: Voronoi's
+level-0 over-bar CHORD AREA is **95.832%**, so its chord column is saturated and only ratios are
+readable from it.*
+
+### 8.3 THE SEED-SHAPE-DECIDES-REFINABILITY HYPOTHESIS — my data DOES bear on it. Explicitly:
+
+The coordinator asked me to flag this only if my data speaks to it. **It does, on three counts, and all
+three SUPPORT the reframing — but none of them is a test of it, because I never varied a seed.**
+
+1. **§1.1 is the hypothesis in miniature.** ONE parent — level-0 **minAngle 2.78°**, slope 7.735 — takes
+   LEPP from 5.50× to 12.71× and from 0.12% to 25.3% uncleared. Its own seed fidelity is irrelevant to
+   that; its SHAPE is the whole story.
+2. **Shape-preserving operators are immune.** `red` and all three `cone` variants keep every child
+   SIMILAR to its parent and read **0.000% uncleared at every N on both styles**, on the same parents
+   where bisection diverges. ***Refinability is a property of the operator's shape behaviour, not of the
+   seed's fidelity*** — which is the same claim from the other side.
+3. **The gate improves the RULER too** (§8.1): 0.136%/0.013% ill-conditioned on SHAPE-on Voronoi against
+   2.205%/0.130% on SHAPE-off. A seed-shape lever that also conditions the instrument is worth more than
+   its fidelity A/B showed.
+
+**WHAT MY DATA CANNOT SAY:** I never varied the AR cap, never re-seeded, and never scored a seed's own
+fidelity. Everything above is observational across two committed artefacts. **It is not a test and must
+not be quoted as one.**
+
+---
+
 ## WHAT I DID NOT MEASURE — stated plainly
 
 * **Conformity, for any refinement operator.** Every refinement count refines each parent IN ISOLATION —
