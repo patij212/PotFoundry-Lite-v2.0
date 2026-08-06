@@ -9979,3 +9979,74 @@ facets, and must be relabelled. The true unambiguous back-facing AREA is **0.005
 AREA ⇒ the shape gate is insufficient there. (2) A ONE-FLAG `PF_CB_SHAPE_AR` A/B at fixed triangle budget,
 kill line: < 5× ⇒ §6 is confounded. (3) Price a post-hoc sliver collapse keyed on the O(1) screen and
 measure whether it clears bucket (a) to literal 0 without moving H1/H2.
+
+---
+
+## E-2026-08-06-S99-CREASE-CONFORM — the CREASE class: the demand is never raised (CONFIRMED (b), REFUTED (a)/(c)/(d))
+
+Tools `research/tools/s99CreaseCensus.ts` + `s99CreaseRender.ts` (read-only; no production code, no flag,
+no mesher run). Full scorecard: `research/exchange/_strataConformBisect/S99_CREASE_CONFORM.md`. Commit f2d9ee11.
+
+**NEW INSTRUMENT — the h-free crease detector.** A crease is a JUMP in the normal field, so measure the
+TWO-SIDED angle `angle(n(s*-d), n(s*+d))` on a ladder `d = dMax·2^{0,-2,-4,-6,-8}` (a 256x shrink) with the
+finite-difference half-width tied to `d` (`h = d/32`, so no probe window can straddle the feature even for a
+2.5-deg-oblique crossing). `turnFine` IS the dihedral; `turnFine/turnCoarse` separates a C0 crease (ratio 1)
+from a smooth curvature peak (ratio 1/256). Pinned on 15 two-sided closed-form bars incl. an EXACT-cylinder
+smooth arm (turnCoarse = 2·2^-6·L/R0 to 1e-6 rad) and a 3-way oblique-consistency test (45 deg / perpendicular
+/ 8-deg-shallow probes of the same crease agree to 0.02 deg).
+
+**⚠ SIXTH INSTRUMENT DEFECT, IN THE SHIPPED RULER.** `orientRuler.locateTurnAdaptive` returns **exactly
+0.5000x the dihedral** when the crease sits at the probe MIDPOINT (fixture F1: 26.5651 vs 53.1301 deg) and
+**0.0000 deg** on a symmetric smooth feature. Its bisection's `>=` tie plants a bracket endpoint ON the
+crease, where a central difference returns the AVERAGE of the two one-sided normals. This is the S74
+"walks to the LEFT END" defect in the SYMMETRIC configuration, which S74's own off-centre fixture does not
+exercise (F1b: the two agree to 5e-2 deg there). NOT PATCHED — shipped instrument, shared with running jobs.
+
+**S93's CREASE class size is wrong in BOTH directions.** Its `kinkDeg > 1` test (fixed h = 2e-4 mm) scored
+against the h-free detector on the SAME facets: Gothic **recall 46.59% / precision 12.12%** (over-states the
+class **8.8x**), Voronoi **recall 41.87% / precision 83.28%** (under-states it **4.6x**). Honest size:
+**0.086%** (Gothic) / **0.285%** (Voronoi) of the over-bar defect AREA; **3,187 / 19,018** facets whole-mesh.
+
+**THE MECHANISM.** `consider()` (heap driver, `_strataConformBisectS34.test.ts:2923`) queues a triangle ONLY
+on `sagAdaptive > localAcceptTol` — **there is no conformance term** (the sweep driver's `triangleNeed` has
+one; both committed meshes are `driver: heap`). **95.98% (Gothic) / 99.74% (Voronoi) of the surviving
+crease-crossing AREA is UNDER acceptTol**: plane sag p50 **1.09 um** vs a 3.5 um bar, while the same facets
+carry **228 um** of orientation chord (**209x** blind) and normDeg p50 **82.5 deg**. Conformity is
+OPPORTUNISTIC — an edge is conformed only if the driver split it for SIZE and the crossing fell outside the
+`SNAP_ALPHA = 0.12` band. Once plane sag drops under acceptTol the crossing is FROZEN into the STL.
+
+| candidate | verdict | number |
+|---|---|---|
+| (a) detection incomplete | **REFUTED** (kill: >=95%) | `locateKinkRaw` fires on 98.9% count / 99.7% AREA, locates to 6.3e-7 of the edge |
+| (b) edges land NEAR not ON | **CONFIRMED** | crossing->vertex p50 38.98 um = 6.93% of diam; at edge level p50 **1.39 um** vs the driver's own 0.6 um CONF_MM |
+| (c) conformity destroyed later | **REFUTED** | the survivors ARE the aligned seed's residual 1,392 crossings; collapse/flip counters literally 0 |
+| (d) not a 1-D curve | **REFUTED** | invariant under a 256x shrink on 98.2% count / 92.2% AREA; **0.000%** smooth |
+
+**PRICE — three operators, read-only, measured.** The already-built **default-OFF §4.3 vertex MOVE**
+(`PF_CB_MOVE43H`) is best and FREE: orientation chord **228 -> 26 um** (Gothic) / **79 -> 43 um** (Voronoi) at
+**zero triangle cost**, median displacement 48/66 um — but only **~28%** clear a 5-deg bar and **18–31%** are
+still crease-crossed after it.
+
+**REFUTED, INCLUDING MY OWN PRE-REGISTERED HYPOTHESES.** (1) H-C1: I predicted S93 UNDER-counts; it
+OVER-counts 8.8x on Gothic. (2) The 1->3 "put an EDGE on the crease" cut: **0.00%** clear a 5-deg bar on
+Gothic and **95.1%** of cuts make a <5-deg sliver — the crossings CLIP A CORNER (`tMin` p50 **0.076** of the
+edge), so the cut manufactures needles. (3) "A vertex on the crease is enough": the 1->2 split makes Voronoi
+**WORSE** (8.40 -> 9.07 deg) — the brief's structural claim is measured true. (4) **Tightening
+`PF_CB_KINK_RATIO` cannot gate a conformance-aware accept**: `locateKinkRaw` fires on 3.16% of Gothic edges
+of which **86.1% are FALSE POSITIVES**, and the two populations OVERLAP (FP ratio p50 **0.2486**, TP p50
+**0.2516**); a 0.24 threshold still admits 81.9% of the false ones. (5) H-C3's kill line flipped between
+N=20k (0.121 of diam, refuted) and N=100k (0.0693, confirmed) — the N=20k area-weighted median had 63
+members and is WITHDRAWN; treat any area-weighted quantile over <100 members as noise.
+
+**RECLASSIFICATION.** A third to a half of S93's "FOLDED" population BY COUNT is a crease straddle, not a
+fold (Gothic 35.7% of FOLDED count, Voronoi 58.2%): a facet spanning a 150-deg blade legitimately reads
+normDeg > 90 with no inversion.
+
+**RENDER agrees and corrects a reading** (`s99/render/S99_GOTH_crease.png`): the wide red orientation ribbons
+along Gothic's arch ribs are NOT crease-spanning — the rib CREST is already conformed (grey) and the red is
+the smooth, very steep rib FLANK (S93's SMOOTH-TURNING 99.04%, a sizing problem).
+
+**PRE-REGISTERED NEXT ARMS.** (1) `PF_CB_MOVE43H=1` A/B on Gothic at fixed budget, kill: crease-crossing
+count must fall below 1,600 with whole-mesh minAngle p05 not worse than 1.5x. (2) `PF_CB_DRIVER=sweep` A/B,
+kill: if the count does not fall >=3x, gate A is mis-attributed. (3) A conformance term in `consider()` keyed
+on the GAUSS ruler (not the radius ruler); kill: >2x total run time ⇒ it belongs in a pre-pass locus set.
