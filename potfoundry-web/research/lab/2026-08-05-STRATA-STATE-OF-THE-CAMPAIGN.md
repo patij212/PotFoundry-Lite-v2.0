@@ -1323,6 +1323,11 @@ DIFFERENT NUMBERS, it does NOT cancel out of ratios (§0k.2).*** Against a 12 M 
 operator with fixed points (§0k.3) and is likely pessimistic. **⚠ The two rows marked `red` were
 measured with a different operator than the chord row; that was my error and it is now labelled.**
 
+**⚠ AND THE BUDGET VERDICT IS NOW MEASURED, NOT ASSUMED (§0k.1):** with real conformity on the chord
+bar, ***Voronoi is 5.94 M = 49.5% of the 12 M budget (PASS)*** while ***Gothic is ~12.84 M = 107%
+(FAIL)*** — though Gothic's was measured on the defective splitter above and is likely pessimistic.
+**Nobody has re-run it, so do not quote Gothic as passing.**
+
 **The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
 same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
 (§0i.3, H2): ***full clearance costs ~155× and the best any isotropic field can do at 5% over-area is
@@ -1339,6 +1344,16 @@ attached, and it has never been made deliberately.***
 > work go away.**
 
 ### 7.2 DO THIS
+
+0. ### ***DO THIS FIRST: PORT THE DRIVER'S 3-D CHORD SOLVE INTO THE MEASUREMENT INSTRUMENTS.***
+   `frontierRefine.ts` and its four descendants split at the **parametric** midpoint
+   `0.5(θu+θv), 0.5(zu+zv)`, which ***is not a bisection and has FIXED POINTS on Gothic*** — 19.281% of
+   cap-24 splits do no work, and some facets are unrefinable at any depth (§0k.3). ***The production
+   driver already solves this*** (`placeAt` → `chordParam`, 24-iteration, `PF_CB_MID3D` **default ON**).
+   **So the defect is in the ruler, not the product, and the port is a few lines.** ***It is the
+   cheapest action in this document and the one that most changes what we believe:*** it re-prices
+   Gothic's 107% budget FAIL, and it removes the mechanism behind §0i.1's "LEPP does not converge."
+   **Re-run Gothic's chord census immediately after.** *(Voronoi is unaffected — 0.000% non-shortening.)*
 
 1. ⛔ ***"DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE" IS REFUTED (§0i.3, H1).*** It is
    1.35× worse than plain LEPP on Gothic and **1.86× worse on Voronoi**, both measured iso-quality, and
