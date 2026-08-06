@@ -593,10 +593,29 @@ Checked on all 806,765 real facets — the measured p05/p50/p95 land inside the 
 ***THE CURRENT DEFAULT OF 50 ADMITS EXACTLY THE CLASS THAT COSTS 152x AND NEVER CLEARS. 12 IS THE
 LARGEST VALUE THAT EXCLUDES ALL OF IT.*** Cost side: 12 admits 71.6% of facets against 50's 84.6%.
 
-**Scope, stated:** the threshold is one style, one operator (LEPP), the chord bar, conformity ignored;
-and the guard refuses SPLITS whose CHILDREN exceed the cap, so the facet-population calibration maps to
-guard behaviour indirectly. **Re-measure the threshold on a second style before treating 12 as
-universal** — but 50 is already indefensible on this evidence.
+**SCOPE CAVEAT CLOSED — verified on all three meshes.** The `AR → worst-admitted-q` column is
+**identical** on Voronoi-off, Voronoi-on and Gothic (50 → 0.200, 15 → 0.366, **12 → 0.410**), because
+`aspect3 = (P/L)/q²` is exact algebra — the bound is a property of the metric, not of the mesh. **12 is
+universal.** What *is* style-dependent is the price, and it is mild where it should be:
+
+| facets admitted at AR = 12 | Gothic **96.2%** | Voronoi SHAPE-on **89.2%** | Voronoi SHAPE-off 71.6% |
+|---|---|---|---|
+
+***So AR = 12 is nearly free on healthy meshes and only bites on meshes that already have a sliver
+problem — exactly what a guard should do.***
+
+### 0h.2d *** AND THE REAL INDICTMENT: AT ITS DEFAULT THE GUARD IS A NO-OP ***
+
+`PF_CB_SHAPE_AR = 50` admits **100.000%** of Gothic's facets and **100.000%** of shape-gated Voronoi's.
+***On two of the three meshes measured, the shape guard at its shipped default NEVER FIRES.*** It has
+been carried as an active safety mechanism and priced as a lever in A/B arms while being, on those
+meshes, inert. That also explains why tuning it previously "measured dead": at 50 there was nothing to
+tune.
+
+**Remaining scope, stated honestly:** the q = 0.4 threshold itself is one style, one operator (LEPP),
+the chord bar, conformity ignored — and the guard refuses SPLITS whose CHILDREN exceed the cap, so the
+facet-population calibration maps to guard behaviour indirectly. The *cap value* is universal; the
+*threshold it is set from* still wants a second style.
 
 ### 0h.3 WHAT THIS SETTLES
 
