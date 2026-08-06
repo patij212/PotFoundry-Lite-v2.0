@@ -244,6 +244,38 @@ the bar as a cost/quality decision if you like; do not expect it to remove what 
 ⚠ And it re-reads §0.3c: my angle-sizing arm spent budget by κ, but ***a locus is not a curvature-density
 phenomenon***. That is an independent reason density-class levers were never going to touch this.
 
+### 0.3e ⭐ S109 — CROSS-TABULATED. THE CREASE PROGRAMME, EVEN PERFECTED, REACHES 40% OF THE VISIBLE CLASS.
+
+`research/tools/s109CreaseCrossTab.ts`. **Whole population, 1,712,669 interior edges, 117.5 s** — no
+sampling, no reweighting. Reproduced by a stride-20 pre-run to within 1.5% on every cell, which is a
+free replication check. Instrument correctly wired: **PRECOND `MAX |r_mesh − rA| = 0.0310 µm`, exactly
+S103's stated Gothic reference**, so this is not a params-mismatch run.
+
+| | HIGH dihedral (>45°) | not | rate |
+|---|---:|---:|---:|
+| **crosses a crease** (`locateKinkRaw`, non-jump) | **7,931** | 48,115 | **14.151%** |
+| does not | 11,651 | 1,644,972 | **0.703%** |
+
+**RISK RATIO 20.12× · ODDS RATIO 23.3 · RECALL 40.50% · PRECISION 14.15%**
+
+***NEITHER CLASS CONTAINS THE OTHER, AND BOTH HALVES MATTER:***
+- **59.50% of the high-dihedral class does NOT cross a crease.** ⇒ ***the crease programme — CONFORM_FIRST,
+  the aligned seed, SNAP, everything S99/S100 aimed at — cannot reach the majority of the visible defect,
+  even if it worked perfectly.*** That is a ceiling on a whole branch of the campaign, and it was not known.
+- **85.85% of crease crossings are NOT high-dihedral** ⇒ most crossings are **benign for visibility**.
+  S99/S100 were optimising a population that is largely invisible.
+
+⚠ **Quote BOTH numbers.** The risk ratio alone reads as "same class" (it is a real 20× association, not
+noise); the recall alone reads as "unrelated" (it is not). The honest statement is *strong association,
+partial overlap, neither contains the other.*
+
+**WHAT IS THE OTHER 59.5%?** Unknown, and I am not going to guess — S108 has already established it is
+**well-shaped** (minAngle median 26.71 vs 26.42) and **not** S98's needles, and S109 now establishes it
+is **not** the crease class. Both of the campaign's named mechanisms are excluded. ***That is the next
+experiment and it is now well-posed:*** take the 11,651 high-dihedral non-crossing edges and characterise
+them directly. Do not attach them to an existing class by assumption — two such attachments have now
+been tested and both came back partial.
+
 ### 0.4 SCOPE CORRECTION — there are TWO generation lineages and BOTH are chord-only
 
 The fan-out returned **zero hits** for `MetricSizingField`, `PeriodicBalancedQuadtree` and
