@@ -80,6 +80,15 @@ const GRADE = envF('PF_S94M_GRADE', 0.2);
 const MAXPOINTS = Math.round(envF('PF_S94M_MAXPOINTS', 4_000_000));
 const MAXROUNDS = Math.round(envF('PF_S94M_MAXROUNDS', 60));
 const SWEEPS = Math.round(envF('PF_S94M_SWEEPS', 6));
+/**
+ * *** THE KERNEL'S tolMm IS NOT A HARD BOUND. *** `buildInhouseMetricMesh` splits only when the longest
+ * METRIC edge exceeds `splitThresh` (default 1.5), so a converged element may be up to 1.5x the target
+ * size and its chord up to 1.5^2 = 2.25x the tol the field was built for. That is a competing explanation
+ * for a residual over-bar area and it is CHEAPER TO TEST than the aliasing story: reducing tol by 2.25x
+ * (or splitThresh to 1.0) must remove it if that is the cause. Both are exposed so the two hypotheses can
+ * be separated instead of asserted.
+ */
+const SPLITTHRESH = envF('PF_S94M_SPLITTHRESH', 1.5);
 const FINESTEP = envF('PF_S94M_FINESTEP', 0);
 const SUBS = Math.round(envF('PF_S94M_SUBS', 3));
 const CHORDTOL = envF('PF_S94M_CHORDTOL', 0);
@@ -108,7 +117,7 @@ mkdirSync(OUTDIR, { recursive: true });
 log('===== S94 CONE REMESH — `M = g/h^2` REMESH vs THE BEST REFINEMENT OPERATOR, ONE RULER, ONE SURFACE =====');
 log(`style ${STYLE}   tag ${TAG}   chord bar ${BAR_UM} um   angle bar ${ANGBAR} deg`);
 log(`covering ruler k=${K} inset=${INSET} (${((K + 1) * (K + 2)) / 2} pts/facet). NO centroid samples.`);
-log(`kernel: buildInhouseMetricMesh  sizeRes ${SIZERES}  gradeBeta ${GRADE}  hMin ${HMIN}  hMax ${HMAX}  maxPoints ${MAXPOINTS}  sweeps ${SWEEPS}`);
+log(`kernel: buildInhouseMetricMesh  splitThresh ${SPLITTHRESH}  sizeRes ${SIZERES}  gradeBeta ${GRADE}  hMin ${HMIN}  hMax ${HMAX}  maxPoints ${MAXPOINTS}  sweeps ${SWEEPS}`);
 log(`tol sweep (mm): ${TOLS.join(', ')}       [10 um orientation chord bar == a ${(BAR_UM / 8000).toFixed(5)} mm position tol, S93 o/w p50 = 8.03]`);
 
 const rAbase = buildRadiusFn(STYLE as StyleId, { ...registryDefaults(STYLE) }, DIMS);
@@ -217,7 +226,7 @@ for (const tol of TOLS) {
   try {
     mesh = buildInhouseMetricMesh(rA, H, {
       tolMm: tol, hMin: HMIN, hMax: HMAX, sizeRes: SIZERES, gradeBeta: GRADE,
-      maxPoints: MAXPOINTS, maxRounds: MAXROUNDS, optimizeSweeps: SWEEPS,
+      maxPoints: MAXPOINTS, maxRounds: MAXROUNDS, optimizeSweeps: SWEEPS, splitThresh: SPLITTHRESH,
       // OPT-IN kernel knobs, DEFAULT OFF here so the plain `M = g/h^2` chord mode is what is measured
       // first. `curvatureFineStep` resolves a sub-cell ridge the sizeRes grid aliases 5-10x (the
       // documented crest-straddle root cause); `chordTolMm` is a DIRECT facet->surface sag guard that

@@ -86,6 +86,26 @@ level-0 geometry:
        598         982.27         140.596        0.5217          34.83  5.867
        ... every one of the 12 has slope 2.28-7.74; ALL parents' median slope is ~0.11
 
+### 1.1 *** IT IS NOT EVEN A SAMPLE-SIZE EFFECT. IT IS ONE FACET. *** (the sample-size ladder)
+
+Same tool, same STL, same depth cap, `PF_S94R_OPS=lepp,red`, N swept:
+
+| N | **lepp** leaves/par | lepp uncleared | lepp max leaves on ONE parent | red leaves/par | red uncleared |
+|---|---|---|---|---|---|
+| 150 | **6.673×** | 0.000% | 598 | 8.340× | 0.000% |
+| 300 | 6.520× | 0.204% | 598 | 9.100× | 0.000% |
+| 600 | 5.503× | 0.121% | 598 | 7.985× | 0.000% |
+| **1200** | **12.708×** | **25.285%** | **7,139** | 10.268× | 0.000% |
+| 2000 | 10.822× | 28.844% | 7,139 | 9.721× | 0.000% |
+
+***THE ENTIRE MOVE FROM 5.5× TO 12.7× IS ONE PARENT ENTERING THE SAMPLE BETWEEN N=600 AND N=1200.*** Its
+level-0 geometry, printed: chord **402.28 µm**, sup angle **115.707°** (back-facing), diam 0.238 mm,
+minAngle **2.78°**, chart slope **7.735**. It alone consumes 7,139 leaves and never clears.
+**`red` never blows up on it (0.000% uncleared at every N); only bisection does.** Even at N=150 the mean
+was already tail-dominated — 61.44% of all leaves sat in 1% of parents — it simply had not met the worst
+one yet. **The campaign's 6.67× anchor is a single-facet lottery, and its 0.00%-uncleared is the same
+lottery.**
+
 ***ALL TWELVE ARE NEAR-VERTICAL-WALL FACETS AND NINE ARE ALREADY BACK-FACING (level-0 angle > 90°).***
 That is S93 §0f.5's NEAR-VERTICAL-WALL class — the class the brief explicitly scopes OUT as
 representation-not-density — living inside the smooth-relief exemplar. The worst 1% of parents hold
@@ -109,6 +129,13 @@ operators equally.
 | leppCone (bisect, cone STOP test) | 2.621× | **15.9%** | **14.07%** | 11.380% | 37.0 / 1.25 | *does not meet the bar* |
 
 **H1 KILL LINE HIT: `cone` leaves/parent ≥ `lepp` leaves/parent on the same parents. REFUTED.**
+
+**THE ONE THING THE CONE FIELD IS ACTUALLY BETTER AT, AND IT IS NOT ECONOMY — IT IS STABILITY.** On the
+UNSCOPED mesh (§1.1) `lepp` swings 5.50× → 12.71× on one facet and leaves 25–29% uncleared, while
+`cone` (9.607×), `coneOracle` (9.325×), `coneFloor` (9.180×) and `red` (9.721×) are all **0.000%
+uncleared at every N**. A k-way barycentric split keeps every child SIMILAR to its parent, so the
+sliver/back-facing class costs a bounded subtree instead of a divergent one. ***That is a real property
+and it is worth stating — but `red` has it too and is cheaper, so it is not an argument for the cone.***
 
 **MECHANISM, and it is why no tuning rescues it.** (i) LEPP stops on the node's **measured** sup chord;
 `coneUB` is a *model* of that quantity (census `nd/coneUB` area-wt p50 1.142, p75 1.420, p99 2.033), so
@@ -178,6 +205,91 @@ whose long axes are misaligned with the slow direction by area-wt p50 28.43° �
 captures only the part of the anisotropy its parents already happen to be aligned with. Consistent with
 §2: anisotropy, like sizing, is a generation lever, not a refinement lever.
 
+## 6. H2, MEASURED — a second, independent instrument, and it agrees the answer is NO
+
+`s94ConeRefine.ts` in `PF_S94R_MODE=angle`, GothicArches, N=400 golden-stride **unscoped**, depth cap 9,
+scored against the **1° angular bar**. Each row refines to a STOP threshold and is then scored at 1°,
+which traces the achievable frontier of a threshold-driven field (the §4 knapsack is its optimum):
+
+| stop | red leaves/par | red over-1° AREA | lepp leaves/par | lepp over-1° AREA |
+|---|---|---|---|---|
+| 8° | 41.49× | 32.58% | 50.75× | 32.79% |
+| 5° | 53.84× | 32.56% | 54.33× | 32.77% |
+| 3° | 62.58× | 32.43% | 61.64× | 32.62% |
+| 2° | 84.44× | 26.78% | 82.16× | 25.75% |
+| 1.5° | 105.98× | 19.87% | 100.46× | 19.45% |
+| **1°** | **158.88×** | **0.0127%** | **153.73×** | **0.0192%** |
+
+***OVER-1° AREA DOES NOT CROSS 5% ANYWHERE BELOW ~106×, AND FULL CLEARANCE COSTS ~155×.*** Against a
+**12× kill**, H2 is refuted by a factor of 9–13. The §4 analytic optimum (18.33×) and this measurement
+(>106×) bracket the truth from both sides: **the optimum is unreachable by a threshold field, and even
+the optimum is over the kill line.** The angle bar IS reachable — 0.013% residual at 159× — it is simply
+not a 12× object. (S93's red-1→4 at 1° read 351× / 20.7% uncleared at N=1500 and maxLevel 8-9; same order,
+different sample and cap.)
+
+The `cone` k-way operator in angle mode is **catastrophic — 2794×** — for the same mechanism as §2, only
+louder: `k = ceil(coneUB/stop)` reaches the k-cap of 16 and emits 256 children in one step, almost all
+unnecessary. **Third independent confirmation that k-way "exact sizing" is the wrong operator inside a
+subdivision framework.**
+
+⚠ **DO NOT quote the SLACK column on the angle rows.** It is computed from the leaf's CHORD in all modes,
+so in angle mode it answers a different question. Only the chord-mode slack figures (§3) are quotable.
+
+## 7. H4 — THE `M = g/h²` REMESH, MEASURED. IT DOES NOT REACH THE BAR AS SHIPPED.
+
+`s94ConeRemesh.ts` → `buildInhouseMetricMesh` + `buildSurfaceMetricField` (the unwired kernel), plain
+chord mode, `sizeRes 160`, `gradeBeta 0.2`, `splitThresh 1.5` (all kernel defaults), whole (u,t) domain,
+scored by the SAME covering ruler on the SAME analytic surface, N=20,000 golden-stride facets per mesh.
+
+| | flag-OFF STL | tol 0.01 | tol 0.005 | tol 0.0025 | **tol 0.00125** |
+|---|---|---|---|---|---|
+| triangles | 1,142,166 | 406,626 | 823,974 | 1,665,766 | **3,347,320** |
+| × flag-OFF | 1.000× | 0.356× | 0.721× | 1.458× | **2.931×** |
+| **over-bar CHORD AREA** | 42.427% | 44.121% | 33.059% | 26.234% | **14.795%** |
+| over-1° ANGLE AREA | 28.431% | 37.482% | 26.786% | 23.001% | 19.837% |
+| leaf minAngle mean / worst | 34.5 / 1.25 | 48.3 / 4.91 | 48.0 / 3.94 | 47.6 / 1.22 | **47.3 / 3.98** |
+| total area mm² | 37,518.0 | 35,751.5 | 36,999.4 | 37,178.7 | **37,535.8** |
+
+**DOMAIN CONTROL PASSES:** at the design tol the remesh's total area is 37,535.8 mm² against the STL's
+37,518.0 = **1.0005×**. The two meshes cover the same surface. **NON-VACUITY PASSES:** the loose end of
+the sweep is 84.8% over bar (tol 0.05, from the smoke run).
+
+***H4 KILL LINE HIT AS SHIPPED: at the theoretically-correct tol (10 µm chord = a 1.25 µm position tol,
+by S93's own `chord/witnessed` p50 = 8.03), the remesh spends 2.931× the triangles and is still 14.795%
+over bar, while scoped LEPP clears completely at 3.120×.***
+
+**BUT THE SHAPE COLUMN IS THE OTHER HALF OF THE ROW, AND IT IS A LARGE WIN.** The remesh's leaf minAngle
+is **47.3° mean** against the flag-OFF STL's 34.5° and LEPP's 37.6°, with a worst of 3.98° against
+LEPP's 1.25°/0.00°. That is the `M = g/h²` property the memory records ("closes the sliver-quality
+frontier") reproduced here on an orientation task it was not built for.
+
+**TWO COMPETING EXPLANATIONS FOR THE RESIDUAL, AND THEY ARE SEPARABLE — I DO NOT ASSERT EITHER:**
+1. **`tolMm` is not a hard bound.** The kernel splits only when the longest METRIC edge exceeds
+   `splitThresh` (default **1.5**), so a converged element may be 1.5× the target and its chord
+   1.5² = **2.25×** the tol the field was built for. Testable by re-running at `tol/2.25`.
+2. **Grid aliasing of sub-cell relief.** κ_max is a second difference on a 160×160 (u,t) grid;
+   the kernel's own docs record this under-resolving a sharp sub-cell ridge **5–10×** and name
+   `curvatureFineStep` as the remedy. Testable by turning it on.
+Both knobs are wired in the tool (`PF_S94M_SPLITTHRESH`, `PF_S94M_FINESTEP`, `PF_S94M_CHORDTOL`) and the
+arms are running; whichever wins, **the finding above stands as the as-shipped number.**
+
 ---
 
-*(§6 the `M = g/h²` remesh measurement and §7 the angle-stop sweep are appended as those units land)*
+## WHAT I DID NOT MEASURE — stated plainly
+
+* **Conformity, for any refinement operator.** Every refinement count refines each parent IN ISOLATION —
+  no hanging-node propagation, no 2:1 balance, no LEPP back-propagation. All operators pay it equally so
+  the RATIOS stand; the absolute multipliers are LOWER bounds. **This is unfair to the remesh, not to
+  LEPP**: a remesh is conforming by construction and LEPP's real closure propagates into neighbours.
+* **Any production mesher arm.** No flag was added, no `src/` file was touched, no driver was run. This is
+  three read-only tools over a committed STL, the S93 census NDJSON, and an unwired research kernel.
+* **Styles other than GothicArches.** One style, one STL (`S39CTL`). The near-vertical-wall class appears
+  in §1 only as the named cause of LEPP's blow-up; it is a parallel agent's scope and I did not price it.
+* **The anisotropic metric as a MESH.** §5 prices anisotropy with the standard metric element-count model
+  (`min(ARcap, kapA/kapB)` on the isotropic count). Nothing anisotropic was meshed. `kapB` underflows on
+  developable patches (census p05 = 0.00000) so only capped columns are quoted.
+* **An ANGLE-mode sizing law in the kernel.** `buildSurfaceMetricField` implements `h = √(8·tol/κ)`, which
+  is the CHORD law. An angular bar needs `h = θ*/κ` — a different exponent. Named as a gap, not built.
+* **σ bands.** No confidence intervals are attached to any multiplier. The N=150 → N=2000 movement in §1
+  is exactly the kind of thing that band would have caught, and it is the strongest argument for adding it.
+* **`certifyTriangle`.** Position is not scored anywhere in S94; this arm is entirely about orientation.
