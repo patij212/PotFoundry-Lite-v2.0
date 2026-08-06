@@ -315,10 +315,46 @@ visible defect has no operator pointed at it" is **WITHDRAWN**. What survives fr
 20.12× is real, and **85.85% of crease crossings are still not high-dihedral**, so S99/S100 were still
 largely optimising an invisible population — *that* half stands.
 
-**THE RESIDUAL IS NOW 4,158 PAIRS (21.23%), AND IT IS NOT YET CHARACTERISED.** ⚠ Do not attribute
-group A's ratio 1.00 to them: that median is dominated by the 64% that DO straddle a crease. Their own
-ratio, location and shape are **UNMEASURED**. That is the next experiment, and it is small enough to
-characterise exhaustively rather than statistically.
+**THE RESIDUAL IS NOW 4,158 PAIRS (21.23%).** ⚠ Do not attribute group A's ratio 1.00 to them: that
+median is dominated by the 64% that DO straddle a crease. Censused exhaustively in §0.3g.
+
+### 0.3g ⭐ S111 — THE RESIDUAL CENSUSED EXHAUSTIVELY. IT IS MIXED, AND MY PRE-REGISTERED DICHOTOMY WAS WRONG.
+
+`research/tools/s111ResidualCensus.ts`. All 4,158, no sampling. PRECOND 0.0310 µm.
+
+**(1) The surface there is SMOOTH.** S99's own method — analytic turn at shrinking probe offsets along
+the centroid segment. A C0 crease holds its turn; a smooth patch decays proportionally. Over a 64×
+shrink: **p10 63.92 / p50 64.00 / p90 64.04**. Textbook proportional. **98.53% smooth, 1.47% invariant
+(a genuine detector miss), 0 intermediate.** So `locateKinkRaw` is not missing creases here — there are
+none to miss.
+
+**(2) But the surface does NOT explain the whole angle.** Dense order-4 barycentric probe of the analytic
+normal over *both facets' own footprints*, **per-pair** (not a ratio of medians):
+
+| measured dihedral / footprint-max analytic turn | value |
+|---|---|
+| p10 / p25 / **p50** / p75 / p90 | 0.54 / 0.97 / **2.38** / 4.16 / 6.17 |
+| ≤1.5× — the surface fully explains it | **1,585 = 38.12%** |
+| >2× — the mesh adds turn | **2,313 = 55.63%** |
+
+⇒ ***the residual is genuinely MIXED: ~38% honest under-resolution of a fast-turning smooth surface,
+~56% turn the mesh adds on top of it.*** Two causes, not one.
+
+⛔ **I pre-registered a dichotomy ("either answer closes the taxonomy; there is no third branch") and my
+own run falsified it.** A pre-registered dichotomy is still a dichotomy — reality was not obliged to pick
+a side. Struck in the tool header.
+
+⚠⚠ ***AND A MEASUREMENT LESSON THAT VOIDS ONE OF MY OWN NUMBERS FROM AN HOUR EARLIER.*** §0.3f's
+centroid-to-centroid turn read **3.00°** on this population; sampled densely over the *same* footprints
+the surface turns **39.09°** — a **13× under-read**. Any inference built on the 3.00° figure is void,
+including the "the mesh manufactures 30× the turn" reading it implied (the honest per-pair figure is
+2.38×). ***This is the SECOND two-point probe of a curved quantity to under-read in this lineage*** — the
+first was `L · κ_max` in §0.3f, caught by its control at 0.23. **PROBE FOOTPRINTS, NOT ENDPOINTS.**
+
+**Geometry of the residual:** measured dihedral p50 90.67°, edge L p50 85.5 µm, z p10/p50/p90
+64.5/96.9/118.2 mm (upper pot), distance to the θ=0 seam p50 62.39 mm (**not** a seam artefact),
+θ mod 30° spread across all 12 bins (759/267/119/54/285/502/669/446/82/37/60/878 — structured, not
+uniform, and not a single locus). Render bins: `GOTH_residual`, 6,379 facets.
 
 ### 0.4 SCOPE CORRECTION — there are TWO generation lineages and BOTH are chord-only
 
