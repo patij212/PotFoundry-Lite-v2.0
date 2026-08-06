@@ -10410,3 +10410,81 @@ measured-and-false** and multiply §7.1's absolute counts by **1.39 (Voronoi cho
 **Scorecard:** `research/exchange/_strataConformBisect/S106_CONFORMITY.md`. Tools:
 `research/tools/s106ConformBisect.ts`, `s106ConformAnalyze.cjs`, `run-s106-conform.sh`.
 Commits `fbd1a33e` (pre-registration, **before** the first run), `c5cec83e`.
+
+---
+
+## E-2026-08-06-S106-CONFORMITY, ADDENDUM (S107 PORT) — *** THE FIXED POINT IS AN INSTRUMENT DEFECT, THE PRODUCT ALREADY HAD THE FIX, AND THE GOTHIC BUDGET VERDICT FLIPS TO PASS ***
+
+**WHAT THE COORDINATOR CAUGHT.** My recommendation "fix the split operator" was right about the operator
+and wrong about which one. `frontierRefine` and its four descendants split at the parametric midpoint; the
+PRODUCTION driver `_strataConformBisectS34` places the point with `placeAt` -> `chordParam` (a 24-halving
+solve for the true 3-D chord fraction) and ***`PF_CB_MID3D` DEFAULTS ON***. ***I recommended changing the
+product on evidence drawn entirely from the instrument, having read no production code.*** `chordParam` is
+now IMPORTED from `research/bridge/_shapeGuard.ts` into BOTH arms of `s106ConformBisect.ts` (M is a ratio;
+moving the split point in one arm only would make it meaningless).
+
+**PRE-REGISTERED before the first MID3D run.** **D1** the conforming census non-shortening rate must fall
+below 0.5% or the port is not reaching the conforming path and everything downstream is void. **D2** the
+Gothic total vs 12 M, ***with NO predicted sign*** — moving the split point changes edge lengths, hence
+which edge is longest, hence the LEPP PROPAGATION PATHS; `independent x M` decides. **D3** Voronoi is the
+null on the DEFECT metric and explicitly NOT assumed to be a null on COST.
+
+**FLAG DEFAULT OFF => BYTE-IDENTICAL**, run not assumed: Gothic 10,652 = 5.3260x / 17.424%, Voronoi
+16,933 = 8.4665x / 0.000%.
+
+**D1 PASSES.** Gothic conforming census non-shortening **188,120/5,775,996 = 3.2569% -> 22,096/5,221,754 =
+0.4232% (7.7x fall)**. Independent arm 4.6348% -> 0.8740% (cap 12) and 19.2814% -> 11.9255% (cap 24).
+⚠ **The residual has a printed mechanism:** `chordParam` solves `(1-f)|P-A| = f|P-B|` — it EQUALISES the
+two distances, it does NOT bound them below `|AB|`. The worst ratio barely moves (**3.8889 -> 3.8376**),
+so ***the solve CENTRES the split without BOUNDING it***: it removes the lopsided majority and leaves the
+extreme cases. A clamp (fall back to the chord midpoint when `max(|u-mid|,|v-mid|) >= |u-v|`) is the next
+experiment, and the non-shortening census is already the instrument to pre-register it against.
+
+**D2 — THE VERDICT FLIPS.** Whole-mesh CENSUS, both arms, 10 um chord, LEPP, cap 12, HARDCAP 24:
+
+| Gothic S39CTL (1,142,166 facets) | MID3D=0 | **MID3D=1** | ratio |
+|---|---|---|---|
+| independent I | 6,396,921 = 5.60069x | **5,933,678 = 5.19511x** | **0.9276** |
+| conforming C | 12,693,179 = 11.11325x | **11,584,681 = 10.14273x** | **0.9127** |
+| **M = C/I** | 1.98426 | **1.95236** | **0.9839** |
+| **vs the 12 M budget** | **12.693 M = 105.8% FAIL** | ***11.585 M = 96.5% PASS*** | |
+| C uncleared (census) | 12.9878% | 8.7314% | |
+| ABANDONED TARGETS @ HARDCAP 24 | 14,060 | **10,223** | 0.727 |
+
+| Voronoi S94CTL (492,068 facets) | MID3D=0 | **MID3D=1** | ratio |
+|---|---|---|---|
+| independent I | 4,266,821 | **4,293,106** | ***1.0062*** |
+| conforming C | 5,944,684 | **5,956,467** | ***1.0020*** |
+| M | 1.39323 | **1.38745** | 0.9958 |
+| vs the 12 M budget | 49.5% PASS | **49.6% PASS** | |
+
+***THE ANSWER TO THE UNKNOWN THE COORDINATOR REFUSED TO PRE-DICT: M BARELY MOVES (0.9839x).*** The entire
+win is in the INDEPENDENT count (0.9276x). Corroborated PAIRED at matched (P, seed) — ~3x sharper than
+differencing two pools (§0j): **M1/M0 = 0.9894 pooled**, and 0.9663 / 0.9774 / 0.9835 / 0.9987 at
+P = 1,000 / 4,000 / 16,000 / 64,000, with the per-pair range crossing 1.0 at every P. **D3 CONFIRMED:**
+Voronoi is NOT a cost null — independent **+0.62%**, conforming **+0.20%** — because the solve relocates
+EVERY split point, not only pathological ones.
+
+⚠ **THE NAIVE PROJECTION WAS OPTIMISTIC FOR A §0j REASON.** `12.693 M x 0.886 = 11.24 M` used the N=2000
+golden-stride independent ratio; the CENSUS ratio is **0.9276, not 0.886** — a 4.7% one-sample-vs-whole-
+mesh gap, exactly the debt §0j priced. The measured answer is **11.585 M**.
+
+⚠⚠ **WHAT "PASS" DOES AND DOES NOT MEAN. GOTHIC NOW FITS THE BUDGET; IT STILL DOES NOT CLEAR THE BAR.**
+The 11.585 M mesh is **~9% over-bar by triangle count** (census 8.7314%; per §0j read it as an order of
+magnitude — at C=150, 13.3% of blocks read exactly 0.000%) and **10,223 targets were abandoned** at the
+forced-split depth limit. Driving that residual to zero costs MORE triangles, not fewer. **The margin is
+415 K = 3.5%, only a few times the patch estimator's own +/-1.2% calibration error. It is a PASS on
+AFFORDABILITY, not on FIDELITY, and it has no room in it.**
+
+**ALSO MEASURED.** §7.1's Gothic chord row is worse than the operator warrants: on the fixed operator the
+independent N=2000 row is **4.7185x at ~10.3% uncleared** (published 5.3260x at ~17.4%) and the cap-24 row
+collapses **116.889x -> 28.9065x (4.04x)** — that published row is ~3/4 wasted splits. **C4 is unchanged
+and strengthened:** conformity still does not cancel, 1.95 vs 1.39 across styles (40% apart). ***And
+conformity and the split-point defect turn out to be nearly INDEPENDENT effects*** (M moved 1.6%).
+
+**NOT MEASURED IN THIS ARM.** The position bar under MID3D (M_pos 1.00175 / 1.26588 remain MID3D=0
+values). The `red` / `turn` / `cone` operators — the port is confined to the bisection path, which is why
+the coordinator's `red` control was bit-identical. Whether BOUNDING rather than centring the split removes
+the remaining 0.42% / 11.9%. Any production behaviour — **I have still read no `src/` file and run none.**
+
+**Scorecard:** `research/exchange/_strataConformBisect/S106_CONFORMITY.md` (S106/S107 ADDENDUM).
