@@ -10050,3 +10050,148 @@ the smooth, very steep rib FLANK (S93's SMOOTH-TURNING 99.04%, a sizing problem)
 count must fall below 1,600 with whole-mesh minAngle p05 not worse than 1.5x. (2) `PF_CB_DRIVER=sweep` A/B,
 kill: if the count does not fall >=3x, gate A is mis-attributed. (3) A conformance term in `consider()` keyed
 on the GAUSS ruler (not the radius ruler); kill: >2x total run time ⇒ it belongs in a pre-pass locus set.
+
+---
+
+## E-2026-08-06-S105-BANDS — *** CONFIDENCE BANDS ON EVERY REFINEMENT MULTIPLIER THE CAMPAIGN STEERED ON ***
+
+**FRAME.** STRATA-001 has **no σ band on any multiplier**: every refinement figure is a point estimate from
+ONE golden-stride sample, and the same mesh/bar/operator has been published at 4.69× / 5.29× / 5.50× /
+6.67× / 3.12× / 10.76× / 116.89×. §0i.7 flags the debt; nobody had ever paid it.
+
+**HYPOTHESES + KILLS, PRE-REGISTERED in the tool headers and committed at `27a1039d` BEFORE the first pool
+run.** **B1** (primary, assumption-free): cut the golden sequence into R **disjoint** blocks of length C —
+block *j* is block 0 phase-translated by `(jC·s mod n)`, an exact translate of the campaign's own sample —
+and report the spread. *KILL: if the spread at C=400–2000 is under ±10% relative, the debt is smaller than
+claimed, say so plainly.* **B2**: *KILL if `SD_phase/SD_iid` outside [0.5, 2.0]*; plus a pre-registered
+prediction that a single-block bootstrap 95% CI under-covers. **B3**: the required-N curve, reported
+SEPARATELY for `leaves/parent` and `uncleared %`. **B4**: *KILL if Neyman stratification on a level-0
+covariate buys < 2× ESS.* **H1-OVERLAP**: *KILL if the 95% interval for `cone/lepp` contains 1.000.*
+
+**INSTRUMENTS.** `research/tools/s105BandsRefine.ts` (VERBATIM copy of `s98QRefine.ts` + per-parent ndjson +
+resume), `s105BandsCone.ts` (VERBATIM copy of `s94ConeRefine.ts` + same), `s105BandsAnalyze.cjs` (all bands
+offline, pure arithmetic — no rA, no re-meshing), own runners/bundle paths. **FIVE FIDELITY CHECKS, RUN not
+assumed:** N=60 vs `s98QRefine` identical; **N=2000 Gothic BIT-IDENTICAL to the published
+`S98_QREFINE_GOTH2000`** (reproduces §7.1's 1.02× / 5.33× / 17.42% / 88.993× / 11.350%); cone Gothic scoped
+identical to `S94_REF_GOTHSMOOTH` (3.120×/4.211×); cone Voronoi **BIT-IDENTICAL** to `S94_REF_VORCHORD`
+(8.650×/16.076×); ladder block 0 within **0.13–0.62%** of the five published `S94_REF_LADDER*` rows, the
+residual being the legacy to `5698d023` sign change — **and my N=2000 block 0 = 10.755 reproduces §0i.5's own
+post-fix figure to the digit.** Plus a trimming control: the pool's first 2000 records reproduce the full-bar
+published run exactly, so `PF_BD_ANGBARS=1 PF_BD_TURN=0` is a *proven* no-op. 5 pools, 187,319 parents.
+
+**RESULT 1 — *** THE §0i.1 LADDER IS ONE DISTRIBUTION, AND ITS 0.000%-UNCLEARED IS THE MODAL DRAW. ***
+VERDICT: the debt is CONFIRMED and LARGER than stated.** Same mesh, bar, operator, depth cap 16, unscoped —
+**only the sample phase varying**. Pool (32,000) = **11.973× at 26.121% uncleared**:
+
+    N= 150  R=213 blocks   LEPP  2.320x .. 74.633x  = 32.17x spread   uncleared 0.000..56.10%   *** 150/213 = 70% of blocks read EXACTLY 0.000% ***
+    N= 300  R=106          LEPP  2.677x .. 49.393x  = 18.45x          uncleared 0.000..51.84%       49/106 = 46%
+    N= 600  R= 53          LEPP  4.015x .. 33.555x  =  8.36x          uncleared 0.000..46.71%       11/53  = 21%
+    N=1200  R= 26          LEPP  5.201x .. 24.649x  =  4.74x          uncleared 0.000..42.24%        1/26  =  4%
+    N=2000  R= 16          LEPP  6.125x .. 21.820x  =  3.56x          uncleared 2.988..40.87%        0/16
+    N=4000  R=  8          LEPP  7.340x .. 17.649x  =  2.40x          uncleared 9.288..36.93%        0/8
+
+The published ladder sits at percentiles **55 / 41 / 11 / 58 / 38** of that one distribution. ***§0i.1's
+mechanism is right and its framing is wrong: 5.503 -> 12.708 is an ORDINARY event*** (11th percentile at
+N=600 then 58th at N=1200); re-running the same N=600 at another phase gives anything in 4.015–33.555. And
+the anchor's most persuasive property — a perfect residual — is what an N=150 sample of a *non-converging*
+operator reports **70% of the time**. ***THE RULER FIX MOVES THESE NUMBERS BY <0.7%; THE SAMPLE PHASE MOVES
+THEM BY 32×.***
+
+**RESULT 2 — B1 ON §7.1. THE KILL FIRES FOR FOUR OF SIX MULTIPLIERS.** C=2000, R=16, uniLev2/maxLev6:
+
+| | PUBLISHED | POOL (32k) | block MIN..MAX | ±1.96SD rel |
+|---|---|---|---|---|
+| Gothic **position 10 µm** | 1.02× | 1.0250× | 1.0015..1.0915 | **±4.3% — SOLID** |
+| Gothic chord 10 µm LEPP | 5.33× | **5.856×** | 4.623..7.551 | ±27.0% |
+| Gothic chord LEPP uncleared | 17.42% | **19.78%** | 12.33..28.20 | ±52.8% |
+| Gothic **1° angle** | 88.99× | 88.36× | 78.13..97.72 | ±13.6% |
+| Gothic 1° uncleared | 11.350% | **14.40%** | 9.450..17.63 | ±30.5% |
+| Voronoi **position 10 µm** | 1.03× | 1.0529× | 1.0195..1.0990 | **±4.4% — SOLID** |
+| Voronoi **chord 10 µm LEPP** | 8.47× | 8.697× | 8.346..9.047 | **±4.4% — SOLID** |
+| Voronoi chord LEPP uncleared | **0.00%** | **0.0528%** | 0.000..0.733 (12/16 nonzero) | ±656% |
+| Voronoi **1° angle** | 221.73× | 227.95× | 215.5..243.0 | **±6.7% — SOLID** |
+| Voronoi 1° uncleared | 14.832% | 15.19% | 9.895..19.12 | ±31.6% |
+| Voronoi chord RED | 16.09× | **18.68×** | 14.559..23.338 | ±30.1% |
+| Voronoi chord RED uncleared | **0.0031%** | **3.600%** | 0.003..**10.97** = **3,532×** | ±240% |
+
+***THE 10 µm POSITION ROW NEEDS NO BAND — §7.0 IS SAFE.*** ***AND A WIDE BAND IS THE SIGNATURE OF AN
+OPERATOR THAT DID NOT CONVERGE***: Voronoi LEPP clears (0.05% residual) and is pinned to ±4.4%; Gothic LEPP
+does not (19.8%) and swings ±27%; unscoped Gothic clears not at all (26.1%) and swings 3.56×. **CORRECTION
+OWED:** Voronoi `red` "16.09× at 0.00% uncleared" is a block-0 artefact — honestly **18.68× at 3.600%**.
+
+**RESULT 3 — H1 SURVIVES, AND ITS MAGNITUDE WAS UNDERSTATED.** Gothic scoped (59,319 parents, R=60):
+`cone/lepp` published **1.3497**, pool **1.6457**, blocks **1.2598..3.2491**; both operators 0.000%
+uncleared in **60/60** blocks. Voronoi (32,000, R=40): published **1.8585**, pool **2.3577**, blocks
+**1.3943..5.1358**. ***cone is WORSE than lepp in EVERY block at every C from 500 to 4000 on both styles —
+500 of 500 blocks, minimum ratio 1.118.*** PAIRED per-parent: Gothic `mean(cone-lepp) = 2.1110 ± 0.4380`
+gives **1.6457 [1.5117, 1.7796], t = 9.4**; Voronoi `11.8079 ± 2.3002` gives **2.3577 [2.0932, 2.6222],
+t = 10.1**. ⚠ **THREE 95% INTERVALS, SAME DATA, DIFFERENT VERDICTS:** normal `mean±1.96SD` = [0.722, 2.555]
+**contains 1.000**, log-space [0.991, 2.544] marginally contains it, **empirical p2.5/p97.5 = [1.269, 2.913]
+does not**. ***The symmetric normal band would have killed the refutation and it is wrong*** — it reaches
+0.722, a value absent from 240 independent draws. B1's pre-registration of the assumption-free band as
+PRIMARY was load-bearing. **§0i.2's rule needs a TOLERANCE, not a literal zero:** "0.000% uncleared" has a
+required-N of ~8.5M parents and is not verifiable at any affordable N.
+
+**RESULT 4 — B2: THE STRIDE IS EXONERATED, THE BOOTSTRAP IS CONVICTED.** `SD_phase/SD_iid` = **0.52–1.23**
+across all 5 pools (deff 0.27–1.52) so **B2's KILL DOES NOT FIRE**; the golden stride behaves like a random
+sample and the i.i.d. formula is usable. But the single-block bootstrap 95% CI covers the pool value
+**3%–100% of the time against a nominal 95%** — worst on exactly the quoted quantities (`cone/lepp` 60%/65%,
+`uncleared %` 3–44%). **Mechanism printed:** coverage tracks whether the operator's leaf count is CAPPED.
+`maxLev 6` bounds the summand so the bootstrap is fine (75–100%); the k-way cone under `MAXLEAF 300000` does
+not (one Voronoi parent = 13,254 leaves; worst 1% hold 46.67%) so the bootstrap fails. **One parent supplies
+84.35% of Voronoi's entire LEPP residual.**
+
+**RESULT 5 — B3, THE REQUIRED-N TABLE (the actionable deliverable).** Smallest C with a ≤10% single-run
+half-width (rows refused below R=6; `~` = 1/sqrt(N) extrapolation):
+
+| quantity | Gothic | Voronoi |
+|---|---|---|
+| position 10 µm leaves/par | **400** | **400** |
+| chord 10 µm LEPP leaves/par | ~9,700 | **800** |
+| 1° angle leaves/par | **3,200** | **1,600** |
+| chord LEPP **uncleared %** | ~55,000 | ~8,500,000 |
+| 1° angle **uncleared %** | ~44,000 | ~22,900 |
+| `cone/lepp` ratio | ~25,000 | ~22,000 |
+| UNSCOPED cap-16 LEPP leaves/par | **~108,000** | – |
+
+***`leaves/parent` and `uncleared %` differ by 1–3 ORDERS OF MAGNITUDE in required N*** — conflating them is
+the 6.67×/0.000% error exactly. ***And the affordable ones were always affordable***: N=3,200 is ~2 min;
+N=108,000 is ~17 min at the measured 108 parents/s. **±10% bands were never out of reach — they were never
+spent.**
+
+**RESULT 6 — B4 CONFIRMED at 3.4–8.6× ESS, ON THE LEVEL-0 *SCORE*, NOT ON SHAPE.** 8 quantile strata,
+boundaries+sigma fit on EVEN blocks, variance evaluated on ODD blocks, Neyman allocation; analytic design
+effect and a 4,000-draw empirical resample agree. Best covariate is the **level-0 covering chord `c0`**
+(chord and position bars) or the **level-0 sup angle `g0`** (angle bars), both 225 rA evals/facet: Gothic
+position **8.60×**, Gothic 1° angle **5.69×**, Gothic `cone/lepp` 5.30×, Voronoi position **8.26×**, Voronoi
+chord LEPP **6.59×**, Voronoi 1° angle **7.53×**. So **a stratified N=400 is worth an unbiased
+N≈1,400–3,400.** ***The negative half matters as much:*** every FREE STL-only covariate is at or below the
+2× kill — `qs` shape index 1.00–1.76×, `dm` diam 0.57–1.90×, `mn` minAngle 0.45–2.06×, `a0` area
+0.36–1.39× — and proportional allocation is worth nothing anywhere (1.00–1.36×). **The predictor of the tail
+is the level-0 SCORE, not the facet's SHAPE** — which qualifies the natural reading of §0h/§0i.6.
+
+**THE ONE-LINE RULE.** ***NEVER QUOTE A REFINEMENT MULTIPLIER FROM ONE GOLDEN-STRIDE SAMPLE: RUN `N × 8`
+PARENTS, CUT THE SEQUENCE INTO 8 DISJOINT BLOCKS BY `floor(q/N)`, AND REPORT `x [min … max] @ N` — AND NEVER
+QUOTE AN `uncleared %` AS A NUMBER AT ALL, ONLY AS ITS 95% BAND.***
+
+**NOT MEASURED / CORRECTED MID-TASK (the honest half).** No whole-mesh census — every POOL is 2.8–10.5% of
+its mesh and is itself a systematic sample. Two styles, one artefact each. No render (this is triangle-count
+sampling statistics; none was needed and none was fabricated). The 0.5°/5°/10° bars and the `turn` operator
+were subsetted OUT of the pools and have **no band**. Conformity ignored, so the bands are bands on a lower
+bound. Only a partial cross-ruler arm (point deltas 0.13–0.62% on 5 samples; the *bands* were not compared
+across conventions). **Three of my own errors, caught and fixed:** (1) my resume read the LINE COUNT instead
+of the last record's `q`, which — with the cone tool's 52% scope filter — would have silently DUPLICATED
+20,190 rows and double-weighted one phase block; caught before extending the pool, fixed in both tools;
+(2) my first B3 table printed a required-N off an R=2 standard deviation, now refused below R=6;
+(3) I first used `mean ± 1.96·SD` as the H1 verdict interval — it fires the kill and it is the wrong
+instrument on a right-skewed ratio.
+
+**VERDICT: CONFIRMED (the debt is real and larger than stated) + the campaign's two load-bearing
+conclusions SURVIVE.** **RECOMMENDATION:** amend §0i.1 with the ladder table, §7.1 with the bands, §0i.3's
+H1 with `1.646× [1.512, 1.780]` / `2.358× [2.093, 2.622]`, §0i.2's rule with a tolerance, and correct
+Voronoi `red` to 18.68× / 3.600%. Adopt the one-line rule + the level-0-score Neyman stratifier as the
+standing sampling design.
+
+**LEDGER:** `research/exchange/_strataConformBisect/S105_BANDS.md` (full scorecard),
+`frontier/S105_ANALYZE_{GOTH,VOR,CGOTH,CVOR,LADDER}.txt`, pools `frontier/S105_POOL_*.ndjson`.
+Pre-registration commit `27a1039d`.

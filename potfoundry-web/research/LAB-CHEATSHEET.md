@@ -109,6 +109,30 @@ non-manifold bug; opt-in, byte-identical off). Conforming: `buildFeatureConformi
 - **Discriminator**: step/occlusion-discontinuous (weave/braid → exclude) vs smooth/thin-ridge (conform helps).
 - **Universal win**: `guardManifoldAlways` → 20/20 nonMan=0.
 
+## Sampling — NEVER quote a multiplier from ONE golden-stride sample (E-2026-08-06-S105-BANDS)
+> ***RUN `N × 8` PARENTS, CUT THE SEQUENCE INTO 8 DISJOINT BLOCKS BY `floor(q/N)`, AND REPORT
+> `x [min … max] @ N`. NEVER QUOTE AN `uncleared %` AS A NUMBER — ONLY AS ITS 95% BAND.***
+
+Block *j* of the golden sequence is block 0 phase-translated by `(jC·s mod n)` ⇒ an exact translate of the
+same sampling design, so the block spread IS "how much would this number have moved". Measured on
+GothicArches S39CTL, 10 µm chord, LEPP, cap 16, unscoped — **everything but the phase held fixed**:
+- **N=150: 2.320× … 74.633× = a 32× spread**, and **70% of blocks read EXACTLY 0.000% uncleared on a mesh
+  that is 26.121% uncleared.** N=2000 is still 3.56×. The published 6.67× ladder is one distribution
+  sampled five times (percentiles 55/41/11/58/38). *The ruler-convention fix moves these <0.7%.*
+- **Required N for a ±10% single-run band:** position multiplier **400**; 1° angle multiplier **1,600–3,200**;
+  chord-LEPP multiplier 800 (Voronoi) to ~9,700 (Gothic); ***any `uncleared %` ≥ 22,000 and up to 8.5M — do
+  not try, state a band.*** `leaves/parent` and `uncleared %` differ by 1–3 orders of magnitude in required N.
+- **A WIDE BAND IS THE SIGNATURE OF AN OPERATOR THAT DID NOT CONVERGE** — read it as a diagnostic, not noise.
+- **The golden stride is fine** (deff 0.27–1.52, behaves like SRS) — **the BOOTSTRAP is not**: measured 95%-CI
+  coverage **3–100%**, and it fails exactly where the operator's leaf count is UNCAPPED. Use disjoint blocks.
+- **Paired operator comparisons: band the per-parent DIFFERENCE**, ~3× sharper than differencing two bands.
+- **Too expensive? Stratify.** Neyman on 8 quantile strata of the **level-0 covering chord** (chord/position
+  bars) or **level-0 sup angle** (angle bars) = measured **3.4–8.6× ESS** ⇒ a banded N=400 worth N≈2,100–3,400.
+  ***Free STL-only shape covariates (q, diam, minAngle, area) buy ≤1.8× — the predictor is the level-0 SCORE,
+  not the SHAPE.*** Proportional allocation buys nothing (1.0–1.4×); the gain is all in the allocation.
+- Instruments: `research/tools/s105Bands{Refine,Cone}.ts` (verbatim copies of `s98QRefine`/`s94ConeRefine`
+  + a per-parent ndjson) and `s105BandsAnalyze.cjs` (all bands offline, no rA, seconds).
+
 ## Resilience (the environment kills long runs — plan for it)
 - **One env-gated probe per question** (`it.skipIf(process.env.PF_X !== '1')`) so a killed run RESUMES by re-running
   only the unfinished probe. This is why work survived 6+ crashes this arc.

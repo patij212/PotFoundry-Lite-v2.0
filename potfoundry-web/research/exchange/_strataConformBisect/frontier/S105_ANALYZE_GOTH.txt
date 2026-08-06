@@ -1,0 +1,234 @@
+===== S105 BANDS — refine — research/exchange/_strataConformBisect/frontier/S105_POOL_GOTH.ndjson =====
+records 32000   raw sequence span q = 0 .. 31999
+
+══ POOL (near-census) VALUE, and the ROBUST statistics that answer a DIFFERENT question ══
+  POOL = the estimator on the whole pool. The columns to its RIGHT are per-parent statistics of the
+  NUMERATOR ONLY and are a DIFFERENT quantity (median leaves != mean leaves; do not substitute).
+  quantity                          POOL     numer mean  numer p50   p90     p99     max    top1% share of numer total
+  position 10um leaves/par           1.0250      1.025       1.000    1.00     1.0      79     3.42%
+  position 10um uncleared            0.0000      0.000       0.000    0.00     0.0       0     0.00%
+  chord 10um LEPP leaves/par         5.8563      5.856       2.000    6.00    42.0    1505    52.65%
+  chord 10um LEPP uncleared         19.7790      1.158       0.000    0.00     0.0     972   100.00%
+  chord 10um RED leaves/par          7.9912      7.991       4.000    7.00   124.0    4096    51.03%
+  chord 10um RED uncleared           8.2063      0.656       0.000    0.00     0.0    3923   100.00%
+  1deg angle leaves/par             88.3625     88.363      46.000  256.00   697.0    4096    23.59%
+  1deg angle uncleared              14.4012     12.725       0.000    0.00   127.0    4096    91.77%
+  lev0 over-bar chord AREA          43.0279      0.015       0.002    0.02     0.3       1    23.74%
+
+══ B1  PHASE-BLOCK BAND AT C = 2000  (the campaign's own sample size) ══
+   R = 16 disjoint phase blocks, sizes 2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000
+
+  quantity                        PUBLISHED   POOL     blk SD    MIN      MAX    max/min   +-1.96SD rel   [p2.5,p97.5] sliding   P(within +-10%)
+  (PUBLISHED = block 0 = the exact sample the campaign took and quoted.)
+  position 10um leaves/par          1.0240   1.0250   0.0226   1.0015   1.0915    1.09x       4.3%   [1.002, 1.091]        100%
+  position 10um uncleared           0.0000   0.0000   0.0000   0.0000   0.0000        -       0.0%   [0.000, 0.000]        100%
+  chord 10um LEPP leaves/par        5.3260   5.8563   0.8077   4.6235   7.5505    1.63x      27.0%   [4.568, 7.495]        42%
+  chord 10um LEPP uncleared        17.4240  19.7790   5.1853  12.3341  28.1979    2.29x      52.8%   [9.227, 28.339]       24%
+  chord 10um RED leaves/par         8.5900   7.9912   0.9863   6.3100   9.7990    1.55x      24.2%   [6.099, 10.500]       51%
+  chord 10um RED uncleared          4.3888   8.2063   6.2216   2.1632  30.2435   13.98x     152.5%   [2.280, 28.104]       27%
+  1deg angle leaves/par            88.9930  88.3625   6.1460  78.1300  97.7230    1.25x      13.6%   [78.708, 102.141]     84%
+  1deg angle uncleared             11.3503  14.4012   2.2288   9.4502  17.6347    1.87x      30.5%   [9.325, 20.069]       35%
+  lev0 over-bar chord AREA         42.9124  43.0279   2.6799  38.4779  49.1473    1.28x      12.2%   [38.712, 48.204]      92%
+
+  ALL 16 BLOCK ESTIMATES, printed (a summary statistic of 16 numbers is not the 16 numbers):
+  position 10um leaves/par       1.024  1.010  1.033  1.028  1.028  1.042  1.026  1.004  1.091  1.010  1.015  1.002  1.014  1.010  1.009  1.052
+  position 10um uncleared        0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
+  chord 10um LEPP leaves/par     5.326  5.755  6.314  5.737  5.870  7.114  5.007  5.295  6.051  5.777  5.194  6.472  4.623  6.644  4.974  7.551
+  chord 10um LEPP uncleared      17.424  18.384  24.9  22.2  21.2  28.2  12.483  13.939  22.1  21.4  19.226  13.752  13.323  19.425  12.334  27.9
+  chord 10um RED leaves/par      8.590  6.857  9.406  9.025  7.321  7.309  8.139  7.300  8.830  7.125  8.339  8.357  6.310  9.799  7.180  7.972
+  chord 10um RED uncleared       4.389  4.790  7.920  7.313  6.679  6.629  9.148  7.966  30.2  7.453  6.781  9.082  2.163  5.230  7.646  4.497
+  1deg angle leaves/par          89.0  96.7  91.1  85.8  92.7  92.4  86.2  82.5  81.6  86.2  96.7  78.7  89.4  88.9  78.1  97.7
+  1deg angle uncleared           11.350  12.608  16.927  12.513  16.990  15.110  14.811  9.450  14.944  15.383  15.381  12.417  17.635  13.994  13.794  16.153
+  lev0 over-bar chord AREA       42.9  42.0  46.5  38.9  41.6  41.8  49.1  43.6  41.8  42.3  45.4  42.4  45.6  38.5  42.2  43.6
+
+  CI FOR THE POPULATION VALUE (NOT the single-run band; tightens with R — do not quote as "the band"):
+  position 10um leaves/par          1.0250 +-   0.0120  = [1.0130, 1.0371]  (+-1.17%)
+  position 10um uncleared           0.0000 +-   0.0000  = [0.0000, 0.0000]  (+-0.00%)
+  chord 10um LEPP leaves/par        5.8563 +-   0.4303  = [5.4260, 6.2866]  (+-7.35%)
+  chord 10um LEPP uncleared        19.2611 +-   2.7625  = [16.4986, 22.0236]  (+-14.34%)
+  chord 10um RED leaves/par         7.9912 +-   0.5254  = [7.4658, 8.5167]  (+-6.58%)
+  chord 10um RED uncleared          7.9957 +-   3.3146  = [4.6811, 11.3102]  (+-41.45%)
+  1deg angle leaves/par            88.3625 +-   3.2743  = [85.0882, 91.6368]  (+-3.71%)
+  1deg angle uncleared             14.3414 +-   1.1874  = [13.1540, 15.5288]  (+-8.28%)
+  lev0 over-bar chord AREA         43.0180 +-   1.4277  = [41.5903, 44.4458]  (+-3.32%)
+
+══ TAIL MECHANICS  (C = 2000) — the estimator is a mean over a heavy tail; this is what that means ══
+  drop-1 / drop-10 = the POOL estimate recomputed without its 1 / 10 largest-numerator parents.
+  "blk max share"  = within each block, the largest single parent's share of that block's numerator.
+
+  quantity                        top1 share  drop-1 pool  drop-10 pool   blk max share p50 / MAX   P(sample hits a top-0.1% parent)
+  position 10um leaves/par            0.24%       1.0226        1.0135       0.79% /   3.62%   86.5%
+  chord 10um LEPP leaves/par          0.80%       5.8094        5.4575       8.73% /  13.17%   86.5%
+  chord 10um LEPP uncleared           2.62%      19.4162       16.5330      23.66% /  43.97%   86.5%
+  chord 10um RED leaves/par           1.60%       7.8635        7.1529       9.64% /  23.19%   86.5%
+  chord 10um RED uncleared           18.69%       6.7808        6.2521      14.97% /  73.45%   86.5%
+  1deg angle leaves/par               0.14%      88.2373       87.1098       2.30% /   2.62%   86.5%
+  1deg angle uncleared                1.01%      14.2770       13.1430      16.25% /  26.27%   86.5%
+  lev0 over-bar chord AREA            0.16%      42.9888       42.7009       1.74% /   2.77%   86.5%
+
+══ B2  SYSTEMATIC vs RANDOM, and DOES THE BOOTSTRAP WORK HERE?  (C = 2000) ══
+  SD_iid = delta-method SD of the ratio estimator under SRS from the pool.  deff = (SD_phase/SD_iid)^2
+  bootstrap = 2000 resamples WITHIN ONE BLOCK (what an analyst with one sample would compute).
+
+  quantity                        SD_phase   SD_iid   SD_ph/SD_iid  deff   bootSD(mean over blocks)  boot95 COVERAGE of pool
+  position 10um leaves/par          0.0226   0.0183        1.232   1.518                  0.0136   12/16 = 75%
+  position 10um uncleared           0.0000   0.0000        0.000   0.000                  0.0000   16/16 = 100%
+  chord 10um LEPP leaves/par        0.8077   0.8823        0.915   0.838                  0.8616   16/16 = 100%
+  chord 10um LEPP uncleared         5.1853   5.3623        0.967   0.935                  4.7552   13/16 = 81%
+  chord 10um RED leaves/par         0.9863   1.3714        0.719   0.517                  1.2749   15/16 = 94%
+  chord 10um RED uncleared          6.2216   5.9513        1.045   1.093                  2.6757   14/16 = 88%
+  1deg angle leaves/par             6.1460   5.8556        1.050   1.102                  5.8334   15/16 = 94%
+  1deg angle uncleared              2.2288   4.2820        0.520   0.271                  4.1983   16/16 = 100%
+  lev0 over-bar chord AREA          2.6799   2.5521        1.050   1.103                  2.5506   15/16 = 94%
+
+══ B3  REQUIRED-N — the single-run relative half-width  1.96*SD_phase(C)/mean  at each C ══
+  (R = number of DISJOINT blocks available at that C; the SD itself is noisy when R is small —
+   its own 95% chi-square interval is printed so a row with R=5 is not read as precise.)
+
+  quantity                             C=50      C=100      C=200      C=400      C=800     C=1600     C=3200     C=6400   N for +-10%
+  position 10um leaves/par            21.7%      15.1%      13.3%       9.3%       6.6%       4.4%       3.4%          -   400
+  position 10um uncleared              0.0%       0.0%       0.0%       0.0%       0.0%       0.0%       0.0%          -   50
+  chord 10um LEPP leaves/par         179.2%     127.0%      91.3%      61.4%      43.0%      30.8%      17.4%          -   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=3200 (R>=10): ~9,726
+  chord 10um LEPP uncleared          345.1%     241.9%     170.0%     119.1%      78.8%      53.7%      41.4%          -   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=3200 (R>=10): ~54,914
+  chord 10um RED leaves/par          206.8%     148.5%     102.6%      68.9%      49.8%      35.9%      15.3%          -   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=3200 (R>=10): ~7,498
+  chord 10um RED uncleared           409.1%     303.1%     229.6%     216.2%     163.6%     147.6%     124.6%          -   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=3200 (R>=10): ~497,074
+  1deg angle leaves/par               84.4%      61.8%      44.8%      29.4%      19.9%      16.6%       9.0%          -   3200
+  1deg angle uncleared               343.7%     251.1%     180.0%     121.5%      72.9%      41.1%      37.1%          -   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=3200 (R>=10): ~43,932
+  lev0 over-bar chord AREA            69.6%      51.5%      36.3%      25.2%      16.3%      12.0%       9.0%          -   3200
+
+  SD-of-SD sanity (chi-square 95% interval on SD_phase, main C):
+  position 10um leaves/par       SD 0.0226  95% [0.0167, 0.0350]  (df 15)
+  position 10um uncleared        SD 0.0000  95% [0.0000, 0.0000]  (df 15)
+  chord 10um LEPP leaves/par     SD 0.8077  95% [0.5966, 1.2519]  (df 15)
+  chord 10um LEPP uncleared      SD 5.1853  95% [3.8304, 8.0376]  (df 15)
+  chord 10um RED leaves/par      SD 0.9863  95% [0.7286, 1.5288]  (df 15)
+  chord 10um RED uncleared       SD 6.2216  95% [4.5958, 9.6439]  (df 15)
+  1deg angle leaves/par          SD 6.1460  95% [4.5400, 9.5268]  (df 15)
+  1deg angle uncleared           SD 2.2288  95% [1.6464, 3.4547]  (df 15)
+  lev0 over-bar chord AREA       SD 2.6799  95% [1.9796, 4.1540]  (df 15)
+
+══ B4  STRATIFICATION ON A LEVEL-0 COVARIATE — honest split-half, no in-sample optimism ══
+  strata boundaries + sigma_h are fit on the EVEN blocks; the variance is evaluated on the ODD
+  blocks. deployment cost = rA evals per facet to compute the covariate for the WHOLE mesh.
+
+   position 10um leaves/par   (linearized SD on held-out half = 0.6303 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.33x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.57x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.45x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.15x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 7.81x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 8.45x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.39x
+      => BEST c0 lev0 chord um: Neyman 8.45x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 0.0312 vs STRATIFIED SD 0.0107  => ESS gain 8.60x   (stratified N=400 == unstratified N=3,438)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.0143 vs STRATIFIED SD 0.0048  => ESS gain 8.73x   (stratified N=2000 == unstratified N=17,469)
+
+   position 10um uncleared   (linearized SD on held-out half = 0.0000 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      => BEST qs shape index: Neyman 0.00x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=400 == unstratified N=0)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=2000 == unstratified N=0)
+
+   chord 10um LEPP leaves/par   (linearized SD on held-out half = 43.6915 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.05x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.98x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.97x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.03x   Neyman(train-fit) 3.05x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.03x   Neyman(train-fit) 2.55x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.04x   Neyman(train-fit) 3.22x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.66x
+      => BEST c0 lev0 chord um: Neyman 3.22x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 2.2197 vs STRATIFIED SD 1.1988  => ESS gain 3.43x   (stratified N=400 == unstratified N=1,371)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.9737 vs STRATIFIED SD 0.5467  => ESS gain 3.17x   (stratified N=2000 == unstratified N=6,345)
+
+   chord 10um LEPP uncleared   (linearized SD on held-out half = 272.4378 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.07x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.11x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.94x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 5.10x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 4.33x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 4.73x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.36x
+      => BEST sl chart slope: Neyman 5.10x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 11.0377 vs STRATIFIED SD 5.5790  => ESS gain 3.91x   (stratified N=400 == unstratified N=1,566)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 5.4628 vs STRATIFIED SD 2.4954  => ESS gain 4.79x   (stratified N=2000 == unstratified N=9,584)
+
+   chord 10um RED leaves/par   (linearized SD on held-out half = 53.4071 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.31x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.98x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.14x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.39x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.03x   Neyman(train-fit) 2.50x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.05x   Neyman(train-fit) 3.00x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.51x
+      => BEST c0 lev0 chord um: Neyman 3.00x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 2.6642 vs STRATIFIED SD 1.5333  => ESS gain 3.02x   (stratified N=400 == unstratified N=1,208)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 1.1953 vs STRATIFIED SD 0.6968  => ESS gain 2.94x   (stratified N=2000 == unstratified N=5,885)
+
+   chord 10um RED uncleared   (linearized SD on held-out half = 85.3398 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.52x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.62x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.46x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.74x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.65x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.91x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.51x
+      => BEST c0 lev0 chord um: Neyman 0.91x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 4.1799 vs STRATIFIED SD 3.7934  => ESS gain 1.21x   (stratified N=400 == unstratified N=486)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 1.8876 vs STRATIFIED SD 1.9175  => ESS gain 0.97x   (stratified N=2000 == unstratified N=1,938)
+
+   1deg angle leaves/par   (linearized SD on held-out half = 261.0231 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.05x   Neyman(train-fit) 1.76x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.02x   Neyman(train-fit) 1.07x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.04x   Neyman(train-fit) 1.66x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.04x   Neyman(train-fit) 1.18x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.30x   Neyman(train-fit) 5.57x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.12x   Neyman(train-fit) 3.18x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.07x   Neyman(train-fit) 1.65x
+      => BEST g0 lev0 sup angle: Neyman 5.57x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 13.2480 vs STRATIFIED SD 5.5553  => ESS gain 5.69x   (stratified N=400 == unstratified N=2,275)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 5.7739 vs STRATIFIED SD 2.4965  => ESS gain 5.35x   (stratified N=2000 == unstratified N=10,698)
+
+   1deg angle uncleared   (linearized SD on held-out half = 183.2609 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.69x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.88x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.32x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.16x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 6.37x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 5.18x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.85x
+      => BEST g0 lev0 sup angle: Neyman 6.37x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 8.6901 vs STRATIFIED SD 3.6588  => ESS gain 5.64x   (stratified N=400 == unstratified N=2,256)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 4.0764 vs STRATIFIED SD 1.6571  => ESS gain 6.05x   (stratified N=2000 == unstratified N=12,103)
+
+   lev0 over-bar chord AREA   (linearized SD on held-out half = 112.2398 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.05x   Neyman(train-fit) 1.26x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.02x   Neyman(train-fit) 4.18x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.04x   Neyman(train-fit) 1.24x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.09x   Neyman(train-fit) 2.59x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.38x   Neyman(train-fit) 2.86x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.33x   Neyman(train-fit) 1.45x
+      a0 lev0 area         cost 0 (STL only) rA/facet   ESS gain: proportional 1.05x   Neyman(train-fit) 4.93x
+      => BEST a0 lev0 area: Neyman 4.93x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 5.6146 vs STRATIFIED SD 2.5456  => ESS gain 4.86x   (stratified N=400 == unstratified N=1,946)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 2.5155 vs STRATIFIED SD 1.1182  => ESS gain 5.06x   (stratified N=2000 == unstratified N=10,122)
+
+══ CROSS-CHECK — aggregate over the FIRST 2000 pool records (must equal the published run) ══
+   n = 2000
+   position 10um leaves/par       1.0240
+   position 10um uncleared        0.0000
+   chord 10um LEPP leaves/par     5.3260
+   chord 10um LEPP uncleared      17.4240
+   chord 10um RED leaves/par      8.5900
+   chord 10um RED uncleared       4.3888
+   1deg angle leaves/par          88.9930
+   1deg angle uncleared           11.3503
+   lev0 over-bar chord AREA       42.9124
+
+done.

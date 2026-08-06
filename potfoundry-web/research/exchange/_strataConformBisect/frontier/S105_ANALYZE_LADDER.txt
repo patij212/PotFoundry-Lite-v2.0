@@ -1,0 +1,214 @@
+===== S105 BANDS — cone — research/exchange/_strataConformBisect/frontier/S105_POOL_LADDER.ndjson =====
+records 32000   raw sequence span q = 0 .. 31999
+
+══ POOL (near-census) VALUE, and the ROBUST statistics that answer a DIFFERENT question ══
+  POOL = the estimator on the whole pool. The columns to its RIGHT are per-parent statistics of the
+  NUMERATOR ONLY and are a DIFFERENT quantity (median leaves != mean leaves; do not substitute).
+  quantity                          POOL     numer mean  numer p50   p90     p99     max    top1% share of numer total
+  lepp leaves/par                   11.9728     11.973       2.000    6.00    43.0   10179    76.83%
+  cone leaves/par                    0.0000      0.000       0.000    0.00     0.0       0     0.00%
+  red  leaves/par                   10.2606     10.261       4.000    7.00   121.0   24820    61.85%
+  *** cone / lepp  (H1) ***          0.0000      0.000       0.000    0.00     0.0       0     0.00%
+  coneOracle / lepp                  0.0000      0.000       0.000    0.00     0.0       0     0.00%
+  red / lepp                         0.8570     10.261       4.000    7.00   121.0   24820    61.85%
+  lepp uncleared                    26.1211      3.127       0.000    0.00     0.0    6126   100.00%
+  cone uncleared                        NaN      0.000       0.000    0.00     0.0       0     0.00%
+
+══ B1  PHASE-BLOCK BAND AT C = 2000  (the campaign's own sample size) ══
+   R = 16 disjoint phase blocks, sizes 2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000,2000
+
+  quantity                        PUBLISHED   POOL     blk SD    MIN      MAX    max/min   +-1.96SD rel   [p2.5,p97.5] sliding   P(within +-10%)
+  (PUBLISHED = block 0 = the exact sample the campaign took and quoted.)
+  lepp leaves/par                  10.7550  11.9728   4.4838   6.1250  21.8195    3.56x      73.4%   [5.659, 21.920]       17%
+  cone leaves/par                   0.0000   0.0000   0.0000   0.0000   0.0000        -       0.0%   [0.000, 0.000]        100%
+  red  leaves/par                   9.7195  10.2606   3.2437   6.6670  21.3700    3.21x      62.0%   [6.905, 21.395]       37%
+  *** cone / lepp  (H1) ***         0.0000   0.0000   0.0000   0.0000   0.0000        -       0.0%   [0.000, 0.000]        100%
+  coneOracle / lepp                 0.0000   0.0000   0.0000   0.0000   0.0000        -       0.0%   [0.000, 0.000]        100%
+  red / lepp                        0.9037   0.8570   0.3793   0.4015   1.7389    4.33x      78.1%   [0.418, 1.587]        26%
+  lepp uncleared                   27.4105  26.1211  10.9229   2.9878  40.8694   13.68x      94.0%   [0.349, 39.966]       20%
+
+  ALL 16 BLOCK ESTIMATES, printed (a summary statistic of 16 numbers is not the 16 numbers):
+  lepp leaves/par                10.755  13.175  14.441  12.329  13.479  21.8  6.869  7.811  12.290  11.307  9.770  8.813  8.232  13.168  6.125  21.2
+  cone leaves/par                0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
+  red  leaves/par                9.720  7.952  11.790  11.009  8.816  8.761  10.378  9.044  21.4  8.719  10.107  10.645  6.667  11.306  8.818  9.067
+  *** cone / lepp  (H1) ***      0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
+  coneOracle / lepp              0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000  0.000
+  red / lepp                     0.904  0.604  0.816  0.893  0.654  0.402  1.511  1.158  1.739  0.771  1.034  1.208  0.810  0.859  1.440  0.428
+  lepp uncleared                 27.4  33.3  25.7  26.7  30.6  40.9  6.697  11.566  22.7  24.6  22.1  6.616  20.7  25.2  2.988  36.7
+
+  CI FOR THE POPULATION VALUE (NOT the single-run band; tightens with R — do not quote as "the band"):
+  lepp leaves/par                  11.9728 +-   2.3888  = [9.5841, 14.3616]  (+-19.95%)
+  cone leaves/par                   0.0000 +-   0.0000  = [0.0000, 0.0000]  (+-0.00%)
+  red  leaves/par                  10.2606 +-   1.7281  = [8.5325, 11.9887]  (+-16.84%)
+  *** cone / lepp  (H1) ***         0.0000 +-   0.0000  = [0.0000, 0.0000]  (+-0.00%)
+  coneOracle / lepp                 0.0000 +-   0.0000  = [0.0000, 0.0000]  (+-0.00%)
+  red / lepp                        0.9519 +-   0.2021  = [0.7498, 1.1539]  (+-21.23%)
+  lepp uncleared                   22.7773 +-   5.8192  = [16.9581, 28.5964]  (+-25.55%)
+
+══ TAIL MECHANICS  (C = 2000) — the estimator is a mean over a heavy tail; this is what that means ══
+  drop-1 / drop-10 = the POOL estimate recomputed without its 1 / 10 largest-numerator parents.
+  "blk max share"  = within each block, the largest single parent's share of that block's numerator.
+
+  quantity                        top1 share  drop-1 pool  drop-10 pool   blk max share p50 / MAX   P(sample hits a top-0.1% parent)
+  lepp leaves/par                     2.66%      11.6551        9.3623      23.95% /  42.41%   86.5%
+  red  leaves/par                     7.56%       9.4853        8.6872       7.82% /  58.07%   86.5%
+  red / lepp                          7.56%       0.7937        0.7523       7.82% /  58.07%   86.5%
+  lepp uncleared                      6.12%      25.1914       18.2422      58.11% /  99.23%   86.5%
+
+══ B2  SYSTEMATIC vs RANDOM, and DOES THE BOOTSTRAP WORK HERE?  (C = 2000) ══
+  SD_iid = delta-method SD of the ratio estimator under SRS from the pool.  deff = (SD_phase/SD_iid)^2
+  bootstrap = 2000 resamples WITHIN ONE BLOCK (what an analyst with one sample would compute).
+
+  quantity                        SD_phase   SD_iid   SD_ph/SD_iid  deff   bootSD(mean over blocks)  boot95 COVERAGE of pool
+  lepp leaves/par                   4.4838   4.4174        1.015   1.030                  4.0137   13/16 = 81%
+  cone leaves/par                   0.0000   0.0000        0.000   0.000                  0.0000   16/16 = 100%
+  red  leaves/par                   3.2437   3.5084        0.925   0.855                  2.2455   15/16 = 94%
+  *** cone / lepp  (H1) ***         0.0000   0.0000        0.000   0.000                  0.0000   16/16 = 100%
+  coneOracle / lepp                 0.0000   0.0000        0.000   0.000                  0.0000   16/16 = 100%
+  red / lepp                        0.3793   0.3882        0.977   0.955                  0.3343   13/16 = 81%
+  lepp uncleared                   10.9229   9.7982        1.115   1.243                  8.2846   12/16 = 75%
+
+══ B3  REQUIRED-N — the single-run relative half-width  1.96*SD_phase(C)/mean  at each C ══
+  (R = number of DISJOINT blocks available at that C; the SD itself is noisy when R is small —
+   its own 95% chi-square interval is printed so a row with R=5 is not read as precise.)
+
+  quantity                            C=150      C=300      C=600     C=1200     C=2000     C=4000   N for +-10%
+  lepp leaves/par                    250.1%     173.6%     121.3%      95.6%      73.4%      50.8%   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=2000 (R>=10): ~107,758
+  cone leaves/par                      0.0%       0.0%       0.0%       0.0%       0.0%       0.0%   150
+  red  leaves/par                    244.6%     168.9%     119.2%      87.5%      62.0%      40.9%   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=2000 (R>=10): ~76,786
+  *** cone / lepp  (H1) ***            0.0%       0.0%       0.0%       0.0%       0.0%       0.0%   150
+  coneOracle / lepp                    0.0%       0.0%       0.0%       0.0%       0.0%       0.0%   150
+  red / lepp                         150.1%     169.1%     105.1%      83.0%      78.1%      63.9%   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=2000 (R>=10): ~121,980
+  lepp uncleared                     395.4%     266.8%     191.2%     125.4%      94.0%      71.3%   NOT REACHED  > pool; EXTRAPOLATED on 1/sqrt(N) from C=2000 (R>=10): ~176,690
+  cone uncleared                          -          -          -          -          -          -   NOT REACHED
+
+  SD-of-SD sanity (chi-square 95% interval on SD_phase, main C):
+  lepp leaves/par                SD 4.4838  95% [3.3122, 6.9502]  (df 15)
+  cone leaves/par                SD 0.0000  95% [0.0000, 0.0000]  (df 15)
+  red  leaves/par                SD 3.2437  95% [2.3961, 5.0280]  (df 15)
+  *** cone / lepp  (H1) ***      SD 0.0000  95% [0.0000, 0.0000]  (df 15)
+  coneOracle / lepp              SD 0.0000  95% [0.0000, 0.0000]  (df 15)
+  red / lepp                     SD 0.3793  95% [0.2802, 0.5879]  (df 15)
+  lepp uncleared                 SD 10.9229  95% [8.0686, 16.9311]  (df 15)
+
+══ B4  STRATIFICATION ON A LEVEL-0 COVARIATE — honest split-half, no in-sample optimism ══
+  strata boundaries + sigma_h are fit on the EVEN blocks; the variance is evaluated on the ODD
+  blocks. deployment cost = rA evals per facet to compute the covariate for the WHOLE mesh.
+
+   lepp leaves/par   (linearized SD on held-out half = 228.3005 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.98x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.17x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.94x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 5.45x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 5.16x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 5.88x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 5.56x
+      => BEST c0 lev0 chord um: Neyman 5.88x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 11.4422 vs STRATIFIED SD 4.7015  => ESS gain 5.92x   (stratified N=400 == unstratified N=2,369)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 5.0711 vs STRATIFIED SD 2.1152  => ESS gain 5.75x   (stratified N=2000 == unstratified N=11,496)
+
+   cone leaves/par   (linearized SD on held-out half = 0.0000 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      => BEST qs shape index: Neyman 0.00x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=400 == unstratified N=0)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=2000 == unstratified N=0)
+
+   red  leaves/par   (linearized SD on held-out half = 69.0639 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.70x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.66x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 0.62x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.02x   Neyman(train-fit) 0.86x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.02x   Neyman(train-fit) 1.13x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.04x   Neyman(train-fit) 1.52x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 1.02x   Neyman(train-fit) 1.28x
+      => BEST c0 lev0 chord um: Neyman 1.52x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 3.4716 vs STRATIFIED SD 2.7651  => ESS gain 1.58x   (stratified N=400 == unstratified N=631)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 1.5387 vs STRATIFIED SD 1.2607  => ESS gain 1.49x   (stratified N=2000 == unstratified N=2,979)
+
+   *** cone / lepp  (H1) ***   (linearized SD on held-out half = 0.0000 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      => BEST qs shape index: Neyman 0.00x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=400 == unstratified N=0)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=2000 == unstratified N=0)
+
+   coneOracle / lepp   (linearized SD on held-out half = 0.0000 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 0.00x   Neyman(train-fit) 0.00x
+      => BEST qs shape index: Neyman 0.00x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=400 == unstratified N=0)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.0000 vs STRATIFIED SD 0.0000  => ESS gain 0.00x   (stratified N=2000 == unstratified N=0)
+
+   red / lepp   (linearized SD on held-out half = 14.9149 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.38x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.77x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.90x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 1.98x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 5.15x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 6.08x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 1.01x   Neyman(train-fit) 4.92x
+      => BEST c0 lev0 chord um: Neyman 6.08x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 0.5758 vs STRATIFIED SD 0.2420  => ESS gain 5.66x   (stratified N=400 == unstratified N=2,264)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 0.2844 vs STRATIFIED SD 0.1043  => ESS gain 7.43x   (stratified N=2000 == unstratified N=14,864)
+
+   lepp uncleared   (linearized SD on held-out half = 531.0642 per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.95x
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 1.29x
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 0.65x
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 5.95x
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 5.25x
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 5.89x
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional 1.00x   Neyman(train-fit) 5.57x
+      => BEST sl chart slope: Neyman 5.95x ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD 17.9615 vs STRATIFIED SD 9.6384  => ESS gain 3.47x   (stratified N=400 == unstratified N=1,389)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD 10.6679 vs STRATIFIED SD 4.0720  => ESS gain 6.86x   (stratified N=2000 == unstratified N=13,727)
+
+   cone uncleared   (linearized SD on held-out half = NaN per parent)
+      qs shape index       cost 0 (STL only) rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      dm diam mm           cost 0 (STL only) rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      mn lev0 minAngle     cost 0 (STL only) rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      sl chart slope       cost            5 rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      g0 lev0 sup angle    cost          225 rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      c0 lev0 chord um     cost          225 rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      cu coneUB deg        cost          225 rA/facet   ESS gain: proportional NaNx   Neyman(train-fit) NaNx
+      => BEST qs shape index: Neyman NaNx ESS   (KILL LINE: < 2.00x => not worth it)
+      EMPIRICAL @ C=400 (4000 draws, held-out half): SRS SD NaN vs STRATIFIED SD NaN  => ESS gain NaNx   (stratified N=400 == unstratified N=NaN)
+      EMPIRICAL @ C=2000 (4000 draws, held-out half): SRS SD NaN vs STRATIFIED SD NaN  => ESS gain NaNx   (stratified N=2000 == unstratified N=NaN)
+
+
+══ H1 OVERLAP TEST — *** KILL: if the 95% interval for cone/lepp CONTAINS 1.000, the ***
+   *** refutation of H1 is NOT established at that N. *** Two ways, both printed.
+   C= 500  R= 64  mean 0.000 SD 0.000  min 0.000 max 0.000   NORMAL+-1.96SD [0.000, 0.000]   LOG-SPACE [NaN, NaN]   EMPIRICAL p2.5/p97.5 [0.000, 0.000]   cone WORSE in 0/64 blocks
+   C= 800  R= 40  mean 0.000 SD 0.000  min 0.000 max 0.000   NORMAL+-1.96SD [0.000, 0.000]   LOG-SPACE [NaN, NaN]   EMPIRICAL p2.5/p97.5 [0.000, 0.000]   cone WORSE in 0/40 blocks
+   C=1000  R= 32  mean 0.000 SD 0.000  min 0.000 max 0.000   NORMAL+-1.96SD [0.000, 0.000]   LOG-SPACE [NaN, NaN]   EMPIRICAL p2.5/p97.5 [0.000, 0.000]   cone WORSE in 0/32 blocks
+   C=2000  R= 16  mean 0.000 SD 0.000  min 0.000 max 0.000   NORMAL+-1.96SD [0.000, 0.000]   LOG-SPACE [NaN, NaN]   EMPIRICAL p2.5/p97.5 [0.000, 0.000]   cone WORSE in 0/16 blocks
+         PAIRED (whole pool, n=32000): mean(cone-lepp) = -11.9728 +- 2.1645 leaves/parent  => ratio 0.0000 [-0.1808, 0.1808]   t = -10.8
+   C=4000  R=  8  mean 0.000 SD 0.000  min 0.000 max 0.000   NORMAL+-1.96SD [0.000, 0.000]   LOG-SPACE [NaN, NaN]   EMPIRICAL p2.5/p97.5 [0.000, 0.000]   cone WORSE in 0/8 blocks
+══ CROSS-CHECK — aggregate over the FIRST 2000 pool records (must equal the published run) ══
+   n = 2000
+   lepp leaves/par                10.7550
+   cone leaves/par                0.0000
+   red  leaves/par                9.7195
+   *** cone / lepp  (H1) ***      0.0000
+   coneOracle / lepp              0.0000
+   red / lepp                     0.9037
+   lepp uncleared                 27.4105
+   cone uncleared                 NaN
+
+done.

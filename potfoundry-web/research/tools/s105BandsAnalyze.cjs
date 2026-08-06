@@ -163,7 +163,9 @@ for (const Q of QTY) {
   const lo = pct(sl, 0.025); const hi = pct(sl, 0.975);
   const P0v = est(rows, Q);
   const within = sl.filter((x) => Math.abs(x - P0v) <= 0.1 * Math.abs(P0v)).length / Math.max(1, sl.length);
-  console.log(`  ${Q.name.padEnd(30)} ${v[0].toFixed(4).padStart(9)} ${P0v.toFixed(4).padStart(8)} ${s.toFixed(4).padStart(8)} ${Math.min(...v).toFixed(4).padStart(8)} ${Math.max(...v).toFixed(4).padStart(8)} ${(Math.max(...v) / Math.max(1e-12, Math.min(...v))).toFixed(2).padStart(7)}x  ${((100 * 1.96 * s) / Math.max(1e-12, m)).toFixed(1).padStart(8)}%   [${lo.toFixed(3)}, ${hi.toFixed(3)}]${' '.repeat(Math.max(1, 22 - `[${lo.toFixed(3)}, ${hi.toFixed(3)}]`.length))}${(100 * within).toFixed(0)}%`);
+  const mn = Math.min(...v); const mx = Math.max(...v);
+  const rr = mn > 1e-9 ? `${(mx / mn).toFixed(2)}x` : (mx > 0 ? 'INF' : '-');
+  console.log(`  ${Q.name.padEnd(30)} ${v[0].toFixed(4).padStart(9)} ${P0v.toFixed(4).padStart(8)} ${s.toFixed(4).padStart(8)} ${mn.toFixed(4).padStart(8)} ${mx.toFixed(4).padStart(8)} ${rr.padStart(8)}  ${((100 * 1.96 * s) / Math.max(1e-12, m)).toFixed(1).padStart(8)}%   [${lo.toFixed(3)}, ${hi.toFixed(3)}]${' '.repeat(Math.max(1, 22 - `[${lo.toFixed(3)}, ${hi.toFixed(3)}]`.length))}${(100 * within).toFixed(0)}%`);
 }
 console.log('');
 console.log(`  ALL ${B.length} BLOCK ESTIMATES, printed (a summary statistic of 16 numbers is not the 16 numbers):`);
@@ -179,6 +181,31 @@ for (const Q of QTY) {
   if (v.length < 2) continue;
   const m = mean(v); const s = sd(v); const h = (tq(v.length - 1) * s) / Math.sqrt(v.length);
   console.log(`  ${Q.name.padEnd(30)} ${m.toFixed(4).padStart(9)} +- ${h.toFixed(4).padStart(8)}  = [${(m - h).toFixed(4)}, ${(m + h).toFixed(4)}]  (+-${((100 * h) / Math.max(1e-12, m)).toFixed(2)}%)`);
+}
+
+// ══ TAIL MECHANICS — WHY THE BAND IS WIDE, PRINTED RATHER THAN ASSERTED ═══════════════════════
+console.log('');
+console.log(`══ TAIL MECHANICS  (C = ${CMAIN}) — the estimator is a mean over a heavy tail; this is what that means ══`);
+console.log('  drop-1 / drop-10 = the POOL estimate recomputed without its 1 / 10 largest-numerator parents.');
+console.log('  "blk max share"  = within each block, the largest single parent\'s share of that block\'s numerator.');
+console.log('');
+console.log('  quantity                        top1 share  drop-1 pool  drop-10 pool   blk max share p50 / MAX   P(sample hits a top-0.1% parent)');
+for (const Q of QTY) {
+  const num = rows.map((r) => Q.num(r));
+  const ord = num.map((x, i) => [x, i]).sort((a, b) => b[0] - a[0]);
+  const tot = num.reduce((a, b) => a + b, 0);
+  if (!(tot > 0)) continue;
+  const drop = (k) => {
+    const kill = new Set(ord.slice(0, k).map(([, i]) => i));
+    return est(rows.filter((_, i) => !kill.has(i)), Q);
+  };
+  const shares = B.map((b) => {
+    let t = 0; let mx = 0;
+    for (const r of b) { const x = Q.num(r); t += x; if (x > mx) mx = x; }
+    return t > 0 ? mx / t : 0;
+  });
+  const pHit = 1 - (1 - 0.001) ** CMAIN;
+  console.log(`  ${Q.name.padEnd(30)} ${((100 * ord[0][0]) / tot).toFixed(2).padStart(9)}% ${drop(1).toFixed(4).padStart(12)} ${drop(10).toFixed(4).padStart(13)}   ${(100 * pct(shares, 0.5)).toFixed(2).padStart(8)}% / ${(100 * Math.max(...shares)).toFixed(2).padStart(6)}%   ${(100 * pHit).toFixed(1)}%`);
 }
 
 // ══ B2 — DOES THE SYSTEMATIC SAMPLE BEHAVE LIKE A RANDOM ONE? ═════════════════════════════════
