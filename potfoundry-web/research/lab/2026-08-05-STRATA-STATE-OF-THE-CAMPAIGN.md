@@ -545,9 +545,58 @@ measured in this campaign, and it is a mesher configuration choice.
 | 1.20–1.40 | 16 | 16.127 | 0.000 |
 
 ***THE LARGEST UNCLEARED POPULATION SITS AT GOOD SHAPE*** — 139 parents holding **57.5% of mesh area**
-at q ≈ 0.9, carrying **20.6% uncleared**, while the sliver bins carry **0.000%**. Uncleared is not
-monotone in q on either style. **⇒ My pre-registered kill fires as written: parent shape does NOT
-decide angle-bar clearability.**
+at q ≈ 0.9, carrying **20.6% uncleared**, while the sliver bins carry **0.000%**. **⇒ On the angle bar
+my pre-registered kill fires: parent shape does NOT decide angle-bar clearability.**
+
+### 0h.2b *** BUT ON THE MESH WHERE THE SLIVERS ACTUALLY EXIST, THE THRESHOLD IS SHARP AND THE KILL DOES NOT FIRE ***
+
+VORSHP and Gothic have almost no `q < 0.4` facets — the guard removed them — so neither could test the
+threshold. The SHAPE-**off** Voronoi mesh can. Chord bar, and it is **perfectly monotone with the top
+bin at 0.000%**, so the hypothesis passes cleanly here:
+
+| q bin | parents | mesh AREA % | leaves/par | uncleared % |
+|---|---|---|---|---|
+| 0.00–0.10 | 33 | 0.123 | **1427.12** | 18.868 |
+| 0.10–0.20 | 26 | 0.471 | 1050.58 | 13.520 |
+| 0.20–0.30 | 23 | 0.689 | 396.43 | 11.900 |
+| 0.30–0.40 | 33 | 1.841 | 115.94 | 4.051 |
+| **0.40–0.60** | 68 | 7.628 | **8.06** | **0.000** |
+| 0.60–1.40 (all) | 217 | 89.2 | 1.41–6.83 | **0.000** |
+
+    q <  0.4 :  115 parents,  759.60x leaves/parent,  15.820% uncleared
+    q >= 0.4 :  285 parents,    5.01x leaves/parent,   0.000% uncleared
+
+***3.1% OF MESH AREA GENERATES 100% OF THE CHORD-BAR FAILURE AND COSTS 152x THE PER-PARENT PRICE.***
+
+**⇒ THE RECONCILIATION, and both halves are real:** a sliver population is a **SUFFICIENT** cause of
+refinement failure, with a sharp threshold at **q = 0.4**; it is **NOT** the mechanism behind the
+residual defect on well-shaped meshes, which sits at good shape and on the angle bar. The earlier
+"kill fires" line was measured on meshes that had no slivers left to fail.
+
+### 0h.2c *** THE PRODUCTION NUMBER: `PF_CB_SHAPE_AR` SHOULD BE 12, NOT 50 ***
+
+The driver gates on `_shapeGuard.aspect3 = L·P/(4A)`, not on q. The relation is **exact algebra, not a
+fit**: `q = 2√A/L` ⇒ `A = q²L²/4` ⇒ **`aspect3 = (P/L)/q²`**, with `P/L ∈ [2,3]` for every triangle.
+Checked on all 806,765 real facets — the measured p05/p50/p95 land inside the analytic band at every q:
+
+| q ≈ | n | aspect3 p05 / p50 / p95 | analytic band |
+|---|---|---|---|
+| 0.20 | 13,921 | 42.12 / 50.35 / 60.65 | 50.0 – 75.0 |
+| 0.30 | 18,896 | 19.88 / 22.23 / 25.25 | 22.2 – 33.3 |
+| **0.40** | 25,514 | 11.60 / **12.71** / 13.88 | **12.5 – 18.7** |
+| 1.00 | 21,334 | 2.37 / 2.44 / 2.53 | 2.0 – 3.0 |
+
+    PF_CB_SHAPE_AR = 50 (CURRENT DEFAULT) : 14.345% of what it admits is in the q<0.4 band, worst q = 0.200
+    PF_CB_SHAPE_AR = 15                   :  3.758%                                        worst q = 0.366
+    *** PF_CB_SHAPE_AR = 12               :  0.000%                                        worst q = 0.410 ***
+
+***THE CURRENT DEFAULT OF 50 ADMITS EXACTLY THE CLASS THAT COSTS 152x AND NEVER CLEARS. 12 IS THE
+LARGEST VALUE THAT EXCLUDES ALL OF IT.*** Cost side: 12 admits 71.6% of facets against 50's 84.6%.
+
+**Scope, stated:** the threshold is one style, one operator (LEPP), the chord bar, conformity ignored;
+and the guard refuses SPLITS whose CHILDREN exceed the cap, so the facet-population calibration maps to
+guard behaviour indirectly. **Re-measure the threshold on a second style before treating 12 as
+universal** — but 50 is already indefensible on this evidence.
 
 ### 0h.3 WHAT THIS SETTLES
 
@@ -739,10 +788,12 @@ bounds**):
    over-bar facets are well-shaped, large, turning) and §0h.2 (shape binning — on Gothic the largest
    uncleared population is at **good** shape, q ≈ 0.9, holding 57.5% of mesh area). Kill: >12× the
    flag-OFF triangles, or over-1° AREA not below 5%.
-2. ***RE-ENABLE AND TUNE THE SHAPE GATE — AS A COST LEVER, AND SAY SO.*** Rehabilitated by S95/S98:
-   ~10× triangle cost within a mesh, 24× between meshes. **It does not improve fidelity and must never
-   again be sold as if it did** — but a 10× cost multiplier is the difference between a budget that
-   fits and one that does not.
+2. ***SET `PF_CB_SHAPE_AR = 12` (from 50). This is the one concrete production number this session
+   produced*** — derived, then calibrated on 806,765 real facets (§0h.2c). The current default admits
+   facets down to q = 0.200, and the q < 0.4 band costs **152× the per-parent price and never clears**.
+   12 is the largest cap that excludes all of it. **It is a COST lever, not a fidelity lever — never
+   sell it as the latter again — but 10–150× on cost is the difference between a budget that fits and
+   one that does not.** Verify on a second style before calling it universal.
 3. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence.
 4. **Land the flip on the remaining styles** — free, improves both rulers, only proven on Gothic.
 
