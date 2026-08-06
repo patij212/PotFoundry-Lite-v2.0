@@ -10290,3 +10290,117 @@ reading the code. (5) I nearly reported a 2.60x win from the COUNT column alone.
 an operator that can DISCHARGE the demand — none exists today. Keep `PF_CB_MOVE43H` default OFF and
 withdraw its synthetic figures as predictions. Take the gate and run it across all 20 styles (S98's arm
 1). **The next lever to price is the SEED, not the driver.**
+
+---
+
+## E-2026-08-06-S106-CONFORMITY — *** WHAT THE "conformity ignored … the RATIO is the claim" CAVEAT WAS HIDING: it is 1.39x on Voronoi and ~2.02x on Gothic, it does NOT cancel, and building the conforming arm found a FIXED POINT in the campaign's own split operator ***
+
+**FRAME.** Every refinement cost in STRATA-001 is printed with `frontierRefine`'s caveat verbatim —
+*"(conformity ignored for all three equally, so each count is a lower bound; the RATIO is the claim)"*.
+`adaptBisect` walks a per-parent stack and never bisects the neighbour that shares a split edge, so every
+absolute count in §7.1 is a lower bound **of unknown tightness**, and the 12 M budget decision rests on
+those lower bounds. **If the multiplier is 1.5x both styles fit; if it is 10x neither does.**
+
+**HYPOTHESES + KILLS, PRE-REGISTERED in the tool header and committed at `fbd1a33e` BEFORE the first run.**
+**C1** M = conforming/independent, same mesh/bar/operator/cap. **C2** *KILL: M >= 2.8 (Voronoi) / 1.8
+(Gothic) => the style crosses 12 M and "density closes the chord bar" FAILS.* **C3** *FLAG: if M's spread
+across disjoint golden-stride phase blocks exceeds +/-50%, report it as a band, never a point.* **C4**
+*KILL: if |M_chord − M_pos|/M_chord < 0.15 AND |M_goth − M_vor|/M_goth < 0.15, conformity cancels and the
+caveat is harmless.*
+
+**APPROACH + BIAS, NAMED FIRST.** Conformity is GLOBAL and cannot be sampled per-parent. One code path:
+**CENSUS** (whole mesh; **no bias, no band** — a census needs none) and **PATCH** (BFS patch, C attributed
+to CORE ancestors only; propagation that escapes is truncated => ***DOWNWARD bias***). The patch bias is
+not argued but **calibrated against the census**: Voronoi patch P=16000 reads 1.3759 vs census 1.39323 =
+**1.2% low**, and its `boundaryTerm%` falls 7.63 -> 1.19 over the sweep. Conforming arm = Rivara backward
+longest-edge bisection (zero hanging nodes at every step); independent arm = `frontierRefine.adaptBisect('lepp')`
+**verbatim**.
+
+**C1/C2 — MEASURED.** 10 um covering chord (k=8, inset 0.02), LEPP, cap 12, ruler `5698d023`:
+
+| | Voronoi S94CTL (492,068 facets) | Gothic S39CTL (1,142,166 facets) |
+|---|---|---|
+| independent **I** | **4,266,821 = 8.6712x** (CENSUS) | **6,396,921 = 5.6007x** (CENSUS) |
+| conforming **C** | **5,944,684 = 12.0810x** (CENSUS) | **~12.91 M** (patch-converged, biased DOWN) |
+| **M = C/I** | **1.39323** | **~2.02 [1.9613 … 2.0769] @ P=16000** |
+| vs the 12 M budget | **5.945 M = 49.5% => PASS** | **12.91 M = 107.6% => FAIL** |
+
+***THE GOTHIC KILL FIRES, THE VORONOI ONE DOES NOT.*** Conforming uncleared is **below** independent on
+both styles (Voronoi 0.0145% vs 0.0227%), so the extra triangles are not bought with quality. Patch trend:
+Voronoi 1.4547 -> 1.3777 -> 1.3727 -> 1.3759 (P=250..16000); Gothic 2.3610 -> 2.4769 -> 2.0550 -> 2.0176,
+its per-patch spread collapsing from [1.000, 9.204] to [1.9613, 2.0769].
+
+**C3 — the kill does NOT fire.** Re-aggregating the SAME census over disjoint golden-stride phase blocks
+(no new runs, no distributional assumption): **+/-3.7% at N=2000**, +/-13.6% at N=400, +/-21.5% at N=150
+(max/min 1.375). For calibration the same mesh's LEPP leaf multiplier runs **32x** across N=150 blocks
+(§0j). ***M is the best-conditioned multiplier in this campaign*** — it is a ratio of two counts that move
+together. `uncleared %` banded as required: at C=150, **94.7%** of blocks read exactly 0.000% on a mesh
+whose census residual is 0.0227%.
+
+**C4 — the cancellation kill does NOT fire on ANY pairing => *** CONFORMITY DOES NOT CANCEL ***.**
+Position bar, censused: Voronoi **I 1.01713x -> C 1.01891x, M_pos = 1.00175**; Gothic **I 1.08211x -> C
+1.36978x, M_pos = 1.26588** (and its residual RISES 1.843% -> 3.7465%). Gaps: chord across styles **45%**,
+chord-vs-position within Voronoi **39%**, within Gothic **37%**, position across styles **21%**.
+=> **§7.0's "position is not what is stopping us" survives for Voronoi (1.019x, 0.0000% uncleared) and does
+NOT for Gothic.** The *work* surcharge `(C−F)/(I−F)` is 1.10 / **4.50** at the position bar.
+
+**⚠ THE LARGER FINDING — `lift(0.5*(thU+thV), 0.5*(zU+zV))` IS NOT A BISECTION.** Removing the per-parent
+depth cap from forced splits exposed a **FIXED POINT** of the campaign's own operator. Measured on the
+**verbatim** `frontierRefine` bisect, N=2000, in the INDEPENDENT arm: non-shortening splits
+(`max(|u−mid|,|v−mid|) >= |u−v|`) = **Gothic 401/8,652 = 4.635% at cap 12** and **44,690/231,778 = 19.281%
+at cap 24** (worst ratio **3.784**), against **Voronoi 0.000% at both** (worst 0.832). Mechanism, printed:
+on a RADIAL edge (`|uv| 8.1654e-3 mm`, `dR 7.142e-3` across a **0.18 um** theta-arc, `rU 46.475602403 /
+rMid 46.482562799 / rV 46.482744039`) the parametric midpoint snaps onto the surface **88.6% of the way
+along the edge** (`|u−mid| 7.2363e-3`, `|v−mid| 1.9876e-3`), constant to six digits over **100,000
+consecutive splits**. ***The cap-24 row reproduces §0i.1's published 116.889x / 32.237% TO THE DIGIT*** —
+so "more depth makes LEPP WORSE; it does not converge on the unscoped mesh" is **19.3% of splits doing no
+work**, not a tail and not a sizing-field problem, and some Gothic "uncleared" facets are **unrefinable by
+this operator at any depth**. The depth cap is the only thing hiding it: without it the conforming Gothic
+refinement does not terminate at all.
+
+**CONTROLS, RUN NOT ASSERTED.** Fidelity **bit-identical**: Gothic 10,652 = 5.3260x / 17.424% =
+`S98_QREFINE_GOTH2000`; Voronoi 16,933 = 8.4665x / 0.000% = `S98_QREFINE_VORSHP2000`; plus the cap-24 row
+= §0i.1. **Weld = EXACT float32 bit pattern**, **invariant from exact through 1e-4 mm** on both meshes
+(Voronoi nV 246,234 / 738,302 edges / 400 boundary / **0 non-manifold**; Gothic 571,663 / 1,713,829 /
+1,160 / **0**; both chi=0, an annulus). At 1e-3 mm Gothic over-welds 3 vertices into 6 non-manifold edges
+=> 1e-4 is the last safe tolerance and a too-tight weld (which would UNDERSTATE propagation) is excluded
+by the invariance. Tie rate **0.000%** => `frontierRefine`'s first-max rule and the conforming arm's strict
+total order pick the same geometric edge, so M compares one operator with itself. `mismatchTerm` 0 (a
+terminal pair never named two different edges), `guardHits` 0, Voronoi `boundaryTerm` 0.016%. Every code
+change regression-checked mesh-identical: O(L) rewrite 24 rows both styles, abandon-fix 18 rows,
+`HARDCAP=24` inert on Voronoi 19 rows.
+
+**REFUTED, INCLUDING MY OWN.** (1) ***My first diagnosis of the Gothic stall — an O(L^2) LEPP re-walk —
+was WRONG; the rewrite stalled identically.*** `MAXPATH 20`, printed by my own fix, is what refuted it, and
+only then did a watchdog find the fixed point. I shipped a fix before I had evidence for the diagnosis.
+(2) My `DEP` field was Int16 and **overflowed to −31527** in the runaway (now Int32) — caught only because
+the watchdog printed depth. (3) My first hard cap refused one forced split instead of abandoning the
+target, and **spun 4,000,000 times**. (4) I guessed a degenerate-facet cause; measurement refuted it (0
+repeated-vertex and 0 zero-area facets in both meshes). (5) ***My pre-registered C4 mechanism was
+backwards*** — a SPARSE bar drives M -> 1 by construction because the whole mesh is the denominator; the
+quantity that behaves as I predicted is `M_work`. (6) **A framing error in §7.1 itself:** its **position**
+row is a **RED (1->4)** multiplier while its **chord** row is **LEPP** — `frontierRefine.adapt()` uses
+`children()` for both bars — so those two rows are two different operators in one table, which §7.1 does
+not say. The LEPP position baseline is 1.0805x (Gothic) / 1.0120x (Voronoi) at N=2000.
+
+**NOT MEASURED.** `red` / 2:1-balance conformity — ***LEPP is the FAVOURABLE operator here (its conforming
+form needs no green closure), so every M above is a LOWER BOUND for a red-based scheme***, and §7.1's
+position row is red. The 1-degree angle bar (~50x the cost). The `turn` and `cone` operators, so §0i.3's
+1.646x / 2.358x is **not** re-priced — and since M varies by style and by bar, it should not be assumed to
+survive conformity either. The Gothic chord CENSUS (still running at write-up; §C1 quotes the
+patch-converged value with its stated DOWNWARD bias, so it can only move UP). Whether the fixed point
+exists in the production splitter — **no `src/` file was read or run**. Bands across ruler conventions;
+the other 18 styles.
+
+**RECOMMENDATION.** (1) Answer the budget question as **split**, not as one number: Voronoi's chord bar
+closes conforming at **49.5%** of budget, Gothic's does not at **107.6%**. (2) ***Fix the split operator
+before spending anything further on refinement economics*** — 19.3% of Gothic's cap-24 splits do no work;
+a midpoint guaranteed to lie between its endpoints (lift the CHORD midpoint, or fall back to it when the
+lift lands outside the segment) is small and testable, and the non-shortening census is now an instrument
+to pre-register it against. (3) **Retire the "conformity ignored … the RATIO is the claim" caveat as
+measured-and-false** and multiply §7.1's absolute counts by **1.39 (Voronoi chord) / ~2.02 (Gothic chord) /
+1.00 (Voronoi position) / 1.27 (Gothic position)** — four different numbers, which is the point.
+
+**Scorecard:** `research/exchange/_strataConformBisect/S106_CONFORMITY.md`. Tools:
+`research/tools/s106ConformBisect.ts`, `s106ConformAnalyze.cjs`, `run-s106-conform.sh`.
+Commits `fbd1a33e` (pre-registration, **before** the first run), `c5cec83e`.
