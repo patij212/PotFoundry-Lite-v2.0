@@ -751,8 +751,8 @@ S39CTL, the 10 µm chord bar, plain LEPP:
 entering the sample between N=600 and N=1200 — level-0 minAngle **2.78°**, slope 7.735 — which alone
 consumes **7,139 leaves and never clears**. The worst **1% of parents hold 74.92% of all LEPP leaves**.
 ***More depth makes LEPP WORSE on both axes (cap 16 → 24: 10.8× → 116.9×, uncleared 28.8% → 32.2%): it
-does not converge on the unscoped mesh. `red` 1→4 never blows up on that parent — 0.000% uncleared at
-every N and every cap.*** **No LEPP multiplier here is quotable without its N, its cap, its scope AND
+does not converge on the unscoped mesh.*** ~~`red` 1→4 never blows up on that parent — 0.000%
+uncleared at every N and every cap.~~ ⛔ ***THAT LAST CLAUSE IS REFUTED — SEE §0j.7.*** **No LEPP multiplier here is quotable without its N, its cap, its scope AND
 its uncleared %. The published 6.67× carries none of the four.**
 
 ### 0i.2 ⇒ THE RULE, AND IT IS STRICTER THAN THE ONE I WROTE IN §0g.2
@@ -981,6 +981,35 @@ mean±1.96·SD as the H1 verdict interval (**it fires the kill and is wrong**) �
 **Not measured:** no whole-mesh census (pools are 2.8–10.5%); two styles; the 0.5°/5°/10° bars and the
 `turn` operator have **no band**; bands not compared across ruler conventions.
 Fidelity: 5 checks, all pass — N=2000 Gothic **bit-identical** to `S98_QREFINE_GOTH2000`.
+
+### 0j.7 ⛔ AND IT REFUTES "`red` IS THE ROBUST OPERATOR" — A CLAIM I PROPAGATED FROM CONE
+
+CONE reported that `red` 1→4 "never blows up — **0.000% uncleared at every N, both styles**," and I
+carried it into §0i.1 as an argument that the campaign's choice of bisection was in question. ***The
+pool refutes it — and refutes my own number in the same stroke.***
+
+| Voronoi SHAPE-on, `red`, 10 µm chord | uncleared |
+|---|---|
+| my N=2000 run (`S98_QREFINE_VORSHP2000`) | **0.003%** |
+| **S105 pool, 32,000 parents (16×)** | ***3.600%*** (block range 0.003 … 10.97 — a **3,532×** spread) |
+
+***MY OWN N=2000 READING — THE ONE I USED TO RESOLVE THE PROVISIONAL BANNER — IS ITSELF THE
+UNDER-SAMPLING ARTEFACT §0j PREDICTS.*** Exactly as §0j.5's required-N table says: any `uncleared %`
+needs N between 22,900 and ~8.5 M, and N=2000 is nowhere near it. ***The lesson generalises: a bigger N
+does not make an `uncleared %` trustworthy — only a band does.***
+
+⇒ **The best available operator comparison:**
+
+| | LEPP | `red` 1→4 |
+|---|---|---|
+| Gothic, N=2000 | **5.33×** / 17.42% | 8.59× / **4.39%** |
+| Voronoi, pool 32 K | **8.697×** / **~0.05%** | 18.68× / 3.600% |
+
+***`red` is 1.6–2.1× dearer and is NOT uniformly more robust — on Voronoi, LEPP beats it on BOTH
+axes.*** On Gothic `red` trades 1.61× cost for ~4× less uncleared, a real but style-specific trade.
+**"Switch the operator to `red`" is NOT supported**, and §0i.1's suggestion that bisection's selection
+is in question is withdrawn. *(The rest of §0i.1 — LEPP's non-convergence with depth on the unscoped
+mesh — is unaffected.)*
 
 Scorecard: `S105_BANDS.md`. Commits `27a1039d` (pre-registration, **before** the first run), `70a22176`, `b85b55ca`.
 
