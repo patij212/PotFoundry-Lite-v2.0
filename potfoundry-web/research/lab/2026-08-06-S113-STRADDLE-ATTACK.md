@@ -1,5 +1,29 @@
 # S113 — THE CREASE PROGRAMME HAS NO HEADROOM ON THIS CLASS, AND S112 NEEDS THREE CORRECTIONS
 
+> ## ⛔ SCOPE BANNER — S114's ALL-STYLES SWEEP OVERTURNS §0's GENERALISATION
+> Read `2026-08-06-S114-FIX-AND-SWEEP.md` before quoting §0 or §5.1.
+>
+> 1. ***"ADJACENT-FACET DIHEDRAL IS NOT A DEFECT METRIC ON CREASE-BEARING STYLES" IS GOTHIC-SPECIFIC.***
+>    Swept across 17 styles: **GothicArches is the odd one out** — the only style whose analytic surface
+>    actually carries C0 creases (168.13°, bracket-invariant). On **HexagonalHive the >45° class is 0.00%
+>    real turn and 100% mesh-manufactured (Gothic's exact inverse)**; SpiralRidges 0.00%, WaveInterference
+>    0.00%, ArtDeco 0.00%, Voronoi 2.15%, Crystalline 39.3% — ***there the class IS genuine mesh defect.***
+>    Quarter C reports **zero of five** styles confirming. The verdict below holds **for Gothic only**.
+> 2. ***A THIRD INSTRUMENT DEFECT VOIDS MOST OF THE TARGET SET.*** `normDeg` is **not converged in the
+>    finite-difference step h**: 4,656 of the 6,193 pinned facets read p50 **2.93° at h=2e-6 vs 141.68° at
+>    h=5e-3** — they are h-artifacts. **The genuine class is the 1,537 interior straddlers**, which S114's
+>    independent analytic single-flank ceiling confirms (reproducing the 73.6× prize to 1.04×, headroom
+>    **70.49°**). The "0.1816% of mesh" target-set area is therefore overstated.
+> 3. **§3c is settled:** leg 1 (curtain) is **REFUTED OUTRIGHT — zero facets are non-graph**; `graphRatio`
+>    is a parameter-triangle SHAPE test, not a graph test. Leg 2 confirmed at 1.711×. Adjudicated figure
+>    **0.1368% of mesh — S112 was 1.369× HIGH, not 1.28× low** (provisional: its classifier is unvalidated).
+> 4. **The 1,537 are NOT cuttable.** 97.98% of their area has the crease **on a vertex**; both operators
+>    priced on them were **beaten by their own midpoint placebo (0.596× / 0.801×)**.
+> 5. ⚠ ***THE 45° CUT WAS NEVER VALIDATED AGAINST A RENDER***, and every campaign render is `DoubleSide`.
+>
+> **What stands:** the three operator refutations on Gothic, the placebo discipline, the chord-sag
+> mechanism, the driver archaeology, and §3's three corrections to S112.
+
 **2026-08-06.** 22 agents, 4.05 M tokens, 0 errors. Target: the pinned 3,282 straddling crease pairs
 (`S113_STRADDLE_GOTH.ndjson`, 6,193 facets, 69.826 mm² = 0.1816% of mesh). Four candidate operators, each
 adversarially verified by three refuters; three independent reviews of the S112 driver work.

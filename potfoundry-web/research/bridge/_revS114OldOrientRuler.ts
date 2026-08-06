@@ -440,91 +440,23 @@ export function orientOfFacet(
 }
 
 /**
- * LOCATE THE TURN ON AN EDGE — a style-agnostic, analytic crease locator.
+ * LOCATE THE TURN ON AN EDGE — a style-agnostic, analytic crease locator, ~`iters` normal evaluations.
  *
  * The measured failure class is a facet inside which the surface TURNS (S70: 100% of LowPolyFacet's
  * over-1-deg facets have `spreadRad >= normRad/2`). A facet cannot be fixed by refining it — the angle is
  * density-INVARIANT on a turn (S61 H2: x0.9968 over five halvings) — it can only be fixed by putting the
  * mesh edge ON the turn. This is the 1-D primitive that finds where.
  *
- * It searches the GAUSS MAP, not the radius: the sub-interval across which the normal turns most is kept,
- * so the search converges on the place the normal field turns fastest — the crease when there is one, the
- * max-curvature point when there is not. It needs NO loci file, NO feature extractor and NO style
- * knowledge, which is the whole point: the campaign's conform route needs a per-style
- * `PF_CB_TIGHTEN=...loci.json` and cannot generalise.
+ * Bisection on the GAUSS MAP, not on the radius: at each step the sub-interval whose endpoints' normals
+ * differ more is kept, so the search converges on the place the normal field turns fastest, which is the
+ * crease when there is one and the max-curvature point when there is not. It needs NO loci file, NO feature
+ * extractor and NO style knowledge — which is the whole point, because the campaign's conform route needs
+ * a per-style `PF_CB_TIGHTEN=...loci.json` and cannot generalise.
  *
- * Returns the parameter s in [0,1] along the (theta, z) segment. `turn` is the normal change across a
- * span a FULL BRACKET WIDER than the final bracket on each side; a smooth edge returns a small `turn` and
- * the caller should ignore `s`.
- *
- * ─────────────────────────────────────────────────────────────────────────────────────────────────────
- * ⚠ THIS IS A RE-SCAN, NOT A BISECTION. TWO MEASURED DEFECTS KILLED THE BISECTION — S114, 2026-08-06.
- * ─────────────────────────────────────────────────────────────────────────────────────────────────────
- * DEFECT A — BISECTION LOSES ASYMMETRIC CREASES (fixture F11). The bisection probed AT the midpoint. On a
- * finite-difference surface the midpoint's OWN window straddles the locus and returns an INTERMEDIATE
- * normal, which splits the turn between the two halves. For a SYMMETRIC crest the split is 50/50 and
- * whichever half is kept still contains the feature, so the search survives — which is exactly why F9 and
- * F10 (both symmetric planar creases) passed for months. For an ASYMMETRIC clamp the intermediate normal
- * does NOT sit at the half-angle: the FD ramp is linear in the SLOPE r_th while the normal azimuth is
- * `atan(|r_th|/r)`, so the half that CONTAINS the locus can read the SMALLER turn and the bracket throws
- * it away. MEASURED on the F11 tent: the asymmetric clamp (closed form 78.690 deg, independent 8192-cell
- * scan 78.690 deg) came back as `s=0.38535, turn=0.000045 deg` — a 1.7e6x under-read, i.e. "no crease
- * here" AT a crease — while the symmetric crest on the SAME edge read 155.92 of 156.28 deg.
- *
- * DEFECT B — THE TIE-BREAK WALKED LEFT (S99, orientRuler.ts:529 as it stood). `if (ang(n0,nm) >=
- * ang(nm,n1)) hi = mid;` sends the bracket LEFT on every equal comparison, so a genuinely smooth segment
- * marched to the left END and returned a plausible-looking `s`. MEASURED on the F12 flat skirt:
- * `s = 0.06302` on a segment with no feature anywhere in it.
- *
- * THE CURE, both defects at once. Split the bracket into `SCAN_CELLS` cells, evaluate the normal at every
- * cell boundary, and keep the cell with the largest turn WIDENED BY ONE CELL ON EACH SIDE. Nothing is
- * decided from a single probe placed on top of the feature, so an intermediate normal can at worst SPLIT
- * one cell's reading with its neighbour — and the widening means either of them keeps the locus strictly
- * interior to the next bracket. `SCAN_CELLS` is ODD so the bracket has a unique CENTRE cell, and ties
- * (which is what a featureless segment produces: every cell turns by the same amount) resolve to that
- * centre cell, whose widening leaves the bracket CENTRED. A featureless segment therefore returns
- * s -> 0.5 — an honest "nothing here" instead of a plausible left-end answer.
- *
- * COST AND RESOLUTION. `iters` is now SCAN ROUNDS, not bisections: `SCAN_CELLS+1 = 10` sampler calls per
- * round instead of 1, and the bracket shrinks by 3/9 = 1/3 per round instead of 1/2. At the default
- * iters=14 the final bracket is (1/3)^14 = 4.8e-7 of the edge, i.e. 128x TIGHTER than the bisection's
- * 2^-14 = 6.1e-5, for 10x the sampler calls.
- *
- * ⚠ THIS DOES NOT RESCUE A FIXED-STEP SAMPLER. F10's failure is intact and must stay so: once the bracket
- * is far shorter than the sampler's own `hArc`, EVERY probe in the scan straddles and the whole scan is
- * flat. That is what `locateTurnAdaptive` exists for.
+ * Returns the parameter s in (0,1) along the (theta, z) segment. `turn` is the total normal change across
+ * the FINAL bracket, i.e. how sharp the located feature is; a smooth edge returns a small `turn` and the
+ * caller should ignore `s`.
  */
-/** cells per re-scan round. ODD, so the bracket has a unique CENTRE cell for the tie-break to land on. */
-const SCAN_CELLS = 9;
-
-/**
- * Pick the winning cell of a scan. Largest turn, with ties resolved TOWARD THE CENTRE — see DEFECT B.
- *
- * THE TIE BAND HAS TO BE WIDER THAN `acos`'s OWN NOISE, and that noise GROWS as the turn shrinks. For a
- * small angle `a`, `dot = 1 - a^2/2`, so one ulp of `dot` (2.2e-16 near 1) becomes `2.2e-16 / sin(a)` of
- * angle — i.e. the RELATIVE error is ~2.2e-16/a^2, which passes 1e-6 once `a` drops below ~1.5e-5 rad.
- * A flat relative band therefore stops being a tie test exactly where ties are the answer, and fp noise
- * starts steering the bracket. MEASURED on F12's flat skirt with a bare 1e-6 band: s = 0.49404 instead of
- * 0.5, the bracket having been nudged off centre in the first rounds where the jitter bit.
- * The `EPS/best` term is that floor written down. It is negligible at a real crease (best ~ 1.4 rad
- * gives 1.3e-15 rad of band) and dominant only when there is nothing to find, which is the point.
- */
-const ACOS_ULP = 8 * 2.220446049250313e-16;
-
-function scanPick(t: Float64Array, m: number): number {
-  let best = -1;
-  for (let i = 0; i < m; i += 1) if (t[i] > best) best = t[i];
-  const band = best - (1e-6 * best + ACOS_ULP / Math.max(best, 1e-30) + 1e-13);
-  const c = (m - 1) / 2;
-  let iBest = 0; let dBest = Infinity;
-  for (let i = 0; i < m; i += 1) {
-    if (!(t[i] >= band)) continue;
-    const dd = Math.abs(i - c);
-    if (dd < dBest) { dBest = dd; iBest = i; }
-  }
-  return iBest;
-}
-
 export function locateTurn(
   ns: NormalSampler,
   ath: number, az: number, bth: number, bz: number,
@@ -532,35 +464,23 @@ export function locateTurn(
   scratch?: Float64Array,
 ): { s: number; turn: number } {
   const sc = scratch ?? new Float64Array(12);
-  const M = SCAN_CELLS;
-  const N = new Float64Array(3 * (M + 1));
-  const t = new Float64Array(M);
-  const nA = new Float64Array(3); const nB = new Float64Array(3);
-  const at = (s: number, out: Float64Array, o: number): void => {
+  const n0 = new Float64Array(3); const n1 = new Float64Array(3); const nm = new Float64Array(3);
+  const at = (s: number, out: Float64Array): void => {
     ns(ath + (bth - ath) * s, az + (bz - az) * s, sc);
-    out[o] = sc[0]; out[o + 1] = sc[1]; out[o + 2] = sc[2];
+    out[0] = sc[0]; out[1] = sc[1]; out[2] = sc[2];
   };
-  const ang = (p: Float64Array, po: number, q: Float64Array, qo: number): number => {
-    let d = p[po] * q[qo] + p[po + 1] * q[qo + 1] + p[po + 2] * q[qo + 2];
+  const ang = (p: Float64Array, q: Float64Array): number => {
+    let d = p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
     d = d > 1 ? 1 : d < -1 ? -1 : d; return Math.acos(d);
   };
   let lo = 0; let hi = 1;
-  for (let it = 0; it < iters; it += 1) {
-    const bw = hi - lo;
-    if (!(bw > 0)) break;
-    for (let i = 0; i <= M; i += 1) at(lo + (bw * i) / M, N, 3 * i);
-    for (let i = 0; i < M; i += 1) t[i] = ang(N, 3 * i, N, 3 * (i + 1));
-    const ib = scanPick(t, M);
-    const nLo = lo + (bw * (ib - 1)) / M; const nHi = lo + (bw * (ib + 2)) / M;
-    lo = nLo < 0 ? 0 : nLo; hi = nHi > 1 ? 1 : nHi;
+  at(lo, n0); at(hi, n1);
+  for (let i = 0; i < iters; i += 1) {
+    const mid = 0.5 * (lo + hi);
+    at(mid, nm);
+    if (ang(n0, nm) >= ang(nm, n1)) { hi = mid; n1[0] = nm[0]; n1[1] = nm[1]; n1[2] = nm[2]; } else { lo = mid; n0[0] = nm[0]; n0[1] = nm[1]; n0[2] = nm[2]; }
   }
-  // `turn` is read a FULL BRACKET OUTSIDE on each side, so that both probes are clear of the located
-  // feature by at least the bracket width and neither can return the intermediate normal that DEFECT A
-  // is made of. Deliberately NOT clamped to [0,1]: a locus sitting exactly on a mesh VERTEX is the
-  // commonest case on a conformed mesh, and clamping would report it as no turn at all.
-  const w = Math.max(hi - lo, 1e-15);
-  at(lo - w, nA, 0); at(hi + w, nB, 0);
-  return { s: 0.5 * (lo + hi), turn: ang(nA, 0, nB, 0) };
+  return { s: 0.5 * (lo + hi), turn: ang(n0, n1) };
 }
 
 /**
@@ -575,26 +495,13 @@ export function locateTurn(
  * plausible — S74 read `turn(1e-4 mm)` as 8.5e-7 deg on facets whose dihedral is 29.9 deg, i.e. it
  * reported "no crease here" at the exact locations the whole class lives.
  *
- * The fix is to make the STEP FOLLOW THE BRACKET, so the normals being compared are always computed
- * strictly inside their own cells. Only the step schedule differs from `locateTurn`.
+ * The fix is to make the STEP FOLLOW THE BRACKET: `h = bracket/8` at every iteration, so the two normals
+ * being compared are always computed strictly inside their own halves. Cost is identical (5 rA evals per
+ * probe, one probe per iteration); only the step schedule changes.
  *
  * `rA`/`H` are taken directly rather than a sampler, because a sampler that cannot be re-scaled is exactly
  * the thing that broke.
- *
- * ⚠ S114: this shares `locateTurn`'s RE-SCAN. Read DEFECT A and DEFECT B in that function's header — the
- * scale-adaptive step alone did NOT fix them. The asymmetric clamp of fixture F11 was lost by THIS
- * function, with its step already following the bracket: `turn = 0.000045 deg` against a closed form and
- * an independent 8192-cell scan that both read 78.690 deg.
- *
- * THE STEP. `h = bracketMm / (4 * SCAN_CELLS)` — a QUARTER of the cell width, so no probe's own window
- * can reach its neighbouring probe, and at most one probe per round can straddle the locus. Refinement
- * STOPS when the bracket can no longer support that (`bracketMm < 4*SCAN_CELLS*HMIN`) rather than
- * silently running on with a floored step: past that point every probe in the scan shares one window and
- * the scan is flat, which is precisely the F10 failure this function exists to avoid.
  */
-/** floor on the finite-difference step, mm. Below this the difference of two rA values is fp noise. */
-const HMIN = 1e-9;
-
 export function locateTurnAdaptive(
   rA: RadiusFn, H: number,
   ath: number, az: number, bth: number, bz: number,
@@ -602,36 +509,27 @@ export function locateTurnAdaptive(
   iters = 14,
 ): { s: number; turn: number; hFinal: number } {
   const sc = new Float64Array(12);
-  const M = SCAN_CELLS;
-  const N = new Float64Array(3 * (M + 1));
-  const t = new Float64Array(M);
-  const nA = new Float64Array(3); const nB = new Float64Array(3);
+  const n0 = new Float64Array(3); const n1 = new Float64Array(3); const nm = new Float64Array(3);
   const lenMm = Math.hypot(rRef * (bth - ath), bz - az);
-  const at = (s: number, h: number, out: Float64Array, o: number): void => {
-    const ns = fdNormalsCentral(rA, H, Math.max(HMIN, h), Math.max(HMIN, h));
+  const at = (s: number, h: number, out: Float64Array): void => {
+    const ns = fdNormalsCentral(rA, H, Math.max(1e-9, h), Math.max(1e-9, h));
     ns(ath + (bth - ath) * s, az + (bz - az) * s, sc);
-    out[o] = sc[0]; out[o + 1] = sc[1]; out[o + 2] = sc[2];
+    out[0] = sc[0]; out[1] = sc[1]; out[2] = sc[2];
   };
-  const ang = (p: Float64Array, po: number, q: Float64Array, qo: number): number => {
-    let d = p[po] * q[qo] + p[po + 1] * q[qo + 1] + p[po + 2] * q[qo + 2];
+  const ang = (p: Float64Array, q: Float64Array): number => {
+    let d = p[0] * q[0] + p[1] * q[1] + p[2] * q[2];
     d = d > 1 ? 1 : d < -1 ? -1 : d; return Math.acos(d);
   };
-  let lo = 0; let hi = 1;
-  for (let it = 0; it < iters; it += 1) {
-    const bw = hi - lo;
-    const bwMm = lenMm * bw;
-    if (!(bw > 0) || !(bwMm >= 4 * M * HMIN)) break;
-    const h = bwMm / (4 * M);
-    for (let i = 0; i <= M; i += 1) at(lo + (bw * i) / M, h, N, 3 * i);
-    for (let i = 0; i < M; i += 1) t[i] = ang(N, 3 * i, N, 3 * (i + 1));
-    const ib = scanPick(t, M);
-    const nLo = lo + (bw * (ib - 1)) / M; const nHi = lo + (bw * (ib + 2)) / M;
-    lo = nLo < 0 ? 0 : nLo; hi = nHi > 1 ? 1 : nHi;
+  let lo = 0; let hi = 1; let h = Math.max(1e-9, lenMm / 8);
+  at(lo, h, n0); at(hi, h, n1);
+  for (let i = 0; i < iters; i += 1) {
+    h = Math.max(1e-9, (lenMm * (hi - lo)) / 8);
+    const mid = 0.5 * (lo + hi);
+    at(lo, h, n0); at(hi, h, n1); at(mid, h, nm);
+    if (ang(n0, nm) >= ang(nm, n1)) hi = mid; else lo = mid;
   }
-  const w = Math.max(hi - lo, 1e-15);
-  const hFinal = Math.max(HMIN, (lenMm * w) / (4 * M));
-  at(lo - w, hFinal, nA, 0); at(hi + w, hFinal, nB, 0);
-  return { s: 0.5 * (lo + hi), turn: ang(nA, 0, nB, 0), hFinal };
+  at(lo, h, n0); at(hi, h, n1);
+  return { s: 0.5 * (lo + hi), turn: ang(n0, n1), hFinal: h };
 }
 
 /** shortest-arc theta delta (the theta = 0 == 2*pi seam), same body as `_sweepPredicate.dThRaw`. */

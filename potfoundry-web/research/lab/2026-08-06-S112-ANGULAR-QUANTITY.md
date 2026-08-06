@@ -1,5 +1,36 @@
 # S112 — THE ANGULAR QUANTITY: ALREADY BUILT, AND MEASURED NOT WORTH WIRING
 
+> ## ⛔ CORRECTION BANNER — THREE CLAIMS IN THIS DOCUMENT ARE SUPERSEDED BY S113 (`46482930`)
+> Read `2026-08-06-S113-STRADDLE-ATTACK.md` §3 before quoting anything below.
+>
+> 1. ***§1(3) AND §4(2) ARE WRONG: THE DRIVER DOES CONTAIN AN ANGULAR QUANTITY.***
+>    `_strataConformBisectL.test.ts` `shardOf` **:3474-3492** computes
+>    `Math.acos(admBestDot(…)) * 180/π >= DESHARD_DEV` (default 45°, `:3353`) — an angle in **degrees**,
+>    not a sign test — and it **drives triangle selection** in the DESHARD pass at `:4070`/`:4077`/`:4101`.
+>    Flag-gated `PF_CB_DESHARD` (`:3341`), **default OFF**. The surviving, narrower claim: the driver's
+>    *refinement demand* (`consider`/`_sagKernel`) has no angular term. **The error was inheriting a
+>    NAME-BASED GREP and repeating it without reading — the driver spells its angle inline as
+>    `Math.acos`, which no name in the grep list matches. A grep for names is not a search for quantities.**
+> 2. ***§3e (P3) IS VOID AS EVIDENCE.*** The published `normDeg − spreadDeg` p50 **0.20°** was computed
+>    over the whole wall crease class, **60.48% of which is the CONFORMED population this very document
+>    declares non-defective** (their `normDeg` is ≈0 by construction). On the genuinely straddling class
+>    the same statistic reads **p50 58.98°** (p10 25.28, p90 84.51) — independently reproduced. P3's
+>    *conclusion* (the crease demand is geometric, not a scoring gap) survives **only** via S113's
+>    independent oracle route. There is ~59° of real orientation headroom on the defect class.
+> 3. ***THE 12.7× HEADLINE IS CONTESTED IN BOTH DIRECTIONS AND UNADJUDICATED.*** One reviewer refutes the
+>    **curtain leg** (that class is *continuous on-surface steep wall*, analytic J up to 13.69, **not**
+>    non-graph) ⇒ **0.2400%, 1.28× LOW**; another finds class area credited **per pair** where the claim is
+>    **per facet** (only 62% of facets individually straddle) ⇒ **0.1062%, 1.71× HIGH**.
+> 4. **`spreadRad` is NOT converged in lattice order** (p50 90.1/75.3/58.8/44.5/36.7 at k=4/8/16/32/64),
+>    so **§3c (P1) and §3e (P3) are both quoted at an arbitrary k.** The k-ladder in §3f showed only
+>    `normDeg`, which *is* converged.
+> 5. **§3d (P2) survives** every re-operationalisation attempted (worst case 3.26% vs the 5% bar) **but is
+>    evidence for the wrong operator** — the `:2816` veto *re-queues for refinement*; it does not flip or
+>    replace.
+>
+> **What stands unchanged:** C1/C2/C3 (§1(1),(2)); the `inset` method scar (§5); the instrument work; and
+> the finding that S108's 2.3699% overstates the defect.
+
 **2026-08-06.** Tools: `research/tools/s112AngularDecomp.ts`, `research/tools/s112bOrientDiag.ts`.
 Mesh: `gothicarches_ring_DS-HT_S39CTL.stl` (1,142,166 facets, 38,453.3 mm², PRECOND 0.0310 µm — S111's
 exact reference). Instrument: `orientRuler.orientOfFacet`, 11/11 closed-form fixtures re-validated first.

@@ -26,7 +26,7 @@ import { describe, it, expect } from 'vitest';
 import {
   orientOfFacet, exactNormals, fdNormals, fdNormalsCentral, farRadius, radialNormal,
   locateTurn, locateTurnAdaptive, type NormalSampler, type OrientOut,
-} from './orientRuler';
+} from './_revS114MutAlwaysMid';
 
 const RUN = process.env.PF_ORIENT_FTV === '1';
 // eslint-disable-next-line no-console
