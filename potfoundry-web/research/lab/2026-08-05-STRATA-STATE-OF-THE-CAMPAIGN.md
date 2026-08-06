@@ -274,15 +274,23 @@ byte-identical when off, non-inert at 45,732 → 24,392 flips) reaches **1.085×
 ### 0e.2 ~~ORIENTATION HAS NO KNOWN LEVER~~ *** WITHDRAWN BY S93 (§0f) — DENSITY WORKS; the list below is CONNECTIVITY, and §0f.1 explains in one number why all of it died ***
 
 Everything tried is measured dead: **flips 1.015× median** (and 1.09× with a corrected key),
-**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ~~×0.9968~~ — MIS-QUOTED, an ANGLE against a CHORD bar; it is 0.208×/level, see §0f.2**, **ideal split placement 0.00%**, ~~**splitting provably closed on Voronoi** (required child aspect 3,009)~~ **— ⛔ VOID, SHAPE-guard-OFF artefact, see §0g**, and
+**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ~~×0.9968~~ — MIS-QUOTED, an ANGLE against a CHORD bar; it is 0.208×/level, see §0f.2**, **ideal split placement 0.00%**, ~~**splitting provably closed on Voronoi** (required child aspect 3,009)~~ **— ⛔ REFUTED: LEPP clears the chord bar at 8.697× ±4.4%, see §5.1**, and
 **P4/off-surface refuted as a fidelity lever on its own numbers** (+0.6% orientation for a 12.5×
 position-sag regression).
 
 Two agents disagree on where to go next and **both readings are compatible**: S91 concludes the class
 needs an **off-surface vertex** because connectivity is exhausted; S89 measured that the *specific*
 P4 formulation does not pay. ***So: connectivity is exhausted AND the one representation change
-anyone has priced does not work.*** That is the honest frontier, and it is a research question, not
-an engineering one.
+anyone has priced does not work.*** ~~That is the honest frontier, and it is a research question, not
+an engineering one.~~
+
+> ⛔ ***THAT CLOSING VERDICT IS SUPERSEDED BY §0i.4.*** "Connectivity is exhausted" survives — but the
+> conclusion drawn from it does not. The missing move was never a new *connectivity* operator or an
+> off-surface vertex: it is **GENERATION** — placing an element at the admissible size instead of
+> halving one that exists (a measured **1.93×**). ***That is an ENGINEERING path, not a research
+> question: the `M = g/h²` kernel exists, is certified, and is unwired*** — it simply does not
+> deliver as shipped, and its two failure modes are named and already wired for testing (§7.2).
+> **Start at §7, not here.**
 
 **⇒ SHIP:** `PF_LAND_FLIP` on position, hub-gated, default-off. **⇒ WITHDRAW:** "orientation 3.73×" —
 restate as *"3.73× on its own objective, 1.049× honest"*. **⇒ QUOTE THE COST:** caps ≥150° 1.66× on
