@@ -19,7 +19,10 @@ number they published was wrong by 24–45×. **Rank with the plane ruler; size 
 One lever survives honest scoring: a constrained edge flip, which is free.
 
 ***AND AS OF 2026-08-06 THE HEADLINE HAS CHANGED AGAIN, IN OUR FAVOUR — now with error bars (§0j),
-the first this campaign has ever had.*** The 10 µm POSITION bar is
+the first this campaign has ever had, and with a MEASURED BUDGET VERDICT: both styles now fit 12 M
+(§0k.6b), Gothic only after repairing a fixed-point defect in the MEASUREMENT INSTRUMENT that the
+production driver never had. But they fit on AFFORDABILITY, not on fidelity — ~8.73% of Gothic is
+still over bar.*** The 10 µm POSITION bar is
 **not** what is stopping us — ideal refinement closes it at **1.04×–1.06× triangles, 0.000%
 uncleared**, on both styles measured. The "near-vertical wall class that cannot be represented" **does
 not exist**: it was facet SHAPE, on an artefact built with the shape guard OFF, and with the guard on
@@ -1027,7 +1030,7 @@ with the patch boundary), against `frontierRefine.adaptBisect('lepp')` copied ve
 | 10 µm chord, LEPP, cap 12 | independent | conforming | **M** | vs 12 M budget |
 |---|---|---|---|---|
 | **Voronoi S94CTL** — ***whole-mesh CENSUS, all 492,068 facets, no sampling*** | 4,266,821 (8.671×) | **5,944,684** (12.081×) | **1.393** | **49.5% ⇒ PASS** |
-| **Gothic S39CTL** — ***CENSUS both sides (the patch estimate is superseded)*** | 6,396,921 (5.601×) | **12,693,179** (11.113×) | **1.984** | **105.8% ⇒ FAIL** |
+| **Gothic S39CTL** — ***CENSUS both sides (the patch estimate is superseded)*** | 6,396,921 (5.601×) | **12,693,179** (11.113×) | **1.984** | **105.8% ⇒ FAIL** ⇒ ***96.5% PASS once the splitter is fixed, §0k.6b*** |
 
 ***THE 12 M ANSWER IS SPLIT: VORONOI FITS WITH ROOM. GOTHIC DOES NOT.*** ***Gothic's whole-mesh
 conforming census completed after the agent reported and is now the quoted number*** — 12,693,179 tris
@@ -1146,14 +1149,49 @@ costs Voronoi 0.5% — net strongly favourable.***
 minAngle 0.00° → 0.01° — the parametric midpoint produces exactly-degenerate leaves and the solve does
 not.***
 
-**BUDGET, both styles, against the completed censuses:**
+### 0k.6b *** RE-MEASURED END-TO-END: GOTHIC FLIPS TO PASS — AND M BARELY MOVES ***
 
-| | conforming census | × cost factor | vs 12 M |
-|---|---|---|---|
-| **Gothic** | 12,693,179 | × **0.886** = ~11.24 M | ***93.7% — would flip FAIL → PASS*** |
-| **Voronoi** | 5,944,684 | × **1.005** = ~5.97 M | **49.8% — PASS either way** |
+The port was carried into **both arms** of the conforming tool (`PF_CF_MID3D`, default off,
+byte-identical verified) and re-censused whole-mesh. **The conforming non-shortening rate falls
+3.2569% → 0.4232% (7.7×), so the port provably reaches the conforming path.**
 
-⚠ ***Still contingent: M was measured on the defective operator and is being re-measured.***
+| whole-mesh census, 10 µm chord, LEPP | independent | conforming | **M** | vs 12 M |
+|---|---|---|---|---|
+| **Gothic** MID3D=0 | 6,396,921 | 12,693,179 | 1.98426 | **105.8% FAIL** |
+| **Gothic** MID3D=1 | 5,933,678 (0.9276×) | ***11,584,681 (0.9127×)*** | **1.95236** | ***96.5% PASS*** |
+| Voronoi MID3D=0 | 4,266,821 | 5,944,684 | 1.39323 | 49.5% PASS |
+| Voronoi MID3D=1 | 4,293,106 (1.0062×) | 5,956,467 (1.0020×) | 1.38745 | 49.6% PASS |
+
+> ### ***M BARELY MOVES — 0.9839×. THE ENTIRE WIN IS IN THE INDEPENDENT COUNT.***
+> ***CONFORMITY AND THE SPLIT-POINT DEFECT ARE NEARLY INDEPENDENT EFFECTS.*** That is the thing nobody
+> knew, and it is why refusing to predict M's direction was the right call — both "M absorbs the win"
+> and "M amplifies it" were live, and neither happened. Paired at matched (P,seed): M1/M0 = **0.9894**
+> pooled, with the per-pair range **crossing 1.0 at every patch size**.
+
+**Also: `ABANDONED TARGETS` 14,060 → 10,223 (0.727×)** and `forcedOverCap` 752,203 → 320,694.
+**Voronoi is confirmed NOT a cost null** (independent +0.62%, conforming +0.20%) — as amended above.
+
+⚠ ***AND MY PROJECTION WAS OPTIMISTIC, FOR A §0j REASON.*** I wrote `12.693 × 0.886 = 11.24 M` using the
+**N=2000 golden-stride** ratio. ***The CENSUS ratio is 0.9276, not 0.886*** — a **4.7% one-sample-vs-
+whole-mesh gap**, in the pessimistic direction. **The measured answer is 11.585 M.** *Even a
+well-powered sample is not a census, and I used one as if it were.*
+
+> ## ⚠⚠ THE CAVEAT ON THE PASS, AND IT MUST TRAVEL WITH IT
+> ***GOTHIC NOW FITS THE BUDGET. IT STILL DOES NOT CLEAR THE BAR.*** The 11.585 M mesh is **~8.73%
+> over-bar by count** (read as an order of magnitude per §0j — at C=150, 13.3% of blocks read exactly
+> 0.000%), and **10,223 targets were abandoned** at the forced-split depth limit. ***Driving that
+> residual down costs MORE triangles.*** The margin is **415 K = 3.5%**, only a few times the patch
+> estimator's own ±1.2% calibration error.
+> ### ***PASS ON AFFORDABILITY, NOT ON FIDELITY — AND WITH NO ROOM IN IT.***
+
+### 0k.6c ⇒ THE NEXT EXPERIMENT, AND THE AGENT NAMED IT PRECISELY: ***BOUND THE SPLIT, DON'T JUST CENTRE IT***
+
+`chordParam` solves `(1−f)|P−A| = f|P−B|` — it **equalises** the two distances but ***does not bound them
+below |AB|***. When the lifted path bulges more than half the chord off the segment, the equidistant
+point is *still* farther from **both** endpoints. **The signature is the worst ratio, which barely
+moves: 3.8889 → 3.8376.** ⇒ **Fall back to the chord midpoint whenever
+`max(|u−mid|, |v−mid|) ≥ |u−v|`.** The non-shortening census is already the instrument to pre-register
+it against, and the residual it targets is **0.42% conforming / 11.9% independent at cap 24**.
 
 ### 0k.7 *** AND A NEW, UNMEASURED GAP IN THE SHIPPED PRODUCT: THE DRIVER'S OWN CLAMP BINDS ***
 
@@ -1405,10 +1443,12 @@ DIFFERENT NUMBERS, it does NOT cancel out of ratios (§0k.2).*** Against a 12 M 
 operator with fixed points (§0k.3) and is likely pessimistic. **⚠ The two rows marked `red` were
 measured with a different operator than the chord row; that was my error and it is now labelled.**
 
-**⚠ AND THE BUDGET VERDICT IS NOW MEASURED, NOT ASSUMED (§0k.1):** with real conformity on the chord
-bar, ***Voronoi is 5.94 M = 49.5% of the 12 M budget (PASS)*** while ***Gothic is ~12.84 M = 107%
-(FAIL)*** — though Gothic's was measured on the defective splitter above and is likely pessimistic.
-**Nobody has re-run it, so do not quote Gothic as passing.**
+**⚠ AND THE BUDGET VERDICT IS NOW MEASURED END-TO-END (§0k.1, §0k.6b).** Whole-mesh censuses, real
+conformity, on the **fixed** splitter: ***Voronoi 5.96 M = 49.6% (PASS) and Gothic 11.58 M = 96.5%
+(PASS)*** — Gothic having flipped from 105.8% FAIL once the instrument's split-point defect was
+repaired. ⚠ ***BOTH ARE PASSES ON AFFORDABILITY, NOT ON FIDELITY:*** the Gothic mesh is still ~8.73%
+over bar with 10,223 abandoned targets, and its margin is 3.5%. **Driving the residual down costs more
+triangles, and there is not much room.**
 
 **The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
 same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
@@ -1436,9 +1476,18 @@ attached, and it has never been made deliberately.***
    cheapest action in this document and the one that most changes what we believe:*** it re-prices
    Gothic's 107% budget FAIL, and it removes the mechanism behind §0i.1's "LEPP does not converge."
    **Re-run Gothic's chord census immediately after.** *(Voronoi is unaffected — 0.000% non-shortening.)*
-   ✅ ***DONE AND IT PAID: `s107Mid3d.ts` measures 0.886× cost and 0.59× uncleared on Gothic at N=2000,
-   with a bit-identical `red` control — see §0k.6. What remains is re-measuring the conformity M on the
-   fixed operator, which is what decides Gothic's budget verdict.***
+   ✅ ***DONE, RE-CENSUSED END-TO-END, AND IT FLIPPED THE VERDICT: Gothic 12,693,179 → 11,584,681 =
+   105.8% FAIL → 96.5% PASS, with M barely moving (0.9839×) — the entire win is in the independent
+   count. See §0k.6b.*** ⚠ **But read the caveat there: it is a PASS on AFFORDABILITY, not on fidelity
+   — ~8.73% still over bar, 10,223 targets abandoned, and a 3.5% margin.**
+
+0b. ### ⇒ ***THE NEXT EXPERIMENT: BOUND THE SPLIT, DON'T JUST CENTRE IT (§0k.6c).***
+   `chordParam` **equalises** `|P−A|` and `|P−B|` but ***does not bound them below `|AB|`***, so on a
+   bulging edge the equidistant point is still outside its own segment — worst ratio barely moves
+   (3.8889 → 3.8376). **Fall back to the chord midpoint when `max(|u−mid|,|v−mid|) ≥ |u−v|`.** Residual
+   it targets: **0.42% conforming, 11.9% independent at cap 24.** The census is already the instrument.
+   ***This is also the cheapest remaining lead on the 3.37% of splits where the SHIPPED driver's own
+   0.25 clamp binds (§0k.7).***
 
 1. ⛔ ***"DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE" IS REFUTED (§0i.3, H1).*** It is
    1.35× worse than plain LEPP on Gothic and **1.86× worse on Voronoi**, both measured iso-quality, and
