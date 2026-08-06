@@ -436,3 +436,31 @@ question. **§7's H4 refutation rests entirely on the PLAIN kernel run, which co
 * **σ bands.** No confidence intervals are attached to any multiplier. The N=150 → N=2000 movement in §1
   is exactly the kind of thing that band would have caught, and it is the strongest argument for adding it.
 * **`certifyTriangle`.** Position is not scored anywhere in S94; this arm is entirely about orientation.
+
+---
+
+## 11. THE VORONOI ANGLE ARM — the coordinator's withdrawal of "Voronoi is easier" is CONFIRMED
+
+`voronoi_ring_D--H_S94CTL.stl` (SHAPE-ON, 492,068 facets), N=300, depth cap 7 (bisection 14),
+`RULER=5698d023`, refine to a STOP threshold then score against the **1 degree angular bar**:
+
+| stop | red leaves/par | red over-1 deg AREA | lepp leaves/par | lepp over-1 deg AREA | **cone** |
+|---|---|---|---|---|---|
+| 5 | 96.06x | 30.80% | 50.41x | 30.78% | **3375.02x** |
+| 3 | 147.32x | 30.20% | 97.28x | 29.81% | 4616.28x |
+| 2 | 201.39x | 27.46% | 183.59x | 26.93% | 5103.63x |
+| 1.5 | 250.14x | 17.34% | 304.28x | 18.98% | 5670.30x |
+| **1** | **399.03x** | **0.0167%** | 625.78x | 0.0764% | 6609.93x |
+
+***OVER-1-DEGREE AREA DOES NOT CROSS 5% BELOW ~250-400x ON VORONOI, AGAINST GOTHIC'S ~106-159x (section 6).***
+**Voronoi is ~2.5x HARDER on the angle bar** — exactly what the coordinator's matched-settings re-run
+says, and the opposite of the withdrawn ranking. My kill line is written against GothicArches, and
+Gothic is the easier of the two there, so **H2's refutation is measured on the MORE FAVOURABLE style.**
+
+The `cone` operator is **catastrophic on Voronoi's angle bar too — 6,610x, 84-92% uncleared** — same
+mechanism as section 6: `k = ceil(coneUB/stop)` saturates the k-cap and emits 256 children per step.
+**Fourth independent confirmation, now across two styles and two bars, that k-way "exact sizing" is the
+wrong operator inside a subdivision framework.**
+
+*(The SLACK column is chord-based in every mode, so it is NOT quotable on any angle row — stated in
+section 6 and repeated here.)*
