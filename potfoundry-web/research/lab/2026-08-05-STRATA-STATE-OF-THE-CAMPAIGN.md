@@ -1015,6 +1015,104 @@ Scorecard: `S105_BANDS.md`. Commits `27a1039d` (pre-registration, **before** the
 
 ---
 
+## 0k. *** S106/CONFORM — THE CONFORMITY MULTIPLIER IS MEASURED (1.39 / 2.01), IT DOES NOT CANCEL, AND THE SPLIT OPERATOR HAS FIXED POINTS ***
+
+### 0k.1 THE NUMBER THE CAVEAT WAS HIDING
+
+Every count in this campaign carried `(conformity ignored ... each count is a lower bound; the RATIO is
+the claim)`. Measured at last, by a real Rivara backward-longest-edge conforming arm with **zero
+hanging nodes at every step** (audited, not asserted: 0 edges with >2 faces, one-face count grows only
+with the patch boundary), against `frontierRefine.adaptBisect('lepp')` copied verbatim:
+
+| 10 µm chord, LEPP, cap 12 | independent | conforming | **M** | vs 12 M budget |
+|---|---|---|---|---|
+| **Voronoi S94CTL** — ***whole-mesh CENSUS, all 492,068 facets, no sampling*** | 4,266,821 (8.671×) | **5,944,684** (12.081×) | **1.393** | **49.5% ⇒ PASS** |
+| **Gothic S39CTL** — census independent, patch-converged conforming | 6,396,921 (5.601×) | ~12.84 M | **2.008** | **107.0% ⇒ FAIL** |
+
+***THE 12 M ANSWER IS SPLIT: VORONOI FITS WITH ROOM. GOTHIC DOES NOT.*** Gothic's M is patch-converged
+(2.055 @ 4k → 2.018 @ 16k → **2.0075 @ 64k**, boundary term 7.20% → 0.41%) with a **downward** bias of
+~1.2% calibrated against the Voronoi census — so the FAIL can only get worse.
+
+**M is also the best-conditioned multiplier this campaign has measured:** phase-block spread **±3.7% at
+N=2000** (±21.5% at N=150), against the *same mesh's* LEPP leaf multiplier spreading **32×** at N=150.
+
+### 0k.2 ⛔ AND THE ASSUMPTION UNDERNEATH THE CAVEAT IS REFUTED — CONFORMITY DOES NOT CANCEL
+
+"Only the RATIO is claimed" is only a defence if M is the same on both sides of the ratio. **It is not.**
+Measured gaps: **45% across styles, 39% across bars within Voronoi, 37% within Gothic, 21% for position
+across styles.** ***The cancellation kill does not fire on any pairing.*** M is four different numbers —
+**1.39 / ~2.01 / 1.00 / 1.27** — and §7.1's absolute counts need the matching one, not a shared one.
+
+### 0k.3 *** THE LARGER FINDING: `lift(½(θu+θv), ½(zu+zv))` IS NOT A BISECTION. IT HAS FIXED POINTS. ***
+
+Non-shortening splits — where `max(|u−mid|, |v−mid|) ≥ |u−v|`, i.e. **the "midpoint" does not lie
+between its endpoints in 3-D**:
+
+| | cap 12 | cap 24 |
+|---|---|---|
+| **Gothic** | 401 / 8,652 = **4.635%** | 44,690 / 231,778 = ***19.281%*** (worst ratio 3.784) |
+| Voronoi | 0.000% | **0.000%** (worst 0.832) |
+
+Printed mechanism, not inferred: `|uv|` 8.1654e-3 mm, `|u−mid|` 7.2363e-3 (**88.6% along the edge**),
+`dR` 7.142e-3 across a **0.18 µm** θ-arc — ***constant to 6 digits over 100,000 consecutive splits. A
+FIXED POINT.*** Some Gothic facets are **unrefinable at any depth**.
+
+***AND THE cap-24 ROW REPRODUCES §0i.1's PUBLISHED 116.889× / 32.237% TO THE DIGIT.*** So §0i.1's
+"more depth makes LEPP worse — it does not converge" now has a mechanism, and the mechanism is **a
+defective midpoint**, not a property of LEPP or of the surface.
+
+### 0k.4 ⇒ *** AND I CHECKED THE ONE THING THE AGENT COULD NOT: THE DEFECT IS IN THE INSTRUMENT, NOT THE PRODUCT ***
+
+The agent noted it never read a production file. I did.
+
+| | split point | fixed points? |
+|---|---|---|
+| `frontierRefine.ts` **and all four descendants** (`s98QRefine`, `s94ConeRefine`, `s105BandsRefine`) | `0.5(θu+θv), 0.5(zu+zv)` — the **parametric** midpoint | ***YES*** |
+| **the production driver** (`_strataConformBisectS34`) | `placeAt` → `chordParam`: a **24-iteration bisection for the true 3-D chord fraction**, shift capped at 0.25 | **mitigated** |
+
+***`PF_CB_MID3D` DEFAULTS ON*** (`process.env.PF_CB_MID3D !== '0'`), and the driver's own report line
+records what turning it off costs: *"parametric midpoint — the measured 0.819 off-centre bias is BACK."*
+**The driver team found and fixed this in July.** Grep confirms the instruments have **zero** references
+to `chordParam`/`MID3D`.
+
+> ### ***EVERY REFINEMENT COST THIS CAMPAIGN HAS PUBLISHED WAS MEASURED WITH AN OPERATOR THE PRODUCTION DRIVER DOES NOT USE — AND ON GOTHIC THAT OPERATOR HAS FIXED POINTS.***
+
+**⇒ CONFORM's recommendation inverts.** It said *"fix the split operator first."* The product's splitter
+is already fixed; ***it is the measurement instrument that needs the port.*** That is a much cheaper job
+and it invalidates far less.
+
+**What this does and does not license:**
+- **Gothic's FAIL at 107% is measured on the defective operator and is very likely pessimistic** — but
+  ***it is NOT thereby a PASS***, and nobody has re-run it. **Do not quote Gothic as passing.**
+- **Voronoi is unaffected: 0.000% non-shortening at both caps**, so its census, its M = 1.393, and its
+  49.5% PASS stand.
+- §0i.1's LEPP non-convergence is **an instrument artefact**. The §0i.1 *sampling* finding (the 25×
+  spread, tail dominance) is untouched — that was about N, not about the midpoint.
+- **M itself was measured on the defective operator**, so 1.393 / 2.008 will move when the instrument is
+  ported. The Voronoi one should barely move (0.000% affected); **Gothic's is the open one.**
+
+### 0k.5 A FRAMING ERROR OF MINE THAT THE AGENT CAUGHT
+
+***§7.1's `position` row is a `red` (1→4) multiplier while its `chord` row is `LEPP`*** — `adapt()` uses
+`children()` for both bars. **Two different operators in one table, unlabelled, by me.** Fixed there.
+And the brief I wrote fed the agent **stale inputs**: Voronoi's independent count is **4.267 M** (not
+~4.5 M) and Gothic's is **6.397 M** (not 7.6 M — ***that figure carried the retired 6.67× anchor***).
+
+**Agent's own disclosures:** a wrong first diagnosis of a stall (shipped a fix *before* having evidence
+for its cause; the fix was independently correct and proven mesh-identical on 24 rows), an `Int16Array`
+depth field that **overflowed to −31527**, a hard cap that **spun 4,000,000 times**, a guessed
+degenerate-facet cause refuted by measurement, and **a pre-registered C4 mechanism that was backwards**
+(a sparse bar drives M→1 by construction; the quantity that behaves as predicted is `M_work` = 1.10
+Voronoi vs **4.50** Gothic).
+**Not measured:** `red`/2:1-balance conformity — ***LEPP is the favourable operator, so every M here is
+a LOWER BOUND for a red-based scheme, and §7.1's position row IS red***; the 1° angle bar; the
+`turn`/`cone` operators, so ***§0i.3's 1.646×/2.358× is NOT re-priced and must not be assumed to
+survive conformity***; the Gothic chord census (still running — it can only move the FAIL further over).
+
+Scorecard: `S106_CONFORMITY.md`. Commits `fbd1a33e` (pre-registration), `c5cec83e`, `47905a5d`, `13c4cfe3`.
+
+---
+
 ## 1. THE RULERS — what to use, what to never use again
 
 | quantity | instrument | status |
@@ -1208,17 +1306,22 @@ were true, and the ruler was answering a different question than the eye.
 ***WITH §0j BANDS (±1.96·SD over 16 disjoint phase blocks).*** These are the first error bars this
 campaign has ever had:
 
-| | Gothic S39CTL | Voronoi SHAPE-on |
-|---|---|---|
-| **position 10 µm** | **1.025× ±4.3%**, 0.000% uncl | **1.053× ±4.4%**, 0.000% uncl |
-| chord 10 µm LEPP | 5.856× **±27.0%**, ~19.8% uncl | **8.697× ±4.4%**, ~0.05% uncl |
-| **1° angle** | 88.36× **±13.6%**, ~14.4% uncl | 227.95× **±6.7%**, ~15.2% uncl |
+| ⚠ **operator** | Gothic S39CTL | Voronoi SHAPE-on | ⚠ **conformity M** |
+|---|---|---|---|
+| **position 10 µm** — ***`red` 1→4*** | **1.025× ±4.3%**, 0.000% uncl | **1.053× ±4.4%**, 0.000% uncl | G **1.27** / V **1.00** |
+| chord 10 µm — ***`LEPP`*** | 5.856× **±27.0%**, ~19.8% uncl | **8.697× ±4.4%**, ~0.05% uncl | G **~2.01** / V **1.393** |
+| **1° angle** — ***`red` 1→4*** | 88.36× **±13.6%**, ~14.4% uncl | 227.95× **±6.7%**, ~15.2% uncl | **not measured** |
 
 ⚠ **The two columns are NOT ratioable** (§0i.2 — Gothic does not clear at this cap). Read each column
 down, never across.
 ⚠ ***Every `uncleared %` above is ±30% to ±656% and is shown only as an order of magnitude — see
 §0j.5. Do not quote one as a number.*** ***The position row is the best-conditioned number in this
 document*** and §7.0's headline rests on it.
+⚠ ***THESE ARE CONFORMITY-FREE COUNTS. Multiply by the M column for a real mesh — and note M is FOUR
+DIFFERENT NUMBERS, it does NOT cancel out of ratios (§0k.2).*** Against a 12 M budget on the chord bar:
+***Voronoi 5.94 M = 49.5% PASS; Gothic ~12.84 M = 107% FAIL*** — though Gothic's is measured on an
+operator with fixed points (§0k.3) and is likely pessimistic. **⚠ The two rows marked `red` were
+measured with a different operator than the chord row; that was my error and it is now labelled.**
 
 **The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
 same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
