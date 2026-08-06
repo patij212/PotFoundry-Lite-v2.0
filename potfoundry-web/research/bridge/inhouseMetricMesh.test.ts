@@ -33,4 +33,26 @@ describe('in-house per-node-metric mesher', () => {
       expect(tris).toBeGreaterThan(0);
     }
   }, 25 * 60 * 1000);
+
+  // ══════════ ANGLE-BAR SIZING REACHES THE MESHER (E-2026-08-06-ANGLE-SIZING) ══════════
+  // Always-on (seconds, no oracle): the field-level law is unit-tested in surfaceMetricField.test.ts;
+  // what is tested HERE is that `angBarRad` actually reaches `buildSurfaceMetricField` through the
+  // mesher's opts — a pass-through that is silently droppable and would leave every future "angle arm"
+  // secretly running the chord law.
+  it('a binding angBarRad refines the mesh; a slack one is a strict no-op', () => {
+    const rA = buildRadiusFn(STYLE, {}, DIMS);
+    const common = { hMin: 0.05, hMax: 8, sizeRes: 48, gradeBeta: 0.2, seedN: 8, maxPoints: 120_000, splitThresh: 1.5, optimizeSweeps: 0 } as const;
+    // tol LOOSE so the chord term is not what moves; θ* = 0.05 rad is far tighter than that chord size.
+    const chordOnly = buildInhouseMetricMesh(rA, DIMS.H, { ...common, tolMm: 0.05 });
+    const angleOn = buildInhouseMetricMesh(rA, DIMS.H, { ...common, tolMm: 0.05, angBarRad: 0.05 });
+    const slack = buildInhouseMetricMesh(rA, DIMS.H, { ...common, tolMm: 0.05, angBarRad: 1e9 });
+
+    // CEILING: the angle bar must bind — strictly more elements than chord alone.
+    expect(angleOn.points).toBeGreaterThan(chordOnly.points);
+    // FLOOR (non-vacuity): the control must be a real mesh, not a degenerate one.
+    expect(chordOnly.points).toBeGreaterThan(100);
+    // FLOOR (strict no-op): a slack bar must reproduce the chord-only mesh exactly.
+    expect(slack.points).toBe(chordOnly.points);
+    expect(slack.indices.length).toBe(chordOnly.indices.length);
+  }, 5 * 60 * 1000);
 });

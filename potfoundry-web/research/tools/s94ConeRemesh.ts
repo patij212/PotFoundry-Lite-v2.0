@@ -89,6 +89,8 @@ const SWEEPS = Math.round(envF('PF_S94M_SWEEPS', 6));
  * be separated instead of asserted.
  */
 const SPLITTHRESH = envF('PF_S94M_SPLITTHRESH', 1.5);
+/** ANGLE-BAR sizing arm, in DEGREES. 0 = off (chord mode only, the control). */
+const ANGSIZE_DEG = envF('PF_S94M_ANGSIZE_DEG', 0);
 const FINESTEP = envF('PF_S94M_FINESTEP', 0);
 const SUBS = Math.round(envF('PF_S94M_SUBS', 3));
 const CHORDTOL = envF('PF_S94M_CHORDTOL', 0);
@@ -118,6 +120,7 @@ log('===== S94 CONE REMESH — `M = g/h^2` REMESH vs THE BEST REFINEMENT OPERATO
 log(`style ${STYLE}   tag ${TAG}   chord bar ${BAR_UM} um   angle bar ${ANGBAR} deg`);
 log(`covering ruler k=${K} inset=${INSET} (${((K + 1) * (K + 2)) / 2} pts/facet). NO centroid samples.`);
 log(`kernel: buildInhouseMetricMesh  splitThresh ${SPLITTHRESH}  sizeRes ${SIZERES}  gradeBeta ${GRADE}  hMin ${HMIN}  hMax ${HMAX}  maxPoints ${MAXPOINTS}  sweeps ${SWEEPS}`);
+log(`sizing law: ${ANGSIZE_DEG > 0 ? `min(CHORD sqrt(8*tol/k), ANGLE ${ANGSIZE_DEG}deg/k)  <- ANGLE ARM` : 'CHORD sqrt(8*tol/k) only  <- control'}`);
 log(`tol sweep (mm): ${TOLS.join(', ')}       [10 um orientation chord bar == a ${(BAR_UM / 8000).toFixed(5)} mm position tol, S93 o/w p50 = 8.03]`);
 
 const rAbase = buildRadiusFn(STYLE as StyleId, { ...registryDefaults(STYLE) }, DIMS);
@@ -236,6 +239,13 @@ for (const tol of TOLS) {
       curvatureSubsamples: FINESTEP > 0 ? SUBS : undefined,
       chordTolMm: CHORDTOL > 0 ? CHORDTOL : undefined,
       chordSampleN: CHORDTOL > 0 ? 8 : undefined,
+      // ── THE ANGLE ARM (PF_S94M_ANGSIZE_DEG, DEFAULT 0 = OFF ⇒ this file's control is bit-unchanged) ──
+      // This file's own header named the gap: "An ANGLE bar would need h = theta*/kappa, a different
+      // exponent the kernel does not have — stated as a gap, not built here." It is built now, as a MIN
+      // against the chord law (a mesh must clear BOTH bars), so ANGSIZE=0 leaves the chord arm untouched.
+      // The point of the arm: the chord sweep barely moves `over-angAREA%`, which is the signature of a
+      // sizing law targeting the wrong quantity. Read the ANGLE column, not the chord one.
+      angBarRad: ANGSIZE_DEG > 0 ? (ANGSIZE_DEG * Math.PI) / 180 : undefined,
     });
   } catch (e) {
     log(`  ${tol.toFixed(5).padStart(7)}   *** THREW: ${String(e).slice(0, 120)} ***`);

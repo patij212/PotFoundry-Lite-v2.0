@@ -63,6 +63,19 @@ type ChordOpts = {
   /** MIN-overlay neighbourhood half-width in grid cells for crestSizeOverlay (default 1 = a 3×3 stamp). Keep
    *  NARROW so the overlay does not balloon triangle count away from the loci. Only used with crestSizeOverlay. */
   crestBandCells?: number;
+  /**
+   * OPT-IN ANGLE BAR θ* in RADIANS (E-2026-08-06-ANGLE-SIZING). The kernel's chord law sizes for POSITION
+   * (`sag ≈ h²·κ/8`); this sizes for ORIENTATION (`turn ≈ h·κ`), a DIFFERENT EXPONENT in κ. Composed as
+   * `h₃D = min(√(8·tol/κ), θ* / κ)` — a mesh must satisfy both bars, so the angle term may only TIGHTEN.
+   * (Mind the space in `θ* / κ`: without it the token `*` + `/` closes this comment.)
+   * Absent ⇒ `Infinity` ⇒ `Math.min` is the identity ⇒ BIT-identical to the chord-only path (asserted).
+   *
+   * WHY IT EXISTS. STRATA's canonical finding is that position closes at 1.04-1.06× triangles while the
+   * residual visible defect is ORIENTATION — and no sizing law in this repo has ever targeted it. The
+   * price is NOT small (κ=1 mm⁻¹: h_chord 0.283 mm vs h_angle 0.0175 mm at θ*=1°, ≈263× in area), so
+   * run it against a stated bar, never as a default.
+   */
+  angBarRad?: number;
 } & Grade;
 export type SurfaceMetricOpts = UniformOpts | ChordOpts;
 
@@ -198,7 +211,12 @@ export function buildSurfaceMetricField(rA: AnalyticRadiusFn, H: number, opts: S
             }
           }
         }
-        const hRaw = kappaMax > 1e-9 ? Math.sqrt((8 * o.tolMm) / kappaMax) : o.hMax;
+        // CHORD law: sag ≈ h²·κ/8 ⇒ h = √(8·tol/κ).  ANGLE law (opt-in): turn ≈ h·κ ⇒ h = θ*/κ.
+        // Composed as a MIN because a mesh must satisfy BOTH bars — the angle term may only TIGHTEN.
+        // Absent `angBarRad` ⇒ `Infinity` ⇒ `Math.min` is the identity ⇒ bit-identical to the chord path.
+        const hChord = kappaMax > 1e-9 ? Math.sqrt((8 * o.tolMm) / kappaMax) : o.hMax;
+        const hAngle = o.angBarRad !== undefined && kappaMax > 1e-9 ? o.angBarRad / kappaMax : Infinity;
+        const hRaw = Math.min(hChord, hAngle);
         h3D[idx] = Math.min(Math.max(hRaw, o.hMin), o.hMax);
       } else {
         h3D[idx] = (opts as UniformOpts).h3DMm;

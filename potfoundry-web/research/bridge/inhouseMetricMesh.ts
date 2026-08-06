@@ -47,6 +47,9 @@ export interface InhouseMeshOpts {
    *  buildSurfaceMetricField. Absent ⇒ byte-identical default. */
   curvatureFineStep?: number;
   curvatureSubsamples?: number;
+  /** OPT-IN ANGLE BAR in RADIANS (E-2026-08-06-ANGLE-SIZING). Passed straight to buildSurfaceMetricField,
+   *  where the size becomes `min(chord law, angle law)`. Absent ⇒ BIT-identical to the chord-only path. */
+  angBarRad?: number;
   /**
    * OPT-IN CREST-AWARE SIZING overlay (E-2026-07-01-CRESTAWARE). KNOWN crest/valley loci samples (u,t + a
    * pre-computed local target 3D size), rasterized into the sizing field's h3D grid as a MIN-overlay BEFORE
@@ -252,7 +255,7 @@ export function buildInhouseMetricMesh(rA: AnalyticRadiusFn, H: number, opts: In
   const sweeps = opts.optimizeSweeps ?? 6;
   const dedupeEps = opts.dedupeEps ?? 1e-6;
 
-  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells });
+  const mf = buildSurfaceMetricField(rA, H, { resU: sizeRes, resT: sizeRes, tolMm: opts.tolMm, hMin: opts.hMin, hMax: opts.hMax, gradeBeta: opts.gradeBeta ?? 0.2, curvatureFineStep: opts.curvatureFineStep, curvatureSubsamples: opts.curvatureSubsamples, crestSizeOverlay: opts.crestSizeOverlay, crestBandCells: opts.crestBandCells, angBarRad: opts.angBarRad });
   const RU = mf.resU, RT = mf.resT, M = mf.m;
   const metricAt = (u: number, t: number): [number, number, number] => {
     const fu = Math.min(Math.max(u, 0), 1) * (RU - 1), ft = Math.min(Math.max(t, 0), 1) * (RT - 1);

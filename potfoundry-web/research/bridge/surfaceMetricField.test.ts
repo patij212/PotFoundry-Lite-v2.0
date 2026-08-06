@@ -46,6 +46,60 @@ describe('buildSurfaceMetricField — first fundamental form M = g/h²', () => {
     expect(Math.abs(f.m[b + 2] / (G * inv) - 1)).toBeLessThan(0.02); // M11 = G/h₃D²
   });
 
+  // ══════════════════ ANGLE MODE (E-2026-08-06-ANGLE-SIZING) ══════════════════
+  // The kernel had exactly two laws, UNIFORM and CHORD (h₃D = √(8·tol/κ)). The campaign's binding bar is
+  // ORIENTATION, not position, and the angular analogue is a DIFFERENT EXPONENT: turn across an element of
+  // length h in a principal direction is Δθ ≈ κ·h, so h₃D = θ*/κ. Composed as a MIN with the chord law,
+  // because a mesh must satisfy BOTH bars — never as a replacement.
+  it('angle mode on cylinder: κ_max=1/R ⇒ h₃D=θ*·R ⇒ M00=4π²R²/(θ*R)²', () => {
+    const R = 45, H = 120, angBar = 0.1; // rad
+    const rA: AnalyticRadiusFn = () => R;
+    // tol deliberately LOOSE so the chord term cannot bind and the angle term is what is measured.
+    const f = buildSurfaceMetricField(rA, H, {
+      resU: RES, resT: RES, tolMm: 10, hMin: 0.5, hMax: 50, angBarRad: angBar,
+    });
+    const iu = 32, it = 32, b = (it * RES + iu) * 3;
+    const h3D = angBar * R;                          // = 4.5 mm, inside [0.5,50] so unclamped
+    const inv = 1 / (h3D * h3D);
+    const E = 4 * Math.PI * Math.PI * R * R, G = H * H;
+    expect(Math.abs(f.m[b] / (E * inv) - 1)).toBeLessThan(0.02);      // M00 = E/h₃D² (κ via central diffs ~1%)
+    expect(f.m[b + 1]).toBeCloseTo(0, 5);                             // M01 = 0
+    expect(Math.abs(f.m[b + 2] / (G * inv) - 1)).toBeLessThan(0.02);  // M11 = G/h₃D²
+  });
+
+  // TWO-SIDED GUARD. Test above only proves the angle term can TIGHTEN. This proves it cannot LOOSEN —
+  // an implementation that REPLACED the chord law instead of min-ing with it would pass the test above
+  // and silently coarsen every mesh whose chord bar is the binding one.
+  it('angle mode never loosens: a slack θ* leaves the chord size in force', () => {
+    const R = 45, H = 120, tol = 0.1;
+    const rA: AnalyticRadiusFn = () => R;
+    const f = buildSurfaceMetricField(rA, H, {
+      resU: RES, resT: RES, tolMm: tol, hMin: 0.5, hMax: 50, angBarRad: 1.0, // h_ang = 45 mm >> h_chord = 6 mm
+    });
+    const iu = 32, it = 32, b = (it * RES + iu) * 3;
+    const h3D = Math.sqrt(8 * tol * R);              // = 6 mm — the chord law must still win
+    const inv = 1 / (h3D * h3D);
+    const E = 4 * Math.PI * Math.PI * R * R;
+    expect(Math.abs(f.m[b] / (E * inv) - 1)).toBeLessThan(0.02);
+  });
+
+  // FLOOR / NO-OP INVARIANT. Absent `angBarRad` must be BIT-identical to the pre-existing chord path, and a
+  // θ* so slack it can never bind must be bit-identical to absent. Without this, a NaN or a min() ordering
+  // bug would ship as a silent global size change on every existing caller.
+  it('absent angBarRad is BIT-identical to a non-binding one (strict no-op)', () => {
+    const R = 45, H = 120, tol = 0.1;
+    const rA: AnalyticRadiusFn = (theta, z) => R + 3 * Math.sin(5 * theta) * Math.cos((3 * z) / H);
+    const base = { resU: RES, resT: RES, tolMm: tol, hMin: 0.5, hMax: 50 };
+    const without = buildSurfaceMetricField(rA, H, base);
+    const slack = buildSurfaceMetricField(rA, H, { ...base, angBarRad: 1e9 });
+    expect(slack.m.length).toBe(without.m.length);
+    let diffs = 0;
+    for (let i = 0; i < without.m.length; i++) if (!Object.is(slack.m[i], without.m[i])) diffs += 1;
+    expect(diffs).toBe(0);
+    // and the field is NON-TRIVIAL, so "0 diffs" is not vacuously true of an all-zero grid
+    expect(without.m.some((v) => v > 0)).toBe(true);
+  });
+
   it('gradation caps the adjacent size ratio to (1+β)', () => {
     // sharp spike: one tiny cell amid large cells → ungraded ratio = 10, graded ≤ 1+β
     const resU = 9, resT = 9;
