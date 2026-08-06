@@ -191,6 +191,29 @@ function fiveNormals(th: number, z: number): void {
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 let windFrac: number | null = null;
 let radialMaxUm: number | null = null;
+/**
+ * S103: the surface gate. A facet all of whose vertices lie within this of `rA` is OUTER WALL and is
+ * scored; anything else is a tread/cap/floor-fan and is REPORTED SEPARATELY.
+ * `PF_S100_SURF_GATE_MM=0` scores everything (the pre-S103 behaviour).
+ *
+ * DEFAULT 0.010 mm, NOT `landFlipPass`'s 0.05. Copying that value was a mistake and the probe caught it:
+ * `landFlipPass` uses its gate to FREEZE facets, where loose is conservative; here the gate DEFINES THE
+ * SCORED POPULATION, where loose admits boundary facets into the parameter check. Measured on
+ * CelticTriquetra (the mesh that has treads):
+ *     gate 50 um -> 98.857% on-surface, on-surface MAX 49.8117 um   (i.e. the gate's own value)
+ *     gate  1 um -> 98.812% on-surface, on-surface MAX  0.0255 um   (i.e. Gothic's 0.0310 um)
+ * A 50x tightening moved the population by 0.045 pp. **THE DISTRIBUTION IS BIMODAL** — wall at ~0.03 um,
+ * treads at ~1500 um, ~9 facets in 20,038 between. The 49.81 um was boundary facets, not a loose wall.
+ *
+ * It is set EQUAL to the parameter-mismatch threshold on purpose, which makes the on-surface MAX check
+ * vacuous by construction — so that check is REPORTED, NOT GATED, and parameter mismatch is detected by
+ * the on-surface FRACTION instead. A criterion that can never fail must not be allowed to look like a
+ * passing gate.
+ */
+const SURF_GATE = envF('PF_S100_SURF_GATE_MM', 0.010);
+/** below this on-surface fraction the mesh is judged a PARAM MISMATCH, not a mesh with treads. */
+const SURF_MINFRAC = envF('PF_S100_SURF_MINFRAC', 0.50);
+let radialOnSurfMaxUm = NaN;
 let precondOk = true;
 const precondNotes: string[] = [];
 
@@ -236,10 +259,42 @@ const precondNotes: string[] = [];
     }
   }
   radialMaxUm = mx * 1000;
-  log(`PRECOND radial: MAX |r_mesh - rA| over ${cnt} vertices = ${radialMaxUm.toFixed(4)} um`);
-  // A wrong param set reads in MILLIMETRES, not micrometres. 10 um is three orders above the observed
-  // 0.031 um and still three orders below a param mismatch.
-  if (radialMaxUm > 10) { precondOk = false; precondNotes.push(`radial membership ${radialMaxUm.toFixed(2)} um > 10 um — wrong style params or not a radial graph`); }
+  log(`PRECOND radial: MAX |r_mesh - rA| over ${cnt} vertices = ${radialMaxUm.toFixed(4)} um  [WHOLE MESH]`);
+  // ── S103. THE MAX OVER THE WHOLE MESH IS THE WRONG STATISTIC, AND IT VOIDED A GOOD MESH.
+  //
+  // A pot is not only its outer wall. CelticTriquetra's ring run emitted `1278000 outer wall + 4394
+  // TREADS`, and TREAD-WALL VERTICES LEGITIMATELY DO NOT LIE ON rA — they are a different surface. One
+  // such vertex at 1533.7 um therefore failed the whole mesh as "wrong style params", when the params
+  // were right and the wall was fine. `landFlipPass` already solved this: its surface gate FREEZES
+  // "end caps, floor fans, tread walls" instead of judging them against rA.
+  //
+  // So the precondition now discriminates the two cases it was conflating:
+  //   * WRONG PARAMS  -> essentially EVERY facet is off rA, because rA itself is the wrong function.
+  //   * TREADS/CAPS   -> the large majority are on rA and a small named minority are not.
+  // The verdict is taken on the ON-SURFACE population; the rest is REPORTED, never silently included
+  // and never allowed to void the run.
+  let onS = 0; let offS = 0; let mxOn = 0;
+  for (let t = 0; t < M.nTri; t += st) {
+    let worst = 0;
+    for (let v = 0; v < 3; v += 1) {
+      const o = t * 9 + v * 3;
+      const x = M.xyz[o]; const y = M.xyz[o + 1]; const z = M.xyz[o + 2];
+      const d = Math.abs(Math.hypot(x, y) - rA(Math.atan2(y, x), z));
+      if (d > worst) worst = d;
+    }
+    if (worst <= SURF_GATE) { onS += 1; if (worst > mxOn) mxOn = worst; } else offS += 1;
+  }
+  const onFrac = onS / Math.max(1, onS + offS);
+  radialOnSurfMaxUm = mxOn * 1000;
+  log(`PRECOND surface: ${onS} on-surface / ${offS} off-surface of ${onS + offS} sampled `
+    + `(${(100 * onFrac).toFixed(3)}% on, gate ${(SURF_GATE * 1000).toFixed(0)} um)   `
+    + `MAX |r_mesh - rA| ON-SURFACE = ${radialOnSurfMaxUm.toFixed(4)} um`);
+  // PARAMETER MISMATCH IS DETECTED BY THE **FRACTION**, NOT BY THE ON-SURFACE MAX. The max is bounded by
+  // `SURF_GATE` by construction, so gating on it would be a criterion that can never fail — the vacuous-bar
+  // trap. It is printed above so a DEGRADING wall stays visible (Gothic 0.031 um is the reference), but the
+  // verdict rests on this: with the wrong `rA`, essentially every facet leaves the gate and the fraction
+  // collapses, whereas a tread/cap population is a small named minority.
+  if (onFrac < SURF_MINFRAC) { precondOk = false; precondNotes.push(`only ${(100 * onFrac).toFixed(2)}% of facets lie on rA (< ${(100 * SURF_MINFRAC).toFixed(0)}%) — wrong style params, not a tread/cap population`); }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
@@ -274,6 +329,7 @@ const flagged: number[] = [];
 let areaAll = 0;
 let nDegenerate = 0; let areaDegenerate = 0;
 let storedDisagree = 0;
+let nOffSurf = 0; let areaOffSurf = 0;
 const allMinAng: number[] = [];
 for (let q = 0; q < nScore; q += 1) {
   const t = idx === null ? q : idx[q];
@@ -283,6 +339,17 @@ for (let q = 0; q < nScore; q += 1) {
     // A zero-area facet has no normal at all. It cannot be scored and must not be silently PASSed.
     nDegenerate += 1; areaDegenerate += 0; void o;
     continue;
+  }
+  // ── S103 SURFACE SCOPE. A tread/cap/floor-fan facet is not on `rA`, so `rA` says nothing about
+  // whether its normal is right and scoring it would be measuring the wrong surface. Excluded from the
+  // VERDICT and COUNTED, never silently dropped — the report prints the population it set aside.
+  if (SURF_GATE > 0) {
+    let worst = 0;
+    for (const [vx0, vy0, vz0] of [[g.ax, g.ay, g.az], [g.bx, g.by, g.bz], [g.cx, g.cy, g.cz]] as Array<[number, number, number]>) {
+      const d = Math.abs(Math.hypot(vx0, vy0) - rA(Math.atan2(vy0, vx0), vz0));
+      if (d > worst) worst = d;
+    }
+    if (worst > SURF_GATE) { nOffSurf += 1; areaOffSurf += g.area; continue; }
   }
   areaAll += g.area;
   allMinAng.push(g.minAng);
@@ -302,6 +369,11 @@ const screenSecs = (Date.now() - screenT0) / 1000;
 const screenEvals = RA_EVALS;
 log(`SCREEN       : centroid best-of-5 flagged ${flagged.length} of ${nScore} (${((100 * flagged.length) / Math.max(1, nScore)).toFixed(4)}%)`
   + `   ${screenSecs.toFixed(1)}s   ${(screenEvals / 1e6).toFixed(2)}M rA evals   [${el()}]`);
+if (SURF_GATE > 0) {
+  log(`SCOPE        : OUTER WALL ${nScore - nOffSurf - nDegenerate} scored   |   OFF-SURFACE ${nOffSurf} `
+    + `(treads/caps/floor-fans, area ${areaOffSurf.toFixed(3)} mm^2) NOT SCORED — rA does not describe them`);
+  if (nOffSurf > 0) log('               (their orientation needs the surface THEY belong to; this gate does not have it)');
+}
 
 // ═════════════════════════════════════════════════════════════════════════════════════════════════
 // STEP 2 — CONFIRM with the 45-point covering. THIS is the verdict.
