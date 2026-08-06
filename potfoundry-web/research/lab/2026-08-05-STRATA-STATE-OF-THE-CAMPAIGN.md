@@ -1027,11 +1027,16 @@ with the patch boundary), against `frontierRefine.adaptBisect('lepp')` copied ve
 | 10 µm chord, LEPP, cap 12 | independent | conforming | **M** | vs 12 M budget |
 |---|---|---|---|---|
 | **Voronoi S94CTL** — ***whole-mesh CENSUS, all 492,068 facets, no sampling*** | 4,266,821 (8.671×) | **5,944,684** (12.081×) | **1.393** | **49.5% ⇒ PASS** |
-| **Gothic S39CTL** — census independent, patch-converged conforming | 6,396,921 (5.601×) | ~12.84 M | **2.008** | **107.0% ⇒ FAIL** |
+| **Gothic S39CTL** — ***CENSUS both sides (the patch estimate is superseded)*** | 6,396,921 (5.601×) | **12,693,179** (11.113×) | **1.984** | **105.8% ⇒ FAIL** |
 
-***THE 12 M ANSWER IS SPLIT: VORONOI FITS WITH ROOM. GOTHIC DOES NOT.*** Gothic's M is patch-converged
-(2.055 @ 4k → 2.018 @ 16k → **2.0075 @ 64k**, boundary term 7.20% → 0.41%) with a **downward** bias of
-~1.2% calibrated against the Voronoi census — so the FAIL can only get worse.
+***THE 12 M ANSWER IS SPLIT: VORONOI FITS WITH ROOM. GOTHIC DOES NOT.*** ***Gothic's whole-mesh
+conforming census completed after the agent reported and is now the quoted number*** — 12,693,179 tris
+at 12.9878% over bar, boundary term **0.0169%**, `guardHits 0`, `mismatchTerm 0`. It lands **1.2% below
+the patch estimate** (2.008 → 1.984), which is within the downward bias the agent had calibrated and
+declared in advance — ***the patch protocol predicted its own error correctly.*** Two further figures
+from it worth carrying: **14,060 ABANDONED TARGETS** (over bar, refused at HARDCAP 24 — the mesh stays
+conforming, the target stays uncleared) and `nonShorteningSplits` **3.2569%**, which independently
+matches my 3.4677% on a different tool.
 
 **M is also the best-conditioned multiplier this campaign has measured:** phase-block spread **±3.7% at
 N=2000** (±21.5% at N=150), against the *same mesh's* LEPP leaf multiplier spreading **32×** at N=150.
@@ -1128,8 +1133,8 @@ Fidelity with the flag off reproduces the parent exactly.
 bit-identical because it routes through `children()`, which was not patched — **the intervention is
 provably confined to the bisection path.**
 
-**BUDGET, with its assumption stated:** Gothic's independent census 6,396,921 × 0.886 ≈ 5.67 M; at
-S106's M = 2.008 that is **~11.38 M = 94.9% of the 12 M budget — which would flip Gothic FAIL → PASS.**
+**BUDGET, with its assumption stated:** against the completed census (12,693,179 = 105.8%), a 0.886×
+cost factor gives **~11.24 M = 93.7% of the 12 M budget — which would flip Gothic FAIL → PASS.**
 ⚠ ***NOT YET A PASS: M itself was measured on the defective operator and has not been re-measured.
 Do not quote Gothic as passing.***
 
