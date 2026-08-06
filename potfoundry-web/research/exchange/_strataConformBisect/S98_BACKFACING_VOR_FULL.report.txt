@@ -1,0 +1,51 @@
+===== S98-BF — BACK-FACING: UNAMBIGUOUS DEFECT vs STRADDLE vs FALSE POSITIVE =====
+style Voronoi   tag VOR_S94CTL_FULL   covering k=8 inset=0.02 (45 pts/facet)
+stl C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/research/exchange/_strataConformBisect/voronoi_ring_D--H_S94CTL.stl
+dims H=120 Rb=40 Rt=50
+params {"vScale":8,"vJitter":0.8,"vThickness":0.1,"vRelief":2,"vMorph":1,"vZStretch":1,"vPulse":0,"vEdgeFade":0.15}
+492068 facets read   [0.2s]
+scoring the FULL MESH (492068 facets)
+NON-VACUITY 3 — GLOBAL WIND: 99.854% of a 8202-facet stride sample agrees with the analytic OUTWARD normal => mesh winds OUTWARD
+NON-VACUITY 2 — RADIAL MEMBERSHIP over 61509 vertices: p50 0.0011 um   p99 0.0098 um   MAX 0.0160 um
+  (this is BOTH the params check and the "is it a radial graph" check — a wrong param set reads mm, not um)
+  100000/492068   a=13 b=71 S97=73   [20.5s]
+  200000/492068   a=112 b=382 S97=385   [42.1s]
+  300000/492068   a=217 b=810 S97=814   [62.1s]
+  400000/492068   a=335 b=1348 S97=1354   [80.9s]
+
+═══ NON-VACUITY 1 — THE S97 REPRODUCTION ═══
+  S97 quantity (normDeg > 90, orient:'outward', CENTRAL candidate, k=8 inset=0.02)
+    1835 (0.3729% cnt)  AREA 0.03050%    max normDeg 178.99
+    S97 published (Gothic S39CTL, N=60000 golden sample): 305 facets, AREA 0.24338%, max normDeg 174.68
+
+═══ THE PARTITION — against the STL WINDING, best of 5 candidate analytic normals ═══
+  scored 492068 facets, total area 40394.11 mm^2, 45 lattice pts/facet
+  (a) UNAMBIGUOUS  back-facing at ALL 45 pts : 488 (0.0992% cnt)  AREA 0.01298%
+  (b) STRADDLE     back-facing at 1..44 pts: 1827 (0.3713% cnt)  AREA 0.03043%
+  (c) FRONT-FACING back-facing at 0 pts        : 489753 (99.5295% cnt)  AREA 99.95659%
+  DEGENERATE (zero area, no normal at all)     : 0 (0.0000% cnt)  AREA 0.00000%
+  worst back-facing angle in bucket (a), winding ruler: 162.71 deg
+
+  CENTROID-only back-facing (crude, best-of-5)  : 1048 (0.2130% cnt)  AREA 0.02734%
+  4-POINT test (_judgeNormal-compatible)        : 481 (0.0978% cnt)  AREA 0.01282%
+  determinacy band (|bestDot| < 1e-9 somewhere) : 0
+  STORED STL normal disagrees with winding      : 0 (0.0000% cnt)  AREA 0.00000%
+
+═══ CROSS-TAB — where the S97-flagged facets actually land ═══
+  S97-flagged AND bucket (a): 0 (0.0000% cnt)  AREA 0.00000%
+  S97-flagged AND bucket (b): 1827 (0.3713% cnt)  AREA 0.03043%
+  S97-flagged AND bucket (c): 8 (0.0016% cnt)  AREA 0.00006%
+  bucket (a) MISSED by S97  : 488 (0.0992% cnt)  AREA 0.01298%   <-- (P1): outward mode cannot see an inversion on a smooth patch
+  JACCARD( S97-flagged , bucket-a ) = 0.0000
+
+═══ MECHANISM — distributions by bucket ═══
+  minAngle deg   ALL p50 21.031   (a) p50 3.191 p10 1.847 p90 9.144   (b) p50 6.664
+  spreadRad deg  (a) p50 14.820 p90 37.675   (b) p50 42.102 p90 81.994
+  diam mm        (a) p50 0.51719 p90 1.26511   (b) p50 0.22790
+  surface TILT off radial, deg  (a) p50 58.08 p90 68.60   (b) p50 53.67
+  backFrac       (b) p10 0.0222 p50 0.2222 p90 0.8667
+  bucket (a) area mm^2  p50 4.906e-3  p90 2.863e-2
+
+  bucket (a) facet records -> research/exchange/_strataConformBisect/s98bf/S98BF_VOR_S94CTL_FULL_bucketA.ndjson  (488 written, cap 20000)
+  summary -> research/exchange/_strataConformBisect/s98bf/S98BF_VOR_S94CTL_FULL.summary.json
+  115.8M rA evals   done [99.3s]

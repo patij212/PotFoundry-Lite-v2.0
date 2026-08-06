@@ -9836,3 +9836,91 @@ mesher; the two columns are different densities so the `×` bases differ (the ab
 the base-free statement); **the ANGLE bar is still NOT closed** — 15.67% uncleared at 1° even on the
 shape-gated mesh, so S93's structural finding (*chord reachable by density, angle is the invariant with
 a genuinely irreducible set*) is untouched; N=400 parents (0.081%), one style, no σ band.
+
+---
+
+## S98-BF (2026-08-06) — *** THE 305 "BACK-FACING" FACETS CONTAIN ZERO BACK-FACING FACETS, AND THE REAL CLASS IS ONE `orient:'outward'` PROVABLY CANNOT SEE ***
+
+Scorecard `research/exchange/_strataConformBisect/S98_BACKFACING.md` (gitignored, per convention).
+Tools `research/tools/s98BackFacingPartition.ts`, `s98BackFacingMechanism.ts`, `research/render/s98BackfaceRender.cjs`.
+Reports `S98_BACKFACING_{REPRO,GOTH_FULL,VOR_FULL,VOR_SHAPEOFF,MECH_*}.report.txt`.
+
+**NON-VACUITY FIRST.** Same 60,000-facet golden sample, same settings, my tool reproduces S97's published
+triple EXACTLY: **305 facets / AREA 0.24338% / max normDeg 174.68**. Radial membership MAX 0.031 µm
+(params match the artefact and the mesh IS a radial graph); global wind 99.83% OUTWARD; STL stored normal
+disagrees with the winding on **0** facets; determinacy band `|bestDot|<1e-9` fires **0** times.
+
+**§1 THE CENSUS MEASURES THE COMPLEMENT OF THE CLASS IT NAMES.** `orient:'outward'` computes
+`d = f_winding · n_S(centroid)` and flips `f` when `d<0`, after which `angle(f,n_S(centroid)) ≤ 90°` BY
+CONSTRUCTION. Partitioning by the STL's own WINDING against the best of 5 one-sided analytic normals over
+the SAME 45-point covering:
+
+| mesh | facets | S97 `normDeg>90` | **(a) back-facing at ALL 45 pts** | (b) straddle | (c) false pos | **JACCARD** |
+|---|---|---|---|---|---|---|
+| Gothic S39CTL (the N=60k S97 sample) | 60,000 | 305 · 0.24338% area | **22** · 0.00270% | 280 | 25 | **0.0000** |
+| Gothic S39CTL FULL | 1,142,166 | 5,311 · 0.21130% | **690** · **0.00596%** | 4,918 | 439 | **0.0000** |
+| Voronoi S94CTL **SHAPE-ON (ships)** | 492,068 | 1,835 · 0.03050% | **488** · **0.01298%** | 1,827 | 8 | **0.0000** |
+| Voronoi D-- SHAPE-OFF | 806,765 | 18,361 · 0.42522% | **62,332** · **0.50635%** | 18,379 | 21 | **0.0000** |
+
+**ZERO of the 305 — and zero of all 25,812 S97-flagged facets across four censuses — is back-facing under
+any defensible convention.** Chance overlap between the 62,332 and 18,361 sets alone would be ~1,400. The
+zero is a THEOREM: bucket (a) ⇒ back-facing at the centroid (measured 690/690, 488/488) ⇒ `outward` flips
+`f` ⇒ every lattice angle becomes `180°−θ < 90°` ⇒ never flagged. ∎
+
+**§2 THE BUCKETS, NAMED.** (b) **SUP-STRADDLE**, 91.8% of the 305 — median `backFrac` 0.156 (front-facing
+over 84% of itself), median `spreadRad` 87.7° (the surface really turns ~88° inside one facet): a FIDELITY
+defect, never drawn black. (c) **CENTRAL-DIFFERENCE FALSE POSITIVE**, 8.2% — front-facing at all 45 points
+under best-of-5; flagged only because `fdNormalsCentral` scores a crease against the average of two
+one-sided normals belonging to neither flank.
+
+**§3 THE BRIEF'S EXPECTED EXPLANATION IS EMPTY.** `signMargin` on the flagged 305: p50 **0.9996**, p90
+1.0000; the outward mode flipped only **44/305 = 14.4%**. The 305 are NOT `signMargin` artefacts — had I
+measured only what was asked, I would have reported "they look fine" and missed that they contain zero real
+defects. **And the "deep cavities make outward ambiguous" folklore is REFUTED ANALYTICALLY**: for
+`r = rA(θ,z)`, `N·r̂ = r > 0` identically, for every `r_θ`, `r_z`, cavity and undercut. (The task brief also
+described the pre-`5698d023` XY sign test; that fix IS an ancestor of S97's commit — verified by
+`git merge-base --is-ancestor`.)
+
+**§4 MECHANISM — EXACT, AND ONE OF THE TWO ADMISSIBLE OPTIONS IS DEAD.** For vertices on the graph,
+`f_raw = 2·A_param_signed·N_raw + R`. Measured on all 1,178 bucket-(a) facets of both meshes:
+**H4 PARAMETRIC FOLD REFUTED 0/1178** (`A_param > 0` everywhere — there is NO winding or topology inversion
+anywhere in either mesh); **H5 CONFIRMED 1178/1178** with `ρ = |R|/|2A_param N_raw|` p50 **9.01 / 6.18**,
+max 380.7, and `cos(f_raw, lead)` p50 **−0.35** (the normal points opposite its own first-order prediction).
+Bucket-(a) `minAngle` p50 **4.20° / 3.19°** vs mesh 26.47° / 21.03°. **The class is needle slivers whose
+first-order term has fallen below the curvature remainder.** RENDER AGREES (see §6).
+
+**§5 THE SLIVER KEY IS A 34–72× RISK FACTOR AND STILL ONLY 1.6–2.9% PRECISE** — "collapse every sliver"
+would touch 23,576 / 31,092 facets to reach 690 / 488. **The O(1) CENTROID TEST is the right key**: 5 rA
+evals/facet, measured **recall 100% (690/690, 488/488)** against the 45-point covering, ~46% precision.
+≈2 s to screen a 1.14 M-facet export. (Recall is measured on two meshes, not proved.)
+
+**§6 THE LEVER ALREADY SHIPS AND IS WORTH 78×.** Same style, same rA, same registry params:
+SHAPE-OFF 62,332 (7.7262% cnt / 0.50635% area) → SHAPE-ON **488 (0.0992% / 0.01298%)** = **77.9× by count,
+39.0× by AREA** — while the SHAPE-ON arm carries **39% FEWER triangles**, so density works AGAINST it and
+the win cannot be a density artefact. **S97's own ruler under-reports this win 13× (6.1× vs 39.0×).**
+This is NOT S84's refuted `PF_CB_FOLD3D`: that guard REFUSED SPLITS (126 KB STL vs 3.06 MB, 405→1262 µm);
+the aspect gate constrains the shape of geometry it does make — the exact quantity `ρ` is inversely
+proportional to. *CAVEAT: artefact-level A/B, not one-flag (tri counts differ, S95 records the flag driving
+a seed-repair path too). Direction and order of magnitude are safe; 77.9× is not.*
+
+**§7 A POST-HOC RE-WINDING REPAIR IS REFUTED BEFORE BEING BUILT.** `A_param > 0` on 1,178/1,178 means the
+parametric mesh is correctly oriented everywhere; flipping a facet's winding would break its neighbours'
+consistency AND not move its plane. This is a SHAPE defect wearing an orientation costume.
+
+**§8 THE LAB RENDERER IS STRUCTURALLY BLIND TO THIS CLASS.** `research/render/meshRender.cjs` builds every
+material `side: THREE.DoubleSide` (lines 78–79). `s98BackfaceRender.cjs` adds a per-cell `D`/`F` spec.
+`s98bf/S98_BACKFACING_ZOOM.png` (0.6 mm zooms, bucket-(a) painted RED) shows the defects are literal NEEDLE
+BLADES — the render confirms the metric. **A RENDER I BUILT AND DISCARDED:** culling a 2.5 mm PATCH is
+invalid evidence (a patch's far side is legitimately camera-back-facing); culling is sound only on the
+CLOSED whole mesh, where this class is sub-pixel. `S98_BACKFACING_PATCH.png` is kept as the record of that
+mistake — **do not cite it.**
+
+**⇒ WHAT CHANGES.** Every "fold"/"back-facing" number in this campaign taken under `orient:'outward'` —
+including S97's 305 and its 1.071× flip ratio — is a reading of the SUP-STRADDLE class, not of back-facing
+facets, and must be relabelled. The true unambiguous back-facing AREA is **0.00596%** (Gothic) and
+**0.01298%** (ships) — **41× and 19× smaller than the quoted 0.243%**. Not zero, and zero is the standard.
+
+**⇒ PRE-REGISTERED NEXT ARMS.** (1) O(1) screen across all 20 styles, kill line: any style over 0.1% of
+AREA ⇒ the shape gate is insufficient there. (2) A ONE-FLAG `PF_CB_SHAPE_AR` A/B at fixed triangle budget,
+kill line: < 5× ⇒ §6 is confounded. (3) Price a post-hoc sliver collapse keyed on the O(1) screen and
+measure whether it clears bucket (a) to literal 0 without moving H1/H2.

@@ -1,0 +1,71 @@
+===== S98-BF STEP 2 — MECHANISM OF THE UNAMBIGUOUS BACK-FACING CLASS =====
+style Voronoi   tag VOR_S94CTL   sliver bar minAngle < 5 deg
+492068 facets
+bucket (a) records: 488  from research/exchange/_strataConformBisect/s98bf/S98BF_VOR_S94CTL_FULL_bucketA.ndjson
+
+── SLIVER MARGINAL (whole mesh, no rA) ──
+  P(minAngle < 5 deg) = 31092/492068 = 6.3186%   (AREA 1.1157%)
+
+── H4 / H5 — THE TWO ADMISSIBLE MECHANISMS ──
+  A_param_signed < 0 (PARAMETRIC FOLD)   : 0/488 = 0.00%   [H4 kill line: < 20% => REFUTED]
+  A_param_signed > 0                      : 488/488 = 100.00%
+    of those, rho > 1 (REMAINDER CAN FLIP): 488/488 = 100.00%   [H5 kill line: rho<=1 on > 20% => REFUTED]
+    of those, rho <= 1                    : 0/488 = 0.00%
+  rho   p10 2.297  p50 6.182  p90 20.845  max 100.239
+  cos(f, lead)  p10 -0.7412  p50 -0.3385  p90 -0.1012
+
+── THE SLIVER PREDICTOR, PRICED ──
+  P(sliver)              = 6.3186%
+  P(sliver | bucket a)   = 340/488 = 69.67%
+  RISK RATIO  P(back|sliver)/P(back|non-sliver) = 34.1x
+  PRECISION of a "collapse every sliver" guard: 488 defects inside 31092 slivers = 1.5695%
+    ^ THE PRICE. A guard keyed on sliverhood alone would touch that many facets to reach these.
+
+── THE O(1) CENTROID TEST AS A CANDIDATE GUARD KEY — is bucket (a) CONTAINED in it? ──
+  bucket (a) facets ALSO back-facing at the parametric centroid (best of 5, 5 rA evals): 488/488 = 100.00%
+    RECALL 100% would make the O(1) test a SOUND screen for the 45-point covering verdict; anything less
+    means a centroid-keyed guard MISSES defects and must not be sold as complete.
+
+── SAMPLE (first 40) ──
+  tri    59177  Ap    1.312e-4  rho     1.578  cos(f,lead)  -0.3749  minAng   1.81  worst  112.8  z 106.82
+  tri    67194  Ap    3.197e-5  rho    14.504  cos(f,lead)  -0.4730  minAng   7.14  worst  118.7  z 9.15
+  tri    69977  Ap    7.271e-5  rho     3.354  cos(f,lead)  -0.0947  minAng   2.53  worst   95.7  z 55.40
+  tri    71769  Ap    1.161e-4  rho     2.622  cos(f,lead)  -0.0509  minAng   2.44  worst   92.9  z 85.39
+  tri    72270  Ap    1.069e-4  rho     4.476  cos(f,lead)  -0.2979  minAng   2.41  worst  107.4  z 18.86
+  tri    72643  Ap    1.152e-4  rho     2.858  cos(f,lead)  -0.1012  minAng   2.63  worst   96.0  z 83.67
+  tri    79685  Ap    4.328e-5  rho     4.184  cos(f,lead)  -0.2900  minAng   2.17  worst  107.0  z 105.81
+  tri    82680  Ap    7.609e-5  rho     4.233  cos(f,lead)  -0.1103  minAng   1.36  worst   96.3  z 87.77
+  tri    85669  Ap    5.220e-5  rho     6.698  cos(f,lead)  -0.1064  minAng   2.62  worst   96.1  z 46.59
+  tri    86887  Ap    8.049e-5  rho     6.971  cos(f,lead)  -0.2193  minAng   2.44  worst  103.4  z 46.82
+  tri    90962  Ap    3.791e-5  rho     2.233  cos(f,lead)  -0.5207  minAng   2.18  worst  123.3  z 91.08
+  tri    93883  Ap    2.336e-5  rho    49.574  cos(f,lead)  -0.2619  minAng   8.30  worst  108.8  z 83.30
+  tri    99464  Ap    1.149e-4  rho     5.191  cos(f,lead)  -0.2878  minAng   2.04  worst  107.3  z 49.08
+  tri   102127  Ap    1.761e-5  rho     6.382  cos(f,lead)  -0.5203  minAng   2.63  worst  129.1  z 32.77
+  tri   103303  Ap    6.497e-5  rho     5.289  cos(f,lead)  -0.2511  minAng   1.97  worst  104.6  z 83.64
+  tri   103307  Ap    2.521e-5  rho     8.296  cos(f,lead)  -0.1289  minAng   2.11  worst   98.5  z 33.73
+  tri   103466  Ap    3.543e-5  rho    30.356  cos(f,lead)  -0.3779  minAng  18.83  worst  119.8  z 105.62
+  tri   104006  Ap    1.169e-5  rho     4.043  cos(f,lead)  -0.2808  minAng   2.61  worst  107.8  z 105.72
+  tri   105195  Ap    1.088e-4  rho     2.732  cos(f,lead)  -0.4232  minAng   2.32  worst  115.3  z 82.27
+  tri   106608  Ap    6.371e-5  rho    10.899  cos(f,lead)  -0.2882  minAng   2.30  worst  109.8  z 49.48
+  tri   107346  Ap    6.373e-5  rho     4.914  cos(f,lead)  -0.2204  minAng   1.79  worst  102.8  z 85.36
+  tri   108510  Ap    9.482e-5  rho     2.809  cos(f,lead)  -0.4249  minAng   1.88  worst  115.7  z 82.30
+  tri   108717  Ap    1.082e-4  rho     2.445  cos(f,lead)  -0.2885  minAng   2.06  worst  106.8  z 25.70
+  tri   108969  Ap    7.580e-5  rho     3.289  cos(f,lead)  -0.4085  minAng   2.06  worst  114.1  z 32.94
+  tri   109827  Ap    1.140e-4  rho     2.395  cos(f,lead)  -0.2544  minAng   2.09  worst  105.7  z 25.73
+  tri   114081  Ap    3.815e-5  rho    11.280  cos(f,lead)  -0.1450  minAng   2.61  worst   98.5  z 105.41
+  tri   114588  Ap    1.865e-5  rho     7.077  cos(f,lead)  -0.1571  minAng   8.32  worst  119.6  z 24.32
+  tri   115319  Ap    2.319e-5  rho     2.783  cos(f,lead)  -0.5067  minAng   2.44  worst  121.5  z 53.89
+  tri   115814  Ap    2.630e-5  rho     7.544  cos(f,lead)  -0.2965  minAng   3.19  worst  111.5  z 105.89
+  tri   120290  Ap    1.337e-5  rho     8.837  cos(f,lead)  -0.6519  minAng   5.26  worst  134.9  z 107.38
+  tri   125032  Ap    3.982e-5  rho     7.659  cos(f,lead)  -0.6833  minAng   1.54  worst  152.8  z 40.29
+  tri   125033  Ap    2.392e-5  rho    13.978  cos(f,lead)  -0.7111  minAng   1.29  worst  155.0  z 40.29
+  tri   125038  Ap    9.265e-6  rho     3.234  cos(f,lead)  -0.8347  minAng   3.75  worst  146.7  z 40.29
+  tri   125959  Ap    1.254e-5  rho    10.249  cos(f,lead)  -0.6189  minAng   5.87  worst  143.7  z 25.40
+  tri   127688  Ap    4.161e-6  rho     5.486  cos(f,lead)  -0.9227  minAng  15.88  worst  157.3  z 92.53
+  tri   127905  Ap    1.627e-5  rho    20.018  cos(f,lead)  -0.2709  minAng   4.14  worst  107.1  z 83.36
+  tri   135020  Ap    8.285e-5  rho     2.703  cos(f,lead)  -0.1921  minAng   2.04  worst  102.1  z 33.08
+  tri   135166  Ap    6.539e-5  rho     4.645  cos(f,lead)  -0.3713  minAng   2.86  worst  112.7  z 32.19
+  tri   136083  Ap    9.993e-5  rho     2.338  cos(f,lead)  -0.1585  minAng   2.66  worst   99.1  z 9.09
+  tri   138903  Ap    1.633e-5  rho    15.698  cos(f,lead)  -0.2404  minAng   7.91  worst  105.5  z 90.53
+
+done [0.6s]
