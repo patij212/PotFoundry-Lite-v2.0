@@ -419,16 +419,30 @@ S93's published `FR_REF_VOR2` to the leaf:
 SHAPE-off mesh's 37.6% — and still closes.*** Starting from a worse mesh and finishing clean is the
 strongest form this control could have taken.
 
-### 0g.2 AND IT HOLDS ON THE ANGLE BAR — VORONOI IS NOW THE *EASIER* STYLE
+### 0g.2 ⚠ MY "VORONOI IS THE EASIER STYLE" CLAIM WAS A SETTINGS CONFOUND — WITHDRAWN AND RE-RUN
 
-| to the **1° angle** bar | Gothic | **Voronoi (SHAPE-on)** |
+I first wrote that Voronoi beat Gothic on the 1° angle bar too (232.69× / 15.67% against 351.28× /
+20.67%). ***That compared a Gothic run at `uniformLevels 3, adaptiveMax 9` against a Voronoi run at
+`uniformLevels 2, adaptiveMax 6`.*** Different level caps, so not a comparison at all. **Withdrawn.**
+
+Re-run at MATCHED settings (both `uniLev 2 / maxLev 6`, N=400 golden-stride, S98 = a verbatim copy of
+`frontierRefine.ts` whose aggregates reproduce the published VORSHP report to the digit):
+
+| matched `uniLev 2 / maxLev 6` | Gothic S39CTL | Voronoi SHAPE-on |
 |---|---|---|
-| triangles | 351.28× | **232.69×** |
-| uncleared | 20.67% | **15.67%** |
+| position 10 µm | 1.04×, 0.000% uncl | 1.06×, 0.000% uncl |
+| lepp, chord 10 µm | **4.69×**, 10.39% uncl | 9.22×, **0.00% uncl** |
+| 1° angle | **94.44×**, **4.394% uncl** | 232.69×, 15.674% uncl |
 
-**Voronoi is cheaper AND clears more than the style that was supposed to be the easy one.** The
-catalogue does not split on the chord bar and does not split on the angle bar. ***There is one problem,
-not two, and it is uniform across the styles measured.***
+**Neither style dominates.** On the CHORD bar Voronoi is genuinely easier — it clears at maxLev 6 while
+Gothic still carries 10.39% uncleared and needs maxLev 9 to reach 0.00%. On the **1° ANGLE bar Gothic
+is easier by 2.5× cost and 3.6× uncleared.** ***The core §0g finding is untouched — the catalogue does
+not split into "closes" and "cannot close"; both styles clear the chord bar and neither clears 1° — but
+"Voronoi is the easier style" is false and was my error, not S95's.***
+
+**⚠ THE PATTERN, AND IT IS NOW TWICE: this is the same failure as the AR-cap confound — an A/B where
+more than one variable moved. Before quoting any two `frontierRefine` numbers against each other,
+DIFF THEIR HEADER LINES (`uniformLevels`, `adaptiveMax`, `N`, STL).**
 
 ### 0g.3 WHAT THIS RETIRES
 
@@ -483,6 +497,74 @@ and the metric was right** — a sliver class has count, not area, so an area he
 
 Scorecard: `S95_WALL_FINDINGS.md`. Renders: `s95/render/S95_scatter_SHAPE{off,on}.png` — same criterion,
 same cell-wall pattern, n = 73,002 (18.10%) against n = 4,791 (0.974%).
+
+## 0h. *** S98 — SHAPE IS A ~10× COST LEVER AND NOT A FIDELITY LEVER. THE DEFECT LIVES ON WELL-SHAPED FACETS, AND THAT CONFIRMS THE CONE. ***
+
+### 0h.1 THE INSTRUMENT, AND ITS FIDELITY CHECK
+
+`research/tools/s98QRefine.ts` is a **verbatim copy** of S93's `frontierRefine.ts` plus **one**
+addition: the LEPP arm's per-parent result binned by that parent's own shape index
+
+    q = h_min / √area = 2·√area / longest_edge          (equilateral q = 1.316; sliver q → 0)
+
+A copy and not an edit, because `frontierRefine.ts` was in use by a concurrent agent and a shared
+bundle path had already caused one cross-agent collision in this campaign. **The fidelity check was
+RUN, not assumed:** on Voronoi/S94CTL/N=400/maxLev 6/uniLev 2 every aggregate line reproduces the S95
+`VORSHP` report to the digit — ORIENTATION 8452 = 21.13×/0.000%, POSITION 424 = 1.06×, lepp 3687 =
+9.22×/0.00% with leaf minAngle mean 30.3… worst 0.11, turn 26108 = 65.27×/21.96%, and all four angle
+bars. The copy has not drifted.
+
+**WHY IT EXISTS:** S95 measured shape-vs-wall-angle **ACROSS two meshes**. This measures it **WITHIN
+one mesh**, where nothing else can differ.
+
+### 0h.2 THE RESULT — AND MY PRE-REGISTERED KILL FIRES
+
+**Voronoi (shape-gated), chord bar:** uncleared is **0.000% in every q bin** — but leaves/parent runs
+**28.80× at q ∈ [0.2,0.3] down to 2.89× at q ∈ [1.2,1.4]**. ***A ~10× triangle-cost multiplier from
+parent shape alone, same mesh, same bar, same operator.*** That is the largest single cost lever
+measured in this campaign, and it is a mesher configuration choice.
+
+**Gothic, 1° angle bar — and this is the decisive row:**
+
+| q bin | parents | mesh AREA % | 1° uncleared % |
+|---|---|---|---|
+| 0.20–0.30 | 5 | 0.160 | 12.897 |
+| 0.30–0.40 | 14 | 0.995 | 5.212 |
+| 0.40–0.60 | 55 | 4.702 | 2.423 |
+| 0.60–0.80 | 109 | 13.254 | 0.037 |
+| **0.80–1.00** | **139** | **57.465** | ***20.585*** |
+| 1.00–1.20 | 62 | 7.296 | 0.000 |
+| 1.20–1.40 | 16 | 16.127 | 0.000 |
+
+***THE LARGEST UNCLEARED POPULATION SITS AT GOOD SHAPE*** — 139 parents holding **57.5% of mesh area**
+at q ≈ 0.9, carrying **20.6% uncleared**, while the sliver bins carry **0.000%**. Uncleared is not
+monotone in q on either style. **⇒ My pre-registered kill fires as written: parent shape does NOT
+decide angle-bar clearability.**
+
+### 0h.3 WHAT THIS SETTLES
+
+- **My "the driver optimises seed fidelity while destroying refinability" reframing is HALF REFUTED.**
+  The surviving half is real and large: shape is a ~10× **COST** lever (and S95's 221.95× → 9.22× is
+  the same effect at population scale). The refuted half: it is **not** the mechanism behind the open
+  1° frontier, so shape-gating is **not** a competitor to the sizing field.
+- ***IT IS A DIRECT, INDEPENDENT CONFIRMATION OF THE §0f.1 CONE FINDING.*** S93 said the over-bar
+  population is *well-shaped, large, and turning* — not slivers, not hubs, not creases. S98 reaches
+  the same conclusion from the opposite direction, by binning on shape and finding the defect
+  **concentrated on the well-shaped majority of the surface**. Two instruments, two directions, one
+  answer. ***The cone-driven sizing field is aimed at the right population.***
+
+### 0h.4 ⚠ AND IT CAUGHT A CONFOUND OF MINE — SEE §0g.2
+
+Running Gothic at the Voronoi arms' settings is what exposed that §0g.2's original "Voronoi is the
+easier style" compared a `maxLev 9` Gothic run against a `maxLev 6` Voronoi run. Withdrawn and
+re-stated there at matched settings. ***Before quoting any two `frontierRefine` numbers against each
+other, DIFF THEIR HEADER LINES (`uniformLevels`, `adaptiveMax`, `N`, STL).*** This is the second
+settings-confound of the campaign after the AR-cap A/B; it is a recurring failure mode, not a one-off.
+
+**Caveat unchanged:** `frontierRefine` ignores conformity for every operator equally, so all counts
+are **lower bounds** and only ratios are claimed.
+
+---
 
 ---
 
