@@ -9836,3 +9836,60 @@ mesher; the two columns are different densities so the `×` bases differ (the ab
 the base-free statement); **the ANGLE bar is still NOT closed** — 15.67% uncleared at 1° even on the
 shape-gated mesh, so S93's structural finding (*chord reachable by density, angle is the invariant with
 a genuinely irreducible set*) is untouched; N=400 parents (0.081%), one style, no σ band.
+
+---
+
+### S94-CONE (2026-08-06) — *** THE 6.67x LEPP ANCHOR IS NOT A NUMBER (25x SPREAD, ONE FACET), AND A CONE-DRIVEN SIZING FIELD IS 1.35-1.86x WORSE THAN PLAIN LEPP ON BOTH STYLES ***
+
+Agent CONE. Tools `research/tools/s94ConeField.ts` (analytic frontier from the S93 census),
+`s94ConeRefine.ts` (measured operators), `s94ConeRemesh.ts` (`M = g/h2` remesh) + `run-s94-*.sh`.
+Scorecard `research/exchange/_strataConformBisect/S94_CONE_FINDINGS.md`.
+RULER: sections 1-7 legacy sign; sections 8-9 `5698d023` (sign from the analytic surface normal), and
+**the verdicts are unchanged between the two** (red 9.721 -> 9.720, cone 9.607 -> 9.607).
+
+**H1 (a cone-driven field clears the 10 um orientation CHORD bar cheaper than LEPP) — REFUTED, twice.**
+Only rows where BOTH operators reach 0.000% uncleared are compared (matching the cap NUMBER is not
+enough — cap 12 frees Voronoi and still binds Gothic; match the RESIDUAL):
+
+    GothicArches, N=2000, cap 16, scoped smooth-relief   lepp 3.120x   cone 4.211x = 1.350x WORSE
+    Voronoi SHAPE-ON, N=800, cap 12, unscoped            lepp 8.650x   cone 16.076x = 1.859x WORSE
+
+`coneOracle` (same k-way split, MEASURED driver) is still 1.276x / 1.809x worse => the loss is in the
+SPLIT, not the driver. A k-way split imposes the parent's worst-case k on all k^2 children at once;
+bisection's factor-2 granularity is already the finest a subdivision operator can be. SHAPE GUARD
+PASSES (cone leaf minAngle equals red's and matches lepp's worst) so this is a COUNT refutation.
+
+**THE ANCHOR.** `frontierRefine` ran its lepp arm only at N=150. Re-measured, same mesh, same bar:
+`4.69x(N400/cap12) 5.29x(N800/cap12) 5.50x(N600/cap16) 6.67x(N150/cap16) 3.12x(N2000/cap16 SCOPED)
+10.76x(N2000/cap16) 116.89x(N2000/cap24)`, uncleared 0.00% -> 32.24%. The 5.50 -> 12.71x jump is ONE
+parent (chord 419 um, sup angle 123.6 deg, minAngle 2.78 deg, slope 7.735) entering between N=600 and
+N=1200. `red` never blows up (0.000% at every N). ***No LEPP multiplier here is quotable without N, cap,
+scope AND uncleared %.***
+
+**THE PRIZE IS A REMESH PRIZE (1.93x), AND THE SHIPPED KERNEL DOES NOT DELIVER IT.** Per-leaf slack at
+the MEASURED exponent p=1.717: lepp 3.120 -> 1.615 leaves/par free-placement. H4 tested it directly --
+`buildInhouseMetricMesh` + `buildSurfaceMetricField`, kernel defaults, same ruler, same surface,
+tol = 0.00125 (= 10 um chord / the measured o/w 8.03): **3,347,320 tris = 2.931x flag-OFF and still
+14.795% over bar**, where scoped LEPP clears at 3.120x. Domain control 1.0005x, non-vacuity 84.8% at the
+loose end. **But leaf minAngle 47.3 deg vs the STL's 34.5 and LEPP's 37.6** -- the sliver-quality
+property reproduced on a task it was not built for. Two separable causes wired and stated, neither
+asserted: `splitThresh 1.5` (chord up to 2.25x tol) and sizeRes-160 grid aliasing (`curvatureFineStep`).
+
+**H2 (over-1deg AREA < 5% at <= 12x) — REFUTED by two instruments.** Fractional-knapsack optimum, which
+no isotropic field can beat: **18.33x**. Measured angle-stop sweep: over-1deg AREA does not cross 5%
+below **~106x**; full clearance ~155x. **H3 (anisotropy >= 1.5x at AR cap 5) — CONFIRMED, 1.89x on the
+chord bar**, as a REMESH lever only (facet long axes misaligned with the slow direction, area-wt p50
+28.43 deg).
+
+**CONTROLS:** `red` reproduces S93 bit-exactly at N=150 (8.340x) AND N=2000 (9.721x); `lepp` reproduces
+6.673x at N=150; independently reproduces S95's shape-gated Voronoi lepp (8.650x@N800 vs 9.22x@N400,
+both 0.000%) and the coordinator's matched Gothic (5.289x/10.329% vs 4.69x/10.39%); vertex-on-surface
+2.074e-2 um; level-0 over-bar AREA 42.912%; first `signMargin` measurement on Gothic (4.083% < 0.10,
+0.125% < 0.01) and on SHAPE-ON Voronoi (0.136% / 0.013% = **the aspect gate conditions the RULER too**).
+
+**NOT MEASURED:** conformity (ignored for all operators equally => all counts are LOWER bounds, ratios
+only, and this is UNFAIR TO THE REMESH not to LEPP); any production mesher arm or flag; styles beyond
+GothicArches + Voronoi; the anisotropic metric as an actual mesh; an ANGLE-mode sizing law in the kernel
+(`h = theta*/kappa`, a different exponent -- named as a gap, not built); sigma bands on any multiplier;
+`certifyTriangle` (S94 scores orientation only). **ABANDONED:** the `chordTolMm` sag-guard remesh arm --
+1,218 s CPU, ZERO rows checkpointed, stopped; no inference drawn.

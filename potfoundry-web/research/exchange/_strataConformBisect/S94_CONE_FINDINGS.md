@@ -39,7 +39,28 @@ the refutation below is on COUNT, not on shape.**
 
 ---
 
-## 0. THE ONE PARAGRAPH
+## 0. THE ONE PARAGRAPH  *(final; supersedes any earlier reading of this file)*
+
+***THE 6.67× ANCHOR THE ARM WAS POINTED AT DOES NOT EXIST AS A NUMBER, AND ONCE IT IS RE-MEASURED
+PROPERLY H1 IS REFUTED IN BOTH DIRECTIONS AND ON BOTH STYLES.*** Plain LEPP on GothicArches at the same
+bar, same STL, same ruler reads **4.69× / 5.29× / 5.50× / 6.67× / 3.12× / 10.76× / 116.89×** depending
+only on N, the depth cap and the scope — a **25× spread**, with uncleared % swinging 0.00%→32.24% — and
+the entire jump from 5.50× to 12.71× is **ONE parent** (minAngle 2.78°, slope 7.735) entering the sample
+between N=600 and N=1200 (§1.1). Measured on the only rows where both operators reach **0.000%
+uncleared** — the only comparison that is iso-quality — a cone-driven sizing field is **1.350× worse
+than LEPP on Gothic (4.211× vs 3.120×) and 1.859× worse on shape-gated Voronoi (16.076× vs 8.650×)**.
+The mechanism is printed, not guessed: `coneOracle` — the same k-way split driven by the *measured*
+chord — is still 1.28×/1.81× worse, which isolates the loss to the SPLIT rather than the driver;
+bisection's factor-2 granularity is already the finest a subdivision operator can be. ***What IS real is
+a 1.93× prize no subdivision operator can reach:*** measured on LEPP's own leaves, a free-placement
+mesher certifies **the same geometry** at **1.615 leaves/parent instead of 3.120**. **H4 tested that
+directly and the `M = g/h²` kernel does NOT deliver it as shipped** — at the theoretically-correct
+tolerance it spends **2.931×** the triangles and is still **14.795%** over bar (though its leaf minAngle
+is **47.3°** against the STL's 34.5° and LEPP's 37.6°). **H2 is refuted by two independent instruments**
+(knapsack optimum 18.33×, measured >106×, against a 12× kill). **H3 is confirmed** (1.89× at AR ≤ 5) and,
+like everything else here, is a *generation* lever, not a refinement one.
+
+## 0b. THE ONE PARAGRAPH AS FIRST WRITTEN (kept — it was right about the mechanism, wrong about §1's framing)
 
 ***THE 6.67× ANCHOR THE WHOLE ARM WAS POINTED AT IS A 150-PARENT SAMPLING ARTEFACT, AND ONCE IT IS
 RE-MEASURED, H1 IS REFUTED THE OTHER WAY: A CONE-DRIVEN FIELD IS 1.28–1.44× WORSE THAN PLAIN LEPP.***
