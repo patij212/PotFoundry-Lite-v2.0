@@ -139,8 +139,8 @@ const areaOf = (
   return 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
 };
 
-interface Col { cntOver: number; areaOver: number; areaAll: number; maxUm: number; }
-const mk = (): Col => ({ cntOver: 0, areaOver: 0, areaAll: 0, maxUm: 0 });
+interface Col { cntOver: number; areaOver: number; areaAll: number; maxUm: number; cntFold: number; areaFold: number; maxDeg: number; }
+const mk = (): Col => ({ cntOver: 0, areaOver: 0, areaAll: 0, maxUm: 0, cntFold: 0, areaFold: 0, maxDeg: 0 });
 
 const scratch = new Float64Array(12);
 function scoreMesh(xyz: Float64Array, label: string): { cen: Col; cov: Col } {
@@ -166,6 +166,17 @@ function scoreMesh(xyz: Float64Array, label: string): { cen: Col; cov: Col } {
     if (Number.isFinite(vu)) {
       if (vu > cov.maxUm) cov.maxUm = vu;
       if (vu > BAR_UM) { cov.cntOver += 1; cov.areaOver += ar; }
+    }
+    // ── S97 THE FOLD CLASS. `normDeg > 90` means the facet is BACK-FACING its own surface — not an
+    // approximation of anything, and the most visually destructive defect a mesh can carry (inverted
+    // normals render as black or wrongly-lit patches). Isolated here because the flip's headline was
+    // judged on BULK orientation area (S92: 1.050x, unimpressive) and nobody has asked what it does to
+    // THIS subclass, which is the one that matters for export/visual quality. Measured on the COVERING
+    // ruler, so it is not the centroid quantity S92 refuted.
+    const nd = (out.normRad * 180) / Math.PI;
+    if (Number.isFinite(nd)) {
+      if (nd > cov.maxDeg) cov.maxDeg = nd;
+      if (nd > 90) { cov.cntFold += 1; cov.areaFold += ar; }
     }
     if ((q + 1) % 10000 === 0) log(`  ${label}: ${q + 1}/${idx.length}   [${((Date.now() - T0) / 1000).toFixed(1)}s]`);
   }
@@ -194,6 +205,13 @@ log(`    AFTER  over-bar ${rA2.cov.cntOver}/${idx.length} (${cpct(rA2.cov).toFix
 log(`    *** COVERING ratio  by AREA ${ratio(rB.cov, rA2.cov)}   by COUNT ${cratio(rB.cov, rA2.cov)} ***`);
 log('');
 log(`  LEVEL GAP (BEFORE, covering/centroid over-bar AREA): ${(pct(rB.cov) / Math.max(1e-30, pct(rB.cen))).toFixed(2)}x`);
+log('');
+log('  ═══ THE FOLD CLASS (normDeg > 90 on the COVERING ruler — facets BACK-FACING their own surface) ═══');
+const fpc = (c: Col): number => (100 * c.areaFold) / Math.max(1e-30, c.areaAll);
+log(`    BEFORE  folded ${rB.cov.cntFold}/${idx.length} facets   AREA ${fpc(rB.cov).toFixed(5)}% of sampled surface   max normDeg ${rB.cov.maxDeg.toFixed(2)}`);
+log(`    AFTER   folded ${rA2.cov.cntFold}/${idx.length} facets   AREA ${fpc(rA2.cov).toFixed(5)}% of sampled surface   max normDeg ${rA2.cov.maxDeg.toFixed(2)}`);
+log(`    *** FOLD ratio  by COUNT ${(rB.cov.cntFold / Math.max(1, rA2.cov.cntFold)).toFixed(3)}x   by AREA ${(fpc(rB.cov) / Math.max(1e-30, fpc(rA2.cov))).toFixed(3)}x ***`);
+log('    (a fold is not an approximation — it is a defect. ZERO is the only acceptable value for export.)');
 log('');
 // NON-VACUITY. The banked reference is PER MESH and must be supplied per mesh — the first version of
 // this block hardcoded Gothic's 8.131/2.179 and therefore printed a 55%/251% "failure" on Voronoi, whose
