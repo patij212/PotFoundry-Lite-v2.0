@@ -1,0 +1,151 @@
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  S99 CREASE CENSUS — GothicArches / T2_GOTH_S35M43H   100000 facets sampled of 1140696
+  over-bar (2 sin(theta/2)*diam > 10 um):  COUNT 60847/100000 = 60.847%   AREA 43.411% of sampled area
+══════════════════════════════════════════════════════════════════════════════════════════
+
+── H-C1  HOW BIG IS THE CREASE CLASS, MEASURED h-FREE? ──
+   S93 used `kinkDeg > 1` at a FIXED h = 2e-4 mm. Both are shown on the SAME facets.
+   turn >  1 deg   ALL: cnt   0.337% area   0.059%    OVER-BAR: cnt   0.546% defAREA   0.132%
+   turn >  5 deg   ALL: cnt   0.322% area   0.051%    OVER-BAR: cnt   0.526% defAREA   0.117%
+   turn > 15 deg   ALL: cnt   0.311% area   0.046%    OVER-BAR: cnt   0.508% defAREA   0.106%
+   turn > 45 deg   ALL: cnt   0.280% area   0.042%    OVER-BAR: cnt   0.457% defAREA   0.098%
+   S93 kinkDeg>1 (h=2e-4)  ALL: cnt   1.041% area   0.357%    OVER-BAR: cnt   1.566% defAREA   0.805%
+   *** RATIO (over-bar defAREA, h-free / h-dependent) = 0.16x ***
+   agreement: h-free AND kinkDeg>1 : 184   h-free only: 153   kinkDeg>1 only: 857
+   ⇒ RECALL of the h-dependent detector on genuine crossings: 54.60%
+   ⇒ PRECISION of the h-dependent detector: 17.68%
+
+── TWO-WAY CONFUSION MATRIX over EVERY sampled edge (neither detector picks its own test set) ──
+   edges probed 300000
+   BOTH fire                                    : 477 (0.1590%)
+   DRIVER only (locateKinkRaw != null, turn<bar): 9714 (3.2380%)
+      adjudicated at the DRIVER's OWN t: turn < 1 deg (driver FALSE POSITIVE) 8360   turn > bar (outside my EPS inset) 1354
+   GAUSS-MAP only (driver silent)               : 4 (0.0013%)
+   neither                                      : 289805
+   crossings won by the coarse-scan RUNNER-UP bracket (masking check): 6
+
+   ── ADJUDICATION of the "outside my EPS inset" cell: distance from the crossing to the nearest
+      ENDPOINT, um. < CONF_MM (0.6 um) => THE VERTEX IS ON THE CREASE (conformed, correctly not a
+      span). >> 0.6 um => a thin spanning band the inset threw away (the census under-counts). ──
+   n 1354   p05/25/50/75/95/max : 0.1551  0.7380  1.412  2.680  10.15  120.4
+   share <  0.6 um : 18.98%
+   share <    5 um : 87.30%
+   share <   50 um : 98.89%
+
+   ── THE SEPARATION TEST. `locateKinkRaw`'s two-scale ratio small/big is 1/4 at a true C0 kink and
+      1/16 at a smooth curvature peak. The driver's threshold is kinkRatio = 0.15. If the
+      FALSE POSITIVES sit below the TRUE ones, ONE CONSTANT makes a conformance-aware accept rule
+      affordable; if they overlap, it cannot be keyed on this detector. ──
+   FALSE POSITIVES (n 8360)  ratio p05/25/50/75/95/max : 0.1887  0.2416  0.2483  0.2503  0.2587  692.8
+   TRUE  CROSSINGS (n 1831)  ratio p00/05/25/50/75/95 : 0.1504  0.2500  0.2504  0.2514  0.2521  0.2554
+     threshold 0.15 : TRUE kept 100.00%   FALSE surviving 100.00%   (edges demanded 10191 of 300000 = 3.397%)
+     threshold 0.18 : TRUE kept 99.40%   FALSE surviving 96.71%   (edges demanded 9905 of 300000 = 3.302%)
+     threshold 0.20 : TRUE kept 99.13%   FALSE surviving 92.60%   (edges demanded 9556 of 300000 = 3.185%)
+     threshold 0.22 : TRUE kept 98.91%   FALSE surviving 88.19%   (edges demanded 9184 of 300000 = 3.061%)
+     threshold 0.24 : TRUE kept 98.47%   FALSE surviving 77.05%   (edges demanded 8244 of 300000 = 2.748%)
+
+── H-C4  IS IT A GENUINE 1-D C0 LOCUS, OR SMOOTH HIGH CURVATURE?  (the (d) test) ──
+   ladder ratio turn(L*2^-14)/turn(L*2^-6) on 337 crossings, area-wt p05/25/50/75/95: 0.09693  0.9997  1.000  1.001  1.004
+   ratio > 0.8 (INVARIANT under a 256x shrink => genuine C0): cnt 96.736%  area 86.548%
+   ratio < 0.05 (VANISHES => smooth curvature peak)         : cnt 0.000%  area 0.000%
+
+── H-C2  DETECTION: does the DRIVER's OWN `locateKinkRaw` find these crossings? ──
+   crossings (turnFine > 1 deg): 337
+     driver FIRES  (kink != null)  : cnt  99.407%  area  99.779%
+     of which JUMP (=> CURTAIN,    : cnt   0.000%  area   0.000%
+        triangleNeed returns 'none', never snapped)
+     driver MISSES (kink == null)  : cnt   0.593%  area   0.221%
+   turn of the MISSED crossings, area-wt p05/25/50/75/95 (deg): 1.071  1.071  1.071  1.416  1.416
+   turn of the FOUND  crossings, area-wt p05/25/50/75/95 (deg): 1.415  34.41  122.0  145.5  162.9
+   driver ratio on FOUND, area-wt p05/50/95: 0.2411  0.2503  0.2575   (kinkRatio 0.15, jumpRatio 0.62)
+   |t_driver - t_true| on FOUND, area-wt p05/50/95 (edge fraction): 5.439e-8  5.700e-7  0.001312
+     driver located the SAME crossing (|dt| < 0.02): cnt 99.403%  area 98.433%
+
+── H-C3  PLACEMENT: how far is the crossing from the nearest facet VERTEX? ──
+   miss distance (um), area-wt p05/25/50/75/95/max : 4.854  19.87  32.29  51.63  111.4  233.0
+   as a FRACTION of facet diam, area-wt p05/25/50/75/95: 0.02227  0.05601  0.08005  0.1545  0.3751
+   crossings within   0.6 um of a vertex : cnt   1.187%  area   0.128%
+   crossings within    10 um of a vertex : cnt  30.861%  area   7.901%
+   crossings within   100 um of a vertex : cnt  92.582%  area  93.065%
+   driver's own `conformed` flag TRUE on them     : cnt   1.187%  area   0.268%
+   facet diam of crossed facets, area-wt p05/50/95 (mm): 0.1411  0.3119  0.7136
+
+   *** THE SNAP_ALPHA TEST. min(t,1-t) of the crossing on ITS OWN EDGE. The driver snaps ONLY when
+       SNAP_ALPHA=0.12 < t < 1-SNAP_ALPHA; in-band it falls through to a midpoint split (or, with
+       PF_CB_MOVE43H=1, to a vertex MOVE — which was OFF in both committed meshes). ***
+   tMin, area-wt p05/25/50/75/95 : 0.05466  0.06476  0.1099  0.2143  0.4363   (UNIFORM would be 0.05/0.25/0.50 of 0.5 => 0.025/0.125/0.25)
+   IN the SNAP_ALPHA band (tMin <= 0.12)           : cnt  24.926%  area  55.390%
+   crossed EDGE length, area-wt p05/50/95 (mm): 0.09082  0.2547  0.7136
+
+   *** THE ACCEPT TEST. The driver's OWN accept quantity `sagAdaptiveRaw` (INFINITE-PLANE, the
+       ranked+accepted number) on the crossed facets. A facet under acceptTol is never re-queued,
+       so its crease crossing is never revisited whatever the locus machinery would have done. ***
+   planeSag (um), area-wt p05/25/50/75/95 : 0.6860  1.334  2.075  2.790  3.325
+   ACCEPTED by the plane ruler at acceptTol  3.5 um : cnt  87.537%  area  95.841%
+   ACCEPTED by the plane ruler at acceptTol    7 um : cnt  95.549%  area  97.640%
+   ACCEPTED by the plane ruler at acceptTol   10 um : cnt  99.110%  area  99.404%
+   edge chord SAG (the DIRECTED rank key), area-wt p05/50/95 (um): 0.6148  2.961  69.05
+
+   ── JOINT: which gate is each surviving crossing sitting behind? (acceptTol from the run.json) ──
+   A. ACCEPTED by the plane ruler (planeSag < 3.5 um)                : cnt  87.537%  area  95.841%
+   B. not accepted, but IN the SNAP_ALPHA band (=> R4 dead end)       : cnt   2.374%  area   1.446%
+   C. not accepted, out of band (=> a SHAPE/AR refusal or budget)     : cnt  10.089%  area   2.713%
+
+── CONTEXT: what do crossed facets look like on the orientation ruler? ──
+   CROSSED   n 337  normDeg p50 102.1  tangUm p50 318.2  over-bar cnt 98.516% / area 97.546%
+   UNCROSSED n 99663  normDeg p50 0.5767  tangUm p50 8.890  over-bar cnt 60.720% / area 43.379%
+   ratio normDeg / (turn/2) on CROSSED, area-wt p05/50/95: 0.06611  1.790  4.558  (1 = the facet plane bisects the crease)
+   *** CREASE-CROSSING share of the OVER-BAR defect AREA: 0.132%  (count 0.546%) ***
+   *** same at a 5-deg dihedral floor:                    0.117%  (count 0.526%) ***
+   *** EXTRAPOLATED whole-mesh crease-spanning FACET COUNT: 3844 of 1140696 ***
+
+   ── OVERLAP WITH S93's "FOLDED" CLASS (normDeg > 90). S93 declares FOLDED/CREASE/SMOOTH mutually
+      exclusive; if the crossings are mostly back-facing they were being counted as FOLDED. ──
+   FOLDED (normDeg>90)            : cnt 0.548%  area 0.218%   over-bar defAREA 0.502%
+   FOLDED **and** crease-crossing  : cnt 0.216%  area 0.031%
+     => share of the FOLDED class that is crease-crossing: cnt 39.416%  area 14.395%
+     => share of the CROSSING class that is folded       : cnt 64.095%  area 53.239%
+
+── THE CUT: does an EDGE ON the crease remove the defect, and what does it cost? ──
+   1->3 cut along the crease CHORD PQ (two crossings) vs 1->2 split at P (one crossing:
+   a VERTEX on the crease but NO edge on it). Cut points lifted with the mesher's own addV.
+   1->3 (edge ON the crease)  n=144
+     parent normDeg  area-wt p50/90/max : 94.43  127.6  173.4
+     WORST CHILD     area-wt p50/90/max : 44.75  82.10  91.72
+     parent tangUm   area-wt p50/90/max : 265.3  1167  1167
+     WORST CHILD tangUm p50/90/max      : 192.1  933.0  935.1
+     child minAngle  area-wt p05/50     : 0.01475  0.1350   (parent 2.076  11.40)
+     area preserved (kids/parent) p05/50/95: 0.03406  0.7479  1.712
+     CLEARS the 10-um chord bar : cnt 2.78%
+     CLEARS a 5-deg angular bar     : cnt 0.00%
+     children with minAngle < 5 deg : cnt 97.22%
+   1->2 (vertex only)  n=193
+     parent normDeg  area-wt p50/90/max : 104.1  153.4  175.8
+     WORST CHILD     area-wt p50/90/max : 103.8  153.7  172.2
+     parent tangUm   area-wt p50/90/max : 375.7  946.3  1301
+     WORST CHILD tangUm p50/90/max      : 351.8  917.1  1366
+     child minAngle  area-wt p05/50     : 0.6749  4.488   (parent 4.578  34.50)
+     area preserved (kids/parent) p05/50/95: 0.1712  1.007  1.603
+     CLEARS the 10-um chord bar : cnt 8.29%
+     CLEARS a 5-deg angular bar     : cnt 9.84%
+     children with minAngle < 5 deg : cnt 79.79%
+
+   ── THE MOVE ARM (§4.3 / PF_CB_MOVE43H, BUILT and default OFF): move the NEAREST endpoint onto
+      the crossing instead of adding a vertex. ZERO extra triangles. Facet-local only — the moved
+      vertex's STAR is NOT measured here; the displacement is reported so that risk is visible. ──
+   n=337
+     parent normDeg  area-wt p50/90/max : 102.1  153.4  175.8
+     AFTER THE MOVE  area-wt p50/90/max : 5.754  151.8  171.0
+     parent tangUm   area-wt p50/90/max : 318.2  1109  1301
+     AFTER tangUm    area-wt p50/90/max : 24.89  917.1  1099
+     minAngle after  area-wt p05/50     : 0.6742  32.39   (parent 2.800  32.13)
+     DISPLACEMENT um area-wt p50/90/max : 33.72  99.60  247.3
+     still crease-crossed after the move: cnt 15.73%
+     CLEARS the 10-um chord bar : cnt 19.58%
+     CLEARS a 5-deg angular bar     : cnt 27.00%
+     minAngle < 5 deg after         : cnt 59.35%  (parent 33.53%)
+   TRIANGLE COST on the sampled crossings: +481 for 337 parents = +1.43 per crossing facet
+   => extrapolated whole-mesh cost: +5487 triangles on 1140696 = +0.4810%
+
+total [287.7s]

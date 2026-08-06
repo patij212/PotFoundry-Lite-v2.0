@@ -1,0 +1,43 @@
+══════════════════════════════════════════════════════════════════════════════════════════
+  S100 BACK-FACING SHIP GATE — unambiguous back-facing facets must be ZERO
+══════════════════════════════════════════════════════════════════════════════════════════
+mode         : *** BLOCKING *** (PF_S100_GATE_BLOCK=1) — FAIL exits 3, NOT-MEASURED exits 4
+stl          : C:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/potfoundry-web/research/exchange/_strataConformBisect/gothicarches_ring_DS-HT_S39CTL.stl
+style / tag  : Voronoi / NV_WRONGSTYLE
+dims         : H=120 Rb=40 Rt=50
+confirm      : 45-point covering, k=8 inset=0.02  (S98's verdict instrument)
+params       : {"vScale":8,"vJitter":0.8,"vThickness":0.1,"vRelief":2,"vMorph":1,"vZStretch":1,"vPulse":0,"vEdgeFade":0.15}
+facets       : 1142166   [0.3s]
+scope        : golden-stride sample 20000 (1.751%)
+PRECOND wind : 96.422% of 8218 stride facets agree with the analytic outward normal => OUTWARD
+PRECOND radial: MAX |r_mesh - rA| over 60114 vertices = 2319.9012 um
+SCREEN       : centroid best-of-5 flagged 759 of 20000 (3.7950%)   0.1s   0.20M rA evals   [0.6s]
+CONFIRM      : 45-pt covering on the 759 flagged  =>  UNAMBIGUOUS 665   (screen precision 87.62%)   0.2s   [0.7s]
+
+──────────────────────────────────────────────────────────────────────────────────────────
+  SHAPE CONTEXT (whole scope)
+──────────────────────────────────────────────────────────────────────────────────────────
+  minAngle deg  p05 7.004   p10 9.903   p50 26.377
+  P(minAngle < 5 deg) : 2.2350%
+  back-facing minAngle p05/p50 : 7.407 / 26.013
+  degenerate (zero-area) facets : 0   [these have NO normal and are NOT scored]
+  stored STL normal disagrees with winding : 0
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  GATE VERDICT: NOT-MEASURED
+══════════════════════════════════════════════════════════════════════════════════════════
+  UNAMBIGUOUS BACK-FACING FACETS : 665          (PASS requires exactly 0)
+  ... as a share of scope, COUNT : 3.3250%
+  ... as a share of scope, AREA  : 1.08018%   (7.301486 of 675.951 mm^2)
+  screen-flagged but STRADDLE only (a fidelity defect, not an orientation one): 94  area 0.20402%
+  measured screen RECALL on this mesh : NOT-MEASURED   (PF_S100_FULLCOVER=1 to measure; S98 measured 100% on 2 meshes, NOT proved)
+  full-covering count (cross-check)    : NOT-MEASURED
+  preconditions : wind 96.422%   radialMax 2319.9012 um   *** FAILED: radial membership 2319.90 um > 10 um — wrong style params or not a radial graph ***
+  cost          : 0.37M rA evals total, 0.8s wall
+
+*** NOT-MEASURED — a precondition failed, so NO back-facing verdict is emitted. ***
+      radial membership 2319.90 um > 10 um — wrong style params or not a radial graph
+
+  MODE: BLOCKING
+  json  -> research/exchange/_strataConformBisect/s100/S100_BFGATE_NV_WRONGSTYLE.json
+  facets-> research/exchange/_strataConformBisect/s100/S100_BFGATE_NV_WRONGSTYLE_backfacing.ndjson
