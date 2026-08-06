@@ -512,9 +512,11 @@ Gothic is in fact the *steeper* surface (max β 85.23° vs 76.10°; 8.24% vs 0.9
 **RETIRED:**
 - **"The catalogue splits" / "near-vertical walls are a representation problem"** (§0f.5) — no.
 - **"Q5 in its strong form"** — the (θ,z) chart is *not* a decisive obstruction to the remedy.
-- **"Splitting provably closed on Voronoi, required child aspect 3,009"** (§0e.2, §5.1) — ***measured
-  on the SHAPE-OFF artefact. Re-derive before re-quoting.***
-- **"The lift folds 7.415% of children"** (§5.3) — ***same artefact, same caveat.***
+- **"Splitting provably closed on Voronoi, required child aspect 3,009"** (§0e.2, §5.1) — ***now
+  fully REFUTED, not merely suspect: LEPP clears the chord bar at 8.697× ±4.4%.***
+- **"The lift folds 7.415% of children"** (§5.3) — ***now fully REFUTED: 0.2050% with the gate on.***
+- **"Every 1-ring operator is defeated by the super-hubs"** (§5.2) — ***REFUTED by re-census: max
+  facet-degree 40 on the shape-gated mesh and ZERO vertices ≥ 100 — lower than Gothic's 50.***
 - **Not a wiring job.** Voronoi's radius is **C1** — the C0 scan is flat to 5 s.f. over three decades
   with gap → 0 linearly, against a CelticKnot positive control reading a 0.60005 mm cliff at
   ×9.998/decade. No cliff, so the double-valued/curtain machinery does not apply. (Gothic has a genuine
@@ -1054,19 +1056,32 @@ count and area (0.49× / 0.62×). Its published over-bar of 4 was 401× low. I p
 
 ## 5. THE OBSTRUCTIONS — ~~proven, not suspected~~ ⛔ **PROVENANCE-VOID, RE-DERIVE BEFORE QUOTING**
 
-> ⛔ ***ALL THREE ITEMS BELOW WERE MEASURED ON `voronoi_ring_D--.stl` — 806,765 triangles, SHAPE
-> GUARD OFF*** — the artefact `060f3cd9` had already flagged as the worse of the two, and the one
-> S95 showed carries a `q<0.2` sliver population (9,309 edges) that the shape-gated mesh does not
-> have at all. With the gate on, the same style on the same surface **refines clean at 9.22× with
-> 0.00% uncleared**. Item 1 ("closed to splitting") and item 3 ("the lift folds") are ***measured
-> consequences of that sliver population, not of the surface***. Item 2's super-hub census has the
-> same provenance and its degree-2,550 figure is from the same 806,765-triangle mesh; it has **not**
-> been re-run with the gate on, so treat it as unverified rather than refuted.
-> ***Re-derive on `voronoi_ring_D--H_S94CTL.stl` before quoting any of this. See §0g.***
+> # ⛔⛔ ALL THREE "PROVEN OBSTRUCTIONS" IN THIS SECTION ARE NOW REFUTED. NOTHING HERE IS QUOTABLE.
+>
+> ***Every item below was measured on `voronoi_ring_D--.stl` — 806,765 triangles, SHAPE GUARD OFF***
+> — the artefact `060f3cd9` had already flagged as the worse of the two, carrying a `q<0.2` sliver
+> population (9,309 edges) the shape-gated mesh does not have **at all**. Re-derived with the gate on,
+> same style, same surface, same instruments:
+>
+> | claim | status | the number that killed it |
+> |---|---|---|
+> | 1. Voronoi is **closed to splitting** (required child aspect 3,009) | ***REFUTED*** | LEPP clears the 10 µm chord bar at **8.697× ±4.4%**, ~0.05% uncleared (§0g, §0j.3). *A mesh closed to splitting cannot clear.* |
+> | 2. Every **1-ring operator is defeated by super-hubs** (degree 2,550) | ***REFUTED*** | shape-gated max facet-degree **40**, ZERO vertices ≥100 — *lower than Gothic's 50* (item 2 below) |
+> | 3. The **lift folds** the mesh (7.415% of children) | ***REFUTED*** | **0.2050%** with the gate on — 28.7× fewer, and the wall-angle dependence vanishes entirely (§0g.1) |
+>
+> ***THE OBSTRUCTIONS WERE PROPERTIES OF ONE BADLY-BUILT ARTEFACT, NOT OF THE SURFACE.***
+>
+> ⚖ **BUT THE OPERATORS ARE STILL BOUNDED — for a better reason.** §0f.1's per-footprint normal-cone
+> ceiling is independent of all three: **88–94% of over-bar area is irreducible for its own footprint,
+> for every plane through it.** *Removing a false ceiling does not create headroom under the real one.*
+> **This section is kept only as a record of how three artefact properties became "proven".**
 
-1. ***VORONOI IS CLOSED TO SPLITTING.*** The child altitude needed to cancel the parent's orientation
-   error implies a **required child aspect of 3,009** (p90 8.0e11). The triangle that would fix it is
-   a needle whose own normal is unbounded.
+1. ⛔ ***"VORONOI IS CLOSED TO SPLITTING" — REFUTED.*** ~~The child altitude needed to cancel the
+   parent's orientation error implies a **required child aspect of 3,009** (p90 8.0e11); the triangle
+   that would fix it is a needle whose own normal is unbounded.~~ ***On the shape-gated mesh LEPP
+   bisection clears the 10 µm chord bar at 8.697× ±4.4% with ~0.05% uncleared, triply reproduced
+   across three tools and three sample sizes (§0g, §0j.3). A mesh that is closed to splitting cannot
+   do that.*** The 3,009 aspect was computed over the `q<0.2` sliver population the gate removes.
 2. ⛔ ***"EVERY 1-RING OPERATOR IS DEFEATED BY THE SUPER-HUBS" — REFUTED 2026-08-06 BY RE-CENSUS.
    THE SUPER-HUB CLASS DOES NOT EXIST ON THE SHAPE-GATED MESH.*** Ran `s82HubCensus.ts` **unmodified**
    (the campaign's own instrument, exact-f32 weld) on all three artefacts:
@@ -1097,7 +1112,15 @@ count and area (0.49× / 0.62×). Its published over-bar of 4 was 401× low. I p
    2,550-gon. `fold` fires on 494,895 of 745,470 collapse candidates.
    **It is a REFINEMENT RUNAWAY:** the same junction vertex is degree **37 / 57 / 2,550** at 285,826 /
    671,823 / 806,765 triangles of the same mesher, style, params and flags.
-3. ***THE LIFT FOLDS THE MESH AND NO ON-EDGE PLACEMENT CAN FIX IT.*** `liftAt`'s displacement is mostly
+3. ⛔ ***"THE LIFT FOLDS THE MESH AND NO ON-EDGE PLACEMENT CAN FIX IT" — REFUTED.*** With the shape
+   gate on, the same style on the same surface folds **0.2050% of edges against 5.8933%** — **28.7×
+   fewer by count, 21.9× by area — and the wall-angle dependence vanishes entirely** (§0g.1). The fold
+   *geometry* in the original claim is exactly right (`dPar/dPerp = tan β`; a child inverts when radial
+   sag passes `δ_crit = h_min/(2 sin β)`, predictor recall 0.9994) — ***but the variable that decides
+   whether that threshold is REACHED is `h_min`: facet shape, a mesher configuration choice, not a
+   property of the surface.*** And the p50 7.01 below is a reading of `tan β ≈ 7`, i.e. a β ≈ 82°
+   subpopulation — not a separate effect.
+   ~~ORIGINAL CLAIM, RETAINED REFUTED:~~ `liftAt`'s displacement is mostly
    IN-PLANE (dPar/dPerp p50 7.01). **7.415% of children are inverted** (child/parent area 1.01954 — a
    planar 1→2 split conserves area exactly, so that ratio *proves* non-tiling). `MID3D`/`placeAt`
    already corrects the along-edge component, so the residual is **perpendicular to the edge, toward
