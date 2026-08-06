@@ -960,15 +960,33 @@ bounds**):
 | chord 10 µm | 4.69×, 10.39% | 9.22×, 0.00% |
 | **1° angle** | **94.44×, 4.394%** | **232.69×, 15.674%** |
 
-**The whole remaining problem is the last row.**
+**The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
+same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
+(§0i.3, H2): ***full clearance costs ~155× and the best any isotropic field can do at 5% over-area is
+18.33×.*** **The 1° bar is reachable — it is simply not a 12× object.** For scale, at the
+industry-practical **5°** bar Gothic is only **6.43%** over by area to begin with, and the **chord bar is
+met at ~3×**. ***Choosing the angular bar is therefore a PRODUCT decision with a 50× price attached, and
+it has never been made deliberately.***
 
 ### 7.2 DO THIS
 
-1. ***DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE.*** This is the one live arm and two
-   independent instruments now agree it is aimed at the right population: §0f.1 (cone census — the
-   over-bar facets are well-shaped, large, turning) and §0h.2 (shape binning — on Gothic the largest
-   uncleared population is at **good** shape, q ≈ 0.9, holding 57.5% of mesh area). Kill: >12× the
-   flag-OFF triangles, or over-1° AREA not below 5%.
+1. ⛔ ***"DRIVE THE SIZING FIELD FROM THE PER-FOOTPRINT NORMAL CONE" IS REFUTED (§0i.3, H1).*** It is
+   1.35× worse than plain LEPP on Gothic and **1.86× worse on Voronoi**, both measured iso-quality, and
+   the loss is isolated to **the split, not the driver**. Do not rebuild it. ***Its kill line for the
+   1° bar (>12×) is also now known to be unreachable by ANY isotropic field — the knapsack optimum is
+   18.33× and the measured frontier does not cross 5% below ~106×.***
+
+1b. ***THE REPLACEMENT: STOP REFINING, START GENERATING — THE `M = g/h²` REMESH.*** Three independent
+   results are the same fact (§0i.4): free placement certifies **the same geometry at 1.615 leaves/par
+   against LEPP's 3.120 — a 1.93× prize**; the cone's failure mechanism is that subdivision has no
+   granularity headroom left; and anisotropy's 1.89× is unreachable by subdivision because parent long
+   axes are misaligned by p50 28.43°. ***Sizing and anisotropy are GENERATION levers.*** **The kernel
+   exists, is certified, and is unwired.** H4 says it does **not** deliver as shipped (2.931× and still
+   14.795% over bar) — ***so the next arm is its two named knobs, not a new mechanism***:
+   `splitThresh 1.5` (a converged element can be 1.5× the target ⇒ chord 2.25× the design tol) and the
+   160×160 curvature grid aliasing sub-cell relief (its own docs record 5–10×; `curvatureFineStep` is
+   the remedy). Both are already wired in `s94ConeRemesh.ts`. **Its shape column is already a win:
+   leaf minAngle 47.3° mean / 3.98° worst against LEPP's 37.6°/1.25°.**
 2. ***SET `PF_CB_SHAPE_AR = 12` (from 50) — ON THE COST ARGUMENT ONLY.*** Derived from
    `aspect3 = (P/L)/q²` and calibrated on 806,765 real facets (§0h.2c); the cap value is universal.
    It is **nearly free on healthy meshes** (96.2% of Gothic's facets, 89.2% of shape-gated Voronoi's
