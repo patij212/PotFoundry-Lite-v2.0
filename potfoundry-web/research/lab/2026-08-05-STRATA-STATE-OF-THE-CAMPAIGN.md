@@ -265,7 +265,7 @@ byte-identical when off, non-inert at 45,732 → 24,392 flips) reaches **1.085×
 ### 0e.2 ~~ORIENTATION HAS NO KNOWN LEVER~~ *** WITHDRAWN BY S93 (§0f) — DENSITY WORKS; the list below is CONNECTIVITY, and §0f.1 explains in one number why all of it died ***
 
 Everything tried is measured dead: **flips 1.015× median** (and 1.09× with a corrected key),
-**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ~~×0.9968~~ — MIS-QUOTED, an ANGLE against a CHORD bar; it is 0.208×/level, see §0f.2**, **ideal split placement 0.00%**, **splitting provably closed on Voronoi** (required child aspect 3,009), and
+**exact cavity DP +3.29%**, **collapse/re-point ceiling 0.38%**, **density ~~×0.9968~~ — MIS-QUOTED, an ANGLE against a CHORD bar; it is 0.208×/level, see §0f.2**, **ideal split placement 0.00%**, ~~**splitting provably closed on Voronoi** (required child aspect 3,009)~~ **— ⛔ VOID, SHAPE-guard-OFF artefact, see §0g**, and
 **P4/off-surface refuted as a fidelity lever on its own numbers** (+0.6% orientation for a 12.5×
 position-sag regression).
 
@@ -337,7 +337,12 @@ the 10 µm POSITION bar*** — the two requirements are almost disjoint. The imp
 **Defensible — but never deliberately chosen.** And relaxing to the industry-practical 5° still leaves
 **6.4% / 9.4% over by area: no exemption.**
 
-### 0f.5 THE PRICE, AND IT SPLITS THE CATALOGUE
+### 0f.5 THE PRICE ~~AND IT SPLITS THE CATALOGUE~~ — ⛔ **RETIRED BY S95, SEE §0g**
+
+> ⛔ ***EVERYTHING IN THIS SUBSECTION ABOUT VORONOI WAS MEASURED ON A MESH BUILT WITH THE SHAPE
+> GUARD OFF.*** With the aspect gate on, the same style on the same surface closes at **9.22× with
+> 0.00% uncleared** — and beats Gothic on the 1° angle bar too. The catalogue does **not** split.
+> Gothic's own numbers below stand. **Read §0g before quoting any line of this.**
 
 - **Gothic: LEPP closes the 10 µm chord bar at 6.67× triangles, 0.00% uncleared.** (The position bar
   costs 1.02×.) **This class is a density problem and density solves it.**
@@ -362,6 +367,10 @@ the 10 µm POSITION bar*** — the two requirements are almost disjoint. The imp
   **max angle 154.67° → 179.93%** and **8.497% of facets change `normDeg`**. Over-bar count and area
   are bit-identical under both conventions (θ → 180−θ), so ***campaign SHARES stand; every published
   Voronoi orientation MAX does not.***
+  ⚠ ***THE "bit-identical" CLAUSE IS MY OWN AND IT IS REFUTED*** — a facet at 3° maps to 177°,
+  which IS over a 5° bar. Measured 20,173 → 20,157 of 40,000 (0.079% count / 0.0020% area).
+  **Shares move a little, maxima move a lot, neither is invariant. State the convention.**
+  Fixed in `5698d023`: the reference is now the analytic surface normal, with a `signMargin` field.
 
 ### 0f.7 ⇒ THE NEXT ARM, PRE-REGISTERED
 
@@ -378,6 +387,104 @@ BIG**. Right (1° angular bar, 29.7% over): the wall goes green and the red **co
 ribs**.
 
 Scorecard: `S93_FRONTIER_FINDINGS.md`.
+
+## 0g. *** S95 — THE CATALOGUE DOES NOT SPLIT. IT WAS NEVER THE WALL; IT WAS FACET SHAPE — AND THE SHAPE GUARD WAS OFF. ***
+
+### 0g.1 THE REFUTATION
+
+§0f.5 said the density remedy split the catalogue into a SMOOTH-RELIEF class that closes and a
+NEAR-VERTICAL-WALL class that cannot. **Both halves are dead**, and the cause is one configuration flag
+on the artefact — not a property of any surface.
+
+| Voronoi-vs-Gothic fold ratio, binned on … | wall angle β | facet shape `q = h_min/√area` |
+|---|---|---|
+| | **112.34×** | **0.30×** |
+
+***BINNED ON WALL ANGLE THE EFFECT IS 112×. BINNED ON SHAPE IT VANISHES.*** 9,309 Voronoi edges
+(15.5%) sit below `q = 0.2`; **Gothic has ZERO.** 97.9% of folds live on `q < 0.4` facets = 3.54% of area.
+
+**The decisive control** — same style, same `rA`, same params, only the aspect gate on:
+**folds 5.8933% → 0.2050% (28.7× count, 21.9× area), and the β-dependence disappears entirely.**
+
+**⇒ THE ARM.** S93's own `frontierRefine.ts`, unmodified, only the STL changed; the control reproduces
+S93's published `FR_REF_VOR2` to the leaf:
+
+| Voronoi, LEPP to the 10 µm **chord** bar | SHAPE off (what §0f.5 measured) | **SHAPE on** |
+|---|---|---|
+| triangles | 221.95× | **9.22×** |
+| uncleared | 15.57% | **0.00%** |
+| leaf minAngle, mean | 0.6° | **28.0°** |
+
+***And the SHAPE-on mesh starts WORSE — 95.1% of its area over the chord bar at level 0 against the
+SHAPE-off mesh's 37.6% — and still closes.*** Starting from a worse mesh and finishing clean is the
+strongest form this control could have taken.
+
+### 0g.2 AND IT HOLDS ON THE ANGLE BAR — VORONOI IS NOW THE *EASIER* STYLE
+
+| to the **1° angle** bar | Gothic | **Voronoi (SHAPE-on)** |
+|---|---|---|
+| triangles | 351.28× | **232.69×** |
+| uncleared | 20.67% | **15.67%** |
+
+**Voronoi is cheaper AND clears more than the style that was supposed to be the easy one.** The
+catalogue does not split on the chord bar and does not split on the angle bar. ***There is one problem,
+not two, and it is uniform across the styles measured.***
+
+### 0g.3 WHAT THIS RETIRES
+
+The near-vertical wall is a **real 41–45%-of-defect accounting class that causes nothing**. Its
+lift-fold geometry is exactly right — `dPar/dPerp = tan β` at p50 1.019/1.103; a child inverts exactly
+when radial sag passes `δ_crit = h_min/(2 sin β)`, predictor recall 0.9994 — **but the variable that
+decides whether that threshold is reached is `h_min`: facet shape, a mesher configuration choice.**
+Gothic is in fact the *steeper* surface (max β 85.23° vs 76.10°; 8.24% vs 0.92% of area above 75°).
+
+**RETIRED:**
+- **"The catalogue splits" / "near-vertical walls are a representation problem"** (§0f.5) — no.
+- **"Q5 in its strong form"** — the (θ,z) chart is *not* a decisive obstruction to the remedy.
+- **"Splitting provably closed on Voronoi, required child aspect 3,009"** (§0e.2, §5.1) — ***measured
+  on the SHAPE-OFF artefact. Re-derive before re-quoting.***
+- **"The lift folds 7.415% of children"** (§5.3) — ***same artefact, same caveat.***
+- **Not a wiring job.** Voronoi's radius is **C1** — the C0 scan is flat to 5 s.f. over three decades
+  with gap → 0 linearly, against a CelticKnot positive control reading a 0.60005 mm cliff at
+  ×9.998/decade. No cliff, so the double-valued/curtain machinery does not apply. (Gothic has a genuine
+  C0 kink and closes anyway.)
+- **W4-A refuted:** a nearest-point lift buys 1.126–1.838× against a 5× kill, creates new folds, leaves
+  child chord unchanged to 4 s.f., and costs **5.69× the rA evals**.
+
+***THE LESSON, AND IT IS EXPENSIVE: two of this document's "proven obstructions" were measured on a
+mesh built with the shape guard OFF, and I promoted both to properties of the surface.*** `060f3cd9`
+had already recorded `voronoi_ring_D--.stl` as the worse of the two artefacts, and it was used anyway.
+***Check the provenance of the artefact before promoting a measurement to a law.***
+
+### 0g.4 CAVEATS THAT TRAVEL WITH THESE NUMBERS
+
+- **Every triangle count here is a LOWER BOUND.** `frontierRefine` ignores conformity for all operators
+  equally — no T-junction propagation. The real conforming mesher costs more, so **4.54 M absolute
+  (9.22× × 492,068) is a floor, not a budget figure**; a conforming LEPP typically propagates 1.5–3×.
+  ***The RATIO is the claim; the absolute is an estimate from 400 golden-stride parents.***
+- **The chord bar SATURATES on the coarser SHAPE-on mesh** (95.6% of area over bar) because
+  `chord = 2 sin(θ/2)·diam` is size-sensitive and that mesh has 39% fewer, larger facets. Its chord
+  column is uninformative as a *level-0* statistic; its angle column is the one to read.
+- **Not measured:** multi-level fold cascades, the real mesher through conformity, the other 17 styles,
+  position (`certifyTriangle` never run in this arm), σ bands.
+
+### 0g.5 WHAT SURVIVES — AND IT IS THE WHOLE FRONTIER
+
+**The ANGLE bar is open on both styles: 15.67% / 20.67% uncleared at 1°, at 233×/351× triangles.**
+S93's structural finding (§0f) is untouched — the chord bar is ~43% satisfiable by coplanar
+bookkeeping, the angular view collapses the defect onto the ribs, and the per-footprint cone ceiling
+still says 88–94% of over-bar area is irreducible for its own footprint. ***That is the remaining work,
+and it is now known to be ONE problem across the catalogue rather than a style-split.***
+
+Two disclosures worth keeping: the agent **introduced and caught its own instrument defect** (a wrong
+component in a parent normal gave an impossible 15.5% fold rate at β<5° — every verdict line read
+plausibly and only the printed value exposed it), and its **first 3-D render disagreed with the metric
+and the metric was right** — a sliver class has count, not area, so an area heatmap cannot show it.
+
+Scorecard: `S95_WALL_FINDINGS.md`. Renders: `s95/render/S95_scatter_SHAPE{off,on}.png` — same criterion,
+same cell-wall pattern, n = 73,002 (18.10%) against n = 4,791 (0.974%).
+
+---
 
 ---
 
@@ -460,7 +567,17 @@ count and area (0.49× / 0.62×). Its published over-bar of 4 was 401× low. I p
 
 ---
 
-## 5. THE OBSTRUCTIONS — proven, not suspected
+## 5. THE OBSTRUCTIONS — ~~proven, not suspected~~ ⛔ **PROVENANCE-VOID, RE-DERIVE BEFORE QUOTING**
+
+> ⛔ ***ALL THREE ITEMS BELOW WERE MEASURED ON `voronoi_ring_D--.stl` — 806,765 triangles, SHAPE
+> GUARD OFF*** — the artefact `060f3cd9` had already flagged as the worse of the two, and the one
+> S95 showed carries a `q<0.2` sliver population (9,309 edges) that the shape-gated mesh does not
+> have at all. With the gate on, the same style on the same surface **refines clean at 9.22× with
+> 0.00% uncleared**. Item 1 ("closed to splitting") and item 3 ("the lift folds") are ***measured
+> consequences of that sliver population, not of the surface***. Item 2's super-hub census has the
+> same provenance and its degree-2,550 figure is from the same 806,765-triangle mesh; it has **not**
+> been re-run with the gate on, so treat it as unverified rather than refuted.
+> ***Re-derive on `voronoi_ring_D--H_S94CTL.stl` before quoting any of this. See §0g.***
 
 1. ***VORONOI IS CLOSED TO SPLITTING.*** The child altitude needed to cancel the parent's orientation
    error implies a **required child aspect of 3,009** (p90 8.0e11). The triangle that would fix it is
