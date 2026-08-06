@@ -468,8 +468,8 @@ S93's published `FR_REF_VOR2` to the leaf:
 
 | Voronoi, LEPP to the 10 µm **chord** bar | SHAPE off (what §0f.5 measured) | **SHAPE on** |
 |---|---|---|
-| triangles | 221.95× | **9.22×** |
-| uncleared | 15.57% | **0.00%** |
+| triangles | 221.95× | **9.22×** (banded **8.697× ±4.4%**, §0j.3) |
+| uncleared | 15.57% | ~~0.00%~~ **~0.05%**, band [0, 0.73] — §0j.2 |
 | leaf minAngle, mean | 0.6° | **28.0°** |
 
 ***And the SHAPE-on mesh starts WORSE — 95.1% of its area over the chord bar at level 0 against the
@@ -551,7 +551,10 @@ had already recorded `voronoi_ring_D--.stl` as the worse of the two artefacts, a
 
 ### 0g.5 WHAT SURVIVES — AND IT IS THE WHOLE FRONTIER
 
-**The ANGLE bar is open on both styles: 15.67% / 20.67% uncleared at 1°, at 233×/351× triangles.**
+**The ANGLE bar is open on both styles.** ⚠ *The figures first written here (15.67%/20.67% at
+233×/351×) were N=400 and mismatched-cap; the current banded values are* ***Gothic 88.36× ±13.6% and
+Voronoi 227.95× ±6.7%, at ~14–15% uncleared each*** *(§0j.3), and full clearance is priced at ~155×
+(§0i.3).*
 S93's structural finding (§0f) is untouched — the chord bar is ~43% satisfiable by coplanar
 bookkeeping, the angular view collapses the defect onto the ribs, and the per-footprint cone ceiling
 still says 88–94% of over-bar area is irreducible for its own footprint. ***That is the remaining work,
