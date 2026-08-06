@@ -396,6 +396,31 @@ ribs**.
 
 Scorecard: `S93_FRONTIER_FINDINGS.md`.
 
+> # ⚠⚠ PROVISIONAL — READ BEFORE §0g AND §0h ⚠⚠
+>
+> ***THE S94/CONE AGENT HAS SHOWN THAT `frontierRefine`'s LEPP COLUMN IS TAIL-DOMINATED AND THAT ITS
+> PUBLISHED 6.67× GOTHIC ANCHOR IS A SINGLE-FACET LOTTERY.*** The worst **1% of parents hold 74.92% of
+> all LEPP leaves**. Swept on sample size, the same mesh reads 6.673× / 0.000% uncleared at N=150 and
+> **10.822× / 28.844% uncleared at N=2000** — and the entire jump is **one parent** entering the sample
+> between N=600 and N=1200, which alone consumes 7,139 leaves and never clears.
+>
+> ***EVERY LEPP NUMBER IN §0g AND §0h WAS TAKEN AT N=400.*** That is inside the un-converged regime, so
+> **the "0.00% uncleared" results below are exactly the same lottery** — a tail that was not sampled
+> reads as a mesh that closes. **Treat §0g/§0h triangle counts and uncleared shares as PROVISIONAL
+> until re-run at N ≥ 2000.** (Runs are queued; this banner gets resolved, not deleted.)
+>
+> Two further CONE results bear on it directly: ***more depth makes LEPP WORSE on both axes***
+> (10.822× → 116.889×, uncleared 28.8% → 32.2% as the cap goes 16 → 24) — **LEPP does not converge on
+> the unscoped mesh** — while ***`red` 1→4 never blows up on the same parent, at 0.000% uncleared at
+> every N.*** The campaign's choice of bisection as *the* operator is itself now in question.
+>
+> ⚖ **AND THE TWO AGENTS DISAGREE, WHICH IS RECORDED, NOT RESOLVED.** WALL concludes the near-vertical
+> wall causes nothing (shape does); CONE finds **all twelve** of its worst parents are near-vertical
+> wall facets, nine already back-facing — and while the worst two are also slivers (minAngle 2.78°,
+> 3.68°), **the third and fourth are well-shaped (34.84°, 34.83°) at slope 6.2/5.9.** Those are steep,
+> well-shaped, and failing, which is the one combination WALL's shape explanation does not cover.
+> **Do not treat §0g as settled on this point.**
+
 ## 0g. *** S95 — THE CATALOGUE DOES NOT SPLIT. IT WAS NEVER THE WALL; IT WAS FACET SHAPE — AND THE SHAPE GUARD WAS OFF. ***
 
 ### 0g.1 THE REFUTATION
@@ -827,12 +852,12 @@ bounds**):
    over-bar facets are well-shaped, large, turning) and §0h.2 (shape binning — on Gothic the largest
    uncleared population is at **good** shape, q ≈ 0.9, holding 57.5% of mesh area). Kill: >12× the
    flag-OFF triangles, or over-1° AREA not below 5%.
-2. ***SET `PF_CB_SHAPE_AR = 12` (from 50). This is the one concrete production number this session
-   produced*** — derived, then calibrated on 806,765 real facets (§0h.2c). The current default admits
-   facets down to q = 0.200, and the q < 0.4 band costs **152× the per-parent price and never clears**.
-   12 is the largest cap that excludes all of it. **It is a COST lever, not a fidelity lever — never
-   sell it as the latter again — but 10–150× on cost is the difference between a budget that fits and
-   one that does not.** Verify on a second style before calling it universal.
+2. ***SET `PF_CB_SHAPE_AR = 12` (from 50) — ON THE COST ARGUMENT ONLY.*** Derived from
+   `aspect3 = (P/L)/q²` and calibrated on 806,765 real facets (§0h.2c); the cap value is universal.
+   It is **nearly free on healthy meshes** (96.2% of Gothic's facets, 89.2% of shape-gated Voronoi's
+   still admitted) and removes the population that costs **1427× per parent** on an unhealthy one.
+   ⚠ **Do NOT justify it as "excluding a catastrophic band"** — §0h.2e retracts that; the same q band
+   clears fine on the shape-gated mesh. **It is a COST lever, not a fidelity lever.**
 3. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence.
 4. **Land the flip on the remaining styles** — free, improves both rulers, only proven on Gothic.
 
