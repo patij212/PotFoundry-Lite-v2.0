@@ -18,7 +18,8 @@ why seven blind arms genuinely improved the mesh (3.02× by count, **11.9× by a
 number they published was wrong by 24–45×. **Rank with the plane ruler; size with `certifyTriangle`.**
 One lever survives honest scoring: a constrained edge flip, which is free.
 
-***AND AS OF 2026-08-06 THE HEADLINE HAS CHANGED AGAIN, IN OUR FAVOUR.*** The 10 µm POSITION bar is
+***AND AS OF 2026-08-06 THE HEADLINE HAS CHANGED AGAIN, IN OUR FAVOUR — now with error bars (§0j),
+the first this campaign has ever had.*** The 10 µm POSITION bar is
 **not** what is stopping us — ideal refinement closes it at **1.04×–1.06× triangles, 0.000%
 uncleared**, on both styles measured. The "near-vertical wall class that cannot be represented" **does
 not exist**: it was facet SHAPE, on an artefact built with the shape guard OFF, and with the guard on
@@ -416,9 +417,13 @@ Scorecard: `S93_FRONTIER_FINDINGS.md`.
 > | Voronoi SHAPE-on | 232.69× / 15.674% | **221.73× / 14.832%** |
 > | Gothic S39CTL | 94.44× / **4.394%** | **88.99× / 11.350%** |
 >
-> **⇒ VORONOI'S CLOSURE IS REAL.** Three samples, three tools, one answer: 9.22× (N=400, mine),
-> **8.650× (N=800, CONE, independent tool + fixed ruler)**, 8.47× (N=2000) — all at **0.00% uncleared**.
-> §0g's central claim survives at 5× the sample.
+> **⇒ VORONOI'S CLOSURE IS REAL — BUT NOT AT LITERALLY ZERO.** The COUNT is solid and triply
+> reproduced: 9.22× (N=400, mine), **8.650× (N=800, CONE, independent tool + fixed ruler)**, 8.47×
+> (N=2000), banded at **8.697× ±4.4%** (§0j.3). ***⛔ BUT THE "0.00% UNCLEARED" IS OVERSTATED AND I
+> PUBLISHED IT THREE TIMES: the pooled value is 0.0528%, band [0, 0.733], with ONE parent supplying
+> 84.35% of it.*** Restate as **~0.05%**. The substantive claim stands — **0.05% against Gothic's
+> 19.78% is a ~375× gap** — but see §0j.1: **70% of small-N blocks read exactly 0.000% on a mesh that
+> is 26.121% uncleared**, so a zero is the *expected* reading, not evidence.
 > **⇒ POSITION SURVIVES TOO, and gets cheaper:** Gothic **1.02×**, Voronoi **1.03×**, both 0.000%.
 > **⇒ GOTHIC'S UNCLEARED SHARES WERE UNDERSTATED AT N=400** — chord 10.39% → 17.42%, and 1° **4.394% →
 > 11.350%, a 2.6× move**. ***Any Gothic uncleared figure quoted from §0g/§0h at N=400 is low.*** The
@@ -744,6 +749,11 @@ same quality line at all — Gothic N=800 cap 6: LEPP **5.289× at 10.329% uncle
 **9.014× at 0.998%**. One table would license either "a 1.70× loss" or "a 64× win."
 
 > ### ***ONLY COMPARE TRIANGLE COUNTS BETWEEN OPERATORS THAT BOTH REACH 0.000% UNCLEARED. MATCH THE RESIDUAL, NOT THE CAP.***
+>
+> ⚠ **AMENDED BY §0j.5 — "0.000% uncleared" IS NOT AN ACHIEVABLE MEASUREMENT** (required N is 22,900
+> to ~8.5 million). ***Restate as: compare only operators whose uncleared-% UPPER 95% PHASE-BAND is
+> below a stated tolerance.*** A bare 0.000% at campaign sample sizes is the expected reading on a
+> mesh that has not closed.
 
 **⚠ This retires §0g.2's table a second time.** Matching `uniLev/maxLev` was necessary and not
 sufficient: **Gothic at 10.39% uncleared and Voronoi at 0.00% are not on one quality line.** And there
@@ -755,7 +765,9 @@ put on one row at any one cap. See §0g.2 as amended.
 
 - **H1 (cone-driven sizing field beats LEPP): REFUTED, cross-style, and refuted the other way.**
   Gothic scoped, cap-free: LEPP **3.120×** vs cone **4.211×** (1.35×). Voronoi shape-gated, cap-free:
-  LEPP **8.650×** vs cone **16.076×** (**1.86×**). Both sides of both comparisons clear at 0.000%, so
+  LEPP **8.650×** vs cone **16.076×** (**1.86×**). ***§0j.4 BANDS BOTH AND THE REFUTATION IS STRONGER
+  THAN PUBLISHED: paired, Gothic 1.646× [1.512, 1.780] and Voronoi 2.358× [2.093, 2.622], with cone
+  worse in 500 of 500 disjoint blocks.*** Both sides of both comparisons clear at 0.000%, so
   the ratios are iso-quality by §0i.2's own rule. **Mechanism, isolated not guessed:** `coneOracle`
   (measured chord, same k-way split) is *still* 1.276× worse ⇒ the loss is in **the split, not the
   driver**. A k-way split imposes the parent's worst-case *k* on all *k²* children at once, while
@@ -850,6 +862,114 @@ cross-validated by two independent instruments. The agent states it did not need
 ***did not fabricate one***.
 
 Scorecard: `S94_CONE_FINDINGS.md`. Commits `5322cbf3`, `7b286307`, `bb09ed83`, `8836aeab`, `8649033b`.
+
+---
+
+## 0j. *** S105/BANDS — THE LADDER WAS ONE DISTRIBUTION ALL ALONG. AND `uncleared %` IS THE LEAST REPRODUCIBLE NUMBER IN THE PROJECT. ***
+
+### 0j.1 THE RESULT THAT REFRAMES §0i.1
+
+§0i.1 read the 6.67× ladder as a threshold crossed by one facet entering the sample. **It is not a
+threshold. It is one distribution, and every published rung is an ordinary draw from it.** Phase-block
+replication (the same N, cut into R *disjoint* consecutive blocks of the campaign's own golden stride —
+each block an exact phase-translate, **no distributional assumption anywhere**):
+
+| GothicArches S39CTL, 10 µm chord, LEPP, cap 16, unscoped | spread |
+|---|---|
+| **N=150, R=213 blocks** | **2.320× … 74.633× = 32.17×** |
+| N=2000, R=16 blocks | 6.125× … 21.820× = 3.56× |
+| **pool (32,000 parents, 16× the largest published row)** | **11.973× at 26.121% uncleared** |
+
+***The five published rungs — 6.673 / 6.520 / 5.503 / 12.708 / 10.822 — sit at percentiles
+55 / 41 / 11 / 58 / 38 of that ONE distribution.*** The 5.503 → 12.708 "jump" is a p11 draw followed by
+a p58 draw. **Nothing happened.** For calibration: ***the ruler-convention fix moves these numbers by
+<0.7%; the sample phase moves them by 32×.***
+
+> ### ⚠⚠ AND THE SINGLE MOST IMPORTANT LINE THIS AGENT PRODUCED
+> ***70% OF N=150 PHASE BLOCKS (150 of 213) REPORT EXACTLY 0.000% UNCLEARED ON A MESH WHOSE TRUE
+> RESIDUAL IS 26.121%.***
+> "0.000% uncleared" at small N is not evidence of closure. **It is the expected reading.**
+
+### 0j.2 ⛔ THIS CORRECTS MY OWN HEADLINE — TWICE
+
+1. ***"VORONOI CLOSES AT 0.00% UNCLEARED" IS OVERSTATED.*** The pool value for Voronoi chord-LEPP is
+   **0.0528%**, block range **0.000 … 0.733**, and **one parent supplies 84.35% of that residual**.
+   ⇒ **Restate as ~0.05% uncleared, band [0, 0.73].** The *substantive* claim survives and is still the
+   strongest result in the campaign — **0.05% against Gothic's 19.78%, a ~375× gap** — and the count
+   itself is solid (**8.697× ±4.4%**). But it is not literally zero and I published it as literally zero
+   three times.
+2. ***VORONOI `red` "16.09× at 0.00% uncleared" IS WRONG — the pool says 18.68× at 3.600%***, block
+   range 0.003…10.97 (**a 3,532× spread**). Any §0g reasoning leaning on `red` clearing Voronoi must be
+   re-checked.
+
+### 0j.3 THE BANDS ON §7.1 — AND THEY ARE NOT UNIFORM
+
+C=2000, R=16, ±1.96·SD_phase relative:
+
+| | Gothic S39CTL | Voronoi SHAPE-on |
+|---|---|---|
+| **position 10 µm** | 1.0250 [1.0015, 1.0915] **±4.3% SOLID** | 1.0529 **±4.4% SOLID** |
+| chord 10 µm LEPP | 5.856 [4.623, 7.551] **±27.0%** | 8.697 **±4.4% SOLID** |
+| 1° angle | 88.36 **±13.6%** | 227.95 **±6.7% SOLID** |
+| *uncleared %, any row* | **±30.5% … ±656%** | **±30.5% … ±656%** |
+
+***B1's kill FIRES for the position row and for three of Voronoi's four multipliers — the debt is REAL
+but NOT UNIFORM.*** The position claim (§0 and §7.0: "the 10 µm position bar is not what is stopping
+us") is **the best-conditioned number in the document at ±4.3%** and stands unaltered. Voronoi is
+well-conditioned throughout. ***Gothic's chord row at ±27% is the weak one, and every `uncleared %` in
+the project is weaker still.***
+
+### 0j.4 H1 SURVIVES — AND ITS MAGNITUDE WAS UNDERSTATED
+
+The question I flagged as mattering most: H1 was refuted on a 1.35× ratio; do the bands overlap?
+
+***THEY DO NOT. `cone` is worse than `lepp` in 500 of 500 disjoint blocks (min 1.118).***
+
+| paired ratio, cone/lepp | published | **banded** | t |
+|---|---|---|---|
+| Gothic scoped | 1.3497 | **1.6457 [1.5117, 1.7796]** | 9.4 |
+| Voronoi SHAPE-on | 1.8585 | **2.3577 [2.0932, 2.6222]** | 10.1 |
+
+Both comparisons are on rows where **both** operators clear in 60/60 blocks, so they are iso-quality by
+§0i.2. **The cone refutation is stronger than published, not weaker.** ⚠ Note the instrument: the
+empirical p2.5/p97.5 excludes 1.000, while a symmetric **normal** band would contain it — *the normal
+band is the wrong instrument on a right-skewed ratio*, and the agent caught itself using one.
+
+### 0j.5 WHAT IT COSTS TO KNOW THINGS — AND THE LEVER THAT MAKES IT AFFORDABLE
+
+**Required N for a ±10% single-run band:** position **400** · 1° angle **1,600–3,200** · chord-LEPP
+**800** (Voronoi) to **~9,700** (Gothic) · unscoped LEPP **~108,000** · ***any `uncleared %`: 22,900 to
+~8.5 MILLION.***
+
+⇒ ***"0.000% uncleared" IS NOT AN ACHIEVABLE MEASUREMENT.*** §0i.2's rule ("only compare operators that
+both reach 0.000% uncleared") must be restated with a tolerance: **compare only operators whose
+uncleared-% upper 95% phase-band is below a stated bar.**
+
+**B4 CONFIRMED at 3.4–8.6× ESS — but NOT on the covariate I predicted.** I proposed stratifying on
+shape/slope. ***Free STL-only shape covariates (q, diam, minAngle, area) buy ≤1.8×, below the kill.***
+What works is Neyman allocation on the **level-0 covering score** (`c0` chord / `g0` sup angle):
+**3.4–8.6×**, verified on a held-out half — *stratified N=400 matches unstratified N=1,400–3,400*.
+**⇒ This is the standing sampling design from now on: ~6× cheaper AND banded.**
+
+**B2 REFUTED, and the failure is where I did not expect it.** The golden stride behaves like simple
+random sampling (SD_phase/SD_iid 0.52–1.23 on all five pools), so systematic sampling was never the
+problem. ***The BOOTSTRAP is what fails: single-block 95% CI coverage runs 3%–100% against a nominal
+95%, worst exactly where the operator's leaf count is uncapped*** — one parent supplies 84.35% of
+Voronoi's LEPP residual, and no resampling invents a parent the sample never saw.
+
+### 0j.6 ⇒ THE ONE-LINE RULE (now in `LAB-CHEATSHEET.md`)
+
+> ***Run N × 8 parents, cut by `floor(q/N)`, report `x [min..max] @ N`. Never quote an `uncleared %` as
+> a number — only as its band.***
+
+**Agent's own disclosures:** a line-count resume that would have duplicated 20,190 rows and
+double-weighted one phase block; a required-N printed off an R=2 standard deviation; and using
+mean±1.96·SD as the H1 verdict interval (**it fires the kill and is wrong**) — all caught and fixed.
+**Not measured:** no whole-mesh census (pools are 2.8–10.5%); two styles; the 0.5°/5°/10° bars and the
+`turn` operator have **no band**; bands not compared across ruler conventions.
+Fidelity: 5 checks, all pass — N=2000 Gothic **bit-identical** to `S98_QREFINE_GOTH2000`.
+
+Scorecard: `S105_BANDS.md`. Commits `27a1039d` (pre-registration, **before** the first run), `70a22176`, `b85b55ca`.
 
 ---
 
@@ -998,14 +1118,20 @@ were true, and the ruler was answering a different question than the eye.
 
 `uniLev 2 / maxLev 6`, **N=2000** golden-stride, LEPP, conformity ignored ⇒ **lower bounds**:
 
+***WITH §0j BANDS (±1.96·SD over 16 disjoint phase blocks).*** These are the first error bars this
+campaign has ever had:
+
 | | Gothic S39CTL | Voronoi SHAPE-on |
 |---|---|---|
-| **position 10 µm** | **1.02×, 0.000% uncleared** | **1.03×, 0.000% uncleared** |
-| chord 10 µm | 5.33×, **17.42% uncleared** | 8.47×, **0.00%** |
-| **1° angle** | **88.99×, 11.350%** | **221.73×, 14.832%** |
+| **position 10 µm** | **1.025× ±4.3%**, 0.000% uncl | **1.053× ±4.4%**, 0.000% uncl |
+| chord 10 µm LEPP | 5.856× **±27.0%**, ~19.8% uncl | **8.697× ±4.4%**, ~0.05% uncl |
+| **1° angle** | 88.36× **±13.6%**, ~14.4% uncl | 227.95× **±6.7%**, ~15.2% uncl |
 
 ⚠ **The two columns are NOT ratioable** (§0i.2 — Gothic does not clear at this cap). Read each column
 down, never across.
+⚠ ***Every `uncleared %` above is ±30% to ±656% and is shown only as an order of magnitude — see
+§0j.5. Do not quote one as a number.*** ***The position row is the best-conditioned number in this
+document*** and §7.0's headline rests on it.
 
 **The whole remaining problem is the last row** — ⚠ **and see §0i.2: those two columns are NOT on the
 same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
@@ -1055,8 +1181,14 @@ attached, and it has never been made deliberately.***
    still admitted) and removes the population that costs **1427× per parent** on an unhealthy one.
    ⚠ **Do NOT justify it as "excluding a catastrophic band"** — §0h.2e retracts that; the same q band
    clears fine on the shape-gated mesh. **It is a COST lever, not a fidelity lever.**
-3. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence.
-4. **Land the flip on the remaining styles** — free, improves both rulers, only proven on Gothic.
+3. ***ADOPT THE §0j SAMPLING DESIGN FOR EVERY FUTURE MEASUREMENT — the cheapest item here, and it makes
+   all the others trustworthy.*** **Run N × 8 parents, cut by `floor(q/N)`, report `x [min..max] @ N`;
+   never quote an `uncleared %` as a number, only as its band.** Then add Neyman allocation on the
+   **level-0 covering score** (`c0` chord / `g0` sup angle) for **3.4–8.6× ESS** — held-out-verified, so
+   a stratified N=400 buys what an unstratified N=1,400–3,400 does. ***~6× cheaper AND banded.***
+   (Shape covariates — q, diam, minAngle, area — buy ≤1.8× and are **not** the lever.)
+4. **Make `certifyTriangle` the reporting ruler for every arm.** A driver "PASS" is not evidence.
+5. **Land the flip on the remaining styles** — free, improves both rulers, only proven on Gothic.
 
 ### 7.3 THE DRIVER-VS-GEOMETRY GAP IS NOW THE SHARPEST OPEN QUESTION
 
