@@ -269,12 +269,56 @@ S103's stated Gothic reference**, so this is not a params-mismatch run.
 noise); the recall alone reads as "unrelated" (it is not). The honest statement is *strong association,
 partial overlap, neither contains the other.*
 
-**WHAT IS THE OTHER 59.5%?** Unknown, and I am not going to guess — S108 has already established it is
-**well-shaped** (minAngle median 26.71 vs 26.42) and **not** S98's needles, and S109 now establishes it
-is **not** the crease class. Both of the campaign's named mechanisms are excluded. ***That is the next
-experiment and it is now well-posed:*** take the 11,651 high-dihedral non-crossing edges and characterise
-them directly. Do not attach them to an existing class by assumption — two such attachments have now
-been tested and both came back partial.
+> ⛔⛔ ***§0.3e's HEADLINE IS WITHDRAWN BY §0.3f, SAME DAY. I PROBED THE WRONG LOCUS.*** The table above
+> is correct **for the question it asks** and the risk ratio 20.12× stands — but the inference *"59.5% has
+> no operator pointed at it"* is an artefact of testing the SHARED EDGE. Read §0.3f before quoting it.
+
+### 0.3f ⛔ S110 — I PROBED THE WRONG LOCUS. THE CREASE PROGRAMME REACHES 79%, NOT 40%.
+
+`research/tools/s110TurnBudget.ts`. Two results, and the second withdraws §0.3e's headline.
+
+**(1) THE TURN IS REAL — the mesh is NOT manufacturing it.** Model-free test: measured facet dihedral
+against the **ANALYTIC** normal turn between the same two facet centroids. Three groups, one ruler:
+
+| group | n | ratio p10 / **p50** / p90 | meas p50 | analytic pred p50 |
+|---|---:|---|---:|---:|
+| **C control** (ordinary edges) | 19,782 | 0.14 / **1.34** / 4.78 | 1.85° | 1.63° |
+| **A** high-dihedral, edge non-crossing | 11,651 | 0.99 / **1.00** / 95.19 | 149.73° | 134.58° |
+| **B** high-dihedral, edge crossing | 7,931 | 0.99 / **1.00** / 134.24 | 159.70° | 157.30° |
+
+⇒ ***the analytic surface genuinely turns 135–157° across those footprints.*** Not a fold, not a
+placement defect, not manufactured. *(Control is noisy — p10–p90 spans 0.14–4.78 — because ordinary
+turns are ~2° where the FD normal noise lives. The high groups sit at 135°+ where the same noise is
+negligible, so **ratio 1.00 there is far better conditioned than the control's own 1.34**.)*
+
+⚠ ***MY FIRST PREDICTOR WAS REJECTED BY ITS OWN CONTROL AND THE REJECTION IS THE POINT.*** v1 used
+`L · κ_max` and the ordinary-edge control read **0.23**, not ~1, so the guard refused to let A or B be
+read at all. Two structural errors: κ_max is the *maximum* principal curvature while a dihedral bends
+*across* the edge (normal curvature anywhere in [κ_min, κ_max] ⇒ systematic over-prediction, group A read
+a nonsensical 1863°); and `L` is the *edge* length while the relevant extent is the facet width
+*perpendicular* to it. **Without a control group that arithmetic would have shipped as a finding.**
+
+**(2) ⛔ AND IT REFUTES §0.3e.** A smooth surface does not turn 134° in 200 µm — so a tangent
+discontinuity must lie *inside* the footprint, and §0.3e only ever asked whether the **SHARED EDGE**
+crosses one. The two centroids can straddle a crease the shared edge never touches. Re-probed group A on
+the **centroid-to-centroid segment**:
+
+> **7,493 of 11,651 (64.31%) DO straddle a crease.** jump 0 · none 4,158.
+
+| | §0.3e (edge locus) | **CORRECTED (centroid locus)** |
+|---|---:|---:|
+| crease-associated | 7,931 = 40.50% | **15,424 = 78.77%** |
+| genuinely crease-free | 11,651 = 59.50% | **4,158 = 21.23%** |
+
+***THE CREASE PROGRAMME'S REACH IS ~79% OF THE VISIBLE CLASS, NOT 40%.*** §0.3e's "a majority of the
+visible defect has no operator pointed at it" is **WITHDRAWN**. What survives from §0.3e: the risk ratio
+20.12× is real, and **85.85% of crease crossings are still not high-dihedral**, so S99/S100 were still
+largely optimising an invisible population — *that* half stands.
+
+**THE RESIDUAL IS NOW 4,158 PAIRS (21.23%), AND IT IS NOT YET CHARACTERISED.** ⚠ Do not attribute
+group A's ratio 1.00 to them: that median is dominated by the 64% that DO straddle a crease. Their own
+ratio, location and shape are **UNMEASURED**. That is the next experiment, and it is small enough to
+characterise exhaustively rather than statistically.
 
 ### 0.4 SCOPE CORRECTION — there are TWO generation lineages and BOTH are chord-only
 

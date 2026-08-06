@@ -22,6 +22,16 @@
 // CelticTriquetra. S103's remedy is carried here: a PRECOND on max |r_mesh - rA|, and the run REFUSES
 // rather than reporting a number it cannot stand behind.
 //
+// ⛔⛔ THIS TOOL'S HEADLINE IS WITHDRAWN BY S110 (same day). READ THIS BEFORE QUOTING ANY NUMBER BELOW.
+// S109 asks whether the SHARED EDGE crosses a crease. That is the wrong locus for this question: the
+// dihedral is a property of the two FACET CENTROIDS, and they can straddle a crease that the shared edge
+// never touches. s110TurnBudget re-probed the 11,651 "non-crossing" pairs on the CENTROID-TO-CENTROID
+// segment and found 7,493 of them (64.31%) DO straddle a crease.
+//   CORRECTED:  crease-associated 7,931 + 7,493 = 15,424 / 19,582 = 78.77%  (not the 40.50% below)
+//               genuinely crease-free                    4,158 / 19,582 = 21.23%  (not 59.50%)
+// The CONTINGENCY TABLE below is still correct FOR THE QUESTION IT ASKS (edge-crossing), and the risk
+// ratio 20.12x stands. What must NOT be repeated is the inference "59.5% has no operator pointed at it".
+//
 // Usage: bash research/tools/run-s109-crosstab.sh
 //   env: PF_S109_STL PF_S109_STYLE PF_S109_TAG PF_S109_HI_DEG(45) PF_S109_STRIDE(1) PF_S109_PRECOND_UM(50)
 import { mkdirSync, writeFileSync } from 'node:fs';
