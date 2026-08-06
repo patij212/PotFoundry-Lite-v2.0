@@ -1138,14 +1138,52 @@ cost factor gives **~11.24 M = 93.7% of the 12 M budget — which would flip Got
 ⚠ ***NOT YET A PASS: M itself was measured on the defective operator and has not been re-measured.
 Do not quote Gothic as passing.***
 
+**VORONOI, same protocol:** lepp **8.47× → 8.51× (1.005×)**, non-shortening **0.0000% both ways**,
+worst ratio 0.9025 → 0.7576, `red` control **bit-identical** again. ***So the port buys Gothic 11.4% and
+costs Voronoi 0.5% — net strongly favourable.***
+
 **Cap 24 / N=400 paired:** non-shortening 0.0261% → 0.0089%, uncleared 0.18% → 0.00%, and ***worst leaf
 minAngle 0.00° → 0.01° — the parametric midpoint produces exactly-degenerate leaves and the solve does
 not.***
+
+**BUDGET, both styles, against the completed censuses:**
+
+| | conforming census | × cost factor | vs 12 M |
+|---|---|---|---|
+| **Gothic** | 12,693,179 | × **0.886** = ~11.24 M | ***93.7% — would flip FAIL → PASS*** |
+| **Voronoi** | 5,944,684 | × **1.005** = ~5.97 M | **49.8% — PASS either way** |
+
+⚠ ***Still contingent: M was measured on the defective operator and is being re-measured.***
+
+### 0k.7 *** AND A NEW, UNMEASURED GAP IN THE SHIPPED PRODUCT: THE DRIVER'S OWN CLAMP BINDS ***
+
+The driver clamps `|s − 0.5|` at `PF_CB_MID3D_MAXSHIFT` (**default 0.25**) and falls back to
+`0.5 ± 0.25` beyond it. My port does **not** clamp, so it is a strictly better fix wherever the solve
+wants more. Measured:
+
+| | splits wanting `|s−0.5| > 0.25` |
+|---|---|
+| **Gothic** | ***820 of 24,313 = 3.3727%*** |
+| Voronoi | **0.0000%** — its max shift is **0.249904**, *just* under the cap |
+
+***SO THE DRIVER'S OWN FIX IS PARTIAL: IT ADDRESSES THE BULK AND CLAMPS EXACTLY THE PATHOLOGICAL
+TAIL.*** And **3.3727% is suspiciously close to the 3.4677% non-shortening rate of the unfixed
+operator** — the population needing a big shift is roughly the population landing outside its own edge.
+***`PF_CB_MID3D_MAXSHIFT` is an env var; raising it is trivially testable.***
+
+⚠ **STATED PRECISELY, BECAUSE I DID NOT RUN THE DRIVER:** this measures how often a 0.25 clamp *would*
+bind in **my instrument's** split population. The driver's own population differs (conforming, guarded,
+budgeted). ***Indicative of a production gap — not a measurement of the driver.***
 
 > ### ⚠ AND IT REFUTES WHAT I PUBLISHED AN HOUR EARLIER, FOR THE FOURTH TIME BY THE SAME CAUSE
 > At **N=400** I measured **+0.4% cost and slightly worse uncleared**, and wrote that the defect was
 > *"nearly free to carry"*. ***Both the magnitude and the SIGN were wrong, and the cause was sample
 > size*** — the failure mode §0j had documented three hours before I committed it.
+>
+> ***AND MY "NULL ARM FAILED" NOTE IS WITHDRAWN — ALSO N=400 NOISE, THE THIRD TODAY.*** I reported
+> Voronoi moving +2.2% against a pre-registered 1% null bar. At N=2000 it moves **+0.5%, inside the
+> bar: the null PASSES.** What survives is the *mechanism* — the solve relocates every split point, not
+> only pathological ones — just by far less than N=400 suggested.
 >
 > ***METHOD NOTE THAT GENERALISES: the non-shortening RATE is itself tail-dominated*** — 1.33% at
 > N=400, 3.47% at N=2000, S106's 4.635% at its own N, all cap 12. **PAIRED before/after at fixed N is

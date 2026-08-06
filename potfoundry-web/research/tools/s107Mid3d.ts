@@ -63,6 +63,12 @@ const SKIPFOLD = process.env.PF_FD_SKIPFOLD === '1';
 const MID3D = process.env.PF_FD_MID3D === '1';           // default OFF => byte-identical to the parent
 const MID3D_ITERS = Math.round(envF('PF_FD_MID3D_ITERS', 24));   // the driver's own default
 let nSplits = 0; let nNonShorten = 0; let worstRatio = 0; let shiftSum = 0; let shiftMax = 0;
+// S107b: the DRIVER clamps |s-0.5| at PF_CB_MID3D_MAXSHIFT (default 0.25) and falls back to
+// 0.5 +/- 0.25. This port does NOT clamp, so it is a STRICTLY BETTER fix than the product's wherever
+// the solve wants a larger shift. Count those: they are the cases where the SHIPPED driver still
+// mis-places its split point, and nobody has measured how many there are.
+const DRIVER_MAXSHIFT = envF('PF_FD_DRIVER_MAXSHIFT', 0.25);
+let nOverDriverCap = 0;
 // ───────────────────────────────────────────────────────────────────────────────────────────────
 const DIMS: StyleDims = { H: envF('PF_FD_H', 120), Rb: envF('PF_FD_RB', 40), Rt: envF('PF_FD_RT', 50), expn: 1 };
 const H = DIMS.H;
@@ -329,6 +335,7 @@ for (let q = 0; q < NS; q += 1) {
         t.x[u], t.y[u], t.z[u], t.x[v], t.y[v], t.z[v], 0.5, MID3D_ITERS,
       );
       const sh = Math.abs(sMid - 0.5); shiftSum += sh; if (sh > shiftMax) shiftMax = sh;
+      if (sh > DRIVER_MAXSHIFT) nOverDriverCap += 1;
     }
     const thm = t.th[u] + sMid * (t.th[v] - t.th[u]); const zm = t.z[u] + sMid * (t.z[v] - t.z[u]);
     const [mx, my, mz] = NULLARM
@@ -432,6 +439,10 @@ log(`   worst ratio              : ${worstRatio.toFixed(4)}   (>1 means the new 
 if (MID3D) {
   log(`   |s - 0.5| mean / max     : ${(shiftSum / Math.max(1, nSplits)).toFixed(6)} / ${shiftMax.toFixed(6)}`);
   log('   (a large shift means the parametric midpoint was far from the true 3-D chord midpoint)');
+  log(`   |s-0.5| > ${DRIVER_MAXSHIFT} (the DRIVER's clamp) : ${nOverDriverCap} = ${((100 * nOverDriverCap) / Math.max(1, nSplits)).toFixed(4)}%`);
+  log('   *** THOSE ARE SPLITS WHERE THE SHIPPED DRIVER STILL MIS-PLACES ITS POINT: it clamps to');
+  log('   0.5 +/- MAXSHIFT and takes the wrong point anyway. This port does not clamp, so it is a');
+  log('   STRICTLY BETTER fix than the product wherever this count is non-zero. ***');
 }
 log('');
 log('   PRE-REGISTERED H107a KILL: if MID3D=1 does not drive the non-shortening rate below 0.5% on');

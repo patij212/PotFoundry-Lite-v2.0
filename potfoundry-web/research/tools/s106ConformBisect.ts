@@ -118,6 +118,7 @@ import { STYLE_REGISTRY } from '../../src/styles/registry';
 import { buildRadiusFn } from '../bridge/runStyle';
 import { canonTheta, dThRaw } from '../bridge/_sweepPredicate';
 import { readMeshFloat64 } from '../bridge/_facetTruthPool';
+import { chordParam } from '../bridge/_shapeGuard';
 import type { StyleId, StyleDims } from '../bridge/runStyle';
 
 // eslint-disable-next-line no-console
@@ -143,6 +144,52 @@ const MAXTRI = Math.round(envF('PF_CF_MAXTRI', 60e6));
 const WATCHDOG = Math.round(envF('PF_CF_WATCHDOG', 0));
 const PROGMS = Math.round(envF('PF_CF_PROGMS', 30000));
 const AUDIT = process.env.PF_CF_AUDIT === '1';
+/**
+ * *** S107 PORT (coordinator, 2026-08-06): THE DEFECT IS IN THE INSTRUMENT, NOT THE PRODUCT. ***
+ * S106 (below, §6 of the scorecard) proved `lift(0.5*(thU+thV), 0.5*(zU+zV))` is NOT a bisection and has
+ * FIXED POINTS. The PRODUCTION driver `_strataConformBisectS34` does NOT have that defect: it places the
+ * point with `placeAt` -> `chordParam`, a 24-halving solve for the parameter whose LIFTED point sits at
+ * 3-D chord fraction 0.5, and `PF_CB_MID3D` DEFAULTS ON. The driver team fixed this in July.
+ * `chordParam` is IMPORTED from `_shapeGuard.ts` — the driver's exact code, not a re-derivation, and the
+ * same import `s107Mid3d.ts` uses.
+ *
+ * *** APPLIED TO BOTH ARMS HERE — independent AND conforming — because M is a ratio and moving the split
+ * point in only one of them would make it meaningless. ***
+ * DEFAULT OFF => byte-identical to every S106 number. That is RUN, not assumed.
+ *
+ * PRE-REGISTERED (before the first MID3D run):
+ *   D1  PORT-IS-LIVE: the conforming census `nonShorteningSplits` must collapse from 3.2569%.
+ *       KILL: if it does not fall below 0.5%, the port is not reaching the conforming split path and
+ *       every number downstream is void.
+ *   D2  THE VERDICT: Gothic conforming total vs 12 M. *** DIRECTION NOT PRE-DICTED. *** Moving the split
+ *       point changes edge lengths, which changes which edge is longest, which changes the LEPP
+ *       PROPAGATION PATHS. M can move either way and `independent x M` is what decides. The naive
+ *       12.693 M x 0.886 = 11.24 M ASSUMES M is unchanged, which is exactly the unknown.
+ *   D3  Voronoi is the null on the DEFECT metric (0.000% non-shortening both ways) and is explicitly
+ *       NOT assumed to be a null on COST — the solve relocates EVERY split point, not only pathological
+ *       ones. (The coordinator's own pre-registered null was wrong on exactly this; not inherited.)
+ */
+const MID3D = process.env.PF_CF_MID3D === '1';
+const MID3D_ITERS = Math.round(envF('PF_CF_MID3D_ITERS', 24));
+let shiftSum = 0; let shiftMax = 0; let shiftN = 0;
+/** the split PARAMETER on edge (u,v): 0.5 = the parametric midpoint; MID3D = the driver's chord solve. */
+function splitParam(
+  thU: number, zU: number, thV: number, zV: number,
+  ux: number, uy: number, uz: number, vx: number, vy: number, vz: number,
+): number {
+  if (!MID3D) return 0.5;
+  const sM = chordParam(
+    (ss: number) => {
+      const th2 = thU + ss * (thV - thU);
+      const z2 = zU + ss * (zV - zU);
+      const [lx, ly, lz] = lift(th2, z2);
+      return { x: lx, y: ly, z: lz, th: th2 };
+    },
+    ux, uy, uz, vx, vy, vz, 0.5, MID3D_ITERS,
+  );
+  const sh = Math.abs(sM - 0.5); shiftSum += sh; if (sh > shiftMax) shiftMax = sh; shiftN += 1;
+  return sM;
+}
 /** HARD depth limit on FORCED (propagation) splits. A forced split at depth >= HARDCAP is REFUSED,
  *  which leaves a HANGING NODE. `st.refusedForced` is that count = the conformity DEFICIT, printed. */
 const HARDCAP = Math.round(envF('PF_CF_HARDCAP', 1000000));
@@ -174,6 +221,7 @@ mkdirSync(OUTDIR, { recursive: true });
 log('===== S106 CONFORM — WHAT DOES CONFORMITY COST? =====');
 log(`style ${STYLE}  tag ${TAG}  mode ${MODE}  arms [${ARMS.join(',')}]  bars [${BARS.join(',')}]`);
 log(`bar ${BAR_UM} um  covering k=${K} inset=${INSET}  maxLev ${MAXLEV} => bisection cap ${CAP}`);
+log(`MIDPOINT = ${MID3D ? `MID3D=1 chordParam ${MID3D_ITERS} halvings — THE DRIVER'S OWN SOLVE (PF_CB_MID3D defaults ON in production)` : 'MID3D=0 parametric midpoint — the S106 default, which HAS FIXED POINTS'}`);
 log(`RULER = ${LEGACYSIGN ? 'legacy (f_xy . centroid_xy) — the convention the published numbers are on' : '5698d023 (sign from the ANALYTIC surface normal at the footprint centroid)'}`);
 log(`STL ${STL}`);
 
@@ -322,7 +370,9 @@ function bisectInd(t: Tri, tieTotal: boolean): Tri[] {
     }
   }
   const u = bi; const v = (bi + 1) % 3; const w = (bi + 2) % 3;
-  const thm = 0.5 * (t.th[u] + t.th[v]); const zm = 0.5 * (t.z[u] + t.z[v]);
+  const sMid = splitParam(t.th[u], t.z[u], t.th[v], t.z[v],
+    t.x[u], t.y[u], t.z[u], t.x[v], t.y[v], t.z[v]);
+  const thm = t.th[u] + sMid * (t.th[v] - t.th[u]); const zm = t.z[u] + sMid * (t.z[v] - t.z[u]);
   const [mx, my, mz] = lift(thm, zm);
   void mz;
   {
@@ -586,7 +636,9 @@ function refineConforming(m: ConMesh, bar: BarName, inCore: Uint8Array | null, p
     const u = m.corner(t, (e + 1) % 3); const v = m.corner(t, (e + 2) % 3);
     const th = TH3; m.thetas(t, th);
     const iu = (e + 1) % 3; const iv = (e + 2) % 3;
-    const thm = 0.5 * (th[iu] + th[iv]); const zm = 0.5 * (m.VZ[u] + m.VZ[v]);
+    const sMid = splitParam(th[iu], m.VZ[u], th[iv], m.VZ[v],
+      m.VX[u], m.VY[u], m.VZ[u], m.VX[v], m.VY[v], m.VZ[v]);
+    const thm = th[iu] + sMid * (th[iv] - th[iu]); const zm = m.VZ[u] + sMid * (m.VZ[v] - m.VZ[u]);
     const [x, y, z] = lift(thm, zm); void z;
     {
       const L = Math.hypot(m.VX[v] - m.VX[u], m.VY[v] - m.VY[u], m.VZ[v] - m.VZ[u]);
@@ -883,4 +935,5 @@ if (MODE === 'fid') {
   log(`unknown PF_CF_MODE=${MODE}`);
 }
 void readFileSync; void existsSync;
+if (MID3D && shiftN > 0) log(`MID3D shift |s-0.5| over ${shiftN} splits: mean ${(shiftSum / shiftN).toFixed(6)}  max ${shiftMax.toFixed(6)}   (0 => the solve agreed with the parametric midpoint everywhere)`);
 log(`done  [${el()}s]   nScores ${nScores}  ${(nScores / ((Date.now() - T0) / 1000)).toFixed(0)} score/s`);
