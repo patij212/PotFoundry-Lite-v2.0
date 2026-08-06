@@ -964,9 +964,16 @@ bounds**):
 same quality line and must not be ratioed.** What the 1° row is really worth is now priced independently
 (§0i.3, H2): ***full clearance costs ~155× and the best any isotropic field can do at 5% over-area is
 18.33×.*** **The 1° bar is reachable — it is simply not a 12× object.** For scale, at the
-industry-practical **5°** bar Gothic is only **6.43%** over by area to begin with, and the **chord bar is
-met at ~3×**. ***Choosing the angular bar is therefore a PRODUCT decision with a 50× price attached, and
-it has never been made deliberately.***
+industry-practical **5°** bar Gothic starts **6.43%** over by area, against **~29%** at 1°, and the chord
+bar is met at ~3×. ***Choosing the angular bar is therefore a PRODUCT decision with a ~50× price
+attached, and it has never been made deliberately.***
+
+> ⚠ **DO NOT READ 6.43% AS "5° SOLVES IT."** It is the same number §0f.4 reported as ***"no exemption"***,
+> and §0f.4 is right: 6.43% of surface area over bar is **not zero**, and this campaign's standard is
+> not "mostly". Relaxing 1° → 5° takes the defect from ~29% to ~6% of area — **a real 4.5× improvement
+> and not a solution.** The honest statement is that the bar choice moves the problem's SIZE by ~50× in
+> cost and ~4.5× in residual, so it should be chosen deliberately — **not that any choice makes the
+> work go away.**
 
 ### 7.2 DO THIS
 
