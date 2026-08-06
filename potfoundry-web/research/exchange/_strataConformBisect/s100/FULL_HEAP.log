@@ -1,0 +1,68 @@
+cwd: /c/Users/patij212/Downloads/PotFoundry-Lite-v2.0/.claude/worktrees/s100-conform-gate/potfoundry-web
+==============================================================
+S100 ARM S100HEAP   PF_CB_DRIVER=heap   grid 200x140  maxsecs 5400
+==============================================================
+
+[1m[46m RUN [49m[22m [36mv4.0.17 [39m[90mC:/Users/patij212/Downloads/PotFoundry-Lite-v2.0/.claude/worktrees/s100-conform-gate/potfoundry-web[39m
+
+[90mstdout[2m | research/bridge/_strataConformBisectS34.test.ts[2m > [22m[2mSTRATA conforming-bisection[2m > [22m[2mmeshes any style by feature-directed conforming bisection
+[22m[39m
+===== STRATA CONFORMING-BISECTION: GothicArches RING  [DIRECTED | SNAP | no-reproj] =====
+params {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+rank/accept: PF_CB_RANK=plane — sagAdaptive: INFINITE-PLANE distance, absolute pitch 0.03mm, n∈[12,64]   acceptTol 3.500 µm
+grid 200×140 (56000 init tris) → 1260218 tris (alloc 2464436/8000000)   937s, 1079M rA evals
+splits 612503   snaps 58901 (jump-class 0)   transverse re-solves 0   z-steps 0
+    *** CERTIFIED ACCEPT VETO: PF_CB_CERTACCEPT=0 (OFF — accept is the blind plane ruler, same as rank) ***
+    *** §4.3 SNAP-TO-LOCUS VERTEX MOVE (HEAP PATH): PF_CB_MOVE43H=0 (OFF) ***
+cleanup: collapsed 0 tris (safe-collapse 0, link-refused 0 with 0 offenders, flips 0, flips-refused-on-locus 0)   welded-splits 12 (REFUSED)
+--- SHAPE (L5, 2026-07-29 blade fix) ---
+  levers: PF_CB_SHAPE=1 cap AR>50  fold=1  mid3d=1 (24 halvings, |shift| cap 0.25)  longfall=1
+  guard: 1778625 split candidates scored, 5689180 child facets (BOTH sides of every edge)
+  refused: 968731 on aspect (>50), 0 on (θ,z) FOLD   ⇒ heap driver: a fully-refused triangle lands in `unresolved` via the no-op-split path
+  worst child AR the guard ever ADMITTED: 50.00 (must be <= 50)
+  3-D midpoint: 1719724 solves, mean |s-frac| 0.07348, max 0.47756, clamped 126632
+  longest-edge preference: tested 220333, FIRED 7297 (max-sag edge inadmissible AND longest edge admissible)
+  post-loop guard: PF_CB_POST_SHAPE=1   cap AR>50, metric = _shapeGuard.aspect3 (the census's own)
+    initial grid: 0 of 56000 facets over the cap, worst AR 3.40
+    collapse: 0 tested, refused 0 on aspect + 0 on (θ,z) FOLD
+    flip (collapse-driven, PF_CB_FLIP=0): 0 gate calls, refused 0 on aspect   [tryFlip sign-checks (θ,z) itself, so this path cannot fold]
+    worst AR any ADMITTED post-loop operation left behind: 0.00
+  cap repair: PF_CB_SHAPE_FLIP=0   facets over cap BEFORE 0 (worst 50.0) → AFTER 0 (worst 50.0)   flips tried 0, done 0
+heap: 0 left, worst-left 0.000 µm, key-inversions 94377, no-op splits 9992   MAXtri@oracle8 53.114 µm
+unresolved: 9794 live over-tol triangles the splitter GAVE UP ON   worst 53.114 µm (stored key — PLANE ruler on the heap driver)   worst 873.379 µm (EDGE ruler, re-read on the shipped mesh)   *** an EMPTY HEAP DOES NOT MEAN CLOSURE — these left the queue unrefined ***
+  unresolved by reason: shape-ar 9794
+--- WATERTIGHT (3D position-weld) ---
+  non-manifold edges : 0  OK
+  reversed facets    : 0  OK
+  seam-crack edges   : 0  OK
+  boundary edges     : 1204   (ring ⇒ top+bottom only)   loops 2
+  soup: 1260218 tris = 1260218 outer wall + 0 treads + 0 caps
+--- FIDELITY (DRIVER SELF-REPORT on the PLANE ruler — NOT the verdict; judge with
+             research/bridge/_strataFacetTruth.test.ts at FULL coverage) ---
+  HEADLINE MAX 55.890 µm  FAIL   = max(adaptive 53.114, fixed-12 53.114, tail-44 55.890)
+  ruler spread 1.1×  consistent
+  --- adaptive oracle (≤0.03mm sample pitch, n∈[12,64]) ---
+  MAX 53.114 µm  FAIL   p99 3.474  p50 1.517  over-0.01mm 1569/1260218
+  MAX-locus: z=[50.57,50.55,50.55] (42% H) θ=[5.6214,5.6153,5.6203] edges(µm)=279.4/415.6/295.0 feat=[000]
+  [STRATA-comparable fixed oracle 12]: MAX 53.114 µm   locus z=[50.57,50.55,50.55] (42% H) θ=[5.6214,5.6153,5.6203] edges(µm)=279.4/415.6/295.0 feat=[000]
+  TAIL re-measure (worst 3000 @ oracle 44): MAX 55.890 µm  FAIL
+  TAIL-locus: z=[50.57,50.55,50.55] (42% H) θ=[5.6214,5.6153,5.6203] edges(µm)=279.4/415.6/295.0 feat=[000]
+  audit: PARALLEL, 8 workers   main 1260218 facets in 55.9s (chunk 1024)   tail 3000 facets in 0.8s (chunk 5)
+    rA evals: 326.4M in workers — INCLUDED in the total above, because they are the same evaluations a serial run makes
+      + 282.6k identity-lattice and 91 forensic re-evals, both EXCLUDED so both arms print the same total
+    rA identity: 141320 (worker × lattice) comparisons, 0 differ, worst 0.000000 µm — checked BEFORE any facet was scored, run refused on any deviation
+    shared buffers: 19.2 MB vertices + 14.4 MB corners + 19.2 MB results (the mesh is SHARED, never copied per worker)
+    PF_CB_AUDIT_VERIFY=1 to re-score every facet on the main thread and gate bit-identity per facet
+    NB the LOCUS AUDIT (PF_CB_LOCUS_AUDIT=1) is NOT pooled — it is off by default and stays serial.
+  min edge 0.722 µm
+=========================================================
+
+
+ [32m✓[39m research/bridge/_strataConformBisectS34.test.ts [2m([22m[2m1 test[22m[2m)[22m[33m 936880[2mms[22m[39m
+     [33m[2m✓[22m[39m meshes any style by feature-directed conforming bisection [33m 936877[2mms[22m[39m
+
+[2m Test Files [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[32m1 passed[39m[22m[90m (1)[39m
+[2m   Start at [22m 02:47:26
+[2m   Duration [22m 939.94s[2m (transform 1.39s, setup 0ms, import 2.63s, tests 936.88s, environment 0ms)[22m
+

@@ -99,7 +99,13 @@ case "$MODE" in
   *)
     export PF_CB_GRIDU=200
     export PF_CB_GRIDV=140
-    export PF_CB_TRICAP=8000000
+    # EQUAL-BUDGET BY CONSTRUCTION. Every split in this driver is a 1->2 bisection, so
+    #     live = (alloc + initTris) / 2
+    # exactly (verified on both smoke arms: (400000+4800)/2 = 202400 in each). Capping the treatment
+    # arm's ALLOC at the control's final alloc therefore pins the two meshes to the SAME triangle
+    # count, which is what lets a fidelity ratio be quoted at all. The control runs first at 8 M
+    # (uncapped, so it drains naturally) and its alloc is passed back in via PF_CB_TRICAP_EQ.
+    export PF_CB_TRICAP="${PF_CB_TRICAP_EQ:-8000000}"
     export PF_CB_MAXSECS=5400
     SUF=S100 ;;
 esac

@@ -10050,3 +10050,98 @@ the smooth, very steep rib FLANK (S93's SMOOTH-TURNING 99.04%, a sizing problem)
 count must fall below 1,600 with whole-mesh minAngle p05 not worse than 1.5x. (2) `PF_CB_DRIVER=sweep` A/B,
 kill: if the count does not fall >=3x, gate A is mis-attributed. (3) A conformance term in `consider()` keyed
 on the GAUSS ruler (not the radius ruler); kill: >2x total run time ⇒ it belongs in a pre-pass locus set.
+
+---
+
+## S100 — THE CONFORMANCE TERM, THE MOVE, AND THE BACK-FACING GATE (2026-08-06)
+
+*** S99's DIAGNOSIS IS RIGHT AND ITS REMEDY IS REFUTED. RAISING A DEMAND WITHOUT AN OPERATOR THAT CAN
+SATISFY IT IS WORSE THAN NOT RAISING IT. ***
+
+Doc: `research/exchange/_strataConformBisect/S100_CONFORM_AND_GATE.md`. Tools:
+`research/tools/s100BackFacingGate.ts`, `run-s100-bf-gate.sh`, `run-s100-sweep-ab.sh`. Meshes measured
+with S99's own `s99CreaseCensus` (no third crease detector) and the new gate.
+
+**TASK 1 — `PF_CB_DRIVER=sweep` A/B, GothicArches, EQUAL BUDGET (1,260,218 vs 1,260,219 triangles).**
+Kill line (S99's own): *< 3x reduction in crease-crossed AREA => the missing-conformance-term
+attribution is REFUTED.* **Measured: the AREA ROSE 3.42x (1.012% -> 3.460%).** **REFUTED.**
+
+| | HEAP | SWEEP | |
+|---|---|---|---|
+| crease-crossing COUNT | 2.188% (27,574 extrap.) | 0.841% (10,598) | **2.60x FEWER** |
+| **crease-crossing AREA** | **1.012%** | **3.460%** | **3.42x WORSE** |
+| CROSSED orientation chord p50 | 36.78 um | **2,346 um** | **63.8x WORSE** |
+| back-facing facets / AREA | 9,944 / 0.23533% | **32,054 / 0.55982%** | 3.22x / 2.38x worse |
+| minAngle p05 | 3.585 deg | 2.308 deg | 1.55x worse |
+| unresolved | 9,794 | **103,414** (`move-deferred` 63,687) | 10.6x |
+| wall | 937 s | 374 s | sweep 2.5x faster |
+
+**THE MECHANISM, BOTH HALVES.** Gate A ("accepted by the blind plane ruler" — the gate S99 named)
+collapses **97.267% -> 9.170%** of the crease-crossing AREA: *S99's diagnosis is CONFIRMED.* But gate B
+(the `SNAP_ALPHA` in-band `move-deferred` dead end) goes **0.395% -> 71.448%**, i.e. **181x**:
+`triangleNeed` returns `need:'conform'`, sec4.3's vertex move is DEFERRED BY DESIGN under sweep, and the
+triangle is dropped **without falling back to a size split**. The demand is raised, cannot be met, and
+suppresses the one action that was still working.
+
+**RENDER AGREES** (`s100/render/S100_BACKFACING_AB.png`, whole closed mesh, DoubleSide, s98BackfaceRender):
+the sweep arm's arch ribs and columns are **visibly TORN** along exactly the feature lines the
+conformance term was meant to protect; the heap control at the same 1.26 M triangles is clean.
+
+*** AND A COUNT-ONLY READING WOULD HAVE SHIPPED IT. *** The COUNT column says 2.60x better. Third time
+this campaign has been saved by requiring AREA alongside COUNT (cf. `project_ar_cap_is_the_residual`).
+
+**TASK 2 — `PF_CB_MOVE43H` AS A REAL DRIVER ARM. REFUTED.** The pair already existed
+(`S35CTL` / `S35M43H`, same session 2026-08-04) and **`S35CTL` is BYTE-IDENTICAL to `S39CTL`**
+(md5 9d5061f1...), so S99's published census IS the control. Kill line: *crossings must fall below 1,600
+AND minAngle p05 must not worsen by more than 1.5x.*
+
+| | S35CTL (OFF) | S35M43H (ON) | |
+|---|---|---|---|
+| **extrapolated crossing facets** | **3,187** | **3,844** | **ROSE 1.21x vs a <1,600 line** |
+| crease-crossing AREA | 0.037% | 0.059% | 1.59x worse |
+| **CROSSED orientation chord p50** | **228.2 um** | **318.2 um** | **1.39x WORSE** |
+| back-facing / AREA | 690 / 0.00596% | 708 / 0.00643% | 1.026x / 1.079x |
+| minAngle p05 / P(<5deg) | 7.169 deg / 2.0641% | 7.204 deg / 2.0284% | **better** |
+| triangles / secs | 1,142,166 / 821.6 | 1,140,696 / 848.1 | -0.13% / +3.2% |
+
+**S99's synthetic 228 -> 26 um does NOT survive contact with the mesher: the real arm reads 228 -> 318 um.**
+**AND THE PREDICTED SLIVER COST DID NOT APPEAR EITHER** — S99's facet-local "sliver share 39.4% -> 69.2%"
+is invisible whole-mesh (minAngle p05 1.005x BETTER, P(<5deg) falls, back-facing +2.6% count). The
+operator neither buys the win nor pays the price. MOVED 4,818 vertices, mean disp 7.56 um — it fired.
+
+**TASK 3 — THE BACK-FACING SHIP GATE: WIRED AND VALIDATED.** `s100BackFacingGate.ts` — O(1) CENTROID
+SCREEN (5 rA evals/facet, best-of-5 one-sided normals, scored against the STL's OWN WINDING, never
+flipped) then CONFIRM with S98's 45-point covering on the ~0.13-3% flagged. **PASS <=> ZERO.** Names the
+worst facets (index, area, worstDeg, minAngle, x/y/z, theta) + ndjson + json.
+**DEFAULT REPORT-ONLY (exit 0); blocking is opt-in via `PF_S100_GATE_BLOCK=1` (FAIL 3 / NOT-MEASURED 4).**
+A check that did not run prints **NOT-MEASURED, never 0**, and the verdict itself is three-way.
+
+| validation | expected | measured |
+|---|---|---|
+| Gothic S39CTL FULL | S98: **690 / 0.00596%** | **690 / 0.00596%** exact |
+| Voronoi S94CTL FULL (ships) | S98: **488 / 0.01298%** | **488 / 0.01298%** exact |
+| wrong style params | must not read PASS | radial 2319.9 um => **NOT-MEASURED**, exit 4 |
+| blocking on a real FAIL | exit 3 | exit 3 |
+| PASS branch reachable | PASS, exit 0 | PASS, exit 0 |
+| cost | S98 priced ~2-3 s | **10.2 s** on 1.14 M facets (6.15 M evals) vs 268 M / 295 s full covering |
+
+It reports **690** on Gothic, **not S97's 305** — i.e. it measures the class, not its complement.
+**All 5 meshes measured this session FAIL. Nothing is at zero.**
+
+**SIDE FINDING, LARGE.** Task 1's control had to drop the aligned seed + tightening field (the driver
+hard-disables the seed under sweep: `ALIGNED_SEED = envOn(...) && !SWEEP && !GPU_RANK`, line 1057).
+Paying that confound prices the seed for the first time on these classes: production `S39CTL` vs the
+uniform-seed heap control, with production carrying **10% FEWER triangles** — crease-crossing AREA
+**27x** better, back-facing AREA **39.5x** better, minAngle p05 **2.00x** better. **The seed is doing the
+conforming.** Artefact-level (two levers), so the direction is safe and the exact factor is not.
+
+**REFUTED, INCLUDING MY OWN.** (1) I expected MOVE43H to be free-and-positive on the strength of an 8.7x
+synthetic win — it is negative. (2) I expected its sliver cost to be the risk — it did not materialise.
+(3) I expected the sweep conformance term to be a large win — it moves the defect from gate A to gate B.
+(4) I nearly ran a two-variable A/B; the seed's `&& !SWEEP` was found by a smoke run that THREW, not by
+reading the code. (5) I nearly reported a 2.60x win from the COUNT column alone.
+
+**RECOMMENDATION.** Do NOT add a conformance term to `consider()` (S99's arm 3) unless it is paired with
+an operator that can DISCHARGE the demand — none exists today. Keep `PF_CB_MOVE43H` default OFF and
+withdraw its synthetic figures as predictions. Take the gate and run it across all 20 styles (S98's arm
+1). **The next lever to price is the SEED, not the driver.**

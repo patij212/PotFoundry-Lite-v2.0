@@ -1,0 +1,67 @@
+══════════════════════════════════════════════════════════════════════════════════════════
+  S100 BACK-FACING SHIP GATE — unambiguous back-facing facets must be ZERO
+══════════════════════════════════════════════════════════════════════════════════════════
+mode         : REPORT-ONLY (default) — always exits 0. Set PF_S100_GATE_BLOCK=1 to block.
+stl          : research/exchange/_strataConformBisect/gothicarches_ring_DS-H_S100HEAP.stl
+style / tag  : GothicArches / T1FULL_HEAP
+dims         : H=120 Rb=40 Rt=50
+confirm      : 45-point covering, k=8 inset=0.02  (S98's verdict instrument)
+params       : {"gaCounts":12,"gaRelief":1.5,"gaPointiness":1.2,"gaDiamond":0.5,"gaX":0,"gaSpring":0.15,"gaArchHeight":0.7,"gaRib":0.04,"gaCol":0.15,"gaSharp":4,"gaBands":1,"gaBandW":0.04}
+facets       : 1260218   [0.3s]
+scope        : FULL MESH (1260218 facets)
+PRECOND wind : 98.276% of 8237 stride facets agree with the analytic outward normal => OUTWARD
+PRECOND radial: MAX |r_mesh - rA| over 60012 vertices = 0.0277 um
+SCREEN       : centroid best-of-5 flagged 21219 of 1260218 (1.6838%)   8.0s   6.40M rA evals   [8.5s]
+CONFIRM      : 45-pt covering on the 21219 flagged  =>  UNAMBIGUOUS 9944   (screen precision 46.86%)   4.8s   [13.2s]
+
+──────────────────────────────────────────────────────────────────────────────────────────
+  SHAPE CONTEXT (whole scope)
+──────────────────────────────────────────────────────────────────────────────────────────
+  minAngle deg  p05 3.585   p10 5.789   p50 21.286
+  P(minAngle < 5 deg) : 8.1135%
+  back-facing minAngle p05/p50 : 1.728 / 3.984
+  degenerate (zero-area) facets : 0   [these have NO normal and are NOT scored]
+  stored STL normal disagrees with winding : 0
+
+══════════════════════════════════════════════════════════════════════════════════════════
+  GATE VERDICT: FAIL
+══════════════════════════════════════════════════════════════════════════════════════════
+  UNAMBIGUOUS BACK-FACING FACETS : 9944          (PASS requires exactly 0)
+  ... as a share of scope, COUNT : 0.7891%
+  ... as a share of scope, AREA  : 0.23533%   (91.550610 of 38903.086 mm^2)
+  screen-flagged but STRADDLE only (a fidelity defect, not an orientation one): 11275  area 0.32170%
+  measured screen RECALL on this mesh : NOT-MEASURED   (PF_S100_FULLCOVER=1 to measure; S98 measured 100% on 2 meshes, NOT proved)
+  full-covering count (cross-check)    : NOT-MEASURED
+  preconditions : wind 98.276%   radialMax 0.0277 um   OK
+  cost          : 11.18M rA evals total, 14.4s wall
+
+*** FAIL — THE EXPORT CONTAINS FACETS THAT ARE BACK-FACING OVER THEIR WHOLE FOOTPRINT. ***
+*** The standard is ZERO. These will render as inverted normals; the lab renderer cannot   ***
+*** show them (meshRender.cjs is DoubleSide) — use research/render/s98BackfaceRender.cjs.  ***
+
+  THE 20 WORST BY AREA — find them by facet index in the STL:
+   rank   facetIdx        area mm^2   worstDeg   minAngle   diam mm        x         y         z      theta
+      1       10057   3.5518e-1     95.19     23.890   1.74165   -30.2094  -35.3289   74.9847  -2.27818
+      2       10058   3.5518e-1     95.19     23.890   1.74165   -35.3289   30.2094   74.9847  2.43421
+      3       10059   3.5518e-1     95.19     23.890   1.74165    30.2094   35.3289   74.9847  0.86342
+      4       10060   3.5518e-1     95.19     23.890   1.74165    35.3289  -30.2094   74.9847  -0.70738
+      5      403573   3.0968e-1     98.20     20.248   1.76103    18.5647  -44.9420  100.6909  -1.17914
+      6      403470   3.0968e-1     98.20     20.247   1.76103   -18.5647   44.9420  100.6909  1.96246
+      7      403478   3.0968e-1     98.20     20.247   1.76103   -44.9420  -18.5647  100.6909  -2.74993
+      8      403491   3.0968e-1     98.20     20.247   1.76103    44.9420   18.5647  100.6909  0.39166
+      9      830224   2.5866e-1    151.83     13.000   1.84697    16.8163   41.6761   51.8566  1.18721
+     10      830228   2.5866e-1    151.83     13.000   1.84697   -41.6761   16.8163   51.8566  2.75800
+     11      830232   2.5866e-1    151.83     13.000   1.84697   -16.8163  -41.6761   51.8566  -1.95439
+     12      830236   2.5866e-1    151.83     13.000   1.84697    41.6761  -16.8163   51.8566  -0.38359
+     13       22659   2.4496e-1    106.36     10.336   1.71367   -37.6278  -34.0279  119.4917  -2.40635
+     14       22657   2.4495e-1    106.36     10.335   1.71366    37.6278   34.0279  119.4917  0.73524
+     15       22661   2.4493e-1    106.36     10.335   1.71362   -34.0279   37.6278  119.4917  2.30604
+     16       22655   2.4491e-1    106.36     10.334   1.71361    34.0279  -37.6278  119.4917  -0.83555
+     17      115675   1.9604e-1    116.66     32.064   1.03686    45.2653  -12.2979   79.7241  -0.26525
+     18      115676   1.9604e-1    116.66     32.064   1.03686    12.2979   45.2653   79.7241  1.30555
+     19      115668   1.9604e-1    116.66     32.064   1.03686   -45.2653   12.2979   79.7241  2.87634
+     20      115669   1.9604e-1    116.66     32.064   1.03686   -12.2979  -45.2653   79.7241  -1.83604
+
+  MODE: REPORT-ONLY (default) — exit 0 regardless of verdict
+  json  -> research/exchange/_strataConformBisect/s100/S100_BFGATE_T1FULL_HEAP.json
+  facets-> research/exchange/_strataConformBisect/s100/S100_BFGATE_T1FULL_HEAP_backfacing.ndjson
