@@ -79,12 +79,6 @@ import { SweepPool, resolveSweepWorkers, type SweepPoolStats } from './_sweepPoo
 // THE SHAPE TERM (2026-07-29 blade fix). Pure functions, no mesh state — see _shapeGuard.ts's header for
 // why `aspect3` is the census's own metric and why that identity is the point.
 import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shapeGuard';
-// S118 THE EMIT-TIME ADMISSION CORE. A TRANSCRIPTION of the S117 predicate
-// (src/renderers/webgpu/parametric/conforming/emitInvariant.ts), NOT an import of it: this driver may not
-// import src/, because a flag-OFF run of this fork must stay byte-identical to a committed baseline and an
-// import would bind that guarantee to a shipping module another agent may edit underneath it.
-// _s118EmitAdmit.test.ts §BRIDGE imports BOTH and proves them bit-identical over 4,000 triangles.
-import { checkS118Admit, makeS118Verdict, unwrapTheta3, type S118Verdict } from './_s118EmitAdmit';
 // THE ONE DEFINITION of the barycentric sag ruler (2026-07-29 audit-pool extraction). `sagOfN` and
 // `sagAdaptive` below are now one-line wrappers over these bodies, transcribed VERBATIM, so the driver's
 // serial audit and every audit WORKER THREAD run the same arithmetic instead of two copies that must be kept
@@ -178,67 +172,6 @@ describe('STRATA conforming-bisection', () => {
     const NUDGE_LADDER = (process.env.PF_CB_NUDGE ?? '0.5,0.42,0.58,0.35,0.65,0.28,0.72,0.21,0.79,0.15,0.85')
       .split(',').map((x) => Number.parseFloat(x)).filter((x) => Number.isFinite(x) && x > 0 && x < 1);
     const DEBUG = envOn('PF_CB_DEBUG');
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // S118  EMIT-TIME ADMISSION — ALL THREE FLAGS DEFAULT OFF (2026-08-07)
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // *** READ THIS BEFORE ASSUMING THE DIAGNOSIS. THE PLACEMENT WAS NEVER THE BUG. ***
-    //
-    // S118 was tasked to "port APCR's two structural properties into bisectAt". Reading the code first, as
-    // instructed, shows BOTH ARE ALREADY THERE and have been since the file was written:
-    //
-    //   (1) CONFORMITY IS STRUCTURAL. `bisectAt` splits EVERY live triangle incident on the edge, in one
-    //       loop, with no intermediate state — a hanging node never exists. Its own docstring says so.
-    //   (2) THE NEW VERTEX IS THE PARAMETER POINT LIFTED ONTO rA. `edgeParam(a,b,t)` returns
-    //       [vth[a] + dThRaw(vth[a],vth[b])*t, vz[a] + (vz[b]-vz[a])*t] and `addV` lifts it as
-    //       r = rA(canon(th), z), x = r*cos, y = r*sin. That IS APCR's formula. At t = 1/2 with
-    //       PF_CB_MID3D=0 it is literally, operand for operand, th_m = th_a + dThRaw/2, z_m = (z_a+z_b)/2,
-    //       r_m = rA(th_m,z_m).
-    //
-    // And the footprint-sign property does NOT require t = 1/2 — it requires only that the new point lie
-    // STRICTLY INSIDE the parameter segment, which every placement in this driver does (MID3D clamps to
-    // [0.25,0.75], SNAP to [SNAP_ALPHA, 1-SNAP_ALPHA], the nudge ladder to [0.15,0.85]). `_shapeGuard.ts`
-    // states the same conclusion in its own header: "In exact arithmetic a child of a split can never flip:
-    // the new vertex lies ON segment ab, so area(a,m,apex) = t*area(a,b,apex)."
-    //
-    // SO WHAT IS MISSING IS NOT PLACEMENT — IT IS A TERM. The S1/S2 guard bounds `aspect3` (a 3-D ratio,
-    // cap 50) and the (theta,z) SIGN. Neither sees a facet that is well-shaped in 3-D and a sub-micron
-    // BLADE in the parameter domain — which is exactly the class S116 censused as 94.87% of
-    // CelticTriquetra's over-ceiling AREA (GothicArches control 1.78%). `_shapeGuard.ts` REJECTED an
-    // absolute min-altitude test by name ("a min-ALTITUDE test in mm is not scale-invariant") and that
-    // rejection is precisely why the hole is there. S118's contribution is that term.
-    //
-    //  PF_CB_S118_ADMIT   the gate. Runs the transcribed S117 emit invariant (T1 degeneracy / T2 fold /
-    //                     T3 blade, zero rA evaluations) on BOTH CHILDREN of EVERY live incident triangle,
-    //                     at the SAME choke point and through the SAME refusal channel as `shapeAdmits` —
-    //                     BEFORE addV, so a refusal leaves no orphan vertex in the weld grid.
-    //                     ON REJECTION IT REFUSES THE SPLIT, deliberately: that is the caller contract the
-    //                     driver already has (`splitEdge`'s ladder, LONGFALL's alternative edge, S26's
-    //                     refusal accounting all key off a false return), so a refused edge is retried on a
-    //                     DIFFERENT edge rather than silently stranded. The stranding that remains is
-    //                     visible in `unresolved`, and pricing it is a REPORTED number, not an assumption
-    //                     — S100's sweep made things 3.42x worse exactly by stranding demand unmeasured.
-    //  PF_CB_S118_CENSUS  measurement only, changes no byte of the mesh: birth-site tallies at `bisectAt`
-    //                     plus a FINAL EXHAUSTIVE f64 census of the finished soup.
-    //                     WHY IN-DRIVER AND NOT FROM THE STL — and the number, because I first wrote this
-    //                     caveat from memory and was WRONG BY 1000x until the tool printed the real value.
-    //                     The STL is f32: 24-bit mantissa, so at r = 51 mm the coordinate quantum is
-    //                     51 * 2^-23 = 6.1e-6 mm = 6.1 NANOMETRES — roughly 330x BELOW the 2 um needle bar,
-    //                     not above it. An STL-side census AT THIS BAR IS THEREFORE SOUND, and
-    //                     research/tools/s118StlCensus.ts is the tool for it. What f32 cannot support is a
-    //                     claim in the tens of nanometres — and one such claim matters here: a facet whose
-    //                     (theta,z) footprint is near-degenerate can have its SIGN FLIPPED by f32 write
-    //                     rounding alone, so a small T2 count read off an STL is not evidence the driver
-    //                     emitted a fold. The f64 census below is what settles that, and it settles it by
-    //                     scoring the same facets before they are ever rounded.
-    //  PF_CB_S118_PARAMMID  a documented ALIAS for PF_CB_MID3D=0 at the placement site, so a DRIVE agent
-    //                     can A/B "APCR placement" without disturbing the meaning of the MID3D counters.
-    //                     It is an alias and nothing more — see (2) above for why it is not the fix.
-    const S118_ADMIT = envOn('PF_CB_S118_ADMIT');
-    const S118_CENSUS = envOn('PF_CB_S118_CENSUS');
-    const S118_PARAMMID = envOn('PF_CB_S118_PARAMMID');
-    const S118_TAUQ = envF('PF_CB_S118_TAUQ', 0.005);          // T1 floor on |qP|; 0 disables T1's shape test
-    const S118_MINALT_MM = envF('PF_CB_S118_MINALT_UM', 2) / 1000; // T3 absolute arc-space altitude bar
-    const S118_FOLD_ON = process.env.PF_CB_S118_FOLD !== '0';  // T2 sub-lever (inert unless S118_ADMIT)
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // L5  THE SHAPE TERM — four levers, ALL DEFAULT ON, each individually reachable so the DEFECT stays
     //     reproducible. Diagnosis: research/lab/2026-07-29-strata-perf-convergence-worklog.md, "DIAGNOSED".
@@ -1392,7 +1325,7 @@ describe('STRATA conforming-bisection', () => {
     //  did not list it, and nothing read the value narrowly enough to notice. S22's pass classifies its own
     //  refusals by this field, so the union is widened to what the code already writes. Type-only: no
     //  runtime byte moves, so every flag-OFF path stays byte-identical by construction.)
-    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' | 's118' = 'none';
+    let lastBisectShape: 'none' | 'ar' | 'fold' | 'admit' = 'none';
     /**
      * Read `lastBisectShape` at its DECLARED type. The checker's flow analysis narrows the variable to its
      * initializer `'none'` at every read in this scope, because the only writer is `bisectAt` — a closure
@@ -1400,7 +1333,7 @@ describe('STRATA conforming-bisection', () => {
      * where it works around it by not repeating the test). Reading through a function boundary drops the
      * narrowing, so S22 can classify a refusal by the gate that caused it instead of guessing.
      */
-    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' | 's118' => lastBisectShape;
+    const bisectRefusal = (): 'none' | 'ar' | 'fold' | 'admit' => lastBisectShape;
     // ═══ S26 — THE PLACEMENT half of the refusal channel. `lastBisectShape` names the SHAPE gate that
     // refused; it stays 'none' when the refusal was a PLACEMENT one, and until S26 that 'none' bucket was
     // the whole reason `unresolvedWhy` read `unknown` on every production arm. S25.2 measured what that
@@ -1437,11 +1370,6 @@ describe('STRATA conforming-bisection', () => {
      * itself when MID3D is off, so the legacy path takes zero extra rA evaluations and stays byte-identical.
      */
     const placeAt = (a: number, b: number, frac: number): number => {
-      // S118 (a) — "PARAMETER-MIDPOINT PLACEMENT". This IS the whole of it: returning `frac` untouched
-      // makes the split point exactly th_m = th_a + dThRaw(th_a,th_b)*frac, z_m linear, r_m = rA(th_m,z_m),
-      // because that is what `edgeParam` + `addV` already compute. SNAP does not route through `placeAt`
-      // (it hands `bisectAt` the located crossing `k.t` directly), so this alias cannot damage conformance.
-      if (S118_PARAMMID) return frac;
       if (!MID3D) return frac;
       nMid3dSolves += 1;
       const s = chordParam((u) => liftAt(a, b, u), vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], frac, MID3D_ITERS);
@@ -1608,114 +1536,6 @@ describe('STRATA conforming-bisection', () => {
       return shapeAdmits(a, b, liftAt(a, b, placeAt(a, b, 0.5)));
     };
 
-    // ══════════════════════ S118 — THE EMIT-TIME ADMISSION TERM (DEFAULT OFF) ══════════════════════
-    // Everything below is DEAD unless PF_CB_S118_ADMIT=1 or PF_CB_S118_CENSUS=1. With both off, the only
-    // trace is a handful of `const` initialisers, no rA evaluation and no mesh write — so flag-OFF is
-    // byte-identical BY CONSTRUCTION, and the hash gate below proves it rather than asserting it.
-    const s118V = makeS118Verdict();
-    let s118Sigma: 1 | -1 = 1;
-    let s118SigmaPlus = 0;
-    let s118SigmaMinus = 0;
-    let s118Checks = 0;         // candidate splits scored
-    let s118Children = 0;       // children scored (2 per live incident triangle)
-    let s118RefDeg = 0;         // refusals by T1
-    let s118RefFold = 0;        // refusals by T2
-    let s118RefBlade = 0;       // refusals by T3 — the term the driver never had
-    let s118Refused = 0;
-    // BIRTH-TIME census: what `bisectAt` actually EMITS, scored in f64 at the moment of emission.
-    let s118BornN = 0; let s118BornArea = 0;
-    let s118BornDegN = 0; let s118BornDegArea = 0;
-    let s118BornFoldN = 0; let s118BornFoldArea = 0;
-    let s118BornBladeN = 0; let s118BornBladeArea = 0;
-    let s118BornMinAlt = Number.POSITIVE_INFINITY;
-    // *** THE GLOBAL PARAMETER WINDING IS MEASURED, NOT ASSUMED. *** T2's `sigma` is the emitter's fixed
-    // winding; guessing it inverts the fold test wholesale. Taken here as the majority sign of the
-    // (theta,z) signed area over the mesh AS IT STANDS — which, at this point in execution, is exactly the
-    // initial grid / replayed seed, before any split. The MINORITY COUNT IS REPORTED: if it is non-zero the
-    // seed itself already contains inverted facets and no split guard can be blamed for them.
-    if (S118_ADMIT || S118_CENSUS) {
-      for (let t = 0; t < ta.length; t += 1) {
-        if (!alive[t]) continue;
-        const s = signedAreaParam(vth[ta[t]], vz[ta[t]], vth[tb[t]], vz[tb[t]], vth[tc[t]], vz[tc[t]]);
-        if (s > 0) s118SigmaPlus += 1; else if (s < 0) s118SigmaMinus += 1;
-      }
-      s118Sigma = s118SigmaMinus > s118SigmaPlus ? -1 : 1;
-    }
-    /** Score ONE prospective child through the transcribed core, unwrapping theta onto a common branch. */
-    const s118Score = (
-      x0: number, y0: number, z0: number, t0: number,
-      x1: number, y1: number, z1: number, t1: number,
-      x2: number, y2: number, z2: number, t2: number,
-      minAltBar: number,
-    ): S118Verdict => {
-      const [u0, u1, u2] = unwrapTheta3(t0, t1, t2);
-      return checkS118Admit(x0, y0, z0, x1, y1, z1, x2, y2, z2, u0, u1, u2,
-        { sigma: s118Sigma, tauQ: S118_TAUQ, minAltMm: minAltBar }, s118V);
-    };
-    /**
-     * S118's gate. Deliberately the SAME SHAPE as `shapeAdmits`: same argument list, same "every live
-     * incident triangle, both children" scope, same `bisectAt`-verbatim child winding (oa,m,apex) and
-     * (m,ob,apex), same pre-addV position, same boolean refusal channel. Two guards that answer the same
-     * question about the same objects must be able to be diffed line by line.
-     *
-     * T2 is included for completeness of the transcription and is EXPECTED TO FIRE ZERO TIMES when
-     * PF_CB_SHAPE_FOLD is on — S1/S2 already tests exactly that sign. A non-zero `T2` count is therefore
-     * itself a finding (the two tests disagree) and is reported separately rather than merged into T1.
-     *
-     * ⚠ ONE ASYMMETRY IS LEFT IN DELIBERATELY, AND IS NAMED HERE RATHER THAN LEFT TO BE DISCOVERED.
-     * `shapeAdmitsBest` — S4/LONGFALL's "could this edge be split safely AT ALL?" — consults S1/S2 ONLY.
-     * With PF_CB_S118_ADMIT=1 the driver can therefore still PREFER an edge that S118 will then refuse, and
-     * the refusal falls through to the nudge ladder as any other refusal does. Wiring S118 into
-     * `shapeAdmitsBest` would change LONGFALL's edge CHOICE as well as the split's admission, which would
-     * confound the two effects in the very first A/B this flag exists to run. Decide it with a number, not
-     * here: if `shape-s118` shows up as a large `classifyStrand` bucket, that is the evidence for wiring it.
-     */
-    const s118Admits = (a: number, b: number, p: LiftedPoint): boolean => {
-      const list = edgeMap.get(eKey(a, b));
-      if (list === undefined) return true;
-      s118Checks += 1;
-      for (const t of list) {
-        if (!alive[t]) continue;
-        const apex = ta[t] !== a && ta[t] !== b ? ta[t] : tb[t] !== a && tb[t] !== b ? tb[t] : tc[t];
-        const [oa, ob] = orientedEnds(t, a, b);
-        // COST-ORDERED, FIRST-REFUSAL, exactly like `shapeAdmits`: child 2 is not scored once child 1 has
-        // already refused. `s118Children` counts SCORES TAKEN, not children that exist, so it prices the
-        // guard honestly rather than flattering it.
-        s118Children += 1;
-        const c1 = s118Score(
-          vx[oa], vy[oa], vz[oa], vth[oa], p.x, p.y, p.z, p.th, vx[apex], vy[apex], vz[apex], vth[apex], S118_MINALT_MM);
-        let bad = c1.ok ? 'ok' : c1.reason;
-        if (bad === 'ok') {
-          s118Children += 1;
-          const c2 = s118Score(
-            p.x, p.y, p.z, p.th, vx[ob], vy[ob], vz[ob], vth[ob], vx[apex], vy[apex], vz[apex], vth[apex], S118_MINALT_MM);
-          bad = c2.ok ? 'ok' : c2.reason;
-        }
-        if (bad === 'ok') continue;
-        if (bad === 'fold' && !S118_FOLD_ON) continue;   // T2 sub-lever off ⇒ report nothing, refuse nothing
-        if (bad === 'degenerate') s118RefDeg += 1;
-        else if (bad === 'fold') s118RefFold += 1;
-        else s118RefBlade += 1;
-        s118Refused += 1;
-        lastBisectShape = 's118';
-        lastShapeOffenderT = t;
-        return false;
-      }
-      return true;
-    };
-    /** BIRTH-TIME census of one emitted child. Measurement only — it writes no mesh state. */
-    const s118CensusBorn = (i0: number, i1: number, i2: number): void => {
-      const v = s118Score(
-        vx[i0], vy[i0], vz[i0], vth[i0], vx[i1], vy[i1], vz[i1], vth[i1], vx[i2], vy[i2], vz[i2], vth[i2],
-        S118_MINALT_MM);
-      s118BornN += 1;
-      s118BornArea += v.a3Mm2;
-      if (v.minAltMm < s118BornMinAlt) s118BornMinAlt = v.minAltMm;
-      if (v.reason === 'degenerate') { s118BornDegN += 1; s118BornDegArea += v.a3Mm2; }
-      else if (v.reason === 'fold') { s118BornFoldN += 1; s118BornFoldArea += v.a3Mm2; }
-      else if (v.reason === 'blade') { s118BornBladeN += 1; s118BornBladeArea += v.a3Mm2; }
-    };
-
     /** split edge (a,b) at parameter t (0..1) — splits EVERY incident triangle ⇒ watertight, no T-junctions. */
     const bisectAt = (a: number, b: number, tPar: number, feat: boolean): boolean => {
       lastBisectShape = 'none';
@@ -1724,10 +1544,6 @@ describe('STRATA conforming-bisection', () => {
       // S1/S2 GATE — BEFORE addV, so a refusal leaves no orphan vertex in the weld grid and cannot perturb
       // any later weld. This is the whole fix: `bisectAt` is the ONE choke point every split goes through.
       if (SHAPE && !shapeAdmits(a, b, liftAt(a, b, tPar))) return false;
-      // S118 GATE — the SECOND pre-addV admission, in the same position and for the same reason. It is
-      // deliberately AFTER S1/S2 rather than merged into it: keeping the two guards separate is what lets an
-      // A/B attribute a triangle-count or `unresolved` change to one term rather than to "the guard".
-      if (S118_ADMIT && !s118Admits(a, b, liftAt(a, b, tPar))) return false;
       const [mth, mz] = edgeParam(a, b, tPar);
       const m = addV(mth, mz, feat);
       if (m === a || m === b) { lastBisectPlace = 'weld-collapse'; return false; } // weld collapsed the split — nothing to do
@@ -1756,10 +1572,6 @@ describe('STRATA conforming-bisection', () => {
         killT(t);
         created.push(addT(oa, m, apex));
         created.push(addT(m, ob, apex));
-        // S118 BIRTH CENSUS — reads the two facets that were just emitted. Measurement only: it touches no
-        // mesh array, allocates nothing (one module-level scratch verdict) and evaluates rA zero times, so
-        // with PF_CB_S118_CENSUS off it is a single branch and with it on the mesh is unchanged.
-        if (S118_CENSUS) { s118CensusBorn(oa, m, apex); s118CensusBorn(m, ob, apex); }
         made = true;
       }
       if (!made) lastBisectPlace = 'no-incident';   // S26: the edge had no LIVE incident triangle left
@@ -2221,7 +2033,7 @@ describe('STRATA conforming-bisection', () => {
     // theirs. 'unclassified' is deliberately reachable: if it ever appears in a histogram that is a
     // REGISTERED DEFECT of this taxonomy, not a shrug, and it names itself so it cannot hide.
     type Outcome = 'split' | 'proximity' | 'floor' | 'move-deferred' | 'weld-bug' | 'no-incident' | 'curtain' | 'shape-refused'
-      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'shape-s118' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
+      | 'shape-ar' | 'shape-fold' | 'shape-admit' | 'weld-collapse' | 'weld' | 'apex' | 'tricap' | 'unclassified';
     /**
      * S26 — NAME THE REFUSER for a facet the heap driver could not split.
      *
@@ -2246,7 +2058,6 @@ describe('STRATA conforming-bisection', () => {
       if (sh === 'ar') return 'shape-ar';
       if (sh === 'fold') return 'shape-fold';
       if (sh === 'admit') return 'shape-admit';
-      if (sh === 's118') return 'shape-s118';   // S118 emit-admission refusal, named so a strand cannot hide in 'unclassified'
       const pl = bisectPlacement();
       if (pl === 'weld-collapse') return 'weld-collapse';
       if (pl === 'weld') return 'weld';
@@ -5352,93 +5163,6 @@ describe('STRATA conforming-bisection', () => {
       }, null, 1));
     }
 
-    /**
-     * S118 — THE FINAL EXHAUSTIVE ARTEFACT CENSUS, in f64, over EVERY live facet.
-     *
-     * ⚠ EXHAUSTIVE, NEVER STRIDE-SAMPLED (scar 5), and IN-DRIVER rather than from the STL. The written STL
-     * is f32: at r = 45 mm the f32 spacing is 45 * 2^-23 = 5.4 um, LARGER than the 2 um needle bar, so an
-     * STL-side altitude census at this bar reads quantisation, not geometry. Here the driver still holds the
-     * exact f64 (theta, z) it placed every vertex at.
-     *
-     * NEVER A BARE COUNT AND NEVER A BARE MAX — every class is reported as COUNT + AREA-SHARE + the extremal
-     * witness, per facet, against the same total.
-     */
-    const s118ReportLines = (): string[] => {
-      let n = 0; let area = 0;
-      let degN = 0; let degA = 0; let degWorstQ = Number.POSITIVE_INFINITY;
-      let foldN = 0; let foldA = 0; let foldWorstA = 0;
-      let bladeN = 0; let bladeA = 0; let bladeMin = Number.POSITIVE_INFINITY;
-      let altMin = Number.POSITIVE_INFINITY;
-      // the ladder — the classification threshold is SWEPT and PUBLISHED (scar 4), never a single bar
-      const ladderUm = [0.1, 0.5, 1, 2, 5, 10, 20];
-      const ladN = new Array<number>(ladderUm.length).fill(0);
-      const ladA = new Array<number>(ladderUm.length).fill(0);
-      for (const t of liveIdx) {
-        const i0 = ta[t]; const i1 = tb[t]; const i2 = tc[t];
-        const [u0, u1, u2] = unwrapTheta3(vth[i0], vth[i1], vth[i2]);
-        // tauQ 0 / bar 0 here: the census must SEE every facet and bucket it, not stop at the first term.
-        const v = checkS118Admit(vx[i0], vy[i0], vz[i0], vx[i1], vy[i1], vz[i1], vx[i2], vy[i2], vz[i2],
-          u0, u1, u2, { sigma: s118Sigma, tauQ: 0, minAltMm: 0 }, s118V);
-        n += 1; area += v.a3Mm2;
-        if (v.minAltMm < altMin) altMin = v.minAltMm;
-        if (!(v.a3Mm2 > 0) || !Number.isFinite(v.qP)) {
-          degN += 1; degA += v.a3Mm2 > 0 ? v.a3Mm2 : 0;
-        } else if (Math.abs(v.qP) < S118_TAUQ) {
-          degN += 1; degA += v.a3Mm2; if (Math.abs(v.qP) < degWorstQ) degWorstQ = Math.abs(v.qP);
-        }
-        if (!(s118Sigma * v.apSMm2 > 0)) {
-          foldN += 1; foldA += v.a3Mm2; if (v.a3Mm2 > foldWorstA) foldWorstA = v.a3Mm2;
-        }
-        if (v.minAltMm < S118_MINALT_MM) {
-          bladeN += 1; bladeA += v.a3Mm2; if (v.minAltMm < bladeMin) bladeMin = v.minAltMm;
-        }
-        for (let k = 0; k < ladderUm.length; k += 1) {
-          if (v.minAltMm < ladderUm[k] / 1000) { ladN[k] += 1; ladA[k] += v.a3Mm2; }
-        }
-      }
-      const pc = (x: number, tot: number): string => (tot > 0 ? ((100 * x) / tot).toFixed(6) : 'n/a');
-      const out: string[] = [
-        '',
-        '    ═══════════ S118 EMIT-TIME ADMISSION ═══════════',
-        `    flags: PF_CB_S118_ADMIT=${S118_ADMIT ? 1 : 0}  PF_CB_S118_CENSUS=${S118_CENSUS ? 1 : 0}`
-        + `  PF_CB_S118_PARAMMID=${S118_PARAMMID ? 1 : 0}`
-        + `   tauQ ${S118_TAUQ}   minAlt bar ${(S118_MINALT_MM * 1000).toFixed(3)} um   T2 ${S118_FOLD_ON ? 'on' : 'off'}`,
-        `    sigma (MEASURED on the seed, not assumed): ${s118Sigma > 0 ? '+1' : '-1'}`
-        + `   seed winding + ${s118SigmaPlus} / - ${s118SigmaMinus}`
-        + (Math.min(s118SigmaPlus, s118SigmaMinus) === 0
-          ? '   [seed is consistently wound — good]'
-          : '   *** THE SEED ITSELF CONTAINS INVERTED FACETS — no split guard can be blamed for those ***'),
-      ];
-      if (S118_ADMIT) {
-        out.push(`    GATE: ${s118Checks} candidate splits scored, ${s118Children} children`
-          + `   REFUSED ${s118Refused}  = T1 degenerate ${s118RefDeg} + T2 fold ${s118RefFold} + T3 blade ${s118RefBlade}`
-          + (s118RefFold > 0
-            ? '   *** T2 FIRED: S118 and the S1/S2 fold guard DISAGREE — diagnose, do not average ***'
-            : '   [T2 zero as predicted: S1/S2 already tests that sign]'));
-      }
-      if (S118_CENSUS) {
-        out.push(`    BIRTH (at bisectAt's emit, f64): ${s118BornN} facets born, area ${s118BornArea.toFixed(3)} mm2`
-          + `   degenerate ${s118BornDegN} (${s118BornDegArea.toFixed(4)} mm2)`
-          + `   fold ${s118BornFoldN} (${s118BornFoldArea.toFixed(4)} mm2)`
-          + `   blade ${s118BornBladeN} (${s118BornBladeArea.toFixed(4)} mm2)`
-          + `   min arc altitude at birth ${(s118BornMinAlt * 1e6).toFixed(3)} nm`);
-      }
-      out.push(
-        `    FINAL SOUP (exhaustive, f64): ${n} facets, ${area.toFixed(3)} mm2`,
-        `      T1 degenerate |qP| < ${S118_TAUQ}:  COUNT ${degN}   AREA ${degA.toFixed(4)} mm2 = ${pc(degA, area)}%`
-        + `   worst |qP| ${Number.isFinite(degWorstQ) ? degWorstQ.toExponential(3) : 'n/a'}`,
-        `      T2 fold (sigma*apS <= 0):        COUNT ${foldN}   AREA ${foldA.toFixed(4)} mm2 = ${pc(foldA, area)}%`
-        + `   largest folded facet ${foldWorstA.toExponential(3)} mm2`,
-        `      T3 blade (arcAlt < ${(S118_MINALT_MM * 1000).toFixed(2)} um): COUNT ${bladeN}   AREA ${bladeA.toFixed(4)} mm2 = ${pc(bladeA, area)}%`
-        + `   MIN arc altitude ${Number.isFinite(bladeMin) ? (bladeMin * 1e6).toFixed(3) : 'n/a'} nm`,
-        `      mesh-wide MIN arc altitude ${(altMin * 1e6).toFixed(3)} nm`,
-        '      THRESHOLD LADDER (scar 4 — the bar is swept, not chosen):',
-        ...ladderUm.map((u, k) => `        arcAlt < ${String(u).padStart(5)} um :  COUNT ${String(ladN[k]).padStart(9)}`
-          + `   AREA ${ladA[k].toFixed(4).padStart(12)} mm2 = ${pc(ladA[k], area)}%`),
-      );
-      return out;
-    };
-
     const report = [
       '',
       `===== STRATA CONFORMING-BISECTION: ${STYLE} ${STAGE.toUpperCase()}  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'}] =====`,
@@ -5511,7 +5235,6 @@ describe('STRATA conforming-bisection', () => {
           ...(str.length > 24 ? [`    … and ${str.length - 24} more (full list in the .s29strands.json artifact)`] : []),
         ];
       })()),
-      ...(S118_ADMIT || S118_CENSUS ? s118ReportLines() : []),
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `    *** CERTIFIED ACCEPT VETO: PF_CB_CERTACCEPT=${CERTACCEPT ? 1 : 0}`
