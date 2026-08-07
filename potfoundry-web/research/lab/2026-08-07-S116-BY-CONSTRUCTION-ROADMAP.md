@@ -142,9 +142,29 @@ The first single-sided renderer this campaign has had, **validated 13/13 against
    is **the pot INTERIOR seen through the mouth** — quoting that as defect would have been a ***~2000×
    mis-statement***. CT shows 20–32 candidates = 0.0033–0.0068% of visible area (candidates, not verdicts:
    a real overhang also reads `n·r̂ < 0`).
-2. ⚠⚠ ***THE BLADE CLASS IS NEARLY INVISIBLE TO ANY RASTERISER: 18.4% (Gothic) / 27.9% (CT) of facets
-   cover ZERO samples in frame.*** They are sub-pixel needles. ***The entire "visible defect" framing from
-   S108 onward was mis-named*** — these are *export/topology* defects, not things a viewer sees.
+2. **18.4% (Gothic) / 27.9% (CT) of facets cover ZERO samples in frame** at 1000×1300 with 3× supersampling
+   — **≈31 µm per sample** on a 120 mm pot, whole pot in frame, one camera distance.
+
+> ### ⛔ CORRECTION — "SUB-PIXEL" DOES NOT MEAN "RESOLVED", AND I DREW THE WRONG CONCLUSION
+> I originally wrote that this makes the blade class "nearly invisible" and the visible-defect framing
+> "mis-named". ***That inference is withdrawn.*** Zero screen coverage is a fact about **my sampling**,
+> not about the geometry:
+> - ***A SLICER DOES NOT SAMPLE.*** Plane–triangle intersection is exact arithmetic. A degenerate or
+>   folded triangle yields a degenerate/non-manifold intersection **regardless of pixel coverage**.
+> - ***31 µm/sample is comparable to or COARSER THAN THE PRINTER.*** Fine SLA is 25–50 µm XY and 25 µm
+>   layers. ***The machine can resolve what this camera could not.***
+> - **One camera, one distance, whole pot in frame.** The zoom renders in this same set resolve them.
+> - ***UNDER-SAMPLED ≠ ABSENT.*** Sub-sample-rate geometry **aliases**; it does not vanish. It still
+>   costs file size and still shimmers under motion.
+>
+> This is the same error class the campaign has repeatedly paid for — stride-sampled PRECOND missing 4
+> facets at 1,374.8 µm; the 2-point probe under-reading 13×. ***An instrument that cannot see a defect is
+> evidence about the instrument.***
+>
+> **What survives:** these *are* export/topology defects (that part stands, and is now the stronger
+> claim). **What is withdrawn:** that they are therefore not visible, and that the framing was mis-named.
+> **The open measurement:** discernibility at *print* resolution and at *inspection* distance, which is
+> P5's job — with the mm/pixel stated, not assumed.
 
 ## 6. THE ROADMAP
 
@@ -166,5 +186,10 @@ is the remaining structural bug.
 **P4 — generalise APCR.** It is the campaign's first real operator win (50.1× on Gothic, fold-free by
 construction, 1.036× cost). Run it on the guard-ON CT mesh and across the roster.
 
-**P5 — retire the 45° "visibility" bar.** §5.2 shows the class is sub-pixel. Re-derive the bar from
-export/topology requirements, or from a render at print resolution — not from an inherited convention.
+**P5 — retire the 45° "visibility" bar, but NOT because the class is sub-pixel.** §5.2's correction
+stands: zero screen coverage at 31 µm/sample says nothing about a slicer (exact arithmetic, no sampling)
+and nothing about a printer that resolves finer. The bar should be retired because it was **inherited and
+never derived**, and because S108 already showed dihedral and `normDeg` dissociate in *both* directions.
+Replace it with **two derived bars**: one for **export/topology correctness** (degeneracy, manifoldness,
+winding — where sampling is irrelevant), and one for **fidelity/appearance** measured at a **stated
+mm/pixel at print and inspection distance**. ***Do not let "sub-pixel" retire anything.***
