@@ -44,6 +44,15 @@ import {
   type ConstrainedCellResult,
 } from './ConstrainedCellTriangulator';
 import { triangulateFeatureAlignedCell, type Sampler3D as FeatureSampler3D } from './featureAlignedCell';
+import {
+  isEmitInvariantEnabled,
+  isEmitInvariantGateEnabled,
+  makeEmitCertificate,
+  recordEmitUv,
+  publishEmitCertificate,
+  assertEmitCertificate,
+  type EmitCertificate,
+} from './emitCertificate';
 import { makeQuadtreeCellKeyCodec, MAX_U_EXTRA_FOR_CODEC } from './QuadtreeCellKeyCodec';
 import {
   buildQuadtreeTopology,
@@ -1104,6 +1113,14 @@ export function triangulateQuadtreeWithFeatures(
   // region. Metadata only — the triangle content/order is untouched.
   const triSource: number[] = [];
   let curTag: number = TRI_SOURCE.FCT_PLAIN_QUAD;
+  // EMIT-TIME INVARIANT certificate (S117 P1) — the mirror of the plain path's. Read ONCE per build
+  // so a mid-build flag flip cannot split one wall across regimes. `undefined` on every default build.
+  //
+  // *** SCOPE, STATED: this counts triangles AS EMITTED — i.e. BEFORE this function's tolerance weld
+  // (WELD_TAU 1e-6) and its post-weld degenerate drop. A triangle that passes here can still be
+  // collapsed by the weld; that collapse is DETECTED and dropped by the existing a===b guard in the
+  // remap loop, and is a different (post-emit) event than the one this instrument certifies. ***
+  const cert: EmitCertificate | undefined = isEmitInvariantEnabled() ? makeEmitCertificate() : undefined;
 
   // ── Spatial bucketing: assign each leaf to the coarse buckets its box overlaps,
   // so a feature segment is tested only against nearby leaves (not all of them).
@@ -1488,6 +1505,11 @@ export function triangulateQuadtreeWithFeatures(
 
     const emit = (a: number, b: number, c: number): void => {
       if (a === b || b === c || a === c) return;
+      // EMIT-TIME INVARIANT (S117 P1), flag-gated, default OFF — the mirror of
+      // QuadtreeTriangulator.ts's. `vu`/`vt` still hold UNWRAPPED u at this point.
+      if (cert !== undefined) {
+        recordEmitUv(cert, vu[a], vt[a], vu[b], vt[b], vu[c], vt[c], curTag);
+      }
       indices.push(a, b, c);
       triWrapsSeam.push(wrapsSeam);
       triSource.push(curTag);
@@ -1871,6 +1893,12 @@ export function triangulateQuadtreeWithFeatures(
 
   const seamCloseMs = devTriTiming ? performance.now() - seamCloseStart : 0;
 
+  // EMIT-TIME INVARIANT: publish, then refuse only when the separate gate flag is armed.
+  if (cert !== undefined) {
+    publishEmitCertificate(cert);
+    if (isEmitInvariantGateEnabled()) assertEmitCertificate(cert);
+  }
+
   return {
     vertices,
     indices: Uint32Array.from(finalIndices),
@@ -1880,5 +1908,6 @@ export function triangulateQuadtreeWithFeatures(
     stageTiming: devTriTiming
       ? { prepMs, registryMs, emitMs, weldMs, seamCloseMs }
       : undefined,
+    emitCertificate: cert,
   };
 }

@@ -27,6 +27,15 @@ import {
   quadSideBit,
   topologyEdgePoints,
 } from './QuadtreeTopology';
+import {
+  isEmitInvariantEnabled,
+  isEmitInvariantGateEnabled,
+  makeEmitCertificate,
+  recordEmitUv,
+  publishEmitCertificate,
+  assertEmitCertificate,
+  type EmitCertificate,
+} from './emitCertificate';
 
 /** Per-triangle emission provenance (Stage-0 instrument). */
 export const TRI_SOURCE = {
@@ -86,6 +95,17 @@ export interface QuadtreeMesh {
    * dev-stage-timing is enabled; measurement only — never influences the mesh.
    */
   stageTiming?: TriangulationStageTiming;
+  /**
+   * EMIT-TIME INVARIANT certificate for THIS triangulation call (S117 P1). Present only when
+   * `globalThis.__pfEmitInvariant === true`; `undefined` on every default build, exactly like
+   * {@link stageTiming}. Measurement only — the predicate reads the triangle and writes a counter,
+   * so the emitted mesh is byte-identical either way (`emitCertificate.test.ts` §NOPERT).
+   *
+   * *** ITS AREA FIELDS ARE (u,t) PARAMETER AREA, NOT mm^2 *** — the emit closure holds no 3D
+   * positions. See `emitCertificate.ts` for why, and for why the behaviour on a violation is
+   * record-and-count rather than reject.
+   */
+  emitCertificate?: EmitCertificate;
 }
 
 /**
@@ -478,6 +498,10 @@ export function triangulateQuadtree(
   // region. Metadata only — the triangle content/order is untouched.
   const source: number[] = [];
   let curTag: number = TRI_SOURCE.PLAIN_QUAD;
+  // EMIT-TIME INVARIANT certificate (S117 P1). Read ONCE per build — mirroring the bandRegions /
+  // shapedCdtCells flag pattern — so a mid-build flip can never split one wall across regimes.
+  // `undefined` on every default build ⇒ the emit closure's guard is a single compare.
+  const cert: EmitCertificate | undefined = isEmitInvariantEnabled() ? makeEmitCertificate() : undefined;
 
   /**
    * Does the given side of (level,iu,it,eUL) border a finer neighbour? On a
@@ -626,6 +650,13 @@ export function triangulateQuadtree(
 
     const emit = (a: number, b: number, c: number): void => {
       if (a === b || b === c || a === c) return;
+      // EMIT-TIME INVARIANT (S117 P1), flag-gated, default OFF. `cert` is undefined on every
+      // production build, so this costs one `!== undefined` compare and cannot touch the mesh.
+      // `vu`/`vt` still hold UNWRAPPED u here — the u=1 -> u=0 seam merge is a post-pass over the
+      // finished index list — which is `checkEmitInvariantUV`'s stated precondition.
+      if (cert !== undefined) {
+        recordEmitUv(cert, vu[a], vt[a], vu[b], vt[b], vu[c], vt[c], curTag);
+      }
       indices.push(a, b, c);
       triWrapsSeam.push(wrapsSeam);
       source.push(curTag);
@@ -811,6 +842,15 @@ export function triangulateQuadtree(
   }
   const seamCloseMs = devTriTiming ? performance.now() - seamCloseStart : 0;
 
+  // EMIT-TIME INVARIANT: publish this build into the accumulator an export path reads, then — ONLY
+  // when the separate gate flag is armed — refuse the mesh. Refusing here is safe in a way that
+  // refusing to EMIT a triangle is not (see emitCertificate.ts): the build is complete, so the
+  // alternative to throwing is shipping a known-bad solid, not a hole.
+  if (cert !== undefined) {
+    publishEmitCertificate(cert);
+    if (isEmitInvariantGateEnabled()) assertEmitCertificate(cert);
+  }
+
   return {
     vertices,
     indices: outIndices,
@@ -821,5 +861,6 @@ export function triangulateQuadtree(
     stageTiming: devTriTiming
       ? { prepMs, registryMs, emitMs, weldMs: 0, seamCloseMs }
       : undefined,
+    emitCertificate: cert,
   };
 }

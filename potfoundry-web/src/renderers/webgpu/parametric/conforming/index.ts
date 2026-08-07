@@ -32,6 +32,27 @@ export {
   maxMinAngleTriangulation,
 } from './QuadtreeTriangulator';
 export type { CdtStats, CdtCellIncident, ConstrainedCellResult } from './ConstrainedCellTriangulator';
+// EMIT-TIME INVARIANT + CERTIFICATE (S117 P1). Both flags default OFF; with the telemetry flag off
+// nothing here is ever constructed and the emitted mesh is byte-identical. Exported so an export path
+// can reset the accumulator before a build and assert on it afterwards, refusing a mesh that violates
+// the parameter-space invariant. See emitCertificate.ts for why the emit-site behaviour is
+// record-and-count rather than reject.
+export type { EmitCertificate } from './emitCertificate';
+export {
+  isEmitInvariantEnabled,
+  isEmitInvariantGateEnabled,
+  getLastEmitCertificate,
+  resetLastEmitCertificate,
+  assertEmitCertificate,
+} from './emitCertificate';
+export type {
+  EmitUvVerdict, EmitUvOptions, EmitUvReason,
+  EmitVerdict, EmitInvariantOptions, EmitRejectReason,
+} from './emitInvariant';
+export {
+  checkEmitInvariantUV, makeEmitUvVerdict, DEFENSIBLE_EMIT_UV,
+  checkEmitInvariant, makeEmitVerdict, DEFENSIBLE_EMIT_INVARIANT,
+} from './emitInvariant';
 export type {
   ConformingOuterWallOptions,
   ConformingOuterWallResult,
