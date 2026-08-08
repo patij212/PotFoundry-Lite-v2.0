@@ -85,12 +85,6 @@ import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shape
 // import would bind that guarantee to a shipping module another agent may edit underneath it.
 // _s118EmitAdmit.test.ts §BRIDGE imports BOTH and proves them bit-identical over 4,000 triangles.
 import { checkS118Admit, makeS118Verdict, unwrapTheta3, type S118Verdict } from './_s118EmitAdmit';
-// S119 THE PARAMETER-METRIC EDGE SELECTOR. Value import, but reachable ONLY when PF_CB_S119_PARAMSEL is
-// set — same discipline as the S23 density field, the S29 accept-override and S38's distPerpFrom. With the
-// flag unset `parseS119Sel` returns null on the first line of the run and nothing else here is ever called,
-// which is what makes flag-OFF byte-identity a property of the construction. See _s119Sel.ts's header for
-// the mechanism and _s119Sel.test.ts for the rule it pins.
-import { parseS119Sel, paramEdgeLen, s119Order, makeS119Rng, type S119SelMode } from './_s119Sel';
 // THE ONE DEFINITION of the barycentric sag ruler (2026-07-29 audit-pool extraction). `sagOfN` and
 // `sagAdaptive` below are now one-line wrappers over these bodies, transcribed VERBATIM, so the driver's
 // serial audit and every audit WORKER THREAD run the same arithmetic instead of two copies that must be kept
@@ -245,48 +239,6 @@ describe('STRATA conforming-bisection', () => {
     const S118_TAUQ = envF('PF_CB_S118_TAUQ', 0.005);          // T1 floor on |qP|; 0 disables T1's shape test
     const S118_MINALT_MM = envF('PF_CB_S118_MINALT_UM', 2) / 1000; // T3 absolute arc-space altitude bar
     const S118_FOLD_ON = process.env.PF_CB_S118_FOLD !== '0';  // T2 sub-lever (inert unless S118_ADMIT)
-    // ══════════════ S119 — EDGE SELECTION IN THE PARAMETER METRIC (PF_CB_S119_PARAMSEL, DEFAULT OFF) ══════════════
-    // THE STRATA-001 FIX. S118 named the cause and this is the remedy for exactly that cause, no wider:
-    //
-    //   THE CAUSE. Every quantity this driver has ever used to pick WHICH EDGE of a popped triangle to split
-    //   is a length in R^3 — `edgeSag` (DIRECTED's max chord sag) and `eLen` (LEPP, and S4 LONGFALL's
-    //   tie-break). Across a radius cliff rA jumps by a constant (CelticTriquetra: 1.720469 mm at
-    //   src/geometry/styles.ts:2263), and that jump is an ADDITIVE term inside the 3-D chord's square root.
-    //   Halving delta-theta therefore does not shorten the 3-D edge, the same edge is re-selected, and the
-    //   facet's (theta,z) footprint collapses toward zero width: the DEGENERACY POLE. MEASURED CONSEQUENCE
-    //   (S118, driver meshes): CelticTriquetra's mesh-wide MIN arc altitude is EXACTLY 0.000 nm, against
-    //   Gothic's 11.037 nm with 7.2x less blade area.
-    //
-    //   THE REMEDY. Measure the edge in the metric the footprint lives in — u = rMean*theta, v = z — so a
-    //   midpoint split provably halves the quantity that is being minimised. `rMean` comes from the stored
-    //   coordinates (r = hypot(x,y)), so this costs ZERO rA evaluations and is strictly CHEAPER than the
-    //   max-SAG selector it replaces.
-    //
-    // *** THIS CHANGES WHICH EDGE IS SPLIT. IT DOES NOT CHANGE WHETHER A FACET STILL VIOLATES. *** The
-    // accept/demand side — `consider`, `localAcceptTol`, `triangleNeed`'s conform route, S20/S29/CERTACCEPT,
-    // the heap key `sagAdaptive`, the FLOOR_MM weld floor and the audit — is untouched, deliberately and by
-    // name. So is every REFUSAL: S119 adds none. That is the difference from the S118 ADMIT gate, which
-    // banned thin footprints and made CelticTriquetra's headline MAX 2.18x WORSE by stranding the real
-    // demand a genuine C0 cliff creates. A REORDERING CANNOT STRAND ANYTHING — `refineDirected`'s and
-    // `refineOne`'s last-resort loops (the ones that drop the aspect guard) are left exactly as they are, so
-    // every edge that could be split before can still be split.
-    //
-    // MODES (the arms; all of them go through the same code path, so cost is matched by construction):
-    //   param    TREATMENT — longest edge in the parameter metric.
-    //   long3d   CONTRAST  — longest 3-D edge. Isolates "the METRIC" from "a longest-edge RULE". Without
-    //                        this arm a `param` win is unattributable.
-    //   short3d  PLACEBO   — shortest 3-D edge, an uninformed rule.
-    //   rand     PLACEBO   — uniform among the candidates, seeded (PF_CB_S119_SEED) so it is reproducible.
-    // PF_CB_S119_ATTRIB=1 additionally evaluates the CONTROL's max-sag choice alongside the treatment's and
-    // reports how often they disagree. It costs the edgeSag evaluations the treatment otherwise saves, so it
-    // is OFF by default and must not be set on an arm whose wall clock is being quoted.
-    const S119_SEL: S119SelMode | null = parseS119Sel(process.env.PF_CB_S119_PARAMSEL);
-    const S119_ATTRIB = envOn('PF_CB_S119_ATTRIB');
-    const s119Rng = makeS119Rng(Math.round(envF('PF_CB_S119_SEED', 20260808)));
-    let s119Picks = 0;          // triangles whose edge choice went through the S119 order
-    let s119Agree = 0;          // ... where the control's max-sag argmax would have chosen the same edge
-    let s119AttribCalls = 0;    // edgeSag evaluations spent on attribution only (PF_CB_S119_ATTRIB)
-    let s119GuardDiff = 0;      // candidate sets that differ from the 3-D aspect guard's
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // L5  THE SHAPE TERM — four levers, ALL DEFAULT ON, each individually reachable so the DEFECT stays
     //     reproducible. Diagnosis: research/lab/2026-07-29-strata-perf-convergence-worklog.md, "DIAGNOSED".
@@ -657,16 +609,6 @@ describe('STRATA conforming-bisection', () => {
     };
     const killT = (t: number): void => { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); };
     const eLen = (a: number, b: number): number => Math.hypot(vx[a] - vx[b], vy[a] - vy[b], vz[a] - vz[b]);
-    /**
-     * S119 — the same edge, measured in the PARAMETER metric (u = rMean*theta, v = z).
-     *
-     * `dTh` is the driver's own seam-corrected shortest-arc delta, so this is defined on a wrapped mesh
-     * exactly where `eLen` is. Radii come from the stored Cartesian coordinates: ZERO rA evaluations, and
-     * the same convention research/tools/s118ThinCensus.ts measures the arc footprint with, so the selector
-     * and the census that judges it are in the same metric. CALLED ONLY WHEN S119_SEL !== null.
-     */
-    const eLenP = (a: number, b: number): number =>
-      paramEdgeLen(Math.hypot(vx[a], vy[a]), Math.hypot(vx[b], vy[b]), dTh(a, b), vz[b] - vz[a]);
 
     // ───────────────────────────── THE GENERIC 1-D KINK LOCATOR ─────────────────────────────
     // Segment (th0,z0) → (th1,z1) in (θ,z). Returns the parameter of the gradient discontinuity + its class.
@@ -2079,22 +2021,6 @@ describe('STRATA conforming-bisection', () => {
       if (l1 >= l0 && l1 >= l2) return 1;
       return 2;
     };
-    /**
-     * S119 — `longestE` in the PARAMETER metric. Same comparison structure and the same tie-break (lowest
-     * edge index wins), so the only difference from `longestE` is the metric. CALLED ONLY WHEN
-     * S119_SEL !== null, and ONLY from the two refinement selectors — the post-loop collapse / deshard /
-     * flip passes keep the 3-D `longestE` deliberately (see the S119 header: this session changes the
-     * REFINEMENT selector, and mixing a repair-pass change into the same flag would make the A/B
-     * unattributable).
-     */
-    const longestEP = (t: number): number => {
-      const l0 = eLenP(ta[t], tb[t]); const l1 = eLenP(tb[t], tc[t]); const l2 = eLenP(tc[t], ta[t]);
-      if (l0 >= l1 && l0 >= l2) return 0;
-      if (l1 >= l0 && l1 >= l2) return 1;
-      return 2;
-    };
-    /** S119 — the longest-edge rule in force for SELECTION. Identity (`longestE`) when the flag is off. */
-    const longestESel = (t: number): number => (S119_SEL === null ? longestE(t) : longestEP(t));
     const eVerts = (t: number, e: number): [number, number] => (e === 0 ? [ta[t], tb[t]] : e === 1 ? [tb[t], tc[t]] : [tc[t], ta[t]]);
     const neighbor = (t: number, a: number, b: number): number => {
       const l = edgeMap.get(eKey(a, b));
@@ -2215,25 +2141,20 @@ describe('STRATA conforming-bisection', () => {
       while (alive[t0] && guard-- > 0) {
         if (ta.length >= triCap) return;
         let t = t0; let inner = 200_000;
-        // S119: `longestESel` is `longestE` when the flag is off. With it on, LEPP walks the longest edge in
-        // the PARAMETER metric — the chain rule is unchanged, only the metric it is defined in, and both
-        // sides of the "does my neighbour agree" test use the same one, so the termination argument stands.
-        // ⚠ THIS PATH IS NOT EXERCISED BY THE S119 ARMS (they all run PF_CB_DIRECTED=1). It is wired for
-        // consistency and is UNMEASURED — do not quote it.
         for (;;) {
           if (inner-- <= 0 || ta.length >= triCap) return;
-          const e = longestESel(t); const [a, b] = eVerts(t, e);
+          const e = longestE(t); const [a, b] = eVerts(t, e);
           const nb = neighbor(t, a, b);
           if (nb === -1) { if (!splitEdge(a, b)) return; break; }
-          const enb = longestESel(nb); const [na, nv] = eVerts(nb, enb);
+          const enb = longestE(nb); const [na, nv] = eVerts(nb, enb);
           if ((na === a && nv === b) || (na === b && nv === a)) { if (!splitEdge(a, b)) return; break; }
           t = nb;
         }
         if (!alive[t0]) break;
-        const e0 = longestESel(t0); const [a0, b0] = eVerts(t0, e0);
+        const e0 = longestE(t0); const [a0, b0] = eVerts(t0, e0);
         const nb0 = neighbor(t0, a0, b0);
         if (nb0 === -1) { splitEdge(a0, b0); break; }
-        const en0 = longestESel(nb0); const [na0, nv0] = eVerts(nb0, en0);
+        const en0 = longestE(nb0); const [na0, nv0] = eVerts(nb0, en0);
         if ((na0 === a0 && nv0 === b0) || (na0 === b0 && nv0 === a0)) { if (!splitEdge(a0, b0)) return; break; }
       }
     };
@@ -2242,69 +2163,30 @@ describe('STRATA conforming-bisection', () => {
       const vs: Array<[number, number]> = [[ta[t], tb[t]], [tb[t], tc[t]], [tc[t], ta[t]]];
       const ls = vs.map(([a, b]) => eLen(a, b));
       const lMax = Math.max(ls[0], ls[1], ls[2]);
-      // ─── S119: THE SELECTION METRIC. `lp` IS `ls` (the same array object) WHEN THE FLAG IS OFF, so the
-      // guard below is the identical comparison on the identical doubles and no extra arithmetic runs. ───
-      const lp = S119_SEL === null ? ls : vs.map(([a, b]) => eLenP(a, b));
-      const lpMax = S119_SEL === null ? lMax : Math.max(lp[0], lp[1], lp[2]);
-      // CANDIDACY. THE `FLOOR_MM` TEST STAYS ON THE 3-D LENGTH ON PURPOSE: it is the weld wall's absolute
-      // millimetre floor (WELD_MM is the definition of point identity in R^3), not a statement about which
-      // metric ranks edges. Moving it into the parameter metric would REFUSE the cliff-crossing edges whose
-      // arc footprint has collapsed — i.e. it would add a refusal, which is exactly what the S118 ADMIT gate
-      // did and exactly why that gate made CelticTriquetra 2.18x worse. The ASPECT GUARD does move, because
-      // "never thin an already-short edge further" is a shape ratio and a shape ratio belongs in the metric
-      // the shape is measured in. `s119GuardDiff` counts the triangles where the two guards disagree so that
-      // choice is priced rather than assumed.
-      const cand: number[] = [];
-      let cand3 = 0;
+      const cands: Array<[number, number]> = [];
       for (let e = 0; e < 3; e += 1) {
         if (ls[e] < FLOOR_MM) continue;
-        if (S119_SEL !== null && ls[e] * AR >= lMax) cand3 += 1;
-        if (lp[e] * AR < lpMax) continue; // aspect guard: never thin an already-short edge further
-        cand.push(e);
+        if (ls[e] * AR < lMax) continue; // aspect guard: never thin an already-short edge further
+        cands.push([edgeSag(vs[e][0], vs[e][1]), e]);
       }
-      let order: number[];
-      if (S119_SEL === null) {
-        const cands: Array<[number, number]> = cand.map((e) => [edgeSag(vs[e][0], vs[e][1]), e]);
-        cands.sort((x, y) => y[0] - x[0]);
-        order = cands.map(([, e]) => e);
-      } else {
-        if (cand.length !== cand3) s119GuardDiff += 1;
-        order = s119Order(S119_SEL, lp, ls, cand, s119Rng);
-        if (cand.length > 0) {
-          s119Picks += 1;
-          // ATTRIBUTION (PF_CB_S119_ATTRIB, default OFF). Evaluate the CONTROL's max-sag argmax over the
-          // same candidates and record whether it agrees. Strict `>` keeps the lowest edge index on a tie,
-          // which is what the control's stable sort does. This spends the rA evaluations the treatment
-          // saves, so it is never on for an arm whose wall clock is quoted.
-          if (S119_ATTRIB) {
-            let bk = -Infinity; let be = cand[0];
-            for (const e of cand) {
-              const k = edgeSag(vs[e][0], vs[e][1]); s119AttribCalls += 1;
-              if (k > bk) { bk = k; be = e; }
-            }
-            if (be === order[0]) s119Agree += 1;
-          }
-        }
-      }
+      cands.sort((x, y) => y[0] - x[0]);
       // ─── S4 LONGEST-EDGE PREFERENCE WHEN SHAPE IS AT RISK ───
       // DIRECTED deliberately picks the max-SAG edge and that lever stays. It is overridden ONLY when the
       // max-sag edge cannot be split safely AT ITS BEST PLACEMENT (mid-chord — no other placement on that
       // edge can beat it, since childAR/parentAR ~= 1/min(t,1-t) is minimised at the middle) and the LONGEST
       // edge can. Both Rivara hypotheses are then in force for exactly the split that needed them.
       // The `!== e0` test keeps this free in the common case where DIRECTED already chose the longest edge.
-      // S119: `longestESel` is `longestE` when the flag is off. With it on, S4's fall-back target is the
-      // parametrically-longest edge — the same rule as the primary order, so the two cannot fight.
-      if (SHAPE && LONGFALL && order.length > 1) {
-        const eL = longestESel(t);
-        if (order[0] !== eL) {
+      if (SHAPE && LONGFALL && cands.length > 1) {
+        const eL = longestE(t);
+        if (cands[0][1] !== eL) {
           nLongFallTested += 1;
-          if (!shapeAdmitsBest(vs[order[0]][0], vs[order[0]][1]) && shapeAdmitsBest(vs[eL][0], vs[eL][1])) {
-            const i = order.indexOf(eL);
-            if (i > 0) { order.unshift(order.splice(i, 1)[0]); nLongFallFired += 1; }
+          if (!shapeAdmitsBest(vs[cands[0][1]][0], vs[cands[0][1]][1]) && shapeAdmitsBest(vs[eL][0], vs[eL][1])) {
+            const i = cands.findIndex(([, e]) => e === eL);
+            if (i > 0) { cands.unshift(cands.splice(i, 1)[0]); nLongFallFired += 1; }
           }
         }
       }
-      for (const e of order) if (splitEdge(vs[e][0], vs[e][1])) return; // best-first, but never give up on a refusal
+      for (const [, e] of cands) if (splitEdge(vs[e][0], vs[e][1])) return; // best-first, but never give up on a refusal
       for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM && splitEdge(vs[e][0], vs[e][1])) return; // drop the guard
     };
 
@@ -2825,31 +2707,20 @@ describe('STRATA conforming-bisection', () => {
       // NONE passes the aspect guard drop it rather than strand the triangle — exactly refineDirected's own
       // two-tier fallback (L897). PF_CB_DIRECTED=0 is the ABLATION arm: longest edge instead of max sag.
       const lMax = Math.max(ls[0], ls[1], ls[2]);
-      // S119 — same substitution as `refineDirected`'s, and the same two rules: FLOOR_MM stays 3-D, the
-      // ASPECT GUARD moves into the active metric. The CONFORM route above is untouched (it is the demand
-      // side: the crossing is at `k.t` and no metric changes where a locus is).
-      // ⚠ THIS PATH IS NOT EXERCISED BY THE S119 ARMS (they run the default PF_CB_DRIVER=heap). Wired for
-      // consistency; UNMEASURED.
-      const lpS = S119_SEL === null ? ls : [eLenP(es[0][0], es[0][1]), eLenP(es[1][0], es[1][1]), eLenP(es[2][0], es[2][1])];
-      const lpSMax = S119_SEL === null ? lMax : Math.max(lpS[0], lpS[1], lpS[2]);
       const keyOf = (e: number): number => (DIRECTED ? edgeVerdict(es[e][0], es[e][1]).sag : ls[e]);
       // The two tiers, as an ORDERED LIST rather than a single argmax, so an S1/S2 refusal on the best edge
       // can FALL THROUGH to the next one instead of stranding the triangle. With the shape levers off the
       // list's head is bit-for-bit the old `be`: Array.prototype.sort is stable, so a key tie keeps ascending
       // edge index — exactly what the old strict `key > bk` scan did — and only order[0] is ever tried.
       let order: number[] = [];
-      for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM && lpS[e] * AR >= lpSMax) order.push(e);
+      for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM && ls[e] * AR >= lMax) order.push(e);
       if (order.length === 0) for (let e = 0; e < 3; e += 1) if (ls[e] >= FLOOR_MM) order.push(e);
       if (order.length === 0) { nFloorRefused += 1; return 'floor'; }
-      order = S119_SEL === null
-        ? order.map((e) => [keyOf(e), e] as [number, number]).sort((x, y) => y[0] - x[0]).map(([, e]) => e)
-        : s119Order(S119_SEL, lpS, ls, order, s119Rng);
+      order = order.map((e) => [keyOf(e), e] as [number, number]).sort((x, y) => y[0] - x[0]).map(([, e]) => e);
       // S4, same rule as refineDirected's: override the max-sag choice ONLY when its best placement is
       // inadmissible and the longest edge's is not.
       if (SHAPE && LONGFALL && order.length > 1) {
-        let eL = 0;
-        if (S119_SEL === null) { for (let e = 1; e < 3; e += 1) if (ls[e] > ls[eL]) eL = e; }
-        else { for (let e = 1; e < 3; e += 1) if (lpS[e] > lpS[eL]) eL = e; }
+        let eL = 0; for (let e = 1; e < 3; e += 1) if (ls[e] > ls[eL]) eL = e;
         if (order[0] !== eL && order.includes(eL)) {
           nLongFallTested += 1;
           const [ha, hb] = canonEdge(es[order[0]][0], es[order[0]][1]);
@@ -5596,35 +5467,6 @@ describe('STRATA conforming-bisection', () => {
           : ADAPT
             ? `sagAdaptive: INFINITE-PLANE distance, absolute pitch ${REF_HS}mm, n∈[${REF_NMIN},${REF_NMAX}]`
             : `sagOfN: INFINITE-PLANE distance, fixed n=${oracleRef}`}   acceptTol ${um(acceptTol)} µm`]),
-      // ─── S119 PARAMETER-METRIC EDGE SELECTION. Printed ALWAYS, so a report that does NOT carry the
-      // 'OFF' line is from a build that predates the lever and cannot be used as its control. ───
-      ...(S119_SEL === null
-        ? ['edge selection: PF_CB_S119_PARAMSEL=0 — 3-D metric (DIRECTED = max edgeSag; S4/LEPP = longest 3-D edge)']
-        : [
-          `*** edge selection: PF_CB_S119_PARAMSEL=${S119_SEL} — ${S119_SEL === 'param'
-            ? 'TREATMENT: longest edge in the PARAMETER metric u=rMean·θ, v=z'
-            : S119_SEL === 'long3d'
-              ? 'CONTRAST: longest 3-D edge (isolates the METRIC from a longest-edge RULE)'
-              : S119_SEL === 'short3d'
-                ? 'PLACEBO: shortest 3-D edge — an UNINFORMED rule'
-                : 'PLACEBO: uniformly random among candidates — an UNINFORMED rule'} ***`,
-          '  ⚠ THE ASPECT GUARD IS IN THE PARAMETER METRIC IN *EVERY* MODE, treatment and placebo alike. That is',
-          '  deliberate: it holds the CANDIDATE SET fixed across the arms so a param-vs-placebo difference is',
-          "  attributable to the ORDER alone. It also means NO ARM ISOLATES THE GUARD — `s119GuardDiff` below is",
-          '  how big that un-isolated term is, and it must be quoted with any result from these arms.',
-          `  CHANGED: which candidate edge of a popped facet is split (refineDirected's order + its ASPECT GUARD`,
-          `  + S4/LONGFALL's fall-back edge; refineLepp's chain edge and refineOne's size route are wired but are`,
-          `  NOT exercised at PF_CB_DIRECTED=1 / PF_CB_DRIVER=heap). UNCHANGED: FLOOR_MM candidacy (3-D, the weld`,
-          '  floor), the last-resort loop, every accept/demand test, the heap key, SNAP placement, and the',
-          '  post-loop collapse/flip/deshard passes (which keep the 3-D longestE). S119 ADDS NO REFUSAL.',
-          `  triangles selected through it ${s119Picks}   candidate sets the parametric aspect guard changed ${s119GuardDiff}`
-          + `   seed ${Math.round(envF('PF_CB_S119_SEED', 20260808))}`,
-          ...(S119_ATTRIB
-            ? [`  ATTRIBUTION (PF_CB_S119_ATTRIB=1, ${s119AttribCalls} extra edgeSag evaluations): the control's max-sag`
-              + ` argmax agreed with this order's head ${s119Agree}/${s119Picks}`
-              + ` = ${s119Picks > 0 ? ((100 * s119Agree) / s119Picks).toFixed(3) : 'n/a'}%`]
-            : ['  ATTRIBUTION not measured (PF_CB_S119_ATTRIB unset) — it costs the edgeSag evaluations this lever saves.']),
-        ]),
       ...(tighten === null ? [] : [
         `PHASE-2 TIGHTENING FIELD: ${TIGHTEN_PATH}`,
         `  ${tighten.clusters} loci, ball radius ${(tighten.radiusMm * 1000).toFixed(0)} µm, max tolScale ${tighten.maxScale.toFixed(2)}×`,
