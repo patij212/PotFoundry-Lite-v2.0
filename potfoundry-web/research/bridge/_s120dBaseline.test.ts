@@ -97,11 +97,6 @@ import { facetGeom } from '../tools/s118ScoreLib';
 // which is what makes flag-OFF byte-identity a property of the construction. See _s119Sel.ts's header for
 // the mechanism and _s119Sel.test.ts for the rule it pins.
 import { parseS119Sel, paramEdgeLen, s119Order, makeS119Rng, type S119SelMode } from './_s119Sel';
-// S120 TASK D — THE 1-RING RETRIANGULATION KERNEL, i.e. THE LEGAL MOVE FOR A TRAPPED FACET. Value import,
-// reachable ONLY when PF_CB_S120_RETRI is set (`parseS120Retri` returns null on the first line of the run
-// otherwise), so flag-OFF byte-identity is a property of the construction, exactly as for S119's selector.
-// The kernel is pure geometry, validated on closed forms in _s120RetriKernel.test.ts before it was wired.
-import { retriMinMaxAr, retriFan, maxArOfTri, triSignsOk, type RetriOut } from './_s120RetriKernel';
 // THE ONE DEFINITION of the barycentric sag ruler (2026-07-29 audit-pool extraction). `sagOfN` and
 // `sagAdaptive` below are now one-line wrappers over these bodies, transcribed VERBATIM, so the driver's
 // serial audit and every audit WORKER THREAD run the same arithmetic instead of two copies that must be kept
@@ -317,82 +312,6 @@ describe('STRATA conforming-bisection', () => {
     let s119Agree = 0;          // ... where the control's max-sag argmax would have chosen the same edge
     let s119AttribCalls = 0;    // edgeSag evaluations spent on attribution only (PF_CB_S119_ATTRIB)
     let s119GuardDiff = 0;      // candidate sets that differ from the 3-D aspect guard's
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // S120 TASK D — 1-RING RETRIANGULATION (PF_CB_S120_RETRI, DEFAULT OFF). *** THE FIX. ***
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // THE MECHANISM, as measured by Task A and named by Task C: `bisectAt` gives
-    // childAR/parentAR ~= 1/min(t,1-t) >= 2, so a facet already above SHAPE_AR/2 (= 25 at the shipped cap of
-    // 50) has NO legal split on ANY edge at ANY placement — every child is over the cap the PARENT was
-    // admitted under. The driver ADMITS to 50 and can SPLIT only to ~25: it manufactures its own trap. The
-    // trapped facet is stranded at its birth fidelity while its neighbours refine around it, which is the
-    // cascade (pole count ~ N^1.992 ctl / N^1.810 param-metric, both >> 1).
-    //
-    // S118 ALREADY PROVED THE EMIT SITE IS THE WRONG PLACE: its ADMIT gate cleared the class and made the
-    // headline MAX 2.18x WORSE, because refusing an emit DELETES the illegal move without supplying a legal
-    // one. This is the legal one — and it is applied at the STRAND SITE, never at the emit site.
-    //
-    // THE OPERATOR: the popped facet + its three edge-neighbours are 4 triangles over one hexagonal ring
-    // with NO interior vertex. Kill them; re-fill the hexagon with the triangulation minimising the MAXIMUM
-    // 3-D `aspect3` (the emit guard's own metric, and the census's). 4 in, 4 out — ZERO net triangles, ZERO
-    // new vertices, so nothing here can move a vertex off the surface: the ring vertices are the SAME
-    // vertices `addV` already lifted onto rA.
-    //
-    // COMPOSES WITH S119 RATHER THAN REPLACING IT. S119 proved the parameter metric is the right SELECTION
-    // key (2.22x at matched budget, and cheaper); what it lacked was a legal move once selection has nothing
-    // legal left to pick. This adds the move and touches no selector line.
-    //
-    // MODES: 1 = the min-max DP. placebo = *** COST-MATCHED PLACEBO ***: the identical gather, the identical
-    // DP (so the arithmetic is paid), then the DP's answer is DISCARDED and a random valid fan of the same
-    // hexagon is committed instead — same 4-in/4-out, same ring-edge use, same chord use, different CHOICE.
-    // An improvement a random valid fan also delivers is not this operator's improvement.
-    type S120RetriMode = 'dp' | 'placebo';
-    const parseS120Retri = (raw: string | undefined): S120RetriMode | null =>
-      (raw === undefined || raw === '' || raw === '0' ? null : raw === 'placebo' ? 'placebo' : 'dp');
-    const S120_RETRI: S120RetriMode | null = parseS120Retri(process.env.PF_CB_S120_RETRI);
-    // ─── THE ACCEPTANCE RULE, AND WHY IT IS *STRICT IMPROVEMENT* AND NOT A FIXED GAIN ───
-    // A committed patch must have maxAR <= incumbentMax * (1 - RETRI_GAIN). At the DEFAULT (0) that is
-    // exactly "strictly better", and that is already a complete no-cycle argument: a fire removes four
-    // facets whose maximum is M and adds four all strictly below M, so the mesh's AR multiset, sorted
-    // descending, decreases LEXICOGRAPHICALLY, and within a fixed vertex set there are finitely many
-    // triangulations — the walk cannot revisit a state. `RETRI_CAP` is the belt-and-braces valve and is
-    // REPORTED when it binds.
-    // *** THIS DEFAULT WAS MEASURED TWICE, NOT CHOSEN. ***
-    //  (1) The first build shipped 2 % "for termination". On the GothicArches gate it refused 53 of 57
-    //      attempts as `over-cap` and fired 4 times (7.0 %). A floor that discards 93 % of the operator's
-    //      own opportunities is not a safety guard, it is the operator turned off.
-    //  (2) So the next build used a bare strict `<` (floor 0) — and THAT IS ALSO WRONG, for the reason
-    //      §4.3's TERMINATION GUARD already paid 4.4 CPU-hours to learn: `> 0` is not a floor. MEASURED on
-    //      a regular hexagon, where the incumbent triforce is optimal: brute-force min-max
-    //      3.7320508075688767 vs incumbent 3.7320508075688776 — the DP "wins" BY ONE ULP (9e-16 relative).
-    //      A bare `<` fires on that, re-emits an equally-good patch, re-queues its products, and comes
-    //      straight back. The floor must sit above float noise.
-    // 1e-3 is 12 orders of magnitude above that ulp and 20x below the 2 % that muzzled the operator. And
-    // it is SWEPT, not asserted: `retriGainHist` bins newMax/incumbentMax over EVERY attempt, so ONE arm
-    // reports what every candidate floor would have delivered (scar 4 — sweep the threshold, publish it).
-    const RETRI_GAIN = envF('PF_CB_S120_RETRI_GAIN', 0.001);
-    // A DISCLOSED BOUND, not a hidden one (scar 5 — S118 shipped a 40,000-corner cap while printing
-    // "EXHAUSTIVE"). 250,000 fires is ~290x the 848 one-rings Task C's offline pass needed for the whole
-    // Gothic blocked class, and it bounds the operator's ALLOCATION cost at 1 M slots. The report prints
-    // the cap on every arm and shouts if it ever binds.
-    const RETRI_CAP = Math.round(envF('PF_CB_S120_RETRI_CAP', 250_000));
-    let retriRng = (Math.round(envF('PF_CB_S120_RETRI_SEED', 20260808)) >>> 0) || 1;
-    const retriRnd = (): number => { retriRng = (Math.imul(retriRng, 1664525) + 1013904223) >>> 0; return retriRng / 4294967296; };
-    let retriTried = 0; let retriFired = 0; let retriCapped = 0;
-    let retriArBefore = 0; let retriArAfter = 0; let retriArWorstBefore = 0; let retriArWorstAfter = 0;
-    // `escaped` = a fire whose products are ALL below SHAPE_AR/2, i.e. below the largest aspect ratio
-    // `bisectAt` can still split (childAR/parentAR >= 2 at the best placement). That is the only number
-    // that says the facet actually LEFT the trap, as opposed to merely getting better.
-    let retriEscaped = 0;
-    // `dpWorse` = the DP's min-max came out ABOVE the incumbent's max. The incumbent's three chords are
-    // themselves a DP-reachable triangulation of the hexagon, so this can only happen when one of the
-    // incumbent's own ears FOLDS in the (theta,z) parameter plane. It is therefore a direct count of
-    // locally folded patches, and it must be reported rather than buried in `over-cap`.
-    let retriDpWorse = 0;
-    // the gain ladder, over EVERY attempt that produced a valid DP answer: newMax / incumbentMax.
-    const RETRI_BINS = [0.25, 0.5, 0.75, 0.9, 0.95, 0.98, 0.999999999, 1.000000001, Infinity];
-    const retriGainHist = new Array<number>(RETRI_BINS.length).fill(0);
-    const retriNo = new Map<string, number>();   // refusal reasons, named — never a silent skip
-    const retriRefuse = (k: string): false => { retriNo.set(k, (retriNo.get(k) ?? 0) + 1); return false; };
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // L5  THE SHAPE TERM — four levers, ALL DEFAULT ON, each individually reachable so the DEFECT stays
     //     reproducible. Diagnosis: research/lab/2026-07-29-strata-perf-convergence-worklog.md, "DIAGNOSED".
@@ -2603,169 +2522,6 @@ describe('STRATA conforming-bisection', () => {
     };
 
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // S120 TASK D — 1-RING RETRIANGULATION. THE LEGAL MOVE FOR A FACET THE DRIVER TRAPPED. (PF_CB_S120_RETRI)
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
-    // Called from the heap pop loop at the STRAND SITE ONLY — i.e. after `refineDirected` has returned having
-    // produced NOTHING, and only when `classifyStrand` names a SHAPE refusal. That placement is the whole
-    // design: S118 proved a guard at the EMIT site clears the class by making the max 2.18x worse, because
-    // refusing an emit deletes the illegal move without supplying a legal one. This supplies one, and it
-    // cannot refuse anything the driver would otherwise have done — by construction the driver has already
-    // done nothing when this runs.
-    //
-    // FOUR TRIANGLES IN, FOUR OUT. No vertex is created, moved, or deleted, so every vertex in the product is
-    // a vertex `addV` already lifted onto rA: the "vertices are on the surface by construction" half of the
-    // conformance standard is preserved EXACTLY, and the per-edge memo's invariant ("vertices are never
-    // moved") is not touched either.
-    //
-    // WHAT IT REFUSES, ALL NAMED (`retriNo`), because a silent skip is how an operator's real reach gets
-    // overstated: a non-manifold or boundary ring, a ring whose four triangles are not four distinct facets,
-    // a ring that revisits a vertex, a product that would exceed the emit cap or fail the gain floor, a
-    // product that folds the parametrisation, and a product diagonal that ALREADY EXISTS elsewhere in the
-    // mesh (committing it would give that edge three incident triangles — the topological pinch `bisectAt`'s
-    // own weld guard exists to stop). The offline prototype in research/tools/s120ApplyC.ts did NOT have the
-    // pinch test; it is added here because the driver's mesh is live and welded and the prototype's was not.
-    const s120RetriAr = (a: number, b: number, c: number): number =>
-      aspect3(vx[a], vy[a], vz[a], vx[b], vy[b], vz[b], vx[c], vy[c], vz[c]);
-    const s120Retri = (t: number): boolean => {
-      if (S120_RETRI === null) return false;
-      retriTried += 1;
-      if (retriFired >= RETRI_CAP) { retriCapped += 1; return retriRefuse('fire-cap'); }
-      // ─── GATHER. ring = [ta, apex across (ta,tb), tb, apex across (tb,tc), tc, apex across (tc,ta)],
-      // which is the patch boundary IN ORDER, so a DP triple (i<k<j) inherits the popped facet's winding. ───
-      const ring: number[] = [];
-      const killed: number[] = [t];
-      for (let e = 0; e < 3; e += 1) {
-        const [a, b] = eVerts(t, e);
-        ring.push(a);
-        const list = edgeMap.get(eKey(a, b)) ?? [];
-        let u = -1; let nLive = 0;
-        for (const o of list) if (alive[o]) { nLive += 1; if (o !== t) u = o; }
-        if (nLive !== 2 || u < 0) return retriRefuse('boundary-or-non-manifold');
-        killed.push(u);
-        ring.push(ta[u] !== a && ta[u] !== b ? ta[u] : tb[u] !== a && tb[u] !== b ? tb[u] : tc[u]);
-      }
-      if (new Set(killed).size !== 4) return retriRefuse('ring-shares-a-neighbour');
-      if (new Set(ring).size !== ring.length) return retriRefuse('ring-not-simple');
-      // ─── COORDINATES. SHAPE in 3-D; ORIENTATION in the (theta,z) parameter plane with theta UNWRAPPED
-      // against ring[0] through the driver's own shortest-arc `dTh`, so the ring is well defined at the seam. ───
-      const anchor = ring[0];
-      const RX = ring.map((v) => vx[v]); const RY = ring.map((v) => vy[v]); const RZ = ring.map((v) => vz[v]);
-      const RU = ring.map((v) => vth[anchor] + dTh(anchor, v)); const RV = ring.map((v) => vz[v]);
-      let sgnRing = 0;
-      for (let i = 0; i < ring.length; i += 1) { const j = (i + 1) % ring.length; sgnRing += RU[i] * RV[j] - RU[j] * RV[i]; }
-      sgnRing = Math.sign(sgnRing);
-      // ─── THE INCUMBENT, measured with the SAME ruler the products are measured with. ───
-      let inMax = 0;
-      for (const u of killed) { const a = s120RetriAr(ta[u], tb[u], tc[u]); if (a > inMax) inMax = a; }
-      if (!Number.isFinite(inMax)) return retriRefuse('incumbent-degenerate');
-      // ═══ THE FOLD GUARD, AND IT IS THE MOST EXPENSIVE LESSON OF THIS SESSION ═══
-      // MEASURED, not anticipated: the first build anchored the DP's orientation to the RING's OWN signed
-      // area. On CelticTriquetra at 1.30 M facets that shipped a fold class the driver had NEVER had —
-      // the driver's own T2 census (sigma measured +1) went 0 -> 99 facets / 1.3408 mm², and the STL-side
-      // footprint-sign inversion count went 11 -> 327 (29.7x). `bisectAt` emits zero folds (BIRTH: fold 0
-      // in both arms), so those 99 were MINE.
-      // THE MECHANISM: where the parametrisation is already locally folded, the hexagon's own signed area
-      // takes the WRONG sign, the DP then happily produces four ears all consistent with THAT ring, and a
-      // patch that contained one inverted facet comes back with four. The operator did not create the
-      // fold — IT PROPAGATED IT, which is worse, because it is a mechanism that scales with firing rate.
-      // THE FIX IS TO REFUSE THE PATCH, not to re-sign it: all four incumbents must already agree with
-      // each other AND with the ring. That is purely local (four `signedAreaParam` calls, no global state,
-      // no dependence on the S118 census being on), and it means the operator can never be the reason a
-      // fold exists. `signedAreaParam` is the driver's own fold quantity, used verbatim.
-      let sInc = 0;
-      for (const u of killed) {
-        const s = Math.sign(signedAreaParam(vth[ta[u]], vz[ta[u]], vth[tb[u]], vz[tb[u]], vth[tc[u]], vz[tc[u]]));
-        if (s === 0) return retriRefuse('incumbent-param-degenerate');
-        if (sInc === 0) sInc = s; else if (s !== sInc) return retriRefuse('patch-sign-inconsistent');
-      }
-      if (sInc !== sgnRing) return retriRefuse('ring-sign-disagrees');
-      // *** THE DP IS ALWAYS RUN UNCAPPED, AND THE GATE IS APPLIED AFTERWARDS. *** That costs nothing (the
-      // DP's work does not depend on the cap) and it is what lets ONE arm publish the whole gain ladder
-      // instead of needing one arm per candidate floor.
-      const out: RetriOut = retriMinMaxAr(ring.length, RX, RY, RZ, RU, RV, Infinity);
-      if (!Number.isFinite(out.maxAr)) return retriRefuse(out.reason === 'ok' ? 'no-valid-triangulation' : out.reason);
-      {
-        const ratio = out.maxAr / inMax;
-        let bi = RETRI_BINS.length - 1;
-        for (let i = 0; i < RETRI_BINS.length; i += 1) if (ratio < RETRI_BINS[i]) { bi = i; break; }
-        retriGainHist[bi] += 1;
-        if (out.maxAr > inMax) retriDpWorse += 1;   // only reachable if an INCUMBENT ear folds in (θ,z)
-      }
-      const cap = Math.min(SHAPE_AR, inMax * (1 - RETRI_GAIN));
-      let tri = out.tri;
-      let newMax = out.maxAr;
-      if (S120_RETRI === 'placebo') {
-        // COST-MATCHED: the DP above ran and was paid for; its ANSWER is discarded here. The placebo then
-        // faces the IDENTICAL gates, so a placebo win is a win and a placebo refusal is a refusal.
-        tri = retriFan(ring.length, Math.floor(retriRnd() * ring.length));
-        newMax = maxArOfTri(tri, RX, RY, RZ);
-        if (!triSignsOk(tri, RU, RV, sgnRing)) return retriRefuse('placebo-fold');
-        if (!(newMax < cap)) return retriRefuse('over-cap');
-      } else {
-        // *** THE IDENTITY REFUSAL, AND IT IS A LIVE-LOCK GUARD, NOT BOOKKEEPING. *** For a 1-ring the
-        // incumbent's chords are exactly (0,2) (2,4) (4,0) in ring positions. If the DP returns those, the
-        // "repair" re-emits the SAME four triangles: `killT` + `addT` allocate four fresh slots, the
-        // products land in `created`, the pop loop re-queues them, they are popped, nothing can split
-        // them, and the operator fires again — forever, until `triCap`. Naming it also separates the
-        // operator's CEILING ("no better triangulation of this hexagon exists") from its near-misses.
-        if (ring.length === 6) {
-          let same = 0;
-          for (let i = 0; i < tri.length; i += 3) {
-            const p = [tri[i], tri[i + 1], tri[i + 2]];
-            for (let e = 0; e < 3; e += 1) {
-              const a = p[e]; const b = p[(e + 1) % 3];
-              const d = Math.abs(a - b);
-              if (d === 1 || d === 5) continue;                     // a ring boundary edge, not a chord
-              if ((a + b) % 2 === 0 && d === 2) same += 1;           // (0,2) (2,4) — an incumbent chord
-              else if ((a === 0 && b === 4) || (a === 4 && b === 0)) same += 1;   // (4,0)
-            }
-          }
-          if (same === 6) return retriRefuse('identity-no-op');      // each of the 3 chords counted twice
-        }
-        // *** STRICT `<`, AGAINST A CAP THAT IS STRICTLY BELOW THE INCUMBENT. *** That pair is the whole
-        // no-cycle argument: four facets whose maximum is M leave, four strictly below M(1-gain) arrive,
-        // so the mesh's descending AR multiset falls lexicographically and a state can never recur.
-        // `<=`, or a zero gain, admits ties — and a tie is where the live-lock lives.
-        if (!(newMax < cap)) return retriRefuse('over-cap');
-      }
-      // ─── PRE-COMMIT CHECKS. Everything that can refuse must refuse BEFORE the first `killT`, or a refusal
-      // half-way through leaves a hole in the mesh. ───
-      for (let i = 0; i < tri.length; i += 3) {
-        const p0 = ring[tri[i]]; const p1 = ring[tri[i + 1]]; const p2 = ring[tri[i + 2]];
-        if (p0 === p1 || p1 === p2 || p2 === p0) return retriRefuse('product-degenerate');
-      }
-      const patchE = new Set<number>();
-      for (const u of killed) { patchE.add(eKey(ta[u], tb[u])); patchE.add(eKey(tb[u], tc[u])); patchE.add(eKey(tc[u], ta[u])); }
-      const killedSet = new Set<number>(killed);
-      for (let i = 0; i < tri.length; i += 3) {
-        const p = [ring[tri[i]], ring[tri[i + 1]], ring[tri[i + 2]]];
-        for (let e = 0; e < 3; e += 1) {
-          const k = eKey(p[e], p[(e + 1) % 3]);
-          if (patchE.has(k)) continue;              // a ring edge or a re-used incumbent chord: already accounted
-          const l = edgeMap.get(k);
-          if (l === undefined) continue;
-          for (const o of l) if (alive[o] && !killedSet.has(o)) return retriRefuse('pinch');
-        }
-      }
-      // ─── COMMIT. ───
-      for (const u of killed) killT(u);
-      for (const k of patchE) edgeCache.delete(k);   // defensive: the memo is a SWEEP structure, the heap
-      // driver never populates it, but a stale entry here would be the exact shape of the Voronoi hash desync.
-      for (let i = 0; i < tri.length; i += 3) {
-        if (S120_LIN) s120CurPar = t;
-        const nt = addT(ring[tri[i]], ring[tri[i + 1]], ring[tri[i + 2]]);
-        if (S120_LIN) s120CurPar = -1;
-        created.push(nt);
-      }
-      retriFired += 1;
-      retriArBefore += inMax; retriArAfter += newMax;
-      if (newMax < SHAPE_AR / 2) retriEscaped += 1;   // below the largest AR bisectAt can still split
-      if (inMax > retriArWorstBefore) retriArWorstBefore = inMax;
-      if (newMax > retriArWorstAfter) retriArWorstAfter = newMax;
-      return true;
-    };
-
-    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // PHASE-1 SWEEP DRIVER (PF_CB_DRIVER=sweep). Spec: research/lab/2026-07-29-quota-driver-spec.md §§1,2,3,5,7
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // Everything below is INERT unless SWEEP. It calls the existing `edgeSag`, `locateKink` and `bisectAt`
@@ -3907,16 +3663,6 @@ describe('STRATA conforming-bisection', () => {
       }
       if (DIRECTED) refineDirected(t); else refineLepp(t);
       if (S120_LIN) { s120NotePopOutcome(t); s120PopT = -1; }
-      // ── S120 TASK D — THE LEGAL MOVE (PF_CB_S120_RETRI). Placed HERE and nowhere else: refinement has
-      // already returned having produced nothing, so this fires on EXACTLY the facets the next few lines
-      // would otherwise record as `stuck` with a shape reason. It cannot pre-empt a split the driver would
-      // have made, and it cannot refuse an emit — the two failure modes S118 and the ADMIT gate died of.
-      // AFTER `s120NotePopOutcome` deliberately: Task A's lineage census buckets births by the SELECTOR's
-      // candidate count, and retriangulation births are not the selector's, so they must not land there.
-      if (S120_RETRI !== null && created.length === 0 && alive[t]) {
-        const whyR = classifyStrand(t);
-        if (whyR === 'shape-ar' || whyR === 'shape-fold' || whyR === 'shape-admit' || whyR === 'shape-s118') s120Retri(t);
-      }
       for (const nt of created) consider(nt);
       // RE-QUEUE THE SURVIVOR WITHOUT RE-MEASURING IT. `consider(t)` here re-ran the whole bounded probe on a
       // triangle that refinement left ALIVE — i.e. one whose three vertex indices and whose vertex coordinates
@@ -6330,35 +6076,6 @@ describe('STRATA conforming-bisection', () => {
               + ` argmax agreed with this order's head ${s119Agree}/${s119Picks}`
               + ` = ${s119Picks > 0 ? ((100 * s119Agree) / s119Picks).toFixed(3) : 'n/a'}%`]
             : ['  ATTRIBUTION not measured (PF_CB_S119_ATTRIB unset) — it costs the edgeSag evaluations this lever saves.']),
-        ]),
-      // ─── S120 TASK D — 1-RING RETRIANGULATION. Printed ALWAYS, so a report that does NOT carry the 'OFF'
-      // line is from a build that predates the operator and cannot be used as its control. ───
-      ...(S120_RETRI === null
-        ? ['1-ring retriangulation: PF_CB_S120_RETRI=0 — a shape-refused facet is STRANDED (the trap: admitted to'
-          + ` aspect3 ${SHAPE_AR}, splittable only to ~${SHAPE_AR / 2})`]
-        : [
-          `*** 1-ring retriangulation: PF_CB_S120_RETRI=${S120_RETRI === 'dp' ? '1' : 'placebo'} — ${S120_RETRI === 'dp'
-            ? 'TREATMENT: min-MAX-aspect3 DP over the 4-triangle patch'
-            : 'PLACEBO: the DP is RUN AND DISCARDED, a random valid fan of the same hexagon is committed'} ***`,
-          `  fires at the STRAND SITE only (refinement produced nothing AND classifyStrand named a shape refusal).`
-          + `  4 triangles in, 4 out — ZERO net triangles, ZERO new vertices, no vertex moved.`,
-          `  gain floor PF_CB_S120_RETRI_GAIN=${RETRI_GAIN} (0 = strictly better; the lexicographic no-cycle argument)`
-          + `   emit cap ${SHAPE_AR}   split cap ~${SHAPE_AR / 2}   fire cap ${RETRI_CAP.toLocaleString()}`
-          + `${retriCapped > 0 ? `   *** FIRE CAP HIT ${retriCapped} times — this arm is CAPPED, not converged ***` : ''}`,
-          `  attempted ${retriTried.toLocaleString()}   FIRED ${retriFired.toLocaleString()}`
-          + `   = ${retriTried > 0 ? ((100 * retriFired) / retriTried).toFixed(3) : 'n/a'} % of attempts`
-          + `   *** ESCAPED THE TRAP (every product under the ~${SHAPE_AR / 2} split cap) ${retriEscaped.toLocaleString()}`
-          + ` = ${retriTried > 0 ? ((100 * retriEscaped) / retriTried).toFixed(3) : 'n/a'} % of attempts ***`,
-          `  aspect3 over the patches it fired on: mean ${retriFired > 0 ? (retriArBefore / retriFired).toFixed(3) : 'n/a'}`
-          + ` -> ${retriFired > 0 ? (retriArAfter / retriFired).toFixed(3) : 'n/a'}`
-          + `   WORST ${retriArWorstBefore.toFixed(3)} -> ${retriArWorstAfter.toFixed(3)}`,
-          // THE GAIN LADDER — swept, not chosen. One arm reports what EVERY floor would have delivered.
-          `  gain ladder newMax/incumbentMax over all ${retriGainHist.reduce((a, b) => a + b, 0).toLocaleString()} valid DP answers: `
-          + RETRI_BINS.map((b, i) => `${i === 0 ? '<0.25' : b === Infinity ? '>1' : i === RETRI_BINS.length - 2 ? '=1' : `<${b}`} ${retriGainHist[i]}`).join('  '),
-          `  DP WORSE THAN THE INCUMBENT ${retriDpWorse}  — reachable ONLY when an incumbent ear FOLDS in (θ,z),`
-          + ` since the incumbent's own three chords are a DP-reachable triangulation of the same hexagon`,
-          `  refusals (every one named; a silent skip is how an operator's reach gets overstated): ${retriNo.size === 0
-            ? 'none' : [...retriNo.entries()].sort((x, y) => y[1] - x[1]).map(([k, v]) => `${k} ${v}`).join('  ')}`,
         ]),
       ...(tighten === null ? [] : [
         `PHASE-2 TIGHTENING FIELD: ${TIGHTEN_PATH}`,
