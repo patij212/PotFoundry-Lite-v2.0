@@ -85,12 +85,6 @@ import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shape
 // import would bind that guarantee to a shipping module another agent may edit underneath it.
 // _s118EmitAdmit.test.ts §BRIDGE imports BOTH and proves them bit-identical over 4,000 triangles.
 import { checkS118Admit, makeS118Verdict, unwrapTheta3, type S118Verdict } from './_s118EmitAdmit';
-// S120 THE LINEAGE CENSUS's per-facet arc-space geometry. IMPORTED, not transcribed, and deliberately so:
-// `facetGeom` is the SAME function research/tools/s118ThinCensus.ts scores the finished STL with, so an
-// in-driver birth-time reading and an offline STL reading of the same facet are the same arithmetic and can
-// be diffed digit for digit. It is a pure function of nine coordinates and three UNWRAPPED thetas — no rA,
-// no mesh state — and it is called only under PF_CB_S120_LINEAGE, so flag-OFF stays byte-identical.
-import { facetGeom } from '../tools/s118ScoreLib';
 // S119 THE PARAMETER-METRIC EDGE SELECTOR. Value import, but reachable ONLY when PF_CB_S119_PARAMSEL is
 // set — same discipline as the S23 density field, the S29 accept-override and S38's distPerpFrom. With the
 // flag unset `parseS119Sel` returns null on the first line of the run and nothing else here is ever called,
@@ -251,25 +245,6 @@ describe('STRATA conforming-bisection', () => {
     const S118_TAUQ = envF('PF_CB_S118_TAUQ', 0.005);          // T1 floor on |qP|; 0 disables T1's shape test
     const S118_MINALT_MM = envF('PF_CB_S118_MINALT_UM', 2) / 1000; // T3 absolute arc-space altitude bar
     const S118_FOLD_ON = process.env.PF_CB_S118_FOLD !== '0';  // T2 sub-lever (inert unless S118_ADMIT)
-    // ══════════════ S120 — THE LINEAGE CENSUS (PF_CB_S120_LINEAGE, DEFAULT OFF, BYTE-IDENTICAL) ══════════════
-    // S119 established that the degeneracy pole grows as N^alpha with alpha ~ 1.81-1.99, i.e. FASTER than the
-    // mesh — positive feedback — and INFERRED (never counted) that the mechanism is a single-candidate escape
-    // hatch at `refineDirected`'s FLOOR_MM test. S120 COUNTS it instead. Three instruments, all measurement:
-    //   (1) THE CANDIDATE-LIST CENSUS. At every `refineDirected` call: how many of the popped facet's three
-    //       edges survive candidacy, WHY each rejected one was rejected (3-D floor vs aspect guard), and how
-    //       that joint distribution moves with the parent's own parametric thinness. This is the direct test
-    //       of S119's inference; if candN is routinely 2 or 3 on thin parents the inference is REFUTED.
-    //   (2) THE LINEAGE. Every triangle carries (parent, birth generation, ancestral seed root, thinness AT
-    //       BIRTH, graphRatio AT BIRTH). `bisectAt` kills exactly one parent per pair of children, so the
-    //       parent link is EXACT, not reconstructed. That makes P(child degenerate | parent degenerate)
-    //       against P(child degenerate | parent healthy) a COUNT, which is the cascade measured directly
-    //       rather than inferred from a growth exponent.
-    //   (3) THE TREAD EMITTER. `stitchRings` emits into the output soup with NO admission test of any kind
-    //       and has never been audited. Its facets are scored with the SAME `facetGeom` the census tools use.
-    // BYTE-IDENTITY IS BY CONSTRUCTION, exactly as PF_CB_S118_CENSUS's is: every write below lands in an
-    // array that no mesh operation ever reads, no rA evaluation is added, and with the flag off the only
-    // trace is one `const` and a handful of `if (S120_LIN)` branches on paths that already existed.
-    const S120_LIN = envOn('PF_CB_S120_LINEAGE');
     // ══════════════ S119 — EDGE SELECTION IN THE PARAMETER METRIC (PF_CB_S119_PARAMSEL, DEFAULT OFF) ══════════════
     // THE STRATA-001 FIX. S118 named the cause and this is the remedy for exactly that cause, no wider:
     //
@@ -673,176 +648,11 @@ describe('STRATA conforming-bisection', () => {
     interface EdgeVerdict { sag: number; kink: Kink | null; conformed: boolean; jumpConfirmed: boolean; px: number; py: number; pz: number }
     const edgeCache = new Map<number, EdgeVerdict>();
     const eDel = (a: number, b: number, t: number): void => { const k = eKey(a, b); const l = edgeMap.get(k); if (l === undefined) return; const i = l.indexOf(t); if (i >= 0) l.splice(i, 1); if (l.length === 0) { edgeMap.delete(k); if (SWEEP) edgeCache.delete(k); } };
-    // ═══════════════════ S120 LINEAGE — THE FIVE PER-TRIANGLE COLUMNS (PF_CB_S120_LINEAGE) ═══════════════════
-    // Allocated ONCE at `triCap` + headroom rather than grown, because a growable array of 8 M doubles is the
-    // exact shape of the V8 allocation stalls this file has already paid for twice. `bisectAt` can push a few
-    // facets past the cap inside one split (the loop tests the cap between pops, not between emits), so the
-    // headroom is real and every write is bounds-checked anyway — an out-of-range birth is COUNTED
-    // (`s120Overflow`) rather than silently dropped, because a dropped birth would bias every ratio below.
-    const S120_CAP = S120_LIN ? triCap + 65536 : 0;
-    const s120Par = new Int32Array(S120_CAP);      // parent triangle index; -1 seed grid, -2 non-bisect emitter
-    const s120Gen = new Uint16Array(S120_CAP);     // birth generation: 0 = seed, parent's + 1 otherwise
-    const s120Root = new Int32Array(S120_CAP);     // ancestral SEED triangle this facet descends from
-    const s120Thin = new Float32Array(S120_CAP);   // AT BIRTH: arc minAlt / longest arc edge (scale-free)
-    const s120GR = new Float32Array(S120_CAP);     // AT BIRTH: 3-D area / |arc-space area| (the pole metric)
-    let s120Overflow = 0;
-    /** ambient parent for the next `addT`: -1 = seed grid, -2 = a non-`bisectAt` emitter, else the killed facet. */
-    let s120CurPar = -1;
-    /** `facetGeom` on three CURRENT vertex indices, thetas unwrapped onto a common branch. Zero rA evals. */
-    const s120Geom = (i0: number, i1: number, i2: number): { thin: number; gr: number; area: number; minAltUm: number } => {
-      const [u0, u1, u2] = unwrapTheta3(vth[i0], vth[i1], vth[i2]);
-      const G = facetGeom(vx[i0], vy[i0], vz[i0], vx[i1], vy[i1], vz[i1], vx[i2], vy[i2], vz[i2], u0, u1, u2);
-      const rm = (Math.hypot(vx[i0], vy[i0]) + Math.hypot(vx[i1], vy[i1]) + Math.hypot(vx[i2], vy[i2])) / 3;
-      const e1 = Math.hypot((u1 - u0) * rm, vz[i1] - vz[i0]);
-      const e2 = Math.hypot((u2 - u1) * rm, vz[i2] - vz[i1]);
-      const e3 = Math.hypot((u0 - u2) * rm, vz[i0] - vz[i2]);
-      const emax = Math.max(e1, e2, e3);
-      return { thin: emax > 0 ? (G.minAltUm / 1000) / emax : 0, gr: G.graphRatio, area: G.area, minAltUm: G.minAltUm };
-    };
-    // ─── THE LADDERS. Every bar below is SWEPT and every rung is published (instrument scar 4): a cascade
-    // ratio quoted at one threshold is a threshold choice masquerading as a result. ───
-    const S120_TAUS = [0.005, 0.01, 0.02, 0.05, 0.1];        // scale-free thinness: minAlt / longest arc edge
-    const S120_GRS = [10, 100, 1000];                        // the DEGENERACY POLE bar, S118/S119's own metric
-    /** parent-thinness bin edges for the PREDICATE sweep (upper edges; the last bin is everything else). */
-    const S120_PBINS = [1e-5, 3e-5, 1e-4, 3e-4, 1e-3, 3e-3, 0.01, 0.03, 0.1, 0.3, 0.5, 1e9];
-    const s120Bin = (v: number): number => { for (let i = 0; i < S120_PBINS.length; i += 1) if (v < S120_PBINS[i]) return i; return S120_PBINS.length - 1; };
-    let s120SeedN = 0;                                       // births with no parent (the initial grid / aligned seed)
-    let s120PairN = 0;                                       // births WITH an exact parent — the cascade population
-    const s120PairPd = new Float64Array(S120_TAUS.length);   // parent thin < tau
-    const s120PairCd = new Float64Array(S120_TAUS.length);   // child  thin < tau
-    const s120PairBoth = new Float64Array(S120_TAUS.length); // both
-    const s120PairPdG = new Float64Array(S120_GRS.length);   // parent graphRatio >= bar
-    const s120PairCdG = new Float64Array(S120_GRS.length);
-    const s120PairBothG = new Float64Array(S120_GRS.length);
-    const s120PBinTot = new Float64Array(S120_PBINS.length);   // children by PARENT-thinness bin
-    const s120PBinPole = new Float64Array(S120_PBINS.length);  // … of which the child is a pole (GR >= 100)
-    const s120PBinThin = new Float64Array(S120_PBINS.length);  // … of which the child is thin (< 0.02)
-    let s120BornPoleN = 0; let s120BornThinN = 0;              // BIRTH-time class counts over children only
-    // ─── THE MECHANISM COLUMNS. Which edge of the parent was cut, and whether the parent had any say. ───
-    // `bisectAt` splits EVERY triangle incident to the chosen edge. Only ONE of them was popped and ran the
-    // candidate loop; the others have the split IMPOSED on them, with no candidacy test, no aspect guard and
-    // no floor. If the bad children are born on the imposed side, the emitter is unguarded IN EFFECT and no
-    // amount of work on the SELECTOR can reach them. That is a different mechanism from S119's, so it is
-    // separated at the point of birth rather than argued about afterwards.
-    let s120PopT = -1;                        // the facet currently being refined; -1 outside a pop
-    let s120CurRank = -1;                     // rank of the split edge among the PARENT's three ARC lengths
-    let s120CurRatioBin = -1;                 // bin of (split arc length / parent's longest arc length)
-    const S120_RBINS = [0.1, 0.2, 0.3, 0.5, 0.7, 0.9, 1.0001];
-    const s120SelfN = new Float64Array(2);    // [0] parent was an IMPOSED-ON neighbour, [1] parent was popped
-    const s120SelfPole = new Float64Array(2);
-    const s120SelfThin = new Float64Array(2);
-    const s120RankN = new Float64Array(3);    // 0 = the parent's SHORTEST arc edge was cut … 2 = its longest
-    const s120RankPole = new Float64Array(3);
-    const s120RankThin = new Float64Array(3);
-    const s120RatN = new Float64Array(S120_RBINS.length);
-    const s120RatPole = new Float64Array(S120_RBINS.length);
-    const s120RatThin = new Float64Array(S120_RBINS.length);
-    /**
-     * ONE birth event, scored against its EXACT parent. `bisectAt` kills one facet and emits two, so this is
-     * a true parent→child edge of the refinement tree and not a spatial guess. Counters only.
-     */
-    const s120NoteBirth = (p: number, g: { thin: number; gr: number }): void => {
-      if (p < 0 || p >= S120_CAP) { s120SeedN += 1; return; }
-      s120PairN += 1;
-      const pt = s120Thin[p]; const pg = s120GR[p];
-      for (let i = 0; i < S120_TAUS.length; i += 1) {
-        const pd = pt < S120_TAUS[i]; const cd = g.thin < S120_TAUS[i];
-        if (pd) s120PairPd[i] += 1;
-        if (cd) s120PairCd[i] += 1;
-        if (pd && cd) s120PairBoth[i] += 1;
-      }
-      for (let i = 0; i < S120_GRS.length; i += 1) {
-        const pd = pg >= S120_GRS[i]; const cd = g.gr >= S120_GRS[i];
-        if (pd) s120PairPdG[i] += 1;
-        if (cd) s120PairCdG[i] += 1;
-        if (pd && cd) s120PairBothG[i] += 1;
-      }
-      const b = s120Bin(pt);
-      const isPole = g.gr >= 100; const isThin = g.thin < 0.02;
-      s120PBinTot[b] += 1;
-      if (isPole) s120PBinPole[b] += 1;
-      if (isThin) s120PBinThin[b] += 1;
-      if (isPole) s120BornPoleN += 1;
-      if (isThin) s120BornThinN += 1;
-      const self = p === s120PopT ? 1 : 0;
-      s120SelfN[self] += 1;
-      if (isPole) s120SelfPole[self] += 1;
-      if (isThin) s120SelfThin[self] += 1;
-      if (s120CurRank >= 0) {
-        s120RankN[s120CurRank] += 1;
-        if (isPole) s120RankPole[s120CurRank] += 1;
-        if (isThin) s120RankThin[s120CurRank] += 1;
-      }
-      if (s120CurRatioBin >= 0) {
-        s120RatN[s120CurRatioBin] += 1;
-        if (isPole) s120RatPole[s120CurRatioBin] += 1;
-        if (isThin) s120RatThin[s120CurRatioBin] += 1;
-      }
-    };
-    // ─── THE CANDIDATE-LIST CENSUS. S119's NO-GO rests entirely on the INFERENCE that `refineDirected`'s
-    // FLOOR_MM test leaves exactly one admissible edge on a parametrically-collapsed facet, so the split has
-    // nowhere else to go and the child is thinner still. Nothing counted it. These tallies do. ───
-    let s120LastCand = -1;      // candidates the LAST refineDirected call had; -1 = not a DIRECTED pop
-    let s120LastRejF = 0;       // … of its three edges, how many the 3-D FLOOR_MM test rejected
-    let s120LastRejA = 0;       // … how many the ASPECT guard rejected
-    let s120PopBirthBefore = 0; let s120PopPoleBefore = 0; let s120PopThinBefore = 0;
-    let s120PopN = 0;
-    const s120z4 = (): Float64Array => new Float64Array(4);
-    const s120PopCand = s120z4();                                                   // pops by |candidates|
-    const s120PopSplit = s120z4();                                                  // … that emitted ≥1 facet
-    const s120PopPole = s120z4();                                                   // … that emitted ≥1 POLE (GR≥100)
-    const s120PopThinOut = s120z4();                                                // … that emitted ≥1 THIN (<0.02)
-    const s120PopBirths = s120z4();                                                 // total facets they emitted
-    const s120PopFloorRej = s120z4();                                               // pops by #edges under FLOOR_MM
-    const s120PopAspRej = s120z4();                                                 // pops by #edges the aspect guard cut
-    const s120PopCandByFloor = [s120z4(), s120z4(), s120z4(), s120z4()];            // |cand| × #floor-rejected
-    const s120PopCandThin = [0, 1, 2, 3].map(() => new Float64Array(S120_PBINS.length)); // |cand| × parent-thin bin
-    const s120PopCandTP = s120z4();                                                 // pops with a THIN parent, by |cand|
-    const s120PopPoleTP = s120z4();                                                 // … of which emitted a pole
-    /**
-     * ONE pop, after `refineDirected` has run. Reads only counters and the frozen birth columns — a live
-     * facet's corners and coordinates never change, so `s120Thin[t]` IS t's thinness right now.
-     * SCOPE, STATED PLAINLY: "emitted a pole" means a pole was born ANYWHERE in this pop. `bisectAt` splits
-     * EVERY triangle incident to the chosen edge, so the neighbour's children are in that count too. It is
-     * the honest per-pop attribution and it is not a per-parent one; the per-parent numbers are the birth
-     * tables above, where the parent link is exact.
-     */
-    const s120NotePopOutcome = (t: number): void => {
-      const c = s120LastCand;
-      if (c < 0 || c > 3) return;
-      s120PopN += 1;
-      s120PopCand[c] += 1;
-      s120PopFloorRej[Math.min(3, s120LastRejF)] += 1;
-      s120PopAspRej[Math.min(3, s120LastRejA)] += 1;
-      s120PopCandByFloor[c][Math.min(3, s120LastRejF)] += 1;
-      const pt = t < S120_CAP ? s120Thin[t] : 0;
-      s120PopCandThin[c][s120Bin(pt)] += 1;
-      const births = s120PairN - s120PopBirthBefore;
-      s120PopBirths[c] += births;
-      if (births > 0) s120PopSplit[c] += 1;
-      const gotPole = s120BornPoleN - s120PopPoleBefore > 0;
-      if (gotPole) s120PopPole[c] += 1;
-      if (s120BornThinN - s120PopThinBefore > 0) s120PopThinOut[c] += 1;
-      if (pt < 0.02) { s120PopCandTP[c] += 1; if (gotPole) s120PopPoleTP[c] += 1; }
-    };
     const addT = (a: number, b: number, c: number): number => {
       if (a === b || b === c || c === a) return -1;
       const t = ta.length;
       ta.push(a); tb.push(b); tc.push(c); alive.push(true);
       eAdd(a, b, t); eAdd(b, c, t); eAdd(c, a, t);
-      // S120 — the birth record. Writes only into the five columns above, which no mesh operation reads.
-      if (S120_LIN) {
-        if (t < S120_CAP) {
-          const p = s120CurPar;
-          s120Par[t] = p;
-          s120Gen[t] = p >= 0 && p < S120_CAP ? Math.min(65535, s120Gen[p] + 1) : 0;
-          s120Root[t] = p >= 0 && p < S120_CAP ? s120Root[p] : t;
-          const g = s120Geom(a, b, c);
-          s120Thin[t] = g.thin;
-          s120GR[t] = Number.isFinite(g.gr) ? Math.min(g.gr, 3.4e38) : 3.4e38;
-          s120NoteBirth(p, g);
-        } else s120Overflow += 1;
-      }
       return t;
     };
     const killT = (t: number): void => { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); };
@@ -2001,26 +1811,9 @@ describe('STRATA conforming-bisection', () => {
           if (seq[i] === a && seq[(i + 1) % 3] === b) { oa = a; ob = b; break; }
           if (seq[i] === b && seq[(i + 1) % 3] === a) { oa = b; ob = a; break; }
         }
-        // S120 — THE PARENT LINK, TAKEN AT THE ONLY PLACE IT IS EXACT. `t` is the facet this split is about
-        // to destroy and the two `addT`s below are its two children; nothing else in the driver knows that
-        // pairing, and reconstructing it afterwards from geometry would be a guess. Alongside it, WHICH of
-        // t's three edges is being cut, ranked and ratioed in the ARC metric (`eLenP`, zero rA evals) — that
-        // is the geometric precondition a fix would have to test, so it is counted, not assumed.
-        if (S120_LIN) {
-          s120CurPar = t;
-          const q0 = eLenP(ta[t], tb[t]); const q1 = eLenP(tb[t], tc[t]); const q2 = eLenP(tc[t], ta[t]);
-          const qe = eLenP(a, b); const qMax = Math.max(q0, q1, q2);
-          s120CurRank = (q0 < qe ? 1 : 0) + (q1 < qe ? 1 : 0) + (q2 < qe ? 1 : 0);
-          if (s120CurRank > 2) s120CurRank = 2;
-          const rr = qMax > 0 ? qe / qMax : 1;
-          let rb = S120_RBINS.length - 1;
-          for (let i = 0; i < S120_RBINS.length; i += 1) if (rr < S120_RBINS[i]) { rb = i; break; }
-          s120CurRatioBin = rb;
-        }
         killT(t);
         created.push(addT(oa, m, apex));
         created.push(addT(m, ob, apex));
-        if (S120_LIN) { s120CurPar = -1; s120CurRank = -1; s120CurRatioBin = -1; }
         // S118 BIRTH CENSUS — reads the two facets that were just emitted. Measurement only: it touches no
         // mesh array, allocates nothing (one module-level scratch verdict) and evaluates rA zero times, so
         // with PF_CB_S118_CENSUS off it is a single branch and with it on the mesh is unchanged.
@@ -2256,11 +2049,9 @@ describe('STRATA conforming-bisection', () => {
                     if (seq[i] === a && seq[(i + 1) % 3] === b) { oa = a; ob = b; break; }
                     if (seq[i] === b && seq[(i + 1) % 3] === a) { oa = b; ob = a; break; }
                   }
-                  if (S120_LIN) s120CurPar = t;   // S120: REPROJECT's hand-copy of bisectAt. OFF in both baselines.
                   killT(t);
                   created.push(addT(oa, m, apex));
                   created.push(addT(m, ob, apex));
-                  if (S120_LIN) s120CurPar = -1;
                   made = true;
                 }
                 if (made) return true;
@@ -2465,16 +2256,12 @@ describe('STRATA conforming-bisection', () => {
       // choice is priced rather than assumed.
       const cand: number[] = [];
       let cand3 = 0;
-      // S120: the two `if (S120_LIN)` counters below sit on branches this loop ALREADY takes, so they add a
-      // predictable test and move no mesh byte. They are the whole of instrument (1).
-      let rejF = 0; let rejA = 0;
       for (let e = 0; e < 3; e += 1) {
-        if (ls[e] < FLOOR_MM) { if (S120_LIN) rejF += 1; continue; }
+        if (ls[e] < FLOOR_MM) continue;
         if (S119_SEL !== null && ls[e] * AR >= lMax) cand3 += 1;
-        if (lp[e] * AR < lpMax) { if (S120_LIN) rejA += 1; continue; } // aspect guard: never thin an already-short edge further
+        if (lp[e] * AR < lpMax) continue; // aspect guard: never thin an already-short edge further
         cand.push(e);
       }
-      if (S120_LIN) { s120LastCand = cand.length; s120LastRejF = rejF; s120LastRejA = rejA; }
       let order: number[];
       if (S119_SEL === null) {
         const cands: Array<[number, number]> = cand.map((e) => [edgeSag(vs[e][0], vs[e][1]), e]);
@@ -3655,14 +3442,7 @@ describe('STRATA conforming-bisection', () => {
       if (ta.length >= triCap) { capped = true; break; }
       created.length = 0;
       move43hFired = false;   // §4.3(heap): set by tryLocusMoveH, read by the bsReuse guard below
-      // S120 — bracket the pop. `s120LastCand = -1` so a pop that never reaches the candidate loop (LEPP, or
-      // an early `return` before it) is EXCLUDED rather than attributed to whatever the previous pop chose.
-      if (S120_LIN) {
-        s120LastCand = -1; s120LastRejF = 0; s120LastRejA = 0; s120PopT = t;
-        s120PopBirthBefore = s120PairN; s120PopPoleBefore = s120BornPoleN; s120PopThinBefore = s120BornThinN;
-      }
       if (DIRECTED) refineDirected(t); else refineLepp(t);
-      if (S120_LIN) { s120NotePopOutcome(t); s120PopT = -1; }
       for (const nt of created) consider(nt);
       // RE-QUEUE THE SURVIVOR WITHOUT RE-MEASURING IT. `consider(t)` here re-ran the whole bounded probe on a
       // triangle that refinement left ALIVE — i.e. one whose three vertex indices and whose vertex coordinates
@@ -4109,12 +3889,7 @@ describe('STRATA conforming-bisection', () => {
         if (gate !== undefined && !gate(r0, s0)) return false; // S5: caller-supplied improvement test
         // winding: r0 is now the apex of the pv→qv triangle (checked above), so the quad is qv → r0 → pv → s0
         for (const t of inc) { alive[t] = false; eDel(ta[t], tb[t], t); eDel(tb[t], tc[t], t); eDel(tc[t], ta[t], t); }
-        // S120: the FLIP pass re-cuts a quad — it has no single parent, so its products are tagged -2 and
-        // counted as their own root rather than being attributed to one of the two facets it consumed.
-        // Both baselines run PF_CB_FLIP=0 / PF_CB_SHAPE_FLIP=0, so this path emits nothing in either arm.
-        if (S120_LIN) s120CurPar = -2;
         const n1 = addT(r0, pv, s0); const n2 = addT(s0, qv, r0);
-        if (S120_LIN) s120CurPar = -1;
         for (const nt of [n1, n2]) {
           if (nt < 0) continue;
           for (const [x, y] of [[ta[nt], tb[nt]], [tb[nt], tc[nt]], [tc[nt], ta[nt]]] as Array<[number, number]>) {
@@ -5793,233 +5568,6 @@ describe('STRATA conforming-bisection', () => {
       return out;
     };
 
-    // ══════════════════════════ S120 — THE LINEAGE REPORT (PF_CB_S120_LINEAGE) ══════════════════════════
-    // Runs AFTER the mesh is final and the soup is built. It reads the five frozen birth columns, the pop
-    // tallies, and the tread slice of `soup`; it writes no mesh state and evaluates rA zero times.
-    const s120Json: Record<string, unknown> = {};
-    const s120ReportLines = (): string[] => {
-      const pc = (x: number, tot: number): string => (tot > 0 ? ((100 * x) / tot).toFixed(4) : 'n/a');
-      // ─── D. THE FINAL MESH, BY LINEAGE ───
-      const GMAX = 512;
-      const genN = new Float64Array(GMAX); const genA = new Float64Array(GMAX);
-      const genPoleN = new Float64Array(GMAX); const genPoleA = new Float64Array(GMAX);
-      const crossGen = new Float64Array(GMAX);
-      const roots = new Set<number>(); const rootPole = new Map<number, number>();
-      let aliveN = 0; let aliveA = 0; let poleN = 0; let poleA = 0; let crossNever = 0;
-      let thinN = 0; let thinA = 0; let genMax = 0; let minAltUm = Infinity;
-      // *** THE TWO-SIDED CONTROL, and it is not optional. `graphRatio` and the thinness ratio are ARC-SPACE
-      // quantities. A facet standing on a VERTICAL wall — a cliff face, a tread riser — has a near-zero
-      // (theta,z) footprint BY CONSTRUCTION and reads as an arc-space pole while being a perfectly
-      // well-shaped triangle in R^3. Reporting the arc reading alone would repeat this campaign's most
-      // expensive mistake (a metric quoted outside its domain), so every pole is ALSO scored in 3-D with the
-      // driver's own `aspect3` and with its 3-D minimum altitude. ***
-      let poleAr50N = 0; let poleAr50A = 0; let poleArMax = 0; let poleAlt3Min = Infinity;
-      const alt3 = (i0: number, i1: number, i2: number, area: number): number => {
-        const e = Math.max(
-          Math.hypot(vx[i1] - vx[i0], vy[i1] - vy[i0], vz[i1] - vz[i0]),
-          Math.hypot(vx[i2] - vx[i1], vy[i2] - vy[i1], vz[i2] - vz[i1]),
-          Math.hypot(vx[i0] - vx[i2], vy[i0] - vy[i2], vz[i0] - vz[i2]),
-        );
-        return e > 0 ? (2 * area) / e : 0;
-      };
-      const thinLadN = new Float64Array(S120_TAUS.length); const thinLadA = new Float64Array(S120_TAUS.length);
-      for (let t = 0; t < ta.length; t += 1) {
-        if (!alive[t] || t >= S120_CAP) continue;
-        const g = s120Geom(ta[t], tb[t], tc[t]);
-        const gen = Math.min(GMAX - 1, s120Gen[t]);
-        if (s120Gen[t] > genMax) genMax = s120Gen[t];
-        aliveN += 1; aliveA += g.area; genN[gen] += 1; genA[gen] += g.area;
-        if (g.minAltUm < minAltUm) minAltUm = g.minAltUm;
-        roots.add(s120Root[t]);
-        for (let i = 0; i < S120_TAUS.length; i += 1) if (g.thin < S120_TAUS[i]) { thinLadN[i] += 1; thinLadA[i] += g.area; }
-        if (g.thin < 0.02) { thinN += 1; thinA += g.area; }
-        if (g.gr >= 100) {
-          poleN += 1; poleA += g.area; genPoleN[gen] += 1; genPoleA[gen] += g.area;
-          rootPole.set(s120Root[t], (rootPole.get(s120Root[t]) ?? 0) + 1);
-          const ar = aspect3(vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]]);
-          if (ar > poleArMax) poleArMax = ar;
-          if (ar > 50) { poleAr50N += 1; poleAr50A += g.area; }
-          const a3 = alt3(ta[t], tb[t], tc[t], g.area);
-          if (a3 < poleAlt3Min) poleAlt3Min = a3;
-          // WHERE THE LINEAGE WENT BAD. Walk to the root (parent index is always < child index, so this
-          // terminates) and take the SHALLOWEST ancestor already below the thinness bar.
-          let cur = t; let first = -1; let guard = GMAX + 8;
-          const chain: number[] = [];
-          while (cur >= 0 && cur < S120_CAP && guard-- > 0) { chain.push(cur); cur = s120Par[cur]; }
-          for (let i = chain.length - 1; i >= 0; i -= 1) if (s120Thin[chain[i]] < 0.02) { first = s120Gen[chain[i]]; break; }
-          if (first < 0) crossNever += 1; else crossGen[Math.min(GMAX - 1, first)] += 1;
-        }
-      }
-      const rootsSorted = [...rootPole.entries()].sort((x, y) => y[1] - x[1]);
-      const top1pct = Math.max(1, Math.round(rootsSorted.length * 0.01));
-      let topShare = 0; for (let i = 0; i < top1pct && i < rootsSorted.length; i += 1) topShare += rootsSorted[i][1];
-      // ─── E. THE TREAD EMITTER (`stitchRings`) — no admission test of any kind, never audited ───
-      let trN = 0; let trA = 0; let trPoleN = 0; let trPoleA = 0; let trThinN = 0; let trThinA = 0;
-      let trMinAlt = Infinity; let trInv = 0;
-      let trAr50N = 0; let trAr50A = 0; let trArMax = 0; let trAlt3Min = Infinity; let trZeroA = 0;
-      for (let i = liveIdx.length; i < liveIdx.length + treadTris && i < soup.length; i += 1) {
-        const [p, q, r] = soup[i];
-        const tha = Math.atan2(p[1], p[0]);
-        const thb = tha + dThRaw(tha, Math.atan2(q[1], q[0]));
-        const thc = tha + dThRaw(tha, Math.atan2(r[1], r[0]));
-        const G = facetGeom(p[0], p[1], p[2], q[0], q[1], q[2], r[0], r[1], r[2], tha, thb, thc);
-        const rm = (Math.hypot(p[0], p[1]) + Math.hypot(q[0], q[1]) + Math.hypot(r[0], r[1])) / 3;
-        const emax = Math.max(
-          Math.hypot((thb - tha) * rm, q[2] - p[2]),
-          Math.hypot((thc - thb) * rm, r[2] - q[2]),
-          Math.hypot((tha - thc) * rm, p[2] - r[2]),
-        );
-        const thin = emax > 0 ? (G.minAltUm / 1000) / emax : 0;
-        trN += 1; trA += G.area;
-        if (G.minAltUm < trMinAlt) trMinAlt = G.minAltUm;
-        if (G.apsSign < 0) trInv += 1;
-        if (G.graphRatio >= 100) { trPoleN += 1; trPoleA += G.area; }
-        if (thin < 0.02) { trThinN += 1; trThinA += G.area; }
-        // the 3-D control, for the reason stated above: a tread riser is a VERTICAL wall, so it is an
-        // arc-space pole BY CONSTRUCTION and only `aspect3` can say whether it is also a bad triangle.
-        const ar = aspect3(p[0], p[1], p[2], q[0], q[1], q[2], r[0], r[1], r[2]);
-        if (ar > trArMax) trArMax = ar;
-        if (ar > 50) { trAr50N += 1; trAr50A += G.area; }
-        const e3 = Math.max(
-          Math.hypot(q[0] - p[0], q[1] - p[1], q[2] - p[2]),
-          Math.hypot(r[0] - q[0], r[1] - q[1], r[2] - q[2]),
-          Math.hypot(p[0] - r[0], p[1] - r[1], p[2] - r[2]),
-        );
-        const a3 = e3 > 0 ? (2 * G.area) / e3 : 0;
-        if (a3 < trAlt3Min) trAlt3Min = a3;
-        if (!(G.area > 0)) trZeroA += 1;
-      }
-      // ─── B/C. THE CASCADE AND THE PREDICATE, from the exact parent→child birth table ───
-      const totPole = s120PBinPole.reduce((s2, v) => s2 + v, 0);
-      const totPairs = s120PBinTot.reduce((s2, v) => s2 + v, 0);
-      let cumTot = 0; let cumPole = 0; let cumThin = 0;
-      const predRows: string[] = [];
-      const predJson: Array<Record<string, number>> = [];
-      const totThinC = s120PBinThin.reduce((s2, v) => s2 + v, 0);
-      for (let b = 0; b < S120_PBINS.length; b += 1) {
-        cumTot += s120PBinTot[b]; cumPole += s120PBinPole[b]; cumThin += s120PBinThin[b];
-        const prec = cumTot > 0 ? cumPole / cumTot : 0;
-        const rec = totPole > 0 ? cumPole / totPole : 0;
-        predRows.push(`      parent thin < ${S120_PBINS[b].toExponential(1).padStart(9)} :`
-          + ` fires on ${String(cumTot).padStart(10)} (${pc(cumTot, totPairs).padStart(8)}% of births)`
-          + `   PRECISION ${(100 * prec).toFixed(4).padStart(9)}%   RECALL ${(100 * rec).toFixed(4).padStart(9)}%`
-          + `   [thin-child recall ${pc(cumThin, totThinC).padStart(8)}%]`);
-        predJson.push({ bar: S120_PBINS[b], fires: cumTot, tp: cumPole, precision: prec, recall: rec, thinRecall: totThinC > 0 ? cumThin / totThinC : 0 });
-      }
-      const out: string[] = [
-        '',
-        '    ═══════════ S120 LINEAGE CENSUS — WHAT EXACTLY CREATES A BAD TRIANGLE ═══════════',
-        `    flag PF_CB_S120_LINEAGE=1   births recorded ${s120PairN + s120SeedN} (${s120SeedN} rootless / ${s120PairN} with an EXACT parent)`
-        + `   overflow past the column cap ${s120Overflow}`
-        + (s120Overflow > 0 ? '   *** COLUMNS TRUNCATED — every ratio below is biased. RE-RUN with headroom. ***' : ''),
-        '',
-        '    ── (1) THE CANDIDATE-LIST CENSUS at every refineDirected pop ──',
-        `       pops recorded ${s120PopN}   [pops that never reached the candidate loop are EXCLUDED, not defaulted]`,
-        '        |cand|        pops     %pops        split      emitted a POLE      emitted THIN     facets born',
-        ...[0, 1, 2, 3].map((c) => `          ${c}   ${String(s120PopCand[c]).padStart(11)}  ${pc(s120PopCand[c], s120PopN).padStart(8)}%`
-          + `  ${String(s120PopSplit[c]).padStart(11)}   ${String(s120PopPole[c]).padStart(11)} (${pc(s120PopPole[c], s120PopCand[c]).padStart(8)}%)`
-          + `  ${String(s120PopThinOut[c]).padStart(11)} (${pc(s120PopThinOut[c], s120PopCand[c]).padStart(8)}%)`
-          + `  ${String(s120PopBirths[c]).padStart(11)}`),
-        `       WHY the rejected edges were rejected — pops by #edges under the 3-D FLOOR_MM (${(FLOOR_MM * 1000).toFixed(3)} um):`,
-        `          0: ${s120PopFloorRej[0]}   1: ${s120PopFloorRej[1]}   2: ${s120PopFloorRej[2]}   3: ${s120PopFloorRej[3]}`,
-        `       … and by #edges the ASPECT guard (AR ${AR}) cut:`,
-        `          0: ${s120PopAspRej[0]}   1: ${s120PopAspRej[1]}   2: ${s120PopAspRej[2]}   3: ${s120PopAspRej[3]}`,
-        '       |cand| × #edges under FLOOR_MM (rows |cand| 0..3, cols floor-rejected 0..3):',
-        ...[0, 1, 2, 3].map((c) => `          |cand|=${c}: ${[0, 1, 2, 3].map((f) => String(s120PopCandByFloor[c][f]).padStart(11)).join(' ')}`),
-        '       THE S119 HYPOTHESIS, RESTRICTED TO ITS OWN POPULATION — pops whose PARENT is already thin (<0.02):',
-        `          |cand| 0: ${s120PopCandTP[0]}   1: ${s120PopCandTP[1]}   2: ${s120PopCandTP[2]}   3: ${s120PopCandTP[3]}`
-        + `   (of which emitted a pole: ${s120PopPoleTP[0]} / ${s120PopPoleTP[1]} / ${s120PopPoleTP[2]} / ${s120PopPoleTP[3]})`,
-        '       |cand| × PARENT-THINNESS bin (cols are the bins of the predicate ladder below):',
-        ...[0, 1, 2, 3].map((c) => `          |cand|=${c}: ${[...s120PopCandThin[c]].map((v) => String(v).padStart(9)).join(' ')}`),
-        '',
-        '    ── (2) THE CASCADE, MEASURED DIRECTLY on exact parent→child pairs (not inferred from an exponent) ──',
-        `       population ${s120PairN} births with a parent.`,
-        '       THIN ladder — P(child thin | parent thin) vs P(child thin | parent healthy):',
-        ...S120_TAUS.map((tau, i) => {
-          const pd = s120PairPd[i]; const cd = s120PairCd[i]; const both = s120PairBoth[i];
-          const pGiven = pd > 0 ? both / pd : 0;
-          const pNot = s120PairN - pd > 0 ? (cd - both) / (s120PairN - pd) : 0;
-          return `          tau ${String(tau).padStart(6)}: parents ${String(pd).padStart(10)}  children ${String(cd).padStart(10)}`
-            + `   P(c|p) ${(100 * pGiven).toFixed(4).padStart(9)}%   P(c|~p) ${(100 * pNot).toFixed(6).padStart(10)}%`
-            + `   *** RISK RATIO ${pNot > 0 ? (pGiven / pNot).toFixed(2).padStart(9) : '    inf'} ***`;
-        }),
-        '       DEGENERACY-POLE ladder — the S118/S119 class itself:',
-        ...S120_GRS.map((bar, i) => {
-          const pd = s120PairPdG[i]; const cd = s120PairCdG[i]; const both = s120PairBothG[i];
-          const pGiven = pd > 0 ? both / pd : 0;
-          const pNot = s120PairN - pd > 0 ? (cd - both) / (s120PairN - pd) : 0;
-          return `          GR >= ${String(bar).padStart(5)}: parents ${String(pd).padStart(10)}  children ${String(cd).padStart(10)}`
-            + `   P(c|p) ${(100 * pGiven).toFixed(4).padStart(9)}%   P(c|~p) ${(100 * pNot).toFixed(6).padStart(10)}%`
-            + `   *** RISK RATIO ${pNot > 0 ? (pGiven / pNot).toFixed(2).padStart(9) : '    inf'} ***`;
-        }),
-        '',
-        '    ── (2b) WHO GOT THE SPLIT — the popped facet, or a neighbour with no say in it ──',
-        `       IMPOSED (parent was a neighbour, never ran the candidate loop): births ${s120SelfN[0]} (${pc(s120SelfN[0], s120PairN)}%)`
-        + `   POLE children ${s120SelfPole[0]} (${pc(s120SelfPole[0], s120SelfN[0])}% of them)   THIN children ${s120SelfThin[0]} (${pc(s120SelfThin[0], s120SelfN[0])}%)`,
-        `       SELECTED (parent WAS the popped facet):                        births ${s120SelfN[1]} (${pc(s120SelfN[1], s120PairN)}%)`
-        + `   POLE children ${s120SelfPole[1]} (${pc(s120SelfPole[1], s120SelfN[1])}% of them)   THIN children ${s120SelfThin[1]} (${pc(s120SelfThin[1], s120SelfN[1])}%)`,
-        '    ── (2c) WHICH EDGE OF THE PARENT WAS CUT, ranked in the ARC metric (eLenP) ──',
-        '        rank                    births      POLE children        THIN children',
-        ...[0, 1, 2].map((r) => `          ${r === 0 ? 'SHORTEST' : r === 1 ? 'middle  ' : 'LONGEST '} ${String(s120RankN[r]).padStart(12)}`
-          + `   ${String(s120RankPole[r]).padStart(10)} (${pc(s120RankPole[r], s120RankN[r]).padStart(8)}%)`
-          + `   ${String(s120RankThin[r]).padStart(10)} (${pc(s120RankThin[r], s120RankN[r]).padStart(8)}%)`),
-        '        split arc length / parent LONGEST arc length:',
-        ...S120_RBINS.map((ub, i) => `          < ${ub.toFixed(4)} : births ${String(s120RatN[i]).padStart(12)}`
-          + `   POLE ${String(s120RatPole[i]).padStart(10)} (${pc(s120RatPole[i], s120RatN[i]).padStart(8)}%)`
-          + `   THIN ${String(s120RatThin[i]).padStart(10)} (${pc(s120RatThin[i], s120RatN[i]).padStart(8)}%)`),
-        '',
-        '    ── (3) THE PREDICATE ON THE PARENT — swept, both precision AND recall (neither alone is a result) ──',
-        `       outcome = the child is a DEGENERACY POLE (graphRatio >= 100).  base rate ${pc(totPole, totPairs)}%`,
-        ...predRows,
-        '',
-        '    ── (4) THE FINAL MESH BY BIRTH GENERATION ──',
-        `       alive ${aliveN} facets, ${aliveA.toFixed(3)} mm2   max generation ${genMax}   distinct ancestral roots ${roots.size} of ${initTris} seed facets`,
-        `       POLES (GR>=100): COUNT ${poleN} (${pc(poleN, aliveN)}%)   AREA ${poleA.toFixed(4)} mm2 = ${pc(poleA, aliveA)}%`,
-        `       THIN (<0.02):    COUNT ${thinN} (${pc(thinN, aliveN)}%)   AREA ${thinA.toFixed(4)} mm2 = ${pc(thinA, aliveA)}%`
-        + `   mesh-min arc altitude ${Number.isFinite(minAltUm) ? (minAltUm * 1000).toFixed(3) : 'n/a'} nm`,
-        '       thin ladder (scale-free, scar 4):',
-        ...S120_TAUS.map((tau, i) => `          tau ${String(tau).padStart(6)}: COUNT ${String(thinLadN[i]).padStart(10)} (${pc(thinLadN[i], aliveN).padStart(8)}%)`
-          + `   AREA ${thinLadA[i].toFixed(4).padStart(12)} mm2 = ${pc(thinLadA[i], aliveA).padStart(8)}%`),
-        `       THE 3-D CONTROL on the pole class (arc-space degeneracy is NOT the same claim as a bad triangle):`
-        + `  of ${poleN} poles, ${poleAr50N} also exceed the driver's own 3-D aspect cap AR>50`
-        + ` (${pc(poleAr50N, poleN)}%, ${poleAr50A.toFixed(4)} mm2)   worst 3-D AR ${poleArMax.toFixed(2)}`
-        + `   min 3-D altitude ${Number.isFinite(poleAlt3Min) ? (poleAlt3Min * 1000).toFixed(3) : 'n/a'} um`,
-        `       *** DISTINCT ANCESTRAL ROOTS OF THE POLE CLASS: ${rootPole.size} ***`
-        + `  (= ${pc(rootPole.size, roots.size)}% of the roots that survive; top 1% of them carry ${pc(topShare, poleN)}% of all poles)`,
-        '       generation histogram — gen: alive (pole, pole area mm2):',
-        ...[...Array(Math.min(GMAX, genMax + 1)).keys()].filter((g) => genN[g] > 0 || genPoleN[g] > 0)
-          .map((g) => `          gen ${String(g).padStart(3)}: ${String(genN[g]).padStart(10)}`
-            + `   pole ${String(genPoleN[g]).padStart(9)} (${pc(genPoleN[g], genN[g]).padStart(8)}%)   ${genPoleA[g].toFixed(5).padStart(11)} mm2`),
-        `       GENERATION AT WHICH A POLE'S LINEAGE FIRST CROSSED thin<0.02 (${crossNever} poles never had a thin ancestor):`,
-        ...[...Array(Math.min(GMAX, genMax + 1)).keys()].filter((g) => crossGen[g] > 0)
-          .map((g) => `          gen ${String(g).padStart(3)}: ${String(crossGen[g]).padStart(10)} poles (${pc(crossGen[g], poleN)}%)`),
-        '',
-        '    ── (5) THE TREAD EMITTER `stitchRings` — NO admission test, NO parameter-space placement ──',
-        `       facets ${trN} (${pc(trN, soup.length)}% of the soup)   AREA ${trA.toFixed(4)} mm2`,
-        `       POLES (GR>=100): COUNT ${trPoleN} (${pc(trPoleN, trN)}% of treads)   AREA ${trPoleA.toFixed(6)} mm2`,
-        `       THIN (<0.02):    COUNT ${trThinN} (${pc(trThinN, trN)}% of treads)   AREA ${trThinA.toFixed(6)} mm2`,
-        `       arc-space sign inversions ${trInv}   min arc altitude ${Number.isFinite(trMinAlt) ? (trMinAlt * 1000).toFixed(3) : 'n/a'} nm`
-        + `   exactly-zero-area facets ${trZeroA}`,
-        `       THE 3-D CONTROL: ${trAr50N} of ${trN} treads exceed AR>50 (${pc(trAr50N, trN)}%, ${trAr50A.toFixed(6)} mm2)`
-        + `   worst 3-D AR ${trArMax.toFixed(2)}   min 3-D altitude ${Number.isFinite(trAlt3Min) ? (trAlt3Min * 1000).toFixed(3) : 'n/a'} um`,
-        '       READ THIS PAIR TOGETHER. A tread RISER is a vertical wall: its (theta,z) footprint is near-zero',
-        '       BY CONSTRUCTION, so a 100% arc-space-thin reading is EXPECTED and is not by itself a defect.',
-        '       The 3-D line is the one that says whether the emitter makes BAD TRIANGLES.',
-      ];
-      s120Json.pops = { n: s120PopN, cand: [...s120PopCand], split: [...s120PopSplit], pole: [...s120PopPole], thin: [...s120PopThinOut], births: [...s120PopBirths], floorRej: [...s120PopFloorRej], aspRej: [...s120PopAspRej], candByFloor: s120PopCandByFloor.map((v) => [...v]), candByThin: s120PopCandThin.map((v) => [...v]), candThinParent: [...s120PopCandTP], poleThinParent: [...s120PopPoleTP] };
-      s120Json.pairs = { n: s120PairN, seed: s120SeedN, taus: S120_TAUS, grs: S120_GRS, pd: [...s120PairPd], cd: [...s120PairCd], both: [...s120PairBoth], pdG: [...s120PairPdG], cdG: [...s120PairCdG], bothG: [...s120PairBothG] };
-      s120Json.mechanism = {
-        selfN: [...s120SelfN], selfPole: [...s120SelfPole], selfThin: [...s120SelfThin],
-        rankN: [...s120RankN], rankPole: [...s120RankPole], rankThin: [...s120RankThin],
-        ratioBins: S120_RBINS, ratN: [...s120RatN], ratPole: [...s120RatPole], ratThin: [...s120RatThin],
-      };
-      s120Json.predicate = { bins: S120_PBINS, tot: [...s120PBinTot], pole: [...s120PBinPole], thin: [...s120PBinThin], ladder: predJson };
-      s120Json.final = { aliveN, aliveA, poleN, poleA, thinN, thinA, genMax, roots: roots.size, poleRoots: rootPole.size, seedTris: initTris, crossNever, minAltUm, thinLadN: [...thinLadN], thinLadA: [...thinLadA], genN: [...genN].slice(0, genMax + 1), genPoleN: [...genPoleN].slice(0, genMax + 1), genPoleA: [...genPoleA].slice(0, genMax + 1), crossGen: [...crossGen].slice(0, genMax + 1), topRoots: rootsSorted.slice(0, 20) };
-      s120Json.treads = { n: trN, area: trA, poleN: trPoleN, poleA: trPoleA, thinN: trThinN, thinA: trThinA, inv: trInv, minAltUm: trMinAlt, ar50N: trAr50N, ar50A: trAr50A, arMax: trArMax, alt3MinMm: trAlt3Min, zeroArea: trZeroA };
-      s120Json.pole3d = { ar50N: poleAr50N, ar50A: poleAr50A, arMax: poleArMax, alt3MinMm: poleAlt3Min };
-      return out;
-    };
-
     const report = [
       '',
       `===== STRATA CONFORMING-BISECTION: ${STYLE} ${STAGE.toUpperCase()}  [${DIRECTED ? 'DIRECTED' : 'lepp'} | ${SNAP ? 'SNAP' : 'no-snap'} | ${REPROJ ? 'REPROJ' : 'no-reproj'}] =====`,
@@ -6122,7 +5670,6 @@ describe('STRATA conforming-bisection', () => {
         ];
       })()),
       ...(S118_ADMIT || S118_CENSUS ? s118ReportLines() : []),
-      ...(S120_LIN ? s120ReportLines() : []),
       `grid ${gu}×${gv} (${initTris} init tris) → ${soup.length} tris (alloc ${ta.length}/${triCap})${capped ? '  [CAPPED]' : ''}${timeCapped ? `  [TIME-CAPPED @ ${MAXSECS}s — NOT converged, this is a TRAJECTORY not a verdict]` : ''}   ${((Date.now() - t0ms) / 1000).toFixed(0)}s, ${(rEvals / 1e6).toFixed(0)}M rA evals`,
       `splits ${iters}   snaps ${nSnap} (jump-class ${nJump})   transverse re-solves ${nReproj}   z-steps ${zSteps.length}`,
       `    *** CERTIFIED ACCEPT VETO: PF_CB_CERTACCEPT=${CERTACCEPT ? 1 : 0}`
@@ -6551,16 +6098,6 @@ describe('STRATA conforming-bisection', () => {
     // eslint-disable-next-line no-console
     console.log(report);
     writeFileSync(join(outDir, `${tag}.report.txt`), report);
-    // S120 — the machine-readable half of the lineage census. Written only when the flag is on, AFTER the
-    // report string has been built (which is what populates `s120Json`), so the two can never disagree.
-    if (S120_LIN) {
-      writeFileSync(join(outDir, `${tag}.s120.json`), JSON.stringify({
-        schema: 'pf.s120Lineage/1', style: STYLE, stage: STAGE, tag,
-        tolMm: TOL, gridU: gu, gridV: gv, triCap, seedTris: initTris,
-        nTri: soup.length, alloc: ta.length, capped, overflow: s120Overflow,
-        ...s120Json,
-      }, null, 1));
-    }
     expect(nonManifold).toBe(0);
     expect(seamCrack).toBe(0);
     if (STAGE === 'solid') expect(boundary).toBe(0);
