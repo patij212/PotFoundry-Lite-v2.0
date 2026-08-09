@@ -79,6 +79,16 @@ import { SweepPool, resolveSweepWorkers, type SweepPoolStats } from './_sweepPoo
 // THE SHAPE TERM (2026-07-29 blade fix). Pure functions, no mesh state — see _shapeGuard.ts's header for
 // why `aspect3` is the census's own metric and why that identity is the point.
 import { aspect3, signedAreaParam, chordParam, type LiftedPoint } from './_shapeGuard';
+// S121 FIX 1 — THE GUARDED TREAD EMITTER. Extracted to its own file rather than written inline for ONE
+// reason: the unit test (research/bridge/_s121TreadUnit.test.ts) then drives THE SHIPPED FUNCTION instead
+// of a transcription that can drift from it, and its `rounds: 0` mode gives the test a control arm that is
+// the baseline θ-merge walk through the same code path. Called only under PF_CB_S121_TREADFIX, so the
+// flag-OFF path never enters it and stays byte-identical.
+import { stitchRingsGuarded } from './_s121TreadFix';
+// S121 FIX 2 — the GEOMETRIC verdict of the seed-repair flip, for the same reason: the gate that decides a
+// repair is the gate the unit test drives (research/bridge/_s121SeedUnit.test.ts). Called only under
+// PF_CB_S121_SEEDFIX.
+import { seedFlipVerdict, type FlipCorner } from './_s121SeedFix';
 // S118 THE EMIT-TIME ADMISSION CORE. A TRANSCRIPTION of the S117 predicate
 // (src/renderers/webgpu/parametric/conforming/emitInvariant.ts), NOT an import of it: this driver may not
 // import src/, because a flag-OFF run of this fork must stay byte-identical to a committed baseline and an
@@ -317,6 +327,65 @@ describe('STRATA conforming-bisection', () => {
     let s119Agree = 0;          // ... where the control's max-sag argmax would have chosen the same edge
     let s119AttribCalls = 0;    // edgeSag evaluations spent on attribution only (PF_CB_S119_ATTRIB)
     let s119GuardDiff = 0;      // candidate sets that differ from the 3-D aspect guard's
+    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
+    // S121 — THE TWO UNGUARDED EMITTERS. BOTH DEFAULT OFF, BOTH BYTE-IDENTICAL WHEN OFF.
+    // ══════════════════════════════════════════════════════════════════════════════════════════════════════
+    // S120 established WHERE every 3-D-bad triangle in the shipped mesh comes from: `stitchRings` (707 of
+    // 4,394 tread facets over the AR>50 cap on CelticTriquetra, worst 191.01) and the ALIGNED SEED (3 of
+    // 254,926 facets born over the cap at AR 85.13 on GothicArches). `bisectAt` contributes ZERO. S121 fixes
+    // both. It does NOT re-derive S120 and it does not touch the refinement loop.
+    //
+    // *** THE TREAD CAUSE IS NOT WHAT THE PRE-REGISTRATION ASSUMED, AND THIS IS THE MOST IMPORTANT LINE
+    //     IN THIS COMMENT. *** The brief expected a "greedy angular zip" in which one ring runs ahead of the
+    //     other. `stitchRings` DOES NOT DO THAT: it is already a strict θ-MERGE (it advances whichever ring
+    //     has the smaller θ), i.e. it already zips in the parameter domain. Re-writing the zip cannot help,
+    //     and the S120 remedy (a) is therefore REFUTED as stated. Measured on the shipped baseline
+    //     (research/tools/s121TreadAnatomy.cjs, EXHAUSTIVE, no stride, celtictriquetra_ring_D--H_S102.stl):
+    //         over-cap facets 714;  dz  p50 8.0032e-3 mm,  ALTITUDE p50 8.5608e-3 mm,  dz < 10 µm on 707
+    //     THE ALTITUDE *IS* THE Z-GAP. `bounds` holds the wall bands off every detected C0 step by
+    //     `stepEps` = PF_CB_STEP_EPS_UM/1000 = 4 µm on each side, so the two loops `stitchRings` bridges are
+    //     2*stepEps = 8 µm apart in z. Every triangle a strip between two polylines can possibly contain has
+    //     a RING edge as its base and the opposite loop as its apex, so
+    //           aspect3  ≈  ring chord / strip height  =  chord / 8 µm,
+    //     over the cap for every chord above 50*8 µm = 0.4 mm. The seed's own ring pitch at r≈48 with
+    //     PF_CB_GRIDU=200 is 1.51 mm = 3.8x over. The 707 are exactly the ring edges the refinement loop
+    //     never split. NO CHOICE FUNCTION FIXES THIS — the strip itself is degenerate, and the emitter's
+    //     failure is the MISSING ADMISSION TEST (remedy (b)) plus the missing Steiner densification.
+    //     (Why the strip is degenerate at all: the cliff Δr(θ) is a LOCAL feature. `zSteps` is a scalar per
+    //     step, so the wall is cut at that z across ALL θ — including the θ where R is perfectly smooth in
+    //     z and the two loops are radially coincident to within microns. There the "tread annulus" has zero
+    //     width and is nothing but an 8 µm ribbon.)
+    //
+    // THE FIX (PF_CB_S121_TREADFIX): keep the θ-merge walk VERBATIM — it is not the defect — and add the two
+    // things it lacks: STEINER DENSIFICATION of the ring edges until the chord bound holds, and an ADMISSION
+    // TEST on every emitted ear. A ring edge is a BOUNDARY edge, so it belongs to exactly ONE wall facet;
+    // shortening it forces that facet to be re-triangulated, and the new points are placed EXACTLY ON the
+    // old edge (linear interpolation), which is the only placement that (i) leaves the wall surface
+    // bit-identical as a point set, so no fidelity number can move, and (ii) keeps the mesh watertight —
+    // a point ON the surface would bend the wall away from its own facet and a T-junction would open a hole.
+    // With the split points collinear, the ONLY non-degenerate re-triangulation of the owning facet is a FAN
+    // from its opposite vertex, and a fan child of a SLIVER parent can itself exceed the cap — so every fan
+    // child is admitted individually and a refused point is COUNTED and PRINTED, never silently dropped.
+    const S121_TREADFIX = envOn('PF_CB_S121_TREADFIX');
+    const S121_MAXK = Math.max(2, Math.round(envF('PF_CB_S121_TREAD_MAXK', 64)));
+    // safe / snapFrac / rounds are TAKEN FROM the swept ladder in research/bridge/_s121TreadUnit.test.ts,
+    // not chosen ahead of it: at rounds 8 that ladder reaches over-cap 0 at (0.80, 0.05) and (0.90, 0.05),
+    // and 0.90 is the cheaper of the two. *** THE LADDER IS NOT MONOTONE *** (snap 0.15 / 0.25 are worse at
+    // every safe), so the zero is MEASURED, not guaranteed by construction, and the driver prints its own
+    // residual per style rather than assuming the unit result transfers.
+    const S121_SAFE = envF('PF_CB_S121_TREAD_SAFE', 0.9);
+    const S121_SNAP = envF('PF_CB_S121_TREAD_SNAP', 0.05);
+    const S121_ROUNDS = Math.max(1, Math.round(envF('PF_CB_S121_TREAD_ROUNDS', 8)));
+    // THE SEED (PF_CB_S121_SEEDFIX). A facet BORN over the cap cannot be repaired downstream — S1 refuses
+    // any split whose children exceed the cap and a blade's children are blades — so the repair has to run
+    // BEFORE the first pop. The operator is a locus-safe 2-2 FLIP, not a split: splitting a sliver along its
+    // long edge multiplies its aspect (child AR ≈ k*parent/4 for a k-way cut), while a flip re-cuts the
+    // quad's OTHER diagonal and is the only local move that can lower the pair's max aspect without adding
+    // a vertex. Strict improvement gate, (θ,z) fold check, and a refusal on any edge that lies on a traced
+    // locus — the seed's whole purpose is that its edges lie ALONG the loci, and a flip that re-cuts one
+    // would undo the lever the arm exists to measure.
+    const S121_SEEDFIX = envOn('PF_CB_S121_SEEDFIX');
+    const S121_SEED_PASSES = Math.max(1, Math.round(envF('PF_CB_S121_SEED_PASSES', 4)));
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
     // S120 TASK D — 1-RING RETRIANGULATION (PF_CB_S120_RETRI, DEFAULT OFF). *** THE FIX. ***
     // ══════════════════════════════════════════════════════════════════════════════════════════════════════
@@ -1568,6 +1637,8 @@ describe('STRATA conforming-bisection', () => {
     // aligned arm measures the same quantity WITHOUT mutating: `alignedSeedCrossings` runs the S9a
     // enumeration (locateKink, interior, non-jump, outside the SNAP_ALPHA band) over every seed edge and
     // only counts. The two levers remain composable; this arm just does not compose them.
+    /** S121 FIX 2 — the seed's CONSTRAINT EDGES, by the driver's own eKey. Empty unless the aligned seed ran. */
+    const s121SeedLocusE = new Set<number>();
     let alignedLoci: LocusArtifact | null = null;
     let alignedStats: AlignedSeed['stats'] | null = null;
     let alignedPatches: PatchRegion[] = [];
@@ -1622,6 +1693,14 @@ describe('STRATA conforming-bisection', () => {
       for (const [a, b] of rep.seed.constraints) { onCon.add(a); onCon.add(b); }
       const idx = rep.seed.pts.map(([th, z], i) => addV(th, z, onCon.has(i)));
       for (const [a, b, c] of rep.seed.tris) addT(idx[a], idx[b], idx[c]);
+      // S121 FIX 2 — THE EDGE-LEVEL LOCUS SET, and it is the difference between a gate and a veto.
+      // `vFeat` marks a vertex that is an ENDPOINT of some constraint; it does NOT say that a given edge
+      // IS one. MEASURED on this style: all 3 over-cap seed facets read `onLocus 111` — every vertex of
+      // every one of them is a constraint endpoint — so a vFeat-AND-vFeat proxy refuses EVERY edge of
+      // every blade and the repair can never fire. The builder hands back the constraint SEGMENTS, so the
+      // exact set is available and is what the guard must test. Keyed by the driver's own `eKey` so the
+      // lookup is the same key the edge index uses.
+      for (const [a, b] of rep.seed.constraints) s121SeedLocusE.add(eKey(idx[a], idx[b]));
       // THE LEVER'S HEADLINE, measured by the DRIVER'S OWN detector rather than by the seed builder's
       // internal geometry — the seed builder's crossing count is self-referential (it tests against the
       // very chains it placed) and would read LOW on a deliberately mistraced seed, which is precisely the
@@ -1698,12 +1777,118 @@ describe('STRATA conforming-bisection', () => {
     // pre-registered runs — but a LAYERED style with two detected steps within ~40 um WILL be born over the
     // cap, and this census is how that becomes visible instead of being blamed on the guard.
     let gridOverCap = 0; let gridWorstAR = 0;
+    // S121 — WHAT the over-cap seed facets ARE, not just how many. 3 of a quarter million is a specific
+    // geometric situation, so the situation is recorded: every vertex's (θ,z), whether it sits on a traced
+    // locus (`vFeat`, which the seed sets for every constraint endpoint), the three 3-D edge lengths and the
+    // altitude. Costs nothing when there are none, writes into an array no mesh operation reads.
+    interface S121SeedRow { t: number; ar: number; th: number[]; z: number[]; feat: boolean[]; e: number[]; alt: number; area: number }
+    const s121SeedRows: S121SeedRow[] = [];
+    const s121Row = (t: number): S121SeedRow => {
+      const vs = [ta[t], tb[t], tc[t]];
+      const ar = aspect3(vx[vs[0]], vy[vs[0]], vz[vs[0]], vx[vs[1]], vy[vs[1]], vz[vs[1]], vx[vs[2]], vy[vs[2]], vz[vs[2]]);
+      const e = [eLen(vs[0], vs[1]), eLen(vs[1], vs[2]), eLen(vs[2], vs[0])];
+      const ux = vx[vs[1]] - vx[vs[0]]; const uy = vy[vs[1]] - vy[vs[0]]; const uz = vz[vs[1]] - vz[vs[0]];
+      const wx = vx[vs[2]] - vx[vs[0]]; const wy = vy[vs[2]] - vy[vs[0]]; const wz = vz[vs[2]] - vz[vs[0]];
+      const area = 0.5 * Math.hypot(uy * wz - uz * wy, uz * wx - ux * wz, ux * wy - uy * wx);
+      const L = Math.max(e[0], e[1], e[2]);
+      return {
+        t, ar, th: vs.map((v) => vth[v]), z: vs.map((v) => vz[v]), feat: vs.map((v) => vFeat[v]),
+        e, alt: L > 0 ? (2 * area) / L : 0, area,
+      };
+    };
     for (let t = 0; t < ta.length; t += 1) {
       const ar = aspect3(
         vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]],
       );
-      if (ar > SHAPE_AR) gridOverCap += 1;
+      if (ar > SHAPE_AR) { gridOverCap += 1; if (s121SeedRows.length < 64) s121SeedRows.push(s121Row(t)); }
       if (ar > gridWorstAR) gridWorstAR = ar;
+    }
+    // ─────────────── S121 FIX 2 — REPAIR THE SEED AT BIRTH (PF_CB_S121_SEEDFIX, DEFAULT OFF) ───────────────
+    // Nothing below this point runs, allocates or branches when the flag is off, so the flag-OFF mesh is
+    // byte-identical by construction as well as by the measured md5.
+    let s121SeedTried = 0; let s121SeedDone = 0;
+    let s121SeedRefLocus = 0; let s121SeedRefFold = 0; let s121SeedRefGain = 0; let s121SeedRefPair = 0;
+    let s121SeedAfterCap = gridOverCap; let s121SeedAfterWorst = gridWorstAR; let s121SeedPassesRun = 0;
+    const s121SeedRowsAfter: S121SeedRow[] = [];
+    if (S121_SEEDFIX && gridOverCap > 0) {
+      const arOf = (t: number): number => aspect3(
+        vx[ta[t]], vy[ta[t]], vz[ta[t]], vx[tb[t]], vy[tb[t]], vz[tb[t]], vx[tc[t]], vy[tc[t]], vz[tc[t]],
+      );
+      /**
+       * Locus-safe 2-2 flip of the edge (pv,qv), gated on a STRICT improvement of the pair's max aspect3.
+       *
+       * Deliberately a private transcription and not a call to the `tryFlip` defined at the collapse pass:
+       * that one lives inside the PF_CB_SAFE_COLLAPSE block, hundreds of lines below the seed, and owns
+       * `nbr`/`vTris` incidence caches that do not exist yet here. The validity tests are the same tests in
+       * the same order — incidence 2, both facets traverse the edge oppositely, the opposite diagonal does
+       * not already exist, no fold in (θ,z) — with `edgeOnLocus` replaced by the only locus signal that
+       * exists at seed time, `vFeat` on BOTH endpoints, which is exactly what the seed marks its constraint
+       * vertices with.
+       */
+      const corner = (w: number, pv: number): FlipCorner => ({
+        x: vx[w], y: vy[w], z: vz[w], dth: w === pv ? 0 : dTh(pv, w), dz: vz[w] - vz[pv], feat: vFeat[w],
+      });
+      const seedFlip = (pv: number, qv: number): boolean => {
+        const inc = (edgeMap.get(eKey(pv, qv)) ?? []).filter((t) => alive[t]);
+        if (inc.length !== 2) { s121SeedRefPair += 1; return false; }
+        const apexOf = (t: number): number => (ta[t] !== pv && ta[t] !== qv ? ta[t] : tb[t] !== pv && tb[t] !== qv ? tb[t] : tc[t]);
+        const runsPQ = (t: number): boolean => {
+          const s = [ta[t], tb[t], tc[t]];
+          for (let i = 0; i < 3; i += 1) if (s[i] === pv && s[(i + 1) % 3] === qv) return true;
+          return false;
+        };
+        const f0 = runsPQ(inc[0]);
+        if (f0 === runsPQ(inc[1])) { s121SeedRefPair += 1; return false; }
+        const r0 = apexOf(f0 ? inc[0] : inc[1]); const s0 = apexOf(f0 ? inc[1] : inc[0]);
+        if (r0 === s0) { s121SeedRefPair += 1; return false; }
+        if ((edgeMap.get(eKey(r0, s0)) ?? []).some((t) => alive[t])) { s121SeedRefPair += 1; return false; }
+        // THE GEOMETRIC VERDICT — shared with the unit test (research/bridge/_s121SeedUnit.test.ts) so the
+        // gate that decides a repair is the gate that is tested, not a transcription of it. `feat` is fed
+        // the EDGE-level answer: both corners are reported on-locus exactly when (pv,qv) IS a constraint
+        // segment of the seed, which is the thing that must not be re-cut. Feeding it the vertex flag
+        // instead vetoes every edge of every blade on this style (all 3 read onLocus 111) and the repair
+        // could never fire — a gate that always says no is not a gate.
+        const onLocusEdge = s121SeedLocusE.has(eKey(pv, qv));
+        const cp = corner(pv, pv); const cq = corner(qv, pv);
+        cp.feat = onLocusEdge; cq.feat = onLocusEdge;
+        const v = seedFlipVerdict(cp, cq, corner(r0, pv), corner(s0, pv));
+        if (!v.ok) {
+          if (v.why === 'locus') s121SeedRefLocus += 1;
+          else if (v.why === 'fold') s121SeedRefFold += 1;
+          else s121SeedRefGain += 1;
+          return false;
+        }
+        for (const t of inc) killT(t);
+        addT(r0, pv, s0); addT(s0, qv, r0);
+        return true;
+      };
+      for (let pass = 0; pass < S121_SEED_PASSES; pass += 1) {
+        s121SeedPassesRun += 1;
+        let moved = 0;
+        const bad: number[] = [];
+        for (let t = 0; t < ta.length; t += 1) if (alive[t] && arOf(t) > SHAPE_AR) bad.push(t);
+        if (bad.length === 0) break;
+        for (const t of bad) {
+          if (!alive[t]) continue;
+          // LONGEST EDGE FIRST: for a blade the long edge is the one the opposite vertex is nearly on, and
+          // it is the only diagonal whose re-cut can shorten the facet's dominant length. The other two are
+          // tried after it so a refusal on the long edge is not the end of the attempt.
+          const es: Array<[number, number]> = [[ta[t], tb[t]], [tb[t], tc[t]], [tc[t], ta[t]]];
+          es.sort((p, q) => eLen(q[0], q[1]) - eLen(p[0], p[1]));
+          for (const [pv, qv] of es) {
+            s121SeedTried += 1;
+            if (seedFlip(pv, qv)) { s121SeedDone += 1; moved += 1; break; }
+          }
+        }
+        if (moved === 0) break;
+      }
+      s121SeedAfterCap = 0; s121SeedAfterWorst = 0;
+      for (let t = 0; t < ta.length; t += 1) {
+        if (!alive[t]) continue;
+        const ar = arOf(t);
+        if (ar > SHAPE_AR) { s121SeedAfterCap += 1; if (s121SeedRowsAfter.length < 64) s121SeedRowsAfter.push(s121Row(t)); }
+        if (ar > s121SeedAfterWorst) s121SeedAfterWorst = ar;
+      }
     }
 
     // ───────────────────────────── BISECTION ─────────────────────────────
@@ -5230,13 +5415,57 @@ describe('STRATA conforming-bisection', () => {
     let outerTopo = analyze(soup);
     // double-valued TREAD annuli bridging each detected C0 z-step (no-op when zSteps is empty, e.g. GothicArches)
     let treadTris = 0;
+    // ─────────────────── S121 FIX 1 — THE TREAD EMITTER (PF_CB_S121_TREADFIX, DEFAULT OFF) ───────────────────
+    // Counters live outside the branch so the report can print them unconditionally; every one of them is 0
+    // on the flag-OFF path, which never assigns to any of them.
+    let s121WallExtra = 0;          // extra WALL facets created by fan-splitting an owning facet
+    let s121Steiner = 0;            // Steiner points admitted onto a ring edge
+    let s121RefWallAR = 0;          // refused: a fan child of the owning wall facet would exceed the cap
+    let s121RefMaxK = 0;            // refused: the edge already carries PF_CB_S121_TREAD_MAXK points
+    let s121RefWeld = 0;            // refused: the point would land within 4*WELD_MM of a node already there
+    let s121RefMulti = 0;           // refused: the owning facet already carries splits on another of its edges
+    let s121Unowned = 0;            // ring edges with no unique owning wall facet — the step is left as-is
+    let s121Rounds = 0;             // densify/re-zip rounds actually run
+    let s121EarsOver = 0;           // ears STILL over the cap when emission happened (the RESIDUAL)
+    let s121EarsOverA = 0; let s121EarsOverMax = 0;
+    let s121WallOver = 0; let s121WallOverMax = 0;   // fan children over the cap that were nevertheless emitted
     if (zSteps.length > 0) {
       const sortedL = outerTopo.loops.slice()
         .sort((p, q) => loopZof(p, outerTopo.wpos) - loopZof(q, outerTopo.wpos))
         .map((loop) => loop.map((i) => outerTopo.wpos[i]));
+      if (!S121_TREADFIX) {
       for (let sIdx = 0; sIdx < zSteps.length; sIdx += 1) {
         const below = sortedL[1 + 2 * sIdx]; const above = sortedL[2 + 2 * sIdx];
         if (below !== undefined && above !== undefined) treadTris += stitchRings(below, above);
+      }
+      } else {
+        // === THE FIXED EMITTER (research/bridge/_s121TreadFix.ts) ===
+        // The walk itself is UNCHANGED - it is a theta-merge already and it is not the defect. What the
+        // module adds is Steiner densification of the ring edges to a chord bound derived from the LOCAL
+        // strip height, and an admission test on every emitted ear and on every fan child of the wall facet
+        // that owns the ring edge. It lives in its own file so the unit test drives THE SHIPPED FUNCTION
+        // rather than a transcription of it, and so that `rounds: 0` gives a control arm that is the
+        // baseline walk through the same code path (research/bridge/_s121TreadUnit.test.ts).
+        const stepLoops: Array<[P3[], P3[]]> = [];
+        for (let sIdx = 0; sIdx < zSteps.length; sIdx += 1) {
+          const below = sortedL[1 + 2 * sIdx]; const above = sortedL[2 + 2 * sIdx];
+          if (below !== undefined && above !== undefined) stepLoops.push([below, above]);
+        }
+        const fix = stitchRingsGuarded(soup, stepLoops, {
+          shapeAR: SHAPE_AR, weldMm: WELD_MM, maxK: S121_MAXK, safe: S121_SAFE, rounds: S121_ROUNDS,
+          snapFrac: S121_SNAP,
+        });
+        // The fan children must precede the treads so that [wall | treads] stays contiguous and the tread
+        // census's index range keeps its meaning.
+        for (const t3 of fix.wallExtra) soup.push(t3);
+        for (const t3 of fix.treads) { soup.push(t3); treadTris += 1; }
+        s121WallExtra = fix.stats.wallExtra; s121Steiner = fix.stats.steiner;
+        s121RefWallAR = fix.stats.refWallAR; s121RefMaxK = fix.stats.refMaxK;
+        s121RefWeld = fix.stats.refWeld; s121RefMulti = fix.stats.refMulti;
+        s121Unowned = fix.stats.unowned; s121Rounds = fix.stats.rounds;
+        s121EarsOver = fix.stats.earsOver; s121EarsOverA = fix.stats.earsOverArea;
+        s121EarsOverMax = fix.stats.earsOverMax;
+        s121WallOver = fix.stats.wallOver; s121WallOverMax = fix.stats.wallOverMax;
       }
       outerTopo = analyze(soup);
     }
@@ -6111,7 +6340,11 @@ describe('STRATA conforming-bisection', () => {
       let trN = 0; let trA = 0; let trPoleN = 0; let trPoleA = 0; let trThinN = 0; let trThinA = 0;
       let trMinAlt = Infinity; let trInv = 0;
       let trAr50N = 0; let trAr50A = 0; let trArMax = 0; let trAlt3Min = Infinity; let trZeroA = 0;
-      for (let i = liveIdx.length; i < liveIdx.length + treadTris && i < soup.length; i += 1) {
+      // S121: the treads are the LAST `treadTris` entries of the soup. With PF_CB_S121_TREADFIX on, the
+      // wall grew by `s121WallExtra` fan children that sit BEFORE them, so the range is taken from the end
+      // rather than from `liveIdx.length` — an expression that is identical when the flag is off, because
+      // `s121WallExtra` is then 0 and nothing else appends to the soup before this point.
+      for (let i = liveIdx.length + s121WallExtra; i < liveIdx.length + s121WallExtra + treadTris && i < soup.length; i += 1) {
         const [p, q, r] = soup[i];
         const tha = Math.atan2(p[1], p[0]);
         const thb = tha + dThRaw(tha, Math.atan2(q[1], q[0]));
@@ -6450,6 +6683,28 @@ describe('STRATA conforming-bisection', () => {
       `  post-loop guard: PF_CB_POST_SHAPE=${POST_SHAPE ? 1 : 0}${SHAPE ? '' : ' (INERT — PF_CB_SHAPE=0, so the control is byte-unchanged)'}   cap AR>${SHAPE_AR}, metric = _shapeGuard.aspect3 (the census's own)`,
       `    initial grid: ${gridOverCap} of ${initTris} facets over the cap, worst AR ${gridWorstAR.toFixed(2)}`
         + `${gridOverCap > 0 ? '   *** BORN OVER THE CAP. No split guard can have caused these and none can repair them — S1 refuses their splits, so they are FROZEN into the STL. Expect the blade gate to count them. ***' : ''}`,
+      // ── S121 FIX 2 — WHAT the over-cap seed facets ARE, and (with the flag) what the repair did to them ──
+      ...(s121SeedRows.length === 0 ? [] : [
+        `    S121 SEED ANATOMY — the ${s121SeedRows.length} recorded over-cap seed facets (cap ${SHAPE_AR}):`,
+        ...s121SeedRows.map((r) => `       tri ${String(r.t).padStart(8)}  AR ${r.ar.toFixed(2).padStart(9)}`
+          + `  area ${r.area.toExponential(3)} mm2  altitude ${(r.alt * 1000).toFixed(2)} um`
+          + `  edges(mm) ${r.e.map((v) => v.toFixed(4)).join('/')}`
+          + `  z ${r.z.map((v) => v.toFixed(4)).join('/')}`
+          + `  θ ${r.th.map((v) => v.toFixed(5)).join('/')}`
+          + `  onLocus ${r.feat.map((v) => (v ? '1' : '0')).join('')}`),
+      ]),
+      `    S121 FIX 2, THE SEED: PF_CB_S121_SEEDFIX=${S121_SEEDFIX ? '1' : '0'}`
+        + (S121_SEEDFIX
+          ? `   passes ${s121SeedPassesRun} of ${S121_SEED_PASSES}   flips tried ${s121SeedTried}, DONE ${s121SeedDone}`
+          + `   refused: on-locus ${s121SeedRefLocus}, fold/non-convex ${s121SeedRefFold}, no strict gain ${s121SeedRefGain}, not a legal pair ${s121SeedRefPair}`
+          + `   ⇒ over the cap ${gridOverCap} → ${s121SeedAfterCap}, worst AR ${gridWorstAR.toFixed(2)} → ${s121SeedAfterWorst.toFixed(2)}`
+          : '   OFF — the seed enters the loop exactly as built.'),
+      ...(S121_SEEDFIX && s121SeedRowsAfter.length > 0 ? [
+        `    S121 SEED RESIDUAL — ${s121SeedRowsAfter.length} recorded facets still over the cap AFTER the repair:`,
+        ...s121SeedRowsAfter.map((r) => `       tri ${String(r.t).padStart(8)}  AR ${r.ar.toFixed(2).padStart(9)}`
+          + `  altitude ${(r.alt * 1000).toFixed(2)} um  edges(mm) ${r.e.map((v) => v.toFixed(4)).join('/')}`
+          + `  z ${r.z.map((v) => v.toFixed(4)).join('/')}  onLocus ${r.feat.map((v) => (v ? '1' : '0')).join('')}`),
+      ] : []),
       `    collapse: ${nPostCollapseTested} tested, refused ${nPostCollapseRefusedAR} on aspect + ${nPostCollapseRefusedFold} on (θ,z) FOLD`
         + `${nPostCollapseRefusedDirty > 0 ? `   *** ${nPostCollapseRefusedDirty} of the aspect refusals LEFT A FACET ALREADY OVER THE CAP in place — visible, not silent ***` : ''}`,
       `    flip (collapse-driven, PF_CB_FLIP=${FLIP_ON ? 1 : 0}): ${nPostFlipTested} gate calls, refused ${nPostFlipRefusedAR} on aspect   [tryFlip sign-checks (θ,z) itself, so this path cannot fold]`,
@@ -6760,7 +7015,22 @@ describe('STRATA conforming-bisection', () => {
       `  reversed facets    : ${orientMismatch}  ${orientMismatch === 0 ? 'OK' : 'FAIL — interior edge traversed the same way twice ⇒ inconsistent winding'}`,
       `  seam-crack edges   : ${seamCrack}  ${seamCrack === 0 ? 'OK' : 'FAIL'}`,
       `  boundary edges     : ${boundary}   ${STAGE === 'solid' ? (boundary === 0 ? 'OK — CLOSED SOLID' : 'FAIL — open') : '(ring ⇒ top+bottom only)'}   loops ${loops.length}`,
-      `  soup: ${soup.length} tris = ${liveIdx.length} outer wall + ${treadTris} treads + ${capTris} caps`,
+      `  soup: ${soup.length} tris = ${liveIdx.length} outer wall${s121WallExtra > 0 ? ` + ${s121WallExtra} S121 wall fan children` : ''} + ${treadTris} treads + ${capTris} caps`,
+      ...(zSteps.length === 0 ? [] : [
+        `  ── S121 FIX 1, THE TREAD EMITTER: PF_CB_S121_TREADFIX=${S121_TREADFIX ? '1' : '0'} ──`,
+        ...(S121_TREADFIX ? [
+          `     densify/re-zip rounds ${s121Rounds} of ${S121_ROUNDS}   Steiner points admitted ${s121Steiner}`
+          + `   wall facets fan-split into ${s121WallExtra} extra children   chord bound = ${S121_SAFE}*AR${SHAPE_AR}*local altitude, snap ${S121_SNAP}`,
+          `     REFUSED — wall fan child would exceed the cap ${s121RefWallAR}   MAXK(${S121_MAXK}) ${s121RefMaxK}`
+          + `   weld-clearance ${s121RefWeld}   facet already split on another edge ${s121RefMulti}   ring edges with no unique owner ${s121Unowned}`,
+          `     *** RESIDUAL — tread ears STILL over AR>${SHAPE_AR}: COUNT ${s121EarsOver} of ${treadTris}`
+          + `   AREA ${s121EarsOverA.toFixed(6)} mm2   MAX ${s121EarsOverMax.toFixed(2)} ***`,
+          `     *** WALL fan children over AR>${SHAPE_AR} (a regression if non-zero): COUNT ${s121WallOver}   MAX ${s121WallOverMax.toFixed(2)} ***`,
+        ] : [
+          '     OFF — the emitter runs verbatim. S120 measured 707 of 4,394 tread facets over the cap on'
+          + ' CelticTriquetra, worst 191.01; the driver-side count is in the S120 census block (PF_CB_S120_LINEAGE=1).',
+        ]),
+      ]),
       // The caveat below used to print ONLY under GPU_RANK, so an ordinary run showed a bare "PASS". Every
       // number in this block comes from sagOfN/sagAdaptive, i.e. distance to the triangle's INFINITE PLANE —
       // small for exactly the facet that spans a feature (measured: 5.856 µm here vs 362.888 µm from the

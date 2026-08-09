@@ -932,6 +932,7 @@ function renderMesh(stl: string, tag: string): void {
   //   BIG  — the LARGEST-AREA facet over the 45 deg bar. The extreme by the currency that matters, since
   //          this campaign has repeatedly measured count and area disagreeing in DIRECTION.
   // Both are reported with their scalar AND their area so neither can stand in for the other.
+  const ZOOM_EL = envF('PF_S116_ZOOM_EL', 0);
   interface ZoomSite { thDeg: number; zMm: number; halfMm: number; r?: number; tag: string }
   const sites: ZoomSite[] = [];
   const zs = envS('PF_S116_ZOOMS', '').trim();
@@ -982,7 +983,11 @@ function renderMesh(stl: string, tag: string): void {
     const target: [number, number, number] = [rTarget * Math.cos(th), rTarget * Math.sin(th), site.zMm];
     for (const mode of MODES) {
       const r = renderView({
-        xyz, nTri, area, W: 1100, Hpx: 1100, ss: SS, azDeg: site.thDeg, elDeg: 0, target, halfHmm: site.halfMm,
+        // S121: the zoom elevation is a parameter (PF_S116_ZOOM_EL, default 0 = the previous behaviour,
+        // byte-identical when unset). A HORIZONTAL band — a tread annulus at a C0 z-step — is seen
+        // EDGE-ON at elevation 0 and collapses to a line no matter how far you zoom, so a camera that
+        // cannot be tilted cannot photograph the one feature this session had to look at.
+        xyz, nTri, area, W: 1100, Hpx: 1100, ss: SS, azDeg: site.thDeg, elDeg: ZOOM_EL, target, halfHmm: site.halfMm,
         mode, scalar: mode === 'heat' ? scalar : undefined,
         scaleMin: sMin, scaleMax: sMax, scalarLabel: sLabel, scalarUnits: sUnits,
         caption: `${tag} ZOOM ${site.tag.toUpperCase()}  TH=${site.thDeg.toFixed(3)} DEG  Z=${site.zMm.toFixed(3)} MM  HALF=${site.halfMm} MM`,
